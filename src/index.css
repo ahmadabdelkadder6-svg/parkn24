@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+html {
+  direction: rtl;
+  font-family: 'Cairo', sans-serif;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #020617;
+  color: #f8fafc;
+  direction: rtl;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+    touch-action: manipulation;
+}
+
+/* سكرول ناعم للموبايل */
+* {
+  -webkit-overflow-scrolling: touch;
+}
+
+::-webkit-scrollbar {
+  width: 0px;
+  display: none;
+}
+
+/* منع تحديد النص على الموبايل */
+button, a {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* safe area للموبايلات الحديثة */
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
