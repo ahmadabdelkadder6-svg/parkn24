@@ -263,61 +263,7 @@ interface AppState {
 }
 
 // ===================== Initial Data =====================
-const defaultGarages: Garage[] = [
-  {
-    id: '1',
-    name: 'جراج التحرير',
-    username: 'tahrir',
-    phone: '01001234567',
-    location: 'ميدان التحرير، وسط البلد',
-    lat: 30.0444,
-    lng: 31.2357,
-    capacity: 120,
-    availableSpots: 45,
-    basePrice: 15,
-    rating: 4.5,
-  },
-  {
-    id: '2',
-    name: 'جراج المعادي',
-    username: 'maadi',
-    phone: '01009876543',
-    location: 'شارع 9، المعادي',
-    lat: 29.9602,
-    lng: 31.2569,
-    capacity: 80,
-    availableSpots: 22,
-    basePrice: 20,
-    rating: 4.2,
-  },
-  {
-    id: '3',
-    name: 'جراج مدينة نصر',
-    username: 'nasr',
-    phone: '01112223344',
-    location: 'شارع عباس العقاد، مدينة نصر',
-    lat: 30.0511,
-    lng: 31.3462,
-    capacity: 200,
-    availableSpots: 78,
-    basePrice: 10,
-    rating: 4.7,
-  },
-  {
-    id: '4',
-    name: 'جراج الزمالك',
-    username: 'zamalek',
-    phone: '01223344556',
-    location: 'شارع 26 يوليو، الزمالك',
-    lat: 30.0616,
-    lng: 31.2193,
-    capacity: 60,
-    availableSpots: 12,
-    basePrice: 25,
-    rating: 4.8,
-  },
-];
-
+const defaultGarages: Garage[] = [];
 // ===================== Store =====================
 export const useStore = create<AppState>((set, get) => ({
   // ===================== View =====================
