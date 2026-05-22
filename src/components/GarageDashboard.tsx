@@ -51,6 +51,7 @@ export default function GarageDashboard() {
     updateOffer,
     cancelOffer,
     updateGarage,
+    adjustGarageSpots, // ✅ جديد
     incomingCars,
     removeIncomingCar,
     currentUser,
@@ -75,21 +76,15 @@ export default function GarageDashboard() {
   const isEndingSessionRef = useRef(false);
 
   const [undoableSessions, setUndoableSessions] = useState<UndoableSession[]>([]);
-
   const [newCarPlate, setNewCarPlate] = useState('');
   const [newCarPrice, setNewCarPrice] = useState(garage?.basePrice || 15);
   const [showAddCar, setShowAddCar] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-
   const [editPrice, setEditPrice] = useState(garage?.basePrice || 15);
   const [editSpots, setEditSpots] = useState(garage?.availableSpots || 0);
   const [editCapacity, setEditCapacity] = useState(garage?.capacity || 50);
-
-  const [logDateFilter, setLogDateFilter] = useState(() => {
-    return new Date().toISOString().split('T')[0];
-  });
+  const [logDateFilter, setLogDateFilter] = useState(() => new Date().toISOString().split('T')[0]);
   const [logPaymentFilter, setLogPaymentFilter] = useState<string>('all');
-
   const [confirmSession, setConfirmSession] = useState<{
     id: string;
     carPlate: string;
@@ -100,13 +95,10 @@ export default function GarageDashboard() {
     agreedPrice?: number;
   } | null>(null);
   const [confirmPaymentMethod, setConfirmPaymentMethod] = useState('cash');
-
   const [tick, setTick] = useState(0);
 
   const getSessionRevenue = useCallback((s: typeof completedSessions[0]) => {
-    if (s.totalPrice != null && Number(s.totalPrice) > 0) {
-      return Number(s.totalPrice);
-    }
+    if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
       const start = typeof s.startTime === 'number' ? s.startTime : new Date(s.startTime).getTime();
       const end = typeof s.endTime === 'number' ? s.endTime : new Date(s.endTime).getTime();
@@ -159,19 +151,15 @@ export default function GarageDashboard() {
     };
   }, [filteredCompleted, getSessionRevenue]);
 
-  // ✅ التراجع — يحذف بالـ sessionId الحالي + الـ localId + يحذف بالـ carPlate كـ fallback
+  // ✅ التراجع مع adjustGarageSpots
   const handleUndoSession = useCallback((undoable: UndoableSession) => {
     if (!garage) return;
 
-    // حذف بالـ sessionId الحالي
     removeSession(undoable.sessionId);
-
-    // لو الـ localId مختلف عن الـ sessionId، احذفه كمان
     if (undoable.localId !== undoable.sessionId) {
       removeSession(undoable.localId);
     }
 
-    // ✅ Fallback: احذف أي جلسة نشطة بنفس الـ carPlate ومضاف يدوي في نفس الوقت تقريباً
     const currentSessions = useStore.getState().sessions;
     const matchingSession = currentSessions.find(
       (s) =>
@@ -180,21 +168,20 @@ export default function GarageDashboard() {
         s.status === 'active' &&
         Math.abs(s.startTime - undoable.addedAt) < 5000
     );
-    if (matchingSession) {
-      removeSession(matchingSession.id);
-    }
+    if (matchingSession) removeSession(matchingSession.id);
 
-    updateGarage(garage.id, {
-      availableSpots: Math.min(garage.capacity, garage.availableSpots + 1),
-    });
+    // ✅ استخدام adjustGarageSpots بدل updateGarage
+    adjustGarageSpots(garage.id, 1);
 
-    setUndoableSessions((prev) => prev.filter((u) => u.sessionId !== undoable.sessionId && u.localId !== undoable.localId));
+    setUndoableSessions((prev) =>
+      prev.filter((u) => u.sessionId !== undoable.sessionId && u.localId !== undoable.localId)
+    );
 
     toast('تم إلغاء إضافة السيارة ' + undoable.carPlate + ' ↩️', {
       icon: '🔙',
       style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' },
     });
-  }, [garage, removeSession, updateGarage]);
+  }, [garage, removeSession, adjustGarageSpots]);
 
   const getUndoRemainingSeconds = useCallback((addedAt: number) => {
     return Math.max(0, UNDO_TIMEOUT_SECONDS - Math.floor((Date.now() - addedAt) / 1000));
@@ -209,20 +196,14 @@ export default function GarageDashboard() {
     if (garage) setNewCarPrice(garage.basePrice);
   }, [garage?.basePrice, garage]);
 
-  // ✅ إزالة المنتهية + تحديث الـ sessionId لو اتغير بعد Supabase sync
   useEffect(() => {
     setUndoableSessions((prev) => {
       const currentSessionsList = sessions;
       return prev
-        .filter((u) => {
-          const elapsed = Math.floor((Date.now() - u.addedAt) / 1000);
-          return elapsed < UNDO_TIMEOUT_SECONDS;
-        })
+        .filter((u) => Math.floor((Date.now() - u.addedAt) / 1000) < UNDO_TIMEOUT_SECONDS)
         .map((u) => {
-          // ✅ لو الـ localId اتبدل بـ id جديد من Supabase، حدّثه
           const stillExists = currentSessionsList.find((s) => s.id === u.sessionId);
           if (!stillExists) {
-            // ابحث بالـ carPlate + وقت الإضافة القريب
             const newSession = currentSessionsList.find(
               (s) =>
                 s.carPlate === u.carPlate &&
@@ -230,15 +211,14 @@ export default function GarageDashboard() {
                 s.status === 'active' &&
                 Math.abs(s.startTime - u.addedAt) < 5000
             );
-            if (newSession) {
-              return { ...u, sessionId: newSession.id };
-            }
+            if (newSession) return { ...u, sessionId: newSession.id };
           }
           return u;
         });
     });
   }, [tick, sessions]);
 
+  // ✅ useEffect للسيارات الواصلة مع adjustGarageSpots
   useEffect(() => {
     if (!garage) return;
     arrivedCars.forEach((car) => {
@@ -260,26 +240,25 @@ export default function GarageDashboard() {
         );
         if (relatedOffer) cancelOffer(relatedOffer.id);
         removeIncomingCar(car.id);
-        updateGarage(garage.id, { availableSpots: Math.max(0, garage.availableSpots - 1) });
+        // ✅ استخدام adjustGarageSpots بدل updateGarage
+        adjustGarageSpots(garage.id, -1);
         toast.success(`بدأ حساب السيارة ${car.carPlate} تلقائياً ⏱️`);
       }
     });
-  }, [tick, arrivedCars, garage, offers, addSession, cancelOffer, removeIncomingCar, updateGarage]);
+  }, [tick, arrivedCars, garage, offers, addSession, cancelOffer, removeIncomingCar, adjustGarageSpots]);
 
   if (!garage) return null;
 
-  // ✅ إضافة سيارة يدوية — نحفظ الـ localId + الـ carPlate للتتبع
+  // ✅ إضافة سيارة يدوية مع adjustGarageSpots
   const handleAddCar = async () => {
     if (!newCarPlate.trim()) {
       toast.error('أدخل رقم السيارة');
       return;
     }
-
     const carPlate = newCarPlate.trim();
     const price = newCarPrice;
     const addedAt = Date.now();
 
-    // ✅ نسجل الـ id قبل الـ await عشان نضمن نحصل عليه
     const sessionId = await addSession({
       garageId: garage.id,
       carPlate,
@@ -289,21 +268,13 @@ export default function GarageDashboard() {
       agreedPrice: price,
     });
 
-    updateGarage(garage.id, {
-      availableSpots: Math.max(0, garage.availableSpots - 1),
-    });
+    // ✅ استخدام adjustGarageSpots بدل updateGarage
+    adjustGarageSpots(garage.id, -1);
 
-    // ✅ نحفظ الـ sessionId + الـ localId (هم نفسهم في البداية)
     const finalSessionId = sessionId || `fallback-${addedAt}`;
     setUndoableSessions((prev) => [
       ...prev,
-      {
-        sessionId: finalSessionId,
-        localId: finalSessionId,
-        carPlate,
-        price,
-        addedAt,
-      },
+      { sessionId: finalSessionId, localId: finalSessionId, carPlate, price, addedAt },
     ]);
 
     toast.success(`تم إضافة السيارة بسعر ${price} ج.م/ساعة`);
@@ -330,6 +301,7 @@ export default function GarageDashboard() {
     setConfirmPaymentMethod('cash');
   };
 
+  // ✅ تأكيد السداد مع adjustGarageSpots
   const handleConfirmPayment = async () => {
     if (!confirmSession) return;
     if (isEndingSessionRef.current) return;
@@ -348,10 +320,14 @@ export default function GarageDashboard() {
       const sessionCopy = { ...confirmSession };
       const paymentCopy = confirmPaymentMethod;
       setConfirmSession(null);
-      setUndoableSessions((prev) => prev.filter((u) => u.sessionId !== sessionCopy.id && u.localId !== sessionCopy.id));
+      setUndoableSessions((prev) =>
+        prev.filter((u) => u.sessionId !== sessionCopy.id && u.localId !== sessionCopy.id)
+      );
 
       await endSession(sessionCopy.id, sessionCopy.cost, paymentCopy);
-      updateGarage(garage.id, { availableSpots: Math.min(garage.capacity, garage.availableSpots + 1) });
+
+      // ✅ استخدام adjustGarageSpots بدل updateGarage
+      adjustGarageSpots(garage.id, 1);
 
       const methodLabel =
         paymentCopy === 'cash' ? 'نقدي 💵' :
@@ -365,6 +341,7 @@ export default function GarageDashboard() {
   };
 
   const handleSaveSettings = () => {
+    // ✅ updateGarage للإعدادات العامة (سعر + سعة) لازم يفضل
     updateGarage(garage.id, {
       basePrice: editPrice,
       availableSpots: Math.min(editSpots, editCapacity),
@@ -381,6 +358,7 @@ export default function GarageDashboard() {
     setShowSettings(true);
   };
 
+  // ✅ handleCarArrived مع adjustGarageSpots
   const handleCarArrived = (carId: string, carPlate: string, agreedPrice: number) => {
     if (processedCarsRef.current.has(carId)) return;
     processedCarsRef.current.add(carId);
@@ -388,7 +366,8 @@ export default function GarageDashboard() {
     const relatedOffer = offers.find((o) => o.carPlate === carPlate && (o.status === 'pending' || o.status === 'accepted'));
     if (relatedOffer) cancelOffer(relatedOffer.id);
     removeIncomingCar(carId);
-    updateGarage(garage.id, { availableSpots: Math.max(0, garage.availableSpots - 1) });
+    // ✅ استخدام adjustGarageSpots بدل updateGarage
+    adjustGarageSpots(garage.id, -1);
     toast.success(`بدأ حساب السيارة ${carPlate} 🚗`);
   };
 
@@ -502,17 +481,51 @@ export default function GarageDashboard() {
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-2">
-                  {[{ id: 'cash', label: 'نقدي', icon: '💵' }, { id: 'instapay', label: 'إنستاباي', icon: '📱' }, { id: 'cashwallet', label: 'تحويل محفظة كاش', icon: '📲' }].map((pm) => (
-                    <button key={pm.id} onClick={() => setConfirmPaymentMethod(pm.id)} className={`p-3 rounded-xl border text-center transition-all active:scale-95 ${confirmPaymentMethod === pm.id ? pm.id === 'instapay' ? 'bg-purple-600/20 border-purple-500 ring-1 ring-purple-500/50' : pm.id === 'cashwallet' ? 'bg-orange-600/20 border-orange-500 ring-1 ring-orange-500/50' : 'bg-emerald-600/20 border-emerald-500 ring-1 ring-emerald-500/50' : 'bg-slate-950 border-slate-800'}`}>
-                      <div className="text-xl mb-1">{pm.icon}</div>
-                      <div className={`text-[10px] font-black ${confirmPaymentMethod === pm.id ? 'text-emerald-400' : 'text-slate-500'}`}>{pm.label}</div>
-                    </button>
-                  ))}
+                  {[
+                    { id: 'cash', label: 'نقدي', icon: '💵' },
+                    { id: 'instapay', label: 'إنستاباي', icon: '📱' },
+                    { id: 'wallet', label: 'المحفظة', icon: '👝' },
+                    { id: 'cashwallet', label: 'تحويل محفظة كاش', icon: '📲' },
+                  ].map((pm) => {
+                    const isWallet = pm.id === 'wallet';
+                    const isCurrentUserCar = isWallet && currentUser && currentUser.carPlate === confirmSession.carPlate;
+                    const walletBalance = currentUser?.wallet || 0;
+                    const insufficientWallet = isCurrentUserCar && walletBalance < confirmSession.cost;
+
+                    return (
+                      <button
+                        key={pm.id}
+                        onClick={() => !insufficientWallet && setConfirmPaymentMethod(pm.id)}
+                        disabled={!!insufficientWallet}
+                        className={`p-3 rounded-xl border text-center transition-all active:scale-95 ${
+                          insufficientWallet
+                            ? 'bg-slate-950 border-red-500/30 opacity-50 cursor-not-allowed'
+                            : confirmPaymentMethod === pm.id
+                            ? pm.id === 'wallet' ? 'bg-blue-600/20 border-blue-500 ring-1 ring-blue-500/50'
+                            : pm.id === 'instapay' ? 'bg-purple-600/20 border-purple-500 ring-1 ring-purple-500/50'
+                            : pm.id === 'cashwallet' ? 'bg-orange-600/20 border-orange-500 ring-1 ring-orange-500/50'
+                            : 'bg-emerald-600/20 border-emerald-500 ring-1 ring-emerald-500/50'
+                            : 'bg-slate-950 border-slate-800'
+                        }`}
+                      >
+                        <div className="text-xl mb-1">{pm.icon}</div>
+                        <div className={`text-[10px] font-black ${insufficientWallet ? 'text-red-400' : confirmPaymentMethod === pm.id ? 'text-white' : 'text-slate-500'}`}>
+                          {pm.label}
+                        </div>
+                        {isCurrentUserCar && (
+                          <div className={`text-[8px] mt-1 font-mono font-bold ${insufficientWallet ? 'text-red-400' : 'text-blue-400'}`}>
+                            رصيد: {walletBalance} ج.م
+                          </div>
+                        )}
+                        {insufficientWallet && <div className="text-[7px] text-red-400 font-bold">رصيد غير كافي</div>}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
             <div className="flex gap-3">
-              <button onClick={handleConfirmPayment} className={`flex-1 py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xl ${confirmPaymentMethod === 'instapay' ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-900/30' : confirmPaymentMethod === 'cashwallet' ? 'bg-orange-600 hover:bg-orange-700 text-white shadow-orange-900/30' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-900/30'}`}><CheckCircle size={18} />تأكيد السداد ({confirmSession.cost} ج.م)</button>
+              <button onClick={handleConfirmPayment} className={`flex-1 py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xl ${confirmPaymentMethod === 'instapay' ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-900/30' : confirmPaymentMethod === 'cashwallet' ? 'bg-orange-600 hover:bg-orange-700 text-white shadow-orange-900/30' : confirmPaymentMethod === 'wallet' ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-900/30' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-900/30'}`}><CheckCircle size={18} />تأكيد السداد ({confirmSession.cost} ج.م)</button>
               <button onClick={() => setConfirmSession(null)} className="bg-slate-800 text-slate-400 px-5 py-4 rounded-2xl font-black text-sm active:scale-95 transition-all"><XCircle size={18} /></button>
             </div>
           </motion.div>
@@ -540,7 +553,7 @@ export default function GarageDashboard() {
                     <div className="flex items-center justify-end gap-2"><span className="text-[10px] text-slate-400">{undoable.price} ج.م/ساعة</span><span className="text-slate-700">|</span><span className="text-[10px] text-amber-400 font-bold font-mono">⏳ {remaining} ثانية</span></div>
                   </div>
                 </div>
-                <div className="mt-3 bg-amber-600/10 border border-amber-500/20 rounded-xl p-2 text-center"><p className="text-[9px] text-amber-400 font-bold">⚠️ يمكنك إلغاء الإضافة خلال {remaining} ثانية — بعدها لن يمكن التراجع</p></div>
+                <div className="mt-3 bg-amber-600/10 border border-amber-500/20 rounded-xl p-2 text-center"><p className="text-[9px] text-amber-400 font-bold">⚠️ يمكنك إلغاء الإضافة خلال {remaining} ثانية</p></div>
               </div>
             </motion.div>
           );
