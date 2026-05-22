@@ -51,6 +51,7 @@ export default function GarageLoginScreen() {
         >
           تسجيل الدخول
         </button>
+      </div>
     </div>
   );
 }
