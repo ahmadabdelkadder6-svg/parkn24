@@ -573,11 +573,22 @@ export default function GarageDashboard() {
                     <div className="bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full text-xs font-black flex items-center gap-1"><Timer size={12} />{String(waitTime.minutes).padStart(2, '0')}:{String(waitTime.seconds).padStart(2, '0')}</div>
                     <div className="text-right"><div className="text-lg font-black text-white">🚗 {car.carPlate}</div><div className="text-[10px] text-emerald-400 font-bold">⏳ فترة سماح مجانية</div></div>
                   </div>
-                  <div className="bg-slate-950/50 rounded-xl p-3 mb-3 space-y-2">
-                    <div className="flex items-center justify-between"><span className="text-sm font-black text-white">{car.customerName}</span><div className="flex items-center gap-1 text-slate-400"><User size={12} /><span className="text-[10px] font-bold">الاسم</span></div></div>
-                    <div className="flex items-center justify-between"><a href={`tel:${car.customerPhone}`} className="text-sm font-black text-blue-400 font-mono">{car.customerPhone}</a><div className="flex items-center gap-1 text-slate-400"><Phone size={12} /><span className="text-[10px] font-bold">الهاتف</span></div></div>
-                    <div className="flex items-center justify-between"><span className="text-sm font-black text-emerald-400 font-mono">{car.agreedPrice} ج.م / ساعة</span><div className="flex items-center gap-1 text-slate-400"><DollarSign size={12} /><span className="text-[10px] font-bold">السعر</span></div></div>
-                  </div>
+                <div className="bg-slate-950/50 rounded-xl p-3 mb-3 space-y-2">
+  <div className="flex items-center justify-between">
+    <a href={`tel:${car.customerPhone}`} className="text-sm font-black text-blue-400 font-mono">{car.customerPhone}</a>
+    <div className="flex items-center gap-1 text-slate-400">
+      <Phone size={12} />
+      <span className="text-[10px] font-bold">الهاتف</span>
+    </div>
+  </div>
+  <div className="flex items-center justify-between">
+    <span className="text-sm font-black text-emerald-400 font-mono">{car.agreedPrice} ج.م / ساعة</span>
+    <div className="flex items-center gap-1 text-slate-400">
+      <DollarSign size={12} />
+      <span className="text-[10px] font-bold">السعر</span>
+    </div>
+  </div>
+</div>
                   <div className="bg-amber-600/10 border border-amber-500/20 rounded-xl p-2 mb-3 text-center"><p className="text-[10px] text-amber-400 font-bold">⚡ سيبدأ الحساب تلقائياً عند انتهاء العد التنازلي</p></div>
                   <div className="flex gap-2">
                     <button onClick={() => handleCarArrived(car.id, car.carPlate, car.agreedPrice)} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all"><CheckCircle size={16} />بدء الحساب الآن</button>
@@ -604,10 +615,21 @@ export default function GarageDashboard() {
                     <div className="text-lg font-black text-white">🚗 {car.carPlate}</div>
                   </div>
                   <div className="bg-slate-950/50 rounded-xl p-3 mb-3 space-y-2">
-                    <div className="flex items-center justify-between"><span className="text-sm font-black text-white">{car.customerName}</span><div className="flex items-center gap-1 text-slate-400"><User size={12} /><span className="text-[10px] font-bold">الاسم</span></div></div>
-                    <div className="flex items-center justify-between"><a href={`tel:${car.customerPhone}`} className="text-sm font-black text-blue-400 font-mono">{car.customerPhone}</a><div className="flex items-center gap-1 text-slate-400"><Phone size={12} /><span className="text-[10px] font-bold">الهاتف</span></div></div>
-                    <div className="flex items-center justify-between"><span className="text-sm font-black text-emerald-400 font-mono">{car.agreedPrice} ج.م / ساعة</span><div className="flex items-center gap-1 text-slate-400"><DollarSign size={12} /><span className="text-[10px] font-bold">السعر المتفق</span></div></div>
-                  </div>
+  <div className="flex items-center justify-between">
+    <a href={`tel:${car.customerPhone}`} className="text-sm font-black text-blue-400 font-mono">{car.customerPhone}</a>
+    <div className="flex items-center gap-1 text-slate-400">
+      <Phone size={12} />
+      <span className="text-[10px] font-bold">الهاتف</span>
+    </div>
+  </div>
+  <div className="flex items-center justify-between">
+    <span className="text-sm font-black text-emerald-400 font-mono">{car.agreedPrice} ج.م / ساعة</span>
+    <div className="flex items-center gap-1 text-slate-400">
+      <DollarSign size={12} />
+      <span className="text-[10px] font-bold">السعر المتفق</span>
+    </div>
+  </div>
+</div>
                   <div className="flex gap-2">
                     <button onClick={() => handleCarArrived(car.id, car.carPlate, car.agreedPrice)} className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all"><CheckCircle size={16} />وصلت وبدء الحساب</button>
                     <a href={`tel:${car.customerPhone}`} className="bg-blue-600/20 text-blue-400 px-4 py-3 rounded-xl flex items-center justify-center border border-blue-500/20 active:scale-95 transition-all"><Phone size={18} /></a>
