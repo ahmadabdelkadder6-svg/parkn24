@@ -51,11 +51,6 @@ export default function GarageLoginScreen() {
         >
           تسجيل الدخول
         </button>
-      </div>
-
-      <p className="text-white/50 text-xs text-center mt-6">
-        جرب: اسم المستخدم "tahrir" والهاتف "01001234567"
-      </p>
     </div>
   );
 }
