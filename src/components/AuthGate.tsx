@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Shield,
@@ -8,8 +8,10 @@ import {
   EyeOff,
   LogIn,
   ArrowRight,
+  Loader2,
 } from 'lucide-react';
 import { useStore } from '../store';
+import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 const ADMIN_PASSWORD = 'admin2024';
@@ -19,10 +21,15 @@ export default function AuthGate({
 }: {
   children: React.ReactNode;
 }) {
-  const { view, currentGarageId } = useStore();
+  const { view, currentGarageId, fetchAll } = useStore();
 
   const isGarageAuthed = !!localStorage.getItem('garageAuth');
   const isAdminAuthed = !!localStorage.getItem('adminAuth');
+
+  // ✅ جيب البيانات أول ما التطبيق يفتح
+  useEffect(() => {
+    fetchAll();
+  }, []);
 
   if (view === 'user') return <>{children}</>;
 
@@ -40,33 +47,86 @@ export default function AuthGate({
 }
 
 function GarageLogin() {
-  const { garages, setCurrentGarageId, setView, setScreen } = useStore();
+  const { garages, setCurrentGarageId, setView, setScreen, fetchAll } = useStore();
   const [username, setUsername] = useState('');
   const [phone, setPhone] = useState('');
   const [showPhone, setShowPhone] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
+  // ✅ جيب الجراجات لو مش موجودة
+  useEffect(() => {
+    if (garages.length === 0) {
+      fetchAll();
+    }
+  }, []);
+
+  const handleLogin = async () => {
     if (!username.trim() || !phone.trim()) {
       toast.error('أدخل اسم المستخدم ورقم الهاتف');
       return;
     }
-    const garage = garages.find(
-      (g) =>
-        g.username.toLowerCase() === username.trim().toLowerCase() &&
-        g.phone === phone.trim()
-    );
-    if (!garage) {
-      toast.error('بيانات الدخول غير صحيحة');
-      return;
+
+    setLoading(true);
+
+    try {
+      // ✅ دور في الـ store الأول
+      let garage = garages.find(
+        (g) =>
+          g.username.toLowerCase() === username.trim().toLowerCase() &&
+          g.phone === phone.trim()
+      );
+
+      // ✅ لو مش موجود في الـ store، دور في Supabase مباشرة
+      if (!garage) {
+        const { data, error } = await supabase
+          .from('garages')
+          .select('*')
+          .ilike('username', username.trim())
+          .eq('phone', phone.trim())
+          .single();
+
+        if (error || !data) {
+          toast.error('بيانات الدخول غير صحيحة');
+          setLoading(false);
+          return;
+        }
+
+        // ✅ حوّل البيانات للشكل الصح
+        garage = {
+          id: data.id,
+          name: data.name,
+          username: data.username,
+          phone: data.phone,
+          location: data.location,
+          lat: data.lat,
+          lng: data.lng,
+          capacity: data.capacity,
+          availableSpots: data.available_spots,
+          basePrice: Number(data.base_price),
+          rating: Number(data.rating),
+        };
+
+        // ✅ حدث الـ store بالبيانات الجديدة
+        await fetchAll();
+      }
+
+      localStorage.setItem(
+        'garageAuth',
+        JSON.stringify({
+          garageId: garage.id,
+          username: garage.username,
+          timestamp: Date.now(),
+        })
+      );
+      setCurrentGarageId(garage.id);
+      setScreen('splash');
+      toast.success(`مرحباً بك في ${garage.name} 🅿️`);
+    } catch (err) {
+      console.error('Login error:', err);
+      toast.error('حدث خطأ، حاول تاني');
     }
-    localStorage.setItem('garageAuth', JSON.stringify({
-      garageId: garage.id,
-      username: garage.username,
-      timestamp: Date.now(),
-    }));
-    setCurrentGarageId(garage.id);
-    setScreen('splash');
-    toast.success(`مرحباً بك في ${garage.name} 🅿️`);
+
+    setLoading(false);
   };
 
   return (
@@ -122,10 +182,20 @@ function GarageLogin() {
 
           <button
             onClick={handleLogin}
-            className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all"
+            disabled={loading}
+            className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-50"
           >
-            <LogIn size={18} />
-            دخول الجراج
+            {loading ? (
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                جاري التحقق...
+              </>
+            ) : (
+              <>
+                <LogIn size={18} />
+                دخول الجراج
+              </>
+            )}
           </button>
 
           <button
@@ -137,26 +207,34 @@ function GarageLogin() {
           </button>
         </div>
 
+        {/* ✅ بيانات تجريبية */}
         <div className="mt-6 bg-slate-900/50 border border-slate-800 rounded-xl p-3">
           <p className="text-[10px] text-slate-500 text-center font-bold mb-2">
             📋 بيانات الدخول التجريبية
           </p>
           <div className="space-y-1.5">
-            {[
-              { name: 'جراج التحرير', user: 'tahrir', phone: '01001234567' },
-              { name: 'جراج المعادي', user: 'maadi', phone: '01009876543' },
-              { name: 'جراج مدينة نصر', user: 'nasr', phone: '01112223344' },
-              { name: 'جراج الزمالك', user: 'zamalek', phone: '01223344556' },
-            ].map((g) => (
-              <button
-                key={g.user}
-                onClick={() => { setUsername(g.user); setPhone(g.phone); }}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 flex items-center justify-between text-[9px] active:scale-95 transition-all"
-              >
-                <span className="text-slate-600 font-mono">{g.user} / {g.phone}</span>
-                <span className="text-slate-400 font-black">{g.name}</span>
-              </button>
-            ))}
+            {garages.length > 0 ? (
+              garages.slice(0, 4).map((g) => (
+                <button
+                  key={g.id}
+                  onClick={() => {
+                    setUsername(g.username);
+                    setPhone(g.phone);
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 flex items-center justify-between text-[9px] active:scale-95 transition-all"
+                >
+                  <span className="text-slate-600 font-mono">
+                    {g.username} / {g.phone}
+                  </span>
+                  <span className="text-slate-400 font-black">{g.name}</span>
+                </button>
+              ))
+            ) : (
+              <div className="text-center py-2">
+                <Loader2 size={16} className="animate-spin text-slate-600 mx-auto mb-1" />
+                <p className="text-[9px] text-slate-600">جاري تحميل الجراجات...</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
