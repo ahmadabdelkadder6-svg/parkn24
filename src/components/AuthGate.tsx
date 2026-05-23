@@ -206,37 +206,6 @@ function GarageLogin() {
             الرجوع للوضع العادي
           </button>
         </div>
-
-        {/* ✅ بيانات تجريبية */}
-        <div className="mt-6 bg-slate-900/50 border border-slate-800 rounded-xl p-3">
-          <p className="text-[10px] text-slate-500 text-center font-bold mb-2">
-            📋 بيانات الدخول التجريبية
-          </p>
-          <div className="space-y-1.5">
-            {garages.length > 0 ? (
-              garages.slice(0, 4).map((g) => (
-                <button
-                  key={g.id}
-                  onClick={() => {
-                    setUsername(g.username);
-                    setPhone(g.phone);
-                  }}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 flex items-center justify-between text-[9px] active:scale-95 transition-all"
-                >
-                  <span className="text-slate-600 font-mono">
-                    {g.username} / {g.phone}
-                  </span>
-                  <span className="text-slate-400 font-black">{g.name}</span>
-                </button>
-              ))
-            ) : (
-              <div className="text-center py-2">
-                <Loader2 size={16} className="animate-spin text-slate-600 mx-auto mb-1" />
-                <p className="text-[9px] text-slate-600">جاري تحميل الجراجات...</p>
-              </div>
-            )}
-          </div>
-        </div>
       </div>
     </motion.div>
   );
