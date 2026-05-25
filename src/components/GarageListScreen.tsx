@@ -19,6 +19,7 @@ import {
   formatDuration,
 } from '../utils/distance';
 import TopUpWalletModal from './TopUpWalletModal';
+import toast from 'react-hot-toast';
 
 interface GarageWithDistance extends Garage {
   distance: number;
@@ -27,7 +28,16 @@ interface GarageWithDistance extends Garage {
 }
 
 export default function GarageListScreen() {
-  const { garages, setSelectedGarageId, setScreen, currentUser } = useStore();
+  const {
+    garages,
+    setSelectedGarageId,
+    setScreen,
+    currentUser,
+    sessions,
+    incomingCars,
+    offers,
+    addIncomingCar,
+  } = useStore();
 
   const [search, setSearch] = useState('');
   const [showNearbyOnly, setShowNearbyOnly] = useState(false);
@@ -105,9 +115,52 @@ export default function GarageListScreen() {
     (g) => g.classification === 'far'
   );
 
-  const handleSelectGarage = (garageId: string) => {
-    setSelectedGarageId(garageId);
-    setScreen('offer');
+  // ✅ حجز مباشر بدون تفاوض
+  const handleDirectBooking = (garage: GarageWithDistance) => {
+    if (!currentUser) {
+      toast.error('سجل بياناتك أولاً');
+      return;
+    }
+
+    const hasPendingOffer = offers.some(
+      (o) => o.userId === currentUser.phone && o.status === 'pending'
+    );
+
+    const hasActiveSession = sessions.some(
+      (s) => s.carPlate === currentUser.carPlate && s.status === 'active'
+    );
+
+    const hasIncomingCar = incomingCars.some(
+      (c) =>
+        c.carPlate === currentUser.carPlate &&
+        (c.status === 'coming' || c.status === 'arrived')
+    );
+
+    if (hasPendingOffer || hasActiveSession || hasIncomingCar) {
+      toast.error('لديك حجز أو جلسة نشطة بالفعل');
+      return;
+    }
+
+    if (garage.availableSpots <= 0) {
+      toast.error('لا توجد أماكن متاحة حالياً');
+      return;
+    }
+
+    const estimatedMinutes = Math.max(3, garage.minutes);
+
+    setSelectedGarageId(garage.id);
+
+    addIncomingCar({
+      garageId: garage.id,
+      carPlate: currentUser.carPlate,
+      customerName: currentUser.name,
+      customerPhone: currentUser.phone,
+      agreedPrice: garage.basePrice,
+      estimatedArrival: estimatedMinutes,
+    });
+
+    toast.success(`تم الحجز في ${garage.name} بسعر ${garage.basePrice} ج.م/ساعة 🚗`);
+    setScreen('navigation');
   };
 
   return (
@@ -227,7 +280,7 @@ export default function GarageListScreen() {
                   key={garage.id}
                   garage={garage}
                   index={i}
-                  onSelect={() => handleSelectGarage(garage.id)}
+                  onSelect={() => handleDirectBooking(garage)}
                   isNearby
                   isClosest={i === 0}
                 />
@@ -253,7 +306,7 @@ export default function GarageListScreen() {
                   key={garage.id}
                   garage={garage}
                   index={i}
-                  onSelect={() => handleSelectGarage(garage.id)}
+                  onSelect={() => handleDirectBooking(garage)}
                   isNearby={false}
                   isClosest={nearbyGarages.length === 0 && i === 0}
                 />
@@ -372,17 +425,18 @@ function GarageCard({
       <button
         className={`w-full py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 ${
           garage.availableSpots === 0
-            ? 'bg-red-600 text-white'
+            ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
             : isClosest
             ? 'bg-blue-600 text-white'
             : isNearby
             ? 'bg-emerald-600 text-white'
             : 'bg-blue-600 text-white'
         }`}
+        disabled={garage.availableSpots === 0}
       >
         <Car size={14} />
         {garage.availableSpots === 0
-          ? 'ممتلئ - إرسال طلب'
+          ? 'ممتلئ - لا يمكن الحجز'
           : isClosest
           ? 'احجز الأقرب إليك'
           : isNearby

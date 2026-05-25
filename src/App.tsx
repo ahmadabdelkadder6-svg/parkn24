@@ -10,7 +10,6 @@ import AuthGate from './components/AuthGate';
 import SplashScreen from './components/SplashScreen';
 import RegisterScreen from './components/RegisterScreen';
 import GarageListScreen from './components/GarageListScreen';
-import OfferScreen from './components/OfferScreen';
 import WaitingScreen from './components/WaitingScreen';
 import NavigationScreen from './components/NavigationScreen';
 import SessionScreen from './components/SessionScreen';
@@ -18,6 +17,7 @@ import SummaryScreen from './components/SummaryScreen';
 import GarageLoginScreen from './components/GarageLoginScreen';
 import GarageDashboard from './components/GarageDashboard';
 import AdminDashboard from './components/AdminDashboard';
+import InstallPWA from './components/InstallPWA';
 
 export default function App() {
   const {
@@ -151,7 +151,6 @@ export default function App() {
                 {currentUser && (
                   <>
                     {screen === 'list' && <GarageListScreen />}
-                    {screen === 'offer' && <OfferScreen />}
                     {screen === 'waiting' && <WaitingScreen />}
                     {screen === 'navigation' && <NavigationScreen />}
                     {screen === 'session' && <SessionScreen />}
@@ -165,6 +164,9 @@ export default function App() {
         </main>
 
         <Toaster position="top-center" />
+
+        {/* PWA Install Banner */}
+        <InstallPWA />
       </div>
     </AuthGate>
   );

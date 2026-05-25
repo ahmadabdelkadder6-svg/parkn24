@@ -375,23 +375,29 @@ export default function NavigationScreen() {
         </div>
 
         {/* معلومات السعر */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[10px] text-slate-500">
-              <Car size={12} />
-              <span>
-                {displayPrice} ج.م/ساعة
-                {myIncomingCar?.agreedPrice &&
-                  myIncomingCar.agreedPrice !== garage.basePrice && (
-                    <span className="text-amber-400 mr-1">(سعر خاص)</span>
-                  )}
-              </span>
-            </div>
-            <span className="text-xs font-black text-blue-400 font-mono">
-              🚗 {currentUser?.carPlate}
-            </span>
-          </div>
-        </div>
+       {/* معلومات السعر والأماكن */}
+<div className="bg-slate-900 border border-slate-800 rounded-xl p-3 shrink-0">
+  <div className="flex items-center justify-between mb-2">
+    <div className="flex items-center gap-2 text-[10px] text-slate-500">
+      <Car size={12} />
+      <span>{garage.basePrice} ج.م/ساعة</span>
+    </div>
+    <span className="text-xs font-black text-blue-400 font-mono">
+      🚗 {currentUser?.carPlate}
+    </span>
+  </div>
+
+  <div className="flex items-center justify-between">
+    <span className="text-[10px] text-slate-500">الأماكن المتاحة الآن</span>
+    <span
+      className={`text-xs font-black font-mono ${
+        garage.availableSpots > 0 ? 'text-emerald-400' : 'text-red-400'
+      }`}
+    >
+      {garage.availableSpots} / {garage.capacity}
+    </span>
+  </div>
+</div>
 
         {/* ملاحظة */}
         <div className="bg-emerald-600/10 border border-emerald-500/20 rounded-xl p-3 flex items-center gap-2 shrink-0">
