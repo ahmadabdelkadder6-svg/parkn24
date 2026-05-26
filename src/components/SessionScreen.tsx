@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   Clock,
   Car,
   DollarSign,
+  ArrowRight,
 } from 'lucide-react';
 import { useStore } from '../store';
 import {
@@ -21,15 +22,25 @@ export default function SessionScreen() {
     currentUser,
   } = useStore();
 
-  // ✅ البحث عن الجلسة النشطة للمستخدم الحالي
+  // ─── البحث عن الجلسة النشطة للمستخدم الحالي ──────────────────────────────
   const activeSession = sessions.find(
     (s) => s.carPlate === currentUser?.carPlate && s.status === 'active'
   );
 
+  // ─── البحث عن آخر جلسة مكتملة (لو الجراج أنهى الجلسة) ────────────────────
+  const lastCompletedSession = sessions
+    .filter((s) => s.carPlate === currentUser?.carPlate && s.status === 'completed')
+    .sort((a, b) => {
+      const endA = typeof a.endTime === 'number' ? a.endTime : new Date(a.endTime || 0).getTime();
+      const endB = typeof b.endTime === 'number' ? b.endTime : new Date(b.endTime || 0).getTime();
+      return endB - endA;
+    })[0];
+
   const garage = garages.find((g) => g.id === activeSession?.garageId);
 
-  // ✅ عداد الجلسة النشطة
+  // ─── عداد الجلسة النشطة ───────────────────────────────────────────────────
   const [elapsed, setElapsed] = useState(0);
+  const redirectedRef = useRef(false);
 
   useEffect(() => {
     if (!activeSession) return;
@@ -46,43 +57,73 @@ export default function SessionScreen() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [activeSession?.id]);
+  }, [activeSession?.id, activeSession?.startTime]);
 
-  // ✅ شاشة التحميل أو لا توجد جلسة
+  // ─── لو الجراج أنهى الجلسة → انتقل للملخص تلقائياً ────────────────────────
+  useEffect(() => {
+    if (activeSession) {
+      redirectedRef.current = false;
+      return;
+    }
+
+    // لو مفيش جلسة نشطة وفيه جلسة مكتملة حديثة (آخر 60 ثانية)
+    if (!activeSession && lastCompletedSession && !redirectedRef.current) {
+      const endTime =
+        typeof lastCompletedSession.endTime === 'number'
+          ? lastCompletedSession.endTime
+          : new Date(lastCompletedSession.endTime || 0).getTime();
+
+      const timeSinceEnd = Date.now() - endTime;
+
+      // لو الجلسة انتهت من أقل من 60 ثانية → روح الملخص
+      if (timeSinceEnd < 60000) {
+        redirectedRef.current = true;
+        setScreen('summary');
+      }
+    }
+  }, [activeSession?.id, lastCompletedSession?.id, setScreen]);
+
+  // ─── شاشة لا توجد جلسة نشطة ──────────────────────────────────────────────
   if (!activeSession) {
     return (
       <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8">
         <div className="text-4xl mb-4 animate-bounce">⏳</div>
-        <p className="text-slate-400 text-sm font-bold text-center mb-6">
-          جاري تحميل بيانات الجلسة...
+        <p className="text-slate-400 text-sm font-bold text-center mb-2">
+          لا توجد جلسة ركن نشطة حالياً
+        </p>
+        <p className="text-slate-600 text-xs text-center mb-6">
+          ابحث عن جراج وابدأ الركن
         </p>
         <button
           onClick={() => setScreen('list')}
-          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all"
+          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center gap-2"
         >
+          <ArrowRight size={16} />
           العودة للقائمة
         </button>
       </div>
     );
   }
 
-  // ✅ السعر المستخدم
-  const sessionRate = Number(activeSession?.agreedPrice ?? garage?.basePrice ?? 0);
-
+  // ─── الحسابات ─────────────────────────────────────────────────────────────
+  const sessionRate = Number(activeSession.agreedPrice ?? garage?.basePrice ?? 0);
   const currentHours = calculateFullHours(elapsed);
   const currentCost = calculateCost(elapsed, sessionRate);
   const remainingInHour = getRemainingInCurrentHour(elapsed);
 
+  // ─── إنهاء الجلسة ────────────────────────────────────────────────────────
   const handleEnd = () => {
     setScreen('summary');
   };
 
+  // ─── العرض ─────────────────────────────────────────────────────────────────
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8"
     >
+      {/* عداد الوقت الدائري */}
       <motion.div
         animate={{
           boxShadow: [
@@ -103,6 +144,7 @@ export default function SessionScreen() {
         </div>
       </motion.div>
 
+      {/* بطاقة التكلفة */}
       <div className="w-full bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-2xl p-4 mb-4">
         <div className="flex justify-between items-center mb-3">
           <div className="text-center">
@@ -124,6 +166,7 @@ export default function SessionScreen() {
           </div>
         </div>
 
+        {/* العد التنازلي للساعة التالية */}
         <div className="bg-slate-950/50 rounded-xl p-3 text-center">
           <div className="text-[10px] text-slate-500 mb-1">
             الوقت المتبقي حتى الساعة التالية
@@ -139,6 +182,7 @@ export default function SessionScreen() {
         </div>
       </div>
 
+      {/* تنبيه سعر خاص */}
       {sessionRate !== garage?.basePrice && garage && (
         <div className="w-full bg-amber-600/10 border border-amber-500/20 rounded-xl p-2 mb-4 text-center">
           <p className="text-[10px] text-amber-400 font-bold">
@@ -147,6 +191,7 @@ export default function SessionScreen() {
         </div>
       )}
 
+      {/* معلومات السيارة والسعر */}
       <div className="w-full grid grid-cols-2 gap-3 mb-6">
         <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl text-center">
           <Car size={20} className="text-blue-400 mx-auto mb-2" />
@@ -168,6 +213,7 @@ export default function SessionScreen() {
         </div>
       </div>
 
+      {/* اسم الجراج */}
       {garage && (
         <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl w-full text-center mb-6">
           <div className="text-xs text-slate-500 font-bold mb-1">الجراج</div>
@@ -175,6 +221,14 @@ export default function SessionScreen() {
         </div>
       )}
 
+      {/* ملاحظة الدفع */}
+      <div className="w-full bg-blue-600/10 border border-blue-500/20 rounded-xl p-3 mb-4 text-center">
+        <p className="text-[10px] text-blue-400 font-bold">
+          💡 سيتم تحديد طريقة الدفع عند إنهاء الجلسة
+        </p>
+      </div>
+
+      {/* زر إنهاء الجلسة */}
       <button
         onClick={handleEnd}
         className="w-full bg-red-600 hover:bg-red-700 text-white py-5 rounded-2xl font-black text-lg shadow-xl active:scale-95 transition-all mb-3"

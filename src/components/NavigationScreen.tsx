@@ -108,8 +108,9 @@ export default function NavigationScreen() {
   const [canCancel, setCanCancel] = useState(true);
   const [mapReady, setMapReady] = useState(false);
   const navigatedToSessionRef = useRef(false);
+  const isArrivingRef = useRef(false);
 
-  // ✅ GPS
+  // ─── GPS ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!('geolocation' in navigator)) return;
 
@@ -127,13 +128,13 @@ export default function NavigationScreen() {
     return () => navigator.geolocation.clearWatch(id);
   }, []);
 
-  // ✅ تحميل الخريطة
+  // ─── تحميل الخريطة ────────────────────────────────────────────────────────
   useEffect(() => {
     const t = setTimeout(() => setMapReady(true), 300);
     return () => clearTimeout(t);
   }, []);
 
-  // ✅ مؤقت الإلغاء
+  // ─── مؤقت الإلغاء ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (myIncomingCar) {
       screenEnteredRef.current = Date.now();
@@ -162,7 +163,7 @@ export default function NavigationScreen() {
     return () => window.clearInterval(interval);
   }, [myIncomingCar?.id]);
 
-  // ✅ الانتقال التلقائي لشاشة الجلسة لو الجلسة بدأت
+  // ─── الانتقال التلقائي لشاشة الجلسة لو الجلسة بدأت من الجراج ─────────────
   useEffect(() => {
     if (!myActiveSession) return;
     if (navigatedToSessionRef.current) return;
@@ -175,7 +176,7 @@ export default function NavigationScreen() {
 
     toast.success('تم بدء حساب الركن ⏱️');
     setScreen('session');
-  }, [myActiveSession?.id]);
+  }, [myActiveSession?.id, myActiveSession?.garageId, selectedGarageId, setSelectedGarageId, setScreen]);
 
   if (!garage) {
     return (
@@ -226,6 +227,7 @@ export default function NavigationScreen() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  // ─── إلغاء الحجز ──────────────────────────────────────────────────────────
   const handleCancelBooking = () => {
     if (!currentUser || !myIncomingCar) return;
 
@@ -242,26 +244,47 @@ export default function NavigationScreen() {
     setScreen('list');
   };
 
-  // ✅ بدء الركن فوراً بدون فترة سماح
+  // ─── وصلت للجراج - بدء الركن فوراً بدون فترة سماح ─────────────────────────
   const handleArrived = async () => {
-    if (!myIncomingCar || !garage) {
+    // حماية من الضغط المزدوج
+    if (isArrivingRef.current) return;
+    isArrivingRef.current = true;
+
+    try {
+      if (!myIncomingCar || !garage) {
+        // لو مفيش incoming car يعني الجلسة ممكن تكون بدأت من الجراج
+        setScreen('session');
+        return;
+      }
+
+      // إلغاء أي عرض مرتبط
+      const relatedOffer = offers.find(
+        (o) =>
+          o.carPlate === myIncomingCar.carPlate &&
+          (o.status === 'pending' || o.status === 'accepted')
+      );
+      if (relatedOffer) cancelOffer(relatedOffer.id);
+
+      // بدء الجلسة فوراً
+      await addSession({
+        garageId: garage.id,
+        carPlate: myIncomingCar.carPlate,
+        startTime: Date.now(),
+        status: 'active',
+        source: 'app',
+        agreedPrice: myIncomingCar.agreedPrice,
+      });
+
+      // حذف من القادمين
+      removeIncomingCar(myIncomingCar.id);
+
+      toast.success('تم بدء حساب الركن ⏱️');
       setScreen('session');
-      return;
+    } finally {
+      setTimeout(() => {
+        isArrivingRef.current = false;
+      }, 2000);
     }
-
-    await addSession({
-      garageId: garage.id,
-      carPlate: myIncomingCar.carPlate,
-      startTime: Date.now(),
-      status: 'active',
-      source: 'app',
-      agreedPrice: myIncomingCar.agreedPrice,
-    });
-
-    await removeIncomingCar(myIncomingCar.id);
-
-    toast.success('تم بدء حساب الركن ⏱️');
-    setScreen('session');
   };
 
   return (
@@ -293,7 +316,6 @@ export default function NavigationScreen() {
       </div>
 
       <div className="flex-1 px-4 pb-4 flex flex-col gap-3 overflow-y-auto">
-
         {/* بطاقة الوقت والمسافة */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shrink-0">
           <div className="flex justify-between items-center">
@@ -387,7 +409,9 @@ export default function NavigationScreen() {
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2 text-[10px] text-slate-500">
               <Car size={12} />
-              <span>{myIncomingCar?.agreedPrice ?? garage.basePrice} ج.م/ساعة</span>
+              <span>
+                {myIncomingCar?.agreedPrice ?? garage.basePrice} ج.م/ساعة
+              </span>
             </div>
             <span className="text-xs font-black text-blue-400 font-mono">
               🚗 {currentUser?.carPlate}
@@ -406,7 +430,7 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* ✅ ملاحظة - بدون فترة سماح */}
+        {/* ملاحظة - بدء الركن فوراً */}
         <div className="bg-emerald-600/10 border border-emerald-500/20 rounded-xl p-3 flex items-center gap-2 shrink-0">
           <CheckCircle size={14} className="text-emerald-400 shrink-0" />
           <span className="text-[10px] font-bold text-emerald-400">
@@ -414,10 +438,11 @@ export default function NavigationScreen() {
           </span>
         </div>
 
-        {/* ✅ زر وصلت - يبدأ الركن فوراً */}
+        {/* زر وصلت - يبدأ الركن فوراً */}
         <button
           onClick={handleArrived}
-          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-base shadow-lg shadow-emerald-900/20 active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0"
+          disabled={isArrivingRef.current}
+          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-base shadow-lg shadow-emerald-900/20 active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Navigation size={18} />
           وصلت للجراج - ابدأ الركن ✅
@@ -448,7 +473,6 @@ export default function NavigationScreen() {
             </div>
           </motion.div>
         )}
-
       </div>
     </motion.div>
   );
