@@ -15,6 +15,11 @@
     <meta name="msapplication-TileColor" content="#020617" />
     <meta name="description" content="تطبيق حجز جراجات السيارات" />
 
+    <!-- Preconnect for faster loading -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://fhrwmjaiahpijptllysp.supabase.co" />
+
     <!-- Manifest -->
     <link rel="manifest" href="/manifest.json" />
 
@@ -26,15 +31,16 @@
     <!-- Favicon -->
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-96x96.png" />
 
-    <!-- Splash Screens for iOS -->
+    <!-- Preload logo -->
+    <link rel="preload" href="/images/logo.png" as="image" type="image/png" />
+
+    <!-- Styles -->
     <style>
-      /* منع السحب للتحديث */
       body {
         overscroll-behavior-y: contain;
         -webkit-user-select: none;
         user-select: none;
       }
-      /* Safe area padding */
       :root {
         --sat: env(safe-area-inset-top);
         --sab: env(safe-area-inset-bottom);
@@ -49,7 +55,6 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
 
-    <!-- تسجيل Service Worker -->
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {

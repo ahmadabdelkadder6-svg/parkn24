@@ -75,13 +75,13 @@ export default function NavigationScreen() {
     selectedGarageId,
     setScreen,
     incomingCars,
-    markCarArrived,
     currentUser,
     cancelOffer,
     removeIncomingCar,
     setSelectedGarageId,
     offers,
     sessions,
+    addSession,
   } = useStore();
 
   const garage = garages.find((g) => g.id === selectedGarageId);
@@ -103,7 +103,6 @@ export default function NavigationScreen() {
     lng: 31.2357,
   });
 
-  // ✅ المؤقت يبدأ من لحظة دخول الشاشة
   const screenEnteredRef = useRef(Date.now());
   const [cancelTimeLeft, setCancelTimeLeft] = useState(CANCEL_WINDOW_SECONDS);
   const [canCancel, setCanCancel] = useState(true);
@@ -134,9 +133,8 @@ export default function NavigationScreen() {
     return () => clearTimeout(t);
   }, []);
 
-  // ✅ مؤقت الإلغاء - يبدأ من لحظة دخول الشاشة
+  // ✅ مؤقت الإلغاء
   useEffect(() => {
-    // ✅ أعد ضبط الوقت لما يظهر myIncomingCar
     if (myIncomingCar) {
       screenEnteredRef.current = Date.now();
       setCancelTimeLeft(CANCEL_WINDOW_SECONDS);
@@ -164,7 +162,7 @@ export default function NavigationScreen() {
     return () => window.clearInterval(interval);
   }, [myIncomingCar?.id]);
 
-  // ✅ الانتقال التلقائي لشاشة الجلسة
+  // ✅ الانتقال التلقائي لشاشة الجلسة لو الجلسة بدأت
   useEffect(() => {
     if (!myActiveSession) return;
     if (navigatedToSessionRef.current) return;
@@ -244,17 +242,27 @@ export default function NavigationScreen() {
     setScreen('list');
   };
 
-  const handleArrived = () => {
-    if (!myIncomingCar) {
+  // ✅ بدء الركن فوراً بدون فترة سماح
+  const handleArrived = async () => {
+    if (!myIncomingCar || !garage) {
       setScreen('session');
       return;
     }
-    markCarArrived(myIncomingCar.id);
-    toast.success('تم تسجيل وصولك! سيبدأ الركن خلال 5 دقائق ⏱️');
+
+    await addSession({
+      garageId: garage.id,
+      carPlate: myIncomingCar.carPlate,
+      startTime: Date.now(),
+      status: 'active',
+      source: 'app',
+      agreedPrice: myIncomingCar.agreedPrice,
+    });
+
+    await removeIncomingCar(myIncomingCar.id);
+
+    toast.success('تم بدء حساب الركن ⏱️');
     setScreen('session');
   };
-
-  const displayPrice = myIncomingCar?.agreedPrice ?? garage.basePrice;
 
   return (
     <motion.div
@@ -374,49 +382,48 @@ export default function NavigationScreen() {
           </button>
         </div>
 
-        {/* معلومات السعر */}
-       {/* معلومات السعر والأماكن */}
-<div className="bg-slate-900 border border-slate-800 rounded-xl p-3 shrink-0">
-  <div className="flex items-center justify-between mb-2">
-    <div className="flex items-center gap-2 text-[10px] text-slate-500">
-      <Car size={12} />
-      <span>{garage.basePrice} ج.م/ساعة</span>
-    </div>
-    <span className="text-xs font-black text-blue-400 font-mono">
-      🚗 {currentUser?.carPlate}
-    </span>
-  </div>
+        {/* معلومات السعر والأماكن */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 shrink-0">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2 text-[10px] text-slate-500">
+              <Car size={12} />
+              <span>{myIncomingCar?.agreedPrice ?? garage.basePrice} ج.م/ساعة</span>
+            </div>
+            <span className="text-xs font-black text-blue-400 font-mono">
+              🚗 {currentUser?.carPlate}
+            </span>
+          </div>
 
-  <div className="flex items-center justify-between">
-    <span className="text-[10px] text-slate-500">الأماكن المتاحة الآن</span>
-    <span
-      className={`text-xs font-black font-mono ${
-        garage.availableSpots > 0 ? 'text-emerald-400' : 'text-red-400'
-      }`}
-    >
-      {garage.availableSpots} / {garage.capacity}
-    </span>
-  </div>
-</div>
+          <div className="flex items-center justify-between">
+            <span
+              className={`text-xs font-black font-mono ${
+                garage.availableSpots > 0 ? 'text-emerald-400' : 'text-red-400'
+              }`}
+            >
+              {garage.availableSpots} / {garage.capacity}
+            </span>
+            <span className="text-[10px] text-slate-500">الأماكن المتاحة الآن</span>
+          </div>
+        </div>
 
-        {/* ملاحظة */}
+        {/* ✅ ملاحظة - بدون فترة سماح */}
         <div className="bg-emerald-600/10 border border-emerald-500/20 rounded-xl p-3 flex items-center gap-2 shrink-0">
           <CheckCircle size={14} className="text-emerald-400 shrink-0" />
           <span className="text-[10px] font-bold text-emerald-400">
-            سيبدأ الركن تلقائياً بعد 5 دقائق من وصولك (مجانية)
+            سيبدأ حساب الركن فور الضغط على "وصلت للجراج" ✅
           </span>
         </div>
 
-        {/* زر وصلت */}
+        {/* ✅ زر وصلت - يبدأ الركن فوراً */}
         <button
           onClick={handleArrived}
           className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-base shadow-lg shadow-emerald-900/20 active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0"
         >
           <Navigation size={18} />
-          وصلت للجراج ✅
+          وصلت للجراج - ابدأ الركن ✅
         </button>
 
-        {/* ✅ زر الإلغاء - يظهر 30 ثانية من لحظة دخول الشاشة */}
+        {/* زر الإلغاء */}
         {canCancel && myIncomingCar && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}

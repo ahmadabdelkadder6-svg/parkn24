@@ -26,7 +26,6 @@ import { useStore } from '../store';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
 
-const WAIT_TIME_MINUTES = 5;
 const UNDO_TIMEOUT_SECONDS = 30;
 
 interface UndoableSession {
@@ -64,9 +63,6 @@ export default function GarageDashboard() {
 
   const carsOnTheWay = incomingCars.filter(
     (c) => c.garageId === currentGarageId && c.status === 'coming'
-  );
-  const arrivedCars = incomingCars.filter(
-    (c) => c.garageId === currentGarageId && c.status === 'arrived'
   );
 
   const processedCarsRef = useRef<Set<string>>(new Set());
@@ -215,13 +211,6 @@ export default function GarageDashboard() {
     });
   }, [tick, sessions]);
 
-  useEffect(() => {
-    if (!garage) return;
-    arrivedCars.forEach((car) => {
-      if (processedCarsRef.current.has(car.id)) return;
-      if (!car.arrivedTime) return;
-      const elapsed = Math.floor((Date.now() - car.arrivedTime) / 1000);
-      if (elapsed >= WAIT_TIME_MINUTES * 60) {
         processedCarsRef.current.add(car.id);
         addSession({
           garageId: garage.id,
@@ -335,7 +324,25 @@ export default function GarageDashboard() {
     setShowSettings(true);
   };
 
-  const handleCarArrived = (carId: string, carPlate: string, agreedPrice: number) => {
+ const handleCarArrived = (carId: string, carPlate: string, agreedPrice: number) => {
+  if (processedCarsRef.current.has(carId)) return;
+  processedCarsRef.current.add(carId);
+
+  // ✅ ابدأ الجلسة فوراً
+  addSession({
+    garageId: garage.id,
+    carPlate,
+    startTime: Date.now(),
+    status: 'active',
+    source: 'app',
+    agreedPrice,
+  });
+
+  // ✅ احذف من incoming
+  removeIncomingCar(carId);
+
+  toast.success(`بدأ حساب السيارة ${carPlate} 🚗`);
+};
     if (processedCarsRef.current.has(carId)) return;
     processedCarsRef.current.add(carId);
     addSession({ garageId: garage.id, carPlate, startTime: Date.now(), status: 'active', source: 'app', agreedPrice });
@@ -349,16 +356,6 @@ export default function GarageDashboard() {
     const start = typeof startTime === 'number' ? startTime : new Date(startTime).getTime();
     const elapsed = Math.floor((Date.now() - start) / 60000);
     return Math.max(0, estimatedMinutes - elapsed);
-  };
-
-  const calculateWaitingTime = (arrivedTime: number) => {
-    const elapsed = Math.floor((Date.now() - arrivedTime) / 1000);
-    const remaining = Math.max(0, WAIT_TIME_MINUTES * 60 - elapsed);
-    return {
-      minutes: Math.floor(remaining / 60),
-      seconds: remaining % 60,
-      progress: Math.min(100, (elapsed / (WAIT_TIME_MINUTES * 60)) * 100),
-    };
   };
 
   return (
@@ -553,9 +550,7 @@ export default function GarageDashboard() {
         })}
       </AnimatePresence>
 
-      {arrivedCars.length > 0 && (
-        <div className="mb-6">
-          <h3 className="text-sm font-black text-emerald-400 mb-3 flex items-center gap-2 justify-end"><span className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full text-[10px]">{arrivedCars.length}</span>سيارات وصلت (فترة السماح)<ParkingCircle size={14} /></h3>
+      </span>سيارات وصلت (فترة السماح)<ParkingCircle size={14} /></h3>
           <div className="space-y-3">
             {arrivedCars.map((car) => {
               const waitTime = car.arrivedTime ? calculateWaitingTime(car.arrivedTime) : { minutes: 5, seconds: 0, progress: 0 };
