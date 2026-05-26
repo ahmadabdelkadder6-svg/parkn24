@@ -136,11 +136,7 @@ export default function GarageDashboard() {
     const manual = filteredCompleted.filter((s) => s.source === 'manual');
     const app = filteredCompleted.filter((s) => s.source === 'app');
     return {
-      cash,
-      instapay,
-      wallet,
-      cashwallet,
-      total,
+      cash, instapay, wallet, cashwallet, total,
       manualCount: manual.length,
       appCount: app.length,
       manualTotal: manual.reduce((a, s) => a + getSessionRevenue(s), 0),
@@ -210,25 +206,6 @@ export default function GarageDashboard() {
         });
     });
   }, [tick, sessions]);
-
-        processedCarsRef.current.add(car.id);
-        addSession({
-          garageId: garage.id,
-          carPlate: car.carPlate,
-          startTime: Date.now(),
-          status: 'active',
-          source: 'app',
-          agreedPrice: car.agreedPrice,
-        });
-        const relatedOffer = offers.find(
-          (o) => o.carPlate === car.carPlate && (o.status === 'pending' || o.status === 'accepted')
-        );
-        if (relatedOffer) cancelOffer(relatedOffer.id);
-        removeIncomingCar(car.id);
-        toast.success(`بدأ حساب السيارة ${car.carPlate} تلقائياً ⏱️`);
-      }
-    });
-  }, [tick, arrivedCars, garage, offers, addSession, cancelOffer, removeIncomingCar]);
 
   if (!garage) return null;
 
@@ -300,7 +277,6 @@ export default function GarageDashboard() {
         paymentCopy === 'instapay' ? 'إنستاباي 📱' :
         paymentCopy === 'wallet' ? 'خصم من المحفظة 👝' :
         'تحويل محفظة كاش 📲';
-
       toast.success(`تم تحصيل ${sessionCopy.cost} ج.م (${methodLabel}) ✅`);
     } finally {
       setTimeout(() => { isEndingSessionRef.current = false; }, 2000);
@@ -324,25 +300,7 @@ export default function GarageDashboard() {
     setShowSettings(true);
   };
 
- const handleCarArrived = (carId: string, carPlate: string, agreedPrice: number) => {
-  if (processedCarsRef.current.has(carId)) return;
-  processedCarsRef.current.add(carId);
-
-  // ✅ ابدأ الجلسة فوراً
-  addSession({
-    garageId: garage.id,
-    carPlate,
-    startTime: Date.now(),
-    status: 'active',
-    source: 'app',
-    agreedPrice,
-  });
-
-  // ✅ احذف من incoming
-  removeIncomingCar(carId);
-
-  toast.success(`بدأ حساب السيارة ${carPlate} 🚗`);
-};
+  const handleCarArrived = (carId: string, carPlate: string, agreedPrice: number) => {
     if (processedCarsRef.current.has(carId)) return;
     processedCarsRef.current.add(carId);
     addSession({ garageId: garage.id, carPlate, startTime: Date.now(), status: 'active', source: 'app', agreedPrice });
@@ -376,7 +334,6 @@ export default function GarageDashboard() {
               <button onClick={() => setShowSettings(false)} className="text-slate-500 hover:text-white transition-colors text-lg">✕</button>
               <h3 className="text-lg font-black text-white flex items-center gap-2"><Settings size={18} className="text-blue-400" />إعدادات الجراج</h3>
             </div>
-
             <div className="mb-6">
               <label className="text-xs font-black text-slate-400 mb-2 block text-right">💰 سعر الساعة (ج.م)</label>
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
@@ -389,13 +346,10 @@ export default function GarageDashboard() {
                   <button onClick={() => setEditPrice((p) => p + 5)} className="bg-emerald-600/20 text-emerald-400 w-12 h-12 rounded-xl flex items-center justify-center border border-emerald-500/20 active:scale-90 transition-all"><Plus size={20} /></button>
                 </div>
                 <div className="flex gap-2 justify-center mt-3">
-                  {[10, 15, 20, 25, 30].map((p) => (
-                    <button key={p} onClick={() => setEditPrice(p)} className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${editPrice === p ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-500'}`}>{p}</button>
-                  ))}
+                  {[10, 15, 20, 25, 30].map((p) => (<button key={p} onClick={() => setEditPrice(p)} className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${editPrice === p ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-500'}`}>{p}</button>))}
                 </div>
               </div>
             </div>
-
             <div className="mb-6">
               <label className="text-xs font-black text-slate-400 mb-2 block text-right">🚗 الأماكن المتاحة حالياً</label>
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
@@ -407,12 +361,9 @@ export default function GarageDashboard() {
                   </div>
                   <button onClick={() => setEditSpots((s) => Math.min(editCapacity, s + 1))} className="bg-emerald-600/20 text-emerald-400 w-12 h-12 rounded-xl flex items-center justify-center border border-emerald-500/20 active:scale-90 transition-all"><Plus size={20} /></button>
                 </div>
-                <div className="mt-3 bg-slate-800 rounded-full h-2 overflow-hidden">
-                  <div className="bg-gradient-to-r from-blue-600 to-emerald-500 h-full transition-all duration-300" style={{ width: `${editCapacity > 0 ? (editSpots / editCapacity) * 100 : 0}%` }} />
-                </div>
+                <div className="mt-3 bg-slate-800 rounded-full h-2 overflow-hidden"><div className="bg-gradient-to-r from-blue-600 to-emerald-500 h-full transition-all duration-300" style={{ width: `${editCapacity > 0 ? (editSpots / editCapacity) * 100 : 0}%` }} /></div>
               </div>
             </div>
-
             <div className="mb-6">
               <label className="text-xs font-black text-slate-400 mb-2 block text-right">🏢 السعة الكلية للجراج</label>
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
@@ -426,7 +377,6 @@ export default function GarageDashboard() {
                 </div>
               </div>
             </div>
-
             <button onClick={handleSaveSettings} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xl shadow-emerald-900/30"><Save size={18} />حفظ التغييرات</button>
           </motion.div>
         </motion.div>
@@ -438,45 +388,25 @@ export default function GarageDashboard() {
             <div className="w-10 h-1 bg-slate-700 rounded-full mx-auto mb-5" />
             <h3 className="text-lg font-black text-white text-center mb-1">تأكيد تحصيل السداد</h3>
             <p className="text-xs text-slate-500 text-center mb-5">لن يتم إنهاء الجلسة إلا بعد تأكيد السداد</p>
-
             <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 mb-5">
               <div className="flex justify-between items-center mb-3">
                 <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${confirmSession.source === 'manual' ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>{confirmSession.source === 'manual' ? 'يدوي' : 'تطبيق'}</span>
                 <div className="text-lg font-black text-white">🚗 {confirmSession.carPlate}</div>
               </div>
-
               {confirmSession.agreedPrice && confirmSession.agreedPrice !== garage.basePrice && (
-                <div className="bg-amber-600/10 border border-amber-500/20 rounded-xl p-2 mb-3 text-center">
-                  <p className="text-[10px] text-amber-400 font-bold">💰 السعر المتفق: {confirmSession.agreedPrice} ج.م/ساعة</p>
-                </div>
+                <div className="bg-amber-600/10 border border-amber-500/20 rounded-xl p-2 mb-3 text-center"><p className="text-[10px] text-amber-400 font-bold">💰 السعر المتفق: {confirmSession.agreedPrice} ج.م/ساعة</p></div>
               )}
-
               <div className="grid grid-cols-2 gap-3">
-                <div className="bg-slate-900 rounded-xl p-2 text-center">
-                  <div className="text-xs text-slate-500">المدة</div>
-                  <div className="text-sm font-black text-white font-mono">{confirmSession.minutes} دقيقة</div>
-                  <div className="text-[9px] text-slate-600">({confirmSession.hours} ساعة محسوبة)</div>
-                </div>
-                <div className="bg-slate-900 rounded-xl p-2 text-center">
-                  <div className="text-xs text-slate-500">المستحق</div>
-                  <div className="text-xl font-black text-emerald-400 font-mono">{confirmSession.cost > 0 ? confirmSession.cost : '—'}</div>
-                  <div className="text-[9px] text-slate-600">ج.م</div>
-                </div>
+                <div className="bg-slate-900 rounded-xl p-2 text-center"><div className="text-xs text-slate-500">المدة</div><div className="text-sm font-black text-white font-mono">{confirmSession.minutes} دقيقة</div><div className="text-[9px] text-slate-600">({confirmSession.hours} ساعة محسوبة)</div></div>
+                <div className="bg-slate-900 rounded-xl p-2 text-center"><div className="text-xs text-slate-500">المستحق</div><div className="text-xl font-black text-emerald-400 font-mono">{confirmSession.cost > 0 ? confirmSession.cost : '—'}</div><div className="text-[9px] text-slate-600">ج.م</div></div>
               </div>
             </div>
-
             <div className="mb-5">
               <h4 className="text-xs font-black text-slate-400 mb-3 text-right">طريقة السداد</h4>
-
               {confirmSession.source === 'manual' ? (
                 <div>
-                  <div className="bg-emerald-600/20 border border-emerald-500 ring-1 ring-emerald-500/50 p-4 rounded-xl text-center">
-                    <div className="text-2xl mb-1">💵</div>
-                    <div className="text-sm font-black text-emerald-400">نقدي</div>
-                  </div>
-                  <div className="mt-3 bg-amber-600/10 border border-amber-500/20 rounded-xl p-2 text-center">
-                    <p className="text-[10px] text-amber-400 font-bold">⚠️ السيارات المضافة يدوياً تُحصّل نقدياً فقط</p>
-                  </div>
+                  <div className="bg-emerald-600/20 border border-emerald-500 ring-1 ring-emerald-500/50 p-4 rounded-xl text-center"><div className="text-2xl mb-1">💵</div><div className="text-sm font-black text-emerald-400">نقدي</div></div>
+                  <div className="mt-3 bg-amber-600/10 border border-amber-500/20 rounded-xl p-2 text-center"><p className="text-[10px] text-amber-400 font-bold">⚠️ السيارات المضافة يدوياً تُحصّل نقدياً فقط</p></div>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-2">
@@ -494,8 +424,7 @@ export default function GarageDashboard() {
                         pm.disabled
                           ? 'bg-slate-950 border-slate-700 opacity-40 cursor-not-allowed'
                           : confirmPaymentMethod === pm.id
-                          ? pm.id === 'wallet' ? 'bg-blue-600/20 border-blue-500 ring-1 ring-blue-500/50'
-                          : pm.id === 'instapay' ? 'bg-purple-600/20 border-purple-500 ring-1 ring-purple-500/50'
+                          ? pm.id === 'instapay' ? 'bg-purple-600/20 border-purple-500 ring-1 ring-purple-500/50'
                           : pm.id === 'cashwallet' ? 'bg-orange-600/20 border-orange-500 ring-1 ring-orange-500/50'
                           : 'bg-emerald-600/20 border-emerald-500 ring-1 ring-emerald-500/50'
                           : 'bg-slate-950 border-slate-800'
@@ -513,7 +442,6 @@ export default function GarageDashboard() {
                 </div>
               )}
             </div>
-
             <div className="flex gap-3">
               <button onClick={handleConfirmPayment} className={`flex-1 py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xl ${confirmPaymentMethod === 'instapay' ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-900/30' : confirmPaymentMethod === 'cashwallet' ? 'bg-orange-600 hover:bg-orange-700 text-white shadow-orange-900/30' : confirmPaymentMethod === 'wallet' ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-900/30' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-900/30'}`}><CheckCircle size={18} />تأكيد السداد ({confirmSession.cost} ج.م)</button>
               <button onClick={() => setConfirmSession(null)} className="bg-slate-800 text-slate-400 px-5 py-4 rounded-2xl font-black text-sm active:scale-95 transition-all"><XCircle size={18} /></button>
@@ -549,45 +477,6 @@ export default function GarageDashboard() {
           );
         })}
       </AnimatePresence>
-
-      </span>سيارات وصلت (فترة السماح)<ParkingCircle size={14} /></h3>
-          <div className="space-y-3">
-            {arrivedCars.map((car) => {
-              const waitTime = car.arrivedTime ? calculateWaitingTime(car.arrivedTime) : { minutes: 5, seconds: 0, progress: 0 };
-              return (
-                <motion.div key={car.id} initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="bg-gradient-to-l from-emerald-900/30 to-slate-900 border border-emerald-500/30 rounded-2xl p-4 relative overflow-hidden">
-                  <div className="absolute top-0 left-0 right-0 h-1 bg-slate-800"><div className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500 transition-all duration-1000" style={{ width: `${waitTime.progress}%` }} /></div>
-                  <div className="flex justify-between items-start mb-3 mt-2">
-                    <div className="bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full text-xs font-black flex items-center gap-1"><Timer size={12} />{String(waitTime.minutes).padStart(2, '0')}:{String(waitTime.seconds).padStart(2, '0')}</div>
-                    <div className="text-right"><div className="text-lg font-black text-white">🚗 {car.carPlate}</div><div className="text-[10px] text-emerald-400 font-bold">⏳ فترة سماح مجانية</div></div>
-                  </div>
-                  <div className="bg-slate-950/50 rounded-xl p-3 mb-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <a href={`tel:${car.customerPhone}`} className="text-sm font-black text-blue-400 font-mono">{car.customerPhone}</a>
-                      <div className="flex items-center gap-1 text-slate-400">
-                        <Phone size={12} />
-                        <span className="text-[10px] font-bold">الهاتف</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-black text-emerald-400 font-mono">{car.agreedPrice} ج.م / ساعة</span>
-                      <div className="flex items-center gap-1 text-slate-400">
-                        <DollarSign size={12} />
-                        <span className="text-[10px] font-bold">السعر</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="bg-amber-600/10 border border-amber-500/20 rounded-xl p-2 mb-3 text-center"><p className="text-[10px] text-amber-400 font-bold">⚡ سيبدأ الحساب تلقائياً عند انتهاء العد التنازلي</p></div>
-                  <div className="flex gap-2">
-                    <button onClick={() => handleCarArrived(car.id, car.carPlate, car.agreedPrice)} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all"><CheckCircle size={16} />بدء الحساب الآن</button>
-                    <a href={`tel:${car.customerPhone}`} className="bg-slate-800 text-slate-400 px-4 py-3 rounded-xl flex items-center justify-center active:scale-95 transition-all"><Phone size={18} /></a>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {carsOnTheWay.length > 0 && (
         <div className="mb-6">
@@ -721,7 +610,6 @@ export default function GarageDashboard() {
 
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3"><span className="text-[10px] text-slate-500 bg-slate-900 px-2 py-1 rounded-lg border border-slate-800">{filteredCompleted.length} عملية</span><h3 className="text-sm font-black text-slate-300 flex items-center gap-2">سجل العمليات<FileText size={14} /></h3></div>
-
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-4">
           <div className="flex items-center gap-2 mb-3 justify-end"><CalendarDays size={14} className="text-blue-400" /><span className="text-xs font-black text-slate-400">تصفية بالتاريخ</span></div>
           <div className="flex gap-2 mb-3">
@@ -743,13 +631,11 @@ export default function GarageDashboard() {
               <div className="text-3xl font-black text-emerald-400 font-mono">{filteredStats.total.toFixed(0)} ج.م</div>
               <div className="text-[10px] text-slate-500 mt-1">{filteredCompleted.length} عملية</div>
             </div>
-
             <div className="grid grid-cols-4 gap-2 mb-4">
               {[{ label: 'نقدي', value: filteredStats.cash, icon: '💵', color: 'text-emerald-400' }, { label: 'إنستاباي', value: filteredStats.instapay, icon: '📱', color: 'text-purple-400' }, { label: 'محفظة', value: filteredStats.wallet, icon: '👝', color: 'text-blue-400' }, { label: 'كاش', value: filteredStats.cashwallet, icon: '📲', color: 'text-orange-400' }].map((p) => (
                 <div key={p.label} className="bg-slate-900/50 border border-slate-800 rounded-xl p-2 text-center"><div className="text-lg mb-0.5">{p.icon}</div><div className={`text-sm font-black font-mono ${p.color}`}>{p.value.toFixed(0)}</div><div className="text-[7px] text-slate-500 font-bold">{p.label}</div></div>
               ))}
             </div>
-
             <div className="grid grid-cols-2 gap-2 mb-4">
               <div className="bg-amber-600/10 border border-amber-500/20 rounded-xl p-3 text-center"><div className="text-[9px] text-amber-400 font-black mb-1">يدوي</div><span className="text-sm font-black text-amber-400 font-mono">{filteredStats.manualCount}</span><span className="text-[9px] text-slate-500 mr-1"> عربية</span><div className="text-[9px] text-amber-300">({filteredStats.manualTotal.toFixed(0)} ج.م)</div></div>
               <div className="bg-blue-600/10 border border-blue-500/20 rounded-xl p-3 text-center"><div className="text-[9px] text-blue-400 font-black mb-1">تطبيق</div><span className="text-sm font-black text-blue-400 font-mono">{filteredStats.appCount}</span><span className="text-[9px] text-slate-500 mr-1"> عربية</span><div className="text-[9px] text-blue-300">({filteredStats.appTotal.toFixed(0)} ج.م)</div></div>
