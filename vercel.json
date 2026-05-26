@@ -1,7 +1,9 @@
 {
-  "buildCommand": "npx vite build",
+  "version": 2,
+  "buildCommand": "npx --yes vite@7.3.2 build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "installCommand": "npm install",
   "rewrites": [
     {
       "source": "/(.*)",

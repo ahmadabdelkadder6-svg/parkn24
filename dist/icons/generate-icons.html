@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="c"></canvas>
+<script>
+const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
+sizes.forEach(size => {
+  const canvas = document.getElementById('c');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  
+  // خلفية
+  ctx.fillStyle = '#020617';
+  ctx.beginPath();
+  ctx.roundRect(0, 0, size, size, size * 0.2);
+  ctx.fill();
+  
+  // حرف P
+  ctx.fillStyle = '#3b82f6';
+  ctx.font = `bold ${size * 0.55}px Arial`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('P', size / 2, size / 2);
+  
+  // تحميل
+  const link = document.createElement('a');
+  link.download = `icon-${size}x${size}.png`;
+  link.href = canvas.toDataURL();
+  link.click();
+});
+</script>
+</body>
+</html>
