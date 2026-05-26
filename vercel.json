@@ -1,9 +1,9 @@
 {
   "version": 2,
-  "buildCommand": "npx --yes vite@7.3.2 build",
+  "buildCommand": "npx --yes vite build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "installCommand": "npm install",
+  "installCommand": "npm install --legacy-peer-deps",
   "rewrites": [
     {
       "source": "/(.*)",
