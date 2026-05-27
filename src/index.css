@@ -1,4 +1,6 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 html {
   direction: rtl;
@@ -15,10 +17,9 @@ body {
   direction: rtl;
   overscroll-behavior: none;
   -webkit-overflow-scrolling: touch;
-    touch-action: manipulation;
+  touch-action: manipulation;
 }
 
-/* سكرول ناعم للموبايل */
 * {
   -webkit-overflow-scrolling: touch;
 }
@@ -28,16 +29,15 @@ body {
   display: none;
 }
 
-/* منع تحديد النص على الموبايل */
 button, a {
   -webkit-user-select: none;
   user-select: none;
 }
 
-/* safe area للموبايلات الحديثة */
 .safe-top {
   padding-top: env(safe-area-inset-top, 0px);
 }
+
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
@@ -47,6 +47,7 @@ input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
+
 input[type="number"] {
   -moz-appearance: textfield;
 }
