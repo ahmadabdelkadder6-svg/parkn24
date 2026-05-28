@@ -18,6 +18,7 @@ import GarageLoginScreen from './components/GarageLoginScreen';
 import GarageDashboard from './components/GarageDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import InstallPWA from './components/InstallPWA';
+import LastSessionScreen from './components/LastSessionScreen';
 
 export default function App() {
   const {

@@ -10,6 +10,8 @@ import {
   Locate,
   Filter,
   Plus,
+  Receipt,
+  MessageCircle,
 } from 'lucide-react';
 import { useStore, Garage } from '../store';
 import {
@@ -48,6 +50,11 @@ export default function GarageListScreen() {
     lng: 31.2357,
   });
   const [locationLoading, setLocationLoading] = useState(false);
+
+  // ─── هل فيه جلسة مكتملة سابقة ────────────────────────────────────────────
+  const hasCompletedSession = sessions.some(
+    (s) => s.carPlate === currentUser?.carPlate && s.status === 'completed'
+  );
 
   const getUserLocation = () => {
     setLocationLoading(true);
@@ -115,7 +122,7 @@ export default function GarageListScreen() {
     (g) => g.classification === 'far'
   );
 
-  // ✅ حجز مباشر بدون تفاوض
+  // ─── حجز مباشر بدون تفاوض ────────────────────────────────────────────────
   const handleDirectBooking = (garage: GarageWithDistance) => {
     if (!currentUser) {
       toast.error('سجل بياناتك أولاً');
@@ -132,8 +139,7 @@ export default function GarageListScreen() {
 
     const hasIncomingCar = incomingCars.some(
       (c) =>
-        c.carPlate === currentUser.carPlate &&
-        (c.status === 'coming' || c.status === 'arrived')
+        c.carPlate === currentUser.carPlate && c.status === 'coming'
     );
 
     if (hasPendingOffer || hasActiveSession || hasIncomingCar) {
@@ -159,7 +165,9 @@ export default function GarageListScreen() {
       estimatedArrival: estimatedMinutes,
     });
 
-    toast.success(`تم الحجز في ${garage.name} بسعر ${garage.basePrice} ج.م/ساعة 🚗`);
+    toast.success(
+      `تم الحجز في ${garage.name} بسعر ${garage.basePrice} ج.م/ساعة 🚗`
+    );
     setScreen('navigation');
   };
 
@@ -244,7 +252,10 @@ export default function GarageListScreen() {
                 : 'bg-emerald-600/20 border-emerald-500/30 text-emerald-400 active:scale-95'
             }`}
           >
-            <Locate size={16} className={locationLoading ? 'animate-spin' : ''} />
+            <Locate
+              size={16}
+              className={locationLoading ? 'animate-spin' : ''}
+            />
           </button>
 
           <button
@@ -263,11 +274,48 @@ export default function GarageListScreen() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 pt-1 pb-4">
-        {/* قريب */}
+        {/* ─── أزرار سريعة: آخر جلسة + تواصل معنا ──────────────────────────── */}
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          {/* زر آخر جلسة */}
+          {hasCompletedSession && (
+            <button
+              onClick={() => setScreen('lastSession')}
+              className="bg-gradient-to-l from-blue-600/20 to-slate-900 border border-blue-500/20 rounded-2xl p-3 flex items-center gap-2 active:scale-[0.98] transition-all"
+            >
+              <div className="bg-blue-600/20 p-2 rounded-xl shrink-0">
+                <Receipt size={14} className="text-blue-400" />
+              </div>
+              <div className="text-right flex-1">
+                <div className="text-[10px] font-black text-white">آخر جلسة</div>
+                <div className="text-[8px] text-slate-500">عرض التفاصيل</div>
+              </div>
+            </button>
+          )}
+
+          {/* زر تواصل معنا */}
+          <button
+            onClick={() => setScreen('chat')}
+            className={`bg-gradient-to-l from-purple-600/20 to-slate-900 border border-purple-500/20 rounded-2xl p-3 flex items-center gap-2 active:scale-[0.98] transition-all ${
+              !hasCompletedSession ? 'col-span-2' : ''
+            }`}
+          >
+            <div className="bg-purple-600/20 p-2 rounded-xl shrink-0">
+              <MessageCircle size={14} className="text-purple-400" />
+            </div>
+            <div className="text-right flex-1">
+              <div className="text-[10px] font-black text-white">تواصل معنا</div>
+              <div className="text-[8px] text-slate-500">شكاوى واستفسارات</div>
+            </div>
+          </button>
+        </div>
+
+        {/* ─── قريب ──────────────────────────────────────────────────────────── */}
         {nearbyGarages.length > 0 && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3 justify-end">
-              <span className="text-xs text-slate-500">({nearbyGarages.length})</span>
+              <span className="text-xs text-slate-500">
+                ({nearbyGarages.length})
+              </span>
               <h2 className="text-sm font-black text-emerald-400 flex items-center gap-2">
                 أماكن قريبة (1-17 دقيقة)
                 <Navigation size={14} />
@@ -289,11 +337,13 @@ export default function GarageListScreen() {
           </div>
         )}
 
-        {/* بعيد */}
+        {/* ─── بعيد ──────────────────────────────────────────────────────────── */}
         {farGarages.length > 0 && !showNearbyOnly && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3 justify-end">
-              <span className="text-xs text-slate-500">({farGarages.length})</span>
+              <span className="text-xs text-slate-500">
+                ({farGarages.length})
+              </span>
               <h2 className="text-sm font-black text-amber-400 flex items-center gap-2">
                 خيارات أخرى (+17 دقيقة)
                 <Clock size={14} />
@@ -350,7 +400,9 @@ function GarageCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.04 }}
       className={`border rounded-2xl p-3.5 active:scale-[0.98] transition-transform cursor-pointer ${
-        isNearby ? 'bg-slate-900 border-emerald-500/30' : 'bg-slate-900 border-slate-800'
+        isNearby
+          ? 'bg-slate-900 border-emerald-500/30'
+          : 'bg-slate-900 border-slate-800'
       }`}
       onClick={onSelect}
     >
