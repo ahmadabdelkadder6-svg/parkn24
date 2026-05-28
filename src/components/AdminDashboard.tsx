@@ -134,10 +134,11 @@ export default function AdminDashboard() {
   const activeSessions = sessions.filter((s) => s.status === 'active');
 
   // ─── الرسائل ──────────────────────────────────────────────────────────────
- const safeMessages = messages ?? [];
-const pendingMessages = safeMessages.filter((m) => m.status === 'pending');
-const allMessages = [...safeMessages].sort((a, b) => b.timestamp - a.timestamp);
-  const displayedMessages = messagesTab === 'pending' ? pendingMessages : allMessages;
+   const safeMessages = messages ?? [];
+  const pendingMessages = safeMessages.filter((m) => m.status === 'pending');
+  const allMessages = [...safeMessages].sort((a, b) => b.timestamp - a.timestamp);
+  const displayedMessages =
+    messagesTab === 'pending' ? pendingMessages : allMessages;
 
   const getTypeEmoji = (type: string) => {
     switch (type) {

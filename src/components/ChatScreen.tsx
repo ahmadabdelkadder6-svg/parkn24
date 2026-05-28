@@ -70,10 +70,12 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null);
 
- const myMessages = (messages ?? [])
-  .filter((m) => m.userPhone === currentUser?.phone)
-  .sort((a, b) => b.timestamp - a.timestamp);
+  // ✅ حماية من undefined
+  const myMessages = (messages ?? [])
+    .filter((m) => m.userPhone === currentUser?.phone)
+    .sort((a, b) => b.timestamp - a.timestamp);
 
+  // ─── إرسال رسالة ─────────────────────────────────────────────────────────
   const handleSend = async () => {
     if (!currentUser) {
       toast.error('سجل دخول أولاً');
@@ -89,8 +91,9 @@ export default function ChatScreen() {
     }
 
     setSending(true);
+
     try {
-      await addMessage({
+      const result = await addMessage({
         userPhone: currentUser.phone,
         userName: currentUser.name,
         carPlate: currentUser.carPlate,
@@ -99,19 +102,27 @@ export default function ChatScreen() {
         message: messageText.trim(),
       });
 
+      if (result && !result.success) {
+        toast.error(result.error || 'فشل الإرسال، حاول مرة أخرى');
+        return;
+      }
+
       toast.success('تم إرسال رسالتك بنجاح ✅');
       setShowNewMessage(false);
       setSelectedType(null);
       setSubject('');
       setMessageText('');
     } catch (err) {
-      console.error('Error sending message:', err);
-      toast.error('فشل الإرسال، حاول مرة أخرى');
+      console.error('ChatScreen send error:', err);
+      toast.error(
+        err instanceof Error ? err.message : 'فشل الإرسال، حاول مرة أخرى'
+      );
     } finally {
       setSending(false);
     }
   };
 
+  // ─── حالة الرسالة ─────────────────────────────────────────────────────────
   const getStatusInfo = (status: string) => {
     switch (status) {
       case 'pending':
@@ -145,6 +156,7 @@ export default function ChatScreen() {
     }
   };
 
+  // ─── نوع الرسالة ──────────────────────────────────────────────────────────
   const getTypeInfo = (type: string) => {
     return (
       MESSAGE_TYPES.find((t) => t.id === type) || {
@@ -157,6 +169,7 @@ export default function ChatScreen() {
     );
   };
 
+  // ─── تنسيق الوقت ──────────────────────────────────────────────────────────
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp);
     const now = new Date();
@@ -175,6 +188,7 @@ export default function ChatScreen() {
     });
   };
 
+  // ─── العرض ───────────────────────────────────────────────────────────────
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -220,6 +234,7 @@ export default function ChatScreen() {
               exit={{ opacity: 0, y: -20, scale: 0.95 }}
               className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-4 space-y-4"
             >
+              {/* عنوان الفورم */}
               <div className="flex items-center justify-between">
                 <button
                   onClick={() => {
@@ -232,13 +247,15 @@ export default function ChatScreen() {
                 >
                   ✕
                 </button>
-                <h3 className="text-sm font-black text-white">رسالة جديدة ✉️</h3>
+                <h3 className="text-sm font-black text-white">
+                  رسالة جديدة ✉️
+                </h3>
               </div>
 
               {/* اختيار النوع */}
               <div>
                 <label className="text-[10px] text-slate-500 font-bold block text-right mb-2">
-                  نوع الرسالة
+                  نوع الرسالة *
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   {MESSAGE_TYPES.map((type) => (
@@ -254,7 +271,9 @@ export default function ChatScreen() {
                       <div className="text-xl mb-1">{type.emoji}</div>
                       <div
                         className={`text-[10px] font-black ${
-                          selectedType === type.id ? type.color : 'text-slate-500'
+                          selectedType === type.id
+                            ? type.color
+                            : 'text-slate-500'
                         }`}
                       >
                         {type.label}
@@ -267,7 +286,7 @@ export default function ChatScreen() {
                 </div>
               </div>
 
-              {/* الموضوع (اختياري) */}
+              {/* الموضوع */}
               <div>
                 <label className="text-[10px] text-slate-500 font-bold block text-right mb-1">
                   الموضوع (اختياري)
@@ -295,7 +314,7 @@ export default function ChatScreen() {
               </div>
 
               {/* معلومات المرسل */}
-              <div className="bg-slate-950 rounded-xl p-3 space-y-1">
+              <div className="bg-slate-950 rounded-xl p-3 space-y-1 border border-slate-800">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] text-slate-500 font-mono">
                     {currentUser?.phone}
@@ -318,10 +337,10 @@ export default function ChatScreen() {
               <button
                 onClick={handleSend}
                 disabled={sending || !selectedType || !messageText.trim()}
-                className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all ${
+                className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all ${
                   sending || !selectedType || !messageText.trim()
                     ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-900/30'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-900/30 active:scale-95'
                 }`}
               >
                 <Send size={16} />
@@ -374,12 +393,9 @@ export default function ChatScreen() {
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex items-center gap-2">
                         <span
-                          className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${statusInfo.bg} ${statusInfo.color}`}
+                          className={`text-[9px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 ${statusInfo.bg} ${statusInfo.color}`}
                         >
-                          <StatusIcon
-                            size={10}
-                            className="inline mr-1"
-                          />
+                          <StatusIcon size={9} />
                           {statusInfo.label}
                         </span>
                         <span className="text-[9px] text-slate-600">
@@ -422,10 +438,7 @@ export default function ChatScreen() {
                             <span className="text-[9px] text-emerald-400 font-bold">
                               رد الإدارة
                             </span>
-                            <CheckCircle
-                              size={10}
-                              className="text-emerald-400"
-                            />
+                            <CheckCircle size={10} className="text-emerald-400" />
                           </div>
                           <p className="text-[11px] text-emerald-300 text-right leading-relaxed">
                             {msg.reply}
@@ -440,12 +453,20 @@ export default function ChatScreen() {
                     </AnimatePresence>
 
                     {/* اضغط للتوسيع */}
-                    {!isExpanded &&
-                      (msg.reply || msg.message.length > 80) && (
-                        <div className="text-[8px] text-blue-400 text-center mt-2 font-bold">
-                          اضغط لعرض التفاصيل ↓
-                        </div>
-                      )}
+                    {!isExpanded && (msg.reply || msg.message.length > 80) && (
+                      <div className="text-[8px] text-blue-400 text-center mt-2 font-bold">
+                        اضغط لعرض التفاصيل ↓
+                      </div>
+                    )}
+
+                    {/* بادج الرد الجديد */}
+                    {msg.status === 'replied' && !isExpanded && (
+                      <div className="mt-2 bg-emerald-600/10 border border-emerald-500/20 rounded-lg p-1.5 text-center">
+                        <span className="text-[9px] text-emerald-400 font-bold">
+                          ✅ تم الرد - اضغط للعرض
+                        </span>
+                      </div>
+                    )}
                   </motion.div>
                 );
               })}

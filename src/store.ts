@@ -64,8 +64,22 @@ export interface IncomingCar {
   agreedPrice: number;
   startTime: number;
   estimatedArrival: number;
-  // ✅ بعد إلغاء فترة السماح، السيارة إما coming أو تُحذف مباشرة
   status: 'coming';
+}
+
+// ✅ Message interface للشات الداخلي
+export interface Message {
+  id: string;
+  userPhone: string;
+  userName?: string;
+  carPlate?: string;
+  type: 'complaint' | 'inquiry' | 'suggestion' | 'technical';
+  subject?: string;
+  message: string;
+  reply?: string;
+  status: 'pending' | 'replied' | 'closed';
+  timestamp: number;
+  repliedAt?: number;
 }
 
 export type ViewType = 'user' | 'garage' | 'admin';
@@ -76,7 +90,9 @@ export type ScreenType =
   | 'waiting'
   | 'navigation'
   | 'session'
-  | 'summary';
+  | 'summary'
+  | 'lastSession'
+  | 'chat';
 
 // ===================== Helpers =====================
 const uid = () => crypto.randomUUID?.() || Date.now().toString();
@@ -187,7 +203,6 @@ const mt = (r: any): WalletTopUp => ({
   timestamp: new Date(r.created_at).getTime(),
 });
 
-// ✅ تعديل mapper السيارات القادمة - إزالة arrivedTime
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mi = (r: any): IncomingCar => ({
   id: r.id,
@@ -198,8 +213,23 @@ const mi = (r: any): IncomingCar => ({
   agreedPrice: Number(r.agreed_price),
   startTime: new Date(r.created_at).getTime(),
   estimatedArrival: r.estimated_arrival,
-  // ✅ بعد إلغاء فترة السماح - نعامل أي سيارة كـ coming
   status: 'coming',
+});
+
+// ✅ mapper للرسائل
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mm = (r: any): Message => ({
+  id: r.id,
+  userPhone: r.user_phone,
+  userName: r.user_name,
+  carPlate: r.car_plate,
+  type: r.type || 'inquiry',
+  subject: r.subject,
+  message: r.message,
+  reply: r.reply,
+  status: r.status || 'pending',
+  timestamp: new Date(r.created_at).getTime(),
+  repliedAt: r.replied_at ? new Date(r.replied_at).getTime() : undefined,
 });
 
 // ===================== debounce لـ updateGarage =====================
@@ -258,6 +288,13 @@ interface AppState {
   incomingCars: IncomingCar[];
   addIncomingCar: (c: Omit<IncomingCar, 'id' | 'startTime' | 'status'>) => void;
   removeIncomingCar: (id: string) => Promise<void>;
+  // ✅ Messages
+  messages: Message[];
+  addMessage: (
+  m: Omit<Message, 'id' | 'timestamp' | 'status'>
+) => Promise<{ success: boolean; error?: string }>;
+  replyMessage: (id: string, reply: string) => Promise<void>;
+  closeMessage: (id: string) => Promise<void>;
   fetchAll: () => Promise<void>;
   logout: () => void;
 }
@@ -408,6 +445,7 @@ export const useStore = create<AppState>((set, get) => ({
   offers: [],
   walletTopUps: [],
   incomingCars: [],
+  messages: [],
 
   // ===================== logout =====================
   logout: () => {
@@ -427,11 +465,11 @@ export const useStore = create<AppState>((set, get) => ({
     safeRemoveStorage('adminAuth');
   },
 
-  // ===================== fetchAll =====================
+ // ===================== fetchAll =====================
   fetchAll: async () => {
     if (!isSupabaseConfigured()) return;
 
-    const [g, s, o, w, ic] = await Promise.all([
+    const [g, s, o, w, ic, msgs] = await Promise.all([
       supabase.from('garages').select('*'),
       supabase
         .from('sessions')
@@ -447,6 +485,10 @@ export const useStore = create<AppState>((set, get) => ({
         .order('created_at', { ascending: false }),
       supabase
         .from('incoming_cars')
+        .select('*')
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('messages')
         .select('*')
         .order('created_at', { ascending: false }),
     ]);
@@ -488,7 +530,7 @@ export const useStore = create<AppState>((set, get) => ({
     const finalSessions = [...mergedSessions, ...localOnlySessions];
 
     const supabaseTopUps = w.data ? w.data.map(mt) : get().walletTopUps;
-    const currentTopUps = get().walletTopUps;
+    const currentTopUps = get().walletTopUps ?? [];
     const mergedTopUps = supabaseTopUps.map((st) => {
       const localVersion = currentTopUps.find((ct) => ct.id === st.id);
       if (
@@ -501,17 +543,36 @@ export const useStore = create<AppState>((set, get) => ({
       return st;
     });
 
-    // ✅ السيارات القادمة - فقط coming بعد إلغاء فترة السماح
+    // ✅ السيارات القادمة - فقط coming
     const fetchedCars = ic.data
       ? ic.data.map(mi).filter((c) => c.status === 'coming')
-      : get().incomingCars;
+      : (get().incomingCars ?? []);
+
+    // ✅ دمج الرسائل - مع حماية من undefined
+    const currentMessages = get().messages ?? [];
+    const supabaseMessages = msgs.data
+      ? msgs.data.map(mm)
+      : currentMessages;
+
+    const mergedMessages = supabaseMessages.map((sm) => {
+      const localVersion = currentMessages.find((cm) => cm.id === sm.id);
+      if (
+        localVersion &&
+        localVersion.status !== 'pending' &&
+        sm.status === 'pending'
+      ) {
+        return localVersion;
+      }
+      return sm;
+    });
 
     set({
       garages,
       sessions: finalSessions,
-      offers: o.data ? o.data.map(mo) : get().offers,
+      offers: o.data ? o.data.map(mo) : (get().offers ?? []),
       walletTopUps: mergedTopUps,
       incomingCars: fetchedCars,
+      messages: mergedMessages,
     });
 
     const user = get().currentUser;
@@ -1025,8 +1086,126 @@ export const useStore = create<AppState>((set, get) => ({
       if (error) console.error('❌ خطأ في حذف السيارة:', error);
     }
   },
-}));
 
+  // ===================== Messages =====================
+messages: [],
+
+addMessage: async (msg) => {
+  const optimisticMessage: Message = {
+    ...msg,
+    id: uid(),
+    status: 'pending',
+    timestamp: Date.now(),
+  };
+
+  set((st) => ({
+    messages: [optimisticMessage, ...(st.messages ?? [])],
+  }));
+
+  if (!isSupabaseConfigured()) {
+    return { success: true };
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('messages')
+      .insert({
+        user_phone: msg.userPhone,
+        user_name: msg.userName ?? null,
+        car_plate: msg.carPlate ?? null,
+        type: msg.type,
+        subject: msg.subject ?? null,
+        message: msg.message,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ Supabase addMessage error:', error);
+
+      set((st) => ({
+        messages: (st.messages ?? []).filter(
+          (m) => m.id !== optimisticMessage.id
+        ),
+      }));
+
+      return {
+        success: false,
+        error: error.message || 'فشل إرسال الرسالة',
+      };
+    }
+
+    if (data) {
+      set((st) => ({
+        messages: (st.messages ?? []).map((m) =>
+          m.id === optimisticMessage.id ? mm(data) : m
+        ),
+      }));
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error('❌ Unexpected addMessage error:', err);
+
+    set((st) => ({
+      messages: (st.messages ?? []).filter(
+        (m) => m.id !== optimisticMessage.id
+      ),
+    }));
+
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'حدث خطأ غير متوقع',
+    };
+  }
+},
+
+replyMessage: async (id, reply) => {
+  const now = Date.now();
+
+  set((st) => ({
+    messages: (st.messages ?? []).map((msg) =>
+      msg.id === id
+        ? {
+            ...msg,
+            reply,
+            status: 'replied' as const,
+            repliedAt: now,
+          }
+        : msg
+    ),
+  }));
+
+  if (!isSupabaseConfigured()) return;
+
+  const { error } = await supabase
+    .from('messages')
+    .update({
+      reply,
+      status: 'replied',
+      replied_at: new Date(now).toISOString(),
+    })
+    .eq('id', id);
+
+  if (error) console.error('❌ خطأ في إرسال الرد:', error);
+},
+
+closeMessage: async (id) => {
+  set((st) => ({
+    messages: (st.messages ?? []).map((msg) =>
+      msg.id === id ? { ...msg, status: 'closed' as const } : msg
+    ),
+  }));
+
+  if (!isSupabaseConfigured()) return;
+
+  const { error } = await supabase
+    .from('messages')
+    .update({ status: 'closed' })
+    .eq('id', id);
+
+  if (error) console.error('❌ خطأ في إغلاق الرسالة:', error);
+},
 // ===================== Realtime =====================
 let realtimeStarted = false;
 
@@ -1060,6 +1239,7 @@ export function setupRealtime() {
   const channelName = `parkn24_${Math.random().toString(36).slice(2, 8)}`;
   const channel = supabase.channel(channelName);
 
+  // ✅ أضفنا messages للـ Realtime
   const tables = [
     'sessions',
     'offers',
@@ -1067,6 +1247,7 @@ export function setupRealtime() {
     'garages',
     'wallet_topups',
     'users',
+    'messages',
   ];
 
   tables.forEach((table) => {
