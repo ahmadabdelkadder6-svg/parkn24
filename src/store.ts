@@ -67,7 +67,6 @@ export interface IncomingCar {
   status: 'coming';
 }
 
-// ✅ Message interface للشات الداخلي
 export interface Message {
   id: string;
   userPhone: string;
@@ -216,7 +215,6 @@ const mi = (r: any): IncomingCar => ({
   status: 'coming',
 });
 
-// ✅ mapper للرسائل
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mm = (r: any): Message => ({
   id: r.id,
@@ -288,11 +286,10 @@ interface AppState {
   incomingCars: IncomingCar[];
   addIncomingCar: (c: Omit<IncomingCar, 'id' | 'startTime' | 'status'>) => void;
   removeIncomingCar: (id: string) => Promise<void>;
-  // ✅ Messages
   messages: Message[];
   addMessage: (
-  m: Omit<Message, 'id' | 'timestamp' | 'status'>
-) => Promise<{ success: boolean; error?: string }>;
+    m: Omit<Message, 'id' | 'timestamp' | 'status'>
+  ) => Promise<{ success: boolean; error?: string }>;
   replyMessage: (id: string, reply: string) => Promise<void>;
   closeMessage: (id: string) => Promise<void>;
   fetchAll: () => Promise<void>;
@@ -465,7 +462,7 @@ export const useStore = create<AppState>((set, get) => ({
     safeRemoveStorage('adminAuth');
   },
 
- // ===================== fetchAll =====================
+  // ===================== fetchAll =====================
   fetchAll: async () => {
     if (!isSupabaseConfigured()) return;
 
@@ -493,7 +490,6 @@ export const useStore = create<AppState>((set, get) => ({
         .order('created_at', { ascending: false }),
     ]);
 
-    // ✅ لو فيه pending updates محلية متكتبش فوقيها
     const currentGarages = get().garages;
     const fetchedGarages = g.data?.length ? g.data.map(m) : currentGarages;
     const garages = fetchedGarages.map((dbGarage) => {
@@ -543,17 +539,12 @@ export const useStore = create<AppState>((set, get) => ({
       return st;
     });
 
-    // ✅ السيارات القادمة - فقط coming
     const fetchedCars = ic.data
       ? ic.data.map(mi).filter((c) => c.status === 'coming')
       : (get().incomingCars ?? []);
 
-    // ✅ دمج الرسائل - مع حماية من undefined
     const currentMessages = get().messages ?? [];
-    const supabaseMessages = msgs.data
-      ? msgs.data.map(mm)
-      : currentMessages;
-
+    const supabaseMessages = msgs.data ? msgs.data.map(mm) : currentMessages;
     const mergedMessages = supabaseMessages.map((sm) => {
       const localVersion = currentMessages.find((cm) => cm.id === sm.id);
       if (
@@ -676,10 +667,7 @@ export const useStore = create<AppState>((set, get) => ({
           .eq('id', id);
 
         if (flushError) {
-          console.error(
-            '❌ خطأ في حفظ التعديل اليدوي قبل تعديل الأماكن:',
-            flushError
-          );
+          console.error('❌ خطأ في حفظ التعديل:', flushError);
           await get().fetchAll();
           return;
         }
@@ -889,14 +877,8 @@ export const useStore = create<AppState>((set, get) => ({
           .eq('car_plate', target.carPlate)
           .eq('source', 'manual')
           .eq('status', 'active')
-          .gte(
-            'start_time',
-            new Date(target.startTime - 10000).toISOString()
-          )
-          .lte(
-            'start_time',
-            new Date(target.startTime + 10000).toISOString()
-          );
+          .gte('start_time', new Date(target.startTime - 10000).toISOString())
+          .lte('start_time', new Date(target.startTime + 10000).toISOString());
       }
     }
   },
@@ -1088,124 +1070,115 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   // ===================== Messages =====================
-messages: [],
+  addMessage: async (msg) => {
+    const optimisticMessage: Message = {
+      ...msg,
+      id: uid(),
+      status: 'pending',
+      timestamp: Date.now(),
+    };
 
-addMessage: async (msg) => {
-  const optimisticMessage: Message = {
-    ...msg,
-    id: uid(),
-    status: 'pending',
-    timestamp: Date.now(),
-  };
+    set((st) => ({
+      messages: [optimisticMessage, ...(st.messages ?? [])],
+    }));
 
-  set((st) => ({
-    messages: [optimisticMessage, ...(st.messages ?? [])],
-  }));
+    if (!isSupabaseConfigured()) {
+      return { success: true };
+    }
 
-  if (!isSupabaseConfigured()) {
-    return { success: true };
-  }
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .insert({
+          user_phone: msg.userPhone,
+          user_name: msg.userName ?? null,
+          car_plate: msg.carPlate ?? null,
+          type: msg.type,
+          subject: msg.subject ?? null,
+          message: msg.message,
+        })
+        .select()
+        .single();
 
-  try {
-    const { data, error } = await supabase
-      .from('messages')
-      .insert({
-        user_phone: msg.userPhone,
-        user_name: msg.userName ?? null,
-        car_plate: msg.carPlate ?? null,
-        type: msg.type,
-        subject: msg.subject ?? null,
-        message: msg.message,
-      })
-      .select()
-      .single();
+      if (error) {
+        console.error('❌ Supabase addMessage error:', error);
+        set((st) => ({
+          messages: (st.messages ?? []).filter(
+            (m) => m.id !== optimisticMessage.id
+          ),
+        }));
+        return {
+          success: false,
+          error: error.message || 'فشل إرسال الرسالة',
+        };
+      }
 
-    if (error) {
-      console.error('❌ Supabase addMessage error:', error);
+      if (data) {
+        set((st) => ({
+          messages: (st.messages ?? []).map((m) =>
+            m.id === optimisticMessage.id ? mm(data) : m
+          ),
+        }));
+      }
 
+      return { success: true };
+    } catch (err) {
+      console.error('❌ Unexpected addMessage error:', err);
       set((st) => ({
         messages: (st.messages ?? []).filter(
           (m) => m.id !== optimisticMessage.id
         ),
       }));
-
       return {
         success: false,
-        error: error.message || 'فشل إرسال الرسالة',
+        error: err instanceof Error ? err.message : 'حدث خطأ غير متوقع',
       };
     }
+  },
 
-    if (data) {
-      set((st) => ({
-        messages: (st.messages ?? []).map((m) =>
-          m.id === optimisticMessage.id ? mm(data) : m
-        ),
-      }));
-    }
-
-    return { success: true };
-  } catch (err) {
-    console.error('❌ Unexpected addMessage error:', err);
-
+  replyMessage: async (id, reply) => {
+    const now = Date.now();
     set((st) => ({
-      messages: (st.messages ?? []).filter(
-        (m) => m.id !== optimisticMessage.id
+      messages: (st.messages ?? []).map((msg) =>
+        msg.id === id
+          ? { ...msg, reply, status: 'replied' as const, repliedAt: now }
+          : msg
       ),
     }));
 
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : 'حدث خطأ غير متوقع',
-    };
-  }
-},
+    if (!isSupabaseConfigured()) return;
 
-replyMessage: async (id, reply) => {
-  const now = Date.now();
+    const { error } = await supabase
+      .from('messages')
+      .update({
+        reply,
+        status: 'replied',
+        replied_at: new Date(now).toISOString(),
+      })
+      .eq('id', id);
 
-  set((st) => ({
-    messages: (st.messages ?? []).map((msg) =>
-      msg.id === id
-        ? {
-            ...msg,
-            reply,
-            status: 'replied' as const,
-            repliedAt: now,
-          }
-        : msg
-    ),
-  }));
+    if (error) console.error('❌ خطأ في إرسال الرد:', error);
+  },
 
-  if (!isSupabaseConfigured()) return;
+  closeMessage: async (id) => {
+    set((st) => ({
+      messages: (st.messages ?? []).map((msg) =>
+        msg.id === id ? { ...msg, status: 'closed' as const } : msg
+      ),
+    }));
 
-  const { error } = await supabase
-    .from('messages')
-    .update({
-      reply,
-      status: 'replied',
-      replied_at: new Date(now).toISOString(),
-    })
-    .eq('id', id);
+    if (!isSupabaseConfigured()) return;
 
-  if (error) console.error('❌ خطأ في إرسال الرد:', error);
-},
+    const { error } = await supabase
+      .from('messages')
+      .update({ status: 'closed' })
+      .eq('id', id);
 
-closeMessage: async (id) => {
-  set((st) => ({
-    messages: (st.messages ?? []).map((msg) =>
-      msg.id === id ? { ...msg, status: 'closed' as const } : msg
-    ),
-  }));
+    if (error) console.error('❌ خطأ في إغلاق الرسالة:', error);
+  },
 
-  if (!isSupabaseConfigured()) return;
+})); // ✅ إغلاق useStore
 
-  const { error } = await supabase
-    .from('messages')
-    .update({ status: 'closed' })
-    .eq('id', id);
-
-  if (error) console.error('❌ خطأ في إغلاق الرسالة:', error);
-},
 // ===================== Realtime =====================
 let realtimeStarted = false;
 
@@ -1239,7 +1212,6 @@ export function setupRealtime() {
   const channelName = `parkn24_${Math.random().toString(36).slice(2, 8)}`;
   const channel = supabase.channel(channelName);
 
-  // ✅ أضفنا messages للـ Realtime
   const tables = [
     'sessions',
     'offers',
