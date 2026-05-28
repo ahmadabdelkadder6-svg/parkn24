@@ -37,10 +37,17 @@ export default function App() {
 
   const prevActiveSessionRef = useRef<string | null>(null);
 
-  useEffect(() => {
+ useEffect(() => {
+  fetchAll();
+  setupRealtime();
+
+  // ✅ Polling احتياطي كل 5 ثواني
+  const pollInterval = setInterval(() => {
     fetchAll();
-    setupRealtime();
-  }, [fetchAll]);
+  }, 5000);
+
+  return () => clearInterval(pollInterval);
+}, [fetchAll]);
 
   // ─── مراقبة حالة العميل ───────────────────────────────────────────────────
   useEffect(() => {

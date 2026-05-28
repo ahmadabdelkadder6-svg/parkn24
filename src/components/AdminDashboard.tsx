@@ -14,6 +14,22 @@ import { useStore } from '../store';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
 
+// ─── دوال حساب التاريخ المحلي الصحيح ─────────────────────────────────────────
+const getLocalDayStart = (dateStr: string): number => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day, 0, 0, 0, 0).getTime();
+};
+
+const getLocalDayEnd = (dateStr: string): number => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day, 23, 59, 59, 999).getTime();
+};
+
+const getSessionTime = (value?: number | string): number | null => {
+  if (!value) return null;
+  return typeof value === 'number' ? value : new Date(value).getTime();
+};
+
 export default function AdminDashboard() {
   const {
     garages,
@@ -53,14 +69,22 @@ export default function AdminDashboard() {
 
   const completedSessions = sessions.filter((s) => s.status === 'completed');
 
+  // ✅ فلترة صحيحة بالتاريخ المحلي - من 12:00:00 صباحاً لـ 11:59:59 مساءً
   const filteredSessions = useMemo(() => {
     return completedSessions.filter((s) => {
-      if (!s.endTime) return false;
-      const d = new Date(
-        typeof s.endTime === 'number' ? s.endTime : s.endTime
-      );
-      if (dateFrom && d < new Date(dateFrom)) return false;
-      if (dateTo && d > new Date(dateTo + 'T23:59:59')) return false;
+      const sessionEndTime = getSessionTime(s.endTime);
+      if (!sessionEndTime) return false;
+
+      if (dateFrom) {
+        const fromStart = getLocalDayStart(dateFrom);
+        if (sessionEndTime < fromStart) return false;
+      }
+
+      if (dateTo) {
+        const toEnd = getLocalDayEnd(dateTo);
+        if (sessionEndTime > toEnd) return false;
+      }
+
       return true;
     });
   }, [completedSessions, dateFrom, dateTo]);
@@ -134,7 +158,7 @@ export default function AdminDashboard() {
   const activeSessions = sessions.filter((s) => s.status === 'active');
 
   // ─── الرسائل ──────────────────────────────────────────────────────────────
-   const safeMessages = messages ?? [];
+  const safeMessages = messages ?? [];
   const pendingMessages = safeMessages.filter((m) => m.status === 'pending');
   const allMessages = [...safeMessages].sort((a, b) => b.timestamp - a.timestamp);
   const displayedMessages =
@@ -169,6 +193,13 @@ export default function AdminDashboard() {
     });
   };
 
+  // ─── زر اليوم الحالي السريع ───────────────────────────────────────────────
+  const setToday = () => {
+    const today = new Date().toISOString().split('T')[0];
+    setDateFrom(today);
+    setDateTo(today);
+  };
+
   return (
     <div className="h-full bg-slate-950 text-white text-right p-5 overflow-y-auto pt-16">
 
@@ -199,20 +230,90 @@ export default function AdminDashboard() {
         <h3 className="text-xs font-black text-slate-400 mb-3">
           تصفية حسب التاريخ
         </h3>
-        <div className="grid grid-cols-2 gap-3">
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="bg-slate-950 border border-slate-800 p-3 rounded-xl text-[10px] font-bold text-white outline-none"
-          />
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="bg-slate-950 border border-slate-800 p-3 rounded-xl text-[10px] font-bold text-white outline-none"
-          />
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="text-[9px] text-slate-500 font-bold block mb-1">
+              من
+            </label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-[10px] font-bold text-white outline-none"
+            />
+          </div>
+          <div>
+            <label className="text-[9px] text-slate-500 font-bold block mb-1">
+              إلى
+            </label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-[10px] font-bold text-white outline-none"
+            />
+          </div>
         </div>
+
+        {/* ✅ أزرار سريعة */}
+        <div className="flex gap-2 justify-center">
+          <button
+            onClick={setToday}
+            className="bg-blue-600/20 text-blue-400 px-4 py-2 rounded-xl text-[10px] font-black border border-blue-500/20 active:scale-95 transition-all"
+          >
+            📅 اليوم
+          </button>
+          <button
+            onClick={() => {
+              const yesterday = new Date();
+              yesterday.setDate(yesterday.getDate() - 1);
+              const d = yesterday.toISOString().split('T')[0];
+              setDateFrom(d);
+              setDateTo(d);
+            }}
+            className="bg-slate-800 text-slate-400 px-4 py-2 rounded-xl text-[10px] font-black active:scale-95 transition-all"
+          >
+            أمس
+          </button>
+          <button
+            onClick={() => {
+              const weekAgo = new Date();
+              weekAgo.setDate(weekAgo.getDate() - 7);
+              setDateFrom(weekAgo.toISOString().split('T')[0]);
+              setDateTo(new Date().toISOString().split('T')[0]);
+            }}
+            className="bg-slate-800 text-slate-400 px-4 py-2 rounded-xl text-[10px] font-black active:scale-95 transition-all"
+          >
+            آخر أسبوع
+          </button>
+          <button
+            onClick={() => {
+              setDateFrom('');
+              setDateTo('');
+            }}
+            className="bg-slate-800 text-slate-400 px-4 py-2 rounded-xl text-[10px] font-black active:scale-95 transition-all"
+          >
+            الكل
+          </button>
+        </div>
+
+        {/* ✅ عرض نطاق التاريخ المحدد */}
+        {(dateFrom || dateTo) && (
+          <div className="mt-3 bg-blue-600/10 border border-blue-500/20 rounded-xl p-2 text-center">
+            <p className="text-[9px] text-blue-400 font-bold">
+              {dateFrom && dateTo
+                ? dateFrom === dateTo
+                  ? `📅 ${new Date(getLocalDayStart(dateFrom)).toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`
+                  : `من ${dateFrom} إلى ${dateTo}`
+                : dateFrom
+                ? `من ${dateFrom}`
+                : `إلى ${dateTo}`}
+            </p>
+            <p className="text-[8px] text-blue-400/60 mt-0.5">
+              ⏰ من 12:00 صباحاً إلى 11:59 مساءً
+            </p>
+          </div>
+        )}
       </div>
 
       {/* ─── Revenue Stats ───────────────────────────────────────────────────── */}
@@ -585,7 +686,6 @@ export default function AdminDashboard() {
           </h3>
         </div>
 
-        {/* تاب: معلقة / الكل */}
         <div className="flex gap-2 mb-4">
           <button
             onClick={() => setMessagesTab('all')}
@@ -630,7 +730,6 @@ export default function AdminDashboard() {
                       : 'bg-slate-900 border-slate-800'
                   }`}
                 >
-                  {/* الصف العلوي */}
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-2">
                       <span
@@ -657,7 +756,6 @@ export default function AdminDashboard() {
                     </span>
                   </div>
 
-                  {/* بيانات المرسل */}
                   <div className="bg-slate-950/50 rounded-xl p-2 mb-2 flex items-center justify-between">
                     <span className="text-[10px] text-slate-500 font-mono">
                       {msg.userPhone}
@@ -676,14 +774,12 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  {/* الموضوع */}
                   {msg.subject && (
                     <div className="text-xs font-black text-white mb-1 text-right">
                       {msg.subject}
                     </div>
                   )}
 
-                  {/* الرسالة */}
                   <div
                     className={`text-[11px] text-slate-400 text-right leading-relaxed mb-2 cursor-pointer ${
                       isExpanded ? '' : 'line-clamp-2'
@@ -704,7 +800,6 @@ export default function AdminDashboard() {
                     </button>
                   )}
 
-                  {/* الرد السابق */}
                   {msg.reply && (
                     <div className="bg-emerald-600/10 border border-emerald-500/20 rounded-xl p-3 mb-3">
                       <div className="text-[9px] text-emerald-400 font-bold text-right mb-1">
@@ -721,7 +816,6 @@ export default function AdminDashboard() {
                     </div>
                   )}
 
-                  {/* فورم الرد */}
                   {msg.status !== 'closed' && (
                     <>
                       {isReplying ? (

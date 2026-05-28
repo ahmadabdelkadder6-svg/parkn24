@@ -503,12 +503,20 @@ export const useStore = create<AppState>((set, get) => ({
     const supabaseSessionIds = new Set(supabaseSessions.map((ss) => ss.id));
     const currentSessions = get().sessions;
 
-    const localOnlySessions = currentSessions.filter(
-      (cs) =>
-        !supabaseSessionIds.has(cs.id) &&
-        cs.status === 'active' &&
-        Date.now() - cs.startTime < 30000
-    );
+   // ✅ فقط local sessions مش موجودة في Supabase وليها نفس carPlate مش موجود في Supabase
+const supabaseActivePlates = new Set(
+  supabaseSessions
+    .filter((ss) => ss.status === 'active')
+    .map((ss) => `${ss.carPlate}-${ss.garageId}`)
+);
+
+const localOnlySessions = currentSessions.filter(
+  (cs) =>
+    !supabaseSessionIds.has(cs.id) &&
+    cs.status === 'active' &&
+    !supabaseActivePlates.has(`${cs.carPlate}-${cs.garageId}`) &&
+    Date.now() - cs.startTime < 30000
+);
 
     const mergedSessions = supabaseSessions.map((ss) => {
       const localVersion = currentSessions.find((cs) => cs.id === ss.id);
@@ -704,64 +712,86 @@ export const useStore = create<AppState>((set, get) => ({
 
   // ===================== addSession =====================
   addSession: async (s) => {
-    const sessionId = crypto.randomUUID();
-    const safeStartTime =
-      typeof s.startTime === 'number' && !isNaN(s.startTime)
-        ? s.startTime
-        : Date.now();
+  const sessionId = crypto.randomUUID();
+  const safeStartTime =
+    typeof s.startTime === 'number' && !isNaN(s.startTime)
+      ? s.startTime
+      : Date.now();
 
-    const optimisticSession: ParkingSession = {
-      ...s,
-      id: sessionId,
-      startTime: safeStartTime,
-      synced: false,
-    };
+  const optimisticSession: ParkingSession = {
+    ...s,
+    id: sessionId,
+    startTime: safeStartTime,
+    synced: false,
+  };
 
-    set((st) => ({
-      sessions: [optimisticSession, ...st.sessions],
-    }));
+  // ✅ تحقق لو فيه جلسة نشطة بنفس السيارة قبل الإضافة
+  const existingActive = get().sessions.find(
+    (existing) =>
+      existing.carPlate === s.carPlate &&
+      existing.status === 'active' &&
+      existing.garageId === s.garageId
+  );
 
-    await get().adjustGarageSpots(s.garageId, -1);
+  if (existingActive) {
+    console.warn('⚠️ جلسة نشطة موجودة بالفعل لهذه السيارة:', existingActive.id);
+    return existingActive.id;
+  }
 
-    if (!isSupabaseConfigured()) return sessionId;
+  set((st) => ({
+    sessions: [optimisticSession, ...st.sessions],
+  }));
 
-    try {
-      const { data, error } = await supabase
-        .from('sessions')
-        .insert({
-          id: sessionId,
-          garage_id: s.garageId,
-          car_plate: s.carPlate,
-          start_time: new Date(safeStartTime).toISOString(),
-          status: s.status,
-          source: s.source,
-          agreed_price: s.agreedPrice ?? null,
-        })
-        .select()
-        .single();
+  await get().adjustGarageSpots(s.garageId, -1);
 
-      if (error) {
-        console.error('❌ خطأ في إضافة الجلسة:', error);
-        await get().adjustGarageSpots(s.garageId, +1);
-        return sessionId;
-      }
+  if (!isSupabaseConfigured()) return sessionId;
 
-      if (data) {
-        const syncedSession: ParkingSession = { ...ms(data), synced: true };
-        set((st) => ({
-          sessions: st.sessions.map((x) =>
-            x.id === sessionId ? syncedSession : x
-          ),
-        }));
-        return data.id;
-      }
-    } catch (err) {
-      console.error('❌ خطأ غير متوقع في addSession:', err);
+  try {
+    const { data, error } = await supabase
+      .from('sessions')
+      .insert({
+        id: sessionId,
+        garage_id: s.garageId,
+        car_plate: s.carPlate,
+        start_time: new Date(safeStartTime).toISOString(),
+        status: s.status,
+        source: s.source,
+        agreed_price: s.agreedPrice ?? null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ خطأ في إضافة الجلسة:', error);
+      // ✅ rollback - حذف الـ optimistic session
+      set((st) => ({
+        sessions: st.sessions.filter((x) => x.id !== sessionId),
+      }));
       await get().adjustGarageSpots(s.garageId, +1);
+      return sessionId;
     }
 
-    return sessionId;
-  },
+    if (data) {
+      const syncedSession: ParkingSession = { ...ms(data), synced: true };
+      // ✅ استبدل الـ optimistic بالـ synced
+      set((st) => ({
+        sessions: st.sessions.map((x) =>
+          x.id === sessionId ? syncedSession : x
+        ),
+      }));
+      return data.id;
+    }
+  } catch (err) {
+    console.error('❌ خطأ غير متوقع في addSession:', err);
+    // ✅ rollback
+    set((st) => ({
+      sessions: st.sessions.filter((x) => x.id !== sessionId),
+    }));
+    await get().adjustGarageSpots(s.garageId, +1);
+  }
+
+  return sessionId;
+},
 
   // ===================== endSession =====================
   endSession: async (id, totalPrice, paymentMethod) => {

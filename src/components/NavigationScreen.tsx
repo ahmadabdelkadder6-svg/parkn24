@@ -245,47 +245,60 @@ export default function NavigationScreen() {
   };
 
   // ─── وصلت للجراج - بدء الركن فوراً بدون فترة سماح ─────────────────────────
-  const handleArrived = async () => {
-    // حماية من الضغط المزدوج
-    if (isArrivingRef.current) return;
-    isArrivingRef.current = true;
+  const handleCarArrived = async (
+  carId: string,
+  carPlate: string,
+  agreedPrice: number
+) => {
+  if (isArrivingRef.current) return;
+  isArrivingRef.current = true;
 
-    try {
-      if (!myIncomingCar || !garage) {
-        // لو مفيش incoming car يعني الجلسة ممكن تكون بدأت من الجراج
-        setScreen('session');
-        return;
-      }
-
-      // إلغاء أي عرض مرتبط
-      const relatedOffer = offers.find(
-        (o) =>
-          o.carPlate === myIncomingCar.carPlate &&
-          (o.status === 'pending' || o.status === 'accepted')
-      );
-      if (relatedOffer) cancelOffer(relatedOffer.id);
-
-      // بدء الجلسة فوراً
-      await addSession({
-        garageId: garage.id,
-        carPlate: myIncomingCar.carPlate,
-        startTime: Date.now(),
-        status: 'active',
-        source: 'app',
-        agreedPrice: myIncomingCar.agreedPrice,
-      });
-
-      // حذف من القادمين
-      removeIncomingCar(myIncomingCar.id);
-
-      toast.success('تم بدء حساب الركن ⏱️');
+  try {
+    if (!myIncomingCar || !garage) {
       setScreen('session');
-    } finally {
-      setTimeout(() => {
-        isArrivingRef.current = false;
-      }, 2000);
+      return;
     }
-  };
+
+    // ✅ تحقق لو فيه جلسة نشطة بالفعل
+    const existingSession = useStore.getState().sessions.find(
+      (s) =>
+        s.carPlate === carPlate &&
+        s.garageId === garage.id &&
+        s.status === 'active'
+    );
+
+    if (existingSession) {
+      removeIncomingCar(carId);
+      toast.success('الجلسة شغالة بالفعل ✅');
+      setScreen('session');
+      return;
+    }
+
+    const relatedOffer = offers.find(
+      (o) =>
+        o.carPlate === myIncomingCar.carPlate &&
+        (o.status === 'pending' || o.status === 'accepted')
+    );
+    if (relatedOffer) cancelOffer(relatedOffer.id);
+
+    await addSession({
+      garageId: garage.id,
+      carPlate: myIncomingCar.carPlate,
+      startTime: Date.now(),
+      status: 'active',
+      source: 'app',
+      agreedPrice: myIncomingCar.agreedPrice,
+    });
+
+    removeIncomingCar(carId);
+    toast.success('تم بدء حساب الركن ⏱️');
+    setScreen('session');
+  } finally {
+    setTimeout(() => {
+      isArrivingRef.current = false;
+    }, 3000);
+  }
+};
 
   return (
     <motion.div

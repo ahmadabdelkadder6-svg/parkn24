@@ -241,32 +241,45 @@ export default function GarageDashboard() {
   }, [tick, sessions]);
 
   // ─── بدء الحساب فوراً للسيارات التي وصلت (بدون فترة سماح) ────────────────
-  useEffect(() => {
-    if (!garage) return;
-    arrivedCars.forEach((car) => {
-      if (processedCarsRef.current.has(car.id)) return;
+ useEffect(() => {
+  if (!garage) return;
+  arrivedCars.forEach((car) => {
+    if (processedCarsRef.current.has(car.id)) return;
+
+    // ✅ تحقق لو فيه جلسة نشطة بالفعل
+    const existingSession = get().sessions.find(
+      (s) =>
+        s.carPlate === car.carPlate &&
+        s.garageId === garage.id &&
+        s.status === 'active'
+    );
+
+    if (existingSession) {
       processedCarsRef.current.add(car.id);
-
-      addSession({
-        garageId: garage.id,
-        carPlate: car.carPlate,
-        startTime: Date.now(),
-        status: 'active',
-        source: 'app',
-        agreedPrice: car.agreedPrice,
-      });
-
-      const relatedOffer = offers.find(
-        (o) =>
-          o.carPlate === car.carPlate &&
-          (o.status === 'pending' || o.status === 'accepted')
-      );
-      if (relatedOffer) cancelOffer(relatedOffer.id);
-
       removeIncomingCar(car.id);
-      toast.success(`بدأ حساب السيارة ${car.carPlate} تلقائياً 🚗⏱️`);
+      return;
+    }
+
+    processedCarsRef.current.add(car.id);
+    addSession({
+      garageId: garage.id,
+      carPlate: car.carPlate,
+      startTime: Date.now(),
+      status: 'active',
+      source: 'app',
+      agreedPrice: car.agreedPrice,
     });
-  }, [tick, arrivedCars, garage, offers, addSession, cancelOffer, removeIncomingCar]);
+
+    const relatedOffer = offers.find(
+      (o) =>
+        o.carPlate === car.carPlate &&
+        (o.status === 'pending' || o.status === 'accepted')
+    );
+    if (relatedOffer) cancelOffer(relatedOffer.id);
+    removeIncomingCar(car.id);
+    toast.success(`بدأ حساب السيارة ${car.carPlate} تلقائياً ⏱️`);
+  });
+}, [tick, arrivedCars, garage, offers, addSession, cancelOffer, removeIncomingCar]);
 
   if (!garage) return null;
 
