@@ -70,9 +70,9 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null);
 
-  const myMessages = messages
-    .filter((m) => m.userPhone === currentUser?.phone)
-    .sort((a, b) => b.timestamp - a.timestamp);
+ const myMessages = (messages ?? [])
+  .filter((m) => m.userPhone === currentUser?.phone)
+  .sort((a, b) => b.timestamp - a.timestamp);
 
   const handleSend = async () => {
     if (!currentUser) {
