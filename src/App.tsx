@@ -19,6 +19,7 @@ import GarageDashboard from './components/GarageDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import InstallPWA from './components/InstallPWA';
 import LastSessionScreen from './components/LastSessionScreen';
+import ChatScreen from './components/ChatScreen';
 
 export default function App() {
   const {
@@ -41,7 +42,7 @@ export default function App() {
     setupRealtime();
   }, [fetchAll]);
 
-  // مراقبة حالة العميل: بدء الجلسة / إنهاؤها / اختفاء الحجز
+  // ─── مراقبة حالة العميل ───────────────────────────────────────────────────
   useEffect(() => {
     if (!currentUser || view !== 'user') return;
 
@@ -49,10 +50,10 @@ export default function App() {
       (s) => s.carPlate === currentUser.carPlate && s.status === 'active'
     );
 
+    // ✅ بعد إلغاء فترة السماح - فقط coming
     const myIncoming = incomingCars.find(
       (c) =>
-        c.carPlate === currentUser.carPlate &&
-        (c.status === 'coming' || c.status === 'arrived')
+        c.carPlate === currentUser.carPlate && c.status === 'coming'
     );
 
     // 1) لو الجلسة بدأت
@@ -60,7 +61,12 @@ export default function App() {
       prevActiveSessionRef.current = myActiveSession.id;
       setSelectedGarageId(myActiveSession.garageId);
 
-      if (screen !== 'session' && screen !== 'summary') {
+      if (
+        screen !== 'session' &&
+        screen !== 'summary' &&
+        screen !== 'lastSession' &&
+        screen !== 'chat'
+      ) {
         setScreen('session');
       }
       return;
@@ -155,6 +161,8 @@ export default function App() {
                     {screen === 'waiting' && <WaitingScreen />}
                     {screen === 'navigation' && <NavigationScreen />}
                     {screen === 'session' && <SessionScreen />}
+                    {screen === 'lastSession' && <LastSessionScreen />}
+                    {screen === 'chat' && <ChatScreen />}
                   </>
                 )}
 
