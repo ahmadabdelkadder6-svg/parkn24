@@ -1181,10 +1181,27 @@ export const useStore = create<AppState>((set, get) => ({
 
 // ===================== Realtime =====================
 let realtimeStarted = false;
+let pollingInterval: ReturnType<typeof setInterval> | null = null;
 
 export function setupRealtime() {
   if (realtimeStarted) return;
   realtimeStarted = true;
+
+  // ✅ Polling كل 3 ثواني - الحل الأساسي والأضمن
+  if (pollingInterval) clearInterval(pollingInterval);
+  pollingInterval = setInterval(() => {
+    useStore.getState().fetchAll();
+  }, 3000);
+
+  // ✅ تنظيف عند إغلاق الصفحة
+  window.addEventListener('beforeunload', () => {
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+      pollingInterval = null;
+    }
+  });
+
+  // ✅ لو Supabase مش متضبط، نكتفي بالـ Polling
   if (!isSupabaseConfigured()) return;
 
   let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -1192,13 +1209,13 @@ export function setupRealtime() {
 
   const refresh = () => {
     const now = Date.now();
-    if (now - lastRefresh < 3000) {
+    if (now - lastRefresh < 1000) {
       if (refreshTimeout) clearTimeout(refreshTimeout);
       refreshTimeout = setTimeout(() => {
         lastRefresh = Date.now();
         useStore.getState().fetchAll();
         refreshTimeout = null;
-      }, 3000);
+      }, 1000);
       return;
     }
     lastRefresh = now;
@@ -1206,7 +1223,7 @@ export function setupRealtime() {
     refreshTimeout = setTimeout(() => {
       useStore.getState().fetchAll();
       refreshTimeout = null;
-    }, 1500);
+    }, 500);
   };
 
   const channelName = `parkn24_${Math.random().toString(36).slice(2, 8)}`;
@@ -1231,16 +1248,34 @@ export function setupRealtime() {
   });
 
   channel.subscribe((status) => {
-    if (status === 'SUBSCRIBED')
+    if (status === 'SUBSCRIBED') {
       console.log('✅ Realtime connected:', channelName);
-    if (status === 'CHANNEL_ERROR')
-      console.error('❌ Realtime channel error:', channelName);
-    if (status === 'TIMED_OUT')
-      console.warn('⚠️ Realtime timed out:', channelName);
+      // ✅ لو الـ Realtime اشتغل، خفف الـ Polling لكل 10 ثواني
+      if (pollingInterval) clearInterval(pollingInterval);
+      pollingInterval = setInterval(() => {
+        useStore.getState().fetchAll();
+      }, 10000);
+    }
+    if (status === 'CHANNEL_ERROR') {
+      console.error('❌ Realtime channel error - switching to polling');
+      // ✅ لو فشل الـ Realtime، رجّع الـ Polling لكل 3 ثواني
+      if (pollingInterval) clearInterval(pollingInterval);
+      pollingInterval = setInterval(() => {
+        useStore.getState().fetchAll();
+      }, 3000);
+    }
+    if (status === 'TIMED_OUT') {
+      console.warn('⚠️ Realtime timed out - switching to polling');
+      if (pollingInterval) clearInterval(pollingInterval);
+      pollingInterval = setInterval(() => {
+        useStore.getState().fetchAll();
+      }, 3000);
+    }
   });
 
   window.addEventListener('beforeunload', () => {
     if (refreshTimeout) clearTimeout(refreshTimeout);
+    if (pollingInterval) clearInterval(pollingInterval);
     channel.unsubscribe();
     supabase.removeChannel(channel);
   });
