@@ -453,7 +453,7 @@ export default function NavigationScreen() {
 
         {/* زر وصلت - يبدأ الركن فوراً */}
         <button
-          onClick={handleArrived}
+          onClick={handleCarArrived}
           disabled={isArrivingRef.current}
           className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-base shadow-lg shadow-emerald-900/20 active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
         >
