@@ -379,50 +379,47 @@ export default function GarageDashboard() {
 
   // ✅ وصول سيارة وبدء الحساب فوراً
   // 3 طبقات حماية من الضغط المزدوج
-  const handleCarArrived = (
-    carId: string,
-    carPlate: string,
-    agreedPrice: number
-  ) => {
-    // ─── طبقة 1: processedCarsRef ─────────────────────────────────────────
-    if (processedCarsRef.current.has(carId)) return;
-    processedCarsRef.current.add(carId);
+const handleCarArrived = async (
+  carId: string,
+  carPlate: string,
+  agreedPrice: number
+) => {
+  if (processedCarsRef.current.has(carId)) return;
+  processedCarsRef.current.add(carId);
 
-    // ─── طبقة 2: تحقق من جلسة نشطة موجودة ──────────────────────────────
-    const existingSession = useStore.getState().sessions.find(
-      (s) =>
-        s.carPlate === carPlate &&
-        s.garageId === garage.id &&
-        s.status === 'active'
-    );
+  const existingSession = useStore.getState().sessions.find(
+    (s) =>
+      s.carPlate === carPlate &&
+      s.garageId === garage.id &&
+      s.status === 'active'
+  );
 
-    if (existingSession) {
-      removeIncomingCar(carId);
-      toast('الجلسة شغالة بالفعل ✅');
-      return;
-    }
+  if (existingSession) {
+    await removeIncomingCar(carId);
+    toast('الجلسة شغالة بالفعل ✅');
+    return;
+  }
 
-    // ─── إلغاء العرض المرتبط ─────────────────────────────────────────────
-    const relatedOffer = offers.find(
-      (o) =>
-        o.carPlate === carPlate &&
-        (o.status === 'pending' || o.status === 'accepted')
-    );
-    if (relatedOffer) cancelOffer(relatedOffer.id);
+  const relatedOffer = offers.find(
+    (o) =>
+      o.carPlate === carPlate &&
+      (o.status === 'pending' || o.status === 'accepted')
+  );
+  if (relatedOffer) cancelOffer(relatedOffer.id);
 
-    // ─── طبقة 3: addSession نفسها عندها حماية داخلية ─────────────────────
-    addSession({
-      garageId: garage.id,
-      carPlate,
-      startTime: Date.now(),
-      status: 'active',
-      source: 'app',
-      agreedPrice,
-    });
+  await addSession({
+    garageId: garage.id,
+    carPlate,
+    startTime: Date.now(),
+    status: 'active',
+    source: 'app',
+    agreedPrice,
+  });
 
-    removeIncomingCar(carId);
-    toast.success(`بدأ حساب السيارة ${carPlate} 🚗`);
-  };
+  await removeIncomingCar(carId);
+  toast.success(`بدأ حساب السيارة ${carPlate} 🚗`);
+};
+
   // ─── حساب الوقت المتبقي للوصول ────────────────────────────────────────────
   const calculateRemainingTime = (
     startTime: number,

@@ -285,7 +285,49 @@ interface AppState {
   rejectTopUp: (id: string) => Promise<void>;
   incomingCars: IncomingCar[];
   addIncomingCar: (c: Omit<IncomingCar, 'id' | 'startTime' | 'status'>) => void;
-  removeIncomingCar: (id: string) => Promise<void>;
+  removeIncomingCar: async (id) => {
+  // ✅ لاقي السيارة قبل الحذف عشان نعرف بياناتها
+  const car = get().incomingCars.find((c) => c.id === id);
+
+  // ✅ حذف محلي فوري
+  set((st) => ({
+    incomingCars: st.incomingCars.filter((c) => c.id !== id),
+  }));
+
+  if (!isSupabaseConfigured()) return;
+
+  try {
+    // ✅ طبقة 1: حذف بالـ id
+    const { error: error1 } = await supabase
+      .from('incoming_cars')
+      .delete()
+      .eq('id', id);
+
+    if (error1) {
+      console.error('❌ حذف بالـ id فشل:', error1);
+    }
+
+    // ✅ طبقة 2: حذف بالـ car_plate + garage_id (الأضمن)
+    if (car) {
+      const { error: error2 } = await supabase
+        .from('incoming_cars')
+        .delete()
+        .eq('car_plate', car.carPlate)
+        .eq('garage_id', car.garageId);
+
+      if (error2) {
+        console.error('❌ حذف بالـ car_plate فشل:', error2);
+      }
+    }
+  } catch (err) {
+    console.error('❌ خطأ في removeIncomingCar:', err);
+  }
+
+  // ✅ طبقة 3: تأكيد الحذف من الـ fetch
+  setTimeout(() => {
+    get().fetchAll();
+  }, 500);
+},
   messages: Message[];
   addMessage: (
     m: Omit<Message, 'id' | 'timestamp' | 'status'>
@@ -1072,7 +1114,7 @@ addIncomingCar: async (c) => {
     const { data, error } = await supabase
       .from('incoming_cars')
       .insert({
-        id: incomingId, // ✅ نفس الـ id المحلي
+        id: incomingId,
         garage_id: c.garageId,
         car_plate: c.carPlate,
         customer_name: c.customerName,
@@ -1099,7 +1141,7 @@ addIncomingCar: async (c) => {
       }));
     }
   } catch (err) {
-    console.error('❌ خطأ غير متوقع في addIncomingCar:', err);
+    console.error('❌ خطأ غير متوقع:', err);
     set((st) => ({
       incomingCars: st.incomingCars.filter((x) => x.id !== incomingId),
     }));

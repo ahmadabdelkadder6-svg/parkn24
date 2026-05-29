@@ -245,11 +245,7 @@ export default function NavigationScreen() {
   };
 
   // ─── وصلت للجراج - بدء الركن فوراً بدون فترة سماح ─────────────────────────
-  const handleCarArrived = async (
-  carId: string,
-  carPlate: string,
-  agreedPrice: number
-) => {
+ const handleCarArrived = async () => {
   if (isArrivingRef.current) return;
   isArrivingRef.current = true;
 
@@ -259,17 +255,17 @@ export default function NavigationScreen() {
       return;
     }
 
-    // ✅ تحقق لو فيه جلسة نشطة بالفعل
     const existingSession = useStore.getState().sessions.find(
       (s) =>
-        s.carPlate === carPlate &&
+        s.carPlate === myIncomingCar.carPlate &&
         s.garageId === garage.id &&
         s.status === 'active'
     );
 
     if (existingSession) {
-      removeIncomingCar(carId);
+      await removeIncomingCar(myIncomingCar.id);
       toast.success('الجلسة شغالة بالفعل ✅');
+      navigatedToSessionRef.current = true;
       setScreen('session');
       return;
     }
@@ -290,9 +286,14 @@ export default function NavigationScreen() {
       agreedPrice: myIncomingCar.agreedPrice,
     });
 
-    removeIncomingCar(carId);
+    await removeIncomingCar(myIncomingCar.id);
+
     toast.success('تم بدء حساب الركن ⏱️');
+    navigatedToSessionRef.current = true;
     setScreen('session');
+  } catch (err) {
+    console.error('❌ خطأ:', err);
+    toast.error('حدث خطأ، حاول مرة أخرى');
   } finally {
     setTimeout(() => {
       isArrivingRef.current = false;
