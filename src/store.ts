@@ -324,7 +324,9 @@ removeIncomingCar: async (id) => {
   setTimeout(() => {
     get().fetchAll();
   }, 1000);
-},  messages: Message[];
+},
+
+messages: Message[];
   addMessage: (
     m: Omit<Message, 'id' | 'timestamp' | 'status'>
   ) => Promise<{ success: boolean; error?: string }>;
