@@ -234,7 +234,7 @@ const mm = (r: any): Message => ({
 let updateGarageTimeout: ReturnType<typeof setTimeout> | null = null;
 const pendingGarageUpdates: Map<string, Record<string, unknown>> = new Map();
 
-// ===================== State =====================
+// ===================== State Interface =====================
 interface AppState {
   view: ViewType;
   setView: (v: ViewType) => void;
@@ -272,61 +272,33 @@ interface AppState {
   setSelectedGarageId: (id: string | null) => void;
   sessions: ParkingSession[];
   addSession: (s: Omit<ParkingSession, 'id'>) => Promise<string>;
-  endSession: (id: string, totalPrice: number, paymentMethod: string) => Promise<void>;
+  endSession: (
+    id: string,
+    totalPrice: number,
+    paymentMethod: string
+  ) => Promise<void>;
   cancelSession: (id: string) => void;
   removeSession: (id: string) => Promise<void>;
   offers: Offer[];
   addOffer: (o: Omit<Offer, 'id' | 'timestamp'>) => void;
-  updateOffer: (id: string, status: Offer['status'], counterPrice?: number) => void;
+  updateOffer: (
+    id: string,
+    status: Offer['status'],
+    counterPrice?: number
+  ) => void;
   cancelOffer: (id: string) => void;
   walletTopUps: WalletTopUp[];
-  addWalletTopUp: (w: Omit<WalletTopUp, 'id' | 'timestamp' | 'status'>) => void;
+  addWalletTopUp: (
+    w: Omit<WalletTopUp, 'id' | 'timestamp' | 'status'>
+  ) => void;
   approveTopUp: (id: string) => Promise<void>;
   rejectTopUp: (id: string) => Promise<void>;
   incomingCars: IncomingCar[];
-  addIncomingCar: (c: Omit<IncomingCar, 'id' | 'startTime' | 'status'>) => void;
-removeIncomingCar: async (id) => {
-  // ✅ حذف محلي فوري مع حفظ بيانات السيارة
-  let carPlate: string | undefined;
-  let garageId: string | undefined;
-
-  set((st) => {
-    const car = st.incomingCars.find((c) => c.id === id);
-    carPlate = car?.carPlate;
-    garageId = car?.garageId;
-    return {
-      incomingCars: st.incomingCars.filter((c) => c.id !== id),
-    };
-  });
-
-  if (!isSupabaseConfigured()) return;
-
-  try {
-    // ✅ طبقة 1: حذف بالـ id
-    await supabase
-      .from('incoming_cars')
-      .delete()
-      .eq('id', id);
-
-    // ✅ طبقة 2: حذف بالـ car_plate + garage_id
-    if (carPlate && garageId) {
-      await supabase
-        .from('incoming_cars')
-        .delete()
-        .eq('car_plate', carPlate)
-        .eq('garage_id', garageId);
-    }
-  } catch (err) {
-    console.error('❌ خطأ في removeIncomingCar:', err);
-  }
-
-  // ✅ طبقة 3: تأكيد الحذف
-  setTimeout(() => {
-    get().fetchAll();
-  }, 1000);
-},
-
-messages: Message[];
+  addIncomingCar: (
+    c: Omit<IncomingCar, 'id' | 'startTime' | 'status'>
+  ) => Promise<void>;
+  removeIncomingCar: (id: string) => Promise<void>;
+  messages: Message[];
   addMessage: (
     m: Omit<Message, 'id' | 'timestamp' | 'status'>
   ) => Promise<{ success: boolean; error?: string }>;
@@ -339,7 +311,7 @@ messages: Message[];
 // ===================== Store =====================
 export const useStore = create<AppState>((set, get) => ({
 
-  // ===================== View =====================
+  // ── View ──────────────────────────────────────────────────────────────────
   view: (() => {
     try {
       const saved = localStorage.getItem('appView');
@@ -354,7 +326,7 @@ export const useStore = create<AppState>((set, get) => ({
     localStorage.setItem('appView', v);
   },
 
-  // ===================== Screen =====================
+  // ── Screen ────────────────────────────────────────────────────────────────
   screen: (() => {
     try {
       const saved = localStorage.getItem('appScreen');
@@ -370,7 +342,7 @@ export const useStore = create<AppState>((set, get) => ({
     localStorage.setItem('appScreen', s);
   },
 
-  // ===================== User =====================
+  // ── User ──────────────────────────────────────────────────────────────────
   currentUser: safeGetStorage('currentUser'),
 
   setCurrentUser: async (u) => {
@@ -401,7 +373,6 @@ export const useStore = create<AppState>((set, get) => ({
         };
         set({ currentUser: updated });
         safeSetStorage('currentUser', updated);
-
         await supabase
           .from('users')
           .update({ name: u.name, car_plate: u.carPlate })
@@ -434,7 +405,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // ===================== deductWallet =====================
+  // ── deductWallet ──────────────────────────────────────────────────────────
   deductWallet: (amount) => {
     const user = get().currentUser;
     if (!user) return;
@@ -447,7 +418,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // ===================== Garages =====================
+  // ── Garages ───────────────────────────────────────────────────────────────
   garages: [],
 
   currentGarageId: (() => {
@@ -484,7 +455,7 @@ export const useStore = create<AppState>((set, get) => ({
   incomingCars: [],
   messages: [],
 
-  // ===================== logout =====================
+  // ── logout ────────────────────────────────────────────────────────────────
   logout: () => {
     set({
       currentUser: null,
@@ -502,7 +473,7 @@ export const useStore = create<AppState>((set, get) => ({
     safeRemoveStorage('adminAuth');
   },
 
-  // ===================== fetchAll =====================
+  // ── fetchAll ──────────────────────────────────────────────────────────────
   fetchAll: async () => {
     if (!isSupabaseConfigured()) return;
 
@@ -543,20 +514,19 @@ export const useStore = create<AppState>((set, get) => ({
     const supabaseSessionIds = new Set(supabaseSessions.map((ss) => ss.id));
     const currentSessions = get().sessions;
 
-   // ✅ فقط local sessions مش موجودة في Supabase وليها نفس carPlate مش موجود في Supabase
-const supabaseActivePlates = new Set(
-  supabaseSessions
-    .filter((ss) => ss.status === 'active')
-    .map((ss) => `${ss.carPlate}-${ss.garageId}`)
-);
+    const supabaseActivePlates = new Set(
+      supabaseSessions
+        .filter((ss) => ss.status === 'active')
+        .map((ss) => `${ss.carPlate}-${ss.garageId}`)
+    );
 
-const localOnlySessions = currentSessions.filter(
-  (cs) =>
-    !supabaseSessionIds.has(cs.id) &&
-    cs.status === 'active' &&
-    !supabaseActivePlates.has(`${cs.carPlate}-${cs.garageId}`) &&
-    Date.now() - cs.startTime < 30000
-);
+    const localOnlySessions = currentSessions.filter(
+      (cs) =>
+        !supabaseSessionIds.has(cs.id) &&
+        cs.status === 'active' &&
+        !supabaseActivePlates.has(`${cs.carPlate}-${cs.garageId}`) &&
+        Date.now() - cs.startTime < 30000
+    );
 
     const mergedSessions = supabaseSessions.map((ss) => {
       const localVersion = currentSessions.find((cs) => cs.id === ss.id);
@@ -639,7 +609,7 @@ const localOnlySessions = currentSessions.filter(
     }
   },
 
-  // ===================== addGarage =====================
+  // ── addGarage ─────────────────────────────────────────────────────────────
   addGarage: async (g) => {
     const { data, error } = await supabase
       .from('garages')
@@ -661,7 +631,7 @@ const localOnlySessions = currentSessions.filter(
     }
   },
 
-  // ===================== updateGarage =====================
+  // ── updateGarage ──────────────────────────────────────────────────────────
   updateGarage: (id, updates) => {
     set((st) => ({
       garages: st.garages.map((g) =>
@@ -691,7 +661,7 @@ const localOnlySessions = currentSessions.filter(
     }, 500);
   },
 
-  // ===================== adjustGarageSpots =====================
+  // ── adjustGarageSpots ─────────────────────────────────────────────────────
   adjustGarageSpots: async (id, delta) => {
     set((st) => ({
       garages: st.garages.map((g) => {
@@ -750,90 +720,87 @@ const localOnlySessions = currentSessions.filter(
     }
   },
 
-  // ===================== addSession =====================
+  // ── addSession ────────────────────────────────────────────────────────────
   addSession: async (s) => {
-  const sessionId = crypto.randomUUID();
-  const safeStartTime =
-    typeof s.startTime === 'number' && !isNaN(s.startTime)
-      ? s.startTime
-      : Date.now();
+    const sessionId = crypto.randomUUID();
+    const safeStartTime =
+      typeof s.startTime === 'number' && !isNaN(s.startTime)
+        ? s.startTime
+        : Date.now();
 
-  const optimisticSession: ParkingSession = {
-    ...s,
-    id: sessionId,
-    startTime: safeStartTime,
-    synced: false,
-  };
+    // ✅ تحقق لو فيه جلسة نشطة بنفس السيارة
+    const existingActive = get().sessions.find(
+      (existing) =>
+        existing.carPlate === s.carPlate &&
+        existing.status === 'active' &&
+        existing.garageId === s.garageId
+    );
 
-  // ✅ تحقق لو فيه جلسة نشطة بنفس السيارة قبل الإضافة
-  const existingActive = get().sessions.find(
-    (existing) =>
-      existing.carPlate === s.carPlate &&
-      existing.status === 'active' &&
-      existing.garageId === s.garageId
-  );
+    if (existingActive) {
+      console.warn('⚠️ جلسة نشطة موجودة:', existingActive.id);
+      return existingActive.id;
+    }
 
-  if (existingActive) {
-    console.warn('⚠️ جلسة نشطة موجودة بالفعل لهذه السيارة:', existingActive.id);
-    return existingActive.id;
-  }
+    const optimisticSession: ParkingSession = {
+      ...s,
+      id: sessionId,
+      startTime: safeStartTime,
+      synced: false,
+    };
 
-  set((st) => ({
-    sessions: [optimisticSession, ...st.sessions],
-  }));
+    set((st) => ({
+      sessions: [optimisticSession, ...st.sessions],
+    }));
 
-  await get().adjustGarageSpots(s.garageId, -1);
+    await get().adjustGarageSpots(s.garageId, -1);
 
-  if (!isSupabaseConfigured()) return sessionId;
+    if (!isSupabaseConfigured()) return sessionId;
 
-  try {
-    const { data, error } = await supabase
-      .from('sessions')
-      .insert({
-        id: sessionId,
-        garage_id: s.garageId,
-        car_plate: s.carPlate,
-        start_time: new Date(safeStartTime).toISOString(),
-        status: s.status,
-        source: s.source,
-        agreed_price: s.agreedPrice ?? null,
-      })
-      .select()
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('sessions')
+        .insert({
+          id: sessionId,
+          garage_id: s.garageId,
+          car_plate: s.carPlate,
+          start_time: new Date(safeStartTime).toISOString(),
+          status: s.status,
+          source: s.source,
+          agreed_price: s.agreedPrice ?? null,
+        })
+        .select()
+        .single();
 
-    if (error) {
-      console.error('❌ خطأ في إضافة الجلسة:', error);
-      // ✅ rollback - حذف الـ optimistic session
+      if (error) {
+        console.error('❌ خطأ في إضافة الجلسة:', error);
+        set((st) => ({
+          sessions: st.sessions.filter((x) => x.id !== sessionId),
+        }));
+        await get().adjustGarageSpots(s.garageId, +1);
+        return sessionId;
+      }
+
+      if (data) {
+        const syncedSession: ParkingSession = { ...ms(data), synced: true };
+        set((st) => ({
+          sessions: st.sessions.map((x) =>
+            x.id === sessionId ? syncedSession : x
+          ),
+        }));
+        return data.id;
+      }
+    } catch (err) {
+      console.error('❌ خطأ غير متوقع في addSession:', err);
       set((st) => ({
         sessions: st.sessions.filter((x) => x.id !== sessionId),
       }));
       await get().adjustGarageSpots(s.garageId, +1);
-      return sessionId;
     }
 
-    if (data) {
-      const syncedSession: ParkingSession = { ...ms(data), synced: true };
-      // ✅ استبدل الـ optimistic بالـ synced
-      set((st) => ({
-        sessions: st.sessions.map((x) =>
-          x.id === sessionId ? syncedSession : x
-        ),
-      }));
-      return data.id;
-    }
-  } catch (err) {
-    console.error('❌ خطأ غير متوقع في addSession:', err);
-    // ✅ rollback
-    set((st) => ({
-      sessions: st.sessions.filter((x) => x.id !== sessionId),
-    }));
-    await get().adjustGarageSpots(s.garageId, +1);
-  }
+    return sessionId;
+  },
 
-  return sessionId;
-},
-
-  // ===================== endSession =====================
+  // ── endSession ────────────────────────────────────────────────────────────
   endSession: async (id, totalPrice, paymentMethod) => {
     const now = Date.now();
     const session = get().sessions.find((s) => s.id === id);
@@ -884,7 +851,7 @@ const localOnlySessions = currentSessions.filter(
     }
   },
 
-  // ===================== cancelSession =====================
+  // ── cancelSession ─────────────────────────────────────────────────────────
   cancelSession: (id) => {
     const session = get().sessions.find((s) => s.id === id);
 
@@ -901,7 +868,7 @@ const localOnlySessions = currentSessions.filter(
     }
   },
 
-  // ===================== removeSession =====================
+  // ── removeSession ─────────────────────────────────────────────────────────
   removeSession: async (id) => {
     const state = get();
     const target = state.sessions.find((s) => s.id === id);
@@ -953,7 +920,7 @@ const localOnlySessions = currentSessions.filter(
     }
   },
 
-  // ===================== Offers =====================
+  // ── Offers ────────────────────────────────────────────────────────────────
   addOffer: (o) => {
     const newO: Offer = { ...o, id: uid(), timestamp: Date.now() };
     set((st) => ({ offers: [newO, ...st.offers] }));
@@ -1000,7 +967,7 @@ const localOnlySessions = currentSessions.filter(
     }
   },
 
-  // ===================== Wallet =====================
+  // ── Wallet ────────────────────────────────────────────────────────────────
   addWalletTopUp: (w) => {
     const newW: WalletTopUp = {
       ...w,
@@ -1093,60 +1060,104 @@ const localOnlySessions = currentSessions.filter(
     if (error) console.error('❌ خطأ في رفض الشحن:', error);
   },
 
-  // ===================== Incoming Cars =====================
-addIncomingCar: async (c) => {
-  const incomingId = crypto.randomUUID();
+  // ── addIncomingCar ────────────────────────────────────────────────────────
+  addIncomingCar: async (c) => {
+    const incomingId = crypto.randomUUID();
 
-  const newC: IncomingCar = {
-    ...c,
-    id: incomingId,
-    startTime: Date.now(),
-    status: 'coming',
-  };
+    const newC: IncomingCar = {
+      ...c,
+      id: incomingId,
+      startTime: Date.now(),
+      status: 'coming',
+    };
 
-  set((st) => ({ incomingCars: [newC, ...st.incomingCars] }));
+    set((st) => ({ incomingCars: [newC, ...st.incomingCars] }));
 
-  if (!isSupabaseConfigured()) return;
+    if (!isSupabaseConfigured()) return;
 
-  try {
-    const { data, error } = await supabase
-      .from('incoming_cars')
-      .insert({
-        id: incomingId,
-        garage_id: c.garageId,
-        car_plate: c.carPlate,
-        customer_name: c.customerName,
-        customer_phone: c.customerPhone,
-        agreed_price: c.agreedPrice,
-        estimated_arrival: c.estimatedArrival,
-      })
-      .select()
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('incoming_cars')
+        .insert({
+          id: incomingId,
+          garage_id: c.garageId,
+          car_plate: c.carPlate,
+          customer_name: c.customerName,
+          customer_phone: c.customerPhone,
+          agreed_price: c.agreedPrice,
+          estimated_arrival: c.estimatedArrival,
+        })
+        .select()
+        .single();
 
-    if (error) {
-      console.error('❌ خطأ في addIncomingCar:', error);
+      if (error) {
+        console.error('❌ خطأ في addIncomingCar:', error);
+        set((st) => ({
+          incomingCars: st.incomingCars.filter((x) => x.id !== incomingId),
+        }));
+        return;
+      }
+
+      if (data) {
+        set((st) => ({
+          incomingCars: st.incomingCars.map((x) =>
+            x.id === incomingId ? mi(data) : x
+          ),
+        }));
+      }
+    } catch (err) {
+      console.error('❌ خطأ غير متوقع في addIncomingCar:', err);
       set((st) => ({
         incomingCars: st.incomingCars.filter((x) => x.id !== incomingId),
       }));
-      return;
+    }
+  },
+
+  // ── removeIncomingCar ─────────────────────────────────────────────────────
+  removeIncomingCar: async (id) => {
+    let savedCarPlate = '';
+    let savedGarageId = '';
+
+    // ✅ حذف محلي فوري مع حفظ بيانات السيارة
+    set((st) => {
+      const found = st.incomingCars.find((c) => c.id === id);
+      if (found) {
+        savedCarPlate = found.carPlate;
+        savedGarageId = found.garageId;
+      }
+      return {
+        incomingCars: st.incomingCars.filter((c) => c.id !== id),
+      };
+    });
+
+    if (!isSupabaseConfigured()) return;
+
+    try {
+      // ✅ طبقة 1: حذف بالـ id
+      await supabase
+        .from('incoming_cars')
+        .delete()
+        .eq('id', id);
+
+      // ✅ طبقة 2: حذف بالـ car_plate + garage_id
+      if (savedCarPlate && savedGarageId) {
+        await supabase
+          .from('incoming_cars')
+          .delete()
+          .eq('car_plate', savedCarPlate)
+          .eq('garage_id', savedGarageId);
+      }
+    } catch (err) {
+      console.error('❌ خطأ في removeIncomingCar:', err);
     }
 
-    if (data) {
-      set((st) => ({
-        incomingCars: st.incomingCars.map((x) =>
-          x.id === incomingId ? mi(data) : x
-        ),
-      }));
-    }
-  } catch (err) {
-    console.error('❌ خطأ غير متوقع:', err);
-    set((st) => ({
-      incomingCars: st.incomingCars.filter((x) => x.id !== incomingId),
-    }));
-  }
-},
+    // ✅ طبقة 3: تأكيد من الداتابيز
+    setTimeout(() => {
+      get().fetchAll();
+    }, 1000);
+  },
 
-  // ===================== Messages =====================
+  // ── Messages ──────────────────────────────────────────────────────────────
   addMessage: async (msg) => {
     const optimisticMessage: Message = {
       ...msg,
@@ -1264,13 +1275,12 @@ export function setupRealtime() {
   if (realtimeStarted) return;
   realtimeStarted = true;
 
-  // ✅ Polling كل 3 ثواني - الحل الأساسي والأضمن
+  // ✅ Polling كل 3 ثواني
   if (pollingInterval) clearInterval(pollingInterval);
   pollingInterval = setInterval(() => {
     useStore.getState().fetchAll();
   }, 3000);
 
-  // ✅ تنظيف عند إغلاق الصفحة
   window.addEventListener('beforeunload', () => {
     if (pollingInterval) {
       clearInterval(pollingInterval);
@@ -1278,7 +1288,6 @@ export function setupRealtime() {
     }
   });
 
-  // ✅ لو Supabase مش متضبط، نكتفي بالـ Polling
   if (!isSupabaseConfigured()) return;
 
   let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -1327,22 +1336,20 @@ export function setupRealtime() {
   channel.subscribe((status) => {
     if (status === 'SUBSCRIBED') {
       console.log('✅ Realtime connected:', channelName);
-      // ✅ لو الـ Realtime اشتغل، خفف الـ Polling لكل 10 ثواني
       if (pollingInterval) clearInterval(pollingInterval);
       pollingInterval = setInterval(() => {
         useStore.getState().fetchAll();
       }, 10000);
     }
     if (status === 'CHANNEL_ERROR') {
-      console.error('❌ Realtime channel error - switching to polling');
-      // ✅ لو فشل الـ Realtime، رجّع الـ Polling لكل 3 ثواني
+      console.error('❌ Realtime channel error');
       if (pollingInterval) clearInterval(pollingInterval);
       pollingInterval = setInterval(() => {
         useStore.getState().fetchAll();
       }, 3000);
     }
     if (status === 'TIMED_OUT') {
-      console.warn('⚠️ Realtime timed out - switching to polling');
+      console.warn('⚠️ Realtime timed out');
       if (pollingInterval) clearInterval(pollingInterval);
       pollingInterval = setInterval(() => {
         useStore.getState().fetchAll();
