@@ -1,0 +1,40 @@
+[33mbb134341[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m fix: add polling fallback for realtime sync
+[33m56ba69ce[m fix: remove duplicate store.ts
+[33mc3c75e69[m fix: remove duplicate store.ts
+[33m15070243[m fix: messages table and error handling
+[33md900321e[m fix: handle undefined messages array
+[33mefaf94b3[m feat: add LastSessionScreen component
+[33m123f37c4[m feat: add last session screen with full details
+[33me3c46b1c[m feat: add last session screen with full details
+[33mde4d0024[m fix: tailwind v3 syntax and config
+[33m45b1991f[m chore: remove invalid stray files
+[33m8c006740[m fix: add all missing dependencies
+[33mba394af5[m fix: remove clsx and tailwind-merge dependency
+[33m6febc561[m fix: rename gitignore and remove node_modules from tracking
+[33mfa4c4df3[m fix: add missing package.json
+[33mfb4274f4[m Delete package.json
+[33mbe789ccf[m fix: restore valid package.json and vercel.json
+[33mf67eaa65[m fix: use npm run build instead of npx
+[33m5006c554[m fix: use npm run build instead of npx
+[33mee902888[m fix: add legacy-peer-deps to install command
+[33m5facf740[m fix: vercel build permission issue
+[33md2065dd2[m fix: vercel build permission issue
+[33ma34ed7b2[m fix: use npx vite build to fix permission denied
+[33m1ff71942[m update
+[33mbf2d7cee[m add vercelignore
+[33m90d82035[m fix: remove waiting period and fix build error
+[33mfcc01f91[m update: PWA icons, performance, accessibility, remove wait time
+[33mbe37903f[m update
+[33m632b7c99[m update logo
+[33m7dc1c3bc[m fix: تحديث store وإصلاح مشكلة الأماكن والرصيد
+[33m65206cb9[m fix: تحديث store وإصلاح مشكلة الأماكن والرصيد
+[33md3190b99[m fix garage spots counter with adjustGarageSpots
+[33macad8338[m Add files via upload
+[33m9ac038b7[m remove customer name keep phone and price
+[33mc23b07b3[m fix garage spots counter with adjustGarageSpots
+[33m1ab8ed09[m fix GarageLoginScreen closing tags
+[33m6c2d8995[m remove demo credentials
+[33m910efbbc[m remove demo garages
+[33m7e743c80[m add gitignore
+[33m66184d52[m remove node_modules and fix gitignore
+[33mb88b9bf3[m first commit

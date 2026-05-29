@@ -59,12 +59,9 @@ export default function GarageDashboard() {
     (o) => o.garageId === currentGarageId && o.status === 'pending'
   );
 
+  // ✅ بعد إلغاء فترة السماح - فقط coming
   const carsOnTheWay = incomingCars.filter(
     (c) => c.garageId === currentGarageId && c.status === 'coming'
-  );
-
-  const arrivedCars = incomingCars.filter(
-    (c) => c.garageId === currentGarageId && c.status === 'arrived'
   );
 
   const processedCarsRef = useRef<Set<string>>(new Set());
@@ -78,7 +75,9 @@ export default function GarageDashboard() {
   const [editPrice, setEditPrice] = useState(garage?.basePrice || 15);
   const [editSpots, setEditSpots] = useState(garage?.availableSpots || 0);
   const [editCapacity, setEditCapacity] = useState(garage?.capacity || 50);
-  const [logDateFilter, setLogDateFilter] = useState(() => new Date().toISOString().split('T')[0]);
+  const [logDateFilter, setLogDateFilter] = useState(
+    () => new Date().toISOString().split('T')[0]
+  );
   const [logPaymentFilter, setLogPaymentFilter] = useState<string>('all');
   const [confirmSession, setConfirmSession] = useState<{
     id: string;
@@ -94,12 +93,17 @@ export default function GarageDashboard() {
 
   const getSessionRevenue = useCallback(
     (s: (typeof completedSessions)[0]) => {
-      if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
+      if (s.totalPrice != null && Number(s.totalPrice) > 0)
+        return Number(s.totalPrice);
       if (s.endTime && s.startTime) {
         const start =
-          typeof s.startTime === 'number' ? s.startTime : new Date(s.startTime).getTime();
+          typeof s.startTime === 'number'
+            ? s.startTime
+            : new Date(s.startTime).getTime();
         const end =
-          typeof s.endTime === 'number' ? s.endTime : new Date(s.endTime).getTime();
+          typeof s.endTime === 'number'
+            ? s.endTime
+            : new Date(s.endTime).getTime();
         const elapsed = Math.max(0, Math.floor((end - start) / 1000));
         const rate = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
         return calculateCost(elapsed, rate);
@@ -132,11 +136,14 @@ export default function GarageDashboard() {
     return completedSessions.filter((s) => {
       if (logDateFilter && s.endTime) {
         const endTime =
-          typeof s.endTime === 'number' ? s.endTime : new Date(s.endTime).getTime();
+          typeof s.endTime === 'number'
+            ? s.endTime
+            : new Date(s.endTime).getTime();
         const sessionDate = new Date(endTime).toISOString().split('T')[0];
         if (sessionDate !== logDateFilter) return false;
       }
-      if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter) return false;
+      if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter)
+        return false;
       return true;
     });
   }, [completedSessions, logDateFilter, logPaymentFilter]);
@@ -173,12 +180,10 @@ export default function GarageDashboard() {
   const handleUndoSession = useCallback(
     (undoable: UndoableSession) => {
       if (!garage) return;
-
       removeSession(undoable.sessionId);
       if (undoable.localId !== undoable.sessionId) {
         removeSession(undoable.localId);
       }
-
       const currentSessions = useStore.getState().sessions;
       const matchingSession = currentSessions.find(
         (s) =>
@@ -188,23 +193,30 @@ export default function GarageDashboard() {
           Math.abs(s.startTime - undoable.addedAt) < 5000
       );
       if (matchingSession) removeSession(matchingSession.id);
-
       setUndoableSessions((prev) =>
         prev.filter(
-          (u) => u.sessionId !== undoable.sessionId && u.localId !== undoable.localId
+          (u) =>
+            u.sessionId !== undoable.sessionId &&
+            u.localId !== undoable.localId
         )
       );
-
       toast('تم إلغاء إضافة السيارة ' + undoable.carPlate + ' ↩️', {
         icon: '🔙',
-        style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' },
+        style: {
+          background: '#1e293b',
+          color: '#f1f5f9',
+          border: '1px solid #334155',
+        },
       });
     },
     [garage, removeSession]
   );
 
   const getUndoRemainingSeconds = useCallback((addedAt: number) => {
-    return Math.max(0, UNDO_TIMEOUT_SECONDS - Math.floor((Date.now() - addedAt) / 1000));
+    return Math.max(
+      0,
+      UNDO_TIMEOUT_SECONDS - Math.floor((Date.now() - addedAt) / 1000)
+    );
   }, []);
 
   // ─── Tick كل ثانية ────────────────────────────────────────────────────────
@@ -222,9 +234,14 @@ export default function GarageDashboard() {
     setUndoableSessions((prev) => {
       const currentSessionsList = sessions;
       return prev
-        .filter((u) => Math.floor((Date.now() - u.addedAt) / 1000) < UNDO_TIMEOUT_SECONDS)
+        .filter(
+          (u) =>
+            Math.floor((Date.now() - u.addedAt) / 1000) < UNDO_TIMEOUT_SECONDS
+        )
         .map((u) => {
-          const stillExists = currentSessionsList.find((s) => s.id === u.sessionId);
+          const stillExists = currentSessionsList.find(
+            (s) => s.id === u.sessionId
+          );
           if (!stillExists) {
             const newSession = currentSessionsList.find(
               (s) =>
@@ -239,47 +256,6 @@ export default function GarageDashboard() {
         });
     });
   }, [tick, sessions]);
-
-  // ─── بدء الحساب فوراً للسيارات التي وصلت (بدون فترة سماح) ────────────────
- useEffect(() => {
-  if (!garage) return;
-  arrivedCars.forEach((car) => {
-    if (processedCarsRef.current.has(car.id)) return;
-
-    // ✅ تحقق لو فيه جلسة نشطة بالفعل
-    const existingSession = get().sessions.find(
-      (s) =>
-        s.carPlate === car.carPlate &&
-        s.garageId === garage.id &&
-        s.status === 'active'
-    );
-
-    if (existingSession) {
-      processedCarsRef.current.add(car.id);
-      removeIncomingCar(car.id);
-      return;
-    }
-
-    processedCarsRef.current.add(car.id);
-    addSession({
-      garageId: garage.id,
-      carPlate: car.carPlate,
-      startTime: Date.now(),
-      status: 'active',
-      source: 'app',
-      agreedPrice: car.agreedPrice,
-    });
-
-    const relatedOffer = offers.find(
-      (o) =>
-        o.carPlate === car.carPlate &&
-        (o.status === 'pending' || o.status === 'accepted')
-    );
-    if (relatedOffer) cancelOffer(relatedOffer.id);
-    removeIncomingCar(car.id);
-    toast.success(`بدأ حساب السيارة ${car.carPlate} تلقائياً ⏱️`);
-  });
-}, [tick, arrivedCars, garage, offers, addSession, cancelOffer, removeIncomingCar]);
 
   if (!garage) return null;
 
@@ -305,7 +281,13 @@ export default function GarageDashboard() {
     const finalSessionId = sessionId || `fallback-${addedAt}`;
     setUndoableSessions((prev) => [
       ...prev,
-      { sessionId: finalSessionId, localId: finalSessionId, carPlate, price, addedAt },
+      {
+        sessionId: finalSessionId,
+        localId: finalSessionId,
+        carPlate,
+        price,
+        addedAt,
+      },
     ]);
 
     toast.success(`تم إضافة السيارة بسعر ${price} ج.م/ساعة`);
@@ -355,11 +337,12 @@ export default function GarageDashboard() {
       const paymentCopy = confirmPaymentMethod;
       setConfirmSession(null);
       setUndoableSessions((prev) =>
-        prev.filter((u) => u.sessionId !== sessionCopy.id && u.localId !== sessionCopy.id)
+        prev.filter(
+          (u) =>
+            u.sessionId !== sessionCopy.id && u.localId !== sessionCopy.id
+        )
       );
-
       await endSession(sessionCopy.id, sessionCopy.cost, paymentCopy);
-
       const methodLabel =
         paymentCopy === 'cash'
           ? 'نقدي 💵'
@@ -368,7 +351,6 @@ export default function GarageDashboard() {
           : paymentCopy === 'wallet'
           ? 'خصم من المحفظة 👝'
           : 'تحويل محفظة كاش 📲';
-
       toast.success(`تم تحصيل ${sessionCopy.cost} ج.م (${methodLabel}) ✅`);
     } finally {
       setTimeout(() => {
@@ -395,10 +377,28 @@ export default function GarageDashboard() {
     setShowSettings(true);
   };
 
-  // ─── وصول سيارة وبدء الحساب فوراً ────────────────────────────────────────
-  const handleCarArrived = (carId: string, carPlate: string, agreedPrice: number) => {
+  // ✅ وصول سيارة وبدء الحساب فوراً - الدالة الوحيدة المستخدمة في الزر
+  const handleCarArrived = (
+    carId: string,
+    carPlate: string,
+    agreedPrice: number
+  ) => {
     if (processedCarsRef.current.has(carId)) return;
     processedCarsRef.current.add(carId);
+
+    // ✅ تحقق لو فيه جلسة نشطة بالفعل
+    const existingSession = useStore.getState().sessions.find(
+      (s) =>
+        s.carPlate === carPlate &&
+        s.garageId === garage.id &&
+        s.status === 'active'
+    );
+
+    if (existingSession) {
+      removeIncomingCar(carId);
+      toast('الجلسة شغالة بالفعل ✅');
+      return;
+    }
 
     addSession({
       garageId: garage.id,
@@ -411,7 +411,8 @@ export default function GarageDashboard() {
 
     const relatedOffer = offers.find(
       (o) =>
-        o.carPlate === carPlate && (o.status === 'pending' || o.status === 'accepted')
+        o.carPlate === carPlate &&
+        (o.status === 'pending' || o.status === 'accepted')
     );
     if (relatedOffer) cancelOffer(relatedOffer.id);
 
@@ -420,14 +421,18 @@ export default function GarageDashboard() {
   };
 
   // ─── حساب الوقت المتبقي للوصول ────────────────────────────────────────────
-  const calculateRemainingTime = (startTime: number, estimatedMinutes: number) => {
-    const start = typeof startTime === 'number' ? startTime : new Date(startTime).getTime();
+  const calculateRemainingTime = (
+    startTime: number,
+    estimatedMinutes: number
+  ) => {
+    const start =
+      typeof startTime === 'number'
+        ? startTime
+        : new Date(startTime).getTime();
     const elapsed = Math.floor((Date.now() - start) / 60000);
     return Math.max(0, estimatedMinutes - elapsed);
   };
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // ─── العرض ─────────────────────────────────────────────────────────────────
   // ═══════════════════════════════════════════════════════════════════════════
   return (
     <div className="h-full bg-slate-950 text-white p-5 overflow-y-auto">
@@ -498,11 +503,15 @@ export default function GarageDashboard() {
                       type="number"
                       value={editPrice}
                       onChange={(e) =>
-                        setEditPrice(Math.max(1, parseInt(e.target.value) || 0))
+                        setEditPrice(
+                          Math.max(1, parseInt(e.target.value) || 0)
+                        )
                       }
                       className="bg-transparent text-4xl font-black text-white text-center w-full outline-none font-mono"
                     />
-                    <div className="text-[10px] text-slate-500 font-bold">ج.م / ساعة</div>
+                    <div className="text-[10px] text-slate-500 font-bold">
+                      ج.م / ساعة
+                    </div>
                   </div>
                   <button
                     onClick={() => setEditPrice((p) => p + 5)}
@@ -547,7 +556,13 @@ export default function GarageDashboard() {
                       value={editSpots}
                       onChange={(e) =>
                         setEditSpots(
-                          Math.max(0, Math.min(editCapacity, parseInt(e.target.value) || 0))
+                          Math.max(
+                            0,
+                            Math.min(
+                              editCapacity,
+                              parseInt(e.target.value) || 0
+                            )
+                          )
                         )
                       }
                       className="bg-transparent text-4xl font-black text-blue-400 text-center w-full outline-none font-mono"
@@ -557,7 +572,9 @@ export default function GarageDashboard() {
                     </div>
                   </div>
                   <button
-                    onClick={() => setEditSpots((s) => Math.min(editCapacity, s + 1))}
+                    onClick={() =>
+                      setEditSpots((s) => Math.min(editCapacity, s + 1))
+                    }
                     className="bg-emerald-600/20 text-emerald-400 w-12 h-12 rounded-xl flex items-center justify-center border border-emerald-500/20 active:scale-90 transition-all"
                   >
                     <Plus size={20} />
@@ -568,7 +585,9 @@ export default function GarageDashboard() {
                     className="bg-gradient-to-r from-blue-600 to-emerald-500 h-full transition-all duration-300"
                     style={{
                       width: `${
-                        editCapacity > 0 ? (editSpots / editCapacity) * 100 : 0
+                        editCapacity > 0
+                          ? (editSpots / editCapacity) * 100
+                          : 0
                       }%`,
                     }}
                   />
@@ -583,7 +602,9 @@ export default function GarageDashboard() {
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
                 <div className="flex items-center justify-between gap-4">
                   <button
-                    onClick={() => setEditCapacity((c) => Math.max(editSpots, c - 10))}
+                    onClick={() =>
+                      setEditCapacity((c) => Math.max(editSpots, c - 10))
+                    }
                     className="bg-slate-800 text-slate-400 w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 transition-all"
                   >
                     <Minus size={16} />
@@ -594,12 +615,17 @@ export default function GarageDashboard() {
                       value={editCapacity}
                       onChange={(e) =>
                         setEditCapacity(
-                          Math.max(editSpots, parseInt(e.target.value) || editSpots)
+                          Math.max(
+                            editSpots,
+                            parseInt(e.target.value) || editSpots
+                          )
                         )
                       }
                       className="bg-transparent text-2xl font-black text-purple-400 text-center w-full outline-none font-mono"
                     />
-                    <div className="text-[10px] text-slate-500 font-bold">مكان إجمالي</div>
+                    <div className="text-[10px] text-slate-500 font-bold">
+                      مكان إجمالي
+                    </div>
                   </div>
                   <button
                     onClick={() => setEditCapacity((c) => c + 10)}
@@ -690,7 +716,6 @@ export default function GarageDashboard() {
               </div>
             </div>
 
-            {/* طريقة السداد */}
             <div className="mb-5">
               <h4 className="text-xs font-black text-slate-400 mb-3 text-right">
                 طريقة السداد
@@ -719,7 +744,9 @@ export default function GarageDashboard() {
                     ].map((pm) => (
                       <button
                         key={pm.id}
-                        onClick={() => !pm.disabled && setConfirmPaymentMethod(pm.id)}
+                        onClick={() =>
+                          !pm.disabled && setConfirmPaymentMethod(pm.id)
+                        }
                         disabled={pm.disabled}
                         className={`p-3 rounded-xl border text-center transition-all ${
                           pm.disabled
@@ -919,7 +946,8 @@ export default function GarageDashboard() {
                       style={{
                         width: `${Math.max(
                           0,
-                          100 - (remainingTime / car.estimatedArrival) * 100
+                          100 -
+                            (remainingTime / car.estimatedArrival) * 100
                         )}%`,
                       }}
                     />
@@ -967,9 +995,14 @@ export default function GarageDashboard() {
                     </div>
                   </div>
                   <div className="flex gap-2">
+                    {/* ✅ الزر يستخدم handleCarArrived فقط */}
                     <button
                       onClick={() =>
-                        handleCarArrived(car.id, car.carPlate, car.agreedPrice)
+                        handleCarArrived(
+                          car.id,
+                          car.carPlate,
+                          car.agreedPrice
+                        )
                       }
                       className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all"
                     >
@@ -1189,7 +1222,8 @@ export default function GarageDashboard() {
               const cost = calculateCost(elapsedSeconds, rate);
               const isManual = session.source === 'manual';
               const undoable = undoableSessions.find(
-                (u) => u.sessionId === session.id || u.localId === session.id
+                (u) =>
+                  u.sessionId === session.id || u.localId === session.id
               );
 
               return (
@@ -1286,11 +1320,12 @@ export default function GarageDashboard() {
           </h3>
         </div>
 
-        {/* الفلاتر */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-4">
           <div className="flex items-center gap-2 mb-3 justify-end">
             <CalendarDays size={14} className="text-blue-400" />
-            <span className="text-xs font-black text-slate-400">تصفية بالتاريخ</span>
+            <span className="text-xs font-black text-slate-400">
+              تصفية بالتاريخ
+            </span>
           </div>
           <div className="flex gap-2 mb-3">
             <input
@@ -1339,7 +1374,6 @@ export default function GarageDashboard() {
 
         {filteredCompleted.length > 0 && (
           <>
-            {/* إجمالي */}
             <div className="bg-gradient-to-l from-emerald-600/20 to-slate-900 border border-emerald-500/30 rounded-2xl p-4 mb-4 text-center">
               <div className="text-[10px] text-slate-400 mb-1">
                 {logDateFilter
@@ -1361,33 +1395,12 @@ export default function GarageDashboard() {
               </div>
             </div>
 
-            {/* تفصيل طرق الدفع - 4 أعمدة (المحفظة موجودة لأن العميل ممكن يدفع منها) */}
             <div className="grid grid-cols-4 gap-2 mb-4">
               {[
-                {
-                  label: 'نقدي',
-                  value: filteredStats.cash,
-                  icon: '💵',
-                  color: 'text-emerald-400',
-                },
-                {
-                  label: 'إنستاباي',
-                  value: filteredStats.instapay,
-                  icon: '📱',
-                  color: 'text-purple-400',
-                },
-                {
-                  label: 'محفظة',
-                  value: filteredStats.wallet,
-                  icon: '👝',
-                  color: 'text-blue-400',
-                },
-                {
-                  label: 'كاش',
-                  value: filteredStats.cashwallet,
-                  icon: '📲',
-                  color: 'text-orange-400',
-                },
+                { label: 'نقدي', value: filteredStats.cash, icon: '💵', color: 'text-emerald-400' },
+                { label: 'إنستاباي', value: filteredStats.instapay, icon: '📱', color: 'text-purple-400' },
+                { label: 'محفظة', value: filteredStats.wallet, icon: '👝', color: 'text-blue-400' },
+                { label: 'كاش', value: filteredStats.cashwallet, icon: '📲', color: 'text-orange-400' },
               ].map((p) => (
                 <div
                   key={p.label}
@@ -1397,15 +1410,18 @@ export default function GarageDashboard() {
                   <div className={`text-sm font-black font-mono ${p.color}`}>
                     {p.value.toFixed(0)}
                   </div>
-                  <div className="text-[7px] text-slate-500 font-bold">{p.label}</div>
+                  <div className="text-[7px] text-slate-500 font-bold">
+                    {p.label}
+                  </div>
                 </div>
               ))}
             </div>
 
-            {/* يدوي vs تطبيق */}
             <div className="grid grid-cols-2 gap-2 mb-4">
               <div className="bg-amber-600/10 border border-amber-500/20 rounded-xl p-3 text-center">
-                <div className="text-[9px] text-amber-400 font-black mb-1">يدوي</div>
+                <div className="text-[9px] text-amber-400 font-black mb-1">
+                  يدوي
+                </div>
                 <span className="text-sm font-black text-amber-400 font-mono">
                   {filteredStats.manualCount}
                 </span>
@@ -1415,7 +1431,9 @@ export default function GarageDashboard() {
                 </div>
               </div>
               <div className="bg-blue-600/10 border border-blue-500/20 rounded-xl p-3 text-center">
-                <div className="text-[9px] text-blue-400 font-black mb-1">تطبيق</div>
+                <div className="text-[9px] text-blue-400 font-black mb-1">
+                  تطبيق
+                </div>
                 <span className="text-sm font-black text-blue-400 font-mono">
                   {filteredStats.appCount}
                 </span>
@@ -1428,7 +1446,6 @@ export default function GarageDashboard() {
           </>
         )}
 
-        {/* قائمة العمليات */}
         <div className="space-y-2">
           {filteredCompleted.map((session) => {
             const isManual = session.source === 'manual';
