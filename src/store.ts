@@ -1054,50 +1054,57 @@ const localOnlySessions = currentSessions.filter(
   },
 
   // ===================== Incoming Cars =====================
-  addIncomingCar: (c) => {
-    const newC: IncomingCar = {
-      ...c,
-      id: uid(),
-      startTime: Date.now(),
-      status: 'coming',
-    };
-    set((st) => ({ incomingCars: [newC, ...st.incomingCars] }));
-    if (isSupabaseConfigured()) {
-      supabase
-        .from('incoming_cars')
-        .insert({
-          garage_id: c.garageId,
-          car_plate: c.carPlate,
-          customer_name: c.customerName,
-          customer_phone: c.customerPhone,
-          agreed_price: c.agreedPrice,
-          estimated_arrival: c.estimatedArrival,
-        })
-        .select()
-        .single()
-        .then(({ data }) => {
-          if (data)
-            set((st) => ({
-              incomingCars: st.incomingCars.map((x) =>
-                x.id === newC.id ? mi(data) : x
-              ),
-            }));
-        });
-    }
-  },
+addIncomingCar: async (c) => {
+  const incomingId = crypto.randomUUID();
 
-  removeIncomingCar: async (id) => {
-    set((st) => ({
-      incomingCars: st.incomingCars.filter((c) => c.id !== id),
-    }));
-    if (isSupabaseConfigured()) {
-      const { error } = await supabase
-        .from('incoming_cars')
-        .delete()
-        .eq('id', id);
-      if (error) console.error('❌ خطأ في حذف السيارة:', error);
+  const newC: IncomingCar = {
+    ...c,
+    id: incomingId,
+    startTime: Date.now(),
+    status: 'coming',
+  };
+
+  set((st) => ({ incomingCars: [newC, ...st.incomingCars] }));
+
+  if (!isSupabaseConfigured()) return;
+
+  try {
+    const { data, error } = await supabase
+      .from('incoming_cars')
+      .insert({
+        id: incomingId, // ✅ نفس الـ id المحلي
+        garage_id: c.garageId,
+        car_plate: c.carPlate,
+        customer_name: c.customerName,
+        customer_phone: c.customerPhone,
+        agreed_price: c.agreedPrice,
+        estimated_arrival: c.estimatedArrival,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ خطأ في addIncomingCar:', error);
+      set((st) => ({
+        incomingCars: st.incomingCars.filter((x) => x.id !== incomingId),
+      }));
+      return;
     }
-  },
+
+    if (data) {
+      set((st) => ({
+        incomingCars: st.incomingCars.map((x) =>
+          x.id === incomingId ? mi(data) : x
+        ),
+      }));
+    }
+  } catch (err) {
+    console.error('❌ خطأ غير متوقع في addIncomingCar:', err);
+    set((st) => ({
+      incomingCars: st.incomingCars.filter((x) => x.id !== incomingId),
+    }));
+  }
+},
 
   // ===================== Messages =====================
   addMessage: async (msg) => {
