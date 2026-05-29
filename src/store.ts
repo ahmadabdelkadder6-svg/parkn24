@@ -285,50 +285,46 @@ interface AppState {
   rejectTopUp: (id: string) => Promise<void>;
   incomingCars: IncomingCar[];
   addIncomingCar: (c: Omit<IncomingCar, 'id' | 'startTime' | 'status'>) => void;
-  removeIncomingCar: async (id) => {
-  // ✅ لاقي السيارة قبل الحذف عشان نعرف بياناتها
-  const car = get().incomingCars.find((c) => c.id === id);
+removeIncomingCar: async (id) => {
+  // ✅ حذف محلي فوري مع حفظ بيانات السيارة
+  let carPlate: string | undefined;
+  let garageId: string | undefined;
 
-  // ✅ حذف محلي فوري
-  set((st) => ({
-    incomingCars: st.incomingCars.filter((c) => c.id !== id),
-  }));
+  set((st) => {
+    const car = st.incomingCars.find((c) => c.id === id);
+    carPlate = car?.carPlate;
+    garageId = car?.garageId;
+    return {
+      incomingCars: st.incomingCars.filter((c) => c.id !== id),
+    };
+  });
 
   if (!isSupabaseConfigured()) return;
 
   try {
     // ✅ طبقة 1: حذف بالـ id
-    const { error: error1 } = await supabase
+    await supabase
       .from('incoming_cars')
       .delete()
       .eq('id', id);
 
-    if (error1) {
-      console.error('❌ حذف بالـ id فشل:', error1);
-    }
-
-    // ✅ طبقة 2: حذف بالـ car_plate + garage_id (الأضمن)
-    if (car) {
-      const { error: error2 } = await supabase
+    // ✅ طبقة 2: حذف بالـ car_plate + garage_id
+    if (carPlate && garageId) {
+      await supabase
         .from('incoming_cars')
         .delete()
-        .eq('car_plate', car.carPlate)
-        .eq('garage_id', car.garageId);
-
-      if (error2) {
-        console.error('❌ حذف بالـ car_plate فشل:', error2);
-      }
+        .eq('car_plate', carPlate)
+        .eq('garage_id', garageId);
     }
   } catch (err) {
     console.error('❌ خطأ في removeIncomingCar:', err);
   }
 
-  // ✅ طبقة 3: تأكيد الحذف من الـ fetch
+  // ✅ طبقة 3: تأكيد الحذف
   setTimeout(() => {
     get().fetchAll();
-  }, 500);
-},
-  messages: Message[];
+  }, 1000);
+},  messages: Message[];
   addMessage: (
     m: Omit<Message, 'id' | 'timestamp' | 'status'>
   ) => Promise<{ success: boolean; error?: string }>;
