@@ -377,16 +377,18 @@ export default function GarageDashboard() {
     setShowSettings(true);
   };
 
-  // ✅ وصول سيارة وبدء الحساب فوراً - الدالة الوحيدة المستخدمة في الزر
+  // ✅ وصول سيارة وبدء الحساب فوراً
+  // 3 طبقات حماية من الضغط المزدوج
   const handleCarArrived = (
     carId: string,
     carPlate: string,
     agreedPrice: number
   ) => {
+    // ─── طبقة 1: processedCarsRef ─────────────────────────────────────────
     if (processedCarsRef.current.has(carId)) return;
     processedCarsRef.current.add(carId);
 
-    // ✅ تحقق لو فيه جلسة نشطة بالفعل
+    // ─── طبقة 2: تحقق من جلسة نشطة موجودة ──────────────────────────────
     const existingSession = useStore.getState().sessions.find(
       (s) =>
         s.carPlate === carPlate &&
@@ -400,6 +402,15 @@ export default function GarageDashboard() {
       return;
     }
 
+    // ─── إلغاء العرض المرتبط ─────────────────────────────────────────────
+    const relatedOffer = offers.find(
+      (o) =>
+        o.carPlate === carPlate &&
+        (o.status === 'pending' || o.status === 'accepted')
+    );
+    if (relatedOffer) cancelOffer(relatedOffer.id);
+
+    // ─── طبقة 3: addSession نفسها عندها حماية داخلية ─────────────────────
     addSession({
       garageId: garage.id,
       carPlate,
@@ -409,17 +420,9 @@ export default function GarageDashboard() {
       agreedPrice,
     });
 
-    const relatedOffer = offers.find(
-      (o) =>
-        o.carPlate === carPlate &&
-        (o.status === 'pending' || o.status === 'accepted')
-    );
-    if (relatedOffer) cancelOffer(relatedOffer.id);
-
     removeIncomingCar(carId);
     toast.success(`بدأ حساب السيارة ${carPlate} 🚗`);
   };
-
   // ─── حساب الوقت المتبقي للوصول ────────────────────────────────────────────
   const calculateRemainingTime = (
     startTime: number,
