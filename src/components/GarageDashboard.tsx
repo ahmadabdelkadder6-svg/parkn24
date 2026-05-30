@@ -133,21 +133,27 @@ export default function GarageDashboard() {
     [garage?.basePrice]
   );
 
-  const filteredCompleted = useMemo(() => {
-    return completedSessions.filter((s) => {
-      if (logDateFilter && s.endTime) {
-        const endTime =
-          typeof s.endTime === 'number'
-            ? s.endTime
-            : new Date(s.endTime).getTime();
-        const sessionDate = new Date(endTime).toISOString().split('T')[0];
-        if (sessionDate !== logDateFilter) return false;
-      }
-      if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter)
-        return false;
-      return true;
-    });
-  }, [completedSessions, logDateFilter, logPaymentFilter]);
+const filteredCompleted = useMemo(() => {
+  return completedSessions.filter((s) => {
+    if (logDateFilter && s.endTime) {
+      const endTime =
+        typeof s.endTime === 'number'
+          ? s.endTime
+          : new Date(s.endTime).getTime();
+
+      // ✅ استخدم التوقيت المحلي بدل UTC
+      const localDate = new Date(endTime);
+      const sessionDate = `${localDate.getFullYear()}-${String(
+        localDate.getMonth() + 1
+      ).padStart(2, '0')}-${String(localDate.getDate()).padStart(2, '0')}`;
+
+      if (sessionDate !== logDateFilter) return false;
+    }
+    if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter)
+      return false;
+    return true;
+  });
+}, [completedSessions, logDateFilter, logPaymentFilter]);
 
   const filteredStats = useMemo(() => {
     const cash = filteredCompleted
