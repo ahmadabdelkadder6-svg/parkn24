@@ -51,6 +51,7 @@ export default function GarageDashboard() {
     incomingCars,
     removeIncomingCar,
     fetchAll,
+    confirmRevenue,
   } = useStore();
 
   const garage = garages.find((g) => g.id === currentGarageId);
@@ -114,8 +115,11 @@ export default function GarageDashboard() {
     [garage?.basePrice]
   );
 
+  // ✅ الإيراد الكلي - بس المؤكد
   const totalRevenue = useMemo(() => {
-    return completedSessions.reduce((acc, s) => acc + getSessionRevenue(s), 0);
+    return completedSessions
+      .filter((s) => s.revenueConfirmed)
+      .reduce((acc, s) => acc + getSessionRevenue(s), 0);
   }, [completedSessions, getSessionRevenue]);
 
   const getActiveCost = useCallback(
@@ -133,44 +137,51 @@ export default function GarageDashboard() {
     [garage?.basePrice]
   );
 
-const filteredCompleted = useMemo(() => {
-  return completedSessions.filter((s) => {
-    if (logDateFilter && s.endTime) {
-      const endTime =
-        typeof s.endTime === 'number'
-          ? s.endTime
-          : new Date(s.endTime).getTime();
+  // ✅ فلترة بالتوقيت المحلي
+  const filteredCompleted = useMemo(() => {
+    return completedSessions.filter((s) => {
+      if (logDateFilter && s.endTime) {
+        const endTime =
+          typeof s.endTime === 'number'
+            ? s.endTime
+            : new Date(s.endTime).getTime();
+        const localDate = new Date(endTime);
+        const sessionDate = `${localDate.getFullYear()}-${String(
+          localDate.getMonth() + 1
+        ).padStart(2, '0')}-${String(localDate.getDate()).padStart(2, '0')}`;
+        if (sessionDate !== logDateFilter) return false;
+      }
+      if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter)
+        return false;
+      return true;
+    });
+  }, [completedSessions, logDateFilter, logPaymentFilter]);
 
-      // ✅ استخدم التوقيت المحلي بدل UTC
-      const localDate = new Date(endTime);
-      const sessionDate = `${localDate.getFullYear()}-${String(
-        localDate.getMonth() + 1
-      ).padStart(2, '0')}-${String(localDate.getDate()).padStart(2, '0')}`;
-
-      if (sessionDate !== logDateFilter) return false;
-    }
-    if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter)
-      return false;
-    return true;
-  });
-}, [completedSessions, logDateFilter, logPaymentFilter]);
-
+  // ✅ إحصائيات مع دعم الإيرادات المعلقة
   const filteredStats = useMemo(() => {
-    const cash = filteredCompleted
+    const confirmed = filteredCompleted.filter((s) => s.revenueConfirmed);
+    const unconfirmed = filteredCompleted.filter((s) => !s.revenueConfirmed);
+
+    const cash = confirmed
       .filter((s) => s.paymentMethod === 'cash')
       .reduce((a, s) => a + getSessionRevenue(s), 0);
-    const instapay = filteredCompleted
+    const instapay = confirmed
       .filter((s) => s.paymentMethod === 'instapay')
       .reduce((a, s) => a + getSessionRevenue(s), 0);
-    const wallet = filteredCompleted
+    const wallet = confirmed
       .filter((s) => s.paymentMethod === 'wallet')
       .reduce((a, s) => a + getSessionRevenue(s), 0);
-    const cashwallet = filteredCompleted
+    const cashwallet = confirmed
       .filter((s) => s.paymentMethod === 'cashwallet')
       .reduce((a, s) => a + getSessionRevenue(s), 0);
     const total = cash + instapay + wallet + cashwallet;
-    const manual = filteredCompleted.filter((s) => s.source === 'manual');
-    const app = filteredCompleted.filter((s) => s.source === 'app');
+    const manual = confirmed.filter((s) => s.source === 'manual');
+    const app = confirmed.filter((s) => s.source === 'app');
+    const pendingRevenue = unconfirmed.reduce(
+      (a, s) => a + getSessionRevenue(s),
+      0
+    );
+
     return {
       cash,
       instapay,
@@ -181,6 +192,8 @@ const filteredCompleted = useMemo(() => {
       appCount: app.length,
       manualTotal: manual.reduce((a, s) => a + getSessionRevenue(s), 0),
       appTotal: app.reduce((a, s) => a + getSessionRevenue(s), 0),
+      pendingRevenue,
+      pendingCount: unconfirmed.length,
     };
   }, [filteredCompleted, getSessionRevenue]);
 
@@ -264,7 +277,6 @@ const filteredCompleted = useMemo(() => {
 
   if (!garage) return null;
 
-  // ─── إضافة سيارة يدوياً ──────────────────────────────────────────────────
   const handleAddCar = async () => {
     if (!newCarPlate.trim()) {
       toast.error('أدخل رقم السيارة');
@@ -301,7 +313,6 @@ const filteredCompleted = useMemo(() => {
     setShowAddCar(false);
   };
 
-  // ─── فتح نافذة تأكيد السداد ──────────────────────────────────────────────
   const openConfirmPayment = (
     sessionId: string,
     carPlate: string,
@@ -331,7 +342,6 @@ const filteredCompleted = useMemo(() => {
     setConfirmPaymentMethod('cash');
   };
 
-  // ─── تأكيد السداد ────────────────────────────────────────────────────────
   const handleConfirmPayment = async () => {
     if (!confirmSession) return;
     if (isEndingSessionRef.current) return;
@@ -365,7 +375,6 @@ const filteredCompleted = useMemo(() => {
     }
   };
 
-  // ─── حفظ الإعدادات ───────────────────────────────────────────────────────
   const handleSaveSettings = () => {
     updateGarage(garage.id, {
       basePrice: editPrice,
@@ -383,22 +392,18 @@ const filteredCompleted = useMemo(() => {
     setShowSettings(true);
   };
 
-  // ✅ وصول سيارة - الدالة الرئيسية المُصلَحة
   const handleCarArrived = async (
     carId: string,
     carPlate: string,
     agreedPrice: number
   ) => {
-    // ✅ طبقة 1: منع الضغط المكرر بالـ carId
     if (processedCarsRef.current.has(carId)) return;
     processedCarsRef.current.add(carId);
-
     pausePolling(10000);
 
     try {
       const normalizedPlate = carPlate.trim().toUpperCase();
 
-      // ✅ طبقة 2: تحقق محلي - هل الجلسة بدأت بالفعل (من العميل)
       const existingLocal = useStore.getState().sessions.find(
         (s) =>
           s.carPlate.trim().toUpperCase() === normalizedPlate &&
@@ -406,26 +411,19 @@ const filteredCompleted = useMemo(() => {
       );
 
       if (existingLocal) {
-        // ✅ الجلسة موجودة - احذف من القادمين فقط
         await removeIncomingCar(carId);
         await supabase
           .from('incoming_cars')
           .delete()
           .eq('car_plate', normalizedPlate)
           .eq('garage_id', garage.id);
-
         toast('الجلسة شغالة بالفعل ✅', {
           icon: '🚗',
-          style: {
-            background: '#1e293b',
-            color: '#f1f5f9',
-            border: '1px solid #334155',
-          },
+          style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' },
         });
         return;
       }
 
-      // ✅ طبقة 3: تحقق من Supabase
       try {
         const { data: dbCheck } = await supabase
           .from('sessions')
@@ -444,11 +442,7 @@ const filteredCompleted = useMemo(() => {
           await fetchAll();
           toast('الجلسة شغالة بالفعل ✅', {
             icon: '🚗',
-            style: {
-              background: '#1e293b',
-              color: '#f1f5f9',
-              border: '1px solid #334155',
-            },
+            style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' },
           });
           return;
         }
@@ -456,7 +450,6 @@ const filteredCompleted = useMemo(() => {
         console.error('خطأ في التحقق من DB:', err);
       }
 
-      // ✅ مفيش جلسة - إلغاء العرض المرتبط
       const relatedOffer = offers.find(
         (o) =>
           o.carPlate.trim().toUpperCase() === normalizedPlate &&
@@ -464,7 +457,6 @@ const filteredCompleted = useMemo(() => {
       );
       if (relatedOffer) cancelOffer(relatedOffer.id);
 
-      // ✅ بدء الجلسة
       await addSession({
         garageId: garage.id,
         carPlate: normalizedPlate,
@@ -474,7 +466,6 @@ const filteredCompleted = useMemo(() => {
         agreedPrice,
       });
 
-      // ✅ احذف من القادمين محلياً وفي Supabase
       await removeIncomingCar(carId);
       await supabase
         .from('incoming_cars')
@@ -485,20 +476,13 @@ const filteredCompleted = useMemo(() => {
       toast.success(`بدأ حساب السيارة ${carPlate} 🚗`);
     } catch (err) {
       console.error('❌ خطأ في handleCarArrived:', err);
-      // ✅ امسح من الـ processed عشان يقدر يحاول تاني
       processedCarsRef.current.delete(carId);
       toast.error('حدث خطأ، حاول مرة أخرى');
     }
   };
 
-  const calculateRemainingTime = (
-    startTime: number,
-    estimatedMinutes: number
-  ) => {
-    const start =
-      typeof startTime === 'number'
-        ? startTime
-        : new Date(startTime).getTime();
+  const calculateRemainingTime = (startTime: number, estimatedMinutes: number) => {
+    const start = typeof startTime === 'number' ? startTime : new Date(startTime).getTime();
     const elapsed = Math.floor((Date.now() - start) / 60000);
     return Math.max(0, estimatedMinutes - elapsed);
   };
@@ -576,9 +560,7 @@ const filteredCompleted = useMemo(() => {
                       }
                       className="bg-transparent text-4xl font-black text-white text-center w-full outline-none font-mono"
                     />
-                    <div className="text-[10px] text-slate-500 font-bold">
-                      ج.م / ساعة
-                    </div>
+                    <div className="text-[10px] text-slate-500 font-bold">ج.م / ساعة</div>
                   </div>
                   <button
                     onClick={() => setEditPrice((p) => p + 5)}
@@ -593,9 +575,7 @@ const filteredCompleted = useMemo(() => {
                       key={p}
                       onClick={() => setEditPrice(p)}
                       className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${
-                        editPrice === p
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-slate-800 text-slate-500'
+                        editPrice === p ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-500'
                       }`}
                     >
                       {p}
@@ -623,10 +603,7 @@ const filteredCompleted = useMemo(() => {
                       value={editSpots}
                       onChange={(e) =>
                         setEditSpots(
-                          Math.max(
-                            0,
-                            Math.min(editCapacity, parseInt(e.target.value) || 0)
-                          )
+                          Math.max(0, Math.min(editCapacity, parseInt(e.target.value) || 0))
                         )
                       }
                       className="bg-transparent text-4xl font-black text-blue-400 text-center w-full outline-none font-mono"
@@ -636,9 +613,7 @@ const filteredCompleted = useMemo(() => {
                     </div>
                   </div>
                   <button
-                    onClick={() =>
-                      setEditSpots((s) => Math.min(editCapacity, s + 1))
-                    }
+                    onClick={() => setEditSpots((s) => Math.min(editCapacity, s + 1))}
                     className="bg-emerald-600/20 text-emerald-400 w-12 h-12 rounded-xl flex items-center justify-center border border-emerald-500/20 active:scale-90 transition-all"
                   >
                     <Plus size={20} />
@@ -648,11 +623,7 @@ const filteredCompleted = useMemo(() => {
                   <div
                     className="bg-gradient-to-r from-blue-600 to-emerald-500 h-full transition-all duration-300"
                     style={{
-                      width: `${
-                        editCapacity > 0
-                          ? (editSpots / editCapacity) * 100
-                          : 0
-                      }%`,
+                      width: `${editCapacity > 0 ? (editSpots / editCapacity) * 100 : 0}%`,
                     }}
                   />
                 </div>
@@ -666,9 +637,7 @@ const filteredCompleted = useMemo(() => {
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
                 <div className="flex items-center justify-between gap-4">
                   <button
-                    onClick={() =>
-                      setEditCapacity((c) => Math.max(editSpots, c - 10))
-                    }
+                    onClick={() => setEditCapacity((c) => Math.max(editSpots, c - 10))}
                     className="bg-slate-800 text-slate-400 w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 transition-all"
                   >
                     <Minus size={16} />
@@ -684,9 +653,7 @@ const filteredCompleted = useMemo(() => {
                       }
                       className="bg-transparent text-2xl font-black text-purple-400 text-center w-full outline-none font-mono"
                     />
-                    <div className="text-[10px] text-slate-500 font-bold">
-                      مكان إجمالي
-                    </div>
+                    <div className="text-[10px] text-slate-500 font-bold">مكان إجمالي</div>
                   </div>
                   <button
                     onClick={() => setEditCapacity((c) => c + 10)}
@@ -805,9 +772,7 @@ const filteredCompleted = useMemo(() => {
                     ].map((pm) => (
                       <button
                         key={pm.id}
-                        onClick={() =>
-                          !pm.disabled && setConfirmPaymentMethod(pm.id)
-                        }
+                        onClick={() => !pm.disabled && setConfirmPaymentMethod(pm.id)}
                         disabled={pm.disabled}
                         className={`p-3 rounded-xl border text-center transition-all ${
                           pm.disabled
@@ -882,7 +847,7 @@ const filteredCompleted = useMemo(() => {
           <div className="text-xl font-black text-emerald-400 font-mono">
             {totalRevenue.toFixed(0)}
           </div>
-          <div className="text-[8px] text-slate-500 font-bold">إجمالي</div>
+          <div className="text-[8px] text-slate-500 font-bold">مؤكد</div>
         </div>
         <div
           className="bg-blue-600/20 border border-blue-500/20 p-4 rounded-2xl text-center cursor-pointer hover:bg-blue-600/30 transition-all"
@@ -989,8 +954,6 @@ const filteredCompleted = useMemo(() => {
                 car.startTime,
                 car.estimatedArrival
               );
-
-              // ✅ تحقق لو الجلسة بدأت بالفعل من العميل
               const sessionAlreadyStarted = sessions.some(
                 (s) =>
                   s.carPlate.trim().toUpperCase() ===
@@ -1025,29 +988,21 @@ const filteredCompleted = useMemo(() => {
                       >
                         <CarFront size={20} className="text-cyan-400" />
                       </motion.div>
-                      {/* ✅ لو الجلسة بدأت - وريها */}
                       {sessionAlreadyStarted ? (
                         <div className="bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full text-[10px] font-black">
                           ✅ الجلسة شغالة
                         </div>
                       ) : (
                         <div className="bg-cyan-500/20 text-cyan-400 px-3 py-1 rounded-full text-[10px] font-black">
-                          {remainingTime > 0
-                            ? `${remainingTime} دقيقة`
-                            : 'وصل تقريباً'}
+                          {remainingTime > 0 ? `${remainingTime} دقيقة` : 'وصل تقريباً'}
                         </div>
                       )}
                     </div>
-                    <div className="text-lg font-black text-white">
-                      🚗 {car.carPlate}
-                    </div>
+                    <div className="text-lg font-black text-white">🚗 {car.carPlate}</div>
                   </div>
                   <div className="bg-slate-950/50 rounded-xl p-3 mb-3 space-y-2">
                     <div className="flex items-center justify-between">
-                      <a
-                        href={`tel:${car.customerPhone}`}
-                        className="text-sm font-black text-blue-400 font-mono"
-                      >
+                      <a href={`tel:${car.customerPhone}`} className="text-sm font-black text-blue-400 font-mono">
                         {car.customerPhone}
                       </a>
                       <div className="flex items-center gap-1 text-slate-400">
@@ -1067,9 +1022,7 @@ const filteredCompleted = useMemo(() => {
                   </div>
                   <div className="flex gap-2">
                     <button
-                      onClick={() =>
-                        handleCarArrived(car.id, car.carPlate, car.agreedPrice)
-                      }
+                      onClick={() => handleCarArrived(car.id, car.carPlate, car.agreedPrice)}
                       className={`flex-1 py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all ${
                         sessionAlreadyStarted
                           ? 'bg-slate-700 text-slate-300'
@@ -1077,9 +1030,7 @@ const filteredCompleted = useMemo(() => {
                       }`}
                     >
                       <CheckCircle size={16} />
-                      {sessionAlreadyStarted
-                        ? 'تأكيد الوصول وإزالة'
-                        : 'وصلت وبدء الحساب'}
+                      {sessionAlreadyStarted ? 'تأكيد الوصول وإزالة' : 'وصلت وبدء الحساب'}
                     </button>
                     <a
                       href={`tel:${car.customerPhone}`}
@@ -1107,9 +1058,7 @@ const filteredCompleted = useMemo(() => {
         <div className="flex items-center gap-3">
           <span className="text-[10px] text-slate-500">
             السعر:{' '}
-            <span className="text-emerald-400 font-mono font-black">
-              {garage.basePrice}ج
-            </span>
+            <span className="text-emerald-400 font-mono font-black">{garage.basePrice}ج</span>
           </span>
           <span className="text-slate-700">|</span>
           <span className="text-[10px] text-slate-500">
@@ -1144,25 +1093,17 @@ const filteredCompleted = useMemo(() => {
                       </span>
                     )}
                   </div>
-                  <div className="text-sm font-black text-white">
-                    🚗 {offer.carPlate}
-                  </div>
+                  <div className="text-sm font-black text-white">🚗 {offer.carPlate}</div>
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => {
-                      updateOffer(offer.id, 'accepted');
-                      toast.success('تم قبول العرض');
-                    }}
+                    onClick={() => { updateOffer(offer.id, 'accepted'); toast.success('تم قبول العرض'); }}
                     className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-1 active:scale-95 transition-all"
                   >
                     <CheckCircle size={16} /> قبول
                   </button>
                   <button
-                    onClick={() => {
-                      updateOffer(offer.id, 'rejected');
-                      toast.error('تم رفض العرض');
-                    }}
+                    onClick={() => { updateOffer(offer.id, 'rejected'); toast.error('تم رفض العرض'); }}
                     className="flex-1 bg-red-600 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-1 active:scale-95 transition-all"
                   >
                     <XCircle size={16} /> رفض
@@ -1187,9 +1128,7 @@ const filteredCompleted = useMemo(() => {
             }`}
           >
             <Plus size={20} />
-            {garage.availableSpots > 0
-              ? 'إضافة سيارة جديدة'
-              : 'لا توجد أماكن شاغرة'}
+            {garage.availableSpots > 0 ? 'إضافة سيارة جديدة' : 'لا توجد أماكن شاغرة'}
           </button>
         ) : (
           <motion.div
@@ -1235,9 +1174,7 @@ const filteredCompleted = useMemo(() => {
                     key={p}
                     onClick={() => setNewCarPrice(p)}
                     className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all active:scale-95 ${
-                      newCarPrice === p
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-800 text-slate-500'
+                      newCarPrice === p ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-500'
                     }`}
                   >
                     {p}
@@ -1330,14 +1267,13 @@ const filteredCompleted = useMemo(() => {
                       🚗 {session.carPlate}
                     </div>
                   </div>
-                  {session.agreedPrice &&
-                    session.agreedPrice !== garage.basePrice && (
-                      <div className="bg-amber-600/10 border border-amber-500/20 rounded-lg p-1.5 mb-2 text-center">
-                        <span className="text-[9px] text-amber-400 font-bold">
-                          سعر متفق: {session.agreedPrice} ج.م/ساعة
-                        </span>
-                      </div>
-                    )}
+                  {session.agreedPrice && session.agreedPrice !== garage.basePrice && (
+                    <div className="bg-amber-600/10 border border-amber-500/20 rounded-lg p-1.5 mb-2 text-center">
+                      <span className="text-[9px] text-amber-400 font-bold">
+                        سعر متفق: {session.agreedPrice} ج.م/ساعة
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2">
                       <button
@@ -1404,9 +1340,7 @@ const filteredCompleted = useMemo(() => {
               className="flex-1 bg-slate-950 border border-slate-800 p-2.5 rounded-xl text-xs font-bold text-white outline-none"
             />
             <button
-              onClick={() =>
-                setLogDateFilter(new Date().toISOString().split('T')[0])
-              }
+              onClick={() => setLogDateFilter(new Date().toISOString().split('T')[0])}
               className="bg-blue-600/20 text-blue-400 px-3 py-2 rounded-xl text-[10px] font-black border border-blue-500/20 active:scale-95 transition-all whitespace-nowrap"
             >
               اليوم
@@ -1443,10 +1377,29 @@ const filteredCompleted = useMemo(() => {
 
         {filteredCompleted.length > 0 && (
           <>
+            {/* ✅ بانر الإيرادات المعلقة */}
+            {filteredStats.pendingCount > 0 && (
+              <div className="bg-amber-600/10 border border-amber-500/30 rounded-2xl p-4 mb-4">
+                <div className="flex justify-between items-center">
+                  <div className="text-right">
+                    <h3 className="text-sm font-black text-amber-400">
+                      ⏳ إيرادات معلقة ({filteredStats.pendingCount})
+                    </h3>
+                    <p className="text-[10px] text-amber-400/60">
+                      تحتاج تأكيد لتُحسب في الإيرادات
+                    </p>
+                  </div>
+                  <div className="text-xl font-black text-amber-400 font-mono">
+                    {filteredStats.pendingRevenue.toFixed(0)} ج.م
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="bg-gradient-to-l from-emerald-600/20 to-slate-900 border border-emerald-500/30 rounded-2xl p-4 mb-4 text-center">
               <div className="text-[10px] text-slate-400 mb-1">
                 {logDateFilter
-                  ? `إجمالي يوم ${new Date(
+                  ? `إجمالي مؤكد - يوم ${new Date(
                       logDateFilter + 'T00:00:00'
                     ).toLocaleDateString('ar-EG', {
                       weekday: 'long',
@@ -1454,13 +1407,13 @@ const filteredCompleted = useMemo(() => {
                       month: 'long',
                       day: 'numeric',
                     })}`
-                  : 'إجمالي كل العمليات'}
+                  : 'إجمالي مؤكد - كل العمليات'}
               </div>
               <div className="text-3xl font-black text-emerald-400 font-mono">
                 {filteredStats.total.toFixed(0)} ج.م
               </div>
               <div className="text-[10px] text-slate-500 mt-1">
-                {filteredCompleted.length} عملية
+                {filteredCompleted.filter((s) => s.revenueConfirmed).length} عملية مؤكدة
               </div>
             </div>
 
@@ -1519,20 +1472,28 @@ const filteredCompleted = useMemo(() => {
               : null;
             const time = endTime ? new Date(endTime) : null;
             const revenue = getSessionRevenue(session);
+            const isConfirmed = session.revenueConfirmed;
+
             return (
               <div
                 key={session.id}
                 className={`rounded-xl p-3 border ${
-                  isManual
+                  !isConfirmed
+                    ? 'bg-amber-950/20 border-amber-500/30'
+                    : isManual
                     ? 'bg-amber-950/30 border-amber-500/20'
                     : 'bg-blue-950/20 border-blue-500/20'
                 }`}
               >
                 <div className="flex justify-between items-start mb-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span
                       className={`text-sm font-mono font-black ${
-                        isManual ? 'text-amber-400' : 'text-blue-400'
+                        !isConfirmed
+                          ? 'text-amber-300'
+                          : isManual
+                          ? 'text-amber-400'
+                          : 'text-blue-400'
                       }`}
                     >
                       {revenue.toFixed(0)} ج.م
@@ -1546,6 +1507,21 @@ const filteredCompleted = useMemo(() => {
                     >
                       {isManual ? 'يدوي' : 'تطبيق'}
                     </span>
+
+                    {/* ✅ زر التأكيد أو علامة التأكيد */}
+                    {!isConfirmed ? (
+                      <button
+                        onClick={() => {
+                          confirmRevenue(session.id);
+                          toast.success('تم تأكيد الإيراد ✅');
+                        }}
+                        className="bg-amber-600/20 text-amber-400 px-2 py-0.5 rounded-lg text-[8px] font-black border border-amber-500/30 active:scale-95 transition-all"
+                      >
+                        ⏳ تأكيد الإيراد
+                      </button>
+                    ) : (
+                      <span className="text-[8px] text-emerald-400 font-bold">✅ مؤكد</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-1">
                     <span

@@ -50,7 +50,6 @@ export default function AdminDashboard() {
   const [dateTo, setDateTo] = useState('');
   const [, setTick] = useState(0);
 
-  // ─── state للرسائل ────────────────────────────────────────────────────────
   const [replyText, setReplyText] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [expandedMessage, setExpandedMessage] = useState<string | null>(null);
@@ -69,7 +68,7 @@ export default function AdminDashboard() {
 
   const completedSessions = sessions.filter((s) => s.status === 'completed');
 
-  // ✅ فلترة صحيحة بالتاريخ المحلي - من 12:00:00 صباحاً لـ 11:59:59 مساءً
+  // ✅ فلترة بالتاريخ المحلي
   const filteredSessions = useMemo(() => {
     return completedSessions.filter((s) => {
       const sessionEndTime = getSessionTime(s.endTime);
@@ -89,7 +88,7 @@ export default function AdminDashboard() {
     });
   }, [completedSessions, dateFrom, dateTo]);
 
-  // ─── دالة حساب الإيراد الصحيح ─────────────────────────────────────────────
+  // ─── دالة حساب الإيراد ────────────────────────────────────────────────────
   const getRevenue = (s: typeof completedSessions[0]) => {
     if (s.totalPrice != null && Number(s.totalPrice) > 0) {
       return Number(s.totalPrice);
@@ -111,33 +110,57 @@ export default function AdminDashboard() {
     return 0;
   };
 
-  // ─── الإيراد الكلي ────────────────────────────────────────────────────────
+  // ✅ الإيراد الكلي - بس المؤكد
   const totalRevenue = useMemo(
-    () => filteredSessions.reduce((a, s) => a + getRevenue(s), 0),
+    () =>
+      filteredSessions
+        .filter((s) => s.revenueConfirmed)
+        .reduce((a, s) => a + getRevenue(s), 0),
     [filteredSessions]
   );
 
-  // ─── تحليل طرق الدفع ──────────────────────────────────────────────────────
+  // ✅ إيراد معلق
+  const pendingRevenue = useMemo(
+    () =>
+      filteredSessions
+        .filter((s) => !s.revenueConfirmed)
+        .reduce((a, s) => a + getRevenue(s), 0),
+    [filteredSessions]
+  );
+
+  const pendingRevenueCount = useMemo(
+    () => filteredSessions.filter((s) => !s.revenueConfirmed).length,
+    [filteredSessions]
+  );
+
+  // ✅ تحليل طرق الدفع - بس المؤكد
   const paymentBreakdown = useMemo(() => {
     const b = { cash: 0, instapay: 0, wallet: 0, cashwallet: 0 };
-    filteredSessions.forEach((s) => {
-      const rev = getRevenue(s);
-      if (s.paymentMethod === 'cash') b.cash += rev;
-      else if (s.paymentMethod === 'instapay') b.instapay += rev;
-      else if (s.paymentMethod === 'wallet') b.wallet += rev;
-      else if (s.paymentMethod === 'cashwallet') b.cashwallet += rev;
-    });
+    filteredSessions
+      .filter((s) => s.revenueConfirmed)
+      .forEach((s) => {
+        const rev = getRevenue(s);
+        if (s.paymentMethod === 'cash') b.cash += rev;
+        else if (s.paymentMethod === 'instapay') b.instapay += rev;
+        else if (s.paymentMethod === 'wallet') b.wallet += rev;
+        else if (s.paymentMethod === 'cashwallet') b.cashwallet += rev;
+      });
     return b;
   }, [filteredSessions]);
 
-  // ─── تقرير الجراجات ───────────────────────────────────────────────────────
+  // ✅ تقرير الجراجات - بس المؤكد
   const garageReport = useMemo(() => {
     return garages.map((g) => {
-      const gs = filteredSessions.filter((s) => s.garageId === g.id);
+      const allGs = filteredSessions.filter((s) => s.garageId === g.id);
+      const gs = allGs.filter((s) => s.revenueConfirmed);
+      const pending = allGs.filter((s) => !s.revenueConfirmed);
+
       return {
         name: g.name,
         count: gs.length,
         revenue: gs.reduce((a, s) => a + getRevenue(s), 0),
+        pendingRevenue: pending.reduce((a, s) => a + getRevenue(s), 0),
+        pendingCount: pending.length,
         cash: gs
           .filter((s) => s.paymentMethod === 'cash')
           .reduce((a, s) => a + getRevenue(s), 0),
@@ -157,7 +180,6 @@ export default function AdminDashboard() {
   const pendingTopUps = walletTopUps.filter((w) => w.status === 'pending');
   const activeSessions = sessions.filter((s) => s.status === 'active');
 
-  // ─── الرسائل ──────────────────────────────────────────────────────────────
   const safeMessages = messages ?? [];
   const pendingMessages = safeMessages.filter((m) => m.status === 'pending');
   const allMessages = [...safeMessages].sort((a, b) => b.timestamp - a.timestamp);
@@ -193,7 +215,6 @@ export default function AdminDashboard() {
     });
   };
 
-  // ─── زر اليوم الحالي السريع ───────────────────────────────────────────────
   const setToday = () => {
     const today = new Date().toISOString().split('T')[0];
     setDateFrom(today);
@@ -203,7 +224,7 @@ export default function AdminDashboard() {
   return (
     <div className="h-full bg-slate-950 text-white text-right p-5 overflow-y-auto pt-16">
 
-      {/* ─── Header ──────────────────────────────────────────────────────────── */}
+      {/* Header */}
       <div className="flex justify-between items-center mb-8 border-b border-slate-800 pb-4">
         <button
           onClick={() => {
@@ -225,16 +246,14 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ─── Date Filter ─────────────────────────────────────────────────────── */}
+      {/* Date Filter */}
       <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-[2rem] mb-6 text-center">
         <h3 className="text-xs font-black text-slate-400 mb-3">
           تصفية حسب التاريخ
         </h3>
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
-            <label className="text-[9px] text-slate-500 font-bold block mb-1">
-              من
-            </label>
+            <label className="text-[9px] text-slate-500 font-bold block mb-1">من</label>
             <input
               type="date"
               value={dateFrom}
@@ -243,9 +262,7 @@ export default function AdminDashboard() {
             />
           </div>
           <div>
-            <label className="text-[9px] text-slate-500 font-bold block mb-1">
-              إلى
-            </label>
+            <label className="text-[9px] text-slate-500 font-bold block mb-1">إلى</label>
             <input
               type="date"
               value={dateTo}
@@ -255,7 +272,6 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* ✅ أزرار سريعة */}
         <div className="flex gap-2 justify-center">
           <button
             onClick={setToday}
@@ -287,17 +303,13 @@ export default function AdminDashboard() {
             آخر أسبوع
           </button>
           <button
-            onClick={() => {
-              setDateFrom('');
-              setDateTo('');
-            }}
+            onClick={() => { setDateFrom(''); setDateTo(''); }}
             className="bg-slate-800 text-slate-400 px-4 py-2 rounded-xl text-[10px] font-black active:scale-95 transition-all"
           >
             الكل
           </button>
         </div>
 
-        {/* ✅ عرض نطاق التاريخ المحدد */}
         {(dateFrom || dateTo) && (
           <div className="mt-3 bg-blue-600/10 border border-blue-500/20 rounded-xl p-2 text-center">
             <p className="text-[9px] text-blue-400 font-bold">
@@ -305,9 +317,7 @@ export default function AdminDashboard() {
                 ? dateFrom === dateTo
                   ? `📅 ${new Date(getLocalDayStart(dateFrom)).toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`
                   : `من ${dateFrom} إلى ${dateTo}`
-                : dateFrom
-                ? `من ${dateFrom}`
-                : `إلى ${dateTo}`}
+                : dateFrom ? `من ${dateFrom}` : `إلى ${dateTo}`}
             </p>
             <p className="text-[8px] text-blue-400/60 mt-0.5">
               ⏰ من 12:00 صباحاً إلى 11:59 مساءً
@@ -316,11 +326,11 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* ─── Revenue Stats ───────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 mb-6">
+      {/* Revenue Stats */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-5 rounded-[2rem] shadow-2xl">
           <div className="text-[10px] text-blue-100 font-bold mb-1">
-            الإيرادات المصفاة
+            الإيرادات المؤكدة
           </div>
           <div className="text-3xl font-black text-white font-mono tracking-tighter">
             {totalRevenue.toFixed(0)}{' '}
@@ -329,17 +339,36 @@ export default function AdminDashboard() {
         </div>
         <div className="bg-slate-900 border border-slate-800 p-5 rounded-[2rem] shadow-2xl">
           <div className="text-[10px] text-slate-500 font-bold mb-1">
-            إجمالي العمليات
+            إجمالي العمليات المؤكدة
           </div>
           <div className="text-3xl font-black text-emerald-400 font-mono tracking-tighter">
-            {filteredSessions.length}
+            {filteredSessions.filter((s) => s.revenueConfirmed).length}
           </div>
         </div>
       </div>
 
-      {/* ─── Payment Breakdown ───────────────────────────────────────────────── */}
+      {/* ✅ بانر الإيرادات المعلقة */}
+      {pendingRevenueCount > 0 && (
+        <div className="bg-amber-600/10 border border-amber-500/30 rounded-2xl p-4 mb-6">
+          <div className="flex justify-between items-center">
+            <div className="text-right">
+              <h3 className="text-sm font-black text-amber-400">
+                ⏳ إيرادات معلقة ({pendingRevenueCount})
+              </h3>
+              <p className="text-[10px] text-amber-400/60">
+                تحتاج تأكيد من أصحاب الجراجات
+              </p>
+            </div>
+            <div className="text-xl font-black text-amber-400 font-mono">
+              {pendingRevenue.toFixed(0)} ج.م
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Breakdown */}
       <h3 className="text-xs font-black text-slate-400 mb-3">
-        تحليل الإيرادات حسب وسيلة السداد
+        تحليل الإيرادات المؤكدة حسب وسيلة السداد
       </h3>
       <div className="grid grid-cols-2 gap-3 mb-8">
         <div className="bg-slate-900/40 border border-slate-800 p-4 rounded-2xl">
@@ -380,19 +409,20 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ─── Garage Revenue Table ────────────────────────────────────────────── */}
+      {/* Garage Revenue Table */}
       <div className="bg-slate-900 border border-slate-800 rounded-[2rem] overflow-hidden mb-8 shadow-2xl">
         <div className="p-4 border-b border-slate-800 bg-slate-900/50">
           <h3 className="text-sm font-black text-slate-300">
-            تقرير إيرادات الجراجات
+            تقرير إيرادات الجراجات (المؤكدة)
           </h3>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-right min-w-[500px]">
+          <table className="w-full text-right min-w-[580px]">
             <thead className="bg-slate-950 text-[9px] text-slate-500 font-bold">
               <tr>
                 <th className="p-3">الجراج</th>
-                <th className="p-3 text-center">الإجمالي</th>
+                <th className="p-3 text-center">المؤكد</th>
+                <th className="p-3 text-amber-500 text-center">معلق</th>
                 <th className="p-3 text-emerald-500 text-center">نقدي</th>
                 <th className="p-3 text-purple-500 text-center">إنستاباي</th>
                 <th className="p-3 text-blue-500 text-center">محفظة</th>
@@ -404,10 +434,20 @@ export default function AdminDashboard() {
                 <tr key={r.name} className="hover:bg-slate-800/30 transition-colors">
                   <td className="p-3">
                     <div className="text-xs font-black text-slate-200">{r.name}</div>
-                    <div className="text-[8px] text-slate-500">{r.count} عملية</div>
+                    <div className="text-[8px] text-slate-500">{r.count} مؤكدة</div>
                   </td>
                   <td className="p-3 text-center text-xs font-mono font-black text-slate-100 bg-slate-800/20">
                     {r.revenue.toFixed(0)}ج
+                  </td>
+                  <td className="p-3 text-center text-xs font-mono text-amber-400">
+                    {r.pendingRevenue > 0 ? (
+                      <span className="flex flex-col items-center">
+                        <span>{r.pendingRevenue.toFixed(0)}ج</span>
+                        <span className="text-[8px] text-amber-600">({r.pendingCount})</span>
+                      </span>
+                    ) : (
+                      <span className="text-slate-700">—</span>
+                    )}
                   </td>
                   <td className="p-3 text-center text-xs font-mono text-emerald-400">
                     {r.cash.toFixed(0)}
@@ -425,7 +465,7 @@ export default function AdminDashboard() {
               ))}
               {garageReport.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-xs text-slate-600">
+                  <td colSpan={7} className="p-6 text-center text-xs text-slate-600">
                     لا توجد بيانات للفترة المحددة
                   </td>
                 </tr>
@@ -435,7 +475,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ─── Pending Top-ups ─────────────────────────────────────────────────── */}
+      {/* Pending Top-ups */}
       <div className="mb-8">
         <h3 className="font-black text-lg mb-4 text-orange-400 flex items-center gap-2 justify-end">
           اعتمادات معلقة ({pendingTopUps.length})
@@ -529,7 +569,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ─── Active Sessions ─────────────────────────────────────────────────── */}
+      {/* Active Sessions */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <span className="text-[10px] text-slate-500 bg-slate-900 px-2 py-1 rounded-lg border border-slate-800">
@@ -649,21 +689,15 @@ export default function AdminDashboard() {
 
                   <div className="grid grid-cols-3 gap-2 text-center">
                     <div className="bg-slate-950/50 rounded-lg p-2 border border-slate-800">
-                      <div className="text-sm font-black text-white font-mono">
-                        {mins}
-                      </div>
+                      <div className="text-sm font-black text-white font-mono">{mins}</div>
                       <div className="text-[8px] text-slate-500">دقيقة</div>
                     </div>
                     <div className="bg-slate-950/50 rounded-lg p-2 border border-slate-800">
-                      <div className="text-sm font-black text-blue-400 font-mono">
-                        {hours}
-                      </div>
+                      <div className="text-sm font-black text-blue-400 font-mono">{hours}</div>
                       <div className="text-[8px] text-slate-500">ساعة محسوبة</div>
                     </div>
                     <div className="bg-slate-950/50 rounded-lg p-2 border border-slate-800">
-                      <div className="text-sm font-black text-emerald-400 font-mono">
-                        {cost}
-                      </div>
+                      <div className="text-sm font-black text-emerald-400 font-mono">{cost}</div>
                       <div className="text-[8px] text-slate-500">ج.م</div>
                     </div>
                   </div>
@@ -674,7 +708,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ─── Messages & Complaints ───────────────────────────────────────────── */}
+      {/* Messages & Complaints */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <span className="bg-red-500/20 text-red-400 px-2 py-1 rounded-lg text-[10px] font-black border border-red-500/20">
@@ -784,9 +818,7 @@ export default function AdminDashboard() {
                     className={`text-[11px] text-slate-400 text-right leading-relaxed mb-2 cursor-pointer ${
                       isExpanded ? '' : 'line-clamp-2'
                     }`}
-                    onClick={() =>
-                      setExpandedMessage(isExpanded ? null : msg.id)
-                    }
+                    onClick={() => setExpandedMessage(isExpanded ? null : msg.id)}
                   >
                     {msg.message}
                   </div>
@@ -888,7 +920,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ─── Manage Garages ──────────────────────────────────────────────────── */}
+      {/* Manage Garages */}
       <div className="mb-8">
         <h3 className="font-black text-lg mb-4 text-blue-400 flex items-center gap-2 justify-end">
           إدارة الجراجات
@@ -908,9 +940,7 @@ export default function AdminDashboard() {
                   <div className="text-[8px] font-bold">شاغر</div>
                 </div>
                 <div className="text-right">
-                  <div className="text-lg font-black text-white mb-1">
-                    {g.name}
-                  </div>
+                  <div className="text-lg font-black text-white mb-1">{g.name}</div>
                   <div className="text-[10px] text-slate-500 flex items-center gap-1 justify-end">
                     <MapPin size={10} /> {g.location}
                   </div>
@@ -930,7 +960,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ─── Add Garage ──────────────────────────────────────────────────────── */}
+      {/* Add Garage */}
       <div className="mb-20">
         <h3 className="font-black text-lg mb-4 text-blue-400 flex items-center gap-2 justify-end">
           إضافة جراج جديد

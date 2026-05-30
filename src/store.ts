@@ -29,6 +29,7 @@ export interface ParkingSession {
   source: 'app' | 'manual';
   agreedPrice?: number;
   synced?: boolean;
+  revenueConfirmed?: boolean; // ✅ جديد
 }
 
 export interface Offer {
@@ -238,6 +239,7 @@ const ms = (r: any): ParkingSession => {
     source: r.source,
     agreedPrice: r.agreed_price != null ? Number(r.agreed_price) : undefined,
     synced: true,
+    revenueConfirmed: r.revenue_confirmed ?? false, // ✅ جديد
   };
 };
 
@@ -351,6 +353,7 @@ interface AppState {
   ) => Promise<void>;
   cancelSession: (id: string) => void;
   removeSession: (id: string) => Promise<void>;
+  confirmRevenue: (sessionId: string) => Promise<void>; // ✅ جديد
   offers: Offer[];
   addOffer: (o: Omit<Offer, 'id' | 'timestamp'>) => void;
   updateOffer: (
@@ -486,7 +489,6 @@ export const useStore = create<AppState>((set, get) => ({
     set({ currentUser: updated });
     safeSetStorage('currentUser', updated);
 
-    // ✅ سجّل وقت الخصم عشان fetchAll ما يـ override الرصيد
     walletDeductedAt = Date.now();
 
     if (isSupabaseConfigured()) {
@@ -616,7 +618,11 @@ export const useStore = create<AppState>((set, get) => ({
       const localVersion = currentSessions.find((cs) => cs.id === ss.id);
       if (localVersion) {
         if (localVersion.status === 'completed') {
-          return localVersion;
+          // ✅ احتفظ بـ revenueConfirmed من Supabase لو أحدث
+          return {
+            ...localVersion,
+            revenueConfirmed: ss.revenueConfirmed || localVersion.revenueConfirmed,
+          };
         }
         if (localVersion.totalPrice != null && localVersion.totalPrice > 0) {
           return localVersion;
@@ -678,7 +684,6 @@ export const useStore = create<AppState>((set, get) => ({
         const timeSinceDeduct = Date.now() - walletDeductedAt;
 
         if (timeSinceDeduct < 20000) {
-          // ✅ لو لسه في نافذة الحماية - جيب البيانات بس ما تحدثش الرصيد
           const { data } = await supabase
             .from('users')
             .select('name, phone, car_plate')
@@ -690,13 +695,12 @@ export const useStore = create<AppState>((set, get) => ({
               name: data.name || user.name,
               phone: data.phone || user.phone,
               carPlate: data.car_plate || user.carPlate,
-              wallet: user.wallet, // ✅ احتفظ بالرصيد المحلي
+              wallet: user.wallet,
             };
             set({ currentUser: updated });
             safeSetStorage('currentUser', updated);
           }
         } else {
-          // ✅ عادي - جيب الرصيد من DB
           const { data } = await supabase
             .from('users')
             .select('wallet, name, phone, car_plate')
@@ -887,6 +891,7 @@ export const useStore = create<AppState>((set, get) => ({
         carPlate: normalizedPlate,
         startTime: safeStartTime,
         synced: false,
+        revenueConfirmed: false, // ✅ جديد
       };
 
       set((st) => ({
@@ -908,6 +913,7 @@ export const useStore = create<AppState>((set, get) => ({
             status: s.status,
             source: s.source,
             agreed_price: s.agreedPrice ?? null,
+            revenue_confirmed: false, // ✅ جديد
           })
           .select()
           .single();
@@ -977,6 +983,7 @@ export const useStore = create<AppState>((set, get) => ({
                 totalPrice: safeTotalPrice,
                 paymentMethod,
                 status: 'completed' as const,
+                revenueConfirmed: false, // ✅ جديد - دايماً false عند الإنهاء
               }
             : s
         ),
@@ -993,6 +1000,7 @@ export const useStore = create<AppState>((set, get) => ({
           total_price: safeTotalPrice,
           payment_method: paymentMethod,
           status: 'completed',
+          revenue_confirmed: false, // ✅ جديد
         })
         .eq('id', id)
         .eq('status', 'active');
@@ -1008,6 +1016,33 @@ export const useStore = create<AppState>((set, get) => ({
       setTimeout(() => {
         sessionEndLocks.delete(lockKey);
       }, 3000);
+    }
+  },
+
+  // ── confirmRevenue ────────────────────────────────────────────────────────
+  confirmRevenue: async (sessionId) => {
+    // ✅ تحديث محلي فوري
+    set((st) => ({
+      sessions: st.sessions.map((s) =>
+        s.id === sessionId ? { ...s, revenueConfirmed: true } : s
+      ),
+    }));
+
+    if (!isSupabaseConfigured()) return;
+
+    const { error } = await supabase
+      .from('sessions')
+      .update({ revenue_confirmed: true })
+      .eq('id', sessionId);
+
+    if (error) {
+      console.error('❌ خطأ في تأكيد الإيراد:', error);
+      // ✅ rollback لو فشل
+      set((st) => ({
+        sessions: st.sessions.map((s) =>
+          s.id === sessionId ? { ...s, revenueConfirmed: false } : s
+        ),
+      }));
     }
   },
 
