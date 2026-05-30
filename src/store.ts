@@ -514,7 +514,6 @@ export const useStore = create<AppState>((set, get) => ({
     const supabaseSessionIds = new Set(supabaseSessions.map((ss) => ss.id));
     const currentSessions = get().sessions;
 
-    // ✅ إصلاح: منع التكرار - لو carPlate موجود في Supabase كـ active، ما نضيفوش من المحلي
     const supabaseActivePlates = new Set(
       supabaseSessions
         .filter((ss) => ss.status === 'active')
@@ -529,24 +528,18 @@ export const useStore = create<AppState>((set, get) => ({
         Date.now() - cs.startTime < 10000
     );
 
-    // ✅ إصلاح: الأولوية للنسخة المحلية لو عندها endTime أو completed
+    // ✅ إصلاح: الأولوية للنسخة المحلية لو completed أو عندها totalPrice
     const mergedSessions = supabaseSessions.map((ss) => {
       const localVersion = currentSessions.find((cs) => cs.id === ss.id);
       if (localVersion) {
-        // لو المحلي completed والـ DB لسه active = خد المحلي
-        if (
-          localVersion.status === 'completed' &&
-          localVersion.totalPrice != null &&
-          localVersion.totalPrice > 0 &&
-          ss.status === 'active'
-        ) {
+        // ✅ لو المحلي completed = خده دايماً
+        if (localVersion.status === 'completed') {
           return localVersion;
         }
-        // لو المحلي عنده totalPrice والـ DB ما عندوش = خد المحلي
+        // ✅ لو المحلي عنده totalPrice > 0 = خده
         if (
           localVersion.totalPrice != null &&
-          localVersion.totalPrice > 0 &&
-          (ss.totalPrice == null || ss.totalPrice === 0)
+          localVersion.totalPrice > 0
         ) {
           return localVersion;
         }
@@ -741,7 +734,7 @@ export const useStore = create<AppState>((set, get) => ({
         ? s.startTime
         : Date.now();
 
-    // ✅ طبقة 1: تحقق محلي بالـ carPlate (أي جراج)
+    // ✅ طبقة 1: تحقق محلي
     const existingLocal = get().sessions.find(
       (existing) =>
         existing.carPlate === s.carPlate &&
@@ -837,7 +830,6 @@ export const useStore = create<AppState>((set, get) => ({
     const now = Date.now();
     const session = get().sessions.find((s) => s.id === id);
 
-    // ✅ إصلاح: لو الجلسة مش موجودة أو مش active - لا تعمل حاجة
     if (!session) {
       console.error('❌ الجلسة مش موجودة:', id);
       return;
@@ -848,13 +840,10 @@ export const useStore = create<AppState>((set, get) => ({
       return;
     }
 
-    // ✅ إصلاح: حدّث كل الجلسات النشطة لنفس الـ carPlate (لو فيه مكرر)
+    // ✅ إصلاح: حدّث الجلسة بالـ id فقط - مش بالـ carPlate
     set((st) => ({
       sessions: st.sessions.map((s) => {
-        if (
-          s.id === id ||
-          (s.carPlate === session.carPlate && s.status === 'active')
-        ) {
+        if (s.id === id) {
           return {
             ...s,
             endTime: now,
@@ -871,7 +860,7 @@ export const useStore = create<AppState>((set, get) => ({
 
     if (!isSupabaseConfigured()) return;
 
-    // ✅ إصلاح: حدّث بالـ id المحدد
+    // ✅ إصلاح: حدّث بالـ id فقط - مش بالـ carPlate (ده كان سبب التكرار)
     const { error } = await supabase
       .from('sessions')
       .update({
@@ -880,28 +869,20 @@ export const useStore = create<AppState>((set, get) => ({
         payment_method: paymentMethod,
         status: 'completed',
       })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('status', 'active'); // ✅ ضمان إنه active بس
 
     if (error) {
       console.error('❌ خطأ في إنهاء الجلسة:', error);
     }
 
-    // ✅ إصلاح: أغلق أي جلسة مكررة نشطة لنفس السيارة في الداتابيز
-    await supabase
-      .from('sessions')
-      .update({
-        end_time: new Date(now).toISOString(),
-        total_price: totalPrice,
-        payment_method: paymentMethod,
-        status: 'completed',
-      })
-      .eq('car_plate', session.carPlate)
-      .eq('status', 'active');
+    // ✅ إصلاح: pause الـ polling لمدة أطول بعد endSession
+    pausePolling(8000);
 
-    // ✅ تحديث البيانات بعد الإنهاء
+    // ✅ fetchAll بعد 8 ثواني بس
     setTimeout(() => {
       get().fetchAll();
-    }, 500);
+    }, 8000);
   },
 
   // ── cancelSession ─────────────────────────────────────────────────────────
@@ -1171,7 +1152,6 @@ export const useStore = create<AppState>((set, get) => ({
     let savedCarPlate = '';
     let savedGarageId = '';
 
-    // ✅ حذف محلي فوري مع حفظ بيانات السيارة
     set((st) => {
       const found = st.incomingCars.find((c) => c.id === id);
       if (found) {
@@ -1186,13 +1166,8 @@ export const useStore = create<AppState>((set, get) => ({
     if (!isSupabaseConfigured()) return;
 
     try {
-      // ✅ طبقة 1: حذف بالـ id
-      await supabase
-        .from('incoming_cars')
-        .delete()
-        .eq('id', id);
+      await supabase.from('incoming_cars').delete().eq('id', id);
 
-      // ✅ طبقة 2: حذف بالـ car_plate + garage_id
       if (savedCarPlate && savedGarageId) {
         await supabase
           .from('incoming_cars')
@@ -1204,7 +1179,6 @@ export const useStore = create<AppState>((set, get) => ({
       console.error('❌ خطأ في removeIncomingCar:', err);
     }
 
-    // ✅ طبقة 3: تأكيد من الداتابيز
     setTimeout(() => {
       get().fetchAll();
     }, 1000);
@@ -1318,18 +1292,22 @@ export const useStore = create<AppState>((set, get) => ({
     if (error) console.error('❌ خطأ في إغلاق الرسالة:', error);
   },
 
-})); // ✅ إغلاق useStore
+}));
 
 // ===================== Realtime =====================
 let realtimeStarted = false;
 let pollingInterval: ReturnType<typeof setInterval> | null = null;
 let isOperationInProgress = false;
+let pauseTimeout: ReturnType<typeof setTimeout> | null = null;
 
-export function pausePolling() {
+// ✅ إصلاح: pausePolling بتقبل مدة اختيارية (default 5000ms)
+export function pausePolling(duration = 5000) {
   isOperationInProgress = true;
-  setTimeout(() => {
+  if (pauseTimeout) clearTimeout(pauseTimeout);
+  pauseTimeout = setTimeout(() => {
     isOperationInProgress = false;
-  }, 5000);
+    pauseTimeout = null;
+  }, duration);
 }
 
 export function setupRealtime() {
@@ -1415,6 +1393,7 @@ export function setupRealtime() {
   window.addEventListener('beforeunload', () => {
     if (refreshTimeout) clearTimeout(refreshTimeout);
     if (pollingInterval) clearInterval(pollingInterval);
+    if (pauseTimeout) clearTimeout(pauseTimeout);
     channel.unsubscribe();
     supabase.removeChannel(channel);
   });
