@@ -204,6 +204,8 @@ const m = (r: any): Garage => ({
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ms = (r: any): ParkingSession => {
+  // ✅ الحل: استخدم new Date().getTime() مباشرة
+  // Supabase بيرجع ISO string بـ UTC - new Date() بيحولها صح
   let startTime = Date.now();
   try {
     if (r.start_time) {
@@ -219,6 +221,19 @@ const ms = (r: any): ParkingSession => {
       if (!isNaN(parsed) && parsed > 0) endTime = parsed;
     }
   } catch {}
+
+  // ✅ تأكد إن endTime دايمًا بعد startTime
+  if (endTime && endTime < startTime) {
+    console.warn('⚠️ endTime قبل startTime - timezone issue:', {
+      start: new Date(startTime).toISOString(),
+      end: new Date(endTime).toISOString(),
+    });
+    // ✅ حاول تصلح: لو الفرق أقل من 4 ساعات = timezone offset
+    const diff = startTime - endTime;
+    if (diff < 4 * 60 * 60 * 1000) {
+      endTime = endTime + diff + 60000; // أضف الفرق + دقيقة
+    }
+  }
 
   return {
     id: r.id,
@@ -918,77 +933,72 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   // ── endSession ────────────────────────────────────────────────────────────
-  endSession: async (id, totalPrice, paymentMethod) => {
-    const now = Date.now();
-    const session = get().sessions.find((s) => s.id === id);
+ endSession: async (id, totalPrice, paymentMethod) => {
+  const now = Date.now();
+  const session = get().sessions.find((s) => s.id === id);
 
-    if (!session) {
-      console.error('❌ الجلسة مش موجودة:', id);
-      return;
+  if (!session) {
+    console.error('❌ الجلسة مش موجودة:', id);
+    return;
+  }
+
+  if (session.status !== 'active') {
+    console.warn('⚠️ الجلسة مش نشطة:', session.status);
+    return;
+  }
+
+  const lockKey = `${session.garageId}:${normalizePlate(session.carPlate)}`;
+  if (sessionEndLocks.has(lockKey)) return;
+  sessionEndLocks.add(lockKey);
+
+  pausePolling(8000);
+
+  try {
+    // ✅ استخدم totalPrice اللي جاي من الـ UI - مش تحسب تاني
+    const safeTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
+
+    set((st) => ({
+      sessions: st.sessions.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              endTime: now,
+              totalPrice: safeTotalPrice,
+              paymentMethod,
+              status: 'completed' as const,
+            }
+          : s
+      ),
+    }));
+
+    await get().adjustGarageSpots(session.garageId, +1);
+
+    if (!isSupabaseConfigured()) return;
+
+    const { error } = await supabase
+      .from('sessions')
+      .update({
+        end_time: new Date(now).toISOString(),
+        total_price: safeTotalPrice,
+        payment_method: paymentMethod,
+        status: 'completed',
+      })
+      .eq('id', id)
+      .eq('status', 'active');
+
+    if (error) {
+      console.error('❌ خطأ في إنهاء الجلسة:', error);
     }
 
-    if (session.status !== 'active') {
-      console.warn('⚠️ الجلسة مش نشطة:', session.status);
-      return;
-    }
-
-    const lockKey = `${session.garageId}:${normalizePlate(session.carPlate)}`;
-
-    // ✅ منع الإنهاء المكرر
-    if (sessionEndLocks.has(lockKey)) return;
-    sessionEndLocks.add(lockKey);
-
-    pausePolling(8000);
-
-    try {
-      const safeTotalPrice =
-        Number(totalPrice) > 0 ? Number(totalPrice) : 0;
-
-      // ✅ حدّث الجلسة بالـ id فقط
-      set((st) => ({
-        sessions: st.sessions.map((s) =>
-          s.id === id
-            ? {
-                ...s,
-                endTime: now,
-                totalPrice: safeTotalPrice,
-                paymentMethod,
-                status: 'completed' as const,
-              }
-            : s
-        ),
-      }));
-
-      await get().adjustGarageSpots(session.garageId, +1);
-
-      if (!isSupabaseConfigured()) return;
-
-      // ✅ update بالـ id فقط + تأكد إنه active
-      const { error } = await supabase
-        .from('sessions')
-        .update({
-          end_time: new Date(now).toISOString(),
-          total_price: safeTotalPrice,
-          payment_method: paymentMethod,
-          status: 'completed',
-        })
-        .eq('id', id)
-        .eq('status', 'active');
-
-      if (error) {
-        console.error('❌ خطأ في إنهاء الجلسة:', error);
-      }
-
-      // ✅ fetchAll بعد 8 ثواني بس
-      setTimeout(() => {
-        get().fetchAll();
-      }, 8000);
-    } finally {
-      setTimeout(() => {
-        sessionEndLocks.delete(lockKey);
-      }, 3000);
-    }
-  },
+    setTimeout(() => {
+      get().fetchAll();
+    }, 8000);
+  } finally {
+    setTimeout(() => {
+      sessionEndLocks.delete(lockKey);
+    }, 3000);
+  }
+},
 
   // ── cancelSession ─────────────────────────────────────────────────────────
   cancelSession: (id) => {
