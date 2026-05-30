@@ -514,29 +514,42 @@ export const useStore = create<AppState>((set, get) => ({
     const supabaseSessionIds = new Set(supabaseSessions.map((ss) => ss.id));
     const currentSessions = get().sessions;
 
+    // ✅ إصلاح: منع التكرار - لو carPlate موجود في Supabase كـ active، ما نضيفوش من المحلي
     const supabaseActivePlates = new Set(
       supabaseSessions
         .filter((ss) => ss.status === 'active')
-        .map((ss) => `${ss.carPlate}-${ss.garageId}`)
+        .map((ss) => ss.carPlate)
     );
 
     const localOnlySessions = currentSessions.filter(
       (cs) =>
         !supabaseSessionIds.has(cs.id) &&
         cs.status === 'active' &&
-        !supabaseActivePlates.has(`${cs.carPlate}-${cs.garageId}`) &&
-        Date.now() - cs.startTime < 30000
+        !supabaseActivePlates.has(cs.carPlate) &&
+        Date.now() - cs.startTime < 10000
     );
 
+    // ✅ إصلاح: الأولوية للنسخة المحلية لو عندها endTime أو completed
     const mergedSessions = supabaseSessions.map((ss) => {
       const localVersion = currentSessions.find((cs) => cs.id === ss.id);
-      if (
-        localVersion &&
-        localVersion.status === 'completed' &&
-        localVersion.totalPrice != null &&
-        (ss.totalPrice == null || ss.status === 'active')
-      ) {
-        return localVersion;
+      if (localVersion) {
+        // لو المحلي completed والـ DB لسه active = خد المحلي
+        if (
+          localVersion.status === 'completed' &&
+          localVersion.totalPrice != null &&
+          localVersion.totalPrice > 0 &&
+          ss.status === 'active'
+        ) {
+          return localVersion;
+        }
+        // لو المحلي عنده totalPrice والـ DB ما عندوش = خد المحلي
+        if (
+          localVersion.totalPrice != null &&
+          localVersion.totalPrice > 0 &&
+          (ss.totalPrice == null || ss.totalPrice === 0)
+        ) {
+          return localVersion;
+        }
       }
       return ss;
     });
@@ -728,45 +741,35 @@ export const useStore = create<AppState>((set, get) => ({
         ? s.startTime
         : Date.now();
 
-    // ✅ طبقة 1: تحقق بالـ carPlate + garageId
-    const existingActive = get().sessions.find(
-      (existing) =>
-        existing.carPlate === s.carPlate &&
-        existing.status === 'active' &&
-        existing.garageId === s.garageId
-    );
-
-    if (existingActive) {
-      console.warn('⚠️ جلسة موجودة بالفعل:', existingActive.id);
-      return existingActive.id;
-    }
-
-    // ✅ طبقة 2: تحقق بالـ carPlate فقط (أي جراج)
-    const existingAnyGarage = get().sessions.find(
+    // ✅ طبقة 1: تحقق محلي بالـ carPlate (أي جراج)
+    const existingLocal = get().sessions.find(
       (existing) =>
         existing.carPlate === s.carPlate &&
         existing.status === 'active'
     );
 
-    if (existingAnyGarage) {
-      console.warn('⚠️ سيارة عندها جلسة في جراج تاني:', existingAnyGarage.id);
-      return existingAnyGarage.id;
+    if (existingLocal) {
+      console.warn('⚠️ جلسة محلية موجودة:', existingLocal.id);
+      return existingLocal.id;
     }
 
-    // ✅ طبقة 3: تحقق من Supabase مباشرة
+    // ✅ طبقة 2: تحقق من Supabase
     if (isSupabaseConfigured()) {
-      const { data: dbCheck } = await supabase
-        .from('sessions')
-        .select('id')
-        .eq('car_plate', s.carPlate)
-        .eq('status', 'active')
-        .limit(1)
-        .single();
+      try {
+        const { data: dbCheck } = await supabase
+          .from('sessions')
+          .select('id')
+          .eq('car_plate', s.carPlate)
+          .eq('status', 'active')
+          .limit(1);
 
-      if (dbCheck) {
-        console.warn('⚠️ جلسة موجودة في الداتابيز:', dbCheck.id);
-        await get().fetchAll();
-        return dbCheck.id;
+        if (dbCheck && dbCheck.length > 0) {
+          console.warn('⚠️ جلسة موجودة في DB:', dbCheck[0].id);
+          await get().fetchAll();
+          return dbCheck[0].id;
+        }
+      } catch (err) {
+        console.error('خطأ في التحقق من DB:', err);
       }
     }
 
@@ -834,26 +837,41 @@ export const useStore = create<AppState>((set, get) => ({
     const now = Date.now();
     const session = get().sessions.find((s) => s.id === id);
 
+    // ✅ إصلاح: لو الجلسة مش موجودة أو مش active - لا تعمل حاجة
+    if (!session) {
+      console.error('❌ الجلسة مش موجودة:', id);
+      return;
+    }
+
+    if (session.status !== 'active') {
+      console.warn('⚠️ الجلسة مش نشطة:', session.status);
+      return;
+    }
+
+    // ✅ إصلاح: حدّث كل الجلسات النشطة لنفس الـ carPlate (لو فيه مكرر)
     set((st) => ({
-      sessions: st.sessions.map((s) =>
-        s.id === id
-          ? {
-              ...s,
-              endTime: now,
-              totalPrice,
-              paymentMethod,
-              status: 'completed' as const,
-            }
-          : s
-      ),
+      sessions: st.sessions.map((s) => {
+        if (
+          s.id === id ||
+          (s.carPlate === session.carPlate && s.status === 'active')
+        ) {
+          return {
+            ...s,
+            endTime: now,
+            totalPrice,
+            paymentMethod,
+            status: 'completed' as const,
+          };
+        }
+        return s;
+      }),
     }));
 
-    if (session) {
-      await get().adjustGarageSpots(session.garageId, +1);
-    }
+    await get().adjustGarageSpots(session.garageId, +1);
 
     if (!isSupabaseConfigured()) return;
 
+    // ✅ إصلاح: حدّث بالـ id المحدد
     const { error } = await supabase
       .from('sessions')
       .update({
@@ -866,18 +884,24 @@ export const useStore = create<AppState>((set, get) => ({
 
     if (error) {
       console.error('❌ خطأ في إنهاء الجلسة:', error);
-      setTimeout(async () => {
-        await supabase
-          .from('sessions')
-          .update({
-            end_time: new Date(now).toISOString(),
-            total_price: totalPrice,
-            payment_method: paymentMethod,
-            status: 'completed',
-          })
-          .eq('id', id);
-      }, 2000);
     }
+
+    // ✅ إصلاح: أغلق أي جلسة مكررة نشطة لنفس السيارة في الداتابيز
+    await supabase
+      .from('sessions')
+      .update({
+        end_time: new Date(now).toISOString(),
+        total_price: totalPrice,
+        payment_method: paymentMethod,
+        status: 'completed',
+      })
+      .eq('car_plate', session.carPlate)
+      .eq('status', 'active');
+
+    // ✅ تحديث البيانات بعد الإنهاء
+    setTimeout(() => {
+      get().fetchAll();
+    }, 500);
   },
 
   // ── cancelSession ─────────────────────────────────────────────────────────
