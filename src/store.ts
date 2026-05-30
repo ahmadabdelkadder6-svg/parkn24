@@ -311,12 +311,12 @@ const pendingGarageUpdates: Map<string, Record<string, unknown>> = new Map();
 // ✅ locks لمنع التكرار
 const sessionStartLocks = new Set<string>();
 const sessionEndLocks = new Set<string>();
+
 // ✅ حماية الرصيد من الـ override بعد الخصم
 let walletDeductedAt = 0;
 
 // ===================== State Interface =====================
-interface AppState {
-  view: ViewType;
+interface AppState {  view: ViewType;
   setView: (v: ViewType) => void;
   screen: ScreenType;
   setScreen: (s: ScreenType) => void;
@@ -685,13 +685,13 @@ export const useStore = create<AppState>((set, get) => ({
       messages: mergedMessages,
     });
 
-   const user = get().currentUser;
+  const user = get().currentUser;
 if (user?.phone) {
   try {
-    // ✅ لو تم خصم من المحفظة خلال آخر 20 ثانية → ما تحدثش الرصيد من DB
     const timeSinceDeduct = Date.now() - walletDeductedAt;
+
+    // ✅ لو لسه حاصل خصم قريب، ما تعملش override للرصيد
     if (timeSinceDeduct < 20000) {
-      // ✅ خلي الرصيد المحلي كما هو - ما تعملش override
       const { data } = await supabase
         .from('users')
         .select('name, phone, car_plate')
@@ -703,13 +703,12 @@ if (user?.phone) {
           name: data.name || user.name,
           phone: data.phone || user.phone,
           carPlate: data.car_plate || user.carPlate,
-          wallet: user.wallet, // ✅ خلي الرصيد المحلي
+          wallet: user.wallet, // ✅ احتفظ بالرصيد المحلي
         };
         set({ currentUser: updated });
         safeSetStorage('currentUser', updated);
       }
     } else {
-      // ✅ عادي - جيب الرصيد من DB
       const { data } = await supabase
         .from('users')
         .select('wallet, name, phone, car_plate')
