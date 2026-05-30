@@ -21,6 +21,7 @@ import {
   Undo2,
 } from 'lucide-react';
 import { useStore, pausePolling } from '../store';
+import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
 
@@ -49,6 +50,7 @@ export default function GarageDashboard() {
     updateGarage,
     incomingCars,
     removeIncomingCar,
+    fetchAll,
   } = useStore();
 
   const garage = garages.find((g) => g.id === currentGarageId);
@@ -218,7 +220,6 @@ export default function GarageDashboard() {
     );
   }, []);
 
-  // ─── Tick كل ثانية ────────────────────────────────────────────────────────
   useEffect(() => {
     const interval = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(interval);
@@ -228,7 +229,6 @@ export default function GarageDashboard() {
     if (garage) setNewCarPrice(garage.basePrice);
   }, [garage?.basePrice, garage]);
 
-  // ─── تنظيف الـ undo المنتهية ──────────────────────────────────────────────
   useEffect(() => {
     setUndoableSessions((prev) => {
       const currentSessionsList = sessions;
@@ -330,8 +330,7 @@ export default function GarageDashboard() {
     if (!confirmSession) return;
     if (isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
-
-    pausePolling(); // ✅ وقّف الـ Polling أثناء الدفع
+    pausePolling(10000);
 
     try {
       const sessionCopy = { ...confirmSession };
@@ -360,7 +359,7 @@ export default function GarageDashboard() {
     }
   };
 
-  // ─── حفظ الإعدادات ────────────────────────────────────────────────────────
+  // ─── حفظ الإعدادات ───────────────────────────────────────────────────────
   const handleSaveSettings = () => {
     updateGarage(garage.id, {
       basePrice: editPrice,
@@ -378,51 +377,114 @@ export default function GarageDashboard() {
     setShowSettings(true);
   };
 
-  // ✅ وصول سيارة وبدء الحساب فوراً
+  // ✅ وصول سيارة - الدالة الرئيسية المُصلَحة
   const handleCarArrived = async (
     carId: string,
     carPlate: string,
     agreedPrice: number
   ) => {
+    // ✅ طبقة 1: منع الضغط المكرر بالـ carId
     if (processedCarsRef.current.has(carId)) return;
     processedCarsRef.current.add(carId);
 
-    pausePolling(); // ✅ وقّف الـ Polling
+    pausePolling(10000);
 
-    // ✅ تحقق من جلسة موجودة
-    const existingSession = useStore.getState().sessions.find(
-      (s) =>
-        s.carPlate === carPlate &&
-        s.status === 'active'
-    );
+    try {
+      const normalizedPlate = carPlate.trim().toUpperCase();
 
-    if (existingSession) {
+      // ✅ طبقة 2: تحقق محلي - هل الجلسة بدأت بالفعل (من العميل)
+      const existingLocal = useStore.getState().sessions.find(
+        (s) =>
+          s.carPlate.trim().toUpperCase() === normalizedPlate &&
+          s.status === 'active'
+      );
+
+      if (existingLocal) {
+        // ✅ الجلسة موجودة - احذف من القادمين فقط
+        await removeIncomingCar(carId);
+        await supabase
+          .from('incoming_cars')
+          .delete()
+          .eq('car_plate', normalizedPlate)
+          .eq('garage_id', garage.id);
+
+        toast('الجلسة شغالة بالفعل ✅', {
+          icon: '🚗',
+          style: {
+            background: '#1e293b',
+            color: '#f1f5f9',
+            border: '1px solid #334155',
+          },
+        });
+        return;
+      }
+
+      // ✅ طبقة 3: تحقق من Supabase
+      try {
+        const { data: dbCheck } = await supabase
+          .from('sessions')
+          .select('id')
+          .eq('car_plate', normalizedPlate)
+          .eq('status', 'active')
+          .limit(1);
+
+        if (dbCheck && dbCheck.length > 0) {
+          await removeIncomingCar(carId);
+          await supabase
+            .from('incoming_cars')
+            .delete()
+            .eq('car_plate', normalizedPlate)
+            .eq('garage_id', garage.id);
+          await fetchAll();
+          toast('الجلسة شغالة بالفعل ✅', {
+            icon: '🚗',
+            style: {
+              background: '#1e293b',
+              color: '#f1f5f9',
+              border: '1px solid #334155',
+            },
+          });
+          return;
+        }
+      } catch (err) {
+        console.error('خطأ في التحقق من DB:', err);
+      }
+
+      // ✅ مفيش جلسة - إلغاء العرض المرتبط
+      const relatedOffer = offers.find(
+        (o) =>
+          o.carPlate.trim().toUpperCase() === normalizedPlate &&
+          (o.status === 'pending' || o.status === 'accepted')
+      );
+      if (relatedOffer) cancelOffer(relatedOffer.id);
+
+      // ✅ بدء الجلسة
+      await addSession({
+        garageId: garage.id,
+        carPlate: normalizedPlate,
+        startTime: Date.now(),
+        status: 'active',
+        source: 'app',
+        agreedPrice,
+      });
+
+      // ✅ احذف من القادمين محلياً وفي Supabase
       await removeIncomingCar(carId);
-      toast('الجلسة شغالة بالفعل ✅');
-      return;
+      await supabase
+        .from('incoming_cars')
+        .delete()
+        .eq('car_plate', normalizedPlate)
+        .eq('garage_id', garage.id);
+
+      toast.success(`بدأ حساب السيارة ${carPlate} 🚗`);
+    } catch (err) {
+      console.error('❌ خطأ في handleCarArrived:', err);
+      // ✅ امسح من الـ processed عشان يقدر يحاول تاني
+      processedCarsRef.current.delete(carId);
+      toast.error('حدث خطأ، حاول مرة أخرى');
     }
-
-    const relatedOffer = offers.find(
-      (o) =>
-        o.carPlate === carPlate &&
-        (o.status === 'pending' || o.status === 'accepted')
-    );
-    if (relatedOffer) cancelOffer(relatedOffer.id);
-
-    await addSession({
-      garageId: garage.id,
-      carPlate,
-      startTime: Date.now(),
-      status: 'active',
-      source: 'app',
-      agreedPrice,
-    });
-
-    await removeIncomingCar(carId);
-    toast.success(`بدأ حساب السيارة ${carPlate} 🚗`);
   };
 
-  // ─── حساب الوقت المتبقي للوصول ────────────────────────────────────────────
   const calculateRemainingTime = (
     startTime: number,
     estimatedMinutes: number
@@ -435,10 +497,9 @@ export default function GarageDashboard() {
     return Math.max(0, estimatedMinutes - elapsed);
   };
 
-  // ═══════════════════════════════════════════════════════════════════════════
   return (
     <div className="h-full bg-slate-950 text-white p-5 overflow-y-auto">
-      {/* ─── Header ──────────────────────────────────────────────────────────── */}
+      {/* Header */}
       <div className="flex justify-between items-center mb-6 pt-14">
         <button
           onClick={() => setCurrentGarageId(null)}
@@ -461,7 +522,7 @@ export default function GarageDashboard() {
         </button>
       </div>
 
-      {/* ─── Settings Modal ──────────────────────────────────────────────────── */}
+      {/* Settings Modal */}
       {showSettings && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -505,9 +566,7 @@ export default function GarageDashboard() {
                       type="number"
                       value={editPrice}
                       onChange={(e) =>
-                        setEditPrice(
-                          Math.max(1, parseInt(e.target.value) || 0)
-                        )
+                        setEditPrice(Math.max(1, parseInt(e.target.value) || 0))
                       }
                       className="bg-transparent text-4xl font-black text-white text-center w-full outline-none font-mono"
                     />
@@ -560,10 +619,7 @@ export default function GarageDashboard() {
                         setEditSpots(
                           Math.max(
                             0,
-                            Math.min(
-                              editCapacity,
-                              parseInt(e.target.value) || 0
-                            )
+                            Math.min(editCapacity, parseInt(e.target.value) || 0)
                           )
                         )
                       }
@@ -617,10 +673,7 @@ export default function GarageDashboard() {
                       value={editCapacity}
                       onChange={(e) =>
                         setEditCapacity(
-                          Math.max(
-                            editSpots,
-                            parseInt(e.target.value) || editSpots
-                          )
+                          Math.max(editSpots, parseInt(e.target.value) || editSpots)
                         )
                       }
                       className="bg-transparent text-2xl font-black text-purple-400 text-center w-full outline-none font-mono"
@@ -650,7 +703,7 @@ export default function GarageDashboard() {
         </motion.div>
       )}
 
-      {/* ─── Confirm Payment Modal ───────────────────────────────────────────── */}
+      {/* Confirm Payment Modal */}
       {confirmSession && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -816,7 +869,7 @@ export default function GarageDashboard() {
         </motion.div>
       )}
 
-      {/* ─── Stats Cards ─────────────────────────────────────────────────────── */}
+      {/* Stats Cards */}
       <div className="grid grid-cols-3 gap-3 mb-6">
         <div className="bg-emerald-600/20 border border-emerald-500/20 p-4 rounded-2xl text-center">
           <DollarSign size={20} className="text-emerald-400 mx-auto mb-1" />
@@ -851,7 +904,7 @@ export default function GarageDashboard() {
         </div>
       </div>
 
-      {/* ─── Undo Banners ────────────────────────────────────────────────────── */}
+      {/* Undo Banners */}
       <AnimatePresence>
         {undoableSessions.map((undoable) => {
           const remaining = getUndoRemainingSeconds(undoable.addedAt);
@@ -862,12 +915,7 @@ export default function GarageDashboard() {
               key={undoable.localId}
               initial={{ opacity: 0, y: -20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{
-                opacity: 0,
-                y: -20,
-                scale: 0.95,
-                transition: { duration: 0.3 },
-              }}
+              exit={{ opacity: 0, y: -20, scale: 0.95, transition: { duration: 0.3 } }}
               transition={{ type: 'spring', damping: 20, stiffness: 300 }}
               className="mb-4"
             >
@@ -919,7 +967,7 @@ export default function GarageDashboard() {
         })}
       </AnimatePresence>
 
-      {/* ─── سيارات في الطريق ────────────────────────────────────────────────── */}
+      {/* سيارات في الطريق */}
       {carsOnTheWay.length > 0 && (
         <div className="mb-6">
           <h3 className="text-sm font-black text-cyan-400 mb-3 flex items-center gap-2 justify-end">
@@ -935,6 +983,15 @@ export default function GarageDashboard() {
                 car.startTime,
                 car.estimatedArrival
               );
+
+              // ✅ تحقق لو الجلسة بدأت بالفعل من العميل
+              const sessionAlreadyStarted = sessions.some(
+                (s) =>
+                  s.carPlate.trim().toUpperCase() ===
+                    car.carPlate.trim().toUpperCase() &&
+                  s.status === 'active'
+              );
+
               return (
                 <motion.div
                   key={car.id}
@@ -948,8 +1005,7 @@ export default function GarageDashboard() {
                       style={{
                         width: `${Math.max(
                           0,
-                          100 -
-                            (remainingTime / car.estimatedArrival) * 100
+                          100 - (remainingTime / car.estimatedArrival) * 100
                         )}%`,
                       }}
                     />
@@ -963,11 +1019,18 @@ export default function GarageDashboard() {
                       >
                         <CarFront size={20} className="text-cyan-400" />
                       </motion.div>
-                      <div className="bg-cyan-500/20 text-cyan-400 px-3 py-1 rounded-full text-[10px] font-black">
-                        {remainingTime > 0
-                          ? `${remainingTime} دقيقة`
-                          : 'وصل تقريباً'}
-                      </div>
+                      {/* ✅ لو الجلسة بدأت - وريها */}
+                      {sessionAlreadyStarted ? (
+                        <div className="bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full text-[10px] font-black">
+                          ✅ الجلسة شغالة
+                        </div>
+                      ) : (
+                        <div className="bg-cyan-500/20 text-cyan-400 px-3 py-1 rounded-full text-[10px] font-black">
+                          {remainingTime > 0
+                            ? `${remainingTime} دقيقة`
+                            : 'وصل تقريباً'}
+                        </div>
+                      )}
                     </div>
                     <div className="text-lg font-black text-white">
                       🚗 {car.carPlate}
@@ -999,16 +1062,18 @@ export default function GarageDashboard() {
                   <div className="flex gap-2">
                     <button
                       onClick={() =>
-                        handleCarArrived(
-                          car.id,
-                          car.carPlate,
-                          car.agreedPrice
-                        )
+                        handleCarArrived(car.id, car.carPlate, car.agreedPrice)
                       }
-                      className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all"
+                      className={`flex-1 py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all ${
+                        sessionAlreadyStarted
+                          ? 'bg-slate-700 text-slate-300'
+                          : 'bg-emerald-600 text-white'
+                      }`}
                     >
                       <CheckCircle size={16} />
-                      وصلت وبدء الحساب
+                      {sessionAlreadyStarted
+                        ? 'تأكيد الوصول وإزالة'
+                        : 'وصلت وبدء الحساب'}
                     </button>
                     <a
                       href={`tel:${car.customerPhone}`}
@@ -1024,7 +1089,7 @@ export default function GarageDashboard() {
         </div>
       )}
 
-      {/* ─── شريط المعلومات السريع ────────────────────────────────────────────── */}
+      {/* شريط المعلومات */}
       <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-3 mb-6 flex items-center justify-between">
         <button
           onClick={openSettings}
@@ -1050,7 +1115,7 @@ export default function GarageDashboard() {
         </div>
       </div>
 
-      {/* ─── عروض الأسعار المعلقة ─────────────────────────────────────────────── */}
+      {/* عروض الأسعار */}
       {garageOffers.length > 0 && (
         <div className="mb-6">
           <h3 className="text-sm font-black text-amber-400 mb-3 flex items-center gap-2 justify-end">
@@ -1103,7 +1168,7 @@ export default function GarageDashboard() {
         </div>
       )}
 
-      {/* ─── إضافة سيارة ─────────────────────────────────────────────────────── */}
+      {/* إضافة سيارة */}
       <div className="mb-6">
         {!showAddCar ? (
           <button
@@ -1196,7 +1261,7 @@ export default function GarageDashboard() {
         )}
       </div>
 
-      {/* ─── الجلسات النشطة ───────────────────────────────────────────────────── */}
+      {/* الجلسات النشطة */}
       <div className="mb-6">
         <h3 className="text-sm font-black text-emerald-400 mb-3 flex items-center gap-2 justify-end">
           الجلسات النشطة ({activeSessions.length})
@@ -1223,8 +1288,7 @@ export default function GarageDashboard() {
               const cost = calculateCost(elapsedSeconds, rate);
               const isManual = session.source === 'manual';
               const undoable = undoableSessions.find(
-                (u) =>
-                  u.sessionId === session.id || u.localId === session.id
+                (u) => u.sessionId === session.id || u.localId === session.id
               );
 
               return (
@@ -1309,7 +1373,7 @@ export default function GarageDashboard() {
         </div>
       </div>
 
-      {/* ─── سجل العمليات ─────────────────────────────────────────────────────── */}
+      {/* سجل العمليات */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
           <span className="text-[10px] text-slate-500 bg-slate-900 px-2 py-1 rounded-lg border border-slate-800">
@@ -1324,9 +1388,7 @@ export default function GarageDashboard() {
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-4">
           <div className="flex items-center gap-2 mb-3 justify-end">
             <CalendarDays size={14} className="text-blue-400" />
-            <span className="text-xs font-black text-slate-400">
-              تصفية بالتاريخ
-            </span>
+            <span className="text-xs font-black text-slate-400">تصفية بالتاريخ</span>
           </div>
           <div className="flex gap-2 mb-3">
             <input
@@ -1411,18 +1473,14 @@ export default function GarageDashboard() {
                   <div className={`text-sm font-black font-mono ${p.color}`}>
                     {p.value.toFixed(0)}
                   </div>
-                  <div className="text-[7px] text-slate-500 font-bold">
-                    {p.label}
-                  </div>
+                  <div className="text-[7px] text-slate-500 font-bold">{p.label}</div>
                 </div>
               ))}
             </div>
 
             <div className="grid grid-cols-2 gap-2 mb-4">
               <div className="bg-amber-600/10 border border-amber-500/20 rounded-xl p-3 text-center">
-                <div className="text-[9px] text-amber-400 font-black mb-1">
-                  يدوي
-                </div>
+                <div className="text-[9px] text-amber-400 font-black mb-1">يدوي</div>
                 <span className="text-sm font-black text-amber-400 font-mono">
                   {filteredStats.manualCount}
                 </span>
@@ -1432,9 +1490,7 @@ export default function GarageDashboard() {
                 </div>
               </div>
               <div className="bg-blue-600/10 border border-blue-500/20 rounded-xl p-3 text-center">
-                <div className="text-[9px] text-blue-400 font-black mb-1">
-                  تطبيق
-                </div>
+                <div className="text-[9px] text-blue-400 font-black mb-1">تطبيق</div>
                 <span className="text-sm font-black text-blue-400 font-mono">
                   {filteredStats.appCount}
                 </span>
@@ -1543,9 +1599,7 @@ export default function GarageDashboard() {
               <div className="text-3xl mb-3">📭</div>
               <p className="text-slate-500 text-sm font-bold">لا توجد عمليات</p>
               <p className="text-slate-600 text-xs mt-1">
-                {logDateFilter
-                  ? 'جرب تغيير التاريخ'
-                  : 'لم تتم أي عمليات بعد'}
+                {logDateFilter ? 'جرب تغيير التاريخ' : 'لم تتم أي عمليات بعد'}
               </p>
             </div>
           )}
