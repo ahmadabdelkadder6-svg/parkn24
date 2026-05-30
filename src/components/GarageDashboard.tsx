@@ -20,7 +20,7 @@ import {
   CalendarDays,
   Undo2,
 } from 'lucide-react';
-import { useStore } from '../store';
+import { useStore, pausePolling } from '../store';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
 
@@ -59,7 +59,6 @@ export default function GarageDashboard() {
     (o) => o.garageId === currentGarageId && o.status === 'pending'
   );
 
-  // ✅ بعد إلغاء فترة السماح - فقط coming
   const carsOnTheWay = incomingCars.filter(
     (c) => c.garageId === currentGarageId && c.status === 'coming'
   );
@@ -332,6 +331,8 @@ export default function GarageDashboard() {
     if (isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
 
+    pausePolling(); // ✅ وقّف الـ Polling أثناء الدفع
+
     try {
       const sessionCopy = { ...confirmSession };
       const paymentCopy = confirmPaymentMethod;
@@ -378,7 +379,6 @@ export default function GarageDashboard() {
   };
 
   // ✅ وصول سيارة وبدء الحساب فوراً
-  // 3 طبقات حماية من الضغط المزدوج
   const handleCarArrived = async (
     carId: string,
     carPlate: string,
@@ -386,6 +386,8 @@ export default function GarageDashboard() {
   ) => {
     if (processedCarsRef.current.has(carId)) return;
     processedCarsRef.current.add(carId);
+
+    pausePolling(); // ✅ وقّف الـ Polling
 
     // ✅ تحقق من جلسة موجودة
     const existingSession = useStore.getState().sessions.find(
@@ -995,7 +997,6 @@ export default function GarageDashboard() {
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    {/* ✅ الزر يستخدم handleCarArrived فقط */}
                     <button
                       onClick={() =>
                         handleCarArrived(

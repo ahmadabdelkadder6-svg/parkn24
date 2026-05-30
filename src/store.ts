@@ -1323,16 +1323,25 @@ export const useStore = create<AppState>((set, get) => ({
 // ===================== Realtime =====================
 let realtimeStarted = false;
 let pollingInterval: ReturnType<typeof setInterval> | null = null;
+let isOperationInProgress = false;
+
+export function pausePolling() {
+  isOperationInProgress = true;
+  setTimeout(() => {
+    isOperationInProgress = false;
+  }, 5000);
+}
 
 export function setupRealtime() {
   if (realtimeStarted) return;
   realtimeStarted = true;
 
-  // ✅ Polling كل 3 ثواني
   if (pollingInterval) clearInterval(pollingInterval);
   pollingInterval = setInterval(() => {
-    useStore.getState().fetchAll();
-  }, 3000);
+    if (!isOperationInProgress) {
+      useStore.getState().fetchAll();
+    }
+  }, 5000);
 
   window.addEventListener('beforeunload', () => {
     if (pollingInterval) {
@@ -1347,22 +1356,23 @@ export function setupRealtime() {
   let lastRefresh = 0;
 
   const refresh = () => {
+    if (isOperationInProgress) return;
     const now = Date.now();
-    if (now - lastRefresh < 1000) {
+    if (now - lastRefresh < 2000) {
       if (refreshTimeout) clearTimeout(refreshTimeout);
       refreshTimeout = setTimeout(() => {
         lastRefresh = Date.now();
-        useStore.getState().fetchAll();
+        if (!isOperationInProgress) useStore.getState().fetchAll();
         refreshTimeout = null;
-      }, 1000);
+      }, 2000);
       return;
     }
     lastRefresh = now;
     if (refreshTimeout) clearTimeout(refreshTimeout);
     refreshTimeout = setTimeout(() => {
-      useStore.getState().fetchAll();
+      if (!isOperationInProgress) useStore.getState().fetchAll();
       refreshTimeout = null;
-    }, 500);
+    }, 1000);
   };
 
   const channelName = `parkn24_${Math.random().toString(36).slice(2, 8)}`;
@@ -1391,22 +1401,14 @@ export function setupRealtime() {
       console.log('✅ Realtime connected:', channelName);
       if (pollingInterval) clearInterval(pollingInterval);
       pollingInterval = setInterval(() => {
-        useStore.getState().fetchAll();
+        if (!isOperationInProgress) useStore.getState().fetchAll();
       }, 10000);
     }
-    if (status === 'CHANNEL_ERROR') {
-      console.error('❌ Realtime channel error');
+    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
       if (pollingInterval) clearInterval(pollingInterval);
       pollingInterval = setInterval(() => {
-        useStore.getState().fetchAll();
-      }, 3000);
-    }
-    if (status === 'TIMED_OUT') {
-      console.warn('⚠️ Realtime timed out');
-      if (pollingInterval) clearInterval(pollingInterval);
-      pollingInterval = setInterval(() => {
-        useStore.getState().fetchAll();
-      }, 3000);
+        if (!isOperationInProgress) useStore.getState().fetchAll();
+      }, 5000);
     }
   });
 
