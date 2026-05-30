@@ -311,6 +311,8 @@ const pendingGarageUpdates: Map<string, Record<string, unknown>> = new Map();
 // ✅ locks لمنع التكرار
 const sessionStartLocks = new Set<string>();
 const sessionEndLocks = new Set<string>();
+// ✅ حماية الرصيد من الـ override بعد الخصم
+let walletDeductedAt = 0;
 
 // ===================== State Interface =====================
 interface AppState {
@@ -484,17 +486,29 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   // ── deductWallet ──────────────────────────────────────────────────────────
-  deductWallet: (amount) => {
-    const user = get().currentUser;
-    if (!user) return;
-    const nw = Math.max(0, user.wallet - amount);
-    const updated = { ...user, wallet: nw };
-    set({ currentUser: updated });
-    safeSetStorage('currentUser', updated);
-    if (isSupabaseConfigured()) {
-      supabase.from('users').update({ wallet: nw }).eq('phone', user.phone);
-    }
-  },
+ deductWallet: (amount) => {
+  const user = get().currentUser;
+  if (!user) return;
+  const nw = Math.max(0, user.wallet - amount);
+  const updated = { ...user, wallet: nw };
+  set({ currentUser: updated });
+  safeSetStorage('currentUser', updated);
+
+  // ✅ سجّل وقت الخصم عشان fetchAll ما يـ override الرصيد
+  walletDeductedAt = Date.now();
+
+  if (isSupabaseConfigured()) {
+    supabase
+      .from('users')
+      .update({ wallet: nw })
+      .eq('phone', user.phone)
+      .then(({ error }) => {
+        if (error) {
+          console.error('❌ خطأ في تحديث الرصيد:', error);
+        }
+      });
+  }
+},
 
   // ── Garages ───────────────────────────────────────────────────────────────
   garages: [],
@@ -671,30 +685,52 @@ export const useStore = create<AppState>((set, get) => ({
       messages: mergedMessages,
     });
 
-    const user = get().currentUser;
-    if (user?.phone) {
-      try {
-        const { data } = await supabase
-          .from('users')
-          .select('wallet, name, phone, car_plate')
-          .eq('phone', user.phone)
-          .single();
+   const user = get().currentUser;
+if (user?.phone) {
+  try {
+    // ✅ لو تم خصم من المحفظة خلال آخر 20 ثانية → ما تحدثش الرصيد من DB
+    const timeSinceDeduct = Date.now() - walletDeductedAt;
+    if (timeSinceDeduct < 20000) {
+      // ✅ خلي الرصيد المحلي كما هو - ما تعملش override
+      const { data } = await supabase
+        .from('users')
+        .select('name, phone, car_plate')
+        .eq('phone', user.phone)
+        .single();
 
-        if (data) {
-          const updated = {
-            name: data.name || user.name,
-            phone: data.phone || user.phone,
-            carPlate: data.car_plate || user.carPlate,
-            wallet: Number(data.wallet),
-          };
-          set({ currentUser: updated });
-          safeSetStorage('currentUser', updated);
-        }
-      } catch (err) {
-        console.error('Error fetching user wallet:', err);
+      if (data) {
+        const updated = {
+          name: data.name || user.name,
+          phone: data.phone || user.phone,
+          carPlate: data.car_plate || user.carPlate,
+          wallet: user.wallet, // ✅ خلي الرصيد المحلي
+        };
+        set({ currentUser: updated });
+        safeSetStorage('currentUser', updated);
+      }
+    } else {
+      // ✅ عادي - جيب الرصيد من DB
+      const { data } = await supabase
+        .from('users')
+        .select('wallet, name, phone, car_plate')
+        .eq('phone', user.phone)
+        .single();
+
+      if (data) {
+        const updated = {
+          name: data.name || user.name,
+          phone: data.phone || user.phone,
+          carPlate: data.car_plate || user.carPlate,
+          wallet: Number(data.wallet),
+        };
+        set({ currentUser: updated });
+        safeSetStorage('currentUser', updated);
       }
     }
-  },
+  } catch (err) {
+    console.error('Error fetching user wallet:', err);
+  }
+}
 
   // ── addGarage ─────────────────────────────────────────────────────────────
   addGarage: async (g) => {
