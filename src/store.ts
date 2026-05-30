@@ -728,7 +728,7 @@ export const useStore = create<AppState>((set, get) => ({
         ? s.startTime
         : Date.now();
 
-    // ✅ تحقق لو فيه جلسة نشطة بنفس السيارة
+    // ✅ طبقة 1: تحقق بالـ carPlate + garageId
     const existingActive = get().sessions.find(
       (existing) =>
         existing.carPlate === s.carPlate &&
@@ -737,8 +737,37 @@ export const useStore = create<AppState>((set, get) => ({
     );
 
     if (existingActive) {
-      console.warn('⚠️ جلسة نشطة موجودة:', existingActive.id);
+      console.warn('⚠️ جلسة موجودة بالفعل:', existingActive.id);
       return existingActive.id;
+    }
+
+    // ✅ طبقة 2: تحقق بالـ carPlate فقط (أي جراج)
+    const existingAnyGarage = get().sessions.find(
+      (existing) =>
+        existing.carPlate === s.carPlate &&
+        existing.status === 'active'
+    );
+
+    if (existingAnyGarage) {
+      console.warn('⚠️ سيارة عندها جلسة في جراج تاني:', existingAnyGarage.id);
+      return existingAnyGarage.id;
+    }
+
+    // ✅ طبقة 3: تحقق من Supabase مباشرة
+    if (isSupabaseConfigured()) {
+      const { data: dbCheck } = await supabase
+        .from('sessions')
+        .select('id')
+        .eq('car_plate', s.carPlate)
+        .eq('status', 'active')
+        .limit(1)
+        .single();
+
+      if (dbCheck) {
+        console.warn('⚠️ جلسة موجودة في الداتابيز:', dbCheck.id);
+        await get().fetchAll();
+        return dbCheck.id;
+      }
     }
 
     const optimisticSession: ParkingSession = {

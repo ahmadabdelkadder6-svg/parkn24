@@ -379,46 +379,46 @@ export default function GarageDashboard() {
 
   // ✅ وصول سيارة وبدء الحساب فوراً
   // 3 طبقات حماية من الضغط المزدوج
-const handleCarArrived = async (
-  carId: string,
-  carPlate: string,
-  agreedPrice: number
-) => {
-  if (processedCarsRef.current.has(carId)) return;
-  processedCarsRef.current.add(carId);
+  const handleCarArrived = async (
+    carId: string,
+    carPlate: string,
+    agreedPrice: number
+  ) => {
+    if (processedCarsRef.current.has(carId)) return;
+    processedCarsRef.current.add(carId);
 
-  const existingSession = useStore.getState().sessions.find(
-    (s) =>
-      s.carPlate === carPlate &&
-      s.garageId === garage.id &&
-      s.status === 'active'
-  );
+    // ✅ تحقق من جلسة موجودة
+    const existingSession = useStore.getState().sessions.find(
+      (s) =>
+        s.carPlate === carPlate &&
+        s.status === 'active'
+    );
 
-  if (existingSession) {
+    if (existingSession) {
+      await removeIncomingCar(carId);
+      toast('الجلسة شغالة بالفعل ✅');
+      return;
+    }
+
+    const relatedOffer = offers.find(
+      (o) =>
+        o.carPlate === carPlate &&
+        (o.status === 'pending' || o.status === 'accepted')
+    );
+    if (relatedOffer) cancelOffer(relatedOffer.id);
+
+    await addSession({
+      garageId: garage.id,
+      carPlate,
+      startTime: Date.now(),
+      status: 'active',
+      source: 'app',
+      agreedPrice,
+    });
+
     await removeIncomingCar(carId);
-    toast('الجلسة شغالة بالفعل ✅');
-    return;
-  }
-
-  const relatedOffer = offers.find(
-    (o) =>
-      o.carPlate === carPlate &&
-      (o.status === 'pending' || o.status === 'accepted')
-  );
-  if (relatedOffer) cancelOffer(relatedOffer.id);
-
-  await addSession({
-    garageId: garage.id,
-    carPlate,
-    startTime: Date.now(),
-    status: 'active',
-    source: 'app',
-    agreedPrice,
-  });
-
-  await removeIncomingCar(carId);
-  toast.success(`بدأ حساب السيارة ${carPlate} 🚗`);
-};
+    toast.success(`بدأ حساب السيارة ${carPlate} 🚗`);
+  };
 
   // ─── حساب الوقت المتبقي للوصول ────────────────────────────────────────────
   const calculateRemainingTime = (

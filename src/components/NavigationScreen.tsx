@@ -245,61 +245,62 @@ export default function NavigationScreen() {
   };
 
   // ─── وصلت للجراج - بدء الركن فوراً بدون فترة سماح ─────────────────────────
- const handleCarArrived = async () => {
-  if (isArrivingRef.current) return;
-  isArrivingRef.current = true;
+   const handleCarArrived = async () => {
+    if (isArrivingRef.current) return;
+    isArrivingRef.current = true;
 
-  try {
-    if (!myIncomingCar || !garage) {
-      setScreen('session');
-      return;
-    }
+    try {
+      if (!myIncomingCar || !garage) {
+        setScreen('session');
+        return;
+      }
 
-    const existingSession = useStore.getState().sessions.find(
-      (s) =>
-        s.carPlate === myIncomingCar.carPlate &&
-        s.garageId === garage.id &&
-        s.status === 'active'
-    );
+      // ✅ تحقق أولاً - لو الجلسة بدأت بالفعل
+      const alreadyActive = useStore.getState().sessions.find(
+        (s) =>
+          s.carPlate === myIncomingCar.carPlate &&
+          s.status === 'active'
+      );
 
-    if (existingSession) {
+      if (alreadyActive) {
+        await removeIncomingCar(myIncomingCar.id);
+        navigatedToSessionRef.current = true;
+        setScreen('session');
+        return;
+      }
+
+      // إلغاء العرض
+      const relatedOffer = offers.find(
+        (o) =>
+          o.carPlate === myIncomingCar.carPlate &&
+          (o.status === 'pending' || o.status === 'accepted')
+      );
+      if (relatedOffer) cancelOffer(relatedOffer.id);
+
+      // بدء الجلسة
+      await addSession({
+        garageId: garage.id,
+        carPlate: myIncomingCar.carPlate,
+        startTime: Date.now(),
+        status: 'active',
+        source: 'app',
+        agreedPrice: myIncomingCar.agreedPrice,
+      });
+
       await removeIncomingCar(myIncomingCar.id);
-      toast.success('الجلسة شغالة بالفعل ✅');
+
+      toast.success('تم بدء حساب الركن ⏱️');
       navigatedToSessionRef.current = true;
       setScreen('session');
-      return;
+    } catch (err) {
+      console.error('❌ خطأ:', err);
+      toast.error('حدث خطأ، حاول مرة أخرى');
+    } finally {
+      setTimeout(() => {
+        isArrivingRef.current = false;
+      }, 5000);
     }
-
-    const relatedOffer = offers.find(
-      (o) =>
-        o.carPlate === myIncomingCar.carPlate &&
-        (o.status === 'pending' || o.status === 'accepted')
-    );
-    if (relatedOffer) cancelOffer(relatedOffer.id);
-
-    await addSession({
-      garageId: garage.id,
-      carPlate: myIncomingCar.carPlate,
-      startTime: Date.now(),
-      status: 'active',
-      source: 'app',
-      agreedPrice: myIncomingCar.agreedPrice,
-    });
-
-    await removeIncomingCar(myIncomingCar.id);
-
-    toast.success('تم بدء حساب الركن ⏱️');
-    navigatedToSessionRef.current = true;
-    setScreen('session');
-  } catch (err) {
-    console.error('❌ خطأ:', err);
-    toast.error('حدث خطأ، حاول مرة أخرى');
-  } finally {
-    setTimeout(() => {
-      isArrivingRef.current = false;
-    }, 3000);
-  }
-};
+  };
 
   return (
     <motion.div
