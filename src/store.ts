@@ -128,6 +128,65 @@ const safeGetStorage = (key: string) => {
   }
 };
 
+// ✅ helpers للـ plate وإزالة التكرار
+const normalizePlate = (plate?: string) => (plate ?? '').trim().toUpperCase();
+
+const samePlate = (a?: string, b?: string) =>
+  normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
+
+const getMs = (value?: number) => {
+  if (typeof value === 'number') return value;
+  return 0;
+};
+
+const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
+  const active = list.filter((s) => s.status === 'active');
+  const completed = list.filter((s) => s.status === 'completed');
+
+  const bestByPlate = new Map<string, ParkingSession>();
+
+  for (const session of active) {
+    const key = normalizePlate(session.carPlate);
+    if (!key) continue;
+
+    const existing = bestByPlate.get(key);
+    if (!existing) {
+      bestByPlate.set(key, session);
+      continue;
+    }
+
+    const sessionStart = getMs(session.startTime);
+    const existingStart = getMs(existing.startTime);
+
+    const shouldUseCurrent =
+      (session.synced && !existing.synced) ||
+      sessionStart < existingStart;
+
+    if (shouldUseCurrent) {
+      bestByPlate.set(key, session);
+    }
+  }
+
+  return [
+    ...Array.from(bestByPlate.values()),
+    ...completed,
+  ].sort((a, b) => {
+    const aTime =
+      a.status === 'active'
+        ? getMs(a.startTime)
+        : typeof a.endTime === 'number'
+        ? a.endTime
+        : 0;
+    const bTime =
+      b.status === 'active'
+        ? getMs(b.startTime)
+        : typeof b.endTime === 'number'
+        ? b.endTime
+        : 0;
+    return bTime - aTime;
+  });
+};
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const m = (r: any): Garage => ({
   id: r.id,
@@ -233,6 +292,10 @@ const mm = (r: any): Message => ({
 // ===================== debounce لـ updateGarage =====================
 let updateGarageTimeout: ReturnType<typeof setTimeout> | null = null;
 const pendingGarageUpdates: Map<string, Record<string, unknown>> = new Map();
+
+// ✅ locks لمنع التكرار
+const sessionStartLocks = new Set<string>();
+const sessionEndLocks = new Set<string>();
 
 // ===================== State Interface =====================
 interface AppState {
@@ -517,26 +580,25 @@ export const useStore = create<AppState>((set, get) => ({
     const supabaseActivePlates = new Set(
       supabaseSessions
         .filter((ss) => ss.status === 'active')
-        .map((ss) => ss.carPlate)
+        .map((ss) => normalizePlate(ss.carPlate))
     );
 
+    // ✅ الجلسات المحلية فقط اللي مش عندها نسخة في Supabase
     const localOnlySessions = currentSessions.filter(
       (cs) =>
         !supabaseSessionIds.has(cs.id) &&
         cs.status === 'active' &&
-        !supabaseActivePlates.has(cs.carPlate) &&
+        !supabaseActivePlates.has(normalizePlate(cs.carPlate)) &&
         Date.now() - cs.startTime < 10000
     );
 
-    // ✅ إصلاح: الأولوية للنسخة المحلية لو completed أو عندها totalPrice
+    // ✅ دمج مع الأولوية للنسخة المحلية لو completed أو عندها totalPrice
     const mergedSessions = supabaseSessions.map((ss) => {
       const localVersion = currentSessions.find((cs) => cs.id === ss.id);
       if (localVersion) {
-        // ✅ لو المحلي completed = خده دايماً
         if (localVersion.status === 'completed') {
           return localVersion;
         }
-        // ✅ لو المحلي عنده totalPrice > 0 = خده
         if (
           localVersion.totalPrice != null &&
           localVersion.totalPrice > 0
@@ -547,7 +609,11 @@ export const useStore = create<AppState>((set, get) => ({
       return ss;
     });
 
-    const finalSessions = [...mergedSessions, ...localOnlySessions];
+    // ✅ dedupe للتأكد من عدم التكرار
+    const finalSessions = dedupeActiveSessions([
+      ...mergedSessions,
+      ...localOnlySessions,
+    ]);
 
     const supabaseTopUps = w.data ? w.data.map(mt) : get().walletTopUps;
     const currentTopUps = get().walletTopUps ?? [];
@@ -728,101 +794,127 @@ export const useStore = create<AppState>((set, get) => ({
 
   // ── addSession ────────────────────────────────────────────────────────────
   addSession: async (s) => {
+    const normalizedPlate = normalizePlate(s.carPlate);
+    if (!normalizedPlate) return '';
+
     const sessionId = crypto.randomUUID();
     const safeStartTime =
       typeof s.startTime === 'number' && !isNaN(s.startTime)
         ? s.startTime
         : Date.now();
 
-    // ✅ طبقة 1: تحقق محلي
-    const existingLocal = get().sessions.find(
-      (existing) =>
-        existing.carPlate === s.carPlate &&
-        existing.status === 'active'
-    );
-
-    if (existingLocal) {
-      console.warn('⚠️ جلسة محلية موجودة:', existingLocal.id);
-      return existingLocal.id;
+    // ✅ منع البدء المكرر بالـ lock
+    if (sessionStartLocks.has(normalizedPlate)) {
+      const existing = get().sessions.find(
+        (x) =>
+          samePlate(x.carPlate, normalizedPlate) && x.status === 'active'
+      );
+      return existing?.id ?? '';
     }
 
-    // ✅ طبقة 2: تحقق من Supabase
-    if (isSupabaseConfigured()) {
-      try {
-        const { data: dbCheck } = await supabase
-          .from('sessions')
-          .select('id')
-          .eq('car_plate', s.carPlate)
-          .eq('status', 'active')
-          .limit(1);
-
-        if (dbCheck && dbCheck.length > 0) {
-          console.warn('⚠️ جلسة موجودة في DB:', dbCheck[0].id);
-          await get().fetchAll();
-          return dbCheck[0].id;
-        }
-      } catch (err) {
-        console.error('خطأ في التحقق من DB:', err);
-      }
-    }
-
-    const optimisticSession: ParkingSession = {
-      ...s,
-      id: sessionId,
-      startTime: safeStartTime,
-      synced: false,
-    };
-
-    set((st) => ({
-      sessions: [optimisticSession, ...st.sessions],
-    }));
-
-    await get().adjustGarageSpots(s.garageId, -1);
-
-    if (!isSupabaseConfigured()) return sessionId;
+    sessionStartLocks.add(normalizedPlate);
+    pausePolling(8000);
 
     try {
-      const { data, error } = await supabase
-        .from('sessions')
-        .insert({
-          id: sessionId,
-          garage_id: s.garageId,
-          car_plate: s.carPlate,
-          start_time: new Date(safeStartTime).toISOString(),
-          status: s.status,
-          source: s.source,
-          agreed_price: s.agreedPrice ?? null,
-        })
-        .select()
-        .single();
+      // ✅ طبقة 1: تحقق محلي
+      const existingLocal = get().sessions.find(
+        (existing) =>
+          samePlate(existing.carPlate, normalizedPlate) &&
+          existing.status === 'active'
+      );
 
-      if (error) {
-        console.error('❌ خطأ في إضافة الجلسة:', error);
+      if (existingLocal) {
+        return existingLocal.id;
+      }
+
+      // ✅ طبقة 2: تحقق من Supabase
+      if (isSupabaseConfigured()) {
+        try {
+          const { data: dbCheck } = await supabase
+            .from('sessions')
+            .select('id, car_plate')
+            .eq('status', 'active')
+            .eq('car_plate', normalizedPlate)
+            .limit(1);
+
+          if (dbCheck && dbCheck.length > 0) {
+            await get().fetchAll();
+            return dbCheck[0].id;
+          }
+        } catch (err) {
+          console.error('خطأ في التحقق من DB:', err);
+        }
+      }
+
+      const optimisticSession: ParkingSession = {
+        ...s,
+        id: sessionId,
+        carPlate: normalizedPlate,
+        startTime: safeStartTime,
+        synced: false,
+      };
+
+      set((st) => ({
+        sessions: dedupeActiveSessions([
+          optimisticSession,
+          ...st.sessions,
+        ]),
+      }));
+
+      await get().adjustGarageSpots(s.garageId, -1);
+
+      if (!isSupabaseConfigured()) return sessionId;
+
+      try {
+        const { data, error } = await supabase
+          .from('sessions')
+          .insert({
+            id: sessionId,
+            garage_id: s.garageId,
+            car_plate: normalizedPlate,
+            start_time: new Date(safeStartTime).toISOString(),
+            status: s.status,
+            source: s.source,
+            agreed_price: s.agreedPrice ?? null,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error('❌ خطأ في إضافة الجلسة:', error);
+          set((st) => ({
+            sessions: st.sessions.filter((x) => x.id !== sessionId),
+          }));
+          await get().adjustGarageSpots(s.garageId, +1);
+          return sessionId;
+        }
+
+        if (data) {
+          const syncedSession: ParkingSession = {
+            ...ms(data),
+            synced: true,
+          };
+          set((st) => ({
+            sessions: dedupeActiveSessions(
+              st.sessions.map((x) =>
+                x.id === sessionId ? syncedSession : x
+              )
+            ),
+          }));
+          return data.id;
+        }
+      } catch (err) {
+        console.error('❌ خطأ غير متوقع في addSession:', err);
         set((st) => ({
           sessions: st.sessions.filter((x) => x.id !== sessionId),
         }));
         await get().adjustGarageSpots(s.garageId, +1);
-        return sessionId;
       }
 
-      if (data) {
-        const syncedSession: ParkingSession = { ...ms(data), synced: true };
-        set((st) => ({
-          sessions: st.sessions.map((x) =>
-            x.id === sessionId ? syncedSession : x
-          ),
-        }));
-        return data.id;
-      }
-    } catch (err) {
-      console.error('❌ خطأ غير متوقع في addSession:', err);
-      set((st) => ({
-        sessions: st.sessions.filter((x) => x.id !== sessionId),
-      }));
-      await get().adjustGarageSpots(s.garageId, +1);
+      return sessionId;
+    } finally {
+      sessionStartLocks.delete(normalizedPlate);
     }
-
-    return sessionId;
   },
 
   // ── endSession ────────────────────────────────────────────────────────────
@@ -840,49 +932,62 @@ export const useStore = create<AppState>((set, get) => ({
       return;
     }
 
-    // ✅ إصلاح: حدّث الجلسة بالـ id فقط - مش بالـ carPlate
-    set((st) => ({
-      sessions: st.sessions.map((s) => {
-        if (s.id === id) {
-          return {
-            ...s,
-            endTime: now,
-            totalPrice,
-            paymentMethod,
-            status: 'completed' as const,
-          };
-        }
-        return s;
-      }),
-    }));
+    const lockKey = `${session.garageId}:${normalizePlate(session.carPlate)}`;
 
-    await get().adjustGarageSpots(session.garageId, +1);
+    // ✅ منع الإنهاء المكرر
+    if (sessionEndLocks.has(lockKey)) return;
+    sessionEndLocks.add(lockKey);
 
-    if (!isSupabaseConfigured()) return;
-
-    // ✅ إصلاح: حدّث بالـ id فقط - مش بالـ carPlate (ده كان سبب التكرار)
-    const { error } = await supabase
-      .from('sessions')
-      .update({
-        end_time: new Date(now).toISOString(),
-        total_price: totalPrice,
-        payment_method: paymentMethod,
-        status: 'completed',
-      })
-      .eq('id', id)
-      .eq('status', 'active'); // ✅ ضمان إنه active بس
-
-    if (error) {
-      console.error('❌ خطأ في إنهاء الجلسة:', error);
-    }
-
-    // ✅ إصلاح: pause الـ polling لمدة أطول بعد endSession
     pausePolling(8000);
 
-    // ✅ fetchAll بعد 8 ثواني بس
-    setTimeout(() => {
-      get().fetchAll();
-    }, 8000);
+    try {
+      const safeTotalPrice =
+        Number(totalPrice) > 0 ? Number(totalPrice) : 0;
+
+      // ✅ حدّث الجلسة بالـ id فقط
+      set((st) => ({
+        sessions: st.sessions.map((s) =>
+          s.id === id
+            ? {
+                ...s,
+                endTime: now,
+                totalPrice: safeTotalPrice,
+                paymentMethod,
+                status: 'completed' as const,
+              }
+            : s
+        ),
+      }));
+
+      await get().adjustGarageSpots(session.garageId, +1);
+
+      if (!isSupabaseConfigured()) return;
+
+      // ✅ update بالـ id فقط + تأكد إنه active
+      const { error } = await supabase
+        .from('sessions')
+        .update({
+          end_time: new Date(now).toISOString(),
+          total_price: safeTotalPrice,
+          payment_method: paymentMethod,
+          status: 'completed',
+        })
+        .eq('id', id)
+        .eq('status', 'active');
+
+      if (error) {
+        console.error('❌ خطأ في إنهاء الجلسة:', error);
+      }
+
+      // ✅ fetchAll بعد 8 ثواني بس
+      setTimeout(() => {
+        get().fetchAll();
+      }, 8000);
+    } finally {
+      setTimeout(() => {
+        sessionEndLocks.delete(lockKey);
+      }, 3000);
+    }
   },
 
   // ── cancelSession ─────────────────────────────────────────────────────────
@@ -913,7 +1018,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (target) {
       state.sessions.forEach((s) => {
         if (
-          s.carPlate === target.carPlate &&
+          samePlate(s.carPlate, target.carPlate) &&
           s.source === 'manual' &&
           s.status === 'active' &&
           Math.abs(s.startTime - target.startTime) < 10000
@@ -945,11 +1050,17 @@ export const useStore = create<AppState>((set, get) => ({
         await supabase
           .from('sessions')
           .delete()
-          .eq('car_plate', target.carPlate)
+          .eq('car_plate', normalizePlate(target.carPlate))
           .eq('source', 'manual')
           .eq('status', 'active')
-          .gte('start_time', new Date(target.startTime - 10000).toISOString())
-          .lte('start_time', new Date(target.startTime + 10000).toISOString());
+          .gte(
+            'start_time',
+            new Date(target.startTime - 10000).toISOString()
+          )
+          .lte(
+            'start_time',
+            new Date(target.startTime + 10000).toISOString()
+          );
       }
     }
   },
@@ -1246,7 +1357,8 @@ export const useStore = create<AppState>((set, get) => ({
       }));
       return {
         success: false,
-        error: err instanceof Error ? err.message : 'حدث خطأ غير متوقع',
+        error:
+          err instanceof Error ? err.message : 'حدث خطأ غير متوقع',
       };
     }
   },
@@ -1300,7 +1412,7 @@ let pollingInterval: ReturnType<typeof setInterval> | null = null;
 let isOperationInProgress = false;
 let pauseTimeout: ReturnType<typeof setTimeout> | null = null;
 
-// ✅ إصلاح: pausePolling بتقبل مدة اختيارية (default 5000ms)
+// ✅ pausePolling بتقبل مدة اختيارية (default 5000ms)
 export function pausePolling(duration = 5000) {
   isOperationInProgress = true;
   if (pauseTimeout) clearTimeout(pauseTimeout);

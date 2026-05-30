@@ -13,6 +13,17 @@ import {
   formatTime,
   getRemainingInCurrentHour,
 } from '../utils/pricing';
+import toast from 'react-hot-toast';
+
+const normalizePlate = (plate?: string) => (plate ?? '').trim().toUpperCase();
+
+const samePlate = (a?: string, b?: string) =>
+  normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
+
+const getMs = (value?: number) => {
+  if (typeof value === 'number') return value;
+  return 0;
+};
 
 export default function SessionScreen() {
   const {
@@ -22,23 +33,30 @@ export default function SessionScreen() {
     currentUser,
   } = useStore();
 
-  // ─── البحث عن الجلسة النشطة للمستخدم الحالي ──────────────────────────────
-  const activeSession = sessions.find(
-    (s) => s.carPlate === currentUser?.carPlate && s.status === 'active'
+  const userPlate = normalizePlate(currentUser?.carPlate);
+
+  const userSessions = sessions.filter((s) =>
+    samePlate(s.carPlate, userPlate)
   );
 
-  // ─── البحث عن آخر جلسة مكتملة (لو الجراج أنهى الجلسة) ────────────────────
-  const lastCompletedSession = sessions
-    .filter((s) => s.carPlate === currentUser?.carPlate && s.status === 'completed')
+  // ✅ لو فيه تكرار active لنفس العربية، خُد الأقدم فقط
+  const activeSession = userSessions
+    .filter((s) => s.status === 'active')
+    .sort((a, b) => getMs(a.startTime) - getMs(b.startTime))[0];
+
+  const lastCompletedSession = userSessions
+    .filter((s) => s.status === 'completed')
     .sort((a, b) => {
-      const endA = typeof a.endTime === 'number' ? a.endTime : new Date(a.endTime || 0).getTime();
-      const endB = typeof b.endTime === 'number' ? b.endTime : new Date(b.endTime || 0).getTime();
-      return endB - endA;
+      const endA = typeof a.endTime === 'number' ? a.endTime : 0;
+      const endB = typeof b.endTime === 'number' ? b.endTime : 0;
+      if (endB !== endA) return endB - endA;
+      return Number(b.totalPrice ?? 0) - Number(a.totalPrice ?? 0);
     })[0];
 
-  const garage = garages.find((g) => g.id === activeSession?.garageId);
+  const garage = garages.find(
+    (g) => g.id === (activeSession?.garageId ?? lastCompletedSession?.garageId)
+  );
 
-  // ─── عداد الجلسة النشطة ───────────────────────────────────────────────────
   const [elapsed, setElapsed] = useState(0);
   const redirectedRef = useRef(false);
 
@@ -50,40 +68,37 @@ export default function SessionScreen() {
         ? activeSession.startTime
         : new Date(activeSession.startTime).getTime();
 
-    setElapsed(Math.floor((Date.now() - startTime) / 1000));
+    setElapsed(Math.max(0, Math.floor((Date.now() - startTime) / 1000)));
 
     const interval = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+      setElapsed(Math.max(0, Math.floor((Date.now() - startTime) / 1000)));
     }, 1000);
 
     return () => clearInterval(interval);
   }, [activeSession?.id, activeSession?.startTime]);
 
-  // ─── لو الجراج أنهى الجلسة → انتقل للملخص تلقائياً ────────────────────────
+  // ✅ التحويل للملخص فقط بعد ما الجراج يقفل الجلسة فعلاً
   useEffect(() => {
     if (activeSession) {
       redirectedRef.current = false;
       return;
     }
 
-    // لو مفيش جلسة نشطة وفيه جلسة مكتملة حديثة (آخر 60 ثانية)
-    if (!activeSession && lastCompletedSession && !redirectedRef.current) {
-      const endTime =
-        typeof lastCompletedSession.endTime === 'number'
-          ? lastCompletedSession.endTime
-          : new Date(lastCompletedSession.endTime || 0).getTime();
+    if (!lastCompletedSession || redirectedRef.current) return;
 
-      const timeSinceEnd = Date.now() - endTime;
+    const endTime =
+      typeof lastCompletedSession.endTime === 'number'
+        ? lastCompletedSession.endTime
+        : 0;
 
-      // لو الجلسة انتهت من أقل من 60 ثانية → روح الملخص
-      if (timeSinceEnd < 60000) {
-        redirectedRef.current = true;
-        setScreen('summary');
-      }
+    const timeSinceEnd = Date.now() - endTime;
+
+    if (endTime > 0 && timeSinceEnd < 60000) {
+      redirectedRef.current = true;
+      setScreen('summary');
     }
-  }, [activeSession?.id, lastCompletedSession?.id, setScreen]);
+  }, [activeSession?.id, lastCompletedSession?.id, lastCompletedSession?.endTime, setScreen]);
 
-  // ─── شاشة لا توجد جلسة نشطة ──────────────────────────────────────────────
   if (!activeSession) {
     return (
       <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8">
@@ -105,25 +120,29 @@ export default function SessionScreen() {
     );
   }
 
-  // ─── الحسابات ─────────────────────────────────────────────────────────────
   const sessionRate = Number(activeSession.agreedPrice ?? garage?.basePrice ?? 0);
   const currentHours = calculateFullHours(elapsed);
   const currentCost = calculateCost(elapsed, sessionRate);
   const remainingInHour = getRemainingInCurrentHour(elapsed);
 
-  // ─── إنهاء الجلسة ────────────────────────────────────────────────────────
+  // ✅ لا تروح للـ summary إلا بعد إنهاء حقيقي من الجراج
   const handleEnd = () => {
-    setScreen('summary');
+    toast('يرجى التوجّه للجراج أولاً ليتم تحصيل المبلغ وإنهاء الجلسة', {
+      icon: '⏳',
+      style: {
+        background: '#1e293b',
+        color: '#f1f5f9',
+        border: '1px solid #334155',
+      },
+    });
   };
 
-  // ─── العرض ─────────────────────────────────────────────────────────────────
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8"
     >
-      {/* عداد الوقت الدائري */}
       <motion.div
         animate={{
           boxShadow: [
@@ -144,7 +163,6 @@ export default function SessionScreen() {
         </div>
       </motion.div>
 
-      {/* بطاقة التكلفة */}
       <div className="w-full bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-2xl p-4 mb-4">
         <div className="flex justify-between items-center mb-3">
           <div className="text-center">
@@ -166,7 +184,6 @@ export default function SessionScreen() {
           </div>
         </div>
 
-        {/* العد التنازلي للساعة التالية */}
         <div className="bg-slate-950/50 rounded-xl p-3 text-center">
           <div className="text-[10px] text-slate-500 mb-1">
             الوقت المتبقي حتى الساعة التالية
@@ -182,7 +199,6 @@ export default function SessionScreen() {
         </div>
       </div>
 
-      {/* تنبيه سعر خاص */}
       {sessionRate !== garage?.basePrice && garage && (
         <div className="w-full bg-amber-600/10 border border-amber-500/20 rounded-xl p-2 mb-4 text-center">
           <p className="text-[10px] text-amber-400 font-bold">
@@ -191,7 +207,6 @@ export default function SessionScreen() {
         </div>
       )}
 
-      {/* معلومات السيارة والسعر */}
       <div className="w-full grid grid-cols-2 gap-3 mb-6">
         <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl text-center">
           <Car size={20} className="text-blue-400 mx-auto mb-2" />
@@ -213,7 +228,6 @@ export default function SessionScreen() {
         </div>
       </div>
 
-      {/* اسم الجراج */}
       {garage && (
         <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl w-full text-center mb-6">
           <div className="text-xs text-slate-500 font-bold mb-1">الجراج</div>
@@ -221,19 +235,17 @@ export default function SessionScreen() {
         </div>
       )}
 
-      {/* ملاحظة الدفع */}
       <div className="w-full bg-blue-600/10 border border-blue-500/20 rounded-xl p-3 mb-4 text-center">
         <p className="text-[10px] text-blue-400 font-bold">
-          💡 سيتم تحديد طريقة الدفع عند إنهاء الجلسة
+          💡 سيتم نقلك للملخص تلقائياً بعد ما الجراج ينهي الجلسة فعلياً
         </p>
       </div>
 
-      {/* زر إنهاء الجلسة */}
       <button
         onClick={handleEnd}
         className="w-full bg-red-600 hover:bg-red-700 text-white py-5 rounded-2xl font-black text-lg shadow-xl active:scale-95 transition-all mb-3"
       >
-        إنهاء الجلسة ({currentCost} ج.م)
+        التوجّه للجراج لإنهاء الجلسة ({currentCost} ج.م)
       </button>
     </motion.div>
   );
