@@ -56,6 +56,13 @@ export default function GarageListScreen() {
     (s) => s.carPlate === currentUser?.carPlate && s.status === 'completed'
   );
 
+  // ✅ هل فيه جلسة نشطة حالياً
+  const activeSession = sessions.find(
+    (s) =>
+      s.carPlate === (currentUser?.carPlate ?? '').trim().toUpperCase() &&
+      s.status === 'active'
+  );
+
   const getUserLocation = () => {
     setLocationLoading(true);
     if ('geolocation' in navigator) {
@@ -129,12 +136,23 @@ export default function GarageListScreen() {
       return;
     }
 
+    // ✅ لو فيه جلسة نشطة → روّح لشاشة الجلسة مباشرة
+    if (activeSession) {
+      setSelectedGarageId(activeSession.garageId);
+      setScreen('session');
+      toast('لديك جلسة ركن نشطة بالفعل! 🚗', {
+        icon: '⚡',
+        style: {
+          background: '#1e293b',
+          color: '#f1f5f9',
+          border: '1px solid #334155',
+        },
+      });
+      return;
+    }
+
     const hasPendingOffer = offers.some(
       (o) => o.userId === currentUser.phone && o.status === 'pending'
-    );
-
-    const hasActiveSession = sessions.some(
-      (s) => s.carPlate === currentUser.carPlate && s.status === 'active'
     );
 
     const hasIncomingCar = incomingCars.some(
@@ -142,8 +160,8 @@ export default function GarageListScreen() {
         c.carPlate === currentUser.carPlate && c.status === 'coming'
     );
 
-    if (hasPendingOffer || hasActiveSession || hasIncomingCar) {
-      toast.error('لديك حجز أو جلسة نشطة بالفعل');
+    if (hasPendingOffer || hasIncomingCar) {
+      toast.error('لديك حجز نشط بالفعل');
       return;
     }
 
@@ -216,6 +234,34 @@ export default function GarageListScreen() {
           </div>
         </div>
 
+        {/* ✅ بانر الجلسة النشطة */}
+        {activeSession && (
+          <motion.button
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            onClick={() => {
+              setSelectedGarageId(activeSession.garageId);
+              setScreen('session');
+            }}
+            className="w-full bg-emerald-600/20 border border-emerald-500/40 rounded-xl p-3 mb-2 flex items-center justify-between active:scale-[0.98] transition-all"
+          >
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-xs font-black text-emerald-400">
+                عرض الجلسة النشطة ←
+              </span>
+            </div>
+            <div className="text-right">
+              <div className="text-xs font-black text-white">
+                🚗 لديك جلسة ركن نشطة
+              </div>
+              <div className="text-[9px] text-emerald-400/70">
+                اضغط للعودة للجلسة
+              </div>
+            </div>
+          </motion.button>
+        )}
+
         {/* طرق الدفع */}
         <div className="flex items-center gap-1.5 mb-2 px-1">
           <span className="text-[9px] text-slate-400 font-bold whitespace-nowrap">
@@ -274,9 +320,8 @@ export default function GarageListScreen() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 pt-1 pb-4">
-        {/* ─── أزرار سريعة: آخر جلسة + تواصل معنا ──────────────────────────── */}
+        {/* أزرار سريعة */}
         <div className="grid grid-cols-2 gap-2 mb-4">
-          {/* زر آخر جلسة */}
           {hasCompletedSession && (
             <button
               onClick={() => setScreen('lastSession')}
@@ -292,7 +337,6 @@ export default function GarageListScreen() {
             </button>
           )}
 
-          {/* زر تواصل معنا */}
           <button
             onClick={() => setScreen('chat')}
             className={`bg-gradient-to-l from-purple-600/20 to-slate-900 border border-purple-500/20 rounded-2xl p-3 flex items-center gap-2 active:scale-[0.98] transition-all ${
@@ -309,7 +353,7 @@ export default function GarageListScreen() {
           </button>
         </div>
 
-        {/* ─── قريب ──────────────────────────────────────────────────────────── */}
+        {/* قريب */}
         {nearbyGarages.length > 0 && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3 justify-end">
@@ -331,13 +375,14 @@ export default function GarageListScreen() {
                   onSelect={() => handleDirectBooking(garage)}
                   isNearby
                   isClosest={i === 0}
+                  hasActiveSession={!!activeSession}
                 />
               ))}
             </div>
           </div>
         )}
 
-        {/* ─── بعيد ──────────────────────────────────────────────────────────── */}
+        {/* بعيد */}
         {farGarages.length > 0 && !showNearbyOnly && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3 justify-end">
@@ -359,6 +404,7 @@ export default function GarageListScreen() {
                   onSelect={() => handleDirectBooking(garage)}
                   isNearby={false}
                   isClosest={nearbyGarages.length === 0 && i === 0}
+                  hasActiveSession={!!activeSession}
                 />
               ))}
             </div>
@@ -387,12 +433,14 @@ function GarageCard({
   onSelect,
   isNearby,
   isClosest,
+  hasActiveSession,
 }: {
   garage: GarageWithDistance;
   index: number;
   onSelect: () => void;
   isNearby: boolean;
   isClosest?: boolean;
+  hasActiveSession?: boolean;
 }) {
   return (
     <motion.div
@@ -478,6 +526,8 @@ function GarageCard({
         className={`w-full py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 ${
           garage.availableSpots === 0
             ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+            : hasActiveSession
+            ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
             : isClosest
             ? 'bg-blue-600 text-white'
             : isNearby
@@ -489,6 +539,8 @@ function GarageCard({
         <Car size={14} />
         {garage.availableSpots === 0
           ? 'ممتلئ - لا يمكن الحجز'
+          : hasActiveSession
+          ? '⚡ عرض جلستك النشطة'
           : isClosest
           ? 'احجز الأقرب إليك'
           : isNearby
