@@ -39,23 +39,20 @@ export default function SummaryScreen() {
   } = useStore();
 
   const garage = garages.find((g) => g.id === selectedGarageId);
-
-  // ✅ البحث عن الجلسة المكتملة الأخيرة أو النشطة
-  const userPlate = currentUser?.carPlate ?? '';
+  const userPlate = (currentUser?.carPlate ?? '').trim().toUpperCase();
 
   const activeSession = sessions.find(
     (s) =>
       s.garageId === selectedGarageId &&
-      s.carPlate === userPlate &&
+      s.carPlate.trim().toUpperCase() === userPlate &&
       s.status === 'active'
   );
 
-  // ✅ آخر جلسة مكتملة للمستخدم في نفس الجراج
   const lastCompletedSession = sessions
     .filter(
       (s) =>
         s.garageId === selectedGarageId &&
-        s.carPlate === userPlate &&
+        s.carPlate.trim().toUpperCase() === userPlate &&
         s.status === 'completed'
     )
     .sort((a, b) => {
@@ -64,13 +61,14 @@ export default function SummaryScreen() {
       return endB - endA;
     })[0];
 
-  // ✅ الجلسة المرجعية للحساب
   const referenceSession = activeSession ?? lastCompletedSession;
 
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [rating, setRating] = useState(4);
   const [done, setDone] = useState(false);
   const [doneMethod, setDoneMethod] = useState('');
+  const [doneTotalPrice, setDoneTotalPrice] = useState(0);
+  const [remainingWallet, setRemainingWallet] = useState(0);
   const isEndingRef = useRef(false);
 
   const [instapayStep, setInstapayStep] = useState<'select' | 'info' | 'confirm'>('select');
@@ -83,7 +81,7 @@ export default function SummaryScreen() {
   const [cashWalletEnteredCode, setCashWalletEnteredCode] = useState('');
   const [cashWalletCodeError, setCashWalletCodeError] = useState(false);
 
-  // ✅ لو الجلسة اتنهت من الجراج وعندها totalPrice → اعرض شاشة النجاح تلقائياً
+  // ✅ لو الجراج أنهى الجلسة → اعرض شاشة النجاح تلقائياً
   useEffect(() => {
     if (done) return;
     if (!lastCompletedSession) return;
@@ -101,14 +99,21 @@ export default function SummaryScreen() {
       lastCompletedSession.totalPrice != null &&
       lastCompletedSession.totalPrice > 0
     ) {
+      setDoneTotalPrice(Number(lastCompletedSession.totalPrice));
       setDoneMethod(lastCompletedSession.paymentMethod ?? 'cash');
+      setRemainingWallet(currentUser?.wallet ?? 0);
       setDone(true);
     }
-  }, [lastCompletedSession?.id, lastCompletedSession?.totalPrice, activeSession, done]);
+  }, [
+    lastCompletedSession?.id,
+    lastCompletedSession?.totalPrice,
+    activeSession,
+    done,
+  ]);
 
   if (!garage) return null;
 
-  // ✅ حساب التكلفة من الجلسة المرجعية أو live
+  // ✅ حساب التكلفة
   const durationSeconds = referenceSession
     ? referenceSession.status === 'completed' && referenceSession.endTime
       ? Math.floor(
@@ -122,12 +127,9 @@ export default function SummaryScreen() {
     : 0;
 
   const durationMinutes = Math.floor(durationSeconds / 60);
-  const sessionRate = Number(
-    referenceSession?.agreedPrice ?? garage.basePrice
-  );
+  const sessionRate = Number(referenceSession?.agreedPrice ?? garage.basePrice);
   const totalHours = calculateFullHours(durationSeconds);
 
-  // ✅ السعر الحقيقي: لو الجلسة مكتملة وعندها totalPrice → استخدمه
   const totalPrice =
     referenceSession?.status === 'completed' &&
     referenceSession?.totalPrice != null &&
@@ -135,7 +137,7 @@ export default function SummaryScreen() {
       ? Number(referenceSession.totalPrice)
       : calculateCost(durationSeconds, sessionRate);
 
-  const walletBalance = currentUser?.wallet || 0;
+  const walletBalance = currentUser?.wallet ?? 0;
   const canPayWallet = walletBalance >= totalPrice;
 
   const methods = [
@@ -162,7 +164,7 @@ export default function SummaryScreen() {
     if (activeSession.status !== 'active') return false;
 
     isEndingRef.current = true;
-    pausePolling(10000);
+    pausePolling(15000); // ✅ 15 ثانية عشان يمنع fetchAll من override الرصيد
 
     try {
       await endSession(activeSession.id, price, method);
@@ -187,23 +189,47 @@ export default function SummaryScreen() {
       setCashWalletStep('info');
       return;
     }
+
     if (paymentMethod === 'wallet') {
       if (!canPayWallet) {
         toast.error('رصيد المحفظة غير كافي');
         return;
       }
+
+      // ✅ احفظ الرصيد المتبقي قبل الخصم
+      const newBalance = walletBalance - totalPrice;
+
+      // ✅ اخصم أولاً محلياً
       deductWallet(totalPrice);
-      await safeEndSession('wallet', totalPrice);
-      toast.success('تم الخصم من المحفظة بنجاح! ✅');
-      setDoneMethod('wallet');
-      setDone(true);
+
+      // ✅ بعدين أنهي الجلسة
+      const success = await safeEndSession('wallet', totalPrice);
+
+      if (success) {
+        toast.success('تم الخصم من المحفظة بنجاح! ✅');
+        setDoneTotalPrice(totalPrice);
+        setDoneMethod('wallet');
+        setRemainingWallet(newBalance);
+        setDone(true);
+      } else {
+        // ✅ لو فشل - رجّع الرصيد
+        deductWallet(-totalPrice);
+        toast.error('حدث خطأ، حاول مرة أخرى');
+      }
       return;
     }
-    // نقدي
-    await safeEndSession(paymentMethod, totalPrice);
-    toast.success('تم إنهاء الجلسة بنجاح!');
-    setDoneMethod(paymentMethod);
-    setDone(true);
+
+    // ✅ نقدي
+    const success = await safeEndSession(paymentMethod, totalPrice);
+    if (success) {
+      toast.success('تم إنهاء الجلسة بنجاح!');
+      setDoneTotalPrice(totalPrice);
+      setDoneMethod(paymentMethod);
+      setRemainingWallet(walletBalance);
+      setDone(true);
+    } else {
+      toast.error('حدث خطأ، حاول مرة أخرى');
+    }
   };
 
   // ✅ تأكيد إنستاباي
@@ -213,10 +239,16 @@ export default function SummaryScreen() {
       toast.error('كود التأكيد غير صحيح');
       return;
     }
-    await safeEndSession('instapay', totalPrice);
-    toast.success('تم تأكيد السداد عبر إنستاباي بنجاح! ✅');
-    setDoneMethod('instapay');
-    setDone(true);
+    const success = await safeEndSession('instapay', totalPrice);
+    if (success) {
+      toast.success('تم تأكيد السداد عبر إنستاباي بنجاح! ✅');
+      setDoneTotalPrice(totalPrice);
+      setDoneMethod('instapay');
+      setRemainingWallet(walletBalance);
+      setDone(true);
+    } else {
+      toast.error('حدث خطأ، حاول مرة أخرى');
+    }
   };
 
   // ✅ تأكيد محفظة كاش
@@ -226,38 +258,20 @@ export default function SummaryScreen() {
       toast.error('كود التأكيد غير صحيح');
       return;
     }
-    await safeEndSession('cashwallet', totalPrice);
-    toast.success('تم تأكيد السداد عبر تحويل محفظة كاش ✅');
-    setDoneMethod('cashwallet');
-    setDone(true);
+    const success = await safeEndSession('cashwallet', totalPrice);
+    if (success) {
+      toast.success('تم تأكيد السداد عبر تحويل محفظة كاش ✅');
+      setDoneTotalPrice(totalPrice);
+      setDoneMethod('cashwallet');
+      setRemainingWallet(walletBalance);
+      setDone(true);
+    } else {
+      toast.error('حدث خطأ، حاول مرة أخرى');
+    }
   };
 
   // ========== شاشة النجاح ==========
   if (done) {
-    const displayPrice =
-      lastCompletedSession?.totalPrice != null &&
-      lastCompletedSession.totalPrice > 0
-        ? Number(lastCompletedSession.totalPrice)
-        : totalPrice;
-
-    const displayMethod =
-      doneMethod ||
-      lastCompletedSession?.paymentMethod ||
-      'cash';
-
-    const displayHours =
-      lastCompletedSession?.endTime && lastCompletedSession?.startTime
-        ? calculateFullHours(
-            Math.floor(
-              ((typeof lastCompletedSession.endTime === 'number'
-                ? lastCompletedSession.endTime
-                : new Date(lastCompletedSession.endTime).getTime()) -
-                lastCompletedSession.startTime) /
-                1000
-            )
-          )
-        : totalHours;
-
     return (
       <motion.div
         initial={{ opacity: 0, scale: 0.8 }}
@@ -275,35 +289,39 @@ export default function SummaryScreen() {
         <p className="text-slate-400 text-sm mb-2 text-center">تم الدفع بنجاح</p>
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-6 text-center w-full">
           <div className="text-4xl font-black text-white font-mono mb-1">
-            {displayPrice} ج.م
+            {doneTotalPrice} ج.م
           </div>
           <div className="text-xs text-slate-500 mb-2">
-            {displayHours} ساعة × {sessionRate} ج.م
+            {totalHours} ساعة × {sessionRate} ج.م
           </div>
           <div
             className={`inline-block px-3 py-1 rounded-full text-[10px] font-black ${
-              displayMethod === 'instapay'
+              doneMethod === 'instapay'
                 ? 'bg-purple-500/20 text-purple-400'
-                : displayMethod === 'wallet'
+                : doneMethod === 'wallet'
                 ? 'bg-blue-500/20 text-blue-400'
-                : displayMethod === 'cashwallet'
+                : doneMethod === 'cashwallet'
                 ? 'bg-orange-500/20 text-orange-400'
                 : 'bg-emerald-500/20 text-emerald-400'
             }`}
           >
-            {displayMethod === 'instapay'
+            {doneMethod === 'instapay'
               ? '📱 إنستاباي'
-              : displayMethod === 'wallet'
+              : doneMethod === 'wallet'
               ? '👝 خصم من المحفظة'
-              : displayMethod === 'cashwallet'
+              : doneMethod === 'cashwallet'
               ? '📲 تحويل محفظة كاش'
               : '💵 نقدي'}
           </div>
-          {displayMethod === 'wallet' && (
+
+          {/* ✅ عرض الرصيد المتبقي بعد الخصم */}
+          {doneMethod === 'wallet' && (
             <div className="mt-3 bg-blue-600/10 border border-blue-500/20 rounded-xl p-2">
-              <span className="text-[10px] text-slate-400">الرصيد المتبقي: </span>
+              <span className="text-[10px] text-slate-400">
+                الرصيد المتبقي:{' '}
+              </span>
               <span className="text-sm font-black text-blue-400 font-mono">
-                {walletBalance} ج.م
+                {remainingWallet} ج.م
               </span>
             </div>
           )}
@@ -512,7 +530,9 @@ export default function SummaryScreen() {
             </a>
             <div className="flex items-center justify-between bg-slate-900 rounded-xl p-2 border border-slate-800">
               <button
-                onClick={() => copyToClipboard(INSTAPAY_LINK, 'رابط إنستاباي')}
+                onClick={() =>
+                  copyToClipboard(INSTAPAY_LINK, 'رابط إنستاباي')
+                }
                 className="text-blue-400 active:scale-90 transition-all"
               >
                 <Copy size={16} />
@@ -646,7 +666,9 @@ export default function SummaryScreen() {
               {CASH_WALLET_NUMBER}
             </div>
             <button
-              onClick={() => copyToClipboard(CASH_WALLET_NUMBER, 'رقم التحويل')}
+              onClick={() =>
+                copyToClipboard(CASH_WALLET_NUMBER, 'رقم التحويل')
+              }
               className="bg-orange-600/20 text-orange-400 px-5 py-2 rounded-xl text-xs font-black flex items-center gap-2 mx-auto active:scale-95 transition-all border border-orange-500/30"
             >
               <Copy size={14} /> نسخ الرقم

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
@@ -30,41 +30,135 @@ export default function App() {
     currentUser,
     currentGarageId,
     sessions,
+    selectedGarageId,
     setSelectedGarageId,
     incomingCars,
     fetchAll,
   } = useStore();
 
   const prevActiveSessionRef = useRef<string | null>(null);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const initialLoadDone = useRef(false);
 
- useEffect(() => {
-  fetchAll();
-  setupRealtime();
-
-  // ✅ Polling احتياطي كل 5 ثواني
-  const pollInterval = setInterval(() => {
-    fetchAll();
-  }, 5000);
-
-  return () => clearInterval(pollInterval);
-}, [fetchAll]);
-
-  // ─── مراقبة حالة العميل ───────────────────────────────────────────────────
+  // ✅ أول تحميل - استنى fetchAll يخلص قبل ما تبدأ تراقب
   useEffect(() => {
-    if (!currentUser || view !== 'user') return;
+    const init = async () => {
+      await fetchAll();
+      setDataLoaded(true);
+      initialLoadDone.current = true;
+      setupRealtime();
+    };
+    init();
+  }, []);
 
+  // ✅ بعد أول تحميل - استرجع الشاشة الصحيحة
+  useEffect(() => {
+    if (!dataLoaded) return;
+    if (!currentUser) return;
+    if (view !== 'user') return;
+
+    const userPlate = (currentUser.carPlate ?? '').trim().toUpperCase();
+
+    // ✅ ابحث عن جلسة نشطة
     const myActiveSession = sessions.find(
-      (s) => s.carPlate === currentUser.carPlate && s.status === 'active'
+      (s) =>
+        s.carPlate.trim().toUpperCase() === userPlate &&
+        s.status === 'active'
     );
 
-    // ✅ بعد إلغاء فترة السماح - فقط coming
+    // ✅ ابحث عن سيارة في الطريق
     const myIncoming = incomingCars.find(
       (c) =>
-        c.carPlate === currentUser.carPlate && c.status === 'coming'
+        c.carPlate.trim().toUpperCase() === userPlate &&
+        c.status === 'coming'
     );
 
-    // 1) لو الجلسة بدأت
-    if (myActiveSession && myActiveSession.id !== prevActiveSessionRef.current) {
+    // ✅ لو فيه جلسة نشطة → روح لشاشة الجلسة
+    if (myActiveSession) {
+      prevActiveSessionRef.current = myActiveSession.id;
+      setSelectedGarageId(myActiveSession.garageId);
+
+      if (screen !== 'session' && screen !== 'summary') {
+        setScreen('session');
+      }
+      return;
+    }
+
+    // ✅ لو فيه سيارة في الطريق → روح لشاشة التوجيه
+    if (myIncoming) {
+      setSelectedGarageId(myIncoming.garageId);
+
+      if (screen !== 'navigation' && screen !== 'session' && screen !== 'summary') {
+        setScreen('navigation');
+      }
+      return;
+    }
+
+    // ✅ لو مفيش حاجة ومستخدم في شاشة محتاجة جلسة → ارجع للقائمة
+    if (
+      screen === 'session' ||
+      screen === 'navigation' ||
+      screen === 'waiting'
+    ) {
+      // ✅ تحقق من آخر جلسة مكتملة - لو لسه جديدة ممكن يكون عايز يشوف الملخص
+      const lastCompleted = sessions
+        .filter(
+          (s) =>
+            s.carPlate.trim().toUpperCase() === userPlate &&
+            s.status === 'completed'
+        )
+        .sort((a, b) => {
+          const endA = typeof a.endTime === 'number' ? a.endTime : 0;
+          const endB = typeof b.endTime === 'number' ? b.endTime : 0;
+          return endB - endA;
+        })[0];
+
+      if (lastCompleted) {
+        const endTime =
+          typeof lastCompleted.endTime === 'number'
+            ? lastCompleted.endTime
+            : 0;
+        const timeSinceEnd = Date.now() - endTime;
+
+        // ✅ لو الجلسة انتهت من أقل من دقيقتين → روح الملخص
+        if (endTime > 0 && timeSinceEnd < 120000) {
+          setSelectedGarageId(lastCompleted.garageId);
+          setScreen('summary');
+          return;
+        }
+      }
+
+      // ✅ ارجع للقائمة بس لو مفيش حاجة خالص
+      setSelectedGarageId(null);
+      setScreen('list');
+    }
+  }, [dataLoaded]); // ✅ يشتغل مرة واحدة بس بعد التحميل
+
+  // ─── مراقبة حالة العميل (بعد التحميل الأولي) ─────────────────────────────
+  useEffect(() => {
+    // ✅ منع التشغيل قبل ما البيانات تتحمل
+    if (!dataLoaded) return;
+    if (!currentUser || view !== 'user') return;
+
+    const userPlate = (currentUser.carPlate ?? '').trim().toUpperCase();
+
+    const myActiveSession = sessions.find(
+      (s) =>
+        s.carPlate.trim().toUpperCase() === userPlate &&
+        s.status === 'active'
+    );
+
+    const myIncoming = incomingCars.find(
+      (c) =>
+        c.carPlate.trim().toUpperCase() === userPlate &&
+        c.status === 'coming'
+    );
+
+    // 1) لو الجلسة بدأت (جديدة)
+    if (
+      myActiveSession &&
+      myActiveSession.id !== prevActiveSessionRef.current
+    ) {
       prevActiveSessionRef.current = myActiveSession.id;
       setSelectedGarageId(myActiveSession.garageId);
 
@@ -88,6 +182,33 @@ export default function App() {
         screen === 'navigation' ||
         screen === 'waiting'
       ) {
+        // ✅ تحقق لو فيه جلسة مكتملة جديدة → روح الملخص
+        const lastCompleted = sessions
+          .filter(
+            (s) =>
+              s.carPlate.trim().toUpperCase() === userPlate &&
+              s.status === 'completed'
+          )
+          .sort((a, b) => {
+            const endA = typeof a.endTime === 'number' ? a.endTime : 0;
+            const endB = typeof b.endTime === 'number' ? b.endTime : 0;
+            return endB - endA;
+          })[0];
+
+        if (lastCompleted) {
+          const endTime =
+            typeof lastCompleted.endTime === 'number'
+              ? lastCompleted.endTime
+              : 0;
+          const timeSinceEnd = Date.now() - endTime;
+
+          if (endTime > 0 && timeSinceEnd < 120000) {
+            setSelectedGarageId(lastCompleted.garageId);
+            setScreen('summary');
+            return;
+          }
+        }
+
         setSelectedGarageId(null);
         setScreen('list');
         toast.success('تم إنهاء الجلسة والعودة للرئيسية');
@@ -97,8 +218,26 @@ export default function App() {
 
     // 3) لو العميل في شاشة التوجيه ومفيش incoming car ومفيش جلسة
     if (!myActiveSession && screen === 'navigation' && !myIncoming) {
-      setSelectedGarageId(null);
-      setScreen('list');
+      // ✅ استنى شوية قبل ما ترجع - ممكن البيانات لسه بتتحمل
+      const timeout = setTimeout(() => {
+        const freshIncoming = useStore.getState().incomingCars.find(
+          (c) =>
+            c.carPlate.trim().toUpperCase() === userPlate &&
+            c.status === 'coming'
+        );
+        const freshSession = useStore.getState().sessions.find(
+          (s) =>
+            s.carPlate.trim().toUpperCase() === userPlate &&
+            s.status === 'active'
+        );
+
+        if (!freshIncoming && !freshSession) {
+          setSelectedGarageId(null);
+          setScreen('list');
+        }
+      }, 3000); // ✅ 3 ثواني قبل ما يرجع
+
+      return () => clearTimeout(timeout);
     }
   }, [
     sessions,
@@ -106,6 +245,7 @@ export default function App() {
     view,
     screen,
     incomingCars,
+    dataLoaded,
     setScreen,
     setSelectedGarageId,
   ]);
@@ -140,7 +280,15 @@ export default function App() {
 
         {/* Main Content */}
         <main className="flex-1 overflow-hidden">
-          {view === 'admin' ? (
+          {/* ✅ شاشة تحميل أولية */}
+          {!dataLoaded && view === 'user' ? (
+            <div className="h-full bg-slate-950 flex flex-col items-center justify-center">
+              <div className="text-4xl mb-4 animate-bounce">🚗</div>
+              <p className="text-slate-400 text-sm font-bold animate-pulse">
+                جاري تحميل البيانات...
+              </p>
+            </div>
+          ) : view === 'admin' ? (
             <AdminDashboard />
           ) : view === 'garage' ? (
             currentGarageId ? (
