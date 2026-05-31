@@ -29,7 +29,7 @@ export interface ParkingSession {
   source: 'app' | 'manual';
   agreedPrice?: number;
   synced?: boolean;
-  revenueConfirmed?: boolean; // ✅ جديد
+  revenueConfirmed?: boolean;
 }
 
 export interface Offer {
@@ -239,7 +239,7 @@ const ms = (r: any): ParkingSession => {
     source: r.source,
     agreedPrice: r.agreed_price != null ? Number(r.agreed_price) : undefined,
     synced: true,
-    revenueConfirmed: r.revenue_confirmed ?? false, // ✅ جديد
+    revenueConfirmed: r.revenue_confirmed ?? false,
   };
 };
 
@@ -353,7 +353,8 @@ interface AppState {
   ) => Promise<void>;
   cancelSession: (id: string) => void;
   removeSession: (id: string) => Promise<void>;
-  confirmRevenue: (sessionId: string) => Promise<void>; // ✅ جديد
+  confirmRevenue: (sessionId: string) => Promise<void>;
+  unconfirmRevenue: (sessionId: string) => Promise<void>; // ✅ جديد
   offers: Offer[];
   addOffer: (o: Omit<Offer, 'id' | 'timestamp'>) => void;
   updateOffer: (
@@ -618,7 +619,6 @@ export const useStore = create<AppState>((set, get) => ({
       const localVersion = currentSessions.find((cs) => cs.id === ss.id);
       if (localVersion) {
         if (localVersion.status === 'completed') {
-          // ✅ احتفظ بـ revenueConfirmed من Supabase لو أحدث
           return {
             ...localVersion,
             revenueConfirmed: ss.revenueConfirmed || localVersion.revenueConfirmed,
@@ -677,7 +677,6 @@ export const useStore = create<AppState>((set, get) => ({
       messages: mergedMessages,
     });
 
-    // ✅ تحديث بيانات المستخدم مع حماية الرصيد بعد الخصم
     const user = get().currentUser;
     if (user?.phone) {
       try {
@@ -891,7 +890,7 @@ export const useStore = create<AppState>((set, get) => ({
         carPlate: normalizedPlate,
         startTime: safeStartTime,
         synced: false,
-        revenueConfirmed: false, // ✅ جديد
+        revenueConfirmed: false,
       };
 
       set((st) => ({
@@ -913,7 +912,7 @@ export const useStore = create<AppState>((set, get) => ({
             status: s.status,
             source: s.source,
             agreed_price: s.agreedPrice ?? null,
-            revenue_confirmed: false, // ✅ جديد
+            revenue_confirmed: false,
           })
           .select()
           .single();
@@ -983,7 +982,7 @@ export const useStore = create<AppState>((set, get) => ({
                 totalPrice: safeTotalPrice,
                 paymentMethod,
                 status: 'completed' as const,
-                revenueConfirmed: false, // ✅ جديد - دايماً false عند الإنهاء
+                revenueConfirmed: false,
               }
             : s
         ),
@@ -1000,7 +999,7 @@ export const useStore = create<AppState>((set, get) => ({
           total_price: safeTotalPrice,
           payment_method: paymentMethod,
           status: 'completed',
-          revenue_confirmed: false, // ✅ جديد
+          revenue_confirmed: false,
         })
         .eq('id', id)
         .eq('status', 'active');
@@ -1021,7 +1020,6 @@ export const useStore = create<AppState>((set, get) => ({
 
   // ── confirmRevenue ────────────────────────────────────────────────────────
   confirmRevenue: async (sessionId) => {
-    // ✅ تحديث محلي فوري
     set((st) => ({
       sessions: st.sessions.map((s) =>
         s.id === sessionId ? { ...s, revenueConfirmed: true } : s
@@ -1037,10 +1035,36 @@ export const useStore = create<AppState>((set, get) => ({
 
     if (error) {
       console.error('❌ خطأ في تأكيد الإيراد:', error);
-      // ✅ rollback لو فشل
       set((st) => ({
         sessions: st.sessions.map((s) =>
           s.id === sessionId ? { ...s, revenueConfirmed: false } : s
+        ),
+      }));
+    }
+  },
+
+  // ── unconfirmRevenue ──────────────────────────────────────────────────────
+  unconfirmRevenue: async (sessionId) => {
+    // ✅ تحديث محلي فوري
+    set((st) => ({
+      sessions: st.sessions.map((s) =>
+        s.id === sessionId ? { ...s, revenueConfirmed: false } : s
+      ),
+    }));
+
+    if (!isSupabaseConfigured()) return;
+
+    const { error } = await supabase
+      .from('sessions')
+      .update({ revenue_confirmed: false })
+      .eq('id', sessionId);
+
+    if (error) {
+      console.error('❌ خطأ في إلغاء تأكيد الإيراد:', error);
+      // ✅ rollback لو فشل
+      set((st) => ({
+        sessions: st.sessions.map((s) =>
+          s.id === sessionId ? { ...s, revenueConfirmed: true } : s
         ),
       }));
     }

@@ -58,12 +58,19 @@ export default function GarageListScreen() {
 
   // ✅ هل فيه جلسة نشطة حالياً
 const activeSession = sessions.find(
-  (s) => {
-    const sessionPlate = (s.carPlate ?? '').trim().toUpperCase();
-    const userPlate = (currentUser?.carPlate ?? '').trim().toUpperCase();
-    return sessionPlate === userPlate && s.status === 'active';
-  }
+  (s) =>
+    s.carPlate === currentUser?.carPlate &&
+    s.status === 'active'
 );
+console.log('🔍 DEBUG:', {
+  userPlate: currentUser?.carPlate,
+  allSessions: sessions.map(s => ({
+    plate: s.carPlate,
+    status: s.status,
+    id: s.id.slice(0, 8)
+  })),
+  activeSession: activeSession?.id
+});
 
   const getUserLocation = () => {
     setLocationLoading(true);

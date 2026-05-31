@@ -9,6 +9,7 @@ import {
   Plus,
   MessageCircle,
   Send,
+  Receipt,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
@@ -44,16 +45,22 @@ export default function AdminDashboard() {
     messages,
     replyMessage,
     closeMessage,
+    confirmRevenue,
+    unconfirmRevenue,
   } = useStore();
 
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [, setTick] = useState(0);
 
+  // ─── state للرسائل ────────────────────────────────────────────────────────
   const [replyText, setReplyText] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [expandedMessage, setExpandedMessage] = useState<string | null>(null);
   const [messagesTab, setMessagesTab] = useState<'pending' | 'all'>('pending');
+
+  // ─── state لإدارة الإيرادات ──────────────────────────────────────────────
+  const [revenueFilter, setRevenueFilter] = useState<'all' | 'confirmed' | 'pending'>('all');
 
   const [gName, setGName] = useState('');
   const [gUser, setGUser] = useState('');
@@ -136,6 +143,7 @@ export default function AdminDashboard() {
   // ✅ تحليل طرق الدفع - بس المؤكد
   const paymentBreakdown = useMemo(() => {
     const b = { cash: 0, instapay: 0, wallet: 0, cashwallet: 0 };
+
     filteredSessions
       .filter((s) => s.revenueConfirmed)
       .forEach((s) => {
@@ -145,10 +153,11 @@ export default function AdminDashboard() {
         else if (s.paymentMethod === 'wallet') b.wallet += rev;
         else if (s.paymentMethod === 'cashwallet') b.cashwallet += rev;
       });
+
     return b;
   }, [filteredSessions]);
 
-  // ✅ تقرير الجراجات - بس المؤكد
+  // ✅ تقرير الجراجات - يفصل المؤكد عن المعلق
   const garageReport = useMemo(() => {
     return garages.map((g) => {
       const allGs = filteredSessions.filter((s) => s.garageId === g.id);
@@ -180,6 +189,18 @@ export default function AdminDashboard() {
   const pendingTopUps = walletTopUps.filter((w) => w.status === 'pending');
   const activeSessions = sessions.filter((s) => s.status === 'active');
 
+  // ✅ الجلسات المعروضة في إدارة الإيرادات
+  const displayedRevenueSessions = useMemo(() => {
+    if (revenueFilter === 'confirmed') {
+      return filteredSessions.filter((s) => s.revenueConfirmed);
+    }
+    if (revenueFilter === 'pending') {
+      return filteredSessions.filter((s) => !s.revenueConfirmed);
+    }
+    return filteredSessions;
+  }, [filteredSessions, revenueFilter]);
+
+  // ─── الرسائل ──────────────────────────────────────────────────────────────
   const safeMessages = messages ?? [];
   const pendingMessages = safeMessages.filter((m) => m.status === 'pending');
   const allMessages = [...safeMessages].sort((a, b) => b.timestamp - a.timestamp);
@@ -215,6 +236,7 @@ export default function AdminDashboard() {
     });
   };
 
+  // ─── زر اليوم الحالي السريع ───────────────────────────────────────────────
   const setToday = () => {
     const today = new Date().toISOString().split('T')[0];
     setDateFrom(today);
@@ -224,7 +246,7 @@ export default function AdminDashboard() {
   return (
     <div className="h-full bg-slate-950 text-white text-right p-5 overflow-y-auto pt-16">
 
-      {/* Header */}
+      {/* ─── Header ──────────────────────────────────────────────────────────── */}
       <div className="flex justify-between items-center mb-8 border-b border-slate-800 pb-4">
         <button
           onClick={() => {
@@ -246,7 +268,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Date Filter */}
+      {/* ─── Date Filter ─────────────────────────────────────────────────────── */}
       <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-[2rem] mb-6 text-center">
         <h3 className="text-xs font-black text-slate-400 mb-3">
           تصفية حسب التاريخ
@@ -303,7 +325,10 @@ export default function AdminDashboard() {
             آخر أسبوع
           </button>
           <button
-            onClick={() => { setDateFrom(''); setDateTo(''); }}
+            onClick={() => {
+              setDateFrom('');
+              setDateTo('');
+            }}
             className="bg-slate-800 text-slate-400 px-4 py-2 rounded-xl text-[10px] font-black active:scale-95 transition-all"
           >
             الكل
@@ -315,9 +340,16 @@ export default function AdminDashboard() {
             <p className="text-[9px] text-blue-400 font-bold">
               {dateFrom && dateTo
                 ? dateFrom === dateTo
-                  ? `📅 ${new Date(getLocalDayStart(dateFrom)).toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`
+                  ? `📅 ${new Date(getLocalDayStart(dateFrom)).toLocaleDateString('ar-EG', {
+                      weekday: 'long',
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    })}`
                   : `من ${dateFrom} إلى ${dateTo}`
-                : dateFrom ? `من ${dateFrom}` : `إلى ${dateTo}`}
+                : dateFrom
+                ? `من ${dateFrom}`
+                : `إلى ${dateTo}`}
             </p>
             <p className="text-[8px] text-blue-400/60 mt-0.5">
               ⏰ من 12:00 صباحاً إلى 11:59 مساءً
@@ -326,15 +358,14 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* Revenue Stats */}
+      {/* ─── Revenue Stats ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-5 rounded-[2rem] shadow-2xl">
           <div className="text-[10px] text-blue-100 font-bold mb-1">
             الإيرادات المؤكدة
           </div>
           <div className="text-3xl font-black text-white font-mono tracking-tighter">
-            {totalRevenue.toFixed(0)}{' '}
-            <span className="text-xs">ج.م</span>
+            {totalRevenue.toFixed(0)} <span className="text-xs">ج.م</span>
           </div>
         </div>
         <div className="bg-slate-900 border border-slate-800 p-5 rounded-[2rem] shadow-2xl">
@@ -347,7 +378,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ✅ بانر الإيرادات المعلقة */}
+      {/* ─── Pending Revenue Banner ──────────────────────────────────────────── */}
       {pendingRevenueCount > 0 && (
         <div className="bg-amber-600/10 border border-amber-500/30 rounded-2xl p-4 mb-6">
           <div className="flex justify-between items-center">
@@ -366,7 +397,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Payment Breakdown */}
+      {/* ─── Payment Breakdown ───────────────────────────────────────────────── */}
       <h3 className="text-xs font-black text-slate-400 mb-3">
         تحليل الإيرادات المؤكدة حسب وسيلة السداد
       </h3>
@@ -409,7 +440,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Garage Revenue Table */}
+      {/* ─── Garage Revenue Table ────────────────────────────────────────────── */}
       <div className="bg-slate-900 border border-slate-800 rounded-[2rem] overflow-hidden mb-8 shadow-2xl">
         <div className="p-4 border-b border-slate-800 bg-slate-900/50">
           <h3 className="text-sm font-black text-slate-300">
@@ -475,7 +506,180 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Pending Top-ups */}
+      {/* ─── Revenue Sessions Management ─────────────────────────────────────── */}
+      <div className="mb-8">
+        <h3 className="font-black text-lg mb-4 text-slate-300 flex items-center gap-2 justify-end">
+          إدارة الجلسات ({filteredSessions.length})
+          <Receipt size={18} />
+        </h3>
+
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => setRevenueFilter('all')}
+            className={`flex-1 py-2 rounded-xl font-black text-xs transition-all ${
+              revenueFilter === 'all'
+                ? 'bg-slate-700 text-white'
+                : 'bg-slate-900 border border-slate-800 text-slate-500'
+            }`}
+          >
+            الكل ({filteredSessions.length})
+          </button>
+          <button
+            onClick={() => setRevenueFilter('confirmed')}
+            className={`flex-1 py-2 rounded-xl font-black text-xs transition-all ${
+              revenueFilter === 'confirmed'
+                ? 'bg-emerald-600 text-white'
+                : 'bg-slate-900 border border-slate-800 text-slate-500'
+            }`}
+          >
+            ✅ مؤكد ({filteredSessions.filter((s) => s.revenueConfirmed).length})
+          </button>
+          <button
+            onClick={() => setRevenueFilter('pending')}
+            className={`flex-1 py-2 rounded-xl font-black text-xs transition-all ${
+              revenueFilter === 'pending'
+                ? 'bg-amber-600 text-white'
+                : 'bg-slate-900 border border-slate-800 text-slate-500'
+            }`}
+          >
+            ⏳ معلق ({filteredSessions.filter((s) => !s.revenueConfirmed).length})
+          </button>
+        </div>
+
+        <div className="space-y-2">
+          {displayedRevenueSessions.length === 0 ? (
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center text-slate-500 text-sm">
+              لا توجد جلسات
+            </div>
+          ) : (
+            displayedRevenueSessions.map((session) => {
+              const g = garages.find((ga) => ga.id === session.garageId);
+              const rev = getRevenue(session);
+              const endTime = session.endTime
+                ? typeof session.endTime === 'number'
+                  ? session.endTime
+                  : new Date(session.endTime).getTime()
+                : null;
+              const time = endTime ? new Date(endTime) : null;
+
+              return (
+                <div
+                  key={session.id}
+                  className={`rounded-xl p-3 border ${
+                    session.revenueConfirmed
+                      ? 'bg-emerald-950/20 border-emerald-500/20'
+                      : 'bg-amber-950/20 border-amber-500/30'
+                  }`}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className={`text-sm font-mono font-black ${
+                          session.revenueConfirmed
+                            ? 'text-emerald-400'
+                            : 'text-amber-400'
+                        }`}
+                      >
+                        {rev.toFixed(0)} ج.م
+                      </span>
+
+                      <span
+                        className={`text-[8px] px-2 py-0.5 rounded-full font-bold ${
+                          session.source === 'manual'
+                            ? 'bg-amber-500/20 text-amber-400'
+                            : 'bg-blue-500/20 text-blue-400'
+                        }`}
+                      >
+                        {session.source === 'manual' ? 'يدوي' : 'تطبيق'}
+                      </span>
+
+                      {session.paymentMethod && (
+                        <span
+                          className={`text-[8px] px-2 py-0.5 rounded-full font-bold ${
+                            session.paymentMethod === 'cash'
+                              ? 'bg-emerald-500/20 text-emerald-400'
+                              : session.paymentMethod === 'instapay'
+                              ? 'bg-purple-500/20 text-purple-400'
+                              : session.paymentMethod === 'wallet'
+                              ? 'bg-blue-500/20 text-blue-400'
+                              : 'bg-orange-500/20 text-orange-400'
+                          }`}
+                        >
+                          {session.paymentMethod === 'cash'
+                            ? '💵'
+                            : session.paymentMethod === 'instapay'
+                            ? '📱'
+                            : session.paymentMethod === 'wallet'
+                            ? '👝'
+                            : '📲'}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="text-right">
+                      <div className="text-xs font-black text-white">
+                        🚗 {session.carPlate}
+                      </div>
+                      <div className="text-[9px] text-slate-500">
+                        {g?.name || '—'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      {session.revenueConfirmed ? (
+                        <button
+                          onClick={() => {
+                            unconfirmRevenue(session.id);
+                            toast('تم إلغاء تأكيد الإيراد ↩️', {
+                              icon: '⏳',
+                              style: {
+                                background: '#1e293b',
+                                color: '#f1f5f9',
+                                border: '1px solid #334155',
+                              },
+                            });
+                          }}
+                          className="bg-red-600/20 text-red-400 px-3 py-1.5 rounded-lg text-[9px] font-black border border-red-500/20 active:scale-95 transition-all"
+                        >
+                          ❌ إلغاء التأكيد
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            confirmRevenue(session.id);
+                            toast.success('تم تأكيد الإيراد ✅');
+                          }}
+                          className="bg-emerald-600/20 text-emerald-400 px-3 py-1.5 rounded-lg text-[9px] font-black border border-emerald-500/20 active:scale-95 transition-all"
+                        >
+                          ✅ تأكيد الإيراد
+                        </button>
+                      )}
+                    </div>
+
+                    {time && (
+                      <span className="text-[9px] text-slate-600 font-mono">
+                        {time.toLocaleTimeString('ar-EG', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                        {' · '}
+                        {time.toLocaleDateString('ar-EG', {
+                          month: 'short',
+                          day: 'numeric',
+                        })}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* ─── Pending Top-ups ─────────────────────────────────────────────────── */}
       <div className="mb-8">
         <h3 className="font-black text-lg mb-4 text-orange-400 flex items-center gap-2 justify-end">
           اعتمادات معلقة ({pendingTopUps.length})
@@ -569,7 +773,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Active Sessions */}
+      {/* ─── Active Sessions ─────────────────────────────────────────────────── */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <span className="text-[10px] text-slate-500 bg-slate-900 px-2 py-1 rounded-lg border border-slate-800">
@@ -585,9 +789,7 @@ export default function AdminDashboard() {
           <div className="grid grid-cols-2 gap-3 mb-4">
             {garages
               .map((g) => {
-                const garageActive = activeSessions.filter(
-                  (s) => s.garageId === g.id
-                );
+                const garageActive = activeSessions.filter((s) => s.garageId === g.id);
                 if (garageActive.length === 0) return null;
 
                 const totalExpected = garageActive.reduce((a, s) => {
@@ -595,10 +797,7 @@ export default function AdminDashboard() {
                     typeof s.startTime === 'number'
                       ? s.startTime
                       : new Date(s.startTime).getTime();
-                  const secs = Math.max(
-                    0,
-                    Math.floor((Date.now() - start) / 1000)
-                  );
+                  const secs = Math.max(0, Math.floor((Date.now() - start) / 1000));
                   const rate = Number(s.agreedPrice ?? g.basePrice);
                   return a + calculateCost(secs, rate);
                 }, 0);
@@ -708,7 +907,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Messages & Complaints */}
+      {/* ─── Messages & Complaints ───────────────────────────────────────────── */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <span className="bg-red-500/20 text-red-400 px-2 py-1 rounded-lg text-[10px] font-black border border-red-500/20">
@@ -920,7 +1119,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Manage Garages */}
+      {/* ─── Manage Garages ──────────────────────────────────────────────────── */}
       <div className="mb-8">
         <h3 className="font-black text-lg mb-4 text-blue-400 flex items-center gap-2 justify-end">
           إدارة الجراجات
@@ -960,7 +1159,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Add Garage */}
+      {/* ─── Add Garage ──────────────────────────────────────────────────────── */}
       <div className="mb-20">
         <h3 className="font-black text-lg mb-4 text-blue-400 flex items-center gap-2 justify-end">
           إضافة جراج جديد
