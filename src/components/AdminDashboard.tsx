@@ -10,6 +10,7 @@ import {
   MessageCircle,
   Send,
   Receipt,
+   Search,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
@@ -47,6 +48,7 @@ export default function AdminDashboard() {
     closeMessage,
     confirmRevenue,
     unconfirmRevenue,
+       removeSession,
   } = useStore();
 
   const [dateFrom, setDateFrom] = useState('');
@@ -61,6 +63,8 @@ export default function AdminDashboard() {
 
   // ─── state لإدارة الإيرادات ──────────────────────────────────────────────
   const [revenueFilter, setRevenueFilter] = useState<'all' | 'confirmed' | 'pending'>('all');
+   const [sessionSearch, setSessionSearch] = useState('');
+   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const [gName, setGName] = useState('');
   const [gUser, setGUser] = useState('');
@@ -190,15 +194,26 @@ export default function AdminDashboard() {
   const activeSessions = sessions.filter((s) => s.status === 'active');
 
   // ✅ الجلسات المعروضة في إدارة الإيرادات
-  const displayedRevenueSessions = useMemo(() => {
-    if (revenueFilter === 'confirmed') {
-      return filteredSessions.filter((s) => s.revenueConfirmed);
-    }
-    if (revenueFilter === 'pending') {
-      return filteredSessions.filter((s) => !s.revenueConfirmed);
-    }
-    return filteredSessions;
-  }, [filteredSessions, revenueFilter]);
+const displayedRevenueSessions = useMemo(() => {
+  let filtered = filteredSessions;
+
+  // ✅ فلتر حالة التأكيد
+  if (revenueFilter === 'confirmed') {
+    filtered = filtered.filter((s) => s.revenueConfirmed);
+  } else if (revenueFilter === 'pending') {
+    filtered = filtered.filter((s) => !s.revenueConfirmed);
+  }
+
+  // ✅ بحث برقم العربية
+  if (sessionSearch.trim()) {
+    const searchNormalized = sessionSearch.trim().toUpperCase();
+    filtered = filtered.filter((s) =>
+      (s.carPlate ?? '').toUpperCase().includes(searchNormalized)
+    );
+  }
+
+  return filtered;
+}, [filteredSessions, revenueFilter, sessionSearch]);
 
   // ─── الرسائل ──────────────────────────────────────────────────────────────
   const safeMessages = messages ?? [];
@@ -507,49 +522,98 @@ export default function AdminDashboard() {
       </div>
 
       {/* ─── Revenue Sessions Management ─────────────────────────────────────── */}
-      <div className="mb-8">
+          <div className="mb-8">
         <h3 className="font-black text-lg mb-4 text-slate-300 flex items-center gap-2 justify-end">
           إدارة الجلسات ({filteredSessions.length})
           <Receipt size={18} />
         </h3>
 
-        <div className="flex gap-2 mb-4">
-          <button
-            onClick={() => setRevenueFilter('all')}
-            className={`flex-1 py-2 rounded-xl font-black text-xs transition-all ${
-              revenueFilter === 'all'
-                ? 'bg-slate-700 text-white'
-                : 'bg-slate-900 border border-slate-800 text-slate-500'
-            }`}
-          >
-            الكل ({filteredSessions.length})
-          </button>
-          <button
-            onClick={() => setRevenueFilter('confirmed')}
-            className={`flex-1 py-2 rounded-xl font-black text-xs transition-all ${
-              revenueFilter === 'confirmed'
-                ? 'bg-emerald-600 text-white'
-                : 'bg-slate-900 border border-slate-800 text-slate-500'
-            }`}
-          >
-            ✅ مؤكد ({filteredSessions.filter((s) => s.revenueConfirmed).length})
-          </button>
-          <button
-            onClick={() => setRevenueFilter('pending')}
-            className={`flex-1 py-2 rounded-xl font-black text-xs transition-all ${
-              revenueFilter === 'pending'
-                ? 'bg-amber-600 text-white'
-                : 'bg-slate-900 border border-slate-800 text-slate-500'
-            }`}
-          >
-            ⏳ معلق ({filteredSessions.filter((s) => !s.revenueConfirmed).length})
-          </button>
+        {/* فلتر + بحث */}
+        <div className="space-y-3 mb-4">
+          {/* فلتر حالة التأكيد */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setRevenueFilter('pending')}
+              className={`flex-1 py-2 rounded-xl font-black text-xs transition-all ${
+                revenueFilter === 'pending'
+                  ? 'bg-amber-600 text-white'
+                  : 'bg-slate-900 border border-slate-800 text-slate-500'
+              }`}
+            >
+              ⏳ معلق ({filteredSessions.filter((s) => !s.revenueConfirmed).length})
+            </button>
+            <button
+              onClick={() => setRevenueFilter('confirmed')}
+              className={`flex-1 py-2 rounded-xl font-black text-xs transition-all ${
+                revenueFilter === 'confirmed'
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-slate-900 border border-slate-800 text-slate-500'
+              }`}
+            >
+              ✅ مؤكد ({filteredSessions.filter((s) => s.revenueConfirmed).length})
+            </button>
+            <button
+              onClick={() => setRevenueFilter('all')}
+              className={`flex-1 py-2 rounded-xl font-black text-xs transition-all ${
+                revenueFilter === 'all'
+                  ? 'bg-slate-700 text-white'
+                  : 'bg-slate-900 border border-slate-800 text-slate-500'
+              }`}
+            >
+              الكل ({filteredSessions.length})
+            </button>
+          </div>
+
+          {/* بحث برقم العربية */}
+          <div className="relative">
+            <Search
+              size={14}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+            />
+            <input
+              type="text"
+              value={sessionSearch}
+              onChange={(e) => setSessionSearch(e.target.value)}
+              placeholder="ابحث برقم العربية..."
+              className="w-full bg-slate-950 border border-slate-800 p-2.5 pr-9 rounded-xl text-right font-bold text-white outline-none text-xs placeholder:text-slate-600"
+            />
+            {sessionSearch && (
+              <button
+                onClick={() => setSessionSearch('')}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+              >
+                <XCircle size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* عدد النتائج */}
+          {(sessionSearch || revenueFilter !== 'all') && (
+            <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-2 text-center">
+              <span className="text-[10px] text-slate-400">
+                عرض {displayedRevenueSessions.length} جلسة
+                {sessionSearch && (
+                  <span className="text-blue-400"> · بحث: "{sessionSearch}"</span>
+                )}
+              </span>
+            </div>
+          )}
         </div>
 
+        {/* قائمة الجلسات */}
         <div className="space-y-2">
           {displayedRevenueSessions.length === 0 ? (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center text-slate-500 text-sm">
-              لا توجد جلسات
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center">
+              <div className="text-3xl mb-3">📭</div>
+              <p className="text-slate-500 text-sm font-bold">
+                {sessionSearch
+                  ? `لا توجد نتائج لـ "${sessionSearch}"`
+                  : revenueFilter === 'pending'
+                  ? 'لا توجد جلسات معلقة'
+                  : revenueFilter === 'confirmed'
+                  ? 'لا توجد جلسات مؤكدة'
+                  : 'لا توجد جلسات'}
+              </p>
             </div>
           ) : (
             displayedRevenueSessions.map((session) => {
@@ -561,16 +625,20 @@ export default function AdminDashboard() {
                   : new Date(session.endTime).getTime()
                 : null;
               const time = endTime ? new Date(endTime) : null;
+              const isDeleting = deleteConfirmId === session.id;
 
               return (
                 <div
                   key={session.id}
                   className={`rounded-xl p-3 border ${
-                    session.revenueConfirmed
+                    isDeleting
+                      ? 'bg-red-950/30 border-red-500/50'
+                      : session.revenueConfirmed
                       ? 'bg-emerald-950/20 border-emerald-500/20'
                       : 'bg-amber-950/20 border-amber-500/30'
                   }`}
                 >
+                  {/* الصف الأول - المعلومات */}
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span
@@ -606,14 +674,24 @@ export default function AdminDashboard() {
                           }`}
                         >
                           {session.paymentMethod === 'cash'
-                            ? '💵'
+                            ? '💵 نقدي'
                             : session.paymentMethod === 'instapay'
-                            ? '📱'
+                            ? '📱 إنستاباي'
                             : session.paymentMethod === 'wallet'
-                            ? '👝'
-                            : '📲'}
+                            ? '👝 محفظة'
+                            : '📲 كاش'}
                         </span>
                       )}
+
+                      <span
+                        className={`text-[8px] px-2 py-0.5 rounded-full font-bold ${
+                          session.revenueConfirmed
+                            ? 'bg-emerald-500/20 text-emerald-400'
+                            : 'bg-amber-500/20 text-amber-400'
+                        }`}
+                      >
+                        {session.revenueConfirmed ? '✅ مؤكد' : '⏳ معلق'}
+                      </span>
                     </div>
 
                     <div className="text-right">
@@ -626,7 +704,51 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  <div className="flex justify-between items-center">
+                  {/* الصف الثاني - الوقت */}
+                  {time && (
+                    <div className="text-[9px] text-slate-600 font-mono mb-2 text-left">
+                      {time.toLocaleTimeString('ar-EG', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                      {' · '}
+                      {time.toLocaleDateString('ar-EG', {
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </div>
+                  )}
+
+                  {/* ✅ شاشة تأكيد الحذف */}
+                  {isDeleting ? (
+                    <div className="bg-red-600/10 border border-red-500/30 rounded-xl p-3 space-y-2">
+                      <p className="text-xs text-red-400 font-black text-center">
+                        ⚠️ هل تريد حذف هذه الجلسة نهائياً؟
+                      </p>
+                      <p className="text-[9px] text-red-300/70 text-center">
+                        🚗 {session.carPlate} · {rev.toFixed(0)} ج.م
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={async () => {
+                            await removeSession(session.id);
+                            setDeleteConfirmId(null);
+                            toast.success('تم حذف الجلسة نهائياً 🗑️');
+                          }}
+                          className="flex-1 bg-red-600 text-white py-2 rounded-lg text-[10px] font-black active:scale-95 transition-all"
+                        >
+                          🗑️ تأكيد الحذف
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirmId(null)}
+                          className="flex-1 bg-slate-800 text-slate-400 py-2 rounded-lg text-[10px] font-black active:scale-95 transition-all"
+                        >
+                          إلغاء
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* ✅ أزرار التحكم */
                     <div className="flex items-center gap-2">
                       {session.revenueConfirmed ? (
                         <button
@@ -641,9 +763,9 @@ export default function AdminDashboard() {
                               },
                             });
                           }}
-                          className="bg-red-600/20 text-red-400 px-3 py-1.5 rounded-lg text-[9px] font-black border border-red-500/20 active:scale-95 transition-all"
+                          className="flex-1 bg-amber-600/20 text-amber-400 py-1.5 rounded-lg text-[9px] font-black border border-amber-500/20 active:scale-95 transition-all"
                         >
-                          ❌ إلغاء التأكيد
+                          ↩️ إلغاء التأكيد
                         </button>
                       ) : (
                         <button
@@ -651,27 +773,21 @@ export default function AdminDashboard() {
                             confirmRevenue(session.id);
                             toast.success('تم تأكيد الإيراد ✅');
                           }}
-                          className="bg-emerald-600/20 text-emerald-400 px-3 py-1.5 rounded-lg text-[9px] font-black border border-emerald-500/20 active:scale-95 transition-all"
+                          className="flex-1 bg-emerald-600/20 text-emerald-400 py-1.5 rounded-lg text-[9px] font-black border border-emerald-500/20 active:scale-95 transition-all"
                         >
                           ✅ تأكيد الإيراد
                         </button>
                       )}
-                    </div>
 
-                    {time && (
-                      <span className="text-[9px] text-slate-600 font-mono">
-                        {time.toLocaleTimeString('ar-EG', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                        {' · '}
-                        {time.toLocaleDateString('ar-EG', {
-                          month: 'short',
-                          day: 'numeric',
-                        })}
-                      </span>
-                    )}
-                  </div>
+                      {/* زر الحذف */}
+                      <button
+                        onClick={() => setDeleteConfirmId(session.id)}
+                        className="bg-red-600/10 text-red-400 px-3 py-1.5 rounded-lg text-[9px] font-black border border-red-500/20 active:scale-95 transition-all"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })
