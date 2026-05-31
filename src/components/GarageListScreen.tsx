@@ -29,6 +29,17 @@ interface GarageWithDistance extends Garage {
   classification: 'nearby' | 'far';
 }
 
+// ✅ توحيد رقم اللوحة للمقارنة - يتعامل مع الأرقام العربية والإنجليزية
+const normalizePlateForCompare = (plate?: string): string => {
+  if (!plate) return '';
+  return plate
+    .trim()
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
+};
+
 export default function GarageListScreen() {
   const {
     garages,
@@ -51,26 +62,29 @@ export default function GarageListScreen() {
   });
   const [locationLoading, setLocationLoading] = useState(false);
 
-  // ─── هل فيه جلسة مكتملة سابقة ────────────────────────────────────────────
+  // ✅ رقم لوحة المستخدم موحّد
+  const normalizedUserPlate = normalizePlateForCompare(currentUser?.carPlate);
+
+  // ✅ هل فيه جلسة مكتملة سابقة
   const hasCompletedSession = sessions.some(
-    (s) => s.carPlate === currentUser?.carPlate && s.status === 'completed'
+    (s) =>
+      normalizePlateForCompare(s.carPlate) === normalizedUserPlate &&
+      s.status === 'completed'
   );
 
-  // ✅ هل فيه جلسة نشطة حالياً
-const activeSession = sessions.find(
-  (s) =>
-    s.carPlate === currentUser?.carPlate &&
-    s.status === 'active'
-);
-console.log('🔍 DEBUG:', {
-  userPlate: currentUser?.carPlate,
-  allSessions: sessions.map(s => ({
-    plate: s.carPlate,
-    status: s.status,
-    id: s.id.slice(0, 8)
-  })),
-  activeSession: activeSession?.id
-});
+  // ✅ هل فيه جلسة نشطة حالياً - مع توحيد المقارنة
+  const activeSession = sessions.find(
+    (s) =>
+      normalizePlateForCompare(s.carPlate) === normalizedUserPlate &&
+      s.status === 'active'
+  );
+
+  // ✅ هل فيه سيارة في الطريق
+  const myIncomingCar = incomingCars.find(
+    (c) =>
+      normalizePlateForCompare(c.carPlate) === normalizedUserPlate &&
+      c.status === 'coming'
+  );
 
   const getUserLocation = () => {
     setLocationLoading(true);
@@ -138,14 +152,14 @@ console.log('🔍 DEBUG:', {
     (g) => g.classification === 'far'
   );
 
-  // ─── حجز مباشر بدون تفاوض ────────────────────────────────────────────────
+  // ─── حجز مباشر ────────────────────────────────────────────────────────────
   const handleDirectBooking = (garage: GarageWithDistance) => {
     if (!currentUser) {
       toast.error('سجل بياناتك أولاً');
       return;
     }
 
-    // ✅ لو فيه جلسة نشطة → روّح لشاشة الجلسة مباشرة
+    // ✅ لو فيه جلسة نشطة → روّح للجلسة المفتوحة
     if (activeSession) {
       setSelectedGarageId(activeSession.garageId);
       setScreen('session');
@@ -160,17 +174,27 @@ console.log('🔍 DEBUG:', {
       return;
     }
 
+    // ✅ لو فيه سيارة في الطريق → روّح للتوجيه
+    if (myIncomingCar) {
+      setSelectedGarageId(myIncomingCar.garageId);
+      setScreen('navigation');
+      toast('لديك حجز نشط بالفعل! 📍', {
+        icon: '🚗',
+        style: {
+          background: '#1e293b',
+          color: '#f1f5f9',
+          border: '1px solid #334155',
+        },
+      });
+      return;
+    }
+
     const hasPendingOffer = offers.some(
       (o) => o.userId === currentUser.phone && o.status === 'pending'
     );
 
-    const hasIncomingCar = incomingCars.some(
-      (c) =>
-        c.carPlate === currentUser.carPlate && c.status === 'coming'
-    );
-
-    if (hasPendingOffer || hasIncomingCar) {
-      toast.error('لديك حجز نشط بالفعل');
+    if (hasPendingOffer) {
+      toast.error('لديك عرض معلق بالفعل');
       return;
     }
 
@@ -266,6 +290,34 @@ console.log('🔍 DEBUG:', {
               </div>
               <div className="text-[9px] text-emerald-400/70">
                 اضغط للعودة للجلسة
+              </div>
+            </div>
+          </motion.button>
+        )}
+
+        {/* ✅ بانر السيارة في الطريق */}
+        {!activeSession && myIncomingCar && (
+          <motion.button
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            onClick={() => {
+              setSelectedGarageId(myIncomingCar.garageId);
+              setScreen('navigation');
+            }}
+            className="w-full bg-cyan-600/20 border border-cyan-500/40 rounded-xl p-3 mb-2 flex items-center justify-between active:scale-[0.98] transition-all"
+          >
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+              <span className="text-xs font-black text-cyan-400">
+                عرض التوجيه ←
+              </span>
+            </div>
+            <div className="text-right">
+              <div className="text-xs font-black text-white">
+                📍 لديك حجز نشط
+              </div>
+              <div className="text-[9px] text-cyan-400/70">
+                اضغط للعودة للتوجيه
               </div>
             </div>
           </motion.button>
@@ -385,6 +437,7 @@ console.log('🔍 DEBUG:', {
                   isNearby
                   isClosest={i === 0}
                   hasActiveSession={!!activeSession}
+                  hasIncomingCar={!!myIncomingCar}
                 />
               ))}
             </div>
@@ -414,6 +467,7 @@ console.log('🔍 DEBUG:', {
                   isNearby={false}
                   isClosest={nearbyGarages.length === 0 && i === 0}
                   hasActiveSession={!!activeSession}
+                  hasIncomingCar={!!myIncomingCar}
                 />
               ))}
             </div>
@@ -443,6 +497,7 @@ function GarageCard({
   isNearby,
   isClosest,
   hasActiveSession,
+  hasIncomingCar,
 }: {
   garage: GarageWithDistance;
   index: number;
@@ -450,7 +505,10 @@ function GarageCard({
   isNearby: boolean;
   isClosest?: boolean;
   hasActiveSession?: boolean;
+  hasIncomingCar?: boolean;
 }) {
+  const isBusy = hasActiveSession || hasIncomingCar;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -477,11 +535,11 @@ function GarageCard({
             </span>
           )}
 
-          {isClosest && garage.availableSpots > 0 ? (
+          {!isBusy && isClosest && garage.availableSpots > 0 ? (
             <span className="bg-blue-500/20 text-blue-400 text-[8px] font-black px-1.5 py-0.5 rounded">
               الأقرب إليك 📍
             </span>
-          ) : isNearby && garage.availableSpots > 0 ? (
+          ) : !isBusy && isNearby && garage.availableSpots > 0 ? (
             <span className="bg-emerald-500/20 text-emerald-400 text-[8px] font-black px-1.5 py-0.5 rounded">
               قريب
             </span>
@@ -537,6 +595,8 @@ function GarageCard({
             ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
             : hasActiveSession
             ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+            : hasIncomingCar
+            ? 'bg-cyan-600/20 text-cyan-400 border border-cyan-500/30'
             : isClosest
             ? 'bg-blue-600 text-white'
             : isNearby
@@ -550,6 +610,8 @@ function GarageCard({
           ? 'ممتلئ - لا يمكن الحجز'
           : hasActiveSession
           ? '⚡ عرض جلستك النشطة'
+          : hasIncomingCar
+          ? '📍 عرض حجزك النشط'
           : isClosest
           ? 'احجز الأقرب إليك'
           : isNearby
