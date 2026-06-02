@@ -86,18 +86,20 @@ export default function NavigationScreen() {
 
   const garage = garages.find((g) => g.id === selectedGarageId);
 
+  const userPlateNav = (currentUser?.carPlate ?? '').trim().toUpperCase();
+
   const myIncomingCar = incomingCars.find(
     (c) =>
       c.garageId === selectedGarageId &&
-      c.carPlate === currentUser?.carPlate &&
+      c.carPlate.trim().toUpperCase() === userPlateNav &&
       c.status === 'coming'
   );
 
   const myActiveSession = sessions.find(
     (sess) =>
-      sess.carPlate === currentUser?.carPlate && sess.status === 'active'
+      sess.carPlate.trim().toUpperCase() === userPlateNav &&
+      sess.status === 'active'
   );
-
   const [userPos, setUserPos] = useState<{ lat: number; lng: number }>({
     lat: 30.0444,
     lng: 31.2357,

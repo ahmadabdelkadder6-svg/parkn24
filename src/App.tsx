@@ -40,16 +40,22 @@ export default function App() {
   const [dataLoaded, setDataLoaded] = useState(false);
   const initialLoadDone = useRef(false);
 
-  // ✅ أول تحميل - استنى fetchAll يخلص قبل ما تبدأ تراقب
-  useEffect(() => {
-    const init = async () => {
-      await fetchAll();
-      setDataLoaded(true);
-      initialLoadDone.current = true;
-      setupRealtime();
-    };
-    init();
-  }, []);
+  // ✅ أول تحميل
+useEffect(() => {
+  const init = async () => {
+    // ✅ نظف الشاشات القديمة قبل التحميل
+    const savedScreen = localStorage.getItem('appScreen');
+    if (savedScreen === 'session' || savedScreen === 'summary' || savedScreen === 'navigation') {
+      // مش نغير الشاشة هنا - نستنى fetchAll يخلص ونقرر بعدها
+    }
+
+    await fetchAll();
+    setDataLoaded(true);
+    initialLoadDone.current = true;
+    setupRealtime();
+  };
+  init();
+}, []);
 
   // ✅ بعد أول تحميل - استرجع الشاشة الصحيحة
   useEffect(() => {
@@ -59,14 +65,12 @@ export default function App() {
 
     const userPlate = (currentUser.carPlate ?? '').trim().toUpperCase();
 
-    // ✅ ابحث عن جلسة نشطة
     const myActiveSession = sessions.find(
       (s) =>
         s.carPlate.trim().toUpperCase() === userPlate &&
         s.status === 'active'
     );
 
-    // ✅ ابحث عن سيارة في الطريق
     const myIncoming = incomingCars.find(
       (c) =>
         c.carPlate.trim().toUpperCase() === userPlate &&
@@ -77,30 +81,27 @@ export default function App() {
     if (myActiveSession) {
       prevActiveSessionRef.current = myActiveSession.id;
       setSelectedGarageId(myActiveSession.garageId);
-
       if (screen !== 'session' && screen !== 'summary') {
         setScreen('session');
       }
       return;
     }
 
-    // ✅ لو فيه سيارة في الطريق → روح لشاشة التوجيه
+    // ✅ لو فيه سيارة في الطريق → روح للتوجيه
     if (myIncoming) {
       setSelectedGarageId(myIncoming.garageId);
-
       if (screen !== 'navigation' && screen !== 'session' && screen !== 'summary') {
         setScreen('navigation');
       }
       return;
     }
 
-    // ✅ لو مفيش حاجة ومستخدم في شاشة محتاجة جلسة → ارجع للقائمة
+    // ✅ لو مفيش حاجة - لو الشاشة المحفوظة محتاجة جلسة، ارجع للقائمة
     if (
       screen === 'session' ||
       screen === 'navigation' ||
       screen === 'waiting'
     ) {
-      // ✅ تحقق من آخر جلسة مكتملة - لو لسه جديدة ممكن يكون عايز يشوف الملخص
       const lastCompleted = sessions
         .filter(
           (s) =>
@@ -120,23 +121,24 @@ export default function App() {
             : 0;
         const timeSinceEnd = Date.now() - endTime;
 
-        // ✅ لو الجلسة انتهت من أقل من دقيقتين → روح الملخص
-        if (endTime > 0 && timeSinceEnd < 120000) {
+        // ✅ لو الجلسة انتهت من أقل من دقيقتين فقط → روح الملخص
+        // ✅ الإصلاح: كان 120000 (دقيقتين) - خليناه 60000 (دقيقة واحدة) بس
+        // عشان ما يرجعش لجلسة قديمة بعد refresh
+        if (endTime > 0 && timeSinceEnd < 60000) {
           setSelectedGarageId(lastCompleted.garageId);
           setScreen('summary');
           return;
         }
       }
 
-      // ✅ ارجع للقائمة بس لو مفيش حاجة خالص
+      // ✅ ارجع للقائمة
       setSelectedGarageId(null);
       setScreen('list');
     }
-  }, [dataLoaded]); // ✅ يشتغل مرة واحدة بس بعد التحميل
+  }, [dataLoaded]);
 
-  // ─── مراقبة حالة العميل (بعد التحميل الأولي) ─────────────────────────────
+  // ─── مراقبة حالة العميل ───────────────────────────────────────────────────
   useEffect(() => {
-    // ✅ منع التشغيل قبل ما البيانات تتحمل
     if (!dataLoaded) return;
     if (!currentUser || view !== 'user') return;
 
@@ -173,7 +175,7 @@ export default function App() {
       return;
     }
 
-    // 2) لو كانت هناك جلسة ثم انتهت/اختفت
+    // 2) لو كانت هناك جلسة ثم انتهت
     if (!myActiveSession && prevActiveSessionRef.current) {
       prevActiveSessionRef.current = null;
 
@@ -182,7 +184,6 @@ export default function App() {
         screen === 'navigation' ||
         screen === 'waiting'
       ) {
-        // ✅ تحقق لو فيه جلسة مكتملة جديدة → روح الملخص
         const lastCompleted = sessions
           .filter(
             (s) =>
@@ -202,7 +203,7 @@ export default function App() {
               : 0;
           const timeSinceEnd = Date.now() - endTime;
 
-          if (endTime > 0 && timeSinceEnd < 120000) {
+          if (endTime > 0 && timeSinceEnd < 60000) {
             setSelectedGarageId(lastCompleted.garageId);
             setScreen('summary');
             return;
@@ -216,9 +217,8 @@ export default function App() {
       }
     }
 
-    // 3) لو العميل في شاشة التوجيه ومفيش incoming car ومفيش جلسة
+    // 3) لو في شاشة التوجيه ومفيش incoming ومفيش جلسة
     if (!myActiveSession && screen === 'navigation' && !myIncoming) {
-      // ✅ استنى شوية قبل ما ترجع - ممكن البيانات لسه بتتحمل
       const timeout = setTimeout(() => {
         const freshIncoming = useStore.getState().incomingCars.find(
           (c) =>
@@ -235,7 +235,7 @@ export default function App() {
           setSelectedGarageId(null);
           setScreen('list');
         }
-      }, 3000); // ✅ 3 ثواني قبل ما يرجع
+      }, 3000);
 
       return () => clearTimeout(timeout);
     }
@@ -328,8 +328,6 @@ export default function App() {
         </main>
 
         <Toaster position="top-center" />
-
-        {/* PWA Install Banner */}
         <InstallPWA />
       </div>
     </AuthGate>

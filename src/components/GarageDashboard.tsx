@@ -72,7 +72,12 @@ export default function GarageDashboard() {
 
   const garage = garages.find((g) => g.id === currentGarageId);
   const garageSessions = sessions.filter((s) => s.garageId === currentGarageId);
-  const activeSessions = garageSessions.filter((s) => s.status === 'active');
+  const activeSessions = garageSessions.filter(
+  (s) =>
+    s.status === 'active' &&
+    // ✅ تجاهل الجلسات القديمة جداً (أكثر من 24 ساعة)
+    Date.now() - s.startTime < 24 * 60 * 60 * 1000
+);
   const completedSessions = garageSessions.filter((s) => s.status === 'completed');
   const garageOffers = offers.filter(
     (o) => o.garageId === currentGarageId && o.status === 'pending'

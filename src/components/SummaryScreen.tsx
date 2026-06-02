@@ -41,20 +41,18 @@ export default function SummaryScreen() {
   const garage = garages.find((g) => g.id === selectedGarageId);
   const userPlate = (currentUser?.carPlate ?? '').trim().toUpperCase();
 
-  const activeSession = sessions.find(
-    (s) =>
-      s.garageId === selectedGarageId &&
-      s.carPlate.trim().toUpperCase() === userPlate &&
-      s.status === 'active'
-  );
+const activeSession = sessions.find(
+  (s) =>
+    s.carPlate.trim().toUpperCase() === userPlate &&
+    s.status === 'active'
+);
 
-  const lastCompletedSession = sessions
-    .filter(
-      (s) =>
-        s.garageId === selectedGarageId &&
-        s.carPlate.trim().toUpperCase() === userPlate &&
-        s.status === 'completed'
-    )
+const lastCompletedSession = sessions
+  .filter(
+    (s) =>
+      s.carPlate.trim().toUpperCase() === userPlate &&
+      s.status === 'completed'
+  )
     .sort((a, b) => {
       const endA = typeof a.endTime === 'number' ? a.endTime : 0;
       const endB = typeof b.endTime === 'number' ? b.endTime : 0;
@@ -93,9 +91,9 @@ export default function SummaryScreen() {
         : 0;
     const timeSinceEnd = Date.now() - endTime;
 
-    if (
-      endTime > 0 &&
-      timeSinceEnd < 120000 &&
+  if (
+    endTime > 0 &&
+    timeSinceEnd < 60000 &&
       lastCompletedSession.totalPrice != null &&
       lastCompletedSession.totalPrice > 0
     ) {

@@ -217,10 +217,6 @@ const ms = (r: any): ParkingSession => {
   } catch {}
 
   if (endTime && endTime < startTime) {
-    console.warn('⚠️ endTime قبل startTime:', {
-      start: new Date(startTime).toISOString(),
-      end: new Date(endTime).toISOString(),
-    });
     const diff = startTime - endTime;
     if (diff < 4 * 60 * 60 * 1000) {
       endTime = endTime + diff + 60000;
@@ -354,7 +350,7 @@ interface AppState {
   cancelSession: (id: string) => void;
   removeSession: (id: string) => Promise<void>;
   confirmRevenue: (sessionId: string) => Promise<void>;
-  unconfirmRevenue: (sessionId: string) => Promise<void>; // ✅ جديد
+  unconfirmRevenue: (sessionId: string) => Promise<void>;
   offers: Offer[];
   addOffer: (o: Omit<Offer, 'id' | 'timestamp'>) => void;
   updateOffer: (
@@ -387,7 +383,6 @@ interface AppState {
 // ===================== Store =====================
 export const useStore = create<AppState>((set, get) => ({
 
-  // ── View ──────────────────────────────────────────────────────────────────
   view: (() => {
     try {
       const saved = localStorage.getItem('appView');
@@ -402,7 +397,6 @@ export const useStore = create<AppState>((set, get) => ({
     localStorage.setItem('appView', v);
   },
 
-  // ── Screen ────────────────────────────────────────────────────────────────
   screen: (() => {
     try {
       const saved = localStorage.getItem('appScreen');
@@ -418,7 +412,6 @@ export const useStore = create<AppState>((set, get) => ({
     localStorage.setItem('appScreen', s);
   },
 
-  // ── User ──────────────────────────────────────────────────────────────────
   currentUser: safeGetStorage('currentUser'),
 
   setCurrentUser: async (u) => {
@@ -481,7 +474,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // ── deductWallet ──────────────────────────────────────────────────────────
   deductWallet: (amount) => {
     const user = get().currentUser;
     if (!user) return;
@@ -505,7 +497,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // ── Garages ───────────────────────────────────────────────────────────────
   garages: [],
 
   currentGarageId: (() => {
@@ -542,7 +533,6 @@ export const useStore = create<AppState>((set, get) => ({
   incomingCars: [],
   messages: [],
 
-  // ── logout ────────────────────────────────────────────────────────────────
   logout: () => {
     set({
       currentUser: null,
@@ -566,26 +556,32 @@ export const useStore = create<AppState>((set, get) => ({
 
     const [g, s, o, w, ic, msgs] = await Promise.all([
       supabase.from('garages').select('*'),
+      // ✅ إصلاح: جيب آخر 200 جلسة فقط بدل كل الجلسات
       supabase
         .from('sessions')
         .select('*')
-        .order('created_at', { ascending: false }),
+        .order('created_at', { ascending: false })
+        .limit(200),
       supabase
         .from('offers')
         .select('*')
-        .order('created_at', { ascending: false }),
+        .order('created_at', { ascending: false })
+        .limit(100),
       supabase
         .from('wallet_topups')
         .select('*')
-        .order('created_at', { ascending: false }),
+        .order('created_at', { ascending: false })
+        .limit(100),
       supabase
         .from('incoming_cars')
         .select('*')
         .order('created_at', { ascending: false }),
+      // ✅ إصلاح: جيب آخر 50 رسالة فقط
       supabase
         .from('messages')
         .select('*')
-        .order('created_at', { ascending: false }),
+        .order('created_at', { ascending: false })
+        .limit(50),
     ]);
 
     const currentGarages = get().garages;
@@ -615,21 +611,29 @@ export const useStore = create<AppState>((set, get) => ({
         Date.now() - cs.startTime < 10000
     );
 
-    const mergedSessions = supabaseSessions.map((ss) => {
-      const localVersion = currentSessions.find((cs) => cs.id === ss.id);
-      if (localVersion) {
-        if (localVersion.status === 'completed') {
-          return {
-            ...localVersion,
-            revenueConfirmed: ss.revenueConfirmed || localVersion.revenueConfirmed,
-          };
-        }
-        if (localVersion.totalPrice != null && localVersion.totalPrice > 0) {
-          return localVersion;
-        }
-      }
+const mergedSessions = supabaseSessions.map((ss) => {
+  const localVersion = currentSessions.find((cs) => cs.id === ss.id);
+  if (localVersion) {
+    // ✅ لو Supabase بيقول completed والمحلي active → خد Supabase
+    if (ss.status === 'completed' && localVersion.status === 'active') {
       return ss;
-    });
+    }
+
+    // ✅ لو المحلي completed → احتفظ بالمحلي مع revenueConfirmed من DB
+    if (localVersion.status === 'completed') {
+      return {
+        ...localVersion,
+        revenueConfirmed: ss.revenueConfirmed || localVersion.revenueConfirmed,
+      };
+    }
+
+    // ✅ لو المحلي عنده totalPrice > 0 → احتفظ بالمحلي
+    if (localVersion.totalPrice != null && localVersion.totalPrice > 0) {
+      return localVersion;
+    }
+  }
+  return ss;
+});
 
     const finalSessions = dedupeActiveSessions([
       ...mergedSessions,
@@ -654,19 +658,53 @@ export const useStore = create<AppState>((set, get) => ({
       ? ic.data.map(mi).filter((c) => c.status === 'coming')
       : (get().incomingCars ?? []);
 
+    // ✅ إصلاح مشكلة الرسائل: Supabase دايماً أحدث للرسائل
     const currentMessages = get().messages ?? [];
     const supabaseMessages = msgs.data ? msgs.data.map(mm) : currentMessages;
+
+    // ✅ الإصلاح: خد الرسالة من Supabase دايمًا إلا لو عندنا رد محلي لسه ما اتبعتش
     const mergedMessages = supabaseMessages.map((sm) => {
       const localVersion = currentMessages.find((cm) => cm.id === sm.id);
-      if (
-        localVersion &&
-        localVersion.status !== 'pending' &&
-        sm.status === 'pending'
-      ) {
+
+      if (localVersion) {
+        // ✅ لو الرسالة محلياً عندها reply أو closed وSupabase لسه pending
+        // ده معناه إن الـ update لسه ما وصلش Supabase - احتفظ بالمحلي
+        if (
+          localVersion.status !== 'pending' &&
+          sm.status === 'pending'
+        ) {
+          return localVersion;
+        }
+
+        // ✅ لو Supabase عنده status أحدث من المحلي - خد من Supabase
+        // مثلاً: المحلي pending والـ DB replied = خد الـ DB
+        if (
+          sm.status !== 'pending' &&
+          localVersion.status === 'pending'
+        ) {
+          return sm;
+        }
+
+        // ✅ لو كلاهما نفس الحالة - خد الأحدث
+        const smTime = sm.repliedAt ?? sm.timestamp;
+        const localTime = localVersion.repliedAt ?? localVersion.timestamp;
+        if (smTime > localTime) {
+          return sm;
+        }
+
         return localVersion;
       }
+
       return sm;
     });
+
+    // ✅ أضف الرسائل المحلية الجديدة اللي لسه ما اتبعتش لـ Supabase
+    const supabaseMessageIds = new Set(supabaseMessages.map((sm) => sm.id));
+    const localOnlyMessages = currentMessages.filter(
+      (cm) => !supabaseMessageIds.has(cm.id) && cm.status === 'pending'
+    );
+
+    const finalMessages = [...mergedMessages, ...localOnlyMessages];
 
     set({
       garages,
@@ -674,7 +712,7 @@ export const useStore = create<AppState>((set, get) => ({
       offers: o.data ? o.data.map(mo) : (get().offers ?? []),
       walletTopUps: mergedTopUps,
       incomingCars: fetchedCars,
-      messages: mergedMessages,
+      messages: finalMessages,
     });
 
     const user = get().currentUser;
@@ -723,7 +761,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   }, // ✅ إغلاق fetchAll
 
-  // ── addGarage ─────────────────────────────────────────────────────────────
   addGarage: async (g) => {
     const { data, error } = await supabase
       .from('garages')
@@ -745,7 +782,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // ── updateGarage ──────────────────────────────────────────────────────────
   updateGarage: (id, updates) => {
     set((st) => ({
       garages: st.garages.map((g) =>
@@ -775,7 +811,6 @@ export const useStore = create<AppState>((set, get) => ({
     }, 500);
   },
 
-  // ── adjustGarageSpots ─────────────────────────────────────────────────────
   adjustGarageSpots: async (id, delta) => {
     set((st) => ({
       garages: st.garages.map((g) => {
@@ -876,7 +911,28 @@ export const useStore = create<AppState>((set, get) => ({
             .limit(1);
 
           if (dbCheck && dbCheck.length > 0) {
-            await get().fetchAll();
+            // ✅ إصلاح البطء: بدل fetchAll كامل، جيب الجلسة دي بس وأضفها محلياً
+            const { data: sessionData } = await supabase
+              .from('sessions')
+              .select('*')
+              .eq('id', dbCheck[0].id)
+              .single();
+
+            if (sessionData) {
+              const syncedSession = { ...ms(sessionData), synced: true };
+              set((st) => {
+                const alreadyExists = st.sessions.find(
+                  (x) => x.id === syncedSession.id
+                );
+                if (alreadyExists) return st;
+                return {
+                  sessions: dedupeActiveSessions([
+                    syncedSession,
+                    ...st.sessions,
+                  ]),
+                };
+              });
+            }
             return dbCheck[0].id;
           }
         } catch (err) {
@@ -949,7 +1005,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // ── endSession ────────────────────────────────────────────────────────────
   endSession: async (id, totalPrice, paymentMethod) => {
     const now = Date.now();
     const session = get().sessions.find((s) => s.id === id);
@@ -1018,7 +1073,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // ── confirmRevenue ────────────────────────────────────────────────────────
   confirmRevenue: async (sessionId) => {
     set((st) => ({
       sessions: st.sessions.map((s) =>
@@ -1043,9 +1097,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // ── unconfirmRevenue ──────────────────────────────────────────────────────
   unconfirmRevenue: async (sessionId) => {
-    // ✅ تحديث محلي فوري
     set((st) => ({
       sessions: st.sessions.map((s) =>
         s.id === sessionId ? { ...s, revenueConfirmed: false } : s
@@ -1061,7 +1113,6 @@ export const useStore = create<AppState>((set, get) => ({
 
     if (error) {
       console.error('❌ خطأ في إلغاء تأكيد الإيراد:', error);
-      // ✅ rollback لو فشل
       set((st) => ({
         sessions: st.sessions.map((s) =>
           s.id === sessionId ? { ...s, revenueConfirmed: true } : s
@@ -1070,7 +1121,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // ── cancelSession ─────────────────────────────────────────────────────────
   cancelSession: (id) => {
     const session = get().sessions.find((s) => s.id === id);
 
@@ -1087,7 +1137,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // ── removeSession ─────────────────────────────────────────────────────────
   removeSession: async (id) => {
     const state = get();
     const target = state.sessions.find((s) => s.id === id);
@@ -1139,7 +1188,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // ── Offers ────────────────────────────────────────────────────────────────
   addOffer: (o) => {
     const newO: Offer = { ...o, id: uid(), timestamp: Date.now() };
     set((st) => ({ offers: [newO, ...st.offers] }));
@@ -1184,7 +1232,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // ── Wallet ────────────────────────────────────────────────────────────────
   addWalletTopUp: (w) => {
     const newW: WalletTopUp = {
       ...w,
@@ -1277,7 +1324,6 @@ export const useStore = create<AppState>((set, get) => ({
     if (error) console.error('❌ خطأ في رفض الشحن:', error);
   },
 
-  // ── addIncomingCar ────────────────────────────────────────────────────────
   addIncomingCar: async (c) => {
     const incomingId = crypto.randomUUID();
 
@@ -1330,7 +1376,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // ── removeIncomingCar ─────────────────────────────────────────────────────
   removeIncomingCar: async (id) => {
     let savedCarPlate = '';
     let savedGarageId = '';
@@ -1367,7 +1412,6 @@ export const useStore = create<AppState>((set, get) => ({
     }, 1000);
   },
 
-  // ── Messages ──────────────────────────────────────────────────────────────
   addMessage: async (msg) => {
     const optimisticMessage: Message = {
       ...msg,
