@@ -93,11 +93,16 @@ export default function AdminDashboard() {
   const [lat, setLat] = useState(30.04);
   const [lng, setLng] = useState(31.23);
 
-  // ─── Tick كل ثانية ────────────────────────────────────────────────────────
+  // ─── Tick كل دقيقة بدلاً من كل ثانية ──────────────────────────────────────
   useEffect(() => {
-    const interval = setInterval(() => setTick((t) => t + 1), 1000);
+    const interval = setInterval(() => setTick((t) => t + 1), 60000); // 60000 مللي ثانية = دقيقة
     return () => clearInterval(interval);
   }, []);
+
+  // ─── جلب البيانات عند تحميل المكون أو تغيير التواريخ ─────────────────────────
+  useEffect(() => {
+    fetchDailyStats();
+  }, [fetchDailyStats]);
 
 // ─── جلب daily_stats من Supabase ─────────────────────────────────────────
 const fetchDailyStats = useCallback(async () => {
@@ -446,59 +451,19 @@ const fetchDailyStats = useCallback(async () => {
               </p>
             </div>
             <div className="text-xl font-black text-amber-400 font-mono">
-              {pendingRevenueFromStats.toFixed(0)} ج.م
+              {pendingRevenueFromStats.toFixed(0)} <span className="text-xs">ج.م</span>
             </div>
           </div>
         </div>
       )}
 
-      {/* ─── Payment Breakdown - من daily_stats ──────────────────────────────── */}
-      <h3 className="text-xs font-black text-slate-400 mb-3">
-        تحليل الإيرادات المؤكدة حسب وسيلة السداد
-      </h3>
-      <div className="grid grid-cols-2 gap-3 mb-8">
-        <div className="bg-slate-900/40 border border-slate-800 p-4 rounded-2xl">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 bg-emerald-500 rounded-full" />
-            <span className="text-[9px] text-slate-400 font-bold">نقدي (كاش)</span>
-          </div>
-          <div className="text-xl font-black text-emerald-400 font-mono">
-            {paymentBreakdownFromStats.cash.toFixed(0)}ج
-          </div>
-        </div>
-        <div className="bg-slate-900/40 border border-slate-800 p-4 rounded-2xl">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 bg-purple-500 rounded-full" />
-            <span className="text-[9px] text-slate-400 font-bold">إنستاباي</span>
-          </div>
-          <div className="text-xl font-black text-purple-400 font-mono">
-            {paymentBreakdownFromStats.instapay.toFixed(0)}ج
-          </div>
-        </div>
-        <div className="bg-slate-900/40 border border-slate-800 p-4 rounded-2xl">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 bg-blue-500 rounded-full" />
-            <span className="text-[9px] text-slate-400 font-bold">المحفظة (شحن)</span>
-          </div>
-          <div className="text-xl font-black text-blue-400 font-mono">
-            {paymentBreakdownFromStats.wallet.toFixed(0)}ج
-          </div>
-        </div>
-        <div className="bg-slate-900/40 border border-slate-800 p-4 rounded-2xl">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 bg-red-500 rounded-full" />
-            <span className="text-[9px] text-slate-400 font-bold">محفظة كاش</span>
-          </div>
-          <div className="text-xl font-black text-red-400 font-mono">
-            {paymentBreakdownFromStats.cashwallet.toFixed(0)}ج
-          </div>
-        </div>
-      </div>
-
-      {/* ─── Garage Revenue Table - من daily_stats ───────────────────────────── */}
-      <div className="bg-slate-900 border border-slate-800 rounded-[2rem] overflow-hidden mb-8 shadow-2xl">
-        <div className="p-4 border-b border-slate-800 bg-slate-900/50">
-          <h3 className="text-sm font-black text-slate-300">
+      {/* ─── Daily Stats Table ───────────────────────────────────────────────── */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-[10px] text-slate-500 bg-slate-900 px-2 py-1 rounded-lg border border-slate-800">
+            {dailyStats.length} يوم
+          </span>
+          <h3 className="font-black text-lg text-slate-300 flex items-center gap-2">
             تقرير إيرادات الجراجات (المؤكدة)
             {dailyStatsLoading && (
               <span className="text-slate-500 text-xs mr-2">جاري التحديث...</span>
@@ -1174,7 +1139,7 @@ const fetchDailyStats = useCallback(async () => {
                             onChange={(e) => setReplyText(e.target.value)}
                             placeholder="اكتب ردك هنا..."
                             rows={3}
-                            className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-right font-bold text-white outline-none text-sm placeholder:text-slate-600 resize-none"
+                            className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-right font-bold text-white outline-none placeholder:text-slate-600 resize-none"
                           />
                           <div className="flex gap-2">
                             <button
@@ -1293,83 +1258,38 @@ const fetchDailyStats = useCallback(async () => {
               onChange={(e) => setGPhone(e.target.value)}
             />
           </div>
-
-          <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800">
-            <div className="text-[10px] text-blue-400 font-bold mb-2">تحديد الإحداثيات</div>
-            <div className="grid grid-cols-2 gap-3 text-white font-mono mb-3">
-              <div>
-                <span className="text-[8px] text-slate-500 block px-1">خط العرض</span>
-                <input
-                  type="number"
-                  value={lat}
-                  onChange={(e) => setLat(parseFloat(e.target.value))}
-                  className="w-full bg-slate-900 p-2 rounded-lg border border-slate-800 text-xs outline-none"
-                  step="0.000001"
-                />
-              </div>
-              <div>
-                <span className="text-[8px] text-slate-500 block px-1">خط الطول</span>
-                <input
-                  type="number"
-                  value={lng}
-                  onChange={(e) => setLng(parseFloat(e.target.value))}
-                  className="w-full bg-slate-900 p-2 rounded-lg border border-slate-800 text-xs outline-none"
-                  step="0.000001"
-                />
-              </div>
-            </div>
+          <div className="flex gap-2">
+            <input
+              className="flex-1 bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs font-bold text-right text-white outline-none placeholder:text-slate-600"
+              placeholder="خط الطول"
+              value={lat}
+              onChange={(e) => setLat(Number(e.target.value))}
+            />
+            <input
+              className="flex-1 bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs font-bold text-right text-white outline-none placeholder:text-slate-600"
+              placeholder="خط العرض"
+              value={lng}
+              onChange={(e) => setLng(Number(e.target.value))}
+            />
           </div>
-
-          <div className="bg-slate-950 rounded-2xl border border-slate-800 p-4 text-center">
-            <div className="text-2xl mb-2">📍</div>
-            <div className="text-xs text-slate-400 font-bold mb-2">الموقع المحدد</div>
-            <div className="text-sm font-black text-blue-400 font-mono">
-              {lat.toFixed(4)}, {lng.toFixed(4)}
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                if ('geolocation' in navigator) {
-                  navigator.geolocation.getCurrentPosition(
-                    (pos) => {
-                      setLat(pos.coords.latitude);
-                      setLng(pos.coords.longitude);
-                      toast.success('تم تحديث الموقع');
-                    },
-                    () => toast.error('تعذر الحصول على الموقع')
-                  );
-                }
-              }}
-              className="mt-3 bg-blue-600/20 text-blue-400 px-4 py-2 rounded-xl text-xs font-black border border-blue-500/20 active:scale-95 transition-all"
-            >
-              📍 استخدم موقعي الحالي
-            </button>
-          </div>
-
           <button
-            onClick={() => {
-              if (gName && gUser && gPhone) {
-                addGarage({
-                  name: gName,
-                  username: gUser,
-                  phone: gPhone,
-                  capacity: 50,
-                  basePrice: 15,
-                  location: 'موقع جديد',
-                  lat,
-                  lng,
-                });
-                setGName('');
-                setGUser('');
-                setGPhone('');
-                toast.success('تم إضافة الجراج بنجاح!');
-              } else {
-                toast.error('يرجى ملء جميع الحقول');
+            onClick={async () => {
+              if (!gName || !gUser || !gPhone) {
+                toast.error('الرجاء ملء جميع الحقول');
+                return;
               }
+              await addGarage({ name: gName, user: gUser, phone: gPhone, lat, lng });
+              toast.success('تم إضافة الجراج بنجاح ✅');
+              setGName('');
+              setGUser('');
+              setGPhone('');
+              setLat(30.04);
+              setLng(31.23);
             }}
-            className="w-full bg-blue-600 py-4 rounded-xl font-black text-sm text-white shadow-xl active:scale-95 transition-all"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-1 active:scale-95 transition-all"
           >
-            حفظ الجراج
+            <Plus size={18} />
+            إضافة جراج
           </button>
         </div>
       </div>
