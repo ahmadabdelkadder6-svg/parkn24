@@ -99,7 +99,7 @@ export default function AdminDashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  // ─── جلب daily_stats من Supabase ─────────────────────────────────────────
+// ─── جلب daily_stats من Supabase ─────────────────────────────────────────
 const fetchDailyStats = useCallback(async () => {
   setDailyStatsLoading(true);
   try {
@@ -115,7 +115,7 @@ const fetchDailyStats = useCallback(async () => {
       query = query.lte('stat_date', dateTo);
     }
 
-    // ✅ لو مفيش فلتر - جيب آخر 90 يوم بدل كل البيانات
+    // ✅ لو مفيش فلتر - جيب آخر 90 يوم
     if (!dateFrom && !dateTo) {
       const ninetyDaysAgo = new Date();
       ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
@@ -124,19 +124,18 @@ const fetchDailyStats = useCallback(async () => {
 
     const { data, error } = await query;
 
-    console.log('✅ daily_stats fetched:', data?.length, 'rows', data);
-
     if (error) {
       console.error('❌ خطأ في جلب daily_stats:', error);
       return;
     }
 
-    console.log('✅ daily_stats loaded:', data?.length, 'rows');
     setDailyStats(data ?? []);
-
-  useEffect(() => {
-    fetchDailyStats();
-  }, [fetchDailyStats]);
+  } catch (err) {
+    console.error('❌ خطأ غير متوقع في fetchDailyStats:', err);
+  } finally {
+    setDailyStatsLoading(false);
+  }
+}, [dateFrom, dateTo]);
 
   // ─── حسابات التقارير من daily_stats ──────────────────────────────────────
 
