@@ -1223,108 +1223,108 @@ export default function AdminDashboard() {
 
 {/* ─── Add Garage ──────────────────────────────────────────────────────── */}
 <div className="mb-20">
-<h3 className="font-black text-lg mb-4 text-blue-400 flex items-center gap-2 justify-end">
-إضافة جراج جديد
-<Plus size={18} />
-</h3>
-<div className="bg-slate-900 p-5 rounded-[2rem] border border-slate-800 space-y-4">
-<input
-className="w-full bg-slate-950 p-4 rounded-xl border border-slate-800 text-sm font-bold text-right text-white outline-none placeholder:text-slate-600"
-placeholder="اسم الجراج"
-value={gName}
-onChange={(e) => setGName(e.target.value)}
-/>
-<div className="flex gap-2">
-<input
-className="flex-1 bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs font-bold text-right text-white outline-none placeholder:text-slate-600"
-placeholder="المستخدم"
-value={gUser}
-onChange={(e) => setGUser(e.target.value)}
-/>
-<input
-className="flex-1 bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs font-bold text-right text-white outline-none placeholder:text-slate-600"
-placeholder="الهاتف"
-value={gPhone}
-onChange={(e) => setGPhone(e.target.value)}
-/>
-</div>
-      <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800">
-        <div className="text-[10px] text-blue-400 font-bold mb-2">تحديد الإحداثيات</div>
-        <div className="grid grid-cols-2 gap-3 text-white font-mono mb-3">
-          <div>
-            <span className="text-[8px] text-slate-500 block px-1">خط العرض</span>
-            <input
-              type="number"
-              value={lat}
-              onChange={(e) => setLat(parseFloat(e.target.value))}
-              className="w-full bg-slate-900 p-2 rounded-lg border border-slate-800 text-xs outline-none"
-              step="0.000001"
-            />
-          </div>
-          <div>
-            <span className="text-[8px] text-slate-500 block px-1">خط الطول</span>
-            <input
-              type="number"
-              value={lng}
-              onChange={(e) => setLng(parseFloat(e.target.value))}
-              className="w-full bg-slate-900 p-2 rounded-lg border border-slate-800 text-xs outline-none"
-              step="0.000001"
-            />
-          </div>
+  <h3 className="font-black text-lg mb-4 text-blue-400 flex items-center gap-2 justify-end">
+    إضافة جراج جديد
+    <Plus size={18} />
+  </h3>
+  <div className="bg-slate-900 p-5 rounded-[2rem] border border-slate-800 space-y-4">
+    <input
+      className="w-full bg-slate-950 p-4 rounded-xl border border-slate-800 text-sm font-bold text-right text-white outline-none placeholder:text-slate-600"
+      placeholder="اسم الجراج"
+      value={gName}
+      onChange={(e) => setGName(e.target.value)}
+    />
+    <div className="flex gap-2">
+      <input
+        className="flex-1 bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs font-bold text-right text-white outline-none placeholder:text-slate-600"
+        placeholder="المستخدم"
+        value={gUser}
+        onChange={(e) => setGUser(e.target.value)}
+      />
+      <input
+        className="flex-1 bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs font-bold text-right text-white outline-none placeholder:text-slate-600"
+        placeholder="الهاتف"
+        value={gPhone}
+        onChange={(e) => setGPhone(e.target.value)}
+      />
+    </div>
+
+    <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800">
+      <div className="text-[10px] text-blue-400 font-bold mb-2">تحديد الإحداثيات</div>
+      <div className="grid grid-cols-2 gap-3 text-white font-mono mb-3">
+        <div>
+          <span className="text-[8px] text-slate-500 block px-1">خط العرض</span>
+          <input
+            type="number"
+            value={lat}
+            onChange={(e) => setLat(parseFloat(e.target.value))}
+            className="w-full bg-slate-900 p-2 rounded-lg border border-slate-800 text-xs outline-none"
+            step="0.000001"
+          />
+        </div>
+        <div>
+          <span className="text-[8px] text-slate-500 block px-1">خط الطول</span>
+          <input
+            type="number"
+            value={lng}
+            onChange={(e) => setLng(parseFloat(e.target.value))}
+            className="w-full bg-slate-900 p-2 rounded-lg border border-slate-800 text-xs outline-none"
+            step="0.000001"
+          />
         </div>
       </div>
+    </div>
 
-      <div className="bg-slate-950 rounded-2xl border border-slate-800 p-4 text-center">
-        <div className="text-2xl mb-2">📍</div>
-        <div className="text-xs text-slate-400 font-bold mb-2">الموقع المحدد</div>
-        <div className="text-sm font-black text-blue-400 font-mono">
-          {lat.toFixed(4)}, {lng.toFixed(4)}
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            if ('geolocation' in navigator) {
-              navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                  setLat(pos.coords.latitude);
-                  setLng(pos.coords.longitude);
-                  toast.success('تم تحديث الموقع');
-                },
-                () => toast.error('تعذر الحصول على الموقع')
-              );
-            }
-          }}
-          className="mt-3 bg-blue-600/20 text-blue-400 px-4 py-2 rounded-xl text-xs font-black border border-blue-500/20 active:scale-95 transition-all"
-        >
-          📍 استخدم موقعي الحالي
-        </button>
+    <div className="bg-slate-950 rounded-2xl border border-slate-800 p-4 text-center">
+      <div className="text-2xl mb-2">📍</div>
+      <div className="text-xs text-slate-400 font-bold mb-2">الموقع المحدد</div>
+      <div className="text-sm font-black text-blue-400 font-mono">
+        {lat.toFixed(4)}, {lng.toFixed(4)}
       </div>
-
       <button
+        type="button"
         onClick={() => {
-          if (gName && gUser && gPhone) {
-            addGarage({
-              name: gName,
-              username: gUser,
-              phone: gPhone,
-              capacity: 50,
-              basePrice: 15,
-              location: 'موقع جديد',
-              lat,
-              lng,
-            });
-            setGName('');
-            setGUser('');
-            setGPhone('');
-            toast.success('تم إضافة الجراج بنجاح!');
-          } else {
-            toast.error('يرجى ملء جميع الحقول');
+          if ('geolocation' in navigator) {
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                setLat(pos.coords.latitude);
+                setLng(pos.coords.longitude);
+                toast.success('تم تحديث الموقع');
+              },
+              () => toast.error('تعذر الحصول على الموقع')
+            );
           }
         }}
-        className="w-full bg-blue-600 py-4 rounded-xl font-black text-sm text-white shadow-xl active:scale-95 transition-all"
+        className="mt-3 bg-blue-600/20 text-blue-400 px-4 py-2 rounded-xl text-xs font-black border border-blue-500/20 active:scale-95 transition-all"
       >
-        حفظ الجراج
+        📍 استخدم موقعي الحالي
       </button>
     </div>
+
+    <button
+      onClick={() => {
+        if (gName && gUser && gPhone) {
+          addGarage({
+            name: gName,
+            username: gUser,
+            phone: gPhone,
+            capacity: 50,
+            basePrice: 15,
+            location: 'موقع جديد',
+            lat,
+            lng,
+          });
+          setGName('');
+          setGUser('');
+          setGPhone('');
+          toast.success('تم إضافة الجراج بنجاح!');
+        } else {
+          toast.error('يرجى ملء جميع الحقول');
+        }
+      }}
+      className="w-full bg-blue-600 py-4 rounded-xl font-black text-sm text-white shadow-xl active:scale-95 transition-all"
+    >
+      حفظ الجراج
+    </button>
   </div>
 </div>
