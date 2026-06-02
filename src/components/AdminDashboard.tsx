@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Shield,
   Clock,
@@ -10,11 +10,28 @@ import {
   MessageCircle,
   Send,
   Receipt,
-   Search,
+  Search,
 } from 'lucide-react';
 import { useStore } from '../store';
+import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface DailyStat {
+  garage_id: string;
+  stat_date: string;
+  total_sessions: number;
+  manual_sessions: number;
+  app_sessions: number;
+  total_revenue: number;
+  cash_revenue: number;
+  instapay_revenue: number;
+  wallet_revenue: number;
+  cashwallet_revenue: number;
+  confirmed_revenue: number;
+  pending_revenue: number;
+}
 
 // ─── دوال حساب التاريخ المحلي الصحيح ─────────────────────────────────────────
 const getLocalDayStart = (dateStr: string): number => {
@@ -48,7 +65,7 @@ export default function AdminDashboard() {
     closeMessage,
     confirmRevenue,
     unconfirmRevenue,
-       removeSession,
+    removeSession,
   } = useStore();
 
   const [dateFrom, setDateFrom] = useState('');
@@ -62,9 +79,13 @@ export default function AdminDashboard() {
   const [messagesTab, setMessagesTab] = useState<'pending' | 'all'>('pending');
 
   // ─── state لإدارة الإيرادات ──────────────────────────────────────────────
-  const [revenueFilter, setRevenueFilter] = useState<'all' | 'confirmed' | 'pending'>('all');
-   const [sessionSearch, setSessionSearch] = useState('');
-   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [revenueFilter, setRevenueFilter] = useState<'all' | 'confirmed' | 'pending'>('pending');
+  const [sessionSearch, setSessionSearch] = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  // ─── state لـ daily_stats ─────────────────────────────────────────────────
+  const [dailyStats, setDailyStats] = useState<DailyStat[]>([]);
+  const [dailyStatsLoading, setDailyStatsLoading] = useState(false);
 
   const [gName, setGName] = useState('');
   const [gUser, setGUser] = useState('');
@@ -72,14 +93,95 @@ export default function AdminDashboard() {
   const [lat, setLat] = useState(30.04);
   const [lng, setLng] = useState(31.23);
 
+  // ─── Tick كل ثانية ────────────────────────────────────────────────────────
   useEffect(() => {
     const interval = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(interval);
   }, []);
 
+  // ─── جلب daily_stats من Supabase ─────────────────────────────────────────
+  const fetchDailyStats = useCallback(async () => {
+    setDailyStatsLoading(true);
+    try {
+      let query = supabase
+        .from('daily_stats')
+        .select('*');
+
+      if (dateFrom) {
+        query = query.gte('stat_date', dateFrom);
+      }
+      if (dateTo) {
+        query = query.lte('stat_date', dateTo);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('❌ خطأ في جلب daily_stats:', error);
+        return;
+      }
+
+      setDailyStats(data ?? []);
+    } catch (err) {
+      console.error('❌ خطأ غير متوقع في fetchDailyStats:', err);
+    } finally {
+      setDailyStatsLoading(false);
+    }
+  }, [dateFrom, dateTo]);
+
+  useEffect(() => {
+    fetchDailyStats();
+  }, [fetchDailyStats]);
+
+  // ─── حسابات التقارير من daily_stats ──────────────────────────────────────
+
+  // ✅ إجمالي الإيرادات المؤكدة من daily_stats
+  const totalRevenueFromStats = useMemo(() => {
+    return dailyStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0);
+  }, [dailyStats]);
+
+  // ✅ إجمالي الإيرادات المعلقة من daily_stats
+  const pendingRevenueFromStats = useMemo(() => {
+    return dailyStats.reduce((a, s) => a + Number(s.pending_revenue ?? 0), 0);
+  }, [dailyStats]);
+
+  // ✅ إجمالي الجلسات المؤكدة من daily_stats
+  const totalSessionsFromStats = useMemo(() => {
+    return dailyStats.reduce((a, s) => a + Number(s.total_sessions ?? 0), 0);
+  }, [dailyStats]);
+
+  // ✅ تحليل طرق الدفع من daily_stats
+  const paymentBreakdownFromStats = useMemo(() => {
+    return {
+      cash: dailyStats.reduce((a, s) => a + Number(s.cash_revenue ?? 0), 0),
+      instapay: dailyStats.reduce((a, s) => a + Number(s.instapay_revenue ?? 0), 0),
+      wallet: dailyStats.reduce((a, s) => a + Number(s.wallet_revenue ?? 0), 0),
+      cashwallet: dailyStats.reduce((a, s) => a + Number(s.cashwallet_revenue ?? 0), 0),
+    };
+  }, [dailyStats]);
+
+  // ✅ تقرير الجراجات من daily_stats
+  const garageReportFromStats = useMemo(() => {
+    return garages.map((g) => {
+      const gStats = dailyStats.filter((s) => s.garage_id === g.id);
+      return {
+        name: g.name,
+        garageId: g.id,
+        count: gStats.reduce((a, s) => a + Number(s.total_sessions ?? 0), 0),
+        revenue: gStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0),
+        pendingRevenue: gStats.reduce((a, s) => a + Number(s.pending_revenue ?? 0), 0),
+        pendingCount: 0, // هيتحدث من sessions
+        cash: gStats.reduce((a, s) => a + Number(s.cash_revenue ?? 0), 0),
+        instapay: gStats.reduce((a, s) => a + Number(s.instapay_revenue ?? 0), 0),
+        wallet: gStats.reduce((a, s) => a + Number(s.wallet_revenue ?? 0), 0),
+        cashwallet: gStats.reduce((a, s) => a + Number(s.cashwallet_revenue ?? 0), 0),
+      };
+    });
+  }, [garages, dailyStats]);
+
+  // ─── الجلسات للإدارة الفردية - بتيجي من sessions ──────────────────────────
   const completedSessions = sessions.filter((s) => s.status === 'completed');
 
-  // ✅ فلترة بالتاريخ المحلي
   const filteredSessions = useMemo(() => {
     return completedSessions.filter((s) => {
       const sessionEndTime = getSessionTime(s.endTime);
@@ -99,7 +201,7 @@ export default function AdminDashboard() {
     });
   }, [completedSessions, dateFrom, dateTo]);
 
-  // ─── دالة حساب الإيراد ────────────────────────────────────────────────────
+  // ─── دالة حساب الإيراد للجلسة الفردية ───────────────────────────────────
   const getRevenue = (s: typeof completedSessions[0]) => {
     if (s.totalPrice != null && Number(s.totalPrice) > 0) {
       return Number(s.totalPrice);
@@ -121,99 +223,34 @@ export default function AdminDashboard() {
     return 0;
   };
 
-  // ✅ الإيراد الكلي - بس المؤكد
-  const totalRevenue = useMemo(
-    () =>
-      filteredSessions
-        .filter((s) => s.revenueConfirmed)
-        .reduce((a, s) => a + getRevenue(s), 0),
-    [filteredSessions]
-  );
-
-  // ✅ إيراد معلق
-  const pendingRevenue = useMemo(
-    () =>
-      filteredSessions
-        .filter((s) => !s.revenueConfirmed)
-        .reduce((a, s) => a + getRevenue(s), 0),
-    [filteredSessions]
-  );
-
+  // ─── عدد الجلسات المعلقة (للبانر) - من sessions ──────────────────────────
   const pendingRevenueCount = useMemo(
     () => filteredSessions.filter((s) => !s.revenueConfirmed).length,
     [filteredSessions]
   );
 
-  // ✅ تحليل طرق الدفع - بس المؤكد
-  const paymentBreakdown = useMemo(() => {
-    const b = { cash: 0, instapay: 0, wallet: 0, cashwallet: 0 };
-
-    filteredSessions
-      .filter((s) => s.revenueConfirmed)
-      .forEach((s) => {
-        const rev = getRevenue(s);
-        if (s.paymentMethod === 'cash') b.cash += rev;
-        else if (s.paymentMethod === 'instapay') b.instapay += rev;
-        else if (s.paymentMethod === 'wallet') b.wallet += rev;
-        else if (s.paymentMethod === 'cashwallet') b.cashwallet += rev;
-      });
-
-    return b;
-  }, [filteredSessions]);
-
-  // ✅ تقرير الجراجات - يفصل المؤكد عن المعلق
-  const garageReport = useMemo(() => {
-    return garages.map((g) => {
-      const allGs = filteredSessions.filter((s) => s.garageId === g.id);
-      const gs = allGs.filter((s) => s.revenueConfirmed);
-      const pending = allGs.filter((s) => !s.revenueConfirmed);
-
-      return {
-        name: g.name,
-        count: gs.length,
-        revenue: gs.reduce((a, s) => a + getRevenue(s), 0),
-        pendingRevenue: pending.reduce((a, s) => a + getRevenue(s), 0),
-        pendingCount: pending.length,
-        cash: gs
-          .filter((s) => s.paymentMethod === 'cash')
-          .reduce((a, s) => a + getRevenue(s), 0),
-        instapay: gs
-          .filter((s) => s.paymentMethod === 'instapay')
-          .reduce((a, s) => a + getRevenue(s), 0),
-        wallet: gs
-          .filter((s) => s.paymentMethod === 'wallet')
-          .reduce((a, s) => a + getRevenue(s), 0),
-        cashwallet: gs
-          .filter((s) => s.paymentMethod === 'cashwallet')
-          .reduce((a, s) => a + getRevenue(s), 0),
-      };
-    });
-  }, [garages, filteredSessions]);
-
   const pendingTopUps = walletTopUps.filter((w) => w.status === 'pending');
   const activeSessions = sessions.filter((s) => s.status === 'active');
 
   // ✅ الجلسات المعروضة في إدارة الإيرادات
-const displayedRevenueSessions = useMemo(() => {
-  let filtered = filteredSessions;
+  const displayedRevenueSessions = useMemo(() => {
+    let filtered = filteredSessions;
 
-  // ✅ فلتر حالة التأكيد
-  if (revenueFilter === 'confirmed') {
-    filtered = filtered.filter((s) => s.revenueConfirmed);
-  } else if (revenueFilter === 'pending') {
-    filtered = filtered.filter((s) => !s.revenueConfirmed);
-  }
+    if (revenueFilter === 'confirmed') {
+      filtered = filtered.filter((s) => s.revenueConfirmed);
+    } else if (revenueFilter === 'pending') {
+      filtered = filtered.filter((s) => !s.revenueConfirmed);
+    }
 
-  // ✅ بحث برقم العربية
-  if (sessionSearch.trim()) {
-    const searchNormalized = sessionSearch.trim().toUpperCase();
-    filtered = filtered.filter((s) =>
-      (s.carPlate ?? '').toUpperCase().includes(searchNormalized)
-    );
-  }
+    if (sessionSearch.trim()) {
+      const searchNormalized = sessionSearch.trim().toUpperCase();
+      filtered = filtered.filter((s) =>
+        (s.carPlate ?? '').toUpperCase().includes(searchNormalized)
+      );
+    }
 
-  return filtered;
-}, [filteredSessions, revenueFilter, sessionSearch]);
+    return filtered;
+  }, [filteredSessions, revenueFilter, sessionSearch]);
 
   // ─── الرسائل ──────────────────────────────────────────────────────────────
   const safeMessages = messages ?? [];
@@ -251,7 +288,6 @@ const displayedRevenueSessions = useMemo(() => {
     });
   };
 
-  // ─── زر اليوم الحالي السريع ───────────────────────────────────────────────
   const setToday = () => {
     const today = new Date().toISOString().split('T')[0];
     setDateFrom(today);
@@ -340,10 +376,7 @@ const displayedRevenueSessions = useMemo(() => {
             آخر أسبوع
           </button>
           <button
-            onClick={() => {
-              setDateFrom('');
-              setDateTo('');
-            }}
+            onClick={() => { setDateFrom(''); setDateTo(''); }}
             className="bg-slate-800 text-slate-400 px-4 py-2 rounded-xl text-[10px] font-black active:scale-95 transition-all"
           >
             الكل
@@ -373,28 +406,31 @@ const displayedRevenueSessions = useMemo(() => {
         )}
       </div>
 
-      {/* ─── Revenue Stats ───────────────────────────────────────────────────── */}
+      {/* ─── Revenue Stats - من daily_stats ─────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-5 rounded-[2rem] shadow-2xl">
           <div className="text-[10px] text-blue-100 font-bold mb-1">
             الإيرادات المؤكدة
+            {dailyStatsLoading && (
+              <span className="text-blue-200/60 mr-1">⏳</span>
+            )}
           </div>
           <div className="text-3xl font-black text-white font-mono tracking-tighter">
-            {totalRevenue.toFixed(0)} <span className="text-xs">ج.م</span>
+            {totalRevenueFromStats.toFixed(0)} <span className="text-xs">ج.م</span>
           </div>
         </div>
         <div className="bg-slate-900 border border-slate-800 p-5 rounded-[2rem] shadow-2xl">
           <div className="text-[10px] text-slate-500 font-bold mb-1">
-            إجمالي العمليات المؤكدة
+            إجمالي العمليات
           </div>
           <div className="text-3xl font-black text-emerald-400 font-mono tracking-tighter">
-            {filteredSessions.filter((s) => s.revenueConfirmed).length}
+            {totalSessionsFromStats}
           </div>
         </div>
       </div>
 
       {/* ─── Pending Revenue Banner ──────────────────────────────────────────── */}
-      {pendingRevenueCount > 0 && (
+      {(pendingRevenueFromStats > 0 || pendingRevenueCount > 0) && (
         <div className="bg-amber-600/10 border border-amber-500/30 rounded-2xl p-4 mb-6">
           <div className="flex justify-between items-center">
             <div className="text-right">
@@ -406,13 +442,13 @@ const displayedRevenueSessions = useMemo(() => {
               </p>
             </div>
             <div className="text-xl font-black text-amber-400 font-mono">
-              {pendingRevenue.toFixed(0)} ج.م
+              {pendingRevenueFromStats.toFixed(0)} ج.م
             </div>
           </div>
         </div>
       )}
 
-      {/* ─── Payment Breakdown ───────────────────────────────────────────────── */}
+      {/* ─── Payment Breakdown - من daily_stats ──────────────────────────────── */}
       <h3 className="text-xs font-black text-slate-400 mb-3">
         تحليل الإيرادات المؤكدة حسب وسيلة السداد
       </h3>
@@ -423,7 +459,7 @@ const displayedRevenueSessions = useMemo(() => {
             <span className="text-[9px] text-slate-400 font-bold">نقدي (كاش)</span>
           </div>
           <div className="text-xl font-black text-emerald-400 font-mono">
-            {paymentBreakdown.cash.toFixed(0)}ج
+            {paymentBreakdownFromStats.cash.toFixed(0)}ج
           </div>
         </div>
         <div className="bg-slate-900/40 border border-slate-800 p-4 rounded-2xl">
@@ -432,7 +468,7 @@ const displayedRevenueSessions = useMemo(() => {
             <span className="text-[9px] text-slate-400 font-bold">إنستاباي</span>
           </div>
           <div className="text-xl font-black text-purple-400 font-mono">
-            {paymentBreakdown.instapay.toFixed(0)}ج
+            {paymentBreakdownFromStats.instapay.toFixed(0)}ج
           </div>
         </div>
         <div className="bg-slate-900/40 border border-slate-800 p-4 rounded-2xl">
@@ -441,7 +477,7 @@ const displayedRevenueSessions = useMemo(() => {
             <span className="text-[9px] text-slate-400 font-bold">المحفظة (شحن)</span>
           </div>
           <div className="text-xl font-black text-blue-400 font-mono">
-            {paymentBreakdown.wallet.toFixed(0)}ج
+            {paymentBreakdownFromStats.wallet.toFixed(0)}ج
           </div>
         </div>
         <div className="bg-slate-900/40 border border-slate-800 p-4 rounded-2xl">
@@ -450,16 +486,19 @@ const displayedRevenueSessions = useMemo(() => {
             <span className="text-[9px] text-slate-400 font-bold">محفظة كاش</span>
           </div>
           <div className="text-xl font-black text-red-400 font-mono">
-            {paymentBreakdown.cashwallet.toFixed(0)}ج
+            {paymentBreakdownFromStats.cashwallet.toFixed(0)}ج
           </div>
         </div>
       </div>
 
-      {/* ─── Garage Revenue Table ────────────────────────────────────────────── */}
+      {/* ─── Garage Revenue Table - من daily_stats ───────────────────────────── */}
       <div className="bg-slate-900 border border-slate-800 rounded-[2rem] overflow-hidden mb-8 shadow-2xl">
         <div className="p-4 border-b border-slate-800 bg-slate-900/50">
           <h3 className="text-sm font-black text-slate-300">
             تقرير إيرادات الجراجات (المؤكدة)
+            {dailyStatsLoading && (
+              <span className="text-slate-500 text-xs mr-2">جاري التحديث...</span>
+            )}
           </h3>
         </div>
         <div className="overflow-x-auto">
@@ -476,11 +515,11 @@ const displayedRevenueSessions = useMemo(() => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
-              {garageReport.map((r) => (
+              {garageReportFromStats.map((r) => (
                 <tr key={r.name} className="hover:bg-slate-800/30 transition-colors">
                   <td className="p-3">
                     <div className="text-xs font-black text-slate-200">{r.name}</div>
-                    <div className="text-[8px] text-slate-500">{r.count} مؤكدة</div>
+                    <div className="text-[8px] text-slate-500">{r.count} جلسة</div>
                   </td>
                   <td className="p-3 text-center text-xs font-mono font-black text-slate-100 bg-slate-800/20">
                     {r.revenue.toFixed(0)}ج
@@ -489,7 +528,6 @@ const displayedRevenueSessions = useMemo(() => {
                     {r.pendingRevenue > 0 ? (
                       <span className="flex flex-col items-center">
                         <span>{r.pendingRevenue.toFixed(0)}ج</span>
-                        <span className="text-[8px] text-amber-600">({r.pendingCount})</span>
                       </span>
                     ) : (
                       <span className="text-slate-700">—</span>
@@ -509,10 +547,10 @@ const displayedRevenueSessions = useMemo(() => {
                   </td>
                 </tr>
               ))}
-              {garageReport.length === 0 && (
+              {garageReportFromStats.length === 0 && (
                 <tr>
                   <td colSpan={7} className="p-6 text-center text-xs text-slate-600">
-                    لا توجد بيانات للفترة المحددة
+                    {dailyStatsLoading ? '⏳ جاري التحميل...' : 'لا توجد بيانات للفترة المحددة'}
                   </td>
                 </tr>
               )}
@@ -522,15 +560,13 @@ const displayedRevenueSessions = useMemo(() => {
       </div>
 
       {/* ─── Revenue Sessions Management ─────────────────────────────────────── */}
-          <div className="mb-8">
+      <div className="mb-8">
         <h3 className="font-black text-lg mb-4 text-slate-300 flex items-center gap-2 justify-end">
           إدارة الجلسات ({filteredSessions.length})
           <Receipt size={18} />
         </h3>
 
-        {/* فلتر + بحث */}
         <div className="space-y-3 mb-4">
-          {/* فلتر حالة التأكيد */}
           <div className="flex gap-2">
             <button
               onClick={() => setRevenueFilter('pending')}
@@ -564,7 +600,6 @@ const displayedRevenueSessions = useMemo(() => {
             </button>
           </div>
 
-          {/* بحث برقم العربية */}
           <div className="relative">
             <Search
               size={14}
@@ -587,7 +622,6 @@ const displayedRevenueSessions = useMemo(() => {
             )}
           </div>
 
-          {/* عدد النتائج */}
           {(sessionSearch || revenueFilter !== 'all') && (
             <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-2 text-center">
               <span className="text-[10px] text-slate-400">
@@ -600,7 +634,6 @@ const displayedRevenueSessions = useMemo(() => {
           )}
         </div>
 
-        {/* قائمة الجلسات */}
         <div className="space-y-2">
           {displayedRevenueSessions.length === 0 ? (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center">
@@ -638,14 +671,11 @@ const displayedRevenueSessions = useMemo(() => {
                       : 'bg-amber-950/20 border-amber-500/30'
                   }`}
                 >
-                  {/* الصف الأول - المعلومات */}
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span
                         className={`text-sm font-mono font-black ${
-                          session.revenueConfirmed
-                            ? 'text-emerald-400'
-                            : 'text-amber-400'
+                          session.revenueConfirmed ? 'text-emerald-400' : 'text-amber-400'
                         }`}
                       >
                         {rev.toFixed(0)} ج.م
@@ -704,22 +734,14 @@ const displayedRevenueSessions = useMemo(() => {
                     </div>
                   </div>
 
-                  {/* الصف الثاني - الوقت */}
                   {time && (
                     <div className="text-[9px] text-slate-600 font-mono mb-2 text-left">
-                      {time.toLocaleTimeString('ar-EG', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
+                      {time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
                       {' · '}
-                      {time.toLocaleDateString('ar-EG', {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
+                      {time.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}
                     </div>
                   )}
 
-                  {/* ✅ شاشة تأكيد الحذف */}
                   {isDeleting ? (
                     <div className="bg-red-600/10 border border-red-500/30 rounded-xl p-3 space-y-2">
                       <p className="text-xs text-red-400 font-black text-center">
@@ -733,6 +755,7 @@ const displayedRevenueSessions = useMemo(() => {
                           onClick={async () => {
                             await removeSession(session.id);
                             setDeleteConfirmId(null);
+                            await fetchDailyStats();
                             toast.success('تم حذف الجلسة نهائياً 🗑️');
                           }}
                           className="flex-1 bg-red-600 text-white py-2 rounded-lg text-[10px] font-black active:scale-95 transition-all"
@@ -748,12 +771,12 @@ const displayedRevenueSessions = useMemo(() => {
                       </div>
                     </div>
                   ) : (
-                    /* ✅ أزرار التحكم */
                     <div className="flex items-center gap-2">
                       {session.revenueConfirmed ? (
                         <button
-                          onClick={() => {
-                            unconfirmRevenue(session.id);
+                          onClick={async () => {
+                            await unconfirmRevenue(session.id);
+                            await fetchDailyStats();
                             toast('تم إلغاء تأكيد الإيراد ↩️', {
                               icon: '⏳',
                               style: {
@@ -769,8 +792,9 @@ const displayedRevenueSessions = useMemo(() => {
                         </button>
                       ) : (
                         <button
-                          onClick={() => {
-                            confirmRevenue(session.id);
+                          onClick={async () => {
+                            await confirmRevenue(session.id);
+                            await fetchDailyStats();
                             toast.success('تم تأكيد الإيراد ✅');
                           }}
                           className="flex-1 bg-emerald-600/20 text-emerald-400 py-1.5 rounded-lg text-[9px] font-black border border-emerald-500/20 active:scale-95 transition-all"
@@ -779,7 +803,6 @@ const displayedRevenueSessions = useMemo(() => {
                         </button>
                       )}
 
-                      {/* زر الحذف */}
                       <button
                         onClick={() => setDeleteConfirmId(session.id)}
                         className="bg-red-600/10 text-red-400 px-3 py-1.5 rounded-lg text-[9px] font-black border border-red-500/20 active:scale-95 transition-all"
@@ -803,10 +826,7 @@ const displayedRevenueSessions = useMemo(() => {
         </h3>
         <div className="space-y-3">
           {pendingTopUps.map((w) => (
-            <div
-              key={w.id}
-              className="bg-slate-900 p-4 rounded-2xl border border-slate-800"
-            >
+            <div key={w.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-800">
               <div className="flex justify-between items-center mb-3">
                 <div
                   className={`text-[9px] font-black p-1 px-3 rounded-full ${
@@ -838,9 +858,7 @@ const displayedRevenueSessions = useMemo(() => {
                 )}
                 {w.userPhone && (
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-black text-blue-400 font-mono">
-                      {w.userPhone}
-                    </span>
+                    <span className="text-sm font-black text-blue-400 font-mono">{w.userPhone}</span>
                     <span className="text-[10px] text-slate-500">📞 الهاتف</span>
                   </div>
                 )}
@@ -860,9 +878,7 @@ const displayedRevenueSessions = useMemo(() => {
                 <button
                   onClick={() => {
                     approveTopUp(w.id);
-                    toast.success(
-                      `تم اعتماد شحن ${w.amount} ج.م لـ ${w.userName || 'العميل'} ✅`
-                    );
+                    toast.success(`تم اعتماد شحن ${w.amount} ج.م لـ ${w.userName || 'العميل'} ✅`);
                   }}
                   className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-1 active:scale-95 transition-all"
                 >
@@ -919,17 +935,12 @@ const displayedRevenueSessions = useMemo(() => {
                 }, 0);
 
                 return (
-                  <div
-                    key={g.id}
-                    className="bg-slate-900 border border-slate-800 rounded-xl p-3"
-                  >
+                  <div key={g.id} className="bg-slate-900 border border-slate-800 rounded-xl p-3">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-black text-emerald-400 font-mono">
                         {garageActive.length}
                       </span>
-                      <span className="text-[10px] font-black text-white">
-                        {g.name}
-                      </span>
+                      <span className="text-[10px] font-black text-white">{g.name}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] text-emerald-400 font-mono font-bold">
@@ -956,10 +967,7 @@ const displayedRevenueSessions = useMemo(() => {
                 typeof s.startTime === 'number'
                   ? s.startTime
                   : new Date(s.startTime).getTime();
-              const elapsedSecs = Math.max(
-                0,
-                Math.floor((Date.now() - start) / 1000)
-              );
+              const elapsedSecs = Math.max(0, Math.floor((Date.now() - start) / 1000));
               const mins = Math.floor(elapsedSecs / 60);
               const hours = calculateFullHours(elapsedSecs);
               const rate = Number(s.agreedPrice ?? g?.basePrice ?? 0);
@@ -993,12 +1001,8 @@ const displayedRevenueSessions = useMemo(() => {
                       </span>
                     </div>
                     <div className="text-right">
-                      <div className="text-sm font-black text-white">
-                        🚗 {s.carPlate}
-                      </div>
-                      <div className="text-xs text-slate-400">
-                        {g?.name || 'جراج غير معروف'}
-                      </div>
+                      <div className="text-sm font-black text-white">🚗 {s.carPlate}</div>
+                      <div className="text-xs text-slate-400">{g?.name || 'جراج غير معروف'}</div>
                     </div>
                   </div>
 
@@ -1106,19 +1110,13 @@ const displayedRevenueSessions = useMemo(() => {
                   </div>
 
                   <div className="bg-slate-950/50 rounded-xl p-2 mb-2 flex items-center justify-between">
-                    <span className="text-[10px] text-slate-500 font-mono">
-                      {msg.userPhone}
-                    </span>
+                    <span className="text-[10px] text-slate-500 font-mono">{msg.userPhone}</span>
                     <div className="flex items-center gap-2">
                       {msg.userName && (
-                        <span className="text-[10px] text-white font-bold">
-                          {msg.userName}
-                        </span>
+                        <span className="text-[10px] text-white font-bold">{msg.userName}</span>
                       )}
                       {msg.carPlate && (
-                        <span className="text-[9px] text-blue-400 font-mono">
-                          🚗 {msg.carPlate}
-                        </span>
+                        <span className="text-[9px] text-blue-400 font-mono">🚗 {msg.carPlate}</span>
                       )}
                     </div>
                   </div>
@@ -1192,10 +1190,7 @@ const displayedRevenueSessions = useMemo(() => {
                               إرسال الرد
                             </button>
                             <button
-                              onClick={() => {
-                                setReplyingTo(null);
-                                setReplyText('');
-                              }}
+                              onClick={() => { setReplyingTo(null); setReplyText(''); }}
                               className="bg-slate-800 text-slate-400 px-4 py-2.5 rounded-xl font-black text-xs active:scale-95 transition-all"
                             >
                               إلغاء
@@ -1243,15 +1238,10 @@ const displayedRevenueSessions = useMemo(() => {
         </h3>
         <div className="space-y-3">
           {garages.map((g) => (
-            <div
-              key={g.id}
-              className="bg-slate-900 p-5 rounded-[2rem] border border-slate-800"
-            >
+            <div key={g.id} className="bg-slate-900 p-5 rounded-[2rem] border border-slate-800">
               <div className="flex justify-between mb-4">
                 <div className="bg-blue-600/20 text-blue-400 p-3 rounded-2xl text-center border border-blue-500/20 min-w-[60px]">
-                  <div className="text-xl font-black font-mono">
-                    {g.availableSpots}
-                  </div>
+                  <div className="text-xl font-black font-mono">{g.availableSpots}</div>
                   <div className="text-[8px] font-bold">شاغر</div>
                 </div>
                 <div className="text-right">
@@ -1262,10 +1252,7 @@ const displayedRevenueSessions = useMemo(() => {
                 </div>
               </div>
               <button
-                onClick={() => {
-                  setCurrentGarageId(g.id);
-                  setView('garage');
-                }}
+                onClick={() => { setCurrentGarageId(g.id); setView('garage'); }}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-black text-sm active:scale-95 transition-all"
               >
                 دخول وإدارة البيانات
@@ -1304,9 +1291,7 @@ const displayedRevenueSessions = useMemo(() => {
           </div>
 
           <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800">
-            <div className="text-[10px] text-blue-400 font-bold mb-2">
-              تحديد الإحداثيات
-            </div>
+            <div className="text-[10px] text-blue-400 font-bold mb-2">تحديد الإحداثيات</div>
             <div className="grid grid-cols-2 gap-3 text-white font-mono mb-3">
               <div>
                 <span className="text-[8px] text-slate-500 block px-1">خط العرض</span>

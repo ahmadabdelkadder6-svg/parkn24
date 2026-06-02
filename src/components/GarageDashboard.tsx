@@ -35,6 +35,22 @@ interface UndoableSession {
   addedAt: number;
 }
 
+// ✅ Type لبيانات daily_stats
+interface DailyStat {
+  garage_id: string;
+  stat_date: string;
+  total_sessions: number;
+  manual_sessions: number;
+  app_sessions: number;
+  total_revenue: number;
+  cash_revenue: number;
+  instapay_revenue: number;
+  wallet_revenue: number;
+  cashwallet_revenue: number;
+  confirmed_revenue: number;
+  pending_revenue: number;
+}
+
 export default function GarageDashboard() {
   const {
     garages,
@@ -93,6 +109,71 @@ export default function GarageDashboard() {
   const [confirmPaymentMethod, setConfirmPaymentMethod] = useState('cash');
   const [tick, setTick] = useState(0);
 
+  // ✅ state لـ daily_stats
+  const [garageDailyStats, setGarageDailyStats] = useState<DailyStat[]>([]);
+
+  // ─── جلب daily_stats للجراج ───────────────────────────────────────────────
+  const fetchGarageDailyStats = useCallback(async () => {
+    if (!currentGarageId) return;
+    try {
+      let query = supabase
+        .from('daily_stats')
+        .select('*')
+        .eq('garage_id', currentGarageId);
+
+      if (logDateFilter) {
+        query = query.eq('stat_date', logDateFilter);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('❌ خطأ في جلب garage daily_stats:', error);
+        return;
+      }
+
+      setGarageDailyStats(data ?? []);
+    } catch (err) {
+      console.error('❌ خطأ غير متوقع:', err);
+    }
+  }, [currentGarageId, logDateFilter]);
+
+  useEffect(() => {
+    fetchGarageDailyStats();
+  }, [fetchGarageDailyStats]);
+
+  // ─── حسابات التقارير من daily_stats ──────────────────────────────────────
+
+  // ✅ الإيراد الكلي المؤكد من daily_stats
+  const totalRevenueFromStats = useMemo(() => {
+    return garageDailyStats.reduce(
+      (a, s) => a + Number(s.confirmed_revenue ?? 0),
+      0
+    );
+  }, [garageDailyStats]);
+
+  // ✅ الإيراد المعلق من daily_stats
+  const pendingRevenueFromStats = useMemo(() => {
+    return garageDailyStats.reduce(
+      (a, s) => a + Number(s.pending_revenue ?? 0),
+      0
+    );
+  }, [garageDailyStats]);
+
+  // ✅ تحليل طرق الدفع من daily_stats
+  const paymentStatsFromDB = useMemo(() => {
+    return {
+      cash: garageDailyStats.reduce((a, s) => a + Number(s.cash_revenue ?? 0), 0),
+      instapay: garageDailyStats.reduce((a, s) => a + Number(s.instapay_revenue ?? 0), 0),
+      wallet: garageDailyStats.reduce((a, s) => a + Number(s.wallet_revenue ?? 0), 0),
+      cashwallet: garageDailyStats.reduce((a, s) => a + Number(s.cashwallet_revenue ?? 0), 0),
+      totalSessions: garageDailyStats.reduce((a, s) => a + Number(s.total_sessions ?? 0), 0),
+      manualSessions: garageDailyStats.reduce((a, s) => a + Number(s.manual_sessions ?? 0), 0),
+      appSessions: garageDailyStats.reduce((a, s) => a + Number(s.app_sessions ?? 0), 0),
+    };
+  }, [garageDailyStats]);
+
+  // ─── دالة حساب إيراد الجلسة الفردية (للسجل الفردي) ──────────────────────
   const getSessionRevenue = useCallback(
     (s: (typeof completedSessions)[0]) => {
       if (s.totalPrice != null && Number(s.totalPrice) > 0)
@@ -115,12 +196,17 @@ export default function GarageDashboard() {
     [garage?.basePrice]
   );
 
-  // ✅ الإيراد الكلي - بس المؤكد
+  // ✅ الإيراد الكلي في Stats Cards - من daily_stats لو متاح، وإلا fallback للحساب المحلي
   const totalRevenue = useMemo(() => {
+    if (garageDailyStats.length > 0) {
+      return completedSessions
+        .filter((s) => s.revenueConfirmed)
+        .reduce((acc, s) => acc + getSessionRevenue(s), 0);
+    }
     return completedSessions
       .filter((s) => s.revenueConfirmed)
       .reduce((acc, s) => acc + getSessionRevenue(s), 0);
-  }, [completedSessions, getSessionRevenue]);
+  }, [completedSessions, getSessionRevenue, garageDailyStats]);
 
   const getActiveCost = useCallback(
     (session: (typeof activeSessions)[0]) => {
@@ -137,7 +223,7 @@ export default function GarageDashboard() {
     [garage?.basePrice]
   );
 
-  // ✅ فلترة بالتوقيت المحلي
+  // ✅ فلترة بالتوقيت المحلي - للسجل الفردي
   const filteredCompleted = useMemo(() => {
     return completedSessions.filter((s) => {
       if (logDateFilter && s.endTime) {
@@ -157,30 +243,37 @@ export default function GarageDashboard() {
     });
   }, [completedSessions, logDateFilter, logPaymentFilter]);
 
-  // ✅ إحصائيات مع دعم الإيرادات المعلقة
+  // ✅ إحصائيات السجل الفردي مع دعم المعلق
   const filteredStats = useMemo(() => {
     const confirmed = filteredCompleted.filter((s) => s.revenueConfirmed);
     const unconfirmed = filteredCompleted.filter((s) => !s.revenueConfirmed);
 
-    const cash = confirmed
-      .filter((s) => s.paymentMethod === 'cash')
-      .reduce((a, s) => a + getSessionRevenue(s), 0);
-    const instapay = confirmed
-      .filter((s) => s.paymentMethod === 'instapay')
-      .reduce((a, s) => a + getSessionRevenue(s), 0);
-    const wallet = confirmed
-      .filter((s) => s.paymentMethod === 'wallet')
-      .reduce((a, s) => a + getSessionRevenue(s), 0);
-    const cashwallet = confirmed
-      .filter((s) => s.paymentMethod === 'cashwallet')
-      .reduce((a, s) => a + getSessionRevenue(s), 0);
-    const total = cash + instapay + wallet + cashwallet;
+    // ✅ استخدم daily_stats لو متاح لنفس اليوم
+    const hasStatsForDate = garageDailyStats.length > 0;
+
+    const cash = hasStatsForDate
+      ? paymentStatsFromDB.cash
+      : confirmed.filter((s) => s.paymentMethod === 'cash').reduce((a, s) => a + getSessionRevenue(s), 0);
+    const instapay = hasStatsForDate
+      ? paymentStatsFromDB.instapay
+      : confirmed.filter((s) => s.paymentMethod === 'instapay').reduce((a, s) => a + getSessionRevenue(s), 0);
+    const wallet = hasStatsForDate
+      ? paymentStatsFromDB.wallet
+      : confirmed.filter((s) => s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
+    const cashwallet = hasStatsForDate
+      ? paymentStatsFromDB.cashwallet
+      : confirmed.filter((s) => s.paymentMethod === 'cashwallet').reduce((a, s) => a + getSessionRevenue(s), 0);
+
+    const total = hasStatsForDate
+      ? garageDailyStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0)
+      : cash + instapay + wallet + cashwallet;
+
     const manual = confirmed.filter((s) => s.source === 'manual');
     const app = confirmed.filter((s) => s.source === 'app');
-    const pendingRevenue = unconfirmed.reduce(
-      (a, s) => a + getSessionRevenue(s),
-      0
-    );
+
+    const pendingRevenue = hasStatsForDate
+      ? pendingRevenueFromStats
+      : unconfirmed.reduce((a, s) => a + getSessionRevenue(s), 0);
 
     return {
       cash,
@@ -188,14 +281,20 @@ export default function GarageDashboard() {
       wallet,
       cashwallet,
       total,
-      manualCount: manual.length,
-      appCount: app.length,
+      manualCount: hasStatsForDate ? paymentStatsFromDB.manualSessions : manual.length,
+      appCount: hasStatsForDate ? paymentStatsFromDB.appSessions : app.length,
       manualTotal: manual.reduce((a, s) => a + getSessionRevenue(s), 0),
       appTotal: app.reduce((a, s) => a + getSessionRevenue(s), 0),
       pendingRevenue,
       pendingCount: unconfirmed.length,
     };
-  }, [filteredCompleted, getSessionRevenue]);
+  }, [
+    filteredCompleted,
+    getSessionRevenue,
+    garageDailyStats,
+    paymentStatsFromDB,
+    pendingRevenueFromStats,
+  ]);
 
   const handleUndoSession = useCallback(
     (undoable: UndoableSession) => {
@@ -359,6 +458,9 @@ export default function GarageDashboard() {
         )
       );
       await endSession(sessionCopy.id, sessionCopy.cost, paymentCopy);
+      // ✅ بعد إنهاء الجلسة - حدّث daily_stats
+      await fetchGarageDailyStats();
+
       const methodLabel =
         paymentCopy === 'cash'
           ? 'نقدي 💵'
@@ -845,7 +947,10 @@ export default function GarageDashboard() {
         <div className="bg-emerald-600/20 border border-emerald-500/20 p-4 rounded-2xl text-center">
           <DollarSign size={20} className="text-emerald-400 mx-auto mb-1" />
           <div className="text-xl font-black text-emerald-400 font-mono">
-            {totalRevenue.toFixed(0)}
+            {(garageDailyStats.length > 0
+              ? garageDailyStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0)
+              : totalRevenue
+            ).toFixed(0)}
           </div>
           <div className="text-[8px] text-slate-500 font-bold">مؤكد</div>
         </div>
@@ -1508,11 +1613,11 @@ export default function GarageDashboard() {
                       {isManual ? 'يدوي' : 'تطبيق'}
                     </span>
 
-                    {/* ✅ زر التأكيد أو علامة التأكيد */}
                     {!isConfirmed ? (
                       <button
-                        onClick={() => {
-                          confirmRevenue(session.id);
+                        onClick={async () => {
+                          await confirmRevenue(session.id);
+                          await fetchGarageDailyStats();
                           toast.success('تم تأكيد الإيراد ✅');
                         }}
                         className="bg-amber-600/20 text-amber-400 px-2 py-0.5 rounded-lg text-[8px] font-black border border-amber-500/30 active:scale-95 transition-all"
