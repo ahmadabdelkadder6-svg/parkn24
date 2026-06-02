@@ -35,7 +35,6 @@ interface UndoableSession {
   addedAt: number;
 }
 
-// ✅ Type لبيانات daily_stats
 interface DailyStat {
   garage_id: string;
   stat_date: string;
@@ -73,11 +72,10 @@ export default function GarageDashboard() {
   const garage = garages.find((g) => g.id === currentGarageId);
   const garageSessions = sessions.filter((s) => s.garageId === currentGarageId);
   const activeSessions = garageSessions.filter(
-  (s) =>
-    s.status === 'active' &&
-    // ✅ تجاهل الجلسات القديمة جداً (أكثر من 24 ساعة)
-    Date.now() - s.startTime < 24 * 60 * 60 * 1000
-);
+    (s) =>
+      s.status === 'active' &&
+      Date.now() - s.startTime < 24 * 60 * 60 * 1000
+  );
   const completedSessions = garageSessions.filter((s) => s.status === 'completed');
   const garageOffers = offers.filter(
     (o) => o.garageId === currentGarageId && o.status === 'pending'
@@ -113,11 +111,8 @@ export default function GarageDashboard() {
   } | null>(null);
   const [confirmPaymentMethod, setConfirmPaymentMethod] = useState('cash');
   const [tick, setTick] = useState(0);
-
-  // ✅ state لـ daily_stats
   const [garageDailyStats, setGarageDailyStats] = useState<DailyStat[]>([]);
 
-  // ─── جلب daily_stats للجراج ───────────────────────────────────────────────
   const fetchGarageDailyStats = useCallback(async () => {
     if (!currentGarageId) return;
     try {
@@ -147,9 +142,6 @@ export default function GarageDashboard() {
     fetchGarageDailyStats();
   }, [fetchGarageDailyStats]);
 
-  // ─── حسابات التقارير من daily_stats ──────────────────────────────────────
-
-  // ✅ الإيراد الكلي المؤكد من daily_stats
   const totalRevenueFromStats = useMemo(() => {
     return garageDailyStats.reduce(
       (a, s) => a + Number(s.confirmed_revenue ?? 0),
@@ -157,7 +149,6 @@ export default function GarageDashboard() {
     );
   }, [garageDailyStats]);
 
-  // ✅ الإيراد المعلق من daily_stats
   const pendingRevenueFromStats = useMemo(() => {
     return garageDailyStats.reduce(
       (a, s) => a + Number(s.pending_revenue ?? 0),
@@ -165,7 +156,6 @@ export default function GarageDashboard() {
     );
   }, [garageDailyStats]);
 
-  // ✅ تحليل طرق الدفع من daily_stats
   const paymentStatsFromDB = useMemo(() => {
     return {
       cash: garageDailyStats.reduce((a, s) => a + Number(s.cash_revenue ?? 0), 0),
@@ -178,7 +168,6 @@ export default function GarageDashboard() {
     };
   }, [garageDailyStats]);
 
-  // ─── دالة حساب إيراد الجلسة الفردية (للسجل الفردي) ──────────────────────
   const getSessionRevenue = useCallback(
     (s: (typeof completedSessions)[0]) => {
       if (s.totalPrice != null && Number(s.totalPrice) > 0)
@@ -201,17 +190,11 @@ export default function GarageDashboard() {
     [garage?.basePrice]
   );
 
-  // ✅ الإيراد الكلي في Stats Cards - من daily_stats لو متاح، وإلا fallback للحساب المحلي
   const totalRevenue = useMemo(() => {
-    if (garageDailyStats.length > 0) {
-      return completedSessions
-        .filter((s) => s.revenueConfirmed)
-        .reduce((acc, s) => acc + getSessionRevenue(s), 0);
-    }
     return completedSessions
       .filter((s) => s.revenueConfirmed)
       .reduce((acc, s) => acc + getSessionRevenue(s), 0);
-  }, [completedSessions, getSessionRevenue, garageDailyStats]);
+  }, [completedSessions, getSessionRevenue]);
 
   const getActiveCost = useCallback(
     (session: (typeof activeSessions)[0]) => {
@@ -228,7 +211,6 @@ export default function GarageDashboard() {
     [garage?.basePrice]
   );
 
-  // ✅ فلترة بالتوقيت المحلي - للسجل الفردي
   const filteredCompleted = useMemo(() => {
     return completedSessions.filter((s) => {
       if (logDateFilter && s.endTime) {
@@ -248,29 +230,38 @@ export default function GarageDashboard() {
     });
   }, [completedSessions, logDateFilter, logPaymentFilter]);
 
-  // ✅ إحصائيات السجل الفردي مع دعم المعلق
   const filteredStats = useMemo(() => {
     const confirmed = filteredCompleted.filter((s) => s.revenueConfirmed);
     const unconfirmed = filteredCompleted.filter((s) => !s.revenueConfirmed);
 
-    // ✅ استخدم daily_stats لو متاح لنفس اليوم
     const hasStatsForDate = garageDailyStats.length > 0;
 
     const cash = hasStatsForDate
       ? paymentStatsFromDB.cash
-      : confirmed.filter((s) => s.paymentMethod === 'cash').reduce((a, s) => a + getSessionRevenue(s), 0);
+      : confirmed
+          .filter((s) => s.paymentMethod === 'cash')
+          .reduce((a, s) => a + getSessionRevenue(s), 0);
     const instapay = hasStatsForDate
       ? paymentStatsFromDB.instapay
-      : confirmed.filter((s) => s.paymentMethod === 'instapay').reduce((a, s) => a + getSessionRevenue(s), 0);
+      : confirmed
+          .filter((s) => s.paymentMethod === 'instapay')
+          .reduce((a, s) => a + getSessionRevenue(s), 0);
     const wallet = hasStatsForDate
       ? paymentStatsFromDB.wallet
-      : confirmed.filter((s) => s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
+      : confirmed
+          .filter((s) => s.paymentMethod === 'wallet')
+          .reduce((a, s) => a + getSessionRevenue(s), 0);
     const cashwallet = hasStatsForDate
       ? paymentStatsFromDB.cashwallet
-      : confirmed.filter((s) => s.paymentMethod === 'cashwallet').reduce((a, s) => a + getSessionRevenue(s), 0);
+      : confirmed
+          .filter((s) => s.paymentMethod === 'cashwallet')
+          .reduce((a, s) => a + getSessionRevenue(s), 0);
 
     const total = hasStatsForDate
-      ? garageDailyStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0)
+      ? garageDailyStats.reduce(
+          (a, s) => a + Number(s.confirmed_revenue ?? 0),
+          0
+        )
       : cash + instapay + wallet + cashwallet;
 
     const manual = confirmed.filter((s) => s.source === 'manual');
@@ -286,8 +277,12 @@ export default function GarageDashboard() {
       wallet,
       cashwallet,
       total,
-      manualCount: hasStatsForDate ? paymentStatsFromDB.manualSessions : manual.length,
-      appCount: hasStatsForDate ? paymentStatsFromDB.appSessions : app.length,
+      manualCount: hasStatsForDate
+        ? paymentStatsFromDB.manualSessions
+        : manual.length,
+      appCount: hasStatsForDate
+        ? paymentStatsFromDB.appSessions
+        : app.length,
       manualTotal: manual.reduce((a, s) => a + getSessionRevenue(s), 0),
       appTotal: app.reduce((a, s) => a + getSessionRevenue(s), 0),
       pendingRevenue,
@@ -446,15 +441,25 @@ export default function GarageDashboard() {
     setConfirmPaymentMethod('cash');
   };
 
+  // ✅ الإصلاح الجوهري
   const handleConfirmPayment = async () => {
     if (!confirmSession) return;
     if (isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
-    pausePolling(10000);
+
+    // ✅ وقف الـ polling لمدة 20 ثانية عشان ما يسببش flash لشاشة الحريف
+    pausePolling(20000);
 
     try {
       const sessionCopy = { ...confirmSession };
       const paymentCopy = confirmPaymentMethod;
+
+      // ✅ احفظ بيانات الجلسة قبل ما تتمسح من الـ state
+      const sessionData = useStore.getState().sessions.find(
+        (s) => s.id === sessionCopy.id
+      );
+      const isAppSession = sessionData?.source === 'app';
+
       setConfirmSession(null);
       setUndoableSessions((prev) =>
         prev.filter(
@@ -462,8 +467,17 @@ export default function GarageDashboard() {
             u.sessionId !== sessionCopy.id && u.localId !== sessionCopy.id
         )
       );
+
+      // ✅ أنهِ الجلسة - ده بيحدّث الـ state فوراً لـ completed
       await endSession(sessionCopy.id, sessionCopy.cost, paymentCopy);
-      // ✅ بعد إنهاء الجلسة - حدّث daily_stats
+
+      // ✅ لو جلسة تطبيق - استنى 5 ثواني قبل أي fetchAll
+      // عشان شاشة الحريف تشوف الجلسة completed وتروح لـ summary صح
+      if (isAppSession) {
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
+
+      // ✅ حدّث daily_stats بعد ما الجلسة اتنهت
       await fetchGarageDailyStats();
 
       const methodLabel =
@@ -474,6 +488,7 @@ export default function GarageDashboard() {
           : paymentCopy === 'wallet'
           ? 'خصم من المحفظة 👝'
           : 'تحويل محفظة كاش 📲';
+
       toast.success(`تم تحصيل ${sessionCopy.cost} ج.م (${methodLabel}) ✅`);
     } finally {
       setTimeout(() => {
@@ -526,7 +541,11 @@ export default function GarageDashboard() {
           .eq('garage_id', garage.id);
         toast('الجلسة شغالة بالفعل ✅', {
           icon: '🚗',
-          style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' },
+          style: {
+            background: '#1e293b',
+            color: '#f1f5f9',
+            border: '1px solid #334155',
+          },
         });
         return;
       }
@@ -549,7 +568,11 @@ export default function GarageDashboard() {
           await fetchAll();
           toast('الجلسة شغالة بالفعل ✅', {
             icon: '🚗',
-            style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' },
+            style: {
+              background: '#1e293b',
+              color: '#f1f5f9',
+              border: '1px solid #334155',
+            },
           });
           return;
         }
@@ -588,8 +611,14 @@ export default function GarageDashboard() {
     }
   };
 
-  const calculateRemainingTime = (startTime: number, estimatedMinutes: number) => {
-    const start = typeof startTime === 'number' ? startTime : new Date(startTime).getTime();
+  const calculateRemainingTime = (
+    startTime: number,
+    estimatedMinutes: number
+  ) => {
+    const start =
+      typeof startTime === 'number'
+        ? startTime
+        : new Date(startTime).getTime();
     const elapsed = Math.floor((Date.now() - start) / 60000);
     return Math.max(0, estimatedMinutes - elapsed);
   };
@@ -663,11 +692,15 @@ export default function GarageDashboard() {
                       type="number"
                       value={editPrice}
                       onChange={(e) =>
-                        setEditPrice(Math.max(1, parseInt(e.target.value) || 0))
+                        setEditPrice(
+                          Math.max(1, parseInt(e.target.value) || 0)
+                        )
                       }
                       className="bg-transparent text-4xl font-black text-white text-center w-full outline-none font-mono"
                     />
-                    <div className="text-[10px] text-slate-500 font-bold">ج.م / ساعة</div>
+                    <div className="text-[10px] text-slate-500 font-bold">
+                      ج.م / ساعة
+                    </div>
                   </div>
                   <button
                     onClick={() => setEditPrice((p) => p + 5)}
@@ -682,7 +715,9 @@ export default function GarageDashboard() {
                       key={p}
                       onClick={() => setEditPrice(p)}
                       className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${
-                        editPrice === p ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-500'
+                        editPrice === p
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-slate-800 text-slate-500'
                       }`}
                     >
                       {p}
@@ -710,7 +745,13 @@ export default function GarageDashboard() {
                       value={editSpots}
                       onChange={(e) =>
                         setEditSpots(
-                          Math.max(0, Math.min(editCapacity, parseInt(e.target.value) || 0))
+                          Math.max(
+                            0,
+                            Math.min(
+                              editCapacity,
+                              parseInt(e.target.value) || 0
+                            )
+                          )
                         )
                       }
                       className="bg-transparent text-4xl font-black text-blue-400 text-center w-full outline-none font-mono"
@@ -720,7 +761,9 @@ export default function GarageDashboard() {
                     </div>
                   </div>
                   <button
-                    onClick={() => setEditSpots((s) => Math.min(editCapacity, s + 1))}
+                    onClick={() =>
+                      setEditSpots((s) => Math.min(editCapacity, s + 1))
+                    }
                     className="bg-emerald-600/20 text-emerald-400 w-12 h-12 rounded-xl flex items-center justify-center border border-emerald-500/20 active:scale-90 transition-all"
                   >
                     <Plus size={20} />
@@ -730,7 +773,11 @@ export default function GarageDashboard() {
                   <div
                     className="bg-gradient-to-r from-blue-600 to-emerald-500 h-full transition-all duration-300"
                     style={{
-                      width: `${editCapacity > 0 ? (editSpots / editCapacity) * 100 : 0}%`,
+                      width: `${
+                        editCapacity > 0
+                          ? (editSpots / editCapacity) * 100
+                          : 0
+                      }%`,
                     }}
                   />
                 </div>
@@ -744,7 +791,9 @@ export default function GarageDashboard() {
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
                 <div className="flex items-center justify-between gap-4">
                   <button
-                    onClick={() => setEditCapacity((c) => Math.max(editSpots, c - 10))}
+                    onClick={() =>
+                      setEditCapacity((c) => Math.max(editSpots, c - 10))
+                    }
                     className="bg-slate-800 text-slate-400 w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 transition-all"
                   >
                     <Minus size={16} />
@@ -755,12 +804,17 @@ export default function GarageDashboard() {
                       value={editCapacity}
                       onChange={(e) =>
                         setEditCapacity(
-                          Math.max(editSpots, parseInt(e.target.value) || editSpots)
+                          Math.max(
+                            editSpots,
+                            parseInt(e.target.value) || editSpots
+                          )
                         )
                       }
                       className="bg-transparent text-2xl font-black text-purple-400 text-center w-full outline-none font-mono"
                     />
-                    <div className="text-[10px] text-slate-500 font-bold">مكان إجمالي</div>
+                    <div className="text-[10px] text-slate-500 font-bold">
+                      مكان إجمالي
+                    </div>
                   </div>
                   <button
                     onClick={() => setEditCapacity((c) => c + 10)}
@@ -860,7 +914,9 @@ export default function GarageDashboard() {
                 <div>
                   <div className="bg-emerald-600/20 border border-emerald-500 ring-1 ring-emerald-500/50 p-4 rounded-xl text-center">
                     <div className="text-2xl mb-1">💵</div>
-                    <div className="text-sm font-black text-emerald-400">نقدي</div>
+                    <div className="text-sm font-black text-emerald-400">
+                      نقدي
+                    </div>
                   </div>
                   <div className="mt-3 bg-amber-600/10 border border-amber-500/20 rounded-xl p-2 text-center">
                     <p className="text-[10px] text-amber-400 font-bold">
@@ -879,7 +935,9 @@ export default function GarageDashboard() {
                     ].map((pm) => (
                       <button
                         key={pm.id}
-                        onClick={() => !pm.disabled && setConfirmPaymentMethod(pm.id)}
+                        onClick={() =>
+                          !pm.disabled && setConfirmPaymentMethod(pm.id)
+                        }
                         disabled={pm.disabled}
                         className={`p-3 rounded-xl border text-center transition-all ${
                           pm.disabled
@@ -953,7 +1011,7 @@ export default function GarageDashboard() {
           <DollarSign size={20} className="text-emerald-400 mx-auto mb-1" />
           <div className="text-xl font-black text-emerald-400 font-mono">
             {(garageDailyStats.length > 0
-              ? garageDailyStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0)
+              ? totalRevenueFromStats
               : totalRevenue
             ).toFixed(0)}
           </div>
@@ -996,7 +1054,12 @@ export default function GarageDashboard() {
               key={undoable.localId}
               initial={{ opacity: 0, y: -20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -20, scale: 0.95, transition: { duration: 0.3 } }}
+              exit={{
+                opacity: 0,
+                y: -20,
+                scale: 0.95,
+                transition: { duration: 0.3 },
+              }}
               transition={{ type: 'spring', damping: 20, stiffness: 300 }}
               className="mb-4"
             >
@@ -1084,7 +1147,8 @@ export default function GarageDashboard() {
                       style={{
                         width: `${Math.max(
                           0,
-                          100 - (remainingTime / car.estimatedArrival) * 100
+                          100 -
+                            (remainingTime / car.estimatedArrival) * 100
                         )}%`,
                       }}
                     />
@@ -1104,15 +1168,22 @@ export default function GarageDashboard() {
                         </div>
                       ) : (
                         <div className="bg-cyan-500/20 text-cyan-400 px-3 py-1 rounded-full text-[10px] font-black">
-                          {remainingTime > 0 ? `${remainingTime} دقيقة` : 'وصل تقريباً'}
+                          {remainingTime > 0
+                            ? `${remainingTime} دقيقة`
+                            : 'وصل تقريباً'}
                         </div>
                       )}
                     </div>
-                    <div className="text-lg font-black text-white">🚗 {car.carPlate}</div>
+                    <div className="text-lg font-black text-white">
+                      🚗 {car.carPlate}
+                    </div>
                   </div>
                   <div className="bg-slate-950/50 rounded-xl p-3 mb-3 space-y-2">
                     <div className="flex items-center justify-between">
-                      <a href={`tel:${car.customerPhone}`} className="text-sm font-black text-blue-400 font-mono">
+                      <a
+                        href={`tel:${car.customerPhone}`}
+                        className="text-sm font-black text-blue-400 font-mono"
+                      >
                         {car.customerPhone}
                       </a>
                       <div className="flex items-center gap-1 text-slate-400">
@@ -1126,13 +1197,21 @@ export default function GarageDashboard() {
                       </span>
                       <div className="flex items-center gap-1 text-slate-400">
                         <DollarSign size={12} />
-                        <span className="text-[10px] font-bold">السعر المتفق</span>
+                        <span className="text-[10px] font-bold">
+                          السعر المتفق
+                        </span>
                       </div>
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => handleCarArrived(car.id, car.carPlate, car.agreedPrice)}
+                      onClick={() =>
+                        handleCarArrived(
+                          car.id,
+                          car.carPlate,
+                          car.agreedPrice
+                        )
+                      }
                       className={`flex-1 py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all ${
                         sessionAlreadyStarted
                           ? 'bg-slate-700 text-slate-300'
@@ -1140,7 +1219,9 @@ export default function GarageDashboard() {
                       }`}
                     >
                       <CheckCircle size={16} />
-                      {sessionAlreadyStarted ? 'تأكيد الوصول وإزالة' : 'وصلت وبدء الحساب'}
+                      {sessionAlreadyStarted
+                        ? 'تأكيد الوصول وإزالة'
+                        : 'وصلت وبدء الحساب'}
                     </button>
                     <a
                       href={`tel:${car.customerPhone}`}
@@ -1168,7 +1249,9 @@ export default function GarageDashboard() {
         <div className="flex items-center gap-3">
           <span className="text-[10px] text-slate-500">
             السعر:{' '}
-            <span className="text-emerald-400 font-mono font-black">{garage.basePrice}ج</span>
+            <span className="text-emerald-400 font-mono font-black">
+              {garage.basePrice}ج
+            </span>
           </span>
           <span className="text-slate-700">|</span>
           <span className="text-[10px] text-slate-500">
@@ -1203,17 +1286,25 @@ export default function GarageDashboard() {
                       </span>
                     )}
                   </div>
-                  <div className="text-sm font-black text-white">🚗 {offer.carPlate}</div>
+                  <div className="text-sm font-black text-white">
+                    🚗 {offer.carPlate}
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => { updateOffer(offer.id, 'accepted'); toast.success('تم قبول العرض'); }}
+                    onClick={() => {
+                      updateOffer(offer.id, 'accepted');
+                      toast.success('تم قبول العرض');
+                    }}
                     className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-1 active:scale-95 transition-all"
                   >
                     <CheckCircle size={16} /> قبول
                   </button>
                   <button
-                    onClick={() => { updateOffer(offer.id, 'rejected'); toast.error('تم رفض العرض'); }}
+                    onClick={() => {
+                      updateOffer(offer.id, 'rejected');
+                      toast.error('تم رفض العرض');
+                    }}
                     className="flex-1 bg-red-600 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-1 active:scale-95 transition-all"
                   >
                     <XCircle size={16} /> رفض
@@ -1238,7 +1329,9 @@ export default function GarageDashboard() {
             }`}
           >
             <Plus size={20} />
-            {garage.availableSpots > 0 ? 'إضافة سيارة جديدة' : 'لا توجد أماكن شاغرة'}
+            {garage.availableSpots > 0
+              ? 'إضافة سيارة جديدة'
+              : 'لا توجد أماكن شاغرة'}
           </button>
         ) : (
           <motion.div
@@ -1284,7 +1377,9 @@ export default function GarageDashboard() {
                     key={p}
                     onClick={() => setNewCarPrice(p)}
                     className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all active:scale-95 ${
-                      newCarPrice === p ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-500'
+                      newCarPrice === p
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-800 text-slate-500'
                     }`}
                   >
                     {p}
@@ -1341,7 +1436,8 @@ export default function GarageDashboard() {
               const cost = calculateCost(elapsedSeconds, rate);
               const isManual = session.source === 'manual';
               const undoable = undoableSessions.find(
-                (u) => u.sessionId === session.id || u.localId === session.id
+                (u) =>
+                  u.sessionId === session.id || u.localId === session.id
               );
 
               return (
@@ -1377,13 +1473,14 @@ export default function GarageDashboard() {
                       🚗 {session.carPlate}
                     </div>
                   </div>
-                  {session.agreedPrice && session.agreedPrice !== garage.basePrice && (
-                    <div className="bg-amber-600/10 border border-amber-500/20 rounded-lg p-1.5 mb-2 text-center">
-                      <span className="text-[9px] text-amber-400 font-bold">
-                        سعر متفق: {session.agreedPrice} ج.م/ساعة
-                      </span>
-                    </div>
-                  )}
+                  {session.agreedPrice &&
+                    session.agreedPrice !== garage.basePrice && (
+                      <div className="bg-amber-600/10 border border-amber-500/20 rounded-lg p-1.5 mb-2 text-center">
+                        <span className="text-[9px] text-amber-400 font-bold">
+                          سعر متفق: {session.agreedPrice} ج.م/ساعة
+                        </span>
+                      </div>
+                    )}
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2">
                       <button
@@ -1440,7 +1537,9 @@ export default function GarageDashboard() {
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-4">
           <div className="flex items-center gap-2 mb-3 justify-end">
             <CalendarDays size={14} className="text-blue-400" />
-            <span className="text-xs font-black text-slate-400">تصفية بالتاريخ</span>
+            <span className="text-xs font-black text-slate-400">
+              تصفية بالتاريخ
+            </span>
           </div>
           <div className="flex gap-2 mb-3">
             <input
@@ -1450,7 +1549,9 @@ export default function GarageDashboard() {
               className="flex-1 bg-slate-950 border border-slate-800 p-2.5 rounded-xl text-xs font-bold text-white outline-none"
             />
             <button
-              onClick={() => setLogDateFilter(new Date().toISOString().split('T')[0])}
+              onClick={() =>
+                setLogDateFilter(new Date().toISOString().split('T')[0])
+              }
               className="bg-blue-600/20 text-blue-400 px-3 py-2 rounded-xl text-[10px] font-black border border-blue-500/20 active:scale-95 transition-all whitespace-nowrap"
             >
               اليوم
@@ -1487,7 +1588,6 @@ export default function GarageDashboard() {
 
         {filteredCompleted.length > 0 && (
           <>
-            {/* ✅ بانر الإيرادات المعلقة */}
             {filteredStats.pendingCount > 0 && (
               <div className="bg-amber-600/10 border border-amber-500/30 rounded-2xl p-4 mb-4">
                 <div className="flex justify-between items-center">
@@ -1523,16 +1623,37 @@ export default function GarageDashboard() {
                 {filteredStats.total.toFixed(0)} ج.م
               </div>
               <div className="text-[10px] text-slate-500 mt-1">
-                {filteredCompleted.filter((s) => s.revenueConfirmed).length} عملية مؤكدة
+                {filteredCompleted.filter((s) => s.revenueConfirmed).length}{' '}
+                عملية مؤكدة
               </div>
             </div>
 
             <div className="grid grid-cols-4 gap-2 mb-4">
               {[
-                { label: 'نقدي', value: filteredStats.cash, icon: '💵', color: 'text-emerald-400' },
-                { label: 'إنستاباي', value: filteredStats.instapay, icon: '📱', color: 'text-purple-400' },
-                { label: 'محفظة', value: filteredStats.wallet, icon: '👝', color: 'text-blue-400' },
-                { label: 'كاش', value: filteredStats.cashwallet, icon: '📲', color: 'text-orange-400' },
+                {
+                  label: 'نقدي',
+                  value: filteredStats.cash,
+                  icon: '💵',
+                  color: 'text-emerald-400',
+                },
+                {
+                  label: 'إنستاباي',
+                  value: filteredStats.instapay,
+                  icon: '📱',
+                  color: 'text-purple-400',
+                },
+                {
+                  label: 'محفظة',
+                  value: filteredStats.wallet,
+                  icon: '👝',
+                  color: 'text-blue-400',
+                },
+                {
+                  label: 'كاش',
+                  value: filteredStats.cashwallet,
+                  icon: '📲',
+                  color: 'text-orange-400',
+                },
               ].map((p) => (
                 <div
                   key={p.label}
@@ -1542,14 +1663,18 @@ export default function GarageDashboard() {
                   <div className={`text-sm font-black font-mono ${p.color}`}>
                     {p.value.toFixed(0)}
                   </div>
-                  <div className="text-[7px] text-slate-500 font-bold">{p.label}</div>
+                  <div className="text-[7px] text-slate-500 font-bold">
+                    {p.label}
+                  </div>
                 </div>
               ))}
             </div>
 
             <div className="grid grid-cols-2 gap-2 mb-4">
               <div className="bg-amber-600/10 border border-amber-500/20 rounded-xl p-3 text-center">
-                <div className="text-[9px] text-amber-400 font-black mb-1">يدوي</div>
+                <div className="text-[9px] text-amber-400 font-black mb-1">
+                  يدوي
+                </div>
                 <span className="text-sm font-black text-amber-400 font-mono">
                   {filteredStats.manualCount}
                 </span>
@@ -1559,7 +1684,9 @@ export default function GarageDashboard() {
                 </div>
               </div>
               <div className="bg-blue-600/10 border border-blue-500/20 rounded-xl p-3 text-center">
-                <div className="text-[9px] text-blue-400 font-black mb-1">تطبيق</div>
+                <div className="text-[9px] text-blue-400 font-black mb-1">
+                  تطبيق
+                </div>
                 <span className="text-sm font-black text-blue-400 font-mono">
                   {filteredStats.appCount}
                 </span>
@@ -1630,7 +1757,9 @@ export default function GarageDashboard() {
                         ⏳ تأكيد الإيراد
                       </button>
                     ) : (
-                      <span className="text-[8px] text-emerald-400 font-bold">✅ مؤكد</span>
+                      <span className="text-[8px] text-emerald-400 font-bold">
+                        ✅ مؤكد
+                      </span>
                     )}
                   </div>
                   <div className="flex items-center gap-1">
@@ -1689,9 +1818,13 @@ export default function GarageDashboard() {
           {filteredCompleted.length === 0 && (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center">
               <div className="text-3xl mb-3">📭</div>
-              <p className="text-slate-500 text-sm font-bold">لا توجد عمليات</p>
+              <p className="text-slate-500 text-sm font-bold">
+                لا توجد عمليات
+              </p>
               <p className="text-slate-600 text-xs mt-1">
-                {logDateFilter ? 'جرب تغيير التاريخ' : 'لم تتم أي عمليات بعد'}
+                {logDateFilter
+                  ? 'جرب تغيير التاريخ'
+                  : 'لم تتم أي عمليات بعد'}
               </p>
             </div>
           )}

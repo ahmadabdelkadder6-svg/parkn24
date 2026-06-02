@@ -304,6 +304,12 @@ const sessionEndLocks = new Set<string>();
 // ✅ حماية الرصيد من الـ override بعد الخصم
 let walletDeductedAt = 0;
 
+// ✅ IDs الجلسات اللي اتحذفت - عشان ما ترجعش من الـ sync
+const deletedSessionIds = new Set<string>();
+
+// ✅ الجلسات اللي اتنهت محلياً - حمايتها من الـ flash
+const locallyEndedSessions = new Map<string, ParkingSession>();
+
 // ===================== State Interface =====================
 interface AppState {
   view: ViewType;
@@ -551,15 +557,14 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   // ── fetchAll ──────────────────────────────────────────────────────────────
-fetchAll: async () => {
-  if (!isSupabaseConfigured()) return;
+  fetchAll: async () => {
+    if (!isSupabaseConfigured()) return;
 
-  // ✅ مسح sessions المحلية قبل الجلب عشان منعرضش بيانات قديمة
-  set({ sessions: [] });
+    // ✅ إصلاح المشكلة الأساسية: لا تمسح sessions أبداً قبل الجلب
+    // كانت: set({ sessions: [] }) ← ده كان بيسبب الشاشة السوداء والـ flash
 
-  const [g, s, o, w, ic, msgs] = await Promise.all([
+    const [g, s, o, w, ic, msgs] = await Promise.all([
       supabase.from('garages').select('*'),
-      // ✅ إصلاح: جيب آخر 200 جلسة فقط بدل كل الجلسات
       supabase
         .from('sessions')
         .select('*')
@@ -579,7 +584,6 @@ fetchAll: async () => {
         .from('incoming_cars')
         .select('*')
         .order('created_at', { ascending: false }),
-      // ✅ إصلاح: جيب آخر 50 رسالة فقط
       supabase
         .from('messages')
         .select('*')
@@ -606,46 +610,55 @@ fetchAll: async () => {
         .map((ss) => normalizePlate(ss.carPlate))
     );
 
+    // ✅ الجلسات المحلية فقط (مش موجودة في Supabase بعد) - بس لو حديثة جداً
     const localOnlySessions = currentSessions.filter(
       (cs) =>
         !supabaseSessionIds.has(cs.id) &&
         cs.status === 'active' &&
         !supabaseActivePlates.has(normalizePlate(cs.carPlate)) &&
+        !deletedSessionIds.has(cs.id) &&
         Date.now() - cs.startTime < 10000
     );
 
-// ✅ الجلسات اللي اتحذفت محلياً - ما ترجعهمش
-const deletedSessionIds = new Set(
-  currentSessions
-    .filter((cs) => !cs.id) // placeholder
-    .map((cs) => cs.id)
-);
+    const mergedSessions = supabaseSessions
+      // ✅ استبعد الجلسات اللي اتحذفت محلياً
+      .filter((ss) => !deletedSessionIds.has(ss.id))
+      .map((ss) => {
+        // ✅ لو الجلسة اتنهت محلياً - استخدم النسخة المحلية دايماً
+        const locallyEnded = locallyEndedSessions.get(ss.id);
+        if (locallyEnded) {
+          // ✅ لو Supabase كمان بيقول completed - امسح من الـ map وخد Supabase
+          if (ss.status === 'completed') {
+            locallyEndedSessions.delete(ss.id);
+            return ss;
+          }
+          // ✅ Supabase لسه active (التحديث ما وصلش) - خد المحلي
+          return locallyEnded;
+        }
 
-const mergedSessions = supabaseSessions
-  .filter((ss) => !deletedSessionIds.has(ss.id))
-  .map((ss) => {
-    const localVersion = currentSessions.find((cs) => cs.id === ss.id);
-    if (localVersion) {
-    // ✅ لو Supabase بيقول completed والمحلي active → خد Supabase
-    if (ss.status === 'completed' && localVersion.status === 'active') {
-      return ss;
-    }
+        const localVersion = currentSessions.find((cs) => cs.id === ss.id);
+        if (localVersion) {
+          // ✅ لو Supabase بيقول completed والمحلي active → خد Supabase
+          if (ss.status === 'completed' && localVersion.status === 'active') {
+            return ss;
+          }
 
-    // ✅ لو المحلي completed → احتفظ بالمحلي مع revenueConfirmed من DB
-    if (localVersion.status === 'completed') {
-      return {
-        ...localVersion,
-        revenueConfirmed: ss.revenueConfirmed || localVersion.revenueConfirmed,
-      };
-    }
+          // ✅ لو المحلي completed → احتفظ بالمحلي مع revenueConfirmed من DB
+          if (localVersion.status === 'completed') {
+            return {
+              ...localVersion,
+              revenueConfirmed:
+                ss.revenueConfirmed || localVersion.revenueConfirmed,
+            };
+          }
 
-    // ✅ لو المحلي عنده totalPrice > 0 → احتفظ بالمحلي
-    if (localVersion.totalPrice != null && localVersion.totalPrice > 0) {
-      return localVersion;
-    }
-  }
-  return ss;
-});
+          // ✅ لو المحلي عنده totalPrice > 0 → احتفظ بالمحلي
+          if (localVersion.totalPrice != null && localVersion.totalPrice > 0) {
+            return localVersion;
+          }
+        }
+        return ss;
+      });
 
     const finalSessions = dedupeActiveSessions([
       ...mergedSessions,
@@ -670,47 +683,30 @@ const mergedSessions = supabaseSessions
       ? ic.data.map(mi).filter((c) => c.status === 'coming')
       : (get().incomingCars ?? []);
 
-    // ✅ إصلاح مشكلة الرسائل: Supabase دايماً أحدث للرسائل
     const currentMessages = get().messages ?? [];
     const supabaseMessages = msgs.data ? msgs.data.map(mm) : currentMessages;
 
-    // ✅ الإصلاح: خد الرسالة من Supabase دايمًا إلا لو عندنا رد محلي لسه ما اتبعتش
     const mergedMessages = supabaseMessages.map((sm) => {
       const localVersion = currentMessages.find((cm) => cm.id === sm.id);
 
       if (localVersion) {
-        // ✅ لو الرسالة محلياً عندها reply أو closed وSupabase لسه pending
-        // ده معناه إن الـ update لسه ما وصلش Supabase - احتفظ بالمحلي
-        if (
-          localVersion.status !== 'pending' &&
-          sm.status === 'pending'
-        ) {
+        if (localVersion.status !== 'pending' && sm.status === 'pending') {
           return localVersion;
         }
-
-        // ✅ لو Supabase عنده status أحدث من المحلي - خد من Supabase
-        // مثلاً: المحلي pending والـ DB replied = خد الـ DB
-        if (
-          sm.status !== 'pending' &&
-          localVersion.status === 'pending'
-        ) {
+        if (sm.status !== 'pending' && localVersion.status === 'pending') {
           return sm;
         }
-
-        // ✅ لو كلاهما نفس الحالة - خد الأحدث
         const smTime = sm.repliedAt ?? sm.timestamp;
         const localTime = localVersion.repliedAt ?? localVersion.timestamp;
         if (smTime > localTime) {
           return sm;
         }
-
         return localVersion;
       }
 
       return sm;
     });
 
-    // ✅ أضف الرسائل المحلية الجديدة اللي لسه ما اتبعتش لـ Supabase
     const supabaseMessageIds = new Set(supabaseMessages.map((sm) => sm.id));
     const localOnlyMessages = currentMessages.filter(
       (cm) => !supabaseMessageIds.has(cm.id) && cm.status === 'pending'
@@ -771,7 +767,7 @@ const mergedSessions = supabaseSessions
         console.error('Error fetching user wallet:', err);
       }
     }
-  }, // ✅ إغلاق fetchAll
+  },
 
   addGarage: async (g) => {
     const { data, error } = await supabase
@@ -923,7 +919,6 @@ const mergedSessions = supabaseSessions
             .limit(1);
 
           if (dbCheck && dbCheck.length > 0) {
-            // ✅ إصلاح البطء: بدل fetchAll كامل، جيب الجلسة دي بس وأضفها محلياً
             const { data: sessionData } = await supabase
               .from('sessions')
               .select('*')
@@ -998,7 +993,9 @@ const mergedSessions = supabaseSessions
           const syncedSession: ParkingSession = { ...ms(data), synced: true };
           set((st) => ({
             sessions: dedupeActiveSessions(
-              st.sessions.map((x) => (x.id === sessionId ? syncedSession : x))
+              st.sessions.map((x) =>
+                x.id === sessionId ? syncedSession : x
+              )
             ),
           }));
           return data.id;
@@ -1017,6 +1014,7 @@ const mergedSessions = supabaseSessions
     }
   },
 
+  // ── endSession ────────────────────────────────────────────────────────────
   endSession: async (id, totalPrice, paymentMethod) => {
     const now = Date.now();
     const session = get().sessions.find((s) => s.id === id);
@@ -1035,23 +1033,29 @@ const mergedSessions = supabaseSessions
     if (sessionEndLocks.has(lockKey)) return;
     sessionEndLocks.add(lockKey);
 
-    pausePolling(8000);
+    // ✅ وقف الـ polling لمدة أطول عشان ما يرجعش الجلسة active
+    pausePolling(15000);
 
     try {
       const safeTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
 
+      // ✅ الجلسة المنتهية محلياً
+      const endedSession: ParkingSession = {
+        ...session,
+        endTime: now,
+        totalPrice: safeTotalPrice,
+        paymentMethod,
+        status: 'completed' as const,
+        revenueConfirmed: false,
+      };
+
+      // ✅ احفظها في الـ Map عشان الـ fetchAll ما يرجعهاش active
+      locallyEndedSessions.set(id, endedSession);
+
+      // ✅ حدّث الـ state فوراً
       set((st) => ({
         sessions: st.sessions.map((s) =>
-          s.id === id
-            ? {
-                ...s,
-                endTime: now,
-                totalPrice: safeTotalPrice,
-                paymentMethod,
-                status: 'completed' as const,
-                revenueConfirmed: false,
-              }
-            : s
+          s.id === id ? endedSession : s
         ),
       }));
 
@@ -1073,11 +1077,17 @@ const mergedSessions = supabaseSessions
 
       if (error) {
         console.error('❌ خطأ في إنهاء الجلسة:', error);
+      } else {
+        // ✅ Supabase اتحدث - بعد شوية امسح من locallyEndedSessions
+        setTimeout(() => {
+          locallyEndedSessions.delete(id);
+        }, 10000);
       }
 
+      // ✅ fetchAll بعد وقت كافي
       setTimeout(() => {
         get().fetchAll();
-      }, 8000);
+      }, 12000);
     } finally {
       setTimeout(() => {
         sessionEndLocks.delete(lockKey);
@@ -1085,22 +1095,21 @@ const mergedSessions = supabaseSessions
     }
   },
 
-confirmRevenue: async (sessionId) => {
-  set((st) => ({
-    sessions: st.sessions.map((s) =>
-      s.id === sessionId ? { ...s, revenueConfirmed: true } : s
-    ),
-  }));
+  confirmRevenue: async (sessionId) => {
+    set((st) => ({
+      sessions: st.sessions.map((s) =>
+        s.id === sessionId ? { ...s, revenueConfirmed: true } : s
+      ),
+    }));
 
-  // ✅ وقف الـ polling
-  pausePolling(10000);
+    pausePolling(10000);
 
-  if (!isSupabaseConfigured()) return;
+    if (!isSupabaseConfigured()) return;
 
-  const { error } = await supabase
-    .from('sessions')
-    .update({ revenue_confirmed: true })
-    .eq('id', sessionId);
+    const { error } = await supabase
+      .from('sessions')
+      .update({ revenue_confirmed: true })
+      .eq('id', sessionId);
 
     if (error) {
       console.error('❌ خطأ في تأكيد الإيراد:', error);
@@ -1112,22 +1121,21 @@ confirmRevenue: async (sessionId) => {
     }
   },
 
-unconfirmRevenue: async (sessionId) => {
-  set((st) => ({
-    sessions: st.sessions.map((s) =>
-      s.id === sessionId ? { ...s, revenueConfirmed: false } : s
-    ),
-  }));
+  unconfirmRevenue: async (sessionId) => {
+    set((st) => ({
+      sessions: st.sessions.map((s) =>
+        s.id === sessionId ? { ...s, revenueConfirmed: false } : s
+      ),
+    }));
 
-  // ✅ وقف الـ polling عشان ما يرجعش البيانات القديمة
-  pausePolling(10000);
+    pausePolling(10000);
 
-  if (!isSupabaseConfigured()) return;
+    if (!isSupabaseConfigured()) return;
 
-  const { error } = await supabase
-    .from('sessions')
-    .update({ revenue_confirmed: false })
-    .eq('id', sessionId);
+    const { error } = await supabase
+      .from('sessions')
+      .update({ revenue_confirmed: false })
+      .eq('id', sessionId);
 
     if (error) {
       console.error('❌ خطأ في إلغاء تأكيد الإيراد:', error);
@@ -1155,12 +1163,15 @@ unconfirmRevenue: async (sessionId) => {
     }
   },
 
-removeSession: async (id) => {
-  // ✅ وقف الـ polling عشان الجلسة ما ترجعش
-  pausePolling(10000);
+  removeSession: async (id) => {
+    // ✅ أضف للـ deletedSessionIds عشان ما ترجعش من fetchAll
+    deletedSessionIds.add(id);
+    locallyEndedSessions.delete(id);
 
-  const state = get();
-  const target = state.sessions.find((s) => s.id === id);
+    pausePolling(10000);
+
+    const state = get();
+    const target = state.sessions.find((s) => s.id === id);
 
     const idsToDelete = new Set<string>();
     idsToDelete.add(id);
@@ -1174,6 +1185,7 @@ removeSession: async (id) => {
           Math.abs(s.startTime - target.startTime) < 10000
         ) {
           idsToDelete.add(s.id);
+          deletedSessionIds.add(s.id);
         }
       });
     }
@@ -1203,10 +1215,21 @@ removeSession: async (id) => {
           .eq('car_plate', normalizePlate(target.carPlate))
           .eq('source', 'manual')
           .eq('status', 'active')
-          .gte('start_time', new Date(target.startTime - 10000).toISOString())
-          .lte('start_time', new Date(target.startTime + 10000).toISOString());
+          .gte(
+            'start_time',
+            new Date(target.startTime - 10000).toISOString()
+          )
+          .lte(
+            'start_time',
+            new Date(target.startTime + 10000).toISOString()
+          );
       }
     }
+
+    // ✅ امسح من deletedSessionIds بعد وقت كافي
+    setTimeout(() => {
+      idsToDelete.forEach((did) => deletedSessionIds.delete(did));
+    }, 30000);
   },
 
   addOffer: (o) => {
@@ -1227,7 +1250,9 @@ removeSession: async (id) => {
         .then(({ data }) => {
           if (data)
             set((st) => ({
-              offers: st.offers.map((x) => (x.id === newO.id ? mo(data) : x)),
+              offers: st.offers.map((x) =>
+                x.id === newO.id ? mo(data) : x
+              ),
             }));
         });
     }
@@ -1540,7 +1565,7 @@ removeSession: async (id) => {
     if (error) console.error('❌ خطأ في إغلاق الرسالة:', error);
   },
 
-})); // ✅ إغلاق useStore
+}));
 
 // ===================== Realtime =====================
 let realtimeStarted = false;
