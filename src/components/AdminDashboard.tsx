@@ -93,9 +93,48 @@ export default function AdminDashboard() {
   const [lat, setLat] = useState(30.04);
   const [lng, setLng] = useState(31.23);
 
+  // ─── جلب daily_stats من Supabase ─────────────────────────────────────────
+  // تم نقل الدالة للأعلى لضمان تعريفها قبل استخدامها في useEffect
+  const fetchDailyStats = useCallback(async () => {
+    setDailyStatsLoading(true);
+    try {
+      let query = supabase
+        .from('daily_stats')
+        .select('*')
+        .order('stat_date', { ascending: false });
+
+      if (dateFrom) {
+        query = query.gte('stat_date', dateFrom);
+      }
+      if (dateTo) {
+        query = query.lte('stat_date', dateTo);
+      }
+
+      // ✅ لو مفيش فلتر - جيب آخر 90 يوم
+      if (!dateFrom && !dateTo) {
+        const ninetyDaysAgo = new Date();
+        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+        query = query.gte('stat_date', ninetyDaysAgo.toISOString().split('T')[0]);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('❌ خطأ في جلب daily_stats:', error);
+        return;
+      }
+
+      setDailyStats(data ?? []);
+    } catch (err) {
+      console.error('❌ خطأ غير متوقع في fetchDailyStats:', err);
+    } finally {
+      setDailyStatsLoading(false);
+    }
+  }, [dateFrom, dateTo]);
+
   // ─── Tick كل دقيقة بدلاً من كل ثانية ──────────────────────────────────────
   useEffect(() => {
-    const interval = setInterval(() => setTick((t) => t + 1), 60000); // 60000 مللي ثانية = دقيقة
+    const interval = setInterval(() => setTick((t) => t + 1), 60000); 
     return () => clearInterval(interval);
   }, []);
 
@@ -103,44 +142,6 @@ export default function AdminDashboard() {
   useEffect(() => {
     fetchDailyStats();
   }, [fetchDailyStats]);
-
-// ─── جلب daily_stats من Supabase ─────────────────────────────────────────
-const fetchDailyStats = useCallback(async () => {
-  setDailyStatsLoading(true);
-  try {
-    let query = supabase
-      .from('daily_stats')
-      .select('*')
-      .order('stat_date', { ascending: false });
-
-    if (dateFrom) {
-      query = query.gte('stat_date', dateFrom);
-    }
-    if (dateTo) {
-      query = query.lte('stat_date', dateTo);
-    }
-
-    // ✅ لو مفيش فلتر - جيب آخر 90 يوم
-    if (!dateFrom && !dateTo) {
-      const ninetyDaysAgo = new Date();
-      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-      query = query.gte('stat_date', ninetyDaysAgo.toISOString().split('T')[0]);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('❌ خطأ في جلب daily_stats:', error);
-      return;
-    }
-
-    setDailyStats(data ?? []);
-  } catch (err) {
-    console.error('❌ خطأ غير متوقع في fetchDailyStats:', err);
-  } finally {
-    setDailyStatsLoading(false);
-  }
-}, [dateFrom, dateTo]);
 
   // ─── حسابات التقارير من daily_stats ──────────────────────────────────────
 
@@ -211,7 +212,7 @@ const fetchDailyStats = useCallback(async () => {
   }, [completedSessions, dateFrom, dateTo]);
 
   // ─── دالة حساب الإيراد للجلسة الفردية ───────────────────────────────────
-  const getRevenue = (s: typeof completedSessions[0]) => {
+  const getRevenue = (s: any) => {
     if (s.totalPrice != null && Number(s.totalPrice) > 0) {
       return Number(s.totalPrice);
     }
@@ -225,7 +226,7 @@ const fetchDailyStats = useCallback(async () => {
           ? s.endTime
           : new Date(s.endTime).getTime();
       const elapsed = Math.max(0, Math.floor((end - start) / 1000));
-      const g = garages.find((g) => g.id === s.garageId);
+      const g = garages.find((ga: any) => ga.id === s.garageId);
       const rate = Number(s.agreedPrice ?? g?.basePrice ?? 0);
       return calculateCost(elapsed, rate);
     }
@@ -485,7 +486,7 @@ const fetchDailyStats = useCallback(async () => {
             </thead>
             <tbody className="divide-y divide-slate-800/50">
               {garageReportFromStats.map((r) => (
-                <tr key={r.name} className="hover:bg-slate-800/30 transition-colors">
+                <tr key={r.garageId} className="hover:bg-slate-800/30 transition-colors">
                   <td className="p-3">
                     <div className="text-xs font-black text-slate-200">{r.name}</div>
                     <div className="text-[8px] text-slate-500">{r.count} جلسة</div>
@@ -590,17 +591,6 @@ const fetchDailyStats = useCallback(async () => {
               </button>
             )}
           </div>
-
-          {(sessionSearch || revenueFilter !== 'all') && (
-            <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-2 text-center">
-              <span className="text-[10px] text-slate-400">
-                عرض {displayedRevenueSessions.length} جلسة
-                {sessionSearch && (
-                  <span className="text-blue-400"> · بحث: "{sessionSearch}"</span>
-                )}
-              </span>
-            </div>
-          )}
         </div>
 
         <div className="space-y-2">
@@ -619,7 +609,7 @@ const fetchDailyStats = useCallback(async () => {
             </div>
           ) : (
             displayedRevenueSessions.map((session) => {
-              const g = garages.find((ga) => ga.id === session.garageId);
+              const g = garages.find((ga: any) => ga.id === session.garageId);
               const rev = getRevenue(session);
               const endTime = session.endTime
                 ? typeof session.endTime === 'number'
@@ -931,7 +921,7 @@ const fetchDailyStats = useCallback(async () => {
             </div>
           ) : (
             activeSessions.map((s) => {
-              const g = garages.find((ga) => ga.id === s.garageId);
+              const g = garages.find((ga: any) => ga.id === s.garageId);
               const start =
                 typeof s.startTime === 'number'
                   ? s.startTime
