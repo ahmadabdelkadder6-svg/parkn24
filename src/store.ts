@@ -551,10 +551,13 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   // ── fetchAll ──────────────────────────────────────────────────────────────
-  fetchAll: async () => {
-    if (!isSupabaseConfigured()) return;
+fetchAll: async () => {
+  if (!isSupabaseConfigured()) return;
 
-    const [g, s, o, w, ic, msgs] = await Promise.all([
+  // ✅ مسح sessions المحلية قبل الجلب عشان منعرضش بيانات قديمة
+  set({ sessions: [] });
+
+  const [g, s, o, w, ic, msgs] = await Promise.all([
       supabase.from('garages').select('*'),
       // ✅ إصلاح: جيب آخر 200 جلسة فقط بدل كل الجلسات
       supabase
@@ -611,9 +614,18 @@ export const useStore = create<AppState>((set, get) => ({
         Date.now() - cs.startTime < 10000
     );
 
-const mergedSessions = supabaseSessions.map((ss) => {
-  const localVersion = currentSessions.find((cs) => cs.id === ss.id);
-  if (localVersion) {
+// ✅ الجلسات اللي اتحذفت محلياً - ما ترجعهمش
+const deletedSessionIds = new Set(
+  currentSessions
+    .filter((cs) => !cs.id) // placeholder
+    .map((cs) => cs.id)
+);
+
+const mergedSessions = supabaseSessions
+  .filter((ss) => !deletedSessionIds.has(ss.id))
+  .map((ss) => {
+    const localVersion = currentSessions.find((cs) => cs.id === ss.id);
+    if (localVersion) {
     // ✅ لو Supabase بيقول completed والمحلي active → خد Supabase
     if (ss.status === 'completed' && localVersion.status === 'active') {
       return ss;
@@ -1073,19 +1085,22 @@ const mergedSessions = supabaseSessions.map((ss) => {
     }
   },
 
-  confirmRevenue: async (sessionId) => {
-    set((st) => ({
-      sessions: st.sessions.map((s) =>
-        s.id === sessionId ? { ...s, revenueConfirmed: true } : s
-      ),
-    }));
+confirmRevenue: async (sessionId) => {
+  set((st) => ({
+    sessions: st.sessions.map((s) =>
+      s.id === sessionId ? { ...s, revenueConfirmed: true } : s
+    ),
+  }));
 
-    if (!isSupabaseConfigured()) return;
+  // ✅ وقف الـ polling
+  pausePolling(10000);
 
-    const { error } = await supabase
-      .from('sessions')
-      .update({ revenue_confirmed: true })
-      .eq('id', sessionId);
+  if (!isSupabaseConfigured()) return;
+
+  const { error } = await supabase
+    .from('sessions')
+    .update({ revenue_confirmed: true })
+    .eq('id', sessionId);
 
     if (error) {
       console.error('❌ خطأ في تأكيد الإيراد:', error);
@@ -1097,19 +1112,22 @@ const mergedSessions = supabaseSessions.map((ss) => {
     }
   },
 
-  unconfirmRevenue: async (sessionId) => {
-    set((st) => ({
-      sessions: st.sessions.map((s) =>
-        s.id === sessionId ? { ...s, revenueConfirmed: false } : s
-      ),
-    }));
+unconfirmRevenue: async (sessionId) => {
+  set((st) => ({
+    sessions: st.sessions.map((s) =>
+      s.id === sessionId ? { ...s, revenueConfirmed: false } : s
+    ),
+  }));
 
-    if (!isSupabaseConfigured()) return;
+  // ✅ وقف الـ polling عشان ما يرجعش البيانات القديمة
+  pausePolling(10000);
 
-    const { error } = await supabase
-      .from('sessions')
-      .update({ revenue_confirmed: false })
-      .eq('id', sessionId);
+  if (!isSupabaseConfigured()) return;
+
+  const { error } = await supabase
+    .from('sessions')
+    .update({ revenue_confirmed: false })
+    .eq('id', sessionId);
 
     if (error) {
       console.error('❌ خطأ في إلغاء تأكيد الإيراد:', error);
@@ -1137,9 +1155,12 @@ const mergedSessions = supabaseSessions.map((ss) => {
     }
   },
 
-  removeSession: async (id) => {
-    const state = get();
-    const target = state.sessions.find((s) => s.id === id);
+removeSession: async (id) => {
+  // ✅ وقف الـ polling عشان الجلسة ما ترجعش
+  pausePolling(10000);
+
+  const state = get();
+  const target = state.sessions.find((s) => s.id === id);
 
     const idsToDelete = new Set<string>();
     idsToDelete.add(id);

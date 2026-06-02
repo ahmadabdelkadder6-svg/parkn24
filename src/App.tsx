@@ -43,10 +43,14 @@ export default function App() {
   // ✅ أول تحميل
 useEffect(() => {
   const init = async () => {
-    // ✅ نظف الشاشات القديمة قبل التحميل
+    // ✅ امسح appScreen القديم لو كان session أو navigation
     const savedScreen = localStorage.getItem('appScreen');
-    if (savedScreen === 'session' || savedScreen === 'summary' || savedScreen === 'navigation') {
-      // مش نغير الشاشة هنا - نستنى fetchAll يخلص ونقرر بعدها
+    if (
+      savedScreen === 'session' ||
+      savedScreen === 'navigation' ||
+      savedScreen === 'waiting'
+    ) {
+      localStorage.removeItem('appScreen');
     }
 
     await fetchAll();
@@ -55,7 +59,7 @@ useEffect(() => {
     setupRealtime();
   };
   init();
-}, []);
+}, []);;
 
   // ✅ بعد أول تحميل - استرجع الشاشة الصحيحة
   useEffect(() => {
@@ -281,13 +285,13 @@ useEffect(() => {
         {/* Main Content */}
         <main className="flex-1 overflow-hidden">
           {/* ✅ شاشة تحميل أولية */}
-          {!dataLoaded && view === 'user' ? (
-            <div className="h-full bg-slate-950 flex flex-col items-center justify-center">
-              <div className="text-4xl mb-4 animate-bounce">🚗</div>
-              <p className="text-slate-400 text-sm font-bold animate-pulse">
-                جاري تحميل البيانات...
-              </p>
-            </div>
+{!dataLoaded ? (
+  <div className="h-full bg-slate-950 flex flex-col items-center justify-center">
+    <div className="text-4xl mb-4 animate-bounce">🚗</div>
+    <p className="text-slate-400 text-sm font-bold animate-pulse">
+      جاري تحميل البيانات...
+    </p>
+  </div>
           ) : view === 'admin' ? (
             <AdminDashboard />
           ) : view === 'garage' ? (

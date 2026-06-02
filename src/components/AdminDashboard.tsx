@@ -100,34 +100,39 @@ export default function AdminDashboard() {
   }, []);
 
   // ─── جلب daily_stats من Supabase ─────────────────────────────────────────
-  const fetchDailyStats = useCallback(async () => {
-    setDailyStatsLoading(true);
-    try {
-      let query = supabase
-        .from('daily_stats')
-        .select('*');
+const fetchDailyStats = useCallback(async () => {
+  setDailyStatsLoading(true);
+  try {
+    let query = supabase
+      .from('daily_stats')
+      .select('*')
+      .order('stat_date', { ascending: false });
 
-      if (dateFrom) {
-        query = query.gte('stat_date', dateFrom);
-      }
-      if (dateTo) {
-        query = query.lte('stat_date', dateTo);
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.error('❌ خطأ في جلب daily_stats:', error);
-        return;
-      }
-
-      setDailyStats(data ?? []);
-    } catch (err) {
-      console.error('❌ خطأ غير متوقع في fetchDailyStats:', err);
-    } finally {
-      setDailyStatsLoading(false);
+    if (dateFrom) {
+      query = query.gte('stat_date', dateFrom);
     }
-  }, [dateFrom, dateTo]);
+    if (dateTo) {
+      query = query.lte('stat_date', dateTo);
+    }
+
+    // ✅ لو مفيش فلتر - جيب آخر 90 يوم بدل كل البيانات
+    if (!dateFrom && !dateTo) {
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      query = query.gte('stat_date', ninetyDaysAgo.toISOString().split('T')[0]);
+    }
+
+    const { data, error } = await query;
+
+    console.log('✅ daily_stats fetched:', data?.length, 'rows', data);
+
+    if (error) {
+      console.error('❌ خطأ في جلب daily_stats:', error);
+      return;
+    }
+
+    console.log('✅ daily_stats loaded:', data?.length, 'rows');
+    setDailyStats(data ?? []);
 
   useEffect(() => {
     fetchDailyStats();
