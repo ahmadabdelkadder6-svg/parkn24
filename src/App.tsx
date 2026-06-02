@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
@@ -21,6 +21,18 @@ import InstallPWA from './components/InstallPWA';
 import LastSessionScreen from './components/LastSessionScreen';
 import ChatScreen from './components/ChatScreen';
 
+// ✅ الشاشات المسموح بيها فقط
+const VALID_SCREENS = [
+  'splash',
+  'list',
+  'waiting',
+  'navigation',
+  'session',
+  'summary',
+  'lastSession',
+  'chat',
+] as const;
+
 export default function App() {
   const {
     view,
@@ -40,23 +52,42 @@ export default function App() {
   const [dataLoaded, setDataLoaded] = useState(false);
   const initialLoadDone = useRef(false);
 
-  // ✅ عداد للتأكد إن الجلسة انتهت فعلاً وليس مجرد flash
   const noSessionCountRef = useRef(0);
-  // ✅ تاريخ آخر مرة شفنا فيها جلسة نشطة
   const lastActiveTimeRef = useRef(0);
-  // ✅ منع toast الإنهاء من الظهور أكتر من مرة
   const sessionEndToastShown = useRef(false);
-  // ✅ حماية: مش هنعمل transition لو كنا على session وفيه تحديث مؤقت
   const sessionTransitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ✅ حماية الشاشة من القيم الغير صالحة
+  const safeScreen = useMemo(() => {
+    // لو الشاشة مش موجودة في القائمة المسموح بيها
+    if (!VALID_SCREENS.includes(screen as any)) {
+      console.warn('⚠️ شاشة غير صالحة:', screen, '→ تحويل لـ list');
+      return currentUser ? 'list' : 'splash';
+    }
+    return screen;
+  }, [screen, currentUser]);
+
+  // ✅ لو الشاشة اتغيرت لقيمة غير صالحة - صلّحها
+  useEffect(() => {
+    if (!dataLoaded) return;
+    if (view !== 'user') return;
+
+    if (safeScreen !== screen) {
+      setScreen(safeScreen as typeof screen);
+    }
+  }, [safeScreen, screen, setScreen, dataLoaded, view]);
 
   // ✅ أول تحميل
   useEffect(() => {
     const init = async () => {
+      // ✅ امسح الشاشات اللي ممكن تسبب مشاكل
       const savedScreen = localStorage.getItem('appScreen');
       if (
         savedScreen === 'session' ||
         savedScreen === 'navigation' ||
-        savedScreen === 'waiting'
+        savedScreen === 'waiting' ||
+        savedScreen === 'offer' ||
+        (savedScreen && !VALID_SCREENS.includes(savedScreen as any))
       ) {
         localStorage.removeItem('appScreen');
       }
@@ -95,7 +126,7 @@ export default function App() {
       noSessionCountRef.current = 0;
       sessionEndToastShown.current = false;
       setSelectedGarageId(myActiveSession.garageId);
-      if (screen !== 'session' && screen !== 'summary') {
+      if (safeScreen !== 'session' && safeScreen !== 'summary') {
         setScreen('session');
       }
       return;
@@ -104,9 +135,9 @@ export default function App() {
     if (myIncoming) {
       setSelectedGarageId(myIncoming.garageId);
       if (
-        screen !== 'navigation' &&
-        screen !== 'session' &&
-        screen !== 'summary'
+        safeScreen !== 'navigation' &&
+        safeScreen !== 'session' &&
+        safeScreen !== 'summary'
       ) {
         setScreen('navigation');
       }
@@ -114,9 +145,9 @@ export default function App() {
     }
 
     if (
-      screen === 'session' ||
-      screen === 'navigation' ||
-      screen === 'waiting'
+      safeScreen === 'session' ||
+      safeScreen === 'navigation' ||
+      safeScreen === 'waiting'
     ) {
       const lastCompleted = sessions
         .filter(
@@ -170,12 +201,10 @@ export default function App() {
 
     // ─── 1) لو في جلسة نشطة ───────────────────────────────────────────────
     if (myActiveSession) {
-      // ✅ reset كل عدادات الإنهاء
       noSessionCountRef.current = 0;
       lastActiveTimeRef.current = Date.now();
       sessionEndToastShown.current = false;
 
-      // ✅ امسح أي timer إنهاء pending
       if (sessionTransitionTimer.current) {
         clearTimeout(sessionTransitionTimer.current);
         sessionTransitionTimer.current = null;
@@ -186,10 +215,10 @@ export default function App() {
         setSelectedGarageId(myActiveSession.garageId);
 
         if (
-          screen !== 'session' &&
-          screen !== 'summary' &&
-          screen !== 'lastSession' &&
-          screen !== 'chat'
+          safeScreen !== 'session' &&
+          safeScreen !== 'summary' &&
+          safeScreen !== 'lastSession' &&
+          safeScreen !== 'chat'
         ) {
           setScreen('session');
         }
@@ -199,27 +228,19 @@ export default function App() {
 
     // ─── 2) مفيش جلسة نشطة ────────────────────────────────────────────────
     if (prevActiveSessionRef.current) {
-      // ✅ زود العداد
       noSessionCountRef.current += 1;
 
       const timeSinceLastActive = Date.now() - lastActiveTimeRef.current;
 
-      // ✅ الإصلاح الجوهري:
-      // لو العداد أقل من 3 تحديثات متتالية بدون جلسة
-      // أو الوقت من آخر جلسة نشطة أقل من 8 ثواني
-      // → ما نعملش حاجة (ده ممكن يكون مجرد flash من الـ sync)
       if (noSessionCountRef.current < 3 || timeSinceLastActive < 8000) {
         return;
       }
 
-      // ✅ تأكيد نهائي: الجلسة انتهت فعلاً
-      // لكن لازم نستنى كمان شوية عشان نتأكد
       if (sessionTransitionTimer.current) return;
 
       sessionTransitionTimer.current = setTimeout(() => {
         sessionTransitionTimer.current = null;
 
-        // ✅ تحقق مرة أخيرة من الـ state الحالي
         const freshState = useStore.getState();
         const freshPlate = (
           freshState.currentUser?.carPlate ?? ''
@@ -233,14 +254,12 @@ export default function App() {
             s.status === 'active'
         );
 
-        // ✅ لو رجعت الجلسة في الـ 3 ثواني دول → ignore
         if (stillActive) {
           noSessionCountRef.current = 0;
           prevActiveSessionRef.current = stillActive.id;
           return;
         }
 
-        // ✅ الجلسة انتهت فعلاً - اعمل الـ transition
         const currentScreen = freshState.screen;
         prevActiveSessionRef.current = null;
         noSessionCountRef.current = 0;
@@ -269,7 +288,6 @@ export default function App() {
                 : 0;
             const timeSinceEnd = Date.now() - endTime;
 
-            // ✅ لو انتهت من أقل من دقيقة → روح الملخص
             if (endTime > 0 && timeSinceEnd < 60000) {
               setSelectedGarageId(lastCompleted.garageId);
               setScreen('summary');
@@ -277,7 +295,6 @@ export default function App() {
             }
           }
 
-          // ✅ روح للقائمة مع toast مرة واحدة بس
           if (!sessionEndToastShown.current) {
             sessionEndToastShown.current = true;
             toast.success('تم إنهاء الجلسة والعودة للرئيسية');
@@ -285,11 +302,11 @@ export default function App() {
           setSelectedGarageId(null);
           setScreen('list');
         }
-      }, 3000); // ✅ استنى 3 ثواني قبل ما تعتبر الجلسة انتهت
+      }, 3000);
     }
 
     // ─── 3) لو في شاشة التوجيه ومفيش incoming ────────────────────────────
-    if (!myActiveSession && screen === 'navigation' && !myIncoming) {
+    if (!myActiveSession && safeScreen === 'navigation' && !myIncoming) {
       const timeout = setTimeout(() => {
         const freshState = useStore.getState();
         const freshPlate = (
@@ -321,7 +338,7 @@ export default function App() {
     sessions,
     currentUser,
     view,
-    screen,
+    safeScreen,
     incomingCars,
     dataLoaded,
     setScreen,
@@ -385,29 +402,29 @@ export default function App() {
           ) : (
             <AnimatePresence mode="wait">
               <motion.div
-                key={screen}
+                key={safeScreen}
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 transition={{ type: 'spring', damping: 25, stiffness: 300 }}
                 className="h-full overflow-y-auto bg-slate-950"
               >
-                {screen === 'splash' && <SplashScreen />}
+                {safeScreen === 'splash' && <SplashScreen />}
 
-                {!currentUser && screen !== 'splash' && <RegisterScreen />}
+                {!currentUser && safeScreen !== 'splash' && <RegisterScreen />}
 
                 {currentUser && (
                   <>
-                    {screen === 'list' && <GarageListScreen />}
-                    {screen === 'waiting' && <WaitingScreen />}
-                    {screen === 'navigation' && <NavigationScreen />}
-                    {screen === 'session' && <SessionScreen />}
-                    {screen === 'lastSession' && <LastSessionScreen />}
-                    {screen === 'chat' && <ChatScreen />}
+                    {safeScreen === 'list' && <GarageListScreen />}
+                    {safeScreen === 'waiting' && <WaitingScreen />}
+                    {safeScreen === 'navigation' && <NavigationScreen />}
+                    {safeScreen === 'session' && <SessionScreen />}
+                    {safeScreen === 'lastSession' && <LastSessionScreen />}
+                    {safeScreen === 'chat' && <ChatScreen />}
                   </>
                 )}
 
-                {screen === 'summary' && <SummaryScreen />}
+                {safeScreen === 'summary' && <SummaryScreen />}
               </motion.div>
             </AnimatePresence>
           )}

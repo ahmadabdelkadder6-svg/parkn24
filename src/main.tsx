@@ -2,16 +2,18 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App";
-import { useStore, setupRealtime } from "./store";
 
-// تحميل البيانات من Supabase عند بدء التطبيق
-useStore.getState().fetchAll();
+// ✅ مش محتاج fetchAll هنا - App.tsx بيعملها في useEffect
+// ✅ مش محتاج setupRealtime هنا - App.tsx بيعملها بعد fetchAll
 
-// تفعيل التحديث اللحظي (Realtime)
-setupRealtime();
+const rootElement = document.getElementById("root");
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-);
+if (!rootElement) {
+  console.error("❌ Root element not found!");
+} else {
+  createRoot(rootElement).render(
+    <StrictMode>
+      <App />
+    </StrictMode>
+  );
+}
