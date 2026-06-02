@@ -1324,7 +1324,10 @@ export default function AdminDashboard() {
       }}
       className="w-full bg-blue-600 py-4 rounded-xl font-black text-sm text-white shadow-xl active:scale-95 transition-all"
     >
-      حفظ الجراج
-    </button>
+        حفظ الجراج
+      </button>
+    </div>
   </div>
 </div>
+  );
+}
