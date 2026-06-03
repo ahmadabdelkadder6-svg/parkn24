@@ -71,64 +71,73 @@ const formatLocalDateArabic = (dateStr: string): string => {
   });
 };
 
-// ─── دوال الصوت والتنبيه ─────────────────────────────────────────────────────
+// ─── إدارة AudioContext بشكل مركزي ──────────────────────────────────────────
 let audioCtxInstance: AudioContext | null = null;
+let audioCtxReady = false;
 
-const getAudioCtx = (): AudioContext | null => {
+const initAudioContext = async (): Promise<AudioContext | null> => {
   try {
     if (!audioCtxInstance) {
-      audioCtxInstance = new (window.AudioContext ||
-        (window as any).webkitAudioContext)();
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtxClass) return null;
+      audioCtxInstance = new AudioCtxClass();
     }
+    if (audioCtxInstance.state === 'suspended') {
+      await audioCtxInstance.resume();
+    }
+    audioCtxReady = audioCtxInstance.state === 'running';
     return audioCtxInstance;
   } catch {
     return null;
   }
 };
 
-const playAlertSound = () => {
-  const ctx = getAudioCtx();
-  if (!ctx) return;
-  try {
-    const patterns = [
-      { freq: 800, delay: 0, dur: 0.15 },
-      { freq: 1000, delay: 0.2, dur: 0.15 },
-      { freq: 1200, delay: 0.4, dur: 0.2 },
-      { freq: 800, delay: 0.8, dur: 0.15 },
-      { freq: 1000, delay: 1.0, dur: 0.15 },
-      { freq: 1200, delay: 1.2, dur: 0.2 },
-      { freq: 1400, delay: 1.6, dur: 0.4 },
-    ];
-    patterns.forEach(({ freq, delay, dur }) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = 'square';
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.5, ctx.currentTime + delay);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + delay + dur);
-      osc.start(ctx.currentTime + delay);
-      osc.stop(ctx.currentTime + delay + dur + 0.05);
-    });
-  } catch (err) {
-    console.warn('⚠️ خطأ في الصوت:', err);
+const getAudioCtx = (): AudioContext | null => {
+  if (!audioCtxInstance) return null;
+  if (audioCtxInstance.state === 'closed') {
+    audioCtxInstance = null;
+    audioCtxReady = false;
+    return null;
   }
+  return audioCtxInstance;
 };
 
+// ─── تهيئة AudioContext عند أول تفاعل مع الصفحة ─────────────────────────────
+const setupAudioOnInteraction = () => {
+  const events = ['touchstart', 'touchend', 'mousedown', 'keydown', 'click'];
+  const handler = async () => {
+    if (!audioCtxReady) {
+      await initAudioContext();
+      if (audioCtxReady) {
+        events.forEach((e) => document.removeEventListener(e, handler));
+      }
+    }
+  };
+  events.forEach((e) => document.addEventListener(e, handler, { passive: true }));
+};
+
+setupAudioOnInteraction();
+
+// ─── دوال الصوت والاهتزاز ──────────────────────────────────────────────────
+
+/** اهتزاز قوي وواضح */
 const vibrateDevice = () => {
   try {
     if ('vibrate' in navigator) {
-      navigator.vibrate([300, 100, 300, 100, 500, 200, 300, 100, 300, 100, 500]);
+      navigator.vibrate([
+        500, 150,
+        500, 150,
+        700, 200,
+        700, 150,
+        500, 150,
+        900,
+      ]);
     }
   } catch {}
 };
 
-const sendNotification = (
-  title: string,
-  body: string,
-  tag: string
-) => {
+/** إشعار نظام */
+const sendNotification = (title: string, body: string, tag: string) => {
   try {
     if ('Notification' in window && Notification.permission === 'granted') {
       const n = new Notification(title, {
@@ -139,22 +148,55 @@ const sendNotification = (
         requireInteraction: true,
         silent: false,
       });
-      n.onclick = () => {
-        window.focus();
-        n.close();
-      };
+      n.onclick = () => { window.focus(); n.close(); };
       setTimeout(() => n.close(), 30000);
     }
   } catch {}
 };
 
-const fireIncomingCarAlert = (
+// ──────────────────────────────────────────────────────────────────────────────
+// 🔔 تنبيه 1: عميل بدأ التوجه للجراج (أول مرة يظهر في القائمة)
+// ──────────────────────────────────────────────────────────────────────────────
+const playFirstAlert = async () => {
+  let ctx = getAudioCtx();
+  if (!ctx || !audioCtxReady) ctx = await initAudioContext();
+  if (!ctx) return;
+  try {
+    if (ctx.state === 'suspended') await ctx.resume();
+    const patterns = [
+      { freq: 800, delay: 0, dur: 0.15 },
+      { freq: 1000, delay: 0.2, dur: 0.15 },
+      { freq: 1200, delay: 0.4, dur: 0.2 },
+      { freq: 800, delay: 0.7, dur: 0.15 },
+      { freq: 1000, delay: 0.9, dur: 0.15 },
+      { freq: 1200, delay: 1.1, dur: 0.2 },
+      { freq: 1400, delay: 1.5, dur: 0.4 },
+    ];
+    patterns.forEach(({ freq, delay, dur }) => {
+      const osc = ctx!.createOscillator();
+      const gain = ctx!.createGain();
+      osc.connect(gain);
+      gain.connect(ctx!.destination);
+      osc.type = 'square';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.5, ctx!.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx!.currentTime + delay + dur);
+      osc.start(ctx!.currentTime + delay);
+      osc.stop(ctx!.currentTime + delay + dur + 0.05);
+    });
+  } catch (err) {
+    console.warn('⚠️ خطأ في صوت التنبيه الأول:', err);
+  }
+};
+
+const fireNewCarAlert = (
   carPlate: string,
   customerName?: string,
   agreedPrice?: number
 ) => {
-  playAlertSound();
+  playFirstAlert();
   vibrateDevice();
+
   const body = [
     `🚗 ${carPlate}`,
     customerName ? `👤 ${customerName}` : '',
@@ -162,62 +204,52 @@ const fireIncomingCarAlert = (
   ]
     .filter(Boolean)
     .join('\n');
+
   sendNotification('🚨 سيارة في الطريق!', body, `incoming-${carPlate}`);
-
-  const t1 = setTimeout(() => {
-    if (document.hidden) {
-      playAlertSound();
-      vibrateDevice();
-    }
-  }, 8000);
-
-  const t2 = setTimeout(() => {
-    if (document.hidden) {
-      playAlertSound();
-      vibrateDevice();
-      sendNotification(
-        '⏰ سيارة لسه في الطريق!',
-        `🚗 ${carPlate} - لم يتم التأكيد بعد`,
-        `incoming-reminder-${carPlate}`
-      );
-    }
-  }, 20000);
-
-  return () => {
-    clearTimeout(t1);
-    clearTimeout(t2);
-  };
 };
 
-const fireNewOfferAlert = (carPlate: string, price: number) => {
+// ──────────────────────────────────────────────────────────────────────────────
+// 🔔 تنبيه 2: العميل اقترب من الجراج (باقي دقيقتين أو أقل)
+// ──────────────────────────────────────────────────────────────────────────────
+const playApproachingAlert = async () => {
+  let ctx = getAudioCtx();
+  if (!ctx || !audioCtxReady) ctx = await initAudioContext();
+  if (!ctx) return;
   try {
-    const ctx = getAudioCtx();
-    if (ctx) {
-      [
-        { freq: 600, delay: 0, dur: 0.1 },
-        { freq: 900, delay: 0.15, dur: 0.1 },
-        { freq: 1200, delay: 0.3, dur: 0.2 },
-      ].forEach(({ freq, delay, dur }) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0.3, ctx.currentTime + delay);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + delay + dur);
-        osc.start(ctx.currentTime + delay);
-        osc.stop(ctx.currentTime + delay + dur + 0.05);
-      });
-    }
-  } catch {}
-  try {
-    if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
-  } catch {}
+    if (ctx.state === 'suspended') await ctx.resume();
+    const patterns = [
+      { freq: 1000, delay: 0, dur: 0.2 },
+      { freq: 1300, delay: 0.25, dur: 0.2 },
+      { freq: 1600, delay: 0.5, dur: 0.3 },
+      { freq: 1000, delay: 0.9, dur: 0.2 },
+      { freq: 1300, delay: 1.15, dur: 0.2 },
+      { freq: 1600, delay: 1.4, dur: 0.3 },
+      { freq: 1800, delay: 1.8, dur: 0.5 },
+    ];
+    patterns.forEach(({ freq, delay, dur }) => {
+      const osc = ctx!.createOscillator();
+      const gain = ctx!.createGain();
+      osc.connect(gain);
+      gain.connect(ctx!.destination);
+      osc.type = 'square';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.6, ctx!.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx!.currentTime + delay + dur);
+      osc.start(ctx!.currentTime + delay);
+      osc.stop(ctx!.currentTime + delay + dur + 0.05);
+    });
+  } catch (err) {
+    console.warn('⚠️ خطأ في صوت تنبيه الاقتراب:', err);
+  }
+};
+
+const fireApproachingAlert = (carPlate: string) => {
+  playApproachingAlert();
+  vibrateDevice();
   sendNotification(
-    '💰 عرض سعر جديد!',
-    `🚗 ${carPlate} - ${price} ج.م/ساعة`,
-    `offer-${carPlate}`
+    '🚗 سيارة على وشك الوصول!',
+    `🚗 ${carPlate} - باقي أقل من دقيقتين ⏰`,
+    `approaching-${carPlate}`
   );
 };
 
@@ -244,9 +276,7 @@ export default function GarageDashboard() {
   const garage = garages.find((g) => g.id === currentGarageId);
   const garageSessions = sessions.filter((s) => s.garageId === currentGarageId);
   const activeSessions = garageSessions.filter(
-    (s) =>
-      s.status === 'active' &&
-      Date.now() - s.startTime < 24 * 60 * 60 * 1000
+    (s) => s.status === 'active' && Date.now() - s.startTime < 24 * 60 * 60 * 1000
   );
   const completedSessions = garageSessions.filter((s) => s.status === 'completed');
   const garageOffers = offers.filter(
@@ -259,11 +289,11 @@ export default function GarageDashboard() {
   const processedCarsRef = useRef<Set<string>>(new Set());
   const isEndingSessionRef = useRef(false);
 
-  // ─── التنبيهات refs ───────────────────────────────────────────────────────
-  const [soundEnabled, setSoundEnabled] = useState(false);
+  // ─── Refs للتنبيهات ───────────────────────────────────────────────────────
   const prevIncomingIdsRef = useRef<Set<string>>(new Set());
   const prevOfferIdsRef = useRef<Set<string>>(new Set());
-  const alertCleanupsRef = useRef<Map<string, () => void>>(new Map());
+  const approachAlertedRef = useRef<Set<string>>(new Set());
+  const audioInitializedRef = useRef(false);
 
   const [undoableSessions, setUndoableSessions] = useState<UndoableSession[]>([]);
   const [newCarPlate, setNewCarPlate] = useState('');
@@ -273,10 +303,7 @@ export default function GarageDashboard() {
   const [editPrice, setEditPrice] = useState(garage?.basePrice || 15);
   const [editSpots, setEditSpots] = useState(garage?.availableSpots || 0);
   const [editCapacity, setEditCapacity] = useState(garage?.capacity || 50);
-
-  // ✅ التاريخ المحلي الصحيح
   const [logDateFilter, setLogDateFilter] = useState(() => getLocalToday());
-
   const [logPaymentFilter, setLogPaymentFilter] = useState<string>('all');
   const [confirmSession, setConfirmSession] = useState<{
     id: string;
@@ -291,62 +318,124 @@ export default function GarageDashboard() {
   const [tick, setTick] = useState(0);
   const [garageDailyStats, setGarageDailyStats] = useState<DailyStat[]>([]);
 
-  // ─── طلب إذن الإشعارات عند فتح الجراج ───────────────────────────────────
+  // ─── تهيئة الصوت + طلب إذن الإشعارات فور فتح الجراج ────────────────────
   useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
+    const initAll = async () => {
+      if ('Notification' in window && Notification.permission === 'default') {
+        await Notification.requestPermission();
+      }
+      if (!audioInitializedRef.current) {
+        await initAudioContext();
+        audioInitializedRef.current = true;
+      }
+    };
+    initAll();
   }, []);
 
-  // ─── مراقبة السيارات القادمة الجديدة ─────────────────────────────────────
+  // ──────────────────────────────────────────────────────────────────────────
+  // 🔔 تنبيه 1: مراقبة السيارات الجديدة القادمة
+  // يشتغل مرة واحدة لما عربية جديدة تظهر في القائمة
+  // ──────────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!soundEnabled) return;
-
     const currentIds = new Set(carsOnTheWay.map((c) => c.id));
 
     carsOnTheWay.forEach((car) => {
       if (!prevIncomingIdsRef.current.has(car.id)) {
-        const cleanup = fireIncomingCarAlert(
-          car.carPlate,
-          car.customerName,
-          car.agreedPrice
+        // ✅ تنبيه أول: عميل بدأ التوجه للجراج
+        fireNewCarAlert(car.carPlate, car.customerName, car.agreedPrice);
+
+        toast(
+          `🚨 سيارة في الطريق!\n🚗 ${car.carPlate}${car.agreedPrice ? ` - ${car.agreedPrice} ج.م/ساعة` : ''}`,
+          {
+            duration: 10000,
+            style: {
+              background: '#0f172a',
+              color: '#f1f5f9',
+              border: '2px solid #06b6d4',
+              fontWeight: 'bold',
+              fontSize: '14px',
+            },
+            icon: '🚨',
+          }
         );
-        alertCleanupsRef.current.set(car.id, cleanup);
       }
     });
 
+    // تنظيف السيارات اللي اتشالت
     prevIncomingIdsRef.current.forEach((prevId) => {
       if (!currentIds.has(prevId)) {
-        const cleanup = alertCleanupsRef.current.get(prevId);
-        if (cleanup) {
-          cleanup();
-          alertCleanupsRef.current.delete(prevId);
-        }
+        approachAlertedRef.current.delete(prevId);
         try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {}
       }
     });
 
     prevIncomingIdsRef.current = currentIds;
-  }, [carsOnTheWay, soundEnabled]);
+  }, [carsOnTheWay]);
 
-  // ─── مراقبة العروض الجديدة ───────────────────────────────────────────────
+  // ──────────────────────────────────────────────────────────────────────────
+  // 🔔 تنبيه 2: مراقبة اقتراب السيارات (باقي دقيقتين أو أقل)
+  // بيتشيك كل ثانية مع الـ tick
+  // ──────────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!soundEnabled) return;
+    carsOnTheWay.forEach((car) => {
+      // لو اتنبهنا عليها قبل كده → نتجاهلها
+      if (approachAlertedRef.current.has(car.id)) return;
 
-    garageOffers.forEach((offer) => {
-      if (!prevOfferIdsRef.current.has(offer.id)) {
-        fireNewOfferAlert(offer.carPlate, offer.offeredPrice);
+      const start = typeof car.startTime === 'number'
+        ? car.startTime
+        : new Date(car.startTime).getTime();
+      const elapsedMinutes = (Date.now() - start) / 60000;
+      const remainingMinutes = Math.max(0, car.estimatedArrival - elapsedMinutes);
+
+      // ✅ لما يكون باقي دقيقتين أو أقل → تنبيه الاقتراب
+      if (remainingMinutes <= 2 && remainingMinutes >= 0 && car.estimatedArrival > 2) {
+        approachAlertedRef.current.add(car.id);
+
+        fireApproachingAlert(car.carPlate);
+
+        toast(
+          `🚗 سيارة على وشك الوصول!\n${car.carPlate} - باقي أقل من دقيقتين ⏰`,
+          {
+            duration: 10000,
+            style: {
+              background: '#0f172a',
+              color: '#f1f5f9',
+              border: '2px solid #f59e0b',
+              fontWeight: 'bold',
+              fontSize: '14px',
+            },
+            icon: '⏰',
+          }
+        );
       }
     });
+  }, [carsOnTheWay, tick]);
 
+  // ─── مراقبة العروض الجديدة (toast فقط بدون صوت) ──────────────────────────
+  useEffect(() => {
+    garageOffers.forEach((offer) => {
+      if (!prevOfferIdsRef.current.has(offer.id)) {
+        toast(
+          `💰 عرض سعر جديد!\n🚗 ${offer.carPlate} - ${offer.offeredPrice} ج.م/ساعة`,
+          {
+            duration: 8000,
+            style: {
+              background: '#0f172a',
+              color: '#f1f5f9',
+              border: '2px solid #f59e0b',
+              fontWeight: 'bold',
+            },
+            icon: '💰',
+          }
+        );
+      }
+    });
     prevOfferIdsRef.current = new Set(garageOffers.map((o) => o.id));
-  }, [garageOffers, soundEnabled]);
+  }, [garageOffers]);
 
   // ─── cleanup عند الخروج ──────────────────────────────────────────────────
   useEffect(() => {
     return () => {
-      alertCleanupsRef.current.forEach((cleanup) => cleanup());
-      alertCleanupsRef.current.clear();
       try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {}
     };
   }, []);
@@ -377,25 +466,28 @@ export default function GarageDashboard() {
     fetchGarageDailyStats();
   }, [fetchGarageDailyStats]);
 
-  const totalRevenueFromStats = useMemo(() =>
-    garageDailyStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0),
+  const totalRevenueFromStats = useMemo(
+    () => garageDailyStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0),
     [garageDailyStats]
   );
 
-  const pendingRevenueFromStats = useMemo(() =>
-    garageDailyStats.reduce((a, s) => a + Number(s.pending_revenue ?? 0), 0),
+  const pendingRevenueFromStats = useMemo(
+    () => garageDailyStats.reduce((a, s) => a + Number(s.pending_revenue ?? 0), 0),
     [garageDailyStats]
   );
 
-  const paymentStatsFromDB = useMemo(() => ({
-    cash: garageDailyStats.reduce((a, s) => a + Number(s.cash_revenue ?? 0), 0),
-    instapay: garageDailyStats.reduce((a, s) => a + Number(s.instapay_revenue ?? 0), 0),
-    wallet: garageDailyStats.reduce((a, s) => a + Number(s.wallet_revenue ?? 0), 0),
-    cashwallet: garageDailyStats.reduce((a, s) => a + Number(s.cashwallet_revenue ?? 0), 0),
-    totalSessions: garageDailyStats.reduce((a, s) => a + Number(s.total_sessions ?? 0), 0),
-    manualSessions: garageDailyStats.reduce((a, s) => a + Number(s.manual_sessions ?? 0), 0),
-    appSessions: garageDailyStats.reduce((a, s) => a + Number(s.app_sessions ?? 0), 0),
-  }), [garageDailyStats]);
+  const paymentStatsFromDB = useMemo(
+    () => ({
+      cash: garageDailyStats.reduce((a, s) => a + Number(s.cash_revenue ?? 0), 0),
+      instapay: garageDailyStats.reduce((a, s) => a + Number(s.instapay_revenue ?? 0), 0),
+      wallet: garageDailyStats.reduce((a, s) => a + Number(s.wallet_revenue ?? 0), 0),
+      cashwallet: garageDailyStats.reduce((a, s) => a + Number(s.cashwallet_revenue ?? 0), 0),
+      totalSessions: garageDailyStats.reduce((a, s) => a + Number(s.total_sessions ?? 0), 0),
+      manualSessions: garageDailyStats.reduce((a, s) => a + Number(s.manual_sessions ?? 0), 0),
+      appSessions: garageDailyStats.reduce((a, s) => a + Number(s.app_sessions ?? 0), 0),
+    }),
+    [garageDailyStats]
+  );
 
   const getSessionRevenue = useCallback(
     (s: (typeof completedSessions)[0]) => {
@@ -412,18 +504,14 @@ export default function GarageDashboard() {
     [garage?.basePrice]
   );
 
-  const totalRevenue = useMemo(() =>
-    completedSessions
-      .filter((s) => s.revenueConfirmed)
-      .reduce((acc, s) => acc + getSessionRevenue(s), 0),
+  const totalRevenue = useMemo(
+    () => completedSessions.filter((s) => s.revenueConfirmed).reduce((acc, s) => acc + getSessionRevenue(s), 0),
     [completedSessions, getSessionRevenue]
   );
 
   const getActiveCost = useCallback(
     (session: (typeof activeSessions)[0]) => {
-      const startTime = typeof session.startTime === 'number'
-        ? session.startTime
-        : new Date(session.startTime).getTime();
+      const startTime = typeof session.startTime === 'number' ? session.startTime : new Date(session.startTime).getTime();
       const elapsed = Math.max(0, Math.floor((Date.now() - startTime) / 1000));
       const rate = Number(session.agreedPrice ?? garage?.basePrice ?? 0);
       if (isNaN(elapsed) || elapsed <= 0) return 0;
@@ -433,18 +521,13 @@ export default function GarageDashboard() {
     [garage?.basePrice]
   );
 
-  // ✅ فلترة بالتاريخ المحلي الصحيح
   const filteredCompleted = useMemo(() => {
     return completedSessions.filter((s) => {
       if (logDateFilter && s.endTime) {
-        const endTime = typeof s.endTime === 'number'
-          ? s.endTime
-          : new Date(s.endTime).getTime();
-        // ✅ مقارنة بالتاريخ المحلي مش UTC
+        const endTime = typeof s.endTime === 'number' ? s.endTime : new Date(s.endTime).getTime();
         if (timestampToLocalDate(endTime) !== logDateFilter) return false;
       }
-      if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter)
-        return false;
+      if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter) return false;
       return true;
     });
   }, [completedSessions, logDateFilter, logPaymentFilter]);
@@ -454,23 +537,15 @@ export default function GarageDashboard() {
     const unconfirmed = filteredCompleted.filter((s) => !s.revenueConfirmed);
     const hasStatsForDate = garageDailyStats.length > 0;
 
-    const cash = hasStatsForDate ? paymentStatsFromDB.cash
-      : confirmed.filter((s) => s.paymentMethod === 'cash').reduce((a, s) => a + getSessionRevenue(s), 0);
-    const instapay = hasStatsForDate ? paymentStatsFromDB.instapay
-      : confirmed.filter((s) => s.paymentMethod === 'instapay').reduce((a, s) => a + getSessionRevenue(s), 0);
-    const wallet = hasStatsForDate ? paymentStatsFromDB.wallet
-      : confirmed.filter((s) => s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
-    const cashwallet = hasStatsForDate ? paymentStatsFromDB.cashwallet
-      : confirmed.filter((s) => s.paymentMethod === 'cashwallet').reduce((a, s) => a + getSessionRevenue(s), 0);
-    const total = hasStatsForDate
-      ? garageDailyStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0)
-      : cash + instapay + wallet + cashwallet;
+    const cash = hasStatsForDate ? paymentStatsFromDB.cash : confirmed.filter((s) => s.paymentMethod === 'cash').reduce((a, s) => a + getSessionRevenue(s), 0);
+    const instapay = hasStatsForDate ? paymentStatsFromDB.instapay : confirmed.filter((s) => s.paymentMethod === 'instapay').reduce((a, s) => a + getSessionRevenue(s), 0);
+    const wallet = hasStatsForDate ? paymentStatsFromDB.wallet : confirmed.filter((s) => s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
+    const cashwallet = hasStatsForDate ? paymentStatsFromDB.cashwallet : confirmed.filter((s) => s.paymentMethod === 'cashwallet').reduce((a, s) => a + getSessionRevenue(s), 0);
+    const total = hasStatsForDate ? garageDailyStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0) : cash + instapay + wallet + cashwallet;
 
     const manual = confirmed.filter((s) => s.source === 'manual');
     const app = confirmed.filter((s) => s.source === 'app');
-    const pendingRevenue = hasStatsForDate
-      ? pendingRevenueFromStats
-      : unconfirmed.reduce((a, s) => a + getSessionRevenue(s), 0);
+    const pendingRevenue = hasStatsForDate ? pendingRevenueFromStats : unconfirmed.reduce((a, s) => a + getSessionRevenue(s), 0);
 
     return {
       cash, instapay, wallet, cashwallet, total,
@@ -490,18 +565,10 @@ export default function GarageDashboard() {
       if (undoable.localId !== undoable.sessionId) removeSession(undoable.localId);
       const currentSessions = useStore.getState().sessions;
       const matchingSession = currentSessions.find(
-        (s) =>
-          s.carPlate === undoable.carPlate &&
-          s.source === 'manual' &&
-          s.status === 'active' &&
-          Math.abs(s.startTime - undoable.addedAt) < 5000
+        (s) => s.carPlate === undoable.carPlate && s.source === 'manual' && s.status === 'active' && Math.abs(s.startTime - undoable.addedAt) < 5000
       );
       if (matchingSession) removeSession(matchingSession.id);
-      setUndoableSessions((prev) =>
-        prev.filter(
-          (u) => u.sessionId !== undoable.sessionId && u.localId !== undoable.localId
-        )
-      );
+      setUndoableSessions((prev) => prev.filter((u) => u.sessionId !== undoable.sessionId && u.localId !== undoable.localId));
       toast('تم إلغاء إضافة السيارة ' + undoable.carPlate + ' ↩️', {
         icon: '🔙',
         style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' },
@@ -531,11 +598,7 @@ export default function GarageDashboard() {
           const stillExists = sessions.find((s) => s.id === u.sessionId);
           if (!stillExists) {
             const newSession = sessions.find(
-              (s) =>
-                s.carPlate === u.carPlate &&
-                s.source === 'manual' &&
-                s.status === 'active' &&
-                Math.abs(s.startTime - u.addedAt) < 5000
+              (s) => s.carPlate === u.carPlate && s.source === 'manual' && s.status === 'active' && Math.abs(s.startTime - u.addedAt) < 5000
             );
             if (newSession) return { ...u, sessionId: newSession.id };
           }
@@ -552,18 +615,10 @@ export default function GarageDashboard() {
     const price = newCarPrice;
     const addedAt = Date.now();
     const sessionId = await addSession({
-      garageId: garage.id,
-      carPlate,
-      startTime: addedAt,
-      status: 'active',
-      source: 'manual',
-      agreedPrice: price,
+      garageId: garage.id, carPlate, startTime: addedAt, status: 'active', source: 'manual', agreedPrice: price,
     });
     const finalSessionId = sessionId || `fallback-${addedAt}`;
-    setUndoableSessions((prev) => [
-      ...prev,
-      { sessionId: finalSessionId, localId: finalSessionId, carPlate, price, addedAt },
-    ]);
+    setUndoableSessions((prev) => [...prev, { sessionId: finalSessionId, localId: finalSessionId, carPlate, price, addedAt }]);
     toast.success(`تم إضافة السيارة بسعر ${price} ج.م/ساعة`);
     setNewCarPlate('');
     setNewCarPrice(garage.basePrice);
@@ -594,19 +649,11 @@ export default function GarageDashboard() {
       const sessionData = useStore.getState().sessions.find((s) => s.id === sessionCopy.id);
       const isAppSession = sessionData?.source === 'app';
       setConfirmSession(null);
-      setUndoableSessions((prev) =>
-        prev.filter((u) => u.sessionId !== sessionCopy.id && u.localId !== sessionCopy.id)
-      );
+      setUndoableSessions((prev) => prev.filter((u) => u.sessionId !== sessionCopy.id && u.localId !== sessionCopy.id));
       await endSession(sessionCopy.id, sessionCopy.cost, paymentCopy);
-      if (isAppSession) {
-        await new Promise((resolve) => setTimeout(resolve, 5000));
-      }
+      if (isAppSession) await new Promise((resolve) => setTimeout(resolve, 5000));
       await fetchGarageDailyStats();
-      const methodLabel =
-        paymentCopy === 'cash' ? 'نقدي 💵'
-        : paymentCopy === 'instapay' ? 'إنستاباي 📱'
-        : paymentCopy === 'wallet' ? 'خصم من المحفظة 👝'
-        : 'تحويل محفظة كاش 📲';
+      const methodLabel = paymentCopy === 'cash' ? 'نقدي 💵' : paymentCopy === 'instapay' ? 'إنستاباي 📱' : paymentCopy === 'wallet' ? 'خصم من المحفظة 👝' : 'تحويل محفظة كاش 📲';
       toast.success(`تم تحصيل ${sessionCopy.cost} ج.م (${methodLabel}) ✅`);
     } finally {
       setTimeout(() => { isEndingSessionRef.current = false; }, 2000);
@@ -614,11 +661,7 @@ export default function GarageDashboard() {
   };
 
   const handleSaveSettings = () => {
-    updateGarage(garage.id, {
-      basePrice: editPrice,
-      availableSpots: Math.min(editSpots, editCapacity),
-      capacity: editCapacity,
-    });
+    updateGarage(garage.id, { basePrice: editPrice, availableSpots: Math.min(editSpots, editCapacity), capacity: editCapacity });
     toast.success('تم تحديث الإعدادات بنجاح! ⚡');
     setShowSettings(false);
   };
@@ -641,44 +684,27 @@ export default function GarageDashboard() {
       );
       if (existingLocal) {
         await removeIncomingCar(carId);
-        await supabase.from('incoming_cars').delete()
-          .eq('car_plate', normalizedPlate).eq('garage_id', garage.id);
-        toast('الجلسة شغالة بالفعل ✅', {
-          icon: '🚗',
-          style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' },
-        });
+        await supabase.from('incoming_cars').delete().eq('car_plate', normalizedPlate).eq('garage_id', garage.id);
+        toast('الجلسة شغالة بالفعل ✅', { icon: '🚗', style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' } });
         return;
       }
       try {
-        const { data: dbCheck } = await supabase.from('sessions').select('id')
-          .eq('car_plate', normalizedPlate).eq('status', 'active').limit(1);
+        const { data: dbCheck } = await supabase.from('sessions').select('id').eq('car_plate', normalizedPlate).eq('status', 'active').limit(1);
         if (dbCheck && dbCheck.length > 0) {
           await removeIncomingCar(carId);
-          await supabase.from('incoming_cars').delete()
-            .eq('car_plate', normalizedPlate).eq('garage_id', garage.id);
+          await supabase.from('incoming_cars').delete().eq('car_plate', normalizedPlate).eq('garage_id', garage.id);
           await fetchAll();
-          toast('الجلسة شغالة بالفعل ✅', {
-            icon: '🚗',
-            style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' },
-          });
+          toast('الجلسة شغالة بالفعل ✅', { icon: '🚗', style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' } });
           return;
         }
-      } catch (err) {
-        console.error('خطأ في التحقق من DB:', err);
-      }
+      } catch (err) { console.error('خطأ في التحقق من DB:', err); }
       const relatedOffer = offers.find(
-        (o) =>
-          o.carPlate.trim().toUpperCase() === normalizedPlate &&
-          (o.status === 'pending' || o.status === 'accepted')
+        (o) => o.carPlate.trim().toUpperCase() === normalizedPlate && (o.status === 'pending' || o.status === 'accepted')
       );
       if (relatedOffer) cancelOffer(relatedOffer.id);
-      await addSession({
-        garageId: garage.id, carPlate: normalizedPlate,
-        startTime: Date.now(), status: 'active', source: 'app', agreedPrice,
-      });
+      await addSession({ garageId: garage.id, carPlate: normalizedPlate, startTime: Date.now(), status: 'active', source: 'app', agreedPrice });
       await removeIncomingCar(carId);
-      await supabase.from('incoming_cars').delete()
-        .eq('car_plate', normalizedPlate).eq('garage_id', garage.id);
+      await supabase.from('incoming_cars').delete().eq('car_plate', normalizedPlate).eq('garage_id', garage.id);
       toast.success(`بدأ حساب السيارة ${carPlate} 🚗`);
     } catch (err) {
       console.error('❌ خطأ في handleCarArrived:', err);
@@ -697,10 +723,7 @@ export default function GarageDashboard() {
     <div className="h-full bg-slate-950 text-white p-5 overflow-y-auto">
       {/* Header */}
       <div className="flex justify-between items-center mb-6 pt-14">
-        <button
-          onClick={() => setCurrentGarageId(null)}
-          className="bg-slate-900 p-3 rounded-2xl border border-slate-800"
-        >
+        <button onClick={() => setCurrentGarageId(null)} className="bg-slate-900 p-3 rounded-2xl border border-slate-800">
           <LogOut size={18} />
         </button>
         <div className="text-right flex-1 mr-3">
@@ -710,95 +733,42 @@ export default function GarageDashboard() {
             {garage.location}
           </p>
         </div>
-        <button
-          onClick={openSettings}
-          className="bg-blue-600 p-3 rounded-2xl border border-blue-500/30 shadow-lg shadow-blue-900/20"
-        >
+        <button onClick={openSettings} className="bg-blue-600 p-3 rounded-2xl border border-blue-500/30 shadow-lg shadow-blue-900/20">
           <Settings size={18} />
         </button>
       </div>
 
-      {/* ✅ زر تفعيل التنبيهات */}
-      {!soundEnabled ? (
-        <motion.button
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          onClick={async () => {
-            try {
-              const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-              const ctx = new AudioCtx();
-              const osc = ctx.createOscillator();
-              const gain = ctx.createGain();
-              osc.connect(gain);
-              gain.connect(ctx.destination);
-              gain.gain.value = 0.01;
-              osc.start();
-              osc.stop(ctx.currentTime + 0.01);
-              audioCtxInstance = ctx;
-              if ('Notification' in window && Notification.permission === 'default') {
-                await Notification.requestPermission();
-              }
-              setSoundEnabled(true);
-              prevIncomingIdsRef.current = new Set(carsOnTheWay.map((c) => c.id));
-              prevOfferIdsRef.current = new Set(garageOffers.map((o) => o.id));
-              toast.success('تم تفعيل التنبيهات الصوتية 🔔');
-            } catch (err) {
-              console.error(err);
-              toast.error('تعذر تفعيل الصوت');
-            }
+      {/* ✅ مؤشر حالة التنبيهات - مفعّل دائماً */}
+      <div className="mb-4 bg-emerald-600/10 border border-emerald-500/20 rounded-2xl p-3 flex items-center justify-between">
+        <button
+          onClick={() => {
+            playFirstAlert();
+            vibrateDevice();
+            toast('🔔 تجربة التنبيه - صوت واهتزاز!', {
+              icon: '🔊', duration: 3000,
+              style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' },
+            });
           }}
-          className="w-full mb-4 bg-gradient-to-r from-amber-600 to-orange-600 text-white py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-3 active:scale-95 transition-all shadow-xl shadow-orange-900/30 animate-pulse"
+          className="text-[10px] text-emerald-400 font-bold bg-emerald-600/20 px-3 py-1.5 rounded-lg border border-emerald-500/20 active:scale-95 transition-all"
         >
-          <span className="text-2xl">🔔</span>
+          🔊 تجربة
+        </button>
+        <div className="text-right flex items-center gap-2">
           <div className="text-right">
-            <div>اضغط لتفعيل التنبيهات</div>
-            <div className="text-[10px] font-bold opacity-80">
-              صوت + اهتزاز عند وصول طلب جديد
-            </div>
-          </div>
-        </motion.button>
-      ) : (
-        <div className="mb-4 bg-emerald-600/10 border border-emerald-500/20 rounded-2xl p-3 flex items-center justify-between">
-          <button
-            onClick={() => {
-              playAlertSound();
-              vibrateDevice();
-              toast('تجربة التنبيه 🔔', {
-                icon: '🔊',
-                style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' },
-              });
-            }}
-            className="text-[10px] text-emerald-400 font-bold bg-emerald-600/20 px-3 py-1.5 rounded-lg border border-emerald-500/20 active:scale-95 transition-all"
-          >
-            🔊 تجربة
-          </button>
-          <div className="text-right flex items-center gap-2">
             <span className="text-xs font-black text-emerald-400">✅ التنبيهات مفعّلة</span>
-            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+            <div className="text-[9px] text-slate-500">صوت + اهتزاز عند وصول وقرب العربيات</div>
           </div>
+          <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
         </div>
-      )}
+      </div>
 
       {/* Settings Modal */}
       {showSettings && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => setShowSettings(false)}
-        >
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="bg-slate-900 border border-slate-800 rounded-[2rem] p-6 w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowSettings(false)}>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-slate-900 border border-slate-800 rounded-[2rem] p-6 w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-6">
               <button onClick={() => setShowSettings(false)} className="text-slate-500 hover:text-white transition-colors text-lg">✕</button>
-              <h3 className="text-lg font-black text-white flex items-center gap-2">
-                <Settings size={18} className="text-blue-400" />
-                إعدادات الجراج
-              </h3>
+              <h3 className="text-lg font-black text-white flex items-center gap-2"><Settings size={18} className="text-blue-400" />إعدادات الجراج</h3>
             </div>
 
             <div className="mb-6">
@@ -852,8 +822,7 @@ export default function GarageDashboard() {
             </div>
 
             <button onClick={handleSaveSettings} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xl shadow-emerald-900/30">
-              <Save size={18} />
-              حفظ التغييرات
+              <Save size={18} /> حفظ التغييرات
             </button>
           </motion.div>
         </motion.div>
@@ -861,19 +830,8 @@ export default function GarageDashboard() {
 
       {/* Confirm Payment Modal */}
       {confirmSession && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end justify-center p-4"
-          onClick={() => setConfirmSession(null)}
-        >
-          <motion.div
-            initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ type: 'spring', damping: 25 }}
-            className="bg-slate-900 border border-slate-800 rounded-t-[2.5rem] rounded-b-2xl p-6 w-full max-w-sm shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end justify-center p-4" onClick={() => setConfirmSession(null)}>
+          <motion.div initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: 'spring', damping: 25 }} className="bg-slate-900 border border-slate-800 rounded-t-[2.5rem] rounded-b-2xl p-6 w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="w-10 h-1 bg-slate-700 rounded-full mx-auto mb-5" />
             <h3 className="text-lg font-black text-white text-center mb-1">تأكيد تحصيل السداد</h3>
             <p className="text-xs text-slate-500 text-center mb-5">لن يتم إنهاء الجلسة إلا بعد تأكيد السداد</p>
@@ -925,10 +883,7 @@ export default function GarageDashboard() {
                       { id: 'wallet', label: 'المحفظة', icon: '👝', disabled: true },
                       { id: 'cashwallet', label: 'تحويل محفظة كاش', icon: '📲', disabled: false },
                     ].map((pm) => (
-                      <button
-                        key={pm.id}
-                        onClick={() => !pm.disabled && setConfirmPaymentMethod(pm.id)}
-                        disabled={pm.disabled}
+                      <button key={pm.id} onClick={() => !pm.disabled && setConfirmPaymentMethod(pm.id)} disabled={pm.disabled}
                         className={`p-3 rounded-xl border text-center transition-all ${
                           pm.disabled ? 'bg-slate-950 border-slate-700 opacity-40 cursor-not-allowed'
                           : confirmPaymentMethod === pm.id
@@ -936,8 +891,7 @@ export default function GarageDashboard() {
                               : pm.id === 'cashwallet' ? 'bg-orange-600/20 border-orange-500 ring-1 ring-orange-500/50'
                               : 'bg-emerald-600/20 border-emerald-500 ring-1 ring-emerald-500/50'
                             : 'bg-slate-950 border-slate-800'
-                        } ${!pm.disabled ? 'active:scale-95' : ''}`}
-                      >
+                        } ${!pm.disabled ? 'active:scale-95' : ''}`}>
                         <div className="text-xl mb-1">{pm.icon}</div>
                         <div className={`text-[10px] font-black ${pm.disabled ? 'text-slate-600' : confirmPaymentMethod === pm.id ? 'text-white' : 'text-slate-500'}`}>{pm.label}</div>
                         {pm.disabled && <div className="text-[7px] text-red-400/60 font-bold mt-1">🔒 غير متاح من الجراج</div>}
@@ -952,16 +906,13 @@ export default function GarageDashboard() {
             </div>
 
             <div className="flex gap-3">
-              <button
-                onClick={handleConfirmPayment}
+              <button onClick={handleConfirmPayment}
                 className={`flex-1 py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xl ${
                   confirmPaymentMethod === 'instapay' ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-900/30'
                   : confirmPaymentMethod === 'cashwallet' ? 'bg-orange-600 hover:bg-orange-700 text-white shadow-orange-900/30'
                   : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-900/30'
-                }`}
-              >
-                <CheckCircle size={18} />
-                تأكيد السداد ({confirmSession.cost} ج.م)
+                }`}>
+                <CheckCircle size={18} /> تأكيد السداد ({confirmSession.cost} ج.م)
               </button>
               <button onClick={() => setConfirmSession(null)} className="bg-slate-800 text-slate-400 px-5 py-4 rounded-2xl font-black text-sm active:scale-95 transition-all">
                 <XCircle size={18} />
@@ -975,9 +926,7 @@ export default function GarageDashboard() {
       <div className="grid grid-cols-3 gap-3 mb-6">
         <div className="bg-emerald-600/20 border border-emerald-500/20 p-4 rounded-2xl text-center">
           <DollarSign size={20} className="text-emerald-400 mx-auto mb-1" />
-          <div className="text-xl font-black text-emerald-400 font-mono">
-            {(garageDailyStats.length > 0 ? totalRevenueFromStats : totalRevenue).toFixed(0)}
-          </div>
+          <div className="text-xl font-black text-emerald-400 font-mono">{(garageDailyStats.length > 0 ? totalRevenueFromStats : totalRevenue).toFixed(0)}</div>
           <div className="text-[8px] text-slate-500 font-bold">مؤكد</div>
         </div>
         <div className="bg-blue-600/20 border border-blue-500/20 p-4 rounded-2xl text-center cursor-pointer hover:bg-blue-600/30 transition-all" onClick={openSettings}>
@@ -998,27 +947,14 @@ export default function GarageDashboard() {
           const remaining = getUndoRemainingSeconds(undoable.addedAt);
           const progress = ((UNDO_TIMEOUT_SECONDS - remaining) / UNDO_TIMEOUT_SECONDS) * 100;
           return (
-            <motion.div
-              key={undoable.localId}
-              initial={{ opacity: 0, y: -20, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -20, scale: 0.95, transition: { duration: 0.3 } }}
-              transition={{ type: 'spring', damping: 20, stiffness: 300 }}
-              className="mb-4"
-            >
+            <motion.div key={undoable.localId} initial={{ opacity: 0, y: -20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -20, scale: 0.95, transition: { duration: 0.3 } }} transition={{ type: 'spring', damping: 20, stiffness: 300 }} className="mb-4">
               <div className="bg-gradient-to-l from-amber-950/60 to-slate-900 border border-amber-500/40 rounded-2xl p-4 relative overflow-hidden shadow-lg shadow-amber-900/20">
                 <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-800">
-                  <motion.div
-                    className="h-full bg-gradient-to-r from-amber-500 to-red-500"
-                    initial={{ width: '0%' }}
-                    animate={{ width: `${progress}%` }}
-                    transition={{ duration: 0.5, ease: 'linear' }}
-                  />
+                  <motion.div className="h-full bg-gradient-to-r from-amber-500 to-red-500" initial={{ width: '0%' }} animate={{ width: `${progress}%` }} transition={{ duration: 0.5, ease: 'linear' }} />
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <button onClick={() => handleUndoSession(undoable)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 active:scale-95 transition-all shadow-lg shadow-red-900/30 shrink-0">
-                    <Undo2 size={16} />
-                    تراجع
+                    <Undo2 size={16} /> تراجع
                   </button>
                   <div className="flex-1 text-right">
                     <div className="flex items-center justify-end gap-2 mb-1">
@@ -1056,15 +992,9 @@ export default function GarageDashboard() {
                 (s) => s.carPlate.trim().toUpperCase() === car.carPlate.trim().toUpperCase() && s.status === 'active'
               );
               return (
-                <motion.div
-                  key={car.id}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="bg-gradient-to-l from-cyan-900/30 to-slate-900 border border-cyan-500/30 rounded-2xl p-4 relative overflow-hidden"
-                >
+                <motion.div key={car.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="bg-gradient-to-l from-cyan-900/30 to-slate-900 border border-cyan-500/30 rounded-2xl p-4 relative overflow-hidden">
                   <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-800">
-                    <div className="h-full bg-gradient-to-r from-cyan-500 to-emerald-500 transition-all"
-                      style={{ width: `${Math.max(0, 100 - (remainingTime / car.estimatedArrival) * 100)}%` }} />
+                    <div className="h-full bg-gradient-to-r from-cyan-500 to-emerald-500 transition-all" style={{ width: `${Math.max(0, 100 - (remainingTime / car.estimatedArrival) * 100)}%` }} />
                   </div>
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex items-center gap-2">
@@ -1074,7 +1004,7 @@ export default function GarageDashboard() {
                       {sessionAlreadyStarted ? (
                         <div className="bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full text-[10px] font-black">✅ الجلسة شغالة</div>
                       ) : (
-                        <div className="bg-cyan-500/20 text-cyan-400 px-3 py-1 rounded-full text-[10px] font-black">
+                        <div className={`px-3 py-1 rounded-full text-[10px] font-black ${remainingTime <= 2 ? 'bg-amber-500/20 text-amber-400 animate-pulse' : 'bg-cyan-500/20 text-cyan-400'}`}>
                           {remainingTime > 0 ? `${remainingTime} دقيقة` : 'وصل تقريباً'}
                         </div>
                       )}
@@ -1092,10 +1022,8 @@ export default function GarageDashboard() {
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => handleCarArrived(car.id, car.carPlate, car.agreedPrice)}
-                      className={`flex-1 py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all ${sessionAlreadyStarted ? 'bg-slate-700 text-slate-300' : 'bg-emerald-600 text-white'}`}
-                    >
+                    <button onClick={() => handleCarArrived(car.id, car.carPlate, car.agreedPrice)}
+                      className={`flex-1 py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all ${sessionAlreadyStarted ? 'bg-slate-700 text-slate-300' : 'bg-emerald-600 text-white'}`}>
                       <CheckCircle size={16} />
                       {sessionAlreadyStarted ? 'تأكيد الوصول وإزالة' : 'وصلت وبدء الحساب'}
                     </button>
@@ -1112,10 +1040,7 @@ export default function GarageDashboard() {
 
       {/* شريط المعلومات */}
       <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-3 mb-6 flex items-center justify-between">
-        <button onClick={openSettings} className="text-[10px] text-blue-400 font-bold flex items-center gap-1">
-          <Settings size={12} />
-          تعديل الإعدادات
-        </button>
+        <button onClick={openSettings} className="text-[10px] text-blue-400 font-bold flex items-center gap-1"><Settings size={12} /> تعديل الإعدادات</button>
         <div className="flex items-center gap-3">
           <span className="text-[10px] text-slate-500">السعر: <span className="text-emerald-400 font-mono font-black">{garage.basePrice}ج</span></span>
           <span className="text-slate-700">|</span>
@@ -1126,9 +1051,7 @@ export default function GarageDashboard() {
       {/* عروض الأسعار */}
       {garageOffers.length > 0 && (
         <div className="mb-6">
-          <h3 className="text-sm font-black text-amber-400 mb-3 flex items-center gap-2 justify-end">
-            عروض أسعار معلقة ({garageOffers.length})
-          </h3>
+          <h3 className="text-sm font-black text-amber-400 mb-3 flex items-center gap-2 justify-end">عروض أسعار معلقة ({garageOffers.length})</h3>
           <div className="space-y-3">
             {garageOffers.map((offer) => (
               <motion.div key={offer.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
@@ -1140,12 +1063,8 @@ export default function GarageDashboard() {
                   <div className="text-sm font-black text-white">🚗 {offer.carPlate}</div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => { updateOffer(offer.id, 'accepted'); toast.success('تم قبول العرض'); }} className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-1 active:scale-95 transition-all">
-                    <CheckCircle size={16} /> قبول
-                  </button>
-                  <button onClick={() => { updateOffer(offer.id, 'rejected'); toast.error('تم رفض العرض'); }} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-1 active:scale-95 transition-all">
-                    <XCircle size={16} /> رفض
-                  </button>
+                  <button onClick={() => { updateOffer(offer.id, 'accepted'); toast.success('تم قبول العرض'); }} className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-1 active:scale-95 transition-all"><CheckCircle size={16} /> قبول</button>
+                  <button onClick={() => { updateOffer(offer.id, 'rejected'); toast.error('تم رفض العرض'); }} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-1 active:scale-95 transition-all"><XCircle size={16} /> رفض</button>
                 </div>
               </motion.div>
             ))}
@@ -1156,22 +1075,14 @@ export default function GarageDashboard() {
       {/* إضافة سيارة */}
       <div className="mb-6">
         {!showAddCar ? (
-          <button
-            onClick={() => setShowAddCar(true)}
-            disabled={garage.availableSpots <= 0}
-            className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all ${garage.availableSpots > 0 ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}
-          >
+          <button onClick={() => setShowAddCar(true)} disabled={garage.availableSpots <= 0}
+            className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all ${garage.availableSpots > 0 ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}>
             <Plus size={20} />
             {garage.availableSpots > 0 ? 'إضافة سيارة جديدة' : 'لا توجد أماكن شاغرة'}
           </button>
         ) : (
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
-            <input
-              className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-right font-bold text-white outline-none text-sm placeholder:text-slate-600"
-              placeholder="رقم لوحة السيارة"
-              value={newCarPlate}
-              onChange={(e) => setNewCarPlate(e.target.value)}
-            />
+            <input className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-right font-bold text-white outline-none text-sm placeholder:text-slate-600" placeholder="رقم لوحة السيارة" value={newCarPlate} onChange={(e) => setNewCarPlate(e.target.value)} />
             <div>
               <label className="text-[10px] text-slate-500 font-bold block text-right mb-1">💰 سعر الساعة - الافتراضي: {garage.basePrice} ج.م</label>
               <div className="flex items-center gap-2">
@@ -1195,10 +1106,7 @@ export default function GarageDashboard() {
 
       {/* الجلسات النشطة */}
       <div className="mb-6">
-        <h3 className="text-sm font-black text-emerald-400 mb-3 flex items-center gap-2 justify-end">
-          الجلسات النشطة ({activeSessions.length})
-          <Clock size={14} />
-        </h3>
+        <h3 className="text-sm font-black text-emerald-400 mb-3 flex items-center gap-2 justify-end">الجلسات النشطة ({activeSessions.length}) <Clock size={14} /></h3>
         <div className="space-y-3">
           {activeSessions.length === 0 ? (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center text-slate-500 text-sm">لا توجد جلسات نشطة</div>
@@ -1231,21 +1139,10 @@ export default function GarageDashboard() {
                   )}
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => openConfirmPayment(session.id, session.carPlate, cost, hours, mins, session.source, session.agreedPrice)}
-                        className="bg-red-600/20 text-red-400 px-4 py-2 rounded-xl text-xs font-black border border-red-500/20 active:scale-95 transition-all"
-                      >
-                        إنهاء وتحصيل
-                      </button>
+                      <button onClick={() => openConfirmPayment(session.id, session.carPlate, cost, hours, mins, session.source, session.agreedPrice)} className="bg-red-600/20 text-red-400 px-4 py-2 rounded-xl text-xs font-black border border-red-500/20 active:scale-95 transition-all">إنهاء وتحصيل</button>
                       {undoable && (
-                        <motion.button
-                          initial={{ opacity: 0, scale: 0.8 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          onClick={() => handleUndoSession(undoable)}
-                          className="bg-amber-600/20 text-amber-400 px-3 py-2 rounded-xl text-[10px] font-black border border-amber-500/20 active:scale-95 transition-all flex items-center gap-1"
-                        >
-                          <Undo2 size={12} />
-                          إلغاء ({getUndoRemainingSeconds(undoable.addedAt)}ث)
+                        <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} onClick={() => handleUndoSession(undoable)} className="bg-amber-600/20 text-amber-400 px-3 py-2 rounded-xl text-[10px] font-black border border-amber-500/20 active:scale-95 transition-all flex items-center gap-1">
+                          <Undo2 size={12} /> إلغاء ({getUndoRemainingSeconds(undoable.addedAt)}ث)
                         </motion.button>
                       )}
                     </div>
@@ -1271,25 +1168,9 @@ export default function GarageDashboard() {
             <span className="text-xs font-black text-slate-400">تصفية بالتاريخ</span>
           </div>
           <div className="flex gap-2 mb-3">
-            <input
-              type="date"
-              value={logDateFilter}
-              onChange={(e) => setLogDateFilter(e.target.value)}
-              className="flex-1 bg-slate-950 border border-slate-800 p-2.5 rounded-xl text-xs font-bold text-white outline-none"
-            />
-            {/* ✅ زر اليوم بالتاريخ المحلي الصحيح */}
-            <button
-              onClick={() => setLogDateFilter(getLocalToday())}
-              className="bg-blue-600/20 text-blue-400 px-3 py-2 rounded-xl text-[10px] font-black border border-blue-500/20 active:scale-95 transition-all whitespace-nowrap"
-            >
-              اليوم
-            </button>
-            <button
-              onClick={() => setLogDateFilter('')}
-              className="bg-slate-800 text-slate-400 px-3 py-2 rounded-xl text-[10px] font-black active:scale-95 transition-all whitespace-nowrap"
-            >
-              الكل
-            </button>
+            <input type="date" value={logDateFilter} onChange={(e) => setLogDateFilter(e.target.value)} className="flex-1 bg-slate-950 border border-slate-800 p-2.5 rounded-xl text-xs font-bold text-white outline-none" />
+            <button onClick={() => setLogDateFilter(getLocalToday())} className="bg-blue-600/20 text-blue-400 px-3 py-2 rounded-xl text-[10px] font-black border border-blue-500/20 active:scale-95 transition-all whitespace-nowrap">اليوم</button>
+            <button onClick={() => setLogDateFilter('')} className="bg-slate-800 text-slate-400 px-3 py-2 rounded-xl text-[10px] font-black active:scale-95 transition-all whitespace-nowrap">الكل</button>
           </div>
           <div className="flex gap-1.5 flex-wrap">
             {[
@@ -1299,11 +1180,8 @@ export default function GarageDashboard() {
               { id: 'wallet', label: 'محفظة', icon: '👝' },
               { id: 'cashwallet', label: 'كاش', icon: '📲' },
             ].map((f) => (
-              <button
-                key={f.id}
-                onClick={() => setLogPaymentFilter(f.id)}
-                className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black transition-all active:scale-95 ${logPaymentFilter === f.id ? 'bg-blue-600 text-white' : 'bg-slate-950 text-slate-500 border border-slate-800'}`}
-              >
+              <button key={f.id} onClick={() => setLogPaymentFilter(f.id)}
+                className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black transition-all active:scale-95 ${logPaymentFilter === f.id ? 'bg-blue-600 text-white' : 'bg-slate-950 text-slate-500 border border-slate-800'}`}>
                 {f.icon} {f.label}
               </button>
             ))}
@@ -1325,12 +1203,7 @@ export default function GarageDashboard() {
             )}
 
             <div className="bg-gradient-to-l from-emerald-600/20 to-slate-900 border border-emerald-500/30 rounded-2xl p-4 mb-4 text-center">
-              {/* ✅ عرض التاريخ بالتنسيق المحلي الصحيح */}
-              <div className="text-[10px] text-slate-400 mb-1">
-                {logDateFilter
-                  ? `إجمالي مؤكد - يوم ${formatLocalDateArabic(logDateFilter)}`
-                  : 'إجمالي مؤكد - كل العمليات'}
-              </div>
+              <div className="text-[10px] text-slate-400 mb-1">{logDateFilter ? `إجمالي مؤكد - يوم ${formatLocalDateArabic(logDateFilter)}` : 'إجمالي مؤكد - كل العمليات'}</div>
               <div className="text-3xl font-black text-emerald-400 font-mono">{filteredStats.total.toFixed(0)} ج.م</div>
               <div className="text-[10px] text-slate-500 mt-1">{filteredCompleted.filter((s) => s.revenueConfirmed).length} عملية مؤكدة</div>
             </div>
@@ -1370,36 +1243,19 @@ export default function GarageDashboard() {
         <div className="space-y-2">
           {filteredCompleted.map((session) => {
             const isManual = session.source === 'manual';
-            const endTime = session.endTime
-              ? typeof session.endTime === 'number' ? session.endTime : new Date(session.endTime).getTime()
-              : null;
+            const endTime = session.endTime ? (typeof session.endTime === 'number' ? session.endTime : new Date(session.endTime).getTime()) : null;
             const time = endTime ? new Date(endTime) : null;
             const revenue = getSessionRevenue(session);
             const isConfirmed = session.revenueConfirmed;
             return (
-              <div
-                key={session.id}
-                className={`rounded-xl p-3 border ${!isConfirmed ? 'bg-amber-950/20 border-amber-500/30' : isManual ? 'bg-amber-950/30 border-amber-500/20' : 'bg-blue-950/20 border-blue-500/20'}`}
-              >
+              <div key={session.id} className={`rounded-xl p-3 border ${!isConfirmed ? 'bg-amber-950/20 border-amber-500/30' : isManual ? 'bg-amber-950/30 border-amber-500/20' : 'bg-blue-950/20 border-blue-500/20'}`}>
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`text-sm font-mono font-black ${!isConfirmed ? 'text-amber-300' : isManual ? 'text-amber-400' : 'text-blue-400'}`}>
-                      {revenue.toFixed(0)} ج.م
-                    </span>
-                    <span className={`text-[8px] px-2 py-0.5 rounded-full font-bold ${isManual ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                      {isManual ? 'يدوي' : 'تطبيق'}
-                    </span>
+                    <span className={`text-sm font-mono font-black ${!isConfirmed ? 'text-amber-300' : isManual ? 'text-amber-400' : 'text-blue-400'}`}>{revenue.toFixed(0)} ج.م</span>
+                    <span className={`text-[8px] px-2 py-0.5 rounded-full font-bold ${isManual ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>{isManual ? 'يدوي' : 'تطبيق'}</span>
                     {!isConfirmed ? (
-                      <button
-                        onClick={async () => {
-                          await confirmRevenue(session.id);
-                          await fetchGarageDailyStats();
-                          toast.success('تم تأكيد الإيراد ✅');
-                        }}
-                        className="bg-amber-600/20 text-amber-400 px-2 py-0.5 rounded-lg text-[8px] font-black border border-amber-500/30 active:scale-95 transition-all"
-                      >
-                        ⏳ تأكيد الإيراد
-                      </button>
+                      <button onClick={async () => { await confirmRevenue(session.id); await fetchGarageDailyStats(); toast.success('تم تأكيد الإيراد ✅'); }}
+                        className="bg-amber-600/20 text-amber-400 px-2 py-0.5 rounded-lg text-[8px] font-black border border-amber-500/30 active:scale-95 transition-all">⏳ تأكيد الإيراد</button>
                     ) : (
                       <span className="text-[8px] text-emerald-400 font-bold">✅ مؤكد</span>
                     )}
@@ -1418,21 +1274,14 @@ export default function GarageDashboard() {
                         : session.paymentMethod === 'wallet' ? 'bg-blue-500/20 text-blue-400'
                         : 'bg-orange-500/20 text-orange-400'
                       }`}>
-                        {session.paymentMethod === 'cash' ? '💵 نقدي'
-                          : session.paymentMethod === 'instapay' ? '📱 إنستاباي'
-                          : session.paymentMethod === 'wallet' ? '👝 محفظة'
-                          : '📲 محفظة كاش'}
+                        {session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستاباي' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 محفظة كاش'}
                       </span>
                     )}
                     {session.agreedPrice && session.agreedPrice !== garage.basePrice && (
                       <span className="text-[8px] text-amber-400 font-bold">({session.agreedPrice}ج/س)</span>
                     )}
                   </div>
-                  {time && (
-                    <span className="text-[9px] text-slate-600 font-mono">
-                      {time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  )}
+                  {time && <span className="text-[9px] text-slate-600 font-mono">{time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</span>}
                 </div>
               </div>
             );
