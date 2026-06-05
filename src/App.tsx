@@ -21,7 +21,6 @@ import InstallPWA from './components/InstallPWA';
 import LastSessionScreen from './components/LastSessionScreen';
 import ChatScreen from './components/ChatScreen';
 
-// ✅ الشاشات المسموح بيها فقط
 const VALID_SCREENS = [
   'splash',
   'list',
@@ -32,6 +31,9 @@ const VALID_SCREENS = [
   'lastSession',
   'chat',
 ] as const;
+
+// ✅ الرابط السري للأدمن - غيّره لأي كلمة تحبها
+const ADMIN_SECRET_CODE = 'admin2025x';
 
 export default function App() {
   const {
@@ -57,9 +59,33 @@ export default function App() {
   const sessionEndToastShown = useRef(false);
   const sessionTransitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ✅ حماية الشاشة من القيم الغير صالحة
+  // ✅ التحقق من رابط الأدمن السري
+  const [adminAccess, setAdminAccess] = useState(false);
+
+  useEffect(() => {
+    // ✅ الطريقة 1: رابط سري مثل ?admin=admin2025x
+    const params = new URLSearchParams(window.location.search);
+    const adminParam = params.get('admin');
+
+    if (adminParam === ADMIN_SECRET_CODE) {
+      setAdminAccess(true);
+      // ✅ حفظ في localStorage عشان ميحتاجش يكتب الرابط كل مرة
+      localStorage.setItem('adminAccess', 'true');
+    }
+
+    // ✅ الطريقة 2: رابط مباشر مثل /admin
+    if (window.location.pathname === '/admin' || window.location.hash === '#admin') {
+      setAdminAccess(true);
+      localStorage.setItem('adminAccess', 'true');
+    }
+
+    // ✅ لو عنده صلاحية سابقة
+    if (localStorage.getItem('adminAccess') === 'true') {
+      setAdminAccess(true);
+    }
+  }, []);
+
   const safeScreen = useMemo(() => {
-    // لو الشاشة مش موجودة في القائمة المسموح بيها
     if (!VALID_SCREENS.includes(screen as any)) {
       console.warn('⚠️ شاشة غير صالحة:', screen, '→ تحويل لـ list');
       return currentUser ? 'list' : 'splash';
@@ -67,7 +93,6 @@ export default function App() {
     return screen;
   }, [screen, currentUser]);
 
-  // ✅ لو الشاشة اتغيرت لقيمة غير صالحة - صلّحها
   useEffect(() => {
     if (!dataLoaded) return;
     if (view !== 'user') return;
@@ -77,10 +102,8 @@ export default function App() {
     }
   }, [safeScreen, screen, setScreen, dataLoaded, view]);
 
-  // ✅ أول تحميل
   useEffect(() => {
     const init = async () => {
-      // ✅ امسح الشاشات اللي ممكن تسبب مشاكل
       const savedScreen = localStorage.getItem('appScreen');
       if (
         savedScreen === 'session' ||
@@ -100,7 +123,6 @@ export default function App() {
     init();
   }, []);
 
-  // ✅ بعد أول تحميل - استرجع الشاشة الصحيحة
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser) return;
@@ -180,7 +202,6 @@ export default function App() {
     }
   }, [dataLoaded]);
 
-  // ─── مراقبة حالة العميل ───────────────────────────────────────────────────
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser || view !== 'user') return;
@@ -199,7 +220,6 @@ export default function App() {
         c.status === 'coming'
     );
 
-    // ─── 1) لو في جلسة نشطة ───────────────────────────────────────────────
     if (myActiveSession) {
       noSessionCountRef.current = 0;
       lastActiveTimeRef.current = Date.now();
@@ -226,7 +246,6 @@ export default function App() {
       return;
     }
 
-    // ─── 2) مفيش جلسة نشطة ────────────────────────────────────────────────
     if (prevActiveSessionRef.current) {
       noSessionCountRef.current += 1;
 
@@ -305,7 +324,6 @@ export default function App() {
       }, 3000);
     }
 
-    // ─── 3) لو في شاشة التوجيه ومفيش incoming ────────────────────────────
     if (!myActiveSession && safeScreen === 'navigation' && !myIncoming) {
       const timeout = setTimeout(() => {
         const freshState = useStore.getState();
@@ -345,7 +363,6 @@ export default function App() {
     setSelectedGarageId,
   ]);
 
-  // ✅ cleanup عند unmount
   useEffect(() => {
     return () => {
       if (sessionTransitionTimer.current) {
@@ -360,26 +377,31 @@ export default function App() {
         className="max-w-md mx-auto h-dvh bg-slate-950 relative flex flex-col overflow-hidden"
         style={{ fontFamily: "'Cairo', sans-serif" }}
       >
-        {/* View Switcher */}
+        {/* ✅ أزرار التبديل - حريف وجراج فقط */}
+        {/* زر الأدمن يظهر فقط لو عنده صلاحية */}
         <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-black/70 p-0.5 rounded-full backdrop-blur-md border border-white/10">
           {[
-            { id: 'user' as const, label: 'حريف' },
-            { id: 'garage' as const, label: 'جراج' },
-            { id: 'admin' as const, label: 'أدمن' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setView(tab.id)}
-              className={cn(
-                'px-3 py-1.5 rounded-full text-[10px] font-black transition-all',
-                view === tab.id
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-400'
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
+            { id: 'user' as const, label: 'حريف', show: true },
+            { id: 'garage' as const, label: 'جراج', show: true },
+            { id: 'admin' as const, label: 'أدمن', show: adminAccess },
+          ]
+            .filter((tab) => tab.show)
+            .map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setView(tab.id)}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-[10px] font-black transition-all',
+                  view === tab.id
+                    ? tab.id === 'admin'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-blue-600 text-white'
+                    : 'text-slate-400'
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
         </div>
 
         {/* Main Content */}
@@ -391,7 +413,7 @@ export default function App() {
                 جاري تحميل البيانات...
               </p>
             </div>
-          ) : view === 'admin' ? (
+          ) : view === 'admin' && adminAccess ? (
             <AdminDashboard />
           ) : view === 'garage' ? (
             currentGarageId ? (
