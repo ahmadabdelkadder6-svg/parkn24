@@ -1,5 +1,4 @@
 // ─── VAPID Public Key ─────────────────────────────────────────────────────────
-// ✅ حط الـ Public Key بتاعك هنا
 const VAPID_PUBLIC_KEY =
   'BOuP_HFhSSjHMsjf4KZJYLaFTv3RdI20Ux3an5LriaTBUN0iGlW-38zYGvROp26k7jcqhC_XpUotxzLR1IjQTI4';
 
@@ -32,7 +31,6 @@ export const registerServiceWorker =
 
       console.log('✅ Service Worker registered:', registration.scope);
 
-      // ✅ تحديث تلقائي لو في نسخة جديدة
       registration.addEventListener('updatefound', () => {
         const newWorker = registration.installing;
         if (newWorker) {
@@ -55,32 +53,27 @@ export const registerServiceWorker =
   };
 
 // ─── الاشتراك في Push Notifications ──────────────────────────────────────────
+// ✅ كل جهاز يتسجل للجراج الواحد بتاعه بس
 export const subscribeToPush = async (
-  garageId: string,
-  allGarageIds: string[]
+  garageId: string
 ): Promise<boolean> => {
   try {
-    // 1) تأكد إن المتصفح يدعم Push
     if (!('PushManager' in window)) {
       console.warn('❌ Push Notifications غير مدعومة');
       return false;
     }
 
-    // 2) تسجيل SW
     const registration = await registerServiceWorker();
     if (!registration) return false;
 
-    // 3) انتظر SW يكون جاهز
     await navigator.serviceWorker.ready;
 
-    // 4) طلب إذن الإشعارات
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') {
       console.warn('❌ المستخدم رفض إذن الإشعارات');
       return false;
     }
 
-    // 5) جلب الـ subscription الحالية أو عمل واحدة جديدة
     let subscription = await registration.pushManager.getSubscription();
 
     if (!subscription) {
@@ -93,7 +86,6 @@ export const subscribeToPush = async (
       console.log('✅ Push subscription already exists');
     }
 
-    // 6) إرسال الـ subscription للسيرفر
     const sub = subscription.toJSON();
 
     const response = await fetch(
@@ -113,7 +105,6 @@ export const subscribeToPush = async (
             },
           },
           garageId,
-          allGarageIds,
         }),
       }
     );
@@ -124,7 +115,7 @@ export const subscribeToPush = async (
       return false;
     }
 
-    console.log('✅ Push subscription saved to server');
+    console.log('✅ Push subscription saved for garage:', garageId);
     return true;
   } catch (err) {
     console.error('❌ خطأ في الاشتراك في Push:', err);
@@ -133,6 +124,7 @@ export const subscribeToPush = async (
 };
 
 // ─── إرسال تنبيه "سيارة في الطريق" ──────────────────────────────────────────
+// ✅ يتبعت بعد انتهاء فترة الإلغاء (من NavigationScreen)
 export const sendCarComingPush = async ({
   garageId,
   carPlate,
@@ -168,6 +160,7 @@ export const sendCarComingPush = async ({
       },
 
       // ✅ تنبيه 2: مجدول قبل الوصول بدقيقتين
+      // لو estimatedMinutes = 0 (عند الوصول) → مش بنجدول تنبيه ثاني
       scheduled:
         estimatedMinutes > 2
           ? {
@@ -208,6 +201,36 @@ export const sendCarComingPush = async ({
     console.log('✅ Push notification sent for:', carPlate);
   } catch (err) {
     console.error('❌ خطأ في إرسال Push:', err);
+  }
+};
+
+// ─── ✅ إلغاء التنبيه المجدول (لما العميل يلغي الحجز) ────────────────────────
+export const cancelScheduledPush = async (
+  garageId: string,
+  carPlate: string
+): Promise<void> => {
+  try {
+    const response = await fetch(
+      `${SUPABASE_URL}/functions/v1/cancel-scheduled-alert`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ garageId, carPlate }),
+      }
+    );
+
+    if (!response.ok) {
+      const err = await response.text();
+      console.error('❌ فشل إلغاء التنبيه المجدول:', err);
+      return;
+    }
+
+    console.log('✅ Scheduled alert cancelled for:', carPlate);
+  } catch (err) {
+    console.error('❌ خطأ في إلغاء التنبيه المجدول:', err);
   }
 };
 

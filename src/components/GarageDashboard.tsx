@@ -315,26 +315,26 @@ export default function GarageDashboard() {
     initAll();
   }, []);
 
-  // ─── ✅ تسجيل الجراج في Push Notifications ───────────────────────────────
-  useEffect(() => {
-    if (!currentGarageId || garages.length === 0) return;
-    if (pushSubscribedGarageRef.current === currentGarageId) return;
+// ─── ✅ تسجيل الجراج في Push Notifications ───────────────────────────────
+useEffect(() => {
+  if (!currentGarageId || garages.length === 0) return;
+  if (pushSubscribedGarageRef.current === currentGarageId) return;
 
-    const setupGaragePush = async () => {
-      try {
-        const garageIds = garages.map((g) => g.id);
-        const success = await subscribeToPush(currentGarageId, garageIds);
-        if (success) {
-          pushSubscribedGarageRef.current = currentGarageId;
-          console.log('✅ تم تسجيل الجراج في Push:', currentGarageId);
-        }
-      } catch (err) {
-        console.error('❌ خطأ في تسجيل Push للجراج:', err);
+  const setupGaragePush = async () => {
+    try {
+      // ✅ تسجيل الجراج الحالي فقط
+      const success = await subscribeToPush(currentGarageId);
+      if (success) {
+        pushSubscribedGarageRef.current = currentGarageId;
+        console.log('✅ تم تسجيل الجراج في Push:', currentGarageId);
       }
-    };
+    } catch (err) {
+      console.error('❌ خطأ في تسجيل Push للجراج:', err);
+    }
+  };
 
-    setupGaragePush();
-  }, [currentGarageId, garages]);
+  setupGaragePush();
+}, [currentGarageId, garages]);
 
   // ─── تنبيه 1: مراقبة السيارات الجديدة القادمة ────────────────────────────
 useEffect(() => {

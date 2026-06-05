@@ -15,30 +15,48 @@ serve(async () => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const { data: alerts } = await supabase
+    const { data: alerts, error: alertsError } = await supabase
       .from('scheduled_push_alerts')
       .select('*')
       .eq('sent', false)
       .lte('send_at', new Date().toISOString())
       .limit(20);
 
-    if (!alerts?.length) {
-      return new Response(JSON.stringify({ message: 'No pending alerts' }));
+    if (alertsError) {
+      return new Response(
+        JSON.stringify({ error: String(alertsError.message || alertsError) }),
+        { status: 500 }
+      );
+    }
+
+    if (!alerts || alerts.length === 0) {
+      return new Response(
+        JSON.stringify({ message: 'No pending alerts' }),
+        { status: 200 }
+      );
     }
 
     for (const alert of alerts) {
-      const { data: subscriptions } = await supabase
+      const { data: subscriptions, error: subsError } = await supabase
         .from('push_subscriptions')
         .select('*')
-        .contains('all_garage_ids', [alert.garage_id]);
+        .eq('garage_id', alert.garage_id);
 
-      if (subscriptions?.length) {
+      if (subsError) {
+        console.error('❌ Subscription fetch error:', subsError);
+        continue;
+      }
+
+      if (subscriptions && subscriptions.length > 0) {
         for (const sub of subscriptions) {
           try {
             await webpush.sendNotification(
               {
                 endpoint: sub.endpoint,
-                keys: { p256dh: sub.p256dh, auth: sub.auth },
+                keys: {
+                  p256dh: sub.p256dh,
+                  auth: sub.auth,
+                },
               },
               JSON.stringify({
                 title: alert.title,
@@ -47,12 +65,16 @@ serve(async () => {
                 data: alert.data,
               })
             );
-          } catch (err: any) {
-            if (err?.statusCode === 410) {
+          } catch (err) {
+            console.error('❌ Push send error:', err);
+
+            const statusCode = (err as { statusCode?: number })?.statusCode;
+            if (statusCode === 410) {
               await supabase
                 .from('push_subscriptions')
                 .delete()
-                .eq('endpoint', sub.endpoint);
+                .eq('endpoint', sub.endpoint)
+                .eq('garage_id', alert.garage_id);
             }
           }
         }
@@ -65,7 +87,8 @@ serve(async () => {
     }
 
     return new Response(
-      JSON.stringify({ processed: alerts.length })
+      JSON.stringify({ processed: alerts.length }),
+      { status: 200 }
     );
   } catch (err) {
     return new Response(

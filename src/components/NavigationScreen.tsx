@@ -18,7 +18,7 @@ import {
   formatDuration,
 } from '../utils/distance';
 import toast from 'react-hot-toast';
-import { sendCarComingPush } from '../lib/pushManager';
+import { sendCarComingPush, cancelScheduledPush } from '../lib/pushManager';
 
 import 'leaflet/dist/leaflet.css';
 import {
@@ -86,7 +86,6 @@ export default function NavigationScreen() {
   } = useStore();
 
   const garage = garages.find((g) => g.id === selectedGarageId);
-
   const userPlateNav = (currentUser?.carPlate ?? '').trim().toUpperCase();
 
   const myIncomingCar = incomingCars.find(
@@ -111,10 +110,11 @@ export default function NavigationScreen() {
   const [cancelTimeLeft, setCancelTimeLeft] = useState(CANCEL_WINDOW_SECONDS);
   const [canCancel, setCanCancel] = useState(true);
   const [mapReady, setMapReady] = useState(false);
+  const [pushStatus, setPushStatus] = useState<'waiting' | 'sent' | 'cancelled'>('waiting');
   const navigatedToSessionRef = useRef(false);
   const isArrivingRef = useRef(false);
-  // ✅ منع إرسال Push أكثر من مرة لنفس الرحلة
   const pushSentRef = useRef(false);
+  const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ─── GPS ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -169,21 +169,40 @@ export default function NavigationScreen() {
     return () => window.clearInterval(interval);
   }, [myIncomingCar?.id]);
 
-  // ─── ✅ إرسال Push للجراج لما العميل يبدأ التوجه ─────────────────────────
+  // ─── ✅ إرسال Push بعد انتهاء فترة الإلغاء (32 ثانية) ────────────────────
   useEffect(() => {
     if (!myIncomingCar || !garage || pushSentRef.current) return;
 
-    const sendPush = async () => {
+    // ✅ إلغاء أي timer سابق
+    if (pushTimerRef.current) {
+      clearTimeout(pushTimerRef.current);
+    }
+
+    setPushStatus('waiting');
+
+    // ✅ انتظر انتهاء فترة الإلغاء + 2 ثانية أمان
+    pushTimerRef.current = setTimeout(async () => {
+      // ✅ تحقق إن العميل لسه في الطريق ولم يلغِ
+      const stillComing = useStore.getState().incomingCars.find(
+        (c) => c.id === myIncomingCar.id && c.status === 'coming'
+      );
+
+      if (!stillComing || pushSentRef.current) {
+        console.log('⏹️ العميل ألغى أو تم الإرسال بالفعل - لن يتم إرسال Push');
+        setPushStatus('cancelled');
+        return;
+      }
+
       try {
         pushSentRef.current = true;
 
-        const distance = calculateDistance(
+        const dist = calculateDistance(
           userPos.lat,
           userPos.lng,
           garage.lat,
           garage.lng
         );
-        const estimatedMinutes = distanceToMinutes(distance);
+        const estimatedMinutes = distanceToMinutes(dist);
 
         await sendCarComingPush({
           garageId: garage.id,
@@ -193,18 +212,25 @@ export default function NavigationScreen() {
           agreedPrice: myIncomingCar.agreedPrice,
         });
 
-        console.log('✅ Push sent to garage:', garage.id);
+        setPushStatus('sent');
+        console.log('✅ Push sent to garage after cancel window:', garage.id);
       } catch (err) {
         console.error('❌ خطأ في إرسال Push للجراج:', err);
-        // إعادة المحاولة مرة واحدة
         pushSentRef.current = false;
+        setPushStatus('waiting');
+      }
+    }, (CANCEL_WINDOW_SECONDS + 2) * 1000);
+
+    // ✅ لو العميل خرج من الشاشة → نلغي الـ timer
+    return () => {
+      if (pushTimerRef.current) {
+        clearTimeout(pushTimerRef.current);
+        pushTimerRef.current = null;
       }
     };
-
-    sendPush();
   }, [myIncomingCar?.id, garage?.id]);
 
-  // ─── الانتقال التلقائي لشاشة الجلسة لو الجلسة بدأت من الجراج ─────────────
+  // ─── الانتقال التلقائي لشاشة الجلسة ─────────────────────────────────────
   useEffect(() => {
     if (!myActiveSession) return;
     if (navigatedToSessionRef.current) return;
@@ -275,8 +301,23 @@ export default function NavigationScreen() {
   };
 
   // ─── إلغاء الحجز ──────────────────────────────────────────────────────────
-  const handleCancelBooking = () => {
+  const handleCancelBooking = async () => {
     if (!currentUser || !myIncomingCar) return;
+
+    // ✅ إلغاء الـ Push timer فوراً قبل ما يتبعت
+    if (pushTimerRef.current) {
+      clearTimeout(pushTimerRef.current);
+      pushTimerRef.current = null;
+    }
+
+    // ✅ منع إرسال Push
+    pushSentRef.current = true;
+    setPushStatus('cancelled');
+
+    // ✅ لو الـ Push اتبعت بالفعل → إلغاء التنبيه المجدول
+    if (pushStatus === 'sent') {
+      await cancelScheduledPush(garage.id, myIncomingCar.carPlate);
+    }
 
     const activeOffer = offers.find(
       (o) =>
@@ -296,13 +337,38 @@ export default function NavigationScreen() {
     if (isArrivingRef.current) return;
     isArrivingRef.current = true;
 
+    // ✅ لو الـ Push لسه ما اتبعتش → ابعته فوراً بدون انتظار
+    if (!pushSentRef.current && myIncomingCar && garage) {
+      if (pushTimerRef.current) {
+        clearTimeout(pushTimerRef.current);
+        pushTimerRef.current = null;
+      }
+
+      try {
+        pushSentRef.current = true;
+        const dist = calculateDistance(
+          userPos.lat, userPos.lng,
+          garage.lat, garage.lng
+        );
+        await sendCarComingPush({
+          garageId: garage.id,
+          carPlate: myIncomingCar.carPlate,
+          estimatedMinutes: 0,
+          customerName: currentUser?.name,
+          agreedPrice: myIncomingCar.agreedPrice,
+        });
+        setPushStatus('sent');
+      } catch (err) {
+        console.error('❌ خطأ في إرسال Push عند الوصول:', err);
+      }
+    }
+
     try {
       if (!myIncomingCar || !garage) {
         setScreen('session');
         return;
       }
 
-      // ✅ تحقق أولاً - لو الجلسة بدأت بالفعل
       const alreadyActive = useStore.getState().sessions.find(
         (s) =>
           s.carPlate === myIncomingCar.carPlate &&
@@ -316,7 +382,6 @@ export default function NavigationScreen() {
         return;
       }
 
-      // إلغاء العرض
       const relatedOffer = offers.find(
         (o) =>
           o.carPlate === myIncomingCar.carPlate &&
@@ -324,7 +389,6 @@ export default function NavigationScreen() {
       );
       if (relatedOffer) cancelOffer(relatedOffer.id);
 
-      // بدء الجلسة
       await addSession({
         garageId: garage.id,
         carPlate: myIncomingCar.carPlate,
@@ -494,14 +558,40 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* ✅ مؤشر إرسال التنبيه للجراج */}
+        {/* ✅ مؤشر حالة Push للجراج */}
         {myIncomingCar && (
-          <div className="bg-cyan-600/10 border border-cyan-500/20 rounded-xl p-3 flex items-center gap-2 shrink-0">
-            <span className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse shrink-0" />
-            <span className="text-[10px] font-bold text-cyan-400">
-              {pushSentRef.current
+          <div
+            className={`rounded-xl p-3 flex items-center gap-2 shrink-0 border ${
+              pushStatus === 'sent'
+                ? 'bg-emerald-600/10 border-emerald-500/20'
+                : pushStatus === 'cancelled'
+                ? 'bg-red-600/10 border-red-500/20'
+                : 'bg-cyan-600/10 border-cyan-500/20'
+            }`}
+          >
+            <span
+              className={`w-2 h-2 rounded-full shrink-0 ${
+                pushStatus === 'sent'
+                  ? 'bg-emerald-500'
+                  : pushStatus === 'cancelled'
+                  ? 'bg-red-500'
+                  : 'bg-cyan-500 animate-pulse'
+              }`}
+            />
+            <span
+              className={`text-[10px] font-bold ${
+                pushStatus === 'sent'
+                  ? 'text-emerald-400'
+                  : pushStatus === 'cancelled'
+                  ? 'text-red-400'
+                  : 'text-cyan-400'
+              }`}
+            >
+              {pushStatus === 'sent'
                 ? '✅ تم إشعار الجراج بقدومك'
-                : '📤 جاري إشعار الجراج...'}
+                : pushStatus === 'cancelled'
+                ? '❌ تم إلغاء الإشعار'
+                : `⏳ سيتم إشعار الجراج بعد ${cancelTimeLeft} ثانية`}
             </span>
           </div>
         )}

@@ -12,24 +12,43 @@ serve(async (req) => {
   }
 
   try {
-    const { subscription, garageId, allGarageIds } = await req.json();
+    const { subscription, garageId } = await req.json();
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    await supabase.from('push_subscriptions').upsert(
-      {
+    // ✅ كل سجل = جهاز واحد + جراج واحد
+    // لو نفس الجهاز اتسجل لجراج تاني قبل كده → يضيف سجل جديد
+    // لو نفس الجهاز ونفس الجراج → يحدّث
+    const { data: existing } = await supabase
+      .from('push_subscriptions')
+      .select('id')
+      .eq('endpoint', subscription.endpoint)
+      .eq('garage_id', garageId)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      // ✅ تحديث
+      await supabase
+        .from('push_subscriptions')
+        .update({
+          p256dh: subscription.keys.p256dh,
+          auth: subscription.keys.auth,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing[0].id);
+    } else {
+      // ✅ إضافة جديدة
+      await supabase.from('push_subscriptions').insert({
         garage_id: garageId,
-        all_garage_ids: allGarageIds,
         endpoint: subscription.endpoint,
         p256dh: subscription.keys.p256dh,
         auth: subscription.keys.auth,
         updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'endpoint' }
-    );
+      });
+    }
 
     return new Response(
       JSON.stringify({ success: true }),

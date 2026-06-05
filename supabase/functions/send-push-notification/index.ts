@@ -26,10 +26,11 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const { data: subscriptions } = await supabase
-      .from('push_subscriptions')
-      .select('*')
-      .contains('all_garage_ids', [garageId]);
+// ✅ جلب subscriptions للجراج المحدد فقط
+const { data: subscriptions } = await supabase
+  .from('push_subscriptions')
+  .select('*')
+  .eq('garage_id', garageId);
 
     if (immediate && subscriptions?.length) {
       for (const sub of subscriptions) {
