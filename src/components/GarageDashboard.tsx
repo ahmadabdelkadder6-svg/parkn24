@@ -24,7 +24,8 @@ import { useStore, pausePolling } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
-
+import { subscribeToPush } from '../lib/pushManager';
+import InstallPWABanner from './InstallPWABanner';
 const UNDO_TIMEOUT_SECONDS = 30;
 
 interface UndoableSession {
@@ -118,25 +119,15 @@ const setupAudioOnInteraction = () => {
 
 setupAudioOnInteraction();
 
-// ─── دوال الصوت والاهتزاز ──────────────────────────────────────────────────
-
-/** اهتزاز قوي وواضح */
+// ─── دوال الصوت والاهتزاز ────────────────────────────────────────────────────
 const vibrateDevice = () => {
   try {
     if ('vibrate' in navigator) {
-      navigator.vibrate([
-        500, 150,
-        500, 150,
-        700, 200,
-        700, 150,
-        500, 150,
-        900,
-      ]);
+      navigator.vibrate([500, 150, 500, 150, 700, 200, 700, 150, 500, 150, 900]);
     }
   } catch {}
 };
 
-/** إشعار نظام */
 const sendNotification = (title: string, body: string, tag: string) => {
   try {
     if ('Notification' in window && Notification.permission === 'granted') {
@@ -154,9 +145,7 @@ const sendNotification = (title: string, body: string, tag: string) => {
   } catch {}
 };
 
-// ──────────────────────────────────────────────────────────────────────────────
-// 🔔 تنبيه 1: عميل بدأ التوجه للجراج (أول مرة يظهر في القائمة)
-// ──────────────────────────────────────────────────────────────────────────────
+// ─── تنبيه 1: عميل بدأ التوجه للجراج ────────────────────────────────────────
 const playFirstAlert = async () => {
   let ctx = getAudioCtx();
   if (!ctx || !audioCtxReady) ctx = await initAudioContext();
@@ -196,21 +185,15 @@ const fireNewCarAlert = (
 ) => {
   playFirstAlert();
   vibrateDevice();
-
   const body = [
     `🚗 ${carPlate}`,
     customerName ? `👤 ${customerName}` : '',
     agreedPrice ? `💰 ${agreedPrice} ج.م/ساعة` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
-
+  ].filter(Boolean).join('\n');
   sendNotification('🚨 سيارة في الطريق!', body, `incoming-${carPlate}`);
 };
 
-// ──────────────────────────────────────────────────────────────────────────────
-// 🔔 تنبيه 2: العميل اقترب من الجراج (باقي دقيقتين أو أقل)
-// ──────────────────────────────────────────────────────────────────────────────
+// ─── تنبيه 2: العميل اقترب (باقي دقيقتين) ───────────────────────────────────
 const playApproachingAlert = async () => {
   let ctx = getAudioCtx();
   if (!ctx || !audioCtxReady) ctx = await initAudioContext();
@@ -288,12 +271,12 @@ export default function GarageDashboard() {
 
   const processedCarsRef = useRef<Set<string>>(new Set());
   const isEndingSessionRef = useRef(false);
-
-  // ─── Refs للتنبيهات ───────────────────────────────────────────────────────
   const prevIncomingIdsRef = useRef<Set<string>>(new Set());
   const prevOfferIdsRef = useRef<Set<string>>(new Set());
   const approachAlertedRef = useRef<Set<string>>(new Set());
   const audioInitializedRef = useRef(false);
+  // ✅ منع إعادة الاشتراك في Push لنفس الجراج
+  const pushSubscribedGarageRef = useRef<string | null>(null);
 
   const [undoableSessions, setUndoableSessions] = useState<UndoableSession[]>([]);
   const [newCarPlate, setNewCarPlate] = useState('');
@@ -318,7 +301,7 @@ export default function GarageDashboard() {
   const [tick, setTick] = useState(0);
   const [garageDailyStats, setGarageDailyStats] = useState<DailyStat[]>([]);
 
-  // ─── تهيئة الصوت + طلب إذن الإشعارات فور فتح الجراج ────────────────────
+  // ─── تهيئة الصوت + طلب إذن الإشعارات ───────────────────────────────────
   useEffect(() => {
     const initAll = async () => {
       if ('Notification' in window && Notification.permission === 'default') {
@@ -332,16 +315,35 @@ export default function GarageDashboard() {
     initAll();
   }, []);
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // 🔔 تنبيه 1: مراقبة السيارات الجديدة القادمة
-  // يشتغل مرة واحدة لما عربية جديدة تظهر في القائمة
-  // ──────────────────────────────────────────────────────────────────────────
+  // ─── ✅ تسجيل الجراج في Push Notifications ───────────────────────────────
   useEffect(() => {
-    const currentIds = new Set(carsOnTheWay.map((c) => c.id));
+    if (!currentGarageId || garages.length === 0) return;
+    if (pushSubscribedGarageRef.current === currentGarageId) return;
 
-    carsOnTheWay.forEach((car) => {
-      if (!prevIncomingIdsRef.current.has(car.id)) {
-        // ✅ تنبيه أول: عميل بدأ التوجه للجراج
+    const setupGaragePush = async () => {
+      try {
+        const garageIds = garages.map((g) => g.id);
+        const success = await subscribeToPush(currentGarageId, garageIds);
+        if (success) {
+          pushSubscribedGarageRef.current = currentGarageId;
+          console.log('✅ تم تسجيل الجراج في Push:', currentGarageId);
+        }
+      } catch (err) {
+        console.error('❌ خطأ في تسجيل Push للجراج:', err);
+      }
+    };
+
+    setupGaragePush();
+  }, [currentGarageId, garages]);
+
+  // ─── تنبيه 1: مراقبة السيارات الجديدة القادمة ────────────────────────────
+useEffect(() => {
+  const currentIds = new Set(carsOnTheWay.map((c) => c.id));
+
+  carsOnTheWay.forEach((car) => {
+    if (!prevIncomingIdsRef.current.has(car.id)) {
+      // ✅ شغّل التنبيه المحلي فقط لو التطبيق مفتوح قدام المستخدم
+      if (!document.hidden) {
         fireNewCarAlert(car.carPlate, car.customerName, car.agreedPrice);
 
         toast(
@@ -359,38 +361,39 @@ export default function GarageDashboard() {
           }
         );
       }
-    });
+    }
+  });
 
-    // تنظيف السيارات اللي اتشالت
-    prevIncomingIdsRef.current.forEach((prevId) => {
-      if (!currentIds.has(prevId)) {
-        approachAlertedRef.current.delete(prevId);
-        try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {}
-      }
-    });
+  prevIncomingIdsRef.current.forEach((prevId) => {
+    if (!currentIds.has(prevId)) {
+      approachAlertedRef.current.delete(prevId);
+      try {
+        if ('vibrate' in navigator) navigator.vibrate(0);
+      } catch {}
+    }
+  });
 
-    prevIncomingIdsRef.current = currentIds;
-  }, [carsOnTheWay]);
+  prevIncomingIdsRef.current = currentIds;
+}, [carsOnTheWay]);
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // 🔔 تنبيه 2: مراقبة اقتراب السيارات (باقي دقيقتين أو أقل)
-  // بيتشيك كل ثانية مع الـ tick
-  // ──────────────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    carsOnTheWay.forEach((car) => {
-      // لو اتنبهنا عليها قبل كده → نتجاهلها
-      if (approachAlertedRef.current.has(car.id)) return;
+  // ─── تنبيه 2: مراقبة اقتراب السيارات (باقي دقيقتين) ─────────────────────
+useEffect(() => {
+  carsOnTheWay.forEach((car) => {
+    if (approachAlertedRef.current.has(car.id)) return;
 
-      const start = typeof car.startTime === 'number'
+    const start =
+      typeof car.startTime === 'number'
         ? car.startTime
         : new Date(car.startTime).getTime();
-      const elapsedMinutes = (Date.now() - start) / 60000;
-      const remainingMinutes = Math.max(0, car.estimatedArrival - elapsedMinutes);
 
-      // ✅ لما يكون باقي دقيقتين أو أقل → تنبيه الاقتراب
-      if (remainingMinutes <= 2 && remainingMinutes >= 0 && car.estimatedArrival > 2) {
-        approachAlertedRef.current.add(car.id);
+    const elapsedMinutes = (Date.now() - start) / 60000;
+    const remainingMinutes = Math.max(0, car.estimatedArrival - elapsedMinutes);
 
+    if (remainingMinutes <= 2 && remainingMinutes >= 0 && car.estimatedArrival > 2) {
+      approachAlertedRef.current.add(car.id);
+
+      // ✅ شغّل التنبيه المحلي فقط لو التطبيق مفتوح
+      if (!document.hidden) {
         fireApproachingAlert(car.carPlate);
 
         toast(
@@ -408,10 +411,11 @@ export default function GarageDashboard() {
           }
         );
       }
-    });
-  }, [carsOnTheWay, tick]);
+    }
+  });
+}, [carsOnTheWay, tick]);
 
-  // ─── مراقبة العروض الجديدة (toast فقط بدون صوت) ──────────────────────────
+  // ─── مراقبة العروض الجديدة (toast فقط) ──────────────────────────────────
   useEffect(() => {
     garageOffers.forEach((offer) => {
       if (!prevOfferIdsRef.current.has(offer.id)) {
@@ -511,7 +515,9 @@ export default function GarageDashboard() {
 
   const getActiveCost = useCallback(
     (session: (typeof activeSessions)[0]) => {
-      const startTime = typeof session.startTime === 'number' ? session.startTime : new Date(session.startTime).getTime();
+      const startTime = typeof session.startTime === 'number'
+        ? session.startTime
+        : new Date(session.startTime).getTime();
       const elapsed = Math.max(0, Math.floor((Date.now() - startTime) / 1000));
       const rate = Number(session.agreedPrice ?? garage?.basePrice ?? 0);
       if (isNaN(elapsed) || elapsed <= 0) return 0;
@@ -541,11 +547,15 @@ export default function GarageDashboard() {
     const instapay = hasStatsForDate ? paymentStatsFromDB.instapay : confirmed.filter((s) => s.paymentMethod === 'instapay').reduce((a, s) => a + getSessionRevenue(s), 0);
     const wallet = hasStatsForDate ? paymentStatsFromDB.wallet : confirmed.filter((s) => s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
     const cashwallet = hasStatsForDate ? paymentStatsFromDB.cashwallet : confirmed.filter((s) => s.paymentMethod === 'cashwallet').reduce((a, s) => a + getSessionRevenue(s), 0);
-    const total = hasStatsForDate ? garageDailyStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0) : cash + instapay + wallet + cashwallet;
+    const total = hasStatsForDate
+      ? garageDailyStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0)
+      : cash + instapay + wallet + cashwallet;
 
     const manual = confirmed.filter((s) => s.source === 'manual');
     const app = confirmed.filter((s) => s.source === 'app');
-    const pendingRevenue = hasStatsForDate ? pendingRevenueFromStats : unconfirmed.reduce((a, s) => a + getSessionRevenue(s), 0);
+    const pendingRevenue = hasStatsForDate
+      ? pendingRevenueFromStats
+      : unconfirmed.reduce((a, s) => a + getSessionRevenue(s), 0);
 
     return {
       cash, instapay, wallet, cashwallet, total,
@@ -568,7 +578,9 @@ export default function GarageDashboard() {
         (s) => s.carPlate === undoable.carPlate && s.source === 'manual' && s.status === 'active' && Math.abs(s.startTime - undoable.addedAt) < 5000
       );
       if (matchingSession) removeSession(matchingSession.id);
-      setUndoableSessions((prev) => prev.filter((u) => u.sessionId !== undoable.sessionId && u.localId !== undoable.localId));
+      setUndoableSessions((prev) =>
+        prev.filter((u) => u.sessionId !== undoable.sessionId && u.localId !== undoable.localId)
+      );
       toast('تم إلغاء إضافة السيارة ' + undoable.carPlate + ' ↩️', {
         icon: '🔙',
         style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' },
@@ -618,7 +630,10 @@ export default function GarageDashboard() {
       garageId: garage.id, carPlate, startTime: addedAt, status: 'active', source: 'manual', agreedPrice: price,
     });
     const finalSessionId = sessionId || `fallback-${addedAt}`;
-    setUndoableSessions((prev) => [...prev, { sessionId: finalSessionId, localId: finalSessionId, carPlate, price, addedAt }]);
+    setUndoableSessions((prev) => [
+      ...prev,
+      { sessionId: finalSessionId, localId: finalSessionId, carPlate, price, addedAt },
+    ]);
     toast.success(`تم إضافة السيارة بسعر ${price} ج.م/ساعة`);
     setNewCarPlate('');
     setNewCarPrice(garage.basePrice);
@@ -649,11 +664,17 @@ export default function GarageDashboard() {
       const sessionData = useStore.getState().sessions.find((s) => s.id === sessionCopy.id);
       const isAppSession = sessionData?.source === 'app';
       setConfirmSession(null);
-      setUndoableSessions((prev) => prev.filter((u) => u.sessionId !== sessionCopy.id && u.localId !== sessionCopy.id));
+      setUndoableSessions((prev) =>
+        prev.filter((u) => u.sessionId !== sessionCopy.id && u.localId !== sessionCopy.id)
+      );
       await endSession(sessionCopy.id, sessionCopy.cost, paymentCopy);
       if (isAppSession) await new Promise((resolve) => setTimeout(resolve, 5000));
       await fetchGarageDailyStats();
-      const methodLabel = paymentCopy === 'cash' ? 'نقدي 💵' : paymentCopy === 'instapay' ? 'إنستاباي 📱' : paymentCopy === 'wallet' ? 'خصم من المحفظة 👝' : 'تحويل محفظة كاش 📲';
+      const methodLabel =
+        paymentCopy === 'cash' ? 'نقدي 💵'
+        : paymentCopy === 'instapay' ? 'إنستاباي 📱'
+        : paymentCopy === 'wallet' ? 'خصم من المحفظة 👝'
+        : 'تحويل محفظة كاش 📲';
       toast.success(`تم تحصيل ${sessionCopy.cost} ج.م (${methodLabel}) ✅`);
     } finally {
       setTimeout(() => { isEndingSessionRef.current = false; }, 2000);
@@ -661,7 +682,11 @@ export default function GarageDashboard() {
   };
 
   const handleSaveSettings = () => {
-    updateGarage(garage.id, { basePrice: editPrice, availableSpots: Math.min(editSpots, editCapacity), capacity: editCapacity });
+    updateGarage(garage.id, {
+      basePrice: editPrice,
+      availableSpots: Math.min(editSpots, editCapacity),
+      capacity: editCapacity,
+    });
     toast.success('تم تحديث الإعدادات بنجاح! ⚡');
     setShowSettings(false);
   };
@@ -685,24 +710,37 @@ export default function GarageDashboard() {
       if (existingLocal) {
         await removeIncomingCar(carId);
         await supabase.from('incoming_cars').delete().eq('car_plate', normalizedPlate).eq('garage_id', garage.id);
-        toast('الجلسة شغالة بالفعل ✅', { icon: '🚗', style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' } });
+        toast('الجلسة شغالة بالفعل ✅', {
+          icon: '🚗',
+          style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' },
+        });
         return;
       }
       try {
-        const { data: dbCheck } = await supabase.from('sessions').select('id').eq('car_plate', normalizedPlate).eq('status', 'active').limit(1);
+        const { data: dbCheck } = await supabase.from('sessions').select('id')
+          .eq('car_plate', normalizedPlate).eq('status', 'active').limit(1);
         if (dbCheck && dbCheck.length > 0) {
           await removeIncomingCar(carId);
           await supabase.from('incoming_cars').delete().eq('car_plate', normalizedPlate).eq('garage_id', garage.id);
           await fetchAll();
-          toast('الجلسة شغالة بالفعل ✅', { icon: '🚗', style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' } });
+          toast('الجلسة شغالة بالفعل ✅', {
+            icon: '🚗',
+            style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' },
+          });
           return;
         }
       } catch (err) { console.error('خطأ في التحقق من DB:', err); }
+
       const relatedOffer = offers.find(
-        (o) => o.carPlate.trim().toUpperCase() === normalizedPlate && (o.status === 'pending' || o.status === 'accepted')
+        (o) => o.carPlate.trim().toUpperCase() === normalizedPlate &&
+          (o.status === 'pending' || o.status === 'accepted')
       );
       if (relatedOffer) cancelOffer(relatedOffer.id);
-      await addSession({ garageId: garage.id, carPlate: normalizedPlate, startTime: Date.now(), status: 'active', source: 'app', agreedPrice });
+
+      await addSession({
+        garageId: garage.id, carPlate: normalizedPlate,
+        startTime: Date.now(), status: 'active', source: 'app', agreedPrice,
+      });
       await removeIncomingCar(carId);
       await supabase.from('incoming_cars').delete().eq('car_plate', normalizedPlate).eq('garage_id', garage.id);
       toast.success(`بدأ حساب السيارة ${carPlate} 🚗`);
@@ -738,7 +776,7 @@ export default function GarageDashboard() {
         </button>
       </div>
 
-      {/* ✅ مؤشر حالة التنبيهات - مفعّل دائماً */}
+      {/* ✅ مؤشر حالة التنبيهات */}
       <div className="mb-4 bg-emerald-600/10 border border-emerald-500/20 rounded-2xl p-3 flex items-center justify-between">
         <button
           onClick={() => {
@@ -761,6 +799,8 @@ export default function GarageDashboard() {
           <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
         </div>
       </div>
+{/* ✅ بنر تثبيت PWA - يختفي تلقائياً بعد التثبيت */}
+<InstallPWABanner />
 
       {/* Settings Modal */}
       {showSettings && (
@@ -770,7 +810,6 @@ export default function GarageDashboard() {
               <button onClick={() => setShowSettings(false)} className="text-slate-500 hover:text-white transition-colors text-lg">✕</button>
               <h3 className="text-lg font-black text-white flex items-center gap-2"><Settings size={18} className="text-blue-400" />إعدادات الجراج</h3>
             </div>
-
             <div className="mb-6">
               <label className="text-xs font-black text-slate-400 mb-2 block text-right">💰 سعر الساعة (ج.م)</label>
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
@@ -789,7 +828,6 @@ export default function GarageDashboard() {
                 </div>
               </div>
             </div>
-
             <div className="mb-6">
               <label className="text-xs font-black text-slate-400 mb-2 block text-right">🚗 الأماكن المتاحة حالياً</label>
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
@@ -806,7 +844,6 @@ export default function GarageDashboard() {
                 </div>
               </div>
             </div>
-
             <div className="mb-6">
               <label className="text-xs font-black text-slate-400 mb-2 block text-right">🏢 السعة الكلية للجراج</label>
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
@@ -820,7 +857,6 @@ export default function GarageDashboard() {
                 </div>
               </div>
             </div>
-
             <button onClick={handleSaveSettings} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xl shadow-emerald-900/30">
               <Save size={18} /> حفظ التغييرات
             </button>
@@ -835,7 +871,6 @@ export default function GarageDashboard() {
             <div className="w-10 h-1 bg-slate-700 rounded-full mx-auto mb-5" />
             <h3 className="text-lg font-black text-white text-center mb-1">تأكيد تحصيل السداد</h3>
             <p className="text-xs text-slate-500 text-center mb-5">لن يتم إنهاء الجلسة إلا بعد تأكيد السداد</p>
-
             <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 mb-5">
               <div className="flex justify-between items-center mb-3">
                 <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${confirmSession.source === 'manual' ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>
@@ -861,7 +896,6 @@ export default function GarageDashboard() {
                 </div>
               </div>
             </div>
-
             <div className="mb-5">
               <h4 className="text-xs font-black text-slate-400 mb-3 text-right">طريقة السداد</h4>
               {confirmSession.source === 'manual' ? (
@@ -904,7 +938,6 @@ export default function GarageDashboard() {
                 </div>
               )}
             </div>
-
             <div className="flex gap-3">
               <button onClick={handleConfirmPayment}
                 className={`flex-1 py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xl ${
@@ -926,7 +959,9 @@ export default function GarageDashboard() {
       <div className="grid grid-cols-3 gap-3 mb-6">
         <div className="bg-emerald-600/20 border border-emerald-500/20 p-4 rounded-2xl text-center">
           <DollarSign size={20} className="text-emerald-400 mx-auto mb-1" />
-          <div className="text-xl font-black text-emerald-400 font-mono">{(garageDailyStats.length > 0 ? totalRevenueFromStats : totalRevenue).toFixed(0)}</div>
+          <div className="text-xl font-black text-emerald-400 font-mono">
+            {(garageDailyStats.length > 0 ? totalRevenueFromStats : totalRevenue).toFixed(0)}
+          </div>
           <div className="text-[8px] text-slate-500 font-bold">مؤكد</div>
         </div>
         <div className="bg-blue-600/20 border border-blue-500/20 p-4 rounded-2xl text-center cursor-pointer hover:bg-blue-600/30 transition-all" onClick={openSettings}>
@@ -1161,7 +1196,6 @@ export default function GarageDashboard() {
           <span className="text-[10px] text-slate-500 bg-slate-900 px-2 py-1 rounded-lg border border-slate-800">{filteredCompleted.length} عملية</span>
           <h3 className="text-sm font-black text-slate-300 flex items-center gap-2">سجل العمليات <FileText size={14} /></h3>
         </div>
-
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-4">
           <div className="flex items-center gap-2 mb-3 justify-end">
             <CalendarDays size={14} className="text-blue-400" />
@@ -1201,13 +1235,11 @@ export default function GarageDashboard() {
                 </div>
               </div>
             )}
-
             <div className="bg-gradient-to-l from-emerald-600/20 to-slate-900 border border-emerald-500/30 rounded-2xl p-4 mb-4 text-center">
               <div className="text-[10px] text-slate-400 mb-1">{logDateFilter ? `إجمالي مؤكد - يوم ${formatLocalDateArabic(logDateFilter)}` : 'إجمالي مؤكد - كل العمليات'}</div>
               <div className="text-3xl font-black text-emerald-400 font-mono">{filteredStats.total.toFixed(0)} ج.م</div>
               <div className="text-[10px] text-slate-500 mt-1">{filteredCompleted.filter((s) => s.revenueConfirmed).length} عملية مؤكدة</div>
             </div>
-
             <div className="grid grid-cols-4 gap-2 mb-4">
               {[
                 { label: 'نقدي', value: filteredStats.cash, icon: '💵', color: 'text-emerald-400' },
@@ -1222,7 +1254,6 @@ export default function GarageDashboard() {
                 </div>
               ))}
             </div>
-
             <div className="grid grid-cols-2 gap-2 mb-4">
               <div className="bg-amber-600/10 border border-amber-500/20 rounded-xl p-3 text-center">
                 <div className="text-[9px] text-amber-400 font-black mb-1">يدوي</div>
@@ -1243,7 +1274,9 @@ export default function GarageDashboard() {
         <div className="space-y-2">
           {filteredCompleted.map((session) => {
             const isManual = session.source === 'manual';
-            const endTime = session.endTime ? (typeof session.endTime === 'number' ? session.endTime : new Date(session.endTime).getTime()) : null;
+            const endTime = session.endTime
+              ? (typeof session.endTime === 'number' ? session.endTime : new Date(session.endTime).getTime())
+              : null;
             const time = endTime ? new Date(endTime) : null;
             const revenue = getSessionRevenue(session);
             const isConfirmed = session.revenueConfirmed;
@@ -1274,14 +1307,21 @@ export default function GarageDashboard() {
                         : session.paymentMethod === 'wallet' ? 'bg-blue-500/20 text-blue-400'
                         : 'bg-orange-500/20 text-orange-400'
                       }`}>
-                        {session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستاباي' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 محفظة كاش'}
+                        {session.paymentMethod === 'cash' ? '💵 نقدي'
+                          : session.paymentMethod === 'instapay' ? '📱 إنستاباي'
+                          : session.paymentMethod === 'wallet' ? '👝 محفظة'
+                          : '📲 محفظة كاش'}
                       </span>
                     )}
                     {session.agreedPrice && session.agreedPrice !== garage.basePrice && (
                       <span className="text-[8px] text-amber-400 font-bold">({session.agreedPrice}ج/س)</span>
                     )}
                   </div>
-                  {time && <span className="text-[9px] text-slate-600 font-mono">{time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</span>}
+                  {time && (
+                    <span className="text-[9px] text-slate-600 font-mono">
+                      {time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
                 </div>
               </div>
             );

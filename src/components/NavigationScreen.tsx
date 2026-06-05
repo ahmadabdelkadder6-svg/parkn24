@@ -18,6 +18,7 @@ import {
   formatDuration,
 } from '../utils/distance';
 import toast from 'react-hot-toast';
+import { sendCarComingPush } from '../lib/pushManager';
 
 import 'leaflet/dist/leaflet.css';
 import {
@@ -100,6 +101,7 @@ export default function NavigationScreen() {
       sess.carPlate.trim().toUpperCase() === userPlateNav &&
       sess.status === 'active'
   );
+
   const [userPos, setUserPos] = useState<{ lat: number; lng: number }>({
     lat: 30.0444,
     lng: 31.2357,
@@ -111,6 +113,8 @@ export default function NavigationScreen() {
   const [mapReady, setMapReady] = useState(false);
   const navigatedToSessionRef = useRef(false);
   const isArrivingRef = useRef(false);
+  // ✅ منع إرسال Push أكثر من مرة لنفس الرحلة
+  const pushSentRef = useRef(false);
 
   // ─── GPS ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -165,6 +169,41 @@ export default function NavigationScreen() {
     return () => window.clearInterval(interval);
   }, [myIncomingCar?.id]);
 
+  // ─── ✅ إرسال Push للجراج لما العميل يبدأ التوجه ─────────────────────────
+  useEffect(() => {
+    if (!myIncomingCar || !garage || pushSentRef.current) return;
+
+    const sendPush = async () => {
+      try {
+        pushSentRef.current = true;
+
+        const distance = calculateDistance(
+          userPos.lat,
+          userPos.lng,
+          garage.lat,
+          garage.lng
+        );
+        const estimatedMinutes = distanceToMinutes(distance);
+
+        await sendCarComingPush({
+          garageId: garage.id,
+          carPlate: myIncomingCar.carPlate,
+          estimatedMinutes: Math.max(1, estimatedMinutes),
+          customerName: currentUser?.name,
+          agreedPrice: myIncomingCar.agreedPrice,
+        });
+
+        console.log('✅ Push sent to garage:', garage.id);
+      } catch (err) {
+        console.error('❌ خطأ في إرسال Push للجراج:', err);
+        // إعادة المحاولة مرة واحدة
+        pushSentRef.current = false;
+      }
+    };
+
+    sendPush();
+  }, [myIncomingCar?.id, garage?.id]);
+
   // ─── الانتقال التلقائي لشاشة الجلسة لو الجلسة بدأت من الجراج ─────────────
   useEffect(() => {
     if (!myActiveSession) return;
@@ -178,7 +217,13 @@ export default function NavigationScreen() {
 
     toast.success('تم بدء حساب الركن ⏱️');
     setScreen('session');
-  }, [myActiveSession?.id, myActiveSession?.garageId, selectedGarageId, setSelectedGarageId, setScreen]);
+  }, [
+    myActiveSession?.id,
+    myActiveSession?.garageId,
+    selectedGarageId,
+    setSelectedGarageId,
+    setScreen,
+  ]);
 
   if (!garage) {
     return (
@@ -246,8 +291,8 @@ export default function NavigationScreen() {
     setScreen('list');
   };
 
-  // ─── وصلت للجراج - بدء الركن فوراً بدون فترة سماح ─────────────────────────
-   const handleCarArrived = async () => {
+  // ─── وصلت للجراج ─────────────────────────────────────────────────────────
+  const handleCarArrived = async () => {
     if (isArrivingRef.current) return;
     isArrivingRef.current = true;
 
@@ -443,9 +488,23 @@ export default function NavigationScreen() {
             >
               {garage.availableSpots} / {garage.capacity}
             </span>
-            <span className="text-[10px] text-slate-500">الأماكن المتاحة الآن</span>
+            <span className="text-[10px] text-slate-500">
+              الأماكن المتاحة الآن
+            </span>
           </div>
         </div>
+
+        {/* ✅ مؤشر إرسال التنبيه للجراج */}
+        {myIncomingCar && (
+          <div className="bg-cyan-600/10 border border-cyan-500/20 rounded-xl p-3 flex items-center gap-2 shrink-0">
+            <span className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse shrink-0" />
+            <span className="text-[10px] font-bold text-cyan-400">
+              {pushSentRef.current
+                ? '✅ تم إشعار الجراج بقدومك'
+                : '📤 جاري إشعار الجراج...'}
+            </span>
+          </div>
+        )}
 
         {/* ملاحظة - بدء الركن فوراً */}
         <div className="bg-emerald-600/10 border border-emerald-500/20 rounded-xl p-3 flex items-center gap-2 shrink-0">
@@ -455,7 +514,7 @@ export default function NavigationScreen() {
           </span>
         </div>
 
-        {/* زر وصلت - يبدأ الركن فوراً */}
+        {/* زر وصلت */}
         <button
           onClick={handleCarArrived}
           disabled={isArrivingRef.current}

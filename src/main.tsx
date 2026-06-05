@@ -3,6 +3,9 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App";
 
+import { registerServiceWorker } from './lib/pushManager';
+
+registerServiceWorker();
 // ✅ مش محتاج fetchAll هنا - App.tsx بيعملها في useEffect
 // ✅ مش محتاج setupRealtime هنا - App.tsx بيعملها بعد fetchAll
 
