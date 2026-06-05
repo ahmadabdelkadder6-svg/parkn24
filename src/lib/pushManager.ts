@@ -140,7 +140,6 @@ export const sendCarComingPush = async ({
 }): Promise<void> => {
   try {
     const bodyParts: string[] = [`🚗 ${carPlate}`];
-    if (customerName) bodyParts.push(`👤 ${customerName}`);
     if (agreedPrice) bodyParts.push(`💰 ${agreedPrice} ج.م/ساعة`);
 
     const payload = {

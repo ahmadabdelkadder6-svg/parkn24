@@ -276,7 +276,10 @@ export default function AdminDashboard() {
       {/* Header */}
       <div className="flex justify-between items-center mb-8 border-b border-slate-800 pb-4">
         <button
-          onClick={() => { localStorage.removeItem('adminAuth'); logout(); }}
+          onClick={() => {
+  localStorage.removeItem('adminSession');
+  logout();
+}}
           className="bg-red-600/20 border border-red-500/20 text-red-400 px-4 py-2 rounded-xl text-[10px] font-black active:scale-95 transition-all"
         >
           تسجيل خروج
