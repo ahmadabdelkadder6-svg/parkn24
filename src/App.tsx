@@ -32,7 +32,6 @@ const VALID_SCREENS = [
   'chat',
 ] as const;
 
-// ✅ الرابط السري للأدمن - غيّره لأي كلمة تحبها
 const ADMIN_SECRET_CODE = 'admin2025x';
 
 export default function App() {
@@ -59,27 +58,22 @@ export default function App() {
   const sessionEndToastShown = useRef(false);
   const sessionTransitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ✅ التحقق من رابط الأدمن السري
   const [adminAccess, setAdminAccess] = useState(false);
 
   useEffect(() => {
-    // ✅ الطريقة 1: رابط سري مثل ?admin=admin2025x
     const params = new URLSearchParams(window.location.search);
     const adminParam = params.get('admin');
 
     if (adminParam === ADMIN_SECRET_CODE) {
       setAdminAccess(true);
-      // ✅ حفظ في localStorage عشان ميحتاجش يكتب الرابط كل مرة
       localStorage.setItem('adminAccess', 'true');
     }
 
-    // ✅ الطريقة 2: رابط مباشر مثل /admin
     if (window.location.pathname === '/admin' || window.location.hash === '#admin') {
       setAdminAccess(true);
       localStorage.setItem('adminAccess', 'true');
     }
 
-    // ✅ لو عنده صلاحية سابقة
     if (localStorage.getItem('adminAccess') === 'true') {
       setAdminAccess(true);
     }
@@ -102,26 +96,36 @@ export default function App() {
     }
   }, [safeScreen, screen, setScreen, dataLoaded, view]);
 
+  // ✅ التعديل الأساسي: منع التكرار في StrictMode
   useEffect(() => {
-    const init = async () => {
-      const savedScreen = localStorage.getItem('appScreen');
-      if (
-        savedScreen === 'session' ||
-        savedScreen === 'navigation' ||
-        savedScreen === 'waiting' ||
-        savedScreen === 'offer' ||
-        (savedScreen && !VALID_SCREENS.includes(savedScreen as any))
-      ) {
-        localStorage.removeItem('appScreen');
-      }
+    if (initialLoadDone.current) return;
+    initialLoadDone.current = true;
 
-      await fetchAll();
-      setDataLoaded(true);
-      initialLoadDone.current = true;
-      setupRealtime();
+    const init = async () => {
+      try {
+        const savedScreen = localStorage.getItem('appScreen');
+        if (
+          savedScreen === 'session' ||
+          savedScreen === 'navigation' ||
+          savedScreen === 'waiting' ||
+          savedScreen === 'offer' ||
+          (savedScreen && !VALID_SCREENS.includes(savedScreen as any))
+        ) {
+          localStorage.removeItem('appScreen');
+        }
+
+        await fetchAll();
+        setDataLoaded(true);
+        setupRealtime();
+      } catch (error) {
+        console.error('❌ خطأ في تحميل البيانات:', error);
+        // ✅ حتى لو فيه خطأ، خلّي التطبيق يفتح
+        setDataLoaded(true);
+      }
     };
+
     init();
-  }, []);
+  }, [fetchAll]);
 
   useEffect(() => {
     if (!dataLoaded) return;
@@ -377,8 +381,6 @@ export default function App() {
         className="max-w-md mx-auto h-dvh bg-slate-950 relative flex flex-col overflow-hidden"
         style={{ fontFamily: "'Cairo', sans-serif" }}
       >
-        {/* ✅ أزرار التبديل - حريف وجراج فقط */}
-        {/* زر الأدمن يظهر فقط لو عنده صلاحية */}
         <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-black/70 p-0.5 rounded-full backdrop-blur-md border border-white/10">
           {[
             { id: 'user' as const, label: 'حريف', show: true },
@@ -404,7 +406,6 @@ export default function App() {
             ))}
         </div>
 
-        {/* Main Content */}
         <main className="flex-1 overflow-hidden">
           {!dataLoaded ? (
             <div className="h-full bg-slate-950 flex flex-col items-center justify-center">
