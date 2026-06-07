@@ -304,55 +304,11 @@ const sessionEndLocks = new Set<string>();
 // ✅ حماية الرصيد من الـ override بعد الخصم
 let walletDeductedAt = 0;
 
-// ✅ IDs الجلسات اللي اتحذفت
+// ✅ IDs الجلسات اللي اتحذفت - عشان ما ترجعش من الـ sync
 const deletedSessionIds = new Set<string>();
 
-// ✅ الجلسات اللي اتنهت محلياً
+// ✅ الجلسات اللي اتنهت محلياً - حمايتها من الـ flash
 const locallyEndedSessions = new Map<string, ParkingSession>();
-
-// ===================== أعمدة الجداول - لتقليل الـ Bandwidth =====================
-const GARAGES_COLUMNS =
-  'id,name,username,phone,location,lat,lng,capacity,available_spots,base_price,rating';
-
-const SESSIONS_COLUMNS =
-  'id,garage_id,car_plate,start_time,end_time,total_price,payment_method,status,source,agreed_price,revenue_confirmed';
-
-const OFFERS_COLUMNS =
-  'id,garage_id,user_id,car_plate,offered_price,status,counter_price,created_at';
-
-const TOPUPS_COLUMNS =
-  'id,user_id,user_name,user_phone,amount,transaction_id,car_plate,method,status,created_at';
-
-const INCOMING_CARS_COLUMNS =
-  'id,garage_id,car_plate,customer_name,customer_phone,agreed_price,estimated_arrival,created_at';
-
-const MESSAGES_COLUMNS =
-  'id,user_phone,user_name,car_plate,type,subject,message,reply,status,created_at,replied_at';
-
-// ✅ عدد أيام الجلسات المكتملة اللي بنجيبها
-// ابدأ بـ 3 وبعد الاختبار قلّلها لـ 1 لو كل حاجة تمام
-const COMPLETED_LOOKBACK_DAYS = 3;
-
-const getCompletedSinceISO = (): string => {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - (COMPLETED_LOOKBACK_DAYS - 1));
-  return d.toISOString();
-};
-
-// ===================== Polling Constants =====================
-// لو Realtime شغال → 30 ثانية كـ fallback فقط
-const REALTIME_POLL_MS = 30000;
-// لو Realtime وقع → 15 ثانية للـ backup
-const FALLBACK_POLL_MS = 15000;
-
-// ✅ تشغيل fetchAll بأمان
-const runSafeFetchAll = () => {
-  if (isOperationInProgress) return;
-  // لو التطبيق في الخلفية → متسحبش بيانات بدون داعي
-  if (typeof document !== 'undefined' && document.hidden) return;
-  useStore.getState().fetchAll();
-};
 
 // ===================== State Interface =====================
 interface AppState {
@@ -604,57 +560,36 @@ export const useStore = create<AppState>((set, get) => ({
   fetchAll: async () => {
     if (!isSupabaseConfigured()) return;
 
-    // ✅ التعديل 1: استعلامين بدل واحد للـ sessions
-    // active كلها + completed آخر 3 أيام فقط
-    const completedSinceISO = getCompletedSinceISO();
+    // ✅ إصلاح المشكلة الأساسية: لا تمسح sessions أبداً قبل الجلب
+    // كانت: set({ sessions: [] }) ← ده كان بيسبب الشاشة السوداء والـ flash
 
-    const [g, activeRes, completedRes, o, w, ic, msgs] = await Promise.all([
-      // ✅ التعديل 2: تحديد الأعمدة بدل select('*')
-      supabase.from('garages').select(GARAGES_COLUMNS),
-
+    const [g, s, o, w, ic, msgs] = await Promise.all([
+      supabase.from('garages').select('*'),
       supabase
         .from('sessions')
-        .select(SESSIONS_COLUMNS)
-        .eq('status', 'active')
-        .order('start_time', { ascending: false }),
-
-      supabase
-        .from('sessions')
-        .select(SESSIONS_COLUMNS)
-        .eq('status', 'completed')
-        .gte('end_time', completedSinceISO)
-        .order('end_time', { ascending: false })
-        .limit(100),
-
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(200),
       supabase
         .from('offers')
-        .select(OFFERS_COLUMNS)
+        .select('*')
         .order('created_at', { ascending: false })
         .limit(100),
-
       supabase
         .from('wallet_topups')
-        .select(TOPUPS_COLUMNS)
+        .select('*')
         .order('created_at', { ascending: false })
         .limit(100),
-
       supabase
         .from('incoming_cars')
-        .select(INCOMING_CARS_COLUMNS)
+        .select('*')
         .order('created_at', { ascending: false }),
-
       supabase
         .from('messages')
-        .select(MESSAGES_COLUMNS)
+        .select('*')
         .order('created_at', { ascending: false })
         .limit(50),
     ]);
-
-    // ✅ دمج الجلسات النشطة والمكتملة
-    const sessionsRows = [
-      ...(activeRes.data ?? []),
-      ...(completedRes.data ?? []),
-    ];
 
     const currentGarages = get().garages;
     const fetchedGarages = g.data?.length ? g.data.map(m) : currentGarages;
@@ -665,8 +600,7 @@ export const useStore = create<AppState>((set, get) => ({
       return dbGarage;
     });
 
-    // ✅ باقي المنطق زي ما هو بالظبط - ما اتغيرش
-    const supabaseSessions = sessionsRows.map(ms);
+    const supabaseSessions = s.data ? s.data.map(ms) : [];
     const supabaseSessionIds = new Set(supabaseSessions.map((ss) => ss.id));
     const currentSessions = get().sessions;
 
@@ -676,6 +610,7 @@ export const useStore = create<AppState>((set, get) => ({
         .map((ss) => normalizePlate(ss.carPlate))
     );
 
+    // ✅ الجلسات المحلية فقط (مش موجودة في Supabase بعد) - بس لو حديثة جداً
     const localOnlySessions = currentSessions.filter(
       (cs) =>
         !supabaseSessionIds.has(cs.id) &&
@@ -686,22 +621,29 @@ export const useStore = create<AppState>((set, get) => ({
     );
 
     const mergedSessions = supabaseSessions
+      // ✅ استبعد الجلسات اللي اتحذفت محلياً
       .filter((ss) => !deletedSessionIds.has(ss.id))
       .map((ss) => {
+        // ✅ لو الجلسة اتنهت محلياً - استخدم النسخة المحلية دايماً
         const locallyEnded = locallyEndedSessions.get(ss.id);
         if (locallyEnded) {
+          // ✅ لو Supabase كمان بيقول completed - امسح من الـ map وخد Supabase
           if (ss.status === 'completed') {
             locallyEndedSessions.delete(ss.id);
             return ss;
           }
+          // ✅ Supabase لسه active (التحديث ما وصلش) - خد المحلي
           return locallyEnded;
         }
 
         const localVersion = currentSessions.find((cs) => cs.id === ss.id);
         if (localVersion) {
+          // ✅ لو Supabase بيقول completed والمحلي active → خد Supabase
           if (ss.status === 'completed' && localVersion.status === 'active') {
             return ss;
           }
+
+          // ✅ لو المحلي completed → احتفظ بالمحلي مع revenueConfirmed من DB
           if (localVersion.status === 'completed') {
             return {
               ...localVersion,
@@ -709,6 +651,8 @@ export const useStore = create<AppState>((set, get) => ({
                 ss.revenueConfirmed || localVersion.revenueConfirmed,
             };
           }
+
+          // ✅ لو المحلي عنده totalPrice > 0 → احتفظ بالمحلي
           if (localVersion.totalPrice != null && localVersion.totalPrice > 0) {
             return localVersion;
           }
@@ -744,6 +688,7 @@ export const useStore = create<AppState>((set, get) => ({
 
     const mergedMessages = supabaseMessages.map((sm) => {
       const localVersion = currentMessages.find((cm) => cm.id === sm.id);
+
       if (localVersion) {
         if (localVersion.status !== 'pending' && sm.status === 'pending') {
           return localVersion;
@@ -758,6 +703,7 @@ export const useStore = create<AppState>((set, get) => ({
         }
         return localVersion;
       }
+
       return sm;
     });
 
@@ -823,7 +769,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // ✅ باقي الـ actions كما هي بدون أي تغيير
   addGarage: async (g) => {
     const { data, error } = await supabase
       .from('garages')
@@ -932,6 +877,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  // ── addSession ────────────────────────────────────────────────────────────
   addSession: async (s) => {
     const normalizedPlate = normalizePlate(s.carPlate);
     if (!normalizedPlate) return '';
@@ -975,7 +921,7 @@ export const useStore = create<AppState>((set, get) => ({
           if (dbCheck && dbCheck.length > 0) {
             const { data: sessionData } = await supabase
               .from('sessions')
-              .select(SESSIONS_COLUMNS)
+              .select('*')
               .eq('id', dbCheck[0].id)
               .single();
 
@@ -1031,7 +977,7 @@ export const useStore = create<AppState>((set, get) => ({
             agreed_price: s.agreedPrice ?? null,
             revenue_confirmed: false,
           })
-          .select(SESSIONS_COLUMNS)
+          .select()
           .single();
 
         if (error) {
@@ -1068,6 +1014,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  // ── endSession ────────────────────────────────────────────────────────────
   endSession: async (id, totalPrice, paymentMethod) => {
     const now = Date.now();
     const session = get().sessions.find((s) => s.id === id);
@@ -1086,11 +1033,13 @@ export const useStore = create<AppState>((set, get) => ({
     if (sessionEndLocks.has(lockKey)) return;
     sessionEndLocks.add(lockKey);
 
+    // ✅ وقف الـ polling لمدة أطول عشان ما يرجعش الجلسة active
     pausePolling(15000);
 
     try {
       const safeTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
 
+      // ✅ الجلسة المنتهية محلياً
       const endedSession: ParkingSession = {
         ...session,
         endTime: now,
@@ -1100,8 +1049,10 @@ export const useStore = create<AppState>((set, get) => ({
         revenueConfirmed: false,
       };
 
+      // ✅ احفظها في الـ Map عشان الـ fetchAll ما يرجعهاش active
       locallyEndedSessions.set(id, endedSession);
 
+      // ✅ حدّث الـ state فوراً
       set((st) => ({
         sessions: st.sessions.map((s) =>
           s.id === id ? endedSession : s
@@ -1127,11 +1078,13 @@ export const useStore = create<AppState>((set, get) => ({
       if (error) {
         console.error('❌ خطأ في إنهاء الجلسة:', error);
       } else {
+        // ✅ Supabase اتحدث - بعد شوية امسح من locallyEndedSessions
         setTimeout(() => {
           locallyEndedSessions.delete(id);
         }, 10000);
       }
 
+      // ✅ fetchAll بعد وقت كافي
       setTimeout(() => {
         get().fetchAll();
       }, 12000);
@@ -1211,6 +1164,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   removeSession: async (id) => {
+    // ✅ أضف للـ deletedSessionIds عشان ما ترجعش من fetchAll
     deletedSessionIds.add(id);
     locallyEndedSessions.delete(id);
 
@@ -1261,11 +1215,18 @@ export const useStore = create<AppState>((set, get) => ({
           .eq('car_plate', normalizePlate(target.carPlate))
           .eq('source', 'manual')
           .eq('status', 'active')
-          .gte('start_time', new Date(target.startTime - 10000).toISOString())
-          .lte('start_time', new Date(target.startTime + 10000).toISOString());
+          .gte(
+            'start_time',
+            new Date(target.startTime - 10000).toISOString()
+          )
+          .lte(
+            'start_time',
+            new Date(target.startTime + 10000).toISOString()
+          );
       }
     }
 
+    // ✅ امسح من deletedSessionIds بعد وقت كافي
     setTimeout(() => {
       idsToDelete.forEach((did) => deletedSessionIds.delete(did));
     }, 30000);
@@ -1435,7 +1396,7 @@ export const useStore = create<AppState>((set, get) => ({
           agreed_price: c.agreedPrice,
           estimated_arrival: c.estimatedArrival,
         })
-        .select(INCOMING_CARS_COLUMNS)
+        .select()
         .single();
 
       if (error) {
@@ -1524,7 +1485,7 @@ export const useStore = create<AppState>((set, get) => ({
           subject: msg.subject ?? null,
           message: msg.message,
         })
-        .select(MESSAGES_COLUMNS)
+        .select()
         .single();
 
       if (error) {
@@ -1603,6 +1564,7 @@ export const useStore = create<AppState>((set, get) => ({
 
     if (error) console.error('❌ خطأ في إغلاق الرسالة:', error);
   },
+
 }));
 
 // ===================== Realtime =====================
@@ -1624,24 +1586,18 @@ export function setupRealtime() {
   if (realtimeStarted) return;
   realtimeStarted = true;
 
-  // ✅ التعديل 3: polling بـ FALLBACK_POLL_MS بدل 5000
   if (pollingInterval) clearInterval(pollingInterval);
-  pollingInterval = setInterval(runSafeFetchAll, FALLBACK_POLL_MS);
-
-  // ✅ التعديل 4: fetchAll لما التطبيق يرجع للواجهة
-  const handleVisibilityChange = () => {
-    if (!document.hidden && !isOperationInProgress) {
+  pollingInterval = setInterval(() => {
+    if (!isOperationInProgress) {
       useStore.getState().fetchAll();
     }
-  };
-  document.addEventListener('visibilitychange', handleVisibilityChange);
+  }, 5000);
 
   window.addEventListener('beforeunload', () => {
     if (pollingInterval) {
       clearInterval(pollingInterval);
       pollingInterval = null;
     }
-    document.removeEventListener('visibilitychange', handleVisibilityChange);
   });
 
   if (!isSupabaseConfigured()) return;
@@ -1694,13 +1650,15 @@ export function setupRealtime() {
     if (status === 'SUBSCRIBED') {
       console.log('✅ Realtime connected:', channelName);
       if (pollingInterval) clearInterval(pollingInterval);
-      // ✅ التعديل 5: لو Realtime شغال → polling كل 30 ثانية فقط كـ fallback
-      pollingInterval = setInterval(runSafeFetchAll, REALTIME_POLL_MS);
+      pollingInterval = setInterval(() => {
+        if (!isOperationInProgress) useStore.getState().fetchAll();
+      }, 10000);
     }
     if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
       if (pollingInterval) clearInterval(pollingInterval);
-      // ✅ لو Realtime وقع → polling كل 15 ثانية
-      pollingInterval = setInterval(runSafeFetchAll, FALLBACK_POLL_MS);
+      pollingInterval = setInterval(() => {
+        if (!isOperationInProgress) useStore.getState().fetchAll();
+      }, 5000);
     }
   });
 

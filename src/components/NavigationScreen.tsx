@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   Navigation,
@@ -12,7 +12,6 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { useStore } from '../store';
-import { shallow } from 'zustand/shallow';
 import {
   calculateDistance,
   distanceToMinutes,
@@ -72,7 +71,6 @@ function MapController({
 }
 
 export default function NavigationScreen() {
-  // ✅ selector + shallow
   const {
     garages,
     selectedGarageId,
@@ -85,53 +83,22 @@ export default function NavigationScreen() {
     offers,
     sessions,
     addSession,
-  } = useStore(
-    (s) => ({
-      garages: s.garages,
-      selectedGarageId: s.selectedGarageId,
-      setScreen: s.setScreen,
-      incomingCars: s.incomingCars,
-      currentUser: s.currentUser,
-      cancelOffer: s.cancelOffer,
-      removeIncomingCar: s.removeIncomingCar,
-      setSelectedGarageId: s.setSelectedGarageId,
-      offers: s.offers,
-      sessions: s.sessions,
-      addSession: s.addSession,
-    }),
-    shallow
+  } = useStore();
+
+  const garage = garages.find((g) => g.id === selectedGarageId);
+  const userPlateNav = (currentUser?.carPlate ?? '').trim().toUpperCase();
+
+  const myIncomingCar = incomingCars.find(
+    (c) =>
+      c.garageId === selectedGarageId &&
+      c.carPlate.trim().toUpperCase() === userPlateNav &&
+      c.status === 'coming'
   );
 
-  // ✅ useMemo للحسابات المتكررة
-  const userPlateNav = useMemo(
-    () => (currentUser?.carPlate ?? '').trim().toUpperCase(),
-    [currentUser?.carPlate]
-  );
-
-  const garage = useMemo(
-    () => garages.find((g) => g.id === selectedGarageId) ?? null,
-    [garages, selectedGarageId]
-  );
-
-  const myIncomingCar = useMemo(
-    () =>
-      incomingCars.find(
-        (c) =>
-          c.garageId === selectedGarageId &&
-          c.carPlate.trim().toUpperCase() === userPlateNav &&
-          c.status === 'coming'
-      ) ?? null,
-    [incomingCars, selectedGarageId, userPlateNav]
-  );
-
-  const myActiveSession = useMemo(
-    () =>
-      sessions.find(
-        (sess) =>
-          sess.carPlate.trim().toUpperCase() === userPlateNav &&
-          sess.status === 'active'
-      ) ?? null,
-    [sessions, userPlateNav]
+  const myActiveSession = sessions.find(
+    (sess) =>
+      sess.carPlate.trim().toUpperCase() === userPlateNav &&
+      sess.status === 'active'
   );
 
   const [userPos, setUserPos] = useState<{ lat: number; lng: number }>({
@@ -202,22 +169,26 @@ export default function NavigationScreen() {
     return () => window.clearInterval(interval);
   }, [myIncomingCar?.id]);
 
-  // ─── إرسال Push بعد انتهاء فترة الإلغاء ─────────────────────────────────
+  // ─── ✅ إرسال Push بعد انتهاء فترة الإلغاء (32 ثانية) ────────────────────
   useEffect(() => {
     if (!myIncomingCar || !garage || pushSentRef.current) return;
 
+    // ✅ إلغاء أي timer سابق
     if (pushTimerRef.current) {
       clearTimeout(pushTimerRef.current);
     }
 
     setPushStatus('waiting');
 
+    // ✅ انتظر انتهاء فترة الإلغاء + 2 ثانية أمان
     pushTimerRef.current = setTimeout(async () => {
+      // ✅ تحقق إن العميل لسه في الطريق ولم يلغِ
       const stillComing = useStore.getState().incomingCars.find(
         (c) => c.id === myIncomingCar.id && c.status === 'coming'
       );
 
       if (!stillComing || pushSentRef.current) {
+        console.log('⏹️ العميل ألغى أو تم الإرسال بالفعل - لن يتم إرسال Push');
         setPushStatus('cancelled');
         return;
       }
@@ -242,6 +213,7 @@ export default function NavigationScreen() {
         });
 
         setPushStatus('sent');
+        console.log('✅ Push sent to garage after cancel window:', garage.id);
       } catch (err) {
         console.error('❌ خطأ في إرسال Push للجراج:', err);
         pushSentRef.current = false;
@@ -249,6 +221,7 @@ export default function NavigationScreen() {
       }
     }, (CANCEL_WINDOW_SECONDS + 2) * 1000);
 
+    // ✅ لو العميل خرج من الشاشة → نلغي الـ timer
     return () => {
       if (pushTimerRef.current) {
         clearTimeout(pushTimerRef.current);
@@ -278,10 +251,33 @@ export default function NavigationScreen() {
     setScreen,
   ]);
 
-  // ✅ useCallback للدوال
-  const copyCoords = useCallback(async () => {
-    if (!garage) return;
-    const coordsText = `${garage.lat},${garage.lng}`;
+  if (!garage) {
+    return (
+      <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8">
+        <div className="text-4xl mb-4">🔍</div>
+        <p className="text-slate-400 text-sm font-bold text-center mb-6">
+          لم يتم تحديد جراج
+        </p>
+        <button
+          onClick={() => setScreen('list')}
+          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all"
+        >
+          العودة للقائمة
+        </button>
+      </div>
+    );
+  }
+
+  const distance = calculateDistance(
+    userPos.lat,
+    userPos.lng,
+    garage.lat,
+    garage.lng
+  );
+  const minutes = distanceToMinutes(distance);
+  const coordsText = `${garage.lat},${garage.lng}`;
+
+  const copyCoords = async () => {
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(coordsText);
@@ -297,25 +293,28 @@ export default function NavigationScreen() {
     } catch {
       toast.error('فشل النسخ');
     }
-  }, [garage?.lat, garage?.lng]);
+  };
 
-  const openExternalMaps = useCallback(() => {
-    if (!garage) return;
+  const openExternalMaps = () => {
     const url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}`;
     window.open(url, '_blank', 'noopener,noreferrer');
-  }, [garage?.lat, garage?.lng]);
+  };
 
-  const handleCancelBooking = useCallback(async () => {
-    if (!currentUser || !myIncomingCar || !garage) return;
+  // ─── إلغاء الحجز ──────────────────────────────────────────────────────────
+  const handleCancelBooking = async () => {
+    if (!currentUser || !myIncomingCar) return;
 
+    // ✅ إلغاء الـ Push timer فوراً قبل ما يتبعت
     if (pushTimerRef.current) {
       clearTimeout(pushTimerRef.current);
       pushTimerRef.current = null;
     }
 
+    // ✅ منع إرسال Push
     pushSentRef.current = true;
     setPushStatus('cancelled');
 
+    // ✅ لو الـ Push اتبعت بالفعل → إلغاء التنبيه المجدول
     if (pushStatus === 'sent') {
       await cancelScheduledPush(garage.id, myIncomingCar.carPlate);
     }
@@ -331,12 +330,14 @@ export default function NavigationScreen() {
     toast.success('تم إلغاء الحجز');
     setSelectedGarageId(null);
     setScreen('list');
-  }, [currentUser, myIncomingCar, garage, pushStatus, offers, cancelOffer, removeIncomingCar, setSelectedGarageId, setScreen]);
+  };
 
-  const handleCarArrived = useCallback(async () => {
+  // ─── وصلت للجراج ─────────────────────────────────────────────────────────
+  const handleCarArrived = async () => {
     if (isArrivingRef.current) return;
     isArrivingRef.current = true;
 
+    // ✅ لو الـ Push لسه ما اتبعتش → ابعته فوراً بدون انتظار
     if (!pushSentRef.current && myIncomingCar && garage) {
       if (pushTimerRef.current) {
         clearTimeout(pushTimerRef.current);
@@ -345,6 +346,10 @@ export default function NavigationScreen() {
 
       try {
         pushSentRef.current = true;
+        const dist = calculateDistance(
+          userPos.lat, userPos.lng,
+          garage.lat, garage.lng
+        );
         await sendCarComingPush({
           garageId: garage.id,
           carPlate: myIncomingCar.carPlate,
@@ -406,40 +411,7 @@ export default function NavigationScreen() {
         isArrivingRef.current = false;
       }, 5000);
     }
-  }, [myIncomingCar, garage, currentUser, offers, cancelOffer, removeIncomingCar, addSession, setScreen]);
-
-  // ✅ حسابات المسافة بـ useMemo
-  const { distance, minutes } = useMemo(() => {
-    if (!garage) return { distance: 0, minutes: 0 };
-    const dist = calculateDistance(
-      userPos.lat,
-      userPos.lng,
-      garage.lat,
-      garage.lng
-    );
-    return {
-      distance: dist,
-      minutes: distanceToMinutes(dist),
-    };
-  }, [userPos.lat, userPos.lng, garage?.lat, garage?.lng]);
-
-  if (!garage) {
-    return (
-      <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8">
-        <div className="text-4xl mb-4">🔍</div>
-        <p className="text-slate-400 text-sm font-bold text-center mb-6">
-          لم يتم تحديد جراج
-        </p>
-        <button
-          type="button"
-          onClick={() => setScreen('list')}
-          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all"
-        >
-          العودة للقائمة
-        </button>
-      </div>
-    );
-  }
+  };
 
   return (
     <motion.div
@@ -450,12 +422,10 @@ export default function NavigationScreen() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-12 pb-2 shrink-0">
         <button
-          type="button"
           onClick={() => setScreen('list')}
-          aria-label="العودة للقائمة"
           className="bg-slate-900 p-2.5 rounded-xl border border-slate-800 active:scale-90 transition-all"
         >
-          <ArrowRight size={18} aria-hidden="true" />
+          <ArrowRight size={18} />
         </button>
 
         <h2 className="text-sm font-black flex items-center gap-1.5">
@@ -463,7 +433,7 @@ export default function NavigationScreen() {
             animate={{ x: [0, -3, 0] }}
             transition={{ repeat: Infinity, duration: 1.5 }}
           >
-            <Navigation size={16} className="text-blue-400" aria-hidden="true" />
+            <Navigation size={16} className="text-blue-400" />
           </motion.div>
           التوجيه للجراج
         </h2>
@@ -476,20 +446,20 @@ export default function NavigationScreen() {
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shrink-0">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
-              <Clock size={14} className="text-blue-400" aria-hidden="true" />
+              <Clock size={14} className="text-blue-400" />
               <span className="text-sm font-black text-blue-400 font-mono">
                 {formatDuration(minutes)}
               </span>
-              <span className="text-slate-700" aria-hidden="true">·</span>
+              <span className="text-slate-700">·</span>
               <span className="text-xs text-slate-400 font-mono">
                 {distance.toFixed(1)} كم
               </span>
             </div>
             <div className="text-right">
               <div className="text-sm font-black text-white">{garage.name}</div>
-              <div className="flex items-center gap-1 justify-end text-xs text-slate-500">
+              <div className="flex items-center gap-1 justify-end text-[10px] text-slate-500">
                 <span>{garage.location}</span>
-                <MapPin size={9} aria-hidden="true" />
+                <MapPin size={9} />
               </div>
             </div>
           </div>
@@ -536,8 +506,8 @@ export default function NavigationScreen() {
             </div>
           )}
 
-          <div className="absolute top-3 left-3 bg-slate-900/90 backdrop-blur border border-slate-700 text-xs px-2.5 py-1 rounded-full text-slate-300 z-[400] flex items-center gap-1.5 pointer-events-none">
-            <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" aria-hidden="true" />
+          <div className="absolute top-3 left-3 bg-slate-900/90 backdrop-blur border border-slate-700 text-[10px] px-2.5 py-1 rounded-full text-slate-300 z-[400] flex items-center gap-1.5 pointer-events-none">
+            <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
             تتبع مباشر
           </div>
         </div>
@@ -545,34 +515,26 @@ export default function NavigationScreen() {
         {/* أزرار النسخ وجوجل ماب */}
         <div className="grid grid-cols-2 gap-2 shrink-0">
           <button
-            type="button"
             onClick={copyCoords}
-            aria-label="نسخ إحداثيات الجراج"
             className="bg-slate-900 border border-slate-800 text-slate-300 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all"
           >
-            <Copy size={14} className="text-blue-400" aria-hidden="true" />
+            <Copy size={14} className="text-blue-400" />
             نسخ الإحداثيات
           </button>
           <button
-            type="button"
             onClick={openExternalMaps}
-            aria-label="فتح خرائط Google"
             className="bg-slate-900 border border-slate-800 text-slate-300 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all"
           >
-            <ExternalLink size={14} className="text-blue-400" aria-hidden="true" />
+            <ExternalLink size={14} className="text-blue-400" />
             خرائط Google
           </button>
         </div>
 
         {/* معلومات السعر والأماكن */}
-        <div
-          className="bg-slate-900 border border-slate-800 rounded-xl p-3 shrink-0"
-          role="region"
-          aria-label="معلومات الجراج"
-        >
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 shrink-0">
           <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <Car size={12} aria-hidden="true" />
+            <div className="flex items-center gap-2 text-[10px] text-slate-500">
+              <Car size={12} />
               <span>
                 {myIncomingCar?.agreedPrice ?? garage.basePrice} ج.م/ساعة
               </span>
@@ -590,13 +552,13 @@ export default function NavigationScreen() {
             >
               {garage.availableSpots} / {garage.capacity}
             </span>
-            <span className="text-xs text-slate-500">
+            <span className="text-[10px] text-slate-500">
               الأماكن المتاحة الآن
             </span>
           </div>
         </div>
 
-        {/* مؤشر حالة Push */}
+        {/* ✅ مؤشر حالة Push للجراج */}
         {myIncomingCar && (
           <div
             className={`rounded-xl p-3 flex items-center gap-2 shrink-0 border ${
@@ -606,8 +568,6 @@ export default function NavigationScreen() {
                 ? 'bg-red-600/10 border-red-500/20'
                 : 'bg-cyan-600/10 border-cyan-500/20'
             }`}
-            role="status"
-            aria-live="polite"
           >
             <span
               className={`w-2 h-2 rounded-full shrink-0 ${
@@ -617,10 +577,9 @@ export default function NavigationScreen() {
                   ? 'bg-red-500'
                   : 'bg-cyan-500 animate-pulse'
               }`}
-              aria-hidden="true"
             />
             <span
-              className={`text-xs font-bold ${
+              className={`text-[10px] font-bold ${
                 pushStatus === 'sent'
                   ? 'text-emerald-400'
                   : pushStatus === 'cancelled'
@@ -637,23 +596,21 @@ export default function NavigationScreen() {
           </div>
         )}
 
-        {/* ملاحظة */}
+        {/* ملاحظة - بدء الركن فوراً */}
         <div className="bg-emerald-600/10 border border-emerald-500/20 rounded-xl p-3 flex items-center gap-2 shrink-0">
-          <CheckCircle size={14} className="text-emerald-400 shrink-0" aria-hidden="true" />
-          <span className="text-xs font-bold text-emerald-400">
+          <CheckCircle size={14} className="text-emerald-400 shrink-0" />
+          <span className="text-[10px] font-bold text-emerald-400">
             سيبدأ حساب الركن فور الضغط على "وصلت للجراج" ✅
           </span>
         </div>
 
         {/* زر وصلت */}
         <button
-          type="button"
           onClick={handleCarArrived}
           disabled={isArrivingRef.current}
-          aria-label="تأكيد الوصول وبدء الركن"
           className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-base shadow-lg shadow-emerald-900/20 active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Navigation size={18} aria-hidden="true" />
+          <Navigation size={18} />
           وصلت للجراج - ابدأ الركن ✅
         </button>
 
@@ -665,12 +622,10 @@ export default function NavigationScreen() {
             className="shrink-0"
           >
             <button
-              type="button"
               onClick={handleCancelBooking}
-              aria-label={`إلغاء الحجز - متبقي ${cancelTimeLeft} ثانية`}
               className="w-full bg-slate-900 border border-red-500/20 text-red-400 py-3 rounded-xl font-black text-xs active:scale-95 transition-transform flex items-center justify-center gap-2"
             >
-              <XCircle size={16} aria-hidden="true" />
+              <XCircle size={16} />
               إلغاء الحجز ({cancelTimeLeft}ث)
             </button>
 
