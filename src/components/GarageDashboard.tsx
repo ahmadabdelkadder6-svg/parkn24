@@ -24,8 +24,13 @@ import { useStore, pausePolling } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
-import { subscribeToPush } from '../lib/pushManager';
+// ✅ ضفنا refreshPushSubscriptionIfNeeded
+import {
+  subscribeToPush,
+  refreshPushSubscriptionIfNeeded,
+} from '../lib/pushManager';
 import InstallPWABanner from './InstallPWABanner';
+
 const UNDO_TIMEOUT_SECONDS = 30;
 
 interface UndoableSession {
@@ -135,7 +140,7 @@ const sendNotification = (title: string, body: string, tag: string) => {
         body,
         icon: '/icons/icon-192x192.png',
         badge: '/icons/icon-96x96.png',
-        tag,
+        tag, // ✅ tag ثابت - يمنع التكرار
         requireInteraction: true,
         silent: false,
       });
@@ -190,6 +195,7 @@ const fireNewCarAlert = (
     customerName ? `👤 ${customerName}` : '',
     agreedPrice ? `💰 ${agreedPrice} ج.م/ساعة` : '',
   ].filter(Boolean).join('\n');
+  // ✅ tag ثابت
   sendNotification('🚨 سيارة في الطريق!', body, `incoming-${carPlate}`);
 };
 
@@ -232,7 +238,7 @@ const fireApproachingAlert = (carPlate: string) => {
   sendNotification(
     '🚗 سيارة على وشك الوصول!',
     `🚗 ${carPlate} - باقي أقل من دقيقتين ⏰`,
-    `approaching-${carPlate}`
+    `approaching-${carPlate}` // ✅ tag ثابت
   );
 };
 
@@ -315,105 +321,126 @@ export default function GarageDashboard() {
     initAll();
   }, []);
 
-// ─── ✅ تسجيل الجراج في Push Notifications ───────────────────────────────
-useEffect(() => {
-  if (!currentGarageId || garages.length === 0) return;
-  if (pushSubscribedGarageRef.current === currentGarageId) return;
+  // ─── ✅ تسجيل الجراج في Push Notifications ───────────────────────────────
+  useEffect(() => {
+    if (!currentGarageId || garages.length === 0) return;
+    if (pushSubscribedGarageRef.current === currentGarageId) return;
 
-  const setupGaragePush = async () => {
-    try {
-      // ✅ تسجيل الجراج الحالي فقط
-      const success = await subscribeToPush(currentGarageId);
-      if (success) {
-        pushSubscribedGarageRef.current = currentGarageId;
-        console.log('✅ تم تسجيل الجراج في Push:', currentGarageId);
+    const setupGaragePush = async () => {
+      try {
+        // ✅ تسجيل الجراج الحالي فقط - subscribeToPush بيعمل dedup داخلياً
+        const success = await subscribeToPush(currentGarageId);
+        if (success) {
+          pushSubscribedGarageRef.current = currentGarageId;
+          console.log('✅ تم تسجيل الجراج في Push:', currentGarageId);
+        }
+      } catch (err) {
+        console.error('❌ خطأ في تسجيل Push للجراج:', err);
       }
-    } catch (err) {
-      console.error('❌ خطأ في تسجيل Push للجراج:', err);
-    }
-  };
+    };
 
-  setupGaragePush();
-}, [currentGarageId, garages]);
+    setupGaragePush();
+  }, [currentGarageId, garages]);
+
+  // ─── ✅ تجديد الاشتراك عند رجوع التطبيق للواجهة ──────────────────────────
+  // مهم: لو التطبيق كان في الخلفية فترة طويلة، الـ subscription ممكن تنتهي
+  useEffect(() => {
+    if (!currentGarageId) return;
+
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible') {
+        // ✅ تحقق وجدد لو محتاج
+        await refreshPushSubscriptionIfNeeded(currentGarageId);
+        // ✅ جدد البيانات كمان
+        await fetchAll();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [currentGarageId, fetchAll]);
 
   // ─── تنبيه 1: مراقبة السيارات الجديدة القادمة ────────────────────────────
-useEffect(() => {
-  const currentIds = new Set(carsOnTheWay.map((c) => c.id));
+  useEffect(() => {
+    const currentIds = new Set(carsOnTheWay.map((c) => c.id));
 
-  carsOnTheWay.forEach((car) => {
-    if (!prevIncomingIdsRef.current.has(car.id)) {
-      // ✅ شغّل التنبيه المحلي فقط لو التطبيق مفتوح قدام المستخدم
-      if (!document.hidden) {
-        fireNewCarAlert(car.carPlate, car.customerName, car.agreedPrice);
+    carsOnTheWay.forEach((car) => {
+      if (!prevIncomingIdsRef.current.has(car.id)) {
+        // ✅ شغّل التنبيه المحلي فقط لو التطبيق مفتوح قدام المستخدم
+        // (لو مقفول، الـ Push Notification من السيرفر هيشتغل)
+        if (!document.hidden) {
+          fireNewCarAlert(car.carPlate, car.customerName, car.agreedPrice);
 
-        toast(
-          `🚨 سيارة في الطريق!\n🚗 ${car.carPlate}${car.agreedPrice ? ` - ${car.agreedPrice} ج.م/ساعة` : ''}`,
-          {
-            duration: 10000,
-            style: {
-              background: '#0f172a',
-              color: '#f1f5f9',
-              border: '2px solid #06b6d4',
-              fontWeight: 'bold',
-              fontSize: '14px',
-            },
-            icon: '🚨',
-          }
-        );
+          toast(
+            `🚨 سيارة في الطريق!\n🚗 ${car.carPlate}${car.agreedPrice ? ` - ${car.agreedPrice} ج.م/ساعة` : ''}`,
+            {
+              duration: 10000,
+              style: {
+                background: '#0f172a',
+                color: '#f1f5f9',
+                border: '2px solid #06b6d4',
+                fontWeight: 'bold',
+                fontSize: '14px',
+              },
+              icon: '🚨',
+            }
+          );
+        }
       }
-    }
-  });
+    });
 
-  prevIncomingIdsRef.current.forEach((prevId) => {
-    if (!currentIds.has(prevId)) {
-      approachAlertedRef.current.delete(prevId);
-      try {
-        if ('vibrate' in navigator) navigator.vibrate(0);
-      } catch {}
-    }
-  });
+    prevIncomingIdsRef.current.forEach((prevId) => {
+      if (!currentIds.has(prevId)) {
+        approachAlertedRef.current.delete(prevId);
+        try {
+          if ('vibrate' in navigator) navigator.vibrate(0);
+        } catch {}
+      }
+    });
 
-  prevIncomingIdsRef.current = currentIds;
-}, [carsOnTheWay]);
+    prevIncomingIdsRef.current = currentIds;
+  }, [carsOnTheWay]);
 
   // ─── تنبيه 2: مراقبة اقتراب السيارات (باقي دقيقتين) ─────────────────────
-useEffect(() => {
-  carsOnTheWay.forEach((car) => {
-    if (approachAlertedRef.current.has(car.id)) return;
+  useEffect(() => {
+    carsOnTheWay.forEach((car) => {
+      if (approachAlertedRef.current.has(car.id)) return;
 
-    const start =
-      typeof car.startTime === 'number'
-        ? car.startTime
-        : new Date(car.startTime).getTime();
+      const start =
+        typeof car.startTime === 'number'
+          ? car.startTime
+          : new Date(car.startTime).getTime();
 
-    const elapsedMinutes = (Date.now() - start) / 60000;
-    const remainingMinutes = Math.max(0, car.estimatedArrival - elapsedMinutes);
+      const elapsedMinutes = (Date.now() - start) / 60000;
+      const remainingMinutes = Math.max(0, car.estimatedArrival - elapsedMinutes);
 
-    if (remainingMinutes <= 2 && remainingMinutes >= 0 && car.estimatedArrival > 2) {
-      approachAlertedRef.current.add(car.id);
+      if (remainingMinutes <= 2 && remainingMinutes >= 0 && car.estimatedArrival > 2) {
+        approachAlertedRef.current.add(car.id);
 
-      // ✅ شغّل التنبيه المحلي فقط لو التطبيق مفتوح
-      if (!document.hidden) {
-        fireApproachingAlert(car.carPlate);
+        // ✅ شغّل التنبيه المحلي فقط لو التطبيق مفتوح
+        if (!document.hidden) {
+          fireApproachingAlert(car.carPlate);
 
-        toast(
-          `🚗 سيارة على وشك الوصول!\n${car.carPlate} - باقي أقل من دقيقتين ⏰`,
-          {
-            duration: 10000,
-            style: {
-              background: '#0f172a',
-              color: '#f1f5f9',
-              border: '2px solid #f59e0b',
-              fontWeight: 'bold',
-              fontSize: '14px',
-            },
-            icon: '⏰',
-          }
-        );
+          toast(
+            `🚗 سيارة على وشك الوصول!\n${car.carPlate} - باقي أقل من دقيقتين ⏰`,
+            {
+              duration: 10000,
+              style: {
+                background: '#0f172a',
+                color: '#f1f5f9',
+                border: '2px solid #f59e0b',
+                fontWeight: 'bold',
+                fontSize: '14px',
+              },
+              icon: '⏰',
+            }
+          );
+        }
       }
-    }
-  });
-}, [carsOnTheWay, tick]);
+    });
+  }, [carsOnTheWay, tick]);
 
   // ─── مراقبة العروض الجديدة (toast فقط) ──────────────────────────────────
   useEffect(() => {
@@ -799,8 +826,9 @@ useEffect(() => {
           <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
         </div>
       </div>
-{/* ✅ بنر تثبيت PWA - يختفي تلقائياً بعد التثبيت */}
-<InstallPWABanner />
+
+      {/* ✅ بنر تثبيت PWA - يختفي تلقائياً بعد التثبيت */}
+      <InstallPWABanner />
 
       {/* Settings Modal */}
       {showSettings && (

@@ -1,64 +1,52 @@
-import { serve }        from 'https://deno.land/std@0.168.0/http/server.ts';
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-// ─── CORS Headers ──────────────────────────────────────────────
+// ─── CORS ─────────────────────────────────────────────
 const corsHeaders = {
-  'Access-Control-Allow-Origin':  '*',
+  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type, x-client-info, apikey',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Max-Age':       '86400',
+  'Access-Control-Max-Age': '86400',
 };
 
-// ─── Helper: JSON Response ─────────────────────────────────────
 const jsonResponse = (
-  body:   Record<string, unknown>,
+  body: Record<string, unknown>,
   status: number = 200
-): Response => {
-  return new Response(JSON.stringify(body), {
+): Response =>
+  new Response(JSON.stringify(body), {
     status,
     headers: {
       ...corsHeaders,
       'Content-Type': 'application/json',
     },
   });
-};
 
-// ─── Main Handler ──────────────────────────────────────────────
+// ─── Main ─────────────────────────────────────────────
 serve(async (req) => {
-
-  // ✅ معالجة CORS Preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  // ✅ السماح فقط بـ POST
   if (req.method !== 'POST') {
-    return jsonResponse(
-      { success: false, error: 'Method not allowed' },
-      405
-    );
+    return jsonResponse({ success: false, error: 'Method not allowed' }, 405);
   }
 
   try {
-    // ✅ قراءة البيانات بأمان
     let body: {
-      garageId?:    string;
-      carPlate?:    string;
+      garageId?: string;
+      carPlate?: string;
       cancelledAt?: string;
+      tags?: string[];
     };
 
     try {
       body = await req.json();
     } catch {
-      return jsonResponse(
-        { success: false, error: 'Invalid JSON body' },
-        400
-      );
+      return jsonResponse({ success: false, error: 'Invalid JSON body' }, 400);
     }
 
-    const { garageId, carPlate, cancelledAt } = body;
+    const { garageId, carPlate, cancelledAt, tags } = body;
 
-    // ✅ التحقق من البيانات الإلزامية
     if (!garageId || typeof garageId !== 'string') {
       return jsonResponse(
         { success: false, error: 'garageId is required' },
@@ -66,44 +54,86 @@ serve(async (req) => {
       );
     }
 
-    if (!carPlate || typeof carPlate !== 'string') {
+    if (
+      (!carPlate || typeof carPlate !== 'string') &&
+      (!Array.isArray(tags) || tags.length === 0)
+    ) {
       return jsonResponse(
-        { success: false, error: 'carPlate is required' },
+        { success: false, error: 'carPlate or tags is required' },
         400
       );
     }
 
-    console.log('🚫 إلغاء التنبيهات المجدولة:', { garageId, carPlate });
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    // ✅ إنشاء Supabase Client
-    const supabaseUrl     = Deno.env.get('SUPABASE_URL');
-    const supabaseSrvKey  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-
-    if (!supabaseUrl || !supabaseSrvKey) {
-      console.error('❌ Supabase env variables missing');
+    if (!supabaseUrl || !supabaseKey) {
       return jsonResponse(
         { success: false, error: 'Server configuration error' },
         500
       );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseSrvKey);
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const now = cancelledAt ?? new Date().toISOString();
 
-    // ✅ حذف التنبيهات المجدولة (مع .select() لمعرفة العدد)
+    console.log('🚫 Cancelling scheduled alerts:', {
+      garageId,
+      carPlate,
+      tags,
+    });
+
+    // ─── Step 1: Check existing alerts ─────────────────
+    let checkQuery = supabase
+      .from('scheduled_push_alerts')
+      .select('id, tag, send_at, title, car_plate')
+      .eq('garage_id', garageId)
+      .eq('sent', false);
+
+    // لو tags موجودة، نعتمد عليها لأنها الأدق
+    if (Array.isArray(tags) && tags.length > 0) {
+      checkQuery = checkQuery.in('tag', tags);
+    } else if (carPlate) {
+      checkQuery = checkQuery.eq('car_plate', carPlate);
+    }
+
+    const { data: existingAlerts, error: checkError } = await checkQuery;
+
+    if (checkError) {
+      console.error('❌ Check alerts error:', checkError);
+      return jsonResponse(
+        { success: false, error: 'Failed to check scheduled alerts' },
+        500
+      );
+    }
+
+    if (!existingAlerts || existingAlerts.length === 0) {
+      return jsonResponse({
+        success: true,
+        deleted: 0,
+        message: 'No pending alerts to cancel',
+        garageId,
+        carPlate: carPlate ?? null,
+        cancelledTags: [],
+      });
+    }
+
+    // ─── Step 2: Delete by IDs ────────────────────────
+    const alertIds = existingAlerts.map((a) => a.id);
+
     const { data: deleted, error: deleteError } = await supabase
       .from('scheduled_push_alerts')
       .delete()
-      .eq('garage_id', garageId)
-      .eq('car_plate', carPlate)
-      .eq('sent',      false)
-      .select(); // ✅ مهم - عشان نعرف كام صف اتحذف
+      .in('id', alertIds)
+      .eq('sent', false)
+      .select('id, tag');
 
     if (deleteError) {
-      console.error('❌ خطأ في حذف التنبيهات:', deleteError);
+      console.error('❌ Delete scheduled alerts error:', deleteError);
       return jsonResponse(
         {
           success: false,
-          error:   'Failed to delete scheduled alerts',
+          error: 'Failed to cancel scheduled alerts',
           details: deleteError.message,
         },
         500
@@ -111,39 +141,40 @@ serve(async (req) => {
     }
 
     const deletedCount = deleted?.length ?? 0;
+    const cancelledTags = deleted?.map((d) => d.tag) ?? [];
 
-    // ✅ تسجيل العملية في جدول log (اختياري - مفيد للتتبع)
+    // ─── Step 3: Log ──────────────────────────────────
     try {
-      await supabase
-        .from('push_alerts_log')
-        .insert({
-          garage_id:    garageId,
-          car_plate:    carPlate,
-          action:       'cancel_scheduled',
-          cancelled_count: deletedCount,
-          cancelled_at:    cancelledAt ?? new Date().toISOString(),
-        });
+      await supabase.from('push_alerts_log').insert({
+        garage_id: garageId,
+        car_plate: carPlate ?? null,
+        action: 'cancel_scheduled',
+        cancelled_count: deletedCount,
+        cancelled_at: now,
+        tags_cancelled: cancelledTags,
+      });
     } catch (logErr) {
-      // ✅ فشل الـ log لا يوقف العملية
-      console.warn('⚠️ فشل تسجيل log:', logErr);
+      console.warn('⚠️ Cancel log failed (non-critical):', logErr);
     }
 
-    console.log(`✅ تم إلغاء ${deletedCount} تنبيه مجدول لـ ${carPlate}`);
+    console.log(
+      `✅ Cancelled ${deletedCount} scheduled alerts | garage:${garageId} | tags:${cancelledTags.join(', ')}`
+    );
 
     return jsonResponse({
-      success:     true,
-      deleted:     deletedCount,
+      success: true,
+      deleted: deletedCount,
       garageId,
-      carPlate,
-      cancelledAt: cancelledAt ?? new Date().toISOString(),
+      carPlate: carPlate ?? null,
+      cancelledAt: now,
+      cancelledTags,
     });
-
   } catch (err) {
-    console.error('❌ خطأ غير متوقع:', err);
+    console.error('❌ Unexpected error:', err);
     return jsonResponse(
       {
         success: false,
-        error:   'Internal server error',
+        error: 'Internal server error',
         details: String(err),
       },
       500

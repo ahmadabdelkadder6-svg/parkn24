@@ -1,202 +1,209 @@
-// ✅ رقم الـ version اتغير - بيجبر الـ SW يتحدث
-const CACHE_NAME = 'parknow-v3'; // ✅ غيرنا v2 → v3
+// ✅ رقم الـ version
+const CACHE_NAME    = 'parknow-v4'; // ✅ غيرنا v3 → v4
+const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
-const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-];
+// ✅ تتبع آخر إشعار اتعرض (dedup في الـ memory)
+// بيتمسح لما الـ SW يتوقف - مش مشكلة
+const recentNotifications = new Map(); // tag → timestamp
+const DEDUP_WINDOW_MS     = 5000;      // 5 ثواني
 
-// ─── التثبيت ──────────────────────────────────────────────────
+// ─── Install ──────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 تم تخزين الملفات');
+      console.log('📦 SW installed v4');
       return cache.addAll(STATIC_ASSETS);
     })
   );
 });
 
-// ─── التفعيل ──────────────────────────────────────────────────
+// ─── Activate ─────────────────────────────────────────────────
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME)
-          .map((name) => {
-            console.log('🗑️ حذف كاش قديم:', name);
-            return caches.delete(name);
-          })
-      );
-    }).then(() => {
-      return self.clients.claim();
-    })
+    caches.keys()
+      .then((names) =>
+        Promise.all(
+          names
+            .filter((n) => n !== CACHE_NAME)
+            .map((n) => {
+              console.log('🗑️ حذف كاش قديم:', n);
+              return caches.delete(n);
+            })
+        )
+      )
+      .then(() => self.clients.claim())
   );
 });
 
 // ─── Fetch ────────────────────────────────────────────────────
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
-  if (event.request.url.startsWith('chrome-extension')) return;
-  if (event.request.url.includes('supabase.co')) return;
+  if (event.request.method !== 'GET')                        return;
+  if (event.request.url.startsWith('chrome-extension'))      return;
+  if (event.request.url.includes('supabase.co'))             return;
 
   event.respondWith(
     fetch(event.request)
       .then((response) => {
         if (response.status === 200) {
-          const responseClone = response.clone();
+          const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
+            cache.put(event.request, clone);
           });
         }
         return response;
       })
-      .catch(() => {
-        return caches.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) return cachedResponse;
+      .catch(() =>
+        caches.match(event.request).then((cached) => {
+          if (cached) return cached;
           if (event.request.mode === 'navigate') {
             return caches.match('/index.html');
           }
           return new Response('Offline', { status: 503 });
-        });
-      })
+        })
+      )
   );
 });
 
-// ─── Push Notifications ──────────────────────────────────────
+// ─── Push ─────────────────────────────────────────────────────
 self.addEventListener('push', (event) => {
-  
-  // ✅ قيم افتراضية شاملة
-  let title = '🚨 ParkNow';
-  let body = 'لديك إشعار جديد';
-  let icon = '/icons/icon-192x192.png';
-  let badge = '/icons/icon-96x96.png';
-  let tag = 'parknow-push';
-  let url = '/';         // ✅ الصفحة اللي تفتح عند الضغط
-  let extraData = {};    // ✅ بيانات إضافية من السيرفر
+  let title     = '🚨 ParkNow';
+  let body      = 'لديك إشعار جديد';
+  const icon    = '/icons/icon-192x192.png';
+  const badge   = '/icons/icon-96x96.png';
+  let tag       = 'parknow-push';
+  let url       = '/';
+  let extraData = {};
 
-  // ✅ محاولة قراءة البيانات من الـ push event
+  // ─── قراءة الـ Payload ──────────────────────────────────
   try {
     if (event.data) {
       const payload = event.data.json();
-      console.log('📨 Push payload وصل:', payload);
+      console.log('📨 Push received:', payload);
 
-      // ✅ قراءة من notification object (لو السيرفر أرسله)
       if (payload.notification) {
         title = payload.notification.title || title;
         body  = payload.notification.body  || body;
-        icon  = payload.notification.icon  || icon;
       }
 
-      // ✅ قراءة من data object (بيانات إضافية من السيرفر)
       if (payload.data) {
-        extraData          = payload.data;
-        tag                = payload.data.tag       || tag;
-        url                = payload.data.url       || '/';
-        // ✅ لو فيه bookingId، وجه لصفحة الحجز
+        extraData = payload.data;
+        tag       = payload.data.tag || tag;
+        url       = payload.data.url || '/';
+
         if (payload.data.bookingId) {
           url = `/booking/${payload.data.bookingId}`;
         }
-        // ✅ لو نوع الإشعار حجز جديد للجراج
         if (payload.data.type === 'new_booking') {
           url = `/garage/bookings/${payload.data.bookingId}`;
         }
       }
 
-      // ✅ دعم الـ payload المسطح (بدون notification/data objects)
-      // لو السيرفر أرسل: { title, body, bookingId }
+      // Flat payload support
       if (!payload.notification && !payload.data) {
         title = payload.title || title;
         body  = payload.body  || body;
         if (payload.bookingId) {
-          url = `/booking/${payload.bookingId}`;
+          url       = `/booking/${payload.bookingId}`;
           extraData = payload;
         }
       }
     }
-  } catch (error) {
-    console.error('❌ خطأ في قراءة push data:', error);
+  } catch (err) {
+    console.error('❌ Push parse error:', err);
   }
 
-  // ✅ إعدادات الإشعار الكاملة
+  // ✅ Deduplication: منع نفس الإشعار يتعرض مرتين في 5 ثواني
+  const dedupKey       = tag; // الـ tag هو مفتاح التكرار
+  const lastShown      = recentNotifications.get(dedupKey);
+  const now            = Date.now();
+
+  if (lastShown && (now - lastShown) < DEDUP_WINDOW_MS) {
+    console.warn(
+      `⚠️ Duplicate push ignored: tag="${tag}" shown ${now - lastShown}ms ago`
+    );
+    return; // ✅ تجاهل الإشعار المكرر
+  }
+
+  // ✅ سجل وقت العرض
+  recentNotifications.set(dedupKey, now);
+
+  // ✅ نظف الـ Map من القديم عشان مايكبرش
+  for (const [k, t] of recentNotifications.entries()) {
+    if (now - t > 60_000) recentNotifications.delete(k); // أقدم من دقيقة
+  }
+
+  // ─── إعدادات الإشعار ────────────────────────────────────
   const options = {
     body,
     icon,
     badge,
-    
-    // ✅ الاهتزاز: 3 نبضات قوية لتنبيه صاحب الجراج
-    vibrate: [500, 100, 500, 100, 500, 200, 800],
-    
-    // ✅ يبقى الإشعار ظاهراً حتى يتفاعل المستخدم
-    requireInteraction: true,
-    
-    // ✅ tag لمنع تكرار الإشعارات نفسها
+    vibrate:             [500, 100, 500, 100, 500, 200, 800],
+    requireInteraction:  true,
     tag,
-    
-    // ✅ لو جاء إشعار جديد بنفس الـ tag، يحل محل القديم
-    renotify: true,
-    
-    // ✅ الوقت الحالي
-    timestamp: Date.now(),
-    
-    // ✅ البيانات - مهمة جداً لـ notificationclick
-    data: {
-      url,
-      ...extraData,
-    },
-
-    // ✅ أزرار الإشعار
+    // ✅ renotify: true بس لو الإشعار مختلف فعلاً
+    // بعد الـ dedup check، أي إشعار وصل هنا هو جديد
+    renotify:            true,
+    timestamp:           now,
+    data: { url, ...extraData },
     actions: [
       { action: 'open',    title: '📱 فتح التطبيق' },
       { action: 'dismiss', title: '❌ تجاهل'        },
     ],
   };
 
-  console.log('🔔 عرض إشعار:', title, options);
+  console.log('🔔 Showing notification:', { title, tag, url });
 
   event.waitUntil(
-    self.registration.showNotification(title, options)
+    // ✅ شوف لو في إشعار قديم بنفس الـ tag قبل العرض
+    self.registration.getNotifications({ tag }).then((existing) => {
+      // ✅ لو في إشعار موجود بنفس الـ tag وجاءنا نفس الـ body، تجاهل
+      if (existing.length > 0 && existing[0].body === body) {
+        console.warn(`⚠️ Same notification already shown for tag: ${tag}`);
+        return; // تجاهل - نفس المحتوى بالظبط
+      }
+
+      // ✅ عرض الإشعار
+      return self.registration.showNotification(title, options);
+    })
   );
 });
 
-// ─── عند الضغط على الإشعار ───────────────────────────────────
+// ─── Notification Click ───────────────────────────────────────
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  // ✅ لو ضغط تجاهل، لا تفعل شيئاً
-  if (event.action === 'dismiss') return;
+  if (event.action === 'dismiss') {
+    console.log('🔕 Dismissed:', event.notification.tag);
+    return;
+  }
 
-  // ✅ استخراج الـ URL من بيانات الإشعار
-  const targetUrl = (event.notification.data && event.notification.data.url)
-    ? event.notification.data.url
-    : '/';
-
-  console.log('👆 ضغط على إشعار - التوجه إلى:', targetUrl);
+  const targetUrl = event.notification.data?.url || '/';
+  console.log('👆 Notification clicked → navigating to:', targetUrl);
 
   event.waitUntil(
     clients
       .matchAll({ type: 'window', includeUncontrolled: true })
       .then((clientList) => {
-        
-        // ✅ ابحث لو التطبيق مفتوح على نفس الـ URL
+        // ✅ لو التطبيق مفتوح على نفس الـ URL
         for (const client of clientList) {
           if (client.url === targetUrl && 'focus' in client) {
             return client.focus();
           }
         }
 
-        // ✅ لو التطبيق مفتوح على URL تاني، وجهه للصفحة المطلوبة
+        // ✅ لو التطبيق مفتوح على URL تاني
         for (const client of clientList) {
-          if (client.url.includes(self.location.origin) && 'focus' in client) {
+          if (
+            client.url.includes(self.location.origin) &&
+            'focus' in client
+          ) {
             client.focus();
-            // ✅ أرسل رسالة للتطبيق عشان يتنقل للصفحة المطلوبة
             return client.navigate(targetUrl);
           }
         }
 
-        // ✅ لو التطبيق مغلق تماماً - افتحه على الصفحة المطلوبة
+        // ✅ لو التطبيق مغلق - افتحه
         if (clients.openWindow) {
           return clients.openWindow(targetUrl);
         }
@@ -204,22 +211,14 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// ─── عند إغلاق الإشعار بدون ضغط ─────────────────────────────
+// ─── Notification Close ───────────────────────────────────────
 self.addEventListener('notificationclose', (event) => {
-  // ✅ يمكن استخدامها لتتبع analytics
-  console.log('🔕 أغلق الإشعار بدون ضغط:', event.notification.tag);
-  
-  // ✅ اختياري: أرسل للسيرفر إن الإشعار تم رؤيته لكن تم تجاهله
-  // fetch('/api/notifications/dismissed', {
-  //   method: 'POST',
-  //   body: JSON.stringify({ tag: event.notification.tag }),
-  // });
+  console.log('🔕 Notification closed without click:', event.notification.tag);
 });
 
-// ─── Background Sync (اختياري - للمستقبل) ────────────────────
+// ─── Background Sync ──────────────────────────────────────────
 self.addEventListener('sync', (event) => {
   if (event.tag === 'sync-bookings') {
-    console.log('🔄 Background sync للحجوزات');
-    // event.waitUntil(syncBookings());
+    console.log('🔄 Background sync');
   }
 });
