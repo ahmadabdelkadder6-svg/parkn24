@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { useStore, setupRealtime } from './store';
 import { cn } from './utils/cn';
 
@@ -454,6 +455,7 @@ export default function App() {
 
         <Toaster position="top-center" />
         <InstallPWA />
+        <SpeedInsights />
       </div>
     </AuthGate>
   );
