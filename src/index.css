@@ -2,34 +2,63 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg: #ffffff;
+  --card: #f8fafc;
+  --card-2: #f1f5f9;
+  --text: #020617;
+  --muted: #64748b;
+  --muted-2: #475569;
+
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --accent-border: #93c5fd;
+  --border: #e2e8f0;
+  --text-h: #020617;
+  --social-bg: #f8fafc;
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+
+  color-scheme: light;
+}
+
 html {
   direction: rtl;
   font-family: 'Cairo', sans-serif;
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
+  background-color: var(--bg);
+  color: var(--text);
 }
 
 body {
   margin: 0;
   padding: 0;
-  background-color: #020617;
-  color: #f8fafc;
+  background-color: var(--bg);
+  color: var(--text);
   direction: rtl;
   overscroll-behavior: none;
   -webkit-overflow-scrolling: touch;
   touch-action: manipulation;
 }
 
+#root {
+  min-height: 100vh;
+  background-color: var(--bg);
+  color: var(--text);
+}
+
 * {
   -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
 }
 
 ::-webkit-scrollbar {
-  width: 0px;
+  width: 0;
   display: none;
 }
 
-button, a {
+button,
+a {
   -webkit-user-select: none;
   user-select: none;
 }
@@ -42,12 +71,110 @@ button, a {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-input[type="number"]::-webkit-inner-spin-button,
-input[type="number"]::-webkit-outer-spin-button {
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
 
-input[type="number"] {
+input[type='number'] {
   -moz-appearance: textfield;
+}
+
+/* ============================= */
+/* إجبار الثيم الفاتح بشكل عام   */
+/* ============================= */
+
+.bg-slate-950,
+.bg-slate-900,
+.bg-gray-950,
+.bg-gray-900,
+.bg-black {
+  background-color: #ffffff !important;
+}
+
+.bg-slate-800,
+.bg-gray-800 {
+  background-color: #f1f5f9 !important;
+}
+
+.bg-slate-950\/60,
+.bg-slate-950\/50,
+.bg-slate-900\/50,
+.bg-slate-900\/40,
+.bg-slate-900\/30 {
+  background-color: #f8fafc !important;
+}
+
+.border-slate-900,
+.border-slate-800,
+.border-slate-700,
+.border-gray-900,
+.border-gray-800,
+.border-gray-700 {
+  border-color: #e2e8f0 !important;
+}
+
+/* نصوص فاتحة تتحول لداكن */
+.text-white,
+.text-slate-100,
+.text-slate-200,
+.text-slate-300 {
+  color: #020617 !important;
+}
+
+.text-slate-400 {
+  color: #64748b !important;
+}
+
+.text-slate-500 {
+  color: #475569 !important;
+}
+
+.text-slate-600 {
+  color: #334155 !important;
+}
+
+.text-slate-700 {
+  color: #1e293b !important;
+}
+
+/* الحقول والمدخلات */
+input,
+select,
+textarea {
+  background-color: #ffffff;
+  color: #020617;
+  border-color: #e2e8f0;
+}
+
+.placeholder\:text-slate-600::placeholder {
+  color: #94a3b8 !important;
+}
+
+.placeholder\:text-slate-500::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* إعادة النص الأبيض للأزرار الملونة */
+.bg-blue-600,
+.bg-blue-700,
+.bg-emerald-600,
+.bg-emerald-700,
+.bg-red-600,
+.bg-red-700,
+.bg-purple-600,
+.bg-purple-700,
+.bg-orange-600,
+.bg-orange-700 {
+  color: #ffffff !important;
+}
+
+/* الحفاظ على خلفيات التنبيهات والـ overlays */
+.bg-black\/80 {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+}
+
+.bg-black\/70 {
+  background-color: rgba(0, 0, 0, 0.4) !important;
 }

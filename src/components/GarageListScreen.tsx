@@ -29,7 +29,6 @@ interface GarageWithDistance extends Garage {
   classification: 'nearby' | 'far';
 }
 
-// ✅ توحيد رقم اللوحة للمقارنة - يتعامل مع الأرقام العربية والإنجليزية
 const normalizePlateForCompare = (plate?: string): string => {
   if (!plate) return '';
   return plate
@@ -62,24 +61,20 @@ export default function GarageListScreen() {
   });
   const [locationLoading, setLocationLoading] = useState(false);
 
-  // ✅ رقم لوحة المستخدم موحّد
   const normalizedUserPlate = normalizePlateForCompare(currentUser?.carPlate);
 
-  // ✅ هل فيه جلسة مكتملة سابقة
   const hasCompletedSession = sessions.some(
     (s) =>
       normalizePlateForCompare(s.carPlate) === normalizedUserPlate &&
       s.status === 'completed'
   );
 
-  // ✅ هل فيه جلسة نشطة حالياً - مع توحيد المقارنة
   const activeSession = sessions.find(
     (s) =>
       normalizePlateForCompare(s.carPlate) === normalizedUserPlate &&
       s.status === 'active'
   );
 
-  // ✅ هل فيه سيارة في الطريق
   const myIncomingCar = incomingCars.find(
     (c) =>
       normalizePlateForCompare(c.carPlate) === normalizedUserPlate &&
@@ -152,38 +147,35 @@ export default function GarageListScreen() {
     (g) => g.classification === 'far'
   );
 
-  // ─── حجز مباشر ────────────────────────────────────────────────────────────
   const handleDirectBooking = (garage: GarageWithDistance) => {
     if (!currentUser) {
       toast.error('سجل بياناتك أولاً');
       return;
     }
 
-    // ✅ لو فيه جلسة نشطة → روّح للجلسة المفتوحة
     if (activeSession) {
       setSelectedGarageId(activeSession.garageId);
       setScreen('session');
       toast('لديك جلسة ركن نشطة بالفعل! 🚗', {
         icon: '⚡',
         style: {
-          background: '#1e293b',
-          color: '#f1f5f9',
-          border: '1px solid #334155',
+          background: '#ffffff',
+          color: '#0f172a',
+          border: '1px solid #e2e8f0',
         },
       });
       return;
     }
 
-    // ✅ لو فيه سيارة في الطريق → روّح للتوجيه
     if (myIncomingCar) {
       setSelectedGarageId(myIncomingCar.garageId);
       setScreen('navigation');
       toast('لديك حجز نشط بالفعل! 📍', {
         icon: '🚗',
         style: {
-          background: '#1e293b',
-          color: '#f1f5f9',
-          border: '1px solid #334155',
+          background: '#ffffff',
+          color: '#0f172a',
+          border: '1px solid #e2e8f0',
         },
       });
       return;
@@ -223,16 +215,15 @@ export default function GarageListScreen() {
   };
 
   return (
-    <div className="h-full bg-slate-950 text-white flex flex-col">
+    <div className="h-full bg-white text-slate-900 flex flex-col">
       {/* Header */}
       <div className="px-4 pt-12 pb-2">
-        {/* الصف الأول */}
         <div className="flex justify-between items-center mb-3">
           <div>
-            <h1 className="text-lg font-black text-white">
+            <h1 className="text-lg font-black text-slate-900">
               مرحباً {currentUser?.name} 👋
             </h1>
-            <p className="text-slate-500 text-[10px]">ابحث عن أقرب مكان ركن</p>
+            <p className="text-slate-400 text-[10px]">ابحث عن أقرب مكان ركن</p>
           </div>
           <img
             src="/images/logo.png"
@@ -267,7 +258,7 @@ export default function GarageListScreen() {
           </div>
         </div>
 
-        {/* ✅ بانر الجلسة النشطة */}
+        {/* بانر الجلسة النشطة */}
         {activeSession && (
           <motion.button
             initial={{ opacity: 0, y: -10 }}
@@ -276,26 +267,26 @@ export default function GarageListScreen() {
               setSelectedGarageId(activeSession.garageId);
               setScreen('session');
             }}
-            className="w-full bg-emerald-600/20 border border-emerald-500/40 rounded-xl p-3 mb-2 flex items-center justify-between active:scale-[0.98] transition-all"
+            className="w-full bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-2 flex items-center justify-between active:scale-[0.98] transition-all"
           >
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-xs font-black text-emerald-400">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-xs font-black text-emerald-600">
                 عرض الجلسة النشطة ←
               </span>
             </div>
             <div className="text-right">
-              <div className="text-xs font-black text-white">
+              <div className="text-xs font-black text-slate-900">
                 🚗 لديك جلسة ركن نشطة
               </div>
-              <div className="text-[9px] text-emerald-400/70">
+              <div className="text-[9px] text-emerald-500">
                 اضغط للعودة للجلسة
               </div>
             </div>
           </motion.button>
         )}
 
-        {/* ✅ بانر السيارة في الطريق */}
+        {/* بانر السيارة في الطريق */}
         {!activeSession && myIncomingCar && (
           <motion.button
             initial={{ opacity: 0, y: -10 }}
@@ -304,19 +295,19 @@ export default function GarageListScreen() {
               setSelectedGarageId(myIncomingCar.garageId);
               setScreen('navigation');
             }}
-            className="w-full bg-cyan-600/20 border border-cyan-500/40 rounded-xl p-3 mb-2 flex items-center justify-between active:scale-[0.98] transition-all"
+            className="w-full bg-cyan-50 border border-cyan-200 rounded-xl p-3 mb-2 flex items-center justify-between active:scale-[0.98] transition-all"
           >
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-              <span className="text-xs font-black text-cyan-400">
+              <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
+              <span className="text-xs font-black text-cyan-600">
                 عرض التوجيه ←
               </span>
             </div>
             <div className="text-right">
-              <div className="text-xs font-black text-white">
+              <div className="text-xs font-black text-slate-900">
                 📍 لديك حجز نشط
               </div>
-              <div className="text-[9px] text-cyan-400/70">
+              <div className="text-[9px] text-cyan-500">
                 اضغط للعودة للتوجيه
               </div>
             </div>
@@ -328,11 +319,11 @@ export default function GarageListScreen() {
           <span className="text-[9px] text-slate-400 font-bold whitespace-nowrap">
             💰 ادفع بعد الركنة:
           </span>
-          <span className="text-[8px] text-emerald-400 font-bold">نقدي</span>
-          <span className="text-slate-700">·</span>
-          <span className="text-[8px] text-purple-400 font-bold">إنستاباي</span>
-          <span className="text-slate-700">·</span>
-          <span className="text-[8px] text-blue-400 font-bold">محفظة</span>
+          <span className="text-[8px] text-emerald-600 font-bold">نقدي</span>
+          <span className="text-slate-300">·</span>
+          <span className="text-[8px] text-purple-600 font-bold">إنستاباي</span>
+          <span className="text-slate-300">·</span>
+          <span className="text-[8px] text-blue-600 font-bold">محفظة</span>
         </div>
 
         {/* البحث + تحديد الموقع */}
@@ -340,10 +331,10 @@ export default function GarageListScreen() {
           <div className="relative flex-1">
             <Search
               size={16}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
             />
             <input
-              className="w-full bg-slate-900 border border-slate-800 p-2.5 pr-9 rounded-xl text-right font-bold text-white outline-none text-xs placeholder:text-slate-600"
+              className="w-full bg-gray-50 border border-slate-200 p-2.5 pr-9 rounded-xl text-right font-bold text-slate-900 outline-none text-xs placeholder:text-slate-400"
               placeholder="ابحث عن جراج..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -355,8 +346,8 @@ export default function GarageListScreen() {
             disabled={locationLoading}
             className={`p-3 rounded-2xl border transition-all ${
               locationLoading
-                ? 'bg-slate-800 border-slate-700 text-slate-500'
-                : 'bg-emerald-600/20 border-emerald-500/30 text-emerald-400 active:scale-95'
+                ? 'bg-slate-100 border-slate-200 text-slate-400'
+                : 'bg-emerald-50 border-emerald-200 text-emerald-600 active:scale-95'
             }`}
           >
             <Locate
@@ -369,8 +360,8 @@ export default function GarageListScreen() {
             onClick={() => setShowNearbyOnly(!showNearbyOnly)}
             className={`px-3 py-2.5 rounded-xl text-[10px] font-black transition-all border whitespace-nowrap ${
               showNearbyOnly
-                ? 'bg-emerald-600/20 border-emerald-500/30 text-emerald-400'
-                : 'bg-slate-900 border-slate-800 text-slate-500'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
+                : 'bg-slate-50 border-slate-200 text-slate-500'
             }`}
           >
             <Filter size={14} className="inline ml-1" />
@@ -386,30 +377,30 @@ export default function GarageListScreen() {
           {hasCompletedSession && (
             <button
               onClick={() => setScreen('lastSession')}
-              className="bg-gradient-to-l from-blue-600/20 to-slate-900 border border-blue-500/20 rounded-2xl p-3 flex items-center gap-2 active:scale-[0.98] transition-all"
+              className="bg-gradient-to-l from-blue-50 to-white border border-blue-200 rounded-2xl p-3 flex items-center gap-2 active:scale-[0.98] transition-all"
             >
-              <div className="bg-blue-600/20 p-2 rounded-xl shrink-0">
-                <Receipt size={14} className="text-blue-400" />
+              <div className="bg-blue-100 p-2 rounded-xl shrink-0">
+                <Receipt size={14} className="text-blue-600" />
               </div>
               <div className="text-right flex-1">
-                <div className="text-[10px] font-black text-white">آخر جلسة</div>
-                <div className="text-[8px] text-slate-500">عرض التفاصيل</div>
+                <div className="text-[10px] font-black text-slate-900">آخر جلسة</div>
+                <div className="text-[8px] text-slate-400">عرض التفاصيل</div>
               </div>
             </button>
           )}
 
           <button
             onClick={() => setScreen('chat')}
-            className={`bg-gradient-to-l from-purple-600/20 to-slate-900 border border-purple-500/20 rounded-2xl p-3 flex items-center gap-2 active:scale-[0.98] transition-all ${
+            className={`bg-gradient-to-l from-purple-50 to-white border border-purple-200 rounded-2xl p-3 flex items-center gap-2 active:scale-[0.98] transition-all ${
               !hasCompletedSession ? 'col-span-2' : ''
             }`}
           >
-            <div className="bg-purple-600/20 p-2 rounded-xl shrink-0">
-              <MessageCircle size={14} className="text-purple-400" />
+            <div className="bg-purple-100 p-2 rounded-xl shrink-0">
+              <MessageCircle size={14} className="text-purple-600" />
             </div>
             <div className="text-right flex-1">
-              <div className="text-[10px] font-black text-white">تواصل معنا</div>
-              <div className="text-[8px] text-slate-500">شكاوى واستفسارات</div>
+              <div className="text-[10px] font-black text-slate-900">تواصل معنا</div>
+              <div className="text-[8px] text-slate-400">شكاوى واستفسارات</div>
             </div>
           </button>
         </div>
@@ -418,10 +409,10 @@ export default function GarageListScreen() {
         {nearbyGarages.length > 0 && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3 justify-end">
-              <span className="text-xs text-slate-500">
+              <span className="text-xs text-slate-400">
                 ({nearbyGarages.length})
               </span>
-              <h2 className="text-sm font-black text-emerald-400 flex items-center gap-2">
+              <h2 className="text-sm font-black text-emerald-600 flex items-center gap-2">
                 أماكن قريبة (1-17 دقيقة)
                 <Navigation size={14} />
               </h2>
@@ -448,10 +439,10 @@ export default function GarageListScreen() {
         {farGarages.length > 0 && !showNearbyOnly && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3 justify-end">
-              <span className="text-xs text-slate-500">
+              <span className="text-xs text-slate-400">
                 ({farGarages.length})
               </span>
-              <h2 className="text-sm font-black text-amber-400 flex items-center gap-2">
+              <h2 className="text-sm font-black text-amber-500 flex items-center gap-2">
                 خيارات أخرى (+17 دقيقة)
                 <Clock size={14} />
               </h2>
@@ -477,7 +468,7 @@ export default function GarageListScreen() {
         {filteredGarages.length === 0 && (
           <div className="text-center py-12">
             <div className="text-4xl mb-4">🔍</div>
-            <p className="text-slate-500 text-sm">لا توجد جراجات متاحة</p>
+            <p className="text-slate-400 text-sm">لا توجد جراجات متاحة</p>
           </div>
         )}
       </div>
@@ -514,43 +505,43 @@ function GarageCard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.04 }}
-      className={`border rounded-2xl p-3.5 active:scale-[0.98] transition-transform cursor-pointer ${
+      className={`border rounded-2xl p-3.5 active:scale-[0.98] transition-transform cursor-pointer shadow-sm ${
         isNearby
-          ? 'bg-slate-900 border-emerald-500/30'
-          : 'bg-slate-900 border-slate-800'
+          ? 'bg-white border-emerald-200'
+          : 'bg-white border-slate-200'
       }`}
       onClick={onSelect}
     >
       {/* الصف الأول */}
       <div className="flex justify-between items-center mb-2">
         <div className="flex items-center gap-1.5">
-          <div className="flex items-center gap-1 bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded text-[10px] font-bold">
+          <div className="flex items-center gap-1 bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded text-[10px] font-bold">
             <Star size={10} fill="currentColor" />
             {garage.rating}
           </div>
 
           {garage.availableSpots === 0 && (
-            <span className="bg-red-500/20 text-red-400 text-[8px] font-black px-1.5 py-0.5 rounded">
+            <span className="bg-red-100 text-red-500 text-[8px] font-black px-1.5 py-0.5 rounded">
               ممتلئ
             </span>
           )}
 
           {!isBusy && isClosest && garage.availableSpots > 0 ? (
-            <span className="bg-blue-500/20 text-blue-400 text-[8px] font-black px-1.5 py-0.5 rounded">
+            <span className="bg-blue-100 text-blue-600 text-[8px] font-black px-1.5 py-0.5 rounded">
               الأقرب إليك 📍
             </span>
           ) : !isBusy && isNearby && garage.availableSpots > 0 ? (
-            <span className="bg-emerald-500/20 text-emerald-400 text-[8px] font-black px-1.5 py-0.5 rounded">
+            <span className="bg-emerald-100 text-emerald-600 text-[8px] font-black px-1.5 py-0.5 rounded">
               قريب
             </span>
           ) : null}
         </div>
 
-        <h3 className="text-sm font-black text-white">{garage.name}</h3>
+        <h3 className="text-sm font-black text-slate-900">{garage.name}</h3>
       </div>
 
       {/* الصف الثاني */}
-      <div className="flex items-center gap-1 justify-end text-slate-500 text-[10px] mb-2.5">
+      <div className="flex items-center gap-1 justify-end text-slate-400 text-[10px] mb-2.5">
         <span>{garage.location}</span>
         <MapPin size={10} />
       </div>
@@ -559,16 +550,16 @@ function GarageCard({
       <div className="flex items-center justify-between gap-2 mb-2.5">
         <div
           className={`flex items-center gap-1.5 px-2 py-1 rounded-lg ${
-            isNearby ? 'bg-emerald-600/10' : 'bg-slate-950/60'
+            isNearby ? 'bg-emerald-50' : 'bg-slate-50'
           }`}
         >
           <Navigation
             size={12}
-            className={isNearby ? 'text-emerald-400' : 'text-amber-400'}
+            className={isNearby ? 'text-emerald-600' : 'text-amber-500'}
           />
           <span
             className={`text-xs font-black font-mono ${
-              isNearby ? 'text-emerald-400' : 'text-amber-400'
+              isNearby ? 'text-emerald-600' : 'text-amber-500'
             }`}
           >
             {formatDuration(garage.minutes)}
@@ -576,14 +567,14 @@ function GarageCard({
         </div>
 
         <div className="flex items-center gap-2 text-[10px]">
-          <span className="text-blue-400 font-black font-mono">
+          <span className="text-blue-600 font-black font-mono">
             {garage.availableSpots}{' '}
-            <span className="text-slate-500 font-normal">شاغر</span>
+            <span className="text-slate-400 font-normal">شاغر</span>
           </span>
-          <span className="text-slate-700">·</span>
-          <span className="text-emerald-400 font-black font-mono">
+          <span className="text-slate-300">·</span>
+          <span className="text-emerald-600 font-black font-mono">
             {garage.basePrice}{' '}
-            <span className="text-slate-500 font-normal">ج.م/س</span>
+            <span className="text-slate-400 font-normal">ج.م/س</span>
           </span>
         </div>
       </div>
@@ -592,11 +583,11 @@ function GarageCard({
       <button
         className={`w-full py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 ${
           garage.availableSpots === 0
-            ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+            ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
             : hasActiveSession
-            ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+            ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
             : hasIncomingCar
-            ? 'bg-cyan-600/20 text-cyan-400 border border-cyan-500/30'
+            ? 'bg-cyan-50 text-cyan-600 border border-cyan-200'
             : isClosest
             ? 'bg-blue-600 text-white'
             : isNearby

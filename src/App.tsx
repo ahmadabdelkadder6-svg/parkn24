@@ -59,27 +59,22 @@ export default function App() {
   const sessionEndToastShown = useRef(false);
   const sessionTransitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ✅ التحقق من رابط الأدمن السري
   const [adminAccess, setAdminAccess] = useState(false);
 
   useEffect(() => {
-    // ✅ الطريقة 1: رابط سري مثل ?admin=admin2025x
     const params = new URLSearchParams(window.location.search);
     const adminParam = params.get('admin');
 
     if (adminParam === ADMIN_SECRET_CODE) {
       setAdminAccess(true);
-      // ✅ حفظ في localStorage عشان ميحتاجش يكتب الرابط كل مرة
       localStorage.setItem('adminAccess', 'true');
     }
 
-    // ✅ الطريقة 2: رابط مباشر مثل /admin
     if (window.location.pathname === '/admin' || window.location.hash === '#admin') {
       setAdminAccess(true);
       localStorage.setItem('adminAccess', 'true');
     }
 
-    // ✅ لو عنده صلاحية سابقة
     if (localStorage.getItem('adminAccess') === 'true') {
       setAdminAccess(true);
     }
@@ -261,9 +256,7 @@ export default function App() {
         sessionTransitionTimer.current = null;
 
         const freshState = useStore.getState();
-        const freshPlate = (
-          freshState.currentUser?.carPlate ?? ''
-        )
+        const freshPlate = (freshState.currentUser?.carPlate ?? '')
           .trim()
           .toUpperCase();
 
@@ -327,9 +320,7 @@ export default function App() {
     if (!myActiveSession && safeScreen === 'navigation' && !myIncoming) {
       const timeout = setTimeout(() => {
         const freshState = useStore.getState();
-        const freshPlate = (
-          freshState.currentUser?.carPlate ?? ''
-        )
+        const freshPlate = (freshState.currentUser?.carPlate ?? '')
           .trim()
           .toUpperCase();
 
@@ -374,12 +365,10 @@ export default function App() {
   return (
     <AuthGate>
       <div
-        className="max-w-md mx-auto h-dvh bg-slate-950 relative flex flex-col overflow-hidden"
+        className="max-w-md mx-auto h-dvh bg-white text-slate-900 relative flex flex-col overflow-hidden"
         style={{ fontFamily: "'Cairo', sans-serif" }}
       >
-        {/* ✅ أزرار التبديل - حريف وجراج فقط */}
-        {/* زر الأدمن يظهر فقط لو عنده صلاحية */}
-        <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-black/70 p-0.5 rounded-full backdrop-blur-md border border-white/10">
+        <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-white/90 p-0.5 rounded-full backdrop-blur-md border border-slate-200 shadow-sm">
           {[
             { id: 'user' as const, label: 'حريف', show: true },
             { id: 'garage' as const, label: 'جراج', show: true },
@@ -396,7 +385,7 @@ export default function App() {
                     ? tab.id === 'admin'
                       ? 'bg-purple-600 text-white'
                       : 'bg-blue-600 text-white'
-                    : 'text-slate-400'
+                    : 'text-slate-600'
                 )}
               >
                 {tab.label}
@@ -404,12 +393,11 @@ export default function App() {
             ))}
         </div>
 
-        {/* Main Content */}
-        <main className="flex-1 overflow-hidden">
+        <main className="flex-1 overflow-hidden bg-white">
           {!dataLoaded ? (
-            <div className="h-full bg-slate-950 flex flex-col items-center justify-center">
+            <div className="h-full bg-white flex flex-col items-center justify-center">
               <div className="text-4xl mb-4 animate-bounce">🚗</div>
-              <p className="text-slate-400 text-sm font-bold animate-pulse">
+              <p className="text-slate-600 text-sm font-bold animate-pulse">
                 جاري تحميل البيانات...
               </p>
             </div>
@@ -429,7 +417,7 @@ export default function App() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                className="h-full overflow-y-auto bg-slate-950"
+                className="h-full overflow-y-auto bg-white text-slate-900"
               >
                 {safeScreen === 'splash' && <SplashScreen />}
 

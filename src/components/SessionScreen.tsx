@@ -24,14 +24,12 @@ export default function SessionScreen() {
 
   const userPlate = (currentUser?.carPlate ?? '').trim().toUpperCase();
 
-  // ✅ البحث عن الجلسة النشطة
   const activeSession = sessions.find(
     (s) =>
       s.carPlate.trim().toUpperCase() === userPlate &&
       s.status === 'active'
   );
 
-  // ✅ آخر جلسة مكتملة (لو الجراج أنهى الجلسة)
   const lastCompletedSession = sessions
     .filter(
       (s) =>
@@ -53,7 +51,6 @@ export default function SessionScreen() {
   const [elapsed, setElapsed] = useState(0);
   const redirectedRef = useRef(false);
 
-  // ✅ عداد الجلسة النشطة
   useEffect(() => {
     if (!activeSession) return;
 
@@ -73,7 +70,6 @@ export default function SessionScreen() {
     return () => clearInterval(interval);
   }, [activeSession?.id, activeSession?.startTime]);
 
-  // ✅ لو الجراج أنهى الجلسة → انتقل للملخص تلقائياً
   useEffect(() => {
     if (activeSession) {
       redirectedRef.current = false;
@@ -100,15 +96,15 @@ export default function SessionScreen() {
     setScreen,
   ]);
 
-  // ✅ شاشة لا توجد جلسة نشطة
+  // شاشة لا توجد جلسة نشطة
   if (!activeSession) {
     return (
-      <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8">
+      <div className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8">
         <div className="text-4xl mb-4 animate-bounce">⏳</div>
-        <p className="text-slate-400 text-sm font-bold text-center mb-2">
+        <p className="text-slate-500 text-sm font-bold text-center mb-2">
           لا توجد جلسة ركن نشطة حالياً
         </p>
-        <p className="text-slate-600 text-xs text-center mb-6">
+        <p className="text-slate-400 text-xs text-center mb-6">
           ابحث عن جراج وابدأ الركن
         </p>
         <button
@@ -122,7 +118,6 @@ export default function SessionScreen() {
     );
   }
 
-  // ✅ الحسابات
   const sessionRate = Number(
     activeSession.agreedPrice ?? garage?.basePrice ?? 0
   );
@@ -130,7 +125,6 @@ export default function SessionScreen() {
   const currentCost = calculateCost(elapsed, sessionRate);
   const remainingInHour = getRemainingInCurrentHour(elapsed);
 
-  // ✅ إنهاء الجلسة من شاشة العميل → يروح للملخص
   const handleEnd = () => {
     setScreen('summary');
   };
@@ -139,22 +133,22 @@ export default function SessionScreen() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8"
+      className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8"
     >
       {/* عداد الوقت الدائري */}
       <motion.div
         animate={{
           boxShadow: [
-            '0 0 0px rgba(59,130,246,0.3)',
-            '0 0 60px rgba(59,130,246,0.3)',
-            '0 0 0px rgba(59,130,246,0.3)',
+            '0 0 0px rgba(59,130,246,0.15)',
+            '0 0 60px rgba(59,130,246,0.2)',
+            '0 0 0px rgba(59,130,246,0.15)',
           ],
         }}
         transition={{ repeat: Infinity, duration: 2 }}
-        className="w-48 h-48 bg-slate-900 rounded-full flex flex-col items-center justify-center border-4 border-blue-600/40 mb-6"
+        className="w-48 h-48 bg-blue-50 rounded-full flex flex-col items-center justify-center border-4 border-blue-300 mb-6 shadow-lg shadow-blue-100"
       >
-        <Clock size={28} className="text-blue-400 mb-1" />
-        <div className="text-3xl font-black font-mono text-white">
+        <Clock size={28} className="text-blue-600 mb-1" />
+        <div className="text-3xl font-black font-mono text-slate-900">
           {formatTime(elapsed)}
         </div>
         <div className="text-[10px] text-slate-500 font-bold mt-1">
@@ -163,37 +157,37 @@ export default function SessionScreen() {
       </motion.div>
 
       {/* بطاقة التكلفة */}
-      <div className="w-full bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-2xl p-4 mb-4">
+      <div className="w-full bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-2xl p-4 mb-4 shadow-sm">
         <div className="flex justify-between items-center mb-3">
           <div className="text-center">
-            <div className="text-3xl font-black text-blue-400 font-mono">
+            <div className="text-3xl font-black text-blue-600 font-mono">
               {currentHours}
             </div>
-            <div className="text-[9px] text-slate-400 font-bold">
+            <div className="text-[9px] text-slate-500 font-bold">
               ساعة محسوبة
             </div>
           </div>
-          <div className="text-4xl font-black text-white">=</div>
+          <div className="text-4xl font-black text-slate-400">=</div>
           <div className="text-center">
-            <div className="text-3xl font-black text-emerald-400 font-mono">
+            <div className="text-3xl font-black text-emerald-600 font-mono">
               {currentCost}
             </div>
-            <div className="text-[9px] text-slate-400 font-bold">
+            <div className="text-[9px] text-slate-500 font-bold">
               ج.م إجمالي
             </div>
           </div>
         </div>
 
         {/* العد التنازلي للساعة التالية */}
-        <div className="bg-slate-950/50 rounded-xl p-3 text-center">
+        <div className="bg-white/80 rounded-xl p-3 text-center border border-slate-100">
           <div className="text-[10px] text-slate-500 mb-1">
             الوقت المتبقي حتى الساعة التالية
           </div>
-          <div className="text-lg font-black text-amber-400 font-mono">
+          <div className="text-lg font-black text-amber-500 font-mono">
             {String(remainingInHour.minutes).padStart(2, '0')}:
             {String(remainingInHour.seconds).padStart(2, '0')}
           </div>
-          <div className="text-[9px] text-slate-600 mt-1">
+          <div className="text-[9px] text-slate-400 mt-1">
             بعدها ستُحسب ساعة إضافية ({currentHours + 1} × {sessionRate} ={' '}
             {(currentHours + 1) * sessionRate} ج.م)
           </div>
@@ -202,8 +196,8 @@ export default function SessionScreen() {
 
       {/* تنبيه سعر خاص */}
       {sessionRate !== garage?.basePrice && garage && (
-        <div className="w-full bg-amber-600/10 border border-amber-500/20 rounded-xl p-2 mb-4 text-center">
-          <p className="text-[10px] text-amber-400 font-bold">
+        <div className="w-full bg-amber-50 border border-amber-200 rounded-xl p-2 mb-4 text-center">
+          <p className="text-[10px] text-amber-600 font-bold">
             💰 سعر خاص: {sessionRate} ج.م/ساعة (بدل {garage.basePrice}{' '}
             ج.م)
           </p>
@@ -212,18 +206,18 @@ export default function SessionScreen() {
 
       {/* معلومات السيارة والسعر */}
       <div className="w-full grid grid-cols-2 gap-3 mb-6">
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl text-center">
-          <Car size={20} className="text-blue-400 mx-auto mb-2" />
-          <div className="text-sm font-black text-white">
+        <div className="bg-white border border-slate-200 p-4 rounded-2xl text-center shadow-sm">
+          <Car size={20} className="text-blue-600 mx-auto mb-2" />
+          <div className="text-sm font-black text-slate-900">
             {currentUser?.carPlate}
           </div>
           <div className="text-[9px] text-slate-500 font-bold">
             رقم السيارة
           </div>
         </div>
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl text-center">
-          <DollarSign size={20} className="text-purple-400 mx-auto mb-2" />
-          <div className="text-sm font-black text-purple-400 font-mono">
+        <div className="bg-white border border-slate-200 p-4 rounded-2xl text-center shadow-sm">
+          <DollarSign size={20} className="text-purple-600 mx-auto mb-2" />
+          <div className="text-sm font-black text-purple-600 font-mono">
             {sessionRate} ج.م
           </div>
           <div className="text-[9px] text-slate-500 font-bold">
@@ -234,15 +228,15 @@ export default function SessionScreen() {
 
       {/* اسم الجراج */}
       {garage && (
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl w-full text-center mb-6">
+        <div className="bg-white border border-slate-200 p-4 rounded-2xl w-full text-center mb-6 shadow-sm">
           <div className="text-xs text-slate-500 font-bold mb-1">الجراج</div>
-          <div className="text-lg font-black text-white">{garage.name}</div>
+          <div className="text-lg font-black text-slate-900">{garage.name}</div>
         </div>
       )}
 
       {/* ملاحظة الدفع */}
-      <div className="w-full bg-blue-600/10 border border-blue-500/20 rounded-xl p-3 mb-4 text-center">
-        <p className="text-[10px] text-blue-400 font-bold">
+      <div className="w-full bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-center">
+        <p className="text-[10px] text-blue-600 font-bold">
           💡 سيتم تحديد طريقة الدفع عند إنهاء الجلسة
         </p>
       </div>
@@ -250,7 +244,7 @@ export default function SessionScreen() {
       {/* زر إنهاء الجلسة */}
       <button
         onClick={handleEnd}
-        className="w-full bg-red-600 hover:bg-red-700 text-white py-5 rounded-2xl font-black text-lg shadow-xl active:scale-95 transition-all mb-3"
+        className="w-full bg-red-600 hover:bg-red-700 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-red-100 active:scale-95 transition-all mb-3"
       >
         إنهاء الجلسة ({currentCost} ج.م)
       </button>

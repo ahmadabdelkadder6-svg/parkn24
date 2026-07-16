@@ -24,7 +24,6 @@ import { useStore, pausePolling } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
-// ✅ ضفنا refreshPushSubscriptionIfNeeded
 import {
   subscribeToPush,
   refreshPushSubscriptionIfNeeded,
@@ -56,7 +55,6 @@ interface DailyStat {
   pending_revenue: number;
 }
 
-// ─── دوال التاريخ المحلي ─────────────────────────────────────────────────────
 const getLocalToday = (): string => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -77,7 +75,6 @@ const formatLocalDateArabic = (dateStr: string): string => {
   });
 };
 
-// ─── إدارة AudioContext بشكل مركزي ──────────────────────────────────────────
 let audioCtxInstance: AudioContext | null = null;
 let audioCtxReady = false;
 
@@ -108,7 +105,6 @@ const getAudioCtx = (): AudioContext | null => {
   return audioCtxInstance;
 };
 
-// ─── تهيئة AudioContext عند أول تفاعل مع الصفحة ─────────────────────────────
 const setupAudioOnInteraction = () => {
   const events = ['touchstart', 'touchend', 'mousedown', 'keydown', 'click'];
   const handler = async () => {
@@ -124,7 +120,6 @@ const setupAudioOnInteraction = () => {
 
 setupAudioOnInteraction();
 
-// ─── دوال الصوت والاهتزاز ────────────────────────────────────────────────────
 const vibrateDevice = () => {
   try {
     if ('vibrate' in navigator) {
@@ -140,7 +135,7 @@ const sendNotification = (title: string, body: string, tag: string) => {
         body,
         icon: '/icons/icon-192x192.png',
         badge: '/icons/icon-96x96.png',
-        tag, // ✅ tag ثابت - يمنع التكرار
+        tag,
         requireInteraction: true,
         silent: false,
       });
@@ -150,7 +145,6 @@ const sendNotification = (title: string, body: string, tag: string) => {
   } catch {}
 };
 
-// ─── تنبيه 1: عميل بدأ التوجه للجراج ────────────────────────────────────────
 const playFirstAlert = async () => {
   let ctx = getAudioCtx();
   if (!ctx || !audioCtxReady) ctx = await initAudioContext();
@@ -195,11 +189,9 @@ const fireNewCarAlert = (
     customerName ? `👤 ${customerName}` : '',
     agreedPrice ? `💰 ${agreedPrice} ج.م/ساعة` : '',
   ].filter(Boolean).join('\n');
-  // ✅ tag ثابت
   sendNotification('🚨 سيارة في الطريق!', body, `incoming-${carPlate}`);
 };
 
-// ─── تنبيه 2: العميل اقترب (باقي دقيقتين) ───────────────────────────────────
 const playApproachingAlert = async () => {
   let ctx = getAudioCtx();
   if (!ctx || !audioCtxReady) ctx = await initAudioContext();
@@ -238,11 +230,10 @@ const fireApproachingAlert = (carPlate: string) => {
   sendNotification(
     '🚗 سيارة على وشك الوصول!',
     `🚗 ${carPlate} - باقي أقل من دقيقتين ⏰`,
-    `approaching-${carPlate}` // ✅ tag ثابت
+    `approaching-${carPlate}`
   );
 };
 
-// ─── Component ───────────────────────────────────────────────────────────────
 export default function GarageDashboard() {
   const {
     garages,
@@ -281,7 +272,6 @@ export default function GarageDashboard() {
   const prevOfferIdsRef = useRef<Set<string>>(new Set());
   const approachAlertedRef = useRef<Set<string>>(new Set());
   const audioInitializedRef = useRef(false);
-  // ✅ منع إعادة الاشتراك في Push لنفس الجراج
   const pushSubscribedGarageRef = useRef<string | null>(null);
 
   const [undoableSessions, setUndoableSessions] = useState<UndoableSession[]>([]);
@@ -307,7 +297,6 @@ export default function GarageDashboard() {
   const [tick, setTick] = useState(0);
   const [garageDailyStats, setGarageDailyStats] = useState<DailyStat[]>([]);
 
-  // ─── تهيئة الصوت + طلب إذن الإشعارات ───────────────────────────────────
   useEffect(() => {
     const initAll = async () => {
       if ('Notification' in window && Notification.permission === 'default') {
@@ -321,18 +310,15 @@ export default function GarageDashboard() {
     initAll();
   }, []);
 
-  // ─── ✅ تسجيل الجراج في Push Notifications ───────────────────────────────
   useEffect(() => {
     if (!currentGarageId || garages.length === 0) return;
     if (pushSubscribedGarageRef.current === currentGarageId) return;
 
     const setupGaragePush = async () => {
       try {
-        // ✅ تسجيل الجراج الحالي فقط - subscribeToPush بيعمل dedup داخلياً
         const success = await subscribeToPush(currentGarageId);
         if (success) {
           pushSubscribedGarageRef.current = currentGarageId;
-          console.log('✅ تم تسجيل الجراج في Push:', currentGarageId);
         }
       } catch (err) {
         console.error('❌ خطأ في تسجيل Push للجراج:', err);
@@ -342,16 +328,12 @@ export default function GarageDashboard() {
     setupGaragePush();
   }, [currentGarageId, garages]);
 
-  // ─── ✅ تجديد الاشتراك عند رجوع التطبيق للواجهة ──────────────────────────
-  // مهم: لو التطبيق كان في الخلفية فترة طويلة، الـ subscription ممكن تنتهي
   useEffect(() => {
     if (!currentGarageId) return;
 
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible') {
-        // ✅ تحقق وجدد لو محتاج
         await refreshPushSubscriptionIfNeeded(currentGarageId);
-        // ✅ جدد البيانات كمان
         await fetchAll();
       }
     };
@@ -362,24 +344,20 @@ export default function GarageDashboard() {
     };
   }, [currentGarageId, fetchAll]);
 
-  // ─── تنبيه 1: مراقبة السيارات الجديدة القادمة ────────────────────────────
   useEffect(() => {
     const currentIds = new Set(carsOnTheWay.map((c) => c.id));
 
     carsOnTheWay.forEach((car) => {
       if (!prevIncomingIdsRef.current.has(car.id)) {
-        // ✅ شغّل التنبيه المحلي فقط لو التطبيق مفتوح قدام المستخدم
-        // (لو مقفول، الـ Push Notification من السيرفر هيشتغل)
         if (!document.hidden) {
           fireNewCarAlert(car.carPlate, car.customerName, car.agreedPrice);
-
           toast(
             `🚨 سيارة في الطريق!\n🚗 ${car.carPlate}${car.agreedPrice ? ` - ${car.agreedPrice} ج.م/ساعة` : ''}`,
             {
               duration: 10000,
               style: {
-                background: '#0f172a',
-                color: '#f1f5f9',
+                background: '#ffffff',
+                color: '#0f172a',
                 border: '2px solid #06b6d4',
                 fontWeight: 'bold',
                 fontSize: '14px',
@@ -403,7 +381,6 @@ export default function GarageDashboard() {
     prevIncomingIdsRef.current = currentIds;
   }, [carsOnTheWay]);
 
-  // ─── تنبيه 2: مراقبة اقتراب السيارات (باقي دقيقتين) ─────────────────────
   useEffect(() => {
     carsOnTheWay.forEach((car) => {
       if (approachAlertedRef.current.has(car.id)) return;
@@ -419,17 +396,15 @@ export default function GarageDashboard() {
       if (remainingMinutes <= 2 && remainingMinutes >= 0 && car.estimatedArrival > 2) {
         approachAlertedRef.current.add(car.id);
 
-        // ✅ شغّل التنبيه المحلي فقط لو التطبيق مفتوح
         if (!document.hidden) {
           fireApproachingAlert(car.carPlate);
-
           toast(
             `🚗 سيارة على وشك الوصول!\n${car.carPlate} - باقي أقل من دقيقتين ⏰`,
             {
               duration: 10000,
               style: {
-                background: '#0f172a',
-                color: '#f1f5f9',
+                background: '#ffffff',
+                color: '#0f172a',
                 border: '2px solid #f59e0b',
                 fontWeight: 'bold',
                 fontSize: '14px',
@@ -442,7 +417,6 @@ export default function GarageDashboard() {
     });
   }, [carsOnTheWay, tick]);
 
-  // ─── مراقبة العروض الجديدة (toast فقط) ──────────────────────────────────
   useEffect(() => {
     garageOffers.forEach((offer) => {
       if (!prevOfferIdsRef.current.has(offer.id)) {
@@ -451,8 +425,8 @@ export default function GarageDashboard() {
           {
             duration: 8000,
             style: {
-              background: '#0f172a',
-              color: '#f1f5f9',
+              background: '#ffffff',
+              color: '#0f172a',
               border: '2px solid #f59e0b',
               fontWeight: 'bold',
             },
@@ -464,14 +438,12 @@ export default function GarageDashboard() {
     prevOfferIdsRef.current = new Set(garageOffers.map((o) => o.id));
   }, [garageOffers]);
 
-  // ─── cleanup عند الخروج ──────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {}
     };
   }, []);
 
-  // ─── جلب daily_stats ─────────────────────────────────────────────────────
   const fetchGarageDailyStats = useCallback(async () => {
     if (!currentGarageId) return;
     try {
@@ -610,7 +582,7 @@ export default function GarageDashboard() {
       );
       toast('تم إلغاء إضافة السيارة ' + undoable.carPlate + ' ↩️', {
         icon: '🔙',
-        style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' },
+        style: { background: '#ffffff', color: '#0f172a', border: '1px solid #e2e8f0' },
       });
     },
     [garage, removeSession]
@@ -739,7 +711,7 @@ export default function GarageDashboard() {
         await supabase.from('incoming_cars').delete().eq('car_plate', normalizedPlate).eq('garage_id', garage.id);
         toast('الجلسة شغالة بالفعل ✅', {
           icon: '🚗',
-          style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' },
+          style: { background: '#ffffff', color: '#0f172a', border: '1px solid #e2e8f0' },
         });
         return;
       }
@@ -752,7 +724,7 @@ export default function GarageDashboard() {
           await fetchAll();
           toast('الجلسة شغالة بالفعل ✅', {
             icon: '🚗',
-            style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' },
+            style: { background: '#ffffff', color: '#0f172a', border: '1px solid #e2e8f0' },
           });
           return;
         }
@@ -785,107 +757,107 @@ export default function GarageDashboard() {
   };
 
   return (
-    <div className="h-full bg-slate-950 text-white p-5 overflow-y-auto">
+    <div className="h-full bg-gray-50 text-slate-900 p-5 overflow-y-auto">
+
       {/* Header */}
       <div className="flex justify-between items-center mb-6 pt-14">
-        <button onClick={() => setCurrentGarageId(null)} className="bg-slate-900 p-3 rounded-2xl border border-slate-800">
-          <LogOut size={18} />
+        <button onClick={() => setCurrentGarageId(null)} className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
+          <LogOut size={18} className="text-slate-600" />
         </button>
         <div className="text-right flex-1 mr-3">
-          <h2 className="text-xl font-black text-white">{garage.name}</h2>
-          <p className="text-xs text-slate-400 flex items-center gap-1 justify-end">
+          <h2 className="text-xl font-black text-slate-900">{garage.name}</h2>
+          <p className="text-xs text-slate-500 flex items-center gap-1 justify-end">
             <MapPin size={10} />
             {garage.location}
           </p>
         </div>
-        <button onClick={openSettings} className="bg-blue-600 p-3 rounded-2xl border border-blue-500/30 shadow-lg shadow-blue-900/20">
-          <Settings size={18} />
+        <button onClick={openSettings} className="bg-blue-600 p-3 rounded-2xl shadow-lg shadow-blue-200">
+          <Settings size={18} className="text-white" />
         </button>
       </div>
 
-      {/* ✅ مؤشر حالة التنبيهات */}
-      <div className="mb-4 bg-emerald-600/10 border border-emerald-500/20 rounded-2xl p-3 flex items-center justify-between">
+      {/* مؤشر حالة التنبيهات */}
+      <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-2xl p-3 flex items-center justify-between">
         <button
           onClick={() => {
             playFirstAlert();
             vibrateDevice();
             toast('🔔 تجربة التنبيه - صوت واهتزاز!', {
               icon: '🔊', duration: 3000,
-              style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' },
+              style: { background: '#ffffff', color: '#0f172a', border: '1px solid #e2e8f0' },
             });
           }}
-          className="text-[10px] text-emerald-400 font-bold bg-emerald-600/20 px-3 py-1.5 rounded-lg border border-emerald-500/20 active:scale-95 transition-all"
+          className="text-[10px] text-emerald-700 font-bold bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200 active:scale-95 transition-all"
         >
           🔊 تجربة
         </button>
         <div className="text-right flex items-center gap-2">
           <div className="text-right">
-            <span className="text-xs font-black text-emerald-400">✅ التنبيهات مفعّلة</span>
+            <span className="text-xs font-black text-emerald-700">✅ التنبيهات مفعّلة</span>
             <div className="text-[9px] text-slate-500">صوت + اهتزاز عند وصول وقرب العربيات</div>
           </div>
           <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
         </div>
       </div>
 
-      {/* ✅ بنر تثبيت PWA - يختفي تلقائياً بعد التثبيت */}
       <InstallPWABanner />
 
       {/* Settings Modal */}
       {showSettings && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowSettings(false)}>
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-slate-900 border border-slate-800 rounded-[2rem] p-6 w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowSettings(false)}>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white border border-slate-200 rounded-[2rem] p-6 w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-6">
-              <button onClick={() => setShowSettings(false)} className="text-slate-500 hover:text-white transition-colors text-lg">✕</button>
-              <h3 className="text-lg font-black text-white flex items-center gap-2"><Settings size={18} className="text-blue-400" />إعدادات الجراج</h3>
+              <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-700 transition-colors text-lg">✕</button>
+              <h3 className="text-lg font-black text-slate-900 flex items-center gap-2"><Settings size={18} className="text-blue-600" />إعدادات الجراج</h3>
             </div>
             <div className="mb-6">
-              <label className="text-xs font-black text-slate-400 mb-2 block text-right">💰 سعر الساعة (ج.م)</label>
-              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
+              <label className="text-xs font-black text-slate-500 mb-2 block text-right">💰 سعر الساعة (ج.م)</label>
+              <div className="bg-gray-50 border border-slate-200 rounded-2xl p-4">
                 <div className="flex items-center justify-between gap-4">
-                  <button onClick={() => setEditPrice((p) => Math.max(5, p - 5))} className="bg-red-600/20 text-red-400 w-12 h-12 rounded-xl flex items-center justify-center border border-red-500/20 active:scale-90 transition-all"><Minus size={20} /></button>
+                  <button onClick={() => setEditPrice((p) => Math.max(5, p - 5))} className="bg-red-50 text-red-500 w-12 h-12 rounded-xl flex items-center justify-center border border-red-200 active:scale-90 transition-all"><Minus size={20} /></button>
                   <div className="text-center flex-1">
-                    <input type="number" value={editPrice} onChange={(e) => setEditPrice(Math.max(1, parseInt(e.target.value) || 0))} className="bg-transparent text-4xl font-black text-white text-center w-full outline-none font-mono" />
-                    <div className="text-[10px] text-slate-500 font-bold">ج.م / ساعة</div>
+                    <input type="number" value={editPrice} onChange={(e) => setEditPrice(Math.max(1, parseInt(e.target.value) || 0))} className="bg-transparent text-4xl font-black text-slate-900 text-center w-full outline-none font-mono" />
+                    <div className="text-[10px] text-slate-400 font-bold">ج.م / ساعة</div>
                   </div>
-                  <button onClick={() => setEditPrice((p) => p + 5)} className="bg-emerald-600/20 text-emerald-400 w-12 h-12 rounded-xl flex items-center justify-center border border-emerald-500/20 active:scale-90 transition-all"><Plus size={20} /></button>
+                  <button onClick={() => setEditPrice((p) => p + 5)} className="bg-emerald-50 text-emerald-600 w-12 h-12 rounded-xl flex items-center justify-center border border-emerald-200 active:scale-90 transition-all"><Plus size={20} /></button>
                 </div>
                 <div className="flex gap-2 justify-center mt-3">
                   {[10, 15, 20, 25, 30].map((p) => (
-                    <button key={p} onClick={() => setEditPrice(p)} className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${editPrice === p ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-500'}`}>{p}</button>
+                    <button key={p} onClick={() => setEditPrice(p)} className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${editPrice === p ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{p}</button>
                   ))}
                 </div>
               </div>
             </div>
             <div className="mb-6">
-              <label className="text-xs font-black text-slate-400 mb-2 block text-right">🚗 الأماكن المتاحة حالياً</label>
-              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
+              <label className="text-xs font-black text-slate-500 mb-2 block text-right">🚗 الأماكن المتاحة حالياً</label>
+              <div className="bg-gray-50 border border-slate-200 rounded-2xl p-4">
                 <div className="flex items-center justify-between gap-4">
-                  <button onClick={() => setEditSpots((s) => Math.max(0, s - 1))} className="bg-red-600/20 text-red-400 w-12 h-12 rounded-xl flex items-center justify-center border border-red-500/20 active:scale-90 transition-all"><Minus size={20} /></button>
+                  <button onClick={() => setEditSpots((s) => Math.max(0, s - 1))} className="bg-red-50 text-red-500 w-12 h-12 rounded-xl flex items-center justify-center border border-red-200 active:scale-90 transition-all"><Minus size={20} /></button>
                   <div className="text-center flex-1">
-                    <input type="number" value={editSpots} onChange={(e) => setEditSpots(Math.max(0, Math.min(editCapacity, parseInt(e.target.value) || 0)))} className="bg-transparent text-4xl font-black text-blue-400 text-center w-full outline-none font-mono" />
-                    <div className="text-[10px] text-slate-500 font-bold">من {editCapacity} مكان</div>
+                    <input type="number" value={editSpots} onChange={(e) => setEditSpots(Math.max(0, Math.min(editCapacity, parseInt(e.target.value) || 0)))} className="bg-transparent text-4xl font-black text-blue-600 text-center w-full outline-none font-mono" />
+                    <div className="text-[10px] text-slate-400 font-bold">من {editCapacity} مكان</div>
                   </div>
-                  <button onClick={() => setEditSpots((s) => Math.min(editCapacity, s + 1))} className="bg-emerald-600/20 text-emerald-400 w-12 h-12 rounded-xl flex items-center justify-center border border-emerald-500/20 active:scale-90 transition-all"><Plus size={20} /></button>
+                  <button onClick={() => setEditSpots((s) => Math.min(editCapacity, s + 1))} className="bg-emerald-50 text-emerald-600 w-12 h-12 rounded-xl flex items-center justify-center border border-emerald-200 active:scale-90 transition-all"><Plus size={20} /></button>
                 </div>
-                <div className="mt-3 bg-slate-800 rounded-full h-2 overflow-hidden">
+                <div className="mt-3 bg-slate-200 rounded-full h-2 overflow-hidden">
                   <div className="bg-gradient-to-r from-blue-600 to-emerald-500 h-full transition-all duration-300" style={{ width: `${editCapacity > 0 ? (editSpots / editCapacity) * 100 : 0}%` }} />
                 </div>
               </div>
             </div>
             <div className="mb-6">
-              <label className="text-xs font-black text-slate-400 mb-2 block text-right">🏢 السعة الكلية للجراج</label>
-              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
+              <label className="text-xs font-black text-slate-500 mb-2 block text-right">🏢 السعة الكلية للجراج</label>
+              <div className="bg-gray-50 border border-slate-200 rounded-2xl p-4">
                 <div className="flex items-center justify-between gap-4">
-                  <button onClick={() => setEditCapacity((c) => Math.max(editSpots, c - 10))} className="bg-slate-800 text-slate-400 w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 transition-all"><Minus size={16} /></button>
+                  <button onClick={() => setEditCapacity((c) => Math.max(editSpots, c - 10))} className="bg-slate-100 text-slate-500 w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 transition-all"><Minus size={16} /></button>
                   <div className="text-center flex-1">
-                    <input type="number" value={editCapacity} onChange={(e) => setEditCapacity(Math.max(editSpots, parseInt(e.target.value) || editSpots))} className="bg-transparent text-2xl font-black text-purple-400 text-center w-full outline-none font-mono" />
-                    <div className="text-[10px] text-slate-500 font-bold">مكان إجمالي</div>
+                    <input type="number" value={editCapacity} onChange={(e) => setEditCapacity(Math.max(editSpots, parseInt(e.target.value) || editSpots))} className="bg-transparent text-2xl font-black text-purple-600 text-center w-full outline-none font-mono" />
+                    <div className="text-[10px] text-slate-400 font-bold">مكان إجمالي</div>
                   </div>
-                  <button onClick={() => setEditCapacity((c) => c + 10)} className="bg-slate-800 text-slate-400 w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 transition-all"><Plus size={16} /></button>
+                  <button onClick={() => setEditCapacity((c) => c + 10)} className="bg-slate-100 text-slate-500 w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 transition-all"><Plus size={16} /></button>
                 </div>
               </div>
             </div>
-            <button onClick={handleSaveSettings} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xl shadow-emerald-900/30">
+            <button onClick={handleSaveSettings} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xl shadow-emerald-200">
               <Save size={18} /> حفظ التغييرات
             </button>
           </motion.div>
@@ -894,46 +866,46 @@ export default function GarageDashboard() {
 
       {/* Confirm Payment Modal */}
       {confirmSession && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end justify-center p-4" onClick={() => setConfirmSession(null)}>
-          <motion.div initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: 'spring', damping: 25 }} className="bg-slate-900 border border-slate-800 rounded-t-[2.5rem] rounded-b-2xl p-6 w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="w-10 h-1 bg-slate-700 rounded-full mx-auto mb-5" />
-            <h3 className="text-lg font-black text-white text-center mb-1">تأكيد تحصيل السداد</h3>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-end justify-center p-4" onClick={() => setConfirmSession(null)}>
+          <motion.div initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: 'spring', damping: 25 }} className="bg-white border border-slate-200 rounded-t-[2.5rem] rounded-b-2xl p-6 w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-5" />
+            <h3 className="text-lg font-black text-slate-900 text-center mb-1">تأكيد تحصيل السداد</h3>
             <p className="text-xs text-slate-500 text-center mb-5">لن يتم إنهاء الجلسة إلا بعد تأكيد السداد</p>
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 mb-5">
+            <div className="bg-gray-50 border border-slate-200 rounded-2xl p-4 mb-5">
               <div className="flex justify-between items-center mb-3">
-                <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${confirmSession.source === 'manual' ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${confirmSession.source === 'manual' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
                   {confirmSession.source === 'manual' ? 'يدوي' : 'تطبيق'}
                 </span>
-                <div className="text-lg font-black text-white">🚗 {confirmSession.carPlate}</div>
+                <div className="text-lg font-black text-slate-900">🚗 {confirmSession.carPlate}</div>
               </div>
               {confirmSession.agreedPrice && confirmSession.agreedPrice !== garage.basePrice && (
-                <div className="bg-amber-600/10 border border-amber-500/20 rounded-xl p-2 mb-3 text-center">
-                  <p className="text-[10px] text-amber-400 font-bold">💰 السعر المتفق: {confirmSession.agreedPrice} ج.م/ساعة</p>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2 mb-3 text-center">
+                  <p className="text-[10px] text-amber-600 font-bold">💰 السعر المتفق: {confirmSession.agreedPrice} ج.م/ساعة</p>
                 </div>
               )}
               <div className="grid grid-cols-2 gap-3">
-                <div className="bg-slate-900 rounded-xl p-2 text-center">
+                <div className="bg-white rounded-xl p-2 text-center border border-slate-100">
                   <div className="text-xs text-slate-500">المدة</div>
-                  <div className="text-sm font-black text-white font-mono">{confirmSession.minutes} دقيقة</div>
-                  <div className="text-[9px] text-slate-600">({confirmSession.hours} ساعة محسوبة)</div>
+                  <div className="text-sm font-black text-slate-900 font-mono">{confirmSession.minutes} دقيقة</div>
+                  <div className="text-[9px] text-slate-400">({confirmSession.hours} ساعة محسوبة)</div>
                 </div>
-                <div className="bg-slate-900 rounded-xl p-2 text-center">
+                <div className="bg-white rounded-xl p-2 text-center border border-slate-100">
                   <div className="text-xs text-slate-500">المستحق</div>
-                  <div className="text-xl font-black text-emerald-400 font-mono">{confirmSession.cost > 0 ? confirmSession.cost : '—'}</div>
-                  <div className="text-[9px] text-slate-600">ج.م</div>
+                  <div className="text-xl font-black text-emerald-600 font-mono">{confirmSession.cost > 0 ? confirmSession.cost : '—'}</div>
+                  <div className="text-[9px] text-slate-400">ج.م</div>
                 </div>
               </div>
             </div>
             <div className="mb-5">
-              <h4 className="text-xs font-black text-slate-400 mb-3 text-right">طريقة السداد</h4>
+              <h4 className="text-xs font-black text-slate-500 mb-3 text-right">طريقة السداد</h4>
               {confirmSession.source === 'manual' ? (
                 <div>
-                  <div className="bg-emerald-600/20 border border-emerald-500 ring-1 ring-emerald-500/50 p-4 rounded-xl text-center">
+                  <div className="bg-emerald-50 border border-emerald-300 ring-1 ring-emerald-300 p-4 rounded-xl text-center">
                     <div className="text-2xl mb-1">💵</div>
-                    <div className="text-sm font-black text-emerald-400">نقدي</div>
+                    <div className="text-sm font-black text-emerald-600">نقدي</div>
                   </div>
-                  <div className="mt-3 bg-amber-600/10 border border-amber-500/20 rounded-xl p-2 text-center">
-                    <p className="text-[10px] text-amber-400 font-bold">⚠️ السيارات المضافة يدوياً تُحصّل نقدياً فقط</p>
+                  <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl p-2 text-center">
+                    <p className="text-[10px] text-amber-600 font-bold">⚠️ السيارات المضافة يدوياً تُحصّل نقدياً فقط</p>
                   </div>
                 </div>
               ) : (
@@ -947,35 +919,35 @@ export default function GarageDashboard() {
                     ].map((pm) => (
                       <button key={pm.id} onClick={() => !pm.disabled && setConfirmPaymentMethod(pm.id)} disabled={pm.disabled}
                         className={`p-3 rounded-xl border text-center transition-all ${
-                          pm.disabled ? 'bg-slate-950 border-slate-700 opacity-40 cursor-not-allowed'
+                          pm.disabled ? 'bg-slate-50 border-slate-200 opacity-40 cursor-not-allowed'
                           : confirmPaymentMethod === pm.id
-                            ? pm.id === 'instapay' ? 'bg-purple-600/20 border-purple-500 ring-1 ring-purple-500/50'
-                              : pm.id === 'cashwallet' ? 'bg-orange-600/20 border-orange-500 ring-1 ring-orange-500/50'
-                              : 'bg-emerald-600/20 border-emerald-500 ring-1 ring-emerald-500/50'
-                            : 'bg-slate-950 border-slate-800'
+                            ? pm.id === 'instapay' ? 'bg-purple-50 border-purple-400 ring-1 ring-purple-400'
+                              : pm.id === 'cashwallet' ? 'bg-orange-50 border-orange-400 ring-1 ring-orange-400'
+                              : 'bg-emerald-50 border-emerald-400 ring-1 ring-emerald-400'
+                            : 'bg-slate-50 border-slate-200'
                         } ${!pm.disabled ? 'active:scale-95' : ''}`}>
                         <div className="text-xl mb-1">{pm.icon}</div>
-                        <div className={`text-[10px] font-black ${pm.disabled ? 'text-slate-600' : confirmPaymentMethod === pm.id ? 'text-white' : 'text-slate-500'}`}>{pm.label}</div>
-                        {pm.disabled && <div className="text-[7px] text-red-400/60 font-bold mt-1">🔒 غير متاح من الجراج</div>}
+                        <div className={`text-[10px] font-black ${pm.disabled ? 'text-slate-400' : confirmPaymentMethod === pm.id ? 'text-slate-900' : 'text-slate-500'}`}>{pm.label}</div>
+                        {pm.disabled && <div className="text-[7px] text-red-400 font-bold mt-1">🔒 غير متاح من الجراج</div>}
                       </button>
                     ))}
                   </div>
-                  <div className="mt-3 bg-blue-600/10 border border-blue-500/20 rounded-xl p-2 text-center">
-                    <p className="text-[9px] text-blue-400 font-bold">💡 خصم المحفظة متاح فقط من تطبيق العميل</p>
+                  <div className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-2 text-center">
+                    <p className="text-[9px] text-blue-600 font-bold">💡 خصم المحفظة متاح فقط من تطبيق العميل</p>
                   </div>
                 </div>
               )}
             </div>
             <div className="flex gap-3">
               <button onClick={handleConfirmPayment}
-                className={`flex-1 py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xl ${
-                  confirmPaymentMethod === 'instapay' ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-900/30'
-                  : confirmPaymentMethod === 'cashwallet' ? 'bg-orange-600 hover:bg-orange-700 text-white shadow-orange-900/30'
-                  : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-900/30'
+                className={`flex-1 py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xl text-white ${
+                  confirmPaymentMethod === 'instapay' ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-200'
+                  : confirmPaymentMethod === 'cashwallet' ? 'bg-orange-600 hover:bg-orange-700 shadow-orange-200'
+                  : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
                 }`}>
                 <CheckCircle size={18} /> تأكيد السداد ({confirmSession.cost} ج.م)
               </button>
-              <button onClick={() => setConfirmSession(null)} className="bg-slate-800 text-slate-400 px-5 py-4 rounded-2xl font-black text-sm active:scale-95 transition-all">
+              <button onClick={() => setConfirmSession(null)} className="bg-slate-100 text-slate-600 px-5 py-4 rounded-2xl font-black text-sm active:scale-95 transition-all">
                 <XCircle size={18} />
               </button>
             </div>
@@ -985,21 +957,21 @@ export default function GarageDashboard() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-3 gap-3 mb-6">
-        <div className="bg-emerald-600/20 border border-emerald-500/20 p-4 rounded-2xl text-center">
-          <DollarSign size={20} className="text-emerald-400 mx-auto mb-1" />
-          <div className="text-xl font-black text-emerald-400 font-mono">
+        <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl text-center">
+          <DollarSign size={20} className="text-emerald-600 mx-auto mb-1" />
+          <div className="text-xl font-black text-emerald-600 font-mono">
             {(garageDailyStats.length > 0 ? totalRevenueFromStats : totalRevenue).toFixed(0)}
           </div>
           <div className="text-[8px] text-slate-500 font-bold">مؤكد</div>
         </div>
-        <div className="bg-blue-600/20 border border-blue-500/20 p-4 rounded-2xl text-center cursor-pointer hover:bg-blue-600/30 transition-all" onClick={openSettings}>
-          <Car size={20} className="text-blue-400 mx-auto mb-1" />
-          <div className="text-xl font-black text-blue-400 font-mono">{garage.availableSpots}</div>
+        <div className="bg-blue-50 border border-blue-200 p-4 rounded-2xl text-center cursor-pointer hover:bg-blue-100 transition-all" onClick={openSettings}>
+          <Car size={20} className="text-blue-600 mx-auto mb-1" />
+          <div className="text-xl font-black text-blue-600 font-mono">{garage.availableSpots}</div>
           <div className="text-[8px] text-slate-500 font-bold flex items-center justify-center gap-1">شاغر <Edit3 size={8} /></div>
         </div>
-        <div className="bg-purple-600/20 border border-purple-500/20 p-4 rounded-2xl text-center cursor-pointer hover:bg-purple-600/30 transition-all" onClick={openSettings}>
-          <DollarSign size={20} className="text-purple-400 mx-auto mb-1" />
-          <div className="text-xl font-black text-purple-400 font-mono">{garage.basePrice}</div>
+        <div className="bg-purple-50 border border-purple-200 p-4 rounded-2xl text-center cursor-pointer hover:bg-purple-100 transition-all" onClick={openSettings}>
+          <DollarSign size={20} className="text-purple-600 mx-auto mb-1" />
+          <div className="text-xl font-black text-purple-600 font-mono">{garage.basePrice}</div>
           <div className="text-[8px] text-slate-500 font-bold flex items-center justify-center gap-1">ج.م/ساعة <Edit3 size={8} /></div>
         </div>
       </div>
@@ -1011,28 +983,28 @@ export default function GarageDashboard() {
           const progress = ((UNDO_TIMEOUT_SECONDS - remaining) / UNDO_TIMEOUT_SECONDS) * 100;
           return (
             <motion.div key={undoable.localId} initial={{ opacity: 0, y: -20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -20, scale: 0.95, transition: { duration: 0.3 } }} transition={{ type: 'spring', damping: 20, stiffness: 300 }} className="mb-4">
-              <div className="bg-gradient-to-l from-amber-950/60 to-slate-900 border border-amber-500/40 rounded-2xl p-4 relative overflow-hidden shadow-lg shadow-amber-900/20">
-                <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-800">
+              <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 relative overflow-hidden shadow-lg shadow-amber-100">
+                <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-200">
                   <motion.div className="h-full bg-gradient-to-r from-amber-500 to-red-500" initial={{ width: '0%' }} animate={{ width: `${progress}%` }} transition={{ duration: 0.5, ease: 'linear' }} />
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <button onClick={() => handleUndoSession(undoable)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 active:scale-95 transition-all shadow-lg shadow-red-900/30 shrink-0">
+                  <button onClick={() => handleUndoSession(undoable)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 active:scale-95 transition-all shadow-lg shadow-red-200 shrink-0">
                     <Undo2 size={16} /> تراجع
                   </button>
                   <div className="flex-1 text-right">
                     <div className="flex items-center justify-end gap-2 mb-1">
-                      <span className="text-xs font-black text-white">🚗 {undoable.carPlate}</span>
-                      <span className="text-[9px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full font-bold">يدوي</span>
+                      <span className="text-xs font-black text-slate-900">🚗 {undoable.carPlate}</span>
+                      <span className="text-[9px] bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full font-bold">يدوي</span>
                     </div>
                     <div className="flex items-center justify-end gap-2">
-                      <span className="text-[10px] text-slate-400">{undoable.price} ج.م/ساعة</span>
-                      <span className="text-slate-700">|</span>
-                      <span className="text-[10px] text-amber-400 font-bold font-mono">⏳ {remaining} ثانية</span>
+                      <span className="text-[10px] text-slate-500">{undoable.price} ج.م/ساعة</span>
+                      <span className="text-slate-300">|</span>
+                      <span className="text-[10px] text-amber-600 font-bold font-mono">⏳ {remaining} ثانية</span>
                     </div>
                   </div>
                 </div>
-                <div className="mt-3 bg-amber-600/10 border border-amber-500/20 rounded-xl p-2 text-center">
-                  <p className="text-[9px] text-amber-400 font-bold">⚠️ يمكنك إلغاء الإضافة خلال {remaining} ثانية</p>
+                <div className="mt-3 bg-amber-100 border border-amber-200 rounded-xl p-2 text-center">
+                  <p className="text-[9px] text-amber-700 font-bold">⚠️ يمكنك إلغاء الإضافة خلال {remaining} ثانية</p>
                 </div>
               </div>
             </motion.div>
@@ -1043,8 +1015,8 @@ export default function GarageDashboard() {
       {/* سيارات في الطريق */}
       {carsOnTheWay.length > 0 && (
         <div className="mb-6">
-          <h3 className="text-sm font-black text-cyan-400 mb-3 flex items-center gap-2 justify-end">
-            <span className="bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded-full text-[10px]">{carsOnTheWay.length}</span>
+          <h3 className="text-sm font-black text-cyan-600 mb-3 flex items-center gap-2 justify-end">
+            <span className="bg-cyan-100 text-cyan-600 px-2 py-0.5 rounded-full text-[10px]">{carsOnTheWay.length}</span>
             سيارات في الطريق
             <Navigation size={14} className="animate-pulse" />
           </h3>
@@ -1055,42 +1027,42 @@ export default function GarageDashboard() {
                 (s) => s.carPlate.trim().toUpperCase() === car.carPlate.trim().toUpperCase() && s.status === 'active'
               );
               return (
-                <motion.div key={car.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="bg-gradient-to-l from-cyan-900/30 to-slate-900 border border-cyan-500/30 rounded-2xl p-4 relative overflow-hidden">
-                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-800">
+                <motion.div key={car.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="bg-white border border-cyan-200 rounded-2xl p-4 relative overflow-hidden shadow-sm">
+                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-100">
                     <div className="h-full bg-gradient-to-r from-cyan-500 to-emerald-500 transition-all" style={{ width: `${Math.max(0, 100 - (remainingTime / car.estimatedArrival) * 100)}%` }} />
                   </div>
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex items-center gap-2">
-                      <motion.div animate={{ x: [0, -5, 0] }} transition={{ repeat: Infinity, duration: 1.5 }} className="bg-cyan-600/20 p-2 rounded-xl">
-                        <CarFront size={20} className="text-cyan-400" />
+                      <motion.div animate={{ x: [0, -5, 0] }} transition={{ repeat: Infinity, duration: 1.5 }} className="bg-cyan-100 p-2 rounded-xl">
+                        <CarFront size={20} className="text-cyan-600" />
                       </motion.div>
                       {sessionAlreadyStarted ? (
-                        <div className="bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full text-[10px] font-black">✅ الجلسة شغالة</div>
+                        <div className="bg-emerald-100 text-emerald-600 px-3 py-1 rounded-full text-[10px] font-black">✅ الجلسة شغالة</div>
                       ) : (
-                        <div className={`px-3 py-1 rounded-full text-[10px] font-black ${remainingTime <= 2 ? 'bg-amber-500/20 text-amber-400 animate-pulse' : 'bg-cyan-500/20 text-cyan-400'}`}>
+                        <div className={`px-3 py-1 rounded-full text-[10px] font-black ${remainingTime <= 2 ? 'bg-amber-100 text-amber-600 animate-pulse' : 'bg-cyan-100 text-cyan-600'}`}>
                           {remainingTime > 0 ? `${remainingTime} دقيقة` : 'وصل تقريباً'}
                         </div>
                       )}
                     </div>
-                    <div className="text-lg font-black text-white">🚗 {car.carPlate}</div>
+                    <div className="text-lg font-black text-slate-900">🚗 {car.carPlate}</div>
                   </div>
-                  <div className="bg-slate-950/50 rounded-xl p-3 mb-3 space-y-2">
+                  <div className="bg-gray-50 rounded-xl p-3 mb-3 space-y-2 border border-slate-100">
                     <div className="flex items-center justify-between">
-                      <a href={`tel:${car.customerPhone}`} className="text-sm font-black text-blue-400 font-mono">{car.customerPhone}</a>
+                      <a href={`tel:${car.customerPhone}`} className="text-sm font-black text-blue-600 font-mono">{car.customerPhone}</a>
                       <div className="flex items-center gap-1 text-slate-400"><Phone size={12} /><span className="text-[10px] font-bold">الهاتف</span></div>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-black text-emerald-400 font-mono">{car.agreedPrice} ج.م / ساعة</span>
+                      <span className="text-sm font-black text-emerald-600 font-mono">{car.agreedPrice} ج.م / ساعة</span>
                       <div className="flex items-center gap-1 text-slate-400"><DollarSign size={12} /><span className="text-[10px] font-bold">السعر المتفق</span></div>
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => handleCarArrived(car.id, car.carPlate, car.agreedPrice)}
-                      className={`flex-1 py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all ${sessionAlreadyStarted ? 'bg-slate-700 text-slate-300' : 'bg-emerald-600 text-white'}`}>
+                      className={`flex-1 py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all ${sessionAlreadyStarted ? 'bg-slate-100 text-slate-500' : 'bg-emerald-600 text-white'}`}>
                       <CheckCircle size={16} />
                       {sessionAlreadyStarted ? 'تأكيد الوصول وإزالة' : 'وصلت وبدء الحساب'}
                     </button>
-                    <a href={`tel:${car.customerPhone}`} className="bg-blue-600/20 text-blue-400 px-4 py-3 rounded-xl flex items-center justify-center border border-blue-500/20 active:scale-95 transition-all">
+                    <a href={`tel:${car.customerPhone}`} className="bg-blue-50 text-blue-600 px-4 py-3 rounded-xl flex items-center justify-center border border-blue-200 active:scale-95 transition-all">
                       <Phone size={18} />
                     </a>
                   </div>
@@ -1102,28 +1074,28 @@ export default function GarageDashboard() {
       )}
 
       {/* شريط المعلومات */}
-      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-3 mb-6 flex items-center justify-between">
-        <button onClick={openSettings} className="text-[10px] text-blue-400 font-bold flex items-center gap-1"><Settings size={12} /> تعديل الإعدادات</button>
+      <div className="bg-white border border-slate-200 rounded-2xl p-3 mb-6 flex items-center justify-between shadow-sm">
+        <button onClick={openSettings} className="text-[10px] text-blue-600 font-bold flex items-center gap-1"><Settings size={12} /> تعديل الإعدادات</button>
         <div className="flex items-center gap-3">
-          <span className="text-[10px] text-slate-500">السعر: <span className="text-emerald-400 font-mono font-black">{garage.basePrice}ج</span></span>
-          <span className="text-slate-700">|</span>
-          <span className="text-[10px] text-slate-500">متاح: <span className="text-blue-400 font-mono font-black">{garage.availableSpots}/{garage.capacity}</span></span>
+          <span className="text-[10px] text-slate-500">السعر: <span className="text-emerald-600 font-mono font-black">{garage.basePrice}ج</span></span>
+          <span className="text-slate-300">|</span>
+          <span className="text-[10px] text-slate-500">متاح: <span className="text-blue-600 font-mono font-black">{garage.availableSpots}/{garage.capacity}</span></span>
         </div>
       </div>
 
       {/* عروض الأسعار */}
       {garageOffers.length > 0 && (
         <div className="mb-6">
-          <h3 className="text-sm font-black text-amber-400 mb-3 flex items-center gap-2 justify-end">عروض أسعار معلقة ({garageOffers.length})</h3>
+          <h3 className="text-sm font-black text-amber-600 mb-3 flex items-center gap-2 justify-end">عروض أسعار معلقة ({garageOffers.length})</h3>
           <div className="space-y-3">
             {garageOffers.map((offer) => (
-              <motion.div key={offer.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+              <motion.div key={offer.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
                 <div className="flex justify-between items-center mb-3">
-                  <div className="text-xl font-black text-white font-mono">
+                  <div className="text-xl font-black text-slate-900 font-mono">
                     {offer.offeredPrice} ج.م
-                    {offer.offeredPrice < garage.basePrice && <span className="text-xs text-red-400 mr-2">(أقل من {garage.basePrice})</span>}
+                    {offer.offeredPrice < garage.basePrice && <span className="text-xs text-red-500 mr-2">(أقل من {garage.basePrice})</span>}
                   </div>
-                  <div className="text-sm font-black text-white">🚗 {offer.carPlate}</div>
+                  <div className="text-sm font-black text-slate-900">🚗 {offer.carPlate}</div>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => { updateOffer(offer.id, 'accepted'); toast.success('تم قبول العرض'); }} className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-1 active:scale-95 transition-all"><CheckCircle size={16} /> قبول</button>
@@ -1139,29 +1111,29 @@ export default function GarageDashboard() {
       <div className="mb-6">
         {!showAddCar ? (
           <button onClick={() => setShowAddCar(true)} disabled={garage.availableSpots <= 0}
-            className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all ${garage.availableSpots > 0 ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}>
+            className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all ${garage.availableSpots > 0 ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
             <Plus size={20} />
             {garage.availableSpots > 0 ? 'إضافة سيارة جديدة' : 'لا توجد أماكن شاغرة'}
           </button>
         ) : (
-          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
-            <input className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-right font-bold text-white outline-none text-sm placeholder:text-slate-600" placeholder="رقم لوحة السيارة" value={newCarPlate} onChange={(e) => setNewCarPlate(e.target.value)} />
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
+            <input className="w-full bg-gray-50 border border-slate-200 p-3 rounded-xl text-right font-bold text-slate-900 outline-none text-sm placeholder:text-slate-400" placeholder="رقم لوحة السيارة" value={newCarPlate} onChange={(e) => setNewCarPlate(e.target.value)} />
             <div>
               <label className="text-[10px] text-slate-500 font-bold block text-right mb-1">💰 سعر الساعة - الافتراضي: {garage.basePrice} ج.م</label>
               <div className="flex items-center gap-2">
-                <button onClick={() => setNewCarPrice((p) => Math.max(5, p - 5))} className="bg-red-600/20 text-red-400 w-10 h-10 rounded-xl flex items-center justify-center border border-red-500/20 active:scale-90 transition-all"><Minus size={16} /></button>
-                <input type="number" value={newCarPrice} onChange={(e) => setNewCarPrice(Math.max(1, parseInt(e.target.value) || 1))} className="flex-1 bg-slate-950 border border-slate-800 p-2 rounded-xl text-center font-black text-white text-lg outline-none font-mono" />
-                <button onClick={() => setNewCarPrice((p) => p + 5)} className="bg-emerald-600/20 text-emerald-400 w-10 h-10 rounded-xl flex items-center justify-center border border-emerald-500/20 active:scale-90 transition-all"><Plus size={16} /></button>
+                <button onClick={() => setNewCarPrice((p) => Math.max(5, p - 5))} className="bg-red-50 text-red-500 w-10 h-10 rounded-xl flex items-center justify-center border border-red-200 active:scale-90 transition-all"><Minus size={16} /></button>
+                <input type="number" value={newCarPrice} onChange={(e) => setNewCarPrice(Math.max(1, parseInt(e.target.value) || 1))} className="flex-1 bg-gray-50 border border-slate-200 p-2 rounded-xl text-center font-black text-slate-900 text-lg outline-none font-mono" />
+                <button onClick={() => setNewCarPrice((p) => p + 5)} className="bg-emerald-50 text-emerald-600 w-10 h-10 rounded-xl flex items-center justify-center border border-emerald-200 active:scale-90 transition-all"><Plus size={16} /></button>
               </div>
               <div className="flex gap-1.5 mt-2 justify-end">
                 {[10, 15, 20, 25, 30].map((p) => (
-                  <button key={p} onClick={() => setNewCarPrice(p)} className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all active:scale-95 ${newCarPrice === p ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-500'}`}>{p}</button>
+                  <button key={p} onClick={() => setNewCarPrice(p)} className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all active:scale-95 ${newCarPrice === p ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{p}</button>
                 ))}
               </div>
             </div>
             <div className="flex gap-2">
               <button onClick={handleAddCar} className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-black text-sm active:scale-95 transition-all">إضافة ({newCarPrice} ج.م/ساعة)</button>
-              <button onClick={() => { setShowAddCar(false); setNewCarPlate(''); setNewCarPrice(garage.basePrice); }} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-black text-sm active:scale-95 transition-all">إلغاء</button>
+              <button onClick={() => { setShowAddCar(false); setNewCarPlate(''); setNewCarPrice(garage.basePrice); }} className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl font-black text-sm active:scale-95 transition-all">إلغاء</button>
             </div>
           </motion.div>
         )}
@@ -1169,10 +1141,10 @@ export default function GarageDashboard() {
 
       {/* الجلسات النشطة */}
       <div className="mb-6">
-        <h3 className="text-sm font-black text-emerald-400 mb-3 flex items-center gap-2 justify-end">الجلسات النشطة ({activeSessions.length}) <Clock size={14} /></h3>
+        <h3 className="text-sm font-black text-emerald-600 mb-3 flex items-center gap-2 justify-end">الجلسات النشطة ({activeSessions.length}) <Clock size={14} /></h3>
         <div className="space-y-3">
           {activeSessions.length === 0 ? (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center text-slate-500 text-sm">لا توجد جلسات نشطة</div>
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center text-slate-400 text-sm shadow-sm">لا توجد جلسات نشطة</div>
           ) : (
             activeSessions.map((session) => {
               const startTime = typeof session.startTime === 'number' ? session.startTime : new Date(session.startTime).getTime();
@@ -1184,32 +1156,32 @@ export default function GarageDashboard() {
               const isManual = session.source === 'manual';
               const undoable = undoableSessions.find((u) => u.sessionId === session.id || u.localId === session.id);
               return (
-                <div key={session.id} className={`rounded-2xl p-4 border ${isManual ? 'bg-amber-950/20 border-amber-500/20' : 'bg-slate-900 border-slate-800'}`}>
+                <div key={session.id} className={`rounded-2xl p-4 border shadow-sm ${isManual ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
                   <div className="flex justify-between items-center mb-3">
                     <div className="flex items-center gap-2">
                       <span className={`w-2 h-2 rounded-full animate-pulse ${isManual ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                       <span className="text-xs text-slate-500">{mins} دقيقة ({hours} ساعة)</span>
-                      <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${isManual ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                      <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${isManual ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
                         {isManual ? 'يدوي' : 'تطبيق'}
                       </span>
                     </div>
-                    <div className="text-sm font-black text-white">🚗 {session.carPlate}</div>
+                    <div className="text-sm font-black text-slate-900">🚗 {session.carPlate}</div>
                   </div>
                   {session.agreedPrice && session.agreedPrice !== garage.basePrice && (
-                    <div className="bg-amber-600/10 border border-amber-500/20 rounded-lg p-1.5 mb-2 text-center">
-                      <span className="text-[9px] text-amber-400 font-bold">سعر متفق: {session.agreedPrice} ج.م/ساعة</span>
+                    <div className="bg-amber-100 border border-amber-200 rounded-lg p-1.5 mb-2 text-center">
+                      <span className="text-[9px] text-amber-600 font-bold">سعر متفق: {session.agreedPrice} ج.م/ساعة</span>
                     </div>
                   )}
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2">
-                      <button onClick={() => openConfirmPayment(session.id, session.carPlate, cost, hours, mins, session.source, session.agreedPrice)} className="bg-red-600/20 text-red-400 px-4 py-2 rounded-xl text-xs font-black border border-red-500/20 active:scale-95 transition-all">إنهاء وتحصيل</button>
+                      <button onClick={() => openConfirmPayment(session.id, session.carPlate, cost, hours, mins, session.source, session.agreedPrice)} className="bg-red-50 text-red-600 px-4 py-2 rounded-xl text-xs font-black border border-red-200 active:scale-95 transition-all">إنهاء وتحصيل</button>
                       {undoable && (
-                        <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} onClick={() => handleUndoSession(undoable)} className="bg-amber-600/20 text-amber-400 px-3 py-2 rounded-xl text-[10px] font-black border border-amber-500/20 active:scale-95 transition-all flex items-center gap-1">
+                        <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} onClick={() => handleUndoSession(undoable)} className="bg-amber-100 text-amber-600 px-3 py-2 rounded-xl text-[10px] font-black border border-amber-200 active:scale-95 transition-all flex items-center gap-1">
                           <Undo2 size={12} /> إلغاء ({getUndoRemainingSeconds(undoable.addedAt)}ث)
                         </motion.button>
                       )}
                     </div>
-                    <div className="text-sm font-black text-emerald-400 font-mono">{cost} ج.م ({hours}×{rate})</div>
+                    <div className="text-sm font-black text-emerald-600 font-mono">{cost} ج.م ({hours}×{rate})</div>
                   </div>
                 </div>
               );
@@ -1221,18 +1193,18 @@ export default function GarageDashboard() {
       {/* سجل العمليات */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-[10px] text-slate-500 bg-slate-900 px-2 py-1 rounded-lg border border-slate-800">{filteredCompleted.length} عملية</span>
-          <h3 className="text-sm font-black text-slate-300 flex items-center gap-2">سجل العمليات <FileText size={14} /></h3>
+          <span className="text-[10px] text-slate-500 bg-white px-2 py-1 rounded-lg border border-slate-200">{filteredCompleted.length} عملية</span>
+          <h3 className="text-sm font-black text-slate-700 flex items-center gap-2">سجل العمليات <FileText size={14} /></h3>
         </div>
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-4">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-4 shadow-sm">
           <div className="flex items-center gap-2 mb-3 justify-end">
-            <CalendarDays size={14} className="text-blue-400" />
-            <span className="text-xs font-black text-slate-400">تصفية بالتاريخ</span>
+            <CalendarDays size={14} className="text-blue-600" />
+            <span className="text-xs font-black text-slate-500">تصفية بالتاريخ</span>
           </div>
           <div className="flex gap-2 mb-3">
-            <input type="date" value={logDateFilter} onChange={(e) => setLogDateFilter(e.target.value)} className="flex-1 bg-slate-950 border border-slate-800 p-2.5 rounded-xl text-xs font-bold text-white outline-none" />
-            <button onClick={() => setLogDateFilter(getLocalToday())} className="bg-blue-600/20 text-blue-400 px-3 py-2 rounded-xl text-[10px] font-black border border-blue-500/20 active:scale-95 transition-all whitespace-nowrap">اليوم</button>
-            <button onClick={() => setLogDateFilter('')} className="bg-slate-800 text-slate-400 px-3 py-2 rounded-xl text-[10px] font-black active:scale-95 transition-all whitespace-nowrap">الكل</button>
+            <input type="date" value={logDateFilter} onChange={(e) => setLogDateFilter(e.target.value)} className="flex-1 bg-gray-50 border border-slate-200 p-2.5 rounded-xl text-xs font-bold text-slate-900 outline-none" />
+            <button onClick={() => setLogDateFilter(getLocalToday())} className="bg-blue-50 text-blue-600 px-3 py-2 rounded-xl text-[10px] font-black border border-blue-200 active:scale-95 transition-all whitespace-nowrap">اليوم</button>
+            <button onClick={() => setLogDateFilter('')} className="bg-slate-100 text-slate-600 px-3 py-2 rounded-xl text-[10px] font-black active:scale-95 transition-all whitespace-nowrap">الكل</button>
           </div>
           <div className="flex gap-1.5 flex-wrap">
             {[
@@ -1243,7 +1215,7 @@ export default function GarageDashboard() {
               { id: 'cashwallet', label: 'كاش', icon: '📲' },
             ].map((f) => (
               <button key={f.id} onClick={() => setLogPaymentFilter(f.id)}
-                className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black transition-all active:scale-95 ${logPaymentFilter === f.id ? 'bg-blue-600 text-white' : 'bg-slate-950 text-slate-500 border border-slate-800'}`}>
+                className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black transition-all active:scale-95 ${logPaymentFilter === f.id ? 'bg-blue-600 text-white' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}>
                 {f.icon} {f.label}
               </button>
             ))}
@@ -1253,29 +1225,29 @@ export default function GarageDashboard() {
         {filteredCompleted.length > 0 && (
           <>
             {filteredStats.pendingCount > 0 && (
-              <div className="bg-amber-600/10 border border-amber-500/30 rounded-2xl p-4 mb-4">
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
                 <div className="flex justify-between items-center">
                   <div className="text-right">
-                    <h3 className="text-sm font-black text-amber-400">⏳ إيرادات معلقة ({filteredStats.pendingCount})</h3>
-                    <p className="text-[10px] text-amber-400/60">تحتاج تأكيد لتُحسب في الإيرادات</p>
+                    <h3 className="text-sm font-black text-amber-600">⏳ إيرادات معلقة ({filteredStats.pendingCount})</h3>
+                    <p className="text-[10px] text-amber-500">تحتاج تأكيد لتُحسب في الإيرادات</p>
                   </div>
-                  <div className="text-xl font-black text-amber-400 font-mono">{filteredStats.pendingRevenue.toFixed(0)} ج.م</div>
+                  <div className="text-xl font-black text-amber-600 font-mono">{filteredStats.pendingRevenue.toFixed(0)} ج.م</div>
                 </div>
               </div>
             )}
-            <div className="bg-gradient-to-l from-emerald-600/20 to-slate-900 border border-emerald-500/30 rounded-2xl p-4 mb-4 text-center">
+            <div className="bg-gradient-to-l from-emerald-50 to-white border border-emerald-200 rounded-2xl p-4 mb-4 text-center shadow-sm">
               <div className="text-[10px] text-slate-400 mb-1">{logDateFilter ? `إجمالي مؤكد - يوم ${formatLocalDateArabic(logDateFilter)}` : 'إجمالي مؤكد - كل العمليات'}</div>
-              <div className="text-3xl font-black text-emerald-400 font-mono">{filteredStats.total.toFixed(0)} ج.م</div>
+              <div className="text-3xl font-black text-emerald-600 font-mono">{filteredStats.total.toFixed(0)} ج.م</div>
               <div className="text-[10px] text-slate-500 mt-1">{filteredCompleted.filter((s) => s.revenueConfirmed).length} عملية مؤكدة</div>
             </div>
             <div className="grid grid-cols-4 gap-2 mb-4">
               {[
-                { label: 'نقدي', value: filteredStats.cash, icon: '💵', color: 'text-emerald-400' },
-                { label: 'إنستاباي', value: filteredStats.instapay, icon: '📱', color: 'text-purple-400' },
-                { label: 'محفظة', value: filteredStats.wallet, icon: '👝', color: 'text-blue-400' },
-                { label: 'كاش', value: filteredStats.cashwallet, icon: '📲', color: 'text-orange-400' },
+                { label: 'نقدي', value: filteredStats.cash, icon: '💵', color: 'text-emerald-600' },
+                { label: 'إنستاباي', value: filteredStats.instapay, icon: '📱', color: 'text-purple-600' },
+                { label: 'محفظة', value: filteredStats.wallet, icon: '👝', color: 'text-blue-600' },
+                { label: 'كاش', value: filteredStats.cashwallet, icon: '📲', color: 'text-orange-600' },
               ].map((p) => (
-                <div key={p.label} className="bg-slate-900/50 border border-slate-800 rounded-xl p-2 text-center">
+                <div key={p.label} className="bg-white border border-slate-200 rounded-xl p-2 text-center shadow-sm">
                   <div className="text-lg mb-0.5">{p.icon}</div>
                   <div className={`text-sm font-black font-mono ${p.color}`}>{p.value.toFixed(0)}</div>
                   <div className="text-[7px] text-slate-500 font-bold">{p.label}</div>
@@ -1283,17 +1255,17 @@ export default function GarageDashboard() {
               ))}
             </div>
             <div className="grid grid-cols-2 gap-2 mb-4">
-              <div className="bg-amber-600/10 border border-amber-500/20 rounded-xl p-3 text-center">
-                <div className="text-[9px] text-amber-400 font-black mb-1">يدوي</div>
-                <span className="text-sm font-black text-amber-400 font-mono">{filteredStats.manualCount}</span>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
+                <div className="text-[9px] text-amber-600 font-black mb-1">يدوي</div>
+                <span className="text-sm font-black text-amber-600 font-mono">{filteredStats.manualCount}</span>
                 <span className="text-[9px] text-slate-500 mr-1"> عربية</span>
-                <div className="text-[9px] text-amber-300">({filteredStats.manualTotal.toFixed(0)} ج.م)</div>
+                <div className="text-[9px] text-amber-500">({filteredStats.manualTotal.toFixed(0)} ج.م)</div>
               </div>
-              <div className="bg-blue-600/10 border border-blue-500/20 rounded-xl p-3 text-center">
-                <div className="text-[9px] text-blue-400 font-black mb-1">تطبيق</div>
-                <span className="text-sm font-black text-blue-400 font-mono">{filteredStats.appCount}</span>
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
+                <div className="text-[9px] text-blue-600 font-black mb-1">تطبيق</div>
+                <span className="text-sm font-black text-blue-600 font-mono">{filteredStats.appCount}</span>
                 <span className="text-[9px] text-slate-500 mr-1"> عربية</span>
-                <div className="text-[9px] text-blue-300">({filteredStats.appTotal.toFixed(0)} ج.م)</div>
+                <div className="text-[9px] text-blue-500">({filteredStats.appTotal.toFixed(0)} ج.م)</div>
               </div>
             </div>
           </>
@@ -1309,31 +1281,31 @@ export default function GarageDashboard() {
             const revenue = getSessionRevenue(session);
             const isConfirmed = session.revenueConfirmed;
             return (
-              <div key={session.id} className={`rounded-xl p-3 border ${!isConfirmed ? 'bg-amber-950/20 border-amber-500/30' : isManual ? 'bg-amber-950/30 border-amber-500/20' : 'bg-blue-950/20 border-blue-500/20'}`}>
+              <div key={session.id} className={`rounded-xl p-3 border shadow-sm ${!isConfirmed ? 'bg-amber-50 border-amber-200' : isManual ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-200'}`}>
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`text-sm font-mono font-black ${!isConfirmed ? 'text-amber-300' : isManual ? 'text-amber-400' : 'text-blue-400'}`}>{revenue.toFixed(0)} ج.م</span>
-                    <span className={`text-[8px] px-2 py-0.5 rounded-full font-bold ${isManual ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>{isManual ? 'يدوي' : 'تطبيق'}</span>
+                    <span className={`text-sm font-mono font-black ${!isConfirmed ? 'text-amber-600' : isManual ? 'text-amber-600' : 'text-blue-600'}`}>{revenue.toFixed(0)} ج.م</span>
+                    <span className={`text-[8px] px-2 py-0.5 rounded-full font-bold ${isManual ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>{isManual ? 'يدوي' : 'تطبيق'}</span>
                     {!isConfirmed ? (
                       <button onClick={async () => { await confirmRevenue(session.id); await fetchGarageDailyStats(); toast.success('تم تأكيد الإيراد ✅'); }}
-                        className="bg-amber-600/20 text-amber-400 px-2 py-0.5 rounded-lg text-[8px] font-black border border-amber-500/30 active:scale-95 transition-all">⏳ تأكيد الإيراد</button>
+                        className="bg-amber-100 text-amber-600 px-2 py-0.5 rounded-lg text-[8px] font-black border border-amber-200 active:scale-95 transition-all">⏳ تأكيد الإيراد</button>
                     ) : (
-                      <span className="text-[8px] text-emerald-400 font-bold">✅ مؤكد</span>
+                      <span className="text-[8px] text-emerald-600 font-bold">✅ مؤكد</span>
                     )}
                   </div>
                   <div className="flex items-center gap-1">
                     <span className={`w-1.5 h-1.5 rounded-full ${isManual ? 'bg-amber-500' : 'bg-blue-500'}`} />
-                    <span className="text-xs text-slate-400 font-bold">{session.carPlate}</span>
+                    <span className="text-xs text-slate-600 font-bold">{session.carPlate}</span>
                   </div>
                 </div>
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-1.5">
                     {session.paymentMethod && (
                       <span className={`text-[8px] px-2 py-0.5 rounded-full font-bold ${
-                        session.paymentMethod === 'cash' ? 'bg-emerald-500/20 text-emerald-400'
-                        : session.paymentMethod === 'instapay' ? 'bg-purple-500/20 text-purple-400'
-                        : session.paymentMethod === 'wallet' ? 'bg-blue-500/20 text-blue-400'
-                        : 'bg-orange-500/20 text-orange-400'
+                        session.paymentMethod === 'cash' ? 'bg-emerald-100 text-emerald-600'
+                        : session.paymentMethod === 'instapay' ? 'bg-purple-100 text-purple-600'
+                        : session.paymentMethod === 'wallet' ? 'bg-blue-100 text-blue-600'
+                        : 'bg-orange-100 text-orange-600'
                       }`}>
                         {session.paymentMethod === 'cash' ? '💵 نقدي'
                           : session.paymentMethod === 'instapay' ? '📱 إنستاباي'
@@ -1342,11 +1314,11 @@ export default function GarageDashboard() {
                       </span>
                     )}
                     {session.agreedPrice && session.agreedPrice !== garage.basePrice && (
-                      <span className="text-[8px] text-amber-400 font-bold">({session.agreedPrice}ج/س)</span>
+                      <span className="text-[8px] text-amber-600 font-bold">({session.agreedPrice}ج/س)</span>
                     )}
                   </div>
                   {time && (
-                    <span className="text-[9px] text-slate-600 font-mono">
+                    <span className="text-[9px] text-slate-400 font-mono">
                       {time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   )}
@@ -1355,10 +1327,10 @@ export default function GarageDashboard() {
             );
           })}
           {filteredCompleted.length === 0 && (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center">
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center shadow-sm">
               <div className="text-3xl mb-3">📭</div>
               <p className="text-slate-500 text-sm font-bold">لا توجد عمليات</p>
-              <p className="text-slate-600 text-xs mt-1">{logDateFilter ? 'جرب تغيير التاريخ' : 'لم تتم أي عمليات بعد'}</p>
+              <p className="text-slate-400 text-xs mt-1">{logDateFilter ? 'جرب تغيير التاريخ' : 'لم تتم أي عمليات بعد'}</p>
             </div>
           )}
         </div>
