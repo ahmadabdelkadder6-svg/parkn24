@@ -115,11 +115,34 @@ input[type='number'] {
   border-color: #e2e8f0 !important;
 }
 
-/* نصوص فاتحة تتحول لداكن */
-.text-white,
+/* نخلي النصوص الفاتحة الغير pure white غامقة */
 .text-slate-100,
 .text-slate-200,
 .text-slate-300 {
+  color: #020617 !important;
+}
+
+/* مهم: text-white مايتحوّلش لأسود إلا لو على خلفية فاتحة فعلاً */
+.bg-white.text-white,
+.bg-slate-50.text-white,
+.bg-gray-50.text-white,
+.bg-slate-100.text-white,
+.bg-gray-100.text-white,
+.bg-slate-950.text-white,
+.bg-slate-900.text-white,
+.bg-gray-950.text-white,
+.bg-gray-900.text-white,
+.bg-black.text-white,
+.bg-white .text-white,
+.bg-slate-50 .text-white,
+.bg-gray-50 .text-white,
+.bg-slate-100 .text-white,
+.bg-gray-100 .text-white,
+.bg-slate-950 .text-white,
+.bg-slate-900 .text-white,
+.bg-gray-950 .text-white,
+.bg-gray-900 .text-white,
+.bg-black .text-white {
   color: #020617 !important;
 }
 
@@ -156,7 +179,7 @@ textarea {
   color: #94a3b8 !important;
 }
 
-/* إعادة النص الأبيض للأزرار الملونة */
+/* إعادة النص الأبيض للأزرار والكروت الملونة */
 .bg-blue-600,
 .bg-blue-700,
 .bg-emerald-600,
@@ -166,7 +189,32 @@ textarea {
 .bg-purple-600,
 .bg-purple-700,
 .bg-orange-600,
-.bg-orange-700 {
+.bg-orange-700,
+.from-blue-600,
+.from-indigo-700,
+.from-emerald-600,
+.from-purple-600,
+.from-orange-600,
+.to-indigo-700,
+.to-blue-700,
+.to-purple-700,
+.to-orange-700 {
+  color: #ffffff !important;
+}
+
+.bg-blue-600 .text-white,
+.bg-blue-700 .text-white,
+.bg-emerald-600 .text-white,
+.bg-emerald-700 .text-white,
+.bg-red-600 .text-white,
+.bg-red-700 .text-white,
+.bg-purple-600 .text-white,
+.bg-purple-700 .text-white,
+.bg-orange-600 .text-white,
+.bg-orange-700 .text-white,
+.from-blue-600 .text-white,
+.from-indigo-700 .text-white,
+.to-indigo-700 .text-white {
   color: #ffffff !important;
 }
 
@@ -178,3 +226,175 @@ textarea {
 .bg-black\/70 {
   background-color: rgba(0, 0, 0, 0.4) !important;
 }
+/* ============================= */
+/* إصلاح تناسق ألوان صفحة الجراج */
+/* ============================= */
+
+/* الكروت والبوكسات */
+.bg-emerald-600\/20 {
+  background-color: #ecfdf5 !important;
+  border-color: #a7f3d0 !important;
+}
+
+.bg-blue-600\/20 {
+  background-color: #eff6ff !important;
+  border-color: #bfdbfe !important;
+}
+
+.bg-purple-600\/20 {
+  background-color: #faf5ff !important;
+  border-color: #e9d5ff !important;
+}
+
+.bg-cyan-600\/20 {
+  background-color: #ecfeff !important;
+  border-color: #a5f3fc !important;
+}
+
+.bg-amber-600\/20,
+.bg-amber-600\/10 {
+  background-color: #fffbeb !important;
+  border-color: #fde68a !important;
+}
+
+.bg-red-600\/20 {
+  background-color: #fef2f2 !important;
+  border-color: #fecaca !important;
+}
+
+.bg-orange-600\/20,
+.bg-orange-600\/10 {
+  background-color: #fff7ed !important;
+  border-color: #fed7aa !important;
+}
+
+/* النصوص الملونة - أغمق شوية */
+.text-emerald-400 {
+  color: #059669 !important;
+}
+
+.text-blue-400 {
+  color: #2563eb !important;
+}
+
+.text-purple-400 {
+  color: #7c3aed !important;
+}
+
+.text-cyan-400 {
+  color: #0891b2 !important;
+}
+
+.text-amber-400 {
+  color: #d97706 !important;
+}
+
+.text-red-400 {
+  color: #dc2626 !important;
+}
+
+.text-orange-400 {
+  color: #ea580c !important;
+}
+
+/* الحدود الشفافة */
+.border-emerald-500\/20,
+.border-emerald-500\/30,
+.border-emerald-500\/40 {
+  border-color: #a7f3d0 !important;
+}
+
+.border-blue-500\/20,
+.border-blue-500\/30 {
+  border-color: #bfdbfe !important;
+}
+
+.border-purple-500\/20,
+.border-purple-500\/30 {
+  border-color: #e9d5ff !important;
+}
+
+.border-cyan-500\/20,
+.border-cyan-500\/30,
+.border-cyan-500\/40 {
+  border-color: #a5f3fc !important;
+}
+
+.border-amber-500\/20,
+.border-amber-500\/30,
+.border-amber-500\/40 {
+  border-color: #fde68a !important;
+}
+
+.border-red-500\/20,
+.border-red-500\/30 {
+  border-color: #fecaca !important;
+}
+
+.border-orange-500\/20,
+.border-orange-500\/30 {
+  border-color: #fed7aa !important;
+}
+
+/* الكروت الصغيرة */
+.bg-emerald-500\/20 {
+  background-color: #d1fae5 !important;
+}
+
+.bg-blue-500\/20 {
+  background-color: #dbeafe !important;
+}
+
+.bg-purple-500\/20 {
+  background-color: #ede9fe !important;
+}
+
+.bg-amber-500\/20 {
+  background-color: #fef3c7 !important;
+}
+
+.bg-red-500\/20 {
+  background-color: #fee2e2 !important;
+}
+
+.bg-orange-500\/20 {
+  background-color: #ffedd5 !important;
+}
+
+.bg-cyan-500\/20 {
+  background-color: #cffafe !important;
+}
+
+/* إصلاح الـ gradient backgrounds */
+.from-cyan-900\/30,
+.from-amber-950\/60,
+.from-amber-950\/30 {
+  background-color: #ffffff !important;
+}
+
+.to-slate-900 {
+  background-color: transparent !important;
+}
+
+/* الـ badges */
+.bg-emerald-600\/10 {
+  background-color: #ecfdf5 !important;
+}
+
+.bg-blue-600\/10 {
+  background-color: #eff6ff !important;
+}
+
+.bg-purple-600\/10 {
+  background-color: #faf5ff !important;
+}
+
+.bg-cyan-600\/10 {
+  background-color: #ecfeff !important;
+}
+
+/* progress bars */
+.bg-gradient-to-r {
+  opacity: 1;
+}
+
