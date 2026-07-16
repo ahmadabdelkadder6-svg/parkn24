@@ -233,7 +233,7 @@ export default function GarageListScreen() {
         </div>
 
         {/* بطاقة المحفظة */}
-        <div className="bg-gradient-to-l from-blue-600 to-indigo-700 p-3 rounded-xl mb-2">
+        <div className="bg-gradient-to-l from-blue-600 to-indigo-700 p-3 rounded-xl mb-2" style={{ color: '#ffffff' }}>
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
               <div>

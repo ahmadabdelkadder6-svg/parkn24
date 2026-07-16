@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================= */
+/* المتغيرات الأساسية             */
+/* ============================= */
 :root {
   --bg: #ffffff;
   --card: #f8fafc;
@@ -21,6 +24,9 @@
   color-scheme: light;
 }
 
+/* ============================= */
+/* الأساسيات                      */
+/* ============================= */
 html {
   direction: rtl;
   font-family: 'Cairo', sans-serif;
@@ -82,9 +88,10 @@ input[type='number'] {
 }
 
 /* ============================= */
-/* إجبار الثيم الفاتح بشكل عام   */
+/* إجبار الثيم الفاتح             */
 /* ============================= */
 
+/* خلفيات داكنة → بيضا */
 .bg-slate-950,
 .bg-slate-900,
 .bg-gray-950,
@@ -95,7 +102,7 @@ input[type='number'] {
 
 .bg-slate-800,
 .bg-gray-800 {
-  background-color: #f1f5f9 !important;
+  background-color: #e2e8f0 !important;
 }
 
 .bg-slate-950\/60,
@@ -103,9 +110,10 @@ input[type='number'] {
 .bg-slate-900\/50,
 .bg-slate-900\/40,
 .bg-slate-900\/30 {
-  background-color: #f8fafc !important;
+  background-color: #f1f5f9 !important;
 }
 
+/* حدود داكنة → فاتحة */
 .border-slate-900,
 .border-slate-800,
 .border-slate-700,
@@ -115,24 +123,18 @@ input[type='number'] {
   border-color: #e2e8f0 !important;
 }
 
-/* نخلي النصوص الفاتحة الغير pure white غامقة */
+/* ============================= */
+/* النصوص                         */
+/* ============================= */
+
+/* نصوص فاتحة → غامقة */
 .text-slate-100,
 .text-slate-200,
 .text-slate-300 {
   color: #020617 !important;
 }
 
-/* مهم: text-white مايتحوّلش لأسود إلا لو على خلفية فاتحة فعلاً */
-.bg-white.text-white,
-.bg-slate-50.text-white,
-.bg-gray-50.text-white,
-.bg-slate-100.text-white,
-.bg-gray-100.text-white,
-.bg-slate-950.text-white,
-.bg-slate-900.text-white,
-.bg-gray-950.text-white,
-.bg-gray-900.text-white,
-.bg-black.text-white,
+/* text-white يتحوّل لأسود فقط على خلفيات فاتحة */
 .bg-white .text-white,
 .bg-slate-50 .text-white,
 .bg-gray-50 .text-white,
@@ -142,10 +144,21 @@ input[type='number'] {
 .bg-slate-900 .text-white,
 .bg-gray-950 .text-white,
 .bg-gray-900 .text-white,
-.bg-black .text-white {
+.bg-black .text-white,
+.bg-white.text-white,
+.bg-slate-50.text-white,
+.bg-gray-50.text-white,
+.bg-slate-100.text-white,
+.bg-gray-100.text-white,
+.bg-slate-950.text-white,
+.bg-slate-900.text-white,
+.bg-gray-950.text-white,
+.bg-gray-900.text-white,
+.bg-black.text-white {
   color: #020617 !important;
 }
 
+/* درجات الرمادي */
 .text-slate-400 {
   color: #64748b !important;
 }
@@ -162,113 +175,9 @@ input[type='number'] {
   color: #1e293b !important;
 }
 
-/* الحقول والمدخلات */
-input,
-select,
-textarea {
-  background-color: #ffffff;
-  color: #020617;
-  border-color: #e2e8f0;
-}
-
-.placeholder\:text-slate-600::placeholder {
-  color: #94a3b8 !important;
-}
-
-.placeholder\:text-slate-500::placeholder {
-  color: #94a3b8 !important;
-}
-
-/* إعادة النص الأبيض للأزرار والكروت الملونة */
-.bg-blue-600,
-.bg-blue-700,
-.bg-emerald-600,
-.bg-emerald-700,
-.bg-red-600,
-.bg-red-700,
-.bg-purple-600,
-.bg-purple-700,
-.bg-orange-600,
-.bg-orange-700,
-.from-blue-600,
-.from-indigo-700,
-.from-emerald-600,
-.from-purple-600,
-.from-orange-600,
-.to-indigo-700,
-.to-blue-700,
-.to-purple-700,
-.to-orange-700 {
-  color: #ffffff !important;
-}
-
-.bg-blue-600 .text-white,
-.bg-blue-700 .text-white,
-.bg-emerald-600 .text-white,
-.bg-emerald-700 .text-white,
-.bg-red-600 .text-white,
-.bg-red-700 .text-white,
-.bg-purple-600 .text-white,
-.bg-purple-700 .text-white,
-.bg-orange-600 .text-white,
-.bg-orange-700 .text-white,
-.from-blue-600 .text-white,
-.from-indigo-700 .text-white,
-.to-indigo-700 .text-white {
-  color: #ffffff !important;
-}
-
-/* الحفاظ على خلفيات التنبيهات والـ overlays */
-.bg-black\/80 {
-  background-color: rgba(0, 0, 0, 0.5) !important;
-}
-
-.bg-black\/70 {
-  background-color: rgba(0, 0, 0, 0.4) !important;
-}
 /* ============================= */
-/* إصلاح تناسق ألوان صفحة الجراج */
+/* النصوص الملونة - أغمق وأوضح   */
 /* ============================= */
-
-/* الكروت والبوكسات */
-.bg-emerald-600\/20 {
-  background-color: #ecfdf5 !important;
-  border-color: #a7f3d0 !important;
-}
-
-.bg-blue-600\/20 {
-  background-color: #eff6ff !important;
-  border-color: #bfdbfe !important;
-}
-
-.bg-purple-600\/20 {
-  background-color: #faf5ff !important;
-  border-color: #e9d5ff !important;
-}
-
-.bg-cyan-600\/20 {
-  background-color: #ecfeff !important;
-  border-color: #a5f3fc !important;
-}
-
-.bg-amber-600\/20,
-.bg-amber-600\/10 {
-  background-color: #fffbeb !important;
-  border-color: #fde68a !important;
-}
-
-.bg-red-600\/20 {
-  background-color: #fef2f2 !important;
-  border-color: #fecaca !important;
-}
-
-.bg-orange-600\/20,
-.bg-orange-600\/10 {
-  background-color: #fff7ed !important;
-  border-color: #fed7aa !important;
-}
-
-/* النصوص الملونة - أغمق شوية */
 .text-emerald-400 {
   color: #059669 !important;
 }
@@ -297,75 +206,223 @@ textarea {
   color: #ea580c !important;
 }
 
-/* الحدود الشفافة */
+/* ============================= */
+/* الحقول والمدخلات               */
+/* ============================= */
+input,
+select,
+textarea {
+  background-color: #ffffff;
+  color: #020617;
+  border-color: #e2e8f0;
+}
+
+.placeholder\:text-slate-600::placeholder {
+  color: #94a3b8 !important;
+}
+
+.placeholder\:text-slate-500::placeholder {
+  color: #94a3b8 !important;
+}
+
+.placeholder\:text-slate-400::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* ============================= */
+/* الأزرار والكروت الملونة        */
+/* نحافظ على النص الأبيض فيها    */
+/* ============================= */
+.bg-blue-600,
+.bg-blue-700,
+.bg-emerald-600,
+.bg-emerald-700,
+.bg-red-600,
+.bg-red-700,
+.bg-purple-600,
+.bg-purple-700,
+.bg-orange-600,
+.bg-orange-700 {
+  color: #ffffff !important;
+}
+
+.bg-blue-600 .text-white,
+.bg-blue-700 .text-white,
+.bg-emerald-600 .text-white,
+.bg-emerald-700 .text-white,
+.bg-red-600 .text-white,
+.bg-red-700 .text-white,
+.bg-purple-600 .text-white,
+.bg-purple-700 .text-white,
+.bg-orange-600 .text-white,
+.bg-orange-700 .text-white,
+.from-blue-600 .text-white,
+.from-indigo-700 .text-white,
+.to-indigo-700 .text-white {
+  color: #ffffff !important;
+}
+
+/* ============================= */
+/* إجبار النص الأبيض في الكروت   */
+/* الـ gradient الملونة           */
+/* ============================= */
+[class*="from-blue-600"],
+[class*="from-blue-600"] *,
+[class*="from-indigo-700"],
+[class*="from-indigo-700"] *,
+[class*="from-emerald-600"],
+[class*="from-emerald-600"] *,
+[class*="from-purple-600"],
+[class*="from-purple-600"] *,
+[class*="from-orange-600"],
+[class*="from-orange-600"] * {
+  color: #ffffff !important;
+}
+
+/* ============================= */
+/* بوكسات أغمق - كروت الإحصائيات */
+/* ============================= */
+
+/* الكروت الكبيرة /20 */
+.bg-emerald-600\/20 {
+  background-color: #a7f3d0 !important;
+  border-color: #34d399 !important;
+}
+
+.bg-blue-600\/20 {
+  background-color: #bfdbfe !important;
+  border-color: #60a5fa !important;
+}
+
+.bg-purple-600\/20 {
+  background-color: #ddd6fe !important;
+  border-color: #a78bfa !important;
+}
+
+.bg-cyan-600\/20 {
+  background-color: #a5f3fc !important;
+  border-color: #22d3ee !important;
+}
+
+.bg-amber-600\/20 {
+  background-color: #fde68a !important;
+  border-color: #fbbf24 !important;
+}
+
+.bg-red-600\/20 {
+  background-color: #fecaca !important;
+  border-color: #f87171 !important;
+}
+
+.bg-orange-600\/20 {
+  background-color: #fed7aa !important;
+  border-color: #fb923c !important;
+}
+
+/* الكروت /10 */
+.bg-emerald-600\/10 {
+  background-color: #d1fae5 !important;
+  border-color: #6ee7b7 !important;
+}
+
+.bg-blue-600\/10 {
+  background-color: #dbeafe !important;
+  border-color: #93c5fd !important;
+}
+
+.bg-purple-600\/10 {
+  background-color: #ede9fe !important;
+  border-color: #c4b5fd !important;
+}
+
+.bg-cyan-600\/10 {
+  background-color: #cffafe !important;
+  border-color: #67e8f9 !important;
+}
+
+.bg-amber-600\/10 {
+  background-color: #fef3c7 !important;
+  border-color: #fcd34d !important;
+}
+
+.bg-orange-600\/10 {
+  background-color: #ffedd5 !important;
+  border-color: #fdba74 !important;
+}
+
+/* الـ badges الصغيرة /20 */
+.bg-emerald-500\/20 {
+  background-color: #a7f3d0 !important;
+}
+
+.bg-blue-500\/20 {
+  background-color: #bfdbfe !important;
+}
+
+.bg-purple-500\/20 {
+  background-color: #ddd6fe !important;
+}
+
+.bg-amber-500\/20 {
+  background-color: #fde68a !important;
+}
+
+.bg-red-500\/20 {
+  background-color: #fecaca !important;
+}
+
+.bg-orange-500\/20 {
+  background-color: #fed7aa !important;
+}
+
+.bg-cyan-500\/20 {
+  background-color: #a5f3fc !important;
+}
+
+/* ============================= */
+/* الحدود الملونة الشفافة         */
+/* ============================= */
 .border-emerald-500\/20,
 .border-emerald-500\/30,
 .border-emerald-500\/40 {
-  border-color: #a7f3d0 !important;
+  border-color: #34d399 !important;
 }
 
 .border-blue-500\/20,
 .border-blue-500\/30 {
-  border-color: #bfdbfe !important;
+  border-color: #60a5fa !important;
 }
 
 .border-purple-500\/20,
 .border-purple-500\/30 {
-  border-color: #e9d5ff !important;
+  border-color: #a78bfa !important;
 }
 
 .border-cyan-500\/20,
 .border-cyan-500\/30,
 .border-cyan-500\/40 {
-  border-color: #a5f3fc !important;
+  border-color: #22d3ee !important;
 }
 
 .border-amber-500\/20,
 .border-amber-500\/30,
 .border-amber-500\/40 {
-  border-color: #fde68a !important;
+  border-color: #fbbf24 !important;
 }
 
 .border-red-500\/20,
 .border-red-500\/30 {
-  border-color: #fecaca !important;
+  border-color: #f87171 !important;
 }
 
 .border-orange-500\/20,
 .border-orange-500\/30 {
-  border-color: #fed7aa !important;
+  border-color: #fb923c !important;
 }
 
-/* الكروت الصغيرة */
-.bg-emerald-500\/20 {
-  background-color: #d1fae5 !important;
-}
-
-.bg-blue-500\/20 {
-  background-color: #dbeafe !important;
-}
-
-.bg-purple-500\/20 {
-  background-color: #ede9fe !important;
-}
-
-.bg-amber-500\/20 {
-  background-color: #fef3c7 !important;
-}
-
-.bg-red-500\/20 {
-  background-color: #fee2e2 !important;
-}
-
-.bg-orange-500\/20 {
-  background-color: #ffedd5 !important;
-}
-
-.bg-cyan-500\/20 {
-  background-color: #cffafe !important;
-}
-
-/* إصلاح الـ gradient backgrounds */
+/* ============================= */
+/* الـ gradients الداكنة           */
+/* ============================= */
 .from-cyan-900\/30,
 .from-amber-950\/60,
 .from-amber-950\/30 {
@@ -376,25 +433,35 @@ textarea {
   background-color: transparent !important;
 }
 
-/* الـ badges */
-.bg-emerald-600\/10 {
-  background-color: #ecfdf5 !important;
+/* ============================= */
+/* الـ Overlays والمودالز          */
+/* ============================= */
+.bg-black\/80 {
+  background-color: rgba(0, 0, 0, 0.5) !important;
 }
 
-.bg-blue-600\/10 {
-  background-color: #eff6ff !important;
+.bg-black\/70 {
+  background-color: rgba(0, 0, 0, 0.4) !important;
 }
 
-.bg-purple-600\/10 {
-  background-color: #faf5ff !important;
+.bg-black\/40 {
+  background-color: rgba(0, 0, 0, 0.3) !important;
 }
 
-.bg-cyan-600\/10 {
-  background-color: #ecfeff !important;
-}
-
-/* progress bars */
+/* ============================= */
+/* progress bars                  */
+/* ============================= */
 .bg-gradient-to-r {
   opacity: 1;
 }
 
+/* ============================= */
+/* خلفية white/20 في الكروت      */
+/* ============================= */
+.bg-white\/20 {
+  background-color: rgba(255, 255, 255, 0.25) !important;
+}
+
+.bg-white\/90 {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+}
