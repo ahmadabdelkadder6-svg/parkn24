@@ -177,11 +177,7 @@ const playFirstAlert = async () => {
   }
 };
 
-const fireNewCarAlert = (
-  carPlate: string,
-  customerName?: string,
-  agreedPrice?: number
-) => {
+const fireNewCarAlert = (carPlate: string, customerName?: string, agreedPrice?: number) => {
   playFirstAlert();
   vibrateDevice();
   const body = [
@@ -227,44 +223,21 @@ const playApproachingAlert = async () => {
 const fireApproachingAlert = (carPlate: string) => {
   playApproachingAlert();
   vibrateDevice();
-  sendNotification(
-    '🚗 سيارة على وشك الوصول!',
-    `🚗 ${carPlate} - باقي أقل من دقيقتين ⏰`,
-    `approaching-${carPlate}`
-  );
+  sendNotification('🚗 سيارة على وشك الوصول!', `🚗 ${carPlate} - باقي أقل من دقيقتين ⏰`, `approaching-${carPlate}`);
 };
 
 export default function GarageDashboard() {
   const {
-    garages,
-    currentGarageId,
-    setCurrentGarageId,
-    sessions,
-    addSession,
-    endSession,
-    removeSession,
-    offers,
-    updateOffer,
-    cancelOffer,
-    updateGarage,
-    incomingCars,
-    removeIncomingCar,
-    fetchAll,
-    confirmRevenue,
+    garages, currentGarageId, setCurrentGarageId, sessions, addSession, endSession, removeSession,
+    offers, updateOffer, cancelOffer, updateGarage, incomingCars, removeIncomingCar, fetchAll, confirmRevenue,
   } = useStore();
 
   const garage = garages.find((g) => g.id === currentGarageId);
   const garageSessions = sessions.filter((s) => s.garageId === currentGarageId);
-  const activeSessions = garageSessions.filter(
-    (s) => s.status === 'active' && Date.now() - s.startTime < 24 * 60 * 60 * 1000
-  );
+  const activeSessions = garageSessions.filter((s) => s.status === 'active' && Date.now() - s.startTime < 24 * 60 * 60 * 1000);
   const completedSessions = garageSessions.filter((s) => s.status === 'completed');
-  const garageOffers = offers.filter(
-    (o) => o.garageId === currentGarageId && o.status === 'pending'
-  );
-  const carsOnTheWay = incomingCars.filter(
-    (c) => c.garageId === currentGarageId && c.status === 'coming'
-  );
+  const garageOffers = offers.filter((o) => o.garageId === currentGarageId && o.status === 'pending');
+  const carsOnTheWay = incomingCars.filter((c) => c.garageId === currentGarageId && c.status === 'coming');
 
   const processedCarsRef = useRef<Set<string>>(new Set());
   const isEndingSessionRef = useRef(false);
@@ -285,13 +258,7 @@ export default function GarageDashboard() {
   const [logDateFilter, setLogDateFilter] = useState(() => getLocalToday());
   const [logPaymentFilter, setLogPaymentFilter] = useState<string>('all');
   const [confirmSession, setConfirmSession] = useState<{
-    id: string;
-    carPlate: string;
-    cost: number;
-    hours: number;
-    minutes: number;
-    source: 'app' | 'manual';
-    agreedPrice?: number;
+    id: string; carPlate: string; cost: number; hours: number; minutes: number; source: 'app' | 'manual'; agreedPrice?: number;
   } | null>(null);
   const [confirmPaymentMethod, setConfirmPaymentMethod] = useState('cash');
   const [tick, setTick] = useState(0);
@@ -299,13 +266,8 @@ export default function GarageDashboard() {
 
   useEffect(() => {
     const initAll = async () => {
-      if ('Notification' in window && Notification.permission === 'default') {
-        await Notification.requestPermission();
-      }
-      if (!audioInitializedRef.current) {
-        await initAudioContext();
-        audioInitializedRef.current = true;
-      }
+      if ('Notification' in window && Notification.permission === 'default') await Notification.requestPermission();
+      if (!audioInitializedRef.current) { await initAudioContext(); audioInitializedRef.current = true; }
     };
     initAll();
   }, []);
@@ -313,105 +275,56 @@ export default function GarageDashboard() {
   useEffect(() => {
     if (!currentGarageId || garages.length === 0) return;
     if (pushSubscribedGarageRef.current === currentGarageId) return;
-
     const setupGaragePush = async () => {
       try {
         const success = await subscribeToPush(currentGarageId);
-        if (success) {
-          pushSubscribedGarageRef.current = currentGarageId;
-        }
-      } catch (err) {
-        console.error('❌ خطأ في تسجيل Push للجراج:', err);
-      }
+        if (success) pushSubscribedGarageRef.current = currentGarageId;
+      } catch (err) { console.error('❌ خطأ في تسجيل Push للجراج:', err); }
     };
-
     setupGaragePush();
   }, [currentGarageId, garages]);
 
   useEffect(() => {
     if (!currentGarageId) return;
-
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible') {
         await refreshPushSubscriptionIfNeeded(currentGarageId);
         await fetchAll();
       }
     };
-
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [currentGarageId, fetchAll]);
 
   useEffect(() => {
     const currentIds = new Set(carsOnTheWay.map((c) => c.id));
-
     carsOnTheWay.forEach((car) => {
       if (!prevIncomingIdsRef.current.has(car.id)) {
         if (!document.hidden) {
           fireNewCarAlert(car.carPlate, car.customerName, car.agreedPrice);
-          toast(
-            `🚨 سيارة في الطريق!\n🚗 ${car.carPlate}${car.agreedPrice ? ` - ${car.agreedPrice} ج.م/ساعة` : ''}`,
-            {
-              duration: 10000,
-              style: {
-                background: '#ffffff',
-                color: '#0f172a',
-                border: '2px solid #06b6d4',
-                fontWeight: 'bold',
-                fontSize: '14px',
-              },
-              icon: '🚨',
-            }
-          );
+          toast(`🚨 سيارة في الطريق!\n🚗 ${car.carPlate}${car.agreedPrice ? ` - ${car.agreedPrice} ج.م/ساعة` : ''}`, {
+            duration: 10000, icon: '🚨',
+          });
         }
       }
     });
-
     prevIncomingIdsRef.current.forEach((prevId) => {
-      if (!currentIds.has(prevId)) {
-        approachAlertedRef.current.delete(prevId);
-        try {
-          if ('vibrate' in navigator) navigator.vibrate(0);
-        } catch {}
-      }
+      if (!currentIds.has(prevId)) { approachAlertedRef.current.delete(prevId); try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }
     });
-
     prevIncomingIdsRef.current = currentIds;
   }, [carsOnTheWay]);
 
   useEffect(() => {
     carsOnTheWay.forEach((car) => {
       if (approachAlertedRef.current.has(car.id)) return;
-
-      const start =
-        typeof car.startTime === 'number'
-          ? car.startTime
-          : new Date(car.startTime).getTime();
-
+      const start = typeof car.startTime === 'number' ? car.startTime : new Date(car.startTime).getTime();
       const elapsedMinutes = (Date.now() - start) / 60000;
       const remainingMinutes = Math.max(0, car.estimatedArrival - elapsedMinutes);
-
       if (remainingMinutes <= 2 && remainingMinutes >= 0 && car.estimatedArrival > 2) {
         approachAlertedRef.current.add(car.id);
-
         if (!document.hidden) {
           fireApproachingAlert(car.carPlate);
-          toast(
-            `🚗 سيارة على وشك الوصول!\n${car.carPlate} - باقي أقل من دقيقتين ⏰`,
-            {
-              duration: 10000,
-              style: {
-                background: '#ffffff',
-                color: '#0f172a',
-                border: '2px solid #f59e0b',
-                fontWeight: 'bold',
-                fontSize: '14px',
-              },
-              icon: '⏰',
-            }
-          );
+          toast(`🚗 سيارة على وشك الوصول!\n${car.carPlate} - باقي أقل من دقيقتين ⏰`, { duration: 10000, icon: '⏰' });
         }
       }
     });
@@ -420,111 +333,61 @@ export default function GarageDashboard() {
   useEffect(() => {
     garageOffers.forEach((offer) => {
       if (!prevOfferIdsRef.current.has(offer.id)) {
-        toast(
-          `💰 عرض سعر جديد!\n🚗 ${offer.carPlate} - ${offer.offeredPrice} ج.م/ساعة`,
-          {
-            duration: 8000,
-            style: {
-              background: '#ffffff',
-              color: '#0f172a',
-              border: '2px solid #f59e0b',
-              fontWeight: 'bold',
-            },
-            icon: '💰',
-          }
-        );
+        toast(`💰 عرض سعر جديد!\n🚗 ${offer.carPlate} - ${offer.offeredPrice} ج.م/ساعة`, { duration: 8000, icon: '💰' });
       }
     });
     prevOfferIdsRef.current = new Set(garageOffers.map((o) => o.id));
   }, [garageOffers]);
 
-  useEffect(() => {
-    return () => {
-      try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {}
-    };
-  }, []);
+  useEffect(() => { return () => { try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }; }, []);
 
   const fetchGarageDailyStats = useCallback(async () => {
     if (!currentGarageId) return;
     try {
-      let query = supabase
-        .from('daily_stats')
-        .select('*')
-        .eq('garage_id', currentGarageId);
-      if (logDateFilter) {
-        query = query.eq('stat_date', logDateFilter);
-      }
+      let query = supabase.from('daily_stats').select('*').eq('garage_id', currentGarageId);
+      if (logDateFilter) query = query.eq('stat_date', logDateFilter);
       const { data, error } = await query;
-      if (error) {
-        console.error('❌ خطأ في جلب garage daily_stats:', error);
-        return;
-      }
+      if (error) { console.error('❌ خطأ في جلب garage daily_stats:', error); return; }
       setGarageDailyStats(data ?? []);
-    } catch (err) {
-      console.error('❌ خطأ غير متوقع:', err);
-    }
+    } catch (err) { console.error('❌ خطأ غير متوقع:', err); }
   }, [currentGarageId, logDateFilter]);
 
-  useEffect(() => {
-    fetchGarageDailyStats();
-  }, [fetchGarageDailyStats]);
+  useEffect(() => { fetchGarageDailyStats(); }, [fetchGarageDailyStats]);
 
-  const totalRevenueFromStats = useMemo(
-    () => garageDailyStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0),
-    [garageDailyStats]
-  );
+  const totalRevenueFromStats = useMemo(() => garageDailyStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0), [garageDailyStats]);
+  const pendingRevenueFromStats = useMemo(() => garageDailyStats.reduce((a, s) => a + Number(s.pending_revenue ?? 0), 0), [garageDailyStats]);
 
-  const pendingRevenueFromStats = useMemo(
-    () => garageDailyStats.reduce((a, s) => a + Number(s.pending_revenue ?? 0), 0),
-    [garageDailyStats]
-  );
+  const paymentStatsFromDB = useMemo(() => ({
+    cash: garageDailyStats.reduce((a, s) => a + Number(s.cash_revenue ?? 0), 0),
+    instapay: garageDailyStats.reduce((a, s) => a + Number(s.instapay_revenue ?? 0), 0),
+    wallet: garageDailyStats.reduce((a, s) => a + Number(s.wallet_revenue ?? 0), 0),
+    cashwallet: garageDailyStats.reduce((a, s) => a + Number(s.cashwallet_revenue ?? 0), 0),
+    totalSessions: garageDailyStats.reduce((a, s) => a + Number(s.total_sessions ?? 0), 0),
+    manualSessions: garageDailyStats.reduce((a, s) => a + Number(s.manual_sessions ?? 0), 0),
+    appSessions: garageDailyStats.reduce((a, s) => a + Number(s.app_sessions ?? 0), 0),
+  }), [garageDailyStats]);
 
-  const paymentStatsFromDB = useMemo(
-    () => ({
-      cash: garageDailyStats.reduce((a, s) => a + Number(s.cash_revenue ?? 0), 0),
-      instapay: garageDailyStats.reduce((a, s) => a + Number(s.instapay_revenue ?? 0), 0),
-      wallet: garageDailyStats.reduce((a, s) => a + Number(s.wallet_revenue ?? 0), 0),
-      cashwallet: garageDailyStats.reduce((a, s) => a + Number(s.cashwallet_revenue ?? 0), 0),
-      totalSessions: garageDailyStats.reduce((a, s) => a + Number(s.total_sessions ?? 0), 0),
-      manualSessions: garageDailyStats.reduce((a, s) => a + Number(s.manual_sessions ?? 0), 0),
-      appSessions: garageDailyStats.reduce((a, s) => a + Number(s.app_sessions ?? 0), 0),
-    }),
-    [garageDailyStats]
-  );
-
-  const getSessionRevenue = useCallback(
-    (s: (typeof completedSessions)[0]) => {
-      if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
-      if (s.endTime && s.startTime) {
-        const start = typeof s.startTime === 'number' ? s.startTime : new Date(s.startTime).getTime();
-        const end = typeof s.endTime === 'number' ? s.endTime : new Date(s.endTime).getTime();
-        const elapsed = Math.max(0, Math.floor((end - start) / 1000));
-        const rate = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
-        return calculateCost(elapsed, rate);
-      }
-      return 0;
-    },
-    [garage?.basePrice]
-  );
-
-  const totalRevenue = useMemo(
-    () => completedSessions.filter((s) => s.revenueConfirmed).reduce((acc, s) => acc + getSessionRevenue(s), 0),
-    [completedSessions, getSessionRevenue]
-  );
-
-  const getActiveCost = useCallback(
-    (session: (typeof activeSessions)[0]) => {
-      const startTime = typeof session.startTime === 'number'
-        ? session.startTime
-        : new Date(session.startTime).getTime();
-      const elapsed = Math.max(0, Math.floor((Date.now() - startTime) / 1000));
-      const rate = Number(session.agreedPrice ?? garage?.basePrice ?? 0);
-      if (isNaN(elapsed) || elapsed <= 0) return 0;
-      if (isNaN(rate) || rate <= 0) return 0;
+  const getSessionRevenue = useCallback((s: (typeof completedSessions)[0]) => {
+    if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
+    if (s.endTime && s.startTime) {
+      const start = typeof s.startTime === 'number' ? s.startTime : new Date(s.startTime).getTime();
+      const end = typeof s.endTime === 'number' ? s.endTime : new Date(s.endTime).getTime();
+      const elapsed = Math.max(0, Math.floor((end - start) / 1000));
+      const rate = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
       return calculateCost(elapsed, rate);
-    },
-    [garage?.basePrice]
-  );
+    }
+    return 0;
+  }, [garage?.basePrice]);
+
+  const totalRevenue = useMemo(() => completedSessions.filter((s) => s.revenueConfirmed).reduce((acc, s) => acc + getSessionRevenue(s), 0), [completedSessions, getSessionRevenue]);
+
+  const getActiveCost = useCallback((session: (typeof activeSessions)[0]) => {
+    const startTime = typeof session.startTime === 'number' ? session.startTime : new Date(session.startTime).getTime();
+    const elapsed = Math.max(0, Math.floor((Date.now() - startTime) / 1000));
+    const rate = Number(session.agreedPrice ?? garage?.basePrice ?? 0);
+    if (isNaN(elapsed) || elapsed <= 0 || isNaN(rate) || rate <= 0) return 0;
+    return calculateCost(elapsed, rate);
+  }, [garage?.basePrice]);
 
   const filteredCompleted = useMemo(() => {
     return completedSessions.filter((s) => {
@@ -541,65 +404,39 @@ export default function GarageDashboard() {
     const confirmed = filteredCompleted.filter((s) => s.revenueConfirmed);
     const unconfirmed = filteredCompleted.filter((s) => !s.revenueConfirmed);
     const hasStatsForDate = garageDailyStats.length > 0;
-
     const cash = hasStatsForDate ? paymentStatsFromDB.cash : confirmed.filter((s) => s.paymentMethod === 'cash').reduce((a, s) => a + getSessionRevenue(s), 0);
     const instapay = hasStatsForDate ? paymentStatsFromDB.instapay : confirmed.filter((s) => s.paymentMethod === 'instapay').reduce((a, s) => a + getSessionRevenue(s), 0);
     const wallet = hasStatsForDate ? paymentStatsFromDB.wallet : confirmed.filter((s) => s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
     const cashwallet = hasStatsForDate ? paymentStatsFromDB.cashwallet : confirmed.filter((s) => s.paymentMethod === 'cashwallet').reduce((a, s) => a + getSessionRevenue(s), 0);
-    const total = hasStatsForDate
-      ? garageDailyStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0)
-      : cash + instapay + wallet + cashwallet;
-
+    const total = hasStatsForDate ? garageDailyStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0) : cash + instapay + wallet + cashwallet;
     const manual = confirmed.filter((s) => s.source === 'manual');
     const app = confirmed.filter((s) => s.source === 'app');
-    const pendingRevenue = hasStatsForDate
-      ? pendingRevenueFromStats
-      : unconfirmed.reduce((a, s) => a + getSessionRevenue(s), 0);
-
+    const pendingRevenue = hasStatsForDate ? pendingRevenueFromStats : unconfirmed.reduce((a, s) => a + getSessionRevenue(s), 0);
     return {
       cash, instapay, wallet, cashwallet, total,
       manualCount: hasStatsForDate ? paymentStatsFromDB.manualSessions : manual.length,
       appCount: hasStatsForDate ? paymentStatsFromDB.appSessions : app.length,
       manualTotal: manual.reduce((a, s) => a + getSessionRevenue(s), 0),
       appTotal: app.reduce((a, s) => a + getSessionRevenue(s), 0),
-      pendingRevenue,
-      pendingCount: unconfirmed.length,
+      pendingRevenue, pendingCount: unconfirmed.length,
     };
   }, [filteredCompleted, getSessionRevenue, garageDailyStats, paymentStatsFromDB, pendingRevenueFromStats]);
 
-  const handleUndoSession = useCallback(
-    (undoable: UndoableSession) => {
-      if (!garage) return;
-      removeSession(undoable.sessionId);
-      if (undoable.localId !== undoable.sessionId) removeSession(undoable.localId);
-      const currentSessions = useStore.getState().sessions;
-      const matchingSession = currentSessions.find(
-        (s) => s.carPlate === undoable.carPlate && s.source === 'manual' && s.status === 'active' && Math.abs(s.startTime - undoable.addedAt) < 5000
-      );
-      if (matchingSession) removeSession(matchingSession.id);
-      setUndoableSessions((prev) =>
-        prev.filter((u) => u.sessionId !== undoable.sessionId && u.localId !== undoable.localId)
-      );
-      toast('تم إلغاء إضافة السيارة ' + undoable.carPlate + ' ↩️', {
-        icon: '🔙',
-        style: { background: '#ffffff', color: '#0f172a', border: '1px solid #e2e8f0' },
-      });
-    },
-    [garage, removeSession]
-  );
+  const handleUndoSession = useCallback((undoable: UndoableSession) => {
+    if (!garage) return;
+    removeSession(undoable.sessionId);
+    if (undoable.localId !== undoable.sessionId) removeSession(undoable.localId);
+    const currentSessions = useStore.getState().sessions;
+    const matchingSession = currentSessions.find((s) => s.carPlate === undoable.carPlate && s.source === 'manual' && s.status === 'active' && Math.abs(s.startTime - undoable.addedAt) < 5000);
+    if (matchingSession) removeSession(matchingSession.id);
+    setUndoableSessions((prev) => prev.filter((u) => u.sessionId !== undoable.sessionId && u.localId !== undoable.localId));
+    toast('تم إلغاء إضافة السيارة ' + undoable.carPlate + ' ↩️', { icon: '🔙' });
+  }, [garage, removeSession]);
 
-  const getUndoRemainingSeconds = useCallback((addedAt: number) => {
-    return Math.max(0, UNDO_TIMEOUT_SECONDS - Math.floor((Date.now() - addedAt) / 1000));
-  }, []);
+  const getUndoRemainingSeconds = useCallback((addedAt: number) => Math.max(0, UNDO_TIMEOUT_SECONDS - Math.floor((Date.now() - addedAt) / 1000)), []);
 
-  useEffect(() => {
-    const interval = setInterval(() => setTick((t) => t + 1), 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    if (garage) setNewCarPrice(garage.basePrice);
-  }, [garage?.basePrice, garage]);
+  useEffect(() => { const interval = setInterval(() => setTick((t) => t + 1), 1000); return () => clearInterval(interval); }, []);
+  useEffect(() => { if (garage) setNewCarPrice(garage.basePrice); }, [garage?.basePrice, garage]);
 
   useEffect(() => {
     setUndoableSessions((prev) => {
@@ -608,9 +445,7 @@ export default function GarageDashboard() {
         .map((u) => {
           const stillExists = sessions.find((s) => s.id === u.sessionId);
           if (!stillExists) {
-            const newSession = sessions.find(
-              (s) => s.carPlate === u.carPlate && s.source === 'manual' && s.status === 'active' && Math.abs(s.startTime - u.addedAt) < 5000
-            );
+            const newSession = sessions.find((s) => s.carPlate === u.carPlate && s.source === 'manual' && s.status === 'active' && Math.abs(s.startTime - u.addedAt) < 5000);
             if (newSession) return { ...u, sessionId: newSession.id };
           }
           return u;
@@ -625,238 +460,180 @@ export default function GarageDashboard() {
     const carPlate = newCarPlate.trim();
     const price = newCarPrice;
     const addedAt = Date.now();
-    const sessionId = await addSession({
-      garageId: garage.id, carPlate, startTime: addedAt, status: 'active', source: 'manual', agreedPrice: price,
-    });
+    const sessionId = await addSession({ garageId: garage.id, carPlate, startTime: addedAt, status: 'active', source: 'manual', agreedPrice: price });
     const finalSessionId = sessionId || `fallback-${addedAt}`;
-    setUndoableSessions((prev) => [
-      ...prev,
-      { sessionId: finalSessionId, localId: finalSessionId, carPlate, price, addedAt },
-    ]);
+    setUndoableSessions((prev) => [...prev, { sessionId: finalSessionId, localId: finalSessionId, carPlate, price, addedAt }]);
     toast.success(`تم إضافة السيارة بسعر ${price} ج.م/ساعة`);
-    setNewCarPlate('');
-    setNewCarPrice(garage.basePrice);
-    setShowAddCar(false);
+    setNewCarPlate(''); setNewCarPrice(garage.basePrice); setShowAddCar(false);
   };
 
-  const openConfirmPayment = (
-    sessionId: string, carPlate: string, cost: number,
-    hours: number, minutes: number, source: 'app' | 'manual', agreedPrice?: number
-  ) => {
-    const finalCost = cost > 0 ? cost : (() => {
-      const session = activeSessions.find((s) => s.id === sessionId);
-      if (!session) return 0;
-      return getActiveCost(session);
-    })();
-    setConfirmSession({ id: sessionId, carPlate, cost: finalCost, hours, minutes, source, agreedPrice });
-    setConfirmPaymentMethod('cash');
+  const openConfirmPayment = (sessionId: string, carPlate: string, cost: number, hours: number, minutes: number, source: 'app' | 'manual', agreedPrice?: number) => {
+    const finalCost = cost > 0 ? cost : (() => { const session = activeSessions.find((s) => s.id === sessionId); if (!session) return 0; return getActiveCost(session); })();
+    setConfirmSession({ id: sessionId, carPlate, cost: finalCost, hours, minutes, source, agreedPrice }); setConfirmPaymentMethod('cash');
   };
 
   const handleConfirmPayment = async () => {
-    if (!confirmSession) return;
-    if (isEndingSessionRef.current) return;
-    isEndingSessionRef.current = true;
-    pausePolling(20000);
+    if (!confirmSession || isEndingSessionRef.current) return;
+    isEndingSessionRef.current = true; pausePolling(20000);
     try {
-      const sessionCopy = { ...confirmSession };
-      const paymentCopy = confirmPaymentMethod;
+      const sessionCopy = { ...confirmSession }; const paymentCopy = confirmPaymentMethod;
       const sessionData = useStore.getState().sessions.find((s) => s.id === sessionCopy.id);
       const isAppSession = sessionData?.source === 'app';
       setConfirmSession(null);
-      setUndoableSessions((prev) =>
-        prev.filter((u) => u.sessionId !== sessionCopy.id && u.localId !== sessionCopy.id)
-      );
+      setUndoableSessions((prev) => prev.filter((u) => u.sessionId !== sessionCopy.id && u.localId !== sessionCopy.id));
       await endSession(sessionCopy.id, sessionCopy.cost, paymentCopy);
       if (isAppSession) await new Promise((resolve) => setTimeout(resolve, 5000));
       await fetchGarageDailyStats();
-      const methodLabel =
-        paymentCopy === 'cash' ? 'نقدي 💵'
-        : paymentCopy === 'instapay' ? 'إنستاباي 📱'
-        : paymentCopy === 'wallet' ? 'خصم من المحفظة 👝'
-        : 'تحويل محفظة كاش 📲';
+      const methodLabel = paymentCopy === 'cash' ? 'نقدي 💵' : paymentCopy === 'instapay' ? 'إنستاباي 📱' : paymentCopy === 'wallet' ? 'خصم من المحفظة 👝' : 'تحويل محفظة كاش 📲';
       toast.success(`تم تحصيل ${sessionCopy.cost} ج.م (${methodLabel}) ✅`);
-    } finally {
-      setTimeout(() => { isEndingSessionRef.current = false; }, 2000);
-    }
+    } finally { setTimeout(() => { isEndingSessionRef.current = false; }, 2000); }
   };
 
   const handleSaveSettings = () => {
-    updateGarage(garage.id, {
-      basePrice: editPrice,
-      availableSpots: Math.min(editSpots, editCapacity),
-      capacity: editCapacity,
-    });
-    toast.success('تم تحديث الإعدادات بنجاح! ⚡');
-    setShowSettings(false);
+    updateGarage(garage.id, { basePrice: editPrice, availableSpots: Math.min(editSpots, editCapacity), capacity: editCapacity });
+    toast.success('تم تحديث الإعدادات بنجاح! ⚡'); setShowSettings(false);
   };
 
   const openSettings = () => {
-    setEditPrice(garage.basePrice);
-    setEditSpots(garage.availableSpots);
-    setEditCapacity(garage.capacity);
-    setShowSettings(true);
+    setEditPrice(garage.basePrice); setEditSpots(garage.availableSpots); setEditCapacity(garage.capacity); setShowSettings(true);
   };
 
   const handleCarArrived = async (carId: string, carPlate: string, agreedPrice: number) => {
     if (processedCarsRef.current.has(carId)) return;
-    processedCarsRef.current.add(carId);
-    pausePolling(10000);
+    processedCarsRef.current.add(carId); pausePolling(10000);
     try {
       const normalizedPlate = carPlate.trim().toUpperCase();
-      const existingLocal = useStore.getState().sessions.find(
-        (s) => s.carPlate.trim().toUpperCase() === normalizedPlate && s.status === 'active'
-      );
+      const existingLocal = useStore.getState().sessions.find((s) => s.carPlate.trim().toUpperCase() === normalizedPlate && s.status === 'active');
       if (existingLocal) {
         await removeIncomingCar(carId);
         await supabase.from('incoming_cars').delete().eq('car_plate', normalizedPlate).eq('garage_id', garage.id);
-        toast('الجلسة شغالة بالفعل ✅', {
-          icon: '🚗',
-          style: { background: '#ffffff', color: '#0f172a', border: '1px solid #e2e8f0' },
-        });
-        return;
+        toast('الجلسة شغالة بالفعل ✅', { icon: '🚗' }); return;
       }
       try {
-        const { data: dbCheck } = await supabase.from('sessions').select('id')
-          .eq('car_plate', normalizedPlate).eq('status', 'active').limit(1);
+        const { data: dbCheck } = await supabase.from('sessions').select('id').eq('car_plate', normalizedPlate).eq('status', 'active').limit(1);
         if (dbCheck && dbCheck.length > 0) {
           await removeIncomingCar(carId);
           await supabase.from('incoming_cars').delete().eq('car_plate', normalizedPlate).eq('garage_id', garage.id);
-          await fetchAll();
-          toast('الجلسة شغالة بالفعل ✅', {
-            icon: '🚗',
-            style: { background: '#ffffff', color: '#0f172a', border: '1px solid #e2e8f0' },
-          });
-          return;
+          await fetchAll(); toast('الجلسة شغالة بالفعل ✅', { icon: '🚗' }); return;
         }
       } catch (err) { console.error('خطأ في التحقق من DB:', err); }
-
-      const relatedOffer = offers.find(
-        (o) => o.carPlate.trim().toUpperCase() === normalizedPlate &&
-          (o.status === 'pending' || o.status === 'accepted')
-      );
+      const relatedOffer = offers.find((o) => o.carPlate.trim().toUpperCase() === normalizedPlate && (o.status === 'pending' || o.status === 'accepted'));
       if (relatedOffer) cancelOffer(relatedOffer.id);
-
-      await addSession({
-        garageId: garage.id, carPlate: normalizedPlate,
-        startTime: Date.now(), status: 'active', source: 'app', agreedPrice,
-      });
+      await addSession({ garageId: garage.id, carPlate: normalizedPlate, startTime: Date.now(), status: 'active', source: 'app', agreedPrice });
       await removeIncomingCar(carId);
       await supabase.from('incoming_cars').delete().eq('car_plate', normalizedPlate).eq('garage_id', garage.id);
       toast.success(`بدأ حساب السيارة ${carPlate} 🚗`);
-    } catch (err) {
-      console.error('❌ خطأ في handleCarArrived:', err);
-      processedCarsRef.current.delete(carId);
-      toast.error('حدث خطأ، حاول مرة أخرى');
-    }
+    } catch (err) { console.error('❌ خطأ:', err); processedCarsRef.current.delete(carId); toast.error('حدث خطأ، حاول مرة أخرى'); }
   };
 
   const calculateRemainingTime = (startTime: number, estimatedMinutes: number) => {
     const start = typeof startTime === 'number' ? startTime : new Date(startTime).getTime();
-    const elapsed = Math.floor((Date.now() - start) / 60000);
-    return Math.max(0, estimatedMinutes - elapsed);
+    return Math.max(0, estimatedMinutes - Math.floor((Date.now() - start) / 60000));
   };
 
+  // ════════════════════════════════════════
+  // الـ JSX - نسخة احترافية فاتحة
+  // ════════════════════════════════════════
   return (
-    <div className="h-full bg-gray-50 text-slate-900 p-5 overflow-y-auto">
+    <div className="h-full bg-slate-50 p-5 overflow-y-auto" style={{ color: '#0f172a' }}>
 
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6 pt-14">
-        <button onClick={() => setCurrentGarageId(null)} className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
-          <LogOut size={18} className="text-slate-600" />
+      {/* ── Header ───────────────────────────── */}
+      <div className="flex justify-between items-center mb-5 pt-14">
+        <button onClick={() => setCurrentGarageId(null)} className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all">
+          <LogOut size={18} className="text-slate-500" />
         </button>
         <div className="text-right flex-1 mr-3">
-          <h2 className="text-xl font-black text-slate-900">{garage.name}</h2>
-          <p className="text-xs text-slate-500 flex items-center gap-1 justify-end">
-            <MapPin size={10} />
-            {garage.location}
+          <h2 className="text-xl font-black" style={{ color: '#0f172a' }}>{garage.name}</h2>
+          <p className="text-xs flex items-center gap-1 justify-end" style={{ color: '#64748b' }}>
+            <MapPin size={10} /> {garage.location}
           </p>
         </div>
-        <button onClick={openSettings} className="bg-blue-600 p-3 rounded-2xl shadow-lg shadow-blue-200">
+        <button onClick={openSettings} className="bg-blue-600 p-3 rounded-2xl shadow-lg shadow-blue-200 hover:shadow-blue-300 transition-all">
           <Settings size={18} className="text-white" />
         </button>
       </div>
 
-      {/* مؤشر حالة التنبيهات */}
-      <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-2xl p-3 flex items-center justify-between">
+      {/* ── مؤشر التنبيهات ────────────────────── */}
+      <div className="mb-4 bg-emerald-600 rounded-2xl p-3 flex items-center justify-between shadow-lg shadow-emerald-200" style={{ color: '#ffffff' }}>
         <button
-          onClick={() => {
-            playFirstAlert();
-            vibrateDevice();
-            toast('🔔 تجربة التنبيه - صوت واهتزاز!', {
-              icon: '🔊', duration: 3000,
-              style: { background: '#ffffff', color: '#0f172a', border: '1px solid #e2e8f0' },
-            });
-          }}
-          className="text-[10px] text-emerald-700 font-bold bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200 active:scale-95 transition-all"
+          onClick={() => { playFirstAlert(); vibrateDevice(); toast('🔔 تجربة التنبيه!', { icon: '🔊' }); }}
+          className="text-[10px] font-bold bg-white/20 px-3 py-1.5 rounded-lg active:scale-95 transition-all"
         >
           🔊 تجربة
         </button>
         <div className="text-right flex items-center gap-2">
           <div className="text-right">
-            <span className="text-xs font-black text-emerald-700">✅ التنبيهات مفعّلة</span>
-            <div className="text-[9px] text-slate-500">صوت + اهتزاز عند وصول وقرب العربيات</div>
+            <span className="text-xs font-black">✅ التنبيهات مفعّلة</span>
+            <div className="text-[9px] opacity-80">صوت + اهتزاز عند وصول وقرب العربيات</div>
           </div>
-          <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+          <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
         </div>
       </div>
 
       <InstallPWABanner />
 
-      {/* Settings Modal */}
+      {/* ── Settings Modal ────────────────────── */}
       {showSettings && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowSettings(false)}>
           <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white border border-slate-200 rounded-[2rem] p-6 w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-6">
               <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-700 transition-colors text-lg">✕</button>
-              <h3 className="text-lg font-black text-slate-900 flex items-center gap-2"><Settings size={18} className="text-blue-600" />إعدادات الجراج</h3>
+              <h3 className="text-lg font-black flex items-center gap-2" style={{ color: '#0f172a' }}><Settings size={18} className="text-blue-600" />إعدادات الجراج</h3>
             </div>
+
+            {/* سعر الساعة */}
             <div className="mb-6">
-              <label className="text-xs font-black text-slate-500 mb-2 block text-right">💰 سعر الساعة (ج.م)</label>
-              <div className="bg-gray-50 border border-slate-200 rounded-2xl p-4">
+              <label className="text-xs font-black mb-2 block text-right" style={{ color: '#64748b' }}>💰 سعر الساعة (ج.م)</label>
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
                 <div className="flex items-center justify-between gap-4">
-                  <button onClick={() => setEditPrice((p) => Math.max(5, p - 5))} className="bg-red-50 text-red-500 w-12 h-12 rounded-xl flex items-center justify-center border border-red-200 active:scale-90 transition-all"><Minus size={20} /></button>
+                  <button onClick={() => setEditPrice((p) => Math.max(5, p - 5))} className="bg-red-500 text-white w-12 h-12 rounded-xl flex items-center justify-center active:scale-90 transition-all shadow-md"><Minus size={20} /></button>
                   <div className="text-center flex-1">
-                    <input type="number" value={editPrice} onChange={(e) => setEditPrice(Math.max(1, parseInt(e.target.value) || 0))} className="bg-transparent text-4xl font-black text-slate-900 text-center w-full outline-none font-mono" />
-                    <div className="text-[10px] text-slate-400 font-bold">ج.م / ساعة</div>
+                    <input type="number" value={editPrice} onChange={(e) => setEditPrice(Math.max(1, parseInt(e.target.value) || 0))} className="bg-transparent text-4xl font-black text-center w-full outline-none font-mono" style={{ color: '#0f172a' }} />
+                    <div className="text-[10px] font-bold" style={{ color: '#94a3b8' }}>ج.م / ساعة</div>
                   </div>
-                  <button onClick={() => setEditPrice((p) => p + 5)} className="bg-emerald-50 text-emerald-600 w-12 h-12 rounded-xl flex items-center justify-center border border-emerald-200 active:scale-90 transition-all"><Plus size={20} /></button>
+                  <button onClick={() => setEditPrice((p) => p + 5)} className="bg-emerald-500 text-white w-12 h-12 rounded-xl flex items-center justify-center active:scale-90 transition-all shadow-md"><Plus size={20} /></button>
                 </div>
                 <div className="flex gap-2 justify-center mt-3">
                   {[10, 15, 20, 25, 30].map((p) => (
-                    <button key={p} onClick={() => setEditPrice(p)} className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${editPrice === p ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{p}</button>
+                    <button key={p} onClick={() => setEditPrice(p)} className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${editPrice === p ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200'}`}>{p}</button>
                   ))}
                 </div>
               </div>
             </div>
+
+            {/* الأماكن */}
             <div className="mb-6">
-              <label className="text-xs font-black text-slate-500 mb-2 block text-right">🚗 الأماكن المتاحة حالياً</label>
-              <div className="bg-gray-50 border border-slate-200 rounded-2xl p-4">
+              <label className="text-xs font-black mb-2 block text-right" style={{ color: '#64748b' }}>🚗 الأماكن المتاحة حالياً</label>
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
                 <div className="flex items-center justify-between gap-4">
-                  <button onClick={() => setEditSpots((s) => Math.max(0, s - 1))} className="bg-red-50 text-red-500 w-12 h-12 rounded-xl flex items-center justify-center border border-red-200 active:scale-90 transition-all"><Minus size={20} /></button>
+                  <button onClick={() => setEditSpots((s) => Math.max(0, s - 1))} className="bg-red-500 text-white w-12 h-12 rounded-xl flex items-center justify-center active:scale-90 transition-all shadow-md"><Minus size={20} /></button>
                   <div className="text-center flex-1">
-                    <input type="number" value={editSpots} onChange={(e) => setEditSpots(Math.max(0, Math.min(editCapacity, parseInt(e.target.value) || 0)))} className="bg-transparent text-4xl font-black text-blue-600 text-center w-full outline-none font-mono" />
-                    <div className="text-[10px] text-slate-400 font-bold">من {editCapacity} مكان</div>
+                    <input type="number" value={editSpots} onChange={(e) => setEditSpots(Math.max(0, Math.min(editCapacity, parseInt(e.target.value) || 0)))} className="bg-transparent text-4xl font-black text-center w-full outline-none font-mono" style={{ color: '#2563eb' }} />
+                    <div className="text-[10px] font-bold" style={{ color: '#94a3b8' }}>من {editCapacity} مكان</div>
                   </div>
-                  <button onClick={() => setEditSpots((s) => Math.min(editCapacity, s + 1))} className="bg-emerald-50 text-emerald-600 w-12 h-12 rounded-xl flex items-center justify-center border border-emerald-200 active:scale-90 transition-all"><Plus size={20} /></button>
+                  <button onClick={() => setEditSpots((s) => Math.min(editCapacity, s + 1))} className="bg-emerald-500 text-white w-12 h-12 rounded-xl flex items-center justify-center active:scale-90 transition-all shadow-md"><Plus size={20} /></button>
                 </div>
-                <div className="mt-3 bg-slate-200 rounded-full h-2 overflow-hidden">
-                  <div className="bg-gradient-to-r from-blue-600 to-emerald-500 h-full transition-all duration-300" style={{ width: `${editCapacity > 0 ? (editSpots / editCapacity) * 100 : 0}%` }} />
+                <div className="mt-3 bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                  <div className="bg-gradient-to-r from-blue-600 to-emerald-500 h-full transition-all duration-300 rounded-full" style={{ width: `${editCapacity > 0 ? (editSpots / editCapacity) * 100 : 0}%` }} />
                 </div>
               </div>
             </div>
+
+            {/* السعة */}
             <div className="mb-6">
-              <label className="text-xs font-black text-slate-500 mb-2 block text-right">🏢 السعة الكلية للجراج</label>
-              <div className="bg-gray-50 border border-slate-200 rounded-2xl p-4">
+              <label className="text-xs font-black mb-2 block text-right" style={{ color: '#64748b' }}>🏢 السعة الكلية</label>
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
                 <div className="flex items-center justify-between gap-4">
-                  <button onClick={() => setEditCapacity((c) => Math.max(editSpots, c - 10))} className="bg-slate-100 text-slate-500 w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 transition-all"><Minus size={16} /></button>
+                  <button onClick={() => setEditCapacity((c) => Math.max(editSpots, c - 10))} className="bg-slate-300 text-slate-600 w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 transition-all"><Minus size={16} /></button>
                   <div className="text-center flex-1">
-                    <input type="number" value={editCapacity} onChange={(e) => setEditCapacity(Math.max(editSpots, parseInt(e.target.value) || editSpots))} className="bg-transparent text-2xl font-black text-purple-600 text-center w-full outline-none font-mono" />
-                    <div className="text-[10px] text-slate-400 font-bold">مكان إجمالي</div>
+                    <input type="number" value={editCapacity} onChange={(e) => setEditCapacity(Math.max(editSpots, parseInt(e.target.value) || editSpots))} className="bg-transparent text-2xl font-black text-center w-full outline-none font-mono" style={{ color: '#7c3aed' }} />
+                    <div className="text-[10px] font-bold" style={{ color: '#94a3b8' }}>مكان إجمالي</div>
                   </div>
-                  <button onClick={() => setEditCapacity((c) => c + 10)} className="bg-slate-100 text-slate-500 w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 transition-all"><Plus size={16} /></button>
+                  <button onClick={() => setEditCapacity((c) => c + 10)} className="bg-slate-300 text-slate-600 w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 transition-all"><Plus size={16} /></button>
                 </div>
               </div>
             </div>
+
             <button onClick={handleSaveSettings} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xl shadow-emerald-200">
               <Save size={18} /> حفظ التغييرات
             </button>
@@ -864,90 +641,91 @@ export default function GarageDashboard() {
         </motion.div>
       )}
 
-      {/* Confirm Payment Modal */}
+      {/* ── Confirm Payment Modal ─────────────── */}
       {confirmSession && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-end justify-center p-4" onClick={() => setConfirmSession(null)}>
           <motion.div initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: 'spring', damping: 25 }} className="bg-white border border-slate-200 rounded-t-[2.5rem] rounded-b-2xl p-6 w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-5" />
-            <h3 className="text-lg font-black text-slate-900 text-center mb-1">تأكيد تحصيل السداد</h3>
-            <p className="text-xs text-slate-500 text-center mb-5">لن يتم إنهاء الجلسة إلا بعد تأكيد السداد</p>
-            <div className="bg-gray-50 border border-slate-200 rounded-2xl p-4 mb-5">
+            <h3 className="text-lg font-black text-center mb-1" style={{ color: '#0f172a' }}>تأكيد تحصيل السداد</h3>
+            <p className="text-xs text-center mb-5" style={{ color: '#64748b' }}>لن يتم إنهاء الجلسة إلا بعد تأكيد السداد</p>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-5">
               <div className="flex justify-between items-center mb-3">
-                <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${confirmSession.source === 'manual' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
+                <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${confirmSession.source === 'manual' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
                   {confirmSession.source === 'manual' ? 'يدوي' : 'تطبيق'}
                 </span>
-                <div className="text-lg font-black text-slate-900">🚗 {confirmSession.carPlate}</div>
+                <div className="text-lg font-black" style={{ color: '#0f172a' }}>🚗 {confirmSession.carPlate}</div>
               </div>
               {confirmSession.agreedPrice && confirmSession.agreedPrice !== garage.basePrice && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2 mb-3 text-center">
-                  <p className="text-[10px] text-amber-600 font-bold">💰 السعر المتفق: {confirmSession.agreedPrice} ج.م/ساعة</p>
+                <div className="bg-amber-100 border border-amber-300 rounded-xl p-2 mb-3 text-center">
+                  <p className="text-[10px] font-bold" style={{ color: '#92400e' }}>💰 السعر المتفق: {confirmSession.agreedPrice} ج.م/ساعة</p>
                 </div>
               )}
               <div className="grid grid-cols-2 gap-3">
-                <div className="bg-white rounded-xl p-2 text-center border border-slate-100">
-                  <div className="text-xs text-slate-500">المدة</div>
-                  <div className="text-sm font-black text-slate-900 font-mono">{confirmSession.minutes} دقيقة</div>
-                  <div className="text-[9px] text-slate-400">({confirmSession.hours} ساعة محسوبة)</div>
+                <div className="bg-white rounded-xl p-2 text-center border border-slate-100 shadow-sm">
+                  <div className="text-xs" style={{ color: '#64748b' }}>المدة</div>
+                  <div className="text-sm font-black font-mono" style={{ color: '#0f172a' }}>{confirmSession.minutes} دقيقة</div>
+                  <div className="text-[9px]" style={{ color: '#94a3b8' }}>({confirmSession.hours} ساعة محسوبة)</div>
                 </div>
-                <div className="bg-white rounded-xl p-2 text-center border border-slate-100">
-                  <div className="text-xs text-slate-500">المستحق</div>
-                  <div className="text-xl font-black text-emerald-600 font-mono">{confirmSession.cost > 0 ? confirmSession.cost : '—'}</div>
-                  <div className="text-[9px] text-slate-400">ج.م</div>
+                <div className="bg-white rounded-xl p-2 text-center border border-slate-100 shadow-sm">
+                  <div className="text-xs" style={{ color: '#64748b' }}>المستحق</div>
+                  <div className="text-xl font-black font-mono" style={{ color: '#059669' }}>{confirmSession.cost > 0 ? confirmSession.cost : '—'}</div>
+                  <div className="text-[9px]" style={{ color: '#94a3b8' }}>ج.م</div>
                 </div>
               </div>
             </div>
+
+            {/* طريقة السداد */}
             <div className="mb-5">
-              <h4 className="text-xs font-black text-slate-500 mb-3 text-right">طريقة السداد</h4>
+              <h4 className="text-xs font-black mb-3 text-right" style={{ color: '#64748b' }}>طريقة السداد</h4>
               {confirmSession.source === 'manual' ? (
                 <div>
-                  <div className="bg-emerald-50 border border-emerald-300 ring-1 ring-emerald-300 p-4 rounded-xl text-center">
+                  <div className="bg-emerald-600 p-4 rounded-xl text-center shadow-lg" style={{ color: '#ffffff' }}>
                     <div className="text-2xl mb-1">💵</div>
-                    <div className="text-sm font-black text-emerald-600">نقدي</div>
+                    <div className="text-sm font-black">نقدي</div>
                   </div>
                   <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl p-2 text-center">
-                    <p className="text-[10px] text-amber-600 font-bold">⚠️ السيارات المضافة يدوياً تُحصّل نقدياً فقط</p>
+                    <p className="text-[10px] font-bold" style={{ color: '#92400e' }}>⚠️ السيارات المضافة يدوياً تُحصّل نقدياً فقط</p>
                   </div>
                 </div>
               ) : (
                 <div>
                   <div className="grid grid-cols-2 gap-2">
                     {[
-                      { id: 'cash', label: 'نقدي', icon: '💵', disabled: false },
-                      { id: 'instapay', label: 'إنستاباي', icon: '📱', disabled: false },
-                      { id: 'wallet', label: 'المحفظة', icon: '👝', disabled: true },
-                      { id: 'cashwallet', label: 'تحويل محفظة كاش', icon: '📲', disabled: false },
+                      { id: 'cash', label: 'نقدي', icon: '💵', disabled: false, activeClass: 'bg-emerald-600 text-white shadow-emerald-200' },
+                      { id: 'instapay', label: 'إنستاباي', icon: '📱', disabled: false, activeClass: 'bg-purple-600 text-white shadow-purple-200' },
+                      { id: 'wallet', label: 'المحفظة', icon: '👝', disabled: true, activeClass: '' },
+                      { id: 'cashwallet', label: 'تحويل محفظة كاش', icon: '📲', disabled: false, activeClass: 'bg-orange-600 text-white shadow-orange-200' },
                     ].map((pm) => (
                       <button key={pm.id} onClick={() => !pm.disabled && setConfirmPaymentMethod(pm.id)} disabled={pm.disabled}
                         className={`p-3 rounded-xl border text-center transition-all ${
                           pm.disabled ? 'bg-slate-50 border-slate-200 opacity-40 cursor-not-allowed'
-                          : confirmPaymentMethod === pm.id
-                            ? pm.id === 'instapay' ? 'bg-purple-50 border-purple-400 ring-1 ring-purple-400'
-                              : pm.id === 'cashwallet' ? 'bg-orange-50 border-orange-400 ring-1 ring-orange-400'
-                              : 'bg-emerald-50 border-emerald-400 ring-1 ring-emerald-400'
-                            : 'bg-slate-50 border-slate-200'
-                        } ${!pm.disabled ? 'active:scale-95' : ''}`}>
+                          : confirmPaymentMethod === pm.id ? `${pm.activeClass} border-transparent shadow-lg` : 'bg-white border-slate-200 hover:border-slate-300'
+                        } ${!pm.disabled ? 'active:scale-95' : ''}`}
+                        style={confirmPaymentMethod === pm.id && !pm.disabled ? { color: '#ffffff' } : { color: '#475569' }}>
                         <div className="text-xl mb-1">{pm.icon}</div>
-                        <div className={`text-[10px] font-black ${pm.disabled ? 'text-slate-400' : confirmPaymentMethod === pm.id ? 'text-slate-900' : 'text-slate-500'}`}>{pm.label}</div>
-                        {pm.disabled && <div className="text-[7px] text-red-400 font-bold mt-1">🔒 غير متاح من الجراج</div>}
+                        <div className="text-[10px] font-black">{pm.label}</div>
+                        {pm.disabled && <div className="text-[7px] font-bold mt-1" style={{ color: '#ef4444' }}>🔒 غير متاح</div>}
                       </button>
                     ))}
                   </div>
                   <div className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-2 text-center">
-                    <p className="text-[9px] text-blue-600 font-bold">💡 خصم المحفظة متاح فقط من تطبيق العميل</p>
+                    <p className="text-[9px] font-bold" style={{ color: '#1d4ed8' }}>💡 خصم المحفظة متاح فقط من تطبيق العميل</p>
                   </div>
                 </div>
               )}
             </div>
+
             <div className="flex gap-3">
               <button onClick={handleConfirmPayment}
                 className={`flex-1 py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xl text-white ${
-                  confirmPaymentMethod === 'instapay' ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-200'
-                  : confirmPaymentMethod === 'cashwallet' ? 'bg-orange-600 hover:bg-orange-700 shadow-orange-200'
-                  : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
+                  confirmPaymentMethod === 'instapay' ? 'bg-purple-600 shadow-purple-200'
+                  : confirmPaymentMethod === 'cashwallet' ? 'bg-orange-600 shadow-orange-200'
+                  : 'bg-emerald-600 shadow-emerald-200'
                 }`}>
-                <CheckCircle size={18} /> تأكيد السداد ({confirmSession.cost} ج.م)
+                <CheckCircle size={18} /> تأكيد ({confirmSession.cost} ج.م)
               </button>
-              <button onClick={() => setConfirmSession(null)} className="bg-slate-100 text-slate-600 px-5 py-4 rounded-2xl font-black text-sm active:scale-95 transition-all">
+              <button onClick={() => setConfirmSession(null)} className="bg-slate-100 px-5 py-4 rounded-2xl font-black text-sm active:scale-95 transition-all" style={{ color: '#64748b' }}>
                 <XCircle size={18} />
               </button>
             </div>
@@ -955,56 +733,53 @@ export default function GarageDashboard() {
         </motion.div>
       )}
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl text-center">
-          <DollarSign size={20} className="text-emerald-600 mx-auto mb-1" />
-          <div className="text-xl font-black text-emerald-600 font-mono">
+      {/* ── Stats Cards ───────────────────────── */}
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        <div className="bg-emerald-600 p-4 rounded-2xl text-center shadow-lg shadow-emerald-200" style={{ color: '#ffffff' }}>
+          <DollarSign size={20} className="mx-auto mb-1 opacity-90" />
+          <div className="text-xl font-black font-mono">
             {(garageDailyStats.length > 0 ? totalRevenueFromStats : totalRevenue).toFixed(0)}
           </div>
-          <div className="text-[8px] text-slate-500 font-bold">مؤكد</div>
+          <div className="text-[8px] font-bold opacity-80">مؤكد</div>
         </div>
-        <div className="bg-blue-50 border border-blue-200 p-4 rounded-2xl text-center cursor-pointer hover:bg-blue-100 transition-all" onClick={openSettings}>
-          <Car size={20} className="text-blue-600 mx-auto mb-1" />
-          <div className="text-xl font-black text-blue-600 font-mono">{garage.availableSpots}</div>
-          <div className="text-[8px] text-slate-500 font-bold flex items-center justify-center gap-1">شاغر <Edit3 size={8} /></div>
+        <div className="bg-blue-600 p-4 rounded-2xl text-center cursor-pointer shadow-lg shadow-blue-200 hover:shadow-blue-300 transition-all" style={{ color: '#ffffff' }} onClick={openSettings}>
+          <Car size={20} className="mx-auto mb-1 opacity-90" />
+          <div className="text-xl font-black font-mono">{garage.availableSpots}</div>
+          <div className="text-[8px] font-bold opacity-80 flex items-center justify-center gap-1">شاغر <Edit3 size={8} /></div>
         </div>
-        <div className="bg-purple-50 border border-purple-200 p-4 rounded-2xl text-center cursor-pointer hover:bg-purple-100 transition-all" onClick={openSettings}>
-          <DollarSign size={20} className="text-purple-600 mx-auto mb-1" />
-          <div className="text-xl font-black text-purple-600 font-mono">{garage.basePrice}</div>
-          <div className="text-[8px] text-slate-500 font-bold flex items-center justify-center gap-1">ج.م/ساعة <Edit3 size={8} /></div>
+        <div className="bg-purple-600 p-4 rounded-2xl text-center cursor-pointer shadow-lg shadow-purple-200 hover:shadow-purple-300 transition-all" style={{ color: '#ffffff' }} onClick={openSettings}>
+          <DollarSign size={20} className="mx-auto mb-1 opacity-90" />
+          <div className="text-xl font-black font-mono">{garage.basePrice}</div>
+          <div className="text-[8px] font-bold opacity-80 flex items-center justify-center gap-1">ج.م/ساعة <Edit3 size={8} /></div>
         </div>
       </div>
 
-      {/* Undo Banners */}
+      {/* ── Undo Banners ──────────────────────── */}
       <AnimatePresence>
         {undoableSessions.map((undoable) => {
           const remaining = getUndoRemainingSeconds(undoable.addedAt);
           const progress = ((UNDO_TIMEOUT_SECONDS - remaining) / UNDO_TIMEOUT_SECONDS) * 100;
           return (
-            <motion.div key={undoable.localId} initial={{ opacity: 0, y: -20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -20, scale: 0.95, transition: { duration: 0.3 } }} transition={{ type: 'spring', damping: 20, stiffness: 300 }} className="mb-4">
-              <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 relative overflow-hidden shadow-lg shadow-amber-100">
-                <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-200">
-                  <motion.div className="h-full bg-gradient-to-r from-amber-500 to-red-500" initial={{ width: '0%' }} animate={{ width: `${progress}%` }} transition={{ duration: 0.5, ease: 'linear' }} />
+            <motion.div key={undoable.localId} initial={{ opacity: 0, y: -20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -20, scale: 0.95, transition: { duration: 0.3 } }} className="mb-4">
+              <div className="bg-amber-500 rounded-2xl p-4 relative overflow-hidden shadow-lg shadow-amber-200" style={{ color: '#ffffff' }}>
+                <div className="absolute bottom-0 left-0 right-0 h-1 bg-amber-300/30">
+                  <motion.div className="h-full bg-white/50" initial={{ width: '0%' }} animate={{ width: `${progress}%` }} transition={{ duration: 0.5, ease: 'linear' }} />
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <button onClick={() => handleUndoSession(undoable)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 active:scale-95 transition-all shadow-lg shadow-red-200 shrink-0">
+                  <button onClick={() => handleUndoSession(undoable)} className="bg-red-600 text-white px-4 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 active:scale-95 transition-all shadow-lg shrink-0">
                     <Undo2 size={16} /> تراجع
                   </button>
                   <div className="flex-1 text-right">
                     <div className="flex items-center justify-end gap-2 mb-1">
-                      <span className="text-xs font-black text-slate-900">🚗 {undoable.carPlate}</span>
-                      <span className="text-[9px] bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full font-bold">يدوي</span>
+                      <span className="text-xs font-black">🚗 {undoable.carPlate}</span>
+                      <span className="text-[9px] bg-white/20 px-2 py-0.5 rounded-full font-bold">يدوي</span>
                     </div>
                     <div className="flex items-center justify-end gap-2">
-                      <span className="text-[10px] text-slate-500">{undoable.price} ج.م/ساعة</span>
-                      <span className="text-slate-300">|</span>
-                      <span className="text-[10px] text-amber-600 font-bold font-mono">⏳ {remaining} ثانية</span>
+                      <span className="text-[10px] opacity-80">{undoable.price} ج.م/ساعة</span>
+                      <span className="opacity-40">|</span>
+                      <span className="text-[10px] font-bold font-mono">⏳ {remaining} ثانية</span>
                     </div>
                   </div>
-                </div>
-                <div className="mt-3 bg-amber-100 border border-amber-200 rounded-xl p-2 text-center">
-                  <p className="text-[9px] text-amber-700 font-bold">⚠️ يمكنك إلغاء الإضافة خلال {remaining} ثانية</p>
                 </div>
               </div>
             </motion.div>
@@ -1012,57 +787,54 @@ export default function GarageDashboard() {
         })}
       </AnimatePresence>
 
-      {/* سيارات في الطريق */}
+      {/* ── سيارات في الطريق ──────────────────── */}
       {carsOnTheWay.length > 0 && (
-        <div className="mb-6">
-          <h3 className="text-sm font-black text-cyan-600 mb-3 flex items-center gap-2 justify-end">
-            <span className="bg-cyan-100 text-cyan-600 px-2 py-0.5 rounded-full text-[10px]">{carsOnTheWay.length}</span>
+        <div className="mb-5">
+          <h3 className="text-sm font-black mb-3 flex items-center gap-2 justify-end" style={{ color: '#0891b2' }}>
+            <span className="bg-cyan-600 text-white px-2 py-0.5 rounded-full text-[10px]">{carsOnTheWay.length}</span>
             سيارات في الطريق
             <Navigation size={14} className="animate-pulse" />
           </h3>
           <div className="space-y-3">
             {carsOnTheWay.map((car) => {
               const remainingTime = calculateRemainingTime(car.startTime, car.estimatedArrival);
-              const sessionAlreadyStarted = sessions.some(
-                (s) => s.carPlate.trim().toUpperCase() === car.carPlate.trim().toUpperCase() && s.status === 'active'
-              );
+              const sessionAlreadyStarted = sessions.some((s) => s.carPlate.trim().toUpperCase() === car.carPlate.trim().toUpperCase() && s.status === 'active');
               return (
-                <motion.div key={car.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="bg-white border border-cyan-200 rounded-2xl p-4 relative overflow-hidden shadow-sm">
-                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-100">
-                    <div className="h-full bg-gradient-to-r from-cyan-500 to-emerald-500 transition-all" style={{ width: `${Math.max(0, 100 - (remainingTime / car.estimatedArrival) * 100)}%` }} />
+                <motion.div key={car.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="bg-white border-2 border-cyan-200 rounded-2xl p-4 relative overflow-hidden shadow-md">
+                  <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-slate-100">
+                    <div className="h-full bg-gradient-to-r from-cyan-500 to-emerald-500 transition-all rounded-full" style={{ width: `${Math.max(0, 100 - (remainingTime / car.estimatedArrival) * 100)}%` }} />
                   </div>
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex items-center gap-2">
-                      <motion.div animate={{ x: [0, -5, 0] }} transition={{ repeat: Infinity, duration: 1.5 }} className="bg-cyan-100 p-2 rounded-xl">
-                        <CarFront size={20} className="text-cyan-600" />
+                      <motion.div animate={{ x: [0, -5, 0] }} transition={{ repeat: Infinity, duration: 1.5 }} className="bg-cyan-600 p-2 rounded-xl shadow-md" style={{ color: '#ffffff' }}>
+                        <CarFront size={20} />
                       </motion.div>
                       {sessionAlreadyStarted ? (
-                        <div className="bg-emerald-100 text-emerald-600 px-3 py-1 rounded-full text-[10px] font-black">✅ الجلسة شغالة</div>
+                        <div className="bg-emerald-600 text-white px-3 py-1 rounded-full text-[10px] font-black shadow-sm">✅ الجلسة شغالة</div>
                       ) : (
-                        <div className={`px-3 py-1 rounded-full text-[10px] font-black ${remainingTime <= 2 ? 'bg-amber-100 text-amber-600 animate-pulse' : 'bg-cyan-100 text-cyan-600'}`}>
+                        <div className={`px-3 py-1 rounded-full text-[10px] font-black text-white shadow-sm ${remainingTime <= 2 ? 'bg-amber-500 animate-pulse' : 'bg-cyan-600'}`}>
                           {remainingTime > 0 ? `${remainingTime} دقيقة` : 'وصل تقريباً'}
                         </div>
                       )}
                     </div>
-                    <div className="text-lg font-black text-slate-900">🚗 {car.carPlate}</div>
+                    <div className="text-lg font-black" style={{ color: '#0f172a' }}>🚗 {car.carPlate}</div>
                   </div>
-                  <div className="bg-gray-50 rounded-xl p-3 mb-3 space-y-2 border border-slate-100">
+                  <div className="bg-slate-50 rounded-xl p-3 mb-3 space-y-2 border border-slate-100">
                     <div className="flex items-center justify-between">
-                      <a href={`tel:${car.customerPhone}`} className="text-sm font-black text-blue-600 font-mono">{car.customerPhone}</a>
-                      <div className="flex items-center gap-1 text-slate-400"><Phone size={12} /><span className="text-[10px] font-bold">الهاتف</span></div>
+                      <a href={`tel:${car.customerPhone}`} className="text-sm font-black font-mono" style={{ color: '#2563eb' }}>{car.customerPhone}</a>
+                      <div className="flex items-center gap-1" style={{ color: '#94a3b8' }}><Phone size={12} /><span className="text-[10px] font-bold">الهاتف</span></div>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-black text-emerald-600 font-mono">{car.agreedPrice} ج.م / ساعة</span>
-                      <div className="flex items-center gap-1 text-slate-400"><DollarSign size={12} /><span className="text-[10px] font-bold">السعر المتفق</span></div>
+                      <span className="text-sm font-black font-mono" style={{ color: '#059669' }}>{car.agreedPrice} ج.م / ساعة</span>
+                      <div className="flex items-center gap-1" style={{ color: '#94a3b8' }}><DollarSign size={12} /><span className="text-[10px] font-bold">السعر المتفق</span></div>
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => handleCarArrived(car.id, car.carPlate, car.agreedPrice)}
-                      className={`flex-1 py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all ${sessionAlreadyStarted ? 'bg-slate-100 text-slate-500' : 'bg-emerald-600 text-white'}`}>
-                      <CheckCircle size={16} />
-                      {sessionAlreadyStarted ? 'تأكيد الوصول وإزالة' : 'وصلت وبدء الحساب'}
+                      className={`flex-1 py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all text-white shadow-md ${sessionAlreadyStarted ? 'bg-slate-400' : 'bg-emerald-600 shadow-emerald-200'}`}>
+                      <CheckCircle size={16} /> {sessionAlreadyStarted ? 'تأكيد وإزالة' : 'وصلت وبدء الحساب'}
                     </button>
-                    <a href={`tel:${car.customerPhone}`} className="bg-blue-50 text-blue-600 px-4 py-3 rounded-xl flex items-center justify-center border border-blue-200 active:scale-95 transition-all">
+                    <a href={`tel:${car.customerPhone}`} className="bg-blue-600 text-white px-4 py-3 rounded-xl flex items-center justify-center active:scale-95 transition-all shadow-md shadow-blue-200">
                       <Phone size={18} />
                     </a>
                   </div>
@@ -1073,33 +845,33 @@ export default function GarageDashboard() {
         </div>
       )}
 
-      {/* شريط المعلومات */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-3 mb-6 flex items-center justify-between shadow-sm">
-        <button onClick={openSettings} className="text-[10px] text-blue-600 font-bold flex items-center gap-1"><Settings size={12} /> تعديل الإعدادات</button>
+      {/* ── شريط المعلومات ─────────────────────── */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-3 mb-5 flex items-center justify-between shadow-sm">
+        <button onClick={openSettings} className="text-[10px] font-bold flex items-center gap-1" style={{ color: '#2563eb' }}><Settings size={12} /> تعديل</button>
         <div className="flex items-center gap-3">
-          <span className="text-[10px] text-slate-500">السعر: <span className="text-emerald-600 font-mono font-black">{garage.basePrice}ج</span></span>
-          <span className="text-slate-300">|</span>
-          <span className="text-[10px] text-slate-500">متاح: <span className="text-blue-600 font-mono font-black">{garage.availableSpots}/{garage.capacity}</span></span>
+          <span className="text-[10px]" style={{ color: '#64748b' }}>السعر: <span className="font-mono font-black" style={{ color: '#059669' }}>{garage.basePrice}ج</span></span>
+          <span style={{ color: '#cbd5e1' }}>|</span>
+          <span className="text-[10px]" style={{ color: '#64748b' }}>متاح: <span className="font-mono font-black" style={{ color: '#2563eb' }}>{garage.availableSpots}/{garage.capacity}</span></span>
         </div>
       </div>
 
-      {/* عروض الأسعار */}
+      {/* ── عروض الأسعار ───────────────────────── */}
       {garageOffers.length > 0 && (
-        <div className="mb-6">
-          <h3 className="text-sm font-black text-amber-600 mb-3 flex items-center gap-2 justify-end">عروض أسعار معلقة ({garageOffers.length})</h3>
+        <div className="mb-5">
+          <h3 className="text-sm font-black mb-3 flex items-center gap-2 justify-end" style={{ color: '#d97706' }}>عروض أسعار معلقة ({garageOffers.length})</h3>
           <div className="space-y-3">
             {garageOffers.map((offer) => (
-              <motion.div key={offer.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+              <motion.div key={offer.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="bg-white border-2 border-amber-200 rounded-2xl p-4 shadow-md">
                 <div className="flex justify-between items-center mb-3">
-                  <div className="text-xl font-black text-slate-900 font-mono">
+                  <div className="text-xl font-black font-mono" style={{ color: '#0f172a' }}>
                     {offer.offeredPrice} ج.م
-                    {offer.offeredPrice < garage.basePrice && <span className="text-xs text-red-500 mr-2">(أقل من {garage.basePrice})</span>}
+                    {offer.offeredPrice < garage.basePrice && <span className="text-xs mr-2" style={{ color: '#ef4444' }}>(أقل من {garage.basePrice})</span>}
                   </div>
-                  <div className="text-sm font-black text-slate-900">🚗 {offer.carPlate}</div>
+                  <div className="text-sm font-black" style={{ color: '#0f172a' }}>🚗 {offer.carPlate}</div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => { updateOffer(offer.id, 'accepted'); toast.success('تم قبول العرض'); }} className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-1 active:scale-95 transition-all"><CheckCircle size={16} /> قبول</button>
-                  <button onClick={() => { updateOffer(offer.id, 'rejected'); toast.error('تم رفض العرض'); }} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-1 active:scale-95 transition-all"><XCircle size={16} /> رفض</button>
+                  <button onClick={() => { updateOffer(offer.id, 'accepted'); toast.success('تم قبول العرض'); }} className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-1 active:scale-95 transition-all shadow-md"><CheckCircle size={16} /> قبول</button>
+                  <button onClick={() => { updateOffer(offer.id, 'rejected'); toast.error('تم رفض العرض'); }} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-1 active:scale-95 transition-all shadow-md"><XCircle size={16} /> رفض</button>
                 </div>
               </motion.div>
             ))}
@@ -1107,44 +879,43 @@ export default function GarageDashboard() {
         </div>
       )}
 
-      {/* إضافة سيارة */}
-      <div className="mb-6">
+      {/* ── إضافة سيارة ───────────────────────── */}
+      <div className="mb-5">
         {!showAddCar ? (
           <button onClick={() => setShowAddCar(true)} disabled={garage.availableSpots <= 0}
-            className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all ${garage.availableSpots > 0 ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
-            <Plus size={20} />
-            {garage.availableSpots > 0 ? 'إضافة سيارة جديدة' : 'لا توجد أماكن شاغرة'}
+            className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all text-white ${garage.availableSpots > 0 ? 'bg-blue-600 shadow-xl shadow-blue-200' : 'bg-slate-300 cursor-not-allowed'}`}>
+            <Plus size={20} /> {garage.availableSpots > 0 ? 'إضافة سيارة جديدة' : 'لا توجد أماكن شاغرة'}
           </button>
         ) : (
-          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
-            <input className="w-full bg-gray-50 border border-slate-200 p-3 rounded-xl text-right font-bold text-slate-900 outline-none text-sm placeholder:text-slate-400" placeholder="رقم لوحة السيارة" value={newCarPlate} onChange={(e) => setNewCarPlate(e.target.value)} />
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="bg-white border-2 border-blue-200 rounded-2xl p-4 space-y-3 shadow-md">
+            <input className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-right font-bold outline-none text-sm" style={{ color: '#0f172a' }} placeholder="رقم لوحة السيارة" value={newCarPlate} onChange={(e) => setNewCarPlate(e.target.value)} />
             <div>
-              <label className="text-[10px] text-slate-500 font-bold block text-right mb-1">💰 سعر الساعة - الافتراضي: {garage.basePrice} ج.م</label>
+              <label className="text-[10px] font-bold block text-right mb-1" style={{ color: '#64748b' }}>💰 سعر الساعة - الافتراضي: {garage.basePrice} ج.م</label>
               <div className="flex items-center gap-2">
-                <button onClick={() => setNewCarPrice((p) => Math.max(5, p - 5))} className="bg-red-50 text-red-500 w-10 h-10 rounded-xl flex items-center justify-center border border-red-200 active:scale-90 transition-all"><Minus size={16} /></button>
-                <input type="number" value={newCarPrice} onChange={(e) => setNewCarPrice(Math.max(1, parseInt(e.target.value) || 1))} className="flex-1 bg-gray-50 border border-slate-200 p-2 rounded-xl text-center font-black text-slate-900 text-lg outline-none font-mono" />
-                <button onClick={() => setNewCarPrice((p) => p + 5)} className="bg-emerald-50 text-emerald-600 w-10 h-10 rounded-xl flex items-center justify-center border border-emerald-200 active:scale-90 transition-all"><Plus size={16} /></button>
+                <button onClick={() => setNewCarPrice((p) => Math.max(5, p - 5))} className="bg-red-500 text-white w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 transition-all shadow-md"><Minus size={16} /></button>
+                <input type="number" value={newCarPrice} onChange={(e) => setNewCarPrice(Math.max(1, parseInt(e.target.value) || 1))} className="flex-1 bg-slate-50 border border-slate-200 p-2 rounded-xl text-center font-black text-lg outline-none font-mono" style={{ color: '#0f172a' }} />
+                <button onClick={() => setNewCarPrice((p) => p + 5)} className="bg-emerald-500 text-white w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 transition-all shadow-md"><Plus size={16} /></button>
               </div>
               <div className="flex gap-1.5 mt-2 justify-end">
                 {[10, 15, 20, 25, 30].map((p) => (
-                  <button key={p} onClick={() => setNewCarPrice(p)} className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all active:scale-95 ${newCarPrice === p ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{p}</button>
+                  <button key={p} onClick={() => setNewCarPrice(p)} className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all active:scale-95 ${newCarPrice === p ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-500'}`}>{p}</button>
                 ))}
               </div>
             </div>
             <div className="flex gap-2">
-              <button onClick={handleAddCar} className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-black text-sm active:scale-95 transition-all">إضافة ({newCarPrice} ج.م/ساعة)</button>
-              <button onClick={() => { setShowAddCar(false); setNewCarPlate(''); setNewCarPrice(garage.basePrice); }} className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl font-black text-sm active:scale-95 transition-all">إلغاء</button>
+              <button onClick={handleAddCar} className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-black text-sm active:scale-95 transition-all shadow-md">إضافة ({newCarPrice} ج.م/ساعة)</button>
+              <button onClick={() => { setShowAddCar(false); setNewCarPlate(''); setNewCarPrice(garage.basePrice); }} className="flex-1 bg-slate-200 py-3 rounded-xl font-black text-sm active:scale-95 transition-all" style={{ color: '#475569' }}>إلغاء</button>
             </div>
           </motion.div>
         )}
       </div>
 
-      {/* الجلسات النشطة */}
-      <div className="mb-6">
-        <h3 className="text-sm font-black text-emerald-600 mb-3 flex items-center gap-2 justify-end">الجلسات النشطة ({activeSessions.length}) <Clock size={14} /></h3>
+      {/* ── الجلسات النشطة ─────────────────────── */}
+      <div className="mb-5">
+        <h3 className="text-sm font-black mb-3 flex items-center gap-2 justify-end" style={{ color: '#059669' }}>الجلسات النشطة ({activeSessions.length}) <Clock size={14} /></h3>
         <div className="space-y-3">
           {activeSessions.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center text-slate-400 text-sm shadow-sm">لا توجد جلسات نشطة</div>
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center shadow-sm" style={{ color: '#94a3b8' }}>لا توجد جلسات نشطة</div>
           ) : (
             activeSessions.map((session) => {
               const startTime = typeof session.startTime === 'number' ? session.startTime : new Date(session.startTime).getTime();
@@ -1156,32 +927,32 @@ export default function GarageDashboard() {
               const isManual = session.source === 'manual';
               const undoable = undoableSessions.find((u) => u.sessionId === session.id || u.localId === session.id);
               return (
-                <div key={session.id} className={`rounded-2xl p-4 border shadow-sm ${isManual ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
+                <div key={session.id} className={`rounded-2xl p-4 border-2 shadow-md ${isManual ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
                   <div className="flex justify-between items-center mb-3">
                     <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full animate-pulse ${isManual ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-                      <span className="text-xs text-slate-500">{mins} دقيقة ({hours} ساعة)</span>
-                      <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${isManual ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
+                      <span className={`w-2.5 h-2.5 rounded-full animate-pulse ${isManual ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                      <span className="text-xs" style={{ color: '#64748b' }}>{mins} دقيقة ({hours} ساعة)</span>
+                      <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold text-white ${isManual ? 'bg-amber-500' : 'bg-blue-600'}`}>
                         {isManual ? 'يدوي' : 'تطبيق'}
                       </span>
                     </div>
-                    <div className="text-sm font-black text-slate-900">🚗 {session.carPlate}</div>
+                    <div className="text-sm font-black" style={{ color: '#0f172a' }}>🚗 {session.carPlate}</div>
                   </div>
                   {session.agreedPrice && session.agreedPrice !== garage.basePrice && (
-                    <div className="bg-amber-100 border border-amber-200 rounded-lg p-1.5 mb-2 text-center">
-                      <span className="text-[9px] text-amber-600 font-bold">سعر متفق: {session.agreedPrice} ج.م/ساعة</span>
+                    <div className="bg-amber-100 border border-amber-300 rounded-lg p-1.5 mb-2 text-center">
+                      <span className="text-[9px] font-bold" style={{ color: '#92400e' }}>سعر متفق: {session.agreedPrice} ج.م/ساعة</span>
                     </div>
                   )}
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2">
-                      <button onClick={() => openConfirmPayment(session.id, session.carPlate, cost, hours, mins, session.source, session.agreedPrice)} className="bg-red-50 text-red-600 px-4 py-2 rounded-xl text-xs font-black border border-red-200 active:scale-95 transition-all">إنهاء وتحصيل</button>
+                      <button onClick={() => openConfirmPayment(session.id, session.carPlate, cost, hours, mins, session.source, session.agreedPrice)} className="bg-red-600 text-white px-4 py-2 rounded-xl text-xs font-black active:scale-95 transition-all shadow-md">إنهاء وتحصيل</button>
                       {undoable && (
-                        <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} onClick={() => handleUndoSession(undoable)} className="bg-amber-100 text-amber-600 px-3 py-2 rounded-xl text-[10px] font-black border border-amber-200 active:scale-95 transition-all flex items-center gap-1">
-                          <Undo2 size={12} /> إلغاء ({getUndoRemainingSeconds(undoable.addedAt)}ث)
+                        <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} onClick={() => handleUndoSession(undoable)} className="bg-amber-500 text-white px-3 py-2 rounded-xl text-[10px] font-black active:scale-95 transition-all flex items-center gap-1 shadow-md">
+                          <Undo2 size={12} /> ({getUndoRemainingSeconds(undoable.addedAt)}ث)
                         </motion.button>
                       )}
                     </div>
-                    <div className="text-sm font-black text-emerald-600 font-mono">{cost} ج.م ({hours}×{rate})</div>
+                    <div className="text-sm font-black font-mono" style={{ color: '#059669' }}>{cost} ج.م ({hours}×{rate})</div>
                   </div>
                 </div>
               );
@@ -1190,21 +961,22 @@ export default function GarageDashboard() {
         </div>
       </div>
 
-      {/* سجل العمليات */}
+      {/* ── سجل العمليات ───────────────────────── */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-[10px] text-slate-500 bg-white px-2 py-1 rounded-lg border border-slate-200">{filteredCompleted.length} عملية</span>
-          <h3 className="text-sm font-black text-slate-700 flex items-center gap-2">سجل العمليات <FileText size={14} /></h3>
+          <span className="text-[10px] bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-sm" style={{ color: '#64748b' }}>{filteredCompleted.length} عملية</span>
+          <h3 className="text-sm font-black flex items-center gap-2" style={{ color: '#334155' }}>سجل العمليات <FileText size={14} /></h3>
         </div>
+
         <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-4 shadow-sm">
           <div className="flex items-center gap-2 mb-3 justify-end">
-            <CalendarDays size={14} className="text-blue-600" />
-            <span className="text-xs font-black text-slate-500">تصفية بالتاريخ</span>
+            <CalendarDays size={14} style={{ color: '#2563eb' }} />
+            <span className="text-xs font-black" style={{ color: '#64748b' }}>تصفية بالتاريخ</span>
           </div>
           <div className="flex gap-2 mb-3">
-            <input type="date" value={logDateFilter} onChange={(e) => setLogDateFilter(e.target.value)} className="flex-1 bg-gray-50 border border-slate-200 p-2.5 rounded-xl text-xs font-bold text-slate-900 outline-none" />
-            <button onClick={() => setLogDateFilter(getLocalToday())} className="bg-blue-50 text-blue-600 px-3 py-2 rounded-xl text-[10px] font-black border border-blue-200 active:scale-95 transition-all whitespace-nowrap">اليوم</button>
-            <button onClick={() => setLogDateFilter('')} className="bg-slate-100 text-slate-600 px-3 py-2 rounded-xl text-[10px] font-black active:scale-95 transition-all whitespace-nowrap">الكل</button>
+            <input type="date" value={logDateFilter} onChange={(e) => setLogDateFilter(e.target.value)} className="flex-1 bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs font-bold outline-none" style={{ color: '#0f172a' }} />
+            <button onClick={() => setLogDateFilter(getLocalToday())} className="bg-blue-600 text-white px-3 py-2 rounded-xl text-[10px] font-black active:scale-95 transition-all shadow-md whitespace-nowrap">اليوم</button>
+            <button onClick={() => setLogDateFilter('')} className="bg-slate-200 px-3 py-2 rounded-xl text-[10px] font-black active:scale-95 transition-all whitespace-nowrap" style={{ color: '#475569' }}>الكل</button>
           </div>
           <div className="flex gap-1.5 flex-wrap">
             {[
@@ -1215,7 +987,8 @@ export default function GarageDashboard() {
               { id: 'cashwallet', label: 'كاش', icon: '📲' },
             ].map((f) => (
               <button key={f.id} onClick={() => setLogPaymentFilter(f.id)}
-                className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black transition-all active:scale-95 ${logPaymentFilter === f.id ? 'bg-blue-600 text-white' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}>
+                className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black transition-all active:scale-95 ${logPaymentFilter === f.id ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-50 border border-slate-200'}`}
+                style={logPaymentFilter !== f.id ? { color: '#64748b' } : {}}>
                 {f.icon} {f.label}
               </button>
             ))}
@@ -1225,47 +998,50 @@ export default function GarageDashboard() {
         {filteredCompleted.length > 0 && (
           <>
             {filteredStats.pendingCount > 0 && (
-              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
+              <div className="bg-amber-500 rounded-2xl p-4 mb-4 shadow-lg shadow-amber-200" style={{ color: '#ffffff' }}>
                 <div className="flex justify-between items-center">
                   <div className="text-right">
-                    <h3 className="text-sm font-black text-amber-600">⏳ إيرادات معلقة ({filteredStats.pendingCount})</h3>
-                    <p className="text-[10px] text-amber-500">تحتاج تأكيد لتُحسب في الإيرادات</p>
+                    <h3 className="text-sm font-black">⏳ إيرادات معلقة ({filteredStats.pendingCount})</h3>
+                    <p className="text-[10px] opacity-80">تحتاج تأكيد</p>
                   </div>
-                  <div className="text-xl font-black text-amber-600 font-mono">{filteredStats.pendingRevenue.toFixed(0)} ج.م</div>
+                  <div className="text-xl font-black font-mono">{filteredStats.pendingRevenue.toFixed(0)} ج.م</div>
                 </div>
               </div>
             )}
-            <div className="bg-gradient-to-l from-emerald-50 to-white border border-emerald-200 rounded-2xl p-4 mb-4 text-center shadow-sm">
-              <div className="text-[10px] text-slate-400 mb-1">{logDateFilter ? `إجمالي مؤكد - يوم ${formatLocalDateArabic(logDateFilter)}` : 'إجمالي مؤكد - كل العمليات'}</div>
-              <div className="text-3xl font-black text-emerald-600 font-mono">{filteredStats.total.toFixed(0)} ج.م</div>
-              <div className="text-[10px] text-slate-500 mt-1">{filteredCompleted.filter((s) => s.revenueConfirmed).length} عملية مؤكدة</div>
+
+            <div className="bg-emerald-600 rounded-2xl p-5 mb-4 text-center shadow-xl shadow-emerald-200" style={{ color: '#ffffff' }}>
+              <div className="text-[10px] opacity-80 mb-1">{logDateFilter ? `إجمالي مؤكد - ${formatLocalDateArabic(logDateFilter)}` : 'إجمالي مؤكد - الكل'}</div>
+              <div className="text-4xl font-black font-mono">{filteredStats.total.toFixed(0)} ج.م</div>
+              <div className="text-[10px] opacity-70 mt-1">{filteredCompleted.filter((s) => s.revenueConfirmed).length} عملية مؤكدة</div>
             </div>
+
             <div className="grid grid-cols-4 gap-2 mb-4">
               {[
-                { label: 'نقدي', value: filteredStats.cash, icon: '💵', color: 'text-emerald-600' },
-                { label: 'إنستاباي', value: filteredStats.instapay, icon: '📱', color: 'text-purple-600' },
-                { label: 'محفظة', value: filteredStats.wallet, icon: '👝', color: 'text-blue-600' },
-                { label: 'كاش', value: filteredStats.cashwallet, icon: '📲', color: 'text-orange-600' },
+                { label: 'نقدي', value: filteredStats.cash, icon: '💵', bg: 'bg-emerald-600' },
+                { label: 'إنستاباي', value: filteredStats.instapay, icon: '📱', bg: 'bg-purple-600' },
+                { label: 'محفظة', value: filteredStats.wallet, icon: '👝', bg: 'bg-blue-600' },
+                { label: 'كاش', value: filteredStats.cashwallet, icon: '📲', bg: 'bg-orange-600' },
               ].map((p) => (
-                <div key={p.label} className="bg-white border border-slate-200 rounded-xl p-2 text-center shadow-sm">
+                <div key={p.label} className={`${p.bg} rounded-xl p-2 text-center shadow-md`} style={{ color: '#ffffff' }}>
                   <div className="text-lg mb-0.5">{p.icon}</div>
-                  <div className={`text-sm font-black font-mono ${p.color}`}>{p.value.toFixed(0)}</div>
-                  <div className="text-[7px] text-slate-500 font-bold">{p.label}</div>
+                  <div className="text-sm font-black font-mono">{p.value.toFixed(0)}</div>
+                  <div className="text-[7px] font-bold opacity-80">{p.label}</div>
                 </div>
               ))}
             </div>
+
             <div className="grid grid-cols-2 gap-2 mb-4">
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
-                <div className="text-[9px] text-amber-600 font-black mb-1">يدوي</div>
-                <span className="text-sm font-black text-amber-600 font-mono">{filteredStats.manualCount}</span>
-                <span className="text-[9px] text-slate-500 mr-1"> عربية</span>
-                <div className="text-[9px] text-amber-500">({filteredStats.manualTotal.toFixed(0)} ج.م)</div>
+              <div className="bg-amber-500 rounded-xl p-3 text-center shadow-md" style={{ color: '#ffffff' }}>
+                <div className="text-[9px] font-black mb-1">يدوي</div>
+                <span className="text-sm font-black font-mono">{filteredStats.manualCount}</span>
+                <span className="text-[9px] opacity-80 mr-1"> عربية</span>
+                <div className="text-[9px] opacity-80">({filteredStats.manualTotal.toFixed(0)} ج.م)</div>
               </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
-                <div className="text-[9px] text-blue-600 font-black mb-1">تطبيق</div>
-                <span className="text-sm font-black text-blue-600 font-mono">{filteredStats.appCount}</span>
-                <span className="text-[9px] text-slate-500 mr-1"> عربية</span>
-                <div className="text-[9px] text-blue-500">({filteredStats.appTotal.toFixed(0)} ج.م)</div>
+              <div className="bg-blue-600 rounded-xl p-3 text-center shadow-md" style={{ color: '#ffffff' }}>
+                <div className="text-[9px] font-black mb-1">تطبيق</div>
+                <span className="text-sm font-black font-mono">{filteredStats.appCount}</span>
+                <span className="text-[9px] opacity-80 mr-1"> عربية</span>
+                <div className="text-[9px] opacity-80">({filteredStats.appTotal.toFixed(0)} ج.م)</div>
               </div>
             </div>
           </>
@@ -1274,51 +1050,46 @@ export default function GarageDashboard() {
         <div className="space-y-2">
           {filteredCompleted.map((session) => {
             const isManual = session.source === 'manual';
-            const endTime = session.endTime
-              ? (typeof session.endTime === 'number' ? session.endTime : new Date(session.endTime).getTime())
-              : null;
+            const endTime = session.endTime ? (typeof session.endTime === 'number' ? session.endTime : new Date(session.endTime).getTime()) : null;
             const time = endTime ? new Date(endTime) : null;
             const revenue = getSessionRevenue(session);
             const isConfirmed = session.revenueConfirmed;
             return (
-              <div key={session.id} className={`rounded-xl p-3 border shadow-sm ${!isConfirmed ? 'bg-amber-50 border-amber-200' : isManual ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-200'}`}>
+              <div key={session.id} className={`rounded-xl p-3 border-2 shadow-sm ${!isConfirmed ? 'bg-amber-50 border-amber-300' : isManual ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-200'}`}>
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`text-sm font-mono font-black ${!isConfirmed ? 'text-amber-600' : isManual ? 'text-amber-600' : 'text-blue-600'}`}>{revenue.toFixed(0)} ج.م</span>
-                    <span className={`text-[8px] px-2 py-0.5 rounded-full font-bold ${isManual ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>{isManual ? 'يدوي' : 'تطبيق'}</span>
+                    <span className={`text-sm font-mono font-black ${!isConfirmed ? '' : ''}`} style={{ color: isManual ? '#d97706' : '#2563eb' }}>{revenue.toFixed(0)} ج.م</span>
+                    <span className={`text-[8px] px-2 py-0.5 rounded-full font-bold text-white ${isManual ? 'bg-amber-500' : 'bg-blue-600'}`}>{isManual ? 'يدوي' : 'تطبيق'}</span>
                     {!isConfirmed ? (
                       <button onClick={async () => { await confirmRevenue(session.id); await fetchGarageDailyStats(); toast.success('تم تأكيد الإيراد ✅'); }}
-                        className="bg-amber-100 text-amber-600 px-2 py-0.5 rounded-lg text-[8px] font-black border border-amber-200 active:scale-95 transition-all">⏳ تأكيد الإيراد</button>
+                        className="bg-amber-500 text-white px-2 py-0.5 rounded-lg text-[8px] font-black active:scale-95 transition-all shadow-sm">⏳ تأكيد</button>
                     ) : (
-                      <span className="text-[8px] text-emerald-600 font-bold">✅ مؤكد</span>
+                      <span className="text-[8px] font-bold" style={{ color: '#059669' }}>✅ مؤكد</span>
                     )}
                   </div>
                   <div className="flex items-center gap-1">
                     <span className={`w-1.5 h-1.5 rounded-full ${isManual ? 'bg-amber-500' : 'bg-blue-500'}`} />
-                    <span className="text-xs text-slate-600 font-bold">{session.carPlate}</span>
+                    <span className="text-xs font-bold" style={{ color: '#334155' }}>{session.carPlate}</span>
                   </div>
                 </div>
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-1.5">
                     {session.paymentMethod && (
-                      <span className={`text-[8px] px-2 py-0.5 rounded-full font-bold ${
-                        session.paymentMethod === 'cash' ? 'bg-emerald-100 text-emerald-600'
-                        : session.paymentMethod === 'instapay' ? 'bg-purple-100 text-purple-600'
-                        : session.paymentMethod === 'wallet' ? 'bg-blue-100 text-blue-600'
-                        : 'bg-orange-100 text-orange-600'
+                      <span className={`text-[8px] px-2 py-0.5 rounded-full font-bold text-white ${
+                        session.paymentMethod === 'cash' ? 'bg-emerald-600'
+                        : session.paymentMethod === 'instapay' ? 'bg-purple-600'
+                        : session.paymentMethod === 'wallet' ? 'bg-blue-600'
+                        : 'bg-orange-600'
                       }`}>
-                        {session.paymentMethod === 'cash' ? '💵 نقدي'
-                          : session.paymentMethod === 'instapay' ? '📱 إنستاباي'
-                          : session.paymentMethod === 'wallet' ? '👝 محفظة'
-                          : '📲 محفظة كاش'}
+                        {session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستاباي' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش'}
                       </span>
                     )}
                     {session.agreedPrice && session.agreedPrice !== garage.basePrice && (
-                      <span className="text-[8px] text-amber-600 font-bold">({session.agreedPrice}ج/س)</span>
+                      <span className="text-[8px] font-bold" style={{ color: '#d97706' }}>({session.agreedPrice}ج/س)</span>
                     )}
                   </div>
                   {time && (
-                    <span className="text-[9px] text-slate-400 font-mono">
+                    <span className="text-[9px] font-mono" style={{ color: '#94a3b8' }}>
                       {time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   )}
@@ -1329,8 +1100,8 @@ export default function GarageDashboard() {
           {filteredCompleted.length === 0 && (
             <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center shadow-sm">
               <div className="text-3xl mb-3">📭</div>
-              <p className="text-slate-500 text-sm font-bold">لا توجد عمليات</p>
-              <p className="text-slate-400 text-xs mt-1">{logDateFilter ? 'جرب تغيير التاريخ' : 'لم تتم أي عمليات بعد'}</p>
+              <p className="text-sm font-bold" style={{ color: '#64748b' }}>لا توجد عمليات</p>
+              <p className="text-xs mt-1" style={{ color: '#94a3b8' }}>{logDateFilter ? 'جرب تغيير التاريخ' : 'لم تتم أي عمليات بعد'}</p>
             </div>
           )}
         </div>
