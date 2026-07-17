@@ -38,9 +38,9 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
     if (!currentUser) return;
 
     addWalletTopUp({
-      userId: currentUser.phone,
-      userName: currentUser.name,
-      userPhone: currentUser.phone,
+  userId: currentUser.id,       // ✅ UUID الحقيقي
+  userName: currentUser.name,
+  userPhone: currentUser.phone, // ✅ رقم التليفون
       amount,
       transactionId: `TXN-${Date.now()}`,
       carPlate: currentUser.carPlate,
