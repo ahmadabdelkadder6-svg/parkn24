@@ -1311,75 +1311,136 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
- approveTopUp: async (id) => {
+approveTopUp: async (id) => {
   const topUp = get().walletTopUps.find((w) => w.id === id);
+  if (!topUp) return;
+
+  // ✅ تحديث محلي فوري
   set((st) => ({
     walletTopUps: st.walletTopUps.map((w) =>
       w.id === id ? { ...w, status: 'approved' as const } : w
     ),
   }));
-  if (!isSupabaseConfigured() || !topUp) return;
 
-  // ✅ تحديث حالة الطلب
-  const { error } = await supabase
+  if (!isSupabaseConfigured()) return;
+
+  // ✅ دور على الصف الحقيقي في Supabase بكل الطرق
+  let dbRow: any = null;
+
+  // محاولة 1: بالـ id المحلي
+  const r1 = await supabase
     .from('wallet_topups')
-    .update({ status: 'approved' })
-    .eq('id', id);
-
-  if (error && topUp.transactionId) {
-    await supabase
-      .from('wallet_topups')
-      .update({ status: 'approved' })
-      .eq('transaction_id', topUp.transactionId);
-  }
-
-  // ✅ جيب بيانات الطلب مباشرة من Supabase
-  const { data: dbTopUp } = await supabase
-    .from('wallet_topups')
-    .select('id, user_id, user_phone, amount')
+    .select('id, user_id, user_phone, amount, status')
     .eq('id', id)
     .maybeSingle();
+  if (r1.data) dbRow = r1.data;
 
-  const realUserId = dbTopUp?.user_id || topUp.userId;
-  const realUserPhone = dbTopUp?.user_phone || topUp.userPhone;
+  // محاولة 2: بالـ transaction_id
+  if (!dbRow && topUp.transactionId) {
+    const r2 = await supabase
+      .from('wallet_topups')
+      .select('id, user_id, user_phone, amount, status')
+      .eq('transaction_id', topUp.transactionId)
+      .maybeSingle();
+    if (r2.data) dbRow = r2.data;
+  }
 
-  // ✅ محاولة 1: بالـ UUID الحقيقي (user_id)
-  let { data: userData } = await supabase
-    .from('users')
-    .select('id, phone, wallet')
-    .eq('id', realUserId || '')
-    .maybeSingle();
+  // محاولة 3: بالـ user_phone + amount + status pending
+  if (!dbRow && topUp.userPhone) {
+    const r3 = await supabase
+      .from('wallet_topups')
+      .select('id, user_id, user_phone, amount, status')
+      .eq('user_phone', topUp.userPhone)
+      .eq('amount', topUp.amount)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (r3.data) dbRow = r3.data;
+  }
 
-  // ✅ محاولة 2: بالـ phone
+  // محاولة 4: بالـ user_id + amount
+  if (!dbRow && topUp.userId) {
+    const r4 = await supabase
+      .from('wallet_topups')
+      .select('id, user_id, user_phone, amount, status')
+      .eq('user_id', topUp.userId)
+      .eq('amount', topUp.amount)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (r4.data) dbRow = r4.data;
+  }
+
+  if (!dbRow) {
+    console.error('❌ لم يتم العثور على الطلب في Supabase:', topUp);
+    return;
+  }
+
+  const supabaseId = dbRow.id;
+
+  // ✅ تحديث الحالة بالـ ID الحقيقي
+  await supabase
+    .from('wallet_topups')
+    .update({ status: 'approved' })
+    .eq('id', supabaseId);
+
+  // ✅ تحديث الـ local state بالـ Supabase ID الصحيح
+  set((st) => ({
+    walletTopUps: st.walletTopUps.map((w) =>
+      w.id === id
+        ? { ...w, id: supabaseId, status: 'approved' as const }
+        : w
+    ),
+  }));
+
+  // ✅ تحديث المحفظة
+  const realUserId = dbRow.user_id || topUp.userId;
+  const realUserPhone = dbRow.user_phone || topUp.userPhone;
+
+  let userData: any = null;
+
+  // محاولة 1: بالـ UUID
+  if (realUserId) {
+    const { data } = await supabase
+      .from('users')
+      .select('id, phone, wallet')
+      .eq('id', realUserId)
+      .maybeSingle();
+    if (data) userData = data;
+  }
+
+  // محاولة 2: بالـ phone
   if (!userData && realUserPhone) {
-    const result = await supabase
+    const { data } = await supabase
       .from('users')
       .select('id, phone, wallet')
       .eq('phone', realUserPhone)
       .maybeSingle();
-    userData = result.data;
+    if (data) userData = data;
   }
 
-  // ✅ محاولة 3: user_phone كـ UUID
+  // محاولة 3: phone كـ id
   if (!userData && realUserPhone) {
-    const result = await supabase
+    const { data } = await supabase
       .from('users')
       .select('id, phone, wallet')
       .eq('id', realUserPhone)
       .maybeSingle();
-    userData = result.data;
+    if (data) userData = data;
   }
 
-  // ✅ محاولة 4: بحث بآخر أرقام
+  // محاولة 4: بحث مرن
   if (!userData && realUserPhone) {
     const last9 = realUserPhone.replace(/\D/g, '').slice(-9);
     if (last9.length >= 8) {
-      const result = await supabase
+      const { data } = await supabase
         .from('users')
         .select('id, phone, wallet')
         .ilike('phone', `%${last9}%`)
         .maybeSingle();
-      userData = result.data;
+      if (data) userData = data;
     }
   }
 
@@ -1388,8 +1449,7 @@ export const useStore = create<AppState>((set, get) => ({
     return;
   }
 
-  // ✅ تحديث المحفظة
-  const amount = Number(dbTopUp?.amount || topUp.amount || 0);
+  const amount = Number(dbRow.amount || topUp.amount || 0);
   const newWallet = Number(userData.wallet || 0) + amount;
 
   await supabase
@@ -1397,33 +1457,70 @@ export const useStore = create<AppState>((set, get) => ({
     .update({ wallet: newWallet })
     .eq('id', userData.id);
 
-  // ✅ تحديث الـ state لو العميل مفتوح التطبيق
+  // ✅ تحديث الـ state المحلي
   const currentUser = get().currentUser;
   if (
     currentUser &&
-    (currentUser.id === userData.id ||
-     currentUser.phone === userData.phone)
+    (currentUser.id === userData.id || currentUser.phone === userData.phone)
   ) {
     const updated = { ...currentUser, wallet: newWallet };
     set({ currentUser: updated });
     safeSetStorage('currentUser', updated);
   }
+
+  console.log('✅ تم الاعتماد بنجاح:', { supabaseId, newWallet });
 },
 
 rejectTopUp: async (id) => {
+  const topUp = get().walletTopUps.find((w) => w.id === id);
+  if (!topUp) return;
+
   set((st) => ({
     walletTopUps: st.walletTopUps.map((w) =>
       w.id === id ? { ...w, status: 'rejected' as const } : w
     ),
   }));
+
   if (!isSupabaseConfigured()) return;
+
+  // ✅ نفس منطق الدور على الصف الحقيقي
+  let supabaseId = id;
+
+  const { data: dbRow } = await supabase
+    .from('wallet_topups')
+    .select('id')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (dbRow) {
+    supabaseId = dbRow.id;
+  } else if (topUp.transactionId) {
+    const { data: byTxn } = await supabase
+      .from('wallet_topups')
+      .select('id')
+      .eq('transaction_id', topUp.transactionId)
+      .maybeSingle();
+    if (byTxn) supabaseId = byTxn.id;
+  }
+
   const { error } = await supabase
     .from('wallet_topups')
     .update({ status: 'rejected' })
-    .eq('id', id);
+    .eq('id', supabaseId);
+
+  // ✅ تحديث الـ local state بالـ ID الصحيح
+  if (supabaseId !== id) {
+    set((st) => ({
+      walletTopUps: st.walletTopUps.map((w) =>
+        w.id === id
+          ? { ...w, id: supabaseId, status: 'rejected' as const }
+          : w
+      ),
+    }));
+  }
+
   if (error) console.error('❌ خطأ في رفض الشحن:', error);
 },
-
 addIncomingCar: async (c) => {
   const incomingId = crypto.randomUUID();
 
