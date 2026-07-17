@@ -12,6 +12,7 @@ import {
   Plus,
   Receipt,
   MessageCircle,
+   DollarSign,
 } from 'lucide-react';
 import { useStore, Garage } from '../store';
 import {
