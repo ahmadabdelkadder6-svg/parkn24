@@ -304,10 +304,10 @@ const sessionEndLocks = new Set<string>();
 // ✅ حماية الرصيد من الـ override بعد الخصم
 let walletDeductedAt = 0;
 
-// ✅ IDs الجلسات اللي اتحذفت - عشان ما ترجعش من الـ sync
+// ✅ IDs الجلسات اللي اتحذفت
 const deletedSessionIds = new Set<string>();
 
-// ✅ الجلسات اللي اتنهت محلياً - حمايتها من الـ flash
+// ✅ الجلسات اللي اتنهت محلياً
 const locallyEndedSessions = new Map<string, ParkingSession>();
 
 // ===================== State Interface =====================
@@ -560,9 +560,6 @@ export const useStore = create<AppState>((set, get) => ({
   fetchAll: async () => {
     if (!isSupabaseConfigured()) return;
 
-    // ✅ إصلاح المشكلة الأساسية: لا تمسح sessions أبداً قبل الجلب
-    // كانت: set({ sessions: [] }) ← ده كان بيسبب الشاشة السوداء والـ flash
-
     const [g, s, o, w, ic, msgs] = await Promise.all([
       supabase.from('garages').select('*'),
       supabase
@@ -610,7 +607,6 @@ export const useStore = create<AppState>((set, get) => ({
         .map((ss) => normalizePlate(ss.carPlate))
     );
 
-    // ✅ الجلسات المحلية فقط (مش موجودة في Supabase بعد) - بس لو حديثة جداً
     const localOnlySessions = currentSessions.filter(
       (cs) =>
         !supabaseSessionIds.has(cs.id) &&
@@ -621,29 +617,22 @@ export const useStore = create<AppState>((set, get) => ({
     );
 
     const mergedSessions = supabaseSessions
-      // ✅ استبعد الجلسات اللي اتحذفت محلياً
       .filter((ss) => !deletedSessionIds.has(ss.id))
       .map((ss) => {
-        // ✅ لو الجلسة اتنهت محلياً - استخدم النسخة المحلية دايماً
         const locallyEnded = locallyEndedSessions.get(ss.id);
         if (locallyEnded) {
-          // ✅ لو Supabase كمان بيقول completed - امسح من الـ map وخد Supabase
           if (ss.status === 'completed') {
             locallyEndedSessions.delete(ss.id);
             return ss;
           }
-          // ✅ Supabase لسه active (التحديث ما وصلش) - خد المحلي
           return locallyEnded;
         }
 
         const localVersion = currentSessions.find((cs) => cs.id === ss.id);
         if (localVersion) {
-          // ✅ لو Supabase بيقول completed والمحلي active → خد Supabase
           if (ss.status === 'completed' && localVersion.status === 'active') {
             return ss;
           }
-
-          // ✅ لو المحلي completed → احتفظ بالمحلي مع revenueConfirmed من DB
           if (localVersion.status === 'completed') {
             return {
               ...localVersion,
@@ -651,8 +640,6 @@ export const useStore = create<AppState>((set, get) => ({
                 ss.revenueConfirmed || localVersion.revenueConfirmed,
             };
           }
-
-          // ✅ لو المحلي عنده totalPrice > 0 → احتفظ بالمحلي
           if (localVersion.totalPrice != null && localVersion.totalPrice > 0) {
             return localVersion;
           }
@@ -688,7 +675,6 @@ export const useStore = create<AppState>((set, get) => ({
 
     const mergedMessages = supabaseMessages.map((sm) => {
       const localVersion = currentMessages.find((cm) => cm.id === sm.id);
-
       if (localVersion) {
         if (localVersion.status !== 'pending' && sm.status === 'pending') {
           return localVersion;
@@ -698,12 +684,9 @@ export const useStore = create<AppState>((set, get) => ({
         }
         const smTime = sm.repliedAt ?? sm.timestamp;
         const localTime = localVersion.repliedAt ?? localVersion.timestamp;
-        if (smTime > localTime) {
-          return sm;
-        }
+        if (smTime > localTime) return sm;
         return localVersion;
       }
-
       return sm;
     });
 
@@ -1033,13 +1016,11 @@ export const useStore = create<AppState>((set, get) => ({
     if (sessionEndLocks.has(lockKey)) return;
     sessionEndLocks.add(lockKey);
 
-    // ✅ وقف الـ polling لمدة أطول عشان ما يرجعش الجلسة active
     pausePolling(15000);
 
     try {
       const safeTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
 
-      // ✅ الجلسة المنتهية محلياً
       const endedSession: ParkingSession = {
         ...session,
         endTime: now,
@@ -1049,10 +1030,8 @@ export const useStore = create<AppState>((set, get) => ({
         revenueConfirmed: false,
       };
 
-      // ✅ احفظها في الـ Map عشان الـ fetchAll ما يرجعهاش active
       locallyEndedSessions.set(id, endedSession);
 
-      // ✅ حدّث الـ state فوراً
       set((st) => ({
         sessions: st.sessions.map((s) =>
           s.id === id ? endedSession : s
@@ -1078,13 +1057,11 @@ export const useStore = create<AppState>((set, get) => ({
       if (error) {
         console.error('❌ خطأ في إنهاء الجلسة:', error);
       } else {
-        // ✅ Supabase اتحدث - بعد شوية امسح من locallyEndedSessions
         setTimeout(() => {
           locallyEndedSessions.delete(id);
         }, 10000);
       }
 
-      // ✅ fetchAll بعد وقت كافي
       setTimeout(() => {
         get().fetchAll();
       }, 12000);
@@ -1149,22 +1126,18 @@ export const useStore = create<AppState>((set, get) => ({
 
   cancelSession: (id) => {
     const session = get().sessions.find((s) => s.id === id);
-
     set((st) => ({
       sessions: st.sessions.filter((s) => s.id !== id),
     }));
-
     if (session && session.status === 'active') {
       get().adjustGarageSpots(session.garageId, +1);
     }
-
     if (isSupabaseConfigured()) {
       supabase.from('sessions').delete().eq('id', id);
     }
   },
 
   removeSession: async (id) => {
-    // ✅ أضف للـ deletedSessionIds عشان ما ترجعش من fetchAll
     deletedSessionIds.add(id);
     locallyEndedSessions.delete(id);
 
@@ -1226,7 +1199,6 @@ export const useStore = create<AppState>((set, get) => ({
       }
     }
 
-    // ✅ امسح من deletedSessionIds بعد وقت كافي
     setTimeout(() => {
       idsToDelete.forEach((did) => deletedSessionIds.delete(did));
     }, 30000);
@@ -1311,63 +1283,190 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  // ✅ approveTopUp - محدّثة ومصلّحة
   approveTopUp: async (id) => {
     const topUp = get().walletTopUps.find((w) => w.id === id);
+    if (!topUp) return;
+
+    // ✅ تحديث محلي فوري
     set((st) => ({
       walletTopUps: st.walletTopUps.map((w) =>
         w.id === id ? { ...w, status: 'approved' as const } : w
       ),
     }));
-    if (!isSupabaseConfigured() || !topUp) return;
 
-    const { error } = await supabase
-      .from('wallet_topups')
-      .update({ status: 'approved' })
-      .eq('id', id);
+    if (!isSupabaseConfigured()) return;
 
-    if (error && topUp.transactionId) {
-      await supabase
+    // ✅ هات الصف الحقيقي من Supabase بالـ transaction_id
+    let dbRow: any = null;
+
+    if (topUp.transactionId) {
+      const { data } = await supabase
         .from('wallet_topups')
-        .update({ status: 'approved' })
-        .eq('transaction_id', topUp.transactionId);
+        .select('id, user_id, user_phone, amount, status')
+        .eq('transaction_id', topUp.transactionId)
+        .maybeSingle();
+      if (data) dbRow = data;
     }
 
-    if (topUp.userPhone) {
+    // fallback بالـ id
+    if (!dbRow) {
+      const { data } = await supabase
+        .from('wallet_topups')
+        .select('id, user_id, user_phone, amount, status')
+        .eq('id', id)
+        .maybeSingle();
+      if (data) dbRow = data;
+    }
+
+    if (!dbRow) {
+      console.error('❌ الطلب مش موجود في Supabase:', { id, transactionId: topUp.transactionId });
+      return;
+    }
+
+    const supabaseId = dbRow.id;
+
+    // ✅ حدّث الحالة بالـ ID الحقيقي
+    const { error: approveError } = await supabase
+      .from('wallet_topups')
+      .update({ status: 'approved' })
+      .eq('id', supabaseId);
+
+    if (approveError) {
+      console.error('❌ فشل الاعتماد:', approveError);
+      // rollback
+      set((st) => ({
+        walletTopUps: st.walletTopUps.map((w) =>
+          w.id === id ? { ...w, status: 'pending' as const } : w
+        ),
+      }));
+      return;
+    }
+
+    // ✅ حدّث الـ local state بالـ ID الحقيقي
+    set((st) => ({
+      walletTopUps: st.walletTopUps.map((w) =>
+        w.id === id ? { ...w, id: supabaseId, status: 'approved' as const } : w
+      ),
+    }));
+
+    // ✅ دور على المستخدم وحدّث محفظته
+    const realUserId = dbRow.user_id || topUp.userId || '';
+    const realUserPhone = dbRow.user_phone || topUp.userPhone || '';
+
+    let userData: any = null;
+
+    // 1) بالـ phone أولاً (الأضمن)
+    if (realUserPhone) {
       const { data } = await supabase
         .from('users')
-        .select('wallet')
-        .eq('phone', topUp.userPhone)
-        .single();
+        .select('id, phone, wallet')
+        .eq('phone', realUserPhone)
+        .maybeSingle();
+      if (data) userData = data;
+    }
 
-      if (data) {
-        const newWallet = Number(data.wallet) + topUp.amount;
-        await supabase
-          .from('users')
-          .update({ wallet: newWallet })
-          .eq('phone', topUp.userPhone);
+    // 2) بالـ id لو UUID حقيقي
+    if (!userData && realUserId && realUserId.includes('-')) {
+      const { data } = await supabase
+        .from('users')
+        .select('id, phone, wallet')
+        .eq('id', realUserId)
+        .maybeSingle();
+      if (data) userData = data;
+    }
 
-        const currentUser = get().currentUser;
-        if (currentUser && currentUser.phone === topUp.userPhone) {
-          const updated = { ...currentUser, wallet: newWallet };
-          set({ currentUser: updated });
-          safeSetStorage('currentUser', updated);
-        }
-      }
+    // 3) user_id كـ phone (حالة قديمة)
+    if (!userData && realUserId && !realUserId.includes('-')) {
+      const { data } = await supabase
+        .from('users')
+        .select('id, phone, wallet')
+        .eq('phone', realUserId)
+        .maybeSingle();
+      if (data) userData = data;
+    }
+
+    if (!userData) {
+      console.error('❌ المستخدم مش موجود:', { realUserId, realUserPhone });
+      return;
+    }
+
+    const amount = Number(dbRow.amount || topUp.amount || 0);
+    const newWallet = Number(userData.wallet || 0) + amount;
+
+    // ✅ حدّث الرصيد في Supabase
+    const { error: walletError } = await supabase
+      .from('users')
+      .update({ wallet: newWallet })
+      .eq('id', userData.id);
+
+    if (walletError) {
+      console.error('❌ خطأ في تحديث المحفظة:', walletError);
+      return;
+    }
+
+    console.log('✅ تم الاعتماد وتحديث المحفظة:', {
+      user: userData.phone,
+      oldWallet: userData.wallet,
+      added: amount,
+      newWallet,
+    });
+
+    // ✅ حدّث العميل المفتوح
+    const currentUser = get().currentUser;
+    if (
+      currentUser &&
+      (currentUser.phone === userData.phone ||
+       (currentUser as any).id === userData.id)
+    ) {
+      const updated = { ...currentUser, wallet: newWallet };
+      set({ currentUser: updated });
+      safeSetStorage('currentUser', updated);
     }
   },
 
   rejectTopUp: async (id) => {
+    const topUp = get().walletTopUps.find((w) => w.id === id);
+    if (!topUp) return;
+
     set((st) => ({
       walletTopUps: st.walletTopUps.map((w) =>
         w.id === id ? { ...w, status: 'rejected' as const } : w
       ),
     }));
+
     if (!isSupabaseConfigured()) return;
+
+    // ✅ دور على الـ ID الحقيقي
+    let supabaseId = id;
+
+    if (topUp.transactionId) {
+      const { data } = await supabase
+        .from('wallet_topups')
+        .select('id')
+        .eq('transaction_id', topUp.transactionId)
+        .maybeSingle();
+      if (data) supabaseId = data.id;
+    }
+
     const { error } = await supabase
       .from('wallet_topups')
       .update({ status: 'rejected' })
-      .eq('id', id);
-    if (error) console.error('❌ خطأ في رفض الشحن:', error);
+      .eq('id', supabaseId);
+
+    if (error) {
+      console.error('❌ خطأ في رفض الشحن:', error);
+      return;
+    }
+
+    // ✅ حدّث الـ ID المحلي
+    if (supabaseId !== id) {
+      set((st) => ({
+        walletTopUps: st.walletTopUps.map((w) =>
+          w.id === id ? { ...w, id: supabaseId, status: 'rejected' as const } : w
+        ),
+      }));
+    }
   },
 
   addIncomingCar: async (c) => {
@@ -1564,7 +1663,6 @@ export const useStore = create<AppState>((set, get) => ({
 
     if (error) console.error('❌ خطأ في إغلاق الرسالة:', error);
   },
-
 }));
 
 // ===================== Realtime =====================

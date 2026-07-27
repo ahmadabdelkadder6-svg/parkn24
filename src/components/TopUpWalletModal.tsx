@@ -29,31 +29,46 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
     );
   };
 
-const handleSubmitTopUp = () => {
-  if (enteredCode !== confirmCode) {
-    setCodeError(true);
-    toast.error('كود التأكيد غير صحيح');
-    return;
-  }
+  const handleSubmitTopUp = () => {
+    if (enteredCode !== confirmCode) {
+      setCodeError(true);
+      toast.error('كود التأكيد غير صحيح');
+      return;
+    }
 
-  if (!currentUser) return;
+    if (!currentUser) return;
 
-  // ✅ اطبع بيانات المستخدم الحالية
-  console.log('CURRENT USER BEFORE TOPUP:', currentUser);
+    // ✅ تحقق من بيانات المستخدم
+    const userId = (currentUser as any).id || currentUser.phone;
+    const userPhone = currentUser.phone;
 
-  addWalletTopUp({
-    userId: (currentUser as any).id,
-    userName: currentUser.name,
-    userPhone: currentUser.phone,
-    amount,
-    transactionId: `TXN-${Date.now()}`,
-    carPlate: currentUser.carPlate,
-    method,
-  });
+    // ✅ تحقق إن الرقم موجود
+    if (!userPhone || userPhone.trim() === '') {
+      toast.error('رقم الهاتف غير موجود، أعد التسجيل');
+      return;
+    }
 
-  toast.success('تم إرسال طلب الشحن! ⏳ في انتظار اعتماد الأدمن');
-  setStep('done');
-};
+    console.log('📤 TOPUP REQUEST:', {
+      userId,
+      userPhone,
+      userName: currentUser.name,
+      amount,
+      method,
+    });
+
+    addWalletTopUp({
+      userId: userId,
+      userName: currentUser.name,
+      userPhone: userPhone,
+      amount,
+      transactionId: `TXN-${Date.now()}`,
+      carPlate: currentUser.carPlate,
+      method,
+    });
+
+    toast.success('تم إرسال طلب الشحن! ⏳ في انتظار اعتماد الأدمن');
+    setStep('done');
+  };
 
   return (
     <motion.div
@@ -68,240 +83,253 @@ const handleSubmitTopUp = () => {
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 25 }}
-        className="bg-slate-900 border-t border-slate-800 rounded-t-[2.5rem] w-full max-w-md max-h-[92vh] overflow-y-auto"
+        className="bg-white rounded-t-[2.5rem] w-full max-w-md max-h-[92vh] overflow-y-auto"
+        style={{ boxShadow: '0 -10px 40px rgba(0,0,0,0.15)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* المقبض */}
         <div className="flex justify-center pt-3 pb-1">
-          <div className="w-10 h-1 bg-slate-700 rounded-full" />
+          <div className="w-10 h-1 rounded-full" style={{ background: '#D0DCFF' }} />
         </div>
 
         <div className="p-5">
-          {/* ========== اختيار المبلغ ========== */}
+          {/* ══════════ اختيار المبلغ ══════════ */}
           {step === 'amount' && (
             <>
               <div className="flex items-center justify-between mb-6">
-                <button onClick={onClose} className="text-slate-500 hover:text-white"><X size={20} /></button>
-                <h2 className="text-lg font-black text-white">شحن رصيد المحفظة</h2>
+                <button onClick={onClose} style={{ color: '#94a3b8' }}><X size={20} /></button>
+                <h2 className="font-black" style={{ fontSize: 18, color: '#0A1628' }}>شحن رصيد المحفظة</h2>
                 <div className="w-8" />
               </div>
 
-              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 mb-4 text-center">
-                <div className="text-[10px] text-slate-500 mb-1">رصيدك الحالي</div>
-                <div className="text-2xl font-black text-blue-400 font-mono">{currentUser?.wallet || 0} ج.م</div>
+              {/* الرصيد الحالي */}
+              <div className="text-center mb-5" style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', borderRadius: 22, padding: '20px 16px', color: '#fff', boxShadow: '0 8px 32px rgba(0,102,255,0.3)' }}>
+                <div className="font-bold mb-1" style={{ fontSize: 11, opacity: 0.8 }}>رصيدك الحالي</div>
+                <div className="font-black font-mono" style={{ fontSize: 32 }}>{currentUser?.wallet || 0} <span style={{ fontSize: 14 }}>ج.م</span></div>
               </div>
 
-              <div className="mb-4">
-                <div className="text-xs font-black text-slate-400 mb-3 text-right">حدد مبلغ الشحن</div>
+              <div className="mb-5">
+                <div className="font-black mb-3 text-right" style={{ fontSize: 13, color: '#7B8CA6' }}>حدد مبلغ الشحن</div>
                 <div className="flex items-center justify-center gap-5 mb-4">
-                  <button onClick={() => setAmount((a) => Math.max(100, a - 50))}
-                    className="bg-red-600/20 text-red-400 w-12 h-12 rounded-xl flex items-center justify-center border border-red-500/20 active:scale-90">
-                    <Minus size={20} />
+                  <button onClick={() => setAmount((a) => Math.max(100, a - 50))} className="active:scale-90 transition-all"
+                    style={{ background: '#FFE0E0', color: '#CC0000', width: 52, height: 52, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none' }}>
+                    <Minus size={22} />
                   </button>
                   <div className="text-center">
                     <input type="number" value={amount}
                       onChange={(e) => setAmount(Math.max(100, parseInt(e.target.value) || 100))}
-                      className={`bg-transparent text-4xl font-black text-center w-32 outline-none font-mono ${amount < 100 ? 'text-red-400' : 'text-white'}`} />
-                    <div className="text-[10px] text-slate-500 font-bold">ج.م</div>
+                      className="bg-transparent text-center outline-none font-mono font-black"
+                      style={{ fontSize: 44, width: 140, color: amount < 100 ? '#CC0000' : '#0A1628' }} />
+                    <div className="font-bold" style={{ fontSize: 11, color: '#94a3b8' }}>ج.م</div>
                   </div>
-                  <button onClick={() => setAmount((a) => a + 50)}
-                    className="bg-emerald-600/20 text-emerald-400 w-12 h-12 rounded-xl flex items-center justify-center border border-emerald-500/20 active:scale-90">
-                    <Plus size={20} />
+                  <button onClick={() => setAmount((a) => a + 50)} className="active:scale-90 transition-all"
+                    style={{ background: '#D1FAE5', color: '#059669', width: 52, height: 52, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none' }}>
+                    <Plus size={22} />
                   </button>
                 </div>
                 <div className="flex gap-2 justify-center flex-wrap">
                   {[100, 200, 300, 500, 1000].map((v) => (
-                    <button key={v} onClick={() => setAmount(v)}
-                      className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
-                        amount === v ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-500'
-                      }`}>
+                    <button key={v} onClick={() => setAmount(v)} className="font-black transition-all active:scale-95"
+                      style={{ padding: '8px 16px', borderRadius: 14, fontSize: 13, background: amount === v ? '#0066FF' : '#F0F4FF', color: amount === v ? '#fff' : '#64748b', boxShadow: amount === v ? '0 4px 12px rgba(0,102,255,0.3)' : 'none', border: amount === v ? 'none' : '2px solid #D0DCFF' }}>
                       {v} ج.م
                     </button>
                   ))}
                 </div>
-                <div className="mt-3 text-center text-[10px] text-amber-400 font-bold">⚠️ الحد الأدنى للشحن 100 ج.م</div>
+                <div className="mt-3 text-center font-bold" style={{ fontSize: 11, color: '#FF9500' }}>⚠️ الحد الأدنى للشحن 100 ج.م</div>
               </div>
 
-              <button onClick={() => setStep('method')} disabled={amount < 100}
-                className={`w-full py-4 rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center justify-center gap-2 ${
-                  amount < 100 ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-blue-600 text-white'
-                }`}>
-                <Plus size={18} /> متابعة شحن {amount} ج.م
+              <button onClick={() => setStep('method')} disabled={amount < 100} className="w-full font-black flex items-center justify-center gap-2 active:scale-95 transition-all"
+                style={{ background: amount < 100 ? '#F0F4FF' : 'linear-gradient(135deg,#0066FF,#4D00FF)', color: amount < 100 ? '#94a3b8' : '#fff', padding: 18, borderRadius: 22, fontSize: 15, boxShadow: amount < 100 ? 'none' : '0 8px 32px rgba(0,102,255,0.35)', cursor: amount < 100 ? 'not-allowed' : 'pointer' }}>
+                <Plus size={20} /> متابعة شحن {amount} ج.م
               </button>
             </>
           )}
 
-          {/* ========== اختيار طريقة الشحن ========== */}
+          {/* ══════════ اختيار طريقة الشحن ══════════ */}
           {step === 'method' && (
             <>
               <div className="flex items-center justify-between mb-6">
-                <button onClick={() => setStep('amount')} className="text-slate-500"><ArrowRight size={20} /></button>
-                <h2 className="text-lg font-black text-white">طريقة الشحن</h2>
+                <button onClick={() => setStep('amount')} style={{ color: '#94a3b8' }}><ArrowRight size={20} /></button>
+                <h2 className="font-black" style={{ fontSize: 18, color: '#0A1628' }}>طريقة الشحن</h2>
                 <div className="w-8" />
               </div>
 
-              <div className="bg-blue-600/10 border border-blue-500/20 rounded-2xl p-3 mb-5 text-center">
-                <span className="text-xs text-slate-400">مبلغ الشحن: </span>
-                <span className="text-xl font-black text-blue-400 font-mono">{amount} ج.م</span>
+              <div className="text-center mb-5" style={{ background: '#EBF2FF', borderRadius: 18, padding: '14px 16px', border: '2px solid #D0DCFF' }}>
+                <span className="font-bold" style={{ fontSize: 13, color: '#7B8CA6' }}>مبلغ الشحن: </span>
+                <span className="font-black font-mono" style={{ fontSize: 22, color: '#0066FF' }}>{amount} ج.م</span>
               </div>
 
               <div className="space-y-3 mb-5">
                 <button onClick={() => { setMethod('instapay'); setStep('transfer'); }}
-                  className="w-full bg-slate-950 border border-slate-800 hover:border-purple-500/50 rounded-2xl p-5 flex items-center gap-4 active:scale-[0.98] transition-all text-right">
-                  <div className="bg-purple-600 p-3 rounded-xl text-2xl">📱</div>
+                  className="w-full flex items-center gap-4 active:scale-[0.98] transition-all text-right"
+                  style={{ background: '#fff', border: '2.5px solid #E9D5FF', borderRadius: 24, padding: 20, boxShadow: '0 4px 20px rgba(124,58,237,0.08)' }}>
+                  <div style={{ background: '#7C3AED', borderRadius: 18, padding: 14, fontSize: 24, boxShadow: '0 4px 16px rgba(124,58,237,0.3)' }}>📱</div>
                   <div className="flex-1">
-                    <div className="text-sm font-black text-white mb-1">إنستاباي</div>
-                    <div className="text-[10px] text-slate-500">تحويل عبر InstaPay</div>
+                    <div className="font-black" style={{ fontSize: 15, color: '#0A1628', marginBottom: 4 }}>إنستاباي</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>تحويل عبر InstaPay</div>
                   </div>
-                  <ArrowRight size={18} className="text-slate-600 rotate-180" />
+                  <ArrowRight size={20} style={{ color: '#D0DCFF', transform: 'rotate(180deg)' }} />
                 </button>
 
                 <button onClick={() => { setMethod('cashwallet'); setStep('transfer'); }}
-                  className="w-full bg-slate-950 border border-slate-800 hover:border-orange-500/50 rounded-2xl p-5 flex items-center gap-4 active:scale-[0.98] transition-all text-right">
-                  <div className="bg-orange-600 p-3 rounded-xl text-2xl">📲</div>
+                  className="w-full flex items-center gap-4 active:scale-[0.98] transition-all text-right"
+                  style={{ background: '#fff', border: '2.5px solid #FFD180', borderRadius: 24, padding: 20, boxShadow: '0 4px 20px rgba(255,149,0,0.08)' }}>
+                  <div style={{ background: '#FF8800', borderRadius: 18, padding: 14, fontSize: 24, boxShadow: '0 4px 16px rgba(255,136,0,0.3)' }}>📲</div>
                   <div className="flex-1">
-                    <div className="text-sm font-black text-white mb-1">تحويل محفظة كاش</div>
-                    <div className="text-[10px] text-slate-500">فودافون / أورانج / اتصالات / WE</div>
+                    <div className="font-black" style={{ fontSize: 15, color: '#0A1628', marginBottom: 4 }}>تحويل محفظة كاش</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>فودافون / أورانج / اتصالات / WE</div>
                   </div>
-                  <ArrowRight size={18} className="text-slate-600 rotate-180" />
+                  <ArrowRight size={20} style={{ color: '#D0DCFF', transform: 'rotate(180deg)' }} />
                 </button>
               </div>
             </>
           )}
 
-          {/* ========== بيانات التحويل ========== */}
+          {/* ══════════ بيانات التحويل ══════════ */}
           {step === 'transfer' && (
             <>
               <div className="flex items-center justify-between mb-6">
-                <button onClick={() => setStep('method')} className="text-slate-500"><ArrowRight size={20} /></button>
-                <h2 className="text-lg font-black text-white">
+                <button onClick={() => setStep('method')} style={{ color: '#94a3b8' }}><ArrowRight size={20} /></button>
+                <h2 className="font-black" style={{ fontSize: 18, color: '#0A1628' }}>
                   {method === 'instapay' ? 'تحويل إنستاباي' : 'تحويل محفظة كاش'}
                 </h2>
                 <div className="w-8" />
               </div>
 
               {/* المبلغ */}
-              <div className={`rounded-[2rem] p-5 mb-5 text-center border ${
-                method === 'instapay'
-                  ? 'bg-gradient-to-br from-purple-600/30 to-indigo-600/20 border-purple-500/40'
-                  : 'bg-gradient-to-br from-orange-600/30 to-amber-600/20 border-orange-500/40'
-              }`}>
-                <p className={`text-xs font-bold mb-2 ${method === 'instapay' ? 'text-purple-300' : 'text-orange-300'}`}>
-                  المبلغ المطلوب تحويله
-                </p>
-                <div className="text-4xl font-black text-white font-mono">{amount}</div>
-                <div className={`text-sm font-bold ${method === 'instapay' ? 'text-purple-300' : 'text-orange-300'}`}>جنيه مصري</div>
+              <div className="text-center mb-5" style={{
+                background: method === 'instapay' ? 'linear-gradient(135deg,#7C3AED,#5B21B6)' : 'linear-gradient(135deg,#FF8800,#CC6600)',
+                borderRadius: 26, padding: '24px 20px', color: '#fff',
+                boxShadow: method === 'instapay' ? '0 8px 32px rgba(124,58,237,0.3)' : '0 8px 32px rgba(255,136,0,0.3)',
+              }}>
+                <div className="font-bold mb-2" style={{ fontSize: 12, opacity: 0.8 }}>المبلغ المطلوب تحويله</div>
+                <div className="font-black font-mono" style={{ fontSize: 44 }}>{amount}</div>
+                <div className="font-bold" style={{ fontSize: 14, opacity: 0.8 }}>جنيه مصري</div>
               </div>
 
               {/* بيانات التحويل */}
-              <div className="bg-slate-950 border border-slate-800 rounded-[2rem] p-5 mb-5">
+              <div className="mb-5" style={{ background: '#fff', border: '2.5px solid #D0DCFF', borderRadius: 26, padding: 20, boxShadow: '0 4px 20px rgba(0,0,0,0.04)' }}>
                 {method === 'instapay' ? (
                   <>
-                    {/* رابط إنستاباي */}
                     <a href={INSTAPAY_LINK} target="_blank" rel="noopener noreferrer"
-                      className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg mb-3">
-                      <ExternalLink size={16} /> اضغط هنا لإرسال نقود
+                      className="w-full font-black flex items-center justify-center gap-2 active:scale-95 transition-all mb-3"
+                      style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', color: '#fff', padding: 16, borderRadius: 18, fontSize: 14, boxShadow: '0 6px 24px rgba(124,58,237,0.35)' }}>
+                      <ExternalLink size={18} /> اضغط هنا لإرسال نقود
                     </a>
-                    <div className="bg-slate-900 rounded-xl p-3 mb-3 border border-slate-800">
-                      <div className="text-[10px] text-slate-500 font-bold mb-1 text-right">إرسال نقود إلى</div>
+                    <div style={{ background: '#F0F4FF', borderRadius: 18, padding: 14, border: '2px solid #D0DCFF', marginBottom: 12 }}>
+                      <div className="font-bold text-right mb-1" style={{ fontSize: 10, color: '#94a3b8' }}>إرسال نقود إلى</div>
                       <div className="flex items-center justify-between">
-                        <button onClick={() => copyToClipboard(`${INSTAPAY_USERNAME}@instapay`, 'الحساب')} className="text-blue-400 active:scale-90">
-                          <Copy size={14} />
+                        <button onClick={() => copyToClipboard(`${INSTAPAY_USERNAME}@instapay`, 'الحساب')} style={{ color: '#0066FF' }} className="active:scale-90">
+                          <Copy size={16} />
                         </button>
-                        <div className="text-base font-black text-purple-400 font-mono" dir="ltr">{INSTAPAY_USERNAME}@instapay</div>
+                        <div className="font-black font-mono" style={{ fontSize: 16, color: '#7C3AED' }} dir="ltr">{INSTAPAY_USERNAME}@instapay</div>
                       </div>
                     </div>
                     <div className="text-center">
-                      <span className="text-[10px] text-slate-500">Powered by </span>
-                      <span className="text-xs font-black text-purple-400">InstaPay</span>
+                      <span style={{ fontSize: 11, color: '#94a3b8' }}>Powered by </span>
+                      <span className="font-black" style={{ fontSize: 12, color: '#7C3AED' }}>InstaPay</span>
                     </div>
                   </>
                 ) : (
-                  <>
-                    {/* رقم محفظة كاش */}
-                    <div className="text-center mb-3">
-                      <div className="text-[10px] text-slate-500 font-bold mb-2">حوّل على الرقم التالي</div>
-                      <div className="text-3xl font-black text-orange-400 font-mono tracking-wider mb-3" dir="ltr">{WALLET_NUMBER}</div>
-                      <div className="flex gap-2 justify-center">
-                        <button onClick={() => copyToClipboard(WALLET_NUMBER, 'الرقم')}
-                          className="bg-orange-600/20 text-orange-400 px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 active:scale-95 border border-orange-500/30">
-                          <Copy size={14} /> نسخ الرقم
-                        </button>
-                        <a href={`tel:${WALLET_NUMBER}`}
-                          className="bg-slate-800 text-slate-300 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 active:scale-95">
-                          <Phone size={14} /> اتصال
-                        </a>
-                      </div>
+                  <div className="text-center">
+                    <div className="font-bold mb-2" style={{ fontSize: 11, color: '#94a3b8' }}>حوّل على الرقم التالي</div>
+                    <div className="font-black font-mono mb-4" style={{ fontSize: 32, color: '#FF8800', letterSpacing: 4 }} dir="ltr">{WALLET_NUMBER}</div>
+                    <div className="flex gap-2 justify-center">
+                      <button onClick={() => copyToClipboard(WALLET_NUMBER, 'الرقم')}
+                        className="font-black flex items-center gap-2 active:scale-95"
+                        style={{ background: '#FFF3E0', color: '#E65100', padding: '10px 18px', borderRadius: 14, fontSize: 12, border: '2px solid #FFD180' }}>
+                        <Copy size={16} /> نسخ الرقم
+                      </button>
+                      <a href={`tel:${WALLET_NUMBER}`}
+                        className="font-bold flex items-center gap-2 active:scale-95"
+                        style={{ background: '#F0F4FF', color: '#64748b', padding: '10px 18px', borderRadius: 14, fontSize: 12, border: '2px solid #D0DCFF' }}>
+                        <Phone size={16} /> اتصال
+                      </a>
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
 
-              <button onClick={() => setStep('confirm')}
-                className={`w-full py-4 rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 ${
-                  method === 'instapay' ? 'bg-purple-600 text-white' : 'bg-orange-600 text-white'
-                }`}>
-                <CheckCircle size={18} /> تم التحويل - أدخل كود التأكيد
+              <button onClick={() => setStep('confirm')} className="w-full font-black flex items-center justify-center gap-2 active:scale-95 transition-all"
+                style={{
+                  background: method === 'instapay' ? 'linear-gradient(135deg,#7C3AED,#5B21B6)' : 'linear-gradient(135deg,#FF8800,#CC6600)',
+                  color: '#fff', padding: 18, borderRadius: 22, fontSize: 15,
+                  boxShadow: method === 'instapay' ? '0 8px 32px rgba(124,58,237,0.35)' : '0 8px 32px rgba(255,136,0,0.35)',
+                }}>
+                <CheckCircle size={20} /> تم التحويل - أدخل كود التأكيد
               </button>
             </>
           )}
 
-          {/* ========== كود التأكيد ========== */}
+          {/* ══════════ كود التأكيد ══════════ */}
           {step === 'confirm' && (
             <>
               <div className="flex items-center justify-between mb-6">
-                <button onClick={() => setStep('transfer')} className="text-slate-500"><ArrowRight size={20} /></button>
-                <h2 className="text-lg font-black text-white">تأكيد الشحن</h2>
+                <button onClick={() => setStep('transfer')} style={{ color: '#94a3b8' }}><ArrowRight size={20} /></button>
+                <h2 className="font-black" style={{ fontSize: 18, color: '#0A1628' }}>تأكيد الشحن</h2>
                 <div className="w-8" />
               </div>
 
-              <div className="bg-slate-950 border border-slate-800 rounded-[2rem] p-5 mb-5">
+              <div className="mb-5" style={{ background: '#fff', border: '2.5px solid #D0DCFF', borderRadius: 26, padding: 24, boxShadow: '0 4px 20px rgba(0,0,0,0.04)' }}>
                 <div className="text-center mb-5">
-                  <ShieldCheck size={36} className="text-emerald-400 mx-auto mb-2" />
-                  <p className="text-xs text-slate-400 mb-3">كود التأكيد</p>
-                  <div className="bg-slate-900 border-2 border-dashed border-emerald-500/40 rounded-2xl p-4 mb-3">
-                    <div className="text-3xl font-black text-emerald-400 font-mono tracking-[0.3em]">{confirmCode}</div>
+                  <ShieldCheck size={44} style={{ color: '#00CC66', margin: '0 auto 12px' }} />
+                  <p className="font-bold mb-3" style={{ fontSize: 12, color: '#7B8CA6' }}>كود التأكيد الخاص بك</p>
+                  <div style={{ background: '#F0FFF5', border: '2px dashed #66DDAA', borderRadius: 20, padding: 20, marginBottom: 14 }}>
+                    <div className="font-black font-mono" style={{ fontSize: 36, color: '#00AA44', letterSpacing: 8 }}>{confirmCode}</div>
                   </div>
-                  <button onClick={() => copyToClipboard(confirmCode, 'الكود')}
-                    className="bg-slate-800 text-slate-300 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 mx-auto active:scale-95">
-                    <Copy size={14} /> نسخ
+                  <button onClick={() => copyToClipboard(confirmCode, 'الكود')} className="font-bold flex items-center gap-2 mx-auto active:scale-95"
+                    style={{ background: '#F0F4FF', color: '#64748b', padding: '10px 18px', borderRadius: 14, fontSize: 12, border: '2px solid #D0DCFF' }}>
+                    <Copy size={14} /> نسخ الكود
                   </button>
                 </div>
 
-                <input type="text" inputMode="numeric" maxLength={6} value={enteredCode}
-                  onChange={(e) => { setEnteredCode(e.target.value.replace(/\D/g, '')); setCodeError(false); }}
-                  placeholder="أدخل الكود (6 أرقام)"
-                  className={`w-full bg-slate-900 p-4 rounded-2xl text-center text-2xl font-black font-mono tracking-[0.3em] outline-none border-2 ${
-                    codeError ? 'border-red-500 text-red-400' : enteredCode.length === 6 ? 'border-emerald-500 text-emerald-400' : 'border-slate-800 text-white'
-                  }`} />
-                {codeError && <p className="text-red-400 text-xs text-center mt-2 font-bold">❌ كود غير صحيح</p>}
+                <div style={{ borderTop: '2px solid #F0F4FF', paddingTop: 16 }}>
+                  <p className="font-bold text-right mb-3" style={{ fontSize: 12, color: '#7B8CA6' }}>أدخل كود التأكيد</p>
+                  <input type="text" inputMode="numeric" maxLength={6} value={enteredCode}
+                    onChange={(e) => { setEnteredCode(e.target.value.replace(/\D/g, '')); setCodeError(false); }}
+                    placeholder="أدخل الكود (6 أرقام)"
+                    className="w-full text-center font-black font-mono outline-none"
+                    style={{
+                      background: '#F0F4FF', padding: 18, borderRadius: 20, fontSize: 28, letterSpacing: 8,
+                      border: `2.5px solid ${codeError ? '#FF3333' : enteredCode.length === 6 ? '#00CC66' : '#D0DCFF'}`,
+                      color: codeError ? '#CC0000' : enteredCode.length === 6 ? '#00AA44' : '#0A1628',
+                    }} />
+                  {codeError && <p className="font-bold text-center mt-2" style={{ fontSize: 12, color: '#CC0000' }}>❌ كود غير صحيح</p>}
+                </div>
               </div>
 
               <button onClick={handleSubmitTopUp} disabled={enteredCode.length !== 6}
-                className={`w-full py-4 rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 ${
-                  enteredCode.length === 6 ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                }`}>
-                <Lock size={18} /> تأكيد وإرسال طلب الشحن
+                className="w-full font-black flex items-center justify-center gap-2 active:scale-95 transition-all"
+                style={{
+                  background: enteredCode.length === 6 ? 'linear-gradient(135deg,#00CC66,#00AA55)' : '#F0F4FF',
+                  color: enteredCode.length === 6 ? '#fff' : '#94a3b8',
+                  padding: 18, borderRadius: 22, fontSize: 15,
+                  boxShadow: enteredCode.length === 6 ? '0 8px 32px rgba(0,204,102,0.35)' : 'none',
+                  cursor: enteredCode.length !== 6 ? 'not-allowed' : 'pointer',
+                }}>
+                <Lock size={20} /> تأكيد وإرسال طلب الشحن
               </button>
             </>
           )}
 
-          {/* ========== تم الإرسال ========== */}
+          {/* ══════════ تم الإرسال ══════════ */}
           {step === 'done' && (
             <div className="text-center py-6">
               <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', bounce: 0.5 }}>
-                <CheckCircle size={64} className="text-emerald-400 mx-auto mb-4" />
+                <CheckCircle size={80} style={{ color: '#00CC66', margin: '0 auto 20px' }} />
               </motion.div>
-              <h2 className="text-xl font-black text-emerald-400 mb-2">تم إرسال طلب الشحن!</h2>
-              <p className="text-slate-400 text-sm mb-2">مبلغ الشحن: <span className="font-black text-white font-mono">{amount} ج.م</span></p>
-              <p className="text-slate-500 text-xs mb-6">سيتم إضافة الرصيد بعد اعتماد الأدمن ⏳</p>
+              <h2 className="font-black mb-2" style={{ fontSize: 24, color: '#00AA44' }}>تم إرسال طلب الشحن!</h2>
+              <p className="mb-2" style={{ fontSize: 14, color: '#7B8CA6' }}>
+                مبلغ الشحن: <span className="font-black font-mono" style={{ color: '#0A1628' }}>{amount} ج.م</span>
+              </p>
+              <p className="mb-6" style={{ fontSize: 12, color: '#94a3b8' }}>سيتم إضافة الرصيد بعد اعتماد الأدمن ⏳</p>
 
-              <div className="bg-amber-600/10 border border-amber-500/20 rounded-xl p-3 mb-5">
-                <p className="text-[10px] text-amber-400 font-bold">⏳ الطلب في انتظار اعتماد المشرف</p>
+              <div className="mb-5" style={{ background: '#FFFAF0', borderRadius: 18, padding: 14, border: '2px solid #FFD180' }}>
+                <p className="font-bold" style={{ fontSize: 12, color: '#E65100' }}>⏳ الطلب في انتظار اعتماد المشرف</p>
               </div>
 
-              <button onClick={onClose}
-                className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-sm active:scale-95 transition-all">
+              <button onClick={onClose} className="w-full font-black active:scale-95 transition-all"
+                style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', color: '#fff', padding: 18, borderRadius: 22, fontSize: 15, boxShadow: '0 8px 32px rgba(0,102,255,0.35)' }}>
                 حسناً
               </button>
             </div>
