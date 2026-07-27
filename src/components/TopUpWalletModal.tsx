@@ -29,27 +29,31 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
     );
   };
 
-  const handleSubmitTopUp = () => {
-    if (enteredCode !== confirmCode) {
-      setCodeError(true);
-      toast.error('كود التأكيد غير صحيح');
-      return;
-    }
-    if (!currentUser) return;
+const handleSubmitTopUp = () => {
+  if (enteredCode !== confirmCode) {
+    setCodeError(true);
+    toast.error('كود التأكيد غير صحيح');
+    return;
+  }
 
-    addWalletTopUp({
-  userId: currentUser.id,       // ✅ UUID الحقيقي
-  userName: currentUser.name,
-  userPhone: currentUser.phone, // ✅ رقم التليفون
-      amount,
-      transactionId: `TXN-${Date.now()}`,
-      carPlate: currentUser.carPlate,
-      method,
-    });
+  if (!currentUser) return;
 
-    toast.success('تم إرسال طلب الشحن! ⏳ في انتظار اعتماد الأدمن');
-    setStep('done');
-  };
+  // ✅ اطبع بيانات المستخدم الحالية
+  console.log('CURRENT USER BEFORE TOPUP:', currentUser);
+
+  addWalletTopUp({
+    userId: (currentUser as any).id,
+    userName: currentUser.name,
+    userPhone: currentUser.phone,
+    amount,
+    transactionId: `TXN-${Date.now()}`,
+    carPlate: currentUser.carPlate,
+    method,
+  });
+
+  toast.success('تم إرسال طلب الشحن! ⏳ في انتظار اعتماد الأدمن');
+  setStep('done');
+};
 
   return (
     <motion.div
