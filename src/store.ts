@@ -15,6 +15,13 @@ export interface Garage {
   availableSpots: number;
   basePrice: number;
   rating: number;
+  // ✅ السياس
+  valetName1: string;
+  valetPassword1: string;
+  valetName2: string;
+  valetPassword2: string;
+  valetName3: string;
+  valetPassword3: string;
 }
 
 export interface ParkingSession {
@@ -183,6 +190,7 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   });
 };
 
+// ✅ mapping الجراج - أضفنا السياس
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const m = (r: any): Garage => ({
   id: r.id,
@@ -196,6 +204,13 @@ const m = (r: any): Garage => ({
   availableSpots: r.available_spots,
   basePrice: Number(r.base_price),
   rating: Number(r.rating),
+  // ✅ السياس
+  valetName1: r.valet_name_1 || '',
+  valetPassword1: r.valet_password_1 || '',
+  valetName2: r.valet_name_2 || '',
+  valetPassword2: r.valet_password_2 || '',
+  valetName3: r.valet_name_3 || '',
+  valetPassword3: r.valet_password_3 || '',
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -297,17 +312,12 @@ const mm = (r: any): Message => ({
 let updateGarageTimeout: ReturnType<typeof setTimeout> | null = null;
 const pendingGarageUpdates: Map<string, Record<string, unknown>> = new Map();
 
-// ✅ locks لمنع التكرار
 const sessionStartLocks = new Set<string>();
 const sessionEndLocks = new Set<string>();
 
-// ✅ حماية الرصيد من الـ override بعد الخصم
 let walletDeductedAt = 0;
 
-// ✅ IDs الجلسات اللي اتحذفت
 const deletedSessionIds = new Set<string>();
-
-// ✅ الجلسات اللي اتنهت محلياً
 const locallyEndedSessions = new Map<string, ParkingSession>();
 
 // ===================== State Interface =====================
@@ -341,45 +351,38 @@ interface AppState {
   ) => Promise<void>;
   updateGarage: (
     id: string,
-    updates: Partial<Pick<Garage, 'basePrice' | 'availableSpots' | 'capacity'>>
+    updates: Partial<Pick<Garage, 'basePrice' | 'availableSpots' | 'capacity'>> & {
+      valetName1?: string;
+      valetPassword1?: string;
+      valetName2?: string;
+      valetPassword2?: string;
+      valetName3?: string;
+      valetPassword3?: string;
+    }
   ) => void;
   adjustGarageSpots: (id: string, delta: number) => Promise<void>;
   selectedGarageId: string | null;
   setSelectedGarageId: (id: string | null) => void;
   sessions: ParkingSession[];
   addSession: (s: Omit<ParkingSession, 'id'>) => Promise<string>;
-  endSession: (
-    id: string,
-    totalPrice: number,
-    paymentMethod: string
-  ) => Promise<void>;
+  endSession: (id: string, totalPrice: number, paymentMethod: string) => Promise<void>;
   cancelSession: (id: string) => void;
   removeSession: (id: string) => Promise<void>;
   confirmRevenue: (sessionId: string) => Promise<void>;
   unconfirmRevenue: (sessionId: string) => Promise<void>;
   offers: Offer[];
   addOffer: (o: Omit<Offer, 'id' | 'timestamp'>) => void;
-  updateOffer: (
-    id: string,
-    status: Offer['status'],
-    counterPrice?: number
-  ) => void;
+  updateOffer: (id: string, status: Offer['status'], counterPrice?: number) => void;
   cancelOffer: (id: string) => void;
   walletTopUps: WalletTopUp[];
-  addWalletTopUp: (
-    w: Omit<WalletTopUp, 'id' | 'timestamp' | 'status'>
-  ) => void;
+  addWalletTopUp: (w: Omit<WalletTopUp, 'id' | 'timestamp' | 'status'>) => void;
   approveTopUp: (id: string) => Promise<void>;
   rejectTopUp: (id: string) => Promise<void>;
   incomingCars: IncomingCar[];
-  addIncomingCar: (
-    c: Omit<IncomingCar, 'id' | 'startTime' | 'status'>
-  ) => Promise<void>;
+  addIncomingCar: (c: Omit<IncomingCar, 'id' | 'startTime' | 'status'>) => Promise<void>;
   removeIncomingCar: (id: string) => Promise<void>;
   messages: Message[];
-  addMessage: (
-    m: Omit<Message, 'id' | 'timestamp' | 'status'>
-  ) => Promise<{ success: boolean; error?: string }>;
+  addMessage: (m: Omit<Message, 'id' | 'timestamp' | 'status'>) => Promise<{ success: boolean; error?: string }>;
   replyMessage: (id: string, reply: string) => Promise<void>;
   closeMessage: (id: string) => Promise<void>;
   fetchAll: () => Promise<void>;
@@ -496,9 +499,7 @@ export const useStore = create<AppState>((set, get) => ({
         .update({ wallet: nw })
         .eq('phone', user.phone)
         .then(({ error }) => {
-          if (error) {
-            console.error('❌ خطأ في تحديث الرصيد:', error);
-          }
+          if (error) console.error('❌ خطأ في تحديث الرصيد:', error);
         });
     }
   },
@@ -562,30 +563,11 @@ export const useStore = create<AppState>((set, get) => ({
 
     const [g, s, o, w, ic, msgs] = await Promise.all([
       supabase.from('garages').select('*'),
-      supabase
-        .from('sessions')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(200),
-      supabase
-        .from('offers')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100),
-      supabase
-        .from('wallet_topups')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100),
-      supabase
-        .from('incoming_cars')
-        .select('*')
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('messages')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50),
+      supabase.from('sessions').select('*').order('created_at', { ascending: false }).limit(200),
+      supabase.from('offers').select('*').order('created_at', { ascending: false }).limit(100),
+      supabase.from('wallet_topups').select('*').order('created_at', { ascending: false }).limit(100),
+      supabase.from('incoming_cars').select('*').order('created_at', { ascending: false }),
+      supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(50),
     ]);
 
     const currentGarages = get().garages;
@@ -602,9 +584,7 @@ export const useStore = create<AppState>((set, get) => ({
     const currentSessions = get().sessions;
 
     const supabaseActivePlates = new Set(
-      supabaseSessions
-        .filter((ss) => ss.status === 'active')
-        .map((ss) => normalizePlate(ss.carPlate))
+      supabaseSessions.filter((ss) => ss.status === 'active').map((ss) => normalizePlate(ss.carPlate))
     );
 
     const localOnlySessions = currentSessions.filter(
@@ -621,54 +601,32 @@ export const useStore = create<AppState>((set, get) => ({
       .map((ss) => {
         const locallyEnded = locallyEndedSessions.get(ss.id);
         if (locallyEnded) {
-          if (ss.status === 'completed') {
-            locallyEndedSessions.delete(ss.id);
-            return ss;
-          }
+          if (ss.status === 'completed') { locallyEndedSessions.delete(ss.id); return ss; }
           return locallyEnded;
         }
 
         const localVersion = currentSessions.find((cs) => cs.id === ss.id);
         if (localVersion) {
-          if (ss.status === 'completed' && localVersion.status === 'active') {
-            return ss;
-          }
+          if (ss.status === 'completed' && localVersion.status === 'active') return ss;
           if (localVersion.status === 'completed') {
-            return {
-              ...localVersion,
-              revenueConfirmed:
-                ss.revenueConfirmed || localVersion.revenueConfirmed,
-            };
+            return { ...localVersion, revenueConfirmed: ss.revenueConfirmed || localVersion.revenueConfirmed };
           }
-          if (localVersion.totalPrice != null && localVersion.totalPrice > 0) {
-            return localVersion;
-          }
+          if (localVersion.totalPrice != null && localVersion.totalPrice > 0) return localVersion;
         }
         return ss;
       });
 
-    const finalSessions = dedupeActiveSessions([
-      ...mergedSessions,
-      ...localOnlySessions,
-    ]);
+    const finalSessions = dedupeActiveSessions([...mergedSessions, ...localOnlySessions]);
 
     const supabaseTopUps = w.data ? w.data.map(mt) : get().walletTopUps;
     const currentTopUps = get().walletTopUps ?? [];
     const mergedTopUps = supabaseTopUps.map((st) => {
       const localVersion = currentTopUps.find((ct) => ct.id === st.id);
-      if (
-        localVersion &&
-        localVersion.status !== 'pending' &&
-        st.status === 'pending'
-      ) {
-        return localVersion;
-      }
+      if (localVersion && localVersion.status !== 'pending' && st.status === 'pending') return localVersion;
       return st;
     });
 
-    const fetchedCars = ic.data
-      ? ic.data.map(mi).filter((c) => c.status === 'coming')
-      : (get().incomingCars ?? []);
+    const fetchedCars = ic.data ? ic.data.map(mi).filter((c) => c.status === 'coming') : (get().incomingCars ?? []);
 
     const currentMessages = get().messages ?? [];
     const supabaseMessages = msgs.data ? msgs.data.map(mm) : currentMessages;
@@ -676,12 +634,8 @@ export const useStore = create<AppState>((set, get) => ({
     const mergedMessages = supabaseMessages.map((sm) => {
       const localVersion = currentMessages.find((cm) => cm.id === sm.id);
       if (localVersion) {
-        if (localVersion.status !== 'pending' && sm.status === 'pending') {
-          return localVersion;
-        }
-        if (sm.status !== 'pending' && localVersion.status === 'pending') {
-          return sm;
-        }
+        if (localVersion.status !== 'pending' && sm.status === 'pending') return localVersion;
+        if (sm.status !== 'pending' && localVersion.status === 'pending') return sm;
         const smTime = sm.repliedAt ?? sm.timestamp;
         const localTime = localVersion.repliedAt ?? localVersion.timestamp;
         if (smTime > localTime) return sm;
@@ -691,10 +645,7 @@ export const useStore = create<AppState>((set, get) => ({
     });
 
     const supabaseMessageIds = new Set(supabaseMessages.map((sm) => sm.id));
-    const localOnlyMessages = currentMessages.filter(
-      (cm) => !supabaseMessageIds.has(cm.id) && cm.status === 'pending'
-    );
-
+    const localOnlyMessages = currentMessages.filter((cm) => !supabaseMessageIds.has(cm.id) && cm.status === 'pending');
     const finalMessages = [...mergedMessages, ...localOnlyMessages];
 
     set({
@@ -710,38 +661,17 @@ export const useStore = create<AppState>((set, get) => ({
     if (user?.phone) {
       try {
         const timeSinceDeduct = Date.now() - walletDeductedAt;
-
         if (timeSinceDeduct < 20000) {
-          const { data } = await supabase
-            .from('users')
-            .select('name, phone, car_plate')
-            .eq('phone', user.phone)
-            .single();
-
+          const { data } = await supabase.from('users').select('name, phone, car_plate').eq('phone', user.phone).single();
           if (data) {
-            const updated = {
-              name: data.name || user.name,
-              phone: data.phone || user.phone,
-              carPlate: data.car_plate || user.carPlate,
-              wallet: user.wallet,
-            };
+            const updated = { name: data.name || user.name, phone: data.phone || user.phone, carPlate: data.car_plate || user.carPlate, wallet: user.wallet };
             set({ currentUser: updated });
             safeSetStorage('currentUser', updated);
           }
         } else {
-          const { data } = await supabase
-            .from('users')
-            .select('wallet, name, phone, car_plate')
-            .eq('phone', user.phone)
-            .single();
-
+          const { data } = await supabase.from('users').select('wallet, name, phone, car_plate').eq('phone', user.phone).single();
           if (data) {
-            const updated = {
-              name: data.name || user.name,
-              phone: data.phone || user.phone,
-              carPlate: data.car_plate || user.carPlate,
-              wallet: Number(data.wallet),
-            };
+            const updated = { name: data.name || user.name, phone: data.phone || user.phone, carPlate: data.car_plate || user.carPlate, wallet: Number(data.wallet) };
             set({ currentUser: updated });
             safeSetStorage('currentUser', updated);
           }
@@ -752,6 +682,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  // ✅ addGarage - مع السياس
   addGarage: async (g) => {
     const { data, error } = await supabase
       .from('garages')
@@ -766,6 +697,13 @@ export const useStore = create<AppState>((set, get) => ({
         available_spots: g.capacity,
         base_price: g.basePrice,
         rating: 4.0,
+        // ✅ السياس
+        valet_name_1: (g as any).valetName1 || '',
+        valet_password_1: (g as any).valetPassword1 || '',
+        valet_name_2: (g as any).valetName2 || '',
+        valet_password_2: (g as any).valetPassword2 || '',
+        valet_name_3: (g as any).valetName3 || '',
+        valet_password_3: (g as any).valetPassword3 || '',
       })
       .select();
     if (!error && data) {
@@ -773,6 +711,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  // ✅ updateGarage - مع السياس
   updateGarage: (id, updates) => {
     set((st) => ({
       garages: st.garages.map((g) =>
@@ -786,9 +725,16 @@ export const useStore = create<AppState>((set, get) => ({
     const db: Record<string, unknown> = { ...existing };
 
     if (updates.basePrice !== undefined) db.base_price = updates.basePrice;
-    if (updates.availableSpots !== undefined)
-      db.available_spots = updates.availableSpots;
+    if (updates.availableSpots !== undefined) db.available_spots = updates.availableSpots;
     if (updates.capacity !== undefined) db.capacity = updates.capacity;
+
+    // ✅ السياس
+    if (updates.valetName1 !== undefined) db.valet_name_1 = updates.valetName1;
+    if (updates.valetPassword1 !== undefined) db.valet_password_1 = updates.valetPassword1;
+    if (updates.valetName2 !== undefined) db.valet_name_2 = updates.valetName2;
+    if (updates.valetPassword2 !== undefined) db.valet_password_2 = updates.valetPassword2;
+    if (updates.valetName3 !== undefined) db.valet_name_3 = updates.valetName3;
+    if (updates.valetPassword3 !== undefined) db.valet_password_3 = updates.valetPassword3;
 
     pendingGarageUpdates.set(id, db);
 
@@ -806,10 +752,7 @@ export const useStore = create<AppState>((set, get) => ({
     set((st) => ({
       garages: st.garages.map((g) => {
         if (g.id !== id) return g;
-        const optimisticSpots = Math.max(
-          0,
-          Math.min(g.capacity, g.availableSpots + delta)
-        );
+        const optimisticSpots = Math.max(0, Math.min(g.capacity, g.availableSpots + delta));
         return { ...g, availableSpots: optimisticSpots };
       }),
     }));
@@ -819,40 +762,18 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const pending = pendingGarageUpdates.get(id);
       if (pending && Object.keys(pending).length > 0) {
-        const { error: flushError } = await supabase
-          .from('garages')
-          .update(pending)
-          .eq('id', id);
-
-        if (flushError) {
-          console.error('❌ خطأ في حفظ التعديل:', flushError);
-          await get().fetchAll();
-          return;
-        }
-
+        const { error: flushError } = await supabase.from('garages').update(pending).eq('id', id);
+        if (flushError) { console.error('❌ خطأ في حفظ التعديل:', flushError); await get().fetchAll(); return; }
         pendingGarageUpdates.delete(id);
-        if (pendingGarageUpdates.size === 0 && updateGarageTimeout) {
-          clearTimeout(updateGarageTimeout);
-          updateGarageTimeout = null;
-        }
+        if (pendingGarageUpdates.size === 0 && updateGarageTimeout) { clearTimeout(updateGarageTimeout); updateGarageTimeout = null; }
       }
 
-      const { data, error } = await supabase.rpc('adjust_spots', {
-        garage_uuid: id,
-        delta: delta,
-      });
-
-      if (error) {
-        console.error('❌ خطأ في تعديل الأماكن:', error);
-        await get().fetchAll();
-        return;
-      }
+      const { data, error } = await supabase.rpc('adjust_spots', { garage_uuid: id, delta });
+      if (error) { console.error('❌ خطأ في تعديل الأماكن:', error); await get().fetchAll(); return; }
 
       const realSpots = Number(data);
       set((st) => ({
-        garages: st.garages.map((g) =>
-          g.id === id ? { ...g, availableSpots: realSpots } : g
-        ),
+        garages: st.garages.map((g) => g.id === id ? { ...g, availableSpots: realSpots } : g),
       }));
     } catch (err) {
       console.error('❌ خطأ غير متوقع في adjustGarageSpots:', err);
@@ -866,15 +787,10 @@ export const useStore = create<AppState>((set, get) => ({
     if (!normalizedPlate) return '';
 
     const sessionId = crypto.randomUUID();
-    const safeStartTime =
-      typeof s.startTime === 'number' && !isNaN(s.startTime)
-        ? s.startTime
-        : Date.now();
+    const safeStartTime = typeof s.startTime === 'number' && !isNaN(s.startTime) ? s.startTime : Date.now();
 
     if (sessionStartLocks.has(normalizedPlate)) {
-      const existing = get().sessions.find(
-        (x) => samePlate(x.carPlate, normalizedPlate) && x.status === 'active'
-      );
+      const existing = get().sessions.find((x) => samePlate(x.carPlate, normalizedPlate) && x.status === 'active');
       return existing?.id ?? '';
     }
 
@@ -882,112 +798,55 @@ export const useStore = create<AppState>((set, get) => ({
     pausePolling(8000);
 
     try {
-      const existingLocal = get().sessions.find(
-        (existing) =>
-          samePlate(existing.carPlate, normalizedPlate) &&
-          existing.status === 'active'
-      );
-
-      if (existingLocal) {
-        return existingLocal.id;
-      }
+      const existingLocal = get().sessions.find((existing) => samePlate(existing.carPlate, normalizedPlate) && existing.status === 'active');
+      if (existingLocal) return existingLocal.id;
 
       if (isSupabaseConfigured()) {
         try {
-          const { data: dbCheck } = await supabase
-            .from('sessions')
-            .select('id, car_plate')
-            .eq('status', 'active')
-            .eq('car_plate', normalizedPlate)
-            .limit(1);
-
+          const { data: dbCheck } = await supabase.from('sessions').select('id, car_plate').eq('status', 'active').eq('car_plate', normalizedPlate).limit(1);
           if (dbCheck && dbCheck.length > 0) {
-            const { data: sessionData } = await supabase
-              .from('sessions')
-              .select('*')
-              .eq('id', dbCheck[0].id)
-              .single();
-
+            const { data: sessionData } = await supabase.from('sessions').select('*').eq('id', dbCheck[0].id).single();
             if (sessionData) {
               const syncedSession = { ...ms(sessionData), synced: true };
               set((st) => {
-                const alreadyExists = st.sessions.find(
-                  (x) => x.id === syncedSession.id
-                );
+                const alreadyExists = st.sessions.find((x) => x.id === syncedSession.id);
                 if (alreadyExists) return st;
-                return {
-                  sessions: dedupeActiveSessions([
-                    syncedSession,
-                    ...st.sessions,
-                  ]),
-                };
+                return { sessions: dedupeActiveSessions([syncedSession, ...st.sessions]) };
               });
             }
             return dbCheck[0].id;
           }
-        } catch (err) {
-          console.error('خطأ في التحقق من DB:', err);
-        }
+        } catch (err) { console.error('خطأ في التحقق من DB:', err); }
       }
 
-      const optimisticSession: ParkingSession = {
-        ...s,
-        id: sessionId,
-        carPlate: normalizedPlate,
-        startTime: safeStartTime,
-        synced: false,
-        revenueConfirmed: false,
-      };
-
-      set((st) => ({
-        sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]),
-      }));
-
+      const optimisticSession: ParkingSession = { ...s, id: sessionId, carPlate: normalizedPlate, startTime: safeStartTime, synced: false, revenueConfirmed: false };
+      set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]) }));
       await get().adjustGarageSpots(s.garageId, -1);
 
       if (!isSupabaseConfigured()) return sessionId;
 
       try {
-        const { data, error } = await supabase
-          .from('sessions')
-          .insert({
-            id: sessionId,
-            garage_id: s.garageId,
-            car_plate: normalizedPlate,
-            start_time: new Date(safeStartTime).toISOString(),
-            status: s.status,
-            source: s.source,
-            agreed_price: s.agreedPrice ?? null,
-            revenue_confirmed: false,
-          })
-          .select()
-          .single();
+        const { data, error } = await supabase.from('sessions').insert({
+          id: sessionId, garage_id: s.garageId, car_plate: normalizedPlate,
+          start_time: new Date(safeStartTime).toISOString(), status: s.status,
+          source: s.source, agreed_price: s.agreedPrice ?? null, revenue_confirmed: false,
+        }).select().single();
 
         if (error) {
           console.error('❌ خطأ في إضافة الجلسة:', error);
-          set((st) => ({
-            sessions: st.sessions.filter((x) => x.id !== sessionId),
-          }));
+          set((st) => ({ sessions: st.sessions.filter((x) => x.id !== sessionId) }));
           await get().adjustGarageSpots(s.garageId, +1);
           return sessionId;
         }
 
         if (data) {
           const syncedSession: ParkingSession = { ...ms(data), synced: true };
-          set((st) => ({
-            sessions: dedupeActiveSessions(
-              st.sessions.map((x) =>
-                x.id === sessionId ? syncedSession : x
-              )
-            ),
-          }));
+          set((st) => ({ sessions: dedupeActiveSessions(st.sessions.map((x) => x.id === sessionId ? syncedSession : x)) }));
           return data.id;
         }
       } catch (err) {
         console.error('❌ خطأ غير متوقع في addSession:', err);
-        set((st) => ({
-          sessions: st.sessions.filter((x) => x.id !== sessionId),
-        }));
+        set((st) => ({ sessions: st.sessions.filter((x) => x.id !== sessionId) }));
         await get().adjustGarageSpots(s.garageId, +1);
       }
 
@@ -1002,15 +861,8 @@ export const useStore = create<AppState>((set, get) => ({
     const now = Date.now();
     const session = get().sessions.find((s) => s.id === id);
 
-    if (!session) {
-      console.error('❌ الجلسة مش موجودة:', id);
-      return;
-    }
-
-    if (session.status !== 'active') {
-      console.warn('⚠️ الجلسة مش نشطة:', session.status);
-      return;
-    }
+    if (!session) { console.error('❌ الجلسة مش موجودة:', id); return; }
+    if (session.status !== 'active') { console.warn('⚠️ الجلسة مش نشطة:', session.status); return; }
 
     const lockKey = `${session.garageId}:${normalizePlate(session.carPlate)}`;
     if (sessionEndLocks.has(lockKey)) return;
@@ -1020,222 +872,109 @@ export const useStore = create<AppState>((set, get) => ({
 
     try {
       const safeTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
-
-      const endedSession: ParkingSession = {
-        ...session,
-        endTime: now,
-        totalPrice: safeTotalPrice,
-        paymentMethod,
-        status: 'completed' as const,
-        revenueConfirmed: false,
-      };
+      const endedSession: ParkingSession = { ...session, endTime: now, totalPrice: safeTotalPrice, paymentMethod, status: 'completed' as const, revenueConfirmed: false };
 
       locallyEndedSessions.set(id, endedSession);
-
-      set((st) => ({
-        sessions: st.sessions.map((s) =>
-          s.id === id ? endedSession : s
-        ),
-      }));
-
+      set((st) => ({ sessions: st.sessions.map((s) => s.id === id ? endedSession : s) }));
       await get().adjustGarageSpots(session.garageId, +1);
 
       if (!isSupabaseConfigured()) return;
 
-      const { error } = await supabase
-        .from('sessions')
-        .update({
-          end_time: new Date(now).toISOString(),
-          total_price: safeTotalPrice,
-          payment_method: paymentMethod,
-          status: 'completed',
-          revenue_confirmed: false,
-        })
-        .eq('id', id)
-        .eq('status', 'active');
+      const { error } = await supabase.from('sessions').update({
+        end_time: new Date(now).toISOString(), total_price: safeTotalPrice,
+        payment_method: paymentMethod, status: 'completed', revenue_confirmed: false,
+      }).eq('id', id).eq('status', 'active');
 
-      if (error) {
-        console.error('❌ خطأ في إنهاء الجلسة:', error);
-      } else {
-        setTimeout(() => {
-          locallyEndedSessions.delete(id);
-        }, 10000);
-      }
+      if (error) { console.error('❌ خطأ في إنهاء الجلسة:', error); }
+      else { setTimeout(() => { locallyEndedSessions.delete(id); }, 10000); }
 
-      setTimeout(() => {
-        get().fetchAll();
-      }, 12000);
+      setTimeout(() => { get().fetchAll(); }, 12000);
     } finally {
-      setTimeout(() => {
-        sessionEndLocks.delete(lockKey);
-      }, 3000);
+      setTimeout(() => { sessionEndLocks.delete(lockKey); }, 3000);
     }
   },
 
   confirmRevenue: async (sessionId) => {
-    set((st) => ({
-      sessions: st.sessions.map((s) =>
-        s.id === sessionId ? { ...s, revenueConfirmed: true } : s
-      ),
-    }));
-
+    set((st) => ({ sessions: st.sessions.map((s) => s.id === sessionId ? { ...s, revenueConfirmed: true } : s) }));
     pausePolling(10000);
-
     if (!isSupabaseConfigured()) return;
-
-    const { error } = await supabase
-      .from('sessions')
-      .update({ revenue_confirmed: true })
-      .eq('id', sessionId);
-
+    const { error } = await supabase.from('sessions').update({ revenue_confirmed: true }).eq('id', sessionId);
     if (error) {
       console.error('❌ خطأ في تأكيد الإيراد:', error);
-      set((st) => ({
-        sessions: st.sessions.map((s) =>
-          s.id === sessionId ? { ...s, revenueConfirmed: false } : s
-        ),
-      }));
+      set((st) => ({ sessions: st.sessions.map((s) => s.id === sessionId ? { ...s, revenueConfirmed: false } : s) }));
     }
   },
 
   unconfirmRevenue: async (sessionId) => {
-    set((st) => ({
-      sessions: st.sessions.map((s) =>
-        s.id === sessionId ? { ...s, revenueConfirmed: false } : s
-      ),
-    }));
-
+    set((st) => ({ sessions: st.sessions.map((s) => s.id === sessionId ? { ...s, revenueConfirmed: false } : s) }));
     pausePolling(10000);
-
     if (!isSupabaseConfigured()) return;
-
-    const { error } = await supabase
-      .from('sessions')
-      .update({ revenue_confirmed: false })
-      .eq('id', sessionId);
-
+    const { error } = await supabase.from('sessions').update({ revenue_confirmed: false }).eq('id', sessionId);
     if (error) {
       console.error('❌ خطأ في إلغاء تأكيد الإيراد:', error);
-      set((st) => ({
-        sessions: st.sessions.map((s) =>
-          s.id === sessionId ? { ...s, revenueConfirmed: true } : s
-        ),
-      }));
+      set((st) => ({ sessions: st.sessions.map((s) => s.id === sessionId ? { ...s, revenueConfirmed: true } : s) }));
     }
   },
 
   cancelSession: (id) => {
     const session = get().sessions.find((s) => s.id === id);
-    set((st) => ({
-      sessions: st.sessions.filter((s) => s.id !== id),
-    }));
-    if (session && session.status === 'active') {
-      get().adjustGarageSpots(session.garageId, +1);
-    }
-    if (isSupabaseConfigured()) {
-      supabase.from('sessions').delete().eq('id', id);
-    }
+    set((st) => ({ sessions: st.sessions.filter((s) => s.id !== id) }));
+    if (session && session.status === 'active') get().adjustGarageSpots(session.garageId, +1);
+    if (isSupabaseConfigured()) supabase.from('sessions').delete().eq('id', id);
   },
 
   removeSession: async (id) => {
     deletedSessionIds.add(id);
     locallyEndedSessions.delete(id);
-
     pausePolling(10000);
 
     const state = get();
     const target = state.sessions.find((s) => s.id === id);
-
     const idsToDelete = new Set<string>();
     idsToDelete.add(id);
 
     if (target) {
       state.sessions.forEach((s) => {
-        if (
-          samePlate(s.carPlate, target.carPlate) &&
-          s.source === 'manual' &&
-          s.status === 'active' &&
-          Math.abs(s.startTime - target.startTime) < 10000
-        ) {
+        if (samePlate(s.carPlate, target.carPlate) && s.source === 'manual' && s.status === 'active' && Math.abs(s.startTime - target.startTime) < 10000) {
           idsToDelete.add(s.id);
           deletedSessionIds.add(s.id);
         }
       });
     }
 
-    const activeDeletedCount = state.sessions.filter(
-      (s) => idsToDelete.has(s.id) && s.status === 'active'
-    ).length;
+    const activeDeletedCount = state.sessions.filter((s) => idsToDelete.has(s.id) && s.status === 'active').length;
+    set({ sessions: state.sessions.filter((s) => !idsToDelete.has(s.id)) });
 
-    set({
-      sessions: state.sessions.filter((s) => !idsToDelete.has(s.id)),
-    });
-
-    if (target && activeDeletedCount > 0) {
-      await get().adjustGarageSpots(target.garageId, activeDeletedCount);
-    }
+    if (target && activeDeletedCount > 0) await get().adjustGarageSpots(target.garageId, activeDeletedCount);
 
     if (isSupabaseConfigured()) {
-      const deletePromises = Array.from(idsToDelete).map((did) =>
-        supabase.from('sessions').delete().eq('id', did)
-      );
+      const deletePromises = Array.from(idsToDelete).map((did) => supabase.from('sessions').delete().eq('id', did));
       await Promise.all(deletePromises);
-
       if (target) {
-        await supabase
-          .from('sessions')
-          .delete()
+        await supabase.from('sessions').delete()
           .eq('car_plate', normalizePlate(target.carPlate))
-          .eq('source', 'manual')
-          .eq('status', 'active')
-          .gte(
-            'start_time',
-            new Date(target.startTime - 10000).toISOString()
-          )
-          .lte(
-            'start_time',
-            new Date(target.startTime + 10000).toISOString()
-          );
+          .eq('source', 'manual').eq('status', 'active')
+          .gte('start_time', new Date(target.startTime - 10000).toISOString())
+          .lte('start_time', new Date(target.startTime + 10000).toISOString());
       }
     }
 
-    setTimeout(() => {
-      idsToDelete.forEach((did) => deletedSessionIds.delete(did));
-    }, 30000);
+    setTimeout(() => { idsToDelete.forEach((did) => deletedSessionIds.delete(did)); }, 30000);
   },
 
   addOffer: (o) => {
     const newO: Offer = { ...o, id: uid(), timestamp: Date.now() };
     set((st) => ({ offers: [newO, ...st.offers] }));
     if (isSupabaseConfigured()) {
-      supabase
-        .from('offers')
-        .insert({
-          garage_id: o.garageId,
-          user_id: o.userId,
-          car_plate: o.carPlate,
-          offered_price: o.offeredPrice,
-          status: o.status,
-        })
-        .select()
-        .single()
-        .then(({ data }) => {
-          if (data)
-            set((st) => ({
-              offers: st.offers.map((x) =>
-                x.id === newO.id ? mo(data) : x
-              ),
-            }));
+      supabase.from('offers').insert({ garage_id: o.garageId, user_id: o.userId, car_plate: o.carPlate, offered_price: o.offeredPrice, status: o.status })
+        .select().single().then(({ data }) => {
+          if (data) set((st) => ({ offers: st.offers.map((x) => x.id === newO.id ? mo(data) : x) }));
         });
     }
   },
 
   updateOffer: (id, status, counterPrice) => {
-    set((st) => ({
-      offers: st.offers.map((o) =>
-        o.id === id ? { ...o, status, counterPrice } : o
-      ),
-    }));
+    set((st) => ({ offers: st.offers.map((o) => o.id === id ? { ...o, status, counterPrice } : o) }));
     if (isSupabaseConfigured()) {
       const u: Record<string, unknown> = { status };
       if (counterPrice !== undefined) u.counter_price = counterPrice;
@@ -1245,180 +984,77 @@ export const useStore = create<AppState>((set, get) => ({
 
   cancelOffer: (id) => {
     set((st) => ({ offers: st.offers.filter((o) => o.id !== id) }));
-    if (isSupabaseConfigured()) {
-      supabase.from('offers').delete().eq('id', id);
-    }
+    if (isSupabaseConfigured()) supabase.from('offers').delete().eq('id', id);
   },
 
   addWalletTopUp: (w) => {
-    const newW: WalletTopUp = {
-      ...w,
-      id: uid(),
-      status: 'pending',
-      timestamp: Date.now(),
-    };
+    const newW: WalletTopUp = { ...w, id: uid(), status: 'pending', timestamp: Date.now() };
     set((st) => ({ walletTopUps: [newW, ...st.walletTopUps] }));
     if (isSupabaseConfigured()) {
-      supabase
-        .from('wallet_topups')
-        .insert({
-          user_id: w.userId,
-          user_name: w.userName,
-          user_phone: w.userPhone,
-          amount: w.amount,
-          transaction_id: w.transactionId,
-          car_plate: w.carPlate,
-          method: w.method,
-        })
-        .select()
-        .single()
-        .then(({ data }) => {
-          if (data)
-            set((st) => ({
-              walletTopUps: st.walletTopUps.map((x) =>
-                x.id === newW.id ? mt(data) : x
-              ),
-            }));
-        });
+      supabase.from('wallet_topups').insert({
+        user_id: w.userId, user_name: w.userName, user_phone: w.userPhone,
+        amount: w.amount, transaction_id: w.transactionId, car_plate: w.carPlate, method: w.method,
+      }).select().single().then(({ data }) => {
+        if (data) set((st) => ({ walletTopUps: st.walletTopUps.map((x) => x.id === newW.id ? mt(data) : x) }));
+      });
     }
   },
 
-  // ✅ approveTopUp - محدّثة ومصلّحة
+  // ✅ approveTopUp
   approveTopUp: async (id) => {
     const topUp = get().walletTopUps.find((w) => w.id === id);
     if (!topUp) return;
 
-    // ✅ تحديث محلي فوري
-    set((st) => ({
-      walletTopUps: st.walletTopUps.map((w) =>
-        w.id === id ? { ...w, status: 'approved' as const } : w
-      ),
-    }));
-
+    set((st) => ({ walletTopUps: st.walletTopUps.map((w) => w.id === id ? { ...w, status: 'approved' as const } : w) }));
     if (!isSupabaseConfigured()) return;
 
-    // ✅ هات الصف الحقيقي من Supabase بالـ transaction_id
     let dbRow: any = null;
-
     if (topUp.transactionId) {
-      const { data } = await supabase
-        .from('wallet_topups')
-        .select('id, user_id, user_phone, amount, status')
-        .eq('transaction_id', topUp.transactionId)
-        .maybeSingle();
+      const { data } = await supabase.from('wallet_topups').select('id, user_id, user_phone, amount, status').eq('transaction_id', topUp.transactionId).maybeSingle();
       if (data) dbRow = data;
     }
-
-    // fallback بالـ id
     if (!dbRow) {
-      const { data } = await supabase
-        .from('wallet_topups')
-        .select('id, user_id, user_phone, amount, status')
-        .eq('id', id)
-        .maybeSingle();
+      const { data } = await supabase.from('wallet_topups').select('id, user_id, user_phone, amount, status').eq('id', id).maybeSingle();
       if (data) dbRow = data;
     }
-
-    if (!dbRow) {
-      console.error('❌ الطلب مش موجود في Supabase:', { id, transactionId: topUp.transactionId });
-      return;
-    }
+    if (!dbRow) { console.error('❌ الطلب مش موجود:', { id, transactionId: topUp.transactionId }); return; }
 
     const supabaseId = dbRow.id;
-
-    // ✅ حدّث الحالة بالـ ID الحقيقي
-    const { error: approveError } = await supabase
-      .from('wallet_topups')
-      .update({ status: 'approved' })
-      .eq('id', supabaseId);
-
+    const { error: approveError } = await supabase.from('wallet_topups').update({ status: 'approved' }).eq('id', supabaseId);
     if (approveError) {
       console.error('❌ فشل الاعتماد:', approveError);
-      // rollback
-      set((st) => ({
-        walletTopUps: st.walletTopUps.map((w) =>
-          w.id === id ? { ...w, status: 'pending' as const } : w
-        ),
-      }));
+      set((st) => ({ walletTopUps: st.walletTopUps.map((w) => w.id === id ? { ...w, status: 'pending' as const } : w) }));
       return;
     }
 
-    // ✅ حدّث الـ local state بالـ ID الحقيقي
-    set((st) => ({
-      walletTopUps: st.walletTopUps.map((w) =>
-        w.id === id ? { ...w, id: supabaseId, status: 'approved' as const } : w
-      ),
-    }));
+    set((st) => ({ walletTopUps: st.walletTopUps.map((w) => w.id === id ? { ...w, id: supabaseId, status: 'approved' as const } : w) }));
 
-    // ✅ دور على المستخدم وحدّث محفظته
     const realUserId = dbRow.user_id || topUp.userId || '';
     const realUserPhone = dbRow.user_phone || topUp.userPhone || '';
-
     let userData: any = null;
 
-    // 1) بالـ phone أولاً (الأضمن)
     if (realUserPhone) {
-      const { data } = await supabase
-        .from('users')
-        .select('id, phone, wallet')
-        .eq('phone', realUserPhone)
-        .maybeSingle();
+      const { data } = await supabase.from('users').select('id, phone, wallet').eq('phone', realUserPhone).maybeSingle();
       if (data) userData = data;
     }
-
-    // 2) بالـ id لو UUID حقيقي
     if (!userData && realUserId && realUserId.includes('-')) {
-      const { data } = await supabase
-        .from('users')
-        .select('id, phone, wallet')
-        .eq('id', realUserId)
-        .maybeSingle();
+      const { data } = await supabase.from('users').select('id, phone, wallet').eq('id', realUserId).maybeSingle();
       if (data) userData = data;
     }
-
-    // 3) user_id كـ phone (حالة قديمة)
     if (!userData && realUserId && !realUserId.includes('-')) {
-      const { data } = await supabase
-        .from('users')
-        .select('id, phone, wallet')
-        .eq('phone', realUserId)
-        .maybeSingle();
+      const { data } = await supabase.from('users').select('id, phone, wallet').eq('phone', realUserId).maybeSingle();
       if (data) userData = data;
     }
-
-    if (!userData) {
-      console.error('❌ المستخدم مش موجود:', { realUserId, realUserPhone });
-      return;
-    }
+    if (!userData) { console.error('❌ المستخدم مش موجود:', { realUserId, realUserPhone }); return; }
 
     const amount = Number(dbRow.amount || topUp.amount || 0);
     const newWallet = Number(userData.wallet || 0) + amount;
 
-    // ✅ حدّث الرصيد في Supabase
-    const { error: walletError } = await supabase
-      .from('users')
-      .update({ wallet: newWallet })
-      .eq('id', userData.id);
+    const { error: walletError } = await supabase.from('users').update({ wallet: newWallet }).eq('id', userData.id);
+    if (walletError) { console.error('❌ خطأ في تحديث المحفظة:', walletError); return; }
 
-    if (walletError) {
-      console.error('❌ خطأ في تحديث المحفظة:', walletError);
-      return;
-    }
-
-    console.log('✅ تم الاعتماد وتحديث المحفظة:', {
-      user: userData.phone,
-      oldWallet: userData.wallet,
-      added: amount,
-      newWallet,
-    });
-
-    // ✅ حدّث العميل المفتوح
     const currentUser = get().currentUser;
-    if (
-      currentUser &&
-      (currentUser.phone === userData.phone ||
-       (currentUser as any).id === userData.id)
-    ) {
+    if (currentUser && (currentUser.phone === userData.phone || (currentUser as any).id === userData.id)) {
       const updated = { ...currentUser, wallet: newWallet };
       set({ currentUser: updated });
       safeSetStorage('currentUser', updated);
@@ -1429,238 +1065,96 @@ export const useStore = create<AppState>((set, get) => ({
     const topUp = get().walletTopUps.find((w) => w.id === id);
     if (!topUp) return;
 
-    set((st) => ({
-      walletTopUps: st.walletTopUps.map((w) =>
-        w.id === id ? { ...w, status: 'rejected' as const } : w
-      ),
-    }));
-
+    set((st) => ({ walletTopUps: st.walletTopUps.map((w) => w.id === id ? { ...w, status: 'rejected' as const } : w) }));
     if (!isSupabaseConfigured()) return;
 
-    // ✅ دور على الـ ID الحقيقي
     let supabaseId = id;
-
     if (topUp.transactionId) {
-      const { data } = await supabase
-        .from('wallet_topups')
-        .select('id')
-        .eq('transaction_id', topUp.transactionId)
-        .maybeSingle();
+      const { data } = await supabase.from('wallet_topups').select('id').eq('transaction_id', topUp.transactionId).maybeSingle();
       if (data) supabaseId = data.id;
     }
 
-    const { error } = await supabase
-      .from('wallet_topups')
-      .update({ status: 'rejected' })
-      .eq('id', supabaseId);
+    const { error } = await supabase.from('wallet_topups').update({ status: 'rejected' }).eq('id', supabaseId);
+    if (error) { console.error('❌ خطأ في رفض الشحن:', error); return; }
 
-    if (error) {
-      console.error('❌ خطأ في رفض الشحن:', error);
-      return;
-    }
-
-    // ✅ حدّث الـ ID المحلي
     if (supabaseId !== id) {
-      set((st) => ({
-        walletTopUps: st.walletTopUps.map((w) =>
-          w.id === id ? { ...w, id: supabaseId, status: 'rejected' as const } : w
-        ),
-      }));
+      set((st) => ({ walletTopUps: st.walletTopUps.map((w) => w.id === id ? { ...w, id: supabaseId, status: 'rejected' as const } : w) }));
     }
   },
 
   addIncomingCar: async (c) => {
     const incomingId = crypto.randomUUID();
-
-    const newC: IncomingCar = {
-      ...c,
-      id: incomingId,
-      startTime: Date.now(),
-      status: 'coming',
-    };
-
+    const newC: IncomingCar = { ...c, id: incomingId, startTime: Date.now(), status: 'coming' };
     set((st) => ({ incomingCars: [newC, ...st.incomingCars] }));
-
     if (!isSupabaseConfigured()) return;
-
     try {
-      const { data, error } = await supabase
-        .from('incoming_cars')
-        .insert({
-          id: incomingId,
-          garage_id: c.garageId,
-          car_plate: c.carPlate,
-          customer_name: c.customerName,
-          customer_phone: c.customerPhone,
-          agreed_price: c.agreedPrice,
-          estimated_arrival: c.estimatedArrival,
-        })
-        .select()
-        .single();
-
-      if (error) {
-        console.error('❌ خطأ في addIncomingCar:', error);
-        set((st) => ({
-          incomingCars: st.incomingCars.filter((x) => x.id !== incomingId),
-        }));
-        return;
-      }
-
-      if (data) {
-        set((st) => ({
-          incomingCars: st.incomingCars.map((x) =>
-            x.id === incomingId ? mi(data) : x
-          ),
-        }));
-      }
+      const { data, error } = await supabase.from('incoming_cars').insert({
+        id: incomingId, garage_id: c.garageId, car_plate: c.carPlate,
+        customer_name: c.customerName, customer_phone: c.customerPhone,
+        agreed_price: c.agreedPrice, estimated_arrival: c.estimatedArrival,
+      }).select().single();
+      if (error) { console.error('❌ خطأ في addIncomingCar:', error); set((st) => ({ incomingCars: st.incomingCars.filter((x) => x.id !== incomingId) })); return; }
+      if (data) set((st) => ({ incomingCars: st.incomingCars.map((x) => x.id === incomingId ? mi(data) : x) }));
     } catch (err) {
       console.error('❌ خطأ غير متوقع في addIncomingCar:', err);
-      set((st) => ({
-        incomingCars: st.incomingCars.filter((x) => x.id !== incomingId),
-      }));
+      set((st) => ({ incomingCars: st.incomingCars.filter((x) => x.id !== incomingId) }));
     }
   },
 
   removeIncomingCar: async (id) => {
     let savedCarPlate = '';
     let savedGarageId = '';
-
     set((st) => {
       const found = st.incomingCars.find((c) => c.id === id);
-      if (found) {
-        savedCarPlate = found.carPlate;
-        savedGarageId = found.garageId;
-      }
-      return {
-        incomingCars: st.incomingCars.filter((c) => c.id !== id),
-      };
+      if (found) { savedCarPlate = found.carPlate; savedGarageId = found.garageId; }
+      return { incomingCars: st.incomingCars.filter((c) => c.id !== id) };
     });
-
     if (!isSupabaseConfigured()) return;
-
     try {
       await supabase.from('incoming_cars').delete().eq('id', id);
-
       if (savedCarPlate && savedGarageId) {
-        await supabase
-          .from('incoming_cars')
-          .delete()
-          .eq('car_plate', savedCarPlate)
-          .eq('garage_id', savedGarageId);
+        await supabase.from('incoming_cars').delete().eq('car_plate', savedCarPlate).eq('garage_id', savedGarageId);
       }
-    } catch (err) {
-      console.error('❌ خطأ في removeIncomingCar:', err);
-    }
-
-    setTimeout(() => {
-      get().fetchAll();
-    }, 1000);
+    } catch (err) { console.error('❌ خطأ في removeIncomingCar:', err); }
+    setTimeout(() => { get().fetchAll(); }, 1000);
   },
 
   addMessage: async (msg) => {
-    const optimisticMessage: Message = {
-      ...msg,
-      id: uid(),
-      status: 'pending',
-      timestamp: Date.now(),
-    };
-
-    set((st) => ({
-      messages: [optimisticMessage, ...(st.messages ?? [])],
-    }));
-
-    if (!isSupabaseConfigured()) {
-      return { success: true };
-    }
-
+    const optimisticMessage: Message = { ...msg, id: uid(), status: 'pending', timestamp: Date.now() };
+    set((st) => ({ messages: [optimisticMessage, ...(st.messages ?? [])] }));
+    if (!isSupabaseConfigured()) return { success: true };
     try {
-      const { data, error } = await supabase
-        .from('messages')
-        .insert({
-          user_phone: msg.userPhone,
-          user_name: msg.userName ?? null,
-          car_plate: msg.carPlate ?? null,
-          type: msg.type,
-          subject: msg.subject ?? null,
-          message: msg.message,
-        })
-        .select()
-        .single();
-
+      const { data, error } = await supabase.from('messages').insert({
+        user_phone: msg.userPhone, user_name: msg.userName ?? null,
+        car_plate: msg.carPlate ?? null, type: msg.type,
+        subject: msg.subject ?? null, message: msg.message,
+      }).select().single();
       if (error) {
         console.error('❌ Supabase addMessage error:', error);
-        set((st) => ({
-          messages: (st.messages ?? []).filter(
-            (m) => m.id !== optimisticMessage.id
-          ),
-        }));
-        return {
-          success: false,
-          error: error.message || 'فشل إرسال الرسالة',
-        };
+        set((st) => ({ messages: (st.messages ?? []).filter((m) => m.id !== optimisticMessage.id) }));
+        return { success: false, error: error.message || 'فشل إرسال الرسالة' };
       }
-
-      if (data) {
-        set((st) => ({
-          messages: (st.messages ?? []).map((m) =>
-            m.id === optimisticMessage.id ? mm(data) : m
-          ),
-        }));
-      }
-
+      if (data) set((st) => ({ messages: (st.messages ?? []).map((m) => m.id === optimisticMessage.id ? mm(data) : m) }));
       return { success: true };
     } catch (err) {
       console.error('❌ Unexpected addMessage error:', err);
-      set((st) => ({
-        messages: (st.messages ?? []).filter(
-          (m) => m.id !== optimisticMessage.id
-        ),
-      }));
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : 'حدث خطأ غير متوقع',
-      };
+      set((st) => ({ messages: (st.messages ?? []).filter((m) => m.id !== optimisticMessage.id) }));
+      return { success: false, error: err instanceof Error ? err.message : 'حدث خطأ غير متوقع' };
     }
   },
 
   replyMessage: async (id, reply) => {
     const now = Date.now();
-    set((st) => ({
-      messages: (st.messages ?? []).map((msg) =>
-        msg.id === id
-          ? { ...msg, reply, status: 'replied' as const, repliedAt: now }
-          : msg
-      ),
-    }));
-
+    set((st) => ({ messages: (st.messages ?? []).map((msg) => msg.id === id ? { ...msg, reply, status: 'replied' as const, repliedAt: now } : msg) }));
     if (!isSupabaseConfigured()) return;
-
-    const { error } = await supabase
-      .from('messages')
-      .update({
-        reply,
-        status: 'replied',
-        replied_at: new Date(now).toISOString(),
-      })
-      .eq('id', id);
-
+    const { error } = await supabase.from('messages').update({ reply, status: 'replied', replied_at: new Date(now).toISOString() }).eq('id', id);
     if (error) console.error('❌ خطأ في إرسال الرد:', error);
   },
 
   closeMessage: async (id) => {
-    set((st) => ({
-      messages: (st.messages ?? []).map((msg) =>
-        msg.id === id ? { ...msg, status: 'closed' as const } : msg
-      ),
-    }));
-
+    set((st) => ({ messages: (st.messages ?? []).map((msg) => msg.id === id ? { ...msg, status: 'closed' as const } : msg) }));
     if (!isSupabaseConfigured()) return;
-
-    const { error } = await supabase
-      .from('messages')
-      .update({ status: 'closed' })
-      .eq('id', id);
-
+    const { error } = await supabase.from('messages').update({ status: 'closed' }).eq('id', id);
     if (error) console.error('❌ خطأ في إغلاق الرسالة:', error);
   },
 }));
@@ -1686,16 +1180,11 @@ export function setupRealtime() {
 
   if (pollingInterval) clearInterval(pollingInterval);
   pollingInterval = setInterval(() => {
-    if (!isOperationInProgress) {
-      useStore.getState().fetchAll();
-    }
+    if (!isOperationInProgress) useStore.getState().fetchAll();
   }, 5000);
 
   window.addEventListener('beforeunload', () => {
-    if (pollingInterval) {
-      clearInterval(pollingInterval);
-      pollingInterval = null;
-    }
+    if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; }
   });
 
   if (!isSupabaseConfigured()) return;
@@ -1726,22 +1215,9 @@ export function setupRealtime() {
   const channelName = `parkn24_${Math.random().toString(36).slice(2, 8)}`;
   const channel = supabase.channel(channelName);
 
-  const tables = [
-    'sessions',
-    'offers',
-    'incoming_cars',
-    'garages',
-    'wallet_topups',
-    'users',
-    'messages',
-  ];
-
+  const tables = ['sessions', 'offers', 'incoming_cars', 'garages', 'wallet_topups', 'users', 'messages'];
   tables.forEach((table) => {
-    channel.on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table },
-      refresh
-    );
+    channel.on('postgres_changes', { event: '*', schema: 'public', table }, refresh);
   });
 
   channel.subscribe((status) => {
