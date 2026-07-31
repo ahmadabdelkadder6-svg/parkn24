@@ -32,7 +32,6 @@ const VALID_SCREENS = [
   'chat',
 ] as const;
 
-// ✅ الرابط السري للأدمن - غيّره لأي كلمة تحبها
 const ADMIN_SECRET_CODE = 'admin2025x';
 
 export default function App() {
@@ -43,6 +42,7 @@ export default function App() {
     setScreen,
     currentUser,
     currentGarageId,
+    setCurrentGarageId,
     sessions,
     selectedGarageId,
     setSelectedGarageId,
@@ -82,7 +82,6 @@ export default function App() {
 
   const safeScreen = useMemo(() => {
     if (!VALID_SCREENS.includes(screen as any)) {
-      console.warn('⚠️ شاشة غير صالحة:', screen, '→ تحويل لـ list');
       return currentUser ? 'list' : 'splash';
     }
     return screen;
@@ -91,7 +90,6 @@ export default function App() {
   useEffect(() => {
     if (!dataLoaded) return;
     if (view !== 'user') return;
-
     if (safeScreen !== screen) {
       setScreen(safeScreen as typeof screen);
     }
@@ -109,7 +107,6 @@ export default function App() {
       ) {
         localStorage.removeItem('appScreen');
       }
-
       await fetchAll();
       setDataLoaded(true);
       initialLoadDone.current = true;
@@ -126,15 +123,11 @@ export default function App() {
     const userPlate = (currentUser.carPlate ?? '').trim().toUpperCase();
 
     const myActiveSession = sessions.find(
-      (s) =>
-        s.carPlate.trim().toUpperCase() === userPlate &&
-        s.status === 'active'
+      (s) => s.carPlate.trim().toUpperCase() === userPlate && s.status === 'active'
     );
 
     const myIncoming = incomingCars.find(
-      (c) =>
-        c.carPlate.trim().toUpperCase() === userPlate &&
-        c.status === 'coming'
+      (c) => c.carPlate.trim().toUpperCase() === userPlate && c.status === 'coming'
     );
 
     if (myActiveSession) {
@@ -151,27 +144,15 @@ export default function App() {
 
     if (myIncoming) {
       setSelectedGarageId(myIncoming.garageId);
-      if (
-        safeScreen !== 'navigation' &&
-        safeScreen !== 'session' &&
-        safeScreen !== 'summary'
-      ) {
+      if (safeScreen !== 'navigation' && safeScreen !== 'session' && safeScreen !== 'summary') {
         setScreen('navigation');
       }
       return;
     }
 
-    if (
-      safeScreen === 'session' ||
-      safeScreen === 'navigation' ||
-      safeScreen === 'waiting'
-    ) {
+    if (safeScreen === 'session' || safeScreen === 'navigation' || safeScreen === 'waiting') {
       const lastCompleted = sessions
-        .filter(
-          (s) =>
-            s.carPlate.trim().toUpperCase() === userPlate &&
-            s.status === 'completed'
-        )
+        .filter((s) => s.carPlate.trim().toUpperCase() === userPlate && s.status === 'completed')
         .sort((a, b) => {
           const endA = typeof a.endTime === 'number' ? a.endTime : 0;
           const endB = typeof b.endTime === 'number' ? b.endTime : 0;
@@ -179,12 +160,8 @@ export default function App() {
         })[0];
 
       if (lastCompleted) {
-        const endTime =
-          typeof lastCompleted.endTime === 'number'
-            ? lastCompleted.endTime
-            : 0;
+        const endTime = typeof lastCompleted.endTime === 'number' ? lastCompleted.endTime : 0;
         const timeSinceEnd = Date.now() - endTime;
-
         if (endTime > 0 && timeSinceEnd < 60000) {
           setSelectedGarageId(lastCompleted.garageId);
           setScreen('summary');
@@ -204,15 +181,11 @@ export default function App() {
     const userPlate = (currentUser.carPlate ?? '').trim().toUpperCase();
 
     const myActiveSession = sessions.find(
-      (s) =>
-        s.carPlate.trim().toUpperCase() === userPlate &&
-        s.status === 'active'
+      (s) => s.carPlate.trim().toUpperCase() === userPlate && s.status === 'active'
     );
 
     const myIncoming = incomingCars.find(
-      (c) =>
-        c.carPlate.trim().toUpperCase() === userPlate &&
-        c.status === 'coming'
+      (c) => c.carPlate.trim().toUpperCase() === userPlate && c.status === 'coming'
     );
 
     if (myActiveSession) {
@@ -228,13 +201,7 @@ export default function App() {
       if (myActiveSession.id !== prevActiveSessionRef.current) {
         prevActiveSessionRef.current = myActiveSession.id;
         setSelectedGarageId(myActiveSession.garageId);
-
-        if (
-          safeScreen !== 'session' &&
-          safeScreen !== 'summary' &&
-          safeScreen !== 'lastSession' &&
-          safeScreen !== 'chat'
-        ) {
+        if (safeScreen !== 'session' && safeScreen !== 'summary' && safeScreen !== 'lastSession' && safeScreen !== 'chat') {
           setScreen('session');
         }
       }
@@ -243,7 +210,6 @@ export default function App() {
 
     if (prevActiveSessionRef.current) {
       noSessionCountRef.current += 1;
-
       const timeSinceLastActive = Date.now() - lastActiveTimeRef.current;
 
       if (noSessionCountRef.current < 3 || timeSinceLastActive < 8000) {
@@ -254,16 +220,11 @@ export default function App() {
 
       sessionTransitionTimer.current = setTimeout(() => {
         sessionTransitionTimer.current = null;
-
         const freshState = useStore.getState();
-        const freshPlate = (freshState.currentUser?.carPlate ?? '')
-          .trim()
-          .toUpperCase();
+        const freshPlate = (freshState.currentUser?.carPlate ?? '').trim().toUpperCase();
 
         const stillActive = freshState.sessions.find(
-          (s) =>
-            s.carPlate.trim().toUpperCase() === freshPlate &&
-            s.status === 'active'
+          (s) => s.carPlate.trim().toUpperCase() === freshPlate && s.status === 'active'
         );
 
         if (stillActive) {
@@ -276,17 +237,9 @@ export default function App() {
         prevActiveSessionRef.current = null;
         noSessionCountRef.current = 0;
 
-        if (
-          currentScreen === 'session' ||
-          currentScreen === 'navigation' ||
-          currentScreen === 'waiting'
-        ) {
+        if (currentScreen === 'session' || currentScreen === 'navigation' || currentScreen === 'waiting') {
           const lastCompleted = freshState.sessions
-            .filter(
-              (s) =>
-                s.carPlate.trim().toUpperCase() === freshPlate &&
-                s.status === 'completed'
-            )
+            .filter((s) => s.carPlate.trim().toUpperCase() === freshPlate && s.status === 'completed')
             .sort((a, b) => {
               const endA = typeof a.endTime === 'number' ? a.endTime : 0;
               const endB = typeof b.endTime === 'number' ? b.endTime : 0;
@@ -294,12 +247,8 @@ export default function App() {
             })[0];
 
           if (lastCompleted) {
-            const endTime =
-              typeof lastCompleted.endTime === 'number'
-                ? lastCompleted.endTime
-                : 0;
+            const endTime = typeof lastCompleted.endTime === 'number' ? lastCompleted.endTime : 0;
             const timeSinceEnd = Date.now() - endTime;
-
             if (endTime > 0 && timeSinceEnd < 60000) {
               setSelectedGarageId(lastCompleted.garageId);
               setScreen('summary');
@@ -320,19 +269,13 @@ export default function App() {
     if (!myActiveSession && safeScreen === 'navigation' && !myIncoming) {
       const timeout = setTimeout(() => {
         const freshState = useStore.getState();
-        const freshPlate = (freshState.currentUser?.carPlate ?? '')
-          .trim()
-          .toUpperCase();
+        const freshPlate = (freshState.currentUser?.carPlate ?? '').trim().toUpperCase();
 
         const freshIncoming = freshState.incomingCars.find(
-          (c) =>
-            c.carPlate.trim().toUpperCase() === freshPlate &&
-            c.status === 'coming'
+          (c) => c.carPlate.trim().toUpperCase() === freshPlate && c.status === 'coming'
         );
         const freshSession = freshState.sessions.find(
-          (s) =>
-            s.carPlate.trim().toUpperCase() === freshPlate &&
-            s.status === 'active'
+          (s) => s.carPlate.trim().toUpperCase() === freshPlate && s.status === 'active'
         );
 
         if (!freshIncoming && !freshSession) {
@@ -343,16 +286,7 @@ export default function App() {
 
       return () => clearTimeout(timeout);
     }
-  }, [
-    sessions,
-    currentUser,
-    view,
-    safeScreen,
-    incomingCars,
-    dataLoaded,
-    setScreen,
-    setSelectedGarageId,
-  ]);
+  }, [sessions, currentUser, view, safeScreen, incomingCars, dataLoaded, setScreen, setSelectedGarageId]);
 
   useEffect(() => {
     return () => {
@@ -368,38 +302,45 @@ export default function App() {
         className="max-w-md mx-auto h-dvh bg-white text-slate-900 relative flex flex-col overflow-hidden"
         style={{ fontFamily: "'Cairo', sans-serif" }}
       >
-       <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-white/90 p-0.5 rounded-full backdrop-blur-md border border-slate-200 shadow-sm">
-  {[
-    { id: 'user' as const, label: 'حريف', show: true },
-    { id: 'garage' as const, label: 'جراج', show: true },
-    { id: 'admin' as const, label: 'أدمن', show: adminAccess },
-  ]
-    .filter((tab) => tab.show)
-    .map((tab) => (
-      <button
-        key={tab.id}
-onClick={() => {
-  if (tab.id === 'garage') {
-    localStorage.removeItem('garageRole');
-    localStorage.removeItem('valetNumber');
-    localStorage.removeItem('valetName');
-    localStorage.removeItem('currentGarageId');
-  }
-  setView(tab.id);
-}}
-        className={cn(
-          'px-3 py-1.5 rounded-full text-[10px] font-black transition-all',
-          view === tab.id
-            ? tab.id === 'admin'
-              ? 'bg-purple-600 text-white'
-              : 'bg-blue-600 text-white'
-            : 'text-slate-600'
-        )}
-      >
-        {tab.label}
-      </button>
-    ))}
-</div>
+        {/* ══════ التبويبات العلوية ══════ */}
+        <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-white/90 p-0.5 rounded-full backdrop-blur-md border border-slate-200 shadow-sm">
+          {[
+            { id: 'user' as const, label: 'حريف', show: true },
+            { id: 'garage' as const, label: 'جراج', show: true },
+            { id: 'admin' as const, label: 'أدمن', show: adminAccess },
+          ]
+            .filter((tab) => tab.show)
+            .map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  // ✅ لو ضغط جراج → امسح كل البيانات القديمة
+                  if (tab.id === 'garage') {
+                    localStorage.removeItem('currentGarageId');
+                    localStorage.removeItem('garageRole');
+                    localStorage.removeItem('valetNumber');
+                    localStorage.removeItem('valetName');
+                    localStorage.removeItem('garagePrefillUsername');
+                    localStorage.removeItem('garagePrefillPhone');
+                    setCurrentGarageId(null);
+                  }
+                  setView(tab.id);
+                }}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-[10px] font-black transition-all',
+                  view === tab.id
+                    ? tab.id === 'admin'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-blue-600 text-white'
+                    : 'text-slate-600'
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+        </div>
+
+        {/* ══════ المحتوى الرئيسي ══════ */}
         <main className="flex-1 overflow-hidden bg-white">
           {!dataLoaded ? (
             <div className="h-full bg-white flex flex-col items-center justify-center">
@@ -410,9 +351,14 @@ onClick={() => {
             </div>
           ) : view === 'admin' && adminAccess ? (
             <AdminDashboard />
-         ) : view === 'garage' ? (
-  <GarageLoginScreen />
-) : (
+          ) : view === 'garage' ? (
+            // ✅ لو currentGarageId موجود → Dashboard، لو لأ → Login
+            currentGarageId ? (
+              <GarageDashboard />
+            ) : (
+              <GarageLoginScreen />
+            )
+          ) : (
             <AnimatePresence mode="wait">
               <motion.div
                 key={safeScreen}

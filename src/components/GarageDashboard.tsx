@@ -10,7 +10,6 @@ import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
 import { subscribeToPush, refreshPushSubscriptionIfNeeded } from '../lib/pushManager';
-import InstallPWABanner from './InstallPWABanner';
 
 const UNDO_TIMEOUT_SECONDS = 30;
 
@@ -278,7 +277,6 @@ export default function GarageDashboard() {
         {isValet && <div style={{ width: 48 }} />}
       </div>
 
-      <InstallPWABanner />
 
       {/* ══════ Settings Modal - للمالك فقط ══════ */}
       {isOwner && showSettings && (
