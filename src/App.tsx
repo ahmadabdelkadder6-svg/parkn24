@@ -378,15 +378,15 @@ export default function App() {
     .map((tab) => (
       <button
         key={tab.id}
-        onClick={() => {
-          // ✅ لو ضغط على جراج - امسح بيانات السايس عشان يظهر Login Screen
-          if (tab.id === 'garage') {
-            localStorage.removeItem('garageRole');
-            localStorage.removeItem('valetNumber');
-            localStorage.removeItem('valetName');
-          }
-          setView(tab.id);
-        }}
+onClick={() => {
+  if (tab.id === 'garage') {
+    localStorage.removeItem('garageRole');
+    localStorage.removeItem('valetNumber');
+    localStorage.removeItem('valetName');
+    localStorage.removeItem('currentGarageId');
+  }
+  setView(tab.id);
+}}
         className={cn(
           'px-3 py-1.5 rounded-full text-[10px] font-black transition-all',
           view === tab.id
