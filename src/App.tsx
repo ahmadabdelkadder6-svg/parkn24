@@ -410,13 +410,9 @@ export default function App() {
             </div>
           ) : view === 'admin' && adminAccess ? (
             <AdminDashboard />
-          ) : view === 'garage' ? (
-            currentGarageId ? (
-              <GarageDashboard />
-            ) : (
-              <GarageLoginScreen />
-            )
-          ) : (
+         ) : view === 'garage' ? (
+  <GarageLoginScreen />
+) : (
             <AnimatePresence mode="wait">
               <motion.div
                 key={safeScreen}
