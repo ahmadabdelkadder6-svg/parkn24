@@ -1,3 +1,4 @@
+// v2.0 - valet support
 import { useState } from 'react';
 import { Phone, User, Shield, HardHat } from 'lucide-react';
 import { useStore } from '../store';
