@@ -1,5 +1,5 @@
 // v2.0 - valet support
-import { useState } from 'react';F
+import { useState } from 'react';
 import { Phone, User, Shield, HardHat } from 'lucide-react';
 import { useStore } from '../store';
 import toast from 'react-hot-toast';
@@ -22,7 +22,6 @@ export default function GarageLoginScreen() {
     }
 
     if (role === 'valet') {
-      // ✅ تحقق من الـ 3 باسوردات
       const pw = valetPassword.trim();
       let valetNumber = 0;
       let valetName = '';
@@ -43,20 +42,19 @@ export default function GarageLoginScreen() {
         return;
       }
 
-      // ✅ حفظ بيانات السايس
       localStorage.setItem('garageRole', 'valet');
       localStorage.setItem('valetNumber', String(valetNumber));
       localStorage.setItem('valetName', valetName);
 
       setCurrentGarageId(found.id);
       setView('garage');
+
       toast.success(
         valetName
           ? `✅ مرحباً ${valetName} - سايس ${valetNumber}`
           : `✅ تم الدخول كسايس ${valetNumber}`
       );
     } else {
-      // ✅ دخول كمالك
       localStorage.setItem('garageRole', 'owner');
       localStorage.removeItem('valetNumber');
       localStorage.removeItem('valetName');
@@ -67,13 +65,17 @@ export default function GarageLoginScreen() {
     }
   };
 
-  // ✅ عدد السياس المفعّلين للجراج المختار
-  const selectedGarage = garages.find(g => g.username === username && g.phone === phone);
-  const activeValetCount = selectedGarage ? [
-    selectedGarage.valetPassword1,
-    selectedGarage.valetPassword2,
-    selectedGarage.valetPassword3,
-  ].filter(pw => pw && pw.trim() !== '').length : 0;
+  const selectedGarage = garages.find(
+    (g) => g.username === username && g.phone === phone
+  );
+
+  const activeValetCount = selectedGarage
+    ? [
+        selectedGarage.valetPassword1,
+        selectedGarage.valetPassword2,
+        selectedGarage.valetPassword3,
+      ].filter((pw) => pw && pw.trim() !== '').length
+    : 0;
 
   return (
     <div
@@ -83,20 +85,18 @@ export default function GarageLoginScreen() {
         color: '#fff',
       }}
     >
-  <div style={{ background: 'yellow', color: 'black', padding: 20, fontSize: 24, fontWeight: 900, textAlign: 'center' }}>
-      GARAGE LOGIN NEW
-    </div>
       <img
         src="/images/logo.png"
         alt="بركن"
         className="w-24 h-24 rounded-2xl object-contain mb-6 mx-auto shadow-2xl"
       />
+
       <h2 className="text-2xl font-black mb-1 text-center">بركن</h2>
       <p className="text-sm text-center mb-6" style={{ opacity: 0.8 }}>
         دخول أصحاب الجراجات
       </p>
 
-      {/* ══════ اختيار نوع الدخول ══════ */}
+      {/* اختيار نوع الدخول */}
       <div
         className="flex gap-2 mb-5 p-1.5"
         style={{
@@ -114,12 +114,14 @@ export default function GarageLoginScreen() {
             fontSize: 13,
             background: role === 'owner' ? '#fff' : 'transparent',
             color: role === 'owner' ? '#0066FF' : '#fff',
-            boxShadow: role === 'owner' ? '0 4px 16px rgba(0,0,0,0.15)' : 'none',
+            boxShadow:
+              role === 'owner' ? '0 4px 16px rgba(0,0,0,0.15)' : 'none',
           }}
         >
           <Shield size={16} />
           مالك الجراج
         </button>
+
         <button
           onClick={() => setRole('valet')}
           className="flex-1 flex items-center justify-center gap-2 font-black transition-all active:scale-95"
@@ -129,7 +131,8 @@ export default function GarageLoginScreen() {
             fontSize: 13,
             background: role === 'valet' ? '#fff' : 'transparent',
             color: role === 'valet' ? '#0066FF' : '#fff',
-            boxShadow: role === 'valet' ? '0 4px 16px rgba(0,0,0,0.15)' : 'none',
+            boxShadow:
+              role === 'valet' ? '0 4px 16px rgba(0,0,0,0.15)' : 'none',
           }}
         >
           <HardHat size={16} />
@@ -137,7 +140,7 @@ export default function GarageLoginScreen() {
         </button>
       </div>
 
-      {/* ══════ الفورم ══════ */}
+      {/* الفورم */}
       <div
         className="space-y-4 p-6"
         style={{
@@ -148,57 +151,101 @@ export default function GarageLoginScreen() {
           boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
         }}
       >
-        {/* اسم المستخدم */}
         <div className="relative">
-          <User size={18} className="absolute right-4 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,255,255,0.5)' }} />
+          <User
+            size={18}
+            className="absolute right-4 top-1/2 -translate-y-1/2"
+            style={{ color: 'rgba(255,255,255,0.5)' }}
+          />
           <input
             className="w-full p-4 pr-12 text-right font-black outline-none text-sm"
-            style={{ background: 'rgba(255,255,255,0.12)', border: '1.5px solid rgba(255,255,255,0.2)', borderRadius: 18, color: '#fff', fontSize: 14 }}
+            style={{
+              background: 'rgba(255,255,255,0.12)',
+              border: '1.5px solid rgba(255,255,255,0.2)',
+              borderRadius: 18,
+              color: '#fff',
+              fontSize: 14,
+            }}
             placeholder="اسم المستخدم"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
           />
         </div>
 
-        {/* رقم الهاتف */}
         <div className="relative">
-          <Phone size={18} className="absolute right-4 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,255,255,0.5)' }} />
+          <Phone
+            size={18}
+            className="absolute right-4 top-1/2 -translate-y-1/2"
+            style={{ color: 'rgba(255,255,255,0.5)' }}
+          />
           <input
             type="tel"
             className="w-full p-4 pr-12 text-right font-black outline-none text-sm"
-            style={{ background: 'rgba(255,255,255,0.12)', border: '1.5px solid rgba(255,255,255,0.2)', borderRadius: 18, color: '#fff', fontSize: 14 }}
+            style={{
+              background: 'rgba(255,255,255,0.12)',
+              border: '1.5px solid rgba(255,255,255,0.2)',
+              borderRadius: 18,
+              color: '#fff',
+              fontSize: 14,
+            }}
             placeholder="رقم الهاتف"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
           />
         </div>
 
-        {/* ✅ كلمة مرور السايس */}
         {role === 'valet' && (
           <>
             <div className="relative">
-              <HardHat size={18} className="absolute right-4 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,255,255,0.5)' }} />
+              <HardHat
+                size={18}
+                className="absolute right-4 top-1/2 -translate-y-1/2"
+                style={{ color: 'rgba(255,255,255,0.5)' }}
+              />
               <input
                 type="password"
                 className="w-full p-4 pr-12 text-right font-black outline-none text-sm"
-                style={{ background: 'rgba(255,255,255,0.12)', border: '1.5px solid rgba(255,255,255,0.2)', borderRadius: 18, color: '#fff', fontSize: 14 }}
+                style={{
+                  background: 'rgba(255,255,255,0.12)',
+                  border: '1.5px solid rgba(255,255,255,0.2)',
+                  borderRadius: 18,
+                  color: '#fff',
+                  fontSize: 14,
+                }}
                 placeholder="كلمة مرور السايس"
                 value={valetPassword}
                 onChange={(e) => setValetPassword(e.target.value)}
               />
             </div>
 
-            {/* ✅ عدد السياس المفعّلين */}
             {selectedGarage && (
-              <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 14, padding: '8px 12px', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <div
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  borderRadius: 14,
+                  padding: '8px 12px',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                }}
+              >
                 <div className="flex items-center justify-between">
                   <span style={{ fontSize: 10, opacity: 0.7 }}>
-                    {activeValetCount > 0 ? `${activeValetCount} سايس مفعّل` : 'لا يوجد سياس مسجلين'}
+                    {activeValetCount > 0
+                      ? `${activeValetCount} سايس مفعّل`
+                      : 'لا يوجد سياس مسجلين'}
                   </span>
-                  <span className="font-bold" style={{ fontSize: 10 }}>🅿️ حالة السياس</span>
+                  <span className="font-bold" style={{ fontSize: 10 }}>
+                    🅿️ حالة السياس
+                  </span>
                 </div>
                 {activeValetCount === 0 && (
-                  <p style={{ fontSize: 9, opacity: 0.6, marginTop: 4, textAlign: 'center' }}>
+                  <p
+                    style={{
+                      fontSize: 9,
+                      opacity: 0.6,
+                      marginTop: 4,
+                      textAlign: 'center',
+                    }}
+                  >
                     ⚠️ اطلب من مالك الجراج إضافة سايس من الإعدادات
                   </p>
                 )}
@@ -207,18 +254,28 @@ export default function GarageLoginScreen() {
           </>
         )}
 
-        {/* نبذة عن الصلاحيات */}
-        <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: 16, padding: '10px 14px', border: '1px solid rgba(255,255,255,0.15)' }}>
+        <div
+          style={{
+            background: 'rgba(255,255,255,0.1)',
+            borderRadius: 16,
+            padding: '10px 14px',
+            border: '1px solid rgba(255,255,255,0.15)',
+          }}
+        >
           {role === 'owner' ? (
             <div>
-              <p className="font-black mb-1" style={{ fontSize: 11 }}>🔑 صلاحيات مالك الجراج:</p>
+              <p className="font-black mb-1" style={{ fontSize: 11 }}>
+                🔑 صلاحيات مالك الجراج:
+              </p>
               <p style={{ fontSize: 10, opacity: 0.8, lineHeight: 1.6 }}>
                 ✅ كل العمليات + الإعدادات + سجل جميع الأيام + إدارة السياس
               </p>
             </div>
           ) : (
             <div>
-              <p className="font-black mb-1" style={{ fontSize: 11 }}>🅿️ صلاحيات السايس:</p>
+              <p className="font-black mb-1" style={{ fontSize: 11 }}>
+                🅿️ صلاحيات السايس:
+              </p>
               <p style={{ fontSize: 10, opacity: 0.8, lineHeight: 1.6 }}>
                 ✅ إضافة/إنهاء سيارات + تأكيد الإيرادات + سجل اليوم فقط
               </p>
