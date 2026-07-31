@@ -1,5 +1,5 @@
 // v2.0 - valet support
-import { useState } from 'react';
+import { useState } from 'react';F
 import { Phone, User, Shield, HardHat } from 'lucide-react';
 import { useStore } from '../store';
 import toast from 'react-hot-toast';
@@ -83,6 +83,9 @@ export default function GarageLoginScreen() {
         color: '#fff',
       }}
     >
+  <div style={{ background: 'yellow', color: 'black', padding: 20, fontSize: 24, fontWeight: 900, textAlign: 'center' }}>
+      GARAGE LOGIN NEW
+    </div>
       <img
         src="/images/logo.png"
         alt="بركن"
