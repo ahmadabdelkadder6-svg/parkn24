@@ -368,31 +368,38 @@ export default function App() {
         className="max-w-md mx-auto h-dvh bg-white text-slate-900 relative flex flex-col overflow-hidden"
         style={{ fontFamily: "'Cairo', sans-serif" }}
       >
-        <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-white/90 p-0.5 rounded-full backdrop-blur-md border border-slate-200 shadow-sm">
-          {[
-            { id: 'user' as const, label: 'حريف', show: true },
-            { id: 'garage' as const, label: 'جراج', show: true },
-            { id: 'admin' as const, label: 'أدمن', show: adminAccess },
-          ]
-            .filter((tab) => tab.show)
-            .map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setView(tab.id)}
-                className={cn(
-                  'px-3 py-1.5 rounded-full text-[10px] font-black transition-all',
-                  view === tab.id
-                    ? tab.id === 'admin'
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-blue-600 text-white'
-                    : 'text-slate-600'
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-        </div>
-
+       <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-white/90 p-0.5 rounded-full backdrop-blur-md border border-slate-200 shadow-sm">
+  {[
+    { id: 'user' as const, label: 'حريف', show: true },
+    { id: 'garage' as const, label: 'جراج', show: true },
+    { id: 'admin' as const, label: 'أدمن', show: adminAccess },
+  ]
+    .filter((tab) => tab.show)
+    .map((tab) => (
+      <button
+        key={tab.id}
+        onClick={() => {
+          // ✅ لو ضغط على جراج - امسح بيانات السايس عشان يظهر Login Screen
+          if (tab.id === 'garage') {
+            localStorage.removeItem('garageRole');
+            localStorage.removeItem('valetNumber');
+            localStorage.removeItem('valetName');
+          }
+          setView(tab.id);
+        }}
+        className={cn(
+          'px-3 py-1.5 rounded-full text-[10px] font-black transition-all',
+          view === tab.id
+            ? tab.id === 'admin'
+              ? 'bg-purple-600 text-white'
+              : 'bg-blue-600 text-white'
+            : 'text-slate-600'
+        )}
+      >
+        {tab.label}
+      </button>
+    ))}
+</div>
         <main className="flex-1 overflow-hidden bg-white">
           {!dataLoaded ? (
             <div className="h-full bg-white flex flex-col items-center justify-center">
