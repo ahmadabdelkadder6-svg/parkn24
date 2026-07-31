@@ -38,7 +38,6 @@ export default function AdminDashboard() {
   const [dailyStats,setDailyStats]=useState<DailyStat[]>([]);
   const [dailyStatsLoading,setDailyStatsLoading]=useState(false);
 
-  // ✅ إضافة جراج
   const [gName,setGName]=useState('');
   const [gUser,setGUser]=useState('');
   const [gPhone,setGPhone]=useState('');
@@ -131,6 +130,18 @@ export default function AdminDashboard() {
     setGValet2Name(''); setGValet2Pass('');
     setGValet3Name(''); setGValet3Pass('');
     toast.success('تم إضافة الجراج!');
+  };
+
+  // ✅ دالة دخول الجراج من الأدمن - بتروح لشاشة الاختيار مع البيانات متعبية
+  const handleAdminEnterGarage = (g: typeof garages[0]) => {
+    localStorage.removeItem('garageRole');
+    localStorage.removeItem('valetNumber');
+    localStorage.removeItem('valetName');
+    localStorage.removeItem('currentGarageId');
+    localStorage.setItem('garagePrefillUsername', g.username);
+    localStorage.setItem('garagePrefillPhone', g.phone);
+    setCurrentGarageId(null);
+    setView('garage');
   };
 
   return (
@@ -463,12 +474,12 @@ export default function AdminDashboard() {
                 <div className="text-right">
                   <div className="font-black mb-1" style={{ fontSize: 18, color: '#0A1628' }}>{g.name}</div>
                   <div className="flex items-center gap-1 justify-end mb-1" style={{ fontSize: 11, color: '#94a3b8' }}><MapPin size={12} />{g.location}</div>
-                  {/* ✅ عرض السياس */}
+                  {/* السياس */}
                   <div className="flex flex-wrap gap-1 justify-end">
                     {[
-                      {n:1, name:(g as any).valetName1, pw:(g as any).valetPassword1, color:'#0066FF'},
-                      {n:2, name:(g as any).valetName2, pw:(g as any).valetPassword2, color:'#7C3AED'},
-                      {n:3, name:(g as any).valetName3, pw:(g as any).valetPassword3, color:'#FF8800'},
+                      {n:1,name:(g as any).valetName1,pw:(g as any).valetPassword1,color:'#0066FF'},
+                      {n:2,name:(g as any).valetName2,pw:(g as any).valetPassword2,color:'#7C3AED'},
+                      {n:3,name:(g as any).valetName3,pw:(g as any).valetPassword3,color:'#FF8800'},
                     ].filter(v=>v.pw).map(v=>(
                       <span key={v.n} className="font-bold flex items-center gap-1" style={{ fontSize: 9, color: v.color, background: `${v.color}15`, padding: '2px 8px', borderRadius: 8 }}>
                         <HardHat size={8} /> {v.name||`سايس ${v.n}`}
@@ -477,8 +488,13 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               </div>
-              <button onClick={()=>{setCurrentGarageId(g.id);setView('garage');}} className="w-full font-black active:scale-95 transition-all"
-                style={{ background: 'linear-gradient(135deg,#0066FF,#0044DD)', color: '#fff', padding: 16, borderRadius: 18, fontSize: 14, boxShadow: '0 8px 32px rgba(0,102,255,0.35)' }}>
+
+              {/* ✅ زر دخول وإدارة - بيروح لشاشة الاختيار مع البيانات متعبية */}
+              <button
+                onClick={() => handleAdminEnterGarage(g)}
+                className="w-full font-black active:scale-95 transition-all"
+                style={{ background: 'linear-gradient(135deg,#0066FF,#0044DD)', color: '#fff', padding: 16, borderRadius: 18, fontSize: 14, boxShadow: '0 8px 32px rgba(0,102,255,0.35)' }}
+              >
                 دخول وإدارة
               </button>
             </div>
@@ -496,17 +512,17 @@ export default function AdminDashboard() {
             <input className="flex-1 font-bold text-right outline-none" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 14, borderRadius: 16, fontSize: 12, color: '#0A1628' }} placeholder="الهاتف" value={gPhone} onChange={e=>setGPhone(e.target.value)} />
           </div>
 
-          {/* ✅ السياس */}
+          {/* السياس */}
           <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
             <div className="font-bold mb-3 text-right flex items-center gap-2 justify-end" style={{ fontSize: 12, color: '#7B8CA6' }}>
               <HardHat size={14} /> السياس (اختياري - 3 كحد أقصى)
             </div>
             {[
-              {n:1, name:gValet1Name, setName:setGValet1Name, pass:gValet1Pass, setPass:setGValet1Pass, color:'#0066FF'},
-              {n:2, name:gValet2Name, setName:setGValet2Name, pass:gValet2Pass, setPass:setGValet2Pass, color:'#7C3AED'},
-              {n:3, name:gValet3Name, setName:setGValet3Name, pass:gValet3Pass, setPass:setGValet3Pass, color:'#FF8800'},
+              {n:1,name:gValet1Name,setName:setGValet1Name,pass:gValet1Pass,setPass:setGValet1Pass,color:'#0066FF'},
+              {n:2,name:gValet2Name,setName:setGValet2Name,pass:gValet2Pass,setPass:setGValet2Pass,color:'#7C3AED'},
+              {n:3,name:gValet3Name,setName:setGValet3Name,pass:gValet3Pass,setPass:setGValet3Pass,color:'#FF8800'},
             ].map((v,i)=>(
-              <div key={i} className={i<2?'mb-3 pb-3':''}  style={i<2?{borderBottom:'1px solid #D0DCFF'}:{}}>
+              <div key={i} className={i<2?'mb-3 pb-3':''} style={i<2?{borderBottom:'1px solid #D0DCFF'}:{}}>
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="font-bold" style={{ fontSize: 10, color: (v.name||v.pass)?v.color:'#CBD5E1' }}>
                     {(v.name||v.pass)?'✅ مفعّل':'❌ غير مفعّل'}
