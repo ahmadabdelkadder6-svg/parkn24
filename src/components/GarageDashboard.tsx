@@ -43,7 +43,22 @@ export default function GarageDashboard() {
 
   const garage = garages.find(g => g.id === currentGarageId);
   const garageSessions = sessions.filter(s => s.garageId === currentGarageId);
-  const activeSessions = garageSessions.filter(s => s.status === 'active' && Date.now() - s.startTime < 24*60*60*1000);
+const activeSessions = useMemo(() => {
+  const currentValetNameLocal = localStorage.getItem('valetName') || '';
+
+  return garageSessions.filter(s => {
+    if (s.status !== 'active') return false;
+    if (Date.now() - s.startTime >= 24*60*60*1000) return false;
+
+    // ✅ السايس يشوف عربياته فقط
+    if (isValet && currentValetNameLocal) {
+      const addedBy = (s as any).addedBy || '';
+      if (addedBy !== currentValetNameLocal) return false;
+    }
+
+    return true;
+  });
+}, [garageSessions, isValet]);
   const completedSessions = garageSessions.filter(s => s.status === 'completed');
   const garageOffers = offers.filter(o => o.garageId === currentGarageId && o.status === 'pending');
   const carsOnTheWay = incomingCars.filter(c => c.garageId === currentGarageId && c.status === 'coming');
@@ -134,18 +149,30 @@ export default function GarageDashboard() {
     return calculateCost(el,r);
   }, [garage?.basePrice]);
 
-  const filteredCompleted = useMemo(() => {
-    return completedSessions.filter(s => {
-      if(s.endTime) {
-        const et = typeof s.endTime==='number'?s.endTime:new Date(s.endTime).getTime();
-        const dateStr = timestampToLocalDate(et);
-        if(isValet) { if(dateStr !== getLocalToday()) return false; }
-        else { if(logDateFrom && dateStr < logDateFrom) return false; if(logDateTo && dateStr > logDateTo) return false; }
-      }
-      if(logPaymentFilter!=='all' && s.paymentMethod!==logPaymentFilter) return false;
-      return true;
-    });
-  }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet]);
+const filteredCompleted = useMemo(() => {
+  const currentValetNameLocal = localStorage.getItem('valetName') || '';
+
+  return completedSessions.filter(s => {
+    // ✅ فلترة بالتاريخ
+    if(s.endTime) {
+      const et = typeof s.endTime==='number'?s.endTime:new Date(s.endTime).getTime();
+      const dateStr = timestampToLocalDate(et);
+      if(isValet) { if(dateStr !== getLocalToday()) return false; }
+      else { if(logDateFrom && dateStr < logDateFrom) return false; if(logDateTo && dateStr > logDateTo) return false; }
+    }
+
+    // ✅ فلترة بطريقة الدفع
+    if(logPaymentFilter!=='all' && s.paymentMethod!==logPaymentFilter) return false;
+
+    // ✅ السايس يشوف عملياته فقط
+    if(isValet && currentValetNameLocal) {
+      const addedBy = (s as any).addedBy || '';
+      if(addedBy !== currentValetNameLocal) return false;
+    }
+
+    return true;
+  });
+}, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet]);
 
   const filteredStats = useMemo(() => {
     const c=filteredCompleted.filter(s=>s.revenueConfirmed);const u=filteredCompleted.filter(s=>!s.revenueConfirmed);const h=garageDailyStats.length>0;

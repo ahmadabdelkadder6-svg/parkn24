@@ -97,7 +97,24 @@ export default function App() {
 
   useEffect(() => {
     const init = async () => {
+      // ✅ لو التطبيق اتثبت حالاً واتفتح من الأيقونة → ابدأ من Splash
+      const justInstalled = localStorage.getItem('pwaJustInstalled') === 'true';
+      const isStandalone =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (window.navigator as any).standalone === true;
+
+      if (justInstalled && isStandalone) {
+        localStorage.removeItem('pwaJustInstalled');
+        localStorage.setItem('appView', 'user');
+        localStorage.setItem('appScreen', 'splash');
+        localStorage.removeItem('selectedGarageId');
+        setView('user');
+        setScreen('splash');
+        setSelectedGarageId(null);
+      }
+
       const savedScreen = localStorage.getItem('appScreen');
+
       if (
         savedScreen === 'session' ||
         savedScreen === 'navigation' ||
@@ -107,11 +124,13 @@ export default function App() {
       ) {
         localStorage.removeItem('appScreen');
       }
+
       await fetchAll();
       setDataLoaded(true);
       initialLoadDone.current = true;
       setupRealtime();
     };
+
     init();
   }, []);
 
@@ -144,15 +163,27 @@ export default function App() {
 
     if (myIncoming) {
       setSelectedGarageId(myIncoming.garageId);
-      if (safeScreen !== 'navigation' && safeScreen !== 'session' && safeScreen !== 'summary') {
+      if (
+        safeScreen !== 'navigation' &&
+        safeScreen !== 'session' &&
+        safeScreen !== 'summary'
+      ) {
         setScreen('navigation');
       }
       return;
     }
 
-    if (safeScreen === 'session' || safeScreen === 'navigation' || safeScreen === 'waiting') {
+    if (
+      safeScreen === 'session' ||
+      safeScreen === 'navigation' ||
+      safeScreen === 'waiting'
+    ) {
       const lastCompleted = sessions
-        .filter((s) => s.carPlate.trim().toUpperCase() === userPlate && s.status === 'completed')
+        .filter(
+          (s) =>
+            s.carPlate.trim().toUpperCase() === userPlate &&
+            s.status === 'completed'
+        )
         .sort((a, b) => {
           const endA = typeof a.endTime === 'number' ? a.endTime : 0;
           const endB = typeof b.endTime === 'number' ? b.endTime : 0;
@@ -160,7 +191,10 @@ export default function App() {
         })[0];
 
       if (lastCompleted) {
-        const endTime = typeof lastCompleted.endTime === 'number' ? lastCompleted.endTime : 0;
+        const endTime =
+          typeof lastCompleted.endTime === 'number'
+            ? lastCompleted.endTime
+            : 0;
         const timeSinceEnd = Date.now() - endTime;
         if (endTime > 0 && timeSinceEnd < 60000) {
           setSelectedGarageId(lastCompleted.garageId);
@@ -181,11 +215,15 @@ export default function App() {
     const userPlate = (currentUser.carPlate ?? '').trim().toUpperCase();
 
     const myActiveSession = sessions.find(
-      (s) => s.carPlate.trim().toUpperCase() === userPlate && s.status === 'active'
+      (s) =>
+        s.carPlate.trim().toUpperCase() === userPlate &&
+        s.status === 'active'
     );
 
     const myIncoming = incomingCars.find(
-      (c) => c.carPlate.trim().toUpperCase() === userPlate && c.status === 'coming'
+      (c) =>
+        c.carPlate.trim().toUpperCase() === userPlate &&
+        c.status === 'coming'
     );
 
     if (myActiveSession) {
@@ -201,7 +239,12 @@ export default function App() {
       if (myActiveSession.id !== prevActiveSessionRef.current) {
         prevActiveSessionRef.current = myActiveSession.id;
         setSelectedGarageId(myActiveSession.garageId);
-        if (safeScreen !== 'session' && safeScreen !== 'summary' && safeScreen !== 'lastSession' && safeScreen !== 'chat') {
+        if (
+          safeScreen !== 'session' &&
+          safeScreen !== 'summary' &&
+          safeScreen !== 'lastSession' &&
+          safeScreen !== 'chat'
+        ) {
           setScreen('session');
         }
       }
@@ -221,10 +264,14 @@ export default function App() {
       sessionTransitionTimer.current = setTimeout(() => {
         sessionTransitionTimer.current = null;
         const freshState = useStore.getState();
-        const freshPlate = (freshState.currentUser?.carPlate ?? '').trim().toUpperCase();
+        const freshPlate = (freshState.currentUser?.carPlate ?? '')
+          .trim()
+          .toUpperCase();
 
         const stillActive = freshState.sessions.find(
-          (s) => s.carPlate.trim().toUpperCase() === freshPlate && s.status === 'active'
+          (s) =>
+            s.carPlate.trim().toUpperCase() === freshPlate &&
+            s.status === 'active'
         );
 
         if (stillActive) {
@@ -237,9 +284,17 @@ export default function App() {
         prevActiveSessionRef.current = null;
         noSessionCountRef.current = 0;
 
-        if (currentScreen === 'session' || currentScreen === 'navigation' || currentScreen === 'waiting') {
+        if (
+          currentScreen === 'session' ||
+          currentScreen === 'navigation' ||
+          currentScreen === 'waiting'
+        ) {
           const lastCompleted = freshState.sessions
-            .filter((s) => s.carPlate.trim().toUpperCase() === freshPlate && s.status === 'completed')
+            .filter(
+              (s) =>
+                s.carPlate.trim().toUpperCase() === freshPlate &&
+                s.status === 'completed'
+            )
             .sort((a, b) => {
               const endA = typeof a.endTime === 'number' ? a.endTime : 0;
               const endB = typeof b.endTime === 'number' ? b.endTime : 0;
@@ -247,7 +302,10 @@ export default function App() {
             })[0];
 
           if (lastCompleted) {
-            const endTime = typeof lastCompleted.endTime === 'number' ? lastCompleted.endTime : 0;
+            const endTime =
+              typeof lastCompleted.endTime === 'number'
+                ? lastCompleted.endTime
+                : 0;
             const timeSinceEnd = Date.now() - endTime;
             if (endTime > 0 && timeSinceEnd < 60000) {
               setSelectedGarageId(lastCompleted.garageId);
@@ -269,13 +327,19 @@ export default function App() {
     if (!myActiveSession && safeScreen === 'navigation' && !myIncoming) {
       const timeout = setTimeout(() => {
         const freshState = useStore.getState();
-        const freshPlate = (freshState.currentUser?.carPlate ?? '').trim().toUpperCase();
+        const freshPlate = (freshState.currentUser?.carPlate ?? '')
+          .trim()
+          .toUpperCase();
 
         const freshIncoming = freshState.incomingCars.find(
-          (c) => c.carPlate.trim().toUpperCase() === freshPlate && c.status === 'coming'
+          (c) =>
+            c.carPlate.trim().toUpperCase() === freshPlate &&
+            c.status === 'coming'
         );
         const freshSession = freshState.sessions.find(
-          (s) => s.carPlate.trim().toUpperCase() === freshPlate && s.status === 'active'
+          (s) =>
+            s.carPlate.trim().toUpperCase() === freshPlate &&
+            s.status === 'active'
         );
 
         if (!freshIncoming && !freshSession) {
@@ -286,7 +350,16 @@ export default function App() {
 
       return () => clearTimeout(timeout);
     }
-  }, [sessions, currentUser, view, safeScreen, incomingCars, dataLoaded, setScreen, setSelectedGarageId]);
+  }, [
+    sessions,
+    currentUser,
+    view,
+    safeScreen,
+    incomingCars,
+    dataLoaded,
+    setScreen,
+    setSelectedGarageId,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -314,7 +387,6 @@ export default function App() {
               <button
                 key={tab.id}
                 onClick={() => {
-                  // ✅ لو ضغط جراج → امسح كل البيانات القديمة
                   if (tab.id === 'garage') {
                     localStorage.removeItem('currentGarageId');
                     localStorage.removeItem('garageRole');
@@ -352,7 +424,6 @@ export default function App() {
           ) : view === 'admin' && adminAccess ? (
             <AdminDashboard />
           ) : view === 'garage' ? (
-            // ✅ لو currentGarageId موجود → Dashboard، لو لأ → Login
             currentGarageId ? (
               <GarageDashboard />
             ) : (

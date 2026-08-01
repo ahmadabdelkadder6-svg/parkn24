@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, X, Smartphone, Share } from 'lucide-react';
+import { Download, X } from 'lucide-react';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -33,6 +33,7 @@ export default function InstallPWA() {
   const [showIOSGuide, setShowIOSGuide] = useState(false);
   const [showAndroidGuide, setShowAndroidGuide] = useState(false);
   const [showInAppWarning, setShowInAppWarning] = useState(false);
+  const [showSuccessMsg, setShowSuccessMsg] = useState(false);
   const [browser, setBrowser] = useState({
     isIOS: false, isAndroid: false, isSafari: false, isChrome: false,
     isInAppBrowser: false, isStandalone: false,
@@ -42,7 +43,7 @@ export default function InstallPWA() {
     const b = detectBrowser();
     setBrowser(b);
 
-    // لو التطبيق مثبت بالفعل
+    // ✅ لو التطبيق مثبت بالفعل → مش نعرض حاجة
     if (b.isStandalone) return;
 
     // ✅ أظهر شاشة التثبيت بعد ثانية (أول زيارة فقط)
@@ -59,18 +60,21 @@ export default function InstallPWA() {
 
     window.addEventListener('beforeinstallprompt', handler);
 
+    // ✅ لما التطبيق يتثبت
     window.addEventListener('appinstalled', () => {
+      localStorage.setItem('pwaJustInstalled', 'true');
       setShowFullScreen(false);
       setDeferredPrompt(null);
+      // ✅ رسالة نجاح واضحة
+      setShowSuccessMsg(true);
+      setTimeout(() => setShowSuccessMsg(false), 5000);
     });
 
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
-  // ✅ هل التثبيت المباشر متاح؟
   const canDirectInstall = !!deferredPrompt;
 
-  // ✅ نص الزر الرئيسي حسب الحالة
   const getButtonText = () => {
     if (canDirectInstall) return 'تثبيت التطبيق الآن';
     if (browser.isIOS) return 'طريقة التثبيت على iPhone';
@@ -79,36 +83,36 @@ export default function InstallPWA() {
   };
 
   const handleInstallClick = async () => {
-    // لو جوه متصفح داخلي (واتساب/إنستجرام)
     if (browser.isInAppBrowser) {
       setShowInAppWarning(true);
       return;
     }
 
-    // لو iPhone
     if (browser.isIOS) {
       setShowIOSGuide(true);
       return;
     }
 
-    // لو عندنا prompt مباشر (Android Chrome)
     if (deferredPrompt) {
       try {
         await deferredPrompt.prompt();
         const { outcome } = await deferredPrompt.userChoice;
         if (outcome === 'accepted') {
-          setShowFullScreen(false);
+          // ✅ حفظ إن التطبيق اتثبت
+          localStorage.setItem('pwaJustInstalled', 'true');
           localStorage.setItem('pwa-install-dismissed', 'true');
+          setShowFullScreen(false);
+          // ✅ رسالة للمستخدم
+          setShowSuccessMsg(true);
+          setTimeout(() => setShowSuccessMsg(false), 5000);
         }
         setDeferredPrompt(null);
       } catch (err) {
-        // لو prompt فشل → أظهر الشرح اليدوي
         setShowAndroidGuide(true);
       }
       return;
     }
 
-    // لو مفيش prompt → أظهر الشرح اليدوي
     setShowAndroidGuide(true);
   };
 
@@ -117,11 +121,37 @@ export default function InstallPWA() {
     localStorage.setItem('pwa-install-dismissed', 'true');
   };
 
-  // لو التطبيق مثبت بالفعل
+  // ✅ لو التطبيق مثبت بالفعل → مش نعرض حاجة
   if (browser.isStandalone) return null;
 
   return (
     <>
+      {/* ══════ رسالة نجاح التثبيت ══════ */}
+      <AnimatePresence>
+        {showSuccessMsg && (
+          <motion.div
+            initial={{ y: -100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -100, opacity: 0 }}
+            className="fixed top-4 left-4 right-4 z-[400]"
+          >
+            <div className="text-center" style={{
+              background: 'linear-gradient(135deg,#00CC66,#00AA55)',
+              borderRadius: 22,
+              padding: '16px 20px',
+              color: '#fff',
+              boxShadow: '0 8px 32px rgba(0,204,102,0.4)',
+            }}>
+              <div style={{ fontSize: 24, marginBottom: 4 }}>🎉</div>
+              <p className="font-black" style={{ fontSize: 15 }}>تم تثبيت التطبيق بنجاح!</p>
+              <p style={{ fontSize: 12, opacity: 0.85, marginTop: 4 }}>
+                افتحه من الأيقونة الجديدة على شاشتك الرئيسية
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ══════ شاشة التثبيت الكاملة ══════ */}
       <AnimatePresence>
         {showFullScreen && (
@@ -162,7 +192,6 @@ export default function InstallPWA() {
               ))}
             </div>
 
-            {/* المحتوى */}
             <motion.div
               initial={{ y: 30, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
@@ -170,11 +199,7 @@ export default function InstallPWA() {
               className="flex flex-col items-center px-8 w-full max-w-sm"
             >
               {/* اللوجو */}
-              <motion.div
-                animate={{ y: [0, -10, 0] }}
-                transition={{ repeat: Infinity, duration: 3 }}
-                className="mb-6"
-              >
+              <motion.div animate={{ y: [0, -10, 0] }} transition={{ repeat: Infinity, duration: 3 }} className="mb-6">
                 <img
                   src="/images/logo.png"
                   alt="بركن"
@@ -183,7 +208,6 @@ export default function InstallPWA() {
                 />
               </motion.div>
 
-              {/* العنوان */}
               <h1 className="font-black text-white text-center mb-2" style={{ fontSize: 28 }}>
                 بركن 🅿️
               </h1>
@@ -212,7 +236,7 @@ export default function InstallPWA() {
                 ))}
               </div>
 
-              {/* ✅ زر التثبيت الرئيسي - يتغير حسب الحالة */}
+              {/* زر التثبيت */}
               <motion.button
                 onClick={handleInstallClick}
                 className="w-full font-black flex items-center justify-center gap-3 active:scale-95 transition-all mb-3"
@@ -234,14 +258,12 @@ export default function InstallPWA() {
                 {getButtonText()}
               </motion.button>
 
-              {/* ✅ تحذير لو iPhone ومش Safari */}
               {browser.isIOS && browser.isInAppBrowser && (
                 <p className="text-center font-bold mt-2" style={{ color: '#FF9500', fontSize: 12 }}>
                   ⚠️ افتح الرابط في Safari للتثبيت
                 </p>
               )}
 
-              {/* تخطي */}
               <button
                 onClick={handleDismiss}
                 className="font-bold mt-2 active:scale-95"
@@ -282,12 +304,8 @@ export default function InstallPWA() {
 
               {browser.isInAppBrowser && (
                 <div className="mb-4 p-3 rounded-2xl text-center" style={{ background: '#FFF3E0', border: '2px solid #FFD180' }}>
-                  <p className="font-black" style={{ fontSize: 13, color: '#E65100' }}>
-                    ⚠️ افتح الرابط في Safari الأول
-                  </p>
-                  <p style={{ fontSize: 11, color: '#FF9500', marginTop: 4 }}>
-                    انسخ الرابط والصقه في Safari
-                  </p>
+                  <p className="font-black" style={{ fontSize: 13, color: '#E65100' }}>⚠️ افتح الرابط في Safari الأول</p>
+                  <p style={{ fontSize: 11, color: '#FF9500', marginTop: 4 }}>انسخ الرابط والصقه في Safari</p>
                 </div>
               )}
 
@@ -299,7 +317,7 @@ export default function InstallPWA() {
                 ].map((s, i) => (
                   <div key={i} className="flex items-center gap-4">
                     <div className="font-black text-white flex items-center justify-center shrink-0"
-                      style={{ width: 44, height: 44, borderRadius: 14, background: 'linear-gradient(135deg,#0066FF,#4D00FF)', fontSize: 18, boxShadow: '0 4px 16px rgba(0,102,255,0.3)' }}>
+                      style={{ width: 44, height: 44, borderRadius: 14, background: 'linear-gradient(135deg,#0066FF,#4D00FF)', fontSize: 18 }}>
                       {s.emoji}
                     </div>
                     <div className="text-right flex-1">
@@ -310,10 +328,17 @@ export default function InstallPWA() {
                 ))}
               </div>
 
+              {/* ✅ رسالة توضيحية للـ iPhone */}
+              <div className="mb-4 p-3 rounded-2xl text-center" style={{ background: '#EBF2FF', border: '2px solid #D0DCFF' }}>
+                <p className="font-bold" style={{ fontSize: 12, color: '#0066FF' }}>
+                  💡 بعد التثبيت افتح التطبيق من الأيقونة الجديدة على الشاشة الرئيسية
+                </p>
+              </div>
+
               <button
                 onClick={() => { setShowIOSGuide(false); setShowFullScreen(false); localStorage.setItem('pwa-install-dismissed', 'true'); }}
                 className="w-full font-black active:scale-95"
-                style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', color: '#fff', padding: 18, borderRadius: 22, fontSize: 15, boxShadow: '0 8px 32px rgba(0,102,255,0.35)' }}
+                style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', color: '#fff', padding: 18, borderRadius: 22, fontSize: 15 }}
               >
                 فهمت ✅
               </button>
@@ -356,7 +381,7 @@ export default function InstallPWA() {
                 ].map((s, i) => (
                   <div key={i} className="flex items-center gap-4">
                     <div className="font-black text-white flex items-center justify-center shrink-0"
-                      style={{ width: 44, height: 44, borderRadius: 14, background: s.color, fontSize: 18, boxShadow: `0 4px 16px ${s.color}40` }}>
+                      style={{ width: 44, height: 44, borderRadius: 14, background: s.color, fontSize: 18 }}>
                       {s.emoji}
                     </div>
                     <div className="text-right flex-1">
@@ -367,16 +392,17 @@ export default function InstallPWA() {
                 ))}
               </div>
 
+              {/* ✅ رسالة توضيحية للأندرويد */}
               <div className="mb-4 p-3 rounded-2xl text-center" style={{ background: '#EBF2FF', border: '2px solid #D0DCFF' }}>
-                <p className="font-bold" style={{ fontSize: 11, color: '#0066FF' }}>
-                  💡 لازم تستخدم Chrome على Android
+                <p className="font-bold" style={{ fontSize: 12, color: '#0066FF' }}>
+                  💡 بعد التثبيت افتح التطبيق من الأيقونة الجديدة على الشاشة الرئيسية
                 </p>
               </div>
 
               <button
                 onClick={() => { setShowAndroidGuide(false); setShowFullScreen(false); localStorage.setItem('pwa-install-dismissed', 'true'); }}
                 className="w-full font-black active:scale-95"
-                style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', color: '#fff', padding: 18, borderRadius: 22, fontSize: 15, boxShadow: '0 8px 32px rgba(0,102,255,0.35)' }}
+                style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', color: '#fff', padding: 18, borderRadius: 22, fontSize: 15 }}
               >
                 فهمت ✅
               </button>
@@ -416,17 +442,13 @@ export default function InstallPWA() {
                 <strong style={{ color: '#00AA44' }}>Chrome</strong> على Android
               </p>
               <div className="mb-4 p-3 rounded-2xl" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF' }}>
-                <p className="font-black" style={{ fontSize: 12, color: '#0066FF' }}>
-                  📋 انسخ الرابط والصقه في المتصفح
-                </p>
-                <p className="font-mono mt-1" style={{ fontSize: 10, color: '#7B8CA6' }}>
-                  parkn24.vercel.app
-                </p>
+                <p className="font-black" style={{ fontSize: 12, color: '#0066FF' }}>📋 انسخ الرابط والصقه في المتصفح</p>
+                <p className="font-mono mt-1" style={{ fontSize: 10, color: '#7B8CA6' }}>parkn24.vercel.app</p>
               </div>
               <button
                 onClick={() => setShowInAppWarning(false)}
                 className="w-full font-black active:scale-95"
-                style={{ background: '#0066FF', color: '#fff', padding: 16, borderRadius: 18, fontSize: 14, boxShadow: '0 6px 20px rgba(0,102,255,0.3)' }}
+                style={{ background: '#0066FF', color: '#fff', padding: 16, borderRadius: 18, fontSize: 14 }}
               >
                 فهمت
               </button>
