@@ -862,12 +862,14 @@ const filteredCompleted = useMemo(() => {
                       <span className="font-bold" style={{ fontSize: 9, color: '#E65100' }}>({session.agreedPrice}ج/س)</span>
                     )}
                   </div>
-                  {time && (
-                    <span className="font-mono" style={{ fontSize: 10, color: '#94a3b8' }}>
-                      {time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
-                      <span style={{ marginRight: 4, color: '#D0DCFF' }}>· {time.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}</span>
-                    </span>
-                  )}
+{time && (
+  <span className="font-mono font-black" style={{ fontSize: 11, color: '#0A1628' }}>
+    {time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
+    <span style={{ marginRight: 4 }}>
+      · {time.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}
+    </span>
+  </span>
+)}
                 </div>
               </div>
             );
