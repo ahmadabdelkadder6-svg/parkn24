@@ -139,7 +139,29 @@ const activeSessions = useMemo(() => {
     return 0;
   }, [garage?.basePrice]);
 
-  const totalRevenue = useMemo(() => completedSessions.filter(s=>s.revenueConfirmed).reduce((a,s)=>a+getSessionRevenue(s),0), [completedSessions,getSessionRevenue]);
+const totalRevenue = useMemo(() => {
+  const currentValetNameLocal = localStorage.getItem('valetName') || '';
+
+  return completedSessions
+    .filter(s => {
+      if (!s.revenueConfirmed) return false;
+
+      // ✅ السايس يشوف إيراده فقط
+      if (isValet && currentValetNameLocal) {
+        const addedBy = (s as any).addedBy || '';
+        if (addedBy !== currentValetNameLocal) return false;
+      }
+
+      // ✅ السايس يشوف اليوم فقط
+      if (isValet && s.endTime) {
+        const et = typeof s.endTime === 'number' ? s.endTime : new Date(s.endTime).getTime();
+        if (timestampToLocalDate(et) !== getLocalToday()) return false;
+      }
+
+      return true;
+    })
+    .reduce((a, s) => a + getSessionRevenue(s), 0);
+}, [completedSessions, getSessionRevenue, isValet]);
 
   const getActiveCost = useCallback((s: any) => {
     const st=typeof s.startTime==='number'?s.startTime:new Date(s.startTime).getTime();
@@ -829,7 +851,7 @@ const filteredCompleted = useMemo(() => {
               <div key={session.id} style={{ background: isC?(isM?'#FFF8F0':'#EBF5FF'):'#FFF8F0', border: `2px solid ${isC?(isM?'#FFD180':'#A0C4FF'):'#FFD180'}`, borderRadius: 18, padding: 14 }}>
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono font-black" style={{ fontSize: 14, color: isM?'#E65100':'#0066FF' }}>{rev.toFixed(0)} ج.م</span>
+<span className="font-mono font-black" style={{ fontSize: 17, color: isM ? '#E65100' : '#0066FF' }}>{rev.toFixed(0)} ج.م</span>
                     <span className="font-bold" style={{ fontSize: 9, padding: '3px 10px', borderRadius: 10, background: isM?'#FF9500':'#0066FF', color: '#fff' }}>{isM?'يدوي':'تطبيق'}</span>
                     {/* ✅ اسم السايس على كل عملية */}
                     {addedBy && isOwner && (
@@ -848,7 +870,7 @@ const filteredCompleted = useMemo(() => {
                   </div>
                   <div className="flex items-center gap-1">
                     <span className="rounded-full" style={{ width: 6, height: 6, background: isM?'#FF9500':'#0066FF' }} />
-                    <span className="font-bold" style={{ fontSize: 12, color: '#334155' }}>{session.carPlate}</span>
+                    <span className="font-black" style={{ fontSize: 15, color: '#0A1628' }}>{session.carPlate}</span>
                   </div>
                 </div>
                 <div className="flex justify-between items-center">
