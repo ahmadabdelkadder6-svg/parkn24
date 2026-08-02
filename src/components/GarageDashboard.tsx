@@ -799,7 +799,7 @@ const filteredCompleted = useMemo(() => {
                 { label: 'تطبيق', count: filteredStats.appCount, total: filteredStats.appTotal, bg: '#0066FF', shadow: 'rgba(0,102,255,0.3)' },
               ].map(x => (
                 <div key={x.label} className="text-center" style={{ background: x.bg, borderRadius: 18, padding: 14, color: '#fff', boxShadow: `0 4px 16px ${x.shadow}` }}>
-                  <div className="font-black" style={{ fontSize: 10, marginBottom: 4 }}>{x.label}</div>
+                  <div className="font-black" style={{ fontSize: 12, marginBottom: 4, letterSpacing: '0.3px' }}>{x.label}</div>
                   <span className="font-black font-mono" style={{ fontSize: 16 }}>{x.count}</span>
                   <span style={{ fontSize: 10, opacity: 0.8, marginRight: 4 }}>عربية</span>
                   <div style={{ fontSize: 10, opacity: 0.8 }}>({x.total.toFixed(0)} ج.م)</div>
