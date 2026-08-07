@@ -215,16 +215,38 @@ if (isValet && currentValetNameLocal) {
   }, [filteredCompleted,getSessionRevenue,garageDailyStats,paymentStatsFromDB,pendingRevenueFromStats]);
 
   // ✅ تقرير السياس - للمالك فقط
-  const valetReport = useMemo(() => {
-    if (!garage || !isOwner) return [];
+const valetReport = useMemo(() => {
+  if (!garage || !isOwner) return [];
 
-    const valets = [
-      { name: garage.valetName1 || `سايس 1`, key: garage.valetName1 || 'سايس 1', color: '#0066FF', icon: '🅿️1' },
-      { name: garage.valetName2 || `سايس 2`, key: garage.valetName2 || 'سايس 2', color: '#7C3AED', icon: '🅿️2' },
-      { name: garage.valetName3 || `سايس 3`, key: garage.valetName3 || 'سايس 3', color: '#FF8800', icon: '🅿️3' },
-      { name: 'المالك', key: 'المالك', color: '#00CC66', icon: '🔑' },
-      { name: 'تطبيق', key: '', color: '#0099DD', icon: '📱' }, // source=app
-    ];
+  const valetNames = [
+    { name: garage.valetName1, color: '#0066FF', icon: '🅿️1' },
+    { name: garage.valetName2, color: '#7C3AED', icon: '🅿️2' },
+    { name: garage.valetName3, color: '#FF8800', icon: '🅿️3' },
+  ].filter(v => v.name && v.name.trim() !== '');
+
+  return valetNames.map(v => {
+    const valetSessions = filteredCompleted.filter(s => {
+      const addedBy = (s as any).addedBy || '';
+      return addedBy === v.name;
+    });
+
+    const appSessions = valetSessions.filter(s => s.source === 'app');
+    const manualSessions = valetSessions.filter(s => s.source === 'manual');
+
+    const appConfirmed = appSessions.filter(s => s.revenueConfirmed);
+    const manualConfirmed = manualSessions.filter(s => s.revenueConfirmed);
+
+    return {
+      ...v,
+      count: valetSessions.length,
+      appCount: appSessions.length,
+      manualCount: manualSessions.length,
+      appTotal: appConfirmed.reduce((a, s) => a + getSessionRevenue(s), 0),
+      manualTotal: manualConfirmed.reduce((a, s) => a + getSessionRevenue(s), 0),
+      total: [...appConfirmed, ...manualConfirmed].reduce((a, s) => a + getSessionRevenue(s), 0),
+    };
+  }).filter(v => v.count > 0);
+}, [filteredCompleted, garage, isOwner, getSessionRevenue]);
 
     return valets.map(v => {
       let sessions;
@@ -821,35 +843,49 @@ if (isValet && currentValetNameLocal) {
             </div>
 
             {/* ✅ تقرير السياس - للمالك فقط */}
-            {isOwner && valetReport.length > 0 && (
-              <div className="mb-4">
-                <div className="flex items-center gap-2 mb-3 justify-end">
-                  <Users size={16} style={{ color: '#0066FF' }} />
-                  <h4 className="font-black" style={{ fontSize: 13, color: '#334155' }}>تقرير السياس</h4>
-                </div>
-                <div className="space-y-2">
-                  {valetReport.map((v, i) => (
-                    <div key={i} className="flex items-center justify-between" style={{ background: '#fff', borderRadius: 18, padding: '12px 16px', border: `2px solid ${v.color}20` }}>
-                      <div className="flex items-center gap-3">
-                        <div className="font-black font-mono" style={{ fontSize: 14, color: v.color }}>{v.total.toFixed(0)} ج.م</div>
-                        <div className="font-bold" style={{ fontSize: 10, color: '#94a3b8' }}>{v.confirmedCount} مؤكد</div>
-                      </div>
-                      <div className="flex items-center gap-2 text-right">
-                        <div>
-                          <div className="font-black" style={{ fontSize: 13, color: '#0A1628' }}>{v.name}</div>
-                          <div className="font-bold" style={{ fontSize: 10, color: '#94a3b8' }}>{v.count} سيارة</div>
-                        </div>
-                        <div className="flex items-center justify-center font-black" style={{ width: 36, height: 36, borderRadius: 12, background: v.color, color: '#fff', fontSize: 14 }}>
-                          {v.icon}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+{isOwner && valetReport.length > 0 && (
+  <div className="mb-4">
+    <div className="flex items-center gap-2 mb-3 justify-end">
+      <Users size={16} style={{ color: '#0066FF' }} />
+      <h4 className="font-black" style={{ fontSize: 13, color: '#334155' }}>تقرير السياس</h4>
+    </div>
+    <div className="space-y-2">
+      {valetReport.map((v, i) => (
+        <div key={i} style={{ background: '#fff', borderRadius: 20, padding: '14px 16px', border: `2px solid ${v.color}30` }}>
+          {/* اسم السايس */}
+          <div className="flex items-center justify-between mb-3">
+            <div className="font-black font-mono" style={{ fontSize: 16, color: v.color }}>
+              {v.total.toFixed(0)} ج.م
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="text-right">
+                <div className="font-black" style={{ fontSize: 14, color: '#0A1628' }}>{v.name}</div>
+                <div className="font-bold" style={{ fontSize: 10, color: '#94a3b8' }}>{v.count} سيارة</div>
               </div>
-            )}
-          </>
-        )}
+              <div style={{ width: 38, height: 38, borderRadius: 12, background: v.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 14 }}>
+                {v.icon}
+              </div>
+            </div>
+          </div>
+
+          {/* تفاصيل: تطبيق + يدوي */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="text-center" style={{ background: '#EBF2FF', borderRadius: 14, padding: '8px 6px', border: '1px solid #D0DCFF' }}>
+              <div style={{ fontSize: 10, color: '#0066FF', fontWeight: 900, marginBottom: 2 }}>📱 تطبيق</div>
+              <div className="font-black font-mono" style={{ fontSize: 14, color: '#0066FF' }}>{v.appCount}</div>
+              <div style={{ fontSize: 9, color: '#7B8CA6' }}>({v.appTotal.toFixed(0)} ج.م)</div>
+            </div>
+            <div className="text-center" style={{ background: '#FFF8F0', borderRadius: 14, padding: '8px 6px', border: '1px solid #FFD180' }}>
+              <div style={{ fontSize: 10, color: '#FF9500', fontWeight: 900, marginBottom: 2 }}>✋ يدوي</div>
+              <div className="font-black font-mono" style={{ fontSize: 14, color: '#FF9500' }}>{v.manualCount}</div>
+              <div style={{ fontSize: 9, color: '#7B8CA6' }}>({v.manualTotal.toFixed(0)} ج.م)</div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
 
         {/* قائمة العمليات */}
         <div className="space-y-2">
