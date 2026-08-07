@@ -527,7 +527,7 @@ export const useStore = create<AppState>((set, get) => ({
           start_time: new Date(safeStartTime).toISOString(), status: s.status,
           source: s.source, agreed_price: s.agreedPrice ?? null, revenue_confirmed: false,
           // ✅ حفظ مين أضاف الجلسة
-          added_by: localStorage.getItem('valetName') || (localStorage.getItem('garageRole') === 'owner' ? 'المالك' : 'غير معروف'),
+          added_by: localStorage.getItem('valetName') || '',
         }).select().single();
 
         if (error) {
