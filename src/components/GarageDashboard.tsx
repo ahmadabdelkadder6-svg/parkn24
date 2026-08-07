@@ -214,7 +214,7 @@ if (isValet && currentValetNameLocal) {
     return { cash,instapay,wallet,cashwallet,total,manualCount:h?paymentStatsFromDB.manualSessions:manual.length,appCount:h?paymentStatsFromDB.appSessions:app.length,manualTotal:manual.reduce((a,s)=>a+getSessionRevenue(s),0),appTotal:app.reduce((a,s)=>a+getSessionRevenue(s),0),pendingRevenue:pr,pendingCount:u.length };
   }, [filteredCompleted,getSessionRevenue,garageDailyStats,paymentStatsFromDB,pendingRevenueFromStats]);
 
-  // ✅ تقرير السياس - للمالك فقط
+// ✅ تقرير السياس - للمالك فقط
 const valetReport = useMemo(() => {
   if (!garage || !isOwner) return [];
 
@@ -224,29 +224,33 @@ const valetReport = useMemo(() => {
     { name: garage.valetName3, color: '#FF8800', icon: '🅿️3' },
   ].filter(v => v.name && v.name.trim() !== '');
 
-  return valetNames.map(v => {
-    const valetSessions = filteredCompleted.filter(s => {
-      const addedBy = (s as any).addedBy || '';
-      return addedBy === v.name;
-    });
+  return valetNames
+    .map(v => {
+      const valetSessions = filteredCompleted.filter(s => {
+        const addedBy = (s as any).addedBy || '';
+        return addedBy === v.name;
+      });
 
-    const appSessions = valetSessions.filter(s => s.source === 'app');
-    const manualSessions = valetSessions.filter(s => s.source === 'manual');
+      const appSessions = valetSessions.filter(s => s.source === 'app');
+      const manualSessions = valetSessions.filter(s => s.source === 'manual');
 
-    const appConfirmed = appSessions.filter(s => s.revenueConfirmed);
-    const manualConfirmed = manualSessions.filter(s => s.revenueConfirmed);
+      const appConfirmed = appSessions.filter(s => s.revenueConfirmed);
+      const manualConfirmed = manualSessions.filter(s => s.revenueConfirmed);
 
-    return {
-      ...v,
-      count: valetSessions.length,
-      appCount: appSessions.length,
-      manualCount: manualSessions.length,
-      appTotal: appConfirmed.reduce((a, s) => a + getSessionRevenue(s), 0),
-      manualTotal: manualConfirmed.reduce((a, s) => a + getSessionRevenue(s), 0),
-      total: [...appConfirmed, ...manualConfirmed].reduce((a, s) => a + getSessionRevenue(s), 0),
-    };
-  }).filter(v => v.count > 0);
-
+      return {
+        ...v,
+        count: valetSessions.length,
+        appCount: appSessions.length,
+        manualCount: manualSessions.length,
+        appTotal: appConfirmed.reduce((a, s) => a + getSessionRevenue(s), 0),
+        manualTotal: manualConfirmed.reduce((a, s) => a + getSessionRevenue(s), 0),
+        total: [...appConfirmed, ...manualConfirmed].reduce(
+          (a, s) => a + getSessionRevenue(s),
+          0
+        ),
+      };
+    })
+    .filter(v => v.count > 0);
 }, [filteredCompleted, garage, isOwner, getSessionRevenue]);
   }).filter(v => v.count > 0);
 }, [filteredCompleted, garage, isOwner, getSessionRevenue]);
