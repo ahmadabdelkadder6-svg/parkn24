@@ -246,6 +246,9 @@ const valetReport = useMemo(() => {
       total: [...appConfirmed, ...manualConfirmed].reduce((a, s) => a + getSessionRevenue(s), 0),
     };
   }).filter(v => v.count > 0);
+
+}, [filteredCompleted, garage, isOwner, getSessionRevenue]);
+  }).filter(v => v.count > 0);
 }, [filteredCompleted, garage, isOwner, getSessionRevenue]);
 
     return valets.map(v => {
