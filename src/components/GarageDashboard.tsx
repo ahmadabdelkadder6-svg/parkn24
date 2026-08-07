@@ -50,11 +50,13 @@ const activeSessions = useMemo(() => {
     if (s.status !== 'active') return false;
     if (Date.now() - s.startTime >= 24*60*60*1000) return false;
 
-    // ✅ السايس يشوف عربياته فقط
-    if (isValet && currentValetNameLocal) {
-      const addedBy = (s as any).addedBy || '';
-      if (addedBy !== currentValetNameLocal) return false;
-    }
+// ✅ السايس يشوف عربياته + عمليات التطبيق
+if (isValet && currentValetNameLocal) {
+  const addedBy = (s as any).addedBy || '';
+  if (addedBy !== currentValetNameLocal && addedBy !== '' && addedBy !== 'المالك') {
+    return false;
+  }
+}
 
     return true;
   });
@@ -186,11 +188,15 @@ const filteredCompleted = useMemo(() => {
     // ✅ فلترة بطريقة الدفع
     if(logPaymentFilter!=='all' && s.paymentMethod!==logPaymentFilter) return false;
 
-    // ✅ السايس يشوف عملياته فقط
-    if(isValet && currentValetNameLocal) {
-      const addedBy = (s as any).addedBy || '';
-      if(addedBy !== currentValetNameLocal) return false;
-    }
+   // ✅ السايس يشوف عملياته + عمليات التطبيق اللي في شيفته
+if (isValet && currentValetNameLocal) {
+  const addedBy = (s as any).addedBy || '';
+  // السايس يشوف: عملياته + عمليات التطبيق (addedBy فاضي أو المالك)
+  if (addedBy !== currentValetNameLocal && addedBy !== '' && addedBy !== 'المالك') {
+    // لو عملية سايس تاني → ما يشوفهاش
+    return false;
+  }
+}
 
     return true;
   });
@@ -301,7 +307,14 @@ const filteredCompleted = useMemo(() => {
 
   const handleCarArrived = async (carId:string,carPlate:string,agreedPrice:number) => {
     if(processedCarsRef.current.has(carId))return;processedCarsRef.current.add(carId);pausePolling(10000);
-    try{const np=carPlate.trim().toUpperCase();const el=useStore.getState().sessions.find(s=>s.carPlate.trim().toUpperCase()===np&&s.status==='active');if(el){await removeIncomingCar(carId);await supabase.from('incoming_cars').delete().eq('car_plate',np).eq('garage_id',garage.id);toast('الجلسة شغالة ✅',{icon:'🚗'});return;}try{const{data:db}=await supabase.from('sessions').select('id').eq('car_plate',np).eq('status','active').limit(1);if(db&&db.length>0){await removeIncomingCar(carId);await supabase.from('incoming_cars').delete().eq('car_plate',np).eq('garage_id',garage.id);await fetchAll();toast('الجلسة شغالة ✅',{icon:'🚗'});return;}}catch(e){console.error(e);}const ro=offers.find(o=>o.carPlate.trim().toUpperCase()===np&&(o.status==='pending'||o.status==='accepted'));if(ro)cancelOffer(ro.id);await addSession({garageId:garage.id,carPlate:np,startTime:Date.now(),status:'active',source:'app',agreedPrice});await removeIncomingCar(carId);await supabase.from('incoming_cars').delete().eq('car_plate',np).eq('garage_id',garage.id);toast.success(`بدأ حساب ${carPlate} 🚗`);}
+    try{const np=carPlate.trim().toUpperCase();const el=useStore.getState().sessions.find(s=>s.carPlate.trim().toUpperCase()===np&&s.status==='active');if(el){await removeIncomingCar(carId);await supabase.from('incoming_cars').delete().eq('car_plate',np).eq('garage_id',garage.id);toast('الجلسة شغالة ✅',{icon:'🚗'});return;}try{const{data:db}=await supabase.from('sessions').select('id').eq('car_plate',np).eq('status','active').limit(1);if(db&&db.length>0){await removeIncomingCar(carId);await supabase.from('incoming_cars').delete().eq('car_plate',np).eq('garage_id',garage.id);await fetchAll();toast('الجلسة شغالة ✅',{icon:'🚗'});return;}}catch(e){console.error(e);}const ro=offers.find(o=>o.carPlate.trim().toUpperCase()===np&&(o.status==='pending'||o.status==='accepted'));if(ro)cancelOffer(ro.id);await addSession({
+  garageId: garage.id,
+  carPlate: np,
+  startTime: Date.now(),
+  status: 'active',
+  source: 'app',
+  agreedPrice,
+});await removeIncomingCar(carId);await supabase.from('incoming_cars').delete().eq('car_plate',np).eq('garage_id',garage.id);toast.success(`بدأ حساب ${carPlate} 🚗`);}
     catch(e){console.error('❌',e);processedCarsRef.current.delete(carId);toast.error('خطأ، حاول تاني');}
   };
 
