@@ -61,14 +61,16 @@ export default function SummaryScreen() {
   const userPlate = (currentUser?.carPlate ?? '').trim().toUpperCase();
 
   /* ✅ البحث بـ carPlate أو customerPhone - يشمل الجلسات اللي بدأها الجراج */
-  const activeSession = sessions.find(
+const activeSession = sessions
+  .filter(
     (s) =>
       s.status === 'active' &&
       (
         s.carPlate.trim().toUpperCase() === userPlate ||
         (s as any).customerPhone === currentUser?.phone
       ),
-  );
+  )
+  .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
 
   const lastCompletedSession = sessions
     .filter(

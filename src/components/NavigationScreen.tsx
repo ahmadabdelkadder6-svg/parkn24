@@ -116,14 +116,16 @@ export default function NavigationScreen() {
   );
 
   /* ✅ البحث عن الجلسة النشطة باللوحة أو رقم الهاتف - يشمل الجلسات اللي بدأها الجراج */
-  const myActiveSession = sessions.find(
+const myActiveSession = sessions
+  .filter(
     (sess) =>
       sess.status === 'active' &&
       (
         sess.carPlate.trim().toUpperCase() === userPlateNav ||
         (sess as any).customerPhone === currentUser?.phone
       ),
-  );
+  )
+  .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
 
   /* ── State ── */
   const [userPos, setUserPos] = useState<{ lat: number; lng: number }>({
