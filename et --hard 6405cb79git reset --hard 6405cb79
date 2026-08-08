@@ -1,0 +1,129 @@
+[33mfc63fb83[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m update65
+[33m9478962d[m update60
+[33mc5db1a22[m update60
+[33maaefb262[m update60
+[33m4281a14b[m update90
+[33m6405cb79[m update99
+[33m6207e958[m update99
+[33m9244fe8f[m update جراغغغغ
+[33m237435be[m update 77
+[33m37092ac2[m update 77
+[33m2cee066c[m update 55
+[33m77747c1a[m update جراغغغغ
+[33meb736353[m update جراغغغغ
+[33m8926d9cb[m update جراغغغغ
+[33ma8465d67[m update جراج
+[33mfd5b54dd[m fix garage login
+[33m0dc9a004[m update جراج
+[33m65e68183[m test garage login marker
+[33m91d54538[m update جراج
+[33mb224577e[m update جراج
+[33mc7f456e2[m v2: force update garage login
+[33m9c53a6ac[m update جراج
+[33m5fa88762[m fix: wallet topup approval complete fix
+[33me311093b[m update6
+[33mdc9e7ed0[m fix: sync local ID with Supabase ID on approve/reject
+[33mf1619c84[m update6
+[33m648c3c75[m update6
+[33ma432d0cd[m update6
+[33m00b11560[m update5
+[33meeb1d219[m update5
+[33m27bdeb84[m update4
+[33m907e415b[m fix: add missing DollarSign import
+[33m1d28ebc9[m update2
+[33m68b9407a[m update2
+[33m525bad0c[m update2
+[33me21240f0[m update1
+[33m65bbc069[m update1
+[33m423064e1[m update1
+[33ma4da976c[m update1
+[33mf0276846[m update1
+[33m225679e3[m update6
+[33mad92e9e3[m current state with modifications
+[33m1aaba4fb[m update3
+[33m2a528046[m Change admin password
+[33m9bd037ad[m update2
+[33m6150c03a[m update1
+[33mc28d99ec[m update2
+[33m6b1eacc8[m update1
+[33mb3dc659f[m update8
+[33m5eb7b7cf[m update8
+[33m83c8e665[m update7
+[33mce10d62a[m update6
+[33mbe9fffa6[m update5
+[33mce6982b6[m update5
+[33m489ace7a[m update5
+[33mfec04dc4[m update5
+[33med953609[m update54
+[33m63dda6ce[m update4
+[33mb0068712[m update3
+[33m94de50fe[m update2
+[33m53380dd6[m update1
+[33m3f0b4248[m update
+[33meafca45e[m update
+[33medab39ff[m update
+[33m5c68c08e[m update
+[33m8bcb1f13[m update
+[33md339d656[m update
+[33m8d7963d5[m update
+[33m6b37fbd5[m update
+[33m18c7faf6[m update
+[33m087fece3[m update
+[33me9d09ef0[m update
+[33md555f442[m update
+[33m2a75209f[m update
+[33mcb96fa0e[m update
+[33m325ab4e2[m update
+[33m083f560c[m update
+[33m76a9b4e7[m update
+[33m9da5381f[m update
+[33me2f1087c[m fix: prevent duplicate sessions with 3-layer check
+[33m651cb1d0[m update
+[33md4eff591[m fix: removeIncomingCar syntax error
+[33m944b998d[m fix: removeIncomingCar syntax error
+[33m9bb58bdf[m fix: force delete incoming car by id and car_plate
+[33mf564af95[m fix: use same id for incoming car in supabase
+[33m77f4b96e[m update
+[33m3432d60c[m update
+[33mad8bdaa4[m update
+[33m9a75ac86[m update
+[33mbb134341[m fix: add polling fallback for realtime sync
+[33m56ba69ce[m fix: remove duplicate store.ts
+[33mc3c75e69[m fix: remove duplicate store.ts
+[33m15070243[m fix: messages table and error handling
+[33md900321e[m fix: handle undefined messages array
+[33mefaf94b3[m feat: add LastSessionScreen component
+[33m123f37c4[m feat: add last session screen with full details
+[33me3c46b1c[m feat: add last session screen with full details
+[33mde4d0024[m fix: tailwind v3 syntax and config
+[33m45b1991f[m chore: remove invalid stray files
+[33m8c006740[m fix: add all missing dependencies
+[33mba394af5[m fix: remove clsx and tailwind-merge dependency
+[33m6febc561[m fix: rename gitignore and remove node_modules from tracking
+[33mfa4c4df3[m fix: add missing package.json
+[33mfb4274f4[m Delete package.json
+[33mbe789ccf[m fix: restore valid package.json and vercel.json
+[33mf67eaa65[m fix: use npm run build instead of npx
+[33m5006c554[m fix: use npm run build instead of npx
+[33mee902888[m fix: add legacy-peer-deps to install command
+[33m5facf740[m fix: vercel build permission issue
+[33md2065dd2[m fix: vercel build permission issue
+[33ma34ed7b2[m fix: use npx vite build to fix permission denied
+[33m1ff71942[m update
+[33mbf2d7cee[m add vercelignore
+[33m90d82035[m fix: remove waiting period and fix build error
+[33mfcc01f91[m update: PWA icons, performance, accessibility, remove wait time
+[33mbe37903f[m update
+[33m632b7c99[m update logo
+[33m7dc1c3bc[m fix: تحديث store وإصلاح مشكلة الأماكن والرصيد
+[33m65206cb9[m fix: تحديث store وإصلاح مشكلة الأماكن والرصيد
+[33md3190b99[m fix garage spots counter with adjustGarageSpots
+[33macad8338[m Add files via upload
+[33m9ac038b7[m remove customer name keep phone and price
+[33mc23b07b3[m fix garage spots counter with adjustGarageSpots
+[33m1ab8ed09[m fix GarageLoginScreen closing tags
+[33m6c2d8995[m remove demo credentials
+[33m910efbbc[m remove demo garages
+[33m7e743c80[m add gitignore
+[33m66184d52[m remove node_modules and fix gitignore
+[33mb88b9bf3[m first commit
