@@ -421,8 +421,11 @@ export default function GarageDashboard() {
   }, [isValet, valetTodayRevenue, garageDailyStats, completedSessions, getSessionRevenue]);
 
   const getActiveCost = useCallback((s: any) => {
-    const st = toMs(s.startTime);
-    const el = Math.max(0, Math.floor((Date.now() - st) / 1000));
+const st = toMs(s.startTime);
+const now = Date.now();
+const el = (st > 0 && st <= now + 60000)
+  ? Math.max(0, Math.floor((now - st) / 1000))
+  : 0;
     const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
     if (isNaN(el) || el <= 0 || isNaN(r) || r <= 0) return 0;
     return calculateCost(el, r);
