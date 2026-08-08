@@ -16,7 +16,6 @@ import {
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
-/* ─── Helpers ─── */
 const toMs = (value: any): number => {
   if (!value) return 0;
   if (typeof value === 'number') {
@@ -36,9 +35,6 @@ const normalizePlate = (plate?: string): string => {
     .toUpperCase();
 };
 
-/* ════════════════════════════════════════════════
-   ██  SESSION SCREEN
-   ════════════════════════════════════════════════ */
 export default function SessionScreen() {
   const {
     garages,
@@ -52,58 +48,41 @@ export default function SessionScreen() {
   const userPlate = normalizePlate(currentUser?.carPlate);
   const userPhone = currentUser?.phone || '';
 
-  /* ── Refs ── */
   const redirectedToSummaryRef = useRef(false);
   const redirectedToSessionRef = useRef(false);
   const realtimeChannelRef = useRef<any>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  /* ── State ── */
   const [elapsed, setElapsed] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  /* ─────────────────────────────────────────────
-     ██  اكتشاف هل الصف ده يخص الحريف؟
-     ───────────────────────────────────────────── */
   const isMySessionRow = (row: any) => {
     if (!row) return false;
-
     const rowPlate = normalizePlate(row.car_plate || row.carPlate);
     const rowPhone = row.customer_phone || row.customerPhone || '';
-
     return (
       (!!userPlate && rowPlate === userPlate) ||
       (!!userPhone && rowPhone === userPhone)
     );
   };
 
-  /* ─────────────────────────────────────────────
-     ██  الجلسة النشطة الحالية
-     ───────────────────────────────────────────── */
   const activeSession = useMemo(() => {
     return sessions
       .filter((s) => {
         if (s.status !== 'active') return false;
-
         const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
         const samePhoneMatch = !!userPhone && (s as any).customerPhone === userPhone;
-
         return samePlateMatch || samePhoneMatch;
       })
       .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
   }, [sessions, userPlate, userPhone]);
 
-  /* ─────────────────────────────────────────────
-     ██  آخر جلسة مكتملة تخص الحريف
-     ───────────────────────────────────────────── */
   const lastCompletedSession = useMemo(() => {
     return sessions
       .filter((s) => {
         if (s.status !== 'completed') return false;
-
         const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
         const samePhoneMatch = !!userPhone && (s as any).customerPhone === userPhone;
-
         return samePlateMatch || samePhoneMatch;
       })
       .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
@@ -113,12 +92,8 @@ export default function SessionScreen() {
     (g) => g.id === (activeSession?.garageId ?? lastCompletedSession?.garageId),
   );
 
-  /* ─────────────────────────────────────────────
-     ██  تحميل أولي
-     ───────────────────────────────────────────── */
   useEffect(() => {
     let mounted = true;
-
     const init = async () => {
       try {
         await fetchAll();
@@ -126,20 +101,10 @@ export default function SessionScreen() {
         if (mounted) setLoading(false);
       }
     };
-
     init();
-
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [fetchAll]);
 
-  /* ─────────────────────────────────────────────
-     ██  Realtime + polling
-     ██  يلقط:
-     ██  - بدء الجلسة من السايس
-     ██  - إنهاء الجلسة من السايس
-     ───────────────────────────────────────────── */
   useEffect(() => {
     if (!userPlate && !userPhone) return;
 
@@ -162,32 +127,20 @@ export default function SessionScreen() {
         async (payload) => {
           const newRow = payload.new as any;
           const oldRow = payload.old as any;
-
           if (isMySessionRow(newRow) || isMySessionRow(oldRow)) {
-            console.log('🔔 Session realtime change:', payload.eventType, {
-              newStatus: newRow?.status,
-              oldStatus: oldRow?.status,
-              plate: newRow?.car_plate || oldRow?.car_plate,
-            });
             await refetch();
           }
         },
       )
-      .subscribe((status) => {
-        console.log('📡 Session realtime status:', status);
-      });
+      .subscribe();
 
     realtimeChannelRef.current = channel;
 
-    /* Polling احتياطي */
-    pollingRef.current = setInterval(() => {
-      refetch();
-    }, 4000);
+    pollingRef.current = setInterval(() => { refetch(); }, 4000);
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') refetch();
     };
-
     const handleFocus = () => refetch();
 
     document.addEventListener('visibilitychange', handleVisibility);
@@ -197,12 +150,10 @@ export default function SessionScreen() {
       cancelled = true;
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('focus', handleFocus);
-
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
       }
-
       if (realtimeChannelRef.current) {
         supabase.removeChannel(realtimeChannelRef.current);
         realtimeChannelRef.current = null;
@@ -210,71 +161,49 @@ export default function SessionScreen() {
     };
   }, [userPlate, userPhone, fetchAll]);
 
-  /* ─────────────────────────────────────────────
-     ██  العداد
-     ───────────────────────────────────────────── */
   useEffect(() => {
     if (!activeSession) {
       setElapsed(0);
       return;
     }
-
     const startMs = toMs(activeSession.startTime);
     if (!startMs || startMs <= 0) {
       setElapsed(0);
       return;
     }
-
     const calcElapsed = () => {
       const now = Date.now();
-      const diff = now - startMs;
-      return Math.max(0, Math.floor(diff / 1000));
+      return Math.max(0, Math.floor((now - startMs) / 1000));
     };
-
     setElapsed(calcElapsed());
-
-    const interval = setInterval(() => {
-      setElapsed(calcElapsed());
-    }, 1000);
-
+    const interval = setInterval(() => { setElapsed(calcElapsed()); }, 1000);
     return () => clearInterval(interval);
   }, [activeSession?.id, activeSession?.startTime]);
 
-  /* ─────────────────────────────────────────────
-     ██  لو الجلسة بدأت من السايس ووصلنا للشاشة
-     ██  نثبت الجراج الصحيح
-     ───────────────────────────────────────────── */
   useEffect(() => {
     if (!activeSession) {
       redirectedToSessionRef.current = false;
       return;
     }
-
     if (redirectedToSessionRef.current) return;
     redirectedToSessionRef.current = true;
-
     if (activeSession.garageId) {
       setSelectedGarageId(activeSession.garageId);
     }
   }, [activeSession?.id, activeSession?.garageId, setSelectedGarageId]);
 
-  /* ─────────────────────────────────────────────
-     ██  الانتقال التلقائي للملخص عند إنهاء الجلسة
-     ██  سواء من السايس أو المالك
-     ───────────────────────────────────────────── */
   useEffect(() => {
     if (activeSession) {
       redirectedToSummaryRef.current = false;
       return;
     }
-
     if (!lastCompletedSession) return;
     if (redirectedToSummaryRef.current) return;
 
     const endMs = toMs(lastCompletedSession.endTime);
     if (!endMs) return;
 
-    const justEnded = Date.now() - endMs < 2 * 60 * 1000; // خلال آخر دقيقتين
+    const justEnded = Date.now() - endMs < 2 * 60 * 1000;
     if (!justEnded) return;
 
     redirectedToSummaryRef.current = true;
@@ -297,46 +226,7 @@ export default function SessionScreen() {
     setSelectedGarageId,
   ]);
 
-  /* ─────────────────────────────────────────────
-     ██  Debug
-     ───────────────────────────────────────────── */
-  useEffect(() => {
-    console.log('🧭 SessionScreen state:', {
-      userPlate,
-      userPhone,
-      activeSession: activeSession
-        ? {
-            id: activeSession.id,
-            plate: activeSession.carPlate,
-            phone: (activeSession as any).customerPhone,
-            status: activeSession.status,
-            source: activeSession.source,
-            startedBy: (activeSession as any).startedBy,
-            startTime: activeSession.startTime,
-          }
-        : null,
-      lastCompletedSession: lastCompletedSession
-        ? {
-            id: lastCompletedSession.id,
-            plate: lastCompletedSession.carPlate,
-            endTime: lastCompletedSession.endTime,
-            status: lastCompletedSession.status,
-          }
-        : null,
-      allActive: sessions
-        .filter((s) => s.status === 'active')
-        .map((s) => ({
-          id: s.id.slice(0, 8),
-          plate: s.carPlate,
-          phone: (s as any).customerPhone,
-          source: s.source,
-        })),
-    });
-  }, [activeSession?.id, lastCompletedSession?.id, sessions.length]);
-
-  /* ─────────────────────────────────────────────
-     ██  Loading
-     ───────────────────────────────────────────── */
+  /* ── Loading ── */
   if (loading) {
     return (
       <div className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8">
@@ -348,9 +238,7 @@ export default function SessionScreen() {
     );
   }
 
-  /* ─────────────────────────────────────────────
-     ██  لا توجد جلسة نشطة
-     ───────────────────────────────────────────── */
+  /* ── لا توجد جلسة نشطة ── */
   if (!activeSession) {
     return (
       <div className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8">
@@ -358,7 +246,7 @@ export default function SessionScreen() {
         <p className="text-slate-500 text-sm font-bold text-center mb-2">
           لا توجد جلسة ركن نشطة حالياً
         </p>
-        <p className="text-slate-400 text-xs text-center mb-2">
+        <p className="text-slate-400 text-xs text-center mb-4">
           إذا بدأ السايس الجلسة أو أنهاها ستظهر هنا تلقائياً
         </p>
 
@@ -391,16 +279,14 @@ export default function SessionScreen() {
   const currentCost = calculateCost(elapsed, sessionRate);
   const remainingInHour = getRemainingInCurrentHour(elapsed);
 
-  /* ─────────────────────────────────────────────
-     ██  RENDER
-     ───────────────────────────────────────────── */
+  /* ── RENDER ── */
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8"
+      className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8 overflow-y-auto"
     >
-      {/* ══ عداد الوقت ══ */}
+      {/* عداد الوقت */}
       <motion.div
         animate={{
           boxShadow: [
@@ -421,7 +307,7 @@ export default function SessionScreen() {
         </div>
       </motion.div>
 
-      {/* ══ بطاقة التكلفة ══ */}
+      {/* بطاقة التكلفة */}
       <div className="w-full bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-2xl p-4 mb-4 shadow-sm">
         <div className="flex justify-between items-center mb-3">
           <div className="text-center">
@@ -452,13 +338,12 @@ export default function SessionScreen() {
             {String(remainingInHour.seconds).padStart(2, '0')}
           </div>
           <div className="text-[9px] text-slate-400 mt-1">
-            بعدها ستُحسب ساعة إضافية ({currentHours + 1} × {sessionRate} ={' '}
-            {(currentHours + 1) * sessionRate} ج.م)
+            بعدها ستُحسب ساعة إضافية ({currentHours + 1} × {sessionRate} = {(currentHours + 1) * sessionRate} ج.م)
           </div>
         </div>
       </div>
 
-      {/* ══ تنبيه سعر خاص ══ */}
+      {/* تنبيه سعر خاص */}
       {sessionRate !== garage?.basePrice && garage && (
         <div className="w-full bg-amber-50 border border-amber-200 rounded-xl p-2 mb-4 text-center">
           <p className="text-[10px] text-amber-600 font-bold">
@@ -467,29 +352,25 @@ export default function SessionScreen() {
         </div>
       )}
 
-      {/* ══ معلومات السيارة والسعر ══ */}
+      {/* معلومات السيارة والسعر */}
       <div className="w-full grid grid-cols-2 gap-3 mb-6">
         <div className="bg-white border border-slate-200 p-4 rounded-2xl text-center shadow-sm">
           <Car size={20} className="text-blue-600 mx-auto mb-2" />
           <div className="text-sm font-black text-slate-900">
             {activeSession.carPlate || currentUser?.carPlate}
           </div>
-          <div className="text-[9px] text-slate-500 font-bold">
-            رقم السيارة
-          </div>
+          <div className="text-[9px] text-slate-500 font-bold">رقم السيارة</div>
         </div>
         <div className="bg-white border border-slate-200 p-4 rounded-2xl text-center shadow-sm">
           <DollarSign size={20} className="text-purple-600 mx-auto mb-2" />
           <div className="text-sm font-black text-purple-600 font-mono">
             {sessionRate} ج.م
           </div>
-          <div className="text-[9px] text-slate-500 font-bold">
-            سعر الساعة
-          </div>
+          <div className="text-[9px] text-slate-500 font-bold">سعر الساعة</div>
         </div>
       </div>
 
-      {/* ══ اسم الجراج ══ */}
+      {/* اسم الجراج */}
       {garage && (
         <div className="bg-white border border-slate-200 p-4 rounded-2xl w-full text-center mb-6 shadow-sm">
           <div className="text-xs text-slate-500 font-bold mb-1">الجراج</div>
@@ -497,7 +378,7 @@ export default function SessionScreen() {
         </div>
       )}
 
-      {/* ══ مصدر الجلسة ══ */}
+      {/* مصدر الجلسة */}
       <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 mb-4 text-center">
         <p className="text-[10px] text-slate-400 font-bold">
           {activeSession.source === 'app' ? '📱 بدأت من التطبيق' : '🅿️ بدأت من الجراج'}
@@ -505,25 +386,28 @@ export default function SessionScreen() {
         </p>
       </div>
 
-      {/* ══ ملاحظة الدفع ══ */}
+      {/* ملاحظة الدفع */}
       <div className="w-full bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-center">
         <p className="text-[10px] text-blue-600 font-bold">
           💡 سيتم تحديد طريقة الدفع عند إنهاء الجلسة
         </p>
       </div>
 
-{/* ══ زر إنهاء الجلسة ══ */}
-<button
-  onClick={() => setScreen('summary')}
-  className="w-full bg-red-600 hover:bg-red-700 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-red-100 active:scale-95 transition-all mb-3"
->
-  إنهاء الجلسة ({currentCost} ج.م)
-</button>
+      {/* زر إنهاء الجلسة */}
+      <button
+        onClick={() => setScreen('summary')}
+        className="w-full bg-red-600 hover:bg-red-700 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-red-100 active:scale-95 transition-all mb-3"
+      >
+        إنهاء الجلسة ({currentCost} ج.م)
+      </button>
 
-{/* ══ زر الرجوع ══ */}
-<button
-  onClick={() => setScreen('list')}
-  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 py-3 rounded-2xl font-bold text-sm active:scale-95 transition-all"
->
-  العودة للقائمة
-</button>
+      {/* زر الرجوع */}
+      <button
+        onClick={() => setScreen('list')}
+        className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 py-3 rounded-2xl font-bold text-sm active:scale-95 transition-all"
+      >
+        العودة للقائمة
+      </button>
+    </motion.div>
+  );
+}
