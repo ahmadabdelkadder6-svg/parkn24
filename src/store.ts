@@ -685,9 +685,25 @@ export const useStore = create<AppState>((set, get) => ({
         } catch (err) { console.error('خطأ في التحقق من DB:', err); }
       }
 
-      const valetName = localStorage.getItem('valetName') || '';
-      const garageRole = localStorage.getItem('garageRole') || '';
-      const addedByValue = valetName || (garageRole === 'owner' ? 'المالك' : 'غير معروف');
+// ✅ لو تم تمرير addedBy صراحة من الكومبوننت، استخدمه
+const explicitAddedBy = (s as any).addedBy;
+let addedByValue: string;
+
+if (explicitAddedBy !== undefined && explicitAddedBy !== null && explicitAddedBy !== '') {
+  // ✅ تم تمريره صراحة
+  addedByValue = explicitAddedBy;
+} else {
+  // ✅ نحدده من localStorage
+  const valetName = localStorage.getItem('valetName') || '';
+  const garageRole = localStorage.getItem('garageRole') || '';
+  addedByValue = garageRole === 'owner'
+    ? 'المالك'
+    : valetName
+      ? valetName
+      : garageRole === 'valet'
+        ? `سايس ${localStorage.getItem('valetNumber') || ''}`
+        : '';
+}
 
       const optimisticSession: ParkingSession = {
         ...s,

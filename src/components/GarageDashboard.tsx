@@ -475,21 +475,48 @@ export default function GarageDashboard() {
     setShowSettings(true);
   };
 
-  const handleCarArrived = async (car: any) => {
-    const carId: string = car.id; const carPlate: string = car.carPlate;
+const handleCarArrived = async (car: any) => {
+    const carId: string = car.id;
+    const carPlate: string = car.carPlate;
     if (processedCarsRef.current.has(carId)) return;
-    processedCarsRef.current.add(carId); pausePolling(10000);
+    processedCarsRef.current.add(carId);
+    pausePolling(10000);
     try {
       const np = carPlate.trim().toUpperCase();
       const el = useStore.getState().sessions.find(s => s.carPlate.trim().toUpperCase() === np && s.status === 'active');
       if (el) { await removeIncomingCar(carId); toast('الجلسة شغالة ✅', { icon: '🚗' }); return; }
       const ro = offers.find(o => o.carPlate.trim().toUpperCase() === np && (o.status === 'pending' || o.status === 'accepted'));
       if (ro) cancelOffer(ro.id);
-      await addSession({ garageId: garage.id, carPlate: np, startTime: Date.now(), status: 'active', source: 'app', agreedPrice: car.agreedPrice, customerPhone: car.customerPhone, customerName: car.customerName, startedBy: 'garage', incomingCarId: carId } as any);
+
+      // ✅ تحديد addedBy بشكل صحيح
+      const valetName = localStorage.getItem('valetName') || '';
+      const garageRole = localStorage.getItem('garageRole') || '';
+      const addedByForSession = garageRole === 'owner'
+        ? 'المالك'
+        : valetName || `سايس ${localStorage.getItem('valetNumber') || ''}`;
+
+      await addSession({
+        garageId: garage.id,
+        carPlate: np,
+        startTime: Date.now(),
+        status: 'active',
+        source: 'app',
+        agreedPrice: car.agreedPrice,
+        customerPhone: car.customerPhone,
+        customerName: car.customerName,
+        startedBy: 'garage',
+        incomingCarId: carId,
+        addedBy: addedByForSession,  // ✅ نمرره صراحة
+      } as any);
+
       await removeIncomingCar(carId);
       await supabase.from('incoming_cars').delete().eq('car_plate', np).eq('garage_id', garage.id);
       toast.success(`بدأ حساب ${carPlate} 🚗`);
-    } catch (e) { console.error('❌', e); processedCarsRef.current.delete(carId); toast.error('خطأ، حاول تاني'); }
+    } catch (e) {
+      console.error('❌', e);
+      processedCarsRef.current.delete(carId);
+      toast.error('خطأ، حاول تاني');
+    }
   };
 
   const calculateRemainingTime = (st: number | string, em: number) => Math.max(0, em - Math.floor((Date.now() - toMs(st)) / 60000));
@@ -754,7 +781,11 @@ export default function GarageDashboard() {
                 const mins = Math.floor(el / 60); const hrs = calculateFullHours(el);
                 const rate = Number(s.agreedPrice ?? garage.basePrice); const cost = calculateCost(el, rate);
                 const isM = s.source === 'manual'; const addedBy = (s as any).addedBy || '';
-                const isMySession = !currentValetNameLocal || addedBy === currentValetNameLocal;
+                const isMySession = isOwner
+  || !currentValetNameLocal
+  || addedBy === currentValetNameLocal
+  || addedBy === ''
+  || addedBy === `سايس ${valetNumber}`;
                 const un = undoableSessions.find(u => u.sessionId === s.id || u.localId === s.id);
 
                 return (

@@ -512,13 +512,18 @@ export default function SessionScreen() {
         </p>
       </div>
 
-      {/* ══ زر الرجوع فقط ══ */}
-      <button
-        onClick={() => setScreen('list')}
-        className="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-2xl font-black text-base shadow-lg active:scale-95 transition-all mb-3"
-      >
-        العودة للقائمة
-      </button>
-    </motion.div>
-  );
-}
+{/* ══ زر إنهاء الجلسة ══ */}
+<button
+  onClick={() => setScreen('summary')}
+  className="w-full bg-red-600 hover:bg-red-700 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-red-100 active:scale-95 transition-all mb-3"
+>
+  إنهاء الجلسة ({currentCost} ج.م)
+</button>
+
+{/* ══ زر الرجوع ══ */}
+<button
+  onClick={() => setScreen('list')}
+  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 py-3 rounded-2xl font-bold text-sm active:scale-95 transition-all"
+>
+  العودة للقائمة
+</button>
