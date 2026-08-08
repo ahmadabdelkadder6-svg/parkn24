@@ -17,15 +17,33 @@ import { useStore, pausePolling } from '../store';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
+import { supabase } from '../lib/supabase';
 
+/* ─── Constants ─── */
 const INSTAPAY_USERNAME = 'ahmed.ali858104';
 const INSTAPAY_LINK = `https://ipn.eg/S/${INSTAPAY_USERNAME}/instapay/9fp24n`;
 const CASH_WALLET_NUMBER = '01229858104';
 
+/* ─── Helpers ─── */
 function generateConfirmCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+/**
+ * ✅ toMs: يحوّل أي قيمة وقت (number بالثواني أو ms، أو string ISO) إلى milliseconds
+ */
+const toMs = (value: any): number => {
+  if (!value) return 0;
+  if (typeof value === 'number') {
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+/* ════════════════════════════════════════════════════════════
+   ██  SUMMARY SCREEN
+   ════════════════════════════════════════════════════════════ */
 export default function SummaryScreen() {
   const {
     garages,
@@ -36,38 +54,42 @@ export default function SummaryScreen() {
     setSelectedGarageId,
     currentUser,
     deductWallet,
+    fetchAll,
   } = useStore();
 
   const garage = garages.find((g) => g.id === selectedGarageId);
   const userPlate = (currentUser?.carPlate ?? '').trim().toUpperCase();
 
+  /* ✅ البحث بـ carPlate أو customerPhone - يشمل الجلسات اللي بدأها الجراج */
   const activeSession = sessions.find(
     (s) =>
-      s.carPlate.trim().toUpperCase() === userPlate &&
-      s.status === 'active'
+      s.status === 'active' &&
+      (
+        s.carPlate.trim().toUpperCase() === userPlate ||
+        (s as any).customerPhone === currentUser?.phone
+      ),
   );
 
   const lastCompletedSession = sessions
     .filter(
       (s) =>
-        s.carPlate.trim().toUpperCase() === userPlate &&
-        s.status === 'completed'
+        s.status === 'completed' &&
+        (
+          s.carPlate.trim().toUpperCase() === userPlate ||
+          (s as any).customerPhone === currentUser?.phone
+        ),
     )
-    .sort((a, b) => {
-      const endA = typeof a.endTime === 'number' ? a.endTime : 0;
-      const endB = typeof b.endTime === 'number' ? b.endTime : 0;
-      return endB - endA;
-    })[0];
+    .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
 
   const referenceSession = activeSession ?? lastCompletedSession;
 
+  /* ── State ── */
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [rating, setRating] = useState(4);
   const [done, setDone] = useState(false);
   const [doneMethod, setDoneMethod] = useState('');
   const [doneTotalPrice, setDoneTotalPrice] = useState(0);
   const [remainingWallet, setRemainingWallet] = useState(0);
-  const isEndingRef = useRef(false);
 
   const [instapayStep, setInstapayStep] = useState<'select' | 'info' | 'confirm'>('select');
   const instapayCode = useMemo(() => generateConfirmCode(), []);
@@ -79,15 +101,65 @@ export default function SummaryScreen() {
   const [cashWalletEnteredCode, setCashWalletEnteredCode] = useState('');
   const [cashWalletCodeError, setCashWalletCodeError] = useState(false);
 
+  /* ── Refs ── */
+  const isEndingRef = useRef(false);
+  const realtimeChannelRef = useRef<any>(null);
+
+  /* ─────────────────────────────────────────────
+     ██  REALTIME: الاستماع لجدول sessions
+         يضمن إن شاشة الدفع تتحدث فور إنهاء
+         الجلسة من أي طرف
+     ───────────────────────────────────────────── */
+  useEffect(() => {
+    if (!userPlate && !currentUser?.phone) return;
+
+    fetchAll();
+
+    const garageId = referenceSession?.garageId ?? selectedGarageId ?? null;
+
+    const channel = supabase
+      .channel(`summary-session-${userPlate || currentUser?.phone}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'sessions',
+          ...(garageId ? { filter: `garage_id=eq.${garageId}` } : {}),
+        },
+        async (payload) => {
+          const row = payload.new as any;
+          if (!row) { await fetchAll(); return; }
+
+          const plate = (row.car_plate ?? '').trim().toUpperCase();
+          const phone = row.customer_phone ?? '';
+          const isMySession =
+            plate === userPlate ||
+            (currentUser?.phone && phone === currentUser.phone);
+
+          if (isMySession) {
+            await fetchAll();
+          }
+        },
+      )
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+      realtimeChannelRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userPlate, currentUser?.phone, selectedGarageId]);
+
+  /* ── اكتشاف الجلسة المكتملة تلقائيًا ── */
   useEffect(() => {
     if (done) return;
     if (!lastCompletedSession) return;
     if (activeSession) return;
 
-    const endTime =
-      typeof lastCompletedSession.endTime === 'number'
-        ? lastCompletedSession.endTime
-        : 0;
+    const endTime = toMs(lastCompletedSession.endTime);
     const timeSinceEnd = Date.now() - endTime;
 
     if (
@@ -108,18 +180,16 @@ export default function SummaryScreen() {
     done,
   ]);
 
+  /* ── Guard ── */
   if (!garage) return null;
 
+  /* ── Computed ── */
   const durationSeconds = referenceSession
     ? referenceSession.status === 'completed' && referenceSession.endTime
       ? Math.floor(
-          ((typeof referenceSession.endTime === 'number'
-            ? referenceSession.endTime
-            : new Date(referenceSession.endTime).getTime()) -
-            referenceSession.startTime) /
-            1000
+          (toMs(referenceSession.endTime) - toMs(referenceSession.startTime)) / 1000,
         )
-      : Math.floor((Date.now() - referenceSession.startTime) / 1000)
+      : Math.floor((Date.now() - toMs(referenceSession.startTime)) / 1000)
     : 0;
 
   const durationMinutes = Math.floor(durationSeconds / 60);
@@ -143,17 +213,15 @@ export default function SummaryScreen() {
     { id: 'cashwallet', label: 'تحويل محفظة كاش', icon: '📲' },
   ];
 
+  /* ── Utility ── */
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text).then(
       () => toast.success(`تم نسخ ${label}`),
-      () => toast.error('فشل النسخ')
+      () => toast.error('فشل النسخ'),
     );
   };
 
-  const safeEndSession = async (
-    method: string,
-    price: number
-  ): Promise<boolean> => {
+  const safeEndSession = async (method: string, price: number): Promise<boolean> => {
     if (isEndingRef.current) return false;
     if (!activeSession) return false;
     if (activeSession.status !== 'active') return false;
@@ -168,27 +236,17 @@ export default function SummaryScreen() {
       console.error('❌ خطأ في endSession:', err);
       return false;
     } finally {
-      setTimeout(() => {
-        isEndingRef.current = false;
-      }, 3000);
+      setTimeout(() => { isEndingRef.current = false; }, 3000);
     }
   };
 
+  /* ── Handlers ── */
   const handleConfirm = async () => {
-    if (paymentMethod === 'instapay') {
-      setInstapayStep('info');
-      return;
-    }
-    if (paymentMethod === 'cashwallet') {
-      setCashWalletStep('info');
-      return;
-    }
+    if (paymentMethod === 'instapay') { setInstapayStep('info'); return; }
+    if (paymentMethod === 'cashwallet') { setCashWalletStep('info'); return; }
 
     if (paymentMethod === 'wallet') {
-      if (!canPayWallet) {
-        toast.error('رصيد المحفظة غير كافي');
-        return;
-      }
+      if (!canPayWallet) { toast.error('رصيد المحفظة غير كافي'); return; }
       const newBalance = walletBalance - totalPrice;
       deductWallet(totalPrice);
       const success = await safeEndSession('wallet', totalPrice);
@@ -253,7 +311,9 @@ export default function SummaryScreen() {
     }
   };
 
-  // ========== شاشة النجاح ==========
+  /* ══════════════════════════════════════════════
+     ██  شاشة النجاح
+     ══════════════════════════════════════════════ */
   if (done) {
     return (
       <motion.div
@@ -270,6 +330,7 @@ export default function SummaryScreen() {
         </motion.div>
         <h2 className="text-3xl font-black text-emerald-600 mb-2">شكراً لك!</h2>
         <p className="text-slate-500 text-sm mb-2 text-center">تم الدفع بنجاح</p>
+
         <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-6 text-center w-full shadow-sm">
           <div className="text-4xl font-black text-slate-900 font-mono mb-1">
             {doneTotalPrice} ج.م
@@ -282,37 +343,33 @@ export default function SummaryScreen() {
               doneMethod === 'instapay'
                 ? 'bg-purple-100 text-purple-600'
                 : doneMethod === 'wallet'
-                ? 'bg-blue-100 text-blue-600'
-                : doneMethod === 'cashwallet'
-                ? 'bg-orange-100 text-orange-600'
-                : 'bg-emerald-100 text-emerald-600'
+                  ? 'bg-blue-100 text-blue-600'
+                  : doneMethod === 'cashwallet'
+                    ? 'bg-orange-100 text-orange-600'
+                    : 'bg-emerald-100 text-emerald-600'
             }`}
           >
             {doneMethod === 'instapay'
               ? '📱 إنستاباي'
               : doneMethod === 'wallet'
-              ? '👝 خصم من المحفظة'
-              : doneMethod === 'cashwallet'
-              ? '📲 تحويل محفظة كاش'
-              : '💵 نقدي'}
+                ? '👝 خصم من المحفظة'
+                : doneMethod === 'cashwallet'
+                  ? '📲 تحويل محفظة كاش'
+                  : '💵 نقدي'}
           </div>
 
           {doneMethod === 'wallet' && (
             <div className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-2">
-              <span className="text-[10px] text-slate-500">
-                الرصيد المتبقي:{' '}
-              </span>
+              <span className="text-[10px] text-slate-500">الرصيد المتبقي: </span>
               <span className="text-sm font-black text-blue-600 font-mono">
                 {remainingWallet} ج.م
               </span>
             </div>
           )}
         </div>
+
         <button
-          onClick={() => {
-            setSelectedGarageId(null);
-            setScreen('list');
-          }}
+          onClick={() => { setSelectedGarageId(null); setScreen('list'); }}
           className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100"
         >
           <Home size={20} /> العودة للرئيسية
@@ -321,7 +378,9 @@ export default function SummaryScreen() {
     );
   }
 
-  // ========== شاشة تأكيد كود (مشتركة) ==========
+  /* ══════════════════════════════════════════════
+     ██  شاشة تأكيد الكود (مشتركة)
+     ══════════════════════════════════════════════ */
   const renderConfirmCodeScreen = (
     title: string,
     code: string,
@@ -331,7 +390,7 @@ export default function SummaryScreen() {
     setCodeError: (v: boolean) => void,
     onConfirm: () => void,
     onBack: () => void,
-    color: string
+    color: string,
   ) => (
     <motion.div
       initial={{ opacity: 0, x: -20 }}
@@ -350,19 +409,13 @@ export default function SummaryScreen() {
           أدخل كود التأكيد لإنهاء عملية الدفع
         </p>
       </div>
+
       <div className="bg-white border border-slate-200 rounded-[2rem] p-6 mb-6 shadow-sm">
         <div className="text-center mb-6">
-          <ShieldCheck
-            size={40}
-            className={`text-${color}-500 mx-auto mb-3`}
-          />
+          <ShieldCheck size={40} className={`text-${color}-500 mx-auto mb-3`} />
           <p className="text-xs text-slate-500 mb-3">كود التأكيد الخاص بك</p>
-          <div
-            className={`bg-${color}-50 border-2 border-dashed border-${color}-300 rounded-2xl p-4 mb-4`}
-          >
-            <div
-              className={`text-4xl font-black text-${color}-600 font-mono tracking-[0.3em]`}
-            >
+          <div className={`bg-${color}-50 border-2 border-dashed border-${color}-300 rounded-2xl p-4 mb-4`}>
+            <div className={`text-4xl font-black text-${color}-600 font-mono tracking-[0.3em]`}>
               {code}
             </div>
           </div>
@@ -373,6 +426,7 @@ export default function SummaryScreen() {
             <Copy size={14} /> نسخ الكود
           </button>
         </div>
+
         <div className="border-t border-slate-100 pt-4">
           <p className="text-xs text-slate-500 mb-3 text-right">
             أدخل كود التأكيد بعد إتمام التحويل
@@ -391,8 +445,8 @@ export default function SummaryScreen() {
               codeError
                 ? 'border-red-400 text-red-500'
                 : enteredCode.length === 6
-                ? `border-${color}-400 text-${color}-600`
-                : 'border-slate-200 text-slate-900'
+                  ? `border-${color}-400 text-${color}-600`
+                  : 'border-slate-200 text-slate-900'
             }`}
           />
           {codeError && (
@@ -402,14 +456,14 @@ export default function SummaryScreen() {
           )}
         </div>
       </div>
-      <div
-        className={`bg-${color}-50 border border-${color}-200 rounded-2xl p-4 mb-6 flex items-center justify-between`}
-      >
+
+      <div className={`bg-${color}-50 border border-${color}-200 rounded-2xl p-4 mb-6 flex items-center justify-between`}>
         <span className={`text-2xl font-black text-${color}-600 font-mono`}>
           {totalPrice} ج.م
         </span>
         <span className="text-xs text-slate-500">المبلغ المحول</span>
       </div>
+
       <button
         onClick={onConfirm}
         disabled={enteredCode.length !== 6}
@@ -424,7 +478,7 @@ export default function SummaryScreen() {
     </motion.div>
   );
 
-  // ========== شاشة كود تأكيد إنستاباي ==========
+  /* ── كود تأكيد إنستاباي ── */
   if (paymentMethod === 'instapay' && instapayStep === 'confirm') {
     return renderConfirmCodeScreen(
       'تأكيد سداد إنستاباي',
@@ -435,11 +489,11 @@ export default function SummaryScreen() {
       setInstapayCodeError,
       handleInstapayConfirm,
       () => setInstapayStep('info'),
-      'purple'
+      'purple',
     );
   }
 
-  // ========== شاشة كود تأكيد محفظة كاش ==========
+  /* ── كود تأكيد محفظة كاش ── */
   if (paymentMethod === 'cashwallet' && cashWalletStep === 'confirm') {
     return renderConfirmCodeScreen(
       'تأكيد تحويل محفظة كاش',
@@ -450,11 +504,13 @@ export default function SummaryScreen() {
       setCashWalletCodeError,
       handleCashWalletConfirm,
       () => setCashWalletStep('info'),
-      'orange'
+      'orange',
     );
   }
 
-  // ========== شاشة بيانات إنستاباي ==========
+  /* ══════════════════════════════════════════════
+     ██  شاشة بيانات إنستاباي
+     ══════════════════════════════════════════════ */
   if (paymentMethod === 'instapay' && instapayStep === 'info') {
     return (
       <motion.div
@@ -464,10 +520,7 @@ export default function SummaryScreen() {
       >
         <div className="pt-10 mb-4">
           <button
-            onClick={() => {
-              setPaymentMethod('cash');
-              setInstapayStep('select');
-            }}
+            onClick={() => { setPaymentMethod('cash'); setInstapayStep('select'); }}
             className="bg-slate-100 p-2 rounded-xl border border-slate-200 mb-4 flex items-center gap-2 text-xs text-slate-500"
           >
             <ArrowRight size={16} /> رجوع لطرق الدفع
@@ -481,12 +534,8 @@ export default function SummaryScreen() {
         </div>
 
         <div className="bg-gradient-to-br from-purple-100 to-indigo-50 border border-purple-200 rounded-[2rem] p-6 mb-5 text-center">
-          <p className="text-xs text-purple-600 font-bold mb-2">
-            المبلغ المطلوب تحويله
-          </p>
-          <div className="text-5xl font-black text-slate-900 font-mono mb-1">
-            {totalPrice}
-          </div>
+          <p className="text-xs text-purple-600 font-bold mb-2">المبلغ المطلوب تحويله</p>
+          <div className="text-5xl font-black text-slate-900 font-mono mb-1">{totalPrice}</div>
           <div className="text-sm text-purple-600 font-bold">جنيه مصري</div>
         </div>
 
@@ -512,9 +561,7 @@ export default function SummaryScreen() {
             </a>
             <div className="flex items-center justify-between bg-white rounded-xl p-2 border border-slate-200">
               <button
-                onClick={() =>
-                  copyToClipboard(INSTAPAY_LINK, 'رابط إنستاباي')
-                }
+                onClick={() => copyToClipboard(INSTAPAY_LINK, 'رابط إنستاباي')}
                 className="text-blue-600 active:scale-90 transition-all"
               >
                 <Copy size={16} />
@@ -531,24 +578,14 @@ export default function SummaryScreen() {
           <div className="bg-gray-50 border border-slate-200 rounded-2xl p-4 mb-3">
             <div className="flex items-center justify-between mb-1">
               <button
-                onClick={() =>
-                  copyToClipboard(
-                    `${INSTAPAY_USERNAME}@instapay`,
-                    'حساب إنستاباي'
-                  )
-                }
+                onClick={() => copyToClipboard(`${INSTAPAY_USERNAME}@instapay`, 'حساب إنستاباي')}
                 className="text-blue-600 active:scale-90 transition-all"
               >
                 <Copy size={14} />
               </button>
-              <div className="text-[10px] text-slate-500 font-bold">
-                إرسال نقود إلى
-              </div>
+              <div className="text-[10px] text-slate-500 font-bold">إرسال نقود إلى</div>
             </div>
-            <div
-              className="text-lg font-black text-purple-600 font-mono text-center"
-              dir="ltr"
-            >
+            <div className="text-lg font-black text-purple-600 font-mono text-center" dir="ltr">
               {INSTAPAY_USERNAME}@instapay
             </div>
           </div>
@@ -556,17 +593,13 @@ export default function SummaryScreen() {
           <div className="text-center mt-3">
             <div className="inline-flex items-center gap-2 bg-slate-100 px-4 py-2 rounded-full border border-slate-200">
               <span className="text-[10px] text-slate-500">Powered by</span>
-              <span className="text-xs font-black text-purple-600">
-                InstaPay
-              </span>
+              <span className="text-xs font-black text-purple-600">InstaPay</span>
             </div>
           </div>
         </div>
 
         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-5">
-          <h4 className="text-xs font-black text-slate-700 mb-3 text-right">
-            خطوات الدفع:
-          </h4>
+          <h4 className="text-xs font-black text-slate-700 mb-3 text-right">خطوات الدفع:</h4>
           <div className="space-y-3">
             {[
               'اضغط على رابط الدفع أو انسخ حساب إنستاباي',
@@ -593,7 +626,9 @@ export default function SummaryScreen() {
     );
   }
 
-  // ========== شاشة بيانات تحويل محفظة كاش ==========
+  /* ══════════════════════════════════════════════
+     ██  شاشة بيانات تحويل محفظة كاش
+     ══════════════════════════════════════════════ */
   if (paymentMethod === 'cashwallet' && cashWalletStep === 'info') {
     return (
       <motion.div
@@ -603,10 +638,7 @@ export default function SummaryScreen() {
       >
         <div className="pt-10 mb-4">
           <button
-            onClick={() => {
-              setPaymentMethod('cash');
-              setCashWalletStep('select');
-            }}
+            onClick={() => { setPaymentMethod('cash'); setCashWalletStep('select'); }}
             className="bg-slate-100 p-2 rounded-xl border border-slate-200 mb-4 flex items-center gap-2 text-xs text-slate-500"
           >
             <ArrowRight size={16} /> رجوع لطرق الدفع
@@ -620,12 +652,8 @@ export default function SummaryScreen() {
         </div>
 
         <div className="bg-gradient-to-br from-orange-100 to-amber-50 border border-orange-200 rounded-[2rem] p-6 mb-5 text-center">
-          <p className="text-xs text-orange-600 font-bold mb-2">
-            المبلغ المطلوب تحويله
-          </p>
-          <div className="text-5xl font-black text-slate-900 font-mono mb-1">
-            {totalPrice}
-          </div>
+          <p className="text-xs text-orange-600 font-bold mb-2">المبلغ المطلوب تحويله</p>
+          <div className="text-5xl font-black text-slate-900 font-mono mb-1">{totalPrice}</div>
           <div className="text-sm text-orange-600 font-bold">جنيه مصري</div>
         </div>
 
@@ -648,9 +676,7 @@ export default function SummaryScreen() {
               {CASH_WALLET_NUMBER}
             </div>
             <button
-              onClick={() =>
-                copyToClipboard(CASH_WALLET_NUMBER, 'رقم التحويل')
-              }
+              onClick={() => copyToClipboard(CASH_WALLET_NUMBER, 'رقم التحويل')}
               className="bg-orange-100 text-orange-600 px-5 py-2 rounded-xl text-xs font-black flex items-center gap-2 mx-auto active:scale-95 transition-all border border-orange-200"
             >
               <Copy size={14} /> نسخ الرقم
@@ -666,9 +692,7 @@ export default function SummaryScreen() {
         </div>
 
         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-5">
-          <h4 className="text-xs font-black text-slate-700 mb-3 text-right">
-            خطوات التحويل:
-          </h4>
+          <h4 className="text-xs font-black text-slate-700 mb-3 text-right">خطوات التحويل:</h4>
           <div className="space-y-3">
             {[
               `انسخ الرقم ${CASH_WALLET_NUMBER}`,
@@ -696,7 +720,9 @@ export default function SummaryScreen() {
     );
   }
 
-  // ========== الشاشة الرئيسية ==========
+  /* ══════════════════════════════════════════════
+     ██  الشاشة الرئيسية
+     ══════════════════════════════════════════════ */
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -705,12 +731,10 @@ export default function SummaryScreen() {
     >
       <div className="pt-10 mb-6">
         <h2 className="text-2xl font-black text-center mb-2 text-slate-900">ملخص الجلسة</h2>
-        <p className="text-slate-500 text-sm text-center">
-          راجع التفاصيل وأكد الدفع
-        </p>
+        <p className="text-slate-500 text-sm text-center">راجع التفاصيل وأكد الدفع</p>
       </div>
 
-      {/* Summary */}
+      {/* ── ملخص الجلسة ── */}
       <div className="bg-white border border-slate-200 rounded-[2rem] p-6 mb-6 shadow-sm">
         <div className="text-center mb-6">
           <div className="text-5xl font-black text-slate-900 font-mono mb-1">
@@ -718,12 +742,11 @@ export default function SummaryScreen() {
           </div>
           <div className="text-xs text-slate-400 font-bold">إجمالي التكلفة</div>
         </div>
+
         <div className="bg-gray-50 rounded-2xl p-4 mb-4 border border-slate-100">
           <div className="flex items-center justify-center gap-2 mb-3">
             <Calculator size={16} className="text-blue-600" />
-            <span className="text-xs text-slate-500 font-bold">
-              تفاصيل الحساب
-            </span>
+            <span className="text-xs text-slate-500 font-bold">تفاصيل الحساب</span>
           </div>
           <div className="space-y-2">
             <div className="flex justify-between">
@@ -753,9 +776,7 @@ export default function SummaryScreen() {
             )}
             <div className="border-t border-slate-200 pt-2">
               <div className="flex justify-between">
-                <span className="text-sm text-slate-700 font-bold">
-                  الإجمالي
-                </span>
+                <span className="text-sm text-slate-700 font-bold">الإجمالي</span>
                 <span className="text-lg font-black text-emerald-600 font-mono">
                   {totalHours} × {sessionRate} = {totalPrice} ج.م
                 </span>
@@ -765,11 +786,9 @@ export default function SummaryScreen() {
         </div>
       </div>
 
-      {/* Payment Methods */}
+      {/* ── طرق الدفع ── */}
       <div className="mb-6">
-        <h3 className="text-sm font-black text-slate-700 mb-3 text-right">
-          طريقة الدفع
-        </h3>
+        <h3 className="text-sm font-black text-slate-700 mb-3 text-right">طريقة الدفع</h3>
         <div className="grid grid-cols-2 gap-3">
           {methods.map((m) => (
             <button
@@ -784,21 +803,17 @@ export default function SummaryScreen() {
                   ? m.id === 'instapay'
                     ? 'bg-purple-50 border-purple-400 ring-1 ring-purple-400'
                     : m.id === 'cashwallet'
-                    ? 'bg-orange-50 border-orange-400 ring-1 ring-orange-400'
-                    : m.id === 'wallet'
-                    ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-400'
-                    : 'bg-emerald-50 border-emerald-400 ring-1 ring-emerald-400'
+                      ? 'bg-orange-50 border-orange-400 ring-1 ring-orange-400'
+                      : m.id === 'wallet'
+                        ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-400'
+                        : 'bg-emerald-50 border-emerald-400 ring-1 ring-emerald-400'
                   : 'bg-slate-50 border-slate-200 text-slate-500'
               }`}
             >
               <div className="text-2xl mb-1">{m.icon}</div>
               <div className="text-xs font-black text-slate-700">{m.label}</div>
               {m.id === 'wallet' && (
-                <div
-                  className={`text-[9px] mt-1 font-mono font-bold ${
-                    canPayWallet ? 'text-emerald-600' : 'text-red-500'
-                  }`}
-                >
+                <div className={`text-[9px] mt-1 font-mono font-bold ${canPayWallet ? 'text-emerald-600' : 'text-red-500'}`}>
                   رصيدك: {walletBalance} ج.م
                 </div>
               )}
@@ -814,9 +829,7 @@ export default function SummaryScreen() {
           >
             <AlertTriangle size={18} className="text-red-500 shrink-0" />
             <div>
-              <p className="text-xs text-red-600 font-bold">
-                رصيد المحفظة غير كافي
-              </p>
+              <p className="text-xs text-red-600 font-bold">رصيد المحفظة غير كافي</p>
               <p className="text-[10px] text-red-400">
                 المطلوب: {totalPrice} ج.م | رصيدك: {walletBalance} ج.م
               </p>
@@ -843,11 +856,9 @@ export default function SummaryScreen() {
         )}
       </div>
 
-      {/* Rating */}
+      {/* ── التقييم ── */}
       <div className="mb-8">
-        <h3 className="text-sm font-black text-slate-700 mb-3 text-right">
-          قيّم تجربتك
-        </h3>
+        <h3 className="text-sm font-black text-slate-700 mb-3 text-right">قيّم تجربتك</h3>
         <div className="flex justify-center gap-2">
           {[1, 2, 3, 4, 5].map((s) => (
             <button
@@ -865,7 +876,7 @@ export default function SummaryScreen() {
         </div>
       </div>
 
-      {/* Confirm Button */}
+      {/* ── زر التأكيد ── */}
       <button
         onClick={handleConfirm}
         disabled={paymentMethod === 'wallet' && !canPayWallet}
@@ -873,30 +884,22 @@ export default function SummaryScreen() {
           paymentMethod === 'wallet' && !canPayWallet
             ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
             : paymentMethod === 'instapay'
-            ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-100'
-            : paymentMethod === 'cashwallet'
-            ? 'bg-orange-600 hover:bg-orange-700 shadow-orange-100'
-            : paymentMethod === 'wallet'
-            ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-100'
-            : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100'
+              ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-100'
+              : paymentMethod === 'cashwallet'
+                ? 'bg-orange-600 hover:bg-orange-700 shadow-orange-100'
+                : paymentMethod === 'wallet'
+                  ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-100'
+                  : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100'
         }`}
       >
         {paymentMethod === 'instapay' ? (
-          <>
-            <ExternalLink size={20} /> متابعة الدفع عبر إنستاباي
-          </>
+          <><ExternalLink size={20} /> متابعة الدفع عبر إنستاباي</>
         ) : paymentMethod === 'cashwallet' ? (
-          <>
-            <ExternalLink size={20} /> متابعة تحويل محفظة كاش
-          </>
+          <><ExternalLink size={20} /> متابعة تحويل محفظة كاش</>
         ) : paymentMethod === 'wallet' ? (
-          <>
-            <Wallet size={20} /> خصم من المحفظة ({totalPrice} ج.م)
-          </>
+          <><Wallet size={20} /> خصم من المحفظة ({totalPrice} ج.م)</>
         ) : (
-          <>
-            <CheckCircle size={20} /> تأكيد الدفع ({totalPrice} ج.م)
-          </>
+          <><CheckCircle size={20} /> تأكيد الدفع ({totalPrice} ج.م)</>
         )}
       </button>
     </motion.div>

@@ -13,30 +13,97 @@ import {
 import { useStore } from '../store';
 import { calculateFullHours, calculateCost, formatTime } from '../utils/pricing';
 import toast from 'react-hot-toast';
+import { useEffect, useRef } from 'react';
+import { supabase } from '../lib/supabase';
 
+/* ─── Helper: توحيد تحويل الوقت من أي مصدر ─── */
+const toMs = (value: any): number => {
+  if (!value) return 0;
+  if (typeof value === 'number') {
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+/* ════════════════════════════════════════════════════════════
+   ██  LAST SESSION SCREEN
+   ════════════════════════════════════════════════════════════ */
 export default function LastSessionScreen() {
-  const { sessions, garages, currentUser, setScreen } = useStore();
+  const { sessions, garages, currentUser, setScreen, fetchAll } = useStore();
 
+  const userPlate = (currentUser?.carPlate ?? '').trim().toUpperCase();
+
+  /* ✅ البحث بـ carPlate أو customerPhone
+        يشمل الجلسات اللي بدأها الجراج من شاشته */
   const lastSession = sessions
     .filter(
-      (s) => s.carPlate === currentUser?.carPlate && s.status === 'completed'
+      (s) =>
+        s.status === 'completed' &&
+        (
+          s.carPlate.trim().toUpperCase() === userPlate ||
+          (s as any).customerPhone === currentUser?.phone
+        ),
     )
-    .sort((a, b) => {
-      const endA =
-        typeof a.endTime === 'number'
-          ? a.endTime
-          : new Date(a.endTime || 0).getTime();
-      const endB =
-        typeof b.endTime === 'number'
-          ? b.endTime
-          : new Date(b.endTime || 0).getTime();
-      return endB - endA;
-    })[0];
+    .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
 
   const garage = lastSession
     ? garages.find((g) => g.id === lastSession.garageId)
     : null;
 
+  /* ── Ref ── */
+  const realtimeChannelRef = useRef<any>(null);
+
+  /* ─────────────────────────────────────────────
+     ██  REALTIME: استماع لتحديثات sessions
+         لو الجلسة اتغيرت (اتأكدت أو اتحذفت)
+         تتحدث الشاشة فورًا
+     ───────────────────────────────────────────── */
+  useEffect(() => {
+    if (!userPlate && !currentUser?.phone) return;
+
+    /* فتش فورًا عند دخول الشاشة */
+    fetchAll();
+
+    const garageId = lastSession?.garageId ?? null;
+
+    const channel = supabase
+      .channel(`last-session-${userPlate || currentUser?.phone}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'sessions',
+          ...(garageId ? { filter: `garage_id=eq.${garageId}` } : {}),
+        },
+        async (payload) => {
+          const row = payload.new as any;
+          if (!row) { await fetchAll(); return; }
+
+          const plate = (row.car_plate ?? '').trim().toUpperCase();
+          const phone = row.customer_phone ?? '';
+          const isMySession =
+            plate === userPlate ||
+            (currentUser?.phone && phone === currentUser.phone);
+
+          if (isMySession) {
+            await fetchAll();
+          }
+        },
+      )
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+      realtimeChannelRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userPlate, currentUser?.phone]);
+
+  /* ─── لا توجد جلسات ─── */
   if (!lastSession) {
     return (
       <motion.div
@@ -60,20 +127,15 @@ export default function LastSessionScreen() {
     );
   }
 
-  const startTime =
-    typeof lastSession.startTime === 'number'
-      ? lastSession.startTime
-      : new Date(lastSession.startTime).getTime();
-
-  const endTime =
-    typeof lastSession.endTime === 'number'
-      ? lastSession.endTime
-      : new Date(lastSession.endTime || 0).getTime();
+  /* ── Computed ── */
+  const startTime = toMs(lastSession.startTime);
+  const endTime = toMs(lastSession.endTime);
 
   const elapsedSeconds = Math.max(0, Math.floor((endTime - startTime) / 1000));
   const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);
   const hours = calculateFullHours(elapsedSeconds);
   const totalMinutes = Math.floor(elapsedSeconds / 60);
+
   const cost =
     lastSession.totalPrice != null && Number(lastSession.totalPrice) > 0
       ? Number(lastSession.totalPrice)
@@ -82,6 +144,7 @@ export default function LastSessionScreen() {
   const startDate = new Date(startTime);
   const endDate = new Date(endTime);
 
+  /* ── Formatters ── */
   const formatDateTime = (date: Date) =>
     date.toLocaleDateString('ar-EG', {
       weekday: 'long',
@@ -100,15 +163,40 @@ export default function LastSessionScreen() {
   const getPaymentInfo = (method?: string) => {
     switch (method) {
       case 'cash':
-        return { label: 'نقدي', icon: '💵', color: 'text-emerald-400', bg: 'bg-emerald-500/20', border: 'border-emerald-500/30' };
+        return {
+          label: 'نقدي', icon: '💵',
+          color: 'text-emerald-400',
+          bg: 'bg-emerald-500/20',
+          border: 'border-emerald-500/30',
+        };
       case 'instapay':
-        return { label: 'إنستاباي', icon: '📱', color: 'text-purple-400', bg: 'bg-purple-500/20', border: 'border-purple-500/30' };
+        return {
+          label: 'إنستاباي', icon: '📱',
+          color: 'text-purple-400',
+          bg: 'bg-purple-500/20',
+          border: 'border-purple-500/30',
+        };
       case 'wallet':
-        return { label: 'خصم من المحفظة', icon: '👝', color: 'text-blue-400', bg: 'bg-blue-500/20', border: 'border-blue-500/30' };
+        return {
+          label: 'خصم من المحفظة', icon: '👝',
+          color: 'text-blue-400',
+          bg: 'bg-blue-500/20',
+          border: 'border-blue-500/30',
+        };
       case 'cashwallet':
-        return { label: 'تحويل محفظة كاش', icon: '📲', color: 'text-orange-400', bg: 'bg-orange-500/20', border: 'border-orange-500/30' };
+        return {
+          label: 'تحويل محفظة كاش', icon: '📲',
+          color: 'text-orange-400',
+          bg: 'bg-orange-500/20',
+          border: 'border-orange-500/30',
+        };
       default:
-        return { label: 'غير محدد', icon: '💳', color: 'text-slate-400', bg: 'bg-slate-500/20', border: 'border-slate-500/30' };
+        return {
+          label: 'غير محدد', icon: '💳',
+          color: 'text-slate-400',
+          bg: 'bg-slate-500/20',
+          border: 'border-slate-500/30',
+        };
     }
   };
 
@@ -119,6 +207,7 @@ export default function LastSessionScreen() {
       ? { label: 'عبر التطبيق', color: 'text-blue-400', bg: 'bg-blue-500/20' }
       : { label: 'إضافة يدوية', color: 'text-amber-400', bg: 'bg-amber-500/20' };
 
+  /* ── نسخ التفاصيل ── */
   const copySessionDetails = async () => {
     const details = `🧾 تفاصيل جلسة الركن
 ━━━━━━━━━━━━━━━━━━
@@ -153,13 +242,16 @@ export default function LastSessionScreen() {
     }
   };
 
+  /* ─────────────────────────────────────────────
+     ██  RENDER
+     ───────────────────────────────────────────── */
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       className="h-full bg-slate-950 text-white flex flex-col safe-top safe-bottom"
     >
-      {/* Header */}
+      {/* ══ Header ══ */}
       <div className="flex items-center justify-between px-4 pt-12 pb-3 shrink-0">
         <button
           onClick={() => setScreen('list')}
@@ -179,8 +271,9 @@ export default function LastSessionScreen() {
         </button>
       </div>
 
-      {/* المحتوى */}
+      {/* ══ Content ══ */}
       <div className="flex-1 px-4 pb-4 overflow-y-auto space-y-4">
+
         {/* التاريخ */}
         <div className="text-center">
           <span className="text-[10px] text-slate-500 bg-slate-900 px-3 py-1 rounded-full border border-slate-800">
@@ -320,7 +413,8 @@ export default function LastSessionScreen() {
         {garage && rate !== garage.basePrice && (
           <div className="bg-amber-600/10 border border-amber-500/20 rounded-xl p-3 text-center">
             <p className="text-[10px] text-amber-400 font-bold">
-              💰 تم تطبيق سعر خاص: {rate} ج.م/ساعة بدلاً من {garage.basePrice} ج.م/ساعة
+              💰 تم تطبيق سعر خاص: {rate} ج.م/ساعة بدلاً من{' '}
+              {garage.basePrice} ج.م/ساعة
             </p>
           </div>
         )}

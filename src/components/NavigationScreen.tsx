@@ -30,9 +30,12 @@ import {
   useMap,
 } from 'react-leaflet';
 import L from 'leaflet';
+import { supabase } from '../lib/supabase';
 
+/* ─── Constants ─── */
 const CANCEL_WINDOW_SECONDS = 30;
 
+/* ─── Icons ─── */
 const userIcon = new L.DivIcon({
   className: 'bg-transparent',
   html: `<div style="width:40px;height:40px;background:#2563eb;border-radius:50%;border:2px solid white;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">🚗</div>`,
@@ -47,6 +50,17 @@ const garageIcon = new L.DivIcon({
   iconAnchor: [20, 20],
 });
 
+/* ─── Helper: توحيد تحويل الوقت ─── */
+const toMs = (value: any): number => {
+  if (!value) return 0;
+  if (typeof value === 'number') {
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+/* ─── Map controller ─── */
 function MapController({
   userPos,
   garagePos,
@@ -65,11 +79,15 @@ function MapController({
         map.setView(garagePos, 15);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, userPos[0], userPos[1], garagePos[0], garagePos[1]]);
 
   return null;
 }
 
+/* ════════════════════════════════════════════════════════════
+   ██  NAVIGATION SCREEN
+   ════════════════════════════════════════════════════════════ */
 export default function NavigationScreen() {
   const {
     garages,
@@ -83,64 +101,131 @@ export default function NavigationScreen() {
     offers,
     sessions,
     addSession,
+    fetchAll,
   } = useStore();
 
   const garage = garages.find((g) => g.id === selectedGarageId);
   const userPlateNav = (currentUser?.carPlate ?? '').trim().toUpperCase();
 
+  /* ── الجلسات والسيارات ── */
   const myIncomingCar = incomingCars.find(
     (c) =>
       c.garageId === selectedGarageId &&
       c.carPlate.trim().toUpperCase() === userPlateNav &&
-      c.status === 'coming'
+      c.status === 'coming',
   );
 
+  /* ✅ البحث عن الجلسة النشطة باللوحة أو رقم الهاتف - يشمل الجلسات اللي بدأها الجراج */
   const myActiveSession = sessions.find(
     (sess) =>
-      sess.carPlate.trim().toUpperCase() === userPlateNav &&
-      sess.status === 'active'
+      sess.status === 'active' &&
+      (
+        sess.carPlate.trim().toUpperCase() === userPlateNav ||
+        (sess as any).customerPhone === currentUser?.phone
+      ),
   );
 
+  /* ── State ── */
   const [userPos, setUserPos] = useState<{ lat: number; lng: number }>({
     lat: 30.0444,
     lng: 31.2357,
   });
-
-  const screenEnteredRef = useRef(Date.now());
   const [cancelTimeLeft, setCancelTimeLeft] = useState(CANCEL_WINDOW_SECONDS);
   const [canCancel, setCanCancel] = useState(true);
   const [mapReady, setMapReady] = useState(false);
   const [pushStatus, setPushStatus] = useState<'waiting' | 'sent' | 'cancelled'>('waiting');
+
+  /* ── Refs ── */
+  const screenEnteredRef = useRef(Date.now());
   const navigatedToSessionRef = useRef(false);
   const isArrivingRef = useRef(false);
   const pushSentRef = useRef(false);
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const realtimeChannelRef = useRef<any>(null);
 
-  // ─── GPS ──────────────────────────────────────────────────────────────────
+  /* ─────────────────────────────────────────────
+     ██  REALTIME: الاستماع لجدول sessions
+         حل مشكلة عداد الركن من شاشة الجراج
+     ───────────────────────────────────────────── */
+  useEffect(() => {
+    if (!selectedGarageId || !userPlateNav) return;
+
+    /* فورًا فتش آخر بيانات */
+    fetchAll();
+
+    const channel = supabase
+      .channel(`nav-session-${userPlateNav}-${selectedGarageId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'sessions',
+          filter: `garage_id=eq.${selectedGarageId}`,
+        },
+        async (payload) => {
+          const row = payload.new as any;
+          const plate = (row.car_plate ?? '').trim().toUpperCase();
+          const phone = row.customer_phone ?? '';
+
+          /* هل الجلسة دي بتاعتي؟ */
+          const isMySession =
+            plate === userPlateNav ||
+            (currentUser?.phone && phone === currentUser.phone);
+
+          if (isMySession && row.status === 'active') {
+            /* حدّث الـ store */
+            await fetchAll();
+          }
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'sessions',
+          filter: `garage_id=eq.${selectedGarageId}`,
+        },
+        async () => {
+          await fetchAll();
+        },
+      )
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+      realtimeChannelRef.current = null;
+    };
+  }, [selectedGarageId, userPlateNav, currentUser?.phone, fetchAll]);
+
+  /* ─── GPS ─── */
   useEffect(() => {
     if (!('geolocation' in navigator)) return;
 
     navigator.geolocation.getCurrentPosition(
       (p) => setUserPos({ lat: p.coords.latitude, lng: p.coords.longitude }),
-      () => {}
+      () => {},
     );
 
     const id = navigator.geolocation.watchPosition(
       (p) => setUserPos({ lat: p.coords.latitude, lng: p.coords.longitude }),
       () => {},
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 5000 }
+      { enableHighAccuracy: true, maximumAge: 2000, timeout: 5000 },
     );
 
     return () => navigator.geolocation.clearWatch(id);
   }, []);
 
-  // ─── تحميل الخريطة ────────────────────────────────────────────────────────
+  /* ─── تحميل الخريطة ─── */
   useEffect(() => {
     const t = setTimeout(() => setMapReady(true), 300);
     return () => clearTimeout(t);
   }, []);
 
-  // ─── مؤقت الإلغاء ─────────────────────────────────────────────────────────
+  /* ─── مؤقت الإلغاء ─── */
   useEffect(() => {
     if (myIncomingCar) {
       screenEnteredRef.current = Date.now();
@@ -155,9 +240,7 @@ export default function NavigationScreen() {
     }
 
     const interval = window.setInterval(() => {
-      const elapsed = Math.floor(
-        (Date.now() - screenEnteredRef.current) / 1000
-      );
+      const elapsed = Math.floor((Date.now() - screenEnteredRef.current) / 1000);
       const left = Math.max(0, CANCEL_WINDOW_SECONDS - elapsed);
       setCancelTimeLeft(left);
       if (left <= 0) {
@@ -169,38 +252,30 @@ export default function NavigationScreen() {
     return () => window.clearInterval(interval);
   }, [myIncomingCar?.id]);
 
-  // ─── ✅ إرسال Push بعد انتهاء فترة الإلغاء (32 ثانية) ────────────────────
+  /* ─── إرسال Push بعد انتهاء فترة الإلغاء ─── */
   useEffect(() => {
     if (!myIncomingCar || !garage || pushSentRef.current) return;
 
-    // ✅ إلغاء أي timer سابق
-    if (pushTimerRef.current) {
-      clearTimeout(pushTimerRef.current);
-    }
-
+    if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
     setPushStatus('waiting');
 
-    // ✅ انتظر انتهاء فترة الإلغاء + 2 ثانية أمان
     pushTimerRef.current = setTimeout(async () => {
-      // ✅ تحقق إن العميل لسه في الطريق ولم يلغِ
-      const stillComing = useStore.getState().incomingCars.find(
-        (c) => c.id === myIncomingCar.id && c.status === 'coming'
-      );
+      const stillComing = useStore
+        .getState()
+        .incomingCars.find(
+          (c) => c.id === myIncomingCar.id && c.status === 'coming',
+        );
 
       if (!stillComing || pushSentRef.current) {
-        console.log('⏹️ العميل ألغى أو تم الإرسال بالفعل - لن يتم إرسال Push');
         setPushStatus('cancelled');
         return;
       }
 
       try {
         pushSentRef.current = true;
-
         const dist = calculateDistance(
-          userPos.lat,
-          userPos.lng,
-          garage.lat,
-          garage.lng
+          userPos.lat, userPos.lng,
+          garage.lat, garage.lng,
         );
         const estimatedMinutes = distanceToMinutes(dist);
 
@@ -213,15 +288,13 @@ export default function NavigationScreen() {
         });
 
         setPushStatus('sent');
-        console.log('✅ Push sent to garage after cancel window:', garage.id);
       } catch (err) {
-        console.error('❌ خطأ في إرسال Push للجراج:', err);
+        console.error('❌ خطأ في إرسال Push:', err);
         pushSentRef.current = false;
         setPushStatus('waiting');
       }
     }, (CANCEL_WINDOW_SECONDS + 2) * 1000);
 
-    // ✅ لو العميل خرج من الشاشة → نلغي الـ timer
     return () => {
       if (pushTimerRef.current) {
         clearTimeout(pushTimerRef.current);
@@ -230,13 +303,17 @@ export default function NavigationScreen() {
     };
   }, [myIncomingCar?.id, garage?.id]);
 
-  // ─── الانتقال التلقائي لشاشة الجلسة ─────────────────────────────────────
+  /* ─────────────────────────────────────────────
+     ██  الانتقال التلقائي لشاشة الجلسة
+         يعمل سواء بدأت الجلسة من الحريف أو من الجراج
+     ───────────────────────────────────────────── */
   useEffect(() => {
     if (!myActiveSession) return;
     if (navigatedToSessionRef.current) return;
 
     navigatedToSessionRef.current = true;
 
+    /* لو الجلسة في جراج مختلف → حدّث الاختيار */
     if (myActiveSession.garageId !== selectedGarageId) {
       setSelectedGarageId(myActiveSession.garageId);
     }
@@ -251,6 +328,7 @@ export default function NavigationScreen() {
     setScreen,
   ]);
 
+  /* ─── Guard ─── */
   if (!garage) {
     return (
       <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8">
@@ -268,15 +346,15 @@ export default function NavigationScreen() {
     );
   }
 
+  /* ─── Computed ─── */
   const distance = calculateDistance(
-    userPos.lat,
-    userPos.lng,
-    garage.lat,
-    garage.lng
+    userPos.lat, userPos.lng,
+    garage.lat, garage.lng,
   );
   const minutes = distanceToMinutes(distance);
   const coordsText = `${garage.lat},${garage.lng}`;
 
+  /* ─── Handlers ─── */
   const copyCoords = async () => {
     try {
       if (navigator.clipboard?.writeText) {
@@ -300,21 +378,16 @@ export default function NavigationScreen() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  // ─── إلغاء الحجز ──────────────────────────────────────────────────────────
   const handleCancelBooking = async () => {
     if (!currentUser || !myIncomingCar) return;
 
-    // ✅ إلغاء الـ Push timer فوراً قبل ما يتبعت
     if (pushTimerRef.current) {
       clearTimeout(pushTimerRef.current);
       pushTimerRef.current = null;
     }
-
-    // ✅ منع إرسال Push
     pushSentRef.current = true;
     setPushStatus('cancelled');
 
-    // ✅ لو الـ Push اتبعت بالفعل → إلغاء التنبيه المجدول
     if (pushStatus === 'sent') {
       await cancelScheduledPush(garage.id, myIncomingCar.carPlate);
     }
@@ -322,7 +395,7 @@ export default function NavigationScreen() {
     const activeOffer = offers.find(
       (o) =>
         o.userId === currentUser.phone &&
-        (o.status === 'pending' || o.status === 'accepted')
+        (o.status === 'pending' || o.status === 'accepted'),
     );
     if (activeOffer) cancelOffer(activeOffer.id);
 
@@ -332,24 +405,18 @@ export default function NavigationScreen() {
     setScreen('list');
   };
 
-  // ─── وصلت للجراج ─────────────────────────────────────────────────────────
   const handleCarArrived = async () => {
     if (isArrivingRef.current) return;
     isArrivingRef.current = true;
 
-    // ✅ لو الـ Push لسه ما اتبعتش → ابعته فوراً بدون انتظار
+    /* إرسال Push فوري لو لسه ما اتبعتش */
     if (!pushSentRef.current && myIncomingCar && garage) {
       if (pushTimerRef.current) {
         clearTimeout(pushTimerRef.current);
         pushTimerRef.current = null;
       }
-
       try {
         pushSentRef.current = true;
-        const dist = calculateDistance(
-          userPos.lat, userPos.lng,
-          garage.lat, garage.lng
-        );
         await sendCarComingPush({
           garageId: garage.id,
           carPlate: myIncomingCar.carPlate,
@@ -369,23 +436,34 @@ export default function NavigationScreen() {
         return;
       }
 
-      const alreadyActive = useStore.getState().sessions.find(
+      /* هل فيه جلسة نشطة بالفعل؟ (من الجراج أو من الحريف) */
+      const state = useStore.getState();
+      const alreadyActive = state.sessions.find(
         (s) =>
-          s.carPlate === myIncomingCar.carPlate &&
-          s.status === 'active'
+          s.status === 'active' &&
+          (
+            s.carPlate.trim().toUpperCase() === myIncomingCar.carPlate.trim().toUpperCase() ||
+            (s as any).customerPhone === currentUser?.phone
+          ),
       );
 
       if (alreadyActive) {
         await removeIncomingCar(myIncomingCar.id);
+        /* تأكد إن الـ garageId صح */
+        if (alreadyActive.garageId !== selectedGarageId) {
+          setSelectedGarageId(alreadyActive.garageId);
+        }
         navigatedToSessionRef.current = true;
+        toast.success('تم بدء حساب الركن ⏱️');
         setScreen('session');
         return;
       }
 
+      /* مفيش جلسة → أنشئ واحدة */
       const relatedOffer = offers.find(
         (o) =>
           o.carPlate === myIncomingCar.carPlate &&
-          (o.status === 'pending' || o.status === 'accepted')
+          (o.status === 'pending' || o.status === 'accepted'),
       );
       if (relatedOffer) cancelOffer(relatedOffer.id);
 
@@ -396,7 +474,9 @@ export default function NavigationScreen() {
         status: 'active',
         source: 'app',
         agreedPrice: myIncomingCar.agreedPrice,
-      });
+        customerPhone: currentUser?.phone,
+        customerName: currentUser?.name,
+      } as any);
 
       await removeIncomingCar(myIncomingCar.id);
 
@@ -407,19 +487,20 @@ export default function NavigationScreen() {
       console.error('❌ خطأ:', err);
       toast.error('حدث خطأ، حاول مرة أخرى');
     } finally {
-      setTimeout(() => {
-        isArrivingRef.current = false;
-      }, 5000);
+      setTimeout(() => { isArrivingRef.current = false; }, 5000);
     }
   };
 
+  /* ─────────────────────────────────────────────
+     ██  RENDER
+     ───────────────────────────────────────────── */
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       className="h-full bg-slate-950 text-white flex flex-col safe-top safe-bottom"
     >
-      {/* Header */}
+      {/* ══ Header ══ */}
       <div className="flex items-center justify-between px-4 pt-12 pb-2 shrink-0">
         <button
           onClick={() => setScreen('list')}
@@ -441,7 +522,9 @@ export default function NavigationScreen() {
         <div className="w-10" />
       </div>
 
+      {/* ══ Content ══ */}
       <div className="flex-1 px-4 pb-4 flex flex-col gap-3 overflow-y-auto">
+
         {/* بطاقة الوقت والمسافة */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shrink-0">
           <div className="flex justify-between items-center">
@@ -552,21 +635,19 @@ export default function NavigationScreen() {
             >
               {garage.availableSpots} / {garage.capacity}
             </span>
-            <span className="text-[10px] text-slate-500">
-              الأماكن المتاحة الآن
-            </span>
+            <span className="text-[10px] text-slate-500">الأماكن المتاحة الآن</span>
           </div>
         </div>
 
-        {/* ✅ مؤشر حالة Push للجراج */}
+        {/* مؤشر حالة Push */}
         {myIncomingCar && (
           <div
             className={`rounded-xl p-3 flex items-center gap-2 shrink-0 border ${
               pushStatus === 'sent'
                 ? 'bg-emerald-600/10 border-emerald-500/20'
                 : pushStatus === 'cancelled'
-                ? 'bg-red-600/10 border-red-500/20'
-                : 'bg-cyan-600/10 border-cyan-500/20'
+                  ? 'bg-red-600/10 border-red-500/20'
+                  : 'bg-cyan-600/10 border-cyan-500/20'
             }`}
           >
             <span
@@ -574,8 +655,8 @@ export default function NavigationScreen() {
                 pushStatus === 'sent'
                   ? 'bg-emerald-500'
                   : pushStatus === 'cancelled'
-                  ? 'bg-red-500'
-                  : 'bg-cyan-500 animate-pulse'
+                    ? 'bg-red-500'
+                    : 'bg-cyan-500 animate-pulse'
               }`}
             />
             <span
@@ -583,26 +664,40 @@ export default function NavigationScreen() {
                 pushStatus === 'sent'
                   ? 'text-emerald-400'
                   : pushStatus === 'cancelled'
-                  ? 'text-red-400'
-                  : 'text-cyan-400'
+                    ? 'text-red-400'
+                    : 'text-cyan-400'
               }`}
             >
               {pushStatus === 'sent'
                 ? '✅ تم إشعار الجراج بقدومك'
                 : pushStatus === 'cancelled'
-                ? '❌ تم إلغاء الإشعار'
-                : `⏳ سيتم إشعار الجراج بعد ${cancelTimeLeft} ثانية`}
+                  ? '❌ تم إلغاء الإشعار'
+                  : `⏳ سيتم إشعار الجراج بعد ${cancelTimeLeft} ثانية`}
             </span>
           </div>
         )}
 
-        {/* ملاحظة - بدء الركن فوراً */}
+        {/* ملاحظة بدء الركن */}
         <div className="bg-emerald-600/10 border border-emerald-500/20 rounded-xl p-3 flex items-center gap-2 shrink-0">
           <CheckCircle size={14} className="text-emerald-400 shrink-0" />
           <span className="text-[10px] font-bold text-emerald-400">
             سيبدأ حساب الركن فور الضغط على "وصلت للجراج" ✅
           </span>
         </div>
+
+        {/* ✅ بانر: الجلسة بدأت من الجراج */}
+        {myActiveSession && !navigatedToSessionRef.current && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-emerald-600/15 border border-emerald-500/30 rounded-xl p-3 flex items-center gap-2 shrink-0"
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0" />
+            <span className="text-[10px] font-bold text-emerald-400">
+              ✅ بدأ الجراج حساب الركن - جاري الانتقال لشاشة الجلسة...
+            </span>
+          </motion.div>
+        )}
 
         {/* زر وصلت */}
         <button

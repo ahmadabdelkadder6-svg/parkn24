@@ -13,63 +13,152 @@ import {
   formatTime,
   getRemainingInCurrentHour,
 } from '../utils/pricing';
+import { supabase } from '../lib/supabase';
 
+/* ─── Helper: توحيد تحويل الوقت من أي مصدر ─── */
+const toMs = (value: any): number => {
+  if (!value) return 0;
+  if (typeof value === 'number') {
+    // لو القيمة بالثواني (أقل من 13 خانة) حوّلها لـ ms
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+/* ════════════════════════════════════════════════════════════
+   ██  SESSION SCREEN
+   ════════════════════════════════════════════════════════════ */
 export default function SessionScreen() {
   const {
     garages,
     sessions,
     setScreen,
     currentUser,
+    fetchAll,
   } = useStore();
 
   const userPlate = (currentUser?.carPlate ?? '').trim().toUpperCase();
 
+  /* ✅ البحث عن الجلسة النشطة باللوحة أو رقم الهاتف
+        يشمل الجلسات اللي بدأها الجراج من شاشته */
   const activeSession = sessions.find(
     (s) =>
-      s.carPlate.trim().toUpperCase() === userPlate &&
-      s.status === 'active'
+      s.status === 'active' &&
+      (
+        s.carPlate.trim().toUpperCase() === userPlate ||
+        (s as any).customerPhone === currentUser?.phone
+      ),
   );
 
   const lastCompletedSession = sessions
     .filter(
       (s) =>
-        s.carPlate.trim().toUpperCase() === userPlate &&
-        s.status === 'completed'
+        s.status === 'completed' &&
+        (
+          s.carPlate.trim().toUpperCase() === userPlate ||
+          (s as any).customerPhone === currentUser?.phone
+        ),
     )
     .sort((a, b) => {
-      const endA = typeof a.endTime === 'number' ? a.endTime : 0;
-      const endB = typeof b.endTime === 'number' ? b.endTime : 0;
+      const endA = toMs(a.endTime);
+      const endB = toMs(b.endTime);
       return endB - endA;
     })[0];
 
   const garage = garages.find(
     (g) =>
-      g.id ===
-      (activeSession?.garageId ?? lastCompletedSession?.garageId)
+      g.id === (activeSession?.garageId ?? lastCompletedSession?.garageId),
   );
 
+  /* ── State ── */
   const [elapsed, setElapsed] = useState(0);
-  const redirectedRef = useRef(false);
 
+  /* ── Refs ── */
+  const redirectedRef = useRef(false);
+  const realtimeChannelRef = useRef<any>(null);
+
+  /* ─────────────────────────────────────────────
+     ██  REALTIME: يستمع لأي تغيير في sessions
+         حل مشكلة: الجلسة اللي بدأها الجراج
+         تظهر فورًا عند الحريف بدون انتظار polling
+     ───────────────────────────────────────────── */
+  useEffect(() => {
+    if (!currentUser?.phone && !userPlate) return;
+
+    /* فتش فورًا عند دخول الشاشة */
+    fetchAll();
+
+    const garageId = activeSession?.garageId
+      ?? lastCompletedSession?.garageId
+      ?? null;
+
+    const channelFilter = garageId
+      ? `garage_id=eq.${garageId}`
+      : undefined;
+
+    const channel = supabase
+      .channel(`session-screen-${userPlate || currentUser?.phone}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'sessions',
+          ...(channelFilter ? { filter: channelFilter } : {}),
+        },
+        async (payload) => {
+          const row = payload.new as any;
+          if (!row) { await fetchAll(); return; }
+
+          const plate = (row.car_plate ?? '').trim().toUpperCase();
+          const phone = row.customer_phone ?? '';
+          const isMySession =
+            plate === userPlate ||
+            (currentUser?.phone && phone === currentUser.phone);
+
+          if (isMySession) {
+            await fetchAll();
+          }
+        },
+      )
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+      realtimeChannelRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userPlate, currentUser?.phone]);
+
+  /* ─────────────────────────────────────────────
+     ██  العداد - يبدأ من الثواني الفعلية
+         سواء بدأت الجلسة من الحريف أو من الجراج
+     ───────────────────────────────────────────── */
   useEffect(() => {
     if (!activeSession) return;
 
-    const startTime =
-      typeof activeSession.startTime === 'number'
-        ? activeSession.startTime
-        : new Date(activeSession.startTime).getTime();
+    /* ✅ toMs يضمن تحويل صحيح من أي format */
+    const startMs = toMs(activeSession.startTime);
 
-    setElapsed(Math.max(0, Math.floor((Date.now() - startTime) / 1000)));
+    if (!startMs) return;
+
+    /* ضبط العداد فورًا */
+    const calcElapsed = () =>
+      Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+
+    setElapsed(calcElapsed());
 
     const interval = setInterval(() => {
-      setElapsed(
-        Math.max(0, Math.floor((Date.now() - startTime) / 1000))
-      );
+      setElapsed(calcElapsed());
     }, 1000);
 
     return () => clearInterval(interval);
   }, [activeSession?.id, activeSession?.startTime]);
 
+  /* ─── التوجيه التلقائي لشاشة الملخص ─── */
   useEffect(() => {
     if (activeSession) {
       redirectedRef.current = false;
@@ -78,11 +167,7 @@ export default function SessionScreen() {
 
     if (!lastCompletedSession || redirectedRef.current) return;
 
-    const endTime =
-      typeof lastCompletedSession.endTime === 'number'
-        ? lastCompletedSession.endTime
-        : 0;
-
+    const endTime = toMs(lastCompletedSession.endTime);
     const timeSinceEnd = Date.now() - endTime;
 
     if (endTime > 0 && timeSinceEnd < 60000) {
@@ -96,7 +181,9 @@ export default function SessionScreen() {
     setScreen,
   ]);
 
-  // شاشة لا توجد جلسة نشطة
+  /* ─────────────────────────────────────────────
+     ██  شاشة: لا توجد جلسة نشطة
+     ───────────────────────────────────────────── */
   if (!activeSession) {
     return (
       <div className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8">
@@ -118,24 +205,22 @@ export default function SessionScreen() {
     );
   }
 
-  const sessionRate = Number(
-    activeSession.agreedPrice ?? garage?.basePrice ?? 0
-  );
+  /* ─── Computed ─── */
+  const sessionRate = Number(activeSession.agreedPrice ?? garage?.basePrice ?? 0);
   const currentHours = calculateFullHours(elapsed);
   const currentCost = calculateCost(elapsed, sessionRate);
   const remainingInHour = getRemainingInCurrentHour(elapsed);
 
-  const handleEnd = () => {
-    setScreen('summary');
-  };
-
+  /* ─────────────────────────────────────────────
+     ██  RENDER
+     ───────────────────────────────────────────── */
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8"
     >
-      {/* عداد الوقت الدائري */}
+      {/* ══ عداد الوقت الدائري ══ */}
       <motion.div
         animate={{
           boxShadow: [
@@ -156,7 +241,7 @@ export default function SessionScreen() {
         </div>
       </motion.div>
 
-      {/* بطاقة التكلفة */}
+      {/* ══ بطاقة التكلفة ══ */}
       <div className="w-full bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-2xl p-4 mb-4 shadow-sm">
         <div className="flex justify-between items-center mb-3">
           <div className="text-center">
@@ -194,22 +279,22 @@ export default function SessionScreen() {
         </div>
       </div>
 
-      {/* تنبيه سعر خاص */}
+      {/* ══ تنبيه سعر خاص ══ */}
       {sessionRate !== garage?.basePrice && garage && (
         <div className="w-full bg-amber-50 border border-amber-200 rounded-xl p-2 mb-4 text-center">
           <p className="text-[10px] text-amber-600 font-bold">
-            💰 سعر خاص: {sessionRate} ج.م/ساعة (بدل {garage.basePrice}{' '}
-            ج.م)
+            💰 سعر خاص: {sessionRate} ج.م/ساعة (بدل {garage.basePrice} ج.م)
           </p>
         </div>
       )}
 
-      {/* معلومات السيارة والسعر */}
+      {/* ══ معلومات السيارة والسعر ══ */}
       <div className="w-full grid grid-cols-2 gap-3 mb-6">
         <div className="bg-white border border-slate-200 p-4 rounded-2xl text-center shadow-sm">
           <Car size={20} className="text-blue-600 mx-auto mb-2" />
           <div className="text-sm font-black text-slate-900">
-            {currentUser?.carPlate}
+            {/* ✅ عرض اللوحة من الجلسة مش من المستخدم فقط */}
+            {activeSession.carPlate || currentUser?.carPlate}
           </div>
           <div className="text-[9px] text-slate-500 font-bold">
             رقم السيارة
@@ -226,7 +311,7 @@ export default function SessionScreen() {
         </div>
       </div>
 
-      {/* اسم الجراج */}
+      {/* ══ اسم الجراج ══ */}
       {garage && (
         <div className="bg-white border border-slate-200 p-4 rounded-2xl w-full text-center mb-6 shadow-sm">
           <div className="text-xs text-slate-500 font-bold mb-1">الجراج</div>
@@ -234,16 +319,16 @@ export default function SessionScreen() {
         </div>
       )}
 
-      {/* ملاحظة الدفع */}
+      {/* ══ ملاحظة الدفع ══ */}
       <div className="w-full bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-center">
         <p className="text-[10px] text-blue-600 font-bold">
           💡 سيتم تحديد طريقة الدفع عند إنهاء الجلسة
         </p>
       </div>
 
-      {/* زر إنهاء الجلسة */}
+      {/* ══ زر إنهاء الجلسة ══ */}
       <button
-        onClick={handleEnd}
+        onClick={() => setScreen('summary')}
         className="w-full bg-red-600 hover:bg-red-700 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-red-100 active:scale-95 transition-all mb-3"
       >
         إنهاء الجلسة ({currentCost} ج.م)
