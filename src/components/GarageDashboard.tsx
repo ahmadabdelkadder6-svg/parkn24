@@ -400,25 +400,40 @@ export default function GarageDashboard() {
     return 0;
   }, [garage?.basePrice]);
 
-  const valetTodayRevenue = useMemo(() => {
-    if (!isValet) return 0;
-    return completedSessions
-      .filter(s =>
-        s.revenueConfirmed &&
-        (s as any).addedBy === currentValetNameLocal &&
-        s.endTime &&
-        timestampToLocalDate(toMs(s.endTime)) === getLocalToday(),
-      )
-      .reduce((a, s) => a + getSessionRevenue(s), 0);
-  }, [isValet, completedSessions, currentValetNameLocal, getSessionRevenue]);
+const valetTodayRevenue = useMemo(() => {
+  if (!isValet) return 0;
+  return completedSessions
+    .filter(s => {
+      if (!s.revenueConfirmed) return false;
+      if (!s.endTime) return false;
+      if (timestampToLocalDate(toMs(s.endTime)) !== getLocalToday()) return false;
+      const addedBy = (s as any).addedBy || '';
+      // ✅ يحسب جلساته + جلسات الحريف
+      return addedBy === currentValetNameLocal
+        || addedBy === `سايس ${valetNumber}`
+        || addedBy === '';
+    })
+    .reduce((a, s) => a + getSessionRevenue(s), 0);
+}, [isValet, completedSessions, currentValetNameLocal, valetNumber, getSessionRevenue]);
 
-  const totalRevenue = useMemo(() => {
-    if (isValet) return valetTodayRevenue;
-    return (
-      garageDailyStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0) ||
-      completedSessions.filter(s => s.revenueConfirmed).reduce((a, s) => a + getSessionRevenue(s), 0)
-    );
-  }, [isValet, valetTodayRevenue, garageDailyStats, completedSessions, getSessionRevenue]);
+const totalRevenue = useMemo(() => {
+  if (isValet) return valetTodayRevenue;
+  // ✅ المالك: يحسب كل العمليات المؤكدة (يدوي + تطبيق)
+  const fromStats = garageDailyStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0);
+  if (fromStats > 0) return fromStats;
+  // fallback: من الجلسات مباشرة
+  return completedSessions
+    .filter(s => {
+      if (!s.revenueConfirmed) return false;
+      if (s.endTime) {
+        const dateStr = timestampToLocalDate(toMs(s.endTime));
+        if (logDateFrom && dateStr < logDateFrom) return false;
+        if (logDateTo && dateStr > logDateTo) return false;
+      }
+      return true;
+    })
+    .reduce((a, s) => a + getSessionRevenue(s), 0);
+}, [isValet, valetTodayRevenue, garageDailyStats, completedSessions, getSessionRevenue, logDateFrom, logDateTo]);
 
   const getActiveCost = useCallback((s: any) => {
 const st = toMs(s.startTime);
@@ -431,22 +446,29 @@ const el = (st > 0 && st <= now + 60000)
     return calculateCost(el, r);
   }, [garage?.basePrice]);
 
-  const filteredCompleted = useMemo(() => {
-    return completedSessions.filter(s => {
-      if (s.endTime) {
-        const dateStr = timestampToLocalDate(toMs(s.endTime));
-        if (isValet) {
-          if (dateStr !== getLocalToday()) return false;
-        } else {
-          if (logDateFrom && dateStr < logDateFrom) return false;
-          if (logDateTo && dateStr > logDateTo) return false;
-        }
+const filteredCompleted = useMemo(() => {
+  return completedSessions.filter(s => {
+    if (s.endTime) {
+      const dateStr = timestampToLocalDate(toMs(s.endTime));
+      if (isValet) {
+        if (dateStr !== getLocalToday()) return false;
+      } else {
+        if (logDateFrom && dateStr < logDateFrom) return false;
+        if (logDateTo && dateStr > logDateTo) return false;
       }
-      if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter) return false;
-      if (isValet && currentValetNameLocal && (s as any).addedBy !== currentValetNameLocal) return false;
-      return true;
-    });
-  }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, currentValetNameLocal]);
+    }
+    if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter) return false;
+    // ✅ السايس يرى: جلساته + جلسات الحريف اللي اتنهت (addedBy فاضي أو اسمه)
+    if (isValet && currentValetNameLocal) {
+      const addedBy = (s as any).addedBy || '';
+      const isMySession = addedBy === currentValetNameLocal
+        || addedBy === `سايس ${valetNumber}`
+        || addedBy === '';  // ✅ جلسات الحريف
+      if (!isMySession) return false;
+    }
+    return true;
+  });
+}, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, currentValetNameLocal, valetNumber]);
 
   const filteredStats = useMemo(() => {
     const c = filteredCompleted.filter(s => s.revenueConfirmed);
