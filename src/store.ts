@@ -37,10 +37,10 @@ export interface ParkingSession {
   synced?: boolean;
   revenueConfirmed?: boolean;
   addedBy?: string;
-  customerPhone?: string;  // ✅ جديد
-  customerName?: string;   // ✅ جديد
-  incomingCarId?: string;  // ✅ جديد
-  startedBy?: 'garage' | 'customer'; // ✅ جديد
+  customerPhone?: string;
+  customerName?: string;
+  incomingCarId?: string;
+  startedBy?: 'garage' | 'customer';
 }
 
 export interface Offer {
@@ -127,37 +127,51 @@ const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
 const getMs = (value?: number) => { if (typeof value === 'number') return value; return 0; };
 
-/**
- * ✅ toMs: يحوّل أي قيمة وقت (number بالثواني أو ms، أو string) إلى milliseconds
- */
 const toMs = (value: any): number => {
   if (!value) return 0;
   if (typeof value === 'number') {
-    // لو القيمة أقل من 13 خانة = بالثواني → حوّلها
     return value < 1_000_000_000_000 ? value * 1000 : value;
   }
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+// ✅ dedupeActiveSessions المُحسَّن:
+// - يحتفظ بـ جميع الجلسات النشطة لكل لوحة (app + manual)
+// - لأن الحريف يحتاج يشوف جلسته (app) حتى لو السايس أضاف manual
+// - المالك/السايس شايفين كل الجلسات أصلاً
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   const active = list.filter((s) => s.status === 'active');
   const completed = list.filter((s) => s.status === 'completed');
-  const bestByPlate = new Map<string, ParkingSession>();
+
+  // ✅ تجميع الجلسات بـ (plate + source) عشان نمنع التكرار لكل نوع على حدة
+  // app جلسة + manual جلسة لنفس اللوحة = الاتنين مسموح يتعايشوا
+  const bestByPlateSource = new Map<string, ParkingSession>();
 
   for (const session of active) {
-    const key = normalizePlate(session.carPlate);
-    if (!key) continue;
-    const existing = bestByPlate.get(key);
-    if (!existing) { bestByPlate.set(key, session); continue; }
+    const plate = normalizePlate(session.carPlate);
+    if (!plate) continue;
+
+    // ✅ المفتاح = plate + source عشان نحتفظ بالاتنين
+    const key = `${plate}::${session.source}`;
+    const existing = bestByPlateSource.get(key);
+
+    if (!existing) {
+      bestByPlateSource.set(key, session);
+      continue;
+    }
+
+    // لو نفس اللوحة ونفس المصدر → احتفظ بالأقدم (startTime أصغر)
     const sessionStart = getMs(session.startTime);
     const existingStart = getMs(existing.startTime);
     const shouldUseCurrent =
       (session.synced && !existing.synced) || sessionStart < existingStart;
-    if (shouldUseCurrent) bestByPlate.set(key, session);
+
+    if (shouldUseCurrent) bestByPlateSource.set(key, session);
   }
 
-  return [...Array.from(bestByPlate.values()), ...completed].sort((a, b) => {
+  // ✅ ترتيب: النشطة أولاً بترتيب البداية، ثم المكتملة
+  return [...Array.from(bestByPlateSource.values()), ...completed].sort((a, b) => {
     const aTime = a.status === 'active'
       ? getMs(a.startTime)
       : typeof a.endTime === 'number' ? a.endTime : 0;
@@ -181,13 +195,11 @@ const mapGarage = (r: any): Garage => ({
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mapSession = (r: any): ParkingSession => {
-  // ✅ استخدام toMs لضمان دقة الوقت من أي مصدر
   const startTime = toMs(r.start_time) || Date.now();
   const endTimeRaw = toMs(r.end_time);
 
   let endTime: number | undefined = endTimeRaw || undefined;
 
-  // تصحيح إذا كان endTime قبل startTime بفارق معقول
   if (endTime && endTime < startTime) {
     const diff = startTime - endTime;
     if (diff < 4 * 60 * 60 * 1000) endTime = endTime + diff + 60000;
@@ -207,7 +219,6 @@ const mapSession = (r: any): ParkingSession => {
     synced: true,
     revenueConfirmed: r.revenue_confirmed ?? false,
     addedBy: r.added_by || '',
-    // ✅ الحقول الجديدة
     customerPhone: r.customer_phone || undefined,
     customerName: r.customer_name || undefined,
     incomingCarId: r.incoming_car_id || undefined,
@@ -426,18 +437,22 @@ export const useStore = create<AppState>((set, get) => ({
       return dbGarage;
     });
 
-    // ✅ mapSession يستخدم toMs داخليًا الآن
     const supabaseSessions = s.data ? s.data.map(mapSession) : [];
     const supabaseSessionIds = new Set(supabaseSessions.map((ss) => ss.id));
     const currentSessions = get().sessions;
-    const supabaseActivePlates = new Set(
-      supabaseSessions.filter((ss) => ss.status === 'active').map((ss) => normalizePlate(ss.carPlate))
+
+    // ✅ نحسب النشطة من Supabase لكل لوحة + مصدر
+    const supabaseActiveKeys = new Set(
+      supabaseSessions
+        .filter((ss) => ss.status === 'active')
+        .map((ss) => `${normalizePlate(ss.carPlate)}::${ss.source}`)
     );
 
+    // ✅ الجلسات المحلية اللي لسه ما اتحفظتش في Supabase
     const localOnlySessions = currentSessions.filter((cs) =>
       !supabaseSessionIds.has(cs.id) &&
       cs.status === 'active' &&
-      !supabaseActivePlates.has(normalizePlate(cs.carPlate)) &&
+      !supabaseActiveKeys.has(`${normalizePlate(cs.carPlate)}::${cs.source}`) &&
       !deletedSessionIds.has(cs.id) &&
       Date.now() - cs.startTime < 10000
     );
@@ -609,38 +624,51 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   // ══════════════════════════════════════════════
-  // ██  addSession - مع دعم customerPhone/customerName/incomingCarId
+  // ██  addSession
   // ══════════════════════════════════════════════
   addSession: async (s) => {
     const normalizedPlate = normalizePlate(s.carPlate);
     if (!normalizedPlate) return '';
 
     const sessionId = crypto.randomUUID();
-
-    // ✅ استخدام toMs لضمان الوقت الصحيح
     const safeStartTime = toMs(s.startTime) || Date.now();
 
-    if (sessionStartLocks.has(normalizedPlate)) {
+    // ✅ Lock مخصص لكل (plate + source) عشان نسمح بـ app + manual في نفس الوقت
+    const lockKey = `${normalizedPlate}::${s.source}`;
+
+    if (sessionStartLocks.has(lockKey)) {
       const existing = get().sessions.find(
-        (x) => samePlate(x.carPlate, normalizedPlate) && x.status === 'active'
+        (x) =>
+          samePlate(x.carPlate, normalizedPlate) &&
+          x.status === 'active' &&
+          x.source === s.source
       );
       return existing?.id ?? '';
     }
 
-    sessionStartLocks.add(normalizedPlate);
+    sessionStartLocks.add(lockKey);
     pausePolling(8000);
 
     try {
+      // ✅ تحقق من جلسة نشطة بنفس اللوحة + نفس المصدر فقط
       const existingLocal = get().sessions.find(
-        (existing) => samePlate(existing.carPlate, normalizedPlate) && existing.status === 'active'
+        (existing) =>
+          samePlate(existing.carPlate, normalizedPlate) &&
+          existing.status === 'active' &&
+          existing.source === s.source
       );
       if (existingLocal) return existingLocal.id;
 
       if (isSupabaseConfigured()) {
         try {
+          // ✅ تحقق من DB بنفس اللوحة + نفس المصدر
           const { data: dbCheck } = await supabase
-            .from('sessions').select('id, car_plate')
-            .eq('status', 'active').eq('car_plate', normalizedPlate).limit(1);
+            .from('sessions').select('id, car_plate, source')
+            .eq('status', 'active')
+            .eq('car_plate', normalizedPlate)
+            .eq('source', s.source)
+            .limit(1);
+
           if (dbCheck && dbCheck.length > 0) {
             const { data: sessionData } = await supabase
               .from('sessions').select('*').eq('id', dbCheck[0].id).single();
@@ -669,7 +697,6 @@ export const useStore = create<AppState>((set, get) => ({
         synced: false,
         revenueConfirmed: false,
         addedBy: addedByValue,
-        // ✅ الحقول الجديدة تنتقل مباشرة من s
         customerPhone: (s as any).customerPhone || undefined,
         customerName: (s as any).customerName || undefined,
         incomingCarId: (s as any).incomingCarId || undefined,
@@ -686,14 +713,12 @@ export const useStore = create<AppState>((set, get) => ({
           id: sessionId,
           garage_id: s.garageId,
           car_plate: normalizedPlate,
-          // ✅ حفظ الوقت كـ ISO string دقيق
           start_time: new Date(safeStartTime).toISOString(),
           status: s.status,
           source: s.source,
           agreed_price: s.agreedPrice ?? null,
           revenue_confirmed: false,
           added_by: addedByValue,
-          // ✅ الحقول الجديدة في قاعدة البيانات
           customer_phone: (s as any).customerPhone || null,
           customer_name: (s as any).customerName || null,
           incoming_car_id: (s as any).incomingCarId || null,
@@ -724,7 +749,7 @@ export const useStore = create<AppState>((set, get) => ({
 
       return sessionId;
     } finally {
-      sessionStartLocks.delete(normalizedPlate);
+      sessionStartLocks.delete(lockKey);
     }
   },
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
   Navigation,
@@ -60,6 +60,17 @@ const toMs = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+/* ─── Helper: توحيد رقم اللوحة ─── */
+const normalizePlate = (plate?: string): string => {
+  if (!plate) return '';
+  return plate
+    .trim()
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
+};
+
 /* ─── Map controller ─── */
 function MapController({
   userPos,
@@ -105,27 +116,31 @@ export default function NavigationScreen() {
   } = useStore();
 
   const garage = garages.find((g) => g.id === selectedGarageId);
-  const userPlateNav = (currentUser?.carPlate ?? '').trim().toUpperCase();
+  const userPlateNav = normalizePlate(currentUser?.carPlate);
 
-  /* ── الجلسات والسيارات ── */
-  const myIncomingCar = incomingCars.find(
-    (c) =>
-      c.garageId === selectedGarageId &&
-      c.carPlate.trim().toUpperCase() === userPlateNav &&
-      c.status === 'coming',
-  );
+  /* ── الكشف عن السيارة القادمة ── */
+  const myIncomingCar = useMemo(() => {
+    return incomingCars.find(
+      (c) =>
+        c.garageId === selectedGarageId &&
+        normalizePlate(c.carPlate) === userPlateNav &&
+        c.status === 'coming',
+    );
+  }, [incomingCars, selectedGarageId, userPlateNav]);
 
-  /* ✅ البحث عن الجلسة النشطة باللوحة أو رقم الهاتف - يشمل الجلسات اللي بدأها الجراج */
-const myActiveSession = sessions
-  .filter(
-    (sess) =>
-      sess.status === 'active' &&
-      (
-        sess.carPlate.trim().toUpperCase() === userPlateNav ||
-        (sess as any).customerPhone === currentUser?.phone
-      ),
-  )
-  .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
+  /* ✅ الكشف عن الجلسة النشطة - يشمل الجلسات اللي بدأها السايس أو المالك */
+  const myActiveSession = useMemo(() => {
+    return sessions
+      .filter(
+        (sess) =>
+          sess.status === 'active' &&
+          (
+            normalizePlate(sess.carPlate) === userPlateNav ||
+            (currentUser?.phone && (sess as any).customerPhone === currentUser.phone)
+          ),
+      )
+      .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
+  }, [sessions, userPlateNav, currentUser?.phone]);
 
   /* ── State ── */
   const [userPos, setUserPos] = useState<{ lat: number; lng: number }>({
@@ -136,6 +151,7 @@ const myActiveSession = sessions
   const [canCancel, setCanCancel] = useState(true);
   const [mapReady, setMapReady] = useState(false);
   const [pushStatus, setPushStatus] = useState<'waiting' | 'sent' | 'cancelled'>('waiting');
+  const [sessionStartedByGarage, setSessionStartedByGarage] = useState(false);
 
   /* ── Refs ── */
   const screenEnteredRef = useRef(Date.now());
@@ -144,64 +160,123 @@ const myActiveSession = sessions
   const pushSentRef = useRef(false);
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const realtimeChannelRef = useRef<any>(null);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   /* ─────────────────────────────────────────────
      ██  REALTIME: الاستماع لجدول sessions
-         حل مشكلة عداد الركن من شاشة الجراج
+         ✅ حل مشكلة العداد - لما السايس يبدأ الجلسة
+         الحريف يعرف فورًا ويتحول لشاشة الجلسة
      ───────────────────────────────────────────── */
   useEffect(() => {
-    if (!selectedGarageId || !userPlateNav) return;
+    if (!userPlateNav) return;
 
-    /* فورًا فتش آخر بيانات */
-    fetchAll();
+    let cancelled = false;
 
+    /* ─ فتش فورًا عند فتح الشاشة ─ */
+    const refetch = async () => {
+      if (cancelled) return;
+      try {
+        await fetchAll();
+      } catch (e) {
+        console.error('❌ fetchAll error:', e);
+      }
+    };
+
+    refetch();
+
+    /* ─ Helper: هل الصف ده بتاعي؟ ─ */
+    const isMyRow = (row: any): boolean => {
+      if (!row) return false;
+      const plate = normalizePlate(row.car_plate || row.carPlate);
+      const phone = row.customer_phone || row.customerPhone || '';
+      return (
+        plate === userPlateNav ||
+        (!!currentUser?.phone && phone === currentUser.phone)
+      );
+    };
+
+    /* ─ Realtime subscription ─ */
     const channel = supabase
-      .channel(`nav-session-${userPlateNav}-${selectedGarageId}`)
+      .channel(`nav-customer-live-${userPlateNav}`)
+      /* sessions - INSERT (السايس بدأ جلسة جديدة) */
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'sessions',
-          filter: `garage_id=eq.${selectedGarageId}`,
-        },
+        { event: 'INSERT', schema: 'public', table: 'sessions' },
         async (payload) => {
-          const row = payload.new as any;
-          const plate = (row.car_plate ?? '').trim().toUpperCase();
-          const phone = row.customer_phone ?? '';
-
-          /* هل الجلسة دي بتاعتي؟ */
-          const isMySession =
-            plate === userPlateNav ||
-            (currentUser?.phone && phone === currentUser.phone);
-
-          if (isMySession && row.status === 'active') {
-            /* حدّث الـ store */
-            await fetchAll();
+          const newRow = payload.new as any;
+          if (isMyRow(newRow) && newRow.status === 'active') {
+            console.log('🔔 Realtime: جلسة جديدة بدأت من الجراج!');
+            setSessionStartedByGarage(true);
+            await refetch();
           }
         },
       )
+      /* sessions - UPDATE (تحديث حالة الجلسة) */
       .on(
         'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'sessions',
-          filter: `garage_id=eq.${selectedGarageId}`,
-        },
-        async () => {
-          await fetchAll();
+        { event: 'UPDATE', schema: 'public', table: 'sessions' },
+        async (payload) => {
+          const newRow = payload.new as any;
+          if (isMyRow(newRow) && newRow.status === 'active') {
+            console.log('🔔 Realtime: جلسة اتحدثت وأصبحت نشطة!');
+            setSessionStartedByGarage(true);
+            await refetch();
+          }
         },
       )
-      .subscribe();
+      /* incoming_cars - DELETE (الجراج قبل السيارة) */
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'incoming_cars' },
+        async (payload) => {
+          const oldRow = payload.old as any;
+          if (isMyRow(oldRow)) {
+            console.log('🔔 Realtime: incoming car تم حذفه');
+            await refetch();
+          }
+        },
+      )
+      /* incoming_cars - UPDATE */
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'incoming_cars' },
+        async (payload) => {
+          const newRow = payload.new as any;
+          const oldRow = payload.old as any;
+          if (isMyRow(newRow) || isMyRow(oldRow)) {
+            await refetch();
+          }
+        },
+      )
+      .subscribe((status) => {
+        console.log('📡 Realtime subscription status:', status);
+      });
 
     realtimeChannelRef.current = channel;
 
+    /* ─ Polling احتياطي كل 5 ثواني لو الـ realtime اتأخر ─ */
+    pollingIntervalRef.current = setInterval(refetch, 5000);
+
+    /* ─ عند focus / visibility ─ */
+    const handleFocus = () => refetch();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refetch();
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
+      cancelled = true;
       supabase.removeChannel(channel);
       realtimeChannelRef.current = null;
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [selectedGarageId, userPlateNav, currentUser?.phone, fetchAll]);
+  }, [userPlateNav, currentUser?.phone, fetchAll]);
 
   /* ─── GPS ─── */
   useEffect(() => {
@@ -306,11 +381,18 @@ const myActiveSession = sessions
   }, [myIncomingCar?.id, garage?.id]);
 
   /* ─────────────────────────────────────────────
-     ██  الانتقال التلقائي لشاشة الجلسة
-         يعمل سواء بدأت الجلسة من الحريف أو من الجراج
+     ██  ✅ الانتقال التلقائي لشاشة الجلسة
+         يعمل سواء بدأت الجلسة من الحريف أو من السايس/المالك
      ───────────────────────────────────────────── */
   useEffect(() => {
-    if (!myActiveSession) return;
+    if (!myActiveSession) {
+      /* لو الجلسة اتلغت أو انتهت، ارجّع الـ ref */
+      navigatedToSessionRef.current = false;
+      setSessionStartedByGarage(false);
+      return;
+    }
+
+    /* لو سبق نقلنا بالفعل */
     if (navigatedToSessionRef.current) return;
 
     navigatedToSessionRef.current = true;
@@ -320,8 +402,18 @@ const myActiveSession = sessions
       setSelectedGarageId(myActiveSession.garageId);
     }
 
-    toast.success('تم بدء حساب الركن ⏱️');
-    setScreen('session');
+    /* أوقف الـ polling عشان مش محتاجينه بعد كده */
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+
+    toast.success('تم بدء حساب الركن ⏱️', { icon: '🚗', duration: 3000 });
+
+    /* تأخير بسيط عشان الـ toast يظهر */
+    setTimeout(() => {
+      setScreen('session');
+    }, 500);
   }, [
     myActiveSession?.id,
     myActiveSession?.garageId,
@@ -434,24 +526,27 @@ const myActiveSession = sessions
 
     try {
       if (!myIncomingCar || !garage) {
-        setScreen('session');
+        /* لو مفيش incoming car يمكن الجلسة بدأت بالفعل من الجراج */
+        if (myActiveSession) {
+          navigatedToSessionRef.current = true;
+          setScreen('session');
+        }
         return;
       }
 
-      /* هل فيه جلسة نشطة بالفعل؟ (من الجراج أو من الحريف) */
+      /* هل فيه جلسة نشطة بالفعل؟ (بدأها السايس أو المالك) */
       const state = useStore.getState();
       const alreadyActive = state.sessions.find(
         (s) =>
           s.status === 'active' &&
           (
-            s.carPlate.trim().toUpperCase() === myIncomingCar.carPlate.trim().toUpperCase() ||
-            (s as any).customerPhone === currentUser?.phone
+            normalizePlate(s.carPlate) === userPlateNav ||
+            (currentUser?.phone && (s as any).customerPhone === currentUser.phone)
           ),
       );
 
       if (alreadyActive) {
         await removeIncomingCar(myIncomingCar.id);
-        /* تأكد إن الـ garageId صح */
         if (alreadyActive.garageId !== selectedGarageId) {
           setSelectedGarageId(alreadyActive.garageId);
         }
@@ -526,6 +621,42 @@ const myActiveSession = sessions
 
       {/* ══ Content ══ */}
       <div className="flex-1 px-4 pb-4 flex flex-col gap-3 overflow-y-auto">
+
+        {/* ✅ بانر: الجلسة بدأت من الجراج (السايس/المالك) */}
+        {(myActiveSession || sessionStartedByGarage) && !navigatedToSessionRef.current && (
+          <motion.div
+            initial={{ opacity: 0, y: -10, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            className="shrink-0"
+            style={{
+              background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+              borderRadius: 20,
+              padding: '16px 18px',
+              boxShadow: '0 0 30px rgba(5,150,105,0.4), 0 8px 24px rgba(5,150,105,0.25)',
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <motion.span
+                animate={{ scale: [1, 1.4, 1] }}
+                transition={{ repeat: Infinity, duration: 1 }}
+                className="w-3 h-3 rounded-full bg-white shrink-0"
+              />
+              <div className="flex-1">
+                <div className="font-black text-sm text-white flex items-center gap-1">
+                  ✅ الجراج بدأ حساب الركن!
+                </div>
+                <div className="text-[10px] text-emerald-200 mt-1">
+                  جاري الانتقال لشاشة الجلسة تلقائياً...
+                </div>
+              </div>
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
+                className="w-5 h-5 border-2 border-white border-t-transparent rounded-full"
+              />
+            </div>
+          </motion.div>
+        )}
 
         {/* بطاقة الوقت والمسافة */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shrink-0">
@@ -680,39 +811,50 @@ const myActiveSession = sessions
         )}
 
         {/* ملاحظة بدء الركن */}
-        <div className="bg-emerald-600/10 border border-emerald-500/20 rounded-xl p-3 flex items-center gap-2 shrink-0">
-          <CheckCircle size={14} className="text-emerald-400 shrink-0" />
-          <span className="text-[10px] font-bold text-emerald-400">
-            سيبدأ حساب الركن فور الضغط على "وصلت للجراج" ✅
-          </span>
-        </div>
-
-        {/* ✅ بانر: الجلسة بدأت من الجراج */}
-        {myActiveSession && !navigatedToSessionRef.current && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-emerald-600/15 border border-emerald-500/30 rounded-xl p-3 flex items-center gap-2 shrink-0"
-          >
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0" />
+        {!myActiveSession && (
+          <div className="bg-emerald-600/10 border border-emerald-500/20 rounded-xl p-3 flex items-center gap-2 shrink-0">
+            <CheckCircle size={14} className="text-emerald-400 shrink-0" />
             <span className="text-[10px] font-bold text-emerald-400">
-              ✅ بدأ الجراج حساب الركن - جاري الانتقال لشاشة الجلسة...
+              سيبدأ حساب الركن فور الضغط على "وصلت للجراج" أو عندما يبدأه الجراج ✅
             </span>
-          </motion.div>
+          </div>
         )}
 
         {/* زر وصلت */}
-        <button
-          onClick={handleCarArrived}
-          disabled={isArrivingRef.current}
-          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-base shadow-lg shadow-emerald-900/20 active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Navigation size={18} />
-          وصلت للجراج - ابدأ الركن ✅
-        </button>
+        {!myActiveSession && (
+          <button
+            onClick={handleCarArrived}
+            disabled={isArrivingRef.current}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-base shadow-lg shadow-emerald-900/20 active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Navigation size={18} />
+            وصلت للجراج - ابدأ الركن ✅
+          </button>
+        )}
+
+        {/* ✅ لو الجلسة بدأت - زر للانتقال يدوي */}
+        {myActiveSession && (
+          <button
+            onClick={() => {
+              if (myActiveSession.garageId !== selectedGarageId) {
+                setSelectedGarageId(myActiveSession.garageId);
+              }
+              navigatedToSessionRef.current = true;
+              setScreen('session');
+            }}
+            className="w-full text-white py-4 rounded-2xl font-black text-base shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0"
+            style={{
+              background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+              boxShadow: '0 0 30px rgba(5,150,105,0.4)',
+            }}
+          >
+            <CheckCircle size={18} />
+            الجلسة شغالة - اذهب للعداد ⏱️
+          </button>
+        )}
 
         {/* زر الإلغاء */}
-        {canCancel && myIncomingCar && (
+        {canCancel && myIncomingCar && !myActiveSession && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
