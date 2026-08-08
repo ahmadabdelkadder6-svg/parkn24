@@ -136,23 +136,17 @@ const toMs = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-// ✅ dedupeActiveSessions المُحسَّن:
-// - يحتفظ بـ جميع الجلسات النشطة لكل لوحة (app + manual)
-// - لأن الحريف يحتاج يشوف جلسته (app) حتى لو السايس أضاف manual
-// - المالك/السايس شايفين كل الجلسات أصلاً
+// ✅ dedupeActiveSessions: يحتفظ بكل الجلسات (app + manual) لنفس اللوحة
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   const active = list.filter((s) => s.status === 'active');
   const completed = list.filter((s) => s.status === 'completed');
 
-  // ✅ تجميع الجلسات بـ (plate + source) عشان نمنع التكرار لكل نوع على حدة
-  // app جلسة + manual جلسة لنفس اللوحة = الاتنين مسموح يتعايشوا
   const bestByPlateSource = new Map<string, ParkingSession>();
 
   for (const session of active) {
     const plate = normalizePlate(session.carPlate);
     if (!plate) continue;
 
-    // ✅ المفتاح = plate + source عشان نحتفظ بالاتنين
     const key = `${plate}::${session.source}`;
     const existing = bestByPlateSource.get(key);
 
@@ -161,7 +155,6 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
       continue;
     }
 
-    // لو نفس اللوحة ونفس المصدر → احتفظ بالأقدم (startTime أصغر)
     const sessionStart = getMs(session.startTime);
     const existingStart = getMs(existing.startTime);
     const shouldUseCurrent =
@@ -170,7 +163,6 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
     if (shouldUseCurrent) bestByPlateSource.set(key, session);
   }
 
-  // ✅ ترتيب: النشطة أولاً بترتيب البداية، ثم المكتملة
   return [...Array.from(bestByPlateSource.values()), ...completed].sort((a, b) => {
     const aTime = a.status === 'active'
       ? getMs(a.startTime)
@@ -197,7 +189,6 @@ const mapGarage = (r: any): Garage => ({
 const mapSession = (r: any): ParkingSession => {
   const startTime = toMs(r.start_time) || Date.now();
   const endTimeRaw = toMs(r.end_time);
-
   let endTime: number | undefined = endTimeRaw || undefined;
 
   if (endTime && endTime < startTime) {
@@ -266,6 +257,20 @@ const sessionEndLocks = new Set<string>();
 let walletDeductedAt = 0;
 const deletedSessionIds = new Set<string>();
 const locallyEndedSessions = new Map<string, ParkingSession>();
+
+// ✅ Helper: تحديد addedBy
+const resolveAddedBy = (explicitAddedBy?: string): string => {
+  if (explicitAddedBy !== undefined && explicitAddedBy !== null && explicitAddedBy !== '') {
+    return explicitAddedBy;
+  }
+  const valetName = localStorage.getItem('valetName') || '';
+  const garageRole = localStorage.getItem('garageRole') || '';
+  const valetNumber = localStorage.getItem('valetNumber') || '';
+  if (garageRole === 'owner') return 'المالك';
+  if (valetName) return valetName;
+  if (garageRole === 'valet') return `سايس ${valetNumber}`;
+  return '';
+};
 
 // ===================== State Interface =====================
 interface AppState {
@@ -441,14 +446,12 @@ export const useStore = create<AppState>((set, get) => ({
     const supabaseSessionIds = new Set(supabaseSessions.map((ss) => ss.id));
     const currentSessions = get().sessions;
 
-    // ✅ نحسب النشطة من Supabase لكل لوحة + مصدر
     const supabaseActiveKeys = new Set(
       supabaseSessions
         .filter((ss) => ss.status === 'active')
         .map((ss) => `${normalizePlate(ss.carPlate)}::${ss.source}`)
     );
 
-    // ✅ الجلسات المحلية اللي لسه ما اتحفظتش في Supabase
     const localOnlySessions = currentSessions.filter((cs) =>
       !supabaseSessionIds.has(cs.id) &&
       cs.status === 'active' &&
@@ -624,7 +627,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   // ══════════════════════════════════════════════
-  // ██  addSession
+  // ██  addSession ✅ مُصلح بالكامل
   // ══════════════════════════════════════════════
   addSession: async (s) => {
     const normalizedPlate = normalizePlate(s.carPlate);
@@ -633,7 +636,7 @@ export const useStore = create<AppState>((set, get) => ({
     const sessionId = crypto.randomUUID();
     const safeStartTime = toMs(s.startTime) || Date.now();
 
-    // ✅ Lock مخصص لكل (plate + source) عشان نسمح بـ app + manual في نفس الوقت
+    // ✅ Lock بـ (plate + source) للسماح بـ app + manual معاً
     const lockKey = `${normalizedPlate}::${s.source}`;
 
     if (sessionStartLocks.has(lockKey)) {
@@ -650,7 +653,7 @@ export const useStore = create<AppState>((set, get) => ({
     pausePolling(8000);
 
     try {
-      // ✅ تحقق من جلسة نشطة بنفس اللوحة + نفس المصدر فقط
+      // تحقق من جلسة نشطة بنفس اللوحة + نفس المصدر
       const existingLocal = get().sessions.find(
         (existing) =>
           samePlate(existing.carPlate, normalizedPlate) &&
@@ -661,7 +664,6 @@ export const useStore = create<AppState>((set, get) => ({
 
       if (isSupabaseConfigured()) {
         try {
-          // ✅ تحقق من DB بنفس اللوحة + نفس المصدر
           const { data: dbCheck } = await supabase
             .from('sessions').select('id, car_plate, source')
             .eq('status', 'active')
@@ -685,25 +687,8 @@ export const useStore = create<AppState>((set, get) => ({
         } catch (err) { console.error('خطأ في التحقق من DB:', err); }
       }
 
-// ✅ لو تم تمرير addedBy صراحة من الكومبوننت، استخدمه
-const explicitAddedBy = (s as any).addedBy;
-let addedByValue: string;
-
-if (explicitAddedBy !== undefined && explicitAddedBy !== null && explicitAddedBy !== '') {
-  // ✅ تم تمريره صراحة
-  addedByValue = explicitAddedBy;
-} else {
-  // ✅ نحدده من localStorage
-  const valetName = localStorage.getItem('valetName') || '';
-  const garageRole = localStorage.getItem('garageRole') || '';
-  addedByValue = garageRole === 'owner'
-    ? 'المالك'
-    : valetName
-      ? valetName
-      : garageRole === 'valet'
-        ? `سايس ${localStorage.getItem('valetNumber') || ''}`
-        : '';
-}
+      // ✅ تحديد addedBy بشكل صحيح - يقبل القيمة الممررة صراحة أو يحددها من localStorage
+      const addedByValue = resolveAddedBy((s as any).addedBy);
 
       const optimisticSession: ParkingSession = {
         ...s,
