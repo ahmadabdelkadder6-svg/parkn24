@@ -30,13 +30,18 @@ const normalizePlateForCompare = (plate?: string): string => {
     .toUpperCase();
 };
 
-const toMs = (value: any): number => {
+// ✅ تحويل دقيق لأي قيمة وقت
+const safeParseTime = (value: any): number => {
   if (!value) return 0;
-  if (typeof value === 'number') {
-    return value < 1_000_000_000_000 ? value * 1000 : value;
+  if (typeof value === 'string') {
+    const ms = new Date(value).getTime();
+    return Number.isFinite(ms) && ms > 0 ? ms : 0;
   }
-  const ms = new Date(value).getTime();
-  return Number.isFinite(ms) ? ms : 0;
+  if (typeof value === 'number') {
+    if (value < 1_000_000_000_000) return value * 1000;
+    return value;
+  }
+  return 0;
 };
 
 /* ════════════════════════════════════════════════════════════
@@ -66,6 +71,7 @@ export default function GarageListScreen() {
 
   /* ── Refs ── */
   const autoNavigatedRef = useRef<string | null>(null);
+  const focusListenerRef = useRef<(() => void) | null>(null);
 
   /* ── Derived state ── */
   const normalizedUserPlate = normalizePlateForCompare(currentUser?.carPlate);
@@ -74,28 +80,37 @@ export default function GarageListScreen() {
     (s) => normalizePlateForCompare(s.carPlate) === normalizedUserPlate && s.status === 'completed',
   );
 
-  /* ✅ البحث عن جلسة نشطة بأي مصدر (app أو manual) */
+  /* ✅ البحث عن جلسة نشطة - مع التحقق من startTime */
   const activeSession = useMemo(() => {
-    return sessions
-      .filter(
-        (s) =>
-          s.status === 'active' &&
-          (
-            normalizePlateForCompare(s.carPlate) === normalizedUserPlate ||
-            (currentUser?.phone && (s as any).customerPhone === currentUser.phone)
-          ),
-      )
-      .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
+    const found = sessions
+      .filter((s) => {
+        if (s.status !== 'active') return false;
+        const samePlate = normalizePlateForCompare(s.carPlate) === normalizedUserPlate;
+        const samePhone = !!currentUser?.phone && (s as any).customerPhone === currentUser.phone;
+        return samePlate || samePhone;
+      })
+      .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
+
+    if (!found) return undefined;
+
+    // ✅ التحقق من صحة startTime
+    const startMs = safeParseTime(found.startTime);
+    const now = Date.now();
+    if (startMs <= 0 || startMs > now + 60000) {
+      // startTime غلط - نرجع الجلسة بدون تعديل وخليها SessionScreen تتعامل معها
+      return found;
+    }
+
+    return found;
   }, [sessions, normalizedUserPlate, currentUser?.phone]);
 
   const myIncomingCar = useMemo(() => {
     return incomingCars
-      .filter(
-        (c) =>
-          normalizePlateForCompare(c.carPlate) === normalizedUserPlate &&
-          c.status === 'coming',
+      .filter((c) =>
+        normalizePlateForCompare(c.carPlate) === normalizedUserPlate &&
+        c.status === 'coming',
       )
-      .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
+      .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
   }, [incomingCars, normalizedUserPlate]);
 
   /* ── Location ── */
@@ -118,7 +133,7 @@ export default function GarageListScreen() {
   useEffect(() => { getUserLocation(); }, []);
 
   /* ─────────────────────────────────────────────
-     ██  ✅ REALTIME: اكتشاف الجلسات الجديدة فوراً
+     ██  REALTIME + Polling
      ───────────────────────────────────────────── */
   useEffect(() => {
     if (!normalizedUserPlate) return;
@@ -152,7 +167,6 @@ export default function GarageListScreen() {
           const newRow = payload.new as any;
           const oldRow = payload.old as any;
           if (isMyRow(newRow) || isMyRow(oldRow)) {
-            console.log('🔔 GarageList: session change detected');
             await refetch();
           }
         },
@@ -170,36 +184,58 @@ export default function GarageListScreen() {
       )
       .subscribe();
 
-    // Polling احتياطي
     const interval = setInterval(refetch, 7000);
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') refetch();
     };
+
+    const handleFocus = () => refetch();
+
     document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', () => refetch());
+    window.addEventListener('focus', handleFocus);
+    focusListenerRef.current = handleFocus;
 
     return () => {
       cancelled = true;
       clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleFocus);
       supabase.removeChannel(channel);
     };
   }, [normalizedUserPlate, currentUser?.phone, fetchAll]);
 
-  /* ✅ انتقال تلقائي لشاشة الجلسة لما تبدأ */
+  /* ─────────────────────────────────────────────
+     ██  ✅ انتقال تلقائي لشاشة الجلسة
+     ██  مع التأكد من fetchAll قبل الانتقال
+     ───────────────────────────────────────────── */
   useEffect(() => {
     if (!activeSession) {
       autoNavigatedRef.current = null;
       return;
     }
+
     if (autoNavigatedRef.current === activeSession.id) return;
     autoNavigatedRef.current = activeSession.id;
+
+    const startMs = safeParseTime(activeSession.startTime);
+    const now = Date.now();
+
+    // ✅ لو startTime غلط → انتظر fetchAll أولاً
+    if (startMs <= 0 || startMs > now + 60000) {
+      console.warn('⚠️ startTime غير صحيح، انتظار fetchAll...');
+      fetchAll().then(() => {
+        setSelectedGarageId(activeSession.garageId);
+        setScreen('session');
+        toast.success('بدأت جلسة الركن! ⏱️', { icon: '🚗', duration: 3000 });
+      });
+      return;
+    }
 
     setSelectedGarageId(activeSession.garageId);
     setScreen('session');
     toast.success('بدأت جلسة الركن! ⏱️', { icon: '🚗', duration: 3000 });
-  }, [activeSession, setSelectedGarageId, setScreen]);
+  }, [activeSession?.id, activeSession?.startTime, setSelectedGarageId, setScreen, fetchAll]);
 
   /* ── Garages with distance ── */
   const garagesWithDistance: GarageWithDistance[] = useMemo(() => {
@@ -272,7 +308,6 @@ export default function GarageListScreen() {
       {/* ══════ HEADER ══════ */}
       <div className="px-4 pt-12 pb-3" style={{ background: '#ffffff' }}>
 
-        {/* Top row */}
         <div className="flex justify-between items-center mb-4">
           <div>
             <h1 className="text-xl font-black" style={{ color: '#0A1628' }}>
@@ -460,7 +495,6 @@ export default function GarageListScreen() {
       {/* ══════ CONTENT ══════ */}
       <div className="flex-1 overflow-y-auto px-4 pt-3 pb-6">
 
-        {/* أزرار سريعة */}
         <div className="grid grid-cols-2 gap-2 mb-4">
           {hasCompletedSession && (
             <button
@@ -505,18 +539,14 @@ export default function GarageListScreen() {
           </button>
         </div>
 
-        {/* أماكن قريبة */}
         {nearbyGarages.length > 0 && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3 justify-end">
               <span
                 className="font-black"
                 style={{
-                  background: '#00CC66',
-                  color: '#fff',
-                  fontSize: 11,
-                  padding: '3px 12px',
-                  borderRadius: 20,
+                  background: '#00CC66', color: '#fff', fontSize: 11,
+                  padding: '3px 12px', borderRadius: 20,
                   boxShadow: '0 2px 8px rgba(0,204,102,0.3)',
                 }}
               >
@@ -543,18 +573,14 @@ export default function GarageListScreen() {
           </div>
         )}
 
-        {/* خيارات أخرى */}
         {farGarages.length > 0 && !showNearbyOnly && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3 justify-end">
               <span
                 className="font-black"
                 style={{
-                  background: '#FF8800',
-                  color: '#fff',
-                  fontSize: 11,
-                  padding: '3px 12px',
-                  borderRadius: 20,
+                  background: '#FF8800', color: '#fff', fontSize: 11,
+                  padding: '3px 12px', borderRadius: 20,
                   boxShadow: '0 2px 8px rgba(255,136,0,0.3)',
                 }}
               >
@@ -581,7 +607,6 @@ export default function GarageListScreen() {
           </div>
         )}
 
-        {/* فارغة */}
         {filteredGarages.length === 0 && (
           <div className="text-center py-20">
             <div className="text-6xl mb-4">🔍</div>
@@ -665,11 +690,8 @@ function GarageCard({
           <div
             className="flex items-center gap-1 font-black"
             style={{
-              background: '#FF9500',
-              color: '#fff',
-              fontSize: 11,
-              padding: '4px 10px',
-              borderRadius: 12,
+              background: '#FF9500', color: '#fff', fontSize: 11,
+              padding: '4px 10px', borderRadius: 12,
               boxShadow: '0 2px 8px rgba(255,149,0,0.3)',
             }}
           >
@@ -678,35 +700,19 @@ function GarageCard({
           </div>
 
           {garage.availableSpots === 0 && (
-            <span
-              className="font-black"
-              style={{ background: '#FF3333', color: '#fff', fontSize: 10, padding: '4px 10px', borderRadius: 12 }}
-            >
+            <span className="font-black" style={{ background: '#FF3333', color: '#fff', fontSize: 10, padding: '4px 10px', borderRadius: 12 }}>
               ممتلئ
             </span>
           )}
 
           {!isBusy && isClosest && garage.availableSpots > 0 && (
-            <span
-              className="font-black"
-              style={{
-                background: '#0066FF',
-                color: '#fff',
-                fontSize: 10,
-                padding: '4px 10px',
-                borderRadius: 12,
-                boxShadow: '0 0 12px rgba(0,102,255,0.3)',
-              }}
-            >
+            <span className="font-black" style={{ background: '#0066FF', color: '#fff', fontSize: 10, padding: '4px 10px', borderRadius: 12, boxShadow: '0 0 12px rgba(0,102,255,0.3)' }}>
               📍 الأقرب
             </span>
           )}
 
           {!isBusy && !isClosest && isNearby && garage.availableSpots > 0 && (
-            <span
-              className="font-black"
-              style={{ background: '#00CC66', color: '#fff', fontSize: 10, padding: '4px 10px', borderRadius: 12 }}
-            >
+            <span className="font-black" style={{ background: '#00CC66', color: '#fff', fontSize: 10, padding: '4px 10px', borderRadius: 12 }}>
               قريب
             </span>
           )}
@@ -717,10 +723,7 @@ function GarageCard({
         </h3>
       </div>
 
-      <div
-        className="flex items-center gap-1 justify-end mb-3"
-        style={{ color: '#7B8CA6', fontSize: 11 }}
-      >
+      <div className="flex items-center gap-1 justify-end mb-3" style={{ color: '#7B8CA6', fontSize: 11 }}>
         <span>{garage.location}</span>
         <MapPin size={12} />
       </div>
@@ -729,14 +732,9 @@ function GarageCard({
         <div
           className="flex items-center gap-2 font-black"
           style={{
-            background: isNearby ? '#00CC66' : '#FF8800',
-            color: '#fff',
-            borderRadius: 16,
-            padding: '10px 16px',
-            fontSize: 14,
-            boxShadow: isNearby
-              ? '0 4px 16px rgba(0,204,102,0.3)'
-              : '0 4px 16px rgba(255,136,0,0.3)',
+            background: isNearby ? '#00CC66' : '#FF8800', color: '#fff',
+            borderRadius: 16, padding: '10px 16px', fontSize: 14,
+            boxShadow: isNearby ? '0 4px 16px rgba(0,204,102,0.3)' : '0 4px 16px rgba(255,136,0,0.3)',
           }}
         >
           <Navigation size={16} />
@@ -746,19 +744,13 @@ function GarageCard({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1">
             <Car size={16} style={{ color: '#0066FF' }} />
-            <span className="font-black font-mono text-base" style={{ color: '#0066FF' }}>
-              {garage.availableSpots}
-            </span>
+            <span className="font-black font-mono text-base" style={{ color: '#0066FF' }}>{garage.availableSpots}</span>
             <span className="text-[10px]" style={{ color: '#7B8CA6' }}>شاغر</span>
           </div>
-
           <div style={{ width: 2, height: 20, background: '#E2E8F0', borderRadius: 2 }} />
-
           <div className="flex items-center gap-1">
             <DollarSign size={16} style={{ color: '#00AA44' }} />
-            <span className="font-black font-mono text-base" style={{ color: '#00AA44' }}>
-              {garage.basePrice}
-            </span>
+            <span className="font-black font-mono text-base" style={{ color: '#00AA44' }}>{garage.basePrice}</span>
             <span className="text-[10px]" style={{ color: '#7B8CA6' }}>ج.م/س</span>
           </div>
         </div>
@@ -770,10 +762,7 @@ function GarageCard({
         style={{
           background: btnBg,
           color: garage.availableSpots === 0 ? '#94a3b8' : '#ffffff',
-          borderRadius: 18,
-          padding: '16px 0',
-          fontSize: 14,
-          boxShadow: btnShadow,
+          borderRadius: 18, padding: '16px 0', fontSize: 14, boxShadow: btnShadow,
         }}
       >
         <Car size={18} />
