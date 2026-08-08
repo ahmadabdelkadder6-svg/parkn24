@@ -818,77 +818,127 @@ export default function GarageDashboard() {
   };
 
   /* ── Car arrived (من شاشة الحريف) ── */
-  const handleCarArrived = async (car: any) => {
-    const carId: string = car.id;
-    const carPlate: string = car.carPlate;
-    const agreedPrice: number = car.agreedPrice;
-    const customerPhone: string = car.customerPhone || '';
-    const customerName: string = car.customerName || '';
+const handleCarArrived = async (car: any) => {
+  const carId: string = car.id;
+  const carPlate: string = (car.carPlate || '').trim().toUpperCase();
+  const agreedPrice: number = car.agreedPrice;
+  const customerPhone: string = car.customerPhone || '';
+  const customerName: string = car.customerName || '';
 
-    if (processedCarsRef.current.has(carId)) return;
-    processedCarsRef.current.add(carId);
-    pausePolling(10000);
+  if (!carPlate) {
+    toast.error('رقم السيارة غير صحيح');
+    return;
+  }
 
+  if (processedCarsRef.current.has(carId)) return;
+  processedCarsRef.current.add(carId);
+  pausePolling(10000);
+
+  try {
+    // ✅ تحقق محلي: هل فيه جلسة نشطة لنفس اللوحة؟
+    const localActive = useStore.getState().sessions.find(
+      s => s.carPlate.trim().toUpperCase() === carPlate && s.status === 'active'
+    );
+
+    if (localActive) {
+      console.log('✅ جلسة موجودة محلياً:', localActive.id);
+      await removeIncomingCar(carId);
+      try {
+        await supabase.from('incoming_cars').delete().eq('id', carId);
+        await supabase.from('incoming_cars').delete()
+          .eq('car_plate', carPlate)
+          .eq('garage_id', garage.id);
+      } catch (e) { console.error(e); }
+      toast('الجلسة شغالة ✅', { icon: '🚗' });
+      return;
+    }
+
+    // ✅ تحقق من DB مباشرة
     try {
-      const np = carPlate.trim().toUpperCase();
+      const { data: dbCheck } = await supabase
+        .from('sessions')
+        .select('id')
+        .eq('car_plate', carPlate)
+        .eq('status', 'active')
+        .limit(1);
 
-      // تحقق إن مفيش جلسة شغالة لنفس اللوحة
-      const el = useStore
-        .getState()
-        .sessions.find(s => s.carPlate.trim().toUpperCase() === np && s.status === 'active');
-      if (el) {
+      if (dbCheck && dbCheck.length > 0) {
+        console.log('✅ جلسة موجودة في DB:', dbCheck[0].id);
         await removeIncomingCar(carId);
-        await supabase.from('incoming_cars').delete().eq('car_plate', np).eq('garage_id', garage.id);
+        try {
+          await supabase.from('incoming_cars').delete().eq('id', carId);
+          await supabase.from('incoming_cars').delete()
+            .eq('car_plate', carPlate)
+            .eq('garage_id', garage.id);
+        } catch (e) { console.error(e); }
+        await fetchAll();
         toast('الجلسة شغالة ✅', { icon: '🚗' });
         return;
       }
-
-      try {
-        const { data: db } = await supabase
-          .from('sessions')
-          .select('id')
-          .eq('car_plate', np)
-          .eq('status', 'active')
-          .limit(1);
-        if (db && db.length > 0) {
-          await removeIncomingCar(carId);
-          await supabase.from('incoming_cars').delete().eq('car_plate', np).eq('garage_id', garage.id);
-          await fetchAll();
-          toast('الجلسة شغالة ✅', { icon: '🚗' });
-          return;
-        }
-      } catch (e) {
-        console.error(e);
-      }
-
-      // ألغِ أي عرض مرتبط
-      const ro = offers.find(
-        o => o.carPlate.trim().toUpperCase() === np && (o.status === 'pending' || o.status === 'accepted'),
-      );
-      if (ro) cancelOffer(ro.id);
-
-      // أنشئ الجلسة ببيانات الحريف
-      await addSession({
-        garageId: garage.id,
-        carPlate: np,
-        startTime: Date.now(),
-        status: 'active',
-        source: 'app',
-        agreedPrice,
-        customerPhone,
-        customerName,
-      } as any);
-
-      await removeIncomingCar(carId);
-      await supabase.from('incoming_cars').delete().eq('car_plate', np).eq('garage_id', garage.id);
-      toast.success(`بدأ حساب ${carPlate} 🚗`);
     } catch (e) {
-      console.error('❌', e);
-      processedCarsRef.current.delete(carId);
-      toast.error('خطأ، حاول تاني');
+      console.error('خطأ في فحص DB:', e);
     }
-  };
 
+    // ✅ ألغِ أي عرض مرتبط
+    const ro = offers.find(
+      o => o.carPlate.trim().toUpperCase() === carPlate &&
+        (o.status === 'pending' || o.status === 'accepted')
+    );
+    if (ro) cancelOffer(ro.id);
+
+    // ✅ أنشئ الجلسة مع بيانات الحريف
+    console.log('🚀 إنشاء جلسة جديدة:', { carPlate, customerPhone, agreedPrice });
+
+    const sessionId = await addSession({
+      garageId: garage.id,
+      carPlate: carPlate,
+      startTime: Date.now(),
+      status: 'active',
+      source: 'app',
+      agreedPrice,
+      customerPhone,
+      customerName,
+    } as any);
+
+    console.log('✅ تم إنشاء الجلسة:', sessionId);
+
+    // ✅ تأكد إن الجلسة اتحفظت في DB
+    if (sessionId) {
+      // انتظر شوية وتحقق
+      await new Promise(r => setTimeout(r, 1000));
+
+      const { data: verifySession } = await supabase
+        .from('sessions')
+        .select('id, car_plate, status, customer_phone')
+        .eq('id', sessionId)
+        .single();
+
+      if (verifySession) {
+        console.log('✅ تم التحقق من الجلسة في DB:', verifySession);
+      } else {
+        console.warn('⚠️ الجلسة مش موجودة في DB بعد، ممكن RLS مانع');
+      }
+    }
+
+    // ✅ احذف incoming car
+    await removeIncomingCar(carId);
+    try {
+      await supabase.from('incoming_cars').delete().eq('id', carId);
+      await supabase.from('incoming_cars').delete()
+        .eq('car_plate', carPlate)
+        .eq('garage_id', garage.id);
+    } catch (e) { console.error(e); }
+
+    // ✅ حدّث البيانات
+    await fetchAll();
+
+    toast.success(`بدأ حساب ${carPlate} 🚗`);
+  } catch (e) {
+    console.error('❌ خطأ في handleCarArrived:', e);
+    processedCarsRef.current.delete(carId);
+    toast.error('خطأ، حاول تاني');
+  }
+};
   const calculateRemainingTime = (st: number | string, em: number) => {
     const s = toMs(st);
     return Math.max(0, em - Math.floor((Date.now() - s) / 60000));
