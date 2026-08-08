@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MapPin, Star, Car, Search, Navigation, Clock, Locate, Filter,
@@ -10,6 +10,7 @@ import {
 } from '../utils/distance';
 import TopUpWalletModal from './TopUpWalletModal';
 import toast from 'react-hot-toast';
+import { supabase } from '../lib/supabase';
 
 /* ─── Types ─── */
 interface GarageWithDistance extends Garage {
@@ -29,6 +30,15 @@ const normalizePlateForCompare = (plate?: string): string => {
     .toUpperCase();
 };
 
+const toMs = (value: any): number => {
+  if (!value) return 0;
+  if (typeof value === 'number') {
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+};
+
 /* ════════════════════════════════════════════════════════════
    ██  MAIN SCREEN
    ════════════════════════════════════════════════════════════ */
@@ -42,6 +52,7 @@ export default function GarageListScreen() {
     incomingCars,
     offers,
     addIncomingCar,
+    fetchAll,
   } = useStore();
 
   const [search, setSearch] = useState('');
@@ -53,6 +64,9 @@ export default function GarageListScreen() {
   });
   const [locationLoading, setLocationLoading] = useState(false);
 
+  /* ── Refs ── */
+  const autoNavigatedRef = useRef<string | null>(null);
+
   /* ── Derived state ── */
   const normalizedUserPlate = normalizePlateForCompare(currentUser?.carPlate);
 
@@ -60,13 +74,29 @@ export default function GarageListScreen() {
     (s) => normalizePlateForCompare(s.carPlate) === normalizedUserPlate && s.status === 'completed',
   );
 
-  const activeSession = sessions.find(
-    (s) => normalizePlateForCompare(s.carPlate) === normalizedUserPlate && s.status === 'active',
-  );
+  /* ✅ البحث عن جلسة نشطة بأي مصدر (app أو manual) */
+  const activeSession = useMemo(() => {
+    return sessions
+      .filter(
+        (s) =>
+          s.status === 'active' &&
+          (
+            normalizePlateForCompare(s.carPlate) === normalizedUserPlate ||
+            (currentUser?.phone && (s as any).customerPhone === currentUser.phone)
+          ),
+      )
+      .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
+  }, [sessions, normalizedUserPlate, currentUser?.phone]);
 
-  const myIncomingCar = incomingCars.find(
-    (c) => normalizePlateForCompare(c.carPlate) === normalizedUserPlate && c.status === 'coming',
-  );
+  const myIncomingCar = useMemo(() => {
+    return incomingCars
+      .filter(
+        (c) =>
+          normalizePlateForCompare(c.carPlate) === normalizedUserPlate &&
+          c.status === 'coming',
+      )
+      .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
+  }, [incomingCars, normalizedUserPlate]);
 
   /* ── Location ── */
   const getUserLocation = () => {
@@ -86,6 +116,90 @@ export default function GarageListScreen() {
   };
 
   useEffect(() => { getUserLocation(); }, []);
+
+  /* ─────────────────────────────────────────────
+     ██  ✅ REALTIME: اكتشاف الجلسات الجديدة فوراً
+     ───────────────────────────────────────────── */
+  useEffect(() => {
+    if (!normalizedUserPlate) return;
+
+    let cancelled = false;
+
+    const refetch = async () => {
+      if (cancelled) return;
+      try { await fetchAll(); } catch (e) { console.error('❌', e); }
+    };
+
+    // فتش فوراً
+    refetch();
+
+    const isMyRow = (row: any): boolean => {
+      if (!row) return false;
+      const plate = normalizePlateForCompare(row.car_plate || row.carPlate);
+      const phone = row.customer_phone || row.customerPhone || '';
+      return (
+        plate === normalizedUserPlate ||
+        (!!currentUser?.phone && phone === currentUser.phone)
+      );
+    };
+
+    const channel = supabase
+      .channel(`customer-list-${normalizedUserPlate}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sessions' },
+        async (payload) => {
+          const newRow = payload.new as any;
+          const oldRow = payload.old as any;
+          if (isMyRow(newRow) || isMyRow(oldRow)) {
+            console.log('🔔 GarageList: session change detected');
+            await refetch();
+          }
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'incoming_cars' },
+        async (payload) => {
+          const newRow = payload.new as any;
+          const oldRow = payload.old as any;
+          if (isMyRow(newRow) || isMyRow(oldRow)) {
+            await refetch();
+          }
+        },
+      )
+      .subscribe();
+
+    // Polling احتياطي
+    const interval = setInterval(refetch, 7000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refetch();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', () => refetch());
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      supabase.removeChannel(channel);
+    };
+  }, [normalizedUserPlate, currentUser?.phone, fetchAll]);
+
+  /* ✅ انتقال تلقائي لشاشة الجلسة لما تبدأ */
+  useEffect(() => {
+    if (!activeSession) {
+      autoNavigatedRef.current = null;
+      return;
+    }
+    if (autoNavigatedRef.current === activeSession.id) return;
+    autoNavigatedRef.current = activeSession.id;
+
+    setSelectedGarageId(activeSession.garageId);
+    setScreen('session');
+    toast.success('بدأت جلسة الركن! ⏱️', { icon: '🚗', duration: 3000 });
+  }, [activeSession, setSelectedGarageId, setScreen]);
 
   /* ── Garages with distance ── */
   const garagesWithDistance: GarageWithDistance[] = useMemo(() => {
@@ -506,7 +620,6 @@ function GarageCard({
     ? 'rgba(0,102,255,0.15)'
     : isNearby ? 'rgba(0,204,102,0.1)' : 'none';
 
-  /* زر الحجز */
   const btnBg = (() => {
     if (garage.availableSpots === 0) return '#E2E8F0';
     if (hasActiveSession) return 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)';
@@ -547,7 +660,6 @@ function GarageCard({
         boxShadow: `0 4px 20px ${glowColor}, 0 2px 8px rgba(0,0,0,0.04)`,
       }}
     >
-      {/* Row 1: name + badges */}
       <div className="flex justify-between items-center mb-3">
         <div className="flex items-center gap-2 flex-wrap">
           <div
@@ -605,7 +717,6 @@ function GarageCard({
         </h3>
       </div>
 
-      {/* Row 2: location */}
       <div
         className="flex items-center gap-1 justify-end mb-3"
         style={{ color: '#7B8CA6', fontSize: 11 }}
@@ -614,7 +725,6 @@ function GarageCard({
         <MapPin size={12} />
       </div>
 
-      {/* Row 3: time + spots + price */}
       <div className="flex items-center justify-between gap-2 mb-4">
         <div
           className="flex items-center gap-2 font-black"
@@ -654,7 +764,6 @@ function GarageCard({
         </div>
       </div>
 
-      {/* زر الحجز */}
       <button
         disabled={garage.availableSpots === 0}
         className="w-full font-black flex items-center justify-center gap-2 active:scale-95 transition-all"

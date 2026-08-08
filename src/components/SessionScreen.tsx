@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
   Clock,
@@ -14,8 +14,9 @@ import {
   getRemainingInCurrentHour,
 } from '../utils/pricing';
 import { supabase } from '../lib/supabase';
+import toast from 'react-hot-toast';
 
-/* ─── Helper ─── */
+/* ─── Helpers ─── */
 const toMs = (value: any): number => {
   if (!value) return 0;
   if (typeof value === 'number') {
@@ -45,105 +46,172 @@ export default function SessionScreen() {
     setScreen,
     currentUser,
     fetchAll,
+    setSelectedGarageId,
   } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
   const userPhone = currentUser?.phone || '';
 
-  /* ✅ البحث عن الجلسة بـ 3 طرق:
-     1. carPlate مطابق
-     2. customerPhone مطابق
-     3. carPlate يحتوي على نفس الحروف (fuzzy)
-  */
-  const findMyActiveSession = () => {
-    // أولاً: بحث دقيق بالـ plate
-    let session = sessions
-      .filter(s =>
-        s.status === 'active' &&
-        normalizePlate(s.carPlate) === userPlate
-      )
-      .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
+  /* ── Refs ── */
+  const redirectedToSummaryRef = useRef(false);
+  const redirectedToSessionRef = useRef(false);
+  const realtimeChannelRef = useRef<any>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    if (session) return session;
+  /* ── State ── */
+  const [elapsed, setElapsed] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-    // ثانياً: بحث بـ customerPhone
-    if (userPhone) {
-      session = sessions
-        .filter(s =>
-          s.status === 'active' &&
-          (s as any).customerPhone === userPhone
-        )
-        .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
+  /* ─────────────────────────────────────────────
+     ██  اكتشاف هل الصف ده يخص الحريف؟
+     ───────────────────────────────────────────── */
+  const isMySessionRow = (row: any) => {
+    if (!row) return false;
 
-      if (session) return session;
-    }
+    const rowPlate = normalizePlate(row.car_plate || row.carPlate);
+    const rowPhone = row.customer_phone || row.customerPhone || '';
 
-    return undefined;
+    return (
+      (!!userPlate && rowPlate === userPlate) ||
+      (!!userPhone && rowPhone === userPhone)
+    );
   };
 
-  const activeSession = findMyActiveSession();
+  /* ─────────────────────────────────────────────
+     ██  الجلسة النشطة الحالية
+     ───────────────────────────────────────────── */
+  const activeSession = useMemo(() => {
+    return sessions
+      .filter((s) => {
+        if (s.status !== 'active') return false;
 
-  const lastCompletedSession = sessions
-    .filter(s =>
-      s.status === 'completed' &&
-      (
-        normalizePlate(s.carPlate) === userPlate ||
-        (s as any).customerPhone === userPhone
-      )
-    )
-    .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
+        const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+        const samePhoneMatch = !!userPhone && (s as any).customerPhone === userPhone;
+
+        return samePlateMatch || samePhoneMatch;
+      })
+      .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
+  }, [sessions, userPlate, userPhone]);
+
+  /* ─────────────────────────────────────────────
+     ██  آخر جلسة مكتملة تخص الحريف
+     ───────────────────────────────────────────── */
+  const lastCompletedSession = useMemo(() => {
+    return sessions
+      .filter((s) => {
+        if (s.status !== 'completed') return false;
+
+        const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+        const samePhoneMatch = !!userPhone && (s as any).customerPhone === userPhone;
+
+        return samePlateMatch || samePhoneMatch;
+      })
+      .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
+  }, [sessions, userPlate, userPhone]);
 
   const garage = garages.find(
     (g) => g.id === (activeSession?.garageId ?? lastCompletedSession?.garageId),
   );
 
-  /* ── State ── */
-  const [elapsed, setElapsed] = useState(0);
-  const [tick, setTick] = useState(0);
+  /* ─────────────────────────────────────────────
+     ██  تحميل أولي
+     ───────────────────────────────────────────── */
+  useEffect(() => {
+    let mounted = true;
 
-  /* ── Refs ── */
-  const redirectedRef = useRef(false);
-  const realtimeChannelRef = useRef<any>(null);
+    const init = async () => {
+      try {
+        await fetchAll();
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    init();
+
+    return () => {
+      mounted = false;
+    };
+  }, [fetchAll]);
 
   /* ─────────────────────────────────────────────
-     ██  REALTIME + Polling مشدد
+     ██  Realtime + polling
+     ██  يلقط:
+     ██  - بدء الجلسة من السايس
+     ██  - إنهاء الجلسة من السايس
      ───────────────────────────────────────────── */
   useEffect(() => {
     if (!userPlate && !userPhone) return;
 
-    /* فتش فورًا */
-    fetchAll();
+    let cancelled = false;
 
-    /* Realtime */
+    const refetch = async () => {
+      if (cancelled) return;
+      try {
+        await fetchAll();
+      } catch (e) {
+        console.error('❌ Session fetchAll error:', e);
+      }
+    };
+
     const channel = supabase
-      .channel(`session-live-${userPlate}-${Date.now()}`)
+      .channel(`customer-session-live-${userPlate || userPhone}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'sessions' },
-        async () => {
-          await fetchAll();
-          setTick(t => t + 1); // force re-render
+        async (payload) => {
+          const newRow = payload.new as any;
+          const oldRow = payload.old as any;
+
+          if (isMySessionRow(newRow) || isMySessionRow(oldRow)) {
+            console.log('🔔 Session realtime change:', payload.eventType, {
+              newStatus: newRow?.status,
+              oldStatus: oldRow?.status,
+              plate: newRow?.car_plate || oldRow?.car_plate,
+            });
+            await refetch();
+          }
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📡 Session realtime status:', status);
+      });
 
     realtimeChannelRef.current = channel;
 
-    /* ✅ Polling إضافي كل 3 ثواني كـ fallback */
-    const pollInterval = setInterval(async () => {
-      await fetchAll();
-      setTick(t => t + 1);
-    }, 3000);
+    /* Polling احتياطي */
+    pollingRef.current = setInterval(() => {
+      refetch();
+    }, 4000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refetch();
+    };
+
+    const handleFocus = () => refetch();
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
-      supabase.removeChannel(channel);
-      realtimeChannelRef.current = null;
-      clearInterval(pollInterval);
+      cancelled = true;
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleFocus);
+
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
     };
   }, [userPlate, userPhone, fetchAll]);
 
   /* ─────────────────────────────────────────────
-     ██  العداد - يبدأ من الثواني الحقيقية
+     ██  العداد
      ───────────────────────────────────────────── */
   useEffect(() => {
     if (!activeSession) {
@@ -163,7 +231,6 @@ export default function SessionScreen() {
       return Math.max(0, Math.floor(diff / 1000));
     };
 
-    /* ✅ ضبط فوري */
     setElapsed(calcElapsed());
 
     const interval = setInterval(() => {
@@ -173,52 +240,113 @@ export default function SessionScreen() {
     return () => clearInterval(interval);
   }, [activeSession?.id, activeSession?.startTime]);
 
-  /* ─── التوجيه التلقائي لشاشة الملخص ─── */
+  /* ─────────────────────────────────────────────
+     ██  لو الجلسة بدأت من السايس ووصلنا للشاشة
+     ██  نثبت الجراج الصحيح
+     ───────────────────────────────────────────── */
   useEffect(() => {
-    if (activeSession) {
-      redirectedRef.current = false;
+    if (!activeSession) {
+      redirectedToSessionRef.current = false;
       return;
     }
 
-    if (!lastCompletedSession || redirectedRef.current) return;
+    if (redirectedToSessionRef.current) return;
+    redirectedToSessionRef.current = true;
 
-    const endTime = toMs(lastCompletedSession.endTime);
-    const timeSinceEnd = Date.now() - endTime;
-
-    if (endTime > 0 && timeSinceEnd < 60000) {
-      redirectedRef.current = true;
-      setScreen('summary');
+    if (activeSession.garageId) {
+      setSelectedGarageId(activeSession.garageId);
     }
-  }, [activeSession?.id, lastCompletedSession?.id, lastCompletedSession?.endTime, setScreen]);
+  }, [activeSession?.id, activeSession?.garageId, setSelectedGarageId]);
 
-  /* ─── Debug logging ─── */
+  /* ─────────────────────────────────────────────
+     ██  الانتقال التلقائي للملخص عند إنهاء الجلسة
+     ██  سواء من السايس أو المالك
+     ───────────────────────────────────────────── */
   useEffect(() => {
     if (activeSession) {
-      const startMs = toMs(activeSession.startTime);
-      console.log('🔍 Active session found:', {
-        id: activeSession.id,
-        carPlate: activeSession.carPlate,
-        customerPhone: (activeSession as any).customerPhone,
-        startTime: activeSession.startTime,
-        startMs,
-        elapsedSec: Math.floor((Date.now() - startMs) / 1000),
-        source: activeSession.source,
-        startedBy: (activeSession as any).startedBy,
-      });
-    } else {
-      console.log('⚠️ No active session found for:', {
-        userPlate,
-        userPhone,
-        totalSessions: sessions.length,
-        activeSessions: sessions.filter(s => s.status === 'active').map(s => ({
+      redirectedToSummaryRef.current = false;
+      return;
+    }
+
+    if (!lastCompletedSession) return;
+    if (redirectedToSummaryRef.current) return;
+
+    const endMs = toMs(lastCompletedSession.endTime);
+    if (!endMs) return;
+
+    const justEnded = Date.now() - endMs < 2 * 60 * 1000; // خلال آخر دقيقتين
+    if (!justEnded) return;
+
+    redirectedToSummaryRef.current = true;
+
+    if (lastCompletedSession.garageId) {
+      setSelectedGarageId(lastCompletedSession.garageId);
+    }
+
+    toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
+
+    setTimeout(() => {
+      setScreen('summary');
+    }, 400);
+  }, [
+    activeSession?.id,
+    lastCompletedSession?.id,
+    lastCompletedSession?.endTime,
+    lastCompletedSession?.garageId,
+    setScreen,
+    setSelectedGarageId,
+  ]);
+
+  /* ─────────────────────────────────────────────
+     ██  Debug
+     ───────────────────────────────────────────── */
+  useEffect(() => {
+    console.log('🧭 SessionScreen state:', {
+      userPlate,
+      userPhone,
+      activeSession: activeSession
+        ? {
+            id: activeSession.id,
+            plate: activeSession.carPlate,
+            phone: (activeSession as any).customerPhone,
+            status: activeSession.status,
+            source: activeSession.source,
+            startedBy: (activeSession as any).startedBy,
+            startTime: activeSession.startTime,
+          }
+        : null,
+      lastCompletedSession: lastCompletedSession
+        ? {
+            id: lastCompletedSession.id,
+            plate: lastCompletedSession.carPlate,
+            endTime: lastCompletedSession.endTime,
+            status: lastCompletedSession.status,
+          }
+        : null,
+      allActive: sessions
+        .filter((s) => s.status === 'active')
+        .map((s) => ({
           id: s.id.slice(0, 8),
           plate: s.carPlate,
           phone: (s as any).customerPhone,
-          start: s.startTime,
+          source: s.source,
         })),
-      });
-    }
-  }, [activeSession?.id, sessions.length, tick]);
+    });
+  }, [activeSession?.id, lastCompletedSession?.id, sessions.length]);
+
+  /* ─────────────────────────────────────────────
+     ██  Loading
+     ───────────────────────────────────────────── */
+  if (loading) {
+    return (
+      <div className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8">
+        <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4" />
+        <p className="text-slate-500 text-sm font-bold text-center">
+          جاري تحميل بيانات الجلسة...
+        </p>
+      </div>
+    );
+  }
 
   /* ─────────────────────────────────────────────
      ██  لا توجد جلسة نشطة
@@ -231,10 +359,9 @@ export default function SessionScreen() {
           لا توجد جلسة ركن نشطة حالياً
         </p>
         <p className="text-slate-400 text-xs text-center mb-2">
-          ابحث عن جراج وابدأ الركن
+          إذا بدأ السايس الجلسة أو أنهاها ستظهر هنا تلقائياً
         </p>
 
-        {/* ✅ Debug info for testing */}
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4 w-full">
           <p className="text-[10px] text-slate-400 text-center font-mono">
             🔍 لوحتك: {userPlate || '—'}
@@ -385,12 +512,12 @@ export default function SessionScreen() {
         </p>
       </div>
 
-      {/* ══ زر إنهاء الجلسة ══ */}
+      {/* ══ زر الرجوع فقط ══ */}
       <button
-        onClick={() => setScreen('summary')}
-        className="w-full bg-red-600 hover:bg-red-700 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-red-100 active:scale-95 transition-all mb-3"
+        onClick={() => setScreen('list')}
+        className="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-2xl font-black text-base shadow-lg active:scale-95 transition-all mb-3"
       >
-        إنهاء الجلسة ({currentCost} ج.م)
+        العودة للقائمة
       </button>
     </motion.div>
   );

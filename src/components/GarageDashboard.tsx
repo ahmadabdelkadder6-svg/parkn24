@@ -864,15 +864,17 @@ export default function GarageDashboard() {
       if (ro) cancelOffer(ro.id);
 
       await addSession({
-        garageId: garage.id,
-        carPlate: np,
-        startTime: Date.now(),
-        status: 'active',
-        source: 'app',
-        agreedPrice,
-        customerPhone,
-        customerName,
-      } as any);
+  garageId: garage.id,
+  carPlate: np,
+  startTime: Date.now(),
+  status: 'active',
+  source: 'app',
+  agreedPrice,
+  customerPhone,
+  customerName,
+  startedBy: 'garage',
+  incomingCarId: carId,
+} as any);
 
       await removeIncomingCar(carId);
       await supabase.from('incoming_cars').delete().eq('car_plate', np).eq('garage_id', garage.id);
