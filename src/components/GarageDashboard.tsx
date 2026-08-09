@@ -38,11 +38,15 @@ interface DailyStat {
 
 const toMs = (value: any): number => {
   if (!value) return 0;
-  if (typeof value === 'number') {
-    return value < 1_000_000_000_000 ? value * 1000 : value;
+  if (typeof value === 'string') {
+    const ms = new Date(value).getTime();
+    return Number.isFinite(ms) && ms > 0 ? ms : 0;
   }
-  const ms = new Date(value).getTime();
-  return Number.isFinite(ms) ? ms : 0;
+  if (typeof value === 'number') {
+    if (value < 1_000_000_000_000) return value * 1000;
+    return value;
+  }
+  return 0;
 };
 
 const formatElapsed = (totalSeconds: number): string => {
