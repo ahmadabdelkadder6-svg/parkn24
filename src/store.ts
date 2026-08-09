@@ -324,7 +324,8 @@ const resolveStartTime = (rawStartTime: any): number => {
     return nowMs;
   }
 
-  if (!Number.isFinite(result) || result <= 0 || result > nowMs + 120000) {
+  // ✅ فقط تحقق إن الرقم صحيح وموجب - بدون حد أعلى
+  if (!Number.isFinite(result) || result <= 0) {
     return nowMs;
   }
   return result;
