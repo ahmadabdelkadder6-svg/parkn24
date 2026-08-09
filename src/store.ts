@@ -491,16 +491,17 @@ export const useStore = create<AppState>((set, get) => ({
           }
 
           // ✅ الجلسة نشطة في الاتنين → استخدم Supabase (startTime الأدق)
-          if (ss.status === 'active' && localVersion.status === 'active') {
-            return {
-              ...ss,
-              // ✅ احتفظ ببعض البيانات المحلية اللي ممكن مش موجودة في Supabase بعد
-              addedBy: ss.addedBy || localVersion.addedBy || '',
-              customerPhone: ss.customerPhone || localVersion.customerPhone,
-              customerName: ss.customerName || localVersion.customerName,
-              synced: true,
-            };
-          }
+// بعد - دايماً startTime من Supabase
+if (ss.status === 'active' && localVersion.status === 'active') {
+  return {
+    ...localVersion,
+    startTime: ss.startTime, // ✅ من Supabase دايماً
+    synced: true,
+    addedBy: ss.addedBy || localVersion.addedBy || '',
+    customerPhone: ss.customerPhone || localVersion.customerPhone,
+    customerName: ss.customerName || localVersion.customerName,
+  };
+}
 
           if (localVersion.totalPrice != null && localVersion.totalPrice > 0) return localVersion;
         }
@@ -678,11 +679,9 @@ export const useStore = create<AppState>((set, get) => ({
 
       const addedByValue = resolveAddedBy((s as any).addedBy);
 
-      const optimisticSession: ParkingSession = {
-        ...s,
-        id: sessionId,
-        carPlate: normalizedPlate,
-        startTime: safeStartTime,
+const optimisticSession: ParkingSession = {
+  ...s, id: sessionId, carPlate: normalizedPlate,
+  startTime: 0, // ✅ صفر مؤقت - هيتحدث من Supabase
         synced: false,
         revenueConfirmed: false,
         addedBy: addedByValue,
@@ -702,7 +701,7 @@ export const useStore = create<AppState>((set, get) => ({
           id: sessionId,
           garage_id: s.garageId,
           car_plate: normalizedPlate,
-          start_time: new Date(safeStartTime).toISOString(),
+          start_time: new Date().toISOString(), // ✅ Supabase server time
           status: s.status,
           source: s.source,
           agreed_price: s.agreedPrice ?? null,

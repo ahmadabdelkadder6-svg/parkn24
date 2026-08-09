@@ -102,7 +102,7 @@ export default function SessionScreen() {
     const ms = safeParseTime(activeSession.startTime);
     const now = Date.now();
     // ✅ حماية: لو الوقت في المستقبل أو صفر
-    if (ms <= 0 || ms > now + 60000) return now;
+    if (ms <= 0) return Date.now();
     return ms;
   }, [activeSession?.id, activeSession?.startTime]);
 
