@@ -1,129 +1,271 @@
-{/* التكلفة الكبيرة - Premium Edition */}
+import { motion } from 'framer-motion';
+import {
+  Clock,
+  Car,
+  DollarSign,
+  MapPin,
+  CreditCard,
+  Calendar,
+  Timer,
+  Receipt,
+} from 'lucide-react';
+import { useStore } from '../store';
+import { calculateFullHours, calculateCost, formatTime } from '../utils/pricing';
+
+export default function LastSessionCard() {
+  const { sessions, garages, currentUser } = useStore();
+
+  const lastSession = sessions
+    .filter(
+      (s) => s.carPlate === currentUser?.carPlate && s.status === 'completed'
+    )
+    .sort((a, b) => {
+      const endA =
+        typeof a.endTime === 'number'
+          ? a.endTime
+          : new Date(a.endTime || 0).getTime();
+      const endB =
+        typeof b.endTime === 'number'
+          ? b.endTime
+          : new Date(b.endTime || 0).getTime();
+      return endB - endA;
+    })[0];
+
+  if (!lastSession) return null;
+
+  const garage = garages.find((g) => g.id === lastSession.garageId);
+
+  const startTime =
+    typeof lastSession.startTime === 'number'
+      ? lastSession.startTime
+      : new Date(lastSession.startTime).getTime();
+
+  const endTime =
+    typeof lastSession.endTime === 'number'
+      ? lastSession.endTime
+      : new Date(lastSession.endTime || 0).getTime();
+
+  const elapsedSeconds = Math.max(0, Math.floor((endTime - startTime) / 1000));
+  const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);
+  const hours = calculateFullHours(elapsedSeconds);
+  const totalMinutes = Math.floor(elapsedSeconds / 60);
+  const cost =
+    lastSession.totalPrice != null && Number(lastSession.totalPrice) > 0
+      ? Number(lastSession.totalPrice)
+      : calculateCost(elapsedSeconds, rate);
+
+  const startDate = new Date(startTime);
+  const endDate = new Date(endTime);
+
+  const formatDateTime = (date: Date) => {
+    return date.toLocaleDateString('ar-EG', {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  const formatTimeOnly = (date: Date) => {
+    return date.toLocaleTimeString('ar-EG', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const getPaymentInfo = (method?: string) => {
+    switch (method) {
+      case 'cash':
+        return { label: 'نقدي', icon: '💵', color: 'text-emerald-400', bg: 'bg-emerald-500/20' };
+      case 'instapay':
+        return { label: 'إنستاباي', icon: '📱', color: 'text-purple-400', bg: 'bg-purple-500/20' };
+      case 'wallet':
+        return { label: 'خصم من المحفظة', icon: '👝', color: 'text-blue-400', bg: 'bg-blue-500/20' };
+      case 'cashwallet':
+        return { label: 'تحويل محفظة كاش', icon: '📲', color: 'text-orange-400', bg: 'bg-orange-500/20' };
+      default:
+        return { label: 'غير محدد', icon: '💳', color: 'text-slate-400', bg: 'bg-slate-500/20' };
+    }
+  };
+
+  const paymentInfo = getPaymentInfo(lastSession.paymentMethod);
+
+  const sourceInfo =
+    lastSession.source === 'app'
+      ? { label: 'تطبيق', color: 'text-blue-400', bg: 'bg-blue-500/20' }
+      : { label: 'يدوي', color: 'text-amber-400', bg: 'bg-amber-500/20' };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.2 }}
+      className="w-full mb-6"
+    >
+      {/* العنوان */}
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[10px] text-slate-600">
+          {formatDateTime(endDate)}
+        </span>
+        <h3 className="text-sm font-black text-slate-300 flex items-center gap-2">
+          آخر جلسة ركن
+          <Receipt size={14} className="text-blue-400" />
+        </h3>
+      </div>
+
+      {/* البطاقة الرئيسية */}
+      <div className="bg-gradient-to-bl from-blue-950/40 to-slate-900 border border-blue-500/20 rounded-2xl p-5 shadow-lg shadow-blue-900/10">
+        {/* الجراج ورقم السيارة */}
+        <div className="flex justify-between items-start mb-4">
+          <span
+            className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${sourceInfo.bg} ${sourceInfo.color}`}
+          >
+            {sourceInfo.label}
+          </span>
+          <div className="text-right">
+            <div className="text-base font-black text-white flex items-center gap-1.5 justify-end">
+              🚗 {lastSession.carPlate}
+            </div>
+            {garage && (
+              <div className="flex items-center gap-1 justify-end mt-1">
+                <span className="text-[10px] text-slate-500">{garage.name}</span>
+                <MapPin size={9} className="text-slate-600" />
+              </div>
+            )}
+          </div>
+        </div>
+
+{/* التكلفة الكبيرة */}
 <div
-  className="relative overflow-hidden rounded-3xl p-6 mb-4 text-center"
+  className="rounded-3xl p-5 mb-4 text-center border border-white/10 shadow-2xl"
   style={{
-    background: 'linear-gradient(145deg, #0C1222 0%, #0A0F1E 50%, #0D1527 100%)',
-    boxShadow: '0 20px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05)',
-    border: '1px solid rgba(255,255,255,0.08)',
+    background: 'linear-gradient(135deg, rgba(15,23,42,0.96) 0%, rgba(2,6,23,0.98) 100%)',
+    boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
   }}
 >
-  {/* خلفية لمعة متحركة */}
   <div
-    className="absolute -top-20 -right-20"
+    className="mb-3 font-black text-white"
     style={{
-      width: 200,
-      height: 200,
-      borderRadius: '50%',
-      background: 'radial-gradient(circle, rgba(212,175,55,0.08) 0%, transparent 70%)',
-      filter: 'blur(30px)',
-    }}
-  />
-  <div
-    className="absolute -bottom-10 -left-10"
-    style={{
-      width: 150,
-      height: 150,
-      borderRadius: '50%',
-      background: 'radial-gradient(circle, rgba(255,255,255,0.03) 0%, transparent 70%)',
-      filter: 'blur(20px)',
-    }}
-  />
-
-  {/* أيقونة ذهبية */}
-  <div
-    className="relative z-10 mx-auto mb-3"
-    style={{
-      width: 44,
-      height: 44,
-      borderRadius: '50%',
-      background: 'linear-gradient(135deg, #D4AF37 0%, #F5D060 50%, #D4AF37 100%)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      boxShadow: '0 4px 20px rgba(212,175,55,0.3)',
-    }}
-  >
-    <span style={{ fontSize: 20 }}>💰</span>
-  </div>
-
-  {/* العنوان */}
-  <div
-    className="relative z-10 mb-4"
-    style={{
-      fontSize: 22,
+      fontSize: 24,
       fontWeight: 900,
-      letterSpacing: '1px',
-      background: 'linear-gradient(135deg, #FFFFFF 0%, #D4AF37 50%, #FFFFFF 100%)',
-      WebkitBackgroundClip: 'text',
-      WebkitTextFillColor: 'transparent',
-      textShadow: 'none',
+      letterSpacing: '0.5px',
+      textShadow: '0 2px 10px rgba(255,255,255,0.08)',
     }}
   >
     إجمالي المستحق
   </div>
 
-  {/* خط فاصل ذهبي */}
-  <div
-    className="relative z-10 mx-auto mb-4"
-    style={{
-      width: 60,
-      height: 2,
-      borderRadius: 999,
-      background: 'linear-gradient(90deg, transparent, #D4AF37, transparent)',
-    }}
-  />
-
-  {/* المبلغ الرئيسي */}
-  <div className="relative z-10 flex items-end justify-center gap-3 mb-2">
+  <div className="flex items-end justify-center gap-2">
     <span
       className="font-mono"
       style={{
-        fontSize: 64,
+        fontSize: 56,
         fontWeight: 900,
         lineHeight: 1,
         color: '#FFFFFF',
-        textShadow: '0 0 30px rgba(255,255,255,0.15), 0 4px 12px rgba(0,0,0,0.3)',
-        letterSpacing: '-2px',
+        textShadow: '0 0 18px rgba(255,255,255,0.15)',
       }}
     >
       {cost.toFixed(0)}
     </span>
+
     <span
       style={{
-        fontSize: 24,
+        fontSize: 22,
         fontWeight: 800,
-        color: '#D4AF37',
-        marginBottom: 8,
-        textShadow: '0 0 10px rgba(212,175,55,0.3)',
+        color: '#FFFFFF',
+        marginBottom: 6,
       }}
     >
       ج.م
     </span>
   </div>
 
-  {/* جنيه مصري */}
   <div
-    className="relative z-10"
+    className="mt-3 mx-auto"
     style={{
-      fontSize: 12,
-      fontWeight: 700,
-      color: 'rgba(255,255,255,0.35)',
-      letterSpacing: '3px',
-      marginBottom: 8,
-    }}
-  >
-    جنيه مصري
-  </div>
-
-  {/* خط سفلي ذهبي */}
-  <div
-    className="relative z-10 mx-auto"
-    style={{
-      width: 120,
-      height: 3,
+      width: 100,
+      height: 4,
       borderRadius: 999,
-      background: 'linear-gradient(90deg, transparent, #D4AF37, #F5D060, #D4AF37, transparent)',
-      opacity: 0.7,
+      background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.9), transparent)',
+      opacity: 0.9,
     }}
   />
 </div>
+        {/* تفاصيل الوقت */}
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          <div className="bg-slate-950/40 rounded-xl p-3 text-center">
+            <Clock size={14} className="text-blue-400 mx-auto mb-1" />
+            <div className="text-sm font-black text-white font-mono">
+              {formatTime(elapsedSeconds)}
+            </div>
+            <div className="text-[8px] text-slate-500 font-bold">المدة الفعلية</div>
+          </div>
+          <div className="bg-slate-950/40 rounded-xl p-3 text-center">
+            <Timer size={14} className="text-purple-400 mx-auto mb-1" />
+            <div className="text-sm font-black text-purple-400 font-mono">
+              {hours}
+            </div>
+            <div className="text-[8px] text-slate-500 font-bold">ساعة محسوبة</div>
+          </div>
+          <div className="bg-slate-950/40 rounded-xl p-3 text-center">
+            <DollarSign size={14} className="text-amber-400 mx-auto mb-1" />
+            <div className="text-sm font-black text-amber-400 font-mono">
+              {rate}
+            </div>
+            <div className="text-[8px] text-slate-500 font-bold">ج.م/ساعة</div>
+          </div>
+        </div>
+
+        {/* وقت الدخول والخروج */}
+        <div className="bg-slate-950/40 rounded-xl p-3 mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-black text-emerald-400 font-mono">
+              {formatTimeOnly(startDate)}
+            </span>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-slate-500 font-bold">وقت الدخول</span>
+              <Calendar size={10} className="text-slate-600" />
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black text-red-400 font-mono">
+              {formatTimeOnly(endDate)}
+            </span>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-slate-500 font-bold">وقت الخروج</span>
+              <Calendar size={10} className="text-slate-600" />
+            </div>
+          </div>
+        </div>
+
+        {/* طريقة الدفع */}
+        <div className={`${paymentInfo.bg} rounded-xl p-3 flex items-center justify-between`}>
+          <div className="flex items-center gap-2">
+            <CreditCard size={14} className={paymentInfo.color} />
+            <span className={`text-xs font-black ${paymentInfo.color}`}>
+              {paymentInfo.label}
+            </span>
+          </div>
+          <div className="text-xl">{paymentInfo.icon}</div>
+        </div>
+
+        {/* سعر خاص */}
+        {garage && rate !== garage.basePrice && (
+          <div className="mt-3 bg-amber-600/10 border border-amber-500/20 rounded-xl p-2 text-center">
+            <p className="text-[9px] text-amber-400 font-bold">
+              💰 سعر خاص: {rate} ج.م/ساعة (بدل {garage.basePrice} ج.م)
+            </p>
+          </div>
+        )}
+
+        {/* تاريخ الجلسة */}
+        <div className="mt-3 text-center">
+          <span className="text-[9px] text-slate-600 font-mono">
+            {formatDateTime(startDate)} • {totalMinutes} دقيقة إجمالي
+          </span>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
