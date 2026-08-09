@@ -140,14 +140,61 @@ export default function LastSessionCard() {
           </div>
         </div>
 
-        {/* التكلفة الكبيرة */}
-        <div className="bg-slate-950/60 rounded-2xl p-4 mb-4 text-center">
-          <div className="text-[10px] text-slate-500 mb-1">إجمالي المستحق</div>
-          <div className="text-4xl font-black text-emerald-400 font-mono">
-            {cost.toFixed(0)}
-            <span className="text-lg text-emerald-500 mr-1">ج.م</span>
-          </div>
-        </div>
+{/* التكلفة الكبيرة */}
+<div
+  className="rounded-3xl p-5 mb-4 text-center border border-white/10 shadow-2xl"
+  style={{
+    background: 'linear-gradient(135deg, rgba(15,23,42,0.92) 0%, rgba(2,6,23,0.96) 100%)',
+    boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
+  }}
+>
+  <div
+    className="mb-3 font-black text-white"
+    style={{
+      fontSize: 20,
+      letterSpacing: '0.5px',
+      textShadow: '0 2px 10px rgba(255,255,255,0.08)',
+    }}
+  >
+    إجمالي المستحق
+  </div>
+
+  <div className="flex items-end justify-center gap-2">
+    <span
+      className="font-mono font-black"
+      style={{
+        fontSize: 52,
+        lineHeight: 1,
+        color: '#34D399',
+        textShadow: '0 0 20px rgba(52,211,153,0.25)',
+      }}
+    >
+      {cost.toFixed(0)}
+    </span>
+
+    <span
+      className="font-black"
+      style={{
+        fontSize: 20,
+        color: '#A7F3D0',
+        marginBottom: 6,
+      }}
+    >
+      ج.م
+    </span>
+  </div>
+
+  <div
+    className="mt-3 mx-auto"
+    style={{
+      width: 90,
+      height: 4,
+      borderRadius: 999,
+      background: 'linear-gradient(90deg, transparent, #34D399, transparent)',
+      opacity: 0.8,
+    }}
+  />
+</div>
 
         {/* تفاصيل الوقت */}
         <div className="grid grid-cols-3 gap-2 mb-4">

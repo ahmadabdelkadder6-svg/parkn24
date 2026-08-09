@@ -1338,7 +1338,7 @@ const filteredCompleted = useMemo(() => {
         </div>
       )}
 
-      {/* ═══ سجل العمليات ═══ */}
+       {/* ═══ سجل العمليات ═══ */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
           <span className="font-bold" style={{ fontSize: 11, background: '#fff', padding: '6px 12px', borderRadius: 12, border: '2px solid #D0DCFF', color: '#7B8CA6' }}>
@@ -1423,13 +1423,81 @@ const filteredCompleted = useMemo(() => {
 
         {filteredCompleted.length > 0 && (
           <>
-            <div className="mb-4 text-center" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', borderRadius: 24, padding: 22, color: '#fff' }}>
+            {/* ✅ العمليات المعلقة للتأكيد - تظهر للمالك والسايس */}
+            {filteredStats.pendingCount > 0 && (
+              <div
+                className="mb-4"
+                style={{
+                  background: 'linear-gradient(135deg, #FF9500 0%, #FF7700 100%)',
+                  borderRadius: 22,
+                  padding: 18,
+                  color: '#fff',
+                  boxShadow: '0 8px 28px rgba(255,149,0,0.3)',
+                }}
+              >
+                <div className="flex justify-between items-center">
+                  <div className="text-right flex-1">
+                    <div className="flex items-center gap-2 justify-end mb-1">
+                      <h3 className="font-black" style={{ fontSize: 15 }}>
+                        ⏳ عمليات معلقة للتأكيد
+                      </h3>
+                    </div>
+                    <div className="flex items-center gap-2 justify-end">
+                      <span
+                        className="font-black"
+                        style={{
+                          fontSize: 11,
+                          background: 'rgba(255,255,255,0.2)',
+                          padding: '3px 10px',
+                          borderRadius: 10,
+                        }}
+                      >
+                        {filteredStats.pendingCount} عملية
+                      </span>
+                      <span style={{ fontSize: 10, opacity: 0.85 }}>
+                        تحتاج تأكيد الإيراد
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-left mr-4">
+                    <div
+                      className="font-black font-mono"
+                      style={{
+                        fontSize: 28,
+                        textShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                      }}
+                    >
+                      {filteredStats.pendingRevenue.toFixed(0)}
+                    </div>
+                    <div
+                      className="font-bold text-center"
+                      style={{ fontSize: 11, opacity: 0.85 }}
+                    >
+                      ج.م
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ✅ إجمالي الإيراد المؤكد */}
+            <div
+              className="mb-4 text-center"
+              style={{
+                background: 'linear-gradient(135deg,#00CC66,#00AA55)',
+                borderRadius: 24,
+                padding: 22,
+                color: '#fff',
+              }}
+            >
               <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 4 }}>
                 {isValet
                   ? `إيرادي اليوم - ${currentValetName}`
                   : `مؤكد - ${logDateFrom === logDateTo ? formatLocalDateArabic(logDateFrom) : `${logDateFrom} → ${logDateTo}`}`}
               </div>
-              <div className="font-black font-mono" style={{ fontSize: 40 }}>{filteredStats.total.toFixed(0)} ج.م</div>
+              <div className="font-black font-mono" style={{ fontSize: 40 }}>
+                {filteredStats.total.toFixed(0)} ج.م
+              </div>
               <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>
                 {filteredCompleted.filter(s => s.revenueConfirmed).length} عملية مؤكدة
               </div>
