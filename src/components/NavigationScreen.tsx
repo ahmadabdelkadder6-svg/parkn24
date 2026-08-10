@@ -1,34 +1,15 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Navigation,
-  MapPin,
-  ArrowRight,
-  CheckCircle,
-  Car,
-  Clock,
-  XCircle,
-  Copy,
-  ExternalLink,
+  Navigation, MapPin, ArrowRight, CheckCircle,
+  Car, Clock, XCircle, Copy, ExternalLink,
 } from 'lucide-react';
 import { useStore } from '../store';
-import {
-  calculateDistance,
-  distanceToMinutes,
-  formatDuration,
-} from '../utils/distance';
+import { calculateDistance, distanceToMinutes, formatDuration } from '../utils/distance';
 import toast from 'react-hot-toast';
 import { sendCarComingPush, cancelScheduledPush } from '../lib/pushManager';
-
 import 'leaflet/dist/leaflet.css';
-import {
-  MapContainer,
-  TileLayer,
-  Marker,
-  Popup,
-  Polyline,
-  useMap,
-} from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { supabase } from '../lib/supabase';
 
@@ -48,9 +29,7 @@ const garageIcon = new L.DivIcon({
 
 const toMs = (value: any): number => {
   if (!value) return 0;
-  if (typeof value === 'number') {
-    return value < 1_000_000_000_000 ? value * 1000 : value;
-  }
+  if (typeof value === 'number') return value < 1_000_000_000_000 ? value * 1000 : value;
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
 };
@@ -72,7 +51,7 @@ function MapController({ userPos, garagePos }: { userPos: [number, number]; gara
         map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
       } catch { map.setView(garagePos, 15); }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, userPos[0], userPos[1], garagePos[0], garagePos[1]]);
   return null;
 }
@@ -112,14 +91,27 @@ export default function NavigationScreen() {
   const [pushStatus, setPushStatus] = useState<'waiting' | 'sent' | 'cancelled'>('waiting');
   const [sessionStartedByGarage, setSessionStartedByGarage] = useState(false);
 
-  const screenEnteredRef = useRef(Date.now());
-  const cancelStartedRef = useRef(false); // ✅ ref جديد لمنع reset المؤقت
+  // ✅ تثبيت بيانات العربية القادمة حتى لو اختفت من الـ store لحظياً
+  const [lockedIncomingCar, setLockedIncomingCar] = useState<any | null>(null);
+
+  // ✅ العربية الفعّالة = من الـ store أو المثبتة
+  const effectiveIncomingCar = myIncomingCar || lockedIncomingCar;
+
+  const screenEnteredRef = useRef<number>(0);
+  const cancelStartedRef = useRef(false);
   const navigatedToSessionRef = useRef(false);
   const isArrivingRef = useRef(false);
   const pushSentRef = useRef(false);
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const realtimeChannelRef = useRef<any>(null);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ✅ ثبّت العربية أول ما تظهر
+  useEffect(() => {
+    if (myIncomingCar) {
+      setLockedIncomingCar(myIncomingCar);
+    }
+  }, [myIncomingCar?.id]);
 
   // ── Realtime ──
   useEffect(() => {
@@ -159,9 +151,7 @@ export default function NavigationScreen() {
           }
         })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'incoming_cars' },
-        async (payload) => {
-          if (isMyRow(payload.old)) await refetch();
-        })
+        async (payload) => { if (isMyRow(payload.old)) await refetch(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'incoming_cars' },
         async (payload) => {
           if (isMyRow(payload.new) || isMyRow(payload.old)) await refetch();
@@ -205,19 +195,13 @@ export default function NavigationScreen() {
     return () => clearTimeout(t);
   }, []);
 
-  // ✅ مؤقت الإلغاء - المشكلة كانت هنا
+  // ✅ مؤقت الإلغاء - محلول بـ lockedIncomingCar
   useEffect(() => {
-    // ✅ لو مفيش incoming car وسبق بدأنا المؤقت → ما تعملش reset
-    if (!myIncomingCar) {
-      // لو مفيش incoming car من البداية (مش من reset) → ابدأ من الأول
-      if (!cancelStartedRef.current) {
-        setCancelTimeLeft(CANCEL_WINDOW_SECONDS);
-        setCanCancel(true);
-      }
-      return;
-    }
+    if (!effectiveIncomingCar) return;
 
-    // ✅ بدأنا المؤقت
+    // ✅ لو المؤقت بدأ بالفعل، ما تعملش reset
+    if (cancelStartedRef.current) return;
+
     cancelStartedRef.current = true;
     screenEnteredRef.current = Date.now();
     setCancelTimeLeft(CANCEL_WINDOW_SECONDS);
@@ -234,26 +218,26 @@ export default function NavigationScreen() {
     }, 1000);
 
     return () => window.clearInterval(interval);
-  }, [myIncomingCar?.id]);
+  }, [effectiveIncomingCar?.id]);
 
   // ── Push ──
   useEffect(() => {
-    if (!myIncomingCar || !garage || pushSentRef.current) return;
+    if (!effectiveIncomingCar || !garage || pushSentRef.current) return;
     if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
     setPushStatus('waiting');
 
     pushTimerRef.current = setTimeout(async () => {
       const stillComing = useStore.getState().incomingCars.find(
-        (c) => c.id === myIncomingCar.id && c.status === 'coming',
+        (c) => c.id === effectiveIncomingCar.id && c.status === 'coming',
       );
       if (!stillComing || pushSentRef.current) { setPushStatus('cancelled'); return; }
       try {
         pushSentRef.current = true;
         const dist = calculateDistance(userPos.lat, userPos.lng, garage.lat, garage.lng);
         await sendCarComingPush({
-          garageId: garage.id, carPlate: myIncomingCar.carPlate,
+          garageId: garage.id, carPlate: effectiveIncomingCar.carPlate,
           estimatedMinutes: Math.max(1, distanceToMinutes(dist)),
-          customerName: currentUser?.name, agreedPrice: myIncomingCar.agreedPrice,
+          customerName: currentUser?.name, agreedPrice: effectiveIncomingCar.agreedPrice,
         });
         setPushStatus('sent');
       } catch (err) {
@@ -263,8 +247,10 @@ export default function NavigationScreen() {
       }
     }, (CANCEL_WINDOW_SECONDS + 2) * 1000);
 
-    return () => { if (pushTimerRef.current) { clearTimeout(pushTimerRef.current); pushTimerRef.current = null; } };
-  }, [myIncomingCar?.id, garage?.id]);
+    return () => {
+      if (pushTimerRef.current) { clearTimeout(pushTimerRef.current); pushTimerRef.current = null; }
+    };
+  }, [effectiveIncomingCar?.id, garage?.id]);
 
   // ✅ الانتقال لشاشة الجلسة
   useEffect(() => {
@@ -281,12 +267,23 @@ export default function NavigationScreen() {
     setTimeout(() => { setScreen('session'); }, 500);
   }, [myActiveSession?.id, myActiveSession?.garageId, selectedGarageId, setSelectedGarageId, setScreen]);
 
+  // ── Guard ──
   if (!garage) {
+    if (effectiveIncomingCar || myActiveSession) {
+      return (
+        <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8">
+          <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
+          <p className="text-slate-400 text-sm font-bold text-center">جاري تحميل البيانات...</p>
+        </div>
+      );
+    }
     return (
       <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8">
         <div className="text-4xl mb-4">🔍</div>
         <p className="text-slate-400 text-sm font-bold text-center mb-6">لم يتم تحديد جراج</p>
-        <button onClick={() => setScreen('list')} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all">العودة للقائمة</button>
+        <button onClick={() => setScreen('list')} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all">
+          العودة للقائمة
+        </button>
       </div>
     );
   }
@@ -311,14 +308,28 @@ export default function NavigationScreen() {
   };
 
   const handleCancelBooking = async () => {
-    if (!currentUser || !myIncomingCar) return;
+    if (!currentUser || !effectiveIncomingCar) return;
+
     if (pushTimerRef.current) { clearTimeout(pushTimerRef.current); pushTimerRef.current = null; }
     pushSentRef.current = true;
     setPushStatus('cancelled');
-    if (pushStatus === 'sent') await cancelScheduledPush(garage.id, myIncomingCar.carPlate);
-    const activeOffer = offers.find((o) => o.userId === currentUser.phone && (o.status === 'pending' || o.status === 'accepted'));
+
+    if (pushStatus === 'sent') await cancelScheduledPush(garage.id, effectiveIncomingCar.carPlate);
+
+    const activeOffer = offers.find(
+      (o) => o.userId === currentUser.phone && (o.status === 'pending' || o.status === 'accepted'),
+    );
     if (activeOffer) cancelOffer(activeOffer.id);
-    removeIncomingCar(myIncomingCar.id);
+
+    await removeIncomingCar(effectiveIncomingCar.id);
+
+    // ✅ reset الـ lock
+    setLockedIncomingCar(null);
+    cancelStartedRef.current = false;
+    screenEnteredRef.current = 0;
+    setCancelTimeLeft(CANCEL_WINDOW_SECONDS);
+    setCanCancel(true);
+
     toast.success('تم إلغاء الحجز');
     setSelectedGarageId(null);
     setScreen('list');
@@ -328,20 +339,20 @@ export default function NavigationScreen() {
     if (isArrivingRef.current) return;
     isArrivingRef.current = true;
 
-    if (!pushSentRef.current && myIncomingCar && garage) {
+    if (!pushSentRef.current && effectiveIncomingCar && garage) {
       if (pushTimerRef.current) { clearTimeout(pushTimerRef.current); pushTimerRef.current = null; }
       try {
         pushSentRef.current = true;
         await sendCarComingPush({
-          garageId: garage.id, carPlate: myIncomingCar.carPlate,
-          estimatedMinutes: 0, customerName: currentUser?.name, agreedPrice: myIncomingCar.agreedPrice,
+          garageId: garage.id, carPlate: effectiveIncomingCar.carPlate,
+          estimatedMinutes: 0, customerName: currentUser?.name, agreedPrice: effectiveIncomingCar.agreedPrice,
         });
         setPushStatus('sent');
       } catch (err) { console.error('❌ Push error:', err); }
     }
 
     try {
-      if (!myIncomingCar || !garage) {
+      if (!effectiveIncomingCar || !garage) {
         if (myActiveSession) { navigatedToSessionRef.current = true; setScreen('session'); }
         return;
       }
@@ -355,7 +366,8 @@ export default function NavigationScreen() {
       );
 
       if (alreadyActive) {
-        await removeIncomingCar(myIncomingCar.id);
+        await removeIncomingCar(effectiveIncomingCar.id);
+        setLockedIncomingCar(null);
         if (alreadyActive.garageId !== selectedGarageId) setSelectedGarageId(alreadyActive.garageId);
         navigatedToSessionRef.current = true;
         toast.success('تم بدء حساب الركن ⏱️');
@@ -363,24 +375,28 @@ export default function NavigationScreen() {
         return;
       }
 
-      const relatedOffer = offers.find((o) => o.carPlate === myIncomingCar.carPlate && (o.status === 'pending' || o.status === 'accepted'));
+      const relatedOffer = offers.find(
+        (o) => o.carPlate === effectiveIncomingCar.carPlate && (o.status === 'pending' || o.status === 'accepted'),
+      );
       if (relatedOffer) cancelOffer(relatedOffer.id);
 
       await addSession({
-        garageId: garage.id, carPlate: myIncomingCar.carPlate,
+        garageId: garage.id, carPlate: effectiveIncomingCar.carPlate,
         startTime: Date.now(), status: 'active', source: 'app',
-        agreedPrice: myIncomingCar.agreedPrice,
+        agreedPrice: effectiveIncomingCar.agreedPrice,
         customerPhone: currentUser?.phone, customerName: currentUser?.name,
-        startedBy: 'customer', incomingCarId: myIncomingCar.id,
-        isFreeSession: (myIncomingCar as any).isFreeSession || loyaltyStatus?.isNextFree || false,
+        startedBy: 'customer', incomingCarId: effectiveIncomingCar.id,
+        isFreeSession: (effectiveIncomingCar as any).isFreeSession || loyaltyStatus?.isNextFree || false,
       } as any);
 
-      await removeIncomingCar(myIncomingCar.id);
+      await removeIncomingCar(effectiveIncomingCar.id);
+      setLockedIncomingCar(null);
+
       toast.success('تم بدء حساب الركن ⏱️');
       navigatedToSessionRef.current = true;
       setScreen('session');
     } catch (err) {
-      console.error('❌', err);
+      console.error('❌ خطأ:', err);
       toast.error('حدث خطأ، حاول مرة أخرى');
     } finally {
       setTimeout(() => { isArrivingRef.current = false; }, 5000);
@@ -389,8 +405,7 @@ export default function NavigationScreen() {
 
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }}
       className="h-full bg-slate-950 text-white flex flex-col safe-top safe-bottom"
     >
       {/* Header */}
@@ -410,14 +425,12 @@ export default function NavigationScreen() {
       {/* Content */}
       <div className="flex-1 px-4 pb-4 flex flex-col gap-3 overflow-y-auto">
 
-        {/* بانر الجلسة بدأت من الجراج */}
+        {/* بانر الجلسة بدأت */}
         {(myActiveSession || sessionStartedByGarage) && !navigatedToSessionRef.current && (
           <motion.div
-            initial={{ opacity: 0, y: -10, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
+            initial={{ opacity: 0, y: -10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }}
             className="shrink-0"
-            style={{ background: 'linear-gradient(135deg, #059669, #047857)', borderRadius: 20, padding: '16px 18px', boxShadow: '0 0 30px rgba(5,150,105,0.4)' }}
-          >
+            style={{ background: 'linear-gradient(135deg, #059669, #047857)', borderRadius: 20, padding: '16px 18px', boxShadow: '0 0 30px rgba(5,150,105,0.4)' }}>
             <div className="flex items-center gap-3">
               <motion.span animate={{ scale: [1, 1.4, 1] }} transition={{ repeat: Infinity, duration: 1 }} className="w-3 h-3 rounded-full bg-white shrink-0" />
               <div className="flex-1">
@@ -452,7 +465,7 @@ export default function NavigationScreen() {
           {mapReady ? (
             <MapContainer center={[garage.lat, garage.lng]} zoom={15} style={{ width: '100%', height: '100%' }} zoomControl={false}>
               <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution='&copy; CARTO' />
-              <Marker position={[userPos.lat, userPos.lng]} icon={userIcon}><Popup>موقعك الحالي 🚗</Popup></Marker>
+              <Marker position={[userPos.lat, userPos.lng]} icon={userIcon}><Popup>موقعك 🚗</Popup></Marker>
               <Marker position={[garage.lat, garage.lng]} icon={garageIcon}><Popup>{garage.name} 🅿️</Popup></Marker>
               <Polyline positions={[[userPos.lat, userPos.lng], [garage.lat, garage.lng]]} color="#3b82f6" weight={4} dashArray="8, 8" />
               <MapController userPos={[userPos.lat, userPos.lng]} garagePos={[garage.lat, garage.lng]} />
@@ -467,7 +480,7 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* أزرار النسخ وجوجل ماب */}
+        {/* أزرار النسخ */}
         <div className="grid grid-cols-2 gap-2 shrink-0">
           <button onClick={copyCoords} className="bg-slate-900 border border-slate-800 text-slate-300 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all">
             <Copy size={14} className="text-blue-400" />نسخ الإحداثيات
@@ -481,7 +494,8 @@ export default function NavigationScreen() {
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 shrink-0">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2 text-[10px] text-slate-500">
-              <Car size={12} /><span>{myIncomingCar?.agreedPrice ?? garage.basePrice} ج.م/ساعة</span>
+              <Car size={12} />
+              <span>{effectiveIncomingCar?.agreedPrice ?? garage.basePrice} ج.م/ساعة</span>
             </div>
             <span className="text-xs font-black text-blue-400 font-mono">🚗 {currentUser?.carPlate}</span>
           </div>
@@ -494,7 +508,7 @@ export default function NavigationScreen() {
         </div>
 
         {/* مؤشر Push */}
-        {myIncomingCar && (
+        {effectiveIncomingCar && (
           <div className={`rounded-xl p-3 flex items-center gap-2 shrink-0 border ${
             pushStatus === 'sent' ? 'bg-emerald-600/10 border-emerald-500/20'
             : pushStatus === 'cancelled' ? 'bg-red-600/10 border-red-500/20'
@@ -553,8 +567,8 @@ export default function NavigationScreen() {
           </button>
         )}
 
-        {/* ✅ زر الإلغاء - يظهر طول ما الـ 30 ثانية لم تنتهِ */}
-        {canCancel && myIncomingCar && !myActiveSession && (
+        {/* ✅ زر الإلغاء - يعتمد على effectiveIncomingCar */}
+        {canCancel && effectiveIncomingCar && !myActiveSession && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="shrink-0">
             <button
               onClick={handleCancelBooking}
