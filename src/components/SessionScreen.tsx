@@ -5,11 +5,13 @@ import {
   Car,
   DollarSign,
   ArrowRight,
+  Gift,
 } from 'lucide-react';
 import { useStore } from '../store';
 import {
   calculateFullHours,
   calculateCost,
+  calculateCostWithLoyalty,
   formatTime,
   getRemainingInCurrentHour,
 } from '../utils/pricing';
@@ -41,12 +43,8 @@ const normalizePlate = (plate?: string): string => {
 
 export default function SessionScreen() {
   const {
-    garages,
-    sessions,
-    setScreen,
-    currentUser,
-    fetchAll,
-    setSelectedGarageId,
+    garages, sessions, setScreen, currentUser, fetchAll,
+    setSelectedGarageId, loyaltyStatus,
   } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
@@ -96,15 +94,15 @@ export default function SessionScreen() {
     (g) => g.id === (activeSession?.garageId ?? lastCompletedSession?.garageId),
   );
 
-  // ✅ حساب startTime الدقيق للجلسة النشطة
   const activeStartMs = useMemo(() => {
     if (!activeSession) return 0;
     const ms = safeParseTime(activeSession.startTime);
-    const now = Date.now();
-    // ✅ حماية: لو الوقت في المستقبل أو صفر
     if (ms <= 0) return Date.now();
     return ms;
   }, [activeSession?.id, activeSession?.startTime]);
+
+  // ✅ هل الجلسة دي مجانية؟
+  const isFreeSession = activeSession?.isFreeSession ?? loyaltyStatus?.isNextFree ?? false;
 
   useEffect(() => {
     let mounted = true;
@@ -126,17 +124,10 @@ export default function SessionScreen() {
 
     const channel = supabase
       .channel(`customer-session-live-${userPlate || userPhone}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'sessions' },
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' },
         async (payload) => {
-          const newRow = payload.new as any;
-          const oldRow = payload.old as any;
-          if (isMySessionRow(newRow) || isMySessionRow(oldRow)) {
-            await refetch();
-          }
-        },
-      )
+          if (isMySessionRow(payload.new) || isMySessionRow(payload.old)) await refetch();
+        })
       .subscribe();
 
     realtimeChannelRef.current = channel;
@@ -156,25 +147,11 @@ export default function SessionScreen() {
     };
   }, [userPlate, userPhone, fetchAll]);
 
-  // ✅ العداد - يستخدم activeStartMs المحسوب
   useEffect(() => {
-    if (!activeSession || activeStartMs <= 0) {
-      setElapsed(0);
-      return;
-    }
-
-    const calcElapsed = () => {
-      const now = Date.now();
-      const diff = now - activeStartMs;
-      return Math.max(0, Math.floor(diff / 1000));
-    };
-
+    if (!activeSession || activeStartMs <= 0) { setElapsed(0); return; }
+    const calcElapsed = () => Math.max(0, Math.floor((Date.now() - activeStartMs) / 1000));
     setElapsed(calcElapsed());
-
-    const interval = setInterval(() => {
-      setElapsed(calcElapsed());
-    }, 1000);
-
+    const interval = setInterval(() => { setElapsed(calcElapsed()); }, 1000);
     return () => clearInterval(interval);
   }, [activeSession?.id, activeStartMs]);
 
@@ -187,13 +164,9 @@ export default function SessionScreen() {
 
   useEffect(() => {
     if (activeSession) { redirectedToSummaryRef.current = false; return; }
-    if (!lastCompletedSession) return;
-    if (redirectedToSummaryRef.current) return;
-
+    if (!lastCompletedSession || redirectedToSummaryRef.current) return;
     const endMs = safeParseTime(lastCompletedSession.endTime);
-    if (!endMs) return;
-    if (Date.now() - endMs >= 2 * 60 * 1000) return;
-
+    if (!endMs || Date.now() - endMs >= 2 * 60 * 1000) return;
     redirectedToSummaryRef.current = true;
     if (lastCompletedSession.garageId) setSelectedGarageId(lastCompletedSession.garageId);
     toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
@@ -226,9 +199,19 @@ export default function SessionScreen() {
   }
 
   const sessionRate = Number(activeSession.agreedPrice ?? garage?.basePrice ?? 0);
-  const currentHours = calculateFullHours(elapsed);
-  const currentCost = calculateCost(elapsed, sessionRate);
+
+  // ✅ حساب التكلفة مع الولاء
+  const loyaltyCalc = calculateCostWithLoyalty(elapsed, sessionRate, isFreeSession);
+  const currentCost = loyaltyCalc.cost;
+  const currentHours = loyaltyCalc.totalHours;
+  const freeHoursUsed = loyaltyCalc.freeHoursUsed;
+  const paidHours = loyaltyCalc.paidHours;
   const remainingInHour = getRemainingInCurrentHour(elapsed);
+
+  // ✅ حساب الوقت المجاني المتبقي
+  const freeSecondsTotal = 2 * 60 * 60;
+  const freeSecondsRemaining = isFreeSession ? Math.max(0, freeSecondsTotal - elapsed) : 0;
+  const freeMinutesRemaining = Math.floor(freeSecondsRemaining / 60);
 
   return (
     <motion.div
@@ -236,6 +219,38 @@ export default function SessionScreen() {
       animate={{ opacity: 1 }}
       className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8 overflow-y-auto"
     >
+      {/* ✅ بانر الركنة المجانية */}
+      {isFreeSession && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full mb-4"
+          style={{
+            background: elapsed <= freeSecondsTotal
+              ? 'linear-gradient(135deg, #D4AF37, #F5D060)'
+              : 'linear-gradient(135deg, #EF4444, #DC2626)',
+            borderRadius: 20,
+            padding: '16px 18px',
+            boxShadow: '0 4px 20px rgba(212,175,55,0.3)',
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <Gift size={24} style={{ color: '#0F172A' }} />
+            <div className="flex-1">
+              <div className="font-black" style={{ fontSize: 15, color: '#0F172A' }}>
+                {elapsed <= freeSecondsTotal ? '🎉 ركنة مجانية!' : '⏰ انتهت الفترة المجانية'}
+              </div>
+              <div className="font-bold" style={{ fontSize: 11, color: '#1E293B' }}>
+                {elapsed <= freeSecondsTotal
+                  ? `باقي ${freeMinutesRemaining} دقيقة مجانية من أصل 120 دقيقة`
+                  : `الحساب بدأ - ${paidHours} ساعة × ${sessionRate} = ${currentCost} ج.م`}
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* عداد الوقت */}
       <motion.div
         animate={{
           boxShadow: [
@@ -245,42 +260,62 @@ export default function SessionScreen() {
           ],
         }}
         transition={{ repeat: Infinity, duration: 2 }}
-        className="w-48 h-48 bg-blue-50 rounded-full flex flex-col items-center justify-center border-4 border-blue-300 mb-6 shadow-lg shadow-blue-100"
+        className="w-48 h-48 rounded-full flex flex-col items-center justify-center border-4 mb-6 shadow-lg"
+        style={{
+          background: isFreeSession && elapsed <= freeSecondsTotal ? '#FFFBEB' : '#EFF6FF',
+          borderColor: isFreeSession && elapsed <= freeSecondsTotal ? '#D4AF37' : '#93C5FD',
+        }}
       >
-        <Clock size={28} className="text-blue-600 mb-1" />
+        <Clock size={28} className={isFreeSession && elapsed <= freeSecondsTotal ? 'text-yellow-600 mb-1' : 'text-blue-600 mb-1'} />
         <div className="text-3xl font-black font-mono text-slate-900">{formatTime(elapsed)}</div>
-        <div className="text-[10px] text-slate-500 font-bold mt-1">مدة الركن</div>
+        <div className="text-[10px] text-slate-500 font-bold mt-1">
+          {isFreeSession && elapsed <= freeSecondsTotal ? 'مدة الركن (مجانية)' : 'مدة الركن'}
+        </div>
       </motion.div>
 
+      {/* بطاقة التكلفة */}
       <div className="w-full bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-2xl p-4 mb-4 shadow-sm">
         <div className="flex justify-between items-center mb-3">
           <div className="text-center">
             <div className="text-3xl font-black text-blue-600 font-mono">{currentHours}</div>
-            <div className="text-[9px] text-slate-500 font-bold">ساعة محسوبة</div>
+            <div className="text-[9px] text-slate-500 font-bold">ساعة إجمالي</div>
           </div>
           <div className="text-4xl font-black text-slate-400">=</div>
           <div className="text-center">
-            <div className="text-3xl font-black text-emerald-600 font-mono">{currentCost}</div>
-            <div className="text-[9px] text-slate-500 font-bold">ج.م إجمالي</div>
+            <div className="text-3xl font-black font-mono" style={{ color: isFreeSession && currentCost === 0 ? '#D4AF37' : '#059669' }}>
+              {currentCost === 0 && isFreeSession ? 'مجاني' : currentCost}
+            </div>
+            <div className="text-[9px] text-slate-500 font-bold">
+              {currentCost === 0 && isFreeSession ? '🎁' : 'ج.م إجمالي'}
+            </div>
           </div>
         </div>
+
+        {isFreeSession && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-2 text-center mb-2">
+            <div className="text-[10px] text-yellow-700 font-bold">
+              🎁 {freeHoursUsed > 0 ? `${freeHoursUsed} ساعة مجانية مستخدمة` : 'الفترة المجانية سارية'}
+              {paidHours > 0 && ` + ${paidHours} ساعة مدفوعة`}
+            </div>
+          </div>
+        )}
+
         <div className="bg-white/80 rounded-xl p-3 text-center border border-slate-100">
           <div className="text-[10px] text-slate-500 mb-1">الوقت المتبقي حتى الساعة التالية</div>
           <div className="text-lg font-black text-amber-500 font-mono">
             {String(remainingInHour.minutes).padStart(2, '0')}:{String(remainingInHour.seconds).padStart(2, '0')}
           </div>
-          <div className="text-[9px] text-slate-400 mt-1">
-            بعدها ستُحسب ساعة إضافية ({currentHours + 1} × {sessionRate} = {(currentHours + 1) * sessionRate} ج.م)
-          </div>
         </div>
       </div>
 
+      {/* تنبيه سعر خاص */}
       {sessionRate !== garage?.basePrice && garage && (
         <div className="w-full bg-amber-50 border border-amber-200 rounded-xl p-2 mb-4 text-center">
           <p className="text-[10px] text-amber-600 font-bold">💰 سعر خاص: {sessionRate} ج.م/ساعة (بدل {garage.basePrice} ج.م)</p>
         </div>
       )}
 
+      {/* معلومات السيارة والسعر */}
       <div className="w-full grid grid-cols-2 gap-3 mb-6">
         <div className="bg-white border border-slate-200 p-4 rounded-2xl text-center shadow-sm">
           <Car size={20} className="text-blue-600 mx-auto mb-2" />
@@ -294,6 +329,7 @@ export default function SessionScreen() {
         </div>
       </div>
 
+      {/* اسم الجراج */}
       {garage && (
         <div className="bg-white border border-slate-200 p-4 rounded-2xl w-full text-center mb-6 shadow-sm">
           <div className="text-xs text-slate-500 font-bold mb-1">الجراج</div>
@@ -301,6 +337,7 @@ export default function SessionScreen() {
         </div>
       )}
 
+      {/* مصدر الجلسة */}
       <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 mb-4 text-center">
         <p className="text-[10px] text-slate-400 font-bold">
           {activeSession.source === 'app' ? '📱 بدأت من التطبيق' : '🅿️ بدأت من الجراج'}
@@ -308,17 +345,55 @@ export default function SessionScreen() {
         </p>
       </div>
 
+      {/* عداد الولاء */}
+      {loyaltyStatus && !isFreeSession && (
+        <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex gap-1">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div
+                  key={i}
+                  style={{
+                    width: 12, height: 12, borderRadius: '50%',
+                    background: i <= loyaltyStatus.paidSessions ? '#00CC66' : '#E2E8F0',
+                    border: '1px solid #CBD5E1',
+                  }}
+                />
+              ))}
+            </div>
+            <div className="text-[10px] text-slate-500 font-bold">
+              🅿️ {loyaltyStatus.paidSessions}/5 - باقي {loyaltyStatus.remainingForFree} للمجانية
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ملاحظة الدفع */}
       <div className="w-full bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-center">
-        <p className="text-[10px] text-blue-600 font-bold">💡 سيتم تحديد طريقة الدفع عند إنهاء الجلسة</p>
+        <p className="text-[10px] text-blue-600 font-bold">
+          {isFreeSession && currentCost === 0
+            ? '🎁 هذه الركنة مجانية بالكامل (حتى الآن)'
+            : '💡 سيتم تحديد طريقة الدفع عند إنهاء الجلسة'}
+        </p>
       </div>
 
+      {/* زر إنهاء الجلسة */}
       <button
         onClick={() => setScreen('summary')}
-        className="w-full bg-red-600 hover:bg-red-700 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-red-100 active:scale-95 transition-all mb-3"
+        className="w-full py-5 rounded-2xl font-black text-lg shadow-xl active:scale-95 transition-all mb-3"
+        style={{
+          background: isFreeSession && currentCost === 0
+            ? 'linear-gradient(135deg, #D4AF37, #F5D060)'
+            : 'linear-gradient(135deg, #DC2626, #B91C1C)',
+          color: isFreeSession && currentCost === 0 ? '#0F172A' : '#fff',
+        }}
       >
-        إنهاء الجلسة ({currentCost} ج.م)
+        {isFreeSession && currentCost === 0
+          ? '🎁 إنهاء الركنة المجانية'
+          : `إنهاء الجلسة (${currentCost} ج.م)`}
       </button>
 
+      {/* زر الرجوع */}
       <button
         onClick={() => setScreen('list')}
         className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 py-3 rounded-2xl font-bold text-sm active:scale-95 transition-all"

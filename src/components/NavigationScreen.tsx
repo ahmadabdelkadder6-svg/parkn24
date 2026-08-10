@@ -100,7 +100,7 @@ function MapController({
    ██  NAVIGATION SCREEN
    ════════════════════════════════════════════════════════════ */
 export default function NavigationScreen() {
-  const {
+ const {
     garages,
     selectedGarageId,
     setScreen,
@@ -113,6 +113,7 @@ export default function NavigationScreen() {
     sessions,
     addSession,
     fetchAll,
+    loyaltyStatus,
   } = useStore();
 
   const garage = garages.find((g) => g.id === selectedGarageId);
@@ -564,18 +565,19 @@ export default function NavigationScreen() {
       );
       if (relatedOffer) cancelOffer(relatedOffer.id);
 
- await addSession({
-  garageId: garage.id,
-  carPlate: myIncomingCar.carPlate,
-  startTime: Date.now(),
-  status: 'active',
-  source: 'app',
-  agreedPrice: myIncomingCar.agreedPrice,
-  customerPhone: currentUser?.phone,
-  customerName: currentUser?.name,
-  startedBy: 'customer',
-  incomingCarId: myIncomingCar.id,
-} as any);
+await addSession({
+        garageId: garage.id,
+        carPlate: myIncomingCar.carPlate,
+        startTime: Date.now(),
+        status: 'active',
+        source: 'app',
+        agreedPrice: myIncomingCar.agreedPrice,
+        customerPhone: currentUser?.phone,
+        customerName: currentUser?.name,
+        startedBy: 'customer',
+        incomingCarId: myIncomingCar.id,
+        isFreeSession: (myIncomingCar as any).isFreeSession || loyaltyStatus?.isNextFree || false,
+      } as any);
 
       await removeIncomingCar(myIncomingCar.id);
 
