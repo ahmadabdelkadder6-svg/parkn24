@@ -123,19 +123,41 @@ export default function GarageListScreen() {
   }, [normalizedUserPlate, currentUser?.phone, fetchAll]);
 
   // ✅ انتقال تلقائي
+  // ✅ انتقال تلقائي فقط لما تبدأ جلسة جديدة
   useEffect(() => {
-    if (!activeSession) { autoNavigatedRef.current = null; return; }
+    if (!activeSession) return;
     if (autoNavigatedRef.current === activeSession.id) return;
+
+    // ✅ ما تنقلش لو الحريف على شاشة navigation
+    const currentScreen = useStore.getState().screen;
+    if (currentScreen === 'navigation') return;
+
     autoNavigatedRef.current = activeSession.id;
+
     const startMs = safeParseTime(activeSession.startTime);
     if (startMs <= 0) {
-      fetchAll().then(() => { setSelectedGarageId(activeSession.garageId); setScreen('session'); toast.success('بدأت جلسة الركن! ⏱️', { icon: '🚗', duration: 3000 }); });
+      fetchAll().then(() => {
+        const fresh = useStore.getState().sessions.find(
+          s => s.id === activeSession.id && s.status === 'active'
+        );
+        if (fresh) {
+          setSelectedGarageId(fresh.garageId);
+          setScreen('session');
+          toast.success('بدأت جلسة الركن! ⏱️', { icon: '🚗', duration: 3000 });
+        }
+      });
       return;
     }
+
     setSelectedGarageId(activeSession.garageId);
     setScreen('session');
     toast.success('بدأت جلسة الركن! ⏱️', { icon: '🚗', duration: 3000 });
-  }, [activeSession?.id, activeSession?.startTime, setSelectedGarageId, setScreen, fetchAll]);
+  }, [activeSession?.id]);
+
+    setSelectedGarageId(activeSession.garageId);
+    setScreen('session');
+    toast.success('بدأت جلسة الركن! ⏱️', { icon: '🚗', duration: 3000 });
+  }, [activeSession?.id]);
 
   const garagesWithDistance: GarageWithDistance[] = useMemo(() => {
     return garages.map((garage) => {
