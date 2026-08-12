@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Car, Clock, DollarSign, LogOut, Plus, CheckCircle, XCircle, Settings,
   Minus, Save, MapPin, Edit3, Navigation, Phone, CarFront, FileText,
-  CalendarDays, Undo2, Shield, HardHat, Users, Gift,
+  CalendarDays, Undo2, Shield, HardHat, Users,
 } from 'lucide-react';
 import { useStore, pausePolling } from '../store';
 import { supabase } from '../lib/supabase';
@@ -35,6 +35,8 @@ interface DailyStat {
   confirmed_revenue: number;
   pending_revenue: number;
 }
+
+// ═══════════ Helpers ═══════════
 
 const toMs = (value: any): number => {
   if (!value) return 0;
@@ -80,6 +82,7 @@ const formatLocalDateArabic = (dateStr: string): string => {
 };
 
 // ═══════════ Audio & Alerts ═══════════
+
 let audioCtxInstance: AudioContext | null = null;
 let audioCtxReady = false;
 
@@ -171,11 +174,7 @@ const playFirstAlert = async () => {
   } catch {}
 };
 
-const fireNewCarAlert = (
-  carPlate: string,
-  customerName?: string,
-  agreedPrice?: number
-) => {
+const fireNewCarAlert = (carPlate: string, customerName?: string, agreedPrice?: number) => {
   playFirstAlert();
   vibrateDevice();
   sendNotification(
@@ -228,6 +227,7 @@ const fireApproachingAlert = (carPlate: string) => {
 };
 
 // ═══════════ Component ═══════════
+
 export default function GarageDashboard() {
   const {
     garages,
@@ -261,7 +261,9 @@ export default function GarageDashboard() {
   const activeSessions = useMemo(
     () =>
       garageSessions.filter(
-        (s) => s.status === 'active' && Date.now() - toMs(s.startTime) < 24 * 60 * 60 * 1000
+        (s) =>
+          s.status === 'active' &&
+          Date.now() - toMs(s.startTime) < 24 * 60 * 60 * 1000
       ),
     [garageSessions]
   );
@@ -317,7 +319,11 @@ export default function GarageDashboard() {
   const [tick, setTick] = useState(0);
   const [garageDailyStats, setGarageDailyStats] = useState<DailyStat[]>([]);
 
-  // ✅ إسناد جلسات الحريف للسايس تلقائياً (النسخة المحسنة)
+  // ═══════════════════════════════════════════════════════════════
+  // ✅ إسناد جلسات الحريف (app) للسايس الموجود تلقائياً
+  // لما الحريف يبدأ جلسة من شاشته والسايس فاتح التطبيق
+  // الجلسة تتسند للسايس وتظهر عنده وتتحسب عليه في التقرير
+  // ═══════════════════════════════════════════════════════════════
   useEffect(() => {
     if (!isValet) return;
     if (!currentGarageId) return;
@@ -413,7 +419,7 @@ export default function GarageDashboard() {
     })();
   }, [currentGarageId, garages]);
 
-  // ═══ Visibility change handler ═══
+  // ═══ Visibility change ═══
   useEffect(() => {
     if (!currentGarageId) return;
     const h = async () => {
@@ -511,7 +517,7 @@ export default function GarageDashboard() {
     fetchGarageDailyStats();
   }, [fetchGarageDailyStats]);
 
-  // ═══ Revenue calculation helpers ═══
+  // ═══ Revenue helpers ═══
   const getSessionRevenue = useCallback(
     (s: any) => {
       if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
@@ -556,15 +562,7 @@ export default function GarageDashboard() {
         return true;
       })
       .reduce((a, s) => a + getSessionRevenue(s), 0);
-  }, [
-    isValet,
-    valetTodayRevenue,
-    garageDailyStats,
-    completedSessions,
-    getSessionRevenue,
-    logDateFrom,
-    logDateTo,
-  ]);
+  }, [isValet, valetTodayRevenue, garageDailyStats, completedSessions, getSessionRevenue, logDateFrom, logDateTo]);
 
   const getActiveCost = useCallback(
     (s: any) => {
@@ -576,7 +574,7 @@ export default function GarageDashboard() {
     [garage?.basePrice]
   );
 
-  // ═══ Filtered completed sessions ═══
+  // ═══ Filtered completed ═══
   const filteredCompleted = useMemo(
     () =>
       completedSessions.filter((s) => {
@@ -603,18 +601,10 @@ export default function GarageDashboard() {
   const filteredStats = useMemo(() => {
     const c = filteredCompleted.filter((s) => s.revenueConfirmed);
     const u = filteredCompleted.filter((s) => !s.revenueConfirmed);
-    const cash = c
-      .filter((s) => s.paymentMethod === 'cash')
-      .reduce((a, s) => a + getSessionRevenue(s), 0);
-    const instapay = c
-      .filter((s) => s.paymentMethod === 'instapay')
-      .reduce((a, s) => a + getSessionRevenue(s), 0);
-    const wallet = c
-      .filter((s) => s.paymentMethod === 'wallet')
-      .reduce((a, s) => a + getSessionRevenue(s), 0);
-    const cashwallet = c
-      .filter((s) => s.paymentMethod === 'cashwallet')
-      .reduce((a, s) => a + getSessionRevenue(s), 0);
+    const cash = c.filter((s) => s.paymentMethod === 'cash').reduce((a, s) => a + getSessionRevenue(s), 0);
+    const instapay = c.filter((s) => s.paymentMethod === 'instapay').reduce((a, s) => a + getSessionRevenue(s), 0);
+    const wallet = c.filter((s) => s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
+    const cashwallet = c.filter((s) => s.paymentMethod === 'cashwallet').reduce((a, s) => a + getSessionRevenue(s), 0);
     const manual = c.filter((s) => s.source === 'manual');
     const app = c.filter((s) => s.source === 'app');
     return {
@@ -693,18 +683,16 @@ export default function GarageDashboard() {
     return () => clearInterval(i);
   }, []);
 
-  // ═══ Sync price with garage ═══
+  // ═══ Sync price ═══
   useEffect(() => {
     if (garage) setNewCarPrice(garage.basePrice);
   }, [garage?.basePrice, garage]);
 
-  // ═══ Undo sessions cleanup ═══
+  // ═══ Undo cleanup ═══
   useEffect(() => {
     setUndoableSessions((p) =>
       p
-        .filter(
-          (u) => Math.floor((Date.now() - u.addedAt) / 1000) < UNDO_TIMEOUT_SECONDS
-        )
+        .filter((u) => Math.floor((Date.now() - u.addedAt) / 1000) < UNDO_TIMEOUT_SECONDS)
         .map((u) => {
           const e = sessions.find((s) => s.id === u.sessionId);
           if (!e) {
@@ -725,6 +713,7 @@ export default function GarageDashboard() {
   if (!garage) return null;
 
   // ═══ Handlers ═══
+
   const handleAddCar = async () => {
     if (!newCarPlate.trim()) {
       toast.error('أدخل رقم السيارة');
@@ -794,26 +783,10 @@ export default function GarageDashboard() {
       const pc = confirmPaymentMethod;
       const sd = useStore.getState().sessions.find((s) => s.id === sc.id);
       const ia = sd?.source === 'app';
-      const isFree = (sd as any)?.isFreeSession === true;
-      const customerPhone = (sd as any)?.customerPhone || '';
-      const carPlate = sd?.carPlate || sc.carPlate;
 
       setConfirmSession(null);
       setUndoableSessions((p) => p.filter((u) => u.sessionId !== sc.id));
       await endSession(sc.id, sc.cost, pc);
-
-      // ✅ تحديث الولاء للحريف
-      if (!isFree && customerPhone && carPlate) {
-        try {
-          const normalizedPlate = carPlate.trim().toUpperCase();
-          await supabase.rpc('increment_paid_sessions', {
-            p_phone: customerPhone,
-            p_plate: normalizedPlate,
-          });
-        } catch (e) {
-          console.error('❌ خطأ في تحديث الولاء:', e);
-        }
-      }
 
       if (ia) await new Promise((r) => setTimeout(r, 5000));
       await fetchGarageDailyStats();
@@ -899,7 +872,6 @@ export default function GarageDashboard() {
         startedBy: 'garage',
         incomingCarId: carId,
         addedBy: ab,
-        isFreeSession: (car as any).isFreeSession || false,
       } as any);
 
       await removeIncomingCar(carId);
@@ -935,13 +907,16 @@ export default function GarageDashboard() {
     return false;
   };
 
-  // ══════════ RENDER ══════════
+  // ══════════════════════════════════════════════════════════════
+  // ══════════════════════ RENDER ═══════════════════════════════
+  // ══════════════════════════════════════════════════════════════
+
   return (
     <div
       className="h-full overflow-y-auto"
       style={{ background: '#EBF2FF', color: '#0A1628', padding: 16 }}
     >
-      {/* Header */}
+      {/* ═══ Header ═══ */}
       <div className="flex justify-between items-center mb-5 pt-14">
         <button
           onClick={() => {
@@ -986,10 +961,7 @@ export default function GarageDashboard() {
                 </>
               )}
             </span>
-            <p
-              className="flex items-center gap-1"
-              style={{ fontSize: 11, color: '#7B8CA6' }}
-            >
+            <p className="flex items-center gap-1" style={{ fontSize: 11, color: '#7B8CA6' }}>
               <MapPin size={11} /> {garage.location}
             </p>
           </div>
@@ -1006,7 +978,7 @@ export default function GarageDashboard() {
         {isValet && <div style={{ width: 48 }} />}
       </div>
 
-      {/* Settings Modal */}
+      {/* ═══ Settings Modal ═══ */}
       {isOwner && showSettings && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -1023,7 +995,10 @@ export default function GarageDashboard() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-6">
-              <button onClick={() => setShowSettings(false)} style={{ color: '#94a3b8', fontSize: 20 }}>
+              <button
+                onClick={() => setShowSettings(false)}
+                style={{ color: '#94a3b8', fontSize: 20 }}
+              >
                 ✕
               </button>
               <h3 className="font-black flex items-center gap-2" style={{ fontSize: 18 }}>
@@ -1031,17 +1006,36 @@ export default function GarageDashboard() {
               </h3>
             </div>
 
-            {/* Price setting */}
+            {/* Price */}
             <div className="mb-6">
-              <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>
+              <label
+                className="font-black block text-right mb-2"
+                style={{ fontSize: 12, color: '#7B8CA6' }}
+              >
                 💰 سعر الساعة
               </label>
-              <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
+              <div
+                style={{
+                  background: '#F0F4FF',
+                  borderRadius: 22,
+                  padding: 16,
+                  border: '2px solid #D0DCFF',
+                }}
+              >
                 <div className="flex items-center justify-between gap-4">
                   <button
                     onClick={() => setEditPrice((p) => Math.max(5, p - 5))}
                     className="active:scale-90"
-                    style={{ background: '#FF3333', color: '#fff', width: 52, height: 52, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    style={{
+                      background: '#FF3333',
+                      color: '#fff',
+                      width: 52,
+                      height: 52,
+                      borderRadius: 16,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
                   >
                     <Minus size={22} />
                   </button>
@@ -1060,7 +1054,16 @@ export default function GarageDashboard() {
                   <button
                     onClick={() => setEditPrice((p) => p + 5)}
                     className="active:scale-90"
-                    style={{ background: '#00CC66', color: '#fff', width: 52, height: 52, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    style={{
+                      background: '#00CC66',
+                      color: '#fff',
+                      width: 52,
+                      height: 52,
+                      borderRadius: 16,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
                   >
                     <Plus size={22} />
                   </button>
@@ -1068,17 +1071,36 @@ export default function GarageDashboard() {
               </div>
             </div>
 
-            {/* Spots setting */}
+            {/* Spots */}
             <div className="mb-6">
-              <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>
+              <label
+                className="font-black block text-right mb-2"
+                style={{ fontSize: 12, color: '#7B8CA6' }}
+              >
                 🚗 الأماكن المتاحة
               </label>
-              <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
+              <div
+                style={{
+                  background: '#F0F4FF',
+                  borderRadius: 22,
+                  padding: 16,
+                  border: '2px solid #D0DCFF',
+                }}
+              >
                 <div className="flex items-center justify-between gap-4">
                   <button
                     onClick={() => setEditSpots((s) => Math.max(0, s - 1))}
                     className="active:scale-90"
-                    style={{ background: '#FF3333', color: '#fff', width: 52, height: 52, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    style={{
+                      background: '#FF3333',
+                      color: '#fff',
+                      width: 52,
+                      height: 52,
+                      borderRadius: 16,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
                   >
                     <Minus size={22} />
                   </button>
@@ -1086,7 +1108,11 @@ export default function GarageDashboard() {
                     <input
                       type="number"
                       value={editSpots}
-                      onChange={(e) => setEditSpots(Math.max(0, Math.min(editCapacity, parseInt(e.target.value) || 0)))}
+                      onChange={(e) =>
+                        setEditSpots(
+                          Math.max(0, Math.min(editCapacity, parseInt(e.target.value) || 0))
+                        )
+                      }
                       className="bg-transparent text-center w-full outline-none font-mono font-black"
                       style={{ fontSize: 40, color: '#0066FF' }}
                     />
@@ -1097,7 +1123,16 @@ export default function GarageDashboard() {
                   <button
                     onClick={() => setEditSpots((s) => Math.min(editCapacity, s + 1))}
                     className="active:scale-90"
-                    style={{ background: '#00CC66', color: '#fff', width: 52, height: 52, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    style={{
+                      background: '#00CC66',
+                      color: '#fff',
+                      width: 52,
+                      height: 52,
+                      borderRadius: 16,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
                   >
                     <Plus size={22} />
                   </button>
@@ -1105,17 +1140,36 @@ export default function GarageDashboard() {
               </div>
             </div>
 
-            {/* Capacity setting */}
+            {/* Capacity */}
             <div className="mb-6">
-              <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>
+              <label
+                className="font-black block text-right mb-2"
+                style={{ fontSize: 12, color: '#7B8CA6' }}
+              >
                 🏢 السعة
               </label>
-              <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
+              <div
+                style={{
+                  background: '#F0F4FF',
+                  borderRadius: 22,
+                  padding: 16,
+                  border: '2px solid #D0DCFF',
+                }}
+              >
                 <div className="flex items-center justify-between gap-4">
                   <button
                     onClick={() => setEditCapacity((c) => Math.max(editSpots, c - 10))}
                     className="active:scale-90"
-                    style={{ background: '#D0DCFF', color: '#64748b', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    style={{
+                      background: '#D0DCFF',
+                      color: '#64748b',
+                      width: 44,
+                      height: 44,
+                      borderRadius: 14,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
                   >
                     <Minus size={18} />
                   </button>
@@ -1123,7 +1177,9 @@ export default function GarageDashboard() {
                     <input
                       type="number"
                       value={editCapacity}
-                      onChange={(e) => setEditCapacity(Math.max(editSpots, parseInt(e.target.value) || editSpots))}
+                      onChange={(e) =>
+                        setEditCapacity(Math.max(editSpots, parseInt(e.target.value) || editSpots))
+                      }
                       className="bg-transparent text-center w-full outline-none font-mono font-black"
                       style={{ fontSize: 28, color: '#7C3AED' }}
                     />
@@ -1131,7 +1187,16 @@ export default function GarageDashboard() {
                   <button
                     onClick={() => setEditCapacity((c) => c + 10)}
                     className="active:scale-90"
-                    style={{ background: '#D0DCFF', color: '#64748b', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    style={{
+                      background: '#D0DCFF',
+                      color: '#64748b',
+                      width: 44,
+                      height: 44,
+                      borderRadius: 14,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
                   >
                     <Plus size={18} />
                   </button>
@@ -1141,18 +1206,59 @@ export default function GarageDashboard() {
 
             {/* Valet management */}
             <div className="mb-6">
-              <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>
+              <label
+                className="font-black block text-right mb-2"
+                style={{ fontSize: 12, color: '#7B8CA6' }}
+              >
                 🅿️ إدارة السياس
               </label>
-              <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
+              <div
+                style={{
+                  background: '#F0F4FF',
+                  borderRadius: 22,
+                  padding: 16,
+                  border: '2px solid #D0DCFF',
+                }}
+              >
                 {[
-                  { n: 1, name: editValet1Name, setName: setEditValet1Name, pass: editValet1Pass, setPass: setEditValet1Pass, color: '#0066FF' },
-                  { n: 2, name: editValet2Name, setName: setEditValet2Name, pass: editValet2Pass, setPass: setEditValet2Pass, color: '#7C3AED' },
-                  { n: 3, name: editValet3Name, setName: setEditValet3Name, pass: editValet3Pass, setPass: setEditValet3Pass, color: '#FF8800' },
+                  {
+                    n: 1,
+                    name: editValet1Name,
+                    setName: setEditValet1Name,
+                    pass: editValet1Pass,
+                    setPass: setEditValet1Pass,
+                    color: '#0066FF',
+                  },
+                  {
+                    n: 2,
+                    name: editValet2Name,
+                    setName: setEditValet2Name,
+                    pass: editValet2Pass,
+                    setPass: setEditValet2Pass,
+                    color: '#7C3AED',
+                  },
+                  {
+                    n: 3,
+                    name: editValet3Name,
+                    setName: setEditValet3Name,
+                    pass: editValet3Pass,
+                    setPass: setEditValet3Pass,
+                    color: '#FF8800',
+                  },
                 ].map((v, i) => (
-                  <div key={i} className={i < 2 ? 'mb-4 pb-4' : ''} style={i < 2 ? { borderBottom: '1px solid #D0DCFF' } : {}}>
+                  <div
+                    key={i}
+                    className={i < 2 ? 'mb-4 pb-4' : ''}
+                    style={i < 2 ? { borderBottom: '1px solid #D0DCFF' } : {}}
+                  >
                     <div className="flex items-center justify-between mb-2">
-                      <span className="font-bold" style={{ fontSize: 10, color: v.name || v.pass ? v.color : '#CBD5E1' }}>
+                      <span
+                        className="font-bold"
+                        style={{
+                          fontSize: 10,
+                          color: v.name || v.pass ? v.color : '#CBD5E1',
+                        }}
+                      >
                         {v.name || v.pass ? '✅' : '❌'}
                       </span>
                       <span className="font-black" style={{ fontSize: 12 }}>
@@ -1164,7 +1270,13 @@ export default function GarageDashboard() {
                       value={v.name}
                       onChange={(e) => v.setName(e.target.value)}
                       className="w-full text-right outline-none font-bold mb-2"
-                      style={{ background: '#fff', border: `2px solid ${v.name ? v.color : '#D0DCFF'}`, padding: 12, borderRadius: 14, fontSize: 14 }}
+                      style={{
+                        background: '#fff',
+                        border: `2px solid ${v.name ? v.color : '#D0DCFF'}`,
+                        padding: 12,
+                        borderRadius: 14,
+                        fontSize: 14,
+                      }}
                       placeholder={`اسم سايس ${v.n}`}
                     />
                     <input
@@ -1172,7 +1284,14 @@ export default function GarageDashboard() {
                       value={v.pass}
                       onChange={(e) => v.setPass(e.target.value)}
                       className="w-full text-center outline-none font-mono font-black"
-                      style={{ background: '#fff', border: `2px solid ${v.pass ? v.color : '#D0DCFF'}`, padding: 12, borderRadius: 14, fontSize: 16, letterSpacing: 3 }}
+                      style={{
+                        background: '#fff',
+                        border: `2px solid ${v.pass ? v.color : '#D0DCFF'}`,
+                        padding: 12,
+                        borderRadius: 14,
+                        fontSize: 16,
+                        letterSpacing: 3,
+                      }}
                       placeholder="كلمة مرور"
                     />
                   </div>
@@ -1183,7 +1302,13 @@ export default function GarageDashboard() {
             <button
               onClick={handleSaveSettings}
               className="w-full font-black flex items-center justify-center gap-2 active:scale-95"
-              style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', padding: 18, borderRadius: 20, fontSize: 15 }}
+              style={{
+                background: 'linear-gradient(135deg,#00CC66,#00AA55)',
+                color: '#fff',
+                padding: 18,
+                borderRadius: 20,
+                fontSize: 15,
+              }}
             >
               <Save size={20} /> حفظ
             </button>
@@ -1191,7 +1316,7 @@ export default function GarageDashboard() {
         </motion.div>
       )}
 
-      {/* Confirm Payment Modal */}
+      {/* ═══ Confirm Payment Modal ═══ */}
       {confirmSession && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -1205,15 +1330,30 @@ export default function GarageDashboard() {
             animate={{ y: 0 }}
             transition={{ type: 'spring', damping: 25 }}
             className="w-full max-w-sm"
-            style={{ background: '#fff', borderRadius: '32px 32px 20px 20px', padding: 24 }}
+            style={{
+              background: '#fff',
+              borderRadius: '32px 32px 20px 20px',
+              padding: 24,
+            }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mx-auto mb-5" style={{ width: 40, height: 4, background: '#D0DCFF', borderRadius: 4 }} />
+            <div
+              className="mx-auto mb-5"
+              style={{ width: 40, height: 4, background: '#D0DCFF', borderRadius: 4 }}
+            />
             <h3 className="font-black text-center mb-1" style={{ fontSize: 18 }}>
               تأكيد تحصيل السداد
             </h3>
 
-            <div className="mb-5" style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
+            <div
+              className="mb-5"
+              style={{
+                background: '#F0F4FF',
+                borderRadius: 22,
+                padding: 16,
+                border: '2px solid #D0DCFF',
+              }}
+            >
               <div className="flex justify-between items-center mb-3">
                 <span
                   className="font-bold"
@@ -1232,15 +1372,34 @@ export default function GarageDashboard() {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div className="text-center" style={{ background: '#fff', borderRadius: 16, padding: 12, border: '1px solid #E0EAFF' }}>
+                <div
+                  className="text-center"
+                  style={{
+                    background: '#fff',
+                    borderRadius: 16,
+                    padding: 12,
+                    border: '1px solid #E0EAFF',
+                  }}
+                >
                   <div style={{ fontSize: 11, color: '#7B8CA6' }}>المدة</div>
                   <div className="font-black font-mono" style={{ fontSize: 16 }}>
                     {confirmSession.minutes} د
                   </div>
                 </div>
-                <div className="text-center" style={{ background: '#fff', borderRadius: 16, padding: 12, border: '1px solid #E0EAFF' }}>
+                <div
+                  className="text-center"
+                  style={{
+                    background: '#fff',
+                    borderRadius: 16,
+                    padding: 12,
+                    border: '1px solid #E0EAFF',
+                  }}
+                >
                   <div style={{ fontSize: 11, color: '#7B8CA6' }}>المستحق</div>
-                  <div className="font-black font-mono" style={{ fontSize: 24, color: '#00AA44' }}>
+                  <div
+                    className="font-black font-mono"
+                    style={{ fontSize: 24, color: '#00AA44' }}
+                  >
                     {confirmSession.cost > 0 ? confirmSession.cost : '—'}
                   </div>
                 </div>
@@ -1248,41 +1407,54 @@ export default function GarageDashboard() {
             </div>
 
             <div className="mb-5">
-              <h4 className="font-black mb-3 text-right" style={{ fontSize: 12, color: '#7B8CA6' }}>
+              <h4
+                className="font-black mb-3 text-right"
+                style={{ fontSize: 12, color: '#7B8CA6' }}
+              >
                 طريقة السداد
               </h4>
               {confirmSession.source === 'manual' ? (
-                <div className="text-center" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', borderRadius: 18, padding: 18, color: '#fff' }}>
+                <div
+                  className="text-center"
+                  style={{
+                    background: 'linear-gradient(135deg,#00CC66,#00AA55)',
+                    borderRadius: 18,
+                    padding: 18,
+                    color: '#fff',
+                  }}
+                >
                   <div style={{ fontSize: 28 }}>💵</div>
-                  <div className="font-black" style={{ fontSize: 15 }}>نقدي</div>
+                  <div className="font-black" style={{ fontSize: 15 }}>
+                    نقدي
+                  </div>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { id: 'cash', label: 'نقدي', icon: '💵', bg: '#00CC66' },
-                    { id: 'instapay', label: 'إنستاباي', icon: '📱', bg: '#7C3AED' },
+                    { id: 'cash', label: 'نقدي', icon: '💵', bg: '#00CC66', disabled: false },
+                    { id: 'instapay', label: 'إنستاباي', icon: '📱', bg: '#7C3AED', disabled: false },
                     { id: 'wallet', label: 'المحفظة', icon: '👝', bg: '#0066FF', disabled: true },
-                    { id: 'cashwallet', label: 'محفظة كاش', icon: '📲', bg: '#FF8800' },
+                    { id: 'cashwallet', label: 'محفظة كاش', icon: '📲', bg: '#FF8800', disabled: false },
                   ].map((pm) => (
                     <button
                       key={pm.id}
-                      onClick={() => !(pm as any).disabled && setConfirmPaymentMethod(pm.id)}
-                      disabled={(pm as any).disabled}
+                      onClick={() => !pm.disabled && setConfirmPaymentMethod(pm.id)}
+                      disabled={pm.disabled}
                       className="text-center active:scale-95"
                       style={{
                         borderRadius: 18,
                         padding: 14,
-                        background: (pm as any).disabled
+                        background: pm.disabled
                           ? '#F0F4FF'
                           : confirmPaymentMethod === pm.id
                             ? pm.bg
                             : '#fff',
-                        color: (pm as any).disabled
+                        color: pm.disabled
                           ? '#94a3b8'
                           : confirmPaymentMethod === pm.id
                             ? '#fff'
                             : '#475569',
-                        border: (pm as any).disabled
+                        border: pm.disabled
                           ? '2px solid #D0DCFF'
                           : confirmPaymentMethod === pm.id
                             ? 'none'
@@ -1303,14 +1475,25 @@ export default function GarageDashboard() {
               <button
                 onClick={handleConfirmPayment}
                 className="flex-1 font-black flex items-center justify-center gap-2 active:scale-95"
-                style={{ padding: 18, borderRadius: 20, fontSize: 14, color: '#fff', background: 'linear-gradient(135deg,#00CC66,#00AA55)' }}
+                style={{
+                  padding: 18,
+                  borderRadius: 20,
+                  fontSize: 14,
+                  color: '#fff',
+                  background: 'linear-gradient(135deg,#00CC66,#00AA55)',
+                }}
               >
                 <CheckCircle size={20} /> تأكيد ({confirmSession.cost} ج.م)
               </button>
               <button
                 onClick={() => setConfirmSession(null)}
                 className="active:scale-95"
-                style={{ background: '#F0F4FF', padding: '0 20px', borderRadius: 20, color: '#7B8CA6' }}
+                style={{
+                  background: '#F0F4FF',
+                  padding: '0 20px',
+                  borderRadius: 20,
+                  color: '#7B8CA6',
+                }}
               >
                 <XCircle size={20} />
               </button>
@@ -1319,7 +1502,7 @@ export default function GarageDashboard() {
         </motion.div>
       )}
 
-      {/* Stats Cards */}
+      {/* ═══ Stats Cards ═══ */}
       <div className="grid grid-cols-3 gap-3 mb-5">
         {[
           {
@@ -1374,10 +1557,12 @@ export default function GarageDashboard() {
         ))}
       </div>
 
-      {/* ═══ السايس فقط ═══ */}
+      {/* ═══════════════════════════════════════════════════════ */}
+      {/* ═══ قسم السايس ═══ */}
+      {/* ═══════════════════════════════════════════════════════ */}
       {isValet && (
         <>
-          {/* Undo banner */}
+          {/* Undo banners */}
           <AnimatePresence>
             {undoableSessions.map((un) => {
               const rem = getUndoRemainingSeconds(un.addedAt);
@@ -1401,7 +1586,13 @@ export default function GarageDashboard() {
                       <button
                         onClick={() => handleUndoSession(un)}
                         className="font-black flex items-center gap-2 active:scale-95 shrink-0"
-                        style={{ background: '#FF3333', color: '#fff', padding: '12px 18px', borderRadius: 16, fontSize: 13 }}
+                        style={{
+                          background: '#FF3333',
+                          color: '#fff',
+                          padding: '12px 18px',
+                          borderRadius: 16,
+                          fontSize: 13,
+                        }}
                       >
                         <Undo2 size={18} /> تراجع
                       </button>
@@ -1429,7 +1620,13 @@ export default function GarageDashboard() {
               >
                 <span
                   className="font-black"
-                  style={{ background: '#0099DD', color: '#fff', fontSize: 12, padding: '3px 12px', borderRadius: 20 }}
+                  style={{
+                    background: '#0099DD',
+                    color: '#fff',
+                    fontSize: 12,
+                    padding: '3px 12px',
+                    borderRadius: 20,
+                  }}
                 >
                   {carsOnTheWay.length}
                 </span>
@@ -1443,14 +1640,24 @@ export default function GarageDashboard() {
                       key={car.id}
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
-                      style={{ background: '#fff', border: '2.5px solid #00BBE0', borderRadius: 24, padding: 18 }}
+                      style={{
+                        background: '#fff',
+                        border: '2.5px solid #00BBE0',
+                        borderRadius: 24,
+                        padding: 18,
+                      }}
                     >
                       <div className="flex justify-between items-start mb-4">
                         <div className="flex items-center gap-2">
                           <motion.div
                             animate={{ x: [0, -5, 0] }}
                             transition={{ repeat: Infinity, duration: 1.5 }}
-                            style={{ background: '#0099DD', borderRadius: 16, padding: 10, color: '#fff' }}
+                            style={{
+                              background: '#0099DD',
+                              borderRadius: 16,
+                              padding: 10,
+                              color: '#fff',
+                            }}
                           >
                             <CarFront size={22} />
                           </motion.div>
@@ -1474,7 +1681,12 @@ export default function GarageDashboard() {
 
                       <div
                         className="mb-3 space-y-2"
-                        style={{ background: '#F0F4FF', borderRadius: 18, padding: 14, border: '1px solid #D0DCFF' }}
+                        style={{
+                          background: '#F0F4FF',
+                          borderRadius: 18,
+                          padding: 14,
+                          border: '1px solid #D0DCFF',
+                        }}
                       >
                         <div className="flex items-center justify-between">
                           <a
@@ -1492,7 +1704,10 @@ export default function GarageDashboard() {
                           </div>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="font-black font-mono" style={{ fontSize: 15, color: '#00AA44' }}>
+                          <span
+                            className="font-black font-mono"
+                            style={{ fontSize: 15, color: '#00AA44' }}
+                          >
                             {car.agreedPrice} ج.م/ساعة
                           </span>
                           <div className="flex items-center gap-1" style={{ color: '#94a3b8' }}>
@@ -1508,14 +1723,25 @@ export default function GarageDashboard() {
                         <button
                           onClick={() => handleCarArrived(car)}
                           className="flex-1 font-black flex items-center justify-center gap-2 active:scale-95"
-                          style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', borderRadius: 18, padding: 14, fontSize: 13 }}
+                          style={{
+                            background: 'linear-gradient(135deg,#00CC66,#00AA55)',
+                            color: '#fff',
+                            borderRadius: 18,
+                            padding: 14,
+                            fontSize: 13,
+                          }}
                         >
                           <CheckCircle size={18} /> وصلت وبدء الحساب
                         </button>
                         <a
                           href={`tel:${car.customerPhone}`}
                           className="flex items-center justify-center active:scale-95"
-                          style={{ background: '#0066FF', color: '#fff', borderRadius: 18, padding: '0 16px' }}
+                          style={{
+                            background: '#0066FF',
+                            color: '#fff',
+                            borderRadius: 18,
+                            padding: '0 16px',
+                          }}
                         >
                           <Phone size={20} />
                         </a>
@@ -1542,7 +1768,12 @@ export default function GarageDashboard() {
                     key={o.id}
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    style={{ background: '#fff', border: '2.5px solid #FFD180', borderRadius: 24, padding: 18 }}
+                    style={{
+                      background: '#fff',
+                      border: '2.5px solid #FFD180',
+                      borderRadius: 24,
+                      padding: 18,
+                    }}
                   >
                     <div className="flex justify-between items-center mb-3">
                       <div className="font-black font-mono" style={{ fontSize: 22 }}>
@@ -1559,7 +1790,13 @@ export default function GarageDashboard() {
                           toast.success('تم القبول');
                         }}
                         className="flex-1 font-black flex items-center justify-center gap-1 active:scale-95"
-                        style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', borderRadius: 16, padding: 14, fontSize: 13 }}
+                        style={{
+                          background: 'linear-gradient(135deg,#00CC66,#00AA55)',
+                          color: '#fff',
+                          borderRadius: 16,
+                          padding: 14,
+                          fontSize: 13,
+                        }}
                       >
                         <CheckCircle size={18} /> قبول
                       </button>
@@ -1569,7 +1806,13 @@ export default function GarageDashboard() {
                           toast.error('تم الرفض');
                         }}
                         className="flex-1 font-black flex items-center justify-center gap-1 active:scale-95"
-                        style={{ background: 'linear-gradient(135deg,#FF3333,#CC0000)', color: '#fff', borderRadius: 16, padding: 14, fontSize: 13 }}
+                        style={{
+                          background: 'linear-gradient(135deg,#FF3333,#CC0000)',
+                          color: '#fff',
+                          borderRadius: 16,
+                          padding: 14,
+                          fontSize: 13,
+                        }}
                       >
                         <XCircle size={18} /> رفض
                       </button>
@@ -1588,38 +1831,65 @@ export default function GarageDashboard() {
                 disabled={garage.availableSpots <= 0}
                 className="w-full font-black flex items-center justify-center gap-2 active:scale-95"
                 style={{
-                  background: garage.availableSpots > 0 ? 'linear-gradient(135deg,#0066FF,#0044DD)' : '#D0DCFF',
+                  background:
+                    garage.availableSpots > 0
+                      ? 'linear-gradient(135deg,#0066FF,#0044DD)'
+                      : '#D0DCFF',
                   color: garage.availableSpots > 0 ? '#fff' : '#94a3b8',
                   borderRadius: 22,
                   padding: 18,
                   fontSize: 15,
                 }}
               >
-                <Plus size={22} /> {garage.availableSpots > 0 ? 'إضافة سيارة جديدة' : 'لا توجد أماكن'}
+                <Plus size={22} />{' '}
+                {garage.availableSpots > 0 ? 'إضافة سيارة جديدة' : 'لا توجد أماكن'}
               </button>
             ) : (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="space-y-3"
-                style={{ background: '#fff', border: '2.5px solid #0066FF', borderRadius: 24, padding: 18 }}
+                style={{
+                  background: '#fff',
+                  border: '2.5px solid #0066FF',
+                  borderRadius: 24,
+                  padding: 18,
+                }}
               >
                 <input
                   className="w-full font-bold text-right outline-none"
-                  style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 14, borderRadius: 18, fontSize: 15 }}
+                  style={{
+                    background: '#F0F4FF',
+                    border: '2px solid #D0DCFF',
+                    padding: 14,
+                    borderRadius: 18,
+                    fontSize: 15,
+                  }}
                   placeholder="رقم لوحة السيارة"
                   value={newCarPlate}
                   onChange={(e) => setNewCarPlate(e.target.value)}
                 />
                 <div>
-                  <label className="font-bold block text-right mb-1" style={{ fontSize: 11, color: '#7B8CA6' }}>
+                  <label
+                    className="font-bold block text-right mb-1"
+                    style={{ fontSize: 11, color: '#7B8CA6' }}
+                  >
                     💰 سعر الساعة
                   </label>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setNewCarPrice((p) => Math.max(5, p - 5))}
                       className="active:scale-90"
-                      style={{ background: '#FF3333', color: '#fff', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      style={{
+                        background: '#FF3333',
+                        color: '#fff',
+                        width: 44,
+                        height: 44,
+                        borderRadius: 14,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
                     >
                       <Minus size={18} />
                     </button>
@@ -1628,12 +1898,27 @@ export default function GarageDashboard() {
                       value={newCarPrice}
                       onChange={(e) => setNewCarPrice(Math.max(1, parseInt(e.target.value) || 1))}
                       className="flex-1 text-center font-black outline-none font-mono"
-                      style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 10, borderRadius: 14, fontSize: 20 }}
+                      style={{
+                        background: '#F0F4FF',
+                        border: '2px solid #D0DCFF',
+                        padding: 10,
+                        borderRadius: 14,
+                        fontSize: 20,
+                      }}
                     />
                     <button
                       onClick={() => setNewCarPrice((p) => p + 5)}
                       className="active:scale-90"
-                      style={{ background: '#00CC66', color: '#fff', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      style={{
+                        background: '#00CC66',
+                        color: '#fff',
+                        width: 44,
+                        height: 44,
+                        borderRadius: 14,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
                     >
                       <Plus size={18} />
                     </button>
@@ -1662,7 +1947,13 @@ export default function GarageDashboard() {
                   <button
                     onClick={handleAddCar}
                     className="flex-1 font-black active:scale-95"
-                    style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', borderRadius: 18, padding: 14, fontSize: 14 }}
+                    style={{
+                      background: 'linear-gradient(135deg,#00CC66,#00AA55)',
+                      color: '#fff',
+                      borderRadius: 18,
+                      padding: 14,
+                      fontSize: 14,
+                    }}
                   >
                     إضافة ({newCarPrice} ج.م/ساعة)
                   </button>
@@ -1673,7 +1964,14 @@ export default function GarageDashboard() {
                       setNewCarPrice(garage.basePrice);
                     }}
                     className="flex-1 font-black active:scale-95"
-                    style={{ background: '#F0F4FF', color: '#64748b', borderRadius: 18, padding: 14, fontSize: 14, border: '2px solid #D0DCFF' }}
+                    style={{
+                      background: '#F0F4FF',
+                      color: '#64748b',
+                      borderRadius: 18,
+                      padding: 14,
+                      fontSize: 14,
+                      border: '2px solid #D0DCFF',
+                    }}
                   >
                     إلغاء
                   </button>
@@ -1682,7 +1980,7 @@ export default function GarageDashboard() {
             )}
           </div>
 
-          {/* Active sessions for valet */}
+          {/* Active sessions */}
           <div className="mb-5">
             <h3
               className="font-black mb-3 flex items-center gap-2 justify-end"
@@ -1690,7 +1988,13 @@ export default function GarageDashboard() {
             >
               <span
                 className="font-bold"
-                style={{ fontSize: 10, background: '#FF9500', color: '#fff', padding: '3px 10px', borderRadius: 10 }}
+                style={{
+                  fontSize: 10,
+                  background: '#FF9500',
+                  color: '#fff',
+                  padding: '3px 10px',
+                  borderRadius: 10,
+                }}
               >
                 جلساتي: {valetActiveSessions.length}
               </span>
@@ -1700,7 +2004,14 @@ export default function GarageDashboard() {
               {activeSessions.length === 0 ? (
                 <div
                   className="text-center"
-                  style={{ background: '#fff', borderRadius: 22, padding: 28, border: '2px solid #D0DCFF', color: '#94a3b8', fontSize: 14 }}
+                  style={{
+                    background: '#fff',
+                    borderRadius: 22,
+                    padding: 28,
+                    border: '2px solid #D0DCFF',
+                    color: '#94a3b8',
+                    fontSize: 14,
+                  }}
                 >
                   لا توجد جلسات نشطة
                 </div>
@@ -1716,8 +2027,9 @@ export default function GarageDashboard() {
                   const isM = s.source === 'manual';
                   const addedBy = (s as any).addedBy || '';
                   const isMySession = checkIsMySession(addedBy);
-                  const isFree = (s as any).isFreeSession === true;
-                  const un = undoableSessions.find((u) => u.sessionId === s.id || u.localId === s.id);
+                  const un = undoableSessions.find(
+                    (u) => u.sessionId === s.id || u.localId === s.id
+                  );
 
                   return (
                     <div
@@ -1736,25 +2048,27 @@ export default function GarageDashboard() {
                             animate={{ scale: [1, 1.3, 1] }}
                             transition={{ repeat: Infinity, duration: 1.5 }}
                             className="rounded-full"
-                            style={{ width: 10, height: 10, background: isM ? '#FF9500' : '#00CC66' }}
+                            style={{
+                              width: 10,
+                              height: 10,
+                              background: isM ? '#FF9500' : '#00CC66',
+                            }}
                           />
                           <span style={{ fontSize: 12, color: '#7B8CA6' }}>
                             {formatElapsed(el)} • {hrs}ساعة
                           </span>
                           <span
                             className="font-bold"
-                            style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, background: isM ? '#FF9500' : '#0066FF', color: '#fff' }}
+                            style={{
+                              fontSize: 10,
+                              padding: '4px 10px',
+                              borderRadius: 12,
+                              background: isM ? '#FF9500' : '#0066FF',
+                              color: '#fff',
+                            }}
                           >
                             {isM ? 'يدوي' : 'تطبيق'}
                           </span>
-                          {isFree && (
-                            <span
-                              className="font-black"
-                              style={{ fontSize: 9, padding: '3px 8px', borderRadius: 10, background: '#D4AF37', color: '#0F172A' }}
-                            >
-                              🎁 مجانية
-                            </span>
-                          )}
                         </div>
                         <div className="font-black" style={{ fontSize: 15 }}>
                           🚗 {s.carPlate}
@@ -1782,16 +2096,38 @@ export default function GarageDashboard() {
                         <div className="flex items-center gap-2">
                           {isMySession ? (
                             <button
-                              onClick={() => openConfirmPayment(s.id, s.carPlate, cost, hrs, mins, s.source, s.agreedPrice)}
+                              onClick={() =>
+                                openConfirmPayment(
+                                  s.id,
+                                  s.carPlate,
+                                  cost,
+                                  hrs,
+                                  mins,
+                                  s.source,
+                                  s.agreedPrice
+                                )
+                              }
                               className="font-black active:scale-95"
-                              style={{ background: 'linear-gradient(135deg,#FF3333,#CC0000)', color: '#fff', padding: '10px 18px', borderRadius: 16, fontSize: 12 }}
+                              style={{
+                                background: 'linear-gradient(135deg,#FF3333,#CC0000)',
+                                color: '#fff',
+                                padding: '10px 18px',
+                                borderRadius: 16,
+                                fontSize: 12,
+                              }}
                             >
                               إنهاء وتحصيل
                             </button>
                           ) : (
                             <span
                               className="font-bold"
-                              style={{ fontSize: 10, color: '#94a3b8', padding: '8px 14px', background: '#F5F5F5', borderRadius: 14 }}
+                              style={{
+                                fontSize: 10,
+                                color: '#94a3b8',
+                                padding: '8px 14px',
+                                background: '#F5F5F5',
+                                borderRadius: 14,
+                              }}
                             >
                               🔒 جلسة سايس آخر
                             </span>
@@ -1802,14 +2138,23 @@ export default function GarageDashboard() {
                               animate={{ opacity: 1, scale: 1 }}
                               onClick={() => handleUndoSession(un)}
                               className="font-black flex items-center gap-1 active:scale-95"
-                              style={{ background: '#FF9500', color: '#fff', padding: '10px 14px', borderRadius: 14, fontSize: 11 }}
+                              style={{
+                                background: '#FF9500',
+                                color: '#fff',
+                                padding: '10px 14px',
+                                borderRadius: 14,
+                                fontSize: 11,
+                              }}
                             >
                               <Undo2 size={14} /> ({getUndoRemainingSeconds(un.addedAt)}ث)
                             </motion.button>
                           )}
                         </div>
-                        <div className="font-black font-mono" style={{ fontSize: 15, color: '#00AA44' }}>
-                          {isFree ? '🎁 مجاني' : `${cost} ج.م`}
+                        <div
+                          className="font-black font-mono"
+                          style={{ fontSize: 15, color: '#00AA44' }}
+                        >
+                          {cost} ج.م
                         </div>
                       </div>
                     </div>
@@ -1821,13 +2166,22 @@ export default function GarageDashboard() {
         </>
       )}
 
-      {/* Owner info bar */}
+      {/* ═══ Owner info bar ═══ */}
       {isOwner && (
         <div
           className="mb-5 flex items-center justify-between"
-          style={{ background: '#fff', borderRadius: 20, padding: '12px 16px', border: '2px solid #D0DCFF' }}
+          style={{
+            background: '#fff',
+            borderRadius: 20,
+            padding: '12px 16px',
+            border: '2px solid #D0DCFF',
+          }}
         >
-          <button onClick={openSettings} className="font-bold flex items-center gap-1" style={{ fontSize: 11, color: '#0066FF' }}>
+          <button
+            onClick={openSettings}
+            className="font-bold flex items-center gap-1"
+            style={{ fontSize: 11, color: '#0066FF' }}
+          >
             <Settings size={14} /> تعديل
           </button>
           <div className="flex items-center gap-3">
@@ -1837,7 +2191,9 @@ export default function GarageDashboard() {
                 {garage.basePrice}ج
               </span>
             </span>
-            <div style={{ width: 2, height: 14, background: '#D0DCFF', borderRadius: 2 }} />
+            <div
+              style={{ width: 2, height: 14, background: '#D0DCFF', borderRadius: 2 }}
+            />
             <span style={{ fontSize: 11, color: '#7B8CA6' }}>
               متاح:{' '}
               <span className="font-mono font-black" style={{ color: '#0066FF' }}>
@@ -1848,13 +2204,21 @@ export default function GarageDashboard() {
         </div>
       )}
 
-      {/* Valet info bar */}
+      {/* ═══ Valet info bar ═══ */}
       {isValet && (
         <div
           className="mb-5 flex items-center justify-between"
-          style={{ background: '#fff', borderRadius: 20, padding: '12px 16px', border: '2px solid #D0DCFF' }}
+          style={{
+            background: '#fff',
+            borderRadius: 20,
+            padding: '12px 16px',
+            border: '2px solid #D0DCFF',
+          }}
         >
-          <span className="font-bold flex items-center gap-1" style={{ fontSize: 11, color: '#FF9500' }}>
+          <span
+            className="font-bold flex items-center gap-1"
+            style={{ fontSize: 11, color: '#FF9500' }}
+          >
             <HardHat size={14} /> {currentValetName || `سايس ${valetNumber}`}
           </span>
           <div className="flex items-center gap-3">
@@ -1864,7 +2228,9 @@ export default function GarageDashboard() {
                 {garage.basePrice}ج
               </span>
             </span>
-            <div style={{ width: 2, height: 14, background: '#D0DCFF', borderRadius: 2 }} />
+            <div
+              style={{ width: 2, height: 14, background: '#D0DCFF', borderRadius: 2 }}
+            />
             <span style={{ fontSize: 11, color: '#7B8CA6' }}>
               متاح:{' '}
               <span className="font-mono font-black" style={{ color: '#0066FF' }}>
@@ -1875,23 +2241,43 @@ export default function GarageDashboard() {
         </div>
       )}
 
+      {/* ═══════════════════════════════════════════════════════ */}
       {/* ═══ سجل العمليات ═══ */}
+      {/* ═══════════════════════════════════════════════════════ */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
           <span
             className="font-bold"
-            style={{ fontSize: 11, background: '#fff', padding: '6px 12px', borderRadius: 12, border: '2px solid #D0DCFF', color: '#7B8CA6' }}
+            style={{
+              fontSize: 11,
+              background: '#fff',
+              padding: '6px 12px',
+              borderRadius: 12,
+              border: '2px solid #D0DCFF',
+              color: '#7B8CA6',
+            }}
           >
             {filteredCompleted.length} عملية
           </span>
-          <h3 className="font-black flex items-center gap-2" style={{ fontSize: 15, color: '#334155' }}>
+          <h3
+            className="font-black flex items-center gap-2"
+            style={{ fontSize: 15, color: '#334155' }}
+          >
             {isValet ? 'سجل عملياتي اليوم' : 'سجل العمليات'} <FileText size={16} />
           </h3>
         </div>
 
         {/* Owner filters */}
         {isOwner && (
-          <div className="mb-4" style={{ background: '#fff', borderRadius: 24, padding: 16, border: '2px solid #D0DCFF' }}>
+          <div
+            className="mb-4"
+            style={{
+              background: '#fff',
+              borderRadius: 24,
+              padding: 16,
+              border: '2px solid #D0DCFF',
+            }}
+          >
             <div className="flex items-center gap-2 mb-3 justify-end">
               <CalendarDays size={16} style={{ color: '#0066FF' }} />
               <span className="font-black" style={{ fontSize: 12, color: '#7B8CA6' }}>
@@ -1900,7 +2286,10 @@ export default function GarageDashboard() {
             </div>
             <div className="grid grid-cols-2 gap-2 mb-3">
               <div>
-                <label className="font-bold block text-right mb-1" style={{ fontSize: 10, color: '#94a3b8' }}>
+                <label
+                  className="font-bold block text-right mb-1"
+                  style={{ fontSize: 10, color: '#94a3b8' }}
+                >
                   من
                 </label>
                 <input
@@ -1908,11 +2297,20 @@ export default function GarageDashboard() {
                   value={logDateFrom}
                   onChange={(e) => setLogDateFrom(e.target.value)}
                   className="w-full font-bold outline-none"
-                  style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 12, borderRadius: 16, fontSize: 12 }}
+                  style={{
+                    background: '#F0F4FF',
+                    border: '2px solid #D0DCFF',
+                    padding: 12,
+                    borderRadius: 16,
+                    fontSize: 12,
+                  }}
                 />
               </div>
               <div>
-                <label className="font-bold block text-right mb-1" style={{ fontSize: 10, color: '#94a3b8' }}>
+                <label
+                  className="font-bold block text-right mb-1"
+                  style={{ fontSize: 10, color: '#94a3b8' }}
+                >
                   إلى
                 </label>
                 <input
@@ -1920,7 +2318,13 @@ export default function GarageDashboard() {
                   value={logDateTo}
                   onChange={(e) => setLogDateTo(e.target.value)}
                   className="w-full font-bold outline-none"
-                  style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 12, borderRadius: 16, fontSize: 12 }}
+                  style={{
+                    background: '#F0F4FF',
+                    border: '2px solid #D0DCFF',
+                    padding: 12,
+                    borderRadius: 16,
+                    fontSize: 12,
+                  }}
                 />
               </div>
             </div>
@@ -1931,7 +2335,13 @@ export default function GarageDashboard() {
                   setLogDateTo(getLocalToday());
                 }}
                 className="font-black active:scale-95"
-                style={{ background: '#0066FF', color: '#fff', padding: '10px 14px', borderRadius: 14, fontSize: 11 }}
+                style={{
+                  background: '#0066FF',
+                  color: '#fff',
+                  padding: '10px 14px',
+                  borderRadius: 14,
+                  fontSize: 11,
+                }}
               >
                 اليوم
               </button>
@@ -1945,7 +2355,14 @@ export default function GarageDashboard() {
                   setLogDateTo(getLocalToday());
                 }}
                 className="font-black active:scale-95"
-                style={{ background: '#F0F4FF', color: '#64748b', padding: '10px 14px', borderRadius: 14, fontSize: 11, border: '2px solid #D0DCFF' }}
+                style={{
+                  background: '#F0F4FF',
+                  color: '#64748b',
+                  padding: '10px 14px',
+                  borderRadius: 14,
+                  fontSize: 11,
+                  border: '2px solid #D0DCFF',
+                }}
               >
                 أسبوع
               </button>
@@ -1959,7 +2376,14 @@ export default function GarageDashboard() {
                   setLogDateTo(getLocalToday());
                 }}
                 className="font-black active:scale-95"
-                style={{ background: '#F0F4FF', color: '#64748b', padding: '10px 14px', borderRadius: 14, fontSize: 11, border: '2px solid #D0DCFF' }}
+                style={{
+                  background: '#F0F4FF',
+                  color: '#64748b',
+                  padding: '10px 14px',
+                  borderRadius: 14,
+                  fontSize: 11,
+                  border: '2px solid #D0DCFF',
+                }}
               >
                 شهر
               </button>
@@ -1996,7 +2420,12 @@ export default function GarageDashboard() {
         {isValet && (
           <div
             className="mb-4 text-center"
-            style={{ background: '#EBF2FF', borderRadius: 18, padding: '10px 16px', border: '2px solid #D0DCFF' }}
+            style={{
+              background: '#EBF2FF',
+              borderRadius: 18,
+              padding: '10px 16px',
+              border: '2px solid #D0DCFF',
+            }}
           >
             <span className="font-black" style={{ fontSize: 12, color: '#0066FF' }}>
               📅 {formatLocalDateArabic(getLocalToday())} - عملياتي فقط
@@ -2006,7 +2435,7 @@ export default function GarageDashboard() {
 
         {filteredCompleted.length > 0 && (
           <>
-            {/* Pending revenue */}
+            {/* Pending */}
             {filteredStats.pendingCount > 0 && (
               <div
                 className="mb-4"
@@ -2028,7 +2457,12 @@ export default function GarageDashboard() {
                     <div className="flex items-center gap-2 justify-end">
                       <span
                         className="font-black"
-                        style={{ fontSize: 11, background: 'rgba(255,255,255,0.2)', padding: '3px 10px', borderRadius: 10 }}
+                        style={{
+                          fontSize: 11,
+                          background: 'rgba(255,255,255,0.2)',
+                          padding: '3px 10px',
+                          borderRadius: 10,
+                        }}
                       >
                         {filteredStats.pendingCount} عملية
                       </span>
@@ -2036,10 +2470,19 @@ export default function GarageDashboard() {
                     </div>
                   </div>
                   <div className="text-left mr-4">
-                    <div className="font-black font-mono" style={{ fontSize: 28, textShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
+                    <div
+                      className="font-black font-mono"
+                      style={{
+                        fontSize: 28,
+                        textShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                      }}
+                    >
                       {filteredStats.pendingRevenue.toFixed(0)}
                     </div>
-                    <div className="font-bold text-center" style={{ fontSize: 11, opacity: 0.85 }}>
+                    <div
+                      className="font-bold text-center"
+                      style={{ fontSize: 11, opacity: 0.85 }}
+                    >
                       ج.م
                     </div>
                   </div>
@@ -2047,10 +2490,15 @@ export default function GarageDashboard() {
               </div>
             )}
 
-            {/* Total confirmed revenue */}
+            {/* Total confirmed */}
             <div
               className="mb-4 text-center"
-              style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', borderRadius: 24, padding: 22, color: '#fff' }}
+              style={{
+                background: 'linear-gradient(135deg,#00CC66,#00AA55)',
+                borderRadius: 24,
+                padding: 22,
+                color: '#fff',
+              }}
             >
               <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 4 }}>
                 {isValet
@@ -2069,14 +2517,29 @@ export default function GarageDashboard() {
             <div className="grid grid-cols-4 gap-2 mb-4">
               {[
                 { label: 'نقدي', value: filteredStats.cash, icon: '💵', bg: '#00CC66' },
-                { label: 'إنستاباي', value: filteredStats.instapay, icon: '📱', bg: '#7C3AED' },
+                {
+                  label: 'إنستاباي',
+                  value: filteredStats.instapay,
+                  icon: '📱',
+                  bg: '#7C3AED',
+                },
                 { label: 'محفظة', value: filteredStats.wallet, icon: '👝', bg: '#0066FF' },
-                { label: 'كاش', value: filteredStats.cashwallet, icon: '📲', bg: '#FF8800' },
+                {
+                  label: 'كاش',
+                  value: filteredStats.cashwallet,
+                  icon: '📲',
+                  bg: '#FF8800',
+                },
               ].map((p) => (
                 <div
                   key={p.label}
                   className="text-center"
-                  style={{ background: p.bg, borderRadius: 18, padding: '12px 6px', color: '#fff' }}
+                  style={{
+                    background: p.bg,
+                    borderRadius: 18,
+                    padding: '12px 6px',
+                    color: '#fff',
+                  }}
                 >
                   <div style={{ fontSize: 20, marginBottom: 2 }}>{p.icon}</div>
                   <div className="font-black font-mono" style={{ fontSize: 15 }}>
@@ -2092,13 +2555,28 @@ export default function GarageDashboard() {
             {/* Source breakdown */}
             <div className="grid grid-cols-2 gap-2 mb-4">
               {[
-                { label: 'يدوي', count: filteredStats.manualCount, total: filteredStats.manualTotal, bg: '#FF9500' },
-                { label: 'تطبيق', count: filteredStats.appCount, total: filteredStats.appTotal, bg: '#0066FF' },
+                {
+                  label: 'يدوي',
+                  count: filteredStats.manualCount,
+                  total: filteredStats.manualTotal,
+                  bg: '#FF9500',
+                },
+                {
+                  label: 'تطبيق',
+                  count: filteredStats.appCount,
+                  total: filteredStats.appTotal,
+                  bg: '#0066FF',
+                },
               ].map((x) => (
                 <div
                   key={x.label}
                   className="text-center"
-                  style={{ background: x.bg, borderRadius: 18, padding: 14, color: '#fff' }}
+                  style={{
+                    background: x.bg,
+                    borderRadius: 18,
+                    padding: 14,
+                    color: '#fff',
+                  }}
                 >
                   <div className="font-black" style={{ fontSize: 12, marginBottom: 4 }}>
                     {x.label}
@@ -2110,7 +2588,9 @@ export default function GarageDashboard() {
                     {' '}
                     عربية
                   </span>
-                  <div style={{ fontSize: 10, opacity: 0.8 }}>({x.total.toFixed(0)} ج.م)</div>
+                  <div style={{ fontSize: 10, opacity: 0.8 }}>
+                    ({x.total.toFixed(0)} ج.م)
+                  </div>
                 </div>
               ))}
             </div>
@@ -2136,7 +2616,10 @@ export default function GarageDashboard() {
                       }}
                     >
                       <div className="flex items-center justify-between mb-3">
-                        <div className="font-black font-mono" style={{ fontSize: 16, color: v.color }}>
+                        <div
+                          className="font-black font-mono"
+                          style={{ fontSize: 16, color: v.color }}
+                        >
                           {v.total.toFixed(0)} ج.م
                         </div>
                         <div className="flex items-center gap-2">
@@ -2144,7 +2627,10 @@ export default function GarageDashboard() {
                             <div className="font-black" style={{ fontSize: 14 }}>
                               {v.name}
                             </div>
-                            <div className="font-bold" style={{ fontSize: 10, color: '#94a3b8' }}>
+                            <div
+                              className="font-bold"
+                              style={{ fontSize: 10, color: '#94a3b8' }}
+                            >
                               {v.count} سيارة
                             </div>
                           </div>
@@ -2169,23 +2655,51 @@ export default function GarageDashboard() {
                       <div className="grid grid-cols-2 gap-2">
                         <div
                           className="text-center"
-                          style={{ background: '#EBF2FF', borderRadius: 14, padding: '8px 6px', border: '1px solid #D0DCFF' }}
+                          style={{
+                            background: '#EBF2FF',
+                            borderRadius: 14,
+                            padding: '8px 6px',
+                            border: '1px solid #D0DCFF',
+                          }}
                         >
-                          <div style={{ fontSize: 10, color: '#0066FF', fontWeight: 900 }}>📱 تطبيق</div>
-                          <div className="font-black font-mono" style={{ fontSize: 14, color: '#0066FF' }}>
+                          <div
+                            style={{ fontSize: 10, color: '#0066FF', fontWeight: 900 }}
+                          >
+                            📱 تطبيق
+                          </div>
+                          <div
+                            className="font-black font-mono"
+                            style={{ fontSize: 14, color: '#0066FF' }}
+                          >
                             {v.appCount}
                           </div>
-                          <div style={{ fontSize: 9, color: '#7B8CA6' }}>({v.appTotal.toFixed(0)} ج.م)</div>
+                          <div style={{ fontSize: 9, color: '#7B8CA6' }}>
+                            ({v.appTotal.toFixed(0)} ج.م)
+                          </div>
                         </div>
                         <div
                           className="text-center"
-                          style={{ background: '#FFF8F0', borderRadius: 14, padding: '8px 6px', border: '1px solid #FFD180' }}
+                          style={{
+                            background: '#FFF8F0',
+                            borderRadius: 14,
+                            padding: '8px 6px',
+                            border: '1px solid #FFD180',
+                          }}
                         >
-                          <div style={{ fontSize: 10, color: '#FF9500', fontWeight: 900 }}>✋ يدوي</div>
-                          <div className="font-black font-mono" style={{ fontSize: 14, color: '#FF9500' }}>
+                          <div
+                            style={{ fontSize: 10, color: '#FF9500', fontWeight: 900 }}
+                          >
+                            ✋ يدوي
+                          </div>
+                          <div
+                            className="font-black font-mono"
+                            style={{ fontSize: 14, color: '#FF9500' }}
+                          >
                             {v.manualCount}
                           </div>
-                          <div style={{ fontSize: 9, color: '#7B8CA6' }}>({v.manualTotal.toFixed(0)} ج.م)</div>
+                          <div style={{ fontSize: 9, color: '#7B8CA6' }}>
+                            ({v.manualTotal.toFixed(0)} ج.م)
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -2205,7 +2719,6 @@ export default function GarageDashboard() {
             const rev = getSessionRevenue(session);
             const isC = session.revenueConfirmed;
             const addedBy = (session as any).addedBy || '';
-            const isFree = (session as any).isFreeSession === true;
 
             return (
               <div
@@ -2219,27 +2732,38 @@ export default function GarageDashboard() {
               >
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono font-black" style={{ fontSize: 17, color: isM ? '#E65100' : '#0066FF' }}>
-                      {isFree ? '🎁 مجاني' : `${rev.toFixed(0)} ج.م`}
+                    <span
+                      className="font-mono font-black"
+                      style={{
+                        fontSize: 17,
+                        color: isM ? '#E65100' : '#0066FF',
+                      }}
+                    >
+                      {rev.toFixed(0)} ج.م
                     </span>
                     <span
                       className="font-black"
-                      style={{ fontSize: 11, padding: '5px 12px', borderRadius: 12, background: isM ? '#FF9500' : '#0066FF', color: '#fff' }}
+                      style={{
+                        fontSize: 11,
+                        padding: '5px 12px',
+                        borderRadius: 12,
+                        background: isM ? '#FF9500' : '#0066FF',
+                        color: '#fff',
+                      }}
                     >
                       {isM ? 'يدوي' : 'تطبيق'}
                     </span>
-                    {isFree && (
-                      <span
-                        className="font-black"
-                        style={{ fontSize: 9, padding: '3px 8px', borderRadius: 10, background: '#D4AF37', color: '#0F172A' }}
-                      >
-                        🎁
-                      </span>
-                    )}
                     {addedBy && isOwner && (
                       <span
                         className="font-bold"
-                        style={{ fontSize: 9, padding: '3px 8px', borderRadius: 10, background: '#EBF2FF', color: '#0066FF', border: '1px solid #D0DCFF' }}
+                        style={{
+                          fontSize: 9,
+                          padding: '3px 8px',
+                          borderRadius: 10,
+                          background: '#EBF2FF',
+                          color: '#0066FF',
+                          border: '1px solid #D0DCFF',
+                        }}
                       >
                         🅿️ {addedBy}
                       </span>
@@ -2252,18 +2776,34 @@ export default function GarageDashboard() {
                           toast.success('تأكيد ✅');
                         }}
                         className="font-black active:scale-95"
-                        style={{ background: '#FF9500', color: '#fff', padding: '3px 10px', borderRadius: 10, fontSize: 9 }}
+                        style={{
+                          background: '#FF9500',
+                          color: '#fff',
+                          padding: '3px 10px',
+                          borderRadius: 10,
+                          fontSize: 9,
+                        }}
                       >
                         ⏳ تأكيد
                       </button>
                     ) : (
-                      <span className="font-bold" style={{ fontSize: 9, color: '#00AA44' }}>
+                      <span
+                        className="font-bold"
+                        style={{ fontSize: 9, color: '#00AA44' }}
+                      >
                         ✅ مؤكد
                       </span>
                     )}
                   </div>
                   <div className="flex items-center gap-1">
-                    <span className="rounded-full" style={{ width: 6, height: 6, background: isM ? '#FF9500' : '#0066FF' }} />
+                    <span
+                      className="rounded-full"
+                      style={{
+                        width: 6,
+                        height: 6,
+                        background: isM ? '#FF9500' : '#0066FF',
+                      }}
+                    />
                     <span className="font-black" style={{ fontSize: 15 }}>
                       {session.carPlate}
                     </span>
@@ -2301,8 +2841,15 @@ export default function GarageDashboard() {
                   </div>
                   {time && (
                     <span className="font-mono font-black" style={{ fontSize: 12 }}>
-                      {time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })} ·{' '}
-                      {time.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}
+                      {time.toLocaleTimeString('ar-EG', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}{' '}
+                      ·{' '}
+                      {time.toLocaleDateString('ar-EG', {
+                        month: 'short',
+                        day: 'numeric',
+                      })}
                     </span>
                   )}
                 </div>
@@ -2310,7 +2857,15 @@ export default function GarageDashboard() {
             );
           })}
           {filteredCompleted.length === 0 && (
-            <div className="text-center" style={{ background: '#fff', borderRadius: 24, padding: 32, border: '2px solid #D0DCFF' }}>
+            <div
+              className="text-center"
+              style={{
+                background: '#fff',
+                borderRadius: 24,
+                padding: 32,
+                border: '2px solid #D0DCFF',
+              }}
+            >
               <div style={{ fontSize: 36, marginBottom: 12 }}>📭</div>
               <p className="font-bold" style={{ fontSize: 14, color: '#7B8CA6' }}>
                 {isValet ? 'لا توجد عمليات لك اليوم' : 'لا توجد عمليات'}
