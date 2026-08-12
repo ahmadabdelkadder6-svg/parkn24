@@ -76,7 +76,6 @@ const formatLocalDateArabic = (dateStr: string): string => {
   });
 };
 
-// ═══════════ Audio & Alerts ═══════════
 let audioCtxInstance: AudioContext | null = null;
 let audioCtxReady = false;
 
@@ -96,9 +95,7 @@ const initAudioContext = async (): Promise<AudioContext | null> => {
 const getAudioCtx = (): AudioContext | null => {
   if (!audioCtxInstance) return null;
   if (audioCtxInstance.state === 'closed') {
-    audioCtxInstance = null;
-    audioCtxReady = false;
-    return null;
+    audioCtxInstance = null; audioCtxReady = false; return null;
   }
   return audioCtxInstance;
 };
@@ -198,16 +195,6 @@ const fireApproachingAlert = (carPlate: string) => {
   );
 };
 
-// ═══════════════════════════════════════════════════
-// ✅ دالة مساعدة: تحدد اسم السايس الحالي للإسناد
-//    دايماً بترجع اسم السايس - مش "المالك"
-// ═══════════════════════════════════════════════════
-const getMyValetName = (): string => {
-  return localStorage.getItem('valetName')
-    || `سايس ${localStorage.getItem('valetNumber') || ''}`;
-};
-
-// ═══════════ Component ═══════════
 export default function GarageDashboard() {
   const {
     garages, currentGarageId, setCurrentGarageId, sessions, addSession, endSession,
@@ -234,9 +221,19 @@ export default function GarageDashboard() {
     });
   }, [garageSessions]);
 
+  // ═══════════════════════════════════════════════════════════════════
+  // ✅ جلسات السايس = جلساته اليدوية + جلسات التطبيق اللي اتسندت ليه
+  //    + جلسات التطبيق اللي لسه addedBy فاضي (بتتسند في useEffect)
+  // ═══════════════════════════════════════════════════════════════════
   const valetActiveSessions = useMemo(() => {
     if (!isValet || !currentValetNameLocal) return activeSessions;
-    return activeSessions.filter(s => (s as any).addedBy === currentValetNameLocal);
+    return activeSessions.filter(s => {
+      const addedBy = ((s as any).addedBy || '').trim();
+      if (addedBy === currentValetNameLocal) return true;
+      // جلسة حريف لسه ما اتسندتش → اعتبرها بتاعتي مؤقتاً
+      if (s.source === 'app' && addedBy === '') return true;
+      return false;
+    });
   }, [activeSessions, isValet, currentValetNameLocal]);
 
   const completedSessions = garageSessions.filter(s => s.status === 'completed');
@@ -277,49 +274,50 @@ export default function GarageDashboard() {
   const [garageDailyStats, setGarageDailyStats] = useState<DailyStat[]>([]);
 
   // ═══════════════════════════════════════════════════════════════════
-  // ✅ القلب النابض: إسناد جلسات التطبيق للسايس الموجود تلقائياً
+  // ✅ القلب النابض: إسناد جلسات الحريف للسايس الفاتح التطبيق
   //
-  //  أي جلسة app وaddedBy فاضي = حريف بدأها من شاشته
-  //  السايس الفاتح التطبيق يلقطها ويسندها لنفسه فوراً
-  //
-  //  ده معناه:
-  //  - لو سايس واحد فاتح → كل الجلسات تروحله
-  //  - لو اتنين فاتحين → أول واحد يلقطها ياخدها
-  //  - الجلسة تظهر عنده كـ "جلستي" ✅
-  //  - بعد القفل تتحسب في تقريره ✅
+  //  الحريف يبدأ جلسة → addedBy = ''
+  //  السايس فاتح → useEffect يلاقيها ويسندها لاسمه
+  //  الجلسة تظهر عنده كـ "جلستي" ✅
+  //  بعد القفل تظهر في تقريره ✅
   // ═══════════════════════════════════════════════════════════════════
   useEffect(() => {
-    // يشتغل للسايس والمالك كمان
+    if (!isValet) return;
     if (!currentGarageId) return;
-    if (!currentValetNameLocal && !isOwner) return;
-
-    const myName = currentValetNameLocal || getMyValetName();
-    if (!myName) return;
+    if (!currentValetNameLocal) return;
 
     const unassigned = sessions.filter(s => {
       if (s.garageId !== currentGarageId) return false;
-      if (s.status !== 'active') return false;
       if (s.source !== 'app') return false;
+      if (s.status !== 'active') return false;
       const addedBy = ((s as any).addedBy || '').trim();
-      // ✅ جلسة مش منسوبة لحد = الحريف بدأها
       return addedBy === '';
     });
 
     if (unassigned.length === 0) return;
 
-    unassigned.forEach(session => {
-      assignSessionToValet(session.id, myName);
+    unassigned.forEach(s => {
+      assignSessionToValet(s.id, currentValetNameLocal);
     });
-  }, [sessions, currentGarageId, currentValetNameLocal, isOwner, assignSessionToValet]);
+  }, [sessions, isValet, currentGarageId, currentValetNameLocal, assignSessionToValet]);
 
   // ═══ Realtime ═══
   useEffect(() => {
     if (!currentGarageId) return;
     const channel = supabase
       .channel(`garage-realtime-${currentGarageId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions', filter: `garage_id=eq.${currentGarageId}` }, async () => { await fetchAll(); await fetchGarageDailyStatsRef.current(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'incoming_cars', filter: `garage_id=eq.${currentGarageId}` }, async () => { await fetchAll(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'offers', filter: `garage_id=eq.${currentGarageId}` }, async () => { await fetchAll(); })
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'sessions',
+        filter: `garage_id=eq.${currentGarageId}`,
+      }, async () => { await fetchAll(); await fetchGarageDailyStatsRef.current(); })
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'incoming_cars',
+        filter: `garage_id=eq.${currentGarageId}`,
+      }, async () => { await fetchAll(); })
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'offers',
+        filter: `garage_id=eq.${currentGarageId}`,
+      }, async () => { await fetchAll(); })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [currentGarageId, fetchAll]);
@@ -334,12 +332,16 @@ export default function GarageDashboard() {
 
   useEffect(() => {
     if (!currentGarageId || garages.length === 0 || pushSubscribedGarageRef.current === currentGarageId) return;
-    (async () => { try { const s = await subscribeToPush(currentGarageId); if (s) pushSubscribedGarageRef.current = currentGarageId; } catch {} })();
+    (async () => {
+      try { const s = await subscribeToPush(currentGarageId); if (s) pushSubscribedGarageRef.current = currentGarageId; } catch {}
+    })();
   }, [currentGarageId, garages]);
 
   useEffect(() => {
     if (!currentGarageId) return;
-    const h = async () => { if (document.visibilityState === 'visible') { await refreshPushSubscriptionIfNeeded(currentGarageId); await fetchAll(); } };
+    const h = async () => {
+      if (document.visibilityState === 'visible') { await refreshPushSubscriptionIfNeeded(currentGarageId); await fetchAll(); }
+    };
     document.addEventListener('visibilitychange', h);
     return () => document.removeEventListener('visibilitychange', h);
   }, [currentGarageId, fetchAll]);
@@ -372,11 +374,15 @@ export default function GarageDashboard() {
   }, [carsOnTheWay, tick]);
 
   useEffect(() => {
-    garageOffers.forEach(o => { if (!prevOfferIdsRef.current.has(o.id)) toast(`💰 عرض جديد!\n🚗 ${o.carPlate} - ${o.offeredPrice} ج.م/ساعة`, { duration: 8000, icon: '💰' }); });
+    garageOffers.forEach(o => {
+      if (!prevOfferIdsRef.current.has(o.id)) toast(`💰 عرض جديد!\n🚗 ${o.carPlate} - ${o.offeredPrice} ج.م/ساعة`, { duration: 8000, icon: '💰' });
+    });
     prevOfferIdsRef.current = new Set(garageOffers.map(o => o.id));
   }, [garageOffers]);
 
-  useEffect(() => { return () => { try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }; }, []);
+  useEffect(() => {
+    return () => { try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} };
+  }, []);
 
   const fetchGarageDailyStats = useCallback(async () => {
     if (!currentGarageId) return;
@@ -395,25 +401,26 @@ export default function GarageDashboard() {
 
   const getSessionRevenue = useCallback((s: any) => {
     if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
-    if (s.endTime && s.startTime) return calculateCost(Math.max(0, Math.floor((toMs(s.endTime) - toMs(s.startTime)) / 1000)), Number(s.agreedPrice ?? garage?.basePrice ?? 0));
+    if (s.endTime && s.startTime) {
+      return calculateCost(
+        Math.max(0, Math.floor((toMs(s.endTime) - toMs(s.startTime)) / 1000)),
+        Number(s.agreedPrice ?? garage?.basePrice ?? 0),
+      );
+    }
     return 0;
   }, [garage?.basePrice]);
 
   // ═══════════════════════════════════════════════════════════════════
-  // ✅ إيراد السايس اليوم
-  //    بيحسب كل الجلسات اللي addedBy === اسمه
-  //    (يدوي + تطبيق اللي اتسندت ليه)
+  // ✅ إيراد السايس: جلساته المؤكدة (addedBy = اسمه أو فاضي من app)
   // ═══════════════════════════════════════════════════════════════════
   const valetTodayRevenue = useMemo(() => {
     if (!isValet) return 0;
-    const myName = currentValetNameLocal;
-    if (!myName) return 0;
     return completedSessions
       .filter(s => {
         if (!s.revenueConfirmed || !s.endTime) return false;
         if (timestampToLocalDate(toMs(s.endTime)) !== getLocalToday()) return false;
         const addedBy = ((s as any).addedBy || '').trim();
-        return addedBy === myName;
+        return addedBy === currentValetNameLocal || (s.source === 'app' && addedBy === '');
       })
       .reduce((a, s) => a + getSessionRevenue(s), 0);
   }, [isValet, completedSessions, currentValetNameLocal, getSessionRevenue]);
@@ -425,7 +432,11 @@ export default function GarageDashboard() {
     return completedSessions
       .filter(s => {
         if (!s.revenueConfirmed) return false;
-        if (s.endTime) { const d = timestampToLocalDate(toMs(s.endTime)); if (logDateFrom && d < logDateFrom) return false; if (logDateTo && d > logDateTo) return false; }
+        if (s.endTime) {
+          const d = timestampToLocalDate(toMs(s.endTime));
+          if (logDateFrom && d < logDateFrom) return false;
+          if (logDateTo && d > logDateTo) return false;
+        }
         return true;
       })
       .reduce((a, s) => a + getSessionRevenue(s), 0);
@@ -440,9 +451,7 @@ export default function GarageDashboard() {
   }, [garage?.basePrice]);
 
   // ═══════════════════════════════════════════════════════════════════
-  // ✅ فلترة العمليات المكتملة
-  //    السايس: يرى فقط addedBy === اسمه (يشمل يدوي + تطبيق)
-  //    المالك: يرى كل حاجة
+  // ✅ فلترة المكتملة: السايس يرى جلساته + جلسات الحريف اللي اتسندت له
   // ═══════════════════════════════════════════════════════════════════
   const filteredCompleted = useMemo(() => {
     return completedSessions.filter(s => {
@@ -454,7 +463,8 @@ export default function GarageDashboard() {
       if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter) return false;
       if (isValet && currentValetNameLocal) {
         const addedBy = ((s as any).addedBy || '').trim();
-        if (addedBy !== currentValetNameLocal) return false;
+        const isMine = addedBy === currentValetNameLocal || (s.source === 'app' && addedBy === '');
+        if (!isMine) return false;
       }
       return true;
     });
@@ -508,7 +518,10 @@ export default function GarageDashboard() {
     removeSession(un.sessionId);
     if (un.localId !== un.sessionId) removeSession(un.localId);
     const cs = useStore.getState().sessions;
-    const ms = cs.find(s => s.carPlate === un.carPlate && s.source === 'manual' && s.status === 'active' && Math.abs(toMs(s.startTime) - un.addedAt) < 5000);
+    const ms = cs.find(s =>
+      s.carPlate === un.carPlate && s.source === 'manual' && s.status === 'active' &&
+      Math.abs(toMs(s.startTime) - un.addedAt) < 5000,
+    );
     if (ms) removeSession(ms.id);
     setUndoableSessions(p => p.filter(u => u.sessionId !== un.sessionId && u.localId !== un.localId));
     toast('تم إلغاء ' + un.carPlate + ' ↩️', { icon: '🔙' });
@@ -526,7 +539,13 @@ export default function GarageDashboard() {
       p.filter(u => Math.floor((Date.now() - u.addedAt) / 1000) < UNDO_TIMEOUT_SECONDS)
         .map(u => {
           const e = sessions.find(s => s.id === u.sessionId);
-          if (!e) { const n = sessions.find(s => s.carPlate === u.carPlate && s.source === 'manual' && s.status === 'active' && Math.abs(toMs(s.startTime) - u.addedAt) < 5000); if (n) return { ...u, sessionId: n.id }; }
+          if (!e) {
+            const n = sessions.find(s =>
+              s.carPlate === u.carPlate && s.source === 'manual' && s.status === 'active' &&
+              Math.abs(toMs(s.startTime) - u.addedAt) < 5000,
+            );
+            if (n) return { ...u, sessionId: n.id };
+          }
           return u;
         }),
     );
@@ -535,19 +554,18 @@ export default function GarageDashboard() {
   if (!garage) return null;
 
   // ═══════════════════════════════════════════════════════════════════
-  // ✅ handleAddCar: السايس لما يضيف يدوي يتسند اسمه فوراً
+  // ✅ addedBy دايماً اسم السايس - مش "المالك"
   // ═══════════════════════════════════════════════════════════════════
   const handleAddCar = async () => {
     if (!newCarPlate.trim()) { toast.error('أدخل رقم السيارة'); return; }
     const cp = newCarPlate.trim();
     const pr = newCarPrice;
     const at = Date.now();
-    const myName = getMyValetName();
 
     const sid = await addSession({
       garageId: garage.id, carPlate: cp, startTime: at,
       status: 'active', source: 'manual', agreedPrice: pr,
-      addedBy: myName,
+      addedBy: isValet ? currentValetNameLocal : '',
     } as any);
 
     const fid = sid || `fallback-${at}`;
@@ -560,7 +578,10 @@ export default function GarageDashboard() {
     sid: string, cp: string, cost: number, hrs: number,
     mins: number, src: 'app' | 'manual', ap?: number,
   ) => {
-    const fc = cost > 0 ? cost : (() => { const s = activeSessions.find(s => s.id === sid); return s ? getActiveCost(s) : 0; })();
+    const fc = cost > 0 ? cost : (() => {
+      const s = activeSessions.find(s => s.id === sid);
+      return s ? getActiveCost(s) : 0;
+    })();
     setConfirmSession({ id: sid, carPlate: cp, cost: fc, hours: hrs, minutes: mins, source: src, agreedPrice: ap });
     setConfirmPaymentMethod('cash');
   };
@@ -580,7 +601,9 @@ export default function GarageDashboard() {
       if (ia) await new Promise(r => setTimeout(r, 5000));
       await fetchGarageDailyStats();
       toast.success(`تم تحصيل ${sc.cost} ج.م ✅`);
-    } finally { setTimeout(() => { isEndingSessionRef.current = false; }, 2000); }
+    } finally {
+      setTimeout(() => { isEndingSessionRef.current = false; }, 2000);
+    }
   };
 
   const handleSaveSettings = () => {
@@ -602,8 +625,7 @@ export default function GarageDashboard() {
   };
 
   // ═══════════════════════════════════════════════════════════════════
-  // ✅ handleCarArrived: لما السايس يضغط "وصلت" → يتسند اسمه
-  //    مش "المالك" - دايماً اسم السايس
+  // ✅ لما السايس يضغط "وصلت" → الجلسة تتسجل باسمه مباشرة
   // ═══════════════════════════════════════════════════════════════════
   const handleCarArrived = async (car: any) => {
     const carId: string = car.id;
@@ -613,27 +635,27 @@ export default function GarageDashboard() {
     pausePolling(10000);
     try {
       const np = carPlate.trim().toUpperCase();
-      const el = useStore.getState().sessions.find(s => s.carPlate.trim().toUpperCase() === np && s.status === 'active');
-      if (el) { await removeIncomingCar(carId); toast('الجلسة شغالة ✅', { icon: '🚗' }); return; }
+      const existing = useStore.getState().sessions.find(
+        s => s.carPlate.trim().toUpperCase() === np && s.status === 'active',
+      );
+      if (existing) { await removeIncomingCar(carId); toast('الجلسة شغالة ✅', { icon: '🚗' }); return; }
       const ro = offers.find(o => o.carPlate.trim().toUpperCase() === np && (o.status === 'pending' || o.status === 'accepted'));
       if (ro) cancelOffer(ro.id);
-
-      // ✅ دايماً اسم السايس - مش "المالك"
-      const myName = getMyValetName();
 
       await addSession({
         garageId: garage.id, carPlate: np, startTime: Date.now(),
         status: 'active', source: 'app',
         agreedPrice: car.agreedPrice, customerPhone: car.customerPhone,
         customerName: car.customerName, startedBy: 'garage',
-        incomingCarId: carId, addedBy: myName,
+        incomingCarId: carId,
+        // ✅ اسم السايس مباشرة - مش "المالك"
+        addedBy: isValet ? currentValetNameLocal : '',
       } as any);
 
       await removeIncomingCar(carId);
       await supabase.from('incoming_cars').delete().eq('car_plate', np).eq('garage_id', garage.id);
       toast.success(`بدأ حساب ${carPlate} 🚗`);
     } catch (e) {
-      console.error('❌', e);
       processedCarsRef.current.delete(carId);
       toast.error('خطأ، حاول تاني');
     }
@@ -648,24 +670,23 @@ export default function GarageDashboard() {
     valetNumber === '3' ? garage.valetName3 : '';
 
   // ═══════════════════════════════════════════════════════════════════
-  // ✅ هل الجلسة دي تبعي؟
-  //    المالك: كل الجلسات بتاعته
-  //    السايس: بس الجلسات اللي addedBy === اسمه
+  // ✅ هل الجلسة بتاعت السايس ده؟
+  //    - addedBy === اسمه ✅
+  //    - أو جلسة app مش منسوبة لحد (لسه في طريق الإسناد) ✅
   // ═══════════════════════════════════════════════════════════════════
-  const checkIsMySession = (addedBy: string): boolean => {
+  const checkIsMySession = (session: any): boolean => {
     if (isOwner) return true;
     if (!currentValetNameLocal) return true;
+    const addedBy = ((session as any).addedBy || '').trim();
     if (addedBy === currentValetNameLocal) return true;
+    if (session.source === 'app' && addedBy === '') return true;
     return false;
   };
 
-  // ══════════════════════════════════════════════════
-  // RENDER
-  // ══════════════════════════════════════════════════
   return (
     <div className="h-full overflow-y-auto" style={{ background: '#EBF2FF', color: '#0A1628', padding: 16 }}>
 
-      {/* ═══ Header ═══ */}
+      {/* Header */}
       <div className="flex justify-between items-center mb-5 pt-14">
         <button
           onClick={() => { localStorage.removeItem('garageRole'); localStorage.removeItem('valetNumber'); localStorage.removeItem('valetName'); setCurrentGarageId(null); }}
@@ -678,9 +699,7 @@ export default function GarageDashboard() {
           <h2 className="font-black" style={{ fontSize: 20 }}>{garage.name}</h2>
           <div className="flex items-center gap-2 justify-end mt-1">
             <span className="font-bold flex items-center gap-1" style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, background: isOwner ? '#0066FF' : '#FF9500', color: '#fff' }}>
-              {isOwner
-                ? <><Shield size={10} /> مالك</>
-                : <><HardHat size={10} /> سايس {valetNumber} {currentValetName && `- ${currentValetName}`}</>}
+              {isOwner ? <><Shield size={10} /> مالك</> : <><HardHat size={10} /> سايس {valetNumber} {currentValetName && `- ${currentValetName}`}</>}
             </span>
             <p className="flex items-center gap-1" style={{ fontSize: 11, color: '#7B8CA6' }}><MapPin size={11} /> {garage.location}</p>
           </div>
@@ -689,7 +708,7 @@ export default function GarageDashboard() {
         {isValet && <div style={{ width: 48 }} />}
       </div>
 
-      {/* ═══ Settings Modal ═══ */}
+      {/* Settings Modal */}
       {isOwner && showSettings && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)' }} onClick={() => setShowSettings(false)}>
           <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="w-full max-w-sm max-h-[90vh] overflow-y-auto" style={{ background: '#fff', borderRadius: 32, padding: 24 }} onClick={e => e.stopPropagation()}>
@@ -733,6 +752,7 @@ export default function GarageDashboard() {
                   <button onClick={() => setEditCapacity(c => Math.max(editSpots, c - 10))} className="active:scale-90" style={{ background: '#D0DCFF', color: '#64748b', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={18} /></button>
                   <div className="text-center flex-1">
                     <input type="number" value={editCapacity} onChange={e => setEditCapacity(Math.max(editSpots, parseInt(e.target.value) || editSpots))} className="bg-transparent text-center w-full outline-none font-mono font-black" style={{ fontSize: 28, color: '#7C3AED' }} />
+                    <div className="font-bold" style={{ fontSize: 11, color: '#94a3b8' }}>مكان إجمالي</div>
                   </div>
                   <button onClick={() => setEditCapacity(c => c + 10)} className="active:scale-90" style={{ background: '#D0DCFF', color: '#64748b', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={18} /></button>
                 </div>
@@ -764,7 +784,7 @@ export default function GarageDashboard() {
         </motion.div>
       )}
 
-      {/* ═══ Confirm Payment ═══ */}
+      {/* Confirm Payment Modal */}
       {confirmSession && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 flex items-end justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)' }} onClick={() => setConfirmSession(null)}>
           <motion.div initial={{ y: 100 }} animate={{ y: 0 }} transition={{ type: 'spring', damping: 25 }} className="w-full max-w-sm" style={{ background: '#fff', borderRadius: '32px 32px 20px 20px', padding: 24 }} onClick={e => e.stopPropagation()}>
@@ -821,12 +841,12 @@ export default function GarageDashboard() {
         </motion.div>
       )}
 
-      {/* ═══ Stats Cards ═══ */}
+      {/* Stats Cards */}
       <div className="grid grid-cols-3 gap-3 mb-5">
         {[
           { icon: <DollarSign size={22} />, value: totalRevenue.toFixed(0), label: isValet ? 'إيرادي اليوم' : 'مؤكد', bg: 'linear-gradient(135deg,#00CC66,#00AA55)', shadow: 'rgba(0,204,102,0.3)' },
           { icon: <Car size={22} />, value: garage.availableSpots, label: 'شاغر', bg: 'linear-gradient(135deg,#0066FF,#0044DD)', shadow: 'rgba(0,102,255,0.3)', onClick: isOwner ? openSettings : undefined },
-          { icon: isValet ? <Car size={22} /> : <DollarSign size={22} />, value: isValet ? activeSessions.length : garage.basePrice, label: isValet ? 'جلسات نشطة' : 'ج.م/ساعة', bg: 'linear-gradient(135deg,#7C3AED,#5B21B6)', shadow: 'rgba(124,58,237,0.3)', onClick: isOwner ? openSettings : undefined },
+          { icon: isValet ? <Car size={22} /> : <DollarSign size={22} />, value: isValet ? valetActiveSessions.length : garage.basePrice, label: isValet ? 'جلساتي' : 'ج.م/ساعة', bg: 'linear-gradient(135deg,#7C3AED,#5B21B6)', shadow: 'rgba(124,58,237,0.3)', onClick: isOwner ? openSettings : undefined },
         ].map((s, i) => (
           <div key={i} onClick={s.onClick} className={`text-center ${s.onClick ? 'cursor-pointer active:scale-95' : ''}`} style={{ background: s.bg, borderRadius: 22, padding: '18px 10px', color: '#fff', boxShadow: `0 6px 24px ${s.shadow}` }}>
             <div className="mx-auto mb-1" style={{ opacity: 0.9 }}>{s.icon}</div>
@@ -836,7 +856,7 @@ export default function GarageDashboard() {
         ))}
       </div>
 
-      {/* ═══ Valet Section ═══ */}
+      {/* ═══ السايس فقط ═══ */}
       {isValet && (
         <>
           <AnimatePresence>
@@ -858,6 +878,7 @@ export default function GarageDashboard() {
             })}
           </AnimatePresence>
 
+          {/* Cars on the way */}
           {carsOnTheWay.length > 0 && (
             <div className="mb-5">
               <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#0099DD' }}>
@@ -897,6 +918,7 @@ export default function GarageDashboard() {
             </div>
           )}
 
+          {/* Offers */}
           {garageOffers.length > 0 && (
             <div className="mb-5">
               <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#FF9500' }}>عروض أسعار ({garageOffers.length})</h3>
@@ -917,6 +939,7 @@ export default function GarageDashboard() {
             </div>
           )}
 
+          {/* Add car */}
           <div className="mb-5">
             {!showAddCar ? (
               <button onClick={() => setShowAddCar(true)} disabled={garage.availableSpots <= 0} className="w-full font-black flex items-center justify-center gap-2 active:scale-95"
@@ -947,16 +970,27 @@ export default function GarageDashboard() {
             )}
           </div>
 
+          {/* ═══════════════════════════════════════════════════════════════
+               ✅ الجلسات النشطة: بنعرض valetActiveSessions مش activeSessions
+                  عشان السايس يشوف جلساته بس (يدوي + تطبيق اللي اتسند له)
+              ═══════════════════════════════════════════════════════════════ */}
           <div className="mb-5">
             <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#00AA44' }}>
-              <span className="font-bold" style={{ fontSize: 10, background: '#FF9500', color: '#fff', padding: '3px 10px', borderRadius: 10 }}>جلساتي: {valetActiveSessions.length}</span>
-              الجلسات النشطة ({activeSessions.length}) <Clock size={16} />
+              <span className="font-bold" style={{ fontSize: 10, background: '#0066FF', color: '#fff', padding: '3px 10px', borderRadius: 10 }}>
+                الكل: {activeSessions.length}
+              </span>
+              <span className="font-bold" style={{ fontSize: 10, background: '#FF9500', color: '#fff', padding: '3px 10px', borderRadius: 10 }}>
+                جلساتي: {valetActiveSessions.length}
+              </span>
+              الجلسات النشطة <Clock size={16} />
             </h3>
             <div className="space-y-3">
-              {activeSessions.length === 0 ? (
-                <div className="text-center" style={{ background: '#fff', borderRadius: 22, padding: 28, border: '2px solid #D0DCFF', color: '#94a3b8', fontSize: 14 }}>لا توجد جلسات نشطة</div>
+              {valetActiveSessions.length === 0 ? (
+                <div className="text-center" style={{ background: '#fff', borderRadius: 22, padding: 28, border: '2px solid #D0DCFF', color: '#94a3b8', fontSize: 14 }}>
+                  لا توجد جلسات نشطة
+                </div>
               ) : (
-                activeSessions.map(s => {
+                valetActiveSessions.map(s => {
                   const st = toMs(s.startTime);
                   const el = st > 0 ? Math.max(0, Math.floor((Date.now() - st) / 1000)) : 0;
                   const mins = Math.floor(el / 60);
@@ -965,11 +999,11 @@ export default function GarageDashboard() {
                   const cost = calculateCost(el, rate);
                   const isM = s.source === 'manual';
                   const addedBy = (s as any).addedBy || '';
-                  const isMySession = checkIsMySession(addedBy);
+                  const isMySession = checkIsMySession(s);
                   const un = undoableSessions.find(u => u.sessionId === s.id || u.localId === s.id);
 
                   return (
-                    <div key={s.id} style={{ background: isM ? '#FFF8F0' : '#fff', border: `2.5px solid ${!isMySession ? '#E0E0E0' : isM ? '#FFD180' : '#D0DCFF'}`, borderRadius: 24, padding: 18, opacity: !isMySession ? 0.7 : 1 }}>
+                    <div key={s.id} style={{ background: isM ? '#FFF8F0' : '#F0F8FF', border: `2.5px solid ${isM ? '#FFD180' : '#A0C4FF'}`, borderRadius: 24, padding: 18 }}>
                       <div className="flex justify-between items-center mb-3">
                         <div className="flex items-center gap-2">
                           <motion.span animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 1.5 }} className="rounded-full" style={{ width: 10, height: 10, background: isM ? '#FF9500' : '#00CC66' }} />
@@ -978,22 +1012,26 @@ export default function GarageDashboard() {
                         </div>
                         <div className="font-black" style={{ fontSize: 15 }}>🚗 {s.carPlate}</div>
                       </div>
-                      {addedBy && (
-                        <div className="flex items-center justify-end gap-1 mb-2">
-                          <span className="font-bold" style={{ fontSize: 9, padding: '3px 8px', borderRadius: 10, background: isMySession ? '#E8F5E9' : '#F5F5F5', color: isMySession ? '#2E7D32' : '#757575' }}>
-                            {isMySession ? '👤 جلستي' : `🅿️ ${addedBy}`}
-                          </span>
-                        </div>
-                      )}
+
+                      <div className="flex items-center justify-end gap-1 mb-2">
+                        <span className="font-bold" style={{ fontSize: 9, padding: '3px 8px', borderRadius: 10, background: '#E8F5E9', color: '#2E7D32' }}>
+                          👤 جلستي
+                        </span>
+                      </div>
+
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-2">
-                          {isMySession ? (
-                            <button onClick={() => openConfirmPayment(s.id, s.carPlate, cost, hrs, mins, s.source, s.agreedPrice)} className="font-black active:scale-95" style={{ background: 'linear-gradient(135deg,#FF3333,#CC0000)', color: '#fff', padding: '10px 18px', borderRadius: 16, fontSize: 12 }}>إنهاء وتحصيل</button>
-                          ) : (
-                            <span className="font-bold" style={{ fontSize: 10, color: '#94a3b8', padding: '8px 14px', background: '#F5F5F5', borderRadius: 14 }}>🔒 جلسة سايس آخر</span>
-                          )}
-                          {un && isMySession && (
-                            <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} onClick={() => handleUndoSession(un)} className="font-black flex items-center gap-1 active:scale-95" style={{ background: '#FF9500', color: '#fff', padding: '10px 14px', borderRadius: 14, fontSize: 11 }}><Undo2 size={14} /> ({getUndoRemainingSeconds(un.addedAt)}ث)</motion.button>
+                          <button
+                            onClick={() => openConfirmPayment(s.id, s.carPlate, cost, hrs, mins, s.source, s.agreedPrice)}
+                            className="font-black active:scale-95"
+                            style={{ background: 'linear-gradient(135deg,#FF3333,#CC0000)', color: '#fff', padding: '10px 18px', borderRadius: 16, fontSize: 12 }}
+                          >
+                            إنهاء وتحصيل
+                          </button>
+                          {un && (
+                            <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} onClick={() => handleUndoSession(un)} className="font-black flex items-center gap-1 active:scale-95" style={{ background: '#FF9500', color: '#fff', padding: '10px 14px', borderRadius: 14, fontSize: 11 }}>
+                              <Undo2 size={14} /> ({getUndoRemainingSeconds(un.addedAt)}ث)
+                            </motion.button>
                           )}
                         </div>
                         <div className="font-black font-mono" style={{ fontSize: 15, color: '#00AA44' }}>{cost} ج.م</div>
@@ -1007,7 +1045,7 @@ export default function GarageDashboard() {
         </>
       )}
 
-      {/* ═══ Owner info bar ═══ */}
+      {/* Owner info bar */}
       {isOwner && (
         <div className="mb-5 flex items-center justify-between" style={{ background: '#fff', borderRadius: 20, padding: '12px 16px', border: '2px solid #D0DCFF' }}>
           <button onClick={openSettings} className="font-bold flex items-center gap-1" style={{ fontSize: 11, color: '#0066FF' }}><Settings size={14} /> تعديل</button>
@@ -1019,7 +1057,7 @@ export default function GarageDashboard() {
         </div>
       )}
 
-      {/* ═══ Valet info bar ═══ */}
+      {/* Valet info bar */}
       {isValet && (
         <div className="mb-5 flex items-center justify-between" style={{ background: '#fff', borderRadius: 20, padding: '12px 16px', border: '2px solid #D0DCFF' }}>
           <span className="font-bold flex items-center gap-1" style={{ fontSize: 11, color: '#FF9500' }}><HardHat size={14} /> {currentValetName || `سايس ${valetNumber}`}</span>
@@ -1166,7 +1204,7 @@ export default function GarageDashboard() {
             const isC = session.revenueConfirmed;
             const addedBy = (session as any).addedBy || '';
             return (
-              <div key={session.id} style={{ background: isC ? (isM ? '#FFF8F0' : '#EBF5FF') : '#FFF8F0', border: `2px solid ${isC ? (isM ? '#FFD180' : '#A0C4FF') : '#FFD180'}`, borderRadius: 18, padding: 14 }}>
+              <div key={session.id} style={{ background: isC ? (isM ? '#FFF8F0' : '#EBF5FF') : '#FFFBF0', border: `2px solid ${isC ? (isM ? '#FFD180' : '#A0C4FF') : '#FFD180'}`, borderRadius: 18, padding: 14 }}>
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono font-black" style={{ fontSize: 17, color: isM ? '#E65100' : '#0066FF' }}>{rev.toFixed(0)} ج.م</span>
