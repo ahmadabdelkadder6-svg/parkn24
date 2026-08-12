@@ -72,13 +72,11 @@ const timestampToLocalDate = (ts: number): string => {
 const formatLocalDateArabic = (dateStr: string): string => {
   const [y, m, d] = dateStr.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString('ar-EG', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   });
 };
 
+// ═══════════ Audio & Alerts ═══════════
 let audioCtxInstance: AudioContext | null = null;
 let audioCtxReady = false;
 
@@ -147,10 +145,8 @@ const playFirstAlert = async () => {
     ].forEach(({ freq, delay, dur }) => {
       const o = ctx!.createOscillator();
       const g = ctx!.createGain();
-      o.connect(g);
-      g.connect(ctx!.destination);
-      o.type = 'square';
-      o.frequency.value = freq;
+      o.connect(g); g.connect(ctx!.destination);
+      o.type = 'square'; o.frequency.value = freq;
       g.gain.setValueAtTime(0.5, ctx!.currentTime + delay);
       g.gain.exponentialRampToValueAtTime(0.01, ctx!.currentTime + delay + dur);
       o.start(ctx!.currentTime + delay);
@@ -160,8 +156,7 @@ const playFirstAlert = async () => {
 };
 
 const fireNewCarAlert = (carPlate: string, customerName?: string, agreedPrice?: number) => {
-  playFirstAlert();
-  vibrateDevice();
+  playFirstAlert(); vibrateDevice();
   sendNotification(
     '🚨 سيارة في الطريق!',
     [`🚗 ${carPlate}`, customerName ? `👤 ${customerName}` : '', agreedPrice ? `💰 ${agreedPrice} ج.م/ساعة` : '']
@@ -184,10 +179,8 @@ const playApproachingAlert = async () => {
     ].forEach(({ freq, delay, dur }) => {
       const o = ctx!.createOscillator();
       const g = ctx!.createGain();
-      o.connect(g);
-      g.connect(ctx!.destination);
-      o.type = 'square';
-      o.frequency.value = freq;
+      o.connect(g); g.connect(ctx!.destination);
+      o.type = 'square'; o.frequency.value = freq;
       g.gain.setValueAtTime(0.6, ctx!.currentTime + delay);
       g.gain.exponentialRampToValueAtTime(0.01, ctx!.currentTime + delay + dur);
       o.start(ctx!.currentTime + delay);
@@ -197,8 +190,7 @@ const playApproachingAlert = async () => {
 };
 
 const fireApproachingAlert = (carPlate: string) => {
-  playApproachingAlert();
-  vibrateDevice();
+  playApproachingAlert(); vibrateDevice();
   sendNotification(
     '🚗 سيارة على وشك الوصول!',
     `🚗 ${carPlate} - باقي أقل من دقيقتين ⏰`,
@@ -206,11 +198,12 @@ const fireApproachingAlert = (carPlate: string) => {
   );
 };
 
+// ═══════════ Component ═══════════
 export default function GarageDashboard() {
   const {
     garages, currentGarageId, setCurrentGarageId, sessions, addSession, endSession,
     removeSession, offers, updateOffer, cancelOffer, updateGarage, incomingCars,
-    removeIncomingCar, fetchAll, confirmRevenue,
+    removeIncomingCar, fetchAll, confirmRevenue, assignSessionToValet,
   } = useStore();
 
   const [garageRole] = useState<'owner' | 'valet'>(
@@ -232,6 +225,10 @@ export default function GarageDashboard() {
     });
   }, [garageSessions]);
 
+  // ═══════════════════════════════════════════════════════════════════
+  // ✅ الجلسات المنسوبة للسايس = جلساته اليدوية + جلسات التطبيق
+  //    اللي اتسندت ليه عن طريق assignSessionToValet
+  // ═══════════════════════════════════════════════════════════════════
   const valetActiveSessions = useMemo(() => {
     if (!isValet || !currentValetNameLocal) return activeSessions;
     return activeSessions.filter(s => (s as any).addedBy === currentValetNameLocal);
@@ -267,28 +264,64 @@ export default function GarageDashboard() {
   const [logDateTo, setLogDateTo] = useState(() => getLocalToday());
   const [logPaymentFilter, setLogPaymentFilter] = useState<string>('all');
   const [confirmSession, setConfirmSession] = useState<{
-    id: string;
-    carPlate: string;
-    cost: number;
-    hours: number;
-    minutes: number;
-    source: 'app' | 'manual';
-    agreedPrice?: number;
+    id: string; carPlate: string; cost: number; hours: number;
+    minutes: number; source: 'app' | 'manual'; agreedPrice?: number;
   } | null>(null);
   const [confirmPaymentMethod, setConfirmPaymentMethod] = useState('cash');
   const [tick, setTick] = useState(0);
   const [garageDailyStats, setGarageDailyStats] = useState<DailyStat[]>([]);
 
+  // ═══════════════════════════════════════════════════════════════════
+  // ✅ القلب النابض: إسناد جلسات التطبيق (source=app) للسايس تلقائياً
+  //
+  // السيناريو:
+  //   1. الحريف يبدأ الجلسة من شاشته → جلسة source='app' بدون addedBy
+  //   2. السايس فاتح التطبيق → الـ useEffect يكتشفها
+  //   3. يسندها فوراً لاسم السايس عبر assignSessionToValet
+  //   4. الجلسة تظهر عنده كـ "جلستي" ويقدر يقفلها
+  //   5. بعد القفل تظهر في تقريره وتقرير المالك
+  // ═══════════════════════════════════════════════════════════════════
+  useEffect(() => {
+    if (!isValet) return;
+    if (!currentGarageId) return;
+    if (!currentValetNameLocal) return;
+
+    const unassigned = sessions.filter(s => {
+      if (s.garageId !== currentGarageId) return false;
+      if (s.status !== 'active') return false;
+      if (s.source !== 'app') return false;
+      // فقط الجلسات اللي مفيهاش addedBy بعد (لم تُسند لأحد)
+      const addedBy = ((s as any).addedBy || '').trim();
+      return addedBy === '';
+    });
+
+    if (unassigned.length === 0) return;
+
+    unassigned.forEach(session => {
+      assignSessionToValet(session.id, currentValetNameLocal);
+    });
+  }, [sessions, isValet, currentGarageId, currentValetNameLocal, assignSessionToValet]);
+
+  // ═══ Realtime ═══
   useEffect(() => {
     if (!currentGarageId) return;
     const channel = supabase
       .channel(`garage-realtime-${currentGarageId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions', filter: `garage_id=eq.${currentGarageId}` }, async () => { await fetchAll(); await fetchGarageDailyStatsRef.current(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'incoming_cars', filter: `garage_id=eq.${currentGarageId}` }, async () => { await fetchAll(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'offers', filter: `garage_id=eq.${currentGarageId}` }, async () => { await fetchAll(); })
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'sessions',
+        filter: `garage_id=eq.${currentGarageId}`,
+      }, async () => { await fetchAll(); await fetchGarageDailyStatsRef.current(); })
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'incoming_cars',
+        filter: `garage_id=eq.${currentGarageId}`,
+      }, async () => { await fetchAll(); })
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'offers',
+        filter: `garage_id=eq.${currentGarageId}`,
+      }, async () => { await fetchAll(); })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [currentGarageId]);
+  }, [currentGarageId, fetchAll]);
 
   useEffect(() => {
     const init = async () => {
@@ -397,80 +430,82 @@ export default function GarageDashboard() {
   const getSessionRevenue = useCallback((s: any) => {
     if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
-      const st = toMs(s.startTime);
-      const en = toMs(s.endTime);
-      return calculateCost(Math.max(0, Math.floor((en - st) / 1000)), Number(s.agreedPrice ?? garage?.basePrice ?? 0));
+      return calculateCost(
+        Math.max(0, Math.floor((toMs(s.endTime) - toMs(s.startTime)) / 1000)),
+        Number(s.agreedPrice ?? garage?.basePrice ?? 0),
+      );
     }
     return 0;
   }, [garage?.basePrice]);
 
-const valetTodayRevenue = useMemo(() => {
-  if (!isValet) return 0;
-  return completedSessions
-    .filter(s => {
-      if (!s.revenueConfirmed) return false;
-      if (!s.endTime) return false;
-      if (timestampToLocalDate(toMs(s.endTime)) !== getLocalToday()) return false;
-      const addedBy = (s as any).addedBy || '';
-      // ✅ يحسب جلساته + جلسات الحريف
-      return addedBy === currentValetNameLocal
-        || addedBy === `سايس ${valetNumber}`
-        || addedBy === '';
-    })
-    .reduce((a, s) => a + getSessionRevenue(s), 0);
-}, [isValet, completedSessions, currentValetNameLocal, valetNumber, getSessionRevenue]);
+  // ═══════════════════════════════════════════════════════════════════
+  // ✅ إيراد السايس اليوم = جلساته (يدوي + تطبيق اللي اتسندت ليه)
+  //    الفلترة بتكون على addedBy === currentValetNameLocal فقط
+  //    لأن assignSessionToValet بيحدث الجلسة باسمه
+  // ═══════════════════════════════════════════════════════════════════
+  const valetTodayRevenue = useMemo(() => {
+    if (!isValet) return 0;
+    return completedSessions
+      .filter(s => {
+        if (!s.revenueConfirmed || !s.endTime) return false;
+        if (timestampToLocalDate(toMs(s.endTime)) !== getLocalToday()) return false;
+        const addedBy = ((s as any).addedBy || '').trim();
+        return addedBy === currentValetNameLocal;
+      })
+      .reduce((a, s) => a + getSessionRevenue(s), 0);
+  }, [isValet, completedSessions, currentValetNameLocal, getSessionRevenue]);
 
-const totalRevenue = useMemo(() => {
-  if (isValet) return valetTodayRevenue;
-  // ✅ المالك: يحسب كل العمليات المؤكدة (يدوي + تطبيق)
-  const fromStats = garageDailyStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0);
-  if (fromStats > 0) return fromStats;
-  // fallback: من الجلسات مباشرة
-  return completedSessions
-    .filter(s => {
-      if (!s.revenueConfirmed) return false;
-      if (s.endTime) {
-        const dateStr = timestampToLocalDate(toMs(s.endTime));
-        if (logDateFrom && dateStr < logDateFrom) return false;
-        if (logDateTo && dateStr > logDateTo) return false;
-      }
-      return true;
-    })
-    .reduce((a, s) => a + getSessionRevenue(s), 0);
-}, [isValet, valetTodayRevenue, garageDailyStats, completedSessions, getSessionRevenue, logDateFrom, logDateTo]);
+  const totalRevenue = useMemo(() => {
+    if (isValet) return valetTodayRevenue;
+    const fromStats = garageDailyStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0);
+    if (fromStats > 0) return fromStats;
+    return completedSessions
+      .filter(s => {
+        if (!s.revenueConfirmed) return false;
+        if (s.endTime) {
+          const d = timestampToLocalDate(toMs(s.endTime));
+          if (logDateFrom && d < logDateFrom) return false;
+          if (logDateTo && d > logDateTo) return false;
+        }
+        return true;
+      })
+      .reduce((a, s) => a + getSessionRevenue(s), 0);
+  }, [isValet, valetTodayRevenue, garageDailyStats, completedSessions, getSessionRevenue, logDateFrom, logDateTo]);
 
   const getActiveCost = useCallback((s: any) => {
-const st = toMs(s.startTime);
-const now = Date.now();
-const el = st > 0 ? Math.max(0, Math.floor((now - st) / 1000)) : 0;
+    const st = toMs(s.startTime);
+    const el = st > 0 ? Math.max(0, Math.floor((Date.now() - st) / 1000)) : 0;
     const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
-    if (isNaN(el) || el <= 0 || isNaN(r) || r <= 0) return 0;
+    if (el <= 0 || r <= 0) return 0;
     return calculateCost(el, r);
   }, [garage?.basePrice]);
 
-const filteredCompleted = useMemo(() => {
-  return completedSessions.filter(s => {
-    if (s.endTime) {
-      const dateStr = timestampToLocalDate(toMs(s.endTime));
-      if (isValet) {
-        if (dateStr !== getLocalToday()) return false;
-      } else {
-        if (logDateFrom && dateStr < logDateFrom) return false;
-        if (logDateTo && dateStr > logDateTo) return false;
+  // ═══════════════════════════════════════════════════════════════════
+  // ✅ فلترة العمليات المكتملة:
+  //    السايس يرى فقط العمليات اللي addedBy === اسمه
+  //    (يشمل يدوي + تطبيق اللي اتسند ليه)
+  // ═══════════════════════════════════════════════════════════════════
+  const filteredCompleted = useMemo(() => {
+    return completedSessions.filter(s => {
+      if (s.endTime) {
+        const d = timestampToLocalDate(toMs(s.endTime));
+        if (isValet) {
+          if (d !== getLocalToday()) return false;
+        } else {
+          if (logDateFrom && d < logDateFrom) return false;
+          if (logDateTo && d > logDateTo) return false;
+        }
       }
-    }
-    if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter) return false;
-    // ✅ السايس يرى: جلساته + جلسات الحريف اللي اتنهت (addedBy فاضي أو اسمه)
-    if (isValet && currentValetNameLocal) {
-      const addedBy = (s as any).addedBy || '';
-      const isMySession = addedBy === currentValetNameLocal
-        || addedBy === `سايس ${valetNumber}`
-        || addedBy === '';  // ✅ جلسات الحريف
-      if (!isMySession) return false;
-    }
-    return true;
-  });
-}, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, currentValetNameLocal, valetNumber]);
+      if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter) return false;
+
+      if (isValet && currentValetNameLocal) {
+        const addedBy = ((s as any).addedBy || '').trim();
+        // ✅ السايس يرى فقط جلساته (بعد الإسناد كلها بتكون باسمه)
+        if (addedBy !== currentValetNameLocal) return false;
+      }
+      return true;
+    });
+  }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, currentValetNameLocal]);
 
   const filteredStats = useMemo(() => {
     const c = filteredCompleted.filter(s => s.revenueConfirmed);
@@ -479,13 +514,12 @@ const filteredCompleted = useMemo(() => {
     const instapay = c.filter(s => s.paymentMethod === 'instapay').reduce((a, s) => a + getSessionRevenue(s), 0);
     const wallet = c.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
     const cashwallet = c.filter(s => s.paymentMethod === 'cashwallet').reduce((a, s) => a + getSessionRevenue(s), 0);
-    const total = cash + instapay + wallet + cashwallet;
     const manual = c.filter(s => s.source === 'manual');
     const app = c.filter(s => s.source === 'app');
     return {
-      cash, instapay, wallet, cashwallet, total,
-      manualCount: manual.length,
-      appCount: app.length,
+      cash, instapay, wallet, cashwallet,
+      total: cash + instapay + wallet + cashwallet,
+      manualCount: manual.length, appCount: app.length,
       manualTotal: manual.reduce((a, s) => a + getSessionRevenue(s), 0),
       appTotal: app.reduce((a, s) => a + getSessionRevenue(s), 0),
       pendingRevenue: u.reduce((a, s) => a + getSessionRevenue(s), 0),
@@ -493,6 +527,10 @@ const filteredCompleted = useMemo(() => {
     };
   }, [filteredCompleted, getSessionRevenue]);
 
+  // ═══════════════════════════════════════════════════════════════════
+  // ✅ تقرير السياس للمالك: يعرض كل الجلسات اللي addedBy === اسم السايس
+  //    يشمل يدوي + تطبيق (اللي اتسندت ليه تلقائياً)
+  // ═══════════════════════════════════════════════════════════════════
   const valetReport = useMemo(() => {
     if (!garage || !isOwner) return [];
     return [
@@ -502,14 +540,13 @@ const filteredCompleted = useMemo(() => {
     ]
       .filter(v => v.name?.trim())
       .map(v => {
+        // ✅ يجيب كل الجلسات اللي addedBy === اسم السايس (يدوي + تطبيق)
         const vs = filteredCompleted.filter(s => (s as any).addedBy === v.name);
         const ac = vs.filter(s => s.source === 'app' && s.revenueConfirmed);
         const mc = vs.filter(s => s.source === 'manual' && s.revenueConfirmed);
         return {
-          ...v,
-          count: vs.length,
-          appCount: ac.length,
-          manualCount: mc.length,
+          ...v, count: vs.length,
+          appCount: ac.length, manualCount: mc.length,
           appTotal: ac.reduce((a, s) => a + getSessionRevenue(s), 0),
           manualTotal: mc.reduce((a, s) => a + getSessionRevenue(s), 0),
           total: [...ac, ...mc].reduce((a, s) => a + getSessionRevenue(s), 0),
@@ -524,9 +561,7 @@ const filteredCompleted = useMemo(() => {
     if (un.localId !== un.sessionId) removeSession(un.localId);
     const cs = useStore.getState().sessions;
     const ms = cs.find(s =>
-      s.carPlate === un.carPlate &&
-      s.source === 'manual' &&
-      s.status === 'active' &&
+      s.carPlate === un.carPlate && s.source === 'manual' && s.status === 'active' &&
       Math.abs(toMs(s.startTime) - un.addedAt) < 5000,
     );
     if (ms) removeSession(ms.id);
@@ -550,15 +585,12 @@ const filteredCompleted = useMemo(() => {
 
   useEffect(() => {
     setUndoableSessions(p =>
-      p
-        .filter(u => Math.floor((Date.now() - u.addedAt) / 1000) < UNDO_TIMEOUT_SECONDS)
+      p.filter(u => Math.floor((Date.now() - u.addedAt) / 1000) < UNDO_TIMEOUT_SECONDS)
         .map(u => {
           const e = sessions.find(s => s.id === u.sessionId);
           if (!e) {
             const n = sessions.find(s =>
-              s.carPlate === u.carPlate &&
-              s.source === 'manual' &&
-              s.status === 'active' &&
+              s.carPlate === u.carPlate && s.source === 'manual' && s.status === 'active' &&
               Math.abs(toMs(s.startTime) - u.addedAt) < 5000,
             );
             if (n) return { ...u, sessionId: n.id };
@@ -575,10 +607,20 @@ const filteredCompleted = useMemo(() => {
     const cp = newCarPlate.trim();
     const pr = newCarPrice;
     const at = Date.now();
+
+    // ✅ السايس لما يضيف سيارة يدوي، يتسند الاسم فوراً
+    const valetNameLS = localStorage.getItem('valetName') || '';
+    const garageRoleLS = localStorage.getItem('garageRole') || '';
+    const addedByForManual = garageRoleLS === 'owner'
+      ? 'المالك'
+      : valetNameLS || `سايس ${localStorage.getItem('valetNumber') || ''}`;
+
     const sid = await addSession({
       garageId: garage.id, carPlate: cp, startTime: at,
       status: 'active', source: 'manual', agreedPrice: pr,
-    });
+      addedBy: addedByForManual,
+    } as any);
+
     const fid = sid || `fallback-${at}`;
     setUndoableSessions(p => [...p, { sessionId: fid, localId: fid, carPlate: cp, price: pr, addedAt: at }]);
     toast.success(`تم إضافة السيارة بسعر ${pr} ج.م/ساعة`);
@@ -623,27 +665,20 @@ const filteredCompleted = useMemo(() => {
       basePrice: editPrice,
       availableSpots: Math.min(editSpots, editCapacity),
       capacity: editCapacity,
-      valetName1: editValet1Name.trim(),
-      valetPassword1: editValet1Pass.trim(),
-      valetName2: editValet2Name.trim(),
-      valetPassword2: editValet2Pass.trim(),
-      valetName3: editValet3Name.trim(),
-      valetPassword3: editValet3Pass.trim(),
+      valetName1: editValet1Name.trim(), valetPassword1: editValet1Pass.trim(),
+      valetName2: editValet2Name.trim(), valetPassword2: editValet2Pass.trim(),
+      valetName3: editValet3Name.trim(), valetPassword3: editValet3Pass.trim(),
     });
     toast.success('تم تحديث الإعدادات ⚡');
     setShowSettings(false);
   };
 
   const openSettings = () => {
-    setEditPrice(garage.basePrice);
-    setEditSpots(garage.availableSpots);
+    setEditPrice(garage.basePrice); setEditSpots(garage.availableSpots);
     setEditCapacity(garage.capacity);
-    setEditValet1Name(garage.valetName1 || '');
-    setEditValet1Pass(garage.valetPassword1 || '');
-    setEditValet2Name(garage.valetName2 || '');
-    setEditValet2Pass(garage.valetPassword2 || '');
-    setEditValet3Name(garage.valetName3 || '');
-    setEditValet3Pass(garage.valetPassword3 || '');
+    setEditValet1Name(garage.valetName1 || ''); setEditValet1Pass(garage.valetPassword1 || '');
+    setEditValet2Name(garage.valetName2 || ''); setEditValet2Pass(garage.valetPassword2 || '');
+    setEditValet3Name(garage.valetName3 || ''); setEditValet3Pass(garage.valetPassword3 || '');
     setShowSettings(true);
   };
 
@@ -675,16 +710,12 @@ const filteredCompleted = useMemo(() => {
         : valetNameLS || `سايس ${localStorage.getItem('valetNumber') || ''}`;
 
       await addSession({
-        garageId: garage.id,
-        carPlate: np,
-        startTime: Date.now(),
-        status: 'active',
-        source: 'app',
-        agreedPrice: car.agreedPrice,
-        customerPhone: car.customerPhone,
-        customerName: car.customerName,
-        startedBy: 'garage',
+        garageId: garage.id, carPlate: np, startTime: Date.now(),
+        status: 'active', source: 'app',
+        agreedPrice: car.agreedPrice, customerPhone: car.customerPhone,
+        customerName: car.customerName, startedBy: 'garage',
         incomingCarId: carId,
+        // ✅ السايس اللي ضغط "وصلت" يتسند الجلسة ليه فوراً
         addedBy: addedByForSession,
       } as any);
 
@@ -706,16 +737,21 @@ const filteredCompleted = useMemo(() => {
     valetNumber === '2' ? garage.valetName2 :
     valetNumber === '3' ? garage.valetName3 : '';
 
-  // ✅ دالة مساعدة لتحديد isMySession بشكل صحيح
+  // ═══════════════════════════════════════════════════════════════════
+  // ✅ تحديد هل الجلسة دي تبع السايس ده؟
+  //    بعد الإسناد، كل جلسات السايس بتكون addedBy === اسمه
+  // ═══════════════════════════════════════════════════════════════════
   const checkIsMySession = (addedBy: string): boolean => {
     if (isOwner) return true;
     if (!currentValetNameLocal) return true;
-    if (addedBy === '') return true;
     if (addedBy === currentValetNameLocal) return true;
     if (addedBy === `سايس ${valetNumber}`) return true;
     return false;
   };
 
+  // ══════════════════════════════════════════════════
+  // RENDER
+  // ══════════════════════════════════════════════════
   return (
     <div className="h-full overflow-y-auto" style={{ background: '#EBF2FF', color: '#0A1628', padding: 16 }}>
 
@@ -750,11 +786,7 @@ const filteredCompleted = useMemo(() => {
           </div>
         </div>
         {isOwner && (
-          <button
-            onClick={openSettings}
-            className="active:scale-90"
-            style={{ background: '#0066FF', padding: 14, borderRadius: 20, color: '#fff' }}
-          >
+          <button onClick={openSettings} className="active:scale-90" style={{ background: '#0066FF', padding: 14, borderRadius: 20, color: '#fff' }}>
             <Settings size={20} />
           </button>
         )}
@@ -764,15 +796,13 @@ const filteredCompleted = useMemo(() => {
       {/* ═══ Settings Modal ═══ */}
       {isOwner && showSettings && (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }}
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)' }}
           onClick={() => setShowSettings(false)}
         >
           <motion.div
-            initial={{ scale: 0.9 }}
-            animate={{ scale: 1 }}
+            initial={{ scale: 0.9 }} animate={{ scale: 1 }}
             className="w-full max-w-sm max-h-[90vh] overflow-y-auto"
             style={{ background: '#fff', borderRadius: 32, padding: 24 }}
             onClick={e => e.stopPropagation()}
@@ -784,6 +814,7 @@ const filteredCompleted = useMemo(() => {
               </h3>
             </div>
 
+            {/* Price */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>💰 سعر الساعة</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
@@ -802,6 +833,7 @@ const filteredCompleted = useMemo(() => {
               </div>
             </div>
 
+            {/* Spots */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🚗 الأماكن المتاحة</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
@@ -820,6 +852,7 @@ const filteredCompleted = useMemo(() => {
               </div>
             </div>
 
+            {/* Capacity */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🏢 السعة الكلية</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
@@ -838,6 +871,7 @@ const filteredCompleted = useMemo(() => {
               </div>
             </div>
 
+            {/* Valets */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🅿️ إدارة السياس</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
@@ -853,32 +887,14 @@ const filteredCompleted = useMemo(() => {
                       </span>
                       <span className="font-black" style={{ fontSize: 12 }}>🅿️ سايس {v.n}</span>
                     </div>
-                    <input
-                      type="text"
-                      value={v.name}
-                      onChange={e => v.setName(e.target.value)}
-                      className="w-full text-right outline-none font-bold mb-2"
-                      style={{ background: '#fff', border: `2px solid ${v.name ? v.color : '#D0DCFF'}`, padding: 12, borderRadius: 14, fontSize: 14 }}
-                      placeholder={`اسم سايس ${v.n}`}
-                    />
-                    <input
-                      type="text"
-                      value={v.pass}
-                      onChange={e => v.setPass(e.target.value)}
-                      className="w-full text-center outline-none font-mono font-black"
-                      style={{ background: '#fff', border: `2px solid ${v.pass ? v.color : '#D0DCFF'}`, padding: 12, borderRadius: 14, fontSize: 16, letterSpacing: 3 }}
-                      placeholder={`كلمة مرور سايس ${v.n}`}
-                    />
+                    <input type="text" value={v.name} onChange={e => v.setName(e.target.value)} className="w-full text-right outline-none font-bold mb-2" style={{ background: '#fff', border: `2px solid ${v.name ? v.color : '#D0DCFF'}`, padding: 12, borderRadius: 14, fontSize: 14 }} placeholder={`اسم سايس ${v.n}`} />
+                    <input type="text" value={v.pass} onChange={e => v.setPass(e.target.value)} className="w-full text-center outline-none font-mono font-black" style={{ background: '#fff', border: `2px solid ${v.pass ? v.color : '#D0DCFF'}`, padding: 12, borderRadius: 14, fontSize: 16, letterSpacing: 3 }} placeholder={`كلمة مرور سايس ${v.n}`} />
                   </div>
                 ))}
               </div>
             </div>
 
-            <button
-              onClick={handleSaveSettings}
-              className="w-full font-black flex items-center justify-center gap-2 active:scale-95"
-              style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', padding: 18, borderRadius: 20, fontSize: 15 }}
-            >
+            <button onClick={handleSaveSettings} className="w-full font-black flex items-center justify-center gap-2 active:scale-95" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', padding: 18, borderRadius: 20, fontSize: 15 }}>
               <Save size={20} /> حفظ التغييرات
             </button>
           </motion.div>
@@ -888,15 +904,13 @@ const filteredCompleted = useMemo(() => {
       {/* ═══ Confirm Payment Modal ═══ */}
       {confirmSession && (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }}
           className="fixed inset-0 z-50 flex items-end justify-center p-4"
           style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)' }}
           onClick={() => setConfirmSession(null)}
         >
           <motion.div
-            initial={{ y: 100 }}
-            animate={{ y: 0 }}
+            initial={{ y: 100 }} animate={{ y: 0 }}
             transition={{ type: 'spring', damping: 25 }}
             className="w-full max-w-sm"
             style={{ background: '#fff', borderRadius: '32px 32px 20px 20px', padding: 24 }}
@@ -904,6 +918,7 @@ const filteredCompleted = useMemo(() => {
           >
             <div className="mx-auto mb-5" style={{ width: 40, height: 4, background: '#D0DCFF', borderRadius: 4 }} />
             <h3 className="font-black text-center mb-1" style={{ fontSize: 18 }}>تأكيد تحصيل السداد</h3>
+
             <div className="mb-5" style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
               <div className="flex justify-between items-center mb-3">
                 <span className="font-bold" style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, background: confirmSession.source === 'manual' ? '#FF9500' : '#0066FF', color: '#fff' }}>
@@ -925,6 +940,7 @@ const filteredCompleted = useMemo(() => {
                 </div>
               </div>
             </div>
+
             <div className="mb-5">
               <h4 className="font-black mb-3 text-right" style={{ fontSize: 12, color: '#7B8CA6' }}>طريقة السداد</h4>
               {confirmSession.source === 'manual' ? (
@@ -946,8 +962,7 @@ const filteredCompleted = useMemo(() => {
                       disabled={(pm as any).disabled}
                       className="text-center active:scale-95"
                       style={{
-                        borderRadius: 18,
-                        padding: 14,
+                        borderRadius: 18, padding: 14,
                         background: (pm as any).disabled ? '#F0F4FF' : confirmPaymentMethod === pm.id ? pm.bg : '#fff',
                         color: (pm as any).disabled ? '#94a3b8' : confirmPaymentMethod === pm.id ? '#fff' : '#475569',
                         border: (pm as any).disabled ? '2px solid #D0DCFF' : confirmPaymentMethod === pm.id ? 'none' : '2px solid #D0DCFF',
@@ -960,6 +975,7 @@ const filteredCompleted = useMemo(() => {
                 </div>
               )}
             </div>
+
             <div className="flex gap-3">
               <button
                 onClick={handleConfirmPayment}
@@ -968,11 +984,7 @@ const filteredCompleted = useMemo(() => {
               >
                 <CheckCircle size={20} /> تأكيد ({confirmSession.cost} ج.م)
               </button>
-              <button
-                onClick={() => setConfirmSession(null)}
-                className="active:scale-95"
-                style={{ background: '#F0F4FF', padding: '0 20px', borderRadius: 20, color: '#7B8CA6' }}
-              >
+              <button onClick={() => setConfirmSession(null)} className="active:scale-95" style={{ background: '#F0F4FF', padding: '0 20px', borderRadius: 20, color: '#7B8CA6' }}>
                 <XCircle size={20} />
               </button>
             </div>
@@ -983,36 +995,12 @@ const filteredCompleted = useMemo(() => {
       {/* ═══ Stats Cards ═══ */}
       <div className="grid grid-cols-3 gap-3 mb-5">
         {[
-          {
-            icon: <DollarSign size={22} />,
-            value: totalRevenue.toFixed(0),
-            label: isValet ? 'إيرادي اليوم' : 'مؤكد',
-            bg: 'linear-gradient(135deg,#00CC66,#00AA55)',
-            shadow: 'rgba(0,204,102,0.3)',
-          },
-          {
-            icon: <Car size={22} />,
-            value: garage.availableSpots,
-            label: 'شاغر',
-            bg: 'linear-gradient(135deg,#0066FF,#0044DD)',
-            shadow: 'rgba(0,102,255,0.3)',
-            onClick: isOwner ? openSettings : undefined,
-          },
-          {
-            icon: isValet ? <Car size={22} /> : <DollarSign size={22} />,
-            value: isValet ? activeSessions.length : garage.basePrice,
-            label: isValet ? 'جلسات نشطة' : 'ج.م/ساعة',
-            bg: 'linear-gradient(135deg,#7C3AED,#5B21B6)',
-            shadow: 'rgba(124,58,237,0.3)',
-            onClick: isOwner ? openSettings : undefined,
-          },
+          { icon: <DollarSign size={22} />, value: totalRevenue.toFixed(0), label: isValet ? 'إيرادي اليوم' : 'مؤكد', bg: 'linear-gradient(135deg,#00CC66,#00AA55)', shadow: 'rgba(0,204,102,0.3)' },
+          { icon: <Car size={22} />, value: garage.availableSpots, label: 'شاغر', bg: 'linear-gradient(135deg,#0066FF,#0044DD)', shadow: 'rgba(0,102,255,0.3)', onClick: isOwner ? openSettings : undefined },
+          { icon: isValet ? <Car size={22} /> : <DollarSign size={22} />, value: isValet ? activeSessions.length : garage.basePrice, label: isValet ? 'جلسات نشطة' : 'ج.م/ساعة', bg: 'linear-gradient(135deg,#7C3AED,#5B21B6)', shadow: 'rgba(124,58,237,0.3)', onClick: isOwner ? openSettings : undefined },
         ].map((s, i) => (
-          <div
-            key={i}
-            onClick={s.onClick}
-            className={`text-center ${s.onClick ? 'cursor-pointer active:scale-95' : ''}`}
-            style={{ background: s.bg, borderRadius: 22, padding: '18px 10px', color: '#fff', boxShadow: `0 6px 24px ${s.shadow}` }}
-          >
+          <div key={i} onClick={s.onClick} className={`text-center ${s.onClick ? 'cursor-pointer active:scale-95' : ''}`}
+            style={{ background: s.bg, borderRadius: 22, padding: '18px 10px', color: '#fff', boxShadow: `0 6px 24px ${s.shadow}` }}>
             <div className="mx-auto mb-1" style={{ opacity: 0.9 }}>{s.icon}</div>
             <div className="font-black font-mono" style={{ fontSize: 24 }}>{s.value}</div>
             <div className="font-bold flex items-center justify-center gap-1" style={{ fontSize: 9, opacity: 0.8 }}>
@@ -1030,13 +1018,9 @@ const filteredCompleted = useMemo(() => {
               const rem = getUndoRemainingSeconds(un.addedAt);
               return (
                 <motion.div key={un.localId} initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="mb-4">
-                  <div className="relative overflow-hidden" style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 22, padding: 16, color: '#fff' }}>
+                  <div style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 22, padding: 16, color: '#fff' }}>
                     <div className="flex items-center justify-between gap-3">
-                      <button
-                        onClick={() => handleUndoSession(un)}
-                        className="font-black flex items-center gap-2 active:scale-95 shrink-0"
-                        style={{ background: '#FF3333', color: '#fff', padding: '12px 18px', borderRadius: 16, fontSize: 13 }}
-                      >
+                      <button onClick={() => handleUndoSession(un)} className="font-black flex items-center gap-2 active:scale-95 shrink-0" style={{ background: '#FF3333', color: '#fff', padding: '12px 18px', borderRadius: 16, fontSize: 13 }}>
                         <Undo2 size={18} /> تراجع
                       </button>
                       <div className="flex-1 text-right">
@@ -1050,12 +1034,11 @@ const filteredCompleted = useMemo(() => {
             })}
           </AnimatePresence>
 
+          {/* Cars on the way */}
           {carsOnTheWay.length > 0 && (
             <div className="mb-5">
               <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#0099DD' }}>
-                <span className="font-black" style={{ background: '#0099DD', color: '#fff', fontSize: 12, padding: '3px 12px', borderRadius: 20 }}>
-                  {carsOnTheWay.length}
-                </span>
+                <span className="font-black" style={{ background: '#0099DD', color: '#fff', fontSize: 12, padding: '3px 12px', borderRadius: 20 }}>{carsOnTheWay.length}</span>
                 سيارات في الطريق <Navigation size={16} className="animate-pulse" />
               </h3>
               <div className="space-y-3">
@@ -1077,32 +1060,18 @@ const filteredCompleted = useMemo(() => {
                       <div className="mb-3 space-y-2" style={{ background: '#F0F4FF', borderRadius: 18, padding: 14, border: '1px solid #D0DCFF' }}>
                         <div className="flex items-center justify-between">
                           <a href={`tel:${car.customerPhone}`} className="font-black font-mono" style={{ fontSize: 15, color: '#0066FF' }}>{car.customerPhone}</a>
-                          <div className="flex items-center gap-1" style={{ color: '#94a3b8' }}>
-                            <Phone size={14} />
-                            <span className="font-bold" style={{ fontSize: 11 }}>الهاتف</span>
-                          </div>
+                          <div className="flex items-center gap-1" style={{ color: '#94a3b8' }}><Phone size={14} /><span className="font-bold" style={{ fontSize: 11 }}>الهاتف</span></div>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="font-black font-mono" style={{ fontSize: 15, color: '#00AA44' }}>{car.agreedPrice} ج.م / ساعة</span>
-                          <div className="flex items-center gap-1" style={{ color: '#94a3b8' }}>
-                            <DollarSign size={14} />
-                            <span className="font-bold" style={{ fontSize: 11 }}>السعر</span>
-                          </div>
+                          <div className="flex items-center gap-1" style={{ color: '#94a3b8' }}><DollarSign size={14} /><span className="font-bold" style={{ fontSize: 11 }}>السعر</span></div>
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <button
-                          onClick={() => handleCarArrived(car)}
-                          className="flex-1 font-black flex items-center justify-center gap-2 active:scale-95"
-                          style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', borderRadius: 18, padding: 14, fontSize: 13 }}
-                        >
+                        <button onClick={() => handleCarArrived(car)} className="flex-1 font-black flex items-center justify-center gap-2 active:scale-95" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', borderRadius: 18, padding: 14, fontSize: 13 }}>
                           <CheckCircle size={18} /> وصلت وبدء الحساب
                         </button>
-                        <a
-                          href={`tel:${car.customerPhone}`}
-                          className="flex items-center justify-center active:scale-95"
-                          style={{ background: '#0066FF', color: '#fff', borderRadius: 18, padding: '0 16px' }}
-                        >
+                        <a href={`tel:${car.customerPhone}`} className="flex items-center justify-center active:scale-95" style={{ background: '#0066FF', color: '#fff', borderRadius: 18, padding: '0 16px' }}>
                           <Phone size={20} />
                         </a>
                       </div>
@@ -1113,6 +1082,7 @@ const filteredCompleted = useMemo(() => {
             </div>
           )}
 
+          {/* Offers */}
           {garageOffers.length > 0 && (
             <div className="mb-5">
               <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#FF9500' }}>
@@ -1126,18 +1096,10 @@ const filteredCompleted = useMemo(() => {
                       <div className="font-black" style={{ fontSize: 15 }}>🚗 {o.carPlate}</div>
                     </div>
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => { updateOffer(o.id, 'accepted'); toast.success('تم القبول'); }}
-                        className="flex-1 font-black flex items-center justify-center gap-1 active:scale-95"
-                        style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', borderRadius: 16, padding: 14, fontSize: 13 }}
-                      >
+                      <button onClick={() => { updateOffer(o.id, 'accepted'); toast.success('تم القبول'); }} className="flex-1 font-black flex items-center justify-center gap-1 active:scale-95" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', borderRadius: 16, padding: 14, fontSize: 13 }}>
                         <CheckCircle size={18} /> قبول
                       </button>
-                      <button
-                        onClick={() => { updateOffer(o.id, 'rejected'); toast.error('تم الرفض'); }}
-                        className="flex-1 font-black flex items-center justify-center gap-1 active:scale-95"
-                        style={{ background: 'linear-gradient(135deg,#FF3333,#CC0000)', color: '#fff', borderRadius: 16, padding: 14, fontSize: 13 }}
-                      >
+                      <button onClick={() => { updateOffer(o.id, 'rejected'); toast.error('تم الرفض'); }} className="flex-1 font-black flex items-center justify-center gap-1 active:scale-95" style={{ background: 'linear-gradient(135deg,#FF3333,#CC0000)', color: '#fff', borderRadius: 16, padding: 14, fontSize: 13 }}>
                         <XCircle size={18} /> رفض
                       </button>
                     </div>
@@ -1147,17 +1109,14 @@ const filteredCompleted = useMemo(() => {
             </div>
           )}
 
+          {/* Add car */}
           <div className="mb-5">
             {!showAddCar ? (
               <button
                 onClick={() => setShowAddCar(true)}
                 disabled={garage.availableSpots <= 0}
                 className="w-full font-black flex items-center justify-center gap-2 active:scale-95"
-                style={{
-                  background: garage.availableSpots > 0 ? 'linear-gradient(135deg,#0066FF,#0044DD)' : '#D0DCFF',
-                  color: garage.availableSpots > 0 ? '#fff' : '#94a3b8',
-                  borderRadius: 22, padding: 18, fontSize: 15,
-                }}
+                style={{ background: garage.availableSpots > 0 ? 'linear-gradient(135deg,#0066FF,#0044DD)' : '#D0DCFF', color: garage.availableSpots > 0 ? '#fff' : '#94a3b8', borderRadius: 22, padding: 18, fontSize: 15 }}
               >
                 <Plus size={22} /> {garage.availableSpots > 0 ? 'إضافة سيارة جديدة' : 'لا توجد أماكن'}
               </button>
@@ -1176,25 +1135,15 @@ const filteredCompleted = useMemo(() => {
                     <button onClick={() => setNewCarPrice(p => Math.max(5, p - 5))} className="active:scale-90" style={{ background: '#FF3333', color: '#fff', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <Minus size={18} />
                     </button>
-                    <input
-                      type="number"
-                      value={newCarPrice}
-                      onChange={e => setNewCarPrice(Math.max(1, parseInt(e.target.value) || 1))}
-                      className="flex-1 text-center font-black outline-none font-mono"
-                      style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 10, borderRadius: 14, fontSize: 20 }}
-                    />
+                    <input type="number" value={newCarPrice} onChange={e => setNewCarPrice(Math.max(1, parseInt(e.target.value) || 1))} className="flex-1 text-center font-black outline-none font-mono" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 10, borderRadius: 14, fontSize: 20 }} />
                     <button onClick={() => setNewCarPrice(p => p + 5)} className="active:scale-90" style={{ background: '#00CC66', color: '#fff', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <Plus size={18} />
                     </button>
                   </div>
                   <div className="flex gap-1.5 mt-2 justify-end">
                     {[10, 15, 20, 25, 30].map(p => (
-                      <button
-                        key={p}
-                        onClick={() => setNewCarPrice(p)}
-                        className="font-black active:scale-95"
-                        style={{ padding: '5px 12px', borderRadius: 10, fontSize: 11, background: newCarPrice === p ? '#0066FF' : '#F0F4FF', color: newCarPrice === p ? '#fff' : '#64748b', border: newCarPrice === p ? 'none' : '2px solid #D0DCFF' }}
-                      >
+                      <button key={p} onClick={() => setNewCarPrice(p)} className="font-black active:scale-95"
+                        style={{ padding: '5px 12px', borderRadius: 10, fontSize: 11, background: newCarPrice === p ? '#0066FF' : '#F0F4FF', color: newCarPrice === p ? '#fff' : '#64748b', border: newCarPrice === p ? 'none' : '2px solid #D0DCFF' }}>
                         {p}
                       </button>
                     ))}
@@ -1204,11 +1153,7 @@ const filteredCompleted = useMemo(() => {
                   <button onClick={handleAddCar} className="flex-1 font-black active:scale-95" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', borderRadius: 18, padding: 14, fontSize: 14 }}>
                     إضافة ({newCarPrice} ج.م/ساعة)
                   </button>
-                  <button
-                    onClick={() => { setShowAddCar(false); setNewCarPlate(''); setNewCarPrice(garage.basePrice); }}
-                    className="flex-1 font-black active:scale-95"
-                    style={{ background: '#F0F4FF', color: '#64748b', borderRadius: 18, padding: 14, fontSize: 14, border: '2px solid #D0DCFF' }}
-                  >
+                  <button onClick={() => { setShowAddCar(false); setNewCarPlate(''); setNewCarPrice(garage.basePrice); }} className="flex-1 font-black active:scale-95" style={{ background: '#F0F4FF', color: '#64748b', borderRadius: 18, padding: 14, fontSize: 14, border: '2px solid #D0DCFF' }}>
                     إلغاء
                   </button>
                 </div>
@@ -1216,6 +1161,7 @@ const filteredCompleted = useMemo(() => {
             )}
           </div>
 
+          {/* Active sessions */}
           <div className="mb-5">
             <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#00AA44' }}>
               <span className="font-bold" style={{ fontSize: 10, background: '#FF9500', color: '#fff', padding: '3px 10px', borderRadius: 10 }}>
@@ -1231,7 +1177,7 @@ const filteredCompleted = useMemo(() => {
               ) : (
                 activeSessions.map(s => {
                   const st = toMs(s.startTime);
-                  const el = Math.max(0, Math.floor((Date.now() - st) / 1000));
+                  const el = st > 0 ? Math.max(0, Math.floor((Date.now() - st) / 1000)) : 0;
                   const mins = Math.floor(el / 60);
                   const hrs = calculateFullHours(el);
                   const rate = Number(s.agreedPrice ?? garage.basePrice);
@@ -1247,19 +1193,13 @@ const filteredCompleted = useMemo(() => {
                       style={{
                         background: isM ? '#FFF8F0' : '#fff',
                         border: `2.5px solid ${!isMySession ? '#E0E0E0' : isM ? '#FFD180' : '#D0DCFF'}`,
-                        borderRadius: 24,
-                        padding: 18,
+                        borderRadius: 24, padding: 18,
                         opacity: !isMySession ? 0.7 : 1,
                       }}
                     >
                       <div className="flex justify-between items-center mb-3">
                         <div className="flex items-center gap-2">
-                          <motion.span
-                            animate={{ scale: [1, 1.3, 1] }}
-                            transition={{ repeat: Infinity, duration: 1.5 }}
-                            className="rounded-full"
-                            style={{ width: 10, height: 10, background: isM ? '#FF9500' : '#00CC66' }}
-                          />
+                          <motion.span animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 1.5 }} className="rounded-full" style={{ width: 10, height: 10, background: isM ? '#FF9500' : '#00CC66' }} />
                           <span style={{ fontSize: 12, color: '#7B8CA6' }}>{formatElapsed(el)} • {hrs}ساعة</span>
                           <span className="font-bold" style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, background: isM ? '#FF9500' : '#0066FF', color: '#fff' }}>
                             {isM ? 'يدوي' : 'تطبيق'}
@@ -1267,6 +1207,7 @@ const filteredCompleted = useMemo(() => {
                         </div>
                         <div className="font-black" style={{ fontSize: 15 }}>🚗 {s.carPlate}</div>
                       </div>
+
                       {addedBy && (
                         <div className="flex items-center justify-end gap-1 mb-2">
                           <span className="font-bold" style={{ fontSize: 9, padding: '3px 8px', borderRadius: 10, background: isMySession ? '#E8F5E9' : '#F5F5F5', color: isMySession ? '#2E7D32' : '#757575' }}>
@@ -1274,6 +1215,7 @@ const filteredCompleted = useMemo(() => {
                           </span>
                         </div>
                       )}
+
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-2">
                           {isMySession ? (
@@ -1291,8 +1233,7 @@ const filteredCompleted = useMemo(() => {
                           )}
                           {un && isMySession && (
                             <motion.button
-                              initial={{ opacity: 0, scale: 0.8 }}
-                              animate={{ opacity: 1, scale: 1 }}
+                              initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
                               onClick={() => handleUndoSession(un)}
                               className="font-black flex items-center gap-1 active:scale-95"
                               style={{ background: '#FF9500', color: '#fff', padding: '10px 14px', borderRadius: 14, fontSize: 11 }}
@@ -1312,6 +1253,7 @@ const filteredCompleted = useMemo(() => {
         </>
       )}
 
+      {/* ═══ Owner info bar ═══ */}
       {isOwner && (
         <div className="mb-5 flex items-center justify-between" style={{ background: '#fff', borderRadius: 20, padding: '12px 16px', border: '2px solid #D0DCFF' }}>
           <button onClick={openSettings} className="font-bold flex items-center gap-1" style={{ fontSize: 11, color: '#0066FF' }}>
@@ -1325,6 +1267,7 @@ const filteredCompleted = useMemo(() => {
         </div>
       )}
 
+      {/* ═══ Valet info bar ═══ */}
       {isValet && (
         <div className="mb-5 flex items-center justify-between" style={{ background: '#fff', borderRadius: 20, padding: '12px 16px', border: '2px solid #D0DCFF' }}>
           <span className="font-bold flex items-center gap-1" style={{ fontSize: 11, color: '#FF9500' }}>
@@ -1338,7 +1281,7 @@ const filteredCompleted = useMemo(() => {
         </div>
       )}
 
-       {/* ═══ سجل العمليات ═══ */}
+      {/* ═══ سجل العمليات ═══ */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
           <span className="font-bold" style={{ fontSize: 11, background: '#fff', padding: '6px 12px', borderRadius: 12, border: '2px solid #D0DCFF', color: '#7B8CA6' }}>
@@ -1369,43 +1312,33 @@ const filteredCompleted = useMemo(() => {
               <button onClick={() => { setLogDateFrom(getLocalToday()); setLogDateTo(getLocalToday()); }} className="font-black active:scale-95" style={{ background: '#0066FF', color: '#fff', padding: '10px 14px', borderRadius: 14, fontSize: 11 }}>اليوم</button>
               <button
                 onClick={() => {
-                  const d = new Date();
-                  d.setDate(d.getDate() - 7);
+                  const d = new Date(); d.setDate(d.getDate() - 7);
                   setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
                   setLogDateTo(getLocalToday());
                 }}
-                className="font-black active:scale-95"
-                style={{ background: '#F0F4FF', color: '#64748b', padding: '10px 14px', borderRadius: 14, fontSize: 11, border: '2px solid #D0DCFF' }}
+                className="font-black active:scale-95" style={{ background: '#F0F4FF', color: '#64748b', padding: '10px 14px', borderRadius: 14, fontSize: 11, border: '2px solid #D0DCFF' }}
               >
                 آخر أسبوع
               </button>
               <button
                 onClick={() => {
-                  const d = new Date();
-                  d.setDate(1);
+                  const d = new Date(); d.setDate(1);
                   setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
                   setLogDateTo(getLocalToday());
                 }}
-                className="font-black active:scale-95"
-                style={{ background: '#F0F4FF', color: '#64748b', padding: '10px 14px', borderRadius: 14, fontSize: 11, border: '2px solid #D0DCFF' }}
+                className="font-black active:scale-95" style={{ background: '#F0F4FF', color: '#64748b', padding: '10px 14px', borderRadius: 14, fontSize: 11, border: '2px solid #D0DCFF' }}
               >
                 هذا الشهر
               </button>
             </div>
             <div className="flex gap-1.5 flex-wrap">
               {[
-                { id: 'all', label: 'الكل', icon: '📊' },
-                { id: 'cash', label: 'نقدي', icon: '💵' },
-                { id: 'instapay', label: 'إنستاباي', icon: '📱' },
-                { id: 'wallet', label: 'محفظة', icon: '👝' },
+                { id: 'all', label: 'الكل', icon: '📊' }, { id: 'cash', label: 'نقدي', icon: '💵' },
+                { id: 'instapay', label: 'إنستاباي', icon: '📱' }, { id: 'wallet', label: 'محفظة', icon: '👝' },
                 { id: 'cashwallet', label: 'كاش', icon: '📲' },
               ].map(f => (
-                <button
-                  key={f.id}
-                  onClick={() => setLogPaymentFilter(f.id)}
-                  className="font-black active:scale-95"
-                  style={{ padding: '6px 12px', borderRadius: 12, fontSize: 10, background: logPaymentFilter === f.id ? '#0066FF' : '#F0F4FF', color: logPaymentFilter === f.id ? '#fff' : '#64748b', border: logPaymentFilter === f.id ? 'none' : '2px solid #D0DCFF' }}
-                >
+                <button key={f.id} onClick={() => setLogPaymentFilter(f.id)} className="font-black active:scale-95"
+                  style={{ padding: '6px 12px', borderRadius: 12, fontSize: 10, background: logPaymentFilter === f.id ? '#0066FF' : '#F0F4FF', color: logPaymentFilter === f.id ? '#fff' : '#64748b', border: logPaymentFilter === f.id ? 'none' : '2px solid #D0DCFF' }}>
                   {f.icon} {f.label}
                 </button>
               ))}
@@ -1423,84 +1356,34 @@ const filteredCompleted = useMemo(() => {
 
         {filteredCompleted.length > 0 && (
           <>
-            {/* ✅ العمليات المعلقة للتأكيد - تظهر للمالك والسايس */}
             {filteredStats.pendingCount > 0 && (
-              <div
-                className="mb-4"
-                style={{
-                  background: 'linear-gradient(135deg, #FF9500 0%, #FF7700 100%)',
-                  borderRadius: 22,
-                  padding: 18,
-                  color: '#fff',
-                  boxShadow: '0 8px 28px rgba(255,149,0,0.3)',
-                }}
-              >
+              <div className="mb-4" style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 22, padding: 18, color: '#fff', boxShadow: '0 8px 28px rgba(255,149,0,0.3)' }}>
                 <div className="flex justify-between items-center">
                   <div className="text-right flex-1">
                     <div className="flex items-center gap-2 justify-end mb-1">
-                      <h3 className="font-black" style={{ fontSize: 15 }}>
-                        ⏳ عمليات معلقة للتأكيد
-                      </h3>
+                      <h3 className="font-black" style={{ fontSize: 15 }}>⏳ عمليات معلقة للتأكيد</h3>
                     </div>
                     <div className="flex items-center gap-2 justify-end">
-                      <span
-                        className="font-black"
-                        style={{
-                          fontSize: 11,
-                          background: 'rgba(255,255,255,0.2)',
-                          padding: '3px 10px',
-                          borderRadius: 10,
-                        }}
-                      >
-                        {filteredStats.pendingCount} عملية
-                      </span>
-                      <span style={{ fontSize: 10, opacity: 0.85 }}>
-                        تحتاج تأكيد الإيراد
-                      </span>
+                      <span className="font-black" style={{ fontSize: 11, background: 'rgba(255,255,255,0.2)', padding: '3px 10px', borderRadius: 10 }}>{filteredStats.pendingCount} عملية</span>
+                      <span style={{ fontSize: 10, opacity: 0.85 }}>تحتاج تأكيد الإيراد</span>
                     </div>
                   </div>
                   <div className="text-left mr-4">
-                    <div
-                      className="font-black font-mono"
-                      style={{
-                        fontSize: 28,
-                        textShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                      }}
-                    >
-                      {filteredStats.pendingRevenue.toFixed(0)}
-                    </div>
-                    <div
-                      className="font-bold text-center"
-                      style={{ fontSize: 11, opacity: 0.85 }}
-                    >
-                      ج.م
-                    </div>
+                    <div className="font-black font-mono" style={{ fontSize: 28, textShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>{filteredStats.pendingRevenue.toFixed(0)}</div>
+                    <div className="font-bold text-center" style={{ fontSize: 11, opacity: 0.85 }}>ج.م</div>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* ✅ إجمالي الإيراد المؤكد */}
-            <div
-              className="mb-4 text-center"
-              style={{
-                background: 'linear-gradient(135deg,#00CC66,#00AA55)',
-                borderRadius: 24,
-                padding: 22,
-                color: '#fff',
-              }}
-            >
+            <div className="mb-4 text-center" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', borderRadius: 24, padding: 22, color: '#fff' }}>
               <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 4 }}>
                 {isValet
                   ? `إيرادي اليوم - ${currentValetName}`
                   : `مؤكد - ${logDateFrom === logDateTo ? formatLocalDateArabic(logDateFrom) : `${logDateFrom} → ${logDateTo}`}`}
               </div>
-              <div className="font-black font-mono" style={{ fontSize: 40 }}>
-                {filteredStats.total.toFixed(0)} ج.م
-              </div>
-              <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>
-                {filteredCompleted.filter(s => s.revenueConfirmed).length} عملية مؤكدة
-              </div>
+              <div className="font-black font-mono" style={{ fontSize: 40 }}>{filteredStats.total.toFixed(0)} ج.م</div>
+              <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>{filteredCompleted.filter(s => s.revenueConfirmed).length} عملية مؤكدة</div>
             </div>
 
             <div className="grid grid-cols-4 gap-2 mb-4">
@@ -1584,12 +1467,7 @@ const filteredCompleted = useMemo(() => {
             return (
               <div
                 key={session.id}
-                style={{
-                  background: isC ? (isM ? '#FFF8F0' : '#EBF5FF') : '#FFF8F0',
-                  border: `2px solid ${isC ? (isM ? '#FFD180' : '#A0C4FF') : '#FFD180'}`,
-                  borderRadius: 18,
-                  padding: 14,
-                }}
+                style={{ background: isC ? (isM ? '#FFF8F0' : '#EBF5FF') : '#FFF8F0', border: `2px solid ${isC ? (isM ? '#FFD180' : '#A0C4FF') : '#FFD180'}`, borderRadius: 18, padding: 14 }}
               >
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -1624,13 +1502,7 @@ const filteredCompleted = useMemo(() => {
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-1.5">
                     {session.paymentMethod && (
-                      <span
-                        className="font-bold"
-                        style={{
-                          fontSize: 9, padding: '3px 10px', borderRadius: 10, color: '#fff',
-                          background: session.paymentMethod === 'cash' ? '#00CC66' : session.paymentMethod === 'instapay' ? '#7C3AED' : session.paymentMethod === 'wallet' ? '#0066FF' : '#FF8800',
-                        }}
-                      >
+                      <span className="font-bold" style={{ fontSize: 9, padding: '3px 10px', borderRadius: 10, color: '#fff', background: session.paymentMethod === 'cash' ? '#00CC66' : session.paymentMethod === 'instapay' ? '#7C3AED' : session.paymentMethod === 'wallet' ? '#0066FF' : '#FF8800' }}>
                         {session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستاباي' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش'}
                       </span>
                     )}
