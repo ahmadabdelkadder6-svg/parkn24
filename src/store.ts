@@ -320,6 +320,7 @@ interface AppState {
   setSelectedGarageId: (id: string | null) => void;
   sessions: ParkingSession[];
   addSession: (s: Omit<ParkingSession, 'id'>) => Promise<string>;
+  assignSessionToValet: (sessionId: string, valetName: string) => Promise<void>;
   endSession: (id: string, totalPrice: number, paymentMethod: string) => Promise<void>;
   cancelSession: (id: string) => void;
   removeSession: (id: string) => Promise<void>;
@@ -455,17 +456,53 @@ export const useStore = create<AppState>((set, get) => ({
   // ══════════════════════════════════════════════
   assignSessionToValet: async (sessionId, valetName) => {
     if (!sessionId || !valetName) return;
-    set((st) => ({ sessions: st.sessions.map((s) => s.id === sessionId ? { ...s, addedBy: valetName } : s) }));
+
+    // تحديث محلي فوري
+    set((st) => ({
+      sessions: st.sessions.map((s) =>
+        s.id === sessionId ? { ...s, addedBy: valetName } : s
+      ),
+    }));
+
     if (!isSupabaseConfigured()) return;
+
     try {
-      const { data: existing } = await supabase.from('sessions').select('id, added_by').eq('id', sessionId).single();
-      const currentAddedBy = existing?.added_by || '';
-      if (currentAddedBy && currentAddedBy.trim() !== '') {
-        set((st) => ({ sessions: st.sessions.map((s) => s.id === sessionId ? { ...s, addedBy: currentAddedBy } : s) }));
+      // نجيب الجلسة الحالية من DB
+      const { data: existing, error: fetchError } = await supabase
+        .from('sessions')
+        .select('id, added_by')
+        .eq('id', sessionId)
+        .single();
+
+      if (fetchError) {
+        console.error('❌ assignSessionToValet fetch error:', fetchError);
         return;
       }
-      await supabase.from('sessions').update({ added_by: valetName }).eq('id', sessionId);
-    } catch (e) { console.error('❌ assignSessionToValet:', e); }
+
+      // لو متسندة بالفعل لحد، سيبها
+      const currentAddedBy = existing?.added_by || '';
+      if (currentAddedBy && currentAddedBy.trim() !== '') {
+        // حدّث المحلي بالقيمة الحقيقية من DB
+        set((st) => ({
+          sessions: st.sessions.map((s) =>
+            s.id === sessionId ? { ...s, addedBy: currentAddedBy } : s
+          ),
+        }));
+        return;
+      }
+
+      // اسندها للسايس الحالي
+      const { error } = await supabase
+        .from('sessions')
+        .update({ added_by: valetName })
+        .eq('id', sessionId);
+
+      if (error) {
+        console.error('❌ assignSessionToValet update error:', error);
+      }
+    } catch (e) {
+      console.error('❌ assignSessionToValet unexpected error:', e);
+    }
   },
 
   // ══════════════════════════════════════════════
