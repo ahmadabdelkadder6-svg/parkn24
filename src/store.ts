@@ -127,7 +127,6 @@ const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
 const getMs = (value?: number) => { if (typeof value === 'number') return value; return 0; };
 
-// ✅ تحويل دقيق لأي قيمة وقت إلى milliseconds
 const safeParseTime = (value: any): number => {
   if (!value) return 0;
   if (typeof value === 'string') {
@@ -136,7 +135,6 @@ const safeParseTime = (value: any): number => {
   }
   if (typeof value === 'number') {
     if (value <= 0) return 0;
-    // لو بالثواني (Unix seconds - 10 أرقام)
     if (value < 1_000_000_000_000) return value * 1000;
     return value;
   }
@@ -145,35 +143,24 @@ const safeParseTime = (value: any): number => {
 
 const toMs = safeParseTime;
 
-// ✅ dedupeActiveSessions يفضّل الجلسات المتزامنة (synced) على الـ optimistic
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   const active = list.filter((s) => s.status === 'active');
   const completed = list.filter((s) => s.status === 'completed');
-
   const bestByPlateSource = new Map<string, ParkingSession>();
 
   for (const session of active) {
     const plate = normalizePlate(session.carPlate);
     if (!plate) continue;
-
     const key = `${plate}::${session.source}`;
     const existing = bestByPlateSource.get(key);
-
-    if (!existing) {
-      bestByPlateSource.set(key, session);
-      continue;
-    }
-
-    // ✅ يفضّل المتزامن (من Supabase) على الـ optimistic
+    if (!existing) { bestByPlateSource.set(key, session); continue; }
     const sessionSynced = session.synced === true;
     const existingSynced = existing.synced === true;
-
     if (sessionSynced && !existingSynced) {
       bestByPlateSource.set(key, session);
     } else if (!sessionSynced && existingSynced) {
-      // الموجود أفضل، لا تغيير
+      // keep existing
     } else {
-      // كلاهما متزامن أو كلاهما optimistic → احتفظ بالأقدم
       const sessionStart = getMs(session.startTime);
       const existingStart = getMs(existing.startTime);
       if (sessionStart > 0 && existingStart > 0 && sessionStart < existingStart) {
@@ -203,11 +190,8 @@ const mapGarage = (r: any): Garage => ({
   valetName3: r.valet_name_3 || '', valetPassword3: r.valet_password_3 || '',
 });
 
-// ✅ mapSession محسّن - تحويل دقيق للوقت مع حماية كاملة
 const mapSession = (r: any): ParkingSession => {
   const nowMs = Date.now();
-
-  // ✅ startTime
   const rawStart = r.start_time;
   let startTime: number;
   if (typeof rawStart === 'string') {
@@ -220,7 +204,6 @@ const mapSession = (r: any): ParkingSession => {
     startTime = nowMs;
   }
 
-  // ✅ endTime
   const rawEnd = r.end_time;
   let endTime: number | undefined;
   if (rawEnd) {
@@ -296,7 +279,6 @@ let walletDeductedAt = 0;
 const deletedSessionIds = new Set<string>();
 const locallyEndedSessions = new Map<string, ParkingSession>();
 
-// ✅ Helper: تحديد addedBy
 const resolveAddedBy = (explicitAddedBy?: string): string => {
   if (explicitAddedBy !== undefined && explicitAddedBy !== null && explicitAddedBy !== '') {
     return explicitAddedBy;
@@ -304,17 +286,15 @@ const resolveAddedBy = (explicitAddedBy?: string): string => {
   const valetName = localStorage.getItem('valetName') || '';
   const garageRole = localStorage.getItem('garageRole') || '';
   const valetNumber = localStorage.getItem('valetNumber') || '';
-  if (garageRole === 'owner') return 'المالك';
+  if (garageRole === 'owner') return '';
   if (valetName) return valetName;
   if (garageRole === 'valet') return `سايس ${valetNumber}`;
   return '';
 };
 
-// ✅ Helper: تحويل startTime بدقة
 const resolveStartTime = (rawStartTime: any): number => {
   const nowMs = Date.now();
   if (!rawStartTime) return nowMs;
-
   let result: number;
   if (typeof rawStartTime === 'string') {
     result = new Date(rawStartTime).getTime();
@@ -323,11 +303,7 @@ const resolveStartTime = (rawStartTime: any): number => {
   } else {
     return nowMs;
   }
-
-  // ✅ فقط تحقق إن الرقم صحيح وموجب - بدون حد أعلى
-  if (!Number.isFinite(result) || result <= 0) {
-    return nowMs;
-  }
+  if (!Number.isFinite(result) || result <= 0) return nowMs;
   return result;
 };
 
@@ -359,6 +335,10 @@ interface AppState {
   removeSession: (id: string) => Promise<void>;
   confirmRevenue: (sessionId: string) => Promise<void>;
   unconfirmRevenue: (sessionId: string) => Promise<void>;
+
+  // ✅ الدالة الجديدة - إسناد جلسة للسايس
+  assignSessionToValet: (sessionId: string, valetName: string) => Promise<void>;
+
   offers: Offer[];
   addOffer: (o: Omit<Offer, 'id' | 'timestamp'>) => void;
   updateOffer: (id: string, status: Offer['status'], counterPrice?: number) => void;
@@ -435,9 +415,6 @@ export const useStore = create<AppState>((set, get) => ({
     safeRemoveStorage('garageAuth'); safeRemoveStorage('adminAuth');
   },
 
-  // ══════════════════════════════════════════════
-  // ██  fetchAll - ✅ merge محسّن يفضّل Supabase للجلسات النشطة
-  // ══════════════════════════════════════════════
   fetchAll: async () => {
     if (!isSupabaseConfigured()) return;
     const [g, s, o, w, ic, msgs] = await Promise.all([
@@ -482,27 +459,21 @@ export const useStore = create<AppState>((set, get) => ({
 
         const localVersion = currentSessions.find((cs) => cs.id === ss.id);
         if (localVersion) {
-          // ✅ الجلسة اتنهت في Supabase → استخدم Supabase
           if (ss.status === 'completed' && localVersion.status === 'active') return ss;
-
-          // ✅ الجلسة اتنهت محلياً → استخدم المحلية مع revenueConfirmed من Supabase
           if (localVersion.status === 'completed') {
             return { ...localVersion, revenueConfirmed: ss.revenueConfirmed || localVersion.revenueConfirmed };
           }
-
-          // ✅ الجلسة نشطة في الاتنين → استخدم Supabase (startTime الأدق)
-// بعد - دايماً startTime من Supabase
-if (ss.status === 'active' && localVersion.status === 'active') {
-  return {
-    ...localVersion,
-    startTime: ss.startTime, // ✅ من Supabase دايماً
-    synced: true,
-    addedBy: ss.addedBy || localVersion.addedBy || '',
-    customerPhone: ss.customerPhone || localVersion.customerPhone,
-    customerName: ss.customerName || localVersion.customerName,
-  };
-}
-
+          if (ss.status === 'active' && localVersion.status === 'active') {
+            return {
+              ...localVersion,
+              startTime: ss.startTime,
+              synced: true,
+              // ✅ دايماً خد addedBy من Supabase لو موجود
+              addedBy: ss.addedBy || localVersion.addedBy || '',
+              customerPhone: ss.customerPhone || localVersion.customerPhone,
+              customerName: ss.customerName || localVersion.customerName,
+            };
+          }
           if (localVersion.totalPrice != null && localVersion.totalPrice > 0) return localVersion;
         }
 
@@ -628,9 +599,6 @@ if (ss.status === 'active' && localVersion.status === 'active') {
     } catch (err) { console.error('❌', err); await get().fetchAll(); }
   },
 
-  // ══════════════════════════════════════════════
-  // ██  addSession ✅ محسّن
-  // ══════════════════════════════════════════════
   addSession: async (s) => {
     const normalizedPlate = normalizePlate(s.carPlate);
     if (!normalizedPlate) return '';
@@ -662,12 +630,7 @@ if (ss.status === 'active' && localVersion.status === 'active') {
               set((st) => {
                 const alreadyExists = st.sessions.find((x) => x.id === syncedSession.id);
                 if (alreadyExists) {
-                  // ✅ تحديث الجلسة الموجودة بـ startTime الصحيح من Supabase
-                  return {
-                    sessions: dedupeActiveSessions(
-                      st.sessions.map((x) => x.id === syncedSession.id ? syncedSession : x)
-                    ),
-                  };
+                  return { sessions: dedupeActiveSessions(st.sessions.map((x) => x.id === syncedSession.id ? syncedSession : x)) };
                 }
                 return { sessions: dedupeActiveSessions([syncedSession, ...st.sessions]) };
               });
@@ -679,9 +642,9 @@ if (ss.status === 'active' && localVersion.status === 'active') {
 
       const addedByValue = resolveAddedBy((s as any).addedBy);
 
-const optimisticSession: ParkingSession = {
-  ...s, id: sessionId, carPlate: normalizedPlate,
-  startTime: 0, // ✅ صفر مؤقت - هيتحدث من Supabase
+      const optimisticSession: ParkingSession = {
+        ...s, id: sessionId, carPlate: normalizedPlate,
+        startTime: 0,
         synced: false,
         revenueConfirmed: false,
         addedBy: addedByValue,
@@ -701,7 +664,7 @@ const optimisticSession: ParkingSession = {
           id: sessionId,
           garage_id: s.garageId,
           car_plate: normalizedPlate,
-          start_time: new Date().toISOString(), // ✅ Supabase server time
+          start_time: new Date().toISOString(),
           status: s.status,
           source: s.source,
           agreed_price: s.agreedPrice ?? null,
@@ -721,12 +684,9 @@ const optimisticSession: ParkingSession = {
         }
 
         if (data) {
-          // ✅ استبدل الـ optimistic بالجلسة الحقيقية من Supabase (startTime صحيح)
           const syncedSession: ParkingSession = { ...mapSession(data), synced: true };
           set((st) => ({
-            sessions: dedupeActiveSessions(
-              st.sessions.map((x) => x.id === sessionId ? syncedSession : x)
-            ),
+            sessions: dedupeActiveSessions(st.sessions.map((x) => x.id === sessionId ? syncedSession : x)),
           }));
           return data.id;
         }
@@ -801,6 +761,71 @@ const optimisticSession: ParkingSession = {
     if (error) {
       console.error('❌', error);
       set((st) => ({ sessions: st.sessions.map((s) => s.id === sessionId ? { ...s, revenueConfirmed: true } : s) }));
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // ✅ assignSessionToValet - الدالة الجديدة
+  //
+  //  بتعمل:
+  //  1. تحديث الـ local state فوراً (optimistic)
+  //  2. تحديث الداتابيز في Supabase
+  //  3. لو فشل Supabase → rollback
+  //
+  //  بتتسمى لما:
+  //  - السايس يفتح التطبيق ويلاقي جلسة حريف بـ addedBy = ''
+  //  - الجلسة تتسند ليه تلقائياً
+  // ═══════════════════════════════════════════════════════════════════
+  assignSessionToValet: async (sessionId: string, valetName: string) => {
+    if (!sessionId || !valetName) return;
+
+    // ✅ تحقق إن الجلسة موجودة وفعلاً addedBy فاضي
+    const session = get().sessions.find((s) => s.id === sessionId);
+    if (!session) return;
+
+    const currentAddedBy = (session.addedBy || '').trim();
+    // لو الجلسة اتسندت لحد بالفعل، متعملش حاجة
+    if (currentAddedBy !== '') return;
+
+    // ✅ تحديث محلي فوري
+    set((st) => ({
+      sessions: st.sessions.map((s) =>
+        s.id === sessionId ? { ...s, addedBy: valetName } : s
+      ),
+    }));
+
+    if (!isSupabaseConfigured()) return;
+
+    try {
+      // ✅ تحديث Supabase
+      const { error } = await supabase
+        .from('sessions')
+        .update({ added_by: valetName })
+        .eq('id', sessionId)
+        .eq('added_by', ''); // ✅ فقط لو لسه فاضي (يمنع race condition)
+
+      if (error) {
+        console.error('❌ assignSessionToValet error:', error);
+
+        // ✅ Rollback لو فشل
+        set((st) => ({
+          sessions: st.sessions.map((s) =>
+            s.id === sessionId ? { ...s, addedBy: '' } : s
+          ),
+        }));
+
+        // ✅ إعادة الجلب عشان نعرف الحالة الحقيقية
+        setTimeout(() => get().fetchAll(), 1000);
+      }
+    } catch (err) {
+      console.error('❌ assignSessionToValet unexpected error:', err);
+
+      // ✅ Rollback
+      set((st) => ({
+        sessions: st.sessions.map((s) =>
+          s.id === sessionId ? { ...s, addedBy: '' } : s
+        ),
+      }));
     }
   },
 
