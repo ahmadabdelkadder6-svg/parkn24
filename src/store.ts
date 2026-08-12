@@ -21,6 +21,7 @@ export interface Garage {
   valetPassword2: string;
   valetName3: string;
   valetPassword3: string;
+  commissionRate: number; // ✅ نسبة العمولة
 }
 
 export interface ParkingSession {
@@ -41,6 +42,8 @@ export interface ParkingSession {
   customerName?: string;
   incomingCarId?: string;
   startedBy?: 'garage' | 'customer';
+  commissionAmount?: number; // ✅ مبلغ العمولة
+  netRevenue?: number;       // ✅ صافي الإيراد بعد العمولة
 }
 
 export interface Offer {
@@ -170,12 +173,8 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   }
 
   return [...Array.from(bestByPlateSource.values()), ...completed].sort((a, b) => {
-    const aTime = a.status === 'active'
-      ? getMs(a.startTime)
-      : typeof a.endTime === 'number' ? a.endTime : 0;
-    const bTime = b.status === 'active'
-      ? getMs(b.startTime)
-      : typeof b.endTime === 'number' ? b.endTime : 0;
+    const aTime = a.status === 'active' ? getMs(a.startTime) : typeof a.endTime === 'number' ? a.endTime : 0;
+    const bTime = b.status === 'active' ? getMs(b.startTime) : typeof b.endTime === 'number' ? b.endTime : 0;
     return bTime - aTime;
   });
 };
@@ -188,6 +187,7 @@ const mapGarage = (r: any): Garage => ({
   valetName1: r.valet_name_1 || '', valetPassword1: r.valet_password_1 || '',
   valetName2: r.valet_name_2 || '', valetPassword2: r.valet_password_2 || '',
   valetName3: r.valet_name_3 || '', valetPassword3: r.valet_password_3 || '',
+  commissionRate: Number(r.commission_rate ?? 10), // ✅
 });
 
 const mapSession = (r: any): ParkingSession => {
@@ -239,6 +239,8 @@ const mapSession = (r: any): ParkingSession => {
     customerName: r.customer_name || undefined,
     incomingCarId: r.incoming_car_id || undefined,
     startedBy: r.started_by || undefined,
+    commissionAmount: r.commission_amount != null ? Number(r.commission_amount) : 0, // ✅
+    netRevenue: r.net_revenue != null ? Number(r.net_revenue) : 0, // ✅
   };
 };
 
@@ -319,8 +321,8 @@ interface AppState {
   garages: Garage[];
   currentGarageId: string | null;
   setCurrentGarageId: (id: string | null) => void;
-  addGarage: (g: Omit<Garage, 'id' | 'rating' | 'availableSpots'> & { capacity: number }) => Promise<void>;
-  updateGarage: (id: string, updates: Partial<Pick<Garage, 'basePrice' | 'availableSpots' | 'capacity'>> & {
+  addGarage: (g: Omit<Garage, 'id' | 'rating' | 'availableSpots' | 'commissionRate'> & { capacity: number }) => Promise<void>;
+  updateGarage: (id: string, updates: Partial<Pick<Garage, 'basePrice' | 'availableSpots' | 'capacity' | 'commissionRate'>> & {
     valetName1?: string; valetPassword1?: string;
     valetName2?: string; valetPassword2?: string;
     valetName3?: string; valetPassword3?: string;
@@ -335,10 +337,7 @@ interface AppState {
   removeSession: (id: string) => Promise<void>;
   confirmRevenue: (sessionId: string) => Promise<void>;
   unconfirmRevenue: (sessionId: string) => Promise<void>;
-
-  // ✅ الدالة الجديدة - إسناد جلسة للسايس
   assignSessionToValet: (sessionId: string, valetName: string) => Promise<void>;
-
   offers: Offer[];
   addOffer: (o: Omit<Offer, 'id' | 'timestamp'>) => void;
   updateOffer: (id: string, status: Offer['status'], counterPrice?: number) => void;
@@ -456,7 +455,6 @@ export const useStore = create<AppState>((set, get) => ({
           if (ss.status === 'completed') { locallyEndedSessions.delete(ss.id); return ss; }
           return locallyEnded;
         }
-
         const localVersion = currentSessions.find((cs) => cs.id === ss.id);
         if (localVersion) {
           if (ss.status === 'completed' && localVersion.status === 'active') return ss;
@@ -468,7 +466,6 @@ export const useStore = create<AppState>((set, get) => ({
               ...localVersion,
               startTime: ss.startTime,
               synced: true,
-              // ✅ دايماً خد addedBy من Supabase لو موجود
               addedBy: ss.addedBy || localVersion.addedBy || '',
               customerPhone: ss.customerPhone || localVersion.customerPhone,
               customerName: ss.customerName || localVersion.customerName,
@@ -476,7 +473,6 @@ export const useStore = create<AppState>((set, get) => ({
           }
           if (localVersion.totalPrice != null && localVersion.totalPrice > 0) return localVersion;
         }
-
         return ss;
       });
 
@@ -546,6 +542,7 @@ export const useStore = create<AppState>((set, get) => ({
     const { data, error } = await supabase.from('garages').insert({
       name: g.name, username: g.username, phone: g.phone, location: g.location, lat: g.lat, lng: g.lng,
       capacity: g.capacity, available_spots: g.capacity, base_price: g.basePrice, rating: 4.0,
+      commission_rate: 10, // ✅ نسبة افتراضية
       valet_name_1: (g as any).valetName1 || '', valet_password_1: (g as any).valetPassword1 || '',
       valet_name_2: (g as any).valetName2 || '', valet_password_2: (g as any).valetPassword2 || '',
       valet_name_3: (g as any).valetName3 || '', valet_password_3: (g as any).valetPassword3 || '',
@@ -561,6 +558,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (updates.basePrice !== undefined) db.base_price = updates.basePrice;
     if (updates.availableSpots !== undefined) db.available_spots = updates.availableSpots;
     if (updates.capacity !== undefined) db.capacity = updates.capacity;
+    if (updates.commissionRate !== undefined) db.commission_rate = updates.commissionRate; // ✅
     if (updates.valetName1 !== undefined) db.valet_name_1 = updates.valetName1;
     if (updates.valetPassword1 !== undefined) db.valet_password_1 = updates.valetPassword1;
     if (updates.valetName2 !== undefined) db.valet_name_2 = updates.valetName2;
@@ -602,9 +600,7 @@ export const useStore = create<AppState>((set, get) => ({
   addSession: async (s) => {
     const normalizedPlate = normalizePlate(s.carPlate);
     if (!normalizedPlate) return '';
-
     const sessionId = crypto.randomUUID();
-    const safeStartTime = resolveStartTime(s.startTime);
     const lockKey = `${normalizedPlate}::${s.source}`;
 
     if (sessionStartLocks.has(lockKey)) {
@@ -641,17 +637,16 @@ export const useStore = create<AppState>((set, get) => ({
       }
 
       const addedByValue = resolveAddedBy((s as any).addedBy);
-
       const optimisticSession: ParkingSession = {
         ...s, id: sessionId, carPlate: normalizedPlate,
-        startTime: 0,
-        synced: false,
-        revenueConfirmed: false,
+        startTime: 0, synced: false, revenueConfirmed: false,
         addedBy: addedByValue,
         customerPhone: (s as any).customerPhone || undefined,
         customerName: (s as any).customerName || undefined,
         incomingCarId: (s as any).incomingCarId || undefined,
         startedBy: (s as any).startedBy || undefined,
+        commissionAmount: 0, // ✅
+        netRevenue: 0, // ✅
       };
 
       set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]) }));
@@ -661,19 +656,16 @@ export const useStore = create<AppState>((set, get) => ({
 
       try {
         const { data, error } = await supabase.from('sessions').insert({
-          id: sessionId,
-          garage_id: s.garageId,
-          car_plate: normalizedPlate,
-          start_time: new Date().toISOString(),
-          status: s.status,
-          source: s.source,
-          agreed_price: s.agreedPrice ?? null,
-          revenue_confirmed: false,
+          id: sessionId, garage_id: s.garageId, car_plate: normalizedPlate,
+          start_time: new Date().toISOString(), status: s.status, source: s.source,
+          agreed_price: s.agreedPrice ?? null, revenue_confirmed: false,
           added_by: addedByValue,
           customer_phone: (s as any).customerPhone || null,
           customer_name: (s as any).customerName || null,
           incoming_car_id: (s as any).incomingCarId || null,
           started_by: (s as any).startedBy || null,
+          commission_amount: 0, // ✅
+          net_revenue: 0, // ✅
         }).select().single();
 
         if (error) {
@@ -702,6 +694,12 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // ✅ endSession - محدّث بحساب العمولة
+  //
+  //  العمولة تتحسب على جلسات التطبيق فقط (source === 'app')
+  //  الجلسات اليدوية (source === 'manual') → عمولة = 0
+  // ═══════════════════════════════════════════════════════════════════
   endSession: async (id, totalPrice, paymentMethod) => {
     const now = Date.now();
     const session = get().sessions.find((s) => s.id === id);
@@ -715,10 +713,27 @@ export const useStore = create<AppState>((set, get) => ({
 
     try {
       const safeTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
+
+      // ✅ حساب العمولة
+      const garage = get().garages.find((g) => g.id === session.garageId);
+      const commissionRate = garage?.commissionRate ?? 10;
+      const isAppSession = session.source === 'app';
+      const commissionAmount = isAppSession
+        ? Math.round(safeTotalPrice * commissionRate / 100 * 100) / 100
+        : 0;
+      const netRevenue = Math.round((safeTotalPrice - commissionAmount) * 100) / 100;
+
       const endedSession: ParkingSession = {
-        ...session, endTime: now, totalPrice: safeTotalPrice,
-        paymentMethod, status: 'completed' as const, revenueConfirmed: false,
+        ...session,
+        endTime: now,
+        totalPrice: safeTotalPrice,
+        paymentMethod,
+        status: 'completed' as const,
+        revenueConfirmed: false,
+        commissionAmount, // ✅
+        netRevenue, // ✅
       };
+
       locallyEndedSessions.set(id, endedSession);
       set((st) => ({ sessions: st.sessions.map((s) => s.id === id ? endedSession : s) }));
       await get().adjustGarageSpots(session.garageId, +1);
@@ -731,6 +746,8 @@ export const useStore = create<AppState>((set, get) => ({
         payment_method: paymentMethod,
         status: 'completed',
         revenue_confirmed: false,
+        commission_amount: commissionAmount, // ✅
+        net_revenue: netRevenue, // ✅
       }).eq('id', id).eq('status', 'active');
 
       if (error) { console.error('❌', error); }
@@ -764,67 +781,37 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // ═══════════════════════════════════════════════════════════════════
-  // ✅ assignSessionToValet - الدالة الجديدة
-  //
-  //  بتعمل:
-  //  1. تحديث الـ local state فوراً (optimistic)
-  //  2. تحديث الداتابيز في Supabase
-  //  3. لو فشل Supabase → rollback
-  //
-  //  بتتسمى لما:
-  //  - السايس يفتح التطبيق ويلاقي جلسة حريف بـ addedBy = ''
-  //  - الجلسة تتسند ليه تلقائياً
-  // ═══════════════════════════════════════════════════════════════════
   assignSessionToValet: async (sessionId: string, valetName: string) => {
     if (!sessionId || !valetName) return;
-
-    // ✅ تحقق إن الجلسة موجودة وفعلاً addedBy فاضي
     const session = get().sessions.find((s) => s.id === sessionId);
     if (!session) return;
-
     const currentAddedBy = (session.addedBy || '').trim();
-    // لو الجلسة اتسندت لحد بالفعل، متعملش حاجة
     if (currentAddedBy !== '') return;
 
-    // ✅ تحديث محلي فوري
     set((st) => ({
-      sessions: st.sessions.map((s) =>
-        s.id === sessionId ? { ...s, addedBy: valetName } : s
-      ),
+      sessions: st.sessions.map((s) => s.id === sessionId ? { ...s, addedBy: valetName } : s),
     }));
 
     if (!isSupabaseConfigured()) return;
 
     try {
-      // ✅ تحديث Supabase
       const { error } = await supabase
         .from('sessions')
         .update({ added_by: valetName })
         .eq('id', sessionId)
-        .eq('added_by', ''); // ✅ فقط لو لسه فاضي (يمنع race condition)
+        .eq('added_by', '');
 
       if (error) {
         console.error('❌ assignSessionToValet error:', error);
-
-        // ✅ Rollback لو فشل
         set((st) => ({
-          sessions: st.sessions.map((s) =>
-            s.id === sessionId ? { ...s, addedBy: '' } : s
-          ),
+          sessions: st.sessions.map((s) => s.id === sessionId ? { ...s, addedBy: '' } : s),
         }));
-
-        // ✅ إعادة الجلب عشان نعرف الحالة الحقيقية
         setTimeout(() => get().fetchAll(), 1000);
       }
     } catch (err) {
       console.error('❌ assignSessionToValet unexpected error:', err);
-
-      // ✅ Rollback
       set((st) => ({
-        sessions: st.sessions.map((s) =>
-          s.id === sessionId ? { ...s, addedBy: '' } : s
-        ),
+        sessions: st.sessions.map((s) => s.id === sessionId ? { ...s, addedBy: '' } : s),
       }));
     }
   },
