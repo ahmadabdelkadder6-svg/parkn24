@@ -34,23 +34,6 @@ const VALID_SCREENS = [
 
 const ADMIN_SECRET_CODE = 'admin2025x';
 
-const normalizePlate = (plate?: string) =>
-  (plate ?? '')
-    .trim()
-    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
-    .replace(/\s+/g, ' ')
-    .toUpperCase();
-
-const toMs = (value: any): number => {
-  if (!value) return 0;
-  if (typeof value === 'number') {
-    return value < 1_000_000_000_000 ? value * 1000 : value;
-  }
-  const parsed = new Date(value).getTime();
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
 export default function App() {
   const {
     view,
@@ -114,6 +97,7 @@ export default function App() {
 
   useEffect(() => {
     const init = async () => {
+      // ✅ لو التطبيق اتثبت حالاً واتفتح من الأيقونة → ابدأ من Splash
       const justInstalled = localStorage.getItem('pwaJustInstalled') === 'true';
       const isStandalone =
         window.matchMedia('(display-mode: standalone)').matches ||
@@ -148,30 +132,21 @@ export default function App() {
     };
 
     init();
-  }, [fetchAll, setScreen, setSelectedGarageId, setView]);
+  }, []);
 
-  // ✅ استرجاع الحالة مرة واحدة بعد التحميل
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser) return;
     if (view !== 'user') return;
 
-    const userPlate = normalizePlate(currentUser.carPlate);
-    const userPhone = currentUser.phone || '';
+    const userPlate = (currentUser.carPlate ?? '').trim().toUpperCase();
 
     const myActiveSession = sessions.find(
-      (s) =>
-        s.status === 'active' &&
-        (
-          normalizePlate(s.carPlate) === userPlate ||
-          (s as any).customerPhone === userPhone
-        )
+      (s) => s.carPlate.trim().toUpperCase() === userPlate && s.status === 'active'
     );
 
     const myIncoming = incomingCars.find(
-      (c) =>
-        c.status === 'coming' &&
-        normalizePlate(c.carPlate) === userPlate
+      (c) => c.carPlate.trim().toUpperCase() === userPlate && c.status === 'coming'
     );
 
     if (myActiveSession) {
@@ -200,21 +175,26 @@ export default function App() {
 
     if (
       safeScreen === 'session' ||
+      safeScreen === 'navigation' ||
       safeScreen === 'waiting'
     ) {
       const lastCompleted = sessions
         .filter(
           (s) =>
-            s.status === 'completed' &&
-            (
-              normalizePlate(s.carPlate) === userPlate ||
-              (s as any).customerPhone === userPhone
-            )
+            s.carPlate.trim().toUpperCase() === userPlate &&
+            s.status === 'completed'
         )
-        .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
+        .sort((a, b) => {
+          const endA = typeof a.endTime === 'number' ? a.endTime : 0;
+          const endB = typeof b.endTime === 'number' ? b.endTime : 0;
+          return endB - endA;
+        })[0];
 
       if (lastCompleted) {
-        const endTime = toMs(lastCompleted.endTime);
+        const endTime =
+          typeof lastCompleted.endTime === 'number'
+            ? lastCompleted.endTime
+            : 0;
         const timeSinceEnd = Date.now() - endTime;
         if (endTime > 0 && timeSinceEnd < 60000) {
           setSelectedGarageId(lastCompleted.garageId);
@@ -226,32 +206,26 @@ export default function App() {
       setSelectedGarageId(null);
       setScreen('list');
     }
-  }, [dataLoaded]); // intentionally once after load
+  }, [dataLoaded]);
 
-  // ✅ متابعة الجلسات أثناء التشغيل
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser || view !== 'user') return;
 
-    const userPlate = normalizePlate(currentUser.carPlate);
-    const userPhone = currentUser.phone || '';
+    const userPlate = (currentUser.carPlate ?? '').trim().toUpperCase();
 
     const myActiveSession = sessions.find(
       (s) =>
-        s.status === 'active' &&
-        (
-          normalizePlate(s.carPlate) === userPlate ||
-          (s as any).customerPhone === userPhone
-        )
+        s.carPlate.trim().toUpperCase() === userPlate &&
+        s.status === 'active'
     );
 
     const myIncoming = incomingCars.find(
       (c) =>
-        c.status === 'coming' &&
-        normalizePlate(c.carPlate) === userPlate
+        c.carPlate.trim().toUpperCase() === userPlate &&
+        c.status === 'coming'
     );
 
-    // ✅ لو فيه جلسة نشطة
     if (myActiveSession) {
       noSessionCountRef.current = 0;
       lastActiveTimeRef.current = Date.now();
@@ -262,29 +236,21 @@ export default function App() {
         sessionTransitionTimer.current = null;
       }
 
-      prevActiveSessionRef.current = myActiveSession.id;
-      setSelectedGarageId(myActiveSession.garageId);
-
-      // ✅ لو الحريف على list فقط، انقله session
-      if (safeScreen === 'list' || safeScreen === 'splash') {
-        setScreen('session');
+      if (myActiveSession.id !== prevActiveSessionRef.current) {
+        prevActiveSessionRef.current = myActiveSession.id;
+        setSelectedGarageId(myActiveSession.garageId);
+        if (
+          safeScreen !== 'session' &&
+          safeScreen !== 'summary' &&
+          safeScreen !== 'lastSession' &&
+          safeScreen !== 'chat'
+        ) {
+          setScreen('session');
+        }
       }
-
       return;
     }
 
-    // ✅ لو فيه حجز في الطريق - ما تتدخلش لو هو أصلاً في navigation
-    if (myIncoming) {
-      setSelectedGarageId(myIncoming.garageId);
-
-      if (safeScreen === 'list' || safeScreen === 'splash') {
-        setScreen('navigation');
-      }
-
-      return;
-    }
-
-    // ✅ متابعة انتهاء الجلسة فقط من session/waiting
     if (prevActiveSessionRef.current) {
       noSessionCountRef.current += 1;
       const timeSinceLastActive = Date.now() - lastActiveTimeRef.current;
@@ -298,17 +264,14 @@ export default function App() {
       sessionTransitionTimer.current = setTimeout(() => {
         sessionTransitionTimer.current = null;
         const freshState = useStore.getState();
-        const freshUser = freshState.currentUser;
-        const freshPlate = normalizePlate(freshUser?.carPlate);
-        const freshPhone = freshUser?.phone || '';
+        const freshPlate = (freshState.currentUser?.carPlate ?? '')
+          .trim()
+          .toUpperCase();
 
         const stillActive = freshState.sessions.find(
           (s) =>
-            s.status === 'active' &&
-            (
-              normalizePlate(s.carPlate) === freshPlate ||
-              (s as any).customerPhone === freshPhone
-            )
+            s.carPlate.trim().toUpperCase() === freshPlate &&
+            s.status === 'active'
         );
 
         if (stillActive) {
@@ -321,24 +284,28 @@ export default function App() {
         prevActiveSessionRef.current = null;
         noSessionCountRef.current = 0;
 
-        // ✅ ما تتدخلش في navigation
         if (
           currentScreen === 'session' ||
+          currentScreen === 'navigation' ||
           currentScreen === 'waiting'
         ) {
           const lastCompleted = freshState.sessions
             .filter(
               (s) =>
-                s.status === 'completed' &&
-                (
-                  normalizePlate(s.carPlate) === freshPlate ||
-                  (s as any).customerPhone === freshPhone
-                )
+                s.carPlate.trim().toUpperCase() === freshPlate &&
+                s.status === 'completed'
             )
-            .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
+            .sort((a, b) => {
+              const endA = typeof a.endTime === 'number' ? a.endTime : 0;
+              const endB = typeof b.endTime === 'number' ? b.endTime : 0;
+              return endB - endA;
+            })[0];
 
           if (lastCompleted) {
-            const endTime = toMs(lastCompleted.endTime);
+            const endTime =
+              typeof lastCompleted.endTime === 'number'
+                ? lastCompleted.endTime
+                : 0;
             const timeSinceEnd = Date.now() - endTime;
             if (endTime > 0 && timeSinceEnd < 60000) {
               setSelectedGarageId(lastCompleted.garageId);
@@ -351,18 +318,44 @@ export default function App() {
             sessionEndToastShown.current = true;
             toast.success('تم إنهاء الجلسة والعودة للرئيسية');
           }
-
           setSelectedGarageId(null);
           setScreen('list');
         }
       }, 3000);
     }
+
+    if (!myActiveSession && safeScreen === 'navigation' && !myIncoming) {
+      const timeout = setTimeout(() => {
+        const freshState = useStore.getState();
+        const freshPlate = (freshState.currentUser?.carPlate ?? '')
+          .trim()
+          .toUpperCase();
+
+        const freshIncoming = freshState.incomingCars.find(
+          (c) =>
+            c.carPlate.trim().toUpperCase() === freshPlate &&
+            c.status === 'coming'
+        );
+        const freshSession = freshState.sessions.find(
+          (s) =>
+            s.carPlate.trim().toUpperCase() === freshPlate &&
+            s.status === 'active'
+        );
+
+        if (!freshIncoming && !freshSession) {
+          setSelectedGarageId(null);
+          setScreen('list');
+        }
+      }, 3000);
+
+      return () => clearTimeout(timeout);
+    }
   }, [
     sessions,
-    incomingCars,
     currentUser,
     view,
     safeScreen,
+    incomingCars,
     dataLoaded,
     setScreen,
     setSelectedGarageId,
@@ -458,9 +451,10 @@ export default function App() {
                     {safeScreen === 'session' && <SessionScreen />}
                     {safeScreen === 'lastSession' && <LastSessionScreen />}
                     {safeScreen === 'chat' && <ChatScreen />}
-                    {safeScreen === 'summary' && <SummaryScreen />}
                   </>
                 )}
+
+                {safeScreen === 'summary' && <SummaryScreen />}
               </motion.div>
             </AnimatePresence>
           )}
