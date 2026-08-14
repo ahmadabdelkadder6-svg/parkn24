@@ -715,11 +715,13 @@ export const useStore = create<AppState>((set, get) => ({
       const safeTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
 
       // ✅ حساب العمولة
-      const garage = get().garages.find((g) => g.id === session.garageId);
-      const commissionRate = garage?.commissionRate ?? 10;
-      const isAppSession = session.source === 'app';
-      const commissionAmount = isAppSession
-        ? Math.round(safeTotalPrice * commissionRate / 100 * 100) / 100
+const garage = get().garages.find((g) => g.id === session.garageId);
+const commissionRate = garage?.commissionRate ?? 10;
+const isAppSession = session.source === 'app';
+const commissionAmount = isAppSession
+  ? Math.round(safeTotalPrice * commissionRate / 100 * 100) / 100
+  : 0;
+const netRevenue = Math.round((safeTotalPrice - commissionAmount) * 100) / 100;
         : 0;
       const netRevenue = Math.round((safeTotalPrice - commissionAmount) * 100) / 100;
 

@@ -101,10 +101,10 @@ export default function AdminDashboard() {
 
   // ✅ حساب العمولة لجلسة
 const getCommission = useCallback((s: any) => {
-  if (s.commissionAmount != null && Number(s.commissionAmount) > 0) return Number(s.commissionAmount);
   if (s.source !== 'app') return 0;
   const rev = getRevenue(s);
   if (rev <= 0) return 0;
+  // ✅ دايماً من النسبة الحالية للجراج
   const g = garages.find((ga: any) => ga.id === s.garageId);
   const rate = g?.commissionRate ?? 10;
   return Math.round(rev * rate / 100 * 100) / 100;
@@ -624,46 +624,133 @@ const getCommission = useCallback((s: any) => {
                 </div>
 
                 {/* ✅ تعديل نسبة العمولة */}
-                <div className="mb-3" style={{ background: '#FFF8F0', borderRadius: 18, padding: 14, border: '2px solid #FFD180' }}>
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      {!isEditingComm ? (
-                        <button
-                          onClick={() => { setEditingCommissionGarageId(g.id); setEditCommissionRate(g.commissionRate); }}
-                          className="font-black active:scale-95"
-                          style={{ background: '#FF9500', color: '#fff', padding: '6px 14px', borderRadius: 12, fontSize: 10 }}
-                        >
-                          ✏️ تعديل
-                        </button>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => handleSaveCommission(g.id)} className="font-black active:scale-95" style={{ background: '#00CC66', color: '#fff', padding: '6px 14px', borderRadius: 12, fontSize: 10 }}>✅ حفظ</button>
-                          <button onClick={() => setEditingCommissionGarageId(null)} className="font-black active:scale-95" style={{ background: '#F0F4FF', color: '#475569', padding: '6px 14px', borderRadius: 12, fontSize: 10, border: '1px solid #D0DCFF' }}>إلغاء</button>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Percent size={14} style={{ color: '#FF9500' }} />
-                      <span className="font-black" style={{ fontSize: 12, color: '#FF9500' }}>نسبة العمولة</span>
-                    </div>
-                  </div>
+{/* ✅ تعديل نسبة العمولة - بوكس أصغر */}
+<div
+  className="mb-3"
+  style={{
+    background: '#FFF8F0',
+    borderRadius: 14,
+    padding: '10px 12px',
+    border: '1.5px solid #FFD180',
+  }}
+>
+  <div className="flex items-center justify-between gap-2">
+    <div className="flex items-center gap-2">
+      {!isEditingComm ? (
+        <button
+          onClick={() => {
+            setEditingCommissionGarageId(g.id);
+            setEditCommissionRate(g.commissionRate);
+          }}
+          className="font-black active:scale-95"
+          style={{
+            background: '#FF9500',
+            color: '#fff',
+            padding: '5px 10px',
+            borderRadius: 10,
+            fontSize: 9,
+          }}
+        >
+          ✏️ تعديل
+        </button>
+      ) : (
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => handleSaveCommission(g.id)}
+            className="font-black active:scale-95"
+            style={{
+              background: '#00CC66',
+              color: '#fff',
+              padding: '5px 10px',
+              borderRadius: 10,
+              fontSize: 9,
+            }}
+          >
+            حفظ
+          </button>
+          <button
+            onClick={() => setEditingCommissionGarageId(null)}
+            className="font-black active:scale-95"
+            style={{
+              background: '#F0F4FF',
+              color: '#475569',
+              padding: '5px 10px',
+              borderRadius: 10,
+              fontSize: 9,
+              border: '1px solid #D0DCFF',
+            }}
+          >
+            إلغاء
+          </button>
+        </div>
+      )}
+    </div>
 
-                  {isEditingComm ? (
-                    <div className="flex items-center justify-center gap-3">
-                      <button onClick={() => setEditCommissionRate(r => Math.max(0, r - 1))} className="active:scale-90" style={{ background: '#FF3333', color: '#fff', width: 40, height: 40, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={18} /></button>
-                      <div className="text-center">
-                        <input type="number" value={editCommissionRate} onChange={e => setEditCommissionRate(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))} className="bg-transparent text-center outline-none font-mono font-black" style={{ fontSize: 32, width: 80, color: '#FF9500' }} />
-                        <div className="font-bold" style={{ fontSize: 10, color: '#94a3b8' }}>%</div>
-                      </div>
-                      <button onClick={() => setEditCommissionRate(r => Math.min(100, r + 1))} className="active:scale-90" style={{ background: '#00CC66', color: '#fff', width: 40, height: 40, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={18} /></button>
-                    </div>
-                  ) : (
-                    <div className="text-center">
-                      <span className="font-black font-mono" style={{ fontSize: 28, color: '#FF9500' }}>{g.commissionRate}%</span>
-                      <div className="font-bold" style={{ fontSize: 10, color: '#94a3b8' }}>على جلسات التطبيق فقط</div>
-                    </div>
-                  )}
-                </div>
+    <div className="flex items-center gap-1.5">
+      <Percent size={12} style={{ color: '#FF9500' }} />
+      <span className="font-black font-mono" style={{ fontSize: 16, color: '#FF9500' }}>
+        {isEditingComm ? editCommissionRate : g.commissionRate}%
+      </span>
+      <span className="font-bold" style={{ fontSize: 9, color: '#7B8CA6' }}>
+        عمولة التطبيق
+      </span>
+    </div>
+  </div>
+
+  {isEditingComm && (
+    <div className="flex items-center justify-center gap-2 mt-2">
+      <button
+        onClick={() => setEditCommissionRate(r => Math.max(0, r - 1))}
+        className="active:scale-90"
+        style={{
+          background: '#FF3333',
+          color: '#fff',
+          width: 30,
+          height: 30,
+          borderRadius: 9,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Minus size={14} />
+      </button>
+
+      <input
+        type="number"
+        value={editCommissionRate}
+        onChange={e => setEditCommissionRate(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+        className="bg-transparent text-center outline-none font-mono font-black"
+        style={{
+          width: 54,
+          fontSize: 18,
+          color: '#FF9500',
+          background: '#fff',
+          border: '1.5px solid #FFD180',
+          borderRadius: 10,
+          padding: '4px 0',
+        }}
+      />
+
+      <button
+        onClick={() => setEditCommissionRate(r => Math.min(100, r + 1))}
+        className="active:scale-90"
+        style={{
+          background: '#00CC66',
+          color: '#fff',
+          width: 30,
+          height: 30,
+          borderRadius: 9,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Plus size={14} />
+      </button>
+    </div>
+  )}
+</div>
 
                 <button
                   onClick={() => handleAdminEnterGarage(g)}

@@ -380,26 +380,22 @@ export default function GarageDashboard() {
 
   // ✅ حساب العمولة لجلسة معينة
 const getSessionCommission = useCallback((s: any) => {
-  // لو محسوبة في الداتابيز
-  if (s.commissionAmount != null && Number(s.commissionAmount) > 0) return Number(s.commissionAmount);
-  // لو يدوي = 0 عمولة
   if (s.source !== 'app') return 0;
-  // حساب يدوي من الإيراد
   const rev = getSessionRevenue(s);
   if (rev <= 0) return 0;
+  // ✅ دايماً احسب من النسبة الحالية للجراج
   const rate = garage?.commissionRate ?? 10;
   return Math.round(rev * rate / 100 * 100) / 100;
 }, [getSessionRevenue, garage?.commissionRate]);
 
   // ✅ حساب الصافي لجلسة معينة
 const getSessionNetRevenue = useCallback((s: any) => {
-  if (s.netRevenue != null && Number(s.netRevenue) > 0) return Number(s.netRevenue);
   const rev = getSessionRevenue(s);
   if (s.source !== 'app') return rev;
+  // ✅ دايماً احسب من العمولة الحالية
   const comm = getSessionCommission(s);
   return Math.round((rev - comm) * 100) / 100;
 }, [getSessionRevenue, getSessionCommission]);
-
   const valetTodayRevenue = useMemo(() => {
     if (!isValet) return 0;
     return completedSessions
