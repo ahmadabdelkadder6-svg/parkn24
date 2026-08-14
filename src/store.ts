@@ -21,7 +21,7 @@ export interface Garage {
   valetPassword2: string;
   valetName3: string;
   valetPassword3: string;
-  commissionRate: number; // ✅ نسبة العمولة
+  commissionRate: number;
 }
 
 export interface ParkingSession {
@@ -42,8 +42,8 @@ export interface ParkingSession {
   customerName?: string;
   incomingCarId?: string;
   startedBy?: 'garage' | 'customer';
-  commissionAmount?: number; // ✅ مبلغ العمولة
-  netRevenue?: number;       // ✅ صافي الإيراد بعد العمولة
+  commissionAmount?: number;
+  netRevenue?: number;
 }
 
 export interface Offer {
@@ -187,7 +187,7 @@ const mapGarage = (r: any): Garage => ({
   valetName1: r.valet_name_1 || '', valetPassword1: r.valet_password_1 || '',
   valetName2: r.valet_name_2 || '', valetPassword2: r.valet_password_2 || '',
   valetName3: r.valet_name_3 || '', valetPassword3: r.valet_password_3 || '',
-  commissionRate: Number(r.commission_rate ?? 10), // ✅
+  commissionRate: Number(r.commission_rate ?? 10),
 });
 
 const mapSession = (r: any): ParkingSession => {
@@ -239,8 +239,8 @@ const mapSession = (r: any): ParkingSession => {
     customerName: r.customer_name || undefined,
     incomingCarId: r.incoming_car_id || undefined,
     startedBy: r.started_by || undefined,
-    commissionAmount: r.commission_amount != null ? Number(r.commission_amount) : 0, // ✅
-    netRevenue: r.net_revenue != null ? Number(r.net_revenue) : 0, // ✅
+    commissionAmount: r.commission_amount != null ? Number(r.commission_amount) : 0,
+    netRevenue: r.net_revenue != null ? Number(r.net_revenue) : 0,
   };
 };
 
@@ -542,7 +542,7 @@ export const useStore = create<AppState>((set, get) => ({
     const { data, error } = await supabase.from('garages').insert({
       name: g.name, username: g.username, phone: g.phone, location: g.location, lat: g.lat, lng: g.lng,
       capacity: g.capacity, available_spots: g.capacity, base_price: g.basePrice, rating: 4.0,
-      commission_rate: 10, // ✅ نسبة افتراضية
+      commission_rate: 10,
       valet_name_1: (g as any).valetName1 || '', valet_password_1: (g as any).valetPassword1 || '',
       valet_name_2: (g as any).valetName2 || '', valet_password_2: (g as any).valetPassword2 || '',
       valet_name_3: (g as any).valetName3 || '', valet_password_3: (g as any).valetPassword3 || '',
@@ -558,7 +558,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (updates.basePrice !== undefined) db.base_price = updates.basePrice;
     if (updates.availableSpots !== undefined) db.available_spots = updates.availableSpots;
     if (updates.capacity !== undefined) db.capacity = updates.capacity;
-    if (updates.commissionRate !== undefined) db.commission_rate = updates.commissionRate; // ✅
+    if (updates.commissionRate !== undefined) db.commission_rate = updates.commissionRate;
     if (updates.valetName1 !== undefined) db.valet_name_1 = updates.valetName1;
     if (updates.valetPassword1 !== undefined) db.valet_password_1 = updates.valetPassword1;
     if (updates.valetName2 !== undefined) db.valet_name_2 = updates.valetName2;
@@ -645,8 +645,8 @@ export const useStore = create<AppState>((set, get) => ({
         customerName: (s as any).customerName || undefined,
         incomingCarId: (s as any).incomingCarId || undefined,
         startedBy: (s as any).startedBy || undefined,
-        commissionAmount: 0, // ✅
-        netRevenue: 0, // ✅
+        commissionAmount: 0,
+        netRevenue: 0,
       };
 
       set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]) }));
@@ -664,8 +664,8 @@ export const useStore = create<AppState>((set, get) => ({
           customer_name: (s as any).customerName || null,
           incoming_car_id: (s as any).incomingCarId || null,
           started_by: (s as any).startedBy || null,
-          commission_amount: 0, // ✅
-          net_revenue: 0, // ✅
+          commission_amount: 0,
+          net_revenue: 0,
         }).select().single();
 
         if (error) {
@@ -695,10 +695,9 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   // ═══════════════════════════════════════════════════════════════════
-  // ✅ endSession - محدّث بحساب العمولة
-  //
-  //  العمولة تتحسب على جلسات التطبيق فقط (source === 'app')
-  //  الجلسات اليدوية (source === 'manual') → عمولة = 0
+  // ✅ endSession - حساب العمولة الصحيح
+  //    جلسات التطبيق فقط = إيراد × نسبة الجراج / 100
+  //    جلسات يدوية = عمولة 0
   // ═══════════════════════════════════════════════════════════════════
   endSession: async (id, totalPrice, paymentMethod) => {
     const now = Date.now();
@@ -714,14 +713,12 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const safeTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
 
-      // ✅ حساب العمولة
-const garage = get().garages.find((g) => g.id === session.garageId);
-const commissionRate = garage?.commissionRate ?? 10;
-const isAppSession = session.source === 'app';
-const commissionAmount = isAppSession
-  ? Math.round(safeTotalPrice * commissionRate / 100 * 100) / 100
-  : 0;
-const netRevenue = Math.round((safeTotalPrice - commissionAmount) * 100) / 100;
+      // ✅ حساب العمولة من نسبة الجراج الحالية
+      const garage = get().garages.find((g) => g.id === session.garageId);
+      const commissionRate = garage?.commissionRate ?? 10;
+      const isAppSession = session.source === 'app';
+      const commissionAmount = isAppSession
+        ? Math.round((safeTotalPrice * commissionRate / 100) * 100) / 100
         : 0;
       const netRevenue = Math.round((safeTotalPrice - commissionAmount) * 100) / 100;
 
@@ -732,8 +729,8 @@ const netRevenue = Math.round((safeTotalPrice - commissionAmount) * 100) / 100;
         paymentMethod,
         status: 'completed' as const,
         revenueConfirmed: false,
-        commissionAmount, // ✅
-        netRevenue, // ✅
+        commissionAmount,
+        netRevenue,
       };
 
       locallyEndedSessions.set(id, endedSession);
@@ -748,8 +745,8 @@ const netRevenue = Math.round((safeTotalPrice - commissionAmount) * 100) / 100;
         payment_method: paymentMethod,
         status: 'completed',
         revenue_confirmed: false,
-        commission_amount: commissionAmount, // ✅
-        net_revenue: netRevenue, // ✅
+        commission_amount: commissionAmount,
+        net_revenue: netRevenue,
       }).eq('id', id).eq('status', 'active');
 
       if (error) { console.error('❌', error); }
