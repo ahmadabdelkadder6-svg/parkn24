@@ -990,16 +990,49 @@ export default function GarageDashboard() {
       )}
 
       {/* Valet info bar */}
-      {isValet && (
-        <div className="mb-5 flex items-center justify-between" style={{ background: '#fff', borderRadius: 20, padding: '12px 16px', border: '2px solid #D0DCFF' }}>
-<span className="font-black flex items-center gap-1" style={{ fontSize: 14, color: '#0A1628', letterSpacing: 0.5 }}><HardHat size={16} style={{ color: '#FF9500' }} /> {currentValetName || `سايس ${valetNumber}`}</span>
-          <div className="flex items-center gap-3">
-            <span style={{ fontSize: 11, color: '#7B8CA6' }}>السعر: <span className="font-mono font-black" style={{ color: '#00AA44' }}>{garage.basePrice}ج</span></span>
-            <div style={{ width: 2, height: 14, background: '#D0DCFF', borderRadius: 2 }} />
-            <span style={{ fontSize: 11, color: '#7B8CA6' }}>متاح: <span className="font-mono font-black" style={{ color: '#0066FF' }}>{garage.availableSpots}/{garage.capacity}</span></span>
-          </div>
+ {isValet && (
+  <div
+    className="mb-5 flex items-center justify-between"
+    style={{
+      background: '#fff',
+      borderRadius: 20,
+      padding: '12px 16px',
+      border: '2px solid #D0DCFF',
+    }}
+  >
+    <span
+      className="font-black flex items-center gap-1"
+      style={{ fontSize: 14, color: '#0A1628' }}
+    >
+      <HardHat size={16} style={{ color: '#FF9500' }} />
+      {currentValetName || `سايس ${valetNumber}`}
+    </span>
+
+    <div className="flex items-center gap-4">
+      <div className="text-right">
+        <div style={{ fontSize: 10, color: '#94a3b8' }}>السعر/ساعة</div>
+        <div
+          className="font-black font-mono"
+          style={{ fontSize: 17, color: '#0A1628', lineHeight: 1.1 }}
+        >
+          {garage.basePrice} ج
         </div>
-      )}
+      </div>
+
+      <div style={{ width: 2, height: 28, background: '#D0DCFF', borderRadius: 2 }} />
+
+      <div className="text-right">
+        <div style={{ fontSize: 10, color: '#94a3b8' }}>الأماكن المتاحة</div>
+        <div
+          className="font-black font-mono"
+          style={{ fontSize: 17, color: '#0A1628', lineHeight: 1.1 }}
+        >
+          {garage.availableSpots}/{garage.capacity}
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* ═══ سجل العمليات ═══ */}
       <div className="mb-8">
