@@ -196,12 +196,11 @@ const fireApproachingAlert = (carPlate: string) => {
 };
 
 export default function GarageDashboard() {
-  const {
+const {
     garages, currentGarageId, setCurrentGarageId, sessions, addSession, endSession,
     removeSession, offers, updateOffer, cancelOffer, updateGarage, incomingCars,
-    removeIncomingCar, fetchAll, confirmRevenue, assignSessionToValet,
+    removeIncomingCar, fetchAll, confirmRevenue, assignSessionToValet, adjustGarageSpots,
   } = useStore();
-
   const [garageRole] = useState<'owner' | 'valet'>(
     () => (localStorage.getItem('garageRole') as 'owner' | 'valet') || 'owner',
   );
@@ -266,6 +265,7 @@ export default function GarageDashboard() {
   } | null>(null);
   const [confirmPaymentMethod, setConfirmPaymentMethod] = useState('cash');
   const [tick, setTick] = useState(0);
+const [valetEditSpots, setValetEditSpots] = useState(false);
   const [garageDailyStats, setGarageDailyStats] = useState<DailyStat[]>([]);
 
   // ✅ إسناد جلسات الحريف للسايس تلقائياً
@@ -633,7 +633,7 @@ export default function GarageDashboard() {
           <h2 className="font-black" style={{ fontSize: 20 }}>{garage.name}</h2>
           <div className="flex items-center gap-2 justify-end mt-1">
             <span className="font-bold flex items-center gap-1" style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, background: isOwner ? '#0066FF' : '#FF9500', color: '#fff' }}>
-              {isOwner ? <><Shield size={10} /> مالك</> : <><HardHat size={10} /> سايس {valetNumber} {currentValetName && `- ${currentValetName}`}</>}
+{isOwner ? <><Shield size={10} /> مالك</> : <><HardHat size={10} style={{ color: '#fff' }} /> <span style={{ color: '#fff', fontWeight: 900 }}>سايس {valetNumber}</span> {currentValetName && <span style={{ color: '#fff', fontWeight: 900 }}> - {currentValetName}</span>}</>}
             </span>
             <p className="flex items-center gap-1" style={{ fontSize: 11, color: '#7B8CA6' }}><MapPin size={11} /> {garage.location}</p>
           </div>
@@ -989,18 +989,96 @@ export default function GarageDashboard() {
         </div>
       )}
 
-      {/* Valet info bar */}
+{/* Valet info bar + تعديل الأماكن */}
       {isValet && (
-        <div className="mb-5 flex items-center justify-between" style={{ background: '#fff', borderRadius: 20, padding: '12px 16px', border: '2px solid #D0DCFF' }}>
-<span className="font-black flex items-center gap-1" style={{ fontSize: 13, color: '#0A1628' }}><HardHat size={14} style={{ color: '#FF9500' }} /> {currentValetName || `سايس ${valetNumber}`}</span>
-          <div className="flex items-center gap-3">
-            <span style={{ fontSize: 11, color: '#7B8CA6' }}>السعر: <span className="font-mono font-black" style={{ color: '#00AA44' }}>{garage.basePrice}ج</span></span>
-            <div style={{ width: 2, height: 14, background: '#D0DCFF', borderRadius: 2 }} />
-            <span style={{ fontSize: 11, color: '#7B8CA6' }}>متاح: <span className="font-mono font-black" style={{ color: '#0066FF' }}>{garage.availableSpots}/{garage.capacity}</span></span>
+        <div className="mb-5" style={{ background: '#fff', borderRadius: 20, padding: '12px 16px', border: '2px solid #D0DCFF' }}>
+          <div className="flex items-center justify-between">
+            <span className="font-black flex items-center gap-1" style={{ fontSize: 14, color: '#0A1628', letterSpacing: 0.5 }}>
+              <HardHat size={16} style={{ color: '#FF9500' }} /> {currentValetName || `سايس ${valetNumber}`}
+            </span>
+            <div className="flex items-center gap-3">
+              <span style={{ fontSize: 11, color: '#7B8CA6' }}>السعر: <span className="font-mono font-black" style={{ color: '#00AA44' }}>{garage.basePrice}ج</span></span>
+              <div style={{ width: 2, height: 14, background: '#D0DCFF', borderRadius: 2 }} />
+              <button
+                onClick={() => setValetEditSpots(!valetEditSpots)}
+                className="flex items-center gap-1 active:scale-95"
+                style={{ fontSize: 11, color: valetEditSpots ? '#0066FF' : '#7B8CA6' }}
+              >
+                متاح: <span className="font-mono font-black" style={{ color: '#0066FF' }}>{garage.availableSpots}/{garage.capacity}</span>
+                <Edit3 size={10} style={{ color: '#0066FF' }} />
+              </button>
+            </div>
           </div>
+
+          {/* ✅ أزرار تعديل الأماكن */}
+          {valetEditSpots && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mt-3 pt-3"
+              style={{ borderTop: '1.5px solid #D0DCFF' }}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <button
+                  onClick={() => {
+                    if (garage.availableSpots > 0) {
+                      adjustGarageSpots(garage.id, -1);
+                      toast('تم تقليل مكان 🚗', { icon: '➖' });
+                    }
+                  }}
+                  disabled={garage.availableSpots <= 0}
+                  className="active:scale-90"
+                  style={{
+                    background: garage.availableSpots > 0 ? '#FF3333' : '#E2E8F0',
+                    color: garage.availableSpots > 0 ? '#fff' : '#94a3b8',
+                    width: 44, height: 44, borderRadius: 14,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  <Minus size={20} />
+                </button>
+
+                <div className="text-center flex-1">
+                  <div className="font-black font-mono" style={{ fontSize: 32, color: '#0066FF' }}>
+                    {garage.availableSpots}
+                  </div>
+                  <div className="font-bold" style={{ fontSize: 10, color: '#94a3b8' }}>
+                    أماكن شاغرة من {garage.capacity}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (garage.availableSpots < garage.capacity) {
+                      adjustGarageSpots(garage.id, +1);
+                      toast('تم إضافة مكان ✅', { icon: '➕' });
+                    }
+                  }}
+                  disabled={garage.availableSpots >= garage.capacity}
+                  className="active:scale-90"
+                  style={{
+                    background: garage.availableSpots < garage.capacity ? '#00CC66' : '#E2E8F0',
+                    color: garage.availableSpots < garage.capacity ? '#fff' : '#94a3b8',
+                    width: 44, height: 44, borderRadius: 14,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  <Plus size={20} />
+                </button>
+              </div>
+
+              <button
+                onClick={() => setValetEditSpots(false)}
+                className="w-full mt-2 font-bold active:scale-95"
+                style={{ background: '#F0F4FF', color: '#64748b', padding: 10, borderRadius: 14, fontSize: 11, border: '1.5px solid #D0DCFF' }}
+              >
+                إغلاق ✕
+              </button>
+            </motion.div>
+          )}
         </div>
       )}
-
       {/* ═══ سجل العمليات ═══ */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
