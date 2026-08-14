@@ -925,11 +925,9 @@ export default function GarageDashboard() {
 
           {/* الجلسات النشطة للسايس */}
           <div className="mb-5">
-            <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#00AA44' }}>
-              <span className="font-bold" style={{ fontSize: 10, background: '#0066FF', color: '#fff', padding: '3px 10px', borderRadius: 10 }}>الكل: {activeSessions.length}</span>
-              <span className="font-bold" style={{ fontSize: 10, background: '#FF9500', color: '#fff', padding: '3px 10px', borderRadius: 10 }}>جلساتي: {valetActiveSessions.length}</span>
-              الجلسات النشطة <Clock size={16} />
-            </h3>
+<h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#00AA44' }}>
+  الجلسات النشطة ({valetActiveSessions.length}) <Clock size={16} />
+</h3>
             <div className="space-y-3">
               {valetActiveSessions.length === 0 ? (
                 <div className="text-center" style={{ background: '#fff', borderRadius: 22, padding: 28, border: '2px solid #D0DCFF', color: '#94a3b8', fontSize: 14 }}>لا توجد جلسات نشطة</div>
