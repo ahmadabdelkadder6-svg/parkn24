@@ -795,16 +795,15 @@ export default function GarageDashboard() {
       )}
 
       {/* ✅ Stats Cards - مختلفة للمالك والسايس */}
-      <div className="grid grid-cols-3 gap-3 mb-5">
+      <div className={`grid ${isOwner ? 'grid-cols-3' : 'grid-cols-2'} gap-3 mb-5`}>
         {(isOwner ? [
-          { icon: <DollarSign size={22} />, value: totalRevenue.toFixed(0), label: 'مؤكد', bg: 'linear-gradient(135deg,#00CC66,#00AA55)', shadow: 'rgba(0,204,102,0.3)' },
+ { icon: <span className="font-black" style={{ fontSize: 14 }}>ج.م</span>, value: totalRevenue.toFixed(0), label: 'مؤكد', bg: 'linear-gradient(135deg,#00CC66,#00AA55)', shadow: 'rgba(0,204,102,0.3)' },
           { icon: <Car size={22} />, value: garage.availableSpots, label: 'شاغر', bg: 'linear-gradient(135deg,#0066FF,#0044DD)', shadow: 'rgba(0,102,255,0.3)', onClick: openSettings },
-          { icon: <DollarSign size={22} />, value: garage.basePrice, label: 'ج.م/ساعة', bg: 'linear-gradient(135deg,#7C3AED,#5B21B6)', shadow: 'rgba(124,58,237,0.3)', onClick: openSettings },
-        ] : [
-          { icon: <Car size={22} />, value: valetActiveSessions.length, label: 'جلساتي', bg: 'linear-gradient(135deg,#00CC66,#00AA55)', shadow: 'rgba(0,204,102,0.3)' },
-          { icon: <Car size={22} />, value: garage.availableSpots, label: 'شاغر', bg: 'linear-gradient(135deg,#0066FF,#0044DD)', shadow: 'rgba(0,102,255,0.3)' },
-          { icon: <Clock size={22} />, value: activeSessions.length, label: 'الكل نشط', bg: 'linear-gradient(135deg,#7C3AED,#5B21B6)', shadow: 'rgba(124,58,237,0.3)' },
-        ]).map((s, i) => (
+{ icon: <span className="font-black" style={{ fontSize: 14 }}>ج.م</span>, value: garage.basePrice, label: 'سعر/ساعة', bg: 'linear-gradient(135deg,#7C3AED,#5B21B6)', shadow: 'rgba(124,58,237,0.3)', onClick: openSettings },
+       ] : [
+  { icon: <Car size={22} />, value: valetActiveSessions.length, label: 'جلساتي', bg: 'linear-gradient(135deg,#00CC66,#00AA55)', shadow: 'rgba(0,204,102,0.3)' },
+  { icon: <Car size={22} />, value: garage.availableSpots, label: 'شاغر', bg: 'linear-gradient(135deg,#0066FF,#0044DD)', shadow: 'rgba(0,102,255,0.3)' },
+]).map((s, i) => (
           <div key={i} onClick={(s as any).onClick} className={`text-center ${(s as any).onClick ? 'cursor-pointer active:scale-95' : ''}`} style={{ background: s.bg, borderRadius: 22, padding: '18px 10px', color: '#fff', boxShadow: `0 6px 24px ${s.shadow}` }}>
             <div className="mx-auto mb-1" style={{ opacity: 0.9 }}>{s.icon}</div>
             <div className="font-black font-mono" style={{ fontSize: 24 }}>{s.value}</div>
@@ -860,7 +859,7 @@ export default function GarageDashboard() {
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="font-black font-mono" style={{ fontSize: 15, color: '#00AA44' }}>{car.agreedPrice} ج.م / ساعة</span>
-                          <div className="flex items-center gap-1" style={{ color: '#94a3b8' }}><DollarSign size={14} /><span className="font-bold" style={{ fontSize: 11 }}>السعر</span></div>
+                          <div className="flex items-center gap-1" style={{ color: '#94a3b8' }}><span className="font-black" style={{ fontSize: 11 }}>💰</span><span className="font-bold" style={{ fontSize: 11 }}>السعر</span></div>
                         </div>
                       </div>
                       <div className="flex gap-2">
@@ -993,7 +992,7 @@ export default function GarageDashboard() {
       {/* Valet info bar */}
       {isValet && (
         <div className="mb-5 flex items-center justify-between" style={{ background: '#fff', borderRadius: 20, padding: '12px 16px', border: '2px solid #D0DCFF' }}>
-          <span className="font-bold flex items-center gap-1" style={{ fontSize: 11, color: '#FF9500' }}><HardHat size={14} /> {currentValetName || `سايس ${valetNumber}`}</span>
+<span className="font-black flex items-center gap-1" style={{ fontSize: 13, color: '#0A1628' }}><HardHat size={14} style={{ color: '#FF9500' }} /> {currentValetName || `سايس ${valetNumber}`}</span>
           <div className="flex items-center gap-3">
             <span style={{ fontSize: 11, color: '#7B8CA6' }}>السعر: <span className="font-mono font-black" style={{ color: '#00AA44' }}>{garage.basePrice}ج</span></span>
             <div style={{ width: 2, height: 14, background: '#D0DCFF', borderRadius: 2 }} />
@@ -1070,20 +1069,20 @@ export default function GarageDashboard() {
                   <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>{filteredCompleted.filter(s => s.revenueConfirmed).length} عملية مؤكدة</div>
                 </div>
 
-                {filteredStats.totalCommission > 0 && (
-                  <div className="grid grid-cols-2 gap-2 mb-4">
-                    <div className="text-center" style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 18, padding: 14, color: '#fff' }}>
-                      <div className="flex items-center justify-center gap-1 mb-1"><Percent size={14} /></div>
-                      <div className="font-black font-mono" style={{ fontSize: 18 }}>{filteredStats.totalCommission.toFixed(0)}</div>
-                      <div className="font-bold" style={{ fontSize: 9, opacity: 0.8 }}>عمولة التطبيق</div>
-                    </div>
-                    <div className="text-center" style={{ background: 'linear-gradient(135deg,#00AA55,#008844)', borderRadius: 18, padding: 14, color: '#fff' }}>
-                      <div className="flex items-center justify-center gap-1 mb-1"><DollarSign size={14} /></div>
-                      <div className="font-black font-mono" style={{ fontSize: 18 }}>{filteredStats.totalNet.toFixed(0)}</div>
-                      <div className="font-bold" style={{ fontSize: 9, opacity: 0.8 }}>صافي الإيراد</div>
-                    </div>
-                  </div>
-                )}
+{filteredStats.totalCommission > 0 && (
+  <div className="grid grid-cols-2 gap-2 mb-4">
+    <div className="text-center" style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 18, padding: 14, color: '#fff' }}>
+      <div className="font-black" style={{ fontSize: 13, opacity: 0.9, marginBottom: 4 }}>ج.م</div>
+      <div className="font-black font-mono" style={{ fontSize: 22 }}>{filteredStats.totalCommission.toFixed(0)}</div>
+      <div className="font-bold" style={{ fontSize: 9, opacity: 0.8 }}>عمولة التطبيق</div>
+    </div>
+    <div className="text-center" style={{ background: 'linear-gradient(135deg,#00AA55,#008844)', borderRadius: 18, padding: 14, color: '#fff' }}>
+      <div className="font-black" style={{ fontSize: 13, opacity: 0.9, marginBottom: 4 }}>ج.م</div>
+      <div className="font-black font-mono" style={{ fontSize: 22 }}>{filteredStats.totalNet.toFixed(0)}</div>
+      <div className="font-bold" style={{ fontSize: 9, opacity: 0.8 }}>صافي الإيراد</div>
+    </div>
+  </div>
+)}
 
                 <div className="grid grid-cols-4 gap-2 mb-4">
                   {[

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MapPin, Star, Car, Search, Navigation, Clock, Locate, Filter,
-  Plus, Receipt, MessageCircle, DollarSign, Zap,
+  Plus, Receipt, MessageCircle, Zap,
 } from 'lucide-react';
 import { useStore, Garage } from '../store';
 import {
@@ -93,11 +93,9 @@ export default function GarageListScreen() {
 
     if (!found) return undefined;
 
-    // ✅ التحقق من صحة startTime
     const startMs = safeParseTime(found.startTime);
     const now = Date.now();
     if (startMs <= 0 || startMs > now + 60000) {
-      // startTime غلط - نرجع الجلسة بدون تعديل وخليها SessionScreen تتعامل معها
       return found;
     }
 
@@ -145,7 +143,6 @@ export default function GarageListScreen() {
       try { await fetchAll(); } catch (e) { console.error('❌', e); }
     };
 
-    // فتش فوراً
     refetch();
 
     const isMyRow = (row: any): boolean => {
@@ -206,8 +203,7 @@ export default function GarageListScreen() {
   }, [normalizedUserPlate, currentUser?.phone, fetchAll]);
 
   /* ─────────────────────────────────────────────
-     ██  ✅ انتقال تلقائي لشاشة الجلسة
-     ██  مع التأكد من fetchAll قبل الانتقال
+     ██  انتقال تلقائي لشاشة الجلسة
      ───────────────────────────────────────────── */
   useEffect(() => {
     if (!activeSession) {
@@ -221,7 +217,6 @@ export default function GarageListScreen() {
     const startMs = safeParseTime(activeSession.startTime);
     const now = Date.now();
 
-    // ✅ لو startTime غلط → انتظر fetchAll أولاً
     if (startMs <= 0 || startMs > now + 60000) {
       console.warn('⚠️ startTime غير صحيح، انتظار fetchAll...');
       fetchAll().then(() => {
@@ -494,7 +489,6 @@ export default function GarageListScreen() {
 
       {/* ══════ CONTENT ══════ */}
       <div className="flex-1 overflow-y-auto px-4 pt-3 pb-6">
-
         <div className="grid grid-cols-2 gap-2 mb-4">
           {hasCompletedSession && (
             <button
@@ -542,14 +536,7 @@ export default function GarageListScreen() {
         {nearbyGarages.length > 0 && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3 justify-end">
-              <span
-                className="font-black"
-                style={{
-                  background: '#00CC66', color: '#fff', fontSize: 11,
-                  padding: '3px 12px', borderRadius: 20,
-                  boxShadow: '0 2px 8px rgba(0,204,102,0.3)',
-                }}
-              >
+              <span className="font-black" style={{ background: '#00CC66', color: '#fff', fontSize: 11, padding: '3px 12px', borderRadius: 20, boxShadow: '0 2px 8px rgba(0,204,102,0.3)' }}>
                 {nearbyGarages.length}
               </span>
               <h2 className="text-sm font-black flex items-center gap-2" style={{ color: '#00AA44' }}>
@@ -576,14 +563,7 @@ export default function GarageListScreen() {
         {farGarages.length > 0 && !showNearbyOnly && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3 justify-end">
-              <span
-                className="font-black"
-                style={{
-                  background: '#FF8800', color: '#fff', fontSize: 11,
-                  padding: '3px 12px', borderRadius: 20,
-                  boxShadow: '0 2px 8px rgba(255,136,0,0.3)',
-                }}
-              >
+              <span className="font-black" style={{ background: '#FF8800', color: '#fff', fontSize: 11, padding: '3px 12px', borderRadius: 20, boxShadow: '0 2px 8px rgba(255,136,0,0.3)' }}>
                 {farGarages.length}
               </span>
               <h2 className="text-sm font-black flex items-center gap-2" style={{ color: '#CC6600' }}>
@@ -748,10 +728,10 @@ function GarageCard({
             <span className="text-[10px]" style={{ color: '#7B8CA6' }}>شاغر</span>
           </div>
           <div style={{ width: 2, height: 20, background: '#E2E8F0', borderRadius: 2 }} />
-          <div className="flex items-center gap-1">
-            <DollarSign size={16} style={{ color: '#00AA44' }} />
+          <div className="flex items-center gap-1.5">
+            <span className="font-black" style={{ color: '#00AA44', fontSize: 13 }}>جنيه</span>
             <span className="font-black font-mono text-base" style={{ color: '#00AA44' }}>{garage.basePrice}</span>
-            <span className="text-[10px]" style={{ color: '#7B8CA6' }}>ج.م/س</span>
+            <span className="text-[10px]" style={{ color: '#7B8CA6' }}>/ساعة</span>
           </div>
         </div>
       </div>
