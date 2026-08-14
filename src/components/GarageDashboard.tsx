@@ -273,7 +273,6 @@ export default function GarageDashboard() {
     if (!isValet) return;
     if (!currentGarageId) return;
     if (!currentValetNameLocal) return;
-
     const unassigned = sessions.filter(s => {
       if (s.garageId !== currentGarageId) return false;
       if (s.source !== 'app') return false;
@@ -281,15 +280,10 @@ export default function GarageDashboard() {
       const addedBy = ((s as any).addedBy || '').trim();
       return addedBy === '';
     });
-
     if (unassigned.length === 0) return;
-
-    unassigned.forEach(s => {
-      assignSessionToValet(s.id, currentValetNameLocal);
-    });
+    unassigned.forEach(s => { assignSessionToValet(s.id, currentValetNameLocal); });
   }, [sessions, isValet, currentGarageId, currentValetNameLocal, assignSessionToValet]);
 
-  // Realtime
   useEffect(() => {
     if (!currentGarageId) return;
     const channel = supabase
@@ -378,26 +372,23 @@ export default function GarageDashboard() {
     return 0;
   }, [garage?.basePrice]);
 
-  // ✅ حساب العمولة لجلسة معينة
-const getSessionCommission = useCallback((s: any) => {
-  // يدوي = 0 عمولة
-  if (s.source !== 'app') return 0;
-  // احسب الإيراد الأول
-  const rev = getSessionRevenue(s);
-  if (rev <= 0) return 0;
-  // العمولة = الإيراد × النسبة ÷ 100
-  const rate = garage?.commissionRate ?? 10;
-  const commission = (rev * rate) / 100;
-  // تقريب لأقرب رقمين عشريين
-  return Math.round(commission * 100) / 100;
-}, [getSessionRevenue, garage?.commissionRate]);
+  // ✅ حساب العمولة - دايماً من النسبة الحالية
+  const getSessionCommission = useCallback((s: any) => {
+    if (s.source !== 'app') return 0;
+    const rev = getSessionRevenue(s);
+    if (rev <= 0) return 0;
+    const rate = garage?.commissionRate ?? 10;
+    return Math.round((rev * rate / 100) * 100) / 100;
+  }, [getSessionRevenue, garage?.commissionRate]);
 
-const getSessionNetRevenue = useCallback((s: any) => {
-  const rev = getSessionRevenue(s);
-  if (s.source !== 'app') return rev;
-  const comm = getSessionCommission(s);
-  return Math.round((rev - comm) * 100) / 100;
-}, [getSessionRevenue, getSessionCommission]);
+  // ✅ حساب الصافي
+  const getSessionNetRevenue = useCallback((s: any) => {
+    const rev = getSessionRevenue(s);
+    if (s.source !== 'app') return rev;
+    const comm = getSessionCommission(s);
+    return Math.round((rev - comm) * 100) / 100;
+  }, [getSessionRevenue, getSessionCommission]);
+
   const valetTodayRevenue = useMemo(() => {
     if (!isValet) return 0;
     return completedSessions
@@ -448,7 +439,6 @@ const getSessionNetRevenue = useCallback((s: any) => {
     });
   }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, currentValetNameLocal]);
 
-  // ✅ إحصائيات مع العمولة
   const filteredStats = useMemo(() => {
     const c = filteredCompleted.filter(s => s.revenueConfirmed);
     const u = filteredCompleted.filter(s => !s.revenueConfirmed);
@@ -458,11 +448,8 @@ const getSessionNetRevenue = useCallback((s: any) => {
     const cashwallet = c.filter(s => s.paymentMethod === 'cashwallet').reduce((a, s) => a + getSessionRevenue(s), 0);
     const manual = c.filter(s => s.source === 'manual');
     const app = c.filter(s => s.source === 'app');
-
-    // ✅ حساب إجمالي العمولة والصافي
     const totalCommission = c.reduce((a, s) => a + getSessionCommission(s), 0);
     const totalNet = c.reduce((a, s) => a + getSessionNetRevenue(s), 0);
-
     return {
       cash, instapay, wallet, cashwallet,
       total: cash + instapay + wallet + cashwallet,
@@ -471,8 +458,8 @@ const getSessionNetRevenue = useCallback((s: any) => {
       appTotal: app.reduce((a, s) => a + getSessionRevenue(s), 0),
       pendingRevenue: u.reduce((a, s) => a + getSessionRevenue(s), 0),
       pendingCount: u.length,
-      totalCommission, // ✅
-      totalNet, // ✅
+      totalCommission,
+      totalNet,
     };
   }, [filteredCompleted, getSessionRevenue, getSessionCommission, getSessionNetRevenue]);
 
@@ -631,6 +618,9 @@ const getSessionNetRevenue = useCallback((s: any) => {
     return false;
   };
 
+  // ══════════════════════════════════════════════
+  // RENDER
+  // ══════════════════════════════════════════════
   return (
     <div className="h-full overflow-y-auto" style={{ background: '#EBF2FF', color: '#0A1628', padding: 16 }}>
 
@@ -660,7 +650,6 @@ const getSessionNetRevenue = useCallback((s: any) => {
               <button onClick={() => setShowSettings(false)} style={{ color: '#94a3b8', fontSize: 20 }}>✕</button>
               <h3 className="font-black flex items-center gap-2" style={{ fontSize: 18 }}><Settings size={18} style={{ color: '#0066FF' }} /> إعدادات الجراج</h3>
             </div>
-
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>💰 سعر الساعة</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
@@ -674,7 +663,6 @@ const getSessionNetRevenue = useCallback((s: any) => {
                 </div>
               </div>
             </div>
-
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🚗 الأماكن المتاحة</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
@@ -688,7 +676,6 @@ const getSessionNetRevenue = useCallback((s: any) => {
                 </div>
               </div>
             </div>
-
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🏢 السعة الكلية</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
@@ -701,8 +688,6 @@ const getSessionNetRevenue = useCallback((s: any) => {
                 </div>
               </div>
             </div>
-
-            {/* ✅ عرض نسبة العمولة (للعرض فقط - الأدمن هو اللي يغيرها) */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>📊 نسبة عمولة التطبيق</label>
               <div style={{ background: '#FFF8F0', borderRadius: 22, padding: 16, border: '2px solid #FFD180' }}>
@@ -716,7 +701,6 @@ const getSessionNetRevenue = useCallback((s: any) => {
                 </div>
               </div>
             </div>
-
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🅿️ إدارة السياس</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
@@ -736,13 +720,12 @@ const getSessionNetRevenue = useCallback((s: any) => {
                 ))}
               </div>
             </div>
-
             <button onClick={handleSaveSettings} className="w-full font-black flex items-center justify-center gap-2 active:scale-95" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', padding: 18, borderRadius: 20, fontSize: 15 }}><Save size={20} /> حفظ التغييرات</button>
           </motion.div>
         </motion.div>
       )}
 
-      {/* Confirm Payment */}
+      {/* Confirm Payment Modal */}
       {confirmSession && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 flex items-end justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)' }} onClick={() => setConfirmSession(null)}>
           <motion.div initial={{ y: 100 }} animate={{ y: 0 }} transition={{ type: 'spring', damping: 25 }} className="w-full max-w-sm" style={{ background: '#fff', borderRadius: '32px 32px 20px 20px', padding: 24 }} onClick={e => e.stopPropagation()}>
@@ -764,15 +747,15 @@ const getSessionNetRevenue = useCallback((s: any) => {
                   <div style={{ fontSize: 10, color: '#94a3b8' }}>ج.م</div>
                 </div>
               </div>
-              {/* ✅ عرض العمولة في نافذة التأكيد */}
-              {confirmSession.source === 'app' && confirmSession.cost > 0 && (
+              {/* ✅ عمولة في نافذة التأكيد - للمالك فقط */}
+              {isOwner && confirmSession.source === 'app' && confirmSession.cost > 0 && (
                 <div className="mt-3 flex items-center justify-between" style={{ background: '#FFF8F0', borderRadius: 14, padding: '8px 12px', border: '1px solid #FFD180' }}>
                   <div className="flex items-center gap-1">
                     <Percent size={12} style={{ color: '#FF9500' }} />
                     <span className="font-bold" style={{ fontSize: 10, color: '#FF9500' }}>عمولة {garage.commissionRate}%</span>
                   </div>
                   <span className="font-black font-mono" style={{ fontSize: 13, color: '#FF9500' }}>
-                    {Math.round(confirmSession.cost * garage.commissionRate / 100 * 100) / 100} ج.م
+                    {Math.round((confirmSession.cost * garage.commissionRate / 100) * 100) / 100} ج.م
                   </span>
                 </div>
               )}
@@ -811,28 +794,26 @@ const getSessionNetRevenue = useCallback((s: any) => {
         </motion.div>
       )}
 
-      {/* Stats Cards */}
+      {/* ✅ Stats Cards - مختلفة للمالك والسايس */}
       <div className="grid grid-cols-3 gap-3 mb-5">
-        {[
-{(isOwner ? [
-  { icon: <DollarSign size={22} />, value: totalRevenue.toFixed(0), label: 'مؤكد', bg: 'linear-gradient(135deg,#00CC66,#00AA55)', shadow: 'rgba(0,204,102,0.3)' },
-  { icon: <Car size={22} />, value: garage.availableSpots, label: 'شاغر', bg: 'linear-gradient(135deg,#0066FF,#0044DD)', shadow: 'rgba(0,102,255,0.3)', onClick: openSettings },
-  { icon: <DollarSign size={22} />, value: garage.basePrice, label: 'ج.م/ساعة', bg: 'linear-gradient(135deg,#7C3AED,#5B21B6)', shadow: 'rgba(124,58,237,0.3)', onClick: openSettings },
-] : [
-  { icon: <Car size={22} />, value: valetActiveSessions.length, label: 'جلساتي', bg: 'linear-gradient(135deg,#00CC66,#00AA55)', shadow: 'rgba(0,204,102,0.3)' },
-  { icon: <Car size={22} />, value: garage.availableSpots, label: 'شاغر', bg: 'linear-gradient(135deg,#0066FF,#0044DD)', shadow: 'rgba(0,102,255,0.3)' },
-  { icon: <Clock size={22} />, value: activeSessions.length, label: 'الكل نشط', bg: 'linear-gradient(135deg,#7C3AED,#5B21B6)', shadow: 'rgba(124,58,237,0.3)' },
-]).map((s, i) => (
-        ].map((s, i) => (
-          <div key={i} onClick={s.onClick} className={`text-center ${s.onClick ? 'cursor-pointer active:scale-95' : ''}`} style={{ background: s.bg, borderRadius: 22, padding: '18px 10px', color: '#fff', boxShadow: `0 6px 24px ${s.shadow}` }}>
+        {(isOwner ? [
+          { icon: <DollarSign size={22} />, value: totalRevenue.toFixed(0), label: 'مؤكد', bg: 'linear-gradient(135deg,#00CC66,#00AA55)', shadow: 'rgba(0,204,102,0.3)' },
+          { icon: <Car size={22} />, value: garage.availableSpots, label: 'شاغر', bg: 'linear-gradient(135deg,#0066FF,#0044DD)', shadow: 'rgba(0,102,255,0.3)', onClick: openSettings },
+          { icon: <DollarSign size={22} />, value: garage.basePrice, label: 'ج.م/ساعة', bg: 'linear-gradient(135deg,#7C3AED,#5B21B6)', shadow: 'rgba(124,58,237,0.3)', onClick: openSettings },
+        ] : [
+          { icon: <Car size={22} />, value: valetActiveSessions.length, label: 'جلساتي', bg: 'linear-gradient(135deg,#00CC66,#00AA55)', shadow: 'rgba(0,204,102,0.3)' },
+          { icon: <Car size={22} />, value: garage.availableSpots, label: 'شاغر', bg: 'linear-gradient(135deg,#0066FF,#0044DD)', shadow: 'rgba(0,102,255,0.3)' },
+          { icon: <Clock size={22} />, value: activeSessions.length, label: 'الكل نشط', bg: 'linear-gradient(135deg,#7C3AED,#5B21B6)', shadow: 'rgba(124,58,237,0.3)' },
+        ]).map((s, i) => (
+          <div key={i} onClick={(s as any).onClick} className={`text-center ${(s as any).onClick ? 'cursor-pointer active:scale-95' : ''}`} style={{ background: s.bg, borderRadius: 22, padding: '18px 10px', color: '#fff', boxShadow: `0 6px 24px ${s.shadow}` }}>
             <div className="mx-auto mb-1" style={{ opacity: 0.9 }}>{s.icon}</div>
             <div className="font-black font-mono" style={{ fontSize: 24 }}>{s.value}</div>
-            <div className="font-bold flex items-center justify-center gap-1" style={{ fontSize: 9, opacity: 0.8 }}>{s.label} {s.onClick && <Edit3 size={9} />}</div>
+            <div className="font-bold flex items-center justify-center gap-1" style={{ fontSize: 9, opacity: 0.8 }}>{s.label} {(s as any).onClick && <Edit3 size={9} />}</div>
           </div>
         ))}
       </div>
 
-      {/* Valet Section */}
+      {/* ═══ السايس فقط ═══ */}
       {isValet && (
         <>
           <AnimatePresence>
@@ -943,7 +924,7 @@ const getSessionNetRevenue = useCallback((s: any) => {
             )}
           </div>
 
-          {/* Active sessions - valetActiveSessions */}
+          {/* الجلسات النشطة للسايس */}
           <div className="mb-5">
             <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#00AA44' }}>
               <span className="font-bold" style={{ fontSize: 10, background: '#0066FF', color: '#fff', padding: '3px 10px', borderRadius: 10 }}>الكل: {activeSessions.length}</span>
@@ -963,7 +944,6 @@ const getSessionNetRevenue = useCallback((s: any) => {
                   const cost = calculateCost(el, rate);
                   const isM = s.source === 'manual';
                   const un = undoableSessions.find(u => u.sessionId === s.id || u.localId === s.id);
-
                   return (
                     <div key={s.id} style={{ background: isM ? '#FFF8F0' : '#F0F8FF', border: `2.5px solid ${isM ? '#FFD180' : '#A0C4FF'}`, borderRadius: 24, padding: 18 }}>
                       <div className="flex justify-between items-center mb-3">
@@ -984,6 +964,7 @@ const getSessionNetRevenue = useCallback((s: any) => {
                             <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} onClick={() => handleUndoSession(un)} className="font-black flex items-center gap-1 active:scale-95" style={{ background: '#FF9500', color: '#fff', padding: '10px 14px', borderRadius: 14, fontSize: 11 }}><Undo2 size={14} /> ({getUndoRemainingSeconds(un.addedAt)}ث)</motion.button>
                           )}
                         </div>
+                        {/* ✅ التكلفة تظهر للسايس في الجلسات النشطة فقط (عشان يعرف المبلغ المتوقع) */}
                         <div className="font-black font-mono" style={{ fontSize: 15, color: '#00AA44' }}>{cost} ج.م</div>
                       </div>
                     </div>
@@ -1021,13 +1002,14 @@ const getSessionNetRevenue = useCallback((s: any) => {
         </div>
       )}
 
-      {/* سجل العمليات */}
+      {/* ═══ سجل العمليات ═══ */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
           <span className="font-bold" style={{ fontSize: 11, background: '#fff', padding: '6px 12px', borderRadius: 12, border: '2px solid #D0DCFF', color: '#7B8CA6' }}>{filteredCompleted.length} عملية</span>
           <h3 className="font-black flex items-center gap-2" style={{ fontSize: 15, color: '#334155' }}>{isValet ? 'سجل عملياتي اليوم' : 'سجل العمليات'} <FileText size={16} /></h3>
         </div>
 
+        {/* فلاتر المالك */}
         {isOwner && (
           <div className="mb-4" style={{ background: '#fff', borderRadius: 24, padding: 16, border: '2px solid #D0DCFF' }}>
             <div className="flex items-center gap-2 mb-3 justify-end"><CalendarDays size={16} style={{ color: '#0066FF' }} /><span className="font-black" style={{ fontSize: 12, color: '#7B8CA6' }}>تصفية بالتاريخ</span></div>
@@ -1054,177 +1036,176 @@ const getSessionNetRevenue = useCallback((s: any) => {
           </div>
         )}
 
-      {filteredCompleted.length > 0 && (
-  <>
-    {/* العمليات المعلقة - تظهر للكل */}
-    {filteredStats.pendingCount > 0 && (
-      <div className="mb-4" style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 22, padding: 18, color: '#fff', boxShadow: '0 8px 28px rgba(255,149,0,0.3)' }}>
-        <div className="flex justify-between items-center">
-          <div className="text-right flex-1">
-            <h3 className="font-black mb-1" style={{ fontSize: 15 }}>⏳ عمليات معلقة للتأكيد</h3>
-            <div className="flex items-center gap-2 justify-end">
-              <span className="font-black" style={{ fontSize: 11, background: 'rgba(255,255,255,0.2)', padding: '3px 10px', borderRadius: 10 }}>{filteredStats.pendingCount} عملية</span>
-            </div>
-          </div>
-          {/* ✅ المبلغ المعلق يظهر للمالك فقط */}
-          {isOwner && (
-            <div className="text-left mr-4">
-              <div className="font-black font-mono" style={{ fontSize: 28 }}>{filteredStats.pendingRevenue.toFixed(0)}</div>
-              <div className="font-bold text-center" style={{ fontSize: 11, opacity: 0.85 }}>ج.م</div>
-            </div>
-          )}
-        </div>
-      </div>
-    )}
-
-    {/* ✅ كل الإحصائيات المالية تظهر للمالك فقط */}
-    {isOwner && (
-      <>
-        {/* الإيراد المؤكد */}
-        <div className="mb-4 text-center" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', borderRadius: 24, padding: 22, color: '#fff' }}>
-          <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 4 }}>
-            {`مؤكد - ${logDateFrom === logDateTo ? formatLocalDateArabic(logDateFrom) : `${logDateFrom} → ${logDateTo}`}`}
-          </div>
-          <div className="font-black font-mono" style={{ fontSize: 40 }}>{filteredStats.total.toFixed(0)} ج.م</div>
-          <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>{filteredCompleted.filter(s => s.revenueConfirmed).length} عملية مؤكدة</div>
-        </div>
-
-        {/* كارت العمولة والصافي */}
-        {filteredStats.totalCommission > 0 && (
-          <div className="grid grid-cols-2 gap-2 mb-4">
-            <div className="text-center" style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 18, padding: 14, color: '#fff' }}>
-              <div className="flex items-center justify-center gap-1 mb-1"><Percent size={14} /></div>
-              <div className="font-black font-mono" style={{ fontSize: 18 }}>{filteredStats.totalCommission.toFixed(0)}</div>
-              <div className="font-bold" style={{ fontSize: 9, opacity: 0.8 }}>عمولة التطبيق</div>
-            </div>
-            <div className="text-center" style={{ background: 'linear-gradient(135deg,#00AA55,#008844)', borderRadius: 18, padding: 14, color: '#fff' }}>
-              <div className="flex items-center justify-center gap-1 mb-1"><DollarSign size={14} /></div>
-              <div className="font-black font-mono" style={{ fontSize: 18 }}>{filteredStats.totalNet.toFixed(0)}</div>
-              <div className="font-bold" style={{ fontSize: 9, opacity: 0.8 }}>صافي الإيراد</div>
-            </div>
-          </div>
-        )}
-
-        {/* تفصيل طرق الدفع */}
-        <div className="grid grid-cols-4 gap-2 mb-4">
-          {[
-            { label: 'نقدي', value: filteredStats.cash, icon: '💵', bg: '#00CC66' },
-            { label: 'إنستاباي', value: filteredStats.instapay, icon: '📱', bg: '#7C3AED' },
-            { label: 'محفظة', value: filteredStats.wallet, icon: '👝', bg: '#0066FF' },
-            { label: 'كاش', value: filteredStats.cashwallet, icon: '📲', bg: '#FF8800' },
-          ].map(p => (
-            <div key={p.label} className="text-center" style={{ background: p.bg, borderRadius: 18, padding: '12px 6px', color: '#fff' }}>
-              <div style={{ fontSize: 20, marginBottom: 2 }}>{p.icon}</div>
-              <div className="font-black font-mono" style={{ fontSize: 15 }}>{p.value.toFixed(0)}</div>
-              <div className="font-bold" style={{ fontSize: 8, opacity: 0.8 }}>{p.label}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* يدوي / تطبيق */}
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          {[
-            { label: 'يدوي', count: filteredStats.manualCount, total: filteredStats.manualTotal, bg: '#FF9500' },
-            { label: 'تطبيق', count: filteredStats.appCount, total: filteredStats.appTotal, bg: '#0066FF' },
-          ].map(x => (
-            <div key={x.label} className="text-center" style={{ background: x.bg, borderRadius: 18, padding: 14, color: '#fff' }}>
-              <div className="font-black" style={{ fontSize: 12, marginBottom: 4 }}>{x.label}</div>
-              <span className="font-black font-mono" style={{ fontSize: 16 }}>{x.count}</span>
-              <span className="font-black" style={{ fontSize: 12, marginRight: 4 }}> عربية</span>
-              <div style={{ fontSize: 10, opacity: 0.8 }}>({x.total.toFixed(0)} ج.م)</div>
-            </div>
-          ))}
-        </div>
-
-        {/* تقرير السياس */}
-        {valetReport.length > 0 && (
-          <div className="mb-4">
-            <div className="flex items-center gap-2 mb-3 justify-end"><Users size={16} style={{ color: '#0066FF' }} /><h4 className="font-black" style={{ fontSize: 13, color: '#334155' }}>تقرير السياس</h4></div>
-            <div className="space-y-2">
-              {valetReport.map((v, i) => (
-                <div key={i} style={{ background: '#fff', borderRadius: 20, padding: '14px 16px', border: `2px solid ${v.color}30` }}>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="font-black font-mono" style={{ fontSize: 16, color: v.color }}>{v.total.toFixed(0)} ج.م</div>
-                    <div className="flex items-center gap-2">
-                      <div className="text-right">
-                        <div className="font-black" style={{ fontSize: 14 }}>{v.name}</div>
-                        <div className="font-bold" style={{ fontSize: 10, color: '#94a3b8' }}>{v.count} سيارة</div>
-                      </div>
-                      <div style={{ width: 38, height: 38, borderRadius: 12, background: v.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 14 }}>{v.icon}</div>
+        {filteredCompleted.length > 0 && (
+          <>
+            {/* ✅ العمليات المعلقة - تظهر للكل بدون مبلغ للسايس */}
+            {filteredStats.pendingCount > 0 && (
+              <div className="mb-4" style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 22, padding: 18, color: '#fff', boxShadow: '0 8px 28px rgba(255,149,0,0.3)' }}>
+                <div className="flex justify-between items-center">
+                  <div className="text-right flex-1">
+                    <h3 className="font-black mb-1" style={{ fontSize: 15 }}>⏳ عمليات معلقة للتأكيد</h3>
+                    <div className="flex items-center gap-2 justify-end">
+                      <span className="font-black" style={{ fontSize: 11, background: 'rgba(255,255,255,0.2)', padding: '3px 10px', borderRadius: 10 }}>{filteredStats.pendingCount} عملية</span>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="text-center" style={{ background: '#EBF2FF', borderRadius: 14, padding: '8px 6px', border: '1px solid #D0DCFF' }}>
-                      <div style={{ fontSize: 10, color: '#0066FF', fontWeight: 900 }}>📱 تطبيق</div>
-                      <div className="font-black font-mono" style={{ fontSize: 14, color: '#0066FF' }}>{v.appCount}</div>
-                      <div style={{ fontSize: 9, color: '#7B8CA6' }}>({v.appTotal.toFixed(0)} ج.م)</div>
+                  {/* ✅ المبلغ للمالك فقط */}
+                  {isOwner && (
+                    <div className="text-left mr-4">
+                      <div className="font-black font-mono" style={{ fontSize: 28 }}>{filteredStats.pendingRevenue.toFixed(0)}</div>
+                      <div className="font-bold text-center" style={{ fontSize: 11, opacity: 0.85 }}>ج.م</div>
                     </div>
-                    <div className="text-center" style={{ background: '#FFF8F0', borderRadius: 14, padding: '8px 6px', border: '1px solid #FFD180' }}>
-                      <div style={{ fontSize: 10, color: '#FF9500', fontWeight: 900 }}>✋ يدوي</div>
-                      <div className="font-black font-mono" style={{ fontSize: 14, color: '#FF9500' }}>{v.manualCount}</div>
-                      <div style={{ fontSize: 9, color: '#7B8CA6' }}>({v.manualTotal.toFixed(0)} ج.م)</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ✅ كل الإحصائيات المالية للمالك فقط */}
+            {isOwner && (
+              <>
+                <div className="mb-4 text-center" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', borderRadius: 24, padding: 22, color: '#fff' }}>
+                  <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 4 }}>
+                    {`مؤكد - ${logDateFrom === logDateTo ? formatLocalDateArabic(logDateFrom) : `${logDateFrom} → ${logDateTo}`}`}
+                  </div>
+                  <div className="font-black font-mono" style={{ fontSize: 40 }}>{filteredStats.total.toFixed(0)} ج.م</div>
+                  <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>{filteredCompleted.filter(s => s.revenueConfirmed).length} عملية مؤكدة</div>
+                </div>
+
+                {filteredStats.totalCommission > 0 && (
+                  <div className="grid grid-cols-2 gap-2 mb-4">
+                    <div className="text-center" style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 18, padding: 14, color: '#fff' }}>
+                      <div className="flex items-center justify-center gap-1 mb-1"><Percent size={14} /></div>
+                      <div className="font-black font-mono" style={{ fontSize: 18 }}>{filteredStats.totalCommission.toFixed(0)}</div>
+                      <div className="font-bold" style={{ fontSize: 9, opacity: 0.8 }}>عمولة التطبيق</div>
                     </div>
+                    <div className="text-center" style={{ background: 'linear-gradient(135deg,#00AA55,#008844)', borderRadius: 18, padding: 14, color: '#fff' }}>
+                      <div className="flex items-center justify-center gap-1 mb-1"><DollarSign size={14} /></div>
+                      <div className="font-black font-mono" style={{ fontSize: 18 }}>{filteredStats.totalNet.toFixed(0)}</div>
+                      <div className="font-bold" style={{ fontSize: 9, opacity: 0.8 }}>صافي الإيراد</div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-4 gap-2 mb-4">
+                  {[
+                    { label: 'نقدي', value: filteredStats.cash, icon: '💵', bg: '#00CC66' },
+                    { label: 'إنستاباي', value: filteredStats.instapay, icon: '📱', bg: '#7C3AED' },
+                    { label: 'محفظة', value: filteredStats.wallet, icon: '👝', bg: '#0066FF' },
+                    { label: 'كاش', value: filteredStats.cashwallet, icon: '📲', bg: '#FF8800' },
+                  ].map(p => (
+                    <div key={p.label} className="text-center" style={{ background: p.bg, borderRadius: 18, padding: '12px 6px', color: '#fff' }}>
+                      <div style={{ fontSize: 20, marginBottom: 2 }}>{p.icon}</div>
+                      <div className="font-black font-mono" style={{ fontSize: 15 }}>{p.value.toFixed(0)}</div>
+                      <div className="font-bold" style={{ fontSize: 8, opacity: 0.8 }}>{p.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 mb-4">
+                  {[
+                    { label: 'يدوي', count: filteredStats.manualCount, total: filteredStats.manualTotal, bg: '#FF9500' },
+                    { label: 'تطبيق', count: filteredStats.appCount, total: filteredStats.appTotal, bg: '#0066FF' },
+                  ].map(x => (
+                    <div key={x.label} className="text-center" style={{ background: x.bg, borderRadius: 18, padding: 14, color: '#fff' }}>
+                      <div className="font-black" style={{ fontSize: 12, marginBottom: 4 }}>{x.label}</div>
+                      <span className="font-black font-mono" style={{ fontSize: 16 }}>{x.count}</span>
+                      <span className="font-black" style={{ fontSize: 12, marginRight: 4 }}> عربية</span>
+                      <div style={{ fontSize: 10, opacity: 0.8 }}>({x.total.toFixed(0)} ج.م)</div>
+                    </div>
+                  ))}
+                </div>
+
+                {valetReport.length > 0 && (
+                  <div className="mb-4">
+                    <div className="flex items-center gap-2 mb-3 justify-end"><Users size={16} style={{ color: '#0066FF' }} /><h4 className="font-black" style={{ fontSize: 13, color: '#334155' }}>تقرير السياس</h4></div>
+                    <div className="space-y-2">
+                      {valetReport.map((v, i) => (
+                        <div key={i} style={{ background: '#fff', borderRadius: 20, padding: '14px 16px', border: `2px solid ${v.color}30` }}>
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="font-black font-mono" style={{ fontSize: 16, color: v.color }}>{v.total.toFixed(0)} ج.م</div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-right">
+                                <div className="font-black" style={{ fontSize: 14 }}>{v.name}</div>
+                                <div className="font-bold" style={{ fontSize: 10, color: '#94a3b8' }}>{v.count} سيارة</div>
+                              </div>
+                              <div style={{ width: 38, height: 38, borderRadius: 12, background: v.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 14 }}>{v.icon}</div>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="text-center" style={{ background: '#EBF2FF', borderRadius: 14, padding: '8px 6px', border: '1px solid #D0DCFF' }}>
+                              <div style={{ fontSize: 10, color: '#0066FF', fontWeight: 900 }}>📱 تطبيق</div>
+                              <div className="font-black font-mono" style={{ fontSize: 14, color: '#0066FF' }}>{v.appCount}</div>
+                              <div style={{ fontSize: 9, color: '#7B8CA6' }}>({v.appTotal.toFixed(0)} ج.م)</div>
+                            </div>
+                            <div className="text-center" style={{ background: '#FFF8F0', borderRadius: 14, padding: '8px 6px', border: '1px solid #FFD180' }}>
+                              <div style={{ fontSize: 10, color: '#FF9500', fontWeight: 900 }}>✋ يدوي</div>
+                              <div className="font-black font-mono" style={{ fontSize: 14, color: '#FF9500' }}>{v.manualCount}</div>
+                              <div style={{ fontSize: 9, color: '#7B8CA6' }}>({v.manualTotal.toFixed(0)} ج.م)</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* ✅ السايس يشوف عدد عملياته فقط */}
+            {isValet && (
+              <div className="mb-4 text-center" style={{ background: '#fff', borderRadius: 20, padding: 16, border: '2px solid #D0DCFF' }}>
+                <div className="font-black" style={{ fontSize: 14, color: '#334155' }}>عملياتي اليوم</div>
+                <div className="font-black font-mono" style={{ fontSize: 32, color: '#0066FF' }}>{filteredCompleted.length}</div>
+                <div className="font-bold" style={{ fontSize: 11, color: '#94a3b8' }}>عملية مكتملة</div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ✅ قائمة العمليات المكتملة */}
+        <div className="space-y-2">
+          {filteredCompleted.map(session => {
+            const isM = session.source === 'manual';
+            const et = session.endTime ? toMs(session.endTime) : null;
+            const time = et ? new Date(et) : null;
+            const rev = getSessionRevenue(session);
+            const isC = session.revenueConfirmed;
+            const addedBy = (session as any).addedBy || '';
+            return (
+              <div key={session.id} style={{ background: isC ? (isM ? '#FFF8F0' : '#EBF5FF') : '#FFFBF0', border: `2px solid ${isC ? (isM ? '#FFD180' : '#A0C4FF') : '#FFD180'}`, borderRadius: 18, padding: 14 }}>
+                <div className="flex justify-between items-start mb-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* ✅ المبلغ للمالك فقط */}
+                    {isOwner && (
+                      <span className="font-mono font-black" style={{ fontSize: 17, color: isM ? '#E65100' : '#0066FF' }}>{rev.toFixed(0)} ج.م</span>
+                    )}
+                    <span className="font-black" style={{ fontSize: 11, padding: '5px 12px', borderRadius: 12, background: isM ? '#FF9500' : '#0066FF', color: '#fff' }}>{isM ? 'يدوي' : 'تطبيق'}</span>
+                    {addedBy && isOwner && (
+                      <span className="font-bold" style={{ fontSize: 9, padding: '3px 8px', borderRadius: 10, background: '#EBF2FF', color: '#0066FF', border: '1px solid #D0DCFF' }}>🅿️ {addedBy}</span>
+                    )}
+                    {!isC ? (
+                      <button onClick={async () => { await confirmRevenue(session.id); await fetchGarageDailyStats(); toast.success('تأكيد ✅'); }} className="font-black active:scale-95" style={{ background: '#FF9500', color: '#fff', padding: '3px 10px', borderRadius: 10, fontSize: 9 }}>⏳ تأكيد</button>
+                    ) : (
+                      <span className="font-bold" style={{ fontSize: 9, color: '#00AA44' }}>✅ مؤكد</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="rounded-full" style={{ width: 6, height: 6, background: isM ? '#FF9500' : '#0066FF' }} />
+                    <span className="font-black" style={{ fontSize: 15 }}>{session.carPlate}</span>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </>
-    )}
-
-    {/* ✅ السايس يشوف بس عدد العمليات */}
-    {isValet && (
-      <div className="mb-4 text-center" style={{ background: '#fff', borderRadius: 20, padding: 16, border: '2px solid #D0DCFF' }}>
-        <div className="font-black" style={{ fontSize: 14, color: '#334155' }}>عملياتي اليوم</div>
-        <div className="font-black font-mono" style={{ fontSize: 32, color: '#0066FF' }}>{filteredCompleted.length}</div>
-        <div className="font-bold" style={{ fontSize: 11, color: '#94a3b8' }}>عملية مكتملة</div>
-      </div>
-    )}
-  </>
-)}
-
-        {/* Completed sessions list */}
-        <div className="space-y-2">
-{filteredCompleted.map(session => {
-  const isM = session.source === 'manual';
-  const et = session.endTime ? toMs(session.endTime) : null;
-  const time = et ? new Date(et) : null;
-  const rev = getSessionRevenue(session);
-  const isC = session.revenueConfirmed;
-  const addedBy = (session as any).addedBy || '';
-  return (
-    <div key={session.id} style={{ background: isC ? (isM ? '#FFF8F0' : '#EBF5FF') : '#FFFBF0', border: `2px solid ${isC ? (isM ? '#FFD180' : '#A0C4FF') : '#FFD180'}`, borderRadius: 18, padding: 14 }}>
-      <div className="flex justify-between items-start mb-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* ✅ المبلغ يظهر للمالك فقط */}
-          {isOwner && (
-            <span className="font-mono font-black" style={{ fontSize: 17, color: isM ? '#E65100' : '#0066FF' }}>{rev.toFixed(0)} ج.م</span>
-          )}
-          <span className="font-black" style={{ fontSize: 11, padding: '5px 12px', borderRadius: 12, background: isM ? '#FF9500' : '#0066FF', color: '#fff' }}>{isM ? 'يدوي' : 'تطبيق'}</span>
-          {addedBy && isOwner && <span className="font-bold" style={{ fontSize: 9, padding: '3px 8px', borderRadius: 10, background: '#EBF2FF', color: '#0066FF', border: '1px solid #D0DCFF' }}>🅿️ {addedBy}</span>}
-          {!isC ? (
-            <button onClick={async () => { await confirmRevenue(session.id); await fetchGarageDailyStats(); toast.success('تأكيد ✅'); }} className="font-black active:scale-95" style={{ background: '#FF9500', color: '#fff', padding: '3px 10px', borderRadius: 10, fontSize: 9 }}>⏳ تأكيد</button>
-          ) : <span className="font-bold" style={{ fontSize: 9, color: '#00AA44' }}>✅ مؤكد</span>}
-        </div>
-        <div className="flex items-center gap-1">
-          <span className="rounded-full" style={{ width: 6, height: 6, background: isM ? '#FF9500' : '#0066FF' }} />
-          <span className="font-black" style={{ fontSize: 15 }}>{session.carPlate}</span>
-        </div>
-      </div>
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-1.5">
-          {session.paymentMethod && (
-            <span className="font-bold" style={{ fontSize: 9, padding: '3px 10px', borderRadius: 10, color: '#fff', background: session.paymentMethod === 'cash' ? '#00CC66' : session.paymentMethod === 'instapay' ? '#7C3AED' : session.paymentMethod === 'wallet' ? '#0066FF' : '#FF8800' }}>
-              {session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستاباي' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش'}
-            </span>
-          )}
-        </div>
-        {time && <span className="font-mono font-black" style={{ fontSize: 12 }}>{time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })} · {time.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}</span>}
-      </div>
-    </div>
-  );
-})}
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-1.5">
+                    {session.paymentMethod && (
+                      <span className="font-bold" style={{ fontSize: 9, padding: '3px 10px', borderRadius: 10, color: '#fff', background: session.paymentMethod === 'cash' ? '#00CC66' : session.paymentMethod === 'instapay' ? '#7C3AED' : session.paymentMethod === 'wallet' ? '#0066FF' : '#FF8800' }}>
+                        {session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستاباي' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش'}
+                      </span>
+                    )}
+                  </div>
+                  {time && <span className="font-mono font-black" style={{ fontSize: 12 }}>{time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })} · {time.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}</span>}
+                </div>
+              </div>
+            );
+          })}
           {filteredCompleted.length === 0 && (
             <div className="text-center" style={{ background: '#fff', borderRadius: 24, padding: 32, border: '2px solid #D0DCFF' }}>
               <div style={{ fontSize: 36, marginBottom: 12 }}>📭</div>
