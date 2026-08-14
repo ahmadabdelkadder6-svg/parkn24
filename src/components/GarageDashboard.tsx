@@ -379,21 +379,26 @@ export default function GarageDashboard() {
   }, [garage?.basePrice]);
 
   // ✅ حساب العمولة لجلسة معينة
-  const getSessionCommission = useCallback((s: any) => {
-    if (s.commissionAmount != null && Number(s.commissionAmount) > 0) return Number(s.commissionAmount);
-    if (s.source !== 'app') return 0;
-    const rev = getSessionRevenue(s);
-    const rate = garage?.commissionRate ?? 10;
-    return Math.round(rev * rate / 100 * 100) / 100;
-  }, [getSessionRevenue, garage?.commissionRate]);
+const getSessionCommission = useCallback((s: any) => {
+  // لو محسوبة في الداتابيز
+  if (s.commissionAmount != null && Number(s.commissionAmount) > 0) return Number(s.commissionAmount);
+  // لو يدوي = 0 عمولة
+  if (s.source !== 'app') return 0;
+  // حساب يدوي من الإيراد
+  const rev = getSessionRevenue(s);
+  if (rev <= 0) return 0;
+  const rate = garage?.commissionRate ?? 10;
+  return Math.round(rev * rate / 100 * 100) / 100;
+}, [getSessionRevenue, garage?.commissionRate]);
 
   // ✅ حساب الصافي لجلسة معينة
-  const getSessionNetRevenue = useCallback((s: any) => {
-    if (s.netRevenue != null && Number(s.netRevenue) > 0) return Number(s.netRevenue);
-    const rev = getSessionRevenue(s);
-    const comm = getSessionCommission(s);
-    return Math.round((rev - comm) * 100) / 100;
-  }, [getSessionRevenue, getSessionCommission]);
+const getSessionNetRevenue = useCallback((s: any) => {
+  if (s.netRevenue != null && Number(s.netRevenue) > 0) return Number(s.netRevenue);
+  const rev = getSessionRevenue(s);
+  if (s.source !== 'app') return rev;
+  const comm = getSessionCommission(s);
+  return Math.round((rev - comm) * 100) / 100;
+}, [getSessionRevenue, getSessionCommission]);
 
   const valetTodayRevenue = useMemo(() => {
     if (!isValet) return 0;

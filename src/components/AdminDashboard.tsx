@@ -100,14 +100,15 @@ export default function AdminDashboard() {
   };
 
   // ✅ حساب العمولة لجلسة
-  const getCommission = useCallback((s: any) => {
-    if (s.commissionAmount != null && Number(s.commissionAmount) > 0) return Number(s.commissionAmount);
-    if (s.source !== 'app') return 0;
-    const rev = getRevenue(s);
-    const g = garages.find((ga: any) => ga.id === s.garageId);
-    const rate = g?.commissionRate ?? 10;
-    return Math.round(rev * rate / 100 * 100) / 100;
-  }, [garages, getRevenue]);
+const getCommission = useCallback((s: any) => {
+  if (s.commissionAmount != null && Number(s.commissionAmount) > 0) return Number(s.commissionAmount);
+  if (s.source !== 'app') return 0;
+  const rev = getRevenue(s);
+  if (rev <= 0) return 0;
+  const g = garages.find((ga: any) => ga.id === s.garageId);
+  const rate = g?.commissionRate ?? 10;
+  return Math.round(rev * rate / 100 * 100) / 100;
+}, [garages, getRevenue]);
 
   // ✅ إحصائيات العمولة الإجمالية
   const commissionStats = useMemo(() => {
@@ -271,25 +272,24 @@ export default function AdminDashboard() {
       </div>
 
       {/* ✅ كارت العمولة الإجمالية */}
-      {commissionStats.totalCommission > 0 && (
-        <div className="grid grid-cols-3 gap-2 mb-5">
-          <div className="text-center" style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 22, padding: '16px 8px', color: '#fff', boxShadow: '0 6px 24px rgba(255,149,0,0.3)' }}>
-            <Percent size={16} className="mx-auto mb-1" style={{ opacity: 0.9 }} />
-            <div className="font-black font-mono" style={{ fontSize: 20 }}>{commissionStats.totalCommission.toFixed(0)}</div>
-            <div className="font-bold" style={{ fontSize: 8, opacity: 0.8 }}>عمولة التطبيق</div>
-          </div>
-          <div className="text-center" style={{ background: 'linear-gradient(135deg,#00AA55,#008844)', borderRadius: 22, padding: '16px 8px', color: '#fff', boxShadow: '0 6px 24px rgba(0,170,85,0.3)' }}>
-            <DollarSign size={16} className="mx-auto mb-1" style={{ opacity: 0.9 }} />
-            <div className="font-black font-mono" style={{ fontSize: 20 }}>{commissionStats.totalNet.toFixed(0)}</div>
-            <div className="font-bold" style={{ fontSize: 8, opacity: 0.8 }}>صافي الجراجات</div>
-          </div>
-          <div className="text-center" style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', borderRadius: 22, padding: '16px 8px', color: '#fff', boxShadow: '0 6px 24px rgba(124,58,237,0.3)' }}>
-            <DollarSign size={16} className="mx-auto mb-1" style={{ opacity: 0.9 }} />
-            <div className="font-black font-mono" style={{ fontSize: 20 }}>{commissionStats.totalRevenue.toFixed(0)}</div>
-            <div className="font-bold" style={{ fontSize: 8, opacity: 0.8 }}>إجمالي</div>
-          </div>
-        </div>
-      )}
+  {commissionStats.totalCommission > 0 && (
+  <div className="flex items-center gap-2 mb-5" style={{ background: '#fff', borderRadius: 18, padding: '10px 14px', border: '2px solid #FFD180' }}>
+    <div className="flex items-center gap-1.5 flex-1 justify-end">
+      <span className="font-bold" style={{ fontSize: 10, color: '#7B8CA6' }}>إجمالي</span>
+      <span className="font-black font-mono" style={{ fontSize: 13, color: '#0A1628' }}>{commissionStats.totalRevenue.toFixed(0)}</span>
+    </div>
+    <div style={{ width: 1, height: 16, background: '#D0DCFF' }} />
+    <div className="flex items-center gap-1.5">
+      <span className="font-black font-mono" style={{ fontSize: 13, color: '#FF9500' }}>{commissionStats.totalCommission.toFixed(0)}</span>
+      <span className="font-bold flex items-center gap-0.5" style={{ fontSize: 10, color: '#FF9500' }}><Percent size={10} /> عمولة</span>
+    </div>
+    <div style={{ width: 1, height: 16, background: '#D0DCFF' }} />
+    <div className="flex items-center gap-1.5">
+      <span className="font-black font-mono" style={{ fontSize: 13, color: '#00AA44' }}>{commissionStats.totalNet.toFixed(0)}</span>
+      <span className="font-bold" style={{ fontSize: 10, color: '#00AA44' }}>صافي</span>
+    </div>
+  </div>
+)}
 
       {/* ══════ Pending Revenue Banner ══════ */}
       {(pendingRevenueFromStats > 0 || pendingRevenueCount > 0) && (
@@ -303,46 +303,37 @@ export default function AdminDashboard() {
       )}
 
       {/* ✅ تقرير العمولة لكل جراج */}
-      {commissionStats.perGarage.length > 0 && (
-        <div className="mb-8">
-          <h3 className="font-black mb-4 flex items-center gap-2 justify-end" style={{ fontSize: 16, color: '#FF9500' }}>
-            تقرير العمولات <Percent size={18} />
-          </h3>
-          <div className="space-y-3">
-            {commissionStats.perGarage.map(g => (
-              <div key={g.id} style={{ background: '#fff', border: '2px solid #FFD180', borderRadius: 22, padding: 16 }}>
-                <div className="flex justify-between items-center mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="font-black" style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, background: '#FF9500', color: '#fff' }}>
-                      {g.commissionRate}%
-                    </span>
-                    <span className="font-bold" style={{ fontSize: 10, color: '#94a3b8' }}>
-                      {g.appCount} جلسة تطبيق
-                    </span>
-                  </div>
-                  <div className="font-black" style={{ fontSize: 15, color: '#0A1628' }}>{g.name}</div>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="text-center" style={{ background: '#F0F4FF', borderRadius: 14, padding: '8px 4px', border: '1px solid #D0DCFF' }}>
-                    <div style={{ fontSize: 9, color: '#7B8CA6', fontWeight: 900 }}>إجمالي</div>
-                    <div className="font-black font-mono" style={{ fontSize: 14, color: '#0066FF' }}>{g.totalRevenue.toFixed(0)}</div>
-                  </div>
-                  <div className="text-center" style={{ background: '#FFF8F0', borderRadius: 14, padding: '8px 4px', border: '1px solid #FFD180' }}>
-                    <div style={{ fontSize: 9, color: '#FF9500', fontWeight: 900 }}>عمولة</div>
-                    <div className="font-black font-mono" style={{ fontSize: 14, color: '#FF9500' }}>{g.commission.toFixed(0)}</div>
-                  </div>
-                  <div className="text-center" style={{ background: '#F0FFF5', borderRadius: 14, padding: '8px 4px', border: '1px solid #66DDAA' }}>
-                    <div style={{ fontSize: 9, color: '#00AA44', fontWeight: 900 }}>صافي</div>
-                    <div className="font-black font-mono" style={{ fontSize: 14, color: '#00AA44' }}>{g.netRevenue.toFixed(0)}</div>
-                  </div>
-                </div>
-              </div>
+{commissionStats.perGarage.length > 0 && (
+  <div className="mb-5">
+    <div className="flex items-center gap-2 mb-2 justify-end">
+      <Percent size={13} style={{ color: '#FF9500' }} />
+      <span className="font-black" style={{ fontSize: 12, color: '#334155' }}>العمولات</span>
+    </div>
+    <div className="overflow-x-auto" style={{ background: '#fff', borderRadius: 18, border: '2px solid #FFD180' }}>
+      <table className="w-full text-center" style={{ minWidth: 380 }}>
+        <thead>
+          <tr style={{ borderBottom: '1px solid #FFF0E0' }}>
+            {['الجراج', '%', 'إجمالي', 'عمولة', 'صافي'].map((h, i) => (
+              <th key={i} className="font-black" style={{ padding: '10px 6px', fontSize: 9, color: i === 3 ? '#FF9500' : i === 4 ? '#00AA44' : '#7B8CA6', textAlign: i === 0 ? 'right' : 'center' }}>{h}</th>
             ))}
-          </div>
-        </div>
-      )}
-
-      {/* ══════ Daily Stats Table ══════ */}
+          </tr>
+        </thead>
+        <tbody>
+          {commissionStats.perGarage.map(g => (
+            <tr key={g.id} style={{ borderBottom: '1px solid #FFF8F0' }}>
+              <td className="font-black text-right" style={{ padding: '8px 10px', fontSize: 11, color: '#0A1628' }}>{g.name}</td>
+              <td className="font-black font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#FF9500' }}>{g.commissionRate}%</td>
+              <td className="font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#0A1628' }}>{g.totalRevenue.toFixed(0)}</td>
+              <td className="font-black font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#FF9500' }}>{g.commission.toFixed(0)}</td>
+              <td className="font-black font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#00AA44' }}>{g.netRevenue.toFixed(0)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+)}      
+{/* ══════ Daily Stats Table ══════ */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <span className="font-bold" style={{ fontSize: 11, background: '#fff', padding: '6px 14px', borderRadius: 12, border: '2px solid #D0DCFF', color: '#7B8CA6' }}>{dailyStats.length} يوم</span>
