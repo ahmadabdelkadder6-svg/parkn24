@@ -104,10 +104,10 @@ const getCommission = useCallback((s: any) => {
   if (s.source !== 'app') return 0;
   const rev = getRevenue(s);
   if (rev <= 0) return 0;
-  // ✅ دايماً من النسبة الحالية للجراج
   const g = garages.find((ga: any) => ga.id === s.garageId);
   const rate = g?.commissionRate ?? 10;
-  return Math.round(rev * rate / 100 * 100) / 100;
+  const commission = (rev * rate) / 100;
+  return Math.round(commission * 100) / 100;
 }, [garages, getRevenue]);
 
   // ✅ إحصائيات العمولة الإجمالية

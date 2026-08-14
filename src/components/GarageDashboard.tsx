@@ -380,19 +380,21 @@ export default function GarageDashboard() {
 
   // ✅ حساب العمولة لجلسة معينة
 const getSessionCommission = useCallback((s: any) => {
+  // يدوي = 0 عمولة
   if (s.source !== 'app') return 0;
+  // احسب الإيراد الأول
   const rev = getSessionRevenue(s);
   if (rev <= 0) return 0;
-  // ✅ دايماً احسب من النسبة الحالية للجراج
+  // العمولة = الإيراد × النسبة ÷ 100
   const rate = garage?.commissionRate ?? 10;
-  return Math.round(rev * rate / 100 * 100) / 100;
+  const commission = (rev * rate) / 100;
+  // تقريب لأقرب رقمين عشريين
+  return Math.round(commission * 100) / 100;
 }, [getSessionRevenue, garage?.commissionRate]);
 
-  // ✅ حساب الصافي لجلسة معينة
 const getSessionNetRevenue = useCallback((s: any) => {
   const rev = getSessionRevenue(s);
   if (s.source !== 'app') return rev;
-  // ✅ دايماً احسب من العمولة الحالية
   const comm = getSessionCommission(s);
   return Math.round((rev - comm) * 100) / 100;
 }, [getSessionRevenue, getSessionCommission]);
