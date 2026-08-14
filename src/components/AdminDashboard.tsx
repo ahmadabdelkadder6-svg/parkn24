@@ -463,13 +463,26 @@ const getCommission = useCallback((s: any) => {
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">
-                      {session.revenueConfirmed ? (
-                        <button onClick={async () => { await unconfirmRevenue(session.id); await fetchDailyStats(); toast('إلغاء ↩️', { icon: '⏳' }); }} className="flex-1 font-black active:scale-95"
-                          style={{ background: '#FF9500', color: '#fff', padding: 10, borderRadius: 14, fontSize: 11 }}>↩️ إلغاء التأكيد</button>
-                      ) : (
-                        <button onClick={async () => { await confirmRevenue(session.id); await fetchDailyStats(); toast.success('تأكيد ✅'); }} className="flex-1 font-black active:scale-95"
-                          style={{ background: '#00CC66', color: '#fff', padding: 10, borderRadius: 14, fontSize: 11 }}>✅ تأكيد الإيراد</button>
-                      )}
+{session.revenueConfirmed ? (
+  <button onClick={async () => {
+    await unconfirmRevenue(session.id);
+    await fetchDailyStats();
+    setRevenueFilter('pending');
+    toast('إلغاء ↩️', { icon: '⏳' });
+  }} className="flex-1 font-black active:scale-95"
+    style={{ background: '#FF9500', color: '#fff', padding: 10, borderRadius: 14, fontSize: 11 }}>
+    ↩️ إلغاء التأكيد
+  </button>
+) : (
+  <button onClick={async () => {
+    await confirmRevenue(session.id);
+    await fetchDailyStats();
+    toast.success('تأكيد ✅');
+  }} className="flex-1 font-black active:scale-95"
+    style={{ background: '#00CC66', color: '#fff', padding: 10, borderRadius: 14, fontSize: 11 }}>
+    ✅ تأكيد الإيراد
+  </button>
+)}
                       <button onClick={() => setDeleteConfirmId(session.id)} className="font-black active:scale-95"
                         style={{ background: '#FFE0E0', color: '#CC0000', padding: '10px 16px', borderRadius: 14, fontSize: 11 }}>🗑️</button>
                     </div>
