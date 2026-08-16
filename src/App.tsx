@@ -20,6 +20,8 @@ import AdminDashboard from './components/AdminDashboard';
 import InstallPWA from './components/InstallPWA';
 import LastSessionScreen from './components/LastSessionScreen';
 import ChatScreen from './components/ChatScreen';
+import InstallPage from './components/InstallPage';
+import InstallQRCodePage from './components/InstallQRCodePage';
 
 const VALID_SCREENS = [
   'splash',
@@ -61,6 +63,9 @@ export default function App() {
 
   const [adminAccess, setAdminAccess] = useState(false);
 
+  // ✅ تحقق من المسار - لو /install أو /qr يعرض الصفحة المخصصة
+  const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const adminParam = params.get('admin');
@@ -97,7 +102,6 @@ export default function App() {
 
   useEffect(() => {
     const init = async () => {
-      // ✅ لو التطبيق اتثبت حالاً واتفتح من الأيقونة → ابدأ من Splash
       const justInstalled = localStorage.getItem('pwaJustInstalled') === 'true';
       const isStandalone =
         window.matchMedia('(display-mode: standalone)').matches ||
@@ -368,6 +372,16 @@ export default function App() {
       }
     };
   }, []);
+
+  // ✅ صفحة التثبيت المخصصة
+  if (pathname === '/install') {
+    return <InstallPage />;
+  }
+
+  // ✅ صفحة QR Code
+  if (pathname === '/qr') {
+    return <InstallQRCodePage />;
+  }
 
   return (
     <AuthGate>
