@@ -746,7 +746,7 @@ if (isValet) {
   const calculateRemainingTime = (st: number | string, em: number) =>
     Math.max(0, em - Math.floor((Date.now() - toMs(st)) / 60000));
 
-  const currentValetName =
+
     valetNumber === '1' ? garage.valetName1 :
     valetNumber === '2' ? garage.valetName2 :
     valetNumber === '3' ? garage.valetName3 : '';
