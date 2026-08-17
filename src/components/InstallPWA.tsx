@@ -1,225 +1,123 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, X, Smartphone } from 'lucide-react';
 
-type BeforeInstallPromptEvent = Event & {
+interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform?: string }>;
-};
-
-function isIOSDevice() {
-  return (
-    /iphone|ipad|ipod/i.test(window.navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  );
-}
-
-function isAndroidDevice() {
-  return /android/i.test(window.navigator.userAgent);
-}
-
-function isStandaloneMode() {
-  return (
-    window.matchMedia('(display-mode: standalone)').matches ||
-    (window.navigator as Navigator & { standalone?: boolean }).standalone === true
-  );
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
 export default function InstallPWA() {
-  const [isAndroid, setIsAndroid] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
-  const [isInstalled, setIsInstalled] = useState(false);
-
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showBanner, setShowBanner] = useState(false);
-  const [showIOSHelp, setShowIOSHelp] = useState(false);
-
-  const [deferredPrompt, setDeferredPrompt] =
-    useState<BeforeInstallPromptEvent | null>(null);
-
-  const [installing, setInstalling] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+  const [showIOSGuide, setShowIOSGuide] = useState(false);
 
   useEffect(() => {
-    const android = isAndroidDevice();
-    const ios = isIOSDevice();
-    const standalone = isStandaloneMode();
+    // كشف iOS
+    const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+      || (window.navigator as any).standalone === true;
 
-    setIsAndroid(android);
-    setIsIOS(ios);
-    setIsInstalled(standalone);
-
-    if (standalone || (!android && !ios)) return;
-
-    const dismissedKey = ios ? 'pwa-ios-dismissed' : 'pwa-android-dismissed';
-    const dismissed = localStorage.getItem(dismissedKey);
-
-    if (!dismissed) {
-      const timer = setTimeout(() => {
-        setShowBanner(true);
-      }, 2000);
-
-      return () => clearTimeout(timer);
+    if (isIOSDevice && !isStandalone) {
+      setIsIOS(true);
+      const dismissed = localStorage.getItem('pwa-ios-dismissed');
+      if (!dismissed) {
+        setTimeout(() => setShowBanner(true), 3000);
+      }
     }
-  }, []);
 
-  useEffect(() => {
-    const handleBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault();
-      setDeferredPrompt(event as BeforeInstallPromptEvent);
-      setShowBanner(true);
+    // Android / Chrome
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+      const dismissed = localStorage.getItem('pwa-dismissed');
+      if (!dismissed) {
+        setTimeout(() => setShowBanner(true), 2000);
+      }
     };
 
-    const handleAppInstalled = () => {
-      localStorage.setItem('pwaJustInstalled', 'true');
-      setDeferredPrompt(null);
-      setIsInstalled(true);
-      setInstalling(false);
+    window.addEventListener('beforeinstallprompt', handler);
+
+    window.addEventListener('appinstalled', () => {
       setShowBanner(false);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    window.addEventListener('appinstalled', handleAppInstalled);
+      setDeferredPrompt(null);
+      console.log('✅ تم تثبيت التطبيق');
+    });
 
     return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      window.removeEventListener('appinstalled', handleAppInstalled);
+      window.removeEventListener('beforeinstallprompt', handler);
     };
   }, []);
+
+  const handleInstall = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      console.log('✅ المستخدم وافق على التثبيت');
+    }
+    setDeferredPrompt(null);
+    setShowBanner(false);
+  };
 
   const handleDismiss = () => {
     setShowBanner(false);
-    const dismissedKey = isIOS ? 'pwa-ios-dismissed' : 'pwa-android-dismissed';
-    localStorage.setItem(dismissedKey, 'true');
+    localStorage.setItem(isIOS ? 'pwa-ios-dismissed' : 'pwa-dismissed', 'true');
   };
 
-  const installOnAndroid = async () => {
-    if (!deferredPrompt) {
-      alert(
-        'إذا لم يظهر زر التثبيت تلقائيًا:\n\n' +
-        '1) افتح الموقع من Chrome\n' +
-        '2) اضغط ⋮ الثلاث نقاط\n' +
-        '3) اختر "تثبيت التطبيق" أو "Add to Home screen"'
-      );
-      return;
-    }
-
-    setInstalling(true);
-
-    try {
-      await deferredPrompt.prompt();
-      const choice = await deferredPrompt.userChoice;
-
-      if (choice.outcome === 'accepted') {
-        localStorage.setItem('pwaJustInstalled', 'true');
-      }
-    } catch (error) {
-      console.error('Install failed:', error);
-    } finally {
-      setDeferredPrompt(null);
-      setInstalling(false);
-    }
-  };
-
-  if (isInstalled || (!isAndroid && !isIOS)) return null;
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+    || (window.navigator as any).standalone === true;
+  if (isStandalone) return null;
 
   return (
     <>
       <AnimatePresence>
         {showBanner && (
           <motion.div
-            initial={{ y: 120, opacity: 0 }}
+            initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 120, opacity: 0 }}
-            transition={{ type: 'spring', damping: 24 }}
-            className="fixed bottom-4 left-4 right-4 z-[10000] mx-auto max-w-md"
+            exit={{ y: 100, opacity: 0 }}
+            transition={{ type: 'spring', damping: 25 }}
+            className="fixed bottom-4 left-4 right-4 z-[100]"
           >
-            <div
-              className="relative rounded-3xl p-4 shadow-2xl"
-              style={{
-                background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
-                border: '1px solid rgba(255,255,255,0.08)',
-              }}
-            >
+            <div className="bg-gradient-to-r from-blue-900 to-slate-900 border border-blue-500/30 rounded-2xl p-4 shadow-2xl shadow-blue-900/30">
               <button
-                type="button"
                 onClick={handleDismiss}
-                className="absolute top-3 left-3 rounded-full p-1 text-slate-400 transition hover:text-white"
-                aria-label="إغلاق"
+                className="absolute top-3 left-3 text-slate-500 hover:text-white transition-colors"
               >
                 <X size={16} />
               </button>
 
-              <div className="flex items-center gap-3 mb-3">
-                <div
-                  className="shrink-0 rounded-2xl p-3"
-                  style={{
-                    background: 'rgba(59,130,246,0.16)',
-                    border: '1px solid rgba(59,130,246,0.22)',
-                  }}
-                >
-                  <Smartphone size={22} className="text-blue-400" />
+              <div className="flex items-center gap-3">
+                <div className="bg-blue-600/30 p-3 rounded-xl border border-blue-500/20 shrink-0">
+                  <Smartphone size={24} className="text-blue-400" />
                 </div>
-
                 <div className="flex-1 text-right">
                   <h4 className="text-sm font-black text-white mb-0.5">
                     ثبّت التطبيق على هاتفك 📱
                   </h4>
-                  <p className="text-[11px] text-slate-400">
-                    أسرع وأسهل من استخدام المتصفح
+                  <p className="text-[10px] text-slate-400">
+                    أسرع - بدون متصفح - يعمل بدون نت
                   </p>
                 </div>
               </div>
 
-              {isAndroid && (
-                <>
-                  <button
-                    type="button"
-                    onClick={installOnAndroid}
-                    disabled={installing}
-                    className="w-full rounded-2xl px-5 py-4 text-sm font-black text-white transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-70"
-                    style={{
-                      background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
-                    }}
-                    aria-label="تثبيت تطبيق Parkn24"
-                  >
-                    <span className="inline-flex items-center justify-center gap-2">
-                      <Download size={18} />
-                      {installing
-                        ? 'جاري التثبيت...'
-                        : deferredPrompt
-                          ? 'تثبيت تطبيق Parkn24'
-                          : 'تثبيت التطبيق / عرض التعليمات'}
-                    </span>
-                  </button>
-
-                  {!deferredPrompt && (
-                    <p className="mt-3 text-center text-[11px] text-slate-400 leading-6">
-                      لو لم يظهر زر التثبيت تلقائيًا:
-                      <br />
-                      افتح الموقع من <span className="font-black text-white">Chrome</span> ثم اضغط
-                      <span className="font-black text-white"> ⋮ </span>
-                      واختر
-                      <span className="font-black text-white"> تثبيت التطبيق </span>
-                      أو
-                      <span className="font-black text-white"> Add to Home screen</span>
-                    </p>
-                  )}
-                </>
-              )}
-
-              {isIOS && (
+              {isIOS ? (
                 <button
-                  type="button"
-                  onClick={() => setShowIOSHelp(true)}
-                  className="w-full rounded-2xl px-5 py-4 text-sm font-black text-white transition active:scale-[0.98]"
-                  style={{
-                    background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
-                  }}
-                  aria-label="شرح تثبيت Parkn24 على الآيفون"
+                  onClick={() => setShowIOSGuide(true)}
+                  className="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 active:scale-95 transition-all"
                 >
-                  <span className="inline-flex items-center justify-center gap-2">
-                    <Download size={18} />
-                    تثبيت Parkn24 على الآيفون
-                  </span>
+                  <Download size={16} />
+                  إزاي أثبّته؟
+                </button>
+              ) : (
+                <button
+                  onClick={handleInstall}
+                  className="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 active:scale-95 transition-all"
+                >
+                  <Download size={16} />
+                  تثبيت التطبيق الآن
                 </button>
               )}
             </div>
@@ -227,60 +125,74 @@ export default function InstallPWA() {
         )}
       </AnimatePresence>
 
+      {/* iOS Guide Modal */}
       <AnimatePresence>
-        {showIOSHelp && (
+        {showIOSGuide && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[10001] flex items-end justify-center bg-black/55 p-4"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="ios-install-title"
-            onClick={() => setShowIOSHelp(false)}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[101] flex items-center justify-center p-4"
+            onClick={() => setShowIOSGuide(false)}
           >
             <motion.div
-              initial={{ y: 40, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 40, opacity: 0 }}
-              className="w-full max-w-md rounded-[2rem] bg-white p-6 text-right text-slate-900 shadow-2xl"
-              onClick={(event) => event.stopPropagation()}
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-slate-900 border border-slate-800 rounded-[2rem] p-6 w-full max-w-sm shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
             >
-              <div className="mb-4 flex items-center justify-between">
-                <h2 id="ios-install-title" className="text-lg font-black">
-                  تثبيت Parkn24 على الآيفون
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => setShowIOSHelp(false)}
-                  className="rounded-full px-3 py-1 text-xl text-slate-500"
-                  aria-label="إغلاق"
-                >
-                  ×
-                </button>
+              <h3 className="text-lg font-black text-white text-center mb-5">
+                تثبيت على iPhone 📱
+              </h3>
+
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-black text-sm shrink-0">
+                    1
+                  </div>
+                  <div className="text-right flex-1">
+                    <p className="text-sm font-bold text-white">
+                      اضغط على زرار المشاركة
+                    </p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      الأيقونة المربعة مع السهم ⬆️ في أسفل Safari
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-black text-sm shrink-0">
+                    2
+                  </div>
+                  <div className="text-right flex-1">
+                    <p className="text-sm font-bold text-white">
+                      اختار "إضافة للشاشة الرئيسية"
+                    </p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Add to Home Screen ➕
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-black text-sm shrink-0">
+                    3
+                  </div>
+                  <div className="text-right flex-1">
+                    <p className="text-sm font-bold text-white">اضغط "إضافة"</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      وهيظهر التطبيق على الشاشة الرئيسية 🎉
+                    </p>
+                  </div>
+                </div>
               </div>
 
-              <p className="mb-4 text-sm leading-7 text-slate-600">
-                افتح الموقع من متصفح Safari ثم اتبع الخطوات التالية:
-              </p>
-
-              <ol className="space-y-3 text-sm font-bold leading-7 text-slate-800">
-                <li>١. اضغط زر المشاركة الموجود أسفل الشاشة.</li>
-                <li>٢. اختر «إضافة إلى الشاشة الرئيسية».</li>
-                <li>٣. اضغط «إضافة».</li>
-                <li>٤. ستظهر أيقونة Parkn24 بين تطبيقاتك.</li>
-              </ol>
-
-              <p className="mt-4 rounded-2xl bg-blue-50 p-3 text-xs leading-6 text-blue-800">
-                إذا لم تجد الخيار، تأكد أنك تستخدم Safari وليس متصفحًا آخر.
-              </p>
-
               <button
-                type="button"
-                onClick={() => setShowIOSHelp(false)}
-                className="mt-5 w-full rounded-2xl bg-blue-600 px-4 py-3 text-sm font-black text-white"
+                onClick={() => setShowIOSGuide(false)}
+                className="w-full mt-6 bg-slate-800 text-white py-3 rounded-xl font-black text-sm active:scale-95 transition-all"
               >
-                فهمت
+                فهمت ✅
               </button>
             </motion.div>
           </motion.div>
