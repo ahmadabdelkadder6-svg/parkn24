@@ -464,31 +464,63 @@ export default function GarageDashboard() {
   }, [filteredCompleted, getSessionRevenue, getSessionCommission, getSessionNetRevenue]);
 
 const valetReport = useMemo(() => {
-  if (!garage || !isOwner) return [];
-  return [
-    { name: garage.valetName1, color: '#0066FF', icon: '🅿️1' },
-    { name: garage.valetName2, color: '#7C3AED', icon: '🅿️2' },
-    { name: garage.valetName3, color: '#FF8800', icon: '🅿️3' },
-  ]
-    .filter(v => v.name?.trim())
-    .map(v => {
-      // ✅ فلترة بالجراج الحالي فقط
-      const vs = filteredCompleted.filter(s =>
-        (s as any).addedBy === v.name && s.garageId === garage.id
-      );
-      const ac = vs.filter(s => s.source === 'app' && s.revenueConfirmed);
-      const mc = vs.filter(s => s.source === 'manual' && s.revenueConfirmed);
+  if (!garage || !isOwner || !currentGarageId) return [];
+
+  const garageValets = [
+    { name: (garage.valetName1 || '').trim(), color: '#0066FF', icon: '🅿️1' },
+    { name: (garage.valetName2 || '').trim(), color: '#7C3AED', icon: '🅿️2' },
+    { name: (garage.valetName3 || '').trim(), color: '#FF8800', icon: '🅿️3' },
+  ].filter(v => v.name);
+
+  // ✅ جلسات الجراج الحالي فقط + نفس فلاتر المالك
+  const ownerGarageCompleted = completedSessions.filter((s) => {
+    if (s.garageId !== currentGarageId) return false;
+
+    if (s.endTime) {
+      const d = timestampToLocalDate(toMs(s.endTime));
+      if (logDateFrom && d < logDateFrom) return false;
+      if (logDateTo && d > logDateTo) return false;
+    }
+
+    if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter) {
+      return false;
+    }
+
+    return true;
+  });
+
+  return garageValets
+    .map((v) => {
+      const vs = ownerGarageCompleted.filter((s) => {
+        const addedBy = ((s as any).addedBy || '').trim();
+        return addedBy === v.name;
+      });
+
+      const confirmed = vs.filter((s) => s.revenueConfirmed);
+      const ac = confirmed.filter((s) => s.source === 'app');
+      const mc = confirmed.filter((s) => s.source === 'manual');
+
       return {
-        ...v, count: vs.length,
-        appCount: ac.length, manualCount: mc.length,
+        ...v,
+        count: vs.length,
+        appCount: ac.length,
+        manualCount: mc.length,
         appTotal: ac.reduce((a, s) => a + getSessionRevenue(s), 0),
         manualTotal: mc.reduce((a, s) => a + getSessionRevenue(s), 0),
-        total: [...ac, ...mc].reduce((a, s) => a + getSessionRevenue(s), 0),
+        total: confirmed.reduce((a, s) => a + getSessionRevenue(s), 0),
       };
     })
-    .filter(v => v.count > 0);
-}, [filteredCompleted, garage, isOwner, getSessionRevenue]);
-
+    .filter((v) => v.count > 0);
+}, [
+  garage,
+  isOwner,
+  currentGarageId,
+  completedSessions,
+  logDateFrom,
+  logDateTo,
+  logPaymentFilter,
+  getSessionRevenue,
+]);
   const handleUndoSession = useCallback((un: UndoableSession) => {
     if (!garage) return;
     removeSession(un.sessionId);
