@@ -514,6 +514,88 @@ export default function GarageDashboard() {
   }, [tick, sessions]);
 
   if (!garage) return null;
+// ✅ شاشة القفل - لو السايس مش مفعّل
+if (isValet && garage) {
+  const valetNum = valetNumber;
+  const isActive =
+    valetNum === '1' ? garage.valet1Active :
+    valetNum === '2' ? garage.valet2Active :
+    valetNum === '3' ? garage.valet3Active :
+    false;
+
+  if (!isActive) {
+    return (
+      <div
+        className="h-full flex flex-col items-center justify-center px-6"
+        style={{ background: '#EBF2FF', color: '#0A1628' }}
+      >
+        <div
+          style={{
+            background: '#fff',
+            borderRadius: 28,
+            padding: 32,
+            textAlign: 'center',
+            maxWidth: 360,
+            width: '100%',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
+            border: '2px solid #FFD180',
+          }}
+        >
+          <div style={{ fontSize: 56, marginBottom: 16 }}>🔒</div>
+          <h2
+            className="font-black"
+            style={{ fontSize: 20, color: '#0A1628', marginBottom: 8 }}
+          >
+            حسابك غير مفعّل
+          </h2>
+          <p
+            className="font-bold"
+            style={{ fontSize: 13, color: '#7B8CA6', lineHeight: 1.8, marginBottom: 20 }}
+          >
+            تم تعطيل حسابك مؤقتاً من قبل مالك الجراج.
+            <br />
+            تواصل مع المالك لتفعيل حسابك.
+          </p>
+          <div
+            style={{
+              background: '#FFF8F0',
+              borderRadius: 16,
+              padding: 14,
+              border: '1.5px solid #FFD180',
+              marginBottom: 16,
+            }}
+          >
+            <div className="font-black" style={{ fontSize: 14, color: '#FF9500' }}>
+              {currentValetName || `سايس ${valetNumber}`}
+            </div>
+            <div className="font-bold" style={{ fontSize: 11, color: '#94a3b8' }}>
+              {garage.name}
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              localStorage.removeItem('garageRole');
+              localStorage.removeItem('valetNumber');
+              localStorage.removeItem('valetName');
+              setCurrentGarageId(null);
+            }}
+            className="w-full font-black active:scale-95"
+            style={{
+              background: '#F0F4FF',
+              color: '#475569',
+              padding: 14,
+              borderRadius: 18,
+              fontSize: 13,
+              border: '2px solid #D0DCFF',
+            }}
+          >
+            تسجيل خروج
+          </button>
+        </div>
+      </div>
+    );
+  }
+}
 
   const handleAddCar = async () => {
     if (!newCarPlate.trim()) { toast.error('أدخل رقم السيارة'); return; }
@@ -704,15 +786,46 @@ export default function GarageDashboard() {
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🅿️ إدارة السياس</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
-                {[
-                  { n: 1, name: editValet1Name, setName: setEditValet1Name, pass: editValet1Pass, setPass: setEditValet1Pass, color: '#0066FF' },
-                  { n: 2, name: editValet2Name, setName: setEditValet2Name, pass: editValet2Pass, setPass: setEditValet2Pass, color: '#7C3AED' },
-                  { n: 3, name: editValet3Name, setName: setEditValet3Name, pass: editValet3Pass, setPass: setEditValet3Pass, color: '#FF8800' },
-                ].map((v, i) => (
+  {[
+  { n: 1, name: editValet1Name, setName: setEditValet1Name, pass: editValet1Pass, setPass: setEditValet1Pass, color: '#0066FF', active: garage.valet1Active, activeKey: 'valet1Active' as const },
+  { n: 2, name: editValet2Name, setName: setEditValet2Name, pass: editValet2Pass, setPass: setEditValet2Pass, color: '#7C3AED', active: garage.valet2Active, activeKey: 'valet2Active' as const },
+  { n: 3, name: editValet3Name, setName: setEditValet3Name, pass: editValet3Pass, setPass: setEditValet3Pass, color: '#FF8800', active: garage.valet3Active, activeKey: 'valet3Active' as const },
+].map((v, i) => (
                   <div key={i} className={i < 2 ? 'mb-4 pb-4' : ''} style={i < 2 ? { borderBottom: '1px solid #D0DCFF' } : {}}>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="font-bold" style={{ fontSize: 10, color: v.name || v.pass ? v.color : '#CBD5E1' }}>{v.name || v.pass ? '✅ مفعّل' : '❌ غير مفعّل'}</span>
+<span
+  className="font-bold"
+  style={{
+    fontSize: 10,
+    color: !(v.name || v.pass) ? '#CBD5E1' : v.active ? '#00AA44' : '#FF3333',
+  }}
+>
+  {!(v.name || v.pass)
+    ? '⚪ غير مُعد'
+    : v.active
+      ? '🟢 مفعّل'
+      : '🔴 معطّل'}
+</span>
                       <span className="font-black" style={{ fontSize: 12 }}>🅿️ سايس {v.n}</span>
+{(v.name || v.pass) && (
+  <button
+    onClick={(e) => {
+      e.stopPropagation();
+      updateGarage(garage.id, { [v.activeKey]: !v.active } as any);
+    }}
+    className="font-black active:scale-95"
+    style={{
+      fontSize: 9,
+      padding: '4px 10px',
+      borderRadius: 10,
+      background: v.active ? '#00CC66' : '#FF3333',
+      color: '#fff',
+      marginRight: 6,
+    }}
+  >
+    {v.active ? '🟢 مفعّل' : '🔴 معطّل'}
+  </button>
+)}
                     </div>
                     <input type="text" value={v.name} onChange={e => v.setName(e.target.value)} className="w-full text-right outline-none font-bold mb-2" style={{ background: '#fff', border: `2px solid ${v.name ? v.color : '#D0DCFF'}`, padding: 12, borderRadius: 14, fontSize: 14 }} placeholder={`اسم سايس ${v.n}`} />
                     <input type="text" value={v.pass} onChange={e => v.setPass(e.target.value)} className="w-full text-center outline-none font-mono font-black" style={{ background: '#fff', border: `2px solid ${v.pass ? v.color : '#D0DCFF'}`, padding: 12, borderRadius: 14, fontSize: 16, letterSpacing: 3 }} placeholder={`كلمة مرور سايس ${v.n}`} />

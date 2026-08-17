@@ -181,7 +181,7 @@ export default function InstallPWA() {
                       fontWeight: 800,
                     }}
                   >
-                    وصول أسرع — فتح مباشر — استخدام مريح مثل التطبيقات الحقيقية
+                    وصول أسرع — فتح مباشر 
                   </p>
 
                   <p

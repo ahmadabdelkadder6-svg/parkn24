@@ -21,7 +21,10 @@ export interface Garage {
   valetPassword2: string;
   valetName3: string;
   valetPassword3: string;
-  commissionRate: number;
+commissionRate: number;
+valet1Active: boolean;
+valet2Active: boolean;
+valet3Active: boolean;
 }
 
 export interface ParkingSession {
@@ -187,7 +190,10 @@ const mapGarage = (r: any): Garage => ({
   valetName1: r.valet_name_1 || '', valetPassword1: r.valet_password_1 || '',
   valetName2: r.valet_name_2 || '', valetPassword2: r.valet_password_2 || '',
   valetName3: r.valet_name_3 || '', valetPassword3: r.valet_password_3 || '',
-  commissionRate: Number(r.commission_rate ?? 10),
+commissionRate: Number(r.commission_rate ?? 10),
+valet1Active: r.valet1_active !== false,
+valet2Active: r.valet2_active !== false,
+valet3Active: r.valet3_active !== false,
 });
 
 const mapSession = (r: any): ParkingSession => {
@@ -543,6 +549,9 @@ export const useStore = create<AppState>((set, get) => ({
       name: g.name, username: g.username, phone: g.phone, location: g.location, lat: g.lat, lng: g.lng,
       capacity: g.capacity, available_spots: g.capacity, base_price: g.basePrice, rating: 4.0,
       commission_rate: 10,
+valet1_active: true,
+valet2_active: true,
+valet3_active: true,
       valet_name_1: (g as any).valetName1 || '', valet_password_1: (g as any).valetPassword1 || '',
       valet_name_2: (g as any).valetName2 || '', valet_password_2: (g as any).valetPassword2 || '',
       valet_name_3: (g as any).valetName3 || '', valet_password_3: (g as any).valetPassword3 || '',
@@ -559,6 +568,9 @@ export const useStore = create<AppState>((set, get) => ({
     if (updates.availableSpots !== undefined) db.available_spots = updates.availableSpots;
     if (updates.capacity !== undefined) db.capacity = updates.capacity;
     if (updates.commissionRate !== undefined) db.commission_rate = updates.commissionRate;
+       if ((updates as any).valet1Active !== undefined) db.valet1_active = (updates as any).valet1Active;
+       if ((updates as any).valet2Active !== undefined) db.valet2_active = (updates as any).valet2Active;
+       if ((updates as any).valet3Active !== undefined) db.valet3_active = (updates as any).valet3Active;
     if (updates.valetName1 !== undefined) db.valet_name_1 = updates.valetName1;
     if (updates.valetPassword1 !== undefined) db.valet_password_1 = updates.valetPassword1;
     if (updates.valetName2 !== undefined) db.valet_name_2 = updates.valetName2;
