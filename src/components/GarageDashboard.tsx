@@ -463,28 +463,31 @@ export default function GarageDashboard() {
     };
   }, [filteredCompleted, getSessionRevenue, getSessionCommission, getSessionNetRevenue]);
 
-  const valetReport = useMemo(() => {
-    if (!garage || !isOwner) return [];
-    return [
-      { name: garage.valetName1, color: '#0066FF', icon: '🅿️1' },
-      { name: garage.valetName2, color: '#7C3AED', icon: '🅿️2' },
-      { name: garage.valetName3, color: '#FF8800', icon: '🅿️3' },
-    ]
-      .filter(v => v.name?.trim())
-      .map(v => {
-        const vs = filteredCompleted.filter(s => (s as any).addedBy === v.name);
-        const ac = vs.filter(s => s.source === 'app' && s.revenueConfirmed);
-        const mc = vs.filter(s => s.source === 'manual' && s.revenueConfirmed);
-        return {
-          ...v, count: vs.length,
-          appCount: ac.length, manualCount: mc.length,
-          appTotal: ac.reduce((a, s) => a + getSessionRevenue(s), 0),
-          manualTotal: mc.reduce((a, s) => a + getSessionRevenue(s), 0),
-          total: [...ac, ...mc].reduce((a, s) => a + getSessionRevenue(s), 0),
-        };
-      })
-      .filter(v => v.count > 0);
-  }, [filteredCompleted, garage, isOwner, getSessionRevenue]);
+const valetReport = useMemo(() => {
+  if (!garage || !isOwner) return [];
+  return [
+    { name: garage.valetName1, color: '#0066FF', icon: '🅿️1' },
+    { name: garage.valetName2, color: '#7C3AED', icon: '🅿️2' },
+    { name: garage.valetName3, color: '#FF8800', icon: '🅿️3' },
+  ]
+    .filter(v => v.name?.trim())
+    .map(v => {
+      // ✅ فلترة بالجراج الحالي فقط
+      const vs = filteredCompleted.filter(s =>
+        (s as any).addedBy === v.name && s.garageId === garage.id
+      );
+      const ac = vs.filter(s => s.source === 'app' && s.revenueConfirmed);
+      const mc = vs.filter(s => s.source === 'manual' && s.revenueConfirmed);
+      return {
+        ...v, count: vs.length,
+        appCount: ac.length, manualCount: mc.length,
+        appTotal: ac.reduce((a, s) => a + getSessionRevenue(s), 0),
+        manualTotal: mc.reduce((a, s) => a + getSessionRevenue(s), 0),
+        total: [...ac, ...mc].reduce((a, s) => a + getSessionRevenue(s), 0),
+      };
+    })
+    .filter(v => v.count > 0);
+}, [filteredCompleted, garage, isOwner, getSessionRevenue]);
 
   const handleUndoSession = useCallback((un: UndoableSession) => {
     if (!garage) return;
@@ -514,8 +517,51 @@ export default function GarageDashboard() {
   }, [tick, sessions]);
 
   if (!garage) return null;
+const currentValetName =
+  valetNumber === '1' ? garage?.valetName1 :
+  valetNumber === '2' ? garage?.valetName2 :
+  valetNumber === '3' ? garage?.valetName3 :
+  '';
+
+// ✅ لو بيانات الجراج لسه ما اتحملتش
+if (!garage) {
+  return (
+    <div
+      className="h-full flex flex-col items-center justify-center px-6"
+      style={{ background: '#EBF2FF', color: '#0A1628' }}
+    >
+      <div
+        style={{
+          background: '#fff',
+          borderRadius: 28,
+          padding: 32,
+          textAlign: 'center',
+          maxWidth: 360,
+          width: '100%',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
+          border: '2px solid #D0DCFF',
+        }}
+      >
+        <div style={{ fontSize: 48, marginBottom: 14 }}>⏳</div>
+        <h2
+          className="font-black"
+          style={{ fontSize: 20, color: '#0A1628', marginBottom: 8 }}
+        >
+          جاري تحميل البيانات
+        </h2>
+        <p
+          className="font-bold"
+          style={{ fontSize: 13, color: '#7B8CA6', lineHeight: 1.8 }}
+        >
+          انتظر لحظة...
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ✅ شاشة القفل - لو السايس مش مفعّل
-if (isValet && garage) {
+if (isValet) {
   const valetNum = valetNumber;
   const isActive =
     valetNum === '1' ? garage.valet1Active :
@@ -542,20 +588,28 @@ if (isValet && garage) {
           }}
         >
           <div style={{ fontSize: 56, marginBottom: 16 }}>🔒</div>
+
           <h2
             className="font-black"
             style={{ fontSize: 20, color: '#0A1628', marginBottom: 8 }}
           >
-            حسابك غير مفعّل
+            الحساب غير مُفعل
           </h2>
+
           <p
             className="font-bold"
-            style={{ fontSize: 13, color: '#7B8CA6', lineHeight: 1.8, marginBottom: 20 }}
+            style={{
+              fontSize: 13,
+              color: '#7B8CA6',
+              lineHeight: 1.8,
+              marginBottom: 20,
+            }}
           >
-            تم تعطيل حسابك مؤقتاً من قبل مالك الجراج.
+            تم تعطيل هذا الحساب مؤقتًا من قبل مالك الجراج.
             <br />
-            تواصل مع المالك لتفعيل حسابك.
+            برجاء التواصل معه لإعادة التفعيل.
           </p>
+
           <div
             style={{
               background: '#FFF8F0',
@@ -565,13 +619,20 @@ if (isValet && garage) {
               marginBottom: 16,
             }}
           >
-            <div className="font-black" style={{ fontSize: 14, color: '#FF9500' }}>
+            <div
+              className="font-black"
+              style={{ fontSize: 15, color: '#0A1628' }}
+            >
               {currentValetName || `سايس ${valetNumber}`}
             </div>
-            <div className="font-bold" style={{ fontSize: 11, color: '#94a3b8' }}>
+            <div
+              className="font-bold"
+              style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}
+            >
               {garage.name}
             </div>
           </div>
+
           <button
             onClick={() => {
               localStorage.removeItem('garageRole');
@@ -596,7 +657,6 @@ if (isValet && garage) {
     );
   }
 }
-
   const handleAddCar = async () => {
     if (!newCarPlate.trim()) { toast.error('أدخل رقم السيارة'); return; }
     const cp = newCarPlate.trim();
