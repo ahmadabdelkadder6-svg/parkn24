@@ -1,358 +1,289 @@
-import { serve }        from 'https://deno.land/std@0.168.0/http/server.ts';
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import webpush          from 'https://esm.sh/web-push@3.6.6';
 
-// ─── CORS ─────────────────────────────────────────────────────
 const corsHeaders = {
-  'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Headers': 'authorization, content-type, x-client-info, apikey',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, content-type',
 };
 
-const jsonResponse = (
-  body: Record<string, unknown>,
-  status: number = 200
-): Response =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
-
-// ─── Types ────────────────────────────────────────────────────
-interface PushMessage {
-  title: string;
-  body: string;
-  tag?: string;
-  data?: Record<string, unknown>;
+// ─── Helper: Base64URL ─────────────────────────────────────────
+function base64UrlToUint8Array(base64: string): Uint8Array {
+  const pad = '='.repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + pad).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(b64);
+  return new Uint8Array([...raw].map(c => c.charCodeAt(0)));
 }
 
-interface ScheduledPushMessage extends PushMessage {
-  sendAt: string;
+function uint8ArrayToBase64Url(arr: Uint8Array): string {
+  return btoa(String.fromCharCode(...arr))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
 }
 
-interface RequestBody {
-  garageId: string;
-  immediate?: PushMessage | null;
-  scheduled?: ScheduledPushMessage | null;
+// ─── Helper: VAPID JWT ────────────────────────────────────────
+async function buildVapidJwt(
+  audience: string,
+  subject: string,
+  publicKeyB64: string,
+  privateKeyB64: string
+): Promise<{ auth: string; key: string }> {
+  const now = Math.floor(Date.now() / 1000);
+  const exp = now + 12 * 60 * 60;
+
+  const header  = { typ: 'JWT', alg: 'ES256' };
+  const payload = { aud: audience, exp, sub: subject };
+
+  const enc = new TextEncoder();
+  const headerB64  = uint8ArrayToBase64Url(enc.encode(JSON.stringify(header)));
+  const payloadB64 = uint8ArrayToBase64Url(enc.encode(JSON.stringify(payload)));
+  const signingInput = `${headerB64}.${payloadB64}`;
+
+  const privateKeyBytes = base64UrlToUint8Array(privateKeyB64);
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    privateKeyBytes,
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    false,
+    ['sign']
+  );
+
+  const signature = await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    cryptoKey,
+    enc.encode(signingInput)
+  );
+
+  const jwt = `${signingInput}.${uint8ArrayToBase64Url(new Uint8Array(signature))}`;
+
+  return {
+    auth: `vapid t=${jwt},k=${publicKeyB64}`,
+    key:  publicKeyB64,
+  };
 }
 
-interface SendResult {
-  success: boolean;
-  endpoint: string;
-  expired: boolean;
-  error?: string;
-}
-
-// ─── Helper: بناء Payload آمن ─────────────────────────────────
-const buildPayload = (msg: PushMessage): string => {
-  const payload = JSON.stringify({
-    notification: {
-      title: msg.title,
-      body: msg.body,
-    },
-    data: {
-      ...(msg.data || {}),
-      tag: msg.tag || 'parknow-push',
-    },
-  });
-
-  // لو payload كبير جدًا، نقلله
-  if (payload.length > 3800) {
-    return JSON.stringify({
-      notification: {
-        title: msg.title,
-        body: msg.body.substring(0, 100),
-      },
-      data: {
-        tag: msg.tag || 'parknow-push',
-      },
-    });
-  }
-
-  return payload;
-};
-
-// ─── Helper: إرسال إشعار واحد ─────────────────────────────────
-const sendOnePush = async (
-  subscription: {
-    endpoint: string;
-    p256dh: string;
-    auth: string;
-  },
+// ─── Helper: Encrypt Push Message ────────────────────────────
+async function encryptPushPayload(
+  subscription: { endpoint: string; keys: { p256dh: string; auth: string } },
   payload: string
-): Promise<SendResult> => {
+): Promise<{ ciphertext: Uint8Array; salt: Uint8Array; serverPublicKey: Uint8Array }> {
+  const enc = new TextEncoder();
+  const data = enc.encode(payload);
+
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+
+  // Client public key
+  const clientPublicKey = await crypto.subtle.importKey(
+    'raw',
+    base64UrlToUint8Array(subscription.keys.p256dh),
+    { name: 'ECDH', namedCurve: 'P-256' },
+    false,
+    []
+  );
+
+  // Server key pair
+  const serverKeyPair = await crypto.subtle.generateKey(
+    { name: 'ECDH', namedCurve: 'P-256' },
+    true,
+    ['deriveKey', 'deriveBits']
+  );
+
+  const serverPublicKeyRaw = new Uint8Array(
+    await crypto.subtle.exportKey('raw', serverKeyPair.publicKey)
+  );
+
+  // Shared secret
+  const sharedSecret = await crypto.subtle.deriveBits(
+    { name: 'ECDH', public: clientPublicKey },
+    serverKeyPair.privateKey,
+    256
+  );
+
+  const authInfo = enc.encode('Content-Encoding: auth\0');
+  const clientAuth = base64UrlToUint8Array(subscription.keys.auth);
+
+  // PRK
+  const prkHmacKey = await crypto.subtle.importKey(
+    'raw', clientAuth, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const prk = new Uint8Array(
+    await crypto.subtle.sign('HMAC', prkHmacKey, new Uint8Array([...new Uint8Array(sharedSecret), ...authInfo, 1]))
+  );
+
+  // Content Encryption Key
+  const cekHmacKey = await crypto.subtle.importKey(
+    'raw', prk, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const cekInfo = new Uint8Array([
+    ...enc.encode('Content-Encoding: aesgcm\0'),
+    ...clientPublicKey instanceof CryptoKey ? new Uint8Array() : new Uint8Array(),
+  ]);
+
+  // Simple AES-GCM encryption
+  const aesKey = await crypto.subtle.importKey(
+    'raw', prk.slice(0, 16), { name: 'AES-GCM' }, false, ['encrypt']
+  );
+
+  const iv = salt.slice(0, 12);
+  const paddedData = new Uint8Array([0, 0, ...data]);
+
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, paddedData)
+  );
+
+  return { ciphertext, salt, serverPublicKey: serverPublicKeyRaw };
+}
+
+// ─── Send Single Push ─────────────────────────────────────────
+async function sendPushToSubscription(
+  sub: { endpoint: string; p256dh: string; auth: string },
+  payload: object,
+  vapidPublicKey: string,
+  vapidPrivateKey: string,
+  vapidEmail: string
+): Promise<{ ok: boolean; status?: number; error?: string }> {
   try {
-    await webpush.sendNotification(
-      {
-        endpoint: subscription.endpoint,
-        keys: {
-          p256dh: subscription.p256dh,
-          auth: subscription.auth,
-        },
-      },
-      payload,
-      {
-        TTL: 120,
-        urgency: 'high',
-        topic: 'parknow-alert',
-      }
+    const url    = new URL(sub.endpoint);
+    const origin = url.origin;
+
+    const { auth: vapidAuth } = await buildVapidJwt(
+      origin, vapidEmail, vapidPublicKey, vapidPrivateKey
     );
 
-    return {
-      success: true,
-      endpoint: subscription.endpoint,
-      expired: false,
-    };
+    const payloadStr = JSON.stringify(payload);
+
+    const response = await fetch(sub.endpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization':     vapidAuth,
+        'Content-Type':      'application/octet-stream',
+        'TTL':               '86400',
+        'Urgency':           'high',
+      },
+      body: new TextEncoder().encode(payloadStr),
+    });
+
+    return { ok: response.ok, status: response.status };
   } catch (err) {
-    const statusCode = (err as { statusCode?: number })?.statusCode;
-
-    if (statusCode === 404 || statusCode === 410) {
-      return {
-        success: false,
-        endpoint: subscription.endpoint,
-        expired: true,
-        error: `Expired (${statusCode})`,
-      };
-    }
-
-    return {
-      success: false,
-      endpoint: subscription.endpoint,
-      expired: false,
-      error: String(err),
-    };
+    return { ok: false, error: String(err) };
   }
-};
+}
 
-// ─── Main ─────────────────────────────────────────────────────
+// ─── Main Handler ─────────────────────────────────────────────
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  if (req.method !== 'POST') {
-    return jsonResponse({ success: false, error: 'Method not allowed' }, 405);
-  }
-
   try {
-    // ─── Env ────────────────────────────────────────────────
-    const vapidEmail      = Deno.env.get('VAPID_EMAIL');
-    const vapidPublicKey  = Deno.env.get('VAPID_PUBLIC_KEY');
-    const vapidPrivateKey = Deno.env.get('VAPID_PRIVATE_KEY');
-    const supabaseUrl     = Deno.env.get('SUPABASE_URL');
-    const supabaseKey     = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const VAPID_EMAIL       = Deno.env.get('VAPID_EMAIL')!;
+    const VAPID_PUBLIC_KEY  = Deno.env.get('VAPID_PUBLIC_KEY')!;
+    const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY')!;
 
-    if (!vapidEmail || !vapidPublicKey || !vapidPrivateKey) {
-      return jsonResponse({ success: false, error: 'VAPID env missing' }, 500);
-    }
+    const { garageId, immediate, scheduled } = await req.json();
 
-    if (!supabaseUrl || !supabaseKey) {
-      return jsonResponse({ success: false, error: 'Supabase env missing' }, 500);
-    }
+    console.log('📤 Push request for garage:', garageId);
 
-    webpush.setVapidDetails(vapidEmail, vapidPublicKey, vapidPrivateKey);
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    // ─── Parse Body ─────────────────────────────────────────
-    let body: RequestBody;
-
-    try {
-      body = await req.json();
-    } catch {
-      return jsonResponse({ success: false, error: 'Invalid JSON body' }, 400);
-    }
-
-    const { garageId, immediate, scheduled } = body;
-
-    if (!garageId || typeof garageId !== 'string') {
-      return jsonResponse({ success: false, error: 'garageId is required' }, 400);
-    }
-
-    if (!immediate && !scheduled) {
-      return jsonResponse(
-        { success: false, error: 'At least one of immediate or scheduled is required' },
-        400
-      );
-    }
-
-    // ─── جلب Subscriptions ─────────────────────────────────
-    const { data: subscriptions, error: subscriptionsError } = await supabase
-      .from('push_subscriptions')
-      .select('endpoint, p256dh, auth')
-      .eq('garage_id', garageId);
-
-    if (subscriptionsError) {
-      console.error('❌ Fetch subscriptions error:', subscriptionsError);
-      return jsonResponse(
-        {
-          success: false,
-          error: 'Failed to fetch push subscriptions',
-          details: subscriptionsError.message,
-        },
-        500
-      );
-    }
-
-    // ✅ dedup بالـ endpoint
-    const uniqueSubs = [
-      ...new Map(
-        (subscriptions ?? []).map((sub) => [sub.endpoint, sub])
-      ).values(),
-    ];
-
-    console.log(
-      `📋 Garage: ${garageId} | Subs: ${subscriptions?.length ?? 0} | Unique: ${uniqueSubs.length}`
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    let immediateSent = 0;
-    let immediateFailed = 0;
-    let expiredRemoved = 0;
-    let scheduledSaved = false;
+    // ✅ جلب subscriptions للجراج المحدد
+    const { data: subscriptions, error: dbError } = await supabase
+      .from('push_subscriptions')
+      .select('*')
+      .eq('garage_id', garageId);
 
-    // ─── إرسال فوري ────────────────────────────────────────
+    if (dbError) {
+      console.error('❌ DB error:', dbError);
+      return new Response(
+        JSON.stringify({ error: 'DB error', details: dbError }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`📋 Found ${subscriptions?.length ?? 0} subscriptions for garage:`, garageId);
+
+    if (!subscriptions || subscriptions.length === 0) {
+      return new Response(
+        JSON.stringify({ success: true, sent: 0, message: 'No subscriptions' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ✅ إرسال الإشعار الفوري
     if (immediate) {
-      if (uniqueSubs.length === 0) {
-        console.warn(`⚠️ No subscriptions for garage ${garageId}`);
-      } else {
-        const payload = buildPayload(immediate);
+      let sent = 0;
+      let failed = 0;
 
-        const results = await Promise.all(
-          uniqueSubs.map((sub) =>
-            sendOnePush(
-              {
-                endpoint: sub.endpoint,
-                p256dh: sub.p256dh,
-                auth: sub.auth,
-              },
-              payload
-            )
-          )
+      for (const sub of subscriptions) {
+        console.log('📨 Sending to endpoint:', sub.endpoint.substring(0, 60));
+
+        const result = await sendPushToSubscription(
+          { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
+          {
+            notification: {
+              title: immediate.title,
+              body:  immediate.body,
+            },
+            data: {
+              tag:  immediate.tag  ?? 'parknow-push',
+              url:  immediate.data?.url ?? '/',
+              ...(immediate.data ?? {}),
+            },
+          },
+          VAPID_PUBLIC_KEY,
+          VAPID_PRIVATE_KEY,
+          VAPID_EMAIL
         );
 
-        immediateSent = results.filter((r) => r.success).length;
-        immediateFailed = results.filter((r) => !r.success).length;
+        if (result.ok) {
+          sent++;
+          console.log('✅ Push sent successfully');
+        } else {
+          failed++;
+          console.error('❌ Push failed:', result.status, result.error);
 
-        const expiredEndpoints = [
-          ...new Set(results.filter((r) => r.expired).map((r) => r.endpoint)),
-        ];
-
-        if (expiredEndpoints.length > 0) {
-          const { error: deleteError } = await supabase
-            .from('push_subscriptions')
-            .delete()
-            .in('endpoint', expiredEndpoints)
-            .eq('garage_id', garageId);
-
-          if (deleteError) {
-            console.error('❌ Delete expired subscriptions error:', deleteError);
-          } else {
-            expiredRemoved = expiredEndpoints.length;
+          // ✅ حذف الـ subscription المنتهية
+          if (result.status === 410 || result.status === 404) {
+            await supabase
+              .from('push_subscriptions')
+              .delete()
+              .eq('endpoint', sub.endpoint);
+            console.log('🗑️ Deleted expired subscription');
           }
         }
       }
+
+      console.log(`📊 Results: sent=${sent}, failed=${failed}`);
     }
 
-    // ─── حفظ المجدول بـ upsert ─────────────────────────────
+    // ✅ حفظ الإشعار المجدول
     if (scheduled) {
-      const tag = scheduled.tag || 'parknow-push';
-
-      const { error: upsertError } = await supabase
-        .from('scheduled_push_alerts')
-        .upsert(
-          {
-            garage_id: garageId,
-            car_plate: String(scheduled.data?.carPlate || ''),
-            title: scheduled.title,
-            body: scheduled.body,
-            tag,
-            data: scheduled.data || {},
-            send_at: scheduled.sendAt,
-
-            // ✅ مهم جدًا: لو نفس tag اتعاد جدولته
-            // يرجع alert كأنه جديد
-            sent: false,
-            sent_at: null,
-            processing_started_at: null,
-          },
-          {
-            // ✅ الصح بعد التعديل
-            onConflict: 'garage_id,tag',
-            ignoreDuplicates: false,
-          }
-        );
-
-      if (upsertError) {
-        console.error('❌ Scheduled upsert error:', upsertError);
-        return jsonResponse(
-          {
-            success: false,
-            error: 'Failed to save scheduled push',
-            details: upsertError.message,
-          },
-          500
-        );
-      }
-
-      scheduledSaved = true;
-      console.log(`📅 Scheduled saved | garage:${garageId} | tag:${tag}`);
+      await supabase.from('scheduled_push_alerts').insert({
+        garage_id: garageId,
+        car_plate: scheduled.data?.carPlate || '',
+        title:     scheduled.title,
+        body:      scheduled.body,
+        tag:       scheduled.tag,
+        data:      scheduled.data || {},
+        send_at:   scheduled.sendAt,
+        sent:      false,
+      });
+      console.log('📅 Scheduled alert saved');
     }
 
-    // ─── Log ───────────────────────────────────────────────
-    try {
-      const now = new Date().toISOString();
-      const logs: Array<Record<string, unknown>> = [];
+    return new Response(
+      JSON.stringify({ success: true }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
 
-      if (immediate) {
-        logs.push({
-          garage_id: garageId,
-          car_plate: immediate.data?.carPlate ?? null,
-          action: 'send_immediate',
-          subs_count: uniqueSubs.length,
-          sent_count: immediateSent,
-          created_at: now,
-        });
-      }
-
-      if (scheduled) {
-        logs.push({
-          garage_id: garageId,
-          car_plate: scheduled.data?.carPlate ?? null,
-          action: 'schedule_push',
-          send_at: scheduled.sendAt,
-          created_at: now,
-        });
-      }
-
-      if (logs.length > 0) {
-        await supabase.from('push_alerts_log').insert(logs);
-      }
-    } catch (logErr) {
-      console.warn('⚠️ Push log failed (non-critical):', logErr);
-    }
-
-    return jsonResponse({
-      success: true,
-      garageId,
-      immediate: {
-        requested: !!immediate,
-        totalSubs: uniqueSubs.length,
-        sent: immediateSent,
-        failed: immediateFailed,
-        expiredRemoved,
-      },
-      scheduled: {
-        requested: !!scheduled,
-        saved: scheduledSaved,
-      },
-    });
   } catch (err) {
     console.error('❌ Unexpected error:', err);
-    return jsonResponse(
-      {
-        success: false,
-        error: String(err),
-      },
-      500
+    return new Response(
+      JSON.stringify({ error: String(err) }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
