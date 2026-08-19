@@ -307,10 +307,21 @@ export default function GarageDashboard() {
     init();
   }, []);
 
-  useEffect(() => {
-    if (!currentGarageId || garages.length === 0 || pushSubscribedGarageRef.current === currentGarageId) return;
-    (async () => { try { const s = await subscribeToPush(currentGarageId); if (s) pushSubscribedGarageRef.current = currentGarageId; } catch {} })();
-  }, [currentGarageId, garages]);
+useEffect(() => {
+  if (!currentGarageId || garages.length === 0) return;
+  if (pushSubscribedGarageRef.current === currentGarageId) return;
+
+  (async () => {
+    try {
+      // ✅ دايماً refresh بعد فتح التطبيق
+      await refreshPushSubscriptionIfNeeded(currentGarageId);
+      const s = await subscribeToPush(currentGarageId);
+      if (s) pushSubscribedGarageRef.current = currentGarageId;
+    } catch (e) {
+      console.error('❌ Push subscription error:', e);
+    }
+  })();
+}, [currentGarageId, garages]);
 
   useEffect(() => {
     if (!currentGarageId) return;

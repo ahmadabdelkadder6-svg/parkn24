@@ -1,5 +1,5 @@
 // ✅ رقم الـ version
-const CACHE_NAME    = 'parknow-v4'; // ✅ غيرنا v3 → v4
+const CACHE_NAME = 'parknow-v5'; // ✅ غيرنا v3 → v4
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
 // ✅ تتبع آخر إشعار اتعرض (dedup في الـ memory)
