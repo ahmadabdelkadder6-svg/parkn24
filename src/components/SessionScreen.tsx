@@ -3,7 +3,6 @@ import { motion } from 'framer-motion';
 import {
   Clock,
   Car,
-  DollarSign,
   ArrowRight,
 } from 'lucide-react';
 import { useStore } from '../store';
@@ -145,12 +144,12 @@ export default function SessionScreen() {
     const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
     const handleFocus = () => refetch();
     document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', handleFocus);
+    window.addEventListener('focus', refetch);
 
     return () => {
       cancelled = true;
       document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('focus', refetch);
       if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
       if (realtimeChannelRef.current) { supabase.removeChannel(realtimeChannelRef.current); realtimeChannelRef.current = null; }
     };
@@ -288,7 +287,8 @@ export default function SessionScreen() {
           <div className="text-[9px] text-slate-500 font-bold">رقم السيارة</div>
         </div>
         <div className="bg-white border border-slate-200 p-4 rounded-2xl text-center shadow-sm">
-          <DollarSign size={20} className="text-purple-600 mx-auto mb-2" />
+          {/* ✅ تم استبدال علامة الدولار بكلمة "جنيه" بخط واضح وتصميم محترف */}
+          <div className="font-black text-purple-600 mb-2" style={{ fontSize: 13, lineHeight: 1.1 }}>جنيه</div>
           <div className="text-sm font-black text-purple-600 font-mono">{sessionRate} ج.م</div>
           <div className="text-[9px] text-slate-500 font-bold">سعر الساعة</div>
         </div>

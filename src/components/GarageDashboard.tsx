@@ -888,30 +888,16 @@ useEffect(() => {
                 </div>
               )}
             </div>
-            <div className="mb-5">
-              <h4 className="font-black mb-3 text-right" style={{ fontSize: 12, color: '#7B8CA6' }}>طريقة السداد</h4>
-              {confirmSession.source === 'manual' ? (
-                <div className="text-center" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', borderRadius: 18, padding: 18, color: '#fff' }}>
-                  <div style={{ fontSize: 28 }}>💵</div>
-                  <div className="font-black" style={{ fontSize: 15 }}>نقدي</div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { id: 'cash', label: 'نقدي', icon: '💵', bg: '#00CC66', disabled: false },
-                    { id: 'instapay', label: 'إنستاباي', icon: '📱', bg: '#7C3AED', disabled: false },
-                    { id: 'wallet', label: 'المحفظة', icon: '👝', bg: '#0066FF', disabled: true },
-                    { id: 'cashwallet', label: 'محفظة كاش', icon: '📲', bg: '#FF8800', disabled: false },
-                  ].map(pm => (
-                    <button key={pm.id} onClick={() => !pm.disabled && setConfirmPaymentMethod(pm.id)} disabled={pm.disabled} className="text-center active:scale-95"
-                      style={{ borderRadius: 18, padding: 14, background: pm.disabled ? '#F0F4FF' : confirmPaymentMethod === pm.id ? pm.bg : '#fff', color: pm.disabled ? '#94a3b8' : confirmPaymentMethod === pm.id ? '#fff' : '#475569', border: pm.disabled ? '2px solid #D0DCFF' : confirmPaymentMethod === pm.id ? 'none' : '2px solid #D0DCFF' }}>
-                      <div style={{ fontSize: 24 }}>{pm.icon}</div>
-                      <div className="font-black" style={{ fontSize: 11 }}>{pm.label}</div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+<div className="mb-5">
+  <h4 className="font-black mb-3 text-right" style={{ fontSize: 12, color: '#7B8CA6' }}>طريقة السداد</h4>
+  <div 
+    className="text-center" 
+    style={{ background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', borderRadius: 20, padding: 18, color: '#fff' }}
+  >
+    <div style={{ fontSize: 32, marginBottom: 4 }}>💵</div>
+    <div className="font-black" style={{ fontSize: 15 }}>سداد نقدي كاش</div>
+  </div>
+</div>
             <div className="flex gap-3">
               <button onClick={handleConfirmPayment} className="flex-1 font-black flex items-center justify-center gap-2 active:scale-95" style={{ padding: 18, borderRadius: 20, fontSize: 14, color: '#fff', background: 'linear-gradient(135deg,#00CC66,#00AA55)' }}>
                 <CheckCircle size={20} /> تأكيد ({confirmSession.cost} ج.م)
