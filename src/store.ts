@@ -722,7 +722,7 @@ valet3_active: true,
     sessionEndLocks.add(lockKey);
     pausePolling(15000);
 
-    try {
+      try {
       const safeTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
 
       // ✅ حساب العمولة من نسبة الجراج الحالية
