@@ -734,13 +734,16 @@ valet3_active: true,
         : 0;
       const netRevenue = Math.round((safeTotalPrice - commissionAmount) * 100) / 100;
 
+      // ✅ سداد المحفظة مدفوع إلكترونياً بالفعل -> مؤكد تلقائياً
+      const isAutoConfirmed = paymentMethod === 'wallet';
+
       const endedSession: ParkingSession = {
         ...session,
         endTime: now,
         totalPrice: safeTotalPrice,
         paymentMethod,
         status: 'completed' as const,
-        revenueConfirmed: false,
+        revenueConfirmed: isAutoConfirmed,
         commissionAmount,
         netRevenue,
       };
@@ -756,7 +759,7 @@ valet3_active: true,
         total_price: safeTotalPrice,
         payment_method: paymentMethod,
         status: 'completed',
-        revenue_confirmed: false,
+        revenue_confirmed: isAutoConfirmed,
         commission_amount: commissionAmount,
         net_revenue: netRevenue,
       }).eq('id', id).eq('status', 'active');
@@ -768,7 +771,6 @@ valet3_active: true,
     } finally {
       setTimeout(() => { sessionEndLocks.delete(lockKey); }, 3000);
     }
-  },
 
   confirmRevenue: async (sessionId) => {
     set((st) => ({ sessions: st.sessions.map((s) => s.id === sessionId ? { ...s, revenueConfirmed: true } : s) }));
