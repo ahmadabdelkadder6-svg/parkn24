@@ -21,10 +21,10 @@ export interface Garage {
   valetPassword2: string;
   valetName3: string;
   valetPassword3: string;
-commissionRate: number;
-valet1Active: boolean;
-valet2Active: boolean;
-valet3Active: boolean;
+  commissionRate: number;
+  valet1Active: boolean;
+  valet2Active: boolean;
+  valet3Active: boolean;
 }
 
 export interface ParkingSession {
@@ -147,8 +147,6 @@ const safeParseTime = (value: any): number => {
   return 0;
 };
 
-const toMs = safeParseTime;
-
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   const active = list.filter((s) => s.status === 'active');
   const completed = list.filter((s) => s.status === 'completed');
@@ -190,10 +188,10 @@ const mapGarage = (r: any): Garage => ({
   valetName1: r.valet_name_1 || '', valetPassword1: r.valet_password_1 || '',
   valetName2: r.valet_name_2 || '', valetPassword2: r.valet_password_2 || '',
   valetName3: r.valet_name_3 || '', valetPassword3: r.valet_password_3 || '',
-commissionRate: Number(r.commission_rate ?? 10),
-valet1Active: r.valet1_active !== false,
-valet2Active: r.valet2_active !== false,
-valet3Active: r.valet3_active !== false,
+  commissionRate: Number(r.commission_rate ?? 10),
+  valet1Active: r.valet1_active !== false,
+  valet2Active: r.valet2_active !== false,
+  valet3Active: r.valet3_active !== false,
 });
 
 const mapSession = (r: any): ParkingSession => {
@@ -327,8 +325,8 @@ interface AppState {
   garages: Garage[];
   currentGarageId: string | null;
   setCurrentGarageId: (id: string | null) => void;
-  addGarage: (g: Omit<Garage, 'id' | 'rating' | 'availableSpots' | 'commissionRate'> & { capacity: number }) => Promise<void>;
-  updateGarage: (id: string, updates: Partial<Pick<Garage, 'basePrice' | 'availableSpots' | 'capacity' | 'commissionRate'>> & {
+  addGarage: (g: Omit<Garage, 'id' | 'rating' | 'availableSpots' | 'commissionRate' | 'valet1Active' | 'valet2Active' | 'valet3Active'> & { capacity: number }) => Promise<void>;
+  updateGarage: (id: string, updates: Partial<Pick<Garage, 'basePrice' | 'availableSpots' | 'capacity' | 'commissionRate' | 'valet1Active' | 'valet2Active' | 'valet3Active'>> & {
     valetName1?: string; valetPassword1?: string;
     valetName2?: string; valetPassword2?: string;
     valetName3?: string; valetPassword3?: string;
@@ -549,9 +547,9 @@ export const useStore = create<AppState>((set, get) => ({
       name: g.name, username: g.username, phone: g.phone, location: g.location, lat: g.lat, lng: g.lng,
       capacity: g.capacity, available_spots: g.capacity, base_price: g.basePrice, rating: 4.0,
       commission_rate: 10,
-valet1_active: true,
-valet2_active: true,
-valet3_active: true,
+      valet1_active: true,
+      valet2_active: true,
+      valet3_active: true,
       valet_name_1: (g as any).valetName1 || '', valet_password_1: (g as any).valetPassword1 || '',
       valet_name_2: (g as any).valetName2 || '', valet_password_2: (g as any).valetPassword2 || '',
       valet_name_3: (g as any).valetName3 || '', valet_password_3: (g as any).valetPassword3 || '',
@@ -568,9 +566,9 @@ valet3_active: true,
     if (updates.availableSpots !== undefined) db.available_spots = updates.availableSpots;
     if (updates.capacity !== undefined) db.capacity = updates.capacity;
     if (updates.commissionRate !== undefined) db.commission_rate = updates.commissionRate;
-       if ((updates as any).valet1Active !== undefined) db.valet1_active = (updates as any).valet1Active;
-       if ((updates as any).valet2Active !== undefined) db.valet2_active = (updates as any).valet2Active;
-       if ((updates as any).valet3Active !== undefined) db.valet3_active = (updates as any).valet3Active;
+    if (updates.valet1Active !== undefined) db.valet1_active = updates.valet1Active;
+    if (updates.valet2Active !== undefined) db.valet2_active = updates.valet2Active;
+    if (updates.valet3Active !== undefined) db.valet3_active = updates.valet3Active;
     if (updates.valetName1 !== undefined) db.valet_name_1 = updates.valetName1;
     if (updates.valetPassword1 !== undefined) db.valet_password_1 = updates.valetPassword1;
     if (updates.valetName2 !== undefined) db.valet_name_2 = updates.valetName2;
@@ -707,9 +705,7 @@ valet3_active: true,
   },
 
   // ═══════════════════════════════════════════════════════════════════
-  // ✅ endSession - حساب العمولة الصحيح
-  //    جلسات التطبيق فقط = إيراد × نسبة الجراج / 100
-  //    جلسات يدوية = عمولة 0
+  // ✅ endSession - حساب العمولة وسداد المحفظة المؤكد تلقائياً
   // ═══════════════════════════════════════════════════════════════════
   endSession: async (id, totalPrice, paymentMethod) => {
     const now = Date.now();
@@ -722,7 +718,7 @@ valet3_active: true,
     sessionEndLocks.add(lockKey);
     pausePolling(15000);
 
-      try {
+    try {
       const safeTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
 
       // ✅ حساب العمولة من نسبة الجراج الحالية
@@ -730,11 +726,11 @@ valet3_active: true,
       const commissionRate = garage?.commissionRate ?? 10;
       const isAppSession = session.source === 'app';
       const commissionAmount = isAppSession
-        ? Math.round((safeTotalPrice * commissionRate / 100) * 100) / 100
+        ? Math.round(((safeTotalPrice * commissionRate) / 100) * 100) / 100
         : 0;
       const netRevenue = Math.round((safeTotalPrice - commissionAmount) * 100) / 100;
 
-      // ✅ سداد المحفظة مدفوع إلكترونياً بالفعل -> مؤكد تلقائياً
+      // ✅ سداد المحفظة مؤكد إلكترونياً وتلقائياً
       const isAutoConfirmed = paymentMethod === 'wallet';
 
       const endedSession: ParkingSession = {
@@ -749,63 +745,75 @@ valet3_active: true,
       };
 
       locallyEndedSessions.set(id, endedSession);
-      set((st) => ({ sessions: st.sessions.map((s) => s.id === id ? endedSession : s) }));
+      set((st) => ({ sessions: st.sessions.map((s) => (s.id === id ? endedSession : s)) }));
       await get().adjustGarageSpots(session.garageId, +1);
 
       if (!isSupabaseConfigured()) return;
 
-      const { error } = await supabase.from('sessions').update({
-        end_time: new Date(now).toISOString(),
-        total_price: safeTotalPrice,
-        payment_method: paymentMethod,
-        status: 'completed',
-        revenue_confirmed: isAutoConfirmed,
-        commission_amount: commissionAmount,
-        net_revenue: netRevenue,
-      }).eq('id', id).eq('status', 'active');
+      const { error } = await supabase
+        .from('sessions')
+        .update({
+          end_time: new Date(now).toISOString(),
+          total_price: safeTotalPrice,
+          payment_method: paymentMethod,
+          status: 'completed',
+          revenue_confirmed: isAutoConfirmed,
+          commission_amount: commissionAmount,
+          net_revenue: netRevenue,
+        })
+        .eq('id', id)
+        .eq('status', 'active');
 
-      if (error) { console.error('❌', error); }
-      else { setTimeout(() => { locallyEndedSessions.delete(id); }, 10000); }
+      if (error) {
+        console.error('❌', error);
+      } else {
+        setTimeout(() => {
+          locallyEndedSessions.delete(id);
+        }, 10000);
+      }
 
-      setTimeout(() => { get().fetchAll(); }, 12000);
+      setTimeout(() => {
+        get().fetchAll();
+      }, 12000);
     } finally {
-      setTimeout(() => { sessionEndLocks.delete(lockKey); }, 3000);
+      setTimeout(() => {
+        sessionEndLocks.delete(lockKey);
+      }, 3000);
     }
+  },
 
   confirmRevenue: async (sessionId) => {
-    set((st) => ({ sessions: st.sessions.map((s) => s.id === sessionId ? { ...s, revenueConfirmed: true } : s) }));
+    set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: true } : s)) }));
     pausePolling(10000);
     if (!isSupabaseConfigured()) return;
     const { error } = await supabase.from('sessions').update({ revenue_confirmed: true }).eq('id', sessionId);
     if (error) {
       console.error('❌', error);
-      set((st) => ({ sessions: st.sessions.map((s) => s.id === sessionId ? { ...s, revenueConfirmed: false } : s) }));
+      set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: false } : s)) }));
     }
   },
 
   unconfirmRevenue: async (sessionId) => {
-    set((st) => ({ sessions: st.sessions.map((s) => s.id === sessionId ? { ...s, revenueConfirmed: false } : s) }));
+    set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: false } : s)) }));
     pausePolling(10000);
     if (!isSupabaseConfigured()) return;
     const { error } = await supabase.from('sessions').update({ revenue_confirmed: false }).eq('id', sessionId);
     if (error) {
       console.error('❌', error);
-      set((st) => ({ sessions: st.sessions.map((s) => s.id === sessionId ? { ...s, revenueConfirmed: true } : s) }));
+      set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: true } : s)) }));
     }
   },
 
   assignSessionToValet: async (sessionId: string, valetName: string) => {
     if (!sessionId || !valetName) return;
 
-    // ✅ تحديث فوري محلياً
     set((st) => ({
-      sessions: st.sessions.map((s) => s.id === sessionId ? { ...s, addedBy: valetName } : s),
+      sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, addedBy: valetName } : s)),
     }));
 
     if (!isSupabaseConfigured()) return;
 
     try {
-      // ✅ تحديث في Supabase مباشرة بدون شروط تعيق الـ NULL
       const { error } = await supabase
         .from('sessions')
         .update({ added_by: valetName })
@@ -818,6 +826,7 @@ valet3_active: true,
       console.error('❌ assignSessionToValet unexpected error:', err);
     }
   },
+
   cancelSession: (id) => {
     const session = get().sessions.find((s) => s.id === id);
     set((st) => ({ sessions: st.sessions.filter((s) => s.id !== id) }));
@@ -863,7 +872,7 @@ valet3_active: true,
   },
 
   updateOffer: (id, status, counterPrice) => {
-    set((st) => ({ offers: st.offers.map((o) => o.id === id ? { ...o, status, counterPrice } : o) }));
+    set((st) => ({ offers: st.offers.map((o) => (o.id === id ? { ...o, status, counterPrice } : o)) }));
     if (isSupabaseConfigured()) {
       const u: Record<string, unknown> = { status };
       if (counterPrice !== undefined) u.counter_price = counterPrice;
@@ -884,13 +893,13 @@ valet3_active: true,
         user_id: w.userId, user_name: w.userName, user_phone: w.userPhone,
         amount: w.amount, transaction_id: w.transactionId, car_plate: w.carPlate, method: w.method,
       }).select().single()
-        .then(({ data }) => { if (data) set((st) => ({ walletTopUps: st.walletTopUps.map((x) => x.id === newW.id ? mapTopUp(data) : x) })); });
+        .then(({ data }) => { if (data) set((st) => ({ walletTopUps: st.walletTopUps.map((x) => (x.id === newW.id ? mapTopUp(data) : x)) })); });
     }
   },
 
   approveTopUp: async (id) => {
     const topUp = get().walletTopUps.find((w) => w.id === id); if (!topUp) return;
-    set((st) => ({ walletTopUps: st.walletTopUps.map((w) => w.id === id ? { ...w, status: 'approved' as const } : w) }));
+    set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'approved' as const } : w)) }));
     if (!isSupabaseConfigured()) return;
     let dbRow: any = null;
     if (topUp.transactionId) { const { data } = await supabase.from('wallet_topups').select('id, user_id, user_phone, amount, status').eq('transaction_id', topUp.transactionId).maybeSingle(); if (data) dbRow = data; }
@@ -900,10 +909,10 @@ valet3_active: true,
     const { error: approveError } = await supabase.from('wallet_topups').update({ status: 'approved' }).eq('id', supabaseId);
     if (approveError) {
       console.error('❌', approveError);
-      set((st) => ({ walletTopUps: st.walletTopUps.map((w) => w.id === id ? { ...w, status: 'pending' as const } : w) }));
+      set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'pending' as const } : w)) }));
       return;
     }
-    set((st) => ({ walletTopUps: st.walletTopUps.map((w) => w.id === id ? { ...w, id: supabaseId, status: 'approved' as const } : w) }));
+    set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, id: supabaseId, status: 'approved' as const } : w)) }));
     const realUserId = dbRow.user_id || topUp.userId || '';
     const realUserPhone = dbRow.user_phone || topUp.userPhone || '';
     let userData: any = null;
@@ -924,14 +933,14 @@ valet3_active: true,
 
   rejectTopUp: async (id) => {
     const topUp = get().walletTopUps.find((w) => w.id === id); if (!topUp) return;
-    set((st) => ({ walletTopUps: st.walletTopUps.map((w) => w.id === id ? { ...w, status: 'rejected' as const } : w) }));
+    set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'rejected' as const } : w)) }));
     if (!isSupabaseConfigured()) return;
     let supabaseId = id;
     if (topUp.transactionId) { const { data } = await supabase.from('wallet_topups').select('id').eq('transaction_id', topUp.transactionId).maybeSingle(); if (data) supabaseId = data.id; }
     const { error } = await supabase.from('wallet_topups').update({ status: 'rejected' }).eq('id', supabaseId);
     if (error) { console.error('❌', error); return; }
     if (supabaseId !== id) {
-      set((st) => ({ walletTopUps: st.walletTopUps.map((w) => w.id === id ? { ...w, id: supabaseId, status: 'rejected' as const } : w) }));
+      set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, id: supabaseId, status: 'rejected' as const } : w)) }));
     }
   },
 
@@ -947,7 +956,7 @@ valet3_active: true,
         agreed_price: c.agreedPrice, estimated_arrival: c.estimatedArrival,
       }).select().single();
       if (error) { console.error('❌', error); set((st) => ({ incomingCars: st.incomingCars.filter((x) => x.id !== incomingId) })); return; }
-      if (data) set((st) => ({ incomingCars: st.incomingCars.map((x) => x.id === incomingId ? mapIncoming(data) : x) }));
+      if (data) set((st) => ({ incomingCars: st.incomingCars.map((x) => (x.id === incomingId ? mapIncoming(data) : x)) }));
     } catch (err) {
       console.error('❌', err);
       set((st) => ({ incomingCars: st.incomingCars.filter((x) => x.id !== incomingId) }));
@@ -986,7 +995,7 @@ valet3_active: true,
         set((st) => ({ messages: (st.messages ?? []).filter((m) => m.id !== optimisticMessage.id) }));
         return { success: false, error: error.message || 'فشل إرسال الرسالة' };
       }
-      if (data) set((st) => ({ messages: (st.messages ?? []).map((m) => m.id === optimisticMessage.id ? mapMessage(data) : m) }));
+      if (data) set((st) => ({ messages: (st.messages ?? []).map((m) => (m.id === optimisticMessage.id ? mapMessage(data) : m)) }));
       return { success: true };
     } catch (err) {
       console.error('❌', err);
@@ -997,14 +1006,14 @@ valet3_active: true,
 
   replyMessage: async (id, reply) => {
     const now = Date.now();
-    set((st) => ({ messages: (st.messages ?? []).map((msg) => msg.id === id ? { ...msg, reply, status: 'replied' as const, repliedAt: now } : msg) }));
+    set((st) => ({ messages: (st.messages ?? []).map((msg) => (msg.id === id ? { ...msg, reply, status: 'replied' as const, repliedAt: now } : msg)) }));
     if (!isSupabaseConfigured()) return;
     const { error } = await supabase.from('messages').update({ reply, status: 'replied', replied_at: new Date(now).toISOString() }).eq('id', id);
     if (error) console.error('❌', error);
   },
 
   closeMessage: async (id) => {
-    set((st) => ({ messages: (st.messages ?? []).map((msg) => msg.id === id ? { ...msg, status: 'closed' as const } : msg) }));
+    set((st) => ({ messages: (st.messages ?? []).map((msg) => (msg.id === id ? { ...msg, status: 'closed' as const } : msg)) }));
     if (!isSupabaseConfigured()) return;
     const { error } = await supabase.from('messages').update({ status: 'closed' }).eq('id', id);
     if (error) console.error('❌', error);
