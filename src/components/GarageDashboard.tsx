@@ -213,23 +213,56 @@ export default function GarageDashboard() {
   const garageSessions = sessions.filter(s => s.garageId === currentGarageId);
   const currentValetNameLocal = localStorage.getItem('valetName') || '';
 
+  const currentValetName =
+    valetNumber === '1' ? garage?.valetName1 :
+    valetNumber === '2' ? garage?.valetName2 :
+    valetNumber === '3' ? garage?.valetName3 :
+    '';
+
+  // ✅ أسماء السايس الفعلي للتحقق السريع
+  const myValetNames = useMemo(() => {
+    const names = new Set<string>();
+    if (currentValetNameLocal) names.add(currentValetNameLocal.trim());
+    if (currentValetName) names.add(currentValetName.trim());
+    if (valetNumber) names.add(`سايس ${valetNumber}`);
+    return names;
+  }, [currentValetNameLocal, currentValetName, valetNumber]);
+
+  // ✅ قائمة بأسماء كل السياس في الجراج الحالي
+  const garageValetNames = useMemo(() => {
+    if (!garage) return [];
+    return [
+      (garage.valetName1 || '').trim(),
+      (garage.valetName2 || '').trim(),
+      (garage.valetName3 || '').trim(),
+    ].filter(Boolean);
+  }, [garage]);
+
+  // ✅ تصليح حساب الوقت: عدم استبعاد الجلسات الجديدة التي تبدأ بـ 0
   const activeSessions = useMemo(() => {
     return garageSessions.filter(s => {
       if (s.status !== 'active') return false;
-      if (Date.now() - toMs(s.startTime) >= 24 * 60 * 60 * 1000) return false;
+      const st = toMs(s.startTime);
+      if (st > 0 && (Date.now() - st) >= 24 * 60 * 60 * 1000) return false;
       return true;
     });
   }, [garageSessions]);
 
+  // ✅ السايس يرى جلساته + أي جلسة بدأت من التطبيق فوراً
   const valetActiveSessions = useMemo(() => {
-    if (!isValet || !currentValetNameLocal) return activeSessions;
+    if (!isValet) return activeSessions;
     return activeSessions.filter(s => {
       const addedBy = ((s as any).addedBy || '').trim();
-      if (addedBy === currentValetNameLocal) return true;
-      if (s.source === 'app' && addedBy === '') return true;
+      if (addedBy && myValetNames.has(addedBy)) return true;
+      if (s.source === 'app') {
+        if (!addedBy) return true; // لم تسند بعد -> تظهر فوراً للسايس
+        // لو لم تسند لسايس آخر معروف في نفس الجراج -> تظهر
+        const otherValets = garageValetNames.filter(n => !myValetNames.has(n));
+        if (!otherValets.includes(addedBy)) return true;
+      }
       return false;
     });
-  }, [activeSessions, isValet, currentValetNameLocal]);
+  }, [activeSessions, isValet, myValetNames, garageValetNames]);
 
   const completedSessions = garageSessions.filter(s => s.status === 'completed');
   const garageOffers = offers.filter(o => o.garageId === currentGarageId && o.status === 'pending');
@@ -268,26 +301,26 @@ export default function GarageDashboard() {
   const [tick, setTick] = useState(0);
   const [garageDailyStats, setGarageDailyStats] = useState<DailyStat[]>([]);
   const [valetEditSpots, setValetEditSpots] = useState(false);
-
-  // ✅ فلتر السايس في السجل التفصيلي
   const [selectedValetFilter, setSelectedValetFilter] = useState<string | null>(null);
 
-  // ✅ إسناد جلسات الحريف للسايس تلقائياً
+  // ✅ الإسناد التلقائي الفوري لجلسات الحريف للسايس الحالي
   useEffect(() => {
-    if (!isValet) return;
-    if (!currentGarageId) return;
-    if (!currentValetNameLocal) return;
-    const unassigned = sessions.filter(s => {
-      if (s.garageId !== currentGarageId) return false;
-      if (s.source !== 'app') return false;
-      if (s.status !== 'active') return false;
-      const addedBy = ((s as any).addedBy || '').trim();
-      return addedBy === '';
-    });
-    if (unassigned.length === 0) return;
-    unassigned.forEach(s => { assignSessionToValet(s.id, currentValetNameLocal); });
-  }, [sessions, isValet, currentGarageId, currentValetNameLocal, assignSessionToValet]);
+    if (!isValet || !currentGarageId) return;
+    const targetValetName = currentValetNameLocal || currentValetName || `سايس ${valetNumber}`;
+    if (!targetValetName) return;
 
+    const unassigned = activeSessions.filter(s => {
+      if (s.source !== 'app') return false;
+      const ab = ((s as any).addedBy || '').trim();
+      return !ab;
+    });
+
+    unassigned.forEach(s => {
+      assignSessionToValet(s.id, targetValetName);
+    });
+  }, [activeSessions, isValet, currentGarageId, currentValetNameLocal, currentValetName, valetNumber, assignSessionToValet]);
+
+  // Realtime
   useEffect(() => {
     if (!currentGarageId) return;
     const channel = supabase
@@ -307,21 +340,10 @@ export default function GarageDashboard() {
     init();
   }, []);
 
-useEffect(() => {
-  if (!currentGarageId || garages.length === 0) return;
-  if (pushSubscribedGarageRef.current === currentGarageId) return;
-
-  (async () => {
-    try {
-      // ✅ دايماً refresh بعد فتح التطبيق
-      await refreshPushSubscriptionIfNeeded(currentGarageId);
-      const s = await subscribeToPush(currentGarageId);
-      if (s) pushSubscribedGarageRef.current = currentGarageId;
-    } catch (e) {
-      console.error('❌ Push subscription error:', e);
-    }
-  })();
-}, [currentGarageId, garages]);
+  useEffect(() => {
+    if (!currentGarageId || garages.length === 0 || pushSubscribedGarageRef.current === currentGarageId) return;
+    (async () => { try { const s = await subscribeToPush(currentGarageId); if (s) pushSubscribedGarageRef.current = currentGarageId; } catch {} })();
+  }, [currentGarageId, garages]);
 
   useEffect(() => {
     if (!currentGarageId) return;
@@ -402,16 +424,6 @@ useEffect(() => {
     return Math.round((rev - comm) * 100) / 100;
   }, [getSessionRevenue, getSessionCommission]);
 
-  // ✅ أسماء سياس الجراج الحالي فقط
-  const garageValetNames = useMemo(() => {
-    if (!garage) return [];
-    return [
-      (garage.valetName1 || '').trim(),
-      (garage.valetName2 || '').trim(),
-      (garage.valetName3 || '').trim(),
-    ].filter(Boolean);
-  }, [garage]);
-
   const valetTodayRevenue = useMemo(() => {
     if (!isValet) return 0;
     return completedSessions
@@ -419,10 +431,10 @@ useEffect(() => {
         if (!s.revenueConfirmed || !s.endTime) return false;
         if (timestampToLocalDate(toMs(s.endTime)) !== getLocalToday()) return false;
         const addedBy = ((s as any).addedBy || '').trim();
-        return addedBy === currentValetNameLocal || (s.source === 'app' && addedBy === '');
+        return (addedBy && myValetNames.has(addedBy)) || (s.source === 'app' && !addedBy);
       })
       .reduce((a, s) => a + getSessionRevenue(s), 0);
-  }, [isValet, completedSessions, currentValetNameLocal, getSessionRevenue]);
+  }, [isValet, completedSessions, myValetNames, getSessionRevenue]);
 
   const totalRevenue = useMemo(() => {
     if (isValet) return valetTodayRevenue;
@@ -456,17 +468,15 @@ useEffect(() => {
 
       const addedBy = ((s as any).addedBy || '').trim();
 
-      if (isValet && currentValetNameLocal) {
-        const isMine = addedBy === currentValetNameLocal || (s.source === 'app' && addedBy === '');
+      if (isValet) {
+        const isMine = (addedBy && myValetNames.has(addedBy)) || (s.source === 'app' && !addedBy);
         if (!isMine) return false;
       }
 
-      // ✅ المالك: اعرض فقط جلسات سياس الجراج الحالي أو جلسات بدون سايس
       if (isOwner && addedBy && !garageValetNames.includes(addedBy)) {
         return false;
       }
 
-      // ✅ فلتر بالسايس المختار
       if (isOwner && selectedValetFilter) {
         if (addedBy !== selectedValetFilter) return false;
       }
@@ -475,7 +485,7 @@ useEffect(() => {
     });
   }, [
     completedSessions, logDateFrom, logDateTo, logPaymentFilter,
-    isValet, isOwner, currentValetNameLocal, garageValetNames, selectedValetFilter,
+    isValet, isOwner, myValetNames, garageValetNames, selectedValetFilter,
   ]);
 
   const filteredStats = useMemo(() => {
@@ -501,7 +511,6 @@ useEffect(() => {
     };
   }, [filteredCompleted, getSessionRevenue, getSessionCommission, getSessionNetRevenue]);
 
-  // ✅ تقرير السياس - جلسات الجراج الحالي فقط
   const valetReport = useMemo(() => {
     if (!garage || !isOwner || !currentGarageId) return [];
 
@@ -572,14 +581,7 @@ useEffect(() => {
     );
   }, [tick, sessions]);
 
-  // ✅ currentValetName قبل أي return
-  const currentValetName =
-    valetNumber === '1' ? garage?.valetName1 :
-    valetNumber === '2' ? garage?.valetName2 :
-    valetNumber === '3' ? garage?.valetName3 :
-    '';
-
-  // ✅ شاشة التحميل لو الجراج مش موجود
+  // ✅ شاشة التحميل
   if (!garage) {
     return (
       <div className="h-full flex flex-col items-center justify-center px-6" style={{ background: '#EBF2FF', color: '#0A1628' }}>
@@ -592,7 +594,7 @@ useEffect(() => {
     );
   }
 
-  // ✅ شاشة القفل - لو السايس مش مفعّل
+  // ✅ شاشة القفل لو السايس معطل
   if (isValet) {
     const isActive =
       valetNumber === '1' ? (garage as any).valet1Active :
@@ -716,15 +718,6 @@ useEffect(() => {
 
   const calculateRemainingTime = (st: number | string, em: number) =>
     Math.max(0, em - Math.floor((Date.now() - toMs(st)) / 60000));
-
-  const checkIsMySession = (session: any): boolean => {
-    if (isOwner) return true;
-    if (!currentValetNameLocal) return true;
-    const addedBy = ((session as any).addedBy || '').trim();
-    if (addedBy === currentValetNameLocal) return true;
-    if (session.source === 'app' && addedBy === '') return true;
-    return false;
-  };
 
   return (
     <div className="h-full overflow-y-auto" style={{ background: '#EBF2FF', color: '#0A1628', padding: 16 }}>
@@ -888,16 +881,19 @@ useEffect(() => {
                 </div>
               )}
             </div>
-<div className="mb-5">
-  <h4 className="font-black mb-3 text-right" style={{ fontSize: 12, color: '#7B8CA6' }}>طريقة السداد</h4>
-  <div 
-    className="text-center" 
-    style={{ background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', borderRadius: 20, padding: 18, color: '#fff' }}
-  >
-    <div style={{ fontSize: 32, marginBottom: 4 }}>💵</div>
-    <div className="font-black" style={{ fontSize: 15 }}>سداد نقدي كاش</div>
-  </div>
-</div>
+
+            {/* طريقة السداد - سداد نقدي موحد */}
+            <div className="mb-5">
+              <h4 className="font-black mb-3 text-right" style={{ fontSize: 12, color: '#7B8CA6' }}>طريقة السداد</h4>
+              <div 
+                className="text-center" 
+                style={{ background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', borderRadius: 20, padding: 18, color: '#fff' }}
+              >
+                <div style={{ fontSize: 32, marginBottom: 4 }}>💵</div>
+                <div className="font-black" style={{ fontSize: 15 }}>سداد نقدي كاش</div>
+              </div>
+            </div>
+
             <div className="flex gap-3">
               <button onClick={handleConfirmPayment} className="flex-1 font-black flex items-center justify-center gap-2 active:scale-95" style={{ padding: 18, borderRadius: 20, fontSize: 14, color: '#fff', background: 'linear-gradient(135deg,#00CC66,#00AA55)' }}>
                 <CheckCircle size={20} /> تأكيد ({confirmSession.cost} ج.م)
@@ -1102,23 +1098,49 @@ useEffect(() => {
 
       {/* Valet info bar */}
       {isValet && (
-        <div className="mb-5" style={{ background: '#fff', borderRadius: 20, padding: '12px 16px', border: '2px solid #D0DCFF' }}>
+        <div
+          className="mb-5"
+          style={{
+            background: '#fff',
+            borderRadius: 20,
+            padding: '12px 16px',
+            border: '2px solid #D0DCFF',
+          }}
+        >
           <div className="flex items-center justify-between">
-            <span className="font-black flex items-center gap-1" style={{ fontSize: 14, color: '#0A1628' }}>
+            <span
+              className="font-black flex items-center gap-1"
+              style={{ fontSize: 14, color: '#0A1628' }}
+            >
               <HardHat size={16} style={{ color: '#FF9500' }} />
               {currentValetName || `سايس ${valetNumber}`}
             </span>
+
             <div className="flex items-center gap-4">
               <div className="text-right">
                 <div style={{ fontSize: 10, color: '#94a3b8' }}>السعر/ساعة</div>
-                <div className="font-black font-mono" style={{ fontSize: 17, color: '#0A1628', lineHeight: 1.1 }}>{garage.basePrice} ج</div>
+                <div
+                  className="font-black font-mono"
+                  style={{ fontSize: 17, color: '#0A1628', lineHeight: 1.1 }}
+                >
+                  {garage.basePrice} ج
+                </div>
               </div>
+
               <div style={{ width: 2, height: 28, background: '#D0DCFF', borderRadius: 2 }} />
+
               <div className="text-right">
                 <div style={{ fontSize: 10, color: '#94a3b8' }}>الأماكن المتاحة</div>
-                <div className="font-black font-mono" style={{ fontSize: 17, color: '#0A1628', lineHeight: 1.1 }}>{garage.availableSpots}/{garage.capacity}</div>
+                <div
+                  className="font-black font-mono"
+                  style={{ fontSize: 17, color: '#0A1628', lineHeight: 1.1 }}
+                >
+                  {garage.availableSpots}/{garage.capacity}
+                </div>
               </div>
+
               <div style={{ width: 2, height: 28, background: '#D0DCFF', borderRadius: 2 }} />
+
               <button
                 onClick={() => setValetEditSpots(!valetEditSpots)}
                 className="active:scale-95 flex items-center gap-1"
@@ -1274,7 +1296,7 @@ useEffect(() => {
                   ))}
                 </div>
 
-                {/* ✅ تقرير السياس - قابل للضغط للفلترة */}
+                {/* تقرير السياس */}
                 {valetReport.length > 0 && (
                   <div className="mb-4">
                     <div className="flex items-center justify-between mb-3">
@@ -1336,6 +1358,7 @@ useEffect(() => {
               </>
             )}
 
+            {/* ✅ السايس يشوف عدد عملياته فقط */}
             {isValet && (
               <div className="mb-4 text-center" style={{ background: '#fff', borderRadius: 20, padding: 16, border: '2px solid #D0DCFF' }}>
                 <div className="font-black" style={{ fontSize: 14, color: '#334155' }}>عملياتي اليوم</div>
@@ -1360,6 +1383,7 @@ useEffect(() => {
               <div key={session.id} style={{ background: isC ? (isM ? '#FFF8F0' : '#EBF5FF') : '#FFFBF0', border: `2px solid ${isC ? (isM ? '#FFD180' : '#A0C4FF') : '#FFD180'}`, borderRadius: 18, padding: 14 }}>
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2 flex-wrap">
+                    {/* ✅ المبلغ للمالك فقط */}
                     {isOwner && (
                       <span className="font-mono font-black" style={{ fontSize: 17, color: isM ? '#E65100' : '#0066FF' }}>{rev.toFixed(0)} ج.م</span>
                     )}

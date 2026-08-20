@@ -794,11 +794,8 @@ valet3_active: true,
 
   assignSessionToValet: async (sessionId: string, valetName: string) => {
     if (!sessionId || !valetName) return;
-    const session = get().sessions.find((s) => s.id === sessionId);
-    if (!session) return;
-    const currentAddedBy = (session.addedBy || '').trim();
-    if (currentAddedBy !== '') return;
 
+    // ✅ تحديث فوري محلياً
     set((st) => ({
       sessions: st.sessions.map((s) => s.id === sessionId ? { ...s, addedBy: valetName } : s),
     }));
@@ -806,27 +803,19 @@ valet3_active: true,
     if (!isSupabaseConfigured()) return;
 
     try {
+      // ✅ تحديث في Supabase مباشرة بدون شروط تعيق الـ NULL
       const { error } = await supabase
         .from('sessions')
         .update({ added_by: valetName })
-        .eq('id', sessionId)
-        .eq('added_by', '');
+        .eq('id', sessionId);
 
       if (error) {
         console.error('❌ assignSessionToValet error:', error);
-        set((st) => ({
-          sessions: st.sessions.map((s) => s.id === sessionId ? { ...s, addedBy: '' } : s),
-        }));
-        setTimeout(() => get().fetchAll(), 1000);
       }
     } catch (err) {
       console.error('❌ assignSessionToValet unexpected error:', err);
-      set((st) => ({
-        sessions: st.sessions.map((s) => s.id === sessionId ? { ...s, addedBy: '' } : s),
-      }));
     }
   },
-
   cancelSession: (id) => {
     const session = get().sessions.find((s) => s.id === id);
     set((st) => ({ sessions: st.sessions.filter((s) => s.id !== id) }));
