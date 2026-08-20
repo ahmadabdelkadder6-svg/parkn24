@@ -51,12 +51,8 @@ const toMs = (value: any): number => {
 
 const formatElapsed = (totalSeconds: number): string => {
   if (totalSeconds < 0) totalSeconds = 0;
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  if (h > 0) return `${h}س ${m}د ${s}ث`;
-  if (m > 0) return `${m}د ${s}ث`;
-  return `${s}ث`;
+  const h = Math.floor(totalSeconds / 3600); const m = Math.floor((totalSeconds % 3600) / 60); const s = totalSeconds % 60;
+  if (h > 0) return `${h}س ${m}د ${s}ث`; if (m > 0) return `${m}د ${s}ث`; return `${s}ث`;
 };
 
 const getLocalToday = (): string => {
@@ -219,7 +215,7 @@ export default function GarageDashboard() {
     valetNumber === '3' ? garage?.valetName3 :
     '';
 
-  // ✅ مجموعة أسماء السايس الحالي للتعرف عليها
+  // ✅ مجموعة أسماء السايس الحالي للتعرف عليها في الفلترة
   const myValetNames = useMemo(() => {
     const names = new Set<string>();
     if (currentValetNameLocal) names.add(currentValetNameLocal.trim());
@@ -239,6 +235,7 @@ export default function GarageDashboard() {
     ].filter(Boolean);
   }, [garage]);
 
+  // ✅ حساب الجلسات النشطة لآخر 24 ساعة بدقة
   const activeSessions = useMemo(() => {
     return garageSessions.filter(s => {
       if (s.status !== 'active') return false;
@@ -248,6 +245,7 @@ export default function GarageDashboard() {
     });
   }, [garageSessions]);
 
+  // ✅ الجلسات النشطة للسايس الحالي
   const valetActiveSessions = useMemo(() => {
     if (!isValet) return activeSessions;
     return activeSessions.filter(s => {
@@ -301,7 +299,9 @@ export default function GarageDashboard() {
   const [valetEditSpots, setValetEditSpots] = useState(false);
   const [selectedValetFilter, setSelectedValetFilter] = useState<string | null>(null);
 
-  // ✅ إسناد جلسات الحريف (نشطة أو انتهت مؤخراً) للسايس الحالي
+  // ═══════════════════════════════════════════════════════════════════
+  // ✅ إصلاح الإسناد التلقائي: يشمل الجلسات النشطة، والمكتملة اليوم التي ليس لها سايس
+  // ═══════════════════════════════════════════════════════════════════
   useEffect(() => {
     if (!isValet || !currentGarageId) return;
     const targetValetName = currentValetNameLocal || currentValetName || `سايس ${valetNumber}`;
@@ -310,6 +310,13 @@ export default function GarageDashboard() {
     const unassigned = sessions.filter(s => {
       if (s.garageId !== currentGarageId) return false;
       if (s.source !== 'app') return false;
+
+      // تصفية: الجلسة نشطة، أو اكتملت اليوم فقط
+      if (s.status === 'completed') {
+        const dateStr = timestampToLocalDate(toMs(s.endTime || s.startTime));
+        if (dateStr !== getLocalToday()) return false;
+      }
+
       const ab = ((s as any).addedBy || '').trim();
       return !ab;
     });
@@ -423,7 +430,6 @@ export default function GarageDashboard() {
     return Math.round((rev - comm) * 100) / 100;
   }, [getSessionRevenue, getSessionCommission]);
 
-  // ✅ إيراد السايس اليوم (يشمل الكاش والمحفظة المؤكدين)
   const valetTodayRevenue = useMemo(() => {
     if (!isValet) return 0;
     return completedSessions
@@ -511,7 +517,7 @@ export default function GarageDashboard() {
     };
   }, [filteredCompleted, getSessionRevenue, getSessionCommission, getSessionNetRevenue]);
 
-  // ✅ تقرير السياس للمالك (يشمل عمليات التطبيق والمحفظة)
+  // ✅ تقرير السياس للمالك - جلسات الجراج الحالي فقط
   const valetReport = useMemo(() => {
     if (!garage || !isOwner || !currentGarageId) return [];
 
@@ -586,7 +592,7 @@ export default function GarageDashboard() {
     );
   }, [tick, sessions]);
 
-  // شاشة التحميل
+  // شاشة التحميل لو الجراج مش موجود
   if (!garage) {
     return (
       <div className="h-full flex flex-col items-center justify-center px-6" style={{ background: '#EBF2FF', color: '#0A1628' }}>
@@ -724,6 +730,18 @@ export default function GarageDashboard() {
   const calculateRemainingTime = (st: number | string, em: number) =>
     Math.max(0, em - Math.floor((Date.now() - toMs(st)) / 60000));
 
+  const checkIsMySession = (session: any): boolean => {
+    if (isOwner) return true;
+    if (!currentValetNameLocal) return true;
+    const addedBy = ((session as any).addedBy || '').trim();
+    if (addedBy && myValetNames.has(addedBy)) return true;
+    if (session.source === 'app' && addedBy === '') return true;
+    return false;
+  };
+
+  // ══════════════════════════════════════════════
+  // RENDER
+  // ══════════════════════════════════════════════
   return (
     <div className="h-full overflow-y-auto" style={{ background: '#EBF2FF', color: '#0A1628', padding: 16 }}>
 
@@ -1350,6 +1368,11 @@ export default function GarageDashboard() {
                               <div style={{ fontSize: 9, color: '#7B8CA6' }}>({v.manualTotal.toFixed(0)} ج.م)</div>
                             </div>
                           </div>
+                          {selectedValetFilter === v.name && (
+                            <div className="mt-2 text-center">
+                              <span className="font-bold" style={{ fontSize: 10, color: v.color }}>✅ فعّال الفلتر - اضغط مجدداً للإلغاء</span>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1358,7 +1381,6 @@ export default function GarageDashboard() {
               </>
             )}
 
-            {/* السايس يشوف عدد عملياته فقط */}
             {isValet && (
               <div className="mb-4 text-center" style={{ background: '#fff', borderRadius: 20, padding: 16, border: '2px solid #D0DCFF' }}>
                 <div className="font-black" style={{ fontSize: 14, color: '#334155' }}>عملياتي اليوم</div>
@@ -1383,6 +1405,7 @@ export default function GarageDashboard() {
               <div key={session.id} style={{ background: isC ? (isM ? '#FFF8F0' : '#EBF5FF') : '#FFFBF0', border: `2px solid ${isC ? (isM ? '#FFD180' : '#A0C4FF') : '#FFD180'}`, borderRadius: 18, padding: 14 }}>
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2 flex-wrap">
+                    {/* ✅ المبلغ للمالك فقط */}
                     {isOwner && (
                       <span className="font-mono font-black" style={{ fontSize: 17, color: isM ? '#E65100' : '#0066FF' }}>{rev.toFixed(0)} ج.م</span>
                     )}
