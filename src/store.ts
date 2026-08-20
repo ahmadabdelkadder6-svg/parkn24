@@ -147,8 +147,6 @@ const safeParseTime = (value: any): number => {
   return 0;
 };
 
-const toMs = safeParseTime;
-
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   const active = list.filter((s) => s.status === 'active');
   const completed = list.filter((s) => s.status === 'completed');
@@ -732,8 +730,8 @@ export const useStore = create<AppState>((set, get) => ({
         : 0;
       const netRevenue = Math.round((safeTotalPrice - commissionAmount) * 100) / 100;
 
-      // ✅ سداد المحفظة معلق دائماً كطلب السداد النقدي لتأكيد السايس
-      const isAutoConfirmed = false;
+      // ✅ سداد المحفظة مؤكد إلكترونياً وتلقائياً
+      const isAutoConfirmed = paymentMethod === 'wallet';
 
       const endedSession: ParkingSession = {
         ...session,
@@ -869,7 +867,7 @@ export const useStore = create<AppState>((set, get) => ({
     set((st) => ({ offers: [newO, ...st.offers] }));
     if (isSupabaseConfigured()) {
       supabase.from('offers').insert({ garage_id: o.garageId, user_id: o.userId, car_plate: o.carPlate, offered_price: o.offeredPrice, status: o.status }).select().single()
-        .then(({ data }) => { if (data) set((st) => ({ offers: st.offers.map((x) => x.id === newO.id ? mapOffer(data) : x)) }));
+        .then(({ data }) => { if (data) set((st) => ({ offers: st.offers.map((x) => x.id === newO.id ? mapOffer(data) : x) })); });
     }
   },
 
