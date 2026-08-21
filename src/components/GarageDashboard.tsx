@@ -1113,7 +1113,6 @@ export default function GarageDashboard() {
     </div>
   </div>
 )}
-
             {isValet && (
               <div className="mb-4 text-center" style={{ background: '#fff', borderRadius: 20, padding: 18, border: '2px solid #D0DCFF' }}>
                 <div className="font-black" style={{ fontSize: 16, color: '#334155' }}>عملياتي اليوم</div>
