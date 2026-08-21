@@ -2,18 +2,11 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Shield, Clock, CheckCircle, XCircle, MapPin, Warehouse, Plus,
   MessageCircle, Send, Receipt, Search, HardHat, Percent, DollarSign,
-  Minus,
+  Minus, Edit3,
 } from 'lucide-react';
 import { useStore } from '../store';
-import { supabase } from '../lib/supabase';
 import { calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
-
-interface DailyStat {
-  garage_id: string; stat_date: string; total_sessions: number; manual_sessions: number;
-  app_sessions: number; total_revenue: number; cash_revenue: number; instapay_revenue: number;
-  wallet_revenue: number; cashwallet_revenue: number; confirmed_revenue: number; pending_revenue: number;
-}
 
 const getLocalToday = (): string => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`; };
 const getLocalYesterday = (): string => { const d = new Date(); d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -30,8 +23,8 @@ export default function AdminDashboard() {
     confirmRevenue, unconfirmRevenue, removeSession, updateGarage,
   } = useStore();
 
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(() => getLocalToday()); // افتراضي اليوم لتسريع التحميل وتناسق البيانات
+  const [dateTo, setDateTo] = useState(() => getLocalToday());
   const [, setTick] = useState(0);
   const [replyText, setReplyText] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -40,10 +33,8 @@ export default function AdminDashboard() {
   const [revenueFilter, setRevenueFilter] = useState<'all' | 'confirmed' | 'pending'>('pending');
   const [sessionSearch, setSessionSearch] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [dailyStats, setDailyStats] = useState<DailyStat[]>([]);
-  const [dailyStatsLoading, setDailyStatsLoading] = useState(false);
 
-  // ✅ حالة تعديل العمولة
+  // حالة تعديل العمولة
   const [editingCommissionGarageId, setEditingCommissionGarageId] = useState<string | null>(null);
   const [editCommissionRate, setEditCommissionRate] = useState(10);
 
@@ -59,36 +50,10 @@ export default function AdminDashboard() {
   const [gValet3Name, setGValet3Name] = useState('');
   const [gValet3Pass, setGValet3Pass] = useState('');
 
-  const fetchDailyStats = useCallback(async () => {
-    setDailyStatsLoading(true);
-    try {
-      let q = supabase.from('daily_stats').select('*').order('stat_date', { ascending: false });
-      if (dateFrom) q = q.gte('stat_date', dateFrom);
-      if (dateTo) q = q.lte('stat_date', dateTo);
-      if (!dateFrom && !dateTo) q = q.gte('stat_date', getLocalDaysAgo(90));
-      const { data, error } = await q;
-      if (error) { console.error('❌', error); return; }
-      setDailyStats(data ?? []);
-    } catch (e) { console.error('❌', e); }
-    finally { setDailyStatsLoading(false); }
-  }, [dateFrom, dateTo]);
-
   useEffect(() => { const i = setInterval(() => setTick(t => t + 1), 60000); return () => clearInterval(i); }, []);
-  useEffect(() => { fetchDailyStats(); }, [fetchDailyStats]);
 
-  const totalRevenueFromStats = useMemo(() => dailyStats.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0), [dailyStats]);
-  const pendingRevenueFromStats = useMemo(() => dailyStats.reduce((a, s) => a + Number(s.pending_revenue ?? 0), 0), [dailyStats]);
-  const totalSessionsFromStats = useMemo(() => dailyStats.reduce((a, s) => a + Number(s.total_sessions ?? 0), 0), [dailyStats]);
-
-  const completedSessions = sessions.filter(s => s.status === 'completed');
-  const filteredSessions = useMemo(() => completedSessions.filter(s => {
-    const t = getSessionTime(s.endTime); if (!t) return false;
-    if (dateFrom && t < getLocalDayStartMs(dateFrom)) return false;
-    if (dateTo && t > getLocalDayEndMs(dateTo)) return false;
-    return true;
-  }), [completedSessions, dateFrom, dateTo]);
-
-  const getRevenue = (s: any) => {
+  // دالة حساب الإيراد لجلسة واحدة
+  const getRevenue = useCallback((s: any) => {
     if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
       const st = typeof s.startTime === 'number' ? s.startTime : new Date(s.startTime).getTime();
@@ -97,27 +62,53 @@ export default function AdminDashboard() {
       return calculateCost(Math.max(0, Math.floor((en - st) / 1000)), Number(s.agreedPrice ?? g?.basePrice ?? 0));
     }
     return 0;
-  };
+  }, [garages]);
 
-  // ✅ حساب العمولة لجلسة
-const getCommission = useCallback((s: any) => {
-  if (s.source !== 'app') return 0;
-  const rev = getRevenue(s);
-  if (rev <= 0) return 0;
-  const g = garages.find((ga: any) => ga.id === s.garageId);
-  const rate = g?.commissionRate ?? 10;
-  const commission = (rev * rate) / 100;
-  return Math.round(commission * 100) / 100;
-}, [garages, getRevenue]);
+  // دالة حساب عمولة التطبيق لجلسة واحدة
+  const getCommission = useCallback((s: any) => {
+    if (s.source !== 'app') return 0;
+    const rev = getRevenue(s);
+    if (rev <= 0) return 0;
+    const g = garages.find((ga: any) => ga.id === s.garageId);
+    const rate = g?.commissionRate ?? 10;
+    const commission = (rev * rate) / 100;
+    return Math.round(commission * 100) / 100;
+  }, [garages, getRevenue]);
 
-  // ✅ إحصائيات العمولة الإجمالية
+  const completedSessions = useMemo(() => sessions.filter(s => s.status === 'completed'), [sessions]);
+
+  // الجلسات المفلترة بالتاريخ المحدد
+  const filteredSessions = useMemo(() => completedSessions.filter(s => {
+    const t = getSessionTime(s.endTime); if (!t) return false;
+    if (dateFrom && t < getLocalDayStartMs(dateFrom)) return false;
+    if (dateTo && t > getLocalDayEndMs(dateTo)) return false;
+    return true;
+  }), [completedSessions, dateFrom, dateTo]);
+
+  // حساب كلي للإيرادات والعمليات والعمولات من الجلسات المفلترة مباشرة (دقة 100%)
+  const totalsFromSessions = useMemo(() => {
+    const confirmed = filteredSessions.filter(s => s.revenueConfirmed);
+    const pending = filteredSessions.filter(s => !s.revenueConfirmed);
+
+    const totalRevenueConfirmed = confirmed.reduce((sum, s) => sum + getRevenue(s), 0);
+    const totalPendingRevenue = pending.reduce((sum, s) => sum + getRevenue(s), 0);
+    const totalSessionsCount = filteredSessions.length;
+
+    return {
+      totalRevenueConfirmed,
+      totalPendingRevenue,
+      totalSessionsCount,
+      pendingCount: pending.length
+    };
+  }, [filteredSessions, getRevenue]);
+
+  // إحصائيات العمولة الإجمالية والتفصيلية
   const commissionStats = useMemo(() => {
     const confirmed = filteredSessions.filter(s => s.revenueConfirmed);
     const totalCommission = confirmed.reduce((a, s) => a + getCommission(s), 0);
     const totalRevenue = confirmed.reduce((a, s) => a + getRevenue(s), 0);
     const totalNet = totalRevenue - totalCommission;
 
-    // ✅ تقرير العمولة لكل جراج
     const perGarage = garages.map(g => {
       const gs = confirmed.filter(s => s.garageId === g.id);
       const appSessions = gs.filter(s => s.source === 'app');
@@ -126,7 +117,7 @@ const getCommission = useCallback((s: any) => {
       return {
         id: g.id,
         name: g.name,
-        commissionRate: g.commissionRate,
+        commissionRate: g.commissionRate ?? 10,
         totalRevenue: gRevenue,
         commission: gCommission,
         netRevenue: gRevenue - gCommission,
@@ -138,21 +129,36 @@ const getCommission = useCallback((s: any) => {
     return { totalCommission, totalRevenue, totalNet, perGarage };
   }, [filteredSessions, garages, getRevenue, getCommission]);
 
-  const garageReportFromStats = useMemo(() => garages.map(g => {
-    const gs = dailyStats.filter(s => s.garage_id === g.id);
-    return {
-      name: g.name, garageId: g.id, commissionRate: g.commissionRate,
-      count: gs.reduce((a, s) => a + Number(s.total_sessions ?? 0), 0),
-      revenue: gs.reduce((a, s) => a + Number(s.confirmed_revenue ?? 0), 0),
-      pendingRevenue: gs.reduce((a, s) => a + Number(s.pending_revenue ?? 0), 0),
-      cash: gs.reduce((a, s) => a + Number(s.cash_revenue ?? 0), 0),
-      instapay: gs.reduce((a, s) => a + Number(s.instapay_revenue ?? 0), 0),
-      wallet: gs.reduce((a, s) => a + Number(s.wallet_revenue ?? 0), 0),
-      cashwallet: gs.reduce((a, s) => a + Number(s.cashwallet_revenue ?? 0), 0),
-    };
-  }), [garages, dailyStats]);
+  // ✅ حساب تقرير الإيرادات لكل جراج برمجياً (دقة 100% متطابق مع الجلسات الفردية)
+  const garageReport = useMemo(() => {
+    return garages.map(g => {
+      const gs = filteredSessions.filter(s => s.garageId === g.id);
+      const confirmed = gs.filter(s => s.revenueConfirmed);
+      const pending = gs.filter(s => !s.revenueConfirmed);
 
-  const pendingRevenueCount = useMemo(() => filteredSessions.filter(s => !s.revenueConfirmed).length, [filteredSessions]);
+      const revenue = confirmed.reduce((sum, s) => sum + getRevenue(s), 0);
+      const pendingRevenue = pending.reduce((sum, s) => sum + getRevenue(s), 0);
+
+      const cash = confirmed.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + getRevenue(s), 0);
+      const instapay = confirmed.filter(s => s.paymentMethod === 'instapay').reduce((sum, s) => sum + getRevenue(s), 0);
+      const wallet = confirmed.filter(s => s.paymentMethod === 'wallet').reduce((sum, s) => sum + getRevenue(s), 0);
+      const cashwallet = confirmed.filter(s => s.paymentMethod === 'cashwallet').reduce((sum, s) => sum + getRevenue(s), 0);
+
+      return {
+        name: g.name,
+        garageId: g.id,
+        commissionRate: g.commissionRate ?? 10,
+        count: gs.length,
+        revenue,
+        pendingRevenue,
+        cash,
+        instapay,
+        wallet,
+        cashwallet,
+      };
+    });
+  }, [garages, filteredSessions, getRevenue]);
+
   const pendingTopUps = walletTopUps.filter(w => w.status === 'pending');
 
   const displayedRevenueSessions = useMemo(() => {
@@ -189,7 +195,6 @@ const getCommission = useCallback((s: any) => {
     toast.success('تم إضافة الجراج!');
   };
 
-  // ✅ حفظ تعديل العمولة
   const handleSaveCommission = (garageId: string) => {
     updateGarage(garageId, { commissionRate: editCommissionRate });
     setEditingCommissionGarageId(null);
@@ -259,86 +264,87 @@ const getCommission = useCallback((s: any) => {
         )}
       </div>
 
-      {/* ══════ Revenue Stats ══════ */}
+      {/* ══════ Revenue Stats (متطابقة تماماً مع العمليات) ══════ */}
       <div className="grid grid-cols-2 gap-3 mb-5">
         <div className="text-center" style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', borderRadius: 26, padding: '22px 16px', color: '#fff', boxShadow: '0 8px 32px rgba(0,102,255,0.35)' }}>
-          <div className="font-bold mb-1" style={{ fontSize: 11, opacity: 0.8 }}>الإيرادات المؤكدة {dailyStatsLoading && '⏳'}</div>
-          <div className="font-black font-mono" style={{ fontSize: 32 }}>{totalRevenueFromStats.toFixed(0)} <span style={{ fontSize: 12, opacity: 0.7 }}>ج.م</span></div>
+          <div className="font-bold mb-1" style={{ fontSize: 11, opacity: 0.8 }}>الإيرادات المؤكدة</div>
+          <div className="font-black font-mono" style={{ fontSize: 32 }}>{totalsFromSessions.totalRevenueConfirmed.toFixed(0)} <span style={{ fontSize: 12, opacity: 0.7 }}>ج.م</span></div>
         </div>
         <div className="text-center" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', borderRadius: 26, padding: '22px 16px', color: '#fff', boxShadow: '0 8px 32px rgba(0,204,102,0.3)' }}>
           <div className="font-bold mb-1" style={{ fontSize: 11, opacity: 0.8 }}>إجمالي العمليات</div>
-          <div className="font-black font-mono" style={{ fontSize: 32 }}>{totalSessionsFromStats}</div>
+          <div className="font-black font-mono" style={{ fontSize: 32 }}>{totalsFromSessions.totalSessionsCount}</div>
         </div>
       </div>
 
-      {/* ✅ كارت العمولة الإجمالية */}
-  {commissionStats.totalCommission > 0 && (
-  <div className="flex items-center gap-2 mb-5" style={{ background: '#fff', borderRadius: 18, padding: '10px 14px', border: '2px solid #FFD180' }}>
-    <div className="flex items-center gap-1.5 flex-1 justify-end">
-      <span className="font-bold" style={{ fontSize: 10, color: '#7B8CA6' }}>إجمالي</span>
-      <span className="font-black font-mono" style={{ fontSize: 13, color: '#0A1628' }}>{commissionStats.totalRevenue.toFixed(0)}</span>
-    </div>
-    <div style={{ width: 1, height: 16, background: '#D0DCFF' }} />
-    <div className="flex items-center gap-1.5">
-      <span className="font-black font-mono" style={{ fontSize: 13, color: '#FF9500' }}>{commissionStats.totalCommission.toFixed(0)}</span>
-      <span className="font-bold flex items-center gap-0.5" style={{ fontSize: 10, color: '#FF9500' }}><Percent size={10} /> عمولة</span>
-    </div>
-    <div style={{ width: 1, height: 16, background: '#D0DCFF' }} />
-    <div className="flex items-center gap-1.5">
-      <span className="font-black font-mono" style={{ fontSize: 13, color: '#00AA44' }}>{commissionStats.totalNet.toFixed(0)}</span>
-      <span className="font-bold" style={{ fontSize: 10, color: '#00AA44' }}>صافي</span>
-    </div>
-  </div>
-)}
-
-      {/* ══════ Pending Revenue Banner ══════ */}
-      {(pendingRevenueFromStats > 0 || pendingRevenueCount > 0) && (
-        <div className="mb-5 flex items-center justify-between" style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 22, padding: '16px 20px', color: '#fff', boxShadow: '0 6px 24px rgba(255,149,0,0.3)' }}>
-          <div className="text-right">
-            <h3 className="font-black" style={{ fontSize: 14 }}>⏳ إيرادات معلقة ({pendingRevenueCount})</h3>
-            <p style={{ fontSize: 10, opacity: 0.8 }}>تحتاج تأكيد</p>
+      {/* كارت العمولة الإجمالية */}
+      {commissionStats.totalCommission > 0 && (
+        <div className="flex items-center gap-2 mb-5" style={{ background: '#fff', borderRadius: 18, padding: '10px 14px', border: '2px solid #FFD180' }}>
+          <div className="flex items-center gap-1.5 flex-1 justify-end">
+            <span className="font-bold" style={{ fontSize: 10, color: '#7B8CA6' }}>إجمالي</span>
+            <span className="font-black font-mono" style={{ fontSize: 13, color: '#0A1628' }}>{commissionStats.totalRevenue.toFixed(0)}</span>
           </div>
-          <div className="font-black font-mono" style={{ fontSize: 24 }}>{pendingRevenueFromStats.toFixed(0)} <span style={{ fontSize: 12 }}>ج.م</span></div>
+          <div style={{ width: 1, height: 16, background: '#D0DCFF' }} />
+          <div className="flex items-center gap-1.5">
+            <span className="font-black font-mono" style={{ fontSize: 13, color: '#FF9500' }}>{commissionStats.totalCommission.toFixed(0)}</span>
+            <span className="font-bold flex items-center gap-0.5" style={{ fontSize: 10, color: '#FF9500' }}><Percent size={10} /> عمولة</span>
+          </div>
+          <div style={{ width: 1, height: 16, background: '#D0DCFF' }} />
+          <div className="flex items-center gap-1.5">
+            <span className="font-black font-mono" style={{ fontSize: 13, color: '#00AA44' }}>{commissionStats.totalNet.toFixed(0)}</span>
+            <span className="font-bold" style={{ fontSize: 10, color: '#00AA44' }}>صافي</span>
+          </div>
         </div>
       )}
 
-      {/* ✅ تقرير العمولة لكل جراج */}
-{commissionStats.perGarage.length > 0 && (
-  <div className="mb-5">
-    <div className="flex items-center gap-2 mb-2 justify-end">
-      <Percent size={13} style={{ color: '#FF9500' }} />
-      <span className="font-black" style={{ fontSize: 12, color: '#334155' }}>العمولات</span>
-    </div>
-    <div className="overflow-x-auto" style={{ background: '#fff', borderRadius: 18, border: '2px solid #FFD180' }}>
-      <table className="w-full text-center" style={{ minWidth: 380 }}>
-        <thead>
-          <tr style={{ borderBottom: '1px solid #FFF0E0' }}>
-            {['الجراج', '%', 'إجمالي', 'عمولة', 'صافي'].map((h, i) => (
-              <th key={i} className="font-black" style={{ padding: '10px 6px', fontSize: 9, color: i === 3 ? '#FF9500' : i === 4 ? '#00AA44' : '#7B8CA6', textAlign: i === 0 ? 'right' : 'center' }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {commissionStats.perGarage.map(g => (
-            <tr key={g.id} style={{ borderBottom: '1px solid #FFF8F0' }}>
-              <td className="font-black text-right" style={{ padding: '8px 10px', fontSize: 11, color: '#0A1628' }}>{g.name}</td>
-              <td className="font-black font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#FF9500' }}>{g.commissionRate}%</td>
-              <td className="font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#0A1628' }}>{g.totalRevenue.toFixed(0)}</td>
-              <td className="font-black font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#FF9500' }}>{g.commission.toFixed(0)}</td>
-              <td className="font-black font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#00AA44' }}>{g.netRevenue.toFixed(0)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  </div>
-)}      
-{/* ══════ Daily Stats Table ══════ */}
+      {/* ══════ Pending Revenue Banner ══════ */}
+      {(totalsFromSessions.totalPendingRevenue > 0 || totalsFromSessions.pendingCount > 0) && (
+        <div className="mb-5 flex items-center justify-between" style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 22, padding: '16px 20px', color: '#fff', boxShadow: '0 6px 24px rgba(255,149,0,0.3)' }}>
+          <div className="text-right">
+            <h3 className="font-black" style={{ fontSize: 14 }}>⏳ إيرادات معلقة ({totalsFromSessions.pendingCount})</h3>
+            <p style={{ fontSize: 10, opacity: 0.8 }}>تحتاج تأكيد</p>
+          </div>
+          <div className="font-black font-mono" style={{ fontSize: 24 }}>{totalsFromSessions.totalPendingRevenue.toFixed(0)} <span style={{ fontSize: 12 }}>ج.م</span></div>
+        </div>
+      )}
+
+      {/* تقرير العمولات لكل جراج */}
+      {commissionStats.perGarage.length > 0 && (
+        <div className="mb-5">
+          <div className="flex items-center gap-2 mb-2 justify-end">
+            <Percent size={13} style={{ color: '#FF9500' }} />
+            <span className="font-black" style={{ fontSize: 12, color: '#334155' }}>العمولات</span>
+          </div>
+          <div className="overflow-x-auto" style={{ background: '#fff', borderRadius: 18, border: '2px solid #FFD180' }}>
+            <table className="w-full text-center" style={{ minWidth: 380 }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #FFF0E0' }}>
+                  {['الجراج', '%', 'إجمالي', 'عمولة', 'صافي'].map((h, i) => (
+                    <th key={i} className="font-black" style={{ padding: '10px 6px', fontSize: 9, color: i === 3 ? '#FF9500' : i === 4 ? '#00AA44' : '#7B8CA6', textAlign: i === 0 ? 'right' : 'center' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {commissionStats.perGarage.map(g => (
+                  <tr key={g.id} style={{ borderBottom: '1px solid #FFF8F0' }}>
+                    <td className="font-black text-right" style={{ padding: '8px 10px', fontSize: 11, color: '#0A1628' }}>{g.name}</td>
+                    <td className="font-black font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#FF9500' }}>{g.commissionRate}%</td>
+                    <td className="font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#0A1628' }}>{g.totalRevenue.toFixed(0)}</td>
+                    <td className="font-black font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#FF9500' }}>{g.commission.toFixed(0)}</td>
+                    <td className="font-black font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#00AA44' }}>{g.netRevenue.toFixed(0)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ══════ تقرير الإيرادات الفعلي للجراجات (متطابق 100% مع الجلسات الفردية) ══════ */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
-          <span className="font-bold" style={{ fontSize: 11, background: '#fff', padding: '6px 14px', borderRadius: 12, border: '2px solid #D0DCFF', color: '#7B8CA6' }}>{dailyStats.length} يوم</span>
+          <span className="font-bold" style={{ fontSize: 11, background: '#fff', padding: '6px 14px', borderRadius: 12, border: '2px solid #D0DCFF', color: '#7B8CA6' }}>{garages.length} جراج</span>
           <h3 className="font-black flex items-center gap-2" style={{ fontSize: 16, color: '#334155' }}>
-            تقرير الإيرادات {dailyStatsLoading && <span style={{ fontSize: 11, color: '#94a3b8' }}>⏳</span>}
+            تقرير الإيرادات المباشر
           </h3>
         </div>
         <div className="overflow-x-auto" style={{ background: '#fff', borderRadius: 22, border: '2px solid #D0DCFF', boxShadow: '0 4px 20px rgba(0,0,0,0.04)' }}>
@@ -351,13 +357,13 @@ const getCommission = useCallback((s: any) => {
               </tr>
             </thead>
             <tbody>
-              {garageReportFromStats.map(r => (
+              {garageReport.map(r => (
                 <tr key={r.garageId} style={{ borderBottom: '1px solid #F0F4FF' }}>
                   <td style={{ padding: 14 }}>
                     <div className="font-black" style={{ fontSize: 13, color: '#0A1628' }}>{r.name}</div>
                     <div style={{ fontSize: 9, color: '#94a3b8' }}>{r.count} جلسة</div>
                   </td>
-                  <td className="font-black font-mono text-center" style={{ fontSize: 13, color: '#0A1628', background: '#F8FAFF', padding: 14 }}>{r.revenue.toFixed(0)}ج</td>
+                  <td className="font-black font-mono text-center" style={{ fontSize: 13, color: '#00AA44', background: '#F8FAFF', padding: 14 }}>{r.revenue.toFixed(0)}ج</td>
                   <td className="font-black font-mono text-center" style={{ fontSize: 12, color: '#FF9500', padding: 14 }}>{r.commissionRate}%</td>
                   <td className="font-mono text-center" style={{ fontSize: 12, color: '#FF9500', padding: 14 }}>{r.pendingRevenue > 0 ? `${r.pendingRevenue.toFixed(0)}ج` : <span style={{ color: '#D0DCFF' }}>—</span>}</td>
                   <td className="font-mono text-center" style={{ fontSize: 12, color: '#00AA44', padding: 14 }}>{r.cash.toFixed(0)}</td>
@@ -366,8 +372,8 @@ const getCommission = useCallback((s: any) => {
                   <td className="font-mono text-center" style={{ fontSize: 12, color: '#FF8800', padding: 14 }}>{r.cashwallet.toFixed(0)}</td>
                 </tr>
               ))}
-              {garageReportFromStats.length === 0 && (
-                <tr><td colSpan={8} className="text-center" style={{ padding: 28, fontSize: 13, color: '#94a3b8' }}>{dailyStatsLoading ? '⏳ جاري التحميل...' : 'لا توجد بيانات'}</td></tr>
+              {garageReport.length === 0 && (
+                <tr><td colSpan={8} className="text-center" style={{ padding: 28, fontSize: 13, color: '#94a3b8' }}>لا توجد بيانات</td></tr>
               )}
             </tbody>
           </table>
@@ -434,7 +440,6 @@ const getCommission = useCallback((s: any) => {
                     </div>
                   </div>
 
-                  {/* ✅ سطر العمولة والصافي */}
                   {session.source === 'app' && comm > 0 && (
                     <div className="flex items-center gap-3 mb-2" style={{ background: '#FFF8F0', borderRadius: 12, padding: '6px 10px', border: '1px solid #FFD180' }}>
                       <div className="flex items-center gap-1">
@@ -455,7 +460,7 @@ const getCommission = useCallback((s: any) => {
                       <p className="font-black text-center" style={{ fontSize: 13, color: '#CC0000' }}>⚠️ حذف نهائياً؟</p>
                       <p className="text-center" style={{ fontSize: 11, color: '#FF3333' }}>🚗 {session.carPlate} · {rev.toFixed(0)} ج.م</p>
                       <div className="flex gap-2">
-                        <button onClick={async () => { await removeSession(session.id); setDeleteConfirmId(null); await fetchDailyStats(); toast.success('تم الحذف 🗑️'); }} className="flex-1 font-black active:scale-95"
+                        <button onClick={async () => { await removeSession(session.id); setDeleteConfirmId(null); toast.success('تم الحذف 🗑️'); }} className="flex-1 font-black active:scale-95"
                           style={{ background: '#FF3333', color: '#fff', padding: 12, borderRadius: 14, fontSize: 12 }}>🗑️ تأكيد</button>
                         <button onClick={() => setDeleteConfirmId(null)} className="flex-1 font-black active:scale-95"
                           style={{ background: '#F0F4FF', color: '#475569', padding: 12, borderRadius: 14, fontSize: 12, border: '2px solid #D0DCFF' }}>إلغاء</button>
@@ -463,26 +468,23 @@ const getCommission = useCallback((s: any) => {
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">
-{session.revenueConfirmed ? (
-  <button onClick={async () => {
-    await unconfirmRevenue(session.id);
-    await fetchDailyStats();
-    setRevenueFilter('pending');
-    toast('إلغاء ↩️', { icon: '⏳' });
-  }} className="flex-1 font-black active:scale-95"
-    style={{ background: '#FF9500', color: '#fff', padding: 10, borderRadius: 14, fontSize: 11 }}>
-    ↩️ إلغاء التأكيد
-  </button>
-) : (
-  <button onClick={async () => {
-    await confirmRevenue(session.id);
-    await fetchDailyStats();
-    toast.success('تأكيد ✅');
-  }} className="flex-1 font-black active:scale-95"
-    style={{ background: '#00CC66', color: '#fff', padding: 10, borderRadius: 14, fontSize: 11 }}>
-    ✅ تأكيد الإيراد
-  </button>
-)}
+                      {session.revenueConfirmed ? (
+                        <button onClick={async () => {
+                          await unconfirmRevenue(session.id);
+                          toast('إلغاء ↩️', { icon: '⏳' });
+                        }} className="flex-1 font-black active:scale-95"
+                          style={{ background: '#FF9500', color: '#fff', padding: 10, borderRadius: 14, fontSize: 11 }}>
+                          ↩️ إلغاء التأكيد
+                        </button>
+                      ) : (
+                        <button onClick={async () => {
+                          await confirmRevenue(session.id);
+                          toast.success('تأكيد ✅');
+                        }} className="flex-1 font-black active:scale-95"
+                          style={{ background: '#00CC66', color: '#fff', padding: 10, borderRadius: 14, fontSize: 11 }}>
+                          ✅ تأكيد الإيراد
+                        </button>
+                      )}
                       <button onClick={() => setDeleteConfirmId(session.id)} className="font-black active:scale-95"
                         style={{ background: '#FFE0E0', color: '#CC0000', padding: '10px 16px', borderRadius: 14, fontSize: 11 }}>🗑️</button>
                     </div>
@@ -636,134 +638,133 @@ const getCommission = useCallback((s: any) => {
                   </div>
                 </div>
 
-                {/* ✅ تعديل نسبة العمولة */}
-{/* ✅ تعديل نسبة العمولة - بوكس أصغر */}
-<div
-  className="mb-3"
-  style={{
-    background: '#FFF8F0',
-    borderRadius: 14,
-    padding: '10px 12px',
-    border: '1.5px solid #FFD180',
-  }}
->
-  <div className="flex items-center justify-between gap-2">
-    <div className="flex items-center gap-2">
-      {!isEditingComm ? (
-        <button
-          onClick={() => {
-            setEditingCommissionGarageId(g.id);
-            setEditCommissionRate(g.commissionRate);
-          }}
-          className="font-black active:scale-95"
-          style={{
-            background: '#FF9500',
-            color: '#fff',
-            padding: '5px 10px',
-            borderRadius: 10,
-            fontSize: 9,
-          }}
-        >
-          ✏️ تعديل
-        </button>
-      ) : (
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => handleSaveCommission(g.id)}
-            className="font-black active:scale-95"
-            style={{
-              background: '#00CC66',
-              color: '#fff',
-              padding: '5px 10px',
-              borderRadius: 10,
-              fontSize: 9,
-            }}
-          >
-            حفظ
-          </button>
-          <button
-            onClick={() => setEditingCommissionGarageId(null)}
-            className="font-black active:scale-95"
-            style={{
-              background: '#F0F4FF',
-              color: '#475569',
-              padding: '5px 10px',
-              borderRadius: 10,
-              fontSize: 9,
-              border: '1px solid #D0DCFF',
-            }}
-          >
-            إلغاء
-          </button>
-        </div>
-      )}
-    </div>
+                {/* تعديل نسبة العمولة - بوكس أصغر */}
+                <div
+                  className="mb-3"
+                  style={{
+                    background: '#FFF8F0',
+                    borderRadius: 14,
+                    padding: '10px 12px',
+                    border: '1.5px solid #FFD180',
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      {!isEditingComm ? (
+                        <button
+                          onClick={() => {
+                            setEditingCommissionGarageId(g.id);
+                            setEditCommissionRate(g.commissionRate ?? 10);
+                          }}
+                          className="font-black active:scale-95 flex items-center gap-1"
+                          style={{
+                            background: '#FF9500',
+                            color: '#fff',
+                            padding: '5px 10px',
+                            borderRadius: 10,
+                            fontSize: 9,
+                          }}
+                        >
+                          <Edit3 size={10} /> تعديل
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleSaveCommission(g.id)}
+                            className="font-black active:scale-95"
+                            style={{
+                              background: '#00CC66',
+                              color: '#fff',
+                              padding: '5px 10px',
+                              borderRadius: 10,
+                              fontSize: 9,
+                            }}
+                          >
+                            حفظ
+                          </button>
+                          <button
+                            onClick={() => setEditingCommissionGarageId(null)}
+                            className="font-black active:scale-95"
+                            style={{
+                              background: '#F0F4FF',
+                              color: '#475569',
+                              padding: '5px 10px',
+                              borderRadius: 10,
+                              fontSize: 9,
+                              border: '1px solid #D0DCFF',
+                            }}
+                          >
+                            إلغاء
+                          </button>
+                        </div>
+                      )}
+                    </div>
 
-    <div className="flex items-center gap-1.5">
-      <Percent size={12} style={{ color: '#FF9500' }} />
-      <span className="font-black font-mono" style={{ fontSize: 16, color: '#FF9500' }}>
-        {isEditingComm ? editCommissionRate : g.commissionRate}%
-      </span>
-      <span className="font-bold" style={{ fontSize: 9, color: '#7B8CA6' }}>
-        عمولة التطبيق
-      </span>
-    </div>
-  </div>
+                    <div className="flex items-center gap-1.5">
+                      <Percent size={12} style={{ color: '#FF9500' }} />
+                      <span className="font-black font-mono" style={{ fontSize: 16, color: '#FF9500' }}>
+                        {isEditingComm ? editCommissionRate : (g.commissionRate ?? 10)}%
+                      </span>
+                      <span className="font-bold" style={{ fontSize: 9, color: '#7B8CA6' }}>
+                        عمولة التطبيق
+                      </span>
+                    </div>
+                  </div>
 
-  {isEditingComm && (
-    <div className="flex items-center justify-center gap-2 mt-2">
-      <button
-        onClick={() => setEditCommissionRate(r => Math.max(0, r - 1))}
-        className="active:scale-90"
-        style={{
-          background: '#FF3333',
-          color: '#fff',
-          width: 30,
-          height: 30,
-          borderRadius: 9,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Minus size={14} />
-      </button>
+                  {isEditingComm && (
+                    <div className="flex items-center justify-center gap-2 mt-2">
+                      <button
+                        onClick={() => setEditCommissionRate(r => Math.max(0, r - 1))}
+                        className="active:scale-90"
+                        style={{
+                          background: '#FF3333',
+                          color: '#fff',
+                          width: 30,
+                          height: 30,
+                          borderRadius: 9,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Minus size={14} />
+                      </button>
 
-      <input
-        type="number"
-        value={editCommissionRate}
-        onChange={e => setEditCommissionRate(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
-        className="bg-transparent text-center outline-none font-mono font-black"
-        style={{
-          width: 54,
-          fontSize: 18,
-          color: '#FF9500',
-          background: '#fff',
-          border: '1.5px solid #FFD180',
-          borderRadius: 10,
-          padding: '4px 0',
-        }}
-      />
+                      <input
+                        type="number"
+                        value={editCommissionRate}
+                        onChange={e => setEditCommissionRate(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                        className="bg-transparent text-center outline-none font-mono font-black"
+                        style={{
+                          width: 54,
+                          fontSize: 18,
+                          color: '#FF9500',
+                          background: '#fff',
+                          border: '1.5px solid #FFD180',
+                          borderRadius: 10,
+                          padding: '4px 0',
+                        }}
+                      />
 
-      <button
-        onClick={() => setEditCommissionRate(r => Math.min(100, r + 1))}
-        className="active:scale-90"
-        style={{
-          background: '#00CC66',
-          color: '#fff',
-          width: 30,
-          height: 30,
-          borderRadius: 9,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Plus size={14} />
-      </button>
-    </div>
-  )}
-</div>
+                      <button
+                        onClick={() => setEditCommissionRate(r => Math.min(100, r + 1))}
+                        className="active:scale-90"
+                        style={{
+                          background: '#00CC66',
+                          color: '#fff',
+                          width: 30,
+                          height: 30,
+                          borderRadius: 9,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Plus size={14} />
+                      </button>
+                    </div>
+                  )}
+                </div>
 
                 <button
                   onClick={() => handleAdminEnterGarage(g)}
