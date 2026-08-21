@@ -8,13 +8,48 @@ import { useStore } from '../store';
 import { calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
 
-const getLocalToday = (): string => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`; };
-const getLocalYesterday = (): string => { const d = new Date(); d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-const getLocalDaysAgo = (days: number): string => { const d = new Date(); d.setDate(d.getDate() - days); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-const getLocalDayStartMs = (dateStr: string): number => { const [y, m, d] = dateStr.split('-').map(Number); return new Date(y, m - 1, d, 0, 0, 0, 0).getTime(); };
-const getLocalDayEndMs = (dateStr: string): number => { const [y, m, d] = dateStr.split('-').map(Number); return new Date(y, m - 1, d, 23, 59, 59, 999).getTime(); };
-const formatLocalDateArabic = (dateStr: string): string => { const [y, m, d] = dateStr.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }); };
-const getSessionTime = (value?: number | string): number | null => { if (!value) return null; return typeof value === 'number' ? value : new Date(value).getTime(); };
+// ═══════════ Helpers ═══════════
+const toMs = (value: any): number => {
+  if (!value) return 0;
+  if (typeof value === 'string') {
+    const ms = new Date(value).getTime();
+    return Number.isFinite(ms) && ms > 0 ? ms : 0;
+  }
+  if (typeof value === 'number') {
+    if (value < 1_000_000_000_000) return value * 1000;
+    return value;
+  }
+  return 0;
+};
+
+const timestampToLocalDate = (ts: number): string => {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const getLocalToday = (): string => {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+};
+
+const getLocalYesterday = (): string => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const getLocalDaysAgo = (days: number): string => {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const formatLocalDateArabic = (dateStr: string): string => {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('ar-EG', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  });
+};
 
 export default function AdminDashboard() {
   const {
@@ -23,7 +58,7 @@ export default function AdminDashboard() {
     confirmRevenue, unconfirmRevenue, removeSession, updateGarage,
   } = useStore();
 
-  const [dateFrom, setDateFrom] = useState(() => getLocalToday()); // افتراضي اليوم لتسريع التحميل وتناسق البيانات
+  const [dateFrom, setDateFrom] = useState(() => getLocalToday());
   const [dateTo, setDateTo] = useState(() => getLocalToday());
   const [, setTick] = useState(0);
   const [replyText, setReplyText] = useState('');
@@ -34,7 +69,6 @@ export default function AdminDashboard() {
   const [sessionSearch, setSessionSearch] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-  // حالة تعديل العمولة
   const [editingCommissionGarageId, setEditingCommissionGarageId] = useState<string | null>(null);
   const [editCommissionRate, setEditCommissionRate] = useState(10);
 
@@ -52,7 +86,7 @@ export default function AdminDashboard() {
 
   useEffect(() => { const i = setInterval(() => setTick(t => t + 1), 60000); return () => clearInterval(i); }, []);
 
-  // دالة حساب الإيراد لجلسة واحدة
+  // ═══════════ حساب الإيراد لجلسة ═══════════
   const getRevenue = useCallback((s: any) => {
     if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
@@ -64,7 +98,7 @@ export default function AdminDashboard() {
     return 0;
   }, [garages]);
 
-  // دالة حساب عمولة التطبيق لجلسة واحدة
+  // ═══════════ حساب العمولة لجلسة ═══════════
   const getCommission = useCallback((s: any) => {
     if (s.source !== 'app') return 0;
     const rev = getRevenue(s);
@@ -77,23 +111,24 @@ export default function AdminDashboard() {
 
   const completedSessions = useMemo(() => sessions.filter(s => s.status === 'completed'), [sessions]);
 
-  // الجلسات المفلترة بالتاريخ المحدد
-  const filteredSessions = useMemo(() => completedSessions.filter(s => {
-    const t = getSessionTime(s.endTime); if (!t) return false;
-    if (dateFrom && t < getLocalDayStartMs(dateFrom)) return false;
-    if (dateTo && t > getLocalDayEndMs(dateTo)) return false;
-    return true;
-  }), [completedSessions, dateFrom, dateTo]);
+  // ✅ الفلترة الصحيحة والدقيقة المطابقة للجراج 100% بدون أي تداخل توقيت
+  const filteredSessions = useMemo(() => {
+    return completedSessions.filter(s => {
+      if (!s.endTime) return false;
+      const d = timestampToLocalDate(toMs(s.endTime));
+      if (dateFrom && d < dateFrom) return false;
+      if (dateTo && d > dateTo) return false;
+      return true;
+    });
+  }, [completedSessions, dateFrom, dateTo]);
 
-  // حساب كلي للإيرادات والعمليات والعمولات من الجلسات المفلترة مباشرة (دقة 100%)
+  // ═══════════ الإجماليات من الجلسات المفلترة ═══════════
   const totalsFromSessions = useMemo(() => {
     const confirmed = filteredSessions.filter(s => s.revenueConfirmed);
     const pending = filteredSessions.filter(s => !s.revenueConfirmed);
-
     const totalRevenueConfirmed = confirmed.reduce((sum, s) => sum + getRevenue(s), 0);
     const totalPendingRevenue = pending.reduce((sum, s) => sum + getRevenue(s), 0);
     const totalSessionsCount = filteredSessions.length;
-
     return {
       totalRevenueConfirmed,
       totalPendingRevenue,
@@ -102,7 +137,7 @@ export default function AdminDashboard() {
     };
   }, [filteredSessions, getRevenue]);
 
-  // إحصائيات العمولة الإجمالية والتفصيلية
+  // ═══════════ إحصائيات العمولة ═══════════
   const commissionStats = useMemo(() => {
     const confirmed = filteredSessions.filter(s => s.revenueConfirmed);
     const totalCommission = confirmed.reduce((a, s) => a + getCommission(s), 0);
@@ -129,34 +164,37 @@ export default function AdminDashboard() {
     return { totalCommission, totalRevenue, totalNet, perGarage };
   }, [filteredSessions, garages, getRevenue, getCommission]);
 
-  // ✅ حساب تقرير الإيرادات لكل جراج برمجياً (دقة 100% متطابق مع الجلسات الفردية)
+  // ✅ تقرير الإيرادات الفعلي للجراجات مع إخفاء الجراجات غير النشطة
   const garageReport = useMemo(() => {
-    return garages.map(g => {
-      const gs = filteredSessions.filter(s => s.garageId === g.id);
-      const confirmed = gs.filter(s => s.revenueConfirmed);
-      const pending = gs.filter(s => !s.revenueConfirmed);
+    return garages
+      .map(g => {
+        const gs = filteredSessions.filter(s => s.garageId === g.id);
+        const confirmed = gs.filter(s => s.revenueConfirmed);
+        const pending = gs.filter(s => !s.revenueConfirmed);
 
-      const revenue = confirmed.reduce((sum, s) => sum + getRevenue(s), 0);
-      const pendingRevenue = pending.reduce((sum, s) => sum + getRevenue(s), 0);
+        const revenue = confirmed.reduce((sum, s) => sum + getRevenue(s), 0);
+        const pendingRevenue = pending.reduce((sum, s) => sum + getRevenue(s), 0);
 
-      const cash = confirmed.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + getRevenue(s), 0);
-      const instapay = confirmed.filter(s => s.paymentMethod === 'instapay').reduce((sum, s) => sum + getRevenue(s), 0);
-      const wallet = confirmed.filter(s => s.paymentMethod === 'wallet').reduce((sum, s) => sum + getRevenue(s), 0);
-      const cashwallet = confirmed.filter(s => s.paymentMethod === 'cashwallet').reduce((sum, s) => sum + getRevenue(s), 0);
+        const cash = confirmed.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + getRevenue(s), 0);
+        const instapay = confirmed.filter(s => s.paymentMethod === 'instapay').reduce((sum, s) => sum + getRevenue(s), 0);
+        const wallet = confirmed.filter(s => s.paymentMethod === 'wallet').reduce((sum, s) => sum + getRevenue(s), 0);
+        const cashwallet = confirmed.filter(s => s.paymentMethod === 'cashwallet').reduce((sum, s) => sum + getRevenue(s), 0);
 
-      return {
-        name: g.name,
-        garageId: g.id,
-        commissionRate: g.commissionRate ?? 10,
-        count: gs.length,
-        revenue,
-        pendingRevenue,
-        cash,
-        instapay,
-        wallet,
-        cashwallet,
-      };
-    });
+        return {
+          name: g.name,
+          garageId: g.id,
+          commissionRate: g.commissionRate ?? 10,
+          count: gs.length,
+          revenue,
+          pendingRevenue,
+          cash,
+          instapay,
+          wallet,
+          cashwallet,
+        };
+      })
+      // ✅ إظهار الجراجات النشطة فقط في نطاق البحث لمنع البيانات الزائدة
+      .filter(r => r.count > 0 || r.revenue > 0 || r.pendingRevenue > 0);
   }, [garages, filteredSessions, getRevenue]);
 
   const pendingTopUps = walletTopUps.filter(w => w.status === 'pending');
@@ -165,7 +203,10 @@ export default function AdminDashboard() {
     let f = filteredSessions;
     if (revenueFilter === 'confirmed') f = f.filter(s => s.revenueConfirmed);
     else if (revenueFilter === 'pending') f = f.filter(s => !s.revenueConfirmed);
-    if (sessionSearch.trim()) { const sn = sessionSearch.trim().toUpperCase(); f = f.filter(s => (s.carPlate ?? '').toUpperCase().includes(sn)); }
+    if (sessionSearch.trim()) {
+      const sn = sessionSearch.trim().toUpperCase();
+      f = f.filter(s => (s.carPlate ?? '').toUpperCase().includes(sn));
+    }
     return f;
   }, [filteredSessions, revenueFilter, sessionSearch]);
 
@@ -264,7 +305,7 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* ══════ Revenue Stats (متطابقة تماماً مع العمليات) ══════ */}
+      {/* ══════ Revenue Stats ══════ */}
       <div className="grid grid-cols-2 gap-3 mb-5">
         <div className="text-center" style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', borderRadius: 26, padding: '22px 16px', color: '#fff', boxShadow: '0 8px 32px rgba(0,102,255,0.35)' }}>
           <div className="font-bold mb-1" style={{ fontSize: 11, opacity: 0.8 }}>الإيرادات المؤكدة</div>
@@ -339,10 +380,10 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ══════ تقرير الإيرادات الفعلي للجراجات (متطابق 100% مع الجلسات الفردية) ══════ */}
+      {/* ══════ تقرير الإيرادات الفعلي للجراجات (متطابق 100% مع الجراج) ══════ */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
-          <span className="font-bold" style={{ fontSize: 11, background: '#fff', padding: '6px 14px', borderRadius: 12, border: '2px solid #D0DCFF', color: '#7B8CA6' }}>{garages.length} جراج</span>
+          <span className="font-bold" style={{ fontSize: 11, background: '#fff', padding: '6px 14px', borderRadius: 12, border: '2px solid #D0DCFF', color: '#7B8CA6' }}>{garageReport.length} جراج نشط</span>
           <h3 className="font-black flex items-center gap-2" style={{ fontSize: 16, color: '#334155' }}>
             تقرير الإيرادات المباشر
           </h3>
@@ -373,7 +414,7 @@ export default function AdminDashboard() {
                 </tr>
               ))}
               {garageReport.length === 0 && (
-                <tr><td colSpan={8} className="text-center" style={{ padding: 28, fontSize: 13, color: '#94a3b8' }}>لا توجد بيانات</td></tr>
+                <tr><td colSpan={8} className="text-center" style={{ padding: 28, fontSize: 13, color: '#94a3b8' }}>لا توجد جراجات نشطة في هذه الفترة</td></tr>
               )}
             </tbody>
           </table>
@@ -638,128 +679,46 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* تعديل نسبة العمولة - بوكس أصغر */}
-                <div
-                  className="mb-3"
-                  style={{
-                    background: '#FFF8F0',
-                    borderRadius: 14,
-                    padding: '10px 12px',
-                    border: '1.5px solid #FFD180',
-                  }}
-                >
+                {/* تعديل نسبة العمولة */}
+                <div className="mb-3" style={{ background: '#FFF8F0', borderRadius: 14, padding: '10px 12px', border: '1.5px solid #FFD180' }}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       {!isEditingComm ? (
                         <button
-                          onClick={() => {
-                            setEditingCommissionGarageId(g.id);
-                            setEditCommissionRate(g.commissionRate ?? 10);
-                          }}
+                          onClick={() => { setEditingCommissionGarageId(g.id); setEditCommissionRate(g.commissionRate ?? 10); }}
                           className="font-black active:scale-95 flex items-center gap-1"
-                          style={{
-                            background: '#FF9500',
-                            color: '#fff',
-                            padding: '5px 10px',
-                            borderRadius: 10,
-                            fontSize: 9,
-                          }}
+                          style={{ background: '#FF9500', color: '#fff', padding: '5px 10px', borderRadius: 10, fontSize: 9 }}
                         >
                           <Edit3 size={10} /> تعديل
                         </button>
                       ) : (
                         <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => handleSaveCommission(g.id)}
-                            className="font-black active:scale-95"
-                            style={{
-                              background: '#00CC66',
-                              color: '#fff',
-                              padding: '5px 10px',
-                              borderRadius: 10,
-                              fontSize: 9,
-                            }}
-                          >
-                            حفظ
-                          </button>
-                          <button
-                            onClick={() => setEditingCommissionGarageId(null)}
-                            className="font-black active:scale-95"
-                            style={{
-                              background: '#F0F4FF',
-                              color: '#475569',
-                              padding: '5px 10px',
-                              borderRadius: 10,
-                              fontSize: 9,
-                              border: '1px solid #D0DCFF',
-                            }}
-                          >
-                            إلغاء
-                          </button>
+                          <button onClick={() => handleSaveCommission(g.id)} className="font-black active:scale-95"
+                            style={{ background: '#00CC66', color: '#fff', padding: '5px 10px', borderRadius: 10, fontSize: 9 }}>حفظ</button>
+                          <button onClick={() => setEditingCommissionGarageId(null)} className="font-black active:scale-95"
+                            style={{ background: '#F0F4FF', color: '#475569', padding: '5px 10px', borderRadius: 10, fontSize: 9, border: '1px solid #D0DCFF' }}>إلغاء</button>
                         </div>
                       )}
                     </div>
-
                     <div className="flex items-center gap-1.5">
                       <Percent size={12} style={{ color: '#FF9500' }} />
                       <span className="font-black font-mono" style={{ fontSize: 16, color: '#FF9500' }}>
                         {isEditingComm ? editCommissionRate : (g.commissionRate ?? 10)}%
                       </span>
-                      <span className="font-bold" style={{ fontSize: 9, color: '#7B8CA6' }}>
-                        عمولة التطبيق
-                      </span>
+                      <span className="font-bold" style={{ fontSize: 9, color: '#7B8CA6' }}>عمولة التطبيق</span>
                     </div>
                   </div>
-
                   {isEditingComm && (
                     <div className="flex items-center justify-center gap-2 mt-2">
-                      <button
-                        onClick={() => setEditCommissionRate(r => Math.max(0, r - 1))}
-                        className="active:scale-90"
-                        style={{
-                          background: '#FF3333',
-                          color: '#fff',
-                          width: 30,
-                          height: 30,
-                          borderRadius: 9,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
+                      <button onClick={() => setEditCommissionRate(r => Math.max(0, r - 1))} className="active:scale-90"
+                        style={{ background: '#FF3333', color: '#fff', width: 30, height: 30, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <Minus size={14} />
                       </button>
-
-                      <input
-                        type="number"
-                        value={editCommissionRate}
-                        onChange={e => setEditCommissionRate(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                      <input type="number" value={editCommissionRate} onChange={e => setEditCommissionRate(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
                         className="bg-transparent text-center outline-none font-mono font-black"
-                        style={{
-                          width: 54,
-                          fontSize: 18,
-                          color: '#FF9500',
-                          background: '#fff',
-                          border: '1.5px solid #FFD180',
-                          borderRadius: 10,
-                          padding: '4px 0',
-                        }}
-                      />
-
-                      <button
-                        onClick={() => setEditCommissionRate(r => Math.min(100, r + 1))}
-                        className="active:scale-90"
-                        style={{
-                          background: '#00CC66',
-                          color: '#fff',
-                          width: 30,
-                          height: 30,
-                          borderRadius: 9,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
+                        style={{ width: 54, fontSize: 18, color: '#FF9500', background: '#fff', border: '1.5px solid #FFD180', borderRadius: 10, padding: '4px 0' }} />
+                      <button onClick={() => setEditCommissionRate(r => Math.min(100, r + 1))} className="active:scale-90"
+                        style={{ background: '#00CC66', color: '#fff', width: 30, height: 30, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <Plus size={14} />
                       </button>
                     </div>

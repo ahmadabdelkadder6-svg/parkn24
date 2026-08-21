@@ -1021,43 +1021,98 @@ export default function GarageDashboard() {
                   ))}
                 </div>
 
-                {valetReport.length > 0 && (
-                  <div className="mb-4">
-                    <div className="flex items-center justify-between mb-3">
-                      {selectedValetFilter && (<button onClick={() => setSelectedValetFilter(null)} className="font-black active:scale-95" style={{ fontSize: 11, padding: '6px 14px', borderRadius: 12, background: '#FF3333', color: '#fff' }}>✕ إلغاء</button>)}
-                      <div className="flex items-center gap-2 justify-end flex-1"><Users size={16} style={{ color: '#0066FF' }} /><h4 className="font-black" style={{ fontSize: 15, color: '#334155' }}>تقرير السياس</h4></div>
-                    </div>
-                    <div className="space-y-2">
-                      {valetReport.map((v, i) => (
-                        <div key={i} onClick={() => setSelectedValetFilter(selectedValetFilter === v.name ? null : v.name)} className="cursor-pointer active:scale-[0.98] transition-all"
-                          style={{ background: selectedValetFilter === v.name ? `${v.color}10` : '#fff', borderRadius: 20, padding: '16px 18px', border: `2px solid ${selectedValetFilter === v.name ? v.color : `${v.color}30`}` }}>
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="font-black font-mono" style={{ fontSize: 20, color: v.color }}>{v.total.toFixed(0)} ج.م</div>
-                            <div className="flex items-center gap-2">
-                              <div className="text-right"><div className="font-black" style={{ fontSize: 16 }}>{v.name}</div><div className="font-bold" style={{ fontSize: 11, color: '#94a3b8' }}>{v.count} سيارة</div></div>
-                              <div style={{ width: 42, height: 42, borderRadius: 14, background: v.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 15 }}>{v.icon}</div>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="text-center" style={{ background: '#EBF2FF', borderRadius: 14, padding: '10px 6px', border: '1px solid #D0DCFF' }}>
-                              <div style={{ fontSize: 11, color: '#0066FF', fontWeight: 900 }}>📱 تطبيق</div>
-                              <div className="font-black font-mono" style={{ fontSize: 16, color: '#0066FF' }}>{v.appCount}</div>
-                              <div style={{ fontSize: 10, color: '#7B8CA6' }}>({v.appTotal.toFixed(0)} ج.م)</div>
-                            </div>
-                            <div className="text-center" style={{ background: '#FFF8F0', borderRadius: 14, padding: '10px 6px', border: '1px solid #FFD180' }}>
-                              <div style={{ fontSize: 11, color: '#FF9500', fontWeight: 900 }}>✋ يدوي</div>
-                              <div className="font-black font-mono" style={{ fontSize: 16, color: '#FF9500' }}>{v.manualCount}</div>
-                              <div style={{ fontSize: 10, color: '#7B8CA6' }}>({v.manualTotal.toFixed(0)} ج.م)</div>
-                            </div>
-                          </div>
-                          {selectedValetFilter === v.name && (<div className="mt-2 text-center"><span className="font-bold" style={{ fontSize: 11, color: v.color }}>✅ فعّال الفلتر - اضغط مجدداً للإلغاء</span></div>)}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
+{/* تقرير السايس بحجم كبير جداً وواضح */}
+{valetReport.length > 0 && (
+  <div className="mb-6">
+    <div className="flex items-center justify-between mb-4">
+      {selectedValetFilter && (
+        <button 
+          onClick={() => setSelectedValetFilter(null)} 
+          className="font-black active:scale-95 transition-all" 
+          style={{ fontSize: 13, padding: '8px 18px', borderRadius: 14, background: '#FF3333', color: '#fff' }}
+        >
+          ✕ إلغاء الفلتر
+        </button>
+      )}
+      <div className="flex items-center gap-2 justify-end flex-1">
+        <Users size={22} style={{ color: '#0066FF' }} />
+        <h4 className="font-black" style={{ fontSize: 18, color: '#334155' }}>تقرير السياس</h4>
+      </div>
+    </div>
+    
+    <div className="space-y-4">
+      {valetReport.map((v, i) => (
+        <div 
+          key={i} 
+          onClick={() => setSelectedValetFilter(selectedValetFilter === v.name ? null : v.name)} 
+          className="cursor-pointer active:scale-[0.98] transition-all"
+          style={{ 
+            background: selectedValetFilter === v.name ? `${v.color}15` : '#fff', 
+            borderRadius: 24, 
+            padding: '20px 22px', 
+            border: `3px solid ${selectedValetFilter === v.name ? v.color : `${v.color}30`}`,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.02)'
+          }}
+        >
+          <div className="flex items-center justify-between mb-4">
+            {/* المبلغ الإجمالي للسايس كبير جداً */}
+            <div className="font-black font-mono" style={{ fontSize: 26, color: v.color }}>
+              {v.total.toFixed(0)} ج.م
+            </div>
+            
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                {/* اسم السايس ضخم */}
+                <div className="font-black" style={{ fontSize: 22, color: '#0a1628' }}>{v.name}</div>
+                <div className="font-bold" style={{ fontSize: 14, color: '#7b8ca6', marginTop: 2 }}>
+                  {v.count} سيارة إجمالاً
+                </div>
+              </div>
+              {/* أيقونة السايس أكبر */}
+              <div style={{ 
+                width: 52, 
+                height: 52, 
+                borderRadius: 16, 
+                background: v.color, 
+                color: '#fff', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                fontWeight: 900, 
+                fontSize: 18 
+              }}>
+                {v.icon}
+              </div>
+            </div>
+          </div>
+
+          {/* تفاصيل العمليات (تطبيق ويدوي) بحجم مريح للعين */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="text-center" style={{ background: '#EBF2FF', borderRadius: 16, padding: '12px 10px', border: '1.5px solid #D0DCFF' }}>
+              <div style={{ fontSize: 13, color: '#0066FF', fontWeight: 900, marginBottom: 2 }}>📱 تطبيق</div>
+              <div className="font-black font-mono" style={{ fontSize: 20, color: '#0066FF' }}>{v.appCount}</div>
+              <div className="font-bold" style={{ fontSize: 12, color: '#7B8CA6' }}>({v.appTotal.toFixed(0)} ج.م)</div>
+            </div>
+            
+            <div className="text-center" style={{ background: '#FFF8F0', borderRadius: 16, padding: '12px 10px', border: '1.5px solid #FFD180' }}>
+              <div style={{ fontSize: 13, color: '#FF9500', fontWeight: 900, marginBottom: 2 }}>✋ يدوي</div>
+              <div className="font-black font-mono" style={{ fontSize: 20, color: '#FF9500' }}>{v.manualCount}</div>
+              <div className="font-bold" style={{ fontSize: 12, color: '#7B8CA6' }}>({v.manualTotal.toFixed(0)} ج.m)</div>
+            </div>
+          </div>
+          
+          {selectedValetFilter === v.name && (
+            <div className="mt-3 text-center">
+              <span className="font-black" style={{ fontSize: 12, color: v.color }}>
+                🟢 فلتر السايس نشط الآن - اضغط مجدداً للإلغاء
+              </span>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  </div>
+)}
 
             {isValet && (
               <div className="mb-4 text-center" style={{ background: '#fff', borderRadius: 20, padding: 18, border: '2px solid #D0DCFF' }}>
