@@ -69,7 +69,6 @@ export default function AdminDashboard() {
   const [sessionSearch, setSessionSearch] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-  // حالة التحكم في جاري معالجة الشحن ومنع التكرار
   const [processingTopUpId, setProcessingTopUpId] = useState<string | null>(null);
 
   const [editingCommissionGarageId, setEditingCommissionGarageId] = useState<string | null>(null);
@@ -114,7 +113,6 @@ export default function AdminDashboard() {
 
   const completedSessions = useMemo(() => sessions.filter(s => s.status === 'completed'), [sessions]);
 
-  // الفلترة الصحيحة والدقيقة المطابقة للجراج 100% بدون أي تداخل توقيت
   const filteredSessions = useMemo(() => {
     return completedSessions.filter(s => {
       if (!s.endTime) return false;
@@ -152,6 +150,8 @@ export default function AdminDashboard() {
       const appSessions = gs.filter(s => s.source === 'app');
       const gCommission = appSessions.reduce((a, s) => a + getCommission(s), 0);
       const gRevenue = gs.reduce((a, s) => a + getRevenue(s), 0);
+      // ✅ إضافة حساب المحصل بالمحفظة لكل جراج
+      const walletRevenue = gs.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getRevenue(s), 0);
       return {
         id: g.id,
         name: g.name,
@@ -159,15 +159,19 @@ export default function AdminDashboard() {
         totalRevenue: gRevenue,
         commission: gCommission,
         netRevenue: gRevenue - gCommission,
+        walletRevenue,
         appCount: appSessions.length,
         totalCount: gs.length,
       };
     }).filter(g => g.totalCount > 0);
 
-    return { totalCommission, totalRevenue, totalNet, perGarage };
+    // ✅ حساب التسوية الإجمالية
+    const totalWalletCollected = confirmed.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getRevenue(s), 0);
+    const totalSettlement = totalWalletCollected - totalCommission;
+
+    return { totalCommission, totalRevenue, totalNet, perGarage, totalWalletCollected, totalSettlement };
   }, [filteredSessions, garages, getRevenue, getCommission]);
 
-  // تقرير الإيرادات الفعلي للجراجات مع إخفاء الجراجات غير النشطة
   const garageReport = useMemo(() => {
     return garages
       .map(g => {
@@ -255,13 +259,11 @@ export default function AdminDashboard() {
     setView('garage');
   };
 
-  // ═══════════ الدوال غير التزامنية الموثوقة لاعتماد ورفض الشحن ═══════════
   const handleApproveTopUp = async (id: string, amount: number) => {
     if (processingTopUpId) return;
     setProcessingTopUpId(id);
     const loadingToast = toast.loading('جاري اعتماد الرصيد في المحفظة...');
     try {
-      // الانتظار الفعلي لاستجابة السيرفر/قاعدة البيانات
       await approveTopUp(id);
       toast.dismiss(loadingToast);
       toast.success(`تم اعتماد شحن ${amount} ج.م بنجاح للحريف ✅`);
@@ -355,24 +357,78 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* كارت العمولة الإجمالية */}
+      {/* ✅ كارت العمولة الإجمالية والتسوية الشاملة */}
       {commissionStats.totalCommission > 0 && (
-        <div className="flex items-center gap-2 mb-5" style={{ background: '#fff', borderRadius: 18, padding: '10px 14px', border: '2px solid #FFD180' }}>
-          <div className="flex items-center gap-1.5 flex-1 justify-end">
-            <span className="font-bold" style={{ fontSize: 10, color: '#7B8CA6' }}>إجمالي</span>
-            <span className="font-black font-mono" style={{ fontSize: 13, color: '#0A1628' }}>{commissionStats.totalRevenue.toFixed(0)}</span>
+        <>
+          <div className="flex items-center gap-2 mb-3" style={{ background: '#fff', borderRadius: 18, padding: '10px 14px', border: '2px solid #FFD180' }}>
+            <div className="flex items-center gap-1.5 flex-1 justify-end">
+              <span className="font-bold" style={{ fontSize: 10, color: '#7B8CA6' }}>إجمالي</span>
+              <span className="font-black font-mono" style={{ fontSize: 13, color: '#0A1628' }}>{commissionStats.totalRevenue.toFixed(0)}</span>
+            </div>
+            <div style={{ width: 1, height: 16, background: '#D0DCFF' }} />
+            <div className="flex items-center gap-1.5">
+              <span className="font-black font-mono" style={{ fontSize: 13, color: '#FF9500' }}>{commissionStats.totalCommission.toFixed(0)}</span>
+              <span className="font-bold flex items-center gap-0.5" style={{ fontSize: 10, color: '#FF9500' }}><Percent size={10} /> عمولة</span>
+            </div>
+            <div style={{ width: 1, height: 16, background: '#D0DCFF' }} />
+            <div className="flex items-center gap-1.5">
+              <span className="font-black font-mono" style={{ fontSize: 13, color: '#00AA44' }}>{commissionStats.totalNet.toFixed(0)}</span>
+              <span className="font-bold" style={{ fontSize: 10, color: '#00AA44' }}>صافي</span>
+            </div>
           </div>
-          <div style={{ width: 1, height: 16, background: '#D0DCFF' }} />
-          <div className="flex items-center gap-1.5">
-            <span className="font-black font-mono" style={{ fontSize: 13, color: '#FF9500' }}>{commissionStats.totalCommission.toFixed(0)}</span>
-            <span className="font-bold flex items-center gap-0.5" style={{ fontSize: 10, color: '#FF9500' }}><Percent size={10} /> عمولة</span>
-          </div>
-          <div style={{ width: 1, height: 16, background: '#D0DCFF' }} />
-          <div className="flex items-center gap-1.5">
-            <span className="font-black font-mono" style={{ fontSize: 13, color: '#00AA44' }}>{commissionStats.totalNet.toFixed(0)}</span>
-            <span className="font-bold" style={{ fontSize: 10, color: '#00AA44' }}>صافي</span>
-          </div>
-        </div>
+
+          {/* ✅ صندوق التسوية والمقاصة الشاملة للأدمن */}
+          {(() => {
+            const settlement = commissionStats.totalSettlement;
+            const adminOwesGarages = settlement > 0;
+            const absVal = Math.abs(settlement).toFixed(0);
+
+            return (
+              <div 
+                className="mb-5"
+                style={{ 
+                  background: adminOwesGarages ? 'linear-gradient(135deg,#EBFDF2,#D8F5E0)' : 'linear-gradient(135deg,#FFF3F3,#FFE8E8)', 
+                  border: `2.5px solid ${adminOwesGarages ? '#00CC66' : '#FF3333'}`, 
+                  borderRadius: 22, 
+                  padding: '16px 18px',
+                  boxShadow: `0 6px 20px ${adminOwesGarages ? 'rgba(0,204,102,0.15)' : 'rgba(255,51,51,0.15)'}`
+                }}
+              >
+                <div className="flex items-center gap-2 justify-end mb-2">
+                  <DollarSign size={16} style={{ color: adminOwesGarages ? '#00AA44' : '#CC0000' }} />
+                  <h4 className="font-black" style={{ fontSize: 14, color: '#0A1628' }}>التسوية والمقاصة المالية</h4>
+                </div>
+
+                <div className="flex justify-between items-center mb-3">
+                  <div className="font-black font-mono" style={{ fontSize: 32, color: adminOwesGarages ? '#00AA44' : '#CC0000' }}>
+                    {absVal} <span style={{ fontSize: 14 }}>ج.م</span>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-black" style={{ fontSize: 13, color: '#0A1628' }}>
+                      {adminOwesGarages ? '🟢 مستحق للجراجات' : '🔴 مستحق للتطبيق'}
+                    </div>
+                    <div className="font-bold" style={{ fontSize: 10, color: '#7B8CA6', marginTop: 2 }}>
+                      {adminOwesGarages ? 'مطلوب تحويلها من الأدمن' : 'مطلوب تحصيلها من الجراجات'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="text-center" style={{ background: '#fff', borderRadius: 12, padding: '8px 6px', border: '1px solid #D0DCFF' }}>
+                    <div style={{ fontSize: 9, color: '#7B8CA6', fontWeight: 900 }}>💳 المحفظة</div>
+                    <div className="font-black font-mono" style={{ fontSize: 15, color: '#0066FF' }}>{commissionStats.totalWalletCollected.toFixed(0)}</div>
+                    <div style={{ fontSize: 9, color: '#94a3b8' }}>ج.م تم تحصيلها</div>
+                  </div>
+                  <div className="text-center" style={{ background: '#fff', borderRadius: 12, padding: '8px 6px', border: '1px solid #FFD180' }}>
+                    <div style={{ fontSize: 9, color: '#FF9500', fontWeight: 900 }}>📊 العمولة</div>
+                    <div className="font-black font-mono" style={{ fontSize: 15, color: '#FF9500' }}>{commissionStats.totalCommission.toFixed(0)}</div>
+                    <div style={{ fontSize: 9, color: '#94a3b8' }}>ج.م حق التطبيق</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </>
       )}
 
       {/* ══════ Pending Revenue Banner ══════ */}
@@ -386,39 +442,68 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* تقرير العمولات لكل جراج */}
+      {/* ✅ تقرير العمولات لكل جراج مع عمود التسوية الذكي */}
       {commissionStats.perGarage.length > 0 && (
         <div className="mb-5">
           <div className="flex items-center gap-2 mb-2 justify-end">
             <Percent size={13} style={{ color: '#FF9500' }} />
-            <span className="font-black" style={{ fontSize: 12, color: '#334155' }}>العمولات</span>
+            <span className="font-black" style={{ fontSize: 12, color: '#334155' }}>العمولات والتسوية لكل جراج</span>
           </div>
           <div className="overflow-x-auto" style={{ background: '#fff', borderRadius: 18, border: '2px solid #FFD180' }}>
-            <table className="w-full text-center" style={{ minWidth: 380 }}>
+            <table className="w-full text-center" style={{ minWidth: 460 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #FFF0E0' }}>
-                  {['الجراج', '%', 'إجمالي', 'عمولة', 'صافي'].map((h, i) => (
-                    <th key={i} className="font-black" style={{ padding: '10px 6px', fontSize: 9, color: i === 3 ? '#FF9500' : i === 4 ? '#00AA44' : '#7B8CA6', textAlign: i === 0 ? 'right' : 'center' }}>{h}</th>
+                  {['الجراج', '%', 'إجمالي', 'عمولة', 'محفظة', 'التسوية'].map((h, i) => (
+                    <th key={i} className="font-black" style={{ padding: '10px 6px', fontSize: 9, color: i === 3 ? '#FF9500' : i === 4 ? '#0066FF' : i === 5 ? '#0A1628' : '#7B8CA6', textAlign: i === 0 ? 'right' : 'center' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {commissionStats.perGarage.map(g => (
-                  <tr key={g.id} style={{ borderBottom: '1px solid #FFF8F0' }}>
-                    <td className="font-black text-right" style={{ padding: '8px 10px', fontSize: 11, color: '#0A1628' }}>{g.name}</td>
-                    <td className="font-black font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#FF9500' }}>{g.commissionRate}%</td>
-                    <td className="font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#0A1628' }}>{g.totalRevenue.toFixed(0)}</td>
-                    <td className="font-black font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#FF9500' }}>{g.commission.toFixed(0)}</td>
-                    <td className="font-black font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#00AA44' }}>{g.netRevenue.toFixed(0)}</td>
-                  </tr>
-                ))}
+                {commissionStats.perGarage.map(g => {
+                  // ✅ حساب التسوية لكل جراج على حدة
+                  const settlement = g.walletRevenue - g.commission;
+                  const adminOwesGarage = settlement > 0;
+                  const absSettlement = Math.abs(settlement).toFixed(0);
+
+                  return (
+                    <tr key={g.id} style={{ borderBottom: '1px solid #FFF8F0' }}>
+                      <td className="font-black text-right" style={{ padding: '8px 10px', fontSize: 11, color: '#0A1628' }}>{g.name}</td>
+                      <td className="font-black font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#FF9500' }}>{g.commissionRate}%</td>
+                      <td className="font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#0A1628' }}>{g.totalRevenue.toFixed(0)}</td>
+                      <td className="font-black font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#FF9500' }}>{g.commission.toFixed(0)}</td>
+                      <td className="font-black font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#0066FF' }}>{g.walletRevenue.toFixed(0)}</td>
+                      
+                      {/* ✅ خانة التسوية الذكية */}
+                      <td className="font-black font-mono" style={{ 
+                        padding: '8px 6px', 
+                        fontSize: 10, 
+                        color: adminOwesGarage ? '#00AA44' : '#CC0000',
+                        background: adminOwesGarage ? '#EBFDF2' : '#FFF3F3',
+                        borderRight: `3px solid ${adminOwesGarage ? '#00CC66' : '#FF3333'}`
+                      }}>
+                        <div style={{ fontSize: 9, opacity: 0.8 }}>{adminOwesGarage ? '⬆️ إرسال' : '⬇️ طلب'}</div>
+                        <div style={{ fontSize: 12, fontWeight: 900 }}>{absSettlement}ج</div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+          </div>
+          <div className="mt-2 flex items-center justify-between text-center" style={{ background: '#F8FAFF', borderRadius: 10, padding: '6px 10px' }}>
+            <div className="flex items-center gap-1">
+              <span style={{ width: 8, height: 8, background: '#FF3333', borderRadius: 4 }}></span>
+              <span className="font-bold" style={{ fontSize: 9, color: '#CC0000' }}>مستحق للتطبيق (الأدمن يطلبه)</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span style={{ width: 8, height: 8, background: '#00CC66', borderRadius: 4 }}></span>
+              <span className="font-bold" style={{ fontSize: 9, color: '#00AA44' }}>مستحق للجراج (الأدمن يرسله)</span>
+            </div>
           </div>
         </div>
       )}
 
-      {/* ══════ تقرير الإيرادات الفعلي للجراجات (متطابق 100% مع الجراج) ══════ */}
+      {/* ══════ تقرير الإيرادات الفعلي للجراجات ══════ */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <span className="font-bold" style={{ fontSize: 11, background: '#fff', padding: '6px 14px', borderRadius: 12, border: '2px solid #D0DCFF', color: '#7B8CA6' }}>{garageReport.length} جراج نشط</span>
@@ -595,7 +680,6 @@ export default function AdminDashboard() {
               </div>
               <div className="font-mono mb-3" style={{ background: '#F0F4FF', padding: 10, borderRadius: 12, border: '1px solid #D0DCFF', fontSize: 10, color: '#94a3b8' }}>مرجع: {w.transactionId}</div>
               <div className="flex gap-2">
-                {/* تم تعديل الأزرار لتعمل بشكل Async تزامني وتجميد الضغط أثناء المعالجة */}
                 <button 
                   onClick={() => handleApproveTopUp(w.id, w.amount)} 
                   disabled={processingTopUpId === w.id}
@@ -731,7 +815,6 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* تعديل نسبة العمولة */}
                 <div className="mb-3" style={{ background: '#FFF8F0', borderRadius: 14, padding: '10px 12px', border: '1.5px solid #FFD180' }}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">

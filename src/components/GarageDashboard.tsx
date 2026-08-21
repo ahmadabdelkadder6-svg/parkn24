@@ -1257,35 +1257,58 @@ export default function GarageDashboard() {
                   <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>{filteredCompleted.filter(s => s.revenueConfirmed).length} عملية مؤكدة</div>
                 </div>
 
-                {filteredStats.totalCommission > 0 && (
-                  <div className="grid grid-cols-2 gap-2 mb-4">
-                    <div className="text-center" style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 18, padding: 14, color: '#fff' }}>
-                      <div className="font-black" style={{ fontSize: 13, opacity: 0.9, marginBottom: 4 }}>ج.م</div>
-                      <div className="font-black font-mono" style={{ fontSize: 22 }}>{filteredStats.totalCommission.toFixed(0)}</div>
-                      <div className="font-bold" style={{ fontSize: 9, opacity: 0.8 }}>عمولة التطبيق</div>
-                    </div>
-                    <div className="text-center" style={{ background: 'linear-gradient(135deg,#00AA55,#008844)', borderRadius: 18, padding: 14, color: '#fff' }}>
-                      <div className="font-black" style={{ fontSize: 13, opacity: 0.9, marginBottom: 4 }}>ج.م</div>
-                      <div className="font-black font-mono" style={{ fontSize: 22 }}>{filteredStats.totalNet.toFixed(0)}</div>
-                      <div className="font-bold" style={{ fontSize: 9, opacity: 0.8 }}>صافي الإيراد</div>
-                    </div>
-                  </div>
-                )}
+{/* كروت العمولة وصافي الإيراد وحسبة التسوية والمقاصة */}
+{filteredStats.totalCommission > 0 && (
+  <div className="space-y-2 mb-4">
+    <div className="grid grid-cols-2 gap-2">
+      <div className="text-center" style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 18, padding: 16, color: '#fff' }}>
+        <div className="font-black" style={{ fontSize: 14, opacity: 0.9, marginBottom: 4 }}>ج.م</div>
+        <div className="font-black font-mono" style={{ fontSize: 24 }}>{filteredStats.totalCommission.toFixed(0)}</div>
+        <div className="font-bold" style={{ fontSize: 10, opacity: 0.8 }}>عمولة التطبيق</div>
+      </div>
+      <div className="text-center" style={{ background: 'linear-gradient(135deg,#00AA55,#008844)', borderRadius: 18, padding: 16, color: '#fff' }}>
+        <div className="font-black" style={{ fontSize: 14, opacity: 0.9, marginBottom: 4 }}>ج.م</div>
+        <div className="font-black font-mono" style={{ fontSize: 24 }}>{filteredStats.totalNet.toFixed(0)}</div>
+        <div className="font-bold" style={{ fontSize: 10, opacity: 0.8 }}>صافي إيرادك</div>
+      </div>
+    </div>
 
-                <div className="grid grid-cols-4 gap-2 mb-4">
-                  {[
-                    { label: 'نقدي', value: filteredStats.cash, icon: '💵', bg: '#00CC66' },
-                    { label: 'إنستاباي', value: filteredStats.instapay, icon: '📱', bg: '#7C3AED' },
-                    { label: 'محفظة', value: filteredStats.wallet, icon: '👝', bg: '#0066FF' },
-                    { label: 'كاش', value: filteredStats.cashwallet, icon: '📲', bg: '#FF8800' },
-                  ].map(p => (
-                    <div key={p.label} className="text-center" style={{ background: p.bg, borderRadius: 18, padding: '12px 6px', color: '#fff' }}>
-                      <div style={{ fontSize: 20, marginBottom: 2 }}>{p.icon}</div>
-                      <div className="font-black font-mono" style={{ fontSize: 15 }}>{p.value.toFixed(0)}</div>
-                      <div className="font-bold" style={{ fontSize: 8, opacity: 0.8 }}>{p.label}</div>
-                    </div>
-                  ))}
-                </div>
+    {/* حساب التسوية الفوري (المقاصة المالية للمالك) */}
+    {(() => {
+      // التسوية = المحصل في المحفظة - عمولة التطبيق المستحقة
+      const settlement = filteredStats.wallet - filteredStats.totalCommission;
+      const isGarageOwed = settlement > 0; // التطبيق مدين للجراج
+      const absSettlement = Math.abs(settlement).toFixed(0);
+
+      return (
+        <div 
+          className="text-center transition-all"
+          style={{ 
+            background: isGarageOwed ? '#EBFDF2' : '#FFF3F3', 
+            border: `2px solid ${isGarageOwed ? '#00CC66' : '#FF3333'}`, 
+            borderRadius: 18, 
+            padding: '14px 16px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.02)'
+          }}
+        >
+          <div className="flex justify-between items-center">
+            <div className="font-black font-mono" style={{ fontSize: 22, color: isGarageOwed ? '#00AA44' : '#CC0000' }}>
+              {absSettlement} ج.م
+            </div>
+            <div className="text-right">
+              <div className="font-black" style={{ fontSize: 14, color: '#0A1628' }}>
+                {isGarageOwed ? '🟢 مستحق لك طرف التطبيق' : '🔴 مستحق عليك للتطبيق'}
+              </div>
+              <div className="font-bold" style={{ fontSize: 10, color: '#7B8CA6', marginTop: 2 }}>
+                {isGarageOwed ? 'محصل بالمحفظة أكبر من العمولة' : 'العمولة أكبر من رصيد المحفظة'}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    })()}
+  </div>
+)}
 
                 <div className="grid grid-cols-2 gap-2 mb-4">
                   {[
