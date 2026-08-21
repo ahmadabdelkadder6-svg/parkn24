@@ -69,6 +69,9 @@ export default function AdminDashboard() {
   const [sessionSearch, setSessionSearch] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
+  // حالة التحكم في جاري معالجة الشحن ومنع التكرار
+  const [processingTopUpId, setProcessingTopUpId] = useState<string | null>(null);
+
   const [editingCommissionGarageId, setEditingCommissionGarageId] = useState<string | null>(null);
   const [editCommissionRate, setEditCommissionRate] = useState(10);
 
@@ -111,7 +114,7 @@ export default function AdminDashboard() {
 
   const completedSessions = useMemo(() => sessions.filter(s => s.status === 'completed'), [sessions]);
 
-  // ✅ الفلترة الصحيحة والدقيقة المطابقة للجراج 100% بدون أي تداخل توقيت
+  // الفلترة الصحيحة والدقيقة المطابقة للجراج 100% بدون أي تداخل توقيت
   const filteredSessions = useMemo(() => {
     return completedSessions.filter(s => {
       if (!s.endTime) return false;
@@ -164,7 +167,7 @@ export default function AdminDashboard() {
     return { totalCommission, totalRevenue, totalNet, perGarage };
   }, [filteredSessions, garages, getRevenue, getCommission]);
 
-  // ✅ تقرير الإيرادات الفعلي للجراجات مع إخفاء الجراجات غير النشطة
+  // تقرير الإيرادات الفعلي للجراجات مع إخفاء الجراجات غير النشطة
   const garageReport = useMemo(() => {
     return garages
       .map(g => {
@@ -193,7 +196,6 @@ export default function AdminDashboard() {
           cashwallet,
         };
       })
-      // ✅ إظهار الجراجات النشطة فقط في نطاق البحث لمنع البيانات الزائدة
       .filter(r => r.count > 0 || r.revenue > 0 || r.pendingRevenue > 0);
   }, [garages, filteredSessions, getRevenue]);
 
@@ -251,6 +253,42 @@ export default function AdminDashboard() {
     localStorage.setItem('garagePrefillPhone', g.phone);
     setCurrentGarageId(null);
     setView('garage');
+  };
+
+  // ═══════════ الدوال غير التزامنية الموثوقة لاعتماد ورفض الشحن ═══════════
+  const handleApproveTopUp = async (id: string, amount: number) => {
+    if (processingTopUpId) return;
+    setProcessingTopUpId(id);
+    const loadingToast = toast.loading('جاري اعتماد الرصيد في المحفظة...');
+    try {
+      // الانتظار الفعلي لاستجابة السيرفر/قاعدة البيانات
+      await approveTopUp(id);
+      toast.dismiss(loadingToast);
+      toast.success(`تم اعتماد شحن ${amount} ج.م بنجاح للحريف ✅`);
+    } catch (error: any) {
+      toast.dismiss(loadingToast);
+      console.error("Top-up approval failed:", error);
+      toast.error(error?.message || 'عذراً، فشل شحن الرصيد. تأكد من اتصالك بالشبكة.');
+    } finally {
+      setProcessingTopUpId(null);
+    }
+  };
+
+  const handleRejectTopUp = async (id: string) => {
+    if (processingTopUpId) return;
+    setProcessingTopUpId(id);
+    const loadingToast = toast.loading('جاري رفض الطلب...');
+    try {
+      await rejectTopUp(id);
+      toast.dismiss(loadingToast);
+      toast.error('تم رفض طلب الشحن ❌');
+    } catch (error: any) {
+      toast.dismiss(loadingToast);
+      console.error("Top-up rejection failed:", error);
+      toast.error(error?.message || 'فشل الرفض، يرجى المحاولة لاحقاً');
+    } finally {
+      setProcessingTopUpId(null);
+    }
   };
 
   return (
@@ -557,15 +595,29 @@ export default function AdminDashboard() {
               </div>
               <div className="font-mono mb-3" style={{ background: '#F0F4FF', padding: 10, borderRadius: 12, border: '1px solid #D0DCFF', fontSize: 10, color: '#94a3b8' }}>مرجع: {w.transactionId}</div>
               <div className="flex gap-2">
-                <button onClick={() => { approveTopUp(w.id); toast.success(`اعتماد ${w.amount} ج.م ✅`); }} className="flex-1 font-black flex items-center justify-center gap-2 active:scale-95"
-                  style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', padding: 16, borderRadius: 18, fontSize: 14, boxShadow: '0 6px 24px rgba(0,204,102,0.35)' }}><CheckCircle size={20} />اعتماد</button>
-                <button onClick={() => { rejectTopUp(w.id); toast.error('تم الرفض'); }} className="font-black flex items-center justify-center active:scale-95"
-                  style={{ background: 'linear-gradient(135deg,#FF3333,#CC0000)', color: '#fff', padding: '0 20px', borderRadius: 18, boxShadow: '0 4px 16px rgba(255,51,51,0.3)' }}><XCircle size={20} /></button>
+                {/* تم تعديل الأزرار لتعمل بشكل Async تزامني وتجميد الضغط أثناء المعالجة */}
+                <button 
+                  onClick={() => handleApproveTopUp(w.id, w.amount)} 
+                  disabled={processingTopUpId === w.id}
+                  className="flex-1 font-black flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', padding: 16, borderRadius: 18, fontSize: 14, boxShadow: '0 6px 24px rgba(0,204,102,0.35)' }}
+                >
+                  <CheckCircle size={20} />
+                  {processingTopUpId === w.id ? 'جاري الاعتماد...' : 'اعتماد'}
+                </button>
+                <button 
+                  onClick={() => handleRejectTopUp(w.id)} 
+                  disabled={processingTopUpId === w.id}
+                  className="font-black flex items-center justify-center active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ background: 'linear-gradient(135deg,#FF3333,#CC0000)', color: '#fff', padding: '0 20px', borderRadius: 18, boxShadow: '0 4px 16px rgba(255,51,51,0.3)' }}
+                >
+                  <XCircle size={20} />
+                </button>
               </div>
             </div>
           ))}
           {pendingTopUps.length === 0 && (
-            <div className="text-center" style={{ background: '#fff', borderRadius: 24, padding: 28, border: '2px solid #D0DCFF', color: '#94a3b8', fontSize: 14 }}>لا توجد اعتمادات</div>
+            <div className="text-center" style={{ background: '#fff', borderRadius: 24, padding: 28, border: '2px solid #D0DCFF', color: '#94a3b8', fontSize: 14 }}>لا توجد اعتمادات معلقة</div>
           )}
         </div>
       </div>
