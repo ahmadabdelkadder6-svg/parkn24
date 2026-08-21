@@ -47,6 +47,8 @@ export interface ParkingSession {
   startedBy?: 'garage' | 'customer';
   commissionAmount?: number;
   netRevenue?: number;
+  settled?: boolean;       // تم الإضافة لدعم نظام المقاصة والتسوية
+  settled_at?: string;     // تم الإضافة لدعم أرشفة التسويات
 }
 
 export interface Offer {
@@ -132,20 +134,6 @@ const normalizePlate = (plate?: string) => (plate ?? '').trim().toUpperCase();
 const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
 const getMs = (value?: number) => { if (typeof value === 'number') return value; return 0; };
-
-const safeParseTime = (value: any): number => {
-  if (!value) return 0;
-  if (typeof value === 'string') {
-    const ms = new Date(value).getTime();
-    return Number.isFinite(ms) && ms > 0 ? ms : 0;
-  }
-  if (typeof value === 'number') {
-    if (value <= 0) return 0;
-    if (value < 1_000_000_000_000) return value * 1000;
-    return value;
-  }
-  return 0;
-};
 
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   const active = list.filter((s) => s.status === 'active');
@@ -245,6 +233,8 @@ const mapSession = (r: any): ParkingSession => {
     startedBy: r.started_by || undefined,
     commissionAmount: r.commission_amount != null ? Number(r.commission_amount) : 0,
     netRevenue: r.net_revenue != null ? Number(r.net_revenue) : 0,
+    settled: r.settled ?? false,                     // جلب حالة التسوية من قاعدة البيانات
+    settled_at: r.settled_at || undefined,           // جلب تاريخ الإقفال
   };
 };
 
@@ -296,21 +286,6 @@ const resolveAddedBy = (explicitAddedBy?: string): string => {
   if (valetName) return valetName;
   if (garageRole === 'valet') return `سايس ${valetNumber}`;
   return '';
-};
-
-const resolveStartTime = (rawStartTime: any): number => {
-  const nowMs = Date.now();
-  if (!rawStartTime) return nowMs;
-  let result: number;
-  if (typeof rawStartTime === 'string') {
-    result = new Date(rawStartTime).getTime();
-  } else if (typeof rawStartTime === 'number') {
-    result = rawStartTime < 1_000_000_000_000 ? rawStartTime * 1000 : rawStartTime;
-  } else {
-    return nowMs;
-  }
-  if (!Number.isFinite(result) || result <= 0) return nowMs;
-  return result;
 };
 
 // ===================== State Interface =====================
@@ -463,7 +438,12 @@ export const useStore = create<AppState>((set, get) => ({
         if (localVersion) {
           if (ss.status === 'completed' && localVersion.status === 'active') return ss;
           if (localVersion.status === 'completed') {
-            return { ...localVersion, revenueConfirmed: ss.revenueConfirmed || localVersion.revenueConfirmed };
+            return { 
+              ...localVersion, 
+              revenueConfirmed: ss.revenueConfirmed || localVersion.revenueConfirmed,
+              settled: ss.settled ?? localVersion.settled,           // الحفاظ على حالة التسوية
+              settled_at: ss.settled_at || localVersion.settled_at,   // الحفاظ على تاريخ الإقفال
+            };
           }
           if (ss.status === 'active' && localVersion.status === 'active') {
             return {
@@ -473,6 +453,8 @@ export const useStore = create<AppState>((set, get) => ({
               addedBy: ss.addedBy || localVersion.addedBy || '',
               customerPhone: ss.customerPhone || localVersion.customerPhone,
               customerName: ss.customerName || localVersion.customerName,
+              settled: ss.settled ?? localVersion.settled,
+              settled_at: ss.settled_at || localVersion.settled_at,
             };
           }
           if (localVersion.totalPrice != null && localVersion.totalPrice > 0) return localVersion;
@@ -657,6 +639,7 @@ export const useStore = create<AppState>((set, get) => ({
         startedBy: (s as any).startedBy || undefined,
         commissionAmount: 0,
         netRevenue: 0,
+        settled: false,
       };
 
       set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]) }));
@@ -676,6 +659,7 @@ export const useStore = create<AppState>((set, get) => ({
           started_by: (s as any).startedBy || null,
           commission_amount: 0,
           net_revenue: 0,
+          settled: false,
         }).select().single();
 
         if (error) {
@@ -704,9 +688,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // ═══════════════════════════════════════════════════════════════════
-  // ✅ endSession - حساب العمولة وسداد المحفظة المؤكد تلقائياً
-  // ═══════════════════════════════════════════════════════════════════
   endSession: async (id, totalPrice, paymentMethod) => {
     const now = Date.now();
     const session = get().sessions.find((s) => s.id === id);
@@ -721,7 +702,7 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const safeTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
 
-      // ✅ حساب العمولة من نسبة الجراج الحالية
+      // حساب العمولة من نسبة الجراج الحالية
       const garage = get().garages.find((g) => g.id === session.garageId);
       const commissionRate = garage?.commissionRate ?? 10;
       const isAppSession = session.source === 'app';
@@ -730,7 +711,7 @@ export const useStore = create<AppState>((set, get) => ({
         : 0;
       const netRevenue = Math.round((safeTotalPrice - commissionAmount) * 100) / 100;
 
-      // ✅ سداد المحفظة مؤكد إلكترونياً وتلقائياً
+      // سداد المحفظة مؤكد إلكترونياً وتلقائياً
       const isAutoConfirmed = paymentMethod === 'wallet';
 
       const endedSession: ParkingSession = {
@@ -742,6 +723,7 @@ export const useStore = create<AppState>((set, get) => ({
         revenueConfirmed: isAutoConfirmed,
         commissionAmount,
         netRevenue,
+        settled: false,
       };
 
       locallyEndedSessions.set(id, endedSession);
@@ -760,6 +742,7 @@ export const useStore = create<AppState>((set, get) => ({
           revenue_confirmed: isAutoConfirmed,
           commission_amount: commissionAmount,
           net_revenue: netRevenue,
+          settled: false,
         })
         .eq('id', id)
         .eq('status', 'active');

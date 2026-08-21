@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Car, Clock, LogOut, Plus, CheckCircle, XCircle, Settings,
   Minus, Save, MapPin, Edit3, Navigation, Phone, CarFront, FileText,
-  CalendarDays, Undo2, Shield, HardHat, Users, Percent, DollarSign,
+  CalendarDays, Undo2, Shield, HardHat, Users, Percent,
 } from 'lucide-react';
 import { useStore, pausePolling } from '../store';
 import { supabase } from '../lib/supabase';
@@ -458,10 +458,11 @@ export default function GarageDashboard() {
     });
   }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, isOwner, myValetNames, garageValetNames, selectedValetFilter]);
 
-  // ✅ filteredStats مُعدّل مع حقول التسوية النشطة
+  // ✅ filteredStats مع حقول التسوية النشطة (تستبعد الجلسات المُقفلة)
   const filteredStats = useMemo(() => {
     const c = filteredCompleted.filter(s => s.revenueConfirmed);
     const u = filteredCompleted.filter(s => !s.revenueConfirmed);
+    // الجلسات النشطة فقط = مؤكدة + لم تتم تسويتها بعد
     const activeC = c.filter(s => !(s as any).settled);
 
     const cash = c.filter(s => s.paymentMethod === 'cash').reduce((a, s) => a + getSessionRevenue(s), 0);
@@ -474,6 +475,7 @@ export default function GarageDashboard() {
     const totalNet = c.reduce((a, s) => a + getSessionNetRevenue(s), 0);
     const confirmedTotal = cash + instapay + wallet + cashwallet;
 
+    // حسابات التسوية النشطة (غير المُقفلة فقط)
     const activeWallet = activeC.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
     const activeCommission = activeC.reduce((a, s) => a + getSessionCommission(s), 0);
 
@@ -1044,13 +1046,32 @@ export default function GarageDashboard() {
                       const settlement = filteredStats.activeWallet - filteredStats.activeCommission;
                       const isGarageOwed = settlement > 0;
                       const absSettlement = Math.abs(settlement).toFixed(0);
+
+                      // لو التسوية = 0 يعني الحساب متزن لا نعرضها
+                      if (settlement === 0 && filteredStats.activeWallet === 0 && filteredStats.activeCommission === 0) return null;
+
                       return (
-                        <div className="text-center transition-all" style={{ background: isGarageOwed ? '#EBFDF2' : '#FFF3F3', border: `2px solid ${isGarageOwed ? '#00CC66' : '#FF3333'}`, borderRadius: 18, padding: '14px 16px', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
+                        <div 
+                          className="text-center transition-all"
+                          style={{ 
+                            background: settlement === 0 ? '#F0F4FF' : isGarageOwed ? '#EBFDF2' : '#FFF3F3', 
+                            border: `2px solid ${settlement === 0 ? '#D0DCFF' : isGarageOwed ? '#00CC66' : '#FF3333'}`, 
+                            borderRadius: 18, 
+                            padding: '14px 16px',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.02)'
+                          }}
+                        >
                           <div className="flex justify-between items-center">
-                            <div className="font-black font-mono" style={{ fontSize: 22, color: isGarageOwed ? '#00AA44' : '#CC0000' }}>{absSettlement} ج.م</div>
+                            <div className="font-black font-mono" style={{ fontSize: 22, color: settlement === 0 ? '#0066FF' : isGarageOwed ? '#00AA44' : '#CC0000' }}>
+                              {absSettlement} ج.م
+                            </div>
                             <div className="text-right">
-                              <div className="font-black" style={{ fontSize: 14, color: '#0A1628' }}>{isGarageOwed ? '🟢 مستحق لك طرف التطبيق' : '🔴 مستحق عليك للتطبيق'}</div>
-                              <div className="font-bold" style={{ fontSize: 10, color: '#7B8CA6', marginTop: 2 }}>{isGarageOwed ? 'محصل بالمحفظة أكبر من العمولة' : 'العمولة أكبر من رصيد المحفظة'}</div>
+                              <div className="font-black" style={{ fontSize: 14, color: '#0A1628' }}>
+                                {settlement === 0 ? '⚖️ الحساب متزن' : isGarageOwed ? '🟢 مستحق لك طرف التطبيق' : '🔴 مستحق عليك للتطبيق'}
+                              </div>
+                              <div className="font-bold" style={{ fontSize: 10, color: '#7B8CA6', marginTop: 2 }}>
+                                {settlement === 0 ? 'لا يوجد رصيد معلق حالياً' : isGarageOwed ? 'محصل بالمحفظة أكبر من العمولة' : 'العمولة أكبر من رصيد المحفظة'}
+                              </div>
                             </div>
                           </div>
                         </div>

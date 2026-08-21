@@ -90,7 +90,7 @@ export default function AdminDashboard() {
   const [editingCommissionGarageId, setEditingCommissionGarageId] = useState<string | null>(null);
   const [editCommissionRate, setEditCommissionRate] = useState(10);
 
-  // ✅ حالة نظام التسوية
+  // نظام التسوية والمقاصة
   const [settlementRecords, setSettlementRecords] = useState<SettlementRecord[]>([]);
   const [confirmSettlementGarageId, setConfirmSettlementGarageId] = useState<string | null>(null);
   const [processingSettlement, setProcessingSettlement] = useState(false);
@@ -110,7 +110,7 @@ export default function AdminDashboard() {
 
   useEffect(() => { const i = setInterval(() => setTick(t => t + 1), 60000); return () => clearInterval(i); }, []);
 
-  // ═══════════ جلب أرشيف التسويات من قاعدة البيانات ═══════════
+  // جلب أرشيف التسويات من قاعدة البيانات
   const fetchSettlements = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -125,7 +125,7 @@ export default function AdminDashboard() {
 
   useEffect(() => { fetchSettlements(); }, [fetchSettlements]);
 
-  // ═══════════ حساب الإيراد لجلسة ═══════════
+  // حساب الإيراد لجلسة
   const getRevenue = useCallback((s: any) => {
     if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
@@ -137,6 +137,7 @@ export default function AdminDashboard() {
     return 0;
   }, [garages]);
 
+  // حساب العمولة لجلسة
   const getCommission = useCallback((s: any) => {
     if (s.source !== 'app') return 0;
     const rev = getRevenue(s);
@@ -173,7 +174,7 @@ export default function AdminDashboard() {
     };
   }, [filteredSessions, getRevenue]);
 
-  // ═══════════ إحصائيات العمولة والتسوية النشطة (استبعاد المسوّى) ═══════════
+  // إحصائيات العمولة (استبعاد المُسواة)
   const commissionStats = useMemo(() => {
     // فقط الجلسات المؤكدة وغير المسواة
     const confirmed = filteredSessions.filter(s => s.revenueConfirmed && !(s as any).settled);
@@ -329,7 +330,7 @@ export default function AdminDashboard() {
     }
   };
 
-  // ═══════════ تنفيذ التسوية وإقفال الفترة لجراج معين ═══════════
+  // تنفيذ التسوية وإقفال الفترة لجراج معين
   const handleConfirmSettlement = async (garageId: string) => {
     if (processingSettlement) return;
     const garageData = commissionStats.perGarage.find(g => g.id === garageId);
@@ -357,7 +358,7 @@ export default function AdminDashboard() {
         session_count: garageData.totalCount,
         wallet_collected: garageData.walletRevenue,
         commission_amount: garageData.commission,
-        notes: `تسوية ${garageData.totalCount} جلسة من ${dateFrom} إلى ${dateTo}`,
+        notes: `تسوية ${garageData.totalCount} جلسة`,
         created_at: new Date().toISOString(),
       };
 
@@ -367,19 +368,31 @@ export default function AdminDashboard() {
 
       if (insertError) throw insertError;
 
-      // 2. تحديث جميع الجلسات المسواة بعلامة settled = true
-      const { error: updateError } = await supabase
-        .from('sessions')
-        .update({ settled: true, settled_at: new Date().toISOString() })
-        .in('id', garageData.sessionIds);
+      // 2. تحديث الجلسات في قاعدة البيانات (على دفعات)
+      if (garageData.sessionIds.length > 0) {
+        const batchSize = 50;
+        for (let i = 0; i < garageData.sessionIds.length; i += batchSize) {
+          const batch = garageData.sessionIds.slice(i, i + batchSize);
+          const { error: updateError } = await supabase
+            .from('sessions')
+            .update({ settled: true, settled_at: new Date().toISOString() })
+            .in('id', batch);
 
-      if (updateError) throw updateError;
+          if (updateError) {
+            console.error('Batch update error:', updateError);
+            throw updateError;
+          }
+        }
+      }
 
       toast.dismiss(loadingToast);
       toast.success(`✅ تم إقفال حساب ${garageData.name} بمبلغ ${absSettlement.toFixed(0)} ج.م`);
       setConfirmSettlementGarageId(null);
+
+      // 3. تحديث البيانات فوراً في كل الشاشات
       await fetchSettlements();
       await fetchAll();
+
     } catch (error: any) {
       toast.dismiss(loadingToast);
       console.error('Settlement failed:', error);
@@ -538,7 +551,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ✅ جدول التسوية لكل جراج مع زر التسوية والإقفال */}
+      {/* جدول التسوية لكل جراج مع زر التسوية والإقفال */}
       {commissionStats.perGarage.length > 0 && (
         <div className="mb-5">
           <div className="flex items-center gap-2 mb-2 justify-end">
@@ -640,7 +653,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ✅ أرشيف التسويات المُقفلة */}
+      {/* أرشيف التسويات المُقفلة */}
       <div className="mb-5">
         <button 
           onClick={() => setShowArchive(!showArchive)} 
@@ -797,8 +810,8 @@ export default function AdminDashboard() {
               const isSettled = (session as any).settled === true;
               return (
                 <div key={session.id} style={{ 
-                  background: isDel ? '#FFF0F0' : isSettled ? '#F5F5F5' : session.revenueConfirmed ? '#F0FFF5' : '#FFFAF0', 
-                  border: `2.5px solid ${isDel ? '#FF6666' : isSettled ? '#D0DCFF' : session.revenueConfirmed ? '#66DDAA' : '#FFD180'}`, 
+                  background: isDel ? '#FFF0F0' : isSettled ? '#F1F5F9' : session.revenueConfirmed ? '#F0FFF5' : '#FFFAF0', 
+                  border: `2.5px solid ${isDel ? '#FF6666' : isSettled ? '#CBD5E1' : session.revenueConfirmed ? '#66DDAA' : '#FFD180'}`, 
                   borderRadius: 22, 
                   padding: 16,
                   opacity: isSettled ? 0.75 : 1 
