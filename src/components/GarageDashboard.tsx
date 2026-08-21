@@ -1020,23 +1020,22 @@ export default function GarageDashboard() {
                     </div>
                   ))}
                 </div>
-
-{/* تقرير السايس بحجم كبير جداً وواضح */}
+{/* تقرير السايس بحجم كبير جداً وواضح ومحسّن */}
 {valetReport.length > 0 && (
   <div className="mb-6">
     <div className="flex items-center justify-between mb-4">
       {selectedValetFilter && (
         <button 
           onClick={() => setSelectedValetFilter(null)} 
-          className="font-black active:scale-95 transition-all" 
-          style={{ fontSize: 13, padding: '8px 18px', borderRadius: 14, background: '#FF3333', color: '#fff' }}
+          className="font-black active:scale-95 transition-all text-white" 
+          style={{ fontSize: 14, padding: '10px 22px', borderRadius: 16, background: '#FF3333', boxShadow: '0 4px 12px rgba(255,51,51,0.2)' }}
         >
           ✕ إلغاء الفلتر
         </button>
       )}
       <div className="flex items-center gap-2 justify-end flex-1">
-        <Users size={22} style={{ color: '#0066FF' }} />
-        <h4 className="font-black" style={{ fontSize: 18, color: '#334155' }}>تقرير السياس</h4>
+        <Users size={24} style={{ color: '#0066FF' }} />
+        <h4 className="font-black" style={{ fontSize: 20, color: '#334155' }}>تقرير السياس</h4>
       </div>
     </div>
     
@@ -1049,62 +1048,67 @@ export default function GarageDashboard() {
           style={{ 
             background: selectedValetFilter === v.name ? `${v.color}15` : '#fff', 
             borderRadius: 24, 
-            padding: '20px 22px', 
+            padding: '22px 24px', 
             border: `3px solid ${selectedValetFilter === v.name ? v.color : `${v.color}30`}`,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.02)'
+            boxShadow: '0 6px 18px rgba(0,0,0,0.03)'
           }}
         >
           <div className="flex items-center justify-between mb-4">
-            {/* المبلغ الإجمالي للسايس كبير جداً */}
-            <div className="font-black font-mono" style={{ fontSize: 26, color: v.color }}>
-              {v.total.toFixed(0)} ج.م
+            {/* المبلغ الإجمالي للسايس كبير جداً وواضح */}
+            <div className="font-black font-mono" style={{ fontSize: 30, color: v.color }}>
+              {v.total.toFixed(0)} <span style={{ fontSize: 16 }}>ج.م</span>
             </div>
             
             <div className="flex items-center gap-3">
               <div className="text-right">
-                {/* اسم السايس ضخم */}
-                <div className="font-black" style={{ fontSize: 22, color: '#0a1628' }}>{v.name}</div>
-                <div className="font-bold" style={{ fontSize: 14, color: '#7b8ca6', marginTop: 2 }}>
+                {/* اسم السايس ضخم جداً */}
+                <div className="font-black" style={{ fontSize: 24, color: '#0a1628' }}>{v.name}</div>
+                <div className="font-bold" style={{ fontSize: 15, color: '#7b8ca6', marginTop: 2 }}>
                   {v.count} سيارة إجمالاً
                 </div>
               </div>
-              {/* أيقونة السايس أكبر */}
+              {/* أيقونة السايس ضخمة وملونة */}
               <div style={{ 
-                width: 52, 
-                height: 52, 
-                borderRadius: 16, 
+                width: 56, 
+                height: 56, 
+                borderRadius: 18, 
                 background: v.color, 
                 color: '#fff', 
                 display: 'flex', 
                 alignItems: 'center', 
                 justifyContent: 'center', 
                 fontWeight: 900, 
-                fontSize: 18 
+                fontSize: 20 
               }}>
                 {v.icon}
               </div>
             </div>
           </div>
 
-          {/* تفاصيل العمليات (تطبيق ويدوي) بحجم مريح للعين */}
+          {/* تفاصيل العمليات (تطبيق ويدوي) بحجم ضخم ومريح للعين */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="text-center" style={{ background: '#EBF2FF', borderRadius: 16, padding: '12px 10px', border: '1.5px solid #D0DCFF' }}>
-              <div style={{ fontSize: 13, color: '#0066FF', fontWeight: 900, marginBottom: 2 }}>📱 تطبيق</div>
-              <div className="font-black font-mono" style={{ fontSize: 20, color: '#0066FF' }}>{v.appCount}</div>
-              <div className="font-bold" style={{ fontSize: 12, color: '#7B8CA6' }}>({v.appTotal.toFixed(0)} ج.م)</div>
+            <div className="text-center" style={{ background: '#EBF2FF', borderRadius: 18, padding: '14px 10px', border: '2px solid #D0DCFF' }}>
+              <div style={{ fontSize: 14, color: '#0066FF', fontWeight: 900, marginBottom: 4 }}>📱 تطبيق</div>
+              <div className="font-black font-mono" style={{ fontSize: 22, color: '#0066FF' }}>{v.appCount}</div>
+              <div className="font-black" style={{ fontSize: 13, color: '#7B8CA6', marginTop: 2 }}>
+                ({v.appTotal.toFixed(0)} ج.م)
+              </div>
             </div>
             
-            <div className="text-center" style={{ background: '#FFF8F0', borderRadius: 16, padding: '12px 10px', border: '1.5px solid #FFD180' }}>
-              <div style={{ fontSize: 13, color: '#FF9500', fontWeight: 900, marginBottom: 2 }}>✋ يدوي</div>
-              <div className="font-black font-mono" style={{ fontSize: 20, color: '#FF9500' }}>{v.manualCount}</div>
-              <div className="font-bold" style={{ fontSize: 12, color: '#7B8CA6' }}>({v.manualTotal.toFixed(0)} ج.m)</div>
+            <div className="text-center" style={{ background: '#FFF8F0', borderRadius: 18, padding: '14px 10px', border: '2px solid #FFD180' }}>
+              <div style={{ fontSize: 14, color: '#FF9500', fontWeight: 900, marginBottom: 4 }}>✋ يدوي</div>
+              <div className="font-black font-mono" style={{ fontSize: 22, color: '#FF9500' }}>{v.manualCount}</div>
+              {/* تصحيح ج.m هنا لتصبح ج.م بالكامل */}
+              <div className="font-black" style={{ fontSize: 13, color: '#7B8CA6', marginTop: 2 }}>
+                ({v.manualTotal.toFixed(0)} ج.م)
+              </div>
             </div>
           </div>
           
           {selectedValetFilter === v.name && (
             <div className="mt-3 text-center">
-              <span className="font-black" style={{ fontSize: 12, color: v.color }}>
-                🟢 فلتر السايس نشط الآن - اضغط مجدداً للإلغاء
+              <span className="font-black" style={{ fontSize: 13, color: v.color }}>
+                🟢 فلتر السايس نشط الآن - اضغط مجدداً لإلغاء التصفية
               </span>
             </div>
           )}
@@ -1112,8 +1116,9 @@ export default function GarageDashboard() {
       ))}
     </div>
   </div>
-)}
-            {isValet && (
+)} 
+
+           {isValet && (
               <div className="mb-4 text-center" style={{ background: '#fff', borderRadius: 20, padding: 18, border: '2px solid #D0DCFF' }}>
                 <div className="font-black" style={{ fontSize: 16, color: '#334155' }}>عملياتي اليوم</div>
                 <div className="font-black font-mono" style={{ fontSize: 36, color: '#0066FF' }}>{filteredCompleted.length}</div>
