@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Car, Clock, LogOut, Plus, CheckCircle, XCircle, Settings,
   Minus, Save, MapPin, Edit3, Navigation, Phone, CarFront, FileText,
-  CalendarDays, Undo2, Shield, HardHat, Users, Percent, DollarSign,
+  CalendarDays, Undo2, Shield, HardHat, Users, Percent,
 } from 'lucide-react';
 import { useStore, pausePolling } from '../store';
 import { supabase } from '../lib/supabase';
@@ -701,7 +701,7 @@ export default function GarageDashboard() {
               <div className="font-black font-mono" style={{ fontSize: 24 }}>{valetActiveSessions.length}</div>
               <div className="font-bold" style={{ fontSize: 9, opacity: 0.8 }}>جلساتي</div>
             </div>
-            <div className="text-center" style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', borderRadius: 22, padding: '18px 10px', color: '#fff', boxShadow: '0 6px 24px rgba(124,58,237,0.3)' }}>
+            <div className="text-center" style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', borderRadius: 22, padding: 18, color: '#fff', boxShadow: '0 6px 24px rgba(124,58,237,0.3)' }}>
               <div className="mx-auto mb-1" style={{ opacity: 0.9 }}><Car size={22} /></div>
               <div className="font-black font-mono" style={{ fontSize: 24 }}>{garage.availableSpots}</div>
               <div className="font-bold" style={{ fontSize: 9, opacity: 0.8 }}>شاغر</div>
@@ -923,7 +923,7 @@ export default function GarageDashboard() {
               <button onClick={() => { const d = new Date(); d.setDate(d.getDate() - 7); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`); setLogDateTo(getLocalToday()); }} className="font-black active:scale-95" style={{ background: '#F0F4FF', color: '#64748b', padding: '10px 14px', borderRadius: 14, fontSize: 11, border: '2px solid #D0DCFF' }}>آخر أسبوع</button>
               <button onClick={() => { const d = new Date(); d.setDate(1); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`); setLogDateTo(getLocalToday()); }} className="font-black active:scale-95" style={{ background: '#F0F4FF', color: '#64748b', padding: '10px 14px', borderRadius: 14, fontSize: 11, border: '2px solid #D0DCFF' }}>هذا الشهر</button>
             </div>
-            {/* ✅ فلتر الدفع: يشمل نقدي ومحفظة فقط */}
+            {/* فلتر الدفع: يشمل نقدي ومحفظة فقط */}
             <div className="flex gap-1.5 flex-wrap">
               {[
                 { id: 'all', label: 'الكل', icon: '📊' },
@@ -993,7 +993,7 @@ export default function GarageDashboard() {
                   </div>
                 )}
 
-                {/* ✅ بوكس نقدي ومحفظة فقط */}
+                {/* بوكس نقدي ومحفظة فقط */}
                 <div className="grid grid-cols-2 gap-2 mb-4">
                   <div className="text-center" style={{ background: '#00CC66', borderRadius: 18, padding: '14px 6px', color: '#fff' }}>
                     <div style={{ fontSize: 22, marginBottom: 2 }}>💵</div>
@@ -1020,105 +1020,107 @@ export default function GarageDashboard() {
                     </div>
                   ))}
                 </div>
-{/* تقرير السايس بحجم كبير جداً وواضح ومحسّن */}
-{valetReport.length > 0 && (
-  <div className="mb-6">
-    <div className="flex items-center justify-between mb-4">
-      {selectedValetFilter && (
-        <button 
-          onClick={() => setSelectedValetFilter(null)} 
-          className="font-black active:scale-95 transition-all text-white" 
-          style={{ fontSize: 14, padding: '10px 22px', borderRadius: 16, background: '#FF3333', boxShadow: '0 4px 12px rgba(255,51,51,0.2)' }}
-        >
-          ✕ إلغاء الفلتر
-        </button>
-      )}
-      <div className="flex items-center gap-2 justify-end flex-1">
-        <Users size={24} style={{ color: '#0066FF' }} />
-        <h4 className="font-black" style={{ fontSize: 20, color: '#334155' }}>تقرير السياس</h4>
-      </div>
-    </div>
-    
-    <div className="space-y-4">
-      {valetReport.map((v, i) => (
-        <div 
-          key={i} 
-          onClick={() => setSelectedValetFilter(selectedValetFilter === v.name ? null : v.name)} 
-          className="cursor-pointer active:scale-[0.98] transition-all"
-          style={{ 
-            background: selectedValetFilter === v.name ? `${v.color}15` : '#fff', 
-            borderRadius: 24, 
-            padding: '22px 24px', 
-            border: `3px solid ${selectedValetFilter === v.name ? v.color : `${v.color}30`}`,
-            boxShadow: '0 6px 18px rgba(0,0,0,0.03)'
-          }}
-        >
-          <div className="flex items-center justify-between mb-4">
-            {/* المبلغ الإجمالي للسايس كبير جداً وواضح */}
-            <div className="font-black font-mono" style={{ fontSize: 30, color: v.color }}>
-              {v.total.toFixed(0)} <span style={{ fontSize: 16 }}>ج.م</span>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <div className="text-right">
-                {/* اسم السايس ضخم جداً */}
-                <div className="font-black" style={{ fontSize: 24, color: '#0a1628' }}>{v.name}</div>
-                <div className="font-bold" style={{ fontSize: 15, color: '#7b8ca6', marginTop: 2 }}>
-                  {v.count} سيارة إجمالاً
-                </div>
-              </div>
-              {/* أيقونة السايس ضخمة وملونة */}
-              <div style={{ 
-                width: 56, 
-                height: 56, 
-                borderRadius: 18, 
-                background: v.color, 
-                color: '#fff', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center', 
-                fontWeight: 900, 
-                fontSize: 20 
-              }}>
-                {v.icon}
-              </div>
-            </div>
-          </div>
 
-          {/* تفاصيل العمليات (تطبيق ويدوي) بحجم ضخم ومريح للعين */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="text-center" style={{ background: '#EBF2FF', borderRadius: 18, padding: '14px 10px', border: '2px solid #D0DCFF' }}>
-              <div style={{ fontSize: 14, color: '#0066FF', fontWeight: 900, marginBottom: 4 }}>📱 تطبيق</div>
-              <div className="font-black font-mono" style={{ fontSize: 22, color: '#0066FF' }}>{v.appCount}</div>
-              <div className="font-black" style={{ fontSize: 13, color: '#7B8CA6', marginTop: 2 }}>
-                ({v.appTotal.toFixed(0)} ج.م)
-              </div>
-            </div>
-            
-            <div className="text-center" style={{ background: '#FFF8F0', borderRadius: 18, padding: '14px 10px', border: '2px solid #FFD180' }}>
-              <div style={{ fontSize: 14, color: '#FF9500', fontWeight: 900, marginBottom: 4 }}>✋ يدوي</div>
-              <div className="font-black font-mono" style={{ fontSize: 22, color: '#FF9500' }}>{v.manualCount}</div>
-              {/* تصحيح ج.m هنا لتصبح ج.م بالكامل */}
-              <div className="font-black" style={{ fontSize: 13, color: '#7B8CA6', marginTop: 2 }}>
-                ({v.manualTotal.toFixed(0)} ج.م)
-              </div>
-            </div>
-          </div>
-          
-          {selectedValetFilter === v.name && (
-            <div className="mt-3 text-center">
-              <span className="font-black" style={{ fontSize: 13, color: v.color }}>
-                🟢 فلتر السايس نشط الآن - اضغط مجدداً لإلغاء التصفية
-              </span>
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  </div>
-)} 
+                {/* تقرير السايس بحجم كبير جداً وواضح ومحسّن */}
+                {valetReport.length > 0 && (
+                  <div className="mb-6">
+                    <div className="flex items-center justify-between mb-4">
+                      {selectedValetFilter && (
+                        <button 
+                          onClick={() => setSelectedValetFilter(null)} 
+                          className="font-black active:scale-95 transition-all text-white" 
+                          style={{ fontSize: 14, padding: '10px 22px', borderRadius: 16, background: '#FF3333', boxShadow: '0 4px 12px rgba(255,51,51,0.2)' }}
+                        >
+                          ✕ إلغاء الفلتر
+                        </button>
+                      )}
+                      <div className="flex items-center gap-2 justify-end flex-1">
+                        <Users size={24} style={{ color: '#0066FF' }} />
+                        <h4 className="font-black" style={{ fontSize: 20, color: '#334155' }}>تقرير السياس</h4>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-4">
+                      {valetReport.map((v, i) => (
+                        <div 
+                          key={i} 
+                          onClick={() => setSelectedValetFilter(selectedValetFilter === v.name ? null : v.name)} 
+                          className="cursor-pointer active:scale-[0.98] transition-all"
+                          style={{ 
+                            background: selectedValetFilter === v.name ? `${v.color}15` : '#fff', 
+                            borderRadius: 24, 
+                            padding: '22px 24px', 
+                            border: `3px solid ${selectedValetFilter === v.name ? v.color : `${v.color}30`}`,
+                            boxShadow: '0 6px 18px rgba(0,0,0,0.03)'
+                          }}
+                        >
+                          <div className="flex items-center justify-between mb-4">
+                            {/* المبلغ الإجمالي للسايس كبير جداً وواضح */}
+                            <div className="font-black font-mono" style={{ fontSize: 30, color: v.color }}>
+                              {v.total.toFixed(0)} <span style={{ fontSize: 16 }}>ج.م</span>
+                            </div>
+                            
+                            <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                {/* اسم السايس ضخم جداً */}
+                                <div className="font-black" style={{ fontSize: 24, color: '#0a1628' }}>{v.name}</div>
+                                <div className="font-bold" style={{ fontSize: 15, color: '#7b8ca6', marginTop: 2 }}>
+                                  {v.count} سيارة إجمالاً
+                                </div>
+                              </div>
+                              {/* أيقونة السايس ضخمة وملونة */}
+                              <div style={{ 
+                                width: 56, 
+                                height: 56, 
+                                borderRadius: 18, 
+                                background: v.color, 
+                                color: '#fff', 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center', 
+                                fontWeight: 900, 
+                                fontSize: 20 
+                              }}>
+                                {v.icon}
+                              </div>
+                            </div>
+                          </div>
 
-           {isValet && (
+                          {/* تفاصيل العمليات (تطبيق ويدوي) بحجم ضخم ومريح للعين */}
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="text-center" style={{ background: '#EBF2FF', borderRadius: 18, padding: '14px 10px', border: '2px solid #D0DCFF' }}>
+                              <div style={{ fontSize: 14, color: '#0066FF', fontWeight: 900, marginBottom: 4 }}>📱 تطبيق</div>
+                              <div className="font-black font-mono" style={{ fontSize: 22, color: '#0066FF' }}>{v.appCount}</div>
+                              <div className="font-black" style={{ fontSize: 13, color: '#7B8CA6', marginTop: 2 }}>
+                                ({v.appTotal.toFixed(0)} ج.م)
+                              </div>
+                            </div>
+                            
+                            <div className="text-center" style={{ background: '#FFF8F0', borderRadius: 18, padding: '14px 10px', border: '2px solid #FFD180' }}>
+                              <div style={{ fontSize: 14, color: '#FF9500', fontWeight: 900, marginBottom: 4 }}>✋ يدوي</div>
+                              <div className="font-black font-mono" style={{ fontSize: 22, color: '#FF9500' }}>{v.manualCount}</div>
+                              <div className="font-black" style={{ fontSize: 13, color: '#7B8CA6', marginTop: 2 }}>
+                                ({v.manualTotal.toFixed(0)} ج.م)
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {selectedValetFilter === v.name && (
+                            <div className="mt-3 text-center">
+                              <span className="font-black" style={{ fontSize: 13, color: v.color }}>
+                                🟢 فلتر السايس نشط الآن - اضغط مجدداً لإلغاء التصفية
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {isValet && (
               <div className="mb-4 text-center" style={{ background: '#fff', borderRadius: 20, padding: 18, border: '2px solid #D0DCFF' }}>
                 <div className="font-black" style={{ fontSize: 16, color: '#334155' }}>عملياتي اليوم</div>
                 <div className="font-black font-mono" style={{ fontSize: 36, color: '#0066FF' }}>{filteredCompleted.length}</div>
