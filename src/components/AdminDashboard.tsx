@@ -2,9 +2,10 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Shield, Clock, CheckCircle, XCircle, MapPin, Warehouse, Plus,
   MessageCircle, Send, Receipt, Search, HardHat, Percent, DollarSign,
-  Minus, Edit3,
+  Minus, Edit3, Archive, Lock, FileCheck, ArrowUp, ArrowDown,
 } from 'lucide-react';
 import { useStore } from '../store';
+import { supabase } from '../lib/supabase';
 import { calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
 
@@ -51,11 +52,26 @@ const formatLocalDateArabic = (dateStr: string): string => {
   });
 };
 
+interface SettlementRecord {
+  id: string;
+  garage_id: string;
+  garage_name: string;
+  settlement_date: string;
+  amount: number;
+  direction: 'admin_to_garage' | 'garage_to_admin';
+  session_ids: string[];
+  session_count: number;
+  wallet_collected: number;
+  commission_amount: number;
+  notes?: string;
+  created_at: string;
+}
+
 export default function AdminDashboard() {
   const {
     garages, sessions, walletTopUps, approveTopUp, rejectTopUp, addGarage,
     setCurrentGarageId, setView, logout, messages, replyMessage, closeMessage,
-    confirmRevenue, unconfirmRevenue, removeSession, updateGarage,
+    confirmRevenue, unconfirmRevenue, removeSession, updateGarage, fetchAll,
   } = useStore();
 
   const [dateFrom, setDateFrom] = useState(() => getLocalToday());
@@ -74,6 +90,12 @@ export default function AdminDashboard() {
   const [editingCommissionGarageId, setEditingCommissionGarageId] = useState<string | null>(null);
   const [editCommissionRate, setEditCommissionRate] = useState(10);
 
+  // ✅ حالة نظام التسوية
+  const [settlementRecords, setSettlementRecords] = useState<SettlementRecord[]>([]);
+  const [confirmSettlementGarageId, setConfirmSettlementGarageId] = useState<string | null>(null);
+  const [processingSettlement, setProcessingSettlement] = useState(false);
+  const [showArchive, setShowArchive] = useState(false);
+
   const [gName, setGName] = useState('');
   const [gUser, setGUser] = useState('');
   const [gPhone, setGPhone] = useState('');
@@ -88,6 +110,21 @@ export default function AdminDashboard() {
 
   useEffect(() => { const i = setInterval(() => setTick(t => t + 1), 60000); return () => clearInterval(i); }, []);
 
+  // ═══════════ جلب أرشيف التسويات من قاعدة البيانات ═══════════
+  const fetchSettlements = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('settlements')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!error) setSettlementRecords(data ?? []);
+    } catch (e) {
+      console.error('Failed to fetch settlements:', e);
+    }
+  }, []);
+
+  useEffect(() => { fetchSettlements(); }, [fetchSettlements]);
+
   // ═══════════ حساب الإيراد لجلسة ═══════════
   const getRevenue = useCallback((s: any) => {
     if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
@@ -100,7 +137,6 @@ export default function AdminDashboard() {
     return 0;
   }, [garages]);
 
-  // ═══════════ حساب العمولة لجلسة ═══════════
   const getCommission = useCallback((s: any) => {
     if (s.source !== 'app') return 0;
     const rev = getRevenue(s);
@@ -123,7 +159,6 @@ export default function AdminDashboard() {
     });
   }, [completedSessions, dateFrom, dateTo]);
 
-  // ═══════════ الإجماليات من الجلسات المفلترة ═══════════
   const totalsFromSessions = useMemo(() => {
     const confirmed = filteredSessions.filter(s => s.revenueConfirmed);
     const pending = filteredSessions.filter(s => !s.revenueConfirmed);
@@ -138,9 +173,10 @@ export default function AdminDashboard() {
     };
   }, [filteredSessions, getRevenue]);
 
-  // ═══════════ إحصائيات العمولة ═══════════
+  // ═══════════ إحصائيات العمولة والتسوية النشطة (استبعاد المسوّى) ═══════════
   const commissionStats = useMemo(() => {
-    const confirmed = filteredSessions.filter(s => s.revenueConfirmed);
+    // فقط الجلسات المؤكدة وغير المسواة
+    const confirmed = filteredSessions.filter(s => s.revenueConfirmed && !(s as any).settled);
     const totalCommission = confirmed.reduce((a, s) => a + getCommission(s), 0);
     const totalRevenue = confirmed.reduce((a, s) => a + getRevenue(s), 0);
     const totalNet = totalRevenue - totalCommission;
@@ -150,8 +186,8 @@ export default function AdminDashboard() {
       const appSessions = gs.filter(s => s.source === 'app');
       const gCommission = appSessions.reduce((a, s) => a + getCommission(s), 0);
       const gRevenue = gs.reduce((a, s) => a + getRevenue(s), 0);
-      // ✅ إضافة حساب المحصل بالمحفظة لكل جراج
       const walletRevenue = gs.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getRevenue(s), 0);
+      const sessionIds = gs.map(s => s.id);
       return {
         id: g.id,
         name: g.name,
@@ -162,10 +198,10 @@ export default function AdminDashboard() {
         walletRevenue,
         appCount: appSessions.length,
         totalCount: gs.length,
+        sessionIds,
       };
     }).filter(g => g.totalCount > 0);
 
-    // ✅ حساب التسوية الإجمالية
     const totalWalletCollected = confirmed.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getRevenue(s), 0);
     const totalSettlement = totalWalletCollected - totalCommission;
 
@@ -293,6 +329,66 @@ export default function AdminDashboard() {
     }
   };
 
+  // ═══════════ تنفيذ التسوية وإقفال الفترة لجراج معين ═══════════
+  const handleConfirmSettlement = async (garageId: string) => {
+    if (processingSettlement) return;
+    const garageData = commissionStats.perGarage.find(g => g.id === garageId);
+    if (!garageData) {
+      toast.error('لا توجد بيانات للجراج');
+      return;
+    }
+
+    setProcessingSettlement(true);
+    const loadingToast = toast.loading('جاري إقفال الفترة وتسجيل التسوية...');
+
+    try {
+      const settlement = garageData.walletRevenue - garageData.commission;
+      const adminOwesGarage = settlement > 0;
+      const absSettlement = Math.abs(settlement);
+
+      // 1. تسجيل معاملة التسوية في جدول settlements
+      const settlementRecord = {
+        garage_id: garageId,
+        garage_name: garageData.name,
+        settlement_date: getLocalToday(),
+        amount: absSettlement,
+        direction: adminOwesGarage ? 'admin_to_garage' : 'garage_to_admin',
+        session_ids: garageData.sessionIds,
+        session_count: garageData.totalCount,
+        wallet_collected: garageData.walletRevenue,
+        commission_amount: garageData.commission,
+        notes: `تسوية ${garageData.totalCount} جلسة من ${dateFrom} إلى ${dateTo}`,
+        created_at: new Date().toISOString(),
+      };
+
+      const { error: insertError } = await supabase
+        .from('settlements')
+        .insert([settlementRecord]);
+
+      if (insertError) throw insertError;
+
+      // 2. تحديث جميع الجلسات المسواة بعلامة settled = true
+      const { error: updateError } = await supabase
+        .from('sessions')
+        .update({ settled: true, settled_at: new Date().toISOString() })
+        .in('id', garageData.sessionIds);
+
+      if (updateError) throw updateError;
+
+      toast.dismiss(loadingToast);
+      toast.success(`✅ تم إقفال حساب ${garageData.name} بمبلغ ${absSettlement.toFixed(0)} ج.م`);
+      setConfirmSettlementGarageId(null);
+      await fetchSettlements();
+      await fetchAll();
+    } catch (error: any) {
+      toast.dismiss(loadingToast);
+      console.error('Settlement failed:', error);
+      toast.error(error?.message || 'فشل تنفيذ التسوية. تحقق من جدول settlements في قاعدة البيانات.');
+    } finally {
+      setProcessingSettlement(false);
+    }
+  };
+
   return (
     <div className="h-full overflow-y-auto pt-16" style={{ background: '#EBF2FF', color: '#0A1628', padding: 16 }}>
 
@@ -357,7 +453,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ✅ كارت العمولة الإجمالية والتسوية الشاملة */}
+      {/* كارت العمولة الإجمالية والتسوية */}
       {commissionStats.totalCommission > 0 && (
         <>
           <div className="flex items-center gap-2 mb-3" style={{ background: '#fff', borderRadius: 18, padding: '10px 14px', border: '2px solid #FFD180' }}>
@@ -377,7 +473,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* ✅ صندوق التسوية والمقاصة الشاملة للأدمن */}
+          {/* صندوق التسوية الشاملة للأدمن */}
           {(() => {
             const settlement = commissionStats.totalSettlement;
             const adminOwesGarages = settlement > 0;
@@ -396,7 +492,7 @@ export default function AdminDashboard() {
               >
                 <div className="flex items-center gap-2 justify-end mb-2">
                   <DollarSign size={16} style={{ color: adminOwesGarages ? '#00AA44' : '#CC0000' }} />
-                  <h4 className="font-black" style={{ fontSize: 14, color: '#0A1628' }}>التسوية والمقاصة المالية</h4>
+                  <h4 className="font-black" style={{ fontSize: 14, color: '#0A1628' }}>التسوية النشطة (غير المسواة)</h4>
                 </div>
 
                 <div className="flex justify-between items-center mb-3">
@@ -442,66 +538,179 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ✅ تقرير العمولات لكل جراج مع عمود التسوية الذكي */}
+      {/* ✅ جدول التسوية لكل جراج مع زر التسوية والإقفال */}
       {commissionStats.perGarage.length > 0 && (
         <div className="mb-5">
           <div className="flex items-center gap-2 mb-2 justify-end">
-            <Percent size={13} style={{ color: '#FF9500' }} />
-            <span className="font-black" style={{ fontSize: 12, color: '#334155' }}>العمولات والتسوية لكل جراج</span>
+            <FileCheck size={13} style={{ color: '#0066FF' }} />
+            <span className="font-black" style={{ fontSize: 12, color: '#334155' }}>تسويات جاهزة للإقفال</span>
           </div>
-          <div className="overflow-x-auto" style={{ background: '#fff', borderRadius: 18, border: '2px solid #FFD180' }}>
-            <table className="w-full text-center" style={{ minWidth: 460 }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #FFF0E0' }}>
-                  {['الجراج', '%', 'إجمالي', 'عمولة', 'محفظة', 'التسوية'].map((h, i) => (
-                    <th key={i} className="font-black" style={{ padding: '10px 6px', fontSize: 9, color: i === 3 ? '#FF9500' : i === 4 ? '#0066FF' : i === 5 ? '#0A1628' : '#7B8CA6', textAlign: i === 0 ? 'right' : 'center' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {commissionStats.perGarage.map(g => {
-                  // ✅ حساب التسوية لكل جراج على حدة
-                  const settlement = g.walletRevenue - g.commission;
-                  const adminOwesGarage = settlement > 0;
-                  const absSettlement = Math.abs(settlement).toFixed(0);
+          <div className="space-y-3">
+            {commissionStats.perGarage.map(g => {
+              const settlement = g.walletRevenue - g.commission;
+              const adminOwesGarage = settlement > 0;
+              const absSettlement = Math.abs(settlement).toFixed(0);
+              const isConfirming = confirmSettlementGarageId === g.id;
 
-                  return (
-                    <tr key={g.id} style={{ borderBottom: '1px solid #FFF8F0' }}>
-                      <td className="font-black text-right" style={{ padding: '8px 10px', fontSize: 11, color: '#0A1628' }}>{g.name}</td>
-                      <td className="font-black font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#FF9500' }}>{g.commissionRate}%</td>
-                      <td className="font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#0A1628' }}>{g.totalRevenue.toFixed(0)}</td>
-                      <td className="font-black font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#FF9500' }}>{g.commission.toFixed(0)}</td>
-                      <td className="font-black font-mono" style={{ padding: '8px 4px', fontSize: 11, color: '#0066FF' }}>{g.walletRevenue.toFixed(0)}</td>
-                      
-                      {/* ✅ خانة التسوية الذكية */}
-                      <td className="font-black font-mono" style={{ 
-                        padding: '8px 6px', 
-                        fontSize: 10, 
-                        color: adminOwesGarage ? '#00AA44' : '#CC0000',
-                        background: adminOwesGarage ? '#EBFDF2' : '#FFF3F3',
-                        borderRight: `3px solid ${adminOwesGarage ? '#00CC66' : '#FF3333'}`
-                      }}>
-                        <div style={{ fontSize: 9, opacity: 0.8 }}>{adminOwesGarage ? '⬆️ إرسال' : '⬇️ طلب'}</div>
-                        <div style={{ fontSize: 12, fontWeight: 900 }}>{absSettlement}ج</div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div className="mt-2 flex items-center justify-between text-center" style={{ background: '#F8FAFF', borderRadius: 10, padding: '6px 10px' }}>
-            <div className="flex items-center gap-1">
-              <span style={{ width: 8, height: 8, background: '#FF3333', borderRadius: 4 }}></span>
-              <span className="font-bold" style={{ fontSize: 9, color: '#CC0000' }}>مستحق للتطبيق (الأدمن يطلبه)</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span style={{ width: 8, height: 8, background: '#00CC66', borderRadius: 4 }}></span>
-              <span className="font-bold" style={{ fontSize: 9, color: '#00AA44' }}>مستحق للجراج (الأدمن يرسله)</span>
-            </div>
+              return (
+                <div key={g.id} style={{ 
+                  background: '#fff', 
+                  border: `2px solid ${adminOwesGarage ? '#00CC66' : '#FF3333'}`, 
+                  borderRadius: 18, 
+                  padding: 14,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.04)'
+                }}>
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="text-right flex-1">
+                      <div className="font-black" style={{ fontSize: 14, color: '#0A1628' }}>{g.name}</div>
+                      <div className="font-bold" style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
+                        {g.totalCount} جلسة · عمولة {g.commissionRate}%
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1" style={{ padding: '4px 10px', borderRadius: 10, background: adminOwesGarage ? '#EBFDF2' : '#FFF3F3' }}>
+                      {adminOwesGarage ? <ArrowUp size={12} style={{ color: '#00AA44' }} /> : <ArrowDown size={12} style={{ color: '#CC0000' }} />}
+                      <span className="font-black" style={{ fontSize: 10, color: adminOwesGarage ? '#00AA44' : '#CC0000' }}>
+                        {adminOwesGarage ? 'أرسل للجراج' : 'اطلب من الجراج'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    <div className="text-center" style={{ background: '#F8FAFF', borderRadius: 10, padding: '6px 4px' }}>
+                      <div style={{ fontSize: 8, color: '#7B8CA6', fontWeight: 900 }}>محفظة</div>
+                      <div className="font-black font-mono" style={{ fontSize: 12, color: '#0066FF' }}>{g.walletRevenue.toFixed(0)}</div>
+                    </div>
+                    <div className="text-center" style={{ background: '#FFF8F0', borderRadius: 10, padding: '6px 4px' }}>
+                      <div style={{ fontSize: 8, color: '#FF9500', fontWeight: 900 }}>عمولة</div>
+                      <div className="font-black font-mono" style={{ fontSize: 12, color: '#FF9500' }}>{g.commission.toFixed(0)}</div>
+                    </div>
+                    <div className="text-center" style={{ background: adminOwesGarage ? '#EBFDF2' : '#FFF3F3', borderRadius: 10, padding: '6px 4px' }}>
+                      <div style={{ fontSize: 8, color: adminOwesGarage ? '#00AA44' : '#CC0000', fontWeight: 900 }}>الفرق</div>
+                      <div className="font-black font-mono" style={{ fontSize: 14, color: adminOwesGarage ? '#00AA44' : '#CC0000' }}>{absSettlement}</div>
+                    </div>
+                  </div>
+
+                  {isConfirming ? (
+                    <div style={{ background: '#FFF8F0', border: '2px solid #FFD180', borderRadius: 12, padding: 12 }}>
+                      <p className="font-black text-center mb-2" style={{ fontSize: 12, color: '#0A1628' }}>
+                        ⚠️ هل تم فعلياً {adminOwesGarage ? 'تحويل' : 'استلام'} <span style={{ color: adminOwesGarage ? '#00AA44' : '#CC0000' }}>{absSettlement} ج.م</span>؟
+                      </p>
+                      <p className="text-center mb-3" style={{ fontSize: 10, color: '#7B8CA6' }}>
+                        عند التأكيد سيتم إقفال {g.totalCount} جلسة نهائياً ولن تُحسب مرة أخرى
+                      </p>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => handleConfirmSettlement(g.id)} 
+                          disabled={processingSettlement}
+                          className="flex-1 font-black active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1"
+                          style={{ background: '#00CC66', color: '#fff', padding: 10, borderRadius: 12, fontSize: 12 }}
+                        >
+                          <Lock size={14} /> {processingSettlement ? 'جاري الإقفال...' : 'تأكيد وإقفال'}
+                        </button>
+                        <button 
+                          onClick={() => setConfirmSettlementGarageId(null)} 
+                          disabled={processingSettlement}
+                          className="flex-1 font-black active:scale-95"
+                          style={{ background: '#F0F4FF', color: '#475569', padding: 10, borderRadius: 12, fontSize: 12, border: '1px solid #D0DCFF' }}
+                        >
+                          إلغاء
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => setConfirmSettlementGarageId(g.id)} 
+                      className="w-full font-black active:scale-95 flex items-center justify-center gap-2"
+                      style={{ 
+                        background: `linear-gradient(135deg, ${adminOwesGarage ? '#00CC66,#00AA55' : '#FF3333,#CC0000'})`, 
+                        color: '#fff', 
+                        padding: 12, 
+                        borderRadius: 14, 
+                        fontSize: 12,
+                        boxShadow: `0 4px 12px ${adminOwesGarage ? 'rgba(0,204,102,0.3)' : 'rgba(255,51,51,0.3)'}`
+                      }}
+                    >
+                      <Lock size={14} /> تسجيل تسوية وإقفال ({absSettlement} ج.م)
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
+
+      {/* ✅ أرشيف التسويات المُقفلة */}
+      <div className="mb-5">
+        <button 
+          onClick={() => setShowArchive(!showArchive)} 
+          className="w-full font-black flex items-center justify-between active:scale-95 transition-all"
+          style={{ 
+            background: '#fff', 
+            border: '2px solid #D0DCFF', 
+            borderRadius: 18, 
+            padding: '14px 18px',
+            color: '#334155'
+          }}
+        >
+          <span style={{ fontSize: 12, color: '#0066FF' }}>{showArchive ? '▲ إخفاء' : '▼ عرض'}</span>
+          <div className="flex items-center gap-2">
+            <span className="font-bold" style={{ fontSize: 11, color: '#7B8CA6' }}>({settlementRecords.length} معاملة)</span>
+            <span style={{ fontSize: 14 }}>📂 أرشيف التسويات المُقفلة</span>
+            <Archive size={16} style={{ color: '#0066FF' }} />
+          </div>
+        </button>
+
+        {showArchive && (
+          <div className="mt-3 space-y-2">
+            {settlementRecords.length === 0 ? (
+              <div className="text-center" style={{ background: '#fff', border: '2px solid #D0DCFF', borderRadius: 18, padding: 24 }}>
+                <div style={{ fontSize: 36, marginBottom: 8 }}>📭</div>
+                <p className="font-bold" style={{ fontSize: 12, color: '#94a3b8' }}>لم يتم تسجيل أي تسويات بعد</p>
+              </div>
+            ) : (
+              settlementRecords.map(r => {
+                const isAdminToGarage = r.direction === 'admin_to_garage';
+                return (
+                  <div key={r.id} style={{ 
+                    background: '#fff', 
+                    border: `2px solid ${isAdminToGarage ? '#66DDAA' : '#FFA0A0'}`, 
+                    borderRadius: 16, 
+                    padding: 14 
+                  }}>
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex items-center gap-1" style={{ padding: '3px 8px', borderRadius: 8, background: isAdminToGarage ? '#EBFDF2' : '#FFF3F3' }}>
+                        {isAdminToGarage ? <ArrowUp size={10} style={{ color: '#00AA44' }} /> : <ArrowDown size={10} style={{ color: '#CC0000' }} />}
+                        <span className="font-black" style={{ fontSize: 9, color: isAdminToGarage ? '#00AA44' : '#CC0000' }}>
+                          {isAdminToGarage ? 'أرسل الأدمن' : 'استلم الأدمن'}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-black" style={{ fontSize: 13, color: '#0A1628' }}>{r.garage_name}</div>
+                        <div style={{ fontSize: 9, color: '#94a3b8', marginTop: 2 }}>{r.settlement_date}</div>
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <div className="font-black font-mono" style={{ fontSize: 20, color: isAdminToGarage ? '#00AA44' : '#CC0000' }}>
+                        {r.amount.toFixed(0)} <span style={{ fontSize: 10 }}>ج.م</span>
+                      </div>
+                      <div className="text-right" style={{ fontSize: 9, color: '#7B8CA6' }}>
+                        <div>{r.session_count} جلسة</div>
+                        <div>محفظة: {r.wallet_collected.toFixed(0)} · عمولة: {r.commission_amount.toFixed(0)}</div>
+                      </div>
+                    </div>
+                    {r.notes && (
+                      <div className="mt-2 text-right" style={{ background: '#F8FAFF', borderRadius: 8, padding: '6px 10px', fontSize: 9, color: '#7B8CA6' }}>
+                        📝 {r.notes}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+      </div>
 
       {/* ══════ تقرير الإيرادات الفعلي للجراجات ══════ */}
       <div className="mb-8">
@@ -585,8 +794,15 @@ export default function AdminDashboard() {
               const et = session.endTime ? typeof session.endTime === 'number' ? session.endTime : new Date(session.endTime).getTime() : null;
               const time = et ? new Date(et) : null;
               const isDel = deleteConfirmId === session.id;
+              const isSettled = (session as any).settled === true;
               return (
-                <div key={session.id} style={{ background: isDel ? '#FFF0F0' : session.revenueConfirmed ? '#F0FFF5' : '#FFFAF0', border: `2.5px solid ${isDel ? '#FF6666' : session.revenueConfirmed ? '#66DDAA' : '#FFD180'}`, borderRadius: 22, padding: 16 }}>
+                <div key={session.id} style={{ 
+                  background: isDel ? '#FFF0F0' : isSettled ? '#F5F5F5' : session.revenueConfirmed ? '#F0FFF5' : '#FFFAF0', 
+                  border: `2.5px solid ${isDel ? '#FF6666' : isSettled ? '#D0DCFF' : session.revenueConfirmed ? '#66DDAA' : '#FFD180'}`, 
+                  borderRadius: 22, 
+                  padding: 16,
+                  opacity: isSettled ? 0.75 : 1 
+                }}>
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono font-black" style={{ fontSize: 16, color: session.revenueConfirmed ? '#00AA44' : '#E65100' }}>{rev.toFixed(0)} ج.م</span>
@@ -594,6 +810,7 @@ export default function AdminDashboard() {
                         { show: true, bg: session.source === 'manual' ? '#FF9500' : '#0066FF', text: session.source === 'manual' ? 'يدوي' : 'تطبيق' },
                         { show: !!session.paymentMethod, bg: session.paymentMethod === 'cash' ? '#00CC66' : session.paymentMethod === 'instapay' ? '#7C3AED' : session.paymentMethod === 'wallet' ? '#0066FF' : '#FF8800', text: session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستا' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش' },
                         { show: true, bg: session.revenueConfirmed ? '#00CC66' : '#FF9500', text: session.revenueConfirmed ? '✅ مؤكد' : '⏳ معلق' },
+                        { show: isSettled, bg: '#94a3b8', text: '🔒 تمت التسوية' },
                       ].filter(b => b.show).map((b, i) => (
                         <span key={i} className="font-bold" style={{ fontSize: 9, padding: '4px 10px', borderRadius: 12, background: b.bg, color: '#fff' }}>{b.text}</span>
                       ))}
@@ -636,7 +853,7 @@ export default function AdminDashboard() {
                         <button onClick={async () => {
                           await unconfirmRevenue(session.id);
                           toast('إلغاء ↩️', { icon: '⏳' });
-                        }} className="flex-1 font-black active:scale-95"
+                        }} disabled={isSettled} className="flex-1 font-black active:scale-95 disabled:opacity-50"
                           style={{ background: '#FF9500', color: '#fff', padding: 10, borderRadius: 14, fontSize: 11 }}>
                           ↩️ إلغاء التأكيد
                         </button>
@@ -649,7 +866,7 @@ export default function AdminDashboard() {
                           ✅ تأكيد الإيراد
                         </button>
                       )}
-                      <button onClick={() => setDeleteConfirmId(session.id)} className="font-black active:scale-95"
+                      <button onClick={() => setDeleteConfirmId(session.id)} disabled={isSettled} className="font-black active:scale-95 disabled:opacity-50"
                         style={{ background: '#FFE0E0', color: '#CC0000', padding: '10px 16px', borderRadius: 14, fontSize: 11 }}>🗑️</button>
                     </div>
                   )}
