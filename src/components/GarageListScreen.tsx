@@ -57,7 +57,7 @@ const safeParseTime = (value: unknown): number => {
 };
 
 /* ════════════════════════════════════════════════════════════
-   ██  MAIN SCREEN
+   ██  MAIN SCREEN (التصميم الأصلي بالكامل 100%)
    ════════════════════════════════════════════════════════════ */
 export default function GarageListScreen() {
   const {
@@ -70,6 +70,7 @@ export default function GarageListScreen() {
     offers,
     addIncomingCar,
     fetchAll,
+    acknowledgedSessionIds,
   } = useStore();
 
   const [search, setSearch] = useState('');
@@ -99,20 +100,22 @@ export default function GarageListScreen() {
     [currentUser?.carPlate]
   );
 
-  /* ✅ البحث عن جلسة نشطة */
+  /* ✅ البحث عن جلسة نشطة واستبعاد أي جلسة مقفلة */
   const activeSession = useMemo(() => {
     if (!normalizedUserPlate && !currentUser?.phone) return undefined;
 
     return sessions
       .filter((s: Session & { customerPhone?: string }) => {
         if (s.status !== 'active') return false;
+        if (acknowledgedSessionIds?.has(s.id)) return false;
         const samePlate = normalizePlateForCompare(s.carPlate) === normalizedUserPlate;
         const samePhone = Boolean(currentUser?.phone && s.customerPhone === currentUser.phone);
         return samePlate || samePhone;
       })
       .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
-  }, [sessions, normalizedUserPlate, currentUser?.phone]);
+  }, [sessions, normalizedUserPlate, currentUser?.phone, acknowledgedSessionIds]);
 
+  /* ✅ حجب الجلسات المنتهية القديمة لمنع تكرار شاشة النهاية */
   const hasCompletedSession = useMemo(() => {
     if (activeSession) return false;
     return sessions.some(
@@ -230,32 +233,6 @@ export default function GarageListScreen() {
       supabase.removeChannel(channel);
     };
   }, [normalizedUserPlate, currentUser?.phone, fetchAll]);
-
-  /* ─────────────────────────────────────────────
-     ██  🧹 تنظيف الجلسات القديمة المنتهية عند بدء حجز/جلسة جديدة
-     ───────────────────────────────────────────── */
-  useEffect(() => {
-    if (!normalizedUserPlate) return;
-
-    // بمجرد رصد سيارة في الطريق أو جلسة نشطة جديدة، يتم تصفير الجلسات القديمة من المتجر لمنع تداخل شاشة الفاتورة
-    if (myIncomingCar || activeSession) {
-      const storeState = useStore.getState();
-      const hasStaleCompleted = storeState.sessions.some(
-        (s) =>
-          normalizePlateForCompare(s.carPlate) === normalizedUserPlate &&
-          s.status === 'completed'
-      );
-
-      if (hasStaleCompleted) {
-        const cleanedSessions = storeState.sessions.filter(
-          (s) =>
-            !(normalizePlateForCompare(s.carPlate) === normalizedUserPlate &&
-              s.status === 'completed')
-        );
-        useStore.setState({ sessions: cleanedSessions });
-      }
-    }
-  }, [myIncomingCar?.id, activeSession?.id, normalizedUserPlate]);
 
   /* ─────────────────────────────────────────────
      ██  انتقال تلقائي لشاشة الجلسة (عند بدء جلسة جديدة)
@@ -740,7 +717,7 @@ export default function GarageListScreen() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   ██  GARAGE CARD COMPONENT
+   ██  GARAGE CARD COMPONENT (التصميم الأصلي)
    ════════════════════════════════════════════════════════════ */
 interface GarageCardProps {
   garage: GarageWithDistance;

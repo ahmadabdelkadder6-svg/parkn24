@@ -47,8 +47,8 @@ export interface ParkingSession {
   startedBy?: 'garage' | 'customer';
   commissionAmount?: number;
   netRevenue?: number;
-  settled?: boolean;       // تم الإضافة لدعم نظام المقاصة والتسوية
-  settled_at?: string;     // تم الإضافة لدعم أرشفة التسويات
+  settled?: boolean;       
+  settled_at?: string;     
 }
 
 export interface Offer {
@@ -233,8 +233,8 @@ const mapSession = (r: any): ParkingSession => {
     startedBy: r.started_by || undefined,
     commissionAmount: r.commission_amount != null ? Number(r.commission_amount) : 0,
     netRevenue: r.net_revenue != null ? Number(r.net_revenue) : 0,
-    settled: r.settled ?? false,                     // جلب حالة التسوية من قاعدة البيانات
-    settled_at: r.settled_at || undefined,           // جلب تاريخ الإقفال
+    settled: r.settled ?? false,                     
+    settled_at: r.settled_at || undefined,           
   };
 };
 
@@ -310,6 +310,8 @@ interface AppState {
   selectedGarageId: string | null;
   setSelectedGarageId: (id: string | null) => void;
   sessions: ParkingSession[];
+  acknowledgedSessionIds: Set<string>; // ✅ تتبع الجلسات التي تم عرض فاتورتها وإقفالها
+  acknowledgeSession: (id: string) => void; // ✅ دالة إقرار إغلاق الجلسة
   addSession: (s: Omit<ParkingSession, 'id'>) => Promise<string>;
   endSession: (id: string, totalPrice: number, paymentMethod: string) => Promise<void>;
   cancelSession: (id: string) => void;
@@ -384,10 +386,22 @@ export const useStore = create<AppState>((set, get) => ({
   selectedGarageId: (() => { try { return localStorage.getItem('selectedGarageId') || null; } catch { return null; } })(),
   setSelectedGarageId: (id) => { set({ selectedGarageId: id }); if (id) localStorage.setItem('selectedGarageId', id); else localStorage.removeItem('selectedGarageId'); },
 
-  sessions: [], offers: [], walletTopUps: [], incomingCars: [], messages: [],
+  sessions: [],
+  
+  // ✅ تطبيق منظومة الإقرار لربط الجلسة المنتهية وكسر تكرارها
+  acknowledgedSessionIds: new Set<string>(),
+  acknowledgeSession: (id) => {
+    set((st) => {
+      const next = new Set(st.acknowledgedSessionIds);
+      next.add(id);
+      return { acknowledgedSessionIds: next };
+    });
+  },
+
+  offers: [], walletTopUps: [], incomingCars: [], messages: [],
 
   logout: () => {
-    set({ currentUser: null, currentGarageId: null, selectedGarageId: null, view: 'user', screen: 'splash' });
+    set({ currentUser: null, currentGarageId: null, selectedGarageId: null, view: 'user', screen: 'splash', acknowledgedSessionIds: new Set() });
     safeRemoveStorage('currentUser'); safeRemoveStorage('appView'); safeRemoveStorage('appScreen');
     safeRemoveStorage('currentGarageId'); safeRemoveStorage('selectedGarageId');
     safeRemoveStorage('garageAuth'); safeRemoveStorage('adminAuth');
@@ -441,8 +455,8 @@ export const useStore = create<AppState>((set, get) => ({
             return { 
               ...localVersion, 
               revenueConfirmed: ss.revenueConfirmed || localVersion.revenueConfirmed,
-              settled: ss.settled ?? localVersion.settled,           // الحفاظ على حالة التسوية
-              settled_at: ss.settled_at || localVersion.settled_at,   // الحفاظ على تاريخ الإقفال
+              settled: ss.settled ?? localVersion.settled,           
+              settled_at: ss.settled_at || localVersion.settled_at,   
             };
           }
           if (ss.status === 'active' && localVersion.status === 'active') {
@@ -702,7 +716,6 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const safeTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
 
-      // حساب العمولة من نسبة الجراج الحالية
       const garage = get().garages.find((g) => g.id === session.garageId);
       const commissionRate = garage?.commissionRate ?? 10;
       const isAppSession = session.source === 'app';
@@ -711,7 +724,6 @@ export const useStore = create<AppState>((set, get) => ({
         : 0;
       const netRevenue = Math.round((safeTotalPrice - commissionAmount) * 100) / 100;
 
-      // سداد المحفظة مؤكد إلكترونياً وتلقائياً
       const isAutoConfirmed = paymentMethod === 'wallet';
 
       const endedSession: ParkingSession = {

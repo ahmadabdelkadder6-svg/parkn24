@@ -33,7 +33,7 @@ const normalizePlate = (plate?: string): string => {
   return plate
     .trim()
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
     .replace(/\s+/g, ' ')
     .toUpperCase();
 };
@@ -53,6 +53,7 @@ export default function SessionScreen() {
 
   const redirectedToSummaryRef = useRef(false);
   const redirectedToSessionRef = useRef(false);
+  const lastActiveSessionIdRef = useRef<string | null>(null); // ✅ مرجع لتتبع مُعرف الجلسة النشطة حالياً
   const realtimeChannelRef = useRef<any>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -95,12 +96,17 @@ export default function SessionScreen() {
     (g) => g.id === (activeSession?.garageId ?? lastCompletedSession?.garageId),
   );
 
+  // تحديث مرجع الجلسة النشطة فور العثور عليها
+  useEffect(() => {
+    if (activeSession?.id) {
+      lastActiveSessionIdRef.current = activeSession.id;
+    }
+  }, [activeSession?.id]);
+
   // ✅ حساب startTime الدقيق للجلسة النشطة
   const activeStartMs = useMemo(() => {
     if (!activeSession) return 0;
     const ms = safeParseTime(activeSession.startTime);
-    const now = Date.now();
-    // ✅ حماية: لو الوقت في المستقبل أو صفر
     if (ms <= 0) return Date.now();
     return ms;
   }, [activeSession?.id, activeSession?.startTime]);
@@ -142,7 +148,6 @@ export default function SessionScreen() {
     pollingRef.current = setInterval(refetch, 4000);
 
     const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
-    const handleFocus = () => refetch();
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('focus', refetch);
 
@@ -155,7 +160,7 @@ export default function SessionScreen() {
     };
   }, [userPlate, userPhone, fetchAll]);
 
-  // ✅ العداد - يستخدم activeStartMs المحسوب
+  // العداد
   useEffect(() => {
     if (!activeSession || activeStartMs <= 0) {
       setElapsed(0);
@@ -184,19 +189,25 @@ export default function SessionScreen() {
     if (activeSession.garageId) setSelectedGarageId(activeSession.garageId);
   }, [activeSession?.id, activeSession?.garageId, setSelectedGarageId]);
 
+  // ✅ الفلترة والتحويل الذكي الخالي من التداخل والتكرار
   useEffect(() => {
     if (activeSession) { redirectedToSummaryRef.current = false; return; }
     if (!lastCompletedSession) return;
     if (redirectedToSummaryRef.current) return;
 
+    // شرط الأمان: يجب أن تكون الجلسة المكتملة هي نفس الجلسة النشطة السابقة التي تتبعناها
+    const isTheOneThatJustEnded = lastActiveSessionIdRef.current === lastCompletedSession.id;
+    
+    // أو في حالة فتح التطبيق لأول مرة فور انتهاء جلسة مؤخراً جداً (خلال 15 ثانية فقط)
     const endMs = safeParseTime(lastCompletedSession.endTime);
-    if (!endMs) return;
-    if (Date.now() - endMs >= 2 * 60 * 1000) return;
+    const endedVeryRecently = endMs > 0 && (Date.now() - endMs < 15000);
 
-    redirectedToSummaryRef.current = true;
-    if (lastCompletedSession.garageId) setSelectedGarageId(lastCompletedSession.garageId);
-    toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
-    setTimeout(() => { setScreen('summary'); }, 400);
+    if (isTheOneThatJustEnded || endedVeryRecently) {
+      redirectedToSummaryRef.current = true;
+      if (lastCompletedSession.garageId) setSelectedGarageId(lastCompletedSession.garageId);
+      toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
+      setTimeout(() => { setScreen('summary'); }, 400);
+    }
   }, [activeSession?.id, lastCompletedSession?.id, lastCompletedSession?.endTime, lastCompletedSession?.garageId, setScreen, setSelectedGarageId]);
 
   if (loading) {
@@ -287,7 +298,6 @@ export default function SessionScreen() {
           <div className="text-[9px] text-slate-500 font-bold">رقم السيارة</div>
         </div>
         <div className="bg-white border border-slate-200 p-4 rounded-2xl text-center shadow-sm">
-          {/* ✅ تم استبدال علامة الدولار بكلمة "جنيه" بخط واضح وتصميم محترف */}
           <div className="font-black text-purple-600 mb-2" style={{ fontSize: 13, lineHeight: 1.1 }}>جنيه</div>
           <div className="text-sm font-black text-purple-600 font-mono">{sessionRate} ج.م</div>
           <div className="text-[9px] text-slate-500 font-bold">سعر الساعة</div>
