@@ -642,24 +642,24 @@ export default function AdminDashboard() {
         );
       })}
 
-      {/* أرشيف التسويات المُقفلة */}
+       {/* 📂 أرشيف التسويات المُقفلة */}
       <div className="mb-5">
         <button 
           onClick={() => setShowArchive(!showArchive)} 
           className="w-full font-black flex items-center justify-between active:scale-95 transition-all"
           style={{ 
             background: '#fff', 
-            border: '2px solid #D0DCFF', 
+            border: '2.5px solid #0A1628', // زيادة سمك الحدود بلون داكن
             borderRadius: 18, 
             padding: '14px 18px',
-            color: '#334155'
+            color: '#000000' // لون أسود صريح وعريض
           }}
         >
-          <span style={{ fontSize: 12, color: '#0066FF' }}>{showArchive ? '▲ إخفاء' : '▼ عرض'}</span>
+          <span className="font-black" style={{ fontSize: 13, color: '#0066FF' }}>{showArchive ? '▲ إخفاء' : '▼ عرض'}</span>
           <div className="flex items-center gap-2">
-            <span className="font-bold" style={{ fontSize: 11, color: '#7B8CA6' }}>({settlementRecords.length} معاملة)</span>
-            <span style={{ fontSize: 14 }}>📂 أرشيف التسويات المُقفلة</span>
-            <Archive size={16} style={{ color: '#0066FF' }} />
+            <span className="font-black" style={{ fontSize: 12, color: '#000000' }}>({settlementRecords.length} معاملة)</span>
+            <span className="font-black" style={{ fontSize: 14, color: '#000000' }}>📂 أرشيف التسويات المُقفلة</span>
+            <Archive size={18} style={{ color: '#000000' }} />
           </div>
         </button>
 
@@ -668,7 +668,7 @@ export default function AdminDashboard() {
             {settlementRecords.length === 0 ? (
               <div className="text-center" style={{ background: '#fff', border: '2px solid #D0DCFF', borderRadius: 18, padding: 24 }}>
                 <div style={{ fontSize: 36, marginBottom: 8 }}>📭</div>
-                <p className="font-bold" style={{ fontSize: 12, color: '#94a3b8' }}>لم يتم تسجيل أي تسويات بعد</p>
+                <p className="font-black" style={{ fontSize: 13, color: '#000000' }}>لم يتم تسجيل أي تسويات بعد</p>
               </div>
             ) : (
               settlementRecords.map(r => {
@@ -676,33 +676,33 @@ export default function AdminDashboard() {
                 return (
                   <div key={r.id} style={{ 
                     background: '#fff', 
-                    border: `2px solid ${isAdminToGarage ? '#66DDAA' : '#FFA0A0'}`, 
+                    border: `2.5px solid ${isAdminToGarage ? '#00CC66' : '#FF3333'}`, 
                     borderRadius: 16, 
                     padding: 14 
                   }}>
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex items-center gap-1" style={{ padding: '3px 8px', borderRadius: 8, background: isAdminToGarage ? '#EBFDF2' : '#FFF3F3' }}>
-                        {isAdminToGarage ? <ArrowUp size={10} style={{ color: '#00AA44' }} /> : <ArrowDown size={10} style={{ color: '#CC0000' }} />}
-                        <span className="font-black" style={{ fontSize: 9, color: isAdminToGarage ? '#00AA44' : '#CC0000' }}>
+                        {isAdminToGarage ? <ArrowUp size={12} style={{ color: '#00AA44' }} /> : <ArrowDown size={12} style={{ color: '#CC0000' }} />}
+                        <span className="font-black" style={{ fontSize: 10, color: isAdminToGarage ? '#00AA44' : '#CC0000' }}>
                           {isAdminToGarage ? 'أرسل الأدمن' : 'استلم الأدمن'}
                         </span>
                       </div>
                       <div className="text-right">
-                        <div className="font-black" style={{ fontSize: 13, color: '#0A1628' }}>{r.garage_name}</div>
-                        <div style={{ fontSize: 9, color: '#94a3b8', marginTop: 2 }}>{r.settlement_date}</div>
+                        <div className="font-black text-black" style={{ fontSize: 15, color: '#000000' }}>{r.garage_name}</div>
+                        <div className="font-black font-mono" style={{ fontSize: 10, color: '#000000', marginTop: 2 }}>{r.settlement_date}</div>
                       </div>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <div className="font-black font-mono" style={{ fontSize: 20, color: isAdminToGarage ? '#00AA44' : '#CC0000' }}>
-                        {r.amount.toFixed(0)} <span style={{ fontSize: 10 }}>ج.م</span>
+                    <div className="flex justify-between items-center" style={{ borderTop: '1px dashed #D0DCFF', paddingTop: 8 }}>
+                      <div className="font-black font-mono" style={{ fontSize: 22, color: isAdminToGarage ? '#00AA44' : '#CC0000' }}>
+                        {r.amount.toFixed(0)} <span style={{ fontSize: 11, fontWeight: 900 }}>ج.م</span>
                       </div>
-                      <div className="text-right" style={{ fontSize: 9, color: '#7B8CA6' }}>
-                        <div>{r.session_count} جلسة</div>
-                        <div>محفظة: {r.wallet_collected.toFixed(0)} · عمولة: {r.commission_amount.toFixed(0)}</div>
+                      <div className="text-right font-black" style={{ fontSize: 11, color: '#000000', lineHeight: 1.6 }}>
+                        <div>{r.session_count} جلسة مقفلة 🔒</div>
+                        <div style={{ fontSize: 10 }}>محفظة: {r.wallet_collected.toFixed(0)}ج · عمولة: {r.commission_amount.toFixed(0)}ج</div>
                       </div>
                     </div>
                     {r.notes && (
-                      <div className="mt-2 text-right" style={{ background: '#F8FAFF', borderRadius: 8, padding: '6px 10px', fontSize: 9, color: '#7B8CA6' }}>
+                      <div className="mt-2 text-right font-black" style={{ background: '#F8FAFF', borderRadius: 8, padding: '8px 10px', fontSize: 11, color: '#000000', border: '1.5px solid #D0DCFF' }}>
                         📝 {r.notes}
                       </div>
                     )}
