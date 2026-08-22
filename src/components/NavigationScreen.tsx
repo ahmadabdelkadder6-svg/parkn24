@@ -10,7 +10,7 @@ import {
   XCircle,
   Copy,
 } from 'lucide-react';
-import { useStore, Session } from '../store';
+import { useStore } from '../store';
 import {
   calculateDistance,
   distanceToMinutes,
@@ -126,15 +126,15 @@ export default function NavigationScreen() {
     );
   }, [incomingCars, selectedGarageId, userPlateNav]);
 
-  /* ✅ فلترة صارمة جداً: نكشف فقط عن الجلسة النشطة بنسبة 100% ونستبعد أي تاريخ جلسات منتهية تماماً */
+  /* ✅ الكشف عن الجلسة النشطة */
   const myActiveSession = useMemo(() => {
     return sessions
       .filter(
-        (sess: Session & { customerPhone?: string }) =>
+        (sess) =>
           sess.status === 'active' &&
           (
             normalizePlate(sess.carPlate) === userPlateNav ||
-            Boolean(currentUser?.phone && sess.customerPhone === currentUser.phone)
+            (currentUser?.phone && (sess as any).customerPhone === currentUser.phone)
           ),
       )
       .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
@@ -151,7 +151,7 @@ export default function NavigationScreen() {
   const [pushStatus, setPushStatus] = useState<'waiting' | 'sent' | 'cancelled'>('waiting');
   const [sessionStartedByGarage, setSessionStartedByGarage] = useState(false);
 
-  /* ── Refs لمنع تصفير المؤقت ── */
+  /* ── Refs لمنع استدعاء التايمر المتكرر وتصفيره ── */
   const userPosRef = useRef(userPos);
   const currentUserRef = useRef(currentUser);
   const lastCarIdRef = useRef<string | null>(null);
@@ -294,7 +294,7 @@ export default function NavigationScreen() {
     return () => clearTimeout(t);
   }, []);
 
-  /* ─── مؤقت الإلغاء ─── */
+  /* ─── مؤقت الإلغاء الشكلي للواجهة ─── */
   useEffect(() => {
     if (myIncomingCar) {
       screenEnteredRef.current = Date.now();
@@ -382,9 +382,9 @@ export default function NavigationScreen() {
         pushTimerRef.current = null;
       }
     };
-  }, [myIncomingCar?.id, selectedGarageId, garage]);
+  }, [myIncomingCar?.id, selectedGarageId]);
 
-  /* ─── الانتقال التلقائي لشاشة الجلسة النشطة ─── */
+  /* ─── الانتقال التلقائي لشاشة الجلسة ─── */
   useEffect(() => {
     if (!myActiveSession) {
       navigatedToSessionRef.current = false;
@@ -880,7 +880,7 @@ export default function NavigationScreen() {
           </button>
         )}
 
-        {/* زر الإلغاء الشفاف */}
+        {/* زر الإلغاء الشفاف الرائع مع العداد التفاعلي ليكون ظاهراً وواضحاً تماماً */}
         {canCancel && myIncomingCar && !myActiveSession && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
