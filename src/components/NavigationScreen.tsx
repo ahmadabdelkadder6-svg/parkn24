@@ -90,8 +90,7 @@ function MapController({
         map.setView(garagePos, 15);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, userPos[0], userPos[1], garagePos[0], garagePos[1]]);
+  }, [map, userPos, garagePos]);
 
   return null;
 }
@@ -128,7 +127,7 @@ export default function NavigationScreen() {
     );
   }, [incomingCars, selectedGarageId, userPlateNav]);
 
-  /* ✅ الكشف عن الجلسة النشطة - يشمل الجلسات اللي بدأها السايس أو المالك */
+  /* ✅ الكشف عن الجلسة النشطة */
   const myActiveSession = useMemo(() => {
     return sessions
       .filter(
@@ -164,15 +163,12 @@ export default function NavigationScreen() {
 
   /* ─────────────────────────────────────────────
      ██  REALTIME: الاستماع لجدول sessions
-         ✅ حل مشكلة العداد - لما السايس يبدأ الجلسة
-         الحريف يعرف فورًا ويتحول لشاشة الجلسة
      ───────────────────────────────────────────── */
   useEffect(() => {
     if (!userPlateNav) return;
 
     let cancelled = false;
 
-    /* ─ فتش فورًا عند فتح الشاشة ─ */
     const refetch = async () => {
       if (cancelled) return;
       try {
@@ -184,7 +180,6 @@ export default function NavigationScreen() {
 
     refetch();
 
-    /* ─ Helper: هل الصف ده بتاعي؟ ─ */
     const isMyRow = (row: any): boolean => {
       if (!row) return false;
       const plate = normalizePlate(row.car_plate || row.carPlate);
@@ -195,48 +190,40 @@ export default function NavigationScreen() {
       );
     };
 
-    /* ─ Realtime subscription ─ */
     const channel = supabase
       .channel(`nav-customer-live-${userPlateNav}`)
-      /* sessions - INSERT (السايس بدأ جلسة جديدة) */
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'sessions' },
         async (payload) => {
           const newRow = payload.new as any;
           if (isMyRow(newRow) && newRow.status === 'active') {
-            console.log('🔔 Realtime: جلسة جديدة بدأت من الجراج!');
             setSessionStartedByGarage(true);
             await refetch();
           }
         },
       )
-      /* sessions - UPDATE (تحديث حالة الجلسة) */
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'sessions' },
         async (payload) => {
           const newRow = payload.new as any;
           if (isMyRow(newRow) && newRow.status === 'active') {
-            console.log('🔔 Realtime: جلسة اتحدثت وأصبحت نشطة!');
             setSessionStartedByGarage(true);
             await refetch();
           }
         },
       )
-      /* incoming_cars - DELETE (الجراج قبل السيارة) */
       .on(
         'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'incoming_cars' },
         async (payload) => {
           const oldRow = payload.old as any;
           if (isMyRow(oldRow)) {
-            console.log('🔔 Realtime: incoming car تم حذفه');
             await refetch();
           }
         },
       )
-      /* incoming_cars - UPDATE */
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'incoming_cars' },
@@ -248,16 +235,11 @@ export default function NavigationScreen() {
           }
         },
       )
-      .subscribe((status) => {
-        console.log('📡 Realtime subscription status:', status);
-      });
+      .subscribe();
 
     realtimeChannelRef.current = channel;
-
-    /* ─ Polling احتياطي كل 5 ثواني لو الـ realtime اتأخر ─ */
     pollingIntervalRef.current = setInterval(refetch, 5000);
 
-    /* ─ عند focus / visibility ─ */
     const handleFocus = () => refetch();
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') refetch();
@@ -378,31 +360,23 @@ export default function NavigationScreen() {
         pushTimerRef.current = null;
       }
     };
-  }, [myIncomingCar?.id, garage?.id]);
+  }, [myIncomingCar?.id, garage?.id, userPos, currentUser?.name, garage]);
 
-  /* ─────────────────────────────────────────────
-     ██  ✅ الانتقال التلقائي لشاشة الجلسة
-         يعمل سواء بدأت الجلسة من الحريف أو من السايس/المالك
-     ───────────────────────────────────────────── */
+  /* ─── الانتقال التلقائي لشاشة الجلسة ─── */
   useEffect(() => {
     if (!myActiveSession) {
-      /* لو الجلسة اتلغت أو انتهت، ارجّع الـ ref */
       navigatedToSessionRef.current = false;
       setSessionStartedByGarage(false);
       return;
     }
 
-    /* لو سبق نقلنا بالفعل */
     if (navigatedToSessionRef.current) return;
-
     navigatedToSessionRef.current = true;
 
-    /* لو الجلسة في جراج مختلف → حدّث الاختيار */
     if (myActiveSession.garageId !== selectedGarageId) {
       setSelectedGarageId(myActiveSession.garageId);
     }
 
-    /* أوقف الـ polling عشان مش محتاجينه بعد كده */
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
       pollingIntervalRef.current = null;
@@ -410,13 +384,11 @@ export default function NavigationScreen() {
 
     toast.success('تم بدء حساب الركن ⏱️', { icon: '🚗', duration: 3000 });
 
-    /* تأخير بسيط عشان الـ toast يظهر */
     setTimeout(() => {
       setScreen('session');
     }, 500);
   }, [
-    myActiveSession?.id,
-    myActiveSession?.garageId,
+    myActiveSession,
     selectedGarageId,
     setSelectedGarageId,
     setScreen,
@@ -425,7 +397,7 @@ export default function NavigationScreen() {
   /* ─── Guard ─── */
   if (!garage) {
     return (
-      <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8">
+      <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8 text-right">
         <div className="text-4xl mb-4">🔍</div>
         <p className="text-slate-400 text-sm font-bold text-center mb-6">
           لم يتم تحديد جراج
@@ -461,7 +433,7 @@ export default function NavigationScreen() {
         document.execCommand('copy');
         document.body.removeChild(el);
       }
-      toast.success('تم نسخ الإحداثيات');
+      toast.success('تم نسخ الإحداثيات لجهازك!');
     } catch {
       toast.error('فشل النسخ');
     }
@@ -503,7 +475,6 @@ export default function NavigationScreen() {
     if (isArrivingRef.current) return;
     isArrivingRef.current = true;
 
-    /* إرسال Push فوري لو لسه ما اتبعتش */
     if (!pushSentRef.current && myIncomingCar && garage) {
       if (pushTimerRef.current) {
         clearTimeout(pushTimerRef.current);
@@ -526,7 +497,6 @@ export default function NavigationScreen() {
 
     try {
       if (!myIncomingCar || !garage) {
-        /* لو مفيش incoming car يمكن الجلسة بدأت بالفعل من الجراج */
         if (myActiveSession) {
           navigatedToSessionRef.current = true;
           setScreen('session');
@@ -534,7 +504,6 @@ export default function NavigationScreen() {
         return;
       }
 
-      /* هل فيه جلسة نشطة بالفعل؟ (بدأها السايس أو المالك) */
       const state = useStore.getState();
       const alreadyActive = state.sessions.find(
         (s) =>
@@ -556,7 +525,6 @@ export default function NavigationScreen() {
         return;
       }
 
-      /* مفيش جلسة → أنشئ واحدة */
       const relatedOffer = offers.find(
         (o) =>
           o.carPlate === myIncomingCar.carPlate &&
@@ -564,18 +532,18 @@ export default function NavigationScreen() {
       );
       if (relatedOffer) cancelOffer(relatedOffer.id);
 
- await addSession({
-  garageId: garage.id,
-  carPlate: myIncomingCar.carPlate,
-  startTime: Date.now(),
-  status: 'active',
-  source: 'app',
-  agreedPrice: myIncomingCar.agreedPrice,
-  customerPhone: currentUser?.phone,
-  customerName: currentUser?.name,
-  startedBy: 'customer',
-  incomingCarId: myIncomingCar.id,
-} as any);
+      await addSession({
+        garageId: garage.id,
+        carPlate: myIncomingCar.carPlate,
+        startTime: Date.now(),
+        status: 'active',
+        source: 'app',
+        agreedPrice: myIncomingCar.agreedPrice,
+        customerPhone: currentUser?.phone,
+        customerName: currentUser?.name,
+        startedBy: 'customer',
+        incomingCarId: myIncomingCar.id,
+      } as any);
 
       await removeIncomingCar(myIncomingCar.id);
 
@@ -590,14 +558,11 @@ export default function NavigationScreen() {
     }
   };
 
-  /* ─────────────────────────────────────────────
-     ██  RENDER
-     ───────────────────────────────────────────── */
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full bg-slate-950 text-white flex flex-col safe-top safe-bottom"
+      className="h-full bg-slate-950 text-white flex flex-col safe-top safe-bottom text-right"
     >
       {/* ══ Header ══ */}
       <div className="flex items-center justify-between px-4 pt-12 pb-2 shrink-0">
@@ -624,7 +589,7 @@ export default function NavigationScreen() {
       {/* ══ Content ══ */}
       <div className="flex-1 px-4 pb-4 flex flex-col gap-3 overflow-y-auto">
 
-        {/* ✅ بانر: الجلسة بدأت من الجراج (السايس/المالك) */}
+        {/* ✅ بانر: الجلسة بدأت من الجراج */}
         {(myActiveSession || sessionStartedByGarage) && !navigatedToSessionRef.current && (
           <motion.div
             initial={{ opacity: 0, y: -10, scale: 0.95 }}
@@ -673,7 +638,7 @@ export default function NavigationScreen() {
                 {distance.toFixed(1)} كم
               </span>
             </div>
-            <div className="text-right">
+            <div>
               <div className="text-sm font-black text-white">{garage.name}</div>
               <div className="flex items-center gap-1 justify-end text-[10px] text-slate-500">
                 <span>{garage.location}</span>
@@ -730,21 +695,37 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* أزرار النسخ وجوجل ماب */}
-        <div className="grid grid-cols-2 gap-2 shrink-0">
+        {/* 🔥 زر خرائط جوجل التحفيزي والأنيق الجديد + زر نسخ الإحداثيات الفرعي */}
+        <div className="flex flex-col gap-2 shrink-0">
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={openExternalMaps}
+            className="w-full relative overflow-hidden font-black text-sm flex flex-col items-center justify-center gap-1.5 py-4 px-4 rounded-2xl text-white shadow-xl"
+            style={{
+              background: 'linear-gradient(135deg, #0066FF 0%, #0033BB 100%)',
+              boxShadow: '0 8px 24px rgba(0, 102, 255, 0.4), 0 0 12px rgba(0, 102, 255, 0.2)',
+            }}
+          >
+            {/* لمعة خلفية خفيفة */}
+            <div className="absolute inset-0 bg-white/10 opacity-0 hover:opacity-100 transition-opacity duration-300" />
+            
+            <div className="flex items-center gap-2">
+              <Navigation size={18} className="animate-bounce text-yellow-300" />
+              <span className="text-base tracking-wide">شغل الـ GPS وابدأ التحرك فوراً! 🗺️🚀</span>
+            </div>
+            <span className="text-[10px] font-medium text-blue-100 opacity-95">
+              افتح الطريق الأسرع وتجنب الازدحام لتأمين ركنتك في غضون {formatDuration(minutes)}
+            </span>
+          </motion.button>
+
+          {/* زر نسخ الإحداثيات الفرعي اللطيف */}
           <button
             onClick={copyCoords}
-            className="bg-slate-900 border border-slate-800 text-slate-300 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+            className="flex items-center justify-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 py-1 transition-all"
           >
-            <Copy size={14} className="text-blue-400" />
-            نسخ الإحداثيات
-          </button>
-          <button
-            onClick={openExternalMaps}
-            className="bg-slate-900 border border-slate-800 text-slate-300 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all"
-          >
-            <ExternalLink size={14} className="text-blue-400" />
-            خرائط Google
+            <Copy size={13} className="text-slate-500" />
+            <span>نسخ إحداثيات الجراج الجغرافية بدقة</span>
           </button>
         </div>
 
@@ -834,7 +815,7 @@ export default function NavigationScreen() {
           </button>
         )}
 
-        {/* ✅ لو الجلسة بدأت - زر للانتقال يدوي */}
+        {/* لو الجلسة بدأت - زر للانتقال يدوي */}
         {myActiveSession && (
           <button
             onClick={() => {

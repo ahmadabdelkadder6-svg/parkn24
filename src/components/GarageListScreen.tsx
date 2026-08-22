@@ -121,7 +121,7 @@ export default function GarageListScreen() {
       .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
   }, [sessions, normalizedUserPlate, currentUser?.phone]);
 
-  /* ✅ البحث عن حجز نشط قادم للسيارة */
+  /* ✅ البحث عن حجز نشط قادم */
   const myIncomingCar = useMemo(() => {
     if (!normalizedUserPlate) return undefined;
     return incomingCars
@@ -146,10 +146,12 @@ export default function GarageListScreen() {
         if (!isMountedRef.current) return;
         setUserLocation({ lat: p.coords.latitude, lng: p.coords.longitude });
         setLocationLoading(false);
+        toast.success('تم تحديث موقعك بنجاح 📍');
       },
       () => {
         if (!isMountedRef.current) return;
         setLocationLoading(false);
+        toast.error('تعذر تحديد موقعك بدقة، استخدام الموقع الافتراضي');
       },
       { enableHighAccuracy: true, timeout: 8000 }
     );
@@ -264,7 +266,7 @@ export default function GarageListScreen() {
         };
       })
       .sort((a, b) => a.minutes - b.minutes);
-  }, [getGarages => garages, userLocation]);
+  }, [garages, userLocation]);
 
   const filteredGarages = useMemo(() => {
     let filtered = garagesWithDistance;
@@ -323,8 +325,6 @@ export default function GarageListScreen() {
     try {
       setIsBooking(true);
       setSelectedGarageId(garage.id);
-      
-      // تنفيذ منطق إخطار الجراج و الحجز في الخلفية
       await addIncomingCar({
         garageId: garage.id,
         carPlate: currentUser.carPlate,
@@ -334,8 +334,7 @@ export default function GarageListScreen() {
         estimatedArrival: Math.max(3, garage.minutes),
       });
 
-      // رسالة نجاح محفزة ولطيفة بدلاً من الصيغ المعتادة
-      toast.success('تم تأمين مكانك بنجاح! جاهز للانطلاق؟ 🚀', { duration: 4000 });
+      toast.success(`تم الحجز في ${garage.name} بسعر ${garage.basePrice} ج.م/ساعة 🚗`);
       setScreen('navigation');
     } catch (e) {
       console.error(e);
@@ -461,43 +460,38 @@ export default function GarageListScreen() {
           </motion.button>
         )}
 
-        {/* 🔥 بانر التوجيه للخرائط التفاعلي والتحفيزي الجديد */}
+        {/* بانر السيارة في الطريق */}
         {!activeSession && myIncomingCar && (
           <motion.button
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
             onClick={() => {
               setSelectedGarageId(myIncomingCar.garageId);
               setScreen('navigation');
             }}
-            className="w-full mb-4 flex flex-col gap-2 text-right relative overflow-hidden"
+            className="w-full mb-3 flex items-center justify-between active:scale-[0.98] transition-all text-right"
             style={{
-              background: 'linear-gradient(135deg, #FF512F 0%, #DD2476 100%)',
-              borderRadius: 22,
-              padding: '16px 18px',
+              background: 'linear-gradient(135deg, #0099DD 0%, #0077BB 100%)',
+              borderRadius: 20,
+              padding: '14px 16px',
               color: '#ffffff',
-              boxShadow: '0 12px 28px rgba(221,36,118,0.35), 0 0 15px rgba(255,81,47,0.2)',
+              boxShadow: '0 8px 24px rgba(0,153,221,0.3)',
             }}
           >
-            {/* تأثير نبض خلفي لجذب العين */}
-            <div className="absolute left-4 top-1/2 -translate-y-1/2">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 relative">
-                <Navigation size={22} className="animate-bounce" />
-                <span className="absolute inline-flex h-full w-full rounded-full bg-white/30 animate-ping opacity-75" />
-              </span>
+            <div className="flex items-center gap-2">
+              <motion.span
+                animate={{ scale: [1, 1.3, 1] }}
+                transition={{ repeat: Infinity, duration: 1.5 }}
+                className="w-3 h-3 rounded-full bg-white block"
+              />
+              <span className="text-xs font-black">عرض التوجيه ←</span>
             </div>
-
-            <div className="pl-12">
-              <div className="text-sm font-black flex items-center gap-1.5 justify-end">
-                🚀 اضغط هنا لتشغيل الخريطة فوراً!
+            <div>
+              <div className="text-sm font-black flex items-center gap-1 justify-end">
+                <Navigation size={15} /> حجز نشط (في الطريق)
               </div>
-              <p className="text-[11px] font-bold mt-1 leading-relaxed opacity-95">
-                ابدأ التوجيه الآن لتفادي الازدحام وتأمين مكانك المخصص قبل الإلغاء 🗺️✨
-              </p>
-              <div className="mt-2 inline-flex items-center gap-1 text-[9px] font-black bg-white/25 px-2.5 py-1 rounded-full">
-                ⏱️ يوفر عليك 7 دقائق بحثاً عن ركنة
+              <div className="text-[10px]" style={{ opacity: 0.85 }}>
+                اضغط لفتح الخريطة والتوجيه
               </div>
             </div>
           </motion.button>
@@ -764,7 +758,7 @@ function GarageCard({
   const btnLabel = (() => {
     if (isFull) return 'ممتلئ - لا توجد أماكن';
     if (hasActiveSession) return '⚡ الانتقال للجلسة النشطة';
-    if (hasIncomingCar) return '📍 الانتقال للتوجيه والخرائط';
+    if (hasIncomingCar) return '📍 الانتقال للحجز النشط';
     if (isClosest) return '🅿️ احجز في الأقرب إليك';
     if (isNearby) return '🅿️ احجز الآن - قريب منك';
     return '🅿️ احجز مكانك';
