@@ -452,30 +452,31 @@ export default function GarageDashboard() {
         const isMine = (addedBy && myValetNames.has(addedBy)) || (s.source === 'app' && !addedBy);
         if (!isMine) return false;
       }
-      if (isOwner && addedBy && !garageValetNames.includes(addedBy)) return false;
+      // 🚀 تم إزالة شرط "isOwner && !garageValetNames.includes(addedBy)" لحل مشكلة عدم تطابق الإيرادات بين الأدمن والمالك نهائياً!
       if (isOwner && selectedValetFilter) { if (addedBy !== selectedValetFilter) return false; }
       return true;
     });
-  }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, isOwner, myValetNames, garageValetNames, selectedValetFilter]);
+  }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, isOwner, myValetNames, selectedValetFilter]);
 
-  // ✅ filteredStats مع حقول التسوية النشطة (تستبعد الجلسات المُقفلة)
+  // حساب الحصيلة المالية بدقة متناهية متزامنة مع الأدمن
   const filteredStats = useMemo(() => {
     const c = filteredCompleted.filter(s => s.revenueConfirmed);
     const u = filteredCompleted.filter(s => !s.revenueConfirmed);
-    // الجلسات النشطة فقط = مؤكدة + لم تتم تسويتها بعد
     const activeC = c.filter(s => !(s as any).settled);
 
     const cash = c.filter(s => s.paymentMethod === 'cash').reduce((a, s) => a + getSessionRevenue(s), 0);
     const instapay = c.filter(s => s.paymentMethod === 'instapay').reduce((a, s) => a + getSessionRevenue(s), 0);
     const wallet = c.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
     const cashwallet = c.filter(s => s.paymentMethod === 'cashwallet').reduce((a, s) => a + getSessionRevenue(s), 0);
+    
     const manual = c.filter(s => s.source === 'manual');
     const app = c.filter(s => s.source === 'app');
+    
     const totalCommission = c.reduce((a, s) => a + getSessionCommission(s), 0);
     const totalNet = c.reduce((a, s) => a + getSessionNetRevenue(s), 0);
     const confirmedTotal = cash + instapay + wallet + cashwallet;
 
-    // حسابات التسوية النشطة (غير المُقفلة فقط)
+    // حساب المقاصة النشطة غير المسواة فقط
     const activeWallet = activeC.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
     const activeCommission = activeC.reduce((a, s) => a + getSessionCommission(s), 0);
 
@@ -501,6 +502,7 @@ export default function GarageDashboard() {
       { name: (garage.valetName2 || '').trim(), defaultName: 'سايس 2', color: '#7C3AED', icon: '🅿️2' },
       { name: (garage.valetName3 || '').trim(), defaultName: 'سايس 3', color: '#FF8800', icon: '🅿️3' },
     ].filter(v => v.name);
+    
     const ownerGarageCompleted = completedSessions.filter((s) => {
       if (s.garageId !== currentGarageId) return false;
       if (s.endTime) {
@@ -511,6 +513,7 @@ export default function GarageDashboard() {
       if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter) return false;
       return true;
     });
+    
     return garageValets.map((v) => {
       const vs = ownerGarageCompleted.filter((s) => {
         const addedBy = ((s as any).addedBy || '').trim();
@@ -1025,7 +1028,7 @@ export default function GarageDashboard() {
                   <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>{filteredCompleted.filter(s => s.revenueConfirmed).length} عملية مؤكدة</div>
                 </div>
 
-                {/* ✅ كروت العمولة وصافي الإيراد وحسبة التسوية والمقاصة */}
+                {/* كروت العمولة وصافي الإيراد وحسبة التسوية والمقاصة */}
                 {filteredStats.totalCommission > 0 && (
                   <div className="space-y-2 mb-4">
                     <div className="grid grid-cols-2 gap-2">
@@ -1041,13 +1044,12 @@ export default function GarageDashboard() {
                       </div>
                     </div>
 
-                    {/* ✅ بطاقة المقاصة المالية النشطة (تستبعد المُقفل تلقائياً) */}
+                    {/* بطاقة المقاصة المالية النشطة (تستبعد المُقفل تلقائياً لتتطابق مع الأدمن) */}
                     {(() => {
                       const settlement = filteredStats.activeWallet - filteredStats.activeCommission;
                       const isGarageOwed = settlement > 0;
                       const absSettlement = Math.abs(settlement).toFixed(0);
 
-                      // لو التسوية = 0 يعني الحساب متزن لا نعرضها
                       if (settlement === 0 && filteredStats.activeWallet === 0 && filteredStats.activeCommission === 0) return null;
 
                       return (
@@ -1133,7 +1135,7 @@ export default function GarageDashboard() {
           </>
         )}
 
-        {/* ✅ قائمة العمليات مع تلوين الجلسات المُقفلة */}
+        {/* قائمة العمليات */}
         <div className="space-y-2">
           {filteredCompleted.map(session => {
             const isM = session.source === 'manual';
