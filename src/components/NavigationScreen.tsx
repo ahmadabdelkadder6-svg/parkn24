@@ -648,7 +648,7 @@ export default function NavigationScreen() {
           </motion.div>
         )}
 
-        {/* بطاقة الوقت والمسافة */}
+        {/* بطاقة الوقت والمسافة (اسم الجراج يعود بوضوح تام باللون الأبيض العريض المنحاز لليمين) */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shrink-0">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
@@ -661,9 +661,19 @@ export default function NavigationScreen() {
                 {distance.toFixed(1)} كم
               </span>
             </div>
-            <div>
-              <div className="text-sm font-black" style={{ color: '#ffffff' }}>{garage.name}</div>
-              <div className="flex items-center gap-1 justify-end text-[10px] text-slate-400">
+            
+            <div className="text-right flex flex-col items-end">
+              <span
+                style={{
+                  color: '#ffffff',
+                  fontSize: '16px',
+                  fontWeight: 900,
+                  display: 'block',
+                }}
+              >
+                {garage.name}
+              </span>
+              <div className="flex items-center gap-1 justify-end text-[10px] text-slate-400 mt-1">
                 <span>{garage.location}</span>
                 <MapPin size={9} />
               </div>
@@ -718,13 +728,13 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* 🔥 صندوق توجيه الخرائط الجديد - ناصع البياض بالكامل، إجباري 100% بدون أي تداخل CSS 🗺️ */}
+        {/* 🔥 صندوق توجيه الخرائط الجديد - ناصع البياض بالكامل، ومختصر بالسطر الأول التحفيزي فقط 🗺️ */}
         <div className="flex flex-col gap-2 shrink-0">
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={openExternalMaps}
-            className="w-full relative overflow-hidden flex flex-col items-center justify-center gap-2.5 py-6 px-4 rounded-2xl shadow-2xl cursor-pointer"
+            className="w-full relative overflow-hidden flex flex-col items-center justify-center py-6 px-4 rounded-2xl shadow-2xl cursor-pointer"
             style={{
               background: 'linear-gradient(135deg, #0066FF 0%, #0033BB 100%)',
               boxShadow: '0 12px 30px rgba(0, 102, 255, 0.45), 0 0 15px rgba(0, 102, 255, 0.25)',
@@ -746,20 +756,6 @@ export default function NavigationScreen() {
                 شغل الـ GPS وابدأ التحرك فوراً! 🗺️🚀
               </span>
             </div>
-            
-            <span
-              style={{
-                color: '#ffffff',
-                fontSize: '14px',
-                fontWeight: 800,
-                textAlign: 'center',
-                lineHeight: '1.5',
-                display: 'block',
-                opacity: 1,
-              }}
-            >
-              افتح الطريق الأسرع وتجنب الازدحام لتأمين ركنتك في غضون {formatDuration(minutes)}
-            </span>
           </motion.button>
 
           {/* زر نسخ الإحداثيات الفرعي */}
