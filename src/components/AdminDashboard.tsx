@@ -452,21 +452,6 @@ export default function AdminDashboard() {
           {sessions.length} عملية
         </div>
       </div>
-          
-          {/* زر التنظيف الآمن المخصص */}
-          <button onClick={handleDatabaseCleanup} className="font-black active:scale-95 transition-all flex items-center gap-1.5"
-            style={{ background: 'linear-gradient(135deg,#1E293B,#0F172A)', color: '#fff', padding: '10px 14px', borderRadius: 16, fontSize: 11, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
-            🧹 تنظيف الأرشيف
-          </button>
-        </div>
-
-        <h2 className="font-black flex items-center gap-2" style={{ fontSize: 20, color: '#4D00FF' }}>
-          لوحة المشرف العام <Shield size={22} />
-        </h2>
-        <div className="font-bold" style={{ background: '#fff', border: '2px solid #D0DCFF', padding: '8px 14px', borderRadius: 14, fontSize: 11, color: '#7B8CA6' }}>
-          {sessions.length} عملية
-        </div>
-      </div>
 
             {/* ══════ Date Filter ══════ */}
       <div className="text-center mb-6" style={{ background: '#fff', border: '2px solid #D0DCFF', borderRadius: 28, padding: 20, boxShadow: '0 4px 20px rgba(0,102,255,0.06)' }}>
