@@ -66,7 +66,7 @@ const normalizePlate = (plate?: string): string => {
   return plate
     .trim()
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
     .replace(/\s+/g, ' ')
     .toUpperCase();
 };
@@ -152,7 +152,18 @@ export default function NavigationScreen() {
   const [pushStatus, setPushStatus] = useState<'waiting' | 'sent' | 'cancelled'>('waiting');
   const [sessionStartedByGarage, setSessionStartedByGarage] = useState(false);
 
-  /* ── Refs ── */
+  /* ── Refs لمنع تصفير المؤقت ── */
+  const userPosRef = useRef(userPos);
+  const currentUserRef = useRef(currentUser);
+  
+  useEffect(() => {
+    userPosRef.current = userPos;
+  }, [userPos]);
+
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
   const screenEnteredRef = useRef(Date.now());
   const navigatedToSessionRef = useRef(false);
   const isArrivingRef = useRef(false);
@@ -333,7 +344,7 @@ export default function NavigationScreen() {
       try {
         pushSentRef.current = true;
         const dist = calculateDistance(
-          userPos.lat, userPos.lng,
+          userPosRef.current.lat, userPosRef.current.lng,
           garage.lat, garage.lng,
         );
         const estimatedMinutes = distanceToMinutes(dist);
@@ -342,7 +353,7 @@ export default function NavigationScreen() {
           garageId: garage.id,
           carPlate: myIncomingCar.carPlate,
           estimatedMinutes: Math.max(1, estimatedMinutes),
-          customerName: currentUser?.name,
+          customerName: currentUserRef.current?.name,
           agreedPrice: myIncomingCar.agreedPrice,
         });
 
@@ -352,7 +363,7 @@ export default function NavigationScreen() {
         pushSentRef.current = false;
         setPushStatus('waiting');
       }
-    }, (CANCEL_WINDOW_SECONDS + 2) * 1000);
+    }, (CANCEL_WINDOW_SECONDS + 1) * 1000);
 
     return () => {
       if (pushTimerRef.current) {
@@ -360,7 +371,7 @@ export default function NavigationScreen() {
         pushTimerRef.current = null;
       }
     };
-  }, [myIncomingCar?.id, garage?.id, userPos, currentUser?.name, garage]);
+  }, [myIncomingCar?.id, garage?.id, garage]);
 
   /* ─── الانتقال التلقائي لشاشة الجلسة ─── */
   useEffect(() => {
@@ -695,26 +706,27 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* 🔥 زر خرائط جوجل التحفيزي والأنيق الجديد + زر نسخ الإحداثيات الفرعي */}
+        {/* 🔥 صندوق توجيه الخرائط الجديد - ناصع البياض، أكبر وأكثر وضوحاً 🗺️ */}
         <div className="flex flex-col gap-2 shrink-0">
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={openExternalMaps}
-            className="w-full relative overflow-hidden font-black text-sm flex flex-col items-center justify-center gap-1.5 py-4 px-4 rounded-2xl text-white shadow-xl"
+            className="w-full relative overflow-hidden flex flex-col items-center justify-center gap-2 py-5.5 px-6 rounded-2xl text-white shadow-2xl"
             style={{
               background: 'linear-gradient(135deg, #0066FF 0%, #0033BB 100%)',
-              boxShadow: '0 8px 24px rgba(0, 102, 255, 0.4), 0 0 12px rgba(0, 102, 255, 0.2)',
+              boxShadow: '0 10px 28px rgba(0, 102, 255, 0.45), 0 0 15px rgba(0, 102, 255, 0.25)',
             }}
           >
-            {/* لمعة خلفية خفيفة */}
             <div className="absolute inset-0 bg-white/10 opacity-0 hover:opacity-100 transition-opacity duration-300" />
             
-            <div className="flex items-center gap-2">
-              <Navigation size={18} className="animate-bounce text-yellow-300" />
-              <span className="text-base tracking-wide">شغل الـ GPS وابدأ التحرك فوراً! 🗺️🚀</span>
+            <div className="flex items-center gap-2.5">
+              <Navigation size={22} className="animate-bounce text-white" />
+              <span className="text-lg font-black tracking-wide text-white">
+                شغل الـ GPS وابدأ التحرك فوراً! 🗺️🚀
+              </span>
             </div>
-            <span className="text-[10px] font-medium text-blue-100 opacity-95">
+            <span className="text-xs font-extrabold text-white text-center leading-relaxed">
               افتح الطريق الأسرع وتجنب الازدحام لتأمين ركنتك في غضون {formatDuration(minutes)}
             </span>
           </motion.button>
@@ -755,7 +767,7 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* مؤشر حالة Push */}
+        {/* 🔔 مؤشر حالة الـ Push التلقائي */}
         {myIncomingCar && (
           <div
             className={`rounded-xl p-3 flex items-center gap-2 shrink-0 border ${
@@ -788,7 +800,7 @@ export default function NavigationScreen() {
                 ? '✅ تم إشعار الجراج بقدومك'
                 : pushStatus === 'cancelled'
                   ? '❌ تم إلغاء الإشعار'
-                  : `⏳ سيتم إشعار الجراج بعد ${cancelTimeLeft} ثانية`}
+                  : `⏳ سيتم إشعار الجراج تلقائياً بعد ${cancelTimeLeft} ثانية`}
             </span>
           </div>
         )}
