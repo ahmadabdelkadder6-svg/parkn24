@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Shield, Clock, CheckCircle, XCircle, MapPin, Warehouse, Plus,
   MessageCircle, Send, Receipt, Search, HardHat, Percent, DollarSign,
-  Minus, Edit3, Archive, Lock, FileCheck, ArrowUp, ArrowDown,
+  Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { supabase } from '../lib/supabase';
@@ -346,7 +346,6 @@ export default function AdminDashboard() {
       const adminOwesGarage = settlement > 0;
       const absSettlement = Math.abs(settlement);
 
-      // 1. تسجيل معاملة التسوية في جدول settlements
       const settlementRecord = {
         garage_id: garageId,
         garage_name: garageData.name,
@@ -367,7 +366,6 @@ export default function AdminDashboard() {
 
       if (insertError) throw insertError;
 
-      // 2. تحديث الجلسات في قاعدة البيانات
       if (garageData.sessionIds.length > 0) {
         const batchSize = 50;
         for (let i = 0; i < garageData.sessionIds.length; i += batchSize) {
@@ -388,7 +386,6 @@ export default function AdminDashboard() {
       toast.success(`✅ تم إقفال حساب ${garageData.name} بمبلغ ${absSettlement.toFixed(0)} ج.م`);
       setConfirmSettlementGarageId(null);
 
-      // 3. تحديث البيانات فوراً
       await fetchSettlements();
       await fetchAll();
 
@@ -401,15 +398,63 @@ export default function AdminDashboard() {
     }
   };
 
+  // 🧹 دالة تنظيف وتخفيف قاعدة البيانات الآمنة (أقدم من 30 يوماً ومسواة بالكامل)
+  const handleDatabaseCleanup = async () => {
+    const confirmCleanup = window.confirm(
+      "⚠️ هل أنت متأكد من تنظيف الأرشيف؟\n\nسيتم حذف الجلسات القديمة جداً (التي مر عليها أكثر من 30 يوماً) والمؤكدة والمسواة مالياً بالكامل لتسريع النظام وحماية مساحة قاعدة البيانات.\n\nهذا الإجراء آمن 100% ولا يغير أرقام إيرادات الجراجات التاريخية."
+    );
+    if (!confirmCleanup) return;
+
+    const loadingToast = toast.loading('جاري تنظيف وتخفيف قاعدة البيانات...');
+    try {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const limitDateISO = thirtyDaysAgo.toISOString();
+
+      const { error, count } = await supabase
+        .from('sessions')
+        .delete({ count: 'exact' })
+        .eq('status', 'completed')
+        .eq('revenueConfirmed', true)
+        .eq('settled', true)
+        .lt('created_at', limitDateISO);
+
+      toast.dismiss(loadingToast);
+
+      if (error) throw error;
+
+      if (count && count > 0) {
+        toast.success(`🧹 تم بنجاح حذف ${count} جلسة قديمة ومسواة وتخفيف النظام كلياً! ✅`);
+        await fetchAll();
+      } else {
+        toast('قاعدة البيانات نظيفة ومثالية بالفعل، لا توجد جلسات قديمة لتنظيفها حالياً. ✨', { icon: '✨' });
+      }
+    } catch (e: any) {
+      toast.dismiss(loadingToast);
+      console.error('Cleanup failed:', e);
+      toast.error('فشل التنظيف: ' + (e.message || 'خطأ في الاتصال بالشبكة'));
+    }
+  };
+
   return (
     <div className="h-full overflow-y-auto pt-16" style={{ background: '#EBF2FF', color: '#0A1628', padding: 16 }}>
 
       {/* ══════ Header ══════ */}
       <div className="flex justify-between items-center mb-6 pb-4" style={{ borderBottom: '2px solid #D0DCFF' }}>
-        <button onClick={() => { localStorage.removeItem('adminSession'); logout(); }} className="font-black active:scale-95 transition-all"
-          style={{ background: 'linear-gradient(135deg,#FF3333,#CC0000)', color: '#fff', padding: '10px 18px', borderRadius: 16, fontSize: 11, boxShadow: '0 4px 16px rgba(255,51,51,0.3)' }}>
-          تسجيل خروج
-        </button>
+        {/* أزرار التحكم الجانبية */}
+        <div className="flex gap-2 items-center">
+          <button onClick={() => { localStorage.removeItem('adminSession'); logout(); }} className="font-black active:scale-95 transition-all"
+            style={{ background: 'linear-gradient(135deg,#FF3333,#CC0000)', color: '#fff', padding: '10px 18px', borderRadius: 16, fontSize: 11, boxShadow: '0 4px 16px rgba(255,51,51,0.3)' }}>
+            تسجيل خروج
+          </button>
+          
+          {/* زر التنظيف الآمن المخصص */}
+          <button onClick={handleDatabaseCleanup} className="font-black active:scale-95 transition-all flex items-center gap-1.5"
+            style={{ background: 'linear-gradient(135deg,#1E293B,#0F172A)', color: '#fff', padding: '10px 14px', borderRadius: 16, fontSize: 11, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
+            🧹 تنظيف الأرشيف
+          </button>
+        </div>
+
         <h2 className="font-black flex items-center gap-2" style={{ fontSize: 20, color: '#4D00FF' }}>
           لوحة المشرف العام <Shield size={22} />
         </h2>
@@ -642,17 +687,17 @@ export default function AdminDashboard() {
         );
       })}
 
-       {/* 📂 أرشيف التسويات المُقفلة */}
+      {/* 📂 أرشيف التسويات المُقفلة (بخط أسود عريض واضح) */}
       <div className="mb-5">
         <button 
           onClick={() => setShowArchive(!showArchive)} 
           className="w-full font-black flex items-center justify-between active:scale-95 transition-all"
           style={{ 
             background: '#fff', 
-            border: '2.5px solid #0A1628', // زيادة سمك الحدود بلون داكن
+            border: '2.5px solid #0A1628',
             borderRadius: 18, 
             padding: '14px 18px',
-            color: '#000000' // لون أسود صريح وعريض
+            color: '#000000'
           }}
         >
           <span className="font-black" style={{ fontSize: 13, color: '#0066FF' }}>{showArchive ? '▲ إخفاء' : '▼ عرض'}</span>
@@ -688,7 +733,7 @@ export default function AdminDashboard() {
                         </span>
                       </div>
                       <div className="text-right">
-                        <div className="font-black text-black" style={{ fontSize: 15, color: '#000000' }}>{r.garage_name}</div>
+                        <div className="font-black" style={{ fontSize: 15, color: '#000000' }}>{r.garage_name}</div>
                         <div className="font-black font-mono" style={{ fontSize: 10, color: '#000000', marginTop: 2 }}>{r.settlement_date}</div>
                       </div>
                     </div>
