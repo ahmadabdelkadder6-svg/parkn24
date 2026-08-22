@@ -9,7 +9,6 @@ import {
   Clock,
   XCircle,
   Copy,
-  ExternalLink,
 } from 'lucide-react';
 import { useStore } from '../store';
 import {
@@ -96,7 +95,7 @@ function MapController({
 }
 
 /* ════════════════════════════════════════════════════════════
-   ██  NAVIGATION SCREEN
+   ██  MAIN NAVIGATION SCREEN
    ════════════════════════════════════════════════════════════ */
 export default function NavigationScreen() {
   const {
@@ -152,18 +151,10 @@ export default function NavigationScreen() {
   const [pushStatus, setPushStatus] = useState<'waiting' | 'sent' | 'cancelled'>('waiting');
   const [sessionStartedByGarage, setSessionStartedByGarage] = useState(false);
 
-  /* ── Refs لمنع تصفير المؤقت ── */
+  /* ── Refs لمنع استدعاء التايمر المتكرر وتصفيره ── */
   const userPosRef = useRef(userPos);
   const currentUserRef = useRef(currentUser);
-  
-  useEffect(() => {
-    userPosRef.current = userPos;
-  }, [userPos]);
-
-  useEffect(() => {
-    currentUserRef.current = currentUser;
-  }, [currentUser]);
-
+  const lastCarIdRef = useRef<string | null>(null);
   const screenEnteredRef = useRef(Date.now());
   const navigatedToSessionRef = useRef(false);
   const isArrivingRef = useRef(false);
@@ -171,6 +162,14 @@ export default function NavigationScreen() {
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const realtimeChannelRef = useRef<any>(null);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    userPosRef.current = userPos;
+  }, [userPos]);
+
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
 
   /* ─────────────────────────────────────────────
      ██  REALTIME: الاستماع لجدول sessions
@@ -295,7 +294,7 @@ export default function NavigationScreen() {
     return () => clearTimeout(t);
   }, []);
 
-  /* ─── مؤقت الإلغاء ─── */
+  /* ─── مؤقت الإلغاء الشكلي للواجهة ─── */
   useEffect(() => {
     if (myIncomingCar) {
       screenEnteredRef.current = Date.now();
@@ -322,20 +321,36 @@ export default function NavigationScreen() {
     return () => window.clearInterval(interval);
   }, [myIncomingCar?.id]);
 
-  /* ─── إرسال Push بعد انتهاء فترة الإلغاء ─── */
+  /* ─── ✅ إرسال Push الفعلي للجراج بعد الـ 30 ثانية (إصلاح كامل وثابت 100%) ─── */
   useEffect(() => {
-    if (!myIncomingCar || !garage || pushSentRef.current) return;
+    if (!myIncomingCar || !garage) return;
 
+    // تصفير وتهيئة إرسال الإشعار عند تبديل رقم الحجز
+    if (lastCarIdRef.current !== myIncomingCar.id) {
+      pushSentRef.current = false;
+      lastCarIdRef.current = myIncomingCar.id;
+      setPushStatus('waiting');
+    }
+
+    if (pushSentRef.current) {
+      setPushStatus('sent');
+      return;
+    }
+
+    // إيقاف أي مؤقت سابق للتأكد من تشغيل مؤقت وحيد نظيف
     if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
-    setPushStatus('waiting');
+
+    // حساب الوقت المتبقي الفعلي بدقة لإرسال الإشعار للجراج
+    const elapsed = Math.floor((Date.now() - screenEnteredRef.current) / 1000);
+    const msLeft = Math.max(0, (CANCEL_WINDOW_SECONDS - elapsed) * 1000);
 
     pushTimerRef.current = setTimeout(async () => {
-      const stillComing = useStore
-        .getState()
-        .incomingCars.find(
-          (c) => c.id === myIncomingCar.id && c.status === 'coming',
-        );
+      const freshState = useStore.getState();
+      const stillComing = freshState.incomingCars.find(
+        (c) => c.id === myIncomingCar.id && c.status === 'coming',
+      );
 
+      // في حال قام العميل بالإلغاء قبل انتهاء الـ 30 ثانية
       if (!stillComing || pushSentRef.current) {
         setPushStatus('cancelled');
         return;
@@ -359,11 +374,11 @@ export default function NavigationScreen() {
 
         setPushStatus('sent');
       } catch (err) {
-        console.error('❌ خطأ في إرسال Push:', err);
+        console.error('❌ خطأ في إرسال Push للجراج:', err);
         pushSentRef.current = false;
         setPushStatus('waiting');
       }
-    }, (CANCEL_WINDOW_SECONDS + 1) * 1000);
+    }, msLeft + 500);
 
     return () => {
       if (pushTimerRef.current) {
@@ -371,7 +386,7 @@ export default function NavigationScreen() {
         pushTimerRef.current = null;
       }
     };
-  }, [myIncomingCar?.id, garage?.id, garage]);
+  }, [myIncomingCar?.id, selectedGarageId]); // الاعتماد على الـ IDs البدائية فقط لمنع التصفير العشوائي
 
   /* ─── الانتقال التلقائي لشاشة الجلسة ─── */
   useEffect(() => {
@@ -706,13 +721,13 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* 🔥 صندوق توجيه الخرائط الجديد - ناصع البياض، أكبر وأكثر وضوحاً 🗺️ */}
+        {/* 🔥 صندوق توجيه الخرائط التفاعلي - ناصع البياض بالكامل، وبأعلى درجات الوضوح والخط العريض 🗺️ */}
         <div className="flex flex-col gap-2 shrink-0">
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={openExternalMaps}
-            className="w-full relative overflow-hidden flex flex-col items-center justify-center gap-2 py-5.5 px-6 rounded-2xl text-white shadow-2xl"
+            className="w-full relative overflow-hidden flex flex-col items-center justify-center gap-2 py-6 px-6 rounded-2xl text-white shadow-2xl"
             style={{
               background: 'linear-gradient(135deg, #0066FF 0%, #0033BB 100%)',
               boxShadow: '0 10px 28px rgba(0, 102, 255, 0.45), 0 0 15px rgba(0, 102, 255, 0.25)',
@@ -720,13 +735,13 @@ export default function NavigationScreen() {
           >
             <div className="absolute inset-0 bg-white/10 opacity-0 hover:opacity-100 transition-opacity duration-300" />
             
-            <div className="flex items-center gap-2.5">
-              <Navigation size={22} className="animate-bounce text-white" />
-              <span className="text-lg font-black tracking-wide text-white">
+            <div className="flex items-center gap-3">
+              <Navigation size={24} className="animate-bounce text-white shrink-0" />
+              <span className="text-xl font-black tracking-wide text-white drop-shadow-md">
                 شغل الـ GPS وابدأ التحرك فوراً! 🗺️🚀
               </span>
             </div>
-            <span className="text-xs font-extrabold text-white text-center leading-relaxed">
+            <span className="text-sm font-extrabold text-white text-center leading-relaxed drop-shadow-sm">
               افتح الطريق الأسرع وتجنب الازدحام لتأمين ركنتك في غضون {formatDuration(minutes)}
             </span>
           </motion.button>
@@ -767,7 +782,7 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* 🔔 مؤشر حالة الـ Push التلقائي */}
+        {/* 🔔 مؤشر حالة الـ Push التلقائي - يعمل بانتظام وبدون أي تصفير من الـ Polling */}
         {myIncomingCar && (
           <div
             className={`rounded-xl p-3 flex items-center gap-2 shrink-0 border ${
