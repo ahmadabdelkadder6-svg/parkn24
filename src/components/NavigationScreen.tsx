@@ -321,11 +321,10 @@ export default function NavigationScreen() {
     return () => window.clearInterval(interval);
   }, [myIncomingCar?.id]);
 
-  /* ─── ✅ إرسال Push الفعلي للجراج بعد الـ 30 ثانية (إصلاح كامل وثابت 100%) ─── */
+  /* ─── إرسال Push الفعلي للجراج بعد الـ 30 ثانية ─── */
   useEffect(() => {
     if (!myIncomingCar || !garage) return;
 
-    // تصفير وتهيئة إرسال الإشعار عند تبديل رقم الحجز
     if (lastCarIdRef.current !== myIncomingCar.id) {
       pushSentRef.current = false;
       lastCarIdRef.current = myIncomingCar.id;
@@ -337,10 +336,8 @@ export default function NavigationScreen() {
       return;
     }
 
-    // إيقاف أي مؤقت سابق للتأكد من تشغيل مؤقت وحيد نظيف
     if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
 
-    // حساب الوقت المتبقي الفعلي بدقة لإرسال الإشعار للجراج
     const elapsed = Math.floor((Date.now() - screenEnteredRef.current) / 1000);
     const msLeft = Math.max(0, (CANCEL_WINDOW_SECONDS - elapsed) * 1000);
 
@@ -350,7 +347,6 @@ export default function NavigationScreen() {
         (c) => c.id === myIncomingCar.id && c.status === 'coming',
       );
 
-      // في حال قام العميل بالإلغاء قبل انتهاء الـ 30 ثانية
       if (!stillComing || pushSentRef.current) {
         setPushStatus('cancelled');
         return;
@@ -386,7 +382,7 @@ export default function NavigationScreen() {
         pushTimerRef.current = null;
       }
     };
-  }, [myIncomingCar?.id, selectedGarageId]); // الاعتماد على الـ IDs البدائية فقط لمنع التصفير العشوائي
+  }, [myIncomingCar?.id, selectedGarageId]);
 
   /* ─── الانتقال التلقائي لشاشة الجلسة ─── */
   useEffect(() => {
@@ -599,7 +595,7 @@ export default function NavigationScreen() {
           <ArrowRight size={18} />
         </button>
 
-        <h2 className="text-sm font-black flex items-center gap-1.5">
+        <h2 className="text-sm font-black flex items-center gap-1.5" style={{ color: '#ffffff' }}>
           <motion.div
             animate={{ x: [0, -3, 0] }}
             transition={{ repeat: Infinity, duration: 1.5 }}
@@ -626,6 +622,7 @@ export default function NavigationScreen() {
               borderRadius: 20,
               padding: '16px 18px',
               boxShadow: '0 0 30px rgba(5,150,105,0.4), 0 8px 24px rgba(5,150,105,0.25)',
+              color: '#ffffff',
             }}
           >
             <div className="flex items-center gap-3">
@@ -635,7 +632,7 @@ export default function NavigationScreen() {
                 className="w-3 h-3 rounded-full bg-white shrink-0"
               />
               <div className="flex-1">
-                <div className="font-black text-sm text-white flex items-center gap-1">
+                <div className="font-black text-sm flex items-center gap-1" style={{ color: '#ffffff' }}>
                   ✅ الجراج بدأ حساب الركن!
                 </div>
                 <div className="text-[10px] text-emerald-200 mt-1">
@@ -665,8 +662,8 @@ export default function NavigationScreen() {
               </span>
             </div>
             <div>
-              <div className="text-sm font-black text-white">{garage.name}</div>
-              <div className="flex items-center gap-1 justify-end text-[10px] text-slate-500">
+              <div className="text-sm font-black" style={{ color: '#ffffff' }}>{garage.name}</div>
+              <div className="flex items-center gap-1 justify-end text-[10px] text-slate-400">
                 <span>{garage.location}</span>
                 <MapPin size={9} />
               </div>
@@ -721,32 +718,51 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* 🔥 صندوق توجيه الخرائط التفاعلي - ناصع البياض بالكامل، وبأعلى درجات الوضوح والخط العريض 🗺️ */}
+        {/* 🔥 صندوق توجيه الخرائط الجديد - ناصع البياض بالكامل، إجباري 100% بدون أي تداخل CSS 🗺️ */}
         <div className="flex flex-col gap-2 shrink-0">
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={openExternalMaps}
-            className="w-full relative overflow-hidden flex flex-col items-center justify-center gap-2 py-6 px-6 rounded-2xl text-white shadow-2xl"
+            className="w-full relative overflow-hidden flex flex-col items-center justify-center gap-2.5 py-6 px-4 rounded-2xl shadow-2xl cursor-pointer"
             style={{
               background: 'linear-gradient(135deg, #0066FF 0%, #0033BB 100%)',
-              boxShadow: '0 10px 28px rgba(0, 102, 255, 0.45), 0 0 15px rgba(0, 102, 255, 0.25)',
+              boxShadow: '0 12px 30px rgba(0, 102, 255, 0.45), 0 0 15px rgba(0, 102, 255, 0.25)',
+              color: '#ffffff',
             }}
           >
-            <div className="absolute inset-0 bg-white/10 opacity-0 hover:opacity-100 transition-opacity duration-300" />
-            
-            <div className="flex items-center gap-3">
-              <Navigation size={24} className="animate-bounce text-white shrink-0" />
-              <span className="text-xl font-black tracking-wide text-white drop-shadow-md">
+            <div className="flex items-center justify-center gap-3">
+              <Navigation size={26} color="#ffffff" className="animate-bounce shrink-0" />
+              <span
+                style={{
+                  color: '#ffffff',
+                  fontSize: '20px',
+                  fontWeight: 900,
+                  lineHeight: '1.3',
+                  letterSpacing: '0.5px',
+                  display: 'inline-block',
+                }}
+              >
                 شغل الـ GPS وابدأ التحرك فوراً! 🗺️🚀
               </span>
             </div>
-            <span className="text-sm font-extrabold text-white text-center leading-relaxed drop-shadow-sm">
+            
+            <span
+              style={{
+                color: '#ffffff',
+                fontSize: '14px',
+                fontWeight: 800,
+                textAlign: 'center',
+                lineHeight: '1.5',
+                display: 'block',
+                opacity: 1,
+              }}
+            >
               افتح الطريق الأسرع وتجنب الازدحام لتأمين ركنتك في غضون {formatDuration(minutes)}
             </span>
           </motion.button>
 
-          {/* زر نسخ الإحداثيات الفرعي اللطيف */}
+          {/* زر نسخ الإحداثيات الفرعي */}
           <button
             onClick={copyCoords}
             className="flex items-center justify-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 py-1 transition-all"
@@ -759,7 +775,7 @@ export default function NavigationScreen() {
         {/* معلومات السعر والأماكن */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 shrink-0">
           <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2 text-[10px] text-slate-500">
+            <div className="flex items-center gap-2 text-[10px] text-slate-400">
               <Car size={12} />
               <span>
                 {myIncomingCar?.agreedPrice ?? garage.basePrice} ج.م/ساعة
@@ -778,11 +794,11 @@ export default function NavigationScreen() {
             >
               {garage.availableSpots} / {garage.capacity}
             </span>
-            <span className="text-[10px] text-slate-500">الأماكن المتاحة الآن</span>
+            <span className="text-[10px] text-slate-400">الأماكن المتاحة الآن</span>
           </div>
         </div>
 
-        {/* 🔔 مؤشر حالة الـ Push التلقائي - يعمل بانتظام وبدون أي تصفير من الـ Polling */}
+        {/* 🔔 مؤشر حالة الـ Push التلقائي */}
         {myIncomingCar && (
           <div
             className={`rounded-xl p-3 flex items-center gap-2 shrink-0 border ${
@@ -836,8 +852,9 @@ export default function NavigationScreen() {
             onClick={handleCarArrived}
             disabled={isArrivingRef.current}
             className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-base shadow-lg shadow-emerald-900/20 active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ color: '#ffffff' }}
           >
-            <Navigation size={18} />
+            <Navigation size={18} color="#ffffff" />
             وصلت للجراج - ابدأ الركن ✅
           </button>
         )}
@@ -856,9 +873,10 @@ export default function NavigationScreen() {
             style={{
               background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
               boxShadow: '0 0 30px rgba(5,150,105,0.4)',
+              color: '#ffffff',
             }}
           >
-            <CheckCircle size={18} />
+            <CheckCircle size={18} color="#ffffff" />
             الجلسة شغالة - اذهب للعداد ⏱️
           </button>
         )}
