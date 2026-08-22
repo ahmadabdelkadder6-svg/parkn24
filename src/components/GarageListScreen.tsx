@@ -99,7 +99,7 @@ export default function GarageListScreen() {
     [currentUser?.carPlate]
   );
 
-  /* ✅ البحث عن جلسة نشطة حالياً */
+  /* ✅ البحث عن جلسة نشطة */
   const activeSession = useMemo(() => {
     if (!normalizedUserPlate && !currentUser?.phone) return undefined;
 
@@ -113,10 +113,8 @@ export default function GarageListScreen() {
       .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
   }, [sessions, normalizedUserPlate, currentUser?.phone]);
 
-  /* ✅ تعديل ذكي: إخفاء الجلسات القديمة تماماً وتجنب تكرارها طالما هناك جلسة نشطة جديدة */
   const hasCompletedSession = useMemo(() => {
-    if (activeSession) return false; // حجب كامل لمنع تداخل الشاشات والرسائل القديمة
-    
+    if (activeSession) return false;
     return sessions.some(
       (s: Session) =>
         normalizePlateForCompare(s.carPlate) === normalizedUserPlate &&
@@ -232,6 +230,32 @@ export default function GarageListScreen() {
       supabase.removeChannel(channel);
     };
   }, [normalizedUserPlate, currentUser?.phone, fetchAll]);
+
+  /* ─────────────────────────────────────────────
+     ██  🧹 تنظيف الجلسات القديمة المنتهية عند بدء حجز/جلسة جديدة
+     ───────────────────────────────────────────── */
+  useEffect(() => {
+    if (!normalizedUserPlate) return;
+
+    // بمجرد رصد سيارة في الطريق أو جلسة نشطة جديدة، يتم تصفير الجلسات القديمة من المتجر لمنع تداخل شاشة الفاتورة
+    if (myIncomingCar || activeSession) {
+      const storeState = useStore.getState();
+      const hasStaleCompleted = storeState.sessions.some(
+        (s) =>
+          normalizePlateForCompare(s.carPlate) === normalizedUserPlate &&
+          s.status === 'completed'
+      );
+
+      if (hasStaleCompleted) {
+        const cleanedSessions = storeState.sessions.filter(
+          (s) =>
+            !(normalizePlateForCompare(s.carPlate) === normalizedUserPlate &&
+              s.status === 'completed')
+        );
+        useStore.setState({ sessions: cleanedSessions });
+      }
+    }
+  }, [myIncomingCar?.id, activeSession?.id, normalizedUserPlate]);
 
   /* ─────────────────────────────────────────────
      ██  انتقال تلقائي لشاشة الجلسة (عند بدء جلسة جديدة)
