@@ -57,7 +57,7 @@ const safeParseTime = (value: unknown): number => {
 };
 
 /* ════════════════════════════════════════════════════════════
-   ██  MAIN SCREEN (التصميم الأصلي بالكامل 100%)
+   ██  MAIN SCREEN
    ════════════════════════════════════════════════════════════ */
 export default function GarageListScreen() {
   const {
@@ -70,7 +70,7 @@ export default function GarageListScreen() {
     offers,
     addIncomingCar,
     fetchAll,
-    acknowledgedSessionIds,
+    acknowledgedSessionIds, // جلب الجلسات المقفرة والمؤكدة
   } = useStore();
 
   const [search, setSearch] = useState('');
@@ -100,14 +100,14 @@ export default function GarageListScreen() {
     [currentUser?.carPlate]
   );
 
-  /* ✅ البحث عن جلسة نشطة واستبعاد أي جلسة مقفلة */
+  /* ✅ البحث عن جلسة نشطة واستبعاد أي جلسة تم إقرار إغلاقها مسبقاً */
   const activeSession = useMemo(() => {
     if (!normalizedUserPlate && !currentUser?.phone) return undefined;
 
     return sessions
       .filter((s: Session & { customerPhone?: string }) => {
         if (s.status !== 'active') return false;
-        if (acknowledgedSessionIds?.has(s.id)) return false;
+        if (acknowledgedSessionIds?.has(s.id)) return false; // أمان: حجب الجلسات المؤكدة فوراً
         const samePlate = normalizePlateForCompare(s.carPlate) === normalizedUserPlate;
         const samePhone = Boolean(currentUser?.phone && s.customerPhone === currentUser.phone);
         return samePlate || samePhone;
@@ -535,7 +535,7 @@ export default function GarageListScreen() {
           <button
             onClick={getUserLocation}
             disabled={locationLoading}
-            className="active:scale-90 transition-all flex items-center justify-center"
+            className="active:scale-95 transition-all flex items-center justify-center"
             style={{
               background: locationLoading ? '#E2E8F0' : '#0066FF',
               color: locationLoading ? '#94a3b8' : '#fff',
@@ -550,7 +550,7 @@ export default function GarageListScreen() {
 
           <button
             onClick={() => setShowNearbyOnly(!showNearbyOnly)}
-            className="font-black text-xs active:scale-90 transition-all whitespace-nowrap flex items-center gap-1"
+            className="font-black text-xs active:scale-95 transition-all whitespace-nowrap flex items-center gap-1"
             style={{
               background: showNearbyOnly ? '#0066FF' : '#F0F4FF',
               color: showNearbyOnly ? '#fff' : '#64748b',
@@ -717,7 +717,7 @@ export default function GarageListScreen() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   ██  GARAGE CARD COMPONENT (التصميم الأصلي)
+   ██  GARAGE CARD COMPONENT
    ════════════════════════════════════════════════════════════ */
 interface GarageCardProps {
   garage: GarageWithDistance;
@@ -882,7 +882,7 @@ function GarageCard({
           e.stopPropagation();
           if (!isFull && !disabled) onSelect();
         }}
-        className="w-full font-black flex items-center justify-center gap-2 active:scale-95 transition-all"
+        className="w-full font-black flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
         style={{
           background: btnBg,
           color: isFull ? '#94a3b8' : '#ffffff',

@@ -46,6 +46,8 @@ export default function SessionScreen() {
     currentUser,
     fetchAll,
     setSelectedGarageId,
+    acknowledgedSessionIds,
+    acknowledgeSession,
   } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
@@ -53,7 +55,7 @@ export default function SessionScreen() {
 
   const redirectedToSummaryRef = useRef(false);
   const redirectedToSessionRef = useRef(false);
-  const lastActiveSessionIdRef = useRef<string | null>(null); // ✅ مرجع لتتبع مُعرف الجلسة النشطة حالياً
+  const activeSessionIdRef = useRef<string | null>(null); // ✅ مرجع لتتبع مُعرف الجلسة النشطة حالياً
   const realtimeChannelRef = useRef<any>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -74,12 +76,13 @@ export default function SessionScreen() {
     return sessions
       .filter((s) => {
         if (s.status !== 'active') return false;
+        if (acknowledgedSessionIds?.has(s.id)) return false; // أمان: حجب أي جلسة مؤكدة ومغلقة سابقاً
         const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
         const samePhoneMatch = !!userPhone && (s as any).customerPhone === userPhone;
         return samePlateMatch || samePhoneMatch;
       })
       .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
-  }, [sessions, userPlate, userPhone]);
+  }, [sessions, userPlate, userPhone, acknowledgedSessionIds]);
 
   const lastCompletedSession = useMemo(() => {
     return sessions
@@ -96,14 +99,14 @@ export default function SessionScreen() {
     (g) => g.id === (activeSession?.garageId ?? lastCompletedSession?.garageId),
   );
 
-  // تحديث مرجع الجلسة النشطة فور العثور عليها
+  // ✅ تتبع وتسجيل مُعرف الجلسة النشطة الحالية باستمرار
   useEffect(() => {
     if (activeSession?.id) {
-      lastActiveSessionIdRef.current = activeSession.id;
+      activeSessionIdRef.current = activeSession.id;
     }
   }, [activeSession?.id]);
 
-  // ✅ حساب startTime الدقيق للجلسة النشطة
+  // حساب startTime للجلسة النشطة
   const activeStartMs = useMemo(() => {
     if (!activeSession) return 0;
     const ms = safeParseTime(activeSession.startTime);
@@ -189,26 +192,59 @@ export default function SessionScreen() {
     if (activeSession.garageId) setSelectedGarageId(activeSession.garageId);
   }, [activeSession?.id, activeSession?.garageId, setSelectedGarageId]);
 
-  // ✅ الفلترة والتحويل الذكي الخالي من التداخل والتكرار
+  // ✅ الفلترة والتحويل الأمني الذكي الخالي تماماً من التداخل
   useEffect(() => {
-    if (activeSession) { redirectedToSummaryRef.current = false; return; }
-    if (!lastCompletedSession) return;
-    if (redirectedToSummaryRef.current) return;
-
-    // شرط الأمان: يجب أن تكون الجلسة المكتملة هي نفس الجلسة النشطة السابقة التي تتبعناها
-    const isTheOneThatJustEnded = lastActiveSessionIdRef.current === lastCompletedSession.id;
-    
-    // أو في حالة فتح التطبيق لأول مرة فور انتهاء جلسة مؤخراً جداً (خلال 15 ثانية فقط)
-    const endMs = safeParseTime(lastCompletedSession.endTime);
-    const endedVeryRecently = endMs > 0 && (Date.now() - endMs < 15000);
-
-    if (isTheOneThatJustEnded || endedVeryRecently) {
-      redirectedToSummaryRef.current = true;
-      if (lastCompletedSession.garageId) setSelectedGarageId(lastCompletedSession.garageId);
-      toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
-      setTimeout(() => { setScreen('summary'); }, 400);
+    // 1. إذا وجدنا جلسة نشطة قيد التشغيل، نلغي أي توجيه فوري ونبقى في العداد
+    if (activeSession) {
+      redirectedToSummaryRef.current = false;
+      return;
     }
-  }, [activeSession?.id, lastCompletedSession?.id, lastCompletedSession?.endTime, lastCompletedSession?.garageId, setScreen, setSelectedGarageId]);
+
+    // 2. التحويل التفاعلي: إذا انتهت الجلسة النشطة التي كنا نراقبها بالتو
+    if (activeSessionIdRef.current) {
+      const targetSession = sessions.find(s => s.id === activeSessionIdRef.current);
+      
+      if (targetSession && targetSession.status === 'completed' && !redirectedToSummaryRef.current) {
+        redirectedToSummaryRef.current = true;
+        
+        if (targetSession.garageId) {
+          setSelectedGarageId(targetSession.garageId);
+        }
+        
+        // إغلاق الجلسة المؤكدة آلياً
+        if (typeof acknowledgeSession === 'function') {
+          acknowledgeSession(targetSession.id);
+        }
+        
+        activeSessionIdRef.current = null;
+        toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
+        setTimeout(() => { setScreen('summary'); }, 400);
+        return;
+      }
+    }
+
+    // 3. التحويل من خارج التطبيق: إذا فتح العميل التطبيق وكانت جلسته قد انتهت للتو (أقل من 20 ثانية)
+    if (lastCompletedSession && !redirectedToSummaryRef.current) {
+      const endMs = safeParseTime(lastCompletedSession.endTime);
+      const elapsedSinceEnd = Date.now() - endMs;
+      const isNotAcknowledged = acknowledgedSessionIds ? !acknowledgedSessionIds.has(lastCompletedSession.id) : true;
+
+      if (endMs > 0 && elapsedSinceEnd < 20000 && isNotAcknowledged) {
+        redirectedToSummaryRef.current = true;
+        
+        if (lastCompletedSession.garageId) {
+          setSelectedGarageId(lastCompletedSession.garageId);
+        }
+        
+        if (typeof acknowledgeSession === 'function') {
+          acknowledgeSession(lastCompletedSession.id);
+        }
+        
+        toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
+        setTimeout(() => { setScreen('summary'); }, 400);
+      }
+    }
+  }, [activeSession, lastCompletedSession, sessions, setScreen, setSelectedGarageId, acknowledgedSessionIds, acknowledgeSession]);
 
   if (loading) {
     return (

@@ -310,8 +310,8 @@ interface AppState {
   selectedGarageId: string | null;
   setSelectedGarageId: (id: string | null) => void;
   sessions: ParkingSession[];
-  acknowledgedSessionIds: Set<string>; // ✅ تتبع الجلسات التي تم عرض فاتورتها وإقفالها
-  acknowledgeSession: (id: string) => void; // ✅ دالة إقرار إغلاق الجلسة
+  acknowledgedSessionIds: Set<string>; 
+  acknowledgeSession: (id: string) => void; 
   addSession: (s: Omit<ParkingSession, 'id'>) => Promise<string>;
   endSession: (id: string, totalPrice: number, paymentMethod: string) => Promise<void>;
   cancelSession: (id: string) => void;
@@ -388,7 +388,6 @@ export const useStore = create<AppState>((set, get) => ({
 
   sessions: [],
   
-  // ✅ تطبيق منظومة الإقرار لربط الجلسة المنتهية وكسر تكرارها
   acknowledgedSessionIds: new Set<string>(),
   acknowledgeSession: (id) => {
     set((st) => {
@@ -669,7 +668,7 @@ export const useStore = create<AppState>((set, get) => ({
           added_by: addedByValue,
           customer_phone: (s as any).customerPhone || null,
           customer_name: (s as any).customerName || null,
-          incoming_car_id: (s as any).incomingCarId || null,
+          incoming_car_id: (s as any).incoming_car_id || null,
           started_by: (s as any).startedBy || null,
           commission_amount: 0,
           net_revenue: 0,
@@ -886,7 +885,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (isSupabaseConfigured()) {
       supabase.from('wallet_topups').insert({
         user_id: w.userId, user_name: w.userName, user_phone: w.userPhone,
-        amount: w.amount, transaction_id: w.transactionId, car_plate: w.carPlate, method: w.method,
+        amount: w.amount, transaction_id: w.transactionId, car_plate: w.car_plate, method: w.method,
       }).select().single()
         .then(({ data }) => { if (data) set((st) => ({ walletTopUps: st.walletTopUps.map((x) => (x.id === newW.id ? mapTopUp(data) : x)) })); });
     }
@@ -913,7 +912,7 @@ export const useStore = create<AppState>((set, get) => ({
     let userData: any = null;
     if (realUserPhone) { const { data } = await supabase.from('users').select('id, phone, wallet').eq('phone', realUserPhone).maybeSingle(); if (data) userData = data; }
     if (!userData && realUserId && realUserId.includes('-')) { const { data } = await supabase.from('users').select('id, phone, wallet').eq('id', realUserId).maybeSingle(); if (data) userData = data; }
-    if (!userData && realUserId && !realUserId.includes('-')) { const { data } = await supabase.from('users').select('id, phone, wallet').eq('phone', realUserId).maybeSingle(); if (data) userData = data; }
+    if (!userData && realUserId && !realUserId.includes('-')) { const { data } = await supabase.from('users').select('id, phone, wallet').eq('phone', realUserPhone).maybeSingle(); if (data) userData = data; }
     if (!userData) { console.error('❌ المستخدم مش موجود'); return; }
     const amount = Number(dbRow.amount || topUp.amount || 0);
     const newWallet = Number(userData.wallet || 0) + amount;
