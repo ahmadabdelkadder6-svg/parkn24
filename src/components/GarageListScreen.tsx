@@ -39,7 +39,7 @@ const normalizePlateForCompare = (plate?: string): string => {
   return plate
     .trim()
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
     .replace(/\s+/g, ' ')
     .toUpperCase();
 };
@@ -99,15 +99,7 @@ export default function GarageListScreen() {
     [currentUser?.carPlate]
   );
 
-  const hasCompletedSession = useMemo(() => {
-    return sessions.some(
-      (s: Session) =>
-        normalizePlateForCompare(s.carPlate) === normalizedUserPlate &&
-        s.status === 'completed'
-    );
-  }, [sessions, normalizedUserPlate]);
-
-  /* ✅ البحث عن جلسة نشطة */
+  /* ✅ البحث عن جلسة نشطة حالياً */
   const activeSession = useMemo(() => {
     if (!normalizedUserPlate && !currentUser?.phone) return undefined;
 
@@ -120,6 +112,17 @@ export default function GarageListScreen() {
       })
       .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
   }, [sessions, normalizedUserPlate, currentUser?.phone]);
+
+  /* ✅ تعديل ذكي: إخفاء الجلسات القديمة تماماً وتجنب تكرارها طالما هناك جلسة نشطة جديدة */
+  const hasCompletedSession = useMemo(() => {
+    if (activeSession) return false; // حجب كامل لمنع تداخل الشاشات والرسائل القديمة
+    
+    return sessions.some(
+      (s: Session) =>
+        normalizePlateForCompare(s.carPlate) === normalizedUserPlate &&
+        s.status === 'completed'
+    );
+  }, [sessions, normalizedUserPlate, activeSession]);
 
   /* ✅ البحث عن حجز نشط قادم */
   const myIncomingCar = useMemo(() => {
@@ -599,7 +602,7 @@ export default function GarageListScreen() {
               border: '1.5px solid #E0D6FF',
               borderRadius: 16,
               padding: '10px 12px',
-              boxShadow: '0 2px 8px rgba(124,58,237,0.04)',
+              boxShadow: '0 2px 8px rgba(124, 58, 237, 0.04)',
             }}
           >
             <div style={{ background: '#7C3AED', borderRadius: 10, padding: 6, color: '#fff' }}>
