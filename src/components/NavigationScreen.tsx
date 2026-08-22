@@ -10,7 +10,7 @@ import {
   XCircle,
   Copy,
 } from 'lucide-react';
-import { useStore } from '../store';
+import { useStore, Session } from '../store';
 import {
   calculateDistance,
   distanceToMinutes,
@@ -84,7 +84,7 @@ function MapController({
     if (userPos[0] !== 0 && garagePos[0] !== 0) {
       try {
         const bounds = L.latLngBounds([userPos, garagePos]);
-        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
       } catch {
         map.setView(garagePos, 15);
       }
@@ -126,15 +126,15 @@ export default function NavigationScreen() {
     );
   }, [incomingCars, selectedGarageId, userPlateNav]);
 
-  /* ✅ الكشف عن الجلسة النشطة */
+  /* ✅ فلترة صارمة جداً: نكشف فقط عن الجلسة النشطة بنسبة 100% ونستبعد أي تاريخ جلسات منتهية تماماً */
   const myActiveSession = useMemo(() => {
     return sessions
       .filter(
-        (sess) =>
+        (sess: Session & { customerPhone?: string }) =>
           sess.status === 'active' &&
           (
             normalizePlate(sess.carPlate) === userPlateNav ||
-            (currentUser?.phone && (sess as any).customerPhone === currentUser.phone)
+            Boolean(currentUser?.phone && sess.customerPhone === currentUser.phone)
           ),
       )
       .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
@@ -151,7 +151,7 @@ export default function NavigationScreen() {
   const [pushStatus, setPushStatus] = useState<'waiting' | 'sent' | 'cancelled'>('waiting');
   const [sessionStartedByGarage, setSessionStartedByGarage] = useState(false);
 
-  /* ── Refs لمنع استدعاء التايمر المتكرر وتصفيره ── */
+  /* ── Refs لمنع تصفير المؤقت ── */
   const userPosRef = useRef(userPos);
   const currentUserRef = useRef(currentUser);
   const lastCarIdRef = useRef<string | null>(null);
@@ -294,7 +294,7 @@ export default function NavigationScreen() {
     return () => clearTimeout(t);
   }, []);
 
-  /* ─── مؤقت الإلغاء الشكلي للواجهة ─── */
+  /* ─── مؤقت الإلغاء ─── */
   useEffect(() => {
     if (myIncomingCar) {
       screenEnteredRef.current = Date.now();
@@ -382,9 +382,9 @@ export default function NavigationScreen() {
         pushTimerRef.current = null;
       }
     };
-  }, [myIncomingCar?.id, selectedGarageId]);
+  }, [myIncomingCar?.id, selectedGarageId, garage]);
 
-  /* ─── الانتقال التلقائي لشاشة الجلسة ─── */
+  /* ─── الانتقال التلقائي لشاشة الجلسة النشطة ─── */
   useEffect(() => {
     if (!myActiveSession) {
       navigatedToSessionRef.current = false;
@@ -648,7 +648,7 @@ export default function NavigationScreen() {
           </motion.div>
         )}
 
-        {/* 🏢 بطاقة اسم الجراج باللون الأسود الفخم والواضح على خلفية بيضاء نقية */}
+        {/* 🏢 بطاقة اسم الجراج بالأسود الفخم والواضح على خلفية بيضاء نقية */}
         <div
           className="rounded-2xl p-3.5 shrink-0 shadow-md"
           style={{
@@ -688,8 +688,8 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* الخريطة */}
-        <div className="w-full h-64 rounded-2xl overflow-hidden border border-slate-800 relative shrink-0 shadow-lg">
+        {/* 🗺️ الخريطة المصغرة بمقاس h-48 لإعطاء مساحة أكبر ومريحة لزر الإلغاء */}
+        <div className="w-full h-48 rounded-2xl overflow-hidden border border-slate-800 relative shrink-0 shadow-lg">
           {mapReady ? (
             <MapContainer
               center={[garage.lat, garage.lng]}
@@ -880,7 +880,7 @@ export default function NavigationScreen() {
           </button>
         )}
 
-        {/* زر الإلغاء */}
+        {/* زر الإلغاء الشفاف */}
         {canCancel && myIncomingCar && !myActiveSession && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
