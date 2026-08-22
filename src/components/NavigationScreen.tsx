@@ -648,16 +648,22 @@ export default function NavigationScreen() {
           </motion.div>
         )}
 
-        {/* بطاقة الوقت والمسافة (اسم الجراج يعود بوضوح تام باللون الأبيض العريض المنحاز لليمين) */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shrink-0">
+        {/* 🏢 بطاقة اسم الجراج باللون الأسود الفخم والواضح على خلفية بيضاء نقية */}
+        <div
+          className="rounded-2xl p-3.5 shrink-0 shadow-md"
+          style={{
+            background: '#ffffff',
+            border: '1.5px solid #E2E8F0',
+          }}
+        >
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
-              <Clock size={14} className="text-blue-400" />
-              <span className="text-sm font-black text-blue-400 font-mono">
+              <Clock size={15} className="text-blue-600" />
+              <span className="text-sm font-black text-blue-600 font-mono">
                 {formatDuration(minutes)}
               </span>
-              <span className="text-slate-700">·</span>
-              <span className="text-xs text-slate-400 font-mono">
+              <span className="text-slate-300">·</span>
+              <span className="text-xs text-slate-600 font-mono font-bold">
                 {distance.toFixed(1)} كم
               </span>
             </div>
@@ -665,17 +671,18 @@ export default function NavigationScreen() {
             <div className="text-right flex flex-col items-end">
               <span
                 style={{
-                  color: '#ffffff',
+                  color: '#000000',
                   fontSize: '16px',
                   fontWeight: 900,
                   display: 'block',
+                  lineHeight: '1.2',
                 }}
               >
                 {garage.name}
               </span>
-              <div className="flex items-center gap-1 justify-end text-[10px] text-slate-400 mt-1">
+              <div className="flex items-center gap-1 justify-end text-[10px] text-slate-500 mt-1 font-bold">
                 <span>{garage.location}</span>
-                <MapPin size={9} />
+                <MapPin size={10} className="text-slate-400" />
               </div>
             </div>
           </div>
@@ -728,43 +735,39 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* 🔥 صندوق توجيه الخرائط الجديد - ناصع البياض بالكامل، ومختصر بالسطر الأول التحفيزي فقط 🗺️ */}
-        <div className="flex flex-col gap-2 shrink-0">
+        {/* 🚀 زر توجيه الخرائط المصغر والأنيق باللون الأبيض الناصع */}
+        <div className="flex flex-col gap-1.5 shrink-0">
           <motion.button
-            whileHover={{ scale: 1.02 }}
+            whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.98 }}
             onClick={openExternalMaps}
-            className="w-full relative overflow-hidden flex flex-col items-center justify-center py-6 px-4 rounded-2xl shadow-2xl cursor-pointer"
+            className="w-full relative overflow-hidden flex items-center justify-center gap-2.5 py-3.5 px-4 rounded-xl shadow-lg cursor-pointer"
             style={{
               background: 'linear-gradient(135deg, #0066FF 0%, #0033BB 100%)',
-              boxShadow: '0 12px 30px rgba(0, 102, 255, 0.45), 0 0 15px rgba(0, 102, 255, 0.25)',
+              boxShadow: '0 6px 18px rgba(0, 102, 255, 0.35)',
               color: '#ffffff',
             }}
           >
-            <div className="flex items-center justify-center gap-3">
-              <Navigation size={26} color="#ffffff" className="animate-bounce shrink-0" />
-              <span
-                style={{
-                  color: '#ffffff',
-                  fontSize: '20px',
-                  fontWeight: 900,
-                  lineHeight: '1.3',
-                  letterSpacing: '0.5px',
-                  display: 'inline-block',
-                }}
-              >
-                شغل الـ GPS وابدأ التحرك فوراً! 🗺️🚀
-              </span>
-            </div>
+            <Navigation size={18} color="#ffffff" className="animate-bounce shrink-0" />
+            <span
+              style={{
+                color: '#ffffff',
+                fontSize: '15px',
+                fontWeight: 900,
+                letterSpacing: '0.3px',
+              }}
+            >
+              شغل الـ GPS وابدأ التحرك فوراً! 🗺️🚀
+            </span>
           </motion.button>
 
           {/* زر نسخ الإحداثيات الفرعي */}
           <button
             onClick={copyCoords}
-            className="flex items-center justify-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 py-1 transition-all"
+            className="flex items-center justify-center gap-1 text-[11px] text-slate-400 hover:text-slate-200 py-0.5 transition-all"
           >
-            <Copy size={13} className="text-slate-500" />
-            <span>نسخ إحداثيات الجراج الجغرافية بدقة</span>
+            <Copy size={12} className="text-slate-500" />
+            <span>نسخ إحداثيات الجراج الجغرافية</span>
           </button>
         </div>
 
