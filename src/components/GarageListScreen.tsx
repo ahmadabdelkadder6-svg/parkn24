@@ -14,6 +14,10 @@ import {
   MessageCircle,
   Zap,
   X,
+  History,
+  CheckCircle2,
+  XCircle,
+  HelpCircle,
 } from 'lucide-react';
 import { useStore, Garage, Session, IncomingCar } from '../store';
 import {
@@ -71,11 +75,13 @@ export default function GarageListScreen() {
     addIncomingCar,
     fetchAll,
     acknowledgedSessionIds,
+    walletTopUps, // 🚀 جلب طلبات شحن المحفظة من الستور لتتبعها تلقائياً
   } = useStore();
 
   const [search, setSearch] = useState('');
   const [showNearbyOnly, setShowNearbyOnly] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
+  const [showHistory, setShowHistory] = useState(false); // 🚀 للتحكم في فتح وغلق سجل العمليات
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>({
     lat: 30.0444,
     lng: 31.2357,
@@ -100,6 +106,7 @@ export default function GarageListScreen() {
     [currentUser?.carPlate]
   );
 
+  /* ✅ البحث عن جلسة نشطة واستبعاد أي جلسة تم إقرار إغلاقها مسبقاً */
   const activeSession = useMemo(() => {
     if (!normalizedUserPlate && !currentUser?.phone) return undefined;
 
@@ -114,6 +121,7 @@ export default function GarageListScreen() {
       .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
   }, [sessions, normalizedUserPlate, currentUser?.phone, acknowledgedSessionIds]);
 
+  /* ✅ حجب الجلسات المنتهية القديمة لمنع تكرار شاشة النهاية */
   const hasCompletedSession = useMemo(() => {
     if (activeSession) return false;
     return sessions.some(
@@ -123,6 +131,7 @@ export default function GarageListScreen() {
     );
   }, [sessions, normalizedUserPlate, activeSession]);
 
+  /* ✅ البحث عن حجز نشط قادم */
   const myIncomingCar = useMemo(() => {
     if (!normalizedUserPlate) return undefined;
     return incomingCars
@@ -133,6 +142,18 @@ export default function GarageListScreen() {
       )
       .sort((a, b) => safeParseTime(b.startTime || 0) - safeParseTime(a.startTime || 0))[0];
   }, [incomingCars, normalizedUserPlate]);
+
+  /* 🚀 فلترة عمليات شحن المحفظة الخاصة بالعميل الحالي وتصنيفها */
+  const myTopUps = useMemo(() => {
+    if (!currentUser?.phone || !walletTopUps) return [];
+    return walletTopUps
+      .filter((w) => w.userPhone === currentUser.phone)
+      .sort((a, b) => b.timestamp - a.timestamp);
+  }, [walletTopUps, currentUser?.phone]);
+
+  const pendingTopUpsCount = useMemo(() => {
+    return myTopUps.filter((w) => w.status === 'pending').length;
+  }, [myTopUps]);
 
   /* ── Location ── */
   const getUserLocation = useCallback(() => {
@@ -430,22 +451,46 @@ export default function GarageListScreen() {
               </div>
             </div>
 
-            {/* زر الشحن المدمج والأنيق */}
-            <button
-              onClick={() => setShowTopUp(true)}
-              className="flex items-center gap-1 font-black active:scale-95 transition-all"
-              style={{
-                background: '#ffffff',
-                color: '#0055FF',
-                borderRadius: 12,
-                padding: '8px 14px',
-                fontSize: 12,
-                boxShadow: '0 4px 14px rgba(255,255,255,0.3)',
-              }}
-            >
-              <Plus size={14} strokeWidth={3} />
-              <span>اشحن الآن</span>
-            </button>
+            {/* أزرار المحفظة */}
+            <div className="flex gap-2">
+              {/* زر تاريخ العمليات */}
+              {myTopUps.length > 0 && (
+                <button
+                  onClick={() => setShowHistory(!showHistory)}
+                  className="flex items-center justify-center p-2.5 rounded-xl transition-all relative"
+                  style={{
+                    background: showHistory ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.15)',
+                    color: '#ffffff',
+                    border: '1.5px solid rgba(255,255,255,0.25)',
+                  }}
+                  title="سجل العمليات"
+                >
+                  <History size={16} />
+                  {pendingTopUpsCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 w-4.5 h-4.5 rounded-full bg-amber-400 text-slate-950 font-black text-[9px] flex items-center justify-center animate-bounce">
+                      {pendingTopUpsCount}
+                    </span>
+                  )}
+                </button>
+              )}
+
+              {/* زر الشحن المدمج والأنيق */}
+              <button
+                onClick={() => setShowTopUp(true)}
+                className="flex items-center gap-1 font-black active:scale-95 transition-all"
+                style={{
+                  background: '#ffffff',
+                  color: '#0055FF',
+                  borderRadius: 12,
+                  padding: '8px 14px',
+                  fontSize: 12,
+                  boxShadow: '0 4px 14px rgba(255,255,255,0.3)',
+                }}
+              >
+                <Plus size={14} strokeWidth={3} />
+                <span>اشحن الآن</span>
+              </button>
+            </div>
           </div>
 
           {/* رقم لوحة السيارة */}
@@ -464,6 +509,88 @@ export default function GarageListScreen() {
             </div>
           </div>
         </div>
+
+        {/* 🚀 سجل طلبات شحن المحفظة (المعلقة والأرشيف التلقائي) */}
+        <AnimatePresence>
+          {showHistory && myTopUps.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-3 overflow-hidden"
+              style={{
+                background: '#ffffff',
+                border: '2px solid #D0DCFF',
+                borderRadius: 20,
+                padding: '14px',
+                boxShadow: '0 4px 12px rgba(0,102,255,0.05)',
+              }}
+            >
+              <div className="flex justify-between items-center mb-2.5 pb-2" style={{ borderBottom: '1.5px solid #F0F4FF' }}>
+                <button onClick={() => setShowHistory(false)} className="text-slate-400 hover:text-slate-600">
+                  <X size={16} />
+                </button>
+                <h3 className="font-black text-xs flex items-center gap-1.5 text-slate-800">
+                  سجل شحن محفظتي <History size={13} className="text-blue-600" />
+                </h3>
+              </div>
+
+              <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                {myTopUps.map((topUp) => {
+                  const isPending = topUp.status === 'pending';
+                  const isApproved = topUp.status === 'approved';
+                  return (
+                    <div
+                      key={topUp.id}
+                      className="flex justify-between items-center p-2.5 rounded-xl border"
+                      style={{
+                        background: isPending ? '#FFFBF0' : isApproved ? '#F0FFF5' : '#F8FAFF',
+                        borderColor: isPending ? '#FFEAA7' : isApproved ? '#B8E994' : '#E2E8F0',
+                      }}
+                    >
+                      <div className="text-left">
+                        <div className="font-black font-mono text-sm" style={{ color: isApproved ? '#2E7D32' : isPending ? '#D4AF37' : '#64748B' }}>
+                          {topUp.amount} ج.م
+                        </div>
+                        <div className="text-[9px] text-slate-400 font-mono mt-0.5">
+                          كود: {topUp.transactionId || topUp.id.substring(0, 8).toUpperCase()}
+                        </div>
+                      </div>
+
+                      <div className="text-right flex items-center gap-2">
+                        <div>
+                          <div className="font-black text-[10px]" style={{ color: '#0A1628' }}>
+                            {topUp.method === 'instapay' ? '📱 إنستاباي' : '📲 محفظة كاش'}
+                          </div>
+                          <div className="text-[9px] font-bold text-slate-400 mt-0.5">
+                            {new Date(topUp.timestamp).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        </div>
+
+                        {/* شارات الحالة */}
+                        <div className="shrink-0">
+                          {isPending ? (
+                            <span className="font-black text-[9px] px-2 py-1 rounded-lg bg-amber-100 text-amber-800 flex items-center gap-0.5 animate-pulse">
+                              ⏳ معلق
+                            </span>
+                          ) : isApproved ? (
+                            <span className="font-black text-[9px] px-2 py-1 rounded-lg bg-emerald-100 text-emerald-800 flex items-center gap-0.5">
+                              <CheckCircle2 size={10} /> تم
+                            </span>
+                          ) : (
+                            <span className="font-black text-[9px] px-2 py-1 rounded-lg bg-rose-100 text-rose-800 flex items-center gap-0.5">
+                              <XCircle size={10} /> مرفوض
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* 🌟 بانر تحفيزي ذهبي مدمج وأنيق مع خط واضح (يظهر إذا كان الرصيد أقل من 30 ج.م) */}
         {(!currentUser?.wallet || currentUser.wallet < 30) && (
@@ -540,6 +667,7 @@ export default function GarageListScreen() {
             </div>
           </motion.button>
         )}
+
         {/* بانر الجلسة النشطة */}
         {activeSession && (
           <motion.button
@@ -953,7 +1081,7 @@ function GarageCard({
       </div>
 
       <div className="flex items-center justify-between gap-2 mb-3.5">
-        {/* ✅ بوكس وقت الوصول للجراج بتدرج بنفسجي أنيق للبعيدة (متناسق مع هوية التطبيق) */}
+        {/* بوكس وقت الوصول للجراج بتدرج بنفسجي أنيق للبعيدة */}
         <div
           className="flex items-center gap-1.5 font-black"
           style={{
