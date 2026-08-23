@@ -264,8 +264,9 @@ export default function SessionScreen() {
         <button
           onClick={() => setScreen('list')}
           className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center gap-2"
+          style={{ color: '#ffffff', fontWeight: 900 }}
         >
-          <ArrowRight size={16} /> العودة للقائمة
+          <ArrowRight size={16} /> <span style={{ color: '#ffffff', fontWeight: 900 }}>العودة للقائمة</span>
         </button>
       </div>
     );
@@ -358,11 +359,20 @@ export default function SessionScreen() {
         <p className="text-[10px] text-blue-600 font-bold">💡 سيتم تحديد طريقة الدفع عند إنهاء الجلسة</p>
       </div>
 
+      {/* ✅ زر إنهاء الجلسة المعدل بنص أبيض عريض وصريح جداً 🚀 */}
       <button
         onClick={() => setScreen('summary')}
-        className="w-full bg-red-600 hover:bg-red-700 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-red-100 active:scale-95 transition-all mb-3"
+        className="w-full py-5 rounded-2xl active:scale-95 transition-all mb-3 flex items-center justify-center gap-2 shadow-xl"
+        style={{
+          background: 'linear-gradient(135deg, #FF3333 0%, #CC0000 100%)',
+          boxShadow: '0 8px 24px rgba(255, 51, 51, 0.35)',
+          border: 'none',
+          cursor: 'pointer'
+        }}
       >
-        إنهاء الجلسة ({currentCost} ج.م)
+        <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '18px' }}>
+          🚗 إنهاء الجلسة ({currentCost} ج.م)
+        </span>
       </button>
 
       <button

@@ -231,7 +231,7 @@ export default function GarageListScreen() {
       )
       .subscribe();
 
-    const interval = setInterval(refetch, 7000);
+    const interval = setInterval(refetch, 1500); // 🚀 تسريع الفحص اللحظي لفتح العداد فوراً
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') refetch();

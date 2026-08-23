@@ -367,7 +367,10 @@ export default function SummaryScreen() {
           onClick={() => { setSelectedGarageId(null); setScreen('list'); }}
           className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100"
         >
-          <Home size={20} /> العودة للرئيسية
+          <Home size={20} className="text-white" />
+          <span className="font-black text-white text-center animate-fade-in" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
+            العودة للرئيسية
+          </span>
         </button>
       </motion.div>
     );
@@ -545,6 +548,7 @@ export default function SummaryScreen() {
             </div>
           </div>
 
+          {/* ✅ زر تأكيد الدفع مع النص الأبيض الواضح جداً والعريض لإنهاء الجلسة 🚀 */}
           <button
             onClick={handleConfirm}
             disabled={paymentMethod === 'wallet' && !canPayWallet}
@@ -557,9 +561,19 @@ export default function SummaryScreen() {
             }`}
           >
             {paymentMethod === 'wallet' ? (
-              <><Wallet size={20} /> خصم من المحفظة ({totalPrice} ج.م)</>
+              <>
+                <Wallet size={20} className="text-white" />
+                <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
+                  خصم من المحفظة ({totalPrice} ج.م)
+                </span>
+              </>
             ) : (
-              <><CheckCircle size={20} /> تأكيد الدفع نقدي ({totalPrice} ج.م)</>
+              <>
+                <CheckCircle size={20} className="text-white" />
+                <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
+                  تأكيد الدفع نقدي ({totalPrice} ج.م)
+                </span>
+              </>
             )}
           </button>
         </>
@@ -570,7 +584,10 @@ export default function SummaryScreen() {
           onClick={() => { setSelectedGarageId(null); setScreen('list'); }}
           className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100 mt-4"
         >
-          <Home size={20} /> العودة للرئيسية
+          <Home size={20} className="text-white" />
+          <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
+            العودة للرئيسية
+          </span>
         </button>
       )}
     </motion.div>
