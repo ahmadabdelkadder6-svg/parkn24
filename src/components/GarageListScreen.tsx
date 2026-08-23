@@ -465,18 +465,18 @@ export default function GarageListScreen() {
           </div>
         </div>
 
-        {/* 🌟 بانر تحفيزي ذهبي بريميوم بخط عريض واضح ومتناسق (يظهر إذا كان الرصيد أقل من 30 ج.م) */}
+        {/* 🌟 بانر تحفيزي ذهبي مدمج وأنيق مع خط واضح (يظهر إذا كان الرصيد أقل من 30 ج.م) */}
         {(!currentUser?.wallet || currentUser.wallet < 30) && (
           <motion.button
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             onClick={() => setShowTopUp(true)}
-            className="w-full mb-3 flex items-center gap-3 text-right active:scale-[0.98] transition-all overflow-hidden relative"
+            className="w-full mb-3 flex items-center gap-2.5 text-right active:scale-[0.98] transition-all overflow-hidden relative"
             style={{
-              background: 'linear-gradient(120deg, #FFD700 0%, #FFA500 50%, #FF8C00 100%)',
-              borderRadius: 18,
-              padding: '14px 16px',
-              boxShadow: '0 6px 20px rgba(255, 165, 0, 0.35)',
+              background: 'linear-gradient(120deg, #FFD700 0%, #FFA500 55%, #FF8C00 100%)',
+              borderRadius: 14,
+              padding: '10px 14px',
+              boxShadow: '0 4px 14px rgba(255, 149, 0, 0.3)',
             }}
           >
             {/* تأثير لمعان زجاجي متحرك احترافي */}
@@ -490,18 +490,18 @@ export default function GarageListScreen() {
               }}
             />
 
-            {/* أيقونة برق دائرية متحركة */}
+            {/* أيقونة برق دائرية متحركة صغيرة */}
             <motion.div
               animate={{ rotate: [0, -10, 10, 0] }}
               transition={{ repeat: Infinity, duration: 1.5 }}
-              className="w-11 h-11 rounded-full flex items-center justify-center shrink-0 relative z-10"
+              className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 relative z-10"
               style={{
                 background: 'rgba(255,255,255,0.35)',
                 backdropFilter: 'blur(6px)',
                 boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.4)',
               }}
             >
-              <Zap size={22} className="fill-white text-white drop-shadow-md" />
+              <Zap size={18} className="fill-white text-white drop-shadow-md" />
             </motion.div>
 
             {/* النص التحفيزي واضح ومتناسق */}
@@ -509,7 +509,7 @@ export default function GarageListScreen() {
               <div
                 className="font-black leading-tight"
                 style={{
-                  fontSize: 14,
+                  fontSize: 15,
                   color: '#3D1F00',
                   textShadow: '0 1px 1px rgba(255,255,255,0.35)',
                 }}
@@ -517,13 +517,14 @@ export default function GarageListScreen() {
                 اشحن محفظتك ووفر وقتك ✨
               </div>
               <p
-                className="font-black mt-1 leading-snug"
+                className="font-black leading-tight"
                 style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   color: '#5C2E00',
+                  marginTop: 2,
                 }}
               >
-                خروج فوري بضغطة زر بدون فكة أو انتظار
+                خروج فوري بضغطة زر بدون فكة
               </p>
             </div>
 
@@ -531,7 +532,7 @@ export default function GarageListScreen() {
             <div
               className="relative z-10 font-black shrink-0"
               style={{
-                fontSize: 22,
+                fontSize: 20,
                 color: '#3D1F00',
               }}
             >
@@ -539,7 +540,6 @@ export default function GarageListScreen() {
             </div>
           </motion.button>
         )}
-
         {/* بانر الجلسة النشطة */}
         {activeSession && (
           <motion.button
