@@ -129,16 +129,18 @@ export default function App() {
         localStorage.removeItem('appScreen');
       }
 
-      // 🚀 [تعديل 1]: التوجيه التلقائي الآمن للمستخدم الصحيح عند إقلاع التطبيق لأول مرة
+      // 🚀 التوجيه التلقائي الآمن (يدعم الروابط السرية + الذاكرة المحفوظة)
+      const params = new URLSearchParams(window.location.search);
+      const isGarageFromURL = params.has('garage');
       const isGarageLoggedIn = localStorage.getItem('currentGarageId') || currentGarageId;
       const isAdminLoggedIn = localStorage.getItem('adminAccess') === 'true';
 
       if (isAdminLoggedIn) {
         setView('admin');
-      } else if (isGarageLoggedIn) {
+      } else if (isGarageLoggedIn || isGarageFromURL) {
         setView('garage');
       } else {
-        setView('user'); // افتراضي للحريف (العميل العادي)
+        setView('user');
       }
 
       await fetchAll();
