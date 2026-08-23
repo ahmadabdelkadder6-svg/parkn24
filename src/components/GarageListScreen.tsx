@@ -149,7 +149,7 @@ export default function GarageListScreen() {
     return walletTopUps
       .filter((w) => w.userPhone === currentUser.phone)
       .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 4); // 🚀 عرض آخر 4 عمليات شحن فقط لتخفيف واجهة العميل وتسريع الأداء تماماً
+      .slice(0, 3); // 🚀 عرض آخر 3 عمليات شحن فقط لتخفيف واجهة العميل وتسريع الأداء تماماً
   }, [walletTopUps, currentUser?.phone]);
 
   const pendingTopUpsCount = useMemo(() => {
