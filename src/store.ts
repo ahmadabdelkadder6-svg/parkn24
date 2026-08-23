@@ -406,11 +406,30 @@ export const useStore = create<AppState>((set, get) => ({
     safeRemoveStorage('garageAuth'); safeRemoveStorage('adminAuth');
   },
 
+  // 🚀 نظام جلب البيانات الذكي والخفيف جداً (Smart & Optimized Fetching)
   fetchAll: async () => {
     if (!isSupabaseConfigured()) return;
-    const [g, s, o, w, ic, msgs] = await Promise.all([
+
+    // تشغيل جميع الاستعلامات بالتوازي للحصول على أقصى سرعة
+    const [g, activeAndUnsettledRes, recentSettledRes, o, w, ic, msgs] = await Promise.all([
       supabase.from('garages').select('*'),
-      supabase.from('sessions').select('*').order('created_at', { ascending: false }).limit(200),
+
+      // 1. جلب جميع العمليات النشطة + العمليات غير المسواة (المعلقة مالياً)
+      supabase
+        .from('sessions')
+        .select('*')
+        .or('status.eq.active,settled.eq.false')
+        .order('created_at', { ascending: false }),
+
+      // 2. جلب أحدث 100 جلسة مقفلة فقط للأرشيف السريع (بدلاً من كل تاريخ الجلسات)
+      supabase
+        .from('sessions')
+        .select('*')
+        .eq('settled', true)
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false })
+        .limit(100),
+
       supabase.from('offers').select('*').order('created_at', { ascending: false }).limit(100),
       supabase.from('wallet_topups').select('*').order('created_at', { ascending: false }).limit(100),
       supabase.from('incoming_cars').select('*').order('created_at', { ascending: false }),
@@ -424,7 +443,17 @@ export const useStore = create<AppState>((set, get) => ({
       return dbGarage;
     });
 
-    const supabaseSessions = s.data ? s.data.map(mapSession) : [];
+    // 🚀 دمج نتائج الاستعلامين للجلسات بذكاء (النشطة + غير المسواة + أحدث 100 مسواة)
+    const activeAndUnsettled = activeAndUnsettledRes.data ? activeAndUnsettledRes.data.map(mapSession) : [];
+    const recentSettled = recentSettledRes.data ? recentSettledRes.data.map(mapSession) : [];
+    
+    // إزالة التكرار (لو جلسة موجودة في الاستعلامين نأخذها مرة واحدة فقط)
+    const sessionsMap = new Map<string, ParkingSession>();
+    [...activeAndUnsettled, ...recentSettled].forEach((s) => {
+      if (!sessionsMap.has(s.id)) sessionsMap.set(s.id, s);
+    });
+    const supabaseSessions = Array.from(sessionsMap.values());
+    
     const supabaseSessionIds = new Set(supabaseSessions.map((ss) => ss.id));
     const currentSessions = get().sessions;
     const supabaseActiveKeys = new Set(
@@ -885,7 +914,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (isSupabaseConfigured()) {
       supabase.from('wallet_topups').insert({
         user_id: w.userId, user_name: w.userName, user_phone: w.userPhone,
-        amount: w.amount, transaction_id: w.transactionId, car_plate: w.car_plate, method: w.method,
+        amount: w.amount, transaction_id: w.transactionId, car_plate: w.carPlate, method: w.method,
       }).select().single()
         .then(({ data }) => { if (data) set((st) => ({ walletTopUps: st.walletTopUps.map((x) => (x.id === newW.id ? mapTopUp(data) : x)) })); });
     }
@@ -1026,18 +1055,40 @@ export function pausePolling(duration = 5000) {
   pauseTimeout = setTimeout(() => { isOperationInProgress = false; pauseTimeout = null; }, duration);
 }
 
+// ===================== setupRealtime الذكي لتوفير الطاقة والبيانات =====================
 export function setupRealtime() {
   if (realtimeStarted) return;
   realtimeStarted = true;
 
-  if (pollingInterval) clearInterval(pollingInterval);
-  pollingInterval = setInterval(() => { if (!isOperationInProgress) useStore.getState().fetchAll(); }, 5000);
+  // دالة الفحص الدوري
+  const startPolling = () => {
+    if (pollingInterval) clearInterval(pollingInterval);
+    pollingInterval = setInterval(() => { 
+      // يفحص فقط إذا كان التطبيق مفتوحاً أمام عين المستخدم وليس مغلقاً أو في الخلفية
+      if (!isOperationInProgress && document.visibilityState === 'visible') {
+        useStore.getState().fetchAll(); 
+      }
+    }, 10000);
+  };
 
-  window.addEventListener('beforeunload', () => {
-    if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; }
+  startPolling();
+
+  // إيقاف وتفعيل الفحص تلقائياً بناءً على حالة شاشة الهاتف
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      useStore.getState().fetchAll(); // تحديث فوري عند فتح الشاشة
+      startPolling(); // إعادة تشغيل العداد الدوري
+    } else {
+      if (pollingInterval) {
+        clearInterval(pollingInterval); // إيقاف كامل للاتصال لتوفير البطارية والإنترنت
+        pollingInterval = null;
+      }
+    }
   });
 
   if (!isSupabaseConfigured()) return;
+
+  // باقي كود الـ Realtime الخاص بالـ channel يظل كما هو لسرعة الاستجابة...
 
   let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
   let lastRefresh = 0;
