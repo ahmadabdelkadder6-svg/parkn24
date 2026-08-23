@@ -129,6 +129,18 @@ export default function App() {
         localStorage.removeItem('appScreen');
       }
 
+      // 🚀 [تعديل 1]: التوجيه التلقائي الآمن للمستخدم الصحيح عند إقلاع التطبيق لأول مرة
+      const isGarageLoggedIn = localStorage.getItem('currentGarageId') || currentGarageId;
+      const isAdminLoggedIn = localStorage.getItem('adminAccess') === 'true';
+
+      if (isAdminLoggedIn) {
+        setView('admin');
+      } else if (isGarageLoggedIn) {
+        setView('garage');
+      } else {
+        setView('user'); // افتراضي للحريف (العميل العادي)
+      }
+
       await fetchAll();
       setDataLoaded(true);
       initialLoadDone.current = true;
@@ -389,15 +401,14 @@ export default function App() {
         className="max-w-md mx-auto h-dvh bg-white text-slate-900 relative flex flex-col overflow-hidden"
         style={{ fontFamily: "'Cairo', sans-serif" }}
       >
-        {/* ══════ التبويبات العلوية ══════ */}
-        <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-white/90 p-0.5 rounded-full backdrop-blur-md border border-slate-200 shadow-sm">
-          {[
-            { id: 'user' as const, label: 'حريف', show: true },
-            { id: 'garage' as const, label: 'جراج', show: true },
-            { id: 'admin' as const, label: 'أدمن', show: adminAccess },
-          ]
-            .filter((tab) => tab.show)
-            .map((tab) => (
+        {/* ══════ [تعديل 2]: التبويبات العلوية (تظهر للأدمن الموثق فقط لإدارة النظام) ══════ */}
+        {adminAccess && (
+          <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-white/90 p-0.5 rounded-full backdrop-blur-md border border-slate-200 shadow-sm animate-fade-in">
+            {[
+              { id: 'user' as const, label: 'حريف' },
+              { id: 'garage' as const, label: 'جراج' },
+              { id: 'admin' as const, label: 'أدمن' },
+            ].map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => {
@@ -424,7 +435,8 @@ export default function App() {
                 {tab.label}
               </button>
             ))}
-        </div>
+          </div>
+        )}
 
         {/* ══════ المحتوى الرئيسي ══════ */}
         <main className="flex-1 overflow-hidden bg-white">
