@@ -152,12 +152,13 @@ const playFirstAlert = async () => {
   } catch {}
 };
 
-const fireNewCarAlert = (carPlate: string, customerName?: string, agreedPrice?: number) => {
-  playFirstAlert(); vibrateDevice();
+// 🚀 إرسال إشعار خارجي برقم السيارة فقط لضمان الخصوصية والأمان
+const fireNewCarAlert = (carPlate: string) => {
+  playFirstAlert(); 
+  vibrateDevice();
   sendNotification(
     '🚨 سيارة في الطريق!',
-    [`🚗 ${carPlate}`, customerName ? `👤 ${customerName}` : '', agreedPrice ? `💰 ${agreedPrice} ج.م/ساعة` : '']
-      .filter(Boolean).join('\n'),
+    `🚗 رقم السيارة: ${carPlate}`,
     `incoming-${carPlate}`,
   );
 };
@@ -374,12 +375,13 @@ export default function GarageDashboard() {
     return () => document.removeEventListener('visibilitychange', h);
   }, [currentGarageId, fetchAll]);
 
+  // 🚀 مراقبة السيارات القادمة وإرسال إشعارات نظيفة وخاصة (برقم اللوحة فقط)
   useEffect(() => {
     const ids = new Set(carsOnTheWay.map(c => c.id));
     carsOnTheWay.forEach(car => {
       if (!prevIncomingIdsRef.current.has(car.id) && !document.hidden) {
-        fireNewCarAlert(car.carPlate, car.customerName, car.agreedPrice);
-        toast(`🚨 سيارة في الطريق!\n🚗 ${car.carPlate}${car.agreedPrice ? ` - ${car.agreedPrice} ج.م/ساعة` : ''}`, { duration: 10000, icon: '🚨' });
+        fireNewCarAlert(car.carPlate); // استدعاء الدالة المعدلة برقم اللوحة فقط
+        toast(`🚨 سيارة في الطريق!\n🚗 رقم السيارة: ${car.carPlate}`, { duration: 10000, icon: '🚨' });
       }
     });
     prevIncomingIdsRef.current.forEach(id => {
