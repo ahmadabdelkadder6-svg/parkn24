@@ -405,6 +405,7 @@ export default function LastSessionScreen() {
                 ج.م
               </span>
             </div>
+
             {/* 🚀 شارة طريقة السداد بالخط الملون العريض والواضح جداً 🚀 */}
             <div 
               className={`mt-1.5 inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl border-2 ${paymentInfo.bg} ${paymentInfo.border} shadow-lg`}
@@ -422,6 +423,8 @@ export default function LastSessionScreen() {
                 تم السداد: {paymentInfo.label}
               </span>
             </div>
+          </div> {/* ✅ تم إضافة قفل حاوية الـ div المفقودة هنا بنجاح لمنع الخطأ البرمجي */}
+
           {/* سطر توضيحي */}
           <div className="relative z-10 text-[10px] text-slate-400 mb-3">
             {hours} ساعة × {rate} ج.م = {cost.toFixed(0)} ج.م
