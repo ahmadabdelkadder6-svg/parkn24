@@ -343,13 +343,10 @@ export default function App() {
               return endB - endA;
             })[0];
 
-          if (lastCompleted) {
-            const endTime =
-              typeof lastCompleted.endTime === 'number'
-                ? lastCompleted.endTime
-                : 0;
-            const timeSinceEnd = Date.now() - endTime;
-            if (endTime > 0 && timeSinceEnd < 60000) {
+           if (lastCompleted) {
+            // 🚀 التحقق بـ "قفل الفاتورة" وليس فروق الثواني لضمان عدم سقوط الجلسة نهائياً
+            const isNotAcknowledged = acknowledgedSessionIds ? !acknowledgedSessionIds.has(lastCompleted.id) : true;
+            if (isNotAcknowledged) {
               setSelectedGarageId(lastCompleted.garageId);
               setScreen('summary');
               return;

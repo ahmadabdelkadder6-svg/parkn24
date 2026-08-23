@@ -223,14 +223,22 @@ export default function SessionScreen() {
       }
     }
 
-    // 3. التحويل من خارج التطبيق: إذا فتح العميل التطبيق وكانت جلسته قد انتهت للتو (أقل من 20 ثانية)
+    // 3. التحويل من خارج التطبيق: توجيه آمن 100% بناءً على عدم إقرار الفاتورة مسبقاً
     if (lastCompletedSession && !redirectedToSummaryRef.current) {
-      const endMs = safeParseTime(lastCompletedSession.endTime);
-      const elapsedSinceEnd = Date.now() - endMs;
       const isNotAcknowledged = acknowledgedSessionIds ? !acknowledgedSessionIds.has(lastCompletedSession.id) : true;
 
-      if (endMs > 0 && elapsedSinceEnd < 20000 && isNotAcknowledged) {
+      if (isNotAcknowledged) {
         redirectedToSummaryRef.current = true;
+        if (lastCompletedSession.garageId) {
+          setSelectedGarageId(lastCompletedSession.garageId);
+        }
+        if (typeof acknowledgeSession === 'function') {
+          acknowledgeSession(lastCompletedSession.id);
+        }
+        toast.success('تم إنهاء الجلسة بنجاح ✅', { icon: '🏁', duration: 3000 });
+        setTimeout(() => { setScreen('summary'); }, 400);
+      }
+    }
         
         if (lastCompletedSession.garageId) {
           setSelectedGarageId(lastCompletedSession.garageId);

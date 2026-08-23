@@ -589,7 +589,14 @@ export default function SummaryScreen() {
 
       {!activeSession && (
         <button
-          onClick={() => { setSelectedGarageId(null); setScreen('list'); }}
+          onClick={() => { 
+            // 🚀 قفل وإقرار الفاتورة عند الخروج لمنع تكرارها أو سقوطها
+            if (lastCompletedSession && typeof acknowledgeSession === 'function') {
+              acknowledgeSession(lastCompletedSession.id);
+            }
+            setSelectedGarageId(null); 
+            setScreen('list'); 
+          }}
           className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100 mt-4"
         >
           <Home size={20} className="text-white" />
