@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { useStore, pausePolling } from '../store';
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { calculateFullHours, calculateCost } from '../utils/pricing';
+import { calculateFullHours, calculateCost, formatTime } from '../utils/pricing';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 
@@ -27,7 +27,7 @@ const normalizePlate = (plate?: string): string => {
   return plate
     .trim()
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
     .replace(/\s+/g, ' ')
     .toUpperCase();
 };
@@ -209,7 +209,7 @@ export default function SummaryScreen() {
 
   /* ✅ طريقتين فقط للحريف */
   const methods = [
-    { id: 'cash', label: 'نقدي', icon: '💵' },
+    { id: 'cash', label: 'نقدي كاش', icon: '💵' },
     { id: 'wallet', label: 'من رصيد المحفظة', icon: '👝' },
   ];
 
@@ -403,44 +403,44 @@ export default function SummaryScreen() {
         </motion.div>
       )}
 
-      {/* بطاقة التكلفة */}
-      <div className="bg-white border border-slate-200 rounded-[2rem] p-6 mb-6 shadow-sm">
-        <div className="text-center mb-6">
-          <div className="text-5xl font-black text-slate-900 font-mono mb-1">
+      {/* 📥 تم تصغير كارت التكلفة ليكون مدمجاً وأنيقاً */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-4 shadow-sm">
+        <div className="text-center mb-3">
+          <div className="text-4xl font-black text-slate-900 font-mono mb-0.5">
             {totalPrice} ج.م
           </div>
-          <div className="text-xs text-slate-400 font-bold">إجمالي التكلفة</div>
+          <div className="text-[10px] text-slate-400 font-bold">إجمالي التكلفة الحالية</div>
         </div>
 
-        <div className="bg-gray-50 rounded-2xl p-4 mb-4 border border-slate-100">
-          <div className="flex items-center justify-center gap-2 mb-3">
-            <Calculator size={16} className="text-blue-600" />
-            <span className="text-xs text-slate-500 font-bold">تفاصيل الحساب</span>
+        <div className="bg-gray-50 rounded-xl p-3 border border-slate-100">
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <Calculator size={14} className="text-blue-600" />
+            <span className="text-[10px] text-slate-500 font-bold">تفاصيل الحساب</span>
           </div>
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-sm text-slate-500">مدة الركن</span>
-              <span className="text-sm font-black text-slate-900 font-mono">{durationMinutes} دقيقة</span>
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-500">مدة الركن</span>
+              <span className="font-black text-slate-900 font-mono">{durationMinutes} دقيقة</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-slate-500">الساعات المحسوبة</span>
-              <span className="text-sm font-black text-blue-600 font-mono">{totalHours} ساعة</span>
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-500">الساعات المحسوبة</span>
+              <span className="font-black text-blue-600 font-mono">{totalHours} ساعة</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-slate-500">سعر الساعة</span>
-              <span className="text-sm font-black text-purple-600 font-mono">{sessionRate} ج.م</span>
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-500">سعر الساعة</span>
+              <span className="font-black text-purple-600 font-mono">{sessionRate} ج.م</span>
             </div>
             {garage && sessionRate !== garage.basePrice && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-2 text-center">
-                <p className="text-[10px] text-amber-600 font-bold">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-1.5 text-center">
+                <p className="text-[9px] text-amber-600 font-bold">
                   💰 سعر خاص متفق عليه (بدل {garage.basePrice} ج.م/ساعة)
                 </p>
               </div>
             )}
-            <div className="border-t border-slate-200 pt-2">
-              <div className="flex justify-between">
-                <span className="text-sm text-slate-700 font-bold">الإجمالي</span>
-                <span className="text-lg font-black text-emerald-600 font-mono">
+            <div className="border-t border-slate-200 pt-1.5">
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-700 font-bold">الإجمالي</span>
+                <span className="font-black text-emerald-600 font-mono">
                   {totalHours} × {sessionRate} = {totalPrice} ج.م
                 </span>
               </div>
@@ -449,7 +449,7 @@ export default function SummaryScreen() {
         </div>
 
         {!activeSession && lastCompletedSession?.paymentMethod && (
-          <div className="text-center">
+          <div className="text-center mt-2">
             <span
               className={`inline-block px-3 py-1 rounded-full text-[10px] font-black ${
                 lastCompletedSession.paymentMethod === 'wallet'
@@ -484,14 +484,22 @@ export default function SummaryScreen() {
                   }`}
                 >
                   <div className="text-2xl mb-1">{m.icon}</div>
-                  <div className="text-xs font-black text-slate-700">{m.label}</div>
+                  
+                  {/* 🚀 تكبير وتوضيح كلمة "من رصيد المحفظة" */}
+                  <div className="font-black text-slate-700" style={{ fontSize: m.id === 'wallet' ? '14px' : '13px' }}>
+                    {m.label}
+                  </div>
+
+                  {/* 🚀 تكبير وتوضيح "رصيدك والمبلغ" بالخط العريض */}
                   {m.id === 'wallet' && (
                     <div
-                      className={`text-[9px] mt-1 font-mono font-bold ${
-                        canPayWallet ? 'text-emerald-600' : 'text-red-500'
-                      }`}
+                      className="mt-2.5 font-bold flex flex-col items-center justify-center border-t border-blue-200/50 pt-1.5"
+                      style={{ color: canPayWallet ? '#059669' : '#EF4444' }}
                     >
-                      رصيدك: {walletBalance} ج.م
+                      <span className="text-[10px] font-black text-slate-500">رصيدك الحالي</span>
+                      <span className="font-mono mt-0.5" style={{ fontSize: '15px', fontWeight: 900 }}>
+                        {walletBalance} ج.م
+                      </span>
                     </div>
                   )}
                 </button>
@@ -548,7 +556,7 @@ export default function SummaryScreen() {
             </div>
           </div>
 
-          {/* ✅ زر تأكيد الدفع مع النص الأبيض الواضح جداً والعريض لإنهاء الجلسة 🚀 */}
+          {/* ✅ زر تأكيد الدفع والإنهاء بالخط الأبيض العريض */}
           <button
             onClick={handleConfirm}
             disabled={paymentMethod === 'wallet' && !canPayWallet}
