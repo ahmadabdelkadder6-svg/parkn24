@@ -377,7 +377,7 @@ export default function LastSessionScreen() {
             }}
           />
 
-          {/* الرقم الرئيسي للمطلوب سداده */}
+          {/* الرقم الرئيسي للمطلوب سداده + شارة السداد */}
           <div className="relative z-10 flex flex-col items-center justify-center mb-4">
             <div className="flex items-end justify-center gap-3 mb-2">
               <span
@@ -416,6 +416,7 @@ export default function LastSessionScreen() {
                 تم السداد: {paymentInfo.label}
               </span>
             </div>
+          </div>
 
           {/* سطر توضيحي */}
           <div className="relative z-10 text-[10px] text-slate-400 mb-3">
