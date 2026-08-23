@@ -406,17 +406,23 @@ export default function LastSessionScreen() {
               </span>
             </div>
 
-            {/* 🚀 شارة طريقة السداد المدمجة بالخط الأبيض الواضح جداً والعريض 🚀 */}
+            {/* 🚀 شارة طريقة السداد بالخط الملون العريض والواضح جداً 🚀 */}
             <div 
-              className={`mt-1.5 inline-flex items-center gap-2 px-4 py-2 rounded-2xl border ${paymentInfo.bg} ${paymentInfo.border} shadow-lg`}
+              className={`mt-1.5 inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl border-2 ${paymentInfo.bg} ${paymentInfo.border} shadow-lg`}
               style={{ backdropFilter: 'blur(8px)' }}
             >
-              <span className="text-xl leading-none">{paymentInfo.icon}</span>
-              <span className="font-black text-white text-xs tracking-wider" style={{ color: '#ffffff', fontWeight: 900 }}>
+              <span className="text-2xl leading-none">{paymentInfo.icon}</span>
+              <span 
+                className={`font-black tracking-wider ${paymentInfo.color}`} 
+                style={{ 
+                  fontWeight: 900, 
+                  fontSize: '14px',
+                  textShadow: '0 1px 3px rgba(0,0,0,0.3)'
+                }}
+              >
                 تم السداد: {paymentInfo.label}
               </span>
             </div>
-          </div>
 
           {/* سطر توضيحي */}
           <div className="relative z-10 text-[10px] text-slate-400 mb-3">
