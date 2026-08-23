@@ -163,37 +163,37 @@ export default function LastSessionScreen() {
     switch (method) {
       case 'cash':
         return {
-          label: 'نقدي', icon: '💵',
+          label: 'نقدي كاش', icon: '💵',
           color: 'text-emerald-400',
-          bg: 'bg-emerald-500/20',
+          bg: 'bg-emerald-500/10',
           border: 'border-emerald-500/30',
         };
       case 'instapay':
         return {
-          label: 'إنستاباي', icon: '📱',
+          label: 'إرسال إنستاباي', icon: '📱',
           color: 'text-purple-400',
-          bg: 'bg-purple-500/20',
+          bg: 'bg-purple-500/10',
           border: 'border-purple-500/30',
         };
       case 'wallet':
         return {
           label: 'خصم من المحفظة', icon: '👝',
           color: 'text-blue-400',
-          bg: 'bg-blue-500/20',
+          bg: 'bg-blue-500/10',
           border: 'border-blue-500/30',
         };
       case 'cashwallet':
         return {
           label: 'تحويل محفظة كاش', icon: '📲',
           color: 'text-orange-400',
-          bg: 'bg-orange-500/20',
+          bg: 'bg-orange-500/10',
           border: 'border-orange-500/30',
         };
       default:
         return {
           label: 'غير محدد', icon: '💳',
           color: 'text-slate-400',
-          bg: 'bg-slate-500/20',
+          bg: 'bg-slate-500/10',
           border: 'border-slate-500/30',
         };
     }
@@ -303,7 +303,7 @@ export default function LastSessionScreen() {
           )}
         </div>
 
-        {/* ✅ التكلفة الإجمالية - Premium Edition */}
+        {/* ✅ التكلفة الإجمالية - Premium Edition (مع شارة السداد المدمجة والواضحة جداً) */}
         <div
           className="relative overflow-hidden rounded-3xl p-6 text-center"
           style={{
@@ -377,46 +377,45 @@ export default function LastSessionScreen() {
             }}
           />
 
-          {/* الرقم */}
-          <div className="relative z-10 flex items-end justify-center gap-3 mb-2">
-            <span
-              className="font-mono"
-              style={{
-                fontSize: 64,
-                fontWeight: 900,
-                lineHeight: 1,
-                color: '#FFFFFF',
-                textShadow: '0 0 30px rgba(255,255,255,0.15), 0 4px 12px rgba(0,0,0,0.3)',
-                letterSpacing: '-2px',
-              }}
-            >
-              {cost.toFixed(0)}
-            </span>
-            <span
-              style={{
-                fontSize: 24,
-                fontWeight: 800,
-                color: '#D4AF37',
-                marginBottom: 8,
-                textShadow: '0 0 10px rgba(212,175,55,0.3)',
-              }}
-            >
-              ج.م
-            </span>
-          </div>
+          {/* الرقم الرئيسي للمطلوب سداده */}
+          <div className="relative z-10 flex flex-col items-center justify-center mb-4">
+            <div className="flex items-end justify-center gap-3 mb-2">
+              <span
+                className="font-mono"
+                style={{
+                  fontSize: 64,
+                  fontWeight: 900,
+                  lineHeight: 1,
+                  color: '#FFFFFF',
+                  textShadow: '0 0 30px rgba(255,255,255,0.15), 0 4px 12px rgba(0,0,0,0.3)',
+                  letterSpacing: '-2px',
+                }}
+              >
+                {cost.toFixed(0)}
+              </span>
+              <span
+                style={{
+                  fontSize: 24,
+                  fontWeight: 800,
+                  color: '#D4AF37',
+                  marginBottom: 8,
+                  textShadow: '0 0 10px rgba(212,175,55,0.3)',
+                }}
+              >
+                ج.م
+              </span>
+            </div>
 
-          {/* جنيه مصري */}
-          <div
-            className="relative z-10"
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: 'rgba(255,255,255,0.35)',
-              letterSpacing: '3px',
-              marginBottom: 8,
-            }}
-          >
-            جنيه مصري
+            {/* 🚀 شارة طريقة السداد المدمجة عالية الوضوح أسفل الرقم مباشرة لتتضح للعميل فوراً */}
+            <div 
+              className={`mt-1.5 inline-flex items-center gap-2 px-4 py-2 rounded-2xl border ${paymentInfo.bg} ${paymentInfo.border} ${paymentInfo.color} shadow-lg`}
+              style={{ backdropFilter: 'blur(8px)' }}
+            >
+              <span className="text-xl leading-none">{paymentInfo.icon}</span>
+              <span className="font-black text-xs tracking-wider">
+                تم السداد: {paymentInfo.label}
+              </span>
+            </div>
           </div>
 
           {/* سطر توضيحي */}
@@ -505,24 +504,6 @@ export default function LastSessionScreen() {
                 {totalMinutes} دقيقة
               </span>
             </span>
-          </div>
-        </div>
-
-        {/* طريقة الدفع */}
-        <div className={`${paymentInfo.bg} border ${paymentInfo.border} rounded-2xl p-4`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">{paymentInfo.icon}</span>
-              <span className={`text-sm font-black ${paymentInfo.color}`}>
-                {cost.toFixed(0)} ج.م
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={`text-xs font-black ${paymentInfo.color}`}>
-                {paymentInfo.label}
-              </span>
-              <CreditCard size={16} className={paymentInfo.color} />
-            </div>
           </div>
         </div>
 
