@@ -472,17 +472,17 @@ export default function GarageListScreen() {
           </div>
         </div>
 
-        {/* 🌟 بانر تحفيزي ذهبي بريميوم (يظهر إذا كان الرصيد أقل من 30 ج.م) */}
+         {/* 🌟 بانر تحفيزي ذهبي بريميوم (يظهر إذا كان الرصيد أقل من 30 ج.م) */}
         {(!currentUser?.wallet || currentUser.wallet < 30) && (
           <motion.button
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             onClick={() => setShowTopUp(true)}
-            className="w-full mb-3 flex items-center gap-2.5 text-right active:scale-[0.98] transition-all overflow-hidden relative"
+            className="w-full mb-3 flex items-center gap-3 text-right active:scale-[0.98] transition-all overflow-hidden relative"
             style={{
               background: 'linear-gradient(120deg, #FFD700 0%, #FFA500 50%, #FF8C00 100%)',
-              borderRadius: 16,
-              padding: '10px 14px',
+              borderRadius: 18,
+              padding: '14px 16px',
               boxShadow: '0 6px 20px rgba(255, 165, 0, 0.35)',
             }}
           >
@@ -501,46 +501,45 @@ export default function GarageListScreen() {
             <motion.div
               animate={{ rotate: [0, -10, 10, 0] }}
               transition={{ repeat: Infinity, duration: 1.5 }}
-              className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 relative z-10"
+              className="w-11 h-11 rounded-full flex items-center justify-center shrink-0 relative z-10"
               style={{
                 background: 'rgba(255,255,255,0.35)',
                 backdropFilter: 'blur(6px)',
                 boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.4)',
               }}
             >
-              <Zap size={18} className="fill-white text-white drop-shadow-md" />
+              <Zap size={22} className="fill-white text-white drop-shadow-md" />
             </motion.div>
 
-            {/* النص التحفيزي بشكل احترافي */}
-            <div className="flex-1 relative z-10">
+            {/* النص التحفيزي واضح ومتناسق */}
+            <div className="flex-1 relative z-10 text-right">
               <div
-                className="font-black flex items-center gap-1 justify-end"
+                className="font-black leading-tight"
                 style={{
-                  fontSize: 12,
-                  color: '#4A2C00',
-                  textShadow: '0 1px 2px rgba(255,255,255,0.3)',
+                  fontSize: 14,
+                  color: '#3D1F00',
+                  textShadow: '0 1px 1px rgba(255,255,255,0.35)',
                 }}
               >
-                <span>اشحن محفظتك الآن ووفر وقتك!</span>
-                <span>✨</span>
+                اشحن محفظتك ووفر وقتك ✨
               </div>
               <p
-                className="font-bold mt-0.5 leading-tight"
+                className="font-black mt-1 leading-snug"
                 style={{
-                  fontSize: 9.5,
-                  color: '#6B3E00',
+                  fontSize: 11,
+                  color: '#5C2E00',
                 }}
               >
-                خروج فوري من الجراج بضغطة زر بدون فكة أو انتظار الكاش
+                خروج فوري بضغطة زر بدون فكة أو انتظار
               </p>
             </div>
 
             {/* سهم للأمام */}
             <div
-              className="relative z-10 font-black"
+              className="relative z-10 font-black shrink-0"
               style={{
-                fontSize: 18,
-                color: '#4A2C00',
+                fontSize: 22,
+                color: '#3D1F00',
               }}
             >
               ←
@@ -961,16 +960,24 @@ function GarageCard({
       </div>
 
       <div className="flex items-center justify-between gap-2 mb-3.5">
-        <div
+         <div
           className="flex items-center gap-1.5 font-black"
           style={{
-            background: isNearby ? '#00CC66' : '#FF8800',
+            background: isNearby 
+              ? 'linear-gradient(135deg, #00CC66, #00AA55)' 
+              : 'linear-gradient(135deg, #7C3AED, #5B21B6)',
             color: '#fff',
             borderRadius: 14,
             padding: '8px 12px',
             fontSize: 13,
+            boxShadow: isNearby 
+              ? '0 3px 10px rgba(0,204,102,0.28)' 
+              : '0 3px 10px rgba(124,58,237,0.28)',
           }}
         >
+          <Navigation size={14} />
+          <span className="font-mono">{formatDuration(garage.minutes)}</span>
+        </div>
           <Navigation size={14} />
           <span className="font-mono">{formatDuration(garage.minutes)}</span>
         </div>
