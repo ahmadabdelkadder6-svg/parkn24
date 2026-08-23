@@ -129,18 +129,35 @@ export default function App() {
         localStorage.removeItem('appScreen');
       }
 
-      // 🚀 التوجيه التلقائي الآمن (يدعم الروابط السرية + الذاكرة المحفوظة)
-      const params = new URLSearchParams(window.location.search);
-      const isGarageFromURL = params.has('garage');
+      // 🚀 التوجيه التلقائي الذكي والآمن (يمنع الارتداد التلقائي للمشرف)
+      const urlParams = new URLSearchParams(window.location.search);
+      const isGarageFromURL = urlParams.has('garage');
+      const isAdminFromURL =
+        urlParams.get('admin') === ADMIN_SECRET_CODE ||
+        window.location.pathname === '/admin' ||
+        window.location.hash === '#admin';
+
+      // قراءة الشاشة النشطة المحفوظة بالذاكرة
+      const savedView = localStorage.getItem('appView');
       const isGarageLoggedIn = localStorage.getItem('currentGarageId') || currentGarageId;
       const isAdminLoggedIn = localStorage.getItem('adminAccess') === 'true';
 
-      if (isAdminLoggedIn) {
+      if (isAdminFromURL) {
         setView('admin');
-      } else if (isGarageLoggedIn || isGarageFromURL) {
+      } else if (isGarageFromURL) {
         setView('garage');
+      } else if (savedView && (savedView === 'user' || savedView === 'garage' || savedView === 'admin')) {
+        // لو هناك شاشة كنت فتحتها بيدك مؤخراً، افتحها هي أولاً
+        setView(savedView as any);
       } else {
-        setView('user');
+        // الافتراضي العام عند أول دخول نظيف للموقع
+        if (isAdminLoggedIn) {
+          setView('admin');
+        } else if (isGarageLoggedIn) {
+          setView('garage');
+        } else {
+          setView('user');
+        }
       }
 
       await fetchAll();
@@ -151,6 +168,13 @@ export default function App() {
 
     init();
   }, []);
+
+  // 💾 حفظ الشاشة النشطة دائماً في الذاكرة لمنع الارتداد التلقائي عند تحديث الصفحة
+  useEffect(() => {
+    if (view) {
+      localStorage.setItem('appView', view);
+    }
+  }, [view]);
 
   useEffect(() => {
     if (!dataLoaded) return;
@@ -403,9 +427,9 @@ export default function App() {
         className="max-w-md mx-auto h-dvh bg-white text-slate-900 relative flex flex-col overflow-hidden"
         style={{ fontFamily: "'Cairo', sans-serif" }}
       >
-        {/* ══════ [تعديل 2]: التبويبات العلوية (تظهر للأدمن الموثق فقط لإدارة النظام) ══════ */}
+        {/* ══════ التبويبات العلوية (تظهر للأدمن الموثق فقط لإدارة النظام) ══════ */}
         {adminAccess && (
-          <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-white/90 p-0.5 rounded-full backdrop-blur-md border border-slate-200 shadow-sm animate-fade-in">
+          <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-white/90 p-0.5 rounded-full backdrop-blur-md border border-slate-200 shadow-sm">
             {[
               { id: 'user' as const, label: 'حريف' },
               { id: 'garage' as const, label: 'جراج' },
