@@ -374,14 +374,14 @@ export default function GarageListScreen() {
           />
         </div>
 
-        {/* 💳 بطاقة المحفظة الذكية والمطورة بصرياً لتحفيز الشحن */}
+          {/* 💳 بطاقة المحفظة الذكية المدمجة والفاخرة */}
         <div
           style={{
             background: 'linear-gradient(135deg, #0055FF 0%, #3B00E3 50%, #8A00FF 100%)',
-            borderRadius: 24,
-            padding: '20px',
-            marginBottom: 12,
-            boxShadow: '0 12px 36px rgba(59, 0, 227, 0.3)',
+            borderRadius: 20,
+            padding: '14px 16px',
+            marginBottom: 10,
+            boxShadow: '0 8px 24px rgba(59, 0, 227, 0.28)',
             color: '#ffffff',
             position: 'relative',
             overflow: 'hidden',
@@ -391,13 +391,13 @@ export default function GarageListScreen() {
           <div
             style={{
               position: 'absolute',
-              top: '-50%',
-              left: '-20%',
-              width: '150px',
-              height: '150px',
+              top: '-40%',
+              left: '-15%',
+              width: '110px',
+              height: '110px',
               background: 'rgba(255,255,255,0.15)',
               borderRadius: '50%',
-              filter: 'blur(30px)',
+              filter: 'blur(25px)',
             }}
           />
           <div
@@ -405,79 +405,66 @@ export default function GarageListScreen() {
               position: 'absolute',
               bottom: '-30%',
               right: '-10%',
-              width: '120px',
-              height: '120px',
+              width: '90px',
+              height: '90px',
               background: 'rgba(0,204,102,0.2)',
               borderRadius: '50%',
-              filter: 'blur(25px)',
+              filter: 'blur(22px)',
             }}
           />
 
           <div className="flex justify-between items-center relative z-10">
-            <div className="flex items-center gap-3">
-              <div>
-                <div
-                  className="text-[10px] font-black tracking-widest flex items-center gap-1"
-                  style={{ opacity: 0.85 }}
-                >
-                  <span>💳 رصيدك الحالي في بركن</span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                </div>
-                <div
-                  className="font-black font-mono flex items-baseline gap-1"
-                  style={{
-                    fontSize: 30,
-                    lineHeight: 1.1,
-                    textShadow: '0 2px 10px rgba(0,0,0,0.15)',
-                  }}
-                >
-                  {currentUser?.wallet || 0}
-                  <span className="text-xs font-bold" style={{ opacity: 0.9 }}>
-                    ج.م
-                  </span>
-                </div>
+            <div>
+              <div
+                className="text-[9px] font-black tracking-widest flex items-center gap-1"
+                style={{ opacity: 0.85 }}
+              >
+                <span>💳 رصيد محفظتك</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+              </div>
+              <div
+                className="font-black font-mono flex items-baseline gap-1"
+                style={{
+                  fontSize: 24,
+                  lineHeight: 1.1,
+                  textShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                }}
+              >
+                {currentUser?.wallet || 0}
+                <span className="text-[10px] font-bold" style={{ opacity: 0.9 }}>
+                  ج.م
+                </span>
               </div>
             </div>
 
-            {/* زر الشحن الاحترافي مع نبضات تحفيزية */}
-            <div className="flex flex-col items-end gap-1">
-              <button
-                onClick={() => setShowTopUp(true)}
-                className="flex items-center gap-1.5 font-black active:scale-95 transition-all shadow-md"
-                style={{
-                  background: '#ffffff',
-                  color: '#0055FF',
-                  borderRadius: 16,
-                  padding: '10px 18px',
-                  fontSize: 13,
-                  boxShadow: '0 6px 20px rgba(255,255,255,0.3)',
-                }}
-              >
-                <Plus size={16} strokeWidth={3} className="text-blue-600" />
-                <span>اشحن الآن</span>
-              </button>
-
-              {/* شارة تحفيزية ذكية صغيرة تنبض أسفل الزر */}
-              <motion.span
-                animate={{ y: [0, -3, 0] }}
-                transition={{ repeat: Infinity, duration: 2 }}
-                className="text-[9px] font-black px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 flex items-center gap-0.5 shadow-sm"
-              >
-                ⚡ ركنة سريعة بنقرة واحدة
-              </motion.span>
-            </div>
+            {/* زر الشحن المدمج والأنيق */}
+            <button
+              onClick={() => setShowTopUp(true)}
+              className="flex items-center gap-1 font-black active:scale-95 transition-all"
+              style={{
+                background: '#ffffff',
+                color: '#0055FF',
+                borderRadius: 12,
+                padding: '8px 14px',
+                fontSize: 12,
+                boxShadow: '0 4px 14px rgba(255,255,255,0.3)',
+              }}
+            >
+              <Plus size={14} strokeWidth={3} />
+              <span>اشحن الآن</span>
+            </button>
           </div>
 
-          {/* رقم لوحة السيارة أسفل الكارت */}
-          <div className="mt-4 flex justify-end relative z-10">
+          {/* رقم لوحة السيارة */}
+          <div className="mt-2.5 flex justify-end relative z-10">
             <div
               className="font-black tracking-wide flex items-center gap-1"
               style={{
-                background: 'rgba(255,255,255,0.15)',
+                background: 'rgba(255,255,255,0.18)',
                 backdropFilter: 'blur(10px)',
-                borderRadius: 12,
-                padding: '6px 12px',
-                fontSize: 11,
+                borderRadius: 10,
+                padding: '4px 10px',
+                fontSize: 10,
               }}
             >
               🚗 {currentUser?.carPlate || '---'}
@@ -485,34 +472,80 @@ export default function GarageListScreen() {
           </div>
         </div>
 
-        {/* 🚀 بانر تحفيزي ذكي (يظهر فقط إذا كان رصيد العميل أقل من 30 ج.م) */}
+        {/* 🌟 بانر تحفيزي ذهبي بريميوم (يظهر إذا كان الرصيد أقل من 30 ج.م) */}
         {(!currentUser?.wallet || currentUser.wallet < 30) && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="mb-3 p-3.5 flex items-center gap-3 text-right"
+          <motion.button
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            onClick={() => setShowTopUp(true)}
+            className="w-full mb-3 flex items-center gap-2.5 text-right active:scale-[0.98] transition-all overflow-hidden relative"
             style={{
-              background: 'linear-gradient(135deg, #FFF8F0 0%, #FFF0E0 100%)',
-              border: '1.5px dashed #FF9500',
-              borderRadius: 20,
+              background: 'linear-gradient(120deg, #FFD700 0%, #FFA500 50%, #FF8C00 100%)',
+              borderRadius: 16,
+              padding: '10px 14px',
+              boxShadow: '0 6px 20px rgba(255, 165, 0, 0.35)',
             }}
           >
-            <div className="flex-1">
-              <div className="font-black text-xs text-amber-900 flex items-center gap-1 justify-end">
-                <span>وفر وقتك واشحن محفظتك!</span>
-                <span>🎁</span>
+            {/* تأثير لمعان زجاجي متحرك احترافي */}
+            <motion.div
+              animate={{ x: ['-100%', '200%'] }}
+              transition={{ repeat: Infinity, duration: 2.5, ease: 'linear' }}
+              className="absolute top-0 bottom-0 w-1/3"
+              style={{
+                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)',
+                pointerEvents: 'none',
+              }}
+            />
+
+            {/* أيقونة برق دائرية متحركة */}
+            <motion.div
+              animate={{ rotate: [0, -10, 10, 0] }}
+              transition={{ repeat: Infinity, duration: 1.5 }}
+              className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 relative z-10"
+              style={{
+                background: 'rgba(255,255,255,0.35)',
+                backdropFilter: 'blur(6px)',
+                boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.4)',
+              }}
+            >
+              <Zap size={18} className="fill-white text-white drop-shadow-md" />
+            </motion.div>
+
+            {/* النص التحفيزي بشكل احترافي */}
+            <div className="flex-1 relative z-10">
+              <div
+                className="font-black flex items-center gap-1 justify-end"
+                style={{
+                  fontSize: 12,
+                  color: '#4A2C00',
+                  textShadow: '0 1px 2px rgba(255,255,255,0.3)',
+                }}
+              >
+                <span>اشحن محفظتك الآن ووفر وقتك!</span>
+                <span>✨</span>
               </div>
-              <p className="text-[10px] font-bold text-amber-700 mt-0.5 leading-relaxed">
-                الدفع بالمحفظة يضمن لك الخروج من الجراج فوراً بلمسة واحدة بدون انتظار الفكة أو الكاش!
+              <p
+                className="font-bold mt-0.5 leading-tight"
+                style={{
+                  fontSize: 9.5,
+                  color: '#6B3E00',
+                }}
+              >
+                خروج فوري من الجراج بضغطة زر بدون فكة أو انتظار الكاش
               </p>
             </div>
+
+            {/* سهم للأمام */}
             <div
-              onClick={() => setShowTopUp(true)}
-              className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center cursor-pointer active:scale-90 transition-transform shadow-md shrink-0"
+              className="relative z-10 font-black"
+              style={{
+                fontSize: 18,
+                color: '#4A2C00',
+              }}
             >
-              <Zap size={20} className="fill-current text-white animate-pulse" />
+              ←
             </div>
-          </motion.div>
+          </motion.button>
         )}
 
         {/* بانر الجلسة النشطة */}
