@@ -830,26 +830,61 @@ export default function GarageDashboard() {
             })}
           </AnimatePresence>
 
+          {/* 🚗 سيارات في الطريق (مبسط برقم السيارة ووقت الوصول فقط) */}
           {carsOnTheWay.length > 0 && (
             <div className="mb-5">
-              <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#0099DD' }}><span className="font-black" style={{ background: '#0099DD', color: '#fff', fontSize: 12, padding: '3px 12px', borderRadius: 20 }}>{carsOnTheWay.length}</span>سيارات في الطريق <Navigation size={16} className="animate-pulse" /></h3>
+              <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#0099DD' }}>
+                <span className="font-black" style={{ background: '#0099DD', color: '#fff', fontSize: 12, padding: '3px 12px', borderRadius: 20 }}>
+                  {carsOnTheWay.length}
+                </span>
+                سيارات في الطريق <Navigation size={16} className="animate-pulse" />
+              </h3>
               <div className="space-y-3">
                 {carsOnTheWay.map(car => {
                   const rem = calculateRemainingTime(car.startTime, car.estimatedArrival);
                   return (
-                    <motion.div key={car.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} style={{ background: '#fff', border: '2.5px solid #00BBE0', borderRadius: 24, padding: 18 }}>
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="flex items-center gap-2"><motion.div animate={{ x: [0, -5, 0] }} transition={{ repeat: Infinity, duration: 1.5 }} style={{ background: '#0099DD', borderRadius: 16, padding: 10, color: '#fff' }}><CarFront size={22} /></motion.div><span className="font-black" style={{ background: rem <= 2 ? '#FF9500' : '#0099DD', color: '#fff', fontSize: 12, padding: '6px 14px', borderRadius: 14 }}>{rem > 0 ? `${rem} دقيقة` : 'وصل تقريباً'}</span></div>
-                        <div className="font-black" style={{ fontSize: 18 }}>🚗 {car.carPlate}</div>
+                    <motion.div 
+                      key={car.id} 
+                      initial={{ opacity: 0, x: 20 }} 
+                      animate={{ opacity: 1, x: 0 }} 
+                      style={{ 
+                        background: '#fff', 
+                        border: '2.5px solid #00BBE0', 
+                        borderRadius: 24, 
+                        padding: 18,
+                        boxShadow: '0 4px 16px rgba(0, 153, 221, 0.08)'
+                      }}
+                    >
+                      {/* رأس البطاقة: أيقونة السيارة، الوقت المتبقي، ورقم اللوحة */}
+                      <div className="flex justify-between items-center mb-4">
+                        <div className="flex items-center gap-2">
+                          <motion.div animate={{ x: [0, -4, 0] }} transition={{ repeat: Infinity, duration: 1.5 }} style={{ background: '#0099DD', borderRadius: 14, padding: 8, color: '#fff' }}>
+                            <CarFront size={20} />
+                          </motion.div>
+                          <span className="font-black font-mono" style={{ background: rem <= 2 ? '#FF9500' : '#0099DD', color: '#fff', fontSize: 11, padding: '5px 12px', borderRadius: 12 }}>
+                            {rem > 0 ? `${rem} دقيقة` : 'وصل تقريباً ⏰'}
+                          </span>
+                        </div>
+                        <div className="font-black text-slate-900" style={{ fontSize: 18 }}>
+                          🚗 {car.carPlate}
+                        </div>
                       </div>
-                      <div className="mb-3 space-y-2" style={{ background: '#F0F4FF', borderRadius: 18, padding: 14, border: '1px solid #D0DCFF' }}>
-                        <div className="flex items-center justify-between"><a href={`tel:${car.customerPhone}`} className="font-black font-mono" style={{ fontSize: 15, color: '#0066FF' }}>{car.customerPhone}</a><div className="flex items-center gap-1" style={{ color: '#94a3b8' }}><Phone size={14} /><span className="font-bold" style={{ fontSize: 11 }}>الهاتف</span></div></div>
-                        <div className="flex items-center justify-between"><span className="font-black font-mono" style={{ fontSize: 15, color: '#00AA44' }}>{car.agreedPrice} ج.م / ساعة</span><div className="flex items-center gap-1" style={{ color: '#94a3b8' }}><span className="font-black" style={{ fontSize: 11 }}>💰</span><span className="font-bold" style={{ fontSize: 11 }}>السعر</span></div></div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => handleCarArrived(car)} className="flex-1 font-black flex items-center justify-center gap-2 active:scale-95" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', borderRadius: 18, padding: 14, fontSize: 13 }}><CheckCircle size={18} /> وصلت وبدء الحساب</button>
-                        <a href={`tel:${car.customerPhone}`} className="flex items-center justify-center active:scale-95" style={{ background: '#0066FF', color: '#fff', borderRadius: 18, padding: '0 16px' }}><Phone size={20} /></a>
-                      </div>
+
+                      {/* زر بدء الحساب عريض ومباشر */}
+                      <button 
+                        onClick={() => handleCarArrived(car)} 
+                        className="w-full font-black flex items-center justify-center gap-2 active:scale-95 transition-all shadow-md" 
+                        style={{ 
+                          background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', 
+                          color: '#fff', 
+                          borderRadius: 16, 
+                          padding: 14, 
+                          fontSize: 14,
+                          boxShadow: '0 6px 18px rgba(0, 204, 102, 0.25)' 
+                        }}
+                      >
+                        <CheckCircle size={18} /> وصلت وبدء الحساب
+                      </button>
                     </motion.div>
                   );
                 })}
