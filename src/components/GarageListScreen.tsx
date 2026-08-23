@@ -70,7 +70,7 @@ export default function GarageListScreen() {
     offers,
     addIncomingCar,
     fetchAll,
-    acknowledgedSessionIds, // جلب الجلسات المقفرة والمؤكدة
+    acknowledgedSessionIds,
   } = useStore();
 
   const [search, setSearch] = useState('');
@@ -107,7 +107,7 @@ export default function GarageListScreen() {
     return sessions
       .filter((s: Session & { customerPhone?: string }) => {
         if (s.status !== 'active') return false;
-        if (acknowledgedSessionIds?.has(s.id)) return false; // أمان: حجب الجلسات المؤكدة فوراً
+        if (acknowledgedSessionIds?.has(s.id)) return false;
         const samePlate = normalizePlateForCompare(s.carPlate) === normalizedUserPlate;
         const samePhone = Boolean(currentUser?.phone && s.customerPhone === currentUser.phone);
         return samePlate || samePhone;
@@ -374,58 +374,146 @@ export default function GarageListScreen() {
           />
         </div>
 
-        {/* بطاقة المحفظة */}
+        {/* 💳 بطاقة المحفظة الذكية والمطورة بصرياً لتحفيز الشحن */}
         <div
           style={{
-            background: 'linear-gradient(135deg, #0066FF 0%, #4D00FF 100%)',
+            background: 'linear-gradient(135deg, #0055FF 0%, #3B00E3 50%, #8A00FF 100%)',
             borderRadius: 24,
-            padding: '18px 18px',
+            padding: '20px',
             marginBottom: 12,
-            boxShadow: '0 8px 32px rgba(0,102,255,0.25)',
+            boxShadow: '0 12px 36px rgba(59, 0, 227, 0.3)',
             color: '#ffffff',
+            position: 'relative',
+            overflow: 'hidden',
           }}
         >
-          <div className="flex justify-between items-center">
+          {/* تأثيرات الإضاءة الخلفية الفاخرة للكارت */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '-50%',
+              left: '-20%',
+              width: '150px',
+              height: '150px',
+              background: 'rgba(255,255,255,0.15)',
+              borderRadius: '50%',
+              filter: 'blur(30px)',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              bottom: '-30%',
+              right: '-10%',
+              width: '120px',
+              height: '120px',
+              background: 'rgba(0,204,102,0.2)',
+              borderRadius: '50%',
+              filter: 'blur(25px)',
+            }}
+          />
+
+          <div className="flex justify-between items-center relative z-10">
             <div className="flex items-center gap-3">
               <div>
-                <div className="text-[10px] font-bold" style={{ opacity: 0.85 }}>
-                  💳 المحفظة
+                <div
+                  className="text-[10px] font-black tracking-widest flex items-center gap-1"
+                  style={{ opacity: 0.85 }}
+                >
+                  <span>💳 رصيدك الحالي في بركن</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
                 </div>
-                <div className="font-black font-mono" style={{ fontSize: 26, lineHeight: 1.1 }}>
+                <div
+                  className="font-black font-mono flex items-baseline gap-1"
+                  style={{
+                    fontSize: 30,
+                    lineHeight: 1.1,
+                    textShadow: '0 2px 10px rgba(0,0,0,0.15)',
+                  }}
+                >
                   {currentUser?.wallet || 0}
-                  <span className="text-xs font-bold" style={{ opacity: 0.8, marginRight: 4 }}>
+                  <span className="text-xs font-bold" style={{ opacity: 0.9 }}>
                     ج.م
                   </span>
                 </div>
               </div>
+            </div>
+
+            {/* زر الشحن الاحترافي مع نبضات تحفيزية */}
+            <div className="flex flex-col items-end gap-1">
               <button
                 onClick={() => setShowTopUp(true)}
-                className="flex items-center gap-1 font-black active:scale-95 transition-transform"
+                className="flex items-center gap-1.5 font-black active:scale-95 transition-all shadow-md"
                 style={{
-                  background: 'rgba(255,255,255,0.25)',
-                  backdropFilter: 'blur(10px)',
-                  borderRadius: 14,
-                  padding: '8px 14px',
-                  fontSize: 12,
+                  background: '#ffffff',
+                  color: '#0055FF',
+                  borderRadius: 16,
+                  padding: '10px 18px',
+                  fontSize: 13,
+                  boxShadow: '0 6px 20px rgba(255,255,255,0.3)',
                 }}
               >
-                <Plus size={14} /> شحن
+                <Plus size={16} strokeWidth={3} className="text-blue-600" />
+                <span>اشحن الآن</span>
               </button>
+
+              {/* شارة تحفيزية ذكية صغيرة تنبض أسفل الزر */}
+              <motion.span
+                animate={{ y: [0, -3, 0] }}
+                transition={{ repeat: Infinity, duration: 2 }}
+                className="text-[9px] font-black px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 flex items-center gap-0.5 shadow-sm"
+              >
+                ⚡ ركنة سريعة بنقرة واحدة
+              </motion.span>
             </div>
+          </div>
+
+          {/* رقم لوحة السيارة أسفل الكارت */}
+          <div className="mt-4 flex justify-end relative z-10">
             <div
-              className="font-black tracking-wide"
+              className="font-black tracking-wide flex items-center gap-1"
               style={{
                 background: 'rgba(255,255,255,0.15)',
                 backdropFilter: 'blur(10px)',
-                borderRadius: 14,
-                padding: '8px 12px',
-                fontSize: 12,
+                borderRadius: 12,
+                padding: '6px 12px',
+                fontSize: 11,
               }}
             >
               🚗 {currentUser?.carPlate || '---'}
             </div>
           </div>
         </div>
+
+        {/* 🚀 بانر تحفيزي ذكي (يظهر فقط إذا كان رصيد العميل أقل من 30 ج.م) */}
+        {(!currentUser?.wallet || currentUser.wallet < 30) && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="mb-3 p-3.5 flex items-center gap-3 text-right"
+            style={{
+              background: 'linear-gradient(135deg, #FFF8F0 0%, #FFF0E0 100%)',
+              border: '1.5px dashed #FF9500',
+              borderRadius: 20,
+            }}
+          >
+            <div className="flex-1">
+              <div className="font-black text-xs text-amber-900 flex items-center gap-1 justify-end">
+                <span>وفر وقتك واشحن محفظتك!</span>
+                <span>🎁</span>
+              </div>
+              <p className="text-[10px] font-bold text-amber-700 mt-0.5 leading-relaxed">
+                الدفع بالمحفظة يضمن لك الخروج من الجراج فوراً بلمسة واحدة بدون انتظار الفكة أو الكاش!
+              </p>
+            </div>
+            <div
+              onClick={() => setShowTopUp(true)}
+              className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center cursor-pointer active:scale-90 transition-transform shadow-md shrink-0"
+            >
+              <Zap size={20} className="fill-current text-white animate-pulse" />
+            </div>
+          </motion.div>
+        )}
 
         {/* بانر الجلسة النشطة */}
         {activeSession && (
