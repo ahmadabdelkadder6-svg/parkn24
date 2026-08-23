@@ -95,6 +95,8 @@ export default function AdminDashboard() {
   const [confirmSettlementGarageId, setConfirmSettlementGarageId] = useState<string | null>(null);
   const [processingSettlement, setProcessingSettlement] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
+  const [archiveSearch, setArchiveSearch] = useState('');
+  const [visibleSettlements, setVisibleSettlements] = useState(4);
 
   const [gName, setGName] = useState('');
   const [gUser, setGUser] = useState('');
@@ -695,74 +697,135 @@ export default function AdminDashboard() {
         );
       })}
 
-      {/* 📂 أرشيف التسويات المُقفلة (بخط أسود عريض واضح) */}
+       {/* 📂 أرشيف التسويات المُقفلة (ذكي ومدمج وقابل للتمدد مع بحث داخلي) */}
       <div className="mb-5">
         <button 
-          onClick={() => setShowArchive(!showArchive)} 
+          onClick={() => { setShowArchive(!showArchive); setVisibleSettlements(4); setArchiveSearch(''); }} 
           className="w-full font-black flex items-center justify-between active:scale-95 transition-all"
           style={{ 
             background: '#fff', 
-            border: '2.5px solid #0A1628',
+            border: '2.5px solid #0A1628', 
             borderRadius: 18, 
             padding: '14px 18px',
-            color: '#000000'
+            color: '#000000' 
           }}
         >
-          <span className="font-black" style={{ fontSize: 13, color: '#0066FF' }}>{showArchive ? '▲ إخفاء' : '▼ عرض'}</span>
+          <span className="font-black" style={{ fontSize: 12, color: '#0066FF' }}>{showArchive ? '▲ إخفاء الأرشيف' : '▼ عرض الأرشيف'}</span>
           <div className="flex items-center gap-2">
-            <span className="font-black" style={{ fontSize: 12, color: '#000000' }}>({settlementRecords.length} معاملة)</span>
-            <span className="font-black" style={{ fontSize: 14, color: '#000000' }}>📂 أرشيف التسويات المُقفلة</span>
+            <span className="font-black" style={{ fontSize: 11, color: '#000000', opacity: 0.7 }}>({settlementRecords.length} تسوية)</span>
+            <span className="font-black" style={{ fontSize: 14, color: '#000000' }}>📂 أرشيف التسويات</span>
             <Archive size={18} style={{ color: '#000000' }} />
           </div>
         </button>
 
         {showArchive && (
-          <div className="mt-3 space-y-2">
-            {settlementRecords.length === 0 ? (
-              <div className="text-center" style={{ background: '#fff', border: '2px solid #D0DCFF', borderRadius: 18, padding: 24 }}>
-                <div style={{ fontSize: 36, marginBottom: 8 }}>📭</div>
-                <p className="font-black" style={{ fontSize: 13, color: '#000000' }}>لم يتم تسجيل أي تسويات بعد</p>
+          <div className="mt-3 space-y-3 p-3 rounded-2xl" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF' }}>
+            
+            {/* 🔍 شريط بحث داخلي سريع (يظهر فقط إذا كان هناك أكثر من 4 تسويات) */}
+            {settlementRecords.length > 4 && (
+              <div className="relative">
+                <input 
+                  type="text" 
+                  value={archiveSearch}
+                  onChange={(e) => { setArchiveSearch(e.target.value); setVisibleSettlements(4); }}
+                  placeholder="ابحث باسم الجراج في الأرشيف..." 
+                  className="w-full font-bold text-right outline-none"
+                  style={{
+                    background: '#ffffff',
+                    border: '1.5px solid #D0DCFF',
+                    padding: '10px 14px 10px 34px',
+                    borderRadius: 12,
+                    fontSize: 12,
+                    color: '#0A1628'
+                  }}
+                />
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
               </div>
-            ) : (
-              settlementRecords.map(r => {
-                const isAdminToGarage = r.direction === 'admin_to_garage';
+            )}
+
+            {/* عرض القائمة المفلترة والمقصوصة */}
+            {(() => {
+              const filtered = settlementRecords.filter(r => 
+                r.garage_name.toLowerCase().includes(archiveSearch.trim().toLowerCase())
+              );
+
+              if (filtered.length === 0) {
                 return (
-                  <div key={r.id} style={{ 
-                    background: '#fff', 
-                    border: `2.5px solid ${isAdminToGarage ? '#00CC66' : '#FF3333'}`, 
-                    borderRadius: 16, 
-                    padding: 14 
-                  }}>
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex items-center gap-1" style={{ padding: '3px 8px', borderRadius: 8, background: isAdminToGarage ? '#EBFDF2' : '#FFF3F3' }}>
-                        {isAdminToGarage ? <ArrowUp size={12} style={{ color: '#00AA44' }} /> : <ArrowDown size={12} style={{ color: '#CC0000' }} />}
-                        <span className="font-black" style={{ fontSize: 10, color: isAdminToGarage ? '#00AA44' : '#CC0000' }}>
-                          {isAdminToGarage ? 'أرسل الأدمن' : 'استلم الأدمن'}
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-black" style={{ fontSize: 15, color: '#000000' }}>{r.garage_name}</div>
-                        <div className="font-black font-mono" style={{ fontSize: 10, color: '#000000', marginTop: 2 }}>{r.settlement_date}</div>
-                      </div>
-                    </div>
-                    <div className="flex justify-between items-center" style={{ borderTop: '1px dashed #D0DCFF', paddingTop: 8 }}>
-                      <div className="font-black font-mono" style={{ fontSize: 22, color: isAdminToGarage ? '#00AA44' : '#CC0000' }}>
-                        {r.amount.toFixed(0)} <span style={{ fontSize: 11, fontWeight: 900 }}>ج.م</span>
-                      </div>
-                      <div className="text-right font-black" style={{ fontSize: 11, color: '#000000', lineHeight: 1.6 }}>
-                        <div>{r.session_count} جلسة مقفلة 🔒</div>
-                        <div style={{ fontSize: 10 }}>محفظة: {r.wallet_collected.toFixed(0)}ج · عمولة: {r.commission_amount.toFixed(0)}ج</div>
-                      </div>
-                    </div>
-                    {r.notes && (
-                      <div className="mt-2 text-right font-black" style={{ background: '#F8FAFF', borderRadius: 8, padding: '8px 10px', fontSize: 11, color: '#000000', border: '1.5px solid #D0DCFF' }}>
-                        📝 {r.notes}
-                      </div>
-                    )}
+                  <div className="text-center py-6" style={{ background: '#fff', borderRadius: 16, border: '2px solid #D0DCFF' }}>
+                    <div style={{ fontSize: 36, marginBottom: 8 }}>📭</div>
+                    <p className="font-black" style={{ fontSize: 12, color: '#94a3b8' }}>
+                      {archiveSearch ? `لا توجد تسويات مطابقة لـ "${archiveSearch}"` : 'لم يتم تسجيل أي تسويات بعد'}
+                    </p>
                   </div>
                 );
-              })
-            )}
+              }
+
+              const sliced = filtered.slice(0, visibleSettlements);
+
+              return (
+                <>
+                  <div className="space-y-2">
+                    {sliced.map(r => {
+                      const isAdminToGarage = r.direction === 'admin_to_garage';
+                      return (
+                        <div key={r.id} style={{ 
+                          background: '#fff', 
+                          border: `2px solid ${isAdminToGarage ? '#66DDAA' : '#FFA0A0'}`, 
+                          borderRadius: 16, 
+                          padding: 12,
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                        }}>
+                          <div className="flex justify-between items-start mb-1.5">
+                            <div className="flex items-center gap-1" style={{ padding: '3px 8px', borderRadius: 8, background: isAdminToGarage ? '#EBFDF2' : '#FFF3F3' }}>
+                              {isAdminToGarage ? <ArrowUp size={10} style={{ color: '#00AA44' }} /> : <ArrowDown size={10} style={{ color: '#CC0000' }} />}
+                              <span className="font-black" style={{ fontSize: 9, color: isAdminToGarage ? '#00AA44' : '#CC0000' }}>
+                                {isAdminToGarage ? 'أرسل الأدمن' : 'استلم الأدمن'}
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <div className="font-black" style={{ fontSize: 13, color: '#0A1628' }}>{r.garage_name}</div>
+                              <div className="font-black font-mono" style={{ fontSize: 9, color: '#94a3b8', marginTop: 1 }}>{r.settlement_date}</div>
+                            </div>
+                          </div>
+                          <div className="flex justify-between items-center" style={{ borderTop: '1px dashed #F0F4FF', paddingTop: 6 }}>
+                            <div className="font-black font-mono" style={{ fontSize: 18, color: isAdminToGarage ? '#00AA44' : '#CC0000' }}>
+                              {r.amount.toFixed(0)} <span style={{ fontSize: 10, fontWeight: 900 }}>ج.م</span>
+                            </div>
+                            <div className="text-right font-black" style={{ fontSize: 10, color: '#0A1628', lineHeight: 1.5 }}>
+                              <div>{r.session_count} جلسة مقفلة 🔒</div>
+                              <div style={{ fontSize: 9, color: '#94a3b8' }}>محفظة: {r.wallet_collected.toFixed(0)}ج · عمولة: {r.commission_amount.toFixed(0)}ج</div>
+                            </div>
+                          </div>
+                          {r.notes && (
+                            <div className="mt-1.5 text-right font-black" style={{ background: '#F8FAFF', borderRadius: 8, padding: '6px 10px', fontSize: 10, color: '#0A1628', border: '1px solid #D0DCFF' }}>
+                              📝 {r.notes}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* 🚀 زر "عرض المزيد" يظهر فقط عند وجود عناصر مخفية */}
+                  {filtered.length > visibleSettlements && (
+                    <button
+                      onClick={() => setVisibleSettlements(prev => prev + 5)}
+                      className="w-full py-2.5 bg-white font-black text-xs active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+                      style={{ border: '2px solid #D0DCFF', borderRadius: 14, color: '#0066FF' }}
+                    >
+                      <span>🔄 عرض المزيد ({filtered.length - visibleSettlements} تسوية أخرى)</span>
+                    </button>
+                  )}
+
+                  {/* عداد صغير في الأسفل يوضح عدد المعروض من الإجمالي */}
+                  <div className="text-center">
+                    <span className="font-bold" style={{ fontSize: 9, color: '#94a3b8' }}>
+                      عرض {Math.min(visibleSettlements, filtered.length)} من {filtered.length} تسوية
+                    </span>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         )}
       </div>
