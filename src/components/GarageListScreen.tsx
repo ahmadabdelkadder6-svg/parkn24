@@ -100,7 +100,6 @@ export default function GarageListScreen() {
     [currentUser?.carPlate]
   );
 
-  /* ✅ البحث عن جلسة نشطة واستبعاد أي جلسة تم إقرار إغلاقها مسبقاً */
   const activeSession = useMemo(() => {
     if (!normalizedUserPlate && !currentUser?.phone) return undefined;
 
@@ -115,7 +114,6 @@ export default function GarageListScreen() {
       .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
   }, [sessions, normalizedUserPlate, currentUser?.phone, acknowledgedSessionIds]);
 
-  /* ✅ حجب الجلسات المنتهية القديمة لمنع تكرار شاشة النهاية */
   const hasCompletedSession = useMemo(() => {
     if (activeSession) return false;
     return sessions.some(
@@ -125,7 +123,6 @@ export default function GarageListScreen() {
     );
   }, [sessions, normalizedUserPlate, activeSession]);
 
-  /* ✅ البحث عن حجز نشط قادم */
   const myIncomingCar = useMemo(() => {
     if (!normalizedUserPlate) return undefined;
     return incomingCars
@@ -165,9 +162,7 @@ export default function GarageListScreen() {
     getUserLocation();
   }, [getUserLocation]);
 
-  /* ─────────────────────────────────────────────
-     ██  REALTIME + Polling
-     ───────────────────────────────────────────── */
+  /* ── Realtime + Polling ── */
   useEffect(() => {
     if (!normalizedUserPlate) return;
 
@@ -234,9 +229,7 @@ export default function GarageListScreen() {
     };
   }, [normalizedUserPlate, currentUser?.phone, fetchAll]);
 
-  /* ─────────────────────────────────────────────
-     ██  انتقال تلقائي لشاشة الجلسة (عند بدء جلسة جديدة)
-     ───────────────────────────────────────────── */
+  /* ── انتقال تلقائي لشاشة الجلسة ── */
   useEffect(() => {
     if (!activeSession) {
       autoNavigatedRef.current = null;
@@ -374,7 +367,7 @@ export default function GarageListScreen() {
           />
         </div>
 
-          {/* 💳 بطاقة المحفظة الذكية المدمجة والفاخرة */}
+        {/* 💳 بطاقة المحفظة الذكية المدمجة والفاخرة */}
         <div
           style={{
             background: 'linear-gradient(135deg, #0055FF 0%, #3B00E3 50%, #8A00FF 100%)',
@@ -472,7 +465,7 @@ export default function GarageListScreen() {
           </div>
         </div>
 
-         {/* 🌟 بانر تحفيزي ذهبي بريميوم (يظهر إذا كان الرصيد أقل من 30 ج.م) */}
+        {/* 🌟 بانر تحفيزي ذهبي بريميوم بخط عريض واضح ومتناسق (يظهر إذا كان الرصيد أقل من 30 ج.م) */}
         {(!currentUser?.wallet || currentUser.wallet < 30) && (
           <motion.button
             initial={{ opacity: 0, y: -8 }}
@@ -783,7 +776,7 @@ export default function GarageListScreen() {
               <span
                 className="font-black"
                 style={{
-                  background: '#FF8800',
+                  background: '#7C3AED',
                   color: '#fff',
                   fontSize: 10,
                   padding: '2px 8px',
@@ -792,7 +785,7 @@ export default function GarageListScreen() {
               >
                 {farGarages.length}
               </span>
-              <h2 className="text-xs font-black flex items-center gap-1.5" style={{ color: '#CC6600' }}>
+              <h2 className="text-xs font-black flex items-center gap-1.5" style={{ color: '#5B21B6' }}>
                 خيارات إضافية <Clock size={14} />
               </h2>
             </div>
@@ -960,24 +953,22 @@ function GarageCard({
       </div>
 
       <div className="flex items-center justify-between gap-2 mb-3.5">
-         <div
+        {/* ✅ بوكس وقت الوصول للجراج بتدرج بنفسجي أنيق للبعيدة (متناسق مع هوية التطبيق) */}
+        <div
           className="flex items-center gap-1.5 font-black"
           style={{
-            background: isNearby 
-              ? 'linear-gradient(135deg, #00CC66, #00AA55)' 
+            background: isNearby
+              ? 'linear-gradient(135deg, #00CC66, #00AA55)'
               : 'linear-gradient(135deg, #7C3AED, #5B21B6)',
             color: '#fff',
             borderRadius: 14,
             padding: '8px 12px',
             fontSize: 13,
-            boxShadow: isNearby 
-              ? '0 3px 10px rgba(0,204,102,0.28)' 
+            boxShadow: isNearby
+              ? '0 3px 10px rgba(0,204,102,0.28)'
               : '0 3px 10px rgba(124,58,237,0.28)',
           }}
         >
-          <Navigation size={14} />
-          <span className="font-mono">{formatDuration(garage.minutes)}</span>
-        </div>
           <Navigation size={14} />
           <span className="font-mono">{formatDuration(garage.minutes)}</span>
         </div>
