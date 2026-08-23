@@ -1,9 +1,8 @@
-// ✅ رقم الـ version
-const CACHE_NAME    = 'parknow-v5'; // ✅ غيرنا v3 → v4
+// ✅ رقم الـ version - قمنا بالتحديث لـ v6 لإجبار الأجهزة على تحميل التعديل فوراً
+const CACHE_NAME    = 'parknow-v6'; 
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
 // ✅ تتبع آخر إشعار اتعرض (dedup في الـ memory)
-// بيتمسح لما الـ SW يتوقف - مش مشكلة
 const recentNotifications = new Map(); // tag → timestamp
 const DEDUP_WINDOW_MS     = 5000;      // 5 ثواني
 
@@ -12,7 +11,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 SW installed v4');
+      console.log('📦 SW installed v6');
       return cache.addAll(STATIC_ASSETS);
     })
   );
@@ -65,7 +64,7 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// ─── Push ─────────────────────────────────────────────────────
+// ─── Push (تم تعديله لضمان السرية والخصوصية الكاملة للعملاء) ──────────────────
 self.addEventListener('push', (event) => {
   let title     = '🚨 ParkNow';
   let body      = 'لديك إشعار جديد';
@@ -108,6 +107,31 @@ self.addEventListener('push', (event) => {
           extraData = payload;
         }
       }
+
+      // 🚀 [أمان وخصوصية]: تصفية الإشعار لعرض رقم السيارة فقط وحجب الاسم والمبلغ نهائياً
+      const isIncomingCar = (tag && tag.startsWith('incoming-')) || 
+                            (payload.bookingId) || 
+                            (payload.data && (payload.data.type === 'new_booking' || payload.data.bookingId));
+
+      if (isIncomingCar) {
+        // استخلاص رقم اللوحة بأكثر من طريقة لضمان الحصول عليه
+        let plate = '';
+        if (tag && tag.startsWith('incoming-')) {
+          plate = tag.replace('incoming-', '');
+        } else if (payload.carPlate || payload.car_plate) {
+          plate = payload.carPlate || payload.car_plate;
+        } else if (payload.data && (payload.data.carPlate || payload.data.car_plate)) {
+          plate = payload.data.carPlate || payload.data.car_plate;
+        }
+
+        // إعادة صياغة الإشعار لحذف الاسم والمال بالكامل
+        title = '🚨 سيارة في الطريق!';
+        if (plate) {
+          body = `🚗 رقم السيارة: ${plate}`;
+        } else {
+          body = '🚗 تقترب سيارة جديدة من الجراج الآن';
+        }
+      }
     }
   } catch (err) {
     console.error('❌ Push parse error:', err);
@@ -141,8 +165,6 @@ self.addEventListener('push', (event) => {
     vibrate:             [500, 100, 500, 100, 500, 200, 800],
     requireInteraction:  true,
     tag,
-    // ✅ renotify: true بس لو الإشعار مختلف فعلاً
-    // بعد الـ dedup check، أي إشعار وصل هنا هو جديد
     renotify:            true,
     timestamp:           now,
     data: { url, ...extraData },
