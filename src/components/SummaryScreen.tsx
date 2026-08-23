@@ -207,10 +207,10 @@ export default function SummaryScreen() {
   const walletBalance = currentUser?.wallet ?? 0;
   const canPayWallet = walletBalance >= totalPrice;
 
-  /* ✅ طريقتين فقط للحريف */
+  /* طريقتين فقط للحريف */
   const methods = [
     { id: 'cash', label: 'نقدي كاش', icon: '💵' },
-    { id: 'wallet', label: 'من رصيد المحفظة', icon: '👝' },
+    { id: 'wallet', label: 'خصم من المحفظة', icon: '👝' },
   ];
 
   /* safeEndSession */
@@ -465,7 +465,7 @@ export default function SummaryScreen() {
         )}
       </div>
 
-      {/* ✅ طرق الدفع - نقدي أو محفظة فقط */}
+      {/* ✅ طرق الدفع - تم تصغير البوكسات وتكبير وتوضيح النصوص بداخلها */}
       {activeSession && (
         <>
           <div className="mb-6">
@@ -475,7 +475,7 @@ export default function SummaryScreen() {
                 <button
                   key={m.id}
                   onClick={() => setPaymentMethod(m.id)}
-                  className={`p-4 rounded-2xl border text-center transition-all relative ${
+                  className={`py-3 px-3 rounded-2xl border text-center transition-all relative flex flex-col items-center justify-center min-h-[110px] ${
                     paymentMethod === m.id
                       ? m.id === 'wallet'
                         ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-400'
@@ -485,20 +485,20 @@ export default function SummaryScreen() {
                 >
                   <div className="text-2xl mb-1">{m.icon}</div>
                   
-                  {/* 🚀 تكبير وتوضيح كلمة "من رصيد المحفظة" */}
-                  <div className="font-black text-slate-700" style={{ fontSize: m.id === 'wallet' ? '14px' : '13px' }}>
+                  {/* 🚀 تكبير وتوضيح كلمة "من رصيد المحفظة" و "نقدي كاش" لسهولة القراءة */}
+                  <div className="font-black text-slate-800 leading-tight" style={{ fontSize: '15px', fontWeight: 900 }}>
                     {m.label}
                   </div>
 
-                  {/* 🚀 تكبير وتوضيح "رصيدك والمبلغ" بالخط العريض */}
+                  {/* 🚀 رصيدك والمبلغ مدمجين في سطر واحد لتوفير المساحة وتكبير الخط */}
                   {m.id === 'wallet' && (
                     <div
-                      className="mt-2.5 font-bold flex flex-col items-center justify-center border-t border-blue-200/50 pt-1.5"
+                      className="mt-1.5 font-bold flex items-center justify-center gap-1 border-t border-blue-200/50 pt-1.5 w-full"
                       style={{ color: canPayWallet ? '#059669' : '#EF4444' }}
                     >
-                      <span className="text-[10px] font-black text-slate-500">رصيدك الحالي</span>
-                      <span className="font-mono mt-0.5" style={{ fontSize: '15px', fontWeight: 900 }}>
-                        {walletBalance} ج.م
+                      <span className="text-[10px] font-black text-slate-500">رصيدك:</span>
+                      <span className="font-mono" style={{ fontSize: '15px', fontWeight: 900 }}>
+                        {walletBalance}ج
                       </span>
                     </div>
                   )}
