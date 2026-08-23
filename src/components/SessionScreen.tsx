@@ -192,7 +192,7 @@ export default function SessionScreen() {
     if (activeSession.garageId) setSelectedGarageId(activeSession.garageId);
   }, [activeSession?.id, activeSession?.garageId, setSelectedGarageId]);
 
-  // ✅ الفلترة والتحويل الأمني الذكي الخالي تماماً من التداخل
+  // ✅ الفلترة والتحويل الأمني الذكي الخالي تماماً من التداخل (Acknowledge Lock 🔒)
   useEffect(() => {
     // 1. إذا وجدنا جلسة نشطة قيد التشغيل، نلغي أي توجيه فوري ونبقى في العداد
     if (activeSession) {
@@ -223,31 +223,22 @@ export default function SessionScreen() {
       }
     }
 
-     // 3. التحويل من خارج التطبيق: توجيه آمن 100% بناءً على عدم إقرار الفاتورة مسبقاً
+    // 3. التحويل من خارج التطبيق: توجيه آمن 100% بناءً على عدم إقرار الفاتورة مسبقاً (بدلاً من فرق التوقيت)
     if (lastCompletedSession && !redirectedToSummaryRef.current) {
       const isNotAcknowledged = acknowledgedSessionIds ? !acknowledgedSessionIds.has(lastCompletedSession.id) : true;
 
       if (isNotAcknowledged) {
         redirectedToSummaryRef.current = true;
+        
         if (lastCompletedSession.garageId) {
           setSelectedGarageId(lastCompletedSession.garageId);
         }
+        
         if (typeof acknowledgeSession === 'function') {
           acknowledgeSession(lastCompletedSession.id);
         }
+        
         toast.success('تم إنهاء الجلسة بنجاح ✅', { icon: '🏁', duration: 3000 });
-        setTimeout(() => { setScreen('summary'); }, 400);
-      }
-    }
-        if (lastCompletedSession.garageId) {
-          setSelectedGarageId(lastCompletedSession.garageId);
-        }
-        
-        if (typeof acknowledgeSession === 'function') {
-          acknowledgeSession(lastCompletedSession.id);
-        }
-        
-        toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
         setTimeout(() => { setScreen('summary'); }, 400);
       }
     }
