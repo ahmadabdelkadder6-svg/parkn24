@@ -223,7 +223,7 @@ export default function SessionScreen() {
       }
     }
 
-    // 3. التحويل من خارج التطبيق: توجيه آمن 100% بناءً على عدم إقرار الفاتورة مسبقاً
+     // 3. التحويل من خارج التطبيق: توجيه آمن 100% بناءً على عدم إقرار الفاتورة مسبقاً
     if (lastCompletedSession && !redirectedToSummaryRef.current) {
       const isNotAcknowledged = acknowledgedSessionIds ? !acknowledgedSessionIds.has(lastCompletedSession.id) : true;
 
@@ -239,7 +239,6 @@ export default function SessionScreen() {
         setTimeout(() => { setScreen('summary'); }, 400);
       }
     }
-        
         if (lastCompletedSession.garageId) {
           setSelectedGarageId(lastCompletedSession.garageId);
         }
