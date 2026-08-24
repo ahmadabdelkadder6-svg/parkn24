@@ -390,7 +390,7 @@ export default function AdminDashboard() {
 
     } catch (error: any) {
       toast.dismiss(loadingToast);
-      console.error('Settlement failed:', error);
+      console.error('Cleanup failed:', error);
       toast.error(error?.message || 'فشل تنفيذ التسوية. تحقق من الاتصال بالشبكة.');
     } finally {
       setProcessingSettlement(false);
@@ -1146,7 +1146,7 @@ export default function AdminDashboard() {
                         <button onClick={() => { setReplyingTo(msg.id); setReplyText(''); setExpandedMessage(msg.id); }} className="flex-1 font-black flex items-center justify-center gap-2 active:scale-95"
                           style={{ background: '#0066FF', color: '#fff', padding: 14, borderRadius: 18, fontSize: 13, boxShadow: '0 6px 20px rgba(0,102,255,0.3)' }}><Send size={16} />{msg.reply ? 'تعديل' : 'رد'}</button>
                         <button onClick={async () => { await closeMessage(msg.id); toast.success('تم الإغلاق'); }} className="font-black active:scale-95"
-                          style={{ background: '#F0F4FF', color: '#475569', padding: '14px 20px', borderRadius: 18, fontSize: 13, border: '2px solid #D0DCFF' }}>إغلاق</button>
+                          style={{ background: '#F0F4FF', color: '#475569', padding: '14px 20px', borderRadius: 18, fontSize: 13, border: '2px solid #D0DCFF' }}>إلغاء</button>
                       </div>
                     )
                   )}
