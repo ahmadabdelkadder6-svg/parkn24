@@ -449,17 +449,35 @@ export default function GarageDashboard() {
     return calculateCost(el, r);
   }, [garage?.basePrice]);
 
+   // 🚀 الحصيلة المفلترة للعمليات المكتملة مع أقفال أمان تمنع سقوط أي جلسة نهائياً
   const filteredCompleted = useMemo(() => {
     return completedSessions.filter(s => {
+      // 1. فحص وتصفية التاريخ بأمان فائق (مع استثناء الـ 24 ساعة الأخيرة)
       if (s.endTime) {
-        const d = timestampToLocalDate(toMs(s.endTime));
-        if (isValet) { if (d !== getLocalToday()) return false; }
-        else { if (logDateFrom && d < logDateFrom) return false; if (logDateTo && d > logDateTo) return false; }
+        const endMs = toMs(s.endTime);
+        const d = timestampToLocalDate(endMs);
+        const isWithinLast24Hours = (Date.now() - endMs) < 24 * 60 * 60 * 1000;
+        
+        if (isValet) { 
+          // أمان: لو التاريخ اختلف بسبب توقيت الهاتف ولكن الجلسة تمت في آخر 24 ساعة، تظهر فوراً للسايس
+          if (d !== getLocalToday() && !isWithinLast24Hours) return false; 
+        } else { 
+          if (logDateFrom && d < logDateFrom) return false; 
+          if (logDateTo && d > logDateTo) return false; 
+        }
       }
+      
       if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter) return false;
+      
+      // 2. فحص وتسهيل تتبع هوية السايس المسؤول لمنع سقوط الجلسات المالية
       const addedBy = ((s as any).addedBy || '').trim();
       if (isValet) {
-        const isMine = (addedBy && myValetNames.has(addedBy)) || (s.source === 'app' && !addedBy);
+        const isMine = 
+          !addedBy || 
+          addedBy === '' || 
+          myValetNames.has(addedBy) || 
+          s.source === 'app'; // تظهر دائماً للسايس المناوب لو كانت جلسة تطبيق عامة
+          
         if (!isMine) return false;
       }
       if (isOwner && selectedValetFilter) { if (addedBy !== selectedValetFilter) return false; }
