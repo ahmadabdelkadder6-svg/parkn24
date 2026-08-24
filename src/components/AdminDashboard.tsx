@@ -97,6 +97,7 @@ export default function AdminDashboard() {
   const [showArchive, setShowArchive] = useState(false);
   const [archiveSearch, setArchiveSearch] = useState('');
   const [visibleSettlements, setVisibleSettlements] = useState(4);
+  const [activeAccordionGarageId, setActiveAccordionGarageId] = useState<string | null>(null); // للتحكم في الجراج النشط المفتوح حالياً
 
   const [gName, setGName] = useState('');
   const [gUser, setGUser] = useState('');
@@ -606,95 +607,148 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* جدول التسوية لكل جراج */}
-      {commissionStats.perGarage.map(g => {
-        const settlement = g.walletRevenue - g.commission;
-        const adminOwesGarage = settlement > 0;
-        const absSettlement = Math.abs(settlement).toFixed(0);
-        const isConfirming = confirmSettlementGarageId === g.id;
+      {/* 📊 جدول التسويات النشطة للجراجات (تصميم مدمج وقابل للطي - Accordion) */}
+      <div className="mb-6 space-y-2">
+        <div className="flex items-center justify-between mb-3 justify-end">
+          <span className="font-black" style={{ background: '#0066FF', color: '#fff', fontSize: 11, padding: '3.5px 12px', borderRadius: 20 }}>
+            {commissionStats.perGarage.length} جراجات نشطة
+          </span>
+          <h3 className="font-black flex items-center gap-2" style={{ fontSize: 16, color: '#0A1628' }}>
+            📊 التسويات النشطة للجراجات
+          </h3>
+        </div>
 
-        return (
-          <div key={g.id} className="mb-4" style={{ 
-            background: '#fff', 
-            border: `2px solid ${adminOwesGarage ? '#00CC66' : '#FF3333'}`, 
-            borderRadius: 18, 
-            padding: 14,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.04)'
-          }}>
-            <div className="flex justify-between items-start mb-3">
-              <div className="text-right flex-1">
-                <div className="font-black" style={{ fontSize: 14, color: '#0A1628' }}>{g.name}</div>
-                <div className="font-bold" style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
-                  {g.totalCount} جلسة · عمولة {g.commissionRate}%
-                </div>
-              </div>
-              <div className="flex items-center gap-1" style={{ padding: '4px 10px', borderRadius: 10, background: adminOwesGarage ? '#EBFDF2' : '#FFF3F3' }}>
-                {adminOwesGarage ? <ArrowUp size={12} style={{ color: '#00AA44' }} /> : <ArrowDown size={12} style={{ color: '#CC0000' }} />}
-                <span className="font-black" style={{ fontSize: 10, color: adminOwesGarage ? '#00AA44' : '#CC0000' }}>
-                  {adminOwesGarage ? 'أرسل للجراج' : 'اطلب من الجراج'}
-                </span>
-              </div>
-            </div>
+        {commissionStats.perGarage.length === 0 ? (
+          <div className="text-center py-8 bg-white rounded-2xl border-2 border-dashed border-[#D0DCFF]">
+            <span style={{ fontSize: 36, display: 'block', marginBottom: 8 }}>⚖️</span>
+            <p className="font-black text-slate-500 text-xs">جميع حسابات الجراجات متزنة ومقفلة بالكامل!</p>
+          </div>
+        ) : (
+          commissionStats.perGarage.map(g => {
+            const settlement = g.walletRevenue - g.commission;
+            const adminOwesGarage = settlement > 0;
+            const absSettlement = Math.abs(settlement).toFixed(0);
+            const isExpanded = activeAccordionGarageId === g.id;
+            const isConfirming = confirmSettlementGarageId === g.id;
 
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              <div className="text-center" style={{ background: '#F8FAFF', borderRadius: 10, padding: '6px 4px' }}>
-                <div style={{ fontSize: 8, color: '#7B8CA6', fontWeight: 900 }}>محفظة</div>
-                <div className="font-black font-mono" style={{ fontSize: 12, color: '#0066FF' }}>{g.walletRevenue.toFixed(0)}</div>
-              </div>
-              <div className="text-center" style={{ background: '#FFF8F0', borderRadius: 10, padding: '6px 4px' }}>
-                <div style={{ fontSize: 8, color: '#FF9500', fontWeight: 900 }}>عمولة</div>
-                <div className="font-black font-mono" style={{ fontSize: 12, color: '#FF9500' }}>{g.commission.toFixed(0)}</div>
-              </div>
-              <div className="text-center" style={{ background: adminOwesGarage ? '#EBFDF2' : '#FFF3F3', borderRadius: 10, padding: '6px 4px' }}>
-                <div style={{ fontSize: 8, color: adminOwesGarage ? '#00AA44' : '#CC0000', fontWeight: 900 }}>الفرق</div>
-                <div className="font-black font-mono" style={{ fontSize: 14, color: adminOwesGarage ? '#00AA44' : '#CC0000' }}>{absSettlement}</div>
-              </div>
-            </div>
-
-            {isConfirming ? (
-              <div style={{ background: '#FFF8F0', border: '2px solid #FFD180', borderRadius: 12, padding: 12 }}>
-                <p className="font-black text-center mb-2" style={{ fontSize: 12, color: '#0A1628' }}>
-                  ⚠️ هل تم فعلياً {adminOwesGarage ? 'تحويل' : 'استلام'} <span style={{ color: adminOwesGarage ? '#00AA44' : '#CC0000' }}>{absSettlement} ج.م</span>؟
-                </p>
-                <p className="text-center mb-3" style={{ fontSize: 10, color: '#7B8CA6' }}>
-                  عند التأكيد سيتم إقفال {g.totalCount} جلسة نهائياً ولن تُحسب مرة أخرى
-                </p>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => handleConfirmSettlement(g.id)} 
-                    disabled={processingSettlement}
-                    className="flex-1 font-black active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1"
-                    style={{ background: '#00CC66', color: '#fff', padding: 10, borderRadius: 12, fontSize: 12 }}
-                  >
-                    <Lock size={14} /> {processingSettlement ? 'جاري الإقفال...' : 'تأكيد وإقفال'}
-                  </button>
-                  <button 
-                    onClick={() => setConfirmSettlementGarageId(null)} 
-                    disabled={processingSettlement}
-                    className="flex-1 font-black active:scale-95"
-                    style={{ background: '#F0F4FF', color: '#475569', padding: 10, borderRadius: 12, fontSize: 12, border: '1px solid #D0DCFF' }}
-                  >
-                    إلغاء
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button 
-                onClick={() => setConfirmSettlementGarageId(g.id)} 
-                className="w-full font-black active:scale-95 flex items-center justify-center gap-2"
+            return (
+              <div 
+                key={g.id} 
+                className="transition-all"
                 style={{ 
-                  background: `linear-gradient(135deg, ${adminOwesGarage ? '#00CC66,#00AA55' : '#FF3333,#CC0000'})`, 
-                  color: '#fff', 
-                  padding: 12, 
-                  borderRadius: 14, 
-                  fontSize: 12,
-                  boxShadow: `0 4px 12px ${adminOwesGarage ? 'rgba(0,204,102,0.3)' : 'rgba(255,51,51,0.3)'}`
+                  background: '#fff', 
+                  border: isExpanded 
+                    ? `2.5px solid ${adminOwesGarage ? '#00CC66' : '#FF3333'}` 
+                    : '1.5px solid #D0DCFF', 
+                  borderRadius: 18, 
+                  boxShadow: isExpanded ? '0 8px 24px rgba(0,0,0,0.06)' : 'none',
+                  overflow: 'hidden'
                 }}
               >
-                <Lock size={14} /> تسجيل تسوية وإقفال ({absSettlement} ج.م)
-              </button>
-            )}
-          </div>
+                {/* رأس السطر القابل للضغط للفتح والغلق */}
+                <div 
+                  onClick={() => {
+                    setActiveAccordionGarageId(isExpanded ? null : g.id);
+                    setConfirmSettlementGarageId(null); // إلغاء أي تأكيد معلق عند الطي
+                  }}
+                  className="flex justify-between items-center p-4 cursor-pointer hover:bg-slate-50/50 active:scale-[0.99] transition-all"
+                >
+                  {/* يسار السطر: قيمة التسوية مع شارة الاتجاه */}
+                  <div className="flex items-center gap-2">
+                    <span className="font-black" style={{ fontSize: 11, color: adminOwesGarage ? '#00AA44' : '#CC0000' }}>
+                      {adminOwesGarage ? 'أرسل للجراج' : 'اطلب من الجراج'}
+                    </span>
+                    <span className="font-black font-mono" style={{ fontSize: 16, color: adminOwesGarage ? '#00AA44' : '#CC0000' }}>
+                      {absSettlement} ج.م
+                    </span>
+                    <span className="text-slate-400 font-bold" style={{ fontSize: 11 }}>{isExpanded ? '▲' : '▼'}</span>
+                  </div>
+
+                  {/* يمين السطر: اسم الجراج وعدد الجلسات */}
+                  <div className="text-right">
+                    <div className="font-black" style={{ fontSize: 14, color: '#0A1628' }}>{g.name}</div>
+                    <div className="text-[10px] text-slate-400 font-bold mt-0.5">{g.totalCount} جلسة معلقة تسويتها</div>
+                  </div>
+                </div>
+
+                {/* 📂 محتوى تفاصيل التسوية (يظهر فقط عند التمدد والفتح) */}
+                <AnimatePresence>
+                  {isExpanded && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="px-4 pb-4 border-t border-slate-100 bg-slate-50/40"
+                    >
+                      <div className="grid grid-cols-3 gap-2 my-3">
+                        <div className="text-center" style={{ background: '#F8FAFF', borderRadius: 12, padding: '8px 4px', border: '1px solid #D0DCFF' }}>
+                          <div style={{ fontSize: 8, color: '#7B8CA6', fontWeight: 900 }}>تحصيل محفظة</div>
+                          <div className="font-black font-mono mt-0.5" style={{ fontSize: 13, color: '#0066FF' }}>{g.walletRevenue.toFixed(0)}</div>
+                        </div>
+                        <div className="text-center" style={{ background: '#FFF8F0', borderRadius: 12, padding: '8px 4px', border: '1px solid #FFD180' }}>
+                          <div style={{ fontSize: 8, color: '#FF9500', fontWeight: 900 }}>عمولتنا {g.commissionRate}%</div>
+                          <div className="font-black font-mono mt-0.5" style={{ fontSize: 13, color: '#FF9500' }}>{g.commission.toFixed(0)}</div>
+                        </div>
+                        <div className="text-center" style={{ background: adminOwesGarage ? '#EBFDF2' : '#FFF3F3', borderRadius: 12, padding: '8px 4px', border: `1px solid ${adminOwesGarage ? '#00CC66' : '#FF3333'}` }}>
+                          <div style={{ fontSize: 8, color: adminOwesGarage ? '#00AA44' : '#CC0000', fontWeight: 900 }}>الفرق للتسوية</div>
+                          <div className="font-black font-mono mt-0.5" style={{ fontSize: 15, color: adminOwesGarage ? '#00AA44' : '#CC0000' }}>{absSettlement}</div>
+                        </div>
+                      </div>
+
+                      {isConfirming ? (
+                        <div className="p-3 bg-amber-50 border-2 border-amber-200 rounded-2xl">
+                          <p className="font-black text-center mb-1.5" style={{ fontSize: 11, color: '#3D1F00' }}>
+                            ⚠️ هل تم فعلياً {adminOwesGarage ? 'تحويل' : 'استلام'} <span className="text-sm" style={{ color: adminOwesGarage ? '#00AA44' : '#CC0000', fontWeight: 900 }}>{absSettlement} ج.م</span>؟
+                          </p>
+                          <p className="text-center mb-3" style={{ fontSize: 9, color: '#7B8CA6' }}>
+                            عند التأكيد سيتم قفل {g.totalCount} جلسة نهائياً ولن تظهر في الحسابات الحالية مرة أخرى.
+                          </p>
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => {
+                                handleConfirmSettlement(g.id);
+                                setActiveAccordionGarageId(null); // غلق السطر بعد التأكيد
+                              }} 
+                              disabled={processingSettlement}
+                              className="flex-1 font-black active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1"
+                              style={{ background: '#00CC66', color: '#fff', padding: 10, borderRadius: 12, fontSize: 12 }}
+                            >
+                              <Lock size={14} /> {processingSettlement ? 'جاري الإقفال...' : 'تأكيد وإقفال'}
+                            </button>
+                            <button 
+                              onClick={() => setConfirmSettlementGarageId(null)} 
+                              disabled={processingSettlement}
+                              className="flex-1 font-black active:scale-95"
+                              style={{ background: '#F0F4FF', color: '#475569', padding: 10, borderRadius: 12, fontSize: 12, border: '1px solid #D0DCFF' }}
+                            >
+                              إلغاء
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button 
+                          onClick={() => setConfirmSettlementGarageId(g.id)} 
+                          className="w-full font-black active:scale-95 flex items-center justify-center gap-2"
+                          style={{ 
+                            background: `linear-gradient(135deg, ${adminOwesGarage ? '#00CC66,#00AA55' : '#FF3333,#CC0000'})`, 
+                            color: '#fff', 
+                            padding: 12, 
+                            borderRadius: 14, 
+                            fontSize: 12,
+                            boxShadow: `0 4px 12px ${adminOwesGarage ? 'rgba(0,204,102,0.3)' : 'rgba(255,51,51,0.3)'}`
+                          }}
+                        >
+                          <Lock size={14} /> تسجيل تسوية وإقفال ({absSettlement} ج.م)
+                        </button>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })
+        )}
+      </div>
         );
       })}
 
