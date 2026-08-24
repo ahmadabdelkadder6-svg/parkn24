@@ -426,11 +426,11 @@ export const useStore = create<AppState>((set, get) => ({
     const [g, activeAndUnsettledRes, recentSettledRes, o, w, ic, msgs] = await Promise.all([
       supabase.from('garages').select('*'),
 
-      // 1. جلب جميع العمليات النشطة + العمليات غير المسواة (المعلقة مالياً) بحد أقصى 200 عملية
+      // 1. جلب جميع العمليات النشطة + غير المسواة (المعلقة مالياً أو الفارغة NULL) لضمان عدم سقوط أي جلسة
       supabase
         .from('sessions')
         .select('*')
-        .or('status.eq.active,settled.eq.false')
+        .or('status.eq.active,settled.eq.false,settled.is.null') // 🚀 حل سحري: جلب الجلسات حتى لو كانت قيمة settled فارغة NULL
         .order('created_at', { ascending: false })
         .limit(200),
 
