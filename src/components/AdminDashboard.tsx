@@ -268,6 +268,7 @@ export default function AdminDashboard() {
     if (!gName || !gUser || !gPhone) { toast.error('أكمل الحقول الأساسية'); return; }
     addGarage({
       name: gName, username: gUser, phone: gPhone,
+      ownerPhone: gPhone, // 🚀 ربط الجراج برقم هاتف المالك تلقائياً لدعم تعدد الجراجات
       capacity: 50, basePrice: 15, location: 'موقع جديد', lat, lng,
       valetName1: gValet1Name, valetPassword1: gValet1Pass,
       valetName2: gValet2Name, valetPassword2: gValet2Pass,
@@ -1134,7 +1135,30 @@ export default function AdminDashboard() {
                     <div className="font-bold" style={{ fontSize: 9, opacity: 0.8 }}>شاغر</div>
                   </div>
                   <div className="text-right">
-                    <div className="font-black mb-1" style={{ fontSize: 18, color: '#0A1628' }}>{g.name}</div>
+                    <div className="font-black mb-1 flex items-center gap-2 justify-end" style={{ fontSize: 18, color: '#0A1628' }}>
+                      {/* 🚀 شارة لتوضيح لو المالك لديه أكثر من جراج بنفس رقم الهاتف */}
+                      {(() => {
+                        const ownerPhone = (g as any).ownerPhone || g.phone;
+                        const sameOwnerCount = garages.filter((x: any) => 
+                          ((x.ownerPhone || x.phone) === ownerPhone)
+                        ).length;
+                        if (sameOwnerCount > 1) {
+                          return (
+                            <span className="font-black" style={{ 
+                              fontSize: 9, 
+                              padding: '3px 8px', 
+                              borderRadius: 10, 
+                              background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', 
+                              color: '#fff' 
+                            }}>
+                              👑 {sameOwnerCount} جراجات
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
+                      <span>{g.name}</span>
+                    </div>
                     <div className="flex items-center gap-1 justify-end mb-1" style={{ fontSize: 11, color: '#94a3b8' }}><MapPin size={12} />{g.location}</div>
                     <div className="flex flex-wrap gap-1 justify-end">
                       {[

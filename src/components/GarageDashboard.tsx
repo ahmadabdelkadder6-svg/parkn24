@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Car, Clock, LogOut, Plus, CheckCircle, XCircle, Settings,
   Minus, Save, MapPin, Edit3, Navigation, Phone, CarFront, FileText,
-  CalendarDays, Undo2, Shield, HardHat, Users, Percent,
+  CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2,
 } from 'lucide-react';
 import { useStore, pausePolling } from '../store';
 import { supabase } from '../lib/supabase';
@@ -201,6 +201,7 @@ export default function GarageDashboard() {
     garages, currentGarageId, setCurrentGarageId, sessions, addSession, endSession,
     removeSession, offers, updateOffer, cancelOffer, updateGarage, incomingCars,
     removeIncomingCar, fetchAll, confirmRevenue, assignSessionToValet, adjustGarageSpots,
+    getMyOwnedGarages, // 🚀 جلب دالة جراجات المالك الموحد
   } = useStore();
 
   const [garageRole] = useState<'owner' | 'valet'>(
@@ -312,6 +313,13 @@ export default function GarageDashboard() {
   const [valetEditSpots, setValetEditSpots] = useState(false);
   const [selectedValetFilter, setSelectedValetFilter] = useState<string | null>(null);
 
+  // 🚀 حساب جراجات المالك الموحد وحالة فتح قائمة التبديل
+  const [showSwitcher, setShowSwitcher] = useState(false);
+  const myGarages = useMemo(() => {
+    if (!garage) return [];
+    return getMyOwnedGarages(garage.ownerPhone || garage.phone || '');
+  }, [getMyOwnedGarages, garage, garages]);
+
   useEffect(() => {
     if (!isValet || !currentGarageId) return;
     const targetValetName = currentValetNameLocal || currentValetName || `سايس ${valetNumber}`;
@@ -380,7 +388,7 @@ export default function GarageDashboard() {
     const ids = new Set(carsOnTheWay.map(c => c.id));
     carsOnTheWay.forEach(car => {
       if (!prevIncomingIdsRef.current.has(car.id) && !document.hidden) {
-        fireNewCarAlert(car.carPlate); // استدعاء الدالة المعدلة برقم اللوحة فقط
+        fireNewCarAlert(car.carPlate);
         toast(`🚨 سيارة في الطريق!\n🚗 رقم السيارة: ${car.carPlate}`, { duration: 10000, icon: '🚨' });
       }
     });
@@ -454,13 +462,11 @@ export default function GarageDashboard() {
         const isMine = (addedBy && myValetNames.has(addedBy)) || (s.source === 'app' && !addedBy);
         if (!isMine) return false;
       }
-      // 🚀 تم إزالة شرط "isOwner && !garageValetNames.includes(addedBy)" لحل مشكلة عدم تطابق الإيرادات بين الأدمن والمالك نهائياً!
       if (isOwner && selectedValetFilter) { if (addedBy !== selectedValetFilter) return false; }
       return true;
     });
   }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, isOwner, myValetNames, selectedValetFilter]);
 
-  // حساب الحصيلة المالية بدقة متناهية متزامنة مع الأدمن
   const filteredStats = useMemo(() => {
     const c = filteredCompleted.filter(s => s.revenueConfirmed);
     const u = filteredCompleted.filter(s => !s.revenueConfirmed);
@@ -478,7 +484,6 @@ export default function GarageDashboard() {
     const totalNet = c.reduce((a, s) => a + getSessionNetRevenue(s), 0);
     const confirmedTotal = cash + instapay + wallet + cashwallet;
 
-    // حساب المقاصة النشطة غير المسواة فقط
     const activeWallet = activeC.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
     const activeCommission = activeC.reduce((a, s) => a + getSessionCommission(s), 0);
 
@@ -673,9 +678,32 @@ export default function GarageDashboard() {
 
       {/* Header */}
       <div className="flex justify-between items-center mb-5 pt-14">
-        <button onClick={() => { localStorage.removeItem('garageRole'); localStorage.removeItem('valetNumber'); localStorage.removeItem('valetName'); setCurrentGarageId(null); }} className="active:scale-90" style={{ background: '#fff', padding: 14, borderRadius: 20, border: '2px solid #D0DCFF' }}>
-          <LogOut size={20} style={{ color: '#64748b' }} />
-        </button>
+        {/* 🚀 تجميع أزرار التحكم في اليسار (خروج + تبديل الجراج للمالك) */}
+        <div className="flex gap-2 items-center">
+          <button onClick={() => { localStorage.removeItem('garageRole'); localStorage.removeItem('valetNumber'); localStorage.removeItem('valetName'); setCurrentGarageId(null); }} className="active:scale-90" style={{ background: '#fff', padding: 14, borderRadius: 20, border: '2px solid #D0DCFF' }}>
+            <LogOut size={20} style={{ color: '#64748b' }} />
+          </button>
+
+          {/* 🔄 زر تبديل الجراج يظهر للمالك فقط إذا كان يمتلك أكثر من جراج */}
+          {isOwner && myGarages.length > 1 && (
+            <button
+              onClick={() => setShowSwitcher(true)}
+              className="active:scale-90 font-black flex items-center gap-1.5"
+              style={{
+                background: 'linear-gradient(135deg,#0066FF,#4D00FF)',
+                color: '#fff',
+                padding: '10px 14px',
+                borderRadius: 16,
+                fontSize: 11,
+                boxShadow: '0 4px 14px rgba(0,102,255,0.25)'
+              }}
+            >
+              <Building2 size={14} />
+              <span>جراجاتي ({myGarages.length})</span>
+            </button>
+          )}
+        </div>
+
         <div className="text-right flex-1 mr-3">
           <h2 className="font-black" style={{ fontSize: 20 }}>{garage.name}</h2>
           <div className="flex items-center gap-2 justify-end mt-1">
@@ -855,7 +883,6 @@ export default function GarageDashboard() {
                         boxShadow: '0 4px 16px rgba(0, 153, 221, 0.08)'
                       }}
                     >
-                      {/* رأس البطاقة: أيقونة السيارة، الوقت المتبقي، ورقم اللوحة */}
                       <div className="flex justify-between items-center mb-4">
                         <div className="flex items-center gap-2">
                           <motion.div animate={{ x: [0, -4, 0] }} transition={{ repeat: Infinity, duration: 1.5 }} style={{ background: '#0099DD', borderRadius: 14, padding: 8, color: '#fff' }}>
@@ -870,7 +897,6 @@ export default function GarageDashboard() {
                         </div>
                       </div>
 
-                      {/* زر بدء الحساب عريض ومباشر */}
                       <button 
                         onClick={() => handleCarArrived(car)} 
                         className="w-full font-black flex items-center justify-center gap-2 active:scale-95 transition-all shadow-md" 
@@ -1065,7 +1091,6 @@ export default function GarageDashboard() {
                   <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>{filteredCompleted.filter(s => s.revenueConfirmed).length} عملية مؤكدة</div>
                 </div>
 
-                {/* كروت العمولة وصافي الإيراد وحسبة التسوية والمقاصة */}
                 {filteredStats.totalCommission > 0 && (
                   <div className="space-y-2 mb-4">
                     <div className="grid grid-cols-2 gap-2">
@@ -1081,7 +1106,6 @@ export default function GarageDashboard() {
                       </div>
                     </div>
 
-                    {/* بطاقة المقاصة المالية النشطة (تستبعد المُقفل تلقائياً لتتطابق مع الأدمن) */}
                     {(() => {
                       const settlement = filteredStats.activeWallet - filteredStats.activeCommission;
                       const isGarageOwed = settlement > 0;
@@ -1172,7 +1196,6 @@ export default function GarageDashboard() {
           </>
         )}
 
-        {/* قائمة العمليات */}
         <div className="space-y-2">
           {filteredCompleted.map(session => {
             const isM = session.source === 'manual';
@@ -1236,6 +1259,89 @@ export default function GarageDashboard() {
           )}
         </div>
       </div>
+
+      {/* 🏢 نافذة منبثقة فاخرة لتبديل الجراج للمالك الموحد */}
+      <AnimatePresence>
+        {showSwitcher && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }} 
+            className="fixed inset-0 z-[10000] flex items-end justify-center p-4" 
+            style={{ background: 'rgba(10,22,40,0.65)', backdropFilter: 'blur(8px)' }}
+            onClick={() => setShowSwitcher(false)}
+          >
+            <motion.div 
+              initial={{ y: '100%' }} 
+              animate={{ y: 0 }} 
+              exit={{ y: '100%' }} 
+              transition={{ type: 'spring', damping: 25 }}
+              className="w-full max-w-sm bg-white rounded-t-[32px] rounded-b-[20px] p-6 text-right"
+              onClick={e => e.stopPropagation()}
+              style={{ boxShadow: '0 -10px 40px rgba(0,0,0,0.15)' }}
+            >
+              <div className="mx-auto mb-4" style={{ width: 40, height: 4, background: '#D0DCFF', borderRadius: 4 }} />
+              
+              <div className="flex justify-between items-center mb-5 pb-3" style={{ borderBottom: '2px solid #F0F4FF' }}>
+                <button onClick={() => setShowSwitcher(false)} className="text-slate-400 hover:text-slate-600 font-black" style={{ fontSize: 22 }}>✕</button>
+                <h3 className="font-black text-slate-800 flex items-center gap-2" style={{ fontSize: 16 }}>
+                  <span>اختر الجراج للإدارة</span>
+                  <Building2 size={18} style={{ color: '#0066FF' }} />
+                </h3>
+              </div>
+
+              <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+                {myGarages.map((g) => {
+                  const isActive = g.id === currentGarageId;
+                  return (
+                    <button
+                      key={g.id}
+                      onClick={() => {
+                        setCurrentGarageId(g.id);
+                        setShowSwitcher(false);
+                        toast.success(`تم الانتقال لـ ${g.name} ⚡`);
+                        fetchAll();
+                      }}
+                      className="w-full p-4 rounded-2xl text-right transition-all flex justify-between items-center active:scale-[0.98]"
+                      style={{
+                        background: isActive ? '#F0F4FF' : '#ffffff',
+                        border: `2px solid ${isActive ? '#0066FF' : '#E2E8F0'}`,
+                        boxShadow: isActive ? '0 4px 14px rgba(0,102,255,0.15)' : '0 2px 6px rgba(0,0,0,0.03)'
+                      }}
+                    >
+                      <div className="flex flex-col items-center gap-0.5 font-black font-mono" style={{ color: isActive ? '#0066FF' : '#94a3b8' }}>
+                        <span style={{ fontSize: 20 }}>{g.availableSpots}</span>
+                        <span className="font-bold" style={{ fontSize: 9 }}>شاغر</span>
+                      </div>
+                      <div className="text-right flex-1 mr-3">
+                        <div className="font-black flex items-center gap-1.5 justify-end" style={{ fontSize: 15, color: '#0A1628' }}>
+                          {isActive && <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
+                          <span>🅿️ {g.name}</span>
+                        </div>
+                        <div className="flex items-center gap-1 justify-end mt-1 font-bold text-slate-400" style={{ fontSize: 10 }}>
+                          <span>{g.location}</span>
+                          <MapPin size={10} />
+                        </div>
+                        <div className="flex items-center gap-1.5 justify-end mt-1">
+                          <span className="font-black font-mono" style={{ fontSize: 10, color: '#00AA44' }}>{g.basePrice}ج/س</span>
+                          <span className="text-slate-300">·</span>
+                          <span className="font-black font-mono" style={{ fontSize: 10, color: '#FF9500' }}>{g.capacity} مكان</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 pt-3 text-center" style={{ borderTop: '1px dashed #D0DCFF' }}>
+                <p className="font-bold text-slate-400" style={{ fontSize: 10 }}>
+                  💡 لديك {myGarages.length} جراجات تحت إدارتك
+                </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -8,6 +8,7 @@ export interface Garage {
   name: string;
   username: string;
   phone: string;
+  ownerPhone?: string;         
   location: string;
   lat: number;
   lng: number;
@@ -170,6 +171,7 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
 
 const mapGarage = (r: any): Garage => ({
   id: r.id, name: r.name, username: r.username, phone: r.phone,
+  ownerPhone: r.owner_phone || r.phone,  
   location: r.location, lat: r.lat, lng: r.lng, capacity: r.capacity,
   availableSpots: r.available_spots, basePrice: Number(r.base_price),
   rating: Number(r.rating),
@@ -300,8 +302,8 @@ interface AppState {
   garages: Garage[];
   currentGarageId: string | null;
   setCurrentGarageId: (id: string | null) => void;
-  addGarage: (g: Omit<Garage, 'id' | 'rating' | 'availableSpots' | 'commissionRate' | 'valet1Active' | 'valet2Active' | 'valet3Active'> & { capacity: number }) => Promise<void>;
-  updateGarage: (id: string, updates: Partial<Pick<Garage, 'basePrice' | 'availableSpots' | 'capacity' | 'commissionRate' | 'valet1Active' | 'valet2Active' | 'valet3Active'>> & {
+  addGarage: (g: Omit<Garage, 'id' | 'rating' | 'availableSpots' | 'commissionRate' | 'valet1Active' | 'valet2Active' | 'valet3Active'> & { capacity: number; ownerPhone?: string }) => Promise<void>;
+  updateGarage: (id: string, updates: Partial<Pick<Garage, 'basePrice' | 'availableSpots' | 'capacity' | 'commissionRate' | 'valet1Active' | 'valet2Active' | 'valet3Active' | 'ownerPhone'>> & {
     valetName1?: string; valetPassword1?: string;
     valetName2?: string; valetPassword2?: string;
     valetName3?: string; valetPassword3?: string;
@@ -309,6 +311,7 @@ interface AppState {
   adjustGarageSpots: (id: string, delta: number) => Promise<void>;
   selectedGarageId: string | null;
   setSelectedGarageId: (id: string | null) => void;
+  getMyOwnedGarages: (phone: string) => Garage[];  
   sessions: ParkingSession[];
   acknowledgedSessionIds: Set<string>; 
   acknowledgeSession: (id: string) => void; 
@@ -386,6 +389,15 @@ export const useStore = create<AppState>((set, get) => ({
   selectedGarageId: (() => { try { return localStorage.getItem('selectedGarageId') || null; } catch { return null; } })(),
   setSelectedGarageId: (id) => { set({ selectedGarageId: id }); if (id) localStorage.setItem('selectedGarageId', id); else localStorage.removeItem('selectedGarageId'); },
 
+  // 🏢 دالة للحصول على جراجات المالك (بالبحث برقم الهاتف)
+  getMyOwnedGarages: (phone: string) => {
+    if (!phone) return [];
+    const normalizedPhone = phone.trim();
+    return get().garages.filter((g) => 
+      g.ownerPhone === normalizedPhone || g.phone === normalizedPhone
+    );
+  },
+
   sessions: [],
   
   acknowledgedSessionIds: new Set<string>(),
@@ -414,26 +426,27 @@ export const useStore = create<AppState>((set, get) => ({
     const [g, activeAndUnsettledRes, recentSettledRes, o, w, ic, msgs] = await Promise.all([
       supabase.from('garages').select('*'),
 
-      // 1. جلب جميع العمليات النشطة + العمليات غير المسواة (المعلقة مالياً)
+      // 1. جلب جميع العمليات النشطة + العمليات غير المسواة (المعلقة مالياً) بحد أقصى 200 عملية
       supabase
         .from('sessions')
         .select('*')
         .or('status.eq.active,settled.eq.false')
-        .order('created_at', { ascending: false }),
+        .order('created_at', { ascending: false })
+        .limit(200),
 
-      // 2. جلب أحدث 100 جلسة مقفلة فقط للأرشيف السريع (بدلاً من كل تاريخ الجلسات)
+      // 2. جلب أحدث 20 جلسة مقفلة فقط للأرشيف السريع (بدلاً من 100)
       supabase
         .from('sessions')
         .select('*')
         .eq('settled', true)
         .eq('status', 'completed')
         .order('created_at', { ascending: false })
-        .limit(100),
+        .limit(20),
 
-      supabase.from('offers').select('*').order('created_at', { ascending: false }).limit(100),
-      supabase.from('wallet_topups').select('*').order('created_at', { ascending: false }).limit(100),
+      supabase.from('offers').select('*').order('created_at', { ascending: false }).limit(20),
+      supabase.from('wallet_topups').select('*').order('created_at', { ascending: false }).limit(20),
       supabase.from('incoming_cars').select('*').order('created_at', { ascending: false }),
-      supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(50),
+      supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(20),
     ]);
 
     const currentGarages = get().garages;
@@ -443,7 +456,7 @@ export const useStore = create<AppState>((set, get) => ({
       return dbGarage;
     });
 
-    // 🚀 دمج نتائج الاستعلامين للجلسات بذكاء (النشطة + غير المسواة + أحدث 100 مسواة)
+    // 🚀 دمج نتائج الاستعلامين للجلسات بذكاء (النشطة + غير المسواة + أحدث 20 مسواة)
     const activeAndUnsettled = activeAndUnsettledRes.data ? activeAndUnsettledRes.data.map(mapSession) : [];
     const recentSettled = recentSettledRes.data ? recentSettledRes.data.map(mapSession) : [];
     
@@ -568,7 +581,9 @@ export const useStore = create<AppState>((set, get) => ({
 
   addGarage: async (g) => {
     const { data, error } = await supabase.from('garages').insert({
-      name: g.name, username: g.username, phone: g.phone, location: g.location, lat: g.lat, lng: g.lng,
+      name: g.name, username: g.username, phone: g.phone,
+      owner_phone: (g as any).ownerPhone || g.phone,  
+      location: g.location, lat: g.lat, lng: g.lng,
       capacity: g.capacity, available_spots: g.capacity, base_price: g.basePrice, rating: 4.0,
       commission_rate: 10,
       valet1_active: true,
@@ -590,6 +605,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (updates.availableSpots !== undefined) db.available_spots = updates.availableSpots;
     if (updates.capacity !== undefined) db.capacity = updates.capacity;
     if (updates.commissionRate !== undefined) db.commission_rate = updates.commissionRate;
+    if ((updates as any).ownerPhone !== undefined) db.owner_phone = (updates as any).ownerPhone;  
     if (updates.valet1Active !== undefined) db.valet1_active = updates.valet1Active;
     if (updates.valet2Active !== undefined) db.valet2_active = updates.valet2Active;
     if (updates.valet3Active !== undefined) db.valet3_active = updates.valet3Active;
