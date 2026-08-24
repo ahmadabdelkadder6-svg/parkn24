@@ -1350,10 +1350,8 @@ export default function AdminDashboard() {
       </div>
     </div>
   );
-}عدل الكود كامل بالتعديلات الاخيرة وعالج جميع الاخطاء البرميجة والمصفوفات المفقودة ان وجد
-تفضل الكود الكامل والنهائي والمصحح تماماً لملف **`src/components/AdminDashboard.tsx`** بعد دمج جميع التعديلات الأخيرة، مع معالجة وحل كافة الأخطاء البرمجية وإغلاق كافة المصفوفات والحاويات ليعمل التطبيق بأعلى درجات الأمان والسرعة وخفة الذاكرة:
+}
 
-```tsx
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion'; // 🚀 تم التأكيد على استيراد framer-motion لمنع الشاشة البيضاء نهائياً
 import {
