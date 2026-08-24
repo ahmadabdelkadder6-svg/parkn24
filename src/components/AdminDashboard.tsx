@@ -749,9 +749,6 @@ export default function AdminDashboard() {
           })
         )}
       </div>
-        );
-      })}
-
        {/* 📂 أرشيف التسويات المُقفلة (ذكي ومدمج وقابل للتمدد مع بحث داخلي) */}
       <div className="mb-5">
         <button 
