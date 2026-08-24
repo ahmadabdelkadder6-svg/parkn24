@@ -1351,7 +1351,6 @@ export default function AdminDashboard() {
     </div>
   );
 }
-
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion'; // 🚀 تم التأكيد على استيراد framer-motion لمنع الشاشة البيضاء نهائياً
 import {
