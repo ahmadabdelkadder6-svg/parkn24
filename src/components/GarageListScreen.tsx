@@ -534,8 +534,10 @@ export default function GarageListScreen() {
                 <span className="font-mono">{currentUser?.carPlate || '---'}</span>
               </div>
             </div>
-         
-        {/* 🚀 سجل طلبات شحن المحفظة (المعلقة والأرشيف التلقائي) */}
+          </div>
+        </div>
+
+        {/* 🚀 سجل طلبات شحن المحفظة */}
         <AnimatePresence>
           {showHistory && myTopUps.length > 0 && (
             <motion.div
