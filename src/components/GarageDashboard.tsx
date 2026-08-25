@@ -251,19 +251,29 @@ export default function GarageDashboard() {
     });
   }, [garageSessions]);
 
+  // 🚀 فلترة الجلسات النشطة لمنع التداخل بين السياس وحماية حسابات المعطلين
   const valetActiveSessions = useMemo(() => {
     if (!isValet) return activeSessions;
+
+    // 🔒 قفل الأمان: إذا كان السايس معطلاً من الإدارة، احجب عنه كل شيء فوراً
+    const isActive =
+      valetNumber === '1' ? garage?.valet1Active :
+      valetNumber === '2' ? garage?.valet2Active :
+      valetNumber === '3' ? garage?.valet3Active : false;
+    if (!isActive) return []; // 🚨 لا يرى أي سيارة نشطة
+
     return activeSessions.filter(s => {
       const addedBy = ((s as any).addedBy || '').trim();
+      
+      // 1. إذا كانت الجلسة معينة لسايس معين بالاسم → تظهر له هو فقط
       if (addedBy && myValetNames.has(addedBy)) return true;
-      if (s.source === 'app') {
-        if (!addedBy) return true;
-        const otherValets = garageValetNames.filter(n => !myValetNames.has(n));
-        if (!otherValets.includes(addedBy)) return true;
-      }
+      
+      // 2. إذا كانت الجلسة جديدة وبدأها العميل (addedBy فارغ) → تظهر للسايس المفتوح حالياً ليلقطها
+      if (!addedBy && s.source === 'app') return true;
+      
       return false;
     });
-  }, [activeSessions, isValet, myValetNames, garageValetNames]);
+  }, [activeSessions, isValet, myValetNames, valetNumber, garage]);
 
   const completedSessions = useMemo(
     () => garageSessions.filter(s => s.status === 'completed'),
@@ -449,8 +459,17 @@ export default function GarageDashboard() {
     return calculateCost(el, r);
   }, [garage?.basePrice]);
 
-   // 🚀 الحصيلة المفلترة للعمليات المكتملة مع أقفال أمان تمنع سقوط أي جلسة نهائياً
+  // 🚀 الحصيلة المفلترة للعمليات المكتملة مع عزل مالي وأمني صارم لكل سايس على حدة
   const filteredCompleted = useMemo(() => {
+    // 🔒 قفل الأمان: إذا كان السايس معطلاً من الإدارة، احجب عنه السجل المالي فوراً
+    if (isValet) {
+      const isActive =
+        valetNumber === '1' ? garage?.valet1Active :
+        valetNumber === '2' ? garage?.valet2Active :
+        valetNumber === '3' ? garage?.valet3Active : false;
+      if (!isActive) return []; // 🚨 لا يرى أي مبالغ مالية أو سجلات تاريخية
+    }
+
     return completedSessions.filter(s => {
       // 1. فحص وتصفية التاريخ بأمان فائق (مع استثناء الـ 24 ساعة الأخيرة)
       if (s.endTime) {
@@ -459,7 +478,7 @@ export default function GarageDashboard() {
         const isWithinLast24Hours = (Date.now() - endMs) < 24 * 60 * 60 * 1000;
         
         if (isValet) { 
-          // أمان: لو التاريخ اختلف بسبب توقيت الهاتف ولكن الجلسة تمت في آخر 24 ساعة، تظهر فوراً للسايس
+          // أمان: لو التاريخ اختلف بسبب توقيت هاتف السايس ولكن الجلسة تمت في آخر 24 ساعة، تظهر فوراً للسايس
           if (d !== getLocalToday() && !isWithinLast24Hours) return false; 
         } else { 
           if (logDateFrom && d < logDateFrom) return false; 
@@ -469,22 +488,21 @@ export default function GarageDashboard() {
       
       if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter) return false;
       
-      // 2. فحص وتسهيل تتبع هوية السايس المسؤول لمنع سقوط الجلسات المالية
+      // 2. عزل السياس ماليًا: السايس يرى فقط وفقط العمليات التي تمت كتابة اسمه عليها كمسؤول
       const addedBy = ((s as any).addedBy || '').trim();
       if (isValet) {
-        const isMine = 
-          !addedBy || 
-          addedBy === '' || 
-          myValetNames.has(addedBy) || 
-          s.source === 'app'; // تظهر دائماً للسايس المناوب لو كانت جلسة تطبيق عامة
-          
+        const isMine = addedBy && myValetNames.has(addedBy); // 🎯 أمان مطلق: تظهر فقط لو الاسم مطابق لاسم هذا السايس بالكامل
         if (!isMine) return false;
       }
-      if (isOwner && selectedValetFilter) { if (addedBy !== selectedValetFilter) return false; }
+      
+      // المالك يرى كل العمليات، ويمكنه تصفيتها باسم سايس معين
+      if (isOwner && selectedValetFilter) { 
+        if (addedBy !== selectedValetFilter) return false; 
+      }
+      
       return true;
     });
-  }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, isOwner, myValetNames, selectedValetFilter]);
-
+  }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, isOwner, myValetNames, selectedValetFilter, valetNumber, garage]);
   const filteredStats = useMemo(() => {
     const c = filteredCompleted.filter(s => s.revenueConfirmed);
     const u = filteredCompleted.filter(s => !s.revenueConfirmed);
