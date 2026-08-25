@@ -43,6 +43,7 @@ export default function SummaryScreen() {
     currentUser,
     deductWallet,
     fetchAll,
+    acknowledgeSession,
   } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
@@ -72,7 +73,6 @@ export default function SummaryScreen() {
     garages.find((g) => g.id === selectedGarageId) ??
     garages.find((g) => g.id === referenceSession?.garageId);
 
-  /* ── State ── */
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [rating, setRating] = useState(4);
   const [done, setDone] = useState(false);
@@ -85,7 +85,6 @@ export default function SummaryScreen() {
   const realtimeChannelRef = useRef<any>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  /* Realtime + Polling */
   useEffect(() => {
     if (!userPlate && !userPhone) return;
     if (done) return;
@@ -146,7 +145,6 @@ export default function SummaryScreen() {
     };
   }, [userPlate, userPhone, fetchAll, done]);
 
-  /* الاكتشاف التلقائي: السايس أنهى الجلسة */
   useEffect(() => {
     if (done) return;
     if (autoRedirectedRef.current) return;
@@ -186,7 +184,6 @@ export default function SummaryScreen() {
     currentUser?.wallet,
   ]);
 
-  /* Computed */
   const durationSeconds = referenceSession
     ? referenceSession.status === 'completed' && referenceSession.endTime
       ? Math.floor((toMs(referenceSession.endTime) - toMs(referenceSession.startTime)) / 1000)
@@ -197,23 +194,50 @@ export default function SummaryScreen() {
   const sessionRate = Number(referenceSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const totalHours = calculateFullHours(durationSeconds);
 
-  const totalPrice =
+  // 🎁 حساب هل هذه أول جلسة فعلية وحقيقية للعميل (أمان مغلق ضد التكرار)
+  const isFirstSession = useMemo(() => {
+    if (!currentUser?.carPlate) return false;
+    const plate = currentUser.carPlate.trim().toUpperCase();
+    const phone = currentUser.phone || '';
+
+    const completedForUser = sessions.filter(s =>
+      s.status === 'completed' &&
+      (s.carPlate.trim().toUpperCase() === plate || (s as any).customerPhone === phone)
+    );
+
+    // 1. لو معندوش أي جلسة مكتملة -> إذن دي جلسته الأولى النشطة (يأخذ الخصم)
+    if (completedForUser.length === 0) return true;
+
+    // 2. لو عنده جلسة مكتملة واحدة فقط وهو في شاشة النجاح (done) -> خصم هذه الجلسة بالتو
+    if (completedForUser.length === 1 && done) {
+      return completedForUser[0].id === referenceSession?.id;
+    }
+
+    // 3. أي حالة أخرى (ركنة ثانية فصاعداً) -> لا خصم
+    return false;
+  }, [sessions, currentUser, done, referenceSession?.id]);
+
+  const FIRST_SESSION_DISCOUNT = 0.20; // 🎁 نسبة الخصم 20%
+
+  const rawPrice =
     referenceSession?.status === 'completed' &&
     referenceSession?.totalPrice != null &&
     Number(referenceSession.totalPrice) > 0
       ? Number(referenceSession.totalPrice)
       : calculateCost(durationSeconds, sessionRate);
 
+  // 🎁 تطبيق الخصم على أول جلسة فقط
+  const discountAmount = isFirstSession ? Math.round(rawPrice * FIRST_SESSION_DISCOUNT) : 0;
+  const totalPrice = rawPrice - discountAmount;
+
   const walletBalance = currentUser?.wallet ?? 0;
   const canPayWallet = walletBalance >= totalPrice;
 
-  /* طريقتين فقط للحريف */
   const methods = [
     { id: 'cash', label: 'نقدي كاش', icon: '💵' },
     { id: 'wallet', label: 'خصم من المحفظة', icon: '👝' },
   ];
 
-  /* safeEndSession */
   const safeEndSession = async (method: string, price: number): Promise<boolean> => {
     if (isEndingRef.current) return false;
 
@@ -262,7 +286,6 @@ export default function SummaryScreen() {
     }
   };
 
-  /* Handler */
   const handleConfirm = async () => {
     if (paymentMethod === 'wallet') {
       if (!canPayWallet) { toast.error('رصيد المحفظة غير كافي'); return; }
@@ -282,7 +305,6 @@ export default function SummaryScreen() {
       return;
     }
 
-    /* Cash */
     const success = await safeEndSession('cash', totalPrice);
     if (success) {
       toast.success('تم إنهاء الجلسة بنجاح!');
@@ -295,7 +317,6 @@ export default function SummaryScreen() {
     }
   };
 
-  /* شاشة النجاح */
   if (done) {
     return (
       <motion.div
@@ -364,11 +385,17 @@ export default function SummaryScreen() {
         </div>
 
         <button
-          onClick={() => { setSelectedGarageId(null); setScreen('list'); }}
+          onClick={() => {
+            if (lastCompletedSession && acknowledgeSession) {
+              acknowledgeSession(lastCompletedSession.id);
+            }
+            setSelectedGarageId(null);
+            setScreen('list');
+          }}
           className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100"
         >
           <Home size={20} className="text-white" />
-          <span className="font-black text-white text-center animate-fade-in" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
+          <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
             العودة للرئيسية
           </span>
         </button>
@@ -376,7 +403,6 @@ export default function SummaryScreen() {
     );
   }
 
-  /* الشاشة الرئيسية */
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -403,12 +429,25 @@ export default function SummaryScreen() {
         </motion.div>
       )}
 
-      {/* 📥 تم تصغير كارت التكلفة ليكون مدمجاً وأنيقاً */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-4 shadow-sm">
         <div className="text-center mb-3">
-          <div className="text-4xl font-black text-slate-900 font-mono mb-0.5">
-            {totalPrice} ج.م
-          </div>
+          {isFirstSession && discountAmount > 0 ? (
+            <>
+              <div className="text-lg font-bold text-slate-400 font-mono line-through mb-0.5">
+                {rawPrice} ج.م
+              </div>
+              <div className="text-4xl font-black text-emerald-600 font-mono mb-0.5">
+                {totalPrice} ج.م
+              </div>
+              <div className="inline-block px-3 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-700 mb-1">
+                🎁 خصم ترحيبي {(FIRST_SESSION_DISCOUNT * 100).toFixed(0)}% على أول ركنة! (-{discountAmount} ج.م)
+              </div>
+            </>
+          ) : (
+            <div className="text-4xl font-black text-slate-900 font-mono mb-0.5">
+              {totalPrice} ج.م
+            </div>
+          )}
           <div className="text-[10px] text-slate-400 font-bold">إجمالي التكلفة الحالية</div>
         </div>
 
@@ -465,7 +504,6 @@ export default function SummaryScreen() {
         )}
       </div>
 
-      {/* ✅ طرق الدفع - تم تصغير البوكسات وتكبير وتوضيح النصوص بداخلها */}
       {activeSession && (
         <>
           <div className="mb-6">
@@ -484,13 +522,9 @@ export default function SummaryScreen() {
                   }`}
                 >
                   <div className="text-2xl mb-1">{m.icon}</div>
-                  
-                  {/* 🚀 تكبير وتوضيح كلمة "من رصيد المحفظة" و "نقدي كاش" لسهولة القراءة */}
                   <div className="font-black text-slate-800 leading-tight" style={{ fontSize: '15px', fontWeight: 900 }}>
                     {m.label}
                   </div>
-
-                  {/* 🚀 رصيدك والمبلغ مدمجين في سطر واحد لتوفير المساحة وتكبير الخط */}
                   {m.id === 'wallet' && (
                     <div
                       className="mt-1.5 font-bold flex items-center justify-center gap-1 border-t border-blue-200/50 pt-1.5 w-full"
@@ -556,7 +590,6 @@ export default function SummaryScreen() {
             </div>
           </div>
 
-          {/* ✅ زر تأكيد الدفع والإنهاء بالخط الأبيض العريض */}
           <button
             onClick={handleConfirm}
             disabled={paymentMethod === 'wallet' && !canPayWallet}
@@ -589,13 +622,12 @@ export default function SummaryScreen() {
 
       {!activeSession && (
         <button
-          onClick={() => { 
-            // 🚀 قفل وإقرار الفاتورة عند الخروج لمنع تكرارها أو سقوطها
-            if (lastCompletedSession && typeof acknowledgeSession === 'function') {
+          onClick={() => {
+            if (lastCompletedSession && acknowledgeSession) {
               acknowledgeSession(lastCompletedSession.id);
             }
-            setSelectedGarageId(null); 
-            setScreen('list'); 
+            setSelectedGarageId(null);
+            setScreen('list');
           }}
           className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100 mt-4"
         >
