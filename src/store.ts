@@ -302,8 +302,8 @@ interface AppState {
   garages: Garage[];
   currentGarageId: string | null;
   setCurrentGarageId: (id: string | null) => void;
-  addGarage: (g: Omit<Garage, 'id' | 'rating' | 'availableSpots' | 'commissionRate' | 'valet1Active' | 'valet2Active' | 'valet3Active'> & { capacity: number; ownerPhone?: string }) => Promise<void>;
-  updateGarage: (id: string, updates: Partial<Pick<Garage, 'basePrice' | 'availableSpots' | 'capacity' | 'commissionRate' | 'valet1Active' | 'valet2Active' | 'valet3Active' | 'ownerPhone'>> & {
+  addGarage: (g: Omit<Garage, 'id' | 'rating' | 'availableSpots' | 'commissionRate' | 'valet1Active' | 'valet2Active' | 'valet3Active' | 'isActive'> & { capacity: number; ownerPhone?: string }) => Promise<void>;
+  updateGarage: (id: string, updates: Partial<Pick<Garage, 'basePrice' | 'availableSpots' | 'capacity' | 'commissionRate' | 'valet1Active' | 'valet2Active' | 'valet3Active' | 'ownerPhone' | 'isActive'>> & {
     valetName1?: string; valetPassword1?: string;
     valetName2?: string; valetPassword2?: string;
     valetName3?: string; valetPassword3?: string;
@@ -609,6 +609,7 @@ export const useStore = create<AppState>((set, get) => ({
       valet_name_1: (g as any).valetName1 || '', valet_password_1: (g as any).valetPassword1 || '',
       valet_name_2: (g as any).valetName2 || '', valet_password_2: (g as any).valetPassword2 || '',
       valet_name_3: (g as any).valetName3 || '', valet_password_3: (g as any).valetPassword3 || '',
+      is_active: true, // 🚀 الجراج مفعّل تلقائياً عند الإنشاء
     }).select();
     if (!error && data) set((st) => ({ garages: [...st.garages, ...data.map(mapGarage)] }));
   },
@@ -632,6 +633,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (updates.valetPassword2 !== undefined) db.valet_password_2 = updates.valetPassword2;
     if (updates.valetName3 !== undefined) db.valet_name_3 = updates.valetName3;
     if (updates.valetPassword3 !== undefined) db.valet_password_3 = updates.valetPassword3;
+    if (updates.isActive !== undefined) db.is_active = updates.isActive; // 🚀 حفظ حالة التفعيل للسيرفر
     pendingGarageUpdates.set(id, db);
     if (updateGarageTimeout) clearTimeout(updateGarageTimeout);
     updateGarageTimeout = setTimeout(async () => {

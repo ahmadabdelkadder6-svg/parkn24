@@ -267,8 +267,10 @@ export default function GarageListScreen() {
   }, [activeSession, setSelectedGarageId, setScreen]);
 
   /* ── Garages with distance ── */
+  /* ── Garages with distance (يتم استبعاد الجراجات المعطلة من الأدمن تلقائياً) ── */
   const garagesWithDistance: GarageWithDistance[] = useMemo(() => {
     return garages
+      .filter((g) => g.isActive !== false) // 🚀 استبعاد الجراجات المعطلة من الظهور للعميل
       .map((garage) => {
         const distance = calculateDistance(
           userLocation.lat,

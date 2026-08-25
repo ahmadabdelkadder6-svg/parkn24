@@ -1230,6 +1230,29 @@ export default function AdminDashboard() {
                       <span className="font-bold" style={{ fontSize: 9, color: '#7B8CA6' }}>عمولة التطبيق</span>
                     </div>
                   </div>
+                  {/* 🚀 زر تفعيل/تعطيل ظهور الجراج للعملاء في تطبيق الحريف */}
+                  <div className="mt-2.5 pt-2 flex items-center justify-between border-t border-amber-200/60">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newStatus = g.isActive === false ? true : false;
+                        updateGarage(g.id, { isActive: newStatus });
+                        toast.success(newStatus ? `تم تفعيل ${g.name} للعملاء 🟢` : `تم تعطيل وإخفاء ${g.name} عن العملاء 🔴`);
+                      }}
+                      className="font-black active:scale-95 transition-all flex items-center gap-1"
+                      style={{
+                        background: g.isActive !== false ? '#00CC66' : '#FF3333',
+                        color: '#fff',
+                        padding: '4px 10px',
+                        borderRadius: 10,
+                        fontSize: 10,
+                        boxShadow: g.isActive !== false ? '0 2px 8px rgba(0,204,102,0.25)' : '0 2px 8px rgba(255,51,51,0.25)'
+                      }}
+                    >
+                      <span>{g.isActive !== false ? '🟢 مفعّل للعملاء' : '🔴 معطّل (مخفي)'}</span>
+                    </button>
+                    <span className="font-bold text-[10px] text-slate-500">حالة الظهور بالحريف:</span>
+                  </div>
                   {isEditingComm && (
                     <div className="flex items-center justify-center gap-2 mt-2">
                       <button onClick={() => setEditCommissionRate(r => Math.max(0, r - 1))} className="active:scale-90 flex items-center justify-center"
