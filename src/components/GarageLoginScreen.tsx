@@ -1,4 +1,4 @@
-// v2.2 - Unified owner multi-garage support + fixed redirect + clean layout
+// v2.3 - Unified owner multi-garage support + Bold White text + fixed redirect + clean layout
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Phone, User, Shield, HardHat, ArrowLeft, Building2, MapPin, Lock } from 'lucide-react';
@@ -412,9 +412,10 @@ export default function GarageLoginScreen() {
               >
                 <ArrowLeft size={20} />
               </button>
-              <h3 className="font-black text-white flex items-center gap-1.5" style={{ fontSize: 16 }}>
+              {/* 🚀 عنوان الشاشة بالخط الأبيض الصريح، العريض والداكن جداً ليكون بارزاً بوضوح تام */}
+              <h3 className="font-black text-white flex items-center gap-1.5" style={{ color: '#ffffff', fontWeight: 900, fontSize: '18px' }}>
                 <span>اختر جراجاً لإدارته</span>
-                <Building2 size={18} className="text-white" />
+                <Building2 size={20} className="text-white" />
               </h3>
             </div>
 
@@ -443,7 +444,8 @@ export default function GarageLoginScreen() {
                     <span className="font-bold text-[9px] opacity-75">شاغر</span>
                   </div>
                   <div className="text-right flex-1 mr-3">
-                    <div className="font-black text-white" style={{ fontSize: 14 }}>
+                    {/* 🚀 اسم الجراج بالخط الأبيض الصريح، العريض والداكن جداً ليكون بارزاً بوضوح تام */}
+                    <div className="font-black text-white" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
                       🅿️ {g.name}
                     </div>
                     <div className="flex items-center gap-1 justify-end mt-1 font-bold text-white/60" style={{ fontSize: 10 }}>
