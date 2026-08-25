@@ -617,13 +617,22 @@ export const useStore = create<AppState>((set, get) => ({
   updateGarage: (id, updates) => {
     set((st) => ({ garages: st.garages.map((g) => g.id === id ? { ...g, ...updates } : g) }));
     if (!isSupabaseConfigured()) return;
+
+    // 🚀 إرسال فوري ومباشر لحقل isActive بدون تأخير لمنع الارتداد
+    if (updates.isActive !== undefined) {
+      supabase.from('garages').update({ is_active: updates.isActive }).eq('id', id)
+        .then(({ error }) => {
+          if (error) console.error('❌ Failed to update isActive:', error);
+        });
+    }
+
     const existing = pendingGarageUpdates.get(id) || {};
     const db: Record<string, unknown> = { ...existing };
     if (updates.basePrice !== undefined) db.base_price = updates.basePrice;
     if (updates.availableSpots !== undefined) db.available_spots = updates.availableSpots;
     if (updates.capacity !== undefined) db.capacity = updates.capacity;
     if (updates.commissionRate !== undefined) db.commission_rate = updates.commissionRate;
-    if ((updates as any).ownerPhone !== undefined) db.owner_phone = (updates as any).ownerPhone;  
+    if ((updates as any).ownerPhone !== undefined) db.owner_phone = (updates as any).ownerPhone;
     if (updates.valet1Active !== undefined) db.valet1_active = updates.valet1Active;
     if (updates.valet2Active !== undefined) db.valet2_active = updates.valet2Active;
     if (updates.valet3Active !== undefined) db.valet3_active = updates.valet3Active;
@@ -633,17 +642,18 @@ export const useStore = create<AppState>((set, get) => ({
     if (updates.valetPassword2 !== undefined) db.valet_password_2 = updates.valetPassword2;
     if (updates.valetName3 !== undefined) db.valet_name_3 = updates.valetName3;
     if (updates.valetPassword3 !== undefined) db.valet_password_3 = updates.valetPassword3;
-    if (updates.isActive !== undefined) db.is_active = updates.isActive; // 🚀 حفظ حالة التفعيل للسيرفر
+    // لا نضيف is_active هنا لأنه تم إرساله فوراً أعلاه
     pendingGarageUpdates.set(id, db);
     if (updateGarageTimeout) clearTimeout(updateGarageTimeout);
     updateGarageTimeout = setTimeout(async () => {
       for (const [garageId, dbUpdates] of pendingGarageUpdates.entries()) {
-        await supabase.from('garages').update(dbUpdates).eq('id', garageId);
+        if (Object.keys(dbUpdates).length > 0) {
+          await supabase.from('garages').update(dbUpdates).eq('id', garageId);
+        }
       }
       pendingGarageUpdates.clear(); updateGarageTimeout = null;
     }, 500);
   },
-
   adjustGarageSpots: async (id, delta) => {
     set((st) => ({
       garages: st.garages.map((g) => {
