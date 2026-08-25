@@ -1,9 +1,19 @@
-// v2.3 - Unified owner multi-garage support + Bold White text + fixed redirect + clean layout
+// v2.4 - Robust login + Auto data normalization + Bold White text + fixed redirect
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Phone, User, Shield, HardHat, ArrowLeft, Building2, MapPin, Lock } from 'lucide-react';
 import { useStore } from '../store';
 import toast from 'react-hot-toast';
+
+// دالة عبقرية لتنظيف المدخلات وتحويل الأرقام العربية والمسافات الزائدة تلقائياً
+const normalizeData = (val: string): string => {
+  if (!val) return '';
+  return val
+    .trim()
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
+    .replace(/\s+/g, ''); // حذف أي مسافات خفية تسبب تعليق الحساب
+};
 
 export default function GarageLoginScreen() {
   const { garages, setCurrentGarageId, setView, getMyOwnedGarages } = useStore();
@@ -42,17 +52,23 @@ export default function GarageLoginScreen() {
   };
 
   const handleLogin = () => {
-    if (!username.trim() || !phone.trim()) {
+    const cleanUsername = normalizeData(username).toLowerCase();
+    const cleanPhone = normalizeData(phone);
+
+    if (!cleanUsername || !cleanPhone) {
       toast.error('الرجاء إدخال جميع الحقول');
       return;
     }
 
+    // مطابقة البيانات بعد تنظيف قاعدة المدخلات وقاعدة البيانات تماماً من أي رموز غريبة
     const found = garages.find(
-      (g) => g.username === username.trim() && g.phone === phone.trim()
+      (g) =>
+        normalizeData(g.username).toLowerCase() === cleanUsername &&
+        normalizeData(g.phone) === cleanPhone
     );
 
     if (!found) {
-      toast.error('بيانات غير صحيحة');
+      toast.error('بيانات الدخول غير صحيحة، تأكد من الأرقام والمسافات');
       return;
     }
 
@@ -62,20 +78,20 @@ export default function GarageLoginScreen() {
 
     // ✅ دخول السايس
     if (role === 'valet') {
-      const pw = valetPassword.trim();
+      const pw = normalizeData(valetPassword);
       let valetNumber = 0;
       let valetName = '';
       let isActive = false;
 
-      if (pw && found.valetPassword1 && pw === found.valetPassword1) {
+      if (pw && normalizeData(found.valetPassword1) === pw) {
         valetNumber = 1;
         valetName = found.valetName1 || '';
         isActive = found.valet1Active !== false;
-      } else if (pw && found.valetPassword2 && pw === found.valetPassword2) {
+      } else if (pw && normalizeData(found.valetPassword2) === pw) {
         valetNumber = 2;
         valetName = found.valetName2 || '';
         isActive = found.valet2Active !== false;
-      } else if (pw && found.valetPassword3 && pw === found.valetPassword3) {
+      } else if (pw && normalizeData(found.valetPassword3) === pw) {
         valetNumber = 3;
         valetName = found.valetName3 || '';
         isActive = found.valet3Active !== false;
@@ -124,7 +140,13 @@ export default function GarageLoginScreen() {
   };
 
   const selectedGarage = useMemo(() => {
-    return garages.find((g) => g.username === username.trim() && g.phone === phone.trim());
+    const cleanUsername = normalizeData(username).toLowerCase();
+    const cleanPhone = normalizeData(phone);
+    return garages.find(
+      (g) =>
+        normalizeData(g.username).toLowerCase() === cleanUsername &&
+        normalizeData(g.phone) === cleanPhone
+    );
   }, [garages, username, phone]);
 
   const activeValetCount = selectedGarage
@@ -408,11 +430,11 @@ export default function GarageLoginScreen() {
             <div className="flex justify-between items-center pb-2 border-b border-white/20">
               <button
                 onClick={() => setLoginStep('credentials')}
-                className="text-white/70 hover:text-white p-1 rounded-full hover:bg-white/10 border-none"
+                className="text-white/70 hover:text-white p-1 rounded-full hover:bg-white/10 border-none animate-fade-in"
               >
                 <ArrowLeft size={20} />
               </button>
-              {/* 🚀 عنوان الشاشة بالخط الأبيض الصريح، العريض والداكن جداً ليكون بارزاً بوضوح تام */}
+              {/* عنوان الشاشة بالخط الأبيض الصريح العريض ليكون بارزاً بوضوح تام */}
               <h3 className="font-black text-white flex items-center gap-1.5" style={{ color: '#ffffff', fontWeight: 900, fontSize: '18px' }}>
                 <span>اختر جراجاً لإدارته</span>
                 <Building2 size={20} className="text-white" />
@@ -444,7 +466,7 @@ export default function GarageLoginScreen() {
                     <span className="font-bold text-[9px] opacity-75">شاغر</span>
                   </div>
                   <div className="text-right flex-1 mr-3">
-                    {/* 🚀 اسم الجراج بالخط الأبيض الصريح، العريض والداكن جداً ليكون بارزاً بوضوح تام */}
+                    {/* اسم الجراج بالخط الأبيض الصريح العريض ليكون بارزاً بوضوح تام */}
                     <div className="font-black text-white" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
                       🅿️ {g.name}
                     </div>
