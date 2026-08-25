@@ -1112,7 +1112,6 @@ export default function GarageDashboard() {
               ))}
             </div>
         )}
-
         {isValet && (
           <div className="mb-4 text-center" style={{ background: '#EBF2FF', borderRadius: 18, padding: '10px 16px', border: '2px solid #D0DCFF' }}>
             <span className="font-black" style={{ fontSize: 12, color: '#0066FF' }}>📅 {formatLocalDateArabic(getLocalToday())} - عملياتي فقط</span>
