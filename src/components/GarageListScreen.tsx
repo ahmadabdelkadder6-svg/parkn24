@@ -497,22 +497,44 @@ export default function GarageListScreen() {
           </div>
 
           {/* رقم لوحة السيارة */}
-          <div className="mt-2.5 flex justify-end relative z-10">
+          {/* 🚗 رقم لوحة السيارة - تصميم لوحة ترخيص معدنية بريميوم فائقة الوضوح */}
+          <div className="mt-3 flex justify-end relative z-10">
             <div
-              className="font-black tracking-wide flex items-center gap-1"
               style={{
-                background: 'rgba(255,255,255,0.18)',
-                backdropFilter: 'blur(10px)',
-                borderRadius: 10,
-                padding: '4px 10px',
-                fontSize: 10,
+                background: '#ffffff',
+                border: '2px solid #1E293B', // إطار داكن وبارز للوحة
+                borderRadius: 8,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.35), inset 0 1px 2px rgba(255,255,255,0.8)',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+                minWidth: '110px',
               }}
             >
-              🚗 {currentUser?.carPlate || '---'}
+              {/* الشريط الأزرق العلوي للوحة الترخيص المصرية الفاخرة */}
+              <div 
+                className="flex items-center justify-between px-2"
+                style={{ height: '6px', background: 'linear-gradient(90deg, #0066FF, #0055DD)' }}
+              >
+                <span style={{ fontSize: '4px', color: '#fff', fontWeight: 900 }}>EGYPT</span>
+                <span style={{ fontSize: '4px', color: '#fff', fontWeight: 900 }}>مصر</span>
+              </div>
+              
+              {/* رقم لوحة السيارة بخط أسود عريض وواضح جداً */}
+              <div 
+                className="py-1 px-2.5 text-center font-black flex items-center justify-center gap-1"
+                style={{ 
+                  color: '#0F172A', 
+                  fontSize: '13px', 
+                  letterSpacing: '1px',
+                  textShadow: '0.5px 0.5px 0px rgba(0,0,0,0.1)'
+                }}
+              >
+                <span>🇪🇬</span>
+                <span className="font-mono">{currentUser?.carPlate || '---'}</span>
+              </div>
             </div>
           </div>
-        </div>
-
         {/* 🚀 سجل طلبات شحن المحفظة (المعلقة والأرشيف التلقائي) */}
         <AnimatePresence>
           {showHistory && myTopUps.length > 0 && (
