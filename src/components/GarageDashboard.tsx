@@ -1087,13 +1087,30 @@ export default function GarageDashboard() {
               <button onClick={() => { const d = new Date(); d.setDate(d.getDate() - 7); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`); setLogDateTo(getLocalToday()); }} className="font-black active:scale-95" style={{ background: '#F0F4FF', color: '#64748b', padding: '10px 14px', borderRadius: 14, fontSize: 11, border: '2px solid #D0DCFF' }}>آخر أسبوع</button>
               <button onClick={() => { const d = new Date(); d.setDate(1); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`); setLogDateTo(getLocalToday()); }} className="font-black active:scale-95" style={{ background: '#F0F4FF', color: '#64748b', padding: '10px 14px', borderRadius: 14, fontSize: 11, border: '2px solid #D0DCFF' }}>هذا الشهر</button>
             </div>
+            {/* 📊 أزرار فلترة سجل العمليات (تم إخفاء إنستاباي وكاش بصرياً فقط مع بقاء المنطق) */}
             <div className="flex gap-1.5 flex-wrap">
-              {[{ id: 'all', label: 'الكل', icon: '📊' }, { id: 'cash', label: 'نقدي', icon: '💵' }, { id: 'instapay', label: 'إنستاباي', icon: '📱' }, { id: 'wallet', label: 'محفظة', icon: '👝' }, { id: 'cashwallet', label: 'كاش', icon: '📲' }].map(f => (
-                <button key={f.id} onClick={() => setLogPaymentFilter(f.id)} className="font-black active:scale-95" style={{ padding: '6px 12px', borderRadius: 12, fontSize: 10, background: logPaymentFilter === f.id ? '#0066FF' : '#F0F4FF', color: logPaymentFilter === f.id ? '#fff' : '#64748b', border: logPaymentFilter === f.id ? 'none' : '2px solid #D0DCFF' }}>{f.icon} {f.label}</button>
+              {[
+                { id: 'all', label: 'الكل', icon: '📊' }, 
+                { id: 'cash', label: 'نقدي كاش', icon: '💵' }, 
+                { id: 'wallet', label: 'محفظة', icon: '👝' }
+              ].map(f => (
+                <button 
+                  key={f.id} 
+                  onClick={() => setLogPaymentFilter(f.id)} 
+                  className="font-black active:scale-95" 
+                  style={{ 
+                    padding: '6px 12px', 
+                    borderRadius: 12, 
+                    fontSize: 10, 
+                    background: logPaymentFilter === f.id ? '#0066FF' : '#F0F4FF', 
+                    color: logPaymentFilter === f.id ? '#fff' : '#64748b', 
+                    border: logPaymentFilter === f.id ? 'none' : '2px solid #D0DCFF' 
+                  }}
+                >
+                  {f.icon} {f.label}
+                </button>
               ))}
             </div>
-          </div>
-        )}
 
         {isValet && (
           <div className="mb-4 text-center" style={{ background: '#EBF2FF', borderRadius: 18, padding: '10px 16px', border: '2px solid #D0DCFF' }}>
