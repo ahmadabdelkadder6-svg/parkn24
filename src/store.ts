@@ -26,6 +26,7 @@ export interface Garage {
   valet1Active: boolean;
   valet2Active: boolean;
   valet3Active: boolean;
+  isActive: boolean; // 🚀 مفعّل/معطّل للعملاء
 }
 
 export interface ParkingSession {
@@ -182,6 +183,7 @@ const mapGarage = (r: any): Garage => ({
   valet1Active: r.valet1_active !== false,
   valet2Active: r.valet2_active !== false,
   valet3Active: r.valet3_active !== false,
+  isActive: r.is_active !== false, // 🚀 ماب حقل التفعيل من السيرفر
 });
 
 const mapSession = (r: any): ParkingSession => {
@@ -307,7 +309,7 @@ interface AppState {
     valetName1?: string; valetPassword1?: string;
     valetName2?: string; valetPassword2?: string;
     valetName3?: string; valetPassword3?: string;
-  }) => void;
+  }) => Promise<void>;
   adjustGarageSpots: (id: string, delta: number) => Promise<void>;
   selectedGarageId: string | null;
   setSelectedGarageId: (id: string | null) => void;
@@ -443,7 +445,7 @@ export const useStore = create<AppState>((set, get) => ({
     const [g, activeAndUnsettledRes, recentSettledRes, o, w, ic, msgs] = await Promise.all([
       supabase.from('garages').select('*'),
 
-      // 1. جلب جميع العمليات النشطة + غير المسواة (المعلقة مالياً أو الفارغة NULL) لضمان عدم سقوط أي جلسة
+      // 1. جلب جميع العمليات النشطة + العمليات غير المسواة (المعلقة مالياً أو الفارغة NULL) لضمان عدم سقوط أي جلسة
       supabase
         .from('sessions')
         .select('*')
@@ -609,30 +611,39 @@ export const useStore = create<AppState>((set, get) => ({
       valet_name_1: (g as any).valetName1 || '', valet_password_1: (g as any).valetPassword1 || '',
       valet_name_2: (g as any).valetName2 || '', valet_password_2: (g as any).valetPassword2 || '',
       valet_name_3: (g as any).valetName3 || '', valet_password_3: (g as any).valetPassword3 || '',
-      is_active: true, // 🚀 الجراج مفعّل تلقائياً عند الإنشاء
+      is_active: true, // 🚀 يضاف كـ "مفعل" تلقائياً عند الإنشاء في قاعدة البيانات
     }).select();
     if (!error && data) set((st) => ({ garages: [...st.garages, ...data.map(mapGarage)] }));
   },
 
-  updateGarage: (id, updates) => {
+  updateGarage: async (id, updates) => {
+    // 1. تحديث الحالة المحلية فوراً لمنع أي تأخير بصري
     set((st) => ({ garages: st.garages.map((g) => g.id === id ? { ...g, ...updates } : g) }));
     if (!isSupabaseConfigured()) return;
 
-    // 🚀 إرسال فوري ومباشر لحقل isActive بدون تأخير لمنع الارتداد
+    // 🚀 [أمان حديدي]: إرسال فوري ومباشر لحالة التفعيل (isActive) للسيرفر مع إيقاف البولينج لمنع الارتداد
     if (updates.isActive !== undefined) {
-      supabase.from('garages').update({ is_active: updates.isActive }).eq('id', id)
-        .then(({ error }) => {
-          if (error) console.error('❌ Failed to update isActive:', error);
-        });
+      pausePolling(6000); // إيقاف الفحص التلقائي لـ 6 ثوانٍ حتى تستقر عملية الحفظ تماماً
+      const { error } = await supabase.from('garages').update({ is_active: updates.isActive }).eq('id', id);
+      if (error) {
+        console.error('❌ Failed to update isActive:', error);
+        // التراجع الفوري عن القيمة محلياً عند الفشل لتظل الواجهة دقيقة
+        set((st) => ({ garages: st.garages.map((g) => g.id === id ? { ...g, isActive: !updates.isActive } : g) }));
+        toast.error('عذراً، فشل تفعيل الجراج في السيرفر. تحقق من قيود الأمان RLS 🔒');
+      } else {
+        await get().fetchAll(); // جلب فوري للبيانات بعد النجاح
+      }
+      return;
     }
 
+    // باقي الحقول النصية والأسعار تعمل بنظام التجميع المعتاد لسرعة الكتابة
     const existing = pendingGarageUpdates.get(id) || {};
     const db: Record<string, unknown> = { ...existing };
     if (updates.basePrice !== undefined) db.base_price = updates.basePrice;
     if (updates.availableSpots !== undefined) db.available_spots = updates.availableSpots;
     if (updates.capacity !== undefined) db.capacity = updates.capacity;
     if (updates.commissionRate !== undefined) db.commission_rate = updates.commissionRate;
-    if ((updates as any).ownerPhone !== undefined) db.owner_phone = (updates as any).ownerPhone;
+    if ((updates as any).ownerPhone !== undefined) db.owner_phone = (updates as any).ownerPhone;  
     if (updates.valet1Active !== undefined) db.valet1_active = updates.valet1Active;
     if (updates.valet2Active !== undefined) db.valet2_active = updates.valet2Active;
     if (updates.valet3Active !== undefined) db.valet3_active = updates.valet3Active;
@@ -642,7 +653,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (updates.valetPassword2 !== undefined) db.valet_password_2 = updates.valetPassword2;
     if (updates.valetName3 !== undefined) db.valet_name_3 = updates.valetName3;
     if (updates.valetPassword3 !== undefined) db.valet_password_3 = updates.valetPassword3;
-    // لا نضيف is_active هنا لأنه تم إرساله فوراً أعلاه
+
     pendingGarageUpdates.set(id, db);
     if (updateGarageTimeout) clearTimeout(updateGarageTimeout);
     updateGarageTimeout = setTimeout(async () => {
@@ -652,8 +663,10 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
       pendingGarageUpdates.clear(); updateGarageTimeout = null;
+      await get().fetchAll();
     }, 500);
   },
+
   adjustGarageSpots: async (id, delta) => {
     set((st) => ({
       garages: st.garages.map((g) => {
