@@ -400,11 +400,27 @@ export const useStore = create<AppState>((set, get) => ({
 
   sessions: [],
   
-  acknowledgedSessionIds: new Set<string>(),
+  // 🚀 [أمان وحماية]: حفظ أكواد الفواتير المؤكدة في ذاكرة الهاتف الدائمة (localStorage)
+  // لمنع ظهورها نهائياً بعد الإغلاق والتحديث وحل مشكلة التحويل التلقائي لشاشة السداد
+  acknowledgedSessionIds: (() => {
+    try {
+      const saved = localStorage.getItem('acknowledgedSessionIds');
+      return new Set<string>(saved ? JSON.parse(saved) : []);
+    } catch {
+      return new Set<string>();
+    }
+  })(),
+
   acknowledgeSession: (id) => {
     set((st) => {
       const next = new Set(st.acknowledgedSessionIds);
       next.add(id);
+      // 💾 حفظ فوري ودائم في ذاكرة الهاتف
+      try {
+        localStorage.setItem('acknowledgedSessionIds', JSON.stringify(Array.from(next)));
+      } catch (e) {
+        console.error('Error saving acknowledged session:', e);
+      }
       return { acknowledgedSessionIds: next };
     });
   },
@@ -416,6 +432,7 @@ export const useStore = create<AppState>((set, get) => ({
     safeRemoveStorage('currentUser'); safeRemoveStorage('appView'); safeRemoveStorage('appScreen');
     safeRemoveStorage('currentGarageId'); safeRemoveStorage('selectedGarageId');
     safeRemoveStorage('garageAuth'); safeRemoveStorage('adminAuth');
+    safeRemoveStorage('acknowledgedSessionIds'); // مسح الفواتير المؤكدة عند تسجيل الخروج فقط
   },
 
   // 🚀 نظام جلب البيانات الذكي والخفيف جداً (Smart & Optimized Fetching)
