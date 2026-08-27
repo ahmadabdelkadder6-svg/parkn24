@@ -688,4 +688,4 @@ export default function SummaryScreen() {
       )}
     </motion.div>
   );
-} هل محتاج تعديل في الدالة دي كمان علشان التراكمي</code>
+} 
