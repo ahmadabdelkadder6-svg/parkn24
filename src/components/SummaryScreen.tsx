@@ -44,7 +44,6 @@ export default function SummaryScreen() {
     setScreen,
     setSelectedGarageId,
     currentUser,
-    deductWallet,
     fetchAll,
     acknowledgeSession,
   } = useStore();
@@ -197,8 +196,9 @@ export default function SummaryScreen() {
   const sessionRate = Number(referenceSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const totalHours = calculateFullHours(durationSeconds);
 
-  // 🎁 هل هذه الجلسة الأولى المجانية للعميل؟
+  // 🎁 هل هذه الجلسة الأولى المجانية للعميل؟ (لا تطبق على الإضافات اليدوية)
   const isFirstFree = useMemo(() => {
+    if (referenceSession?.source === 'manual') return false;
     if (referenceSession?.isFirstFreeSession !== undefined) {
       return referenceSession.isFirstFreeSession;
     }
@@ -207,16 +207,17 @@ export default function SummaryScreen() {
   }, [referenceSession, sessions, currentUser]);
 
   // 1. حساب السعر الأساسي الفعلي (قبل الكاش باك)
-  const { totalPrice: basePrice, freeHours, chargeableHours } = useMemo(() => {
+  const { totalPrice: basePrice } = useMemo(() => {
     return calculateSessionPrice(durationSeconds * 1000, sessionRate, isFirstFree);
   }, [durationSeconds, sessionRate, isFirstFree]);
 
-  // 2. حساب كاش باك المحفظة (يطبق فقط عند اختيار المحفظة ومن الركنة الثانية فصاعداً)
+  // 2. حساب كاش باك المحفظة (يطبق فقط عند اختيار المحفظة، للسيارات عبر التطبيق، ومن ثاني ركنة فصاعداً)
   const cashbackAmount = useMemo(() => {
-    if (isFirstFree) return 0; // الجلسة الأولى لا استرداد عليها
-    if (paymentMethod !== 'wallet') return 0; // النقدي لا استرداد عليه
+    if (isFirstFree) return 0;
+    if (referenceSession?.source === 'manual') return 0; 
+    if (paymentMethod !== 'wallet') return 0; 
     return calculateTierRefund(basePrice);
-  }, [isFirstFree, paymentMethod, basePrice]);
+  }, [isFirstFree, paymentMethod, basePrice, referenceSession]);
 
   // 3. السعر النهائي المطلوب دفعه فعلياً حسب طريقة الدفع
   const totalPrice = useMemo(() => {
@@ -285,17 +286,16 @@ export default function SummaryScreen() {
   const handleConfirm = async () => {
     if (paymentMethod === 'wallet') {
       if (!canPayWallet) { toast.error('رصيد المحفظة غير كافٍ'); return; }
-      const newBalance = walletBalance - totalPrice;
-      deductWallet(totalPrice);
+      
+      // 🚀 تم إلغاء deductWallet المحلية هنا منعاً باتاً للخصم المزدوج! الخصم يتم الآن بأمان تام داخل دالة endSession بالـ store
       const success = await safeEndSession('wallet', totalPrice);
       if (success) {
         toast.success('تم الخصم من المحفظة بنجاح! ✅');
         setDoneTotalPrice(totalPrice);
         setDoneMethod('wallet');
-        setRemainingWallet(newBalance);
+        setRemainingWallet(walletBalance - totalPrice);
         setDone(true);
       } else {
-        deductWallet(-totalPrice);
         toast.error('حدث خطأ، حاول مرة أخرى');
       }
       return;
@@ -365,7 +365,7 @@ export default function SummaryScreen() {
             <div className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-2">
               <span className="text-[10px] text-slate-500">الرصيد المتبقي: </span>
               <span className="text-sm font-black text-blue-600 font-mono">
-                {remainingWallet} ج.م
+                {remainingWallet.toFixed(0)} ج.م
               </span>
             </div>
           )}
@@ -375,7 +375,7 @@ export default function SummaryScreen() {
           <p className="text-xs text-slate-500 font-bold mb-2">قيّم تجربتك</p>
           <div className="flex justify-center gap-2">
             {[1, 2, 3, 4, 5].map((s) => (
-              <button key={s} onClick={() => setRating(s)} className="transition-all active:scale-90">
+              <button key={s} onClick={() => setRating(s)} className="transition-all active:scale-90 bg-transparent border-none">
                 <Star
                   size={30}
                   className={s <= rating ? 'text-amber-400' : 'text-slate-200'}
@@ -394,7 +394,7 @@ export default function SummaryScreen() {
             setSelectedGarageId(null);
             setScreen('list');
           }}
-          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100 border-none"
+          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100 border-none cursor-pointer"
         >
           <Home size={20} className="text-white" />
           <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
@@ -412,7 +412,7 @@ export default function SummaryScreen() {
       className="h-full bg-white text-slate-900 p-6 overflow-y-auto"
     >
       <div className="pt-10 mb-6">
-        <h2 className="text-2xl font-black text-center mb-2 text-slate-900">ملخص الجلسة</h2>
+        <h2 className="text-2xl font-black text-center mb-2 text-slate-900">ملخص الفاتورة</h2>
         <p className="text-slate-500 text-sm text-center">
           {activeSession ? 'راجع التفاصيل وأكد طريقة الدفع' : 'تم إنهاء الجلسة'}
         </p>
@@ -431,7 +431,7 @@ export default function SummaryScreen() {
         </motion.div>
       )}
 
-      {/* 🎁 شريط إعلان الجلسة الأولى المجانية */}
+      {/* 🎁 لافتة إعلان الجلسة الأولى المجانية */}
       {isFirstFree && (
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
@@ -442,14 +442,21 @@ export default function SummaryScreen() {
           <div className="flex-1">
             <div className="font-black text-xs text-emerald-800">هدية ترحيبية: أول ساعة مجاناً! 🎁</div>
             <p className="text-[10px] text-emerald-600 font-bold mt-0.5">
-              ركنتك الأولى مجانية بالكامل لأول ساعة، وتُحاسب فقط عن الوقت الإضافي إن وجد.
+              بما أنها ركنتك الأولى عبر التطبيق، فأول ساعة مجانية بالكامل وتُحاسب فقط عن الوقت الإضافي.
             </p>
           </div>
         </motion.div>
       )}
 
-      {/* 💰 شريط إعلان الكاش باك عند اختيار المحفظة */}
-      {!isFirstFree && paymentMethod === 'wallet' && cashbackAmount > 0 && (
+      {/* ✋ تنبيه السيارات اليدوية (لا مجاني ولا كاش باك) */}
+      {referenceSession?.source === 'manual' && (
+        <div className="mb-4 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-right text-amber-800 font-bold text-xs flex items-center gap-2">
+          <span>⚠️ هذه الجلسة مضافة يدوياً من السايس، وبالتالي لا ينطبق عليها العرض الترحيبي أو الكاش باك.</span>
+        </div>
+      )}
+
+      {/* 💰 شريط إعلان الكاش باك التراكمي */}
+      {referenceSession?.source !== 'manual' && !isFirstFree && paymentMethod === 'wallet' && cashbackAmount > 0 && (
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -474,7 +481,7 @@ export default function SummaryScreen() {
             {totalPrice.toFixed(0)} ج.م
           </div>
           <div className="text-[10px] text-slate-400 font-bold">
-            {isFirstFree && totalPrice === 0 ? 'ركنة مجانية بالكامل' : 'إجمالي المبلغ المطلوب سداده'}
+            {isFirstFree && totalPrice === 0 ? 'ركنة مجانية بالكامل' : 'إجمالي الصافي المطلوب دفعه'}
           </div>
         </div>
 
@@ -485,7 +492,7 @@ export default function SummaryScreen() {
           </div>
           <div className="space-y-1.5">
             <div className="flex justify-between text-xs">
-              <span className="text-slate-500">مدة الركن الفعلية</span>
+              <span className="text-slate-500">مدة الركن الفعلي</span>
               <span className="font-black text-slate-900 font-mono">{durationMinutes} دقيقة</span>
             </div>
             <div className="flex justify-between text-xs">
@@ -493,7 +500,7 @@ export default function SummaryScreen() {
               <span className="font-black text-blue-600 font-mono">{totalHours} ساعة</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-slate-500">سعر الساعة الأساسي</span>
+              <span className="text-slate-500">سعر الساعة</span>
               <span className="font-black text-purple-600 font-mono">{sessionRate} ج.م</span>
             </div>
 
@@ -504,7 +511,7 @@ export default function SummaryScreen() {
               </div>
             )}
 
-            {!isFirstFree && paymentMethod === 'wallet' && cashbackAmount > 0 && (
+            {referenceSession?.source !== 'manual' && !isFirstFree && paymentMethod === 'wallet' && cashbackAmount > 0 && (
               <div className="flex justify-between text-xs text-blue-600 font-bold">
                 <span>خصم كاش باك المحفظة (الشرائح)</span>
                 <span className="font-mono">-{cashbackAmount} ج.م</span>
@@ -556,7 +563,7 @@ export default function SummaryScreen() {
                 <button
                   key={m.id}
                   onClick={() => setPaymentMethod(m.id)}
-                  className={`py-3 px-3 rounded-2xl border text-center transition-all relative flex flex-col items-center justify-center min-h-[110px] ${
+                  className={`py-3 px-3 rounded-2xl border text-center transition-all relative flex flex-col items-center justify-center min-h-[110px] cursor-pointer ${
                     paymentMethod === m.id
                       ? m.id === 'wallet'
                         ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-400'
@@ -575,7 +582,7 @@ export default function SummaryScreen() {
                     >
                       <span className="text-[10px] font-black text-slate-500">رصيدك:</span>
                       <span className="font-mono" style={{ fontSize: '15px', fontWeight: 900 }}>
-                        {walletBalance}ج
+                        {walletBalance.toFixed(0)}ج
                       </span>
                     </div>
                   )}
@@ -593,7 +600,7 @@ export default function SummaryScreen() {
                 <div>
                   <p className="text-xs text-red-600 font-bold">رصيد المحفظة غير كافٍ</p>
                   <p className="text-[10px] text-red-400">
-                    المطلوب: {totalPrice} ج.م | رصيدك: {walletBalance} ج.م
+                    المطلوب: {totalPrice.toFixed(0)} ج.م | رصيدك: {walletBalance.toFixed(0)} ج.م
                   </p>
                 </div>
               </motion.div>
@@ -608,10 +615,10 @@ export default function SummaryScreen() {
                 <Wallet size={18} className="text-blue-600 shrink-0" />
                 <div>
                   <p className="text-xs text-blue-600 font-bold">
-                    سيتم خصم {totalPrice} ج.م من رصيد محفظتك
+                    سيتم خصم {totalPrice.toFixed(0)} ج.م من رصيد محفظتك
                   </p>
                   <p className="text-[10px] text-blue-400">
-                    الرصيد المتبقي بعد الخصم: {walletBalance - totalPrice} ج.م
+                    الرصيد المتبقي بعد الخصم: {(walletBalance - totalPrice).toFixed(0)} ج.م
                   </p>
                 </div>
               </motion.div>
@@ -622,7 +629,7 @@ export default function SummaryScreen() {
             <h3 className="text-sm font-black text-slate-700 mb-3 text-right">قيّم تجربتك</h3>
             <div className="flex justify-center gap-2">
               {[1, 2, 3, 4, 5].map((s) => (
-                <button key={s} onClick={() => setRating(s)} className="transition-all active:scale-90 border-none bg-transparent">
+                <button key={s} onClick={() => setRating(s)} className="transition-all active:scale-90 border-none bg-transparent cursor-pointer">
                   <Star
                     size={36}
                     className={s <= rating ? 'text-amber-400' : 'text-slate-200'}
@@ -636,7 +643,7 @@ export default function SummaryScreen() {
           <button
             onClick={handleConfirm}
             disabled={paymentMethod === 'wallet' && !canPayWallet}
-            className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 text-white border-none ${
+            className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 text-white border-none cursor-pointer ${
               paymentMethod === 'wallet' && !canPayWallet
                 ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                 : paymentMethod === 'wallet'
@@ -672,7 +679,7 @@ export default function SummaryScreen() {
             setSelectedGarageId(null);
             setScreen('list');
           }}
-          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100 mt-4 border-none"
+          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100 mt-4 border-none cursor-pointer"
         >
           <Home size={20} className="text-white" />
           <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>

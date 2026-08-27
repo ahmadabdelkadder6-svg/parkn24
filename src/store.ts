@@ -139,10 +139,10 @@ const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
 const getMs = (value?: number) => { if (typeof value === 'number') return value; return 0; };
 
-// ===================== دوال الحساب المالي =====================
+// ===================== دوال الحساب المالي الموحدة =====================
 
 /**
- * 🎁 التحقق من استحقاق الجلسة الأولى المجانية (حصراً للتطبيق وليس الإضافة اليدوية)
+ * 🎁 التحقق من استحقاق الجلسة الأولى المجانية (حصراً لعمليات التطبيق فقط)
  */
 const isEligibleForFreeFirstSession = (
   sessions: ParkingSession[],
@@ -692,22 +692,20 @@ export const useStore = create<AppState>((set, get) => ({
         messages: [...mergedMessages, ...localOnlyMessages],
       });
 
+      // 🚀 جلب وتحديث رصيد المحفظة الفعلي من السيرفر مباشرة
       const user = get().currentUser;
       if (user?.phone) {
         try {
-          const timeSinceDeduct = Date.now() - walletDeductedAt;
-          if (timeSinceDeduct < 20000) {
-            const { data } = await supabase.from('users').select('name, phone, car_plate').eq('phone', user.phone).single();
-            if (data) {
-              const updated = { name: data.name || user.name, phone: data.phone || user.phone, carPlate: data.car_plate || user.carPlate, wallet: user.wallet };
-              set({ currentUser: updated }); safeSetStorage('currentUser', updated);
-            }
-          } else {
-            const { data } = await supabase.from('users').select('wallet, name, phone, car_plate').eq('phone', user.phone).single();
-            if (data) {
-              const updated = { name: data.name || user.name, phone: data.phone || user.phone, carPlate: data.car_plate || user.carPlate, wallet: Number(data.wallet) };
-              set({ currentUser: updated }); safeSetStorage('currentUser', updated);
-            }
+          const { data } = await supabase.from('users').select('wallet, name, phone, car_plate').eq('phone', user.phone).single();
+          if (data) {
+            const updated = { 
+              name: data.name || user.name, 
+              phone: data.phone || user.phone, 
+              carPlate: data.car_plate || user.carPlate, 
+              wallet: Number(data.wallet ?? 0) 
+            };
+            set({ currentUser: updated }); 
+            safeSetStorage('currentUser', updated);
           }
         } catch (err) { console.error('Error fetching user wallet:', err); }
       }
@@ -844,7 +842,7 @@ export const useStore = create<AppState>((set, get) => ({
 
       const addedByValue = resolveAddedBy((s as any).addedBy);
 
-      // 🎁 [المنطق الجديد]: العربيات المضافة يدوي من السايس (manual) لا تطبق عليها الركنة المجانية أبداً
+      // 🎁 العربيات المضافة يدوي من السايس (manual) لا تطبق عليها الركنة المجانية أبداً
       const currentSessions = get().sessions;
       const customerPhone = (s as any).customerPhone;
       const isFirstFree = s.source === 'manual' 
@@ -915,7 +913,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   // 🎯 =========================================================================
-  // 🎯 دالة إنهاء الجلسة وحل مشكلة المحفظة والخصم التراكمي نهائياً
+  // 🎯 دالة إنهاء الجلسة وحل مشكلة المحفظة والخصم المزدوج نهائياً
   // 🎯 =========================================================================
   endSession: async (id, totalPrice, paymentMethod) => {
     const now = Date.now();
@@ -931,6 +929,7 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const garage = get().garages.find((g) => g.id === session.garageId);
       const basePrice = garage?.basePrice ?? 0;
+      const rate = Number(session.agreedPrice ?? basePrice);
       const commissionRate = garage?.commissionRate ?? 10;
       const isAppSession = session.source === 'app';
       const isWalletPayment = paymentMethod === 'wallet';
@@ -939,31 +938,30 @@ export const useStore = create<AppState>((set, get) => ({
       let refundAmount = 0;
       const durationMs = now - session.startTime;
 
-      // 🎁 [المنطق الجديد]: الفحص الصارم لنوع الجلسة وتطبيق القيود
+      // 🎁 فحص نوع الجلسة وتطبيق القواعد الصارمة
       if (session.source === 'manual') {
-        // ✋ 1. إضافة يدوية من السايس: لا ركنة مجانية ولا استرداد كاش باك نهائياً
-        const { totalPrice: calculatedPrice } = calculateSessionPrice(durationMs, basePrice, false);
+        // ✋ 1. إضافة يدوية من السايس: لا ركنة مجانية ولا كاش باك إطلاقاً
+        const { totalPrice: calculatedPrice } = calculateSessionPrice(durationMs, rate, false);
         finalPrice = calculatedPrice;
         refundAmount = 0;
       } else if (session.isFirstFreeSession) {
         // 🎁 2. جلسة عبر التطبيق وتستحق المجاني: أول ساعة مجاناً بالكامل
         const { totalPrice: calculatedPrice } = calculateSessionPrice(
           durationMs,
-          basePrice,
+          rate,
           true
         );
         finalPrice = calculatedPrice;
-        refundAmount = 0; // أول ركنة مجانية لا استرداد عليها
+        refundAmount = 0;
       } else {
         // 🔄 3. جلسة عادية عبر التطبيق (من ثاني ركنة):
-        const { totalPrice: calculatedPrice } = calculateSessionPrice(durationMs, basePrice, false);
+        const { totalPrice: calculatedPrice } = calculateSessionPrice(durationMs, rate, false);
         finalPrice = calculatedPrice;
 
-        // 💳 كاش باك المحفظة التراكمي: يطبق للجلسات عبر التطبيق فقط ومن ثاني ركنة
+        // 💳 كاش باك المحفظة التراكمي: يطبق فقط للدفع بالمحفظة وعبر التطبيق
         if (isWalletPayment && finalPrice > 0) {
           refundAmount = calculateTierRefund(finalPrice);
           if (refundAmount > 0) {
-            // خصم فوري لقيمة الكاش باك من المبلغ الصافي المطلوب دفعه
             finalPrice = Math.max(0, finalPrice - refundAmount);
           }
         }
@@ -993,7 +991,7 @@ export const useStore = create<AppState>((set, get) => ({
       await get().adjustGarageSpots(session.garageId, +1);
 
       // 🚀 =========================================================================
-      // 🚀 [حل مشكلة المحفظة]: خصم الصافي وتحديث رصيد جدول users في Supabase فوراً
+      // 🚀 تحديث رصيد المحفظة في Supabase وفي الذاكرة بالمبلغ الصافي لمرة واحدة فقط
       // 🚀 =========================================================================
       if (isSupabaseConfigured() && isWalletPayment) {
         const targetPhone = session.customerPhone || get().currentUser?.phone;
@@ -1009,13 +1007,13 @@ export const useStore = create<AppState>((set, get) => ({
               const currentWallet = Number(dbUser.wallet || 0);
               const newWallet = Math.max(0, currentWallet - finalPrice);
 
-              // 1. تحديث جدول users في Supabase فوراً
+              // تحديث جدول users في Supabase
               await supabase
                 .from('users')
                 .update({ wallet: newWallet })
                 .eq('phone', targetPhone);
 
-              // 2. تحديث الرصيد المعروض في واجهة العميل والذاكرة المحلية
+              // تحديث واجهة المستخدم فوراً
               const cu = get().currentUser;
               if (cu && cu.phone === targetPhone) {
                 const updated = { ...cu, wallet: newWallet };
