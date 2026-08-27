@@ -139,10 +139,10 @@ const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
 const getMs = (value?: number) => { if (typeof value === 'number') return value; return 0; };
 
-// ===================== دوال الحساب المالي الموحدة =====================
+// ===================== دوال الحساب المالي =====================
 
 /**
- * 🎁 التحقق من استحقاق الجلسة الأولى المجانية (لأول ساعة فقط)
+ * 🎁 التحقق من استحقاق الجلسة الأولى المجانية (حصراً للتطبيق وليس الإضافة اليدوية)
  */
 const isEligibleForFreeFirstSession = (
   sessions: ParkingSession[],
@@ -182,6 +182,7 @@ const calculateSessionPrice = (
     return { totalPrice, freeHours: 1, chargeableHours: extraHours };
   }
 
+  // الحساب العادي: كسر الساعة = ساعة كاملة
   const billedHours = Math.max(1, Math.ceil(durationHours));
   const totalPrice = billedHours * basePrice;
   return { totalPrice, freeHours: 0, chargeableHours: billedHours };
@@ -843,10 +844,12 @@ export const useStore = create<AppState>((set, get) => ({
 
       const addedByValue = resolveAddedBy((s as any).addedBy);
 
-      // 🎁 التحقق من استحقاق الجلسة الأولى المجانية
+      // 🎁 [المنطق الجديد]: العربيات المضافة يدوي من السايس (manual) لا تطبق عليها الركنة المجانية أبداً
       const currentSessions = get().sessions;
       const customerPhone = (s as any).customerPhone;
-      const isFirstFree = isEligibleForFreeFirstSession(currentSessions, normalizedPlate, customerPhone);
+      const isFirstFree = s.source === 'manual' 
+        ? false 
+        : isEligibleForFreeFirstSession(currentSessions, normalizedPlate, customerPhone);
 
       const optimisticSession: ParkingSession = {
         ...s, id: sessionId, carPlate: normalizedPlate,
@@ -911,9 +914,9 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 🎯 ====================================================
-  // 🎯 دالة إنهاء الجلسة وتحديث رصيد المحفظة بالسيرفر لحظياً
-  // 🎯 ====================================================
+  // 🎯 =========================================================================
+  // 🎯 دالة إنهاء الجلسة وحل مشكلة المحفظة والخصم التراكمي نهائياً
+  // 🎯 =========================================================================
   endSession: async (id, totalPrice, paymentMethod) => {
     const now = Date.now();
     const session = get().sessions.find((s) => s.id === id);
@@ -936,27 +939,31 @@ export const useStore = create<AppState>((set, get) => ({
       let refundAmount = 0;
       const durationMs = now - session.startTime;
 
-      // 🎁 1. الجلسة الأولى مجانية بالكامل لأول ساعة
-      if (session.isFirstFreeSession) {
+      // 🎁 [المنطق الجديد]: الفحص الصارم لنوع الجلسة وتطبيق القيود
+      if (session.source === 'manual') {
+        // ✋ 1. إضافة يدوية من السايس: لا ركنة مجانية ولا استرداد كاش باك نهائياً
+        const { totalPrice: calculatedPrice } = calculateSessionPrice(durationMs, basePrice, false);
+        finalPrice = calculatedPrice;
+        refundAmount = 0;
+      } else if (session.isFirstFreeSession) {
+        // 🎁 2. جلسة عبر التطبيق وتستحق المجاني: أول ساعة مجاناً بالكامل
         const { totalPrice: calculatedPrice } = calculateSessionPrice(
           durationMs,
           basePrice,
           true
         );
         finalPrice = calculatedPrice;
-        refundAmount = 0;
+        refundAmount = 0; // أول ركنة مجانية لا استرداد عليها
       } else {
-        // 🔄 2. من الركنة الثانية: يحاسب كسر الساعة بساعة
-        if (finalPrice === 0 && basePrice > 0) {
-          const { totalPrice: calculatedPrice } = calculateSessionPrice(durationMs, basePrice, false);
-          finalPrice = calculatedPrice;
-        }
+        // 🔄 3. جلسة عادية عبر التطبيق (من ثاني ركنة):
+        const { totalPrice: calculatedPrice } = calculateSessionPrice(durationMs, basePrice, false);
+        finalPrice = calculatedPrice;
 
-        // 💳 3. حساب الكاش باك التراكمي في حالة الدفع من المحفظة فقط
+        // 💳 كاش باك المحفظة التراكمي: يطبق للجلسات عبر التطبيق فقط ومن ثاني ركنة
         if (isWalletPayment && finalPrice > 0) {
           refundAmount = calculateTierRefund(finalPrice);
           if (refundAmount > 0) {
-            // خصم قيمة الكاش باك فورياً من المبلغ الصافي المطلوب
+            // خصم فوري لقيمة الكاش باك من المبلغ الصافي المطلوب دفعه
             finalPrice = Math.max(0, finalPrice - refundAmount);
           }
         }
@@ -986,37 +993,40 @@ export const useStore = create<AppState>((set, get) => ({
       await get().adjustGarageSpots(session.garageId, +1);
 
       // 🚀 =========================================================================
-      // 🚀 [حل المشكلة]: تحديث المحفظة مباشرة داخل جدول المستخدمين users في Supabase
+      // 🚀 [حل مشكلة المحفظة]: خصم الصافي وتحديث رصيد جدول users في Supabase فوراً
       // 🚀 =========================================================================
-      if (isSupabaseConfigured() && isWalletPayment && session.customerPhone) {
-        try {
-          const { data: dbUser } = await supabase
-            .from('users')
-            .select('wallet')
-            .eq('phone', session.customerPhone)
-            .maybeSingle();
-
-          if (dbUser) {
-            const currentWallet = Number(dbUser.wallet || 0);
-            const newWallet = Math.max(0, currentWallet - finalPrice);
-
-            // تحديث السيرفر فوراً
-            await supabase
+      if (isSupabaseConfigured() && isWalletPayment) {
+        const targetPhone = session.customerPhone || get().currentUser?.phone;
+        if (targetPhone) {
+          try {
+            const { data: dbUser } = await supabase
               .from('users')
-              .update({ wallet: newWallet })
-              .eq('phone', session.customerPhone);
+              .select('wallet')
+              .eq('phone', targetPhone)
+              .maybeSingle();
 
-            // تحديث الواجهة اللحظية للعميل
-            const cu = get().currentUser;
-            if (cu && cu.phone === session.customerPhone) {
-              const updated = { ...cu, wallet: newWallet };
-              set({ currentUser: updated });
-              safeSetStorage('currentUser', updated);
-              walletDeductedAt = Date.now();
+            if (dbUser) {
+              const currentWallet = Number(dbUser.wallet || 0);
+              const newWallet = Math.max(0, currentWallet - finalPrice);
+
+              // 1. تحديث جدول users في Supabase فوراً
+              await supabase
+                .from('users')
+                .update({ wallet: newWallet })
+                .eq('phone', targetPhone);
+
+              // 2. تحديث الرصيد المعروض في واجهة العميل والذاكرة المحلية
+              const cu = get().currentUser;
+              if (cu && cu.phone === targetPhone) {
+                const updated = { ...cu, wallet: newWallet };
+                set({ currentUser: updated });
+                safeSetStorage('currentUser', updated);
+                walletDeductedAt = Date.now();
+              }
             }
+          } catch (walletErr) {
+            console.error('❌ خطأ في تحديث رصيد المحفظة بالسيرفر:', walletErr);
           }
-        } catch (walletErr) {
-          console.error('❌ خطأ في تحديث رصيد المحفظة بالسيرفر:', walletErr);
         }
       }
 
