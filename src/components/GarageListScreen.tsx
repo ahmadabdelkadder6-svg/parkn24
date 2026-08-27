@@ -636,7 +636,7 @@ export default function GarageListScreen() {
             <div className="flex-1 text-right">
               <div className="font-black text-sm text-emerald-300">هدية ترحيبية بانتظارك! 🎁</div>
               <p className="text-[11px] font-bold text-emerald-400/90 mt-0.5 leading-normal">
-                ركنتك الأولى مجانية بالكامل لأول ساعة، سواء دفع نقدي أو بالمحفظة وبدون استرداد.
+                ركنتك الأولى مجانية بالكامل لأول ساعة.
               </p>
             </div>
           </motion.div>
@@ -688,7 +688,7 @@ export default function GarageListScreen() {
                   textShadow: '0 1px 1px rgba(255,255,255,0.35)',
                 }}
               >
-                ركناتك القادمة كاش باك تراكمي ✨
+                ركناتك القادمة استفيد من الكاش باك ✨
               </div>
               <p
                 className="font-black leading-tight"

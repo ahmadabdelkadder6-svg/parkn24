@@ -596,62 +596,48 @@ export default function NavigationScreen() {
               </div>
             </div>
           </motion.div>
-        ) : (
+         ) : (
           <div
-            className="rounded-2xl p-3 flex items-center justify-between border border-blue-500/20 text-right shrink-0"
+            className="rounded-2xl p-3.5 flex items-center justify-between border shrink-0 text-right shadow-md"
             style={{
-              background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
+              background: 'linear-gradient(135deg, #1E1B4B 0%, #0F172A 100%)', // تدرج نيلي داكن فخم يبرز اللون الأبيض
+              borderColor: 'rgba(99, 102, 241, 0.3)',
+              boxShadow: '0 4px 14px rgba(99, 102, 241, 0.1)',
             }}
           >
-            <span className="font-mono font-black text-[10px] text-blue-400">
-              كاش باك يصل لـ 10%
-            </span>
-            <div className="flex items-center gap-1.5 text-[10px] text-slate-300 font-bold">
-              <span>تذكير: ادفع بالمحفظة واكسب كاش باك</span>
-              <Coins size={14} className="text-amber-400" />
+            {/* القيمة بالنسبة المئوية باللون الأبيض الصريح والخط العريض اللامع */}
+            <div className="text-left shrink-0">
+              <span 
+                className="font-mono"
+                style={{ 
+                  color: '#ffffff', 
+                  fontWeight: 900, 
+                  fontSize: '15px',
+                  textShadow: '0 0 10px rgba(255, 255, 255, 0.4)' // توهج خفيف لزيادة الوضوح
+                }}
+              >
+                10% كاش باك ✨
+              </span>
+            </div>
+
+            {/* التذكير بالدفع بالخط العريض الأبيض الواضح جداً */}
+            <div className="flex items-center gap-2 justify-end">
+              <span 
+                className="font-black"
+                style={{ 
+                  color: '#ffffff', 
+                  fontWeight: 900, 
+                  fontSize: '12px',
+                  textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+                  lineHeight: '1.3'
+                }}
+              >
+                تذكير: ادفع بالمحفظة ووفر في ركناتك القادمة
+              </span>
+              <Coins size={16} className="text-amber-400 shrink-0 animate-pulse" />
             </div>
           </div>
         )}
-
-        {/* 🏢 بطاقة اسم الجراج */}
-        <div
-          className="rounded-2xl p-3.5 shrink-0 shadow-md"
-          style={{
-            background: '#ffffff',
-            border: '1.5px solid #E2E8F0',
-          }}
-        >
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <Clock size={15} className="text-blue-600" />
-              <span className="text-sm font-black text-blue-600 font-mono">
-                {formatDuration(minutes)}
-              </span>
-              <span className="text-slate-300">·</span>
-              <span className="text-xs text-slate-600 font-mono font-bold">
-                {distance.toFixed(1)} كم
-              </span>
-            </div>
-            
-            <div className="text-right flex flex-col items-end">
-              <span
-                style={{
-                  color: '#000000',
-                  fontSize: '16px',
-                  fontWeight: 900,
-                  display: 'block',
-                  lineHeight: '1.2',
-                }}
-              >
-                {garage.name}
-              </span>
-              <div className="flex items-center gap-1 justify-end text-[10px] text-slate-500 mt-1 font-bold">
-                <span>{garage.location}</span>
-                <MapPin size={10} className="text-slate-400" />
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* 🗺️ الخريطة */}
         <div className="w-full h-48 rounded-2xl overflow-hidden border border-slate-800 relative shrink-0 shadow-lg">

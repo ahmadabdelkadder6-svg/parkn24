@@ -139,8 +139,11 @@ const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
 const getMs = (value?: number) => { if (typeof value === 'number') return value; return 0; };
 
-// ===================== منطق الأسعار الكاش باك الجديد =====================
+// ===================== دوال الحساب المالي الموحدة =====================
 
+/**
+ * 🎁 التحقق من استحقاق الجلسة الأولى المجانية (لأول ساعة فقط)
+ */
 const isEligibleForFreeFirstSession = (
   sessions: ParkingSession[],
   carPlate: string,
@@ -158,6 +161,9 @@ const isEligibleForFreeFirstSession = (
   return previousSessions.length === 0;
 };
 
+/**
+ * 💰 حساب السعر الأساسي للركنة
+ */
 const calculateSessionPrice = (
   durationMs: number,
   basePrice: number,
@@ -181,6 +187,13 @@ const calculateSessionPrice = (
   return { totalPrice, freeHours: 0, chargeableHours: billedHours };
 };
 
+/**
+ * 🔄 حساب قيمة الكاش باك التراكمي لشرائح المحفظة
+ * 100 - 199 ج.م 👈 3%
+ * 200 - 499 ج.م 👈 5%
+ * 500 - 999 ج.م 👈 7%
+ * 1000+ ج.م 👈 10%
+ */
 const calculateTierRefund = (amount: number): number => {
   if (amount >= 1000) return Math.round((amount * 0.10) * 100) / 100;
   if (amount >= 500) return Math.round((amount * 0.07) * 100) / 100;
@@ -302,13 +315,6 @@ const mapSession = (r: any): ParkingSession => {
   };
 };
 
-const mapOffer = (r: any): Offer => ({
-  id: r.id, garageId: r.garage_id, userId: r.user_id, carPlate: r.car_plate,
-  offeredPrice: Number(r.offered_price), status: r.status,
-  counterPrice: r.counter_price != null ? Number(r.counter_price) : undefined,
-  timestamp: new Date(r.created_at).getTime(),
-});
-
 const mapTopUp = (r: any): WalletTopUp => ({
   id: r.id, userId: r.user_id, userName: r.user_name, userPhone: r.user_phone,
   amount: Number(r.amount), transactionId: r.transaction_id, carPlate: r.car_plate,
@@ -379,8 +385,8 @@ interface AppState {
   setSelectedGarageId: (id: string | null) => void;
   getMyOwnedGarages: (phone: string) => Garage[];  
   sessions: ParkingSession[];
-  historySessions: ParkingSession[]; // 🆕 مصفوفة أرشيف التقارير والتواريخ السابقة
-  fetchGarageHistory: (garageId: string, startDateStr: string, endDateStr: string) => Promise<void>; // 🆕 دالة جلب الأرشيف الذكية واللحظية
+  historySessions: ParkingSession[];
+  fetchGarageHistory: (garageId: string, startDateStr: string, endDateStr: string) => Promise<void>;
   acknowledgedSessionIds: Set<string>; 
   acknowledgeSession: (id: string) => void; 
   addSession: (s: Omit<ParkingSession, 'id'>) => Promise<string>;
@@ -391,9 +397,6 @@ interface AppState {
   unconfirmRevenue: (sessionId: string) => Promise<void>;
   assignSessionToValet: (sessionId: string, valetName: string) => Promise<void>;
   offers: Offer[];
-  addOffer: (o: Omit<Offer, 'id' | 'timestamp'>) => void;
-  updateOffer: (id: string, status: Offer['status'], counterPrice?: number) => void;
-  cancelOffer: (id: string) => void;
   walletTopUps: WalletTopUp[];
   addWalletTopUp: (w: Omit<WalletTopUp, 'id' | 'timestamp' | 'status'>) => void;
   approveTopUp: (id: string) => Promise<void>;
@@ -479,16 +482,12 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   sessions: [],
-  historySessions: [], // 🆕 مصفوفة الأرشيف فارغة بشكل افتراضي لتوفير مساحة الرام
+  historySessions: [], 
 
-  // 🆕 =======================================================
-  // 🆕 دالة جلب الأرشيف والتواريخ السابقة لمالك الجراج عند طلبها فقط
-  // 🆕 =======================================================
   fetchGarageHistory: async (garageId: string, startDateStr: string, endDateStr: string) => {
     if (!isSupabaseConfigured() || !garageId) return;
 
     try {
-      // جلب الجلسات المكتملة للجراج في الفترة الزمنية المحددة بدقة متناهية وسرعة فائقة
       const { data, error } = await supabase
         .from('sessions')
         .select('*')
@@ -505,7 +504,6 @@ export const useStore = create<AppState>((set, get) => ({
 
       if (data) {
         set({ historySessions: data.map(mapSession) });
-        console.log(`📊 تم تحميل أرشيف الجراج بنجاح. عدد العمليات: ${data.length}`);
       }
     } catch (err) {
       console.error('❌ خطأ غير متوقع في جلب الأرشيف:', err);
@@ -564,7 +562,7 @@ export const useStore = create<AppState>((set, get) => ({
       todayStart.setHours(0, 0, 0, 0);
       const todayIso = todayStart.toISOString();
 
-      const [g, activeAndUnsettledRes, recentSettledRes, o, w, ic, msgs] = await Promise.all([
+      const [g, activeAndUnsettledRes, recentSettledRes, w, ic, msgs] = await Promise.all([
         supabase.from('garages').select('*').abortSignal(signal),
         supabase
           .from('sessions')
@@ -582,7 +580,6 @@ export const useStore = create<AppState>((set, get) => ({
           .order('created_at', { ascending: false })
           .limit(20)
           .abortSignal(signal),
-        supabase.from('offers').select('*').order('created_at', { ascending: false }).limit(10).abortSignal(signal),
         supabase.from('wallet_topups').select('*').order('created_at', { ascending: false }).limit(10).abortSignal(signal),
         supabase.from('incoming_cars').select('*').order('created_at', { ascending: false }).abortSignal(signal),
         supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(10).abortSignal(signal),
@@ -689,7 +686,6 @@ export const useStore = create<AppState>((set, get) => ({
       set({
         garages,
         sessions: finalSessions,
-        offers: o.data ? o.data.map(mapOffer) : (get().offers ?? []),
         walletTopUps: mergedTopUps,
         incomingCars: fetchedCars,
         messages: [...mergedMessages, ...localOnlyMessages],
@@ -715,9 +711,7 @@ export const useStore = create<AppState>((set, get) => ({
         } catch (err) { console.error('Error fetching user wallet:', err); }
       }
     } catch (err: any) {
-      if (err.name === 'AbortError') {
-        return;
-      }
+      if (err.name === 'AbortError') return;
       console.error('Fetch error:', err);
     }
   },
@@ -849,6 +843,7 @@ export const useStore = create<AppState>((set, get) => ({
 
       const addedByValue = resolveAddedBy((s as any).addedBy);
 
+      // 🎁 التحقق من استحقاق الجلسة الأولى المجانية
       const currentSessions = get().sessions;
       const customerPhone = (s as any).customerPhone;
       const isFirstFree = isEligibleForFreeFirstSession(currentSessions, normalizedPlate, customerPhone);
@@ -916,6 +911,9 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  // 🎯 ====================================================
+  // 🎯 دالة إنهاء الجلسة وتحديث رصيد المحفظة بالسيرفر لحظياً
+  // 🎯 ====================================================
   endSession: async (id, totalPrice, paymentMethod) => {
     const now = Date.now();
     const session = get().sessions.find((s) => s.id === id);
@@ -938,23 +936,27 @@ export const useStore = create<AppState>((set, get) => ({
       let refundAmount = 0;
       const durationMs = now - session.startTime;
 
+      // 🎁 1. الجلسة الأولى مجانية بالكامل لأول ساعة
       if (session.isFirstFreeSession) {
         const { totalPrice: calculatedPrice } = calculateSessionPrice(
           durationMs,
           basePrice,
-          true 
+          true
         );
         finalPrice = calculatedPrice;
         refundAmount = 0;
       } else {
+        // 🔄 2. من الركنة الثانية: يحاسب كسر الساعة بساعة
         if (finalPrice === 0 && basePrice > 0) {
           const { totalPrice: calculatedPrice } = calculateSessionPrice(durationMs, basePrice, false);
           finalPrice = calculatedPrice;
         }
 
+        // 💳 3. حساب الكاش باك التراكمي في حالة الدفع من المحفظة فقط
         if (isWalletPayment && finalPrice > 0) {
           refundAmount = calculateTierRefund(finalPrice);
           if (refundAmount > 0) {
+            // خصم قيمة الكاش باك فورياً من المبلغ الصافي المطلوب
             finalPrice = Math.max(0, finalPrice - refundAmount);
           }
         }
@@ -976,12 +978,47 @@ export const useStore = create<AppState>((set, get) => ({
         commissionAmount,
         netRevenue,
         settled: false,
-        refundAmount, 
+        refundAmount,
       };
 
       locallyEndedSessions.set(id, endedSession);
       set((st) => ({ sessions: st.sessions.map((s) => (s.id === id ? endedSession : s)) }));
       await get().adjustGarageSpots(session.garageId, +1);
+
+      // 🚀 =========================================================================
+      // 🚀 [حل المشكلة]: تحديث المحفظة مباشرة داخل جدول المستخدمين users في Supabase
+      // 🚀 =========================================================================
+      if (isSupabaseConfigured() && isWalletPayment && session.customerPhone) {
+        try {
+          const { data: dbUser } = await supabase
+            .from('users')
+            .select('wallet')
+            .eq('phone', session.customerPhone)
+            .maybeSingle();
+
+          if (dbUser) {
+            const currentWallet = Number(dbUser.wallet || 0);
+            const newWallet = Math.max(0, currentWallet - finalPrice);
+
+            // تحديث السيرفر فوراً
+            await supabase
+              .from('users')
+              .update({ wallet: newWallet })
+              .eq('phone', session.customerPhone);
+
+            // تحديث الواجهة اللحظية للعميل
+            const cu = get().currentUser;
+            if (cu && cu.phone === session.customerPhone) {
+              const updated = { ...cu, wallet: newWallet };
+              set({ currentUser: updated });
+              safeSetStorage('currentUser', updated);
+              walletDeductedAt = Date.now();
+            }
+          }
+        } catch (walletErr) {
+          console.error('❌ خطأ في تحديث رصيد المحفظة بالسيرفر:', walletErr);
+        }
+      }
 
       if (!isSupabaseConfigured()) return;
 
@@ -1002,7 +1039,7 @@ export const useStore = create<AppState>((set, get) => ({
         .eq('status', 'active');
 
       if (error) {
-        console.error('❌', error);
+        console.error('❌ Error ending session:', error);
       } else {
         setTimeout(() => {
           locallyEndedSessions.delete(id);
@@ -1097,29 +1134,6 @@ export const useStore = create<AppState>((set, get) => ({
       }
     }
     setTimeout(() => { idsToDelete.forEach((did) => deletedSessionIds.delete(did)); }, 30000);
-  },
-
-  addOffer: (o) => {
-    const newO: Offer = { ...o, id: uid(), timestamp: Date.now() };
-    set((st) => ({ offers: [newO, ...st.offers] }));
-    if (isSupabaseConfigured()) {
-      supabase.from('offers').insert({ garage_id: o.garageId, user_id: o.userId, car_plate: o.carPlate, offered_price: o.offeredPrice, status: o.status }).select().single()
-        .then(({ data }) => { if (data) set((st) => ({ offers: st.offers.map((x) => x.id === newO.id ? mapOffer(data) : x) })); });
-    }
-  },
-
-  updateOffer: (id, status, counterPrice) => {
-    set((st) => ({ offers: st.offers.map((o) => (o.id === id ? { ...o, status, counterPrice } : o)) }));
-    if (isSupabaseConfigured()) {
-      const u: Record<string, unknown> = { status };
-      if (counterPrice !== undefined) u.counter_price = counterPrice;
-      supabase.from('offers').update(u).eq('id', id);
-    }
-  },
-
-  cancelOffer: (id) => {
-    set((st) => ({ offers: st.offers.filter((o) => o.id !== id) }));
-    if (isSupabaseConfigured()) supabase.from('offers').delete().eq('id', id);
   },
 
   addWalletTopUp: (w) => {
@@ -1327,7 +1341,7 @@ export function setupRealtime() {
   const channelName = `parkn24_${Math.random().toString(36).slice(2, 8)}`;
   const channel = supabase.channel(channelName);
 
-  ['sessions', 'offers', 'incoming_cars', 'garages', 'wallet_topups', 'users', 'messages'].forEach((table) => {
+  ['sessions', 'incoming_cars', 'garages', 'wallet_topups', 'users', 'messages'].forEach((table) => {
     channel.on('postgres_changes', { event: '*', schema: 'public', table }, refresh);
   });
 
