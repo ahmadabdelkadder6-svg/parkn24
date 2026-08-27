@@ -50,6 +50,7 @@ export default function App() {
     setSelectedGarageId,
     incomingCars,
     fetchAll,
+    acknowledgedSessionIds,
   } = useStore();
 
   const prevActiveSessionRef = useRef<string | null>(null);
@@ -119,6 +120,7 @@ export default function App() {
 
       const savedScreen = localStorage.getItem('appScreen');
 
+      // 🧹 تنظيف المسارات التالفة أو القديمة (بما فيها شاشة التفاوض الملغاة)
       if (
         savedScreen === 'session' ||
         savedScreen === 'navigation' ||
@@ -147,10 +149,8 @@ export default function App() {
       } else if (isGarageFromURL) {
         setView('garage');
       } else if (savedView && (savedView === 'user' || savedView === 'garage' || savedView === 'admin')) {
-        // لو هناك شاشة كنت فتحتها بيدك مؤخراً، افتحها هي أولاً
         setView(savedView as any);
       } else {
-        // الافتراضي العام عند أول دخول نظيف للموقع
         if (isAdminLoggedIn) {
           setView('admin');
         } else if (isGarageLoggedIn) {
@@ -169,7 +169,7 @@ export default function App() {
     init();
   }, []);
 
-  // 💾 حفظ الشاشة النشطة دائماً في الذاكرة لمنع الارتداد التلقائي عند تحديث الصفحة
+  // 💾 حفظ الشاشة النشطة دائماً في الذاكرة لمنع الارتداد التلقائي
   useEffect(() => {
     if (view) {
       localStorage.setItem('appView', view);
@@ -344,7 +344,7 @@ export default function App() {
             })[0];
 
            if (lastCompleted) {
-            // 🚀 التحقق بـ "قفل الفاتورة" وليس فروق الثواني لضمان عدم سقوط الجلسة نهائياً
+            // 🚀 التحقق بـ "قفل الفاتورة" والمطابقة مع الذاكرة لضمان الاستقرار التام
             const isNotAcknowledged = acknowledgedSessionIds ? !acknowledgedSessionIds.has(lastCompleted.id) : true;
             if (isNotAcknowledged) {
               setSelectedGarageId(lastCompleted.garageId);
@@ -398,6 +398,7 @@ export default function App() {
     dataLoaded,
     setScreen,
     setSelectedGarageId,
+    acknowledgedSessionIds,
   ]);
 
   useEffect(() => {
@@ -447,7 +448,7 @@ export default function App() {
                   setView(tab.id);
                 }}
                 className={cn(
-                  'px-3 py-1.5 rounded-full text-[10px] font-black transition-all',
+                  'px-3 py-1.5 rounded-full text-[10px] font-black transition-all border-none cursor-pointer',
                   view === tab.id
                     ? tab.id === 'admin'
                       ? 'bg-purple-600 text-white'
@@ -461,7 +462,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ══════ المحتوى الرئيسي ══════ */}
+        {/* ══════ Content ══════ */}
         <main className="flex-1 overflow-hidden bg-white">
           {!dataLoaded ? (
             <div className="h-full bg-white flex flex-col items-center justify-center">

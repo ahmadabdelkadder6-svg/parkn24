@@ -5,7 +5,7 @@ import { Phone, User, Shield, HardHat, ArrowLeft, Building2, MapPin, Lock } from
 import { useStore } from '../store';
 import toast from 'react-hot-toast';
 
-// دالة عبقرية لتنظيف المدخلات وتحويل الأرقام العربية والمسافات الزائدة تلقائياً
+// دالة تنظيف المدخلات وتحويل الأرقام العربية والمسافات الزائدة تلقائياً
 const normalizeData = (val: string): string => {
   if (!val) return '';
   return val
@@ -83,7 +83,7 @@ export default function GarageLoginScreen() {
       let valetName = '';
       let isActive = false;
 
-      if (pw && normalizeData(found.valetPassword1) === pw) {
+      if (pw && normalizeData(found.valetName1) === pw) {
         valetNumber = 1;
         valetName = found.valetName1 || '';
         isActive = found.valet1Active !== false;
@@ -177,7 +177,7 @@ export default function GarageLoginScreen() {
       </p>
 
       <AnimatePresence mode="wait">
-        {/* ─── الخطوة 1: شاشة إدخال بيانات الدخول المعتادة ─── */}
+        {/* ─── الخطوة 1: شاشة إدخال بيانات الدخول ─── */}
         {loginStep === 'credentials' && (
           <motion.div
             key="credentials"
@@ -198,7 +198,7 @@ export default function GarageLoginScreen() {
               <button
                 type="button"
                 onClick={() => setRole('owner')}
-                className="flex-1 flex items-center justify-center gap-2 font-black transition-all active:scale-95"
+                className="flex-1 flex items-center justify-center gap-2 font-black transition-all active:scale-95 animate-none"
                 style={{
                   padding: '12px 8px',
                   borderRadius: 16,
@@ -216,7 +216,7 @@ export default function GarageLoginScreen() {
               <button
                 type="button"
                 onClick={() => setRole('valet')}
-                className="flex-1 flex items-center justify-center gap-2 font-black transition-all active:scale-95"
+                className="flex-1 flex items-center justify-center gap-2 font-black transition-all active:scale-95 animate-none"
                 style={{
                   padding: '12px 8px',
                   borderRadius: 16,
@@ -251,7 +251,7 @@ export default function GarageLoginScreen() {
                   style={{ color: 'rgba(255,255,255,0.5)' }}
                 />
                 <input
-                  className="w-full p-4 pr-12 text-right font-black outline-none text-sm"
+                  className="w-full p-4 pr-12 text-right font-black outline-none text-sm placeholder:text-white/40"
                   style={{
                     background: 'rgba(255,255,255,0.12)',
                     border: '1.5px solid rgba(255,255,255,0.2)',
@@ -274,7 +274,7 @@ export default function GarageLoginScreen() {
                 />
                 <input
                   type="tel"
-                  className="w-full p-4 pr-12 text-right font-black outline-none text-sm"
+                  className="w-full p-4 pr-12 text-right font-black outline-none text-sm placeholder:text-white/40"
                   style={{
                     background: 'rgba(255,255,255,0.12)',
                     border: '1.5px solid rgba(255,255,255,0.2)',
@@ -299,7 +299,7 @@ export default function GarageLoginScreen() {
                     />
                     <input
                       type="password"
-                      className="w-full p-4 pr-12 text-right font-black outline-none text-sm"
+                      className="w-full p-4 pr-12 text-right font-black outline-none text-sm placeholder:text-white/40"
                       style={{
                         background: 'rgba(255,255,255,0.12)',
                         border: '1.5px solid rgba(255,255,255,0.2)',
@@ -324,12 +324,12 @@ export default function GarageLoginScreen() {
                       }}
                     >
                       <div className="flex items-center justify-between">
-                        <span style={{ fontSize: 10, opacity: 0.7 }}>
+                        <span style={{ fontSize: 10, opacity: 0.7 }} className="text-white font-bold">
                           {activeValetCount > 0
                             ? `${activeValetCount} سايس مفعّل`
                             : 'لا يوجد سياس مسجلين'}
                         </span>
-                        <span className="font-bold" style={{ fontSize: 10 }}>
+                        <span className="font-black" style={{ fontSize: 10 }}>
                           🅿️ حالة السياس
                         </span>
                       </div>
@@ -342,6 +342,7 @@ export default function GarageLoginScreen() {
                             marginTop: 4,
                             textAlign: 'center',
                           }}
+                          className="font-bold text-white"
                         >
                           ⚠️ اطلب من مالك الجراج إضافة سايس من الإعدادات
                         </p>
@@ -362,7 +363,7 @@ export default function GarageLoginScreen() {
                     textAlign: 'center',
                   }}
                 >
-                  <span className="font-black" style={{ fontSize: 12 }}>
+                  <span className="font-black text-white" style={{ fontSize: 12 }}>
                     🅿️ {selectedGarage.name}
                   </span>
                 </div>
@@ -370,7 +371,7 @@ export default function GarageLoginScreen() {
 
               <button
                 onClick={handleLogin}
-                className="w-full font-black text-lg active:scale-95 transition-all"
+                className="w-full font-black text-lg active:scale-95 transition-all text-center"
                 style={{
                   background: '#fff',
                   color: '#0066FF',
@@ -395,10 +396,10 @@ export default function GarageLoginScreen() {
                   localStorage.removeItem('currentGarageId');
                   setView('user');
                 }}
-                className="w-full font-bold active:scale-95 transition-all"
+                className="w-full font-black active:scale-95 transition-all text-center"
                 style={{
                   background: 'rgba(255,255,255,0.1)',
-                  color: 'rgba(255,255,255,0.7)',
+                  color: 'rgba(255,255,255,0.9)',
                   padding: 12,
                   borderRadius: 18,
                   fontSize: 13,
@@ -430,18 +431,17 @@ export default function GarageLoginScreen() {
             <div className="flex justify-between items-center pb-2 border-b border-white/20">
               <button
                 onClick={() => setLoginStep('credentials')}
-                className="text-white/70 hover:text-white p-1 rounded-full hover:bg-white/10 border-none animate-fade-in"
+                className="text-white/70 hover:text-white p-1 rounded-full hover:bg-white/10 border-none animate-none"
               >
                 <ArrowLeft size={20} />
               </button>
-              {/* عنوان الشاشة بالخط الأبيض الصريح العريض ليكون بارزاً بوضوح تام */}
               <h3 className="font-black text-white flex items-center gap-1.5" style={{ color: '#ffffff', fontWeight: 900, fontSize: '18px' }}>
                 <span>اختر جراجاً لإدارته</span>
                 <Building2 size={20} className="text-white" />
               </h3>
             </div>
 
-            <p className="text-[11px] font-bold text-white/75 text-center leading-relaxed">
+            <p className="text-[11px] font-bold text-white text-center leading-relaxed">
               تم العثور على {ownedGarages.length} جراجات مرتبطة بحسابك الموحد:
             </p>
 
@@ -463,14 +463,13 @@ export default function GarageLoginScreen() {
                 >
                   <div className="flex flex-col items-center gap-0.5 font-black font-mono text-white">
                     <span style={{ fontSize: 16 }}>{g.availableSpots}</span>
-                    <span className="font-bold text-[9px] opacity-75">شاغر</span>
+                    <span className="font-black text-[9px] opacity-90">شاغر</span>
                   </div>
                   <div className="text-right flex-1 mr-3">
-                    {/* اسم الجراج بالخط الأبيض الصريح العريض ليكون بارزاً بوضوح تام */}
                     <div className="font-black text-white" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
                       🅿️ {g.name}
                     </div>
-                    <div className="flex items-center gap-1 justify-end mt-1 font-bold text-white/60" style={{ fontSize: 10 }}>
+                    <div className="flex items-center gap-1 justify-end mt-1 font-black text-white/80" style={{ fontSize: 10 }}>
                       <span>{g.location}</span>
                       <MapPin size={10} />
                     </div>
@@ -480,7 +479,7 @@ export default function GarageLoginScreen() {
             </div>
 
             <div className="mt-4 pt-3 text-center border-t border-white/10">
-              <span className="font-bold text-white/60" style={{ fontSize: 10 }}>
+              <span className="font-black text-white/80" style={{ fontSize: 10 }}>
                 💡 يمكنك التبديل بين جراجاتك من الداخل في أي وقت!
               </span>
             </div>

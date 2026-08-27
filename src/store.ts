@@ -26,7 +26,7 @@ export interface Garage {
   valet1Active: boolean;
   valet2Active: boolean;
   valet3Active: boolean;
-  isActive: boolean; // 🚀 مفعّل/معطّل للعملاء
+  isActive: boolean;
 }
 
 export interface ParkingSession {
@@ -51,6 +51,8 @@ export interface ParkingSession {
   netRevenue?: number;
   settled?: boolean;       
   settled_at?: string;     
+  isFirstFreeSession?: boolean; 
+  refundAmount?: number;        
 }
 
 export interface Offer {
@@ -137,6 +139,62 @@ const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
 const getMs = (value?: number) => { if (typeof value === 'number') return value; return 0; };
 
+// ===================== منطق الأسعار الكاش باك الجديد =====================
+
+const isEligibleForFreeFirstSession = (
+  sessions: ParkingSession[],
+  carPlate: string,
+  customerPhone?: string
+): boolean => {
+  const normalizedPlate = normalizePlate(carPlate);
+  if (!normalizedPlate) return false;
+
+  const previousSessions = sessions.filter((s) => {
+    const plateMatch = samePlate(s.carPlate, normalizedPlate);
+    const phoneMatch = customerPhone && s.customerPhone === customerPhone;
+    return (plateMatch || phoneMatch) && s.status === 'completed';
+  });
+
+  return previousSessions.length === 0;
+};
+
+const calculateSessionPrice = (
+  durationMs: number,
+  basePrice: number,
+  isFirstFree: boolean
+): { totalPrice: number; freeHours: number; chargeableHours: number } => {
+  const HOUR_MS = 60 * 60 * 1000;
+  const durationHours = durationMs / HOUR_MS;
+
+  if (isFirstFree) {
+    if (durationHours <= 1) {
+      return { totalPrice: 0, freeHours: durationHours, chargeableHours: 0 };
+    }
+    const extraDurationMs = durationMs - HOUR_MS;
+    const extraHours = Math.ceil(extraDurationMs / HOUR_MS);
+    const totalPrice = extraHours * basePrice;
+    return { totalPrice, freeHours: 1, chargeableHours: extraHours };
+  }
+
+  const billedHours = Math.max(1, Math.ceil(durationHours));
+  const totalPrice = billedHours * basePrice;
+  return { totalPrice, freeHours: 0, chargeableHours: billedHours };
+};
+
+const calculateTierRefund = (amount: number): number => {
+  if (amount >= 1000) return Math.round((amount * 0.10) * 100) / 100;
+  if (amount >= 500) return Math.round((amount * 0.07) * 100) / 100;
+  if (amount >= 200) return Math.round((amount * 0.05) * 100) / 100;
+  if (amount >= 100) return Math.round((amount * 0.03) * 100) / 100;
+  return 0;
+};
+
+export {
+  isEligibleForFreeFirstSession,
+  calculateSessionPrice,
+  calculateTierRefund
+};
+
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   const active = list.filter((s) => s.status === 'active');
   const completed = list.filter((s) => s.status === 'completed');
@@ -183,7 +241,7 @@ const mapGarage = (r: any): Garage => ({
   valet1Active: r.valet1_active !== false,
   valet2Active: r.valet2_active !== false,
   valet3Active: r.valet3_active !== false,
-  isActive: r.is_active !== false, // 🚀 ماب حقل التفعيل من السيرفر
+  isActive: r.is_active !== false,
 });
 
 const mapSession = (r: any): ParkingSession => {
@@ -239,6 +297,8 @@ const mapSession = (r: any): ParkingSession => {
     netRevenue: r.net_revenue != null ? Number(r.net_revenue) : 0,
     settled: r.settled ?? false,                     
     settled_at: r.settled_at || undefined,           
+    isFirstFreeSession: r.is_first_free_session ?? false,
+    refundAmount: r.refund_amount != null ? Number(r.refund_amount) : 0,
   };
 };
 
@@ -292,6 +352,9 @@ const resolveAddedBy = (explicitAddedBy?: string): string => {
   return '';
 };
 
+let fetchAbortController: AbortController | null = null;
+let lastFetchTime = 0;
+
 // ===================== State Interface =====================
 interface AppState {
   view: ViewType;
@@ -301,6 +364,7 @@ interface AppState {
   currentUser: { name: string; phone: string; carPlate: string; wallet: number } | null;
   setCurrentUser: (u: { name: string; phone: string; carPlate: string; wallet: number } | null) => void;
   deductWallet: (amount: number) => void;
+  refundToWallet: (amount: number) => void; 
   garages: Garage[];
   currentGarageId: string | null;
   setCurrentGarageId: (id: string | null) => void;
@@ -315,6 +379,8 @@ interface AppState {
   setSelectedGarageId: (id: string | null) => void;
   getMyOwnedGarages: (phone: string) => Garage[];  
   sessions: ParkingSession[];
+  historySessions: ParkingSession[]; // 🆕 مصفوفة أرشيف التقارير والتواريخ السابقة
+  fetchGarageHistory: (garageId: string, startDateStr: string, endDateStr: string) => Promise<void>; // 🆕 دالة جلب الأرشيف الذكية واللحظية
   acknowledgedSessionIds: Set<string>; 
   acknowledgeSession: (id: string) => void; 
   addSession: (s: Omit<ParkingSession, 'id'>) => Promise<string>;
@@ -339,7 +405,7 @@ interface AppState {
   addMessage: (m: Omit<Message, 'id' | 'timestamp' | 'status'>) => Promise<{ success: boolean; error?: string }>;
   replyMessage: (id: string, reply: string) => Promise<void>;
   closeMessage: (id: string) => Promise<void>;
-  fetchAll: () => Promise<void>;
+  fetchAll: (force?: boolean) => Promise<void>;
   logout: () => void;
 }
 
@@ -384,6 +450,19 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  refundToWallet: (amount) => {
+    const user = get().currentUser; if (!user || amount <= 0) return;
+    const nw = user.wallet + amount;
+    const updated = { ...user, wallet: nw };
+    set({ currentUser: updated }); safeSetStorage('currentUser', updated);
+    walletDeductedAt = Date.now();
+    if (isSupabaseConfigured()) {
+      supabase.from('users').update({ wallet: nw }).eq('phone', user.phone).then(({ error }) => { 
+        if (error) console.error('❌', error); 
+      });
+    }
+  },
+
   garages: [],
   currentGarageId: (() => { try { return localStorage.getItem('currentGarageId') || null; } catch { return null; } })(),
   setCurrentGarageId: (id) => { set({ currentGarageId: id }); if (id) localStorage.setItem('currentGarageId', id); else localStorage.removeItem('currentGarageId'); },
@@ -391,7 +470,6 @@ export const useStore = create<AppState>((set, get) => ({
   selectedGarageId: (() => { try { return localStorage.getItem('selectedGarageId') || null; } catch { return null; } })(),
   setSelectedGarageId: (id) => { set({ selectedGarageId: id }); if (id) localStorage.setItem('selectedGarageId', id); else localStorage.removeItem('selectedGarageId'); },
 
-  // 🏢 دالة للحصول على جراجات المالك (بالبحث برقم الهاتف)
   getMyOwnedGarages: (phone: string) => {
     if (!phone) return [];
     const normalizedPhone = phone.trim();
@@ -401,9 +479,39 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   sessions: [],
+  historySessions: [], // 🆕 مصفوفة الأرشيف فارغة بشكل افتراضي لتوفير مساحة الرام
+
+  // 🆕 =======================================================
+  // 🆕 دالة جلب الأرشيف والتواريخ السابقة لمالك الجراج عند طلبها فقط
+  // 🆕 =======================================================
+  fetchGarageHistory: async (garageId: string, startDateStr: string, endDateStr: string) => {
+    if (!isSupabaseConfigured() || !garageId) return;
+
+    try {
+      // جلب الجلسات المكتملة للجراج في الفترة الزمنية المحددة بدقة متناهية وسرعة فائقة
+      const { data, error } = await supabase
+        .from('sessions')
+        .select('*')
+        .eq('garage_id', garageId)
+        .eq('status', 'completed')
+        .gte('created_at', startDateStr)
+        .lte('created_at', endDateStr)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ خطأ في جلب الأرشيف:', error);
+        return;
+      }
+
+      if (data) {
+        set({ historySessions: data.map(mapSession) });
+        console.log(`📊 تم تحميل أرشيف الجراج بنجاح. عدد العمليات: ${data.length}`);
+      }
+    } catch (err) {
+      console.error('❌ خطأ غير متوقع في جلب الأرشيف:', err);
+    }
+  },
   
-  // 🚀 [أمان وحماية]: حفظ أكواد الفواتير المؤكدة في ذاكرة الهاتف الدائمة (localStorage)
-  // لمنع ظهورها نهائياً بعد الإغلاق والتحديث وحل مشكلة التحويل التلقائي لشاشة السداد
   acknowledgedSessionIds: (() => {
     try {
       const saved = localStorage.getItem('acknowledgedSessionIds');
@@ -417,7 +525,6 @@ export const useStore = create<AppState>((set, get) => ({
     set((st) => {
       const next = new Set(st.acknowledgedSessionIds);
       next.add(id);
-      // 💾 حفظ فوري ودائم في ذاكرة الهاتف
       try {
         localStorage.setItem('acknowledgedSessionIds', JSON.stringify(Array.from(next)));
       } catch (e) {
@@ -430,171 +537,188 @@ export const useStore = create<AppState>((set, get) => ({
   offers: [], walletTopUps: [], incomingCars: [], messages: [],
 
   logout: () => {
-    set({ currentUser: null, currentGarageId: null, selectedGarageId: null, view: 'user', screen: 'splash', acknowledgedSessionIds: new Set() });
+    set({ currentUser: null, currentGarageId: null, selectedGarageId: null, view: 'user', screen: 'splash', acknowledgedSessionIds: new Set(), historySessions: [] });
     safeRemoveStorage('currentUser'); safeRemoveStorage('appView'); safeRemoveStorage('appScreen');
     safeRemoveStorage('currentGarageId'); safeRemoveStorage('selectedGarageId');
     safeRemoveStorage('garageAuth'); safeRemoveStorage('adminAuth');
-    safeRemoveStorage('acknowledgedSessionIds'); // مسح الفواتير المؤكدة عند تسجيل الخروج فقط
+    safeRemoveStorage('acknowledgedSessionIds');
   },
 
-  // 🚀 نظام جلب البيانات الذكي والخفيف جداً (Smart & Optimized Fetching)
-  fetchAll: async () => {
+  fetchAll: async (force = false) => {
     if (!isSupabaseConfigured()) return;
 
-    // تشغيل جميع الاستعلامات بالتوازي للحصول على أقصى سرعة
-    const [g, activeAndUnsettledRes, recentSettledRes, o, w, ic, msgs] = await Promise.all([
-      supabase.from('garages').select('*'),
+    const now = Date.now();
+    if (!force && now - lastFetchTime < 1500) {
+      return; 
+    }
+    lastFetchTime = now;
 
-      // 1. جلب جميع العمليات النشطة + العمليات غير المسواة (المعلقة مالياً أو الفارغة NULL) لضمان عدم سقوط أي جلسة
-      supabase
-        .from('sessions')
-        .select('*')
-        .or('status.eq.active,settled.eq.false,settled.is.null') // 🚀 حل سحري: جلب الجلسات حتى لو كانت قيمة settled فارغة NULL
-        .order('created_at', { ascending: false })
-        .limit(200),
+    if (fetchAbortController) {
+      fetchAbortController.abort();
+    }
+    fetchAbortController = new AbortController();
+    const { signal } = fetchAbortController;
 
-      // 2. جلب أحدث 20 جلسة مقفلة فقط للأرشيف السريع (بدلاً من 100)
-      supabase
-        .from('sessions')
-        .select('*')
-        .eq('settled', true)
-        .eq('status', 'completed')
-        .order('created_at', { ascending: false })
-        .limit(20),
+    try {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayIso = todayStart.toISOString();
 
-      supabase.from('offers').select('*').order('created_at', { ascending: false }).limit(20),
-      supabase.from('wallet_topups').select('*').order('created_at', { ascending: false }).limit(20),
-      supabase.from('incoming_cars').select('*').order('created_at', { ascending: false }),
-      supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(20),
-    ]);
+      const [g, activeAndUnsettledRes, recentSettledRes, o, w, ic, msgs] = await Promise.all([
+        supabase.from('garages').select('*').abortSignal(signal),
+        supabase
+          .from('sessions')
+          .select('*')
+          .or('status.eq.active,settled.eq.false,settled.is.null')
+          .order('created_at', { ascending: false })
+          .limit(100)
+          .abortSignal(signal),
+        supabase
+          .from('sessions')
+          .select('*')
+          .eq('settled', true)
+          .eq('status', 'completed')
+          .gte('created_at', todayIso) 
+          .order('created_at', { ascending: false })
+          .limit(20)
+          .abortSignal(signal),
+        supabase.from('offers').select('*').order('created_at', { ascending: false }).limit(10).abortSignal(signal),
+        supabase.from('wallet_topups').select('*').order('created_at', { ascending: false }).limit(10).abortSignal(signal),
+        supabase.from('incoming_cars').select('*').order('created_at', { ascending: false }).abortSignal(signal),
+        supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(10).abortSignal(signal),
+      ]);
 
-    const currentGarages = get().garages;
-    const fetchedGarages = g.data?.length ? g.data.map(mapGarage) : currentGarages;
-    const garages = fetchedGarages.map((dbGarage) => {
-      if (pendingGarageUpdates.has(dbGarage.id)) return currentGarages.find((x) => x.id === dbGarage.id) ?? dbGarage;
-      return dbGarage;
-    });
-
-    // 🚀 دمج نتائج الاستعلامين للجلسات بذكاء (النشطة + غير المسواة + أحدث 20 مسواة)
-    const activeAndUnsettled = activeAndUnsettledRes.data ? activeAndUnsettledRes.data.map(mapSession) : [];
-    const recentSettled = recentSettledRes.data ? recentSettledRes.data.map(mapSession) : [];
-    
-    // إزالة التكرار (لو جلسة موجودة في الاستعلامين نأخذها مرة واحدة فقط)
-    const sessionsMap = new Map<string, ParkingSession>();
-    [...activeAndUnsettled, ...recentSettled].forEach((s) => {
-      if (!sessionsMap.has(s.id)) sessionsMap.set(s.id, s);
-    });
-    const supabaseSessions = Array.from(sessionsMap.values());
-    
-    const supabaseSessionIds = new Set(supabaseSessions.map((ss) => ss.id));
-    const currentSessions = get().sessions;
-    const supabaseActiveKeys = new Set(
-      supabaseSessions.filter((ss) => ss.status === 'active').map((ss) => `${normalizePlate(ss.carPlate)}::${ss.source}`)
-    );
-
-    const localOnlySessions = currentSessions.filter((cs) =>
-      !supabaseSessionIds.has(cs.id) &&
-      cs.status === 'active' &&
-      !supabaseActiveKeys.has(`${normalizePlate(cs.carPlate)}::${cs.source}`) &&
-      !deletedSessionIds.has(cs.id) &&
-      Date.now() - cs.startTime < 15000
-    );
-
-    const mergedSessions = supabaseSessions
-      .filter((ss) => !deletedSessionIds.has(ss.id))
-      .map((ss) => {
-        const locallyEnded = locallyEndedSessions.get(ss.id);
-        if (locallyEnded) {
-          if (ss.status === 'completed') { locallyEndedSessions.delete(ss.id); return ss; }
-          return locallyEnded;
-        }
-        const localVersion = currentSessions.find((cs) => cs.id === ss.id);
-        if (localVersion) {
-          if (ss.status === 'completed' && localVersion.status === 'active') return ss;
-          if (localVersion.status === 'completed') {
-            return { 
-              ...localVersion, 
-              revenueConfirmed: ss.revenueConfirmed || localVersion.revenueConfirmed,
-              settled: ss.settled ?? localVersion.settled,           
-              settled_at: ss.settled_at || localVersion.settled_at,   
-            };
-          }
-          if (ss.status === 'active' && localVersion.status === 'active') {
-            return {
-              ...localVersion,
-              startTime: ss.startTime,
-              synced: true,
-              addedBy: ss.addedBy || localVersion.addedBy || '',
-              customerPhone: ss.customerPhone || localVersion.customerPhone,
-              customerName: ss.customerName || localVersion.customerName,
-              settled: ss.settled ?? localVersion.settled,
-              settled_at: ss.settled_at || localVersion.settled_at,
-            };
-          }
-          if (localVersion.totalPrice != null && localVersion.totalPrice > 0) return localVersion;
-        }
-        return ss;
+      const currentGarages = get().garages;
+      const fetchedGarages = g.data?.length ? g.data.map(mapGarage) : currentGarages;
+      const garages = fetchedGarages.map((dbGarage) => {
+        if (pendingGarageUpdates.has(dbGarage.id)) return currentGarages.find((x) => x.id === dbGarage.id) ?? dbGarage;
+        return dbGarage;
       });
 
-    const finalSessions = dedupeActiveSessions([...mergedSessions, ...localOnlySessions]);
+      const activeAndUnsettled = activeAndUnsettledRes.data ? activeAndUnsettledRes.data.map(mapSession) : [];
+      const recentSettled = recentSettledRes.data ? recentSettledRes.data.map(mapSession) : [];
+      
+      const sessionsMap = new Map<string, ParkingSession>();
+      [...activeAndUnsettled, ...recentSettled].forEach((s) => {
+        if (!sessionsMap.has(s.id)) sessionsMap.set(s.id, s);
+      });
+      const supabaseSessions = Array.from(sessionsMap.values());
+      
+      const supabaseSessionIds = new Set(supabaseSessions.map((ss) => ss.id));
+      const currentSessions = get().sessions;
+      const supabaseActiveKeys = new Set(
+        supabaseSessions.filter((ss) => ss.status === 'active').map((ss) => `${normalizePlate(ss.carPlate)}::${ss.source}`)
+      );
 
-    const supabaseTopUps = w.data ? w.data.map(mapTopUp) : get().walletTopUps;
-    const currentTopUps = get().walletTopUps ?? [];
-    const mergedTopUps = supabaseTopUps.map((st) => {
-      const lv = currentTopUps.find((ct) => ct.id === st.id);
-      if (lv && lv.status !== 'pending' && st.status === 'pending') return lv;
-      return st;
-    });
+      const localOnlySessions = currentSessions.filter((cs) =>
+        !supabaseSessionIds.has(cs.id) &&
+        cs.status === 'active' &&
+        !supabaseActiveKeys.has(`${normalizePlate(cs.carPlate)}::${cs.source}`) &&
+        !deletedSessionIds.has(cs.id) &&
+        Date.now() - cs.startTime < 15000
+      );
 
-    const fetchedCars = ic.data
-      ? ic.data.map(mapIncoming).filter((c) => c.status === 'coming')
-      : (get().incomingCars ?? []);
-
-    const currentMessages = get().messages ?? [];
-    const supabaseMessages = msgs.data ? msgs.data.map(mapMessage) : currentMessages;
-    const mergedMessages = supabaseMessages.map((sm) => {
-      const lv = currentMessages.find((cm) => cm.id === sm.id);
-      if (lv) {
-        if (lv.status !== 'pending' && sm.status === 'pending') return lv;
-        if (sm.status !== 'pending' && lv.status === 'pending') return sm;
-        const smT = sm.repliedAt ?? sm.timestamp;
-        const lvT = lv.repliedAt ?? lv.timestamp;
-        if (smT > lvT) return sm;
-        return lv;
-      }
-      return sm;
-    });
-
-    const supabaseMessageIds = new Set(supabaseMessages.map((sm) => sm.id));
-    const localOnlyMessages = currentMessages.filter((cm) => !supabaseMessageIds.has(cm.id) && cm.status === 'pending');
-
-    set({
-      garages,
-      sessions: finalSessions,
-      offers: o.data ? o.data.map(mapOffer) : (get().offers ?? []),
-      walletTopUps: mergedTopUps,
-      incomingCars: fetchedCars,
-      messages: [...mergedMessages, ...localOnlyMessages],
-    });
-
-    const user = get().currentUser;
-    if (user?.phone) {
-      try {
-        const timeSinceDeduct = Date.now() - walletDeductedAt;
-        if (timeSinceDeduct < 20000) {
-          const { data } = await supabase.from('users').select('name, phone, car_plate').eq('phone', user.phone).single();
-          if (data) {
-            const updated = { name: data.name || user.name, phone: data.phone || user.phone, carPlate: data.car_plate || user.carPlate, wallet: user.wallet };
-            set({ currentUser: updated }); safeSetStorage('currentUser', updated);
+      const mergedSessions = supabaseSessions
+        .filter((ss) => !deletedSessionIds.has(ss.id))
+        .map((ss) => {
+          const locallyEnded = locallyEndedSessions.get(ss.id);
+          if (locallyEnded) {
+            if (ss.status === 'completed') { locallyEndedSessions.delete(ss.id); return ss; }
+            return locallyEnded;
           }
-        } else {
-          const { data } = await supabase.from('users').select('wallet, name, phone, car_plate').eq('phone', user.phone).single();
-          if (data) {
-            const updated = { name: data.name || user.name, phone: data.phone || user.phone, carPlate: data.car_plate || user.carPlate, wallet: Number(data.wallet) };
-            set({ currentUser: updated }); safeSetStorage('currentUser', updated);
+          const localVersion = currentSessions.find((cs) => cs.id === ss.id);
+          if (localVersion) {
+            if (ss.status === 'completed' && localVersion.status === 'active') return ss;
+            if (localVersion.status === 'completed') {
+              return { 
+                ...localVersion, 
+                revenueConfirmed: ss.revenueConfirmed || localVersion.revenueConfirmed,
+                settled: ss.settled ?? localVersion.settled,           
+                settled_at: ss.settled_at || localVersion.settled_at,   
+              };
+            }
+            if (ss.status === 'active' && localVersion.status === 'active') {
+              return {
+                ...localVersion,
+                startTime: ss.startTime,
+                synced: true,
+                addedBy: ss.addedBy || localVersion.addedBy || '',
+                customerPhone: ss.customerPhone || localVersion.customerPhone,
+                customerName: ss.customerName || localVersion.customerName,
+                settled: ss.settled ?? localVersion.settled,
+                settled_at: ss.settled_at || localVersion.settled_at,
+              };
+            }
+            if (localVersion.totalPrice != null && localVersion.totalPrice > 0) return localVersion;
           }
+          return ss;
+        });
+
+      const finalSessions = dedupeActiveSessions([...mergedSessions, ...localOnlySessions]);
+
+      const supabaseTopUps = w.data ? w.data.map(mapTopUp) : get().walletTopUps;
+      const currentTopUps = get().walletTopUps ?? [];
+      const mergedTopUps = supabaseTopUps.map((st) => {
+        const lv = currentTopUps.find((ct) => ct.id === st.id);
+        if (lv && lv.status !== 'pending' && st.status === 'pending') return lv;
+        return st;
+      });
+
+      const fetchedCars = ic.data
+        ? ic.data.map(mapIncoming).filter((c) => c.status === 'coming')
+        : (get().incomingCars ?? []);
+
+      const currentMessages = get().messages ?? [];
+      const supabaseMessages = msgs.data ? msgs.data.map(mapMessage) : currentMessages;
+      const mergedMessages = supabaseMessages.map((sm) => {
+        const lv = currentMessages.find((cm) => cm.id === sm.id);
+        if (lv) {
+          if (lv.status !== 'pending' && sm.status === 'pending') return lv;
+          if (sm.status !== 'pending' && lv.status === 'pending') return sm;
+          const smT = sm.repliedAt ?? sm.timestamp;
+          const lvT = lv.repliedAt ?? lv.timestamp;
+          if (smT > lvT) return sm;
+          return lv;
         }
-      } catch (err) { console.error('Error fetching user wallet:', err); }
+        return sm;
+      });
+
+      const supabaseMessageIds = new Set(supabaseMessages.map((sm) => sm.id));
+      const localOnlyMessages = currentMessages.filter((cm) => !supabaseMessageIds.has(cm.id) && cm.status === 'pending');
+
+      set({
+        garages,
+        sessions: finalSessions,
+        offers: o.data ? o.data.map(mapOffer) : (get().offers ?? []),
+        walletTopUps: mergedTopUps,
+        incomingCars: fetchedCars,
+        messages: [...mergedMessages, ...localOnlyMessages],
+      });
+
+      const user = get().currentUser;
+      if (user?.phone) {
+        try {
+          const timeSinceDeduct = Date.now() - walletDeductedAt;
+          if (timeSinceDeduct < 20000) {
+            const { data } = await supabase.from('users').select('name, phone, car_plate').eq('phone', user.phone).single();
+            if (data) {
+              const updated = { name: data.name || user.name, phone: data.phone || user.phone, carPlate: data.car_plate || user.carPlate, wallet: user.wallet };
+              set({ currentUser: updated }); safeSetStorage('currentUser', updated);
+            }
+          } else {
+            const { data } = await supabase.from('users').select('wallet, name, phone, car_plate').eq('phone', user.phone).single();
+            if (data) {
+              const updated = { name: data.name || user.name, phone: data.phone || user.phone, carPlate: data.car_plate || user.carPlate, wallet: Number(data.wallet) };
+              set({ currentUser: updated }); safeSetStorage('currentUser', updated);
+            }
+          }
+        } catch (err) { console.error('Error fetching user wallet:', err); }
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        return;
+      }
+      console.error('Fetch error:', err);
     }
   },
 
@@ -611,32 +735,27 @@ export const useStore = create<AppState>((set, get) => ({
       valet_name_1: (g as any).valetName1 || '', valet_password_1: (g as any).valetPassword1 || '',
       valet_name_2: (g as any).valetName2 || '', valet_password_2: (g as any).valetPassword2 || '',
       valet_name_3: (g as any).valetName3 || '', valet_password_3: (g as any).valetPassword3 || '',
-      is_active: true, // 🚀 يضاف كـ "مفعل" تلقائياً عند الإنشاء في قاعدة البيانات
+      is_active: true,
     }).select();
     if (!error && data) set((st) => ({ garages: [...st.garages, ...data.map(mapGarage)] }));
   },
 
   updateGarage: async (id, updates) => {
-    // 1. تحديث الحالة المحلية فوراً لمنع أي تأخير بصري
     set((st) => ({ garages: st.garages.map((g) => g.id === id ? { ...g, ...updates } : g) }));
     if (!isSupabaseConfigured()) return;
 
-    // 🚀 [أمان حديدي]: إرسال فوري ومباشر لحالة التفعيل (isActive) للسيرفر مع إيقاف البولينج لمنع الارتداد
     if (updates.isActive !== undefined) {
-      pausePolling(6000); // إيقاف الفحص التلقائي لـ 6 ثوانٍ حتى تستقر عملية الحفظ تماماً
+      pausePolling(6000);
       const { error } = await supabase.from('garages').update({ is_active: updates.isActive }).eq('id', id);
       if (error) {
         console.error('❌ Failed to update isActive:', error);
-        // التراجع الفوري عن القيمة محلياً عند الفشل لتظل الواجهة دقيقة
         set((st) => ({ garages: st.garages.map((g) => g.id === id ? { ...g, isActive: !updates.isActive } : g) }));
-        toast.error('عذراً، فشل تفعيل الجراج في السيرفر. تحقق من قيود الأمان RLS 🔒');
       } else {
-        await get().fetchAll(); // جلب فوري للبيانات بعد النجاح
+        await get().fetchAll(true);
       }
       return;
     }
 
-    // باقي الحقول النصية والأسعار تعمل بنظام التجميع المعتاد لسرعة الكتابة
     const existing = pendingGarageUpdates.get(id) || {};
     const db: Record<string, unknown> = { ...existing };
     if (updates.basePrice !== undefined) db.base_price = updates.basePrice;
@@ -663,7 +782,7 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
       pendingGarageUpdates.clear(); updateGarageTimeout = null;
-      await get().fetchAll();
+      await get().fetchAll(true);
     }, 500);
   },
 
@@ -679,14 +798,14 @@ export const useStore = create<AppState>((set, get) => ({
       const pending = pendingGarageUpdates.get(id);
       if (pending && Object.keys(pending).length > 0) {
         const { error: flushError } = await supabase.from('garages').update(pending).eq('id', id);
-        if (flushError) { console.error('❌', flushError); await get().fetchAll(); return; }
+        if (flushError) { console.error('❌', flushError); await get().fetchAll(true); return; }
         pendingGarageUpdates.delete(id);
         if (pendingGarageUpdates.size === 0 && updateGarageTimeout) { clearTimeout(updateGarageTimeout); updateGarageTimeout = null; }
       }
       const { data, error } = await supabase.rpc('adjust_spots', { garage_uuid: id, delta });
-      if (error) { console.error('❌', error); await get().fetchAll(); return; }
+      if (error) { console.error('❌', error); await get().fetchAll(true); return; }
       set((st) => ({ garages: st.garages.map((g) => g.id === id ? { ...g, availableSpots: Number(data) } : g) }));
-    } catch (err) { console.error('❌', err); await get().fetchAll(); }
+    } catch (err) { console.error('❌', err); await get().fetchAll(true); }
   },
 
   addSession: async (s) => {
@@ -729,17 +848,24 @@ export const useStore = create<AppState>((set, get) => ({
       }
 
       const addedByValue = resolveAddedBy((s as any).addedBy);
+
+      const currentSessions = get().sessions;
+      const customerPhone = (s as any).customerPhone;
+      const isFirstFree = isEligibleForFreeFirstSession(currentSessions, normalizedPlate, customerPhone);
+
       const optimisticSession: ParkingSession = {
         ...s, id: sessionId, carPlate: normalizedPlate,
         startTime: 0, synced: false, revenueConfirmed: false,
         addedBy: addedByValue,
-        customerPhone: (s as any).customerPhone || undefined,
+        customerPhone: customerPhone || undefined,
         customerName: (s as any).customerName || undefined,
         incomingCarId: (s as any).incomingCarId || undefined,
         startedBy: (s as any).startedBy || undefined,
         commissionAmount: 0,
         netRevenue: 0,
         settled: false,
+        isFirstFreeSession: isFirstFree,
+        refundAmount: 0,
       };
 
       set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]) }));
@@ -753,13 +879,15 @@ export const useStore = create<AppState>((set, get) => ({
           start_time: new Date().toISOString(), status: s.status, source: s.source,
           agreed_price: s.agreedPrice ?? null, revenue_confirmed: false,
           added_by: addedByValue,
-          customer_phone: (s as any).customerPhone || null,
+          customer_phone: customerPhone || null,
           customer_name: (s as any).customerName || null,
           incoming_car_id: (s as any).incoming_car_id || null,
           started_by: (s as any).startedBy || null,
           commission_amount: 0,
           net_revenue: 0,
           settled: false,
+          is_first_free_session: isFirstFree,
+          refund_amount: 0,
         }).select().single();
 
         if (error) {
@@ -800,28 +928,55 @@ export const useStore = create<AppState>((set, get) => ({
     pausePolling(15000);
 
     try {
-      const safeTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
-
       const garage = get().garages.find((g) => g.id === session.garageId);
+      const basePrice = garage?.basePrice ?? 0;
       const commissionRate = garage?.commissionRate ?? 10;
       const isAppSession = session.source === 'app';
-      const commissionAmount = isAppSession
-        ? Math.round(((safeTotalPrice * commissionRate) / 100) * 100) / 100
-        : 0;
-      const netRevenue = Math.round((safeTotalPrice - commissionAmount) * 100) / 100;
+      const isWalletPayment = paymentMethod === 'wallet';
 
-      const isAutoConfirmed = paymentMethod === 'wallet';
+      let finalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
+      let refundAmount = 0;
+      const durationMs = now - session.startTime;
+
+      if (session.isFirstFreeSession) {
+        const { totalPrice: calculatedPrice } = calculateSessionPrice(
+          durationMs,
+          basePrice,
+          true 
+        );
+        finalPrice = calculatedPrice;
+        refundAmount = 0;
+      } else {
+        if (finalPrice === 0 && basePrice > 0) {
+          const { totalPrice: calculatedPrice } = calculateSessionPrice(durationMs, basePrice, false);
+          finalPrice = calculatedPrice;
+        }
+
+        if (isWalletPayment && finalPrice > 0) {
+          refundAmount = calculateTierRefund(finalPrice);
+          if (refundAmount > 0) {
+            finalPrice = Math.max(0, finalPrice - refundAmount);
+          }
+        }
+      }
+
+      const commissionAmount = isAppSession
+        ? Math.round(((finalPrice * commissionRate) / 100) * 100) / 100
+        : 0;
+      const netRevenue = Math.round((finalPrice - commissionAmount) * 100) / 100;
+      const isAutoConfirmed = isWalletPayment;
 
       const endedSession: ParkingSession = {
         ...session,
         endTime: now,
-        totalPrice: safeTotalPrice,
+        totalPrice: finalPrice,
         paymentMethod,
         status: 'completed' as const,
         revenueConfirmed: isAutoConfirmed,
         commissionAmount,
         netRevenue,
         settled: false,
+        refundAmount, 
       };
 
       locallyEndedSessions.set(id, endedSession);
@@ -834,13 +989,14 @@ export const useStore = create<AppState>((set, get) => ({
         .from('sessions')
         .update({
           end_time: new Date(now).toISOString(),
-          total_price: safeTotalPrice,
+          total_price: finalPrice,
           payment_method: paymentMethod,
           status: 'completed',
           revenue_confirmed: isAutoConfirmed,
           commission_amount: commissionAmount,
           net_revenue: netRevenue,
           settled: false,
+          refund_amount: refundAmount,
         })
         .eq('id', id)
         .eq('status', 'active');
@@ -854,7 +1010,7 @@ export const useStore = create<AppState>((set, get) => ({
       }
 
       setTimeout(() => {
-        get().fetchAll();
+        get().fetchAll(true);
       }, 12000);
     } finally {
       setTimeout(() => {
@@ -987,7 +1143,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (!dbRow) { const { data } = await supabase.from('wallet_topups').select('id, user_id, user_phone, amount, status').eq('id', id).maybeSingle(); if (data) dbRow = data; }
     if (!dbRow) { console.error('❌ الطلب مش موجود'); return; }
     const supabaseId = dbRow.id;
-    const { error: approveError } = await supabase.from('wallet_topups').update({ status: 'approved' }).eq('id', supabaseId);
+    const { error: approveError = null } = await supabase.from('wallet_topups').update({ status: 'approved' }).eq('id', supabaseId);
     if (approveError) {
       console.error('❌', approveError);
       set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'pending' as const } : w)) }));
@@ -1058,7 +1214,7 @@ export const useStore = create<AppState>((set, get) => ({
         await supabase.from('incoming_cars').delete().eq('car_plate', savedCarPlate).eq('garage_id', savedGarageId);
       }
     } catch (err) { console.error('❌', err); }
-    setTimeout(() => { get().fetchAll(); }, 1000);
+    setTimeout(() => { get().fetchAll(true); }, 1000);
   },
 
   addMessage: async (msg) => {
@@ -1113,16 +1269,13 @@ export function pausePolling(duration = 5000) {
   pauseTimeout = setTimeout(() => { isOperationInProgress = false; pauseTimeout = null; }, duration);
 }
 
-// ===================== setupRealtime الذكي لتوفير الطاقة والبيانات =====================
 export function setupRealtime() {
   if (realtimeStarted) return;
   realtimeStarted = true;
 
-  // دالة الفحص الدوري
   const startPolling = () => {
     if (pollingInterval) clearInterval(pollingInterval);
     pollingInterval = setInterval(() => { 
-      // يفحص فقط إذا كان التطبيق مفتوحاً أمام عين المستخدم وليس مغلقاً أو في الخلفية
       if (!isOperationInProgress && document.visibilityState === 'visible') {
         useStore.getState().fetchAll(); 
       }
@@ -1131,22 +1284,22 @@ export function setupRealtime() {
 
   startPolling();
 
-  // إيقاف وتفعيل الفحص تلقائياً بناءً على حالة شاشة الهاتف
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      useStore.getState().fetchAll(); // تحديث فوري عند فتح الشاشة
-      startPolling(); // إعادة تشغيل العداد الدوري
+      useStore.getState().fetchAll(true); 
+      startPolling(); 
     } else {
       if (pollingInterval) {
-        clearInterval(pollingInterval); // إيقاف كامل للاتصال لتوفير البطارية والإنترنت
+        clearInterval(pollingInterval); 
         pollingInterval = null;
+      }
+      if (fetchAbortController) {
+        fetchAbortController.abort(); 
       }
     }
   });
 
   if (!isSupabaseConfigured()) return;
-
-  // باقي كود الـ Realtime الخاص بالـ channel يظل كما هو لسرعة الاستجابة...
 
   let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
   let lastRefresh = 0;

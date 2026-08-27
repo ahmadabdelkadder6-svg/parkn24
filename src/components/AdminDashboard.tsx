@@ -3,11 +3,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, Clock, CheckCircle, XCircle, MapPin, Warehouse, Plus,
   MessageCircle, Send, Receipt, Search, HardHat, Percent, DollarSign,
-  Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown,
+  Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown, Gift, Coins,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { supabase } from '../lib/supabase';
-import { calculateCost } from '../utils/pricing';
+import { calculateCost, calculateCostWithFirstFree, calculateTierRefund } from '../utils/pricing';
 import toast from 'react-hot-toast';
 
 // ═══════════ Helpers ═══════════
@@ -127,13 +127,22 @@ export default function AdminDashboard() {
 
   useEffect(() => { fetchSettlements(); }, [fetchSettlements]);
 
+  // 🎯 دالة حساب الإيرادات الإجمالية بعد خصم الكاش باك أو تطبيق الجلسة المجانية الترحيبية
   const getRevenue = useCallback((s: any) => {
     if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
       const st = toMs(s.startTime);
       const en = toMs(s.endTime);
+      const durationSeconds = Math.max(0, Math.floor((en - st) / 1000));
       const g = garages.find((ga: any) => ga.id === s.garageId);
-      return calculateCost(Math.max(0, Math.floor((en - st) / 1000)), Number(s.agreedPrice ?? g?.basePrice ?? 0));
+      const rate = Number(s.agreedPrice ?? g?.basePrice ?? 0);
+      const isFirstFree = s.isFirstFreeSession ?? false;
+
+      // حساب التكلفة بناءً على نوع الجلسة الموحد
+      const { cost } = calculateCostWithFirstFree(durationSeconds, rate, isFirstFree);
+      const refund = Number(s.refundAmount ?? 0);
+      
+      return Math.max(0, cost - refund);
     }
     return 0;
   }, [garages]);
@@ -218,7 +227,7 @@ export default function AdminDashboard() {
         const pendingRevenue = pending.reduce((sum, s) => sum + getRevenue(s), 0);
 
         const cash = confirmed.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + getRevenue(s), 0);
-        const instapay = confirmed.filter(s => s.paymentMethod === 'instapay').reduce((sum, s) => sum + getRevenue(s), 0);
+        const instapay = confirmed.filter(s => s.paymentMethod === 'instapay').reduce((sum, sum_s) => sum + getRevenue(sum_s), 0);
         const wallet = confirmed.filter(s => s.paymentMethod === 'wallet').reduce((sum, s) => sum + getRevenue(s), 0);
         const cashwallet = confirmed.filter(s => s.paymentMethod === 'cashwallet').reduce((sum, s) => sum + getRevenue(s), 0);
 
@@ -950,6 +959,10 @@ export default function AdminDashboard() {
               const time = et ? new Date(et) : null;
               const isDel = deleteConfirmId === session.id;
               const isSettled = (session as any).settled === true;
+              
+              const isFirstFree = session.isFirstFreeSession ?? false;
+              const refundAmount = Number(session.refundAmount ?? 0);
+
               return (
                 <div key={session.id} style={{ 
                   background: isDel ? '#FFF0F0' : isSettled ? '#F1F5F9' : session.revenueConfirmed ? '#F0FFF5' : '#FFFAF0', 
@@ -964,6 +977,8 @@ export default function AdminDashboard() {
                       {[
                         { show: true, bg: session.source === 'manual' ? '#FF9500' : '#0066FF', text: session.source === 'manual' ? 'يدوي' : 'تطبيق' },
                         { show: !!session.paymentMethod, bg: session.paymentMethod === 'cash' ? '#00CC66' : session.paymentMethod === 'instapay' ? '#7C3AED' : session.paymentMethod === 'wallet' ? '#0066FF' : '#FF8800', text: session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستا' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش' },
+                        { show: isFirstFree, bg: '#10B981', text: '🎁 مجانية' },
+                        { show: refundAmount > 0, bg: '#7C3AED', text: `💰 كاش باك ${refundAmount}ج` },
                         { show: true, bg: session.revenueConfirmed ? '#00CC66' : '#FF9500', text: session.revenueConfirmed ? '✅ مؤكد' : '⏳ معلق' },
                         { show: isSettled, bg: '#94a3b8', text: '🔒 تمت التسوية' },
                       ].filter(b => b.show).map((b, i) => (
@@ -1230,7 +1245,7 @@ export default function AdminDashboard() {
                       <span className="font-bold" style={{ fontSize: 9, color: '#7B8CA6' }}>عمولة التطبيق</span>
                     </div>
                   </div>
-                  {/* 🚀 زر تفعيل/تعطيل ظهور الجراج للعملاء في تطبيق الحريف */}
+                  {/* تفعيل/تعطيل ظهور الجراج للعملاء في تطبيق الحريف */}
                   <div className="mt-2.5 pt-2 flex items-center justify-between border-t border-amber-200/60">
                     <button
                       type="button"

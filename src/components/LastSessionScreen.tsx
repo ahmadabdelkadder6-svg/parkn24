@@ -3,15 +3,16 @@ import {
   Clock,
   DollarSign,
   MapPin,
-  CreditCard,
   Calendar,
   Timer,
   Receipt,
   ArrowRight,
   Copy,
+  Gift,
+  Coins,
 } from 'lucide-react';
-import { useStore } from '../store';
-import { calculateFullHours, calculateCost, formatTime } from '../utils/pricing';
+import { useStore, calculateSessionPrice, calculateTierRefund } from '../store';
+import { formatTime } from '../utils/pricing';
 import toast from 'react-hot-toast';
 import { useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
@@ -27,22 +28,20 @@ const toMs = (value: any): number => {
 };
 
 /* ════════════════════════════════════════════════════════════
-   ██  LAST SESSION SCREEN
+   ██  LAST SESSION SCREEN (تفاصيل آخر جلسة)
    ════════════════════════════════════════════════════════════ */
 export default function LastSessionScreen() {
   const { sessions, garages, currentUser, setScreen, fetchAll } = useStore();
 
   const userPlate = (currentUser?.carPlate ?? '').trim().toUpperCase();
 
-  /* ✅ البحث بـ carPlate أو customerPhone */
+  /* ✅ البحث بـ carPlate أو customerPhone لآخر جلسة مكتملة */
   const lastSession = sessions
     .filter(
       (s) =>
         s.status === 'completed' &&
-        (
-          s.carPlate.trim().toUpperCase() === userPlate ||
-          (s as any).customerPhone === currentUser?.phone
-        ),
+        (s.carPlate.trim().toUpperCase() === userPlate ||
+          (s as any).customerPhone === currentUser?.phone),
     )
     .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
 
@@ -126,19 +125,32 @@ export default function LastSessionScreen() {
     );
   }
 
-  /* ── Computed ── */
+  /* ── الحسابات والبيانات اللحظية للجلسة المحددة ── */
   const startTime = toMs(lastSession.startTime);
   const endTime = toMs(lastSession.endTime);
-
-  const elapsedSeconds = Math.max(0, Math.floor((endTime - startTime) / 1000));
-  const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);
-  const hours = calculateFullHours(elapsedSeconds);
+  const durationMs = endTime - startTime;
+  
+  const elapsedSeconds = Math.max(0, Math.floor(durationMs / 1000));
   const totalMinutes = Math.floor(elapsedSeconds / 60);
+  
+  const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);
+  const isFirstFree = lastSession.isFirstFreeSession ?? false;
+  
+  // استخدام دالة الحساب الموحدة من الـ store لضمان مطابقة العداد للفواتير
+  const { totalPrice: originalCalculatedPrice, freeHours, chargeableHours } = calculateSessionPrice(
+    durationMs,
+    rate,
+    isFirstFree
+  );
 
-  const cost =
-    lastSession.totalPrice != null && Number(lastSession.totalPrice) > 0
-      ? Number(lastSession.totalPrice)
-      : calculateCost(elapsedSeconds, rate);
+  // السعر الأساسي المستحق قبل تطبيق الكاش باك (مستحق الركنة)
+  const baseCost = isFirstFree ? originalCalculatedPrice : Math.max(rate, Math.ceil(elapsedSeconds / 3600) * rate);
+
+  // قيمة الكاش باك المسترجعة فعلياً
+  const refundAmount = Number(lastSession.refundAmount ?? 0);
+
+  // إجمالي السعر النهائي المدفوع بعد الخصم
+  const finalCost = lastSession.totalPrice != null ? Number(lastSession.totalPrice) : Math.max(0, baseCost - refundAmount);
 
   const startDate = new Date(startTime);
   const endDate = new Date(endTime);
@@ -206,9 +218,9 @@ export default function LastSessionScreen() {
       ? { label: 'عبر التطبيق', color: 'text-blue-400', bg: 'bg-blue-500/20' }
       : { label: 'إضافة يدوية', color: 'text-amber-400', bg: 'bg-amber-500/20' };
 
-  /* ── نسخ التفاصيل ── */
+  /* ── نسخ التفاصيل لتسهيل إرسالها للعميل ── */
   const copySessionDetails = async () => {
-    const details = `🧾 تفاصيل جلسة الركن
+    const details = `🧾 تفاصيل فاتورة الركنة
 ━━━━━━━━━━━━━━━━━━
 🚗 رقم السيارة: ${lastSession.carPlate}
 🅿️ الجراج: ${garage?.name || 'غير محدد'}
@@ -217,10 +229,10 @@ export default function LastSessionScreen() {
 📅 التاريخ: ${formatDateTime(startDate)}
 ⏰ وقت الدخول: ${formatTimeOnly(startDate)}
 ⏰ وقت الخروج: ${formatTimeOnly(endDate)}
-⏱️ المدة: ${totalMinutes} دقيقة (${hours} ساعة محسوبة)
+⏱️ المدة الفعلية: ${totalMinutes} دقيقة
 ━━━━━━━━━━━━━━━━━━
-💰 سعر الساعة: ${rate} ج.م
-💵 الإجمالي: ${cost} ج.م
+💰 سعر الساعة الأساسي: ${rate} ج.م
+${isFirstFree ? '🎁 شارة ترحيبية: الجلسة الأولى مجانية (أول ساعة مجاناً)\n' : ''}${refundAmount > 0 ? `🔄 كاش باك مسترد للمحفظة: -${refundAmount} ج.م\n` : ''}💵 الإجمالي المدفوع: ${finalCost} ج.م
 💳 طريقة الدفع: ${paymentInfo.label}
 📋 نوع الجلسة: ${sourceInfo.label}`;
 
@@ -260,7 +272,7 @@ export default function LastSessionScreen() {
         </button>
         <h2 className="text-sm font-black flex items-center gap-2">
           <Receipt size={16} className="text-blue-400" />
-          تفاصيل آخر جلسة
+          فاتورة آخر ركنة
         </h2>
         <button
           onClick={copySessionDetails}
@@ -273,7 +285,7 @@ export default function LastSessionScreen() {
       {/* ══ Content ══ */}
       <div className="flex-1 px-4 pb-4 overflow-y-auto space-y-4">
 
-        {/* التاريخ */}
+        {/* التاريخ والوقت اليومي */}
         <div className="text-center">
           <span className="text-[10px] text-slate-500 bg-slate-900 px-3 py-1 rounded-full border border-slate-800">
             📅 {formatDateTime(startDate)}
@@ -303,7 +315,7 @@ export default function LastSessionScreen() {
           )}
         </div>
 
-        {/* ✅ التكلفة الإجمالية - Premium Edition (مع شارة السداد المدمجة والواضحة جداً) */}
+        {/* ✅ شاشة الفاتورة الإجمالية - Premium Edition (متوافقة بالكامل مع النظام الترحيبي والكاش باك) */}
         <div
           className="relative overflow-hidden rounded-3xl p-6 text-center"
           style={{
@@ -312,72 +324,81 @@ export default function LastSessionScreen() {
             border: '1px solid rgba(255,255,255,0.08)',
           }}
         >
-          {/* خلفية لمعة */}
+          {/* لمسات الضوء الخلفية */}
           <div
             className="absolute -top-20 -right-20"
             style={{
               width: 200,
               height: 200,
               borderRadius: '50%',
-              background: 'radial-gradient(circle, rgba(212,175,55,0.08) 0%, transparent 70%)',
+              background: isFirstFree
+                ? 'radial-gradient(circle, rgba(16,185,129,0.08) 0%, transparent 70%)' // لون أخضر للجلسة المجانية
+                : 'radial-gradient(circle, rgba(212,175,55,0.08) 0%, transparent 70%)',
               filter: 'blur(30px)',
             }}
           />
-          <div
-            className="absolute -bottom-10 -left-10"
-            style={{
-              width: 150,
-              height: 150,
-              borderRadius: '50%',
-              background: 'radial-gradient(circle, rgba(255,255,255,0.03) 0%, transparent 70%)',
-              filter: 'blur(20px)',
-            }}
-          />
 
-          {/* أيقونة */}
+          {/* أيقونة الحالة (هدية للجلسة الأولى / عملة للكاش باك التراكمي) */}
           <div
             className="relative z-10 mx-auto mb-3"
             style={{
-              width: 44,
-              height: 44,
+              width: 46,
+              height: 46,
               borderRadius: '50%',
-              background: 'linear-gradient(135deg, #D4AF37 0%, #F5D060 50%, #D4AF37 100%)',
+              background: isFirstFree 
+                ? 'linear-gradient(135deg, #10B981 0%, #34D399 100%)'
+                : 'linear-gradient(135deg, #D4AF37 0%, #F5D060 100%)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 20px rgba(212,175,55,0.3)',
+              boxShadow: isFirstFree
+                ? '0 4px 20px rgba(16,185,129,0.3)'
+                : '0 4px 20px rgba(212,175,55,0.3)',
             }}
           >
-            <span style={{ fontSize: 20 }}>💰</span>
+            {isFirstFree ? <Gift size={20} className="text-white" /> : <Coins size={20} className="text-white" />}
           </div>
 
-          {/* العنوان */}
+          {/* عنوان الفاتورة */}
           <div
-            className="relative z-10 mb-4"
+            className="relative z-10 mb-2"
             style={{
-              fontSize: 22,
+              fontSize: 20,
               fontWeight: 900,
               letterSpacing: '1px',
-              background: 'linear-gradient(135deg, #FFFFFF 0%, #D4AF37 50%, #FFFFFF 100%)',
+              background: isFirstFree
+                ? 'linear-gradient(135deg, #FFFFFF 0%, #34D399 100%)'
+                : 'linear-gradient(135deg, #FFFFFF 0%, #D4AF37 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
             }}
           >
-            إجمالي المستحق
+            {isFirstFree ? 'هدية ترحيبية: جلسة مجانية' : 'إجمالي الحساب الصافي'}
           </div>
 
-          {/* خط ذهبي */}
-          <div
-            className="relative z-10 mx-auto mb-4"
-            style={{
-              width: 60,
-              height: 2,
-              borderRadius: 999,
-              background: 'linear-gradient(90deg, transparent, #D4AF37, transparent)',
-            }}
-          />
+          {/* تفصيل الحساب بالخطوط الصغيرة لتوضيح كيفية الخصم والجمع */}
+          <div className="relative z-10 text-[11px] text-slate-400 space-y-1 my-3 bg-slate-950/60 p-3 rounded-2xl border border-slate-900">
+            <div className="flex justify-between">
+              <span>تكلفة الركنة الفعلية:</span>
+              <span className="font-mono text-white">{baseCost} ج.م</span>
+            </div>
+            
+            {isFirstFree && (
+              <div className="flex justify-between text-emerald-400">
+                <span>خصم أول ساعة مجانية:</span>
+                <span className="font-bold">- {baseCost - finalCost} ج.م</span>
+              </div>
+            )}
 
-          {/* الرقم الرئيسي للمطلوب سداده + شارة السداد */}
+            {refundAmount > 0 && (
+              <div className="flex justify-between text-blue-400">
+                <span>خصم كاش باك المحفظة (الشرائح):</span>
+                <span className="font-bold">- {refundAmount} ج.م</span>
+              </div>
+            )}
+          </div>
+
+          {/* الرقم الرئيسي والنهائي المدفوع */}
           <div className="relative z-10 flex flex-col items-center justify-center mb-4">
             <div className="flex items-end justify-center gap-3 mb-2">
               <span
@@ -391,13 +412,13 @@ export default function LastSessionScreen() {
                   letterSpacing: '-2px',
                 }}
               >
-                {cost.toFixed(0)}
+                {finalCost.toFixed(0)}
               </span>
               <span
                 style={{
                   fontSize: 24,
                   fontWeight: 800,
-                  color: '#D4AF37',
+                  color: isFirstFree ? '#34D399' : '#D4AF37',
                   marginBottom: 8,
                   textShadow: '0 0 10px rgba(212,175,55,0.3)',
                 }}
@@ -406,9 +427,9 @@ export default function LastSessionScreen() {
               </span>
             </div>
 
-            {/* 🚀 شارة طريقة السداد بالخط الملون العريض والواضح جداً 🚀 */}
+            {/* شارة السداد بالخط الملون العريض والواضح جداً */}
             <div 
-              className={`mt-1.5 inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl border-2 ${paymentInfo.bg} ${paymentInfo.border} shadow-lg`}
+              className={`mt-1 inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl border-2 ${paymentInfo.bg} ${paymentInfo.border} shadow-lg`}
               style={{ backdropFilter: 'blur(8px)' }}
             >
               <span className="text-2xl leading-none">{paymentInfo.icon}</span>
@@ -423,27 +444,15 @@ export default function LastSessionScreen() {
                 تم السداد: {paymentInfo.label}
               </span>
             </div>
-          </div> {/* ✅ تم إضافة قفل حاوية الـ div المفقودة هنا بنجاح لمنع الخطأ البرمجي */}
-
-          {/* سطر توضيحي */}
-          <div className="relative z-10 text-[10px] text-slate-400 mb-3">
-            {hours} ساعة × {rate} ج.م = {cost.toFixed(0)} ج.م
           </div>
 
-          {/* خط سفلي */}
-          <div
-            className="relative z-10 mx-auto"
-            style={{
-              width: 120,
-              height: 3,
-              borderRadius: 999,
-              background: 'linear-gradient(90deg, transparent, #D4AF37, #F5D060, #D4AF37, transparent)',
-              opacity: 0.7,
-            }}
-          />
+          {/* سطر توضيحي لحساب الساعات */}
+          <div className="relative z-10 text-[10px] text-slate-500 mb-2 font-mono">
+            مدة الحساب: {Math.max(1, Math.ceil(elapsedSeconds / 3600))} ساعة × {rate} ج.م
+          </div>
         </div>
 
-        {/* تفاصيل الوقت */}
+        {/* تفاصيل الوقت والعدادات السفلية */}
         <div className="grid grid-cols-3 gap-2">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 text-center">
             <Clock size={16} className="text-blue-400 mx-auto mb-1.5" />
@@ -457,7 +466,7 @@ export default function LastSessionScreen() {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 text-center">
             <Timer size={16} className="text-purple-400 mx-auto mb-1.5" />
             <div className="text-sm font-black text-purple-400 font-mono">
-              {hours}
+              {Math.max(1, Math.ceil(elapsedSeconds / 3600))}
             </div>
             <div className="text-[8px] text-slate-500 font-bold mt-0.5">
               ساعة محسوبة
@@ -474,7 +483,7 @@ export default function LastSessionScreen() {
           </div>
         </div>
 
-        {/* وقت الدخول والخروج */}
+        {/* تفاصيل أوقات الدخول والخروج الفعلي */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -514,7 +523,7 @@ export default function LastSessionScreen() {
           </div>
         </div>
 
-        {/* سعر خاص */}
+        {/* تنبيه خاص بالسعر المتغير أو العروض الترويجية */}
         {garage && rate !== garage.basePrice && (
           <div className="bg-amber-600/10 border border-amber-500/20 rounded-xl p-3 text-center">
             <p className="text-[10px] text-amber-400 font-bold">
@@ -523,23 +532,23 @@ export default function LastSessionScreen() {
           </div>
         )}
 
-        {/* رقم الجلسة */}
+        {/* رقم الفاتورة والعملية للتأكيد */}
         <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-3 text-center">
           <span className="text-[9px] text-slate-600 font-mono">
-            رقم الجلسة: {lastSession.id.slice(0, 8)}...
+            رقم الفاتورة المرجعي: {lastSession.id.slice(0, 8)}...
           </span>
         </div>
 
-        {/* زر نسخ */}
+        {/* زر نسخ الفاتورة */}
         <button
           onClick={copySessionDetails}
           className="w-full bg-blue-600/20 border border-blue-500/20 text-blue-400 py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all"
         >
           <Copy size={16} />
-          نسخ تفاصيل الجلسة
+          نسخ تفاصيل الفاتورة
         </button>
 
-        {/* زر العودة */}
+        {/* زر العودة للقائمة */}
         <button
           onClick={() => setScreen('list')}
           className="w-full bg-slate-900 border border-slate-800 text-white py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all"

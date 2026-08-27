@@ -1,7 +1,10 @@
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { X, Copy, ExternalLink, ArrowRight, CheckCircle, Plus, Minus, Phone, Send } from 'lucide-react';
-import { useStore } from '../store';
+import { 
+  X, Copy, ExternalLink, ArrowRight, CheckCircle, Plus, Minus, 
+  Phone, Send, Coins, Percent, Sparkles, Gift 
+} from 'lucide-react';
+import { useStore, calculateTierRefund } from '../store';
 import toast from 'react-hot-toast';
 
 const WALLET_NUMBER = '01229858104';
@@ -20,6 +23,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
   const [amount, setAmount] = useState(100);
   const [method, setMethod] = useState<'instapay' | 'cashwallet'>('instapay');
   const [loading, setLoading] = useState(false);
+  const [showTiersInfo, setShowTiersInfo] = useState(false);
   
   // توليد رقم العملية تلقائياً دون تدخل العميل
   const transactionId = useMemo(() => generateAutoReference(), [step]);
@@ -30,6 +34,15 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
       () => toast.error('فشل النسخ')
     );
   };
+
+  // نسبة الكاش باك للمبلغ الحالي
+  const currentCashbackTier = useMemo(() => {
+    if (amount >= 1000) return { percent: '10%', color: '#10B981', label: 'كاش باك ذهبي' };
+    if (amount >= 500) return { percent: '7%', color: '#0066FF', label: 'كاش باك فضي' };
+    if (amount >= 200) return { percent: '5%', color: '#7C3AED', label: 'كاش باك برونزي' };
+    if (amount >= 100) return { percent: '3%', color: '#FF9500', label: 'كاش باك أساسي' };
+    return { percent: '0%', color: '#94a3b8', label: 'بدون كاش باك' };
+  }, [amount]);
 
   const handleSubmitTopUp = async () => {
     if (!currentUser) return;
@@ -51,7 +64,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
         userName: currentUser.name,
         userPhone: userPhone,
         amount,
-        transactionId: transactionId, // الرقم المرجعي التلقائي
+        transactionId: transactionId,
         carPlate: currentUser.carPlate,
         method,
       } as any);
@@ -93,18 +106,74 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
           {/* ══════════ الخطوة 1: اختيار المبلغ ══════════ */}
           {step === 'amount' && (
             <>
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center justify-between mb-5">
                 <button onClick={onClose} style={{ color: '#94a3b8' }}><X size={20} /></button>
                 <h2 className="font-black" style={{ fontSize: 18, color: '#0A1628' }}>شحن رصيد المحفظة</h2>
                 <div className="w-8" />
               </div>
 
               {/* الرصيد الحالي */}
-              <div className="text-center mb-5" style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', borderRadius: 22, padding: '20px 16px', color: '#fff', boxShadow: '0 8px 32px rgba(0,102,255,0.3)' }}>
-                <div className="font-bold mb-1" style={{ fontSize: 11, opacity: 0.8 }}>رصيدك الحالي</div>
+              <div className="text-center mb-4" style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', borderRadius: 22, padding: '18px 16px', color: '#fff', boxShadow: '0 8px 32px rgba(0,102,255,0.25)' }}>
+                <div className="font-bold mb-1" style={{ fontSize: 11, opacity: 0.85 }}>رصيدك الحالي بالمحفظة</div>
                 <div className="font-black font-mono" style={{ fontSize: 32 }}>{currentUser?.wallet || 0} <span style={{ fontSize: 14 }}>ج.م</span></div>
               </div>
 
+              {/* 🎁 بطاقة كاش باك تحفيزية للشرائح */}
+              <div 
+                className="mb-4 p-3.5 rounded-2xl border transition-all"
+                style={{
+                  background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
+                  borderColor: '#FDE68A'
+                }}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-black text-xs flex items-center gap-1 text-amber-900 font-mono" style={{ color: currentCashbackTier.color }}>
+                    <Coins size={14} /> كاش باك الركنات: {currentCashbackTier.percent}
+                  </span>
+                  <div className="flex items-center gap-1 text-amber-800 font-black text-xs">
+                    <span>ميزة المحفظة</span>
+                    <Sparkles size={13} className="text-amber-600" />
+                  </div>
+                </div>
+                <p className="text-[10px] text-amber-800 font-bold leading-relaxed text-right">
+                  الدفع من المحفظة يمنحك استرداداً تراكمياً فورياً يصل إلى 10% من قيمة كل ركنة بدءاً من الركنة الثانية!
+                </p>
+
+                {/* زر عرض تفاصيل الشرائح */}
+                <button
+                  onClick={() => setShowTiersInfo(!showTiersInfo)}
+                  className="mt-2 text-[10px] font-black text-amber-900 underline flex items-center gap-1 justify-end w-full"
+                >
+                  {showTiersInfo ? 'إخفاء جدول الشرائح ▲' : 'عرض جدول شرائح الكاش باك ▼'}
+                </button>
+
+                {showTiersInfo && (
+                  <motion.div 
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    className="mt-2.5 pt-2 border-t border-amber-300/60 space-y-1 text-right text-[10px]"
+                  >
+                    <div className="flex justify-between font-bold text-amber-950">
+                      <span className="font-mono font-black text-emerald-700">10% كاش باك</span>
+                      <span>من 1000 ج.م فأكثر:</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-amber-950">
+                      <span className="font-mono font-black text-blue-700">7% كاش باك</span>
+                      <span>من 500 إلى 999 ج.م:</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-amber-950">
+                      <span className="font-mono font-black text-purple-700">5% كاش باك</span>
+                      <span>من 200 إلى 499 ج.م:</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-amber-950">
+                      <span className="font-mono font-black text-amber-700">3% كاش باك</span>
+                      <span>من 100 إلى 199 ج.م:</span>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
+
+              {/* اختيار المبلغ */}
               <div className="mb-5">
                 <div className="font-black mb-3 text-right" style={{ fontSize: 13, color: '#7B8CA6' }}>حدد مبلغ الشحن</div>
                 <div className="flex items-center justify-center gap-5 mb-4">
@@ -136,7 +205,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
               </div>
 
               <button onClick={() => setStep('method')} disabled={amount < 100} className="w-full font-black flex items-center justify-center gap-2 active:scale-95 transition-all"
-                style={{ background: amount < 100 ? '#F0F4FF' : 'linear-gradient(135deg,#0066FF,#4D00FF)', color: amount < 100 ? '#94a3b8' : '#fff', padding: 18, borderRadius: 22, fontSize: 15, boxShadow: amount < 100 ? 'none' : '0 8px 32px rgba(0,102,255,0.35)', cursor: amount < 100 ? 'not-allowed' : 'pointer' }}>
+                style={{ background: amount < 100 ? '#F0F4FF' : 'linear-gradient(135deg,#0066FF,#4D00FF)', color: amount < 100 ? '#94a3b8' : '#fff', padding: 18, borderRadius: 22, fontSize: 15, boxShadow: amount < 100 ? 'none' : '0 8px 32px rgba(0,102,255,0.35)', cursor: amount < 100 ? 'not-allowed' : 'pointer', border: 'none' }}>
                 <Plus size={20} /> متابعة شحن {amount} ج.م
               </button>
             </>
@@ -163,7 +232,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                   <div style={{ background: '#7C3AED', borderRadius: 18, padding: 14, fontSize: 24, boxShadow: '0 4px 16px rgba(124,58,237,0.3)' }}>📱</div>
                   <div className="flex-1">
                     <div className="font-black" style={{ fontSize: 15, color: '#0A1628', marginBottom: 4 }}>إنستاباي</div>
-                    <div style={{ fontSize: 11, color: '#94a3b8' }}>تحويل عبر InstaPay</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>تحويل فوري عبر InstaPay</div>
                   </div>
                   <ArrowRight size={20} style={{ color: '#D0DCFF', transform: 'rotate(180deg)' }} />
                 </button>
@@ -247,15 +316,16 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 )}
               </div>
 
-              {/* زر الإرسال المباشر والذكي دون الحاجة لنسخ أكواد أو تأكيدها يدوياً */}
+              {/* زر الإرسال المباشر */}
               <button 
                 onClick={handleSubmitTopUp} 
                 disabled={loading}
                 className="w-full font-black flex items-center justify-center gap-2 active:scale-95 transition-all"
                 style={{
-                  background: method === 'instapay' ? 'linear-gradient(135deg,#00CC66,#00AA55)' : 'linear-gradient(135deg,#00CC66,#00AA55)',
+                  background: 'linear-gradient(135deg,#00CC66,#00AA55)',
                   color: '#fff', padding: 18, borderRadius: 22, fontSize: 15,
                   boxShadow: '0 8px 32px rgba(0,204,102,0.35)',
+                  border: 'none'
                 }}
               >
                 <Send size={18} /> لقد قمت بالتحويل، أرسل الطلب الآن ✅
@@ -279,10 +349,12 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 <span className="font-mono font-black text-sm text-slate-800 tracking-wider">{transactionId}</span>
               </div>
 
-              <p className="mb-6 font-bold" style={{ fontSize: 12, color: '#7B8CA6' }}>سيكون طلبك معلقاً ومحفوظاً في حسابك لحين اعتماد الأدمن ⏳</p>
+              <div className="mb-6 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold">
+                ✨ رصيدك في المحفظة يمنحك كاش باك تراكمي فوري يبدأ من ثاني ركنة!
+              </div>
 
               <button onClick={onClose} className="w-full font-black active:scale-95 transition-all"
-                style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', color: '#fff', padding: 18, borderRadius: 22, fontSize: 15, boxShadow: '0 8px 32px rgba(0,102,255,0.35)' }}>
+                style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', color: '#fff', padding: 18, borderRadius: 22, fontSize: 15, boxShadow: '0 8px 32px rgba(0,102,255,0.35)', border: 'none' }}>
                 العودة للرئيسية
               </button>
             </div>
