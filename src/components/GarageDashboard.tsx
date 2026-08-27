@@ -654,21 +654,28 @@ export default function GarageDashboard() {
     setConfirmPaymentMethod('cash');
   };
 
-  const handleConfirmPayment = async () => {
+    const handleConfirmPayment = async () => {
     if (!confirmSession || isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
     pausePolling(20000);
     try {
-      const sc = { ...confirmSession }; const pc = confirmPaymentMethod;
-      const sd = useStore.getState().sessions.find(s => s.id === sc.id);
-      const ia = sd?.source === 'app';
+      const sc = { ...confirmSession }; 
+      const pc = confirmPaymentMethod;
       setConfirmSession(null);
       setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
+
+      // 🚀 إرسال التكلفة الفعلية المحسوبة بدقة ليقوم الـ store بحسمها وخصم رصيد المحفظة الفعلي للعميل بضربة واحدة من السيرفر
       await endSession(sc.id, sc.cost, pc);
-      if (ia) await new Promise(r => setTimeout(r, 5000));
+      
+      await new Promise(r => setTimeout(r, 4000));
       await fetchGarageDailyStats();
       toast.success(`تم تحصيل ${sc.cost} ج.م ✅`);
-    } finally { setTimeout(() => { isEndingSessionRef.current = false; }, 2000); }
+    } catch (err) {
+      console.error("Payment Confirmation Error:", err);
+      toast.error("حدث خطأ أثناء تحصيل الفاتورة");
+    } finally { 
+      setTimeout(() => { isEndingSessionRef.current = false; }, 1000); 
+    }
   };
 
   const handleSaveSettings = () => {

@@ -139,7 +139,7 @@ const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
 const getMs = (value?: number) => { if (typeof value === 'number') return value; return 0; };
 
-// ===================== دوال الحساب المالي الموحدة =====================
+// ===================== دوال الحساب المالي الموحدة والذكية =====================
 
 /**
  * 🎁 التحقق من استحقاق الجلسة الأولى المجانية (حصراً للتطبيق وليس الإضافة اليدوية)
@@ -188,7 +188,7 @@ const calculateSessionPrice = (
 };
 
 /**
- * 🔄 حساب نسبة شريحة الكاش باك المستحقة بناءً على المجموع التراكمي
+ * 🔄 الحصول على نسبة شريحة الكاش باك المستحقة بناءً على المجموع التراكمي
  */
 const getCashbackPercentage = (totalAccumulatedAmount: number): number => {
   if (totalAccumulatedAmount >= 1000) return 0.10; // 10%
@@ -216,6 +216,7 @@ const calculateTierRefund = (
 
   const normalized = normalizePlate(carPlate);
 
+  // جمع إجمالي إنفاق العميل الفعلي السابق من المحفظة فقط
   const pastWalletTotal = allSessions
     .filter((s) => {
       if (s.status !== 'completed' || s.paymentMethod !== 'wallet') return false;
@@ -225,6 +226,7 @@ const calculateTierRefund = (
     })
     .reduce((sum, s) => sum + (s.totalPrice || 0), 0);
 
+  // حساب الشريحة بناءً على المبلغ التأهيلي (الإنفاق السابق + تكلفة الركنة الحالية)
   const qualifyingAmount = Math.max(currentSessionPrice, pastWalletTotal + currentSessionPrice);
   const percent = getCashbackPercentage(qualifyingAmount);
 
@@ -595,13 +597,13 @@ export const useStore = create<AppState>((set, get) => ({
 
   offers: [], 
   
-  // 🚀 دوال العروض والتفاوض المحفوظة للتوافق البرمجي التام ومنع أي شاشة بيضاء
+  // 🚀 دوال العروض والتفاوض المفتوحة بكفاءة للتوافق البرمجي التام دون أي خطأ شاشة بيضاء
   addOffer: (o) => {
     const newO: Offer = { ...o, id: uid(), timestamp: Date.now() };
     set((st) => ({ offers: [newO, ...st.offers] }));
     if (isSupabaseConfigured()) {
       supabase.from('offers').insert({ garage_id: o.garageId, user_id: o.userId, car_plate: o.carPlate, offered_price: o.offeredPrice, status: o.status }).select().single()
-        .then(({ data }) => { if (data) set((st) => ({ offers: mapSession(data) as any })); });
+        .then(({ data }) => { if (data) set((st) => ({ offers: st.offers.map((x) => x.id === newO.id ? mapOffer(data) : x) })); });
     }
   },
   updateOffer: (id, status, counterPrice) => {
@@ -647,7 +649,7 @@ export const useStore = create<AppState>((set, get) => ({
       todayStart.setHours(0, 0, 0, 0);
       const todayIso = todayStart.toISOString();
 
-      const [g, activeAndUnsettledRes, recentSettledRes, w, ic, msgs] = await Promise.all([
+      const [g, activeAndUnsettledRes, recentSettledRes, o, w, ic, msgs] = await Promise.all([
         supabase.from('garages').select('*').abortSignal(signal),
         supabase
           .from('sessions')
@@ -665,6 +667,7 @@ export const useStore = create<AppState>((set, get) => ({
           .order('created_at', { ascending: false })
           .limit(20)
           .abortSignal(signal),
+        supabase.from('offers').select('*').order('created_at', { ascending: false }).limit(20).abortSignal(signal), // ⚡ جلب العروض من السيرفر لضمان الأمان والتوافق
         supabase.from('wallet_topups').select('*').order('created_at', { ascending: false }).limit(10).abortSignal(signal),
         supabase.from('incoming_cars').select('*').order('created_at', { ascending: false }).abortSignal(signal),
         supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(10).abortSignal(signal),
@@ -771,6 +774,7 @@ export const useStore = create<AppState>((set, get) => ({
       set({
         garages,
         sessions: finalSessions,
+        offers: o.data ? o.data.map(mapOffer) : (get().offers ?? []), // ⚡
         walletTopUps: mergedTopUps,
         incomingCars: fetchedCars,
         messages: [...mergedMessages, ...localOnlyMessages],
@@ -1075,7 +1079,9 @@ export const useStore = create<AppState>((set, get) => ({
       set((st) => ({ sessions: st.sessions.map((s) => (s.id === id ? endedSession : s)) }));
       await get().adjustGarageSpots(session.garageId, +1);
 
+      // 🚀 =========================================================================
       // 🚀 تحديث رصيد المحفظة في Supabase وفي الذاكرة بالمبلغ الصافي لمرة واحدة فقط
+      // 🚀 =========================================================================
       if (isSupabaseConfigured() && isWalletPayment) {
         const targetPhone = session.customerPhone || get().currentUser?.phone;
         if (targetPhone) {
