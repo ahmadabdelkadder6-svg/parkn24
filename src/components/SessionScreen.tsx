@@ -101,8 +101,9 @@ export default function SessionScreen() {
     (g) => g.id === (activeSession?.garageId ?? lastCompletedSession?.garageId),
   );
 
-  // 🎁 التحقق مما إذا كانت هذه الجلسة هي الأولى المجانية للعميل
+  // 🎁 التحقق مما إذا كانت هذه الجلسة هي الأولى المجانية للعميل (أمان صارم: تُعطل فوراً للسيارات المضافة يدوياً)
   const isFirstFree = useMemo(() => {
+    if (activeSession?.source === 'manual') return false; // 🛑 أمان مغلق: العربيات اليدوي لا مجاني لها نهائياً
     if (activeSession?.isFirstFreeSession !== undefined) {
       return activeSession.isFirstFreeSession;
     }
@@ -172,7 +173,7 @@ export default function SessionScreen() {
     };
   }, [userPlate, userPhone, fetchAll]);
 
-  // عداد الثواني
+  // عداد الثواني المستمر
   useEffect(() => {
     if (!activeSession || activeStartMs <= 0) {
       setElapsed(0);
@@ -265,7 +266,7 @@ export default function SessionScreen() {
         <p className="text-slate-400 text-xs text-center mb-4">إذا بدأ السايس الجلسة ستظهر هنا تلقائياً</p>
         <button
           onClick={() => setScreen('list')}
-          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center gap-2 border-none"
+          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center gap-2 border-none cursor-pointer"
           style={{ color: '#ffffff', fontWeight: 900 }}
         >
           <ArrowRight size={16} /> <span style={{ color: '#ffffff', fontWeight: 900 }}>العودة للقائمة</span>
@@ -276,7 +277,7 @@ export default function SessionScreen() {
 
   const sessionRate = Number(activeSession.agreedPrice ?? garage?.basePrice ?? 0);
   
-  // 🎯 حساب التكلفة والساعات بدقة حسب نوع الجلسة (مجانية أول ساعة أو عادية)
+  // 🎯 حساب التكلفة والساعات بدقة
   const { cost: currentCost, freeHoursUsed, paidHours, totalHours: currentHours } = calculateCostWithFirstFree(
     elapsed,
     sessionRate,
@@ -428,11 +429,19 @@ export default function SessionScreen() {
         </p>
       </div>
 
-      <div className="w-full bg-blue-50 border border-blue-200 rounded-xl p-2.5 mb-4 text-center">
-        <p className="text-[10px] text-blue-700 font-bold">
-          💡 يمكنك اختيار الدفع نقداً أو من المحفظة للحصول على كاش باك عند إنهاء الجلسة
-        </p>
-      </div>
+      {activeSession.source === 'manual' ? (
+        <div className="w-full bg-amber-50 border border-amber-200 rounded-xl p-2.5 mb-4 text-center">
+          <p className="text-[10px] text-amber-700 font-bold">
+            ⚠️ ركنة مضافة يدوياً: الحساب عادي من أول ساعة وبدون كاش باك.
+          </p>
+        </div>
+      ) : (
+        <div className="w-full bg-blue-50 border border-blue-200 rounded-xl p-2.5 mb-4 text-center">
+          <p className="text-[10px] text-blue-700 font-bold">
+            💡 يمكنك اختيار الدفع نقداً أو من المحفظة للحصول على كاش باك عند إنهاء الجلسة
+          </p>
+        </div>
+      )}
 
       {/* زر إنهاء الجلسة */}
       <button
@@ -450,7 +459,7 @@ export default function SessionScreen() {
 
       <button
         onClick={() => setScreen('list')}
-        className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 py-3 rounded-2xl font-bold text-sm active:scale-95 transition-all border-none"
+        className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 py-3 rounded-2xl font-bold text-sm active:scale-95 transition-all border-none cursor-pointer"
       >
         العودة للقائمة
       </button>

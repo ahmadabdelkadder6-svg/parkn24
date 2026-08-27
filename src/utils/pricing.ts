@@ -57,7 +57,6 @@ export function calculateCostWithFirstFree(
 
 /**
  * ✅ دالة توافقية تراجعية (Wrapper) لتفادي أي خطأ في الملفات التي تستدعي الدالة القديمة
- * تقوم بتحويل حساب الساعتين القديم إلى "ساعة مجانية واحدة" بالمنطق الجديد تلقائياً
  */
 export function calculateCostWithLoyalty(
   elapsedSeconds: number,
@@ -72,19 +71,71 @@ export function calculateCostWithLoyalty(
 }
 
 /**
- * 🔄 حساب قيمة الاسترداد التراكمي (كاش باك المحفظة) بناءً على الشرائح المطلوبة:
- * - 100 إلى 199 ج.م 👈 3%
- * - 200 إلى 499 ج.م 👈 5%
- * - 500 إلى 999 ج.م 👈 7%
- * - 1000 ج.م فأكثر 👈 10%
- * - أقل من 100 ج.م لا يوجد استرداد
+ * 🔄 الحصول على نسبة شريحة الكاش باك المستحقة بناءً على المجموع التراكمي
  */
-export function calculateTierRefund(amount: number): number {
-  if (amount >= 1000) return Math.round((amount * 0.10) * 100) / 100;
-  if (amount >= 500) return Math.round((amount * 0.07) * 100) / 100;
-  if (amount >= 200) return Math.round((amount * 0.05) * 100) / 100;
-  if (amount >= 100) return Math.round((amount * 0.03) * 100) / 100;
+export function getCashbackPercentage(totalAccumulatedAmount: number): number {
+  if (totalAccumulatedAmount >= 1000) return 0.10; // 10%
+  if (totalAccumulatedAmount >= 500) return 0.07;  // 7%
+  if (totalAccumulatedAmount >= 200) return 0.05;  // 5%
+  if (totalAccumulatedAmount >= 100) return 0.03;  // 3%
   return 0;
+}
+
+/**
+ * 🔄 حساب قيمة الاسترداد التراكمي الفعلي للجلسة الحالية (كاش باك المحفظة)
+ * يدعم الاستدعاء الأحادي (لمطابقة الكود القديم) والتراكمي التجميعي اللحظي
+ */
+export function calculateTierRefund(
+  currentSessionPrice: number,
+  allSessions: any[] = [],
+  carPlate: string = '',
+  customerPhone: string = ''
+): number {
+  if (currentSessionPrice <= 0) return 0;
+
+  // إذا لم يتم تمرير الجلسات (Fallback)، يحسب بناءً على قيمة الفاتورة الحالية فقط
+  if (!allSessions || allSessions.length === 0) {
+    const percent = getCashbackPercentage(currentSessionPrice);
+    return Math.round((currentSessionPrice * percent) * 100) / 100;
+  }
+
+  const normalized = (carPlate || '').trim().toUpperCase();
+
+  // جمع إجمالي إنفاق العميل الفعلي السابق من المحفظة فقط
+  const pastWalletTotal = allSessions
+    .filter((s) => {
+      if (s.status !== 'completed' || s.paymentMethod !== 'wallet') return false;
+      const plateMatch = normalized && s.carPlate && s.carPlate.trim().toUpperCase() === normalized;
+      const phoneMatch = customerPhone && s.customerPhone === customerPhone;
+      return plateMatch || phoneMatch;
+    })
+    .reduce((sum, s) => sum + (s.totalPrice || 0), 0);
+
+  // حساب الشريحة بناءً على المبلغ التأهيلي (الإنفاق السابق + تكلفة الركنة الحالية)
+  const qualifyingAmount = Math.max(currentSessionPrice, pastWalletTotal + currentSessionPrice);
+  const percent = getCashbackPercentage(qualifyingAmount);
+
+  return Math.round((currentSessionPrice * percent) * 100) / 100;
+}
+
+/**
+ * 📊 حساب إجمالي الكاش باك التراكمي الذي استرده الحريف بنجاح في محفظته عبر التاريخ
+ */
+export function calculateUserTotalEarnedCashback(
+  allSessions: any[],
+  carPlate: string = '',
+  customerPhone: string = ''
+): number {
+  if (!allSessions || allSessions.length === 0) return 0;
+  const normalized = (carPlate || '').trim().toUpperCase();
+
+  return allSessions
+    .filter((s) => {
+      const plateMatch = normalized && s.carPlate && s.carPlate.trim().toUpperCase() === normalized;
+      const phoneMatch = customerPhone && s.customerPhone === customerPhone;
+      return (plateMatch || phoneMatch) && s.status === 'completed';
+    })
+    .reduce((sum, s) => sum + Number(s.refundAmount || 0), 0);
 }
 
 /**
