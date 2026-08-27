@@ -139,7 +139,7 @@ const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
 const getMs = (value?: number) => { if (typeof value === 'number') return value; return 0; };
 
-// ===================== دوال الحساب المالي الذكية =====================
+// ===================== دوال الحساب المالي الموحدة =====================
 
 /**
  * 🎁 التحقق من استحقاق الجلسة الأولى المجانية (حصراً للتطبيق وليس الإضافة اليدوية)
@@ -182,49 +182,49 @@ const calculateSessionPrice = (
     return { totalPrice, freeHours: 1, chargeableHours: extraHours };
   }
 
-  // الحساب العادي: كسر الساعة = ساعة كاملة
   const billedHours = Math.max(1, Math.ceil(durationHours));
   const totalPrice = billedHours * basePrice;
   return { totalPrice, freeHours: 0, chargeableHours: billedHours };
 };
 
 /**
- * 🔄 حساب شريحة الكاش باك بناءً على المبلغ (أو إجمالي الرصيد التراكمي المنفق من المحفظة)
- * 100 - 199 ج.م 👈 3%
- * 200 - 499 ج.م 👈 5%
- * 500 - 999 ج.م 👈 7%
- * 1000+ ج.م 👈 10%
+ * 🔄 حساب نسبة شريحة الكاش باك المستحقة بناءً على المجموع التراكمي
  */
 const getCashbackPercentage = (totalAccumulatedAmount: number): number => {
-  if (totalAccumulatedAmount >= 1000) return 0.10;
-  if (totalAccumulatedAmount >= 500) return 0.07;
-  if (totalAccumulatedAmount >= 200) return 0.05;
-  if (totalAccumulatedAmount >= 100) return 0.03;
+  if (totalAccumulatedAmount >= 1000) return 0.10; // 10%
+  if (totalAccumulatedAmount >= 500) return 0.07;  // 7%
+  if (totalAccumulatedAmount >= 200) return 0.05;  // 5%
+  if (totalAccumulatedAmount >= 100) return 0.03;  // 3%
   return 0;
 };
 
 /**
- * 🔄 حساب الكاش باك التراكمي الفعلي للركنة
- * يحسب بناءً على إجمالي ما أنفقه العميل سابقاً من المحفظة أو قيمة الركنة الحالية
+ * 🔄 حساب الكاش باك التراكمي الفعلي للجلسة الحالية
  */
 const calculateTierRefund = (
   currentSessionPrice: number,
   allSessions: ParkingSession[] = [],
-  carPlate = '',
-  customerPhone = ''
+  carPlate: string = '',
+  customerPhone: string = ''
 ): number => {
   if (currentSessionPrice <= 0) return 0;
 
-  // جمع إجمالي ما أنفقه العميل في ركنات المحفظة السابقة
+  if (!allSessions || allSessions.length === 0) {
+    const percent = getCashbackPercentage(currentSessionPrice);
+    return Math.round((currentSessionPrice * percent) * 100) / 100;
+  }
+
   const normalized = normalizePlate(carPlate);
+
   const pastWalletTotal = allSessions
     .filter((s) => {
-      const match = (normalized && samePlate(s.carPlate, normalized)) || (customerPhone && s.customerPhone === customerPhone);
-      return match && s.status === 'completed' && s.paymentMethod === 'wallet';
+      if (s.status !== 'completed' || s.paymentMethod !== 'wallet') return false;
+      const plateMatch = normalized && s.carPlate && normalizePlate(s.carPlate) === normalized;
+      const phoneMatch = customerPhone && s.customerPhone === customerPhone;
+      return plateMatch || phoneMatch;
     })
     .reduce((sum, s) => sum + (s.totalPrice || 0), 0);
 
-  // الشريحة التراكمية = أيهما أكبر: إنفاقه التراكمي السابق + الحالي، أو الحالي وحده
   const qualifyingAmount = Math.max(currentSessionPrice, pastWalletTotal + currentSessionPrice);
   const percent = getCashbackPercentage(qualifyingAmount);
 
@@ -232,18 +232,21 @@ const calculateTierRefund = (
 };
 
 /**
- * 📊 حساب إجمالي الكاش باك التراكمي المسترد للعميل عبر كل ركناته
+ * 📊 حساب إجمالي الكاش باك التراكمي المسترد للحريف عبر محفظته
  */
 const calculateUserTotalEarnedCashback = (
   allSessions: ParkingSession[],
-  carPlate = '',
-  customerPhone = ''
+  carPlate: string = '',
+  customerPhone: string = ''
 ): number => {
+  if (!allSessions || allSessions.length === 0) return 0;
   const normalized = normalizePlate(carPlate);
+
   return allSessions
     .filter((s) => {
-      const match = (normalized && samePlate(s.carPlate, normalized)) || (customerPhone && s.customerPhone === customerPhone);
-      return match && s.status === 'completed';
+      const plateMatch = normalized && s.carPlate && normalizePlate(s.carPlate) === normalized;
+      const phoneMatch = customerPhone && s.customerPhone === customerPhone;
+      return (plateMatch || phoneMatch) && s.status === 'completed';
     })
     .reduce((sum, s) => sum + Number(s.refundAmount || 0), 0);
 };
@@ -363,6 +366,13 @@ const mapSession = (r: any): ParkingSession => {
   };
 };
 
+const mapOffer = (r: any): Offer => ({
+  id: r.id, garageId: r.garage_id, userId: r.user_id, carPlate: r.car_plate,
+  offeredPrice: Number(r.offered_price), status: r.status,
+  counterPrice: r.counter_price != null ? Number(r.counter_price) : undefined,
+  timestamp: new Date(r.created_at).getTime(),
+});
+
 const mapTopUp = (r: any): WalletTopUp => ({
   id: r.id, userId: r.user_id, userName: r.user_name, userPhone: r.user_phone,
   amount: Number(r.amount), transactionId: r.transaction_id, carPlate: r.car_plate,
@@ -389,6 +399,7 @@ let updateGarageTimeout: ReturnType<typeof setTimeout> | null = null;
 const pendingGarageUpdates: Map<string, Record<string, unknown>> = new Map();
 const sessionStartLocks = new Set<string>();
 const sessionEndLocks = new Set<string>();
+let walletDeductedAt = 0;
 const deletedSessionIds = new Set<string>();
 const locallyEndedSessions = new Map<string, ParkingSession>();
 
@@ -444,6 +455,9 @@ interface AppState {
   unconfirmRevenue: (sessionId: string) => Promise<void>;
   assignSessionToValet: (sessionId: string, valetName: string) => Promise<void>;
   offers: Offer[];
+  addOffer: (o: Omit<Offer, 'id' | 'timestamp'>) => void;
+  updateOffer: (id: string, status: Offer['status'], counterPrice?: number) => void;
+  cancelOffer: (id: string) => void;
   walletTopUps: WalletTopUp[];
   addWalletTopUp: (w: Omit<WalletTopUp, 'id' | 'timestamp' | 'status'>) => void;
   approveTopUp: (id: string) => Promise<void>;
@@ -494,6 +508,7 @@ export const useStore = create<AppState>((set, get) => ({
     const nw = Math.max(0, user.wallet - amount);
     const updated = { ...user, wallet: nw };
     set({ currentUser: updated }); safeSetStorage('currentUser', updated);
+    walletDeductedAt = Date.now();
     if (isSupabaseConfigured()) {
       supabase.from('users').update({ wallet: nw }).eq('phone', user.phone).then(({ error }) => { if (error) console.error('❌', error); });
     }
@@ -504,6 +519,7 @@ export const useStore = create<AppState>((set, get) => ({
     const nw = user.wallet + amount;
     const updated = { ...user, wallet: nw };
     set({ currentUser: updated }); safeSetStorage('currentUser', updated);
+    walletDeductedAt = Date.now();
     if (isSupabaseConfigured()) {
       supabase.from('users').update({ wallet: nw }).eq('phone', user.phone).then(({ error }) => { 
         if (error) console.error('❌', error); 
@@ -577,7 +593,31 @@ export const useStore = create<AppState>((set, get) => ({
     });
   },
 
-  offers: [], walletTopUps: [], incomingCars: [], messages: [],
+  offers: [], 
+  
+  // 🚀 دوال العروض والتفاوض المحفوظة للتوافق البرمجي التام ومنع أي شاشة بيضاء
+  addOffer: (o) => {
+    const newO: Offer = { ...o, id: uid(), timestamp: Date.now() };
+    set((st) => ({ offers: [newO, ...st.offers] }));
+    if (isSupabaseConfigured()) {
+      supabase.from('offers').insert({ garage_id: o.garageId, user_id: o.userId, car_plate: o.carPlate, offered_price: o.offeredPrice, status: o.status }).select().single()
+        .then(({ data }) => { if (data) set((st) => ({ offers: mapSession(data) as any })); });
+    }
+  },
+  updateOffer: (id, status, counterPrice) => {
+    set((st) => ({ offers: st.offers.map((o) => (o.id === id ? { ...o, status, counterPrice } : o)) }));
+    if (isSupabaseConfigured()) {
+      const u: Record<string, unknown> = { status };
+      if (counterPrice !== undefined) u.counter_price = counterPrice;
+      supabase.from('offers').update(u).eq('id', id);
+    }
+  },
+  cancelOffer: (id) => {
+    set((st) => ({ offers: st.offers.filter((o) => o.id !== id) }));
+    if (isSupabaseConfigured()) supabase.from('offers').delete().eq('id', id);
+  },
+
+  walletTopUps: [], messages: [], incomingCars: [],
 
   logout: () => {
     set({ currentUser: null, currentGarageId: null, selectedGarageId: null, view: 'user', screen: 'splash', acknowledgedSessionIds: new Set(), historySessions: [] });
@@ -886,7 +926,7 @@ export const useStore = create<AppState>((set, get) => ({
 
       const addedByValue = resolveAddedBy((s as any).addedBy);
 
-      // 🎁 العربيات المضافة يدوي من السايس (manual) لا تطبق عليها الركنة المجانية أبداً
+      // 🎁 [المنطق الجديد]: العربيات المضافة يدوي من السايس (manual) لا تطبق عليها الركنة المجانية أبداً
       const currentSessions = get().sessions;
       const customerPhone = (s as any).customerPhone;
       const isFirstFree = s.source === 'manual' 
@@ -1035,9 +1075,7 @@ export const useStore = create<AppState>((set, get) => ({
       set((st) => ({ sessions: st.sessions.map((s) => (s.id === id ? endedSession : s)) }));
       await get().adjustGarageSpots(session.garageId, +1);
 
-      // 🚀 =========================================================================
       // 🚀 تحديث رصيد المحفظة في Supabase وفي الذاكرة بالمبلغ الصافي لمرة واحدة فقط
-      // 🚀 =========================================================================
       if (isSupabaseConfigured() && isWalletPayment) {
         const targetPhone = session.customerPhone || get().currentUser?.phone;
         if (targetPhone) {
@@ -1311,14 +1349,14 @@ export const useStore = create<AppState>((set, get) => ({
     const now = Date.now();
     set((st) => ({ messages: (st.messages ?? []).map((msg) => (msg.id === id ? { ...msg, reply, status: 'replied' as const, repliedAt: now } : msg)) }));
     if (!isSupabaseConfigured()) return;
-    const { error } = await supabase.from('messages').update({ reply, status: 'replied', replied_at: new Date(now).toISOString() }).eq('id', id);
+    const { error = null } = await supabase.from('messages').update({ reply, status: 'replied', replied_at: new Date(now).toISOString() }).eq('id', id);
     if (error) console.error('❌', error);
   },
 
   closeMessage: async (id) => {
     set((st) => ({ messages: (st.messages ?? []).map((msg) => (msg.id === id ? { ...msg, status: 'closed' as const } : msg)) }));
     if (!isSupabaseConfigured()) return;
-    const { error } = await supabase.from('messages').update({ status: 'closed' }).eq('id', id);
+    const { error = null } = await supabase.from('messages').update({ status: 'closed' }).eq('id', id);
     if (error) console.error('❌', error);
   },
 }));

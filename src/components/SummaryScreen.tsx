@@ -216,8 +216,8 @@ export default function SummaryScreen() {
     if (isFirstFree) return 0;
     if (referenceSession?.source === 'manual') return 0; 
     if (paymentMethod !== 'wallet') return 0; 
-    return calculateTierRefund(basePrice);
-  }, [isFirstFree, paymentMethod, basePrice, referenceSession]);
+    return calculateTierRefund(basePrice, sessions, currentUser?.carPlate, currentUser?.phone);
+  }, [isFirstFree, paymentMethod, basePrice, referenceSession, sessions, currentUser]);
 
   // 3. السعر النهائي المطلوب دفعه فعلياً حسب طريقة الدفع
   const totalPrice = useMemo(() => {
@@ -287,7 +287,6 @@ export default function SummaryScreen() {
     if (paymentMethod === 'wallet') {
       if (!canPayWallet) { toast.error('رصيد المحفظة غير كافٍ'); return; }
       
-      // 🚀 تم إلغاء deductWallet المحلية هنا منعاً باتاً للخصم المزدوج! الخصم يتم الآن بأمان تام داخل دالة endSession بالـ store
       const success = await safeEndSession('wallet', totalPrice);
       if (success) {
         toast.success('تم الخصم من المحفظة بنجاح! ✅');
@@ -375,7 +374,7 @@ export default function SummaryScreen() {
           <p className="text-xs text-slate-500 font-bold mb-2">قيّم تجربتك</p>
           <div className="flex justify-center gap-2">
             {[1, 2, 3, 4, 5].map((s) => (
-              <button key={s} onClick={() => setRating(s)} className="transition-all active:scale-90 bg-transparent border-none">
+              <button key={s} onClick={() => setRating(s)} className="transition-all active:scale-90 border-none bg-transparent cursor-pointer">
                 <Star
                   size={30}
                   className={s <= rating ? 'text-amber-400' : 'text-slate-200'}
@@ -689,4 +688,4 @@ export default function SummaryScreen() {
       )}
     </motion.div>
   );
-}
+} هل محتاج تعديل في الدالة دي كمان علشان التراكمي</code>
