@@ -139,10 +139,10 @@ const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
 const getMs = (value?: number) => { if (typeof value === 'number') return value; return 0; };
 
-// ===================== دوال الحساب المالي الموحدة =====================
+// ===================== دوال الحساب المالي الذكية =====================
 
 /**
- * 🎁 التحقق من استحقاق الجلسة الأولى المجانية (حصراً لعمليات التطبيق فقط)
+ * 🎁 التحقق من استحقاق الجلسة الأولى المجانية (حصراً للتطبيق وليس الإضافة اليدوية)
  */
 const isEligibleForFreeFirstSession = (
   sessions: ParkingSession[],
@@ -189,24 +189,71 @@ const calculateSessionPrice = (
 };
 
 /**
- * 🔄 حساب قيمة الكاش باك التراكمي لشرائح المحفظة
+ * 🔄 حساب شريحة الكاش باك بناءً على المبلغ (أو إجمالي الرصيد التراكمي المنفق من المحفظة)
  * 100 - 199 ج.م 👈 3%
  * 200 - 499 ج.م 👈 5%
  * 500 - 999 ج.م 👈 7%
  * 1000+ ج.م 👈 10%
  */
-const calculateTierRefund = (amount: number): number => {
-  if (amount >= 1000) return Math.round((amount * 0.10) * 100) / 100;
-  if (amount >= 500) return Math.round((amount * 0.07) * 100) / 100;
-  if (amount >= 200) return Math.round((amount * 0.05) * 100) / 100;
-  if (amount >= 100) return Math.round((amount * 0.03) * 100) / 100;
+const getCashbackPercentage = (totalAccumulatedAmount: number): number => {
+  if (totalAccumulatedAmount >= 1000) return 0.10;
+  if (totalAccumulatedAmount >= 500) return 0.07;
+  if (totalAccumulatedAmount >= 200) return 0.05;
+  if (totalAccumulatedAmount >= 100) return 0.03;
   return 0;
+};
+
+/**
+ * 🔄 حساب الكاش باك التراكمي الفعلي للركنة
+ * يحسب بناءً على إجمالي ما أنفقه العميل سابقاً من المحفظة أو قيمة الركنة الحالية
+ */
+const calculateTierRefund = (
+  currentSessionPrice: number,
+  allSessions: ParkingSession[] = [],
+  carPlate = '',
+  customerPhone = ''
+): number => {
+  if (currentSessionPrice <= 0) return 0;
+
+  // جمع إجمالي ما أنفقه العميل في ركنات المحفظة السابقة
+  const normalized = normalizePlate(carPlate);
+  const pastWalletTotal = allSessions
+    .filter((s) => {
+      const match = (normalized && samePlate(s.carPlate, normalized)) || (customerPhone && s.customerPhone === customerPhone);
+      return match && s.status === 'completed' && s.paymentMethod === 'wallet';
+    })
+    .reduce((sum, s) => sum + (s.totalPrice || 0), 0);
+
+  // الشريحة التراكمية = أيهما أكبر: إنفاقه التراكمي السابق + الحالي، أو الحالي وحده
+  const qualifyingAmount = Math.max(currentSessionPrice, pastWalletTotal + currentSessionPrice);
+  const percent = getCashbackPercentage(qualifyingAmount);
+
+  return Math.round((currentSessionPrice * percent) * 100) / 100;
+};
+
+/**
+ * 📊 حساب إجمالي الكاش باك التراكمي المسترد للعميل عبر كل ركناته
+ */
+const calculateUserTotalEarnedCashback = (
+  allSessions: ParkingSession[],
+  carPlate = '',
+  customerPhone = ''
+): number => {
+  const normalized = normalizePlate(carPlate);
+  return allSessions
+    .filter((s) => {
+      const match = (normalized && samePlate(s.carPlate, normalized)) || (customerPhone && s.customerPhone === customerPhone);
+      return match && s.status === 'completed';
+    })
+    .reduce((sum, s) => sum + Number(s.refundAmount || 0), 0);
 };
 
 export {
   isEligibleForFreeFirstSession,
   calculateSessionPrice,
-  calculateTierRefund
+  calculateTierRefund,
+  getCashbackPercentage,
+  calculateUserTotalEarnedCashback
 };
 
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
@@ -342,7 +389,6 @@ let updateGarageTimeout: ReturnType<typeof setTimeout> | null = null;
 const pendingGarageUpdates: Map<string, Record<string, unknown>> = new Map();
 const sessionStartLocks = new Set<string>();
 const sessionEndLocks = new Set<string>();
-let walletDeductedAt = 0;
 const deletedSessionIds = new Set<string>();
 const locallyEndedSessions = new Map<string, ParkingSession>();
 
@@ -430,13 +476,13 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const { data: existingUser } = await supabase.from('users').select('wallet, name, phone, car_plate').eq('phone', u.phone).single();
       if (existingUser) {
-        const updated = { name: existingUser.name || u.name, phone: existingUser.phone || u.phone, carPlate: existingUser.car_plate || u.carPlate, wallet: Number(existingUser.wallet) };
+        const updated = { name: existingUser.name || u.name, phone: existingUser.phone || u.phone, carPlate: existingUser.car_plate || u.carPlate, wallet: Number(existingUser.wallet ?? 0) };
         set({ currentUser: updated }); safeSetStorage('currentUser', updated);
         await supabase.from('users').update({ name: u.name, car_plate: u.carPlate }).eq('phone', u.phone);
       } else {
         const { data: newUser } = await supabase.from('users').insert({ name: u.name, phone: u.phone, car_plate: u.carPlate, wallet: u.wallet ?? 0 }).select().single();
         if (newUser) {
-          const updated = { name: newUser.name, phone: newUser.phone, carPlate: newUser.car_plate, wallet: Number(newUser.wallet) };
+          const updated = { name: newUser.name, phone: newUser.phone, carPlate: newUser.car_plate, wallet: Number(newUser.wallet ?? 0) };
           set({ currentUser: updated }); safeSetStorage('currentUser', updated);
         }
       }
@@ -448,7 +494,6 @@ export const useStore = create<AppState>((set, get) => ({
     const nw = Math.max(0, user.wallet - amount);
     const updated = { ...user, wallet: nw };
     set({ currentUser: updated }); safeSetStorage('currentUser', updated);
-    walletDeductedAt = Date.now();
     if (isSupabaseConfigured()) {
       supabase.from('users').update({ wallet: nw }).eq('phone', user.phone).then(({ error }) => { if (error) console.error('❌', error); });
     }
@@ -459,7 +504,6 @@ export const useStore = create<AppState>((set, get) => ({
     const nw = user.wallet + amount;
     const updated = { ...user, wallet: nw };
     set({ currentUser: updated }); safeSetStorage('currentUser', updated);
-    walletDeductedAt = Date.now();
     if (isSupabaseConfigured()) {
       supabase.from('users').update({ wallet: nw }).eq('phone', user.phone).then(({ error }) => { 
         if (error) console.error('❌', error); 
@@ -692,7 +736,7 @@ export const useStore = create<AppState>((set, get) => ({
         messages: [...mergedMessages, ...localOnlyMessages],
       });
 
-      // 🚀 جلب وتحديث رصيد المحفظة الفعلي من السيرفر مباشرة
+      // 🚀 تحديث رصيد المحفظة الفعلي للعميل من جدول users في Supabase
       const user = get().currentUser;
       if (user?.phone) {
         try {
@@ -940,7 +984,7 @@ export const useStore = create<AppState>((set, get) => ({
 
       // 🎁 فحص نوع الجلسة وتطبيق القواعد الصارمة
       if (session.source === 'manual') {
-        // ✋ 1. إضافة يدوية من السايس: لا ركنة مجانية ولا كاش باك إطلاقاً
+        // ✋ 1. إضافة يدوية من السايس: لا ركنة مجانية ولا كاش باك إطلاقاً (حساب عادي كسر الساعة بساعة)
         const { totalPrice: calculatedPrice } = calculateSessionPrice(durationMs, rate, false);
         finalPrice = calculatedPrice;
         refundAmount = 0;
@@ -960,7 +1004,8 @@ export const useStore = create<AppState>((set, get) => ({
 
         // 💳 كاش باك المحفظة التراكمي: يطبق فقط للدفع بالمحفظة وعبر التطبيق
         if (isWalletPayment && finalPrice > 0) {
-          refundAmount = calculateTierRefund(finalPrice);
+          const allSessions = get().sessions;
+          refundAmount = calculateTierRefund(finalPrice, allSessions, session.carPlate, session.customerPhone);
           if (refundAmount > 0) {
             finalPrice = Math.max(0, finalPrice - refundAmount);
           }
@@ -1019,7 +1064,6 @@ export const useStore = create<AppState>((set, get) => ({
                 const updated = { ...cu, wallet: newWallet };
                 set({ currentUser: updated });
                 safeSetStorage('currentUser', updated);
-                walletDeductedAt = Date.now();
               }
             }
           } catch (walletErr) {

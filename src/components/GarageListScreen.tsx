@@ -20,7 +20,14 @@ import {
   Gift,
   Coins,
 } from 'lucide-react';
-import { useStore, Garage, ParkingSession, IncomingCar, isEligibleForFreeFirstSession } from '../store';
+import { 
+  useStore, 
+  Garage, 
+  ParkingSession, 
+  IncomingCar, 
+  isEligibleForFreeFirstSession,
+  calculateUserTotalEarnedCashback // 🆕 استيراد دالة حساب الكاش باك التراكمي المسترد
+} from '../store';
 import {
   calculateDistance,
   distanceToMinutes,
@@ -72,7 +79,6 @@ export default function GarageListScreen() {
     currentUser,
     sessions,
     incomingCars,
-    offers,
     addIncomingCar,
     fetchAll,
     acknowledgedSessionIds,
@@ -339,11 +345,6 @@ export default function GarageListScreen() {
       return;
     }
 
-    if (offers.some((o) => o.userId === currentUser.phone && o.status === 'pending')) {
-      toast.error('لديك عرض معلق بالفعل');
-      return;
-    }
-
     if (garage.availableSpots <= 0) {
       toast.error('لا توجد أماكن متاحة حالياً');
       return;
@@ -397,7 +398,7 @@ export default function GarageListScreen() {
           />
         </div>
 
-        {/* 💳 بطاقة المحفظة الذكية المدمجة والفاخرة */}
+        {/* 💳 بطاقة المحفظة الذكية المدمجة والفاخرة مع عداد الكاش باك التراكمي الفعلي */}
         <div
           style={{
             background: 'linear-gradient(135deg, #0055FF 0%, #3B00E3 50%, #8A00FF 100%)',
@@ -499,36 +500,45 @@ export default function GarageListScreen() {
             </div>
           </div>
 
-          {/* 🚗 رقم لوحة السيارة */}
-          <div className="mt-3 flex justify-end relative z-10">
+          {/* 🚗 شريط الكاش باك التراكمي ورقم اللوحة المعدنية */}
+          <div className="mt-3 pt-2.5 border-t border-white/15 flex justify-between items-center relative z-10">
+            {/* 🌟 عداد الكاش باك التراكمي المسترد للعميل */}
+            {(() => {
+              const totalCashback = calculateUserTotalEarnedCashback(sessions, currentUser?.carPlate, currentUser?.phone);
+              return (
+                <div className="flex items-center gap-1.5 bg-black/25 backdrop-blur-md px-2.5 py-1 rounded-xl border border-white/20">
+                  <Coins size={13} className="text-amber-300 animate-pulse" />
+                  <span className="text-[10px] font-black text-amber-200">
+                    كاش باك مسترد: <span className="font-mono text-white text-xs">{totalCashback.toFixed(0)}</span> ج.م
+                  </span>
+                </div>
+              );
+            })()}
+
+            {/* رقم لوحة السيارة */}
             <div
               style={{
                 background: '#ffffff',
-                border: '2px solid #1E293B', 
+                border: '1.5px solid #1E293B',
                 borderRadius: 8,
-                boxShadow: '0 4px 12px rgba(0,0,0,0.35), inset 0 1px 2px rgba(255,255,255,0.8)',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
-                minWidth: '110px',
+                minWidth: '95px',
               }}
             >
               <div 
-                className="flex items-center justify-between px-2"
-                style={{ height: '6px', background: 'linear-gradient(90deg, #0066FF, #0055DD)' }}
+                className="flex items-center justify-between px-1.5"
+                style={{ height: '5px', background: 'linear-gradient(90deg, #0066FF, #0055DD)' }}
               >
-                <span style={{ fontSize: '4px', color: '#fff', fontWeight: 900 }}>EGYPT</span>
-                <span style={{ fontSize: '4px', color: '#fff', fontWeight: 900 }}>مصر</span>
+                <span style={{ fontSize: '3px', color: '#fff', fontWeight: 900 }}>EGYPT</span>
+                <span style={{ fontSize: '3px', color: '#fff', fontWeight: 900 }}>مصر</span>
               </div>
               
               <div 
-                className="py-1 px-2.5 text-center font-black flex items-center justify-center gap-1"
-                style={{ 
-                  color: '#0F172A', 
-                  fontSize: '13px', 
-                  letterSpacing: '1px',
-                  textShadow: '0.5px 0.5px 0px rgba(0,0,0,0.1)'
-                }}
+                className="py-0.5 px-2 text-center font-black flex items-center justify-center gap-1"
+                style={{ color: '#0F172A', fontSize: '11px', letterSpacing: '0.5px' }}
               >
                 <span>🇪🇬</span>
                 <span className="font-mono">{currentUser?.carPlate || '---'}</span>
@@ -648,7 +658,7 @@ export default function GarageListScreen() {
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             onClick={() => setShowTopUp(true)}
-            className="w-full mb-3 flex items-center gap-2.5 text-right active:scale-[0.98] transition-all overflow-hidden relative"
+            className="w-full mb-3 flex items-center gap-2.5 text-right active:scale-[0.98] transition-all overflow-hidden relative border-none cursor-pointer"
             style={{
               background: 'linear-gradient(120deg, #FFD700 0%, #FFA500 55%, #FF8C00 100%)',
               borderRadius: 14,
@@ -723,7 +733,7 @@ export default function GarageListScreen() {
               setSelectedGarageId(activeSession.garageId);
               setScreen('session');
             }}
-            className="w-full mb-3 flex items-center justify-between active:scale-[0.98] transition-all text-right"
+            className="w-full mb-3 flex items-center justify-between active:scale-[0.98] transition-all text-right border-none cursor-pointer"
             style={{
               background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)',
               borderRadius: 20,
@@ -760,7 +770,7 @@ export default function GarageListScreen() {
               setSelectedGarageId(myIncomingCar.garageId);
               setScreen('navigation');
             }}
-            className="w-full mb-3 flex items-center justify-between active:scale-[0.98] transition-all text-right"
+            className="w-full mb-3 flex items-center justify-between active:scale-[0.98] transition-all text-right border-none cursor-pointer"
             style={{
               background: 'linear-gradient(135deg, #0099DD 0%, #0077BB 100%)',
               borderRadius: 20,
@@ -812,7 +822,7 @@ export default function GarageListScreen() {
             {search && (
               <button
                 onClick={() => setSearch('')}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 bg-transparent border-none cursor-pointer"
               >
                 <X size={16} />
               </button>
@@ -822,7 +832,7 @@ export default function GarageListScreen() {
           <button
             onClick={getUserLocation}
             disabled={locationLoading}
-            className="active:scale-95 transition-all flex items-center justify-center"
+            className="active:scale-95 transition-all flex items-center justify-center border-none cursor-pointer"
             style={{
               background: locationLoading ? '#E2E8F0' : '#0066FF',
               color: locationLoading ? '#94a3b8' : '#fff',
@@ -837,7 +847,7 @@ export default function GarageListScreen() {
 
           <button
             onClick={() => setShowNearbyOnly(!showNearbyOnly)}
-            className="font-black text-xs active:scale-95 transition-all whitespace-nowrap flex items-center gap-1"
+            className="font-black text-xs active:scale-95 transition-all whitespace-nowrap flex items-center gap-1 cursor-pointer"
             style={{
               background: showNearbyOnly ? '#0066FF' : '#F0F4FF',
               color: showNearbyOnly ? '#fff' : '#64748b',
@@ -859,7 +869,7 @@ export default function GarageListScreen() {
           {hasCompletedSession && (
             <button
               onClick={() => setScreen('lastSession')}
-              className="flex items-center gap-2 active:scale-[0.97] transition-all text-right"
+              className="flex items-center gap-2 active:scale-[0.97] transition-all text-right border-none cursor-pointer"
               style={{
                 background: '#ffffff',
                 border: '1.5px solid #D0DCFF',
@@ -882,7 +892,7 @@ export default function GarageListScreen() {
 
           <button
             onClick={() => setScreen('chat')}
-            className={`flex items-center gap-2 active:scale-[0.97] transition-all text-right ${
+            className={`flex items-center gap-2 active:scale-[0.97] transition-all text-right border-none cursor-pointer ${
               !hasCompletedSession ? 'col-span-2' : ''
             }`}
             style={{
@@ -1198,7 +1208,7 @@ function GarageCard({
           e.stopPropagation();
           if (!isFull && !disabled) onSelect();
         }}
-        className="w-full font-black flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
+        className="w-full font-black flex items-center justify-center gap-2 active:scale-[0.97] transition-all border-none cursor-pointer"
         style={{
           background: btnBg,
           color: isFull ? '#94a3b8' : '#ffffff',
