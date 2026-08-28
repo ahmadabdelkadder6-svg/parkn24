@@ -250,11 +250,9 @@ export default function GarageDashboard() {
     });
   }, [garageSessions]);
 
-  // 🚀 فلترة الجلسات النشطة لمنع التداخل بين السياس وحماية حسابات المعطلين
   const valetActiveSessions = useMemo(() => {
     if (!isValet) return activeSessions;
 
-    // 🔒 قفل الأمان: إذا كان السايس معطلاً من الإدارة، احجب عنه كل شيء فوراً
     const isActive =
       valetNumber === '1' ? garage?.valet1Active :
       valetNumber === '2' ? garage?.valet2Active :
@@ -422,7 +420,6 @@ export default function GarageDashboard() {
 
   useEffect(() => { return () => { try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }; }, []);
 
-  // 🎁 [منطق الهدية المعدل]: حساب العائد الفعلي مع مراعاة خصم الساعة المجانية للمستخدمين المؤهلين
   const getSessionRevenue = useCallback((s: any) => {
     if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
@@ -430,7 +427,7 @@ export default function GarageDashboard() {
       const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
       
       if (s.isFirstFreeSession === true) {
-        const freeSeconds = Math.min(elSeconds, 3600); // ساعة واحدة مجاناً (3600 ثانية) كحد أقصى
+        const freeSeconds = Math.min(elSeconds, 3600);
         const billableSeconds = Math.max(0, elSeconds - freeSeconds);
         return calculateCost(billableSeconds, r);
       }
@@ -454,7 +451,6 @@ export default function GarageDashboard() {
     return Math.round((rev - comm) * 100) / 100;
   }, [getSessionRevenue, getSessionCommission]);
 
-  // 🎁 [منطق الهدية المعدل]: حساب تكلفة الجلسة النشطة أثناء ركنها بالساحة
   const getActiveCost = useCallback((s: any) => {
     const st = toMs(s.startTime);
     const el = st > 0 ? Math.max(0, Math.floor((Date.now() - st) / 1000)) : 0;
@@ -469,7 +465,6 @@ export default function GarageDashboard() {
     return calculateCost(el, r);
   }, [garage?.basePrice]);
 
-  // 🚀 الحصيلة المفلترة للعمليات المكتملة
   const filteredCompleted = useMemo(() => {
     if (isValet) {
       const isActive =
@@ -668,18 +663,16 @@ export default function GarageDashboard() {
       const sd = useStore.getState().sessions.find(s => s.id === sc.id);
       const ia = sd?.source === 'app';
       
-      // 🎁 [منطق الهدية المعدل]: حساب الدقائق المجانية وتمريرها للسيرفر عند موافقة السايس على تحصيل السداد
       let freeMinutesApplied = 0;
       if (sd?.isFirstFreeSession === true) {
         const elapsedMs = Date.now() - toMs(sd.startTime);
-        const freeMs = Math.min(elapsedMs, 60 * 60 * 1000); // 60 دقيقة مجاناً كحد أقصى
+        const freeMs = Math.min(elapsedMs, 60 * 60 * 1000);
         freeMinutesApplied = Math.floor(freeMs / 60000);
       }
 
       setConfirmSession(null);
       setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
       
-      // إرسال الجلسة للإنهاء مع تمرير الدقائق المجانية كمعامل رابع
       await endSession(sc.id, sc.cost, pc, freeMinutesApplied);
       if (ia) await new Promise(r => setTimeout(r, 5000));
       await fetchGarageDailyStats();
@@ -853,7 +846,7 @@ export default function GarageDashboard() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="text-center" style={{ background: '#fff', borderRadius: 16, padding: 12, border: '1px solid #E0EAFF' }}><div style={{ fontSize: 11, color: '#7B8CA6' }}>المدة</div><div className="font-black font-mono" style={{ fontSize: 16 }}>{confirmSession.minutes} دقيقة</div></div>
-                <div className="text-center" style={{ background: '#fff', borderRadius: 16, padding: 12, border: '1px solid #E0EAFF' }}><div style={{ fontSize: 11, color: '#7B8CA6' }}>المستحق</div><div className="font-black font-mono" style={{ fontSize: 24, color: '#00AA44' }}>{confirmSession.cost > 0 ? confirmSession.cost : '—'}</div><div style={{ fontSize: 10, color: '#94a3b8' }}>ج.م</div></div>
+                <div className="text-center" style={{ background: '#fff', borderRadius: 16, padding: 12, border: '1px solid #E0EAFF' }}><div style={{ fontSize: 11, color: '#7B8CA6' }}>المستحق</div><div className="font-black font-mono" style={{ fontSize: 24, color: '#00AA44' }}>{confirmSession.cost > 0 ? confirmSession.cost : '0'}</div><div style={{ fontSize: 10, color: '#94a3b8' }}>ج.م</div></div>
               </div>
               {isOwner && confirmSession.source === 'app' && confirmSession.cost > 0 && (
                 <div className="mt-3 flex items-center justify-between" style={{ background: '#FFF8F0', borderRadius: 14, padding: '8px 12px', border: '1px solid #FFD180' }}>
@@ -1019,14 +1012,13 @@ export default function GarageDashboard() {
                   const st = toMs(s.startTime); const el = st > 0 ? Math.max(0, Math.floor((Date.now() - st) / 1000)) : 0;
                   const mins = Math.floor(el / 60);
 
-                  // 🎁 [منطق الهدية التفاعلي]: حساب وعزل الساعة المجانية في عرض الساعات على السايس
                   const isFreeApplied = s.isFirstFreeSession === true;
                   const freeSeconds = isFreeApplied ? Math.min(el, 3600) : 0;
                   const billableSeconds = Math.max(0, el - freeSeconds);
                   const hrs = isFreeApplied ? calculateFullHours(billableSeconds) : calculateFullHours(el);
 
                   const rate = Number(s.agreedPrice ?? garage.basePrice); 
-                  const cost = getActiveCost(s); // جلب التكلفة الفعلية بعد الخصم
+                  const cost = getActiveCost(s);
                   const isM = s.source === 'manual'; const un = undoableSessions.find(u => u.sessionId === s.id || u.localId === s.id);
                   return (
                     <div key={s.id} style={{ background: isM ? '#FFF8F0' : '#F0F8FF', border: `2.5px solid ${isM ? '#FFD180' : '#A0C4FF'}`, borderRadius: 24, padding: 18 }}>
@@ -1036,7 +1028,6 @@ export default function GarageDashboard() {
                           <span style={{ fontSize: 12, color: '#7B8CA6' }}>{formatElapsed(el)} • {hrs}ساعة</span>
                           <span className="font-bold" style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, background: isM ? '#FF9500' : '#0066FF', color: '#fff' }}>{isM ? 'يدوي' : 'تطبيق'}</span>
                           
-                          {/* 🎁 شارة الخصم للسيارات القادمة من التطبيق ومؤهلة لعرض الساعة الأولى مجاناً */}
                           {isFreeApplied && (
                             <span className="font-black flex items-center gap-0.5" style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, background: '#FFF3E0', color: '#E65100', border: '1px solid #FFE0B2' }}>
                               <Gift size={11} /> ساعة مجانية
@@ -1051,16 +1042,16 @@ export default function GarageDashboard() {
                           <button onClick={() => openConfirmPayment(s.id, s.carPlate, cost, hrs, mins, s.source, s.agreedPrice)} className="font-black active:scale-95" style={{ background: 'linear-gradient(135deg,#FF3333,#CC0000)', color: '#fff', padding: '10px 18px', borderRadius: 16, fontSize: 12 }}>إنهاء وتحصيل</button>
                           {un && (<motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} onClick={() => handleUndoSession(un)} className="font-black flex items-center gap-1 active:scale-95" style={{ background: '#FF9500', color: '#fff', padding: '10px 14px', borderRadius: 14, fontSize: 11 }}><Undo2 size={14} /> ({getUndoRemainingSeconds(un.addedAt)}ث)</motion.button>)}
                         </div>
-                        {/* 🎁 عرض كلمة "جلسة مجانية" للسايس لو السعر صفر ومؤهلة للهدية الترحيبية */}
-<div className="font-black text-left" style={{ fontSize: cost === 0 && isFreeApplied ? 12 : 15, color: cost === 0 && isFreeApplied ? '#FF9500' : '#00AA44' }}>
-  {cost === 0 && isFreeApplied ? (
-    <span className="flex items-center gap-1 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
-      🎁 جلسة مجانية (0 ج)
-    </span>
-  ) : (
-    <span className="font-mono">{cost} ج.م</span>
-  )}
-</div>
+                        {/* 🎁 عرض كلمة جلسة مجانية لو السعر صفر */}
+                        <div className="font-black text-left" style={{ fontSize: cost === 0 && isFreeApplied ? 12 : 15, color: cost === 0 && isFreeApplied ? '#FF9500' : '#00AA44' }}>
+                          {cost === 0 && isFreeApplied ? (
+                            <span className="flex items-center gap-1 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-xl shadow-sm">
+                              🎁 جلسة مجانية (0 ج)
+                            </span>
+                          ) : (
+                            <span className="font-mono">{cost} ج.م</span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -1130,7 +1121,6 @@ export default function GarageDashboard() {
               <button onClick={() => { const d = new Date(); d.setDate(d.getDate() - 7); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`); setLogDateTo(getLocalToday()); }} className="font-black active:scale-95" style={{ background: '#F0F4FF', color: '#64748b', padding: '10px 14px', borderRadius: 14, fontSize: 11, border: '2px solid #D0DCFF' }}>آخر أسبوع</button>
               <button onClick={() => { const d = new Date(); d.setDate(1); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`); setLogDateTo(getLocalToday()); }} className="font-black active:scale-95" style={{ background: '#F0F4FF', color: '#64748b', padding: '10px 14px', borderRadius: 14, fontSize: 11, border: '2px solid #D0DCFF' }}>هذا الشهر</button>
             </div>
-             {/* أزرار فلترة سجل العمليات */}
             <div className="flex gap-1.5 flex-wrap">
               {[
                 { id: 'all', label: 'الكل', icon: '📊' }, 
@@ -1154,7 +1144,7 @@ export default function GarageDashboard() {
                 </button>
               ))}
             </div>
-                  </div>
+          </div>
         )}
 
         {isValet && (
@@ -1313,18 +1303,17 @@ export default function GarageDashboard() {
               }}>
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2 flex-wrap">
+                    {/* ✅ تم تصحيح هذا السطر لمنع تكرار القوس */}
                     {(isOwner || !isC) && (
-{(isOwner || !isC) && (
-  <span className="font-black" style={{ fontSize: rev === 0 && session.isFirstFreeSession ? 12 : 17, color: isSettled ? '#64748B' : rev === 0 && session.isFirstFreeSession ? '#00AA44' : isM ? '#E65100' : '#0066FF' }}>
-    {rev === 0 && session.isFirstFreeSession ? (
-      <span className="flex items-center gap-1 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg">
-        🎁 جلسة مجانية (0 ج)
-      </span>
-    ) : (
-      <span className="font-mono">{rev.toFixed(0)} ج.م</span>
-    )}
-  </span>
-)}
+                      <span className="font-black" style={{ fontSize: rev === 0 && session.isFirstFreeSession ? 12 : 17, color: isSettled ? '#64748B' : rev === 0 && session.isFirstFreeSession ? '#00AA44' : isM ? '#E65100' : '#0066FF' }}>
+                        {rev === 0 && session.isFirstFreeSession ? (
+                          <span className="flex items-center gap-1 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg shadow-sm">
+                            🎁 جلسة مجانية (0 ج)
+                          </span>
+                        ) : (
+                          <span className="font-mono">{rev.toFixed(0)} ج.م</span>
+                        )}
+                      </span>
                     )}
                     <span className="font-black" style={{ fontSize: 11, padding: '5px 12px', borderRadius: 12, background: isSettled ? '#94a3b8' : isM ? '#FF9500' : '#0066FF', color: '#fff' }}>
                       {isSettled ? '🔒 مقفلة' : isM ? 'يدوي' : 'تطبيق'}
