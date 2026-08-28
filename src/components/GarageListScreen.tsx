@@ -1033,18 +1033,23 @@ export default function GarageListScreen() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   ██  WELCOME GIFT MODAL COMPONENT (مدمج وآلي)
+   ██  WELCOME GIFT MODAL COMPONENT (مؤمن ومحمي بالكامل 🔒)
    ════════════════════════════════════════════════════════════ */
 function WelcomeGiftModal() {
   const [show, setShow] = useState(false);
+  const currentUser = useStore((s) => s.currentUser);
 
   useEffect(() => {
-    // التحقق من وجود راية عرض الهدية الترحيبية للعميل الجديد في ذاكرة الهاتف
     const hasGiftFlag = localStorage.getItem('showWelcomeGift');
-    if (hasGiftFlag === 'true') {
+    
+    // 🎁 أمان حديدي: لا تظهر الرسالة الترحيبية أبداً إذا كان العميل قد ركن من قبل أو انتهت هديته
+    if (hasGiftFlag === 'true' && currentUser && !currentUser.hasUsedFreeSession) {
       setShow(true);
+    } else {
+      localStorage.removeItem('showWelcomeGift');
+      setShow(false);
     }
-  }, []);
+  }, [currentUser]);
 
   const handleClose = () => {
     localStorage.removeItem('showWelcomeGift');
@@ -1066,7 +1071,6 @@ function WelcomeGiftModal() {
             style={{ boxShadow: '0 20px 50px rgba(245,158,11,0.25)' }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* لمعة خلفية */}
             <div className="absolute -top-12 -right-12 w-32 h-32 bg-yellow-500/10 rounded-full filter blur-xl" />
 
             <button onClick={handleClose} className="absolute top-5 left-5 text-slate-400 hover:text-white transition-colors">
