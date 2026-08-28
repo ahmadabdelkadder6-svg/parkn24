@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
-import { Clock, ArrowRight, AlertCircle, Gift } from 'lucide-react';
-import { useStore, isEligibleForFreeFirstSession } from '../store';
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { Clock, ArrowRight, AlertCircle } from 'lucide-react';
+import { useStore } from '../store';
+import { useEffect, useState, useRef } from 'react';
 import toast from 'react-hot-toast';
 
 export default function WaitingScreen() {
@@ -27,7 +27,7 @@ export default function WaitingScreen() {
     )
     .slice(-1)[0];
 
-  // ✅ حساب الحالة من العرض مباشرة
+  // ✅ حساب الحالة من العرض مباشرة (بدل state منفصل)
   const offerStatus = latestOffer?.status;
 
   const [status, setStatus] = useState<'waiting' | 'accepted' | 'rejected'>(
@@ -37,12 +37,6 @@ export default function WaitingScreen() {
       return 'waiting';
     }
   );
-
-  // ✅ التحقق من استحقاق العميل الجديد لأول ساعة مجاناً ترحيبياً
-  const isEligibleForFree = useMemo(() => {
-    if (!sessions || !currentUser) return false;
-    return isEligibleForFreeFirstSession(sessions, currentUser.carPlate, currentUser.phone);
-  }, [sessions, currentUser]);
 
   // ✅ منع تكرار addIncomingCar
   const incomingCarAddedRef = useRef(false);
@@ -137,7 +131,7 @@ export default function WaitingScreen() {
     >
       <button
         onClick={() => setScreen('list')}
-        className="absolute top-5 right-5 bg-slate-900 p-3 rounded-2xl border border-slate-800 z-10 animate-none"
+        className="absolute top-5 right-5 bg-slate-900 p-3 rounded-2xl border border-slate-800 z-10"
       >
         <ArrowRight size={20} />
       </button>
@@ -162,31 +156,8 @@ export default function WaitingScreen() {
             تم إرسال عرضك إلى {garage?.name}
           </p>
 
-          {/* 🎁 لافتة إعلان الجلسة المجانية الفاخرة أثناء الانتظار للتحفيز */}
-          {isEligibleForFree && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="mb-4 p-4 rounded-2xl flex items-center gap-3 border border-emerald-500/20 text-right w-full"
-              style={{
-                background: 'linear-gradient(135deg, rgba(6,78,59,0.5) 0%, rgba(2,44,34,0.5) 100%)',
-                boxShadow: '0 8px 24px rgba(16,185,129,0.1)'
-              }}
-            >
-              <div className="bg-emerald-500/20 p-2.5 rounded-xl text-emerald-400 shrink-0">
-                <Gift size={20} className="animate-bounce text-emerald-400" />
-              </div>
-              <div className="flex-1 text-right">
-                <div className="font-black text-xs text-emerald-300">أول ساعة مجانية بالكامل! 🎁</div>
-                <p className="text-[10px] text-emerald-400/90 mt-0.5 leading-normal font-bold">
-                  ركنتك الأولى مجانية بالكامل لأول ساعة عند وصولك وبدء الحساب. لن تتحمل أي تكلفة.
-                </p>
-              </div>
-            </motion.div>
-          )}
-
           <div
-            className={`rounded-2xl p-4 mb-4 text-center border w-full ${
+            className={`rounded-2xl p-4 mb-4 text-center border ${
               garage?.availableSpots && garage.availableSpots > 0
                 ? 'bg-amber-600/20 border-amber-500/30'
                 : 'bg-red-600/20 border-red-500/30'
@@ -225,7 +196,7 @@ export default function WaitingScreen() {
           </div>
 
           {latestOffer && (
-            <div className="bg-slate-900 border border-slate-800 px-6 py-3 rounded-2xl text-center w-full">
+            <div className="bg-slate-900 border border-slate-800 px-6 py-3 rounded-2xl text-center">
               <span className="text-xs text-slate-500">العرض: </span>
               <span className="text-xl font-black text-blue-400 font-mono">
                 {latestOffer.offeredPrice} ج.م
@@ -295,7 +266,7 @@ export default function WaitingScreen() {
           </p>
           <button
             onClick={() => setScreen('list')}
-            className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all border-none"
+            className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all"
           >
             العودة للقائمة
           </button>

@@ -9,11 +9,8 @@ import {
   Clock,
   XCircle,
   Copy,
-  Gift,
-  Coins,
-  Sparkles,
 } from 'lucide-react';
-import { useStore, isEligibleForFreeFirstSession } from '../store';
+import { useStore } from '../store';
 import {
   calculateDistance,
   distanceToMinutes,
@@ -69,7 +66,7 @@ const normalizePlate = (plate?: string): string => {
     .trim()
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
     .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
-    .replace(/\s+/g, '')
+    .replace(/\s+/g, '') // حذف كل المسافات لضمان التطابق الفوري اللحظي
     .toUpperCase();
 };
 
@@ -118,12 +115,6 @@ export default function NavigationScreen() {
 
   const garage = garages.find((g) => g.id === selectedGarageId);
   const userPlateNav = normalizePlate(currentUser?.carPlate);
-
-  /* ── الكشف عن استحقاق الجلسة الأولى المجانية ── */
-  const isEligibleForFree = useMemo(() => {
-    if (!sessions || !currentUser) return false;
-    return isEligibleForFreeFirstSession(sessions, currentUser.carPlate, currentUser.phone);
-  }, [sessions, currentUser]);
 
   /* ── الكشف عن السيارة القادمة ── */
   const myIncomingCar = useMemo(() => {
@@ -187,6 +178,7 @@ export default function NavigationScreen() {
 
     let cancelled = false;
 
+    // دالة التحديث السريع
     const fastFetch = async () => {
       if (cancelled) return;
       try {
@@ -198,6 +190,7 @@ export default function NavigationScreen() {
 
     fastFetch();
 
+    // فحص ما إذا كان التحديث يخص العميل الحالي
     const isMySessionPayload = (row: any): boolean => {
       if (!row) return false;
       const plate = normalizePlate(row.car_plate || row.carPlate);
@@ -216,6 +209,7 @@ export default function NavigationScreen() {
         async (payload) => {
           const newRow = payload.new as any;
           if (isMySessionPayload(newRow) && newRow?.status === 'active') {
+            // تحديث فوري وانتقال لحظي
             await fastFetch();
             if (newRow.garage_id || newRow.garageId) {
               setSelectedGarageId(newRow.garage_id || newRow.garageId);
@@ -236,6 +230,8 @@ export default function NavigationScreen() {
       .subscribe();
 
     realtimeChannelRef.current = channel;
+    
+    // 🚀 تسريع الـ Polling ليكون كل 1.5 ثانية فقط أثناء شاشة التوجيه لضمان سرعة الاستجابة
     pollingIntervalRef.current = setInterval(fastFetch, 1500);
 
     const handleFocus = () => fastFetch();
@@ -370,9 +366,9 @@ export default function NavigationScreen() {
         pushTimerRef.current = null;
       }
     };
-  }, [myIncomingCar?.id, selectedGarageId, garage]);
+  }, [myIncomingCar?.id, selectedGarageId]);
 
-  /* ─── الانتقال اللحظي الفوري لشاشة العداد ─── */
+  /* ─── 🚀 الانتقال اللحظي الفوري لشاشة العداد ─── */
   useEffect(() => {
     if (!myActiveSession) {
       navigatedToSessionRef.current = false;
@@ -405,7 +401,7 @@ export default function NavigationScreen() {
         </p>
         <button
           onClick={() => setScreen('list')}
-          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all border-none"
+          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all"
         >
           العودة للقائمة
         </button>
@@ -546,7 +542,7 @@ export default function NavigationScreen() {
       <div className="flex items-center justify-between px-4 pt-12 pb-2 shrink-0">
         <button
           onClick={() => setScreen('list')}
-          className="bg-slate-900 p-2.5 rounded-xl border border-slate-800 active:scale-90 transition-all border-none"
+          className="bg-slate-900 p-2.5 rounded-xl border border-slate-800 active:scale-90 transition-all"
         >
           <ArrowRight size={18} />
         </button>
@@ -567,77 +563,45 @@ export default function NavigationScreen() {
       {/* ══ Content ══ */}
       <div className="flex-1 px-4 pb-4 flex flex-col gap-3 overflow-y-auto">
 
-        {/* 🎁 لافتة إعلان الجلسة الأولى المجانية أو الكاش باك التراكمي */}
-        {isEligibleForFree ? (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="rounded-2xl p-3.5 flex items-center justify-between border border-emerald-500/30 text-right shrink-0"
-            style={{
-              background: 'linear-gradient(135deg, #064E3B 0%, #022C22 100%)',
-              boxShadow: '0 4px 14px rgba(16,185,129,0.15)'
-            }}
-          >
-            <div className="text-left">
-              <span className="font-mono font-black text-xs text-emerald-300 bg-emerald-950 px-2.5 py-1 rounded-xl border border-emerald-500/40">
-                0 ج.م أول ساعة
-              </span>
-            </div>
+        {/* 🏢 بطاقة اسم الجراج */}
+        <div
+          className="rounded-2xl p-3.5 shrink-0 shadow-md"
+          style={{
+            background: '#ffffff',
+            border: '1.5px solid #E2E8F0',
+          }}
+        >
+          <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
-              <div className="text-right">
-                <div className="font-black text-xs text-emerald-300 flex items-center gap-1 justify-end">
-                  <span>هدية ترحيبية جاهزة</span>
-                  <Sparkles size={13} className="text-emerald-400" />
-                </div>
-                <p className="text-[10px] text-emerald-400/90 font-bold">أول ساعة مجانية بالكامل فور وصولك</p>
-              </div>
-              <div className="bg-emerald-500 text-white p-2 rounded-xl">
-                <Gift size={16} />
-              </div>
-            </div>
-          </motion.div>
-         ) : (
-          <div
-            className="rounded-2xl p-3.5 flex items-center justify-between border shrink-0 text-right shadow-md"
-            style={{
-              background: 'linear-gradient(135deg, #1E1B4B 0%, #0F172A 100%)', // تدرج نيلي داكن فخم يبرز اللون الأبيض
-              borderColor: 'rgba(99, 102, 241, 0.3)',
-              boxShadow: '0 4px 14px rgba(99, 102, 241, 0.1)',
-            }}
-          >
-            {/* القيمة بالنسبة المئوية باللون الأبيض الصريح والخط العريض اللامع */}
-            <div className="text-left shrink-0">
-              <span 
-                className="font-mono"
-                style={{ 
-                  color: '#ffffff', 
-                  fontWeight: 900, 
-                  fontSize: '15px',
-                  textShadow: '0 0 10px rgba(255, 255, 255, 0.4)' // توهج خفيف لزيادة الوضوح
-                }}
-              >
-                10% كاش باك ✨
+              <Clock size={15} className="text-blue-600" />
+              <span className="text-sm font-black text-blue-600 font-mono">
+                {formatDuration(minutes)}
+              </span>
+              <span className="text-slate-300">·</span>
+              <span className="text-xs text-slate-600 font-mono font-bold">
+                {distance.toFixed(1)} كم
               </span>
             </div>
-
-            {/* التذكير بالدفع بالخط العريض الأبيض الواضح جداً */}
-            <div className="flex items-center gap-2 justify-end">
-              <span 
-                className="font-black"
-                style={{ 
-                  color: '#ffffff', 
-                  fontWeight: 900, 
-                  fontSize: '12px',
-                  textShadow: '0 1px 2px rgba(0,0,0,0.5)',
-                  lineHeight: '1.3'
+            
+            <div className="text-right flex flex-col items-end">
+              <span
+                style={{
+                  color: '#000000',
+                  fontSize: '16px',
+                  fontWeight: 900,
+                  display: 'block',
+                  lineHeight: '1.2',
                 }}
               >
-                تذكير: ادفع بالمحفظة ووفر في ركناتك القادمة
+                {garage.name}
               </span>
-              <Coins size={16} className="text-amber-400 shrink-0 animate-pulse" />
+              <div className="flex items-center gap-1 justify-end text-[10px] text-slate-500 mt-1 font-bold">
+                <span>{garage.location}</span>
+                <MapPin size={10} className="text-slate-400" />
+              </div>
             </div>
           </div>
-        )}
+        </div>
 
         {/* 🗺️ الخريطة */}
         <div className="w-full h-48 rounded-2xl overflow-hidden border border-slate-800 relative shrink-0 shadow-lg">
@@ -692,7 +656,7 @@ export default function NavigationScreen() {
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.98 }}
             onClick={openExternalMaps}
-            className="w-full relative overflow-hidden flex items-center justify-center gap-2.5 py-3.5 px-4 rounded-xl shadow-lg cursor-pointer border-none"
+            className="w-full relative overflow-hidden flex items-center justify-center gap-2.5 py-3.5 px-4 rounded-xl shadow-lg cursor-pointer"
             style={{
               background: 'linear-gradient(135deg, #0066FF 0%, #0033BB 100%)',
               boxShadow: '0 6px 18px rgba(0, 102, 255, 0.35)',
@@ -714,7 +678,7 @@ export default function NavigationScreen() {
 
           <button
             onClick={copyCoords}
-            className="flex items-center justify-center gap-1 text-[11px] text-slate-400 hover:text-slate-200 py-0.5 transition-all bg-transparent border-none"
+            className="flex items-center justify-center gap-1 text-[11px] text-slate-400 hover:text-slate-200 py-0.5 transition-all"
           >
             <Copy size={12} className="text-slate-500" />
             <span>نسخ إحداثيات الجراج الجغرافية</span>
@@ -727,9 +691,7 @@ export default function NavigationScreen() {
             <div className="flex items-center gap-2 text-[10px] text-slate-400">
               <Car size={12} />
               <span>
-                {isEligibleForFree
-                  ? `أول ساعة مجاناً (ثم ${myIncomingCar?.agreedPrice ?? garage.basePrice} ج.م/س)`
-                  : `${myIncomingCar?.agreedPrice ?? garage.basePrice} ج.م/ساعة`}
+                {myIncomingCar?.agreedPrice ?? garage.basePrice} ج.م/ساعة
               </span>
             </div>
             <span className="text-xs font-black text-blue-400 font-mono">
@@ -792,10 +754,11 @@ export default function NavigationScreen() {
           <button
             onClick={handleCarArrived}
             disabled={isArrivingRef.current}
-            className="w-full py-4 rounded-2xl active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 disabled:opacity-50 border-none cursor-pointer"
+            className="w-full py-4 rounded-2xl active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
             style={{
               background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)',
               boxShadow: '0 8px 24px rgba(0,204,102,0.3)',
+              border: 'none',
             }}
           >
             <Navigation size={18} color="#ffffff" />
@@ -814,7 +777,7 @@ export default function NavigationScreen() {
           >
             <button
               onClick={handleCancelBooking}
-              className="w-full bg-slate-900 border border-red-500/20 text-red-400 py-3 rounded-xl font-black text-xs active:scale-95 transition-transform flex items-center justify-center gap-2 border-none cursor-pointer"
+              className="w-full bg-slate-900 border border-red-500/20 text-red-400 py-3 rounded-xl font-black text-xs active:scale-95 transition-transform flex items-center justify-center gap-2"
             >
               <XCircle size={16} />
               إلغاء الحجز ({cancelTimeLeft}ث)
