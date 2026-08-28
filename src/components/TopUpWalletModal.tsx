@@ -283,12 +283,52 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 <div className="w-6" />
               </div>
 
-              <div className="text-center mb-4 bg-gradient-to-br from-slate-900 to-blue-950 rounded-2xl p-5 text-white shadow-lg">
-                <div className="text-xs opacity-75 mb-1">المبلغ المطلوب تحويله</div>
-                <div className="text-4xl font-black font-mono text-emerald-400">{amount} <span className="text-base text-white">ج.م</span></div>
+              {/* كارت عرض المبلغ - بتصميم متبقين وفائق الوضوح وخطوط عريضة بارزة */}
+              <div
+                className="text-center mb-4 rounded-3xl p-5 text-white shadow-2xl relative overflow-hidden border border-amber-500/30"
+                style={{
+                  background: 'linear-gradient(135deg, #0F172A 0%, #020617 100%)',
+                  boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
+                }}
+              >
+                {/* تأثير لمعان بالخلفية */}
+                <div className="absolute -top-10 -right-10 w-24 h-24 bg-amber-500/10 rounded-full filter blur-xl" />
+
+                {/* 🌟 بادج العنوان بلون ذهبي فاقع وخط عريض جداً وواضح */}
+                <div 
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black mb-3 shadow-md"
+                  style={{
+                    background: 'rgba(245, 158, 11, 0.15)',
+                    border: '1.5px solid rgba(245, 158, 11, 0.4)',
+                    color: '#FBBF24',
+                    textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+                  }}
+                >
+                  <Sparkles size={13} className="text-yellow-400 animate-pulse" />
+                  <span>المبلغ المراد تحويله</span>
+                </div>
+
+                {/* الرقم الرئيسي بلون أخضر زمردي ناصع وضخم للغاية */}
+                <div className="flex items-end justify-center gap-2 drop-shadow-md">
+                  <span className="font-mono text-5xl font-black text-emerald-400 leading-none">
+                    {amount}
+                  </span>
+                  <span className="text-lg font-black text-white mb-1">ج.م</span>
+                </div>
+
+                {/* تفاصيل البونص التفاعلية بلون واضح */}
                 {currentBonus > 0 && (
-                  <div className="mt-2 text-xs font-black text-amber-300 border-t border-white/10 pt-2">
-                    🎁 ستستلم: {totalReceived} ج.م في حسابك
+                  <div className="mt-4 pt-3 border-t border-white/10 space-y-1.5">
+                    <div className="flex justify-between items-center text-xs font-black text-slate-300">
+                      <span>🎁 بونص إضافي هدية:</span>
+                      <span className="text-emerald-400 font-mono">+{currentBonus} ج.م</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs font-black text-white pt-1">
+                      <span>💎 رصيد المحفظة القادم:</span>
+                      <span className="font-mono text-yellow-300 text-sm bg-white/5 px-2.5 py-1 rounded-lg border border-white/10">
+                        {totalReceived} ج.م
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>

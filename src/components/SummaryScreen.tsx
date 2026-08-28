@@ -1,13 +1,11 @@
 import { motion } from 'framer-motion';
 import {
   CheckCircle,
-  Star,
   Home,
   Calculator,
   Wallet,
   AlertTriangle,
   Gift,
-  Sparkles,
 } from 'lucide-react';
 import { useStore, pausePolling } from '../store';
 import { useState, useMemo, useEffect, useRef } from 'react';
@@ -76,7 +74,6 @@ export default function SummaryScreen() {
     garages.find((g) => g.id === referenceSession?.garageId);
 
   const [paymentMethod, setPaymentMethod] = useState('cash');
-  const [rating, setRating] = useState(4);
   const [done, setDone] = useState(false);
   const [doneMethod, setDoneMethod] = useState('');
   const [doneTotalPrice, setDoneTotalPrice] = useState(0);
@@ -195,23 +192,19 @@ export default function SummaryScreen() {
   const durationMinutes = Math.floor(durationSeconds / 60);
   const sessionRate = Number(referenceSession?.agreedPrice ?? garage?.basePrice ?? 0);
 
-  // 🎁 [منطق الهدية الذكي]: نعتمد بالكامل على راية الجلسة المحددة وقت الدخول
-  // لضمان ألا تُطبق على الإضافة اليدوية للسيارة (source: 'manual')
   const isFirstFreeApplied = useMemo(() => {
     return referenceSession?.isFirstFreeSession === true;
   }, [referenceSession]);
 
-  // حساب الوقت المجاني والمتبقي للدفع بالمنطق القديم
   const freeSeconds = useMemo(() => {
     if (!isFirstFreeApplied) return 0;
-    return Math.min(durationSeconds, 3600); // ساعة واحدة كحد أقصى (3600 ثانية)
+    return Math.min(durationSeconds, 3600); 
   }, [isFirstFreeApplied, durationSeconds]);
 
   const freeMinutesApplied = Math.floor(freeSeconds / 60);
   const billableSeconds = Math.max(0, durationSeconds - freeSeconds);
   const billableHours = calculateFullHours(billableSeconds);
 
-  // ⚠️ المنطق القديم بالكامل لحساب السعر الأساسي بناءً على الوقت المتبقي فقط
   const originalPrice = useMemo(() => {
     return calculateCost(durationSeconds, sessionRate);
   }, [durationSeconds, sessionRate]);
@@ -224,11 +217,9 @@ export default function SummaryScreen() {
     ) {
       return Number(referenceSession.totalPrice);
     }
-    // حساب التكلفة للوقت الخاضع للدفع فقط (بعد خصم الهدية)
     return calculateCost(billableSeconds, sessionRate);
   }, [referenceSession, billableSeconds, sessionRate]);
 
-  // السعر النهائي وقيمة ما تم توفيره
   const totalPrice = rawPrice;
   const discountAmount = isFirstFreeApplied ? Math.max(0, originalPrice - totalPrice) : 0;
 
@@ -266,7 +257,6 @@ export default function SummaryScreen() {
     pausePolling(15000);
 
     try {
-      // 🎁 نمرر الدقائق المجانية المُطبقة لحفظها في السيرفر
       await endSession(activeSession.id, price, method, freeMinutesApplied);
       return true;
     } catch (err) {
@@ -341,7 +331,6 @@ export default function SummaryScreen() {
             : 'تم الدفع بنجاح'}
         </p>
 
-        {/* كارت الفاتورة بعد الدفع */}
         <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-6 text-center w-full shadow-sm">
           <div className="text-4xl font-black text-slate-900 font-mono mb-1">
             {doneTotalPrice > 0 ? `${doneTotalPrice} ج.م` : `${totalPrice} ج.م`}
@@ -384,21 +373,6 @@ export default function SummaryScreen() {
               </span>
             </div>
           )}
-        </div>
-
-        <div className="mb-6 w-full text-center">
-          <p className="text-xs text-slate-500 font-bold mb-2">قيّم تجربتك</p>
-          <div className="flex justify-center gap-2">
-            {[1, 2, 3, 4, 5].map((s) => (
-              <button key={s} onClick={() => setRating(s)} className="transition-all active:scale-90">
-                <Star
-                  size={30}
-                  className={s <= rating ? 'text-amber-400' : 'text-slate-200'}
-                  fill={s <= rating ? 'currentColor' : 'none'}
-                />
-              </button>
-            ))}
-          </div>
         </div>
 
         <button
@@ -446,7 +420,6 @@ export default function SummaryScreen() {
         </motion.div>
       )}
 
-      {/* كارت الحساب الرئيسي التفاعلي للعميل */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-4 shadow-sm">
         <div className="text-center mb-3">
           {isFirstFreeApplied && discountAmount > 0 ? (
@@ -477,10 +450,9 @@ export default function SummaryScreen() {
               {totalPrice} ج.م
             </div>
           )}
-          <div className="text-[10px] text-slate-400 font-bold">إجمالي التكلفة الحالية للإستفادة</div>
+          <div className="text-[10px] text-slate-400 font-bold">إجمالي التكلفة الحالية</div>
         </div>
 
-        {/* تفاصيل الحساب والخصومات بالتفصيل */}
         <div className="bg-gray-50 rounded-xl p-3 border border-slate-100">
           <div className="flex items-center justify-center gap-2 mb-2">
             <Calculator size={14} className="text-blue-600" />
@@ -616,21 +588,6 @@ export default function SummaryScreen() {
                 </div>
               </motion.div>
             )}
-          </div>
-
-          <div className="mb-8">
-            <h3 className="text-sm font-black text-slate-700 mb-3 text-right">قيّم تجربتك</h3>
-            <div className="flex justify-center gap-2">
-              {[1, 2, 3, 4, 5].map((s) => (
-                <button key={s} onClick={() => setRating(s)} className="transition-all active:scale-90">
-                  <Star
-                    size={36}
-                    className={s <= rating ? 'text-amber-400' : 'text-slate-200'}
-                    fill={s <= rating ? 'currentColor' : 'none'}
-                  />
-                </button>
-              ))}
-            </div>
           </div>
 
           <button
