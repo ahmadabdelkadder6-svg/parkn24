@@ -26,7 +26,7 @@ import {
   ParkingSession, 
   IncomingCar, 
   isEligibleForFreeFirstSession,
-  calculateUserTotalEarnedCashback // 🆕 استيراد الدالة الموحدة لحساب إجمالي كاش باك العميل
+  calculateUserTotalEarnedCashback
 } from '../store';
 import {
   calculateDistance,
@@ -398,7 +398,7 @@ export default function GarageListScreen() {
           />
         </div>
 
-        {/* 💳 بطاقة المحفظة الذكية المدمجة والفاخرة مع عداد الكاش باك التراكمي الفعلي المحدث */}
+        {/* 💳 بطاقة المحفظة الذكية المدمجة والفاخرة مع عداد الكاش باك التراكمي الفعلي */}
         <div
           style={{
             background: 'linear-gradient(135deg, #0055FF 0%, #3B00E3 50%, #8A00FF 100%)',
@@ -1222,4 +1222,4 @@ function GarageCard({
       </button>
     </motion.div>
   );
-}_
+}
