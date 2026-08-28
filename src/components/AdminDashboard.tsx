@@ -257,7 +257,8 @@ export default function AdminDashboard() {
       const sn = sessionSearch.trim().toUpperCase();
       f = f.filter(s => (s.carPlate ?? '').toUpperCase().includes(sn));
     }
-    return f;
+    // ⚡ [ممتاز وآمن]: عرض أحدث 30 جلسة لتسريع وتخفيف المتصفح في لوحة الأدمن
+    return f.slice(0, 30);
   }, [filteredSessions, revenueFilter, sessionSearch]);
 
   const safeMessages = messages ?? [];

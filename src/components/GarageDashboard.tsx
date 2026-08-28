@@ -474,17 +474,27 @@ export default function GarageDashboard() {
       if (!isActive) return [];
     }
 
+    // ⚡ [صاروخي]: حساب حدود التواريخ بالمللي ثانية مرة واحدة فقط "خارج" الحلقة لتجنب استهلاك المعالج
+    const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1;
+
+    const boundaryFrom = logDateFrom ? new Date(`${logDateFrom}T00:00:00`).getTime() : 0;
+    const boundaryTo = logDateTo ? new Date(`${logDateTo}T23:59:59.999`).getTime() : 0;
+
     return completedSessions.filter(s => {
       if (s.endTime) {
         const endMs = toMs(s.endTime);
-        const d = timestampToLocalDate(endMs);
         const isWithinLast24Hours = (Date.now() - endMs) < 24 * 60 * 60 * 1000;
         
         if (isValet) { 
-          if (d !== getLocalToday() && !isWithinLast24Hours) return false; 
+          // السايس: مقارنة أرقام لحظية لمعرفة هل الجلسة تمت اليوم أو في آخر 24 ساعة
+          const isToday = endMs >= todayStart && endMs <= todayEnd;
+          if (!isToday && !isWithinLast24Hours) return false; 
         } else { 
-          if (logDateFrom && d < logDateFrom) return false; 
-          if (logDateTo && d > logDateTo) return false; 
+          // المالك: مقارنة رقمية فائقة السرعة للتواريخ المحددة بالفلاتر
+          if (boundaryFrom && endMs < boundaryFrom) return false; 
+          if (boundaryTo && endMs > boundaryTo) return false; 
         }
       }
       
@@ -503,7 +513,6 @@ export default function GarageDashboard() {
       return true;
     });
   }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, isOwner, myValetNames, selectedValetFilter, valetNumber, garage]);
-
   const filteredStats = useMemo(() => {
     const c = filteredCompleted.filter(s => s.revenueConfirmed);
     const u = filteredCompleted.filter(s => !s.revenueConfirmed);
@@ -1285,7 +1294,7 @@ export default function GarageDashboard() {
         )}
 
         <div className="space-y-2">
-          {filteredCompleted.map(session => {
+{filteredCompleted.slice(0, 30).map(session => {
             const isM = session.source === 'manual';
             const et = session.endTime ? toMs(session.endTime) : null;
             const time = et ? new Date(et) : null;

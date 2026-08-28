@@ -568,7 +568,7 @@ export const useStore = create<AppState>((set, get) => ({
         .select('*')
         .or('status.eq.active,settled.eq.false,settled.is.null') 
         .order('created_at', { ascending: false })
-        .limit(200),
+        .limit(50),
       supabase
         .from('sessions')
         .select('*')
