@@ -57,12 +57,11 @@ export default function SessionScreen() {
 
   const redirectedToSummaryRef = useRef(false);
   const redirectedToSessionRef = useRef(false);
-  const activeSessionIdRef = useRef<string | null>(null); // ✅ مرجع لتتبع مُعرف الجلسة النشطة حالياً
+  const activeSessionIdRef = useRef<string | null>(null);
   const realtimeChannelRef = useRef<any>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [elapsed, setElapsed] = useState(0);
-  const [loading, setLoading] = useState(true);
 
   const isMySessionRow = (row: any) => {
     if (!row) return false;
@@ -74,11 +73,12 @@ export default function SessionScreen() {
     );
   };
 
+  // ✅ البحث عن الجلسة النشطة بأعلى معايير الأمان
   const activeSession = useMemo(() => {
     return sessions
       .filter((s) => {
-        if (s.status !== 'active') return false;
-        if (acknowledgedSessionIds?.has(s.id)) return false; // أمان: حجب أي جلسة مؤكدة ومغلقة سابقاً
+        if (!s || s.status !== 'active') return false;
+        if (acknowledgedSessionIds?.has(s.id)) return false;
         const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
         const samePhoneMatch = !!userPhone && (s as any).customerPhone === userPhone;
         return samePlateMatch || samePhoneMatch;
@@ -89,7 +89,7 @@ export default function SessionScreen() {
   const lastCompletedSession = useMemo(() => {
     return sessions
       .filter((s) => {
-        if (s.status !== 'completed') return false;
+        if (!s || s.status !== 'completed') return false;
         const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
         const samePhoneMatch = !!userPhone && (s as any).customerPhone === userPhone;
         return samePlateMatch || samePhoneMatch;
@@ -97,34 +97,29 @@ export default function SessionScreen() {
       .sort((a, b) => safeParseTime(b.endTime) - safeParseTime(a.endTime))[0];
   }, [sessions, userPlate, userPhone]);
 
-  const garage = garages.find(
+  const garage = garages?.find(
     (g) => g.id === (activeSession?.garageId ?? lastCompletedSession?.garageId),
   );
 
-  // ✅ تتبع وتسجيل مُعرف الجلسة النشطة الحالية باستمرار
   useEffect(() => {
     if (activeSession?.id) {
       activeSessionIdRef.current = activeSession.id;
     }
   }, [activeSession?.id]);
 
-  // حساب startTime للجلسة النشطة
+  // حساب وقت البداية
   const activeStartMs = useMemo(() => {
     if (!activeSession) return 0;
     const ms = safeParseTime(activeSession.startTime);
-    if (ms <= 0) return Date.now();
-    return ms;
+    return ms > 0 ? ms : Date.now();
   }, [activeSession?.id, activeSession?.startTime]);
 
+  // 📡 جلب البيانات في الخلفية بدون حجب الشاشة
   useEffect(() => {
-    let mounted = true;
-    const init = async () => {
-      try { await fetchAll(); } finally { if (mounted) setLoading(false); }
-    };
-    init();
-    return () => { mounted = false; };
+    fetchAll().catch((e) => console.error('Fetch error:', e));
   }, [fetchAll]);
 
+  // Realtime
   useEffect(() => {
     if (!userPlate && !userPhone) return;
     let cancelled = false;
@@ -165,7 +160,7 @@ export default function SessionScreen() {
     };
   }, [userPlate, userPhone, fetchAll]);
 
-  // العداد
+  // عداد الثواني اللحظي
   useEffect(() => {
     if (!activeSession || activeStartMs <= 0) {
       setElapsed(0);
@@ -194,30 +189,19 @@ export default function SessionScreen() {
     if (activeSession.garageId) setSelectedGarageId(activeSession.garageId);
   }, [activeSession?.id, activeSession?.garageId, setSelectedGarageId]);
 
-  // ✅ الفلترة والتحويل الأمني الذكي الخالي تماماً من التداخل (Acknowledge Lock 🔒)
+  // التحويل التلقائي عند انتهاء الجلسة
   useEffect(() => {
-    // 1. إذا وجدنا جلسة نشطة قيد التشغيل، نلغي أي توجيه فوري ونبقى في العداد
     if (activeSession) {
       redirectedToSummaryRef.current = false;
       return;
     }
 
-    // 2. التحويل التفاعلي: إذا انتهت الجلسة النشطة التي كنا نراقبها بالتو
     if (activeSessionIdRef.current) {
-      const targetSession = sessions.find(s => s.id === activeSessionIdRef.current);
-      
+      const targetSession = sessions.find((s) => s.id === activeSessionIdRef.current);
       if (targetSession && targetSession.status === 'completed' && !redirectedToSummaryRef.current) {
         redirectedToSummaryRef.current = true;
-        
-        if (targetSession.garageId) {
-          setSelectedGarageId(targetSession.garageId);
-        }
-        
-        // إغلاق الجلسة المؤكدة آلياً
-        if (typeof acknowledgeSession === 'function') {
-          acknowledgeSession(targetSession.id);
-        }
-        
+        if (targetSession.garageId) setSelectedGarageId(targetSession.garageId);
+        if (typeof acknowledgeSession === 'function') acknowledgeSession(targetSession.id);
         activeSessionIdRef.current = null;
         toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
         setTimeout(() => { setScreen('summary'); }, 400);
@@ -225,74 +209,38 @@ export default function SessionScreen() {
       }
     }
 
-    // 3. التحويل من خارج التطبيق: توجيه آمن 100% بناءً على عدم إقرار الفاتورة مسبقاً (بدلاً من فرق التوقيت)
     if (lastCompletedSession && !redirectedToSummaryRef.current) {
       const isNotAcknowledged = acknowledgedSessionIds ? !acknowledgedSessionIds.has(lastCompletedSession.id) : true;
-
       if (isNotAcknowledged) {
         redirectedToSummaryRef.current = true;
-        
-        if (lastCompletedSession.garageId) {
-          setSelectedGarageId(lastCompletedSession.garageId);
-        }
-        
-        if (typeof acknowledgeSession === 'function') {
-          acknowledgeSession(lastCompletedSession.id);
-        }
-        
+        if (lastCompletedSession.garageId) setSelectedGarageId(lastCompletedSession.garageId);
+        if (typeof acknowledgeSession === 'function') acknowledgeSession(lastCompletedSession.id);
         toast.success('تم إنهاء الجلسة بنجاح ✅', { icon: '🏁', duration: 3000 });
         setTimeout(() => { setScreen('summary'); }, 400);
       }
     }
   }, [activeSession, lastCompletedSession, sessions, setScreen, setSelectedGarageId, acknowledgedSessionIds, acknowledgeSession]);
 
-  if (loading) {
-    return (
-      <div className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8">
-        <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4" />
-        <p className="text-slate-500 text-sm font-bold text-center">جاري تحميل بيانات الجلسة...</p>
-      </div>
-    );
-  }
+  const sessionRate = Number(activeSession?.agreedPrice ?? garage?.basePrice ?? 0);
+  const isFirstFreeApplied = activeSession?.isFirstFreeSession === true;
 
-  if (!activeSession) {
-    return (
-      <div className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8">
-        <div className="text-4xl mb-4 animate-bounce">⏳</div>
-        <p className="text-slate-500 text-sm font-bold text-center mb-2">لا توجد جلسة ركن نشطة حالياً</p>
-        <p className="text-slate-400 text-xs text-center mb-4">إذا بدأ السايس الجلسة ستظهر هنا تلقائياً</p>
-        <button
-          onClick={() => setScreen('list')}
-          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center gap-2"
-          style={{ color: '#ffffff', fontWeight: 900 }}
-        >
-          <ArrowRight size={16} /> <span style={{ color: '#ffffff', fontWeight: 900 }}>العودة للقائمة</span>
-        </button>
-      </div>
-    );
-  }
-
-  const sessionRate = Number(activeSession.agreedPrice ?? garage?.basePrice ?? 0);
-
-  // 🎁 [منطق الهدية التفاعلي]:
-  const isFirstFreeApplied = activeSession.isFirstFreeSession === true;
-
-  // دمج الحسابات التفاعلية للهدية والوقت للدفع
+  // 🎁 الحسابات التفاعلية مع حماية كاملة من الـ Undefined لمنع أي شاشة بيضاء
   const { displayedCost, displayedHours, countdownLabel, countdownTime, isFreeNow } = useMemo(() => {
+    const defaultCountdown = { minutes: 59, seconds: 59 };
+
     if (!isFirstFreeApplied) {
+      const calculatedCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(elapsed) : defaultCountdown;
       return {
         displayedCost: calculateCost(elapsed, sessionRate),
         displayedHours: calculateFullHours(elapsed),
         countdownLabel: 'الوقت المتبقي حتى الساعة التالية',
-        countdownTime: getRemainingInCurrentHour(elapsed),
-        isFreeNow: false
+        countdownTime: calculatedCountdown || defaultCountdown,
+        isFreeNow: false,
       };
     }
 
-    // 🕐 إذا كانت الجلسة تستحق أول ساعة مجانية
     if (elapsed <= 3600) {
-      // العميل ما زال داخل الساعة المجانية الهدية (الـ 60 دقيقة الأولى)
-      const freeTimeRemaining = 3600 - elapsed;
+      const freeTimeRemaining = Math.max(0, 3600 - elapsed);
       const minutes = Math.floor(freeTimeRemaining / 60);
       const seconds = freeTimeRemaining % 60;
       return {
@@ -300,26 +248,43 @@ export default function SessionScreen() {
         displayedHours: 0,
         countdownLabel: 'الوقت المتبقي لانتهاء الساعة المجانية الهدية 🎁',
         countdownTime: { minutes, seconds },
-        isFreeNow: true
+        isFreeNow: true,
       };
     } else {
-      // تجاوز الساعة المجانية → نبدأ الاحتساب من الدقيقة 61 بالمنطق القديم بالكامل
-      const billableSeconds = elapsed - 3600;
+      const billableSeconds = Math.max(0, elapsed - 3600);
+      const calculatedCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(billableSeconds) : defaultCountdown;
       return {
         displayedCost: calculateCost(billableSeconds, sessionRate),
         displayedHours: calculateFullHours(billableSeconds),
         countdownLabel: 'الوقت المتبقي حتى الساعة التالية الخاضعة للدفع',
-        countdownTime: getRemainingInCurrentHour(billableSeconds),
-        isFreeNow: false
+        countdownTime: calculatedCountdown || defaultCountdown,
+        isFreeNow: false,
       };
     }
   }, [isFirstFreeApplied, elapsed, sessionRate]);
+
+  // إذا لم تكن هناك جلسة نشطة
+  if (!activeSession) {
+    return (
+      <div className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8">
+        <div className="text-4xl mb-4 animate-bounce">⏳</div>
+        <p className="text-slate-500 text-sm font-bold text-center mb-2">جاري مزامنة بيانات الجلسة...</p>
+        <p className="text-slate-400 text-xs text-center mb-4">ستظهر بيانات العداد فور استلامها</p>
+        <button
+          onClick={() => setScreen('list')}
+          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center gap-2 shadow-md"
+        >
+          <ArrowRight size={16} /> <span>العودة للقائمة</span>
+        </button>
+      </div>
+    );
+  }
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-6 overflow-y-auto animate-fade-in"
+      className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-6 overflow-y-auto"
     >
       {/* 🎁 شارة مميزة علوية ترحيبية في العداد إذا كانت الجلسة مجانية */}
       {isFirstFreeApplied && (
@@ -332,7 +297,7 @@ export default function SessionScreen() {
             <Gift size={22} className="animate-pulse" />
           </div>
           <div className="text-right flex-1">
-            <div className="font-black text-white flex items-center gap-1.5" style={{ fontSize: 13 }}>
+            <div className="font-black text-white flex items-center gap-1.5 justify-end" style={{ fontSize: 13 }}>
               <span>هدية ترحيبية نشطة</span>
               <Sparkles size={13} className="text-yellow-200" />
             </div>
@@ -390,11 +355,11 @@ export default function SessionScreen() {
           </div>
         </div>
 
-        {/* عداد التنازل الديناميكي للساعة الحالية / للهدية */}
+        {/* عداد التنازل الديناميكي */}
         <div className="bg-white/80 rounded-xl p-3 text-center border border-slate-100">
           <div className="text-[9px] text-slate-500 mb-1 font-bold">{countdownLabel}</div>
           <div className={`text-lg font-black font-mono ${isFreeNow ? 'text-amber-500' : 'text-blue-500'}`}>
-            {String(countdownTime.minutes).padStart(2, '0')}:{String(countdownTime.seconds).padStart(2, '0')}
+            {String(countdownTime?.minutes ?? 0).padStart(2, '0')}:{String(countdownTime?.seconds ?? 0).padStart(2, '0')}
           </div>
           <div className="text-[9px] text-slate-400 mt-1">
             {isFreeNow ? (
@@ -418,7 +383,7 @@ export default function SessionScreen() {
       <div className="w-full grid grid-cols-2 gap-3 mb-4">
         <div className="bg-white border border-slate-200 p-4 rounded-2xl text-center shadow-sm">
           <Car size={20} className="text-blue-600 mx-auto mb-2" />
-          <div className="text-sm font-black text-slate-900">{activeSession.carPlate || currentUser?.carPlate}</div>
+          <div className="text-sm font-black text-slate-900">{activeSession.carPlate || currentUser?.carPlate || '---'}</div>
           <div className="text-[9px] text-slate-500 font-bold">رقم السيارة</div>
         </div>
         <div className="bg-white border border-slate-200 p-4 rounded-2xl text-center shadow-sm">
@@ -446,7 +411,7 @@ export default function SessionScreen() {
         <p className="text-[10px] text-blue-600 font-bold">💡 سيتم تحديد طريقة الدفع عند إنهاء الجلسة</p>
       </div>
 
-      {/* ✅ زر إنهاء الجلسة المعدل بالكامل لعرض السعر الحقيقي بدقة */}
+      {/* زر إنهاء الجلسة */}
       <button
         onClick={() => setScreen('summary')}
         className="w-full py-5 rounded-2xl active:scale-95 transition-all mb-3 flex items-center justify-center gap-2 shadow-xl"
