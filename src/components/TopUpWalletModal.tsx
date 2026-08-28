@@ -106,7 +106,8 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
               {/* الرصيد الحالي */}
               <div className="text-center mb-4" style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', borderRadius: 22, padding: '18px 16px', color: '#fff', boxShadow: '0 8px 32px rgba(0,102,255,0.25)' }}>
                 <div className="font-bold mb-1" style={{ fontSize: 11, opacity: 0.85 }}>رصيدك الحالي بالمحفظة</div>
-                <div className="font-black font-mono" style={{ fontSize: 32 }}>{currentUser?.wallet || 0} <span style={{ fontSize: 14 }}>ج.م</span></div>
+                {/* تم تطبيق التقريب الرياضي المباشر لمنع الكسور العشرية نهائياً */}
+<div className="font-black font-mono" style={{ fontSize: 32 }}>{Number(currentUser?.wallet || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} <span style={{ fontSize: 14 }}>ج.م</span></div>
               </div>
 
               {/* 🎁 بطاقة توضيح ميزة الكاش باك التراكمي للركنات عند الدفع بالمحفظة */}
@@ -128,7 +129,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 </div>
                 
                 <p className="text-[11px] text-amber-900 font-bold leading-relaxed text-right mb-3">
-                  اشحن محفظتك الآن واستخدمها في السداد بدءاً من ركنتك الثانية لتحصل تلقائياً على خصم كاش باك تصاعدي فوري من قيمة ركنتك حسب الشرائح التالية:
+                  اشحن محفظتك الآن واستخدمها في السداد لتحصل تلقائياً على خصم كاش باك فوري من قيمة ركنتك حسب الشرائح التالية:
                 </p>
 
                 {/* جدول الشرائح التوضيحي الفاخر */}
@@ -136,26 +137,25 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                   <div className="space-y-1.5 text-right text-[10px] bg-white/70 p-3 rounded-xl border border-amber-200/50">
                     <div className="flex justify-between font-bold text-amber-950">
                       <span className="font-mono font-black text-emerald-700"> خصم 10% كاش باك</span>
-                      <span>إجمالي الفاتورة 1000 ج.م فأكثر:</span>
+                      <span> اشحن 1000 ج.م فأكثر:</span>
                     </div>
                     <div className="flex justify-between font-bold text-amber-950">
                       <span className="font-mono font-black text-blue-700"> خصم 7% كاش باك</span>
-                      <span>إجمالي الفاتورة من 500 إلى 999 ج.م:</span>
+                      <span>اشحن من 500 إلى 999 ج.م:</span>
                     </div>
                     <div className="flex justify-between font-bold text-amber-950">
                       <span className="font-mono font-black text-purple-700"> خصم 5% كاش باك</span>
-                      <span>إجمالي الفاتورة من 200 إلى 499 ج.م:</span>
+                      <span>اشحن من 200 إلى 499 ج.م:</span>
                     </div>
                     <div className="flex justify-between font-bold text-amber-950">
                       <span className="font-mono font-black text-amber-700"> خصم 3% كاش باك</span>
-                      <span>إجمالي الفاتورة من 100 إلى 199 ج.م:</span>
+                      <span>اشحن من 100 إلى 199 ج.م:</span>
                     </div>
                   </div>
                 )}
 
                 <p className="text-[9px] text-amber-700/80 font-bold text-center mt-2.5">
-                  ⚠️ السيارات المضافة يدوياً من السايس لا يطبق عليها الكاش باك.
-                </p>
+                                  </p>
               </div>
 
               {/* اختيار المبلغ */}

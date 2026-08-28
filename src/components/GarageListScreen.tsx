@@ -398,7 +398,7 @@ export default function GarageListScreen() {
           />
         </div>
 
-        {/* 💳 بطاقة المحفظة الذكية المدمجة والفاخرة مع عداد الكاش باك التراكمي الفعلي المحدث */}
+        {/* 💳 بطاقة المحفظة الذكية المدمجة والفاخرة مع عداد الكاش باك التراكمي الفعلي */}
         <div
           style={{
             background: 'linear-gradient(135deg, #0055FF 0%, #3B00E3 50%, #8A00FF 100%)',
@@ -453,7 +453,8 @@ export default function GarageListScreen() {
                   textShadow: '0 2px 8px rgba(0,0,0,0.15)',
                 }}
               >
-                {Math.round(currentUser?.wallet || 0)} 
+                {/* الحفاظ على القروش مع تفادي الأرقام العشرية اللانهائية المشوهة */}
+                {Number(currentUser?.wallet || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                 <span className="text-[10px] font-bold" style={{ opacity: 0.9 }}>
                   ج.م
                 </span>
@@ -502,31 +503,52 @@ export default function GarageListScreen() {
 
           {/* 🚗 شريط الكاش باك التراكمي ورقم اللوحة المعدنية */}
           <div className="mt-3 pt-2.5 border-t border-white/15 flex justify-between items-center relative z-10">
-            {/* 🌟 عداد الكاش باك التراكمي المسترد للعميل - بلون ذهبي براق وعريض جداً وبارز بوضوح 🌟 */}
+            {/* 🌟 عداد الكاش باك التراكمي المسترد للعميل - بلون ذهبي براق وعريض جداً وبارز بوضوح ومضيء 🌟 */}
             {(() => {
               const totalCashback = calculateUserTotalEarnedCashback(sessions, currentUser?.carPlate, currentUser?.phone);
               return (
                 <div 
-                  className="flex items-center gap-1.5 bg-white/15 px-3 py-1.5 rounded-xl border border-white/20 shadow-md"
-                  style={{ backdropFilter: 'blur(10px)' }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border shadow-md"
+                  style={{ 
+                    background: 'rgba(15, 23, 42, 0.45)', // خلفية زجاجية داكنة تبرز النصوص البيضاء والذهبية
+                    borderColor: 'rgba(251, 191, 36, 0.35)', // إطار ذهبي رقيق مائل للبريق
+                    backdropFilter: 'blur(10px)',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.05)'
+                  }}
                 >
-                  <Coins size={13} className="text-[#FFD700] animate-pulse shrink-0" />
+                  <Coins size={14} className="text-[#FBBF24] animate-pulse shrink-0" />
                   <span 
-                    className="text-[10px] font-black text-white"
-                    style={{ fontWeight: 900, textShadow: '0 1.5px 2.5px rgba(0,0,0,0.6)', color: '#ffffff' }}
+                    style={{ 
+                      fontWeight: 900, 
+                      fontSize: '11px',
+                      color: '#FFFFFF', // أبيض صريح ومنوّر
+                      textShadow: '0 0 8px rgba(255, 255, 255, 0.5), 0 1px 2px rgba(0, 0, 0, 0.8)', // توهج أبيض ثلاثي الأبعاد ليكون منوراً بوضوح تام
+                      letterSpacing: '0.2px'
+                    }}
                   >
                     وفرت مع بركن:{' '}
                     <span 
-                      className="font-mono text-xs" 
+                      className="font-mono" 
                       style={{ 
                         fontWeight: 900, 
-                        color: '#FFD700', // لون ذهبي ناصع ومميز
-                        textShadow: '0 0 8px rgba(255, 215, 0, 0.45)' // توهج ناصع للرقم
+                        fontSize: '13px',
+                        color: '#FBBF24', // لون ذهبي براق ولامع متناسق
+                        textShadow: '0 0 12px rgba(251, 191, 36, 0.8), 0 1px 2px rgba(0, 0, 0, 0.8)', // توهج ذهبي خارق الوضوح
+                        padding: '0 2px'
                       }}
                     >
-                      {totalCashback.toFixed(0)}
+                      {Number(totalCashback.toFixed(2)).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                     </span>{' '}
-                    ج.م
+                    <span 
+                      style={{ 
+                        color: '#FBBF24', 
+                        fontSize: '10px', 
+                        fontWeight: 900,
+                        textShadow: '0 0 6px rgba(251, 191, 36, 0.5)'
+                      }}
+                    >
+                      ج.م
+                    </span>
                   </span>
                 </div>
               );

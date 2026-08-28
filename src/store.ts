@@ -994,7 +994,8 @@ export const useStore = create<AppState>((set, get) => ({
 
             if (dbUser) {
               const currentWallet = Number(dbUser.wallet || 0);
-              const newWallet = Math.max(0, currentWallet - finalPrice);
+              const newWallet = Math.round(Math.max(0, currentWallet - finalPrice) * 100) / 100;
+
 
               await supabase
                 .from('users')

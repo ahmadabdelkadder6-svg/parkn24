@@ -19,6 +19,15 @@ export function calculateCost(elapsedSeconds: number, ratePerHour: number): numb
 }
 
 /**
+ * 💵 تنسيق المبالغ المالية بأعلى دقة وبدون أي كسور مشوهة (مع الحفاظ على القروش بدقة)
+ * تمنع ظهور أرقام مشوهة مثل 97.3333333334 وتظهرها كـ 97.33 أو أرقام صحيحة نظيفة
+ */
+export function formatCurrency(amount: number): string {
+  if (amount === undefined || amount === null || isNaN(amount)) return '0';
+  return Number(amount.toFixed(2)).toString();
+}
+
+/**
  * ✅ حساب التكلفة مع الجلسة الأولى المجانية (المنطق الجديد)
  * - الجلسة الأولى مجانية بالكامل لأول ساعة فقط (3600 ثانية).
  * - بعد الساعة الأولى: يُحسب الوقت الإضافي بمنطق كسر الساعة بساعة كاملة.
