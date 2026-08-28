@@ -453,7 +453,7 @@ export default function GarageListScreen() {
                   textShadow: '0 2px 8px rgba(0,0,0,0.15)',
                 }}
               >
-                {currentUser?.wallet || 0}
+                {Math.round(currentUser?.wallet || 0)} {/* ✅ تقريب الرصيد الرياضي لأقرب رقم صحيح صريح لإلغاء الكسور */}
                 <span className="text-[10px] font-bold" style={{ opacity: 0.9 }}>
                   ج.م
                 </span>
@@ -502,14 +502,20 @@ export default function GarageListScreen() {
 
           {/* 🚗 شريط الكاش باك التراكمي ورقم اللوحة المعدنية */}
           <div className="mt-3 pt-2.5 border-t border-white/15 flex justify-between items-center relative z-10">
-            {/* 🌟 عداد الكاش باك التراكمي المسترد للعميل */}
+            {/* 🌟 عداد الكاش باك التراكمي المسترد للعميل - بلون أبيض ناصع وعريض وواضح جداً 🌟 */}
             {(() => {
               const totalCashback = calculateUserTotalEarnedCashback(sessions, currentUser?.carPlate, currentUser?.phone);
               return (
-                <div className="flex items-center gap-1.5 bg-black/25 backdrop-blur-md px-2.5 py-1 rounded-xl border border-white/20">
-                  <Coins size={13} className="text-amber-300 animate-pulse" />
-                  <span className="text-[10px] font-black text-amber-200">
-                    كاش باك مسترد: <span className="font-mono text-white text-xs">{totalCashback.toFixed(0)}</span> ج.م
+                <div 
+                  className="flex items-center gap-1.5 bg-white/20 backdrop-blur-md px-2.5 py-1.5 rounded-xl border border-white/30 shadow-sm"
+                  style={{ backdropFilter: 'blur(8px)' }}
+                >
+                  <Coins size={13} className="text-amber-300 animate-pulse shrink-0" />
+                  <span 
+                    className="text-[10px] font-black text-white"
+                    style={{ fontWeight: 900, textShadow: '0 1px 2px rgba(0,0,0,0.4)', color: '#ffffff' }}
+                  >
+                    كاش باك مسترد: <span className="font-mono text-white text-xs" style={{ fontWeight: 900 }}>{totalCashback.toFixed(0)}</span> ج.م
                   </span>
                 </div>
               );
