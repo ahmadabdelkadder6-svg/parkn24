@@ -51,9 +51,8 @@ export interface ParkingSession {
   netRevenue?: number;
   settled?: boolean;       
   settled_at?: string;
-  // 🎁 [جديد]: حقول تتبع الجلسة المجانية
-  freeMinutesApplied?: number;   // كم دقيقة تم إعطاؤها مجاناً في هذه الجلسة
-  isFirstFreeSession?: boolean;  // هل هذه هي الجلسة المجانية الأولى
+  freeMinutesApplied?: number;   
+  isFirstFreeSession?: boolean;  
 }
 
 export interface Offer {
@@ -78,7 +77,7 @@ export interface WalletTopUp {
   method: 'instapay' | 'cashwallet';
   status: 'pending' | 'approved' | 'rejected';
   timestamp: number;
-  bonusAmount?: number; // 🎁 [جديد]: البونص المُضاف
+  bonusAmount?: number; 
 }
 
 export interface IncomingCar {
@@ -114,7 +113,6 @@ export type ScreenType =
 
 // ===================== 🎁 نظام الشرائح والهدايا =====================
 
-// 🏆 شرائح شحن المحفظة مع البونص التصاعدي
 export const TOPUP_TIERS = [
   { id: 'bronze',   amount: 100,  bonus: 5,   label: '🥉 برونزي',   percentage: 5,  popular: false },
   { id: 'silver',   amount: 300,  bonus: 30,  label: '🥈 فضي',      percentage: 10, popular: false },
@@ -122,36 +120,22 @@ export const TOPUP_TIERS = [
   { id: 'platinum', amount: 1000, bonus: 200, label: '👑 بلاتيني', percentage: 20, popular: false },
 ];
 
-// 🎁 حساب البونص المستحق بناءً على مبلغ الشحن
 export const calculateBonus = (amount: number): number => {
   const eligibleTier = [...TOPUP_TIERS].reverse().find((tier) => amount >= tier.amount);
   return eligibleTier ? eligibleTier.bonus : 0;
 };
 
-// 🕐 مدة الجلسة المجانية الأولى = ساعة واحدة (60 دقيقة بالمللي ثانية)
 export const FREE_SESSION_DURATION_MS = 60 * 60 * 1000;
 
-/**
- * 🎁 دالة تحديد أهلية الجلسة للاستفادة من الساعة المجانية
- * الشروط:
- *   ✅ الجلسة قادمة من التطبيق (source === 'app')
- *   ✅ العميل مسجل ولم يستخدم الساعة المجانية من قبل
- *   ❌ الجلسات اليدوية (source === 'manual') لا تستحق أبداً
- */
 export const isEligibleForFreeSession = (
   source: 'app' | 'manual',
   hasUsedFreeSession: boolean | undefined
 ): boolean => {
-  if (source !== 'app') return false; // 🚫 الإضافة اليدوية = لا هدية
-  if (hasUsedFreeSession === true) return false; // 🚫 استخدم الهدية من قبل
+  if (source !== 'app') return false; 
+  if (hasUsedFreeSession === true) return false; 
   return true;
 };
 
-/**
- * 🎁 حساب سعر الجلسة مع مراعاة الجلسة المجانية الأولى
- * ⚠️ يحافظ على المنطق القديم بالكامل - لا يمسه أبداً
- * فقط يقوم بخصم أول ساعة من المدة ثم يمرر الباقي للحاسبة القديمة
- */
 export const calculateSessionPriceWithFreeGift = (
   durationMs: number,
   hourlyRate: number,
@@ -159,7 +143,6 @@ export const calculateSessionPriceWithFreeGift = (
   originalPriceCalculator: (durMs: number, rate: number) => number
 ): { finalPrice: number; freeMinutes: number; billableMs: number } => {
   
-  // 🚫 لو مش أول جلسة (أو جلسة يدوية) → المنطق القديم بالكامل بدون أي مساس
   if (!isFirstFreeSession) {
     return {
       finalPrice: originalPriceCalculator(durationMs, hourlyRate),
@@ -168,17 +151,14 @@ export const calculateSessionPriceWithFreeGift = (
     };
   }
 
-  // 🎁 أول جلسة: خصم أول ساعة (60 دقيقة) كحد أقصى
   const freeMs = Math.min(durationMs, FREE_SESSION_DURATION_MS);
   const billableMs = Math.max(0, durationMs - freeMs);
   const freeMinutes = Math.floor(freeMs / 60000);
 
-  // إذا كانت المدة الكلية ≤ ساعة → مجانية بالكامل
   if (billableMs === 0) {
     return { finalPrice: 0, freeMinutes, billableMs: 0 };
   }
 
-  // 💡 لو زادت عن ساعة → نمرر الفارق للمنطق القديم بالضبط بدون أي تدخل
   const finalPrice = originalPriceCalculator(billableMs, hourlyRate);
   return { finalPrice, freeMinutes: 60, billableMs };
 };
@@ -314,7 +294,6 @@ const mapSession = (r: any): ParkingSession => {
     netRevenue: r.net_revenue != null ? Number(r.net_revenue) : 0,
     settled: r.settled ?? false,                     
     settled_at: r.settled_at || undefined,
-    // 🎁 [جديد]: قراءة حقول الهدية من قاعدة البيانات
     freeMinutesApplied: r.free_minutes_applied != null ? Number(r.free_minutes_applied) : 0,
     isFirstFreeSession: r.is_first_free_session ?? false,
   };
@@ -331,7 +310,7 @@ const mapTopUp = (r: any): WalletTopUp => ({
   id: r.id, userId: r.user_id, userName: r.user_name, userPhone: r.user_phone,
   amount: Number(r.amount), transactionId: r.transaction_id, carPlate: r.car_plate,
   method: r.method, status: r.status, timestamp: new Date(r.created_at).getTime(),
-  bonusAmount: r.bonus_amount != null ? Number(r.bonus_amount) : 0, // 🎁 جديد
+  bonusAmount: r.bonus_amount != null ? Number(r.bonus_amount) : 0, 
 });
 
 const mapIncoming = (r: any): IncomingCar => ({
@@ -382,8 +361,8 @@ interface AppState {
     phone: string; 
     carPlate: string; 
     wallet: number;
-    hasUsedFreeSession?: boolean; // 🎁 جديد
-    bonusBalance?: number;         // 🎁 جديد
+    hasUsedFreeSession?: boolean; 
+    bonusBalance?: number;         
   } | null;
   setCurrentUser: (u: { 
     name: string; 
@@ -394,7 +373,7 @@ interface AppState {
     bonusBalance?: number;
   } | null) => void;
   deductWallet: (amount: number) => void;
-  markFreeSessionUsed: () => Promise<void>; // 🎁 جديد
+  markFreeSessionUsed: () => Promise<void>; 
   garages: Garage[];
   currentGarageId: string | null;
   setCurrentGarageId: (id: string | null) => void;
@@ -412,7 +391,7 @@ interface AppState {
   acknowledgedSessionIds: Set<string>; 
   acknowledgeSession: (id: string) => void; 
   addSession: (s: Omit<ParkingSession, 'id'>) => Promise<string>;
-  endSession: (id: string, totalPrice: number, paymentMethod: string, freeMinutesApplied?: number) => Promise<void>; // 🎁 معدل
+  endSession: (id: string, totalPrice: number, paymentMethod: string, freeMinutesApplied?: number) => Promise<void>; 
   cancelSession: (id: string) => void;
   removeSession: (id: string) => Promise<void>;
   confirmRevenue: (sessionId: string) => Promise<void>;
@@ -452,7 +431,6 @@ export const useStore = create<AppState>((set, get) => ({
     set({ currentUser: u }); safeSetStorage('currentUser', u);
     if (!isSupabaseConfigured()) return;
     try {
-      // 🎁 جلب حقول الهدية من قاعدة البيانات
       const { data: existingUser } = await supabase
         .from('users')
         .select('wallet, name, phone, car_plate, has_used_free_session, bonus_balance')
@@ -471,7 +449,6 @@ export const useStore = create<AppState>((set, get) => ({
         set({ currentUser: updated }); safeSetStorage('currentUser', updated);
         await supabase.from('users').update({ name: u.name, car_plate: u.carPlate }).eq('phone', u.phone);
       } else {
-        // 🎁 مستخدم جديد → إنشاؤه بحالة "لم يستخدم الهدية بعد"
         const { data: newUser } = await supabase
           .from('users')
           .insert({ 
@@ -491,7 +468,6 @@ export const useStore = create<AppState>((set, get) => ({
           };
           set({ currentUser: updated }); safeSetStorage('currentUser', updated);
           
-          // 🎉 تفعيل عرض رسالة الترحيب في الواجهة
           try {
             localStorage.setItem('showWelcomeGift', 'true');
           } catch (e) { console.error(e); }
@@ -511,7 +487,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 🎁 [جديد]: دالة تعليم أن الجلسة المجانية الأولى قد استُخدمت
   markFreeSessionUsed: async () => {
     const user = get().currentUser;
     if (!user || user.hasUsedFreeSession) return;
@@ -527,7 +502,6 @@ export const useStore = create<AppState>((set, get) => ({
       .eq('phone', user.phone);
     if (error) {
       console.error('❌ Failed to mark free session used:', error);
-      // تراجع عن التعديل عند الفشل
       const reverted = { ...user, hasUsedFreeSession: false };
       set({ currentUser: reverted });
       safeSetStorage('currentUser', reverted);
@@ -580,7 +554,7 @@ export const useStore = create<AppState>((set, get) => ({
     safeRemoveStorage('currentUser'); safeRemoveStorage('appView'); safeRemoveStorage('appScreen');
     safeRemoveStorage('currentGarageId'); safeRemoveStorage('selectedGarageId');
     safeRemoveStorage('garageAuth'); safeRemoveStorage('adminAuth');
-    safeRemoveStorage('acknowledgedSessionIds');
+    safeRemoveStorage('acknowledgedSessionIds'); 
   },
 
   fetchAll: async () => {
@@ -591,7 +565,7 @@ export const useStore = create<AppState>((set, get) => ({
       supabase
         .from('sessions')
         .select('*')
-        .or('status.eq.active,settled.eq.false,settled.is.null')
+        .or('status.eq.active,settled.eq.false,settled.is.null') 
         .order('created_at', { ascending: false })
         .limit(200),
       supabase
@@ -666,7 +640,6 @@ export const useStore = create<AppState>((set, get) => ({
               customerName: ss.customerName || localVersion.customerName,
               settled: ss.settled ?? localVersion.settled,
               settled_at: ss.settled_at || localVersion.settled_at,
-              // 🎁 حفاظ على قيمة الهدية
               isFirstFreeSession: ss.isFirstFreeSession ?? localVersion.isFirstFreeSession,
               freeMinutesApplied: ss.freeMinutesApplied ?? localVersion.freeMinutesApplied,
             };
@@ -881,8 +854,6 @@ export const useStore = create<AppState>((set, get) => ({
 
       const addedByValue = resolveAddedBy((s as any).addedBy);
 
-      // 🎁 [منطق الهدية]: نحدد هل الجلسة تستحق أول ساعة مجانية أم لا
-      // ⚠️ الشروط: (1) الجلسة من التطبيق  (2) العميل لم يستخدم الهدية من قبل
       const currentUser = get().currentUser;
       const eligibleForFree = isEligibleForFreeSession(s.source, currentUser?.hasUsedFreeSession);
 
@@ -897,7 +868,6 @@ export const useStore = create<AppState>((set, get) => ({
         commissionAmount: 0,
         netRevenue: 0,
         settled: false,
-        // 🎁 [جديد]: تعليم الجلسة أنها مؤهلة للهدية
         isFirstFreeSession: eligibleForFree,
         freeMinutesApplied: 0,
       };
@@ -920,7 +890,6 @@ export const useStore = create<AppState>((set, get) => ({
           commission_amount: 0,
           net_revenue: 0,
           settled: false,
-          // 🎁 [جديد]: حفظ حالة الأهلية في قاعدة البيانات
           is_first_free_session: eligibleForFree,
           free_minutes_applied: 0,
         }).select().single();
@@ -951,7 +920,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 🎁 [معدل]: endSession يستقبل الآن عدد الدقائق المجانية المطبقة
   endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0) => {
     const now = Date.now();
     const session = get().sessions.find((s) => s.id === id);
@@ -986,7 +954,6 @@ export const useStore = create<AppState>((set, get) => ({
         commissionAmount,
         netRevenue,
         settled: false,
-        // 🎁 حفظ عدد الدقائق المجانية المطبقة
         freeMinutesApplied: freeMinutesApplied || session.freeMinutesApplied || 0,
       };
 
@@ -994,7 +961,6 @@ export const useStore = create<AppState>((set, get) => ({
       set((st) => ({ sessions: st.sessions.map((s) => (s.id === id ? endedSession : s)) }));
       await get().adjustGarageSpots(session.garageId, +1);
 
-      // 🎁 [مهم]: لو الجلسة كانت مؤهلة وتم استخدام دقائق مجانية → علم أن الهدية استُخدمت
       if (session.isFirstFreeSession && freeMinutesApplied > 0) {
         await get().markFreeSessionUsed();
       }
@@ -1145,25 +1111,9 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   approveTopUp: async (id) => {
-    const topUp = get().walletTopUps.find((w) => w.id === id); if (!topUp) return;
-    set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'approved' as const } : w)) }));
-    if (!isSupabaseConfigured()) return;
-    let dbRow: any = null;
-    if (topUp.transactionId) { const { data } = await supabase.from('wallet_topups').select('id, user_id, user_phone, amount, status').eq('transaction_id', topUp.transactionId).maybeSingle(); if (data) dbRow = data; }
-    if (!dbRow) { const { data } = await supabase.from('wallet_topups').select('id, user_id, user_phone, amount, status').eq('id', id).maybeSingle(); if (data) dbRow = data; }
-    if (!dbRow) { console.error('❌ الطلب مش موجود'); return; }
-    const supabaseId = dbRow.id;
-    const { error: approveError } = await supabase.from('wallet_topups').update({ status: 'approved' }).eq('id', supabaseId);
-    if (approveError) {
-      console.error('❌', approveError);
-      set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'pending' as const } : w)) }));
-      return;
-    }
-    set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, id: supabaseId, status:   approveTopUp: async (id) => {
     const topUp = get().walletTopUps.find((w) => w.id === id); 
     if (!topUp) return;
 
-    // تحديث الحالة محلياً فوراً
     set((st) => ({ 
       walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'approved' as const } : w)) 
     }));
@@ -1197,7 +1147,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
     if (!userData) { console.error('❌ المستخدم مش موجود'); return; }
 
-    // 🎁 [حساب البونص المضمون بالأرقام الصريحة]:
     const baseAmount = Number(dbRow.amount || topUp.amount || 0);
     let bonusAmount = 0;
     if (baseAmount >= 1000) bonusAmount = 200;
@@ -1213,12 +1162,10 @@ export const useStore = create<AppState>((set, get) => ({
     const { error: walletError } = await supabase.from('users').update({ wallet: newWallet }).eq('id', userData.id);
     if (walletError) { console.error('❌', walletError); return; }
 
-    // حفظ قيمة البونص في جدول الـ topups
     if (bonusAmount > 0) {
       await supabase.from('wallet_topups').update({ bonus_amount: bonusAmount }).eq('id', supabaseId);
     }
 
-    // تحديث رصيد العميل الحالي في الذاكرة الحية فوراً
     const currentUser = get().currentUser;
     if (currentUser && (currentUser.phone === userData.phone || (currentUser as any).id === userData.id)) {
       const updated = { ...currentUser, wallet: newWallet };
