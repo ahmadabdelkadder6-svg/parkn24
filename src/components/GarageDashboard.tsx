@@ -474,7 +474,6 @@ export default function GarageDashboard() {
       if (!isActive) return [];
     }
 
-    // ⚡ [صاروخي]: حساب حدود التواريخ بالمللي ثانية مرة واحدة فقط "خارج" الحلقة لتجنب استهلاك المعالج
     const today = new Date();
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
     const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1;
@@ -488,11 +487,9 @@ export default function GarageDashboard() {
         const isWithinLast24Hours = (Date.now() - endMs) < 24 * 60 * 60 * 1000;
         
         if (isValet) { 
-          // السايس: مقارنة أرقام لحظية لمعرفة هل الجلسة تمت اليوم أو في آخر 24 ساعة
           const isToday = endMs >= todayStart && endMs <= todayEnd;
           if (!isToday && !isWithinLast24Hours) return false; 
         } else { 
-          // المالك: مقارنة رقمية فائقة السرعة للتواريخ المحددة بالفلاتر
           if (boundaryFrom && endMs < boundaryFrom) return false; 
           if (boundaryTo && endMs > boundaryTo) return false; 
         }
@@ -513,6 +510,7 @@ export default function GarageDashboard() {
       return true;
     });
   }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, isOwner, myValetNames, selectedValetFilter, valetNumber, garage]);
+
   const filteredStats = useMemo(() => {
     const c = filteredCompleted.filter(s => s.revenueConfirmed);
     const u = filteredCompleted.filter(s => !s.revenueConfirmed);
@@ -1017,85 +1015,87 @@ export default function GarageDashboard() {
               {valetActiveSessions.length === 0 ? (
                 <div className="text-center" style={{ background: '#fff', borderRadius: 22, padding: 28, border: '2px solid #D0DCFF', color: '#94a3b8', fontSize: 14 }}>لا توجد جلسات نشطة</div>
               ) : (
-              {/* 🚗 كروت الجلسات النشطة للسايس - تصميم مدمج ومريح للعين */}
-              {valetActiveSessions.map(s => {
-                const st = toMs(s.startTime); const el = st > 0 ? Math.max(0, Math.floor((Date.now() - st) / 1000)) : 0;
-                const mins = Math.floor(el / 60);
+                valetActiveSessions.map(s => {
+                  const st = toMs(s.startTime); const el = st > 0 ? Math.max(0, Math.floor((Date.now() - st) / 1000)) : 0;
+                  const mins = Math.floor(el / 60);
 
-                const isFreeApplied = s.isFirstFreeSession === true;
-                const freeSeconds = isFreeApplied ? Math.min(el, 3600) : 0;
-                const billableSeconds = Math.max(0, el - freeSeconds);
-                const hrs = isFreeApplied ? calculateFullHours(billableSeconds) : calculateFullHours(el);
+                  const isFreeApplied = s.isFirstFreeSession === true;
+                  const freeSeconds = isFreeApplied ? Math.min(el, 3600) : 0;
+                  const billableSeconds = Math.max(0, el - freeSeconds);
+                  const hrs = isFreeApplied ? calculateFullHours(billableSeconds) : calculateFullHours(el);
 
-                const rate = Number(s.agreedPrice ?? garage.basePrice); 
-                const cost = getActiveCost(s);
-                const isM = s.source === 'manual'; const un = undoableSessions.find(u => u.sessionId === s.id || u.localId === s.id);
-                return (
-                  <div 
-                    key={s.id} 
-                    style={{ 
-                      background: isM ? '#FFFBF5' : '#F4F9FF', 
-                      border: `1.5px solid ${isM ? '#FFD180' : '#A0C4FF'}`, 
-                      borderRadius: 16, 
-                      padding: '10px 12px', // ⚡ تقليص الهوامش الداخلية للكارت
-                      boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
-                    }}
-                    className="mb-2"
-                  >
-                    {/* السطر العلوي: التوقيت والشارات + رقم اللوحة */}
-                    <div className="flex justify-between items-center mb-1.5">
-                      <div className="flex items-center gap-1 flex-wrap">
-                        <motion.span animate={{ scale: [1, 1.25, 1] }} transition={{ repeat: Infinity, duration: 1.5 }} className="rounded-full shrink-0" style={{ width: 8, height: 8, background: isM ? '#FF9500' : '#00CC66' }} />
-                        <span className="font-bold text-slate-500 font-mono" style={{ fontSize: 11 }}>{formatElapsed(el)} • {hrs}س</span>
-                        <span className="font-black text-white shrink-0" style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, background: isM ? '#FF9500' : '#0066FF' }}>{isM ? 'يدوي' : 'تطبيق'}</span>
-                        
-                        {isFreeApplied && (
-                          <span className="font-black flex items-center gap-0.5 shrink-0" style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, background: '#FFF3E0', color: '#E65100', border: '1px solid #FFE0B2' }}>
-                            <Gift size={10} /> ساعة مجانية
-                          </span>
-                        )}
-                      </div>
-                      <div className="font-black text-slate-900" style={{ fontSize: 16 }}>🚗 {s.carPlate}</div>
-                    </div>
-
-                    {/* السطر السفلي: زر الإنهاء السريع + السعر الفعلي */}
-                    <div className="flex justify-between items-center" style={{ paddingTop: 4 }}>
-                      <div className="flex items-center gap-1.5">
-                        <button 
-                          onClick={() => openConfirmPayment(s.id, s.carPlate, cost, hrs, mins, s.source, s.agreedPrice)} 
-                          className="font-black active:scale-95 transition-all text-white" 
-                          style={{ 
-                            background: 'linear-gradient(135deg,#FF3333,#CC0000)', 
-                            padding: '8px 14px', // ⚡ تقليص الزر ليكون مدمجاً
-                            borderRadius: 12, 
-                            fontSize: 11,
-                            border: 'none',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          إنهاء وتحصيل
-                        </button>
-                        {un && (
-                          <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} onClick={() => handleUndoSession(un)} className="font-black flex items-center gap-1 active:scale-95 text-white" style={{ background: '#FF9500', padding: '8px 12px', borderRadius: 12, fontSize: 10, border: 'none' }}>
-                            <Undo2 size={12} /> ({getUndoRemainingSeconds(un.addedAt)}ث)
-                          </motion.button>
-                        )}
+                  const rate = Number(s.agreedPrice ?? garage.basePrice); 
+                  const cost = getActiveCost(s);
+                  const isM = s.source === 'manual'; const un = undoableSessions.find(u => u.sessionId === s.id || u.localId === s.id);
+                  return (
+                    <div 
+                      key={s.id} 
+                      style={{ 
+                        background: isM ? '#FFFBF5' : '#F4F9FF', 
+                        border: `1.5px solid ${isM ? '#FFD180' : '#A0C4FF'}`, 
+                        borderRadius: 16, 
+                        padding: '10px 12px',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
+                      }}
+                      className="mb-2"
+                    >
+                      <div className="flex justify-between items-center mb-1.5">
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <motion.span animate={{ scale: [1, 1.25, 1] }} transition={{ repeat: Infinity, duration: 1.5 }} className="rounded-full shrink-0" style={{ width: 8, height: 8, background: isM ? '#FF9500' : '#00CC66' }} />
+                          <span className="font-bold text-slate-500 font-mono" style={{ fontSize: 11 }}>{formatElapsed(el)} • {hrs}س</span>
+                          <span className="font-black text-white shrink-0" style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, background: isM ? '#FF9500' : '#0066FF' }}>{isM ? 'يدوي' : 'تطبيق'}</span>
+                          
+                          {isFreeApplied && (
+                            <span className="font-black flex items-center gap-0.5 shrink-0" style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, background: '#FFF3E0', color: '#E65100', border: '1px solid #FFE0B2' }}>
+                              <Gift size={10} /> ساعة مجانية
+                            </span>
+                          )}
+                        </div>
+                        <div className="font-black text-slate-900" style={{ fontSize: 16 }}>🚗 {s.carPlate}</div>
                       </div>
 
-                      {/* عرض التكلفة / الجلسة المجانية بتصميم فخم وموفر للمساحة */}
-                      <div className="font-black text-left" style={{ fontSize: cost === 0 && isFreeApplied ? 11 : 15, color: cost === 0 && isFreeApplied ? '#FF9500' : '#00AA44' }}>
-                        {cost === 0 && isFreeApplied ? (
-                          <span className="flex items-center gap-0.5 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg shadow-sm">
-                            🎁 مجاناً (0ج)
-                          </span>
-                        ) : (
-                          <span className="font-mono">{cost} ج.م</span>
-                        )}
+                      <div className="flex justify-between items-center" style={{ paddingTop: 4 }}>
+                        <div className="flex items-center gap-1.5">
+                          <button 
+                            onClick={() => openConfirmPayment(s.id, s.carPlate, cost, hrs, mins, s.source, s.agreedPrice)} 
+                            className="font-black active:scale-95 transition-all text-white" 
+                            style={{ 
+                              background: 'linear-gradient(135deg,#FF3333,#CC0000)', 
+                              padding: '8px 14px',
+                              borderRadius: 12, 
+                              fontSize: 11,
+                              border: 'none',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            إنهاء وتحصيل
+                          </button>
+                          {un && (
+                            <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} onClick={() => handleUndoSession(un)} className="font-black flex items-center gap-1 active:scale-95 text-white" style={{ background: '#FF9500', padding: '8px 12px', borderRadius: 12, fontSize: 10, border: 'none' }}>
+                              <Undo2 size={12} /> ({getUndoRemainingSeconds(un.addedAt)}ث)
+                            </motion.button>
+                          )}
+                        </div>
+
+                        <div className="font-black text-left" style={{ fontSize: cost === 0 && isFreeApplied ? 11 : 15, color: cost === 0 && isFreeApplied ? '#FF9500' : '#00AA44' }}>
+                          {cost === 0 && isFreeApplied ? (
+                            <span className="flex items-center gap-0.5 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg shadow-sm">
+                              🎁 مجاناً (0ج)
+                            </span>
+                          ) : (
+                            <span className="font-mono">{cost} ج.م</span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Owner info bar */}
       {isOwner && (
         <div className="mb-5 flex items-center justify-between" style={{ background: '#fff', borderRadius: 20, padding: '12px 16px', border: '2px solid #D0DCFF' }}>
@@ -1308,35 +1308,18 @@ export default function GarageDashboard() {
               </>
             )}
 
-          {/* 📊 بوكس "عملياتي اليوم" - تصميم أفقي مدمج يوفر 50% من المساحة الرأسية */}
-          {isValet && (
-            <div 
-              className="mb-4 flex items-center justify-between" 
-              style={{ 
-                background: '#ffffff', 
-                borderRadius: 16, 
-                padding: '10px 16px', 
-                border: '1.5px solid #D0DCFF',
-                boxShadow: '0 2px 8px rgba(0,102,255,0.02)'
-              }}
-            >
-              {/* العدد المكتمل مدمج باليسار */}
-              <div className="flex items-baseline gap-1">
-                <span className="font-mono font-black text-blue-600" style={{ fontSize: 24, lineHeight: 1 }}>
-                  {filteredCompleted.length}
-                </span>
-                <span className="font-bold text-slate-400" style={{ fontSize: 10 }}>عملية مكتملة</span>
+            {isValet && (
+              <div className="mb-4 text-center" style={{ background: '#fff', borderRadius: 20, padding: 16, border: '2px solid #D0DCFF' }}>
+                <div className="font-black" style={{ fontSize: 14, color: '#334155' }}>عملياتي اليوم</div>
+                <div className="font-black font-mono" style={{ fontSize: 32, color: '#0066FF' }}>{filteredCompleted.length}</div>
+                <div className="font-bold" style={{ fontSize: 11, color: '#94a3b8' }}>عملية مكتملة</div>
               </div>
-
-              {/* العنوان والرمز باليمين */}
-              <div className="flex items-center gap-2">
-                <span className="font-black text-slate-800 text-sm">📊 عملياتي اليوم</span>
-              </div>
-            </div>
-          )}
+            )}
+          </>
+        )}
 
         <div className="space-y-2">
-{filteredCompleted.slice(0, 30).map(session => {
+          {filteredCompleted.slice(0, 30).map(session => {
             const isM = session.source === 'manual';
             const et = session.endTime ? toMs(session.endTime) : null;
             const time = et ? new Date(et) : null;
@@ -1354,7 +1337,6 @@ export default function GarageDashboard() {
               }}>
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2 flex-wrap">
-                    {/* ✅ تم تصحيح هذا السطر لمنع تكرار القوس */}
                     {(isOwner || !isC) && (
                       <span className="font-black" style={{ fontSize: rev === 0 && session.isFirstFreeSession ? 12 : 17, color: isSettled ? '#64748B' : rev === 0 && session.isFirstFreeSession ? '#00AA44' : isM ? '#E65100' : '#0066FF' }}>
                         {rev === 0 && session.isFirstFreeSession ? (
