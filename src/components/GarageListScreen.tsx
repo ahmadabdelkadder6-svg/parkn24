@@ -1084,7 +1084,7 @@ function WelcomeGiftModal() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   ██  GARAGE CARD COMPONENT
+   ██  GARAGE CARD COMPONENT (تصميم بريميوم مدمج ومريح للقيادة 🚗)
    ════════════════════════════════════════════════════════════ */
 interface GarageCardProps {
   garage: GarageWithDistance;
@@ -1112,9 +1112,9 @@ function GarageCard({
 
   const borderColor = isClosest && !isBusy ? '#0066FF' : isNearby ? '#00CC66' : '#D0DCFF';
   const glowColor = isClosest && !isBusy
-    ? 'rgba(0,102,255,0.12)'
+    ? 'rgba(0,102,255,0.08)'
     : isNearby
-    ? 'rgba(0,204,102,0.08)'
+    ? 'rgba(0,204,102,0.05)'
     : 'none';
 
   const btnBg = (() => {
@@ -1128,50 +1128,52 @@ function GarageCard({
 
   const btnLabel = (() => {
     if (isFull) return 'ممتلئ - لا توجد أماكن';
-    if (hasActiveSession) return '⚡ الانتقال للجلسة النشطة';
-    if (hasIncomingCar) return '📍 الانتقال للحجز النشط';
-    if (isClosest) return '🅿️ احجز في الأقرب إليك';
-    if (isNearby) return '🅿️ احجز الآن - قريب منك';
-    return '🅿️ احجز مكانك';
+    if (hasActiveSession) return '⚡ الجلسة النشطة';
+    if (hasIncomingCar) return '📍 الحجز النشط';
+    if (isClosest) return 'احجز في الأقرب إليك';
+    if (isNearby) return 'احجز الآن - قريب';
+    return 'احجز مكانك';
   })();
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.04 }}
+      transition={{ delay: index * 0.03 }}
       onClick={!disabled && !isFull ? onSelect : undefined}
       className={`transition-all text-right ${
-        !isFull && !disabled ? 'active:scale-[0.98] cursor-pointer' : 'cursor-not-allowed opacity-90'
+        !isFull && !disabled ? 'active:scale-[0.99] cursor-pointer' : 'cursor-not-allowed opacity-95'
       }`}
       style={{
         background: '#ffffff',
-        border: `2px solid ${borderColor}`,
-        borderRadius: 20,
-        padding: '16px',
-        boxShadow: `0 4px 18px ${glowColor}, 0 2px 6px rgba(0,0,0,0.03)`,
+        border: `1.5px solid ${borderColor}`,
+        borderRadius: 18,
+        padding: '12px 14px', // ⚡ تقليل الحواف لتصغير حجم الكارت الكلي واكتساب مساحة
+        boxShadow: `0 4px 14px ${glowColor}, 0 2px 4px rgba(0,0,0,0.02)`,
       }}
     >
-      <div className="flex justify-between items-center mb-2.5">
-        <div className="flex items-center gap-1.5 flex-wrap">
+      {/* السطر العلوي: التقييم + الاسم والشارات */}
+      <div className="flex justify-between items-center mb-1.5">
+        
+        {/* شارات الحالة والتقييم بحجم أصغر وأكثر تناسقاً */}
+        <div className="flex items-center gap-1 flex-wrap">
           <div
-            className="flex items-center gap-1 font-black"
+            className="flex items-center gap-0.5 font-black text-white"
             style={{
               background: '#FF9500',
-              color: '#fff',
-              fontSize: 11,
-              padding: '3px 8px',
-              borderRadius: 10,
+              fontSize: 10,
+              padding: '2px 6px',
+              borderRadius: 8,
             }}
           >
-            <Star size={11} fill="currentColor" />
+            <Star size={9} fill="currentColor" />
             {garage.rating}
           </div>
 
           {isFull && (
             <span
-              className="font-black"
-              style={{ background: '#FF3333', color: '#fff', fontSize: 10, padding: '3px 8px', borderRadius: 10 }}
+              className="font-black text-white"
+              style={{ background: '#FF3333', fontSize: 9, padding: '2px 6px', borderRadius: 8 }}
             >
               ممتلئ
             </span>
@@ -1179,8 +1181,8 @@ function GarageCard({
 
           {!isBusy && isClosest && !isFull && (
             <span
-              className="font-black"
-              style={{ background: '#0066FF', color: '#fff', fontSize: 10, padding: '3px 8px', borderRadius: 10 }}
+              className="font-black text-white"
+              style={{ background: '#0066FF', fontSize: 9, padding: '2px 6px', borderRadius: 8 }}
             >
               📍 الأقرب
             </span>
@@ -1188,84 +1190,89 @@ function GarageCard({
 
           {!isBusy && !isClosest && isNearby && !isFull && (
             <span
-              className="font-black"
-              style={{ background: '#00CC66', color: '#fff', fontSize: 10, padding: '3px 8px', borderRadius: 10 }}
+              className="font-black text-white"
+              style={{ background: '#00CC66', fontSize: 9, padding: '2px 6px', borderRadius: 8 }}
             >
               قريب
             </span>
           )}
         </div>
 
-        <h3 className="text-base font-black" style={{ color: '#0A1628' }}>
+        {/* اسم الجراج بخط واضح وعريض للرؤية السريعة */}
+        <h3 className="text-sm font-black text-slate-900" style={{ lineHeight: 1.2 }}>
           {garage.name}
         </h3>
       </div>
 
-      <div className="flex items-center gap-1 justify-end mb-3" style={{ color: '#7B8CA6', fontSize: 11 }}>
-        <span>{garage.location}</span>
-        <MapPin size={12} />
+      {/* الموقع الجغرافي بحجم مدمج */}
+      <div className="flex items-center gap-1 justify-end mb-2 text-slate-400" style={{ fontSize: 10 }}>
+        <span className="truncate max-w-[180px]">{garage.location}</span>
+        <MapPin size={10} className="shrink-0" />
       </div>
 
-      <div className="flex items-center justify-between gap-2 mb-3.5">
-        {/* بوكس وقت الوصول للجراج بتدرج بنفسجي أنيق للبعيدة */}
+      {/* السطر الحركي (وقت الوصول + الأماكن الفاضية والسعر) */}
+      <div className="flex items-center justify-between gap-2 mb-2.5">
+        
+        {/* 🕐 بوكس وقت الوصول (مهم جداً أثناء القيادة: تم إبرازه بخط واضح وتصميم ناصع) */}
         <div
-          className="flex items-center gap-1.5 font-black"
+          className="flex items-center gap-1 font-black text-white shadow-sm shrink-0"
           style={{
             background: isNearby
               ? 'linear-gradient(135deg, #00CC66, #00AA55)'
               : 'linear-gradient(135deg, #7C3AED, #5B21B6)',
-            color: '#fff',
-            borderRadius: 14,
-            padding: '8px 12px',
-            fontSize: 13,
-            boxShadow: isNearby
-              ? '0 3px 10px rgba(0,204,102,0.28)'
-              : '0 3px 10px rgba(124,58,237,0.28)',
+            borderRadius: 10,
+            padding: '5px 10px',
+            fontSize: 11,
           }}
         >
-          <Navigation size={14} />
-          <span className="font-mono">{formatDuration(garage.minutes)}</span>
+          <Navigation size={12} className="rotate-45" />
+          <span className="font-mono tracking-wider">{formatDuration(garage.minutes)}</span>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1">
-            <Car size={15} style={{ color: '#0066FF' }} />
-            <span className="font-black font-mono text-sm" style={{ color: '#0066FF' }}>
+        {/* الأماكن المتاحة والسعر */}
+        <div className="flex items-center gap-2.5">
+          {/* الأماكن الشاغرة */}
+          <div className="flex items-center gap-1 shrink-0">
+            <Car size={14} style={{ color: '#0066FF' }} />
+            <span className="font-black font-mono text-sm text-blue-600">
               {garage.availableSpots}
             </span>
-            <span className="text-[10px]" style={{ color: '#7B8CA6' }}>
-              شاغر
-            </span>
+            <span className="text-[9px] font-bold text-slate-500">شاغر</span>
           </div>
-          <div style={{ width: 1.5, height: 16, background: '#E2E8F0' }} />
-          <div className="flex items-center gap-1">
-            <span className="font-black font-mono text-sm" style={{ color: '#00AA44' }}>
+          
+          <div style={{ width: 1.5, height: 12, background: '#E2E8F0' }} />
+          
+          {/* السعر */}
+          <div className="flex items-center gap-1 shrink-0">
+            <span className="font-black font-mono text-sm text-emerald-600">
               {garage.basePrice}
             </span>
-            <span className="text-[10px] font-bold" style={{ color: '#7B8CA6' }}>
-              ج.م/س
-            </span>
+            <span className="text-[9px] font-bold text-slate-500">ج.م/س</span>
           </div>
         </div>
+
       </div>
 
+      {/* زر الحجز: تم جعله مدمجاً وأنيقاً لتوفير المساحة الرأسية */}
       <button
         disabled={isFull || disabled}
         onClick={(e) => {
           e.stopPropagation();
           if (!isFull && !disabled) onSelect();
         }}
-        className="w-full font-black flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
+        className="w-full font-black flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all"
         style={{
           background: btnBg,
           color: isFull ? '#94a3b8' : '#ffffff',
-          borderRadius: 14,
-          padding: '13px 0',
-          fontSize: 13,
+          borderRadius: 12,
+          padding: '9px 0', // ⚡ تقليص حجم الزر الرأسي ليكون مدمجاً
+          fontSize: 12,
+          border: 'none',
+          cursor: 'pointer'
         }}
       >
-        <Car size={16} />
-        {btnLabel}
+        <Car size={14} />
+        <span>{btnLabel}</span>
       </button>
     </motion.div>
   );
