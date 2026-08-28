@@ -1051,7 +1051,16 @@ export default function GarageDashboard() {
                           <button onClick={() => openConfirmPayment(s.id, s.carPlate, cost, hrs, mins, s.source, s.agreedPrice)} className="font-black active:scale-95" style={{ background: 'linear-gradient(135deg,#FF3333,#CC0000)', color: '#fff', padding: '10px 18px', borderRadius: 16, fontSize: 12 }}>إنهاء وتحصيل</button>
                           {un && (<motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} onClick={() => handleUndoSession(un)} className="font-black flex items-center gap-1 active:scale-95" style={{ background: '#FF9500', color: '#fff', padding: '10px 14px', borderRadius: 14, fontSize: 11 }}><Undo2 size={14} /> ({getUndoRemainingSeconds(un.addedAt)}ث)</motion.button>)}
                         </div>
-                        <div className="font-black font-mono" style={{ fontSize: 15, color: '#00AA44' }}>{cost} ج.م</div>
+                        {/* 🎁 عرض كلمة "جلسة مجانية" للسايس لو السعر صفر ومؤهلة للهدية الترحيبية */}
+<div className="font-black text-left" style={{ fontSize: cost === 0 && isFreeApplied ? 12 : 15, color: cost === 0 && isFreeApplied ? '#FF9500' : '#00AA44' }}>
+  {cost === 0 && isFreeApplied ? (
+    <span className="flex items-center gap-1 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
+      🎁 جلسة مجانية (0 ج)
+    </span>
+  ) : (
+    <span className="font-mono">{cost} ج.م</span>
+  )}
+</div>
                       </div>
                     </div>
                   );
@@ -1305,7 +1314,17 @@ export default function GarageDashboard() {
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2 flex-wrap">
                     {(isOwner || !isC) && (
-                      <span className="font-mono font-black" style={{ fontSize: 17, color: isSettled ? '#64748B' : isM ? '#E65100' : '#0066FF' }}>{rev.toFixed(0)} ج.م</span>
+{(isOwner || !isC) && (
+  <span className="font-black" style={{ fontSize: rev === 0 && session.isFirstFreeSession ? 12 : 17, color: isSettled ? '#64748B' : rev === 0 && session.isFirstFreeSession ? '#00AA44' : isM ? '#E65100' : '#0066FF' }}>
+    {rev === 0 && session.isFirstFreeSession ? (
+      <span className="flex items-center gap-1 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg">
+        🎁 جلسة مجانية (0 ج)
+      </span>
+    ) : (
+      <span className="font-mono">{rev.toFixed(0)} ج.م</span>
+    )}
+  </span>
+)}
                     )}
                     <span className="font-black" style={{ fontSize: 11, padding: '5px 12px', borderRadius: 12, background: isSettled ? '#94a3b8' : isM ? '#FF9500' : '#0066FF', color: '#fff' }}>
                       {isSettled ? '🔒 مقفلة' : isM ? 'يدوي' : 'تطبيق'}
