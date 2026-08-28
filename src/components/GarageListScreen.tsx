@@ -155,7 +155,7 @@ export default function GarageListScreen() {
     return walletTopUps
       .filter((w) => w.userPhone === currentUser.phone)
       .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 3); // 🚀 عرض آخر 3 عمليات شحن فقط لتخفيف واجهة العميل وتسريع الأداء تماماً
+      .slice(0, 3); // 🚀 عرض أحدث 3 عمليات شحن فقط لتخفيف واجهة العميل وتسريع الأداء تماماً
   }, [walletTopUps, currentUser?.phone]);
 
   const pendingTopUpsCount = useMemo(() => {
@@ -219,16 +219,7 @@ export default function GarageListScreen() {
       .channel(`customer-realtime-${normalizedUserPlate}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'sessions' },
-        (payload) => {
-          if (isMyRow(payload.new) || isMyRow(payload.old)) {
-            refetch();
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'incoming_cars' },
+        { event: '*', schema: 'public', table: 'sessions', filter: `car_plate=eq.${normalizedUserPlate}` },
         (payload) => {
           if (isMyRow(payload.new) || isMyRow(payload.old)) {
             refetch();
@@ -396,13 +387,13 @@ export default function GarageListScreen() {
           />
         </div>
 
-        {/* 💳 بطاقة المحفظة الذكية المدمجة والفاخرة */}
+        {/* 💳 بطاقة المحفظة الذكية المدمجة والفاخرة (مع التحكم التفاعلي بالجميل التحفيزية بالداخل) */}
         <div
           style={{
             background: 'linear-gradient(135deg, #0055FF 0%, #3B00E3 50%, #8A00FF 100%)',
-            borderRadius: 20,
-            padding: '14px 16px',
-            marginBottom: 10,
+            borderRadius: 22,
+            padding: '16px',
+            marginBottom: 12,
             boxShadow: '0 8px 24px rgba(59, 0, 227, 0.28)',
             color: '#ffffff',
             position: 'relative',
@@ -435,7 +426,8 @@ export default function GarageListScreen() {
             }}
           />
 
-          <div className="flex justify-between items-center relative z-10">
+          {/* الجزء العلوي: الرصيد وأزرار الشحن */}
+          <div className="flex justify-between items-center relative z-10 mb-3">
             <div>
               <div
                 className="text-[9px] font-black tracking-widest flex items-center gap-1"
@@ -460,8 +452,7 @@ export default function GarageListScreen() {
             </div>
 
             {/* أزرار المحفظة */}
-            <div className="flex gap-2">
-              {/* زر تاريخ العمليات */}
+            <div className="flex gap-2 items-center">
               {myTopUps.length > 0 && (
                 <button
                   onClick={() => setShowHistory(!showHistory)}
@@ -501,43 +492,76 @@ export default function GarageListScreen() {
             </div>
           </div>
 
-          {/* رقم لوحة السيارة */}
-          <div className="mt-3 flex justify-end relative z-10">
+          {/* 🌟 الجزء السفلي المدمج: الجملة التحفيزية التفاعلية ورقم اللوحة الترخيصية */}
+          <div className="pt-2.5 border-t border-white/20 flex items-center justify-between gap-2 relative z-10">
+            
+            {/* التحقق اللحظي التفاعلي من الرصيد وعرض البانر المناسب */}
+            {(!currentUser?.wallet || currentUser.wallet < 30) ? (
+              /* رصيد ضعيف < 30 جنيه ⬅️ تظهر الجملة الذهبية التحفيزية للشحن فوراً */
+              <button
+                onClick={() => setShowTopUp(true)}
+                className="flex-1 text-right flex items-center gap-1.5 bg-white/10 hover:bg-white/20 active:scale-95 transition-all px-2.5 py-1.5 rounded-xl border border-white/15"
+              >
+                <div className="w-5 h-5 rounded-full bg-amber-400 flex items-center justify-center shrink-0 shadow-sm">
+                  <Zap size={11} className="fill-slate-950 text-slate-950" />
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <div className="font-black text-[11px] text-amber-300 truncate">
+                    اشحن محفظتك ووفر وقتك ✨
+                  </div>
+                  <div className="font-bold text-[9px] text-white/85 truncate">
+                    خروج فوري بضغطة زر بدون فكة ⚡
+                  </div>
+                </div>
+              </button>
+            ) : (
+              /* رصيد كافٍ ومؤمن >= 30 جنيه ⬅️ تختفي الجملة التحفيزية ويظهر بادج أمان أخضر فاخر */
+              <div className="flex-1 text-right flex items-center gap-1.5 bg-white/5 px-2.5 py-1.5 rounded-xl border border-white/10">
+                <div className="w-5 h-5 rounded-full bg-emerald-400 flex items-center justify-center shrink-0 shadow-sm">
+                  <CheckCircle2 size={11} className="text-slate-950 animate-pulse" />
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <div className="font-black text-[11px] text-emerald-300 truncate">
+                    رصيدك ممتاز ومؤمن! 💎
+                  </div>
+                  <div className="font-bold text-[9px] text-white/80 truncate">
+                    جاهز للركن والخروج الذكي فوراً
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 🚗 لوحة السيارة المعدنية */}
             <div
               style={{
                 background: '#ffffff',
                 border: '2px solid #1E293B',
                 borderRadius: 8,
-                boxShadow: '0 4px 12px rgba(0,0,0,0.35), inset 0 1px 2px rgba(255,255,255,0.8)',
+                boxShadow: '0 4px 10px rgba(0,0,0,0.3)',
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
-                minWidth: '110px',
+                minWidth: '95px',
+                flexShrink: 0,
               }}
             >
-              {/* الشريط الأزرق العلوي للوحة الترخيص المصرية الفاخرة */}
               <div 
-                className="flex items-center justify-between px-2"
-                style={{ height: '6px', background: 'linear-gradient(90deg, #0066FF, #0055DD)' }}
+                className="flex items-center justify-between px-1.5"
+                style={{ height: '5px', background: 'linear-gradient(90deg, #0066FF, #0055DD)' }}
               >
                 <span style={{ fontSize: '4px', color: '#fff', fontWeight: 900 }}>EGYPT</span>
                 <span style={{ fontSize: '4px', color: '#fff', fontWeight: 900 }}>مصر</span>
               </div>
               
-              {/* رقم لوحة السيارة بخط أسود عريض وواضح جداً */}
               <div 
-                className="py-1 px-2.5 text-center font-black flex items-center justify-center gap-1"
-                style={{ 
-                  color: '#0F172A', 
-                  fontSize: '13px', 
-                  letterSpacing: '1px',
-                  textShadow: '0.5px 0.5px 0px rgba(0,0,0,0.1)'
-                }}
+                className="py-0.5 px-2 text-center font-black flex items-center justify-center gap-1"
+                style={{ color: '#0F172A', fontSize: '11px', letterSpacing: '0.5px' }}
               >
                 <span>🇪🇬</span>
                 <span className="font-mono">{currentUser?.carPlate || '---'}</span>
               </div>
             </div>
+
           </div>
         </div>
 
@@ -662,82 +686,6 @@ export default function GarageListScreen() {
               </div>
             </div>
           </motion.div>
-        )}
-
-        {/* 🌟 بانر تحفيزي ذهبي مدمج وأنيق مع خط واضح (يظهر إذا كان الرصيد أقل من 30 ج.م) */}
-        {(!currentUser?.wallet || currentUser.wallet < 30) && (
-          <motion.button
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            onClick={() => setShowTopUp(true)}
-            className="w-full mb-3 flex items-center gap-2.5 text-right active:scale-[0.98] transition-all overflow-hidden relative"
-            style={{
-              background: 'linear-gradient(120deg, #FFD700 0%, #FFA500 55%, #FF8C00 100%)',
-              borderRadius: 14,
-              padding: '10px 14px',
-              boxShadow: '0 4px 14px rgba(255, 149, 0, 0.3)',
-            }}
-          >
-            {/* تأثير لمعان زجاجي متحرك احترافي */}
-            <motion.div
-              animate={{ x: ['-100%', '200%'] }}
-              transition={{ repeat: Infinity, duration: 2.5, ease: 'linear' }}
-              className="absolute top-0 bottom-0 w-1/3"
-              style={{
-                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)',
-                pointerEvents: 'none',
-              }}
-            />
-
-            {/* أيقونة برق دائرية متحركة صغيرة */}
-            <motion.div
-              animate={{ rotate: [0, -10, 10, 0] }}
-              transition={{ repeat: Infinity, duration: 1.5 }}
-              className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 relative z-10"
-              style={{
-                background: 'rgba(255,255,255,0.35)',
-                backdropFilter: 'blur(6px)',
-                boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.4)',
-              }}
-            >
-              <Zap size={18} className="fill-white text-white drop-shadow-md" />
-            </motion.div>
-
-            {/* النص التحفيزي واضح ومتناسق */}
-            <div className="flex-1 relative z-10 text-right">
-              <div
-                className="font-black leading-tight"
-                style={{
-                  fontSize: 15,
-                  color: '#3D1F00',
-                  textShadow: '0 1px 1px rgba(255,255,255,0.35)',
-                }}
-              >
-                اشحن محفظتك ووفر وقتك ✨
-              </div>
-              <p
-                className="font-black leading-tight"
-                style={{
-                  fontSize: 12,
-                  color: '#5C2E00',
-                  marginTop: 2,
-                }}
-              >
-                خروج فوري بضغطة زر بدون فكة
-              </p>
-            </div>
-
-            {/* سهم للأمام */}
-            <div
-              className="relative z-10 font-black shrink-0"
-              style={{
-                fontSize: 20,
-                color: '#3D1F00',
-              }}
-            >
-              ←
-            </div>
-          </motion.button>
         )}
 
         {/* بانر الجلسة النشطة */}
