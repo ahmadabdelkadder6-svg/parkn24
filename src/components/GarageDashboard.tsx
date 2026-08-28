@@ -874,7 +874,7 @@ export default function GarageDashboard() {
         </motion.div>
       )}
 
-      {/* Stats Cards */}
+      {/* Stats Cards - كروت الإحصائيات المدمجة */}
       <div className={`grid ${isOwner ? 'grid-cols-3' : 'grid-cols-2'} gap-3 mb-5`}>
         {isOwner ? (
           <>
@@ -884,8 +884,45 @@ export default function GarageDashboard() {
           </>
         ) : (
           <>
-            <div className="text-center" style={{ background: 'linear-gradient(135deg,#0066FF,#0044DD)', borderRadius: 22, padding: '18px 10px', color: '#fff', boxShadow: '0 6px 24px rgba(0,102,255,0.3)' }}><div className="mx-auto mb-1" style={{ opacity: 0.9 }}><Car size={22} /></div><div className="font-black font-mono" style={{ fontSize: 24 }}>{valetActiveSessions.length}</div><div className="font-bold flex items-center justify-center gap-1" style={{ fontSize: 9, opacity: 0.8 }}>جلساتي</div></div>
-            <div className="text-center" style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', borderRadius: 22, padding: '18px 10px', color: '#fff', boxShadow: '0 6px 24px rgba(124,58,237,0.3)' }}><div className="mx-auto mb-1" style={{ opacity: 0.9 }}><Car size={22} /></div><div className="font-black font-mono" style={{ fontSize: 24 }}>{garage.availableSpots}</div><div className="font-bold flex items-center justify-center gap-1" style={{ fontSize: 9, opacity: 0.8 }}>شاغر</div></div>
+            {/* 🚗 بوكس جلساتي المدمج - نصف الحجم وبنفس التدرج الأزرق */}
+            <div 
+              className="text-center transition-all" 
+              style={{ 
+                background: 'linear-gradient(135deg,#0066FF,#0044DD)', 
+                borderRadius: 16, 
+                padding: '8px 10px', 
+                color: '#fff', 
+                boxShadow: '0 4px 14px rgba(0,102,255,0.22)' 
+              }}
+            >
+              <div className="flex items-center justify-center gap-1 mb-0.5" style={{ opacity: 0.9 }}>
+                <Car size={13} />
+                <span className="font-bold text-[10px]">جلساتي</span>
+              </div>
+              <div className="font-black font-mono leading-none" style={{ fontSize: 20 }}>
+                {valetActiveSessions.length}
+              </div>
+            </div>
+
+            {/* 🅿️ بوكس شاغر المدمج - نصف الحجم وبنفس التدرج البنفسجي */}
+            <div 
+              className="text-center transition-all" 
+              style={{ 
+                background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', 
+                borderRadius: 16, 
+                padding: '8px 10px', 
+                color: '#fff', 
+                boxShadow: '0 4px 14px rgba(124,58,237,0.22)' 
+              }}
+            >
+              <div className="flex items-center justify-center gap-1 mb-0.5" style={{ opacity: 0.9 }}>
+                <Car size={13} />
+                <span className="font-bold text-[10px]">شاغر</span>
+              </div>
+              <div className="font-black font-mono leading-none" style={{ fontSize: 20 }}>
+                {garage.availableSpots}
+              </div>
+            </div>
           </>
         )}
       </div>
@@ -1207,10 +1244,26 @@ export default function GarageDashboard() {
 
             {isOwner && (
               <>
-                <div className="mb-4 text-center" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', borderRadius: 24, padding: 22, color: '#fff' }}>
-                  <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 4 }}>{`مؤكد - ${logDateFrom === logDateTo ? formatLocalDateArabic(logDateFrom) : `${logDateFrom} → ${logDateTo}`}`}</div>
-                  <div className="font-black font-mono" style={{ fontSize: 40 }}>{filteredStats.total.toFixed(0)} ج.م</div>
-                  <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>{filteredCompleted.filter(s => s.revenueConfirmed).length} عملية مؤكدة</div>
+                {/* 🟢 كارت الإيراد المؤكد المدمج للمالك - خط مغلظ فخم ونصف الحجم */}
+                <div 
+                  className="mb-3 text-center transition-all" 
+                  style={{ 
+                    background: 'linear-gradient(135deg,#00CC66,#00AA55)', 
+                    borderRadius: 18, 
+                    padding: '10px 14px', 
+                    color: '#fff',
+                    boxShadow: '0 4px 14px rgba(0,204,102,0.22)'
+                  }}
+                >
+                  <div style={{ fontSize: 9, fontWeight: 900, opacity: 0.9, marginBottom: 2 }}>
+                    {`🟢 إجمالي الإيراد المؤكد (${logDateFrom === logDateTo ? 'اليوم' : `${logDateFrom} ➜ ${logDateTo}`})`}
+                  </div>
+                  <div className="font-black font-mono leading-none my-1" style={{ fontSize: 26, fontWeight: 950, textShadow: '0 1.5px 3px rgba(0,0,0,0.15)' }}>
+                    {filteredStats.total.toFixed(0)} <span style={{ fontSize: 13, fontWeight: 800 }}>ج.م</span>
+                  </div>
+                  <div style={{ fontSize: 9, fontWeight: 900, opacity: 0.85 }}>
+                    {filteredCompleted.filter(s => s.revenueConfirmed).length} عملية مكتملة ومسجلة
+                  </div>
                 </div>
 
                 {filteredStats.totalCommission > 0 && (
@@ -1265,16 +1318,30 @@ export default function GarageDashboard() {
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-2 mb-4">
+                {/* 📊 كروت يدوي وتطبيق المدمجة - خطوط غليظة ونصف الارتفاع */}
+                <div className="grid grid-cols-2 gap-2 mb-3">
                   {[
-                    { label: 'يدوي', count: filteredStats.manualCount, total: filteredStats.manualTotal, bg: '#FF9500' },
-                    { label: 'تطبيق', count: filteredStats.appCount, total: filteredStats.appTotal, bg: '#0066FF' },
+                    { label: '✋ يدوي', count: filteredStats.manualCount, total: filteredStats.manualTotal, bg: '#FF9500', shadow: 'rgba(255,149,0,0.22)' },
+                    { label: '📱 تطبيق', count: filteredStats.appCount, total: filteredStats.appTotal, bg: '#0066FF', shadow: 'rgba(0,102,255,0.22)' },
                   ].map(x => (
-                    <div key={x.label} className="text-center" style={{ background: x.bg, borderRadius: 18, padding: 14, color: '#fff' }}>
-                      <div className="font-black" style={{ fontSize: 12, marginBottom: 4 }}>{x.label}</div>
-                      <span className="font-black font-mono" style={{ fontSize: 16 }}>{x.count}</span>
-                      <span className="font-black" style={{ fontSize: 12, marginRight: 4 }}> عربية</span>
-                      <div style={{ fontSize: 10, opacity: 0.8 }}>({x.total.toFixed(0)} ج.م)</div>
+                    <div 
+                      key={x.label} 
+                      className="text-center transition-all" 
+                      style={{ 
+                        background: x.bg, 
+                        borderRadius: 16, 
+                        padding: '8px 10px', 
+                        color: '#fff',
+                        boxShadow: `0 4px 14px ${x.shadow}`
+                      }}
+                    >
+                      <div className="font-black" style={{ fontSize: 11, fontWeight: 900, marginBottom: 1 }}>{x.label}</div>
+                      <div className="font-black font-mono leading-none my-1" style={{ fontSize: 16, fontWeight: 950 }}>
+                        {x.count} <span style={{ fontSize: 9, fontWeight: 800 }}>سيارة</span>
+                      </div>
+                      <div style={{ fontSize: 9, fontWeight: 900, opacity: 0.9 }}>
+                        ({x.total.toFixed(0)} ج)
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1308,11 +1375,28 @@ export default function GarageDashboard() {
               </>
             )}
 
+            {/* 📊 بوكس "عملياتي اليوم" - تصميم أفقي مدمج يوفر 50% من المساحة الرأسية */}
             {isValet && (
-              <div className="mb-4 text-center" style={{ background: '#fff', borderRadius: 20, padding: 16, border: '2px solid #D0DCFF' }}>
-                <div className="font-black" style={{ fontSize: 14, color: '#334155' }}>عملياتي اليوم</div>
-                <div className="font-black font-mono" style={{ fontSize: 32, color: '#0066FF' }}>{filteredCompleted.length}</div>
-                <div className="font-bold" style={{ fontSize: 11, color: '#94a3b8' }}>عملية مكتملة</div>
+              <div 
+                className="mb-4 flex items-center justify-between" 
+                style={{ 
+                  background: '#ffffff', 
+                  borderRadius: 16, 
+                  padding: '10px 16px', 
+                  border: '1.5px solid #D0DCFF',
+                  boxShadow: '0 2px 8px rgba(0,102,255,0.02)'
+                }}
+              >
+                <div className="flex items-baseline gap-1">
+                  <span className="font-mono font-black text-blue-600" style={{ fontSize: 24, lineHeight: 1 }}>
+                    {filteredCompleted.length}
+                  </span>
+                  <span className="font-bold text-slate-400" style={{ fontSize: 10 }}>عملية مكتملة</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="font-black text-slate-800 text-sm">📊 عملياتي اليوم</span>
+                </div>
               </div>
             )}
           </>
