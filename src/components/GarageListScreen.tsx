@@ -398,7 +398,7 @@ export default function GarageListScreen() {
           />
         </div>
 
-        {/* 💳 بطاقة المحفظة الذكية المدمجة والفاخرة مع عداد الكاش باك التراكمي الفعلي */}
+        {/* 💳 بطاقة المحفظة الذكية المدمجة والفاخرة مع عداد الكاش باك التراكمي الفعلي المحدث */}
         <div
           style={{
             background: 'linear-gradient(135deg, #0055FF 0%, #3B00E3 50%, #8A00FF 100%)',
@@ -453,7 +453,7 @@ export default function GarageListScreen() {
                   textShadow: '0 2px 8px rgba(0,0,0,0.15)',
                 }}
               >
-                {Math.round(currentUser?.wallet || 0)} {/* ✅ تقريب الرصيد الرياضي لأقرب رقم صحيح صريح لإلغاء الكسور */}
+                {Math.round(currentUser?.wallet || 0)} 
                 <span className="text-[10px] font-bold" style={{ opacity: 0.9 }}>
                   ج.م
                 </span>
@@ -465,7 +465,7 @@ export default function GarageListScreen() {
               {myTopUps.length > 0 && (
                 <button
                   onClick={() => setShowHistory(!showHistory)}
-                  className="flex items-center justify-center p-2.5 rounded-xl transition-all relative"
+                  className="flex items-center justify-center p-2.5 rounded-xl transition-all relative border-none"
                   style={{
                     background: showHistory ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.15)',
                     color: '#ffffff',
@@ -484,7 +484,7 @@ export default function GarageListScreen() {
 
               <button
                 onClick={() => setShowTopUp(true)}
-                className="flex items-center gap-1 font-black active:scale-95 transition-all"
+                className="flex items-center gap-1 font-black active:scale-95 transition-all border-none"
                 style={{
                   background: '#ffffff',
                   color: '#0055FF',
@@ -502,20 +502,31 @@ export default function GarageListScreen() {
 
           {/* 🚗 شريط الكاش باك التراكمي ورقم اللوحة المعدنية */}
           <div className="mt-3 pt-2.5 border-t border-white/15 flex justify-between items-center relative z-10">
-            {/* 🌟 عداد الكاش باك التراكمي المسترد للعميل - بلون أبيض ناصع وعريض وواضح جداً 🌟 */}
+            {/* 🌟 عداد الكاش باك التراكمي المسترد للعميل - بلون ذهبي براق وعريض جداً وبارز بوضوح 🌟 */}
             {(() => {
               const totalCashback = calculateUserTotalEarnedCashback(sessions, currentUser?.carPlate, currentUser?.phone);
               return (
                 <div 
-                  className="flex items-center gap-1.5 bg-white/20 backdrop-blur-md px-2.5 py-1.5 rounded-xl border border-white/30 shadow-sm"
-                  style={{ backdropFilter: 'blur(8px)' }}
+                  className="flex items-center gap-1.5 bg-white/15 px-3 py-1.5 rounded-xl border border-white/20 shadow-md"
+                  style={{ backdropFilter: 'blur(10px)' }}
                 >
-                  <Coins size={13} className="text-amber-300 animate-pulse shrink-0" />
+                  <Coins size={13} className="text-[#FFD700] animate-pulse shrink-0" />
                   <span 
                     className="text-[10px] font-black text-white"
-                    style={{ fontWeight: 900, textShadow: '0 1px 2px rgba(0,0,0,0.4)', color: '#ffffff' }}
+                    style={{ fontWeight: 900, textShadow: '0 1.5px 2.5px rgba(0,0,0,0.6)', color: '#ffffff' }}
                   >
-                    كاش باك مسترد: <span className="font-mono text-white text-xs" style={{ fontWeight: 900 }}>{totalCashback.toFixed(0)}</span> ج.م
+                    وفرت مع بركن:{' '}
+                    <span 
+                      className="font-mono text-xs" 
+                      style={{ 
+                        fontWeight: 900, 
+                        color: '#FFD700', // لون ذهبي ناصع ومميز
+                        textShadow: '0 0 8px rgba(255, 215, 0, 0.45)' // توهج ناصع للرقم
+                      }}
+                    >
+                      {totalCashback.toFixed(0)}
+                    </span>{' '}
+                    ج.م
                   </span>
                 </div>
               );
@@ -525,9 +536,9 @@ export default function GarageListScreen() {
             <div
               style={{
                 background: '#ffffff',
-                border: '1.5px solid #1E293B',
+                border: '2px solid #1E293B',
                 borderRadius: 8,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.4), inset 0 1px 1px rgba(255,255,255,0.8)',
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
@@ -553,7 +564,7 @@ export default function GarageListScreen() {
           </div>
         </div>
 
-        {/* 🚀 سجل طلبات شحن المحفظة */}
+        {/* سجل طلبات شحن المحفظة */}
         <AnimatePresence>
           {showHistory && myTopUps.length > 0 && (
             <motion.div
@@ -570,7 +581,7 @@ export default function GarageListScreen() {
               }}
             >
               <div className="flex justify-between items-center mb-2.5 pb-2" style={{ borderBottom: '1.5px solid #F0F4FF' }}>
-                <button onClick={() => setShowHistory(false)} className="text-slate-400 hover:text-slate-600">
+                <button onClick={() => setShowHistory(false)} className="text-slate-400 hover:text-slate-600 bg-transparent border-none">
                   <X size={16} />
                 </button>
                 <h3 className="font-black text-xs flex items-center gap-1.5 text-slate-800">

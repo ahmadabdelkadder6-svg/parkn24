@@ -1,7 +1,6 @@
 import { motion } from 'framer-motion';
 import {
   CheckCircle,
-  Star,
   Home,
   Calculator,
   Wallet,
@@ -76,7 +75,6 @@ export default function SummaryScreen() {
     garages.find((g) => g.id === referenceSession?.garageId);
 
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'wallet'>('cash');
-  const [rating, setRating] = useState(4);
   const [done, setDone] = useState(false);
   const [doneMethod, setDoneMethod] = useState('');
   const [doneTotalPrice, setDoneTotalPrice] = useState(0);
@@ -370,21 +368,6 @@ export default function SummaryScreen() {
           )}
         </div>
 
-        <div className="mb-6 w-full text-center">
-          <p className="text-xs text-slate-500 font-bold mb-2">قيّم تجربتك</p>
-          <div className="flex justify-center gap-2">
-            {[1, 2, 3, 4, 5].map((s) => (
-              <button key={s} onClick={() => setRating(s)} className="transition-all active:scale-90 border-none bg-transparent cursor-pointer">
-                <Star
-                  size={30}
-                  className={s <= rating ? 'text-amber-400' : 'text-slate-200'}
-                  fill={s <= rating ? 'currentColor' : 'none'}
-                />
-              </button>
-            ))}
-          </div>
-        </div>
-
         <button
           onClick={() => {
             if (lastCompletedSession && acknowledgeSession) {
@@ -624,21 +607,6 @@ export default function SummaryScreen() {
             )}
           </div>
 
-          <div className="mb-8">
-            <h3 className="text-sm font-black text-slate-700 mb-3 text-right">قيّم تجربتك</h3>
-            <div className="flex justify-center gap-2">
-              {[1, 2, 3, 4, 5].map((s) => (
-                <button key={s} onClick={() => setRating(s)} className="transition-all active:scale-90 border-none bg-transparent cursor-pointer">
-                  <Star
-                    size={36}
-                    className={s <= rating ? 'text-amber-400' : 'text-slate-200'}
-                    fill={s <= rating ? 'currentColor' : 'none'}
-                  />
-                </button>
-              ))}
-            </div>
-          </div>
-
           <button
             onClick={handleConfirm}
             disabled={paymentMethod === 'wallet' && !canPayWallet}
@@ -688,4 +656,4 @@ export default function SummaryScreen() {
       )}
     </motion.div>
   );
-} 
+}
