@@ -1213,21 +1213,30 @@ function GarageCard({
       {/* السطر الحركي (وقت الوصول + الأماكن الفاضية والسعر) */}
       <div className="flex items-center justify-between gap-2 mb-2.5">
         
-        {/* 🕐 بوكس وقت الوصول (مهم جداً أثناء القيادة: تم إبرازه بخط واضح وتصميم ناصع) */}
-        <div
-          className="flex items-center gap-1 font-black text-white shadow-sm shrink-0"
-          style={{
-            background: isNearby
-              ? 'linear-gradient(135deg, #00CC66, #00AA55)'
-              : 'linear-gradient(135deg, #7C3AED, #5B21B6)',
-            borderRadius: 10,
-            padding: '5px 10px',
-            fontSize: 11,
-          }}
-        >
-          <Navigation size={12} className="rotate-45" />
-          <span className="font-mono tracking-wider">{formatDuration(garage.minutes)}</span>
-        </div>
+{/* 🕐 بوكس وقت الوصول باللون الأبيض الناصع الفاخر */}
+<div
+  className="flex items-center gap-1 shadow-sm shrink-0"
+  style={{
+    background: isNearby
+      ? 'linear-gradient(135deg, #00CC66, #00AA55)'
+      : 'linear-gradient(135deg, #7C3AED, #5B21B6)',
+    borderRadius: 10,
+    padding: '5px 10px',
+    fontSize: 11,
+    color: '#ffffff', // ⚡ فرض اللون الأبيض على البوكس ككل
+  }}
+>
+  <Navigation size={12} className="rotate-45" style={{ color: '#ffffff' }} />
+  <span 
+    className="font-mono tracking-wider" 
+    style={{ 
+      color: '#ffffff', // ⚡ خط الدقائق باللون الأبيض الناصع
+      fontWeight: 900,  // ⚡ خط عريض جداً (مغلظ) لسهولة القراءة السريعة
+    }}
+  >
+    {formatDuration(garage.minutes)}
+  </span>
+</div>
 
         {/* الأماكن المتاحة والسعر */}
         <div className="flex items-center gap-2.5">
