@@ -647,42 +647,81 @@ export default function GarageListScreen() {
           )}
         </AnimatePresence>
 
-        {/* 🎁 [جديد]: بانر ترحيبي ذهبي مغري جداً لحث العميل على حجز ركنته الأولى المجانية! */}
+           {/* 🎁 بانر ترحيبي بريميوم بتصميم بطاقة هدية رقمية فاخرة (Voucher) */}
         {isEligibleForFreeSession && !activeSession && !myIncomingCar && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
+            initial={{ opacity: 0, y: -15, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
             className="w-full mb-3 overflow-hidden relative"
             style={{
-              background: 'linear-gradient(135deg, #7C3AED 0%, #D946EF 100%)',
-              borderRadius: 18,
-              padding: '12px 14px',
-              boxShadow: '0 6px 20px rgba(124,58,237,0.25)',
-              border: '2.5px solid #ffffff',
+              background: 'linear-gradient(135deg, #0F172A 0%, #1E1B4B 50%, #2E1065 100%)',
+              borderRadius: 22,
+              padding: '16px',
+              boxShadow: '0 10px 30px rgba(124, 58, 237, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.1)',
+              border: '1.5px solid rgba(245, 158, 11, 0.35)', // إطار ذهبي رقيق ومتوهج
             }}
           >
-            {/* لمعة متحركة */}
+            {/* تأثير لمعان زجاجي متحرك فخم جداً */}
             <motion.div
               animate={{ x: ['-100%', '200%'] }}
-              transition={{ repeat: Infinity, duration: 3, ease: 'linear' }}
-              className="absolute inset-0 w-1/2"
+              transition={{ repeat: Infinity, duration: 3.5, ease: 'linear' }}
+              className="absolute inset-0 w-1/3"
               style={{
-                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',
+                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent)',
                 pointerEvents: 'none',
               }}
             />
-            <div className="flex items-center gap-3 relative z-10">
-              <div className="bg-white/20 p-2 rounded-xl text-white">
-                <Gift size={22} className="animate-bounce" />
-              </div>
+
+            {/* إضاءات ناعمة مدمجة في خلفية الكارت لزيادة العمق البصري */}
+            <div className="absolute -top-10 -left-10 w-24 h-24 bg-yellow-500/10 rounded-full filter blur-xl" />
+            <div className="absolute -bottom-10 -right-10 w-24 h-24 bg-purple-500/15 rounded-full filter blur-xl" />
+
+            <div className="flex items-center gap-3.5 relative z-10">
+              
+              {/* أيقونة الهدية الترحيبية الذهبية المتوهجة مع أنيميشن نبض خفيف */}
+              <motion.div
+                animate={{ rotate: [0, -8, 8, 0], scale: [1, 1.05, 1] }}
+                transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
+                className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-lg"
+                style={{
+                  background: 'linear-gradient(135deg, #FFD700 0%, #FF9500 100%)',
+                  boxShadow: '0 4px 16px rgba(255, 149, 0, 0.35)',
+                }}
+              >
+                <Gift size={24} className="text-slate-900 fill-slate-900/10" />
+              </motion.div>
+
+              {/* نصوص منسقة ومرتبة بخطوط واضحة وهيكل بريميوم */}
               <div className="flex-1 text-right">
-                <div className="font-black text-white flex items-center gap-1 justify-end" style={{ fontSize: 13 }}>
-                  <span>هدية ترحيبية خاصة بانتظارك! 🎁</span>
-                  <Sparkles size={12} className="text-yellow-300" />
+                
+                {/* شارة علوية مبسطة وجذابة */}
+                <div className="flex items-center gap-2 justify-end mb-1">
+                  <span className="font-black text-white text-xs leading-none">نورت عائلة Park'n 24 🎉</span>
+                  <span 
+                    className="font-black text-[9px] px-2.5 py-0.5 rounded-full leading-none shrink-0"
+                    style={{
+                      background: 'rgba(245, 158, 11, 0.15)',
+                      border: '1.5px solid rgba(245, 158, 11, 0.3)',
+                      color: '#FBBF24',
+                    }}
+                  >
+                    🎁 هدية ترحيبية حصرية
+                  </span>
                 </div>
-                <p className="text-white/90 font-black" style={{ fontSize: 10.5, marginTop: 1.5 }}>
-                  احجز ركنتك الأولى من التطبيق واحصل على <span className="text-yellow-300">أول ساعة مجاناً بالكامل!</span> 🕐
+                
+                {/* العنوان الأساسي العريض والواضح */}
+                <h4 
+                  className="font-black text-white leading-tight" 
+                  style={{ fontSize: '14px', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}
+                >
+                  ركنتك الأولى معنا <span className="text-yellow-300">مجانية بالكامل!</span> 🕐
+                </h4>
+                
+                {/* النص التفصيلي الداعم */}
+                <p className="text-slate-300 font-bold leading-normal mt-1" style={{ fontSize: '10.5px' }}>
+                  احجز الآن من التطبيق واستمتع بـ <span className="text-emerald-400 font-black">أول ساعة مجاناً 100%</span> في أي جراج، وسنتكفل نحن بالدفع بالكامل 🚀
                 </p>
+
               </div>
             </div>
           </motion.div>
