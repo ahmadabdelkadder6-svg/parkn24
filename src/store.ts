@@ -111,7 +111,14 @@ export type ScreenType =
   | 'session' | 'summary' | 'lastSession' | 'chat';
 
 // ===================== Helpers =====================
-const uid = () => crypto.randomUUID?.() || Date.now().toString();
+// دالة الـ ID البديلة والآمنة التي تعمل على كافة الهواتف والشبكات
+const uid = () => {
+  try {
+    return crypto.randomUUID?.() || Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+  } catch {
+    return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+  }
+};
 
 const isSupabaseConfigured = () => {
   const url = import.meta.env.VITE_SUPABASE_URL;
@@ -191,10 +198,10 @@ const calculateSessionPrice = (
  * 🔄 الحصول على نسبة شريحة الكاش باك المستحقة بناءً على المجموع التراكمي
  */
 const getCashbackPercentage = (totalAccumulatedAmount: number): number => {
-  if (totalAccumulatedAmount >= 1000) return 0.10;
-  if (totalAccumulatedAmount >= 500) return 0.07;
-  if (totalAccumulatedAmount >= 200) return 0.05;
-  if (totalAccumulatedAmount >= 100) return 0.03;
+  if (totalAccumulatedAmount >= 1000) return 0.10; // 10%
+  if (totalAccumulatedAmount >= 500) return 0.07;  // 7%
+  if (totalAccumulatedAmount >= 200) return 0.05;  // 5%
+  if (totalAccumulatedAmount >= 100) return 0.03;  // 3%
   return 0;
 };
 
@@ -594,12 +601,16 @@ export const useStore = create<AppState>((set, get) => ({
 
   offers: [], 
   
+  // 🚀 دوال العروض والتفاوض المفتوحة بكفاءة للتوافق البرمجي التام دون أي خطأ شاشة بيضاء
   addOffer: (o) => {
     const newO: Offer = { ...o, id: uid(), timestamp: Date.now() };
     set((st) => ({ offers: [newO, ...st.offers] }));
     if (isSupabaseConfigured()) {
       supabase.from('offers').insert({ garage_id: o.garageId, user_id: o.userId, car_plate: o.carPlate, offered_price: o.offeredPrice, status: o.status }).select().single()
-        .then(({ data }) => { if (data) set((st) => ({ offers: st.offers.map((x) => x.id === newO.id ? mapOffer(data) : x) })); });
+        .then(({ data, error }) => { 
+          if (error) console.error('❌', error);
+          if (data) set((st) => ({ offers: st.offers.map((x) => x.id === newO.id ? mapOffer(data) : x) })); 
+        });
     }
   },
   updateOffer: (id, status, counterPrice) => {
@@ -770,13 +781,13 @@ export const useStore = create<AppState>((set, get) => ({
       set({
         garages,
         sessions: finalSessions,
-        offers: o.data ? o.data.map(mapOffer) : (get().offers ?? []), // ⚡
+        offers: o.data ? o.data.map(mapOffer) : (get().offers ?? []),
         walletTopUps: mergedTopUps,
         incomingCars: fetchedCars,
         messages: [...mergedMessages, ...localOnlyMessages],
       });
 
-      // 🚀 تحديث رصيد المحفظة الفعلي للعميل من جدول users في Supabase
+      // 🚀 تحديث رصيد المحفظة الفعلي للعميل من جدول users في Supabase لمرة واحدة دون ارتداد للكسور
       const user = get().currentUser;
       if (user?.phone) {
         try {
@@ -786,7 +797,7 @@ export const useStore = create<AppState>((set, get) => ({
               name: data.name || user.name, 
               phone: data.phone || user.phone, 
               carPlate: data.car_plate || user.carPlate, 
-              wallet: Number(data.wallet ?? 0) 
+              wallet: Math.round(Number(data.wallet ?? 0) * 100) / 100 // يضمن التقريب للقرش والصاغ
             };
             set({ currentUser: updated }); 
             safeSetStorage('currentUser', updated);
@@ -874,7 +885,7 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const pending = pendingGarageUpdates.get(id);
       if (pending && Object.keys(pending).length > 0) {
-        const { error: flushError } = await supabase.from('garages').update(pending).eq('id', id);
+        const { error: flushError = null } = await supabase.from('garages').update(pending).eq('id', id);
         if (flushError) { console.error('❌', flushError); await get().fetchAll(true); return; }
         pendingGarageUpdates.delete(id);
         if (pendingGarageUpdates.size === 0 && updateGarageTimeout) { clearTimeout(updateGarageTimeout); updateGarageTimeout = null; }
@@ -888,7 +899,7 @@ export const useStore = create<AppState>((set, get) => ({
   addSession: async (s) => {
     const normalizedPlate = normalizePlate(s.carPlate);
     if (!normalizedPlate) return '';
-    const sessionId = crypto.randomUUID();
+    const sessionId = uid();
     const lockKey = `${normalizedPlate}::${s.source}`;
 
     if (sessionStartLocks.has(lockKey)) {
@@ -1232,7 +1243,10 @@ export const useStore = create<AppState>((set, get) => ({
     set((st) => ({ offers: [newO, ...st.offers] }));
     if (isSupabaseConfigured()) {
       supabase.from('offers').insert({ garage_id: o.garageId, user_id: o.userId, car_plate: o.carPlate, offered_price: o.offeredPrice, status: o.status }).select().single()
-        .then(({ data }) => { if (data) set((st) => ({ offers: st.offers.map((x) => x.id === newO.id ? mapOffer(data) : x) })); });
+        .then(({ data, error }) => { 
+          if (error) console.error('❌', error);
+          if (data) set((st) => ({ offers: st.offers.map((x) => x.id === newO.id ? mapOffer(data) : x) })); 
+        });
     }
   },
 
@@ -1405,13 +1419,13 @@ export const useStore = create<AppState>((set, get) => ({
       set({
         garages,
         sessions: finalSessions,
-        offers: o.data ? o.data.map(mapOffer) : (get().offers ?? []), // ⚡
+        offers: o.data ? o.data.map(mapOffer) : (get().offers ?? []),
         walletTopUps: mergedTopUps,
         incomingCars: fetchedCars,
         messages: [...mergedMessages, ...localOnlyMessages],
       });
 
-      // 🚀 تحديث رصيد المحفظة الفعلي للعميل من جدول users في Supabase لمرة واحدة دون ارتداد للكسور
+      // 🚀 تحديث رصيد المحفظة الفعلي للعميل من جدول users في Supabase لمرة واحدة دون ارتداد للكسور وبتقريب بدقة 100% بالقرش والصاغ
       const user = get().currentUser;
       if (user?.phone) {
         try {
@@ -1421,7 +1435,7 @@ export const useStore = create<AppState>((set, get) => ({
               name: data.name || user.name, 
               phone: data.phone || user.phone, 
               carPlate: data.car_plate || user.carPlate, 
-              wallet: Math.round(Number(data.wallet ?? 0) * 100) / 100 // يضمن التقريب للقرش والصاغ
+              wallet: Math.round(Number(data.wallet ?? 0) * 100) / 100 
             };
             set({ currentUser: updated }); 
             safeSetStorage('currentUser', updated);
@@ -1509,7 +1523,7 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const pending = pendingGarageUpdates.get(id);
       if (pending && Object.keys(pending).length > 0) {
-        const { error: flushError } = await supabase.from('garages').update(pending).eq('id', id);
+        const { error: flushError = null } = await supabase.from('garages').update(pending).eq('id', id);
         if (flushError) { console.error('❌', flushError); await get().fetchAll(true); return; }
         pendingGarageUpdates.delete(id);
         if (pendingGarageUpdates.size === 0 && updateGarageTimeout) { clearTimeout(updateGarageTimeout); updateGarageTimeout = null; }
@@ -1518,6 +1532,107 @@ export const useStore = create<AppState>((set, get) => ({
       if (error) { console.error('❌', error); await get().fetchAll(true); return; }
       set((st) => ({ garages: st.garages.map((g) => g.id === id ? { ...g, availableSpots: Number(data) } : g) }));
     } catch (err) { console.error('❌', err); await get().fetchAll(true); }
+  },
+
+  addWalletTopUp: (w) => {
+    const newW: WalletTopUp = { ...w, id: uid(), status: 'pending', timestamp: Date.now() };
+    set((st) => ({ walletTopUps: [newW, ...st.walletTopUps] }));
+    if (isSupabaseConfigured()) {
+      supabase.from('wallet_topups').insert({
+        user_id: w.userId, user_name: w.userName, user_phone: w.userPhone,
+        amount: w.amount, transaction_id: w.transactionId, car_plate: w.carPlate, method: w.method,
+      }).select().single()
+        .then(({ data }) => { if (data) set((st) => ({ walletTopUps: st.walletTopUps.map((x) => (x.id === newW.id ? mapTopUp(data) : x)) })); });
+    }
+  },
+
+  approveTopUp: async (id) => {
+    const topUp = get().walletTopUps.find((w) => w.id === id); if (!topUp) return;
+    set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'approved' as const } : w)) }));
+    if (!isSupabaseConfigured()) return;
+    let dbRow: any = null;
+    if (topUp.transactionId) { const { data } = await supabase.from('wallet_topups').select('id, user_id, user_phone, amount, status').eq('transaction_id', topUp.transactionId).maybeSingle(); if (data) dbRow = data; }
+    if (!dbRow) { const { data } = await supabase.from('wallet_topups').select('id, user_id, user_phone, amount, status').eq('id', id).maybeSingle(); if (data) dbRow = data; }
+    if (!dbRow) { console.error('❌ الطلب مش موجود'); return; }
+    const supabaseId = dbRow.id;
+    const { error: approveError = null } = await supabase.from('wallet_topups').update({ status: 'approved' }).eq('id', supabaseId);
+    if (approveError) {
+      console.error('❌', approveError);
+      set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'pending' as const } : w)) }));
+      return;
+    }
+    set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, id: supabaseId, status: 'approved' as const } : w)) }));
+    const realUserId = dbRow.user_id || topUp.userId || '';
+    const realUserPhone = dbRow.user_phone || topUp.userPhone || '';
+    let userData: any = null;
+    if (realUserPhone) { const { data } = await supabase.from('users').select('id, phone, wallet').eq('phone', realUserPhone).maybeSingle(); if (data) userData = data; }
+    if (!userData && realUserId && realUserId.includes('-')) { const { data } = await supabase.from('users').select('id, phone, wallet').eq('id', realUserId).maybeSingle(); if (data) userData = data; }
+    if (!userData && realUserId && !realUserId.includes('-')) { const { data } = await supabase.from('users').select('id, phone, wallet').eq('phone', realUserPhone).maybeSingle(); if (data) userData = data; }
+    if (!userData) { console.error('❌ المستخدم مش موجود'); return; }
+    const amount = Number(dbRow.amount || topUp.amount || 0);
+    const newWallet = Number(userData.wallet || 0) + amount;
+    const { error: walletError } = await supabase.from('users').update({ wallet: newWallet }).eq('id', userData.id);
+    if (walletError) { console.error('❌', walletError); return; }
+    const currentUser = get().currentUser;
+    if (currentUser && (currentUser.phone === userData.phone || (currentUser as any).id === userData.id)) {
+      const updated = { ...currentUser, wallet: newWallet };
+      set({ currentUser: updated }); safeSetStorage('currentUser', updated);
+    }
+  },
+
+  rejectTopUp: async (id) => {
+    const topUp = get().walletTopUps.find((w) => w.id === id); if (!topUp) return;
+    set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'rejected' as const } : w)) }));
+    if (!isSupabaseConfigured()) return;
+    let supabaseId = id;
+    if (topUp.transactionId) { const { data } = await supabase.from('wallet_topups').select('id').eq('transaction_id', topUp.transactionId).maybeSingle(); if (data) supabaseId = data.id; }
+    const { error } = await supabase.from('wallet_topups').update({ status: 'rejected' }).eq('id', supabaseId);
+    if (error) { console.error('❌', error); return; }
+    if (supabaseId !== id) {
+      set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, id: supabaseId, status: 'rejected' as const } : w)) }));
+    }
+  },
+
+  addIncomingCar: async (c) => {
+    const incomingId = uid(); // 🚀 استخدام الـ ID المطور الآمن لعدم توقف الحجوزات نهائياً
+    const newC: IncomingCar = { ...c, id: incomingId, startTime: Date.now(), status: 'coming' };
+    set((st) => ({ incomingCars: [newC, ...st.incomingCars] }));
+    if (!isSupabaseConfigured()) return;
+    try {
+      const { data, error } = await supabase.from('incoming_cars').insert({
+        id: incomingId, garage_id: c.garageId, car_plate: c.carPlate,
+        customer_name: c.customerName, customer_phone: c.customerPhone,
+        agreed_price: c.agreedPrice, estimated_arrival: c.estimatedArrival,
+      }).select().single();
+      
+      if (error) { 
+        console.error('❌ Supabase Insert Error:', error); 
+        set((st) => ({ incomingCars: st.incomingCars.filter((x) => x.id !== incomingId) })); 
+        throw error; // رمي الخطأ للواجهة لتعرض "خطأ في إتمام الحجز" لو الـ RLS مغلق
+      }
+      if (data) set((st) => ({ incomingCars: st.incomingCars.map((x) => (x.id === incomingId ? mapIncoming(data) : x)) }));
+    } catch (err) {
+      console.error('❌ Unexpected Error adding incoming car:', err);
+      set((st) => ({ incomingCars: st.incomingCars.filter((x) => x.id !== incomingId) }));
+      throw err;
+    }
+  },
+
+  removeIncomingCar: async (id) => {
+    let savedCarPlate = ''; let savedGarageId = '';
+    set((st) => {
+      const found = st.incomingCars.find((c) => c.id === id);
+      if (found) { savedCarPlate = found.carPlate; savedGarageId = found.garageId; }
+      return { incomingCars: st.incomingCars.filter((c) => c.id !== id) };
+    });
+    if (!isSupabaseConfigured()) return;
+    try {
+      await supabase.from('incoming_cars').delete().eq('id', id);
+      if (savedCarPlate && savedGarageId) {
+        await supabase.from('incoming_cars').delete().eq('car_plate', savedCarPlate).eq('garage_id', savedGarageId);
+      }
+    } catch (err) { console.error('❌', err); }
+    setTimeout(() => { get().fetchAll(); }, 1000);
   },
 
   addMessage: async (msg) => {
