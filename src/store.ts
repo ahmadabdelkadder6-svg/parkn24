@@ -1159,35 +1159,71 @@ export const useStore = create<AppState>((set, get) => ({
       set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'pending' as const } : w)) }));
       return;
     }
-    set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, id: supabaseId, status: 'approved' as const } : w)) }));
-    const realUserId = dbRow.user_id || topUp.userId || '';
+    set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, id: supabaseId, status:   approveTopUp: async (id) => {
+    const topUp = get().walletTopUps.find((w) => w.id === id); 
+    if (!topUp) return;
+
+    // تحديث الحالة محلياً فوراً
+    set((st) => ({ 
+      walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'approved' as const } : w)) 
+    }));
+
+    if (!isSupabaseConfigured()) return;
+
+    let dbRow: any = null;
+    if (topUp.transactionId) { 
+      const { data } = await supabase.from('wallet_topups').select('*').eq('transaction_id', topUp.transactionId).maybeSingle(); 
+      if (data) dbRow = data; 
+    }
+    if (!dbRow) { 
+      const { data } = await supabase.from('wallet_topups').select('*').eq('id', id).maybeSingle(); 
+      if (data) dbRow = data; 
+    }
+    if (!dbRow) { console.error('❌ الطلب مش موجود'); return; }
+
+    const supabaseId = dbRow.id;
+    const { error: approveError } = await supabase.from('wallet_topups').update({ status: 'approved' }).eq('id', supabaseId);
+    if (approveError) {
+      console.error('❌', approveError);
+      set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'pending' as const } : w)) }));
+      return;
+    }
+
     const realUserPhone = dbRow.user_phone || topUp.userPhone || '';
     let userData: any = null;
-    if (realUserPhone) { const { data } = await supabase.from('users').select('id, phone, wallet').eq('phone', realUserPhone).maybeSingle(); if (data) userData = data; }
-    if (!userData && realUserId && realUserId.includes('-')) { const { data } = await supabase.from('users').select('id, phone, wallet').eq('id', realUserId).maybeSingle(); if (data) userData = data; }
-    if (!userData && realUserId && !realUserId.includes('-')) { const { data } = await supabase.from('users').select('id, phone, wallet').eq('phone', realUserPhone).maybeSingle(); if (data) userData = data; }
+    if (realUserPhone) { 
+      const { data } = await supabase.from('users').select('*').eq('phone', realUserPhone).maybeSingle(); 
+      if (data) userData = data; 
+    }
     if (!userData) { console.error('❌ المستخدم مش موجود'); return; }
 
-    // 🎁 [جديد]: حساب البونص التلقائي بناءً على شريحة الشحن
-    const amount = Number(dbRow.amount || topUp.amount || 0);
-    const bonusAmount = calculateBonus(amount);
-    const totalToAdd = amount + bonusAmount;
+    // 🎁 [حساب البونص المضمون بالأرقام الصريحة]:
+    const baseAmount = Number(dbRow.amount || topUp.amount || 0);
+    let bonusAmount = 0;
+    if (baseAmount >= 1000) bonusAmount = 200;
+    else if (baseAmount >= 500) bonusAmount = 75;
+    else if (baseAmount >= 300) bonusAmount = 30;
+    else if (baseAmount >= 100) bonusAmount = 5;
+
+    const totalToAdd = baseAmount + bonusAmount;
     const newWallet = Number(userData.wallet || 0) + totalToAdd;
 
-    console.log(`💰 شحن: ${amount} ج + 🎁 بونص: ${bonusAmount} ج = 💎 المجموع: ${totalToAdd} ج`);
+    console.log(`💰 شحن: ${baseAmount} ج + 🎁 بونص: ${bonusAmount} ج = 💎 المجموع الجديد: ${newWallet} ج`);
 
     const { error: walletError } = await supabase.from('users').update({ wallet: newWallet }).eq('id', userData.id);
     if (walletError) { console.error('❌', walletError); return; }
 
-    // 🎁 حفظ قيمة البونص في سجل الشحن
+    // حفظ قيمة البونص في جدول الـ topups
     if (bonusAmount > 0) {
       await supabase.from('wallet_topups').update({ bonus_amount: bonusAmount }).eq('id', supabaseId);
     }
 
+    // تحديث رصيد العميل الحالي في الذاكرة الحية فوراً
     const currentUser = get().currentUser;
     if (currentUser && (currentUser.phone === userData.phone || (currentUser as any).id === userData.id)) {
       const updated = { ...currentUser, wallet: newWallet };
-      set({ currentUser: updated }); safeSetStorage('currentUser', updated);
+      set({ currentUser: updated }); 
+      try { localStorage.setItem('currentUser', JSON.stringify(updated)); } catch (e) {}
     }
   },
 
