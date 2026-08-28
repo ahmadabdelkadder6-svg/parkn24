@@ -1179,15 +1179,21 @@ function GarageCard({
             </span>
           )}
 
-          {!isBusy && isClosest && !isFull && (
-            <span
-              className="font-black text-white"
-              style={{ background: '#0066FF', fontSize: 9, padding: '2px 6px', borderRadius: 8 }}
-            >
-              📍 الأقرب
-            </span>
-          )}
-
+{!isBusy && isClosest && !isFull && (
+  <span
+    style={{ 
+      background: '#0066FF', 
+      color: '#ffffff',     // ⚡ خط أبيض صريح 100%
+      fontWeight: 900,      // ⚡ سمك عريض جداً
+      fontSize: 9.5, 
+      padding: '2.5px 7px', 
+      borderRadius: 8,
+      boxShadow: '0 2px 6px rgba(0, 102, 255, 0.35)' // لمعة زرقاء خفيفة تبرز اللون الأبيض
+    }}
+  >
+    📍 الأقرب
+  </span>
+)}
           {!isBusy && !isClosest && isNearby && !isFull && (
             <span
               className="font-black text-white"
