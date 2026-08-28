@@ -647,86 +647,74 @@ export default function GarageListScreen() {
           )}
         </AnimatePresence>
 
-           {/* 🎁 بانر ترحيبي بريميوم بتصميم بطاقة هدية رقمية فاخرة (Voucher) */}
+        {/* 🎁 بانر ترحيبي بسيط ومبهج باللون الأبيض واللمسات الملونة المشرقة */}
         {isEligibleForFreeSession && !activeSession && !myIncomingCar && (
           <motion.div
             initial={{ opacity: 0, y: -15, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             className="w-full mb-3 overflow-hidden relative"
             style={{
-              background: 'linear-gradient(135deg, #0F172A 0%, #1E1B4B 50%, #2E1065 100%)',
+              background: '#ffffff', // خلفية بيضاء ناصعة ونظيفة
               borderRadius: 22,
               padding: '16px',
-              boxShadow: '0 10px 30px rgba(124, 58, 237, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.1)',
-              border: '1.5px solid rgba(245, 158, 11, 0.35)', // إطار ذهبي رقيق ومتوهج
+              boxShadow: '0 10px 25px rgba(0, 102, 255, 0.05), 0 2px 6px rgba(0,0,0,0.02)',
+              border: '2px solid #FFF1F2', // إطار باستيل وردي مبهج وناعم للغاية
             }}
           >
-            {/* تأثير لمعان زجاجي متحرك فخم جداً */}
-            <motion.div
-              animate={{ x: ['-100%', '200%'] }}
-              transition={{ repeat: Infinity, duration: 3.5, ease: 'linear' }}
-              className="absolute inset-0 w-1/3"
-              style={{
-                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent)',
-                pointerEvents: 'none',
-              }}
-            />
-
-            {/* إضاءات ناعمة مدمجة في خلفية الكارت لزيادة العمق البصري */}
-            <div className="absolute -top-10 -left-10 w-24 h-24 bg-yellow-500/10 rounded-full filter blur-xl" />
-            <div className="absolute -bottom-10 -right-10 w-24 h-24 bg-purple-500/15 rounded-full filter blur-xl" />
+            {/* إضاءات باستيل خلفية ناعمة جداً لتعطي عمقاً مبهجاً */}
+            <div className="absolute -top-10 -right-10 w-24 h-24 bg-rose-100/50 rounded-full filter blur-xl" />
+            <div className="absolute -bottom-10 -left-10 w-24 h-24 bg-amber-100/40 rounded-full filter blur-xl" />
 
             <div className="flex items-center gap-3.5 relative z-10">
               
-              {/* أيقونة الهدية الترحيبية الذهبية المتوهجة مع أنيميشن نبض خفيف */}
+              {/* أيقونة هدية مبهجة بخلفية ملونة مشمشية/وردية ناعمة */}
               <motion.div
-                animate={{ rotate: [0, -8, 8, 0], scale: [1, 1.05, 1] }}
+                animate={{ rotate: [0, -5, 5, 0], scale: [1, 1.03, 1] }}
                 transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
-                className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-lg"
+                className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
                 style={{
-                  background: 'linear-gradient(135deg, #FFD700 0%, #FF9500 100%)',
-                  boxShadow: '0 4px 16px rgba(255, 149, 0, 0.35)',
+                  background: 'linear-gradient(135deg, #FFEDD5 0%, #FEE2E2 100%)', // تدرج هادئ ولطيف
+                  border: '1.5px solid #FCA5A5',
                 }}
               >
-                <Gift size={24} className="text-slate-900 fill-slate-900/10" />
+                <Gift size={22} className="text-red-500" />
               </motion.div>
 
-              {/* نصوص منسقة ومرتبة بخطوط واضحة وهيكل بريميوم */}
+              {/* نصوص منسقة ومرتبة بخطوط داكنة واضحة على الخلفية البيضاء */}
               <div className="flex-1 text-right">
                 
-                {/* شارة علوية مبسطة وجذابة */}
-                <div className="flex items-center gap-2 justify-end mb-1">
-                  <span className="font-black text-white text-xs leading-none">نورت عائلة Park'n 24 🎉</span>
+                {/* شارة علوية لطيفة بلون أصفر هادئ */}
+                <div className="flex items-center gap-1.5 justify-end mb-1">
+                  <span className="font-bold text-slate-800 text-[11px]">نورت عائلتنا الجديدة! 🎉</span>
                   <span 
                     className="font-black text-[9px] px-2.5 py-0.5 rounded-full leading-none shrink-0"
                     style={{
-                      background: 'rgba(245, 158, 11, 0.15)',
-                      border: '1.5px solid rgba(245, 158, 11, 0.3)',
-                      color: '#FBBF24',
+                      background: '#FFFBEB',
+                      border: '1px solid #FDE68A',
+                      color: '#D97706',
                     }}
                   >
-                    🎁 هدية ترحيبية حصرية
+                    🎁 هدية ترحيبية
                   </span>
                 </div>
                 
-                {/* العنوان الأساسي العريض والواضح */}
+                {/* العنوان الأساسي المبهج والواضح باللون الأحمر المشرق */}
                 <h4 
-                  className="font-black text-white leading-tight" 
-                  style={{ fontSize: '14px', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}
+                  className="font-black text-slate-900 leading-tight" 
+                  style={{ fontSize: '13.5px' }}
                 >
-                  ركنتك الأولى معنا <span className="text-yellow-300">مجانية بالكامل!</span> 🕐
+                  أول ركنة لك معنا <span className="text-red-500 font-black">مجانية بالكامل! 🕐</span>
                 </h4>
                 
-                {/* النص التفصيلي الداعم */}
-                <p className="text-slate-300 font-bold leading-normal mt-1" style={{ fontSize: '10.5px' }}>
-                  احجز الآن من التطبيق واستمتع بـ <span className="text-emerald-400 font-black">أول ساعة مجاناً 100%</span> في أي جراج، وسنتكفل نحن بالدفع بالكامل 🚀
+                {/* النص الداعم اللطيف */}
+                <p className="text-slate-500 font-bold leading-normal mt-1" style={{ fontSize: '10px' }}>
+                  احجز الآن من التطبيق واستمتع بـ <span className="text-emerald-600 font-black">أول ساعة مجاناً 100%</span> كهدية ترحيبية مميزة لك في أول زيارة 🎈
                 </p>
 
               </div>
             </div>
           </motion.div>
         )}
-
         {/* بانر الجلسة النشطة */}
         {activeSession && (
           <motion.button
