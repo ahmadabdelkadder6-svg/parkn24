@@ -6,6 +6,8 @@ import {
   Calculator,
   Wallet,
   AlertTriangle,
+  Gift,
+  Sparkles,
 } from 'lucide-react';
 import { useStore, pausePolling } from '../store';
 import { useState, useMemo, useEffect, useRef } from 'react';
@@ -192,43 +194,43 @@ export default function SummaryScreen() {
 
   const durationMinutes = Math.floor(durationSeconds / 60);
   const sessionRate = Number(referenceSession?.agreedPrice ?? garage?.basePrice ?? 0);
-  const totalHours = calculateFullHours(durationSeconds);
 
-  // 🎁 حساب هل هذه أول جلسة فعلية وحقيقية للعميل (أمان مغلق ضد التكرار)
-  const isFirstSession = useMemo(() => {
-    if (!currentUser?.carPlate) return false;
-    const plate = currentUser.carPlate.trim().toUpperCase();
-    const phone = currentUser.phone || '';
+  // 🎁 [منطق الهدية الذكي]: نعتمد بالكامل على راية الجلسة المحددة وقت الدخول
+  // لضمان ألا تُطبق على الإضافة اليدوية للسيارة (source: 'manual')
+  const isFirstFreeApplied = useMemo(() => {
+    return referenceSession?.isFirstFreeSession === true;
+  }, [referenceSession]);
 
-    const completedForUser = sessions.filter(s =>
-      s.status === 'completed' &&
-      (s.carPlate.trim().toUpperCase() === plate || (s as any).customerPhone === phone)
-    );
+  // حساب الوقت المجاني والمتبقي للدفع بالمنطق القديم
+  const freeSeconds = useMemo(() => {
+    if (!isFirstFreeApplied) return 0;
+    return Math.min(durationSeconds, 3600); // ساعة واحدة كحد أقصى (3600 ثانية)
+  }, [isFirstFreeApplied, durationSeconds]);
 
-    // 1. لو معندوش أي جلسة مكتملة -> إذن دي جلسته الأولى النشطة (يأخذ الخصم)
-    if (completedForUser.length === 0) return true;
+  const freeMinutesApplied = Math.floor(freeSeconds / 60);
+  const billableSeconds = Math.max(0, durationSeconds - freeSeconds);
+  const billableHours = calculateFullHours(billableSeconds);
 
-    // 2. لو عنده جلسة مكتملة واحدة فقط وهو في شاشة النجاح (done) -> خصم هذه الجلسة بالتو
-    if (completedForUser.length === 1 && done) {
-      return completedForUser[0].id === referenceSession?.id;
+  // ⚠️ المنطق القديم بالكامل لحساب السعر الأساسي بناءً على الوقت المتبقي فقط
+  const originalPrice = useMemo(() => {
+    return calculateCost(durationSeconds, sessionRate);
+  }, [durationSeconds, sessionRate]);
+
+  const rawPrice = useMemo(() => {
+    if (
+      referenceSession?.status === 'completed' &&
+      referenceSession?.totalPrice != null &&
+      Number(referenceSession.totalPrice) > 0
+    ) {
+      return Number(referenceSession.totalPrice);
     }
+    // حساب التكلفة للوقت الخاضع للدفع فقط (بعد خصم الهدية)
+    return calculateCost(billableSeconds, sessionRate);
+  }, [referenceSession, billableSeconds, sessionRate]);
 
-    // 3. أي حالة أخرى (ركنة ثانية فصاعداً) -> لا خصم
-    return false;
-  }, [sessions, currentUser, done, referenceSession?.id]);
-
-  const FIRST_SESSION_DISCOUNT = 0.20; // 🎁 نسبة الخصم 20%
-
-  const rawPrice =
-    referenceSession?.status === 'completed' &&
-    referenceSession?.totalPrice != null &&
-    Number(referenceSession.totalPrice) > 0
-      ? Number(referenceSession.totalPrice)
-      : calculateCost(durationSeconds, sessionRate);
-
-  // 🎁 تطبيق الخصم على أول جلسة فقط
-  const discountAmount = isFirstSession ? Math.round(rawPrice * FIRST_SESSION_DISCOUNT) : 0;
-  const totalPrice = rawPrice - discountAmount;
+  // السعر النهائي وقيمة ما تم توفيره
+  const totalPrice = rawPrice;
+  const discountAmount = isFirstFreeApplied ? Math.max(0, originalPrice - totalPrice) : 0;
 
   const walletBalance = currentUser?.wallet ?? 0;
   const canPayWallet = walletBalance >= totalPrice;
@@ -264,7 +266,8 @@ export default function SummaryScreen() {
     pausePolling(15000);
 
     try {
-      await endSession(activeSession.id, price, method);
+      // 🎁 نمرر الدقائق المجانية المُطبقة لحفظها في السيرفر
+      await endSession(activeSession.id, price, method, freeMinutesApplied);
       return true;
     } catch (err) {
       console.error('❌ endSession error:', err);
@@ -338,16 +341,30 @@ export default function SummaryScreen() {
             : 'تم الدفع بنجاح'}
         </p>
 
+        {/* كارت الفاتورة بعد الدفع */}
         <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-6 text-center w-full shadow-sm">
           <div className="text-4xl font-black text-slate-900 font-mono mb-1">
             {doneTotalPrice > 0 ? `${doneTotalPrice} ج.م` : `${totalPrice} ج.م`}
           </div>
           <div className="text-xs text-slate-400 mb-2">
-            {totalHours} ساعة × {sessionRate} ج.م
+            {isFirstFreeApplied ? (
+              <span>
+                (تم ركن {durationMinutes} دقيقة منها أول ساعة مجانية 🎁)
+              </span>
+            ) : (
+              <span>{billableHours} ساعة × {sessionRate} ج.م</span>
+            )}
           </div>
+
+          {isFirstFreeApplied && discountAmount > 0 && (
+            <div className="inline-block px-3 py-1 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-600 mb-2">
+              🎁 وفرت {discountAmount} ج.م من العرض الترحيبي!
+            </div>
+          )}
+
           {doneMethod && (
             <div
-              className={`inline-block px-3 py-1 rounded-full text-[10px] font-black ${
+              className={`inline-block px-3 py-1 rounded-full text-[10px] font-black block w-fit mx-auto ${
                 doneMethod === 'wallet'
                   ? 'bg-blue-100 text-blue-600'
                   : 'bg-emerald-100 text-emerald-600'
@@ -429,18 +446,30 @@ export default function SummaryScreen() {
         </motion.div>
       )}
 
+      {/* كارت الحساب الرئيسي التفاعلي للعميل */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-4 shadow-sm">
         <div className="text-center mb-3">
-          {isFirstSession && discountAmount > 0 ? (
+          {isFirstFreeApplied && discountAmount > 0 ? (
             <>
               <div className="text-lg font-bold text-slate-400 font-mono line-through mb-0.5">
-                {rawPrice} ج.م
+                {originalPrice} ج.م
               </div>
               <div className="text-4xl font-black text-emerald-600 font-mono mb-0.5">
                 {totalPrice} ج.م
               </div>
-              <div className="inline-block px-3 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-700 mb-1">
-                🎁 خصم ترحيبي {(FIRST_SESSION_DISCOUNT * 100).toFixed(0)}% على أول ركنة! (-{discountAmount} ج.م)
+              <div className="inline-block px-3.5 py-1.5 rounded-full text-[10px] font-black bg-gradient-to-r from-yellow-400 to-orange-500 text-white mb-2 shadow-sm flex items-center justify-center gap-1.5 w-fit mx-auto">
+                <Gift size={12} className="text-white" />
+                <span>تم تطبيق عرض أول ساعة مجانية بالكامل! 🎉 (وفرت -{discountAmount} ج)</span>
+              </div>
+            </>
+          ) : isFirstFreeApplied && totalPrice === 0 ? (
+            <>
+              <div className="text-4xl font-black text-emerald-600 font-mono mb-0.5">
+                0 ج.م
+              </div>
+              <div className="inline-block px-3.5 py-1.5 rounded-full text-[10px] font-black bg-gradient-to-r from-yellow-400 to-orange-500 text-white mb-2 shadow-sm flex items-center justify-center gap-1.5 w-fit mx-auto">
+                <Gift size={12} className="text-white" />
+                <span>ركنتك الأولى مجانية بالكامل! (أقل من ساعة 🎁)</span>
               </div>
             </>
           ) : (
@@ -448,27 +477,40 @@ export default function SummaryScreen() {
               {totalPrice} ج.م
             </div>
           )}
-          <div className="text-[10px] text-slate-400 font-bold">إجمالي التكلفة الحالية</div>
+          <div className="text-[10px] text-slate-400 font-bold">إجمالي التكلفة الحالية للإستفادة</div>
         </div>
 
+        {/* تفاصيل الحساب والخصومات بالتفصيل */}
         <div className="bg-gray-50 rounded-xl p-3 border border-slate-100">
           <div className="flex items-center justify-center gap-2 mb-2">
             <Calculator size={14} className="text-blue-600" />
-            <span className="text-[10px] text-slate-500 font-bold">تفاصيل الحساب</span>
+            <span className="text-[10px] text-slate-500 font-bold">تفاصيل الحساب الفعلي</span>
           </div>
           <div className="space-y-1.5">
             <div className="flex justify-between text-xs">
-              <span className="text-slate-500">مدة الركن</span>
+              <span className="text-slate-500">مدة الركن الكلية</span>
               <span className="font-black text-slate-900 font-mono">{durationMinutes} دقيقة</span>
             </div>
+
+            {isFirstFreeApplied && (
+              <div className="flex justify-between text-xs text-emerald-600 font-bold">
+                <span className="flex items-center gap-1">🎁 خصم الهدية الترحيبية</span>
+                <span className="font-mono">-{freeMinutesApplied} دقيقة (ساعة كاملة)</span>
+              </div>
+            )}
+
             <div className="flex justify-between text-xs">
-              <span className="text-slate-500">الساعات المحسوبة</span>
-              <span className="font-black text-blue-600 font-mono">{totalHours} ساعة</span>
+              <span className="text-slate-500">الساعات المحتسبة للدفع</span>
+              <span className="font-black text-blue-600 font-mono">
+                {isFirstFreeApplied ? billableHours : calculateFullHours(durationSeconds)} ساعة
+              </span>
             </div>
+
             <div className="flex justify-between text-xs">
               <span className="text-slate-500">سعر الساعة</span>
               <span className="font-black text-purple-600 font-mono">{sessionRate} ج.م</span>
             </div>
+
             {garage && sessionRate !== garage.basePrice && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-1.5 text-center">
                 <p className="text-[9px] text-amber-600 font-bold">
@@ -476,11 +518,12 @@ export default function SummaryScreen() {
                 </p>
               </div>
             )}
+
             <div className="border-t border-slate-200 pt-1.5">
               <div className="flex justify-between text-xs">
-                <span className="text-slate-700 font-bold">الإجمالي</span>
+                <span className="text-slate-700 font-bold">الإجمالي المطلوب سداده</span>
                 <span className="font-black text-emerald-600 font-mono">
-                  {totalHours} × {sessionRate} = {totalPrice} ج.م
+                  {totalPrice} ج.م
                 </span>
               </div>
             </div>

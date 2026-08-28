@@ -3,17 +3,18 @@ import {
   Clock,
   DollarSign,
   MapPin,
-  CreditCard,
   Calendar,
   Timer,
   Receipt,
   ArrowRight,
   Copy,
+  Gift,
+  Sparkles,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { calculateFullHours, calculateCost, formatTime } from '../utils/pricing';
 import toast from 'react-hot-toast';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 
 /* ─── Helper: توحيد تحويل الوقت من أي مصدر ─── */
@@ -132,13 +133,28 @@ export default function LastSessionScreen() {
 
   const elapsedSeconds = Math.max(0, Math.floor((endTime - startTime) / 1000));
   const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);
-  const hours = calculateFullHours(elapsedSeconds);
   const totalMinutes = Math.floor(elapsedSeconds / 60);
 
+  // 🎁 [منطق الهدية]: قراءة وتحديد أهلية الجلسة والدقائق المجانية التي طُبقت
+  const isFirstFreeApplied = lastSession.isFirstFreeSession === true;
+  const freeMinutesApplied = lastSession.freeMinutesApplied ?? 0;
+
+  // الساعات الفعلية الخاضعة للدفع بالكامل بعد خصم الهدية
+  const billableSeconds = Math.max(0, elapsedSeconds - (freeMinutesApplied * 60));
+  const billableHours = calculateFullHours(billableSeconds);
+
+  // حساب التكلفة الكلية (المدفوعة فعلياً)
   const cost =
     lastSession.totalPrice != null && Number(lastSession.totalPrice) > 0
       ? Number(lastSession.totalPrice)
-      : calculateCost(elapsedSeconds, rate);
+      : calculateCost(billableSeconds, rate);
+
+  // حساب كم وفر العميل بفضل الهدية الترحيبية
+  const savedAmount = useMemo(() => {
+    if (!isFirstFreeApplied) return 0;
+    const originalCost = calculateCost(elapsedSeconds, rate);
+    return Math.max(0, originalCost - cost);
+  }, [isFirstFreeApplied, elapsedSeconds, rate, cost]);
 
   const startDate = new Date(startTime);
   const endDate = new Date(endTime);
@@ -217,10 +233,11 @@ export default function LastSessionScreen() {
 📅 التاريخ: ${formatDateTime(startDate)}
 ⏰ وقت الدخول: ${formatTimeOnly(startDate)}
 ⏰ وقت الخروج: ${formatTimeOnly(endDate)}
-⏱️ المدة: ${totalMinutes} دقيقة (${hours} ساعة محسوبة)
+⏱️ المدة الفعلية: ${totalMinutes} دقيقة
+${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجاناً (-${savedAmount} ج.م)\n` : ''}⏱️ المدة الخاضعة للدفع: ${isFirstFreeApplied ? Math.max(0, totalMinutes - freeMinutesApplied) : totalMinutes} دقيقة
 ━━━━━━━━━━━━━━━━━━
 💰 سعر الساعة: ${rate} ج.م
-💵 الإجمالي: ${cost} ج.م
+💵 الإجمالي المدفوع: ${cost} ج.م
 💳 طريقة الدفع: ${paymentInfo.label}
 📋 نوع الجلسة: ${sourceInfo.label}`;
 
@@ -303,7 +320,7 @@ export default function LastSessionScreen() {
           )}
         </div>
 
-        {/* ✅ التكلفة الإجمالية - Premium Edition (مع شارة السداد المدمجة والواضحة جداً) */}
+        {/* ✅ التكلفة الإجمالية - Premium Edition */}
         <div
           className="relative overflow-hidden rounded-3xl p-6 text-center"
           style={{
@@ -312,7 +329,7 @@ export default function LastSessionScreen() {
             border: '1px solid rgba(255,255,255,0.08)',
           }}
         >
-          {/* خلفية لمعة */}
+          {/* خلفيات لمعة دائرية خلف الكارت */}
           <div
             className="absolute -top-20 -right-20"
             style={{
@@ -408,7 +425,7 @@ export default function LastSessionScreen() {
 
             {/* 🚀 شارة طريقة السداد بالخط الملون العريض والواضح جداً 🚀 */}
             <div 
-              className={`mt-1.5 inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl border-2 ${paymentInfo.bg} ${paymentInfo.border} shadow-lg`}
+              className={`mt-1.5 inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl border-2 ${paymentInfo.bg} ${paymentInfo.border} shadow-lg mb-2`}
               style={{ backdropFilter: 'blur(8px)' }}
             >
               <span className="text-2xl leading-none">{paymentInfo.icon}</span>
@@ -423,11 +440,31 @@ export default function LastSessionScreen() {
                 تم السداد: {paymentInfo.label}
               </span>
             </div>
-          </div> {/* ✅ تم إضافة قفل حاوية الـ div المفقودة هنا بنجاح لمنع الخطأ البرمجي */}
 
-          {/* سطر توضيحي */}
+            {/* 🎁 شارة الخصم الترحيبي الذهبية بالداخل */}
+            {isFirstFreeApplied && savedAmount > 0 && (
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-xl text-white text-xs font-black shadow-md border border-white/20"
+              >
+                <Gift size={14} />
+                <span>تم تطبيق عرض الساعة الأولى مجاناً! (وفرت -{savedAmount.toFixed(0)} ج.م) 🎉</span>
+              </motion.div>
+            )}
+          </div>
+
+          {/* سطر توضيحي للحساب */}
           <div className="relative z-10 text-[10px] text-slate-400 mb-3">
-            {hours} ساعة × {rate} ج.م = {cost.toFixed(0)} ج.م
+            {isFirstFreeApplied ? (
+              <span>
+                المدة المحسوبة للدفع: {billableHours} ساعة (خصم {freeMinutesApplied} دقيقة مجاناً 🎁)
+              </span>
+            ) : (
+              <span>
+                {calculateFullHours(elapsedSeconds)} ساعة × {rate} ج.م = {cost.toFixed(0)} ج.م
+              </span>
+            )}
           </div>
 
           {/* خط سفلي */}
@@ -451,16 +488,16 @@ export default function LastSessionScreen() {
               {formatTime(elapsedSeconds)}
             </div>
             <div className="text-[8px] text-slate-500 font-bold mt-0.5">
-              المدة الفعلية
+              المدة الفعلية الكلية
             </div>
           </div>
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 text-center">
             <Timer size={16} className="text-purple-400 mx-auto mb-1.5" />
             <div className="text-sm font-black text-purple-400 font-mono">
-              {hours}
+              {isFirstFreeApplied ? billableHours : calculateFullHours(elapsedSeconds)}
             </div>
             <div className="text-[8px] text-slate-500 font-bold mt-0.5">
-              ساعة محسوبة
+              {isFirstFreeApplied ? 'ساعات الدفع' : 'ساعة محسوبة'}
             </div>
           </div>
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 text-center">

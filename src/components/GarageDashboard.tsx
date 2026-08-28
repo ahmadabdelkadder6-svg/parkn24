@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Car, Clock, LogOut, Plus, CheckCircle, XCircle, Settings,
   Minus, Save, MapPin, Edit3, Navigation, Phone, CarFront, FileText,
-  CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2,
+  CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
 } from 'lucide-react';
 import { useStore, pausePolling } from '../store';
 import { supabase } from '../lib/supabase';
@@ -152,7 +152,6 @@ const playFirstAlert = async () => {
   } catch {}
 };
 
-// 🚀 إرسال إشعار خارجي برقم السيارة فقط لضمان الخصوصية والأمان
 const fireNewCarAlert = (carPlate: string) => {
   playFirstAlert(); 
   vibrateDevice();
@@ -201,7 +200,7 @@ export default function GarageDashboard() {
     garages, currentGarageId, setCurrentGarageId, sessions, addSession, endSession,
     removeSession, offers, updateOffer, cancelOffer, updateGarage, incomingCars,
     removeIncomingCar, fetchAll, confirmRevenue, assignSessionToValet, adjustGarageSpots,
-    getMyOwnedGarages, // 🚀 جلب دالة جراجات المالك الموحد
+    getMyOwnedGarages,
   } = useStore();
 
   const [garageRole] = useState<'owner' | 'valet'>(
@@ -260,15 +259,12 @@ export default function GarageDashboard() {
       valetNumber === '1' ? garage?.valet1Active :
       valetNumber === '2' ? garage?.valet2Active :
       valetNumber === '3' ? garage?.valet3Active : false;
-    if (!isActive) return []; // 🚨 لا يرى أي سيارة نشطة
+    if (!isActive) return [];
 
     return activeSessions.filter(s => {
       const addedBy = ((s as any).addedBy || '').trim();
       
-      // 1. إذا كانت الجلسة معينة لسايس معين بالاسم → تظهر له هو فقط
       if (addedBy && myValetNames.has(addedBy)) return true;
-      
-      // 2. إذا كانت الجلسة جديدة وبدأها العميل (addedBy فارغ) → تظهر للسايس المفتوح حالياً ليلقطها
       if (!addedBy && s.source === 'app') return true;
       
       return false;
@@ -323,7 +319,6 @@ export default function GarageDashboard() {
   const [valetEditSpots, setValetEditSpots] = useState(false);
   const [selectedValetFilter, setSelectedValetFilter] = useState<string | null>(null);
 
-  // 🚀 حساب جراجات المالك الموحد وحالة فتح قائمة التبديل
   const [showSwitcher, setShowSwitcher] = useState(false);
   const myGarages = useMemo(() => {
     if (!garage) return [];
@@ -393,7 +388,6 @@ export default function GarageDashboard() {
     return () => document.removeEventListener('visibilitychange', h);
   }, [currentGarageId, fetchAll]);
 
-  // 🚀 مراقبة السيارات القادمة وإرسال إشعارات نظيفة وخاصة (برقم اللوحة فقط)
   useEffect(() => {
     const ids = new Set(carsOnTheWay.map(c => c.id));
     carsOnTheWay.forEach(car => {
@@ -428,10 +422,19 @@ export default function GarageDashboard() {
 
   useEffect(() => { return () => { try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }; }, []);
 
+  // 🎁 [منطق الهدية المعدل]: حساب العائد الفعلي مع مراعاة خصم الساعة المجانية للمستخدمين المؤهلين
   const getSessionRevenue = useCallback((s: any) => {
     if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
-      return calculateCost(Math.max(0, Math.floor((toMs(s.endTime) - toMs(s.startTime)) / 1000)), Number(s.agreedPrice ?? garage?.basePrice ?? 0));
+      const elSeconds = Math.max(0, Math.floor((toMs(s.endTime) - toMs(s.startTime)) / 1000));
+      const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
+      
+      if (s.isFirstFreeSession === true) {
+        const freeSeconds = Math.min(elSeconds, 3600); // ساعة واحدة مجاناً (3600 ثانية) كحد أقصى
+        const billableSeconds = Math.max(0, elSeconds - freeSeconds);
+        return calculateCost(billableSeconds, r);
+      }
+      return calculateCost(elSeconds, r);
     }
     return 0;
   }, [garage?.basePrice]);
@@ -451,34 +454,38 @@ export default function GarageDashboard() {
     return Math.round((rev - comm) * 100) / 100;
   }, [getSessionRevenue, getSessionCommission]);
 
+  // 🎁 [منطق الهدية المعدل]: حساب تكلفة الجلسة النشطة أثناء ركنها بالساحة
   const getActiveCost = useCallback((s: any) => {
     const st = toMs(s.startTime);
     const el = st > 0 ? Math.max(0, Math.floor((Date.now() - st) / 1000)) : 0;
     const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
     if (el <= 0 || r <= 0) return 0;
+
+    if (s.isFirstFreeSession === true) {
+      const freeSeconds = Math.min(el, 3600);
+      const billableSeconds = Math.max(0, el - freeSeconds);
+      return calculateCost(billableSeconds, r);
+    }
     return calculateCost(el, r);
   }, [garage?.basePrice]);
 
-  // 🚀 الحصيلة المفلترة للعمليات المكتملة مع عزل مالي وأمني صارم لكل سايس على حدة
+  // 🚀 الحصيلة المفلترة للعمليات المكتملة
   const filteredCompleted = useMemo(() => {
-    // 🔒 قفل الأمان: إذا كان السايس معطلاً من الإدارة، احجب عنه السجل المالي فوراً
     if (isValet) {
       const isActive =
         valetNumber === '1' ? garage?.valet1Active :
         valetNumber === '2' ? garage?.valet2Active :
         valetNumber === '3' ? garage?.valet3Active : false;
-      if (!isActive) return []; // 🚨 لا يرى أي مبالغ مالية أو سجلات تاريخية
+      if (!isActive) return [];
     }
 
     return completedSessions.filter(s => {
-      // 1. فحص وتصفية التاريخ بأمان فائق (مع استثناء الـ 24 ساعة الأخيرة)
       if (s.endTime) {
         const endMs = toMs(s.endTime);
         const d = timestampToLocalDate(endMs);
         const isWithinLast24Hours = (Date.now() - endMs) < 24 * 60 * 60 * 1000;
         
         if (isValet) { 
-          // أمان: لو التاريخ اختلف بسبب توقيت هاتف السايس ولكن الجلسة تمت في آخر 24 ساعة، تظهر فوراً للسايس
           if (d !== getLocalToday() && !isWithinLast24Hours) return false; 
         } else { 
           if (logDateFrom && d < logDateFrom) return false; 
@@ -488,14 +495,12 @@ export default function GarageDashboard() {
       
       if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter) return false;
       
-      // 2. عزل السياس ماليًا: السايس يرى فقط وفقط العمليات التي تمت كتابة اسمه عليها كمسؤول
       const addedBy = ((s as any).addedBy || '').trim();
       if (isValet) {
-        const isMine = addedBy && myValetNames.has(addedBy); // 🎯 أمان مطلق: تظهر فقط لو الاسم مطابق لاسم هذا السايس بالكامل
+        const isMine = addedBy && myValetNames.has(addedBy);
         if (!isMine) return false;
       }
       
-      // المالك يرى كل العمليات، ويمكنه تصفيتها باسم سايس معين
       if (isOwner && selectedValetFilter) { 
         if (addedBy !== selectedValetFilter) return false; 
       }
@@ -503,6 +508,7 @@ export default function GarageDashboard() {
       return true;
     });
   }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, isOwner, myValetNames, selectedValetFilter, valetNumber, garage]);
+
   const filteredStats = useMemo(() => {
     const c = filteredCompleted.filter(s => s.revenueConfirmed);
     const u = filteredCompleted.filter(s => !s.revenueConfirmed);
@@ -661,9 +667,20 @@ export default function GarageDashboard() {
       const sc = { ...confirmSession }; const pc = confirmPaymentMethod;
       const sd = useStore.getState().sessions.find(s => s.id === sc.id);
       const ia = sd?.source === 'app';
+      
+      // 🎁 [منطق الهدية المعدل]: حساب الدقائق المجانية وتمريرها للسيرفر عند موافقة السايس على تحصيل السداد
+      let freeMinutesApplied = 0;
+      if (sd?.isFirstFreeSession === true) {
+        const elapsedMs = Date.now() - toMs(sd.startTime);
+        const freeMs = Math.min(elapsedMs, 60 * 60 * 1000); // 60 دقيقة مجاناً كحد أقصى
+        freeMinutesApplied = Math.floor(freeMs / 60000);
+      }
+
       setConfirmSession(null);
       setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
-      await endSession(sc.id, sc.cost, pc);
+      
+      // إرسال الجلسة للإنهاء مع تمرير الدقائق المجانية كمعامل رابع
+      await endSession(sc.id, sc.cost, pc, freeMinutesApplied);
       if (ia) await new Promise(r => setTimeout(r, 5000));
       await fetchGarageDailyStats();
       toast.success(`تم تحصيل ${sc.cost} ج.م ✅`);
@@ -714,13 +731,11 @@ export default function GarageDashboard() {
 
       {/* Header */}
       <div className="flex justify-between items-center mb-5 pt-14">
-        {/* 🚀 تجميع أزرار التحكم في اليسار (خروج + تبديل الجراج للمالك) */}
         <div className="flex gap-2 items-center">
           <button onClick={() => { localStorage.removeItem('garageRole'); localStorage.removeItem('valetNumber'); localStorage.removeItem('valetName'); setCurrentGarageId(null); }} className="active:scale-90" style={{ background: '#fff', padding: 14, borderRadius: 20, border: '2px solid #D0DCFF' }}>
             <LogOut size={20} style={{ color: '#64748b' }} />
           </button>
 
-          {/* 🔄 زر تبديل الجراج يظهر للمالك فقط إذا كان يمتلك أكثر من جراج */}
           {isOwner && myGarages.length > 1 && (
             <button
               onClick={() => setShowSwitcher(true)}
@@ -894,7 +909,7 @@ export default function GarageDashboard() {
             })}
           </AnimatePresence>
 
-          {/* 🚗 سيارات في الطريق (مبسط برقم السيارة ووقت الوصول فقط) */}
+          {/* 🚗 سيارات في الطريق */}
           {carsOnTheWay.length > 0 && (
             <div className="mb-5">
               <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#0099DD' }}>
@@ -1002,13 +1017,32 @@ export default function GarageDashboard() {
               ) : (
                 valetActiveSessions.map(s => {
                   const st = toMs(s.startTime); const el = st > 0 ? Math.max(0, Math.floor((Date.now() - st) / 1000)) : 0;
-                  const mins = Math.floor(el / 60); const hrs = calculateFullHours(el);
-                  const rate = Number(s.agreedPrice ?? garage.basePrice); const cost = calculateCost(el, rate);
+                  const mins = Math.floor(el / 60);
+
+                  // 🎁 [منطق الهدية التفاعلي]: حساب وعزل الساعة المجانية في عرض الساعات على السايس
+                  const isFreeApplied = s.isFirstFreeSession === true;
+                  const freeSeconds = isFreeApplied ? Math.min(el, 3600) : 0;
+                  const billableSeconds = Math.max(0, el - freeSeconds);
+                  const hrs = isFreeApplied ? calculateFullHours(billableSeconds) : calculateFullHours(el);
+
+                  const rate = Number(s.agreedPrice ?? garage.basePrice); 
+                  const cost = getActiveCost(s); // جلب التكلفة الفعلية بعد الخصم
                   const isM = s.source === 'manual'; const un = undoableSessions.find(u => u.sessionId === s.id || u.localId === s.id);
                   return (
                     <div key={s.id} style={{ background: isM ? '#FFF8F0' : '#F0F8FF', border: `2.5px solid ${isM ? '#FFD180' : '#A0C4FF'}`, borderRadius: 24, padding: 18 }}>
                       <div className="flex justify-between items-center mb-3">
-                        <div className="flex items-center gap-2"><motion.span animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 1.5 }} className="rounded-full" style={{ width: 10, height: 10, background: isM ? '#FF9500' : '#00CC66' }} /><span style={{ fontSize: 12, color: '#7B8CA6' }}>{formatElapsed(el)} • {hrs}ساعة</span><span className="font-bold" style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, background: isM ? '#FF9500' : '#0066FF', color: '#fff' }}>{isM ? 'يدوي' : 'تطبيق'}</span></div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <motion.span animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 1.5 }} className="rounded-full" style={{ width: 10, height: 10, background: isM ? '#FF9500' : '#00CC66' }} />
+                          <span style={{ fontSize: 12, color: '#7B8CA6' }}>{formatElapsed(el)} • {hrs}ساعة</span>
+                          <span className="font-bold" style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, background: isM ? '#FF9500' : '#0066FF', color: '#fff' }}>{isM ? 'يدوي' : 'تطبيق'}</span>
+                          
+                          {/* 🎁 شارة الخصم للسيارات القادمة من التطبيق ومؤهلة لعرض الساعة الأولى مجاناً */}
+                          {isFreeApplied && (
+                            <span className="font-black flex items-center gap-0.5" style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, background: '#FFF3E0', color: '#E65100', border: '1px solid #FFE0B2' }}>
+                              <Gift size={11} /> ساعة مجانية
+                            </span>
+                          )}
+                        </div>
                         <div className="font-black" style={{ fontSize: 15 }}>🚗 {s.carPlate}</div>
                       </div>
                       <div className="flex items-center justify-end gap-1 mb-2"><span className="font-bold" style={{ fontSize: 9, padding: '3px 8px', borderRadius: 10, background: '#E8F5E9', color: '#2E7D32' }}>👤 جلستي</span></div>
@@ -1087,7 +1121,7 @@ export default function GarageDashboard() {
               <button onClick={() => { const d = new Date(); d.setDate(d.getDate() - 7); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`); setLogDateTo(getLocalToday()); }} className="font-black active:scale-95" style={{ background: '#F0F4FF', color: '#64748b', padding: '10px 14px', borderRadius: 14, fontSize: 11, border: '2px solid #D0DCFF' }}>آخر أسبوع</button>
               <button onClick={() => { const d = new Date(); d.setDate(1); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`); setLogDateTo(getLocalToday()); }} className="font-black active:scale-95" style={{ background: '#F0F4FF', color: '#64748b', padding: '10px 14px', borderRadius: 14, fontSize: 11, border: '2px solid #D0DCFF' }}>هذا الشهر</button>
             </div>
-             {/* 📊 أزرار فلترة سجل العمليات (تم إخفاء إنستاباي وكاش بصرياً فقط مع بقاء المنطق) */}
+             {/* أزرار فلترة سجل العمليات */}
             <div className="flex gap-1.5 flex-wrap">
               {[
                 { id: 'all', label: 'الكل', icon: '📊' }, 
@@ -1315,7 +1349,7 @@ export default function GarageDashboard() {
         </div>
       </div>
 
-      {/* 🏢 نافذة منبثقة فاخرة لتبديل الجراج للمالك الموحد */}
+      {/* Switcher Modal */}
       <AnimatePresence>
         {showSwitcher && (
           <motion.div 

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, Clock, CheckCircle, XCircle, MapPin, Warehouse, Plus,
   MessageCircle, Send, Receipt, Search, HardHat, Percent, DollarSign,
-  Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown,
+  Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown, Gift, Sparkles,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { supabase } from '../lib/supabase';
@@ -127,13 +127,22 @@ export default function AdminDashboard() {
 
   useEffect(() => { fetchSettlements(); }, [fetchSettlements]);
 
+  // 🎁 [منطق الهدية المعدل]: حساب الإيرادات الفعلية مع مراعاة خصم الساعة الترحيبية للركنات المستحقة
   const getRevenue = useCallback((s: any) => {
     if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
       const st = toMs(s.startTime);
       const en = toMs(s.endTime);
       const g = garages.find((ga: any) => ga.id === s.garageId);
-      return calculateCost(Math.max(0, Math.floor((en - st) / 1000)), Number(s.agreedPrice ?? g?.basePrice ?? 0));
+      const rate = Number(s.agreedPrice ?? g?.basePrice ?? 0);
+      const elapsedSeconds = Math.max(0, Math.floor((en - st) / 1000));
+
+      if (s.isFirstFreeSession === true) {
+        const freeSeconds = Math.min(elapsedSeconds, 3600); // خصم ساعة واحدة (3600 ثانية) كحد أقصى
+        const billableSeconds = Math.max(0, elapsedSeconds - freeSeconds);
+        return calculateCost(billableSeconds, rate);
+      }
+      return calculateCost(elapsedSeconds, rate);
     }
     return 0;
   }, [garages]);
@@ -966,6 +975,7 @@ export default function AdminDashboard() {
                         { show: !!session.paymentMethod, bg: session.paymentMethod === 'cash' ? '#00CC66' : session.paymentMethod === 'instapay' ? '#7C3AED' : session.paymentMethod === 'wallet' ? '#0066FF' : '#FF8800', text: session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستا' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش' },
                         { show: true, bg: session.revenueConfirmed ? '#00CC66' : '#FF9500', text: session.revenueConfirmed ? '✅ مؤكد' : '⏳ معلق' },
                         { show: isSettled, bg: '#94a3b8', text: '🔒 تمت التسوية' },
+                        { show: session.isFirstFreeSession === true, bg: '#E65100', text: '🎁 ساعة مجانية' } // 🎁 مضاف: بادج الساعة المجانية
                       ].filter(b => b.show).map((b, i) => (
                         <span key={i} className="font-bold" style={{ fontSize: 9, padding: '4px 10px', borderRadius: 12, background: b.bg, color: '#fff' }}>{b.text}</span>
                       ))}
@@ -1230,7 +1240,7 @@ export default function AdminDashboard() {
                       <span className="font-bold" style={{ fontSize: 9, color: '#7B8CA6' }}>عمولة التطبيق</span>
                     </div>
                   </div>
-                  {/* 🚀 زر تفعيل/تعطيل ظهور الجراج للعملاء في تطبيق الحريف */}
+                  {/* زر تفعيل/تعطيل ظهور الجراج للعملاء في تطبيق الحريف */}
                   <div className="mt-2.5 pt-2 flex items-center justify-between border-t border-amber-200/60">
                     <button
                       type="button"

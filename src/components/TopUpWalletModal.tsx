@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { X, Copy, ExternalLink, ArrowRight, CheckCircle, Plus, Minus, Phone, Send } from 'lucide-react';
-import { useStore } from '../store';
+import { useStore, TOPUP_TIERS, calculateBonus } from '../store';
 import toast from 'react-hot-toast';
 
 const WALLET_NUMBER = '01229858104';

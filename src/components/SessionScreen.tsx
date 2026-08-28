@@ -4,6 +4,8 @@ import {
   Clock,
   Car,
   ArrowRight,
+  Gift,
+  Sparkles,
 } from 'lucide-react';
 import { useStore } from '../store';
 import {
@@ -271,62 +273,149 @@ export default function SessionScreen() {
   }
 
   const sessionRate = Number(activeSession.agreedPrice ?? garage?.basePrice ?? 0);
-  const currentHours = calculateFullHours(elapsed);
-  const currentCost = calculateCost(elapsed, sessionRate);
-  const remainingInHour = getRemainingInCurrentHour(elapsed);
+
+  // 🎁 [منطق الهدية التفاعلي]:
+  const isFirstFreeApplied = activeSession.isFirstFreeSession === true;
+
+  // دمج الحسابات التفاعلية للهدية والوقت للدفع
+  const { displayedCost, displayedHours, countdownLabel, countdownTime, isFreeNow } = useMemo(() => {
+    if (!isFirstFreeApplied) {
+      return {
+        displayedCost: calculateCost(elapsed, sessionRate),
+        displayedHours: calculateFullHours(elapsed),
+        countdownLabel: 'الوقت المتبقي حتى الساعة التالية',
+        countdownTime: getRemainingInCurrentHour(elapsed),
+        isFreeNow: false
+      };
+    }
+
+    // 🕐 إذا كانت الجلسة تستحق أول ساعة مجانية
+    if (elapsed <= 3600) {
+      // العميل ما زال داخل الساعة المجانية الهدية (الـ 60 دقيقة الأولى)
+      const freeTimeRemaining = 3600 - elapsed;
+      const minutes = Math.floor(freeTimeRemaining / 60);
+      const seconds = freeTimeRemaining % 60;
+      return {
+        displayedCost: 0,
+        displayedHours: 0,
+        countdownLabel: 'الوقت المتبقي لانتهاء الساعة المجانية الهدية 🎁',
+        countdownTime: { minutes, seconds },
+        isFreeNow: true
+      };
+    } else {
+      // تجاوز الساعة المجانية → نبدأ الاحتساب من الدقيقة 61 بالمنطق القديم بالكامل
+      const billableSeconds = elapsed - 3600;
+      return {
+        displayedCost: calculateCost(billableSeconds, sessionRate),
+        displayedHours: calculateFullHours(billableSeconds),
+        countdownLabel: 'الوقت المتبقي حتى الساعة التالية الخاضعة للدفع',
+        countdownTime: getRemainingInCurrentHour(billableSeconds),
+        isFreeNow: false
+      };
+    }
+  }, [isFirstFreeApplied, elapsed, sessionRate]);
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8 overflow-y-auto"
+      className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-6 overflow-y-auto animate-fade-in"
     >
+      {/* 🎁 شارة مميزة علوية ترحيبية في العداد إذا كانت الجلسة مجانية */}
+      {isFirstFreeApplied && (
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 rounded-2xl p-3.5 mb-5 shadow-md border-2 border-white flex items-center gap-3"
+        >
+          <div className="bg-white/20 p-2.5 rounded-xl text-white">
+            <Gift size={22} className="animate-pulse" />
+          </div>
+          <div className="text-right flex-1">
+            <div className="font-black text-white flex items-center gap-1.5" style={{ fontSize: 13 }}>
+              <span>هدية ترحيبية نشطة</span>
+              <Sparkles size={13} className="text-yellow-200" />
+            </div>
+            <div className="text-white/90 font-bold" style={{ fontSize: 10 }}>
+              {isFreeNow 
+                ? 'أنت الآن في الساعة الأولى المجانية بالكامل! 🎁' 
+                : 'انتهت الساعة المجانية وتم بدء الاحتساب المخفض بدقة ✅'}
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* حلقة العداد الدائرية مع تكييف الألوان */}
       <motion.div
         animate={{
-          boxShadow: [
-            '0 0 0px rgba(59,130,246,0.15)',
-            '0 0 60px rgba(59,130,246,0.2)',
-            '0 0 0px rgba(59,130,246,0.15)',
-          ],
+          boxShadow: isFreeNow
+            ? [
+                '0 0 0px rgba(245,158,11,0.15)',
+                '0 0 60px rgba(245,158,11,0.3)',
+                '0 0 0px rgba(245,158,11,0.15)',
+              ]
+            : [
+                '0 0 0px rgba(59,130,246,0.15)',
+                '0 0 60px rgba(59,130,246,0.2)',
+                '0 0 0px rgba(59,130,246,0.15)',
+              ],
         }}
         transition={{ repeat: Infinity, duration: 2 }}
-        className="w-48 h-48 bg-blue-50 rounded-full flex flex-col items-center justify-center border-4 border-blue-300 mb-6 shadow-lg shadow-blue-100"
+        className={`w-44 h-44 rounded-full flex flex-col items-center justify-center border-4 mb-5 shadow-lg ${
+          isFreeNow 
+            ? 'bg-amber-50 border-amber-300 shadow-amber-100' 
+            : 'bg-blue-50 border-blue-300 shadow-blue-100'
+        }`}
       >
-        <Clock size={28} className="text-blue-600 mb-1" />
-        <div className="text-3xl font-black font-mono text-slate-900">{formatTime(elapsed)}</div>
-        <div className="text-[10px] text-slate-500 font-bold mt-1">مدة الركن</div>
+        <Clock size={24} className={isFreeNow ? 'text-amber-500 mb-1' : 'text-blue-600 mb-1'} />
+        <div className="text-2xl font-black font-mono text-slate-900">{formatTime(elapsed)}</div>
+        <div className="text-[9px] text-slate-500 font-bold mt-1">مدة الركن الفعلية</div>
       </motion.div>
 
+      {/* كارت الحساب التفاعلي مع الهدية والعداد */}
       <div className="w-full bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-2xl p-4 mb-4 shadow-sm">
         <div className="flex justify-between items-center mb-3">
           <div className="text-center">
-            <div className="text-3xl font-black text-blue-600 font-mono">{currentHours}</div>
+            <div className={`text-3xl font-black font-mono ${isFreeNow ? 'text-amber-500' : 'text-blue-600'}`}>
+              {displayedHours}
+            </div>
             <div className="text-[9px] text-slate-500 font-bold">ساعة محسوبة</div>
           </div>
-          <div className="text-4xl font-black text-slate-400">=</div>
+          <div className="text-3xl font-black text-slate-300">=</div>
           <div className="text-center">
-            <div className="text-3xl font-black text-emerald-600 font-mono">{currentCost}</div>
-            <div className="text-[9px] text-slate-500 font-bold">ج.م إجمالي</div>
+            <div className={`text-3xl font-black font-mono ${isFreeNow ? 'text-emerald-500 animate-pulse' : 'text-emerald-600'}`}>
+              {displayedCost} <span className="text-xs">ج.م</span>
+            </div>
+            <div className="text-[9px] text-slate-500 font-bold">إجمالي الحساب حتى الآن</div>
           </div>
         </div>
+
+        {/* عداد التنازل الديناميكي للساعة الحالية / للهدية */}
         <div className="bg-white/80 rounded-xl p-3 text-center border border-slate-100">
-          <div className="text-[10px] text-slate-500 mb-1">الوقت المتبقي حتى الساعة التالية</div>
-          <div className="text-lg font-black text-amber-500 font-mono">
-            {String(remainingInHour.minutes).padStart(2, '0')}:{String(remainingInHour.seconds).padStart(2, '0')}
+          <div className="text-[9px] text-slate-500 mb-1 font-bold">{countdownLabel}</div>
+          <div className={`text-lg font-black font-mono ${isFreeNow ? 'text-amber-500' : 'text-blue-500'}`}>
+            {String(countdownTime.minutes).padStart(2, '0')}:{String(countdownTime.seconds).padStart(2, '0')}
           </div>
           <div className="text-[9px] text-slate-400 mt-1">
-            بعدها ستُحسب ساعة إضافية ({currentHours + 1} × {sessionRate} = {(currentHours + 1) * sessionRate} ج.م)
+            {isFreeNow ? (
+              <span>استمتع بالركن المجاني دون أي رسوم إضافية 🥳</span>
+            ) : (
+              <span>
+                بعدها ستُحسب ساعة إضافية ({displayedHours + 1} × {sessionRate} = {(displayedHours + 1) * sessionRate} ج.م)
+              </span>
+            )}
           </div>
         </div>
       </div>
 
       {sessionRate !== garage?.basePrice && garage && (
         <div className="w-full bg-amber-50 border border-amber-200 rounded-xl p-2 mb-4 text-center">
-          <p className="text-[10px] text-amber-600 font-bold">💰 سعر خاص: {sessionRate} ج.م/ساعة (بدل {garage.basePrice} ج.م)</p>
+          <p className="text-[10px] text-amber-600 font-bold">💰 سعر خاص متفق عليه: {sessionRate} ج.م/ساعة (بدل {garage.basePrice} ج.م)</p>
         </div>
       )}
 
-      <div className="w-full grid grid-cols-2 gap-3 mb-6">
+      {/* بيانات السيارة والسعر */}
+      <div className="w-full grid grid-cols-2 gap-3 mb-4">
         <div className="bg-white border border-slate-200 p-4 rounded-2xl text-center shadow-sm">
           <Car size={20} className="text-blue-600 mx-auto mb-2" />
           <div className="text-sm font-black text-slate-900">{activeSession.carPlate || currentUser?.carPlate}</div>
@@ -335,12 +424,12 @@ export default function SessionScreen() {
         <div className="bg-white border border-slate-200 p-4 rounded-2xl text-center shadow-sm">
           <div className="font-black text-purple-600 mb-2" style={{ fontSize: 13, lineHeight: 1.1 }}>جنيه</div>
           <div className="text-sm font-black text-purple-600 font-mono">{sessionRate} ج.م</div>
-          <div className="text-[9px] text-slate-500 font-bold">سعر الساعة</div>
+          <div className="text-[9px] text-slate-500 font-bold">سعر الساعة العادي</div>
         </div>
       </div>
 
       {garage && (
-        <div className="bg-white border border-slate-200 p-4 rounded-2xl w-full text-center mb-6 shadow-sm">
+        <div className="bg-white border border-slate-200 p-4 rounded-2xl w-full text-center mb-4 shadow-sm">
           <div className="text-xs text-slate-500 font-bold mb-1">الجراج</div>
           <div className="text-lg font-black text-slate-900">{garage.name}</div>
         </div>
@@ -357,7 +446,7 @@ export default function SessionScreen() {
         <p className="text-[10px] text-blue-600 font-bold">💡 سيتم تحديد طريقة الدفع عند إنهاء الجلسة</p>
       </div>
 
-      {/* ✅ زر إنهاء الجلسة المعدل بنص أبيض عريض وصريح جداً 🚀 */}
+      {/* ✅ زر إنهاء الجلسة المعدل بالكامل لعرض السعر الحقيقي بدقة */}
       <button
         onClick={() => setScreen('summary')}
         className="w-full py-5 rounded-2xl active:scale-95 transition-all mb-3 flex items-center justify-center gap-2 shadow-xl"
@@ -368,8 +457,12 @@ export default function SessionScreen() {
           cursor: 'pointer'
         }}
       >
-        <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '18px' }}>
-          🚗 إنهاء الجلسة ({currentCost} ج.م)
+        <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '17px' }}>
+          {isFreeNow ? (
+            <span>🚗 إنهاء الجلسة (مجاناً 🎁)</span>
+          ) : (
+            <span>🚗 إنهاء الجلسة ({displayedCost} ج.م)</span>
+          )}
         </span>
       </button>
 

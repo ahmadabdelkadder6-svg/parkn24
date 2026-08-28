@@ -50,6 +50,7 @@ export default function App() {
     setSelectedGarageId,
     incomingCars,
     fetchAll,
+    acknowledgedSessionIds, // 🚀 [إصلاح]: تم إضافة المتغير المفقود من الـ Store
   } = useStore();
 
   const prevActiveSessionRef = useRef<string | null>(null);
@@ -147,10 +148,8 @@ export default function App() {
       } else if (isGarageFromURL) {
         setView('garage');
       } else if (savedView && (savedView === 'user' || savedView === 'garage' || savedView === 'admin')) {
-        // لو هناك شاشة كنت فتحتها بيدك مؤخراً، افتحها هي أولاً
         setView(savedView as any);
       } else {
-        // الافتراضي العام عند أول دخول نظيف للموقع
         if (isAdminLoggedIn) {
           setView('admin');
         } else if (isGarageLoggedIn) {
@@ -343,9 +342,10 @@ export default function App() {
               return endB - endA;
             })[0];
 
-           if (lastCompleted) {
+          if (lastCompleted) {
             // 🚀 التحقق بـ "قفل الفاتورة" وليس فروق الثواني لضمان عدم سقوط الجلسة نهائياً
-            const isNotAcknowledged = acknowledgedSessionIds ? !acknowledgedSessionIds.has(lastCompleted.id) : true;
+            const freshAcknowledged = freshState.acknowledgedSessionIds;
+            const isNotAcknowledged = freshAcknowledged ? !freshAcknowledged.has(lastCompleted.id) : true;
             if (isNotAcknowledged) {
               setSelectedGarageId(lastCompleted.garageId);
               setScreen('summary');

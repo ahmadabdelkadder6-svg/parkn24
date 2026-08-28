@@ -17,7 +17,8 @@ import {
   History,
   CheckCircle2,
   XCircle,
-  HelpCircle,
+  Gift,
+  Sparkles,
 } from 'lucide-react';
 import { useStore, Garage, Session, IncomingCar } from '../store';
 import {
@@ -105,6 +106,11 @@ export default function GarageListScreen() {
     () => normalizePlateForCompare(currentUser?.carPlate),
     [currentUser?.carPlate]
   );
+
+  /* 🎁 التحقق مما إذا كان العميل يستحق عرض الساعة المجانية الترحيبية */
+  const isEligibleForFreeSession = useMemo(() => {
+    return currentUser && !currentUser.hasUsedFreeSession;
+  }, [currentUser]);
 
   /* ✅ البحث عن جلسة نشطة واستبعاد أي جلسة تم إقرار إغلاقها مسبقاً */
   const activeSession = useMemo(() => {
@@ -267,7 +273,6 @@ export default function GarageListScreen() {
   }, [activeSession, setSelectedGarageId, setScreen]);
 
   /* ── Garages with distance ── */
-  /* ── Garages with distance (يتم استبعاد الجراجات المعطلة من الأدمن تلقائياً) ── */
   const garagesWithDistance: GarageWithDistance[] = useMemo(() => {
     return garages
       .filter((g) => g.isActive !== false) // 🚀 استبعاد الجراجات المعطلة من الظهور للعميل
@@ -497,12 +502,11 @@ export default function GarageListScreen() {
           </div>
 
           {/* رقم لوحة السيارة */}
-          {/* 🚗 رقم لوحة السيارة - تصميم لوحة ترخيص معدنية بريميوم فائقة الوضوح */}
           <div className="mt-3 flex justify-end relative z-10">
             <div
               style={{
                 background: '#ffffff',
-                border: '2px solid #1E293B', // إطار داكن وبارز للوحة
+                border: '2px solid #1E293B',
                 borderRadius: 8,
                 boxShadow: '0 4px 12px rgba(0,0,0,0.35), inset 0 1px 2px rgba(255,255,255,0.8)',
                 display: 'flex',
@@ -618,6 +622,47 @@ export default function GarageListScreen() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* 🎁 [جديد]: بانر ترحيبي ذهبي مغري جداً لحث العميل على حجز ركنته الأولى المجانية! */}
+        {isEligibleForFreeSession && !activeSession && !myIncomingCar && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full mb-3 overflow-hidden relative"
+            style={{
+              background: 'linear-gradient(135deg, #7C3AED 0%, #D946EF 100%)',
+              borderRadius: 18,
+              padding: '12px 14px',
+              boxShadow: '0 6px 20px rgba(124,58,237,0.25)',
+              border: '2.5px solid #ffffff',
+            }}
+          >
+            {/* لمعة متحركة */}
+            <motion.div
+              animate={{ x: ['-100%', '200%'] }}
+              transition={{ repeat: Infinity, duration: 3, ease: 'linear' }}
+              className="absolute inset-0 w-1/2"
+              style={{
+                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',
+                pointerEvents: 'none',
+              }}
+            />
+            <div className="flex items-center gap-3 relative z-10">
+              <div className="bg-white/20 p-2 rounded-xl text-white">
+                <Gift size={22} className="animate-bounce" />
+              </div>
+              <div className="flex-1 text-right">
+                <div className="font-black text-white flex items-center gap-1 justify-end" style={{ fontSize: 13 }}>
+                  <span>هدية ترحيبية خاصة بانتظارك! 🎁</span>
+                  <Sparkles size={12} className="text-yellow-300" />
+                </div>
+                <p className="text-white/90 font-black" style={{ fontSize: 10.5, marginTop: 1.5 }}>
+                  احجز ركنتك الأولى من التطبيق واحصل على <span className="text-yellow-300">أول ساعة مجاناً بالكامل!</span> 🕐
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
 
         {/* 🌟 بانر تحفيزي ذهبي مدمج وأنيق مع خط واضح (يظهر إذا كان الرصيد أقل من 30 ج.م) */}
         {(!currentUser?.wallet || currentUser.wallet < 30) && (
@@ -980,7 +1025,82 @@ export default function GarageListScreen() {
       <AnimatePresence>
         {showTopUp && <TopUpWalletModal onClose={() => setShowTopUp(false)} />}
       </AnimatePresence>
+
+      {/* 🎁 [جديد]: نافذة منبثقة ترحيبية بالهدية تعمل آلياً فور تسجيل حساب جديد */}
+      <WelcomeGiftModal />
     </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   ██  WELCOME GIFT MODAL COMPONENT (مدمج وآلي)
+   ════════════════════════════════════════════════════════════ */
+function WelcomeGiftModal() {
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    // التحقق من وجود راية عرض الهدية الترحيبية للعميل الجديد في ذاكرة الهاتف
+    const hasGiftFlag = localStorage.getItem('showWelcomeGift');
+    if (hasGiftFlag === 'true') {
+      setShow(true);
+    }
+  }, []);
+
+  const handleClose = () => {
+    localStorage.removeItem('showWelcomeGift');
+    setShow(false);
+  };
+
+  return (
+    <AnimatePresence>
+      {show && (
+        <div 
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[999] flex items-center justify-center p-6"
+          onClick={handleClose}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0, y: 30 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.9, opacity: 0, y: 30 }}
+            className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 border-2 border-yellow-500/30 rounded-[2.5rem] p-8 max-w-sm w-full text-center relative overflow-hidden"
+            style={{ boxShadow: '0 20px 50px rgba(245,158,11,0.25)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* لمعة خلفية */}
+            <div className="absolute -top-12 -right-12 w-32 h-32 bg-yellow-500/10 rounded-full filter blur-xl" />
+
+            <button onClick={handleClose} className="absolute top-5 left-5 text-slate-400 hover:text-white transition-colors">
+              <X size={20} />
+            </button>
+
+            <div className="w-20 h-20 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-5 shadow-lg shadow-orange-500/30">
+              <Gift size={38} className="text-white animate-bounce" />
+            </div>
+
+            <h3 className="text-xl font-black text-white mb-2 flex items-center justify-center gap-1.5">
+              <span>هدية ترحيبية خاصة!</span>
+              <Sparkles size={18} className="text-yellow-400 animate-pulse" />
+            </h3>
+            
+            <p className="text-slate-300 text-sm mb-5 leading-relaxed">
+              أهلاً بك في عائلة <span className="font-black text-blue-400">Park'n 24</span>! نورتنا في زيارتك الأولى 🌟
+            </p>
+
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-6">
+              <p className="text-yellow-400 font-black text-lg mb-1">🎁 أول ساعة ركنة مجانية</p>
+              <p className="text-slate-400 text-xs leading-relaxed">سيتم تطبيق الخصم تلقائياً على أول ركنة تبدأها من التطبيق 📱</p>
+            </div>
+
+            <button
+              onClick={handleClose}
+              className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-slate-950 font-black py-4 rounded-2xl text-sm hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-orange-500/20"
+            >
+              استمتع بالهدية الآن 🚀
+            </button>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
   );
 }
 
