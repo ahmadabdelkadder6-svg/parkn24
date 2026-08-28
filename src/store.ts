@@ -1080,13 +1080,31 @@ export const useStore = create<AppState>((set, get) => ({
     const newO: Offer = { ...o, id: uid(), timestamp: Date.now() };
     set((st) => ({ offers: [newO, ...st.offers] }));
     if (isSupabaseConfigured()) {
-      supabase.from('offers').insert({ garage_id: o.garageId, user_id: o.userId, car_plate: o.carPlate, offered_price: o.offeredPrice, status: o.status }).select().single()
-        .then(({ data }) => { if (data) set((st) => ({ offers: st.offers.map((x) => x.id === newO.id ? mapOffer(data) : x)) })); });
+      supabase
+        .from('offers')
+        .insert({
+          garage_id: o.garageId,
+          user_id: o.userId,
+          car_plate: o.carPlate,
+          offered_price: o.offeredPrice,
+          status: o.status,
+        })
+        .select()
+        .single()
+        .then(({ data }) => {
+          if (data) {
+            set((st) => ({
+              offers: st.offers.map((x) => (x.id === newO.id ? mapOffer(data) : x)),
+            }));
+          }
+        });
     }
   },
 
   updateOffer: (id, status, counterPrice) => {
-    set((st) => ({ offers: st.offers.map((o) => (o.id === id ? { ...o, status, counterPrice } : o)) }));
+    set((st) => ({
+      offers: st.offers.map((o) => (o.id === id ? { ...o, status, counterPrice } : o)),
+    }));
     if (isSupabaseConfigured()) {
       const u: Record<string, unknown> = { status };
       if (counterPrice !== undefined) u.counter_price = counterPrice;
@@ -1096,61 +1114,102 @@ export const useStore = create<AppState>((set, get) => ({
 
   cancelOffer: (id) => {
     set((st) => ({ offers: st.offers.filter((o) => o.id !== id) }));
-    if (isSupabaseConfigured()) supabase.from('offers').delete().eq('id', id);
+    if (isSupabaseConfigured()) {
+      supabase.from('offers').delete().eq('id', id);
+    }
   },
 
   addWalletTopUp: (w) => {
     const newW: WalletTopUp = { ...w, id: uid(), status: 'pending', timestamp: Date.now() };
     set((st) => ({ walletTopUps: [newW, ...st.walletTopUps] }));
     if (isSupabaseConfigured()) {
-      supabase.from('wallet_topups').insert({
-        user_id: w.userId, user_name: w.userName, user_phone: w.userPhone,
-        amount: w.amount, transaction_id: w.transactionId, car_plate: w.carPlate, method: w.method,
-      }).select().single()
-        .then(({ data }) => { if (data) set((st) => ({ walletTopUps: st.walletTopUps.map((x) => (x.id === newW.id ? mapTopUp(data) : x)) })); });
+      supabase
+        .from('wallet_topups')
+        .insert({
+          user_id: w.userId,
+          user_name: w.userName,
+          user_phone: w.userPhone,
+          amount: w.amount,
+          transaction_id: w.transactionId,
+          car_plate: w.carPlate,
+          method: w.method,
+        })
+        .select()
+        .single()
+        .then(({ data }) => {
+          if (data) {
+            set((st) => ({
+              walletTopUps: st.walletTopUps.map((x) => (x.id === newW.id ? mapTopUp(data) : x)),
+            }));
+          }
+        });
     }
   },
 
   approveTopUp: async (id) => {
-    const topUp = get().walletTopUps.find((w) => w.id === id); 
+    const topUp = get().walletTopUps.find((w) => w.id === id);
     if (!topUp) return;
 
-    set((st) => ({ 
-      walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'approved' as const } : w)) 
+    set((st) => ({
+      walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'approved' as const } : w)),
     }));
 
     if (!isSupabaseConfigured()) return;
 
     let dbRow: any = null;
-    if (topUp.transactionId) { 
-      const { data } = await supabase.from('wallet_topups').select('*').eq('transaction_id', topUp.transactionId).maybeSingle(); 
-      if (data) dbRow = data; 
+    if (topUp.transactionId) {
+      const { data } = await supabase
+        .from('wallet_topups')
+        .select('*')
+        .eq('transaction_id', topUp.transactionId)
+        .maybeSingle();
+      if (data) dbRow = data;
     }
-    if (!dbRow) { 
-      const { data } = await supabase.from('wallet_topups').select('*').eq('id', id).maybeSingle(); 
-      if (data) dbRow = data; 
+    if (!dbRow) {
+      const { data } = await supabase
+        .from('wallet_topups')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      if (data) dbRow = data;
     }
-    if (!dbRow) { console.error('❌ الطلب مش موجود'); return; }
-
-    const supabaseId = dbRow.id;
-    const { error: approveError } = await supabase.from('wallet_topups').update({ status: 'approved' }).eq('id', supabaseId);
-    if (approveError) {
-      console.error('❌', approveError);
-      set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'pending' as const } : w)) }));
+    if (!dbRow) {
+      console.error('❌ الطلب مش موجود');
       return;
     }
 
-    set((st) => ({ 
-      walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, id: supabaseId, status: 'approved' as const } : w)) 
+    const supabaseId = dbRow.id;
+    const { error: approveError } = await supabase
+      .from('wallet_topups')
+      .update({ status: 'approved' })
+      .eq('id', supabaseId);
+
+    if (approveError) {
+      console.error('❌', approveError);
+      set((st) => ({
+        walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'pending' as const } : w)),
+      }));
+      return;
+    }
+
+    set((st) => ({
+      walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, id: supabaseId, status: 'approved' as const } : w)),
     }));
 
     const realUserPhone = dbRow.user_phone || topUp.userPhone || '';
     let userData: any = null;
-    if (realUserPhone) { 
-      const { data } = await supabase.from('users').select('*').eq('phone', realUserPhone).maybeSingle(); 
-      if (data) userData = data; 
+    if (realUserPhone) {
+      const { data } = await supabase
+        .from('users')
+        .select('*')
+        .eq('phone', realUserPhone)
+        .maybeSingle();
+      if (data) userData = data;
     }
-    if (!userData) { console.error('❌ المستخدم مش موجود'); return; }
+    if (!userData) {
+      console.error('❌ المستخدم مش موجود');
+      return;
+    }
 
     const baseAmount = Number(dbRow.amount || topUp.amount || 0);
     let bonusAmount = 0;
@@ -1162,31 +1221,65 @@ export const useStore = create<AppState>((set, get) => ({
     const totalToAdd = baseAmount + bonusAmount;
     const newWallet = Number(userData.wallet || 0) + totalToAdd;
 
-    const { error: walletError } = await supabase.from('users').update({ wallet: newWallet }).eq('id', userData.id);
-    if (walletError) { console.error('❌', walletError); return; }
+    const { error: walletError } = await supabase
+      .from('users')
+      .update({ wallet: newWallet })
+      .eq('id', userData.id);
+
+    if (walletError) {
+      console.error('❌', walletError);
+      return;
+    }
 
     if (bonusAmount > 0) {
-      await supabase.from('wallet_topups').update({ bonus_amount: bonusAmount }).eq('id', supabaseId);
+      await supabase
+        .from('wallet_topups')
+        .update({ bonus_amount: bonusAmount })
+        .eq('id', supabaseId);
     }
 
     const currentUser = get().currentUser;
     if (currentUser && (currentUser.phone === userData.phone || (currentUser as any).id === userData.id)) {
       const updated = { ...currentUser, wallet: newWallet };
-      set({ currentUser: updated }); 
+      set({ currentUser: updated });
       safeSetStorage('currentUser', updated);
     }
   },
 
   rejectTopUp: async (id) => {
-    const topUp = get().walletTopUps.find((w) => w.id === id); if (!topUp) return;
-    set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'rejected' as const } : w)) }));
+    const topUp = get().walletTopUps.find((w) => w.id === id);
+    if (!topUp) return;
+
+    set((st) => ({
+      walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'rejected' as const } : w)),
+    }));
+
     if (!isSupabaseConfigured()) return;
+
     let supabaseId = id;
-    if (topUp.transactionId) { const { data } = await supabase.from('wallet_topups').select('id').eq('transaction_id', topUp.transactionId).maybeSingle(); if (data) supabaseId = data.id; }
-    const { error } = await supabase.from('wallet_topups').update({ status: 'rejected' }).eq('id', supabaseId);
-    if (error) { console.error('❌', error); return; }
+    if (topUp.transactionId) {
+      const { data } = await supabase
+        .from('wallet_topups')
+        .select('id')
+        .eq('transaction_id', topUp.transactionId)
+        .maybeSingle();
+      if (data) supabaseId = data.id;
+    }
+
+    const { error } = await supabase
+      .from('wallet_topups')
+      .update({ status: 'rejected' })
+      .eq('id', supabaseId);
+
+    if (error) {
+      console.error('❌', error);
+      return;
+    }
+
     if (supabaseId !== id) {
-      set((st) => ({ walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, id: supabaseId, status: 'rejected' as const } : w)) }));
+      set((st) => ({
+        walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, id: supabaseId, status: 'rejected' as const } : w)),
+      }));
     }
   },
 
