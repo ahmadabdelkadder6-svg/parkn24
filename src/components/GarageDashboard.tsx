@@ -243,22 +243,20 @@ export default function GarageDashboard() {
 
   // ⚡ [تعديل ذكي]: السايس يرى فقط جلسات اليوم النشطة (بينما المالك يرى الكل)
   const activeSessions = useMemo(() => {
-    // ⚡ حساب بداية اليوم بالمللي ثانية لعزل جلسات اليوم فقط للسايس
-    const startOfToday = (() => {
-      const n = new Date();
-      return new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime();
-    })();
-
     return garageSessions.filter(s => {
       if (s.status !== 'active') return false;
       const st = toMs(s.startTime);
       if (st <= 0) return false;
+
+      const elapsedMs = Date.now() - st;
       
-      // ⚡ السايس يرى فقط جلسات اليوم النشطة
-      if (isValet && st < startOfToday) return false;
+      // ⚡ [الأمان الذكي]: السايس يرى جلسات اليوم + سيارات المبيت (أقل من 24 ساعة)
+      // أي سيارة منسية عمرها أكثر من 24 ساعة تختفي من السايس وتظهر للمالك للمساءلة
+      if (isValet && elapsedMs >= 24 * 60 * 60 * 1000) return false;
       
-      // الحماية القديمة: لا تعرض جلسة عمرها أكثر من 24 ساعة
-      if ((Date.now() - st) >= 24 * 60 * 60 * 1000) return false;
+      // 🔒 حماية عامة: لا تعرض أي جلسة نشطة عمرها أكثر من 24 ساعة في العدادات اللحظية
+      if (elapsedMs >= 24 * 60 * 60 * 1000) return false;
+
       return true;
     });
   }, [garageSessions, isValet]);
@@ -266,6 +264,7 @@ export default function GarageDashboard() {
   const valetActiveSessions = useMemo(() => {
     if (!isValet) return activeSessions;
 
+    // 🔒 قفل الأمان: إذا كان السايس معطلاً من الإدارة، احجب عنه كل شيء فوراً
     const isActive =
       valetNumber === '1' ? garage?.valet1Active :
       valetNumber === '2' ? garage?.valet2Active :
@@ -275,7 +274,10 @@ export default function GarageDashboard() {
     return activeSessions.filter(s => {
       const addedBy = ((s as any).addedBy || '').trim();
       
+      // 1. الجلسات المعينة باسم هذا السايس تظهر له فقط
       if (addedBy && myValetNames.has(addedBy)) return true;
+      
+      // 2. الجلسات الجديدة من التطبيق (غير معينة لأحد) تظهر للسايس المفتوح حالياً ليلتقطها
       if (!addedBy && s.source === 'app') return true;
       
       return false;
@@ -487,22 +489,20 @@ export default function GarageDashboard() {
       if (!isActive) return [];
     }
 
-    const today = new Date();
-    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-    const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1;
-
+    // ⚡ [صاروخي]: حساب حدود التواريخ بالمللي ثانية مرة واحدة خارج الحلقة لأقصى سرعة
     const boundaryFrom = logDateFrom ? new Date(`${logDateFrom}T00:00:00`).getTime() : 0;
     const boundaryTo = logDateTo ? new Date(`${logDateTo}T23:59:59.999`).getTime() : 0;
 
     return completedSessions.filter(s => {
       if (s.endTime) {
         const endMs = toMs(s.endTime);
-        const isWithinLast24Hours = (Date.now() - endMs) < 24 * 60 * 60 * 1000;
         
         if (isValet) { 
-          const isToday = endMs >= todayStart && endMs <= todayEnd;
-          if (!isToday && !isWithinLast24Hours) return false; 
+          // 💵 السايس يرى عمليات آخر 24 ساعة (لضمان تأكيد عمليات أمس المعلقة)
+          const isWithinLast24Hours = (Date.now() - endMs) < 24 * 60 * 60 * 1000;
+          if (!isWithinLast24Hours) return false; 
         } else { 
+          // 📊 المالك يرى حسب التواريخ المختارة في الفلاتر
           if (boundaryFrom && endMs < boundaryFrom) return false; 
           if (boundaryTo && endMs > boundaryTo) return false; 
         }
