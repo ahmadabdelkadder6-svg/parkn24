@@ -1149,20 +1149,20 @@ export default function GarageDashboard() {
 
                       <div className="flex justify-between items-center" style={{ paddingTop: 4 }}>
                         <div className="flex items-center gap-1.5">
-                          {/* 🔴 زر إنهاء وتحصيل مغلظ ومحمي باللون الأبيض الناصع */}
+                          {/* 🔴 زر إنهاء وتحصيل مغلظ ومحمي ومفروض باللون الأبيض الناصع رغماً عن المتصفح */}
                           <button 
                             onClick={() => openConfirmPayment(s.id, s.carPlate, cost, hrs, mins, s.source, s.agreedPrice)} 
-                            className="active:scale-95 transition-all text-white flex items-center justify-center font-black" 
+                            className="active:scale-95 transition-all flex items-center justify-center font-black !text-white" // ⚡ تم إضافة !text-white لفرض اللون الأبيض رغماً عن أي ثيم
                             style={{ 
                               background: 'linear-gradient(135deg,#FF3333,#CC0000)', 
                               padding: '8px 14px',
                               borderRadius: 12, 
-                              fontSize: 11.5,
-                              fontWeight: 950,
-                              color: '#ffffff',
+                              fontSize: '11.5px',
+                              fontWeight: 900,
+                              color: '#ffffff', // ⚡ فرض اللون الأبيض برمجياً
                               border: 'none',
                               cursor: 'pointer',
-                              textShadow: '0 1px 2px rgba(0,0,0,0.25)'
+                              textShadow: '0 1px 2px rgba(0,0,0,0.35)' // ⚡ ظل خلفي يبرز النص الأبيض في أشعة الشمس
                             }}
                           >
                             إنهاء وتحصيل
