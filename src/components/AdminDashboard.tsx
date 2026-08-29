@@ -251,16 +251,30 @@ export default function AdminDashboard() {
   const pendingTopUps = walletTopUps.filter(w => w.status === 'pending');
 
   const displayedRevenueSessions = useMemo(() => {
-    let f = filteredSessions;
+    const searchTerm = sessionSearch.trim().toUpperCase();
+    
+    // 🔍 [ذكاء صاروخي]: عند البحث برقم لوحة، نبحث في "كل الأرشيف" وليس فقط الفترة المحددة
+    // هذا يضمن العثور على أي جلسة قديمة فوراً دون الحاجة لتغيير التاريخ يدوياً
+    let f = searchTerm 
+      ? completedSessions // البحث في كل السجل التاريخي عند وجود كلمة بحث
+      : filteredSessions;  // فلترة عادية بالتاريخ عند عدم وجود بحث
+
     if (revenueFilter === 'confirmed') f = f.filter(s => s.revenueConfirmed);
     else if (revenueFilter === 'pending') f = f.filter(s => !s.revenueConfirmed);
-    if (sessionSearch.trim()) {
-      const sn = sessionSearch.trim().toUpperCase();
-      f = f.filter(s => (s.carPlate ?? '').toUpperCase().includes(sn));
+    
+    if (searchTerm) {
+      f = f.filter(s => (s.carPlate ?? '').toUpperCase().includes(searchTerm));
     }
-    // ⚡ [ممتاز وآمن]: عرض أحدث 30 جلسة لتسريع وتخفيف المتصفح في لوحة الأدمن
-    return f.slice(0, 30);
-  }, [filteredSessions, revenueFilter, sessionSearch]);
+    
+    // ⚡ ترتيب النتائج من الأحدث للأقدم مع عرض أكثر 50 نتيجة عند البحث لضمان تغطية كل العمليات
+    const sorted = [...f].sort((a, b) => {
+      const endA = a.endTime ? toMs(a.endTime) : 0;
+      const endB = b.endTime ? toMs(b.endTime) : 0;
+      return endB - endA;
+    });
+    
+    return searchTerm ? sorted.slice(0, 50) : sorted.slice(0, 30);
+  }, [completedSessions, filteredSessions, revenueFilter, sessionSearch]);
 
   const safeMessages = messages ?? [];
   const pendingMessages = safeMessages.filter(m => m.status === 'pending');
