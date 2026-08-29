@@ -241,14 +241,26 @@ export default function GarageDashboard() {
     ].filter(Boolean);
   }, [garage]);
 
+  // ⚡ [تعديل ذكي]: السايس يرى فقط جلسات اليوم النشطة (بينما المالك يرى الكل)
   const activeSessions = useMemo(() => {
+    const startOfToday = (() => {
+      const n = new Date();
+      return new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime();
+    })();
+
     return garageSessions.filter(s => {
       if (s.status !== 'active') return false;
       const st = toMs(s.startTime);
-      if (st > 0 && (Date.now() - st) >= 24 * 60 * 60 * 1000) return false;
+      if (st <= 0) return false;
+      
+      // السايس يرى فقط جلسات اليوم النشطة
+      if (isValet && st < startOfToday) return false;
+      
+      // الحماية القديمة لكل الأدوار: لا تعرض جلسة عمرها أكثر من 24 ساعة
+      if ((Date.now() - st) >= 24 * 60 * 60 * 1000) return false;
       return true;
     });
-  }, [garageSessions]);
+  }, [garageSessions, isValet]);
 
   const valetActiveSessions = useMemo(() => {
     if (!isValet) return activeSessions;
@@ -874,17 +886,73 @@ export default function GarageDashboard() {
         </motion.div>
       )}
 
-      {/* Stats Cards - كروت الإحصائيات المدمجة */}
+      {/* Stats Cards - كروت الإحصائيات المدمجة نصف الحجم */}
       <div className={`grid ${isOwner ? 'grid-cols-3' : 'grid-cols-2'} gap-3 mb-5`}>
         {isOwner ? (
           <>
-            <div className="text-center" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', borderRadius: 22, padding: '18px 10px', color: '#fff', boxShadow: '0 6px 24px rgba(0,204,102,0.3)' }}><div className="mx-auto mb-1" style={{ opacity: 0.9 }}><span className="font-black" style={{ fontSize: 14 }}>ج.م</span></div><div className="font-black font-mono" style={{ fontSize: 24 }}>{topCardConfirmedRevenue.toFixed(0)}</div><div className="font-bold flex items-center justify-center gap-1" style={{ fontSize: 9, opacity: 0.8 }}>مؤكد</div></div>
-            <div onClick={openSettings} className="text-center cursor-pointer active:scale-95" style={{ background: 'linear-gradient(135deg,#0066FF,#0044DD)', borderRadius: 22, padding: '18px 10px', color: '#fff', boxShadow: '0 6px 24px rgba(0,102,255,0.3)' }}><div className="mx-auto mb-1" style={{ opacity: 0.9 }}><Car size={22} /></div><div className="font-black font-mono" style={{ fontSize: 24 }}>{garage.availableSpots}</div><div className="font-bold flex items-center justify-center gap-1" style={{ fontSize: 9, opacity: 0.8 }}>شاغر <Edit3 size={9} /></div></div>
-            <div onClick={openSettings} className="text-center cursor-pointer active:scale-95" style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', borderRadius: 22, padding: '18px 10px', color: '#fff', boxShadow: '0 6px 24px rgba(124,58,237,0.3)' }}><div className="mx-auto mb-1" style={{ opacity: 0.9 }}><span className="font-black" style={{ fontSize: 14 }}>ج.م</span></div><div className="font-black font-mono" style={{ fontSize: 24 }}>{garage.basePrice}</div><div className="font-bold flex items-center justify-center gap-1" style={{ fontSize: 9, opacity: 0.8 }}>سعر/ساعة <Edit3 size={9} /></div></div>
+            {/* 🟢 كارت مؤكد المدمج للمالك */}
+            <div 
+              className="text-center transition-all" 
+              style={{ 
+                background: 'linear-gradient(135deg,#00CC66,#00AA55)', 
+                borderRadius: 16, 
+                padding: '8px 10px', 
+                color: '#ffffff', 
+                boxShadow: '0 4px 14px rgba(0,204,102,0.22)' 
+              }}
+            >
+              <div className="flex items-center justify-center gap-1 mb-0.5" style={{ opacity: 0.95 }}>
+                <span className="font-bold text-[10px]" style={{ color: '#ffffff' }}>مؤكد</span>
+              </div>
+              <div className="font-black font-mono leading-none" style={{ fontSize: 18, fontWeight: 950, color: '#ffffff' }}>
+                {topCardConfirmedRevenue.toFixed(0)} <span style={{ fontSize: 10, fontWeight: 800 }}>ج</span>
+              </div>
+            </div>
+
+            {/* 🔵 كارت شاغر المدمج للمالك */}
+            <div 
+              onClick={openSettings} 
+              className="text-center cursor-pointer active:scale-95 transition-all" 
+              style={{ 
+                background: 'linear-gradient(135deg,#0066FF,#0044DD)', 
+                borderRadius: 16, 
+                padding: '8px 10px', 
+                color: '#ffffff', 
+                boxShadow: '0 4px 14px rgba(0,102,255,0.22)' 
+              }}
+            >
+              <div className="flex items-center justify-center gap-1 mb-0.5" style={{ opacity: 0.95 }}>
+                <Car size={12} style={{ color: '#ffffff' }} />
+                <span className="font-bold text-[10px]" style={{ color: '#ffffff' }}>شاغر</span>
+              </div>
+              <div className="font-black font-mono leading-none" style={{ fontSize: 18, fontWeight: 950, color: '#ffffff' }}>
+                {garage.availableSpots}
+              </div>
+            </div>
+
+            {/* 🟣 كارت سعر الساعة المدمج للمالك */}
+            <div 
+              onClick={openSettings} 
+              className="text-center cursor-pointer active:scale-95 transition-all" 
+              style={{ 
+                background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', 
+                borderRadius: 16, 
+                padding: '8px 10px', 
+                color: '#ffffff', 
+                boxShadow: '0 4px 14px rgba(124,58,237,0.22)' 
+              }}
+            >
+              <div className="flex items-center justify-center gap-1 mb-0.5" style={{ opacity: 0.95 }}>
+                <span className="font-bold text-[10px]" style={{ color: '#ffffff' }}>سعر/ساعة</span>
+              </div>
+              <div className="font-black font-mono leading-none" style={{ fontSize: 18, fontWeight: 950, color: '#ffffff' }}>
+                {garage.basePrice} <span style={{ fontSize: 10, fontWeight: 800 }}>ج</span>
+              </div>
+            </div>
           </>
         ) : (
           <>
-            {/* 🚗 بوكس جلساتي المدمج - نصف الحجم وبنفس التدرج الأزرق */}
+            {/* 🚗 بوكس جلساتي المدمج للسايس - نصف الحجم */}
             <div 
               className="text-center transition-all" 
               style={{ 
@@ -904,7 +972,7 @@ export default function GarageDashboard() {
               </div>
             </div>
 
-            {/* 🅿️ بوكس شاغر المدمج - نصف الحجم وبنفس التدرج البنفسجي */}
+            {/* 🅿️ بوكس شاغر المدمج للسايس - نصف الحجم */}
             <div 
               className="text-center transition-all" 
               style={{ 
@@ -930,22 +998,6 @@ export default function GarageDashboard() {
       {/* السايس فقط */}
       {isValet && (
         <>
-          <AnimatePresence>
-            {undoableSessions.map(un => {
-              const rem = getUndoRemainingSeconds(un.addedAt);
-              return (
-                <motion.div key={un.localId} initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="mb-4">
-                  <div style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 22, padding: 16, color: '#fff' }}>
-                    <div className="flex items-center justify-between gap-3">
-                      <button onClick={() => handleUndoSession(un)} className="font-black flex items-center gap-2 active:scale-95 shrink-0" style={{ background: '#FF3333', color: '#fff', padding: '12px 18px', borderRadius: 16, fontSize: 13 }}><Undo2 size={18} /> تراجع</button>
-                      <div className="flex-1 text-right"><span className="font-black" style={{ fontSize: 14 }}>🚗 {un.carPlate}</span><div className="font-bold font-mono" style={{ fontSize: 11 }}>⏳ {rem} ثانية</div></div>
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
-
           {/* 🚗 سيارات في الطريق */}
           {carsOnTheWay.length > 0 && (
             <div className="mb-5">
@@ -1093,16 +1145,20 @@ export default function GarageDashboard() {
 
                       <div className="flex justify-between items-center" style={{ paddingTop: 4 }}>
                         <div className="flex items-center gap-1.5">
+                          {/* 🔴 زر إنهاء وتحصيل مغلظ ومحمي باللون الأبيض الناصع */}
                           <button 
                             onClick={() => openConfirmPayment(s.id, s.carPlate, cost, hrs, mins, s.source, s.agreedPrice)} 
-                            className="font-black active:scale-95 transition-all text-white" 
+                            className="active:scale-95 transition-all text-white flex items-center justify-center font-black" 
                             style={{ 
                               background: 'linear-gradient(135deg,#FF3333,#CC0000)', 
                               padding: '8px 14px',
                               borderRadius: 12, 
-                              fontSize: 11,
+                              fontSize: 11.5,
+                              fontWeight: 950,
+                              color: '#ffffff',
                               border: 'none',
-                              cursor: 'pointer'
+                              cursor: 'pointer',
+                              textShadow: '0 1px 2px rgba(0,0,0,0.25)'
                             }}
                           >
                             إنهاء وتحصيل
@@ -1233,11 +1289,36 @@ export default function GarageDashboard() {
 
         {filteredCompleted.length > 0 && (
           <>
+            {/* ⏳ كارت العمليات المعلقة المدمج - نصف الحجم بخطوط غليظة ناصعة */}
             {filteredStats.pendingCount > 0 && (
-              <div className="mb-4" style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 22, padding: 18, color: '#fff', boxShadow: '0 8px 28px rgba(255,149,0,0.3)' }}>
+              <div 
+                className="mb-3 transition-all" 
+                style={{ 
+                  background: 'linear-gradient(135deg,#FF9500,#FF7700)', 
+                  borderRadius: 16, 
+                  padding: '10px 14px', 
+                  color: '#ffffff', 
+                  boxShadow: '0 4px 14px rgba(255,119,0,0.22)' 
+                }}
+              >
                 <div className="flex justify-between items-center">
-                  <div className="text-right flex-1"><h3 className="font-black mb-1" style={{ fontSize: 15 }}>⏳ عمليات معلقة للتأكيد</h3><div className="flex items-center gap-2 justify-end"><span className="font-black" style={{ fontSize: 11, background: 'rgba(255,255,255,0.2)', padding: '3px 10px', borderRadius: 10 }}>{filteredStats.pendingCount} عملية</span></div></div>
-                  {isOwner && (<div className="text-left mr-4"><div className="font-black font-mono" style={{ fontSize: 28 }}>{filteredStats.pendingRevenue.toFixed(0)}</div><div className="font-bold text-center" style={{ fontSize: 11, opacity: 0.85 }}>ج.م</div></div>)}
+                  <div className="text-right flex-1">
+                    <h3 className="font-black mb-1 flex items-center gap-1 justify-end text-white" style={{ fontSize: 12, fontWeight: 900, textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
+                      ⏳ عمليات معلقة للتأكيد
+                    </h3>
+                    <div className="flex items-center gap-1.5 justify-end">
+                      <span className="font-black text-white" style={{ fontSize: 10, fontWeight: 900, background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: 8 }}>
+                        {filteredStats.pendingCount} عملية
+                      </span>
+                    </div>
+                  </div>
+                  {isOwner && (
+                    <div className="text-left mr-4 shrink-0">
+                      <div className="font-black font-mono leading-none text-white" style={{ fontSize: 20, fontWeight: 950, textShadow: '0 1.5px 3px rgba(0,0,0,0.15)' }}>
+                        {filteredStats.pendingRevenue.toFixed(0)} <span style={{ fontSize: 11, fontWeight: 800 }}>ج.م</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1267,17 +1348,40 @@ export default function GarageDashboard() {
                 </div>
 
                 {filteredStats.totalCommission > 0 && (
-                  <div className="space-y-2 mb-4">
+                  <div className="space-y-2 mb-3">
                     <div className="grid grid-cols-2 gap-2">
-                      <div className="text-center" style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 18, padding: 16, color: '#fff' }}>
-                        <div className="font-black" style={{ fontSize: 14, opacity: 0.9, marginBottom: 4 }}>ج.م</div>
-                        <div className="font-black font-mono" style={{ fontSize: 24 }}>{filteredStats.totalCommission.toFixed(0)}</div>
-                        <div className="font-bold" style={{ fontSize: 10, opacity: 0.8 }}>عمولة التطبيق</div>
+                      {/* 🟠 عمولة التطبيق المدمجة للمالك - نصف الحجم */}
+                      <div 
+                        className="text-center transition-all" 
+                        style={{ 
+                          background: 'linear-gradient(135deg,#FF9500,#FF7700)', 
+                          borderRadius: 16, 
+                          padding: '8px 10px', 
+                          color: '#ffffff',
+                          boxShadow: '0 4px 12px rgba(255,149,0,0.22)'
+                        }}
+                      >
+                        <div className="font-bold mb-0.5" style={{ fontSize: 10, fontWeight: 900, opacity: 0.95, color: '#ffffff' }}>عمولة التطبيق</div>
+                        <div className="font-black font-mono leading-none my-1" style={{ fontSize: 18, fontWeight: 950, color: '#ffffff', textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
+                          {filteredStats.totalCommission.toFixed(0)} <span style={{ fontSize: 10, fontWeight: 800 }}>ج.م</span>
+                        </div>
                       </div>
-                      <div className="text-center" style={{ background: 'linear-gradient(135deg,#00AA55,#008844)', borderRadius: 18, padding: 16, color: '#fff' }}>
-                        <div className="font-black" style={{ fontSize: 14, opacity: 0.9, marginBottom: 4 }}>ج.م</div>
-                        <div className="font-black font-mono" style={{ fontSize: 24 }}>{filteredStats.totalNet.toFixed(0)}</div>
-                        <div className="font-bold" style={{ fontSize: 10, opacity: 0.8 }}>صافي إيرادك</div>
+
+                      {/* 🟢 صافي الإيراد المدمج للمالك - نصف الحجم */}
+                      <div 
+                        className="text-center transition-all" 
+                        style={{ 
+                          background: 'linear-gradient(135deg,#00AA55,#008844)', 
+                          borderRadius: 16, 
+                          padding: '8px 10px', 
+                          color: '#ffffff',
+                          boxShadow: '0 4px 12px rgba(0,170,85,0.22)'
+                        }}
+                      >
+                        <div className="font-bold mb-0.5" style={{ fontSize: 10, fontWeight: 900, opacity: 0.95, color: '#ffffff' }}>صافي إيرادك</div>
+                        <div className="font-black font-mono leading-none my-1" style={{ fontSize: 18, fontWeight: 950, color: '#ffffff', textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
+                          {filteredStats.totalNet.toFixed(0)} <span style={{ fontSize: 10, fontWeight: 800 }}>ج.م</span>
+                        </div>
                       </div>
                     </div>
 
