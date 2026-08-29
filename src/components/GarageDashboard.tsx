@@ -1241,43 +1241,135 @@ export default function GarageDashboard() {
         </div>
 
         {isOwner && (
-          <div className="mb-4" style={{ background: '#fff', borderRadius: 24, padding: 16, border: '2px solid #D0DCFF' }}>
-            <div className="flex items-center gap-2 mb-3 justify-end"><CalendarDays size={16} style={{ color: '#0066FF' }} /><span className="font-black" style={{ fontSize: 12, color: '#7B8CA6' }}>تصفية بالتاريخ</span></div>
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              <div><label className="font-bold block text-right mb-1" style={{ fontSize: 10, color: '#94a3b8' }}>من</label><input type="date" value={logDateFrom} onChange={e => setLogDateFrom(e.target.value)} className="w-full font-bold outline-none" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 12, borderRadius: 16, fontSize: 12 }} /></div>
-              <div><label className="font-bold block text-right mb-1" style={{ fontSize: 10, color: '#94a3b8' }}>إلى</label><input type="date" value={logDateTo} onChange={e => setLogDateTo(e.target.value)} className="w-full font-bold outline-none" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 12, borderRadius: 16, fontSize: 12 }} /></div>
+          <div 
+            className="mb-3" 
+            style={{ 
+              background: '#fff', 
+              borderRadius: 16, 
+              padding: '10px 12px', 
+              border: '1.5px solid #D0DCFF',
+              boxShadow: '0 3px 10px rgba(0,102,255,0.03)'
+            }}
+          >
+            {/* السطر الأول: التاريخ من - إلى مدمج مع الأزرار السريعة */}
+            <div className="flex items-center gap-1.5 mb-2">
+              <input 
+                type="date" 
+                value={logDateFrom} 
+                onChange={e => setLogDateFrom(e.target.value)} 
+                className="flex-1 font-black outline-none text-center" 
+                style={{ 
+                  background: '#F0F4FF', 
+                  border: '1.5px solid #D0DCFF', 
+                  padding: '7px 4px', 
+                  borderRadius: 10, 
+                  fontSize: 10, 
+                  fontWeight: 900,
+                  color: '#0066FF' 
+                }} 
+              />
+              <span className="font-black text-slate-400" style={{ fontSize: 11, fontWeight: 950 }}>←</span>
+              <input 
+                type="date" 
+                value={logDateTo} 
+                onChange={e => setLogDateTo(e.target.value)} 
+                className="flex-1 font-black outline-none text-center" 
+                style={{ 
+                  background: '#F0F4FF', 
+                  border: '1.5px solid #D0DCFF', 
+                  padding: '7px 4px', 
+                  borderRadius: 10, 
+                  fontSize: 10, 
+                  fontWeight: 900,
+                  color: '#0066FF' 
+                }} 
+              />
+              <CalendarDays size={16} style={{ color: '#0066FF' }} />
             </div>
-            <div className="flex gap-2 mb-3">
-              <button onClick={() => { setLogDateFrom(getLocalToday()); setLogDateTo(getLocalToday()); }} className="font-black active:scale-95" style={{ background: '#0066FF', color: '#fff', padding: '10px 14px', borderRadius: 14, fontSize: 11 }}>اليوم</button>
-              <button onClick={() => { const d = new Date(); d.setDate(d.getDate() - 7); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`); setLogDateTo(getLocalToday()); }} className="font-black active:scale-95" style={{ background: '#F0F4FF', color: '#64748b', padding: '10px 14px', borderRadius: 14, fontSize: 11, border: '2px solid #D0DCFF' }}>آخر أسبوع</button>
-              <button onClick={() => { const d = new Date(); d.setDate(1); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`); setLogDateTo(getLocalToday()); }} className="font-black active:scale-95" style={{ background: '#F0F4FF', color: '#64748b', padding: '10px 14px', borderRadius: 14, fontSize: 11, border: '2px solid #D0DCFF' }}>هذا الشهر</button>
+
+            {/* السطر الثاني: أزرار الفلاتر السريعة (اليوم - أسبوع - شهر) */}
+            <div className="flex gap-1.5 mb-2">
+              <button 
+                onClick={() => { setLogDateFrom(getLocalToday()); setLogDateTo(getLocalToday()); }} 
+                className="flex-1 active:scale-95" 
+                style={{ 
+                  background: '#0066FF', 
+                  color: '#ffffff', 
+                  padding: '6px 0', 
+                  borderRadius: 10, 
+                  fontSize: 10, 
+                  fontWeight: 950,
+                  textShadow: '0 1px 1px rgba(0,0,0,0.15)',
+                  boxShadow: '0 2px 8px rgba(0,102,255,0.2)',
+                  border: 'none'
+                }}
+              >
+                📅 اليوم
+              </button>
+              <button 
+                onClick={() => { const d = new Date(); d.setDate(d.getDate() - 7); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`); setLogDateTo(getLocalToday()); }} 
+                className="flex-1 active:scale-95" 
+                style={{ 
+                  background: '#F0F4FF', 
+                  color: '#334155', 
+                  padding: '6px 0', 
+                  borderRadius: 10, 
+                  fontSize: 10, 
+                  fontWeight: 950,
+                  border: '1.5px solid #D0DCFF' 
+                }}
+              >
+                آخر أسبوع
+              </button>
+              <button 
+                onClick={() => { const d = new Date(); d.setDate(1); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`); setLogDateTo(getLocalToday()); }} 
+                className="flex-1 active:scale-95" 
+                style={{ 
+                  background: '#F0F4FF', 
+                  color: '#334155', 
+                  padding: '6px 0', 
+                  borderRadius: 10, 
+                  fontSize: 10, 
+                  fontWeight: 950,
+                  border: '1.5px solid #D0DCFF' 
+                }}
+              >
+                هذا الشهر
+              </button>
             </div>
-            <div className="flex gap-1.5 flex-wrap">
+
+            {/* السطر الثالث: فلاتر طريقة الدفع المدمجة */}
+            <div className="flex gap-1.5">
               {[
                 { id: 'all', label: 'الكل', icon: '📊' }, 
-                { id: 'cash', label: 'نقدي كاش', icon: '💵' }, 
+                { id: 'cash', label: 'نقدي', icon: '💵' }, 
                 { id: 'wallet', label: 'محفظة', icon: '👝' }
-              ].map(f => (
-                <button 
-                  key={f.id} 
-                  onClick={() => setLogPaymentFilter(f.id)} 
-                  className="font-black active:scale-95" 
-                  style={{ 
-                    padding: '6px 12px', 
-                    borderRadius: 12, 
-                    fontSize: 10, 
-                    background: logPaymentFilter === f.id ? '#0066FF' : '#F0F4FF', 
-                    color: logPaymentFilter === f.id ? '#fff' : '#64748b', 
-                    border: logPaymentFilter === f.id ? 'none' : '2px solid #D0DCFF' 
-                  }}
-                >
-                  {f.icon} {f.label}
-                </button>
-              ))}
+              ].map(f => {
+                const isActive = logPaymentFilter === f.id;
+                return (
+                  <button 
+                    key={f.id} 
+                    onClick={() => setLogPaymentFilter(f.id)} 
+                    className="flex-1 active:scale-95 transition-all" 
+                    style={{ 
+                      padding: '6px 0', 
+                      borderRadius: 10, 
+                      fontSize: 10, 
+                      fontWeight: 950,
+                      background: isActive ? '#0066FF' : '#F8FAFF', 
+                      color: isActive ? '#ffffff' : '#64748b', 
+                      border: isActive ? 'none' : '1.5px solid #D0DCFF',
+                      textShadow: isActive ? '0 1px 1px rgba(0,0,0,0.15)' : 'none',
+                      boxShadow: isActive ? '0 2px 8px rgba(0,102,255,0.2)' : 'none'
+                    }}
+                  >
+                    {f.icon} {f.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
-
         {isValet && (
           <div className="mb-4 text-center" style={{ background: '#EBF2FF', borderRadius: 18, padding: '10px 16px', border: '2px solid #D0DCFF' }}>
             <span className="font-black" style={{ fontSize: 12, color: '#0066FF' }}>📅 {formatLocalDateArabic(getLocalToday())} - عملياتي فقط</span>
