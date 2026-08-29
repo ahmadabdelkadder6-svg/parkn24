@@ -243,6 +243,7 @@ export default function GarageDashboard() {
 
   // ⚡ [تعديل ذكي]: السايس يرى فقط جلسات اليوم النشطة (بينما المالك يرى الكل)
   const activeSessions = useMemo(() => {
+    // ⚡ حساب بداية اليوم بالمللي ثانية لعزل جلسات اليوم فقط للسايس
     const startOfToday = (() => {
       const n = new Date();
       return new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime();
@@ -253,10 +254,10 @@ export default function GarageDashboard() {
       const st = toMs(s.startTime);
       if (st <= 0) return false;
       
-      // السايس يرى فقط جلسات اليوم النشطة
+      // ⚡ السايس يرى فقط جلسات اليوم النشطة
       if (isValet && st < startOfToday) return false;
       
-      // الحماية القديمة لكل الأدوار: لا تعرض جلسة عمرها أكثر من 24 ساعة
+      // الحماية القديمة: لا تعرض جلسة عمرها أكثر من 24 ساعة
       if ((Date.now() - st) >= 24 * 60 * 60 * 1000) return false;
       return true;
     });

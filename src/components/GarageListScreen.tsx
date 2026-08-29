@@ -1016,8 +1016,6 @@ function WelcomeGiftModal() {
 
   useEffect(() => {
     const hasGiftFlag = localStorage.getItem('showWelcomeGift');
-    
-    // 🎁 أمان حديدي: لا تظهر الرسالة الترحيبية أبداً إذا كان العميل قد ركن من قبل أو انتهت هديته
     if (hasGiftFlag === 'true' && currentUser && !currentUser.hasUsedFreeSession) {
       setShow(true);
     } else {
@@ -1035,46 +1033,69 @@ function WelcomeGiftModal() {
     <AnimatePresence>
       {show && (
         <div 
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[999] flex items-center justify-center p-6"
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[999] flex items-center justify-center p-5"
           onClick={handleClose}
         >
           <motion.div
-            initial={{ scale: 0.9, opacity: 0, y: 30 }}
+            initial={{ scale: 0.85, opacity: 0, y: 40 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.9, opacity: 0, y: 30 }}
-            className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 border-2 border-yellow-500/30 rounded-[2.5rem] p-8 max-w-sm w-full text-center relative overflow-hidden"
-            style={{ boxShadow: '0 20px 50px rgba(245,158,11,0.25)' }}
+            exit={{ scale: 0.85, opacity: 0, y: 40 }}
+            className="bg-white rounded-[2rem] p-7 max-w-sm w-full text-center relative overflow-hidden"
+            style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="absolute -top-12 -right-12 w-32 h-32 bg-yellow-500/10 rounded-full filter blur-xl" />
+            {/* إضاءات باستيل خلفية ناعمة */}
+            <div className="absolute -top-10 -right-10 w-28 h-28 bg-rose-100/60 rounded-full filter blur-xl" />
+            <div className="absolute -bottom-10 -left-10 w-28 h-28 bg-amber-100/50 rounded-full filter blur-xl" />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-40 h-40 bg-blue-50/40 rounded-full filter blur-2xl" />
 
-            <button onClick={handleClose} className="absolute top-5 left-5 text-slate-400 hover:text-white transition-colors">
+            <button onClick={handleClose} className="absolute top-4 left-4 text-slate-300 hover:text-slate-500 transition-colors z-10">
               <X size={20} />
             </button>
 
-            <div className="w-20 h-20 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-5 shadow-lg shadow-orange-500/30">
-              <Gift size={38} className="text-white animate-bounce" />
-            </div>
+            {/* أيقونة الهدية المبهجة */}
+            <motion.div
+              animate={{ rotate: [0, -8, 8, 0], scale: [1, 1.05, 1] }}
+              transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
+              className="w-20 h-20 bg-gradient-to-br from-amber-400 to-rose-500 rounded-full flex items-center justify-center mx-auto mb-5 shadow-lg shadow-rose-200/50 relative z-10"
+            >
+              <Gift size={36} className="text-white" />
+            </motion.div>
 
-            <h3 className="text-xl font-black text-white mb-2 flex items-center justify-center gap-1.5">
-              <span>هدية ترحيبية خاصة!</span>
-              <Sparkles size={18} className="text-yellow-400 animate-pulse" />
+            {/* العنوان المبهج */}
+            <h3 className="text-2xl font-black text-slate-900 mb-2 relative z-10">
+              🎉 أهلاً وسهلاً!
             </h3>
             
-            <p className="text-slate-300 text-sm mb-5 leading-relaxed">
-              أهلاً بك في عائلة <span className="font-black text-blue-400">Park'n 24</span>! نورتنا في زيارتك الأولى 🌟
+            <p className="text-slate-600 text-sm mb-5 leading-relaxed relative z-10 font-bold">
+              نورتنا في عائلة <span className="font-black text-blue-600">Park'n 24</span> وحبينا نفرحك بهدية حلوة 🌟
             </p>
 
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-6">
-              <p className="text-yellow-400 font-black text-lg mb-1">🎁 أول ساعة ركنة مجانية</p>
-              <p className="text-slate-400 text-xs leading-relaxed">سيتم تطبيق الخصم تلقائياً على أول ركنة تبدأها من التطبيق 📱</p>
+            {/* بوكس الهدية بتصميم مبهج ومشرق */}
+            <div className="relative z-10 mb-6" style={{ background: 'linear-gradient(135deg, #FFF7ED 0%, #FEF3C7 50%, #FFEDD5 100%)', borderRadius: 20, padding: '18px 16px', border: '2px solid #FCD34D' }}>
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <Sparkles size={18} className="text-amber-500 animate-pulse" />
+                <span className="font-black text-amber-700" style={{ fontSize: 18 }}>أول ساعة ركنة مجاناً!</span>
+                <Sparkles size={18} className="text-amber-500 animate-pulse" />
+              </div>
+              <p className="text-amber-600 font-bold text-xs leading-relaxed">
+                احجز ركنتك الأولى من التطبيق وهنركنلك أول ساعة ببلاش تماماً 🚗✨
+              </p>
             </div>
 
             <button
               onClick={handleClose}
-              className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-slate-950 font-black py-4 rounded-2xl text-sm hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-orange-500/20"
+              className="w-full font-black py-4 rounded-2xl text-sm active:scale-95 transition-all shadow-lg relative z-10"
+              style={{ 
+                background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)', 
+                color: '#ffffff',
+                fontWeight: 950,
+                fontSize: 15,
+                boxShadow: '0 6px 20px rgba(37,99,235,0.3)',
+                textShadow: '0 1px 2px rgba(0,0,0,0.15)'
+              }}
             >
-              استمتع بالهدية الآن 🚀
+              يلا نبدأ! 🚀
             </button>
           </motion.div>
         </div>
@@ -1082,7 +1103,6 @@ function WelcomeGiftModal() {
     </AnimatePresence>
   );
 }
-
 /* ════════════════════════════════════════════════════════════
    ██  GARAGE CARD COMPONENT (تصميم بريميوم مدمج ومريح للقيادة 🚗)
    ════════════════════════════════════════════════════════════ */
@@ -1172,8 +1192,15 @@ function GarageCard({
 
           {isFull && (
             <span
-              className="font-black text-white"
-              style={{ background: '#FF3333', fontSize: 9, padding: '2px 6px', borderRadius: 8 }}
+              style={{ 
+                background: '#FF3333', 
+                color: '#ffffff', 
+                fontSize: 10, 
+                padding: '3px 8px', 
+                borderRadius: 10,
+                fontWeight: 950,
+                textShadow: '0 1px 2px rgba(0,0,0,0.2)'
+              }}
             >
               ممتلئ
             </span>
@@ -1196,8 +1223,15 @@ function GarageCard({
 )}
           {!isBusy && !isClosest && isNearby && !isFull && (
             <span
-              className="font-black text-white"
-              style={{ background: '#00CC66', fontSize: 9, padding: '2px 6px', borderRadius: 8 }}
+              style={{ 
+                background: '#00CC66', 
+                color: '#ffffff', 
+                fontSize: 10, 
+                padding: '3px 8px', 
+                borderRadius: 10,
+                fontWeight: 950,
+                textShadow: '0 1px 2px rgba(0,0,0,0.2)'
+              }}
             >
               قريب
             </span>
