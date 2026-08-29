@@ -489,7 +489,11 @@ export default function GarageDashboard() {
       if (!isActive) return [];
     }
 
-    // ⚡ [صاروخي]: حساب حدود التواريخ بالمللي ثانية مرة واحدة خارج الحلقة لأقصى سرعة
+    // ⚡ [صاروخي]: حساب حدود اليوم الحالي بالمللي ثانية مرة واحدة خارج الحلقة لأقصى سرعة
+    const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1;
+
     const boundaryFrom = logDateFrom ? new Date(`${logDateFrom}T00:00:00`).getTime() : 0;
     const boundaryTo = logDateTo ? new Date(`${logDateTo}T23:59:59.999`).getTime() : 0;
 
@@ -498,9 +502,9 @@ export default function GarageDashboard() {
         const endMs = toMs(s.endTime);
         
         if (isValet) { 
-          // 💵 السايس يرى عمليات آخر 24 ساعة (لضمان تأكيد عمليات أمس المعلقة)
-          const isWithinLast24Hours = (Date.now() - endMs) < 24 * 60 * 60 * 1000;
-          if (!isWithinLast24Hours) return false; 
+          // 🔒 [الفلتر الصارم]: السايس يرى فقط عمليات اليوم الحالي (من فجر اليوم لآخره)
+          const isToday = endMs >= todayStart && endMs <= todayEnd;
+          if (!isToday) return false; 
         } else { 
           // 📊 المالك يرى حسب التواريخ المختارة في الفلاتر
           if (boundaryFrom && endMs < boundaryFrom) return false; 
@@ -523,7 +527,6 @@ export default function GarageDashboard() {
       return true;
     });
   }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, isOwner, myValetNames, selectedValetFilter, valetNumber, garage]);
-
   const filteredStats = useMemo(() => {
     const c = filteredCompleted.filter(s => s.revenueConfirmed);
     const u = filteredCompleted.filter(s => !s.revenueConfirmed);

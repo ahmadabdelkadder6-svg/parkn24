@@ -507,7 +507,7 @@ export default function GarageListScreen() {
                 </div>
                 <div className="flex-1 overflow-hidden">
                   <div className="font-black text-[11px] text-amber-300 truncate">
-                    اشحن محفظتك ووفر وقتك ✨
+                    ادفع نقدي او اشحن محفظتك ووفر وقتك ✨
                   </div>
                   <div className="font-bold text-[9px] text-white/85 truncate">
                     خروج فوري بضغطة زر بدون فكة ⚡
