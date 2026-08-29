@@ -4,6 +4,7 @@ import {
   Shield, Clock, CheckCircle, XCircle, MapPin, Warehouse, Plus,
   MessageCircle, Send, Receipt, Search, HardHat, Percent, DollarSign,
   Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown, Gift, Sparkles,
+  Settings, // ⚡ تم إضافتها لحل الشاشة البيضاء
 } from 'lucide-react';
 import { useStore } from '../store';
 import { supabase } from '../lib/supabase';
