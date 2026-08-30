@@ -1548,25 +1548,103 @@ export default function GarageDashboard() {
 
                 {valetReport.length > 0 && (
                   <div className="mb-4">
-                    <div className="flex items-center justify-between mb-3">
-                      {selectedValetFilter && (<button onClick={() => setSelectedValetFilter(null)} className="font-black active:scale-95" style={{ fontSize: 10, padding: '5px 12px', borderRadius: 12, background: '#FF3333', color: '#fff' }}>✕ إلغاء</button>)}
-                      <div className="flex items-center gap-2 justify-end flex-1"><Users size={16} style={{ color: '#0066FF' }} /><h4 className="font-black" style={{ fontSize: 13, color: '#334155' }}>تقرير السياس</h4></div>
+                {valetReport.length > 0 && (
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-2">
+                      {selectedValetFilter && (
+                        <button 
+                          onClick={() => setSelectedValetFilter(null)} 
+                          className="font-black active:scale-95" 
+                          style={{ fontSize: 9, padding: '3px 9px', borderRadius: 10, background: '#FF3333', color: '#ffffff', fontWeight: 950, textShadow: '0 1px 1px rgba(0,0,0,0.15)' }}
+                        >
+                          ✕ إلغاء
+                        </button>
+                      )}
+                      <div className="flex items-center gap-1.5 justify-end flex-1">
+                        <Users size={14} style={{ color: '#0066FF' }} />
+                        <h4 className="font-black" style={{ fontSize: 12, fontWeight: 950, color: '#334155' }}>تقرير السياس</h4>
+                      </div>
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       {valetReport.map((v, i) => (
-                        <div key={i} onClick={() => setSelectedValetFilter(selectedValetFilter === v.name ? null : v.name)} className="cursor-pointer active:scale-[0.98] transition-all" style={{ background: selectedValetFilter === v.name ? `${v.color}10` : '#fff', borderRadius: 20, padding: '14px 16px', border: `2px solid ${selectedValetFilter === v.name ? v.color : `${v.color}30`}` }}>
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="font-black font-mono" style={{ fontSize: 16, color: v.color }}>{v.total.toFixed(0)} ج.م</div>
-                            <div className="flex items-center gap-2">
-                              <div className="text-right"><div className="font-black" style={{ fontSize: 14 }}>{v.name}</div><div className="font-bold" style={{ fontSize: 10, color: '#94a3b8' }}>{v.count} سيارة</div></div>
-                              <div style={{ width: 38, height: 38, borderRadius: 12, background: v.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 14 }}>{v.icon}</div>
+                        <div 
+                          key={i} 
+                          onClick={() => setSelectedValetFilter(selectedValetFilter === v.name ? null : v.name)} 
+                          className="cursor-pointer active:scale-[0.99] transition-all" 
+                          style={{ 
+                            background: selectedValetFilter === v.name ? `${v.color}10` : '#fff', 
+                            borderRadius: 14, 
+                            padding: '9px 12px', 
+                            border: `1.5px solid ${selectedValetFilter === v.name ? v.color : `${v.color}30`}` 
+                          }}
+                        >
+                          {/* السطر العلوي: الأيقونة والاسم على اليمين، إجمالي الفلوس على اليسار */}
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="font-black font-mono" style={{ fontSize: 14, fontWeight: 950, color: v.color, textShadow: '0 1px 1px rgba(0,0,0,0.05)' }}>
+                              {v.total.toFixed(0)} <span style={{ fontSize: 10, fontWeight: 800 }}>ج.م</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <div className="text-right">
+                                <div className="font-black" style={{ fontSize: 12, fontWeight: 950, color: '#0A1628' }}>{v.name}</div>
+                                <div className="font-black" style={{ fontSize: 9, color: '#94a3b8', fontWeight: 900 }}>{v.count} سيارة</div>
+                              </div>
+                              <div 
+                                style={{ 
+                                  width: 30, 
+                                  height: 30, 
+                                  borderRadius: 10, 
+                                  background: v.color, 
+                                  color: '#ffffff', 
+                                  display: 'flex', 
+                                  alignItems: 'center', 
+                                  justifyContent: 'center', 
+                                  fontWeight: 950, 
+                                  fontSize: 12,
+                                  textShadow: '0 1px 1px rgba(0,0,0,0.2)'
+                                }}
+                              >
+                                {v.icon}
+                              </div>
                             </div>
                           </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="text-center" style={{ background: '#EBF2FF', borderRadius: 14, padding: '8px 6px', border: '1px solid #D0DCFF' }}><div style={{ fontSize: 10, color: '#0066FF', fontWeight: 900 }}>📱 تطبيق</div><div className="font-black font-mono" style={{ fontSize: 14, color: '#0066FF' }}>{v.appCount}</div><div style={{ fontSize: 9, color: '#7B8CA6' }}>({v.appTotal.toFixed(0)} ج.م)</div></div>
-                            <div className="text-center" style={{ background: '#FFF8F0', borderRadius: 14, padding: '8px 6px', border: '1px solid #FFD180' }}><div style={{ fontSize: 10, color: '#FF9500', fontWeight: 900 }}>✋ يدوي</div><div className="font-black font-mono" style={{ fontSize: 14, color: '#FF9500' }}>{v.manualCount}</div><div style={{ fontSize: 9, color: '#7B8CA6' }}>({v.manualTotal.toFixed(0)} ج.م)</div></div>
+
+                          {/* السطر السفلي: كارتي التطبيق واليدوي بشكل أفقي مضغوط */}
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <div 
+                              className="text-center flex items-center justify-center gap-1.5" 
+                              style={{ 
+                                background: '#EBF2FF', 
+                                borderRadius: 10, 
+                                padding: '5px 6px', 
+                                border: '1px solid #D0DCFF' 
+                              }}
+                            >
+                              <span style={{ fontSize: 10, color: '#0066FF', fontWeight: 950 }}>📱</span>
+                              <span className="font-black font-mono" style={{ fontSize: 12, fontWeight: 950, color: '#0066FF' }}>{v.appCount}</span>
+                              <span style={{ fontSize: 9, color: '#7B8CA6', fontWeight: 900 }}>({v.appTotal.toFixed(0)}ج)</span>
+                            </div>
+                            <div 
+                              className="text-center flex items-center justify-center gap-1.5" 
+                              style={{ 
+                                background: '#FFF8F0', 
+                                borderRadius: 10, 
+                                padding: '5px 6px', 
+                                border: '1px solid #FFD180' 
+                              }}
+                            >
+                              <span style={{ fontSize: 10, color: '#FF9500', fontWeight: 950 }}>✋</span>
+                              <span className="font-black font-mono" style={{ fontSize: 12, fontWeight: 950, color: '#FF9500' }}>{v.manualCount}</span>
+                              <span style={{ fontSize: 9, color: '#7B8CA6', fontWeight: 900 }}>({v.manualTotal.toFixed(0)}ج)</span>
+                            </div>
                           </div>
-                          {selectedValetFilter === v.name && (<div className="mt-2 text-center"><span className="font-bold" style={{ fontSize: 10, color: v.color }}>✅ فعّال الفلتر - اضغط مجدداً للإلغاء</span></div>)}
+
+                          {selectedValetFilter === v.name && (
+                            <div className="mt-1.5 text-center">
+                              <span className="font-black" style={{ fontSize: 9, color: v.color, fontWeight: 950 }}>
+                                ✅ فلتر مفعّل — اضغط للإلغاء
+                              </span>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1602,7 +1680,7 @@ export default function GarageDashboard() {
           </>
         )}
 
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           {filteredCompleted.slice(0, 30).map(session => {
             const isM = session.source === 'manual';
             const et = session.endTime ? toMs(session.endTime) : null;
@@ -1613,54 +1691,104 @@ export default function GarageDashboard() {
             const rawAddedBy = ((session as any).addedBy || '').trim();
             const addedBy = garageValetNames.includes(rawAddedBy) ? rawAddedBy : '';
             return (
-              <div key={session.id} style={{
-                background: isSettled ? '#F1F5F9' : isC ? (isM ? '#FFF8F0' : '#EBF5FF') : '#FFFBF0',
-                border: `2px solid ${isSettled ? '#CBD5E1' : isC ? (isM ? '#FFD180' : '#A0C4FF') : '#FFD180'}`,
-                borderRadius: 18, padding: 14,
-                opacity: isSettled ? 0.7 : 1,
-              }}>
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex items-center gap-2 flex-wrap">
+              <div 
+                key={session.id} 
+                style={{
+                  background: isSettled ? '#F1F5F9' : isC ? (isM ? '#FFF8F0' : '#EBF5FF') : '#FFFBF0',
+                  border: `1.5px solid ${isSettled ? '#CBD5E1' : isC ? (isM ? '#FFD180' : '#A0C4FF') : '#FFD180'}`,
+                  borderRadius: 14, 
+                  padding: '9px 12px',
+                  opacity: isSettled ? 0.75 : 1,
+                }}
+              >
+                {/* السطر العلوي: السعر والشارات على اليسار، رقم اللوحة على اليمين */}
+                <div className="flex justify-between items-center mb-1.5 gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     {(isOwner || !isC) && (
-                      <span className="font-black" style={{ fontSize: rev === 0 && session.isFirstFreeSession ? 12 : 17, color: isSettled ? '#64748B' : rev === 0 && session.isFirstFreeSession ? '#00AA44' : isM ? '#E65100' : '#0066FF' }}>
+                      <span className="font-black" style={{ fontSize: rev === 0 && session.isFirstFreeSession ? 11 : 15, fontWeight: 950, color: isSettled ? '#64748B' : rev === 0 && session.isFirstFreeSession ? '#00AA44' : isM ? '#E65100' : '#0066FF', textShadow: '0 0.5px 1px rgba(0,0,0,0.05)' }}>
                         {rev === 0 && session.isFirstFreeSession ? (
-                          <span className="flex items-center gap-1 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg shadow-sm">
-                            🎁 جلسة مجانية (0 ج)
+                          <span className="flex items-center gap-0.5 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md">
+                            🎁 مجانية (0ج)
                           </span>
                         ) : (
-                          <span className="font-mono">{rev.toFixed(0)} ج.م</span>
+                          <span className="font-mono">{rev.toFixed(0)} <span style={{ fontSize: 9, fontWeight: 800 }}>ج.م</span></span>
                         )}
                       </span>
                     )}
-                    <span className="font-black" style={{ fontSize: 11, padding: '5px 12px', borderRadius: 12, background: isSettled ? '#94a3b8' : isM ? '#FF9500' : '#0066FF', color: '#fff' }}>
+                    <span 
+                      className="font-black" 
+                      style={{ 
+                        fontSize: 9, 
+                        padding: '2.5px 8px', 
+                        borderRadius: 8, 
+                        background: isSettled ? '#94a3b8' : isM ? '#FF9500' : '#0066FF', 
+                        color: '#ffffff',
+                        fontWeight: 950,
+                        textShadow: '0 1px 1px rgba(0,0,0,0.15)'
+                      }}
+                    >
                       {isSettled ? '🔒 مقفلة' : isM ? 'يدوي' : 'تطبيق'}
                     </span>
                     {addedBy && isOwner && (
-                      <span className="font-bold cursor-pointer active:scale-95" onClick={() => setSelectedValetFilter(selectedValetFilter === addedBy ? null : addedBy)}
-                        style={{ fontSize: 9, padding: '3px 8px', borderRadius: 10, background: selectedValetFilter === addedBy ? '#0066FF' : '#EBF2FF', color: selectedValetFilter === addedBy ? '#fff' : '#0066FF', border: '1px solid #D0DCFF' }}>
+                      <span 
+                        className="font-black cursor-pointer active:scale-95" 
+                        onClick={() => setSelectedValetFilter(selectedValetFilter === addedBy ? null : addedBy)}
+                        style={{ 
+                          fontSize: 8.5, 
+                          padding: '2px 6px', 
+                          borderRadius: 8, 
+                          background: selectedValetFilter === addedBy ? '#0066FF' : '#EBF2FF', 
+                          color: selectedValetFilter === addedBy ? '#ffffff' : '#0066FF', 
+                          border: '1px solid #D0DCFF',
+                          fontWeight: 900
+                        }}
+                      >
                         🅿️ {addedBy}
                       </span>
                     )}
                     {!isSettled && !isC ? (
-                      <button onClick={async () => { await confirmRevenue(session.id); await fetchGarageDailyStats(); toast.success('تأكيد ✅'); }} className="font-black active:scale-95" style={{ background: '#FF9500', color: '#fff', padding: '3px 10px', borderRadius: 10, fontSize: 9 }}>⏳ تأكيد</button>
+                      <button 
+                        onClick={async () => { await confirmRevenue(session.id); await fetchGarageDailyStats(); toast.success('تأكيد ✅'); }} 
+                        className="active:scale-95" 
+                        style={{ background: '#FF9500', color: '#ffffff', padding: '2.5px 8px', borderRadius: 8, fontSize: 8.5, fontWeight: 950, textShadow: '0 1px 1px rgba(0,0,0,0.15)', border: 'none' }}
+                      >
+                        ⏳ تأكيد
+                      </button>
                     ) : !isSettled ? (
-                      <span className="font-bold" style={{ fontSize: 9, color: '#00AA44' }}>✅ مؤكد</span>
+                      <span className="font-black" style={{ fontSize: 8.5, color: '#00AA44', fontWeight: 950 }}>✅ مؤكد</span>
                     ) : null}
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 shrink-0">
                     <span className="rounded-full" style={{ width: 6, height: 6, background: isSettled ? '#94a3b8' : isM ? '#FF9500' : '#0066FF' }} />
-                    <span className="font-black" style={{ fontSize: 15, color: isSettled ? '#64748B' : '#000' }}>{session.carPlate}</span>
+                    <span className="font-black" style={{ fontSize: 13, fontWeight: 950, color: isSettled ? '#64748B' : '#000000' }}>{session.carPlate}</span>
                   </div>
                 </div>
+
+                {/* السطر السفلي: طريقة الدفع على اليمين، والوقت على اليسار */}
                 <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1">
                     {session.paymentMethod && (
-                      <span className="font-bold" style={{ fontSize: 9, padding: '3px 10px', borderRadius: 10, color: '#fff', background: isSettled ? '#94a3b8' : session.paymentMethod === 'cash' ? '#00CC66' : session.paymentMethod === 'instapay' ? '#7C3AED' : session.paymentMethod === 'wallet' ? '#0066FF' : '#FF8800' }}>
+                      <span 
+                        className="font-black" 
+                        style={{ 
+                          fontSize: 8.5, 
+                          padding: '2px 8px', 
+                          borderRadius: 8, 
+                          color: '#ffffff', 
+                          background: isSettled ? '#94a3b8' : session.paymentMethod === 'cash' ? '#00CC66' : session.paymentMethod === 'instapay' ? '#7C3AED' : session.paymentMethod === 'wallet' ? '#0066FF' : '#FF8800',
+                          fontWeight: 950,
+                          textShadow: '0 1px 1px rgba(0,0,0,0.15)'
+                        }}
+                      >
                         {session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستاباي' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش'}
                       </span>
                     )}
                   </div>
-                  {time && <span className="font-mono font-black" style={{ fontSize: 12, color: isSettled ? '#94a3b8' : '#000' }}>{time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })} · {time.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}</span>}
+                  {time && (
+                    <span className="font-mono font-black" style={{ fontSize: 10.5, fontWeight: 950, color: isSettled ? '#94a3b8' : '#334155' }}>
+                      {time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })} · {time.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}
+                    </span>
+                  )}
                 </div>
               </div>
             );
