@@ -1547,8 +1547,6 @@ export default function GarageDashboard() {
                 </div>
 
                 {valetReport.length > 0 && (
-                  <div className="mb-4">
-                {valetReport.length > 0 && (
                   <div className="mb-3">
                     <div className="flex items-center justify-between mb-2">
                       {selectedValetFilter && (
@@ -1578,7 +1576,6 @@ export default function GarageDashboard() {
                             border: `1.5px solid ${selectedValetFilter === v.name ? v.color : `${v.color}30`}` 
                           }}
                         >
-                          {/* السطر العلوي: الأيقونة والاسم على اليمين، إجمالي الفلوس على اليسار */}
                           <div className="flex items-center justify-between mb-2">
                             <div className="font-black font-mono" style={{ fontSize: 14, fontWeight: 950, color: v.color, textShadow: '0 1px 1px rgba(0,0,0,0.05)' }}>
                               {v.total.toFixed(0)} <span style={{ fontSize: 10, fontWeight: 800 }}>ج.م</span>
@@ -1588,61 +1585,26 @@ export default function GarageDashboard() {
                                 <div className="font-black" style={{ fontSize: 12, fontWeight: 950, color: '#0A1628' }}>{v.name}</div>
                                 <div className="font-black" style={{ fontSize: 9, color: '#94a3b8', fontWeight: 900 }}>{v.count} سيارة</div>
                               </div>
-                              <div 
-                                style={{ 
-                                  width: 30, 
-                                  height: 30, 
-                                  borderRadius: 10, 
-                                  background: v.color, 
-                                  color: '#ffffff', 
-                                  display: 'flex', 
-                                  alignItems: 'center', 
-                                  justifyContent: 'center', 
-                                  fontWeight: 950, 
-                                  fontSize: 12,
-                                  textShadow: '0 1px 1px rgba(0,0,0,0.2)'
-                                }}
-                              >
+                              <div style={{ width: 30, height: 30, borderRadius: 10, background: v.color, color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 950, fontSize: 12, textShadow: '0 1px 1px rgba(0,0,0,0.2)' }}>
                                 {v.icon}
                               </div>
                             </div>
                           </div>
-
-                          {/* السطر السفلي: كارتي التطبيق واليدوي بشكل أفقي مضغوط */}
                           <div className="grid grid-cols-2 gap-1.5">
-                            <div 
-                              className="text-center flex items-center justify-center gap-1.5" 
-                              style={{ 
-                                background: '#EBF2FF', 
-                                borderRadius: 10, 
-                                padding: '5px 6px', 
-                                border: '1px solid #D0DCFF' 
-                              }}
-                            >
+                            <div className="text-center flex items-center justify-center gap-1.5" style={{ background: '#EBF2FF', borderRadius: 10, padding: '5px 6px', border: '1px solid #D0DCFF' }}>
                               <span style={{ fontSize: 10, color: '#0066FF', fontWeight: 950 }}>📱</span>
                               <span className="font-black font-mono" style={{ fontSize: 12, fontWeight: 950, color: '#0066FF' }}>{v.appCount}</span>
                               <span style={{ fontSize: 9, color: '#7B8CA6', fontWeight: 900 }}>({v.appTotal.toFixed(0)}ج)</span>
                             </div>
-                            <div 
-                              className="text-center flex items-center justify-center gap-1.5" 
-                              style={{ 
-                                background: '#FFF8F0', 
-                                borderRadius: 10, 
-                                padding: '5px 6px', 
-                                border: '1px solid #FFD180' 
-                              }}
-                            >
+                            <div className="text-center flex items-center justify-center gap-1.5" style={{ background: '#FFF8F0', borderRadius: 10, padding: '5px 6px', border: '1px solid #FFD180' }}>
                               <span style={{ fontSize: 10, color: '#FF9500', fontWeight: 950 }}>✋</span>
                               <span className="font-black font-mono" style={{ fontSize: 12, fontWeight: 950, color: '#FF9500' }}>{v.manualCount}</span>
                               <span style={{ fontSize: 9, color: '#7B8CA6', fontWeight: 900 }}>({v.manualTotal.toFixed(0)}ج)</span>
                             </div>
                           </div>
-
                           {selectedValetFilter === v.name && (
                             <div className="mt-1.5 text-center">
-                              <span className="font-black" style={{ fontSize: 9, color: v.color, fontWeight: 950 }}>
-                                ✅ فلتر مفعّل — اضغط للإلغاء
-                              </span>
+                              <span className="font-black" style={{ fontSize: 9, color: v.color, fontWeight: 950 }}>✅ فلتر مفعّل — اضغط للإلغاء</span>
                             </div>
                           )}
                         </div>
@@ -1652,7 +1614,6 @@ export default function GarageDashboard() {
                 )}
               </>
             )}
-
             {/* 📊 بوكس "عملياتي اليوم" - تصميم أفقي مدمج يوفر 50% من المساحة الرأسية */}
             {isValet && (
               <div 
