@@ -476,87 +476,157 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ══════ Date Filter ══════ */}
-      <div className="text-center mb-6" style={{ background: '#fff', border: '2px solid #D0DCFF', borderRadius: 28, padding: 20, boxShadow: '0 4px 20px rgba(0,102,255,0.06)' }}>
-        <h3 className="font-black mb-3" style={{ fontSize: 13, color: '#7B8CA6' }}>📅 تصفية حسب التاريخ</h3>
-        <div className="grid grid-cols-2 gap-3 mb-3">
-          {[{ label: 'من', value: dateFrom, set: setDateFrom }, { label: 'إلى', value: dateTo, set: setDateTo }].map(d => (
-            <div key={d.label}>
-              <label className="font-bold block mb-1" style={{ fontSize: 10, color: '#94a3b8' }}>{d.label}</label>
-              <input type="date" value={d.value} onChange={e => d.set(e.target.value)} className="w-full font-bold outline-none"
-                style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 14, borderRadius: 16, fontSize: 12, color: '#0A1628' }} />
-            </div>
-          ))}
+      {/* ══════ Date Filter - تصميم مدمج نصف الحجم ══════ */}
+      <div 
+        className="mb-4" 
+        style={{ 
+          background: '#fff', 
+          border: '1.5px solid #D0DCFF', 
+          borderRadius: 18, 
+          padding: '12px 14px', 
+          boxShadow: '0 3px 12px rgba(0,102,255,0.04)' 
+        }}
+      >
+        {/* السطر الأول: التاريخ من - إلى مدمج أفقياً */}
+        <div className="flex items-center gap-1.5 mb-2">
+          <input 
+            type="date" 
+            value={dateFrom} 
+            onChange={e => setDateFrom(e.target.value)} 
+            className="flex-1 font-black outline-none text-center font-mono" 
+            style={{ 
+              background: '#F0F4FF', 
+              border: '1.5px solid #D0DCFF', 
+              padding: '6px 4px', 
+              borderRadius: 10, 
+              fontSize: 11, 
+              fontWeight: 950, 
+              color: '#0066FF' 
+            }} 
+          />
+          <span className="font-black text-slate-400" style={{ fontSize: 11, fontWeight: 950 }}>←</span>
+          <input 
+            type="date" 
+            value={dateTo} 
+            onChange={e => setDateTo(e.target.value)} 
+            className="flex-1 font-black outline-none text-center font-mono" 
+            style={{ 
+              background: '#F0F4FF', 
+              border: '1.5px solid #D0DCFF', 
+              padding: '6px 4px', 
+              borderRadius: 10, 
+              fontSize: 11, 
+              fontWeight: 950, 
+              color: '#0066FF' 
+            }} 
+          />
+          <CalendarDays size={16} style={{ color: '#0066FF' }} className="shrink-0" />
         </div>
-        <div className="flex gap-2 justify-center flex-wrap">
+
+        {/* السطر الثاني: أزرار الفلاتر السريعة المدمجة */}
+        <div className="flex gap-1 mb-2">
           {[
-            { label: '📅 اليوم', onClick: setToday, bg: '#0066FF', shadow: 'rgba(0,102,255,0.3)', color: '#fff' },
-            { label: 'أمس', onClick: () => { setDateFrom(getLocalYesterday()); setDateTo(getLocalYesterday()); }, bg: '#F0F4FF', shadow: 'none', color: '#475569' },
-            { label: 'آخر أسبوع', onClick: () => { setDateFrom(getLocalDaysAgo(7)); setDateTo(getLocalToday()); }, bg: '#F0F4FF', shadow: 'none', color: '#475569' },
-            { label: 'الكل', onClick: () => { setDateFrom(''); setDateTo(''); }, bg: '#F0F4FF', shadow: 'none', color: '#475569' },
+            { label: '📅 اليوم', onClick: setToday, active: dateFrom === getLocalToday() && dateTo === getLocalToday() },
+            { label: 'أمس', onClick: () => { setDateFrom(getLocalYesterday()); setDateTo(getLocalYesterday()); }, active: dateFrom === getLocalYesterday() && dateTo === getLocalYesterday() },
+            { label: 'أسبوع', onClick: () => { setDateFrom(getLocalDaysAgo(7)); setDateTo(getLocalToday()); }, active: dateFrom === getLocalDaysAgo(7) },
+            { label: 'الكل', onClick: () => { setDateFrom(''); setDateTo(''); }, active: !dateFrom && !dateTo },
           ].map(b => (
-            <button key={b.label} onClick={b.onClick} className="font-black active:scale-95 transition-all"
-              style={{ background: b.bg, color: b.color, padding: '10px 18px', borderRadius: 14, fontSize: 11, boxShadow: `0 4px 16px ${b.shadow}`, border: b.bg === '#F0F4FF' ? '2px solid #D0DCFF' : 'none' }}>
+            <button 
+              key={b.label} 
+              onClick={b.onClick} 
+              className="flex-1 active:scale-95 transition-all" 
+              style={{ 
+                background: b.active ? '#0066FF' : '#F8FAFF', 
+                color: b.active ? '#ffffff' : '#475569', 
+                padding: '6px 0', 
+                borderRadius: 10, 
+                fontSize: 10, 
+                fontWeight: 950,
+                border: b.active ? 'none' : '1.5px solid #D0DCFF',
+                textShadow: b.active ? '0 1px 1px rgba(0,0,0,0.15)' : 'none',
+                boxShadow: b.active ? '0 2px 8px rgba(0,102,255,0.2)' : 'none'
+              }}
+            >
               {b.label}
             </button>
           ))}
         </div>
-        {(dateFrom || dateTo) && (
-          <div className="mt-3" style={{ background: '#EBF2FF', borderRadius: 16, padding: '10px 14px', border: '2px solid #D0DCFF' }}>
-            <p className="font-bold" style={{ fontSize: 11, color: '#0066FF' }}>
-              {dateFrom && dateTo ? dateFrom === dateTo ? `📅 ${formatLocalDateArabic(dateFrom)}` : `من ${dateFrom} إلى ${dateTo}` : dateFrom ? `من ${dateFrom}` : `إلى ${dateTo}`}
-            </p>
-            <p style={{ fontSize: 9, color: '#7B8CA6', marginTop: 2 }}>⏰ من 12:00 صباحاً إلى 11:59 مساءً</p>
-          </div>
-        )}
 
-        <div className="mt-4 pt-4" style={{ borderTop: '2.5px dashed #D0DCFF' }}>
+        {/* زر تنظيف الأرشيف مدمج بالأسفل */}
+        <div className="pt-2 border-t border-dashed border-slate-200">
           <button 
             onClick={handleDatabaseCleanup} 
-            className="w-full font-black active:scale-95 transition-all flex items-center justify-center gap-2"
+            className="w-full font-black active:scale-95 transition-all flex items-center justify-center gap-1.5"
             style={{ 
               background: 'linear-gradient(135deg,#1E293B,#0F172A)', 
-              color: '#fff', 
-              padding: '12px 20px', 
-              borderRadius: 18, 
-              fontSize: 13, 
-              boxShadow: '0 4px 16px rgba(0,0,0,0.15)' 
+              color: '#ffffff', 
+              padding: '7px 0', 
+              borderRadius: 10, 
+              fontSize: 10.5, 
+              fontWeight: 950,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.12)' 
             }}
           >
-            🧹 تنظيف وتخفيف قاعدة البيانات (أرشيف +30 يوم)
+            🧹 تنظيف الأرشيف (+30 يوم)
           </button>
         </div>
       </div>
 
-      {/* ══════ Revenue Stats ══════ */}
-      <div className="grid grid-cols-2 gap-3 mb-5">
-        <div className="text-center" style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', borderRadius: 26, padding: '22px 16px', color: '#fff', boxShadow: '0 8px 32px rgba(0,102,255,0.35)' }}>
-          <div className="font-bold mb-1" style={{ fontSize: 11, opacity: 0.8 }}>الإيرادات المؤكدة</div>
-          <div className="font-black font-mono" style={{ fontSize: 32 }}>{totalsFromSessions.totalRevenueConfirmed.toFixed(0)} <span style={{ fontSize: 12, opacity: 0.7 }}>ج.م</span></div>
+      {/* ══════ Revenue Stats - كروت مدمجة نصف الحجم ══════ */}
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        {/* 🔵 الإيرادات المؤكدة */}
+        <div 
+          className="text-center transition-all" 
+          style={{ 
+            background: 'linear-gradient(135deg,#0066FF,#4D00FF)', 
+            borderRadius: 16, 
+            padding: '9px 10px', 
+            color: '#ffffff', 
+            boxShadow: '0 4px 14px rgba(0,102,255,0.22)' 
+          }}
+        >
+          <div className="font-bold mb-0.5" style={{ fontSize: 9.5, fontWeight: 900, opacity: 0.95, color: '#ffffff' }}>الإيرادات المؤكدة</div>
+          <div className="font-black font-mono leading-none my-1" style={{ fontSize: 20, fontWeight: 950, color: '#ffffff', textShadow: '0 1px 2px rgba(0,0,0,0.15)' }}>
+            {totalsFromSessions.totalRevenueConfirmed.toFixed(0)} <span style={{ fontSize: 10, fontWeight: 800 }}>ج.م</span>
+          </div>
         </div>
-        <div className="text-center" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', borderRadius: 26, padding: '22px 16px', color: '#fff', boxShadow: '0 8px 32px rgba(0,204,102,0.3)' }}>
-          <div className="font-bold mb-1" style={{ fontSize: 11, opacity: 0.8 }}>إجمالي العمليات</div>
-          <div className="font-black font-mono" style={{ fontSize: 32 }}>{totalsFromSessions.totalSessionsCount}</div>
+
+        {/* 🟢 إجمالي العمليات */}
+        <div 
+          className="text-center transition-all" 
+          style={{ 
+            background: 'linear-gradient(135deg,#00CC66,#00AA55)', 
+            borderRadius: 16, 
+            padding: '9px 10px', 
+            color: '#ffffff', 
+            boxShadow: '0 4px 14px rgba(0,204,102,0.22)' 
+          }}
+        >
+          <div className="font-bold mb-0.5" style={{ fontSize: 9.5, fontWeight: 900, opacity: 0.95, color: '#ffffff' }}>إجمالي العمليات</div>
+          <div className="font-black font-mono leading-none my-1" style={{ fontSize: 20, fontWeight: 950, color: '#ffffff', textShadow: '0 1px 2px rgba(0,0,0,0.15)' }}>
+            {totalsFromSessions.totalSessionsCount} <span style={{ fontSize: 10, fontWeight: 800 }}>عملية</span>
+          </div>
         </div>
       </div>
 
-      {/* كارت العمولة الإجمالية والتسوية */}
+      {/* ══════ كارت العمولة الإجمالية والتسوية النشطة - نصف الحجم ══════ */}
       {commissionStats.totalCommission > 0 && (
         <>
-          <div className="flex items-center gap-2 mb-3" style={{ background: '#fff', borderRadius: 18, padding: '10px 14px', border: '2px solid #FFD180' }}>
-            <div className="flex items-center gap-1.5 flex-1 justify-end">
-              <span className="font-bold" style={{ fontSize: 10, color: '#7B8CA6' }}>إجمالي</span>
-              <span className="font-black font-mono" style={{ fontSize: 13, color: '#0A1628' }}>{commissionStats.totalRevenue.toFixed(0)}</span>
+          {/* شريط موجز الإيرادات الثلاثي */}
+          <div className="flex items-center gap-2 mb-2" style={{ background: '#fff', borderRadius: 14, padding: '6px 12px', border: '1.5px solid #FFD180' }}>
+            <div className="flex items-center gap-1 flex-1 justify-end">
+              <span className="font-bold text-[9px] text-slate-400">إجمالي:</span>
+              <span className="font-black font-mono text-xs text-slate-900" style={{ fontWeight: 950 }}>{commissionStats.totalRevenue.toFixed(0)}</span>
             </div>
-            <div style={{ width: 1, height: 16, background: '#D0DCFF' }} />
-            <div className="flex items-center gap-1.5">
-              <span className="font-black font-mono" style={{ fontSize: 13, color: '#FF9500' }}>{commissionStats.totalCommission.toFixed(0)}</span>
-              <span className="font-bold flex items-center gap-0.5" style={{ fontSize: 10, color: '#FF9500' }}><Percent size={10} /> عمولة</span>
+            <div style={{ width: 1, height: 12, background: '#D0DCFF' }} />
+            <div className="flex items-center gap-1">
+              <span className="font-black font-mono text-xs text-amber-600" style={{ fontWeight: 950 }}>{commissionStats.totalCommission.toFixed(0)}</span>
+              <span className="font-black text-[9px] text-amber-600 flex items-center gap-0.5"><Percent size={9} /> عمولة</span>
             </div>
-            <div style={{ width: 1, height: 16, background: '#D0DCFF' }} />
-            <div className="flex items-center gap-1.5">
-              <span className="font-black font-mono" style={{ fontSize: 13, color: '#00AA44' }}>{commissionStats.totalNet.toFixed(0)}</span>
-              <span className="font-bold" style={{ fontSize: 10, color: '#00AA44' }}>صافي</span>
+            <div style={{ width: 1, height: 12, background: '#D0DCFF' }} />
+            <div className="flex items-center gap-1">
+              <span className="font-black font-mono text-xs text-emerald-600" style={{ fontWeight: 950 }}>{commissionStats.totalNet.toFixed(0)}</span>
+              <span className="font-black text-[9px] text-emerald-600">صافي</span>
             </div>
           </div>
 
@@ -567,44 +637,39 @@ export default function AdminDashboard() {
 
             return (
               <div 
-                className="mb-5"
+                className="mb-3 transition-all"
                 style={{ 
                   background: adminOwesGarages ? 'linear-gradient(135deg,#EBFDF2,#D8F5E0)' : 'linear-gradient(135deg,#FFF3F3,#FFE8E8)', 
-                  border: `2.5px solid ${adminOwesGarages ? '#00CC66' : '#FF3333'}`, 
-                  borderRadius: 22, 
-                  padding: '16px 18px',
-                  boxShadow: `0 6px 20px ${adminOwesGarages ? 'rgba(0,204,102,0.15)' : 'rgba(255,51,51,0.15)'}`
+                  border: `2px solid ${adminOwesGarages ? '#00CC66' : '#FF3333'}`, 
+                  borderRadius: 16, 
+                  padding: '10px 12px',
+                  boxShadow: `0 4px 14px ${adminOwesGarages ? 'rgba(0,204,102,0.12)' : 'rgba(255,51,51,0.12)'}`
                 }}
               >
-                <div className="flex items-center gap-2 justify-end mb-2">
-                  <DollarSign size={16} style={{ color: adminOwesGarages ? '#00AA44' : '#CC0000' }} />
-                  <h4 className="font-black" style={{ fontSize: 14, color: '#0A1628' }}>التسوية النشطة (غير المسواة)</h4>
-                </div>
-
-                <div className="flex justify-between items-center mb-3">
-                  <div className="font-black font-mono" style={{ fontSize: 32, color: adminOwesGarages ? '#00AA44' : '#CC0000' }}>
-                    {absVal} <span style={{ fontSize: 14 }}>ج.م</span>
+                {/* السطر الأول: المبلغ والحالة */}
+                <div className="flex justify-between items-center mb-1.5">
+                  <div className="font-black font-mono leading-none" style={{ fontSize: 20, fontWeight: 950, color: adminOwesGarages ? '#00AA44' : '#CC0000' }}>
+                    {absVal} <span style={{ fontSize: 10, fontWeight: 800 }}>ج.م</span>
                   </div>
                   <div className="text-right">
-                    <div className="font-black" style={{ fontSize: 13, color: '#0A1628' }}>
+                    <span className="font-black text-xs block" style={{ fontWeight: 950, color: '#0A1628' }}>
                       {adminOwesGarages ? '🟢 مستحق للجراجات' : '🔴 مستحق للتطبيق'}
-                    </div>
-                    <div className="font-bold" style={{ fontSize: 10, color: '#7B8CA6', marginTop: 2 }}>
-                      {adminOwesGarages ? 'مطلوب تحويلها من الأدمن' : 'مطلوب تحصيلها من الجراجات'}
-                    </div>
+                    </span>
+                    <span className="font-bold text-[9px] text-slate-500">
+                      {adminOwesGarages ? 'تحويل من الأدمن' : 'تحصيل من الجراج'}
+                    </span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="text-center" style={{ background: '#fff', borderRadius: 12, padding: '8px 6px', border: '1px solid #D0DCFF' }}>
-                    <div style={{ fontSize: 9, color: '#7B8CA6', fontWeight: 900 }}>💳 المحفظة</div>
-                    <div className="font-black font-mono" style={{ fontSize: 15, color: '#0066FF' }}>{commissionStats.totalWalletCollected.toFixed(0)}</div>
-                    <div style={{ fontSize: 9, color: '#94a3b8' }}>ج.م تم تحصيلها</div>
+                {/* السطر الثاني: المحصل بالمحفظة والعمولة مدمجين */}
+                <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-slate-200/60">
+                  <div className="text-center bg-white rounded-lg p-1 border border-slate-200 flex items-center justify-center gap-1.5">
+                    <span style={{ fontSize: 8.5, color: '#7B8CA6', fontWeight: 900 }}>💳 محفظة:</span>
+                    <span className="font-black font-mono text-xs text-blue-600" style={{ fontWeight: 950 }}>{commissionStats.totalWalletCollected.toFixed(0)}ج</span>
                   </div>
-                  <div className="text-center" style={{ background: '#fff', borderRadius: 12, padding: '8px 6px', border: '1px solid #FFD180' }}>
-                    <div style={{ fontSize: 9, color: '#FF9500', fontWeight: 900 }}>📊 العمولة</div>
-                    <div className="font-black font-mono" style={{ fontSize: 15, color: '#FF9500' }}>{commissionStats.totalCommission.toFixed(0)}</div>
-                    <div style={{ fontSize: 9, color: '#94a3b8' }}>ج.م حق التطبيق</div>
+                  <div className="text-center bg-white rounded-lg p-1 border border-amber-200 flex items-center justify-center gap-1.5">
+                    <span style={{ fontSize: 8.5, color: '#FF9500', fontWeight: 900 }}>📊 عمولة:</span>
+                    <span className="font-black font-mono text-xs text-amber-600" style={{ fontWeight: 950 }}>{commissionStats.totalCommission.toFixed(0)}ج</span>
                   </div>
                 </div>
               </div>
