@@ -612,24 +612,43 @@ export default function AdminDashboard() {
       {/* ══════ كارت العمولة الإجمالية والتسوية النشطة - نصف الحجم ══════ */}
       {commissionStats.totalCommission > 0 && (
         <>
-          {/* شريط موجز الإيرادات الثلاثي */}
-          <div className="flex items-center gap-2 mb-2" style={{ background: '#fff', borderRadius: 14, padding: '6px 12px', border: '1.5px solid #FFD180' }}>
-            <div className="flex items-center gap-1 flex-1 justify-end">
-              <span className="font-bold text-[9px] text-slate-400">إجمالي:</span>
-              <span className="font-black font-mono text-xs text-slate-900" style={{ fontWeight: 950 }}>{commissionStats.totalRevenue.toFixed(0)}</span>
+          {/* 🌟 شريط موجز الإيرادات الثلاثي المطور - تصميم بريميوم مدمج ومغلظ */}
+          <div 
+            className="flex justify-between items-stretch mb-3 text-center" 
+            style={{ 
+              background: '#ffffff', 
+              borderRadius: 18, 
+              padding: '12px 10px', 
+              border: '1.5px solid #FFD180',
+              boxShadow: '0 4px 16px rgba(255,149,0,0.06)'
+            }}
+          >
+            {/* الإيراد الكلي */}
+            <div className="flex-1 flex flex-col justify-center items-center border-l border-slate-150">
+              <span className="text-[10px] font-black text-slate-400 mb-1 block">💳 الإيراد الكلي</span>
+              <span className="font-mono font-black text-slate-800 text-sm" style={{ fontSize: '15px', fontWeight: 950 }}>
+                {commissionStats.totalRevenue.toFixed(0)} <span style={{ fontSize: '10px', fontWeight: 800 }}>ج</span>
+              </span>
             </div>
-            <div style={{ width: 1, height: 12, background: '#D0DCFF' }} />
-            <div className="flex items-center gap-1">
-              <span className="font-black font-mono text-xs text-amber-600" style={{ fontWeight: 950 }}>{commissionStats.totalCommission.toFixed(0)}</span>
-              <span className="font-black text-[9px] text-amber-600 flex items-center gap-0.5"><Percent size={9} /> عمولة</span>
+
+            {/* عمولة التطبيق */}
+            <div className="flex-1 flex flex-col justify-center items-center border-l border-slate-150">
+              <span className="text-[10px] font-black text-amber-600 mb-1 flex items-center gap-0.5 justify-center">
+                <Percent size={10} className="text-amber-500" /> عمولة التطبيق
+              </span>
+              <span className="font-mono font-black text-amber-600 text-sm" style={{ fontSize: '15px', fontWeight: 950 }}>
+                {commissionStats.totalCommission.toFixed(0)} <span style={{ fontSize: '10px', fontWeight: 800 }}>ج</span>
+              </span>
             </div>
-            <div style={{ width: 1, height: 12, background: '#D0DCFF' }} />
-            <div className="flex items-center gap-1">
-              <span className="font-black font-mono text-xs text-emerald-600" style={{ fontWeight: 950 }}>{commissionStats.totalNet.toFixed(0)}</span>
-              <span className="font-black text-[9px] text-emerald-600">صافي</span>
+
+            {/* صافي الربح */}
+            <div className="flex-1 flex flex-col justify-center items-center">
+              <span className="text-[10px] font-black text-emerald-600 mb-1 block">🟢 صافي الربح</span>
+              <span className="font-mono font-black text-emerald-600 text-sm" style={{ fontSize: '15px', fontWeight: 950 }}>
+                {commissionStats.totalNet.toFixed(0)} <span style={{ fontSize: '10px', fontWeight: 800 }}>ج</span>
+              </span>
             </div>
           </div>
-
           {(() => {
             const settlement = commissionStats.totalSettlement;
             const adminOwesGarages = settlement > 0;
