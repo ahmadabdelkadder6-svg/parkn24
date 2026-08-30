@@ -186,15 +186,18 @@ export default function AdminDashboard() {
   }, [filteredSessions, getRevenue]);
 
   const commissionStats = useMemo(() => {
-    const confirmed = filteredSessions.filter(s => s.revenueConfirmed && !(s as any).settled);
+    // ⚡ [فلترة التسوية الصارمة]: جلب فقط وفقط الجلسات القادمة من التطبيق (source === 'app')
+    // وإلغاء الجلسات المضافة يدوياً تماماً من حسابات العمولات وصافي الربح والتسويات مع المالك
+    const confirmed = filteredSessions.filter(
+      s => s.revenueConfirmed && !(s as any).settled && s.source === 'app'
+    );
     const totalCommission = confirmed.reduce((a, s) => a + getCommission(s), 0);
     const totalRevenue = confirmed.reduce((a, s) => a + getRevenue(s), 0);
     const totalNet = totalRevenue - totalCommission;
 
     const perGarage = garages.map(g => {
-      const gs = confirmed.filter(s => s.garageId === g.id);
-      const appSessions = gs.filter(s => s.source === 'app');
-      const gCommission = appSessions.reduce((a, s) => a + getCommission(s), 0);
+      const gs = confirmed.filter(s => s.garageId === g.id); // gs أصبحت تحتوي تلقائياً على جلسات التطبيق فقط
+      const gCommission = gs.reduce((a, s) => a + getCommission(s), 0);
       const gRevenue = gs.reduce((a, s) => a + getRevenue(s), 0);
       const walletRevenue = gs.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getRevenue(s), 0);
       const sessionIds = gs.map(s => s.id);
@@ -206,7 +209,7 @@ export default function AdminDashboard() {
         commission: gCommission,
         netRevenue: gRevenue - gCommission,
         walletRevenue,
-        appCount: appSessions.length,
+        appCount: gs.length,
         totalCount: gs.length,
         sessionIds,
       };
@@ -217,7 +220,6 @@ export default function AdminDashboard() {
 
     return { totalCommission, totalRevenue, totalNet, perGarage, totalWalletCollected, totalSettlement };
   }, [filteredSessions, garages, getRevenue, getCommission]);
-
   const garageReport = useMemo(() => {
     return garages
       .map(g => {
