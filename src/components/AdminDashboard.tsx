@@ -976,47 +976,93 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* ══════ تقرير الإيرادات ══════ */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <span className="font-bold" style={{ fontSize: 11, background: '#fff', padding: '6px 14px', borderRadius: 12, border: '2px solid #D0DCFF', color: '#7B8CA6' }}>{garageReport.length} جراج نشط</span>
-          <h3 className="font-black flex items-center gap-2" style={{ fontSize: 16, color: '#334155' }}>
-            تقرير الإيرادات المباشر
+      {/* ══════ تقرير الإيرادات المباشر - بريميوم مدمج ══════ */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <span className="font-black" style={{ fontSize: 10, background: '#0066FF', color: '#fff', padding: '3.5px 12px', borderRadius: 20 }}>
+            {garageReport.length} جراج
+          </span>
+          <h3 className="font-black flex items-center gap-1.5 text-right" style={{ fontSize: 14, color: '#334155' }}>
+            📊 تقرير الإيرادات
           </h3>
         </div>
-        <div className="overflow-x-auto" style={{ background: '#fff', borderRadius: 22, border: '2px solid #D0DCFF', boxShadow: '0 4px 20px rgba(0,0,0,0.04)' }}>
-          <table className="w-full text-right" style={{ minWidth: 620 }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid #F0F4FF' }}>
-                {[{ t: 'الجراج', c: '#7B8CA6' }, { t: 'المؤكد', c: '#0A1628' }, { t: 'عمولة%', c: '#FF9500' }, { t: 'معلق', c: '#FF9500' }, { t: 'نقدي', c: '#00CC66' }, { t: 'إنستاباي', c: '#7C3AED' }, { t: 'محفظة', c: '#0066FF' }, { t: 'كاش', c: '#FF8800' }].map((h, i) => (
-                  <th key={i} className="font-black" style={{ padding: 14, fontSize: 10, color: h.c, textAlign: i === 0 ? 'right' : 'center' }}>{h.t}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {garageReport.map(r => (
-                <tr key={r.garageId} style={{ borderBottom: '1px solid #F0F4FF' }}>
-                  <td style={{ padding: 14 }}>
-                    <div className="font-black" style={{ fontSize: 13, color: '#0A1628' }}>{r.name}</div>
-                    <div style={{ fontSize: 9, color: '#94a3b8' }}>{r.count} جلسة</div>
-                  </td>
-                  <td className="font-black font-mono text-center" style={{ fontSize: 13, color: '#00AA44', background: '#F8FAFF', padding: 14 }}>{r.revenue.toFixed(0)}ج</td>
-                  <td className="font-black font-mono text-center" style={{ fontSize: 12, color: '#FF9500', padding: 14 }}>{r.commissionRate}%</td>
-                  <td className="font-mono text-center" style={{ fontSize: 12, color: '#FF9500', padding: 14 }}>{r.pendingRevenue > 0 ? `${r.pendingRevenue.toFixed(0)}ج` : <span style={{ color: '#D0DCFF' }}>—</span>}</td>
-                  <td className="font-mono text-center" style={{ fontSize: 12, color: '#00AA44', padding: 14 }}>{r.cash.toFixed(0)}</td>
-                  <td className="font-mono text-center" style={{ fontSize: 12, color: '#7C3AED', padding: 14 }}>{r.instapay.toFixed(0)}</td>
-                  <td className="font-mono text-center" style={{ fontSize: 12, color: '#0066FF', padding: 14 }}>{r.wallet.toFixed(0)}</td>
-                  <td className="font-mono text-center" style={{ fontSize: 12, color: '#FF8800', padding: 14 }}>{r.cashwallet.toFixed(0)}</td>
-                </tr>
-              ))}
-              {garageReport.length === 0 && (
-                <tr><td colSpan={8} className="text-center" style={{ padding: 28, fontSize: 13, color: '#94a3b8' }}>لا توجد جراجات نشطة في هذه الفترة</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
 
+        {garageReport.length === 0 ? (
+          <div className="text-center py-8" style={{ background: '#fff', borderRadius: 18, border: '2px dashed #D0DCFF' }}>
+            <span style={{ fontSize: 32, display: 'block', marginBottom: 6 }}>📭</span>
+            <p className="font-black text-xs" style={{ color: '#94a3b8' }}>لا توجد جراجات نشطة في هذه الفترة</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {garageReport.map(r => (
+              <div 
+                key={r.garageId} 
+                style={{ 
+                  background: '#ffffff', 
+                  border: '1.5px solid #D0DCFF', 
+                  borderRadius: 16, 
+                  padding: '10px 12px',
+                  boxShadow: '0 2px 8px rgba(0,102,255,0.03)'
+                }}
+              >
+                {/* السطر الأول: اسم الجراج + عدد الجلسات + المؤكد */}
+                <div className="flex justify-between items-center mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-black font-mono" style={{ fontSize: 16, fontWeight: 950, color: '#00AA44', textShadow: '0 0.5px 1px rgba(0,0,0,0.05)' }}>
+                      {r.revenue.toFixed(0)} <span style={{ fontSize: 9, fontWeight: 800 }}>ج</span>
+                    </span>
+                    <span className="font-black text-[8px] text-white px-1.5 py-0.5 rounded-md" style={{ background: '#00CC66' }}>مؤكد</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-black text-slate-900" style={{ fontSize: 13, fontWeight: 950 }}>{r.name}</span>
+                    <span className="font-bold text-slate-400 block" style={{ fontSize: 9 }}>{r.count} جلسة</span>
+                  </div>
+                </div>
+
+                {/* السطر الثاني: المعلومات المالية المدمجة (عمولة + معلق + نقدي + محفظة) */}
+                <div className="flex items-center justify-between gap-1" style={{ background: '#F8FAFF', borderRadius: 10, padding: '5px 8px', border: '1px solid #E9EEFF' }}>
+                  
+                  {/* عمولة التطبيق */}
+                  <div className="flex items-center gap-0.5">
+                    <Percent size={9} className="text-amber-500" />
+                    <span className="font-black font-mono text-amber-600" style={{ fontSize: 11, fontWeight: 950 }}>{r.commissionRate}%</span>
+                  </div>
+
+                  <div style={{ width: 1, height: 14, background: '#D0DCFF' }} />
+
+                  {/* معلق */}
+                  <div className="flex items-center gap-0.5">
+                    <span className="font-black text-[8px] text-amber-600">⏳</span>
+                    <span className="font-black font-mono text-amber-600" style={{ fontSize: 11, fontWeight: 950 }}>
+                      {r.pendingRevenue > 0 ? `${r.pendingRevenue.toFixed(0)}ج` : '—'}
+                    </span>
+                  </div>
+
+                  <div style={{ width: 1, height: 14, background: '#D0DCFF' }} />
+
+                  {/* نقدي كاش */}
+                  <div className="flex items-center gap-0.5">
+                    <span className="text-[8px]">💵</span>
+                    <span className="font-black font-mono text-emerald-600" style={{ fontSize: 11, fontWeight: 950 }}>
+                      {r.cash.toFixed(0)}
+                    </span>
+                  </div>
+
+                  <div style={{ width: 1, height: 14, background: '#D0DCFF' }} />
+
+                  {/* محفظة */}
+                  <div className="flex items-center gap-0.5">
+                    <span className="text-[8px]">👝</span>
+                    <span className="font-black font-mono text-blue-600" style={{ fontSize: 11, fontWeight: 950 }}>
+                      {r.wallet.toFixed(0)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       {/* ══════ Revenue Sessions ══════ */}
       <div className="mb-8">
         <h3 className="font-black mb-4 flex items-center gap-2 justify-end" style={{ fontSize: 16, color: '#334155' }}>إدارة الجلسات ({filteredSessions.length}) <Receipt size={18} /></h3>
