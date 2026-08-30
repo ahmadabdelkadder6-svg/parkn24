@@ -4,7 +4,8 @@ import {
   Shield, Clock, CheckCircle, XCircle, MapPin, Warehouse, Plus,
   MessageCircle, Send, Receipt, Search, HardHat, Percent, DollarSign,
   Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown, Gift, Sparkles,
-  Settings, // ⚡ تم إضافتها لحل الشاشة البيضاء
+  Settings,
+  CalendarDays, // ⚡ تم إضافتها هنا لحل الشاشة البيضاء نهائياً
 } from 'lucide-react';
 import { useStore } from '../store';
 import { supabase } from '../lib/supabase';
@@ -230,7 +231,7 @@ export default function AdminDashboard() {
         const cash = confirmed.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + getRevenue(s), 0);
         const instapay = confirmed.filter(s => s.paymentMethod === 'instapay').reduce((sum, s) => sum + getRevenue(s), 0);
         const wallet = confirmed.filter(s => s.paymentMethod === 'wallet').reduce((sum, s) => sum + getRevenue(s), 0);
-        const cashwallet = confirmed.filter(s => s.paymentMethod === 'cashwallet').reduce((sum, s) => sum + getRevenue(s), 0);
+        const cashwallet = confirmed.filter(s => s.paymentMethod === 'cashwallet').reduce((sum, sumSession) => sum + getRevenue(sumSession), 0);
 
         return {
           name: g.name,
@@ -254,7 +255,6 @@ export default function AdminDashboard() {
     const searchTerm = sessionSearch.trim().toUpperCase();
     
     // 🔍 [ذكاء صاروخي]: عند البحث برقم لوحة، نبحث في "كل الأرشيف" وليس فقط الفترة المحددة
-    // هذا يضمن العثور على أي جلسة قديمة فوراً دون الحاجة لتغيير التاريخ يدوياً
     let f = searchTerm 
       ? completedSessions // البحث في كل السجل التاريخي عند وجود كلمة بحث
       : filteredSessions;  // فلترة عادية بالتاريخ عند عدم وجود بحث
@@ -1413,7 +1413,7 @@ export default function AdminDashboard() {
                       borderRadius: 12, 
                       fontSize: 12, 
                       fontWeight: 950,
-                      boxShadow: '0 4px 14px rgba(0,102,255,0.28)',
+                      boxShadow: '0 4px 14 rgba(0,102,255,0.28)',
                       textShadow: '0 1px 2px rgba(0,0,0,0.15)'
                     }}
                   >
@@ -1492,4 +1492,3 @@ export default function AdminDashboard() {
       </div>
     </div>
   );
-}
