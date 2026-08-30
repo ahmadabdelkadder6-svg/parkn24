@@ -27,7 +27,7 @@ export default function RegisterScreen() {
     >
       <div className="text-center mb-6">
         <img src="/images/logo.png" alt="ركنتي" className="w-16 h-16 rounded-2xl object-contain mx-auto mb-3 shadow-lg" />
-        <h2 className="text-xl font-black text-white mb-0.5">ركنتي</h2>
+        <h2 className="text-xl font-black text-white mb-0.5">Parkn24</h2>
         <p className="text-slate-400 text-xs">سجل بياناتك للبدء</p>
       </div>
 
