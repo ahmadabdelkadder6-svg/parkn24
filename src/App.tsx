@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo, lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
 import { useStore, setupRealtime } from './store';
 import { cn } from './utils/cn';
 
-// Screens
+// Screens (تحميل مباشر للشاشات الخفيفة التي يحتاجها العميل فوراً)
 import AuthGate from './components/AuthGate';
 import SplashScreen from './components/SplashScreen';
 import RegisterScreen from './components/RegisterScreen';
@@ -15,13 +15,16 @@ import NavigationScreen from './components/NavigationScreen';
 import SessionScreen from './components/SessionScreen';
 import SummaryScreen from './components/SummaryScreen';
 import GarageLoginScreen from './components/GarageLoginScreen';
-import GarageDashboard from './components/GarageDashboard';
-import AdminDashboard from './components/AdminDashboard';
 import InstallPWA from './components/InstallPWA';
 import LastSessionScreen from './components/LastSessionScreen';
 import ChatScreen from './components/ChatScreen';
 import InstallPage from './components/InstallPage';
 import InstallQRCodePage from './components/InstallQRCodePage';
+
+// ⚡ [تسريع صاروخي]: تحميل كسول للوحات الإدارة الثقيلة
+// لن يتم تحميل كودها إلا عند فتحها فعلياً (يوفر ~400KB من حجم التطبيق للعميل العادي)
+const GarageDashboard = lazy(() => import('./components/GarageDashboard'));
+const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 
 const VALID_SCREENS = [
   'splash',
@@ -50,7 +53,7 @@ export default function App() {
     setSelectedGarageId,
     incomingCars,
     fetchAll,
-    acknowledgedSessionIds, // 🚀 [إصلاح]: تم إضافة المتغير المفقود من الـ Store
+    acknowledgedSessionIds,
   } = useStore();
 
   const prevActiveSessionRef = useRef<string | null>(null);
@@ -64,7 +67,6 @@ export default function App() {
 
   const [adminAccess, setAdminAccess] = useState(false);
 
-  // ✅ تحقق من المسار - لو /install أو /qr يعرض الصفحة المخصصة
   const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
 
   useEffect(() => {
@@ -101,6 +103,7 @@ export default function App() {
     }
   }, [safeScreen, screen, setScreen, dataLoaded, view]);
 
+  // ⚡ [التهيئة الصاروخية]: فتح الشاشة فوراً + جلب البيانات في الخلفية
   useEffect(() => {
     const init = async () => {
       const justInstalled = localStorage.getItem('pwaJustInstalled') === 'true';
@@ -130,7 +133,6 @@ export default function App() {
         localStorage.removeItem('appScreen');
       }
 
-      // 🚀 التوجيه التلقائي الذكي والآمن (يمنع الارتداد التلقائي للمشرف)
       const urlParams = new URLSearchParams(window.location.search);
       const isGarageFromURL = urlParams.has('garage');
       const isAdminFromURL =
@@ -138,7 +140,6 @@ export default function App() {
         window.location.pathname === '/admin' ||
         window.location.hash === '#admin';
 
-      // قراءة الشاشة النشطة المحفوظة بالذاكرة
       const savedView = localStorage.getItem('appView');
       const isGarageLoggedIn = localStorage.getItem('currentGarageId') || currentGarageId;
       const isAdminLoggedIn = localStorage.getItem('adminAccess') === 'true';
@@ -159,16 +160,19 @@ export default function App() {
         }
       }
 
-      await fetchAll();
+      // ⚡ [صاروخي]: فتح الشاشة فوراً بدون انتظار fetchAll
+      // البيانات المحفوظة محلياً (currentUser, garages) تكفي لعرض الواجهة الأولى
       setDataLoaded(true);
       initialLoadDone.current = true;
+
+      // 🔄 جلب البيانات الجديدة في الخلفية بهدوء (Background Fetch)
+      fetchAll().catch(e => console.error('Background fetch error:', e));
       setupRealtime();
     };
 
     init();
   }, []);
 
-  // 💾 حفظ الشاشة النشطة دائماً في الذاكرة لمنع الارتداد التلقائي عند تحديث الصفحة
   useEffect(() => {
     if (view) {
       localStorage.setItem('appView', view);
@@ -343,7 +347,6 @@ export default function App() {
             })[0];
 
           if (lastCompleted) {
-            // 🚀 التحقق بـ "قفل الفاتورة" وليس فروق الثواني لضمان عدم سقوط الجلسة نهائياً
             const freshAcknowledged = freshState.acknowledgedSessionIds;
             const isNotAcknowledged = freshAcknowledged ? !freshAcknowledged.has(lastCompleted.id) : true;
             if (isNotAcknowledged) {
@@ -408,12 +411,10 @@ export default function App() {
     };
   }, []);
 
-  // ✅ صفحة التثبيت المخصصة
   if (pathname === '/install') {
     return <InstallPage />;
   }
 
-  // ✅ صفحة QR Code
   if (pathname === '/qr') {
     return <InstallQRCodePage />;
   }
@@ -424,7 +425,6 @@ export default function App() {
         className="max-w-md mx-auto h-dvh bg-white text-slate-900 relative flex flex-col overflow-hidden"
         style={{ fontFamily: "'Cairo', sans-serif" }}
       >
-        {/* ══════ التبويبات العلوية (تظهر للأدمن الموثق فقط لإدارة النظام) ══════ */}
         {adminAccess && (
           <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-white/90 p-0.5 rounded-full backdrop-blur-md border border-slate-200 shadow-sm">
             {[
@@ -461,23 +461,38 @@ export default function App() {
           </div>
         )}
 
-        {/* ══════ المحتوى الرئيسي ══════ */}
         <main className="flex-1 overflow-hidden bg-white">
-          {!dataLoaded ? (
+          {/* ⚡ [صاروخي]: لوحة الأدمن تُحمّل فقط عند الحاجة */}
+          {view === 'admin' && adminAccess ? (
+            <Suspense fallback={
+              <div className="h-full bg-white flex flex-col items-center justify-center">
+                <div className="text-3xl mb-3 animate-bounce">⚙️</div>
+                <p className="text-slate-500 text-sm font-bold animate-pulse">جاري فتح لوحة المشرف...</p>
+              </div>
+            }>
+              <AdminDashboard />
+            </Suspense>
+          ) : view === 'garage' ? (
+            currentGarageId ? (
+              /* ⚡ [صاروخي]: لوحة الجراج تُحمّل فقط عند الحاجة */
+              <Suspense fallback={
+                <div className="h-full bg-white flex flex-col items-center justify-center">
+                  <div className="text-3xl mb-3 animate-bounce">🅿️</div>
+                  <p className="text-slate-500 text-sm font-bold animate-pulse">جاري فتح لوحة الجراج...</p>
+                </div>
+              }>
+                <GarageDashboard />
+              </Suspense>
+            ) : (
+              <GarageLoginScreen />
+            )
+          ) : !dataLoaded ? (
             <div className="h-full bg-white flex flex-col items-center justify-center">
               <div className="text-4xl mb-4 animate-bounce">🚗</div>
               <p className="text-slate-600 text-sm font-bold animate-pulse">
                 جاري تحميل البيانات...
               </p>
             </div>
-          ) : view === 'admin' && adminAccess ? (
-            <AdminDashboard />
-          ) : view === 'garage' ? (
-            currentGarageId ? (
-              <GarageDashboard />
-            ) : (
-              <GarageLoginScreen />
-            )
           ) : (
             <AnimatePresence mode="wait">
               <motion.div
