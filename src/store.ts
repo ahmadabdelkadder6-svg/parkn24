@@ -163,6 +163,61 @@ export const calculateSessionPriceWithFreeGift = (
   return { finalPrice, freeMinutes: 60, billableMs };
 };
 
+// ===================== 🛡️ طبقات الحماية الأمنية =====================
+
+// 🛡️ [1] حماية من الضغط العالي (Rate Limiter) - يمنع إغراق السيرفر بطلبات وهمية
+const rateLimiter = {
+  requests: 0,
+  lastReset: Date.now(),
+  maxRequests: 50, // أقصى 50 طلب في 10 ثوانٍ
+  windowMs: 10000,
+  
+  canProceed(): boolean {
+    const now = Date.now();
+    if (now - this.lastReset > this.windowMs) {
+      this.requests = 0;
+      this.lastReset = now;
+    }
+    this.requests++;
+    return this.requests <= this.maxRequests;
+  }
+};
+
+// 🛡️ [2] تنظيف المدخلات من الأكواد الخبيثة (XSS Protection)
+const sanitizeInput = (input: string): string => {
+  if (!input) return '';
+  return input
+    .replace(/[<>'"]/g, '')          // إزالة رموز HTML الخطيرة
+    .replace(/javascript:/gi, '')     // إزالة أكواد JavaScript
+    .replace(/on\w+=/gi, '')          // إزالة event handlers
+    .replace(/&/g, '&amp;')          // ترميز الأمبرساند
+    .trim()
+    .substring(0, 200);              // حد أقصى 200 حرف لحماية الذاكرة
+};
+
+// 🛡️ [3] حماية من تخمين الباسوردات (Brute Force Protection)
+const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
+
+export const checkLoginAttempt = (identifier: string): boolean => {
+  const now = Date.now();
+  const record = loginAttempts.get(identifier);
+  
+  if (record && now - record.lastAttempt < 300000) { // نافذة 5 دقائق
+    if (record.count >= 5) {
+      return false; // تم حظر المحاولة
+    }
+    record.count++;
+    record.lastAttempt = now;
+  } else {
+    loginAttempts.set(identifier, { count: 1, lastAttempt: now });
+  }
+  return true;
+};
+
+export const resetLoginAttempts = (identifier: string): void => {
+  loginAttempts.delete(identifier);
+};
+
 // ===================== Helpers =====================
 const uid = () => crypto.randomUUID?.() || Date.now().toString();
 
@@ -187,7 +242,9 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-const normalizePlate = (plate?: string) => (plate ?? '').trim().toUpperCase();
+// 🛡️ [محسّن أمنياً]: تنظيف رقم اللوحة من أي أحرف خبيثة
+const normalizePlate = (plate?: string) => sanitizeInput(plate ?? '').trim().toUpperCase();
+
 const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
 const getMs = (value?: number) => { if (typeof value === 'number') return value; return 0; };
@@ -428,31 +485,38 @@ export const useStore = create<AppState>((set, get) => ({
 
   setCurrentUser: async (u) => {
     if (!u) { set({ currentUser: null }); safeRemoveStorage('currentUser'); return; }
-    set({ currentUser: u }); safeSetStorage('currentUser', u);
+    // 🛡️ تنظيف بيانات المستخدم عند التسجيل
+    const cleanUser = {
+      ...u,
+      name: sanitizeInput(u.name),
+      carPlate: sanitizeInput(u.carPlate).toUpperCase(),
+      phone: u.phone.replace(/[^\d+]/g, '').substring(0, 15), // أرقام فقط بحد أقصى 15 خانة
+    };
+    set({ currentUser: cleanUser }); safeSetStorage('currentUser', cleanUser);
     if (!isSupabaseConfigured()) return;
     try {
       const { data: existingUser } = await supabase
         .from('users')
         .select('wallet, name, phone, car_plate, has_used_free_session, bonus_balance')
-        .eq('phone', u.phone)
+        .eq('phone', cleanUser.phone)
         .single();
 
       if (existingUser) {
         const updated = { 
-          name: existingUser.name || u.name, 
-          phone: existingUser.phone || u.phone, 
-          carPlate: existingUser.car_plate || u.carPlate, 
+          name: existingUser.name || cleanUser.name, 
+          phone: existingUser.phone || cleanUser.phone, 
+          carPlate: existingUser.car_plate || cleanUser.carPlate, 
           wallet: Number(existingUser.wallet),
           hasUsedFreeSession: existingUser.has_used_free_session ?? false,
           bonusBalance: Number(existingUser.bonus_balance ?? 0),
         };
         set({ currentUser: updated }); safeSetStorage('currentUser', updated);
-        await supabase.from('users').update({ name: u.name, car_plate: u.carPlate }).eq('phone', u.phone);
+        await supabase.from('users').update({ name: cleanUser.name, car_plate: cleanUser.carPlate }).eq('phone', cleanUser.phone);
       } else {
         const { data: newUser } = await supabase
           .from('users')
           .insert({ 
-            name: u.name, phone: u.phone, car_plate: u.carPlate, wallet: u.wallet ?? 0,
+            name: cleanUser.name, phone: cleanUser.phone, car_plate: cleanUser.carPlate, wallet: cleanUser.wallet ?? 0,
             has_used_free_session: false,
             bonus_balance: 0,
           })
@@ -558,8 +622,15 @@ export const useStore = create<AppState>((set, get) => ({
     safeRemoveStorage('acknowledgedSessionIds'); 
   },
 
+  // 🛡️ [محمي بـ Rate Limiter]: جلب البيانات من السيرفر
   fetchAll: async () => {
     if (!isSupabaseConfigured()) return;
+    
+    // 🛡️ حماية من الضغط العالي
+    if (!rateLimiter.canProceed()) {
+      console.warn('⚠️ Rate limit exceeded, skipping fetch');
+      return;
+    }
 
     const [g, activeAndUnsettledRes, recentSettledRes, o, w, ic, msgs] = await Promise.all([
       supabase.from('garages').select('*'),
@@ -815,6 +886,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   addSession: async (s) => {
+    // 🛡️ تنظيف رقم اللوحة عند إضافة جلسة
     const normalizedPlate = normalizePlate(s.carPlate);
     if (!normalizedPlate) return '';
     const sessionId = crypto.randomUUID();
@@ -1319,15 +1391,22 @@ export const useStore = create<AppState>((set, get) => ({
     setTimeout(() => { get().fetchAll(); }, 1000);
   },
 
+  // 🛡️ [محمي بـ Sanitize Input]: إرسال رسالة
   addMessage: async (msg) => {
-    const optimisticMessage: Message = { ...msg, id: uid(), status: 'pending', timestamp: Date.now() };
+    const cleanMsg = {
+      ...msg,
+      message: sanitizeInput(msg.message),
+      subject: msg.subject ? sanitizeInput(msg.subject) : undefined,
+      userName: msg.userName ? sanitizeInput(msg.userName) : undefined,
+    };
+    const optimisticMessage: Message = { ...cleanMsg, id: uid(), status: 'pending', timestamp: Date.now() };
     set((st) => ({ messages: [optimisticMessage, ...(st.messages ?? [])] }));
     if (!isSupabaseConfigured()) return { success: true };
     try {
       const { data, error } = await supabase.from('messages').insert({
-        user_phone: msg.userPhone, user_name: msg.userName ?? null,
-        car_plate: msg.carPlate ?? null, type: msg.type,
-        subject: msg.subject ?? null, message: msg.message,
+        user_phone: cleanMsg.userPhone, user_name: cleanMsg.userName ?? null,
+        car_plate: cleanMsg.carPlate ?? null, type: cleanMsg.type,
+        subject: cleanMsg.subject ?? null, message: cleanMsg.message,
       }).select().single();
       if (error) {
         console.error('❌', error);
@@ -1345,9 +1424,10 @@ export const useStore = create<AppState>((set, get) => ({
 
   replyMessage: async (id, reply) => {
     const now = Date.now();
-    set((st) => ({ messages: (st.messages ?? []).map((msg) => (msg.id === id ? { ...msg, reply, status: 'replied' as const, repliedAt: now } : msg)) }));
+    const cleanReply = sanitizeInput(reply); // 🛡️ تنظيف الرد
+    set((st) => ({ messages: (st.messages ?? []).map((msg) => (msg.id === id ? { ...msg, reply: cleanReply, status: 'replied' as const, repliedAt: now } : msg)) }));
     if (!isSupabaseConfigured()) return;
-    const { error } = await supabase.from('messages').update({ reply, status: 'replied', replied_at: new Date(now).toISOString() }).eq('id', id);
+    const { error } = await supabase.from('messages').update({ reply: cleanReply, status: 'replied', replied_at: new Date(now).toISOString() }).eq('id', id);
     if (error) console.error('❌', error);
   },
 
