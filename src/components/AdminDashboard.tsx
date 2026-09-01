@@ -4,8 +4,8 @@ import {
   Shield, Clock, CheckCircle, XCircle, MapPin, Warehouse, Plus,
   MessageCircle, Send, Receipt, Search, HardHat, Percent, DollarSign,
   Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown, Gift, Sparkles,
-  Settings,
-  CalendarDays, // ⚡ تم إضافتها هنا لحل الشاشة البيضاء نهائياً
+  Settings, Users,
+  CalendarDays,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { supabase } from '../lib/supabase';
@@ -70,6 +70,17 @@ interface SettlementRecord {
   created_at: string;
 }
 
+interface DbUser {
+  id: string;
+  name: string;
+  phone: string;
+  car_plate: string;
+  wallet: number;
+  has_used_free_session: boolean;
+  bonus_balance?: number;
+  created_at: string;
+}
+
 export default function AdminDashboard() {
   const {
     garages, sessions, walletTopUps, approveTopUp, rejectTopUp, addGarage,
@@ -101,6 +112,12 @@ export default function AdminDashboard() {
   const [visibleSettlements, setVisibleSettlements] = useState(4);
   const [activeAccordionGarageId, setActiveAccordionGarageId] = useState<string | null>(null);
 
+  // 👥 حالات إدارة الحريفة الجدد
+  const [dbUsers, setDbUsers] = useState<DbUser[]>([]);
+  const [usersSearch, setUsersSearch] = useState('');
+  const [editingUserWalletId, setEditingUserWalletId] = useState<string | null>(null);
+  const [editUserWalletAmount, setEditUserWalletAmount] = useState(0);
+
   const [gName, setGName] = useState('');
   const [gUser, setGUser] = useState('');
   const [gPhone, setGPhone] = useState('');
@@ -127,7 +144,22 @@ export default function AdminDashboard() {
     }
   }, []);
 
-  useEffect(() => { fetchSettlements(); }, [fetchSettlements]);
+  const fetchDbUsers = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!error) setDbUsers(data ?? []);
+    } catch (e) {
+      console.error('Failed to fetch users:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSettlements();
+    fetchDbUsers();
+  }, [fetchSettlements, fetchDbUsers]);
 
   // 🎁 [منطق الهدية المعدل]: حساب الإيرادات الفعلية مع مراعاة خصم الساعة الترحيبية للركنات المستحقة
   const getRevenue = useCallback((s: any) => {
@@ -186,8 +218,6 @@ export default function AdminDashboard() {
   }, [filteredSessions, getRevenue]);
 
   const commissionStats = useMemo(() => {
-    // ⚡ [فلترة التسوية الصارمة]: جلب فقط وفقط الجلسات القادمة من التطبيق (source === 'app')
-    // وإلغاء الجلسات المضافة يدوياً تماماً من حسابات العمولات وصافي الربح والتسويات مع المالك
     const confirmed = filteredSessions.filter(
       s => s.revenueConfirmed && !(s as any).settled && s.source === 'app'
     );
@@ -196,7 +226,7 @@ export default function AdminDashboard() {
     const totalNet = totalRevenue - totalCommission;
 
     const perGarage = garages.map(g => {
-      const gs = confirmed.filter(s => s.garageId === g.id); // gs أصبحت تحتوي تلقائياً على جلسات التطبيق فقط
+      const gs = confirmed.filter(s => s.garageId === g.id); 
       const gCommission = gs.reduce((a, s) => a + getCommission(s), 0);
       const gRevenue = gs.reduce((a, s) => a + getRevenue(s), 0);
       const walletRevenue = gs.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getRevenue(s), 0);
@@ -220,6 +250,7 @@ export default function AdminDashboard() {
 
     return { totalCommission, totalRevenue, totalNet, perGarage, totalWalletCollected, totalSettlement };
   }, [filteredSessions, garages, getRevenue, getCommission]);
+
   const garageReport = useMemo(() => {
     return garages
       .map(g => {
@@ -231,7 +262,7 @@ export default function AdminDashboard() {
         const pendingRevenue = pending.reduce((sum, s) => sum + getRevenue(s), 0);
 
         const cash = confirmed.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + getRevenue(s), 0);
-        const instapay = confirmed.filter(s => s.paymentMethod === 'instapay').reduce((sum, s) => sum + getRevenue(s), 0);
+        const instapay = confirmed.filter(s => s.paymentMethod === 'instapay').reduce((sum, s) => sum + getRevenue(sum), 0);
         const wallet = confirmed.filter(s => s.paymentMethod === 'wallet').reduce((sum, s) => sum + getRevenue(s), 0);
         const cashwallet = confirmed.filter(s => s.paymentMethod === 'cashwallet').reduce((sum, sumSession) => sum + getRevenue(sumSession), 0);
 
@@ -256,10 +287,9 @@ export default function AdminDashboard() {
   const displayedRevenueSessions = useMemo(() => {
     const searchTerm = sessionSearch.trim().toUpperCase();
     
-    // 🔍 [ذكاء صاروخي]: عند البحث برقم لوحة، نبحث في "كل الأرشيف" وليس فقط الفترة المحددة
     let f = searchTerm 
-      ? completedSessions // البحث في كل السجل التاريخي عند وجود كلمة بحث
-      : filteredSessions;  // فلترة عادية بالتاريخ عند عدم وجود بحث
+      ? completedSessions 
+      : filteredSessions;  
 
     if (revenueFilter === 'confirmed') f = f.filter(s => s.revenueConfirmed);
     else if (revenueFilter === 'pending') f = f.filter(s => !s.revenueConfirmed);
@@ -268,7 +298,6 @@ export default function AdminDashboard() {
       f = f.filter(s => (s.carPlate ?? '').toUpperCase().includes(searchTerm));
     }
     
-    // ⚡ ترتيب النتائج من الأحدث للأقدم مع عرض أكثر 50 نتيجة عند البحث لضمان تغطية كل العمليات
     const sorted = [...f].sort((a, b) => {
       const endA = a.endTime ? toMs(a.endTime) : 0;
       const endB = b.endTime ? toMs(b.endTime) : 0;
@@ -282,6 +311,17 @@ export default function AdminDashboard() {
   const pendingMessages = safeMessages.filter(m => m.status === 'pending');
   const allMessages = [...safeMessages].sort((a, b) => b.timestamp - a.timestamp);
   const displayedMessages = messagesTab === 'pending' ? pendingMessages : allMessages;
+
+  // 👥 فلترة وعرض الحريفة بالبحث
+  const displayedUsers = useMemo(() => {
+    const q = usersSearch.trim().toLowerCase();
+    return dbUsers.filter(u => {
+      const name = (u.name || '').toLowerCase();
+      const phone = (u.phone || '').toLowerCase();
+      const plate = (u.car_plate || '').toLowerCase();
+      return name.includes(q) || phone.includes(q) || plate.includes(q);
+    }).slice(0, 30); // عرض أحدث 30 مستخدم مطابق لتخفيف الأداء
+  }, [dbUsers, usersSearch]);
 
   const getTypeEmoji = (t: string) => { switch (t) { case 'complaint': return '🚨'; case 'inquiry': return '❓'; case 'suggestion': return '💡'; case 'technical': return '🔧'; default: return '💬'; } };
   const getTypeLabel = (t: string) => { switch (t) { case 'complaint': return 'شكوى'; case 'inquiry': return 'استفسار'; case 'suggestion': return 'اقتراح'; case 'technical': return 'مشكلة تقنية'; default: return 'رسالة'; } };
@@ -461,6 +501,48 @@ export default function AdminDashboard() {
     }
   };
 
+  // 🛡️ [حارس الهدية]: إعادة تفعيل أو إلغاء العرض المجاني الترحيبي لعميل يدوياً
+  const handleToggleUserFreeSession = async (user: DbUser) => {
+    const loadingToast = toast.loading('جاري تعديل حالة العرض...');
+    const newStatus = !user.has_used_free_session;
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ has_used_free_session: newStatus })
+        .eq('id', user.id);
+
+      if (error) throw error;
+      toast.dismiss(loadingToast);
+      toast.success(newStatus ? 'تم إلغاء العرض يدوياً للحريف 🔒' : 'تم تفعيل الهدية الترحيبية للعميل بنجاح! 🎁');
+      await fetchDbUsers();
+      await fetchAll();
+    } catch (err: any) {
+      toast.dismiss(loadingToast);
+      toast.error(err.message || 'حدث خطأ، حاول مجدداً');
+    }
+  };
+
+  // 🛡️ [إدارة الأرصدة]: تعديل رصيد محفظة العميل يدوياً
+  const handleUpdateUserWallet = async (user: DbUser) => {
+    const loadingToast = toast.loading('جاري تعديل محفظة العميل...');
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ wallet: editUserWalletAmount })
+        .eq('id', user.id);
+
+      if (error) throw error;
+      toast.dismiss(loadingToast);
+      toast.success(`تم تحديث رصيد ${user.name} بنجاح إلى ${editUserWalletAmount} ج.م`);
+      setEditingUserWalletId(null);
+      await fetchDbUsers();
+      await fetchAll();
+    } catch (err: any) {
+      toast.dismiss(loadingToast);
+      toast.error(err.message || 'حدث خطأ أثناء تعديل المحفظة');
+    }
+  };
+
   return (
     <div className="h-full overflow-y-auto pt-16" style={{ background: '#EBF2FF', color: '#0A1628', padding: 16 }}>
 
@@ -478,7 +560,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ══════ Date Filter - تصميم مدمج نصف الحجم ══════ */}
+      {/* ══════ Date Filter ══════ */}
       <div 
         className="mb-4" 
         style={{ 
@@ -489,7 +571,6 @@ export default function AdminDashboard() {
           boxShadow: '0 3px 12px rgba(0,102,255,0.04)' 
         }}
       >
-        {/* السطر الأول: التاريخ من - إلى مدمج أفقياً */}
         <div className="flex items-center gap-1.5 mb-2">
           <input 
             type="date" 
@@ -525,7 +606,6 @@ export default function AdminDashboard() {
           <CalendarDays size={16} style={{ color: '#0066FF' }} className="shrink-0" />
         </div>
 
-        {/* السطر الثاني: أزرار الفلاتر السريعة المدمجة */}
         <div className="flex gap-1 mb-2">
           {[
             { label: '📅 اليوم', onClick: setToday, active: dateFrom === getLocalToday() && dateTo === getLocalToday() },
@@ -554,7 +634,6 @@ export default function AdminDashboard() {
           ))}
         </div>
 
-        {/* زر تنظيف الأرشيف مدمج بالأسفل */}
         <div className="pt-2 border-t border-dashed border-slate-200">
           <button 
             onClick={handleDatabaseCleanup} 
@@ -574,9 +653,8 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ══════ Revenue Stats - كروت مدمجة نصف الحجم ══════ */}
+      {/* ══════ Revenue Stats ══════ */}
       <div className="grid grid-cols-2 gap-2 mb-3">
-        {/* 🔵 الإيرادات المؤكدة */}
         <div 
           className="text-center transition-all" 
           style={{ 
@@ -593,7 +671,6 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* 🟢 إجمالي العمليات */}
         <div 
           className="text-center transition-all" 
           style={{ 
@@ -611,10 +688,9 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ══════ كارت العمولة الإجمالية والتسوية النشطة - نصف الحجم ══════ */}
+      {/* ══════ كارت العمولة الإجمالية والتسوية النشطة ══════ */}
       {commissionStats.totalCommission > 0 && (
         <>
-          {/* 🌟 شريط موجز الإيرادات الثلاثي المطور - تصميم بريميوم مدمج ومغلظ */}
           <div 
             className="flex justify-between items-stretch mb-3 text-center" 
             style={{ 
@@ -625,7 +701,6 @@ export default function AdminDashboard() {
               boxShadow: '0 4px 16px rgba(255,149,0,0.06)'
             }}
           >
-            {/* الإيراد الكلي */}
             <div className="flex-1 flex flex-col justify-center items-center border-l border-slate-150">
               <span className="text-[10px] font-black text-slate-400 mb-1 block">💳 الإيراد الكلي</span>
               <span className="font-mono font-black text-slate-800 text-sm" style={{ fontSize: '15px', fontWeight: 950 }}>
@@ -633,7 +708,6 @@ export default function AdminDashboard() {
               </span>
             </div>
 
-            {/* عمولة التطبيق */}
             <div className="flex-1 flex flex-col justify-center items-center border-l border-slate-150">
               <span className="text-[10px] font-black text-amber-600 mb-1 flex items-center gap-0.5 justify-center">
                 <Percent size={10} className="text-amber-500" /> عمولة التطبيق
@@ -643,7 +717,6 @@ export default function AdminDashboard() {
               </span>
             </div>
 
-            {/* صافي الربح */}
             <div className="flex-1 flex flex-col justify-center items-center">
               <span className="text-[10px] font-black text-emerald-600 mb-1 block">🟢 صافي الربح</span>
               <span className="font-mono font-black text-emerald-600 text-sm" style={{ fontSize: '15px', fontWeight: 950 }}>
@@ -667,7 +740,6 @@ export default function AdminDashboard() {
                   boxShadow: `0 4px 14px ${adminOwesGarages ? 'rgba(0,204,102,0.12)' : 'rgba(255,51,51,0.12)'}`
                 }}
               >
-                {/* السطر الأول: المبلغ والحالة */}
                 <div className="flex justify-between items-center mb-1.5">
                   <div className="font-black font-mono leading-none" style={{ fontSize: 20, fontWeight: 950, color: adminOwesGarages ? '#00AA44' : '#CC0000' }}>
                     {absVal} <span style={{ fontSize: 10, fontWeight: 800 }}>ج.م</span>
@@ -682,7 +754,6 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* السطر الثاني: المحصل بالمحفظة والعمولة مدمجين */}
                 <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-slate-200/60">
                   <div className="text-center bg-white rounded-lg p-1 border border-slate-200 flex items-center justify-center gap-1.5">
                     <span style={{ fontSize: 8.5, color: '#7B8CA6', fontWeight: 900 }}>💳 محفظة:</span>
@@ -872,7 +943,6 @@ export default function AdminDashboard() {
 
         {showArchive && (
           <div className="mt-3 space-y-3" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', borderRadius: 20, padding: 12 }}>
-            
             {settlementRecords.length > 4 && (
               <div className="relative">
                 <input 
@@ -978,7 +1048,139 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* ══════ تقرير الإيرادات المباشر - بريميوم مدمج ══════ */}
+      {/* 👥 [جديد]: إدارة الحريفة والمحافظ والترقيات */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <span className="font-black" style={{ background: '#7C3AED', color: '#fff', fontSize: 11, padding: '3.5px 12px', borderRadius: 20 }}>
+            {dbUsers.length} حريف مسجل
+          </span>
+          <h3 className="font-black flex items-center gap-2" style={{ fontSize: 16, color: '#0A1628' }}>
+            👥 إدارة الحريفة والمحافظ <Users size={18} style={{ color: '#7C3AED' }} />
+          </h3>
+        </div>
+
+        <div className="space-y-3">
+          {/* شريط البحث المدمج داخل قسم المستخدمين */}
+          <div className="relative">
+            <Search size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: '#94a3b8' }} />
+            <input 
+              type="text" 
+              value={usersSearch} 
+              onChange={e => setUsersSearch(e.target.value)} 
+              placeholder="ابحث بالحريف، التليفون، أو رقم السيارة..." 
+              className="w-full font-bold text-right outline-none"
+              style={{
+                background: '#ffffff',
+                border: '1.5px solid #D0DCFF',
+                padding: '12px 38px 12px 14px',
+                borderRadius: 16,
+                fontSize: 12,
+                color: '#0A1628'
+              }}
+            />
+            {usersSearch && (
+              <button onClick={() => setUsersSearch('')} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
+                <XCircle size={16} />
+              </button>
+            )}
+          </div>
+
+          <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-1">
+            {displayedUsers.length === 0 ? (
+              <div className="text-center py-8 bg-white border border-slate-200 rounded-2xl text-slate-400">
+                لا يوجد حريفة مطابقين للبحث
+              </div>
+            ) : (
+              displayedUsers.map(user => {
+                const isEditingWallet = editingUserWalletId === user.id;
+                return (
+                  <div 
+                    key={user.id} 
+                    style={{ 
+                      background: '#fff', 
+                      border: '1.5px solid #E2E8F0', 
+                      borderRadius: 18, 
+                      padding: '12px 14px',
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
+                    }}
+                  >
+                    {/* السطر الأول: الاسم والتليفون ورقم اللوحة */}
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {user.car_plate && (
+                          <span className="font-mono font-black" style={{ fontSize: 10, background: '#F0F4FF', color: '#0066FF', padding: '2px 8px', borderRadius: 8, border: '1px solid #D0DCFF' }}>
+                            🚗 {user.car_plate}
+                          </span>
+                        )}
+                        <span className="font-mono" style={{ fontSize: 10, color: '#94a3b8' }}>{user.phone}</span>
+                      </div>
+                      <div className="font-black text-slate-900" style={{ fontSize: 14 }}>{user.name}</div>
+                    </div>
+
+                    {/* السطر الثاني: المحفظة الحالية + تحكم المحفظة التفاعلي */}
+                    <div className="flex items-center justify-between gap-2 mb-2 pb-2" style={{ borderBottom: '1px dashed #F0F4FF' }}>
+                      <div className="flex items-center gap-1.5">
+                        {!isEditingWallet ? (
+                          <button
+                            onClick={() => { setEditingUserWalletId(user.id); setEditUserWalletAmount(user.wallet || 0); }}
+                            className="font-black active:scale-95 flex items-center gap-0.5"
+                            style={{ background: '#F0F4FF', color: '#0066FF', padding: '3px 8px', borderRadius: 8, fontSize: 10, border: '1px solid #D0DCFF' }}
+                          >
+                            <Edit3 size={10} /> تعديل المحفظة
+                          </button>
+                        ) : (
+                          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+                            <input 
+                              type="number" 
+                              value={editUserWalletAmount} 
+                              onChange={e => setEditUserWalletAmount(parseInt(e.target.value) || 0)}
+                              className="font-black font-mono text-center outline-none"
+                              style={{ width: 60, background: '#fff', border: '1px solid #D0DCFF', borderRadius: 8, padding: '2px 4px', fontSize: 12 }}
+                            />
+                            <button onClick={() => handleUpdateUserWallet(user)} className="font-black active:scale-95 text-white bg-emerald-500 rounded-lg px-2 py-1 text-[10px]">حفظ</button>
+                            <button onClick={() => setEditingUserWalletId(null)} className="font-bold text-slate-400 px-1">✕</button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="font-black font-mono flex items-baseline gap-0.5 text-blue-600" style={{ fontSize: 15 }}>
+                        {user.wallet || 0} <span className="text-[10px] font-bold text-slate-400">ج.م</span>
+                      </div>
+                    </div>
+
+                    {/* السطر الثالث: حالة الهدية الترحيبية والتحكم الأمني بها */}
+                    <div className="flex items-center justify-between">
+                      <button
+                        onClick={() => handleToggleUserFreeSession(user)}
+                        className="font-black active:scale-95 transition-all text-white"
+                        style={{
+                          background: user.has_used_free_session ? 'linear-gradient(135deg,#00CC66,#00AA55)' : 'linear-gradient(135deg,#FF9500,#FF7700)',
+                          padding: '6px 12px',
+                          borderRadius: 10,
+                          fontSize: 10,
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+                        }}
+                      >
+                        {user.has_used_free_session ? '🎁 إعادة تفعيل الهدية' : '🔒 حظر الهدية يدوياً'}
+                      </button>
+
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold" style={{ fontSize: 10, color: user.has_used_free_session ? '#FF3333' : '#00CC66' }}>
+                          {user.has_used_free_session ? '❌ استخدم الهدية' : '🟢 مؤهل للمجانية'}
+                        </span>
+                        <span className="font-black" style={{ fontSize: 11, color: '#475569' }}>الهدية الترحيبية:</span>
+                      </div>
+                    </div>
+
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ══════ تقرير الإيرادات المباشر ══════ */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-3">
           <span className="font-black" style={{ fontSize: 10, background: '#0066FF', color: '#fff', padding: '3.5px 12px', borderRadius: 20 }}>
@@ -1007,7 +1209,6 @@ export default function AdminDashboard() {
                   boxShadow: '0 2px 8px rgba(0,102,255,0.03)'
                 }}
               >
-                {/* السطر الأول: اسم الجراج + عدد الجلسات + المؤكد */}
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-1.5">
                     <span className="font-black font-mono" style={{ fontSize: 16, fontWeight: 950, color: '#00AA44', textShadow: '0 0.5px 1px rgba(0,0,0,0.05)' }}>
@@ -1021,10 +1222,7 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* السطر الثاني: المعلومات المالية المدمجة (عمولة + معلق + نقدي + محفظة) */}
                 <div className="flex items-center justify-between gap-1" style={{ background: '#F8FAFF', borderRadius: 10, padding: '5px 8px', border: '1px solid #E9EEFF' }}>
-                  
-                  {/* عمولة التطبيق */}
                   <div className="flex items-center gap-0.5">
                     <Percent size={9} className="text-amber-500" />
                     <span className="font-black font-mono text-amber-600" style={{ fontSize: 11, fontWeight: 950 }}>{r.commissionRate}%</span>
@@ -1032,7 +1230,6 @@ export default function AdminDashboard() {
 
                   <div style={{ width: 1, height: 14, background: '#D0DCFF' }} />
 
-                  {/* معلق */}
                   <div className="flex items-center gap-0.5">
                     <span className="font-black text-[8px] text-amber-600">⏳</span>
                     <span className="font-black font-mono text-amber-600" style={{ fontSize: 11, fontWeight: 950 }}>
@@ -1042,7 +1239,6 @@ export default function AdminDashboard() {
 
                   <div style={{ width: 1, height: 14, background: '#D0DCFF' }} />
 
-                  {/* نقدي كاش */}
                   <div className="flex items-center gap-0.5">
                     <span className="text-[8px]">💵</span>
                     <span className="font-black font-mono text-emerald-600" style={{ fontSize: 11, fontWeight: 950 }}>
@@ -1052,7 +1248,6 @@ export default function AdminDashboard() {
 
                   <div style={{ width: 1, height: 14, background: '#D0DCFF' }} />
 
-                  {/* محفظة */}
                   <div className="flex items-center gap-0.5">
                     <span className="text-[8px]">👝</span>
                     <span className="font-black font-mono text-blue-600" style={{ fontSize: 11, fontWeight: 950 }}>
@@ -1065,6 +1260,7 @@ export default function AdminDashboard() {
           </div>
         )}
       </div>
+
       {/* ══════ Revenue Sessions ══════ */}
       <div className="mb-8">
         <h3 className="font-black mb-4 flex items-center gap-2 justify-end" style={{ fontSize: 16, color: '#334155' }}>إدارة الجلسات ({filteredSessions.length}) <Receipt size={18} /></h3>
@@ -1123,7 +1319,7 @@ export default function AdminDashboard() {
                         { show: !!session.paymentMethod, bg: session.paymentMethod === 'cash' ? '#00CC66' : session.paymentMethod === 'instapay' ? '#7C3AED' : session.paymentMethod === 'wallet' ? '#0066FF' : '#FF8800', text: session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستا' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش' },
                         { show: true, bg: session.revenueConfirmed ? '#00CC66' : '#FF9500', text: session.revenueConfirmed ? '✅ مؤكد' : '⏳ معلق' },
                         { show: isSettled, bg: '#94a3b8', text: '🔒 تمت التسوية' },
-                        { show: session.isFirstFreeSession === true, bg: '#E65100', text: '🎁 ساعة مجانية' } // 🎁 مضاف: بادج الساعة المجانية
+                        { show: session.isFirstFreeSession === true, bg: '#E65100', text: '🎁 ساعة مجانية' } 
                       ].filter(b => b.show).map((b, i) => (
                         <span key={i} className="font-bold" style={{ fontSize: 9, padding: '4px 10px', borderRadius: 12, background: b.bg, color: '#fff' }}>{b.text}</span>
                       ))}
@@ -1196,7 +1392,6 @@ export default function AdminDashboard() {
         <div className="space-y-3">
           {pendingTopUps.map(w => (
             <div key={w.id} style={{ background: '#fff', border: '2px solid #FFD180', borderRadius: 18, padding: '12px 14px', boxShadow: '0 3px 12px rgba(255,149,0,0.06)' }}>
-              {/* السطر العلوي: طريقة الدفع + التاريخ + المبلغ */}
               <div className="flex justify-between items-center mb-2">
                 <div className="flex items-center gap-2">
                   <span className="font-black" style={{ fontSize: 9, padding: '3px 10px', borderRadius: 10, background: w.method === 'instapay' ? '#7C3AED' : '#FF8800', color: '#fff' }}>
@@ -1211,7 +1406,6 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* بيانات العميل المدمجة في سطر واحد */}
               <div className="flex items-center justify-between gap-2 mb-2" style={{ background: '#F8FAFF', borderRadius: 12, padding: '6px 10px', border: '1px solid #E9EEFF' }}>
                 <div className="flex items-center gap-2 flex-wrap">
                   {w.userName && <span className="font-black" style={{ fontSize: 11, color: '#0A1628' }}>👤 {w.userName}</span>}
@@ -1220,7 +1414,6 @@ export default function AdminDashboard() {
                 {w.userPhone && <span className="font-black font-mono" style={{ fontSize: 11, color: '#0066FF' }}>{w.userPhone}</span>}
               </div>
 
-              {/* أزرار الموافقة والرفض مدمجة */}
               <div className="flex gap-2">
                 <button 
                   onClick={() => handleApproveTopUp(w.id, w.amount)} 
@@ -1352,16 +1545,12 @@ export default function AdminDashboard() {
             const sameOwnerCount = garages.filter((x: any) => ((x.ownerPhone || x.phone) === ownerPhone)).length;
             return (
               <div key={g.id} style={{ background: '#fff', border: '2px solid #D0DCFF', borderRadius: 18, padding: '12px 14px', boxShadow: '0 3px 12px rgba(0,102,255,0.04)' }}>
-                
-                {/* السطر الأول: اسم الجراج + عدد الأماكن الشاغرة + الشارات المدمجة */}
                 <div className="flex justify-between items-center mb-2">
-                  {/* الأماكن الشاغرة (بدلاً من كارت كبير عمودي) */}
                   <div className="flex items-center gap-1.5" style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', borderRadius: 12, padding: '5px 10px', color: '#fff', boxShadow: '0 3px 10px rgba(0,102,255,0.25)' }}>
                     <span className="font-black font-mono" style={{ fontSize: 15, fontWeight: 950, textShadow: '0 1px 2px rgba(0,0,0,0.15)' }}>{g.availableSpots}</span>
                     <span className="font-bold" style={{ fontSize: 9, opacity: 0.95 }}>شاغر</span>
                   </div>
                   
-                  {/* اسم الجراج + شارة الجراجات المتعددة */}
                   <div className="text-right flex items-center gap-1.5 flex-wrap justify-end">
                     {sameOwnerCount > 1 && (
                       <span className="font-black" style={{ 
@@ -1379,7 +1568,6 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* السطر الثاني: الموقع + السياس المدمجين */}
                 <div className="flex items-center justify-between mb-2 gap-2">
                   <div className="flex flex-wrap gap-1 justify-start">
                     {[
@@ -1398,9 +1586,7 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* السطر الثالث: بوكس العمولة + حالة التفعيل (كل شيء أفقياً في سطر واحد) */}
                 <div className="flex items-center justify-between gap-2 mb-2" style={{ background: '#FFF8F0', borderRadius: 12, padding: '6px 10px', border: '1.5px solid #FFD180' }}>
-                  {/* التحكم في العمولة */}
                   <div className="flex items-center gap-1.5">
                     {!isEditingComm ? (
                       <button
@@ -1435,7 +1621,6 @@ export default function AdminDashboard() {
                     )}
                   </div>
 
-                  {/* عرض النسبة الحالية */}
                   <div className="flex items-center gap-1">
                     <Percent size={11} style={{ color: '#FF9500' }} />
                     <span className="font-black font-mono" style={{ fontSize: 14, fontWeight: 950, color: '#FF9500', textShadow: '0 1px 1px rgba(0,0,0,0.05)' }}>
@@ -1445,7 +1630,6 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* السطر الأخير: زر التفعيل + زر الدخول للإدارة (كلاهما في نفس السطر) */}
                 <div className="flex items-center gap-2">
                   <button
                     type="button"

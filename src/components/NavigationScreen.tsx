@@ -37,16 +37,16 @@ const CANCEL_WINDOW_SECONDS = 30;
 /* ─── Icons ─── */
 const userIcon = new L.DivIcon({
   className: 'bg-transparent',
-  html: `<div style="width:40px;height:40px;background:#2563eb;border-radius:50%;border:2px solid white;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">🚗</div>`,
-  iconSize: [40, 40],
-  iconAnchor: [20, 20],
+  html: `<div style="width:38px;height:38px;background:#2563eb;border-radius:50%;border:2.5px solid white;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">🚗</div>`,
+  iconSize: [38, 38],
+  iconAnchor: [19, 19],
 });
 
 const garageIcon = new L.DivIcon({
   className: 'bg-transparent',
-  html: `<div style="width:40px;height:40px;background:#059669;border-radius:50%;border:2px solid white;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">🅿️</div>`,
-  iconSize: [40, 40],
-  iconAnchor: [20, 20],
+  html: `<div style="width:38px;height:38px;background:#059669;border-radius:50%;border:2.5px solid white;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">🅿️</div>`,
+  iconSize: [38, 38],
+  iconAnchor: [19, 19],
 });
 
 /* ─── Helper: توحيد تحويل الوقت ─── */
@@ -66,7 +66,7 @@ const normalizePlate = (plate?: string): string => {
     .trim()
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
     .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
-    .replace(/\s+/g, '') // حذف كل المسافات لضمان التطابق الفوري اللحظي
+    .replace(/[^A-Z0-9\u0600-\u06FF]/gi, '') // مسح كامل للمسافات والرموز لضمان التطابق التام
     .toUpperCase();
 };
 
@@ -81,6 +81,11 @@ function MapController({
   const map = useMap();
 
   useEffect(() => {
+    // إصلاح أبعاد الخريطة فور تحميلها
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 250);
+
     if (userPos[0] !== 0 && garagePos[0] !== 0) {
       try {
         const bounds = L.latLngBounds([userPos, garagePos]);
@@ -115,6 +120,7 @@ export default function NavigationScreen() {
 
   const garage = garages.find((g) => g.id === selectedGarageId);
   const userPlateNav = normalizePlate(currentUser?.carPlate);
+  const userPhoneClean = currentUser?.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
 
   /* ── الكشف عن السيارة القادمة ── */
   const myIncomingCar = useMemo(() => {
@@ -134,11 +140,11 @@ export default function NavigationScreen() {
           sess.status === 'active' &&
           (
             normalizePlate(sess.carPlate) === userPlateNav ||
-            (currentUser?.phone && (sess as any).customerPhone === currentUser.phone)
+            (userPhoneClean && ((sess as any).customerPhone || '').replace(/[^\d+]/g, '') === userPhoneClean)
           ),
       )
       .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
-  }, [sessions, userPlateNav, currentUser?.phone]);
+  }, [sessions, userPlateNav, userPhoneClean]);
 
   /* ── State ── */
   const [userPos, setUserPos] = useState<{ lat: number; lng: number }>({
@@ -174,11 +180,10 @@ export default function NavigationScreen() {
      ██  REALTIME فائق السرعة وبدون أي تأخير
      ───────────────────────────────────────────── */
   useEffect(() => {
-    if (!userPlateNav && !currentUser?.phone) return;
+    if (!userPlateNav && !userPhoneClean) return;
 
     let cancelled = false;
 
-    // دالة التحديث السريع
     const fastFetch = async () => {
       if (cancelled) return;
       try {
@@ -190,26 +195,24 @@ export default function NavigationScreen() {
 
     fastFetch();
 
-    // فحص ما إذا كان التحديث يخص العميل الحالي
     const isMySessionPayload = (row: any): boolean => {
       if (!row) return false;
       const plate = normalizePlate(row.car_plate || row.carPlate);
-      const phone = row.customer_phone || row.customerPhone || '';
+      const phone = (row.customer_phone || row.customerPhone || '').replace(/[^\d+]/g, '');
       return (
         (!!userPlateNav && plate === userPlateNav) ||
-        (!!currentUser?.phone && phone === currentUser.phone)
+        (!!userPhoneClean && phone === userPhoneClean)
       );
     };
 
     const channel = supabase
-      .channel(`instant-nav-${userPlateNav || currentUser?.phone}-${Date.now()}`)
+      .channel(`instant-nav-${userPlateNav || userPhoneClean}-${Date.now()}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'sessions' },
         async (payload) => {
           const newRow = payload.new as any;
           if (isMySessionPayload(newRow) && newRow?.status === 'active') {
-            // تحديث فوري وانتقال لحظي
             await fastFetch();
             if (newRow.garage_id || newRow.garageId) {
               setSelectedGarageId(newRow.garage_id || newRow.garageId);
@@ -230,8 +233,6 @@ export default function NavigationScreen() {
       .subscribe();
 
     realtimeChannelRef.current = channel;
-    
-    // 🚀 تسريع الـ Polling ليكون كل 1.5 ثانية فقط أثناء شاشة التوجيه لضمان سرعة الاستجابة
     pollingIntervalRef.current = setInterval(fastFetch, 1500);
 
     const handleFocus = () => fastFetch();
@@ -252,7 +253,7 @@ export default function NavigationScreen() {
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [userPlateNav, currentUser?.phone, fetchAll, setScreen, setSelectedGarageId]);
+  }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
 
   /* ─── GPS ─── */
   useEffect(() => {
@@ -368,7 +369,7 @@ export default function NavigationScreen() {
     };
   }, [myIncomingCar?.id, selectedGarageId]);
 
-  /* ─── 🚀 الانتقال اللحظي الفوري لشاشة العداد ─── */
+  /* ─── الانتقال اللحظي الفوري لشاشة العداد ─── */
   useEffect(() => {
     if (!myActiveSession) {
       navigatedToSessionRef.current = false;
@@ -487,7 +488,7 @@ export default function NavigationScreen() {
           s.status === 'active' &&
           (
             normalizePlate(s.carPlate) === userPlateNav ||
-            (currentUser?.phone && (s as any).customerPhone === currentUser.phone)
+            (userPhoneClean && ((s as any).customerPhone || '').replace(/[^\d+]/g, '') === userPhoneClean)
           ),
       );
 
@@ -603,7 +604,7 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* 🗺️ الخريطة */}
+        {/* 🗺️ الخريطة المحدثة والمجانية بدون أي API Keys */}
         <div className="w-full h-48 rounded-2xl overflow-hidden border border-slate-800 relative shrink-0 shadow-lg">
           {mapReady ? (
             <MapContainer
@@ -612,9 +613,10 @@ export default function NavigationScreen() {
               style={{ width: '100%', height: '100%' }}
               zoomControl={false}
             >
+              {/* ✅ سيرفر الخرائط المجاني 100% المباشر من OpenStreetMap */}
               <TileLayer
-                url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+                url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               />
               <Marker position={[userPos.lat, userPos.lng]} icon={userIcon}>
                 <Popup>موقعك الحالي 🚗</Popup>
@@ -627,7 +629,7 @@ export default function NavigationScreen() {
                   [userPos.lat, userPos.lng],
                   [garage.lat, garage.lng],
                 ]}
-                color="#3b82f6"
+                color="#2563eb"
                 weight={4}
                 dashArray="8, 8"
               />

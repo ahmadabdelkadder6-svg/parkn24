@@ -39,13 +39,14 @@ interface GarageWithDistance extends Garage {
 }
 
 /* ─── Helpers ─── */
+// 🛡️ تنظيف وتوحيد رقم اللوحة بشكل صارم لمنع التحايل بالمسافات أو الرموز
 const normalizePlateForCompare = (plate?: string): string => {
   if (!plate) return '';
   return plate
     .trim()
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
     .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
-    .replace(/\s+/g, ' ')
+    .replace(/[^A-Z0-9\u0600-\u06FF]/gi, '') // مسح كامل للمسافات والفواصل لدمج الحروف تماماً
     .toUpperCase();
 };
 
@@ -76,19 +77,22 @@ export default function GarageListScreen() {
     addIncomingCar,
     fetchAll,
     acknowledgedSessionIds,
-    walletTopUps, // 🚀 جلب طلبات شحن المحفظة من الستور لتتبعها تلقائياً
+    walletTopUps,
   } = useStore();
 
   const [search, setSearch] = useState('');
   const [showNearbyOnly, setShowNearbyOnly] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
-  const [showHistory, setShowHistory] = useState(false); // 🚀 للتحكم في فتح وغلق سجل العمليات
+  const [showHistory, setShowHistory] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>({
     lat: 30.0444,
     lng: 31.2357,
   });
   const [locationLoading, setLocationLoading] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
+  
+  // 🛡️ حالة حارس الأمان لكشف أي احتيال أو استخدام سابق للهدية من اللوحة/الهاتف تاريخياً
+  const [isAbuseDetected, setIsAbuseDetected] = useState(false);
 
   /* ── Refs ── */
   const autoNavigatedRef = useRef<string | null>(null);
@@ -107,10 +111,40 @@ export default function GarageListScreen() {
     [currentUser?.carPlate]
   );
 
-  /* 🎁 التحقق مما إذا كان العميل يستحق عرض الساعة المجانية الترحيبية */
+  /* 🛡️ فحص أمني خلفي لحظي بمجرد تحميل اللوحة للتأكد من عدم استخدامها مسبقاً تاريخياً */
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    const checkAbuseHistory = async () => {
+      try {
+        const cleanPlate = normalizePlateForCompare(currentUser.carPlate);
+        const cleanPhone = currentUser.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
+        if (!cleanPlate && !cleanPhone) return;
+
+        const { data, error } = await supabase
+          .from('sessions')
+          .select('id')
+          .eq('is_first_free_session', true)
+          .or(`car_plate.eq.${cleanPlate}${cleanPhone ? `,customer_phone.eq.${cleanPhone}` : ''}`)
+          .limit(1);
+
+        if (!error && data && data.length > 0) {
+          setIsAbuseDetected(true); // تم كشف محاولة احتيال باللوحة أو الهاتف تاريخياً
+        } else {
+          setIsAbuseDetected(false); // لوحة نظيفة ومستحقة للعرض
+        }
+      } catch (err) {
+        console.error('Error verifying welcome gift eligibility:', err);
+      }
+    };
+
+    checkAbuseHistory();
+  }, [currentUser, sessions]);
+
+  /* 🎁 التحقق الآمن مما إذا كان العميل يستحق عرض الساعة المجانية */
   const isEligibleForFreeSession = useMemo(() => {
-    return currentUser && !currentUser.hasUsedFreeSession;
-  }, [currentUser]);
+    return currentUser && !currentUser.hasUsedFreeSession && !isAbuseDetected;
+  }, [currentUser, isAbuseDetected]);
 
   /* ✅ البحث عن جلسة نشطة واستبعاد أي جلسة تم إقرار إغلاقها مسبقاً */
   const activeSession = useMemo(() => {
@@ -155,7 +189,7 @@ export default function GarageListScreen() {
     return walletTopUps
       .filter((w) => w.userPhone === currentUser.phone)
       .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 3); // 🚀 عرض أحدث 3 عمليات شحن فقط لتخفيف واجهة العميل وتسريع الأداء تماماً
+      .slice(0, 3); 
   }, [walletTopUps, currentUser?.phone]);
 
   const pendingTopUpsCount = useMemo(() => {
@@ -175,7 +209,7 @@ export default function GarageListScreen() {
         if (!isMountedRef.current) return;
         setUserLocation({ lat: p.coords.latitude, lng: p.coords.longitude });
         setLocationLoading(false);
-        toast.success('تم تحديث موقعك بنجاح 📍');
+        toast.success('تم تحديد موقعك بنجاح 📍');
       },
       () => {
         if (!isMountedRef.current) return;
@@ -228,7 +262,7 @@ export default function GarageListScreen() {
       )
       .subscribe();
 
-    const interval = setInterval(refetch, 1500); // 🚀 تسريع الفحص اللحظي لفتح العداد فوراً
+    const interval = setInterval(refetch, 1500); 
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') refetch();
@@ -266,7 +300,7 @@ export default function GarageListScreen() {
   /* ── Garages with distance ── */
   const garagesWithDistance: GarageWithDistance[] = useMemo(() => {
     return garages
-      .filter((g) => g.isActive !== false) // 🚀 استبعاد الجراجات المعطلة من الظهور للعميل
+      .filter((g) => g.isActive !== false) 
       .map((garage) => {
         const distance = calculateDistance(
           userLocation.lat,
@@ -361,7 +395,6 @@ export default function GarageListScreen() {
     }
   };
 
-  /* ── Render ── */
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: '#EBF2FF', color: '#0A1628' }}>
       {/* ══════ HEADER ══════ */}
@@ -387,7 +420,7 @@ export default function GarageListScreen() {
           />
         </div>
 
-        {/* 💳 بطاقة المحفظة الذكية المدمجة والفاخرة (مع التحكم التفاعلي بالجميل التحفيزية بالداخل) */}
+        {/* 💳 بطاقة المحفظة الذكية */}
         <div
           style={{
             background: 'linear-gradient(135deg, #0055FF 0%, #3B00E3 50%, #8A00FF 100%)',
@@ -400,7 +433,6 @@ export default function GarageListScreen() {
             overflow: 'hidden',
           }}
         >
-          {/* تأثيرات الإضاءة الخلفية الفاخرة للكارت */}
           <div
             style={{
               position: 'absolute',
@@ -426,7 +458,6 @@ export default function GarageListScreen() {
             }}
           />
 
-          {/* الجزء العلوي: الرصيد وأزرار الشحن */}
           <div className="flex justify-between items-center relative z-10 mb-3">
             <div>
               <div
@@ -451,7 +482,6 @@ export default function GarageListScreen() {
               </div>
             </div>
 
-            {/* أزرار المحفظة */}
             <div className="flex gap-2 items-center">
               {myTopUps.length > 0 && (
                 <button
@@ -473,7 +503,6 @@ export default function GarageListScreen() {
                 </button>
               )}
 
-              {/* زر الشحن المدمج والأنيق */}
               <button
                 onClick={() => setShowTopUp(true)}
                 className="flex items-center gap-1 font-black active:scale-95 transition-all"
@@ -492,12 +521,8 @@ export default function GarageListScreen() {
             </div>
           </div>
 
-          {/* 🌟 الجزء السفلي المدمج: الجملة التحفيزية التفاعلية ورقم اللوحة الترخيصية */}
           <div className="pt-2.5 border-t border-white/20 flex items-center justify-between gap-2 relative z-10">
-            
-            {/* التحقق اللحظي التفاعلي من الرصيد وعرض البانر المناسب */}
             {(!currentUser?.wallet || currentUser.wallet < 30) ? (
-              /* رصيد ضعيف < 30 جنيه ⬅️ تظهر الجملة الذهبية التحفيزية للشحن فوراً */
               <button
                 onClick={() => setShowTopUp(true)}
                 className="flex-1 text-right flex items-center gap-1.5 bg-white/10 hover:bg-white/20 active:scale-95 transition-all px-2.5 py-1.5 rounded-xl border border-white/15"
@@ -515,7 +540,6 @@ export default function GarageListScreen() {
                 </div>
               </button>
             ) : (
-              /* رصيد كافٍ ومؤمن >= 30 جنيه ⬅️ تختفي الجملة التحفيزية ويظهر بادج أمان أخضر فاخر */
               <div className="flex-1 text-right flex items-center gap-1.5 bg-white/5 px-2.5 py-1.5 rounded-xl border border-white/10">
                 <div className="w-5 h-5 rounded-full bg-emerald-400 flex items-center justify-center shrink-0 shadow-sm">
                   <CheckCircle2 size={11} className="text-slate-950 animate-pulse" />
@@ -531,7 +555,7 @@ export default function GarageListScreen() {
               </div>
             )}
 
-            {/* 🚗 لوحة السيارة المعدنية */}
+            {/* لوحة السيارة */}
             <div
               style={{
                 background: '#ffffff',
@@ -561,11 +585,10 @@ export default function GarageListScreen() {
                 <span className="font-mono">{currentUser?.carPlate || '---'}</span>
               </div>
             </div>
-
           </div>
         </div>
 
-        {/* 🚀 سجل طلبات شحن المحفظة */}
+        {/* سجل طلبات شحن المحفظة */}
         <AnimatePresence>
           {showHistory && myTopUps.length > 0 && (
             <motion.div
@@ -622,7 +645,6 @@ export default function GarageListScreen() {
                           </div>
                         </div>
 
-                        {/* شارات الحالة */}
                         <div className="shrink-0">
                           {isPending ? (
                             <span className="font-black text-[9px] px-2 py-1 rounded-lg bg-amber-100 text-amber-800 flex items-center gap-0.5 animate-pulse">
@@ -647,43 +669,37 @@ export default function GarageListScreen() {
           )}
         </AnimatePresence>
 
-        {/* 🎁 بانر ترحيبي بسيط ومبهج باللون الأبيض واللمسات الملونة المشرقة */}
+        {/* 🎁 بانر ترحيبي بسيط ومبهج */}
         {isEligibleForFreeSession && !activeSession && !myIncomingCar && (
           <motion.div
             initial={{ opacity: 0, y: -15, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             className="w-full mb-3 overflow-hidden relative"
             style={{
-              background: '#ffffff', // خلفية بيضاء ناصعة ونظيفة
+              background: '#ffffff', 
               borderRadius: 22,
               padding: '16px',
               boxShadow: '0 10px 25px rgba(0, 102, 255, 0.05), 0 2px 6px rgba(0,0,0,0.02)',
-              border: '2px solid #FFF1F2', // إطار باستيل وردي مبهج وناعم للغاية
+              border: '2px solid #FFF1F2', 
             }}
           >
-            {/* إضاءات باستيل خلفية ناعمة جداً لتعطي عمقاً مبهجاً */}
             <div className="absolute -top-10 -right-10 w-24 h-24 bg-rose-100/50 rounded-full filter blur-xl" />
             <div className="absolute -bottom-10 -left-10 w-24 h-24 bg-amber-100/40 rounded-full filter blur-xl" />
 
             <div className="flex items-center gap-3.5 relative z-10">
-              
-              {/* أيقونة هدية مبهجة بخلفية ملونة مشمشية/وردية ناعمة */}
               <motion.div
                 animate={{ rotate: [0, -5, 5, 0], scale: [1, 1.03, 1] }}
                 transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
                 className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
                 style={{
-                  background: 'linear-gradient(135deg, #FFEDD5 0%, #FEE2E2 100%)', // تدرج هادئ ولطيف
+                  background: 'linear-gradient(135deg, #FFEDD5 0%, #FEE2E2 100%)', 
                   border: '1.5px solid #FCA5A5',
                 }}
               >
                 <Gift size={22} className="text-red-500" />
               </motion.div>
 
-              {/* نصوص منسقة ومرتبة بخطوط داكنة واضحة على الخلفية البيضاء */}
               <div className="flex-1 text-right">
-                
-                {/* شارة علوية لطيفة بلون أصفر هادئ */}
                 <div className="flex items-center gap-1.5 justify-end mb-1">
                   <span className="font-bold text-slate-800 text-[11px]">نورت عائلتنا الجديدة! 🎉</span>
                   <span 
@@ -698,7 +714,6 @@ export default function GarageListScreen() {
                   </span>
                 </div>
                 
-                {/* العنوان الأساسي المبهج والواضح باللون الأحمر المشرق */}
                 <h4 
                   className="font-black text-slate-900 leading-tight" 
                   style={{ fontSize: '13.5px' }}
@@ -706,15 +721,14 @@ export default function GarageListScreen() {
                   أول ركنة لك معنا <span className="text-red-500 font-black">مجانية بالكامل! 🕐</span>
                 </h4>
                 
-                {/* النص الداعم اللطيف */}
                 <p className="text-slate-500 font-bold leading-normal mt-1" style={{ fontSize: '10px' }}>
                   احجز الآن من التطبيق واستمتع بـ <span className="text-emerald-600 font-black">أول ساعة مجاناً 100%</span> كهدية ترحيبية مميزة لك في أول زيارة 🎈
                 </p>
-
               </div>
             </div>
           </motion.div>
         )}
+
         {/* بانر الجلسة النشطة */}
         {activeSession && (
           <motion.button
@@ -1001,14 +1015,14 @@ export default function GarageListScreen() {
         {showTopUp && <TopUpWalletModal onClose={() => setShowTopUp(false)} />}
       </AnimatePresence>
 
-      {/* 🎁 [جديد]: نافذة منبثقة ترحيبية بالهدية تعمل آلياً فور تسجيل حساب جديد */}
+      {/* الهدية الترحيبية منبثقة */}
       <WelcomeGiftModal />
     </div>
   );
 }
 
 /* ════════════════════════════════════════════════════════════
-   ██  WELCOME GIFT MODAL COMPONENT (مؤمن ومحمي بالكامل 🔒)
+   ██  WELCOME GIFT MODAL COMPONENT
    ════════════════════════════════════════════════════════════ */
 function WelcomeGiftModal() {
   const [show, setShow] = useState(false);
@@ -1044,7 +1058,6 @@ function WelcomeGiftModal() {
             style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* إضاءات باستيل خلفية ناعمة */}
             <div className="absolute -top-10 -right-10 w-28 h-28 bg-rose-100/60 rounded-full filter blur-xl" />
             <div className="absolute -bottom-10 -left-10 w-28 h-28 bg-amber-100/50 rounded-full filter blur-xl" />
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-40 h-40 bg-blue-50/40 rounded-full filter blur-2xl" />
@@ -1053,7 +1066,6 @@ function WelcomeGiftModal() {
               <X size={20} />
             </button>
 
-            {/* أيقونة الهدية المبهجة */}
             <motion.div
               animate={{ rotate: [0, -8, 8, 0], scale: [1, 1.05, 1] }}
               transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
@@ -1062,7 +1074,6 @@ function WelcomeGiftModal() {
               <Gift size={36} className="text-white" />
             </motion.div>
 
-            {/* العنوان المبهج */}
             <h3 className="text-2xl font-black text-slate-900 mb-2 relative z-10">
               🎉 أهلاً وسهلاً!
             </h3>
@@ -1071,7 +1082,6 @@ function WelcomeGiftModal() {
               نورتنا في عائلة <span className="font-black text-blue-600">Park'n 24</span> وحبينا نفرحك بهدية حلوة 🌟
             </p>
 
-            {/* بوكس الهدية بتصميم مبهج ومشرق */}
             <div className="relative z-10 mb-6" style={{ background: 'linear-gradient(135deg, #FFF7ED 0%, #FEF3C7 50%, #FFEDD5 100%)', borderRadius: 20, padding: '18px 16px', border: '2px solid #FCD34D' }}>
               <div className="flex items-center justify-center gap-2 mb-2">
                 <Sparkles size={18} className="text-amber-500 animate-pulse" />
@@ -1103,8 +1113,9 @@ function WelcomeGiftModal() {
     </AnimatePresence>
   );
 }
+
 /* ════════════════════════════════════════════════════════════
-   ██  GARAGE CARD COMPONENT (تصميم بريميوم مدمج ومريح للقيادة 🚗)
+   ██  GARAGE CARD COMPONENT
    ════════════════════════════════════════════════════════════ */
 interface GarageCardProps {
   garage: GarageWithDistance;
@@ -1168,14 +1179,11 @@ function GarageCard({
         background: '#ffffff',
         border: `1.5px solid ${borderColor}`,
         borderRadius: 18,
-        padding: '12px 14px', // ⚡ تقليل الحواف لتصغير حجم الكارت الكلي واكتساب مساحة
+        padding: '12px 14px', 
         boxShadow: `0 4px 14px ${glowColor}, 0 2px 4px rgba(0,0,0,0.02)`,
       }}
     >
-      {/* السطر العلوي: التقييم + الاسم والشارات */}
       <div className="flex justify-between items-center mb-1.5">
-        
-        {/* شارات الحالة والتقييم بحجم أصغر وأكثر تناسقاً */}
         <div className="flex items-center gap-1 flex-wrap">
           <div
             className="flex items-center gap-0.5 font-black text-white"
@@ -1206,21 +1214,21 @@ function GarageCard({
             </span>
           )}
 
-{!isBusy && isClosest && !isFull && (
-  <span
-    style={{ 
-      background: '#0066FF', 
-      color: '#ffffff',     // ⚡ خط أبيض صريح 100%
-      fontWeight: 900,      // ⚡ سمك عريض جداً
-      fontSize: 9.5, 
-      padding: '2.5px 7px', 
-      borderRadius: 8,
-      boxShadow: '0 2px 6px rgba(0, 102, 255, 0.35)' // لمعة زرقاء خفيفة تبرز اللون الأبيض
-    }}
-  >
-    📍 الأقرب
-  </span>
-)}
+          {!isBusy && isClosest && !isFull && (
+            <span
+              style={{ 
+                background: '#0066FF', 
+                color: '#ffffff',     
+                fontWeight: 900,      
+                fontSize: 9.5, 
+                padding: '2.5px 7px', 
+                borderRadius: 8,
+                boxShadow: '0 2px 6px rgba(0, 102, 255, 0.35)' 
+              }}
+            >
+              📍 الأقرب
+            </span>
+          )}
           {!isBusy && !isClosest && isNearby && !isFull && (
             <span
               style={{ 
@@ -1238,49 +1246,42 @@ function GarageCard({
           )}
         </div>
 
-        {/* اسم الجراج بخط واضح وعريض للرؤية السريعة */}
         <h3 className="text-sm font-black text-slate-900" style={{ lineHeight: 1.2 }}>
           {garage.name}
         </h3>
       </div>
 
-      {/* الموقع الجغرافي بحجم مدمج */}
       <div className="flex items-center gap-1 justify-end mb-2 text-slate-400" style={{ fontSize: 10 }}>
         <span className="truncate max-w-[180px]">{garage.location}</span>
         <MapPin size={10} className="shrink-0" />
       </div>
 
-      {/* السطر الحركي (وقت الوصول + الأماكن الفاضية والسعر) */}
       <div className="flex items-center justify-between gap-2 mb-2.5">
-        
-{/* 🕐 بوكس وقت الوصول باللون الأبيض الناصع الفاخر */}
-<div
-  className="flex items-center gap-1 shadow-sm shrink-0"
-  style={{
-    background: isNearby
-      ? 'linear-gradient(135deg, #00CC66, #00AA55)'
-      : 'linear-gradient(135deg, #7C3AED, #5B21B6)',
-    borderRadius: 10,
-    padding: '5px 10px',
-    fontSize: 11,
-    color: '#ffffff', // ⚡ فرض اللون الأبيض على البوكس ككل
-  }}
->
-  <Navigation size={12} className="rotate-45" style={{ color: '#ffffff' }} />
-  <span 
-    className="font-mono tracking-wider" 
-    style={{ 
-      color: '#ffffff', // ⚡ خط الدقائق باللون الأبيض الناصع
-      fontWeight: 900,  // ⚡ خط عريض جداً (مغلظ) لسهولة القراءة السريعة
-    }}
-  >
-    {formatDuration(garage.minutes)}
-  </span>
-</div>
+        <div
+          className="flex items-center gap-1 shadow-sm shrink-0"
+          style={{
+            background: isNearby
+              ? 'linear-gradient(135deg, #00CC66, #00AA55)'
+              : 'linear-gradient(135deg, #7C3AED, #5B21B6)',
+            borderRadius: 10,
+            padding: '5px 10px',
+            fontSize: 11,
+            color: '#ffffff', 
+          }}
+        >
+          <Navigation size={12} className="rotate-45" style={{ color: '#ffffff' }} />
+          <span 
+            className="font-mono tracking-wider" 
+            style={{ 
+              color: '#ffffff', 
+              fontWeight: 900,  
+            }}
+          >
+            {formatDuration(garage.minutes)}
+          </span>
+        </div>
 
-        {/* الأماكن المتاحة والسعر */}
         <div className="flex items-center gap-2.5">
-          {/* الأماكن الشاغرة */}
           <div className="flex items-center gap-1 shrink-0">
             <Car size={14} style={{ color: '#0066FF' }} />
             <span className="font-black font-mono text-sm text-blue-600">
@@ -1291,7 +1292,6 @@ function GarageCard({
           
           <div style={{ width: 1.5, height: 12, background: '#E2E8F0' }} />
           
-          {/* السعر */}
           <div className="flex items-center gap-1 shrink-0">
             <span className="font-black font-mono text-sm text-emerald-600">
               {garage.basePrice}
@@ -1299,10 +1299,8 @@ function GarageCard({
             <span className="text-[9px] font-bold text-slate-500">ج.م/س</span>
           </div>
         </div>
-
       </div>
 
-      {/* زر الحجز: تم جعله مدمجاً وأنيقاً لتوفير المساحة الرأسية */}
       <button
         disabled={isFull || disabled}
         onClick={(e) => {
@@ -1314,7 +1312,7 @@ function GarageCard({
           background: btnBg,
           color: isFull ? '#94a3b8' : '#ffffff',
           borderRadius: 12,
-          padding: '9px 0', // ⚡ تقليص حجم الزر الرأسي ليكون مدمجاً
+          padding: '9px 0', 
           fontSize: 12,
           border: 'none',
           cursor: 'pointer'

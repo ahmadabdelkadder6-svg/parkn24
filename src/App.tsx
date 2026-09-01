@@ -22,7 +22,6 @@ import InstallPage from './components/InstallPage';
 import InstallQRCodePage from './components/InstallQRCodePage';
 
 // ⚡ [تسريع صاروخي]: تحميل كسول للوحات الإدارة الثقيلة
-// لن يتم تحميل كودها إلا عند فتحها فعلياً (يوفر ~400KB من حجم التطبيق للعميل العادي)
 const GarageDashboard = lazy(() => import('./components/GarageDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 
@@ -38,6 +37,17 @@ const VALID_SCREENS = [
 ] as const;
 
 const ADMIN_SECRET_CODE = 'admin2025x';
+
+// 🛡️ توحيد تنظيف رقم اللوحة بشكل صارم ومتطابق مع باقي شاشات التطبيق
+const normalizePlate = (plate?: string): string => {
+  if (!plate) return '';
+  return plate
+    .trim()
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
+    .replace(/[^A-Z0-9\u0600-\u06FF]/gi, '')
+    .toUpperCase();
+};
 
 export default function App() {
   const {
@@ -160,13 +170,10 @@ export default function App() {
         }
       }
 
-      // ⚡ [صاروخي]: فتح الشاشة فوراً بدون انتظار fetchAll
-      // البيانات المحفوظة محلياً (currentUser, garages) تكفي لعرض الواجهة الأولى
       setDataLoaded(true);
       initialLoadDone.current = true;
 
-      // 🔄 جلب البيانات الجديدة في الخلفية بهدوء (Background Fetch)
-      fetchAll().catch(e => console.error('Background fetch error:', e));
+      fetchAll().catch((e) => console.error('Background fetch error:', e));
       setupRealtime();
     };
 
@@ -179,20 +186,30 @@ export default function App() {
     }
   }, [view]);
 
+  // فحص الجلسة عند التحميل المبدئي
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser) return;
     if (view !== 'user') return;
 
-    const userPlate = (currentUser.carPlate ?? '').trim().toUpperCase();
+    const userPlate = normalizePlate(currentUser.carPlate);
+    const userPhone = currentUser.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
 
-    const myActiveSession = sessions.find(
-      (s) => s.carPlate.trim().toUpperCase() === userPlate && s.status === 'active'
-    );
+    const myActiveSession = sessions.find((s) => {
+      if (s.status !== 'active') return false;
+      const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+      const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+      const samePhone = !!userPhone && sPhone === userPhone;
+      return samePlate || samePhone;
+    });
 
-    const myIncoming = incomingCars.find(
-      (c) => c.carPlate.trim().toUpperCase() === userPlate && c.status === 'coming'
-    );
+    const myIncoming = incomingCars.find((c) => {
+      if (c.status !== 'coming') return false;
+      const samePlate = !!userPlate && normalizePlate(c.carPlate) === userPlate;
+      const cPhone = c.customerPhone ? c.customerPhone.replace(/[^\d+]/g, '') : '';
+      const samePhone = !!userPhone && cPhone === userPhone;
+      return samePlate || samePhone;
+    });
 
     if (myActiveSession) {
       prevActiveSessionRef.current = myActiveSession.id;
@@ -224,11 +241,13 @@ export default function App() {
       safeScreen === 'waiting'
     ) {
       const lastCompleted = sessions
-        .filter(
-          (s) =>
-            s.carPlate.trim().toUpperCase() === userPlate &&
-            s.status === 'completed'
-        )
+        .filter((s) => {
+          if (s.status !== 'completed') return false;
+          const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+          const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+          const samePhone = !!userPhone && sPhone === userPhone;
+          return samePlate || samePhone;
+        })
         .sort((a, b) => {
           const endA = typeof a.endTime === 'number' ? a.endTime : 0;
           const endB = typeof b.endTime === 'number' ? b.endTime : 0;
@@ -253,23 +272,29 @@ export default function App() {
     }
   }, [dataLoaded]);
 
+  // مراقبة الجلسة والتنقل اللحظي بين الشاشات
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser || view !== 'user') return;
 
-    const userPlate = (currentUser.carPlate ?? '').trim().toUpperCase();
+    const userPlate = normalizePlate(currentUser.carPlate);
+    const userPhone = currentUser.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
 
-    const myActiveSession = sessions.find(
-      (s) =>
-        s.carPlate.trim().toUpperCase() === userPlate &&
-        s.status === 'active'
-    );
+    const myActiveSession = sessions.find((s) => {
+      if (s.status !== 'active') return false;
+      const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+      const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+      const samePhone = !!userPhone && sPhone === userPhone;
+      return samePlate || samePhone;
+    });
 
-    const myIncoming = incomingCars.find(
-      (c) =>
-        c.carPlate.trim().toUpperCase() === userPlate &&
-        c.status === 'coming'
-    );
+    const myIncoming = incomingCars.find((c) => {
+      if (c.status !== 'coming') return false;
+      const samePlate = !!userPlate && normalizePlate(c.carPlate) === userPlate;
+      const cPhone = c.customerPhone ? c.customerPhone.replace(/[^\d+]/g, '') : '';
+      const samePhone = !!userPhone && cPhone === userPhone;
+      return samePlate || samePhone;
+    });
 
     if (myActiveSession) {
       noSessionCountRef.current = 0;
@@ -309,15 +334,16 @@ export default function App() {
       sessionTransitionTimer.current = setTimeout(() => {
         sessionTransitionTimer.current = null;
         const freshState = useStore.getState();
-        const freshPlate = (freshState.currentUser?.carPlate ?? '')
-          .trim()
-          .toUpperCase();
+        const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
+        const freshPhone = freshState.currentUser?.phone ? freshState.currentUser.phone.replace(/[^\d+]/g, '') : '';
 
-        const stillActive = freshState.sessions.find(
-          (s) =>
-            s.carPlate.trim().toUpperCase() === freshPlate &&
-            s.status === 'active'
-        );
+        const stillActive = freshState.sessions.find((s) => {
+          if (s.status !== 'active') return false;
+          const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
+          const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+          const samePhone = !!freshPhone && sPhone === freshPhone;
+          return samePlate || samePhone;
+        });
 
         if (stillActive) {
           noSessionCountRef.current = 0;
@@ -335,11 +361,13 @@ export default function App() {
           currentScreen === 'waiting'
         ) {
           const lastCompleted = freshState.sessions
-            .filter(
-              (s) =>
-                s.carPlate.trim().toUpperCase() === freshPlate &&
-                s.status === 'completed'
-            )
+            .filter((s) => {
+              if (s.status !== 'completed') return false;
+              const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
+              const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+              const samePhone = !!freshPhone && sPhone === freshPhone;
+              return samePlate || samePhone;
+            })
             .sort((a, b) => {
               const endA = typeof a.endTime === 'number' ? a.endTime : 0;
               const endB = typeof b.endTime === 'number' ? b.endTime : 0;
@@ -369,20 +397,24 @@ export default function App() {
     if (!myActiveSession && safeScreen === 'navigation' && !myIncoming) {
       const timeout = setTimeout(() => {
         const freshState = useStore.getState();
-        const freshPlate = (freshState.currentUser?.carPlate ?? '')
-          .trim()
-          .toUpperCase();
+        const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
+        const freshPhone = freshState.currentUser?.phone ? freshState.currentUser.phone.replace(/[^\d+]/g, '') : '';
 
-        const freshIncoming = freshState.incomingCars.find(
-          (c) =>
-            c.carPlate.trim().toUpperCase() === freshPlate &&
-            c.status === 'coming'
-        );
-        const freshSession = freshState.sessions.find(
-          (s) =>
-            s.carPlate.trim().toUpperCase() === freshPlate &&
-            s.status === 'active'
-        );
+        const freshIncoming = freshState.incomingCars.find((c) => {
+          if (c.status !== 'coming') return false;
+          const samePlate = !!freshPlate && normalizePlate(c.carPlate) === freshPlate;
+          const cPhone = c.customerPhone ? c.customerPhone.replace(/[^\d+]/g, '') : '';
+          const samePhone = !!freshPhone && cPhone === freshPhone;
+          return samePlate || samePhone;
+        });
+
+        const freshSession = freshState.sessions.find((s) => {
+          if (s.status !== 'active') return false;
+          const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
+          const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+          const samePhone = !!freshPhone && sPhone === freshPhone;
+          return samePlate || samePhone;
+        });
 
         if (!freshIncoming && !freshSession) {
           setSelectedGarageId(null);
@@ -462,7 +494,6 @@ export default function App() {
         )}
 
         <main className="flex-1 overflow-hidden bg-white">
-          {/* ⚡ [صاروخي]: لوحة الأدمن تُحمّل فقط عند الحاجة */}
           {view === 'admin' && adminAccess ? (
             <Suspense fallback={
               <div className="h-full bg-white flex flex-col items-center justify-center">
@@ -474,7 +505,6 @@ export default function App() {
             </Suspense>
           ) : view === 'garage' ? (
             currentGarageId ? (
-              /* ⚡ [صاروخي]: لوحة الجراج تُحمّل فقط عند الحاجة */
               <Suspense fallback={
                 <div className="h-full bg-white flex flex-col items-center justify-center">
                   <div className="text-3xl mb-3 animate-bounce">🅿️</div>

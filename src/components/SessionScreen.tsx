@@ -30,13 +30,14 @@ const safeParseTime = (value: any): number => {
   return 0;
 };
 
+// 🛡️ تنظيف وتوحيد رقم اللوحة بشكل صارم لمنع أي تلاعب
 const normalizePlate = (plate?: string): string => {
   if (!plate) return '';
   return plate
     .trim()
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
     .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
-    .replace(/\s+/g, ' ')
+    .replace(/[^A-Z0-9\u0600-\u06FF]/gi, '') // مسح كامل للمسافات والرموز لضمان التطابق التام
     .toUpperCase();
 };
 
@@ -53,7 +54,7 @@ export default function SessionScreen() {
   } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
-  const userPhone = currentUser?.phone || '';
+  const userPhone = currentUser?.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
 
   const redirectedToSummaryRef = useRef(false);
   const redirectedToSessionRef = useRef(false);
@@ -67,9 +68,10 @@ export default function SessionScreen() {
     if (!row) return false;
     const rowPlate = normalizePlate(row.car_plate || row.carPlate);
     const rowPhone = row.customer_phone || row.customerPhone || '';
+    const cleanRowPhone = typeof rowPhone === 'string' ? rowPhone.replace(/[^\d+]/g, '') : '';
     return (
       (!!userPlate && rowPlate === userPlate) ||
-      (!!userPhone && rowPhone === userPhone)
+      (!!userPhone && cleanRowPhone === userPhone)
     );
   };
 
@@ -80,7 +82,8 @@ export default function SessionScreen() {
         if (!s || s.status !== 'active') return false;
         if (acknowledgedSessionIds?.has(s.id)) return false;
         const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-        const samePhoneMatch = !!userPhone && (s as any).customerPhone === userPhone;
+        const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+        const samePhoneMatch = !!userPhone && sPhone === userPhone;
         return samePlateMatch || samePhoneMatch;
       })
       .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
@@ -91,7 +94,8 @@ export default function SessionScreen() {
       .filter((s) => {
         if (!s || s.status !== 'completed') return false;
         const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-        const samePhoneMatch = !!userPhone && (s as any).customerPhone === userPhone;
+        const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+        const samePhoneMatch = !!userPhone && sPhone === userPhone;
         return samePlateMatch || samePhoneMatch;
       })
       .sort((a, b) => safeParseTime(b.endTime) - safeParseTime(a.endTime))[0];

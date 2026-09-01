@@ -5,7 +5,7 @@ import { Phone, User, Shield, HardHat, ArrowLeft, Building2, MapPin, Lock } from
 import { useStore } from '../store';
 import toast from 'react-hot-toast';
 
-// دالة عبقرية لتنظيف المدخلات وتحويل الأرقام العربية والمسافات الزائدة تلقائياً
+// دالة لتنظيف المدخلات وتحويل الأرقام والمسافات الزائدة تلقائياً
 const normalizeData = (val: string): string => {
   if (!val) return '';
   return val
@@ -383,30 +383,6 @@ export default function GarageLoginScreen() {
               >
                 {role === 'owner' ? '🔑 دخول كمالك' : '🅿️ دخول كسايس'}
               </button>
-
-              {/* زر الرجوع */}
-              <button
-                onClick={() => {
-                  localStorage.removeItem('garagePrefillUsername');
-                  localStorage.removeItem('garagePrefillPhone');
-                  localStorage.removeItem('garageRole');
-                  localStorage.removeItem('valetNumber');
-                  localStorage.removeItem('valetName');
-                  localStorage.removeItem('currentGarageId');
-                  setView('user');
-                }}
-                className="w-full font-bold active:scale-95 transition-all"
-                style={{
-                  background: 'rgba(255,255,255,0.1)',
-                  color: 'rgba(255,255,255,0.7)',
-                  padding: 12,
-                  borderRadius: 18,
-                  fontSize: 13,
-                  border: '1px solid rgba(255,255,255,0.15)',
-                }}
-              >
-                ← الرجوع للوضع العادي
-              </button>
             </div>
           </motion.div>
         )}
@@ -434,7 +410,6 @@ export default function GarageLoginScreen() {
               >
                 <ArrowLeft size={20} />
               </button>
-              {/* عنوان الشاشة بالخط الأبيض الصريح العريض ليكون بارزاً بوضوح تام */}
               <h3 className="font-black text-white flex items-center gap-1.5" style={{ color: '#ffffff', fontWeight: 900, fontSize: '18px' }}>
                 <span>اختر جراجاً لإدارته</span>
                 <Building2 size={20} className="text-white" />
@@ -466,7 +441,6 @@ export default function GarageLoginScreen() {
                     <span className="font-bold text-[9px] opacity-75">شاغر</span>
                   </div>
                   <div className="text-right flex-1 mr-3">
-                    {/* اسم الجراج بالخط الأبيض الصريح العريض ليكون بارزاً بوضوح تام */}
                     <div className="font-black text-white" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
                       🅿️ {g.name}
                     </div>

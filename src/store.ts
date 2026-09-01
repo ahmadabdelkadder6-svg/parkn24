@@ -8,7 +8,7 @@ export interface Garage {
   name: string;
   username: string;
   phone: string;
-  ownerPhone?: string;         
+  ownerPhone?: string;
   location: string;
   lat: number;
   lng: number;
@@ -49,10 +49,10 @@ export interface ParkingSession {
   startedBy?: 'garage' | 'customer';
   commissionAmount?: number;
   netRevenue?: number;
-  settled?: boolean;       
+  settled?: boolean;
   settled_at?: string;
-  freeMinutesApplied?: number;   
-  isFirstFreeSession?: boolean;  
+  freeMinutesApplied?: number;
+  isFirstFreeSession?: boolean;
 }
 
 export interface Offer {
@@ -77,7 +77,7 @@ export interface WalletTopUp {
   method: 'instapay' | 'cashwallet';
   status: 'pending' | 'approved' | 'rejected';
   timestamp: number;
-  bonusAmount?: number; 
+  bonusAmount?: number;
 }
 
 export interface IncomingCar {
@@ -131,8 +131,8 @@ export const isEligibleForFreeSession = (
   source: 'app' | 'manual',
   hasUsedFreeSession: boolean | undefined
 ): boolean => {
-  if (source !== 'app') return false; 
-  if (hasUsedFreeSession === true) return false; 
+  if (source !== 'app') return false;
+  if (hasUsedFreeSession === true) return false;
   return true;
 };
 
@@ -142,7 +142,6 @@ export const calculateSessionPriceWithFreeGift = (
   isFirstFreeSession: boolean,
   originalPriceCalculator: (durMs: number, rate: number) => number
 ): { finalPrice: number; freeMinutes: number; billableMs: number } => {
-  
   if (!isFirstFreeSession) {
     return {
       finalPrice: originalPriceCalculator(durationMs, hourlyRate),
@@ -165,13 +164,13 @@ export const calculateSessionPriceWithFreeGift = (
 
 // ===================== 🛡️ طبقات الحماية الأمنية =====================
 
-// 🛡️ [1] حماية من الضغط العالي (Rate Limiter) - يمنع إغراق السيرفر بطلبات وهمية
+// 🛡️ [1] حماية من الضغط العالي (Rate Limiter)
 const rateLimiter = {
   requests: 0,
   lastReset: Date.now(),
-  maxRequests: 50, // أقصى 50 طلب في 10 ثوانٍ
+  maxRequests: 50,
   windowMs: 10000,
-  
+
   canProceed(): boolean {
     const now = Date.now();
     if (now - this.lastReset > this.windowMs) {
@@ -187,12 +186,12 @@ const rateLimiter = {
 const sanitizeInput = (input: string): string => {
   if (!input) return '';
   return input
-    .replace(/[<>'"]/g, '')          // إزالة رموز HTML الخطيرة
-    .replace(/javascript:/gi, '')     // إزالة أكواد JavaScript
-    .replace(/on\w+=/gi, '')          // إزالة event handlers
-    .replace(/&/g, '&amp;')          // ترميز الأمبرساند
+    .replace(/[<>'"]/g, '')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+=/gi, '')
+    .replace(/&/g, '&amp;')
     .trim()
-    .substring(0, 200);              // حد أقصى 200 حرف لحماية الذاكرة
+    .substring(0, 200);
 };
 
 // 🛡️ [3] حماية من تخمين الباسوردات (Brute Force Protection)
@@ -201,11 +200,9 @@ const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
 export const checkLoginAttempt = (identifier: string): boolean => {
   const now = Date.now();
   const record = loginAttempts.get(identifier);
-  
-  if (record && now - record.lastAttempt < 300000) { // نافذة 5 دقائق
-    if (record.count >= 5) {
-      return false; // تم حظر المحاولة
-    }
+
+  if (record && now - record.lastAttempt < 300000) {
+    if (record.count >= 5) return false;
     record.count++;
     record.lastAttempt = now;
   } else {
@@ -242,8 +239,17 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-// 🛡️ [محسّن أمنياً]: تنظيف رقم اللوحة من أي أحرف خبيثة
-const normalizePlate = (plate?: string) => sanitizeInput(plate ?? '').trim().toUpperCase();
+// 🛡️ [محسّن أمنياً لأقصى درجة]: تنظيف وتوحيد اللوحة
+const normalizePlate = (plate?: string) => {
+  if (!plate) return '';
+  const cleaned = sanitizeInput(plate)
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
+    .replace(/[^A-Z0-9\u0600-\u06FF]/gi, '')
+    .trim()
+    .toUpperCase();
+  return cleaned;
+};
 
 const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
@@ -284,7 +290,7 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
 
 const mapGarage = (r: any): Garage => ({
   id: r.id, name: r.name, username: r.username, phone: r.phone,
-  ownerPhone: r.owner_phone || r.phone,  
+  ownerPhone: r.owner_phone || r.phone,
   location: r.location, lat: r.lat, lng: r.lng, capacity: r.capacity,
   availableSpots: r.available_spots, basePrice: Number(r.base_price),
   rating: Number(r.rating),
@@ -349,7 +355,7 @@ const mapSession = (r: any): ParkingSession => {
     startedBy: r.started_by || undefined,
     commissionAmount: r.commission_amount != null ? Number(r.commission_amount) : 0,
     netRevenue: r.net_revenue != null ? Number(r.net_revenue) : 0,
-    settled: r.settled ?? false,                     
+    settled: r.settled ?? false,
     settled_at: r.settled_at || undefined,
     freeMinutesApplied: r.free_minutes_applied != null ? Number(r.free_minutes_applied) : 0,
     isFirstFreeSession: r.is_first_free_session ?? false,
@@ -367,7 +373,7 @@ const mapTopUp = (r: any): WalletTopUp => ({
   id: r.id, userId: r.user_id, userName: r.user_name, userPhone: r.user_phone,
   amount: Number(r.amount), transactionId: r.transaction_id, carPlate: r.car_plate,
   method: r.method, status: r.status, timestamp: new Date(r.created_at).getTime(),
-  bonusAmount: r.bonus_amount != null ? Number(r.bonus_amount) : 0, 
+  bonusAmount: r.bonus_amount != null ? Number(r.bonus_amount) : 0,
 });
 
 const mapIncoming = (r: any): IncomingCar => ({
@@ -413,24 +419,24 @@ interface AppState {
   setView: (v: ViewType) => void;
   screen: ScreenType;
   setScreen: (s: ScreenType) => void;
-  currentUser: { 
-    name: string; 
-    phone: string; 
-    carPlate: string; 
+  currentUser: {
+    name: string;
+    phone: string;
+    carPlate: string;
     wallet: number;
-    hasUsedFreeSession?: boolean; 
-    bonusBalance?: number;         
+    hasUsedFreeSession?: boolean;
+    bonusBalance?: number;
   } | null;
-  setCurrentUser: (u: { 
-    name: string; 
-    phone: string; 
-    carPlate: string; 
+  setCurrentUser: (u: {
+    name: string;
+    phone: string;
+    carPlate: string;
     wallet: number;
     hasUsedFreeSession?: boolean;
     bonusBalance?: number;
   } | null) => void;
   deductWallet: (amount: number) => void;
-  markFreeSessionUsed: () => Promise<void>; 
+  markFreeSessionUsed: () => Promise<void>;
   garages: Garage[];
   currentGarageId: string | null;
   setCurrentGarageId: (id: string | null) => void;
@@ -443,12 +449,12 @@ interface AppState {
   adjustGarageSpots: (id: string, delta: number) => Promise<void>;
   selectedGarageId: string | null;
   setSelectedGarageId: (id: string | null) => void;
-  getMyOwnedGarages: (phone: string) => Garage[];  
+  getMyOwnedGarages: (phone: string) => Garage[];
   sessions: ParkingSession[];
-  acknowledgedSessionIds: Set<string>; 
-  acknowledgeSession: (id: string) => void; 
+  acknowledgedSessionIds: Set<string>;
+  acknowledgeSession: (id: string) => void;
   addSession: (s: Omit<ParkingSession, 'id'>) => Promise<string>;
-  endSession: (id: string, totalPrice: number, paymentMethod: string, freeMinutesApplied?: number) => Promise<void>; 
+  endSession: (id: string, totalPrice: number, paymentMethod: string, freeMinutesApplied?: number) => Promise<void>;
   cancelSession: (id: string) => void;
   removeSession: (id: string) => Promise<void>;
   confirmRevenue: (sessionId: string) => Promise<void>;
@@ -485,12 +491,11 @@ export const useStore = create<AppState>((set, get) => ({
 
   setCurrentUser: async (u) => {
     if (!u) { set({ currentUser: null }); safeRemoveStorage('currentUser'); return; }
-    // 🛡️ تنظيف بيانات المستخدم عند التسجيل
     const cleanUser = {
       ...u,
       name: sanitizeInput(u.name),
-      carPlate: sanitizeInput(u.carPlate).toUpperCase(),
-      phone: u.phone.replace(/[^\d+]/g, '').substring(0, 15), // أرقام فقط بحد أقصى 15 خانة
+      carPlate: normalizePlate(u.carPlate),
+      phone: u.phone.replace(/[^\d+]/g, '').substring(0, 15),
     };
     set({ currentUser: cleanUser }); safeSetStorage('currentUser', cleanUser);
     if (!isSupabaseConfigured()) return;
@@ -502,10 +507,10 @@ export const useStore = create<AppState>((set, get) => ({
         .single();
 
       if (existingUser) {
-        const updated = { 
-          name: existingUser.name || cleanUser.name, 
-          phone: existingUser.phone || cleanUser.phone, 
-          carPlate: existingUser.car_plate || cleanUser.carPlate, 
+        const updated = {
+          name: existingUser.name || cleanUser.name,
+          phone: existingUser.phone || cleanUser.phone,
+          carPlate: existingUser.car_plate || cleanUser.carPlate,
           wallet: Number(existingUser.wallet),
           hasUsedFreeSession: existingUser.has_used_free_session ?? false,
           bonusBalance: Number(existingUser.bonus_balance ?? 0),
@@ -515,7 +520,7 @@ export const useStore = create<AppState>((set, get) => ({
       } else {
         const { data: newUser } = await supabase
           .from('users')
-          .insert({ 
+          .insert({
             name: cleanUser.name, phone: cleanUser.phone, car_plate: cleanUser.carPlate, wallet: cleanUser.wallet ?? 0,
             has_used_free_session: false,
             bonus_balance: 0,
@@ -524,14 +529,14 @@ export const useStore = create<AppState>((set, get) => ({
           .single();
 
         if (newUser) {
-          const updated = { 
-            name: newUser.name, phone: newUser.phone, carPlate: newUser.car_plate, 
+          const updated = {
+            name: newUser.name, phone: newUser.phone, carPlate: newUser.car_plate,
             wallet: Number(newUser.wallet),
             hasUsedFreeSession: false,
             bonusBalance: 0,
           };
           set({ currentUser: updated }); safeSetStorage('currentUser', updated);
-          
+
           try {
             localStorage.setItem('showWelcomeGift', 'true');
           } catch (e) { console.error(e); }
@@ -540,29 +545,45 @@ export const useStore = create<AppState>((set, get) => ({
     } catch (err) { console.error('Error setting user:', err); }
   },
 
-  deductWallet: (amount) => {
-    const user = get().currentUser; if (!user) return;
-    const nw = Math.max(0, user.wallet - amount);
-    const updated = { ...user, wallet: nw };
-    set({ currentUser: updated }); safeSetStorage('currentUser', updated);
-    walletDeductedAt = Date.now();
+  // 🛡️ [محمي بـ RPC Atomic]: الخصم الآمن من المحفظة عبر دالة السيرفر المشفرة
+  deductWallet: async (amount) => {
+    const user = get().currentUser;
+    if (!user || amount <= 0) return;
+
     if (isSupabaseConfigured()) {
-      supabase.from('users').update({ wallet: nw }).eq('phone', user.phone).then(({ error }) => { if (error) console.error('❌', error); });
+      try {
+        const { data, error } = await supabase.rpc('deduct_wallet_atomic', {
+          p_phone: user.phone,
+          p_amount: Math.floor(Number(amount)),
+        });
+
+        if (error || !data?.success) {
+          console.error('❌ فشل خصم المحفظة:', error || data?.error);
+          return;
+        }
+
+        const updated = { ...user, wallet: Number(data.new_wallet) };
+        set({ currentUser: updated });
+        safeSetStorage('currentUser', updated);
+        walletDeductedAt = Date.now();
+      } catch (err) {
+        console.error('❌ خطأ غير متوقع في deductWallet:', err);
+      }
     }
   },
 
   markFreeSessionUsed: async () => {
     const user = get().currentUser;
     if (!user || user.hasUsedFreeSession) return;
-    
+
     const updated = { ...user, hasUsedFreeSession: true };
     set({ currentUser: updated });
     safeSetStorage('currentUser', updated);
-    
+
     try {
       localStorage.removeItem('showWelcomeGift');
     } catch (e) {}
-    
+
     if (!isSupabaseConfigured()) return;
     const { error } = await supabase
       .from('users')
@@ -583,13 +604,13 @@ export const useStore = create<AppState>((set, get) => ({
   getMyOwnedGarages: (phone: string) => {
     if (!phone) return [];
     const normalizedPhone = phone.trim();
-    return get().garages.filter((g) => 
+    return get().garages.filter((g) =>
       g.ownerPhone === normalizedPhone || g.phone === normalizedPhone
     );
   },
 
   sessions: [],
-  
+
   acknowledgedSessionIds: (() => {
     try {
       const saved = localStorage.getItem('acknowledgedSessionIds');
@@ -619,14 +640,13 @@ export const useStore = create<AppState>((set, get) => ({
     safeRemoveStorage('currentUser'); safeRemoveStorage('appView'); safeRemoveStorage('appScreen');
     safeRemoveStorage('currentGarageId'); safeRemoveStorage('selectedGarageId');
     safeRemoveStorage('garageAuth'); safeRemoveStorage('adminAuth');
-    safeRemoveStorage('acknowledgedSessionIds'); 
+    safeRemoveStorage('acknowledgedSessionIds');
   },
 
   // 🛡️ [محمي بـ Rate Limiter]: جلب البيانات من السيرفر
   fetchAll: async () => {
     if (!isSupabaseConfigured()) return;
-    
-    // 🛡️ حماية من الضغط العالي
+
     if (!rateLimiter.canProceed()) {
       console.warn('⚠️ Rate limit exceeded, skipping fetch');
       return;
@@ -637,7 +657,7 @@ export const useStore = create<AppState>((set, get) => ({
       supabase
         .from('sessions')
         .select('*')
-        .or('status.eq.active,settled.eq.false,settled.is.null') 
+        .or('status.eq.active,settled.eq.false,settled.is.null')
         .order('created_at', { ascending: false })
         .limit(50),
       supabase
@@ -662,13 +682,13 @@ export const useStore = create<AppState>((set, get) => ({
 
     const activeAndUnsettled = activeAndUnsettledRes.data ? activeAndUnsettledRes.data.map(mapSession) : [];
     const recentSettled = recentSettledRes.data ? recentSettledRes.data.map(mapSession) : [];
-    
+
     const sessionsMap = new Map<string, ParkingSession>();
     [...activeAndUnsettled, ...recentSettled].forEach((s) => {
       if (!sessionsMap.has(s.id)) sessionsMap.set(s.id, s);
     });
     const supabaseSessions = Array.from(sessionsMap.values());
-    
+
     const supabaseSessionIds = new Set(supabaseSessions.map((ss) => ss.id));
     const currentSessions = get().sessions;
     const supabaseActiveKeys = new Set(
@@ -695,11 +715,11 @@ export const useStore = create<AppState>((set, get) => ({
         if (localVersion) {
           if (ss.status === 'completed' && localVersion.status === 'active') return ss;
           if (localVersion.status === 'completed') {
-            return { 
-              ...localVersion, 
+            return {
+              ...localVersion,
               revenueConfirmed: ss.revenueConfirmed || localVersion.revenueConfirmed,
-              settled: ss.settled ?? localVersion.settled,           
-              settled_at: ss.settled_at || localVersion.settled_at,   
+              settled: ss.settled ?? localVersion.settled,
+              settled_at: ss.settled_at || localVersion.settled_at,
             };
           }
           if (ss.status === 'active' && localVersion.status === 'active') {
@@ -773,8 +793,8 @@ export const useStore = create<AppState>((set, get) => ({
             .eq('phone', user.phone)
             .single();
           if (data) {
-            const updated = { 
-              name: data.name || user.name, phone: data.phone || user.phone, 
+            const updated = {
+              name: data.name || user.name, phone: data.phone || user.phone,
               carPlate: data.car_plate || user.carPlate, wallet: user.wallet,
               hasUsedFreeSession: data.has_used_free_session ?? user.hasUsedFreeSession ?? false,
               bonusBalance: Number(data.bonus_balance ?? user.bonusBalance ?? 0),
@@ -788,8 +808,8 @@ export const useStore = create<AppState>((set, get) => ({
             .eq('phone', user.phone)
             .single();
           if (data) {
-            const updated = { 
-              name: data.name || user.name, phone: data.phone || user.phone, 
+            const updated = {
+              name: data.name || user.name, phone: data.phone || user.phone,
               carPlate: data.car_plate || user.carPlate, wallet: Number(data.wallet),
               hasUsedFreeSession: data.has_used_free_session ?? false,
               bonusBalance: Number(data.bonus_balance ?? 0),
@@ -804,7 +824,7 @@ export const useStore = create<AppState>((set, get) => ({
   addGarage: async (g) => {
     const { data, error } = await supabase.from('garages').insert({
       name: g.name, username: g.username, phone: g.phone,
-      owner_phone: (g as any).ownerPhone || g.phone,  
+      owner_phone: (g as any).ownerPhone || g.phone,
       location: g.location, lat: g.lat, lng: g.lng,
       capacity: g.capacity, available_spots: g.capacity, base_price: g.basePrice, rating: 4.0,
       commission_rate: 10,
@@ -839,7 +859,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (updates.availableSpots !== undefined) db.available_spots = updates.availableSpots;
     if (updates.capacity !== undefined) db.capacity = updates.capacity;
     if (updates.commissionRate !== undefined) db.commission_rate = updates.commissionRate;
-    if ((updates as any).ownerPhone !== undefined) db.owner_phone = (updates as any).ownerPhone;  
+    if ((updates as any).ownerPhone !== undefined) db.owner_phone = (updates as any).ownerPhone;
     if (updates.valet1Active !== undefined) db.valet1_active = updates.valet1Active;
     if (updates.valet2Active !== undefined) db.valet2_active = updates.valet2Active;
     if (updates.valet3Active !== undefined) db.valet3_active = updates.valet3Active;
@@ -886,7 +906,6 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   addSession: async (s) => {
-    // 🛡️ تنظيف رقم اللوحة عند إضافة جلسة
     const normalizedPlate = normalizePlate(s.carPlate);
     if (!normalizedPlate) return '';
     const sessionId = crypto.randomUUID();
@@ -928,7 +947,27 @@ export const useStore = create<AppState>((set, get) => ({
       const addedByValue = resolveAddedBy((s as any).addedBy);
 
       const currentUser = get().currentUser;
-      const eligibleForFree = isEligibleForFreeSession(s.source, currentUser?.hasUsedFreeSession);
+      let eligibleForFree = isEligibleForFreeSession(s.source, currentUser?.hasUsedFreeSession);
+
+      // 🛡️ [طبقة الأمان المتطورة]: كشف محاولات التحايل لمنع تكرار "الساعة المجانية"
+      if (eligibleForFree && isSupabaseConfigured() && s.source === 'app') {
+        try {
+          const cleanPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+
+          const { data: abuseCheck, error: abuseError } = await supabase
+            .from('sessions')
+            .select('id')
+            .eq('is_first_free_session', true)
+            .or(`car_plate.eq.${normalizedPlate}${cleanPhone ? `,customer_phone.eq.${cleanPhone}` : ''}`)
+            .limit(1);
+
+          if (!abuseError && abuseCheck && abuseCheck.length > 0) {
+            eligibleForFree = false;
+          }
+        } catch (err) {
+          console.error('⚠️ Abuse protection query failed:', err);
+        }
+      }
 
       const optimisticSession: ParkingSession = {
         ...s, id: sessionId, carPlate: normalizedPlate,
@@ -1155,28 +1194,18 @@ export const useStore = create<AppState>((set, get) => ({
       supabase
         .from('offers')
         .insert({
-          garage_id: o.garageId,
-          user_id: o.userId,
-          car_plate: o.carPlate,
-          offered_price: o.offeredPrice,
-          status: o.status,
+          garage_id: o.garageId, user_id: o.userId,
+          car_plate: o.carPlate, offered_price: o.offeredPrice, status: o.status,
         })
-        .select()
-        .single()
+        .select().single()
         .then(({ data }) => {
-          if (data) {
-            set((st) => ({
-              offers: st.offers.map((x) => (x.id === newO.id ? mapOffer(data) : x)),
-            }));
-          }
+          if (data) set((st) => ({ offers: st.offers.map((x) => (x.id === newO.id ? mapOffer(data) : x)) }));
         });
     }
   },
 
   updateOffer: (id, status, counterPrice) => {
-    set((st) => ({
-      offers: st.offers.map((o) => (o.id === id ? { ...o, status, counterPrice } : o)),
-    }));
+    set((st) => ({ offers: st.offers.map((o) => (o.id === id ? { ...o, status, counterPrice } : o)) }));
     if (isSupabaseConfigured()) {
       const u: Record<string, unknown> = { status };
       if (counterPrice !== undefined) u.counter_price = counterPrice;
@@ -1186,9 +1215,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   cancelOffer: (id) => {
     set((st) => ({ offers: st.offers.filter((o) => o.id !== id) }));
-    if (isSupabaseConfigured()) {
-      supabase.from('offers').delete().eq('id', id);
-    }
+    if (isSupabaseConfigured()) supabase.from('offers').delete().eq('id', id);
   },
 
   addWalletTopUp: (w) => {
@@ -1198,123 +1225,41 @@ export const useStore = create<AppState>((set, get) => ({
       supabase
         .from('wallet_topups')
         .insert({
-          user_id: w.userId,
-          user_name: w.userName,
-          user_phone: w.userPhone,
-          amount: w.amount,
-          transaction_id: w.transactionId,
-          car_plate: w.carPlate,
-          method: w.method,
+          user_id: w.userId, user_name: w.userName, user_phone: w.userPhone,
+          amount: w.amount, transaction_id: w.transactionId,
+          car_plate: w.carPlate, method: w.method,
         })
-        .select()
-        .single()
+        .select().single()
         .then(({ data }) => {
-          if (data) {
-            set((st) => ({
-              walletTopUps: st.walletTopUps.map((x) => (x.id === newW.id ? mapTopUp(data) : x)),
-            }));
-          }
+          if (data) set((st) => ({ walletTopUps: st.walletTopUps.map((x) => (x.id === newW.id ? mapTopUp(data) : x)) }));
         });
     }
   },
 
+  // 🛡️ [محمي بـ RPC Atomic]: الاعتماد الآمن عبر دالة السيرفر المشفرة
   approveTopUp: async (id) => {
-    const topUp = get().walletTopUps.find((w) => w.id === id);
-    if (!topUp) return;
-
-    set((st) => ({
-      walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'approved' as const } : w)),
-    }));
-
     if (!isSupabaseConfigured()) return;
+    try {
+      const { data, error } = await supabase.rpc('approve_topup_atomic', {
+        p_topup_id: id,
+      });
 
-    let dbRow: any = null;
-    if (topUp.transactionId) {
-      const { data } = await supabase
-        .from('wallet_topups')
-        .select('*')
-        .eq('transaction_id', topUp.transactionId)
-        .maybeSingle();
-      if (data) dbRow = data;
-    }
-    if (!dbRow) {
-      const { data } = await supabase
-        .from('wallet_topups')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
-      if (data) dbRow = data;
-    }
-    if (!dbRow) {
-      console.error('❌ الطلب مش موجود');
-      return;
-    }
+      if (error || !data?.success) {
+        throw new Error(data?.error || error?.message || 'فشل اعتماد الطلب');
+      }
 
-    const supabaseId = dbRow.id;
-    const { error: approveError } = await supabase
-      .from('wallet_topups')
-      .update({ status: 'approved' })
-      .eq('id', supabaseId);
-
-    if (approveError) {
-      console.error('❌', approveError);
       set((st) => ({
-        walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'pending' as const } : w)),
+        walletTopUps: st.walletTopUps.map((w) =>
+          w.id === id
+            ? { ...w, status: 'approved' as const, bonusAmount: data.bonus_added }
+            : w
+        ),
       }));
-      return;
-    }
 
-    set((st) => ({
-      walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, id: supabaseId, status: 'approved' as const } : w)),
-    }));
-
-    const realUserPhone = dbRow.user_phone || topUp.userPhone || '';
-    let userData: any = null;
-    if (realUserPhone) {
-      const { data } = await supabase
-        .from('users')
-        .select('*')
-        .eq('phone', realUserPhone)
-        .maybeSingle();
-      if (data) userData = data;
-    }
-    if (!userData) {
-      console.error('❌ المستخدم مش موجود');
-      return;
-    }
-
-    const baseAmount = Number(dbRow.amount || topUp.amount || 0);
-    let bonusAmount = 0;
-    if (baseAmount >= 1000) bonusAmount = 200;
-    else if (baseAmount >= 500) bonusAmount = 75;
-    else if (baseAmount >= 300) bonusAmount = 30;
-    else if (baseAmount >= 100) bonusAmount = 5;
-
-    const totalToAdd = baseAmount + bonusAmount;
-    const newWallet = Number(userData.wallet || 0) + totalToAdd;
-
-    const { error: walletError } = await supabase
-      .from('users')
-      .update({ wallet: newWallet })
-      .eq('id', userData.id);
-
-    if (walletError) {
-      console.error('❌', walletError);
-      return;
-    }
-
-    if (bonusAmount > 0) {
-      await supabase
-        .from('wallet_topups')
-        .update({ bonus_amount: bonusAmount })
-        .eq('id', supabaseId);
-    }
-
-    const currentUser = get().currentUser;
-    if (currentUser && (currentUser.phone === userData.phone || (currentUser as any).id === userData.id)) {
-      const updated = { ...currentUser, wallet: newWallet };
-      set({ currentUser: updated });
-      safeSetStorage('currentUser', updated);
+      await get().fetchAll();
+    } catch (err) {
+      console.error('❌ خطأ في اعتماد الشحن:', err);
+      throw err;
     }
   },
 
@@ -1391,7 +1336,6 @@ export const useStore = create<AppState>((set, get) => ({
     setTimeout(() => { get().fetchAll(); }, 1000);
   },
 
-  // 🛡️ [محمي بـ Sanitize Input]: إرسال رسالة
   addMessage: async (msg) => {
     const cleanMsg = {
       ...msg,
@@ -1424,7 +1368,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   replyMessage: async (id, reply) => {
     const now = Date.now();
-    const cleanReply = sanitizeInput(reply); // 🛡️ تنظيف الرد
+    const cleanReply = sanitizeInput(reply);
     set((st) => ({ messages: (st.messages ?? []).map((msg) => (msg.id === id ? { ...msg, reply: cleanReply, status: 'replied' as const, repliedAt: now } : msg)) }));
     if (!isSupabaseConfigured()) return;
     const { error } = await supabase.from('messages').update({ reply: cleanReply, status: 'replied', replied_at: new Date(now).toISOString() }).eq('id', id);
@@ -1457,9 +1401,9 @@ export function setupRealtime() {
 
   const startPolling = () => {
     if (pollingInterval) clearInterval(pollingInterval);
-    pollingInterval = setInterval(() => { 
+    pollingInterval = setInterval(() => {
       if (!isOperationInProgress && document.visibilityState === 'visible') {
-        useStore.getState().fetchAll(); 
+        useStore.getState().fetchAll();
       }
     }, 10000);
   };
@@ -1513,20 +1457,4 @@ export function setupRealtime() {
   channel.subscribe((status) => {
     if (status === 'SUBSCRIBED') {
       console.log('✅ Realtime connected:', channelName);
-      if (pollingInterval) clearInterval(pollingInterval);
-      pollingInterval = setInterval(() => { if (!isOperationInProgress) useStore.getState().fetchAll(); }, 10000);
-    }
-    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-      if (pollingInterval) clearInterval(pollingInterval);
-      pollingInterval = setInterval(() => { if (!isOperationInProgress) useStore.getState().fetchAll(); }, 5000);
-    }
-  });
-
-  window.addEventListener('beforeunload', () => {
-    if (refreshTimeout) clearTimeout(refreshTimeout);
-    if (pollingInterval) clearInterval(pollingInterval);
-    if (pauseTimeout) clearTimeout(pauseTimeout);
-    channel.unsubscribe();
-    supabase.removeChannel(channel);
-  });
-}
+      if
