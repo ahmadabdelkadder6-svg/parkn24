@@ -239,7 +239,7 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-// 🛡️ [محسّن أمنياً لأقصى درجة]: تنظيف وتوحيد رقم لوحة السيارة لدمجها ومنع التكرار
+// 🛡️ [تنظيف وتوحيد اللوحة بدقة صارمة لمنع التحايل بالمسافات أو الأرقام]
 const normalizePlate = (plate?: string) => {
   if (!plate) return '';
   const cleaned = sanitizeInput(plate)
@@ -489,7 +489,8 @@ export const useStore = create<AppState>((set, get) => ({
 
   currentUser: safeGetStorage('currentUser'),
 
-   setCurrentUser: async (u) => {
+  // ─── تسجيل وضبط بيانات المستخدم مع فحص الاستحقاق المباشر ───
+  setCurrentUser: async (u) => {
     if (!u) { set({ currentUser: null }); safeRemoveStorage('currentUser'); return; }
     const cleanPlate = normalizePlate(u.carPlate);
     const cleanPhone = u.phone.replace(/[^\d+]/g, '').substring(0, 15);
@@ -506,43 +507,39 @@ export const useStore = create<AppState>((set, get) => ({
     if (!isSupabaseConfigured()) return;
 
     try {
-      // 🛡️ فحص ذكي في قاعدة البيانات: هل اللوحة أو التليفون مؤهلين للعرض؟
-      let isEligible = true;
-      try {
-        const { data: eligibilityData, error: rpcError } = await supabase.rpc('check_free_eligibility', {
-          p_plate: cleanPlate,
-          p_phone: cleanPhone,
-        });
-        if (!rpcError && typeof eligibilityData === 'boolean') {
-          isEligible = eligibilityData;
-        }
-      } catch (e) {
-        console.error('Eligibility RPC check error:', e);
-      }
+      // 🛡️ فحص مباشر ومضمون: هل هذه اللوحة أو الهاتف ركنا مجاناً سابقاً؟
+      let alreadyUsedFree = false;
 
-      // فحص احتياطي مباشر
-      if (isEligible && cleanPlate) {
-        const { data: existingPlateSessions } = await supabase
+      if (cleanPlate) {
+        const { data: plateCheck } = await supabase
           .from('sessions')
           .select('id')
           .eq('car_plate', cleanPlate)
           .eq('is_first_free_session', true)
           .limit(1);
 
-        if (existingPlateSessions && existingPlateSessions.length > 0) {
-          isEligible = false;
-        }
+        if (plateCheck && plateCheck.length > 0) alreadyUsedFree = true;
       }
 
-      const hasUsedFree = !isEligible;
+      if (!alreadyUsedFree && cleanPhone) {
+        const { data: phoneCheck } = await supabase
+          .from('sessions')
+          .select('id')
+          .eq('customer_phone', cleanPhone)
+          .eq('is_first_free_session', true)
+          .limit(1);
 
+        if (phoneCheck && phoneCheck.length > 0) alreadyUsedFree = true;
+      }
+
+      // جلب سجل المستخدم من جدول users
       const { data: existingUser } = await supabase
         .from('users')
         .select('wallet, name, phone, car_plate, has_used_free_session, bonus_balance')
         .eq('phone', cleanPhone)
         .maybeSingle();
 
-      const finalHasUsedFree = hasUsedFree || (existingUser?.has_used_free_session === true);
+      const finalHasUsedFree = alreadyUsedFree || (existingUser?.has_used_free_session === true);
 
       if (existingUser) {
         const updated = {
@@ -585,27 +582,22 @@ export const useStore = create<AppState>((set, get) => ({
           set({ currentUser: updated }); safeSetStorage('currentUser', updated);
 
           if (!finalHasUsedFree) {
-            try {
-              localStorage.setItem('showWelcomeGift', 'true');
-            } catch (e) {}
+            try { localStorage.setItem('showWelcomeGift', 'true'); } catch (e) {}
           } else {
-            try {
-              localStorage.removeItem('showWelcomeGift');
-            } catch (e) {}
+            try { localStorage.removeItem('showWelcomeGift'); } catch (e) {}
           }
         }
       }
     } catch (err) { console.error('Error setting user with anti-abuse check:', err); }
   },
 
-  // 🛡️ [RPC + Fallback]: الخصم الآمن من المحفظة مع الارتداد التلقائي للمنع من الأعطال
+  // 🛡️ [RPC + Safe Fallback]: الخصم الآمن من المحفظة
   deductWallet: async (amount) => {
     const user = get().currentUser;
     if (!user || amount <= 0) return;
 
     if (isSupabaseConfigured()) {
       try {
-        // [1] محاولة الخصم عبر دالة RPC المشفرة بالسيرفر
         const { data, error } = await supabase.rpc('deduct_wallet_atomic', {
           p_phone: user.phone,
           p_amount: Math.floor(Number(amount)),
@@ -618,12 +610,11 @@ export const useStore = create<AppState>((set, get) => ({
           walletDeductedAt = Date.now();
           return;
         }
-        console.warn('RPC deduct failed/missing, rolling back to direct transaction:', error || data?.error);
       } catch (rpcErr) {
-        console.warn('RPC deduct exception, fallback active:', rpcErr);
+        console.warn('RPC deduct exception, using direct fallback:', rpcErr);
       }
 
-      // [2] نظام الارتداد الفوري (Fallback): التحديث الآمن المباشر للفرونت إند عند عدم وجود RPC
+      // نظام الارتداد المباشر (Fallback)
       try {
         const { data: userData, error: userError } = await supabase
           .from('users')
@@ -633,10 +624,8 @@ export const useStore = create<AppState>((set, get) => ({
 
         if (userError || !userData) return;
         const currentWallet = Number(userData.wallet || 0);
-        if (currentWallet < amount) {
-          console.error('Insufficient wallet balance');
-          return;
-        }
+        if (currentWallet < amount) return;
+
         const newWallet = currentWallet - amount;
         const { error: updateError } = await supabase
           .from('users')
@@ -726,6 +715,7 @@ export const useStore = create<AppState>((set, get) => ({
     safeRemoveStorage('acknowledgedSessionIds');
   },
 
+  // 🛡️ [محمي بـ Rate Limiter]: جلب البيانات من السيرفر
   fetchAll: async () => {
     if (!isSupabaseConfigured()) return;
 
@@ -987,6 +977,7 @@ export const useStore = create<AppState>((set, get) => ({
     } catch (err) { console.error('❌', err); await get().fetchAll(); }
   },
 
+  // ─── بدء جلسة الركن مع الفحص المباشر للاستحقاق ───
   addSession: async (s) => {
     const normalizedPlate = normalizePlate(s.carPlate);
     if (!normalizedPlate) return '';
@@ -1006,53 +997,68 @@ export const useStore = create<AppState>((set, get) => ({
       );
       if (existingLocal) return existingLocal.id;
 
-      if (isSupabaseConfigured()) {
-        try {
-          const { data: dbCheck } = await supabase.from('sessions').select('id, car_plate, source, start_time').eq('status', 'active').eq('car_plate', normalizedPlate).eq('source', s.source).limit(1);
-          if (dbCheck && dbCheck.length > 0) {
-            const { data: sessionData } = await supabase.from('sessions').select('*').eq('id', dbCheck[0].id).single();
-            if (sessionData) {
-              const syncedSession = { ...mapSession(sessionData), synced: true };
-              set((st) => {
-                const alreadyExists = st.sessions.find((x) => x.id === syncedSession.id);
-                if (alreadyExists) {
-                  return { sessions: dedupeActiveSessions(st.sessions.map((x) => x.id === syncedSession.id ? syncedSession : x)) };
-                }
-                return { sessions: dedupeActiveSessions([syncedSession, ...st.sessions]) };
-              });
-            }
-            return dbCheck[0].id;
-          }
-        } catch (err) { console.error('خطأ في التحقق من DB:', err); }
-      }
-
       const addedByValue = resolveAddedBy((s as any).addedBy);
-      const currentUser = get().currentUser;
-      let eligibleForFree = isEligibleForFreeSession(s.source, currentUser?.hasUsedFreeSession);
+      const isAppBooking = s.source === 'app';
+      const cleanPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
 
-      // 🛡️ فحص صارم ومباشر في قاعدة البيانات عبر الدالة الذكية check_free_eligibility
-      if (eligibleForFree && isSupabaseConfigured() && s.source === 'app') {
+      // 🎁 [تحديد الاستحقاق الحاسم]:
+      let eligibleForFree = false;
+
+      if (isAppBooking && isSupabaseConfigured()) {
         try {
-          const cleanPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
-          
-          const { data: isStillEligible } = await supabase.rpc('check_free_eligibility', {
-            p_plate: normalizedPlate,
-            p_phone: cleanPhone,
-          });
+          // 1. هل اللوحة ركنت مجاناً قبل كده؟
+          const { data: plateCheck } = await supabase
+            .from('sessions')
+            .select('id')
+            .eq('car_plate', normalizedPlate)
+            .eq('is_first_free_session', true)
+            .limit(1);
 
-          if (isStillEligible === false) {
-            eligibleForFree = false;
+          const plateUsed = plateCheck && plateCheck.length > 0;
+
+          // 2. هل التليفون ركن مجاناً قبل كده؟
+          let phoneUsed = false;
+          if (cleanPhone) {
+            const { data: phoneCheck } = await supabase
+              .from('sessions')
+              .select('id')
+              .eq('customer_phone', cleanPhone)
+              .eq('is_first_free_session', true)
+              .limit(1);
+
+            if (phoneCheck && phoneCheck.length > 0) phoneUsed = true;
+          }
+
+          // 3. هل المستخدم مسجل بأنه استهلك الهدية في جدول users؟
+          let userUsed = false;
+          if (cleanPhone) {
+            const { data: userData } = await supabase
+              .from('users')
+              .select('has_used_free_session')
+              .eq('phone', cleanPhone)
+              .maybeSingle();
+
+            if (userData?.has_used_free_session === true) userUsed = true;
+          }
+
+          // إذا لم يسبق استخدام العرض في أي مكان -> الجلسة مجانية 100%! 🎁
+          if (!plateUsed && !phoneUsed && !userUsed) {
+            eligibleForFree = true;
           }
         } catch (err) {
-          console.error('⚠️ Abuse protection RPC failed:', err);
+          console.error('Error verifying free session eligibility:', err);
         }
       }
 
       const optimisticSession: ParkingSession = {
-        ...s, id: sessionId, carPlate: normalizedPlate,
-        startTime: 0, synced: false, revenueConfirmed: false,
+        ...s,
+        id: sessionId,
+        carPlate: normalizedPlate,
+        startTime: Date.now(),
+        synced: false,
+        revenueConfirmed: false,
         addedBy: addedByValue,
-        customerPhone: (s as any).customerPhone || undefined,
+        customerPhone: cleanPhone || undefined,
         customerName: (s as any).customerName || undefined,
         incomingCarId: (s as any).incomingCarId || undefined,
         startedBy: (s as any).startedBy || undefined,
@@ -1070,11 +1076,16 @@ export const useStore = create<AppState>((set, get) => ({
 
       try {
         const { data, error } = await supabase.from('sessions').insert({
-          id: sessionId, garage_id: s.garageId, car_plate: normalizedPlate,
-          start_time: new Date().toISOString(), status: s.status, source: s.source,
-          agreed_price: s.agreedPrice ?? null, revenue_confirmed: false,
+          id: sessionId,
+          garage_id: s.garageId,
+          car_plate: normalizedPlate,
+          start_time: new Date().toISOString(),
+          status: s.status,
+          source: s.source,
+          agreed_price: s.agreedPrice ?? null,
+          revenue_confirmed: false,
           added_by: addedByValue,
-          customer_phone: (s as any).customerPhone || null,
+          customer_phone: cleanPhone || null,
           customer_name: (s as any).customerName || null,
           incoming_car_id: (s as any).incoming_car_id || null,
           started_by: (s as any).startedBy || null,
@@ -1100,7 +1111,7 @@ export const useStore = create<AppState>((set, get) => ({
           return data.id;
         }
       } catch (err) {
-        console.error('❌ خطأ غير متوقع في addSession:', err);
+        console.error('❌ خطأ غير متوقع:', err);
         set((st) => ({ sessions: st.sessions.filter((x) => x.id !== sessionId) }));
         await get().adjustGarageSpots(s.garageId, +1);
       }
@@ -1110,6 +1121,7 @@ export const useStore = create<AppState>((set, get) => ({
       sessionStartLocks.delete(lockKey);
     }
   },
+
   endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0) => {
     const now = Date.now();
     const session = get().sessions.find((s) => s.id === id);
@@ -1314,11 +1326,10 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 🛡️ [الاعتماد الآمن المرن]: الاعتماد المزدوج RPC مع ارتداد بروتوكولي client-side مضمن لضمان التوافق والأمان
+  // 🛡️ اعتماد الشحن مع Fallback مباشر
   approveTopUp: async (id) => {
     if (!isSupabaseConfigured()) return;
     try {
-      // محاولة أولى مشفرة بالسيرفر RPC
       const { data, error } = await supabase.rpc('approve_topup_atomic', {
         p_topup_id: id,
       });
@@ -1334,12 +1345,10 @@ export const useStore = create<AppState>((set, get) => ({
         await get().fetchAll();
         return;
       }
-      console.warn('RPC approve topup failed, executing robust fallback transaction:', error || data?.error);
     } catch (rpcErr) {
-      console.warn('RPC approve exception, falling back:', rpcErr);
+      console.warn('RPC approve exception, using direct fallback:', rpcErr);
     }
 
-    // الارتداد الفوري (Fallback): اعتماد وتحديث الرصيد التراكمي بطريقة آمنة
     const topUp = get().walletTopUps.find((w) => w.id === id);
     if (!topUp) return;
 
