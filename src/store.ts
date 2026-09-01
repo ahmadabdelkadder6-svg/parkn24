@@ -949,7 +949,6 @@ export const useStore = create<AppState>((set, get) => ({
       const currentUser = get().currentUser;
       let eligibleForFree = isEligibleForFreeSession(s.source, currentUser?.hasUsedFreeSession);
 
-      // 🛡️ [طبقة الأمان المتطورة]: كشف محاولات التحايل لمنع تكرار "الساعة المجانية"
       if (eligibleForFree && isSupabaseConfigured() && s.source === 'app') {
         try {
           const cleanPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
@@ -1457,4 +1456,20 @@ export function setupRealtime() {
   channel.subscribe((status) => {
     if (status === 'SUBSCRIBED') {
       console.log('✅ Realtime connected:', channelName);
-      if
+      if (pollingInterval) clearInterval(pollingInterval);
+      pollingInterval = setInterval(() => { if (!isOperationInProgress) useStore.getState().fetchAll(); }, 10000);
+    }
+    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+      if (pollingInterval) clearInterval(pollingInterval);
+      pollingInterval = setInterval(() => { if (!isOperationInProgress) useStore.getState().fetchAll(); }, 5000);
+    }
+  });
+
+  window.addEventListener('beforeunload', () => {
+    if (refreshTimeout) clearTimeout(refreshTimeout);
+    if (pollingInterval) clearInterval(pollingInterval);
+    if (pauseTimeout) clearTimeout(pauseTimeout);
+    channel.unsubscribe();
+    supabase.removeChannel(channel);
+  });
+}
