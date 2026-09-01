@@ -489,7 +489,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   currentUser: safeGetStorage('currentUser'),
 
-  setCurrentUser: async (u) => {
+   setCurrentUser: async (u) => {
     if (!u) { set({ currentUser: null }); safeRemoveStorage('currentUser'); return; }
     const cleanPlate = normalizePlate(u.carPlate);
     const cleanPhone = u.phone.replace(/[^\d+]/g, '').substring(0, 15);
@@ -506,34 +506,35 @@ export const useStore = create<AppState>((set, get) => ({
     if (!isSupabaseConfigured()) return;
 
     try {
-      // 🛡️ [حماية كشف احتيال تكرار العرض]: فحص فوري تاريخي للوحة وهاتف العميل المسجل
-      let isPlateOrPhoneAlreadyUsedFree = false;
+      // 🛡️ فحص ذكي في قاعدة البيانات: هل اللوحة أو التليفون مؤهلين للعرض؟
+      let isEligible = true;
+      try {
+        const { data: eligibilityData, error: rpcError } = await supabase.rpc('check_free_eligibility', {
+          p_plate: cleanPlate,
+          p_phone: cleanPhone,
+        });
+        if (!rpcError && typeof eligibilityData === 'boolean') {
+          isEligible = eligibilityData;
+        }
+      } catch (e) {
+        console.error('Eligibility RPC check error:', e);
+      }
 
-      if (cleanPlate) {
-        const { data: plateSessions } = await supabase
+      // فحص احتياطي مباشر
+      if (isEligible && cleanPlate) {
+        const { data: existingPlateSessions } = await supabase
           .from('sessions')
           .select('id')
           .eq('car_plate', cleanPlate)
           .eq('is_first_free_session', true)
           .limit(1);
 
-        if (plateSessions && plateSessions.length > 0) {
-          isPlateOrPhoneAlreadyUsedFree = true;
+        if (existingPlateSessions && existingPlateSessions.length > 0) {
+          isEligible = false;
         }
       }
 
-      if (!isPlateOrPhoneAlreadyUsedFree && cleanPhone) {
-        const { data: phoneSessions } = await supabase
-          .from('sessions')
-          .select('id')
-          .eq('customer_phone', cleanPhone)
-          .eq('is_first_free_session', true)
-          .limit(1);
-
-        if (phoneSessions && phoneSessions.length > 0) {
-          isPlateOrPhoneAlreadyUsedFree = true;
-        }
-      }
+      const hasUsedFree = !isEligible;
 
       const { data: existingUser } = await supabase
         .from('users')
@@ -541,7 +542,7 @@ export const useStore = create<AppState>((set, get) => ({
         .eq('phone', cleanPhone)
         .maybeSingle();
 
-      const finalHasUsedFree = isPlateOrPhoneAlreadyUsedFree || (existingUser?.has_used_free_session === true);
+      const finalHasUsedFree = hasUsedFree || (existingUser?.has_used_free_session === true);
 
       if (existingUser) {
         const updated = {
@@ -586,6 +587,10 @@ export const useStore = create<AppState>((set, get) => ({
           if (!finalHasUsedFree) {
             try {
               localStorage.setItem('showWelcomeGift', 'true');
+            } catch (e) {}
+          } else {
+            try {
+              localStorage.removeItem('showWelcomeGift');
             } catch (e) {}
           }
         }
@@ -1025,36 +1030,21 @@ export const useStore = create<AppState>((set, get) => ({
       const currentUser = get().currentUser;
       let eligibleForFree = isEligibleForFreeSession(s.source, currentUser?.hasUsedFreeSession);
 
-      // 🛡️ [حارس كشف الاحتيال والمجانية]: فحص صارم ومزدوج للوحة والتليفون في قاعدة البيانات قبل بدء الجلسة لتعطيل المجانية إن وجدت مسبقاً
+      // 🛡️ فحص صارم ومباشر في قاعدة البيانات عبر الدالة الذكية check_free_eligibility
       if (eligibleForFree && isSupabaseConfigured() && s.source === 'app') {
         try {
           const cleanPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+          
+          const { data: isStillEligible } = await supabase.rpc('check_free_eligibility', {
+            p_plate: normalizedPlate,
+            p_phone: cleanPhone,
+          });
 
-          const { data: plateCheck } = await supabase
-            .from('sessions')
-            .select('id')
-            .eq('car_plate', normalizedPlate)
-            .eq('is_first_free_session', true)
-            .limit(1);
-
-          if (plateCheck && plateCheck.length > 0) {
+          if (isStillEligible === false) {
             eligibleForFree = false;
           }
-
-          if (eligibleForFree && cleanPhone) {
-            const { data: phoneCheck } = await supabase
-              .from('sessions')
-              .select('id')
-              .eq('customer_phone', cleanPhone)
-              .eq('is_first_free_session', true)
-              .limit(1);
-
-            if (phoneCheck && phoneCheck.length > 0) {
-              eligibleForFree = false;
-            }
-          }
         } catch (err) {
-          console.error('⚠️ Abuse protection query failed:', err);
+          console.error('⚠️ Abuse protection RPC failed:', err);
         }
       }
 
@@ -1120,7 +1110,6 @@ export const useStore = create<AppState>((set, get) => ({
       sessionStartLocks.delete(lockKey);
     }
   },
-
   endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0) => {
     const now = Date.now();
     const session = get().sessions.find((s) => s.id === id);
