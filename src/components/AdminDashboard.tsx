@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, Clock, CheckCircle, XCircle, MapPin, Warehouse, Plus,
   MessageCircle, Send, Receipt, Search, HardHat, Percent, DollarSign,
-  Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown, Gift, Sparkles,
-  Settings, Users,
+  Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown,
+  Settings,
   CalendarDays,
 } from 'lucide-react';
 import { useStore } from '../store';
@@ -48,13 +48,6 @@ const getLocalDaysAgo = (days: number): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-const formatLocalDateArabic = (dateStr: string): string => {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString('ar-EG', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-  });
-};
-
 interface SettlementRecord {
   id: string;
   garage_id: string;
@@ -70,20 +63,9 @@ interface SettlementRecord {
   created_at: string;
 }
 
-interface DbUser {
-  id: string;
-  name: string;
-  phone: string;
-  car_plate: string;
-  wallet: number;
-  has_used_free_session: boolean;
-  bonus_balance?: number;
-  created_at: string;
-}
-
 export default function AdminDashboard() {
   const {
-    garages, sessions, walletTopUps, approveTopUp, rejectTopUp, addGarage,
+    garages, sessions, walletTopUps, rejectTopUp, addGarage,
     setCurrentGarageId, setView, logout, messages, replyMessage, closeMessage,
     confirmRevenue, unconfirmRevenue, removeSession, updateGarage, fetchAll,
   } = useStore();
@@ -112,12 +94,6 @@ export default function AdminDashboard() {
   const [visibleSettlements, setVisibleSettlements] = useState(4);
   const [activeAccordionGarageId, setActiveAccordionGarageId] = useState<string | null>(null);
 
-  // 👥 حالات إدارة الحريفة الجدد
-  const [dbUsers, setDbUsers] = useState<DbUser[]>([]);
-  const [usersSearch, setUsersSearch] = useState('');
-  const [editingUserWalletId, setEditingUserWalletId] = useState<string | null>(null);
-  const [editUserWalletAmount, setEditUserWalletAmount] = useState(0);
-
   const [gName, setGName] = useState('');
   const [gUser, setGUser] = useState('');
   const [gPhone, setGPhone] = useState('');
@@ -144,24 +120,9 @@ export default function AdminDashboard() {
     }
   }, []);
 
-  const fetchDbUsers = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (!error) setDbUsers(data ?? []);
-    } catch (e) {
-      console.error('Failed to fetch users:', e);
-    }
-  }, []);
+  useEffect(() => { fetchSettlements(); }, [fetchSettlements]);
 
-  useEffect(() => {
-    fetchSettlements();
-    fetchDbUsers();
-  }, [fetchSettlements, fetchDbUsers]);
-
-  // 🎁 [منطق الهدية المعدل]: حساب الإيرادات الفعلية مع مراعاة خصم الساعة الترحيبية للركنات المستحقة
+  // 🎁 [منطق الهدية]: حساب الإيرادات الفعلية مع مراعاة خصم الساعة الترحيبية
   const getRevenue = useCallback((s: any) => {
     if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
@@ -172,7 +133,7 @@ export default function AdminDashboard() {
       const elapsedSeconds = Math.max(0, Math.floor((en - st) / 1000));
 
       if (s.isFirstFreeSession === true) {
-        const freeSeconds = Math.min(elapsedSeconds, 3600); // خصم ساعة واحدة (3600 ثانية) كحد أقصى
+        const freeSeconds = Math.min(elapsedSeconds, 3600);
         const billableSeconds = Math.max(0, elapsedSeconds - freeSeconds);
         return calculateCost(billableSeconds, rate);
       }
@@ -226,7 +187,7 @@ export default function AdminDashboard() {
     const totalNet = totalRevenue - totalCommission;
 
     const perGarage = garages.map(g => {
-      const gs = confirmed.filter(s => s.garageId === g.id); 
+      const gs = confirmed.filter(s => s.garageId === g.id);
       const gCommission = gs.reduce((a, s) => a + getCommission(s), 0);
       const gRevenue = gs.reduce((a, s) => a + getRevenue(s), 0);
       const walletRevenue = gs.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getRevenue(s), 0);
@@ -262,7 +223,7 @@ export default function AdminDashboard() {
         const pendingRevenue = pending.reduce((sum, s) => sum + getRevenue(s), 0);
 
         const cash = confirmed.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + getRevenue(s), 0);
-        const instapay = confirmed.filter(s => s.paymentMethod === 'instapay').reduce((sum, s) => sum + getRevenue(sum), 0);
+        const instapay = confirmed.filter(s => s.paymentMethod === 'instapay').reduce((sum, s) => sum + getRevenue(s), 0);
         const wallet = confirmed.filter(s => s.paymentMethod === 'wallet').reduce((sum, s) => sum + getRevenue(s), 0);
         const cashwallet = confirmed.filter(s => s.paymentMethod === 'cashwallet').reduce((sum, sumSession) => sum + getRevenue(sumSession), 0);
 
@@ -286,24 +247,22 @@ export default function AdminDashboard() {
 
   const displayedRevenueSessions = useMemo(() => {
     const searchTerm = sessionSearch.trim().toUpperCase();
-    
-    let f = searchTerm 
-      ? completedSessions 
-      : filteredSessions;  
+
+    let f = searchTerm ? completedSessions : filteredSessions;
 
     if (revenueFilter === 'confirmed') f = f.filter(s => s.revenueConfirmed);
     else if (revenueFilter === 'pending') f = f.filter(s => !s.revenueConfirmed);
-    
+
     if (searchTerm) {
       f = f.filter(s => (s.carPlate ?? '').toUpperCase().includes(searchTerm));
     }
-    
+
     const sorted = [...f].sort((a, b) => {
       const endA = a.endTime ? toMs(a.endTime) : 0;
       const endB = b.endTime ? toMs(b.endTime) : 0;
       return endB - endA;
     });
-    
+
     return searchTerm ? sorted.slice(0, 50) : sorted.slice(0, 30);
   }, [completedSessions, filteredSessions, revenueFilter, sessionSearch]);
 
@@ -311,17 +270,6 @@ export default function AdminDashboard() {
   const pendingMessages = safeMessages.filter(m => m.status === 'pending');
   const allMessages = [...safeMessages].sort((a, b) => b.timestamp - a.timestamp);
   const displayedMessages = messagesTab === 'pending' ? pendingMessages : allMessages;
-
-  // 👥 فلترة وعرض الحريفة بالبحث
-  const displayedUsers = useMemo(() => {
-    const q = usersSearch.trim().toLowerCase();
-    return dbUsers.filter(u => {
-      const name = (u.name || '').toLowerCase();
-      const phone = (u.phone || '').toLowerCase();
-      const plate = (u.car_plate || '').toLowerCase();
-      return name.includes(q) || phone.includes(q) || plate.includes(q);
-    }).slice(0, 30); // عرض أحدث 30 مستخدم مطابق لتخفيف الأداء
-  }, [dbUsers, usersSearch]);
 
   const getTypeEmoji = (t: string) => { switch (t) { case 'complaint': return '🚨'; case 'inquiry': return '❓'; case 'suggestion': return '💡'; case 'technical': return '🔧'; default: return '💬'; } };
   const getTypeLabel = (t: string) => { switch (t) { case 'complaint': return 'شكوى'; case 'inquiry': return 'استفسار'; case 'suggestion': return 'اقتراح'; case 'technical': return 'مشكلة تقنية'; default: return 'رسالة'; } };
@@ -362,14 +310,124 @@ export default function AdminDashboard() {
     setView('garage');
   };
 
+  // 🛡️ [الاعتماد القديم المضمون]: بدون RPC - يعمل مباشرة عبر تحديث الجداول
   const handleApproveTopUp = async (id: string, amount: number) => {
     if (processingTopUpId) return;
     setProcessingTopUpId(id);
     const loadingToast = toast.loading('جاري اعتماد الرصيد في المحفظة...');
+
     try {
-      await approveTopUp(id);
+      const topUp = walletTopUps.find((w) => w.id === id);
+      if (!topUp) {
+        toast.dismiss(loadingToast);
+        toast.error('طلب الشحن غير موجود');
+        return;
+      }
+
+      // 1. جلب طلب الشحن من قاعدة البيانات
+      let dbRow: any = null;
+      if (topUp.transactionId) {
+        const { data } = await supabase
+          .from('wallet_topups')
+          .select('*')
+          .eq('transaction_id', topUp.transactionId)
+          .maybeSingle();
+        if (data) dbRow = data;
+      }
+      if (!dbRow) {
+        const { data } = await supabase
+          .from('wallet_topups')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+        if (data) dbRow = data;
+      }
+      if (!dbRow) {
+        toast.dismiss(loadingToast);
+        toast.error('طلب الشحن غير موجود في قاعدة البيانات');
+        return;
+      }
+
+      // منع الاعتماد المزدوج
+      if (dbRow.status === 'approved') {
+        toast.dismiss(loadingToast);
+        toast('تم اعتماد هذا الطلب مسبقاً', { icon: 'ℹ️' });
+        await fetchAll();
+        return;
+      }
+
+      // 2. تحديث حالة الطلب إلى approved
+      const supabaseId = dbRow.id;
+      const { error: approveError } = await supabase
+        .from('wallet_topups')
+        .update({ status: 'approved' })
+        .eq('id', supabaseId);
+
+      if (approveError) {
+        toast.dismiss(loadingToast);
+        console.error('Failed to approve:', approveError);
+        toast.error('فشل تحديث حالة الطلب');
+        return;
+      }
+
+      // 3. جلب بيانات المستخدم
+      const realUserPhone = dbRow.user_phone || topUp.userPhone || '';
+      let userData: any = null;
+      if (realUserPhone) {
+        const { data } = await supabase
+          .from('users')
+          .select('*')
+          .eq('phone', realUserPhone)
+          .maybeSingle();
+        if (data) userData = data;
+      }
+      if (!userData) {
+        toast.dismiss(loadingToast);
+        toast.error('حساب المستخدم غير موجود');
+        return;
+      }
+
+      // 4. حساب البونص
+      const baseAmount = Number(dbRow.amount || topUp.amount || 0);
+      let bonusAmount = 0;
+      if (baseAmount >= 1000) bonusAmount = 200;
+      else if (baseAmount >= 500) bonusAmount = 75;
+      else if (baseAmount >= 300) bonusAmount = 30;
+      else if (baseAmount >= 100) bonusAmount = 5;
+
+      const totalToAdd = baseAmount + bonusAmount;
+      const newWallet = Number(userData.wallet || 0) + totalToAdd;
+
+      // 5. تحديث رصيد المحفظة في جدول المستخدمين
+      const { error: walletError } = await supabase
+        .from('users')
+        .update({ wallet: newWallet })
+        .eq('id', userData.id);
+
+      if (walletError) {
+        toast.dismiss(loadingToast);
+        console.error('Failed to update wallet:', walletError);
+        toast.error('فشل تحديث رصيد المحفظة');
+        return;
+      }
+
+      // 6. تحديث حقل البونص في طلب الشحن (اختياري)
+      if (bonusAmount > 0) {
+        await supabase
+          .from('wallet_topups')
+          .update({ bonus_amount: bonusAmount })
+          .eq('id', supabaseId);
+      }
+
       toast.dismiss(loadingToast);
-      toast.success(`تم اعتماد شحن ${amount} ج.م بنجاح للحريف ✅`);
+      toast.success(
+        bonusAmount > 0 
+          ? `✅ تم اعتماد ${amount} ج.م + ${bonusAmount} ج.م بونص = ${totalToAdd} ج.م` 
+          : `تم اعتماد شحن ${amount} ج.م بنجاح ✅`,
+        { duration: 5000 }
+      );
+
+      await fetchAll();
     } catch (error: any) {
       toast.dismiss(loadingToast);
       console.error("Top-up approval failed:", error);
@@ -498,48 +556,6 @@ export default function AdminDashboard() {
       toast.dismiss(loadingToast);
       console.error('Cleanup failed:', e);
       toast.error('فشل التنظيف: ' + (e.message || 'خطأ في الاتصال بالشبكة'));
-    }
-  };
-
-  // 🛡️ [حارس الهدية]: إعادة تفعيل أو إلغاء العرض المجاني الترحيبي لعميل يدوياً
-  const handleToggleUserFreeSession = async (user: DbUser) => {
-    const loadingToast = toast.loading('جاري تعديل حالة العرض...');
-    const newStatus = !user.has_used_free_session;
-    try {
-      const { error } = await supabase
-        .from('users')
-        .update({ has_used_free_session: newStatus })
-        .eq('id', user.id);
-
-      if (error) throw error;
-      toast.dismiss(loadingToast);
-      toast.success(newStatus ? 'تم إلغاء العرض يدوياً للحريف 🔒' : 'تم تفعيل الهدية الترحيبية للعميل بنجاح! 🎁');
-      await fetchDbUsers();
-      await fetchAll();
-    } catch (err: any) {
-      toast.dismiss(loadingToast);
-      toast.error(err.message || 'حدث خطأ، حاول مجدداً');
-    }
-  };
-
-  // 🛡️ [إدارة الأرصدة]: تعديل رصيد محفظة العميل يدوياً
-  const handleUpdateUserWallet = async (user: DbUser) => {
-    const loadingToast = toast.loading('جاري تعديل محفظة العميل...');
-    try {
-      const { error } = await supabase
-        .from('users')
-        .update({ wallet: editUserWalletAmount })
-        .eq('id', user.id);
-
-      if (error) throw error;
-      toast.dismiss(loadingToast);
-      toast.success(`تم تحديث رصيد ${user.name} بنجاح إلى ${editUserWalletAmount} ج.م`);
-      setEditingUserWalletId(null);
-      await fetchDbUsers();
-      await fetchAll();
-    } catch (err: any) {
-      toast.dismiss(loadingToast);
-      toast.error(err.message || 'حدث خطأ أثناء تعديل المحفظة');
     }
   };
 
@@ -1046,138 +1062,6 @@ export default function AdminDashboard() {
             })()}
           </div>
         )}
-      </div>
-
-      {/* 👥 [جديد]: إدارة الحريفة والمحافظ والترقيات */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <span className="font-black" style={{ background: '#7C3AED', color: '#fff', fontSize: 11, padding: '3.5px 12px', borderRadius: 20 }}>
-            {dbUsers.length} حريف مسجل
-          </span>
-          <h3 className="font-black flex items-center gap-2" style={{ fontSize: 16, color: '#0A1628' }}>
-            👥 إدارة الحريفة والمحافظ <Users size={18} style={{ color: '#7C3AED' }} />
-          </h3>
-        </div>
-
-        <div className="space-y-3">
-          {/* شريط البحث المدمج داخل قسم المستخدمين */}
-          <div className="relative">
-            <Search size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: '#94a3b8' }} />
-            <input 
-              type="text" 
-              value={usersSearch} 
-              onChange={e => setUsersSearch(e.target.value)} 
-              placeholder="ابحث بالحريف، التليفون، أو رقم السيارة..." 
-              className="w-full font-bold text-right outline-none"
-              style={{
-                background: '#ffffff',
-                border: '1.5px solid #D0DCFF',
-                padding: '12px 38px 12px 14px',
-                borderRadius: 16,
-                fontSize: 12,
-                color: '#0A1628'
-              }}
-            />
-            {usersSearch && (
-              <button onClick={() => setUsersSearch('')} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
-                <XCircle size={16} />
-              </button>
-            )}
-          </div>
-
-          <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-1">
-            {displayedUsers.length === 0 ? (
-              <div className="text-center py-8 bg-white border border-slate-200 rounded-2xl text-slate-400">
-                لا يوجد حريفة مطابقين للبحث
-              </div>
-            ) : (
-              displayedUsers.map(user => {
-                const isEditingWallet = editingUserWalletId === user.id;
-                return (
-                  <div 
-                    key={user.id} 
-                    style={{ 
-                      background: '#fff', 
-                      border: '1.5px solid #E2E8F0', 
-                      borderRadius: 18, 
-                      padding: '12px 14px',
-                      boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
-                    }}
-                  >
-                    {/* السطر الأول: الاسم والتليفون ورقم اللوحة */}
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {user.car_plate && (
-                          <span className="font-mono font-black" style={{ fontSize: 10, background: '#F0F4FF', color: '#0066FF', padding: '2px 8px', borderRadius: 8, border: '1px solid #D0DCFF' }}>
-                            🚗 {user.car_plate}
-                          </span>
-                        )}
-                        <span className="font-mono" style={{ fontSize: 10, color: '#94a3b8' }}>{user.phone}</span>
-                      </div>
-                      <div className="font-black text-slate-900" style={{ fontSize: 14 }}>{user.name}</div>
-                    </div>
-
-                    {/* السطر الثاني: المحفظة الحالية + تحكم المحفظة التفاعلي */}
-                    <div className="flex items-center justify-between gap-2 mb-2 pb-2" style={{ borderBottom: '1px dashed #F0F4FF' }}>
-                      <div className="flex items-center gap-1.5">
-                        {!isEditingWallet ? (
-                          <button
-                            onClick={() => { setEditingUserWalletId(user.id); setEditUserWalletAmount(user.wallet || 0); }}
-                            className="font-black active:scale-95 flex items-center gap-0.5"
-                            style={{ background: '#F0F4FF', color: '#0066FF', padding: '3px 8px', borderRadius: 8, fontSize: 10, border: '1px solid #D0DCFF' }}
-                          >
-                            <Edit3 size={10} /> تعديل المحفظة
-                          </button>
-                        ) : (
-                          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
-                            <input 
-                              type="number" 
-                              value={editUserWalletAmount} 
-                              onChange={e => setEditUserWalletAmount(parseInt(e.target.value) || 0)}
-                              className="font-black font-mono text-center outline-none"
-                              style={{ width: 60, background: '#fff', border: '1px solid #D0DCFF', borderRadius: 8, padding: '2px 4px', fontSize: 12 }}
-                            />
-                            <button onClick={() => handleUpdateUserWallet(user)} className="font-black active:scale-95 text-white bg-emerald-500 rounded-lg px-2 py-1 text-[10px]">حفظ</button>
-                            <button onClick={() => setEditingUserWalletId(null)} className="font-bold text-slate-400 px-1">✕</button>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="font-black font-mono flex items-baseline gap-0.5 text-blue-600" style={{ fontSize: 15 }}>
-                        {user.wallet || 0} <span className="text-[10px] font-bold text-slate-400">ج.م</span>
-                      </div>
-                    </div>
-
-                    {/* السطر الثالث: حالة الهدية الترحيبية والتحكم الأمني بها */}
-                    <div className="flex items-center justify-between">
-                      <button
-                        onClick={() => handleToggleUserFreeSession(user)}
-                        className="font-black active:scale-95 transition-all text-white"
-                        style={{
-                          background: user.has_used_free_session ? 'linear-gradient(135deg,#00CC66,#00AA55)' : 'linear-gradient(135deg,#FF9500,#FF7700)',
-                          padding: '6px 12px',
-                          borderRadius: 10,
-                          fontSize: 10,
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
-                        }}
-                      >
-                        {user.has_used_free_session ? '🎁 إعادة تفعيل الهدية' : '🔒 حظر الهدية يدوياً'}
-                      </button>
-
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-bold" style={{ fontSize: 10, color: user.has_used_free_session ? '#FF3333' : '#00CC66' }}>
-                          {user.has_used_free_session ? '❌ استخدم الهدية' : '🟢 مؤهل للمجانية'}
-                        </span>
-                        <span className="font-black" style={{ fontSize: 11, color: '#475569' }}>الهدية الترحيبية:</span>
-                      </div>
-                    </div>
-
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
       </div>
 
       {/* ══════ تقرير الإيرادات المباشر ══════ */}
