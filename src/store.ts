@@ -136,35 +136,8 @@ export const isEligibleForFreeSession = (
   return true;
 };
 
-export const calculateSessionPriceWithFreeGift = (
-  durationMs: number,
-  hourlyRate: number,
-  isFirstFreeSession: boolean,
-  originalPriceCalculator: (durMs: number, rate: number) => number
-): { finalPrice: number; freeMinutes: number; billableMs: number } => {
-  if (!isFirstFreeSession) {
-    return {
-      finalPrice: originalPriceCalculator(durationMs, hourlyRate),
-      freeMinutes: 0,
-      billableMs: durationMs,
-    };
-  }
+// ===================== 🛡️ الحماية والمساعدات =====================
 
-  const freeMs = Math.min(durationMs, FREE_SESSION_DURATION_MS);
-  const billableMs = Math.max(0, durationMs - freeMs);
-  const freeMinutes = Math.floor(freeMs / 60000);
-
-  if (billableMs === 0) {
-    return { finalPrice: 0, freeMinutes, billableMs: 0 };
-  }
-
-  const finalPrice = originalPriceCalculator(billableMs, hourlyRate);
-  return { finalPrice, freeMinutes: 60, billableMs };
-};
-
-// ===================== 🛡️ طبقات الحماية الأمنية =====================
-
-// 🛡️ [1] حماية من الضغط العالي (Rate Limiter)
 const rateLimiter = {
   requests: 0,
   lastReset: Date.now(),
@@ -182,7 +155,6 @@ const rateLimiter = {
   }
 };
 
-// 🛡️ [2] تنظيف المدخلات من الأكواد الخبيثة (XSS Protection)
 const sanitizeInput = (input: string): string => {
   if (!input) return '';
   return input
@@ -194,28 +166,6 @@ const sanitizeInput = (input: string): string => {
     .substring(0, 200);
 };
 
-// 🛡️ [3] حماية من تخمين الباسوردات (Brute Force Protection)
-const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
-
-export const checkLoginAttempt = (identifier: string): boolean => {
-  const now = Date.now();
-  const record = loginAttempts.get(identifier);
-
-  if (record && now - record.lastAttempt < 300000) {
-    if (record.count >= 5) return false;
-    record.count++;
-    record.lastAttempt = now;
-  } else {
-    loginAttempts.set(identifier, { count: 1, lastAttempt: now });
-  }
-  return true;
-};
-
-export const resetLoginAttempts = (identifier: string): void => {
-  loginAttempts.delete(identifier);
-};
-
-// ===================== Helpers =====================
 const uid = () => crypto.randomUUID?.() || Date.now().toString();
 
 const isSupabaseConfigured = () => {
@@ -239,16 +189,14 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-// 🛡️ [تنظيف وتوحيد اللوحة بدقة صارمة لمنع التحايل بالمسافات أو الأرقام]
 const normalizePlate = (plate?: string) => {
   if (!plate) return '';
-  const cleaned = sanitizeInput(plate)
+  return sanitizeInput(plate)
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
     .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
     .replace(/[^A-Z0-9\u0600-\u06FF]/gi, '')
     .trim()
     .toUpperCase();
-  return cleaned;
 };
 
 const samePlate = (a?: string, b?: string) =>
@@ -330,10 +278,8 @@ const mapSession = (r: any): ParkingSession => {
     }
   }
 
-  if (endTime && endTime < startTime) {
-    const diff = startTime - endTime;
-    if (diff < 4 * 60 * 60 * 1000) endTime = endTime + diff + 60000;
-  }
+  // ✅ تحويل مضمون للـ Boolean لضمان قراءة المجانية
+  const isFree = r.is_first_free_session === true || r.is_first_free_session === 'true' || r.is_first_free_session === 1;
 
   return {
     id: r.id,
@@ -358,7 +304,7 @@ const mapSession = (r: any): ParkingSession => {
     settled: r.settled ?? false,
     settled_at: r.settled_at || undefined,
     freeMinutesApplied: r.free_minutes_applied != null ? Number(r.free_minutes_applied) : 0,
-    isFirstFreeSession: r.is_first_free_session ?? false,
+    isFirstFreeSession: isFree,
   };
 };
 
@@ -507,7 +453,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (!isSupabaseConfigured()) return;
 
     try {
-      // 🛡️ فحص مباشر ومضمون: هل هذه اللوحة أو الهاتف ركنا مجاناً سابقاً؟
+      // 🛡️ فحص مباشر: هل هذه اللوحة أو الهاتف ركنا مجاناً في جلسة مكتملة سابقاً؟
       let alreadyUsedFree = false;
 
       if (cleanPlate) {
@@ -516,6 +462,7 @@ export const useStore = create<AppState>((set, get) => ({
           .select('id')
           .eq('car_plate', cleanPlate)
           .eq('is_first_free_session', true)
+          .eq('status', 'completed')
           .limit(1);
 
         if (plateCheck && plateCheck.length > 0) alreadyUsedFree = true;
@@ -527,6 +474,7 @@ export const useStore = create<AppState>((set, get) => ({
           .select('id')
           .eq('customer_phone', cleanPhone)
           .eq('is_first_free_session', true)
+          .eq('status', 'completed')
           .limit(1);
 
         if (phoneCheck && phoneCheck.length > 0) alreadyUsedFree = true;
@@ -591,7 +539,7 @@ export const useStore = create<AppState>((set, get) => ({
     } catch (err) { console.error('Error setting user with anti-abuse check:', err); }
   },
 
-  // 🛡️ [RPC + Safe Fallback]: الخصم الآمن من المحفظة
+  // 🛡️ [الخصم الآمن من المحفظة]:
   deductWallet: async (amount) => {
     const user = get().currentUser;
     if (!user || amount <= 0) return;
@@ -715,7 +663,6 @@ export const useStore = create<AppState>((set, get) => ({
     safeRemoveStorage('acknowledgedSessionIds');
   },
 
-  // 🛡️ [محمي بـ Rate Limiter]: جلب البيانات من السيرفر
   fetchAll: async () => {
     if (!isSupabaseConfigured()) return;
 
@@ -977,7 +924,7 @@ export const useStore = create<AppState>((set, get) => ({
     } catch (err) { console.error('❌', err); await get().fetchAll(); }
   },
 
-  // ─── بدء جلسة الركن مع الفحص المباشر للاستحقاق ───
+  // ─── بدء جلسة الركن مع الفحص الصريح والمضمون 100% ───
   addSession: async (s) => {
     const normalizedPlate = normalizePlate(s.carPlate);
     if (!normalizedPlate) return '';
@@ -1004,49 +951,55 @@ export const useStore = create<AppState>((set, get) => ({
       // 🎁 [تحديد الاستحقاق الحاسم]:
       let eligibleForFree = false;
 
-      if (isAppBooking && isSupabaseConfigured()) {
-        try {
-          // 1. هل اللوحة ركنت مجاناً قبل كده؟
-          const { data: plateCheck } = await supabase
-            .from('sessions')
-            .select('id')
-            .eq('car_plate', normalizedPlate)
-            .eq('is_first_free_session', true)
-            .limit(1);
+      if (isAppBooking) {
+        // افتراضياً: أي حجز قادم من التطبيق يستحق العرض ما لم يثبت استهلاكه مسبقاً
+        eligibleForFree = true;
 
-          const plateUsed = plateCheck && plateCheck.length > 0;
-
-          // 2. هل التليفون ركن مجاناً قبل كده؟
-          let phoneUsed = false;
-          if (cleanPhone) {
-            const { data: phoneCheck } = await supabase
+        if (isSupabaseConfigured()) {
+          try {
+            // 1. هل لوحة السيارة ركنت مجاناً في جلسة سابقة مكتملة؟
+            const { data: plateCheck } = await supabase
               .from('sessions')
               .select('id')
-              .eq('customer_phone', cleanPhone)
+              .eq('car_plate', normalizedPlate)
               .eq('is_first_free_session', true)
+              .eq('status', 'completed')
               .limit(1);
 
-            if (phoneCheck && phoneCheck.length > 0) phoneUsed = true;
-          }
+            if (plateCheck && plateCheck.length > 0) {
+              eligibleForFree = false;
+            }
 
-          // 3. هل المستخدم مسجل بأنه استهلك الهدية في جدول users؟
-          let userUsed = false;
-          if (cleanPhone) {
-            const { data: userData } = await supabase
-              .from('users')
-              .select('has_used_free_session')
-              .eq('phone', cleanPhone)
-              .maybeSingle();
+            // 2. هل رقم الهاتف ركن مجاناً في جلسة سابقة مكتملة؟
+            if (eligibleForFree && cleanPhone) {
+              const { data: phoneCheck } = await supabase
+                .from('sessions')
+                .select('id')
+                .eq('customer_phone', cleanPhone)
+                .eq('is_first_free_session', true)
+                .eq('status', 'completed')
+                .limit(1);
 
-            if (userData?.has_used_free_session === true) userUsed = true;
-          }
+              if (phoneCheck && phoneCheck.length > 0) {
+                eligibleForFree = false;
+              }
+            }
 
-          // إذا لم يسبق استخدام العرض في أي مكان -> الجلسة مجانية 100%! 🎁
-          if (!plateUsed && !phoneUsed && !userUsed) {
-            eligibleForFree = true;
+            // 3. هل العميل مسجل في جدول users بأنه استهلك الهدية؟
+            if (eligibleForFree && cleanPhone) {
+              const { data: userData } = await supabase
+                .from('users')
+                .select('has_used_free_session')
+                .eq('phone', cleanPhone)
+                .maybeSingle();
+
+              if (userData?.has_used_free_session === true) {
+                eligibleForFree = false;
+              }
+            }
+          } catch (err) {
+            console.error('Error verifying free session eligibility:', err);
           }
-        } catch (err) {
-          console.error('Error verifying free session eligibility:', err);
         }
       }
 
@@ -1326,7 +1279,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 🛡️ اعتماد الشحن مع Fallback مباشر
+  // 🛡️ اعتماد الشحن المباشر والمضمون
   approveTopUp: async (id) => {
     if (!isSupabaseConfigured()) return;
     try {
