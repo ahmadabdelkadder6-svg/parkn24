@@ -32,7 +32,7 @@ import L from 'leaflet';
 import { supabase } from '../lib/supabase';
 
 /* ─── Constants ─── */
-const CANCEL_WINDOW_SECONDS = 30;
+const CANCEL_WINDOW_SECONDS = 30; // مهلة الـ 30 ثانية للعميل قبل إشعار السايس
 
 /* ─── Icons ─── */
 const userIcon = new L.DivIcon({
@@ -59,14 +59,14 @@ const toMs = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-/* ─── Helper: تنظيف وتوحيد رقم اللوحة بدقة فائقة ─── */
+/* ─── Helper: تنظيف وتوحيد رقم اللوحة ─── */
 const normalizePlate = (plate?: string): string => {
   if (!plate) return '';
   return plate
     .trim()
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
     .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
-    .replace(/[^A-Z0-9\u0600-\u06FF]/gi, '') // مسح كامل للمسافات والرموز لضمان التطابق التام
+    .replace(/[^A-Z0-9\u0600-\u06FF]/gi, '')
     .toUpperCase();
 };
 
@@ -81,7 +81,6 @@ function MapController({
   const map = useMap();
 
   useEffect(() => {
-    // إصلاح أبعاد الخريطة فور تحميلها
     setTimeout(() => {
       map.invalidateSize();
     }, 250);
@@ -177,7 +176,7 @@ export default function NavigationScreen() {
   }, [currentUser]);
 
   /* ─────────────────────────────────────────────
-     ██  REALTIME فائق السرعة وبدون أي تأخير
+     ██  REALTIME فائق السرعة
      ───────────────────────────────────────────── */
   useEffect(() => {
     if (!userPlateNav && !userPhoneClean) return;
@@ -279,19 +278,17 @@ export default function NavigationScreen() {
     return () => clearTimeout(t);
   }, []);
 
-  /* ─── مؤقت الإلغاء ─── */
+  /* ─── مؤقت الإلغاء (30 ثانية بالتمام) ─── */
   useEffect(() => {
-    if (myIncomingCar) {
-      screenEnteredRef.current = Date.now();
-      setCancelTimeLeft(CANCEL_WINDOW_SECONDS);
-      setCanCancel(true);
-    }
-
     if (!myIncomingCar) {
       setCancelTimeLeft(CANCEL_WINDOW_SECONDS);
       setCanCancel(true);
       return;
     }
+
+    screenEnteredRef.current = Date.now();
+    setCancelTimeLeft(CANCEL_WINDOW_SECONDS);
+    setCanCancel(true);
 
     const interval = window.setInterval(() => {
       const elapsed = Math.floor((Date.now() - screenEnteredRef.current) / 1000);
@@ -306,7 +303,7 @@ export default function NavigationScreen() {
     return () => window.clearInterval(interval);
   }, [myIncomingCar?.id]);
 
-  /* ─── إرسال Push للجراج بعد 30 ثانية ─── */
+  /* ─── إرسال Push للجراج فور انتهاء الـ 30 ثانية ─── */
   useEffect(() => {
     if (!myIncomingCar || !garage) return;
 
@@ -359,7 +356,7 @@ export default function NavigationScreen() {
         pushSentRef.current = false;
         setPushStatus('waiting');
       }
-    }, msLeft + 500);
+    }, msLeft);
 
     return () => {
       if (pushTimerRef.current) {
@@ -604,7 +601,7 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* 🗺️ الخريطة المحدثة والمجانية بدون أي API Keys */}
+        {/* 🗺️ الخريطة المحدثة والمجانية 100% */}
         <div className="w-full h-48 rounded-2xl overflow-hidden border border-slate-800 relative shrink-0 shadow-lg">
           {mapReady ? (
             <MapContainer
@@ -613,7 +610,6 @@ export default function NavigationScreen() {
               style={{ width: '100%', height: '100%' }}
               zoomControl={false}
             >
-              {/* ✅ سيرفر الخرائط المجاني 100% المباشر من OpenStreetMap */}
               <TileLayer
                 url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
