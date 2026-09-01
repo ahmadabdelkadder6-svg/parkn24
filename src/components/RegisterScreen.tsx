@@ -21,14 +21,26 @@ export default function RegisterScreen() {
   const [carPlate, setCarPlate] = useState('');
   const [touched, setTouched] = useState({ name: false, phone: false, carPlate: false });
 
-  // ─── 1. التحقق من صحة الاسم (ثنائي وبدون أرقام) ───
+  // ─── 1. التحقق من صحة الاسم (حروف عربية فقط + ثنائي) ───
   const nameValidation = useMemo(() => {
     const clean = name.trim();
     if (!clean) return { valid: false, message: 'الاسم مطلوب' };
-    if (/\d/.test(clean)) return { valid: false, message: 'الاسم يجب ألا يحتوي على أرقام' };
-    if (/[!@#$%^&*(),.?":{}|<>_\-=+/\\]/.test(clean)) return { valid: false, message: 'الاسم يحتوي على رموز غير مسموحة' };
+    if (/[a-zA-Z]/.test(clean)) {
+      return { valid: false, message: 'يرجى كتابة الاسم بالحروف العربية فقط (ممنوع الإنجليزي)' };
+    }
+    if (/\d/.test(clean)) {
+      return { valid: false, message: 'الاسم يجب ألا يحتوي على أرقام' };
+    }
+    if (/[!@#$%^&*(),.?":{}|<>_\-=+/\\]/.test(clean)) {
+      return { valid: false, message: 'الاسم يحتوي على رموز غير مسموحة' };
+    }
+    if (!/^[\u0600-\u06FF\s]+$/.test(clean)) {
+      return { valid: false, message: 'اكتب الاسم باللغة العربية فقط' };
+    }
     const words = clean.split(/\s+/).filter(Boolean);
-    if (words.length < 2) return { valid: false, message: 'أدخل اسمك الثنائي على الأقل (مثال: أحمد علي)' };
+    if (words.length < 2) {
+      return { valid: false, message: 'أدخل اسمك الثنائي على الأقل (مثال: أحمد علي)' };
+    }
     if (clean.length < 5) return { valid: false, message: 'الاسم قصير جداً' };
     return { valid: true, message: '' };
   }, [name]);
@@ -46,15 +58,27 @@ export default function RegisterScreen() {
     return { valid: true, message: '' };
   }, [phone]);
 
-  // ─── 3. التحقق من رقم اللوحة (حروف وأرقام معاً) ───
+  // ─── 3. التحقق من رقم اللوحة (حروف عربية فقط + أرقام) ───
   const plateValidation = useMemo(() => {
     const clean = carPlate.trim();
     if (!clean) return { valid: false, message: 'رقم اللوحة مطلوب' };
-    const hasLetters = /[\u0600-\u06FFa-zA-Z]/.test(clean);
-    const hasNumbers = /[0-9٠-٩]/.test(clean);
-    if (!hasLetters || !hasNumbers) {
-      return { valid: false, message: 'اللوحة يجب أن تحتوي على حروف وأرقام معاً (مثال: س ق ر 123)' };
+    
+    // 🚫 منع الحروف الإنجليزية تماماً في لوحة السيارة
+    if (/[a-zA-Z]/.test(clean)) {
+      return { valid: false, message: 'ممنوع الحروف الإنجليزية! اكتب حروف اللوحة بالعربي (مثال: س ق ر 123)' };
     }
+
+    const hasArabicLetters = /[\u0600-\u06FF]/.test(clean);
+    const hasNumbers = /[0-9٠-٩]/.test(clean);
+
+    if (!hasArabicLetters || !hasNumbers) {
+      return { valid: false, message: 'اللوحة يجب أن تحتوي على حروف عربية وأرقام معاً (مثال: س ق ر 123)' };
+    }
+
+    if (!/^[\u0600-\u06FF0-9٠-٩\s]+$/.test(clean)) {
+      return { valid: false, message: 'اكتب حروف وأرقام صحيحة فقط بدون رموز' };
+    }
+
     if (clean.length < 4) return { valid: false, message: 'رقم اللوحة قصير جداً' };
     return { valid: true, message: '' };
   }, [carPlate]);
@@ -82,7 +106,7 @@ export default function RegisterScreen() {
       await setCurrentUser({
         name: name.trim(),
         phone: normalizeArabicDigits(phone),
-        carPlate: carPlate.trim().toUpperCase(),
+        carPlate: carPlate.trim(),
         wallet: 0,
       });
       toast.success(`أهلاً بك يا ${name.trim().split(' ')[0]} في بركن! 🚗`);
@@ -108,7 +132,7 @@ export default function RegisterScreen() {
           <ShieldCheck size={16} className="text-blue-500" />
           <h2 className="text-xl font-black text-white">Parkn24</h2>
         </div>
-        <p className="text-slate-400 text-xs font-bold">سجل بياناتك للبدء وحجز مكانك فوراً</p>
+        <p className="text-slate-400 text-xs font-bold">سجل بياناتك بالعربية لحجز مكانك فوراً</p>
       </div>
 
       <div className="space-y-3.5">
@@ -129,7 +153,7 @@ export default function RegisterScreen() {
                   ? 'border-emerald-500/80 focus:ring-2 focus:ring-emerald-500/30'
                   : 'border-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
               }`}
-              placeholder="الاسم بالكامل (مثال: أحمد علي)"
+              placeholder="الاسم بالكامل بالعربي (مثال: أحمد علي)"
               value={name}
               onChange={(e) => setName(e.target.value)}
               onBlur={() => setTouched((p) => ({ ...p, name: true }))}
@@ -199,7 +223,7 @@ export default function RegisterScreen() {
                   ? 'border-emerald-500/80 focus:ring-2 focus:ring-emerald-500/30'
                   : 'border-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
               }`}
-              placeholder="لوحة السيارة (مثال: س ق ر 1234)"
+              placeholder="حروف اللوحة بالعربي (مثال: س ق ر 123)"
               value={carPlate}
               onChange={(e) => setCarPlate(e.target.value)}
               onBlur={() => setTouched((p) => ({ ...p, carPlate: true }))}

@@ -239,18 +239,18 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-// 🧬 [بصمة اللوحة العبقرية]: توحيد شامل للأرقام والحروف المتشابهة وحذف المسافات لمنع التحايل
+// 🧬 [بصمة اللوحة]: الإبقاء على الحروف العربية وتوحيد المتشابهات والأرقام فقط
 const normalizePlate = (plate?: string): string => {
   if (!plate) return '';
   
   let cleaned = sanitizeInput(plate).trim();
   
-  // 1. تحويل الأرقام العربية الشرقية والفارسية إلى أرقام إنجليزية
+  // 1. تحويل الأرقام العربية والفارسية إلى أرقام إنجليزية موحدة
   cleaned = cleaned
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
     .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
   
-  // 2. توحيد الحروف المتشابهة والهمزات
+  // 2. توحيد الحروف العربية المتشابهة والهمزات
   const charMap: Record<string, string> = {
     'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ٱ': 'ا', 'ء': 'ا',
     'ة': 'ت',
@@ -261,12 +261,11 @@ const normalizePlate = (plate?: string): string => {
   };
   cleaned = cleaned.replace(/./g, (char) => charMap[char] || char);
   
-  // 3. حذف المسافات والفواصل والرموز تماماً
-  cleaned = cleaned.replace(/[^A-Za-z0-9\u0600-\u06FF]/g, '');
+  // 3. حذف الحروف الإنجليزية والرموز والمسافات (حروف عربية وأرقام فقط)
+  cleaned = cleaned.replace(/[^0-9\u0600-\u06FF]/g, '');
   
-  return cleaned.toUpperCase();
+  return cleaned;
 };
-
 const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
 const getMs = (value?: number) => { if (typeof value === 'number') return value; return 0; };
