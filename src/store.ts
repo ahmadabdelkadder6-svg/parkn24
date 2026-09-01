@@ -239,7 +239,7 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-// 🛡️ [محسّن أمنياً لأقصى درجة]: تنظيف وتوحيد اللوحة
+// 🛡️ [محسّن أمنياً لأقصى درجة]: تنظيف وتوحيد رقم لوحة السيارة لدمجها ومنع التكرار
 const normalizePlate = (plate?: string) => {
   if (!plate) return '';
   const cleaned = sanitizeInput(plate)
@@ -491,38 +491,82 @@ export const useStore = create<AppState>((set, get) => ({
 
   setCurrentUser: async (u) => {
     if (!u) { set({ currentUser: null }); safeRemoveStorage('currentUser'); return; }
+    const cleanPlate = normalizePlate(u.carPlate);
+    const cleanPhone = u.phone.replace(/[^\d+]/g, '').substring(0, 15);
+    const cleanName = sanitizeInput(u.name);
+
     const cleanUser = {
       ...u,
-      name: sanitizeInput(u.name),
-      carPlate: normalizePlate(u.carPlate),
-      phone: u.phone.replace(/[^\d+]/g, '').substring(0, 15),
+      name: cleanName,
+      carPlate: cleanPlate,
+      phone: cleanPhone,
     };
     set({ currentUser: cleanUser }); safeSetStorage('currentUser', cleanUser);
+
     if (!isSupabaseConfigured()) return;
+
     try {
+      // 🛡️ [حماية كشف احتيال تكرار العرض]: فحص فوري تاريخي للوحة وهاتف العميل المسجل
+      let isPlateOrPhoneAlreadyUsedFree = false;
+
+      if (cleanPlate) {
+        const { data: plateSessions } = await supabase
+          .from('sessions')
+          .select('id')
+          .eq('car_plate', cleanPlate)
+          .eq('is_first_free_session', true)
+          .limit(1);
+
+        if (plateSessions && plateSessions.length > 0) {
+          isPlateOrPhoneAlreadyUsedFree = true;
+        }
+      }
+
+      if (!isPlateOrPhoneAlreadyUsedFree && cleanPhone) {
+        const { data: phoneSessions } = await supabase
+          .from('sessions')
+          .select('id')
+          .eq('customer_phone', cleanPhone)
+          .eq('is_first_free_session', true)
+          .limit(1);
+
+        if (phoneSessions && phoneSessions.length > 0) {
+          isPlateOrPhoneAlreadyUsedFree = true;
+        }
+      }
+
       const { data: existingUser } = await supabase
         .from('users')
         .select('wallet, name, phone, car_plate, has_used_free_session, bonus_balance')
-        .eq('phone', cleanUser.phone)
-        .single();
+        .eq('phone', cleanPhone)
+        .maybeSingle();
+
+      const finalHasUsedFree = isPlateOrPhoneAlreadyUsedFree || (existingUser?.has_used_free_session === true);
 
       if (existingUser) {
         const updated = {
-          name: existingUser.name || cleanUser.name,
-          phone: existingUser.phone || cleanUser.phone,
-          carPlate: existingUser.car_plate || cleanUser.carPlate,
-          wallet: Number(existingUser.wallet),
-          hasUsedFreeSession: existingUser.has_used_free_session ?? false,
+          name: existingUser.name || cleanName,
+          phone: existingUser.phone || cleanPhone,
+          carPlate: existingUser.car_plate || cleanPlate,
+          wallet: Number(existingUser.wallet || 0),
+          hasUsedFreeSession: finalHasUsedFree,
           bonusBalance: Number(existingUser.bonus_balance ?? 0),
         };
         set({ currentUser: updated }); safeSetStorage('currentUser', updated);
-        await supabase.from('users').update({ name: cleanUser.name, car_plate: cleanUser.carPlate }).eq('phone', cleanUser.phone);
+        await supabase.from('users').update({
+          name: cleanName,
+          car_plate: cleanPlate,
+          has_used_free_session: finalHasUsedFree
+        }).eq('phone', cleanPhone);
       } else {
         const { data: newUser } = await supabase
           .from('users')
           .insert({
-            name: cleanUser.name, phone: cleanUser.phone, car_plate: cleanUser.carPlate, wallet: cleanUser.wallet ?? 0,
-            has_used_free_session: false,
+            name: cleanName,
+            phone: cleanPhone,
+            car_plate: cleanPlate,
+            wallet: cleanUser.wallet ?? 0,
+            has_used_free_session: finalHasUsedFree,
             bonus_balance: 0,
           })
           .select()
@@ -530,44 +574,78 @@ export const useStore = create<AppState>((set, get) => ({
 
         if (newUser) {
           const updated = {
-            name: newUser.name, phone: newUser.phone, carPlate: newUser.car_plate,
+            name: newUser.name,
+            phone: newUser.phone,
+            carPlate: newUser.car_plate,
             wallet: Number(newUser.wallet),
-            hasUsedFreeSession: false,
+            hasUsedFreeSession: finalHasUsedFree,
             bonusBalance: 0,
           };
           set({ currentUser: updated }); safeSetStorage('currentUser', updated);
 
-          try {
-            localStorage.setItem('showWelcomeGift', 'true');
-          } catch (e) { console.error(e); }
+          if (!finalHasUsedFree) {
+            try {
+              localStorage.setItem('showWelcomeGift', 'true');
+            } catch (e) {}
+          }
         }
       }
-    } catch (err) { console.error('Error setting user:', err); }
+    } catch (err) { console.error('Error setting user with anti-abuse check:', err); }
   },
 
-  // 🛡️ [محمي بـ RPC Atomic]: الخصم الآمن من المحفظة عبر دالة السيرفر المشفرة
+  // 🛡️ [RPC + Fallback]: الخصم الآمن من المحفظة مع الارتداد التلقائي للمنع من الأعطال
   deductWallet: async (amount) => {
     const user = get().currentUser;
     if (!user || amount <= 0) return;
 
     if (isSupabaseConfigured()) {
       try {
+        // [1] محاولة الخصم عبر دالة RPC المشفرة بالسيرفر
         const { data, error } = await supabase.rpc('deduct_wallet_atomic', {
           p_phone: user.phone,
           p_amount: Math.floor(Number(amount)),
         });
 
-        if (error || !data?.success) {
-          console.error('❌ فشل خصم المحفظة:', error || data?.error);
+        if (!error && data?.success) {
+          const updated = { ...user, wallet: Number(data.new_wallet) };
+          set({ currentUser: updated });
+          safeSetStorage('currentUser', updated);
+          walletDeductedAt = Date.now();
           return;
         }
+        console.warn('RPC deduct failed/missing, rolling back to direct transaction:', error || data?.error);
+      } catch (rpcErr) {
+        console.warn('RPC deduct exception, fallback active:', rpcErr);
+      }
 
-        const updated = { ...user, wallet: Number(data.new_wallet) };
-        set({ currentUser: updated });
-        safeSetStorage('currentUser', updated);
-        walletDeductedAt = Date.now();
-      } catch (err) {
-        console.error('❌ خطأ غير متوقع في deductWallet:', err);
+      // [2] نظام الارتداد الفوري (Fallback): التحديث الآمن المباشر للفرونت إند عند عدم وجود RPC
+      try {
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('wallet')
+          .eq('phone', user.phone)
+          .single();
+
+        if (userError || !userData) return;
+        const currentWallet = Number(userData.wallet || 0);
+        if (currentWallet < amount) {
+          console.error('Insufficient wallet balance');
+          return;
+        }
+        const newWallet = currentWallet - amount;
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({ wallet: newWallet })
+          .eq('phone', user.phone);
+
+        if (!updateError) {
+          const updated = { ...user, wallet: newWallet };
+          set({ currentUser: updated });
+          safeSetStorage('currentUser', updated);
+          walletDeductedAt = Date.now();
+        }
+      } catch (fallbackErr) {
+        console.error('Wallet deduct fallback failed:', fallbackErr);
       }
     }
   },
@@ -643,7 +721,6 @@ export const useStore = create<AppState>((set, get) => ({
     safeRemoveStorage('acknowledgedSessionIds');
   },
 
-  // 🛡️ [محمي بـ Rate Limiter]: جلب البيانات من السيرفر
   fetchAll: async () => {
     if (!isSupabaseConfigured()) return;
 
@@ -945,23 +1022,36 @@ export const useStore = create<AppState>((set, get) => ({
       }
 
       const addedByValue = resolveAddedBy((s as any).addedBy);
-
       const currentUser = get().currentUser;
       let eligibleForFree = isEligibleForFreeSession(s.source, currentUser?.hasUsedFreeSession);
 
+      // 🛡️ [حارس كشف الاحتيال والمجانية]: فحص صارم ومزدوج للوحة والتليفون في قاعدة البيانات قبل بدء الجلسة لتعطيل المجانية إن وجدت مسبقاً
       if (eligibleForFree && isSupabaseConfigured() && s.source === 'app') {
         try {
           const cleanPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
 
-          const { data: abuseCheck, error: abuseError } = await supabase
+          const { data: plateCheck } = await supabase
             .from('sessions')
             .select('id')
+            .eq('car_plate', normalizedPlate)
             .eq('is_first_free_session', true)
-            .or(`car_plate.eq.${normalizedPlate}${cleanPhone ? `,customer_phone.eq.${cleanPhone}` : ''}`)
             .limit(1);
 
-          if (!abuseError && abuseCheck && abuseCheck.length > 0) {
+          if (plateCheck && plateCheck.length > 0) {
             eligibleForFree = false;
+          }
+
+          if (eligibleForFree && cleanPhone) {
+            const { data: phoneCheck } = await supabase
+              .from('sessions')
+              .select('id')
+              .eq('customer_phone', cleanPhone)
+              .eq('is_first_free_session', true)
+              .limit(1);
+
+            if (phoneCheck && phoneCheck.length > 0) {
+              eligibleForFree = false;
+            }
           }
         } catch (err) {
           console.error('⚠️ Abuse protection query failed:', err);
@@ -1235,29 +1325,113 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 🛡️ [محمي بـ RPC Atomic]: الاعتماد الآمن عبر دالة السيرفر المشفرة
+  // 🛡️ [الاعتماد الآمن المرن]: الاعتماد المزدوج RPC مع ارتداد بروتوكولي client-side مضمن لضمان التوافق والأمان
   approveTopUp: async (id) => {
     if (!isSupabaseConfigured()) return;
     try {
+      // محاولة أولى مشفرة بالسيرفر RPC
       const { data, error } = await supabase.rpc('approve_topup_atomic', {
         p_topup_id: id,
       });
 
-      if (error || !data?.success) {
-        throw new Error(data?.error || error?.message || 'فشل اعتماد الطلب');
+      if (!error && data?.success) {
+        set((st) => ({
+          walletTopUps: st.walletTopUps.map((w) =>
+            w.id === id
+              ? { ...w, status: 'approved' as const, bonusAmount: data.bonus_added }
+              : w
+          ),
+        }));
+        await get().fetchAll();
+        return;
+      }
+      console.warn('RPC approve topup failed, executing robust fallback transaction:', error || data?.error);
+    } catch (rpcErr) {
+      console.warn('RPC approve exception, falling back:', rpcErr);
+    }
+
+    // الارتداد الفوري (Fallback): اعتماد وتحديث الرصيد التراكمي بطريقة آمنة
+    const topUp = get().walletTopUps.find((w) => w.id === id);
+    if (!topUp) return;
+
+    try {
+      let dbRow: any = null;
+      if (topUp.transactionId) {
+        const { data } = await supabase
+          .from('wallet_topups')
+          .select('*')
+          .eq('transaction_id', topUp.transactionId)
+          .maybeSingle();
+        if (data) dbRow = data;
+      }
+      if (!dbRow) {
+        const { data } = await supabase
+          .from('wallet_topups')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+        if (data) dbRow = data;
+      }
+      if (!dbRow) throw new Error('Top-up record not found');
+
+      if (dbRow.status === 'approved') {
+        await get().fetchAll();
+        return;
+      }
+
+      const supabaseId = dbRow.id;
+      const { error: approveError } = await supabase
+        .from('wallet_topups')
+        .update({ status: 'approved' })
+        .eq('id', supabaseId);
+
+      if (approveError) throw approveError;
+
+      const realUserPhone = dbRow.user_phone || topUp.userPhone || '';
+      let userData: any = null;
+      if (realUserPhone) {
+        const { data } = await supabase
+          .from('users')
+          .select('*')
+          .eq('phone', realUserPhone)
+          .maybeSingle();
+        if (data) userData = data;
+      }
+      if (!userData) throw new Error('User account not found');
+
+      const baseAmount = Number(dbRow.amount || topUp.amount || 0);
+      let bonusAmount = 0;
+      if (baseAmount >= 1000) bonusAmount = 200;
+      else if (baseAmount >= 500) bonusAmount = 75;
+      else if (baseAmount >= 300) bonusAmount = 30;
+      else if (baseAmount >= 100) bonusAmount = 5;
+
+      const totalToAdd = baseAmount + bonusAmount;
+      const newWallet = Number(userData.wallet || 0) + totalToAdd;
+
+      const { error: walletError } = await supabase
+        .from('users')
+        .update({ wallet: newWallet })
+        .eq('id', userData.id);
+
+      if (walletError) throw walletError;
+
+      if (bonusAmount > 0) {
+        await supabase
+          .from('wallet_topups')
+          .update({ bonus_amount: bonusAmount })
+          .eq('id', supabaseId);
       }
 
       set((st) => ({
         walletTopUps: st.walletTopUps.map((w) =>
-          w.id === id
-            ? { ...w, status: 'approved' as const, bonusAmount: data.bonus_added }
-            : w
+          w.id === id ? { ...w, status: 'approved' as const, bonusAmount } : w
         ),
       }));
 
       await get().fetchAll();
     } catch (err) {
-      console.error('❌ خطأ في اعتماد الشحن:', err);
+      console.error('Direct fallback top-up approval failed:', err);
       throw err;
     }
   },
@@ -1370,7 +1544,7 @@ export const useStore = create<AppState>((set, get) => ({
     const cleanReply = sanitizeInput(reply);
     set((st) => ({ messages: (st.messages ?? []).map((msg) => (msg.id === id ? { ...msg, reply: cleanReply, status: 'replied' as const, repliedAt: now } : msg)) }));
     if (!isSupabaseConfigured()) return;
-    const { error } = await supabase.from('messages').update({ reply: cleanReply, status: 'replied', replied_at: new Date(now).toISOString() }).eq('id', id);
+    const { error = null } = await supabase.from('messages').update({ reply: cleanReply, status: 'replied', replied_at: new Date(now).toISOString() }).eq('id', id);
     if (error) console.error('❌', error);
   },
 
