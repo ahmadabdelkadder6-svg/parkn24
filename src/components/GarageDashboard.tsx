@@ -256,21 +256,39 @@ export default function GarageDashboard() {
     });
   }, [garageSessions, isValet]);
 
-  // ✅ [فلترة جلسات السايس مع إظهار اليدوي فوراً]
+  // ✅ [فلترة جلسات السايس الذكية والمؤمنة ضد اختفاء اليدوي]
   const valetActiveSessions = useMemo(() => {
     if (!isValet) return activeSessions;
 
+    // 🔒 قفل الأمان: إذا كان حساب السايس معطلاً من المالك، احجب كل شيء
     const isActive =
       valetNumber === '1' ? garage?.valet1Active :
       valetNumber === '2' ? garage?.valet2Active :
       valetNumber === '3' ? garage?.valet3Active : false;
     if (!isActive) return [];
 
+    // تحويل أسماء السايس الحالية لبصمة موحدة لتجنب مشاكل الحروف والمسافات
+    const normalizedMyNames = new Set(
+      Array.from(myValetNames).map(name => 
+        name.trim().replace(/\s+/g, '').replace(/[أإآء]/g, 'ا').replace(/[ىئ]/g, 'ي').replace(/ة/g, 'ت').toLowerCase()
+      )
+    );
+
     return activeSessions.filter(s => {
       const addedBy = ((s as any).addedBy || '').trim();
-      if (addedBy && myValetNames.has(addedBy)) return true;
+      
+      // 1. لو الجلسة يدوية (manual) تظهر للسايس فوراً بدون قيود لضمان عدم اختفائها أبداً
       if (s.source === 'manual') return true;
+
+      // 2. لو الجلسة من التطبيق ومسجلة باسم هذا السايس (مقارنة مرنة بالبصمة)
+      if (addedBy) {
+        const normalizedAddedBy = addedBy.replace(/\s+/g, '').replace(/[أإآء]/g, 'ا').replace(/[ىئ]/g, 'ي').replace(/ة/g, 'ت').toLowerCase();
+        if (normalizedMyNames.has(normalizedAddedBy)) return true;
+      }
+
+      // 3. لو جلسة جديدة تماماً من التطبيق وغير معينة لأحد بعد (تظهر ليلقطها أول سايس يضغط عليها)
       if (!addedBy && s.source === 'app') return true;
+
       return false;
     });
   }, [activeSessions, isValet, myValetNames, valetNumber, garage]);
