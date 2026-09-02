@@ -164,7 +164,6 @@ export const calculateSessionPriceWithFreeGift = (
 
 // ===================== 🛡️ طبقات الحماية الأمنية =====================
 
-// 🛡️ [1] حماية من الضغط العالي (Rate Limiter)
 const rateLimiter = {
   requests: 0,
   lastReset: Date.now(),
@@ -182,7 +181,6 @@ const rateLimiter = {
   }
 };
 
-// 🛡️ [2] تنظيف المدخلات من الأكواد الخبيثة (XSS Protection)
 const sanitizeInput = (input: string): string => {
   if (!input) return '';
   return input
@@ -194,28 +192,6 @@ const sanitizeInput = (input: string): string => {
     .substring(0, 200);
 };
 
-// 🛡️ [3] حماية من تخمين الباسوردات (Brute Force Protection)
-const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
-
-export const checkLoginAttempt = (identifier: string): boolean => {
-  const now = Date.now();
-  const record = loginAttempts.get(identifier);
-
-  if (record && now - record.lastAttempt < 300000) {
-    if (record.count >= 5) return false;
-    record.count++;
-    record.lastAttempt = now;
-  } else {
-    loginAttempts.set(identifier, { count: 1, lastAttempt: now });
-  }
-  return true;
-};
-
-export const resetLoginAttempts = (identifier: string): void => {
-  loginAttempts.delete(identifier);
-};
-
-// ===================== Helpers =====================
 const uid = () => crypto.randomUUID?.() || Date.now().toString();
 
 const isSupabaseConfigured = () => {
@@ -239,7 +215,7 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-// 🧬 [بصمة اللوحة]: الإبقاء على الحروف العربية وتوحيد المتشابهات والأرقام فقط
+// 🧬 [بصمة اللوحة العبقرية الموحدة بالكامل]: الإبقاء على الحروف العربية وتوحيد المتشابهات والأرقام فقط
 const normalizePlate = (plate?: string): string => {
   if (!plate) return '';
   
@@ -266,6 +242,7 @@ const normalizePlate = (plate?: string): string => {
   
   return cleaned;
 };
+
 const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
 const getMs = (value?: number) => { if (typeof value === 'number') return value; return 0; };
@@ -350,7 +327,6 @@ const mapSession = (r: any): ParkingSession => {
     if (diff < 4 * 60 * 60 * 1000) endTime = endTime + diff + 60000;
   }
 
-  // ✅ قراءة صحيحة وآمنة للـ boolean
   const isFree = r.is_first_free_session === true || r.is_first_free_session === 'true' || r.is_first_free_session === 1;
 
   return {
@@ -525,7 +501,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (!isSupabaseConfigured()) return;
 
     try {
-      // 🛡️ فحص مباشر: هل هذه اللوحة ركنت مجاناً في جلسة سابقة مكتملة؟
+      // 🛡️ فحص مباشر ومضمون: هل هذه اللوحة ركنت مجاناً في جلسة سابقة مكتملة؟
       let alreadyUsedFree = false;
 
       if (cleanPlate) {
@@ -1012,8 +988,10 @@ export const useStore = create<AppState>((set, get) => ({
 
   // ─── بدء جلسة الركن مع الفحص الصريح والمضمون 100% ───
   addSession: async (s) => {
-    const normalizedPlate = normalizePlate(s.carPlate);
-    if (!normalizedPlate) return '';
+    const rawPlate = (s.carPlate || '').trim();
+    if (!rawPlate) return '';
+
+    const normalizedPlate = normalizePlate(rawPlate) || rawPlate.toUpperCase();
     const sessionId = crypto.randomUUID();
     const lockKey = `${normalizedPlate}::${s.source}`;
 
@@ -1033,6 +1011,7 @@ export const useStore = create<AppState>((set, get) => ({
       const addedByValue = resolveAddedBy((s as any).addedBy);
       const isAppBooking = s.source === 'app';
       const cleanPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+      const nowTimestamp = s.startTime && s.startTime > 0 ? s.startTime : Date.now();
 
       // 🎁 [تحديد الاستحقاق الحاسم]:
       let eligibleForFree = false;
@@ -1102,18 +1081,19 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
 
+      // ✅ الجلسة المتفائلة تأخذ وقت البدء الحقيقي فوراً (ليس 0)
       const optimisticSession: ParkingSession = {
         ...s,
         id: sessionId,
-        carPlate: normalizedPlate,
-        startTime: Date.now(),
+        carPlate: rawPlate,
+        startTime: nowTimestamp,
         synced: false,
         revenueConfirmed: false,
         addedBy: addedByValue,
         customerPhone: cleanPhone || undefined,
         customerName: (s as any).customerName || undefined,
         incomingCarId: (s as any).incomingCarId || undefined,
-        startedBy: (s as any).startedBy || undefined,
+        startedBy: (s as any).startedBy || (isAppBooking ? 'customer' : 'garage'),
         commissionAmount: 0,
         netRevenue: 0,
         settled: false,
@@ -1131,7 +1111,7 @@ export const useStore = create<AppState>((set, get) => ({
           id: sessionId,
           garage_id: s.garageId,
           car_plate: normalizedPlate,
-          start_time: new Date().toISOString(),
+          start_time: new Date(nowTimestamp).toISOString(),
           status: s.status,
           source: s.source,
           agreed_price: s.agreedPrice ?? null,
@@ -1140,7 +1120,7 @@ export const useStore = create<AppState>((set, get) => ({
           customer_phone: cleanPhone || null,
           customer_name: (s as any).customerName || null,
           incoming_car_id: (s as any).incoming_car_id || null,
-          started_by: (s as any).startedBy || null,
+          started_by: (s as any).startedBy || (isAppBooking ? 'customer' : 'garage'),
           commission_amount: 0,
           net_revenue: 0,
           settled: false,
@@ -1378,10 +1358,11 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 🛡️ اعتماد الشحن المباشر والمضمون
+  // 🛡️ [اعتماد المحفظة المباشر والأمين لمنع تكرار الإضافات]:
   approveTopUp: async (id) => {
     if (!isSupabaseConfigured()) return;
     try {
+      // محاولة مشفرة بالسيرفر RPC أولاً
       const { data, error } = await supabase.rpc('approve_topup_atomic', {
         p_topup_id: id,
       });
@@ -1440,12 +1421,12 @@ export const useStore = create<AppState>((set, get) => ({
       const realUserPhone = dbRow.user_phone || topUp.userPhone || '';
       let userData: any = null;
       if (realUserPhone) {
-        const { data } = await supabase
+        const { data: userDataObj } = await supabase
           .from('users')
           .select('*')
           .eq('phone', realUserPhone)
           .maybeSingle();
-        if (data) userData = data;
+        if (userDataObj) userData = userDataObj;
       }
       if (!userData) throw new Error('User account not found');
 
