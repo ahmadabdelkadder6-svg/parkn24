@@ -15,6 +15,8 @@ interface PushPayloadNotification {
 
 interface SendPushPayload {
   garageId:  string;
+  urgency?:  'high' | 'normal';
+  ttl?:      number;
   immediate: PushPayloadNotification;
   scheduled: (PushPayloadNotification & { sendAt: string }) | null;
 }
@@ -66,7 +68,7 @@ const supabaseFetch = async (
       }
     }
 
-    await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+    await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
   }
 
   return { ok: false, error: 'Max retries exceeded' };
@@ -162,7 +164,7 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
   }
 };
 
-// ─── إرسال تنبيه "سيارة في الطريق" فوراً (لحظياً بدون تأخير) ───
+// ─── إرسال تنبيه "سيارة في الطريق" بأعلى أولوية طوارئ ──────────────
 export const sendCarComingPush = async ({
   garageId,
   carPlate,
@@ -177,11 +179,6 @@ export const sendCarComingPush = async ({
   agreedPrice?:     number;
 }): Promise<boolean> => {
   try {
-    const bodyParts: string[] = [`🚗 ${carPlate}`];
-    if (customerName)         bodyParts.push(`👤 ${customerName}`);
-    if (agreedPrice)          bodyParts.push(`💰 ${agreedPrice} ج.م/ساعة`);
-    if (estimatedMinutes > 0) bodyParts.push(`⏱️ وصول بعد ${estimatedMinutes} د`);
-
     const immediateTag = `incoming-${carPlate}`;
     const scheduledTag = `approaching-${carPlate}`;
 
@@ -191,9 +188,12 @@ export const sendCarComingPush = async ({
 
     const payload: SendPushPayload = {
       garageId,
+      urgency: 'high', // ⚡ أولوية قصوى لإيقاظ الهاتف فوراً
+      ttl: 0,          // ⚡ توصيل فوري دون انتظار في السيرفر
+
       immediate: {
-        title: '🚨 سيارة في الطريق إليك الآن!',
-        body:  bodyParts.join(' • '),
+        title: '🚨 سيارة في الطريق إليك!',
+        body:  `🚗 رقم السيارة: ${carPlate} • استعد للاستقبال!`,
         tag:   immediateTag,
         data: {
           type:             'incoming_car',
@@ -206,6 +206,7 @@ export const sendCarComingPush = async ({
           sentAt:           new Date().toISOString(),
         },
       },
+
       scheduled:
         estimatedMinutes > 2
           ? {

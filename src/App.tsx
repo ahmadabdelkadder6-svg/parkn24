@@ -4,8 +4,10 @@ import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
 import { useStore, setupRealtime } from './store';
 import { cn } from './utils/cn';
+import { supabase } from './lib/supabase';
+import { Lock, X, Shield } from 'lucide-react';
 
-// Screens (تحميل مباشر للشاشات الخفيفة التي يحتاجها العميل فوراً)
+// Screens
 import AuthGate from './components/AuthGate';
 import SplashScreen from './components/SplashScreen';
 import RegisterScreen from './components/RegisterScreen';
@@ -21,7 +23,7 @@ import ChatScreen from './components/ChatScreen';
 import InstallPage from './components/InstallPage';
 import InstallQRCodePage from './components/InstallQRCodePage';
 
-// ⚡ [تسريع صاروخي]: تحميل كسول للوحات الإدارة الثقيلة
+// Lazy loading للوحات الإدارة
 const GarageDashboard = lazy(() => import('./components/GarageDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 
@@ -36,16 +38,14 @@ const VALID_SCREENS = [
   'chat',
 ] as const;
 
-const ADMIN_SECRET_CODE = 'admin2025x';
-
-// 🛡️ توحيد تنظيف رقم اللوحة بشكل صارم ومتطابق مع باقي شاشات التطبيق
+// 🛡️ توحيد تنظيف رقم اللوحة
 const normalizePlate = (plate?: string): string => {
   if (!plate) return '';
   return plate
     .trim()
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
     .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
-    .replace(/[^A-Z0-9\u0600-\u06FF]/gi, '')
+    .replace(/[^0-9\u0600-\u06FF]/gi, '')
     .toUpperCase();
 };
 
@@ -75,28 +75,46 @@ export default function App() {
   const sessionEndToastShown = useRef(false);
   const sessionTransitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [adminAccess, setAdminAccess] = useState(false);
+  // 🔒 إدارة وصول الأدمن الآمن بدون أي باسوردات مكشوفة
+  const [adminAccess, setAdminAccess] = useState(() => {
+    return sessionStorage.getItem('admin_authenticated') === 'true';
+  });
+  const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
+  const [adminInputPassword, setAdminInputPassword] = useState('');
+  const [adminVerifying, setAdminVerifying] = useState(false);
 
   const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const adminParam = params.get('admin');
-
-    if (adminParam === ADMIN_SECRET_CODE) {
-      setAdminAccess(true);
-      localStorage.setItem('adminAccess', 'true');
+  // التحقق من صلاحية الأدمن عبر سيرفر Supabase بأمان
+  const handleVerifyAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminInputPassword.trim()) {
+      toast.error('أدخل كلمة المرور');
+      return;
     }
 
-    if (window.location.pathname === '/admin' || window.location.hash === '#admin') {
-      setAdminAccess(true);
-      localStorage.setItem('adminAccess', 'true');
-    }
+    setAdminVerifying(true);
+    try {
+      const { data, error } = await supabase.rpc('verify_admin_password', {
+        p_pass: adminInputPassword.trim(),
+      });
 
-    if (localStorage.getItem('adminAccess') === 'true') {
-      setAdminAccess(true);
+      if (!error && data === true) {
+        setAdminAccess(true);
+        sessionStorage.setItem('admin_authenticated', 'true');
+        setShowAdminLoginModal(false);
+        setAdminInputPassword('');
+        setView('admin');
+        toast.success('مرحباً بك في لوحة الإدارة 🛡️');
+      } else {
+        toast.error('كلمة المرور غير صحيحة ❌');
+      }
+    } catch (err) {
+      toast.error('فشل التحقق من الخادم');
+    } finally {
+      setAdminVerifying(false);
     }
-  }, []);
+  };
 
   const safeScreen = useMemo(() => {
     if (!VALID_SCREENS.includes(screen as any)) {
@@ -113,7 +131,7 @@ export default function App() {
     }
   }, [safeScreen, screen, setScreen, dataLoaded, view]);
 
-  // ⚡ [التهيئة الصاروخية]: فتح الشاشة فوراً + جلب البيانات في الخلفية
+  // التهيئة المبدئية
   useEffect(() => {
     const init = async () => {
       const justInstalled = localStorage.getItem('pwaJustInstalled') === 'true';
@@ -132,7 +150,6 @@ export default function App() {
       }
 
       const savedScreen = localStorage.getItem('appScreen');
-
       if (
         savedScreen === 'session' ||
         savedScreen === 'navigation' ||
@@ -143,31 +160,15 @@ export default function App() {
         localStorage.removeItem('appScreen');
       }
 
-      const urlParams = new URLSearchParams(window.location.search);
-      const isGarageFromURL = urlParams.has('garage');
-      const isAdminFromURL =
-        urlParams.get('admin') === ADMIN_SECRET_CODE ||
-        window.location.pathname === '/admin' ||
-        window.location.hash === '#admin';
-
       const savedView = localStorage.getItem('appView');
       const isGarageLoggedIn = localStorage.getItem('currentGarageId') || currentGarageId;
-      const isAdminLoggedIn = localStorage.getItem('adminAccess') === 'true';
 
-      if (isAdminFromURL) {
+      if (savedView === 'admin' && adminAccess) {
         setView('admin');
-      } else if (isGarageFromURL) {
+      } else if (savedView === 'garage' || isGarageLoggedIn) {
         setView('garage');
-      } else if (savedView && (savedView === 'user' || savedView === 'garage' || savedView === 'admin')) {
-        setView(savedView as any);
       } else {
-        if (isAdminLoggedIn) {
-          setView('admin');
-        } else if (isGarageLoggedIn) {
-          setView('garage');
-        } else {
-          setView('user');
-        }
+        setView('user');
       }
 
       setDataLoaded(true);
@@ -178,7 +179,7 @@ export default function App() {
     };
 
     init();
-  }, []);
+  }, [adminAccess]);
 
   useEffect(() => {
     if (view) {
@@ -186,7 +187,7 @@ export default function App() {
     }
   }, [view]);
 
-  // فحص الجلسة عند التحميل المبدئي
+  // فحص الجلسة النشطة
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser) return;
@@ -234,45 +235,9 @@ export default function App() {
       }
       return;
     }
-
-    if (
-      safeScreen === 'session' ||
-      safeScreen === 'navigation' ||
-      safeScreen === 'waiting'
-    ) {
-      const lastCompleted = sessions
-        .filter((s) => {
-          if (s.status !== 'completed') return false;
-          const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-          const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
-          const samePhone = !!userPhone && sPhone === userPhone;
-          return samePlate || samePhone;
-        })
-        .sort((a, b) => {
-          const endA = typeof a.endTime === 'number' ? a.endTime : 0;
-          const endB = typeof b.endTime === 'number' ? b.endTime : 0;
-          return endB - endA;
-        })[0];
-
-      if (lastCompleted) {
-        const endTime =
-          typeof lastCompleted.endTime === 'number'
-            ? lastCompleted.endTime
-            : 0;
-        const timeSinceEnd = Date.now() - endTime;
-        if (endTime > 0 && timeSinceEnd < 60000) {
-          setSelectedGarageId(lastCompleted.garageId);
-          setScreen('summary');
-          return;
-        }
-      }
-
-      setSelectedGarageId(null);
-      setScreen('list');
-    }
   }, [dataLoaded]);
 
-  // مراقبة الجلسة والتنقل اللحظي بين الشاشات
+  // مراقبة التنقل اللحظي للجلسة
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser || view !== 'user') return;
@@ -285,14 +250,6 @@ export default function App() {
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
       const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
       const samePhone = !!userPhone && sPhone === userPhone;
-      return samePlate || samePhone;
-    });
-
-    const myIncoming = incomingCars.find((c) => {
-      if (c.status !== 'coming') return false;
-      const samePlate = !!userPlate && normalizePlate(c.carPlate) === userPlate;
-      const cPhone = c.customerPhone ? c.customerPhone.replace(/[^\d+]/g, '') : '';
-      const samePhone = !!userPhone && cPhone === userPhone;
       return samePlate || samePhone;
     });
 
@@ -318,138 +275,11 @@ export default function App() {
           setScreen('session');
         }
       }
-      return;
     }
+  }, [sessions, currentUser, view, safeScreen, dataLoaded, setScreen, setSelectedGarageId]);
 
-    if (prevActiveSessionRef.current) {
-      noSessionCountRef.current += 1;
-      const timeSinceLastActive = Date.now() - lastActiveTimeRef.current;
-
-      if (noSessionCountRef.current < 3 || timeSinceLastActive < 8000) {
-        return;
-      }
-
-      if (sessionTransitionTimer.current) return;
-
-      sessionTransitionTimer.current = setTimeout(() => {
-        sessionTransitionTimer.current = null;
-        const freshState = useStore.getState();
-        const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
-        const freshPhone = freshState.currentUser?.phone ? freshState.currentUser.phone.replace(/[^\d+]/g, '') : '';
-
-        const stillActive = freshState.sessions.find((s) => {
-          if (s.status !== 'active') return false;
-          const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-          const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
-          const samePhone = !!freshPhone && sPhone === freshPhone;
-          return samePlate || samePhone;
-        });
-
-        if (stillActive) {
-          noSessionCountRef.current = 0;
-          prevActiveSessionRef.current = stillActive.id;
-          return;
-        }
-
-        const currentScreen = freshState.screen;
-        prevActiveSessionRef.current = null;
-        noSessionCountRef.current = 0;
-
-        if (
-          currentScreen === 'session' ||
-          currentScreen === 'navigation' ||
-          currentScreen === 'waiting'
-        ) {
-          const lastCompleted = freshState.sessions
-            .filter((s) => {
-              if (s.status !== 'completed') return false;
-              const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-              const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
-              const samePhone = !!freshPhone && sPhone === freshPhone;
-              return samePlate || samePhone;
-            })
-            .sort((a, b) => {
-              const endA = typeof a.endTime === 'number' ? a.endTime : 0;
-              const endB = typeof b.endTime === 'number' ? b.endTime : 0;
-              return endB - endA;
-            })[0];
-
-          if (lastCompleted) {
-            const freshAcknowledged = freshState.acknowledgedSessionIds;
-            const isNotAcknowledged = freshAcknowledged ? !freshAcknowledged.has(lastCompleted.id) : true;
-            if (isNotAcknowledged) {
-              setSelectedGarageId(lastCompleted.garageId);
-              setScreen('summary');
-              return;
-            }
-          }
-
-          if (!sessionEndToastShown.current) {
-            sessionEndToastShown.current = true;
-            toast.success('تم إنهاء الجلسة والعودة للرئيسية');
-          }
-          setSelectedGarageId(null);
-          setScreen('list');
-        }
-      }, 3000);
-    }
-
-    if (!myActiveSession && safeScreen === 'navigation' && !myIncoming) {
-      const timeout = setTimeout(() => {
-        const freshState = useStore.getState();
-        const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
-        const freshPhone = freshState.currentUser?.phone ? freshState.currentUser.phone.replace(/[^\d+]/g, '') : '';
-
-        const freshIncoming = freshState.incomingCars.find((c) => {
-          if (c.status !== 'coming') return false;
-          const samePlate = !!freshPlate && normalizePlate(c.carPlate) === freshPlate;
-          const cPhone = c.customerPhone ? c.customerPhone.replace(/[^\d+]/g, '') : '';
-          const samePhone = !!freshPhone && cPhone === freshPhone;
-          return samePlate || samePhone;
-        });
-
-        const freshSession = freshState.sessions.find((s) => {
-          if (s.status !== 'active') return false;
-          const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-          const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
-          const samePhone = !!freshPhone && sPhone === freshPhone;
-          return samePlate || samePhone;
-        });
-
-        if (!freshIncoming && !freshSession) {
-          setSelectedGarageId(null);
-          setScreen('list');
-        }
-      }, 3000);
-
-      return () => clearTimeout(timeout);
-    }
-  }, [
-    sessions,
-    currentUser,
-    view,
-    safeScreen,
-    incomingCars,
-    dataLoaded,
-    setScreen,
-    setSelectedGarageId,
-  ]);
-
-  useEffect(() => {
-    return () => {
-      if (sessionTransitionTimer.current) {
-        clearTimeout(sessionTransitionTimer.current);
-      }
-    };
-  }, []);
-
-  if (pathname === '/install') {
-    return <InstallPage />;
-  }
-
-  if (pathname === '/qr') {
-    return <InstallQRCodePage />;
-  }
+  if (pathname === '/install') return <InstallPage />;
+  if (pathname === '/qr') return <InstallQRCodePage />;
 
   return (
     <AuthGate>
@@ -457,60 +287,121 @@ export default function App() {
         className="max-w-md mx-auto h-dvh bg-white text-slate-900 relative flex flex-col overflow-hidden"
         style={{ fontFamily: "'Cairo', sans-serif" }}
       >
-        {adminAccess && (
-          <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-white/90 p-0.5 rounded-full backdrop-blur-md border border-slate-200 shadow-sm">
-            {[
-              { id: 'user' as const, label: 'حريف' },
-              { id: 'garage' as const, label: 'جراج' },
-              { id: 'admin' as const, label: 'أدمن' },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => {
-                  if (tab.id === 'garage') {
-                    localStorage.removeItem('currentGarageId');
-                    localStorage.removeItem('garageRole');
-                    localStorage.removeItem('valetNumber');
-                    localStorage.removeItem('valetName');
-                    localStorage.removeItem('garagePrefillUsername');
-                    localStorage.removeItem('garagePrefillPhone');
-                    setCurrentGarageId(null);
+        {/* شريط التبديل العلوي السري والمؤمن */}
+        <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-white/90 p-0.5 rounded-full backdrop-blur-md border border-slate-200 shadow-sm">
+          {[
+            { id: 'user' as const, label: 'حريف' },
+            { id: 'garage' as const, label: 'جراج' },
+            { id: 'admin' as const, label: 'أدمن' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => {
+                if (tab.id === 'garage') {
+                  localStorage.removeItem('currentGarageId');
+                  localStorage.removeItem('garageRole');
+                  localStorage.removeItem('valetNumber');
+                  localStorage.removeItem('valetName');
+                  localStorage.removeItem('garagePrefillUsername');
+                  localStorage.removeItem('garagePrefillPhone');
+                  setCurrentGarageId(null);
+                  setView('garage');
+                } else if (tab.id === 'admin') {
+                  if (!adminAccess) {
+                    setShowAdminLoginModal(true);
+                  } else {
+                    setView('admin');
                   }
-                  setView(tab.id);
-                }}
-                className={cn(
-                  'px-3 py-1.5 rounded-full text-[10px] font-black transition-all',
-                  view === tab.id
-                    ? tab.id === 'admin'
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-blue-600 text-white'
-                    : 'text-slate-600'
-                )}
+                } else {
+                  setView('user');
+                }
+              }}
+              className={cn(
+                'px-3 py-1.5 rounded-full text-[10px] font-black transition-all',
+                view === tab.id
+                  ? tab.id === 'admin'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-blue-600 text-white'
+                  : 'text-slate-600'
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 🔒 نافذة طلب باسورد الأدمن المشفرة */}
+        <AnimatePresence>
+          {showAdminLoginModal && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100000] flex items-center justify-center p-4">
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white rounded-3xl p-6 w-full max-w-xs text-center border border-slate-200 shadow-2xl relative"
               >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        )}
+                <button
+                  onClick={() => setShowAdminLoginModal(false)}
+                  className="absolute top-4 left-4 text-slate-400 hover:text-slate-600"
+                >
+                  <X size={18} />
+                </button>
+
+                <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center mx-auto mb-3">
+                  <Shield size={24} />
+                </div>
+
+                <h3 className="font-black text-slate-900 text-base mb-1">لوحة الإدارة العامة</h3>
+                <p className="text-xs text-slate-500 font-bold mb-4">أدخل كلمة المرور للتحقق من الصلاحية</p>
+
+                <form onSubmit={handleVerifyAdmin} className="space-y-3">
+                  <div className="relative">
+                    <input
+                      type="password"
+                      placeholder="كلمة مرور المشرف"
+                      value={adminInputPassword}
+                      onChange={(e) => setAdminInputPassword(e.target.value)}
+                      className="w-full bg-slate-50 border-2 border-slate-200 p-3 pr-10 rounded-xl text-center font-mono font-black text-sm outline-none focus:border-purple-600"
+                      autoFocus
+                    />
+                    <Lock size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={adminVerifying}
+                    className="w-full bg-purple-600 hover:bg-purple-700 text-white font-black py-3 rounded-xl text-sm active:scale-95 transition-all shadow-md shadow-purple-200 disabled:opacity-50"
+                  >
+                    {adminVerifying ? 'جاري التحقق...' : 'دخول المشرف 🚀'}
+                  </button>
+                </form>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
         <main className="flex-1 overflow-hidden bg-white">
           {view === 'admin' && adminAccess ? (
-            <Suspense fallback={
-              <div className="h-full bg-white flex flex-col items-center justify-center">
-                <div className="text-3xl mb-3 animate-bounce">⚙️</div>
-                <p className="text-slate-500 text-sm font-bold animate-pulse">جاري فتح لوحة المشرف...</p>
-              </div>
-            }>
+            <Suspense
+              fallback={
+                <div className="h-full bg-white flex flex-col items-center justify-center">
+                  <div className="text-3xl mb-3 animate-bounce">⚙️</div>
+                  <p className="text-slate-500 text-sm font-bold animate-pulse">جاري فتح لوحة المشرف...</p>
+                </div>
+              }
+            >
               <AdminDashboard />
             </Suspense>
           ) : view === 'garage' ? (
             currentGarageId ? (
-              <Suspense fallback={
-                <div className="h-full bg-white flex flex-col items-center justify-center">
-                  <div className="text-3xl mb-3 animate-bounce">🅿️</div>
-                  <p className="text-slate-500 text-sm font-bold animate-pulse">جاري فتح لوحة الجراج...</p>
-                </div>
-              }>
+              <Suspense
+                fallback={
+                  <div className="h-full bg-white flex flex-col items-center justify-center">
+                    <div className="text-3xl mb-3 animate-bounce">🅿️</div>
+                    <p className="text-slate-500 text-sm font-bold animate-pulse">جاري فتح لوحة الجراج...</p>
+                  </div>
+                }
+              >
                 <GarageDashboard />
               </Suspense>
             ) : (
@@ -519,9 +410,7 @@ export default function App() {
           ) : !dataLoaded ? (
             <div className="h-full bg-white flex flex-col items-center justify-center">
               <div className="text-4xl mb-4 animate-bounce">🚗</div>
-              <p className="text-slate-600 text-sm font-bold animate-pulse">
-                جاري تحميل البيانات...
-              </p>
+              <p className="text-slate-600 text-sm font-bold animate-pulse">جاري تحميل البيانات...</p>
             </div>
           ) : (
             <AnimatePresence mode="wait">

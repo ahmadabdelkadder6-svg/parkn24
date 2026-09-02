@@ -9,7 +9,7 @@ import { useStore, pausePolling } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
-import { subscribeToPush, refreshPushSubscriptionIfNeeded } from '../lib/pushManager';
+import { subscribeToPush } from '../lib/pushManager';
 
 const UNDO_TIMEOUT_SECONDS = 30;
 
@@ -303,7 +303,6 @@ export default function GarageDashboard() {
   const prevOfferIdsRef = useRef<Set<string>>(new Set());
   const approachAlertedRef = useRef<Set<string>>(new Set());
   const audioInitializedRef = useRef(false);
-  const pushSubscribedGarageRef = useRef<string | null>(null);
 
   const [undoableSessions, setUndoableSessions] = useState<UndoableSession[]>([]);
   const [newCarPlate, setNewCarPlate] = useState('');
@@ -389,16 +388,31 @@ export default function GarageDashboard() {
     init();
   }, []);
 
-  useEffect(() => {
-    if (!currentGarageId || garages.length === 0 || pushSubscribedGarageRef.current === currentGarageId) return;
-    (async () => { try { const s = await subscribeToPush(currentGarageId); if (s) pushSubscribedGarageRef.current = currentGarageId; } catch {} })();
-  }, [currentGarageId, garages]);
-
+  // 🔄 [تنشيط الإشعارات الصامت والتلقائي للسايس دون إزعاج بالخلفية]
   useEffect(() => {
     if (!currentGarageId) return;
-    const h = async () => { if (document.visibilityState === 'visible') { await refreshPushSubscriptionIfNeeded(currentGarageId); await fetchAll(); } };
-    document.addEventListener('visibilitychange', h);
-    return () => document.removeEventListener('visibilitychange', h);
+
+    const silentSync = async () => {
+      try {
+        await subscribeToPush(currentGarageId);
+      } catch (e) {
+        console.warn('Silent push sync error:', e);
+      }
+    };
+
+    // تجديد وتثبيت اشتراك الإشعارات الصامت فورا عند الدخول
+    silentSync();
+
+    // تجديد الـ token تلقائيا بمجرد إعادة فتح شاشة الموبايل
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        silentSync();
+        fetchAll();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [currentGarageId, fetchAll]);
 
   useEffect(() => {
@@ -846,7 +860,7 @@ export default function GarageDashboard() {
                       </div>
                     </div>
                     <input type="text" value={v.name} onChange={e => v.setName(e.target.value)} className="w-full text-right outline-none font-bold mb-2" style={{ background: '#fff', border: `2px solid ${v.name ? v.color : '#D0DCFF'}`, padding: 12, borderRadius: 14, fontSize: 14 }} placeholder={`اسم سايس ${v.n}`} />
-                    <input type="text" value={v.pass} onChange={e => v.setPass(e.target.value)} className="w-full text-center outline-none font-mono font-black" style={{ background: '#fff', border: `2px solid ${v.pass ? v.color : '#D0DCFF'}`, padding: 12, borderRadius: 14, fontSize: 16, letterSpacing: 3 }} placeholder={`كلمة مرور سايس ${v.n}`} />
+                    <input type="text" value={v.pass} onChange={e => setEditValet3Pass(e.target.value)} className="w-full text-center outline-none font-mono font-black" style={{ background: '#fff', border: `2px solid ${v.pass ? v.color : '#D0DCFF'}`, padding: 12, borderRadius: 14, fontSize: 16, letterSpacing: 3 }} placeholder={`كلمة مرور سايس ${v.n}`} />
                   </div>
                 ))}
               </div>
@@ -1508,7 +1522,7 @@ export default function GarageDashboard() {
                                 {settlement === 0 ? '⚖️ الحساب متزن' : isGarageOwed ? '🟢 مستحق لك طرف التطبيق' : '🔴 مستحق عليك للتطبيق'}
                               </div>
                               <div className="font-bold" style={{ fontSize: 10, color: '#7B8CA6', marginTop: 2 }}>
-                                {settlement === 0 ? 'لا يوجد رصيد معلق حالياً' : isGarageOwed ? 'محصل بالمحفظة أكبر من العمولة' : 'العمولة أكبر من رصيد المحفظة'}
+                                {settlement === 0 ? 'محصل بالمحفظة أكبر من العمولة' : 'العمولة أكبر من رصيد المحفظة'}
                               </div>
                             </div>
                           </div>
