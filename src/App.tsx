@@ -4,10 +4,8 @@ import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
 import { useStore, setupRealtime } from './store';
 import { cn } from './utils/cn';
-import { supabase } from './lib/supabase';
-import { Lock, Mail, X, Shield } from 'lucide-react';
 
-// Screens
+// Screens (تحميل مباشر للشاشات الخفيفة التي يحتاجها العميل فوراً)
 import AuthGate from './components/AuthGate';
 import SplashScreen from './components/SplashScreen';
 import RegisterScreen from './components/RegisterScreen';
@@ -23,7 +21,7 @@ import ChatScreen from './components/ChatScreen';
 import InstallPage from './components/InstallPage';
 import InstallQRCodePage from './components/InstallQRCodePage';
 
-// Lazy loading للوحات الإدارة
+// ⚡ [تسريع صاروخي]: تحميل كسول للوحات الإدارة الثقيلة
 const GarageDashboard = lazy(() => import('./components/GarageDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 
@@ -63,6 +61,7 @@ export default function App() {
     setSelectedGarageId,
     incomingCars,
     fetchAll,
+    acknowledgedSessionIds,
   } = useStore();
 
   const prevActiveSessionRef = useRef<string | null>(null);
@@ -74,61 +73,20 @@ export default function App() {
   const sessionEndToastShown = useRef(false);
   const sessionTransitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 🔒 إدارة وصول الأدمن عبر Supabase Auth الرسمي
   const [adminAccess, setAdminAccess] = useState(false);
-  const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
-  const [adminEmail, setAdminEmail] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
-  const [adminLoading, setAdminLoading] = useState(false);
 
   const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
 
-  // 1. فحص هل الأدمن مسجل دخوله مسبقاً في Supabase Auth
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setAdminAccess(true);
-      }
-    });
+    if (window.location.pathname === '/admin' || window.location.hash === '#admin') {
+      setAdminAccess(true);
+      localStorage.setItem('adminAccess', 'true');
+    }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAdminAccess(!!session?.user);
-    });
-
-    return () => subscription.unsubscribe();
+    if (localStorage.getItem('adminAccess') === 'true') {
+      setAdminAccess(true);
+    }
   }, []);
-
-  // 2. تسجيل دخول الأدمن المشفر عبر Supabase Auth
-  const handleAdminAuthLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!adminEmail.trim() || !adminPassword.trim()) {
-      toast.error('أدخل البريد الإلكتروني وكلمة المرور');
-      return;
-    }
-
-    setAdminLoading(true);
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: adminEmail.trim(),
-        password: adminPassword.trim(),
-      });
-
-      if (error) {
-        toast.error('بيانات الدخول غير صحيحة ❌');
-      } else if (data.session) {
-        setAdminAccess(true);
-        setShowAdminLoginModal(false);
-        setAdminEmail('');
-        setAdminPassword('');
-        setView('admin');
-        toast.success('تم تسجيل دخول المشرف بنجاح 🛡️');
-      }
-    } catch (err) {
-      toast.error('حدث خطأ أثناء الاتصال بالخادم');
-    } finally {
-      setAdminLoading(false);
-    }
-  };
 
   const safeScreen = useMemo(() => {
     if (!VALID_SCREENS.includes(screen as any)) {
@@ -145,7 +103,7 @@ export default function App() {
     }
   }, [safeScreen, screen, setScreen, dataLoaded, view]);
 
-  // التهيئة المبدئية
+  // ⚡ [التهيئة الصاروخية]: فتح الشاشة فوراً + جلب البيانات في الخلفية
   useEffect(() => {
     const init = async () => {
       const justInstalled = localStorage.getItem('pwaJustInstalled') === 'true';
@@ -164,6 +122,7 @@ export default function App() {
       }
 
       const savedScreen = localStorage.getItem('appScreen');
+
       if (
         savedScreen === 'session' ||
         savedScreen === 'navigation' ||
@@ -174,15 +133,30 @@ export default function App() {
         localStorage.removeItem('appScreen');
       }
 
+      const urlParams = new URLSearchParams(window.location.search);
+      const isGarageFromURL = urlParams.has('garage');
+      const isAdminFromURL =
+        window.location.pathname === '/admin' ||
+        window.location.hash === '#admin';
+
       const savedView = localStorage.getItem('appView');
       const isGarageLoggedIn = localStorage.getItem('currentGarageId') || currentGarageId;
+      const isAdminLoggedIn = localStorage.getItem('adminAccess') === 'true';
 
-      if (savedView === 'admin' && adminAccess) {
+      if (isAdminFromURL) {
         setView('admin');
-      } else if (savedView === 'garage' || isGarageLoggedIn) {
+      } else if (isGarageFromURL) {
         setView('garage');
+      } else if (savedView && (savedView === 'user' || savedView === 'garage' || savedView === 'admin')) {
+        setView(savedView as any);
       } else {
-        setView('user');
+        if (isAdminLoggedIn) {
+          setView('admin');
+        } else if (isGarageLoggedIn) {
+          setView('garage');
+        } else {
+          setView('user');
+        }
       }
 
       setDataLoaded(true);
@@ -193,7 +167,7 @@ export default function App() {
     };
 
     init();
-  }, [adminAccess]);
+  }, []);
 
   useEffect(() => {
     if (view) {
@@ -201,7 +175,7 @@ export default function App() {
     }
   }, [view]);
 
-  // فحص الجلسة النشطة
+  // فحص الجلسة عند التحميل المبدئي
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser) return;
@@ -249,9 +223,45 @@ export default function App() {
       }
       return;
     }
+
+    if (
+      safeScreen === 'session' ||
+      safeScreen === 'navigation' ||
+      safeScreen === 'waiting'
+    ) {
+      const lastCompleted = sessions
+        .filter((s) => {
+          if (s.status !== 'completed') return false;
+          const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+          const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+          const samePhone = !!userPhone && sPhone === userPhone;
+          return samePlate || samePhone;
+        })
+        .sort((a, b) => {
+          const endA = typeof a.endTime === 'number' ? a.endTime : 0;
+          const endB = typeof b.endTime === 'number' ? b.endTime : 0;
+          return endB - endA;
+        })[0];
+
+      if (lastCompleted) {
+        const endTime =
+          typeof lastCompleted.endTime === 'number'
+            ? lastCompleted.endTime
+            : 0;
+        const timeSinceEnd = Date.now() - endTime;
+        if (endTime > 0 && timeSinceEnd < 60000) {
+          setSelectedGarageId(lastCompleted.garageId);
+          setScreen('summary');
+          return;
+        }
+      }
+
+      setSelectedGarageId(null);
+      setScreen('list');
+    }
   }, [dataLoaded]);
 
-  // مراقبة التنقل اللحظي للجلسة
+  // مراقبة الجلسة والتنقل اللحظي بين الشاشات
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser || view !== 'user') return;
@@ -264,6 +274,14 @@ export default function App() {
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
       const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
       const samePhone = !!userPhone && sPhone === userPhone;
+      return samePlate || samePhone;
+    });
+
+    const myIncoming = incomingCars.find((c) => {
+      if (c.status !== 'coming') return false;
+      const samePlate = !!userPlate && normalizePlate(c.carPlate) === userPlate;
+      const cPhone = c.customerPhone ? c.customerPhone.replace(/[^\d+]/g, '') : '';
+      const samePhone = !!userPhone && cPhone === userPhone;
       return samePlate || samePhone;
     });
 
@@ -289,11 +307,138 @@ export default function App() {
           setScreen('session');
         }
       }
+      return;
     }
-  }, [sessions, currentUser, view, safeScreen, dataLoaded, setScreen, setSelectedGarageId]);
 
-  if (pathname === '/install') return <InstallPage />;
-  if (pathname === '/qr') return <InstallQRCodePage />;
+    if (prevActiveSessionRef.current) {
+      noSessionCountRef.current += 1;
+      const timeSinceLastActive = Date.now() - lastActiveTimeRef.current;
+
+      if (noSessionCountRef.current < 3 || timeSinceLastActive < 8000) {
+        return;
+      }
+
+      if (sessionTransitionTimer.current) return;
+
+      sessionTransitionTimer.current = setTimeout(() => {
+        sessionTransitionTimer.current = null;
+        const freshState = useStore.getState();
+        const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
+        const freshPhone = freshState.currentUser?.phone ? freshState.currentUser.phone.replace(/[^\d+]/g, '') : '';
+
+        const stillActive = freshState.sessions.find((s) => {
+          if (s.status !== 'active') return false;
+          const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
+          const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+          const samePhone = !!freshPhone && sPhone === freshPhone;
+          return samePlate || samePhone;
+        });
+
+        if (stillActive) {
+          noSessionCountRef.current = 0;
+          prevActiveSessionRef.current = stillActive.id;
+          return;
+        }
+
+        const currentScreen = freshState.screen;
+        prevActiveSessionRef.current = null;
+        noSessionCountRef.current = 0;
+
+        if (
+          currentScreen === 'session' ||
+          currentScreen === 'navigation' ||
+          currentScreen === 'waiting'
+        ) {
+          const lastCompleted = freshState.sessions
+            .filter((s) => {
+              if (s.status !== 'completed') return false;
+              const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
+              const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+              const samePhone = !!freshPhone && sPhone === freshPhone;
+              return samePlate || samePhone;
+            })
+            .sort((a, b) => {
+              const endA = typeof a.endTime === 'number' ? a.endTime : 0;
+              const endB = typeof b.endTime === 'number' ? b.endTime : 0;
+              return endB - endA;
+            })[0];
+
+          if (lastCompleted) {
+            const freshAcknowledged = freshState.acknowledgedSessionIds;
+            const isNotAcknowledged = freshAcknowledged ? !freshAcknowledged.has(lastCompleted.id) : true;
+            if (isNotAcknowledged) {
+              setSelectedGarageId(lastCompleted.garageId);
+              setScreen('summary');
+              return;
+            }
+          }
+
+          if (!sessionEndToastShown.current) {
+            sessionEndToastShown.current = true;
+            toast.success('تم إنهاء الجلسة والعودة للرئيسية');
+          }
+          setSelectedGarageId(null);
+          setScreen('list');
+        }
+      }, 3000);
+    }
+
+    if (!myActiveSession && safeScreen === 'navigation' && !myIncoming) {
+      const timeout = setTimeout(() => {
+        const freshState = useStore.getState();
+        const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
+        const freshPhone = freshState.currentUser?.phone ? freshState.currentUser.phone.replace(/[^\d+]/g, '') : '';
+
+        const freshIncoming = freshState.incomingCars.find((c) => {
+          if (c.status !== 'coming') return false;
+          const samePlate = !!freshPlate && normalizePlate(c.carPlate) === freshPlate;
+          const cPhone = c.customerPhone ? c.customerPhone.replace(/[^\d+]/g, '') : '';
+          const samePhone = !!freshPhone && cPhone === freshPhone;
+          return samePlate || samePhone;
+        });
+
+        const freshSession = freshState.sessions.find((s) => {
+          if (s.status !== 'active') return false;
+          const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
+          const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+          const samePhone = !!freshPhone && sPhone === freshPhone;
+          return samePlate || samePhone;
+        });
+
+        if (!freshIncoming && !freshSession) {
+          setSelectedGarageId(null);
+          setScreen('list');
+        }
+      }, 3000);
+
+      return () => clearTimeout(timeout);
+    }
+  }, [
+    sessions,
+    currentUser,
+    view,
+    safeScreen,
+    incomingCars,
+    dataLoaded,
+    setScreen,
+    setSelectedGarageId,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (sessionTransitionTimer.current) {
+        clearTimeout(sessionTransitionTimer.current);
+      }
+    };
+  }, []);
+
+  if (pathname === '/install') {
+    return <InstallPage />;
+  }
+
+  if (pathname === '/qr') {
+    return <InstallQRCodePage />;
+  }
 
   return (
     <AuthGate>
@@ -301,132 +446,60 @@ export default function App() {
         className="max-w-md mx-auto h-dvh bg-white text-slate-900 relative flex flex-col overflow-hidden"
         style={{ fontFamily: "'Cairo', sans-serif" }}
       >
-        {/* شريط التبديل العلوي */}
-        <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-white/90 p-0.5 rounded-full backdrop-blur-md border border-slate-200 shadow-sm">
-          {[
-            { id: 'user' as const, label: 'حريف' },
-            { id: 'garage' as const, label: 'جراج' },
-            { id: 'admin' as const, label: 'أدمن' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                if (tab.id === 'garage') {
-                  localStorage.removeItem('currentGarageId');
-                  localStorage.removeItem('garageRole');
-                  localStorage.removeItem('valetNumber');
-                  localStorage.removeItem('valetName');
-                  localStorage.removeItem('garagePrefillUsername');
-                  localStorage.removeItem('garagePrefillPhone');
-                  setCurrentGarageId(null);
-                  setView('garage');
-                } else if (tab.id === 'admin') {
-                  if (!adminAccess) {
-                    setShowAdminLoginModal(true);
-                  } else {
-                    setView('admin');
+        {adminAccess && (
+          <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-white/90 p-0.5 rounded-full backdrop-blur-md border border-slate-200 shadow-sm">
+            {[
+              { id: 'user' as const, label: 'حريف' },
+              { id: 'garage' as const, label: 'جراج' },
+              { id: 'admin' as const, label: 'أدمن' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  if (tab.id === 'garage') {
+                    localStorage.removeItem('currentGarageId');
+                    localStorage.removeItem('garageRole');
+                    localStorage.removeItem('valetNumber');
+                    localStorage.removeItem('valetName');
+                    localStorage.removeItem('garagePrefillUsername');
+                    localStorage.removeItem('garagePrefillPhone');
+                    setCurrentGarageId(null);
                   }
-                } else {
-                  setView('user');
-                }
-              }}
-              className={cn(
-                'px-3 py-1.5 rounded-full text-[10px] font-black transition-all',
-                view === tab.id
-                  ? tab.id === 'admin'
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-blue-600 text-white'
-                  : 'text-slate-600'
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* 🔒 نافذة تسجيل دخول الأدمن عبر Supabase Auth */}
-        <AnimatePresence>
-          {showAdminLoginModal && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100000] flex items-center justify-center p-4">
-              <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                className="bg-white rounded-3xl p-6 w-full max-w-xs text-center border border-slate-200 shadow-2xl relative"
+                  setView(tab.id);
+                }}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-[10px] font-black transition-all',
+                  view === tab.id
+                    ? tab.id === 'admin'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-blue-600 text-white'
+                    : 'text-slate-600'
+                )}
               >
-                <button
-                  onClick={() => setShowAdminLoginModal(false)}
-                  className="absolute top-4 left-4 text-slate-400 hover:text-slate-600"
-                >
-                  <X size={18} />
-                </button>
-
-                <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center mx-auto mb-3">
-                  <Shield size={24} />
-                </div>
-
-                <h3 className="font-black text-slate-900 text-base mb-1">لوحة المشرف العام</h3>
-                <p className="text-xs text-slate-500 font-bold mb-4">سجل الدخول بحساب المشرف في Supabase</p>
-
-                <form onSubmit={handleAdminAuthLogin} className="space-y-3">
-                  <div className="relative">
-                    <input
-                      type="email"
-                      placeholder="البريد الإلكتروني"
-                      value={adminEmail}
-                      onChange={(e) => setAdminEmail(e.target.value)}
-                      className="w-full bg-slate-50 border-2 border-slate-200 p-3 pr-10 rounded-xl text-right font-bold text-sm outline-none focus:border-purple-600"
-                      autoFocus
-                    />
-                    <Mail size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  </div>
-
-                  <div className="relative">
-                    <input
-                      type="password"
-                      placeholder="كلمة المرور"
-                      value={adminPassword}
-                      onChange={(e) => setAdminPassword(e.target.value)}
-                      className="w-full bg-slate-50 border-2 border-slate-200 p-3 pr-10 rounded-xl text-right font-bold text-sm outline-none focus:border-purple-600"
-                    />
-                    <Lock size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={adminLoading}
-                    className="w-full bg-purple-600 hover:bg-purple-700 text-white font-black py-3 rounded-xl text-sm active:scale-95 transition-all shadow-md shadow-purple-200 disabled:opacity-50"
-                  >
-                    {adminLoading ? 'جاري التحقق...' : 'دخول المشرف 🚀'}
-                  </button>
-                </form>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         <main className="flex-1 overflow-hidden bg-white">
           {view === 'admin' && adminAccess ? (
-            <Suspense
-              fallback={
-                <div className="h-full bg-white flex flex-col items-center justify-center">
-                  <div className="text-3xl mb-3 animate-bounce">⚙️</div>
-                  <p className="text-slate-500 text-sm font-bold animate-pulse">جاري فتح لوحة المشرف...</p>
-                </div>
-              }
-            >
+            <Suspense fallback={
+              <div className="h-full bg-white flex flex-col items-center justify-center">
+                <div className="text-3xl mb-3 animate-bounce">⚙️</div>
+                <p className="text-slate-500 text-sm font-bold animate-pulse">جاري فتح لوحة المشرف...</p>
+              </div>
+            }>
               <AdminDashboard />
             </Suspense>
           ) : view === 'garage' ? (
             currentGarageId ? (
-              <Suspense
-                fallback={
-                  <div className="h-full bg-white flex flex-col items-center justify-center">
-                    <div className="text-3xl mb-3 animate-bounce">🅿️</div>
-                    <p className="text-slate-500 text-sm font-bold animate-pulse">جاري فتح لوحة الجراج...</p>
-                  </div>
-                }
-              >
+              <Suspense fallback={
+                <div className="h-full bg-white flex flex-col items-center justify-center">
+                  <div className="text-3xl mb-3 animate-bounce">🅿️</div>
+                  <p className="text-slate-500 text-sm font-bold animate-pulse">جاري فتح لوحة الجراج...</p>
+                </div>
+              }>
                 <GarageDashboard />
               </Suspense>
             ) : (
@@ -435,7 +508,9 @@ export default function App() {
           ) : !dataLoaded ? (
             <div className="h-full bg-white flex flex-col items-center justify-center">
               <div className="text-4xl mb-4 animate-bounce">🚗</div>
-              <p className="text-slate-600 text-sm font-bold animate-pulse">جاري تحميل البيانات...</p>
+              <p className="text-slate-600 text-sm font-bold animate-pulse">
+                جاري تحميل البيانات...
+              </p>
             </div>
           ) : (
             <AnimatePresence mode="wait">
