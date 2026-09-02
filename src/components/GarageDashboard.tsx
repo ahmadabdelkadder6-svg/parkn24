@@ -241,6 +241,22 @@ export default function GarageDashboard() {
     ].filter(Boolean);
   }, [garage]);
 
+  // ✅ [تعريف activeSessions بدقة لمنع أي خطأ]
+  const activeSessions = useMemo(() => {
+    return garageSessions.filter(s => {
+      if (s.status !== 'active') return false;
+      const st = toMs(s.startTime);
+      if (st <= 0) return false;
+
+      const elapsedMs = Date.now() - st;
+      if (isValet && elapsedMs >= 24 * 60 * 60 * 1000) return false;
+      if (elapsedMs >= 24 * 60 * 60 * 1000) return false;
+
+      return true;
+    });
+  }, [garageSessions, isValet]);
+
+  // ✅ [فلترة جلسات السايس مع إظهار اليدوي فوراً]
   const valetActiveSessions = useMemo(() => {
     if (!isValet) return activeSessions;
 
@@ -252,16 +268,9 @@ export default function GarageDashboard() {
 
     return activeSessions.filter(s => {
       const addedBy = ((s as any).addedBy || '').trim();
-      
-      // 1. الجلسات المعينة باسم هذا السايس
       if (addedBy && myValetNames.has(addedBy)) return true;
-      
-      // 2. الجلسات اليدوية (manual) تظهر لكل السياس في نفس الجراج
       if (s.source === 'manual') return true;
-      
-      // 3. الجلسات القادمة من التطبيق (غير معينة لأحد)
       if (!addedBy && s.source === 'app') return true;
-      
       return false;
     });
   }, [activeSessions, isValet, myValetNames, valetNumber, garage]);
@@ -370,7 +379,7 @@ export default function GarageDashboard() {
     init();
   }, []);
 
-  // 🔄 [تنشيط الإشعارات الصامت والتلقائي للسايس دون إزعاج بالخلفية]
+  // 🔄 [تنشيط الإشعارات الصامت والتلقائي للسايس]
   useEffect(() => {
     if (!currentGarageId) return;
 
@@ -653,10 +662,22 @@ export default function GarageDashboard() {
     }
   }
 
+  // 🚗 [إضافة سيارة يدوي وتحديث العداد فوراً]
   const handleAddCar = async () => {
     if (!newCarPlate.trim()) { toast.error('أدخل رقم السيارة'); return; }
     const cp = newCarPlate.trim(); const pr = newCarPrice; const at = Date.now();
-    const sid = await addSession({ garageId: garage.id, carPlate: cp, startTime: at, status: 'active', source: 'manual', agreedPrice: pr, addedBy: isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '' } as any);
+    const valetIdentifier = isValet ? (currentValetNameLocal || currentValetName || (valetNumber ? `سايس ${valetNumber}` : 'سايس')) : '';
+    
+    const sid = await addSession({ 
+      garageId: garage.id, 
+      carPlate: cp, 
+      startTime: at, 
+      status: 'active', 
+      source: 'manual', 
+      agreedPrice: pr, 
+      addedBy: valetIdentifier 
+    } as any);
+
     const fid = sid || `fallback-${at}`;
     setUndoableSessions(p => [...p, { sessionId: fid, localId: fid, carPlate: cp, price: pr, addedAt: at }]);
     toast.success(`تم إضافة السيارة بسعر ${pr} ج.م/ساعة`);
@@ -1208,9 +1229,9 @@ export default function GarageDashboard() {
           {valetEditSpots && (
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mt-3 pt-3" style={{ borderTop: '1px solid #D0DCFF' }}>
               <div className="flex items-center justify-between gap-3">
-<button onClick={async () => { if (garage.availableSpots <= 0) return; await adjustGarageSpots(garage.id, -1); toast('تم تقليل عدد الأماكن ➖', { icon: '🚗' }); }} disabled={garage.availableSpots <= 0} className="active:scale-90" style={{ background: garage.availableSpots > 0 ? '#FF3333' : '#E2E8F0', color: garage.availableSpots > 0 ? '#fff' : '#94a3b8', width: 46, height: 46, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={20} /></button>
+                <button onClick={async () => { if (garage.availableSpots <= 0) return; await adjustGarageSpots(garage.id, -1); toast('تم تقليل عدد الأماكن ➖', { icon: '🚗' }); }} disabled={garage.availableSpots <= 0} className="active:scale-90" style={{ background: garage.availableSpots > 0 ? '#FF3333' : '#E2E8F0', color: garage.availableSpots > 0 ? '#fff' : '#94a3b8', width: 46, height: 46, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={20} /></button>
                 <div className="text-center flex-1"><div className="font-black font-mono" style={{ fontSize: 30, color: '#0066FF' }}>{garage.availableSpots}</div><div className="font-bold" style={{ fontSize: 10, color: '#94a3b8' }}>أماكن شاغرة من {garage.capacity}</div></div>
-<button onClick={async () => { if (garage.availableSpots >= garage.capacity) return; await adjustGarageSpots(garage.id, 1); toast('تم زيادة عدد الأماكن ➕', { icon: '✅' }); }} disabled={garage.availableSpots >= garage.capacity} className="active:scale-90" style={{ background: garage.availableSpots < garage.capacity ? '#00CC66' : '#E2E8F0', color: garage.availableSpots < garage.capacity ? '#fff' : '#94a3b8', width: 46, height: 46, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={20} /></button>
+                <button onClick={async () => { if (garage.availableSpots >= garage.capacity) return; await adjustGarageSpots(garage.id, 1); toast('تم زيادة عدد الأماكن ➕', { icon: '✅' }); }} disabled={garage.availableSpots >= garage.capacity} className="active:scale-90" style={{ background: garage.availableSpots < garage.capacity ? '#00CC66' : '#E2E8F0', color: garage.availableSpots < garage.capacity ? '#fff' : '#94a3b8', width: 46, height: 46, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={20} /></button>
               </div>
               <button onClick={() => setValetEditSpots(false)} className="w-full mt-2 font-bold active:scale-95" style={{ background: '#F0F4FF', color: '#64748b', padding: 10, borderRadius: 14, fontSize: 11, border: '1.5px solid #D0DCFF' }}>إغلاق ✕</button>
             </motion.div>
