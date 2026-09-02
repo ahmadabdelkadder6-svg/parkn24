@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { useStore, setupRealtime } from './store';
 import { cn } from './utils/cn';
 import { supabase } from './lib/supabase';
-import { Lock, X, Shield } from 'lucide-react';
+import { Lock, Mail, X, Shield } from 'lucide-react';
 
 // Screens
 import AuthGate from './components/AuthGate';
@@ -63,7 +63,6 @@ export default function App() {
     setSelectedGarageId,
     incomingCars,
     fetchAll,
-    acknowledgedSessionIds,
   } = useStore();
 
   const prevActiveSessionRef = useRef<string | null>(null);
@@ -75,44 +74,59 @@ export default function App() {
   const sessionEndToastShown = useRef(false);
   const sessionTransitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 🔒 إدارة وصول الأدمن الآمن بدون أي باسوردات مكشوفة
-  const [adminAccess, setAdminAccess] = useState(() => {
-    return sessionStorage.getItem('admin_authenticated') === 'true';
-  });
+  // 🔒 إدارة وصول الأدمن عبر Supabase Auth الرسمي
+  const [adminAccess, setAdminAccess] = useState(false);
   const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
-  const [adminInputPassword, setAdminInputPassword] = useState('');
-  const [adminVerifying, setAdminVerifying] = useState(false);
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminLoading, setAdminLoading] = useState(false);
 
   const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
 
-  // التحقق من صلاحية الأدمن عبر سيرفر Supabase بأمان
-  const handleVerifyAdmin = async (e: React.FormEvent) => {
+  // 1. فحص هل الأدمن مسجل دخوله مسبقاً في Supabase Auth
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setAdminAccess(true);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAdminAccess(!!session?.user);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // 2. تسجيل دخول الأدمن المشفر عبر Supabase Auth
+  const handleAdminAuthLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminInputPassword.trim()) {
-      toast.error('أدخل كلمة المرور');
+    if (!adminEmail.trim() || !adminPassword.trim()) {
+      toast.error('أدخل البريد الإلكتروني وكلمة المرور');
       return;
     }
 
-    setAdminVerifying(true);
+    setAdminLoading(true);
     try {
-      const { data, error } = await supabase.rpc('verify_admin_password', {
-        p_pass: adminInputPassword.trim(),
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: adminEmail.trim(),
+        password: adminPassword.trim(),
       });
 
-      if (!error && data === true) {
+      if (error) {
+        toast.error('بيانات الدخول غير صحيحة ❌');
+      } else if (data.session) {
         setAdminAccess(true);
-        sessionStorage.setItem('admin_authenticated', 'true');
         setShowAdminLoginModal(false);
-        setAdminInputPassword('');
+        setAdminEmail('');
+        setAdminPassword('');
         setView('admin');
-        toast.success('مرحباً بك في لوحة الإدارة 🛡️');
-      } else {
-        toast.error('كلمة المرور غير صحيحة ❌');
+        toast.success('تم تسجيل دخول المشرف بنجاح 🛡️');
       }
     } catch (err) {
-      toast.error('فشل التحقق من الخادم');
+      toast.error('حدث خطأ أثناء الاتصال بالخادم');
     } finally {
-      setAdminVerifying(false);
+      setAdminLoading(false);
     }
   };
 
@@ -287,7 +301,7 @@ export default function App() {
         className="max-w-md mx-auto h-dvh bg-white text-slate-900 relative flex flex-col overflow-hidden"
         style={{ fontFamily: "'Cairo', sans-serif" }}
       >
-        {/* شريط التبديل العلوي السري والمؤمن */}
+        {/* شريط التبديل العلوي */}
         <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-white/90 p-0.5 rounded-full backdrop-blur-md border border-slate-200 shadow-sm">
           {[
             { id: 'user' as const, label: 'حريف' },
@@ -330,7 +344,7 @@ export default function App() {
           ))}
         </div>
 
-        {/* 🔒 نافذة طلب باسورد الأدمن المشفرة */}
+        {/* 🔒 نافذة تسجيل دخول الأدمن عبر Supabase Auth */}
         <AnimatePresence>
           {showAdminLoginModal && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100000] flex items-center justify-center p-4">
@@ -351,28 +365,39 @@ export default function App() {
                   <Shield size={24} />
                 </div>
 
-                <h3 className="font-black text-slate-900 text-base mb-1">لوحة الإدارة العامة</h3>
-                <p className="text-xs text-slate-500 font-bold mb-4">أدخل كلمة المرور للتحقق من الصلاحية</p>
+                <h3 className="font-black text-slate-900 text-base mb-1">لوحة المشرف العام</h3>
+                <p className="text-xs text-slate-500 font-bold mb-4">سجل الدخول بحساب المشرف في Supabase</p>
 
-                <form onSubmit={handleVerifyAdmin} className="space-y-3">
+                <form onSubmit={handleAdminAuthLogin} className="space-y-3">
+                  <div className="relative">
+                    <input
+                      type="email"
+                      placeholder="البريد الإلكتروني"
+                      value={adminEmail}
+                      onChange={(e) => setAdminEmail(e.target.value)}
+                      className="w-full bg-slate-50 border-2 border-slate-200 p-3 pr-10 rounded-xl text-right font-bold text-sm outline-none focus:border-purple-600"
+                      autoFocus
+                    />
+                    <Mail size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  </div>
+
                   <div className="relative">
                     <input
                       type="password"
-                      placeholder="كلمة مرور المشرف"
-                      value={adminInputPassword}
-                      onChange={(e) => setAdminInputPassword(e.target.value)}
-                      className="w-full bg-slate-50 border-2 border-slate-200 p-3 pr-10 rounded-xl text-center font-mono font-black text-sm outline-none focus:border-purple-600"
-                      autoFocus
+                      placeholder="كلمة المرور"
+                      value={adminPassword}
+                      onChange={(e) => setAdminPassword(e.target.value)}
+                      className="w-full bg-slate-50 border-2 border-slate-200 p-3 pr-10 rounded-xl text-right font-bold text-sm outline-none focus:border-purple-600"
                     />
                     <Lock size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   </div>
 
                   <button
                     type="submit"
-                    disabled={adminVerifying}
+                    disabled={adminLoading}
                     className="w-full bg-purple-600 hover:bg-purple-700 text-white font-black py-3 rounded-xl text-sm active:scale-95 transition-all shadow-md shadow-purple-200 disabled:opacity-50"
                   >
-                    {adminVerifying ? 'جاري التحقق...' : 'دخول المشرف 🚀'}
+                    {adminLoading ? 'جاري التحقق...' : 'دخول المشرف 🚀'}
                   </button>
                 </form>
               </motion.div>
