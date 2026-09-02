@@ -373,7 +373,7 @@ export default function SummaryScreen() {
 
         <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-6 text-center w-full shadow-sm">
           <div className="text-4xl font-black text-slate-900 font-mono mb-1">
-            {doneTotalPrice > 0 ? `${doneTotalPrice} ج.م` : `0 ج.م`}
+            {doneTotalPrice > 0 ? `${doneTotalPrice} ج.م` : `${totalPrice} ج.م`}
           </div>
           <div className="text-xs text-slate-400 mb-2">
             {isFirstFreeApplied ? (
@@ -539,7 +539,7 @@ export default function SummaryScreen() {
               <div className="flex justify-between text-xs">
                 <span className="text-slate-700 font-bold">الإجمالي المطلوب سداده</span>
                 <span className="font-black text-emerald-600 font-mono">
-                  {totalPrice} j.m
+                  {totalPrice} ج.م
                 </span>
               </div>
             </div>
@@ -626,10 +626,10 @@ export default function SummaryScreen() {
                   <div>
                     <p className="text-xs text-blue-600 font-bold">
                       سيتم خصم {totalPrice} ج.م من رصيدك تلقائياً
-                  </p>
+                    </p>
                     <p className="text-[10px] text-blue-400">
                       الرصيد بعد الخصم: {walletBalance - totalPrice} ج.م
-                  </p>
+                    </p>
                   </div>
                 </motion.div>
               )}
