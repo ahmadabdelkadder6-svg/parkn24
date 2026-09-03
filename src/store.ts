@@ -164,6 +164,7 @@ export const calculateSessionPriceWithFreeGift = (
 
 // ===================== 🛡️ طبقات الحماية الأمنية =====================
 
+// 🛡️ [1] حماية من الضغط العالي (Rate Limiter)
 const rateLimiter = {
   requests: 0,
   lastReset: Date.now(),
@@ -181,6 +182,7 @@ const rateLimiter = {
   }
 };
 
+// 🛡️ [2] تنظيف المدخلات من الأكواد الخبيثة (XSS Protection)
 const sanitizeInput = (input: string): string => {
   if (!input) return '';
   return input
@@ -192,6 +194,28 @@ const sanitizeInput = (input: string): string => {
     .substring(0, 200);
 };
 
+// 🛡️ [3] حماية من تخمين الباسوردات (Brute Force Protection)
+const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
+
+export const checkLoginAttempt = (identifier: string): boolean => {
+  const now = Date.now();
+  const record = loginAttempts.get(identifier);
+
+  if (record && now - record.lastAttempt < 300000) {
+    if (record.count >= 5) return false;
+    record.count++;
+    record.lastAttempt = now;
+  } else {
+    loginAttempts.set(identifier, { count: 1, lastAttempt: now });
+  }
+  return true;
+};
+
+export const resetLoginAttempts = (identifier: string): void => {
+  loginAttempts.delete(identifier);
+};
+
+// ===================== Helpers =====================
 const uid = () => crypto.randomUUID?.() || Date.now().toString();
 
 const isSupabaseConfigured = () => {
@@ -215,7 +239,98 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-// 🧬 [بصمة اللوحة العبقرية الموحدة بالكامل]: الإبقاء على الحروف العربية وتوحيد المتشابهات والأرقام فقط
+// ===================== 🧬 نظام التحقق من اللوحة =====================
+
+/**
+ * نتيجة التحقق من صحة اللوحة
+ */
+export interface PlateValidationResult {
+  isValid: boolean;
+  normalizedPlate: string;
+  errorMessage?: string;
+  errorCode?: 'EMPTY' | 'HAS_ENGLISH' | 'NO_LETTERS' | 'NO_NUMBERS' | 'TOO_SHORT' | 'TOO_LONG';
+}
+
+/**
+ * 🛡️ التحقق الصارم من اللوحة مع رسائل خطأ واضحة
+ * تُستخدم في واجهات الإدخال (Forms) قبل الحفظ
+ */
+export const validatePlate = (plate?: string): PlateValidationResult => {
+  if (!plate || !plate.trim()) {
+    return {
+      isValid: false,
+      normalizedPlate: '',
+      errorMessage: '⛔ من فضلك أدخل رقم اللوحة',
+      errorCode: 'EMPTY',
+    };
+  }
+
+  const cleaned = sanitizeInput(plate).trim();
+
+  // 🚫 رفض تام لأي حرف إنجليزي
+  if (/[a-zA-Z]/.test(cleaned)) {
+    return {
+      isValid: false,
+      normalizedPlate: '',
+      errorMessage: '⛔ من فضلك اكتب اللوحة بالعربي فقط (بدون حروف إنجليزية)',
+      errorCode: 'HAS_ENGLISH',
+    };
+  }
+
+  // تنفيذ عملية التوحيد
+  const normalized = normalizePlate(cleaned);
+
+  // التحقق من وجود حروف عربية
+  const hasArabicLetters = /[\u0600-\u06FF]/.test(normalized);
+  if (!hasArabicLetters) {
+    return {
+      isValid: false,
+      normalizedPlate: '',
+      errorMessage: '⛔ اللوحة يجب أن تحتوي على حروف عربية (مثال: أ ب ج 1234)',
+      errorCode: 'NO_LETTERS',
+    };
+  }
+
+  // التحقق من وجود أرقام
+  const hasNumbers = /[0-9]/.test(normalized);
+  if (!hasNumbers) {
+    return {
+      isValid: false,
+      normalizedPlate: '',
+      errorMessage: '⛔ اللوحة يجب أن تحتوي على أرقام (مثال: أ ب ج 1234)',
+      errorCode: 'NO_NUMBERS',
+    };
+  }
+
+  // التحقق من الطول الطبيعي للوحة المصرية
+  if (normalized.length < 4) {
+    return {
+      isValid: false,
+      normalizedPlate: '',
+      errorMessage: '⛔ اللوحة قصيرة جداً - أدخل اللوحة بالكامل',
+      errorCode: 'TOO_SHORT',
+    };
+  }
+
+  if (normalized.length > 10) {
+    return {
+      isValid: false,
+      normalizedPlate: '',
+      errorMessage: '⛔ اللوحة طويلة جداً - تأكد من الأرقام والحروف',
+      errorCode: 'TOO_LONG',
+    };
+  }
+
+  return {
+    isValid: true,
+    normalizedPlate: normalized,
+  };
+};
+
+/**
+ * 🧬 [بصمة اللوحة العبقرية]: توحيد شكل اللوحة للتخزين والمقارنة
+ * تُستخدم داخلياً لعمل البصمة الموحدة
+ */
 const normalizePlate = (plate?: string): string => {
   if (!plate) return '';
   
@@ -447,7 +562,7 @@ interface AppState {
   sessions: ParkingSession[];
   acknowledgedSessionIds: Set<string>;
   acknowledgeSession: (id: string) => void;
-  addSession: (s: Omit<ParkingSession, 'id'>) => Promise<string>;
+  addSession: (s: Omit<ParkingSession, 'id'>) => Promise<{ sessionId: string; success: boolean; error?: string }>;
   endSession: (id: string, totalPrice: number, paymentMethod: string, freeMinutesApplied?: number) => Promise<void>;
   cancelSession: (id: string) => void;
   removeSession: (id: string) => Promise<void>;
@@ -986,18 +1101,31 @@ export const useStore = create<AppState>((set, get) => ({
     } catch (err) { console.error('❌', err); await get().fetchAll(); }
   },
 
-  // ─── بدء جلسة الركن مع الفحص الصريح والمضمون 100% ───
+  // ─── بدء جلسة الركن مع الفحص الصارم للوحة ورسائل خطأ واضحة ───
   addSession: async (s) => {
-    const rawPlate = (s.carPlate || '').trim();
-    if (!rawPlate) return '';
+    // 🛡️ [التحقق الصارم من اللوحة قبل أي عملية]
+    const validation = validatePlate(s.carPlate);
+    if (!validation.isValid) {
+      console.warn('⛔ محاولة إنشاء جلسة بلوحة غير صالحة:', validation.errorMessage);
+      return {
+        sessionId: '',
+        success: false,
+        error: validation.errorMessage || '⛔ اللوحة غير صالحة',
+      };
+    }
 
-    const normalizedPlate = normalizePlate(rawPlate) || rawPlate.toUpperCase();
+    const normalizedPlate = validation.normalizedPlate;
+    const rawPlate = (s.carPlate || '').trim();
     const sessionId = crypto.randomUUID();
     const lockKey = `${normalizedPlate}::${s.source}`;
 
     if (sessionStartLocks.has(lockKey)) {
       const existing = get().sessions.find((x) => samePlate(x.carPlate, normalizedPlate) && x.status === 'active' && x.source === s.source);
-      return existing?.id ?? '';
+      return {
+        sessionId: existing?.id ?? '',
+        success: !!existing,
+        error: existing ? undefined : '⚠️ جلسة أخرى قيد المعالجة بنفس اللوحة، حاول مرة أخرى',
+      };
     }
     sessionStartLocks.add(lockKey);
     pausePolling(8000);
@@ -1006,14 +1134,20 @@ export const useStore = create<AppState>((set, get) => ({
       const existingLocal = get().sessions.find((existing) =>
         samePlate(existing.carPlate, normalizedPlate) && existing.status === 'active' && existing.source === s.source
       );
-      if (existingLocal) return existingLocal.id;
+      if (existingLocal) {
+        return {
+          sessionId: existingLocal.id,
+          success: true,
+          error: '⚠️ يوجد جلسة نشطة بالفعل لنفس اللوحة',
+        };
+      }
 
       const addedByValue = resolveAddedBy((s as any).addedBy);
       const isAppBooking = s.source === 'app';
       const cleanPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
       const nowTimestamp = s.startTime && s.startTime > 0 ? s.startTime : Date.now();
 
-      // 🎁 [تحديد الاستحقاق الحاسم]:
+      // 🎁 [تحديد الاستحقاق الحاسم للجلسة المجانية]:
       let eligibleForFree = false;
 
       if (isAppBooking) {
@@ -1081,7 +1215,7 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
 
-      // ✅ الجلسة المتفائلة تأخذ وقت البدء الحقيقي فوراً (ليس 0)
+      // ✅ الجلسة المتفائلة تأخذ وقت البدء الحقيقي فوراً (يدعم Offline Sync)
       const optimisticSession: ParkingSession = {
         ...s,
         id: sessionId,
@@ -1104,7 +1238,9 @@ export const useStore = create<AppState>((set, get) => ({
       set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]) }));
       await get().adjustGarageSpots(s.garageId, -1);
 
-      if (!isSupabaseConfigured()) return sessionId;
+      if (!isSupabaseConfigured()) {
+        return { sessionId, success: true };
+      }
 
       try {
         const { data, error } = await supabase.from('sessions').insert({
@@ -1132,7 +1268,11 @@ export const useStore = create<AppState>((set, get) => ({
           console.error('❌ خطأ في إضافة الجلسة:', error);
           set((st) => ({ sessions: st.sessions.filter((x) => x.id !== sessionId) }));
           await get().adjustGarageSpots(s.garageId, +1);
-          return sessionId;
+          return {
+            sessionId: '',
+            success: false,
+            error: '❌ فشل في حفظ الجلسة على السيرفر، تحقق من الاتصال',
+          };
         }
 
         if (data) {
@@ -1140,15 +1280,20 @@ export const useStore = create<AppState>((set, get) => ({
           set((st) => ({
             sessions: dedupeActiveSessions(st.sessions.map((x) => x.id === sessionId ? syncedSession : x)),
           }));
-          return data.id;
+          return { sessionId: data.id, success: true };
         }
       } catch (err) {
         console.error('❌ خطأ غير متوقع:', err);
         set((st) => ({ sessions: st.sessions.filter((x) => x.id !== sessionId) }));
         await get().adjustGarageSpots(s.garageId, +1);
+        return {
+          sessionId: '',
+          success: false,
+          error: '❌ حدث خطأ غير متوقع، حاول مرة أخرى',
+        };
       }
 
-      return sessionId;
+      return { sessionId, success: true };
     } finally {
       sessionStartLocks.delete(lockKey);
     }
@@ -1362,7 +1507,6 @@ export const useStore = create<AppState>((set, get) => ({
   approveTopUp: async (id) => {
     if (!isSupabaseConfigured()) return;
     try {
-      // محاولة مشفرة بالسيرفر RPC أولاً
       const { data, error } = await supabase.rpc('approve_topup_atomic', {
         p_topup_id: id,
       });

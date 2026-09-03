@@ -20,7 +20,7 @@ import {
   Gift,
   Sparkles,
 } from 'lucide-react';
-import { useStore, Garage, Session, IncomingCar } from '../store';
+import { useStore, validatePlate, ParkingSession, IncomingCar, Garage } from '../store';
 import {
   calculateDistance,
   distanceToMinutes,
@@ -39,15 +39,39 @@ interface GarageWithDistance extends Garage {
 }
 
 /* ─── Helpers ─── */
-// 🛡️ تنظيف وتوحيد رقم اللوحة بشكل صارم لمنع التحايل بالمسافات أو الرموز
+
+/**
+ * 🛡️ [إصلاح #1]: توحيد بصمة اللوحة مع الـ store تماماً
+ * تمنع الحروف الإنجليزية وتوحد الحروف العربية والأرقام
+ * لضمان تطابق 100% مع البصمة المخزنة في قاعدة البيانات
+ */
 const normalizePlateForCompare = (plate?: string): string => {
   if (!plate) return '';
-  return plate
-    .trim()
+  let cleaned = plate.trim();
+
+  // 🚫 رفض الحروف الإنجليزية (نفس منطق الـ store)
+  if (/[a-zA-Z]/.test(cleaned)) return '';
+
+  // تحويل الأرقام العربية والفارسية
+  cleaned = cleaned
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
-    .replace(/[^A-Z0-9\u0600-\u06FF]/gi, '') // مسح كامل للمسافات والفواصل لدمج الحروف تماماً
-    .toUpperCase();
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
+
+  // توحيد الحروف العربية المتشابهة
+  const charMap: Record<string, string> = {
+    'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ٱ': 'ا', 'ء': 'ا',
+    'ة': 'ت',
+    'ى': 'ي', 'ئ': 'ي',
+    'ؤ': 'و',
+    'پ': 'ب', 'چ': 'ج', 'ژ': 'ز', 'گ': 'ك', 'ڤ': 'ف',
+    'ک': 'ك', 'ی': 'ي',
+  };
+  cleaned = cleaned.replace(/./g, (char) => charMap[char] || char);
+
+  // حذف الرموز والمسافات (حروف عربية وأرقام فقط)
+  cleaned = cleaned.replace(/[^0-9\u0600-\u06FF]/g, '');
+
+  return cleaned;
 };
 
 const safeParseTime = (value: unknown): number => {
@@ -90,8 +114,8 @@ export default function GarageListScreen() {
   });
   const [locationLoading, setLocationLoading] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
-  
-  // 🛡️ حالة حارس الأمان لكشف أي احتيال أو استخدام سابق للهدية من اللوحة/الهاتف تاريخياً
+
+  // 🛡️ حالة حارس الأمان لكشف أي احتيال
   const [isAbuseDetected, setIsAbuseDetected] = useState(false);
 
   /* ── Refs ── */
@@ -100,9 +124,7 @@ export default function GarageListScreen() {
 
   useEffect(() => {
     isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-    };
+    return () => { isMountedRef.current = false; };
   }, []);
 
   /* ── Derived state ── */
@@ -111,27 +133,43 @@ export default function GarageListScreen() {
     [currentUser?.carPlate]
   );
 
-  /* 🛡️ فحص أمني خلفي لحظي بمجرد تحميل اللوحة للتأكد من عدم استخدامها مسبقاً تاريخياً */
+  /**
+   * 🛡️ [إصلاح #4]: فحص أمني خلفي لحظي
+   * تم إصلاح استعلام .or() ليعمل بشكل صحيح مع Supabase
+   */
   useEffect(() => {
     if (!currentUser) return;
-    
+
     const checkAbuseHistory = async () => {
       try {
         const cleanPlate = normalizePlateForCompare(currentUser.carPlate);
         const cleanPhone = currentUser.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
         if (!cleanPlate && !cleanPhone) return;
 
-        const { data, error } = await supabase
+        // 🛡️ بناء الاستعلام بشكل آمن حسب المعطيات المتاحة
+        let query = supabase
           .from('sessions')
           .select('id')
           .eq('is_first_free_session', true)
-          .or(`car_plate.eq.${cleanPlate}${cleanPhone ? `,customer_phone.eq.${cleanPhone}` : ''}`)
-          .limit(1);
+          .eq('status', 'completed');
+
+        if (cleanPlate && cleanPhone) {
+          // لو فيه لوحة ورقم → ابحث بالاثنين
+          query = query.or(`car_plate.eq.${cleanPlate},customer_phone.eq.${cleanPhone}`);
+        } else if (cleanPlate) {
+          // لو فيه لوحة بس
+          query = query.eq('car_plate', cleanPlate);
+        } else if (cleanPhone) {
+          // لو فيه رقم بس
+          query = query.eq('customer_phone', cleanPhone);
+        }
+
+        const { data, error } = await query.limit(1);
 
         if (!error && data && data.length > 0) {
-          setIsAbuseDetected(true); // تم كشف محاولة احتيال باللوحة أو الهاتف تاريخياً
+          setIsAbuseDetected(true);
         } else {
-          setIsAbuseDetected(false); // لوحة نظيفة ومستحقة للعرض
+          setIsAbuseDetected(false);
         }
       } catch (err) {
         console.error('Error verifying welcome gift eligibility:', err);
@@ -141,17 +179,23 @@ export default function GarageListScreen() {
     checkAbuseHistory();
   }, [currentUser, sessions]);
 
-  /* 🎁 التحقق الآمن مما إذا كان العميل يستحق عرض الساعة المجانية */
+  /**
+   * 🎁 [إصلاح #5]: التحقق الآمن من استحقاق الهدية
+   * تم إضافة فحص isAbuseDetected لمنع المحتالين
+   */
   const isEligibleForFreeSession = useMemo(() => {
     return currentUser && !currentUser.hasUsedFreeSession && !isAbuseDetected;
   }, [currentUser, isAbuseDetected]);
 
-  /* ✅ البحث عن جلسة نشطة واستبعاد أي جلسة تم إقرار إغلاقها مسبقاً */
+  /**
+   * ✅ [إصلاح #3]: البحث عن جلسة نشطة
+   * تم تغيير Session إلى ParkingSession لتطابق الـ store
+   */
   const activeSession = useMemo(() => {
     if (!normalizedUserPlate && !currentUser?.phone) return undefined;
 
-    return sessions
-      .filter((s: Session & { customerPhone?: string }) => {
+    return (sessions as ParkingSession[])
+      .filter((s) => {
         if (s.status !== 'active') return false;
         if (acknowledgedSessionIds?.has(s.id)) return false;
         const samePlate = normalizePlateForCompare(s.carPlate) === normalizedUserPlate;
@@ -161,35 +205,40 @@ export default function GarageListScreen() {
       .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
   }, [sessions, normalizedUserPlate, currentUser?.phone, acknowledgedSessionIds]);
 
-  /* ✅ حجب الجلسات المنتهية القديمة لمنع تكرار شاشة النهاية */
+  /**
+   * ✅ [إصلاح #6]: حجب الجلسات المنتهية القديمة
+   * تم إضافة فحص التاريخ (آخر 7 أيام فقط)
+   */
   const hasCompletedSession = useMemo(() => {
     if (activeSession) return false;
-    return sessions.some(
-      (s: Session) =>
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    return (sessions as ParkingSession[]).some(
+      (s) =>
         normalizePlateForCompare(s.carPlate) === normalizedUserPlate &&
-        s.status === 'completed'
+        s.status === 'completed' &&
+        safeParseTime(s.endTime || s.startTime) > sevenDaysAgo
     );
   }, [sessions, normalizedUserPlate, activeSession]);
 
   /* ✅ البحث عن حجز نشط قادم */
   const myIncomingCar = useMemo(() => {
     if (!normalizedUserPlate) return undefined;
-    return incomingCars
+    return (incomingCars as IncomingCar[])
       .filter(
-        (c: IncomingCar) =>
+        (c) =>
           normalizePlateForCompare(c.carPlate) === normalizedUserPlate &&
           c.status === 'coming'
       )
       .sort((a, b) => safeParseTime(b.startTime || 0) - safeParseTime(a.startTime || 0))[0];
   }, [incomingCars, normalizedUserPlate]);
 
-  /* 🚀 فلترة عمليات شحن المحفظة الخاصة بالعميل الحالي وتصنيفها */
+  /* 🚀 فلترة عمليات شحن المحفظة */
   const myTopUps = useMemo(() => {
     if (!currentUser?.phone || !walletTopUps) return [];
     return walletTopUps
       .filter((w) => w.userPhone === currentUser.phone)
       .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 3); 
+      .slice(0, 3);
   }, [walletTopUps, currentUser?.phone]);
 
   const pendingTopUpsCount = useMemo(() => {
@@ -224,7 +273,12 @@ export default function GarageListScreen() {
     getUserLocation();
   }, [getUserLocation]);
 
-  /* ── Realtime + Polling ── */
+  /**
+   * 🛡️ [إصلاح #2]: Realtime + Polling
+   * تم تغيير الـ interval من 1500ms إلى 5000ms
+   * لتجنب تجاوز Rate Limit (50 طلب/10 ثواني)
+   * 5000ms = 2 طلب/10 ثواني ← آمن تماماً
+   */
   useEffect(() => {
     if (!normalizedUserPlate) return;
 
@@ -250,7 +304,7 @@ export default function GarageListScreen() {
     };
 
     const channel = supabase
-      .channel(`customer-realtime-${normalizedUserPlate}`)
+      .channel(`customer-realtime-${normalizedUserPlate}-${Date.now()}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'sessions', filter: `car_plate=eq.${normalizedUserPlate}` },
@@ -262,7 +316,8 @@ export default function GarageListScreen() {
       )
       .subscribe();
 
-    const interval = setInterval(refetch, 1500); 
+    // ⚡ [إصلاح #2]: 5000ms بدل 1500ms لتجنب Rate Limit
+    const interval = setInterval(refetch, 5000);
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') refetch();
@@ -300,7 +355,7 @@ export default function GarageListScreen() {
   /* ── Garages with distance ── */
   const garagesWithDistance: GarageWithDistance[] = useMemo(() => {
     return garages
-      .filter((g) => g.isActive !== false) 
+      .filter((g) => g.isActive !== false)
       .map((garage) => {
         const distance = calculateDistance(
           userLocation.lat,
@@ -342,10 +397,19 @@ export default function GarageListScreen() {
     [filteredGarages]
   );
 
-  /* ── Booking handler ── */
+  /**
+   * 🛡️ [إصلاح #7]: Booking handler مع فحص صارم للوحة
+   */
   const handleDirectBooking = async (garage: GarageWithDistance) => {
     if (!currentUser) {
       toast.error('سجل بياناتك أولاً');
+      return;
+    }
+
+    // 🛡️ فحص اللوحة قبل الحجز
+    const plateValidation = validatePlate(currentUser.carPlate);
+    if (!plateValidation.isValid) {
+      toast.error(plateValidation.errorMessage || 'رقم اللوحة غير صحيح، عدّل بياناتك');
       return;
     }
 
@@ -378,7 +442,7 @@ export default function GarageListScreen() {
       setSelectedGarageId(garage.id);
       await addIncomingCar({
         garageId: garage.id,
-        carPlate: currentUser.carPlate,
+        carPlate: plateValidation.normalizedPlate,
         customerName: currentUser.name,
         customerPhone: currentUser.phone,
         agreedPrice: garage.basePrice,
@@ -569,15 +633,15 @@ export default function GarageListScreen() {
                 flexShrink: 0,
               }}
             >
-              <div 
+              <div
                 className="flex items-center justify-between px-1.5"
                 style={{ height: '5px', background: 'linear-gradient(90deg, #0066FF, #0055DD)' }}
               >
                 <span style={{ fontSize: '4px', color: '#fff', fontWeight: 900 }}>EGYPT</span>
                 <span style={{ fontSize: '4px', color: '#fff', fontWeight: 900 }}>مصر</span>
               </div>
-              
-              <div 
+
+              <div
                 className="py-0.5 px-2 text-center font-black flex items-center justify-center gap-1"
                 style={{ color: '#0F172A', fontSize: '11px', letterSpacing: '0.5px' }}
               >
@@ -669,18 +733,18 @@ export default function GarageListScreen() {
           )}
         </AnimatePresence>
 
-        {/* 🎁 بانر ترحيبي بسيط ومبهج */}
+        {/* 🎁 بانر ترحيبي - [إصلاح #5]: مش بيظهر لو فيه احتيال */}
         {isEligibleForFreeSession && !activeSession && !myIncomingCar && (
           <motion.div
             initial={{ opacity: 0, y: -15, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             className="w-full mb-3 overflow-hidden relative"
             style={{
-              background: '#ffffff', 
+              background: '#ffffff',
               borderRadius: 22,
               padding: '16px',
               boxShadow: '0 10px 25px rgba(0, 102, 255, 0.05), 0 2px 6px rgba(0,0,0,0.02)',
-              border: '2px solid #FFF1F2', 
+              border: '2px solid #FFF1F2',
             }}
           >
             <div className="absolute -top-10 -right-10 w-24 h-24 bg-rose-100/50 rounded-full filter blur-xl" />
@@ -692,7 +756,7 @@ export default function GarageListScreen() {
                 transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
                 className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
                 style={{
-                  background: 'linear-gradient(135deg, #FFEDD5 0%, #FEE2E2 100%)', 
+                  background: 'linear-gradient(135deg, #FFEDD5 0%, #FEE2E2 100%)',
                   border: '1.5px solid #FCA5A5',
                 }}
               >
@@ -702,7 +766,7 @@ export default function GarageListScreen() {
               <div className="flex-1 text-right">
                 <div className="flex items-center gap-1.5 justify-end mb-1">
                   <span className="font-bold text-slate-800 text-[11px]">نورت عائلتنا الجديدة! 🎉</span>
-                  <span 
+                  <span
                     className="font-black text-[9px] px-2.5 py-0.5 rounded-full leading-none shrink-0"
                     style={{
                       background: '#FFFBEB',
@@ -713,14 +777,14 @@ export default function GarageListScreen() {
                     🎁 هدية ترحيبية
                   </span>
                 </div>
-                
-                <h4 
-                  className="font-black text-slate-900 leading-tight" 
+
+                <h4
+                  className="font-black text-slate-900 leading-tight"
                   style={{ fontSize: '13.5px' }}
                 >
                   أول ركنة لك معنا <span className="text-red-500 font-black">مجانية بالكامل! 🕐</span>
                 </h4>
-                
+
                 <p className="text-slate-500 font-bold leading-normal mt-1" style={{ fontSize: '10px' }}>
                   احجز الآن من التطبيق واستمتع بـ <span className="text-emerald-600 font-black">أول ساعة مجاناً 100%</span> كهدية ترحيبية مميزة لك في أول زيارة 🎈
                 </p>
@@ -1015,8 +1079,8 @@ export default function GarageListScreen() {
         {showTopUp && <TopUpWalletModal onClose={() => setShowTopUp(false)} />}
       </AnimatePresence>
 
-      {/* الهدية الترحيبية منبثقة */}
-      <WelcomeGiftModal />
+      {/* 🛡️ [إصلاح #5]: الهدية الترحيبية - بتتلقى isAbuseDetected */}
+      <WelcomeGiftModal isAbuseDetected={isAbuseDetected} />
     </div>
   );
 }
@@ -1024,19 +1088,29 @@ export default function GarageListScreen() {
 /* ════════════════════════════════════════════════════════════
    ██  WELCOME GIFT MODAL COMPONENT
    ════════════════════════════════════════════════════════════ */
-function WelcomeGiftModal() {
+
+/**
+ * 🛡️ [إصلاح #5]: تم إضافة prop isAbuseDetected
+ * لمنع عرض الهدية للعملاء المحتالين
+ */
+function WelcomeGiftModal({ isAbuseDetected }: { isAbuseDetected: boolean }) {
   const [show, setShow] = useState(false);
   const currentUser = useStore((s) => s.currentUser);
 
   useEffect(() => {
     const hasGiftFlag = localStorage.getItem('showWelcomeGift');
-    if (hasGiftFlag === 'true' && currentUser && !currentUser.hasUsedFreeSession) {
+    if (
+      hasGiftFlag === 'true' &&
+      currentUser &&
+      !currentUser.hasUsedFreeSession &&
+      !isAbuseDetected // 🛡️ منع المحتالين من رؤية الهدية
+    ) {
       setShow(true);
     } else {
       localStorage.removeItem('showWelcomeGift');
       setShow(false);
     }
-  }, [currentUser]);
+  }, [currentUser, isAbuseDetected]);
 
   const handleClose = () => {
     localStorage.removeItem('showWelcomeGift');
@@ -1046,7 +1120,7 @@ function WelcomeGiftModal() {
   return (
     <AnimatePresence>
       {show && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[999] flex items-center justify-center p-5"
           onClick={handleClose}
         >
@@ -1077,7 +1151,7 @@ function WelcomeGiftModal() {
             <h3 className="text-2xl font-black text-slate-900 mb-2 relative z-10">
               🎉 أهلاً وسهلاً!
             </h3>
-            
+
             <p className="text-slate-600 text-sm mb-5 leading-relaxed relative z-10 font-bold">
               نورتنا في عائلة <span className="font-black text-blue-600">Park'n 24</span> وحبينا نفرحك بهدية حلوة 🌟
             </p>
@@ -1096,8 +1170,8 @@ function WelcomeGiftModal() {
             <button
               onClick={handleClose}
               className="w-full font-black py-4 rounded-2xl text-sm active:scale-95 transition-all shadow-lg relative z-10"
-              style={{ 
-                background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)', 
+              style={{
+                background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
                 color: '#ffffff',
                 fontWeight: 950,
                 fontSize: 15,
@@ -1179,7 +1253,7 @@ function GarageCard({
         background: '#ffffff',
         border: `1.5px solid ${borderColor}`,
         borderRadius: 18,
-        padding: '12px 14px', 
+        padding: '12px 14px',
         boxShadow: `0 4px 14px ${glowColor}, 0 2px 4px rgba(0,0,0,0.02)`,
       }}
     >
@@ -1200,11 +1274,11 @@ function GarageCard({
 
           {isFull && (
             <span
-              style={{ 
-                background: '#FF3333', 
-                color: '#ffffff', 
-                fontSize: 10, 
-                padding: '3px 8px', 
+              style={{
+                background: '#FF3333',
+                color: '#ffffff',
+                fontSize: 10,
+                padding: '3px 8px',
                 borderRadius: 10,
                 fontWeight: 950,
                 textShadow: '0 1px 2px rgba(0,0,0,0.2)'
@@ -1216,14 +1290,14 @@ function GarageCard({
 
           {!isBusy && isClosest && !isFull && (
             <span
-              style={{ 
-                background: '#0066FF', 
-                color: '#ffffff',     
-                fontWeight: 900,      
-                fontSize: 9.5, 
-                padding: '2.5px 7px', 
+              style={{
+                background: '#0066FF',
+                color: '#ffffff',
+                fontWeight: 900,
+                fontSize: 9.5,
+                padding: '2.5px 7px',
                 borderRadius: 8,
-                boxShadow: '0 2px 6px rgba(0, 102, 255, 0.35)' 
+                boxShadow: '0 2px 6px rgba(0, 102, 255, 0.35)'
               }}
             >
               📍 الأقرب
@@ -1231,11 +1305,11 @@ function GarageCard({
           )}
           {!isBusy && !isClosest && isNearby && !isFull && (
             <span
-              style={{ 
-                background: '#00CC66', 
-                color: '#ffffff', 
-                fontSize: 10, 
-                padding: '3px 8px', 
+              style={{
+                background: '#00CC66',
+                color: '#ffffff',
+                fontSize: 10,
+                padding: '3px 8px',
                 borderRadius: 10,
                 fontWeight: 950,
                 textShadow: '0 1px 2px rgba(0,0,0,0.2)'
@@ -1266,15 +1340,15 @@ function GarageCard({
             borderRadius: 10,
             padding: '5px 10px',
             fontSize: 11,
-            color: '#ffffff', 
+            color: '#ffffff',
           }}
         >
           <Navigation size={12} className="rotate-45" style={{ color: '#ffffff' }} />
-          <span 
-            className="font-mono tracking-wider" 
-            style={{ 
-              color: '#ffffff', 
-              fontWeight: 900,  
+          <span
+            className="font-mono tracking-wider"
+            style={{
+              color: '#ffffff',
+              fontWeight: 900,
             }}
           >
             {formatDuration(garage.minutes)}
@@ -1289,9 +1363,9 @@ function GarageCard({
             </span>
             <span className="text-[9px] font-bold text-slate-500">شاغر</span>
           </div>
-          
+
           <div style={{ width: 1.5, height: 12, background: '#E2E8F0' }} />
-          
+
           <div className="flex items-center gap-1 shrink-0">
             <span className="font-black font-mono text-sm text-emerald-600">
               {garage.basePrice}
@@ -1312,7 +1386,7 @@ function GarageCard({
           background: btnBg,
           color: isFull ? '#94a3b8' : '#ffffff',
           borderRadius: 12,
-          padding: '9px 0', 
+          padding: '9px 0',
           fontSize: 12,
           border: 'none',
           cursor: 'pointer'

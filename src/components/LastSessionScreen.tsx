@@ -10,14 +10,15 @@ import {
   Copy,
   Gift,
   Sparkles,
+  CheckCircle2,
 } from 'lucide-react';
-import { useStore } from '../store';
+import { useStore, ParkingSession, Garage } from '../store';
 import { calculateFullHours, calculateCost, formatTime } from '../utils/pricing';
 import toast from 'react-hot-toast';
 import { useEffect, useRef, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 
-/* ─── Helper: توحيد تحويل الوقت من أي مصدر ─── */
+/* ─── Helper: توحيد تحويل الوقت ─── */
 const toMs = (value: any): number => {
   if (!value) return 0;
   if (typeof value === 'number') {
@@ -27,52 +28,79 @@ const toMs = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+/* ─── Helper: [إصلاح #1] بصمة اللوحة الموحدة الصارمة ─── */
+const normalizePlate = (plate?: string): string => {
+  if (!plate) return '';
+  let cleaned = plate.trim();
+
+  // رفض الحروف الإنجليزية
+  if (/[a-zA-Z]/.test(cleaned)) return '';
+
+  // تحويل الأرقام العربية والفارسية
+  cleaned = cleaned
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)));
+
+  // توحيد الحروف المتشابهة
+  const charMap: Record<string, string> = {
+    'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ٱ': 'ا', 'ء': 'ا',
+    'ة': 'ت',
+    'ى': 'ي', 'ئ': 'ي',
+    'ؤ': 'و',
+    'پ': 'ب', 'چ': 'ج', 'ژ': 'ز', 'گ': 'ك', 'ڤ': 'ف',
+    'ک': 'ك', 'ی': 'ي',
+  };
+  cleaned = cleaned.replace(/./g, (char) => charMap[char] || char);
+  cleaned = cleaned.replace(/[^0-9\u0600-\u06FF]/g, '');
+
+  return cleaned;
+};
+
 /* ════════════════════════════════════════════════════════════
    ██  LAST SESSION SCREEN
    ════════════════════════════════════════════════════════════ */
 export default function LastSessionScreen() {
   const { sessions, garages, currentUser, setScreen, fetchAll } = useStore();
 
-  const userPlate = (currentUser?.carPlate ?? '').trim().toUpperCase();
+  const userPlate = normalizePlate(currentUser?.carPlate);
+  const userPhone = currentUser?.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
 
-  /* ✅ البحث بـ carPlate أو customerPhone */
-  const lastSession = sessions
-    .filter(
-      (s) =>
-        s.status === 'completed' &&
-        (
-          s.carPlate.trim().toUpperCase() === userPlate ||
-          (s as any).customerPhone === currentUser?.phone
-        ),
-    )
-    .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
+  /* ✅ [إصلاح #1]: البحث المطابق تماماً لبصمة اللوحة ورقم الهاتف */
+  const lastSession = useMemo(() => {
+    return (sessions as ParkingSession[])
+      .filter((s) => {
+        if (!s || s.status !== 'completed') return false;
+        const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+        const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+        const samePhoneMatch = !!userPhone && sPhone === userPhone;
+        return samePlateMatch || samePhoneMatch;
+      })
+      .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
+  }, [sessions, userPlate, userPhone]);
 
   const garage = lastSession
-    ? garages.find((g) => g.id === lastSession.garageId)
+    ? (garages as Garage[]).find((g) => g.id === lastSession.garageId)
     : null;
 
   /* ── Ref ── */
   const realtimeChannelRef = useRef<any>(null);
 
   /* ─────────────────────────────────────────────
-     ██  REALTIME
+     ██  REALTIME الموثوق
      ───────────────────────────────────────────── */
   useEffect(() => {
-    if (!userPlate && !currentUser?.phone) return;
+    if (!userPlate && !userPhone) return;
 
-    fetchAll();
-
-    const garageId = lastSession?.garageId ?? null;
+    fetchAll().catch((e) => console.error('Fetch error:', e));
 
     const channel = supabase
-      .channel(`last-session-${userPlate || currentUser?.phone}`)
+      .channel(`last-session-live-${userPlate || userPhone}-${Date.now()}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'sessions',
-          ...(garageId ? { filter: `garage_id=eq.${garageId}` } : {}),
         },
         async (payload) => {
           const row = payload.new as any;
@@ -81,11 +109,11 @@ export default function LastSessionScreen() {
             return;
           }
 
-          const plate = (row.car_plate ?? '').trim().toUpperCase();
-          const phone = row.customer_phone ?? '';
+          const plate = normalizePlate(row.car_plate || row.carPlate);
+          const phone = (row.customer_phone || row.customerPhone || '').replace(/[^\d+]/g, '');
           const isMySession =
-            plate === userPlate ||
-            (currentUser?.phone && phone === currentUser.phone);
+            (!!userPlate && plate === userPlate) ||
+            (!!userPhone && phone === userPhone);
 
           if (isMySession) {
             await fetchAll();
@@ -100,28 +128,27 @@ export default function LastSessionScreen() {
       supabase.removeChannel(channel);
       realtimeChannelRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userPlate, currentUser?.phone]);
+  }, [userPlate, userPhone, fetchAll]);
 
-  /* ─── لا توجد جلسات ─── */
+  /* ─── حالة عدم وجود جلسات ─── */
   if (!lastSession) {
     return (
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8"
+        className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8 text-right"
       >
         <div className="text-5xl mb-4">📭</div>
         <p className="text-lg font-black text-white mb-2">لا توجد جلسات سابقة</p>
         <p className="text-xs text-slate-500 text-center mb-6">
-          ابدأ ركن سيارتك وستظهر تفاصيل الجلسة هنا
+          ابدأ ركن سيارتك وستظهر تفاصيل وإيصال الجلسة هنا فور انتهائها
         </p>
         <button
           onClick={() => setScreen('list')}
-          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center gap-2"
+          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center gap-2 shadow-lg"
         >
           <ArrowRight size={16} />
-          العودة للقائمة
+          العودة للرئيسية
         </button>
       </motion.div>
     );
@@ -135,21 +162,20 @@ export default function LastSessionScreen() {
   const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);
   const totalMinutes = Math.floor(elapsedSeconds / 60);
 
-  // 🎁 [منطق الهدية]: قراءة وتحديد أهلية الجلسة والدقائق المجانية التي طُبقت
+  // 🎁 منطق الهدية الترحيبية
   const isFirstFreeApplied = lastSession.isFirstFreeSession === true;
-  const freeMinutesApplied = lastSession.freeMinutesApplied ?? 0;
+  const freeMinutesApplied = lastSession.freeMinutesApplied ?? (isFirstFreeApplied ? Math.min(60, totalMinutes) : 0);
 
-  // الساعات الفعلية الخاضعة للدفع بالكامل بعد خصم الهدية
   const billableSeconds = Math.max(0, elapsedSeconds - (freeMinutesApplied * 60));
   const billableHours = calculateFullHours(billableSeconds);
 
-  // حساب التكلفة الكلية (المدفوعة فعلياً)
+  /* ✅ [إصلاح #3]: قراءة السعر المسجل بدقة حتى لو كان 0 ج.م */
   const cost =
-    lastSession.totalPrice != null && Number(lastSession.totalPrice) > 0
+    lastSession.totalPrice != null
       ? Number(lastSession.totalPrice)
       : calculateCost(billableSeconds, rate);
 
-  // حساب كم وفر العميل بفضل الهدية الترحيبية
+  // حساب كم وفر العميل
   const savedAmount = useMemo(() => {
     if (!isFirstFreeApplied) return 0;
     const originalCost = calculateCost(elapsedSeconds, rate);
@@ -172,24 +198,24 @@ export default function LastSessionScreen() {
     date.toLocaleTimeString('ar-EG', {
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit',
     });
 
+  /* ✅ [إصلاح #2]: دعم طريقة الدفع المجانية 'free' بالكامل */
   const getPaymentInfo = (method?: string) => {
     switch (method) {
+      case 'free':
+        return {
+          label: 'ركن مجاني ترحيبي', icon: '🎁',
+          color: 'text-amber-400',
+          bg: 'bg-amber-500/10',
+          border: 'border-amber-500/30',
+        };
       case 'cash':
         return {
-          label: 'نقدي كاش', icon: '💵',
+          label: 'نقدي كاش للسايس', icon: '💵',
           color: 'text-emerald-400',
           bg: 'bg-emerald-500/10',
           border: 'border-emerald-500/30',
-        };
-      case 'instapay':
-        return {
-          label: 'إرسال إنستاباي', icon: '📱',
-          color: 'text-purple-400',
-          bg: 'bg-purple-500/10',
-          border: 'border-purple-500/30',
         };
       case 'wallet':
         return {
@@ -197,6 +223,13 @@ export default function LastSessionScreen() {
           color: 'text-blue-400',
           bg: 'bg-blue-500/10',
           border: 'border-blue-500/30',
+        };
+      case 'instapay':
+        return {
+          label: 'إرسال إنستاباي', icon: '📱',
+          color: 'text-purple-400',
+          bg: 'bg-purple-500/10',
+          border: 'border-purple-500/30',
         };
       case 'cashwallet':
         return {
@@ -207,10 +240,11 @@ export default function LastSessionScreen() {
         };
       default:
         return {
-          label: 'غير محدد', icon: '💳',
-          color: 'text-slate-400',
-          bg: 'bg-slate-500/10',
-          border: 'border-slate-500/30',
+          label: cost === 0 && isFirstFreeApplied ? 'ركن مجاني ترحيبي' : 'نقدي كاش',
+          icon: cost === 0 && isFirstFreeApplied ? '🎁' : '💵',
+          color: cost === 0 && isFirstFreeApplied ? 'text-amber-400' : 'text-emerald-400',
+          bg: cost === 0 && isFirstFreeApplied ? 'bg-amber-500/10' : 'bg-emerald-500/10',
+          border: cost === 0 && isFirstFreeApplied ? 'border-amber-500/30' : 'border-emerald-500/30',
         };
     }
   };
@@ -219,12 +253,12 @@ export default function LastSessionScreen() {
 
   const sourceInfo =
     lastSession.source === 'app'
-      ? { label: 'عبر التطبيق', color: 'text-blue-400', bg: 'bg-blue-500/20' }
-      : { label: 'إضافة يدوية', color: 'text-amber-400', bg: 'bg-amber-500/20' };
+      ? { label: 'حجز التطبيق', color: 'text-blue-400', bg: 'bg-blue-500/20' }
+      : { label: 'مدخل الجراج', color: 'text-amber-400', bg: 'bg-amber-500/20' };
 
   /* ── نسخ التفاصيل ── */
   const copySessionDetails = async () => {
-    const details = `🧾 تفاصيل جلسة الركن
+    const details = `🧾 تفاصيل إيصال الركن
 ━━━━━━━━━━━━━━━━━━
 🚗 رقم السيارة: ${lastSession.carPlate}
 🅿️ الجراج: ${garage?.name || 'غير محدد'}
@@ -234,12 +268,12 @@ export default function LastSessionScreen() {
 ⏰ وقت الدخول: ${formatTimeOnly(startDate)}
 ⏰ وقت الخروج: ${formatTimeOnly(endDate)}
 ⏱️ المدة الفعلية: ${totalMinutes} دقيقة
-${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجاناً (-${savedAmount} ج.م)\n` : ''}⏱️ المدة الخاضعة للدفع: ${isFirstFreeApplied ? Math.max(0, totalMinutes - freeMinutesApplied) : totalMinutes} دقيقة
+${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجاناً (-${savedAmount.toFixed(0)} ج.م)\n` : ''}⏱️ الساعات المحسوبة للدفع: ${billableHours} ساعة
 ━━━━━━━━━━━━━━━━━━
 💰 سعر الساعة: ${rate} ج.م
-💵 الإجمالي المدفوع: ${cost} ج.م
-💳 طريقة الدفع: ${paymentInfo.label}
-📋 نوع الجلسة: ${sourceInfo.label}`;
+💵 الإجمالي المدفوع: ${cost.toFixed(0)} ج.م
+💳 طريقة السداد: ${paymentInfo.label}
+📋 نوع الحجز: ${sourceInfo.label}`;
 
     try {
       if (navigator.clipboard?.writeText) {
@@ -252,7 +286,7 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
         document.execCommand('copy');
         document.body.removeChild(el);
       }
-      toast.success('تم نسخ تفاصيل الجلسة 📋');
+      toast.success('تم نسخ تفاصيل الإيصال 📋');
     } catch {
       toast.error('فشل النسخ');
     }
@@ -265,7 +299,7 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full bg-slate-950 text-white flex flex-col safe-top safe-bottom"
+      className="h-full bg-slate-950 text-white flex flex-col safe-top safe-bottom text-right"
     >
       {/* ══ Header ══ */}
       <div className="flex items-center justify-between px-4 pt-12 pb-3 shrink-0">
@@ -282,6 +316,7 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
         <button
           onClick={copySessionDetails}
           className="bg-slate-900 p-2.5 rounded-xl border border-slate-800 active:scale-90 transition-all"
+          title="نسخ الإيصال"
         >
           <Copy size={18} className="text-blue-400" />
         </button>
@@ -320,7 +355,7 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
           )}
         </div>
 
-        {/* ✅ التكلفة الإجمالية - Premium Edition */}
+        {/* ✅ التكلفة الإجمالية - بطاقة فخمة */}
         <div
           className="relative overflow-hidden rounded-3xl p-6 text-center"
           style={{
@@ -329,29 +364,6 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
             border: '1px solid rgba(255,255,255,0.08)',
           }}
         >
-          {/* خلفيات لمعة دائرية خلف الكارت */}
-          <div
-            className="absolute -top-20 -right-20"
-            style={{
-              width: 200,
-              height: 200,
-              borderRadius: '50%',
-              background: 'radial-gradient(circle, rgba(212,175,55,0.08) 0%, transparent 70%)',
-              filter: 'blur(30px)',
-            }}
-          />
-          <div
-            className="absolute -bottom-10 -left-10"
-            style={{
-              width: 150,
-              height: 150,
-              borderRadius: '50%',
-              background: 'radial-gradient(circle, rgba(255,255,255,0.03) 0%, transparent 70%)',
-              filter: 'blur(20px)',
-            }}
-          />
-
-          {/* أيقونة */}
           <div
             className="relative z-10 mx-auto mb-3"
             style={{
@@ -368,11 +380,10 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
             <span style={{ fontSize: 20 }}>💰</span>
           </div>
 
-          {/* العنوان */}
           <div
             className="relative z-10 mb-4"
             style={{
-              fontSize: 22,
+              fontSize: 20,
               fontWeight: 900,
               letterSpacing: '1px',
               background: 'linear-gradient(135deg, #FFFFFF 0%, #D4AF37 50%, #FFFFFF 100%)',
@@ -380,31 +391,18 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
               WebkitTextFillColor: 'transparent',
             }}
           >
-            إجمالي المستحق
+            إجمالي المدفوع
           </div>
 
-          {/* خط ذهبي */}
-          <div
-            className="relative z-10 mx-auto mb-4"
-            style={{
-              width: 60,
-              height: 2,
-              borderRadius: 999,
-              background: 'linear-gradient(90deg, transparent, #D4AF37, transparent)',
-            }}
-          />
-
-          {/* الرقم الرئيسي للمطلوب سداده + شارة السداد */}
           <div className="relative z-10 flex flex-col items-center justify-center mb-4">
-            <div className="flex items-end justify-center gap-3 mb-2">
+            <div className="flex items-end justify-center gap-2 mb-2">
               <span
                 className="font-mono"
                 style={{
-                  fontSize: 64,
+                  fontSize: 56,
                   fontWeight: 900,
                   lineHeight: 1,
                   color: '#FFFFFF',
-                  textShadow: '0 0 30px rgba(255,255,255,0.15), 0 4px 12px rgba(0,0,0,0.3)',
                   letterSpacing: '-2px',
                 }}
               >
@@ -412,53 +410,46 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
               </span>
               <span
                 style={{
-                  fontSize: 24,
+                  fontSize: 20,
                   fontWeight: 800,
                   color: '#D4AF37',
-                  marginBottom: 8,
-                  textShadow: '0 0 10px rgba(212,175,55,0.3)',
+                  marginBottom: 6,
                 }}
               >
                 ج.م
               </span>
             </div>
 
-            {/* 🚀 شارة طريقة السداد بالخط الملون العريض والواضح جداً 🚀 */}
+            {/* شارة طريقة السداد */}
             <div 
-              className={`mt-1.5 inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl border-2 ${paymentInfo.bg} ${paymentInfo.border} shadow-lg mb-2`}
-              style={{ backdropFilter: 'blur(8px)' }}
+              className={`mt-1.5 inline-flex items-center gap-2 px-4 py-2 rounded-2xl border ${paymentInfo.bg} ${paymentInfo.border} shadow-lg mb-2`}
             >
-              <span className="text-2xl leading-none">{paymentInfo.icon}</span>
+              <span className="text-xl leading-none">{paymentInfo.icon}</span>
               <span 
-                className={`font-black tracking-wider ${paymentInfo.color}`} 
-                style={{ 
-                  fontWeight: 900, 
-                  fontSize: '14px',
-                  textShadow: '0 1px 3px rgba(0,0,0,0.3)'
-                }}
+                className={`font-black ${paymentInfo.color}`} 
+                style={{ fontSize: '13px', fontWeight: 900 }}
               >
                 تم السداد: {paymentInfo.label}
               </span>
             </div>
 
-            {/* 🎁 شارة الخصم الترحيبي الذهبية بالداخل */}
+            {/* شارة الهدية */}
             {isFirstFreeApplied && savedAmount > 0 && (
               <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-xl text-white text-xs font-black shadow-md border border-white/20"
+                className="mt-2 inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-xl text-white text-[11px] font-black shadow-md border border-white/20"
               >
-                <Gift size={14} />
-                <span>تم تطبيق عرض الساعة الأولى مجاناً! (وفرت -{savedAmount.toFixed(0)} ج.م) 🎉</span>
+                <Gift size={13} />
+                <span>تم تطبيق عرض أول ساعة مجاناً! (وفرت -{savedAmount.toFixed(0)} ج.م) 🎉</span>
               </motion.div>
             )}
           </div>
 
-          {/* سطر توضيحي للحساب */}
-          <div className="relative z-10 text-[10px] text-slate-400 mb-3">
+          <div className="relative z-10 text-[10px] text-slate-400">
             {isFirstFreeApplied ? (
               <span>
-                المدة المحسوبة للدفع: {billableHours} ساعة (خصم {freeMinutesApplied} دقيقة مجاناً 🎁)
+                المدة المحسوبة: {billableHours} ساعة (تم خصم {freeMinutesApplied} دقيقة كهدية 🎁)
               </span>
             ) : (
               <span>
@@ -466,18 +457,6 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
               </span>
             )}
           </div>
-
-          {/* خط سفلي */}
-          <div
-            className="relative z-10 mx-auto"
-            style={{
-              width: 120,
-              height: 3,
-              borderRadius: 999,
-              background: 'linear-gradient(90deg, transparent, #D4AF37, #F5D060, #D4AF37, transparent)',
-              opacity: 0.7,
-            }}
-          />
         </div>
 
         {/* تفاصيل الوقت */}
@@ -488,7 +467,7 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
               {formatTime(elapsedSeconds)}
             </div>
             <div className="text-[8px] text-slate-500 font-bold mt-0.5">
-              المدة الفعلية الكلية
+              المدة الكلية
             </div>
           </div>
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 text-center">
@@ -551,29 +530,13 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
           </div>
         </div>
 
-        {/* سعر خاص */}
-        {garage && rate !== garage.basePrice && (
-          <div className="bg-amber-600/10 border border-amber-500/20 rounded-xl p-3 text-center">
-            <p className="text-[10px] text-amber-400 font-bold">
-              💰 تم تطبيق سعر خاص: {rate} ج.م/ساعة بدلاً من {garage.basePrice} ج.م/ساعة
-            </p>
-          </div>
-        )}
-
-        {/* رقم الجلسة */}
-        <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-3 text-center">
-          <span className="text-[9px] text-slate-600 font-mono">
-            رقم الجلسة: {lastSession.id.slice(0, 8)}...
-          </span>
-        </div>
-
-        {/* زر نسخ */}
+        {/* زر نسخ الإيصال */}
         <button
           onClick={copySessionDetails}
           className="w-full bg-blue-600/20 border border-blue-500/20 text-blue-400 py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all"
         >
           <Copy size={16} />
-          نسخ تفاصيل الجلسة
+          نسخ تفاصيل الإيصال
         </button>
 
         {/* زر العودة */}
@@ -582,7 +545,7 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
           className="w-full bg-slate-900 border border-slate-800 text-white py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all"
         >
           <ArrowRight size={16} />
-          العودة للقائمة
+          العودة للقائمة الرئيسية
         </button>
       </div>
     </motion.div>

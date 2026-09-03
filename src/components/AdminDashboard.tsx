@@ -6,8 +6,9 @@ import {
   Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown,
   Settings,
   CalendarDays,
+  Loader2,
 } from 'lucide-react';
-import { useStore } from '../store';
+import { useStore, ParkingSession, Message, WalletTopUp } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
@@ -65,7 +66,7 @@ interface SettlementRecord {
 
 export default function AdminDashboard() {
   const {
-    garages, sessions, walletTopUps, rejectTopUp, addGarage,
+    garages, sessions, walletTopUps, rejectTopUp, addGarage, approveTopUp,
     setCurrentGarageId, setView, logout, messages, replyMessage, closeMessage,
     confirmRevenue, unconfirmRevenue, removeSession, updateGarage, fetchAll,
   } = useStore();
@@ -122,9 +123,10 @@ export default function AdminDashboard() {
 
   useEffect(() => { fetchSettlements(); }, [fetchSettlements]);
 
-  // 🎁 [منطق الهدية]: حساب الإيرادات الفعلية مع مراعاة خصم الساعة الترحيبية
-  const getRevenue = useCallback((s: any) => {
-    if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
+  // 🛡️ [إصلاح #1]: دالة جلب الإيرادات المعتمدة للوحة المشرف
+  // تم تفعيل اعتماد القيمة الصفرية "0 ج.م" للجلسات الترحيبية المجانية المكتملة
+  const getRevenue = useCallback((s: ParkingSession) => {
+    if (s.totalPrice != null) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
       const st = toMs(s.startTime);
       const en = toMs(s.endTime);
@@ -142,7 +144,7 @@ export default function AdminDashboard() {
     return 0;
   }, [garages]);
 
-  const getCommission = useCallback((s: any) => {
+  const getCommission = useCallback((s: ParkingSession) => {
     if (s.source !== 'app') return 0;
     const rev = getRevenue(s);
     if (rev <= 0) return 0;
@@ -243,7 +245,7 @@ export default function AdminDashboard() {
       .filter(r => r.count > 0 || r.revenue > 0 || r.pendingRevenue > 0);
   }, [garages, filteredSessions, getRevenue]);
 
-  const pendingTopUps = walletTopUps.filter(w => w.status === 'pending');
+  const pendingTopUps = (walletTopUps as WalletTopUp[]).filter(w => w.status === 'pending');
 
   const displayedRevenueSessions = useMemo(() => {
     const searchTerm = sessionSearch.trim().toUpperCase();
@@ -266,7 +268,7 @@ export default function AdminDashboard() {
     return searchTerm ? sorted.slice(0, 50) : sorted.slice(0, 30);
   }, [completedSessions, filteredSessions, revenueFilter, sessionSearch]);
 
-  const safeMessages = messages ?? [];
+  const safeMessages = (messages as Message[]) ?? [];
   const pendingMessages = safeMessages.filter(m => m.status === 'pending');
   const allMessages = [...safeMessages].sort((a, b) => b.timestamp - a.timestamp);
   const displayedMessages = messagesTab === 'pending' ? pendingMessages : allMessages;
@@ -310,124 +312,19 @@ export default function AdminDashboard() {
     setView('garage');
   };
 
-  // 🛡️ [الاعتماد القديم المضمون]: بدون RPC - يعمل مباشرة عبر تحديث الجداول
+  // 🛡️ [إصلاح #2]: ربط اعتماد المحفظة بالمحرك الموحد والأمني للـ Store
+  // لتجنب تكرار كود الإسناد اليدوي الخاطئ ومنع الاعتماد المزدوج تماماً
   const handleApproveTopUp = async (id: string, amount: number) => {
     if (processingTopUpId) return;
     setProcessingTopUpId(id);
     const loadingToast = toast.loading('جاري اعتماد الرصيد في المحفظة...');
 
     try {
-      const topUp = walletTopUps.find((w) => w.id === id);
-      if (!topUp) {
-        toast.dismiss(loadingToast);
-        toast.error('طلب الشحن غير موجود');
-        return;
-      }
-
-      // 1. جلب طلب الشحن من قاعدة البيانات
-      let dbRow: any = null;
-      if (topUp.transactionId) {
-        const { data } = await supabase
-          .from('wallet_topups')
-          .select('*')
-          .eq('transaction_id', topUp.transactionId)
-          .maybeSingle();
-        if (data) dbRow = data;
-      }
-      if (!dbRow) {
-        const { data } = await supabase
-          .from('wallet_topups')
-          .select('*')
-          .eq('id', id)
-          .maybeSingle();
-        if (data) dbRow = data;
-      }
-      if (!dbRow) {
-        toast.dismiss(loadingToast);
-        toast.error('طلب الشحن غير موجود في قاعدة البيانات');
-        return;
-      }
-
-      // منع الاعتماد المزدوج
-      if (dbRow.status === 'approved') {
-        toast.dismiss(loadingToast);
-        toast('تم اعتماد هذا الطلب مسبقاً', { icon: 'ℹ️' });
-        await fetchAll();
-        return;
-      }
-
-      // 2. تحديث حالة الطلب إلى approved
-      const supabaseId = dbRow.id;
-      const { error: approveError } = await supabase
-        .from('wallet_topups')
-        .update({ status: 'approved' })
-        .eq('id', supabaseId);
-
-      if (approveError) {
-        toast.dismiss(loadingToast);
-        console.error('Failed to approve:', approveError);
-        toast.error('فشل تحديث حالة الطلب');
-        return;
-      }
-
-      // 3. جلب بيانات المستخدم
-      const realUserPhone = dbRow.user_phone || topUp.userPhone || '';
-      let userData: any = null;
-      if (realUserPhone) {
-        const { data } = await supabase
-          .from('users')
-          .select('*')
-          .eq('phone', realUserPhone)
-          .maybeSingle();
-        if (data) userData = data;
-      }
-      if (!userData) {
-        toast.dismiss(loadingToast);
-        toast.error('حساب المستخدم غير موجود');
-        return;
-      }
-
-      // 4. حساب البونص
-      const baseAmount = Number(dbRow.amount || topUp.amount || 0);
-      let bonusAmount = 0;
-      if (baseAmount >= 1000) bonusAmount = 200;
-      else if (baseAmount >= 500) bonusAmount = 75;
-      else if (baseAmount >= 300) bonusAmount = 30;
-      else if (baseAmount >= 100) bonusAmount = 5;
-
-      const totalToAdd = baseAmount + bonusAmount;
-      const newWallet = Number(userData.wallet || 0) + totalToAdd;
-
-      // 5. تحديث رصيد المحفظة في جدول المستخدمين
-      const { error: walletError } = await supabase
-        .from('users')
-        .update({ wallet: newWallet })
-        .eq('id', userData.id);
-
-      if (walletError) {
-        toast.dismiss(loadingToast);
-        console.error('Failed to update wallet:', walletError);
-        toast.error('فشل تحديث رصيد المحفظة');
-        return;
-      }
-
-      // 6. تحديث حقل البونص في طلب الشحن (اختياري)
-      if (bonusAmount > 0) {
-        await supabase
-          .from('wallet_topups')
-          .update({ bonus_amount: bonusAmount })
-          .eq('id', supabaseId);
-      }
-
+      // استدعاء دالة الاعتماد الذرية والآمنة من الـ Store مباشرة
+      await approveTopUp(id);
+      
       toast.dismiss(loadingToast);
-      toast.success(
-        bonusAmount > 0 
-          ? `✅ تم اعتماد ${amount} ج.م + ${bonusAmount} ج.م بونص = ${totalToAdd} ج.م` 
-          : `تم اعتماد شحن ${amount} ج.م بنجاح ✅`,
-        { duration: 5000 }
-      );
-
-      await fetchAll();
+      toast.success(`تم اعتماد شحن ${amount} ج.م بنجاح ✅`, { duration: 5000 });
     } catch (error: any) {
       toast.dismiss(loadingToast);
       console.error("Top-up approval failed:", error);
