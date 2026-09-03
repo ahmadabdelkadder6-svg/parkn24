@@ -9,9 +9,8 @@ import {
   Clock,
   XCircle,
   Copy,
-  Zap,
 } from 'lucide-react';
-import { useStore, validatePlate, ParkingSession, IncomingCar } from '../store';
+import { useStore } from '../store';
 import {
   calculateDistance,
   distanceToMinutes,
@@ -60,34 +59,15 @@ const toMs = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-/* ─── Helper: [إصلاح آمن] توحيد بصمة اللوحة لمنع تعارض المطابقة ─── */
+/* ─── Helper: تنظيف وتوحيد رقم اللوحة ─── */
 const normalizePlate = (plate?: string): string => {
   if (!plate) return '';
-  let cleaned = plate.trim();
-
-  // رفض الحروف الإنجليزية تماماً لتجنب ثغرات الالتفاف
-  if (/[a-zA-Z]/.test(cleaned)) return '';
-
-  // تحويل الأرقام العربية والفارسية إلى أرقام موحدة
-  cleaned = cleaned
+  return plate
+    .trim()
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)));
-
-  // توحيد الحروف المتشابهة
-  const charMap: Record<string, string> = {
-    'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ٱ': 'ا', 'ء': 'ا',
-    'ة': 'ت',
-    'ى': 'ي', 'ئ': 'ي',
-    'ؤ': 'و',
-    'پ': 'ب', 'چ': 'ج', 'ژ': 'ز', 'گ': 'ك', 'ڤ': 'ف',
-    'ک': 'ك', 'ی': 'ي',
-  };
-  cleaned = cleaned.replace(/./g, (char) => charMap[char] || char);
-
-  // تنظيف كامل للمسافات والرموز لدمج الحروف والتحقق
-  cleaned = cleaned.replace(/[^0-9\u0600-\u06FF]/g, '');
-
-  return cleaned;
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
+    .replace(/[^A-Z0-9\u0600-\u06FF]/gi, '')
+    .toUpperCase();
 };
 
 /* ─── Map controller ─── */
@@ -143,7 +123,7 @@ export default function NavigationScreen() {
 
   /* ── الكشف عن السيارة القادمة ── */
   const myIncomingCar = useMemo(() => {
-    return (incomingCars as IncomingCar[]).find(
+    return incomingCars.find(
       (c) =>
         c.garageId === selectedGarageId &&
         normalizePlate(c.carPlate) === userPlateNav &&
@@ -153,7 +133,7 @@ export default function NavigationScreen() {
 
   /* ✅ الكشف اللحظي عن الجلسة النشطة */
   const myActiveSession = useMemo(() => {
-    return (sessions as ParkingSession[])
+    return sessions
       .filter(
         (sess) =>
           sess.status === 'active' &&
@@ -196,7 +176,7 @@ export default function NavigationScreen() {
   }, [currentUser]);
 
   /* ─────────────────────────────────────────────
-     ██  REALTIME فائق السرعة والأمان
+     ██  REALTIME فائق السرعة
      ───────────────────────────────────────────── */
   useEffect(() => {
     if (!userPlateNav && !userPhoneClean) return;
@@ -252,9 +232,7 @@ export default function NavigationScreen() {
       .subscribe();
 
     realtimeChannelRef.current = channel;
-
-    // Polling آمن وموفر للبطارية كل 5 ثوانٍ بدلاً من 1.5 ثانية لمنع نفاد بطارية الهاتف المحمول
-    pollingIntervalRef.current = setInterval(fastFetch, 5000);
+    pollingIntervalRef.current = setInterval(fastFetch, 1500);
 
     const handleFocus = () => fastFetch();
     const handleVisibility = () => {
@@ -300,7 +278,7 @@ export default function NavigationScreen() {
     return () => clearTimeout(t);
   }, []);
 
-  /* ─── مؤقت الإلغاء وحساب الوقت المتبقي الفعلي بدقة ضد تجميد الخلفية ─── */
+  /* ─── مؤقت الإلغاء (30 ثانية بالتمام) ─── */
   useEffect(() => {
     if (!myIncomingCar) {
       setCancelTimeLeft(CANCEL_WINDOW_SECONDS);
@@ -313,7 +291,6 @@ export default function NavigationScreen() {
     setCanCancel(true);
 
     const interval = window.setInterval(() => {
-      // الاعتماد على فارق التوقيت المطلق لمنع تجميد الموبايل عند الخروج المؤقت من الشاشة
       const elapsed = Math.floor((Date.now() - screenEnteredRef.current) / 1000);
       const left = Math.max(0, CANCEL_WINDOW_SECONDS - elapsed);
       setCancelTimeLeft(left);
@@ -387,7 +364,7 @@ export default function NavigationScreen() {
         pushTimerRef.current = null;
       }
     };
-  }, [myIncomingCar?.id, selectedGarageId, garage]);
+  }, [myIncomingCar?.id, selectedGarageId]);
 
   /* ─── الانتقال اللحظي الفوري لشاشة العداد ─── */
   useEffect(() => {
@@ -412,14 +389,6 @@ export default function NavigationScreen() {
     setScreen('session');
   }, [myActiveSession, selectedGarageId, setSelectedGarageId, setScreen]);
 
-  /* ─── Computed ─── */
-  const distance = calculateDistance(
-    userPos.lat, userPos.lng,
-    garage.lat, garage.lng,
-  );
-  const minutes = distanceToMinutes(distance);
-  const coordsText = `${garage.lat},${garage.lng}`;
-
   /* ─── Guard ─── */
   if (!garage) {
     return (
@@ -437,6 +406,14 @@ export default function NavigationScreen() {
       </div>
     );
   }
+
+  /* ─── Computed ─── */
+  const distance = calculateDistance(
+    userPos.lat, userPos.lng,
+    garage.lat, garage.lng,
+  );
+  const minutes = distanceToMinutes(distance);
+  const coordsText = `${garage.lat},${garage.lng}`;
 
   /* ─── Handlers ─── */
   const copyCoords = async () => {
@@ -529,13 +506,9 @@ export default function NavigationScreen() {
       );
       if (relatedOffer) cancelOffer(relatedOffer.id);
 
-      // 🛡️ فحص اللوحة قبل الركن الفعلي من دالة التحقق الصارمة
-      const plateValidation = validatePlate(myIncomingCar.carPlate);
-      const finalPlate = plateValidation.isValid ? plateValidation.normalizedPlate : myIncomingCar.carPlate;
-
       await addSession({
         garageId: garage.id,
-        carPlate: finalPlate,
+        carPlate: myIncomingCar.carPlate,
         startTime: Date.now(),
         status: 'active',
         source: 'app',
@@ -774,15 +747,15 @@ export default function NavigationScreen() {
           </div>
         )}
 
-        {/* زر وصلت للجراج - [التحكم اليدوي الكامل للعميل] */}
+        {/* زر وصلت للجراج */}
         {!myActiveSession && (
           <button
             onClick={handleCarArrived}
             disabled={isArrivingRef.current}
             className="w-full py-4 rounded-2xl active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
             style={{
-              background: 'linear-gradient(135deg, #0055FF 0%, #0022AA 100%)', // العودة للنمط الكلاسيكي الأزرق المعتمد
-              boxShadow: '0 8px 24px rgba(0,102,255,0.3)',
+              background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)',
+              boxShadow: '0 8px 24px rgba(0,204,102,0.3)',
               border: 'none',
             }}
           >

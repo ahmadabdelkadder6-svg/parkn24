@@ -1,14 +1,16 @@
 /**
- * ✅ حساب الساعات المحسوبة (التقريب لأعلى)
+ * ✅ حساب الساعات المحسوبة
  * أول دقيقة = ساعة، وكل دقيقة من ساعة جديدة = ساعة كاملة
  */
 export function calculateFullHours(elapsedSeconds: number): number {
   if (elapsedSeconds <= 0) return 0;
-  return Math.ceil(elapsedSeconds / 3600);
+  const totalMinutes = Math.ceil(elapsedSeconds / 60);
+  if (totalMinutes <= 0) return 0;
+  return Math.ceil(totalMinutes / 60);
 }
 
 /**
- * ✅ حساب التكلفة العادية بناءً على الساعات ومعدل السعر
+ * ✅ حساب التكلفة العادية بالمنطق القديم
  */
 export function calculateCost(elapsedSeconds: number, ratePerHour: number): number {
   if (elapsedSeconds <= 0 || ratePerHour <= 0) return 0;
@@ -19,7 +21,7 @@ export function calculateCost(elapsedSeconds: number, ratePerHour: number): numb
 /**
  * 🎁 حساب التكلفة مع عرض أول ساعة مجانية (الهدية الترحيبية / الجلسة المجانية)
  * - لو الجلسة مجانية: أول ساعة (60 دقيقة = 3600 ثانية) = 0 ج.م
- * - بعد الساعة الأولى: يتم احتساب الوقت الإضافي المتبقي بالسعر الطبيعي
+ * - بعد الساعة الأولى: يتم احتساب الوقت الإضافي المتبقي بالمنطق القديم بالكامل
  */
 export function calculateCostWithLoyalty(
   elapsedSeconds: number,
@@ -82,6 +84,7 @@ export function calculateCostWithLoyalty(
   }
 
   // 🕐 الحالة الثانية: تجاوزت مدة الركن الساعة المجانية
+  // يتم خصم أول 3600 ثانية واحتساب الباقي بالمنطق القديم
   const paidSeconds = elapsedSeconds - maxFreeSeconds;
   const paidHours = calculateFullHours(paidSeconds);
   const cost = calculateCost(paidSeconds, ratePerHour);
@@ -97,26 +100,6 @@ export function calculateCostWithLoyalty(
     savedAmount,
   };
 }
-
-/**
- * 🎁 [دعم التوافق الشامل]: اسم بديل متطابق مع جميع الشاشات
- */
-export const calculateSessionCostWithGift = (
-  startTimeMs: number,
-  endTimeMs: number,
-  hourlyRate: number,
-  isFirstFreeSession: boolean
-) => {
-  const elapsedSeconds = Math.max(0, Math.floor((endTimeMs - startTimeMs) / 1000));
-  const result = calculateCostWithLoyalty(elapsedSeconds, hourlyRate, isFirstFreeSession, 1);
-  return {
-    totalCost: result.cost,
-    elapsedSeconds,
-    billableSeconds: Math.max(0, elapsedSeconds - (result.freeMinutesUsed * 60)),
-    isFreeApplied: isFirstFreeSession,
-    savedAmount: result.savedAmount,
-  };
-};
 
 /**
  * ✅ تنسيق الوقت إلى شكل (ساعات:دقائق:ثواني) 00:00:00

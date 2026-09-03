@@ -11,10 +11,9 @@ import {
   Receipt,
   Gift,
 } from 'lucide-react';
-import { useStore, ParkingSession, Garage } from '../store';
+import { useStore } from '../store';
 import { calculateFullHours, calculateCost, formatTime } from '../utils/pricing';
 
-/* ─── Helper: توحيد تحويل الوقت ─── */
 const toMs = (value: any): number => {
   if (!value) return 0;
   if (typeof value === 'number') {
@@ -24,57 +23,40 @@ const toMs = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-/* ─── Helper: [إصلاح #1] بصمة اللوحة الموحدة الصارمة ─── */
 const normalizePlate = (plate?: string): string => {
   if (!plate) return '';
-  let cleaned = plate.trim();
-
-  // رفض الحروف الإنجليزية
-  if (/[a-zA-Z]/.test(cleaned)) return '';
-
-  // تحويل الأرقام العربية والفارسية إلى أرقام موحدة
-  cleaned = cleaned
+  return plate
+    .trim()
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)));
-
-  // توحيد الحروف المتشابهة
-  const charMap: Record<string, string> = {
-    'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ٱ': 'ا', 'ء': 'ا',
-    'ة': 'ت',
-    'ى': 'ي', 'ئ': 'ي',
-    'ؤ': 'و',
-    'پ': 'ب', 'چ': 'ج', 'ژ': 'ز', 'گ': 'ك', 'ڤ': 'ف',
-    'ک': 'ك', 'ی': 'ي',
-  };
-  cleaned = cleaned.replace(/./g, (char) => charMap[char] || char);
-  cleaned = cleaned.replace(/[^0-9\u0600-\u06FF]/g, '');
-
-  return cleaned;
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
 };
 
 export default function LastSessionCard() {
   const { sessions, garages, currentUser } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
-  const userPhone = currentUser?.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
+  const userPhone = currentUser?.phone || '';
 
-  // ✅ [إصلاح #1]: البحث الدقيق والمطابق للبصمة ورقم الهاتف
+  // ✅ البحث الدقيق برقم اللوحة أو رقم الهاتف
   const lastSession = useMemo(() => {
     if (!userPlate && !userPhone) return null;
-    return (sessions as ParkingSession[])
-      .filter((s) => {
-        if (!s || s.status !== 'completed') return false;
-        const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-        const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
-        const samePhoneMatch = !!userPhone && sPhone === userPhone;
-        return samePlateMatch || samePhoneMatch;
-      })
+    return sessions
+      .filter(
+        (s) =>
+          s.status === 'completed' &&
+          (
+            (!!userPlate && normalizePlate(s.carPlate) === userPlate) ||
+            (!!userPhone && (s as any).customerPhone === userPhone)
+          )
+      )
       .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
   }, [sessions, userPlate, userPhone]);
 
   if (!lastSession) return null;
 
-  const garage = (garages as Garage[]).find((g) => g.id === lastSession.garageId);
+  const garage = garages.find((g) => g.id === lastSession.garageId);
 
   const startTime = toMs(lastSession.startTime);
   const endTime = toMs(lastSession.endTime);
@@ -83,20 +65,19 @@ export default function LastSessionCard() {
   const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);
   const totalMinutes = Math.floor(elapsedSeconds / 60);
 
-  // 🎁 منطق الهدية الترحيبية
+  // 🎁 [منطق الهدية]: قراءة أهلية الجلسة والدقائق المخصومة
   const isFirstFreeApplied = lastSession.isFirstFreeSession === true;
-  const freeMinutesApplied = lastSession.freeMinutesApplied ?? (isFirstFreeApplied ? Math.min(totalMinutes, 60) : 0);
+  const freeMinutesApplied = (lastSession as any).freeMinutesApplied ?? (isFirstFreeApplied ? Math.min(totalMinutes, 60) : 0);
 
   const billableSeconds = Math.max(0, elapsedSeconds - (freeMinutesApplied * 60));
   const hours = calculateFullHours(isFirstFreeApplied ? billableSeconds : elapsedSeconds);
 
-  /* ✅ [إصلاح #2]: قراءة السعر المسجل بدقة حتى لو كان 0 ج.م */
+  const rawCost = calculateCost(elapsedSeconds, rate);
   const cost =
-    lastSession.totalPrice != null
+    lastSession.totalPrice != null && Number(lastSession.totalPrice) > 0
       ? Number(lastSession.totalPrice)
       : calculateCost(billableSeconds, rate);
 
-  const rawCost = calculateCost(elapsedSeconds, rate);
   const savedAmount = isFirstFreeApplied ? Math.max(0, rawCost - cost) : 0;
 
   const startDate = new Date(startTime);
@@ -118,26 +99,18 @@ export default function LastSessionCard() {
     });
   };
 
-  /* ✅ [إصلاح #3]: دعم طريقة الدفع المجانية 'free' */
   const getPaymentInfo = (method?: string) => {
     switch (method) {
-      case 'free':
-        return { label: 'ركن مجاني ترحيبي', icon: '🎁', color: 'text-amber-400', bg: 'bg-amber-500/20' };
       case 'cash':
-        return { label: 'نقدي كاش', icon: '💵', color: 'text-emerald-400', bg: 'bg-emerald-500/20' };
-      case 'wallet':
-        return { label: 'خصم من المحفظة', icon: '👝', color: 'text-blue-400', bg: 'bg-blue-500/20' };
+        return { label: 'نقدي', icon: '💵', color: 'text-emerald-400', bg: 'bg-emerald-500/20' };
       case 'instapay':
         return { label: 'إنستاباي', icon: '📱', color: 'text-purple-400', bg: 'bg-purple-500/20' };
+      case 'wallet':
+        return { label: 'خصم من المحفظة', icon: '👝', color: 'text-blue-400', bg: 'bg-blue-500/20' };
       case 'cashwallet':
-        return { label: 'محفظة كاش', icon: '📲', color: 'text-orange-400', bg: 'bg-orange-500/20' };
+        return { label: 'تحويل محفظة كاش', icon: '📲', color: 'text-orange-400', bg: 'bg-orange-500/20' };
       default:
-        return {
-          label: cost === 0 && isFirstFreeApplied ? 'ركن مجاني ترحيبي' : 'نقدي كاش',
-          icon: cost === 0 && isFirstFreeApplied ? '🎁' : '💵',
-          color: cost === 0 && isFirstFreeApplied ? 'text-amber-400' : 'text-emerald-400',
-          bg: cost === 0 && isFirstFreeApplied ? 'bg-amber-500/20' : 'bg-emerald-500/20',
-        };
+        return { label: 'غير محدد', icon: '💳', color: 'text-slate-400', bg: 'bg-slate-500/20' };
     }
   };
 
@@ -153,11 +126,11 @@ export default function LastSessionCard() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.2 }}
-      className="w-full mb-6 text-right"
+      className="w-full mb-6"
     >
       {/* العنوان */}
       <div className="flex items-center justify-between mb-3">
-        <span className="text-[10px] text-slate-500 font-bold">
+        <span className="text-[10px] text-slate-600">
           {formatDateTime(endDate)}
         </span>
         <h3 className="text-sm font-black text-slate-300 flex items-center gap-2">
@@ -188,8 +161,8 @@ export default function LastSessionCard() {
             </div>
             {garage && (
               <div className="flex items-center gap-1 justify-end mt-1">
-                <span className="text-[10px] text-slate-400 font-bold">{garage.name}</span>
-                <MapPin size={9} className="text-slate-500" />
+                <span className="text-[10px] text-slate-500">{garage.name}</span>
+                <MapPin size={9} className="text-slate-600" />
               </div>
             )}
           </div>
@@ -206,22 +179,24 @@ export default function LastSessionCard() {
           <div
             className="mb-3 font-black text-white"
             style={{
-              fontSize: 22,
+              fontSize: 24,
               fontWeight: 900,
               letterSpacing: '0.5px',
+              textShadow: '0 2px 10px rgba(255,255,255,0.08)',
             }}
           >
-            إجمالي المدفوع
+            إجمالي المستحق
           </div>
 
           <div className="flex items-end justify-center gap-2">
             <span
               className="font-mono"
               style={{
-                fontSize: 52,
+                fontSize: 56,
                 fontWeight: 900,
                 lineHeight: 1,
                 color: '#FFFFFF',
+                textShadow: '0 0 18px rgba(255,255,255,0.15)',
               }}
             >
               {cost.toFixed(0)}
@@ -229,7 +204,7 @@ export default function LastSessionCard() {
 
             <span
               style={{
-                fontSize: 20,
+                fontSize: 22,
                 fontWeight: 800,
                 color: '#FFFFFF',
                 marginBottom: 6,
@@ -250,10 +225,10 @@ export default function LastSessionCard() {
             className="mt-3 mx-auto"
             style={{
               width: 100,
-              height: 3,
+              height: 4,
               borderRadius: 999,
               background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.9), transparent)',
-              opacity: 0.8,
+              opacity: 0.9,
             }}
           />
         </div>
@@ -265,7 +240,7 @@ export default function LastSessionCard() {
             <div className="text-sm font-black text-white font-mono">
               {formatTime(elapsedSeconds)}
             </div>
-            <div className="text-[8px] text-slate-500 font-bold">المدة الكلية</div>
+            <div className="text-[8px] text-slate-500 font-bold">المدة الفعلية</div>
           </div>
           <div className="bg-slate-950/40 rounded-xl p-3 text-center">
             <Timer size={14} className="text-purple-400 mx-auto mb-1" />

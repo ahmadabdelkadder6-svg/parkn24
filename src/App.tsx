@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo, lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
-import { useStore, setupRealtime, ParkingSession } from './store';
+import { useStore, setupRealtime } from './store';
 import { cn } from './utils/cn';
 
 // Screens (تحميل مباشر للشاشات الخفيفة التي يحتاجها العميل فوراً)
@@ -36,44 +36,15 @@ const VALID_SCREENS = [
   'chat',
 ] as const;
 
-/* ─── Helper: [إصلاح #1] توحيد تحويل الوقت من أي صيغة (ISO string أو number) ─── */
-const toMs = (value: any): number => {
-  if (!value) return 0;
-  if (typeof value === 'number') {
-    return value < 1_000_000_000_000 ? value * 1000 : value;
-  }
-  const parsed = new Date(value).getTime();
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
-/* ─── Helper: [إصلاح #2] بصمة اللوحة الصارمة والموحدة بالكامل ─── */
+// 🛡️ توحيد تنظيف رقم اللوحة
 const normalizePlate = (plate?: string): string => {
   if (!plate) return '';
-  let cleaned = plate.trim();
-
-  // رفض الحروف الإنجليزية
-  if (/[a-zA-Z]/.test(cleaned)) return '';
-
-  // تحويل الأرقام العربية والفارسية إلى أرقام موحدة
-  cleaned = cleaned
+  return plate
+    .trim()
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)));
-
-  // توحيد الحروف العربية المتشابهة والهمزات
-  const charMap: Record<string, string> = {
-    'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ٱ': 'ا', 'ء': 'ا',
-    'ة': 'ت',
-    'ى': 'ي', 'ئ': 'ي',
-    'ؤ': 'و',
-    'پ': 'ب', 'چ': 'ج', 'ژ': 'ز', 'گ': 'ك', 'ڤ': 'ف',
-    'ک': 'ك', 'ی': 'ي',
-  };
-  cleaned = cleaned.replace(/./g, (char) => charMap[char] || char);
-
-  // حذف الرموز والمسافات
-  cleaned = cleaned.replace(/[^0-9\u0600-\u06FF]/g, '');
-
-  return cleaned;
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
+    .replace(/[^0-9\u0600-\u06FF]/gi, '')
+    .toUpperCase();
 };
 
 export default function App() {
@@ -132,7 +103,7 @@ export default function App() {
     }
   }, [safeScreen, screen, setScreen, dataLoaded, view]);
 
-  // ⚡ [التهيئة السريعة]: فتح الشاشة فوراً + جلب البيانات في الخلفية
+  // ⚡ [التهيئة الصاروخية]: فتح الشاشة فوراً + جلب البيانات في الخلفية
   useEffect(() => {
     const init = async () => {
       const justInstalled = localStorage.getItem('pwaJustInstalled') === 'true';
@@ -213,7 +184,7 @@ export default function App() {
     const userPlate = normalizePlate(currentUser.carPlate);
     const userPhone = currentUser.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
 
-    const myActiveSession = (sessions as ParkingSession[]).find((s) => {
+    const myActiveSession = sessions.find((s) => {
       if (s.status !== 'active') return false;
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
       const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
@@ -258,7 +229,7 @@ export default function App() {
       safeScreen === 'navigation' ||
       safeScreen === 'waiting'
     ) {
-      const lastCompleted = (sessions as ParkingSession[])
+      const lastCompleted = sessions
         .filter((s) => {
           if (s.status !== 'completed') return false;
           const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
@@ -266,10 +237,17 @@ export default function App() {
           const samePhone = !!userPhone && sPhone === userPhone;
           return samePlate || samePhone;
         })
-        .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
+        .sort((a, b) => {
+          const endA = typeof a.endTime === 'number' ? a.endTime : 0;
+          const endB = typeof b.endTime === 'number' ? b.endTime : 0;
+          return endB - endA;
+        })[0];
 
       if (lastCompleted) {
-        const endTime = toMs(lastCompleted.endTime);
+        const endTime =
+          typeof lastCompleted.endTime === 'number'
+            ? lastCompleted.endTime
+            : 0;
         const timeSinceEnd = Date.now() - endTime;
         if (endTime > 0 && timeSinceEnd < 60000) {
           setSelectedGarageId(lastCompleted.garageId);
@@ -291,7 +269,7 @@ export default function App() {
     const userPlate = normalizePlate(currentUser.carPlate);
     const userPhone = currentUser.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
 
-    const myActiveSession = (sessions as ParkingSession[]).find((s) => {
+    const myActiveSession = sessions.find((s) => {
       if (s.status !== 'active') return false;
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
       const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
@@ -348,7 +326,7 @@ export default function App() {
         const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
         const freshPhone = freshState.currentUser?.phone ? freshState.currentUser.phone.replace(/[^\d+]/g, '') : '';
 
-        const stillActive = (freshState.sessions as ParkingSession[]).find((s) => {
+        const stillActive = freshState.sessions.find((s) => {
           if (s.status !== 'active') return false;
           const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
           const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
@@ -371,7 +349,7 @@ export default function App() {
           currentScreen === 'navigation' ||
           currentScreen === 'waiting'
         ) {
-          const lastCompleted = (freshState.sessions as ParkingSession[])
+          const lastCompleted = freshState.sessions
             .filter((s) => {
               if (s.status !== 'completed') return false;
               const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
@@ -379,7 +357,11 @@ export default function App() {
               const samePhone = !!freshPhone && sPhone === freshPhone;
               return samePlate || samePhone;
             })
-            .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
+            .sort((a, b) => {
+              const endA = typeof a.endTime === 'number' ? a.endTime : 0;
+              const endB = typeof b.endTime === 'number' ? b.endTime : 0;
+              return endB - endA;
+            })[0];
 
           if (lastCompleted) {
             const freshAcknowledged = freshState.acknowledgedSessionIds;
@@ -415,7 +397,7 @@ export default function App() {
           return samePlate || samePhone;
         });
 
-        const freshSession = (freshState.sessions as ParkingSession[]).find((s) => {
+        const freshSession = freshState.sessions.find((s) => {
           if (s.status !== 'active') return false;
           const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
           const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';

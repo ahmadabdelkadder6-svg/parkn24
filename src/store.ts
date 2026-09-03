@@ -239,98 +239,7 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-// ===================== 🧬 نظام التحقق من اللوحة =====================
-
-/**
- * نتيجة التحقق من صحة اللوحة
- */
-export interface PlateValidationResult {
-  isValid: boolean;
-  normalizedPlate: string;
-  errorMessage?: string;
-  errorCode?: 'EMPTY' | 'HAS_ENGLISH' | 'NO_LETTERS' | 'NO_NUMBERS' | 'TOO_SHORT' | 'TOO_LONG';
-}
-
-/**
- * 🛡️ التحقق الصارم من اللوحة مع رسائل خطأ واضحة
- * تُستخدم في واجهات الإدخال (Forms) قبل الحفظ
- */
-export const validatePlate = (plate?: string): PlateValidationResult => {
-  if (!plate || !plate.trim()) {
-    return {
-      isValid: false,
-      normalizedPlate: '',
-      errorMessage: '⛔ من فضلك أدخل رقم اللوحة',
-      errorCode: 'EMPTY',
-    };
-  }
-
-  const cleaned = sanitizeInput(plate).trim();
-
-  // 🚫 رفض تام لأي حرف إنجليزي
-  if (/[a-zA-Z]/.test(cleaned)) {
-    return {
-      isValid: false,
-      normalizedPlate: '',
-      errorMessage: '⛔ من فضلك اكتب اللوحة بالعربي فقط (بدون حروف إنجليزية)',
-      errorCode: 'HAS_ENGLISH',
-    };
-  }
-
-  // تنفيذ عملية التوحيد
-  const normalized = normalizePlate(cleaned);
-
-  // التحقق من وجود حروف عربية
-  const hasArabicLetters = /[\u0600-\u06FF]/.test(normalized);
-  if (!hasArabicLetters) {
-    return {
-      isValid: false,
-      normalizedPlate: '',
-      errorMessage: '⛔ اللوحة يجب أن تحتوي على حروف عربية (مثال: أ ب ج 1234)',
-      errorCode: 'NO_LETTERS',
-    };
-  }
-
-  // التحقق من وجود أرقام
-  const hasNumbers = /[0-9]/.test(normalized);
-  if (!hasNumbers) {
-    return {
-      isValid: false,
-      normalizedPlate: '',
-      errorMessage: '⛔ اللوحة يجب أن تحتوي على أرقام (مثال: أ ب ج 1234)',
-      errorCode: 'NO_NUMBERS',
-    };
-  }
-
-  // التحقق من الطول الطبيعي للوحة المصرية
-  if (normalized.length < 4) {
-    return {
-      isValid: false,
-      normalizedPlate: '',
-      errorMessage: '⛔ اللوحة قصيرة جداً - أدخل اللوحة بالكامل',
-      errorCode: 'TOO_SHORT',
-    };
-  }
-
-  if (normalized.length > 10) {
-    return {
-      isValid: false,
-      normalizedPlate: '',
-      errorMessage: '⛔ اللوحة طويلة جداً - تأكد من الأرقام والحروف',
-      errorCode: 'TOO_LONG',
-    };
-  }
-
-  return {
-    isValid: true,
-    normalizedPlate: normalized,
-  };
-};
-
-/**
- * 🧬 [بصمة اللوحة العبقرية]: توحيد شكل اللوحة للتخزين والمقارنة
- * تُستخدم داخلياً لعمل البصمة الموحدة
- */
+// 🧬 [بصمة اللوحة]: الإبقاء على الحروف العربية وتوحيد المتشابهات والأرقام فقط
 const normalizePlate = (plate?: string): string => {
   if (!plate) return '';
   
@@ -357,7 +266,6 @@ const normalizePlate = (plate?: string): string => {
   
   return cleaned;
 };
-
 const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
 const getMs = (value?: number) => { if (typeof value === 'number') return value; return 0; };
@@ -442,6 +350,7 @@ const mapSession = (r: any): ParkingSession => {
     if (diff < 4 * 60 * 60 * 1000) endTime = endTime + diff + 60000;
   }
 
+  // ✅ قراءة صحيحة وآمنة للـ boolean
   const isFree = r.is_first_free_session === true || r.is_first_free_session === 'true' || r.is_first_free_session === 1;
 
   return {
@@ -562,7 +471,7 @@ interface AppState {
   sessions: ParkingSession[];
   acknowledgedSessionIds: Set<string>;
   acknowledgeSession: (id: string) => void;
-  addSession: (s: Omit<ParkingSession, 'id'>) => Promise<{ sessionId: string; success: boolean; error?: string }>;
+  addSession: (s: Omit<ParkingSession, 'id'>) => Promise<string>;
   endSession: (id: string, totalPrice: number, paymentMethod: string, freeMinutesApplied?: number) => Promise<void>;
   cancelSession: (id: string) => void;
   removeSession: (id: string) => Promise<void>;
@@ -616,7 +525,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (!isSupabaseConfigured()) return;
 
     try {
-      // 🛡️ فحص مباشر ومضمون: هل هذه اللوحة ركنت مجاناً في جلسة سابقة مكتملة؟
+      // 🛡️ فحص مباشر: هل هذه اللوحة ركنت مجاناً في جلسة سابقة مكتملة؟
       let alreadyUsedFree = false;
 
       if (cleanPlate) {
@@ -1101,31 +1010,16 @@ export const useStore = create<AppState>((set, get) => ({
     } catch (err) { console.error('❌', err); await get().fetchAll(); }
   },
 
-  // ─── بدء جلسة الركن مع الفحص الصارم للوحة ورسائل خطأ واضحة ───
+  // ─── بدء جلسة الركن مع الفحص الصريح والمضمون 100% ───
   addSession: async (s) => {
-    // 🛡️ [التحقق الصارم من اللوحة قبل أي عملية]
-    const validation = validatePlate(s.carPlate);
-    if (!validation.isValid) {
-      console.warn('⛔ محاولة إنشاء جلسة بلوحة غير صالحة:', validation.errorMessage);
-      return {
-        sessionId: '',
-        success: false,
-        error: validation.errorMessage || '⛔ اللوحة غير صالحة',
-      };
-    }
-
-    const normalizedPlate = validation.normalizedPlate;
-    const rawPlate = (s.carPlate || '').trim();
+    const normalizedPlate = normalizePlate(s.carPlate);
+    if (!normalizedPlate) return '';
     const sessionId = crypto.randomUUID();
     const lockKey = `${normalizedPlate}::${s.source}`;
 
     if (sessionStartLocks.has(lockKey)) {
       const existing = get().sessions.find((x) => samePlate(x.carPlate, normalizedPlate) && x.status === 'active' && x.source === s.source);
-      return {
-        sessionId: existing?.id ?? '',
-        success: !!existing,
-        error: existing ? undefined : '⚠️ جلسة أخرى قيد المعالجة بنفس اللوحة، حاول مرة أخرى',
-      };
+      return existing?.id ?? '';
     }
     sessionStartLocks.add(lockKey);
     pausePolling(8000);
@@ -1134,20 +1028,13 @@ export const useStore = create<AppState>((set, get) => ({
       const existingLocal = get().sessions.find((existing) =>
         samePlate(existing.carPlate, normalizedPlate) && existing.status === 'active' && existing.source === s.source
       );
-      if (existingLocal) {
-        return {
-          sessionId: existingLocal.id,
-          success: true,
-          error: '⚠️ يوجد جلسة نشطة بالفعل لنفس اللوحة',
-        };
-      }
+      if (existingLocal) return existingLocal.id;
 
       const addedByValue = resolveAddedBy((s as any).addedBy);
       const isAppBooking = s.source === 'app';
       const cleanPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
-      const nowTimestamp = s.startTime && s.startTime > 0 ? s.startTime : Date.now();
 
-      // 🎁 [تحديد الاستحقاق الحاسم للجلسة المجانية]:
+      // 🎁 [تحديد الاستحقاق الحاسم]:
       let eligibleForFree = false;
 
       if (isAppBooking) {
@@ -1215,19 +1102,18 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
 
-      // ✅ الجلسة المتفائلة تأخذ وقت البدء الحقيقي فوراً (يدعم Offline Sync)
       const optimisticSession: ParkingSession = {
         ...s,
         id: sessionId,
-        carPlate: rawPlate,
-        startTime: nowTimestamp,
+        carPlate: normalizedPlate,
+        startTime: Date.now(),
         synced: false,
         revenueConfirmed: false,
         addedBy: addedByValue,
         customerPhone: cleanPhone || undefined,
         customerName: (s as any).customerName || undefined,
         incomingCarId: (s as any).incomingCarId || undefined,
-        startedBy: (s as any).startedBy || (isAppBooking ? 'customer' : 'garage'),
+        startedBy: (s as any).startedBy || undefined,
         commissionAmount: 0,
         netRevenue: 0,
         settled: false,
@@ -1238,16 +1124,14 @@ export const useStore = create<AppState>((set, get) => ({
       set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]) }));
       await get().adjustGarageSpots(s.garageId, -1);
 
-      if (!isSupabaseConfigured()) {
-        return { sessionId, success: true };
-      }
+      if (!isSupabaseConfigured()) return sessionId;
 
       try {
         const { data, error } = await supabase.from('sessions').insert({
           id: sessionId,
           garage_id: s.garageId,
           car_plate: normalizedPlate,
-          start_time: new Date(nowTimestamp).toISOString(),
+          start_time: new Date().toISOString(),
           status: s.status,
           source: s.source,
           agreed_price: s.agreedPrice ?? null,
@@ -1256,7 +1140,7 @@ export const useStore = create<AppState>((set, get) => ({
           customer_phone: cleanPhone || null,
           customer_name: (s as any).customerName || null,
           incoming_car_id: (s as any).incoming_car_id || null,
-          started_by: (s as any).startedBy || (isAppBooking ? 'customer' : 'garage'),
+          started_by: (s as any).startedBy || null,
           commission_amount: 0,
           net_revenue: 0,
           settled: false,
@@ -1268,11 +1152,7 @@ export const useStore = create<AppState>((set, get) => ({
           console.error('❌ خطأ في إضافة الجلسة:', error);
           set((st) => ({ sessions: st.sessions.filter((x) => x.id !== sessionId) }));
           await get().adjustGarageSpots(s.garageId, +1);
-          return {
-            sessionId: '',
-            success: false,
-            error: '❌ فشل في حفظ الجلسة على السيرفر، تحقق من الاتصال',
-          };
+          return sessionId;
         }
 
         if (data) {
@@ -1280,20 +1160,15 @@ export const useStore = create<AppState>((set, get) => ({
           set((st) => ({
             sessions: dedupeActiveSessions(st.sessions.map((x) => x.id === sessionId ? syncedSession : x)),
           }));
-          return { sessionId: data.id, success: true };
+          return data.id;
         }
       } catch (err) {
         console.error('❌ خطأ غير متوقع:', err);
         set((st) => ({ sessions: st.sessions.filter((x) => x.id !== sessionId) }));
         await get().adjustGarageSpots(s.garageId, +1);
-        return {
-          sessionId: '',
-          success: false,
-          error: '❌ حدث خطأ غير متوقع، حاول مرة أخرى',
-        };
       }
 
-      return { sessionId, success: true };
+      return sessionId;
     } finally {
       sessionStartLocks.delete(lockKey);
     }
@@ -1503,7 +1378,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 🛡️ [اعتماد المحفظة المباشر والأمين لمنع تكرار الإضافات]:
+  // 🛡️ اعتماد الشحن المباشر والمضمون
   approveTopUp: async (id) => {
     if (!isSupabaseConfigured()) return;
     try {
@@ -1565,12 +1440,12 @@ export const useStore = create<AppState>((set, get) => ({
       const realUserPhone = dbRow.user_phone || topUp.userPhone || '';
       let userData: any = null;
       if (realUserPhone) {
-        const { data: userDataObj } = await supabase
+        const { data } = await supabase
           .from('users')
           .select('*')
           .eq('phone', realUserPhone)
           .maybeSingle();
-        if (userDataObj) userData = userDataObj;
+        if (data) userData = data;
       }
       if (!userData) throw new Error('User account not found');
 

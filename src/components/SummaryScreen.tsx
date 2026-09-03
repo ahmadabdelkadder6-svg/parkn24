@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   CheckCircle,
   Home,
@@ -6,9 +6,8 @@ import {
   Wallet,
   AlertTriangle,
   Gift,
-  Loader2,
 } from 'lucide-react';
-import { useStore, pausePolling, ParkingSession, Garage } from '../store';
+import { useStore, pausePolling } from '../store';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { calculateFullHours, calculateCost, formatTime } from '../utils/pricing';
 import toast from 'react-hot-toast';
@@ -23,20 +22,18 @@ const toMs = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-// 🧬 [بصمة اللوحة العبقرية]: توحيد صارم خالٍ من الحروف الإنجليزية لمطابقة تامة مع قاعدة البيانات
+// 🧬 [بصمة اللوحة العبقرية]: توحيد شامل ومقاوم للتلاعب بمطابقة تامة مع الـ Store
 const normalizePlate = (plate?: string): string => {
   if (!plate) return '';
+  
   let cleaned = plate.trim();
   
-  // رفض تام لأي حرف إنجليزي
-  if (/[a-zA-Z]/.test(cleaned)) return '';
-
-  // تحويل الأرقام العربية والفارسية
+  // 1. تحويل الأرقام العربية الشرقية والفارسية إلى أرقام إنجليزية موحدة
   cleaned = cleaned
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
     .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)));
   
-  // توحيد الحروف العربية المتشابهة والهمزات
+  // 2. توحيد الحروف العربية المتشابهة والهمزات
   const charMap: Record<string, string> = {
     'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ٱ': 'ا', 'ء': 'ا',
     'ة': 'ت',
@@ -46,6 +43,8 @@ const normalizePlate = (plate?: string): string => {
     'ک': 'ك', 'ی': 'ي',
   };
   cleaned = cleaned.replace(/./g, (char) => charMap[char] || char);
+  
+  // 3. حذف الحروف الإنجليزية والرموز والمسافات (حروف عربية وأرقام فقط)
   cleaned = cleaned.replace(/[^0-9\u0600-\u06FF]/g, '');
   
   return cleaned;
@@ -91,13 +90,13 @@ export default function SummaryScreen() {
   };
 
   const activeSession = useMemo(() => {
-    return (sessions as ParkingSession[])
+    return sessions
       .filter((s) => s.status === 'active' && isMySession(s))
       .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
   }, [sessions, userPlate, userPhone]);
 
   const lastCompletedSession = useMemo(() => {
-    return (sessions as ParkingSession[])
+    return sessions
       .filter((s) => s.status === 'completed' && isMySession(s))
       .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
   }, [sessions, userPlate, userPhone]);
@@ -148,7 +147,7 @@ export default function SummaryScreen() {
       .subscribe();
 
     realtimeChannelRef.current = channel;
-    pollingRef.current = setInterval(refetch, 5000); // ⚡ 5 ثوانٍ آمنة وموفرة للبطارية
+    pollingRef.current = setInterval(refetch, 4000);
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') refetch();
@@ -168,7 +167,6 @@ export default function SummaryScreen() {
     };
   }, [userPlate, userPhone, fetchAll, done]);
 
-  // التحويل التلقائي عند قيام السايس بالإنهاء والتحصيل يدوياً من جهازه
   useEffect(() => {
     if (done) return;
     if (autoRedirectedRef.current) return;
@@ -252,8 +250,8 @@ export default function SummaryScreen() {
   const canPayWallet = walletBalance >= totalPrice;
 
   const methods = [
-    { id: 'cash', label: 'نقدي كاش للسايس', icon: '💵' },
-    { id: 'wallet', label: 'خصم من المحفظة آلياً', icon: '👝' },
+    { id: 'cash', label: 'نقدي كاش', icon: '💵' },
+    { id: 'wallet', label: 'خصم من المحفظة', icon: '👝' },
   ];
 
   const safeEndSession = async (method: string, price: number): Promise<boolean> => {
@@ -305,7 +303,7 @@ export default function SummaryScreen() {
   };
 
   const handleConfirm = async () => {
-    // 🛡️ معالجة الفاتورة الصفرية الترحيبية فوراً
+    // 🛡️ معالجة الفاتورة الصفرية المجانية فوراً وبضغطة واحدة
     if (totalPrice === 0) {
       const success = await safeEndSession('free', 0);
       if (success) {
@@ -320,7 +318,6 @@ export default function SummaryScreen() {
       return;
     }
 
-    // الدفع بالمحفظة (دفع ذاتي آمن ومصرح به رقمياً)
     if (paymentMethod === 'wallet') {
       if (!canPayWallet) { toast.error('رصيد المحفظة غير كافي'); return; }
       const newBalance = walletBalance - totalPrice;
@@ -339,9 +336,15 @@ export default function SummaryScreen() {
       return;
     }
 
-    // 🛡️ [إصلاح الثغرة الكبرى]: حظر تأكيد الكاش يدوياً من تليفون العميل
-    if (paymentMethod === 'cash') {
-      toast.error('لا يمكن إنهاء جلسة الكاش يدوياً من جهازك، برجاء إتمام الدفع مع السايس أولاً');
+    const success = await safeEndSession('cash', totalPrice);
+    if (success) {
+      toast.success('تم إنهاء الجلسة بنجاح!');
+      setDoneTotalPrice(totalPrice);
+      setDoneMethod('cash');
+      setRemainingWallet(walletBalance);
+      setDone(true);
+    } else {
+      toast.error('حدث خطأ، حاول مرة أخرى');
     }
   };
 
@@ -350,7 +353,7 @@ export default function SummaryScreen() {
       <motion.div
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8 text-right"
+        className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8"
       >
         <motion.div
           initial={{ scale: 0 }}
@@ -402,7 +405,7 @@ export default function SummaryScreen() {
                 ? '👝 خصم من المحفظة'
                 : doneMethod === 'free'
                 ? '🎁 ركن مجاني ترحيبي'
-                : '💵 كاش للسايس'}
+                : '💵 نقدي'}
             </div>
           )}
 
@@ -424,7 +427,7 @@ export default function SummaryScreen() {
             setSelectedGarageId(null);
             setScreen('list');
           }}
-          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg"
+          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100"
         >
           <Home size={20} className="text-white" />
           <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
@@ -439,7 +442,7 @@ export default function SummaryScreen() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full bg-white text-slate-900 p-6 overflow-y-auto text-right"
+      className="h-full bg-white text-slate-900 p-6 overflow-y-auto"
     >
       <div className="pt-10 mb-6">
         <h2 className="text-2xl font-black text-center mb-2 text-slate-900">ملخص الجلسة</h2>
@@ -452,12 +455,12 @@ export default function SummaryScreen() {
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4 flex items-center gap-2 justify-end"
+          className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4 flex items-center gap-2"
         >
-          <p className="text-xs text-emerald-700 font-bold">
-            ✅ تم إنهاء الجلسة وتحصيل المبلغ كاش من السايس
-          </p>
           <CheckCircle size={16} className="text-emerald-500 shrink-0" />
+          <p className="text-xs text-emerald-700 font-bold">
+            ✅ تم إنهاء الجلسة وتحصيل المبلغ من الجراج
+          </p>
         </motion.div>
       )}
 
@@ -501,27 +504,27 @@ export default function SummaryScreen() {
           </div>
           <div className="space-y-1.5">
             <div className="flex justify-between text-xs">
-              <span className="font-black text-slate-900 font-mono">{durationMinutes} دقيقة</span>
               <span className="text-slate-500">مدة الركن الكلية</span>
+              <span className="font-black text-slate-900 font-mono">{durationMinutes} دقيقة</span>
             </div>
 
             {isFirstFreeApplied && (
               <div className="flex justify-between text-xs text-emerald-600 font-bold">
-                <span className="font-mono">-{freeMinutesApplied} دقيقة (ساعة كاملة)</span>
                 <span className="flex items-center gap-1">🎁 خصم الهدية الترحيبية</span>
+                <span className="font-mono">-{freeMinutesApplied} دقيقة (ساعة كاملة)</span>
               </div>
             )}
 
             <div className="flex justify-between text-xs">
+              <span className="text-slate-500">الساعات المحتسبة للدفع</span>
               <span className="font-black text-blue-600 font-mono">
                 {isFirstFreeApplied ? billableHours : calculateFullHours(durationSeconds)} ساعة
               </span>
-              <span className="text-slate-500">الساعات المحتسبة للدفع</span>
             </div>
 
             <div className="flex justify-between text-xs">
-              <span className="font-black text-purple-600 font-mono">{sessionRate} ج.م</span>
               <span className="text-slate-500">سعر الساعة</span>
+              <span className="font-black text-purple-600 font-mono">{sessionRate} ج.م</span>
             </div>
 
             {garage && sessionRate !== garage.basePrice && (
@@ -534,14 +537,30 @@ export default function SummaryScreen() {
 
             <div className="border-t border-slate-200 pt-1.5">
               <div className="flex justify-between text-xs">
+                <span className="text-slate-700 font-bold">الإجمالي المطلوب سداده</span>
                 <span className="font-black text-emerald-600 font-mono">
                   {totalPrice} ج.م
                 </span>
-                <span className="text-slate-700 font-bold">الإجمالي المطلوب سداده</span>
               </div>
             </div>
           </div>
         </div>
+
+        {!activeSession && lastCompletedSession?.paymentMethod && (
+          <div className="text-center mt-2">
+            <span
+              className={`inline-block px-3 py-1 rounded-full text-[10px] font-black ${
+                lastCompletedSession.paymentMethod === 'wallet'
+                  ? 'bg-blue-100 text-blue-600'
+                  : 'bg-emerald-100 text-emerald-600'
+              }`}
+            >
+              {lastCompletedSession.paymentMethod === 'wallet'
+                ? '👝 محفظة'
+                : '💵 نقدي'}
+            </span>
+          </div>
+        )}
       </div>
 
       {activeSession && (
@@ -563,7 +582,7 @@ export default function SummaryScreen() {
                     }`}
                   >
                     <div className="text-2xl mb-1">{m.icon}</div>
-                    <div className="font-black text-slate-800 leading-tight" style={{ fontSize: '14px', fontWeight: 900 }}>
+                    <div className="font-black text-slate-800 leading-tight" style={{ fontSize: '15px', fontWeight: 900 }}>
                       {m.label}
                     </div>
                     {m.id === 'wallet' && (
@@ -572,7 +591,7 @@ export default function SummaryScreen() {
                         style={{ color: canPayWallet ? '#059669' : '#EF4444' }}
                       >
                         <span className="text-[10px] font-black text-slate-500">رصيدك:</span>
-                        <span className="font-mono" style={{ fontSize: '14px', fontWeight: 900 }}>
+                        <span className="font-mono" style={{ fontSize: '15px', fontWeight: 900 }}>
                           {walletBalance}ج
                         </span>
                       </div>
@@ -581,36 +600,19 @@ export default function SummaryScreen() {
                 ))}
               </div>
 
-              {/* 🛡️ [إصلاح الثغرة]: بطاقة إرشادية وتأخير للعملاء الذين اختاروا نقداً */}
-              {paymentMethod === 'cash' && (
-                <motion.div
-                  initial={{ opacity: 0, y: 5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2 justify-end text-right"
-                >
-                  <div>
-                    <p className="text-xs text-amber-700 font-bold">💵 يرجى التوجه لسايس الجراج والدفع نقداً كاش</p>
-                    <p className="text-[10px] text-amber-600 font-medium leading-normal mt-1">
-                      بمجرد قيام السايس بإنهاء الجلسة وتحصيل المبلغ ({totalPrice} ج.م) من جهازه، ستتحول شاشتك تلقائياً للنجاح وتفتح البوابة بسلامة.
-                    </p>
-                  </div>
-                  <AlertTriangle size={18} className="text-amber-500 shrink-0" />
-                </motion.div>
-              )}
-
               {paymentMethod === 'wallet' && !canPayWallet && (
                 <motion.div
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="mt-3 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2 justify-end text-right"
+                  className="mt-3 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2"
                 >
+                  <AlertTriangle size={18} className="text-red-500 shrink-0" />
                   <div>
                     <p className="text-xs text-red-600 font-bold">رصيد المحفظة غير كافي</p>
                     <p className="text-[10px] text-red-400">
-                      المطلوب: {totalPrice} ج.م | رصيدك الحالي: {walletBalance} ج.م
+                      المطلوب: {totalPrice} ج.م | رصيدك: {walletBalance} ج.م
                     </p>
                   </div>
-                  <AlertTriangle size={18} className="text-red-500 shrink-0" />
                 </motion.div>
               )}
 
@@ -618,58 +620,59 @@ export default function SummaryScreen() {
                 <motion.div
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-2 justify-end text-right"
+                  className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-2"
                 >
+                  <Wallet size={18} className="text-blue-600 shrink-0" />
                   <div>
                     <p className="text-xs text-blue-600 font-bold">
-                      سيتم خصم {totalPrice} ج.م من رصيدك تلقائياً وتخرج فوراً
+                      سيتم خصم {totalPrice} ج.م من رصيدك تلقائياً
                     </p>
                     <p className="text-[10px] text-blue-400">
                       الرصيد بعد الخصم: {walletBalance - totalPrice} ج.م
                     </p>
                   </div>
-                  <Wallet size={18} className="text-blue-600 shrink-0" />
                 </motion.div>
               )}
             </div>
           )}
 
-          {/* 🌟 زر الإجراء الذكي والآمن */}
-          {paymentMethod === 'cash' && totalPrice > 0 ? (
-            // حجب الزر واستبداله بحلقة انتظار لإنهاء السايس
-            <div className="w-full bg-slate-100 text-slate-500 py-4.5 rounded-2xl font-black text-center flex items-center justify-center gap-2 border border-slate-200 mt-3 select-none">
-              <Loader2 size={16} className="animate-spin text-slate-400" />
-              <span style={{ fontSize: '14px', fontWeight: 900 }}>في انتظار إنهاء السايس للجلسة...</span>
-            </div>
-          ) : (
-            <button
-              onClick={handleConfirm}
-              disabled={totalPrice > 0 && paymentMethod === 'wallet' && !canPayWallet}
-              className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 text-white ${
-                totalPrice === 0
-                  ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-100'
-                  : paymentMethod === 'wallet' && !canPayWallet
-                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                  : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100'
-              }`}
-            >
-              {totalPrice === 0 ? (
-                <>
-                  <Gift size={20} className="text-white animate-pulse" />
-                  <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
-                    تأكيد إنهاء الجلسة مجاناً 🎁
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Wallet size={20} className="text-white" />
-                  <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
-                    خصم من المحفظة ({totalPrice} ج.م)
-                  </span>
-                </>
-              )}
-            </button>
-          )}
+          {/* 🌟 زر التأكيد المرن: يدعم الحجز المجاني الصفر بضغطة واحدة مباشرة */}
+          <button
+            onClick={handleConfirm}
+            disabled={totalPrice > 0 && paymentMethod === 'wallet' && !canPayWallet}
+            className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 text-white ${
+              totalPrice === 0
+                ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-100'
+                : paymentMethod === 'wallet' && !canPayWallet
+                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                : paymentMethod === 'wallet'
+                  ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-100'
+                  : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100'
+            }`}
+          >
+            {totalPrice === 0 ? (
+              <>
+                <Gift size={20} className="text-white animate-pulse" />
+                <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
+                  تأكيد إنهاء الجلسة مجاناً 🎁
+                </span>
+              </>
+            ) : paymentMethod === 'wallet' ? (
+              <>
+                <Wallet size={20} className="text-white" />
+                <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
+                  خصم من المحفظة ({totalPrice} ج.م)
+                </span>
+              </>
+            ) : (
+              <>
+                <CheckCircle size={20} className="text-white" />
+                <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
+                  تأكيد الدفع نقدي ({totalPrice} ج.م)
+                </span>
+              </>
+            )}
+          </button>
         </>
       )}
 
@@ -682,7 +685,7 @@ export default function SummaryScreen() {
             setSelectedGarageId(null);
             setScreen('list');
           }}
-          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg mt-4"
+          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100 mt-4"
         >
           <Home size={20} className="text-white" />
           <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
