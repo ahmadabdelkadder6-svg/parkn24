@@ -2,11 +2,11 @@ import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Car, Clock, LogOut, Plus, CheckCircle, XCircle, Settings,
-  Minus, Save, MapPin, Edit3, Navigation, CarFront, FileText,
+  Minus, Save, MapPin, Edit3, Navigation, Phone, CarFront, FileText,
   CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
-  Search, DollarSign
+  Search
 } from 'lucide-react';
-import { useStore, pausePolling, validatePlate, ParkingSession } from '../store';
+import { useStore, pausePolling, validatePlate } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
@@ -77,7 +77,6 @@ const formatLocalDateArabic = (dateStr: string): string => {
   });
 };
 
-// 🔊 Audio Alerts Setup
 let audioCtxInstance: AudioContext | null = null;
 let audioCtxReady = false;
 
@@ -155,8 +154,13 @@ const playFirstAlert = async () => {
 };
 
 const fireNewCarAlert = (carPlate: string) => {
-  playFirstAlert(); vibrateDevice();
-  sendNotification('🚨 سيارة في الطريق!', `🚗 رقم السيارة: ${carPlate}`, `incoming-${carPlate}`);
+  playFirstAlert(); 
+  vibrateDevice();
+  sendNotification(
+    '🚨 سيارة في الطريق!',
+    `🚗 رقم السيارة: ${carPlate}`,
+    `incoming-${carPlate}`,
+  );
 };
 
 const playApproachingAlert = async () => {
@@ -185,22 +189,28 @@ const playApproachingAlert = async () => {
 
 const fireApproachingAlert = (carPlate: string) => {
   playApproachingAlert(); vibrateDevice();
-  sendNotification('🚗 سيارة على وشك الوصول!', `🚗 ${carPlate} - باقي أقل من دقيقتين ⏰`, `approaching-${carPlate}`);
+  sendNotification(
+    '🚗 سيارة على وشك الوصول!',
+    `🚗 ${carPlate} - باقي أقل من دقيقتين ⏰`,
+    `approaching-${carPlate}`,
+  );
 };
 
-// ⚡ كارت الجلسة النشطة المعزول والموفر للطاقة
+// ⚡ [حل مشكلة الأداء والبطارية]: عزل كارت الجلسة النشطة بالكامل في مكون منفصل لمنع الرندرة المتكررة
 const ActiveSessionCard = memo(({ 
   session, 
   basePrice, 
   undoable, 
   onUndo, 
-  onConfirm 
+  onConfirm,
+  getUndoRemainingSeconds
 }: { 
   session: ParkingSession; 
   basePrice: number; 
   undoable?: UndoableSession; 
   onUndo: (u: UndoableSession) => void;
   onConfirm: (sid: string, cp: string, cost: number, hrs: number, mins: number, src: 'app' | 'manual', ap?: number) => void;
+  getUndoRemainingSeconds: (addedAt: number) => number;
 }) => {
   const [now, setNow] = useState(Date.now());
 
@@ -222,7 +232,7 @@ const ActiveSessionCard = memo(({
   const cost = isFreeApplied ? calculateCost(billableSeconds, rate) : calculateCost(el, rate);
   const isM = session.source === 'manual';
 
-  const undoRemaining = undoable ? Math.max(0, UNDO_TIMEOUT_SECONDS - Math.floor((now - undoable.addedAt) / 1000)) : 0;
+  const undoRemaining = undoable ? getUndoRemainingSeconds(undoable.addedAt) : 0;
 
   return (
     <div 
@@ -233,11 +243,11 @@ const ActiveSessionCard = memo(({
         padding: '10px 12px',
         boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
       }}
-      className="mb-2 transition-all text-right"
+      className="mb-2"
     >
-      <div className="flex justify-between items-center mb-1.5">
+      <div className="flex justify-between items-center mb-1.5 text-right">
         <div className="flex items-center gap-1 flex-wrap">
-          <span className="rounded-full shrink-0 animate-pulse" style={{ width: 8, height: 8, background: isM ? '#FF9500' : '#00CC66' }} />
+          <motion.span animate={{ scale: [1, 1.25, 1] }} transition={{ repeat: Infinity, duration: 1.5 }} className="rounded-full shrink-0" style={{ width: 8, height: 8, background: isM ? '#FF9500' : '#00CC66' }} />
           <span className="font-bold text-slate-500 font-mono" style={{ fontSize: 11 }}>{formatElapsed(el)} • {hrs}س</span>
           <span className="font-black text-white shrink-0" style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, background: isM ? '#FF9500' : '#0066FF' }}>{isM ? 'يدوي' : 'تطبيق'}</span>
           
@@ -294,12 +304,12 @@ export default function GarageDashboard() {
   const {
     garages, currentGarageId, setCurrentGarageId, sessions, addSession, endSession,
     removeSession, offers, updateOffer, cancelOffer, updateGarage, incomingCars,
-    removeIncomingCar, fetchAll, confirmRevenue, unconfirmRevenue, assignSessionToValet, adjustGarageSpots,
+    removeIncomingCar, fetchAll, confirmRevenue, assignSessionToValet, adjustGarageSpots,
     getMyOwnedGarages,
   } = useStore();
 
   // ═════════════════════════════════════════════════════════════════════
-  // 🟢 جميع الـ React Hooks يتم الإعلان عنها هنا لتلافي انهيار React Error #310
+  // 🟢 جميع الـ React Hooks يتم تعريفها في الأعلى لمنع انهيار الـ React #310
   // ═════════════════════════════════════════════════════════════════════
 
   const [garageRole] = useState<'owner' | 'valet'>(
@@ -317,11 +327,19 @@ export default function GarageDashboard() {
   );
   const currentValetNameLocal = localStorage.getItem('valetName') || '';
 
-  const currentValetName =
-    valetNumber === '1' ? garage?.valetName1 :
-    valetNumber === '2' ? garage?.valetName2 :
-    valetNumber === '3' ? garage?.valetName3 :
-    '';
+  const currentValetName = useMemo(() => {
+    return valetNumber === '1' ? garage?.valetName1 :
+           valetNumber === '2' ? garage?.valetName2 :
+           valetNumber === '3' ? garage?.valetName3 : '';
+  }, [valetNumber, garage]);
+
+  const myValetNames = useMemo(() => {
+    const names = new Set<string>();
+    if (currentValetNameLocal) names.add(currentValetNameLocal.trim());
+    if (currentValetName) names.add(currentValetName.trim());
+    if (valetNumber) names.add(`سايس ${valetNumber}`);
+    return names;
+  }, [currentValetNameLocal, currentValetName, valetNumber]);
 
   const garageValetNames = useMemo(() => {
     if (!garage) return [];
@@ -339,20 +357,28 @@ export default function GarageDashboard() {
       const st = toMs(s.startTime);
       if (st <= 0) return false;
       const elapsedMs = Date.now() - st;
+      if (isValet && elapsedMs >= 24 * 60 * 60 * 1000) return false;
       if (elapsedMs >= 24 * 60 * 60 * 1000) return false;
       return true;
     });
-  }, [garageSessions]);
+  }, [garageSessions, isValet]);
 
   const valetActiveSessions = useMemo(() => {
     if (!isValet) return activeSessions;
+
     const isActive =
       valetNumber === '1' ? garage?.valet1Active :
       valetNumber === '2' ? garage?.valet2Active :
       valetNumber === '3' ? garage?.valet3Active : false;
     if (!isActive) return [];
-    return activeSessions;
-  }, [activeSessions, isValet, valetNumber, garage]);
+
+    return activeSessions.filter(s => {
+      const addedBy = ((s as any).addedBy || '').trim();
+      if (addedBy && myValetNames.has(addedBy)) return true;
+      if (!addedBy && s.source === 'app') return true;
+      return false;
+    });
+  }, [activeSessions, isValet, myValetNames, valetNumber, garage]);
 
   const completedSessions = useMemo(
     () => garageSessions.filter(s => s.status === 'completed'),
@@ -374,21 +400,22 @@ export default function GarageDashboard() {
   const approachAlertedRef = useRef<Set<string>>(new Set());
   const audioInitializedRef = useRef(false);
 
-  const [searchActivePlate, setSearchActivePlate] = useState('');
+  // States
+  const [searchActivePlate, setSearchActivePlate] = useState(''); // 🔍 [جديد]: البحث السريع
   const [undoableSessions, setUndoableSessions] = useState<UndoableSession[]>([]);
   const [newCarPlate, setNewCarPlate] = useState('');
-  const [newCarPrice, setNewCarPrice] = useState(garage?.basePrice || 15);
+  const [newCarPrice, setNewCarPrice] = useState(15);
   const [showAddCar, setShowAddCar] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [editPrice, setEditPrice] = useState(garage?.basePrice || 15);
-  const [editSpots, setEditSpots] = useState(garage?.availableSpots || 0);
-  const [editCapacity, setEditCapacity] = useState(garage?.capacity || 50);
-  const [editValet1Name, setEditValet1Name] = useState(garage?.valetName1 || '');
-  const [editValet1Pass, setEditValet1Pass] = useState(garage?.valetPassword1 || '');
-  const [editValet2Name, setEditValet2Name] = useState(garage?.valetName2 || '');
-  const [editValet2Pass, setEditValet2Pass] = useState(garage?.valetPassword2 || '');
-  const [editValet3Name, setEditValet3Name] = useState(garage?.valetName3 || '');
-  const [editValet3Pass, setEditValet3Pass] = useState(garage?.valetPassword3 || '');
+  const [editPrice, setEditPrice] = useState(15);
+  const [editSpots, setEditSpots] = useState(0);
+  const [editCapacity, setEditCapacity] = useState(50);
+  const [editValet1Name, setEditValet1Name] = useState('');
+  const [editValet1Pass, setEditValet1Pass] = useState('');
+  const [editValet2Name, setEditValet2Name] = useState('');
+  const [editValet2Pass, setEditValet2Pass] = useState('');
+  const [editValet3Name, setEditValet3Name] = useState('');
+  const [editValet3Pass, setEditValet3Pass] = useState('');
   const [logDateFrom, setLogDateFrom] = useState(() => getLocalToday());
   const [logDateTo, setLogDateTo] = useState(() => getLocalToday());
   const [logPaymentFilter, setLogPaymentFilter] = useState<string>('all');
@@ -397,6 +424,7 @@ export default function GarageDashboard() {
     minutes: number; source: 'app' | 'manual'; agreedPrice?: number;
   } | null>(null);
   const [confirmPaymentMethod, setConfirmPaymentMethod] = useState('cash');
+  const [tick, setTick] = useState(0);
   const [garageDailyStats, setGarageDailyStats] = useState<DailyStat[]>([]);
   const [valetEditSpots, setValetEditSpots] = useState(false);
   const [selectedValetFilter, setSelectedValetFilter] = useState<string | null>(null);
@@ -405,15 +433,16 @@ export default function GarageDashboard() {
   const myGarages = useMemo(() => {
     if (!garage) return [];
     return getMyOwnedGarages(garage.ownerPhone || garage.phone || '');
-  }, [getMyOwnedGarages, garage]);
+  }, [getMyOwnedGarages, garage, garages]);
 
+  // 🔍 [جديد]: فلترة الجلسات النشطة حسب البحث
   const displayedActiveSessions = useMemo(() => {
     if (!searchActivePlate.trim()) return valetActiveSessions;
     const q = searchActivePlate.trim().toLowerCase();
     return valetActiveSessions.filter(s => s.carPlate.toLowerCase().includes(q));
   }, [valetActiveSessions, searchActivePlate]);
 
-  // 🔋 [مستمع WakeLock آمن ومستقر]
+  // 🔋 [جديد]: تقنية Wake Lock لمنع شاشة السايس من النوم
   useEffect(() => {
     let wakeLock: any = null;
     const requestWakeLock = async () => {
@@ -421,20 +450,20 @@ export default function GarageDashboard() {
         if ('wakeLock' in navigator && document.visibilityState === 'visible') {
           wakeLock = await (navigator as any).wakeLock.request('screen');
         }
-      } catch {
-        // تجاهل بصمت عند حظر المتصفح
+      } catch (err) {
+        console.warn('Wake lock lock requested failed', err);
       }
     };
     
     requestWakeLock();
 
-    const handleVisibility = () => {
+    const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') requestWakeLock();
     };
 
-    document.addEventListener('visibilitychange', handleVisibility);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibility);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (wakeLock) wakeLock.release().catch(() => {});
     };
   }, []);
@@ -446,6 +475,10 @@ export default function GarageDashboard() {
     const unassigned = sessions.filter(s => {
       if (s.garageId !== currentGarageId) return false;
       if (s.source !== 'app') return false;
+      if (s.status === 'completed') {
+        const dateStr = timestampToLocalDate(toMs(s.endTime || s.startTime));
+        if (dateStr !== getLocalToday()) return false;
+      }
       const ab = ((s as any).addedBy || '').trim();
       return !ab;
     });
@@ -467,13 +500,14 @@ export default function GarageDashboard() {
   useEffect(() => { fetchGarageDailyStatsRef.current = fetchGarageDailyStats; }, [fetchGarageDailyStats]);
   useEffect(() => { fetchGarageDailyStats(); }, [fetchGarageDailyStats]);
 
+  // 🔄 [تعديل مستقر للاتصال الفوري باستخدام Timestamp لمنع السقوط]
   useEffect(() => {
     if (!currentGarageId) return;
     const channel = supabase
       .channel(`garage-realtime-${currentGarageId}-${Date.now()}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, async () => { await fetchAll(); await fetchGarageDailyStatsRef.current(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'incoming_cars' }, async () => { await fetchAll(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'offers' }, async () => { await fetchAll(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions', filter: `garage_id=eq.${currentGarageId}` }, async () => { await fetchAll(); await fetchGarageDailyStatsRef.current(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'incoming_cars', filter: `garage_id=eq.${currentGarageId}` }, async () => { await fetchAll(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'offers', filter: `garage_id=eq.${currentGarageId}` }, async () => { await fetchAll(); })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [currentGarageId, fetchAll]);
@@ -488,13 +522,24 @@ export default function GarageDashboard() {
 
   useEffect(() => {
     if (!currentGarageId) return;
+
     const silentSync = async () => {
-      try { await subscribeToPush(currentGarageId); } catch (e) { console.warn('Silent push sync error:', e); }
+      try {
+        await subscribeToPush(currentGarageId);
+      } catch (e) {
+        console.warn('Silent push sync error:', e);
+      }
     };
+
     silentSync();
+
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') { silentSync(); fetchAll(); }
+      if (document.visibilityState === 'visible') {
+        silentSync();
+        fetchAll();
+      }
     };
+
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [currentGarageId, fetchAll]);
@@ -514,6 +559,19 @@ export default function GarageDashboard() {
   }, [carsOnTheWay]);
 
   useEffect(() => {
+    carsOnTheWay.forEach(car => {
+      if (approachAlertedRef.current.has(car.id)) return;
+      const s = toMs(car.startTime);
+      const el = (Date.now() - s) / 60000;
+      const rem = Math.max(0, car.estimatedArrival - el);
+      if (rem <= 2 && rem >= 0 && car.estimatedArrival > 2) {
+        approachAlertedRef.current.add(car.id);
+        if (!document.hidden) { fireApproachingAlert(car.carPlate); toast(`🚗 على وشك الوصول!\n${car.carPlate}`, { duration: 10000, icon: '⏰' }); }
+      }
+    });
+  }, [carsOnTheWay, tick]);
+
+  useEffect(() => {
     garageOffers.forEach(o => { if (!prevOfferIdsRef.current.has(o.id)) toast(`💰 عرض جديد!\n🚗 ${o.carPlate} - ${o.offeredPrice} ج.م/ساعة`, { duration: 8000, icon: '💰' }); });
     prevOfferIdsRef.current = new Set(garageOffers.map(o => o.id));
   }, [garageOffers]);
@@ -523,6 +581,7 @@ export default function GarageDashboard() {
     if (s.endTime && s.startTime) {
       const elSeconds = Math.max(0, Math.floor((toMs(s.endTime) - toMs(s.startTime)) / 1000));
       const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
+      
       if (s.isFirstFreeSession === true) {
         const freeSeconds = Math.min(elSeconds, 3600);
         const billableSeconds = Math.max(0, elSeconds - freeSeconds);
@@ -548,6 +607,20 @@ export default function GarageDashboard() {
     return Math.round((rev - comm) * 100) / 100;
   }, [getSessionRevenue, getSessionCommission]);
 
+  const getActiveCost = useCallback((s: any) => {
+    const st = toMs(s.startTime);
+    const el = st > 0 ? Math.max(0, Math.floor((Date.now() - st) / 1000)) : 0;
+    const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
+    if (el <= 0 || r <= 0) return 0;
+
+    if (s.isFirstFreeSession === true) {
+      const freeSeconds = Math.min(el, 3600);
+      const billableSeconds = Math.max(0, el - freeSeconds);
+      return calculateCost(billableSeconds, r);
+    }
+    return calculateCost(el, r);
+  }, [garage?.basePrice]);
+
   const filteredCompleted = useMemo(() => {
     if (isValet) {
       const isActive =
@@ -567,6 +640,7 @@ export default function GarageDashboard() {
     return completedSessions.filter(s => {
       if (s.endTime) {
         const endMs = toMs(s.endTime);
+        
         if (isValet) { 
           const isToday = endMs >= todayStart && endMs <= todayEnd;
           if (!isToday) return false; 
@@ -575,15 +649,23 @@ export default function GarageDashboard() {
           if (boundaryTo && endMs > boundaryTo) return false; 
         }
       }
+      
       if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter) return false;
+      
       const addedBy = ((s as any).addedBy || '').trim();
+      if (isValet) {
+        const isMine = addedBy && myValetNames.has(addedBy);
+        if (!isMine) return false;
+      }
+      
       if (isOwner && selectedValetFilter) { 
         if (addedBy !== selectedValetFilter) return false; 
       }
+      
       return true;
     });
-  }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, isOwner, selectedValetFilter, valetNumber, garage]);
-
+  }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, isOwner, myValetNames, selectedValetFilter, valetNumber, garage]);
+  
   const filteredStats = useMemo(() => {
     const c = filteredCompleted.filter(s => s.revenueConfirmed);
     const u = filteredCompleted.filter(s => !s.revenueConfirmed);
@@ -618,23 +700,6 @@ export default function GarageDashboard() {
   }, [filteredCompleted, getSessionRevenue, getSessionCommission, getSessionNetRevenue]);
 
   const topCardConfirmedRevenue = useMemo(() => filteredStats.total, [filteredStats]);
-
-  const handleUndoSession = useCallback((un: UndoableSession) => {
-    if (!garage) return;
-    removeSession(un.sessionId);
-    if (un.localId !== un.sessionId) removeSession(un.localId);
-    const cs = useStore.getState().sessions;
-    const ms = cs.find(s => s.carPlate === un.carPlate && s.source === 'manual' && s.status === 'active' && Math.abs(toMs(s.startTime) - un.addedAt) < 5000);
-    if (ms) removeSession(ms.id);
-    setUndoableSessions(p => p.filter(u => u.sessionId !== un.sessionId && u.localId !== un.localId));
-    toast('تم إلغاء ' + un.carPlate + ' ↩️', { icon: '🔙' });
-  }, [garage, removeSession]);
-
-  // ✅ [تم حل ثغرة React Hooks #310 بنجاح]: تعريف الـ useCallback في الأعلى دائماً
-  const openConfirmPayment = useCallback((sid: string, cp: string, cost: number, hrs: number, mins: number, src: 'app' | 'manual', ap?: number) => {
-    setConfirmSession({ id: sid, carPlate: cp, cost, hours: hrs, minutes: mins, source: src, agreedPrice: ap });
-    setConfirmPaymentMethod('cash');
-  }, []);
 
   const valetReport = useMemo(() => {
     if (!garage || !isOwner || !currentGarageId) return [];
@@ -673,8 +738,14 @@ export default function GarageDashboard() {
     }).filter((v) => v.count > 0);
   }, [garage, isOwner, currentGarageId, completedSessions, logDateFrom, logDateTo, logPaymentFilter, getSessionRevenue]);
 
+  // ✅ [تم حل ثغرة Hooks #310]: تعريف الـ callbacks الحساسة قبل الـ returns المبكرة
+  const openConfirmPayment = useCallback((sid: string, cp: string, cost: number, hrs: number, mins: number, src: 'app' | 'manual', ap?: number) => {
+    setConfirmSession({ id: sid, carPlate: cp, cost, hours: hrs, minutes: mins, source: src, agreedPrice: ap });
+    setConfirmPaymentMethod('cash');
+  }, []);
+
   // ═════════════════════════════════════════════════════════════════════
-  // 🔴 الشروط المبكرة تأتي الآن بأمان تام وبدون التسبب في أي انهيار شاشات
+  // 🔴 الشروط المبكرة تأتي الآن بأمان تام بعد التأكد من تجميع الـ Hooks في الأعلى
   // ═════════════════════════════════════════════════════════════════════
 
   if (!garage) {
@@ -712,37 +783,32 @@ export default function GarageDashboard() {
     }
   }
 
-  // الدوال التشغيلية العادية لـ Dashboard
+  // 🛡️ [تعديل آمن للوحة يدوي فحص صارم]
   const handleAddCar = async () => {
+    // تفعيل محرك الفحص validatePlate لصد الحروف الإنجليزية والرموز
     const validation = validatePlate(newCarPlate);
     if (!validation.isValid) {
-      toast.error(validation.errorMessage || 'رقم اللوحة غير صحيح');
+      toast.error(validation.errorMessage || 'لوحة غير صحيحة');
       return;
     }
 
     const cp = validation.normalizedPlate;
     const pr = newCarPrice;
     const at = Date.now();
-    const valetIdentifier = isValet ? (currentValetNameLocal || currentValetName || (valetNumber ? `سايس ${valetNumber}` : 'سايس')) : '';
-    
-    const res = await addSession({ 
+    const sid = await addSession({ 
       garageId: garage.id, 
       carPlate: cp, 
       startTime: at, 
       status: 'active', 
       source: 'manual', 
       agreedPrice: pr, 
-      addedBy: valetIdentifier 
+      addedBy: isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '' 
     } as any);
 
-    if (res.success) {
-      const fid = res.sessionId || `fallback-${at}`;
-      setUndoableSessions(p => [...p, { sessionId: fid, localId: fid, carPlate: cp, price: pr, addedAt: at }]);
-      toast.success(`تم إضافة السيارة بسعر ${pr} ج.م/ساعة`);
-      setNewCarPlate(''); setNewCarPrice(garage.basePrice); setShowAddCar(false);
-    } else {
-      toast.error(res.error || 'فشل إضافة السيارة');
-    }
+    const fid = sid || `fallback-${at}`;
+    setUndoableSessions(p => [...p, { sessionId: fid, localId: fid, carPlate: cp, price: pr, addedAt: at }]);
+    toast.success(`تم إضافة السيارة بسعر ${pr} ج.م/ساعة`);
+    setNewCarPlate(''); setNewCarPrice(garage.basePrice); setShowAddCar(false);
   };
 
   const handleConfirmPayment = async () => {
@@ -849,10 +915,9 @@ export default function GarageDashboard() {
           </div>
         </div>
         {isOwner && <button onClick={openSettings} className="active:scale-90" style={{ background: '#0066FF', padding: 14, borderRadius: 20, color: '#fff' }}><Settings size={20} /></button>}
-        {isValet && <div style={{ width: 48 }} />}
       </div>
 
-      {/* 🔍 حقل البحث السريع عن سيارة نشطة */}
+      {/* 🔍 [جديد]: حقل البحث السريع لتصفية السيارات النشطة في بضع ثوانٍ */}
       {isValet && (
         <div className="mb-4">
           <div className="relative">
@@ -884,10 +949,11 @@ export default function GarageDashboard() {
         </div>
       )}
 
-      {/* Stats Cards */}
+      {/* Stats Cards - كروت الإحصائيات المدمجة نصف الحجم */}
       <div className={`grid ${isOwner ? 'grid-cols-3' : 'grid-cols-2'} gap-3 mb-5`}>
         {isOwner ? (
           <>
+            {/* 🟢 كارت مؤكد المدمج للمالك */}
             <div 
               className="text-center transition-all" 
               style={{ 
@@ -906,6 +972,7 @@ export default function GarageDashboard() {
               </div>
             </div>
 
+            {/* 🔵 كارت شاغر المدمج للمالك */}
             <div 
               onClick={openSettings} 
               className="text-center cursor-pointer active:scale-95 transition-all" 
@@ -926,6 +993,7 @@ export default function GarageDashboard() {
               </div>
             </div>
 
+            {/* 🟣 كارت سعر الساعة المدمج للمالك */}
             <div 
               onClick={openSettings} 
               className="text-center cursor-pointer active:scale-95 transition-all" 
@@ -947,6 +1015,7 @@ export default function GarageDashboard() {
           </>
         ) : (
           <>
+            {/* 🚗 بوكس جلساتي المدمج للسايس - نصف الحجم */}
             <div 
               className="text-center transition-all" 
               style={{ 
@@ -966,6 +1035,7 @@ export default function GarageDashboard() {
               </div>
             </div>
 
+            {/* 🅿️ بوكس شاغر المدمج للسايس - نصف الحجم */}
             <div 
               className="text-center transition-all" 
               style={{ 
@@ -980,7 +1050,7 @@ export default function GarageDashboard() {
                 <Car size={13} />
                 <span className="font-bold text-[10px]">شاغر</span>
               </div>
-              <div className="font-black font-mono leading-none" style={{ fontSize: 20 }}>
+              <div className="font-black font-mono text-base leading-none" style={{ fontSize: 20 }}>
                 {garage.availableSpots}
               </div>
             </div>
@@ -991,8 +1061,9 @@ export default function GarageDashboard() {
       {/* السايس فقط */}
       {isValet && (
         <>
+          {/* 🚗 سيارات في الطريق */}
           {carsOnTheWay.length > 0 && (
-            <div className="mb-5">
+            <div className="mb-5 text-right">
               <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#0099DD' }}>
                 <span className="font-black" style={{ background: '#0099DD', color: '#fff', fontSize: 12, padding: '3px 12px', borderRadius: 20 }}>
                   {carsOnTheWay.length}
@@ -1051,7 +1122,7 @@ export default function GarageDashboard() {
           )}
 
           {garageOffers.length > 0 && (
-            <div className="mb-5">
+            <div className="mb-5 text-right">
               <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#FF9500' }}>عروض أسعار ({garageOffers.length})</h3>
               <div className="space-y-3">
                 {garageOffers.map(o => (
@@ -1076,9 +1147,9 @@ export default function GarageDashboard() {
                 <div>
                   <label className="font-bold block text-right mb-1" style={{ fontSize: 11, color: '#7B8CA6' }}>💰 سعر الساعة</label>
                   <div className="flex items-center gap-2">
-                    <button onClick={() => setNewCarPrice(p => Math.max(5, p - 5))} className="active:scale-90" style={{ background: '#FF3333', color: '#fff', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justify_content: 'center' }}><Minus size={18} /></button>
+                    <button onClick={() => setNewCarPrice(p => Math.max(5, p - 5))} className="active:scale-90" style={{ background: '#FF3333', color: '#fff', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={18} /></button>
                     <input type="number" value={newCarPrice} onChange={e => setNewCarPrice(Math.max(1, parseInt(e.target.value) || 1))} className="flex-1 text-center font-black outline-none font-mono" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 10, borderRadius: 14, fontSize: 20 }} />
-                    <button onClick={() => setNewCarPrice(p => p + 5)} className="active:scale-90" style={{ background: '#00CC66', color: '#fff', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justify_content: 'center' }}><Plus size={18} /></button>
+                    <button onClick={() => setNewCarPrice(p => p + 5)} className="active:scale-90" style={{ background: '#00CC66', color: '#fff', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={18} /></button>
                   </div>
                   <div className="flex gap-1.5 mt-2 justify-end">{[10, 15, 20, 25, 30].map(p => (<button key={p} onClick={() => setNewCarPrice(p)} className="font-black active:scale-95" style={{ padding: '5px 12px', borderRadius: 10, fontSize: 11, background: newCarPrice === p ? '#0066FF' : '#F0F4FF', color: newCarPrice === p ? '#fff' : '#64748b', border: newCarPrice === p ? 'none' : '2px solid #D0DCFF' }}>{p}</button>))}</div>
                 </div>
@@ -1090,7 +1161,8 @@ export default function GarageDashboard() {
             )}
           </div>
 
-          <div className="mb-5">
+          {/* ⚡ [تصحيح الأداء]: رندرة الجلسات النشطة في المكون المعزول ActiveSessionCard */}
+          <div className="mb-5 text-right">
             <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#00AA44' }}>
               الجلسات النشطة ({displayedActiveSessions.length}) <Clock size={16} />
             </h3>
@@ -1110,6 +1182,7 @@ export default function GarageDashboard() {
                       undoable={un}
                       onUndo={handleUndoSession}
                       onConfirm={openConfirmPayment}
+                      getUndoRemainingSeconds={getUndoRemainingSeconds}
                     />
                   );
                 })
@@ -1139,7 +1212,7 @@ export default function GarageDashboard() {
           <div className="flex items-center justify-between">
             <span className="font-black flex items-center gap-1" style={{ fontSize: 14, color: '#0A1628' }}><HardHat size={16} style={{ color: '#FF9500' }} />{currentValetName || `سايس ${valetNumber}`}</span>
             <div className="flex items-center gap-4">
-              <div className="text-right"><div style={{ fontSize: 10, color: '#94a3b8' }}>السعر/ساعة</div><div className="font-black font-mono" style={{ fontSize: 17, color: '#0A1628', lineHeight: 1.1 }}>{garage.basePrice} ج</div></div>
+              <div className="text-right"><div style={{ fontSize: 10, color: '#94a3b8' }}>السعر/ساعة</div><div className="font-black font-mono" style={{ fontSize: 17, color: '#0A1628', lineHeight: 1.1 }}>{garage.basePrice} g</div></div>
               <div style={{ width: 2, height: 28, background: '#D0DCFF', borderRadius: 2 }} />
               <div className="text-right"><div style={{ fontSize: 10, color: '#94a3b8' }}>الأماكن المتاحة</div><div className="font-black font-mono" style={{ fontSize: 17, color: '#0A1628', lineHeight: 1.1 }}>{garage.availableSpots}/{garage.capacity}</div></div>
               <div style={{ width: 2, height: 28, background: '#D0DCFF', borderRadius: 2 }} />
@@ -1159,7 +1232,7 @@ export default function GarageDashboard() {
         </div>
       )}
 
-      {/* سجل العمليات بالكامل (مسترجع 100%) */}
+      {/* سجل العمليات */}
       <div className="mb-8 text-right">
         <div className="flex items-center justify-between mb-3">
           <span className="font-bold" style={{ fontSize: 11, background: '#fff', padding: '6px 12px', borderRadius: 12, border: '2px solid #D0DCFF', color: '#7B8CA6' }}>{filteredCompleted.length} عملية</span>
@@ -1167,152 +1240,398 @@ export default function GarageDashboard() {
         </div>
 
         {isOwner && (
-          <div className="mb-3" style={{ background: '#fff', borderRadius: 16, padding: '10px 12px', border: '1.5px solid #D0DCFF', boxShadow: '0 3px 10px rgba(0,102,255,0.03)' }}>
+          <div 
+            className="mb-3" 
+            style={{ 
+              background: '#fff', 
+              borderRadius: 16, 
+              padding: '10px 12px', 
+              border: '1.5px solid #D0DCFF',
+              boxShadow: '0 3px 10px rgba(0,102,255,0.03)'
+            }}
+          >
+            {/* السطر الأول: التاريخ من - إلى مدمج مع الأزرار السريعة */}
             <div className="flex items-center gap-1.5 mb-2">
-              <input type="date" value={logDateFrom} onChange={e => setLogDateFrom(e.target.value)} className="flex-1 font-black outline-none text-center" style={{ background: '#F0F4FF', border: '1.5px solid #D0DCFF', padding: '7px 4px', borderRadius: 10, fontSize: 10, fontWeight: 900, color: '#0066FF' }} />
+              <input 
+                type="date" 
+                value={logDateFrom} 
+                onChange={e => setLogDateFrom(e.target.value)} 
+                className="flex-1 font-black outline-none text-center" 
+                style={{ 
+                  background: '#F0F4FF', 
+                  border: '1.5px solid #D0DCFF', 
+                  padding: '7px 4px', 
+                  borderRadius: 10, 
+                  fontSize: 10, 
+                  fontWeight: 900,
+                  color: '#0066FF' 
+                }} 
+              />
               <span className="font-black text-slate-400" style={{ fontSize: 11, fontWeight: 950 }}>←</span>
-              <input type="date" value={logDateTo} onChange={e => setLogDateTo(e.target.value)} className="flex-1 font-black outline-none text-center" style={{ background: '#F0F4FF', border: '1.5px solid #D0DCFF', padding: '7px 4px', borderRadius: 10, fontSize: 10, fontWeight: 900, color: '#0066FF' }} />
+              <input 
+                type="date" 
+                value={logDateTo} 
+                onChange={e => setLogDateTo(e.target.value)} 
+                className="flex-1 font-black outline-none text-center" 
+                style={{ 
+                  background: '#F0F4FF', 
+                  border: '1.5px solid #D0DCFF', 
+                  padding: '7px 4px', 
+                  borderRadius: 10, 
+                  fontSize: 10, 
+                  fontWeight: 900,
+                  color: '#0066FF' 
+                }} 
+              />
               <CalendarDays size={16} style={{ color: '#0066FF' }} />
             </div>
 
+            {/* السطر الثاني: أزرار الفلاتر السريعة (اليوم - أسبوع - شهر) */}
             <div className="flex gap-1.5 mb-2">
-              <button onClick={() => { setLogDateFrom(getLocalToday()); setLogDateTo(getLocalToday()); }} className="flex-1 active:scale-95 text-white" style={{ background: '#0066FF', padding: '6px 0', borderRadius: 10, fontSize: 10, fontWeight: 950, boxShadow: '0 2px 8px rgba(0,102,255,0.2)', border: 'none' }}>📅 اليوم</button>
-              <button onClick={() => { const d = new Date(); d.setDate(d.getDate() - 7); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`); setLogDateTo(getLocalToday()); }} className="flex-1 active:scale-95 text-slate-600" style={{ background: '#F0F4FF', padding: '6px 0', borderRadius: 10, fontSize: 10, fontWeight: 950, border: '1.5px solid #D0DCFF' }}>آخر أسبوع</button>
-              <button onClick={() => { const d = new Date(); d.setDate(1); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`); setLogDateTo(getLocalToday()); }} className="flex-1 active:scale-95 text-slate-600" style={{ background: '#F0F4FF', padding: '6px 0', borderRadius: 10, fontSize: 10, fontWeight: 950, border: '1.5px solid #D0DCFF' }}>هذا الشهر</button>
+              <button 
+                onClick={() => { setLogDateFrom(getLocalToday()); setLogDateTo(getLocalToday()); }} 
+                className="flex-1 active:scale-95 text-white" 
+                style={{ 
+                  background: '#0066FF', 
+                  padding: '6px 0', 
+                  borderRadius: 10, 
+                  fontSize: 10, 
+                  fontWeight: 950,
+                  textShadow: '0 1px 1px rgba(0,0,0,0.15)',
+                  boxShadow: '0 2px 8px rgba(0,102,255,0.2)',
+                  border: 'none'
+                }}
+              >
+                📅 اليوم
+              </button>
+              <button 
+                onClick={() => { const d = new Date(); d.setDate(d.getDate() - 7); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`); setLogDateTo(getLocalToday()); }} 
+                className="flex-1 active:scale-95 text-slate-500" 
+                style={{ 
+                  background: '#F0F4FF', 
+                  padding: '6px 0', 
+                  borderRadius: 10, 
+                  fontSize: 10, 
+                  fontWeight: 950,
+                  border: '1.5px solid #D0DCFF' 
+                }}
+              >
+                آخر أسبوع
+              </button>
+              <button 
+                onClick={() => { const d = new Date(); d.setDate(1); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`); setLogDateTo(getLocalToday()); }} 
+                className="flex-1 active:scale-95 text-slate-500" 
+                style={{ 
+                  background: '#F0F4FF', 
+                  padding: '6px 0', 
+                  borderRadius: 10, 
+                  fontSize: 10, 
+                  fontWeight: 950,
+                  border: '1.5px solid #D0DCFF' 
+                }}
+              >
+                هذا الشهر
+              </button>
             </div>
 
+            {/* السطر الثالث: فلاتر طريقة الدفع المدمجة */}
             <div className="flex gap-1.5">
-              {[{ id: 'all', label: 'الكل', icon: '📊' }, { id: 'cash', label: 'نقدي', icon: '💵' }, { id: 'wallet', label: 'محفظة', icon: '👝' }].map(f => (
-                <button key={f.id} onClick={() => setLogPaymentFilter(f.id)} className={`w-full flex-1 active:scale-95 transition-all text-xs font-black py-2 rounded-xl border-2 ${logPaymentFilter === f.id ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>{f.icon} {f.label}</button>
-              ))}
+              {[
+                { id: 'all', label: 'الكل', icon: '📊' }, 
+                { id: 'cash', label: 'نقدي', icon: '💵' }, 
+                { id: 'wallet', label: 'محفظة', icon: '👝' }
+              ].map(f => {
+                const isActive = logPaymentFilter === f.id;
+                return (
+                  <button 
+                    key={f.id} 
+                    onClick={() => setLogPaymentFilter(f.id)} 
+                    className="flex-1 active:scale-95 transition-all text-xs font-bold py-2 rounded-xl border" 
+                    style={{ 
+                      background: isActive ? '#0066FF' : '#F8FAFF', 
+                      color: isActive ? '#ffffff' : '#64748b', 
+                      borderColor: '#D0DCFF',
+                      boxShadow: isActive ? '0 2px 8px rgba(0,102,255,0.2)' : 'none'
+                    }}
+                  >
+                    {f.icon} {f.label}
+                  </button>
+                );
+              })}
             </div>
+          </div>
+        )}
+        {isValet && (
+          <div className="mb-4 text-center" style={{ background: '#EBF2FF', border: '2px solid #D0DCFF', borderRadius: 18, padding: '10px 16px' }}>
+            <span className="font-black text-xs text-blue-600">📅 {formatLocalDateArabic(getLocalToday())} - عملياتي فقط</span>
+          </div>
+        )}
+
+        {isOwner && selectedValetFilter && (
+          <div className="flex items-center justify-between mb-3" style={{ background: '#EBF2FF', borderRadius: 14, padding: '8px 12px', border: '1.5px solid #D0DCFF' }}>
+            <button onClick={() => setSelectedValetFilter(null)} className="font-bold active:scale-95" style={{ fontSize: 10, color: '#FF3333' }}>✕ إلغاء الفلتر</button>
+            <span className="font-black" style={{ fontSize: 11, color: '#0066FF' }}>🅿️ عمليات: {selectedValetFilter}</span>
           </div>
         )}
 
         {filteredCompleted.length > 0 && (
           <>
+            {/* ⏳ كارت العمليات المعلقة المدمج - نصف الحجم بخطوط غليظة ناصعة */}
             {filteredStats.pendingCount > 0 && (
-              <div className="mb-3 flex items-center justify-between" style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 22, padding: '12px 16px', color: '#fff', boxShadow: '0 4px 14px rgba(255,149,0,0.3)' }}>
-                <div className="text-right"><h3 className="font-black text-xs">⏳ إيرادات معلقة ({filteredStats.pendingCount})</h3><p style={{ fontSize: 9, opacity: 0.8 }}>لم تؤكد بعد</p></div>
-                <div className="font-black font-mono text-xl">{filteredStats.pendingRevenue.toFixed(0)} <span style={{ fontSize: 11 }}>ج.م</span></div>
+              <div 
+                className="mb-3 transition-all" 
+                style={{ 
+                  background: 'linear-gradient(135deg,#FF9500,#FF7700)', 
+                  borderRadius: 16, 
+                  padding: '10px 14px', 
+                  color: '#ffffff', 
+                  boxShadow: '0 4px 14px rgba(255,119,0,0.22)' 
+                }}
+              >
+                <div className="flex justify-between items-center">
+                  <div className="text-right flex-1">
+                    <h3 className="font-black mb-1 flex items-center gap-1 justify-end text-white" style={{ fontSize: 12, fontWeight: 900, textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
+                      ⏳ عمليات معلقة للتأكيد
+                    </h3>
+                    <div className="flex items-center gap-1.5 justify-end">
+                      <span className="font-black text-white" style={{ fontSize: 10, fontWeight: 900, background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: 8 }}>
+                        {filteredStats.pendingCount} عملية
+                      </span>
+                    </div>
+                  </div>
+                  {isOwner && (
+                    <div className="text-left mr-4 shrink-0">
+                      <div className="font-black font-mono leading-none text-white" style={{ fontSize: 20, fontWeight: 950, textShadow: '0 1.5px 3px rgba(0,0,0,0.15)' }}>
+                        {filteredStats.pendingRevenue.toFixed(0)} <span style={{ fontSize: 11, fontWeight: 800 }}>ج.م</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
             {isOwner && (
               <>
-                <div className="mb-3 text-center" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', borderRadius: 22, padding: '14px', color: '#fff', boxShadow: '0 4px 14px rgba(0,204,102,0.3)' }}>
-                  <div style={{ fontSize: 9, opacity: 0.9, marginBottom: 2 }}>{`🟢 إجمالي الإيراد المؤكد (${logDateFrom === logDateTo ? 'اليوم' : `${logDateFrom} ➜ ${logDateTo}`})`}</div>
-                  <div className="font-black font-mono text-2xl mb-1">{filteredStats.total.toFixed(0)} <span style={{ fontSize: 12 }}>ج.م</span></div>
-                  <div style={{ fontSize: 9, opacity: 0.85 }}>{filteredCompleted.filter(s => s.revenueConfirmed).length} عملية مكتملة</div>
+                {/* 🟢 كارت الإيراد المؤكد المدمج للمالك - خط مغلظ فخم ونصف الحجم */}
+                <div 
+                  className="mb-3 text-center transition-all" 
+                  style={{ 
+                    background: 'linear-gradient(135deg,#00CC66,#00AA55)', 
+                    borderRadius: 18, 
+                    padding: '10px 14px', 
+                    color: '#fff',
+                    boxShadow: '0 4px 14px rgba(0,204,102,0.22)'
+                  }}
+                >
+                  <div style={{ fontSize: 9, fontWeight: 900, opacity: 0.9, marginBottom: 2 }}>
+                    {`🟢 إجمالي الإيراد المؤكد (${logDateFrom === logDateTo ? 'اليوم' : `${logDateFrom} ➜ ${logDateTo}`})`}
+                  </div>
+                  <div className="font-black font-mono leading-none my-1" style={{ fontSize: 26, fontWeight: 950, textShadow: '0 1.5px 3px rgba(0,0,0,0.15)' }}>
+                    {filteredStats.total.toFixed(0)} <span style={{ fontSize: 13, fontWeight: 800 }}>ج.م</span>
+                  </div>
+                  <div style={{ fontSize: 9, fontWeight: 900, opacity: 0.85 }}>
+                    {filteredCompleted.filter(s => s.revenueConfirmed).length} عملية مكتملة ومسجلة
+                  </div>
                 </div>
 
                 {filteredStats.totalCommission > 0 && (
-                  <div className="grid grid-cols-2 gap-2 mb-3">
-                    <div className="text-center" style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 16, padding: '10px', color: '#fff', boxShadow: '0 4px 12px rgba(255,149,0,0.22)' }}>
-                      <div className="font-bold text-[10px] opacity-95">عمولة التطبيق</div>
-                      <div className="font-black font-mono text-lg my-1">{filteredStats.totalCommission.toFixed(0)} <span style={{ fontSize: 10 }}>ج</span></div>
+                  <div className="space-y-2 mb-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      {/* 🟠 عمولة التطبيق المدمجة للمالك - نصف الحجم */}
+                      <div 
+                        className="text-center transition-all" 
+                        style={{ 
+                          background: 'linear-gradient(135deg,#FF9500,#FF7700)', 
+                          borderRadius: 16, 
+                          padding: '8px 10px', 
+                          color: '#ffffff',
+                          boxShadow: '0 4px 12px rgba(255,149,0,0.22)'
+                        }}
+                      >
+                        <div className="font-bold mb-0.5" style={{ fontSize: 10, fontWeight: 900, opacity: 0.95, color: '#ffffff' }}>عمولة التطبيق</div>
+                        <div className="font-black font-mono leading-none my-1" style={{ fontSize: 18, fontWeight: 950, color: '#ffffff', textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
+                          {filteredStats.totalCommission.toFixed(0)} <span style={{ fontSize: 10, fontWeight: 800 }}>ج.م</span>
+                        </div>
+                      </div>
+
+                      {/* 🟢 صافي الإيراد المدمج للمالك - نصف الحجم */}
+                      <div 
+                        className="text-center transition-all" 
+                        style={{ 
+                          background: 'linear-gradient(135deg,#00AA55,#008844)', 
+                          borderRadius: 16, 
+                          padding: '8px 10px', 
+                          color: '#ffffff',
+                          boxShadow: '0 4px 12px rgba(0,170,85,0.22)'
+                        }}
+                      >
+                        <div className="font-bold mb-0.5" style={{ fontSize: 10, fontWeight: 900, opacity: 0.95, color: '#ffffff' }}>صافي إيرادك</div>
+                        <div className="font-black font-mono leading-none my-1" style={{ fontSize: 18, fontWeight: 950, color: '#ffffff', textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
+                          {filteredStats.totalNet.toFixed(0)} <span style={{ fontSize: 10, fontWeight: 800 }}>ج.م</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-center" style={{ background: 'linear-gradient(135deg,#00AA55,#008844)', borderRadius: 16, padding: '10px', color: '#fff', boxShadow: '0 4px 12px rgba(0,170,85,0.22)' }}>
-                      <div className="font-bold text-[10px] opacity-95">صافي إيرادك</div>
-                      <div className="font-black font-mono text-lg my-1">{filteredStats.totalNet.toFixed(0)} <span style={{ fontSize: 10 }}>ج</span></div>
-                    </div>
+
+                    {(() => {
+                      const settlement = filteredStats.activeWallet - filteredStats.activeCommission;
+                      const isGarageOwed = settlement > 0;
+                      const absSettlement = Math.abs(settlement).toFixed(0);
+
+                      if (settlement === 0 && filteredStats.activeWallet === 0 && filteredStats.activeCommission === 0) return null;
+
+                      return (
+                        <div 
+                          className="text-center transition-all"
+                          style={{ 
+                            background: settlement === 0 ? '#F0F4FF' : isGarageOwed ? '#EBFDF2' : '#FFF3F3', 
+                            border: `2px solid ${settlement === 0 ? '#D0DCFF' : isGarageOwed ? '#00CC66' : '#FF3333'}`, 
+                            borderRadius: 18, 
+                            padding: '14px 16px',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.02)'
+                          }}
+                        >
+                          <div className="flex justify-between items-center">
+                            <div className="font-black font-mono" style={{ fontSize: 22, color: settlement === 0 ? '#0066FF' : isGarageOwed ? '#00AA44' : '#CC0000' }}>
+                              {absSettlement} ج.م
+                            </div>
+                            <div className="text-right">
+                              <div className="font-black" style={{ fontSize: 14, color: '#0A1628' }}>
+                                {settlement === 0 ? '⚖️ الحساب متزن' : isGarageOwed ? '🟢 مستحق لك طرف التطبيق' : '🔴 مستحق عليك للتطبيق'}
+                              </div>
+                              <div className="font-bold" style={{ fontSize: 10, color: '#7B8CA6', marginTop: 2 }}>
+                                {settlement === 0 ? 'محصل بالمحفظة أكبر من العمولة' : 'العمولة أكبر من رصيد المحفظة'}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 
-                {/* ⚖️ [كارت حساب التسوية اللحظية للمالك] */}
-                {(() => {
-                  const settlement = filteredStats.activeWallet - filteredStats.totalCommission;
-                  const adminOwesGarage = settlement > 0;
-                  const absVal = Math.abs(settlement).toFixed(0);
-
-                  if (settlement === 0 && filteredStats.activeWallet === 0 && filteredStats.totalCommission === 0) return null;
-
-                  return (
+                {/* 📊 كروت يدوي وتطبيق المدمجة - خطوط غليظة ونصف الارتفاع */}
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {[
+                    { label: '✋ يدوي', count: filteredStats.manualCount, total: filteredStats.manualTotal, bg: '#FF9500', shadow: 'rgba(255,149,0,0.22)' },
+                    { label: '📱 تطبيق', count: filteredStats.appCount, total: filteredStats.appTotal, bg: '#0066FF', shadow: 'rgba(0,102,255,0.22)' },
+                  ].map(x => (
                     <div 
-                      className="mb-3 transition-all"
+                      key={x.label} 
+                      className="text-center transition-all" 
                       style={{ 
-                        background: adminOwesGarage ? 'linear-gradient(135deg,#EBFDF2,#D8F5E0)' : 'linear-gradient(135deg,#FFF3F3,#FFE8E8)', 
-                        border: `2px solid ${adminOwesGarage ? '#00CC66' : '#FF3333'}`, 
+                        background: x.bg, 
                         borderRadius: 16, 
-                        padding: '12px 14px',
-                        boxShadow: `0 4px 14px ${adminOwesGarage ? 'rgba(0,204,102,0.12)' : 'rgba(255,51,51,0.12)'}`
+                        padding: '8px 10px', 
+                        color: '#fff',
+                        boxShadow: `0 4px 14px ${x.shadow}`
                       }}
                     >
-                      <div className="flex justify-between items-center mb-1.5">
-                        <div className="font-black font-mono leading-none" style={{ fontSize: 20, fontWeight: 950, color: adminOwesGarage ? '#00AA44' : '#CC0000' }}>
-                          {absVal} <span style={{ fontSize: 10, fontWeight: 800 }}>ج.م</span>
-                        </div>
-                        <div className="text-right">
-                          <span className="font-black text-xs block" style={{ fontWeight: 950, color: '#0A1628' }}>
-                            {adminOwesGarage ? '🟢 مستحق لك طرف التطبيق' : '🔴 مستحق عليك للتطبيق'}
-                          </span>
-                          <span className="font-bold text-[9px] text-slate-500">
-                            {adminOwesGarage ? 'رصيد محفظة محتجز للأدمن' : 'عمولة مستحقة للأدمن'}
-                          </span>
-                        </div>
+                      <div className="font-black" style={{ fontSize: 11, fontWeight: 900, mb: 1 }}>{x.label}</div>
+                      <div className="font-black font-mono leading-none my-1" style={{ fontSize: 16, fontWeight: 950 }}>
+                        {x.count} <span style={{ fontSize: 9 }}>سيارة</span>
                       </div>
-
-                      <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-slate-200/60">
-                        <div className="text-center bg-white rounded-lg p-1 border border-slate-200 flex items-center justify-center gap-1">
-                          <span style={{ fontSize: 8.5, color: '#7B8CA6', fontWeight: 900 }}>👝 المحفظة:</span>
-                          <span className="font-black font-mono text-xs text-blue-600" style={{ fontWeight: 950 }}>{filteredStats.wallet.toFixed(0)}ج</span>
-                        </div>
-                        <div className="text-center bg-white rounded-lg p-1 border border-amber-200 flex items-center justify-center gap-1">
-                          <span style={{ fontSize: 8.5, color: '#FF9500', fontWeight: 900 }}>📊 العمولة:</span>
-                          <span className="font-black font-mono text-xs text-amber-600" style={{ fontWeight: 950 }}>{filteredStats.totalCommission.toFixed(0)}ج</span>
-                        </div>
+                      <div style={{ fontSize: 9, opacity: 0.9 }}>
+                        ({x.total.toFixed(0)} ج)
                       </div>
-                    </div>
-                  );
-                })()}
-
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  {[{ label: '✋ يدوي', count: filteredStats.manualCount, total: filteredStats.manualTotal, bg: '#FF9500', shadow: 'rgba(255,149,0,0.22)' }, { label: '📱 تطبيق', count: filteredStats.appCount, total: filteredStats.appTotal, bg: '#0066FF', shadow: 'rgba(0,102,255,0.22)' }].map(x => (
-                    <div key={x.label} className="text-center" style={{ background: x.bg, borderRadius: 16, padding: '10px', color: '#fff', boxShadow: `0 4px 14px ${x.shadow}` }}>
-                      <div className="font-black text-[11px] mb-1">{x.label}</div>
-                      <div className="font-black font-mono text-base">{x.count} <span style={{ fontSize: 9 }}>سيارة</span></div>
-                      <div style={{ fontSize: 9, opacity: 0.9 }}>({x.total.toFixed(0)} ج)</div>
                     </div>
                   ))}
                 </div>
 
                 {valetReport.length > 0 && (
-                  <div className="mb-3 text-right">
-                    <h4 className="font-black text-xs text-slate-700 mb-2">تقرير أداء السياس</h4>
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-2">
+                      {selectedValetFilter && (
+                        <button 
+                          onClick={() => setSelectedValetFilter(null)} 
+                          className="font-black active:scale-95" 
+                          style={{ fontSize: 9, padding: '3px 9px', borderRadius: 10, background: '#FF3333', color: '#ffffff', fontWeight: 950, textShadow: '0 1px 1px rgba(0,0,0,0.15)' }}
+                        >
+                          ✕ إلغاء الفلتر
+                        </button>
+                      )}
+                      <div className="flex items-center gap-1.5 justify-end flex-1">
+                        <Users size={14} style={{ color: '#0066FF' }} />
+                        <h4 className="font-black" style={{ fontSize: 12, fontWeight: 950, color: '#334155' }}>تقرير السياس</h4>
+                      </div>
+                    </div>
                     <div className="space-y-1.5">
-                      {valetReport.map((v, i) => {
-                        const isSel = selectedValetFilter === v.name;
-                        return (
-                          <div 
-                            key={i} 
-                            onClick={() => setSelectedValetFilter(isSel ? null : v.name)} 
-                            className="cursor-pointer active:scale-[0.99] transition-all" 
-                            style={{ 
-                              background: isSel ? `${v.color}10` : '#fff', 
-                              borderRadius: 14, 
-                              padding: '9px 12px', 
-                              border: `1.5px solid ${isSel ? v.color : `${v.color}30`}` 
-                            }}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="font-black font-mono text-sm" style={{ color: v.color }}>{v.total.toFixed(0)} ج.م</span>
+                      {valetReport.map((v, i) => (
+                        <div 
+                          key={i} 
+                          onClick={() => setSelectedValetFilter(selectedValetFilter === v.name ? null : v.name)} 
+                          className="cursor-pointer active:scale-[0.99] transition-all" 
+                          style={{ 
+                            background: selectedValetFilter === v.name ? `${v.color}10` : '#fff', 
+                            borderRadius: 14, 
+                            padding: '9px 12px', 
+                            border: `1.5px solid ${selectedValetFilter === v.name ? v.color : `${v.color}30`}` 
+                          }}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="font-black font-mono" style={{ fontSize: 14, fontWeight: 950, color: v.color, textShadow: '0 1px 1px rgba(0,0,0,0.05)' }}>
+                              {v.total.toFixed(0)} <span style={{ fontSize: 10, fontWeight: 800 }}>ج.م</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
                               <div className="text-right">
-                                <span className="font-black block text-xs" style={{ color: '#0A1628' }}>{v.name}</span>
-                                <span className="font-bold text-[9px] text-slate-400" style={{ fontWeight: 900 }}>{v.count} سيارة</span>
+                                <div className="font-black" style={{ fontSize: 12, fontWeight: 950, color: '#0A1628' }}>{v.name}</div>
+                                <div className="font-black" style={{ fontSize: 9, color: '#94a3b8', fontWeight: 900 }}>{v.count} سيارة</div>
+                              </div>
+                              <div style={{ width: 30, height: 30, borderRadius: 10, background: v.color, color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 950, fontSize: 12, textShadow: '0 1px 1px rgba(0,0,0,0.2)' }}>
+                                {v.icon}
                               </div>
                             </div>
                           </div>
-                        );
-                      })}
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <div className="text-center flex items-center justify-center gap-1.5" style={{ background: '#EBF2FF', borderRadius: 10, padding: '5px 6px', border: '1px solid #D0DCFF' }}>
+                              <span style={{ fontSize: 10, color: '#0066FF', fontWeight: 950 }}>📱</span>
+                              <span className="font-black font-mono" style={{ fontSize: 12, fontWeight: 950, color: '#0066FF' }}>{v.appCount}</span>
+                              <span style={{ fontSize: 9, color: '#7B8CA6', fontWeight: 900 }}>({v.appTotal.toFixed(0)}ج)</span>
+                            </div>
+                            <div className="text-center flex items-center justify-center gap-1.5" style={{ background: '#FFF8F0', borderRadius: 10, padding: '5px 6px', border: '1px solid #FFD180' }}>
+                              <span style={{ fontSize: 10, color: '#FF9500', fontWeight: 950 }}>✋</span>
+                              <span className="font-black font-mono" style={{ fontSize: 12, fontWeight: 950, color: '#FF9500' }}>{v.manualCount}</span>
+                              <span style={{ fontSize: 9, color: '#7B8CA6', fontWeight: 900 }}>({v.manualTotal.toFixed(0)}ج)</span>
+                            </div>
+                          </div>
+                          {selectedValetFilter === v.name && (
+                            <div className="mt-1.5 text-center">
+                              <span className="font-black" style={{ fontSize: 9, color: v.color, fontWeight: 950 }}>✅ فلتر مفعّل — اضغط للإلغاء</span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
               </>
             )}
+            {/* 📊 بوكس "عملياتي اليوم" - تصميم أفقي مدمج يوفر 50% من المساحة الرأسية */}
+            {isValet && (
+              <div 
+                className="mb-4 flex items-center justify-between" 
+                style={{ 
+                  background: '#ffffff', 
+                  borderRadius: 16, 
+                  padding: '10px 16px', 
+                  border: '1.5px solid #D0DCFF',
+                  boxShadow: '0 2px 8px rgba(0,102,255,0.02)'
+                }}
+              >
+                <div className="flex items-baseline gap-1">
+                  <span className="font-mono font-black text-blue-600" style={{ fontSize: 24, lineHeight: 1 }}>
+                    {filteredCompleted.length}
+                  </span>
+                  <span className="font-bold text-slate-400" style={{ fontSize: 10 }}>عملية مكتملة</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="font-black text-slate-800 text-sm">📊 عملياتي اليوم</span>
+                </div>
+              </div>
+            )}
           </>
         )}
 
-        {/* قائمة السيارات المكتملة الفردية */}
         <div className="space-y-1.5">
           {filteredCompleted.slice(0, 30).map(session => {
             const isM = session.source === 'manual';
@@ -1334,39 +1653,94 @@ export default function GarageDashboard() {
                   opacity: isSettled ? 0.75 : 1,
                 }}
               >
+                {/* السطر العلوي: السعر والشارات على اليسار، رقم اللوحة على اليمين */}
                 <div className="flex justify-between items-center mb-1.5 gap-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {(isOwner || !isC) && (
-                      <span className="font-black" style={{ fontSize: rev === 0 && session.isFirstFreeSession ? 11 : 15, fontWeight: 950, color: isSettled ? '#64748B' : rev === 0 && session.isFirstFreeSession ? '#00AA44' : isM ? '#E65100' : '#0066FF' }}>
+                      <span className="font-black" style={{ fontSize: rev === 0 && session.isFirstFreeSession ? 11 : 15, fontWeight: 950, color: isSettled ? '#64748B' : rev === 0 && session.isFirstFreeSession ? '#00AA44' : isM ? '#E65100' : '#0066FF', textShadow: '0 0.5px 1px rgba(0,0,0,0.05)' }}>
                         {rev === 0 && session.isFirstFreeSession ? (
-                          <span className="flex items-center gap-0.5 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md">🎁 مجانية (0ج)</span>
+                          <span className="flex items-center gap-0.5 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md">
+                            🎁 مجانية (0ج)
+                          </span>
                         ) : (
                           <span className="font-mono">{rev.toFixed(0)} <span style={{ fontSize: 9, fontWeight: 800 }}>ج.م</span></span>
                         )}
                       </span>
                     )}
-                    <span className="font-black text-white px-2 py-0.5 rounded-lg" style={{ fontSize: 9, background: isSettled ? '#94a3b8' : isM ? '#FF9500' : '#0066FF' }}>{isM ? 'يدوي' : 'تطبيق'}</span>
+                    <span 
+                      className="font-black" 
+                      style={{ 
+                        fontSize: 9, 
+                        padding: '2.5px 8px', 
+                        borderRadius: 8, 
+                        background: isSettled ? '#94a3b8' : isM ? '#FF9500' : '#0066FF', 
+                        color: '#ffffff',
+                        fontWeight: 950,
+                        textShadow: '0 1px 1px rgba(0,0,0,0.15)'
+                      }}
+                    >
+                      {isSettled ? '🔒 مقفلة' : isM ? 'يدوي' : 'تطبيق'}
+                    </span>
                     {addedBy && isOwner && (
-                      <span className="font-black cursor-pointer px-2 py-0.5 rounded-lg text-blue-600 border border-blue-200" style={{ fontSize: 9, background: '#F0F4FF' }}>🅿️ {addedBy}</span>
+                      <span 
+                        className="font-black cursor-pointer active:scale-95" 
+                        onClick={() => setSelectedValetFilter(selectedValetFilter === addedBy ? null : addedBy)}
+                        style={{ 
+                          fontSize: 8.5, 
+                          padding: '2px 6px', 
+                          borderRadius: 8, 
+                          background: selectedValetFilter === addedBy ? '#0066FF' : '#EBF2FF', 
+                          color: selectedValetFilter === addedBy ? '#ffffff' : '#0066FF', 
+                          border: '1px solid #D0DCFF',
+                          fontWeight: 900
+                        }}
+                      >
+                        🅿️ {addedBy}
+                      </span>
                     )}
-                    
-                    {/* ⏳ زر "تأكيد الإيراد" المالي المشترك للسايس والمالك */}
                     {!isSettled && !isC ? (
-                      <button onClick={async () => { await confirmRevenue(session.id); await fetchGarageDailyStats(); toast.success('تم تأكيد استلام الإيراد ✅'); }} className="font-black active:scale-95 border-none px-2 py-0.5 rounded-lg text-white" style={{ background: '#FF9500', fontSize: 9, cursor: 'pointer' }}>⏳ تأكيد</button>
+                      <button 
+                        onClick={async () => { await confirmRevenue(session.id); await fetchGarageDailyStats(); toast.success('تأكيد ✅'); }} 
+                        className="active:scale-95" 
+                        style={{ background: '#FF9500', color: '#ffffff', padding: '2.5px 8px', borderRadius: 8, fontSize: 8.5, fontWeight: 950, textShadow: '0 1px 1px rgba(0,0,0,0.15)', border: 'none' }}
+                      >
+                        ⏳ تأكيد
+                      </button>
                     ) : !isSettled ? (
-                      <span className="font-black text-emerald-600" style={{ fontSize: 9 }}>✅ مؤكد</span>
+                      <span className="font-black" style={{ fontSize: 8.5, color: '#00AA44', fontWeight: 950 }}>✅ مؤكد</span>
                     ) : null}
                   </div>
-                  <div className="font-black text-slate-900" style={{ fontSize: 13 }}>🚗 {session.carPlate}</div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="rounded-full" style={{ width: 6, height: 6, background: isSettled ? '#94a3b8' : isM ? '#FF9500' : '#0066FF' }} />
+                    <span className="font-black" style={{ fontSize: 13, fontWeight: 950, color: isSettled ? '#64748B' : '#000000' }}>{session.carPlate}</span>
+                  </div>
                 </div>
 
-                <div className="flex justify-between items-center text-[10px] text-slate-400">
-                  {session.paymentMethod && (
-                    <span className="font-black px-2 py-0.5 rounded-lg text-white" style={{ background: session.paymentMethod === 'cash' ? '#00CC66' : '#0066FF' }}>
-                      {session.paymentMethod === 'cash' ? '💵 نقدي كاش' : '👝 محفظة'}
+                {/* السطر السفلي: طريقة الدفع على اليمين، والوقت على اليسار */}
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-1">
+                    {session.paymentMethod && (
+                      <span 
+                        className="font-black" 
+                        style={{ 
+                          fontSize: 8.5, 
+                          padding: '2px 8px', 
+                          borderRadius: 8, 
+                          color: '#ffffff', 
+                          background: isSettled ? '#94a3b8' : session.paymentMethod === 'cash' ? '#00CC66' : session.paymentMethod === 'instapay' ? '#7C3AED' : session.paymentMethod === 'wallet' ? '#0066FF' : '#FF8800',
+                          fontWeight: 950,
+                          textShadow: '0 1px 1px rgba(0,0,0,0.15)'
+                        }}
+                      >
+                        {session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستاباي' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش'}
+                      </span>
+                    )}
+                  </div>
+                  {time && (
+                    <span className="font-mono font-black" style={{ fontSize: 10.5, fontWeight: 950, color: isSettled ? '#94a3b8' : '#334155' }}>
+                      {time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })} · {time.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}
                     </span>
                   )}
-                  {time && <span className="font-mono">{time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })} · {time.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}</span>}
                 </div>
               </div>
             );
@@ -1374,7 +1748,7 @@ export default function GarageDashboard() {
           {filteredCompleted.length === 0 && (
             <div className="text-center" style={{ background: '#fff', borderRadius: 24, padding: 32, border: '2px solid #D0DCFF' }}>
               <div style={{ fontSize: 36, marginBottom: 12 }}>📭</div>
-              <p className="font-bold" style={{ fontSize: 14, color: '#7B8CA6' }}>لا توجد عمليات مسجلة</p>
+              <p className="font-bold" style={{ fontSize: 14, color: '#7B8CA6' }}>لا توجد عمليات لك اليوم</p>
             </div>
           )}
         </div>
@@ -1398,28 +1772,65 @@ export default function GarageDashboard() {
               transition={{ type: 'spring', damping: 25 }}
               className="w-full max-w-sm bg-white rounded-t-[32px] rounded-b-[20px] p-6 text-right"
               onClick={e => e.stopPropagation()}
+              style={{ boxShadow: '0 -10px 40px rgba(0,0,0,0.15)' }}
             >
               <div className="mx-auto mb-4" style={{ width: 40, height: 4, background: '#D0DCFF', borderRadius: 4 }} />
+              
+              <div className="flex justify-between items-center mb-5 pb-3 border-b border-slate-200">
+                <button onClick={() => setShowSwitcher(false)} className="text-slate-400 hover:text-slate-600 font-black" style={{ fontSize: 22 }}>✕</button>
+                <h3 className="font-black text-slate-800 flex items-center gap-2" style={{ fontSize: 16 }}>
+                  <span>اختر الجراج للإدارة</span>
+                  <Building2 size={18} style={{ color: '#0066FF' }} />
+                </h3>
+              </div>
+
               <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
-                {myGarages.map((g) => (
-                  <button
-                    key={g.id}
-                    onClick={() => {
-                      setCurrentGarageId(g.id);
-                      setShowSwitcher(false);
-                      toast.success(`تم الانتقال لـ ${g.name} ⚡`);
-                      fetchAll();
-                    }}
-                    className="w-full p-4 rounded-2xl text-right transition-all flex justify-between items-center active:scale-[0.98]"
-                    style={{
-                      background: g.id === currentGarageId ? '#F0F4FF' : '#ffffff',
-                      border: `2px solid ${g.id === currentGarageId ? '#0066FF' : '#E2E8F0'}`,
-                    }}
-                  >
-                    <div className="font-black font-mono text-blue-600">{g.availableSpots} شاغر</div>
-                    <div className="font-black text-slate-900">🅿️ {g.name}</div>
-                  </button>
-                ))}
+                {myGarages.map((g) => {
+                  const isActive = g.id === currentGarageId;
+                  return (
+                    <button
+                      key={g.id}
+                      onClick={() => {
+                        setCurrentGarageId(g.id);
+                        setShowSwitcher(false);
+                        toast.success(`تم الانتقال لـ ${g.name} ⚡`);
+                        fetchAll();
+                      }}
+                      className="w-full p-4 rounded-2xl text-right transition-all flex justify-between items-center active:scale-[0.98]"
+                      style={{
+                        background: isActive ? '#F0F4FF' : '#ffffff',
+                        border: `2px solid ${isActive ? '#0066FF' : '#E2E8F0'}`,
+                        boxShadow: isActive ? '0 4px 14px rgba(0,102,255,0.15)' : '0 2px 6px rgba(0,0,0,0.03)'
+                      }}
+                    >
+                      <div className="flex flex-col items-center gap-0.5 font-black font-mono" style={{ color: isActive ? '#0066FF' : '#94a3b8' }}>
+                        <span style={{ fontSize: 20 }}>{g.availableSpots}</span>
+                        <span className="font-bold" style={{ fontSize: 9 }}>شاغر</span>
+                      </div>
+                      <div className="text-right flex-1 mr-3">
+                        <div className="font-black flex items-center gap-1.5 justify-end" style={{ fontSize: 15, color: '#0A1628' }}>
+                          {isActive && <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
+                          <span>🅿️ {g.name}</span>
+                        </div>
+                        <div className="flex items-center gap-1 justify-end mt-1 font-bold text-slate-400" style={{ fontSize: 10 }}>
+                          <span>{g.location}</span>
+                          <MapPin size={10} />
+                        </div>
+                        <div className="flex items-center gap-1.5 justify-end mt-1">
+                          <span className="font-black font-mono" style={{ fontSize: 10, color: '#00AA44' }}>{g.basePrice}ج/س</span>
+                          <span className="text-slate-300">·</span>
+                          <span className="font-black font-mono" style={{ fontSize: 10, color: '#FF9500' }}>{g.capacity} مكان</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 pt-3 text-center" style={{ borderTop: '1px dashed #D0DCFF' }}>
+                <p className="font-bold text-slate-400" style={{ fontSize: 10 }}>
+                  💡 لديك {myGarages.length} جراجات تحت إدارتك
+                </p>
               </div>
             </motion.div>
           </motion.div>
