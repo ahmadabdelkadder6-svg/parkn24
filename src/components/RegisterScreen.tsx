@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Phone, Car, User, CheckCircle2, AlertCircle, ShieldCheck, Loader2 } from 'lucide-react';
-// 🧬 استيراد دالة normalizePlate الموحدة من الـ Store لضمان تطابق البصمة الموحدة في النظام بأكمله
-import { useStore, validatePlate, normalizePlate } from '../store';
+// 🧬 استيراد دالة normalizePlate الموحدة من الـ Store
+import { useStore, normalizePlate } from '../store';
 import toast from 'react-hot-toast';
 
 // ─── دوال تحويل الأرقام العربية إلى إنجليزية تلقائياً ───
@@ -59,24 +59,27 @@ export default function RegisterScreen() {
     return { valid: true, message: '' };
   }, [phone]);
 
-  // ─── 3. [إصلاح البصمة]: التحقق الصارم الموحد مع الـ Store ومنع الحروف الإنجليزية ───
+  // ─── 3. التحقق الصارم الموحد مع بصمة الـ Store ───
   const plateValidation = useMemo(() => {
-    const clean = normalizePlate(carPlate);
-    if (!clean) return { valid: false, message: 'رقم اللوحة مطلوب (حروف وأرقام عربية فقط)' };
+    const raw = carPlate.trim();
+    if (!raw) return { valid: false, message: 'رقم اللوحة مطلوب' };
     
-    // استخدام دالة التحقق المركزية بالستور إن وُجدت، كطبقة فحص إضافية
-    if (typeof validatePlate === 'function') {
-      const res = validatePlate(carPlate);
-      return {
-        valid: res.isValid,
-        message: res.errorMessage || '',
-      };
+    if (/[a-zA-Z]/.test(raw)) {
+      return { valid: false, message: 'يرجى كتابة اللوحة بالحروف والأرقام العربية فقط' };
     }
 
-    // فحص الطول والأمان التلقائي للبصمة الموحدة
-    if (clean.length < 3) {
-      return { valid: false, message: 'رقم اللوحة قصير جداً' };
+    const clean = normalizePlate(raw);
+    if (!clean || clean.length < 3) {
+      return { valid: false, message: 'أدخل رقم اللوحة بشكل صحيح (مثال: س ق ر 123)' };
     }
+    
+    const hasDigits = /\d/.test(clean);
+    const hasArabicLetters = /[\u0600-\u06FF]/.test(clean);
+    
+    if (!hasDigits || !hasArabicLetters) {
+      return { valid: false, message: 'اللوحة يجب أن تحتوي على أرقام وحروف عربية' };
+    }
+
     return { valid: true, message: '' };
   }, [carPlate]);
 
@@ -114,7 +117,7 @@ export default function RegisterScreen() {
       // الحصول على البصمة الصافية والموحدة للوحة لتأمين قاعدة البيانات
       const finalPlate = normalizePlate(carPlate);
 
-      // فحص وسحب بيانات المستخدم أو إنشائه في قاعدة البيانات مع فحص مكافحة الاحتيال
+      // فحص وسحب بيانات المستخدم أو إنشائه في قاعدة البيانات
       await setCurrentUser({
         name: cleanName,
         phone: cleanPhone,
@@ -258,7 +261,7 @@ export default function RegisterScreen() {
           )}
         </div>
 
-        {/* زر التسجيل مع مؤشر التحميل الذكي */}
+        {/* زر التسجيل */}
         <button
           onClick={handleRegister}
           disabled={!isFormValid || loading}
