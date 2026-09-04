@@ -9,6 +9,7 @@ import {
   Clock,
   XCircle,
   Copy,
+  Edit3,
 } from 'lucide-react';
 import { useStore } from '../store';
 import {
@@ -63,7 +64,7 @@ const toMs = (value: any): number => {
 const normalizePlate = (plate?: string): string => {
   if (!plate) return '';
   const arNums = '٠١٢٣٤٥٦٧٨٩';
-  const faNums = '۰۱۲۳۴۵۶۷۸۹';
+  const faNums = '۰۱۲۳۴۵۶۷٨٩';
   const enNums = '0123456789';
   let normalized = plate.trim();
   
@@ -260,7 +261,7 @@ export default function NavigationScreen() {
         pollingIntervalRef.current = null;
       }
       window.removeEventListener('focus', handleFocus);
-      document.removeEventListener('visibilitychange', handleVisibility);
+      document.addEventListener('visibilitychange', handleVisibility);
     };
   }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
 
@@ -437,6 +438,8 @@ export default function NavigationScreen() {
   const minutes = distanceToMinutes(distance);
   const coordsText = `${garage.lat},${garage.lng}`;
 
+  const isWithinGracePeriod = cancelTimeLeft > 0 && canCancel;
+
   /* ─── Handlers ─── */
   const copyCoords = async () => {
     try {
@@ -461,27 +464,67 @@ export default function NavigationScreen() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  // ✕ [إلغاء الحجز نهائياً]: يحذف العربية من شاشة السايس ويرجع للرئيسية
   const handleCancelBooking = async () => {
-    if (!currentUser || !myIncomingCar) return;
+    if (!currentUser) return;
 
-    pushSentRef.current = true;
-    setPushStatus('cancelled');
+    const loading = toast.loading('جاري إلغاء الحجز وتحرير مكان الجراج...');
+    try {
+      pushSentRef.current = true;
+      setPushStatus('cancelled');
 
-    if (pushStatus === 'sent') {
-      await cancelScheduledPush(garage.id, myIncomingCar.carPlate);
+      if (myIncomingCar) {
+        // حذف العربية من شاشة السايس
+        await removeIncomingCar(myIncomingCar.id);
+        // إلغاء أي إشعارات مجدولة على موبايل السايس
+        await cancelScheduledPush(garage.id, myIncomingCar.carPlate);
+      }
+
+      const activeOffer = offers.find(
+        (o) =>
+          o.userId === currentUser.phone &&
+          (o.status === 'pending' || o.status === 'accepted'),
+      );
+      if (activeOffer) cancelOffer(activeOffer.id);
+
+      toast.dismiss(loading);
+      toast.error('تم إلغاء الحجز بنجاح وتحرير مكان الجراج ✕', { duration: 4000 });
+      setSelectedGarageId(null);
+      setScreen('list');
+    } catch (err) {
+      toast.dismiss(loading);
+      toast.error('حدث خطأ أثناء الإلغاء، يرجى المحاولة لاحقاً');
     }
+  };
 
-    const activeOffer = offers.find(
-      (o) =>
-        o.userId === currentUser.phone &&
-        (o.status === 'pending' || o.status === 'accepted'),
-    );
-    if (activeOffer) cancelOffer(activeOffer.id);
+  // ✏️ [تعديل الحجز / تغيير الجراج]: يحذف الحجز الحالي (لتنظيف شاشة السايس القديم) ويعيده للرئيسية ليختار جراجاً آخر بسهولة
+  const handleModifyOrSwitch = async () => {
+    if (!currentUser) return;
 
-    removeIncomingCar(myIncomingCar.id);
-    toast.success('تم إلغاء الحجز');
-    setSelectedGarageId(null);
-    setScreen('list');
+    const loading = toast.loading('جاري الانتقال لتعديل وجهتك...');
+    try {
+      if (myIncomingCar) {
+        // حذف الحجز القديم لمنع تراكم حجوّات وهمية عند السايس القديم
+        await removeIncomingCar(myIncomingCar.id);
+        await cancelScheduledPush(garage.id, myIncomingCar.carPlate);
+      }
+
+      const activeOffer = offers.find(
+        (o) =>
+          o.userId === currentUser.phone &&
+          (o.status === 'pending' || o.status === 'accepted'),
+      );
+      if (activeOffer) cancelOffer(activeOffer.id);
+
+      toast.dismiss(loading);
+      toast.success('تم إلغاء وجهتك السابقة. اختر جراجاً آخر أو أعد الحجز الآن 🔄', { duration: 5000 });
+      setSelectedGarageId(null);
+      setScreen('list'); // العودة للرئيسية ليختار جراج بديل بسهولة وبساطة
+    } catch (err) {
+      toast.dismiss(loading);
+      setSelectedGarageId(null);
+      setScreen('list');
+    }
   };
 
   const handleCarArrived = async () => {
@@ -727,40 +770,45 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* 🔔 مؤشر حالة الـ Push */}
-        {myIncomingCar && (
+        {/* ⏳ العداد التنازلي التوضيحي لفترة الإلغاء الصامت */}
+        {isWithinGracePeriod && myIncomingCar && (
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-center shrink-0">
+            <div className="text-[10px] text-amber-400 font-bold mb-1">⏳ فترة الإلغاء الصامت والتراجع نشطة</div>
+            <div className="text-base font-black text-amber-500 font-mono">
+              00:{String(cancelTimeLeft).padStart(2, '0')}
+            </div>
+            <p className="text-[8.5px] text-amber-400/80 mt-0.5">
+              يمكنك إلغاء الحجز الآن دون رنين أو إزعاج السايس على الإطلاق 🤫
+            </p>
+          </div>
+        )}
+
+        {/* 🔔 مؤشر حالة الـ Push بعد مرور فترة السماح وإرسال التنبيه */}
+        {!isWithinGracePeriod && myIncomingCar && (
           <div
             className={`rounded-xl p-3 flex items-center gap-2 shrink-0 border ${
               pushStatus === 'sent'
                 ? 'bg-emerald-600/10 border-emerald-500/20'
-                : pushStatus === 'cancelled'
-                  ? 'bg-red-600/10 border-red-500/20'
-                  : 'bg-cyan-600/10 border-cyan-500/20'
+                : 'bg-cyan-600/10 border-cyan-500/20'
             }`}
           >
             <span
               className={`w-2 h-2 rounded-full shrink-0 ${
                 pushStatus === 'sent'
                   ? 'bg-emerald-500'
-                  : pushStatus === 'cancelled'
-                    ? 'bg-red-500'
-                    : 'bg-cyan-500 animate-pulse'
+                  : 'bg-cyan-500 animate-pulse'
               }`}
             />
             <span
               className={`text-[10px] font-bold ${
                 pushStatus === 'sent'
                   ? 'text-emerald-400'
-                  : pushStatus === 'cancelled'
-                    ? 'text-red-400'
-                    : 'text-cyan-400'
+                  : 'text-cyan-400'
               }`}
             >
               {pushStatus === 'sent'
                 ? '✅ تم إشعار الجراج بقدومك'
-                : pushStatus === 'cancelled'
-                  ? '❌ تم إلغاء الإشعار'
-                  : `⏳ سيتم إشعار الجراج تلقائياً بعد ${cancelTimeLeft} ثانية`}
+                : '⏳ جاري الاتصال بالسايس...'}
             </span>
           </div>
         )}
@@ -770,7 +818,7 @@ export default function NavigationScreen() {
           <button
             onClick={handleCarArrived}
             disabled={isArrivingRef.current}
-            className="w-full py-4 rounded-2xl active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
+            className="w-full py-3.5 rounded-2xl active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
             style={{
               background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)',
               boxShadow: '0 8px 24px rgba(0,204,102,0.3)',
@@ -778,36 +826,32 @@ export default function NavigationScreen() {
             }}
           >
             <Navigation size={18} color="#ffffff" />
-            <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
+            <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '15px' }}>
               📍 وصلت الجراج وبدء الركن
             </span>
           </button>
         )}
 
-        {/* زر الإلغاء */}
-        {canCancel && myIncomingCar && !myActiveSession && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="shrink-0"
+        {/* ✏️ زر تعديل الحجز أو اختيار جراج آخر */}
+        {!myActiveSession && (
+          <button
+            onClick={handleModifyOrSwitch}
+            className="w-full bg-slate-900 hover:bg-slate-800 text-blue-400 py-3 rounded-xl font-black text-xs active:scale-95 transition-all flex items-center justify-center gap-2 border border-slate-800 shrink-0"
           >
-            <button
-              onClick={handleCancelBooking}
-              className="w-full bg-slate-900 border border-red-500/20 text-red-400 py-3 rounded-xl font-black text-xs active:scale-95 transition-transform flex items-center justify-center gap-2"
-            >
-              <XCircle size={16} />
-              إلغاء الحجز ({cancelTimeLeft}ث)
-            </button>
+            <Edit3 size={14} />
+            تعديل الحجز أو اختيار جراج آخر
+          </button>
+        )}
 
-            <div className="mt-1.5 bg-slate-800 rounded-full h-1 overflow-hidden">
-              <div
-                className="h-full bg-red-500 transition-all duration-1000"
-                style={{
-                  width: `${(cancelTimeLeft / CANCEL_WINDOW_SECONDS) * 100}%`,
-                }}
-              />
-            </div>
-          </motion.div>
+        {/* ✕ زر الإلغاء والرجوع للرئيسية */}
+        {!myActiveSession && myIncomingCar && (
+          <button
+            onClick={handleCancelBooking}
+            className="w-full bg-slate-900 border border-red-500/20 text-red-400 py-3 rounded-xl font-black text-xs active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0"
+          >
+            <XCircle size={16} />
+            إلغاء الحجز والرجوع للرئيسية {isWithinGracePeriod ? `(${cancelTimeLeft}ث)` : ''}
+          </button>
         )}
       </div>
     </motion.div>

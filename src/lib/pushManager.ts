@@ -10,6 +10,12 @@ interface PushPayloadNotification {
   title: string;
   body:  string;
   tag?:  string;
+  icon?: string;
+  badge?: string;
+  vibrate?: number[];
+  requireInteraction?: boolean;
+  silent?: boolean;
+  actions?: Array<{ action: string; title: string; icon?: string }>;
   data?: Record<string, unknown>;
 }
 
@@ -20,6 +26,9 @@ interface SendPushPayload {
   immediate: PushPayloadNotification;
   scheduled: (PushPayloadNotification & { sendAt: string }) | null;
 }
+
+// ⏳ خريطة حفظ مؤقتات الإلغاء (Grace Period Timers)
+const pendingPushTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 // ─── Helper: تحويل VAPID Key ────────────────────────────────────
 const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
@@ -86,6 +95,10 @@ export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration
       scope: '/',
       updateViaCache: 'none',
     });
+
+    if (registration.waiting) {
+      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+    }
 
     await navigator.serviceWorker.ready;
     return registration;
@@ -164,8 +177,8 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
   }
 };
 
-// ─── إرسال تنبيه "سيارة في الطريق" بأعلى أولوية طوارئ ──────────────
-export const sendCarComingPush = async ({
+// ─── إرسال التنبيه الفعلي بعد انتهاء فترة الـ 30 ثانية ───────────
+const executeCarComingPush = async ({
   garageId,
   carPlate,
   estimatedMinutes,
@@ -182,19 +195,30 @@ export const sendCarComingPush = async ({
     const immediateTag = `incoming-${carPlate}`;
     const scheduledTag = `approaching-${carPlate}`;
 
+    // حساب موعد تنبيه الاقتراب (قبل الوصول بدقيقتين)
     const scheduledSendAt = new Date(
       Date.now() + Math.max(1, estimatedMinutes - 2) * 60 * 1000
     ).toISOString();
 
+    const alarmVibrationPattern = [1000, 200, 1000, 200, 1000, 200, 1500, 300, 2000];
+
     const payload: SendPushPayload = {
       garageId,
-      urgency: 'high', // ⚡ أولوية قصوى لإيقاظ الهاتف فوراً
-      ttl: 0,          // ⚡ توصيل فوري دون انتظار في السيرفر
+      urgency: 'high',
+      ttl: 0,
 
       immediate: {
-        title: '🚨 سيارة في الطريق إليك!',
-        body:  `🚗 رقم السيارة: ${carPlate} • استعد للاستقبال!`,
+        title: '🚨 سيارة في الطريق إليك الآن!',
+        body:  `🚗 رقم السيارة: ${carPlate} • استعد للاستقبال فوراً!`,
         tag:   immediateTag,
+        icon:  '/icons/icon-192x192.png',
+        badge: '/icons/badge-72x72.png',
+        vibrate: alarmVibrationPattern,
+        requireInteraction: true,
+        silent: false,
+        actions: [
+          { action: 'open_garage', title: '📂 فتح لوحة الجراج' }
+        ],
         data: {
           type:             'incoming_car',
           carPlate,
@@ -210,9 +234,17 @@ export const sendCarComingPush = async ({
       scheduled:
         estimatedMinutes > 2
           ? {
-              title:  '⏰ سيارة على وشك الوصول!',
-              body:   `🚗 ${carPlate} - باقي أقل من دقيقتين ⏰`,
+              title:  '⏰ سيارة على وشك الوصول للجراج!',
+              body:   `🚗 السيارة ${carPlate} - باقي أقل من دقيقتين للوصول! ⏰`,
               tag:    scheduledTag,
+              icon:   '/icons/icon-192x192.png',
+              badge:  '/icons/badge-72x72.png',
+              vibrate: alarmVibrationPattern,
+              requireInteraction: true,
+              silent: false,
+              actions: [
+                { action: 'open_garage', title: '📂 عرض اللوحة النشطة' }
+              ],
               data: {
                 type:     'approaching_car',
                 carPlate,
@@ -227,21 +259,74 @@ export const sendCarComingPush = async ({
     const result = await supabaseFetch('send-push-notification', payload);
     return result.ok;
   } catch (err) {
-    console.error('❌ خطأ في sendCarComingPush:', err);
+    console.error('❌ خطأ في إرسال التنبيه الفعلي:', err);
     return false;
   }
 };
 
-// ─── إلغاء التنبيه المجدول ──────────────────────────────────────
+// ─── إرسال تنبيه "سيارة في الطريق" بعد مهلة 30 ثانية للإلغاء ────────
+export const sendCarComingPush = async ({
+  garageId,
+  carPlate,
+  estimatedMinutes,
+  customerName,
+  agreedPrice,
+  delaySeconds = 30, // ⏳ تأخير 30 ثانية افتراضياً لإتاحة مهلة التراجع
+}: {
+  garageId:         string;
+  carPlate:         string;
+  estimatedMinutes: number;
+  customerName?:    string;
+  agreedPrice?:     number;
+  delaySeconds?:    number;
+}): Promise<boolean> => {
+  // إلغاء أي مؤقت سابق لنفس اللوحة إن وُجد
+  if (pendingPushTimers.has(carPlate)) {
+    clearTimeout(pendingPushTimers.get(carPlate)!);
+    pendingPushTimers.delete(carPlate);
+  }
+
+  // إذا تم طلب الإرسال المباشر بدون تأخير
+  if (delaySeconds <= 0) {
+    return executeCarComingPush({ garageId, carPlate, estimatedMinutes, customerName, agreedPrice });
+  }
+
+  // 🛡️ بدء عداد الـ 30 ثانية: يتم الإرسال فقط إذا لم يقم العميل بالإلغاء
+  return new Promise((resolve) => {
+    const timer = setTimeout(async () => {
+      pendingPushTimers.delete(carPlate);
+      const success = await executeCarComingPush({
+        garageId,
+        carPlate,
+        estimatedMinutes,
+        customerName,
+        agreedPrice,
+      });
+      resolve(success);
+    }, delaySeconds * 1000);
+
+    pendingPushTimers.set(carPlate, timer);
+  });
+};
+
+// ─── إلغاء التنبيه فوراً عند تراجع العميل أو السايس في الـ 30 ثانية ──
 export const cancelScheduledPush = async (
   garageId: string,
   carPlate: string
 ): Promise<boolean> => {
   try {
+    // 1️⃣ إيقاف مؤقت الـ 30 ثانية المحلي فوراً (فلن يصل الإشعار للسايس نهائياً)
+    if (pendingPushTimers.has(carPlate)) {
+      clearTimeout(pendingPushTimers.get(carPlate)!);
+      pendingPushTimers.delete(carPlate);
+      console.log(`🛑 تم إلغاء إشعار ${carPlate} خلال مهلة الـ 30 ثانية`);
+    }
+
+    // 2️⃣ إلغاء التنبيه المجدول على السيرفر (تنبيه الدقيقتين)
     const result = await supabaseFetch('cancel-scheduled-alert', {
       garageId,
       carPlate,
-      tags:        [`approaching-${carPlate}`],
+      tags:        [`incoming-${carPlate}`, `approaching-${carPlate}`],
       cancelledAt: new Date().toISOString(),
     });
     return result.ok;

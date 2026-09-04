@@ -1,23 +1,23 @@
-// ✅ رقم الـ Version - تم التحديث لـ v8 لإجبار المتصفحات على تحديث السيرفس ووركر فوراً
-const CACHE_NAME    = 'parknow-v8'; 
+// ✅ تم التحديث لـ v9 لإجبار المتصفح على استبدال الكاش والسيرفس ووركر فوراً
+const CACHE_NAME    = 'parknow-v9'; 
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
-// ✅ منع تكرار نفس الإشعار خلال 3 ثوانٍ
+// ✅ منع تكرار نفس الإشعار خلال 2.5 ثانية
 const recentNotifications = new Map();
-const DEDUP_WINDOW_MS     = 3000;
+const DEDUP_WINDOW_MS     = 2500;
 
-// ─── 1. Install ───────────────────────────────────────────────
+// ─── 1. Install (تثبيت وتفعيل فوري) ──────────────────────────
 self.addEventListener('install', (event) => {
-  self.skipWaiting(); // تفعيل فوري بدون انتظار
+  self.skipWaiting(); // تخطي الانتظار والتفعيل الفوري لنسخة v9 المحدثة
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 Service Worker Installed (v8)');
+      console.log('📦 Service Worker Installed & Activated (v9)');
       return cache.addAll(STATIC_ASSETS);
     })
   );
 });
 
-// ─── 2. Activate ──────────────────────────────────────────────
+// ─── 2. Activate (السيطرة الفورية وحذف الكاش القديم) ─────────
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
@@ -35,7 +35,14 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// ─── 3. Fetch ─────────────────────────────────────────────────
+// ─── 3. Message Listener (للتحديث عند الطلب) ──────────────────
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// ─── 4. Fetch (التعامل مع الطلبات والكاش بذكاء) ───────────────
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET')                   return;
   if (event.request.url.startsWith('chrome-extension')) return;
@@ -64,60 +71,60 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// ─── 4. Push (استقبال الإشعار الفوري وإيقاظ الهاتف بنمط رنين قوي) ─────────
+// ─── 5. Push (استقبال الإشعار الفوري وإيقاظ الهاتف بنمط إنذار) ───
 self.addEventListener('push', (event) => {
-  let title     = '🚨 سيارة في الطريق إليك!';
-  let body      = '🚗 تقترب سيارة جديدة من الجراج الآن، استعد!';
+  let title     = '🚨 سيارة في الطريق إليك الآن!';
+  let body      = '🚗 تقترب سيارة جديدة من الجراج، استعد للاستقبال!';
   const icon    = '/icons/icon-192x192.png';
-  const badge   = '/icons/icon-192x192.png';
-  let tag       = 'incoming-alert';
-  let url       = '/';
+  const badge   = '/icons/badge-72x72.png';
+  let tag       = 'valet-urgent-alarm';
+  let url       = '/garage';
   let extraData = {};
 
   try {
     if (event.data) {
       const payload = event.data.json();
-      console.log('📨 Push received in SW:', payload);
+      console.log('📨 Push Payload Received in SW:', payload);
 
-      if (payload.notification) {
-        title = payload.notification.title || title;
-        body  = payload.notification.body  || body;
+      // استخراج البيانات الذكية القادمة من الـ Edge Function
+      const notificationData = payload.immediate || payload.notification || payload;
+
+      if (notificationData.title) title = notificationData.title;
+      if (notificationData.body)  body  = notificationData.body;
+      if (notificationData.tag)   tag   = notificationData.tag;
+
+      if (payload.data || notificationData.data) {
+        extraData = payload.data || notificationData.data;
+        if (extraData.url) url = extraData.url;
+        if (extraData.tag) tag = extraData.tag;
       }
 
-      if (payload.data) {
-        extraData = payload.data;
-        tag       = payload.data.tag || payload.tag || tag;
-        url       = payload.data.url || '/';
-      }
-
-      // دعم Flat Payload
-      if (!payload.notification && !payload.data) {
-        title = payload.title || title;
-        body  = payload.body  || body;
-        tag   = payload.tag   || tag;
-      }
-
-      // استخلاص رقم اللوحة وعرضه بوضوح
+      // تحليل رقم لوحة السيارة لعرضه كعنوان رئيسي صريح لعم حسن (السايس)
       let plate = '';
       if (typeof tag === 'string' && tag.startsWith('incoming-')) {
         plate = tag.replace('incoming-', '');
-      } else if (payload.carPlate || payload.car_plate) {
-        plate = payload.carPlate || payload.car_plate;
-      } else if (payload.data && (payload.data.carPlate || payload.data.car_plate)) {
-        plate = payload.data.carPlate || payload.data.car_plate;
+      } else if (typeof tag === 'string' && tag.startsWith('approaching-')) {
+        plate = tag.replace('approaching-', '');
+      } else if (extraData.carPlate || extraData.car_plate || payload.carPlate) {
+        plate = extraData.carPlate || extraData.car_plate || payload.carPlate;
       }
 
       if (plate) {
-        title = '🚨 سيارة في الطريق إليك!';
-        body  = `🚗 رقم السيارة: ${plate} • استعد للاستقبال!`;
+        if (tag.startsWith('approaching-')) {
+          title = '⏰ سيارة على وشك الوصول للجراج!';
+          body  = `🚗 السيارة ${plate} - باقي أقل من دقيقتين للوصول! ⏰`;
+        } else {
+          title = '🚨 سيارة في الطريق إليك الآن!';
+          body  = `🚗 رقم السيارة: ${plate} • استعد للاستقبال فوراً!`;
+        }
       }
     }
   } catch (err) {
-    console.error('❌ Push parse error:', err);
+    console.error('❌ Push parse error in SW:', err);
   }
 
-  // منع التكرار اللحظي
-  const dedupKey  = tag;
+  // فلترة ومنع تكرار نفس الإشعار اللحظي لعدم استنزاف البطارية
+  const dedupKey  = `${tag}-${title}`;
   const lastShown = recentNotifications.get(dedupKey);
   const now       = Date.now();
 
@@ -127,29 +134,30 @@ self.addEventListener('push', (event) => {
 
   recentNotifications.set(dedupKey, now);
 
+  // تنظيف ذاكرة التكرار المؤقتة تلقائياً
   for (const [k, t] of recentNotifications.entries()) {
     if (now - t > 30000) recentNotifications.delete(k);
   }
 
-  // 🚨 [نمط رنين مكالمة الهاتف العنيف]: اهتزاز متواصل 10 ثوانٍ لإيقاظ السايس في الشارع
+  // 🚨 [رنين واهتزاز مكالمة هاتفية طوارئ 12 ثانية]: تم ضبطه ليتجاوز قفل الشاشة ويهز الهاتف بعنف
   const options = {
     body,
     icon,
     badge,
     vibrate: [
-      1000, 300, 1000, 300, 1000, 300, // الرنة الأولى
-      1000, 300, 1000, 300, 1000, 300, // الرنة الثانية
-      1200, 400, 1200                  // رنة تأكيدية أخيرة
+      1000, 200, 1000, 200, 1000, 200, // رنة قوية أولى
+      1200, 250, 1200, 250, 1200, 250, // رنة قوية ثانية
+      1500, 300, 2000                  // رنة مستمرة أخيرة لإيقاظ الشاشة
     ],
-    requireInteraction: true,           // يظل معروضاً على شاشة القفل ولا يختفي حتى يفتحه السايس
-    tag: 'valet-urgent-alarm',         // تاغ موحد لإيقاظ الشاشة
-    renotify: true,                    // يرن ويهتز حتى لو كان هناك إشعار سابق
+    requireInteraction: true,          // ⚡ إجباري: يمنع الإشعار من الاختفاء التلقائي ويظل عالقاً على شاشة القفل
+    tag: tag || 'valet-urgent-alarm',  // ⚡ تاغ منفصل لكل سيارة لعدم كتم الإشعارات المتتالية
+    renotify: true,                    // ⚡ إجباري: يرن ويهتز حتى لو كان هناك تنبيه سابق مفتوح
     silent: false,
     timestamp: now,
     data: { url, ...extraData },
     actions: [
-      { action: 'open',    title: '🚗 فتح التطبيق فوراً' },
-      { action: 'dismiss', title: '✕ إغلاق'             },
+      { action: 'open',    title: '📂 فتح لوحة الجراج' },
+      { action: 'dismiss', title: '✕ إغلاق التنبيه'   },
     ],
   };
 
@@ -158,7 +166,7 @@ self.addEventListener('push', (event) => {
   );
 });
 
-// ─── 5. Notification Click (فتح لوحة الجراج مباشرة) ──────────
+// ─── 6. Notification Click (فتح الجراج وتنشيط شاشة السايس فورا) ───
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
@@ -169,22 +177,28 @@ self.addEventListener('notificationclick', (event) => {
   const targetUrl = event.notification.data?.url || '/';
 
   event.waitUntil(
-    clients
+    self.clients
       .matchAll({ type: 'window', includeUncontrolled: true })
       .then((clientList) => {
+        // إذا كان التطبيق مفتوحاً في الخلفية، نقوم بتنشيطه وتوجيهه لصفحة الجراج
         for (const client of clientList) {
           if ('focus' in client) {
-            return client.focus();
+            if (client.url.includes(targetUrl)) {
+              return client.focus();
+            } else if ('navigate' in client) {
+              return client.navigate(targetUrl).then((c) => c.focus());
+            }
           }
         }
-        if (clients.openWindow) {
-          return clients.openWindow(targetUrl);
+        // إذا كان التطبيق مغلقاً تماماً، نفتحه في نافذة جديدة مباشرة
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(targetUrl);
         }
       })
   );
 });
 
-// ─── 6. Notification Close ────────────────────────────────────
+// ─── 7. Notification Close ────────────────────────────────────
 self.addEventListener('notificationclose', (event) => {
-  console.log('🔕 تم إغلاق الإشعار:', event.notification.tag);
+  console.log('🔕 تم سحب أو إغلاق التنبيه:', event.notification.tag);
 });
