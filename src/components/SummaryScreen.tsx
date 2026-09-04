@@ -7,7 +7,8 @@ import {
   AlertTriangle,
   Gift,
 } from 'lucide-react';
-import { useStore, pausePolling } from '../store';
+// 🧬 استيراد دالة normalizePlate الموحدة و pausePolling من الـ Store لضمان تطابق البصمة تماماً
+import { useStore, pausePolling, normalizePlate } from '../store';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { calculateFullHours, calculateCost, formatTime } from '../utils/pricing';
 import toast from 'react-hot-toast';
@@ -20,34 +21,6 @@ const toMs = (value: any): number => {
   }
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
-};
-
-// 🧬 [بصمة اللوحة العبقرية]: توحيد شامل ومقاوم للتلاعب بمطابقة تامة مع الـ Store
-const normalizePlate = (plate?: string): string => {
-  if (!plate) return '';
-  
-  let cleaned = plate.trim();
-  
-  // 1. تحويل الأرقام العربية الشرقية والفارسية إلى أرقام إنجليزية موحدة
-  cleaned = cleaned
-    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)));
-  
-  // 2. توحيد الحروف العربية المتشابهة والهمزات
-  const charMap: Record<string, string> = {
-    'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ٱ': 'ا', 'ء': 'ا',
-    'ة': 'ت',
-    'ى': 'ي', 'ئ': 'ي',
-    'ؤ': 'و',
-    'پ': 'ب', 'چ': 'ج', 'ژ': 'ز', 'گ': 'ك', 'ڤ': 'ف',
-    'ک': 'ك', 'ی': 'ي',
-  };
-  cleaned = cleaned.replace(/./g, (char) => charMap[char] || char);
-  
-  // 3. حذف الحروف الإنجليزية والرموز والمسافات (حروف عربية وأرقام فقط)
-  cleaned = cleaned.replace(/[^0-9\u0600-\u06FF]/g, '');
-  
-  return cleaned;
 };
 
 export default function SummaryScreen() {
@@ -147,7 +120,9 @@ export default function SummaryScreen() {
       .subscribe();
 
     realtimeChannelRef.current = channel;
-    pollingRef.current = setInterval(refetch, 4000);
+    
+    // ⚡ [علاج استنزاف البطارية]: Polling هادئ وموفر للطاقة كل 5 ثوانٍ بدلاً من 4 ثوانٍ
+    pollingRef.current = setInterval(refetch, 5000);
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') refetch();
@@ -181,8 +156,9 @@ export default function SummaryScreen() {
 
     autoRedirectedRef.current = true;
 
+    // 🎁 [دعم الفاتورة الصفرية]: قراءة صحيحة لسعر الجلسة المجانية المسترجع دون التحايل بالشرط الحسابي أكبر من صفر
     const price =
-      lastCompletedSession.totalPrice != null && Number(lastCompletedSession.totalPrice) > 0
+      lastCompletedSession.totalPrice != null
         ? Number(lastCompletedSession.totalPrice)
         : 0;
 
@@ -232,11 +208,11 @@ export default function SummaryScreen() {
     return calculateCost(durationSeconds, sessionRate);
   }, [durationSeconds, sessionRate]);
 
+  // 🎁 [دعم الفاتورة الصفرية ترحيبياً]: قراءة السعر من الجلسة المكتملة بدقة
   const rawPrice = useMemo(() => {
     if (
       referenceSession?.status === 'completed' &&
-      referenceSession?.totalPrice != null &&
-      Number(referenceSession.totalPrice) > 0
+      referenceSession?.totalPrice != null
     ) {
       return Number(referenceSession.totalPrice);
     }
@@ -263,8 +239,9 @@ export default function SummaryScreen() {
         .filter((s) => s.status === 'completed' && isMySession(s))
         .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
 
+      // 🎁 [دعم الفاتورة الصفرية ترحيبياً]: قراءة السعر بدقة
       const actualPrice =
-        freshCompleted?.totalPrice != null && Number(freshCompleted.totalPrice) > 0
+        freshCompleted?.totalPrice != null
           ? Number(freshCompleted.totalPrice)
           : price;
       const actualMethod = freshCompleted?.paymentMethod ?? method;

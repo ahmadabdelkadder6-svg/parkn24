@@ -1,32 +1,15 @@
 import { useState, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { X, Copy, ExternalLink, ArrowRight, CheckCircle, Plus, Minus, Phone, Send, Sparkles } from 'lucide-react';
-import { useStore } from '../store';
+import { X, Copy, ExternalLink, ArrowRight, CheckCircle, Plus, Minus, Phone, Send, Sparkles, Loader2 } from 'lucide-react';
+// 🧬 استيراد ثوابت ودوال الـ Store الرسمية لتوحيد منطق الحسابات المالية والبصمة الأمنية
+import { useStore, TOPUP_TIERS, calculateBonus, normalizePlate } from '../store';
 import toast from 'react-hot-toast';
 
 const WALLET_NUMBER = '01229858104';
 const INSTAPAY_USERNAME = 'ahmed.ali858104';
 const INSTAPAY_LINK = `https://ipn.eg/S/${INSTAPAY_USERNAME}/instapay/9fp24n`;
 
-// 🏆 تعريف الشرائح والبونص مباشرة داخل المودال لضمان الظهور 100%
-export const TIERS = [
-  { id: 'bronze',   amount: 100,  bonus: 5,   label: '🥉 برونزي',   popular: false },
-  { id: 'silver',   amount: 300,  bonus: 30,  label: '🥈 فضي',      popular: false },
-  { id: 'gold',     amount: 500,  bonus: 75,  label: '🥇 ذهبي',     popular: true  },
-  { id: 'platinum', amount: 1000, bonus: 200, label: '👑 بلاتيني', popular: false },
-];
-
-export const getBonus = (amount: number): number => {
-  const val = Number(amount);
-  if (isNaN(val) || val < 100) return 0;
-  if (val >= 1000) return 200;
-  if (val >= 500) return 75;
-  if (val >= 300) return 30;
-  if (val >= 100) return 5;
-  return 0;
-};
-
-// 🛡️ توليد كود مرجعي فريد ومستحيل التكرار نهائياً
+// 🛡️ توليد كود مرجعي فريد ومستحيل التكرار
 function generateSecureReference(): string {
   const timestampPart = Date.now().toString(36).toUpperCase().slice(-4);
   const randomPart = Math.floor(1000 + Math.random() * 9000);
@@ -38,26 +21,59 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
 
   const [step, setStep] = useState<'amount' | 'method' | 'transfer' | 'done'>('amount');
   const [amount, setAmount] = useState<number>(100);
+  const [amountInput, setAmountInput] = useState<string>('100'); // ⚡ لدعم سهولة الكتابة والمسح
   const [method, setMethod] = useState<'instapay' | 'cashwallet'>('instapay');
   const [loading, setLoading] = useState(false);
   
-  // 🛡️ تثبيت الكود طوال فترة فتح النافذة لمنع التغيير العشوائي
+  // تثبيت الكود طوال فترة فتح النافذة
   const [transactionId] = useState<string>(() => generateSecureReference());
   const isSubmittingRef = useRef(false);
 
-  // 🎁 حساب البونص التفاعلي
-  const currentBonus = useMemo(() => getBonus(amount), [amount]);
+  // 🎁 حساب البونص التفاعلي باستخدام الدالة الموحدة والمصرحة من الـ Store
+  const currentBonus = useMemo(() => calculateBonus(amount), [amount]);
   const totalReceived = useMemo(() => amount + currentBonus, [amount, currentBonus]);
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text).then(
-      () => toast.success(`تم نسخ ${label}`),
+      () => toast.success(`تم نسخ ${label} 📋`),
       () => toast.error('فشل النسخ')
     );
   };
 
+  // معالجة اختيار الشريحة الجاهزة
+  const handleSelectTier = (tierAmount: number) => {
+    setAmount(tierAmount);
+    setAmountInput(String(tierAmount));
+  };
+
+  // معالجة زيادة/نقصان المبلغ
+  const handleDeltaAmount = (delta: number) => {
+    const next = Math.max(100, amount + delta);
+    setAmount(next);
+    setAmountInput(String(next));
+  };
+
+  // معالجة الكتابة اليدوية بسلاسة
+  const handleInputChange = (val: string) => {
+    setAmountInput(val);
+    const parsed = parseInt(val, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      setAmount(parsed);
+    }
+  };
+
+  const handleInputBlur = () => {
+    const parsed = parseInt(amountInput, 10);
+    if (isNaN(parsed) || parsed < 100) {
+      setAmount(100);
+      setAmountInput('100');
+    } else {
+      setAmount(parsed);
+      setAmountInput(String(parsed));
+    }
+  };
+
   const handleSubmitTopUp = async () => {
-    // 🛡️ حماية من الضغط المزدوج والطلبات المكررة
     if (isSubmittingRef.current || loading) return;
 
     if (!currentUser) {
@@ -82,14 +98,16 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
 
     try {
       const userId = (currentUser as any).id || userPhone;
+      // 🧬 تنظيف وتأمين رقم اللوحة ليتوافق مع قاعدة بيانات المشرف بنسبة 100%
+      const normalizedCarPlate = normalizePlate(currentUser.carPlate);
 
       await addWalletTopUp({
         userId: userId,
         userName: currentUser.name || 'حريف',
         userPhone: userPhone,
-        amount: Math.floor(Number(amount)), // أرقام صحيحة فقط
+        amount: Math.floor(Number(amount)),
         transactionId: transactionId,
-        carPlate: currentUser.carPlate,
+        carPlate: normalizedCarPlate,
         method,
       } as any);
 
@@ -115,7 +133,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end justify-center"
+      className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end justify-center text-right"
       onClick={onClose}
     >
       <motion.div
@@ -127,7 +145,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
         style={{ boxShadow: '0 -10px 40px rgba(0,0,0,0.15)' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* المقبض */}
+        {/* المقبض العلوي */}
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 rounded-full bg-slate-300" />
         </div>
@@ -137,7 +155,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
           {step === 'amount' && (
             <>
               <div className="flex items-center justify-between mb-4">
-                <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+                <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1"><X size={20} /></button>
                 <h2 className="font-black text-slate-900 text-lg">شحن رصيد المحفظة</h2>
                 <div className="w-6" />
               </div>
@@ -148,7 +166,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 <div className="text-3xl font-black font-mono">{currentUser?.wallet || 0} <span className="text-sm">ج.م</span></div>
               </div>
 
-              {/* 🏆 كروت الشرائح الأربعة */}
+              {/* 🏆 كروت الشرائح الأربعة الموحدة المستوردة من الـ Store */}
               <div className="mb-4">
                 <div className="font-black text-slate-600 text-xs mb-2.5 text-right flex items-center justify-end gap-1">
                   <span>اختر إحدى باقات الشحن التوفيرية</span>
@@ -156,13 +174,13 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5">
-                  {TIERS.map((tier) => {
+                  {TOPUP_TIERS.map((tier) => {
                     const isSelected = amount === tier.amount;
                     return (
                       <button
                         key={tier.id}
                         type="button"
-                        onClick={() => setAmount(tier.amount)}
+                        onClick={() => handleSelectTier(tier.amount)}
                         className={`relative p-3.5 rounded-2xl border-2 text-center transition-all active:scale-95 ${
                           isSelected
                             ? 'border-blue-600 bg-blue-50 shadow-md ring-2 ring-blue-500/30'
@@ -185,30 +203,31 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
 
-              {/* عداد إدخال المبلغ */}
+              {/* عداد إدخال المبلغ المحسن والمريح في الكتابة */}
               <div className="mb-4">
                 <div className="font-black text-slate-500 text-xs mb-1.5 text-right">أو حدد مبلغ يدوي:</div>
                 <div className="flex items-center justify-center gap-4 bg-slate-50 p-3 rounded-2xl border border-slate-200">
                   <button
                     type="button"
-                    onClick={() => setAmount((a) => Math.max(100, a - 50))}
-                    className="w-10 h-10 rounded-xl bg-red-100 text-red-600 font-black flex items-center justify-center active:scale-90"
+                    onClick={() => handleDeltaAmount(-50)}
+                    className="w-10 h-10 rounded-xl bg-red-100 text-red-600 font-black flex items-center justify-center active:scale-90 select-none"
                   >
                     <Minus size={18} />
                   </button>
                   <div className="text-center">
                     <input
                       type="number"
-                      value={amount}
-                      onChange={(e) => setAmount(Math.max(100, parseInt(e.target.value) || 100))}
+                      value={amountInput}
+                      onChange={(e) => handleInputChange(e.target.value)}
+                      onBlur={handleInputBlur}
                       className="bg-transparent text-center font-mono font-black text-3xl outline-none w-28 text-slate-900"
                     />
                     <span className="text-xs font-bold text-slate-400 block">جنيه مصري</span>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setAmount((a) => a + 50)}
-                    className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 font-black flex items-center justify-center active:scale-90"
+                    onClick={() => handleDeltaAmount(50)}
+                    className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 font-black flex items-center justify-center active:scale-90 select-none"
                   >
                     <Plus size={18} />
                   </button>
@@ -245,7 +264,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
           {step === 'method' && (
             <>
               <div className="flex items-center justify-between mb-5">
-                <button onClick={() => setStep('amount')} className="text-slate-400 hover:text-slate-600"><ArrowRight size={20} /></button>
+                <button onClick={() => setStep('amount')} className="text-slate-400 hover:text-slate-600 p-1"><ArrowRight size={20} /></button>
                 <h2 className="font-black text-slate-900 text-lg">طريقة التحويل</h2>
                 <div className="w-6" />
               </div>
@@ -294,7 +313,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
           {step === 'transfer' && (
             <>
               <div className="flex items-center justify-between mb-5">
-                <button onClick={() => setStep('method')} className="text-slate-400 hover:text-slate-600"><ArrowRight size={20} /></button>
+                <button onClick={() => setStep('method')} className="text-slate-400 hover:text-slate-600 p-1"><ArrowRight size={20} /></button>
                 <h2 className="font-black text-slate-900 text-lg">
                   {method === 'instapay' ? 'تحويل إنستاباي' : 'تحويل محفظة كاش'}
                 </h2>
@@ -366,7 +385,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                       <button
                         type="button"
                         onClick={() => copyToClipboard(`${INSTAPAY_USERNAME}@instapay`, 'اسم المستخدم')}
-                        className="bg-blue-50 text-blue-600 font-black text-xs px-3 py-1.5 rounded-lg flex items-center gap-1"
+                        className="bg-blue-50 text-blue-600 font-black text-xs px-3 py-1.5 rounded-lg flex items-center gap-1 active:scale-95"
                       >
                         <Copy size={12} /> نسخ
                       </button>
@@ -381,13 +400,13 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                       <button
                         type="button"
                         onClick={() => copyToClipboard(WALLET_NUMBER, 'رقم المحفظة')}
-                        className="bg-amber-100 text-amber-800 font-black text-xs px-4 py-2 rounded-xl flex items-center gap-1.5"
+                        className="bg-amber-100 text-amber-800 font-black text-xs px-4 py-2 rounded-xl flex items-center gap-1.5 active:scale-95"
                       >
                         <Copy size={14} /> نسخ الرقم
                       </button>
                       <a
                         href={`tel:${WALLET_NUMBER}`}
-                        className="bg-slate-200 text-slate-700 font-bold text-xs px-4 py-2 rounded-xl flex items-center gap-1.5"
+                        className="bg-slate-200 text-slate-700 font-bold text-xs px-4 py-2 rounded-xl flex items-center gap-1.5 active:scale-95"
                       >
                         <Phone size={14} /> اتصال
                       </a>
@@ -402,8 +421,17 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 disabled={loading}
                 className="w-full bg-emerald-600 text-white font-black py-4 rounded-2xl text-base shadow-lg shadow-emerald-500/30 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                <Send size={18} />
-                <span>{loading ? 'جاري الإرسال...' : 'تم التحويل، أرسل الطلب الآن ✅'}</span>
+                {loading ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin text-white" />
+                    <span>جاري إرسال الطلب...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send size={18} />
+                    <span>تم التحويل، أرسل الطلب الآن ✅</span>
+                  </>
+                )}
               </button>
             </>
           )}
@@ -417,25 +445,25 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
               
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-5 text-right">
                 <div className="flex justify-between text-xs mb-1.5">
-                  <span className="text-slate-500">المبلغ المشحون:</span>
                   <span className="font-mono font-black text-slate-900">{amount} ج.م</span>
+                  <span className="text-slate-500">المبلغ المشحون:</span>
                 </div>
                 {currentBonus > 0 && (
                   <div className="flex justify-between text-xs mb-1.5 text-emerald-600 font-bold">
-                    <span>البونص الهدية:</span>
                     <span className="font-mono font-black">+{currentBonus} ج.م 🎁</span>
+                    <span>البونص الهدية:</span>
                   </div>
                 )}
                 <div className="flex justify-between text-xs pt-1.5 border-t border-slate-200 font-black">
-                  <span className="text-slate-800">إجمالي الرصيد القادم:</span>
                   <span className="font-mono text-emerald-600 text-sm">{totalReceived} ج.م</span>
+                  <span className="text-slate-800">إجمالي الرصيد القادم:</span>
                 </div>
               </div>
 
               <button
                 type="button"
                 onClick={onClose}
-                className="w-full bg-slate-900 text-white font-black py-3.5 rounded-2xl text-sm"
+                className="w-full bg-slate-900 text-white font-black py-3.5 rounded-2xl text-sm active:scale-95"
               >
                 إغلاق
               </button>

@@ -239,8 +239,8 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-// 🧬 [بصمة اللوحة]: الإبقاء على الحروف العربية وتوحيد المتشابهات والأرقام فقط
-const normalizePlate = (plate?: string): string => {
+// 🧬 [بصمة اللوحة المصدرية الموحدة]: تم تصديرها لتستخدمها كافة الشاشات لضمان التطابق المطلق ومنع التحايل
+export const normalizePlate = (plate?: string): string => {
   if (!plate) return '';
   
   let cleaned = sanitizeInput(plate).trim();
@@ -266,8 +266,11 @@ const normalizePlate = (plate?: string): string => {
   
   return cleaned;
 };
-const samePlate = (a?: string, b?: string) =>
+
+// تصدير دالة المطابقة لتسهيل عمليات الفلترة والمقارنة الآمنة في الكود
+export const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
+
 const getMs = (value?: number) => { if (typeof value === 'number') return value; return 0; };
 
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
@@ -350,7 +353,6 @@ const mapSession = (r: any): ParkingSession => {
     if (diff < 4 * 60 * 60 * 1000) endTime = endTime + diff + 60000;
   }
 
-  // ✅ قراءة صحيحة وآمنة للـ boolean
   const isFree = r.is_first_free_session === true || r.is_first_free_session === 'true' || r.is_first_free_session === 1;
 
   return {
@@ -647,7 +649,6 @@ export const useStore = create<AppState>((set, get) => ({
         console.warn('RPC deduct exception, using direct fallback:', rpcErr);
       }
 
-      // نظام الارتداد المباشر (Fallback)
       try {
         const { data: userData, error: userError } = await supabase
           .from('users')
@@ -1034,7 +1035,7 @@ export const useStore = create<AppState>((set, get) => ({
       const isAppBooking = s.source === 'app';
       const cleanPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
 
-      // 🎁 [تحديد الاستحقاق الحاسم]:
+      // 🎁 [تحديد الاستحقاق الحاسم]
       let eligibleForFree = false;
 
       if (isAppBooking) {
@@ -1042,7 +1043,6 @@ export const useStore = create<AppState>((set, get) => ({
 
         if (isSupabaseConfigured()) {
           try {
-            // 1. هل بصمة اللوحة ركنت مجاناً في جلسة سابقة مكتملة؟
             const { data: plateCheck } = await supabase
               .from('sessions')
               .select('id')
@@ -1055,7 +1055,6 @@ export const useStore = create<AppState>((set, get) => ({
               eligibleForFree = false;
             }
 
-            // 2. هل رقم الهاتف ركن مجاناً في جلسة سابقة مكتملة؟
             if (eligibleForFree && cleanPhone) {
               const { data: phoneCheck } = await supabase
                 .from('sessions')
@@ -1070,7 +1069,6 @@ export const useStore = create<AppState>((set, get) => ({
               }
             }
 
-            // 3. هل العميل مسجل في جدول users بأنه استهلك الهدية؟
             if (eligibleForFree && cleanPhone) {
               const { data: userData } = await supabase
                 .from('users')
@@ -1083,7 +1081,6 @@ export const useStore = create<AppState>((set, get) => ({
               }
             }
 
-            // 4. هل لوحة السيارة مسجلة لأي مستخدم آخر واستهلك الهدية؟
             if (eligibleForFree && normalizedPlate) {
               const { data: userPlateData } = await supabase
                 .from('users')

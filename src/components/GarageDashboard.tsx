@@ -5,7 +5,8 @@ import {
   Minus, Save, MapPin, Edit3, Navigation, Phone, CarFront, FileText,
   CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
 } from 'lucide-react';
-import { useStore, pausePolling } from '../store';
+// 🧬 استيراد دالة normalizePlate الموحدة من الـ Store لضمان تطابق البصمة
+import { useStore, pausePolling, normalizePlate } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
@@ -587,7 +588,8 @@ export default function GarageDashboard() {
   useEffect(() => { return () => { try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }; }, []);
 
   const getSessionRevenue = useCallback((s: any) => {
-    if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
+    // ✅ التعديل المطلوب:
+    if (s.totalPrice != null) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
       const elSeconds = Math.max(0, Math.floor((toMs(s.endTime) - toMs(s.startTime)) / 1000));
       const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
@@ -769,7 +771,7 @@ export default function GarageDashboard() {
           .map(u => {
             const e = sessions.find(s => s.id === u.sessionId);
             if (!e) { 
-              const n = sessions.find(s => s.carPlate === u.carPlate && s.source === 'manual' && s.status === 'active' && Math.abs(toMs(s.startTime) - u.addedAt) < 5000); 
+              const n = sessions.find(s => normalizePlate(s.carPlate) === normalizePlate(u.carPlate) && s.source === 'manual' && s.status === 'active' && Math.abs(toMs(s.startTime) - u.addedAt) < 5000); 
               if (n) return { ...u, sessionId: n.id }; 
             }
             return u;
@@ -785,8 +787,8 @@ export default function GarageDashboard() {
   // 🚀 [تطبيق البحث برقم اللوحة]
   const filteredActiveSessions = useMemo(() => {
     if (!searchQuery.trim()) return valetActiveSessions;
-    const q = searchQuery.trim().toLowerCase();
-    return valetActiveSessions.filter(s => s.carPlate.toLowerCase().includes(q));
+    const q = normalizePlate(searchQuery);
+    return valetActiveSessions.filter(s => normalizePlate(s.carPlate).includes(q));
   }, [valetActiveSessions, searchQuery]);
 
   if (!garage) {
@@ -826,7 +828,8 @@ export default function GarageDashboard() {
 
   const handleAddCar = async () => {
     if (!newCarPlate.trim()) { toast.error('أدخل رقم السيارة'); return; }
-    const cp = newCarPlate.trim(); const pr = newCarPrice; const at = Date.now();
+    const cp = normalizePlate(newCarPlate); 
+    const pr = newCarPrice; const at = Date.now();
     const sid = await addSession({ garageId: garage.id, carPlate: cp, startTime: at, status: 'active', source: 'manual', agreedPrice: pr, addedBy: isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '' } as any);
     const fid = sid || `fallback-${at}`;
     setUndoableSessions(p => [...p, { sessionId: fid, localId: fid, carPlate: cp, price: pr, addedAt: at }]);
@@ -890,10 +893,10 @@ export default function GarageDashboard() {
     processedCarsRef.current.add(carId);
     pausePolling(10000);
     try {
-      const np = carPlate.trim().toUpperCase();
-      const existing = useStore.getState().sessions.find(s => s.carPlate.trim().toUpperCase() === np && s.status === 'active');
+      const np = normalizePlate(carPlate);
+      const existing = useStore.getState().sessions.find(s => normalizePlate(s.carPlate) === np && s.status === 'active');
       if (existing) { await removeIncomingCar(carId); toast('الجلسة شغالة ✅', { icon: '🚗' }); return; }
-      const ro = offers.find(o => o.carPlate.trim().toUpperCase() === np && (o.status === 'pending' || o.status === 'accepted'));
+      const ro = offers.find(o => normalizePlate(o.carPlate) === np && (o.status === 'pending' || o.status === 'accepted'));
       if (ro) cancelOffer(ro.id);
       await addSession({ garageId: garage.id, carPlate: np, startTime: Date.now(), status: 'active', source: 'app', agreedPrice: car.agreedPrice, customerPhone: car.customerPhone, customerName: car.customerName, startedBy: 'garage', incomingCarId: carId, addedBy: isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '' } as any);
       await removeIncomingCar(carId);
@@ -996,9 +999,9 @@ export default function GarageDashboard() {
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🅿️ إدارة السياس</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
                 {[
-                  { n: 1, name: editValet1Name, setName: setEditValet1Name, pass: editValet1Pass, setPass: setEditValet1Pass, color: '#0066FF', active: (garage as any).valet1Active, activeKey: 'valet1Active' as const },
-                  { n: 2, name: editValet2Name, setName: setEditValet2Name, pass: editValet2Pass, setPass: setEditValet2Pass, color: '#7C3AED', active: (garage as any).valet2Active, activeKey: 'valet2Active' as const },
-                  { n: 3, name: editValet3Name, setName: setEditValet3Name, pass: editValet3Pass, setPass: setEditValet3Pass, color: '#FF8800', active: (garage as any).valet3Active, activeKey: 'valet3Active' as const },
+                  { n: 1, name: editValet1Name, setName: setEditValet1Name, pass: editValet1Pass, setPass: setGValet1Pass, color: '#0066FF', active: (garage as any).valet1Active, activeKey: 'valet1Active' as const },
+                  { n: 2, name: editValet2Name, setName: setEditValet2Name, pass: editValet2Pass, setPass: setGValet2Pass, color: '#7C3AED', active: (garage as any).valet2Active, activeKey: 'valet2Active' as const },
+                  { n: 3, name: editValet3Name, setName: setEditValet3Name, pass: editValet3Pass, setPass: setGValet3Pass, color: '#FF8800', active: (garage as any).valet3Active, activeKey: 'valet3Active' as const },
                 ].map((v, i) => (
                   <div key={i} className={i < 2 ? 'mb-4 pb-4' : ''} style={i < 2 ? { borderBottom: '1px solid #D0DCFF' } : {}}>
                     <div className="flex items-center justify-between mb-2">

@@ -59,15 +59,24 @@ const toMs = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-/* ─── Helper: تنظيف وتوحيد رقم اللوحة ─── */
+/* ─── 🚀 Helper: دالة توحيد اللوحة الصارمة لحظر التحايل ومطابقة البصمة ─── */
 const normalizePlate = (plate?: string): string => {
   if (!plate) return '';
-  return plate
-    .trim()
-    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
-    .replace(/[^A-Z0-9\u0600-\u06FF]/gi, '')
-    .toUpperCase();
+  const arNums = '٠١٢٣٤٥٦٧٨٩';
+  const faNums = '۰۱۲۳۴۵۶۷۸۹';
+  const enNums = '0123456789';
+  let normalized = plate.trim();
+  
+  // تحويل الأرقام العربية والفارسية إلى أرقام إنجليزية (0-9)
+  for (let i = 0; i < 10; i++) {
+    normalized = normalized.replace(new RegExp(arNums[i], 'g'), enNums[i]);
+    normalized = normalized.replace(new RegExp(faNums[i], 'g'), enNums[i]);
+  }
+  
+  // الإبقاء فقط على الحروف العربية والأرقام وحظر الحروف الإنجليزية والرموز تماماً
+  return normalized
+    .replace(/[^0-9\u0600-\u06FF]/g, '')
+    .replace(/[a-zA-Z]/g, '');
 };
 
 /* ─── Map controller ─── */
@@ -163,7 +172,6 @@ export default function NavigationScreen() {
   const navigatedToSessionRef = useRef(false);
   const isArrivingRef = useRef(false);
   const pushSentRef = useRef(false);
-  const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const realtimeChannelRef = useRef<any>(null);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -232,7 +240,9 @@ export default function NavigationScreen() {
       .subscribe();
 
     realtimeChannelRef.current = channel;
-    pollingIntervalRef.current = setInterval(fastFetch, 1500);
+
+    // ⚡ [حل استنزاف البطارية]: Polling هادئ وموفر للطاقة كل 5 ثوانٍ بدلاً من 1.5 ثانية
+    pollingIntervalRef.current = setInterval(fastFetch, 5000);
 
     const handleFocus = () => fastFetch();
     const handleVisibility = () => {
@@ -278,34 +288,41 @@ export default function NavigationScreen() {
     return () => clearTimeout(t);
   }, []);
 
-  /* ─── مؤقت الإلغاء (30 ثانية بالتمام) ─── */
+  // ⏰ [تحديد التوقيت المطلق للحجز]: لتلافي تجمد المتصفح عند قفل الشاشة
+  const bookingTime = useMemo(() => {
+    if (!myIncomingCar) return 0;
+    return toMs(myIncomingCar.startTime || myIncomingCar.created_at) || screenEnteredRef.current;
+  }, [myIncomingCar]);
+
+  /* ─── مؤقت الإلغاء المطلق (30 ثانية) ─── */
   useEffect(() => {
-    if (!myIncomingCar) {
+    if (!myIncomingCar || !bookingTime) {
       setCancelTimeLeft(CANCEL_WINDOW_SECONDS);
       setCanCancel(true);
       return;
     }
 
-    screenEnteredRef.current = Date.now();
     setCancelTimeLeft(CANCEL_WINDOW_SECONDS);
     setCanCancel(true);
 
-    const interval = window.setInterval(() => {
-      const elapsed = Math.floor((Date.now() - screenEnteredRef.current) / 1000);
+    const updateTimer = () => {
+      const elapsed = Math.floor((Date.now() - bookingTime) / 1000);
       const left = Math.max(0, CANCEL_WINDOW_SECONDS - elapsed);
       setCancelTimeLeft(left);
       if (left <= 0) {
         setCanCancel(false);
-        window.clearInterval(interval);
       }
-    }, 1000);
+    };
+
+    updateTimer();
+    const interval = window.setInterval(updateTimer, 1000);
 
     return () => window.clearInterval(interval);
-  }, [myIncomingCar?.id]);
+  }, [myIncomingCar?.id, bookingTime]);
 
-  /* ─── إرسال Push للجراج فور انتهاء الـ 30 ثانية ─── */
+  /* ─── إرسال Push للجراج بالاعتماد التام على طابع الزمن المطلق ─── */
   useEffect(() => {
-    if (!myIncomingCar || !garage) return;
+    if (!myIncomingCar || !garage || !bookingTime) return;
 
     if (lastCarIdRef.current !== myIncomingCar.id) {
       pushSentRef.current = false;
@@ -318,53 +335,58 @@ export default function NavigationScreen() {
       return;
     }
 
-    if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
+    const checkAndSendPush = async () => {
+      if (pushSentRef.current) return;
 
-    const elapsed = Math.floor((Date.now() - screenEnteredRef.current) / 1000);
-    const msLeft = Math.max(0, (CANCEL_WINDOW_SECONDS - elapsed) * 1000);
-
-    pushTimerRef.current = setTimeout(async () => {
-      const freshState = useStore.getState();
-      const stillComing = freshState.incomingCars.find(
-        (c) => c.id === myIncomingCar.id && c.status === 'coming',
-      );
-
-      if (!stillComing || pushSentRef.current) {
-        setPushStatus('cancelled');
-        return;
-      }
-
-      try {
-        pushSentRef.current = true;
-        const dist = calculateDistance(
-          userPosRef.current.lat, userPosRef.current.lng,
-          garage.lat, garage.lng,
+      const elapsedMs = Date.now() - bookingTime;
+      
+      // إذا تجاوز الوقت المطلق مهلة الـ 30 ثانية بالتمام والكمال
+      if (elapsedMs >= CANCEL_WINDOW_SECONDS * 1000) {
+        const freshState = useStore.getState();
+        const stillComing = freshState.incomingCars.find(
+          (c) => c.id === myIncomingCar.id && c.status === 'coming',
         );
-        const estimatedMinutes = distanceToMinutes(dist);
 
-        await sendCarComingPush({
-          garageId: garage.id,
-          carPlate: myIncomingCar.carPlate,
-          estimatedMinutes: Math.max(1, estimatedMinutes),
-          customerName: currentUserRef.current?.name,
-          agreedPrice: myIncomingCar.agreedPrice,
-        });
+        if (!stillComing) {
+          setPushStatus('cancelled');
+          return;
+        }
 
-        setPushStatus('sent');
-      } catch (err) {
-        console.error('❌ Push error:', err);
-        pushSentRef.current = false;
-        setPushStatus('waiting');
-      }
-    }, msLeft);
+        try {
+          pushSentRef.current = true;
+          const dist = calculateDistance(
+            userPosRef.current.lat, userPosRef.current.lng,
+            garage.lat, garage.lng,
+          );
+          const estimatedMinutes = distanceToMinutes(dist);
 
-    return () => {
-      if (pushTimerRef.current) {
-        clearTimeout(pushTimerRef.current);
-        pushTimerRef.current = null;
+          await sendCarComingPush({
+            garageId: garage.id,
+            carPlate: myIncomingCar.carPlate,
+            estimatedMinutes: Math.max(1, estimatedMinutes),
+            customerName: currentUserRef.current?.name,
+            agreedPrice: myIncomingCar.agreedPrice,
+          });
+
+          setPushStatus('sent');
+        } catch (err) {
+          console.error('❌ Push error:', err);
+          pushSentRef.current = false;
+          setPushStatus('waiting');
+        }
       }
     };
-  }, [myIncomingCar?.id, selectedGarageId]);
+
+    // فحص فوري وسريع (مفيد جداً عند استيقاظ الهاتف فوراً)
+    checkAndSendPush();
+
+    // فحص دوري بمقارنة مطلقة لتجنب تجمد الـ Background في iOS / Android
+    const interval = window.setInterval(checkAndSendPush, 1000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [myIncomingCar?.id, selectedGarageId, bookingTime, garage]);
 
   /* ─── الانتقال اللحظي الفوري لشاشة العداد ─── */
   useEffect(() => {
@@ -442,10 +464,6 @@ export default function NavigationScreen() {
   const handleCancelBooking = async () => {
     if (!currentUser || !myIncomingCar) return;
 
-    if (pushTimerRef.current) {
-      clearTimeout(pushTimerRef.current);
-      pushTimerRef.current = null;
-    }
     pushSentRef.current = true;
     setPushStatus('cancelled');
 

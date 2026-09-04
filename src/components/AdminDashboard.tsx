@@ -48,6 +48,24 @@ const getLocalDaysAgo = (days: number): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+/* ─── 🧬 دالة توحيد بصمة اللوحة الصارمة (بدون حروف إنجليزية) ─── */
+const normalizePlate = (plate?: string): string => {
+  if (!plate) return '';
+  const arNums = '٠١٢٣٤٥٦٧٨٩';
+  const faNums = '۰۱۲۳۴۵۶۷۸۹';
+  const enNums = '0123456789';
+  let normalized = plate.trim();
+  
+  for (let i = 0; i < 10; i++) {
+    normalized = normalized.replace(new RegExp(arNums[i], 'g'), enNums[i]);
+    normalized = normalized.replace(new RegExp(faNums[i], 'g'), enNums[i]);
+  }
+  
+  return normalized
+    .replace(/[^0-9\u0600-\u06FF]/g, '')
+    .replace(/[a-zA-Z]/g, '');
+};
+
 interface SettlementRecord {
   id: string;
   garage_id: string;
@@ -65,7 +83,7 @@ interface SettlementRecord {
 
 export default function AdminDashboard() {
   const {
-    garages, sessions, walletTopUps, rejectTopUp, addGarage,
+    garages, sessions, walletTopUps, rejectTopUp, approveTopUp, addGarage,
     setCurrentGarageId, setView, logout, messages, replyMessage, closeMessage,
     confirmRevenue, unconfirmRevenue, removeSession, updateGarage, fetchAll,
   } = useStore();
@@ -122,9 +140,9 @@ export default function AdminDashboard() {
 
   useEffect(() => { fetchSettlements(); }, [fetchSettlements]);
 
-  // 🎁 [منطق الهدية]: حساب الإيرادات الفعلية مع مراعاة خصم الساعة الترحيبية
+  // 🎁 [تصحيح الفاتورة الصفرية]: قراءة السعر بدقة حتى لو كان 0 ج.م (مجاني ترحيبي)
   const getRevenue = useCallback((s: any) => {
-    if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
+    if (s.totalPrice != null) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
       const st = toMs(s.startTime);
       const en = toMs(s.endTime);
@@ -246,7 +264,8 @@ export default function AdminDashboard() {
   const pendingTopUps = walletTopUps.filter(w => w.status === 'pending');
 
   const displayedRevenueSessions = useMemo(() => {
-    const searchTerm = sessionSearch.trim().toUpperCase();
+    // 🧬 استخدام البصمة الموحدة في البحث
+    const searchTerm = normalizePlate(sessionSearch) || sessionSearch.trim().toUpperCase();
 
     let f = searchTerm ? completedSessions : filteredSessions;
 
@@ -254,7 +273,11 @@ export default function AdminDashboard() {
     else if (revenueFilter === 'pending') f = f.filter(s => !s.revenueConfirmed);
 
     if (searchTerm) {
-      f = f.filter(s => (s.carPlate ?? '').toUpperCase().includes(searchTerm));
+      f = f.filter(s => {
+        const normalized = normalizePlate(s.carPlate);
+        const upper = (s.carPlate ?? '').toUpperCase();
+        return normalized.includes(searchTerm) || upper.includes(searchTerm);
+      });
     }
 
     const sorted = [...f].sort((a, b) => {
@@ -310,124 +333,16 @@ export default function AdminDashboard() {
     setView('garage');
   };
 
-  // 🛡️ [الاعتماد القديم المضمون]: بدون RPC - يعمل مباشرة عبر تحديث الجداول
+  // 🛡️ [شحن المحفظة الذري والمشفر]: استدعاء دالة approveTopUp المركزية من الـ Store مباشرة
   const handleApproveTopUp = async (id: string, amount: number) => {
     if (processingTopUpId) return;
     setProcessingTopUpId(id);
     const loadingToast = toast.loading('جاري اعتماد الرصيد في المحفظة...');
 
     try {
-      const topUp = walletTopUps.find((w) => w.id === id);
-      if (!topUp) {
-        toast.dismiss(loadingToast);
-        toast.error('طلب الشحن غير موجود');
-        return;
-      }
-
-      // 1. جلب طلب الشحن من قاعدة البيانات
-      let dbRow: any = null;
-      if (topUp.transactionId) {
-        const { data } = await supabase
-          .from('wallet_topups')
-          .select('*')
-          .eq('transaction_id', topUp.transactionId)
-          .maybeSingle();
-        if (data) dbRow = data;
-      }
-      if (!dbRow) {
-        const { data } = await supabase
-          .from('wallet_topups')
-          .select('*')
-          .eq('id', id)
-          .maybeSingle();
-        if (data) dbRow = data;
-      }
-      if (!dbRow) {
-        toast.dismiss(loadingToast);
-        toast.error('طلب الشحن غير موجود في قاعدة البيانات');
-        return;
-      }
-
-      // منع الاعتماد المزدوج
-      if (dbRow.status === 'approved') {
-        toast.dismiss(loadingToast);
-        toast('تم اعتماد هذا الطلب مسبقاً', { icon: 'ℹ️' });
-        await fetchAll();
-        return;
-      }
-
-      // 2. تحديث حالة الطلب إلى approved
-      const supabaseId = dbRow.id;
-      const { error: approveError } = await supabase
-        .from('wallet_topups')
-        .update({ status: 'approved' })
-        .eq('id', supabaseId);
-
-      if (approveError) {
-        toast.dismiss(loadingToast);
-        console.error('Failed to approve:', approveError);
-        toast.error('فشل تحديث حالة الطلب');
-        return;
-      }
-
-      // 3. جلب بيانات المستخدم
-      const realUserPhone = dbRow.user_phone || topUp.userPhone || '';
-      let userData: any = null;
-      if (realUserPhone) {
-        const { data } = await supabase
-          .from('users')
-          .select('*')
-          .eq('phone', realUserPhone)
-          .maybeSingle();
-        if (data) userData = data;
-      }
-      if (!userData) {
-        toast.dismiss(loadingToast);
-        toast.error('حساب المستخدم غير موجود');
-        return;
-      }
-
-      // 4. حساب البونص
-      const baseAmount = Number(dbRow.amount || topUp.amount || 0);
-      let bonusAmount = 0;
-      if (baseAmount >= 1000) bonusAmount = 200;
-      else if (baseAmount >= 500) bonusAmount = 75;
-      else if (baseAmount >= 300) bonusAmount = 30;
-      else if (baseAmount >= 100) bonusAmount = 5;
-
-      const totalToAdd = baseAmount + bonusAmount;
-      const newWallet = Number(userData.wallet || 0) + totalToAdd;
-
-      // 5. تحديث رصيد المحفظة في جدول المستخدمين
-      const { error: walletError } = await supabase
-        .from('users')
-        .update({ wallet: newWallet })
-        .eq('id', userData.id);
-
-      if (walletError) {
-        toast.dismiss(loadingToast);
-        console.error('Failed to update wallet:', walletError);
-        toast.error('فشل تحديث رصيد المحفظة');
-        return;
-      }
-
-      // 6. تحديث حقل البونص في طلب الشحن (اختياري)
-      if (bonusAmount > 0) {
-        await supabase
-          .from('wallet_topups')
-          .update({ bonus_amount: bonusAmount })
-          .eq('id', supabaseId);
-      }
-
+      await approveTopUp(id);
       toast.dismiss(loadingToast);
-      toast.success(
-        bonusAmount > 0 
-          ? `✅ تم اعتماد ${amount} ج.م + ${bonusAmount} ج.م بونص = ${totalToAdd} ج.م` 
-          : `تم اعتماد شحن ${amount} ج.م بنجاح ✅`,
-        { duration: 5000 }
-      );
-
-      await fetchAll();
+      toast.success(`تم اعتماد شحن ${amount} ج.م بنجاح ✅`, { duration: 5000 });
     } catch (error: any) {
       toast.dismiss(loadingToast);
       console.error("Top-up approval failed:", error);
@@ -1548,7 +1463,7 @@ export default function AdminDashboard() {
                       borderRadius: 12, 
                       fontSize: 12, 
                       fontWeight: 950,
-                      boxShadow: '0 4px 14 rgba(0,102,255,0.28)',
+                      boxShadow: '0 4px 14px rgba(0,102,255,0.28)',
                       textShadow: '0 1px 2px rgba(0,0,0,0.15)'
                     }}
                   >
@@ -1618,7 +1533,6 @@ export default function AdminDashboard() {
             <button type="button" onClick={() => { if ('geolocation' in navigator) navigator.geolocation.getCurrentPosition(p => { setLat(p.coords.latitude); setLng(p.coords.longitude); toast.success('تم'); }, () => toast.error('تعذر')); }} className="font-black active:scale-95 mt-3"
               style={{ background: '#0066FF', color: '#fff', padding: '10px 20px', borderRadius: 16, fontSize: 12, boxShadow: '0 4px 16px rgba(0,102,255,0.3)' }}>📍 موقعي الحالي</button>
           </div>
-
           <button onClick={handleAddGarage} className="w-full font-black active:scale-95 transition-all"
             style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', color: '#fff', padding: 20, borderRadius: 22, fontSize: 16, boxShadow: '0 8px 32px rgba(0,102,255,0.35)' }}>
             حفظ الجراج

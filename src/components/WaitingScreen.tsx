@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion';
 import { Clock, ArrowRight, AlertCircle } from 'lucide-react';
-import { useStore } from '../store';
-import { useEffect, useState, useRef } from 'react';
+// 🧬 استيراد دالة normalizePlate الموحدة من الـ Store لضمان تطابق البصمة
+import { useStore, normalizePlate } from '../store';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import toast from 'react-hot-toast';
 
 export default function WaitingScreen() {
@@ -19,15 +20,21 @@ export default function WaitingScreen() {
 
   const garage = garages.find((g) => g.id === selectedGarageId);
 
-  const latestOffer = offers
-    .filter(
-      (o) =>
-        o.garageId === selectedGarageId &&
-        o.userId === currentUser?.phone
-    )
-    .slice(-1)[0];
+  const userPlate = useMemo(() => normalizePlate(currentUser?.carPlate), [currentUser?.carPlate]);
+  const userPhone = useMemo(() => currentUser?.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '', [currentUser?.phone]);
 
-  // ✅ حساب الحالة من العرض مباشرة (بدل state منفصل)
+  const latestOffer = useMemo(() => {
+    if (!userPhone) return undefined;
+    return offers
+      .filter(
+        (o) =>
+          o.garageId === selectedGarageId &&
+          (o.userId === userPhone || o.userId === currentUser?.phone)
+      )
+      .slice(-1)[0];
+  }, [offers, selectedGarageId, userPhone, currentUser?.phone]);
+
+  // ✅ حساب الحالة من العرض مباشرة
   const offerStatus = latestOffer?.status;
 
   const [status, setStatus] = useState<'waiting' | 'accepted' | 'rejected'>(
@@ -41,10 +48,16 @@ export default function WaitingScreen() {
   // ✅ منع تكرار addIncomingCar
   const incomingCarAddedRef = useRef(false);
 
-  // ✅ مراقبة الجلسة النشطة
-  const myActiveSession = sessions.find(
-    (s) => s.carPlate === currentUser?.carPlate && s.status === 'active'
-  );
+  // ✅ مراقبة الجلسة النشطة بالبصمة الموحدة
+  const myActiveSession = useMemo(() => {
+    if (!userPlate && !userPhone) return undefined;
+    return sessions.find(
+      (s) =>
+        s.status === 'active' &&
+        ((userPlate && normalizePlate(s.carPlate) === userPlate) ||
+         (userPhone && ((s as any).customerPhone || '').replace(/[^\d+]/g, '') === userPhone))
+    );
+  }, [sessions, userPlate, userPhone]);
 
   useEffect(() => {
     if (myActiveSession) {
@@ -62,9 +75,9 @@ export default function WaitingScreen() {
       setStatus('rejected');
       toast.error('تم رفض العرض');
     }
-  }, [offerStatus]);
+  }, [offerStatus, status]);
 
-  // ✅ محاكاة رد الجراج بعد 5 ثواني (للعرض التجريبي فقط)
+  // ✅ محاكاة رد الجراج بعد 5 ثواني (في حال عدم الرد)
   useEffect(() => {
     if (
       status === 'waiting' &&
@@ -79,7 +92,7 @@ export default function WaitingScreen() {
     }
   }, [status, latestOffer?.id, latestOffer?.status, garage?.availableSpots, updateOffer]);
 
-  // ✅ الانتقال للتنقل بعد القبول مع منع التكرار
+  // ✅ الانتقال للتوجيه بعد القبول مع منع التكرار وتطهير اللوحة
   useEffect(() => {
     if (status !== 'accepted' || !currentUser || !garage) return;
     if (incomingCarAddedRef.current) return;
@@ -87,8 +100,9 @@ export default function WaitingScreen() {
     const timer = setTimeout(() => {
       const alreadyIncoming = incomingCars.some(
         (c) =>
-          c.carPlate === currentUser.carPlate &&
-          (c.status === 'coming' || c.status === 'arrived')
+          ((userPlate && normalizePlate(c.carPlate) === userPlate) ||
+           (userPhone && (c.customerPhone || '').replace(/[^\d+]/g, '') === userPhone)) &&
+          (c.status === 'coming' || (c as any).status === 'arrived')
       );
 
       if (!alreadyIncoming) {
@@ -96,7 +110,7 @@ export default function WaitingScreen() {
         const estimatedMinutes = Math.floor(Math.random() * 10) + 3;
         addIncomingCar({
           garageId: garage.id,
-          carPlate: currentUser.carPlate,
+          carPlate: userPlate || currentUser.carPlate,
           customerName: currentUser.name,
           customerPhone: currentUser.phone,
           agreedPrice: latestOffer?.offeredPrice || garage.basePrice,
@@ -108,20 +122,23 @@ export default function WaitingScreen() {
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [status, currentUser?.carPlate, garage?.id]);
+  }, [status, currentUser, garage, incomingCars, latestOffer, userPlate, userPhone, addIncomingCar, setScreen]);
 
-  // ✅ لو العميل عنده incomingCar بالفعل → اذهب للتنقل مباشرة
+  // ✅ لو العميل عنده incomingCar بالفعل → اذهب للتنقل مباشرة بالبصمة
   useEffect(() => {
+    if (!userPlate && !userPhone) return;
+
     const myIncoming = incomingCars.find(
       (c) =>
-        c.carPlate === currentUser?.carPlate &&
-        (c.status === 'coming' || c.status === 'arrived')
+        ((userPlate && normalizePlate(c.carPlate) === userPlate) ||
+         (userPhone && (c.customerPhone || '').replace(/[^\d+]/g, '') === userPhone)) &&
+        (c.status === 'coming' || (c as any).status === 'arrived')
     );
 
     if (myIncoming && status === 'waiting') {
       setStatus('accepted');
     }
-  }, [incomingCars, currentUser?.carPlate, status]);
+  }, [incomingCars, userPlate, userPhone, status]);
 
   return (
     <motion.div
