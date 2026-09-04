@@ -4,7 +4,6 @@ import {
   Navigation,
   MapPin,
   ArrowRight,
-  CheckCircle,
   Car,
   Clock,
   XCircle,
@@ -64,7 +63,7 @@ const toMs = (value: any): number => {
 const normalizePlate = (plate?: string): string => {
   if (!plate) return '';
   const arNums = '٠١٢٣٤٥٦٧٨٩';
-  const faNums = '۰۱۲۳۴۵۶۷٨٩';
+  const faNums = '۰۱۲۳۴۵۶٧٨٩';
   const enNums = '0123456789';
   let normalized = plate.trim();
   
@@ -242,7 +241,7 @@ export default function NavigationScreen() {
 
     realtimeChannelRef.current = channel;
 
-    // ⚡ [حل استنزاف البطارية]: Polling هادئ وموفر للطاقة كل 5 ثوانٍ بدلاً من 1.5 ثانية
+    // ⚡ [حل استنزاف البطارية]: Polling هادئ وموفر للطاقة كل 5 ثوانٍ
     pollingIntervalRef.current = setInterval(fastFetch, 5000);
 
     const handleFocus = () => fastFetch();
@@ -770,19 +769,6 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* ⏳ العداد التنازلي التوضيحي لفترة الإلغاء الصامت */}
-        {isWithinGracePeriod && myIncomingCar && (
-          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-center shrink-0">
-            <div className="text-[10px] text-amber-400 font-bold mb-1">⏳ فترة الإلغاء الصامت والتراجع نشطة</div>
-            <div className="text-base font-black text-amber-500 font-mono">
-              00:{String(cancelTimeLeft).padStart(2, '0')}
-            </div>
-            <p className="text-[8.5px] text-amber-400/80 mt-0.5">
-              يمكنك إلغاء الحجز الآن دون رنين أو إزعاج السايس على الإطلاق 🤫
-            </p>
-          </div>
-        )}
-
         {/* 🔔 مؤشر حالة الـ Push بعد مرور فترة السماح وإرسال التنبيه */}
         {!isWithinGracePeriod && myIncomingCar && (
           <div
@@ -843,15 +829,34 @@ export default function NavigationScreen() {
           </button>
         )}
 
-        {/* ✕ زر الإلغاء والرجوع للرئيسية */}
+        {/* ✕ زر الإلغاء الذكي الموحد (يدعم الـ 30 ثانية والموقت التنازلي التلقائي) */}
         {!myActiveSession && myIncomingCar && (
-          <button
-            onClick={handleCancelBooking}
-            className="w-full bg-slate-900 border border-red-500/20 text-red-400 py-3 rounded-xl font-black text-xs active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0"
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="shrink-0"
           >
-            <XCircle size={16} />
-            إلغاء الحجز والرجوع للرئيسية {isWithinGracePeriod ? `(${cancelTimeLeft}ث)` : ''}
-          </button>
+            <button
+              onClick={handleCancelBooking}
+              className="w-full bg-slate-900 border border-red-500/20 text-red-400 py-3 rounded-xl font-black text-xs active:scale-95 transition-transform flex items-center justify-center gap-2"
+            >
+              <XCircle size={16} />
+              {isWithinGracePeriod 
+                ? `إلغاء الحجز السريع (${cancelTimeLeft}ث)` 
+                : 'إلغاء الحجز والرجوع للرئيسية'}
+            </button>
+
+            {isWithinGracePeriod && (
+              <div className="mt-1.5 bg-slate-800 rounded-full h-1 overflow-hidden">
+                <div
+                  className="h-full bg-red-500 transition-all duration-1000"
+                  style={{
+                    width: `${(cancelTimeLeft / CANCEL_WINDOW_SECONDS) * 100}%`,
+                  }}
+                />
+              </div>
+            )}
+          </motion.div>
         )}
       </div>
     </motion.div>
