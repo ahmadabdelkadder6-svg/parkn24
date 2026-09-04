@@ -239,7 +239,7 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-// 🧬 [بصمة اللوحة المصدرية الموحدة]: تم تصديرها لتستخدمها كافة الشاشات لضمان التطابق المطلق ومنع التحايل
+// 🧬 [بصمة اللوحة المصدرية الموحدة]
 export const normalizePlate = (plate?: string): string => {
   if (!plate) return '';
   
@@ -474,10 +474,10 @@ interface AppState {
   acknowledgedSessionIds: Set<string>;
   acknowledgeSession: (id: string) => void;
   addSession: (s: Omit<ParkingSession, 'id'>) => Promise<string>;
-  endSession: (id: string, totalPrice: number, paymentMethod: string, freeMinutesApplied?: number) => Promise<void>;
+  endSession: (id: string, totalPrice: number, paymentMethod: string, freeMinutesApplied?: number, endedBy?: string) => Promise<void>;
   cancelSession: (id: string) => void;
   removeSession: (id: string) => Promise<void>;
-  confirmRevenue: (sessionId: string) => Promise<void>;
+  confirmRevenue: (sessionId: string, confirmedBy?: string) => Promise<void>;
   unconfirmRevenue: (sessionId: string) => Promise<void>;
   assignSessionToValet: (sessionId: string, valetName: string) => Promise<void>;
   offers: Offer[];
@@ -509,7 +509,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   currentUser: safeGetStorage('currentUser'),
 
-  // ─── تسجيل وضبط بيانات المستخدم مع فحص الاستحقاق المباشر بالبصمة ───
+  // ─── تسجيل وضبط بيانات العميل ───
   setCurrentUser: async (u) => {
     if (!u) { set({ currentUser: null }); safeRemoveStorage('currentUser'); return; }
     const cleanPlate = normalizePlate(u.carPlate);
@@ -527,7 +527,6 @@ export const useStore = create<AppState>((set, get) => ({
     if (!isSupabaseConfigured()) return;
 
     try {
-      // 🛡️ فحص مباشر: هل هذه اللوحة ركنت مجاناً في جلسة سابقة مكتملة؟
       let alreadyUsedFree = false;
 
       if (cleanPlate) {
@@ -542,7 +541,6 @@ export const useStore = create<AppState>((set, get) => ({
         if (plateCheck && plateCheck.length > 0) alreadyUsedFree = true;
       }
 
-      // هل رقم الهاتف ركن مجاناً في جلسة سابقة مكتملة؟
       if (!alreadyUsedFree && cleanPhone) {
         const { data: phoneCheck } = await supabase
           .from('sessions')
@@ -555,7 +553,6 @@ export const useStore = create<AppState>((set, get) => ({
         if (phoneCheck && phoneCheck.length > 0) alreadyUsedFree = true;
       }
 
-      // هل اللوحة مسجلة لحساب مستخدم آخر استهلك الهدية؟
       if (!alreadyUsedFree && cleanPlate) {
         const { data: userPlateCheck } = await supabase
           .from('users')
@@ -567,7 +564,6 @@ export const useStore = create<AppState>((set, get) => ({
         if (userPlateCheck && userPlateCheck.length > 0) alreadyUsedFree = true;
       }
 
-      // جلب سجل المستخدم الحالي من جدول users
       const { data: existingUser } = await supabase
         .from('users')
         .select('wallet, name, phone, car_plate, has_used_free_session, bonus_balance')
@@ -626,7 +622,6 @@ export const useStore = create<AppState>((set, get) => ({
     } catch (err) { console.error('Error setting user with anti-abuse check:', err); }
   },
 
-  // 🛡️ الخصم الآمن من المحفظة
   deductWallet: async (amount) => {
     const user = get().currentUser;
     if (!user || amount <= 0) return;
@@ -749,7 +744,6 @@ export const useStore = create<AppState>((set, get) => ({
     safeRemoveStorage('acknowledgedSessionIds');
   },
 
-  // 🛡️ جلب البيانات من السيرفر
   fetchAll: async () => {
     if (!isSupabaseConfigured()) return;
 
@@ -1011,7 +1005,6 @@ export const useStore = create<AppState>((set, get) => ({
     } catch (err) { console.error('❌', err); await get().fetchAll(); }
   },
 
-  // ─── بدء جلسة الركن مع الفحص الصريح والمضمون 100% ───
   addSession: async (s) => {
     const normalizedPlate = normalizePlate(s.carPlate);
     if (!normalizedPlate) return '';
@@ -1035,7 +1028,6 @@ export const useStore = create<AppState>((set, get) => ({
       const isAppBooking = s.source === 'app';
       const cleanPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
 
-      // 🎁 [تحديد الاستحقاق الحاسم]
       let eligibleForFree = false;
 
       if (isAppBooking) {
@@ -1171,7 +1163,8 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0) => {
+  // 🔥 [التحديث المالي]: تتبع السايس الذي أنهى الجلسة فعلياً لمنع تداخل أرباح شفت المالك
+  endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0, endedBy) => {
     const now = Date.now();
     const session = get().sessions.find((s) => s.id === id);
     if (!session) { console.error('❌ الجلسة مش موجودة:', id); return; }
@@ -1195,6 +1188,8 @@ export const useStore = create<AppState>((set, get) => ({
 
       const isAutoConfirmed = paymentMethod === 'wallet';
 
+      const finalEndedBy = endedBy || resolveAddedBy();
+
       const endedSession: ParkingSession = {
         ...session,
         endTime: now,
@@ -1206,6 +1201,7 @@ export const useStore = create<AppState>((set, get) => ({
         netRevenue,
         settled: false,
         freeMinutesApplied: freeMinutesApplied || session.freeMinutesApplied || 0,
+        addedBy: finalEndedBy, // تحديث السايس الذي أجرى عملية إنهاء الحساب والتحصيل الفعلي
       };
 
       locallyEndedSessions.set(id, endedSession);
@@ -1230,6 +1226,7 @@ export const useStore = create<AppState>((set, get) => ({
           net_revenue: netRevenue,
           settled: false,
           free_minutes_applied: freeMinutesApplied || session.freeMinutesApplied || 0,
+          added_by: finalEndedBy, // مزامنة اسم السايس الفعلي المحصل للكاش لقاعدة البيانات
         })
         .eq('id', id)
         .eq('status', 'active');
@@ -1252,14 +1249,43 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  confirmRevenue: async (sessionId) => {
-    set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: true } : s)) }));
+  // 🔥 [التحديث المالي]: تتبع السايس الذي أكد عملية السداد المعلقة نقدياً
+  confirmRevenue: async (sessionId, confirmedBy) => {
+    const finalConfirmedBy = confirmedBy || resolveAddedBy();
+
+    set((st) => ({
+      sessions: st.sessions.map((s) =>
+        s.id === sessionId
+          ? { ...s, revenueConfirmed: true, addedBy: s.addedBy || finalConfirmedBy }
+          : s
+      )
+    }));
     pausePolling(10000);
     if (!isSupabaseConfigured()) return;
-    const { error } = await supabase.from('sessions').update({ revenue_confirmed: true }).eq('id', sessionId);
+
+    const { data: currentSession } = await supabase
+      .from('sessions')
+      .select('added_by')
+      .eq('id', sessionId)
+      .maybeSingle();
+
+    const finalValet = currentSession?.added_by || finalConfirmedBy;
+
+    const { error } = await supabase
+      .from('sessions')
+      .update({
+        revenue_confirmed: true,
+        added_by: finalValet, // ربط عهدة الكاش للسايس المؤكد
+      })
+      .eq('id', sessionId);
+
     if (error) {
       console.error('❌', error);
-      set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: false } : s)) }));
+      set((st) => ({
+        sessions: st.sessions.map((s) =>
+          s.id === sessionId ? { ...s, revenueConfirmed: false } : s
+        )
+      }));
     }
   },
 
@@ -1375,7 +1401,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 🛡️ اعتماد الشحن المباشر والمضمون
   approveTopUp: async (id) => {
     if (!isSupabaseConfigured()) return;
     try {
