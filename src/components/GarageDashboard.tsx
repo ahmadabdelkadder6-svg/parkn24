@@ -5,7 +5,6 @@ import {
   Minus, Save, MapPin, Edit3, Navigation, Phone, CarFront, FileText,
   CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
 } from 'lucide-react';
-// 🧬 استيراد دالة normalizePlate الموحدة من الـ Store لضمان تطابق البصمة
 import { useStore, pausePolling, normalizePlate } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
@@ -196,7 +195,7 @@ const fireApproachingAlert = (carPlate: string) => {
   );
 };
 
-// ⚡ [مكون معزول احترافياً]: لمنع رندرة الصفحة كاملة كل ثانية (توفير 100% من طاقة المعالج والبطارية)
+// ⚡ [مكون معزول احترافياً]: لمنع رندرة الصفحة كاملة كل ثانية
 interface ActiveSessionCardProps {
   session: any;
   garage: any;
@@ -370,7 +369,7 @@ export default function GarageDashboard() {
     ].filter(Boolean);
   }, [garage]);
 
-  // ⚡ [تعديل ذكي]: السايس يرى فقط جلسات اليوم النشطة (بينما المالك يرى الكل)
+  // ⚡ [تعديل ذكي]: السايس يرى فقط جلسات اليوم النشطة
   const activeSessions = useMemo(() => {
     return garageSessions.filter(s => {
       if (s.status !== 'active') return false;
@@ -378,11 +377,7 @@ export default function GarageDashboard() {
       if (st <= 0) return false;
 
       const elapsedMs = Date.now() - st;
-      
-      // ⚡ [الأمان الذكي]: السايس يرى جلسات اليوم + سيارات المبيت (أقل من 24 ساعة)
       if (isValet && elapsedMs >= 24 * 60 * 60 * 1000) return false;
-      
-      // 🔒 حماية عامة: لا تعرض أي جلسة نشطة عمرها أكثر من 24 ساعة في العدادات اللحظية
       if (elapsedMs >= 24 * 60 * 60 * 1000) return false;
 
       return true;
@@ -392,7 +387,6 @@ export default function GarageDashboard() {
   const valetActiveSessions = useMemo(() => {
     if (!isValet) return activeSessions;
 
-    // 🔒 قفل الأمان: إذا كان السايس معطلاً من الإدارة، احجب عنه كل شيء فوراً
     const isActive =
       valetNumber === '1' ? garage?.valet1Active :
       valetNumber === '2' ? garage?.valet2Active :
@@ -401,13 +395,8 @@ export default function GarageDashboard() {
 
     return activeSessions.filter(s => {
       const addedBy = ((s as any).addedBy || '').trim();
-      
-      // 1. الجلسات المعينة باسم هذا السايس تظهر له فقط
       if (addedBy && myValetNames.has(addedBy)) return true;
-      
-      // 2. الجلسات الجديدة من التطبيق (غير معينة لأحد) تظهر للسايس المفتوح حالياً ليلتقطها
       if (!addedBy && s.source === 'app') return true;
-      
       return false;
     });
   }, [activeSessions, isValet, myValetNames, valetNumber, garage]);
@@ -518,7 +507,6 @@ export default function GarageDashboard() {
     init();
   }, []);
 
-  // 🔄 [تنشيط الإشعارات الصامت والتلقائي للسايس دون إزعاج بالخلفية]
   useEffect(() => {
     if (!currentGarageId) return;
 
@@ -557,7 +545,7 @@ export default function GarageDashboard() {
     prevIncomingIdsRef.current = ids;
   }, [carsOnTheWay]);
 
-  // ⚡ [تحسين استهلاك الذاكرة]: فحص اقتراب السيارات صامتاً كل 15 ثانية عوضاً عن رندرة الصفحة كاملة كل ثانية
+  // ⚡ [تحسين استهلاك الذاكرة]: فحص اقتراب السيارات صامتاً كل 15 ثانية
   useEffect(() => {
     const checkApproaching = () => {
       carsOnTheWay.forEach(car => {
@@ -588,7 +576,7 @@ export default function GarageDashboard() {
   useEffect(() => { return () => { try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }; }, []);
 
   const getSessionRevenue = useCallback((s: any) => {
-    // ✅ التعديل المطلوب:
+    // 🎁 قراءة السعر المسجل حتى لو كان 0 ج.م
     if (s.totalPrice != null) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
       const elSeconds = Math.max(0, Math.floor((toMs(s.endTime) - toMs(s.startTime)) / 1000));
@@ -763,7 +751,7 @@ export default function GarageDashboard() {
 
   useEffect(() => { if (garage) setNewCarPrice(garage.basePrice); }, [garage?.basePrice, garage]);
 
-  // ⚡ [تحسين استهلاك الذاكرة]: التحقق من تلاشي المهلة للتراجع يتم بطريقة صامتة ومحسنة كل 3 ثوانٍ
+  // ⚡ [تحسين استهلاك الذاكرة]: تنظيف صامت للـ Undo كل 3 ثوانٍ
   useEffect(() => {
     const pruneExpiredUndoable = () => {
       setUndoableSessions(p =>
@@ -784,7 +772,7 @@ export default function GarageDashboard() {
     return () => clearInterval(interval);
   }, [sessions]);
 
-  // 🚀 [تطبيق البحث برقم اللوحة]
+  // 🚀 [تطبيق البحث برقم اللوحة الموحدة]
   const filteredActiveSessions = useMemo(() => {
     if (!searchQuery.trim()) return valetActiveSessions;
     const q = normalizePlate(searchQuery);
@@ -999,9 +987,9 @@ export default function GarageDashboard() {
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🅿️ إدارة السياس</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
                 {[
-                  { n: 1, name: editValet1Name, setName: setEditValet1Name, pass: editValet1Pass, setPass: setGValet1Pass, color: '#0066FF', active: (garage as any).valet1Active, activeKey: 'valet1Active' as const },
-                  { n: 2, name: editValet2Name, setName: setEditValet2Name, pass: editValet2Pass, setPass: setGValet2Pass, color: '#7C3AED', active: (garage as any).valet2Active, activeKey: 'valet2Active' as const },
-                  { n: 3, name: editValet3Name, setName: setEditValet3Name, pass: editValet3Pass, setPass: setGValet3Pass, color: '#FF8800', active: (garage as any).valet3Active, activeKey: 'valet3Active' as const },
+                  { n: 1, name: editValet1Name, setName: setEditValet1Name, pass: editValet1Pass, setPass: setEditValet1Pass, color: '#0066FF', active: (garage as any).valet1Active, activeKey: 'valet1Active' as const },
+                  { n: 2, name: editValet2Name, setName: setEditValet2Name, pass: editValet2Pass, setPass: setEditValet2Pass, color: '#7C3AED', active: (garage as any).valet2Active, activeKey: 'valet2Active' as const },
+                  { n: 3, name: editValet3Name, setName: setEditValet3Name, pass: editValet3Pass, setPass: setEditValet3Pass, color: '#FF8800', active: (garage as any).valet3Active, activeKey: 'valet3Active' as const },
                 ].map((v, i) => (
                   <div key={i} className={i < 2 ? 'mb-4 pb-4' : ''} style={i < 2 ? { borderBottom: '1px solid #D0DCFF' } : {}}>
                     <div className="flex items-center justify-between mb-2">
@@ -1012,7 +1000,7 @@ export default function GarageDashboard() {
                       </div>
                     </div>
                     <input type="text" value={v.name} onChange={e => v.setName(e.target.value)} className="w-full text-right outline-none font-bold mb-2" style={{ background: '#fff', border: `2px solid ${v.name ? v.color : '#D0DCFF'}`, padding: 12, borderRadius: 14, fontSize: 14 }} placeholder={`اسم سايس ${v.n}`} />
-                    <input type="text" value={v.pass} onChange={e => setEditValet3Pass(e.target.value)} className="w-full text-center outline-none font-mono font-black" style={{ background: '#fff', border: `2px solid ${v.pass ? v.color : '#D0DCFF'}`, padding: 12, borderRadius: 14, fontSize: 16, letterSpacing: 3 }} placeholder={`كلمة مرور سايس ${v.n}`} />
+                    <input type="text" value={v.pass} onChange={e => v.setPass(e.target.value)} className="w-full text-center outline-none font-mono font-black" style={{ background: '#fff', border: `2px solid ${v.pass ? v.color : '#D0DCFF'}`, padding: 12, borderRadius: 14, fontSize: 16, letterSpacing: 3 }} placeholder={`كلمة مرور سايس ${v.n}`} />
                   </div>
                 ))}
               </div>
@@ -1249,7 +1237,7 @@ export default function GarageDashboard() {
                 <div>
                   <label className="font-bold block text-right mb-1" style={{ fontSize: 11, color: '#7B8CA6' }}>💰 سعر الساعة</label>
                   <div className="flex items-center gap-2">
-                    <button onClick={() => setNewCarPrice(p => Math.max(5, p - 5))} className="active:scale-90" style={{ background: '#FF3333', color: '#fff', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justify7Content: 'center' }}><Minus size={18} /></button>
+                    <button onClick={() => setNewCarPrice(p => Math.max(5, p - 5))} className="active:scale-90" style={{ background: '#FF3333', color: '#fff', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={18} /></button>
                     <input type="number" value={newCarPrice} onChange={e => setNewCarPrice(Math.max(1, parseInt(e.target.value) || 1))} className="flex-1 text-center font-black outline-none font-mono" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 10, borderRadius: 14, fontSize: 20 }} />
                     <button onClick={() => setNewCarPrice(p => p + 5)} className="active:scale-90" style={{ background: '#00CC66', color: '#fff', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={18} /></button>
                   </div>
@@ -1268,7 +1256,7 @@ export default function GarageDashboard() {
               الجلسات النشطة ({filteredActiveSessions.length}) <Clock size={16} />
             </h3>
 
-            {/* 🚀 [مربع البحث السريع الجديد]: يظهر للسايس عند وجود جلسات نشطة */}
+            {/* 🚀 [مربع البحث السريع الجديد] */}
             {valetActiveSessions.length > 0 && (
               <div className="relative mb-3">
                 <input
