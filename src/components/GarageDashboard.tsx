@@ -5,6 +5,7 @@ import {
   Minus, Save, MapPin, Edit3, Navigation, Phone, CarFront, FileText,
   CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
 } from 'lucide-react';
+// 🧬 استيراد دالة normalizePlate الموحدة من الـ Store لضمان تطابق البصمة
 import { useStore, pausePolling, normalizePlate } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
@@ -369,7 +370,7 @@ export default function GarageDashboard() {
     ].filter(Boolean);
   }, [garage]);
 
-  // ⚡ [تعديل ذكي]: السايس يرى فقط جلسات اليوم النشطة
+  // ⚡ الجلسات النشطة في الجراج (خلال 24 ساعة)
   const activeSessions = useMemo(() => {
     return garageSessions.filter(s => {
       if (s.status !== 'active') return false;
@@ -377,13 +378,13 @@ export default function GarageDashboard() {
       if (st <= 0) return false;
 
       const elapsedMs = Date.now() - st;
-      if (isValet && elapsedMs >= 24 * 60 * 60 * 1000) return false;
       if (elapsedMs >= 24 * 60 * 60 * 1000) return false;
 
       return true;
     });
-  }, [garageSessions, isValet]);
+  }, [garageSessions]);
 
+  // 🚀 [حل اختفاء الجلسات]: إظهار جميع الجلسات النشطة في الجراج (سواء تطبيق أو يدوي) للسايس على رأس العمل
   const valetActiveSessions = useMemo(() => {
     if (!isValet) return activeSessions;
 
@@ -393,13 +394,8 @@ export default function GarageDashboard() {
       valetNumber === '3' ? garage?.valet3Active : false;
     if (!isActive) return [];
 
-    return activeSessions.filter(s => {
-      const addedBy = ((s as any).addedBy || '').trim();
-      if (addedBy && myValetNames.has(addedBy)) return true;
-      if (!addedBy && s.source === 'app') return true;
-      return false;
-    });
-  }, [activeSessions, isValet, myValetNames, valetNumber, garage]);
+    return activeSessions;
+  }, [activeSessions, isValet, valetNumber, garage]);
 
   const completedSessions = useMemo(
     () => garageSessions.filter(s => s.status === 'completed'),
@@ -409,10 +405,18 @@ export default function GarageDashboard() {
     () => offers.filter(o => o.garageId === currentGarageId && o.status === 'pending'),
     [offers, currentGarageId]
   );
-  const carsOnTheWay = useMemo(
-    () => incomingCars.filter(c => c.garageId === currentGarageId && c.status === 'coming'),
-    [incomingCars, currentGarageId]
-  );
+
+  // 🚀 [حل مشكلة بقاء السيارات القادمة]: استبعاد أي سيارة قادمة بدأت جلستها بالفعل فوراً
+  const carsOnTheWay = useMemo(() => {
+    return incomingCars.filter(c => {
+      if (c.garageId !== currentGarageId || c.status !== 'coming') return false;
+      const cleanCarPlate = normalizePlate(c.carPlate);
+      const isAlreadyActive = activeSessions.some(
+        s => normalizePlate(s.carPlate) === cleanCarPlate
+      );
+      return !isAlreadyActive;
+    });
+  }, [incomingCars, currentGarageId, activeSessions]);
 
   const processedCarsRef = useRef<Set<string>>(new Set());
   const isEndingSessionRef = useRef(false);
@@ -576,7 +580,6 @@ export default function GarageDashboard() {
   useEffect(() => { return () => { try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }; }, []);
 
   const getSessionRevenue = useCallback((s: any) => {
-    // 🎁 قراءة السعر المسجل حتى لو كان 0 ج.م
     if (s.totalPrice != null) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
       const elSeconds = Math.max(0, Math.floor((toMs(s.endTime) - toMs(s.startTime)) / 1000));
