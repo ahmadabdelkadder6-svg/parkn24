@@ -7,7 +7,8 @@ import {
   Settings,
   CalendarDays,
 } from 'lucide-react';
-import { useStore } from '../store';
+// 🧬 استيراد الدالة الموحدة لضمان مطابقة بصمة لوحة السيارة 100% عبر النظام
+import { useStore, normalizePlate } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
@@ -46,24 +47,6 @@ const getLocalDaysAgo = (days: number): string => {
   const d = new Date();
   d.setDate(d.getDate() - days);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-
-/* ─── 🧬 دالة توحيد بصمة اللوحة الصارمة (بدون حروف إنجليزية) ─── */
-const normalizePlate = (plate?: string): string => {
-  if (!plate) return '';
-  const arNums = '٠١٢٣٤٥٦٧٨٩';
-  const faNums = '۰۱۲۳۴۵۶۷۸۹';
-  const enNums = '0123456789';
-  let normalized = plate.trim();
-  
-  for (let i = 0; i < 10; i++) {
-    normalized = normalized.replace(new RegExp(arNums[i], 'g'), enNums[i]);
-    normalized = normalized.replace(new RegExp(faNums[i], 'g'), enNums[i]);
-  }
-  
-  return normalized
-    .replace(/[^0-9\u0600-\u06FF]/g, '')
-    .replace(/[a-zA-Z]/g, '');
 };
 
 interface SettlementRecord {
@@ -264,7 +247,7 @@ export default function AdminDashboard() {
   const pendingTopUps = walletTopUps.filter(w => w.status === 'pending');
 
   const displayedRevenueSessions = useMemo(() => {
-    // 🧬 استخدام البصمة الموحدة في البحث
+    // 🧬 استخدام البصمة الموحدة المستوردة من الـ Store في البحث
     const searchTerm = normalizePlate(sessionSearch) || sessionSearch.trim().toUpperCase();
 
     let f = searchTerm ? completedSessions : filteredSessions;
@@ -487,7 +470,7 @@ export default function AdminDashboard() {
           لوحة المشرف العام <Shield size={22} />
         </h2>
         <div className="font-bold" style={{ background: '#fff', border: '2px solid #D0DCFF', padding: '8px 14px', borderRadius: 14, fontSize: 11, color: '#7B8CA6' }}>
-          {sessions.length} عملية
+          {sessions.length} operation
         </div>
       </div>
 
@@ -1167,7 +1150,8 @@ export default function AdminDashboard() {
                         </button>
                       ) : (
                         <button onClick={async () => {
-                          await confirmRevenue(session.id);
+                          // 🔥 [تعديل مالي]: تمرير اسم السايس الأصلي للجلسة لمنع تصفيره وتحوله لسايس 1
+                          await confirmRevenue(session.id, session.addedBy);
                           toast.success('تأكيد ✅');
                         }} className="flex-1 font-black active:scale-95"
                           style={{ background: '#00CC66', color: '#fff', padding: 10, borderRadius: 14, fontSize: 11 }}>

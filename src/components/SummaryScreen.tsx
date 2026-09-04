@@ -10,7 +10,7 @@ import {
 // 🧬 استيراد دالة normalizePlate الموحدة و pausePolling من الـ Store لضمان تطابق البصمة تماماً
 import { useStore, pausePolling, normalizePlate } from '../store';
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { calculateFullHours, calculateCost, formatTime } from '../utils/pricing';
+import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 
@@ -40,9 +40,6 @@ export default function SummaryScreen() {
   const userPlate = normalizePlate(currentUser?.carPlate);
   const userPhone = currentUser?.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
 
-  const redirectedToSummaryRef = useRef(false);
-  const redirectedToSessionRef = useRef(false);
-  const activeSessionIdRef = useRef<string | null>(null);
   const realtimeChannelRef = useRef<any>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -121,7 +118,7 @@ export default function SummaryScreen() {
 
     realtimeChannelRef.current = channel;
     
-    // ⚡ [علاج استنزاف البطارية]: Polling هادئ وموفر للطاقة كل 5 ثوانٍ بدلاً من 4 ثوانٍ
+    // ⚡ [علاج استنزاف البطارية]: Polling هادئ وموفر للطاقة كل 5 ثوانٍ
     pollingRef.current = setInterval(refetch, 5000);
 
     const handleVisibility = () => {
@@ -156,7 +153,7 @@ export default function SummaryScreen() {
 
     autoRedirectedRef.current = true;
 
-    // 🎁 [دعم الفاتورة الصفرية]: قراءة صحيحة لسعر الجلسة المجانية المسترجع دون التحايل بالشرط الحسابي أكبر من صفر
+    // 🎁 [دعم الفاتورة الصفرية]: قراءة صحيحة لسعر الجلسة المجانية المسترجع
     const price =
       lastCompletedSession.totalPrice != null
         ? Number(lastCompletedSession.totalPrice)
@@ -257,6 +254,7 @@ export default function SummaryScreen() {
     pausePolling(15000);
 
     try {
+      // ✅ لا نمرر المعامل الخامس هنا ليحتفظ تلقائياً بالسايس الأصلي (سايس 3)
       await endSession(activeSession.id, price, method, freeMinutesApplied);
       return true;
     } catch (err) {

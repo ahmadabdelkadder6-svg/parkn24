@@ -1188,7 +1188,8 @@ export const useStore = create<AppState>((set, get) => ({
 
       const isAutoConfirmed = paymentMethod === 'wallet';
 
-      const finalEndedBy = endedBy || resolveAddedBy();
+      // 🛡️ تعديل أمني مالي: إذا تم الإغلاق من شاشة الحريف (حيث لا سايس نشط)، نحتفظ بالسايس الأصلي للجلسة بدلاً من مسحه وتحويله تلقائياً لـ سايس 1
+      const finalEndedBy = endedBy || resolveAddedBy() || session.addedBy || '';
 
       const endedSession: ParkingSession = {
         ...session,
