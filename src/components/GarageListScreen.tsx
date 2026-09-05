@@ -20,7 +20,8 @@ import {
   Gift,
   Sparkles,
 } from 'lucide-react';
-import { useStore, Garage, Session, IncomingCar } from '../store';
+// 🌟 تم استيراد normalizePlate الموحدة من الـ store لتوحيد منطق البصمة الذكية
+import { useStore, Garage, Session, IncomingCar, normalizePlate } from '../store';
 import {
   calculateDistance,
   distanceToMinutes,
@@ -39,17 +40,6 @@ interface GarageWithDistance extends Garage {
 }
 
 /* ─── Helpers ─── */
-// 🛡️ تنظيف وتوحيد رقم اللوحة بشكل صارم لمنع التحايل بالمسافات أو الرموز
-const normalizePlateForCompare = (plate?: string): string => {
-  if (!plate) return '';
-  return plate
-    .trim()
-    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
-    .replace(/[^A-Z0-9\u0600-\u06FF]/gi, '') // مسح كامل للمسافات والفواصل لدمج الحروف تماماً
-    .toUpperCase();
-};
-
 const safeParseTime = (value: unknown): number => {
   if (!value) return 0;
   if (typeof value === 'string') {
@@ -106,18 +96,19 @@ export default function GarageListScreen() {
   }, []);
 
   /* ── Derived state ── */
+  // 🌟 استخدام دالة البصمة الموحدة من الـ store لمنع التحايل تماماً
   const normalizedUserPlate = useMemo(
-    () => normalizePlateForCompare(currentUser?.carPlate),
+    () => normalizePlate(currentUser?.carPlate),
     [currentUser?.carPlate]
   );
 
-  /* 🛡️ فحص أمني خلفي لحظي بمجرد تحميل اللوحة للتأكد من عدم استخدامها مسبقاً تاريخياً */
+  /* 🛡️ فحص أمني خلفي لحظي بمجرد تحميل اللوحة للتأكد من عدم استخدامها مسبقاً تاريخياً بالبصمة الموحدة */
   useEffect(() => {
     if (!currentUser) return;
     
     const checkAbuseHistory = async () => {
       try {
-        const cleanPlate = normalizePlateForCompare(currentUser.carPlate);
+        const cleanPlate = normalizePlate(currentUser.carPlate);
         const cleanPhone = currentUser.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
         if (!cleanPlate && !cleanPhone) return;
 
@@ -146,7 +137,7 @@ export default function GarageListScreen() {
     return currentUser && !currentUser.hasUsedFreeSession && !isAbuseDetected;
   }, [currentUser, isAbuseDetected]);
 
-  /* ✅ البحث عن جلسة نشطة واستبعاد أي جلسة تم إقرار إغلاقها مسبقاً */
+  /* ✅ البحث عن جلسة نشطة واستبعاد أي جلسة تم إقرار إغلاقها مسبقاً بالبصمة الموحدة */
   const activeSession = useMemo(() => {
     if (!normalizedUserPlate && !currentUser?.phone) return undefined;
 
@@ -154,7 +145,7 @@ export default function GarageListScreen() {
       .filter((s: Session & { customerPhone?: string }) => {
         if (s.status !== 'active') return false;
         if (acknowledgedSessionIds?.has(s.id)) return false;
-        const samePlate = normalizePlateForCompare(s.carPlate) === normalizedUserPlate;
+        const samePlate = normalizePlate(s.carPlate) === normalizedUserPlate;
         const samePhone = Boolean(currentUser?.phone && s.customerPhone === currentUser.phone);
         return samePlate || samePhone;
       })
@@ -166,18 +157,18 @@ export default function GarageListScreen() {
     if (activeSession) return false;
     return sessions.some(
       (s: Session) =>
-        normalizePlateForCompare(s.carPlate) === normalizedUserPlate &&
+        normalizePlate(s.carPlate) === normalizedUserPlate &&
         s.status === 'completed'
     );
   }, [sessions, normalizedUserPlate, activeSession]);
 
-  /* ✅ البحث عن حجز نشط قادم */
+  /* ✅ البحث عن حجز نشط قادم بالبصمة الموحدة */
   const myIncomingCar = useMemo(() => {
     if (!normalizedUserPlate) return undefined;
     return incomingCars
       .filter(
         (c: IncomingCar) =>
-          normalizePlateForCompare(c.carPlate) === normalizedUserPlate &&
+          normalizePlate(c.carPlate) === normalizedUserPlate &&
           c.status === 'coming'
       )
       .sort((a, b) => safeParseTime(b.startTime || 0) - safeParseTime(a.startTime || 0))[0];
@@ -241,7 +232,7 @@ export default function GarageListScreen() {
 
     const isMyRow = (row: any): boolean => {
       if (!row) return false;
-      const plate = normalizePlateForCompare(row.car_plate || row.carPlate);
+      const plate = normalizePlate(row.car_plate || row.carPlate);
       const phone = row.customer_phone || row.customerPhone || '';
       return (
         plate === normalizedUserPlate ||

@@ -236,33 +236,65 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-const normalizePlate = (plate?: string): string => {
+// 🧬 =================================================================
+// 🛡️ محرك البصمة العبقري الموحد للوحات السيارات (Plate Fingerprint Engine)
+// =================================================================
+export const getPlateFingerprint = (plate?: string): string => {
   if (!plate) return '';
-  
-  let cleaned = sanitizeInput(plate).trim();
-  
-  cleaned = cleaned
+
+  // 1. تنظيف أولي وإزالة المسافات والتشكيل والرموز
+  let str = plate
+    .trim()
+    .toUpperCase()
+    .replace(/[\u064B-\u065F\u0670]/g, '') // إزالة التشكيل
+    .replace(/[\s\-_.\/\\,|+*#@!~]/g, '');  // إزالة كل الفواصل والرموز
+
+  // 2. تحويل الأرقام (العربية والفارسية) إلى أرقام موحدة
+  str = str
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
     .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
-  
-  const charMap: Record<string, string> = {
+
+  // 3. تحويل الحروف الإنجليزية إلى المقابل العربي للوحات السيارات
+  const enToArMap: Record<string, string> = {
+    'A': 'ا', 'B': 'ب', 'C': 'س', 'D': 'د', 'E': 'ي', 'F': 'ف',
+    'G': 'ج', 'H': 'ه', 'I': 'ي', 'J': 'ج', 'K': 'ك', 'L': 'ل',
+    'M': 'م', 'N': 'ن', 'O': 'و', 'P': 'ب', 'Q': 'ق', 'R': 'ر',
+    'S': 'س', 'T': 'ط', 'U': 'و', 'V': 'ف', 'W': 'و', 'X': 'س',
+    'Y': 'ي', 'Z': 'ز'
+  };
+  str = str.replace(/[A-Z]/g, (char) => enToArMap[char] || '');
+
+  // 4. توحيد الحروف العربية المتشابهة والهمزات
+  const arNormalizeMap: Record<string, string> = {
     'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ٱ': 'ا', 'ء': 'ا',
     'ة': 'ت',
-    'ى': 'ي', 'ئ': 'ي',
+    'ى': 'ي', 'ئ': 'ي', 'ی': 'ي',
     'ؤ': 'و',
+    'ك': 'ك', 'ک': 'ك',
     'پ': 'ب', 'چ': 'ج', 'ژ': 'ز', 'گ': 'ك', 'ڤ': 'ف',
-    'ک': 'ك', 'ی': 'ي',
   };
-  cleaned = cleaned.replace(/./g, (char) => charMap[char] || char);
-  cleaned = cleaned.replace(/[^0-9\u0600-\u06FF]/g, '');
-  
-  return cleaned;
+  str = str.replace(/./g, (char) => arNormalizeMap[char] || char);
+
+  // 5. استخراج الحروف العربية فقط والأرقام فقط
+  const letters = str.replace(/[^ \u0600-\u06FF]/g, '').replace(/\s+/g, '');
+  const digits = str.replace(/[^0-9]/g, '');
+
+  if (!letters && !digits) return '';
+  if (!letters) return `_${digits}`;
+  if (!digits) return `${letters}_`;
+
+  return `${letters}_${digits}`;
+};
+
+export const normalizePlate = (plate?: string): string => {
+  return getPlateFingerprint(plate);
 };
 
 const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
 const getMs = (value?: number) => { if (typeof value === 'number') return value; return 0; };
 
+// 🌟 [تعديل عبقري]: منع اختفاء الجلسات النشطة عبر فصل الجلسات المدمجة برقم اللوحة ومعرف الجراج سوياً
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   const active = list.filter((s) => s.status === 'active');
   const completed = list.filter((s) => s.status === 'completed');
@@ -271,7 +303,8 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   for (const session of active) {
     const plate = normalizePlate(session.carPlate);
     if (!plate) continue;
-    const key = `${plate}::${session.source}`;
+    // تم إضافة معرف الجراج لمنع التضارب بين الجراجات المختلفة لنفس السيارة
+    const key = `${plate}::${session.garageId}::${session.source}`;
     const existing = bestByPlateSource.get(key);
     if (!existing) { bestByPlateSource.set(key, session); continue; }
     const sessionSynced = session.synced === true;
@@ -499,9 +532,10 @@ export const useStore = create<AppState>((set, get) => ({
 
   currentUser: safeGetStorage('currentUser'),
 
+  // ─── تسجيل وضبط بيانات المستخدم مع فحص الاستحقاق المباشر بالبصمة العبقرية ───
   setCurrentUser: async (u) => {
     if (!u) { set({ currentUser: null }); safeRemoveStorage('currentUser'); return; }
-    const cleanPlate = normalizePlate(u.carPlate);
+    const cleanPlate = getPlateFingerprint(u.carPlate); // استخدام البصمة الموحدة
     const cleanPhone = u.phone.replace(/[^\d+]/g, '').substring(0, 15);
     const cleanName = sanitizeInput(u.name);
 
@@ -1423,7 +1457,7 @@ export const useStore = create<AppState>((set, get) => ({
       }
 
       const supabaseId = dbRow.id;
-      const { error: approveError } = await supabase
+      const { error: approveError = null } = await supabase
         .from('wallet_topups')
         .update({ status: 'approved' })
         .eq('id', supabaseId);

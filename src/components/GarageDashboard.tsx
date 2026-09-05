@@ -6,7 +6,8 @@ import {
   CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
   Search, X,
 } from 'lucide-react';
-import { useStore, pausePolling } from '../store';
+// 🌟 تم استيراد الدوال الموحدة للبصمة الذكية من الـ store لضمان مطابقة اللوحات بدقة 100%
+import { useStore, pausePolling, normalizePlate, getPlateFingerprint } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
@@ -77,15 +78,9 @@ const formatLocalDateArabic = (dateStr: string): string => {
   });
 };
 
-// 🔍 [بحث ذكي]: تطبيع رقم اللوحة للبحث السريع (يقبل الحروف العربية والأرقام)
+// 🔍 [بحث ذكي]: تطبيع رقم لوحة البحث ليتوافق مع البصمة الموحدة للـ Store
 const normalizeSearchPlate = (plate?: string): string => {
-  if (!plate) return '';
-  return plate
-    .trim()
-    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
-    .replace(/\s+/g, '')
-    .toLowerCase();
+  return normalizePlate(plate);
 };
 
 let audioCtxInstance: AudioContext | null = null;
@@ -475,7 +470,7 @@ export default function GarageDashboard() {
     });
   }, [sessions, isValet, currentGarageId, currentValetNameLocal, currentValetName, valetNumber, assignSessionToValet]);
 
-  // 🔍 [بحث سريع]: تصفية الجلسات النشطة برقم اللوحة
+  // 🔍 [بحث سريع]: تصفية الجلسات النشطة برقم اللوحة البصمة الموحدة
   const filteredValetActiveSessions = useMemo(() => {
     if (!plateSearch.trim()) return valetActiveSessions;
     const query = normalizeSearchPlate(plateSearch);
@@ -889,10 +884,10 @@ export default function GarageDashboard() {
     processedCarsRef.current.add(carId);
     pausePolling(10000);
     try {
-      const np = carPlate.trim().toUpperCase();
-      const existing = useStore.getState().sessions.find(s => s.carPlate.trim().toUpperCase() === np && s.status === 'active');
+      const np = normalizePlate(carPlate); // 🧬 استخدام دالة البصمة الموحدة
+      const existing = useStore.getState().sessions.find(s => normalizePlate(s.carPlate) === np && s.status === 'active');
       if (existing) { await removeIncomingCar(carId); toast('الجلسة شغالة ✅', { icon: '🚗' }); return; }
-      const ro = offers.find(o => o.carPlate.trim().toUpperCase() === np && (o.status === 'pending' || o.status === 'accepted'));
+      const ro = offers.find(o => normalizePlate(o.carPlate) === np && (o.status === 'pending' || o.status === 'accepted'));
       if (ro) cancelOffer(ro.id);
       await addSession({ garageId: garage.id, carPlate: np, startTime: Date.now(), status: 'active', source: 'app', agreedPrice: car.agreedPrice, customerPhone: car.customerPhone, customerName: car.customerName, startedBy: 'garage', incomingCarId: carId, addedBy: isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '' } as any);
       await removeIncomingCar(carId);
