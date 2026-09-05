@@ -1097,108 +1097,113 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <div className="space-y-3">
-          {displayedRevenueSessions.length === 0 ? (
-            <div className="text-center" style={{ background: '#fff', borderRadius: 24, padding: 32, border: '2px solid #D0DCFF' }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>
-              <p className="font-bold" style={{ fontSize: 14, color: '#94a3b8' }}>
-                {sessionSearch ? `لا توجد نتائج لـ "${sessionSearch}"` : revenueFilter === 'pending' ? 'لا توجد معلقة' : 'لا توجد جلسات'}
-              </p>
+{/* 🛡️ صندوق الاحتواء الذكي: يمنع الجلسات من أخذ الشاشة بالكامل ويحصرها في شريط تمرير أنيق */}
+<div 
+  className="space-y-3 max-h-[380px] overflow-y-auto pr-1.5"
+  style={{
+    scrollbarWidth: 'thin',
+    scrollbarColor: '#CBD5E1 transparent',
+  }}
+>
+  {displayedRevenueSessions.length === 0 ? (
+    <div className="text-center" style={{ background: '#fff', borderRadius: 24, padding: 32, border: '2px solid #D0DCFF' }}>
+      <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>
+      <p className="font-bold" style={{ fontSize: 14, color: '#94a3b8' }}>
+        {sessionSearch ? `لا توجد نتائج لـ "${sessionSearch}"` : revenueFilter === 'pending' ? 'لا توجد معلقة' : 'لا توجد جلسات'}
+      </p>
+    </div>
+  ) : (
+    displayedRevenueSessions.map(session => {
+      if (!session) return null;
+      const g = (garages || []).find((ga: any) => ga?.id === session.garageId);
+      const rev = getRevenue(session);
+      const comm = getCommission(session);
+      const net = rev - comm;
+      const et = session.endTime ? typeof session.endTime === 'number' ? session.endTime : new Date(session.endTime).getTime() : null;
+      const time = et ? new Date(et) : null;
+      const isDel = deleteConfirmId === session.id;
+      const isSettled = (session as any)?.settled === true;
+      return (
+        <div key={session.id} style={{ 
+          background: isDel ? '#FFE0E0' : isSettled ? '#F1F5F9' : session.revenueConfirmed ? '#F0FFF5' : '#FFFAF0', 
+          border: `2.5px solid ${isDel ? '#FF6666' : isSettled ? '#CBD5E1' : session.revenueConfirmed ? '#66DDAA' : '#FFD180'}`, 
+          borderRadius: 22, 
+          padding: 16,
+          opacity: isSettled ? 0.75 : 1 
+        }}>
+          <div className="flex justify-between items-start mb-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-mono font-black" style={{ fontSize: 16, color: session.revenueConfirmed ? '#00AA44' : '#E65100' }}>{Number(rev || 0).toFixed(0)} ج.م</span>
+              {[
+                { show: true, bg: session.source === 'manual' ? '#FF9500' : '#0066FF', text: session.source === 'manual' ? 'يدوي' : 'تطبيق' },
+                { show: !!session.paymentMethod, bg: session.paymentMethod === 'cash' ? '#00CC66' : session.paymentMethod === 'instapay' ? '#7C3AED' : session.paymentMethod === 'wallet' ? '#0066FF' : '#FF8800', text: session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستا' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش' },
+                { show: true, bg: session.revenueConfirmed ? '#00CC66' : '#FF9500', text: session.revenueConfirmed ? '✅ مؤكد' : '⏳ معلق' },
+                { show: isSettled, bg: '#94a3b8', text: '🔒 تمت التسوية' },
+                { show: session.isFirstFreeSession === true, bg: '#E65100', text: '🎁 ساعة مجانية' } 
+              ].filter(b => b.show).map((b, i) => (
+                <span key={i} className="font-bold" style={{ fontSize: 9, padding: '4px 10px', borderRadius: 12, background: b.bg, color: '#fff' }}>{b.text}</span>
+              ))}
+            </div>
+            <div className="text-right">
+              <div className="font-black" style={{ fontSize: 14, color: '#0A1628' }}>🚗 {session.carPlate}</div>
+              <div style={{ fontSize: 10, color: '#94a3b8' }}>{g?.name || '—'}</div>
+            </div>
+          </div>
+
+          {session.source === 'app' && comm > 0 && (
+            <div className="flex items-center gap-3 mb-2" style={{ background: '#FFF8F0', borderRadius: 12, padding: '6px 10px', border: '1px solid #FFD180' }}>
+              <div className="flex items-center gap-1">
+                <Percent size={10} style={{ color: '#FF9500' }} />
+                <span className="font-bold" style={{ fontSize: 9, color: '#FF9500' }}>عمولة {g?.commissionRate ?? 10}%: {Number(comm || 0).toFixed(0)} ج.م</span>
+              </div>
+              <div style={{ width: 1, height: 12, background: '#FFD180' }} />
+              <div className="flex items-center gap-1">
+                <DollarSign size={10} style={{ color: '#00AA44' }} />
+                <span className="font-bold" style={{ fontSize: 9, color: '#00AA44' }}>صافي: {Number(net || 0).toFixed(0)} ج.م</span>
+              </div>
+            </div>
+          )}
+
+          {time && <div className="font-mono text-left mb-2" style={{ fontSize: 10, color: '#94a3b8' }}>{time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })} · {time.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}</div>}
+          {isDel ? (
+            <div className="space-y-2" style={{ background: '#FFE0E0', borderRadius: 16, padding: 14, border: '1px solid #FFA0A0' }}>
+              <p className="font-black text-center" style={{ fontSize: 13, color: '#CC0000' }}>⚠️ حذف نهائياً؟</p>
+              <p className="text-center" style={{ fontSize: 11, color: '#FF3333' }}>🚗 {session.carPlate} · {Number(rev || 0).toFixed(0)} ج.م</p>
+              <div className="flex gap-2">
+                <button onClick={async () => { await removeSession(session.id); setDeleteConfirmId(null); toast.success('تم الحذف 🗑️'); }} className="flex-1 font-black active:scale-95"
+                  style={{ background: '#FF3333', color: '#fff', padding: 12, borderRadius: 14, fontSize: 12 }}>🗑️ تأكيد</button>
+                <button onClick={() => setDeleteConfirmId(null)} className="flex-1 font-black active:scale-95"
+                  style={{ background: '#F0F4FF', color: '#475569', padding: 12, borderRadius: 14, fontSize: 12, border: '2px solid #D0DCFF' }}>إلغاء</button>
+              </div>
             </div>
           ) : (
-            displayedRevenueSessions.map(session => {
-              if (!session) return null;
-              const g = (garages || []).find((ga: any) => ga?.id === session.garageId);
-              const rev = getRevenue(session);
-              const comm = getCommission(session);
-              const net = rev - comm;
-              const et = session.endTime ? typeof session.endTime === 'number' ? session.endTime : new Date(session.endTime).getTime() : null;
-              const time = et ? new Date(et) : null;
-              const isDel = deleteConfirmId === session.id;
-              const isSettled = (session as any)?.settled === true;
-              return (
-                <div key={session.id} style={{ 
-                  background: isDel ? '#FFF0F0' : isSettled ? '#F1F5F9' : session.revenueConfirmed ? '#F0FFF5' : '#FFFAF0', 
-                  border: `2.5px solid ${isDel ? '#FF6666' : isSettled ? '#CBD5E1' : session.revenueConfirmed ? '#66DDAA' : '#FFD180'}`, 
-                  borderRadius: 22, 
-                  padding: 16,
-                  opacity: isSettled ? 0.75 : 1 
-                }}>
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono font-black" style={{ fontSize: 16, color: session.revenueConfirmed ? '#00AA44' : '#E65100' }}>{Number(rev || 0).toFixed(0)} ج.م</span>
-                      {[
-                        { show: true, bg: session.source === 'manual' ? '#FF9500' : '#0066FF', text: session.source === 'manual' ? 'يدوي' : 'تطبيق' },
-                        { show: !!session.paymentMethod, bg: session.paymentMethod === 'cash' ? '#00CC66' : session.paymentMethod === 'instapay' ? '#7C3AED' : session.paymentMethod === 'wallet' ? '#0066FF' : '#FF8800', text: session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستا' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش' },
-                        { show: true, bg: session.revenueConfirmed ? '#00CC66' : '#FF9500', text: session.revenueConfirmed ? '✅ مؤكد' : '⏳ معلق' },
-                        { show: isSettled, bg: '#94a3b8', text: '🔒 تمت التسوية' },
-                        { show: session.isFirstFreeSession === true, bg: '#E65100', text: '🎁 ساعة مجانية' } 
-                      ].filter(b => b.show).map((b, i) => (
-                        <span key={i} className="font-bold" style={{ fontSize: 9, padding: '4px 10px', borderRadius: 12, background: b.bg, color: '#fff' }}>{b.text}</span>
-                      ))}
-                    </div>
-                    <div className="text-right">
-                      <div className="font-black" style={{ fontSize: 14, color: '#0A1628' }}>🚗 {session.carPlate}</div>
-                      <div style={{ fontSize: 10, color: '#94a3b8' }}>{g?.name || '—'}</div>
-                    </div>
-                  </div>
-
-                  {session.source === 'app' && comm > 0 && (
-                    <div className="flex items-center gap-3 mb-2" style={{ background: '#FFF8F0', borderRadius: 12, padding: '6px 10px', border: '1px solid #FFD180' }}>
-                      <div className="flex items-center gap-1">
-                        <Percent size={10} style={{ color: '#FF9500' }} />
-                        <span className="font-bold" style={{ fontSize: 9, color: '#FF9500' }}>عمولة {g?.commissionRate ?? 10}%: {Number(comm || 0).toFixed(0)} ج.م</span>
-                      </div>
-                      <div style={{ width: 1, height: 12, background: '#FFD180' }} />
-                      <div className="flex items-center gap-1">
-                        <DollarSign size={10} style={{ color: '#00AA44' }} />
-                        <span className="font-bold" style={{ fontSize: 9, color: '#00AA44' }}>صافي: {Number(net || 0).toFixed(0)} ج.م</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {time && <div className="font-mono text-left mb-2" style={{ fontSize: 10, color: '#94a3b8' }}>{time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })} · {time.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}</div>}
-                  {isDel ? (
-                    <div className="space-y-2" style={{ background: '#FFE0E0', borderRadius: 16, padding: 14, border: '1px solid #FFA0A0' }}>
-                      <p className="font-black text-center" style={{ fontSize: 13, color: '#CC0000' }}>⚠️ حذف نهائياً؟</p>
-                      <p className="text-center" style={{ fontSize: 11, color: '#FF3333' }}>🚗 {session.carPlate} · {Number(rev || 0).toFixed(0)} ج.م</p>
-                      <div className="flex gap-2">
-                        <button onClick={async () => { await removeSession(session.id); setDeleteConfirmId(null); toast.success('تم الحذف 🗑️'); }} className="flex-1 font-black active:scale-95"
-                          style={{ background: '#FF3333', color: '#fff', padding: 12, borderRadius: 14, fontSize: 12 }}>🗑️ تأكيد</button>
-                        <button onClick={() => setDeleteConfirmId(null)} className="flex-1 font-black active:scale-95"
-                          style={{ background: '#F0F4FF', color: '#475569', padding: 12, borderRadius: 14, fontSize: 12, border: '2px solid #D0DCFF' }}>إلغاء</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      {session.revenueConfirmed ? (
-                        <button onClick={async () => {
-                          await unconfirmRevenue(session.id);
-                          toast('إلغاء ↩️', { icon: '⏳' });
-                        }} disabled={isSettled} className="flex-1 font-black active:scale-95 disabled:opacity-50"
-                          style={{ background: '#FF9500', color: '#fff', padding: 10, borderRadius: 14, fontSize: 11 }}>
-                          ↩️ إلغاء التأكيد
-                        </button>
-                      ) : (
-                        <button onClick={async () => {
-                          // 🔥 [تعديل مالي]: تمرير اسم السايس الأصلي للجلسة لمنع تصفيره وتحوله لسايس 1
-                          await confirmRevenue(session.id, session.addedBy);
-                          toast.success('تأكيد ✅');
-                        }} className="flex-1 font-black active:scale-95"
-                          style={{ background: '#00CC66', color: '#fff', padding: 10, borderRadius: 14, fontSize: 11 }}>
-                          ✅ تأكيد الإيراد
-                        </button>
-                      )}
-                      <button onClick={() => setDeleteConfirmId(session.id)} disabled={isSettled} className="font-black active:scale-95 disabled:opacity-50"
-                        style={{ background: '#FFE0E0', color: '#CC0000', padding: '10px 16px', borderRadius: 14, fontSize: 11 }}>🗑️</button>
-                    </div>
-                  )}
-                </div>
-              );
-            })
+            <div className="flex items-center gap-2">
+              {session.revenueConfirmed ? (
+                <button onClick={async () => {
+                  await unconfirmRevenue(session.id);
+                  toast('إلغاء ↩️', { icon: '⏳' });
+                }} disabled={isSettled} className="flex-1 font-black active:scale-95 disabled:opacity-50"
+                  style={{ background: '#FF9500', color: '#fff', padding: 10, borderRadius: 14, fontSize: 11 }}>
+                  ↩️ إلغاء التأكيد
+                </button>
+              ) : (
+                <button onClick={async () => {
+                  await confirmRevenue(session.id, session.addedBy);
+                  toast.success('تأكيد ✅');
+                }} className="flex-1 font-black active:scale-95"
+                  style={{ background: '#00CC66', color: '#fff', padding: 10, borderRadius: 14, fontSize: 11 }}>
+                  ✅ تأكيد الإيراد
+                </button>
+              )}
+              <button onClick={() => setDeleteConfirmId(session.id)} disabled={isSettled} className="font-black active:scale-95 disabled:opacity-50"
+                style={{ background: '#FFE0E0', color: '#CC0000', padding: '10px 16px', borderRadius: 14, fontSize: 11 }}>🗑️</button>
+            </div>
           )}
         </div>
-      </div>
+      );
+    })
+  )}
+</div>
 
       {/* ══════ Pending Top-ups ══════ */}
       <div className="mb-8">
