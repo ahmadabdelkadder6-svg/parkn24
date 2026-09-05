@@ -111,8 +111,6 @@ export type ScreenType =
   | 'splash' | 'list' | 'offer' | 'waiting' | 'navigation'
   | 'session' | 'summary' | 'lastSession' | 'chat';
 
-// ===================== 🎁 نظام الشرائح والهدايا =====================
-
 export const TOPUP_TIERS = [
   { id: 'bronze',   amount: 100,  bonus: 5,   label: '🥉 برونزي',   percentage: 5,  popular: false },
   { id: 'silver',   amount: 300,  bonus: 30,  label: '🥈 فضي',      percentage: 10, popular: false },
@@ -162,8 +160,6 @@ export const calculateSessionPriceWithFreeGift = (
   return { finalPrice, freeMinutes: 60, billableMs };
 };
 
-// ===================== 🛡️ طبقات الحماية الأمنية =====================
-
 // 🛡️ [1] حماية من الضغط العالي (Rate Limiter)
 const rateLimiter = {
   requests: 0,
@@ -182,7 +178,7 @@ const rateLimiter = {
   }
 };
 
-// 🛡️ [2] تنظيف المدخلات من الأكواد الخبيثة (XSS Protection)
+// 🛡️ [2] تنظيف المدخلات
 const sanitizeInput = (input: string): string => {
   if (!input) return '';
   return input
@@ -194,7 +190,7 @@ const sanitizeInput = (input: string): string => {
     .substring(0, 200);
 };
 
-// 🛡️ [3] حماية من تخمين الباسوردات (Brute Force Protection)
+// 🛡️ [3] حماية من تخمين الباسوردات
 const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
 
 export const checkLoginAttempt = (identifier: string): boolean => {
@@ -245,12 +241,10 @@ export const normalizePlate = (plate?: string): string => {
   
   let cleaned = sanitizeInput(plate).trim();
   
-  // 1. تحويل الأرقام العربية والفارسية إلى أرقام إنجليزية موحدة
   cleaned = cleaned
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
     .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
   
-  // 2. توحيد الحروف العربية المتشابهة والهمزات
   const charMap: Record<string, string> = {
     'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ٱ': 'ا', 'ء': 'ا',
     'ة': 'ت',
@@ -260,14 +254,11 @@ export const normalizePlate = (plate?: string): string => {
     'ک': 'ك', 'ی': 'ي',
   };
   cleaned = cleaned.replace(/./g, (char) => charMap[char] || char);
-  
-  // 3. حذف الحروف الإنجليزية والرموز والمسافات (حروف عربية وأرقام فقط)
   cleaned = cleaned.replace(/[^0-9\u0600-\u06FF]/g, '');
   
   return cleaned;
 };
 
-// تصدير دالة المطابقة لتسهيل عمليات الفلترة والمقارنة الآمنة في الكود
 export const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
 
@@ -509,7 +500,6 @@ export const useStore = create<AppState>((set, get) => ({
 
   currentUser: safeGetStorage('currentUser'),
 
-  // ─── تسجيل وضبط بيانات العميل ───
   setCurrentUser: async (u) => {
     if (!u) { set({ currentUser: null }); safeRemoveStorage('currentUser'); return; }
     const cleanPlate = normalizePlate(u.carPlate);
@@ -1163,7 +1153,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 🔥 [التحديث المالي]: تتبع السايس الذي أنهى الجلسة فعلياً لمنع تداخل أرباح شفت المالك
+  // 🔗 [إنهاء الجلسة الذكي]: تثبيت وحماية اسم السايس المسؤول في قاعدة البيانات
   endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0, endedBy) => {
     const now = Date.now();
     const session = get().sessions.find((s) => s.id === id);
@@ -1188,7 +1178,6 @@ export const useStore = create<AppState>((set, get) => ({
 
       const isAutoConfirmed = paymentMethod === 'wallet';
 
-      // 🛡️ تعديل أمني مالي: إذا تم الإغلاق من شاشة الحريف (حيث لا سايس نشط)، نحتفظ بالسايس الأصلي للجلسة بدلاً من مسحه وتحويله تلقائياً لـ سايس 1
       const finalEndedBy = endedBy || resolveAddedBy() || session.addedBy || '';
 
       const endedSession: ParkingSession = {
@@ -1202,7 +1191,7 @@ export const useStore = create<AppState>((set, get) => ({
         netRevenue,
         settled: false,
         freeMinutesApplied: freeMinutesApplied || session.freeMinutesApplied || 0,
-        addedBy: finalEndedBy, // تحديث السايس الذي أجرى عملية إنهاء الحساب والتحصيل الفعلي
+        addedBy: finalEndedBy,
       };
 
       locallyEndedSessions.set(id, endedSession);
@@ -1227,10 +1216,9 @@ export const useStore = create<AppState>((set, get) => ({
           net_revenue: netRevenue,
           settled: false,
           free_minutes_applied: freeMinutesApplied || session.freeMinutesApplied || 0,
-          added_by: finalEndedBy, // مزامنة اسم السايس الفعلي المحصل للكاش لقاعدة البيانات
+          added_by: finalEndedBy,
         })
-        .eq('id', id)
-        .eq('status', 'active');
+        .eq('id', id);
 
       if (error) {
         console.error('❌', error);
@@ -1250,7 +1238,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 🔥 [التحديث المالي]: تتبع السايس الذي أكد عملية السداد المعلقة نقدياً
   confirmRevenue: async (sessionId, confirmedBy) => {
     const finalConfirmedBy = confirmedBy || resolveAddedBy();
 
@@ -1276,7 +1263,7 @@ export const useStore = create<AppState>((set, get) => ({
       .from('sessions')
       .update({
         revenue_confirmed: true,
-        added_by: finalValet, // ربط عهدة الكاش للسايس المؤكد
+        added_by: finalValet,
       })
       .eq('id', sessionId);
 
