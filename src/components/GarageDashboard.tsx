@@ -6,8 +6,7 @@ import {
   CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
   Search, X,
 } from 'lucide-react';
-// 🌟 تم استيراد الدوال الموحدة للبصمة الذكية من الـ store لضمان مطابقة اللوحات بدقة 100%
-import { useStore, pausePolling, normalizePlate, getPlateFingerprint } from '../store';
+import { useStore, pausePolling, normalizePlate } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
@@ -78,7 +77,6 @@ const formatLocalDateArabic = (dateStr: string): string => {
   });
 };
 
-// 🔍 [بحث ذكي]: تطبيع رقم لوحة البحث ليتوافق مع البصمة الموحدة للـ Store
 const normalizeSearchPlate = (plate?: string): string => {
   return normalizePlate(plate);
 };
@@ -203,8 +201,7 @@ const fireApproachingAlert = (carPlate: string) => {
 };
 
 /* ════════════════════════════════════════════════════════════
-   ⚡ [مكون معزول للأداء]: كارت الجلسة النشطة يرندر ذاتياً كل ثانية
-   بدون التسبب في إعادة رسم بقية الصفحة (توفير 90% من استهلاك البطارية)
+   ⚡ [ActiveSessionCard]: كارت الجلسة النشطة
    ════════════════════════════════════════════════════════════ */
 interface ActiveSessionCardProps {
   session: any;
@@ -223,7 +220,6 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
   onUndo,
   getUndoRemainingSeconds,
 }: ActiveSessionCardProps) {
-  // ⚡ التحديث اللحظي فقط داخل هذا الكارت (لا يؤثر على باقي الشاشة)
   const [, setLocalTick] = useState(0);
   useEffect(() => {
     const i = setInterval(() => setLocalTick(t => t + 1), 1000);
@@ -348,7 +344,10 @@ export default function GarageDashboard() {
     const names = new Set<string>();
     if (currentValetNameLocal) names.add(currentValetNameLocal.trim());
     if (currentValetName) names.add(currentValetName.trim());
-    if (valetNumber) names.add(`سايس ${valetNumber}`);
+    if (valetNumber) {
+      names.add(`سايس ${valetNumber}`);
+      names.add(`valet ${valetNumber}`);
+    }
     return names;
   }, [currentValetNameLocal, currentValetName, valetNumber]);
 
@@ -362,32 +361,26 @@ export default function GarageDashboard() {
     ].filter(Boolean);
   }, [garage]);
 
+  // ⚡ السيارات النشطة داخل الجراج تظهر للجميع
   const activeSessions = useMemo(() => {
     return garageSessions.filter(s => {
       if (s.status !== 'active') return false;
       const st = toMs(s.startTime);
       if (st <= 0) return false;
-
       const elapsedMs = Date.now() - st;
-      
-      if (isValet && elapsedMs >= 24 * 60 * 60 * 1000) return false;
       if (elapsedMs >= 24 * 60 * 60 * 1000) return false;
-
       return true;
     });
-  }, [garageSessions, isValet]);
+  }, [garageSessions]);
 
   const valetActiveSessions = useMemo(() => {
     if (!isValet) return activeSessions;
-
-    // 🔒 قفل الأمان: إذا كان حساب السايس معطلاً من الإدارة، احجب عنه الشاشة
     const isActive =
       valetNumber === '1' ? garage?.valet1Active :
       valetNumber === '2' ? garage?.valet2Active :
       valetNumber === '3' ? garage?.valet3Active : false;
     if (!isActive) return [];
 
-    // ✅ السيارات النشطة بالجراج تظهر للسياس المتواجدين بالجراج ليتمكن أي منهم من إنهاء وتحصيل الجلسة
     return activeSessions;
   }, [activeSessions, isValet, valetNumber, garage]);
 
@@ -436,8 +429,6 @@ export default function GarageDashboard() {
   const [garageDailyStats, setGarageDailyStats] = useState<DailyStat[]>([]);
   const [valetEditSpots, setValetEditSpots] = useState(false);
   const [selectedValetFilter, setSelectedValetFilter] = useState<string | null>(null);
-
-  // 🔍 [بحث سريع]: حالة البحث برقم اللوحة
   const [plateSearch, setPlateSearch] = useState('');
 
   const [showSwitcher, setShowSwitcher] = useState(false);
@@ -446,28 +437,6 @@ export default function GarageDashboard() {
     return getMyOwnedGarages(garage.ownerPhone || garage.phone || '');
   }, [getMyOwnedGarages, garage, garages]);
 
-  // 🌟 [النسب التلقائي الذكي]: إسناد عمليات المحفظة للسايس المتواجد على الشفت حالياً
-  useEffect(() => {
-    if (!isValet || !currentGarageId) return;
-    const currentValet = currentValetNameLocal || currentValetName || `سايس ${valetNumber}`;
-    if (!currentValet) return;
-
-    // البحث عن جلسات المحفظة المكتملة اليوم بدون سايس
-    const unassignedWalletSessions = sessions.filter(s => {
-      if (s.garageId !== currentGarageId) return false;
-      if (s.status !== 'completed' || s.paymentMethod !== 'wallet') return false;
-      const isToday = timestampToLocalDate(toMs(s.endTime || s.startTime)) === getLocalToday();
-      const ab = ((s as any).addedBy || '').trim();
-      return isToday && !ab;
-    });
-
-    // تعيينها للسايس المتواجد حالياً على الشفت
-    unassignedWalletSessions.forEach(s => {
-      assignSessionToValet(s.id, currentValet);
-    });
-  }, [sessions, isValet, currentGarageId, currentValetNameLocal, currentValetName, valetNumber, assignSessionToValet]);
-
-  // 🔍 [بحث سريع]: تصفية الجلسات النشطة برقم اللوحة البصمة الموحدة
   const filteredValetActiveSessions = useMemo(() => {
     if (!plateSearch.trim()) return valetActiveSessions;
     const query = normalizeSearchPlate(plateSearch);
@@ -513,7 +482,6 @@ export default function GarageDashboard() {
 
   useEffect(() => {
     if (!currentGarageId) return;
-
     const silentSync = async () => {
       try {
         await subscribeToPush(currentGarageId);
@@ -521,16 +489,13 @@ export default function GarageDashboard() {
         console.warn('Silent push sync error:', e);
       }
     };
-
     silentSync();
-
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         silentSync();
         fetchAll();
       }
     };
-
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [currentGarageId, fetchAll]);
@@ -549,7 +514,6 @@ export default function GarageDashboard() {
     prevIncomingIdsRef.current = ids;
   }, [carsOnTheWay]);
 
-  // ⚡ [تحسين البطارية]: مؤقت خفيف مخصص فقط للسيارات القادمة (كل 15 ثانية بدل ثانية)
   const [carsTick, setCarsTick] = useState(0);
   useEffect(() => {
     if (carsOnTheWay.length === 0) return;
@@ -622,6 +586,7 @@ export default function GarageDashboard() {
     return calculateCost(el, r);
   }, [garage?.basePrice]);
 
+  // 🌟 [الفلترة الذكية والعادلة للعمليات المكتملة]:
   const filteredCompleted = useMemo(() => {
     if (isValet) {
       const isActive =
@@ -641,7 +606,6 @@ export default function GarageDashboard() {
     return completedSessions.filter(s => {
       if (s.endTime) {
         const endMs = toMs(s.endTime);
-        
         if (isValet) { 
           const isToday = endMs >= todayStart && endMs <= todayEnd;
           if (!isToday) return false; 
@@ -654,10 +618,15 @@ export default function GarageDashboard() {
       if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter) return false;
       
       const addedBy = ((s as any).addedBy || '').trim();
+      
       if (isValet) {
+        // 1. لو العملية معلقة (كاش العميل منتظر يدفع) -> تظهر لسايس 2 فوراً ليؤكدها!
+        if (!s.revenueConfirmed) return true;
+
+        // 2. لو العملية مؤكدة (محفظة أو نقدي تم تحصيله) -> تظهر إذا كانت مسجلة لسايس 2 أو جلسة محفظة عامة لليوم
         const isMine = addedBy && myValetNames.has(addedBy);
-        const isUnassignedAppSession = !addedBy && s.source === 'app';
-        if (!isMine && !isUnassignedAppSession) return false;
+        const isAppSessionToday = s.source === 'app';
+        if (!isMine && !isAppSessionToday) return false;
       }
       
       if (isOwner && selectedValetFilter) { 
@@ -753,7 +722,6 @@ export default function GarageDashboard() {
 
   const getUndoRemainingSeconds = useCallback((addedAt: number) => Math.max(0, UNDO_TIMEOUT_SECONDS - Math.floor((Date.now() - addedAt) / 1000)), []);
 
-  // ⚡ [تحسين البطارية]: مؤقت خفيف مخصص فقط لأزرار التراجع (كل 5 ثواني)
   const [undoTick, setUndoTick] = useState(0);
   useEffect(() => {
     if (undoableSessions.length === 0) return;
@@ -841,9 +809,9 @@ export default function GarageDashboard() {
         freeMinutesApplied = Math.floor(freeMs / 60000);
       }
 
-      // 🌟 [النسب الفوري]: تعيين الجلسة للسايس الحالي الذي يقوم بالتحصيل الآن فعلياً
+      // 🌟 [النسب الفوري]: تسجيل الجلسة باسم السايس الحالي الذي يقوم بالتحصيل
       const currentValet = isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '';
-      if (currentValet && sd && !((sd as any).addedBy || '').trim()) {
+      if (currentValet && sd) {
         await assignSessionToValet(sd.id, currentValet);
       }
 
@@ -881,7 +849,7 @@ export default function GarageDashboard() {
     processedCarsRef.current.add(carId);
     pausePolling(10000);
     try {
-      const np = normalizePlate(carPlate); // 🧬 استخدام دالة البصمة الموحدة
+      const np = normalizePlate(carPlate);
       const existing = useStore.getState().sessions.find(s => normalizePlate(s.carPlate) === np && s.status === 'active');
       if (existing) { await removeIncomingCar(carId); toast('الجلسة شغالة ✅', { icon: '🚗' }); return; }
       const ro = offers.find(o => normalizePlate(o.carPlate) === np && (o.status === 'pending' || o.status === 'accepted'));
@@ -1355,7 +1323,7 @@ export default function GarageDashboard() {
         )}
         {isValet && (
           <div className="mb-4 text-center" style={{ background: '#EBF2FF', borderRadius: 18, padding: '10px 16px', border: '2px solid #D0DCFF' }}>
-            <span className="font-black" style={{ fontSize: 12, color: '#0066FF' }}>📅 {formatLocalDateArabic(getLocalToday())} - عملياتي فقط</span>
+            <span className="font-black" style={{ fontSize: 12, color: '#0066FF' }}>📅 {formatLocalDateArabic(getLocalToday())} - عملياتي اليوم</span>
           </div>
         )}
 
@@ -1576,9 +1544,9 @@ export default function GarageDashboard() {
                     {!isSettled && !isC ? (
                       <button 
                         onClick={async () => { 
-                          // 🌟 [النسب الفوري]: تعيين الجلسة للسايس الذي يضغط بيده على زر التأكيد
+                          // 🌟 [النسب الفوري]: عند الضغط على تأكيد يتم تسجيل الجلسة باسم السايس الحالي فوراً
                           const currentValet = isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '';
-                          if (currentValet && !((session as any).addedBy || '').trim()) {
+                          if (currentValet) {
                             await assignSessionToValet(session.id, currentValet);
                           }
                           await confirmRevenue(session.id); 
