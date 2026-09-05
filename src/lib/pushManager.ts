@@ -27,10 +27,8 @@ interface SendPushPayload {
   scheduled: (PushPayloadNotification & { sendAt: string }) | null;
 }
 
-// ⏳ خريطة حفظ مؤقتات الإلغاء (Grace Period Timers)
 const pendingPushTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-// ─── Helper: تحويل VAPID Key ────────────────────────────────────
 const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64  = (base64String + padding)
@@ -40,7 +38,6 @@ const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   return new Uint8Array([...rawData].map((c) => c.charCodeAt(0)));
 };
 
-// ─── Helper: Supabase Fetch مع Retry سريع ────────────────────────
 const supabaseFetch = async (
   path:    string,
   body:    unknown,
@@ -83,7 +80,6 @@ const supabaseFetch = async (
   return { ok: false, error: 'Max retries exceeded' };
 };
 
-// ─── تسجيل Service Worker ───────────────────────────────────────
 export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null> => {
   if (!('serviceWorker' in navigator)) {
     console.warn('❌ Service Worker غير مدعوم');
@@ -108,7 +104,6 @@ export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration
   }
 };
 
-// ─── الاشتراك في Push Notifications ────────────────────────────
 export const subscribeToPush = async (garageId: string): Promise<boolean> => {
   try {
     if (!('PushManager' in window)) {
@@ -120,12 +115,18 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
     if (!registration) return false;
 
     let permission = Notification.permission;
+    
+    // حماية هواتف آيفون (iOS) من الانهيار عند محاولة طلب الإذن برمجياً في الخلفية
     if (permission === 'default') {
-      permission = await Notification.requestPermission();
+      try {
+        permission = await Notification.requestPermission();
+      } catch (e) {
+        console.warn('⚠️ طلب الإذن المبرمج تم حظره مؤقتاً (يتطلب كليك صريح من المستخدم):', e);
+      }
     }
 
     if (permission !== 'granted') {
-      console.warn('❌ تم رفض إذن الإشعارات من السايس');
+      console.warn('❌ إذن الإشعارات غير ممنوح حالياً');
       return false;
     }
 
@@ -177,7 +178,6 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
   }
 };
 
-// ─── إرسال التنبيه الفعلي بعد انتهاء فترة الـ 30 ثانية ───────────
 const executeCarComingPush = async ({
   garageId,
   carPlate,
@@ -195,7 +195,6 @@ const executeCarComingPush = async ({
     const immediateTag = `incoming-${carPlate}`;
     const scheduledTag = `approaching-${carPlate}`;
 
-    // حساب موعد تنبيه الاقتراب (قبل الوصول بدقيقتين)
     const scheduledSendAt = new Date(
       Date.now() + Math.max(1, estimatedMinutes - 2) * 60 * 1000
     ).toISOString();
@@ -264,14 +263,13 @@ const executeCarComingPush = async ({
   }
 };
 
-// ─── إرسال تنبيه "سيارة في الطريق" بعد مهلة 30 ثانية للإلغاء ────────
 export const sendCarComingPush = async ({
   garageId,
   carPlate,
   estimatedMinutes,
   customerName,
   agreedPrice,
-  delaySeconds = 30, // ⏳ تأخير 30 ثانية افتراضياً لإتاحة مهلة التراجع
+  delaySeconds = 30, 
 }: {
   garageId:         string;
   carPlate:         string;
@@ -280,18 +278,15 @@ export const sendCarComingPush = async ({
   agreedPrice?:     number;
   delaySeconds?:    number;
 }): Promise<boolean> => {
-  // إلغاء أي مؤقت سابق لنفس اللوحة إن وُجد
   if (pendingPushTimers.has(carPlate)) {
     clearTimeout(pendingPushTimers.get(carPlate)!);
     pendingPushTimers.delete(carPlate);
   }
 
-  // إذا تم طلب الإرسال المباشر بدون تأخير
   if (delaySeconds <= 0) {
     return executeCarComingPush({ garageId, carPlate, estimatedMinutes, customerName, agreedPrice });
   }
 
-  // 🛡️ بدء عداد الـ 30 ثانية: يتم الإرسال فقط إذا لم يقم العميل بالإلغاء
   return new Promise((resolve) => {
     const timer = setTimeout(async () => {
       pendingPushTimers.delete(carPlate);
@@ -309,20 +304,17 @@ export const sendCarComingPush = async ({
   });
 };
 
-// ─── إلغاء التنبيه فوراً عند تراجع العميل أو السايس في الـ 30 ثانية ──
 export const cancelScheduledPush = async (
   garageId: string,
   carPlate: string
 ): Promise<boolean> => {
   try {
-    // 1️⃣ إيقاف مؤقت الـ 30 ثانية المحلي فوراً (فلن يصل الإشعار للسايس نهائياً)
     if (pendingPushTimers.has(carPlate)) {
       clearTimeout(pendingPushTimers.get(carPlate)!);
       pendingPushTimers.delete(carPlate);
       console.log(`🛑 تم إلغاء إشعار ${carPlate} خلال مهلة الـ 30 ثانية`);
     }
 
-    // 2️⃣ إلغاء التنبيه المجدول على السيرفر (تنبيه الدقيقتين)
     const result = await supabaseFetch('cancel-scheduled-alert', {
       garageId,
       carPlate,
@@ -336,7 +328,6 @@ export const cancelScheduledPush = async (
   }
 };
 
-// ─── إلغاء الاشتراك ─────────────────────────────────────────────
 export const unsubscribeFromPush = async (): Promise<boolean> => {
   try {
     const registration = await navigator.serviceWorker.ready;
@@ -359,7 +350,6 @@ export const unsubscribeFromPush = async (): Promise<boolean> => {
   }
 };
 
-// ─── التحقق من حالة الاشتراك وتجديده ───────────────────────────
 export const checkPushSubscriptionStatus = async () => {
   const isSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
   if (!isSupported) return { isSubscribed: false, permission: 'denied', isSupported: false };
