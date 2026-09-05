@@ -185,7 +185,10 @@ export default function NavigationScreen() {
   const screenEnteredRef = useRef(Date.now());
   const navigatedToSessionRef = useRef(false);
   const isArrivingRef = useRef(false);
-  const pushAlreadyFiredRef = useRef(false);
+  
+  // 🔒 قفل حديدي: تسجيل السيارات التي أُرسل لها إشعار لمنع التكرار نهائياً
+  const sentPushCarIdsRef = useRef<Set<string>>(new Set());
+  
   const realtimeChannelRef = useRef<any>(null);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -307,7 +310,7 @@ export default function NavigationScreen() {
     return toMs(myIncomingCar.startTime || myIncomingCar.created_at) || screenEnteredRef.current;
   }, [myIncomingCar]);
 
-  /* ─── ⏱️ مؤقت الـ 30 ثانية الحاسم والمضمون لإرسال الإشعار ─── */
+  /* ─── ⏱️ مؤقت الـ 30 ثانية المحكم (إرسال مرة واحدة فقط بدون أي تكرار) ─── */
   useEffect(() => {
     if (!myIncomingCar || !garage || !bookingTime) {
       setCancelTimeLeft(CANCEL_WINDOW_SECONDS);
@@ -315,10 +318,15 @@ export default function NavigationScreen() {
       return;
     }
 
-    pushAlreadyFiredRef.current = false;
-    setPushStatus('waiting');
+    // إذا كان قد تم إرسال الإشعار لهذه السيارة بالفعل، لا نرسل مرة أخرى نهائياً
+    if (sentPushCarIdsRef.current.has(myIncomingCar.id)) {
+      setCancelTimeLeft(0);
+      setCanCancel(false);
+      setPushStatus('sent');
+      return;
+    }
 
-    const updateTimerAndFirePush = async () => {
+    const checkTimeAndSendPushOnce = async () => {
       const elapsed = Math.floor((Date.now() - bookingTime) / 1000);
       const left = Math.max(0, CANCEL_WINDOW_SECONDS - elapsed);
       setCancelTimeLeft(left);
@@ -326,10 +334,11 @@ export default function NavigationScreen() {
       if (left <= 0) {
         setCanCancel(false);
 
-        // 🚀 إرسال الإشعار لمرة واحدة فقط فور انتهاء الـ 30 ثانية
-        if (!pushAlreadyFiredRef.current) {
-          pushAlreadyFiredRef.current = true;
-          
+        // 🛡️ التأكد من عدم تكرار الإرسال
+        if (!sentPushCarIdsRef.current.has(myIncomingCar.id)) {
+          sentPushCarIdsRef.current.add(myIncomingCar.id); // تسجيل القفل فوراً
+          setPushStatus('sent');
+
           const freshState = useStore.getState();
           const stillComing = freshState.incomingCars.find(
             (c) => c.id === myIncomingCar.id && c.status === 'coming',
@@ -350,11 +359,8 @@ export default function NavigationScreen() {
                 customerName: currentUserRef.current?.name,
                 agreedPrice: myIncomingCar.agreedPrice,
               });
-
-              setPushStatus('sent');
             } catch (err) {
               console.error('❌ Push error:', err);
-              setPushStatus('waiting');
             }
           } else {
             setPushStatus('cancelled');
@@ -363,8 +369,8 @@ export default function NavigationScreen() {
       }
     };
 
-    updateTimerAndFirePush();
-    const interval = window.setInterval(updateTimerAndFirePush, 1000);
+    checkTimeAndSendPushOnce();
+    const interval = window.setInterval(checkTimeAndSendPushOnce, 1000);
 
     return () => window.clearInterval(interval);
   }, [myIncomingCar?.id, selectedGarageId, bookingTime, garage]);
@@ -449,13 +455,13 @@ export default function NavigationScreen() {
 
     const loading = toast.loading('جاري إلغاء الحجز وتحرير مكان الجراج...');
     try {
-      pushAlreadyFiredRef.current = true;
-      setPushStatus('cancelled');
-
       if (myIncomingCar) {
+        sentPushCarIdsRef.current.add(myIncomingCar.id);
         await removeIncomingCar(myIncomingCar.id);
         await cancelScheduledPush(garage.id, myIncomingCar.carPlate);
       }
+
+      setPushStatus('cancelled');
 
       const activeOffer = offers.find(
         (o) =>
@@ -479,13 +485,13 @@ export default function NavigationScreen() {
 
     const loading = toast.loading('جاري الانتقال لتعديل وجهتك...');
     try {
-      pushAlreadyFiredRef.current = true;
-      setPushStatus('cancelled');
-
       if (myIncomingCar) {
+        sentPushCarIdsRef.current.add(myIncomingCar.id);
         await removeIncomingCar(myIncomingCar.id);
         await cancelScheduledPush(garage.id, myIncomingCar.carPlate);
       }
+
+      setPushStatus('cancelled');
 
       const activeOffer = offers.find(
         (o) =>
