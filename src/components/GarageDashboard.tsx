@@ -380,19 +380,16 @@ export default function GarageDashboard() {
   const valetActiveSessions = useMemo(() => {
     if (!isValet) return activeSessions;
 
+    // 🔒 قفل الأمان: إذا كان حساب السايس معطلاً من الإدارة، احجب عنه الشاشة
     const isActive =
       valetNumber === '1' ? garage?.valet1Active :
       valetNumber === '2' ? garage?.valet2Active :
       valetNumber === '3' ? garage?.valet3Active : false;
     if (!isActive) return [];
 
-    return activeSessions.filter(s => {
-      const addedBy = ((s as any).addedBy || '').trim();
-      if (addedBy && myValetNames.has(addedBy)) return true;
-      if (!addedBy && s.source === 'app') return true;
-      return false;
-    });
-  }, [activeSessions, isValet, myValetNames, valetNumber, garage]);
+    // ✅ السيارات النشطة بالجراج تظهر للسياس المتواجدين بالجراج ليتمكن أي منهم من إنهاء وتحصيل الجلسة
+    return activeSessions;
+  }, [activeSessions, isValet, valetNumber, garage]);
 
   const completedSessions = useMemo(
     () => garageSessions.filter(s => s.status === 'completed'),
