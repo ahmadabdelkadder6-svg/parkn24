@@ -255,7 +255,7 @@ export default function GarageDashboard() {
     });
   }, [garageSessions]);
 
-  // ✅ النسخة الأصلية البسيطة: السايس يرى جميع الجلسات النشطة
+  // السايس يرى جميع الجلسات النشطة
   const valetActiveSessions = useMemo(() => {
     if (!isValet) return activeSessions;
 
@@ -323,7 +323,7 @@ export default function GarageDashboard() {
   const [valetEditSpots, setValetEditSpots] = useState(false);
   const [selectedValetFilter, setSelectedValetFilter] = useState<string | null>(null);
 
-  // 🔍 [إضافة آمنة 1]: مربع البحث السريع
+  // مربع البحث السريع برقم اللوحة
   const [searchQuery, setSearchQuery] = useState('');
 
   const [showSwitcher, setShowSwitcher] = useState(false);
@@ -332,20 +332,20 @@ export default function GarageDashboard() {
     return getMyOwnedGarages(garage.ownerPhone || garage.phone || '');
   }, [getMyOwnedGarages, garage, garages]);
 
+  // 🔗 [التعديل الجوهري الحاسم]: الربط التلقائي يقتصر فقط على الجلسات النشطة النشطة (active)
   useEffect(() => {
     if (!isValet || !currentGarageId) return;
     const targetValetName = currentValetNameLocal || currentValetName || `سايس ${valetNumber}`;
     if (!targetValetName) return;
+    
     const unassigned = sessions.filter(s => {
       if (s.garageId !== currentGarageId) return false;
       if (s.source !== 'app') return false;
-      if (s.status === 'completed') {
-        const dateStr = timestampToLocalDate(toMs(s.endTime || s.startTime));
-        if (dateStr !== getLocalToday()) return false;
-      }
+      if (s.status !== 'active') return false; // 👈 هذا السطر يمنع سحب الجلسات المكتملة المدفوعة محفظة
       const ab = ((s as any).addedBy || '').trim();
       return !ab;
     });
+    
     unassigned.forEach(s => { assignSessionToValet(s.id, targetValetName); });
   }, [sessions, isValet, currentGarageId, currentValetNameLocal, currentValetName, valetNumber, assignSessionToValet]);
 
@@ -441,7 +441,7 @@ export default function GarageDashboard() {
 
   useEffect(() => { return () => { try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }; }, []);
 
-  // 🎁 [إضافة آمنة 2]: دعم الفواتير الصفرية (0ج للهدية)
+  // 🎁 دعم الفواتير الصفرية
   const getSessionRevenue = useCallback((s: any) => {
     if (s.totalPrice != null) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
@@ -487,7 +487,6 @@ export default function GarageDashboard() {
     return calculateCost(el, r);
   }, [garage?.basePrice]);
 
-  // ✅ النسخة الأصلية لفلترة العمليات المكتملة
   const filteredCompleted = useMemo(() => {
     if (isValet) {
       const isActive =
@@ -568,7 +567,6 @@ export default function GarageDashboard() {
 
   const topCardConfirmedRevenue = useMemo(() => filteredStats.total, [filteredStats]);
 
-  // ✅ النسخة الأصلية لتقرير السياس
   const valetReport = useMemo(() => {
     if (!garage || !isOwner || !currentGarageId) return [];
     const garageValets = [
@@ -633,7 +631,7 @@ export default function GarageDashboard() {
     );
   }, [tick, sessions]);
 
-  // 🔍 [فلترة البحث السريع]: آمنة ونظيفة ومطبقة فقط على العرض
+  // البحث السريع
   const filteredActiveSessions = useMemo(() => {
     if (!searchQuery.trim()) return valetActiveSessions;
     const q = normalizePlate(searchQuery);
@@ -870,6 +868,40 @@ export default function GarageDashboard() {
         </motion.div>
       )}
 
+      {/* Confirm Payment Modal */}
+      {confirmSession && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 flex items-end justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)' }} onClick={() => setConfirmSession(null)}>
+          <motion.div initial={{ y: 100 }} animate={{ y: 0 }} transition={{ type: 'spring', damping: 25 }} className="w-full max-w-sm" style={{ background: '#fff', borderRadius: '32px 32px 20px 20px', padding: 24 }} onClick={e => e.stopPropagation()}>
+            <div className="mx-auto mb-5" style={{ width: 40, height: 4, background: '#D0DCFF', borderRadius: 4 }} />
+            <h3 className="font-black text-center mb-1" style={{ fontSize: 18 }}>تأكيد تحصيل السداد</h3>
+            <div className="mb-5" style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
+              <div className="flex justify-between items-center mb-3">
+                <span className="font-bold" style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, background: confirmSession.source === 'manual' ? '#FF9500' : '#0066FF', color: '#fff' }}>{confirmSession.source === 'manual' ? 'يدوي' : 'تطبيق'}</span>
+                <div className="font-black" style={{ fontSize: 18 }}>🚗 {confirmSession.carPlate}</div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="text-center" style={{ background: '#fff', borderRadius: 16, padding: 12, border: '1px solid #E0EAFF' }}><div style={{ fontSize: 11, color: '#7B8CA6' }}>المدة</div><div className="font-black font-mono" style={{ fontSize: 16 }}>{confirmSession.minutes} دقيقة</div></div>
+                <div className="text-center" style={{ background: '#fff', borderRadius: 16, padding: 12, border: '1px solid #E0EAFF' }}><div style={{ fontSize: 11, color: '#7B8CA6' }}>المستحق</div><div className="font-black font-mono" style={{ fontSize: 24, color: '#00AA44' }}>{confirmSession.cost > 0 ? confirmSession.cost : '0'}</div><div style={{ fontSize: 10, color: '#94a3b8' }}>ج.م</div></div>
+              </div>
+              {isOwner && confirmSession.source === 'app' && confirmSession.cost > 0 && (
+                <div className="mt-3 flex items-center justify-between" style={{ background: '#FFF8F0', borderRadius: 14, padding: '8px 12px', border: '1px solid #FFD180' }}>
+                  <div className="flex items-center gap-1"><Percent size={12} style={{ color: '#FF9500' }} /><span className="font-bold" style={{ fontSize: 10, color: '#FF9500' }}>عمولة {garage.commissionRate ?? 10}%</span></div>
+                  <span className="font-black font-mono" style={{ fontSize: 13, color: '#FF9500' }}>{Math.round((confirmSession.cost * (garage.commissionRate ?? 10) / 100) * 100) / 100} ج.م</span>
+                </div>
+              )}
+            </div>
+            <div className="mb-5">
+              <h4 className="font-black mb-3 text-right" style={{ fontSize: 12, color: '#7B8CA6' }}>طريقة السداد</h4>
+              <div className="text-center" style={{ background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', borderRadius: 20, padding: 18, color: '#fff' }}><div style={{ fontSize: 32, marginBottom: 4 }}>💵</div><div className="font-black" style={{ fontSize: 15 }}>سداد نقدي كاش</div></div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={handleConfirmPayment} className="flex-1 font-black flex items-center justify-center gap-2 active:scale-95" style={{ padding: 18, borderRadius: 20, fontSize: 14, color: '#fff', background: 'linear-gradient(135deg,#00CC66,#00AA55)' }}><CheckCircle size={20} /> تأكيد ({confirmSession.cost} ج.م)</button>
+              <button onClick={() => setConfirmSession(null)} className="active:scale-95" style={{ background: '#F0F4FF', padding: '0 20px', borderRadius: 20, color: '#7B8CA6' }}><XCircle size={20} /></button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+
       {/* Stats Cards */}
       <div className={`grid ${isOwner ? 'grid-cols-3' : 'grid-cols-2'} gap-3 mb-5`}>
         {isOwner ? (
@@ -1057,7 +1089,7 @@ export default function GarageDashboard() {
             {!showAddCar ? (
               <button onClick={() => setShowAddCar(true)} disabled={garage.availableSpots <= 0} className="w-full font-black flex items-center justify-center gap-2 active:scale-95" style={{ background: garage.availableSpots > 0 ? 'linear-gradient(135deg,#0066FF,#0044DD)' : '#D0DCFF', color: garage.availableSpots > 0 ? '#fff' : '#94a3b8', borderRadius: 22, padding: 18, fontSize: 15 }}><Plus size={22} /> {garage.availableSpots > 0 ? 'إضافة سيارة جديدة' : 'لا توجد أماكن'}</button>
             ) : (
-              <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3" style={{ background: '#fff', border: '2.5px solid #0066FF', borderRadius: 24, padding: 18 }}>
+              <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3" style={{ background: '#fff', border: '2px solid #0066FF', borderRadius: 24, padding: 18 }}>
                 <input className="w-full font-bold text-right outline-none" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 14, borderRadius: 18, fontSize: 15 }} placeholder="رقم لوحة السيارة" value={newCarPlate} onChange={e => setNewCarPlate(e.target.value)} />
                 <div>
                   <label className="font-bold block text-right mb-1" style={{ fontSize: 11, color: '#7B8CA6' }}>💰 سعر الساعة</label>
@@ -1077,11 +1109,9 @@ export default function GarageDashboard() {
           </div>
 
           <div className="mb-5">
-            <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#00AA44' }}>
-              الجلسات النشطة ({filteredActiveSessions.length}) <Clock size={16} />
-            </h3>
-
-            {/* 🔍 مربع البحث السريع برقم اللوحة */}
+            <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#00AA44' }}>الجلسات النشطة ({valetActiveSessions.length}) <Clock size={16} /></h3>
+            
+            {/* 🔍 مربع البحث السريع */}
             {valetActiveSessions.length > 0 && (
               <div className="relative mb-3">
                 <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1113,9 +1143,7 @@ export default function GarageDashboard() {
 
             <div className="space-y-3">
               {filteredActiveSessions.length === 0 ? (
-                <div className="text-center" style={{ background: '#fff', borderRadius: 22, padding: 28, border: '2px solid #D0DCFF', color: '#94a3b8', fontSize: 14 }}>
-                  {searchQuery ? 'لا توجد نتائج مطابقة للبحث' : 'لا توجد جلسات نشطة'}
-                </div>
+                <div className="text-center" style={{ background: '#fff', borderRadius: 22, padding: 28, border: '2px solid #D0DCFF', color: '#94a3b8', fontSize: 14 }}>لا توجد جلسات نشطة</div>
               ) : (
                 filteredActiveSessions.map(s => {
                   const st = toMs(s.startTime); const el = st > 0 ? Math.max(0, Math.floor((Date.now() - st) / 1000)) : 0;
@@ -1376,7 +1404,7 @@ export default function GarageDashboard() {
         )}
         {isValet && (
           <div className="mb-4 text-center" style={{ background: '#EBF2FF', borderRadius: 18, padding: '10px 16px', border: '2px solid #D0DCFF' }}>
-            <span className="font-black" style={{ fontSize: 12, color: '#0066FF' }}>📅 {formatLocalDateArabic(getLocalToday())} - عملياتي فقط</span>
+            <span className="font-black" style={{ fontSize: 12, color: '#0066FF' }}>📅 {formatLocalDateArabic(getLocalToday())} - عملياتي اليوم</span>
           </div>
         )}
 
