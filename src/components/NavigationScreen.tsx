@@ -60,7 +60,7 @@ const toMs = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-/* ─── Map controller (المؤمن ضد الانهيارات) ─── */
+/* ─── Map controller (المؤمن بالكامل ضد الانهيارات) ─── */
 function MapController({
   userPos,
   garagePos,
@@ -168,7 +168,10 @@ export default function NavigationScreen() {
   const screenEnteredRef = useRef(Date.now());
   const navigatedToSessionRef = useRef(false);
   const isArrivingRef = useRef(false);
-  const pushAlreadyFiredRef = useRef(false);
+  
+  // 🔒 القفل الحديدي: لمنع التكرار نهائياً وتأمين دالة الإرسال لمرة واحدة فقط
+  const sentPushCarIdsRef = useRef<Set<string>>(new Set());
+
   const realtimeChannelRef = useRef<any>(null);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -290,7 +293,7 @@ export default function NavigationScreen() {
     return toMs(myIncomingCar.startTime || myIncomingCar.created_at) || screenEnteredRef.current;
   }, [myIncomingCar]);
 
-  /* ─── ⏱️ مؤقت الـ 30 ثانية المحكم (منع الإرسال المتكرر) ─── */
+  /* ─── ⏱️ مؤقت الـ 30 ثانية المحكم (منع الإرسال المتكرر بقفل حديدي) ─── */
   useEffect(() => {
     if (!myIncomingCar || !garage || !bookingTime) {
       setCancelTimeLeft(CANCEL_WINDOW_SECONDS);
@@ -298,8 +301,13 @@ export default function NavigationScreen() {
       return;
     }
 
-    pushAlreadyFiredRef.current = false;
-    setPushStatus('waiting');
+    // إذا جرى إرسال الإشعار لهذه السيارة مسبقاً، نقفل التكرار فوراً
+    if (sentPushCarIdsRef.current.has(myIncomingCar.id)) {
+      setCancelTimeLeft(0);
+      setCanCancel(false);
+      setPushStatus('sent');
+      return;
+    }
 
     const updateTimerAndFirePush = async () => {
       const elapsed = Math.floor((Date.now() - bookingTime) / 1000);
@@ -309,9 +317,10 @@ export default function NavigationScreen() {
       if (left <= 0) {
         setCanCancel(false);
 
-        // إرسال الإشعار لمرة واحدة فقط فور انتهاء الـ 30 ثانية لمنع التكرار اللانهائي
-        if (!pushAlreadyFiredRef.current) {
-          pushAlreadyFiredRef.current = true;
+        // إرسال الإشعار لمرة واحدة فقط وقفل العملية نهائياً
+        if (!sentPushCarIdsRef.current.has(myIncomingCar.id)) {
+          sentPushCarIdsRef.current.add(myIncomingCar.id);
+          setPushStatus('sent');
           
           const freshState = useStore.getState();
           const stillComing = freshState.incomingCars.find(
@@ -333,11 +342,8 @@ export default function NavigationScreen() {
                 customerName: currentUserRef.current?.name,
                 agreedPrice: myIncomingCar.agreedPrice,
               });
-
-              setPushStatus('sent');
             } catch (err) {
               console.error('❌ Push error:', err);
-              setPushStatus('waiting');
             }
           } else {
             setPushStatus('cancelled');
@@ -432,13 +438,13 @@ export default function NavigationScreen() {
 
     const loading = toast.loading('جاري إلغاء الحجز وتحرير مكان الجراج...');
     try {
-      pushAlreadyFiredRef.current = true;
-      setPushStatus('cancelled');
-
       if (myIncomingCar) {
+        sentPushCarIdsRef.current.add(myIncomingCar.id);
         await removeIncomingCar(myIncomingCar.id);
         await cancelScheduledPush(garage.id, myIncomingCar.carPlate);
       }
+
+      setPushStatus('cancelled');
 
       const activeOffer = offers.find(
         (o) =>
@@ -463,9 +469,12 @@ export default function NavigationScreen() {
     const loading = toast.loading('جاري الانتقال لتعديل وجهتك...');
     try {
       if (myIncomingCar) {
+        sentPushCarIdsRef.current.add(myIncomingCar.id);
         await removeIncomingCar(myIncomingCar.id);
         await cancelScheduledPush(garage.id, myIncomingCar.carPlate);
       }
+
+      setPushStatus('cancelled');
 
       const activeOffer = offers.find(
         (o) =>
@@ -600,7 +609,7 @@ export default function NavigationScreen() {
               </span>
             </div>
             
-            <div className="text-right flex-col items-end">
+            <div className="text-right flex flex-col items-end">
               <span
                 style={{
                   color: '#000000',

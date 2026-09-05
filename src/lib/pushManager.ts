@@ -21,6 +21,9 @@ interface SendPushPayload {
   scheduled: (PushPayloadNotification & { sendAt: string }) | null;
 }
 
+// 🔒 قفل ذكي لمنع تكرار طلب الإرسال لنفس السيارة خلال فترة الـ 30 ثانية
+const sentPushHistory = new Map<string, number>();
+
 // ─── Helper: تحويل VAPID Key ────────────────────────────────────
 const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -179,6 +182,19 @@ export const sendCarComingPush = async ({
   agreedPrice?:     number;
 }): Promise<boolean> => {
   try {
+    const lockKey = `${garageId}:${carPlate}`;
+    const lastSentTime = sentPushHistory.get(lockKey);
+    const now = Date.now();
+
+    // 🛡️ [حماية ضد التكرار]: إذا أُرسل إشعار لنفس السيارة خلال الـ 30 ثانية الماضية، نمنع الإرسال فوراً
+    if (lastSentTime && (now - lastSentTime < 30000)) {
+      console.log(`🛡️ تم منع تكرار إرسال إشعار السيرفر لـ ${carPlate}`);
+      return true;
+    }
+
+    // حفظ طابع الوقت الحالي للإرسال
+    sentPushHistory.set(lockKey, now);
+
     const immediateTag = `incoming-${carPlate}`;
     const scheduledTag = `approaching-${carPlate}`;
 
@@ -224,6 +240,7 @@ export const sendCarComingPush = async ({
           : null,
     };
 
+    console.log(`📤 جاري الاتصال بالسيرفر لإرسال إشعار السيارة: ${carPlate}`);
     const result = await supabaseFetch('send-push-notification', payload);
     return result.ok;
   } catch (err) {
@@ -238,6 +255,10 @@ export const cancelScheduledPush = async (
   carPlate: string
 ): Promise<boolean> => {
   try {
+    // إزالة قفل السيارة عند الإلغاء لتكون جاهزة لأي حجز جديد لاحقاً
+    const lockKey = `${garageId}:${carPlate}`;
+    sentPushHistory.delete(lockKey);
+
     const result = await supabaseFetch('cancel-scheduled-alert', {
       garageId,
       carPlate,
