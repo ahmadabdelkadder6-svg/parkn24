@@ -160,7 +160,6 @@ export const calculateSessionPriceWithFreeGift = (
   return { finalPrice, freeMinutes: 60, billableMs };
 };
 
-// 🛡️ [1] حماية من الضغط العالي (Rate Limiter)
 const rateLimiter = {
   requests: 0,
   lastReset: Date.now(),
@@ -178,7 +177,6 @@ const rateLimiter = {
   }
 };
 
-// 🛡️ [2] تنظيف المدخلات
 const sanitizeInput = (input: string): string => {
   if (!input) return '';
   return input
@@ -190,28 +188,6 @@ const sanitizeInput = (input: string): string => {
     .substring(0, 200);
 };
 
-// 🛡️ [3] حماية من تخمين الباسوردات
-const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
-
-export const checkLoginAttempt = (identifier: string): boolean => {
-  const now = Date.now();
-  const record = loginAttempts.get(identifier);
-
-  if (record && now - record.lastAttempt < 300000) {
-    if (record.count >= 5) return false;
-    record.count++;
-    record.lastAttempt = now;
-  } else {
-    loginAttempts.set(identifier, { count: 1, lastAttempt: now });
-  }
-  return true;
-};
-
-export const resetLoginAttempts = (identifier: string): void => {
-  loginAttempts.delete(identifier);
-};
-
-// ===================== Helpers =====================
 const uid = () => crypto.randomUUID?.() || Date.now().toString();
 
 const isSupabaseConfigured = () => {
@@ -235,27 +211,21 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-// 🧬 [بصمة اللوحة المصدرية الموحدة]
 export const normalizePlate = (plate?: string): string => {
   if (!plate) return '';
-  
   let cleaned = sanitizeInput(plate).trim();
-  
   cleaned = cleaned
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
     .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
   
   const charMap: Record<string, string> = {
     'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ٱ': 'ا', 'ء': 'ا',
-    'ة': 'ت',
-    'ى': 'ي', 'ئ': 'ي',
-    'ؤ': 'و',
+    'ة': 'ت', 'ى': 'ي', 'ئ': 'ي', 'ؤ': 'و',
     'پ': 'ب', 'چ': 'ج', 'ژ': 'ز', 'گ': 'ك', 'ڤ': 'ف',
     'ک': 'ك', 'ی': 'ي',
   };
   cleaned = cleaned.replace(/./g, (char) => charMap[char] || char);
   cleaned = cleaned.replace(/[^0-9\u0600-\u06FF]/g, '');
-  
   return cleaned;
 };
 
@@ -490,7 +460,6 @@ interface AppState {
   logout: () => void;
 }
 
-// ===================== Store =====================
 export const useStore = create<AppState>((set, get) => ({
   view: (() => { try { const saved = localStorage.getItem('appView'); return (saved as ViewType) || 'user'; } catch { return 'user' as ViewType; } })(),
   setView: (v) => { set({ view: v }); localStorage.setItem('appView', v); },
@@ -738,7 +707,6 @@ export const useStore = create<AppState>((set, get) => ({
     if (!isSupabaseConfigured()) return;
 
     if (!rateLimiter.canProceed()) {
-      console.warn('⚠️ Rate limit exceeded, skipping fetch');
       return;
     }
 
@@ -810,6 +778,7 @@ export const useStore = create<AppState>((set, get) => ({
               revenueConfirmed: ss.revenueConfirmed || localVersion.revenueConfirmed,
               settled: ss.settled ?? localVersion.settled,
               settled_at: ss.settled_at || localVersion.settled_at,
+              addedBy: ss.addedBy || localVersion.addedBy || '',
             };
           }
           if (ss.status === 'active' && localVersion.status === 'active') {
@@ -935,7 +904,6 @@ export const useStore = create<AppState>((set, get) => ({
       pausePolling(6000);
       const { error } = await supabase.from('garages').update({ is_active: updates.isActive }).eq('id', id);
       if (error) {
-        console.error('❌ Failed to update isActive:', error);
         set((st) => ({ garages: st.garages.map((g) => g.id === id ? { ...g, isActive: !updates.isActive } : g) }));
       } else {
         await get().fetchAll();
@@ -985,14 +953,14 @@ export const useStore = create<AppState>((set, get) => ({
       const pending = pendingGarageUpdates.get(id);
       if (pending && Object.keys(pending).length > 0) {
         const { error: flushError } = await supabase.from('garages').update(pending).eq('id', id);
-        if (flushError) { console.error('❌', flushError); await get().fetchAll(); return; }
+        if (flushError) { await get().fetchAll(); return; }
         pendingGarageUpdates.delete(id);
         if (pendingGarageUpdates.size === 0 && updateGarageTimeout) { clearTimeout(updateGarageTimeout); updateGarageTimeout = null; }
       }
       const { data, error } = await supabase.rpc('adjust_spots', { garage_uuid: id, delta });
-      if (error) { console.error('❌', error); await get().fetchAll(); return; }
+      if (error) { await get().fetchAll(); return; }
       set((st) => ({ garages: st.garages.map((g) => g.id === id ? { ...g, availableSpots: Number(data) } : g) }));
-    } catch (err) { console.error('❌', err); await get().fetchAll(); }
+    } catch (err) { await get().fetchAll(); }
   },
 
   addSession: async (s) => {
@@ -1128,7 +1096,6 @@ export const useStore = create<AppState>((set, get) => ({
         }).select().single();
 
         if (error) {
-          console.error('❌ خطأ في إضافة الجلسة:', error);
           set((st) => ({ sessions: st.sessions.filter((x) => x.id !== sessionId) }));
           await get().adjustGarageSpots(s.garageId, +1);
           return sessionId;
@@ -1142,7 +1109,6 @@ export const useStore = create<AppState>((set, get) => ({
           return data.id;
         }
       } catch (err) {
-        console.error('❌ خطأ غير متوقع:', err);
         set((st) => ({ sessions: st.sessions.filter((x) => x.id !== sessionId) }));
         await get().adjustGarageSpots(s.garageId, +1);
       }
@@ -1153,12 +1119,12 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 🔗 [إنهاء الجلسة الذكي]: تثبيت وحماية اسم السايس المسؤول في قاعدة البيانات
+  // 🔒 [حماية خانة السايس]: شاشة العميل لا تمسح خانة السايس المسجلة في السيرفر إطلاقاً
   endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0, endedBy) => {
     const now = Date.now();
     const session = get().sessions.find((s) => s.id === id);
-    if (!session) { console.error('❌ الجلسة مش موجودة:', id); return; }
-    if (session.status !== 'active') { console.warn('⚠️ الجلسة مش نشطة:', session.status); return; }
+    if (!session) return;
+    if (session.status !== 'active') return;
 
     const lockKey = `${session.garageId}:${normalizePlate(session.carPlate)}`;
     if (sessionEndLocks.has(lockKey)) return;
@@ -1178,7 +1144,8 @@ export const useStore = create<AppState>((set, get) => ({
 
       const isAutoConfirmed = paymentMethod === 'wallet';
 
-      const finalEndedBy = endedBy || resolveAddedBy() || session.addedBy || '';
+      // إذا كان الإنهاء من السايس يُحدث الاسم، إذا كان من العميل يُحافظ على الاسم القديم
+      const resolvedValet = endedBy || resolveAddedBy() || session.addedBy || '';
 
       const endedSession: ParkingSession = {
         ...session,
@@ -1191,7 +1158,7 @@ export const useStore = create<AppState>((set, get) => ({
         netRevenue,
         settled: false,
         freeMinutesApplied: freeMinutesApplied || session.freeMinutesApplied || 0,
-        addedBy: finalEndedBy,
+        addedBy: resolvedValet,
       };
 
       locallyEndedSessions.set(id, endedSession);
@@ -1204,24 +1171,30 @@ export const useStore = create<AppState>((set, get) => ({
 
       if (!isSupabaseConfigured()) return;
 
+      const updatePayload: Record<string, any> = {
+        end_time: new Date(now).toISOString(),
+        total_price: safeTotalPrice,
+        payment_method: paymentMethod,
+        status: 'completed',
+        revenue_confirmed: isAutoConfirmed,
+        commission_amount: commissionAmount,
+        net_revenue: netRevenue,
+        settled: false,
+        free_minutes_applied: freeMinutesApplied || session.freeMinutesApplied || 0,
+      };
+
+      // 🛡️ لا يتم إرسال خانة السايس إلا إذا كان هناك اسم حقيقي لتجنب تصفير اسم السايس الأصلي
+      if (resolvedValet && resolvedValet.trim() !== '') {
+        updatePayload.added_by = resolvedValet.trim();
+      }
+
       const { error } = await supabase
         .from('sessions')
-        .update({
-          end_time: new Date(now).toISOString(),
-          total_price: safeTotalPrice,
-          payment_method: paymentMethod,
-          status: 'completed',
-          revenue_confirmed: isAutoConfirmed,
-          commission_amount: commissionAmount,
-          net_revenue: netRevenue,
-          settled: false,
-          free_minutes_applied: freeMinutesApplied || session.freeMinutesApplied || 0,
-          added_by: finalEndedBy,
-        })
+        .update(updatePayload)
         .eq('id', id);
 
       if (error) {
-        console.error('❌', error);
+        console.error('❌ Update session error:', error);
       } else {
         setTimeout(() => {
           locallyEndedSessions.delete(id);
@@ -1268,7 +1241,6 @@ export const useStore = create<AppState>((set, get) => ({
       .eq('id', sessionId);
 
     if (error) {
-      console.error('❌', error);
       set((st) => ({
         sessions: st.sessions.map((s) =>
           s.id === sessionId ? { ...s, revenueConfirmed: false } : s
@@ -1283,7 +1255,6 @@ export const useStore = create<AppState>((set, get) => ({
     if (!isSupabaseConfigured()) return;
     const { error } = await supabase.from('sessions').update({ revenue_confirmed: false }).eq('id', sessionId);
     if (error) {
-      console.error('❌', error);
       set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: true } : s)) }));
     }
   },
@@ -1295,14 +1266,11 @@ export const useStore = create<AppState>((set, get) => ({
     }));
     if (!isSupabaseConfigured()) return;
     try {
-      const { error } = await supabase
+      await supabase
         .from('sessions')
         .update({ added_by: valetName })
         .eq('id', sessionId);
-      if (error) console.error('❌ assignSessionToValet error:', error);
-    } catch (err) {
-      console.error('❌ assignSessionToValet unexpected error:', err);
-    }
+    } catch (err) {}
   },
 
   cancelSession: (id) => {
@@ -1407,9 +1375,7 @@ export const useStore = create<AppState>((set, get) => ({
         await get().fetchAll();
         return;
       }
-    } catch (rpcErr) {
-      console.warn('RPC approve exception, using direct fallback:', rpcErr);
-    }
+    } catch (rpcErr) {}
 
     const topUp = get().walletTopUps.find((w) => w.id === id);
     if (!topUp) return;
@@ -1491,7 +1457,6 @@ export const useStore = create<AppState>((set, get) => ({
 
       await get().fetchAll();
     } catch (err) {
-      console.error('Direct fallback top-up approval failed:', err);
       throw err;
     }
   },
@@ -1521,10 +1486,7 @@ export const useStore = create<AppState>((set, get) => ({
       .update({ status: 'rejected' })
       .eq('id', supabaseId);
 
-    if (error) {
-      console.error('❌', error);
-      return;
-    }
+    if (error) return;
 
     if (supabaseId !== id) {
       set((st) => ({
@@ -1544,10 +1506,9 @@ export const useStore = create<AppState>((set, get) => ({
         customer_name: c.customerName, customer_phone: c.customerPhone,
         agreed_price: c.agreedPrice, estimated_arrival: c.estimatedArrival,
       }).select().single();
-      if (error) { console.error('❌', error); set((st) => ({ incomingCars: st.incomingCars.filter((x) => x.id !== incomingId) })); return; }
+      if (error) { set((st) => ({ incomingCars: st.incomingCars.filter((x) => x.id !== incomingId) })); return; }
       if (data) set((st) => ({ incomingCars: st.incomingCars.map((x) => (x.id === incomingId ? mapIncoming(data) : x)) }));
     } catch (err) {
-      console.error('❌', err);
       set((st) => ({ incomingCars: st.incomingCars.filter((x) => x.id !== incomingId) }));
     }
   },
@@ -1565,7 +1526,7 @@ export const useStore = create<AppState>((set, get) => ({
       if (savedCarPlate && savedGarageId) {
         await supabase.from('incoming_cars').delete().eq('car_plate', savedCarPlate).eq('garage_id', savedGarageId);
       }
-    } catch (err) { console.error('❌', err); }
+    } catch (err) {}
     setTimeout(() => { get().fetchAll(); }, 1000);
   },
 
@@ -1586,14 +1547,12 @@ export const useStore = create<AppState>((set, get) => ({
         subject: cleanMsg.subject ?? null, message: cleanMsg.message,
       }).select().single();
       if (error) {
-        console.error('❌', error);
         set((st) => ({ messages: (st.messages ?? []).filter((m) => m.id !== optimisticMessage.id) }));
         return { success: false, error: error.message || 'فشل إرسال الرسالة' };
       }
       if (data) set((st) => ({ messages: (st.messages ?? []).map((m) => (m.id === optimisticMessage.id ? mapMessage(data) : m)) }));
       return { success: true };
     } catch (err) {
-      console.error('❌', err);
       set((st) => ({ messages: (st.messages ?? []).filter((m) => m.id !== optimisticMessage.id) }));
       return { success: false, error: err instanceof Error ? err.message : 'حدث خطأ غير متوقع' };
     }
@@ -1689,7 +1648,6 @@ export function setupRealtime() {
 
   channel.subscribe((status) => {
     if (status === 'SUBSCRIBED') {
-      console.log('✅ Realtime connected:', channelName);
       if (pollingInterval) clearInterval(pollingInterval);
       pollingInterval = setInterval(() => { if (!isOperationInProgress) useStore.getState().fetchAll(); }, 10000);
     }

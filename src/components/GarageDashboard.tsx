@@ -5,7 +5,6 @@ import {
   Minus, Save, MapPin, Edit3, Navigation, CarFront, FileText,
   CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
 } from 'lucide-react';
-// 🧬 استيراد دالة normalizePlate الموحدة من الـ Store لضمان تطابق البصمة
 import { useStore, pausePolling, normalizePlate } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
@@ -363,25 +362,13 @@ export default function GarageDashboard() {
     return names;
   }, [currentValetNameLocal, currentValetName, valetNumber]);
 
-  const garageValetNames = useMemo(() => {
-    if (!garage) return [];
-    return [
-      (garage.valetName1 || '').trim(),
-      (garage.valetName2 || '').trim(),
-      (garage.valetName3 || '').trim(),
-      'سايس 1', 'سايس 2', 'سايس 3'
-    ].filter(Boolean);
-  }, [garage]);
-
   const activeSessions = useMemo(() => {
     return garageSessions.filter(s => {
       if (s.status !== 'active') return false;
       const st = toMs(s.startTime);
       if (st <= 0) return false;
-
       const elapsedMs = Date.now() - st;
       if (elapsedMs >= 24 * 60 * 60 * 1000) return false;
-
       return true;
     });
   }, [garageSessions]);
@@ -459,7 +446,7 @@ export default function GarageDashboard() {
     return getMyOwnedGarages(garage.ownerPhone || garage.phone || '');
   }, [getMyOwnedGarages, garage, garages]);
 
-  // 🔗 [الربط التلقائي الفوري]: إسناد أي جلسة تطبيق تمت في هذا الجراج للسايس النشط حالياً في الوردية
+  // 🔗 [التثبيت الفوري في الوردية]: إسناد أي جلسة تطبيق للسايس النشط الآن
   useEffect(() => {
     if (!isValet || !currentGarageId) return;
     const targetValetName = activeValetName;
@@ -513,24 +500,16 @@ export default function GarageDashboard() {
 
   useEffect(() => {
     if (!currentGarageId) return;
-
     const silentSync = async () => {
-      try {
-        await subscribeToPush(currentGarageId);
-      } catch (e) {
-        console.warn('Silent push sync error:', e);
-      }
+      try { await subscribeToPush(currentGarageId); } catch (e) {}
     };
-
     silentSync();
-
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         silentSync();
         fetchAll();
       }
     };
-
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [currentGarageId, fetchAll]);
@@ -565,7 +544,6 @@ export default function GarageDashboard() {
         }
       });
     };
-
     checkApproaching();
     const interval = setInterval(checkApproaching, 15000);
     return () => clearInterval(interval);
@@ -657,7 +635,7 @@ export default function GarageDashboard() {
       
       const addedBy = ((s as any).addedBy || '').trim();
 
-      // إذا كان السايس فاتح ورديته اليوم: تُعرض العمليات المسجلة باسمه + أي عملية تطبيق تمت اليوم بدون اسم سايس آخر
+      // يرى السايس عملياته الخاصة + أي عملية تطبيق مكتملة اليوم بالجراج
       if (isValet) {
         const isMine = (addedBy && myValetNames.has(addedBy)) || (!addedBy && s.source === 'app');
         if (!isMine) return false;
@@ -706,13 +684,14 @@ export default function GarageDashboard() {
 
   const topCardConfirmedRevenue = useMemo(() => filteredStats.total, [filteredStats]);
 
-  // 📊 [تقرير السياس في لوحة المالك]: حساب جميع العمليات المكتملة وتوزيعها على السياس
+  // 📊 [تقرير السياس الدقيق للمالك]: تجميع دقيق للعمليات لكل سايس برقم شفته واسمه
   const valetReport = useMemo(() => {
     if (!garage || !isOwner || !currentGarageId) return [];
+    
     const garageValets = [
-      { name: (garage.valetName1 || '').trim() || 'سايس 1', defaultName: 'سايس 1', color: '#0066FF', icon: '🅿️1' },
-      { name: (garage.valetName2 || '').trim() || 'سايس 2', defaultName: 'سايس 2', color: '#7C3AED', icon: '🅿️2' },
-      { name: (garage.valetName3 || '').trim() || 'سايس 3', defaultName: 'سايس 3', color: '#FF8800', icon: '🅿️3' },
+      { n: 1, name: (garage.valetName1 || '').trim() || 'سايس 1', defaultName: 'سايس 1', color: '#0066FF', icon: '🅿️1' },
+      { n: 2, name: (garage.valetName2 || '').trim() || 'سايس 2', defaultName: 'سايس 2', color: '#7C3AED', icon: '🅿️2' },
+      { n: 3, name: (garage.valetName3 || '').trim() || 'سايس 3', defaultName: 'سايس 3', color: '#FF8800', icon: '🅿️3' },
     ];
     
     const ownerGarageCompleted = completedSessions.filter((s) => {
@@ -729,7 +708,7 @@ export default function GarageDashboard() {
     return garageValets.map((v) => {
       const vs = ownerGarageCompleted.filter((s) => {
         const addedBy = ((s as any).addedBy || '').trim();
-        return addedBy === v.name || addedBy === v.defaultName;
+        return addedBy === v.name || addedBy === v.defaultName || addedBy === `سايس ${v.n}`;
       });
       const confirmed = vs.filter((s) => s.revenueConfirmed);
       const ac = confirmed.filter((s) => s.source === 'app');
@@ -771,7 +750,6 @@ export default function GarageDashboard() {
           }),
       );
     };
-
     pruneExpiredUndoable();
     const interval = setInterval(pruneExpiredUndoable, 3000);
     return () => clearInterval(interval);
@@ -1490,7 +1468,7 @@ export default function GarageDashboard() {
         )}
         {isValet && (
           <div className="mb-4 text-center" style={{ background: '#EBF2FF', borderRadius: 18, padding: '10px 16px', border: '2px solid #D0DCFF' }}>
-            <span className="font-black" style={{ fontSize: 12, color: '#0066FF' }}>📅 {formatLocalDateArabic(getLocalToday())} - عملياتي اليوم</span>
+            <span className="font-black" style={{ fontSize: 12, color: '#0066FF' }}>📅 {formatLocalDateArabic(getLocalToday())} - عملياتي فقط</span>
           </div>
         )}
 
@@ -1763,7 +1741,7 @@ export default function GarageDashboard() {
             const isC = session.revenueConfirmed;
             const isSettled = (session as any).settled === true;
             const rawAddedBy = ((session as any).addedBy || '').trim();
-            const addedBy = garageValetNames.includes(rawAddedBy) ? rawAddedBy : (isValet ? activeValetName : '');
+            const addedBy = rawAddedBy || (isValet ? activeValetName : '');
             return (
               <div 
                 key={session.id} 
