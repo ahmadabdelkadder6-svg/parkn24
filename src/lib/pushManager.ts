@@ -21,8 +21,8 @@ interface SendPushPayload {
   scheduled: (PushPayloadNotification & { sendAt: string }) | null;
 }
 
-// 🔒 قفل عام: منع إرسال نفس السيارة مرتين خلال 60 ثانية
-const sentPushHistory = new Map<string, number>();
+// 🔒 قفل عام حديدي: منع تكرار الإشعار لنفس السيارة إطلاقاً
+const sentPushCarKeys = new Set<string>();
 
 const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -165,6 +165,7 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
   }
 };
 
+// ─── إرسال التنبيه لمرة واحدة فقط بدون أي تكرار ──────────────────
 export const sendCarComingPush = async ({
   garageId,
   carPlate,
@@ -179,17 +180,16 @@ export const sendCarComingPush = async ({
   agreedPrice?:     number;
 }): Promise<boolean> => {
   try {
-    const lockKey = `${garageId}:${carPlate}`;
-    const lastSentTime = sentPushHistory.get(lockKey);
-    const now = Date.now();
+    const lockKey = `${garageId}_${carPlate.trim().toUpperCase()}`;
 
-    // 🛡️ منع إرسال نفس السيارة أكثر من مرة خلال 60 ثانية
-    if (lastSentTime && (now - lastSentTime < 60000)) {
-      console.log(`🛡️ تم منع التكرار للسيارة: ${carPlate}`);
+    // 🛡️ فحص القفل: إذا تم إرسال إشعار لهذه السيارة من قبل، نمنع الإرسال فوراً
+    if (sentPushCarKeys.has(lockKey)) {
+      console.log(`🛡️ [Push Blocked] تم منع تكرار الإشعار للسيارة: ${carPlate}`);
       return true;
     }
 
-    sentPushHistory.set(lockKey, now);
+    // تفعيل القفل فوراً
+    sentPushCarKeys.add(lockKey);
 
     const immediateTag = `incoming-${carPlate}`;
     const scheduledTag = `approaching-${carPlate}`;
@@ -236,7 +236,7 @@ export const sendCarComingPush = async ({
           : null,
     };
 
-    console.log(`📤 إرسال إشعار السيرفر لمرة واحدة للسيارة: ${carPlate}`);
+    console.log(`🚀 [Push Sent ONCE] إرسال إشعار السيرفر للسيارة: ${carPlate}`);
     const result = await supabaseFetch('send-push-notification', payload);
     return result.ok;
   } catch (err) {
@@ -250,8 +250,8 @@ export const cancelScheduledPush = async (
   carPlate: string
 ): Promise<boolean> => {
   try {
-    const lockKey = `${garageId}:${carPlate}`;
-    sentPushHistory.delete(lockKey);
+    const lockKey = `${garageId}_${carPlate.trim().toUpperCase()}`;
+    sentPushCarKeys.delete(lockKey);
 
     const result = await supabaseFetch('cancel-scheduled-alert', {
       garageId,
