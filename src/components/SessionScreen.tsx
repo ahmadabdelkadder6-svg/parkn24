@@ -7,8 +7,7 @@ import {
   Gift,
   Sparkles,
 } from 'lucide-react';
-// 🧬 استيراد دالة normalizePlate الموحدة من الـ Store لضمان تطابق الجلسة والعداد لحظياً
-import { useStore, normalizePlate } from '../store';
+import { useStore } from '../store';
 import {
   calculateFullHours,
   calculateCost,
@@ -29,6 +28,17 @@ const safeParseTime = (value: any): number => {
     return value;
   }
   return 0;
+};
+
+// 🛡️ تنظيف وتوحيد رقم اللوحة بشكل صارم لمنع أي تلاعب
+const normalizePlate = (plate?: string): string => {
+  if (!plate) return '';
+  return plate
+    .trim()
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
+    .replace(/[^A-Z0-9\u0600-\u06FF]/gi, '') // مسح كامل للمسافات والرموز لضمان التطابق التام
+    .toUpperCase();
 };
 
 export default function SessionScreen() {

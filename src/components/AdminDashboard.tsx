@@ -7,8 +7,7 @@ import {
   Settings,
   CalendarDays,
 } from 'lucide-react';
-// 🧬 استيراد الدالة الموحدة لضمان مطابقة بصمة لوحة السيارة 100% عبر النظام
-import { useStore, normalizePlate } from '../store';
+import { useStore } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
@@ -28,7 +27,6 @@ const toMs = (value: any): number => {
 };
 
 const timestampToLocalDate = (ts: number): string => {
-  if (!ts) return '';
   const d = new Date(ts);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
@@ -67,23 +65,9 @@ interface SettlementRecord {
 
 export default function AdminDashboard() {
   const {
-    garages = [],
-    sessions = [],
-    walletTopUps = [],
-    rejectTopUp,
-    approveTopUp,
-    addGarage,
-    setCurrentGarageId,
-    setView,
-    logout,
-    messages = [],
-    replyMessage,
-    closeMessage,
-    confirmRevenue,
-    unconfirmRevenue,
-    removeSession,
-    updateGarage,
-    fetchAll,
+    garages, sessions, walletTopUps, rejectTopUp, addGarage,
+    setCurrentGarageId, setView, logout, messages, replyMessage, closeMessage,
+    confirmRevenue, unconfirmRevenue, removeSession, updateGarage, fetchAll,
   } = useStore();
 
   const [dateFrom, setDateFrom] = useState(() => getLocalToday());
@@ -138,14 +122,13 @@ export default function AdminDashboard() {
 
   useEffect(() => { fetchSettlements(); }, [fetchSettlements]);
 
-  // 🎁 [تصحيح الفاتورة الصفرية]: قراءة السعر بدقة حتى لو كان 0 ج.م (مجاني ترحيبي)
+  // 🎁 [منطق الهدية]: حساب الإيرادات الفعلية مع مراعاة خصم الساعة الترحيبية
   const getRevenue = useCallback((s: any) => {
-    if (!s) return 0;
-    if (s.totalPrice != null) return Number(s.totalPrice) || 0;
+    if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
       const st = toMs(s.startTime);
       const en = toMs(s.endTime);
-      const g = (garages || []).find((ga: any) => ga?.id === s.garageId);
+      const g = garages.find((ga: any) => ga.id === s.garageId);
       const rate = Number(s.agreedPrice ?? g?.basePrice ?? 0);
       const elapsedSeconds = Math.max(0, Math.floor((en - st) / 1000));
 
@@ -160,22 +143,20 @@ export default function AdminDashboard() {
   }, [garages]);
 
   const getCommission = useCallback((s: any) => {
-    if (!s || s.source !== 'app') return 0;
+    if (s.source !== 'app') return 0;
     const rev = getRevenue(s);
     if (rev <= 0) return 0;
-    const g = (garages || []).find((ga: any) => ga?.id === s.garageId);
-    const rate = Number(g?.commissionRate ?? 10);
+    const g = garages.find((ga: any) => ga.id === s.garageId);
+    const rate = g?.commissionRate ?? 10;
     const commission = (rev * rate) / 100;
     return Math.round(commission * 100) / 100;
   }, [garages, getRevenue]);
 
-  const completedSessions = useMemo(() => {
-    return (sessions || []).filter(s => s && s.status === 'completed');
-  }, [sessions]);
+  const completedSessions = useMemo(() => sessions.filter(s => s.status === 'completed'), [sessions]);
 
   const filteredSessions = useMemo(() => {
     return completedSessions.filter(s => {
-      if (!s || !s.endTime) return false;
+      if (!s.endTime) return false;
       const d = timestampToLocalDate(toMs(s.endTime));
       if (dateFrom && d < dateFrom) return false;
       if (dateTo && d > dateTo) return false;
@@ -184,8 +165,8 @@ export default function AdminDashboard() {
   }, [completedSessions, dateFrom, dateTo]);
 
   const totalsFromSessions = useMemo(() => {
-    const confirmed = filteredSessions.filter(s => s?.revenueConfirmed);
-    const pending = filteredSessions.filter(s => !s?.revenueConfirmed);
+    const confirmed = filteredSessions.filter(s => s.revenueConfirmed);
+    const pending = filteredSessions.filter(s => !s.revenueConfirmed);
     const totalRevenueConfirmed = confirmed.reduce((sum, s) => sum + getRevenue(s), 0);
     const totalPendingRevenue = pending.reduce((sum, s) => sum + getRevenue(s), 0);
     const totalSessionsCount = filteredSessions.length;
@@ -199,22 +180,21 @@ export default function AdminDashboard() {
 
   const commissionStats = useMemo(() => {
     const confirmed = filteredSessions.filter(
-      s => s?.revenueConfirmed && !(s as any)?.settled && s?.source === 'app'
+      s => s.revenueConfirmed && !(s as any).settled && s.source === 'app'
     );
     const totalCommission = confirmed.reduce((a, s) => a + getCommission(s), 0);
     const totalRevenue = confirmed.reduce((a, s) => a + getRevenue(s), 0);
     const totalNet = totalRevenue - totalCommission;
 
-    const perGarage = (garages || []).map(g => {
-      if (!g) return null;
-      const gs = confirmed.filter(s => s?.garageId === g.id);
+    const perGarage = garages.map(g => {
+      const gs = confirmed.filter(s => s.garageId === g.id);
       const gCommission = gs.reduce((a, s) => a + getCommission(s), 0);
       const gRevenue = gs.reduce((a, s) => a + getRevenue(s), 0);
-      const walletRevenue = gs.filter(s => s?.paymentMethod === 'wallet').reduce((a, s) => a + getRevenue(s), 0);
+      const walletRevenue = gs.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getRevenue(s), 0);
       const sessionIds = gs.map(s => s.id);
       return {
         id: g.id,
-        name: g.name || 'بدون اسم',
+        name: g.name,
         commissionRate: g.commissionRate ?? 10,
         totalRevenue: gRevenue,
         commission: gCommission,
@@ -224,32 +204,31 @@ export default function AdminDashboard() {
         totalCount: gs.length,
         sessionIds,
       };
-    }).filter((g): g is NonNullable<typeof g> => g !== null && g.totalCount > 0);
+    }).filter(g => g.totalCount > 0);
 
-    const totalWalletCollected = confirmed.filter(s => s?.paymentMethod === 'wallet').reduce((a, s) => a + getRevenue(s), 0);
+    const totalWalletCollected = confirmed.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getRevenue(s), 0);
     const totalSettlement = totalWalletCollected - totalCommission;
 
     return { totalCommission, totalRevenue, totalNet, perGarage, totalWalletCollected, totalSettlement };
   }, [filteredSessions, garages, getRevenue, getCommission]);
 
   const garageReport = useMemo(() => {
-    return (garages || [])
+    return garages
       .map(g => {
-        if (!g) return null;
-        const gs = filteredSessions.filter(s => s?.garageId === g.id);
-        const confirmed = gs.filter(s => s?.revenueConfirmed);
-        const pending = gs.filter(s => !s?.revenueConfirmed);
+        const gs = filteredSessions.filter(s => s.garageId === g.id);
+        const confirmed = gs.filter(s => s.revenueConfirmed);
+        const pending = gs.filter(s => !s.revenueConfirmed);
 
         const revenue = confirmed.reduce((sum, s) => sum + getRevenue(s), 0);
         const pendingRevenue = pending.reduce((sum, s) => sum + getRevenue(s), 0);
 
-        const cash = confirmed.filter(s => s?.paymentMethod === 'cash').reduce((sum, s) => sum + getRevenue(s), 0);
-        const instapay = confirmed.filter(s => s?.paymentMethod === 'instapay').reduce((sum, s) => sum + getRevenue(s), 0);
-        const wallet = confirmed.filter(s => s?.paymentMethod === 'wallet').reduce((sum, s) => sum + getRevenue(s), 0);
-        const cashwallet = confirmed.filter(s => s?.paymentMethod === 'cashwallet').reduce((sum, sumSession) => sum + getRevenue(sumSession), 0);
+        const cash = confirmed.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + getRevenue(s), 0);
+        const instapay = confirmed.filter(s => s.paymentMethod === 'instapay').reduce((sum, s) => sum + getRevenue(s), 0);
+        const wallet = confirmed.filter(s => s.paymentMethod === 'wallet').reduce((sum, s) => sum + getRevenue(s), 0);
+        const cashwallet = confirmed.filter(s => s.paymentMethod === 'cashwallet').reduce((sum, sumSession) => sum + getRevenue(sumSession), 0);
 
         return {
-          name: g.name || 'بدون اسم',
+          name: g.name,
           garageId: g.id,
           commissionRate: g.commissionRate ?? 10,
           count: gs.length,
@@ -261,52 +240,40 @@ export default function AdminDashboard() {
           cashwallet,
         };
       })
-      .filter((r): r is NonNullable<typeof r> => r !== null && (r.count > 0 || r.revenue > 0 || r.pendingRevenue > 0));
+      .filter(r => r.count > 0 || r.revenue > 0 || r.pendingRevenue > 0);
   }, [garages, filteredSessions, getRevenue]);
 
-  const pendingTopUps = (walletTopUps || []).filter(w => w && w.status === 'pending');
+  const pendingTopUps = walletTopUps.filter(w => w.status === 'pending');
 
   const displayedRevenueSessions = useMemo(() => {
-    const searchTerm = normalizePlate(sessionSearch) || sessionSearch.trim().toUpperCase();
+    const searchTerm = sessionSearch.trim().toUpperCase();
 
     let f = searchTerm ? completedSessions : filteredSessions;
 
-    if (revenueFilter === 'confirmed') f = f.filter(s => s?.revenueConfirmed);
-    else if (revenueFilter === 'pending') f = f.filter(s => !s?.revenueConfirmed);
+    if (revenueFilter === 'confirmed') f = f.filter(s => s.revenueConfirmed);
+    else if (revenueFilter === 'pending') f = f.filter(s => !s.revenueConfirmed);
 
     if (searchTerm) {
-      f = f.filter(s => {
-        if (!s) return false;
-        const normalized = normalizePlate(s.carPlate);
-        const upper = (s.carPlate ?? '').toUpperCase();
-        return normalized.includes(searchTerm) || upper.includes(searchTerm);
-      });
+      f = f.filter(s => (s.carPlate ?? '').toUpperCase().includes(searchTerm));
     }
 
     const sorted = [...f].sort((a, b) => {
-      const endA = a?.endTime ? toMs(a.endTime) : 0;
-      const endB = b?.endTime ? toMs(b.endTime) : 0;
+      const endA = a.endTime ? toMs(a.endTime) : 0;
+      const endB = b.endTime ? toMs(b.endTime) : 0;
       return endB - endA;
     });
 
     return searchTerm ? sorted.slice(0, 50) : sorted.slice(0, 30);
   }, [completedSessions, filteredSessions, revenueFilter, sessionSearch]);
 
-  const safeMessages = messages || [];
-  const pendingMessages = safeMessages.filter(m => m?.status === 'pending');
-  const allMessages = [...safeMessages].sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
+  const safeMessages = messages ?? [];
+  const pendingMessages = safeMessages.filter(m => m.status === 'pending');
+  const allMessages = [...safeMessages].sort((a, b) => b.timestamp - a.timestamp);
   const displayedMessages = messagesTab === 'pending' ? pendingMessages : allMessages;
 
-  const getTypeEmoji = (t?: string) => { switch (t) { case 'complaint': return '🚨'; case 'inquiry': return '❓'; case 'suggestion': return '💡'; case 'technical': return '🔧'; default: return '💬'; } };
-  const getTypeLabel = (t?: string) => { switch (t) { case 'complaint': return 'شكوى'; case 'inquiry': return 'استفسار'; case 'suggestion': return 'اقتراح'; case 'technical': return 'مشكلة تقنية'; default: return 'رسالة'; } };
-  const formatMsgTime = (ts?: number) => {
-    if (!ts) return '';
-    try {
-      return new Date(ts).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    } catch {
-      return '';
-    }
-  };
+  const getTypeEmoji = (t: string) => { switch (t) { case 'complaint': return '🚨'; case 'inquiry': return '❓'; case 'suggestion': return '💡'; case 'technical': return '🔧'; default: return '💬'; } };
+  const getTypeLabel = (t: string) => { switch (t) { case 'complaint': return 'شكوى'; case 'inquiry': return 'استفسار'; case 'suggestion': return 'اقتراح'; case 'technical': return 'مشكلة تقنية'; default: return 'رسالة'; } };
+  const formatMsgTime = (ts: number) => new Date(ts).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   const setToday = () => { const t = getLocalToday(); setDateFrom(t); setDateTo(t); };
 
   const handleAddGarage = () => {
@@ -333,27 +300,134 @@ export default function AdminDashboard() {
   };
 
   const handleAdminEnterGarage = (g: typeof garages[0]) => {
-    if (!g) return;
     localStorage.removeItem('garageRole');
     localStorage.removeItem('valetNumber');
     localStorage.removeItem('valetName');
     localStorage.removeItem('currentGarageId');
-    localStorage.setItem('garagePrefillUsername', g.username || '');
-    localStorage.setItem('garagePrefillPhone', g.phone || '');
+    localStorage.setItem('garagePrefillUsername', g.username);
+    localStorage.setItem('garagePrefillPhone', g.phone);
     setCurrentGarageId(null);
     setView('garage');
   };
 
-  // 🛡️ [شحن المحفظة الذري والمشفر]: استدعاء دالة approveTopUp المركزية من الـ Store مباشرة
+  // 🛡️ [الاعتماد القديم المضمون]: بدون RPC - يعمل مباشرة عبر تحديث الجداول
   const handleApproveTopUp = async (id: string, amount: number) => {
     if (processingTopUpId) return;
     setProcessingTopUpId(id);
     const loadingToast = toast.loading('جاري اعتماد الرصيد في المحفظة...');
 
     try {
-      await approveTopUp(id);
+      const topUp = walletTopUps.find((w) => w.id === id);
+      if (!topUp) {
+        toast.dismiss(loadingToast);
+        toast.error('طلب الشحن غير موجود');
+        return;
+      }
+
+      // 1. جلب طلب الشحن من قاعدة البيانات
+      let dbRow: any = null;
+      if (topUp.transactionId) {
+        const { data } = await supabase
+          .from('wallet_topups')
+          .select('*')
+          .eq('transaction_id', topUp.transactionId)
+          .maybeSingle();
+        if (data) dbRow = data;
+      }
+      if (!dbRow) {
+        const { data } = await supabase
+          .from('wallet_topups')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+        if (data) dbRow = data;
+      }
+      if (!dbRow) {
+        toast.dismiss(loadingToast);
+        toast.error('طلب الشحن غير موجود في قاعدة البيانات');
+        return;
+      }
+
+      // منع الاعتماد المزدوج
+      if (dbRow.status === 'approved') {
+        toast.dismiss(loadingToast);
+        toast('تم اعتماد هذا الطلب مسبقاً', { icon: 'ℹ️' });
+        await fetchAll();
+        return;
+      }
+
+      // 2. تحديث حالة الطلب إلى approved
+      const supabaseId = dbRow.id;
+      const { error: approveError } = await supabase
+        .from('wallet_topups')
+        .update({ status: 'approved' })
+        .eq('id', supabaseId);
+
+      if (approveError) {
+        toast.dismiss(loadingToast);
+        console.error('Failed to approve:', approveError);
+        toast.error('فشل تحديث حالة الطلب');
+        return;
+      }
+
+      // 3. جلب بيانات المستخدم
+      const realUserPhone = dbRow.user_phone || topUp.userPhone || '';
+      let userData: any = null;
+      if (realUserPhone) {
+        const { data } = await supabase
+          .from('users')
+          .select('*')
+          .eq('phone', realUserPhone)
+          .maybeSingle();
+        if (data) userData = data;
+      }
+      if (!userData) {
+        toast.dismiss(loadingToast);
+        toast.error('حساب المستخدم غير موجود');
+        return;
+      }
+
+      // 4. حساب البونص
+      const baseAmount = Number(dbRow.amount || topUp.amount || 0);
+      let bonusAmount = 0;
+      if (baseAmount >= 1000) bonusAmount = 200;
+      else if (baseAmount >= 500) bonusAmount = 75;
+      else if (baseAmount >= 300) bonusAmount = 30;
+      else if (baseAmount >= 100) bonusAmount = 5;
+
+      const totalToAdd = baseAmount + bonusAmount;
+      const newWallet = Number(userData.wallet || 0) + totalToAdd;
+
+      // 5. تحديث رصيد المحفظة في جدول المستخدمين
+      const { error: walletError } = await supabase
+        .from('users')
+        .update({ wallet: newWallet })
+        .eq('id', userData.id);
+
+      if (walletError) {
+        toast.dismiss(loadingToast);
+        console.error('Failed to update wallet:', walletError);
+        toast.error('فشل تحديث رصيد المحفظة');
+        return;
+      }
+
+      // 6. تحديث حقل البونص في طلب الشحن (اختياري)
+      if (bonusAmount > 0) {
+        await supabase
+          .from('wallet_topups')
+          .update({ bonus_amount: bonusAmount })
+          .eq('id', supabaseId);
+      }
+
       toast.dismiss(loadingToast);
-      toast.success(`تم اعتماد شحن ${amount} ج.م بنجاح ✅`, { duration: 5000 });
+      toast.success(
+        bonusAmount > 0 
+          ? `✅ تم اعتماد ${amount} ج.م + ${bonusAmount} ج.م بونص = ${totalToAdd} ج.م` 
+          : `تم اعتماد شحن ${amount} ج.م بنجاح ✅`,
+        { duration: 5000 }
+      );
+
+      await fetchAll();
     } catch (error: any) {
       toast.dismiss(loadingToast);
       console.error("Top-up approval failed:", error);
@@ -481,7 +555,7 @@ export default function AdminDashboard() {
     } catch (e: any) {
       toast.dismiss(loadingToast);
       console.error('Cleanup failed:', e);
-      toast.error('فشل التنظيف: ' + (e?.message || 'خطأ في الاتصال بالشبكة'));
+      toast.error('فشل التنظيف: ' + (e.message || 'خطأ في الاتصال بالشبكة'));
     }
   };
 
@@ -498,7 +572,7 @@ export default function AdminDashboard() {
           لوحة المشرف العام <Shield size={22} />
         </h2>
         <div className="font-bold" style={{ background: '#fff', border: '2px solid #D0DCFF', padding: '8px 14px', borderRadius: 14, fontSize: 11, color: '#7B8CA6' }}>
-          {(sessions || []).length} عملية
+          {sessions.length} عملية
         </div>
       </div>
 
@@ -609,7 +683,7 @@ export default function AdminDashboard() {
         >
           <div className="font-bold mb-0.5" style={{ fontSize: 9.5, fontWeight: 900, opacity: 0.95, color: '#ffffff' }}>الإيرادات المؤكدة</div>
           <div className="font-black font-mono leading-none my-1" style={{ fontSize: 20, fontWeight: 950, color: '#ffffff', textShadow: '0 1px 2px rgba(0,0,0,0.15)' }}>
-            {Number(totalsFromSessions.totalRevenueConfirmed || 0).toFixed(0)} <span style={{ fontSize: 10, fontWeight: 800 }}>ج.م</span>
+            {totalsFromSessions.totalRevenueConfirmed.toFixed(0)} <span style={{ fontSize: 10, fontWeight: 800 }}>ج.م</span>
           </div>
         </div>
 
@@ -646,7 +720,7 @@ export default function AdminDashboard() {
             <div className="flex-1 flex flex-col justify-center items-center border-l border-slate-150">
               <span className="text-[10px] font-black text-slate-400 mb-1 block">💳 الإيراد الكلي</span>
               <span className="font-mono font-black text-slate-800 text-sm" style={{ fontSize: '15px', fontWeight: 950 }}>
-                {Number(commissionStats.totalRevenue || 0).toFixed(0)} <span style={{ fontSize: '10px', fontWeight: 800 }}>ج</span>
+                {commissionStats.totalRevenue.toFixed(0)} <span style={{ fontSize: '10px', fontWeight: 800 }}>ج</span>
               </span>
             </div>
 
@@ -655,21 +729,21 @@ export default function AdminDashboard() {
                 <Percent size={10} className="text-amber-500" /> عمولة التطبيق
               </span>
               <span className="font-mono font-black text-amber-600 text-sm" style={{ fontSize: '15px', fontWeight: 950 }}>
-                {Number(commissionStats.totalCommission || 0).toFixed(0)} <span style={{ fontSize: '10px', fontWeight: 800 }}>ج</span>
+                {commissionStats.totalCommission.toFixed(0)} <span style={{ fontSize: '10px', fontWeight: 800 }}>ج</span>
               </span>
             </div>
 
             <div className="flex-1 flex flex-col justify-center items-center">
               <span className="text-[10px] font-black text-emerald-600 mb-1 block">🟢 صافي الربح</span>
               <span className="font-mono font-black text-emerald-600 text-sm" style={{ fontSize: '15px', fontWeight: 950 }}>
-                {Number(commissionStats.totalNet || 0).toFixed(0)} <span style={{ fontSize: '10px', fontWeight: 800 }}>ج</span>
+                {commissionStats.totalNet.toFixed(0)} <span style={{ fontSize: '10px', fontWeight: 800 }}>ج</span>
               </span>
             </div>
           </div>
           {(() => {
             const settlement = commissionStats.totalSettlement;
             const adminOwesGarages = settlement > 0;
-            const absVal = Math.abs(Number(settlement || 0)).toFixed(0);
+            const absVal = Math.abs(settlement).toFixed(0);
 
             return (
               <div 
@@ -699,11 +773,11 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-slate-200/60">
                   <div className="text-center bg-white rounded-lg p-1 border border-slate-200 flex items-center justify-center gap-1.5">
                     <span style={{ fontSize: 8.5, color: '#7B8CA6', fontWeight: 900 }}>💳 محفظة:</span>
-                    <span className="font-black font-mono text-xs text-blue-600" style={{ fontWeight: 950 }}>{Number(commissionStats.totalWalletCollected || 0).toFixed(0)}ج</span>
+                    <span className="font-black font-mono text-xs text-blue-600" style={{ fontWeight: 950 }}>{commissionStats.totalWalletCollected.toFixed(0)}ج</span>
                   </div>
                   <div className="text-center bg-white rounded-lg p-1 border border-amber-200 flex items-center justify-center gap-1.5">
                     <span style={{ fontSize: 8.5, color: '#FF9500', fontWeight: 900 }}>📊 عمولة:</span>
-                    <span className="font-black font-mono text-xs text-amber-600" style={{ fontWeight: 950 }}>{Number(commissionStats.totalCommission || 0).toFixed(0)}ج</span>
+                    <span className="font-black font-mono text-xs text-amber-600" style={{ fontWeight: 950 }}>{commissionStats.totalCommission.toFixed(0)}ج</span>
                   </div>
                 </div>
               </div>
@@ -719,7 +793,7 @@ export default function AdminDashboard() {
             <h3 className="font-black" style={{ fontSize: 14 }}>⏳ إيرادات معلقة ({totalsFromSessions.pendingCount})</h3>
             <p style={{ fontSize: 10, opacity: 0.8 }}>تحتاج تأكيد</p>
           </div>
-          <div className="font-black font-mono" style={{ fontSize: 24 }}>{Number(totalsFromSessions.totalPendingRevenue || 0).toFixed(0)} <span style={{ fontSize: 12 }}>ج.م</span></div>
+          <div className="font-black font-mono" style={{ fontSize: 24 }}>{totalsFromSessions.totalPendingRevenue.toFixed(0)} <span style={{ fontSize: 12 }}>ج.م</span></div>
         </div>
       )}
 
@@ -727,24 +801,23 @@ export default function AdminDashboard() {
       <div className="mb-6 space-y-2">
         <div className="flex items-center justify-between mb-3">
           <span className="font-black" style={{ background: '#0066FF', color: '#fff', fontSize: 11, padding: '3.5px 12px', borderRadius: 20 }}>
-            {(commissionStats?.perGarage || []).length} جراجات نشطة
+            {commissionStats.perGarage.length} جراجات نشطة
           </span>
           <h3 className="font-black flex items-center gap-2" style={{ fontSize: 16, color: '#0A1628' }}>
             📊 التسويات النشطة للجراجات
           </h3>
         </div>
 
-        {(commissionStats?.perGarage || []).length === 0 ? (
+        {commissionStats.perGarage.length === 0 ? (
           <div className="text-center py-8" style={{ background: '#fff', borderRadius: 20, border: '2px dashed #D0DCFF' }}>
             <span style={{ fontSize: 36, display: 'block', marginBottom: 8 }}>⚖️</span>
             <p className="font-black text-xs" style={{ color: '#64748b' }}>جميع حسابات الجراجات متزنة ومقفلة بالكامل!</p>
           </div>
         ) : (
           commissionStats.perGarage.map(g => {
-            if (!g) return null;
             const settlement = g.walletRevenue - g.commission;
             const adminOwesGarage = settlement > 0;
-            const absSettlement = Math.abs(Number(settlement || 0)).toFixed(0);
+            const absSettlement = Math.abs(settlement).toFixed(0);
             const isExpanded = activeAccordionGarageId === g.id;
             const isConfirming = confirmSettlementGarageId === g.id;
 
@@ -796,11 +869,11 @@ export default function AdminDashboard() {
                       <div className="grid grid-cols-3 gap-2 my-3">
                         <div className="text-center" style={{ background: '#F8FAFF', borderRadius: 12, padding: '8px 4px', border: '1px solid #D0DCFF' }}>
                           <div style={{ fontSize: 8, color: '#7B8CA6', fontWeight: 900 }}>تحصيل محفظة</div>
-                          <div className="font-black font-mono" style={{ fontSize: 13, color: '#0066FF', marginTop: 2 }}>{Number(g.walletRevenue || 0).toFixed(0)}</div>
+                          <div className="font-black font-mono" style={{ fontSize: 13, color: '#0066FF', marginTop: 2 }}>{g.walletRevenue.toFixed(0)}</div>
                         </div>
                         <div className="text-center" style={{ background: '#FFF8F0', borderRadius: 12, padding: '8px 4px', border: '1px solid #FFD180' }}>
                           <div style={{ fontSize: 8, color: '#FF9500', fontWeight: 900 }}>عمولتنا {g.commissionRate}%</div>
-                          <div className="font-black font-mono" style={{ fontSize: 13, color: '#FF9500', marginTop: 2 }}>{Number(g.commission || 0).toFixed(0)}</div>
+                          <div className="font-black font-mono" style={{ fontSize: 13, color: '#FF9500', marginTop: 2 }}>{g.commission.toFixed(0)}</div>
                         </div>
                         <div className="text-center" style={{ background: adminOwesGarage ? '#EBFDF2' : '#FFF3F3', borderRadius: 12, padding: '8px 4px', border: `1px solid ${adminOwesGarage ? '#00CC66' : '#FF3333'}` }}>
                           <div style={{ fontSize: 8, color: adminOwesGarage ? '#00AA44' : '#CC0000', fontWeight: 900 }}>الفرق للتسوية</div>
@@ -878,7 +951,7 @@ export default function AdminDashboard() {
         >
           <span className="font-black" style={{ fontSize: 12, color: '#0066FF' }}>{showArchive ? '▲ إخفاء الأرشيف' : '▼ عرض الأرشيف'}</span>
           <div className="flex items-center gap-2">
-            <span className="font-black" style={{ fontSize: 11, color: '#000000', opacity: 0.7 }}>({(settlementRecords || []).length} تسوية)</span>
+            <span className="font-black" style={{ fontSize: 11, color: '#000000', opacity: 0.7 }}>({settlementRecords.length} تسوية)</span>
             <span className="font-black" style={{ fontSize: 14, color: '#000000' }}>📂 أرشيف التسويات</span>
             <Archive size={18} style={{ color: '#000000' }} />
           </div>
@@ -886,7 +959,7 @@ export default function AdminDashboard() {
 
         {showArchive && (
           <div className="mt-3 space-y-3" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', borderRadius: 20, padding: 12 }}>
-            {(settlementRecords || []).length > 4 && (
+            {settlementRecords.length > 4 && (
               <div className="relative">
                 <input 
                   type="text" 
@@ -908,8 +981,8 @@ export default function AdminDashboard() {
             )}
 
             {(() => {
-              const filtered = (settlementRecords || []).filter(r => 
-                (r?.garage_name || '').toLowerCase().includes(archiveSearch.trim().toLowerCase())
+              const filtered = settlementRecords.filter(r => 
+                r.garage_name.toLowerCase().includes(archiveSearch.trim().toLowerCase())
               );
 
               if (filtered.length === 0) {
@@ -929,7 +1002,6 @@ export default function AdminDashboard() {
                 <>
                   <div className="space-y-2">
                     {sliced.map(r => {
-                      if (!r) return null;
                       const isAdminToGarage = r.direction === 'admin_to_garage';
                       return (
                         <div key={r.id} style={{ 
@@ -953,11 +1025,11 @@ export default function AdminDashboard() {
                           </div>
                           <div className="flex justify-between items-center" style={{ borderTop: '1px dashed #F0F4FF', paddingTop: 6 }}>
                             <div className="font-black font-mono" style={{ fontSize: 18, color: isAdminToGarage ? '#00AA44' : '#CC0000' }}>
-                              {Number(r.amount || 0).toFixed(0)} <span style={{ fontSize: 10 }}>ج.م</span>
+                              {r.amount.toFixed(0)} <span style={{ fontSize: 10 }}>ج.م</span>
                             </div>
                             <div className="text-right font-black" style={{ fontSize: 10, color: '#000000', lineHeight: 1.5 }}>
                               <div>{r.session_count} جلسة مقفلة 🔒</div>
-                              <div style={{ fontSize: 9, opacity: 0.6 }}>محفظة: {Number(r.wallet_collected || 0).toFixed(0)}ج · عمولة: {Number(r.commission_amount || 0).toFixed(0)}ج</div>
+                              <div style={{ fontSize: 9, opacity: 0.6 }}>محفظة: {r.wallet_collected.toFixed(0)}ج · عمولة: {r.commission_amount.toFixed(0)}ج</div>
                             </div>
                           </div>
                           {r.notes && (
@@ -1024,7 +1096,7 @@ export default function AdminDashboard() {
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-1.5">
                     <span className="font-black font-mono" style={{ fontSize: 16, fontWeight: 950, color: '#00AA44', textShadow: '0 0.5px 1px rgba(0,0,0,0.05)' }}>
-                      {Number(r.revenue || 0).toFixed(0)} <span style={{ fontSize: 9, fontWeight: 800 }}>ج</span>
+                      {r.revenue.toFixed(0)} <span style={{ fontSize: 9, fontWeight: 800 }}>ج</span>
                     </span>
                     <span className="font-black text-[8px] text-white px-1.5 py-0.5 rounded-md" style={{ background: '#00CC66' }}>مؤكد</span>
                   </div>
@@ -1045,7 +1117,7 @@ export default function AdminDashboard() {
                   <div className="flex items-center gap-0.5">
                     <span className="font-black text-[8px] text-amber-600">⏳</span>
                     <span className="font-black font-mono text-amber-600" style={{ fontSize: 11, fontWeight: 950 }}>
-                      {r.pendingRevenue > 0 ? `${Number(r.pendingRevenue || 0).toFixed(0)}ج` : '—'}
+                      {r.pendingRevenue > 0 ? `${r.pendingRevenue.toFixed(0)}ج` : '—'}
                     </span>
                   </div>
 
@@ -1054,7 +1126,7 @@ export default function AdminDashboard() {
                   <div className="flex items-center gap-0.5">
                     <span className="text-[8px]">💵</span>
                     <span className="font-black font-mono text-emerald-600" style={{ fontSize: 11, fontWeight: 950 }}>
-                      {Number(r.cash || 0).toFixed(0)}
+                      {r.cash.toFixed(0)}
                     </span>
                   </div>
 
@@ -1063,7 +1135,7 @@ export default function AdminDashboard() {
                   <div className="flex items-center gap-0.5">
                     <span className="text-[8px]">👝</span>
                     <span className="font-black font-mono text-blue-600" style={{ fontSize: 11, fontWeight: 950 }}>
-                      {Number(r.wallet || 0).toFixed(0)}
+                      {r.wallet.toFixed(0)}
                     </span>
                   </div>
                 </div>
@@ -1079,8 +1151,8 @@ export default function AdminDashboard() {
         <div className="space-y-3 mb-4">
           <div className="flex gap-2">
             {[
-              { id: 'pending' as const, label: `⏳ معلق (${filteredSessions.filter(s => !s?.revenueConfirmed).length})`, bg: '#FF9500', shadow: 'rgba(255,149,0,0.3)' },
-              { id: 'confirmed' as const, label: `✅ مؤكد (${filteredSessions.filter(s => s?.revenueConfirmed).length})`, bg: '#00CC66', shadow: 'rgba(0,204,102,0.3)' },
+              { id: 'pending' as const, label: `⏳ معلق (${filteredSessions.filter(s => !s.revenueConfirmed).length})`, bg: '#FF9500', shadow: 'rgba(255,149,0,0.3)' },
+              { id: 'confirmed' as const, label: `✅ مؤكد (${filteredSessions.filter(s => s.revenueConfirmed).length})`, bg: '#00CC66', shadow: 'rgba(0,204,102,0.3)' },
               { id: 'all' as const, label: `الكل (${filteredSessions.length})`, bg: '#0066FF', shadow: 'rgba(0,102,255,0.3)' },
             ].map(b => (
               <button key={b.id} onClick={() => setRevenueFilter(b.id)} className="flex-1 font-black transition-all active:scale-95"
@@ -1097,14 +1169,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* 🛡️ صندوق الاحتواء الذكي */}
-        <div 
-          className="space-y-3 max-h-[380px] overflow-y-auto pr-1.5"
-          style={{
-            scrollbarWidth: 'thin',
-            scrollbarColor: '#CBD5E1 transparent',
-          }}
-        >
+        <div className="space-y-3">
           {displayedRevenueSessions.length === 0 ? (
             <div className="text-center" style={{ background: '#fff', borderRadius: 24, padding: 32, border: '2px solid #D0DCFF' }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>
@@ -1114,18 +1179,17 @@ export default function AdminDashboard() {
             </div>
           ) : (
             displayedRevenueSessions.map(session => {
-              if (!session) return null;
-              const g = (garages || []).find((ga: any) => ga?.id === session.garageId);
+              const g = garages.find((ga: any) => ga.id === session.garageId);
               const rev = getRevenue(session);
               const comm = getCommission(session);
               const net = rev - comm;
               const et = session.endTime ? typeof session.endTime === 'number' ? session.endTime : new Date(session.endTime).getTime() : null;
               const time = et ? new Date(et) : null;
               const isDel = deleteConfirmId === session.id;
-              const isSettled = (session as any)?.settled === true;
+              const isSettled = (session as any).settled === true;
               return (
                 <div key={session.id} style={{ 
-                  background: isDel ? '#FFE0E0' : isSettled ? '#F1F5F9' : session.revenueConfirmed ? '#F0FFF5' : '#FFFAF0', 
+                  background: isDel ? '#FFF0F0' : isSettled ? '#F1F5F9' : session.revenueConfirmed ? '#F0FFF5' : '#FFFAF0', 
                   border: `2.5px solid ${isDel ? '#FF6666' : isSettled ? '#CBD5E1' : session.revenueConfirmed ? '#66DDAA' : '#FFD180'}`, 
                   borderRadius: 22, 
                   padding: 16,
@@ -1133,7 +1197,7 @@ export default function AdminDashboard() {
                 }}>
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono font-black" style={{ fontSize: 16, color: session.revenueConfirmed ? '#00AA44' : '#E65100' }}>{Number(rev || 0).toFixed(0)} ج.م</span>
+                      <span className="font-mono font-black" style={{ fontSize: 16, color: session.revenueConfirmed ? '#00AA44' : '#E65100' }}>{rev.toFixed(0)} ج.م</span>
                       {[
                         { show: true, bg: session.source === 'manual' ? '#FF9500' : '#0066FF', text: session.source === 'manual' ? 'يدوي' : 'تطبيق' },
                         { show: !!session.paymentMethod, bg: session.paymentMethod === 'cash' ? '#00CC66' : session.paymentMethod === 'instapay' ? '#7C3AED' : session.paymentMethod === 'wallet' ? '#0066FF' : '#FF8800', text: session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستا' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش' },
@@ -1154,12 +1218,12 @@ export default function AdminDashboard() {
                     <div className="flex items-center gap-3 mb-2" style={{ background: '#FFF8F0', borderRadius: 12, padding: '6px 10px', border: '1px solid #FFD180' }}>
                       <div className="flex items-center gap-1">
                         <Percent size={10} style={{ color: '#FF9500' }} />
-                        <span className="font-bold" style={{ fontSize: 9, color: '#FF9500' }}>عمولة {g?.commissionRate ?? 10}%: {Number(comm || 0).toFixed(0)} ج.م</span>
+                        <span className="font-bold" style={{ fontSize: 9, color: '#FF9500' }}>عمولة {g?.commissionRate ?? 10}%: {comm.toFixed(0)} ج.م</span>
                       </div>
                       <div style={{ width: 1, height: 12, background: '#FFD180' }} />
                       <div className="flex items-center gap-1">
                         <DollarSign size={10} style={{ color: '#00AA44' }} />
-                        <span className="font-bold" style={{ fontSize: 9, color: '#00AA44' }}>صافي: {Number(net || 0).toFixed(0)} ج.م</span>
+                        <span className="font-bold" style={{ fontSize: 9, color: '#00AA44' }}>صافي: {net.toFixed(0)} ج.م</span>
                       </div>
                     </div>
                   )}
@@ -1168,7 +1232,7 @@ export default function AdminDashboard() {
                   {isDel ? (
                     <div className="space-y-2" style={{ background: '#FFE0E0', borderRadius: 16, padding: 14, border: '1px solid #FFA0A0' }}>
                       <p className="font-black text-center" style={{ fontSize: 13, color: '#CC0000' }}>⚠️ حذف نهائياً؟</p>
-                      <p className="text-center" style={{ fontSize: 11, color: '#FF3333' }}>🚗 {session.carPlate} · {Number(rev || 0).toFixed(0)} ج.م</p>
+                      <p className="text-center" style={{ fontSize: 11, color: '#FF3333' }}>🚗 {session.carPlate} · {rev.toFixed(0)} ج.م</p>
                       <div className="flex gap-2">
                         <button onClick={async () => { await removeSession(session.id); setDeleteConfirmId(null); toast.success('تم الحذف 🗑️'); }} className="flex-1 font-black active:scale-95"
                           style={{ background: '#FF3333', color: '#fff', padding: 12, borderRadius: 14, fontSize: 12 }}>🗑️ تأكيد</button>
@@ -1188,7 +1252,7 @@ export default function AdminDashboard() {
                         </button>
                       ) : (
                         <button onClick={async () => {
-                          await confirmRevenue(session.id, session.addedBy);
+                          await confirmRevenue(session.id);
                           toast.success('تأكيد ✅');
                         }} className="flex-1 font-black active:scale-95"
                           style={{ background: '#00CC66', color: '#fff', padding: 10, borderRadius: 14, fontSize: 11 }}>
@@ -1204,75 +1268,72 @@ export default function AdminDashboard() {
             })
           )}
         </div>
-      </div>       
+      </div>
 
       {/* ══════ Pending Top-ups ══════ */}
       <div className="mb-8">
         <h3 className="font-black mb-4 flex items-center gap-2 justify-end" style={{ fontSize: 16, color: '#FF8800' }}>اعتمادات معلقة ({pendingTopUps.length}) <Clock size={18} /></h3>
         <div className="space-y-3">
-          {pendingTopUps.map(w => {
-            if (!w) return null;
-            return (
-              <div key={w.id} style={{ background: '#fff', border: '2px solid #FFD180', borderRadius: 18, padding: '12px 14px', boxShadow: '0 3px 12px rgba(255,149,0,0.06)' }}>
-                <div className="flex justify-between items-center mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-black" style={{ fontSize: 9, padding: '3px 10px', borderRadius: 10, background: w.method === 'instapay' ? '#7C3AED' : '#FF8800', color: '#fff' }}>
-                      {w.method === 'instapay' ? '📱 إنستاباي' : '📲 كاش'}
-                    </span>
-                    <span className="font-bold font-mono" style={{ fontSize: 9, color: '#94a3b8' }}>
-                      {formatMsgTime(w.timestamp)}
-                    </span>
-                  </div>
-                  <div className="font-black font-mono" style={{ fontSize: 22, fontWeight: 950, color: '#0A1628' }}>
-                    {w.amount} <span style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8' }}>ج.م</span>
-                  </div>
+          {pendingTopUps.map(w => (
+            <div key={w.id} style={{ background: '#fff', border: '2px solid #FFD180', borderRadius: 18, padding: '12px 14px', boxShadow: '0 3px 12px rgba(255,149,0,0.06)' }}>
+              <div className="flex justify-between items-center mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-black" style={{ fontSize: 9, padding: '3px 10px', borderRadius: 10, background: w.method === 'instapay' ? '#7C3AED' : '#FF8800', color: '#fff' }}>
+                    {w.method === 'instapay' ? '📱 إنستاباي' : '📲 كاش'}
+                  </span>
+                  <span className="font-bold font-mono" style={{ fontSize: 9, color: '#94a3b8' }}>
+                    {new Date(w.timestamp).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </span>
                 </div>
-
-                <div className="flex items-center justify-between gap-2 mb-2" style={{ background: '#F8FAFF', borderRadius: 12, padding: '6px 10px', border: '1px solid #E9EEFF' }}>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {w.userName && <span className="font-black" style={{ fontSize: 11, color: '#0A1628' }}>👤 {w.userName}</span>}
-                    {w.carPlate && <span className="font-black" style={{ fontSize: 11, color: '#E65100' }}>🚗 {w.carPlate}</span>}
-                  </div>
-                  {w.userPhone && <span className="font-black font-mono" style={{ fontSize: 11, color: '#0066FF' }}>{w.userPhone}</span>}
-                </div>
-
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => handleApproveTopUp(w.id, w.amount)} 
-                    disabled={processingTopUpId === w.id}
-                    className="flex-1 font-black flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ 
-                      background: 'linear-gradient(135deg,#00CC66,#00AA55)', 
-                      color: '#ffffff', 
-                      padding: '10px 0', 
-                      borderRadius: 14, 
-                      fontSize: 12, 
-                      fontWeight: 950,
-                      boxShadow: '0 4px 14px rgba(0,204,102,0.25)',
-                      textShadow: '0 1px 2px rgba(0,0,0,0.15)'
-                    }}
-                  >
-                    <CheckCircle size={16} />
-                    {processingTopUpId === w.id ? 'جاري...' : 'اعتماد'}
-                  </button>
-                  <button 
-                    onClick={() => handleRejectTopUp(w.id)} 
-                    disabled={processingTopUpId === w.id}
-                    className="font-black flex items-center justify-center active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ 
-                      background: 'linear-gradient(135deg,#FF3333,#CC0000)', 
-                      color: '#ffffff', 
-                      padding: '10px 16px', 
-                      borderRadius: 14,
-                      boxShadow: '0 3px 12px rgba(255,51,51,0.2)'
-                    }}
-                  >
-                    <XCircle size={16} />
-                  </button>
+                <div className="font-black font-mono" style={{ fontSize: 22, fontWeight: 950, color: '#0A1628' }}>
+                  {w.amount} <span style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8' }}>ج.م</span>
                 </div>
               </div>
-            );
-          })}
+
+              <div className="flex items-center justify-between gap-2 mb-2" style={{ background: '#F8FAFF', borderRadius: 12, padding: '6px 10px', border: '1px solid #E9EEFF' }}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {w.userName && <span className="font-black" style={{ fontSize: 11, color: '#0A1628' }}>👤 {w.userName}</span>}
+                  {w.carPlate && <span className="font-black" style={{ fontSize: 11, color: '#E65100' }}>🚗 {w.carPlate}</span>}
+                </div>
+                {w.userPhone && <span className="font-black font-mono" style={{ fontSize: 11, color: '#0066FF' }}>{w.userPhone}</span>}
+              </div>
+
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => handleApproveTopUp(w.id, w.amount)} 
+                  disabled={processingTopUpId === w.id}
+                  className="flex-1 font-black flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ 
+                    background: 'linear-gradient(135deg,#00CC66,#00AA55)', 
+                    color: '#ffffff', 
+                    padding: '10px 0', 
+                    borderRadius: 14, 
+                    fontSize: 12, 
+                    fontWeight: 950,
+                    boxShadow: '0 4px 14px rgba(0,204,102,0.25)',
+                    textShadow: '0 1px 2px rgba(0,0,0,0.15)'
+                  }}
+                >
+                  <CheckCircle size={16} />
+                  {processingTopUpId === w.id ? 'جاري...' : 'اعتماد'}
+                </button>
+                <button 
+                  onClick={() => handleRejectTopUp(w.id)} 
+                  disabled={processingTopUpId === w.id}
+                  className="font-black flex items-center justify-center active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ 
+                    background: 'linear-gradient(135deg,#FF3333,#CC0000)', 
+                    color: '#ffffff', 
+                    padding: '10px 16px', 
+                    borderRadius: 14,
+                    boxShadow: '0 3px 12px rgba(255,51,51,0.2)'
+                  }}
+                >
+                  <XCircle size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
           {pendingTopUps.length === 0 && (
             <div className="text-center" style={{ background: '#fff', borderRadius: 24, padding: 28, border: '2px solid #D0DCFF', color: '#94a3b8', fontSize: 14 }}>لا توجد اعتمادات معلقة</div>
           )}
@@ -1301,10 +1362,7 @@ export default function AdminDashboard() {
             <div className="text-center" style={{ background: '#fff', borderRadius: 24, padding: 28, border: '2px solid #D0DCFF', color: '#94a3b8', fontSize: 14 }}>لا توجد رسائل</div>
           ) : (
             displayedMessages.map(msg => {
-              if (!msg) return null;
-              const isExp = expandedMessage === msg.id; 
-              const isRep = replyingTo === msg.id;
-              const msgText = msg.message || '';
+              const isExp = expandedMessage === msg.id; const isRep = replyingTo === msg.id;
               return (
                 <div key={msg.id} style={{ background: msg.status === 'pending' ? '#FFFAF0' : msg.status === 'replied' ? '#F0FFF5' : '#fff', border: `2.5px solid ${msg.status === 'pending' ? '#FFD180' : msg.status === 'replied' ? '#66DDAA' : '#D0DCFF'}`, borderRadius: 24, padding: 18 }}>
                   <div className="flex justify-between items-start mb-2">
@@ -1324,8 +1382,8 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                   {msg.subject && <div className="font-black mb-1 text-right" style={{ fontSize: 13, color: '#0A1628' }}>{msg.subject}</div>}
-                  <div className={`text-right leading-relaxed mb-2 cursor-pointer ${isExp ? '' : 'line-clamp-2'}`} style={{ fontSize: 12, color: '#475569' }} onClick={() => setExpandedMessage(isExp ? null : msg.id)}>{msgText}</div>
-                  {!isExp && msgText.length > 80 && <button onClick={() => setExpandedMessage(msg.id)} className="font-bold mb-2" style={{ fontSize: 10, color: '#0066FF' }}>عرض الكامل ↓</button>}
+                  <div className={`text-right leading-relaxed mb-2 cursor-pointer ${isExp ? '' : 'line-clamp-2'}`} style={{ fontSize: 12, color: '#475569' }} onClick={() => setExpandedMessage(isExp ? null : msg.id)}>{msg.message}</div>
+                  {!isExp && msg.message.length > 80 && <button onClick={() => setExpandedMessage(msg.id)} className="font-bold mb-2" style={{ fontSize: 10, color: '#0066FF' }}>عرض الكامل ↓</button>}
                   {msg.reply && (
                     <div className="mb-3" style={{ background: '#E8FFF0', border: '1px solid #66DDAA', borderRadius: 16, padding: 14 }}>
                       <div className="font-bold text-right mb-1" style={{ fontSize: 10, color: '#00AA44' }}>ردك السابق:</div>
@@ -1365,11 +1423,10 @@ export default function AdminDashboard() {
       <div className="mb-8">
         <h3 className="font-black mb-4 flex items-center gap-2 justify-end" style={{ fontSize: 16, color: '#0066FF' }}>إدارة الجراجات <Warehouse size={18} /></h3>
         <div className="space-y-2.5">
-          {(garages || []).map(g => {
-            if (!g) return null;
+          {garages.map(g => {
             const isEditingComm = editingCommissionGarageId === g.id;
             const ownerPhone = (g as any).ownerPhone || g.phone;
-            const sameOwnerCount = (garages || []).filter((x: any) => ((x?.ownerPhone || x?.phone) === ownerPhone)).length;
+            const sameOwnerCount = garages.filter((x: any) => ((x.ownerPhone || x.phone) === ownerPhone)).length;
             return (
               <div key={g.id} style={{ background: '#fff', border: '2px solid #D0DCFF', borderRadius: 18, padding: '12px 14px', boxShadow: '0 3px 12px rgba(0,102,255,0.04)' }}>
                 <div className="flex justify-between items-center mb-2">
@@ -1491,7 +1548,7 @@ export default function AdminDashboard() {
                       borderRadius: 12, 
                       fontSize: 12, 
                       fontWeight: 950,
-                      boxShadow: '0 4px 14px rgba(0,102,255,0.28)',
+                      boxShadow: '0 4px 14 rgba(0,102,255,0.28)',
                       textShadow: '0 1px 2px rgba(0,0,0,0.15)'
                     }}
                   >
@@ -1557,10 +1614,11 @@ export default function AdminDashboard() {
           <div className="text-center" style={{ background: '#F0F4FF', borderRadius: 22, padding: 18, border: '2px solid #D0DCFF' }}>
             <div style={{ fontSize: 28, marginBottom: 8 }}>📍</div>
             <div className="font-bold mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>الموقع المحدد</div>
-            <div className="font-black font-mono" style={{ fontSize: 15, color: '#0066FF' }}>{Number(lat || 30.04).toFixed(4)}, {Number(lng || 31.23).toFixed(4)}</div>
+            <div className="font-black font-mono" style={{ fontSize: 15, color: '#0066FF' }}>{lat.toFixed(4)}, {lng.toFixed(4)}</div>
             <button type="button" onClick={() => { if ('geolocation' in navigator) navigator.geolocation.getCurrentPosition(p => { setLat(p.coords.latitude); setLng(p.coords.longitude); toast.success('تم'); }, () => toast.error('تعذر')); }} className="font-black active:scale-95 mt-3"
               style={{ background: '#0066FF', color: '#fff', padding: '10px 20px', borderRadius: 16, fontSize: 12, boxShadow: '0 4px 16px rgba(0,102,255,0.3)' }}>📍 موقعي الحالي</button>
           </div>
+
           <button onClick={handleAddGarage} className="w-full font-black active:scale-95 transition-all"
             style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', color: '#fff', padding: 20, borderRadius: 22, fontSize: 16, boxShadow: '0 8px 32px rgba(0,102,255,0.35)' }}>
             حفظ الجراج

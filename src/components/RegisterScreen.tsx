@@ -1,8 +1,7 @@
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Phone, Car, User, CheckCircle2, AlertCircle, ShieldCheck, Loader2 } from 'lucide-react';
-// 🧬 استيراد دالة normalizePlate الموحدة من الـ Store
-import { useStore, normalizePlate } from '../store';
+import { Phone, Car, User, CheckCircle2, AlertCircle, ShieldCheck } from 'lucide-react';
+import { useStore } from '../store';
 import toast from 'react-hot-toast';
 
 // ─── دوال تحويل الأرقام العربية إلى إنجليزية تلقائياً ───
@@ -10,7 +9,8 @@ const normalizeArabicDigits = (val: string): string => {
   if (!val) return '';
   return val
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)));
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
+    .replace(/\s+/g, '');
 };
 
 export default function RegisterScreen() {
@@ -19,15 +19,14 @@ export default function RegisterScreen() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [carPlate, setCarPlate] = useState('');
-  const [loading, setLoading] = useState(false);
   const [touched, setTouched] = useState({ name: false, phone: false, carPlate: false });
 
   // ─── 1. التحقق من صحة الاسم (حروف عربية فقط + ثنائي) ───
   const nameValidation = useMemo(() => {
     const clean = name.trim();
-    if (!clean) return { valid: false, message: 'الاسم بالكامل مطلوب' };
+    if (!clean) return { valid: false, message: 'الاسم مطلوب' };
     if (/[a-zA-Z]/.test(clean)) {
-      return { valid: false, message: 'يرجى كتابة الاسم بالحروف العربية فقط' };
+      return { valid: false, message: 'يرجى كتابة الاسم بالحروف العربية فقط (ممنوع الإنجليزي)' };
     }
     if (/\d/.test(clean)) {
       return { valid: false, message: 'الاسم يجب ألا يحتوي على أرقام' };
@@ -48,7 +47,7 @@ export default function RegisterScreen() {
 
   // ─── 2. التحقق من رقم الهاتف (11 رقم مصري يبدأ بـ 010, 011, 012, 015) ───
   const phoneValidation = useMemo(() => {
-    const clean = normalizeArabicDigits(phone).replace(/\s+/g, '');
+    const clean = normalizeArabicDigits(phone);
     if (!clean) return { valid: false, message: 'رقم الهاتف مطلوب' };
     if (!/^(010|011|012|015)/.test(clean)) {
       return { valid: false, message: 'يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015' };
@@ -59,31 +58,32 @@ export default function RegisterScreen() {
     return { valid: true, message: '' };
   }, [phone]);
 
-  // ─── 3. التحقق الصارم الموحد مع بصمة الـ Store ───
+  // ─── 3. التحقق من رقم اللوحة (حروف عربية فقط + أرقام) ───
   const plateValidation = useMemo(() => {
-    const raw = carPlate.trim();
-    if (!raw) return { valid: false, message: 'رقم اللوحة مطلوب' };
+    const clean = carPlate.trim();
+    if (!clean) return { valid: false, message: 'رقم اللوحة مطلوب' };
     
-    if (/[a-zA-Z]/.test(raw)) {
-      return { valid: false, message: 'يرجى كتابة اللوحة بالحروف والأرقام العربية فقط' };
+    // 🚫 منع الحروف الإنجليزية تماماً في لوحة السيارة
+    if (/[a-zA-Z]/.test(clean)) {
+      return { valid: false, message: 'ممنوع الحروف الإنجليزية! اكتب حروف اللوحة بالعربي (مثال: س ق ر 123)' };
     }
 
-    const clean = normalizePlate(raw);
-    if (!clean || clean.length < 3) {
-      return { valid: false, message: 'أدخل رقم اللوحة بشكل صحيح (مثال: س ق ر 123)' };
-    }
-    
-    const hasDigits = /\d/.test(clean);
     const hasArabicLetters = /[\u0600-\u06FF]/.test(clean);
-    
-    if (!hasDigits || !hasArabicLetters) {
-      return { valid: false, message: 'اللوحة يجب أن تحتوي على أرقام وحروف عربية' };
+    const hasNumbers = /[0-9٠-٩]/.test(clean);
+
+    if (!hasArabicLetters || !hasNumbers) {
+      return { valid: false, message: 'اللوحة يجب أن تحتوي على حروف عربية وأرقام معاً (مثال: س ق ر 123)' };
     }
 
+    if (!/^[\u0600-\u06FF0-9٠-٩\s]+$/.test(clean)) {
+      return { valid: false, message: 'اكتب حروف وأرقام صحيحة فقط بدون رموز' };
+    }
+
+    if (clean.length < 4) return { valid: false, message: 'رقم اللوحة قصير جداً' };
     return { valid: true, message: '' };
   }, [carPlate]);
 
-  // هل جميع الحقول صحيحة وجاهزة؟
+  // هل جميع الحقول صحيحة؟
   const isFormValid = nameValidation.valid && phoneValidation.valid && plateValidation.valid;
 
   // إدخال أرقام فقط في حقل الهاتف بحد أقصى 11 رقماً
@@ -92,17 +92,10 @@ export default function RegisterScreen() {
     setPhone(clean);
   };
 
-  // معالجة إدخال اللوحة وتحويل الأرقام العربية تلقائياً
-  const handlePlateChange = (val: string) => {
-    const normalizedDigits = normalizeArabicDigits(val);
-    setCarPlate(normalizedDigits);
-  };
-
-  // ─── معالجة التسجيل الآمن مع منع التكرار ───
   const handleRegister = async () => {
     setTouched({ name: true, phone: true, carPlate: true });
 
-    if (!isFormValid || loading) {
+    if (!isFormValid) {
       if (!nameValidation.valid) toast.error(nameValidation.message);
       else if (!phoneValidation.valid) toast.error(phoneValidation.message);
       else if (!plateValidation.valid) toast.error(plateValidation.message);
@@ -110,27 +103,16 @@ export default function RegisterScreen() {
     }
 
     try {
-      setLoading(true);
-      const cleanPhone = normalizeArabicDigits(phone).replace(/\s+/g, '');
-      const cleanName = name.trim().replace(/\s+/g, ' ');
-      
-      // الحصول على البصمة الصافية والموحدة للوحة لتأمين قاعدة البيانات
-      const finalPlate = normalizePlate(carPlate);
-
-      // فحص وسحب بيانات المستخدم أو إنشائه في قاعدة البيانات
       await setCurrentUser({
-        name: cleanName,
-        phone: cleanPhone,
-        carPlate: finalPlate,
+        name: name.trim(),
+        phone: normalizeArabicDigits(phone),
+        carPlate: carPlate.trim(),
         wallet: 0,
       });
-
-      toast.success(`أهلاً بك يا ${cleanName.split(' ')[0]} في بركن! 🚗`);
+      toast.success(`أهلاً بك يا ${name.trim().split(' ')[0]} في بركن! 🚗`);
     } catch (error) {
-      console.error('Registration error:', error);
+      console.error(error);
       toast.error('حدث خطأ أثناء التسجيل، يرجى المحاولة ثانية');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -164,7 +146,6 @@ export default function RegisterScreen() {
               }`}
             />
             <input
-              disabled={loading}
               className={`w-full bg-slate-900 border p-3.5 pr-10 pl-10 rounded-xl text-right font-bold text-white outline-none text-sm transition-all ${
                 touched.name && !nameValidation.valid
                   ? 'border-red-500/80 focus:ring-2 focus:ring-red-500/30'
@@ -199,7 +180,6 @@ export default function RegisterScreen() {
               }`}
             />
             <input
-              disabled={loading}
               type="tel"
               dir="ltr"
               className={`w-full bg-slate-900 border p-3.5 pl-10 pr-10 rounded-xl text-left font-mono font-bold text-white outline-none text-sm transition-all ${
@@ -236,7 +216,6 @@ export default function RegisterScreen() {
               }`}
             />
             <input
-              disabled={loading}
               className={`w-full bg-slate-900 border p-3.5 pr-10 pl-10 rounded-xl text-right font-bold text-white outline-none text-sm transition-all ${
                 touched.carPlate && !plateValidation.valid
                   ? 'border-red-500/80 focus:ring-2 focus:ring-red-500/30'
@@ -246,7 +225,7 @@ export default function RegisterScreen() {
               }`}
               placeholder="حروف اللوحة بالعربي (مثال: س ق ر 123)"
               value={carPlate}
-              onChange={(e) => handlePlateChange(e.target.value)}
+              onChange={(e) => setCarPlate(e.target.value)}
               onBlur={() => setTouched((p) => ({ ...p, carPlate: true }))}
             />
             {plateValidation.valid && (
@@ -264,21 +243,14 @@ export default function RegisterScreen() {
         {/* زر التسجيل */}
         <button
           onClick={handleRegister}
-          disabled={!isFormValid || loading}
-          className={`w-full py-4 rounded-xl font-black text-sm shadow-lg active:scale-95 transition-all mt-3 flex items-center justify-center gap-2 ${
-            isFormValid && !loading
+          disabled={!isFormValid}
+          className={`w-full py-4 rounded-xl font-black text-sm shadow-lg active:scale-95 transition-all mt-3 ${
+            isFormValid
               ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/30 cursor-pointer'
               : 'bg-slate-800 text-slate-500 cursor-not-allowed shadow-none'
           }`}
         >
-          {loading ? (
-            <>
-              <Loader2 size={18} className="animate-spin text-white" />
-              <span>جاري التحقق والتسجيل...</span>
-            </>
-          ) : (
-            <span>تسجيل الدخول</span>
-          )}
+          تسجيل الدخول
         </button>
 
         <p className="text-[10px] text-slate-500 text-center font-bold mt-2">

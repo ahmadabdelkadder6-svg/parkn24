@@ -20,7 +20,7 @@ import {
   Gift,
   Sparkles,
 } from 'lucide-react';
-import { useStore, Garage, ParkingSession, IncomingCar, normalizePlate } from '../store';
+import { useStore, Garage, Session, IncomingCar } from '../store';
 import {
   calculateDistance,
   distanceToMinutes,
@@ -39,6 +39,17 @@ interface GarageWithDistance extends Garage {
 }
 
 /* ─── Helpers ─── */
+// 🛡️ تنظيف وتوحيد رقم اللوحة بشكل صارم لمنع التحايل بالمسافات أو الرموز
+const normalizePlateForCompare = (plate?: string): string => {
+  if (!plate) return '';
+  return plate
+    .trim()
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
+    .replace(/[^A-Z0-9\u0600-\u06FF]/gi, '') // مسح كامل للمسافات والفواصل لدمج الحروف تماماً
+    .toUpperCase();
+};
+
 const safeParseTime = (value: unknown): number => {
   if (!value) return 0;
   if (typeof value === 'string') {
@@ -80,6 +91,7 @@ export default function GarageListScreen() {
   const [locationLoading, setLocationLoading] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
   
+  // 🛡️ حالة حارس الأمان لكشف أي احتيال أو استخدام سابق للهدية من اللوحة/الهاتف تاريخياً
   const [isAbuseDetected, setIsAbuseDetected] = useState(false);
 
   /* ── Refs ── */
@@ -95,17 +107,17 @@ export default function GarageListScreen() {
 
   /* ── Derived state ── */
   const normalizedUserPlate = useMemo(
-    () => normalizePlate(currentUser?.carPlate),
+    () => normalizePlateForCompare(currentUser?.carPlate),
     [currentUser?.carPlate]
   );
 
-  /* 🛡️ فحص أمني خلفي لحظي */
+  /* 🛡️ فحص أمني خلفي لحظي بمجرد تحميل اللوحة للتأكد من عدم استخدامها مسبقاً تاريخياً */
   useEffect(() => {
     if (!currentUser) return;
     
     const checkAbuseHistory = async () => {
       try {
-        const cleanPlate = normalizePlate(currentUser.carPlate);
+        const cleanPlate = normalizePlateForCompare(currentUser.carPlate);
         const cleanPhone = currentUser.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
         if (!cleanPlate && !cleanPhone) return;
 
@@ -117,9 +129,9 @@ export default function GarageListScreen() {
           .limit(1);
 
         if (!error && data && data.length > 0) {
-          setIsAbuseDetected(true);
+          setIsAbuseDetected(true); // تم كشف محاولة احتيال باللوحة أو الهاتف تاريخياً
         } else {
-          setIsAbuseDetected(false);
+          setIsAbuseDetected(false); // لوحة نظيفة ومستحقة للعرض
         }
       } catch (err) {
         console.error('Error verifying welcome gift eligibility:', err);
@@ -129,32 +141,32 @@ export default function GarageListScreen() {
     checkAbuseHistory();
   }, [currentUser, sessions]);
 
-  /* 🎁 التحقق من استحقاق عرض الساعة المجانية */
+  /* 🎁 التحقق الآمن مما إذا كان العميل يستحق عرض الساعة المجانية */
   const isEligibleForFreeSession = useMemo(() => {
     return currentUser && !currentUser.hasUsedFreeSession && !isAbuseDetected;
   }, [currentUser, isAbuseDetected]);
 
-  /* ✅ البحث عن جلسة نشطة */
+  /* ✅ البحث عن جلسة نشطة واستبعاد أي جلسة تم إقرار إغلاقها مسبقاً */
   const activeSession = useMemo(() => {
     if (!normalizedUserPlate && !currentUser?.phone) return undefined;
 
-    return (sessions as ParkingSession[])
-      .filter((s: ParkingSession) => {
+    return sessions
+      .filter((s: Session & { customerPhone?: string }) => {
         if (s.status !== 'active') return false;
         if (acknowledgedSessionIds?.has(s.id)) return false;
-        const samePlate = normalizePlate(s.carPlate) === normalizedUserPlate;
+        const samePlate = normalizePlateForCompare(s.carPlate) === normalizedUserPlate;
         const samePhone = Boolean(currentUser?.phone && s.customerPhone === currentUser.phone);
         return samePlate || samePhone;
       })
       .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
   }, [sessions, normalizedUserPlate, currentUser?.phone, acknowledgedSessionIds]);
 
-  /* ✅ حجب الجلسات المنتهية القديمة */
+  /* ✅ حجب الجلسات المنتهية القديمة لمنع تكرار شاشة النهاية */
   const hasCompletedSession = useMemo(() => {
     if (activeSession) return false;
-    return (sessions as ParkingSession[]).some(
-      (s: ParkingSession) =>
-        normalizePlate(s.carPlate) === normalizedUserPlate &&
+    return sessions.some(
+      (s: Session) =>
+        normalizePlateForCompare(s.carPlate) === normalizedUserPlate &&
         s.status === 'completed'
     );
   }, [sessions, normalizedUserPlate, activeSession]);
@@ -165,13 +177,13 @@ export default function GarageListScreen() {
     return incomingCars
       .filter(
         (c: IncomingCar) =>
-          normalizePlate(c.carPlate) === normalizedUserPlate &&
+          normalizePlateForCompare(c.carPlate) === normalizedUserPlate &&
           c.status === 'coming'
       )
       .sort((a, b) => safeParseTime(b.startTime || 0) - safeParseTime(a.startTime || 0))[0];
   }, [incomingCars, normalizedUserPlate]);
 
-  /* 🚀 فلترة عمليات شحن المحفظة */
+  /* 🚀 فلترة عمليات شحن المحفظة الخاصة بالعميل الحالي وتصنيفها */
   const myTopUps = useMemo(() => {
     if (!currentUser?.phone || !walletTopUps) return [];
     return walletTopUps
@@ -229,7 +241,7 @@ export default function GarageListScreen() {
 
     const isMyRow = (row: any): boolean => {
       if (!row) return false;
-      const plate = normalizePlate(row.car_plate || row.carPlate);
+      const plate = normalizePlateForCompare(row.car_plate || row.carPlate);
       const phone = row.customer_phone || row.customerPhone || '';
       return (
         plate === normalizedUserPlate ||
@@ -250,7 +262,7 @@ export default function GarageListScreen() {
       )
       .subscribe();
 
-    const interval = setInterval(refetch, 5000); 
+    const interval = setInterval(refetch, 1500); 
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') refetch();
