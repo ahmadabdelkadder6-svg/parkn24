@@ -164,7 +164,6 @@ export const calculateSessionPriceWithFreeGift = (
 
 // ===================== 🛡️ طبقات الحماية الأمنية =====================
 
-// 🛡️ [1] حماية من الضغط العالي (Rate Limiter)
 const rateLimiter = {
   requests: 0,
   lastReset: Date.now(),
@@ -182,7 +181,6 @@ const rateLimiter = {
   }
 };
 
-// 🛡️ [2] تنظيف المدخلات من الأكواد الخبيثة (XSS Protection)
 const sanitizeInput = (input: string): string => {
   if (!input) return '';
   return input
@@ -194,7 +192,6 @@ const sanitizeInput = (input: string): string => {
     .substring(0, 200);
 };
 
-// 🛡️ [3] حماية من تخمين الباسوردات (Brute Force Protection)
 const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
 
 export const checkLoginAttempt = (identifier: string): boolean => {
@@ -239,18 +236,15 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-// 🧬 [بصمة اللوحة]: الإبقاء على الحروف العربية وتوحيد المتشابهات والأرقام فقط
 const normalizePlate = (plate?: string): string => {
   if (!plate) return '';
   
   let cleaned = sanitizeInput(plate).trim();
   
-  // 1. تحويل الأرقام العربية والفارسية إلى أرقام إنجليزية موحدة
   cleaned = cleaned
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
     .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
   
-  // 2. توحيد الحروف العربية المتشابهة والهمزات
   const charMap: Record<string, string> = {
     'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ٱ': 'ا', 'ء': 'ا',
     'ة': 'ت',
@@ -260,12 +254,11 @@ const normalizePlate = (plate?: string): string => {
     'ک': 'ك', 'ی': 'ي',
   };
   cleaned = cleaned.replace(/./g, (char) => charMap[char] || char);
-  
-  // 3. حذف الحروف الإنجليزية والرموز والمسافات (حروف عربية وأرقام فقط)
   cleaned = cleaned.replace(/[^0-9\u0600-\u06FF]/g, '');
   
   return cleaned;
 };
+
 const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
 const getMs = (value?: number) => { if (typeof value === 'number') return value; return 0; };
@@ -350,7 +343,6 @@ const mapSession = (r: any): ParkingSession => {
     if (diff < 4 * 60 * 60 * 1000) endTime = endTime + diff + 60000;
   }
 
-  // ✅ قراءة صحيحة وآمنة للـ boolean
   const isFree = r.is_first_free_session === true || r.is_first_free_session === 'true' || r.is_first_free_session === 1;
 
   return {
@@ -507,7 +499,6 @@ export const useStore = create<AppState>((set, get) => ({
 
   currentUser: safeGetStorage('currentUser'),
 
-  // ─── تسجيل وضبط بيانات المستخدم مع فحص الاستحقاق المباشر بالبصمة ───
   setCurrentUser: async (u) => {
     if (!u) { set({ currentUser: null }); safeRemoveStorage('currentUser'); return; }
     const cleanPlate = normalizePlate(u.carPlate);
@@ -525,7 +516,6 @@ export const useStore = create<AppState>((set, get) => ({
     if (!isSupabaseConfigured()) return;
 
     try {
-      // 🛡️ فحص مباشر: هل هذه اللوحة ركنت مجاناً في جلسة سابقة مكتملة؟
       let alreadyUsedFree = false;
 
       if (cleanPlate) {
@@ -540,7 +530,6 @@ export const useStore = create<AppState>((set, get) => ({
         if (plateCheck && plateCheck.length > 0) alreadyUsedFree = true;
       }
 
-      // هل رقم الهاتف ركن مجاناً في جلسة سابقة مكتملة؟
       if (!alreadyUsedFree && cleanPhone) {
         const { data: phoneCheck } = await supabase
           .from('sessions')
@@ -553,7 +542,6 @@ export const useStore = create<AppState>((set, get) => ({
         if (phoneCheck && phoneCheck.length > 0) alreadyUsedFree = true;
       }
 
-      // هل اللوحة مسجلة لحساب مستخدم آخر استهلك الهدية؟
       if (!alreadyUsedFree && cleanPlate) {
         const { data: userPlateCheck } = await supabase
           .from('users')
@@ -565,7 +553,6 @@ export const useStore = create<AppState>((set, get) => ({
         if (userPlateCheck && userPlateCheck.length > 0) alreadyUsedFree = true;
       }
 
-      // جلب سجل المستخدم الحالي من جدول users
       const { data: existingUser } = await supabase
         .from('users')
         .select('wallet, name, phone, car_plate, has_used_free_session, bonus_balance')
@@ -624,7 +611,6 @@ export const useStore = create<AppState>((set, get) => ({
     } catch (err) { console.error('Error setting user with anti-abuse check:', err); }
   },
 
-  // 🛡️ الخصم الآمن من المحفظة
   deductWallet: async (amount) => {
     const user = get().currentUser;
     if (!user || amount <= 0) return;
@@ -647,7 +633,6 @@ export const useStore = create<AppState>((set, get) => ({
         console.warn('RPC deduct exception, using direct fallback:', rpcErr);
       }
 
-      // نظام الارتداد المباشر (Fallback)
       try {
         const { data: userData, error: userError } = await supabase
           .from('users')
@@ -748,7 +733,6 @@ export const useStore = create<AppState>((set, get) => ({
     safeRemoveStorage('acknowledgedSessionIds');
   },
 
-  // 🛡️ جلب البيانات من السيرفر
   fetchAll: async () => {
     if (!isSupabaseConfigured()) return;
 
@@ -1010,7 +994,6 @@ export const useStore = create<AppState>((set, get) => ({
     } catch (err) { console.error('❌', err); await get().fetchAll(); }
   },
 
-  // ─── بدء جلسة الركن مع الفحص الصريح والمضمون 100% ───
   addSession: async (s) => {
     const normalizedPlate = normalizePlate(s.carPlate);
     if (!normalizedPlate) return '';
@@ -1034,7 +1017,6 @@ export const useStore = create<AppState>((set, get) => ({
       const isAppBooking = s.source === 'app';
       const cleanPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
 
-      // 🎁 [تحديد الاستحقاق الحاسم]:
       let eligibleForFree = false;
 
       if (isAppBooking) {
@@ -1042,7 +1024,6 @@ export const useStore = create<AppState>((set, get) => ({
 
         if (isSupabaseConfigured()) {
           try {
-            // 1. هل بصمة اللوحة ركنت مجاناً في جلسة سابقة مكتملة؟
             const { data: plateCheck } = await supabase
               .from('sessions')
               .select('id')
@@ -1055,7 +1036,6 @@ export const useStore = create<AppState>((set, get) => ({
               eligibleForFree = false;
             }
 
-            // 2. هل رقم الهاتف ركن مجاناً في جلسة سابقة مكتملة؟
             if (eligibleForFree && cleanPhone) {
               const { data: phoneCheck } = await supabase
                 .from('sessions')
@@ -1070,7 +1050,6 @@ export const useStore = create<AppState>((set, get) => ({
               }
             }
 
-            // 3. هل العميل مسجل في جدول users بأنه استهلك الهدية؟
             if (eligibleForFree && cleanPhone) {
               const { data: userData } = await supabase
                 .from('users')
@@ -1083,7 +1062,6 @@ export const useStore = create<AppState>((set, get) => ({
               }
             }
 
-            // 4. هل لوحة السيارة مسجلة لأي مستخدم آخر واستهلك الهدية؟
             if (eligibleForFree && normalizedPlate) {
               const { data: userPlateData } = await supabase
                 .from('users')
@@ -1174,6 +1152,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  // 🛡️ [تعديل أمني حرج]: قفل ثغرة الهدية الترحيبية اللانهائية عبر تحديث السيرفر برقم هاتف العميل مباشرة
   endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0) => {
     const now = Date.now();
     const session = get().sessions.find((s) => s.id === id);
@@ -1215,8 +1194,23 @@ export const useStore = create<AppState>((set, get) => ({
       set((st) => ({ sessions: st.sessions.map((s) => (s.id === id ? endedSession : s)) }));
       await get().adjustGarageSpots(session.garageId, +1);
 
+      // 🛡️ [قفل الثغرة]: تحديث حساب العميل برقم هاتفه مباشرة في قاعدة البيانات
       if (session.isFirstFreeSession) {
-        await get().markFreeSessionUsed();
+        const user = get().currentUser;
+        if (user && user.phone === session.customerPhone) {
+          const updated = { ...user, hasUsedFreeSession: true };
+          set({ currentUser: updated });
+          safeSetStorage('currentUser', updated);
+        }
+
+        if (isSupabaseConfigured() && session.customerPhone) {
+          await supabase
+            .from('users')
+            .update({ has_used_free_session: true })
+            .eq('phone', session.customerPhone);
+        }
+
+        try { localStorage.removeItem('showWelcomeGift'); } catch (e) {}
       }
 
       if (!isSupabaseConfigured()) return;
@@ -1378,7 +1372,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 🛡️ اعتماد الشحن المباشر والمضمون
   approveTopUp: async (id) => {
     if (!isSupabaseConfigured()) return;
     try {
