@@ -1,19 +1,12 @@
-// ✅ تم التحديث لـ v12 لمنع تكرار الرنين وتحديث السيرفس ووركر فوراً
+// ✅ إصدار v12 المانع للتكرار الصامت والنهائي
 const CACHE_NAME    = 'parknow-v12'; 
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
-
-// ✅ منع تكرار نفس الإشعار لنفس السيارة خلال 30 ثانية
-const recentNotifications = new Map();
-const DEDUP_WINDOW_MS     = 30000;
 
 // ─── 1. Install ───────────────────────────────────────────────
 self.addEventListener('install', (event) => {
   self.skipWaiting(); 
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 Service Worker Installed & Activated (v12)');
-      return cache.addAll(STATIC_ASSETS);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
   );
 });
 
@@ -32,14 +25,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// ─── 3. Message Listener ──────────────────────────────────────
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-});
-
-// ─── 4. Fetch ─────────────────────────────────────────────────
+// ─── 3. Fetch ─────────────────────────────────────────────────
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET')                   return;
   if (event.request.url.startsWith('chrome-extension')) return;
@@ -68,7 +54,7 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// ─── 5. Push (استقبال الإشعار لمرة واحدة فقط وبدون تكرار) ──────
+// ─── 4. Push (استقبال الإشعار ودمج النسخ المكررة في رنة واحدة) ──
 self.addEventListener('push', (event) => {
   let title     = '🚨 سيارة في الطريق إليك!';
   let body      = '🚗 تقترب سيارة جديدة من الجراج الآن، استعد!';
@@ -81,8 +67,6 @@ self.addEventListener('push', (event) => {
   try {
     if (event.data) {
       const payload = event.data.json();
-      console.log('📨 Push received in SW v12:', payload);
-
       const notificationData = payload.immediate || payload.notification || payload;
 
       if (notificationData.title) title = notificationData.title;
@@ -91,24 +75,22 @@ self.addEventListener('push', (event) => {
 
       if (payload.data || notificationData.data) {
         extraData = payload.data || notificationData.data;
-        tag       = extraData.tag || tag;
-        url       = extraData.url || '/garage';
+        if (extraData.url) url = extraData.url;
+        if (extraData.tag) tag = extraData.tag;
       }
 
-      // استخلاص رقم اللوحة وعرضه بوضوح
+      // استخراج اللوحة وربط التاج بها لمنع تكرار نفس السيارة
       let plate = '';
       if (typeof tag === 'string' && tag.startsWith('incoming-')) {
         plate = tag.replace('incoming-', '');
       } else if (typeof tag === 'string' && tag.startsWith('approaching-')) {
         plate = tag.replace('approaching-', '');
-      } else if (payload.carPlate || payload.car_plate) {
-        plate = payload.carPlate || payload.car_plate;
-      } else if (extraData.carPlate || extraData.car_plate) {
-        plate = extraData.carPlate || extraData.car_plate;
+      } else if (extraData.carPlate || extraData.car_plate || payload.carPlate) {
+        plate = extraData.carPlate || extraData.car_plate || payload.carPlate;
       }
 
       if (plate) {
-        tag = `car-alert-${plate}`; // ربط التاج باللوحة لمنع تكرار نفس السيارة
+        tag = `incoming-${plate}`;
         if (typeof title === 'string' && !title.includes(plate)) {
           title = '🚨 سيارة في الطريق إليك!';
           body  = `🚗 رقم السيارة: ${plate} • استعد للاستقبال!`;
@@ -119,42 +101,21 @@ self.addEventListener('push', (event) => {
     console.error('❌ Push parse error:', err);
   }
 
-  // 🛡️ فحص التكرار: منع تكرار الرنين لنفس السيارة خلال 30 ثانية
-  const dedupKey  = tag;
-  const lastShown = recentNotifications.get(dedupKey);
-  const now       = Date.now();
-
-  if (lastShown && (now - lastShown) < DEDUP_WINDOW_MS) {
-    console.log('🛑 تم تجاهل إشعار مكرر لنفس السيارة في SW:', dedupKey);
-    return;
-  }
-
-  recentNotifications.set(dedupKey, now);
-
-  // تنظيف الذاكرة
-  for (const [k, t] of recentNotifications.entries()) {
-    if (now - t > 60000) recentNotifications.delete(k);
-  }
-
-  // 🚨 [رنين واهتزاز مكالمة هاتفية]: يهتز مرة واحدة فقط للسيارة
+  // 🛡️ الدمج التلقائي: إذا وصلت 30 إشارة لنفس السيارة في نفس اللحظة، يرن الهاتف مرة واحدة فقط
   const options = {
     body,
     icon,
     badge,
-    vibrate: [
-      1000, 300, 1000, 300, 1000, 300, 
-      1000, 300, 1000, 300, 
-      1500, 400, 2000                  
-    ],
-    requireInteraction: true,  // يظل معروضاً على شاشة القفل حتى يفتحه السايس
-    tag: tag,                  // ✅ التعديل الأول: استخدام التاج الخاص بالسيارة
-    renotify: false,           // ✅ التعديل الثاني: منع إعادة الرنين إذا كان الإشعار مفتوحاً مسبقاً
+    vibrate: [1000, 200, 1000, 200, 1000, 200, 1200, 250, 1200, 250, 1500, 300, 2000],
+    requireInteraction: true,
+    tag: tag,          // 👈 ربط الإشعار باللوحة
+    renotify: false,   // 👈 حاسم: يمنع إعادة الاهتزاز والرنين إذا كان الإشعار معروضاً بالفعل
     silent: false,
-    timestamp: now,
+    timestamp: Date.now(),
     data: { url, ...extraData },
     actions: [
-      { action: 'open',    title: '🚗 فتح التطبيق فوراً' },
-      { action: 'dismiss', title: '✕ إغلاق'             },
+      { action: 'open',    title: '📂 فتح لوحة الجراج' },
+      { action: 'dismiss', title: '✕ إغلاق'           },
     ],
   };
 
@@ -163,7 +124,7 @@ self.addEventListener('push', (event) => {
   );
 });
 
-// ─── 6. Notification Click ────────────────────────────────────
+// ─── 5. Notification Click ────────────────────────────────────
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
@@ -179,7 +140,11 @@ self.addEventListener('notificationclick', (event) => {
       .then((clientList) => {
         for (const client of clientList) {
           if ('focus' in client) {
-            return client.focus();
+            if (client.url.includes(targetUrl)) {
+              return client.focus();
+            } else if ('navigate' in client) {
+              return client.navigate(targetUrl).then((c) => c.focus());
+            }
           }
         }
         if (clients.openWindow) {
@@ -189,7 +154,6 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// ─── 7. Notification Close ────────────────────────────────────
 self.addEventListener('notificationclose', (event) => {
   console.log('🔕 تم إغلاق الإشعار:', event.notification.tag);
 });

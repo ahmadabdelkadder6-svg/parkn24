@@ -21,10 +21,9 @@ interface SendPushPayload {
   scheduled: (PushPayloadNotification & { sendAt: string }) | null;
 }
 
-// 🔒 قفل ذكي لمنع تكرار طلب الإرسال لنفس السيارة خلال فترة الـ 30 ثانية
+// 🔒 قفل عام: منع إرسال نفس السيارة مرتين خلال 60 ثانية
 const sentPushHistory = new Map<string, number>();
 
-// ─── Helper: تحويل VAPID Key ────────────────────────────────────
 const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64  = (base64String + padding)
@@ -34,7 +33,6 @@ const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   return new Uint8Array([...rawData].map((c) => c.charCodeAt(0)));
 };
 
-// ─── Helper: Supabase Fetch مع Retry سريع ────────────────────────
 const supabaseFetch = async (
   path:    string,
   body:    unknown,
@@ -77,10 +75,8 @@ const supabaseFetch = async (
   return { ok: false, error: 'Max retries exceeded' };
 };
 
-// ─── تسجيل Service Worker ───────────────────────────────────────
 export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null> => {
   if (!('serviceWorker' in navigator)) {
-    console.warn('❌ Service Worker غير مدعوم');
     return null;
   }
 
@@ -90,6 +86,10 @@ export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration
       updateViaCache: 'none',
     });
 
+    if (registration.waiting) {
+      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+    }
+
     await navigator.serviceWorker.ready;
     return registration;
   } catch (err) {
@@ -98,11 +98,9 @@ export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration
   }
 };
 
-// ─── الاشتراك في Push Notifications ────────────────────────────
 export const subscribeToPush = async (garageId: string): Promise<boolean> => {
   try {
     if (!('PushManager' in window)) {
-      console.warn('❌ Push غير مدعوم في هذا المتصفح');
       return false;
     }
 
@@ -111,11 +109,12 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
 
     let permission = Notification.permission;
     if (permission === 'default') {
-      permission = await Notification.requestPermission();
+      try {
+        permission = await Notification.requestPermission();
+      } catch (e) {}
     }
 
     if (permission !== 'granted') {
-      console.warn('❌ تم رفض إذن الإشعارات من السايس');
       return false;
     }
 
@@ -142,7 +141,6 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
 
     const sub = subscription.toJSON();
     if (!sub.keys?.p256dh || !sub.keys?.auth) {
-      console.error('❌ مفاتيح الـ subscription ناقصة');
       return false;
     }
 
@@ -167,7 +165,6 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
   }
 };
 
-// ─── إرسال تنبيه "سيارة في الطريق" بأعلى أولوية طوارئ ──────────────
 export const sendCarComingPush = async ({
   garageId,
   carPlate,
@@ -186,13 +183,12 @@ export const sendCarComingPush = async ({
     const lastSentTime = sentPushHistory.get(lockKey);
     const now = Date.now();
 
-    // 🛡️ [حماية ضد التكرار]: إذا أُرسل إشعار لنفس السيارة خلال الـ 30 ثانية الماضية، نمنع الإرسال فوراً
-    if (lastSentTime && (now - lastSentTime < 30000)) {
-      console.log(`🛡️ تم منع تكرار إرسال إشعار السيرفر لـ ${carPlate}`);
+    // 🛡️ منع إرسال نفس السيارة أكثر من مرة خلال 60 ثانية
+    if (lastSentTime && (now - lastSentTime < 60000)) {
+      console.log(`🛡️ تم منع التكرار للسيارة: ${carPlate}`);
       return true;
     }
 
-    // حفظ طابع الوقت الحالي للإرسال
     sentPushHistory.set(lockKey, now);
 
     const immediateTag = `incoming-${carPlate}`;
@@ -204,8 +200,8 @@ export const sendCarComingPush = async ({
 
     const payload: SendPushPayload = {
       garageId,
-      urgency: 'high', // ⚡ أولوية قصوى لإيقاظ الهاتف فوراً
-      ttl: 0,          // ⚡ توصيل فوري دون انتظار في السيرفر
+      urgency: 'high',
+      ttl: 0,
 
       immediate: {
         title: '🚨 سيارة في الطريق إليك!',
@@ -240,7 +236,7 @@ export const sendCarComingPush = async ({
           : null,
     };
 
-    console.log(`📤 جاري الاتصال بالسيرفر لإرسال إشعار السيارة: ${carPlate}`);
+    console.log(`📤 إرسال إشعار السيرفر لمرة واحدة للسيارة: ${carPlate}`);
     const result = await supabaseFetch('send-push-notification', payload);
     return result.ok;
   } catch (err) {
@@ -249,20 +245,18 @@ export const sendCarComingPush = async ({
   }
 };
 
-// ─── إلغاء التنبيه المجدول ──────────────────────────────────────
 export const cancelScheduledPush = async (
   garageId: string,
   carPlate: string
 ): Promise<boolean> => {
   try {
-    // إزالة قفل السيارة عند الإلغاء لتكون جاهزة لأي حجز جديد لاحقاً
     const lockKey = `${garageId}:${carPlate}`;
     sentPushHistory.delete(lockKey);
 
     const result = await supabaseFetch('cancel-scheduled-alert', {
       garageId,
       carPlate,
-      tags:        [`approaching-${carPlate}`],
+      tags:        [`incoming-${carPlate}`, `approaching-${carPlate}`],
       cancelledAt: new Date().toISOString(),
     });
     return result.ok;
@@ -272,7 +266,6 @@ export const cancelScheduledPush = async (
   }
 };
 
-// ─── إلغاء الاشتراك ─────────────────────────────────────────────
 export const unsubscribeFromPush = async (): Promise<boolean> => {
   try {
     const registration = await navigator.serviceWorker.ready;
@@ -295,7 +288,6 @@ export const unsubscribeFromPush = async (): Promise<boolean> => {
   }
 };
 
-// ─── التحقق من حالة الاشتراك وتجديده ───────────────────────────
 export const checkPushSubscriptionStatus = async () => {
   const isSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
   if (!isSupported) return { isSubscribed: false, permission: 'denied', isSupported: false };
