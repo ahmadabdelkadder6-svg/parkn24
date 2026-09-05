@@ -1097,7 +1097,6 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-{/* 🛡️ صندوق الاحتواء الذكي: يمنع الجلسات من أخذ الشاشة بالكامل ويحصرها في شريط تمرير أنيق */}
 <div 
   className="space-y-3 max-h-[380px] overflow-y-auto pr-1.5"
   style={{
