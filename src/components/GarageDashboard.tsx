@@ -223,6 +223,10 @@ export default function GarageDashboard() {
     valetNumber === '3' ? garage?.valetName3 :
     '';
 
+  const activeValetName = useMemo(() => {
+    return currentValetNameLocal || currentValetName || (valetNumber ? `سايس ${valetNumber}` : '');
+  }, [currentValetNameLocal, currentValetName, valetNumber]);
+
   const myValetNames = useMemo(() => {
     const names = new Set<string>();
     if (currentValetNameLocal) names.add(currentValetNameLocal.trim());
@@ -241,7 +245,7 @@ export default function GarageDashboard() {
     ].filter(Boolean);
   }, [garage]);
 
-  // ⚡ الجلسات النشطة في الجراج
+  // الجلسات النشطة في الجراج
   const activeSessions = useMemo(() => {
     return garageSessions.filter(s => {
       if (s.status !== 'active') return false;
@@ -323,7 +327,6 @@ export default function GarageDashboard() {
   const [valetEditSpots, setValetEditSpots] = useState(false);
   const [selectedValetFilter, setSelectedValetFilter] = useState<string | null>(null);
 
-  // مربع البحث السريع برقم اللوحة
   const [searchQuery, setSearchQuery] = useState('');
 
   const [showSwitcher, setShowSwitcher] = useState(false);
@@ -332,22 +335,24 @@ export default function GarageDashboard() {
     return getMyOwnedGarages(garage.ownerPhone || garage.phone || '');
   }, [getMyOwnedGarages, garage, garages]);
 
-  // 🔗 [التعديل الجوهري الحاسم]: الربط التلقائي يقتصر فقط على الجلسات النشطة النشطة (active)
+  // 🔗 [الربط التلقائي الفوري]: إسناد أي جلسة تطبيق نشطة للسايس النشط الآن
   useEffect(() => {
     if (!isValet || !currentGarageId) return;
-    const targetValetName = currentValetNameLocal || currentValetName || `سايس ${valetNumber}`;
+    const targetValetName = activeValetName;
     if (!targetValetName) return;
-    
+
     const unassigned = sessions.filter(s => {
       if (s.garageId !== currentGarageId) return false;
       if (s.source !== 'app') return false;
-      if (s.status !== 'active') return false; // 👈 هذا السطر يمنع سحب الجلسات المكتملة المدفوعة محفظة
+      if (s.status !== 'active') return false; // يقتصر على الجلسات الشغالة حالياً
       const ab = ((s as any).addedBy || '').trim();
       return !ab;
     });
-    
-    unassigned.forEach(s => { assignSessionToValet(s.id, targetValetName); });
-  }, [sessions, isValet, currentGarageId, currentValetNameLocal, currentValetName, valetNumber, assignSessionToValet]);
+
+    unassigned.forEach(s => { 
+      assignSessionToValet(s.id, targetValetName); 
+    });
+  }, [sessions, isValet, currentGarageId, activeValetName, assignSessionToValet]);
 
   const fetchGarageDailyStats = useCallback(async () => {
     if (!currentGarageId) return;
@@ -441,7 +446,6 @@ export default function GarageDashboard() {
 
   useEffect(() => { return () => { try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }; }, []);
 
-  // 🎁 دعم الفواتير الصفرية
   const getSessionRevenue = useCallback((s: any) => {
     if (s.totalPrice != null) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
@@ -487,6 +491,8 @@ export default function GarageDashboard() {
     return calculateCost(el, r);
   }, [garage?.basePrice]);
 
+  // 🛡️ [تعديل فلترة السايس والمالك للعمليات المكتملة]: 
+  // إذا كانت العملية بلا اسم سايس (أنهتها شاشة العميل محفظة)، يتم تبنيها فوراً وعرضها للسايس النشط حالياً في ورديته
   const filteredCompleted = useMemo(() => {
     if (isValet) {
       const isActive =
@@ -519,8 +525,10 @@ export default function GarageDashboard() {
       if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter) return false;
       
       const addedBy = ((s as any).addedBy || '').trim();
+      
+      // يرى السايس عملياته الخاصة + أي عملية تطبيق مكتملة اليوم بدون سايس مسؤول
       if (isValet) {
-        const isMine = addedBy && myValetNames.has(addedBy);
+        const isMine = (addedBy && myValetNames.has(addedBy)) || (!addedBy && s.source === 'app');
         if (!isMine) return false;
       }
       
@@ -567,14 +575,17 @@ export default function GarageDashboard() {
 
   const topCardConfirmedRevenue = useMemo(() => filteredStats.total, [filteredStats]);
 
+  // 📊 [تقرير شفتات السياس الدقيق للمالك]: توزيع عادل؛ أي جلسة تطبيق انتهت بدون سايس تُنسب للسايس النشط حالياً في الوردية
   const valetReport = useMemo(() => {
     if (!garage || !isOwner || !currentGarageId) return [];
     const garageValets = [
-      { name: (garage.valetName1 || '').trim(), defaultName: 'سايس 1', color: '#0066FF', icon: '🅿️1' },
-      { name: (garage.valetName2 || '').trim(), defaultName: 'سايس 2', color: '#7C3AED', icon: '🅿️2' },
-      { name: (garage.valetName3 || '').trim(), defaultName: 'سايس 3', color: '#FF8800', icon: '🅿️3' },
-    ].filter(v => v.name);
+      { name: (garage.valetName1 || '').trim() || 'سايس 1', defaultName: 'سايس 1', color: '#0066FF', icon: '🅿️1', isActive: garage.valet1Active },
+      { name: (garage.valetName2 || '').trim() || 'سايس 2', defaultName: 'سايس 2', color: '#7C3AED', icon: '🅿️2', isActive: garage.valet2Active },
+      { name: (garage.valetName3 || '').trim() || 'سايس 3', defaultName: 'سايس 3', color: '#FF8800', icon: '🅿️3', isActive: garage.valet3Active },
+    ];
     
+    const currentOnDutyValet = garageValets.find(v => v.isActive) || garageValets[0];
+
     const ownerGarageCompleted = completedSessions.filter((s) => {
       if (s.garageId !== currentGarageId) return false;
       if (s.endTime) {
@@ -589,6 +600,9 @@ export default function GarageDashboard() {
     return garageValets.map((v) => {
       const vs = ownerGarageCompleted.filter((s) => {
         const addedBy = ((s as any).addedBy || '').trim();
+        if (!addedBy) {
+          return v.name === currentOnDutyValet.name;
+        }
         return addedBy === v.name || addedBy === v.defaultName;
       });
       const confirmed = vs.filter((s) => s.revenueConfirmed);
@@ -617,7 +631,6 @@ export default function GarageDashboard() {
 
   const getUndoRemainingSeconds = useCallback((addedAt: number) => Math.max(0, UNDO_TIMEOUT_SECONDS - Math.floor((Date.now() - addedAt) / 1000)), []);
 
-  useEffect(() => { const i = setInterval(() => setTick(t => t + 1), 1000); return () => clearInterval(i); }, []);
   useEffect(() => { if (garage) setNewCarPrice(garage.basePrice); }, [garage?.basePrice, garage]);
 
   useEffect(() => {
@@ -631,7 +644,7 @@ export default function GarageDashboard() {
     );
   }, [tick, sessions]);
 
-  // البحث السريع
+  // فلترة البحث السريع الموثوق
   const filteredActiveSessions = useMemo(() => {
     if (!searchQuery.trim()) return valetActiveSessions;
     const q = normalizePlate(searchQuery);
