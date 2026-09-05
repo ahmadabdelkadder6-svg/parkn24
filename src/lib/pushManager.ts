@@ -10,12 +10,6 @@ interface PushPayloadNotification {
   title: string;
   body:  string;
   tag?:  string;
-  icon?: string;
-  badge?: string;
-  vibrate?: number[];
-  requireInteraction?: boolean;
-  silent?: boolean;
-  actions?: Array<{ action: string; title: string; icon?: string }>;
   data?: Record<string, unknown>;
 }
 
@@ -27,6 +21,7 @@ interface SendPushPayload {
   scheduled: (PushPayloadNotification & { sendAt: string }) | null;
 }
 
+// ─── Helper: تحويل VAPID Key ────────────────────────────────────
 const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64  = (base64String + padding)
@@ -36,6 +31,7 @@ const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   return new Uint8Array([...rawData].map((c) => c.charCodeAt(0)));
 };
 
+// ─── Helper: Supabase Fetch مع Retry سريع ────────────────────────
 const supabaseFetch = async (
   path:    string,
   body:    unknown,
@@ -78,6 +74,7 @@ const supabaseFetch = async (
   return { ok: false, error: 'Max retries exceeded' };
 };
 
+// ─── تسجيل Service Worker ───────────────────────────────────────
 export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null> => {
   if (!('serviceWorker' in navigator)) {
     console.warn('❌ Service Worker غير مدعوم');
@@ -90,10 +87,6 @@ export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration
       updateViaCache: 'none',
     });
 
-    if (registration.waiting) {
-      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-    }
-
     await navigator.serviceWorker.ready;
     return registration;
   } catch (err) {
@@ -102,6 +95,7 @@ export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration
   }
 };
 
+// ─── الاشتراك في Push Notifications ────────────────────────────
 export const subscribeToPush = async (garageId: string): Promise<boolean> => {
   try {
     if (!('PushManager' in window)) {
@@ -114,15 +108,11 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
 
     let permission = Notification.permission;
     if (permission === 'default') {
-      try {
-        permission = await Notification.requestPermission();
-      } catch (e) {
-        console.warn('⚠️ طلب الإذن المبرمج يحتاج تفاعل مستخدم:', e);
-      }
+      permission = await Notification.requestPermission();
     }
 
     if (permission !== 'granted') {
-      console.warn('❌ إذن الإشعارات غير ممنوح');
+      console.warn('❌ تم رفض إذن الإشعارات من السايس');
       return false;
     }
 
@@ -174,7 +164,7 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
   }
 };
 
-// ─── إرسال التنبيه الفوري مباشرة للسيرفر (بدون تايمر متداخل) ───────
+// ─── إرسال تنبيه "سيارة في الطريق" بأعلى أولوية طوارئ ──────────────
 export const sendCarComingPush = async ({
   garageId,
   carPlate,
@@ -196,25 +186,15 @@ export const sendCarComingPush = async ({
       Date.now() + Math.max(1, estimatedMinutes - 2) * 60 * 1000
     ).toISOString();
 
-    const alarmVibrationPattern = [1000, 200, 1000, 200, 1000, 200, 1200, 250, 1200, 250, 1500, 300, 2000];
-
     const payload: SendPushPayload = {
       garageId,
-      urgency: 'high',
-      ttl: 0,
+      urgency: 'high', // ⚡ أولوية قصوى لإيقاظ الهاتف فوراً
+      ttl: 0,          // ⚡ توصيل فوري دون انتظار في السيرفر
 
       immediate: {
-        title: '🚨 سيارة في الطريق إليك الآن!',
-        body:  `🚗 رقم السيارة: ${carPlate} • استعد للاستقبال فوراً!`,
+        title: '🚨 سيارة في الطريق إليك!',
+        body:  `🚗 رقم السيارة: ${carPlate} • استعد للاستقبال!`,
         tag:   immediateTag,
-        icon:  '/icons/icon-192x192.png',
-        badge: '/icons/badge-72x72.png',
-        vibrate: alarmVibrationPattern,
-        requireInteraction: true,
-        silent: false,
-        actions: [
-          { action: 'open_garage', title: '📂 فتح لوحة الجراج' }
-        ],
         data: {
           type:             'incoming_car',
           carPlate,
@@ -230,17 +210,9 @@ export const sendCarComingPush = async ({
       scheduled:
         estimatedMinutes > 2
           ? {
-              title:  '⏰ سيارة على وشك الوصول للجراج!',
-              body:   `🚗 السيارة ${carPlate} - باقي أقل من دقيقتين للوصول! ⏰`,
+              title:  '⏰ سيارة على وشك الوصول!',
+              body:   `🚗 ${carPlate} - باقي أقل من دقيقتين ⏰`,
               tag:    scheduledTag,
-              icon:   '/icons/icon-192x192.png',
-              badge:  '/icons/badge-72x72.png',
-              vibrate: alarmVibrationPattern,
-              requireInteraction: true,
-              silent: false,
-              actions: [
-                { action: 'open_garage', title: '📂 عرض اللوحة النشطة' }
-              ],
               data: {
                 type:     'approaching_car',
                 carPlate,
@@ -252,15 +224,15 @@ export const sendCarComingPush = async ({
           : null,
     };
 
-    console.log(`📤 إرسال إشعار فوري للسايس للسيارة: ${carPlate}`);
     const result = await supabaseFetch('send-push-notification', payload);
     return result.ok;
   } catch (err) {
-    console.error('❌ خطأ في إرسال التنبيه:', err);
+    console.error('❌ خطأ في sendCarComingPush:', err);
     return false;
   }
 };
 
+// ─── إلغاء التنبيه المجدول ──────────────────────────────────────
 export const cancelScheduledPush = async (
   garageId: string,
   carPlate: string
@@ -269,7 +241,7 @@ export const cancelScheduledPush = async (
     const result = await supabaseFetch('cancel-scheduled-alert', {
       garageId,
       carPlate,
-      tags:        [`incoming-${carPlate}`, `approaching-${carPlate}`],
+      tags:        [`approaching-${carPlate}`],
       cancelledAt: new Date().toISOString(),
     });
     return result.ok;
@@ -279,6 +251,7 @@ export const cancelScheduledPush = async (
   }
 };
 
+// ─── إلغاء الاشتراك ─────────────────────────────────────────────
 export const unsubscribeFromPush = async (): Promise<boolean> => {
   try {
     const registration = await navigator.serviceWorker.ready;
@@ -301,6 +274,7 @@ export const unsubscribeFromPush = async (): Promise<boolean> => {
   }
 };
 
+// ─── التحقق من حالة الاشتراك وتجديده ───────────────────────────
 export const checkPushSubscriptionStatus = async () => {
   const isSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
   if (!isSupported) return { isSubscribed: false, permission: 'denied', isSupported: false };
