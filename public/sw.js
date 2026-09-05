@@ -1,8 +1,8 @@
-// ✅ تم التحديث لـ v10 لإلغاء الحظر وإجبار المتصفح على تنشيط الخدمة فوراً
+// ✅ إصدار v10 المستقر والمتوافق مع معايير المتصفحات
 const CACHE_NAME    = 'parknow-v10'; 
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
-// ─── 1. Install (تثبيت فوري) ──────────────────────────
+// ─── 1. Install ──────────────────────────────────────────
 self.addEventListener('install', (event) => {
   self.skipWaiting(); 
   event.waitUntil(
@@ -13,7 +13,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// ─── 2. Activate (تنظيف وحذف الكاش القديم تماماً) ─────────
+// ─── 2. Activate ─────────────────────────────────────────
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
@@ -64,9 +64,8 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// ─── 5. Push (استقبال آمن ومتوافق 100% مع متطلبات المتصفحات لتفادي الحظر) ───
+// ─── 5. Push ────────────────────────────────────────────────
 self.addEventListener('push', (event) => {
-  // قيم افتراضية آمنة
   let title     = '🚨 سيارة في الطريق إليك الآن!';
   let body      = '🚗 تقترب سيارة جديدة من الجراج، استعد للاستقبال!';
   const icon    = '/icons/icon-192x192.png';
@@ -115,15 +114,14 @@ self.addEventListener('push', (event) => {
     console.error('❌ Push JSON Parse Error:', err);
   }
 
-  // 🚨 [الرنين والاهتزاز القوي المتوافق]: تم إزالة الـ Deduplication الصامت التزاماً بقوانين المتصفحات الصارمة
   const options = {
     body,
     icon,
     badge,
     vibrate: [1000, 200, 1000, 200, 1000, 200, 1200, 250, 1200, 250, 1500, 300, 2000],
-    requireInteraction: true,          // حاسم: يمنع اختفاء التنبيه حتى يضغط عليه السايس
-    tag: tag || 'valet-urgent-alarm',  // تاغ فريد لكل عربية
-    renotify: true,                    // يرن حتى لو كان هناك إشعار سابق مفتوح
+    requireInteraction: true,
+    tag: tag || 'valet-urgent-alarm',
+    renotify: true,
     silent: false,
     timestamp: Date.now(),
     data: { url, ...extraData },
@@ -133,13 +131,12 @@ self.addEventListener('push', (event) => {
     ],
   };
 
-  // إرسال الإشعار قسرياً للمتصفح لمنع حظر الخدمة
   event.waitUntil(
     self.registration.showNotification(title, options)
   );
 });
 
-// ─── 6. Notification Click (تنشيط شاشة الموبايل فوراً) ──────────
+// ─── 6. Notification Click ────────────────────────────────────
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 

@@ -27,8 +27,6 @@ interface SendPushPayload {
   scheduled: (PushPayloadNotification & { sendAt: string }) | null;
 }
 
-const pendingPushTimers = new Map<string, ReturnType<typeof setTimeout>>();
-
 const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64  = (base64String + padding)
@@ -115,18 +113,16 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
     if (!registration) return false;
 
     let permission = Notification.permission;
-    
-    // حماية هواتف آيفون (iOS) من الانهيار عند محاولة طلب الإذن برمجياً في الخلفية
     if (permission === 'default') {
       try {
         permission = await Notification.requestPermission();
       } catch (e) {
-        console.warn('⚠️ طلب الإذن المبرمج تم حظره مؤقتاً (يتطلب كليك صريح من المستخدم):', e);
+        console.warn('⚠️ طلب الإذن المبرمج يحتاج تفاعل مستخدم:', e);
       }
     }
 
     if (permission !== 'granted') {
-      console.warn('❌ إذن الإشعارات غير ممنوح حالياً');
+      console.warn('❌ إذن الإشعارات غير ممنوح');
       return false;
     }
 
@@ -178,7 +174,8 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
   }
 };
 
-const executeCarComingPush = async ({
+// ─── إرسال التنبيه الفوري مباشرة للسيرفر (بدون تايمر متداخل) ───────
+export const sendCarComingPush = async ({
   garageId,
   carPlate,
   estimatedMinutes,
@@ -199,7 +196,7 @@ const executeCarComingPush = async ({
       Date.now() + Math.max(1, estimatedMinutes - 2) * 60 * 1000
     ).toISOString();
 
-    const alarmVibrationPattern = [1000, 200, 1000, 200, 1000, 200, 1500, 300, 2000];
+    const alarmVibrationPattern = [1000, 200, 1000, 200, 1000, 200, 1200, 250, 1200, 250, 1500, 300, 2000];
 
     const payload: SendPushPayload = {
       garageId,
@@ -255,53 +252,13 @@ const executeCarComingPush = async ({
           : null,
     };
 
+    console.log(`📤 إرسال إشعار فوري للسايس للسيارة: ${carPlate}`);
     const result = await supabaseFetch('send-push-notification', payload);
     return result.ok;
   } catch (err) {
-    console.error('❌ خطأ في إرسال التنبيه الفعلي:', err);
+    console.error('❌ خطأ في إرسال التنبيه:', err);
     return false;
   }
-};
-
-export const sendCarComingPush = async ({
-  garageId,
-  carPlate,
-  estimatedMinutes,
-  customerName,
-  agreedPrice,
-  delaySeconds = 30, 
-}: {
-  garageId:         string;
-  carPlate:         string;
-  estimatedMinutes: number;
-  customerName?:    string;
-  agreedPrice?:     number;
-  delaySeconds?:    number;
-}): Promise<boolean> => {
-  if (pendingPushTimers.has(carPlate)) {
-    clearTimeout(pendingPushTimers.get(carPlate)!);
-    pendingPushTimers.delete(carPlate);
-  }
-
-  if (delaySeconds <= 0) {
-    return executeCarComingPush({ garageId, carPlate, estimatedMinutes, customerName, agreedPrice });
-  }
-
-  return new Promise((resolve) => {
-    const timer = setTimeout(async () => {
-      pendingPushTimers.delete(carPlate);
-      const success = await executeCarComingPush({
-        garageId,
-        carPlate,
-        estimatedMinutes,
-        customerName,
-        agreedPrice,
-      });
-      resolve(success);
-    }, delaySeconds * 1000);
-
-    pendingPushTimers.set(carPlate, timer);
-  });
 };
 
 export const cancelScheduledPush = async (
@@ -309,12 +266,6 @@ export const cancelScheduledPush = async (
   carPlate: string
 ): Promise<boolean> => {
   try {
-    if (pendingPushTimers.has(carPlate)) {
-      clearTimeout(pendingPushTimers.get(carPlate)!);
-      pendingPushTimers.delete(carPlate);
-      console.log(`🛑 تم إلغاء إشعار ${carPlate} خلال مهلة الـ 30 ثانية`);
-    }
-
     const result = await supabaseFetch('cancel-scheduled-alert', {
       garageId,
       carPlate,
