@@ -200,9 +200,6 @@ const fireApproachingAlert = (carPlate: string) => {
   );
 };
 
-/* ════════════════════════════════════════════════════════════
-   ⚡ [ActiveSessionCard]: كارت الجلسة النشطة
-   ════════════════════════════════════════════════════════════ */
 interface ActiveSessionCardProps {
   session: any;
   basePrice: number;
@@ -361,7 +358,6 @@ export default function GarageDashboard() {
     ].filter(Boolean);
   }, [garage]);
 
-  // ⚡ السيارات النشطة داخل الجراج تظهر للجميع
   const activeSessions = useMemo(() => {
     return garageSessions.filter(s => {
       if (s.status !== 'active') return false;
@@ -437,23 +433,23 @@ export default function GarageDashboard() {
     return getMyOwnedGarages(garage.ownerPhone || garage.phone || '');
   }, [getMyOwnedGarages, garage, garages]);
 
-  // 🌟 [النسب الفوري للمحفظة والمجاني]: تعيين وربط عمليات الدفع الرقمي باسم السايس النشط في الوردية تلقائياً
+  // 🌟 [النسب التلقائي الشامل للسايس المناوب]: إسناد أي جلسة مكتملة من التطبيق (كاش معلق / محفظة / مجاني) للسايس المتواجد على الشفت وتثبيتها في حسابه
   useEffect(() => {
     if (!isValet || !currentGarageId) return;
     const currentValet = currentValetNameLocal || currentValetName || `سايس ${valetNumber}`;
     if (!currentValet) return;
 
-    const unassignedDigitalSessions = sessions.filter(s => {
+    const unassignedCompletedSessions = sessions.filter(s => {
       if (s.garageId !== currentGarageId) return false;
       if (s.status !== 'completed') return false;
-      if (s.paymentMethod !== 'wallet' && s.paymentMethod !== 'free') return false;
+      if (s.source !== 'app') return false;
       
       const isToday = timestampToLocalDate(toMs(s.endTime || s.startTime)) === getLocalToday();
       const ab = ((s as any).addedBy || '').trim();
       return isToday && !ab;
     });
 
-    unassignedDigitalSessions.forEach(s => {
+    unassignedCompletedSessions.forEach(s => {
       assignSessionToValet(s.id, currentValet);
     });
   }, [sessions, isValet, currentGarageId, currentValetNameLocal, currentValetName, valetNumber, assignSessionToValet]);
@@ -607,7 +603,7 @@ export default function GarageDashboard() {
     return calculateCost(el, r);
   }, [garage?.basePrice]);
 
-  // 🌟 [الفلترة الذكية والعادلة للعمليات المكتملة]:
+  // 🌟 [الفلترة الحصرية للسايس]: يرى فقط العمليات المسجلة باسمه (سواء معلقة أو مؤكدة، كاش أو محفظة أو مجانية)
   const filteredCompleted = useMemo(() => {
     if (isValet) {
       const isActive =
@@ -641,13 +637,17 @@ export default function GarageDashboard() {
       const addedBy = ((s as any).addedBy || '').trim();
       
       if (isValet) {
-        // 1. إذا كانت العملية كاش معلق -> تظهر للجميع ليؤكدها من يستلم الكاش بيده
-        if (!s.revenueConfirmed) return true;
-
-        // 2. إذا كانت العملية مؤكدة (كاش أو محفظة) -> تظهر فقط وحصرياً للسايس المنسوبة له الجلسة
         const isMine = addedBy && myValetNames.has(addedBy);
-        if (!isMine) return false; // 🔒 منع ظهورها لأي سايس آخر نهائياً
+        const isUnassignedApp = !addedBy && s.source === 'app';
+        
+        // 🔒 السايس يرى فقط ما يخصه أو ما يلتقطه جهازه تلقائياً
+        if (!isMine && !isUnassignedApp) return false;
       }      
+      
+      if (isOwner && selectedValetFilter) { 
+        if (addedBy !== selectedValetFilter) return false; 
+      }
+      
       return true;
     });
   }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, isOwner, myValetNames, selectedValetFilter, valetNumber, garage]);
@@ -802,9 +802,9 @@ export default function GarageDashboard() {
     setNewCarPlate(''); setNewCarPrice(garage.basePrice); setShowAddCar(false);
   };
 
-  const openConfirmPayment = (sid: string, cp: string, cost: number, hrs: number, mins: number, src: 'app' | 'manual', ap?: number) => {
+  const openConfirmPayment = (sid: string, cp: string, cost: number, hrs: number, mins: number, source: 'app' | 'manual', ap?: number) => {
     const fc = cost > 0 ? cost : (() => { const s = activeSessions.find(s => s.id === sid); return s ? getActiveCost(s) : 0; })();
-    setConfirmSession({ id: sid, carPlate: cp, cost: fc, hours: hrs, minutes: mins, source: src, agreedPrice: ap });
+    setConfirmSession({ id: sid, carPlate: cp, cost: fc, hours: hrs, minutes: mins, source: source, agreedPrice: ap });
     setConfirmPaymentMethod('cash');
   };
 
@@ -824,7 +824,6 @@ export default function GarageDashboard() {
         freeMinutesApplied = Math.floor(freeMs / 60000);
       }
 
-      // 🌟 [النسب الفوري]: تسجيل الجلسة باسم السايس الحالي الذي يقوم بالتحصيل
       const currentValet = isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '';
       if (currentValet && sd) {
         await assignSessionToValet(sd.id, currentValet);
@@ -1175,7 +1174,7 @@ export default function GarageDashboard() {
                   <div className="flex items-center gap-2">
                     <button onClick={() => setNewCarPrice(p => Math.max(5, p - 5))} className="active:scale-90" style={{ background: '#FF3333', color: '#fff', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={18} /></button>
                     <input type="number" value={newCarPrice} onChange={e => setNewCarPrice(Math.max(1, parseInt(e.target.value) || 1))} className="flex-1 text-center font-black outline-none font-mono" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 10, borderRadius: 14, fontSize: 20 }} />
-                    <button onClick={() => setNewCarPrice(p => p + 5)} className="active:scale-90" style={{ background: '#00CC66', color: '#fff', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justify_center: 'center' }}><Plus size={18} /></button>
+                    <button onClick={() => setNewCarPrice(p => p + 5)} className="active:scale-90" style={{ background: '#00CC66', color: '#fff', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={18} /></button>
                   </div>
                   <div className="flex gap-1.5 mt-2 justify-end">{[10, 15, 20, 25, 30].map(p => (<button key={p} onClick={() => setNewCarPrice(p)} className="font-black active:scale-95" style={{ padding: '5px 12px', borderRadius: 10, fontSize: 11, background: newCarPrice === p ? '#0066FF' : '#F0F4FF', color: newCarPrice === p ? '#fff' : '#64748b', border: newCarPrice === p ? 'none' : '2px solid #D0DCFF' }}>{p}</button>))}</div>
                 </div>
@@ -1378,7 +1377,7 @@ export default function GarageDashboard() {
             {isOwner && (
               <>
                 <div className="mb-3 text-center transition-all" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', borderRadius: 18, padding: '10px 14px', color: '#fff', boxShadow: '0 4px 14px rgba(0,204,102,0.22)' }}>
-                  <div style={{ fontSize: 9, fontWeight: 900, opacity: 0.9, mb_2: 2 }}>
+                  <div style={{ fontSize: 9, fontWeight: 900, opacity: 0.9, marginBottom: 2 }}>
                     {`🟢 إجمالي الإيراد المؤكد (${logDateFrom === logDateTo ? 'اليوم' : `${logDateFrom} ➜ ${logDateTo}`})`}
                   </div>
                   <div className="font-black font-mono leading-none my-1" style={{ fontSize: 26, fontWeight: 950, textShadow: '0 1.5px 3px rgba(0,0,0,0.15)' }}>
