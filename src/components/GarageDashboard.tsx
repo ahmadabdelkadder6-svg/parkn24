@@ -437,6 +437,27 @@ export default function GarageDashboard() {
     return getMyOwnedGarages(garage.ownerPhone || garage.phone || '');
   }, [getMyOwnedGarages, garage, garages]);
 
+  // 🌟 [النسب الفوري للمحفظة والمجاني]: تعيين وربط عمليات الدفع الرقمي باسم السايس النشط في الوردية تلقائياً
+  useEffect(() => {
+    if (!isValet || !currentGarageId) return;
+    const currentValet = currentValetNameLocal || currentValetName || `سايس ${valetNumber}`;
+    if (!currentValet) return;
+
+    const unassignedDigitalSessions = sessions.filter(s => {
+      if (s.garageId !== currentGarageId) return false;
+      if (s.status !== 'completed') return false;
+      if (s.paymentMethod !== 'wallet' && s.paymentMethod !== 'free') return false;
+      
+      const isToday = timestampToLocalDate(toMs(s.endTime || s.startTime)) === getLocalToday();
+      const ab = ((s as any).addedBy || '').trim();
+      return isToday && !ab;
+    });
+
+    unassignedDigitalSessions.forEach(s => {
+      assignSessionToValet(s.id, currentValet);
+    });
+  }, [sessions, isValet, currentGarageId, currentValetNameLocal, currentValetName, valetNumber, assignSessionToValet]);
+
   const filteredValetActiveSessions = useMemo(() => {
     if (!plateSearch.trim()) return valetActiveSessions;
     const query = normalizeSearchPlate(plateSearch);
@@ -619,17 +640,14 @@ export default function GarageDashboard() {
       
       const addedBy = ((s as any).addedBy || '').trim();
       
-         if (isValet) {
-        // 1. لو العملية كاش معلق تأكيد الاستلام -> تظهر لجميع السياس ليؤكدها من يستلم المال بيده
+      if (isValet) {
+        // 1. إذا كانت العملية كاش معلق -> تظهر للجميع ليؤكدها من يستلم الكاش بيده
         if (!s.revenueConfirmed) return true;
 
-        // 2. لو العملية مؤكدة ومكتملة -> تظهر للسايس الحالي إذا كانت مسجلة باسمه، أو تظهر للجميع إذا كانت عملية رقمية (محفظة أو مجانية) تمت اليوم ليرى السايس النشط كل التدفق الرقمي لورديته
+        // 2. إذا كانت العملية مؤكدة (كاش أو محفظة) -> تظهر فقط وحصرياً للسايس المنسوبة له الجلسة
         const isMine = addedBy && myValetNames.has(addedBy);
-        const isDigitalToday = s.paymentMethod === 'wallet' || s.paymentMethod === 'free';
-        
-        if (!isMine && !isDigitalToday) return false;
-      }
-      
+        if (!isMine) return false; // 🔒 منع ظهورها لأي سايس آخر نهائياً
+      }      
       return true;
     });
   }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, isOwner, myValetNames, selectedValetFilter, valetNumber, garage]);
@@ -1157,7 +1175,7 @@ export default function GarageDashboard() {
                   <div className="flex items-center gap-2">
                     <button onClick={() => setNewCarPrice(p => Math.max(5, p - 5))} className="active:scale-90" style={{ background: '#FF3333', color: '#fff', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={18} /></button>
                     <input type="number" value={newCarPrice} onChange={e => setNewCarPrice(Math.max(1, parseInt(e.target.value) || 1))} className="flex-1 text-center font-black outline-none font-mono" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 10, borderRadius: 14, fontSize: 20 }} />
-                    <button onClick={() => setNewCarPrice(p => p + 5)} className="active:scale-90" style={{ background: '#00CC66', color: '#fff', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={18} /></button>
+                    <button onClick={() => setNewCarPrice(p => p + 5)} className="active:scale-90" style={{ background: '#00CC66', color: '#fff', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justify_center: 'center' }}><Plus size={18} /></button>
                   </div>
                   <div className="flex gap-1.5 mt-2 justify-end">{[10, 15, 20, 25, 30].map(p => (<button key={p} onClick={() => setNewCarPrice(p)} className="font-black active:scale-95" style={{ padding: '5px 12px', borderRadius: 10, fontSize: 11, background: newCarPrice === p ? '#0066FF' : '#F0F4FF', color: newCarPrice === p ? '#fff' : '#64748b', border: newCarPrice === p ? 'none' : '2px solid #D0DCFF' }}>{p}</button>))}</div>
                 </div>
@@ -1360,7 +1378,7 @@ export default function GarageDashboard() {
             {isOwner && (
               <>
                 <div className="mb-3 text-center transition-all" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', borderRadius: 18, padding: '10px 14px', color: '#fff', boxShadow: '0 4px 14px rgba(0,204,102,0.22)' }}>
-                  <div style={{ fontSize: 9, fontWeight: 900, opacity: 0.9, marginBottom: 2 }}>
+                  <div style={{ fontSize: 9, fontWeight: 900, opacity: 0.9, mb_2: 2 }}>
                     {`🟢 إجمالي الإيراد المؤكد (${logDateFrom === logDateTo ? 'اليوم' : `${logDateFrom} ➜ ${logDateTo}`})`}
                   </div>
                   <div className="font-black font-mono leading-none my-1" style={{ fontSize: 26, fontWeight: 950, textShadow: '0 1.5px 3px rgba(0,0,0,0.15)' }}>
