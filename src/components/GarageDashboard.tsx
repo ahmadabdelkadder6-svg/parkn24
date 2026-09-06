@@ -619,16 +619,15 @@ export default function GarageDashboard() {
       
       const addedBy = ((s as any).addedBy || '').trim();
       
-      if (isValet) {
+         if (isValet) {
         // 1. لو العملية كاش معلق تأكيد الاستلام -> تظهر لجميع السياس ليؤكدها من يستلم المال بيده
         if (!s.revenueConfirmed) return true;
 
-        // 2. لو العملية مؤكدة ومكتملة -> تظهر فقط للسايس الذي استلمها أو قام بتحصيلها
+        // 2. لو العملية مؤكدة ومكتملة -> تظهر للسايس الحالي إذا كانت مسجلة باسمه، أو تظهر للجميع إذا كانت عملية رقمية (محفظة أو مجانية) تمت اليوم ليرى السايس النشط كل التدفق الرقمي لورديته
         const isMine = addedBy && myValetNames.has(addedBy);
-        if (!isMine) return false;
-      }      
-      if (isOwner && selectedValetFilter) { 
-        if (addedBy !== selectedValetFilter) return false; 
+        const isDigitalToday = s.paymentMethod === 'wallet' || s.paymentMethod === 'free';
+        
+        if (!isMine && !isDigitalToday) return false;
       }
       
       return true;
