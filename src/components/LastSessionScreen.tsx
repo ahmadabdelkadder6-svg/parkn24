@@ -11,7 +11,8 @@ import {
   Gift,
   Sparkles,
 } from 'lucide-react';
-import { useStore } from '../store';
+// 🌟 استيراد دالة البصمة الموحدة من الـ store لضمان مطابقة اللوحات بدقة 100%
+import { useStore, normalizePlate } from '../store';
 import { calculateFullHours, calculateCost, formatTime } from '../utils/pricing';
 import toast from 'react-hot-toast';
 import { useEffect, useRef, useMemo } from 'react';
@@ -33,19 +34,21 @@ const toMs = (value: any): number => {
 export default function LastSessionScreen() {
   const { sessions, garages, currentUser, setScreen, fetchAll } = useStore();
 
-  const userPlate = (currentUser?.carPlate ?? '').trim().toUpperCase();
+  const userPlate = normalizePlate(currentUser?.carPlate);
+  const userPhone = currentUser?.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
 
-  /* ✅ البحث بـ carPlate أو customerPhone */
-  const lastSession = sessions
-    .filter(
-      (s) =>
-        s.status === 'completed' &&
-        (
-          s.carPlate.trim().toUpperCase() === userPlate ||
-          (s as any).customerPhone === currentUser?.phone
-        ),
-    )
-    .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
+  /* ✅ البحث بـ carPlate أو customerPhone بالبصمة الموحدة */
+  const lastSession = useMemo(() => {
+    return sessions
+      .filter((s) => {
+        if (!s || s.status !== 'completed') return false;
+        const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+        const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+        const samePhone = !!userPhone && sPhone === userPhone;
+        return samePlate || samePhone;
+      })
+      .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
+  }, [sessions, userPlate, userPhone]);
 
   const garage = lastSession
     ? garages.find((g) => g.id === lastSession.garageId)
@@ -58,14 +61,24 @@ export default function LastSessionScreen() {
      ██  REALTIME
      ───────────────────────────────────────────── */
   useEffect(() => {
-    if (!userPlate && !currentUser?.phone) return;
+    if (!userPlate && !userPhone) return;
 
     fetchAll();
 
     const garageId = lastSession?.garageId ?? null;
 
+    const isMySessionPayload = (row: any) => {
+      if (!row) return false;
+      const plate = normalizePlate(row.car_plate || row.carPlate);
+      const phone = (row.customer_phone || row.customerPhone || '').replace(/[^\d+]/g, '');
+      return (
+        (!!userPlate && plate === userPlate) ||
+        (!!userPhone && phone === userPhone)
+      );
+    };
+
     const channel = supabase
-      .channel(`last-session-${userPlate || currentUser?.phone}`)
+      .channel(`last-session-${userPlate || userPhone}`)
       .on(
         'postgres_changes',
         {
@@ -76,18 +89,7 @@ export default function LastSessionScreen() {
         },
         async (payload) => {
           const row = payload.new as any;
-          if (!row) {
-            await fetchAll();
-            return;
-          }
-
-          const plate = (row.car_plate ?? '').trim().toUpperCase();
-          const phone = row.customer_phone ?? '';
-          const isMySession =
-            plate === userPlate ||
-            (currentUser?.phone && phone === currentUser.phone);
-
-          if (isMySession) {
+          if (isMySessionPayload(row)) {
             await fetchAll();
           }
         },
@@ -100,8 +102,7 @@ export default function LastSessionScreen() {
       supabase.removeChannel(channel);
       realtimeChannelRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userPlate, currentUser?.phone]);
+  }, [userPlate, userPhone, fetchAll, lastSession?.garageId]);
 
   /* ─── لا توجد جلسات ─── */
   if (!lastSession) {
@@ -137,7 +138,7 @@ export default function LastSessionScreen() {
 
   // 🎁 [منطق الهدية]: قراءة وتحديد أهلية الجلسة والدقائق المجانية التي طُبقت
   const isFirstFreeApplied = lastSession.isFirstFreeSession === true;
-  const freeMinutesApplied = lastSession.freeMinutesApplied ?? 0;
+  const freeMinutesApplied = lastSession.freeMinutesApplied ?? (isFirstFreeApplied ? Math.min(totalMinutes, 60) : 0);
 
   // الساعات الفعلية الخاضعة للدفع بالكامل بعد خصم الهدية
   const billableSeconds = Math.max(0, elapsedSeconds - (freeMinutesApplied * 60));
@@ -198,6 +199,13 @@ export default function LastSessionScreen() {
           bg: 'bg-blue-500/10',
           border: 'border-blue-500/30',
         };
+      case 'free':
+        return {
+          label: 'ركن مجاني ترحيبي', icon: '🎁',
+          color: 'text-amber-400',
+          bg: 'bg-amber-500/10',
+          border: 'border-amber-500/30',
+        };
       case 'cashwallet':
         return {
           label: 'تحويل محفظة كاش', icon: '📲',
@@ -234,10 +242,10 @@ export default function LastSessionScreen() {
 ⏰ وقت الدخول: ${formatTimeOnly(startDate)}
 ⏰ وقت الخروج: ${formatTimeOnly(endDate)}
 ⏱️ المدة الفعلية: ${totalMinutes} دقيقة
-${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجاناً (-${savedAmount} ج.م)\n` : ''}⏱️ المدة الخاضعة للدفع: ${isFirstFreeApplied ? Math.max(0, totalMinutes - freeMinutesApplied) : totalMinutes} دقيقة
+${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجاناً (-${savedAmount.toFixed(0)} ج.م)\n` : ''}⏱️ المدة الخاضعة للدفع: ${isFirstFreeApplied ? Math.max(0, totalMinutes - freeMinutesApplied) : totalMinutes} دقيقة
 ━━━━━━━━━━━━━━━━━━
 💰 سعر الساعة: ${rate} ج.م
-💵 الإجمالي المدفوع: ${cost} ج.م
+💵 الإجمالي المدفوع: ${cost.toFixed(0)} ج.م
 💳 طريقة الدفع: ${paymentInfo.label}
 📋 نوع الجلسة: ${sourceInfo.label}`;
 

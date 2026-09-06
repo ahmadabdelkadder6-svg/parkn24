@@ -7,9 +7,10 @@ import {
   AlertTriangle,
   Gift,
 } from 'lucide-react';
-import { useStore, pausePolling } from '../store';
+// 🌟 استيراد دالة البصمة الموحدة من الـ store لضمان مطابقة دقيقة وخالية من تلاعب الثغرات
+import { useStore, pausePolling, normalizePlate } from '../store';
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { calculateFullHours, calculateCost, formatTime } from '../utils/pricing';
+import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 
@@ -20,34 +21,6 @@ const toMs = (value: any): number => {
   }
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
-};
-
-// 🧬 [بصمة اللوحة العبقرية]: توحيد شامل ومقاوم للتلاعب بمطابقة تامة مع الـ Store
-const normalizePlate = (plate?: string): string => {
-  if (!plate) return '';
-  
-  let cleaned = plate.trim();
-  
-  // 1. تحويل الأرقام العربية الشرقية والفارسية إلى أرقام إنجليزية موحدة
-  cleaned = cleaned
-    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)));
-  
-  // 2. توحيد الحروف العربية المتشابهة والهمزات
-  const charMap: Record<string, string> = {
-    'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ٱ': 'ا', 'ء': 'ا',
-    'ة': 'ت',
-    'ى': 'ي', 'ئ': 'ي',
-    'ؤ': 'و',
-    'پ': 'ب', 'چ': 'ج', 'ژ': 'ز', 'گ': 'ك', 'ڤ': 'ف',
-    'ک': 'ك', 'ی': 'ي',
-  };
-  cleaned = cleaned.replace(/./g, (char) => charMap[char] || char);
-  
-  // 3. حذف الحروف الإنجليزية والرموز والمسافات (حروف عربية وأرقام فقط)
-  cleaned = cleaned.replace(/[^0-9\u0600-\u06FF]/g, '');
-  
-  return cleaned;
 };
 
 export default function SummaryScreen() {
@@ -67,12 +40,6 @@ export default function SummaryScreen() {
   const userPlate = normalizePlate(currentUser?.carPlate);
   const userPhone = currentUser?.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
 
-  const redirectedToSummaryRef = useRef(false);
-  const redirectedToSessionRef = useRef(false);
-  const activeSessionIdRef = useRef<string | null>(null);
-  const realtimeChannelRef = useRef<any>(null);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [done, setDone] = useState(false);
   const [doneMethod, setDoneMethod] = useState('');
@@ -81,6 +48,8 @@ export default function SummaryScreen() {
 
   const isEndingRef = useRef(false);
   const autoRedirectedRef = useRef(false);
+  const realtimeChannelRef = useRef<any>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isMySession = (s: any): boolean => {
     const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
@@ -303,11 +272,10 @@ export default function SummaryScreen() {
   };
 
   const handleConfirm = async () => {
-    // 🛡️ معالجة الفاتورة الصفرية المجانية فوراً وبضغطة واحدة
     if (totalPrice === 0) {
       const success = await safeEndSession('free', 0);
       if (success) {
-        toast.success('تمت الركنة المجانية بنجاح! 🥳🎁');
+        toast.success('تمت الركنة المجانية بنجاح! 🎁');
         setDoneTotalPrice(0);
         setDoneMethod('free');
         setRemainingWallet(walletBalance);
@@ -636,7 +604,7 @@ export default function SummaryScreen() {
             </div>
           )}
 
-          {/* 🌟 زر التأكيد المرن: يدعم الحجز المجاني الصفر بضغطة واحدة مباشرة */}
+          {/* 🌟 زر التأكيد المرن */}
           <button
             onClick={handleConfirm}
             disabled={totalPrice > 0 && paymentMethod === 'wallet' && !canPayWallet}

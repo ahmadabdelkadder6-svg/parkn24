@@ -10,7 +10,8 @@ import {
   XCircle,
   Copy,
 } from 'lucide-react';
-import { useStore } from '../store';
+// 🌟 استيراد دالة البصمة الموحدة من الـ store لضمان التوافق التام مع باقي الشاشات
+import { useStore, normalizePlate } from '../store';
 import {
   calculateDistance,
   distanceToMinutes,
@@ -57,17 +58,6 @@ const toMs = (value: any): number => {
   }
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
-};
-
-/* ─── Helper: تنظيف وتوحيد رقم اللوحة ─── */
-const normalizePlate = (plate?: string): string => {
-  if (!plate) return '';
-  return plate
-    .trim()
-    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
-    .replace(/[^A-Z0-9\u0600-\u06FF]/gi, '')
-    .toUpperCase();
 };
 
 /* ─── Map controller ─── */
@@ -461,7 +451,7 @@ export default function NavigationScreen() {
     if (activeOffer) cancelOffer(activeOffer.id);
 
     removeIncomingCar(myIncomingCar.id);
-    toast.success('تم إلغاء الحجز');
+    toast.success('تم إلغاء الحجز، يمكنك اختيار جراج آخر 🚗');
     setSelectedGarageId(null);
     setScreen('list');
   };
@@ -766,29 +756,52 @@ export default function NavigationScreen() {
           </button>
         )}
 
-        {/* زر الإلغاء */}
-        {canCancel && myIncomingCar && !myActiveSession && (
+        {/* 🔄 زر الإلغاء الذكي والمتحول */}
+        {myIncomingCar && !myActiveSession && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             className="shrink-0"
           >
-            <button
-              onClick={handleCancelBooking}
-              className="w-full bg-slate-900 border border-red-500/20 text-red-400 py-3 rounded-xl font-black text-xs active:scale-95 transition-transform flex items-center justify-center gap-2"
-            >
-              <XCircle size={16} />
-              إلغاء الحجز ({cancelTimeLeft}ث)
-            </button>
+            {canCancel ? (
+              // ⏱️ المرحلة الأولى: أول 30 ثانية (إلغاء سريع بعداد تنازلي)
+              <>
+                <button
+                  onClick={handleCancelBooking}
+                  className="w-full bg-slate-900 border border-red-500/20 text-red-400 py-3 rounded-xl font-black text-xs active:scale-95 transition-transform flex items-center justify-center gap-2"
+                >
+                  <XCircle size={16} />
+                  إلغاء الحجز ({cancelTimeLeft}ث)
+                </button>
 
-            <div className="mt-1.5 bg-slate-800 rounded-full h-1 overflow-hidden">
-              <div
-                className="h-full bg-red-500 transition-all duration-1000"
+                <div className="mt-1.5 bg-slate-800 rounded-full h-1 overflow-hidden">
+                  <div
+                    className="h-full bg-red-500 transition-all duration-1000"
+                    style={{
+                      width: `${(cancelTimeLeft / CANCEL_WINDOW_SECONDS) * 100}%`,
+                    }}
+                  />
+                </div>
+              </>
+            ) : (
+              // 🚀 المرحلة الثانية: بعد انتهاء الـ 30 ثانية وإرسال الإشعار للسايس
+              <motion.button
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                onClick={handleCancelBooking}
+                className="w-full py-3.5 rounded-xl active:scale-95 transition-all flex items-center justify-center gap-2 shadow-sm"
                 style={{
-                  width: `${(cancelTimeLeft / CANCEL_WINDOW_SECONDS) * 100}%`,
+                  background: '#1E293B',
+                  color: '#CBD5E1',
+                  border: '1.5px solid #334155',
+                  fontSize: 13,
+                  fontWeight: 900,
                 }}
-              />
-            </div>
+              >
+                <XCircle size={15} className="text-slate-400" />
+                <span>إلغاء الحجز واختيار جراج آخر</span>
+              </motion.button>
+            )}
           </motion.div>
         )}
       </div>

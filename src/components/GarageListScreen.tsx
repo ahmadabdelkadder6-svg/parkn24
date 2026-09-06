@@ -20,7 +20,6 @@ import {
   Gift,
   Sparkles,
 } from 'lucide-react';
-// 🌟 تم استيراد normalizePlate الموحدة من الـ store لتوحيد منطق البصمة الذكية
 import { useStore, Garage, Session, IncomingCar, normalizePlate } from '../store';
 import {
   calculateDistance,
@@ -32,14 +31,12 @@ import TopUpWalletModal from './TopUpWalletModal';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 
-/* ─── Types ─── */
 interface GarageWithDistance extends Garage {
   distance: number;
   minutes: number;
   classification: 'nearby' | 'far';
 }
 
-/* ─── Helpers ─── */
 const safeParseTime = (value: unknown): number => {
   if (!value) return 0;
   if (typeof value === 'string') {
@@ -52,9 +49,6 @@ const safeParseTime = (value: unknown): number => {
   return 0;
 };
 
-/* ════════════════════════════════════════════════════════════
-   ██  MAIN SCREEN
-   ════════════════════════════════════════════════════════════ */
 export default function GarageListScreen() {
   const {
     garages,
@@ -80,11 +74,8 @@ export default function GarageListScreen() {
   });
   const [locationLoading, setLocationLoading] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
-  
-  // 🛡️ حالة حارس الأمان لكشف أي احتيال أو استخدام سابق للهدية من اللوحة/الهاتف تاريخياً
   const [isAbuseDetected, setIsAbuseDetected] = useState(false);
 
-  /* ── Refs ── */
   const autoNavigatedRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
 
@@ -95,34 +86,35 @@ export default function GarageListScreen() {
     };
   }, []);
 
-  /* ── Derived state ── */
-  // 🌟 استخدام دالة البصمة الموحدة من الـ store لمنع التحايل تماماً
   const normalizedUserPlate = useMemo(
     () => normalizePlate(currentUser?.carPlate),
     [currentUser?.carPlate]
   );
 
-  /* 🛡️ فحص أمني خلفي لحظي بمجرد تحميل اللوحة للتأكد من عدم استخدامها مسبقاً تاريخياً بالبصمة الموحدة */
+  const cleanUserPhone = useMemo(
+    () => currentUser?.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '',
+    [currentUser?.phone]
+  );
+
   useEffect(() => {
     if (!currentUser) return;
     
     const checkAbuseHistory = async () => {
       try {
         const cleanPlate = normalizePlate(currentUser.carPlate);
-        const cleanPhone = currentUser.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
-        if (!cleanPlate && !cleanPhone) return;
+        if (!cleanPlate && !cleanUserPhone) return;
 
         const { data, error } = await supabase
           .from('sessions')
           .select('id')
           .eq('is_first_free_session', true)
-          .or(`car_plate.eq.${cleanPlate}${cleanPhone ? `,customer_phone.eq.${cleanPhone}` : ''}`)
+          .or(`car_plate.eq.${cleanPlate}${cleanUserPhone ? `,customer_phone.eq.${cleanUserPhone}` : ''}`)
           .limit(1);
 
         if (!error && data && data.length > 0) {
-          setIsAbuseDetected(true); // تم كشف محاولة احتيال باللوحة أو الهاتف تاريخياً
+          setIsAbuseDetected(true);
         } else {
-          setIsAbuseDetected(false); // لوحة نظيفة ومستحقة للعرض
+          setIsAbuseDetected(false);
         }
       } catch (err) {
         console.error('Error verifying welcome gift eligibility:', err);
@@ -130,29 +122,27 @@ export default function GarageListScreen() {
     };
 
     checkAbuseHistory();
-  }, [currentUser, sessions]);
+  }, [currentUser, sessions, cleanUserPhone]);
 
-  /* 🎁 التحقق الآمن مما إذا كان العميل يستحق عرض الساعة المجانية */
   const isEligibleForFreeSession = useMemo(() => {
     return currentUser && !currentUser.hasUsedFreeSession && !isAbuseDetected;
   }, [currentUser, isAbuseDetected]);
 
-  /* ✅ البحث عن جلسة نشطة واستبعاد أي جلسة تم إقرار إغلاقها مسبقاً بالبصمة الموحدة */
   const activeSession = useMemo(() => {
-    if (!normalizedUserPlate && !currentUser?.phone) return undefined;
+    if (!normalizedUserPlate && !cleanUserPhone) return undefined;
 
     return sessions
       .filter((s: Session & { customerPhone?: string }) => {
         if (s.status !== 'active') return false;
         if (acknowledgedSessionIds?.has(s.id)) return false;
         const samePlate = normalizePlate(s.carPlate) === normalizedUserPlate;
-        const samePhone = Boolean(currentUser?.phone && s.customerPhone === currentUser.phone);
+        const sPhoneClean = s.customerPhone ? s.customerPhone.replace(/[^\d+]/g, '') : '';
+        const samePhone = Boolean(cleanUserPhone && sPhoneClean === cleanUserPhone);
         return samePlate || samePhone;
       })
       .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
-  }, [sessions, normalizedUserPlate, currentUser?.phone, acknowledgedSessionIds]);
+  }, [sessions, normalizedUserPlate, cleanUserPhone, acknowledgedSessionIds]);
 
-  /* ✅ حجب الجلسات المنتهية القديمة لمنع تكرار شاشة النهاية */
   const hasCompletedSession = useMemo(() => {
     if (activeSession) return false;
     return sessions.some(
@@ -162,7 +152,6 @@ export default function GarageListScreen() {
     );
   }, [sessions, normalizedUserPlate, activeSession]);
 
-  /* ✅ البحث عن حجز نشط قادم بالبصمة الموحدة */
   const myIncomingCar = useMemo(() => {
     if (!normalizedUserPlate) return undefined;
     return incomingCars
@@ -174,20 +163,18 @@ export default function GarageListScreen() {
       .sort((a, b) => safeParseTime(b.startTime || 0) - safeParseTime(a.startTime || 0))[0];
   }, [incomingCars, normalizedUserPlate]);
 
-  /* 🚀 فلترة عمليات شحن المحفظة الخاصة بالعميل الحالي وتصنيفها */
   const myTopUps = useMemo(() => {
-    if (!currentUser?.phone || !walletTopUps) return [];
+    if (!cleanUserPhone || !walletTopUps) return [];
     return walletTopUps
-      .filter((w) => w.userPhone === currentUser.phone)
+      .filter((w) => w.userPhone === cleanUserPhone)
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, 3); 
-  }, [walletTopUps, currentUser?.phone]);
+  }, [walletTopUps, cleanUserPhone]);
 
   const pendingTopUpsCount = useMemo(() => {
     return myTopUps.filter((w) => w.status === 'pending').length;
   }, [myTopUps]);
 
-  /* ── Location ── */
   const getUserLocation = useCallback(() => {
     if (!('geolocation' in navigator)) {
       toast.error('خدمة تحديد الموقع غير مدعومة في متصفحك');
@@ -215,7 +202,6 @@ export default function GarageListScreen() {
     getUserLocation();
   }, [getUserLocation]);
 
-  /* ── Realtime + Polling ── */
   useEffect(() => {
     if (!normalizedUserPlate) return;
 
@@ -226,17 +212,17 @@ export default function GarageListScreen() {
       try {
         await fetchAll();
       } catch (e) {
-        console.error('❌ Realtime Fetch Error:', e);
+        console.error('Realtime Fetch Error:', e);
       }
     };
 
     const isMyRow = (row: any): boolean => {
       if (!row) return false;
       const plate = normalizePlate(row.car_plate || row.carPlate);
-      const phone = row.customer_phone || row.customerPhone || '';
+      const phone = (row.customer_phone || row.customerPhone || '').replace(/[^\d+]/g, '');
       return (
         plate === normalizedUserPlate ||
-        Boolean(currentUser?.phone && phone === currentUser.phone)
+        Boolean(cleanUserPhone && phone === cleanUserPhone)
       );
     };
 
@@ -244,7 +230,7 @@ export default function GarageListScreen() {
       .channel(`customer-realtime-${normalizedUserPlate}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'sessions', filter: `car_plate=eq.${normalizedUserPlate}` },
+        { event: '*', schema: 'public', table: 'sessions' },
         (payload) => {
           if (isMyRow(payload.new) || isMyRow(payload.old)) {
             refetch();
@@ -271,9 +257,8 @@ export default function GarageListScreen() {
       window.removeEventListener('focus', handleFocus);
       supabase.removeChannel(channel);
     };
-  }, [normalizedUserPlate, currentUser?.phone, fetchAll]);
+  }, [normalizedUserPlate, cleanUserPhone, fetchAll]);
 
-  /* ── انتقال تلقائي لشاشة الجلسة ── */
   useEffect(() => {
     if (!activeSession) {
       autoNavigatedRef.current = null;
@@ -288,7 +273,6 @@ export default function GarageListScreen() {
     toast.success('بدأت جلسة الركن! ⏱️', { icon: '🚗', duration: 3000 });
   }, [activeSession, setSelectedGarageId, setScreen]);
 
-  /* ── Garages with distance ── */
   const garagesWithDistance: GarageWithDistance[] = useMemo(() => {
     return garages
       .filter((g) => g.isActive !== false) 
@@ -328,12 +312,12 @@ export default function GarageListScreen() {
     () => filteredGarages.filter((g) => g.classification === 'nearby'),
     [filteredGarages]
   );
+
   const farGarages = useMemo(
     () => filteredGarages.filter((g) => g.classification === 'far'),
     [filteredGarages]
   );
 
-  /* ── Booking handler ── */
   const handleDirectBooking = async (garage: GarageWithDistance) => {
     if (!currentUser) {
       toast.error('سجل بياناتك أولاً');
@@ -388,7 +372,7 @@ export default function GarageListScreen() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: '#EBF2FF', color: '#0A1628' }}>
-      {/* ══════ HEADER ══════ */}
+      {/* Header */}
       <div className="px-4 pt-10 pb-3 shadow-sm z-10" style={{ background: '#ffffff' }}>
         <div className="flex justify-between items-center mb-4">
           <div>
@@ -411,7 +395,7 @@ export default function GarageListScreen() {
           />
         </div>
 
-        {/* 💳 بطاقة المحفظة الذكية */}
+        {/* بطاقة المحفظة */}
         <div
           style={{
             background: 'linear-gradient(135deg, #0055FF 0%, #3B00E3 50%, #8A00FF 100%)',
@@ -546,7 +530,6 @@ export default function GarageListScreen() {
               </div>
             )}
 
-            {/* لوحة السيارة */}
             <div
               style={{
                 background: '#ffffff',
@@ -579,7 +562,7 @@ export default function GarageListScreen() {
           </div>
         </div>
 
-        {/* سجل طلبات شحن المحفظة */}
+        {/* سجل شحن المحفظة */}
         <AnimatePresence>
           {showHistory && myTopUps.length > 0 && (
             <motion.div
@@ -660,7 +643,7 @@ export default function GarageListScreen() {
           )}
         </AnimatePresence>
 
-        {/* 🎁 بانر ترحيبي بسيط ومبهج */}
+        {/* بانر ترحيبي */}
         {isEligibleForFreeSession && !activeSession && !myIncomingCar && (
           <motion.div
             initial={{ opacity: 0, y: -15, scale: 0.95 }}
@@ -858,9 +841,8 @@ export default function GarageListScreen() {
         </div>
       </div>
 
-      {/* ══════ CONTENT ══════ */}
+      {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 pt-3 pb-8">
-        {/* أزرار الوصول السريع */}
         <div className="grid grid-cols-2 gap-2 mb-4">
           {hasCompletedSession && (
             <button
@@ -911,7 +893,6 @@ export default function GarageListScreen() {
           </button>
         </div>
 
-        {/* الجراجات القريبة */}
         {nearbyGarages.length > 0 && (
           <div className="mb-5">
             <div className="flex items-center gap-2 mb-3 justify-end">
@@ -949,7 +930,6 @@ export default function GarageListScreen() {
           </div>
         )}
 
-        {/* خيارات أخرى */}
         {farGarages.length > 0 && !showNearbyOnly && (
           <div className="mb-5">
             <div className="flex items-center gap-2 mb-3 justify-end">
@@ -987,7 +967,6 @@ export default function GarageListScreen() {
           </div>
         )}
 
-        {/* حالة عدم وجود نتائج */}
         {filteredGarages.length === 0 && (
           <div className="text-center py-16">
             <div className="text-5xl mb-3">🔍</div>
@@ -1001,20 +980,15 @@ export default function GarageListScreen() {
         )}
       </div>
 
-      {/* نافذة شحن الرصيد */}
       <AnimatePresence>
         {showTopUp && <TopUpWalletModal onClose={() => setShowTopUp(false)} />}
       </AnimatePresence>
 
-      {/* الهدية الترحيبية منبثقة */}
       <WelcomeGiftModal />
     </div>
   );
 }
 
-/* ════════════════════════════════════════════════════════════
-   ██  WELCOME GIFT MODAL COMPONENT
-   ════════════════════════════════════════════════════════════ */
 function WelcomeGiftModal() {
   const [show, setShow] = useState(false);
   const currentUser = useStore((s) => s.currentUser);
@@ -1105,9 +1079,6 @@ function WelcomeGiftModal() {
   );
 }
 
-/* ════════════════════════════════════════════════════════════
-   ██  GARAGE CARD COMPONENT
-   ════════════════════════════════════════════════════════════ */
 interface GarageCardProps {
   garage: GarageWithDistance;
   index: number;

@@ -70,12 +70,10 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null);
 
-  // ✅ حماية من undefined
   const myMessages = (messages ?? [])
     .filter((m) => m.userPhone === currentUser?.phone)
     .sort((a, b) => b.timestamp - a.timestamp);
 
-  // ─── إرسال رسالة ─────────────────────────────────────────────────────────
   const handleSend = async () => {
     if (!currentUser) {
       toast.error('سجل دخول أولاً');
@@ -122,7 +120,6 @@ export default function ChatScreen() {
     }
   };
 
-  // ─── حالة الرسالة ─────────────────────────────────────────────────────────
   const getStatusInfo = (status: string) => {
     switch (status) {
       case 'pending':
@@ -156,7 +153,6 @@ export default function ChatScreen() {
     }
   };
 
-  // ─── نوع الرسالة ──────────────────────────────────────────────────────────
   const getTypeInfo = (type: string) => {
     return (
       MESSAGE_TYPES.find((t) => t.id === type) || {
@@ -169,7 +165,6 @@ export default function ChatScreen() {
     );
   };
 
-  // ─── تنسيق الوقت ──────────────────────────────────────────────────────────
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp);
     const now = new Date();
@@ -188,7 +183,6 @@ export default function ChatScreen() {
     });
   };
 
-  // ─── العرض ───────────────────────────────────────────────────────────────
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -210,9 +204,8 @@ export default function ChatScreen() {
         <div className="w-10" />
       </div>
 
-      {/* المحتوى */}
+      {/* Content */}
       <div className="flex-1 px-4 pb-4 overflow-y-auto">
-        {/* زر رسالة جديدة */}
         {!showNewMessage && (
           <motion.button
             initial={{ opacity: 0, y: -10 }}
@@ -225,7 +218,6 @@ export default function ChatScreen() {
           </motion.button>
         )}
 
-        {/* فورم رسالة جديدة */}
         <AnimatePresence>
           {showNewMessage && (
             <motion.div
@@ -234,7 +226,6 @@ export default function ChatScreen() {
               exit={{ opacity: 0, y: -20, scale: 0.95 }}
               className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-4 space-y-4"
             >
-              {/* عنوان الفورم */}
               <div className="flex items-center justify-between">
                 <button
                   onClick={() => {
@@ -252,7 +243,6 @@ export default function ChatScreen() {
                 </h3>
               </div>
 
-              {/* اختيار النوع */}
               <div>
                 <label className="text-[10px] text-slate-500 font-bold block text-right mb-2">
                   نوع الرسالة *
@@ -286,7 +276,6 @@ export default function ChatScreen() {
                 </div>
               </div>
 
-              {/* الموضوع */}
               <div>
                 <label className="text-[10px] text-slate-500 font-bold block text-right mb-1">
                   الموضوع (اختياري)
@@ -299,7 +288,6 @@ export default function ChatScreen() {
                 />
               </div>
 
-              {/* الرسالة */}
               <div>
                 <label className="text-[10px] text-slate-500 font-bold block text-right mb-1">
                   رسالتك *
@@ -313,7 +301,6 @@ export default function ChatScreen() {
                 />
               </div>
 
-              {/* معلومات المرسل */}
               <div className="bg-slate-950 rounded-xl p-3 space-y-1 border border-slate-800">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] text-slate-500 font-mono">
@@ -333,7 +320,6 @@ export default function ChatScreen() {
                 </div>
               </div>
 
-              {/* زر الإرسال */}
               <button
                 onClick={handleSend}
                 disabled={sending || !selectedType || !messageText.trim()}
@@ -350,7 +336,6 @@ export default function ChatScreen() {
           )}
         </AnimatePresence>
 
-        {/* قائمة الرسائل */}
         <div>
           <h3 className="text-xs font-black text-slate-400 mb-3 flex items-center gap-2 justify-end">
             رسائلي ({myMessages.length})
@@ -389,7 +374,6 @@ export default function ChatScreen() {
                         : 'bg-slate-900 border-slate-800'
                     }`}
                   >
-                    {/* الصف العلوي */}
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex items-center gap-2">
                         <span
@@ -409,14 +393,12 @@ export default function ChatScreen() {
                       </span>
                     </div>
 
-                    {/* الموضوع */}
                     {msg.subject && (
                       <div className="text-xs font-black text-white mb-1 text-right">
                         {msg.subject}
                       </div>
                     )}
 
-                    {/* الرسالة */}
                     <div
                       className={`text-[11px] text-slate-400 text-right leading-relaxed ${
                         isExpanded ? '' : 'line-clamp-2'
@@ -425,7 +407,6 @@ export default function ChatScreen() {
                       {msg.message}
                     </div>
 
-                    {/* الرد */}
                     <AnimatePresence>
                       {isExpanded && msg.reply && (
                         <motion.div
@@ -452,14 +433,12 @@ export default function ChatScreen() {
                       )}
                     </AnimatePresence>
 
-                    {/* اضغط للتوسيع */}
                     {!isExpanded && (msg.reply || msg.message.length > 80) && (
                       <div className="text-[8px] text-blue-400 text-center mt-2 font-bold">
                         اضغط لعرض التفاصيل ↓
                       </div>
                     )}
 
-                    {/* بادج الرد الجديد */}
                     {msg.status === 'replied' && !isExpanded && (
                       <div className="mt-2 bg-emerald-600/10 border border-emerald-500/20 rounded-lg p-1.5 text-center">
                         <span className="text-[9px] text-emerald-400 font-bold">

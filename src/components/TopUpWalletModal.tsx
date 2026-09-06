@@ -1,30 +1,13 @@
 import { useState, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { X, Copy, ExternalLink, ArrowRight, CheckCircle, Plus, Minus, Phone, Send, Sparkles } from 'lucide-react';
-import { useStore } from '../store';
+// 🌟 استيراد مصفوفة الباقات الموحدة ودالة البونص من الـ Store مباشرة لمنع تكرار البيانات وتشتتها
+import { useStore, TOPUP_TIERS, calculateBonus } from '../store';
 import toast from 'react-hot-toast';
 
 const WALLET_NUMBER = '01229858104';
 const INSTAPAY_USERNAME = 'ahmed.ali858104';
 const INSTAPAY_LINK = `https://ipn.eg/S/${INSTAPAY_USERNAME}/instapay/9fp24n`;
-
-// 🏆 تعريف الشرائح والبونص مباشرة داخل المودال لضمان الظهور 100%
-export const TIERS = [
-  { id: 'bronze',   amount: 100,  bonus: 5,   label: '🥉 برونزي',   popular: false },
-  { id: 'silver',   amount: 300,  bonus: 30,  label: '🥈 فضي',      popular: false },
-  { id: 'gold',     amount: 500,  bonus: 75,  label: '🥇 ذهبي',     popular: true  },
-  { id: 'platinum', amount: 1000, bonus: 200, label: '👑 بلاتيني', popular: false },
-];
-
-export const getBonus = (amount: number): number => {
-  const val = Number(amount);
-  if (isNaN(val) || val < 100) return 0;
-  if (val >= 1000) return 200;
-  if (val >= 500) return 75;
-  if (val >= 300) return 30;
-  if (val >= 100) return 5;
-  return 0;
-};
 
 // 🛡️ توليد كود مرجعي فريد ومستحيل التكرار نهائياً
 function generateSecureReference(): string {
@@ -45,8 +28,8 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
   const [transactionId] = useState<string>(() => generateSecureReference());
   const isSubmittingRef = useRef(false);
 
-  // 🎁 حساب البونص التفاعلي
-  const currentBonus = useMemo(() => getBonus(amount), [amount]);
+  // 🎁 حساب البونص التفاعلي مباشرة من دالة الـ Store الموحدة
+  const currentBonus = useMemo(() => calculateBonus(amount), [amount]);
   const totalReceived = useMemo(() => amount + currentBonus, [amount, currentBonus]);
 
   const copyToClipboard = (text: string, label: string) => {
@@ -57,7 +40,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
   };
 
   const handleSubmitTopUp = async () => {
-    // 🛡️ حماية من الضغط المزدوج والطلبات المكررة
+    // 🛡️ حماية أمنية صارمة من الضغط المزدوج والطلبات المكررة في نفس الثانية
     if (isSubmittingRef.current || loading) return;
 
     if (!currentUser) {
@@ -76,18 +59,18 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
       return;
     }
 
-    isSubmittingRef.current = true;
-    setLoading(true);
-    const loadingToast = toast.loading('جاري إرسال طلب الشحن...');
-
     try {
+      isSubmittingRef.current = true;
+      setLoading(true);
+      const loadingToast = toast.loading('جاري إرسال طلب الشحن...');
+
       const userId = (currentUser as any).id || userPhone;
 
       await addWalletTopUp({
         userId: userId,
         userName: currentUser.name || 'حريف',
         userPhone: userPhone,
-        amount: Math.floor(Number(amount)), // أرقام صحيحة فقط
+        amount: Math.floor(Number(amount)), // أرقام صحيحة فقط بدون كسور
         transactionId: transactionId,
         carPlate: currentUser.carPlate,
         method,
@@ -102,7 +85,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
       );
       setStep('done');
     } catch (error) {
-      toast.dismiss(loadingToast);
+      console.error(error);
       toast.error('فشل إرسال الطلب، يرجى المحاولة لاحقاً');
       isSubmittingRef.current = false;
     } finally {
@@ -148,7 +131,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 <div className="text-3xl font-black font-mono">{currentUser?.wallet || 0} <span className="text-sm">ج.م</span></div>
               </div>
 
-              {/* 🏆 كروت الشرائح الأربعة */}
+              {/* 🏆 كروت الشرائح الأربعة المستوردة من الـ Store */}
               <div className="mb-4">
                 <div className="font-black text-slate-600 text-xs mb-2.5 text-right flex items-center justify-end gap-1">
                   <span>اختر إحدى باقات الشحن التوفيرية</span>
@@ -156,7 +139,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5">
-                  {TIERS.map((tier) => {
+                  {TOPUP_TIERS.map((tier) => {
                     const isSelected = amount === tier.amount;
                     return (
                       <button

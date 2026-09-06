@@ -1,18 +1,17 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, Clock, CheckCircle, XCircle, MapPin, Warehouse, Plus,
   MessageCircle, Send, Receipt, Search, HardHat, Percent, DollarSign,
   Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown,
-  Settings,
-  CalendarDays,
+  Settings, CalendarDays,
 } from 'lucide-react';
-import { useStore } from '../store';
+import { useStore, pausePolling, normalizePlate } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
 
-// ═══════════ Helpers ═══════════
+/* ─── Helpers ─── */
 const toMs = (value: any): number => {
   if (!value) return 0;
   if (typeof value === 'string') {
@@ -70,6 +69,7 @@ export default function AdminDashboard() {
     confirmRevenue, unconfirmRevenue, removeSession, updateGarage, fetchAll,
   } = useStore();
 
+  /* ─── State ─── */
   const [dateFrom, setDateFrom] = useState(() => getLocalToday());
   const [dateTo, setDateTo] = useState(() => getLocalToday());
   const [, setTick] = useState(0);
@@ -80,12 +80,9 @@ export default function AdminDashboard() {
   const [revenueFilter, setRevenueFilter] = useState<'all' | 'confirmed' | 'pending'>('pending');
   const [sessionSearch, setSessionSearch] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-
   const [processingTopUpId, setProcessingTopUpId] = useState<string | null>(null);
-
   const [editingCommissionGarageId, setEditingCommissionGarageId] = useState<string | null>(null);
   const [editCommissionRate, setEditCommissionRate] = useState(10);
-
   const [settlementRecords, setSettlementRecords] = useState<SettlementRecord[]>([]);
   const [confirmSettlementGarageId, setConfirmSettlementGarageId] = useState<string | null>(null);
   const [processingSettlement, setProcessingSettlement] = useState(false);
@@ -94,6 +91,7 @@ export default function AdminDashboard() {
   const [visibleSettlements, setVisibleSettlements] = useState(4);
   const [activeAccordionGarageId, setActiveAccordionGarageId] = useState<string | null>(null);
 
+  /* ─── Add Garage State ─── */
   const [gName, setGName] = useState('');
   const [gUser, setGUser] = useState('');
   const [gPhone, setGPhone] = useState('');
@@ -106,7 +104,10 @@ export default function AdminDashboard() {
   const [gValet3Name, setGValet3Name] = useState('');
   const [gValet3Pass, setGValet3Pass] = useState('');
 
-  useEffect(() => { const i = setInterval(() => setTick(t => t + 1), 60000); return () => clearInterval(i); }, []);
+  useEffect(() => { 
+    const i = setInterval(() => setTick(t => t + 1), 60000); 
+    return () => clearInterval(i); 
+  }, []);
 
   const fetchSettlements = useCallback(async () => {
     try {
@@ -122,7 +123,7 @@ export default function AdminDashboard() {
 
   useEffect(() => { fetchSettlements(); }, [fetchSettlements]);
 
-  // 🎁 [منطق الهدية]: حساب الإيرادات الفعلية مع مراعاة خصم الساعة الترحيبية
+  /* ─── Revenue Calculation with Free Gift Logic ─── */
   const getRevenue = useCallback((s: any) => {
     if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
@@ -247,7 +248,6 @@ export default function AdminDashboard() {
 
   const displayedRevenueSessions = useMemo(() => {
     const searchTerm = sessionSearch.trim().toUpperCase();
-
     let f = searchTerm ? completedSessions : filteredSessions;
 
     if (revenueFilter === 'confirmed') f = f.filter(s => s.revenueConfirmed);
@@ -310,7 +310,6 @@ export default function AdminDashboard() {
     setView('garage');
   };
 
-  // 🛡️ [الاعتماد القديم المضمون]: بدون RPC - يعمل مباشرة عبر تحديث الجداول
   const handleApproveTopUp = async (id: string, amount: number) => {
     if (processingTopUpId) return;
     setProcessingTopUpId(id);
@@ -324,7 +323,6 @@ export default function AdminDashboard() {
         return;
       }
 
-      // 1. جلب طلب الشحن من قاعدة البيانات
       let dbRow: any = null;
       if (topUp.transactionId) {
         const { data } = await supabase
@@ -348,7 +346,6 @@ export default function AdminDashboard() {
         return;
       }
 
-      // منع الاعتماد المزدوج
       if (dbRow.status === 'approved') {
         toast.dismiss(loadingToast);
         toast('تم اعتماد هذا الطلب مسبقاً', { icon: 'ℹ️' });
@@ -356,7 +353,6 @@ export default function AdminDashboard() {
         return;
       }
 
-      // 2. تحديث حالة الطلب إلى approved
       const supabaseId = dbRow.id;
       const { error: approveError } = await supabase
         .from('wallet_topups')
@@ -365,12 +361,10 @@ export default function AdminDashboard() {
 
       if (approveError) {
         toast.dismiss(loadingToast);
-        console.error('Failed to approve:', approveError);
         toast.error('فشل تحديث حالة الطلب');
         return;
       }
 
-      // 3. جلب بيانات المستخدم
       const realUserPhone = dbRow.user_phone || topUp.userPhone || '';
       let userData: any = null;
       if (realUserPhone) {
@@ -387,7 +381,6 @@ export default function AdminDashboard() {
         return;
       }
 
-      // 4. حساب البونص
       const baseAmount = Number(dbRow.amount || topUp.amount || 0);
       let bonusAmount = 0;
       if (baseAmount >= 1000) bonusAmount = 200;
@@ -398,7 +391,6 @@ export default function AdminDashboard() {
       const totalToAdd = baseAmount + bonusAmount;
       const newWallet = Number(userData.wallet || 0) + totalToAdd;
 
-      // 5. تحديث رصيد المحفظة في جدول المستخدمين
       const { error: walletError } = await supabase
         .from('users')
         .update({ wallet: newWallet })
@@ -406,12 +398,10 @@ export default function AdminDashboard() {
 
       if (walletError) {
         toast.dismiss(loadingToast);
-        console.error('Failed to update wallet:', walletError);
         toast.error('فشل تحديث رصيد المحفظة');
         return;
       }
 
-      // 6. تحديث حقل البونص في طلب الشحن (اختياري)
       if (bonusAmount > 0) {
         await supabase
           .from('wallet_topups')
@@ -430,7 +420,6 @@ export default function AdminDashboard() {
       await fetchAll();
     } catch (error: any) {
       toast.dismiss(loadingToast);
-      console.error("Top-up approval failed:", error);
       toast.error(error?.message || 'عذراً، فشل شحن الرصيد. تأكد من اتصالك بالشبكة.');
     } finally {
       setProcessingTopUpId(null);
@@ -447,7 +436,6 @@ export default function AdminDashboard() {
       toast.error('تم رفض طلب الشحن ❌');
     } catch (error: any) {
       toast.dismiss(loadingToast);
-      console.error("Top-up rejection failed:", error);
       toast.error(error?.message || 'فشل الرفض، يرجى المحاولة لاحقاً');
     } finally {
       setProcessingTopUpId(null);
@@ -515,7 +503,6 @@ export default function AdminDashboard() {
 
     } catch (error: any) {
       toast.dismiss(loadingToast);
-      console.error('Cleanup failed:', error);
       toast.error(error?.message || 'فشل تنفيذ التسوية. تحقق من الاتصال بالشبكة.');
     } finally {
       setProcessingSettlement(false);
@@ -554,7 +541,6 @@ export default function AdminDashboard() {
       }
     } catch (e: any) {
       toast.dismiss(loadingToast);
-      console.error('Cleanup failed:', e);
       toast.error('فشل التنظيف: ' + (e.message || 'خطأ في الاتصال بالشبكة'));
     }
   };
@@ -562,7 +548,7 @@ export default function AdminDashboard() {
   return (
     <div className="h-full overflow-y-auto pt-16" style={{ background: '#EBF2FF', color: '#0A1628', padding: 16 }}>
 
-      {/* ══════ Header ══════ */}
+      {/* ══ Header ══ */}
       <div className="flex justify-between items-center mb-6 pb-4" style={{ borderBottom: '2px solid #D0DCFF' }}>
         <button onClick={() => { localStorage.removeItem('adminSession'); logout(); }} className="font-black active:scale-95 transition-all"
           style={{ background: 'linear-gradient(135deg,#FF3333,#CC0000)', color: '#fff', padding: '10px 18px', borderRadius: 16, fontSize: 11, boxShadow: '0 4px 16px rgba(255,51,51,0.3)' }}>
@@ -576,7 +562,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ══════ Date Filter ══════ */}
+      {/* ══ Date Filter ══ */}
       <div 
         className="mb-4" 
         style={{ 
@@ -669,7 +655,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ══════ Revenue Stats ══════ */}
+      {/* ══ Revenue Stats ══ */}
       <div className="grid grid-cols-2 gap-2 mb-3">
         <div 
           className="text-center transition-all" 
@@ -704,7 +690,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ══════ كارت العمولة الإجمالية والتسوية النشطة ══════ */}
+      {/* ══ Commission Card ══ */}
       {commissionStats.totalCommission > 0 && (
         <>
           <div 
@@ -786,7 +772,7 @@ export default function AdminDashboard() {
         </>
       )}
 
-      {/* ══════ Pending Revenue Banner ══════ */}
+      {/* ══ Pending Revenue Banner ══ */}
       {(totalsFromSessions.totalPendingRevenue > 0 || totalsFromSessions.pendingCount > 0) && (
         <div className="mb-5 flex items-center justify-between" style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 22, padding: '16px 20px', color: '#fff', boxShadow: '0 6px 24px rgba(255,149,0,0.3)' }}>
           <div className="text-right">
@@ -797,7 +783,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* 📊 جدول التسويات النشطة (Accordion) */}
+      {/* ══ Accordion Settlements ══ */}
       <div className="mb-6 space-y-2">
         <div className="flex items-center justify-between mb-3">
           <span className="font-black" style={{ background: '#0066FF', color: '#fff', fontSize: 11, padding: '3.5px 12px', borderRadius: 20 }}>
@@ -936,7 +922,7 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* 📂 أرشيف التسويات المُقفلة */}
+      {/* ══ Archive Settlements ══ */}
       <div className="mb-5">
         <button 
           onClick={() => { setShowArchive(!showArchive); setVisibleSettlements(4); setArchiveSearch(''); }} 
@@ -1064,7 +1050,7 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* ══════ تقرير الإيرادات المباشر ══════ */}
+      {/* ══ Revenue Report ══ */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-3">
           <span className="font-black" style={{ fontSize: 10, background: '#0066FF', color: '#fff', padding: '3.5px 12px', borderRadius: 20 }}>
@@ -1145,14 +1131,14 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* ══════ Revenue Sessions ══════ */}
+      {/* ══ Revenue Sessions ══ */}
       <div className="mb-8">
         <h3 className="font-black mb-4 flex items-center gap-2 justify-end" style={{ fontSize: 16, color: '#334155' }}>إدارة الجلسات ({filteredSessions.length}) <Receipt size={18} /></h3>
         <div className="space-y-3 mb-4">
           <div className="flex gap-2">
             {[
-              { id: 'pending' as const, label: `⏳ معلق (${filteredSessions.filter(s => !s.revenueConfirmed).length})`, bg: '#FF9500', shadow: 'rgba(255,149,0,0.3)' },
-              { id: 'confirmed' as const, label: `✅ مؤكد (${filteredSessions.filter(s => s.revenueConfirmed).length})`, bg: '#00CC66', shadow: 'rgba(0,204,102,0.3)' },
+              { id: 'pending' as const, label: `⏳ معلق (${filteredSessions.filter(s => !s?.revenueConfirmed).length})`, bg: '#FF9500', shadow: 'rgba(255,149,0,0.3)' },
+              { id: 'confirmed' as const, label: `✅ مؤكد (${filteredSessions.filter(s => s?.revenueConfirmed).length})`, bg: '#00CC66', shadow: 'rgba(0,204,102,0.3)' },
               { id: 'all' as const, label: `الكل (${filteredSessions.length})`, bg: '#0066FF', shadow: 'rgba(0,102,255,0.3)' },
             ].map(b => (
               <button key={b.id} onClick={() => setRevenueFilter(b.id)} className="flex-1 font-black transition-all active:scale-95"
@@ -1169,7 +1155,14 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <div className="space-y-3">
+        {/* صندوق الجلسات المتدفق */}
+        <div 
+          className="space-y-3 max-h-[380px] overflow-y-auto pr-1.5"
+          style={{
+            scrollbarWidth: 'thin',
+            scrollbarColor: '#CBD5E1 transparent',
+          }}
+        >
           {displayedRevenueSessions.length === 0 ? (
             <div className="text-center" style={{ background: '#fff', borderRadius: 24, padding: 32, border: '2px solid #D0DCFF' }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>
@@ -1179,17 +1172,18 @@ export default function AdminDashboard() {
             </div>
           ) : (
             displayedRevenueSessions.map(session => {
-              const g = garages.find((ga: any) => ga.id === session.garageId);
+              if (!session) return null;
+              const g = (garages || []).find((ga: any) => ga?.id === session.garageId);
               const rev = getRevenue(session);
               const comm = getCommission(session);
               const net = rev - comm;
               const et = session.endTime ? typeof session.endTime === 'number' ? session.endTime : new Date(session.endTime).getTime() : null;
               const time = et ? new Date(et) : null;
               const isDel = deleteConfirmId === session.id;
-              const isSettled = (session as any).settled === true;
+              const isSettled = (session as any)?.settled === true;
               return (
                 <div key={session.id} style={{ 
-                  background: isDel ? '#FFF0F0' : isSettled ? '#F1F5F9' : session.revenueConfirmed ? '#F0FFF5' : '#FFFAF0', 
+                  background: isDel ? '#FFE0E0' : isSettled ? '#F1F5F9' : session.revenueConfirmed ? '#F0FFF5' : '#FFFAF0', 
                   border: `2.5px solid ${isDel ? '#FF6666' : isSettled ? '#CBD5E1' : session.revenueConfirmed ? '#66DDAA' : '#FFD180'}`, 
                   borderRadius: 22, 
                   padding: 16,
@@ -1197,7 +1191,7 @@ export default function AdminDashboard() {
                 }}>
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono font-black" style={{ fontSize: 16, color: session.revenueConfirmed ? '#00AA44' : '#E65100' }}>{rev.toFixed(0)} ج.م</span>
+                      <span className="font-mono font-black" style={{ fontSize: 16, color: session.revenueConfirmed ? '#00AA44' : '#E65100' }}>{Number(rev || 0).toFixed(0)} ج.م</span>
                       {[
                         { show: true, bg: session.source === 'manual' ? '#FF9500' : '#0066FF', text: session.source === 'manual' ? 'يدوي' : 'تطبيق' },
                         { show: !!session.paymentMethod, bg: session.paymentMethod === 'cash' ? '#00CC66' : session.paymentMethod === 'instapay' ? '#7C3AED' : session.paymentMethod === 'wallet' ? '#0066FF' : '#FF8800', text: session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستا' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش' },
@@ -1218,12 +1212,12 @@ export default function AdminDashboard() {
                     <div className="flex items-center gap-3 mb-2" style={{ background: '#FFF8F0', borderRadius: 12, padding: '6px 10px', border: '1px solid #FFD180' }}>
                       <div className="flex items-center gap-1">
                         <Percent size={10} style={{ color: '#FF9500' }} />
-                        <span className="font-bold" style={{ fontSize: 9, color: '#FF9500' }}>عمولة {g?.commissionRate ?? 10}%: {comm.toFixed(0)} ج.م</span>
+                        <span className="font-bold" style={{ fontSize: 9, color: '#FF9500' }}>عمولة {g?.commissionRate ?? 10}%: {Number(comm || 0).toFixed(0)} ج.م</span>
                       </div>
                       <div style={{ width: 1, height: 12, background: '#FFD180' }} />
                       <div className="flex items-center gap-1">
                         <DollarSign size={10} style={{ color: '#00AA44' }} />
-                        <span className="font-bold" style={{ fontSize: 9, color: '#00AA44' }}>صافي: {net.toFixed(0)} ج.م</span>
+                        <span className="font-bold" style={{ fontSize: 9, color: '#00AA44' }}>صافي: {Number(net || 0).toFixed(0)} ج.م</span>
                       </div>
                     </div>
                   )}
@@ -1232,7 +1226,7 @@ export default function AdminDashboard() {
                   {isDel ? (
                     <div className="space-y-2" style={{ background: '#FFE0E0', borderRadius: 16, padding: 14, border: '1px solid #FFA0A0' }}>
                       <p className="font-black text-center" style={{ fontSize: 13, color: '#CC0000' }}>⚠️ حذف نهائياً؟</p>
-                      <p className="text-center" style={{ fontSize: 11, color: '#FF3333' }}>🚗 {session.carPlate} · {rev.toFixed(0)} ج.م</p>
+                      <p className="text-center" style={{ fontSize: 11, color: '#FF3333' }}>🚗 {session.carPlate} · {Number(rev || 0).toFixed(0)} ج.م</p>
                       <div className="flex gap-2">
                         <button onClick={async () => { await removeSession(session.id); setDeleteConfirmId(null); toast.success('تم الحذف 🗑️'); }} className="flex-1 font-black active:scale-95"
                           style={{ background: '#FF3333', color: '#fff', padding: 12, borderRadius: 14, fontSize: 12 }}>🗑️ تأكيد</button>
@@ -1252,7 +1246,7 @@ export default function AdminDashboard() {
                         </button>
                       ) : (
                         <button onClick={async () => {
-                          await confirmRevenue(session.id);
+                          await confirmRevenue(session.id, session.addedBy);
                           toast.success('تأكيد ✅');
                         }} className="flex-1 font-black active:scale-95"
                           style={{ background: '#00CC66', color: '#fff', padding: 10, borderRadius: 14, fontSize: 11 }}>
@@ -1270,7 +1264,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ══════ Pending Top-ups ══════ */}
+      {/* ══ Pending Top-ups ══ */}
       <div className="mb-8">
         <h3 className="font-black mb-4 flex items-center gap-2 justify-end" style={{ fontSize: 16, color: '#FF8800' }}>اعتمادات معلقة ({pendingTopUps.length}) <Clock size={18} /></h3>
         <div className="space-y-3">
@@ -1340,7 +1334,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ══════ Messages ══════ */}
+      {/* ══ Messages ══ */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <span className="font-black" style={{ background: '#FF3333', color: '#fff', padding: '5px 14px', borderRadius: 12, fontSize: 11, boxShadow: '0 2px 8px rgba(255,51,51,0.3)' }}>{pendingMessages.length} جديد</span>
@@ -1419,7 +1413,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ══════ Manage Garages ══════ */}
+      {/* ══ Manage Garages ══ */}
       <div className="mb-8">
         <h3 className="font-black mb-4 flex items-center gap-2 justify-end" style={{ fontSize: 16, color: '#0066FF' }}>إدارة الجراجات <Warehouse size={18} /></h3>
         <div className="space-y-2.5">
@@ -1548,7 +1542,7 @@ export default function AdminDashboard() {
                       borderRadius: 12, 
                       fontSize: 12, 
                       fontWeight: 950,
-                      boxShadow: '0 4px 14 rgba(0,102,255,0.28)',
+                      boxShadow: '0 4px 14px rgba(0,102,255,0.28)',
                       textShadow: '0 1px 2px rgba(0,0,0,0.15)'
                     }}
                   >
@@ -1562,7 +1556,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ══════ Add Garage ══════ */}
+      {/* ══ Add Garage ══ */}
       <div className="mb-20">
         <h3 className="font-black mb-4 flex items-center gap-2 justify-end" style={{ fontSize: 16, color: '#0066FF' }}>إضافة جراج جديد <Plus size={18} /></h3>
         <div className="space-y-4" style={{ background: '#fff', border: '2.5px solid #D0DCFF', borderRadius: 28, padding: 22, boxShadow: '0 4px 20px rgba(0,102,255,0.06)' }}>

@@ -11,7 +11,8 @@ import {
   Receipt,
   Gift,
 } from 'lucide-react';
-import { useStore } from '../store';
+// 🌟 استيراد دالة البصمة الموحدة من الـ store لضمان مطابقة اللوحات بدقة 100%
+import { useStore, normalizePlate } from '../store';
 import { calculateFullHours, calculateCost, formatTime } from '../utils/pricing';
 
 const toMs = (value: any): number => {
@@ -23,34 +24,23 @@ const toMs = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const normalizePlate = (plate?: string): string => {
-  if (!plate) return '';
-  return plate
-    .trim()
-    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
-    .replace(/\s+/g, ' ')
-    .toUpperCase();
-};
-
 export default function LastSessionCard() {
   const { sessions, garages, currentUser } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
-  const userPhone = currentUser?.phone || '';
+  const userPhone = currentUser?.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
 
-  // ✅ البحث الدقيق برقم اللوحة أو رقم الهاتف
+  // ✅ البحث الدقيق برقم اللوحة الموحد أو رقم الهاتف النظيف
   const lastSession = useMemo(() => {
     if (!userPlate && !userPhone) return null;
     return sessions
-      .filter(
-        (s) =>
-          s.status === 'completed' &&
-          (
-            (!!userPlate && normalizePlate(s.carPlate) === userPlate) ||
-            (!!userPhone && (s as any).customerPhone === userPhone)
-          )
-      )
+      .filter((s) => {
+        if (!s || s.status !== 'completed') return false;
+        const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+        const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+        const samePhone = !!userPhone && sPhone === userPhone;
+        return samePlate || samePhone;
+      })
       .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
   }, [sessions, userPlate, userPhone]);
 
@@ -102,11 +92,13 @@ export default function LastSessionCard() {
   const getPaymentInfo = (method?: string) => {
     switch (method) {
       case 'cash':
-        return { label: 'نقدي', icon: '💵', color: 'text-emerald-400', bg: 'bg-emerald-500/20' };
+        return { label: 'نقدي كاش', icon: '💵', color: 'text-emerald-400', bg: 'bg-emerald-500/20' };
       case 'instapay':
         return { label: 'إنستاباي', icon: '📱', color: 'text-purple-400', bg: 'bg-purple-500/20' };
       case 'wallet':
         return { label: 'خصم من المحفظة', icon: '👝', color: 'text-blue-400', bg: 'bg-blue-500/20' };
+      case 'free':
+        return { label: 'ركن مجاني ترحيبي', icon: '🎁', color: 'text-amber-400', bg: 'bg-amber-500/20' };
       case 'cashwallet':
         return { label: 'تحويل محفظة كاش', icon: '📲', color: 'text-orange-400', bg: 'bg-orange-500/20' };
       default:

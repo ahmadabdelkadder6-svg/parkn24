@@ -2,10 +2,11 @@ import { useEffect, useRef, useState, useMemo, lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
-import { useStore, setupRealtime } from './store';
+// 🌟 استيراد دالة البصمة الموحدة من الـ store لضمان مطابقة اللوحات بنسبة 100%
+import { useStore, setupRealtime, normalizePlate } from './store';
 import { cn } from './utils/cn';
 
-// Screens (تحميل مباشر للشاشات الخفيفة التي يحتاجها العميل فوراً)
+// Screens
 import AuthGate from './components/AuthGate';
 import SplashScreen from './components/SplashScreen';
 import RegisterScreen from './components/RegisterScreen';
@@ -21,7 +22,7 @@ import ChatScreen from './components/ChatScreen';
 import InstallPage from './components/InstallPage';
 import InstallQRCodePage from './components/InstallQRCodePage';
 
-// ⚡ [تسريع صاروخي]: تحميل كسول للوحات الإدارة الثقيلة
+// Lazy Components
 const GarageDashboard = lazy(() => import('./components/GarageDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 
@@ -35,17 +36,6 @@ const VALID_SCREENS = [
   'lastSession',
   'chat',
 ] as const;
-
-// 🛡️ توحيد تنظيف رقم اللوحة
-const normalizePlate = (plate?: string): string => {
-  if (!plate) return '';
-  return plate
-    .trim()
-    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
-    .replace(/[^0-9\u0600-\u06FF]/gi, '')
-    .toUpperCase();
-};
 
 export default function App() {
   const {
@@ -103,7 +93,6 @@ export default function App() {
     }
   }, [safeScreen, screen, setScreen, dataLoaded, view]);
 
-  // ⚡ [التهيئة الصاروخية]: فتح الشاشة فوراً + جلب البيانات في الخلفية
   useEffect(() => {
     const init = async () => {
       const justInstalled = localStorage.getItem('pwaJustInstalled') === 'true';
@@ -249,7 +238,12 @@ export default function App() {
             ? lastCompleted.endTime
             : 0;
         const timeSinceEnd = Date.now() - endTime;
-        if (endTime > 0 && timeSinceEnd < 60000) {
+
+        // 🛡️ [تعديل أمني حرج]: التحقق من عدم إقرار وإغلاق الجلسة مسبقاً لمنع التوجيه المتكرر واللانهائي عند الـ Reload
+        const freshAcknowledged = acknowledgedSessionIds;
+        const isNotAcknowledged = freshAcknowledged ? !freshAcknowledged.has(lastCompleted.id) : true;
+
+        if (endTime > 0 && timeSinceEnd < 60000 && isNotAcknowledged) {
           setSelectedGarageId(lastCompleted.garageId);
           setScreen('summary');
           return;

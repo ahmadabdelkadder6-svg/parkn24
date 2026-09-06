@@ -1,4 +1,6 @@
-// ─── VAPID Public Key ───────────────────────────────────────────
+import { normalizePlate } from '../store';
+
+// ─── VAPID & Supabase Configuration ─────────────────────────────
 const VAPID_PUBLIC_KEY =
   'BOuP_HFhSSjHMsjf4KZJYLaFTv3RdI20Ux3an5LriaTBUN0iGlW-38zYGvROp26k7jcqhC_XpUotxzLR1IjQTI4';
 
@@ -60,7 +62,6 @@ const supabaseFetch = async (
       }
 
       console.warn(`⚠️ [${path}] Server error ${response.status}, attempt ${attempt + 1}`);
-
     } catch (err) {
       console.warn(`⚠️ [${path}] Network error, attempt ${attempt + 1}:`, err);
       if (attempt === retries) {
@@ -179,8 +180,10 @@ export const sendCarComingPush = async ({
   agreedPrice?:     number;
 }): Promise<boolean> => {
   try {
-    const immediateTag = `incoming-${carPlate}`;
-    const scheduledTag = `approaching-${carPlate}`;
+    // 🌟 توحيد بصمة اللوحة في الوسوم لضمان مطابقتها بدقة
+    const plateFingerprint = normalizePlate(carPlate) || carPlate;
+    const immediateTag = `incoming-${plateFingerprint}`;
+    const scheduledTag = `approaching-${plateFingerprint}`;
 
     const scheduledSendAt = new Date(
       Date.now() + Math.max(1, estimatedMinutes - 2) * 60 * 1000
@@ -188,8 +191,8 @@ export const sendCarComingPush = async ({
 
     const payload: SendPushPayload = {
       garageId,
-      urgency: 'high', // ⚡ أولوية قصوى لإيقاظ الهاتف فوراً
-      ttl: 0,          // ⚡ توصيل فوري دون انتظار في السيرفر
+      urgency: 'high',
+      ttl: 0,
 
       immediate: {
         title: '🚨 سيارة في الطريق إليك!',
@@ -238,10 +241,11 @@ export const cancelScheduledPush = async (
   carPlate: string
 ): Promise<boolean> => {
   try {
+    const plateFingerprint = normalizePlate(carPlate) || carPlate;
     const result = await supabaseFetch('cancel-scheduled-alert', {
       garageId,
       carPlate,
-      tags:        [`approaching-${carPlate}`],
+      tags:        [`approaching-${plateFingerprint}`],
       cancelledAt: new Date().toISOString(),
     });
     return result.ok;
