@@ -21,9 +21,9 @@ const MESSAGE_TYPES = [
     label: 'شكوى',
     icon: AlertTriangle,
     emoji: '🚨',
-    color: 'text-red-400',
-    bg: 'bg-red-500/20',
-    border: 'border-red-500/20',
+    color: 'text-red-600',
+    bg: 'bg-red-50',
+    border: 'border-red-100',
     description: 'مشكلة مع جراج أو خدمة',
   },
   {
@@ -31,9 +31,9 @@ const MESSAGE_TYPES = [
     label: 'استفسار',
     icon: HelpCircle,
     emoji: '❓',
-    color: 'text-blue-400',
-    bg: 'bg-blue-500/20',
-    border: 'border-blue-500/20',
+    color: 'text-blue-600',
+    bg: 'bg-blue-50',
+    border: 'border-blue-100',
     description: 'سؤال عام عن الخدمة',
   },
   {
@@ -41,9 +41,9 @@ const MESSAGE_TYPES = [
     label: 'اقتراح',
     icon: Lightbulb,
     emoji: '💡',
-    color: 'text-amber-400',
-    bg: 'bg-amber-500/20',
-    border: 'border-amber-500/20',
+    color: 'text-amber-600',
+    bg: 'bg-amber-50',
+    border: 'border-amber-100',
     description: 'فكرة لتحسين التطبيق',
   },
   {
@@ -51,9 +51,9 @@ const MESSAGE_TYPES = [
     label: 'مشكلة تقنية',
     icon: Wrench,
     emoji: '🔧',
-    color: 'text-purple-400',
-    bg: 'bg-purple-500/20',
-    border: 'border-purple-500/20',
+    color: 'text-purple-600',
+    bg: 'bg-purple-50',
+    border: 'border-purple-100',
     description: 'خطأ أو عطل في التطبيق',
   },
 ];
@@ -126,29 +126,29 @@ export default function ChatScreen() {
         return {
           label: 'بانتظار الرد',
           icon: Clock,
-          color: 'text-amber-400',
-          bg: 'bg-amber-500/20',
+          color: 'text-amber-700',
+          bg: 'bg-amber-100',
         };
       case 'replied':
         return {
           label: 'تم الرد',
           icon: CheckCircle,
-          color: 'text-emerald-400',
-          bg: 'bg-emerald-500/20',
+          color: 'text-emerald-700',
+          bg: 'bg-emerald-100',
         };
       case 'closed':
         return {
           label: 'مغلقة',
           icon: XCircle,
-          color: 'text-slate-400',
-          bg: 'bg-slate-500/20',
+          color: 'text-slate-600',
+          bg: 'bg-slate-150',
         };
       default:
         return {
           label: 'غير محدد',
           icon: Clock,
-          color: 'text-slate-400',
-          bg: 'bg-slate-500/20',
+          color: 'text-slate-600',
+          bg: 'bg-slate-100',
         };
     }
   };
@@ -158,9 +158,9 @@ export default function ChatScreen() {
       MESSAGE_TYPES.find((t) => t.id === type) || {
         label: 'رسالة',
         emoji: '💬',
-        color: 'text-slate-400',
-        bg: 'bg-slate-500/20',
-        border: 'border-slate-500/20',
+        color: 'text-slate-600',
+        bg: 'bg-slate-100',
+        border: 'border-slate-200',
       }
     );
   };
@@ -254,7 +254,7 @@ export default function ChatScreen() {
                       onClick={() => setSelectedType(type.id)}
                       className={`p-3 rounded-xl border text-center transition-all active:scale-95 ${
                         selectedType === type.id
-                          ? `${type.bg} ${type.border} ring-1 ring-opacity-50`
+                          ? `bg-white border-blue-500 ring-1 ring-opacity-50`
                           : 'bg-slate-950 border-slate-800'
                       }`}
                     >
@@ -262,7 +262,7 @@ export default function ChatScreen() {
                       <div
                         className={`text-[10px] font-black ${
                           selectedType === type.id
-                            ? type.color
+                            ? 'text-blue-600'
                             : 'text-slate-500'
                         }`}
                       >
@@ -366,48 +366,49 @@ export default function ChatScreen() {
                     onClick={() =>
                       setSelectedMessage(isExpanded ? null : msg.id)
                     }
-                    className={`rounded-2xl p-4 border cursor-pointer transition-all active:scale-[0.98] ${
+                    // 🌟 جعل كروت الرسائل ذات خلفية فاتحة ناصعة لتبسيط قراءة النصوص السوداء الغليظة
+                    className={`rounded-2xl p-4 border cursor-pointer transition-all active:scale-[0.98] shadow-md ${
                       msg.status === 'replied'
-                        ? 'bg-emerald-950/20 border-emerald-500/20'
+                        ? 'bg-white border-emerald-400 shadow-emerald-500/5'
                         : msg.status === 'closed'
-                        ? 'bg-slate-900/50 border-slate-700'
-                        : 'bg-slate-900 border-slate-800'
+                        ? 'bg-slate-100 border-slate-300'
+                        : 'bg-white border-slate-200'
                     }`}
                   >
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex items-center gap-2">
                         <span
-                          className={`text-[9px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 ${statusInfo.bg} ${statusInfo.color}`}
+                          className={`text-[9px] px-2 py-0.5 rounded-full font-black flex items-center gap-1 ${statusInfo.bg} ${statusInfo.color}`}
                         >
                           <StatusIcon size={9} />
                           {statusInfo.label}
                         </span>
-                        <span className="text-[9px] text-slate-600">
+                        <span className="text-[9px] text-slate-500 font-bold">
                           {formatTime(msg.timestamp)}
                         </span>
                       </div>
                       <span
-                        className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${typeInfo.bg} ${typeInfo.color}`}
+                        className={`text-[9px] px-2 py-0.5 rounded-full font-black ${typeInfo.bg} ${typeInfo.color}`}
                       >
                         {typeInfo.emoji} {typeInfo.label}
                       </span>
                     </div>
 
                     {msg.subject && (
-                      <div className="text-xs font-black text-white mb-1 text-right">
+                      <div className="text-xs font-black text-slate-900 mb-1 text-right">
                         {msg.subject}
                       </div>
                     )}
 
-                    {/* 🌟 تعديل رسالة العميل لتكون واضحة، كبيرة، وبخط أسود ثقيل (font-black) */}
+                    {/* 🌟 محتوى الشكوى أو الرسالة داخل البوكس بخط أسود غليظ ومقروء بوضوح */}
                     <div
                       className={`text-right leading-relaxed ${
                         isExpanded ? '' : 'line-clamp-2'
                       }`}
                       style={{
-                        fontSize: '14px',
-                        fontWeight: 900, // خط عريض ثقيل جداً (Black)
-                        color: '#f8fafc', // أبيض زاهٍ فائق الوضوح على الخلفية الداكنة
+                        fontSize: '13.5px',
+                        fontWeight: 900, // خط أسود ثقيل جداً
+                        color: '#000000', // أسود ناصع
                       }}
                     >
                       {msg.message}
@@ -415,33 +416,34 @@ export default function ChatScreen() {
 
                     <AnimatePresence>
                       {isExpanded && msg.reply && (
+                        // 🌟 صندوق الرد من الإدارة بخلفية عشبية وتأطير زمردي أنيق
                         <motion.div
                           initial={{ opacity: 0, height: 0 }}
                           animate={{ opacity: 1, height: 'auto' }}
                           exit={{ opacity: 0, height: 0 }}
-                          className="mt-3 bg-emerald-600/10 border border-emerald-500/20 rounded-xl p-3"
+                          className="mt-3 bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 shadow-inner"
                         >
-                          <div className="flex items-center gap-1.5 justify-end mb-2">
-                            <span className="text-[9px] text-emerald-400 font-bold">
+                          <div className="flex items-center gap-1.5 justify-end mb-1.5">
+                            <span className="text-[10px] text-emerald-700 font-black">
                               رد الإدارة
                             </span>
-                            <CheckCircle size={10} className="text-emerald-400" />
+                            <CheckCircle size={11} className="text-emerald-600" />
                           </div>
-
-                          {/* 🌟 تعديل رد التطبيق/الإدارة ليكون كبيراً، واضحاً وبخط عريض جداً ومميز باللون الأخضر الزاهي */}
+                          
+                          {/* 🌟 رد الإدارة يظهر داخل البوكس بخط أسود ثقيل وكبير ومميز */}
                           <p 
                             className="text-right leading-relaxed"
                             style={{
-                              fontSize: '14.5px',
-                              fontWeight: 950, // خط عريض فائق الغلظة
-                              color: '#34d399', // لون أخضر زمردي مشع ومقروء بامتياز
+                              fontSize: '14px',
+                              fontWeight: 950, // خط أسود فائق الغلظة والوضوح
+                              color: '#000000', // أسود ناصع
                             }}
                           >
                             {msg.reply}
                           </p>
 
                           {msg.repliedAt && (
-                            <div className="text-[8px] text-emerald-600 text-left mt-2">
+                            <div className="text-[8px] text-emerald-600 text-left mt-2 font-bold">
                               {formatTime(msg.repliedAt)}
                             </div>
                           )}
@@ -450,15 +452,15 @@ export default function ChatScreen() {
                     </AnimatePresence>
 
                     {!isExpanded && (msg.reply || msg.message.length > 80) && (
-                      <div className="text-[8px] text-blue-400 text-center mt-2 font-bold">
-                        اضغط لعرض التفاصيل ↓
+                      <div className="text-[8px] text-blue-600 text-center mt-2 font-black">
+                        اضغط لعرض التفاصيل والردود ↓
                       </div>
                     )}
 
                     {msg.status === 'replied' && !isExpanded && (
-                      <div className="mt-2 bg-emerald-600/10 border border-emerald-500/20 rounded-lg p-1.5 text-center">
-                        <span className="text-[9px] text-emerald-400 font-bold">
-                          ✅ تم الرد - اضغط للعرض
+                      <div className="mt-2 bg-emerald-100 border border-emerald-200 rounded-lg p-1.5 text-center">
+                        <span className="text-[9px] text-emerald-700 font-black">
+                          ✅ وصلك رد جديد - اضغط لقراءته
                         </span>
                       </div>
                     )}

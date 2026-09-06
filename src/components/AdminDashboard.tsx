@@ -1357,59 +1357,87 @@ export default function AdminDashboard() {
               {b.label}
             </button>
           ))}
-        </div>
-        <div className="space-y-3">
+        </div> 
+        <div 
+          className="space-y-3 max-h-[350px] overflow-y-auto pr-1.5"
+          style={{
+            scrollbarWidth: 'thin',
+            scrollbarColor: '#CBD5E1 transparent',
+          }}
+        >
           {displayedMessages.length === 0 ? (
-            <div className="text-center" style={{ background: '#fff', borderRadius: 24, padding: 28, border: '2px solid #D0DCFF', color: '#94a3b8', fontSize: 14 }}>لا توجد رسائل</div>
+            <div className="text-center animate-pulse" style={{ background: '#fff', borderRadius: 24, padding: 28, border: '2px solid #D0DCFF', color: '#94a3b8', fontSize: 13 }}>لا توجد رسائل</div>
           ) : (
             displayedMessages.map(msg => {
-              const isExp = expandedMessage === msg.id; const isRep = replyingTo === msg.id;
+              const isExp = expandedMessage === msg.id; 
+              const isRep = replyingTo === msg.id;
               return (
-                <div key={msg.id} style={{ background: msg.status === 'pending' ? '#FFFAF0' : msg.status === 'replied' ? '#F0FFF5' : '#fff', border: `2.5px solid ${msg.status === 'pending' ? '#FFD180' : msg.status === 'replied' ? '#66DDAA' : '#D0DCFF'}`, borderRadius: 24, padding: 18 }}>
+                <div key={msg.id} style={{ background: msg.status === 'pending' ? '#FFFAF0' : msg.status === 'replied' ? '#F0FFF5' : '#fff', border: `2.5px solid ${msg.status === 'pending' ? '#FFD180' : msg.status === 'replied' ? '#66DDAA' : '#D0DCFF'}`, borderRadius: 20, padding: 14 }}>
                   <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold" style={{ fontSize: 10, padding: '4px 12px', borderRadius: 12, background: msg.status === 'pending' ? '#FF9500' : msg.status === 'replied' ? '#00CC66' : '#94a3b8', color: '#fff' }}>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-black" style={{ fontSize: 9, padding: '3px 10px', borderRadius: 10, background: msg.status === 'pending' ? '#FF9500' : msg.status === 'replied' ? '#00CC66' : '#94a3b8', color: '#fff' }}>
                         {msg.status === 'pending' ? '⏳ معلقة' : msg.status === 'replied' ? '✅ تم الرد' : '🔒 مغلقة'}
                       </span>
-                      <span style={{ fontSize: 10, color: '#94a3b8' }}>{formatMsgTime(msg.timestamp)}</span>
+                      <span style={{ fontSize: 9, color: '#94a3b8', fontWeight: 900 }}>{formatMsgTime(msg.timestamp)}</span>
                     </div>
-                    <span className="font-bold" style={{ fontSize: 10, background: '#F0F4FF', padding: '4px 12px', borderRadius: 12, color: '#7B8CA6' }}>{getTypeEmoji(msg.type)} {getTypeLabel(msg.type)}</span>
+                    <span className="font-black" style={{ fontSize: 9, background: '#F0F4FF', padding: '3px 10px', borderRadius: 10, color: '#7B8CA6' }}>{getTypeEmoji(msg.type)} {getTypeLabel(msg.type)}</span>
                   </div>
-                  <div className="flex items-center justify-between mb-2" style={{ background: '#F0F4FF', borderRadius: 14, padding: '8px 12px', border: '1px solid #D0DCFF' }}>
-                    <span className="font-mono" style={{ fontSize: 11, color: '#7B8CA6' }}>{msg.userPhone}</span>
+
+                  <div className="flex items-center justify-between mb-2" style={{ background: '#F0F4FF', borderRadius: 12, padding: '6px 10px', border: '1px solid #D0DCFF' }}>
+                    <span className="font-mono font-bold" style={{ fontSize: 10, color: '#7B8CA6' }}>{msg.userPhone}</span>
                     <div className="flex items-center gap-2">
-                      {msg.userName && <span className="font-bold" style={{ fontSize: 11, color: '#0A1628' }}>{msg.userName}</span>}
-                      {msg.carPlate && <span className="font-mono" style={{ fontSize: 10, color: '#0066FF' }}>🚗 {msg.carPlate}</span>}
+                      {msg.userName && <span className="font-black" style={{ fontSize: 10.5, color: '#0A1628' }}>{msg.userName}</span>}
+                      {msg.carPlate && <span className="font-black font-mono" style={{ fontSize: 10, color: '#0066FF' }}>🚗 {msg.carPlate}</span>}
                     </div>
                   </div>
-                  {msg.subject && <div className="font-black mb-1 text-right" style={{ fontSize: 13, color: '#0A1628' }}>{msg.subject}</div>}
-                  <div className={`text-right leading-relaxed mb-2 cursor-pointer ${isExp ? '' : 'line-clamp-2'}`} style={{ fontSize: 12, color: '#475569' }} onClick={() => setExpandedMessage(isExp ? null : msg.id)}>{msg.message}</div>
-                  {!isExp && msg.message.length > 80 && <button onClick={() => setExpandedMessage(msg.id)} className="font-bold mb-2" style={{ fontSize: 10, color: '#0066FF' }}>عرض الكامل ↓</button>}
+
+                  {msg.subject && <div className="font-black mb-1 text-right text-slate-900" style={{ fontSize: 12.5 }}>{msg.subject}</div>}
+                  
+                  {/* 🌟 محتوى الشكوى: خط أسود صريح غليظ للغاية وواضح جداً بحجم ملموم */}
+                  <div 
+                    className={`text-right leading-relaxed mb-2 cursor-pointer ${isExp ? '' : 'line-clamp-2'}`} 
+                    style={{ fontSize: '12px', fontWeight: 950, color: '#000000' }} 
+                    onClick={() => setExpandedMessage(isExp ? null : msg.id)}
+                  >
+                    {msg.message}
+                  </div>
+
+                  {!isExp && msg.message.length > 80 && <button onClick={() => setExpandedMessage(msg.id)} className="font-black mb-2 text-blue-600" style={{ fontSize: 10 }}>عرض الكامل ↓</button>}
+                  
                   {msg.reply && (
-                    <div className="mb-3" style={{ background: '#E8FFF0', border: '1px solid #66DDAA', borderRadius: 16, padding: 14 }}>
-                      <div className="font-bold text-right mb-1" style={{ fontSize: 10, color: '#00AA44' }}>ردك السابق:</div>
-                      <div className="text-right leading-relaxed" style={{ fontSize: 12, color: '#047857' }}>{msg.reply}</div>
-                      {msg.repliedAt && <div className="text-left mt-1" style={{ fontSize: 9, color: '#66DDAA' }}>{formatMsgTime(msg.repliedAt)}</div>}
+                    <div className="mb-2.5" style={{ background: '#E8FFF0', border: '1.5px solid #66DDAA', borderRadius: 14, padding: 10 }}>
+                      <div className="font-black text-right mb-1" style={{ fontSize: 9.5, color: '#00AA44' }}>ردك السابق:</div>
+                      
+                      {/* 🌟 رد الأدمن السابق يظهر داخل البوكس بخط أسود غليظ ومقروء بامتياز */}
+                      <div 
+                        className="text-right leading-relaxed" 
+                        style={{ fontSize: '12.5px', fontWeight: 950, color: '#000000' }}
+                      >
+                        {msg.reply}
+                      </div>
+
+                      {msg.repliedAt && <div className="text-left mt-1 font-bold" style={{ fontSize: 8.5, color: '#66DDAA' }}>{formatMsgTime(msg.repliedAt)}</div>}
                     </div>
                   )}
+
                   {msg.status !== 'closed' && (
                     isRep ? (
                       <div className="space-y-2">
                         <textarea value={replyText} onChange={e => setReplyText(e.target.value)} placeholder="اكتب ردك..." rows={3} className="w-full font-bold text-right outline-none resize-none"
-                          style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 14, borderRadius: 18, fontSize: 13, color: '#0A1628' }} />
+                          style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 10, borderRadius: 14, fontSize: 12, color: '#0A1628' }} />
                         <div className="flex gap-2">
-                          <button onClick={async () => { if (!replyText.trim()) { toast.error('اكتب الرد'); return; } await replyMessage(msg.id, replyText.trim()); toast.success('تم ✅'); setReplyText(''); setReplyingTo(null); }} className="flex-1 font-black flex items-center justify-center gap-2 active:scale-95"
-                            style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', padding: 14, borderRadius: 18, fontSize: 13 }}><Send size={16} />إرسال</button>
+                          <button onClick={async () => { if (!replyText.trim()) { toast.error('اكتب الرد'); return; } await replyMessage(msg.id, replyText.trim()); toast.success('تم ✅'); setReplyText(''); setReplyingTo(null); }} className="flex-1 font-black flex items-center justify-center gap-1.5 active:scale-95"
+                            style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', padding: 10, borderRadius: 14, fontSize: 12 }}><Send size={14} />إرسال الرد</button>
                           <button onClick={() => { setReplyingTo(null); setReplyText(''); }} className="font-black active:scale-95"
-                            style={{ background: '#F0F4FF', color: '#475569', padding: '14px 20px', borderRadius: 18, fontSize: 13, border: '2px solid #D0DCFF' }}>إلغاء</button>
+                            style={{ background: '#F0F4FF', color: '#475569', padding: '10px 16px', borderRadius: 14, fontSize: 12, border: '2px solid #D0DCFF' }}>إلغاء</button>
                         </div>
                       </div>
                     ) : (
                       <div className="flex gap-2">
-                        <button onClick={() => { setReplyingTo(msg.id); setReplyText(''); setExpandedMessage(msg.id); }} className="flex-1 font-black flex items-center justify-center gap-2 active:scale-95"
-                          style={{ background: '#0066FF', color: '#fff', padding: 14, borderRadius: 18, fontSize: 13, boxShadow: '0 6px 20px rgba(0,102,255,0.3)' }}><Send size={16} />{msg.reply ? 'تعديل' : 'رد'}</button>
+                        <button onClick={() => { setReplyingTo(msg.id); setReplyText(''); setExpandedMessage(msg.id); }} className="flex-1 font-black flex items-center justify-center gap-1.5 active:scale-95"
+                          style={{ background: '#0066FF', color: '#fff', padding: 10, borderRadius: 14, fontSize: 12, boxShadow: '0 4px 12px rgba(0,102,255,0.2)' }}><Send size={14} />{msg.reply ? 'تعديل الرد' : 'الرد على الرسالة'}</button>
                         <button onClick={async () => { await closeMessage(msg.id); toast.success('تم الإغلاق'); }} className="font-black active:scale-95"
-                          style={{ background: '#F0F4FF', color: '#475569', padding: '14px 20px', borderRadius: 18, fontSize: 13, border: '2px solid #D0DCFF' }}>إلغاء</button>
+                          style={{ background: '#F0F4FF', color: '#475569', padding: '10px 16px', borderRadius: 14, fontSize: 12, border: '2px solid #D0DCFF' }}>إغلاق</button>
                       </div>
                     )
                   )}
