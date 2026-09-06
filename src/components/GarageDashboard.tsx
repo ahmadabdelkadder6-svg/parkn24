@@ -620,15 +620,13 @@ export default function GarageDashboard() {
       const addedBy = ((s as any).addedBy || '').trim();
       
       if (isValet) {
-        // 1. لو العملية معلقة (كاش العميل منتظر يدفع) -> تظهر لسايس 2 فوراً ليؤكدها!
+        // 1. لو العملية كاش معلق تأكيد الاستلام -> تظهر لجميع السياس ليؤكدها من يستلم المال بيده
         if (!s.revenueConfirmed) return true;
 
-        // 2. لو العملية مؤكدة (محفظة أو نقدي تم تحصيله) -> تظهر إذا كانت مسجلة لسايس 2 أو جلسة محفظة عامة لليوم
+        // 2. لو العملية مؤكدة ومكتملة -> تظهر فقط للسايس الذي استلمها أو قام بتحصيلها
         const isMine = addedBy && myValetNames.has(addedBy);
-        const isAppSessionToday = s.source === 'app';
-        if (!isMine && !isAppSessionToday) return false;
-      }
-      
+        if (!isMine) return false;
+      }      
       if (isOwner && selectedValetFilter) { 
         if (addedBy !== selectedValetFilter) return false; 
       }

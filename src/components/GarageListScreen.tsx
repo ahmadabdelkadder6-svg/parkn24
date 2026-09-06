@@ -20,7 +20,8 @@ import {
   Gift,
   Sparkles,
 } from 'lucide-react';
-import { useStore, Garage, Session, IncomingCar, normalizePlate } from '../store';
+// 🌟 استيراد normalizePlate و normalizePhone الموحدين من الـ store لربط أمني وثيق
+import { useStore, Garage, Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
 import {
   calculateDistance,
   distanceToMinutes,
@@ -91,8 +92,9 @@ export default function GarageListScreen() {
     [currentUser?.carPlate]
   );
 
+  // 🌟 استخدام الدالة الموحدة لتوحيد وتطهير صيغة هاتف الحريف
   const cleanUserPhone = useMemo(
-    () => currentUser?.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '',
+    () => currentUser?.phone ? normalizePhone(currentUser.phone) : '',
     [currentUser?.phone]
   );
 
@@ -104,14 +106,32 @@ export default function GarageListScreen() {
         const cleanPlate = normalizePlate(currentUser.carPlate);
         if (!cleanPlate && !cleanUserPhone) return;
 
-        const { data, error } = await supabase
+        if (currentUser.hasUsedFreeSession) {
+          setIsAbuseDetected(true);
+          return;
+        }
+
+        if (cleanUserPhone) {
+          const { data: userDb } = await supabase
+            .from('users')
+            .select('has_used_free_session')
+            .eq('phone', cleanUserPhone)
+            .maybeSingle();
+
+          if (userDb?.has_used_free_session === true) {
+            setIsAbuseDetected(true);
+            return;
+          }
+        }
+
+        const { data: sessionDb } = await supabase
           .from('sessions')
           .select('id')
           .eq('is_first_free_session', true)
           .or(`car_plate.eq.${cleanPlate}${cleanUserPhone ? `,customer_phone.eq.${cleanUserPhone}` : ''}`)
           .limit(1);
 
-        if (!error && data && data.length > 0) {
+        if (sessionDb && sessionDb.length > 0) {
           setIsAbuseDetected(true);
         } else {
           setIsAbuseDetected(false);
@@ -136,7 +156,7 @@ export default function GarageListScreen() {
         if (s.status !== 'active') return false;
         if (acknowledgedSessionIds?.has(s.id)) return false;
         const samePlate = normalizePlate(s.carPlate) === normalizedUserPlate;
-        const sPhoneClean = s.customerPhone ? s.customerPhone.replace(/[^\d+]/g, '') : '';
+        const sPhoneClean = s.customerPhone ? normalizePhone(s.customerPhone) : '';
         const samePhone = Boolean(cleanUserPhone && sPhoneClean === cleanUserPhone);
         return samePlate || samePhone;
       })

@@ -236,25 +236,20 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-// 🧬 =================================================================
-// 🛡️ محرك البصمة العبقري الموحد للوحات السيارات (Plate Fingerprint Engine)
-// =================================================================
+// 🧬 محرك البصمة العبقري الموحد للوحات السيارات
 export const getPlateFingerprint = (plate?: string): string => {
   if (!plate) return '';
 
-  // 1. تنظيف أولي وإزالة المسافات والتشكيل والرموز
   let str = plate
     .trim()
     .toUpperCase()
-    .replace(/[\u064B-\u065F\u0670]/g, '') // إزالة التشكيل
-    .replace(/[\s\-_.\/\\,|+*#@!~]/g, '');  // إزالة كل الفواصل والرموز
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/[\s\-_.\/\\,|+*#@!~]/g, '');
 
-  // 2. تحويل الأرقام (العربية والفارسية) إلى أرقام موحدة
   str = str
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
     .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
 
-  // 3. تحويل الحروف الإنجليزية إلى المقابل العربي للوحات السيارات
   const enToArMap: Record<string, string> = {
     'A': 'ا', 'B': 'ب', 'C': 'س', 'D': 'د', 'E': 'ي', 'F': 'ف',
     'G': 'ج', 'H': 'ه', 'I': 'ي', 'J': 'ج', 'K': 'ك', 'L': 'ل',
@@ -264,7 +259,6 @@ export const getPlateFingerprint = (plate?: string): string => {
   };
   str = str.replace(/[A-Z]/g, (char) => enToArMap[char] || '');
 
-  // 4. توحيد الحروف العربية المتشابهة والهمزات
   const arNormalizeMap: Record<string, string> = {
     'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ٱ': 'ا', 'ء': 'ا',
     'ة': 'ت',
@@ -275,7 +269,6 @@ export const getPlateFingerprint = (plate?: string): string => {
   };
   str = str.replace(/./g, (char) => arNormalizeMap[char] || char);
 
-  // 5. استخراج الحروف العربية فقط والأرقام فقط
   const letters = str.replace(/[^ \u0600-\u06FF]/g, '').replace(/\s+/g, '');
   const digits = str.replace(/[^0-9]/g, '');
 
@@ -290,11 +283,21 @@ export const normalizePlate = (plate?: string): string => {
   return getPlateFingerprint(plate);
 };
 
+// 📱 توحيد رقم الهاتف المصري لمنع التحايل بكود القطر أو الأصفار
+export const normalizePhone = (phone?: string): string => {
+  if (!phone) return '';
+  let clean = phone.replace(/[^\d]/g, '');
+  if (clean.startsWith('0020')) clean = clean.substring(4);
+  else if (clean.startsWith('20')) clean = clean.substring(2);
+  if (!clean.startsWith('0') && clean.length === 10) clean = '0' + clean;
+  return clean.substring(0, 11);
+};
+
 const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
 const getMs = (value?: number) => { if (typeof value === 'number') return value; return 0; };
 
-// 🌟 [تعديل عبقري]: منع اختفاء الجلسات النشطة عبر فصل الجلسات المدمجة برقم اللوحة ومعرف الجراج سوياً
+// منع اختفاء الجلسات النشطة في جراجات متعددة
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   const active = list.filter((s) => s.status === 'active');
   const completed = list.filter((s) => s.status === 'completed');
@@ -303,7 +306,6 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   for (const session of active) {
     const plate = normalizePlate(session.carPlate);
     if (!plate) continue;
-    // تم إضافة معرف الجراج لمنع التضارب بين الجراجات المختلفة لنفس السيارة
     const key = `${plate}::${session.garageId}::${session.source}`;
     const existing = bestByPlateSource.get(key);
     if (!existing) { bestByPlateSource.set(key, session); continue; }
@@ -532,18 +534,20 @@ export const useStore = create<AppState>((set, get) => ({
 
   currentUser: safeGetStorage('currentUser'),
 
-  // ─── تسجيل وضبط بيانات المستخدم مع فحص الاستحقاق المباشر بالبصمة العبقرية ───
+  // تسجيل وضبط العميل مع فحص الاستحقاق المالي بالهاتف واللوحة الموحدين لمنع تكرار الهدية
   setCurrentUser: async (u) => {
     if (!u) { set({ currentUser: null }); safeRemoveStorage('currentUser'); return; }
-    const cleanPlate = getPlateFingerprint(u.carPlate); // استخدام البصمة الموحدة
-    const cleanPhone = u.phone.replace(/[^\d+]/g, '').substring(0, 15);
+    const cleanPlate = getPlateFingerprint(u.carPlate);
+    const cleanPhone = normalizePhone(u.phone);
     const cleanName = sanitizeInput(u.name);
 
     const cleanUser = {
-      ...u,
       name: cleanName,
-      carPlate: cleanPlate,
       phone: cleanPhone,
+      carPlate: cleanPlate,
+      wallet: u.wallet ?? 0,
+      hasUsedFreeSession: u.hasUsedFreeSession ?? false,
+      bonusBalance: u.bonusBalance ?? 0,
     };
     set({ currentUser: cleanUser }); safeSetStorage('currentUser', cleanUser);
 
@@ -552,16 +556,14 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       let alreadyUsedFree = false;
 
-      if (cleanPlate) {
-        const { data: plateCheck } = await supabase
-          .from('sessions')
-          .select('id')
-          .eq('car_plate', cleanPlate)
-          .eq('is_first_free_session', true)
-          .eq('status', 'completed')
-          .limit(1);
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('wallet, name, phone, car_plate, has_used_free_session, bonus_balance')
+        .eq('phone', cleanPhone)
+        .maybeSingle();
 
-        if (plateCheck && plateCheck.length > 0) alreadyUsedFree = true;
+      if (existingUser?.has_used_free_session === true) {
+        alreadyUsedFree = true;
       }
 
       if (!alreadyUsedFree && cleanPhone) {
@@ -570,35 +572,28 @@ export const useStore = create<AppState>((set, get) => ({
           .select('id')
           .eq('customer_phone', cleanPhone)
           .eq('is_first_free_session', true)
-          .eq('status', 'completed')
           .limit(1);
 
         if (phoneCheck && phoneCheck.length > 0) alreadyUsedFree = true;
       }
 
       if (!alreadyUsedFree && cleanPlate) {
-        const { data: userPlateCheck } = await supabase
-          .from('users')
+        const { data: plateCheck } = await supabase
+          .from('sessions')
           .select('id')
           .eq('car_plate', cleanPlate)
-          .eq('has_used_free_session', true)
+          .eq('is_first_free_session', true)
           .limit(1);
 
-        if (userPlateCheck && userPlateCheck.length > 0) alreadyUsedFree = true;
+        if (plateCheck && plateCheck.length > 0) alreadyUsedFree = true;
       }
-
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('wallet, name, phone, car_plate, has_used_free_session, bonus_balance')
-        .eq('phone', cleanPhone)
-        .maybeSingle();
 
       const finalHasUsedFree = alreadyUsedFree || (existingUser?.has_used_free_session === true);
 
       if (existingUser) {
         const updated = {
           name: existingUser.name || cleanName,
-          phone: existingUser.phone || cleanPhone,
+          phone: cleanPhone,
           carPlate: existingUser.car_plate || cleanPlate,
           wallet: Number(existingUser.wallet || 0),
           hasUsedFreeSession: finalHasUsedFree,
@@ -634,15 +629,15 @@ export const useStore = create<AppState>((set, get) => ({
             bonusBalance: 0,
           };
           set({ currentUser: updated }); safeSetStorage('currentUser', updated);
-
-          if (!finalHasUsedFree) {
-            try { localStorage.setItem('showWelcomeGift', 'true'); } catch (e) {}
-          } else {
-            try { localStorage.removeItem('showWelcomeGift'); } catch (e) {}
-          }
         }
       }
-    } catch (err) { console.error('Error setting user with anti-abuse check:', err); }
+
+      if (!finalHasUsedFree) {
+        try { localStorage.setItem('showWelcomeGift', 'true'); } catch (e) {}
+      } else {
+        try { localStorage.removeItem('showWelcomeGift'); } catch (e) {}
+      }
+    } catch (err) { console.error('Error setting user:', err); }
   },
 
   deductWallet: async (amount) => {
@@ -1049,67 +1044,58 @@ export const useStore = create<AppState>((set, get) => ({
 
       const addedByValue = resolveAddedBy((s as any).addedBy);
       const isAppBooking = s.source === 'app';
-      const cleanPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+      const cleanPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
 
+      // 🎁 [تحديد الاستحقاق الحاسم - يبدأ بـ false افتراضياً]:
       let eligibleForFree = false;
 
       if (isAppBooking) {
-        eligibleForFree = true;
+        const currentUserState = get().currentUser;
+        if (currentUserState?.hasUsedFreeSession !== true) {
+          eligibleForFree = true;
 
-        if (isSupabaseConfigured()) {
-          try {
-            const { data: plateCheck } = await supabase
-              .from('sessions')
-              .select('id')
-              .eq('car_plate', normalizedPlate)
-              .eq('is_first_free_session', true)
-              .eq('status', 'completed')
-              .limit(1);
+          if (isSupabaseConfigured()) {
+            try {
+              // 1. فحص الهاتف في جدول المستخدمين
+              if (cleanPhone) {
+                const { data: userData } = await supabase
+                  .from('users')
+                  .select('has_used_free_session')
+                  .eq('phone', cleanPhone)
+                  .maybeSingle();
 
-            if (plateCheck && plateCheck.length > 0) {
+                if (userData?.has_used_free_session === true) {
+                  eligibleForFree = false;
+                }
+              }
+
+              // 2. فحص الهاتف في كل الجلسات السابقة
+              if (eligibleForFree && cleanPhone) {
+                const { data: phoneCheck } = await supabase
+                  .from('sessions')
+                  .select('id')
+                  .eq('customer_phone', cleanPhone)
+                  .eq('is_first_free_session', true)
+                  .limit(1);
+
+                if (phoneCheck && phoneCheck.length > 0) eligibleForFree = false;
+              }
+
+              // 3. فحص اللوحة في كل الجلسات السابقة
+              if (eligibleForFree && normalizedPlate) {
+                const { data: plateCheck } = await supabase
+                  .from('sessions')
+                  .select('id')
+                  .eq('car_plate', normalizedPlate)
+                  .eq('is_first_free_session', true)
+                  .limit(1);
+
+                if (plateCheck && plateCheck.length > 0) eligibleForFree = false;
+              }
+            } catch (err) {
+              console.error('Error verifying free session eligibility:', err);
               eligibleForFree = false;
             }
-
-            if (eligibleForFree && cleanPhone) {
-              const { data: phoneCheck } = await supabase
-                .from('sessions')
-                .select('id')
-                .eq('customer_phone', cleanPhone)
-                .eq('is_first_free_session', true)
-                .eq('status', 'completed')
-                .limit(1);
-
-              if (phoneCheck && phoneCheck.length > 0) {
-                eligibleForFree = false;
-              }
-            }
-
-            if (eligibleForFree && cleanPhone) {
-              const { data: userData } = await supabase
-                .from('users')
-                .select('has_used_free_session')
-                .eq('phone', cleanPhone)
-                .maybeSingle();
-
-              if (userData?.has_used_free_session === true) {
-                eligibleForFree = false;
-              }
-            }
-
-            if (eligibleForFree && normalizedPlate) {
-              const { data: userPlateData } = await supabase
-                .from('users')
-                .select('id')
-                .eq('car_plate', normalizedPlate)
-                .eq('has_used_free_session', true)
-                .limit(1);
-
-              if (userPlateData && userPlateData.length > 0) {
-                eligibleForFree = false;
-              }
-            }
-          } catch (err) {
-            console.error('Error verifying free session eligibility:', err);
           }
         }
       }
@@ -1231,17 +1217,19 @@ export const useStore = create<AppState>((set, get) => ({
       // 🛡️ [قفل الثغرة]: تحديث حساب العميل برقم هاتفه مباشرة في قاعدة البيانات
       if (session.isFirstFreeSession) {
         const user = get().currentUser;
-        if (user && user.phone === session.customerPhone) {
+        const cleanSessionPhone = session.customerPhone ? normalizePhone(session.customerPhone) : '';
+
+        if (user && normalizePhone(user.phone) === cleanSessionPhone) {
           const updated = { ...user, hasUsedFreeSession: true };
           set({ currentUser: updated });
           safeSetStorage('currentUser', updated);
         }
 
-        if (isSupabaseConfigured() && session.customerPhone) {
+        if (isSupabaseConfigured() && cleanSessionPhone) {
           await supabase
             .from('users')
             .update({ has_used_free_session: true })
-            .eq('phone', session.customerPhone);
+            .eq('phone', cleanSessionPhone);
         }
 
         try { localStorage.removeItem('showWelcomeGift'); } catch (e) {}
