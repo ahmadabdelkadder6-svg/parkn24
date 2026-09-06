@@ -229,7 +229,7 @@ export default function InstallPage() {
                       { step: '4', title: 'اضغط تثبيت ✅', desc: 'وسيتم تحميله فوراً على هاتفك' },
                     ].map((item) => (
                       <div key={item.step} className="flex items-center gap-3"
-                        style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 14, padding: '10px 14px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                        style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 16, padding: '10px 14px', border: '1px solid rgba(255,255,255,0.08)' }}>
                         <div className="font-black text-white flex items-center justify-center shrink-0"
                           style={{ width: 28, height: 28, borderRadius: 8, background: '#0066FF', fontSize: 13 }}>{item.step}</div>
                         <div className="text-right flex-1">
@@ -243,7 +243,7 @@ export default function InstallPage() {
               </div>
             )}
 
-            {/* 🚀 البلوك الأبيض الكبير والبارز للتخطي والفتح من المتصفح مباشرة 🚀 */}
+            {/* 🚀 البلوك الأبيض المتناسق رأسياً في المنتصف 🚀 */}
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -252,26 +252,26 @@ export default function InstallPage() {
             >
               <button
                 onClick={() => { window.location.href = SITE_URL; }}
-                className="w-full py-4 px-4 rounded-2xl font-black text-slate-900 active:scale-[0.98] transition-all flex items-center justify-between shadow-2xl cursor-pointer"
+                className="w-full py-4 px-4 rounded-2xl active:scale-[0.98] transition-all flex flex-col items-center justify-center text-center shadow-2xl cursor-pointer"
                 style={{
                   background: '#ffffff',
                   color: '#0A1628',
-                  boxShadow: '0 10px 30px rgba(255, 255, 255, 0.2), 0 4px 12px rgba(0, 0, 0, 0.4)',
+                  boxShadow: '0 10px 30px rgba(255, 255, 255, 0.2), 0 4px 12px rgba(0, 0, 0, 0.35)',
                   border: '2px solid #E2E8F0',
                 }}
               >
-                <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                  <ArrowLeft size={18} strokeWidth={2.5} />
+                {/* السطر الأول: العنوان مع أيقونة الكرة الأرضية */}
+                <div className="flex items-center justify-center gap-2 text-slate-900 mb-1">
+                  <Globe size={18} className="text-blue-600 shrink-0" />
+                  <span className="text-sm font-black" style={{ fontWeight: 950, fontSize: '15px' }}>
+                    تخطي والفتح من المتصفح مباشرة
+                  </span>
                 </div>
 
-                <div className="text-right flex-1 mr-3">
-                  <div className="text-sm font-black text-slate-900 flex items-center gap-1.5 justify-end">
-                    <span>فتح التطبيق من المتصفح مباشرة</span>
-                    <Globe size={16} className="text-blue-600 shrink-0" />
-                  </div>
-                  <div className="text-[10px] font-bold text-slate-500 mt-0.5">
-                    تخطي التثبيت واستخدم كل المميزات الآن
-                  </div>
+                {/* السطر الثاني: التوضيح مع سهم الدخول */}
+                <div className="text-[11px] font-bold text-slate-500 flex items-center justify-center gap-1.5">
+                  <span>استخدم كافة مميزات التطبيق وحجز الركنة الآن</span>
+                  <ArrowLeft size={13} className="text-blue-600" />
                 </div>
               </button>
             </motion.div>
