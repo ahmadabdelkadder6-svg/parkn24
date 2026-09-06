@@ -90,6 +90,13 @@ export default function AdminDashboard() {
   const [archiveSearch, setArchiveSearch] = useState('');
   const [visibleSettlements, setVisibleSettlements] = useState(4);
   const [activeAccordionGarageId, setActiveAccordionGarageId] = useState<string | null>(null);
+  // 🔍 حالة وتصفية البحث السريع عن الجراجات
+  const [garageSearch, setGarageSearch] = useState('');
+  const filteredGaragesForAdmin = useMemo(() => {
+    const q = garageSearch.trim().toLowerCase();
+    if (!q) return garages;
+    return garages.filter(g => g.name.toLowerCase().includes(q));
+  }, [garages, garageSearch]);
 
   /* ─── Add Garage State ─── */
   const [gName, setGName] = useState('');
@@ -1413,149 +1420,190 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ══ Manage Garages ══ */}
+      {/* 🏢 ══════ إدارة وجرد الجراجات الموفر للمساحة ══════ */}
       <div className="mb-8">
-        <h3 className="font-black mb-4 flex items-center gap-2 justify-end" style={{ fontSize: 16, color: '#0066FF' }}>إدارة الجراجات <Warehouse size={18} /></h3>
-        <div className="space-y-2.5">
-          {garages.map(g => {
-            const isEditingComm = editingCommissionGarageId === g.id;
-            const ownerPhone = (g as any).ownerPhone || g.phone;
-            const sameOwnerCount = garages.filter((x: any) => ((x.ownerPhone || x.phone) === ownerPhone)).length;
-            return (
-              <div key={g.id} style={{ background: '#fff', border: '2px solid #D0DCFF', borderRadius: 18, padding: '12px 14px', boxShadow: '0 3px 12px rgba(0,102,255,0.04)' }}>
-                <div className="flex justify-between items-center mb-2">
-                  <div className="flex items-center gap-1.5" style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', borderRadius: 12, padding: '5px 10px', color: '#fff', boxShadow: '0 3px 10px rgba(0,102,255,0.25)' }}>
-                    <span className="font-black font-mono" style={{ fontSize: 15, fontWeight: 950, textShadow: '0 1px 2px rgba(0,0,0,0.15)' }}>{g.availableSpots}</span>
-                    <span className="font-bold" style={{ fontSize: 9, opacity: 0.95 }}>شاغر</span>
-                  </div>
-                  
-                  <div className="text-right flex items-center gap-1.5 flex-wrap justify-end">
-                    {sameOwnerCount > 1 && (
-                      <span className="font-black" style={{ 
-                        fontSize: 9, 
-                        padding: '2.5px 7px', 
-                        borderRadius: 8, 
-                        background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', 
-                        color: '#fff',
-                        fontWeight: 900
-                      }}>
-                        👑 {sameOwnerCount}
-                      </span>
-                    )}
-                    <span className="font-black text-slate-900" style={{ fontSize: 15, fontWeight: 950 }}>{g.name}</span>
-                  </div>
-                </div>
+        <div className="flex items-center justify-between mb-3">
+          <span className="font-black" style={{ background: '#4D00FF', color: '#fff', fontSize: 10, padding: '3.5px 12px', borderRadius: 20 }}>
+            {filteredGaragesForAdmin.length} جراج نشط
+          </span>
+          <h3 className="font-black flex items-center gap-2" style={{ fontSize: 15, color: '#334155' }}>
+            إدارة الجراجات <Warehouse size={18} />
+          </h3>
+        </div>
 
-                <div className="flex items-center justify-between mb-2 gap-2">
-                  <div className="flex flex-wrap gap-1 justify-start">
-                    {[
-                      { n: 1, name: (g as any).valetName1, pw: (g as any).valetPassword1, color: '#0066FF' },
-                      { n: 2, name: (g as any).valetName2, pw: (g as any).valetPassword2, color: '#7C3AED' },
-                      { n: 3, name: (g as any).valetName3, pw: (g as any).valetPassword3, color: '#FF8800' },
-                    ].filter(v => v.pw).map(v => (
-                      <span key={v.n} className="font-bold flex items-center gap-0.5" style={{ fontSize: 8, color: v.color, background: `${v.color}15`, padding: '1.5px 6px', borderRadius: 6, fontWeight: 900 }}>
-                        <HardHat size={7} /> {v.name || `س${v.n}`}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-1 text-slate-500 text-right truncate" style={{ fontSize: 10, fontWeight: 700 }}>
-                    <span className="truncate max-w-[150px]">{g.location}</span>
-                    <MapPin size={10} className="shrink-0" />
-                  </div>
-                </div>
+        <div className="space-y-3 mb-4">
+          {/* 🔍 شريط البحث السريع عن جراج */}
+          <div className="relative">
+            <Search size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: '#94a3b8' }} />
+            <input 
+              type="text" 
+              value={garageSearch} 
+              onChange={e => setGarageSearch(e.target.value)} 
+              placeholder="ابحث عن جراج بالاسم..." 
+              className="w-full font-bold outline-none"
+              style={{ background: '#fff', border: '2px solid #D0DCFF', padding: '12px 40px 12px 40px', borderRadius: 18, fontSize: 12.5, color: '#0A1628' }} 
+            />
+            {garageSearch && (
+              <button onClick={() => setGarageSearch('')} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <XCircle size={16} />
+              </button>
+            )}
+          </div>
+        </div>
 
-                <div className="flex items-center justify-between gap-2 mb-2" style={{ background: '#FFF8F0', borderRadius: 12, padding: '6px 10px', border: '1.5px solid #FFD180' }}>
-                  <div className="flex items-center gap-1.5">
-                    {!isEditingComm ? (
-                      <button
-                        onClick={() => { setEditingCommissionGarageId(g.id); setEditCommissionRate(g.commissionRate ?? 10); }}
-                        className="font-black active:scale-95 flex items-center gap-0.5"
-                        style={{ background: '#FF9500', color: '#fff', padding: '3px 8px', borderRadius: 8, fontSize: 9, fontWeight: 950, textShadow: '0 1px 1px rgba(0,0,0,0.1)' }}
-                      >
-                        <Edit3 size={9} /> تعديل
-                      </button>
-                    ) : (
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => handleSaveCommission(g.id)} className="font-black active:scale-95"
-                          style={{ background: '#00CC66', color: '#fff', padding: '3px 8px', borderRadius: 8, fontSize: 9, fontWeight: 950 }}>حفظ</button>
-                        <button onClick={() => setEditingCommissionGarageId(null)} className="font-black active:scale-95"
-                          style={{ background: '#F0F4FF', color: '#475569', padding: '3px 8px', borderRadius: 8, fontSize: 9, fontWeight: 900, border: '1px solid #D0DCFF' }}>✕</button>
-                      </div>
-                    )}
-                    {isEditingComm && (
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => setEditCommissionRate(r => Math.max(0, r - 1))} className="active:scale-90 flex items-center justify-center"
-                          style={{ background: '#FF3333', color: '#fff', width: 22, height: 22, borderRadius: 7 }}>
-                          <Minus size={11} />
+        {/* 📦 صندوق احتواء ذكي بانزلاق عمودي يوفر 50% من مساحة الشاشة */}
+        <div 
+          className="space-y-3 max-h-[380px] overflow-y-auto pr-1.5"
+          style={{
+            scrollbarWidth: 'thin',
+            scrollbarColor: '#CBD5E1 transparent',
+          }}
+        >
+          {filteredGaragesForAdmin.length === 0 ? (
+            <div className="text-center py-10" style={{ background: '#fff', borderRadius: 24, padding: 32, border: '2px solid #D0DCFF' }}>
+              <div style={{ fontSize: 36, marginBottom: 8 }}>🔍</div>
+              <p className="font-bold text-xs" style={{ color: '#94a3b8' }}>لا توجد جراجات مطابقة للبحث "{garageSearch}"</p>
+            </div>
+          ) : (
+            filteredGaragesForAdmin.map(g => {
+              const isEditingComm = editingCommissionGarageId === g.id;
+              const ownerPhone = (g as any).ownerPhone || g.phone;
+              const sameOwnerCount = garages.filter((x: any) => ((x.ownerPhone || x.phone) === ownerPhone)).length;
+              return (
+                <div key={g.id} style={{ background: '#fff', border: '2px solid #D0DCFF', borderRadius: 18, padding: '12px 14px', boxShadow: '0 3px 12px rgba(0,102,255,0.04)' }}>
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="flex items-center gap-1.5" style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', borderRadius: 12, padding: '5px 10px', color: '#fff', boxShadow: '0 3px 10px rgba(0,102,255,0.25)' }}>
+                      <span className="font-black font-mono" style={{ fontSize: 15, fontWeight: 950, textShadow: '0 1px 2px rgba(0,0,0,0.15)' }}>{g.availableSpots}</span>
+                      <span className="font-bold" style={{ fontSize: 9, opacity: 0.95 }}>شاغر</span>
+                    </div>
+                    
+                    <div className="text-right flex items-center gap-1.5 flex-wrap justify-end">
+                      {sameOwnerCount > 1 && (
+                        <span className="font-black" style={{ 
+                          fontSize: 9, 
+                          padding: '2.5px 7px', 
+                          borderRadius: 8, 
+                          background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', 
+                          color: '#fff',
+                          fontWeight: 900
+                        }}>
+                          👑 {sameOwnerCount}
+                        </span>
+                      )}
+                      <span className="font-black text-slate-900" style={{ fontSize: 15, fontWeight: 950 }}>{g.name}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between mb-2 gap-2">
+                    <div className="flex flex-wrap gap-1 justify-start">
+                      {[
+                        { n: 1, name: (g as any).valetName1, pw: (g as any).valetPassword1, color: '#0066FF' },
+                        { n: 2, name: (g as any).valetName2, pw: (g as any).valetPassword2, color: '#7C3AED' },
+                        { n: 3, name: (g as any).valetName3, pw: (g as any).valetPassword3, color: '#FF8800' },
+                      ].filter(v => v.pw).map(v => (
+                        <span key={v.n} className="font-bold flex items-center gap-0.5" style={{ fontSize: 8, color: v.color, background: `${v.color}15`, padding: '1.5px 6px', borderRadius: 6, fontWeight: 900 }}>
+                          <HardHat size={7} /> {v.name || `س${v.n}`}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-1 text-slate-500 text-right truncate" style={{ fontSize: 10, fontWeight: 700 }}>
+                      <span className="truncate max-w-[150px]">{g.location}</span>
+                      <MapPin size={10} className="shrink-0" />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 mb-2" style={{ background: '#FFF8F0', borderRadius: 12, padding: '6px 10px', border: '1.5px solid #FFD180' }}>
+                    <div className="flex items-center gap-1.5">
+                      {!isEditingComm ? (
+                        <button
+                          onClick={() => { setEditingCommissionGarageId(g.id); setEditCommissionRate(g.commissionRate ?? 10); }}
+                          className="font-black active:scale-95 flex items-center gap-0.5"
+                          style={{ background: '#FF9500', color: '#fff', padding: '3px 8px', borderRadius: 8, fontSize: 9, fontWeight: 950, textShadow: '0 1px 1px rgba(0,0,0,0.1)' }}
+                        >
+                          <Edit3 size={9} /> تعديل
                         </button>
-                        <input type="number" value={editCommissionRate} onChange={e => setEditCommissionRate(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
-                          className="bg-transparent text-center outline-none font-mono font-black"
-                          style={{ width: 34, fontSize: 13, fontWeight: 950, color: '#FF9500', background: '#fff', border: '1px solid #FFD180', borderRadius: 6, padding: '2px 0' }} />
-                        <button onClick={() => setEditCommissionRate(r => Math.min(100, r + 1))} className="active:scale-90 flex items-center justify-center"
-                          style={{ background: '#00CC66', color: '#fff', width: 22, height: 22, borderRadius: 7 }}>
-                          <Plus size={11} />
-                        </button>
-                      </div>
-                    )}
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => handleSaveCommission(g.id)} className="font-black active:scale-95"
+                            style={{ background: '#00CC66', color: '#fff', padding: '3px 8px', borderRadius: 8, fontSize: 9, fontWeight: 950 }}>حفظ</button>
+                          <button onClick={() => setEditingCommissionGarageId(null)} className="font-black active:scale-95"
+                            style={{ background: '#F0F4FF', color: '#475569', padding: '3px 8px', borderRadius: 8, fontSize: 9, fontWeight: 900, border: '1px solid #D0DCFF' }}>✕</button>
+                        </div>
+                      )}
+                      {isEditingComm && (
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => setEditCommissionRate(r => Math.max(0, r - 1))} className="active:scale-90 flex items-center justify-center"
+                            style={{ background: '#FF3333', color: '#fff', width: 22, height: 22, borderRadius: 7 }}>
+                            <Minus size={11} />
+                          </button>
+                          <input type="number" value={editCommissionRate} onChange={e => setEditCommissionRate(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                            className="bg-transparent text-center outline-none font-mono font-black"
+                            style={{ width: 34, fontSize: 13, fontWeight: 950, color: '#FF9500', background: '#fff', border: '1px solid #FFD180', borderRadius: 6, padding: '2px 0' }} />
+                          <button onClick={() => setEditCommissionRate(r => Math.min(100, r + 1))} className="active:scale-90 flex items-center justify-center"
+                            style={{ background: '#00CC66', color: '#fff', width: 22, height: 22, borderRadius: 7 }}>
+                            <Plus size={11} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <Percent size={11} style={{ color: '#FF9500' }} />
+                      <span className="font-black font-mono" style={{ fontSize: 14, fontWeight: 950, color: '#FF9500', textShadow: '0 1px 1px rgba(0,0,0,0.05)' }}>
+                        {isEditingComm ? editCommissionRate : (g.commissionRate ?? 10)}%
+                      </span>
+                      <span className="font-black" style={{ fontSize: 9, color: '#94a3b8', fontWeight: 900 }}>عمولة</span>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-1">
-                    <Percent size={11} style={{ color: '#FF9500' }} />
-                    <span className="font-black font-mono" style={{ fontSize: 14, fontWeight: 950, color: '#FF9500', textShadow: '0 1px 1px rgba(0,0,0,0.05)' }}>
-                      {isEditingComm ? editCommissionRate : (g.commissionRate ?? 10)}%
-                    </span>
-                    <span className="font-black" style={{ fontSize: 9, color: '#94a3b8', fontWeight: 900 }}>عمولة</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newStatus = g.isActive === false ? true : false;
+                        updateGarage(g.id, { isActive: newStatus });
+                        toast.success(newStatus ? `تم تفعيل ${g.name} للعملاء 🟢` : `تم تعطيل ${g.name} 🔴`);
+                      }}
+                      className="font-black active:scale-95 transition-all flex items-center justify-center gap-1"
+                      style={{
+                        background: g.isActive !== false ? '#00CC66' : '#FF3333',
+                        color: '#ffffff',
+                        padding: '9px 10px',
+                        borderRadius: 12,
+                        fontSize: 10,
+                        fontWeight: 950,
+                        boxShadow: g.isActive !== false ? '0 3px 10px rgba(0,204,102,0.25)' : '0 3px 10px rgba(255,51,51,0.25)',
+                        textShadow: '0 1px 1px rgba(0,0,0,0.15)',
+                        flexShrink: 0
+                      }}
+                    >
+                      <span>{g.isActive !== false ? '🟢 مفعّل' : '🔴 معطّل'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleAdminEnterGarage(g)}
+                      className="flex-1 font-black active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                      style={{ 
+                        background: 'linear-gradient(135deg,#0066FF,#0044DD)', 
+                        color: '#ffffff', 
+                        padding: '9px 0', 
+                        borderRadius: 12, 
+                        fontSize: 12, 
+                        fontWeight: 950,
+                        boxShadow: '0 4px 14px rgba(0,102,255,0.28)',
+                        textShadow: '0 1px 2px rgba(0,0,0,0.15)'
+                      }}
+                    >
+                      <Settings size={14} />
+                      دخول وإدارة
+                    </button>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const newStatus = g.isActive === false ? true : false;
-                      updateGarage(g.id, { isActive: newStatus });
-                      toast.success(newStatus ? `تم تفعيل ${g.name} للعملاء 🟢` : `تم تعطيل ${g.name} 🔴`);
-                    }}
-                    className="font-black active:scale-95 transition-all flex items-center justify-center gap-1"
-                    style={{
-                      background: g.isActive !== false ? '#00CC66' : '#FF3333',
-                      color: '#ffffff',
-                      padding: '9px 10px',
-                      borderRadius: 12,
-                      fontSize: 10,
-                      fontWeight: 950,
-                      boxShadow: g.isActive !== false ? '0 3px 10px rgba(0,204,102,0.25)' : '0 3px 10px rgba(255,51,51,0.25)',
-                      textShadow: '0 1px 1px rgba(0,0,0,0.15)',
-                      flexShrink: 0
-                    }}
-                  >
-                    <span>{g.isActive !== false ? '🟢 مفعّل' : '🔴 معطّل'}</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleAdminEnterGarage(g)}
-                    className="flex-1 font-black active:scale-95 transition-all flex items-center justify-center gap-1.5"
-                    style={{ 
-                      background: 'linear-gradient(135deg,#0066FF,#0044DD)', 
-                      color: '#ffffff', 
-                      padding: '9px 0', 
-                      borderRadius: 12, 
-                      fontSize: 12, 
-                      fontWeight: 950,
-                      boxShadow: '0 4px 14px rgba(0,102,255,0.28)',
-                      textShadow: '0 1px 2px rgba(0,0,0,0.15)'
-                    }}
-                  >
-                    <Settings size={14} />
-                    دخول وإدارة
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       </div>
-
       {/* ══ Add Garage ══ */}
       <div className="mb-20">
         <h3 className="font-black mb-4 flex items-center gap-2 justify-end" style={{ fontSize: 16, color: '#0066FF' }}>إضافة جراج جديد <Plus size={18} /></h3>

@@ -399,10 +399,16 @@ export default function ChatScreen() {
                       </div>
                     )}
 
+                    {/* 🌟 تعديل رسالة العميل لتكون واضحة، كبيرة، وبخط أسود ثقيل (font-black) */}
                     <div
-                      className={`text-[11px] text-slate-400 text-right leading-relaxed ${
+                      className={`text-right leading-relaxed ${
                         isExpanded ? '' : 'line-clamp-2'
                       }`}
+                      style={{
+                        fontSize: '14px',
+                        fontWeight: 900, // خط عريض ثقيل جداً (Black)
+                        color: '#f8fafc', // أبيض زاهٍ فائق الوضوح على الخلفية الداكنة
+                      }}
                     >
                       {msg.message}
                     </div>
@@ -421,9 +427,19 @@ export default function ChatScreen() {
                             </span>
                             <CheckCircle size={10} className="text-emerald-400" />
                           </div>
-                          <p className="text-[11px] text-emerald-300 text-right leading-relaxed">
+
+                          {/* 🌟 تعديل رد التطبيق/الإدارة ليكون كبيراً، واضحاً وبخط عريض جداً ومميز باللون الأخضر الزاهي */}
+                          <p 
+                            className="text-right leading-relaxed"
+                            style={{
+                              fontSize: '14.5px',
+                              fontWeight: 950, // خط عريض فائق الغلظة
+                              color: '#34d399', // لون أخضر زمردي مشع ومقروء بامتياز
+                            }}
+                          >
                             {msg.reply}
                           </p>
+
                           {msg.repliedAt && (
                             <div className="text-[8px] text-emerald-600 text-left mt-2">
                               {formatTime(msg.repliedAt)}

@@ -157,21 +157,40 @@ export default function RegisterScreen() {
             </p>
           </div>
 
-          {/* زر التأكيد */}
+          {/* زر التأكيد - خط أبيض ثقيل ومشع */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800/50 disabled:cursor-not-allowed text-white font-black py-4 rounded-2xl text-base shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800/50 disabled:cursor-not-allowed py-4 rounded-2xl text-base shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-all flex items-center justify-center gap-2.5 cursor-pointer border-none"
           >
             {loading ? (
               <>
-                <Loader2 size={18} className="animate-spin" />
-                <span>جاري تسجيل وتأمين الحساب...</span>
+                <Loader2 size={18} className="animate-spin text-white" />
+                <span 
+                  style={{ 
+                    color: '#ffffff', 
+                    fontWeight: 950, 
+                    fontSize: '15.5px',
+                    textShadow: '0 1px 3px rgba(0,0,0,0.35)' 
+                  }}
+                >
+                  جاري تسجيل وتأمين الحساب...
+                </span>
               </>
             ) : (
               <>
-                <span>حفظ البيانات والتحرك</span>
-                <ArrowRight size={18} className="rotate-180" />
+                <span 
+                  style={{ 
+                    color: '#ffffff', 
+                    fontWeight: 950, 
+                    fontSize: '16px',
+                    letterSpacing: '0.3px',
+                    textShadow: '0 1px 3px rgba(0,0,0,0.35)' 
+                  }}
+                >
+                  حفظ البيانات والتحرك
+                </span>
+                <ArrowRight size={18} className="rotate-180 text-white" strokeWidth={3} />
               </>
             )}
           </button>
