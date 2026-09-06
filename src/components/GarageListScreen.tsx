@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MapPin,
@@ -50,6 +50,9 @@ const safeParseTime = (value: unknown): number => {
   return 0;
 };
 
+/* ════════════════════════════════════════════════════════════
+   ██  MAIN SCREEN
+   ════════════════════════════════════════════════════════════ */
 export default function GarageListScreen() {
   const {
     garages,
@@ -92,7 +95,6 @@ export default function GarageListScreen() {
     [currentUser?.carPlate]
   );
 
-  // 🌟 استخدام الدالة الموحدة لتوحيد وتطهير صيغة هاتف الحريف
   const cleanUserPhone = useMemo(
     () => currentUser?.phone ? normalizePhone(currentUser.phone) : '',
     [currentUser?.phone]
@@ -259,7 +261,8 @@ export default function GarageListScreen() {
       )
       .subscribe();
 
-    const interval = setInterval(refetch, 1500); 
+    // ⚡ [تعديل البطارية والأداء]: تقليل الـ Polling إلى 5 ثوانٍ بدلاً من ثانية ونصف
+    const interval = setInterval(refetch, 5000); 
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') refetch();
@@ -1099,18 +1102,8 @@ function WelcomeGiftModal() {
   );
 }
 
-interface GarageCardProps {
-  garage: GarageWithDistance;
-  index: number;
-  onSelect: () => void;
-  isNearby: boolean;
-  isClosest?: boolean;
-  hasActiveSession?: boolean;
-  hasIncomingCar?: boolean;
-  disabled?: boolean;
-}
-
-function GarageCard({
+// 🌟 تغليف كارت الجراج بـ React.memo لمنع إعادة الرندر المفرط وتوفير البطارية ❄️
+const GarageCard = memo(function GarageCard({
   garage,
   index,
   onSelect,
@@ -1305,4 +1298,4 @@ function GarageCard({
       </button>
     </motion.div>
   );
-}
+});

@@ -2,11 +2,13 @@ import { useEffect, useRef, useState, useMemo, lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
-// 🌟 استيراد دالة البصمة الموحدة من الـ store لضمان مطابقة اللوحات بنسبة 100%
 import { useStore, setupRealtime, normalizePlate } from './store';
 import { cn } from './utils/cn';
 
-// Screens
+// 🛡️ استيراد صمام الأمان لمنع الشاشة البيضاء للأبد
+import ErrorBoundary from './components/ErrorBoundary';
+
+// Screens (تحميل مباشر للشاشات الخفيفة التي يحتاجها العميل فوراً)
 import AuthGate from './components/AuthGate';
 import SplashScreen from './components/SplashScreen';
 import RegisterScreen from './components/RegisterScreen';
@@ -22,7 +24,7 @@ import ChatScreen from './components/ChatScreen';
 import InstallPage from './components/InstallPage';
 import InstallQRCodePage from './components/InstallQRCodePage';
 
-// Lazy Components
+// ⚡ [تسريع صاروخي]: تحميل كسول للوحات الإدارة الثقيلة
 const GarageDashboard = lazy(() => import('./components/GarageDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 
@@ -93,6 +95,7 @@ export default function App() {
     }
   }, [safeScreen, screen, setScreen, dataLoaded, view]);
 
+  // ⚡ [التهيئة الصاروخية]: فتح الشاشة فوراً + جلب البيانات في الخلفية
   useEffect(() => {
     const init = async () => {
       const justInstalled = localStorage.getItem('pwaJustInstalled') === 'true';
@@ -435,111 +438,113 @@ export default function App() {
   }
 
   return (
-    <AuthGate>
-      <div
-        className="max-w-md mx-auto h-dvh bg-white text-slate-900 relative flex flex-col overflow-hidden"
-        style={{ fontFamily: "'Cairo', sans-serif" }}
-      >
-        {adminAccess && (
-          <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-white/90 p-0.5 rounded-full backdrop-blur-md border border-slate-200 shadow-sm">
-            {[
-              { id: 'user' as const, label: 'حريف' },
-              { id: 'garage' as const, label: 'جراج' },
-              { id: 'admin' as const, label: 'أدمن' },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => {
-                  if (tab.id === 'garage') {
-                    localStorage.removeItem('currentGarageId');
-                    localStorage.removeItem('garageRole');
-                    localStorage.removeItem('valetNumber');
-                    localStorage.removeItem('valetName');
-                    localStorage.removeItem('garagePrefillUsername');
-                    localStorage.removeItem('garagePrefillPhone');
-                    setCurrentGarageId(null);
-                  }
-                  setView(tab.id);
-                }}
-                className={cn(
-                  'px-3 py-1.5 rounded-full text-[10px] font-black transition-all',
-                  view === tab.id
-                    ? tab.id === 'admin'
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-blue-600 text-white'
-                    : 'text-slate-600'
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        )}
+    <ErrorBoundary>
+      <AuthGate>
+        <div
+          className="max-w-md mx-auto h-dvh bg-white text-slate-900 relative flex flex-col overflow-hidden"
+          style={{ fontFamily: "'Cairo', sans-serif" }}
+        >
+          {adminAccess && (
+            <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-white/90 p-0.5 rounded-full backdrop-blur-md border border-slate-200 shadow-sm">
+              {[
+                { id: 'user' as const, label: 'حريف' },
+                { id: 'garage' as const, label: 'جراج' },
+                { id: 'admin' as const, label: 'أدمن' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    if (tab.id === 'garage') {
+                      localStorage.removeItem('currentGarageId');
+                      localStorage.removeItem('garageRole');
+                      localStorage.removeItem('valetNumber');
+                      localStorage.removeItem('valetName');
+                      localStorage.removeItem('garagePrefillUsername');
+                      localStorage.removeItem('garagePrefillPhone');
+                      setCurrentGarageId(null);
+                    }
+                    setView(tab.id);
+                  }}
+                  className={cn(
+                    'px-3 py-1.5 rounded-full text-[10px] font-black transition-all',
+                    view === tab.id
+                      ? tab.id === 'admin'
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-blue-600 text-white'
+                      : 'text-slate-600'
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
 
-        <main className="flex-1 overflow-hidden bg-white">
-          {view === 'admin' && adminAccess ? (
-            <Suspense fallback={
-              <div className="h-full bg-white flex flex-col items-center justify-center">
-                <div className="text-3xl mb-3 animate-bounce">⚙️</div>
-                <p className="text-slate-500 text-sm font-bold animate-pulse">جاري فتح لوحة المشرف...</p>
-              </div>
-            }>
-              <AdminDashboard />
-            </Suspense>
-          ) : view === 'garage' ? (
-            currentGarageId ? (
+          <main className="flex-1 overflow-hidden bg-white">
+            {view === 'admin' && adminAccess ? (
               <Suspense fallback={
                 <div className="h-full bg-white flex flex-col items-center justify-center">
-                  <div className="text-3xl mb-3 animate-bounce">🅿️</div>
-                  <p className="text-slate-500 text-sm font-bold animate-pulse">جاري فتح لوحة الجراج...</p>
+                  <div className="text-3xl mb-3 animate-bounce">⚙️</div>
+                  <p className="text-slate-500 text-sm font-bold animate-pulse">جاري فتح لوحة المشرف...</p>
                 </div>
               }>
-                <GarageDashboard />
+                <AdminDashboard />
               </Suspense>
+            ) : view === 'garage' ? (
+              currentGarageId ? (
+                <Suspense fallback={
+                  <div className="h-full bg-white flex flex-col items-center justify-center">
+                    <div className="text-3xl mb-3 animate-bounce">🅿️</div>
+                    <p className="text-slate-500 text-sm font-bold animate-pulse">جاري فتح لوحة الجراج...</p>
+                  </div>
+                }>
+                  <GarageDashboard />
+                </Suspense>
+              ) : (
+                <GarageLoginScreen />
+              )
+            ) : !dataLoaded ? (
+              <div className="h-full bg-white flex flex-col items-center justify-center">
+                <div className="text-4xl mb-4 animate-bounce">🚗</div>
+                <p className="text-slate-600 text-sm font-bold animate-pulse">
+                  جاري تحميل البيانات...
+                </p>
+              </div>
             ) : (
-              <GarageLoginScreen />
-            )
-          ) : !dataLoaded ? (
-            <div className="h-full bg-white flex flex-col items-center justify-center">
-              <div className="text-4xl mb-4 animate-bounce">🚗</div>
-              <p className="text-slate-600 text-sm font-bold animate-pulse">
-                جاري تحميل البيانات...
-              </p>
-            </div>
-          ) : (
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={safeScreen}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                className="h-full overflow-y-auto bg-white text-slate-900"
-              >
-                {safeScreen === 'splash' && <SplashScreen />}
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={safeScreen}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                  className="h-full overflow-y-auto bg-white text-slate-900"
+                >
+                  {safeScreen === 'splash' && <SplashScreen />}
 
-                {!currentUser && safeScreen !== 'splash' && <RegisterScreen />}
+                  {!currentUser && safeScreen !== 'splash' && <RegisterScreen />}
 
-                {currentUser && (
-                  <>
-                    {safeScreen === 'list' && <GarageListScreen />}
-                    {safeScreen === 'waiting' && <WaitingScreen />}
-                    {safeScreen === 'navigation' && <NavigationScreen />}
-                    {safeScreen === 'session' && <SessionScreen />}
-                    {safeScreen === 'lastSession' && <LastSessionScreen />}
-                    {safeScreen === 'chat' && <ChatScreen />}
-                  </>
-                )}
+                  {currentUser && (
+                    <>
+                      {safeScreen === 'list' && <GarageListScreen />}
+                      {safeScreen === 'waiting' && <WaitingScreen />}
+                      {safeScreen === 'navigation' && <NavigationScreen />}
+                      {safeScreen === 'session' && <SessionScreen />}
+                      {safeScreen === 'lastSession' && <LastSessionScreen />}
+                      {safeScreen === 'chat' && <ChatScreen />}
+                    </>
+                  )}
 
-                {safeScreen === 'summary' && <SummaryScreen />}
-              </motion.div>
-            </AnimatePresence>
-          )}
-        </main>
+                  {safeScreen === 'summary' && <SummaryScreen />}
+                </motion.div>
+              </AnimatePresence>
+            )}
+          </main>
 
-        <Toaster position="top-center" />
-        <InstallPWA />
-      </div>
-    </AuthGate>
+          <Toaster position="top-center" />
+          <InstallPWA />
+        </div>
+      </AuthGate>
+    </ErrorBoundary>
   );
 }

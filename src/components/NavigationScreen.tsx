@@ -60,7 +60,7 @@ const toMs = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-/* ─── Map controller ─── */
+/* ─── Map controller (محمي بالكامل من الانهيار والشاشة البيضاء) ─── */
 function MapController({
   userPos,
   garagePos,
@@ -72,16 +72,30 @@ function MapController({
 
   useEffect(() => {
     setTimeout(() => {
-      map.invalidateSize();
+      try {
+        map.invalidateSize();
+      } catch {}
     }, 250);
 
-    if (userPos[0] !== 0 && garagePos[0] !== 0) {
+    // 🛡️ صمام أمان صارم للتحقق من سلامة الإحداثيات ومنع الـ NaN تماماً رغماً عن شبكات الـ GPS
+    const isValidCoord = (c: [number, number]) =>
+      Array.isArray(c) &&
+      typeof c[0] === 'number' && !isNaN(c[0]) && c[0] !== 0 &&
+      typeof c[1] === 'number' && !isNaN(c[1]) && c[1] !== 0;
+
+    if (isValidCoord(userPos) && isValidCoord(garagePos)) {
       try {
         const bounds = L.latLngBounds([userPos, garagePos]);
         map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
       } catch {
-        map.setView(garagePos, 15);
+        try {
+          map.setView(garagePos, 15);
+        } catch {}
       }
+    } else if (isValidCoord(garagePos)) {
+      try {
+        map.setView(garagePos, 15);
+      } catch {}
     }
   }, [map, userPos, garagePos]);
 
@@ -595,7 +609,9 @@ export default function NavigationScreen() {
         <div className="w-full h-48 rounded-2xl overflow-hidden border border-slate-800 relative shrink-0 shadow-lg">
           {mapReady ? (
             <MapContainer
-              center={[garage.lat, garage.lng]}
+              // 🛡️ تم إضافة مفتاح فريد لضمان إعادة تهيئة الخريطة بسلاسة وتجنب أخطاء تداخل التهيئة في الهواتف الضعيفة
+              key={`map-nav-${garage.id}-${userPos.lat}-${userPos.lng}`}
+              center={[garage.lat || 30.0444, garage.lng || 31.2357]}
               zoom={15}
               style={{ width: '100%', height: '100%' }}
               zoomControl={false}

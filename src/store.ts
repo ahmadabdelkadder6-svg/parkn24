@@ -111,7 +111,7 @@ export type ScreenType =
   | 'splash' | 'list' | 'offer' | 'waiting' | 'navigation'
   | 'session' | 'summary' | 'lastSession' | 'chat';
 
-// ===================== 🎁 نظام الشرائح والهدايا =====================
+// ===================== 🎁 نظام الشرائح والهدايا الموحد =====================
 
 export const TOPUP_TIERS = [
   { id: 'bronze',   amount: 100,  bonus: 5,   label: '🥉 برونزي',   percentage: 5,  popular: false },
@@ -162,22 +162,39 @@ export const calculateSessionPriceWithFreeGift = (
   return { finalPrice, freeMinutes: 60, billableMs };
 };
 
-// ===================== 🛡️ طبقات الحماية الأمنية =====================
+// ===================== 🛡️ طبقات الحماية الأمنية المحدثة =====================
 
+// 🛡️ [حماية متطورة]: منع إغراق السيرفر بالطلبات المكررة وتأمين معدل الإرسال حتى بعد تحديث الصفحة
 const rateLimiter = {
-  requests: 0,
-  lastReset: Date.now(),
-  maxRequests: 50,
-  windowMs: 10000,
-
   canProceed(): boolean {
     const now = Date.now();
-    if (now - this.lastReset > this.windowMs) {
-      this.requests = 0;
-      this.lastReset = now;
+    let record = { requests: 0, lastReset: now };
+    
+    try {
+      const saved = sessionStorage.getItem('p24_rate_limit');
+      if (saved) record = JSON.parse(saved);
+    } catch {
+      // Fallback في حالة حظر sessionStorage بالمتصفح
+      if (!(this as any)._fallbackRecord) {
+        (this as any)._fallbackRecord = { requests: 0, lastReset: now };
+      }
+      record = (this as any)._fallbackRecord;
     }
-    this.requests++;
-    return this.requests <= this.maxRequests;
+
+    if (now - record.lastReset > 10000) {
+      record.requests = 0;
+      record.lastReset = now;
+    }
+    
+    record.requests++;
+    
+    try {
+      sessionStorage.setItem('p24_rate_limit', JSON.stringify(record));
+    } catch {
+      (this as any)._fallbackRecord = record;
+    }
+
+    return record.requests <= 200; // 200 طلب كحد أقصى آمن ومستقر للجلسة
   }
 };
 
@@ -248,7 +265,7 @@ export const getPlateFingerprint = (plate?: string): string => {
 
   str = str
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷٨٩'.indexOf(d)));
 
   const enToArMap: Record<string, string> = {
     'A': 'ا', 'B': 'ب', 'C': 'س', 'D': 'د', 'E': 'ي', 'F': 'ف',
@@ -442,6 +459,7 @@ const pendingGarageUpdates: Map<string, Record<string, unknown>> = new Map();
 const sessionStartLocks = new Set<string>();
 const sessionEndLocks = new Set<string>();
 let walletDeductedAt = 0;
+let walletDeductLock = false; // 🛡️ قفل المحفظة لمنع الخصم المزدوج نهائياً
 const deletedSessionIds = new Set<string>();
 const locallyEndedSessions = new Map<string, ParkingSession>();
 
@@ -594,7 +612,7 @@ export const useStore = create<AppState>((set, get) => ({
         const updated = {
           name: existingUser.name || cleanName,
           phone: cleanPhone,
-          carPlate: existingUser.car_plate || cleanPlate,
+          carPlate: cleanPlate,
           wallet: Number(existingUser.wallet || 0),
           hasUsedFreeSession: finalHasUsedFree,
           bonusBalance: Number(existingUser.bonus_balance ?? 0),
@@ -637,57 +655,72 @@ export const useStore = create<AppState>((set, get) => ({
       } else {
         try { localStorage.removeItem('showWelcomeGift'); } catch (e) {}
       }
-    } catch (err) { console.error('Error setting user:', err); }
+    } catch (err) { console.error('Error setting user with anti-abuse check:', err); }
   },
 
+  // 🛡️ [تعديل أمني حرج]: قفل المحفظة لمنع الخصم المزدوج نهائياً تحت دقة متناهية
   deductWallet: async (amount) => {
+    if (walletDeductLock) return;
+    
     const user = get().currentUser;
     if (!user || amount <= 0) return;
 
-    if (isSupabaseConfigured()) {
-      try {
-        const { data, error } = await supabase.rpc('deduct_wallet_atomic', {
-          p_phone: user.phone,
-          p_amount: Math.floor(Number(amount)),
-        });
+    if ((user.wallet || 0) < amount) {
+      console.warn('⚠️ Insufficient balance');
+      return;
+    }
 
-        if (!error && data?.success) {
-          const updated = { ...user, wallet: Number(data.new_wallet) };
-          set({ currentUser: updated });
-          safeSetStorage('currentUser', updated);
-          walletDeductedAt = Date.now();
-          return;
+    try {
+      walletDeductLock = true; // تفعيل القفل الفوري للخصم المزدوج
+
+      if (isSupabaseConfigured()) {
+        try {
+          const { data, error } = await supabase.rpc('deduct_wallet_atomic', {
+            p_phone: user.phone,
+            p_amount: Math.floor(Number(amount)),
+          });
+
+          if (!error && data?.success) {
+            const updated = { ...user, wallet: Number(data.new_wallet) };
+            set({ currentUser: updated });
+            safeSetStorage('currentUser', updated);
+            walletDeductedAt = Date.now();
+            return;
+          }
+        } catch (rpcErr) {
+          console.warn('RPC deduct exception, using direct fallback:', rpcErr);
         }
-      } catch (rpcErr) {
-        console.warn('RPC deduct exception, using direct fallback:', rpcErr);
-      }
 
-      try {
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('wallet')
-          .eq('phone', user.phone)
-          .single();
+        try {
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('wallet')
+            .eq('phone', user.phone)
+            .single();
 
-        if (userError || !userData) return;
-        const currentWallet = Number(userData.wallet || 0);
-        if (currentWallet < amount) return;
+          if (!userError && userData) {
+            const currentWallet = Number(userData.wallet || 0);
+            if (currentWallet >= amount) {
+              const newWallet = currentWallet - amount;
+              const { error: updateError } = await supabase
+                .from('users')
+                .update({ wallet: newWallet })
+                .eq('phone', user.phone);
 
-        const newWallet = currentWallet - amount;
-        const { error: updateError } = await supabase
-          .from('users')
-          .update({ wallet: newWallet })
-          .eq('phone', user.phone);
-
-        if (!updateError) {
-          const updated = { ...user, wallet: newWallet };
-          set({ currentUser: updated });
-          safeSetStorage('currentUser', updated);
-          walletDeductedAt = Date.now();
+              if (!updateError) {
+                const updated = { ...user, wallet: newWallet };
+                set({ currentUser: updated });
+                safeSetStorage('currentUser', updated);
+                walletDeductedAt = Date.now();
+              }
+            }
+          }
+        } catch (fallbackErr) {
+          console.error('Wallet deduct fallback failed:', fallbackErr);
         }
-      } catch (fallbackErr) {
-        console.error('Wallet deduct fallback failed:', fallbackErr);
       }
+    } finally {
+      walletDeductLock = false; // فك قفل الحماية دائماً فور إتمام أو فشل العملية
     }
   },
 
