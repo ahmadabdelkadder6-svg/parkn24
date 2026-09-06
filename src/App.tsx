@@ -1,14 +1,11 @@
-import { useEffect, useRef, useState, useMemo, lazy, Suspense } from 'react';
+import { useEffect, useRef, useState, useMemo, lazy, Suspense, Component, ErrorInfo, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
 import { useStore, setupRealtime, normalizePlate } from './store';
 import { cn } from './utils/cn';
 
-// 🛡️ استيراد صمام الأمان لمنع الشاشة البيضاء للأبد
-import ErrorBoundary from './components/ErrorBoundary';
-
-// Screens (تحميل مباشر للشاشات الخفيفة التي يحتاجها العميل فوراً)
+// Screens
 import AuthGate from './components/AuthGate';
 import SplashScreen from './components/SplashScreen';
 import RegisterScreen from './components/RegisterScreen';
@@ -24,9 +21,44 @@ import ChatScreen from './components/ChatScreen';
 import InstallPage from './components/InstallPage';
 import InstallQRCodePage from './components/InstallQRCodePage';
 
-// ⚡ [تسريع صاروخي]: تحميل كسول للوحات الإدارة الثقيلة
+// Lazy Components
 const GarageDashboard = lazy(() => import('./components/GarageDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
+
+// 🛡️ صمام الأمان المدمج مباشرة لمنع الشاشة البيضاء بدون الحاجة لملفات خارجية
+class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: boolean }> {
+  public state = { hasError: false };
+
+  public static getDerivedStateFromError(_: Error) {
+    return { hasError: true };
+  }
+
+  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('App Error Boundary caught:', error, errorInfo);
+  }
+
+  public render() {
+    if (this.state.hasError) {
+      return (
+        <div className="h-screen w-screen bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center" dir="rtl">
+          <div className="text-5xl mb-4">🚗</div>
+          <h2 className="text-xl font-black mb-2">حدث تحديث بسيط في النظام</h2>
+          <p className="text-slate-400 text-xs font-bold mb-6">اضغط بالأسفل للعودة فوراً لمتابعة حجزك وركنتك</p>
+          <button
+            onClick={() => {
+              this.setState({ hasError: false });
+              window.location.href = '/';
+            }}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-black px-8 py-3.5 rounded-2xl text-sm active:scale-95 transition-all shadow-lg"
+          >
+            🔄 إعادة التحميل والمتابعة
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const VALID_SCREENS = [
   'splash',
@@ -95,7 +127,6 @@ export default function App() {
     }
   }, [safeScreen, screen, setScreen, dataLoaded, view]);
 
-  // ⚡ [التهيئة الصاروخية]: فتح الشاشة فوراً + جلب البيانات في الخلفية
   useEffect(() => {
     const init = async () => {
       const justInstalled = localStorage.getItem('pwaJustInstalled') === 'true';
@@ -242,7 +273,6 @@ export default function App() {
             : 0;
         const timeSinceEnd = Date.now() - endTime;
 
-        // 🛡️ [تعديل أمني حرج]: التحقق من عدم إقرار وإغلاق الجلسة مسبقاً لمنع التوجيه المتكرر واللانهائي عند الـ Reload
         const freshAcknowledged = acknowledgedSessionIds;
         const isNotAcknowledged = freshAcknowledged ? !freshAcknowledged.has(lastCompleted.id) : true;
 
