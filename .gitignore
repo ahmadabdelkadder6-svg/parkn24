@@ -1,7 +1,21 @@
-node_modules
-dist
+# 📦 مكتبات المشروع (حجمها كبير ومش محتاجة تترفع)
+node_modules/
+
+# 🏗️ ناتج الـ Build المؤقت
+dist/
+dist-ssr/
+*.local
+
+# 🔒 مفاتيح السيرفر الحساسة (أمان 100%)
 .env
-.env.local
-package-lock.json
-.vercel
-.env*
+.env.*
+!.env.example
+
+# ☁️ ملفات Vercel المؤقتة
+.vercel/
+
+# 🛠️ ملفات النظام والـ Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store

@@ -1,0 +1,37 @@
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+
+// ⚙️ إعدادات محاكاة ضغط واقعي للزوار
+export const options = {
+  stages: [
+    { duration: '15s', target: 20 },  // زيادة تدريجية خلال 15 ثانية حتى 20 مستخدم متزامن
+    { duration: '30s', target: 50 },  // رفع الضغط إلى 50 مستخدم حقيقي في نفس اللحظة
+    { duration: '20s', target: 100 }, // الوصول لذروة الضغط (100 مستخدم نشط)
+    { duration: '15s', target: 0 },   // تهدئة وانخفاض الزوار تدريجياً
+  ],
+  thresholds: {
+    http_req_failed: ['rate<0.01'],    // نسبة الأخطاء المسموحة أقل من 1%
+    http_req_duration: ['p(95)<1500'], // 95% من الطلبات يجب أن ترد في أقل من ثانية ونصف
+  },
+};
+
+export default function () {
+  // 1. محاكاة دخول العميل على الصفحة الرئيسية
+  const res = http.get('https://parkn24.vercel.app/');
+  
+  // التأكد أن الصفحة فتحت بنجاح بكود 200 OK
+  check(res, {
+    '✅ تم فتح الصفحة بنجاح (200 OK)': (r) => r.status === 200,
+  });
+
+  // 2. محاكاة وقت تصفح العميل للشاشة (Think Time) لمدة ثانيتين
+  sleep(2);
+
+  // 3. محاكاة فتح صفحة التثبيت أو التوجيه
+  const installRes = http.get('https://parkn24.vercel.app/install');
+  check(installRes, {
+    '✅ صفحة التثبيت استجابت بنجاح': (r) => r.status === 200,
+  });
+
+  sleep(1);
+}
