@@ -8,7 +8,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 // 🌟 استيراد دالة البصمة الموحدة من الـ store لضمان مطابقة اللوحات بنسبة 100%
-import { useStore, normalizePlate } from '../store';
+import { useStore, normalizePlate, normalizePhone } from '../store';
 import {
   calculateFullHours,
   calculateCost,
@@ -44,7 +44,7 @@ export default function SessionScreen() {
   } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
-  const userPhone = currentUser?.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
+  const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
   const redirectedToSummaryRef = useRef(false);
   const redirectedToSessionRef = useRef(false);
@@ -58,21 +58,21 @@ export default function SessionScreen() {
     if (!row) return false;
     const rowPlate = normalizePlate(row.car_plate || row.carPlate);
     const rowPhone = row.customer_phone || row.customerPhone || '';
-    const cleanRowPhone = typeof rowPhone === 'string' ? rowPhone.replace(/[^\d+]/g, '') : '';
+    const cleanRowPhone = typeof rowPhone === 'string' ? normalizePhone(rowPhone) : '';
     return (
       (!!userPlate && rowPlate === userPlate) ||
       (!!userPhone && cleanRowPhone === userPhone)
     );
   };
 
-  // ✅ البحث عن الجلسة النشطة بالبصمة الموحدة
+  // ✅ البحث عن الجلسة النشطة بالبصمة الموحدة ورقم الهاتف
   const activeSession = useMemo(() => {
     return sessions
       .filter((s) => {
         if (!s || s.status !== 'active') return false;
         if (acknowledgedSessionIds?.has(s.id)) return false;
         const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-        const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+        const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
         const samePhoneMatch = !!userPhone && sPhone === userPhone;
         return samePlateMatch || samePhoneMatch;
       })
@@ -84,7 +84,7 @@ export default function SessionScreen() {
       .filter((s) => {
         if (!s || s.status !== 'completed') return false;
         const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-        const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
+        const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
         const samePhoneMatch = !!userPhone && sPhone === userPhone;
         return samePlateMatch || samePhoneMatch;
       })
@@ -94,6 +94,31 @@ export default function SessionScreen() {
   const garage = garages?.find(
     (g) => g.id === (activeSession?.garageId ?? lastCompletedSession?.garageId),
   );
+
+  // 🛡️ [صمام الأمان الذكي]: لو مفيش جلسة نشطة بعد ثانيتين ونصف، يرجع للقائمة تلقائياً ولا يعلق أبداً
+  useEffect(() => {
+    if (activeSession) return;
+
+    const timeout = setTimeout(() => {
+      const freshState = useStore.getState();
+      const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
+      const freshPhone = freshState.currentUser?.phone ? normalizePhone(freshState.currentUser.phone) : '';
+
+      const stillActive = freshState.sessions.find((s) => {
+        if (s.status !== 'active') return false;
+        const plateMatch = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
+        const phoneMatch = !!freshPhone && normalizePhone((s as any).customerPhone || '') === freshPhone;
+        return plateMatch || phoneMatch;
+      });
+
+      if (!stillActive) {
+        setSelectedGarageId(null);
+        setScreen('list');
+      }
+    }, 2500);
+
+    return () => clearTimeout(timeout);
+  }, [activeSession, setScreen, setSelectedGarageId]);
 
   useEffect(() => {
     if (activeSession?.id) {
@@ -108,7 +133,7 @@ export default function SessionScreen() {
     return ms > 0 ? ms : Date.now();
   }, [activeSession?.id, activeSession?.startTime]);
 
-  // 📡 جلب البيانات في الخلفية بدون حجب الشاشة
+  // 📡 جلب البيانات فورياً في الخلفية
   useEffect(() => {
     fetchAll().catch((e) => console.error('Fetch error:', e));
   }, [fetchAll]);
@@ -218,7 +243,7 @@ export default function SessionScreen() {
   const sessionRate = Number(activeSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const isFirstFreeApplied = activeSession?.isFirstFreeSession === true;
 
-  // 🎁 [حساب 30 دقيقة مجاناً]: تعديل الحساب التفاعلي ليتوافق مع المنطق الجديد
+  // 🎁 [حساب 30 دقيقة مجاناً]: الحساب التفاعلي ليتوافق مع المنطق الجديد
   const { displayedCost, displayedHours, countdownLabel, countdownTime, isFreeNow } = useMemo(() => {
     const defaultCountdown = { minutes: 59, seconds: 59 };
     const standardCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(elapsed) : defaultCountdown;
@@ -248,18 +273,50 @@ export default function SessionScreen() {
     };
   }, [isFirstFreeApplied, elapsed, sessionRate]);
 
-  // إذا لم تكن هناك جلسة نشطة
+  // 🌟 [هيكل التحميل الانسيابي مع زر خروج فوري شغال 100%]:
   if (!activeSession) {
     return (
-      <div className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8">
-        <div className="text-4xl mb-4 animate-bounce">⏳</div>
-        <p className="text-slate-500 text-sm font-bold text-center mb-2">جاري مزامنة بيانات الجلسة...</p>
-        <p className="text-slate-400 text-xs text-center mb-4">ستظهر بيانات العداد فور استلامها</p>
+      <div className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-6 overflow-hidden">
+        <div className="w-full flex-1 flex flex-col items-center justify-center animate-pulse">
+          {/* دائرة العداد الهيكلية */}
+          <div className="w-44 h-44 rounded-full bg-slate-100 border-4 border-slate-200 flex flex-col items-center justify-center mb-5 relative overflow-hidden">
+            <div className="w-8 h-8 rounded-full bg-slate-200 mb-2" />
+            <div className="w-24 h-7 rounded-xl bg-slate-200 mb-2" />
+            <div className="w-16 h-3 rounded-md bg-slate-200" />
+          </div>
+
+          {/* كارت الحساب والعداد */}
+          <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-4">
+            <div className="flex justify-between items-center mb-3">
+              <div className="w-16 h-8 bg-slate-200 rounded-xl" />
+              <div className="w-4 h-4 bg-slate-200 rounded-full" />
+              <div className="w-20 h-8 bg-slate-200 rounded-xl" />
+            </div>
+            <div className="w-full h-14 bg-slate-200/70 rounded-xl" />
+          </div>
+
+          {/* بطاقات البيانات */}
+          <div className="w-full grid grid-cols-2 gap-3 mb-4">
+            <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl h-20 flex flex-col items-center justify-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-slate-200" />
+              <div className="w-16 h-4 bg-slate-200 rounded-md" />
+            </div>
+            <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl h-20 flex flex-col items-center justify-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-slate-200" />
+              <div className="w-16 h-4 bg-slate-200 rounded-md" />
+            </div>
+          </div>
+        </div>
+
+        {/* 🚀 زر العودة المباشر الفوري لمنع أي تعليق */}
         <button
-          onClick={() => setScreen('list')}
-          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center gap-2 shadow-md"
+          onClick={() => {
+            setSelectedGarageId(null);
+            setScreen('list');
+          }}
+          className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-3.5 rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center justify-center gap-2 shadow-sm"
         >
-          <ArrowRight size={16} /> <span>العودة للقائمة</span>
+          <ArrowRight size={16} /> <span>العودة للقائمة الرئيسية</span>
         </button>
       </div>
     );
@@ -417,7 +474,10 @@ export default function SessionScreen() {
       </button>
 
       <button
-        onClick={() => setScreen('list')}
+        onClick={() => {
+          setSelectedGarageId(null);
+          setScreen('list');
+        }}
         className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 py-3 rounded-2xl font-bold text-sm active:scale-95 transition-all"
       >
         العودة للقائمة
