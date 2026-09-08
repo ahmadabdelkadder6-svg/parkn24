@@ -4,7 +4,7 @@ import {
   Car, Clock, LogOut, Plus, CheckCircle, XCircle, Settings,
   Minus, Save, MapPin, Edit3, Navigation, Phone, CarFront, FileText,
   CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
-  Search, X, CreditCard,
+  Search, X,
 } from 'lucide-react';
 import { useStore, pausePolling, normalizePlate } from '../store';
 import { supabase } from '../lib/supabase';
@@ -228,11 +228,18 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
   const mins = Math.floor(el / 60);
 
   const isFreeApplied = s.isFirstFreeSession === true;
-  const isFreeNow = isFreeApplied && el <= 1800; // أول 30 دقيقة مجانية بالكامل
-  
-  const hrs = isFreeNow ? 0 : calculateFullHours(el);
+  const freeSeconds = isFreeApplied ? Math.min(el, 3600) : 0;
+  const billableSeconds = Math.max(0, el - freeSeconds);
+  const hrs = isFreeApplied ? calculateFullHours(billableSeconds) : calculateFullHours(el);
+
   const rate = Number(s.agreedPrice ?? basePrice);
-  const cost = isFreeNow ? 0 : calculateCost(el, rate);
+  const cost = (() => {
+    if (el <= 0 || rate <= 0) return 0;
+    if (isFreeApplied) {
+      return calculateCost(billableSeconds, rate);
+    }
+    return calculateCost(el, rate);
+  })();
 
   const isM = s.source === 'manual';
 
@@ -255,7 +262,7 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
           
           {isFreeApplied && (
             <span className="font-black flex items-center gap-0.5 shrink-0" style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, background: '#FFF3E0', color: '#E65100', border: '1px solid #FFE0B2' }}>
-              <Gift size={10} /> {isFreeNow ? 'هدية ترحيبية نشطة 🎁' : 'انتهت الهدية الترحيبية'}
+              <Gift size={10} /> ساعة مجانية
             </span>
           )}
         </div>
@@ -288,8 +295,8 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
           )}
         </div>
 
-        <div className="font-black text-left" style={{ fontSize: isFreeNow ? 11 : 15, color: isFreeNow ? '#FF9500' : '#00AA44' }}>
-          {isFreeNow ? (
+        <div className="font-black text-left" style={{ fontSize: cost === 0 && isFreeApplied ? 11 : 15, color: cost === 0 && isFreeApplied ? '#FF9500' : '#00AA44' }}>
+          {cost === 0 && isFreeApplied ? (
             <span className="flex items-center gap-0.5 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg shadow-sm">
               🎁 مجاناً (0ج)
             </span>
@@ -398,19 +405,15 @@ export default function GarageDashboard() {
   const [newCarPrice, setNewCarPrice] = useState(garage?.basePrice || 15);
   const [showAddCar, setShowAddCar] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  
-  // حالات تعديل الإعدادات
   const [editPrice, setEditPrice] = useState(garage?.basePrice || 15);
   const [editSpots, setEditSpots] = useState(garage?.availableSpots || 0);
   const [editCapacity, setEditCapacity] = useState(garage?.capacity || 50);
-  const [editPaymentMode, setEditPaymentMode] = useState<string>(garage?.payment_mode || 'both');
   const [editValet1Name, setEditValet1Name] = useState(garage?.valetName1 || '');
   const [editValet1Pass, setEditValet1Pass] = useState(garage?.valetPassword1 || '');
   const [editValet2Name, setEditValet2Name] = useState(garage?.valetName2 || '');
   const [editValet2Pass, setEditValet2Pass] = useState(garage?.valetPassword2 || '');
   const [editValet3Name, setEditValet3Name] = useState(garage?.valetName3 || '');
   const [editValet3Pass, setEditValet3Pass] = useState(garage?.valetPassword3 || '');
-  
   const [logDateFrom, setLogDateFrom] = useState(() => getLocalToday());
   const [logDateTo, setLogDateTo] = useState(() => getLocalToday());
   const [logPaymentFilter, setLogPaymentFilter] = useState<string>('all');
@@ -430,7 +433,7 @@ export default function GarageDashboard() {
     return getMyOwnedGarages(garage.ownerPhone || garage.phone || '');
   }, [getMyOwnedGarages, garage, garages]);
 
-  // 🌟 [النسب التلقائي الشامل للسايس المناوب]: إسناد أي للجلسة مكتملة من التطبيق للسايس وتثبيتها في حسابه
+  // 🌟 [النسب التلقائي الشامل للسايس المناوب]: إسناد أي جلسة مكتملة من التطبيق (كاش معلق / محفظة / مجاني) للسايس المتواجد على الشفت وتثبيتها في حسابه
   useEffect(() => {
     if (!isValet || !currentGarageId) return;
     const currentValet = currentValetNameLocal || currentValetName || `سايس ${valetNumber}`;
@@ -555,15 +558,18 @@ export default function GarageDashboard() {
 
   useEffect(() => { return () => { try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }; }, []);
 
-  // 🌟 تعديل منطق الإيراد الفعلي ليتوافق بدقة مع الـ 30 دقيقة
   const getSessionRevenue = useCallback((s: any) => {
-    if (s.totalPrice != null) return Number(s.totalPrice);
+    if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
       const elSeconds = Math.max(0, Math.floor((toMs(s.endTime) - toMs(s.startTime)) / 1000));
       const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
       
-      const isFreeNow = s.isFirstFreeSession === true && elSeconds <= 1800;
-      return isFreeNow ? 0 : calculateCost(elSeconds, r);
+      if (s.isFirstFreeSession === true) {
+        const freeSeconds = Math.min(elSeconds, 3600);
+        const billableSeconds = Math.max(0, elSeconds - freeSeconds);
+        return calculateCost(billableSeconds, r);
+      }
+      return calculateCost(elSeconds, r);
     }
     return 0;
   }, [garage?.basePrice]);
@@ -583,18 +589,21 @@ export default function GarageDashboard() {
     return Math.round((rev - comm) * 100) / 100;
   }, [getSessionRevenue, getSessionCommission]);
 
-  // 🌟 تعديل حساب التكلفة التفاعلية للجلسات النشطة لتكون 30 دقيقة
   const getActiveCost = useCallback((s: any) => {
     const st = toMs(s.startTime);
     const el = st > 0 ? Math.max(0, Math.floor((Date.now() - st) / 1000)) : 0;
     const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
     if (el <= 0 || r <= 0) return 0;
 
-    const isFreeNow = s.isFirstFreeSession === true && el <= 1800;
-    return isFreeNow ? 0 : calculateCost(el, r);
+    if (s.isFirstFreeSession === true) {
+      const freeSeconds = Math.min(el, 3600);
+      const billableSeconds = Math.max(0, el - freeSeconds);
+      return calculateCost(billableSeconds, r);
+    }
+    return calculateCost(el, r);
   }, [garage?.basePrice]);
 
-  // 🌟 [الفلترة الحصرية للسايس]: يرى فقط العمليات المسجلة باسمه
+  // 🌟 [الفلترة الحصرية للسايس]: يرى فقط العمليات المسجلة باسمه (سواء معلقة أو مؤكدة، كاش أو محفظة أو مجانية)
   const filteredCompleted = useMemo(() => {
     if (isValet) {
       const isActive =
@@ -630,6 +639,8 @@ export default function GarageDashboard() {
       if (isValet) {
         const isMine = addedBy && myValetNames.has(addedBy);
         const isUnassignedApp = !addedBy && s.source === 'app';
+        
+        // 🔒 السايس يرى فقط ما يخصه أو ما يلتقطه جهازه تلقائياً
         if (!isMine && !isUnassignedApp) return false;
       }      
       
@@ -733,6 +744,8 @@ export default function GarageDashboard() {
     return () => clearInterval(i);
   }, [undoableSessions.length]);
 
+  useEffect(() => { if (garage) setNewCarPrice(garage.basePrice); }, [garage?.basePrice, garage]);
+
   useEffect(() => {
     setUndoableSessions(p =>
       p.filter(u => Math.floor((Date.now() - u.addedAt) / 1000) < UNDO_TIMEOUT_SECONDS)
@@ -804,13 +817,11 @@ export default function GarageDashboard() {
       const sd = useStore.getState().sessions.find(s => s.id === sc.id);
       const ia = sd?.source === 'app';
       
-      // 🌟 تعديل دقائق الهدية الترحيبية المجانية لتسجل بدقة بحد أقصى 30 دقيقة
       let freeMinutesApplied = 0;
       if (sd?.isFirstFreeSession === true) {
-        const elapsedSeconds = Math.floor((Date.now() - toMs(sd.startTime)) / 1000);
-        if (elapsedSeconds <= 1800) {
-          freeMinutesApplied = Math.floor(elapsedSeconds / 60);
-        }
+        const elapsedMs = Date.now() - toMs(sd.startTime);
+        const freeMs = Math.min(elapsedMs, 60 * 60 * 1000);
+        freeMinutesApplied = Math.floor(freeMs / 60000);
       }
 
       const currentValet = isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '';
@@ -830,10 +841,7 @@ export default function GarageDashboard() {
 
   const handleSaveSettings = () => {
     updateGarage(garage.id, {
-      basePrice: editPrice, 
-      availableSpots: Math.min(editSpots, editCapacity), 
-      capacity: editCapacity,
-      payment_mode: editPaymentMode, // 🌟 حفظ خيار طريقة الدفع المقبولة للجراج
+      basePrice: editPrice, availableSpots: Math.min(editSpots, editCapacity), capacity: editCapacity,
       valetName1: editValet1Name.trim(), valetPassword1: editValet1Pass.trim(),
       valetName2: editValet2Name.trim(), valetPassword2: editValet2Pass.trim(),
       valetName3: editValet3Name.trim(), valetPassword3: editValet3Pass.trim(),
@@ -842,10 +850,7 @@ export default function GarageDashboard() {
   };
 
   const openSettings = () => {
-    setEditPrice(garage.basePrice); 
-    setEditSpots(garage.availableSpots); 
-    setEditCapacity(garage.capacity);
-    setEditPaymentMode(garage.payment_mode || 'both'); // 🌟 قراءة طريقة الدفع الحالية عند الفتح
+    setEditPrice(garage.basePrice); setEditSpots(garage.availableSpots); setEditCapacity(garage.capacity);
     setEditValet1Name(garage.valetName1 || ''); setEditValet1Pass(garage.valetPassword1 || '');
     setEditValet2Name(garage.valetName2 || ''); setEditValet2Pass(garage.valetPassword2 || '');
     setEditValet3Name(garage.valetName3 || ''); setEditValet3Pass(garage.valetPassword3 || '');
@@ -923,8 +928,6 @@ export default function GarageDashboard() {
               <button onClick={() => setShowSettings(false)} style={{ color: '#94a3b8', fontSize: 20 }}>✕</button>
               <h3 className="font-black flex items-center gap-2" style={{ fontSize: 18 }}><Settings size={18} style={{ color: '#0066FF' }} /> إعدادات الجراج</h3>
             </div>
-            
-            {/* سعر الساعة */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>💰 سعر الساعة</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
@@ -935,8 +938,6 @@ export default function GarageDashboard() {
                 </div>
               </div>
             </div>
-
-            {/* الأماكن المتاحة */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🚗 الأماكن المتاحة</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
@@ -947,8 +948,6 @@ export default function GarageDashboard() {
                 </div>
               </div>
             </div>
-
-            {/* السعة الكلية */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🏢 السعة الكلية</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
@@ -959,45 +958,6 @@ export default function GarageDashboard() {
                 </div>
               </div>
             </div>
-
-            {/* 🌟 طرق الدفع المقبولة */}
-            <div className="mb-6">
-              <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>💳 طرق الدفع المقبولة في جراجك</label>
-              <div className="grid grid-cols-2 gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setEditPaymentMode('cash_only')}
-                  className="p-3.5 rounded-2xl font-black flex flex-col items-center justify-center gap-1 active:scale-95 transition-all"
-                  style={{
-                    background: editPaymentMode === 'cash_only' ? '#FFF8F0' : '#F0F4FF',
-                    border: `2px solid ${editPaymentMode === 'cash_only' ? '#FF9500' : '#D0DCFF'}`,
-                    color: editPaymentMode === 'cash_only' ? '#E65100' : '#64748b',
-                  }}
-                >
-                  <span style={{ fontSize: 22 }}>💵</span>
-                  <span style={{ fontSize: 11, fontWeight: 900 }}>نقدي فقط</span>
-                </button>
-                
-                <button
-                  type="button"
-                  onClick={() => setEditPaymentMode('both')}
-                  className="p-3.5 rounded-2xl font-black flex flex-col items-center justify-center gap-1 active:scale-95 transition-all"
-                  style={{
-                    background: editPaymentMode === 'both' ? '#F4F9FF' : '#F0F4FF',
-                    border: `2px solid ${editPaymentMode === 'both' ? '#0066FF' : '#D0DCFF'}`,
-                    color: editPaymentMode === 'both' ? '#0066FF' : '#64748b',
-                  }}
-                >
-                  <div className="flex gap-1">
-                    <span style={{ fontSize: 18 }}>💵</span>
-                    <span style={{ fontSize: 18 }}>👝</span>
-                  </div>
-                  <span style={{ fontSize: 11, fontWeight: 900 }}>نقدي + محفظة</span>
-                </button>
-              </div>
-            </div>
-
-            {/* نسبة عمولة التطبيق */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>📊 نسبة عمولة التطبيق</label>
               <div style={{ background: '#FFF8F0', borderRadius: 22, padding: 16, border: '2px solid #FFD180' }}>
@@ -1005,8 +965,6 @@ export default function GarageDashboard() {
                 <div className="text-center mt-2"><span className="font-bold" style={{ fontSize: 10, color: '#94a3b8' }}>يتم تحديدها من إدارة التطبيق</span></div>
               </div>
             </div>
-
-            {/* إدارة السياس */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🅿️ إدارة السياس</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
@@ -1518,8 +1476,8 @@ export default function GarageDashboard() {
                                 <div className="font-black" style={{ fontSize: 12, fontWeight: 950, color: '#0A1628' }}>{v.name}</div>
                                 <div className="font-black" style={{ fontSize: 9, color: '#94a3b8', fontWeight: 900 }}>{v.count} سيارة</div>
                               </div>
-                              <div style={{ width: 30, height: 30, borderRadius: 10, background: v.color, color: '#ffffff', display: 'flex', alignItems: 'center', justifyStyle: 'center', fontWeight: 950, fontSize: 12, textShadow: '0 1px 1px rgba(0,0,0,0.2)', justifyItems: 'center', alignContent: 'center', justifySelf: 'center' }}>
-                                <span className="m-auto text-center">{v.icon}</span>
+                              <div style={{ width: 30, height: 30, borderRadius: 10, background: v.color, color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 950, fontSize: 12, textShadow: '0 1px 1px rgba(0,0,0,0.2)' }}>
+                                {v.icon}
                               </div>
                             </div>
                           </div>
@@ -1600,6 +1558,7 @@ export default function GarageDashboard() {
                     {!isSettled && !isC ? (
                       <button 
                         onClick={async () => { 
+                          // 🌟 [النسب الفوري]: عند الضغط على تأكيد يتم تسجيل الجلسة باسم السايس الحالي فوراً
                           const currentValet = isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '';
                           if (currentValet) {
                             await assignSessionToValet(session.id, currentValet);

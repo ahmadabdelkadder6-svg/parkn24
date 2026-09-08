@@ -27,7 +27,6 @@ export interface Garage {
   valet2Active: boolean;
   valet3Active: boolean;
   isActive: boolean;
-  payment_mode?: string; // 🌟 تم إضافة هذا الحقل لتعريف طريقة الدفع المقبولة
 }
 
 export interface ParkingSession {
@@ -126,7 +125,7 @@ export const calculateBonus = (amount: number): number => {
   return eligibleTier ? eligibleTier.bonus : 0;
 };
 
-export const FREE_SESSION_DURATION_MS = 30 * 60 * 1000; // 🎁 أول 30 دقيقة مجانية
+export const FREE_SESSION_DURATION_MS = 60 * 60 * 1000;
 
 export const isEligibleForFreeSession = (
   source: 'app' | 'manual',
@@ -151,26 +150,21 @@ export const calculateSessionPriceWithFreeGift = (
     };
   }
 
-  // 🕐 الحالة الأولى: مدة الركن 30 دقيقة أو أقل (مجانية بالكامل 0 ج.م)
-  if (durationMs <= FREE_SESSION_DURATION_MS) {
-    return {
-      finalPrice: 0,
-      freeMinutes: Math.floor(durationMs / 60000),
-      billableMs: 0,
-    };
+  const freeMs = Math.min(durationMs, FREE_SESSION_DURATION_MS);
+  const billableMs = Math.max(0, durationMs - freeMs);
+  const freeMinutes = Math.floor(freeMs / 60000);
+
+  if (billableMs === 0) {
+    return { finalPrice: 0, freeMinutes, billableMs: 0 };
   }
 
-  // 🕐 الحالة الثانية: تجاوزت مدة الركن 30 دقيقة
-  const finalPrice = originalPriceCalculator(durationMs, hourlyRate);
-  return {
-    finalPrice,
-    freeMinutes: 0,
-    billableMs: durationMs,
-  };
+  const finalPrice = originalPriceCalculator(billableMs, hourlyRate);
+  return { finalPrice, freeMinutes: 60, billableMs };
 };
 
 // ===================== 🛡️ طبقات الحماية الأمنية المحدثة =====================
 
+// 🛡️ [حماية متطورة]: منع إغراق السيرفر بالطلبات المكررة وتأمين معدل الإرسال حتى بعد تحديث الصفحة
 const rateLimiter = {
   canProceed(): boolean {
     const now = Date.now();
@@ -180,6 +174,7 @@ const rateLimiter = {
       const saved = sessionStorage.getItem('p24_rate_limit');
       if (saved) record = JSON.parse(saved);
     } catch {
+      // Fallback في حالة حظر sessionStorage بالمتصفح
       if (!(this as any)._fallbackRecord) {
         (this as any)._fallbackRecord = { requests: 0, lastReset: now };
       }
@@ -199,7 +194,7 @@ const rateLimiter = {
       (this as any)._fallbackRecord = record;
     }
 
-    return record.requests <= 200;
+    return record.requests <= 200; // 200 طلب كحد أقصى آمن ومستقر للجلسة
   }
 };
 
@@ -258,6 +253,7 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
+// 🧬 محرك البصمة العبقري الموحد للوحات السيارات
 export const getPlateFingerprint = (plate?: string): string => {
   if (!plate) return '';
 
@@ -269,7 +265,7 @@ export const getPlateFingerprint = (plate?: string): string => {
 
   str = str
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)));
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷٨٩'.indexOf(d)));
 
   const enToArMap: Record<string, string> = {
     'A': 'ا', 'B': 'ب', 'C': 'س', 'D': 'د', 'E': 'ي', 'F': 'ف',
@@ -304,6 +300,7 @@ export const normalizePlate = (plate?: string): string => {
   return getPlateFingerprint(plate);
 };
 
+// 📱 توحيد رقم الهاتف المصري لمنع التحايل بكود القطر أو الأصفار
 export const normalizePhone = (phone?: string): string => {
   if (!phone) return '';
   let clean = phone.replace(/[^\d]/g, '');
@@ -317,6 +314,7 @@ const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
 const getMs = (value?: number) => { if (typeof value === 'number') return value; return 0; };
 
+// منع اختفاء الجلسات النشطة في جراجات متعددة
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   const active = list.filter((s) => s.status === 'active');
   const completed = list.filter((s) => s.status === 'completed');
@@ -364,7 +362,6 @@ const mapGarage = (r: any): Garage => ({
   valet2Active: r.valet2_active !== false,
   valet3Active: r.valet3_active !== false,
   isActive: r.is_active !== false,
-  payment_mode: r.payment_mode || 'both', // 🌟 تحويل طريقة الدفع القادمة من قاعدة البيانات بـ Supabase
 });
 
 const mapSession = (r: any): ParkingSession => {
@@ -462,7 +459,7 @@ const pendingGarageUpdates: Map<string, Record<string, unknown>> = new Map();
 const sessionStartLocks = new Set<string>();
 const sessionEndLocks = new Set<string>();
 let walletDeductedAt = 0;
-let walletDeductLock = false;
+let walletDeductLock = false; // 🛡️ قفل المحفظة لمنع الخصم المزدوج نهائياً
 const deletedSessionIds = new Set<string>();
 const locallyEndedSessions = new Map<string, ParkingSession>();
 
@@ -507,11 +504,11 @@ interface AppState {
   currentGarageId: string | null;
   setCurrentGarageId: (id: string | null) => void;
   addGarage: (g: Omit<Garage, 'id' | 'rating' | 'availableSpots' | 'commissionRate' | 'valet1Active' | 'valet2Active' | 'valet3Active' | 'isActive'> & { capacity: number; ownerPhone?: string }) => Promise<void>;
-  updateGarage: (id: string, updates: Partial<Pick<Garage, 'basePrice' | 'availableSpots' | 'capacity' | 'commissionRate' | 'valet1Active' | 'valet2Active' | 'valet3Active' | 'ownerPhone' | 'isActive' | 'payment_mode'>> & {
+  updateGarage: (id: string, updates: Partial<Pick<Garage, 'basePrice' | 'availableSpots' | 'capacity' | 'commissionRate' | 'valet1Active' | 'valet2Active' | 'valet3Active' | 'ownerPhone' | 'isActive'>> & {
     valetName1?: string; valetPassword1?: string;
     valetName2?: string; valetPassword2?: string;
     valetName3?: string; valetPassword3?: string;
-  }) => Promise<void>; 
+  }) => Promise<void>;
   adjustGarageSpots: (id: string, delta: number) => Promise<void>;
   selectedGarageId: string | null;
   setSelectedGarageId: (id: string | null) => void;
@@ -555,6 +552,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   currentUser: safeGetStorage('currentUser'),
 
+  // تسجيل وضبط العميل مع فحص الاستحقاق المالي بالهاتف واللوحة الموحدين لمنع تكرار الهدية
   setCurrentUser: async (u) => {
     if (!u) { set({ currentUser: null }); safeRemoveStorage('currentUser'); return; }
     const cleanPlate = getPlateFingerprint(u.carPlate);
@@ -660,6 +658,7 @@ export const useStore = create<AppState>((set, get) => ({
     } catch (err) { console.error('Error setting user with anti-abuse check:', err); }
   },
 
+  // 🛡️ [تعديل أمني حرج]: قفل المحفظة لمنع الخصم المزدوج نهائياً تحت دقة متناهية
   deductWallet: async (amount) => {
     if (walletDeductLock) return;
     
@@ -672,7 +671,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
 
     try {
-      walletDeductLock = true;
+      walletDeductLock = true; // تفعيل القفل الفوري للخصم المزدوج
 
       if (isSupabaseConfigured()) {
         try {
@@ -721,7 +720,7 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
     } finally {
-      walletDeductLock = false;
+      walletDeductLock = false; // فك قفل الحماية دائماً فور إتمام أو فشل العملية
     }
   },
 
@@ -945,22 +944,13 @@ export const useStore = create<AppState>((set, get) => ({
             .eq('phone', user.phone)
             .single();
           if (data) {
-            // 🌟 فحص ذكي في الشحن أو التحديث لعدم رندرة التطبيق بدون تغيير حقيقي
-            const hasChanged = 
-              user.name !== data.name ||
-              user.carPlate !== data.car_plate ||
-              user.hasUsedFreeSession !== (data.has_used_free_session ?? user.hasUsedFreeSession ?? false) ||
-              user.bonusBalance !== Number(data.bonus_balance ?? user.bonusBalance ?? 0);
-
-            if (hasChanged) {
-              const updated = {
-                name: data.name || user.name, phone: data.phone || user.phone,
-                carPlate: data.car_plate || user.carPlate, wallet: user.wallet,
-                hasUsedFreeSession: data.has_used_free_session ?? user.hasUsedFreeSession ?? false,
-                bonusBalance: Number(data.bonus_balance ?? user.bonusBalance ?? 0),
-              };
-              set({ currentUser: updated }); safeSetStorage('currentUser', updated);
-            }
+            const updated = {
+              name: data.name || user.name, phone: data.phone || user.phone,
+              carPlate: data.car_plate || user.carPlate, wallet: user.wallet,
+              hasUsedFreeSession: data.has_used_free_session ?? user.hasUsedFreeSession ?? false,
+              bonusBalance: Number(data.bonus_balance ?? user.bonusBalance ?? 0),
+            };
+            set({ currentUser: updated }); safeSetStorage('currentUser', updated);
           }
         } else {
           const { data } = await supabase
@@ -969,23 +959,13 @@ export const useStore = create<AppState>((set, get) => ({
             .eq('phone', user.phone)
             .single();
           if (data) {
-            // 🌟 الفحص الحاسم: لمنع أي وميض أو رعشة من الرندرة المتكررة للمحفظة إذا كانت القيمة ثابتة
-            const hasChanged = 
-              user.wallet !== Number(data.wallet) ||
-              user.name !== data.name ||
-              user.carPlate !== data.car_plate ||
-              user.hasUsedFreeSession !== (data.has_used_free_session ?? false) ||
-              user.bonusBalance !== Number(data.bonus_balance ?? 0);
-
-            if (hasChanged) {
-              const updated = {
-                name: data.name || user.name, phone: data.phone || user.phone,
-                carPlate: data.car_plate || user.carPlate, wallet: Number(data.wallet),
-                hasUsedFreeSession: data.has_used_free_session ?? false,
-                bonusBalance: Number(data.bonus_balance ?? 0),
-              };
-              set({ currentUser: updated }); safeSetStorage('currentUser', updated);
-            }
+            const updated = {
+              name: data.name || user.name, phone: data.phone || user.phone,
+              carPlate: data.car_plate || user.carPlate, wallet: Number(data.wallet),
+              hasUsedFreeSession: data.has_used_free_session ?? false,
+              bonusBalance: Number(data.bonus_balance ?? 0),
+            };
+            set({ currentUser: updated }); safeSetStorage('currentUser', updated);
           }
         }
       } catch (err) { console.error('Error fetching user wallet:', err); }
@@ -1004,7 +984,6 @@ export const useStore = create<AppState>((set, get) => ({
       valet_name_2: (g as any).valetName2 || '', valet_password_2: (g as any).valetPassword2 || '',
       valet_name_3: (g as any).valetName3 || '', valet_password_3: (g as any).valetPassword3 || '',
       is_active: true,
-      payment_mode: 'both', 
     }).select();
     if (!error && data) set((st) => ({ garages: [...st.garages, ...data.map(mapGarage)] }));
   },
@@ -1041,7 +1020,6 @@ export const useStore = create<AppState>((set, get) => ({
     if (updates.valetPassword2 !== undefined) db.valet_password_2 = updates.valetPassword2;
     if (updates.valetName3 !== undefined) db.valet_name_3 = updates.valetName3;
     if (updates.valetPassword3 !== undefined) db.valet_password_3 = updates.valetPassword3;
-    if (updates.payment_mode !== undefined) db.payment_mode = updates.payment_mode; // 🌟 تحديث وإرسال طريقة الدفع المقبولة لجدول garages بـ Supabase
 
     pendingGarageUpdates.set(id, db);
     if (updateGarageTimeout) clearTimeout(updateGarageTimeout);
@@ -1101,6 +1079,7 @@ export const useStore = create<AppState>((set, get) => ({
       const isAppBooking = s.source === 'app';
       const cleanPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
 
+      // 🎁 [تحديد الاستحقاق الحاسم - يبدأ بـ false افتراضياً]:
       let eligibleForFree = false;
 
       if (isAppBooking) {
@@ -1110,6 +1089,7 @@ export const useStore = create<AppState>((set, get) => ({
 
           if (isSupabaseConfigured()) {
             try {
+              // 1. فحص الهاتف في جدول المستخدمين
               if (cleanPhone) {
                 const { data: userData } = await supabase
                   .from('users')
@@ -1122,6 +1102,7 @@ export const useStore = create<AppState>((set, get) => ({
                 }
               }
 
+              // 2. فحص الهاتف في كل الجلسات السابقة
               if (eligibleForFree && cleanPhone) {
                 const { data: phoneCheck } = await supabase
                   .from('sessions')
@@ -1133,6 +1114,7 @@ export const useStore = create<AppState>((set, get) => ({
                 if (phoneCheck && phoneCheck.length > 0) eligibleForFree = false;
               }
 
+              // 3. فحص اللوحة في كل الجلسات السابقة
               if (eligibleForFree && normalizedPlate) {
                 const { data: plateCheck } = await supabase
                   .from('sessions')
@@ -1223,6 +1205,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  // 🛡️ [تعديل أمني حرج]: قفل ثغرة الهدية الترحيبية اللانهائية عبر تحديث السيرفر برقم هاتف العميل مباشرة
   endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0) => {
     const now = Date.now();
     const session = get().sessions.find((s) => s.id === id);
@@ -1264,6 +1247,7 @@ export const useStore = create<AppState>((set, get) => ({
       set((st) => ({ sessions: st.sessions.map((s) => (s.id === id ? endedSession : s)) }));
       await get().adjustGarageSpots(session.garageId, +1);
 
+      // 🛡️ [قفل الثغرة]: تحديث حساب العميل برقم هاتفه مباشرة في قاعدة البيانات
       if (session.isFirstFreeSession) {
         const user = get().currentUser;
         const cleanSessionPhone = session.customerPhone ? normalizePhone(session.customerPhone) : '';
@@ -1297,7 +1281,7 @@ export const useStore = create<AppState>((set, get) => ({
           commission_amount: commissionAmount,
           net_revenue: netRevenue,
           settled: false,
-          free_minutes_applied: free_minutes_applied || session.freeMinutesApplied || 0,
+          free_minutes_applied: freeMinutesApplied || session.freeMinutesApplied || 0,
         })
         .eq('id', id)
         .eq('status', 'active');

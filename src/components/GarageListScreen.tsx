@@ -21,7 +21,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 // 🌟 استيراد normalizePlate و normalizePhone الموحدين من الـ store لربط أمني وثيق
-import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
+import { useStore, Garage, Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
 import {
   calculateDistance,
   distanceToMinutes,
@@ -36,17 +36,6 @@ interface GarageWithDistance extends Garage {
   distance: number;
   minutes: number;
   classification: 'nearby' | 'far';
-}
-
-interface GarageCardProps {
-  garage: GarageWithDistance;
-  index: number;
-  onSelect: () => void;
-  isNearby: boolean;
-  isClosest: boolean;
-  hasActiveSession: boolean;
-  hasIncomingCar: boolean;
-  disabled: boolean;
 }
 
 const safeParseTime = (value: unknown): number => {
@@ -111,7 +100,6 @@ export default function GarageListScreen() {
     [currentUser?.phone]
   );
 
-  // 🛡️ فحص حماية الهدايا الموحد والمحسن لمنع الرندرة اللانهائية
   useEffect(() => {
     if (!currentUser) return;
     
@@ -156,8 +144,7 @@ export default function GarageListScreen() {
     };
 
     checkAbuseHistory();
-  // 🌟 استخدام المتغيرات الصافية المستقرة لمنع الاستدعاءات المتكررة والرعشة
-  }, [cleanUserPhone, normalizedUserPlate, currentUser?.hasUsedFreeSession]);
+  }, [currentUser, sessions, cleanUserPhone]);
 
   const isEligibleForFreeSession = useMemo(() => {
     return currentUser && !currentUser.hasUsedFreeSession && !isAbuseDetected;
@@ -274,8 +261,8 @@ export default function GarageListScreen() {
       )
       .subscribe();
 
-    // 🌟 تم تعديله ليعمل كل 30 ثانية لتوفير البطارية والسيرفر طالما أن الـ Realtime نشط وفوري
-    const interval = setInterval(refetch, 30000); 
+    // ⚡ [تعديل البطارية والأداء]: تقليل الـ Polling إلى 5 ثوانٍ بدلاً من ثانية ونصف
+    const interval = setInterval(refetch, 5000); 
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') refetch();
@@ -679,7 +666,7 @@ export default function GarageListScreen() {
           )}
         </AnimatePresence>
 
-        {/* 🎁 بانر ترحيبي محدث لـ 30 دقيقة */}
+        {/* بانر ترحيبي */}
         {isEligibleForFreeSession && !activeSession && !myIncomingCar && (
           <motion.div
             initial={{ opacity: 0, y: -15, scale: 0.95 }}
@@ -728,11 +715,11 @@ export default function GarageListScreen() {
                   className="font-black text-slate-900 leading-tight" 
                   style={{ fontSize: '13.5px' }}
                 >
-                  أول ركنة لك معنا <span className="text-red-500 font-black">مجانية بالكامل! 🎁</span>
+                  أول ركنة لك معنا <span className="text-red-500 font-black">مجانية بالكامل! 🕐</span>
                 </h4>
                 
                 <p className="text-slate-500 font-bold leading-normal mt-1" style={{ fontSize: '10px' }}>
-                  احجز الآن من التطبيق واستمتع بـ <span className="text-emerald-600 font-black">أول 30 دقيقة مجاناً 100%</span> كهدية ترحيبية مميزة لك في أول زيارة 🎈
+                  احجز الآن من التطبيق واستمتع بـ <span className="text-emerald-600 font-black">أول ساعة مجاناً 100%</span> كهدية ترحيبية مميزة لك في أول زيارة 🎈
                 </p>
               </div>
             </div>
@@ -804,7 +791,7 @@ export default function GarageListScreen() {
             </div>
             <div>
               <div className="text-sm font-black flex items-center gap-1 justify-end">
-                <Navigation size={15} /> hجز نشط (في الطريق)
+                <Navigation size={15} /> حجز نشط (في الطريق)
               </div>
               <div className="text-[10px]" style={{ opacity: 0.85 }}>
                 اضغط لفتح الخريطة والتوجيه
@@ -1025,9 +1012,6 @@ export default function GarageListScreen() {
   );
 }
 
-/* ════════════════════════════════════════════════════════════
-   ██  WELCOME GIFT MODAL
-   ════════════════════════════════════════════════════════════ */
 function WelcomeGiftModal() {
   const [show, setShow] = useState(false);
   const currentUser = useStore((s) => s.currentUser);
@@ -1089,11 +1073,11 @@ function WelcomeGiftModal() {
             <div className="relative z-10 mb-6" style={{ background: 'linear-gradient(135deg, #FFF7ED 0%, #FEF3C7 50%, #FFEDD5 100%)', borderRadius: 20, padding: '18px 16px', border: '2px solid #FCD34D' }}>
               <div className="flex items-center justify-center gap-2 mb-2">
                 <Sparkles size={18} className="text-amber-500 animate-pulse" />
-                <span className="font-black text-amber-700" style={{ fontSize: 18 }}>أول 30 دقيقة ركنة مجاناً!</span>
+                <span className="font-black text-amber-700" style={{ fontSize: 18 }}>أول ساعة ركنة مجاناً!</span>
                 <Sparkles size={18} className="text-amber-500 animate-pulse" />
               </div>
               <p className="text-amber-600 font-bold text-xs leading-relaxed">
-                احجز ركنتك الأولى من التطبيق وهنركنلك أول 30 دقيقة ببلاش تماماً 🚗✨
+                احجز ركنتك الأولى من التطبيق وهنركنلك أول ساعة ببلاش تماماً 🚗✨
               </p>
             </div>
 
@@ -1118,9 +1102,7 @@ function WelcomeGiftModal() {
   );
 }
 
-/* ════════════════════════════════════════════════════════════
-   ██  GARAGE CARD
-   ════════════════════════════════════════════════════════════ */
+// 🌟 تغليف كارت الجراج بـ React.memo لمنع إعادة الرندر المفرط وتوفير البطارية ❄️
 const GarageCard = memo(function GarageCard({
   garage,
   index,
@@ -1190,23 +1172,6 @@ const GarageCard = memo(function GarageCard({
             <Star size={9} fill="currentColor" />
             {garage.rating}
           </div>
-
-          {/* 🌟 شارة "نقدي فقط" الذكية */}
-          {(garage as any).payment_mode === 'cash_only' && (
-            <span
-              style={{ 
-                background: '#FFF3E0', 
-                color: '#E65100', 
-                border: '1px solid #FFE0B2',
-                fontSize: 9.5, 
-                padding: '2.5px 7px', 
-                borderRadius: 8,
-                fontWeight: 900,
-              }}
-            >
-              💵 نقدي فقط
-            </span>
-          )}
 
           {isFull && (
             <span
