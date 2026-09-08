@@ -511,7 +511,7 @@ interface AppState {
     valetName1?: string; valetPassword1?: string;
     valetName2?: string; valetPassword2?: string;
     valetName3?: string; valetPassword3?: string;
-  }) => Promise<void>; // 🌟 تم إضافة 'payment_mode' هنا في تعريف الشروط المقبولة للتحديث
+  }) => Promise<void>; 
   adjustGarageSpots: (id: string, delta: number) => Promise<void>;
   selectedGarageId: string | null;
   setSelectedGarageId: (id: string | null) => void;
@@ -945,13 +945,22 @@ export const useStore = create<AppState>((set, get) => ({
             .eq('phone', user.phone)
             .single();
           if (data) {
-            const updated = {
-              name: data.name || user.name, phone: data.phone || user.phone,
-              carPlate: data.car_plate || user.carPlate, wallet: user.wallet,
-              hasUsedFreeSession: data.has_used_free_session ?? user.hasUsedFreeSession ?? false,
-              bonusBalance: Number(data.bonus_balance ?? user.bonusBalance ?? 0),
-            };
-            set({ currentUser: updated }); safeSetStorage('currentUser', updated);
+            // 🌟 فحص ذكي في الشحن أو التحديث لعدم رندرة التطبيق بدون تغيير حقيقي
+            const hasChanged = 
+              user.name !== data.name ||
+              user.carPlate !== data.car_plate ||
+              user.hasUsedFreeSession !== (data.has_used_free_session ?? user.hasUsedFreeSession ?? false) ||
+              user.bonusBalance !== Number(data.bonus_balance ?? user.bonusBalance ?? 0);
+
+            if (hasChanged) {
+              const updated = {
+                name: data.name || user.name, phone: data.phone || user.phone,
+                carPlate: data.car_plate || user.carPlate, wallet: user.wallet,
+                hasUsedFreeSession: data.has_used_free_session ?? user.hasUsedFreeSession ?? false,
+                bonusBalance: Number(data.bonus_balance ?? user.bonusBalance ?? 0),
+              };
+              set({ currentUser: updated }); safeSetStorage('currentUser', updated);
+            }
           }
         } else {
           const { data } = await supabase
@@ -960,13 +969,23 @@ export const useStore = create<AppState>((set, get) => ({
             .eq('phone', user.phone)
             .single();
           if (data) {
-            const updated = {
-              name: data.name || user.name, phone: data.phone || user.phone,
-              carPlate: data.car_plate || user.carPlate, wallet: Number(data.wallet),
-              hasUsedFreeSession: data.has_used_free_session ?? false,
-              bonusBalance: Number(data.bonus_balance ?? 0),
-            };
-            set({ currentUser: updated }); safeSetStorage('currentUser', updated);
+            // 🌟 الفحص الحاسم: لمنع أي وميض أو رعشة من الرندرة المتكررة للمحفظة إذا كانت القيمة ثابتة
+            const hasChanged = 
+              user.wallet !== Number(data.wallet) ||
+              user.name !== data.name ||
+              user.carPlate !== data.car_plate ||
+              user.hasUsedFreeSession !== (data.has_used_free_session ?? false) ||
+              user.bonusBalance !== Number(data.bonus_balance ?? 0);
+
+            if (hasChanged) {
+              const updated = {
+                name: data.name || user.name, phone: data.phone || user.phone,
+                carPlate: data.car_plate || user.carPlate, wallet: Number(data.wallet),
+                hasUsedFreeSession: data.has_used_free_session ?? false,
+                bonusBalance: Number(data.bonus_balance ?? 0),
+              };
+              set({ currentUser: updated }); safeSetStorage('currentUser', updated);
+            }
           }
         }
       } catch (err) { console.error('Error fetching user wallet:', err); }
@@ -985,7 +1004,7 @@ export const useStore = create<AppState>((set, get) => ({
       valet_name_2: (g as any).valetName2 || '', valet_password_2: (g as any).valetPassword2 || '',
       valet_name_3: (g as any).valetName3 || '', valet_password_3: (g as any).valetPassword3 || '',
       is_active: true,
-      payment_mode: 'both', // القيمة الافتراضية للجراجات الجديدة
+      payment_mode: 'both', 
     }).select();
     if (!error && data) set((st) => ({ garages: [...st.garages, ...data.map(mapGarage)] }));
   },
@@ -1278,7 +1297,7 @@ export const useStore = create<AppState>((set, get) => ({
           commission_amount: commissionAmount,
           net_revenue: netRevenue,
           settled: false,
-          free_minutes_applied: freeMinutesApplied || session.freeMinutesApplied || 0,
+          free_minutes_applied: free_minutes_applied || session.freeMinutesApplied || 0,
         })
         .eq('id', id)
         .eq('status', 'active');

@@ -111,6 +111,7 @@ export default function GarageListScreen() {
     [currentUser?.phone]
   );
 
+  // 🛡️ فحص حماية الهدايا الموحد والمحسن لمنع الرندرة اللانهائية
   useEffect(() => {
     if (!currentUser) return;
     
@@ -155,7 +156,8 @@ export default function GarageListScreen() {
     };
 
     checkAbuseHistory();
-  }, [currentUser, sessions, cleanUserPhone]);
+  // 🌟 استخدام المتغيرات الصافية المستقرة لمنع الاستدعاءات المتكررة والرعشة
+  }, [cleanUserPhone, normalizedUserPlate, currentUser?.hasUsedFreeSession]);
 
   const isEligibleForFreeSession = useMemo(() => {
     return currentUser && !currentUser.hasUsedFreeSession && !isAbuseDetected;
@@ -272,7 +274,8 @@ export default function GarageListScreen() {
       )
       .subscribe();
 
-    const interval = setInterval(refetch, 5000); 
+    // 🌟 تم تعديله ليعمل كل 30 ثانية لتوفير البطارية والسيرفر طالما أن الـ Realtime نشط وفوري
+    const interval = setInterval(refetch, 30000); 
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') refetch();

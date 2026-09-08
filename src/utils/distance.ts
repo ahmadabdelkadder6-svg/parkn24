@@ -22,13 +22,23 @@ function toRad(deg: number): number {
 }
 
 /**
- * تحويل المسافة إلى وقت تقريبي بالدقائق
- * نفترض متوسط سرعة 30 كم/ساعة في المدينة
+ * تحويل المسافة إلى وقت تقريبي واقعي بالدقائق
+ * يراعي: التفاف الشوارع والملفات (U-Turns) + زحام وإشارات المدينة
  */
 export function distanceToMinutes(distanceKm: number): number {
-  const avgSpeedKmPerHour = 25; // سرعة متوسطة في المدينة مع الزحام
-  const hours = distanceKm / avgSpeedKmPerHour;
-  return Math.ceil(hours * 60);
+  if (distanceKm <= 0) return 2;
+
+  // 1️⃣ معامل التفاف الشوارع: مسار الشارع الفعلي أطول بنسبة 35% إلى 40% من الخط المستقيم
+  const actualRoadDistanceKm = distanceKm * 1.38;
+
+  // 2️⃣ سرعة القيادة الواقعية داخل شوارع المدينة مع الإشارات والتهدئة (18 كم/ساعة)
+  const realisticCitySpeedKmH = 18;
+
+  const hours = actualRoadDistanceKm / realisticCitySpeedKmH;
+  const estimatedMinutes = Math.round(hours * 60);
+
+  // نضمن ألا يقل الوقت عن دقيقتين
+  return Math.max(2, estimatedMinutes);
 }
 
 /**
