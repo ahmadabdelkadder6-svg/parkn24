@@ -228,18 +228,11 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
   const mins = Math.floor(el / 60);
 
   const isFreeApplied = s.isFirstFreeSession === true;
-  const freeSeconds = isFreeApplied ? Math.min(el, 3600) : 0;
-  const billableSeconds = Math.max(0, el - freeSeconds);
-  const hrs = isFreeApplied ? calculateFullHours(billableSeconds) : calculateFullHours(el);
-
+  const isFreeNow = isFreeApplied && el <= 1800; // أول 30 دقيقة مجانية بالكامل
+  
+  const hrs = isFreeNow ? 0 : calculateFullHours(el);
   const rate = Number(s.agreedPrice ?? basePrice);
-  const cost = (() => {
-    if (el <= 0 || rate <= 0) return 0;
-    if (isFreeApplied) {
-      return calculateCost(billableSeconds, rate);
-    }
-    return calculateCost(el, rate);
-  })();
+  const cost = isFreeNow ? 0 : calculateCost(el, rate);
 
   const isM = s.source === 'manual';
 
@@ -262,7 +255,7 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
           
           {isFreeApplied && (
             <span className="font-black flex items-center gap-0.5 shrink-0" style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, background: '#FFF3E0', color: '#E65100', border: '1px solid #FFE0B2' }}>
-              <Gift size={10} /> ساعة مجانية
+              <Gift size={10} /> {isFreeNow ? 'هدية ترحيبية نشطة 🎁' : 'انتهت الهدية الترحيبية'}
             </span>
           )}
         </div>
@@ -295,8 +288,8 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
           )}
         </div>
 
-        <div className="font-black text-left" style={{ fontSize: cost === 0 && isFreeApplied ? 11 : 15, color: cost === 0 && isFreeApplied ? '#FF9500' : '#00AA44' }}>
-          {cost === 0 && isFreeApplied ? (
+        <div className="font-black text-left" style={{ fontSize: isFreeNow ? 11 : 15, color: isFreeNow ? '#FF9500' : '#00AA44' }}>
+          {isFreeNow ? (
             <span className="flex items-center gap-0.5 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg shadow-sm">
               🎁 مجاناً (0ج)
             </span>
@@ -558,18 +551,15 @@ export default function GarageDashboard() {
 
   useEffect(() => { return () => { try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }; }, []);
 
+  // 🌟 تعديل منطق الإيراد الفعلي ليتوافق بدقة مع الـ 30 دقيقة
   const getSessionRevenue = useCallback((s: any) => {
-    if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
+    if (s.totalPrice != null) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
       const elSeconds = Math.max(0, Math.floor((toMs(s.endTime) - toMs(s.startTime)) / 1000));
       const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
       
-      if (s.isFirstFreeSession === true) {
-        const freeSeconds = Math.min(elSeconds, 3600);
-        const billableSeconds = Math.max(0, elSeconds - freeSeconds);
-        return calculateCost(billableSeconds, r);
-      }
-      return calculateCost(elSeconds, r);
+      const isFreeNow = s.isFirstFreeSession === true && elSeconds <= 1800;
+      return isFreeNow ? 0 : calculateCost(elSeconds, r);
     }
     return 0;
   }, [garage?.basePrice]);
@@ -589,18 +579,15 @@ export default function GarageDashboard() {
     return Math.round((rev - comm) * 100) / 100;
   }, [getSessionRevenue, getSessionCommission]);
 
+  // 🌟 تعديل حساب التكلفة التفاعلية للجلسات النشطة لتكون 30 دقيقة
   const getActiveCost = useCallback((s: any) => {
     const st = toMs(s.startTime);
     const el = st > 0 ? Math.max(0, Math.floor((Date.now() - st) / 1000)) : 0;
     const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
     if (el <= 0 || r <= 0) return 0;
 
-    if (s.isFirstFreeSession === true) {
-      const freeSeconds = Math.min(el, 3600);
-      const billableSeconds = Math.max(0, el - freeSeconds);
-      return calculateCost(billableSeconds, r);
-    }
-    return calculateCost(el, r);
+    const isFreeNow = s.isFirstFreeSession === true && el <= 1800;
+    return isFreeNow ? 0 : calculateCost(el, r);
   }, [garage?.basePrice]);
 
   // 🌟 [الفلترة الحصرية للسايس]: يرى فقط العمليات المسجلة باسمه (سواء معلقة أو مؤكدة، كاش أو محفظة أو مجانية)
@@ -744,8 +731,6 @@ export default function GarageDashboard() {
     return () => clearInterval(i);
   }, [undoableSessions.length]);
 
-  useEffect(() => { if (garage) setNewCarPrice(garage.basePrice); }, [garage?.basePrice, garage]);
-
   useEffect(() => {
     setUndoableSessions(p =>
       p.filter(u => Math.floor((Date.now() - u.addedAt) / 1000) < UNDO_TIMEOUT_SECONDS)
@@ -817,11 +802,13 @@ export default function GarageDashboard() {
       const sd = useStore.getState().sessions.find(s => s.id === sc.id);
       const ia = sd?.source === 'app';
       
+      // 🌟 تعديل دقائق الهدية الترحيبية المجانية لتسجل بدقة بحد أقصى 30 دقيقة
       let freeMinutesApplied = 0;
       if (sd?.isFirstFreeSession === true) {
-        const elapsedMs = Date.now() - toMs(sd.startTime);
-        const freeMs = Math.min(elapsedMs, 60 * 60 * 1000);
-        freeMinutesApplied = Math.floor(freeMs / 60000);
+        const elapsedSeconds = Math.floor((Date.now() - toMs(sd.startTime)) / 1000);
+        if (elapsedSeconds <= 1800) {
+          freeMinutesApplied = Math.floor(elapsedSeconds / 60);
+        }
       }
 
       const currentValet = isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '';
@@ -1476,8 +1463,8 @@ export default function GarageDashboard() {
                                 <div className="font-black" style={{ fontSize: 12, fontWeight: 950, color: '#0A1628' }}>{v.name}</div>
                                 <div className="font-black" style={{ fontSize: 9, color: '#94a3b8', fontWeight: 900 }}>{v.count} سيارة</div>
                               </div>
-                              <div style={{ width: 30, height: 30, borderRadius: 10, background: v.color, color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 950, fontSize: 12, textShadow: '0 1px 1px rgba(0,0,0,0.2)' }}>
-                                {v.icon}
+                              <div style={{ width: 30, height: 30, borderRadius: 10, background: v.color, color: '#ffffff', display: 'flex', alignItems: 'center', justifyStyle: 'center', fontWeight: 950, fontSize: 12, textShadow: '0 1px 1px rgba(0,0,0,0.2)', justifyItems: 'center', alignContent: 'center', justifySelf: 'center' }}>
+                                <span className="m-auto text-center">{v.icon}</span>
                               </div>
                             </div>
                           </div>

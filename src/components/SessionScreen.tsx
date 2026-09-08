@@ -218,43 +218,34 @@ export default function SessionScreen() {
   const sessionRate = Number(activeSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const isFirstFreeApplied = activeSession?.isFirstFreeSession === true;
 
-  // 🎁 الحسابات التفاعلية مع حماية كاملة من الـ Undefined لمنع أي شاشة بيضاء
+  // 🎁 [حساب 30 دقيقة مجاناً]: تعديل الحساب التفاعلي ليتوافق مع المنطق الجديد
   const { displayedCost, displayedHours, countdownLabel, countdownTime, isFreeNow } = useMemo(() => {
     const defaultCountdown = { minutes: 59, seconds: 59 };
+    const standardCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(elapsed) : defaultCountdown;
 
-    if (!isFirstFreeApplied) {
-      const calculatedCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(elapsed) : defaultCountdown;
-      return {
-        displayedCost: calculateCost(elapsed, sessionRate),
-        displayedHours: calculateFullHours(elapsed),
-        countdownLabel: 'الوقت المتبقي حتى الساعة التالية',
-        countdownTime: calculatedCountdown || defaultCountdown,
-        isFreeNow: false,
-      };
-    }
-
-    if (elapsed <= 3600) {
-      const freeTimeRemaining = Math.max(0, 3600 - elapsed);
+    // أول 30 دقيقة (1800 ثانية) مجانية بالكامل
+    if (isFirstFreeApplied && elapsed <= 1800) {
+      const freeTimeRemaining = Math.max(0, 1800 - elapsed);
       const minutes = Math.floor(freeTimeRemaining / 60);
       const seconds = freeTimeRemaining % 60;
       return {
         displayedCost: 0,
         displayedHours: 0,
-        countdownLabel: 'الوقت المتبقي لانتهاء الساعة المجانية الهدية 🎁',
+        countdownLabel: 'الوقت المتبقي لانتهاء الـ 30 دقيقة المجانية الهدية 🎁',
         countdownTime: { minutes, seconds },
         isFreeNow: true,
       };
-    } else {
-      const billableSeconds = Math.max(0, elapsed - 3600);
-      const calculatedCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(billableSeconds) : defaultCountdown;
-      return {
-        displayedCost: calculateCost(billableSeconds, sessionRate),
-        displayedHours: calculateFullHours(billableSeconds),
-        countdownLabel: 'الوقت المتبقي حتى الساعة التالية الخاضعة للدفع',
-        countdownTime: calculatedCountdown || defaultCountdown,
-        isFreeNow: false,
-      };
     }
+
+    // من الدقيقة 31 فصاعداً: الحساب التراكمي بالساعة كالمعتاد
+    const hours = calculateFullHours(elapsed);
+    return {
+      displayedCost: hours * sessionRate,
+      displayedHours: hours,
+      countdownLabel: 'الوقت المتبقي حتى الساعة التالية الخاضعة للدفع',
+      countdownTime: standardCountdown || defaultCountdown,
+      isFreeNow: false,
+    };
   }, [isFirstFreeApplied, elapsed, sessionRate]);
 
   // إذا لم تكن هناك جلسة نشطة
@@ -297,8 +288,8 @@ export default function SessionScreen() {
             </div>
             <div className="text-white/90 font-bold" style={{ fontSize: 10 }}>
               {isFreeNow 
-                ? 'أنت الآن في الساعة الأولى المجانية بالكامل! 🎁' 
-                : 'انتهت الساعة المجانية وتم بدء الاحتساب المخفض بدقة ✅'}
+                ? 'أنت الآن في الـ 30 دقيقة الأولى المجانية بالكامل! 🎁' 
+                : 'انتهت الـ 30 دقيقة المجانية وتم بدء الاحتساب بدقة كالمعتاد ✅'}
             </div>
           </div>
         </motion.div>

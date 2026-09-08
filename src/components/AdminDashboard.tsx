@@ -130,9 +130,10 @@ export default function AdminDashboard() {
 
   useEffect(() => { fetchSettlements(); }, [fetchSettlements]);
 
-  /* ─── Revenue Calculation with Free Gift Logic ─── */
+  /* ─── 🎁 تم التعديل: حساب الإيرادات مع منطق الـ 30 دقيقة الجديد ─── */
   const getRevenue = useCallback((s: any) => {
-    if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
+    // إذا كانت قيمة الفاتورة مخزنة بالفعل (حتى لو كانت 0 للركنة المجانية) يتم إرجاعها فوراً
+    if (s.totalPrice != null) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
       const st = toMs(s.startTime);
       const en = toMs(s.endTime);
@@ -140,12 +141,8 @@ export default function AdminDashboard() {
       const rate = Number(s.agreedPrice ?? g?.basePrice ?? 0);
       const elapsedSeconds = Math.max(0, Math.floor((en - st) / 1000));
 
-      if (s.isFirstFreeSession === true) {
-        const freeSeconds = Math.min(elapsedSeconds, 3600);
-        const billableSeconds = Math.max(0, elapsedSeconds - freeSeconds);
-        return calculateCost(billableSeconds, rate);
-      }
-      return calculateCost(elapsedSeconds, rate);
+      const isFreeNow = s.isFirstFreeSession === true && elapsedSeconds <= 1800; // 30 دقيقة مجانية
+      return isFreeNow ? 0 : calculateCost(elapsedSeconds, rate);
     }
     return 0;
   }, [garages]);
@@ -1060,7 +1057,7 @@ export default function AdminDashboard() {
       {/* ══ Revenue Report ══ */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-3">
-          <span className="font-black" style={{ fontSize: 10, background: '#0066FF', color: '#fff', padding: '3.5px 12px', borderRadius: 20 }}>
+          <span className="font-black" style={{ background: '#0066FF', color: '#fff', fontSize: 10, padding: '3.5px 12px', borderRadius: 20 }}>
             {garageReport.length} جراج
           </span>
           <h3 className="font-black flex items-center gap-1.5 text-right" style={{ fontSize: 14, color: '#334155' }}>
@@ -1393,7 +1390,7 @@ export default function AdminDashboard() {
 
                   {msg.subject && <div className="font-black mb-1 text-right text-slate-900" style={{ fontSize: 12.5 }}>{msg.subject}</div>}
                   
-                  {/* 🌟 محتوى الشكوى: خط أسود صريح غليظ للغاية وواضح جداً بحجم ملموم */}
+                  {/* الشكوى */}
                   <div 
                     className={`text-right leading-relaxed mb-2 cursor-pointer ${isExp ? '' : 'line-clamp-2'}`} 
                     style={{ fontSize: '12px', fontWeight: 950, color: '#000000' }} 
@@ -1408,7 +1405,6 @@ export default function AdminDashboard() {
                     <div className="mb-2.5" style={{ background: '#E8FFF0', border: '1.5px solid #66DDAA', borderRadius: 14, padding: 10 }}>
                       <div className="font-black text-right mb-1" style={{ fontSize: 9.5, color: '#00AA44' }}>ردك السابق:</div>
                       
-                      {/* 🌟 رد الأدمن السابق يظهر داخل البوكس بخط أسود غليظ ومقروء بامتياز */}
                       <div 
                         className="text-right leading-relaxed" 
                         style={{ fontSize: '12.5px', fontWeight: 950, color: '#000000' }}
@@ -1448,7 +1444,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* 🏢 ══════ إدارة وجرد الجراجات الموفر للمساحة ══════ */}
+      {/* 🏢 إدارة وجرد الجراجات الموفر للمساحة */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
           <span className="font-black" style={{ background: '#4D00FF', color: '#fff', fontSize: 10, padding: '3.5px 12px', borderRadius: 20 }}>
@@ -1460,7 +1456,7 @@ export default function AdminDashboard() {
         </div>
 
         <div className="space-y-3 mb-4">
-          {/* 🔍 شريط البحث السريع عن جراج */}
+          {/* شريط البحث السريع */}
           <div className="relative">
             <Search size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: '#94a3b8' }} />
             <input 
@@ -1479,7 +1475,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* 📦 صندوق احتواء ذكي بانزلاق عمودي يوفر 50% من مساحة الشاشة */}
+        {/* صندوق احتواء انزلاقي */}
         <div 
           className="space-y-3 max-h-[380px] overflow-y-auto pr-1.5"
           style={{
@@ -1632,6 +1628,7 @@ export default function AdminDashboard() {
           )}
         </div>
       </div>
+      
       {/* ══ Add Garage ══ */}
       <div className="mb-20">
         <h3 className="font-black mb-4 flex items-center gap-2 justify-end" style={{ fontSize: 16, color: '#0066FF' }}>إضافة جراج جديد <Plus size={18} /></h3>

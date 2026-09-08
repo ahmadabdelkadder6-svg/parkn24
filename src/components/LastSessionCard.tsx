@@ -55,20 +55,24 @@ export default function LastSessionCard() {
   const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);
   const totalMinutes = Math.floor(elapsedSeconds / 60);
 
-  // 🎁 [منطق الهدية]: قراءة أهلية الجلسة والدقائق المخصومة
+  // 🎁 [منطق الهدية]: التحقق مما إذا كانت الجلسة مجانية (أقل من أو تساوي 30 دقيقة)
   const isFirstFreeApplied = lastSession.isFirstFreeSession === true;
-  const freeMinutesApplied = (lastSession as any).freeMinutesApplied ?? (isFirstFreeApplied ? Math.min(totalMinutes, 60) : 0);
+  
+  const isFree = isFirstFreeApplied && (
+    lastSession.totalPrice === 0 ||
+    lastSession.paymentMethod === 'free' ||
+    (lastSession.totalPrice == null && elapsedSeconds <= 1800)
+  );
 
-  const billableSeconds = Math.max(0, elapsedSeconds - (freeMinutesApplied * 60));
-  const hours = calculateFullHours(isFirstFreeApplied ? billableSeconds : elapsedSeconds);
-
+  const hours = isFree ? 0 : calculateFullHours(elapsedSeconds);
   const rawCost = calculateCost(elapsedSeconds, rate);
+  
   const cost =
-    lastSession.totalPrice != null && Number(lastSession.totalPrice) > 0
+    lastSession.totalPrice != null
       ? Number(lastSession.totalPrice)
-      : calculateCost(billableSeconds, rate);
+      : (isFree ? 0 : calculateCost(elapsedSeconds, rate));
 
-  const savedAmount = isFirstFreeApplied ? Math.max(0, rawCost - cost) : 0;
+  const savedAmount = isFree ? rawCost : 0;
 
   const startDate = new Date(startTime);
   const endDate = new Date(endTime);
@@ -102,11 +106,11 @@ export default function LastSessionCard() {
       case 'cashwallet':
         return { label: 'تحويل محفظة كاش', icon: '📲', color: 'text-orange-400', bg: 'bg-orange-500/20' };
       default:
-        return { label: 'غير محدد', icon: '💳', color: 'text-slate-400', bg: 'bg-slate-500/20' };
+        return { label: 'نقدي كاش', icon: '💵', color: 'text-emerald-400', bg: 'bg-emerald-500/20' };
     }
   };
 
-  const paymentInfo = getPaymentInfo(lastSession.paymentMethod);
+  const paymentInfo = getPaymentInfo(isFree ? 'free' : lastSession.paymentMethod);
 
   const sourceInfo =
     lastSession.source === 'app'
@@ -143,7 +147,7 @@ export default function LastSessionCard() {
             </span>
             {isFirstFreeApplied && (
               <span className="text-[9px] px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-400 flex items-center gap-1">
-                <Gift size={9} /> ساعة مجانية
+                <Gift size={9} /> {isFree ? 'هدية ترحيبية مجانية 🎁' : 'عرض ترحيبي'}
               </span>
             )}
           </div>
@@ -187,7 +191,7 @@ export default function LastSessionCard() {
                 fontSize: 56,
                 fontWeight: 900,
                 lineHeight: 1,
-                color: '#FFFFFF',
+                color: isFree ? '#10B981' : '#FFFFFF',
                 textShadow: '0 0 18px rgba(255,255,255,0.15)',
               }}
             >
@@ -198,7 +202,7 @@ export default function LastSessionCard() {
               style={{
                 fontSize: 22,
                 fontWeight: 800,
-                color: '#FFFFFF',
+                color: isFree ? '#10B981' : '#FFFFFF',
                 marginBottom: 6,
               }}
             >
@@ -207,9 +211,9 @@ export default function LastSessionCard() {
           </div>
 
           {/* 🎁 شارة التوفير إذا طُبق العرض */}
-          {isFirstFreeApplied && savedAmount > 0 && (
+          {isFree && (
             <div className="mt-2.5 inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[10px] font-black">
-              <Gift size={11} /> وفرت {savedAmount.toFixed(0)} ج.م من العرض الترحيبي!
+              <Gift size={11} /> ركنة مجانية بالكامل من العرض الترحيبي! 🎉
             </div>
           )}
 
@@ -240,7 +244,7 @@ export default function LastSessionCard() {
               {hours}
             </div>
             <div className="text-[8px] text-slate-500 font-bold">
-              {isFirstFreeApplied ? 'ساعات الدفع' : 'ساعة محسوبة'}
+              {isFree ? 'مجانية (0 ساعة)' : 'ساعة محسوبة'}
             </div>
           </div>
           <div className="bg-slate-950/40 rounded-xl p-3 text-center">

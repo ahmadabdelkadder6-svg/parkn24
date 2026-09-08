@@ -39,6 +39,7 @@ export default function LastSessionScreen() {
 
   /* ✅ البحث بـ carPlate أو customerPhone بالبصمة الموحدة */
   const lastSession = useMemo(() => {
+    if (!userPlate && !userPhone) return null;
     return sessions
       .filter((s) => {
         if (!s || s.status !== 'completed') return false;
@@ -136,26 +137,26 @@ export default function LastSessionScreen() {
   const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);
   const totalMinutes = Math.floor(elapsedSeconds / 60);
 
-  // 🎁 [منطق الهدية]: قراءة وتحديد أهلية الجلسة والدقائق المجانية التي طُبقت
+  // 🎁 [منطق الهدية]: التحقق مما إذا كانت الجلسة مجانية (أقل من أو تساوي 30 دقيقة)
   const isFirstFreeApplied = lastSession.isFirstFreeSession === true;
-  const freeMinutesApplied = lastSession.freeMinutesApplied ?? (isFirstFreeApplied ? Math.min(totalMinutes, 60) : 0);
+  
+  const isFree = isFirstFreeApplied && (
+    lastSession.totalPrice === 0 ||
+    lastSession.paymentMethod === 'free' ||
+    (lastSession.totalPrice == null && elapsedSeconds <= 1800)
+  );
 
-  // الساعات الفعلية الخاضعة للدفع بالكامل بعد خصم الهدية
-  const billableSeconds = Math.max(0, elapsedSeconds - (freeMinutesApplied * 60));
-  const billableHours = calculateFullHours(billableSeconds);
+  const billableHours = isFree ? 0 : calculateFullHours(elapsedSeconds);
+  const rawCost = calculateCost(elapsedSeconds, rate);
 
   // حساب التكلفة الكلية (المدفوعة فعلياً)
   const cost =
-    lastSession.totalPrice != null && Number(lastSession.totalPrice) > 0
+    lastSession.totalPrice != null
       ? Number(lastSession.totalPrice)
-      : calculateCost(billableSeconds, rate);
+      : (isFree ? 0 : calculateCost(elapsedSeconds, rate));
 
   // حساب كم وفر العميل بفضل الهدية الترحيبية
-  const savedAmount = useMemo(() => {
-    if (!isFirstFreeApplied) return 0;
-    const originalCost = calculateCost(elapsedSeconds, rate);
-    return Math.max(0, originalCost - cost);
-  }, [isFirstFreeApplied, elapsedSeconds, rate, cost]);
+  const savedAmount = isFree ? rawCost : 0;
 
   const startDate = new Date(startTime);
   const endDate = new Date(endTime);
@@ -187,7 +188,7 @@ export default function LastSessionScreen() {
         };
       case 'instapay':
         return {
-          label: 'إرسال إنستاباي', icon: '📱',
+          label: 'إنستاباي', icon: '📱',
           color: 'text-purple-400',
           bg: 'bg-purple-500/10',
           border: 'border-purple-500/30',
@@ -215,15 +216,15 @@ export default function LastSessionScreen() {
         };
       default:
         return {
-          label: 'غير محدد', icon: '💳',
-          color: 'text-slate-400',
-          bg: 'bg-slate-500/10',
-          border: 'border-slate-500/30',
+          label: 'نقدي كاش', icon: '💵',
+          color: 'text-emerald-400',
+          bg: 'bg-emerald-500/10',
+          border: 'border-emerald-500/30',
         };
     }
   };
 
-  const paymentInfo = getPaymentInfo(lastSession.paymentMethod);
+  const paymentInfo = getPaymentInfo(isFree ? 'free' : lastSession.paymentMethod);
 
   const sourceInfo =
     lastSession.source === 'app'
@@ -241,9 +242,8 @@ export default function LastSessionScreen() {
 📅 التاريخ: ${formatDateTime(startDate)}
 ⏰ وقت الدخول: ${formatTimeOnly(startDate)}
 ⏰ وقت الخروج: ${formatTimeOnly(endDate)}
-⏱️ المدة الفعلية: ${totalMinutes} دقيقة
-${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجاناً (-${savedAmount.toFixed(0)} ج.م)\n` : ''}⏱️ المدة الخاضعة للدفع: ${isFirstFreeApplied ? Math.max(0, totalMinutes - freeMinutesApplied) : totalMinutes} دقيقة
-━━━━━━━━━━━━━━━━━━
+⏱️ المدة الكلية: ${totalMinutes} دقيقة
+${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أقل من 30 دقيقة - وفرت ${savedAmount.toFixed(0)} ج.م)\n` : `⏱️ الساعات المحسوبة: ${billableHours} ساعة\n`}━━━━━━━━━━━━━━━━━━
 💰 سعر الساعة: ${rate} ج.م
 💵 الإجمالي المدفوع: ${cost.toFixed(0)} ج.م
 💳 طريقة الدفع: ${paymentInfo.label}
@@ -411,7 +411,7 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
                   fontSize: 64,
                   fontWeight: 900,
                   lineHeight: 1,
-                  color: '#FFFFFF',
+                  color: isFree ? '#10B981' : '#FFFFFF',
                   textShadow: '0 0 30px rgba(255,255,255,0.15), 0 4px 12px rgba(0,0,0,0.3)',
                   letterSpacing: '-2px',
                 }}
@@ -422,7 +422,7 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
                 style={{
                   fontSize: 24,
                   fontWeight: 800,
-                  color: '#D4AF37',
+                  color: isFree ? '#10B981' : '#D4AF37',
                   marginBottom: 8,
                   textShadow: '0 0 10px rgba(212,175,55,0.3)',
                 }}
@@ -431,7 +431,7 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
               </span>
             </div>
 
-            {/* 🚀 شارة طريقة السداد بالخط الملون العريض والواضح جداً 🚀 */}
+            {/* 🚀 شارة طريقة السداد 🚀 */}
             <div 
               className={`mt-1.5 inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl border-2 ${paymentInfo.bg} ${paymentInfo.border} shadow-lg mb-2`}
               style={{ backdropFilter: 'blur(8px)' }}
@@ -445,32 +445,32 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
                   textShadow: '0 1px 3px rgba(0,0,0,0.3)'
                 }}
               >
-                تم السداد: {paymentInfo.label}
+                {isFree ? 'ركن مجاني ترحيبي 🎁' : `تم السداد: ${paymentInfo.label}`}
               </span>
             </div>
 
             {/* 🎁 شارة الخصم الترحيبي الذهبية بالداخل */}
-            {isFirstFreeApplied && savedAmount > 0 && (
+            {isFree && (
               <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-xl text-white text-xs font-black shadow-md border border-white/20"
               >
                 <Gift size={14} />
-                <span>تم تطبيق عرض الساعة الأولى مجاناً! (وفرت -{savedAmount.toFixed(0)} ج.م) 🎉</span>
+                <span>ركنة مجانية بالكامل من العرض الترحيبي! 🎉</span>
               </motion.div>
             )}
           </div>
 
           {/* سطر توضيحي للحساب */}
           <div className="relative z-10 text-[10px] text-slate-400 mb-3">
-            {isFirstFreeApplied ? (
+            {isFree ? (
               <span>
-                المدة المحسوبة للدفع: {billableHours} ساعة (خصم {freeMinutesApplied} دقيقة مجاناً 🎁)
+                (تم ركن {totalMinutes} دقيقة مجاناً كهدية ترحيبية 🎁)
               </span>
             ) : (
               <span>
-                {calculateFullHours(elapsedSeconds)} ساعة × {rate} ج.م = {cost.toFixed(0)} ج.م
+                {billableHours} ساعة × {rate} ج.م = {cost.toFixed(0)} ج.م
               </span>
             )}
           </div>
@@ -502,10 +502,10 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 text-center">
             <Timer size={16} className="text-purple-400 mx-auto mb-1.5" />
             <div className="text-sm font-black text-purple-400 font-mono">
-              {isFirstFreeApplied ? billableHours : calculateFullHours(elapsedSeconds)}
+              {billableHours}
             </div>
             <div className="text-[8px] text-slate-500 font-bold mt-0.5">
-              {isFirstFreeApplied ? 'ساعات الدفع' : 'ساعة محسوبة'}
+              {isFree ? 'مجانية (0 ساعة)' : 'ساعة محسوبة'}
             </div>
           </div>
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 text-center">
