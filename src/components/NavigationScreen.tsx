@@ -69,6 +69,7 @@ function MapController({
   garagePos: [number, number];
 }) {
   const map = useMap();
+  const hasFitRef = useRef(false); // 🌟 لمنع قفز الخريطة المتكرر مع كل اهتزاز GPS بسيط
 
   useEffect(() => {
     setTimeout(() => {
@@ -76,7 +77,9 @@ function MapController({
         map.invalidateSize();
       } catch {}
     }, 250);
+  }, [map]);
 
+  useEffect(() => {
     // 🛡️ صمام أمان صارم للتحقق من سلامة الإحداثيات ومنع الـ NaN تماماً رغماً عن شبكات الـ GPS
     const isValidCoord = (c: [number, number]) =>
       Array.isArray(c) &&
@@ -85,16 +88,23 @@ function MapController({
 
     if (isValidCoord(userPos) && isValidCoord(garagePos)) {
       try {
-        const bounds = L.latLngBounds([userPos, garagePos]);
-        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+        if (!hasFitRef.current) {
+          const bounds = L.latLngBounds([userPos, garagePos]);
+          map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+          hasFitRef.current = true; // 🌟 يتم الضبط التلقائي للحدود مرة واحدة عند الفتح لراحة بصرية تامة للعميل
+        }
       } catch {
         try {
-          map.setView(garagePos, 15);
+          if (!hasFitRef.current) {
+            map.setView(garagePos, 15);
+            hasFitRef.current = true;
+          }
         } catch {}
       }
-    } else if (isValidCoord(garagePos)) {
+    } else if (isValidCoord(garagePos) && !hasFitRef.current) {
       try {
         map.setView(garagePos, 15);
+        hasFitRef.current = true;
       } catch {}
     }
   }, [map, userPos, garagePos]);
@@ -170,6 +180,7 @@ export default function NavigationScreen() {
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const realtimeChannelRef = useRef<any>(null);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastSavedPosRef = useRef<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
     userPosRef.current = userPos;
@@ -236,7 +247,9 @@ export default function NavigationScreen() {
       .subscribe();
 
     realtimeChannelRef.current = channel;
-    pollingIntervalRef.current = setInterval(fastFetch, 1500);
+    
+    // 🌟 تم تهدئة مؤشر التحديث الخلفي لـ 10 ثوانٍ بدلاً من ثانية ونصف لمنع تهنيج المعالج ورعشة الشاشة
+    pollingIntervalRef.current = setInterval(fastFetch, 10000);
 
     const handleFocus = () => fastFetch();
     const handleVisibility = () => {
@@ -263,12 +276,34 @@ export default function NavigationScreen() {
     if (!('geolocation' in navigator)) return;
 
     navigator.geolocation.getCurrentPosition(
-      (p) => setUserPos({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      (p) => {
+        const initialPos = { lat: p.coords.latitude, lng: p.coords.longitude };
+        setUserPos(initialPos);
+        lastSavedPosRef.current = initialPos;
+      },
       () => {},
     );
 
     const id = navigator.geolocation.watchPosition(
-      (p) => setUserPos({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      (p) => {
+        const newLat = p.coords.latitude;
+        const newLng = p.coords.longitude;
+        
+        // 🌟 فلتر اهتزاز الـ GPS الذكي: لا نحدث الـ State إلا لو تحرك المستخدم أكثر من 10 أمتار (0.01 كم) لضمان ثبات الخريطة
+        if (lastSavedPosRef.current) {
+          const distanceMoved = calculateDistance(
+            lastSavedPosRef.current.lat,
+            lastSavedPosRef.current.lng,
+            newLat,
+            newLng
+          );
+          if (distanceMoved < 0.01) return; // تجاهل الاهتزاز الصغير جداً لمنع الـ Re-render
+        }
+
+        const nextPos = { lat: newLat, lng: newLng };
+        lastSavedPosRef.current = nextPos;
+        setUserPos(nextPos);
+      },
       () => {},
       { enableHighAccuracy: true, maximumAge: 2000, timeout: 5000 },
     );
@@ -605,12 +640,12 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* 🗺️ الخريطة المحدثة والمجانية 100% */}
+        {/* 🗺️ الخريطة المحدثة والمستقرة */}
         <div className="w-full h-48 rounded-2xl overflow-hidden border border-slate-800 relative shrink-0 shadow-lg">
           {mapReady ? (
             <MapContainer
-              // 🛡️ تم إضافة مفتاح فريد لضمان إعادة تهيئة الخريطة بسلاسة وتجنب أخطاء تداخل التهيئة في الهواتف الضعيفة
-              key={`map-nav-${garage.id}-${userPos.lat}-${userPos.lng}`}
+              // 🌟 تم جعل المفتاح يعتمد فقط على الجراج لمنع هدم وإعادة بناء كائن الخريطة مع اهتزاز الـ GPS
+              key={`map-nav-${garage.id}`}
               center={[garage.lat || 30.0444, garage.lng || 31.2357]}
               zoom={15}
               style={{ width: '100%', height: '100%' }}
