@@ -6,8 +6,7 @@ import {
   ArrowRight,
   Gift,
   Sparkles,
-} from 'lucide-react';
-// 🌟 استيراد دالة البصمة الموحدة من الـ store لضمان مطابقة اللوحات بنسبة 100%
+} from 'lucide-react'; // 🌟 تم إزالة الأيقونات غير الموجودة لمنع الانهيار
 import { useStore, normalizePlate } from '../store';
 import {
   calculateFullHours,
@@ -52,6 +51,9 @@ export default function SessionScreen() {
   const realtimeChannelRef = useRef<any>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // 🆔 معرف فريد متجدد لكل عملية دخول لمنع تداخل قنوات الـ Realtime في Supabase
+  const connectionId = useMemo(() => Math.random().toString(36).substring(7), []);
+
   const [elapsed, setElapsed] = useState(0);
 
   const isMySessionRow = (row: any) => {
@@ -65,11 +67,11 @@ export default function SessionScreen() {
     );
   };
 
-  // ✅ البحث عن الجلسة النشطة بالبصمة الموحدة
+  // ✅ جلب الجلسة (النشطة أو بانتظار موافقة السايس لتجنب التعليق)
   const activeSession = useMemo(() => {
     return sessions
       .filter((s) => {
-        if (!s || s.status !== 'active') return false;
+        if (!s || (s.status !== 'active' && s.status !== 'pending')) return false;
         if (acknowledgedSessionIds?.has(s.id)) return false;
         const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
         const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
@@ -101,19 +103,17 @@ export default function SessionScreen() {
     }
   }, [activeSession?.id]);
 
-  // حساب وقت البداية
   const activeStartMs = useMemo(() => {
     if (!activeSession) return 0;
     const ms = safeParseTime(activeSession.startTime);
     return ms > 0 ? ms : Date.now();
   }, [activeSession?.id, activeSession?.startTime]);
 
-  // 📡 جلب البيانات في الخلفية بدون حجب الشاشة
   useEffect(() => {
     fetchAll().catch((e) => console.error('Fetch error:', e));
   }, [fetchAll]);
 
-  // Realtime
+  // 📡 تحديث فوري وقناة Realtime مخصصة غير متداخلة
   useEffect(() => {
     if (!userPlate && !userPhone) return;
     let cancelled = false;
@@ -124,7 +124,7 @@ export default function SessionScreen() {
     };
 
     const channel = supabase
-      .channel(`customer-session-live-${userPlate || userPhone}`)
+      .channel(`cust-live-${userPlate || userPhone}-${connectionId}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'sessions' },
@@ -139,7 +139,7 @@ export default function SessionScreen() {
       .subscribe();
 
     realtimeChannelRef.current = channel;
-    pollingRef.current = setInterval(refetch, 4000);
+    pollingRef.current = setInterval(refetch, 3000); // تحديث سريع كل 3 ثوانٍ
 
     const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
     document.addEventListener('visibilitychange', handleVisibility);
@@ -152,11 +152,11 @@ export default function SessionScreen() {
       if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
       if (realtimeChannelRef.current) { supabase.removeChannel(realtimeChannelRef.current); realtimeChannelRef.current = null; }
     };
-  }, [userPlate, userPhone, fetchAll]);
+  }, [userPlate, userPhone, fetchAll, connectionId]);
 
   // عداد الثواني اللحظي
   useEffect(() => {
-    if (!activeSession || activeStartMs <= 0) {
+    if (!activeSession || activeSession.status !== 'active' || activeStartMs <= 0) {
       setElapsed(0);
       return;
     }
@@ -174,7 +174,7 @@ export default function SessionScreen() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [activeSession?.id, activeStartMs]);
+  }, [activeSession?.id, activeSession?.status, activeStartMs]);
 
   useEffect(() => {
     if (!activeSession) { redirectedToSessionRef.current = false; return; }
@@ -183,7 +183,7 @@ export default function SessionScreen() {
     if (activeSession.garageId) setSelectedGarageId(activeSession.garageId);
   }, [activeSession?.id, activeSession?.garageId, setSelectedGarageId]);
 
-  // التحويل التلقائي عند انتهاء الجلسة
+  // التحويل التلقائي الذكي عند إنهاء الجلسة
   useEffect(() => {
     if (activeSession) {
       redirectedToSummaryRef.current = false;
@@ -203,14 +203,20 @@ export default function SessionScreen() {
       }
     }
 
+    // عدم تفعيل التحويل التلقائي إلا للجلسات المنهية حديثاً جداً (آخر دقيقة) حتى لا تؤثر الركنة السابقة على الركنة الجديدة
     if (lastCompletedSession && !redirectedToSummaryRef.current) {
-      const isNotAcknowledged = acknowledgedSessionIds ? !acknowledgedSessionIds.has(lastCompletedSession.id) : true;
-      if (isNotAcknowledged) {
-        redirectedToSummaryRef.current = true;
-        if (lastCompletedSession.garageId) setSelectedGarageId(lastCompletedSession.garageId);
-        if (typeof acknowledgeSession === 'function') acknowledgeSession(lastCompletedSession.id);
-        toast.success('تم إنهاء الجلسة بنجاح ✅', { icon: '🏁', duration: 3000 });
-        setTimeout(() => { setScreen('summary'); }, 400);
+      const finishedTime = safeParseTime(lastCompletedSession.endTime);
+      const isRecent = Date.now() - finishedTime < 60000; 
+
+      if (isRecent) {
+        const isNotAcknowledged = acknowledgedSessionIds ? !acknowledgedSessionIds.has(lastCompletedSession.id) : true;
+        if (isNotAcknowledged) {
+          redirectedToSummaryRef.current = true;
+          if (lastCompletedSession.garageId) setSelectedGarageId(lastCompletedSession.garageId);
+          if (typeof acknowledgeSession === 'function') acknowledgeSession(lastCompletedSession.id);
+          toast.success('تم إنهاء الجلسة بنجاح ✅', { icon: '🏁', duration: 3000 });
+          setTimeout(() => { setScreen('summary'); }, 400);
+        }
       }
     }
   }, [activeSession, lastCompletedSession, sessions, setScreen, setSelectedGarageId, acknowledgedSessionIds, acknowledgeSession]);
@@ -218,11 +224,10 @@ export default function SessionScreen() {
   const sessionRate = Number(activeSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const isFirstFreeApplied = activeSession?.isFirstFreeSession === true;
 
-  // 🎁 حساب دقيق: 30 دقيقة مجاناً -> من الدقيقة 31 ساعة كاملة -> بعد دقيقة 60 ساعتين وهكذا
+  // 🎁 منطق الـ 30 دقيقة مجاناً ثم الانتقال المباشر للعداد الفعلي
   const { displayedCost, displayedHours, countdownLabel, countdownTime, isFreeNow } = useMemo(() => {
     const defaultCountdown = { minutes: 59, seconds: 59 };
 
-    // دالة لحساب الوقت المتبقي في الساعة الحالية بدقة
     const calculateHourRemaining = (secs: number) => {
       const remainingSecs = 3600 - (secs % 3600);
       const actualRemaining = remainingSecs === 3600 ? 0 : remainingSecs;
@@ -232,7 +237,6 @@ export default function SessionScreen() {
       };
     };
 
-    // 1️⃣ حساب عادي لو مش أول جلسة ترحيبية
     if (!isFirstFreeApplied) {
       const calculatedCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(elapsed) : calculateHourRemaining(elapsed);
       return {
@@ -244,7 +248,7 @@ export default function SessionScreen() {
       };
     }
 
-    // 2️⃣ أول 30 دقيقة (من ثانية 0 إلى 1800) مجانية بالكامل
+    // أول 30 دقيقة مجاناً بالكامل
     if (elapsed <= 1800) {
       const freeTimeRemaining = Math.max(0, 1800 - elapsed);
       const minutes = Math.floor(freeTimeRemaining / 60);
@@ -257,9 +261,7 @@ export default function SessionScreen() {
         isFreeNow: true,
       };
     } else {
-      // 3️⃣ من الدقيقة 31 فصاعداً:
-      // من 1801 إلى 3600 ثانية (دقيقة 31-60) -> 1 ساعة
-      // من 3601 إلى 7200 ثانية (دقيقة 61-120) -> 2 ساعة
+      // بعد دقيقة 30: تحسب ساعة كاملة مباشرة، وبعد دقيقة 60 تحسب ساعتين... وهكذا
       const hours = Math.ceil(elapsed / 3600);
       const calculatedCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(elapsed) : calculateHourRemaining(elapsed);
       return {
@@ -272,18 +274,43 @@ export default function SessionScreen() {
     }
   }, [isFirstFreeApplied, elapsed, sessionRate]);
 
-  // إذا لم تكن هناك جلسة نشطة
+  // ⏳ شاشة المزامنة الذكية (تعالج حالة انتظار موافقة السايس)
   if (!activeSession) {
     return (
       <div className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8">
         <div className="text-4xl mb-4 animate-bounce">⏳</div>
         <p className="text-slate-500 text-sm font-bold text-center mb-2">جاري مزامنة بيانات الجلسة...</p>
-        <p className="text-slate-400 text-xs text-center mb-4">ستظهر بيانات العداد فور استلامها</p>
+        <p className="text-slate-400 text-xs text-center mb-4">ستظهر بيانات العداد فور بدء الجلسة</p>
         <button
-          onClick={() => setScreen('list')}
+          onClick={() => { fetchAll(); setScreen('list'); }}
           className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center gap-2 shadow-md"
         >
           <ArrowRight size={16} /> <span>العودة للقائمة</span>
+        </button>
+      </div>
+    );
+  }
+
+  // 🅿️ إذا كانت الجلسة مسجلة ولكنها بانتظار تأكيد السايس (الركنة الثانية)
+  if (activeSession.status === 'pending') {
+    return (
+      <div className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8 text-center">
+        <div className="text-4xl mb-4 animate-spin text-amber-500">⏳</div>
+        <p className="text-slate-700 text-md font-black mb-2">بانتظار تأكيد السايس للدخول 🅿️</p>
+        <p className="text-slate-400 text-xs max-w-xs mb-6">
+          تم تسجيل وصولك لجراج <span className="font-bold text-slate-600">"{garage?.name || 'الجراج'}"</span>. سيبدأ العداد والخصم فور قيام السايس بتأكيد ركن السيارة.
+        </p>
+        <button
+          onClick={() => fetchAll()}
+          className="bg-slate-100 text-slate-700 px-6 py-3 rounded-2xl font-bold text-xs active:scale-95 transition-all mb-4"
+        >
+          🔄 تحديث الحالة يدوياً
+        </button>
+        <button
+          onClick={() => setScreen('list')}
+          className="text-xs text-blue-600 font-bold hover:underline"
+        >
+          العودة للرئيسية
         </button>
       </div>
     );
@@ -313,7 +340,7 @@ export default function SessionScreen() {
             <div className="text-white/90 font-bold" style={{ fontSize: 10 }}>
               {isFreeNow 
                 ? 'أنت الآن في الـ 30 دقيقة الأولى المجانية بالكامل! 🎁' 
-                : 'انتهت الـ 30 دقيقة المجانية وتم بدء احتساب الساعة بدقة ✅'}
+                : 'انتهت الـ 30 دقيقة المجانية وتم بدء الاحتساب بدقة ✅'}
             </div>
           </div>
         </motion.div>
