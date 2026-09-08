@@ -7,7 +7,6 @@ import {
   Gift,
   Sparkles,
 } from 'lucide-react';
-// 🌟 استيراد دالة البصمة الموحدة من الـ store لضمان مطابقة اللوحات بنسبة 100%
 import { useStore, normalizePlate, normalizePhone } from '../store';
 import {
   calculateFullHours,
@@ -39,15 +38,13 @@ export default function SessionScreen() {
     currentUser,
     fetchAll,
     setSelectedGarageId,
-    acknowledgedSessionIds,
     acknowledgeSession,
   } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
-  const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
+  const userPhone = normalizePhone(currentUser?.phone);
 
   const redirectedToSummaryRef = useRef(false);
-  const redirectedToSessionRef = useRef(false);
   const activeSessionIdRef = useRef<string | null>(null);
   const realtimeChannelRef = useRef<any>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -57,35 +54,31 @@ export default function SessionScreen() {
   const isMySessionRow = (row: any) => {
     if (!row) return false;
     const rowPlate = normalizePlate(row.car_plate || row.carPlate);
-    const rowPhone = row.customer_phone || row.customerPhone || '';
-    const cleanRowPhone = typeof rowPhone === 'string' ? normalizePhone(rowPhone) : '';
+    const rowPhone = normalizePhone(row.customer_phone || row.customerPhone);
     return (
       (!!userPlate && rowPlate === userPlate) ||
-      (!!userPhone && cleanRowPhone === userPhone)
+      (!!userPhone && rowPhone === userPhone)
     );
   };
 
-  // ✅ البحث عن الجلسة النشطة بالبصمة الموحدة ورقم الهاتف
+  // ✅ البحث الدقيق والموحد عن الجلسة النشطة
   const activeSession = useMemo(() => {
     return sessions
       .filter((s) => {
         if (!s || s.status !== 'active') return false;
-        if (acknowledgedSessionIds?.has(s.id)) return false;
         const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-        const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-        const samePhoneMatch = !!userPhone && sPhone === userPhone;
+        const samePhoneMatch = !!userPhone && normalizePhone((s as any).customerPhone) === userPhone;
         return samePlateMatch || samePhoneMatch;
       })
       .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
-  }, [sessions, userPlate, userPhone, acknowledgedSessionIds]);
+  }, [sessions, userPlate, userPhone]);
 
   const lastCompletedSession = useMemo(() => {
     return sessions
       .filter((s) => {
         if (!s || s.status !== 'completed') return false;
         const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-        const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-        const samePhoneMatch = !!userPhone && sPhone === userPhone;
+        const samePhoneMatch = !!userPhone && normalizePhone((s as any).customerPhone) === userPhone;
         return samePlateMatch || samePhoneMatch;
       })
       .sort((a, b) => safeParseTime(b.endTime) - safeParseTime(a.endTime))[0];
@@ -95,36 +88,14 @@ export default function SessionScreen() {
     (g) => g.id === (activeSession?.garageId ?? lastCompletedSession?.garageId),
   );
 
-  // 🛡️ [صمام الأمان الذكي]: لو مفيش جلسة نشطة بعد ثانيتين ونصف، يرجع للقائمة تلقائياً ولا يعلق أبداً
-  useEffect(() => {
-    if (activeSession) return;
-
-    const timeout = setTimeout(() => {
-      const freshState = useStore.getState();
-      const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
-      const freshPhone = freshState.currentUser?.phone ? normalizePhone(freshState.currentUser.phone) : '';
-
-      const stillActive = freshState.sessions.find((s) => {
-        if (s.status !== 'active') return false;
-        const plateMatch = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-        const phoneMatch = !!freshPhone && normalizePhone((s as any).customerPhone || '') === freshPhone;
-        return plateMatch || phoneMatch;
-      });
-
-      if (!stillActive) {
-        setSelectedGarageId(null);
-        setScreen('list');
-      }
-    }, 2500);
-
-    return () => clearTimeout(timeout);
-  }, [activeSession, setScreen, setSelectedGarageId]);
-
   useEffect(() => {
     if (activeSession?.id) {
       activeSessionIdRef.current = activeSession.id;
+      if (activeSession.garageId) {
+        setSelectedGarageId(activeSession.garageId);
+      }
     }
-  }, [activeSession?.id]);
+  }, [activeSession?.id, activeSession?.garageId, setSelectedGarageId]);
 
   // حساب وقت البداية
   const activeStartMs = useMemo(() => {
@@ -164,7 +135,7 @@ export default function SessionScreen() {
       .subscribe();
 
     realtimeChannelRef.current = channel;
-    pollingRef.current = setInterval(refetch, 4000);
+    pollingRef.current = setInterval(refetch, 3000);
 
     const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
     document.addEventListener('visibilitychange', handleVisibility);
@@ -201,49 +172,30 @@ export default function SessionScreen() {
     return () => clearInterval(interval);
   }, [activeSession?.id, activeStartMs]);
 
-  useEffect(() => {
-    if (!activeSession) { redirectedToSessionRef.current = false; return; }
-    if (redirectedToSessionRef.current) return;
-    redirectedToSessionRef.current = true;
-    if (activeSession.garageId) setSelectedGarageId(activeSession.garageId);
-  }, [activeSession?.id, activeSession?.garageId, setSelectedGarageId]);
-
-  // التحويل التلقائي عند انتهاء الجلسة
+  // التحويل التلقائي فقط عند انتهاء الجلسة النشطة
   useEffect(() => {
     if (activeSession) {
       redirectedToSummaryRef.current = false;
       return;
     }
 
-    if (activeSessionIdRef.current) {
+    if (activeSessionIdRef.current && !redirectedToSummaryRef.current) {
       const targetSession = sessions.find((s) => s.id === activeSessionIdRef.current);
-      if (targetSession && targetSession.status === 'completed' && !redirectedToSummaryRef.current) {
+      if (targetSession && targetSession.status === 'completed') {
         redirectedToSummaryRef.current = true;
         if (targetSession.garageId) setSelectedGarageId(targetSession.garageId);
         if (typeof acknowledgeSession === 'function') acknowledgeSession(targetSession.id);
         activeSessionIdRef.current = null;
         toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
-        setTimeout(() => { setScreen('summary'); }, 400);
-        return;
+        setTimeout(() => { setScreen('summary'); }, 300);
       }
     }
-
-    if (lastCompletedSession && !redirectedToSummaryRef.current) {
-      const isNotAcknowledged = acknowledgedSessionIds ? !acknowledgedSessionIds.has(lastCompletedSession.id) : true;
-      if (isNotAcknowledged) {
-        redirectedToSummaryRef.current = true;
-        if (lastCompletedSession.garageId) setSelectedGarageId(lastCompletedSession.garageId);
-        if (typeof acknowledgeSession === 'function') acknowledgeSession(lastCompletedSession.id);
-        toast.success('تم إنهاء الجلسة بنجاح ✅', { icon: '🏁', duration: 3000 });
-        setTimeout(() => { setScreen('summary'); }, 400);
-      }
-    }
-  }, [activeSession, lastCompletedSession, sessions, setScreen, setSelectedGarageId, acknowledgedSessionIds, acknowledgeSession]);
+  }, [activeSession, sessions, setScreen, setSelectedGarageId, acknowledgeSession]);
 
   const sessionRate = Number(activeSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const isFirstFreeApplied = activeSession?.isFirstFreeSession === true;
 
-  // 🎁 [حساب 30 دقيقة مجاناً]: الحساب التفاعلي ليتوافق مع المنطق الجديد
+  // 🎁 [حساب 30 دقيقة مجاناً]
   const { displayedCost, displayedHours, countdownLabel, countdownTime, isFreeNow } = useMemo(() => {
     const defaultCountdown = { minutes: 59, seconds: 59 };
     const standardCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(elapsed) : defaultCountdown;
@@ -262,7 +214,7 @@ export default function SessionScreen() {
       };
     }
 
-    // من الدقيقة 31 فصاعداً: الحساب التراكمي بالساعة كالمعتاد
+    // بعد الـ 30 دقيقة
     const hours = calculateFullHours(elapsed);
     return {
       displayedCost: hours * sessionRate,
@@ -273,50 +225,22 @@ export default function SessionScreen() {
     };
   }, [isFirstFreeApplied, elapsed, sessionRate]);
 
-  // 🌟 [هيكل التحميل الانسيابي مع زر خروج فوري شغال 100%]:
+  // في حالة الانتظار المؤقت
   if (!activeSession) {
     return (
-      <div className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-6 overflow-hidden">
-        <div className="w-full flex-1 flex flex-col items-center justify-center animate-pulse">
-          {/* دائرة العداد الهيكلية */}
-          <div className="w-44 h-44 rounded-full bg-slate-100 border-4 border-slate-200 flex flex-col items-center justify-center mb-5 relative overflow-hidden">
-            <div className="w-8 h-8 rounded-full bg-slate-200 mb-2" />
-            <div className="w-24 h-7 rounded-xl bg-slate-200 mb-2" />
-            <div className="w-16 h-3 rounded-md bg-slate-200" />
-          </div>
-
-          {/* كارت الحساب والعداد */}
-          <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-4">
-            <div className="flex justify-between items-center mb-3">
-              <div className="w-16 h-8 bg-slate-200 rounded-xl" />
-              <div className="w-4 h-4 bg-slate-200 rounded-full" />
-              <div className="w-20 h-8 bg-slate-200 rounded-xl" />
-            </div>
-            <div className="w-full h-14 bg-slate-200/70 rounded-xl" />
-          </div>
-
-          {/* بطاقات البيانات */}
-          <div className="w-full grid grid-cols-2 gap-3 mb-4">
-            <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl h-20 flex flex-col items-center justify-center gap-2">
-              <div className="w-6 h-6 rounded-full bg-slate-200" />
-              <div className="w-16 h-4 bg-slate-200 rounded-md" />
-            </div>
-            <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl h-20 flex flex-col items-center justify-center gap-2">
-              <div className="w-6 h-6 rounded-full bg-slate-200" />
-              <div className="w-16 h-4 bg-slate-200 rounded-md" />
-            </div>
-          </div>
-        </div>
-
-        {/* 🚀 زر العودة المباشر الفوري لمنع أي تعليق */}
+      <div className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-6 text-center">
+        <div className="text-4xl mb-3 animate-bounce">🚗</div>
+        <h3 className="text-base font-black text-slate-900 mb-1">جاري بدء عداد الركنة...</h3>
+        <p className="text-xs text-slate-400 font-bold mb-6">لحظة واحدة لتجهيز العداد</p>
+        
         <button
           onClick={() => {
             setSelectedGarageId(null);
             setScreen('list');
           }}
-          className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-3.5 rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center justify-center gap-2 shadow-sm"
+          className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-3 rounded-xl font-bold text-xs active:scale-95 transition-all flex items-center gap-1.5 shadow-sm"
         >
-          <ArrowRight size={16} /> <span>العودة للقائمة الرئيسية</span>
+          <ArrowRight size={14} /> <span>العودة للرئيسية</span>
         </button>
       </div>
     );
@@ -328,7 +252,7 @@ export default function SessionScreen() {
       animate={{ opacity: 1 }}
       className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-6 overflow-y-auto"
     >
-      {/* 🎁 شارة مميزة علوية ترحيبية في العداد إذا كانت الجلسة مجانية */}
+      {/* 🎁 شارة الهدية الترحيبية */}
       {isFirstFreeApplied && (
         <motion.div
           initial={{ scale: 0.9, opacity: 0 }}
@@ -352,7 +276,7 @@ export default function SessionScreen() {
         </motion.div>
       )}
 
-      {/* حلقة العداد الدائرية مع تكييف الألوان */}
+      {/* حلقة العداد الدائرية */}
       <motion.div
         animate={{
           boxShadow: isFreeNow
@@ -379,7 +303,7 @@ export default function SessionScreen() {
         <div className="text-[9px] text-slate-500 font-bold mt-1">مدة الركن الفعلية</div>
       </motion.div>
 
-      {/* كارت الحساب التفاعلي مع الهدية والعداد */}
+      {/* كارت الحساب التفاعلي */}
       <div className="w-full bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-2xl p-4 mb-4 shadow-sm">
         <div className="flex justify-between items-center mb-3">
           <div className="text-center">
@@ -397,7 +321,7 @@ export default function SessionScreen() {
           </div>
         </div>
 
-        {/* عداد التنازل الديناميكي */}
+        {/* عداد التنازل */}
         <div className="bg-white/80 rounded-xl p-3 text-center border border-slate-100">
           <div className="text-[9px] text-slate-500 mb-1 font-bold">{countdownLabel}</div>
           <div className={`text-lg font-black font-mono ${isFreeNow ? 'text-amber-500' : 'text-blue-500'}`}>
