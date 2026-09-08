@@ -4,7 +4,7 @@ import {
   Car, Clock, LogOut, Plus, CheckCircle, XCircle, Settings,
   Minus, Save, MapPin, Edit3, Navigation, Phone, CarFront, FileText,
   CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
-  Search, X,
+  Search, X, CreditCard,
 } from 'lucide-react';
 import { useStore, pausePolling, normalizePlate } from '../store';
 import { supabase } from '../lib/supabase';
@@ -398,15 +398,19 @@ export default function GarageDashboard() {
   const [newCarPrice, setNewCarPrice] = useState(garage?.basePrice || 15);
   const [showAddCar, setShowAddCar] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  
+  // حالات تعديل الإعدادات
   const [editPrice, setEditPrice] = useState(garage?.basePrice || 15);
   const [editSpots, setEditSpots] = useState(garage?.availableSpots || 0);
   const [editCapacity, setEditCapacity] = useState(garage?.capacity || 50);
+  const [editPaymentMode, setEditPaymentMode] = useState<string>(garage?.payment_mode || 'both');
   const [editValet1Name, setEditValet1Name] = useState(garage?.valetName1 || '');
   const [editValet1Pass, setEditValet1Pass] = useState(garage?.valetPassword1 || '');
   const [editValet2Name, setEditValet2Name] = useState(garage?.valetName2 || '');
   const [editValet2Pass, setEditValet2Pass] = useState(garage?.valetPassword2 || '');
   const [editValet3Name, setEditValet3Name] = useState(garage?.valetName3 || '');
   const [editValet3Pass, setEditValet3Pass] = useState(garage?.valetPassword3 || '');
+  
   const [logDateFrom, setLogDateFrom] = useState(() => getLocalToday());
   const [logDateTo, setLogDateTo] = useState(() => getLocalToday());
   const [logPaymentFilter, setLogPaymentFilter] = useState<string>('all');
@@ -426,7 +430,7 @@ export default function GarageDashboard() {
     return getMyOwnedGarages(garage.ownerPhone || garage.phone || '');
   }, [getMyOwnedGarages, garage, garages]);
 
-  // 🌟 [النسب التلقائي الشامل للسايس المناوب]: إسناد أي جلسة مكتملة من التطبيق (كاش معلق / محفظة / مجاني) للسايس المتواجد على الشفت وتثبيتها في حسابه
+  // 🌟 [النسب التلقائي الشامل للسايس المناوب]: إسناد أي للجلسة مكتملة من التطبيق للسايس وتثبيتها في حسابه
   useEffect(() => {
     if (!isValet || !currentGarageId) return;
     const currentValet = currentValetNameLocal || currentValetName || `سايس ${valetNumber}`;
@@ -590,7 +594,7 @@ export default function GarageDashboard() {
     return isFreeNow ? 0 : calculateCost(el, r);
   }, [garage?.basePrice]);
 
-  // 🌟 [الفلترة الحصرية للسايس]: يرى فقط العمليات المسجلة باسمه (سواء معلقة أو مؤكدة، كاش أو محفظة أو مجانية)
+  // 🌟 [الفلترة الحصرية للسايس]: يرى فقط العمليات المسجلة باسمه
   const filteredCompleted = useMemo(() => {
     if (isValet) {
       const isActive =
@@ -626,8 +630,6 @@ export default function GarageDashboard() {
       if (isValet) {
         const isMine = addedBy && myValetNames.has(addedBy);
         const isUnassignedApp = !addedBy && s.source === 'app';
-        
-        // 🔒 السايس يرى فقط ما يخصه أو ما يلتقطه جهازه تلقائياً
         if (!isMine && !isUnassignedApp) return false;
       }      
       
@@ -828,7 +830,10 @@ export default function GarageDashboard() {
 
   const handleSaveSettings = () => {
     updateGarage(garage.id, {
-      basePrice: editPrice, availableSpots: Math.min(editSpots, editCapacity), capacity: editCapacity,
+      basePrice: editPrice, 
+      availableSpots: Math.min(editSpots, editCapacity), 
+      capacity: editCapacity,
+      payment_mode: editPaymentMode, // 🌟 حفظ خيار طريقة الدفع المقبولة للجراج
       valetName1: editValet1Name.trim(), valetPassword1: editValet1Pass.trim(),
       valetName2: editValet2Name.trim(), valetPassword2: editValet2Pass.trim(),
       valetName3: editValet3Name.trim(), valetPassword3: editValet3Pass.trim(),
@@ -837,7 +842,10 @@ export default function GarageDashboard() {
   };
 
   const openSettings = () => {
-    setEditPrice(garage.basePrice); setEditSpots(garage.availableSpots); setEditCapacity(garage.capacity);
+    setEditPrice(garage.basePrice); 
+    setEditSpots(garage.availableSpots); 
+    setEditCapacity(garage.capacity);
+    setEditPaymentMode(garage.payment_mode || 'both'); // 🌟 قراءة طريقة الدفع الحالية عند الفتح
     setEditValet1Name(garage.valetName1 || ''); setEditValet1Pass(garage.valetPassword1 || '');
     setEditValet2Name(garage.valetName2 || ''); setEditValet2Pass(garage.valetPassword2 || '');
     setEditValet3Name(garage.valetName3 || ''); setEditValet3Pass(garage.valetPassword3 || '');
@@ -915,6 +923,8 @@ export default function GarageDashboard() {
               <button onClick={() => setShowSettings(false)} style={{ color: '#94a3b8', fontSize: 20 }}>✕</button>
               <h3 className="font-black flex items-center gap-2" style={{ fontSize: 18 }}><Settings size={18} style={{ color: '#0066FF' }} /> إعدادات الجراج</h3>
             </div>
+            
+            {/* سعر الساعة */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>💰 سعر الساعة</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
@@ -925,6 +935,8 @@ export default function GarageDashboard() {
                 </div>
               </div>
             </div>
+
+            {/* الأماكن المتاحة */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🚗 الأماكن المتاحة</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
@@ -935,6 +947,8 @@ export default function GarageDashboard() {
                 </div>
               </div>
             </div>
+
+            {/* السعة الكلية */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🏢 السعة الكلية</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
@@ -945,6 +959,45 @@ export default function GarageDashboard() {
                 </div>
               </div>
             </div>
+
+            {/* 🌟 طرق الدفع المقبولة */}
+            <div className="mb-6">
+              <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>💳 طرق الدفع المقبولة في جراجك</label>
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setEditPaymentMode('cash_only')}
+                  className="p-3.5 rounded-2xl font-black flex flex-col items-center justify-center gap-1 active:scale-95 transition-all"
+                  style={{
+                    background: editPaymentMode === 'cash_only' ? '#FFF8F0' : '#F0F4FF',
+                    border: `2px solid ${editPaymentMode === 'cash_only' ? '#FF9500' : '#D0DCFF'}`,
+                    color: editPaymentMode === 'cash_only' ? '#E65100' : '#64748b',
+                  }}
+                >
+                  <span style={{ fontSize: 22 }}>💵</span>
+                  <span style={{ fontSize: 11, fontWeight: 900 }}>نقدي فقط</span>
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={() => setEditPaymentMode('both')}
+                  className="p-3.5 rounded-2xl font-black flex flex-col items-center justify-center gap-1 active:scale-95 transition-all"
+                  style={{
+                    background: editPaymentMode === 'both' ? '#F4F9FF' : '#F0F4FF',
+                    border: `2px solid ${editPaymentMode === 'both' ? '#0066FF' : '#D0DCFF'}`,
+                    color: editPaymentMode === 'both' ? '#0066FF' : '#64748b',
+                  }}
+                >
+                  <div className="flex gap-1">
+                    <span style={{ fontSize: 18 }}>💵</span>
+                    <span style={{ fontSize: 18 }}>👝</span>
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 900 }}>نقدي + محفظة</span>
+                </button>
+              </div>
+            </div>
+
+            {/* نسبة عمولة التطبيق */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>📊 نسبة عمولة التطبيق</label>
               <div style={{ background: '#FFF8F0', borderRadius: 22, padding: 16, border: '2px solid #FFD180' }}>
@@ -952,6 +1005,8 @@ export default function GarageDashboard() {
                 <div className="text-center mt-2"><span className="font-bold" style={{ fontSize: 10, color: '#94a3b8' }}>يتم تحديدها من إدارة التطبيق</span></div>
               </div>
             </div>
+
+            {/* إدارة السياس */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🅿️ إدارة السياس</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
@@ -1545,7 +1600,6 @@ export default function GarageDashboard() {
                     {!isSettled && !isC ? (
                       <button 
                         onClick={async () => { 
-                          // 🌟 [النسب الفوري]: عند الضغط على تأكيد يتم تسجيل الجلسة باسم السايس الحالي فوراً
                           const currentValet = isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '';
                           if (currentValet) {
                             await assignSessionToValet(session.id, currentValet);
