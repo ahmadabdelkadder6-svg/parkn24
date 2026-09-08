@@ -218,13 +218,34 @@ export default function SessionScreen() {
   const sessionRate = Number(activeSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const isFirstFreeApplied = activeSession?.isFirstFreeSession === true;
 
-  // 🎁 [حساب 30 دقيقة مجاناً]: تعديل الحساب التفاعلي ليتوافق مع المنطق الجديد
+  // 🎁 حساب دقيق: 30 دقيقة مجاناً -> من الدقيقة 31 ساعة كاملة -> بعد دقيقة 60 ساعتين وهكذا
   const { displayedCost, displayedHours, countdownLabel, countdownTime, isFreeNow } = useMemo(() => {
     const defaultCountdown = { minutes: 59, seconds: 59 };
-    const standardCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(elapsed) : defaultCountdown;
 
-    // أول 30 دقيقة (1800 ثانية) مجانية بالكامل
-    if (isFirstFreeApplied && elapsed <= 1800) {
+    // دالة لحساب الوقت المتبقي في الساعة الحالية بدقة
+    const calculateHourRemaining = (secs: number) => {
+      const remainingSecs = 3600 - (secs % 3600);
+      const actualRemaining = remainingSecs === 3600 ? 0 : remainingSecs;
+      return {
+        minutes: Math.floor(actualRemaining / 60),
+        seconds: actualRemaining % 60,
+      };
+    };
+
+    // 1️⃣ حساب عادي لو مش أول جلسة ترحيبية
+    if (!isFirstFreeApplied) {
+      const calculatedCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(elapsed) : calculateHourRemaining(elapsed);
+      return {
+        displayedCost: calculateCost ? calculateCost(elapsed, sessionRate) : Math.max(1, Math.ceil(elapsed / 3600)) * sessionRate,
+        displayedHours: calculateFullHours ? calculateFullHours(elapsed) : Math.max(1, Math.ceil(elapsed / 3600)),
+        countdownLabel: 'الوقت المتبقي حتى الساعة التالية',
+        countdownTime: calculatedCountdown || defaultCountdown,
+        isFreeNow: false,
+      };
+    }
+
+    // 2️⃣ أول 30 دقيقة (من ثانية 0 إلى 1800) مجانية بالكامل
+    if (elapsed <= 1800) {
       const freeTimeRemaining = Math.max(0, 1800 - elapsed);
       const minutes = Math.floor(freeTimeRemaining / 60);
       const seconds = freeTimeRemaining % 60;
@@ -235,17 +256,20 @@ export default function SessionScreen() {
         countdownTime: { minutes, seconds },
         isFreeNow: true,
       };
+    } else {
+      // 3️⃣ من الدقيقة 31 فصاعداً:
+      // من 1801 إلى 3600 ثانية (دقيقة 31-60) -> 1 ساعة
+      // من 3601 إلى 7200 ثانية (دقيقة 61-120) -> 2 ساعة
+      const hours = Math.ceil(elapsed / 3600);
+      const calculatedCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(elapsed) : calculateHourRemaining(elapsed);
+      return {
+        displayedCost: hours * sessionRate,
+        displayedHours: hours,
+        countdownLabel: 'الوقت المتبقي حتى الساعة التالية الخاضعة للدفع',
+        countdownTime: calculatedCountdown || defaultCountdown,
+        isFreeNow: false,
+      };
     }
-
-    // من الدقيقة 31 فصاعداً: الحساب التراكمي بالساعة كالمعتاد
-    const hours = calculateFullHours(elapsed);
-    return {
-      displayedCost: hours * sessionRate,
-      displayedHours: hours,
-      countdownLabel: 'الوقت المتبقي حتى الساعة التالية الخاضعة للدفع',
-      countdownTime: standardCountdown || defaultCountdown,
-      isFreeNow: false,
-    };
   }, [isFirstFreeApplied, elapsed, sessionRate]);
 
   // إذا لم تكن هناك جلسة نشطة
@@ -289,7 +313,7 @@ export default function SessionScreen() {
             <div className="text-white/90 font-bold" style={{ fontSize: 10 }}>
               {isFreeNow 
                 ? 'أنت الآن في الـ 30 دقيقة الأولى المجانية بالكامل! 🎁' 
-                : 'انتهت الـ 30 دقيقة المجانية وتم بدء الاحتساب بدقة كالمعتاد ✅'}
+                : 'انتهت الـ 30 دقيقة المجانية وتم بدء احتساب الساعة بدقة ✅'}
             </div>
           </div>
         </motion.div>
