@@ -6,9 +6,10 @@ import {
   ArrowRight,
   Gift,
   Sparkles,
+  CreditCard,
 } from 'lucide-react';
-// 🌟 استيراد دالة البصمة الموحدة من الـ store لضمان مطابقة اللوحات بنسبة 100%
-import { useStore, normalizePlate } from '../store';
+// 🌟 استيراد دوال البصمة الموحدة من الـ store لضمان مطابقة اللوحات والأرقام بنسبة 100%
+import { useStore, normalizePlate, normalizePhone } from '../store';
 import {
   calculateFullHours,
   calculateCost,
@@ -44,7 +45,7 @@ export default function SessionScreen() {
   } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
-  const userPhone = currentUser?.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
+  const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
   const redirectedToSummaryRef = useRef(false);
   const redirectedToSessionRef = useRef(false);
@@ -57,11 +58,10 @@ export default function SessionScreen() {
   const isMySessionRow = (row: any) => {
     if (!row) return false;
     const rowPlate = normalizePlate(row.car_plate || row.carPlate);
-    const rowPhone = row.customer_phone || row.customerPhone || '';
-    const cleanRowPhone = typeof rowPhone === 'string' ? rowPhone.replace(/[^\d+]/g, '') : '';
+    const rowPhone = normalizePhone(row.customer_phone || row.customerPhone || '');
     return (
       (!!userPlate && rowPlate === userPlate) ||
-      (!!userPhone && cleanRowPhone === userPhone)
+      (!!userPhone && rowPhone === userPhone)
     );
   };
 
@@ -72,8 +72,8 @@ export default function SessionScreen() {
         if (!s || s.status !== 'active') return false;
         if (acknowledgedSessionIds?.has(s.id)) return false;
         const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-        const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
-        const samePhoneMatch = !!userPhone && sPhone === userPhone;
+        const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+        const samePhoneMatch = Boolean(userPhone && sPhone === userPhone);
         return samePlateMatch || samePhoneMatch;
       })
       .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
@@ -84,8 +84,8 @@ export default function SessionScreen() {
       .filter((s) => {
         if (!s || s.status !== 'completed') return false;
         const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-        const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
-        const samePhoneMatch = !!userPhone && sPhone === userPhone;
+        const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+        const samePhoneMatch = Boolean(userPhone && sPhone === userPhone);
         return samePlateMatch || samePhoneMatch;
       })
       .sort((a, b) => safeParseTime(b.endTime) - safeParseTime(a.endTime))[0];
@@ -108,7 +108,7 @@ export default function SessionScreen() {
     return ms > 0 ? ms : Date.now();
   }, [activeSession?.id, activeSession?.startTime]);
 
-  // 📡 جلب البيانات في الخلفية بدون حجب الشاشة
+  // 📡 جلب البيانات في الخلفية
   useEffect(() => {
     fetchAll().catch((e) => console.error('Fetch error:', e));
   }, [fetchAll]);
@@ -218,7 +218,7 @@ export default function SessionScreen() {
   const sessionRate = Number(activeSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const isFirstFreeApplied = activeSession?.isFirstFreeSession === true;
 
-  // 🎁 الحسابات التفاعلية مع حماية كاملة من الـ Undefined لمنع أي شاشة بيضاء
+  // 🎁 الحسابات التفاعلية لـ (30 دقيقة = 1800 ثانية مجانية)
   const { displayedCost, displayedHours, countdownLabel, countdownTime, isFreeNow } = useMemo(() => {
     const defaultCountdown = { minutes: 59, seconds: 59 };
 
@@ -233,24 +233,26 @@ export default function SessionScreen() {
       };
     }
 
-    if (elapsed <= 3600) {
-      const freeTimeRemaining = Math.max(0, 3600 - elapsed);
+    // 🕐 أول 30 دقيقة (1800 ثانية) مجانية بالكامل
+    if (elapsed <= 1800) {
+      const freeTimeRemaining = Math.max(0, 1800 - elapsed);
       const minutes = Math.floor(freeTimeRemaining / 60);
       const seconds = freeTimeRemaining % 60;
       return {
         displayedCost: 0,
         displayedHours: 0,
-        countdownLabel: 'الوقت المتبقي لانتهاء الساعة المجانية الهدية 🎁',
+        countdownLabel: 'الوقت المتبقي لانتهاء الـ 30 دقيقة المجانية الهدية 🎁',
         countdownTime: { minutes, seconds },
         isFreeNow: true,
       };
     } else {
-      const billableSeconds = Math.max(0, elapsed - 3600);
-      const calculatedCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(billableSeconds) : defaultCountdown;
+      // 🕐 بعد انتهاء الـ 30 دقيقة، يتم المحاسبة بالساعة الكاملة
+      const calculatedCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(elapsed) : defaultCountdown;
+      const totalHours = calculateFullHours(elapsed);
       return {
-        displayedCost: calculateCost(billableSeconds, sessionRate),
-        displayedHours: calculateFullHours(billableSeconds),
-        countdownLabel: 'الوقت المتبقي حتى الساعة التالية الخاضعة للدفع',
+        displayedCost: calculateCost(elapsed, sessionRate),
+        displayedHours: totalHours,
+        countdownLabel: 'الوقت المتبقي حتى الساعة التالية',
         countdownTime: calculatedCountdown || defaultCountdown,
         isFreeNow: false,
       };
@@ -285,7 +287,7 @@ export default function SessionScreen() {
         <motion.div
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 rounded-2xl p-3.5 mb-5 shadow-md border-2 border-white flex items-center gap-3"
+          className="w-full bg-gradient-to-r from-amber-400 to-orange-500 rounded-2xl p-3.5 mb-5 shadow-md border-2 border-white flex items-center gap-3"
         >
           <div className="bg-white/20 p-2.5 rounded-xl text-white">
             <Gift size={22} className="animate-pulse" />
@@ -297,8 +299,8 @@ export default function SessionScreen() {
             </div>
             <div className="text-white/90 font-bold" style={{ fontSize: 10 }}>
               {isFreeNow 
-                ? 'أنت الآن في الساعة الأولى المجانية بالكامل! 🎁' 
-                : 'انتهت الساعة المجانية وتم بدء الاحتساب المخفض بدقة ✅'}
+                ? 'أنت الآن في أول 30 دقيقة مجانية بالكامل! 🎁' 
+                : 'انتهت الـ 30 دقيقة المجانية وتم بدء الاحتساب بالسعر العادي ✅'}
             </div>
           </div>
         </motion.div>
@@ -357,7 +359,7 @@ export default function SessionScreen() {
           </div>
           <div className="text-[9px] text-slate-400 mt-1">
             {isFreeNow ? (
-              <span>استمتع بالركن المجاني دون أي رسوم إضافية 🥳</span>
+              <span>استمتع بالركن المجاني في أول نصف ساعة 🥳</span>
             ) : (
               <span>
                 بعدها ستُحسب ساعة إضافية ({displayedHours + 1} × {sessionRate} = {(displayedHours + 1) * sessionRate} ج.م)
@@ -401,8 +403,18 @@ export default function SessionScreen() {
         </p>
       </div>
 
+      {/* 🌟 بانر توضيح طرق الدفع المتاحة في الجراج */}
       <div className="w-full bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-center">
-        <p className="text-[10px] text-blue-600 font-bold">💡 سيتم تحديد طريقة الدفع عند إنهاء الجلسة</p>
+        <div className="flex items-center justify-center gap-1.5 text-blue-600 text-[11px] font-bold">
+          <CreditCard size={14} />
+          {garage?.payment_mode === 'cash' ? (
+            <span>💵 هذا الجراج يقبل الدفع النقدي (كاش) فقط</span>
+          ) : garage?.payment_mode === 'wallet' ? (
+            <span>👝 هذا الجراج يقبل الدفع بالمحفظة فقط</span>
+          ) : (
+            <span>💳 يقبل الدفع نقدي (كاش) أو خصماً من المحفظة</span>
+          )}
+        </div>
       </div>
 
       {/* زر إنهاء الجلسة */}

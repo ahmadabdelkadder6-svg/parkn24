@@ -6,7 +6,8 @@ import {
   Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown,
   Settings, CalendarDays,
 } from 'lucide-react';
-import { useStore, pausePolling, normalizePlate } from '../store';
+// 🌟 استيراد دوال البصمة الموحدة والبونص من الـ store لضمان مطابقة آمنة وخالية من التلاعب
+import { useStore, pausePolling, normalizePlate, normalizePhone, calculateBonus } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
@@ -90,7 +91,8 @@ export default function AdminDashboard() {
   const [archiveSearch, setArchiveSearch] = useState('');
   const [visibleSettlements, setVisibleSettlements] = useState(4);
   const [activeAccordionGarageId, setActiveAccordionGarageId] = useState<string | null>(null);
-  // 🔍 حالة وتصفية البحث السريع عن الجراجات
+  
+  // 🔍 تصفية وجرد البحث عن الجراجات
   const [garageSearch, setGarageSearch] = useState('');
   const filteredGaragesForAdmin = useMemo(() => {
     const q = garageSearch.trim().toLowerCase();
@@ -130,9 +132,9 @@ export default function AdminDashboard() {
 
   useEffect(() => { fetchSettlements(); }, [fetchSettlements]);
 
-  /* ─── Revenue Calculation with Free Gift Logic ─── */
+  /* ─── Revenue Calculation with 30 Minutes Free Gift Logic ─── */
   const getRevenue = useCallback((s: any) => {
-    if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
+    if (s.totalPrice != null) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
       const st = toMs(s.startTime);
       const en = toMs(s.endTime);
@@ -140,12 +142,9 @@ export default function AdminDashboard() {
       const rate = Number(s.agreedPrice ?? g?.basePrice ?? 0);
       const elapsedSeconds = Math.max(0, Math.floor((en - st) / 1000));
 
-      if (s.isFirstFreeSession === true) {
-        const freeSeconds = Math.min(elapsedSeconds, 3600);
-        const billableSeconds = Math.max(0, elapsedSeconds - freeSeconds);
-        return calculateCost(billableSeconds, rate);
-      }
-      return calculateCost(elapsedSeconds, rate);
+      // 🎁 الهدية الترحيبية: 30 دقيقة مجاناً (1800 ثانية). إذا تجاوزها يُحاسب بالكامل
+      const isFreeNow = s.isFirstFreeSession === true && elapsedSeconds <= 1800;
+      return isFreeNow ? 0 : calculateCost(elapsedSeconds, rate);
     }
     return 0;
   }, [garages]);
@@ -372,7 +371,7 @@ export default function AdminDashboard() {
         return;
       }
 
-      const realUserPhone = dbRow.user_phone || topUp.userPhone || '';
+      const realUserPhone = normalizePhone(dbRow.user_phone || topUp.userPhone || '');
       let userData: any = null;
       if (realUserPhone) {
         const { data } = await supabase
@@ -389,11 +388,7 @@ export default function AdminDashboard() {
       }
 
       const baseAmount = Number(dbRow.amount || topUp.amount || 0);
-      let bonusAmount = 0;
-      if (baseAmount >= 1000) bonusAmount = 200;
-      else if (baseAmount >= 500) bonusAmount = 75;
-      else if (baseAmount >= 300) bonusAmount = 30;
-      else if (baseAmount >= 100) bonusAmount = 5;
+      const bonusAmount = calculateBonus(baseAmount); // 🎁 بونص الشحن الموحد من الـ Store
 
       const totalToAdd = baseAmount + bonusAmount;
       const newWallet = Number(userData.wallet || 0) + totalToAdd;
@@ -551,6 +546,30 @@ export default function AdminDashboard() {
       toast.error('فشل التنظيف: ' + (e.message || 'خطأ في الاتصال بالشبكة'));
     }
   };
+
+  const fetchGarageDailyStatsRef = useRef(fetchGarageDailyStats);
+  useEffect(() => { fetchGarageDailyStatsRef.current = fetchGarageDailyStats; }, []);
+
+  async function fetchGarageDailyStats() {
+    // دالة فارغة لحفظ المرجع المتوافق مع تحديثات الجراج
+  }
+
+  /* ─────────────────────────────────────────────
+     📡 REALTIME GLOBAL - الأدمن يتلقى تحديثات شاملة فوراً
+     ───────────────────────────────────────────── */
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-realtime-global')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, async () => { await fetchAll(); await fetchGarageDailyStatsRef.current(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_topups' }, async () => { await fetchAll(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, async () => { await fetchAll(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'garages' }, async () => { await fetchAll(); })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchAll]);
 
   return (
     <div className="h-full overflow-y-auto pt-16" style={{ background: '#EBF2FF', color: '#0A1628', padding: 16 }}>
@@ -1006,7 +1025,7 @@ export default function AdminDashboard() {
                         }}>
                           <div className="flex justify-between items-start mb-1.5">
                             <div className="flex items-center gap-1" style={{ padding: '3px 8px', borderRadius: 8, background: isAdminToGarage ? '#EBFDF2' : '#FFF3F3' }}>
-                              {isAdminToGarage ? <ArrowUp size={10} style={{ color: '#00AA44' }} /> : <ArrowDown size={10} style={{ color: '#CC0000' }} />}
+                              {isAdminToGarage ? <ArrowUp size={10} style={{ color: '#00AA44' }} : <ArrowDown size={10} style={{ color: '#CC0000' }} />}
                               <span className="font-black" style={{ fontSize: 9, color: isAdminToGarage ? '#00AA44' : '#CC0000' }}>
                                 {isAdminToGarage ? 'أرسل الأدمن' : 'استلم الأدمن'}
                               </span>
@@ -1204,7 +1223,7 @@ export default function AdminDashboard() {
                         { show: !!session.paymentMethod, bg: session.paymentMethod === 'cash' ? '#00CC66' : session.paymentMethod === 'instapay' ? '#7C3AED' : session.paymentMethod === 'wallet' ? '#0066FF' : '#FF8800', text: session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستا' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش' },
                         { show: true, bg: session.revenueConfirmed ? '#00CC66' : '#FF9500', text: session.revenueConfirmed ? '✅ مؤكد' : '⏳ معلق' },
                         { show: isSettled, bg: '#94a3b8', text: '🔒 تمت التسوية' },
-                        { show: session.isFirstFreeSession === true, bg: '#E65100', text: '🎁 ساعة مجانية' } 
+                        { show: session.isFirstFreeSession === true, bg: '#E65100', text: rev === 0 ? '🎁 ركن ترحيبي مجاني' : '🎁 بونص ترحيبي منتهي' } 
                       ].filter(b => b.show).map((b, i) => (
                         <span key={i} className="font-bold" style={{ fontSize: 9, padding: '4px 10px', borderRadius: 12, background: b.bg, color: '#fff' }}>{b.text}</span>
                       ))}
@@ -1393,7 +1412,7 @@ export default function AdminDashboard() {
 
                   {msg.subject && <div className="font-black mb-1 text-right text-slate-900" style={{ fontSize: 12.5 }}>{msg.subject}</div>}
                   
-                  {/* 🌟 محتوى الشكوى: خط أسود صريح غليظ للغاية وواضح جداً بحجم ملموم */}
+                  {/* محتوى الشكوى بالخط العريض المقروء بامتياز للأدمن */}
                   <div 
                     className={`text-right leading-relaxed mb-2 cursor-pointer ${isExp ? '' : 'line-clamp-2'}`} 
                     style={{ fontSize: '12px', fontWeight: 950, color: '#000000' }} 
@@ -1408,7 +1427,6 @@ export default function AdminDashboard() {
                     <div className="mb-2.5" style={{ background: '#E8FFF0', border: '1.5px solid #66DDAA', borderRadius: 14, padding: 10 }}>
                       <div className="font-black text-right mb-1" style={{ fontSize: 9.5, color: '#00AA44' }}>ردك السابق:</div>
                       
-                      {/* 🌟 رد الأدمن السابق يظهر داخل البوكس بخط أسود غليظ ومقروء بامتياز */}
                       <div 
                         className="text-right leading-relaxed" 
                         style={{ fontSize: '12.5px', fontWeight: 950, color: '#000000' }}
@@ -1437,7 +1455,7 @@ export default function AdminDashboard() {
                         <button onClick={() => { setReplyingTo(msg.id); setReplyText(''); setExpandedMessage(msg.id); }} className="flex-1 font-black flex items-center justify-center gap-1.5 active:scale-95"
                           style={{ background: '#0066FF', color: '#fff', padding: 10, borderRadius: 14, fontSize: 12, boxShadow: '0 4px 12px rgba(0,102,255,0.2)' }}><Send size={14} />{msg.reply ? 'تعديل الرد' : 'الرد على الرسالة'}</button>
                         <button onClick={async () => { await closeMessage(msg.id); toast.success('تم الإغلاق'); }} className="font-black active:scale-95"
-                          style={{ background: '#F0F4FF', color: '#475569', padding: '10px 16px', borderRadius: 14, fontSize: 12, border: '2px solid #D0DCFF' }}>إغلاق</button>
+                          style={{ background: '#F0F4FF', color: '#475569', padding: '10px 16px', borderRadius: 14, fontSize: 12, border: '2px solid #D0DCFF' }}>إلغاء</button>
                       </div>
                     )
                   )}
@@ -1448,7 +1466,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* 🏢 ══════ إدارة وجرد الجراجات الموفر للمساحة ══════ */}
+      {/* 🏢 إدارة وجرد الجراجات الموفر للمساحة */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
           <span className="font-black" style={{ background: '#4D00FF', color: '#fff', fontSize: 10, padding: '3.5px 12px', borderRadius: 20 }}>
@@ -1479,7 +1497,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* 📦 صندوق احتواء ذكي بانزلاق عمودي يوفر 50% من مساحة الشاشة */}
+        {/* صندوق احتواء ذكي يوفر 50% من مساحة الشاشة للأدمن */}
         <div 
           className="space-y-3 max-h-[380px] overflow-y-auto pr-1.5"
           style={{
@@ -1496,7 +1514,7 @@ export default function AdminDashboard() {
             filteredGaragesForAdmin.map(g => {
               const isEditingComm = editingCommissionGarageId === g.id;
               const ownerPhone = (g as any).ownerPhone || g.phone;
-              const sameOwnerCount = garages.filter((x: any) => ((x.ownerPhone || x.phone) === ownerPhone)).length;
+              const sameOwnerCount = garages.filter((x: any) => (normalizePhone(x.ownerPhone || x.phone) === normalizePhone(ownerPhone))).length;
               return (
                 <div key={g.id} style={{ background: '#fff', border: '2px solid #D0DCFF', borderRadius: 18, padding: '12px 14px', boxShadow: '0 3px 12px rgba(0,102,255,0.04)' }}>
                   <div className="flex justify-between items-center mb-2">
@@ -1632,6 +1650,7 @@ export default function AdminDashboard() {
           )}
         </div>
       </div>
+
       {/* ══ Add Garage ══ */}
       <div className="mb-20">
         <h3 className="font-black mb-4 flex items-center gap-2 justify-end" style={{ fontSize: 16, color: '#0066FF' }}>إضافة جراج جديد <Plus size={18} /></h3>

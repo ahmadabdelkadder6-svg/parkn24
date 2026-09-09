@@ -7,8 +7,8 @@ import {
   AlertTriangle,
   Gift,
 } from 'lucide-react';
-// 🌟 استيراد دالة البصمة الموحدة من الـ store لضمان مطابقة دقيقة وخالية من تلاعب الثغرات
-import { useStore, pausePolling, normalizePlate } from '../store';
+// 🌟 استيراد دوال البصمة الموحدة من الـ store لضمان مطابقة دقيقة وخالية من تلاعب الثغرات
+import { useStore, pausePolling, normalizePlate, normalizePhone } from '../store';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
@@ -38,9 +38,9 @@ export default function SummaryScreen() {
   } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
-  const userPhone = currentUser?.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
+  const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
-  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'wallet' | 'free'>('cash');
   const [done, setDone] = useState(false);
   const [doneMethod, setDoneMethod] = useState('');
   const [doneTotalPrice, setDoneTotalPrice] = useState(0);
@@ -53,8 +53,8 @@ export default function SummaryScreen() {
 
   const isMySession = (s: any): boolean => {
     const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-    const sPhone = s.customerPhone ? s.customerPhone.replace(/[^\d+]/g, '') : '';
-    const samePhone = !!userPhone && sPhone === userPhone;
+    const sPhone = s.customerPhone ? normalizePhone(s.customerPhone) : '';
+    const samePhone = Boolean(userPhone && sPhone === userPhone);
     return samePlate || samePhone;
   };
 
@@ -75,6 +75,34 @@ export default function SummaryScreen() {
   const garage =
     garages.find((g) => g.id === selectedGarageId) ??
     garages.find((g) => g.id === referenceSession?.garageId);
+
+  // 🌟 التحقق الدقيق من طريقة الدفع المقبولة في الجراج
+  const paymentMode = (garage?.payment_mode as 'cash' | 'wallet' | 'both') || 'both';
+
+  // إنشاء قائمة طرق الدفع ديناميكياً بحسب إعداد الجراج
+  const methods = useMemo(() => {
+    const list = [];
+    if (paymentMode === 'cash' || paymentMode === 'both') {
+      list.push({ id: 'cash' as const, label: 'سداد نقدي كاش', icon: '💵' });
+    }
+    if (paymentMode === 'wallet' || paymentMode === 'both') {
+      list.push({ id: 'wallet' as const, label: 'خصم من المحفظة', icon: '👝' });
+    }
+    // Fallback لو مفيش حاجة رجعت كاش افتراضي
+    if (list.length === 0) {
+      list.push({ id: 'cash' as const, label: 'سداد نقدي كاش', icon: '💵' });
+    }
+    return list;
+  }, [paymentMode]);
+
+  // تحويل وتثبيت الاختيار تلقائياً بناءً على وضع الجراج
+  useEffect(() => {
+    if (paymentMode === 'cash') {
+      setPaymentMethod('cash');
+    } else if (paymentMode === 'wallet') {
+      setPaymentMethod('wallet');
+    }
+  }, [paymentMode]);
 
   useEffect(() => {
     if (!userPlate && !userPhone) return;
@@ -101,7 +129,7 @@ export default function SummaryScreen() {
           const myRow = (r: any) => {
             if (!r) return false;
             const plate = normalizePlate(r.car_plate || r.carPlate);
-            const phone = (r.customer_phone || r.customerPhone || '').replace(/[^\d+]/g, '');
+            const phone = normalizePhone(r.customer_phone || r.customerPhone || '');
             return (
               (!!userPlate && plate === userPlate) ||
               (!!userPhone && phone === userPhone)
@@ -151,7 +179,7 @@ export default function SummaryScreen() {
     autoRedirectedRef.current = true;
 
     const price =
-      lastCompletedSession.totalPrice != null && Number(lastCompletedSession.totalPrice) > 0
+      lastCompletedSession.totalPrice != null && Number(lastCompletedSession.totalPrice) >= 0
         ? Number(lastCompletedSession.totalPrice)
         : 0;
 
@@ -184,44 +212,33 @@ export default function SummaryScreen() {
   const durationMinutes = Math.floor(durationSeconds / 60);
   const sessionRate = Number(referenceSession?.agreedPrice ?? garage?.basePrice ?? 0);
 
+  // 🌟 منطق حساب الـ 30 دقيقة المجانية
   const isFirstFreeApplied = useMemo(() => {
     return referenceSession?.isFirstFreeSession === true;
   }, [referenceSession]);
 
-  const freeSeconds = useMemo(() => {
-    if (!isFirstFreeApplied) return 0;
-    return Math.min(durationSeconds, 3600); 
-  }, [isFirstFreeApplied, durationSeconds]);
-
-  const freeMinutesApplied = Math.floor(freeSeconds / 60);
-  const billableSeconds = Math.max(0, durationSeconds - freeSeconds);
-  const billableHours = calculateFullHours(billableSeconds);
+  const isFreeNow = isFirstFreeApplied && durationSeconds <= 1800; // 30 دقيقة أو أقل
+  const billableHours = isFreeNow ? 0 : calculateFullHours(durationSeconds);
+  const freeMinutesApplied = isFreeNow ? Math.floor(durationSeconds / 60) : 0;
 
   const originalPrice = useMemo(() => {
     return calculateCost(durationSeconds, sessionRate);
   }, [durationSeconds, sessionRate]);
 
-  const rawPrice = useMemo(() => {
+  const totalPrice = useMemo(() => {
     if (
       referenceSession?.status === 'completed' &&
-      referenceSession?.totalPrice != null &&
-      Number(referenceSession.totalPrice) > 0
+      referenceSession?.totalPrice != null
     ) {
       return Number(referenceSession.totalPrice);
     }
-    return calculateCost(billableSeconds, sessionRate);
-  }, [referenceSession, billableSeconds, sessionRate]);
+    return isFreeNow ? 0 : calculateCost(durationSeconds, sessionRate);
+  }, [referenceSession, isFreeNow, durationSeconds, sessionRate]);
 
-  const totalPrice = rawPrice;
-  const discountAmount = isFirstFreeApplied ? Math.max(0, originalPrice - totalPrice) : 0;
+  const discountAmount = isFreeNow ? originalPrice : 0;
 
   const walletBalance = currentUser?.wallet ?? 0;
   const canPayWallet = walletBalance >= totalPrice;
-
-  const methods = [
-    { id: 'cash', label: 'نقدي كاش', icon: '💵' },
-    { id: 'wallet', label: 'خصم من المحفظة', icon: '👝' },
-  ];
 
   const safeEndSession = async (method: string, price: number): Promise<boolean> => {
     if (isEndingRef.current) return false;
@@ -233,7 +250,7 @@ export default function SummaryScreen() {
         .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
 
       const actualPrice =
-        freshCompleted?.totalPrice != null && Number(freshCompleted.totalPrice) > 0
+        freshCompleted?.totalPrice != null && Number(freshCompleted.totalPrice) >= 0
           ? Number(freshCompleted.totalPrice)
           : price;
       const actualMethod = freshCompleted?.paymentMethod ?? method;
@@ -341,19 +358,17 @@ export default function SummaryScreen() {
 
         <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-6 text-center w-full shadow-sm">
           <div className="text-4xl font-black text-slate-900 font-mono mb-1">
-            {doneTotalPrice > 0 ? `${doneTotalPrice} ج.م` : `${totalPrice} ج.م`}
+            {doneTotalPrice} ج.م
           </div>
           <div className="text-xs text-slate-400 mb-2">
-            {isFirstFreeApplied ? (
-              <span>
-                (تم ركن {durationMinutes} دقيقة منها أول ساعة مجانية 🎁)
-              </span>
+            {doneMethod === 'free' || isFreeNow ? (
+              <span>(تم ركن {durationMinutes} دقيقة مجاناً كهدية ترحيبية 🎁)</span>
             ) : (
               <span>{billableHours} ساعة × {sessionRate} ج.م</span>
             )}
           </div>
 
-          {isFirstFreeApplied && discountAmount > 0 && (
+          {doneMethod === 'free' && discountAmount > 0 && (
             <div className="inline-block px-3 py-1 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-600 mb-2">
               🎁 وفرت {discountAmount} ج.م من العرض الترحيبي!
             </div>
@@ -434,27 +449,14 @@ export default function SummaryScreen() {
 
       <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-4 shadow-sm">
         <div className="text-center mb-3">
-          {isFirstFreeApplied && discountAmount > 0 ? (
-            <>
-              <div className="text-lg font-bold text-slate-400 font-mono line-through mb-0.5">
-                {originalPrice} ج.م
-              </div>
-              <div className="text-4xl font-black text-emerald-600 font-mono mb-0.5">
-                {totalPrice} ج.م
-              </div>
-              <div className="inline-block px-3.5 py-1.5 rounded-full text-[10px] font-black bg-gradient-to-r from-yellow-400 to-orange-500 text-white mb-2 shadow-sm flex items-center justify-center gap-1.5 w-fit mx-auto">
-                <Gift size={12} className="text-white" />
-                <span>تم تطبيق عرض أول ساعة مجانية بالكامل! 🎉 (وفرت -{discountAmount} ج)</span>
-              </div>
-            </>
-          ) : isFirstFreeApplied && totalPrice === 0 ? (
+          {isFreeNow ? (
             <>
               <div className="text-4xl font-black text-emerald-600 font-mono mb-0.5">
                 0 ج.م
               </div>
-              <div className="inline-block px-3.5 py-1.5 rounded-full text-[10px] font-black bg-gradient-to-r from-yellow-400 to-orange-500 text-white mb-2 shadow-sm flex items-center justify-center gap-1.5 w-fit mx-auto">
+              <div className="inline-block px-3.5 py-1.5 rounded-full text-[10px] font-black bg-gradient-to-r from-amber-400 to-orange-500 text-white mb-2 shadow-sm flex items-center justify-center gap-1.5 w-fit mx-auto">
                 <Gift size={12} className="text-white" />
-                <span>ركنتك الأولى مجانية بالكامل! (أقل من ساعة 🎁)</span>
+                <span>ركنتك الأولى مجانية بالكامل! (أول 30 دقيقة 🎁)</span>
               </div>
             </>
           ) : (
@@ -476,17 +478,17 @@ export default function SummaryScreen() {
               <span className="font-black text-slate-900 font-mono">{durationMinutes} دقيقة</span>
             </div>
 
-            {isFirstFreeApplied && (
+            {isFreeNow && (
               <div className="flex justify-between text-xs text-emerald-600 font-bold">
                 <span className="flex items-center gap-1">🎁 خصم الهدية الترحيبية</span>
-                <span className="font-mono">-{freeMinutesApplied} دقيقة (ساعة كاملة)</span>
+                <span className="font-mono">مجاني بالكامل (أول 30 دقيقة)</span>
               </div>
             )}
 
             <div className="flex justify-between text-xs">
               <span className="text-slate-500">الساعات المحتسبة للدفع</span>
               <span className="font-black text-blue-600 font-mono">
-                {isFirstFreeApplied ? billableHours : calculateFullHours(durationSeconds)} ساعة
+                {billableHours} ساعة
               </span>
             </div>
 
@@ -536,7 +538,7 @@ export default function SummaryScreen() {
           {totalPrice > 0 && (
             <div className="mb-6">
               <h3 className="text-sm font-black text-slate-700 mb-3 text-right">طريقة الدفع</h3>
-              <div className="grid grid-cols-2 gap-3">
+              <div className={`grid ${methods.length === 1 ? 'grid-cols-1' : 'grid-cols-2'} gap-3`}>
                 {methods.map((m) => (
                   <button
                     key={m.id}

@@ -9,9 +9,11 @@ import {
   Clock,
   XCircle,
   Copy,
+  Gift,
+  CreditCard,
 } from 'lucide-react';
-// 🌟 استيراد دالة البصمة الموحدة من الـ store لضمان التوافق التام مع باقي الشاشات
-import { useStore, normalizePlate } from '../store';
+// 🌟 استيراد دوال البصمة الموحدة من الـ store لضمان التوافق التام مع باقي الشاشات
+import { useStore, normalizePlate, normalizePhone } from '../store';
 import {
   calculateDistance,
   distanceToMinutes,
@@ -77,7 +79,7 @@ function MapController({
       } catch {}
     }, 250);
 
-    // 🛡️ صمام أمان صارم للتحقق من سلامة الإحداثيات ومنع الـ NaN تماماً رغماً عن شبكات الـ GPS
+    // 🛡️ صمام أمان صارم للتحقق من سلامة الإحداثيات ومنع الـ NaN تماماً
     const isValidCoord = (c: [number, number]) =>
       Array.isArray(c) &&
       typeof c[0] === 'number' && !isNaN(c[0]) && c[0] !== 0 &&
@@ -123,7 +125,7 @@ export default function NavigationScreen() {
 
   const garage = garages.find((g) => g.id === selectedGarageId);
   const userPlateNav = normalizePlate(currentUser?.carPlate);
-  const userPhoneClean = currentUser?.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
+  const userPhoneClean = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
   /* ── الكشف عن السيارة القادمة ── */
   const myIncomingCar = useMemo(() => {
@@ -143,7 +145,7 @@ export default function NavigationScreen() {
           sess.status === 'active' &&
           (
             normalizePlate(sess.carPlate) === userPlateNav ||
-            (userPhoneClean && ((sess as any).customerPhone || '').replace(/[^\d+]/g, '') === userPhoneClean)
+            (userPhoneClean && normalizePhone((sess as any).customerPhone || '') === userPhoneClean)
           ),
       )
       .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
@@ -201,7 +203,7 @@ export default function NavigationScreen() {
     const isMySessionPayload = (row: any): boolean => {
       if (!row) return false;
       const plate = normalizePlate(row.car_plate || row.carPlate);
-      const phone = (row.customer_phone || row.customerPhone || '').replace(/[^\d+]/g, '');
+      const phone = normalizePhone(row.customer_phone || row.customerPhone || '');
       return (
         (!!userPlateNav && plate === userPlateNav) ||
         (!!userPhoneClean && phone === userPhoneClean)
@@ -282,7 +284,7 @@ export default function NavigationScreen() {
     return () => clearTimeout(t);
   }, []);
 
-  /* ─── مؤقت الإلغاء (30 ثانية بالتمام) ─── */
+  /* ─── مؤقت الإلغاء (30 ثانية) ─── */
   useEffect(() => {
     if (!myIncomingCar) {
       setCancelTimeLeft(CANCEL_WINDOW_SECONDS);
@@ -368,7 +370,7 @@ export default function NavigationScreen() {
         pushTimerRef.current = null;
       }
     };
-  }, [myIncomingCar?.id, selectedGarageId]);
+  }, [myIncomingCar?.id, selectedGarageId, garage]);
 
   /* ─── الانتقال اللحظي الفوري لشاشة العداد ─── */
   useEffect(() => {
@@ -418,6 +420,7 @@ export default function NavigationScreen() {
   );
   const minutes = distanceToMinutes(distance);
   const coordsText = `${garage.lat},${garage.lng}`;
+  const isEligibleForFree = currentUser && !currentUser.hasUsedFreeSession;
 
   /* ─── Handlers ─── */
   const copyCoords = async () => {
@@ -489,7 +492,7 @@ export default function NavigationScreen() {
           s.status === 'active' &&
           (
             normalizePlate(s.carPlate) === userPlateNav ||
-            (userPhoneClean && ((s as any).customerPhone || '').replace(/[^\d+]/g, '') === userPhoneClean)
+            (userPhoneClean && normalizePhone((s as any).customerPhone || '') === userPhoneClean)
           ),
       );
 
@@ -606,10 +609,9 @@ export default function NavigationScreen() {
         </div>
 
         {/* 🗺️ الخريطة المحدثة والمجانية 100% */}
-        <div className="w-full h-48 rounded-2xl overflow-hidden border border-slate-800 relative shrink-0 shadow-lg">
+        <div className="w-full h-44 rounded-2xl overflow-hidden border border-slate-800 relative shrink-0 shadow-lg">
           {mapReady ? (
             <MapContainer
-              // 🛡️ تم إضافة مفتاح فريد لضمان إعادة تهيئة الخريطة بسلاسة وتجنب أخطاء تداخل التهيئة في الهواتف الضعيفة
               key={`map-nav-${garage.id}-${userPos.lat}-${userPos.lng}`}
               center={[garage.lat || 30.0444, garage.lng || 31.2357]}
               zoom={15}
@@ -689,10 +691,10 @@ export default function NavigationScreen() {
           </button>
         </div>
 
-        {/* معلومات السعر والأماكن */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 shrink-0">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2 text-[10px] text-slate-400">
+        {/* معلومات السعر والأماكن وطرق الدفع المقبولة */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 shrink-0 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold">
               <Car size={12} />
               <span>
                 {myIncomingCar?.agreedPrice ?? garage.basePrice} ج.م/ساعة
@@ -703,7 +705,7 @@ export default function NavigationScreen() {
             </span>
           </div>
 
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between border-t border-slate-800/80 pt-2">
             <span
               className={`text-xs font-black font-mono ${
                 garage.availableSpots > 0 ? 'text-emerald-400' : 'text-red-400'
@@ -711,8 +713,29 @@ export default function NavigationScreen() {
             >
               {garage.availableSpots} / {garage.capacity}
             </span>
-            <span className="text-[10px] text-slate-400">الأماكن المتاحة الآن</span>
+            <span className="text-[10px] text-slate-400 font-bold">الأماكن المتاحة الآن</span>
           </div>
+
+          {/* 🌟 شارة وسيلة الدفع المقبولة بالجراج */}
+          <div className="flex items-center justify-between border-t border-slate-800/80 pt-2">
+            <span className="text-xs font-black text-amber-400 flex items-center gap-1">
+              <CreditCard size={12} />
+              {garage.payment_mode === 'cash'
+                ? '💵 نقدي فقط'
+                : garage.payment_mode === 'wallet'
+                ? '👝 محفظة فقط'
+                : '💳 نقدي ومحفظة'}
+            </span>
+            <span className="text-[10px] text-slate-400 font-bold">طريقة الدفع المقبولة</span>
+          </div>
+
+          {/* 🎁 شارة الهدية الترحيبية إن وجدت */}
+          {isEligibleForFree && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 text-center flex items-center justify-center gap-1 text-amber-300 text-[10.5px] font-black">
+              <Gift size={13} className="text-amber-400" />
+              <span>أول 30 دقيقة مجاناً كهدية ترحيبية لك في هذا الحجز! 🎁</span>
+            </div>
+          )}
         </div>
 
         {/* 🔔 مؤشر حالة الـ Push */}

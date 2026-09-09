@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Car, Phone, User, ArrowRight, ShieldCheck, Sparkles, Loader2 } from 'lucide-react';
-import { useStore, normalizePlate } from '../store';
+import { Car, Phone, User, ArrowRight, ShieldCheck, Sparkles, Loader2, Gift } from 'lucide-react';
+// 🌟 استيراد دوال البصمة الموحدة من الـ store لضمان مطابقة تامة مع قاعدة البيانات
+import { useStore, normalizePlate, normalizePhone } from '../store';
 import toast from 'react-hot-toast';
 
 export default function RegisterScreen() {
@@ -23,7 +24,7 @@ export default function RegisterScreen() {
     setPhone(digitsOnly);
   };
 
-  // 🚗 قبول الحروف العربية والأرقام فقط في اللوحة وحظر الإنجليزي
+  // 🚗 قبول الحروف العربية والأرقام فقط في اللوحة
   const handlePlateChange = (val: string) => {
     const arabicPlateOnly = val.replace(/[^0-9\u0600-\u06FF\s]/g, '');
     setCarPlate(arabicPlateOnly);
@@ -38,14 +39,9 @@ export default function RegisterScreen() {
       return; 
     }
     
-    const cleanPhone = phone.replace(/[^\d]/g, '').trim();
-    if (cleanPhone.length !== 11) { 
-      toast.error('رقم الموبايل يجب أن يتكون من 11 رقم بالضبط'); 
-      return; 
-    }
-
-    if (!cleanPhone.startsWith('01')) {
-      toast.error('يجب أن يبدأ رقم الموبايل بـ 01 (مثل: 010 / 011 / 012 / 015)');
+    const cleanPhone = normalizePhone(phone);
+    if (cleanPhone.length !== 11 || !cleanPhone.startsWith('01')) { 
+      toast.error('رقم الموبايل يجب أن يتكون من 11 رقماً ويبدأ بـ 01 (مثل: 010 / 011 / 012 / 015)'); 
       return; 
     }
 
@@ -63,7 +59,7 @@ export default function RegisterScreen() {
         carPlate: cleanPlate,
         wallet: 0,
       });
-      toast.success('تم تسجيل بياناتك بنجاح! 🚗✨');
+      toast.success('تم تسجيل وتأمين بياناتك بنجاح! 🚗✨');
       setScreen('list');
     } catch (err) {
       console.error(err);
@@ -77,11 +73,11 @@ export default function RegisterScreen() {
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="h-full bg-slate-950 text-white flex flex-col justify-between p-6 text-right"
+      className="h-full bg-slate-950 text-white flex flex-col justify-between p-6 text-right overflow-y-auto"
     >
-      <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full">
+      <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full py-4">
         {/* Logo & Intro */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <motion.div
             animate={{ scale: [1, 1.05, 1] }}
             transition={{ repeat: Infinity, duration: 3 }}
@@ -90,9 +86,12 @@ export default function RegisterScreen() {
             <Car size={40} className="text-white" />
           </motion.div>
           <h2 className="text-2xl font-black text-white">سجل بياناتك للبدء</h2>
-          <p className="text-xs text-slate-400 mt-1.5 font-bold">
-            خطوة واحدة تفصلك عن حجز ركنتك وتجربة الانتظار الذكية ⚡
-          </p>
+          
+          {/* 🎁 بانر ترويجي للـ 30 دقيقة المجانية */}
+          <div className="mt-2.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-black">
+            <Gift size={13} className="text-amber-400 animate-pulse" />
+            <span>أول 30 دقيقة ركنة مجاناً بالكامل كهدية ترحيبية! 🎁</span>
+          </div>
         </div>
 
         <form onSubmit={handleRegister} className="space-y-4">
@@ -157,11 +156,11 @@ export default function RegisterScreen() {
             </p>
           </div>
 
-          {/* زر التأكيد - خط أبيض ثقيل ومشع */}
+          {/* زر التأكيد */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800/50 disabled:cursor-not-allowed py-4 rounded-2xl text-base shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-all flex items-center justify-center gap-2.5 cursor-pointer border-none"
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800/50 disabled:cursor-not-allowed py-4 rounded-2xl text-base shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-all flex items-center justify-center gap-2.5 cursor-pointer border-none mt-2"
           >
             {loading ? (
               <>
@@ -174,7 +173,7 @@ export default function RegisterScreen() {
                     textShadow: '0 1px 3px rgba(0,0,0,0.35)' 
                   }}
                 >
-                  جاري تسجيل وتأمين الحساب...
+                  جاري تأمين الحساب والتحقق...
                 </span>
               </>
             ) : (
@@ -188,7 +187,7 @@ export default function RegisterScreen() {
                     textShadow: '0 1px 3px rgba(0,0,0,0.35)' 
                   }}
                 >
-                  حفظ البيانات والتحرك
+                  حفظ البيانات واستلام الهدية 🚀
                 </span>
                 <ArrowRight size={18} className="rotate-180 text-white" strokeWidth={3} />
               </>

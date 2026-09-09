@@ -21,7 +21,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 // 🌟 استيراد normalizePlate و normalizePhone الموحدين من الـ store لربط أمني وثيق
-import { useStore, Garage, Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
+import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
 import {
   calculateDistance,
   distanceToMinutes,
@@ -36,6 +36,17 @@ interface GarageWithDistance extends Garage {
   distance: number;
   minutes: number;
   classification: 'nearby' | 'far';
+}
+
+interface GarageCardProps {
+  garage: GarageWithDistance;
+  index: number;
+  onSelect: () => void;
+  isNearby: boolean;
+  isClosest: boolean;
+  hasActiveSession: boolean;
+  hasIncomingCar: boolean;
+  disabled: boolean;
 }
 
 const safeParseTime = (value: unknown): number => {
@@ -261,8 +272,7 @@ export default function GarageListScreen() {
       )
       .subscribe();
 
-    // ⚡ [تعديل البطارية والأداء]: تقليل الـ Polling إلى 5 ثوانٍ بدلاً من ثانية ونصف
-    const interval = setInterval(refetch, 5000); 
+    const interval = setInterval(refetch, 10000); 
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') refetch();
@@ -368,6 +378,14 @@ export default function GarageListScreen() {
 
     if (garage.availableSpots <= 0) {
       toast.error('لا توجد أماكن متاحة حالياً');
+      return;
+    }
+
+    // 🛡️ فحص الرصيد الأمني للجراجات التي تدعم المحفظة فقط
+    const userWallet = currentUser.wallet || 0;
+    if (garage.payment_mode === 'wallet' && userWallet <= 0 && !isEligibleForFreeSession) {
+      toast.error('عذراً، هذا الجراج يقبل الدفع بالمحفظة فقط. يرجى شحن محفظتك للمتابعة.');
+      setShowTopUp(true); // فتح شاشة الشحن فوراً تسهيلاً للعميل
       return;
     }
 
@@ -666,7 +684,7 @@ export default function GarageListScreen() {
           )}
         </AnimatePresence>
 
-        {/* بانر ترحيبي */}
+        {/* 🎁 بانر ترحيبي محدث لـ 30 دقيقة */}
         {isEligibleForFreeSession && !activeSession && !myIncomingCar && (
           <motion.div
             initial={{ opacity: 0, y: -15, scale: 0.95 }}
@@ -715,11 +733,11 @@ export default function GarageListScreen() {
                   className="font-black text-slate-900 leading-tight" 
                   style={{ fontSize: '13.5px' }}
                 >
-                  أول ركنة لك معنا <span className="text-red-500 font-black">مجانية بالكامل! 🕐</span>
+                  أول ركنة لك معنا <span className="text-red-500 font-black">مجانية بالكامل! 🎁</span>
                 </h4>
                 
                 <p className="text-slate-500 font-bold leading-normal mt-1" style={{ fontSize: '10px' }}>
-                  احجز الآن من التطبيق واستمتع بـ <span className="text-emerald-600 font-black">أول ساعة مجاناً 100%</span> كهدية ترحيبية مميزة لك في أول زيارة 🎈
+                  احجز الآن من التطبيق واستمتع بـ <span className="text-emerald-600 font-black">أول 30 دقيقة مجاناً 100%</span> كهدية ترحيبية مميزة لك في أول زيارة 🎈
                 </p>
               </div>
             </div>
@@ -1012,6 +1030,9 @@ export default function GarageListScreen() {
   );
 }
 
+/* ════════════════════════════════════════════════════════════
+   ██  WELCOME GIFT MODAL
+   ════════════════════════════════════════════════════════════ */
 function WelcomeGiftModal() {
   const [show, setShow] = useState(false);
   const currentUser = useStore((s) => s.currentUser);
@@ -1073,11 +1094,11 @@ function WelcomeGiftModal() {
             <div className="relative z-10 mb-6" style={{ background: 'linear-gradient(135deg, #FFF7ED 0%, #FEF3C7 50%, #FFEDD5 100%)', borderRadius: 20, padding: '18px 16px', border: '2px solid #FCD34D' }}>
               <div className="flex items-center justify-center gap-2 mb-2">
                 <Sparkles size={18} className="text-amber-500 animate-pulse" />
-                <span className="font-black text-amber-700" style={{ fontSize: 18 }}>أول ساعة ركنة مجاناً!</span>
+                <span className="font-black text-amber-700" style={{ fontSize: 18 }}>أول 30 دقيقة ركنة مجاناً!</span>
                 <Sparkles size={18} className="text-amber-500 animate-pulse" />
               </div>
               <p className="text-amber-600 font-bold text-xs leading-relaxed">
-                احجز ركنتك الأولى من التطبيق وهنركنلك أول ساعة ببلاش تماماً 🚗✨
+                احجز ركنتك الأولى من التطبيق وهنركنلك أول 30 دقيقة ببلاش تماماً 🚗✨
               </p>
             </div>
 
@@ -1102,7 +1123,9 @@ function WelcomeGiftModal() {
   );
 }
 
-// 🌟 تغليف كارت الجراج بـ React.memo لمنع إعادة الرندر المفرط وتوفير البطارية ❄️
+/* ════════════════════════════════════════════════════════════
+   ██  GARAGE CARD
+   ════════════════════════════════════════════════════════════ */
 const GarageCard = memo(function GarageCard({
   garage,
   index,
@@ -1172,6 +1195,40 @@ const GarageCard = memo(function GarageCard({
             <Star size={9} fill="currentColor" />
             {garage.rating}
           </div>
+
+          {/* 🌟 شارة "نقدي فقط" الذكية */}
+          {garage.payment_mode === 'cash' && (
+            <span
+              style={{ 
+                background: '#FFF3E0', 
+                color: '#E65100', 
+                border: '1px solid #FFE0B2',
+                fontSize: 9.5, 
+                padding: '2.5px 7px', 
+                borderRadius: 8,
+                fontWeight: 900,
+              }}
+            >
+              💵 نقدي فقط
+            </span>
+          )}
+
+          {/* 🌟 شارة "محفظة فقط" الذكية */}
+          {garage.payment_mode === 'wallet' && (
+            <span
+              style={{ 
+                background: '#F3E5F5', 
+                color: '#7B1FA2', 
+                border: '1px solid #E1BEE7',
+                fontSize: 9.5, 
+                padding: '2.5px 7px', 
+                borderRadius: 8,
+                fontWeight: 900,
+              }}
+            >
+              👝 محفظة فقط
+            </span>
+          )}
 
           {isFull && (
             <span

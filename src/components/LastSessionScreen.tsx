@@ -10,9 +10,10 @@ import {
   Copy,
   Gift,
   Sparkles,
+  CheckCircle2,
 } from 'lucide-react';
-// 🌟 استيراد دالة البصمة الموحدة من الـ store لضمان مطابقة اللوحات بدقة 100%
-import { useStore, normalizePlate } from '../store';
+// 🌟 استيراد دوال البصمة الموحدة من الـ store لضمان مطابقة اللوحات والأرقام بدقة 100%
+import { useStore, normalizePlate, normalizePhone } from '../store';
 import { calculateFullHours, calculateCost, formatTime } from '../utils/pricing';
 import toast from 'react-hot-toast';
 import { useEffect, useRef, useMemo } from 'react';
@@ -35,16 +36,17 @@ export default function LastSessionScreen() {
   const { sessions, garages, currentUser, setScreen, fetchAll } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
-  const userPhone = currentUser?.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
+  const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
   /* ✅ البحث بـ carPlate أو customerPhone بالبصمة الموحدة */
   const lastSession = useMemo(() => {
+    if (!userPlate && !userPhone) return null;
     return sessions
       .filter((s) => {
         if (!s || s.status !== 'completed') return false;
         const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-        const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
-        const samePhone = !!userPhone && sPhone === userPhone;
+        const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+        const samePhone = Boolean(userPhone && sPhone === userPhone);
         return samePlate || samePhone;
       })
       .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
@@ -70,7 +72,7 @@ export default function LastSessionScreen() {
     const isMySessionPayload = (row: any) => {
       if (!row) return false;
       const plate = normalizePlate(row.car_plate || row.carPlate);
-      const phone = (row.customer_phone || row.customerPhone || '').replace(/[^\d+]/g, '');
+      const phone = normalizePhone(row.customer_phone || row.customerPhone || '');
       return (
         (!!userPlate && plate === userPlate) ||
         (!!userPhone && phone === userPhone)
@@ -119,7 +121,7 @@ export default function LastSessionScreen() {
         </p>
         <button
           onClick={() => setScreen('list')}
-          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center gap-2"
+          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center gap-2 shadow-lg shadow-blue-600/30"
         >
           <ArrowRight size={16} />
           العودة للقائمة
@@ -136,26 +138,26 @@ export default function LastSessionScreen() {
   const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);
   const totalMinutes = Math.floor(elapsedSeconds / 60);
 
-  // 🎁 [منطق الهدية]: قراءة وتحديد أهلية الجلسة والدقائق المجانية التي طُبقت
+  // 🎁 [منطق الهدية]: التحقق مما إذا كانت الجلسة مجانية (أول 30 دقيقة / 1800 ثانية)
   const isFirstFreeApplied = lastSession.isFirstFreeSession === true;
-  const freeMinutesApplied = lastSession.freeMinutesApplied ?? (isFirstFreeApplied ? Math.min(totalMinutes, 60) : 0);
+  
+  const isFree = isFirstFreeApplied && (
+    lastSession.totalPrice === 0 ||
+    lastSession.paymentMethod === 'free' ||
+    (lastSession.totalPrice == null && elapsedSeconds <= 1800)
+  );
 
-  // الساعات الفعلية الخاضعة للدفع بالكامل بعد خصم الهدية
-  const billableSeconds = Math.max(0, elapsedSeconds - (freeMinutesApplied * 60));
-  const billableHours = calculateFullHours(billableSeconds);
+  const billableHours = isFree ? 0 : calculateFullHours(elapsedSeconds);
+  const rawCost = calculateCost(elapsedSeconds, rate);
 
   // حساب التكلفة الكلية (المدفوعة فعلياً)
   const cost =
-    lastSession.totalPrice != null && Number(lastSession.totalPrice) > 0
+    lastSession.totalPrice != null
       ? Number(lastSession.totalPrice)
-      : calculateCost(billableSeconds, rate);
+      : (isFree ? 0 : rawCost);
 
   // حساب كم وفر العميل بفضل الهدية الترحيبية
-  const savedAmount = useMemo(() => {
-    if (!isFirstFreeApplied) return 0;
-    const originalCost = calculateCost(elapsedSeconds, rate);
-    return Math.max(0, originalCost - cost);
-  }, [isFirstFreeApplied, elapsedSeconds, rate, cost]);
+  const savedAmount = isFree ? rawCost : 0;
 
   const startDate = new Date(startTime);
   const endDate = new Date(endTime);
@@ -180,14 +182,14 @@ export default function LastSessionScreen() {
     switch (method) {
       case 'cash':
         return {
-          label: 'نقدي كاش', icon: '💵',
+          label: 'سداد نقدي كاش', icon: '💵',
           color: 'text-emerald-400',
           bg: 'bg-emerald-500/10',
           border: 'border-emerald-500/30',
         };
       case 'instapay':
         return {
-          label: 'إرسال إنستاباي', icon: '📱',
+          label: 'دفع عبر إنستاباي', icon: '📱',
           color: 'text-purple-400',
           bg: 'bg-purple-500/10',
           border: 'border-purple-500/30',
@@ -208,22 +210,22 @@ export default function LastSessionScreen() {
         };
       case 'cashwallet':
         return {
-          label: 'تحويل محفظة كاش', icon: '📲',
+          label: 'محفظة كاش إلكترونية', icon: '📲',
           color: 'text-orange-400',
           bg: 'bg-orange-500/10',
           border: 'border-orange-500/30',
         };
       default:
         return {
-          label: 'غير محدد', icon: '💳',
-          color: 'text-slate-400',
-          bg: 'bg-slate-500/10',
-          border: 'border-slate-500/30',
+          label: 'سداد نقدي كاش', icon: '💵',
+          color: 'text-emerald-400',
+          bg: 'bg-emerald-500/10',
+          border: 'border-emerald-500/30',
         };
     }
   };
 
-  const paymentInfo = getPaymentInfo(lastSession.paymentMethod);
+  const paymentInfo = getPaymentInfo(isFree ? 'free' : lastSession.paymentMethod);
 
   const sourceInfo =
     lastSession.source === 'app'
@@ -241,9 +243,8 @@ export default function LastSessionScreen() {
 📅 التاريخ: ${formatDateTime(startDate)}
 ⏰ وقت الدخول: ${formatTimeOnly(startDate)}
 ⏰ وقت الخروج: ${formatTimeOnly(endDate)}
-⏱️ المدة الفعلية: ${totalMinutes} دقيقة
-${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجاناً (-${savedAmount.toFixed(0)} ج.م)\n` : ''}⏱️ المدة الخاضعة للدفع: ${isFirstFreeApplied ? Math.max(0, totalMinutes - freeMinutesApplied) : totalMinutes} دقيقة
-━━━━━━━━━━━━━━━━━━
+⏱️ المدة الكلية: ${totalMinutes} دقيقة
+${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أول 30 دقيقة - وفرت ${savedAmount.toFixed(0)} ج.م)\n` : `⏱️ الساعات المحسوبة: ${billableHours} ساعة\n`}━━━━━━━━━━━━━━━━━━
 💰 سعر الساعة: ${rate} ج.م
 💵 الإجمالي المدفوع: ${cost.toFixed(0)} ج.م
 💳 طريقة الدفع: ${paymentInfo.label}
@@ -279,7 +280,7 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
       <div className="flex items-center justify-between px-4 pt-12 pb-3 shrink-0">
         <button
           onClick={() => setScreen('list')}
-          className="bg-slate-900 p-2.5 rounded-xl border border-slate-800 active:scale-90 transition-all"
+          className="bg-slate-900 p-2.5 rounded-xl border border-slate-800 active:scale-90 transition-all text-slate-300"
         >
           <ArrowRight size={18} />
         </button>
@@ -300,7 +301,7 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
 
         {/* التاريخ */}
         <div className="text-center">
-          <span className="text-[10px] text-slate-500 bg-slate-900 px-3 py-1 rounded-full border border-slate-800">
+          <span className="text-[10px] text-slate-400 bg-slate-900 px-3 py-1 rounded-full border border-slate-800 font-bold">
             📅 {formatDateTime(startDate)}
           </span>
         </div>
@@ -309,7 +310,7 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
           <div className="flex justify-between items-center mb-3">
             <span
-              className={`text-[9px] px-2.5 py-1 rounded-full font-bold ${sourceInfo.bg} ${sourceInfo.color}`}
+              className={`text-[9.5px] px-2.5 py-1 rounded-xl font-black ${sourceInfo.bg} ${sourceInfo.color}`}
             >
               {sourceInfo.label}
             </span>
@@ -321,7 +322,7 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
             <div className="bg-slate-950 rounded-xl p-3 flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-slate-500">
                 <MapPin size={12} />
-                <span className="text-[10px]">{garage.location}</span>
+                <span className="text-[10px] font-bold">{garage.location}</span>
               </div>
               <span className="text-sm font-black text-white">{garage.name}</span>
             </div>
@@ -339,7 +340,7 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
         >
           {/* خلفيات لمعة دائرية خلف الكارت */}
           <div
-            className="absolute -top-20 -right-20"
+            className="absolute -top-20 -right-20 pointer-events-none"
             style={{
               width: 200,
               height: 200,
@@ -349,7 +350,7 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
             }}
           />
           <div
-            className="absolute -bottom-10 -left-10"
+            className="absolute -bottom-10 -left-10 pointer-events-none"
             style={{
               width: 150,
               height: 150,
@@ -411,7 +412,7 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
                   fontSize: 64,
                   fontWeight: 900,
                   lineHeight: 1,
-                  color: '#FFFFFF',
+                  color: isFree ? '#10B981' : '#FFFFFF',
                   textShadow: '0 0 30px rgba(255,255,255,0.15), 0 4px 12px rgba(0,0,0,0.3)',
                   letterSpacing: '-2px',
                 }}
@@ -422,7 +423,7 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
                 style={{
                   fontSize: 24,
                   fontWeight: 800,
-                  color: '#D4AF37',
+                  color: isFree ? '#10B981' : '#D4AF37',
                   marginBottom: 8,
                   textShadow: '0 0 10px rgba(212,175,55,0.3)',
                 }}
@@ -431,7 +432,7 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
               </span>
             </div>
 
-            {/* 🚀 شارة طريقة السداد بالخط الملون العريض والواضح جداً 🚀 */}
+            {/* 🚀 شارة طريقة السداد 🚀 */}
             <div 
               className={`mt-1.5 inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl border-2 ${paymentInfo.bg} ${paymentInfo.border} shadow-lg mb-2`}
               style={{ backdropFilter: 'blur(8px)' }}
@@ -445,32 +446,36 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
                   textShadow: '0 1px 3px rgba(0,0,0,0.3)'
                 }}
               >
-                تم السداد: {paymentInfo.label}
+                {isFree ? 'ركن مجاني ترحيبي 🎁' : `تم السداد: ${paymentInfo.label}`}
               </span>
             </div>
 
             {/* 🎁 شارة الخصم الترحيبي الذهبية بالداخل */}
-            {isFirstFreeApplied && savedAmount > 0 && (
+            {isFree && (
               <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-xl text-white text-xs font-black shadow-md border border-white/20"
+                className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-amber-500 to-emerald-500 rounded-xl text-white text-xs font-black shadow-md border border-white/20"
               >
                 <Gift size={14} />
-                <span>تم تطبيق عرض الساعة الأولى مجاناً! (وفرت -{savedAmount.toFixed(0)} ج.م) 🎉</span>
+                <span>أول 30 دقيقة مجانية كهدية ترحيبية! 🎉</span>
               </motion.div>
             )}
           </div>
 
           {/* سطر توضيحي للحساب */}
-          <div className="relative z-10 text-[10px] text-slate-400 mb-3">
-            {isFirstFreeApplied ? (
-              <span>
-                المدة المحسوبة للدفع: {billableHours} ساعة (خصم {freeMinutesApplied} دقيقة مجاناً 🎁)
+          <div className="relative z-10 text-[10.5px] text-slate-400 mb-3 font-bold">
+            {isFree ? (
+              <span className="text-emerald-400">
+                (تم تطبيق الهدية الترحيبية: ركن {totalMinutes} دقيقة مجاناً 🎁)
+              </span>
+            ) : isFirstFreeApplied ? (
+              <span className="text-amber-400">
+                (انتهت أول 30 دقيقة مجانية: تم احتساب {billableHours} ساعة = {cost.toFixed(0)} ج.م)
               </span>
             ) : (
               <span>
-                {calculateFullHours(elapsedSeconds)} ساعة × {rate} ج.م = {cost.toFixed(0)} ج.م
+                {billableHours} ساعة × {rate} ج.م = {cost.toFixed(0)} ج.م
               </span>
             )}
           </div>
@@ -492,7 +497,7 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
         <div className="grid grid-cols-3 gap-2">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 text-center">
             <Clock size={16} className="text-blue-400 mx-auto mb-1.5" />
-            <div className="text-sm font-black text-white font-mono">
+            <div className="text-xs font-black text-white font-mono">
               {formatTime(elapsedSeconds)}
             </div>
             <div className="text-[8px] text-slate-500 font-bold mt-0.5">
@@ -502,10 +507,10 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 text-center">
             <Timer size={16} className="text-purple-400 mx-auto mb-1.5" />
             <div className="text-sm font-black text-purple-400 font-mono">
-              {isFirstFreeApplied ? billableHours : calculateFullHours(elapsedSeconds)}
+              {billableHours}
             </div>
             <div className="text-[8px] text-slate-500 font-bold mt-0.5">
-              {isFirstFreeApplied ? 'ساعات الدفع' : 'ساعة محسوبة'}
+              {isFree ? 'مجانية (0 ساعة)' : 'ساعة محسوبة'}
             </div>
           </div>
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 text-center">
@@ -550,7 +555,7 @@ ${isFirstFreeApplied ? `🎁 عرض ترحيبي: خصم أول ساعة مجا�
           </div>
 
           <div className="bg-slate-950 rounded-xl p-2 text-center mt-2">
-            <span className="text-[10px] text-slate-500">
+            <span className="text-[10px] text-slate-400 font-bold">
               إجمالي المدة:{' '}
               <span className="text-white font-black font-mono">
                 {totalMinutes} دقيقة

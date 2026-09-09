@@ -1,15 +1,15 @@
 import { useState, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { X, Copy, ExternalLink, ArrowRight, CheckCircle, Plus, Minus, Phone, Send, Sparkles } from 'lucide-react';
-// 🌟 استيراد مصفوفة الباقات الموحدة ودالة البونص من الـ Store مباشرة لمنع تكرار البيانات وتشتتها
-import { useStore, TOPUP_TIERS, calculateBonus } from '../store';
+// 🌟 استيراد مصفوفة الباقات الموحدة ودالة البونص ودالة تنظيف الهاتف من الـ Store مباشرة
+import { useStore, TOPUP_TIERS, calculateBonus, normalizePhone } from '../store';
 import toast from 'react-hot-toast';
 
 const WALLET_NUMBER = '01229858104';
 const INSTAPAY_USERNAME = 'ahmed.ali858104';
 const INSTAPAY_LINK = `https://ipn.eg/S/${INSTAPAY_USERNAME}/instapay/9fp24n`;
 
-// 🛡️ توليد كود مرجعي فريد ومستحيل التكرار نهائياً
+// 🛡️ توليد كود مرجعي فريد ومستحيل التكرار
 function generateSecureReference(): string {
   const timestampPart = Date.now().toString(36).toUpperCase().slice(-4);
   const randomPart = Math.floor(1000 + Math.random() * 9000);
@@ -40,7 +40,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
   };
 
   const handleSubmitTopUp = async () => {
-    // 🛡️ حماية أمنية صارمة من الضغط المزدوج والطلبات المكررة في نفس الثانية
+    // 🛡️ حماية أمنية صارمة من الضغط المزدوج والطلبات المكررة
     if (isSubmittingRef.current || loading) return;
 
     if (!currentUser) {
@@ -48,7 +48,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
       return;
     }
 
-    const userPhone = currentUser.phone ? currentUser.phone.replace(/[^\d+]/g, '').trim() : '';
+    const userPhone = normalizePhone(currentUser.phone);
     if (!userPhone) {
       toast.error('رقم الهاتف غير موجود، أعد التسجيل');
       return;
@@ -80,7 +80,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
       toast.success(
         currentBonus > 0 
           ? `🎁 تم إرسال الطلب! ستحصل على ${amount} ج + ${currentBonus} ج بونص هدية عند الاعتماد`
-          : 'تم إرسال طلب الشحن! ⏳ في انتظار اعتماد الأدمن',
+          : 'تم إرسال طلب الشحن! ⏳ في انتظار اعتماد الإدارة',
         { duration: 5000 }
       );
       setStep('done');
@@ -170,7 +170,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
 
               {/* عداد إدخال المبلغ */}
               <div className="mb-4">
-                <div className="font-black text-slate-500 text-xs mb-1.5 text-right">أو حدد مبلغ يدوي:</div>
+                <div className="font-black text-slate-500 text-xs mb-1.5 text-right">أو حدد مبلغاً يدوياً:</div>
                 <div className="flex items-center justify-center gap-4 bg-slate-50 p-3 rounded-2xl border border-slate-200">
                   <button
                     type="button"
@@ -341,7 +341,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                       href={INSTAPAY_LINK}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-full bg-purple-600 text-white font-black py-3 rounded-xl flex items-center justify-center gap-2 mb-3 text-sm shadow-md"
+                      className="w-full bg-purple-600 text-white font-black py-3 rounded-xl flex items-center justify-center gap-2 mb-3 text-sm shadow-md active:scale-95 transition-all"
                     >
                       <ExternalLink size={16} /> فتح تطبيق إنستاباي
                     </a>
@@ -349,7 +349,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                       <button
                         type="button"
                         onClick={() => copyToClipboard(`${INSTAPAY_USERNAME}@instapay`, 'اسم المستخدم')}
-                        className="bg-blue-50 text-blue-600 font-black text-xs px-3 py-1.5 rounded-lg flex items-center gap-1"
+                        className="bg-blue-50 text-blue-600 font-black text-xs px-3 py-1.5 rounded-lg flex items-center gap-1 active:scale-90 transition-all"
                       >
                         <Copy size={12} /> نسخ
                       </button>
@@ -364,13 +364,13 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                       <button
                         type="button"
                         onClick={() => copyToClipboard(WALLET_NUMBER, 'رقم المحفظة')}
-                        className="bg-amber-100 text-amber-800 font-black text-xs px-4 py-2 rounded-xl flex items-center gap-1.5"
+                        className="bg-amber-100 text-amber-800 font-black text-xs px-4 py-2 rounded-xl flex items-center gap-1.5 active:scale-90 transition-all"
                       >
                         <Copy size={14} /> نسخ الرقم
                       </button>
                       <a
                         href={`tel:${WALLET_NUMBER}`}
-                        className="bg-slate-200 text-slate-700 font-bold text-xs px-4 py-2 rounded-xl flex items-center gap-1.5"
+                        className="bg-slate-200 text-slate-700 font-bold text-xs px-4 py-2 rounded-xl flex items-center gap-1.5 active:scale-90 transition-all"
                       >
                         <Phone size={14} /> اتصال
                       </a>
@@ -418,7 +418,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
               <button
                 type="button"
                 onClick={onClose}
-                className="w-full bg-slate-900 text-white font-black py-3.5 rounded-2xl text-sm"
+                className="w-full bg-slate-900 text-white font-black py-3.5 rounded-2xl text-sm active:scale-95 transition-all"
               >
                 إغلاق
               </button>

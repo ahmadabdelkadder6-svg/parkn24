@@ -1,18 +1,18 @@
-// v2.4 - Robust login + Auto data normalization + Bold White text + fixed redirect
+// v2.4 - Robust login + Unified Phone Normalization + Instant SPA Transition
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Phone, User, Shield, HardHat, ArrowLeft, Building2, MapPin, Lock } from 'lucide-react';
-import { useStore } from '../store';
+import { useStore, normalizePhone } from '../store';
 import toast from 'react-hot-toast';
 
-// دالة لتنظيف المدخلات وتحويل الأرقام والمسافات الزائدة تلقائياً
-const normalizeData = (val: string): string => {
+// دالة لتنظيف المدخلات النصية وتحويل الأرقام وحذف المسافات
+const normalizeText = (val: string): string => {
   if (!val) return '';
   return val
     .trim()
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
     .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)))
-    .replace(/\s+/g, ''); // حذف أي مسافات خفية تسبب تعليق الحساب
+    .replace(/\s+/g, '');
 };
 
 export default function GarageLoginScreen() {
@@ -36,62 +36,58 @@ export default function GarageLoginScreen() {
     if (savedPhone) setPhone(savedPhone);
   }, []);
 
-  // ✅ إنهاء الدخول للجراج بشكل مضمون وبدون ارتداد
+  // ✅ إنهاء الدخول للجراج بشكل لحظي وسلس
   const completeGarageLogin = (garageId: string) => {
-    setCurrentGarageId(garageId);
-    setView('garage');
-
-    // تأكيد الحفظ في localStorage
+    // 1. حفظ البيانات محلياً
     localStorage.setItem('currentGarageId', garageId);
     localStorage.setItem('appView', 'garage');
 
-    // إعادة تحميل خفيفة لفتح الداشبورد فورًا وبشكل سليم
-    setTimeout(() => {
-      window.location.reload();
-    }, 150);
+    // 2. تحديث الـ Store فوراً لنقل الواجهة بدون Reload
+    setCurrentGarageId(garageId);
+    setView('garage');
   };
 
   const handleLogin = () => {
-    const cleanUsername = normalizeData(username).toLowerCase();
-    const cleanPhone = normalizeData(phone);
+    const cleanUsername = normalizeText(username).toLowerCase();
+    const cleanPhone = normalizePhone(phone);
 
     if (!cleanUsername || !cleanPhone) {
-      toast.error('الرجاء إدخال جميع الحقول');
+      toast.error('الرجاء إدخال اسم المستخدم ورقم الهاتف');
       return;
     }
 
-    // مطابقة البيانات بعد تنظيف قاعدة المدخلات وقاعدة البيانات تماماً من أي رموز غريبة
+    // مطابقة البيانات بالاعتماد على التوحيد القياسي للهواتف وأسماء المستخدمين
     const found = garages.find(
       (g) =>
-        normalizeData(g.username).toLowerCase() === cleanUsername &&
-        normalizeData(g.phone) === cleanPhone
+        normalizeText(g.username).toLowerCase() === cleanUsername &&
+        (normalizePhone(g.phone) === cleanPhone || normalizePhone(g.ownerPhone || '') === cleanPhone)
     );
 
     if (!found) {
-      toast.error('بيانات الدخول غير صحيحة، تأكد من الأرقام والمسافات');
+      toast.error('بيانات الدخول غير صحيحة، تأكد من اسم المستخدم ورقم الهاتف');
       return;
     }
 
-    // ✅ امسح الـ prefill بعد نجاح التحقق من بيانات الجراج
+    // ✅ مسح الـ prefill بعد نجاح التحقق
     localStorage.removeItem('garagePrefillUsername');
     localStorage.removeItem('garagePrefillPhone');
 
     // ✅ دخول السايس
     if (role === 'valet') {
-      const pw = normalizeData(valetPassword);
+      const pw = normalizeText(valetPassword);
       let valetNumber = 0;
       let valetName = '';
       let isActive = false;
 
-      if (pw && normalizeData(found.valetPassword1) === pw) {
+      if (pw && normalizeText(found.valetPassword1) === pw) {
         valetNumber = 1;
         valetName = found.valetName1 || '';
         isActive = found.valet1Active !== false;
-      } else if (pw && normalizeData(found.valetPassword2) === pw) {
+      } else if (pw && normalizeText(found.valetPassword2) === pw) {
         valetNumber = 2;
         valetName = found.valetName2 || '';
         isActive = found.valet2Active !== false;
-      } else if (pw && normalizeData(found.valetPassword3) === pw) {
+      } else if (pw && normalizeText(found.valetPassword3) === pw) {
         valetNumber = 3;
         valetName = found.valetName3 || '';
         isActive = found.valet3Active !== false;
@@ -140,12 +136,13 @@ export default function GarageLoginScreen() {
   };
 
   const selectedGarage = useMemo(() => {
-    const cleanUsername = normalizeData(username).toLowerCase();
-    const cleanPhone = normalizeData(phone);
+    const cleanUsername = normalizeText(username).toLowerCase();
+    const cleanPhone = normalizePhone(phone);
+    if (!cleanUsername || !cleanPhone) return null;
     return garages.find(
       (g) =>
-        normalizeData(g.username).toLowerCase() === cleanUsername &&
-        normalizeData(g.phone) === cleanPhone
+        normalizeText(g.username).toLowerCase() === cleanUsername &&
+        (normalizePhone(g.phone) === cleanPhone || normalizePhone(g.ownerPhone || '') === cleanPhone)
     );
   }, [garages, username, phone]);
 
