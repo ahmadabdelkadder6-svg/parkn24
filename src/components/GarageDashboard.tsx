@@ -779,14 +779,31 @@ export default function GarageDashboard() {
     }
   }
 
+  // 🚀 دالة إضافة سيارة يدوياً: توقيت موحد ودقيق
   const handleAddCar = async () => {
     if (!newCarPlate.trim()) { toast.error('أدخل رقم السيارة'); return; }
-    const cp = newCarPlate.trim(); const pr = newCarPrice; const at = Date.now();
-    const sid = await addSession({ garageId: garage.id, carPlate: cp, startTime: at, status: 'active', source: 'manual', agreedPrice: pr, addedBy: isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '' } as any);
+    const cp = newCarPlate.trim(); 
+    const pr = newCarPrice; 
+    const at = Date.now();
+    // ⏱️ استخدام ISO String لتوحيد التوقيت بين كل الأجهزة
+    const startTimeISO = new Date(at).toISOString();
+    
+    const sid = await addSession({ 
+      garageId: garage.id, 
+      carPlate: cp, 
+      startTime: startTimeISO, 
+      status: 'active', 
+      source: 'manual', 
+      agreedPrice: pr, 
+      addedBy: isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '' 
+    } as any);
+    
     const fid = sid || `fallback-${at}`;
     setUndoableSessions(p => [...p, { sessionId: fid, localId: fid, carPlate: cp, price: pr, addedAt: at }]);
     toast.success(`تم إضافة السيارة بسعر ${pr} ج.م/ساعة`);
-    setNewCarPlate(''); setNewCarPrice(garage.basePrice); setShowAddCar(false);
+    setNewCarPlate(''); 
+    setNewCarPrice(garage.basePrice); 
+    setShowAddCar(false);
   };
 
   const openConfirmPayment = (sid: string, cp: string, cost: number, hrs: number, minutes: number, source: 'app' | 'manual', ap?: number) => {
@@ -809,20 +826,26 @@ export default function GarageDashboard() {
       agreedPrice: ap 
     });
 
+    // 💵 الجلسات اليدوية تُحصّل كاش دائماً، وجلسات التطبيق نبدأ بكاش كافتراضي
     setConfirmPaymentMethod('cash');
   };
 
-  // 🌟 تعديل دالة التحصيل لربط السايس ومزامنة الحالة فوراً وبشكل ذري (Atomic) مع المتجر المحدث
+  // 🌟 دالة التحصيل المطورة: سرعة صاروخية، إجبار كاش للجلسات اليدوية، وربط ذري بالسايس
   const handleConfirmPayment = async () => {
     if (!confirmSession || isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
-    pausePolling(20000);
+    
+    // ⚡ 1. إيقاف مؤقت لثانيتين فقط لمنع تضارب القراءة والكتابة
+    pausePolling(2000);
+    
     try {
       const sc = { ...confirmSession }; 
-      const pc = 'cash';
       const sd = useStore.getState().sessions.find(s => s.id === sc.id);
-      const ia = sd?.source === 'app';
       
+      // 💵 2. إجبار الجلسات اليدوية على الكاش، وجلسات التطبيق حسب الطريقة المختارة
+      const pc = sc.source === 'manual' ? 'cash' : (confirmPaymentMethod || 'cash');
+      
+      // 🎁 3. حساب الدقائق المجانية الترحيبية إن وُجدت
       let freeMinutesApplied = 0;
       if (sd?.isFirstFreeSession === true) {
         const elapsedSeconds = Math.floor((Date.now() - toMs(sd.startTime)) / 1000);
@@ -831,22 +854,30 @@ export default function GarageDashboard() {
         }
       }
 
-      // 🌟 تحديد السايس المسؤول حالياً
-      const currentValet = isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`).trim() : 'المالك';
+      // 🅿️ 4. تحديد السايس المسؤول بدقة متناهية
+      const currentValet = isValet 
+        ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`).trim() 
+        : 'المالك';
 
+      // 5. تحديث واجهة المستخدم فورياً
       setConfirmSession(null);
       setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
       
-      // 🌟 تمرير السايس المسؤول كمعامل خامس ليتم الحفظ الفوري والذري في السيرفر والمتجر المحلي معاً
+      // 🚀 6. إنهاء الجلسة وحفظها بالسيرفر والمتجر المحلي بشكل ذري (Atomic)
       await endSession(sc.id, sc.cost, pc, freeMinutesApplied, currentValet);
       
-      if (ia) await new Promise(r => setTimeout(r, 5000));
+      // 📊 7. تحديث الإحصائيات اليومية فوراً
       await fetchGarageDailyStats();
-      toast.success(`تم تحصيل ${sc.cost} ج.م نقداً بالنجاح بواسطة ${currentValet} ✅`);
+      
+      const paymentText = pc === 'cash' ? 'نقداً (كاش)' : 'من المحفظة الرقمية';
+      toast.success(`تم تحصيل ${sc.cost} ج.م ${paymentText} بنجاح بواسطة ${currentValet} ✅`);
     } catch (err: any) {
+      console.error('Payment Error:', err);
       toast.error(err.message || 'فشلت عملية التحصيل، برجاء المحاولة مجدداً.');
     } finally { 
-      setTimeout(() => { isEndingSessionRef.current = false; }, 2000); 
+      // ⚡ 8. فك التجميد فوراً بالملي ثانية لضمان مزامنة لحظية مع شاشة العميل
+      pausePolling(0);
+      setTimeout(() => { isEndingSessionRef.current = false; }, 800); 
     }
   };
 
@@ -875,22 +906,55 @@ export default function GarageDashboard() {
     setShowSettings(true);
   };
 
+  // 🚗 دالة وصول السيارة: توقيت دقيق موحد وبدون تأخير
   const handleCarArrived = async (car: any) => {
-    const carId: string = car.id; const carPlate: string = car.carPlate;
+    const carId: string = car.id; 
+    const carPlate: string = car.carPlate;
     if (processedCarsRef.current.has(carId)) return;
     processedCarsRef.current.add(carId);
-    pausePolling(10000);
+    
+    // ⚡ تقليل التجميد من 10 ثوانٍ إلى ثانيتين فقط
+    pausePolling(2000);
+    
     try {
       const np = normalizePlate(carPlate);
       const existing = useStore.getState().sessions.find(s => normalizePlate(s.carPlate) === np && s.status === 'active');
-      if (existing) { await removeIncomingCar(carId); toast('الجلسة شغالة ✅', { icon: '🚗' }); return; }
+      if (existing) { 
+        await removeIncomingCar(carId); 
+        toast('الجلسة شغالة بالفعل ✅', { icon: '🚗' }); 
+        return; 
+      }
+      
       const ro = offers.find(o => normalizePlate(o.carPlate) === np && (o.status === 'pending' || o.status === 'accepted'));
       if (ro) cancelOffer(ro.id);
-      await addSession({ garageId: garage.id, carPlate: np, startTime: Date.now(), status: 'active', source: 'app', agreedPrice: car.agreedPrice, customerPhone: car.customerPhone, customerName: car.customerName, startedBy: 'garage', incomingCarId: carId, addedBy: isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '' } as any);
+
+      // ⏱️ توحيد التوقيت باستخدام ISO لمنع فرق الثواني بين جهاز العميل والسايس
+      const startTimeISO = new Date().toISOString();
+
+      await addSession({ 
+        garageId: garage.id, 
+        carPlate: np, 
+        startTime: startTimeISO, 
+        status: 'active', 
+        source: 'app', 
+        agreedPrice: car.agreedPrice, 
+        customerPhone: car.customerPhone, 
+        customerName: car.customerName, 
+        startedBy: 'garage', 
+        incomingCarId: carId, 
+        addedBy: isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '' 
+      } as any);
+      
       await removeIncomingCar(carId);
       await supabase.from('incoming_cars').delete().eq('car_plate', np).eq('garage_id', garage.id);
       toast.success(`بدأ حساب ${carPlate} 🚗`);
-    } catch (e) { processedCarsRef.current.delete(carId); toast.error('خطأ، حاول تاني'); }
+    } catch (e) { 
+      processedCarsRef.current.delete(carId); 
+      toast.error('حدث خطأ، حاول مرة أخرى'); 
+    } finally {
+      // ⚡ فك التجميد فوراً لتشغيل العداد في نفس اللحظة على جميع الأجهزة
+      pausePolling(0);
+    }
   };
 
   const calculateRemainingTime = (st: number | string, em: number) =>
@@ -1091,7 +1155,7 @@ export default function GarageDashboard() {
                 </div>
                 
                 <div className="text-center" style={{ background: '#fff', borderRadius: 16, padding: 12, border: '1px solid #E0EAFF' }}>
-                  <div style={{ fontSize: 11, color: '#7B8CA6' }}>المستحق كاش</div>
+                  <div style={{ fontSize: 11, color: '#7B8CA6' }}>المستحق</div>
                   <div className="font-black font-mono" style={{ fontSize: 24, color: confirmSession.cost === 0 ? '#FF9500' : '#00AA44' }}>
                     {confirmSession.cost}
                   </div>
@@ -1113,13 +1177,69 @@ export default function GarageDashboard() {
               )}
             </div>
 
+            {/* 💵💳 اختيار طريقة التحصيل: كاش إجباري لليدوي، ومتعدد لجلسات التطبيق */}
             <div className="mb-5">
               <h4 className="font-black mb-3 text-right" style={{ fontSize: 12, color: '#7B8CA6' }}>طريقة التحصيل</h4>
-              <div className="text-center" style={{ background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', borderRadius: 20, padding: 18, color: '#fff', boxShadow: '0 4px 14px rgba(0,204,102,0.2)' }}>
-                <div style={{ fontSize: 32, marginBottom: 4 }}>💵</div>
-                <div className="font-black" style={{ fontSize: 15 }}>سداد نقدي كاش</div>
-                <div className="text-[10px] opacity-90 mt-1 font-bold">يتم التحصيل يداً بيد من العميل</div>
-              </div>
+
+              {confirmSession.source === 'manual' ? (
+                /* الجلسات اليدوية: سداد نقدي إجباري */
+                <div className="text-center" style={{ background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', borderRadius: 20, padding: 18, color: '#fff', boxShadow: '0 4px 14px rgba(0,204,102,0.2)' }}>
+                  <div style={{ fontSize: 32, marginBottom: 4 }}>💵</div>
+                  <div className="font-black" style={{ fontSize: 15 }}>سداد نقدي كاش (يدوياً)</div>
+                  <div className="text-[10px] opacity-90 mt-1 font-bold">العميل غير مسجل بالتطبيق - يتم التحصيل يداً بيد</div>
+                </div>
+              ) : (
+                /* جلسات التطبيق: خيارات متعددة حسب إعدادات الجراج */
+                <div className="space-y-2">
+                  {(garage.payment_mode === 'cash' || garage.payment_mode === 'both' || !garage.payment_mode) && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmPaymentMethod('cash')}
+                      className="w-full p-3.5 rounded-2xl flex items-center justify-between font-black transition-all active:scale-[0.98]"
+                      style={{
+                        background: confirmPaymentMethod === 'cash' ? '#E6F4EA' : '#F8FAFF',
+                        border: `2.5px solid ${confirmPaymentMethod === 'cash' ? '#00CC66' : '#D0DCFF'}`,
+                        color: confirmPaymentMethod === 'cash' ? '#00AA44' : '#64748b'
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span style={{ fontSize: 20 }}>💵</span>
+                        <div className="text-right">
+                          <div style={{ fontSize: 13, fontWeight: 900 }}>سداد نقدي (كاش)</div>
+                          <div style={{ fontSize: 9, fontWeight: 700, opacity: 0.7 }}>تحصيل يداً بيد من العميل</div>
+                        </div>
+                      </div>
+                      {confirmPaymentMethod === 'cash' && (
+                        <span className="font-black" style={{ fontSize: 10, background: '#00CC66', color: '#fff', padding: '3px 10px', borderRadius: 10 }}>✓ محدد</span>
+                      )}
+                    </button>
+                  )}
+
+                  {(garage.payment_mode === 'wallet' || garage.payment_mode === 'both') && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmPaymentMethod('wallet')}
+                      className="w-full p-3.5 rounded-2xl flex items-center justify-between font-black transition-all active:scale-[0.98]"
+                      style={{
+                        background: confirmPaymentMethod === 'wallet' ? '#F4F9FF' : '#F8FAFF',
+                        border: `2.5px solid ${confirmPaymentMethod === 'wallet' ? '#0066FF' : '#D0DCFF'}`,
+                        color: confirmPaymentMethod === 'wallet' ? '#0066FF' : '#64748b'
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span style={{ fontSize: 20 }}>👝</span>
+                        <div className="text-right">
+                          <div style={{ fontSize: 13, fontWeight: 900 }}>خصم من المحفظة</div>
+                          <div style={{ fontSize: 9, fontWeight: 700, opacity: 0.7 }}>خصم تلقائي من رصيد العميل</div>
+                        </div>
+                      </div>
+                      {confirmPaymentMethod === 'wallet' && (
+                        <span className="font-black" style={{ fontSize: 10, background: '#0066FF', color: '#fff', padding: '3px 10px', borderRadius: 10 }}>✓ محدد</span>
+                      )}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex gap-3">

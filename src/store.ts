@@ -34,8 +34,8 @@ export interface ParkingSession {
   id: string;
   garageId: string;
   carPlate: string;
-  startTime: number;
-  endTime?: number;
+  startTime: number | string; // ⏱️ تم التعديل لدعم التوقيت الموحد ISO لمنع فرق الثواني
+  endTime?: number | string;  // ⏱️ تم التعديل لدعم التوقيت الموحد ISO لمنع فرق الثواني
   totalPrice?: number;
   paymentMethod?: string;
   status: 'active' | 'completed';
@@ -313,7 +313,11 @@ export const normalizePhone = (phone?: string): string => {
 
 const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
-const getMs = (value?: number) => { if (typeof value === 'number') return value; return 0; };
+const getMs = (value?: number | string) => { 
+  if (typeof value === 'number') return value; 
+  if (typeof value === 'string') return new Date(value).getTime();
+  return 0; 
+};
 
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   const active = list.filter((s) => s.status === 'active');
@@ -342,8 +346,8 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   }
 
   return [...Array.from(bestByPlateSource.values()), ...completed].sort((a, b) => {
-    const aTime = a.status === 'active' ? getMs(a.startTime) : typeof a.endTime === 'number' ? a.endTime : 0;
-    const bTime = b.status === 'active' ? getMs(b.startTime) : typeof b.endTime === 'number' ? b.endTime : 0;
+    const aTime = a.status === 'active' ? getMs(a.startTime) : typeof a.endTime === 'number' || typeof a.endTime === 'string' ? getMs(a.endTime) : 0;
+    const bTime = b.status === 'active' ? getMs(b.startTime) : typeof b.endTime === 'number' || typeof b.endTime === 'string' ? getMs(b.endTime) : 0;
     return bTime - aTime;
   });
 };
@@ -368,32 +372,25 @@ const mapGarage = (r: any): Garage => ({
 const mapSession = (r: any): ParkingSession => {
   const nowMs = Date.now();
   const rawStart = r.start_time;
-  let startTime: number;
+  let startTime: string;
   if (typeof rawStart === 'string') {
-    const parsed = new Date(rawStart).getTime();
-    startTime = Number.isFinite(parsed) && parsed > 0 ? parsed : nowMs;
+    startTime = rawStart;
   } else if (typeof rawStart === 'number') {
-    startTime = rawStart < 1_000_000_000_000 ? rawStart * 1000 : rawStart;
-    if (!Number.isFinite(startTime) || startTime <= 0) startTime = nowMs;
+    const ms = rawStart < 1_000_000_000_000 ? rawStart * 1000 : rawStart;
+    startTime = new Date(ms).toISOString();
   } else {
-    startTime = nowMs;
+    startTime = new Date(nowMs).toISOString();
   }
 
   const rawEnd = r.end_time;
-  let endTime: number | undefined;
+  let endTime: string | undefined;
   if (rawEnd) {
     if (typeof rawEnd === 'string') {
-      const parsed = new Date(rawEnd).getTime();
-      endTime = Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+      endTime = rawEnd;
     } else if (typeof rawEnd === 'number') {
       const ms = rawEnd < 1_000_000_000_000 ? rawEnd * 1000 : rawEnd;
-      endTime = Number.isFinite(ms) && ms > 0 ? ms : undefined;
+      endTime = new Date(ms).toISOString();
     }
-  }
-
-  if (endTime && endTime < startTime) {
-    const diff = startTime - endTime;
-    if (diff < 4 * 60 * 60 * 1000) endTime = endTime + diff + 60000;
   }
 
   const isFree = r.is_first_free_session === true || r.is_first_free_session === 'true' || r.is_first_free_session === 1;
@@ -852,7 +849,7 @@ export const useStore = create<AppState>((set, get) => ({
       cs.status === 'active' &&
       !supabaseActiveKeys.has(`${normalizePlate(cs.carPlate)}::${cs.source}`) &&
       !deletedSessionIds.has(cs.id) &&
-      Date.now() - cs.startTime < 15000
+      Date.now() - getMs(cs.startTime) < 15000
     );
 
     const mergedSessions = supabaseSessions
@@ -1070,7 +1067,7 @@ export const useStore = create<AppState>((set, get) => ({
       return existing?.id ?? '';
     }
     sessionStartLocks.add(lockKey);
-    pausePolling(8000);
+    pausePolling(2000); // ⚡ تقليل التجميد من 8 ثوانٍ إلى ثانيتين فقط
 
     try {
       const existingLocal = get().sessions.find((existing) =>
@@ -1132,11 +1129,14 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
 
+      // ⏱️ تسجيل وتوحيد التوقيت بصيغة ISO String لمنع التباين والاختلاف بين الهواتف
+      const startTimeISO = typeof s.startTime === 'string' ? s.startTime : new Date().toISOString();
+
       const optimisticSession: ParkingSession = {
         ...s,
         id: sessionId,
         carPlate: normalizedPlate,
-        startTime: Date.now(),
+        startTime: startTimeISO,
         synced: false,
         revenueConfirmed: false,
         addedBy: addedByValue,
@@ -1161,7 +1161,7 @@ export const useStore = create<AppState>((set, get) => ({
           id: sessionId,
           garage_id: s.garageId,
           car_plate: normalizedPlate,
-          start_time: new Date().toISOString(),
+          start_time: startTimeISO,
           status: s.status,
           source: s.source,
           agreed_price: s.agreedPrice ?? null,
@@ -1201,12 +1201,13 @@ export const useStore = create<AppState>((set, get) => ({
       return sessionId;
     } finally {
       sessionStartLocks.delete(lockKey);
+      pausePolling(0); // ⚡ فك التجميد فوراً لتحديث العداد في نفس الثانية
     }
   },
 
-  // 🌟 تعديل دالة إنهاء الجلسة الذرية لتمرير السايس المسؤول وإثبات ملكيتها في قاعدة البيانات فورياً
+  // 🌟 دالة إنهاء الجلسة الذرية لحفظ دقيق وتحديث الإيرادات محلياً وفي السيرفر فورا
   endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0, addedBy) => {
-    const now = Date.now();
+    const nowISO = new Date().toISOString();
     const session = get().sessions.find((s) => s.id === id);
     if (!session) { console.error('❌ الجلسة مش موجودة:', id); return; }
     if (session.status !== 'active') { console.warn('⚠️ الجلسة مش نشطة:', session.status); return; }
@@ -1214,11 +1215,10 @@ export const useStore = create<AppState>((set, get) => ({
     const lockKey = `${session.garageId}:${normalizePlate(session.carPlate)}`;
     if (sessionEndLocks.has(lockKey)) return;
     sessionEndLocks.add(lockKey);
-    pausePolling(15000);
+    pausePolling(2000); // ⚡ تقليل التجميد من 15 ثانية لثانيتين فقط
 
     try {
       const safeTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
-
       const garage = get().garages.find((g) => g.id === session.garageId);
       
       if (garage && garage.payment_mode) {
@@ -1239,12 +1239,12 @@ export const useStore = create<AppState>((set, get) => ({
 
       const isAutoConfirmed = paymentMethod === 'wallet';
 
-      // 🌟 هنا نُحدد من هو السايس المسؤول بشكل فوري ونهائي
+      // 🅿️ تحديد السايس المسؤول المسجل محلياً أو ممرر برمجياً
       const finalAddedBy = resolveAddedBy(addedBy ?? session.addedBy);
 
       const endedSession: ParkingSession = {
         ...session,
-        endTime: now,
+        endTime: nowISO,
         totalPrice: safeTotalPrice,
         paymentMethod,
         status: 'completed' as const,
@@ -1253,7 +1253,7 @@ export const useStore = create<AppState>((set, get) => ({
         netRevenue,
         settled: false,
         freeMinutesApplied: freeMinutesApplied || session.freeMinutesApplied || 0,
-        addedBy: finalAddedBy, // 🌟 حفظه في الحالة المحلية
+        addedBy: finalAddedBy,
       };
 
       locallyEndedSessions.set(id, endedSession);
@@ -1286,11 +1286,11 @@ export const useStore = create<AppState>((set, get) => ({
 
       if (!isSupabaseConfigured()) return;
 
-      // 🌟 التحديث الفوري والذري لبيانات الجلسة متضمنة السايس (added_by)
+      // 🚀 حفظ ذري وفوري بالسيرفر يجمع تحديث الحالة والدفع والسايس المسؤول معاً في ضربة واحدة
       const { error } = await supabase
         .from('sessions')
         .update({
-          end_time: new Date(now).toISOString(),
+          end_time: nowISO,
           total_price: safeTotalPrice,
           payment_method: paymentMethod,
           status: 'completed',
@@ -1299,48 +1299,53 @@ export const useStore = create<AppState>((set, get) => ({
           net_revenue: netRevenue,
           settled: false,
           free_minutes_applied: freeMinutesApplied || session.freeMinutesApplied || 0,
-          added_by: finalAddedBy || null // 🌟 الربط المباشر في خطوة برمجية واحدة
+          added_by: finalAddedBy || null
         })
         .eq('id', id)
         .eq('status', 'active');
 
       if (error) {
-        console.error('❌', error);
+        console.error('❌ خطأ في إنهاء الجلسة بالسيرفر:', error);
       } else {
         setTimeout(() => {
           locallyEndedSessions.delete(id);
-        }, 10000);
+        }, 3000);
       }
 
       setTimeout(() => {
         get().fetchAll();
-      }, 12000);
+      }, 3500);
     } finally {
       setTimeout(() => {
         sessionEndLocks.delete(lockKey);
-      }, 3000);
+        pausePolling(0); // ⚡ فك التجميد فوراً بدون تأخير ليتزامن تليفون العميل
+      }, 500);
     }
   },
 
   confirmRevenue: async (sessionId) => {
     set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: true } : s)) }));
-    pausePolling(10000);
+    pausePolling(2000);
     if (!isSupabaseConfigured()) return;
     const { error } = await supabase.from('sessions').update({ revenue_confirmed: true }).eq('id', sessionId);
     if (error) {
       console.error('❌', error);
       set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: false } : s)) }));
+    } finally {
+      pausePolling(0);
     }
   },
 
   unconfirmRevenue: async (sessionId) => {
     set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: false } : s)) }));
-    pausePolling(10000);
+    pausePolling(2000);
     if (!isSupabaseConfigured()) return;
     const { error } = await supabase.from('sessions').update({ revenue_confirmed: false }).eq('id', sessionId);
     if (error) {
       console.error('❌', error);
       set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: true } : s)) }));
+    } finally {
+      pausePolling(0);
     }
   },
 
@@ -1369,13 +1374,13 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   removeSession: async (id) => {
-    deletedSessionIds.add(id); locallyEndedSessions.delete(id); pausePolling(10000);
+    deletedSessionIds.add(id); locallyEndedSessions.delete(id); pausePolling(2000);
     const state = get();
     const target = state.sessions.find((s) => s.id === id);
     const idsToDelete = new Set<string>(); idsToDelete.add(id);
     if (target) {
       state.sessions.forEach((s) => {
-        if (samePlate(s.carPlate, target.carPlate) && s.source === 'manual' && s.status === 'active' && Math.abs(s.startTime - target.startTime) < 10000) {
+        if (samePlate(s.carPlate, target.carPlate) && s.source === 'manual' && s.status === 'active' && Math.abs(getMs(s.startTime) - getMs(target.startTime)) < 10000) {
           idsToDelete.add(s.id); deletedSessionIds.add(s.id);
         }
       });
@@ -1389,11 +1394,12 @@ export const useStore = create<AppState>((set, get) => ({
         await supabase.from('sessions').delete()
           .eq('car_plate', normalizePlate(target.carPlate))
           .eq('source', 'manual').eq('status', 'active')
-          .gte('start_time', new Date(target.startTime - 10000).toISOString())
-          .lte('start_time', new Date(target.startTime + 10000).toISOString());
+          .gte('start_time', new Date(getMs(target.startTime) - 10000).toISOString())
+          .lte('start_time', new Date(getMs(target.startTime) + 10000).toISOString());
       }
     }
     setTimeout(() => { idsToDelete.forEach((did) => deletedSessionIds.delete(did)); }, 30000);
+    pausePolling(0);
   },
 
   addOffer: (o) => {
@@ -1675,6 +1681,15 @@ let isOperationInProgress = false;
 let pauseTimeout: ReturnType<typeof setTimeout> | null = null;
 
 export function pausePolling(duration = 5000) {
+  if (duration <= 0) {
+    // ⚡ فك التجميد فوراً بدون انتظار عند تمرير القيمة صفر
+    isOperationInProgress = false;
+    if (pauseTimeout) {
+      clearTimeout(pauseTimeout);
+      pauseTimeout = null;
+    }
+    return;
+  }
   isOperationInProgress = true;
   if (pauseTimeout) clearTimeout(pauseTimeout);
   pauseTimeout = setTimeout(() => { isOperationInProgress = false; pauseTimeout = null; }, duration);
