@@ -87,10 +87,25 @@ export default function RegisterScreen() {
           </motion.div>
           <h2 className="text-2xl font-black text-white">سجل بياناتك للبدء</h2>
           
-          {/* 🎁 بانر ترويجي للـ 30 دقيقة المجانية */}
-          <div className="mt-2.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-black">
-            <Gift size={13} className="text-amber-400 animate-pulse" />
-            <span>أول 30 دقيقة ركنة مجاناً بالكامل كهدية ترحيبية! 🎁</span>
+          {/* 🎁 بانر ترويجي للـ 30 دقيقة المجانية بخط أسود تقيل جداً وواضح */}
+          <div 
+            className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-2xl shadow-lg shadow-amber-500/20"
+            style={{
+              background: 'linear-gradient(135deg, #FEF08A 0%, #FDE047 50%, #EAB308 100%)',
+              border: '2px solid #CA8A04',
+            }}
+          >
+            <Gift size={16} className="text-black animate-bounce shrink-0" />
+            <span 
+              style={{
+                color: '#000000',
+                fontWeight: 950,
+                fontSize: '12px',
+                letterSpacing: '0.2px',
+              }}
+            >
+              أول 30 دقيقة ركنة مجاناً بالكامل كهدية ترحيبية! 🎁
+            </span>
           </div>
         </div>
 

@@ -422,6 +422,8 @@ export default function GarageDashboard() {
     id: string; carPlate: string; cost: number; hours: number;
     minutes: number; source: 'app' | 'manual'; agreedPrice?: number;
   } | null>(null);
+  
+  // 🌟 هنا: السايس يحصل نقدي كاش دائماً
   const [confirmPaymentMethod, setConfirmPaymentMethod] = useState<string>('cash');
   
   const [garageDailyStats, setGarageDailyStats] = useState<DailyStat[]>([]);
@@ -435,7 +437,7 @@ export default function GarageDashboard() {
     return getMyOwnedGarages(garage.ownerPhone || garage.phone || '');
   }, [getMyOwnedGarages, garage, garages]);
 
-  // 🌟 إسناد تلقائي للجلسة المكتملة من التطبيق للسايس وتثبيتها في حسابه
+  // إسناد تلقائي للجلسة المكتملة من التطبيق للسايس المناوب
   useEffect(() => {
     if (!isValet || !currentGarageId) return;
     const currentValet = currentValetNameLocal || currentValetName || `سايس ${valetNumber}`;
@@ -794,7 +796,7 @@ export default function GarageDashboard() {
     setNewCarPlate(''); setNewCarPrice(garage.basePrice); setShowAddCar(false);
   };
 
-  // فتح شاشة تأكيد التحصيل (مع إعادة الحساب اللحظي والدقيق للـ 30 دقيقة المجانية)
+  // 🌟 فتح شاشة تأكيد التحصيل (دائماً نقدي كاش للسايس)
   const openConfirmPayment = (sid: string, cp: string, cost: number, hrs: number, minutes: number, source: 'app' | 'manual', ap?: number) => {
     const sessionObj = activeSessions.find(s => s.id === sid);
     const isFreeApplied = sessionObj?.isFirstFreeSession === true;
@@ -816,12 +818,8 @@ export default function GarageDashboard() {
       agreedPrice: ap 
     });
 
-    // اختيار طريقة السداد تلقائياً بناءً على وضع الجراج
-    if (garage?.payment_mode === 'wallet') {
-      setConfirmPaymentMethod('wallet');
-    } else {
-      setConfirmPaymentMethod('cash');
-    }
+    // 🌟 السايس يحصل نقدي كاش دائماً يداً بيد
+    setConfirmPaymentMethod('cash');
   };
 
   const handleConfirmPayment = async () => {
@@ -830,7 +828,7 @@ export default function GarageDashboard() {
     pausePolling(20000);
     try {
       const sc = { ...confirmSession }; 
-      const pc = confirmPaymentMethod;
+      const pc = 'cash'; // 🌟 السداد نقدي كاش دائماً
       const sd = useStore.getState().sessions.find(s => s.id === sc.id);
       const ia = sd?.source === 'app';
       
@@ -854,9 +852,9 @@ export default function GarageDashboard() {
       await endSession(sc.id, sc.cost, pc, freeMinutesApplied);
       if (ia) await new Promise(r => setTimeout(r, 5000));
       await fetchGarageDailyStats();
-      toast.success(`تم تحصيل الجلسة بالنجاح ✅`);
+      toast.success(`تم تحصيل ${sc.cost} ج.م نقداً بالنجاح ✅`);
     } catch (err: any) {
-      toast.error(err.message || 'فشلت عملية التحصيل، برجاء التأكد من وسيلة الدفع.');
+      toast.error(err.message || 'فشلت عملية التحصيل، برجاء المحاولة مجدداً.');
     } finally { 
       setTimeout(() => { isEndingSessionRef.current = false; }, 2000); 
     }
@@ -867,7 +865,7 @@ export default function GarageDashboard() {
       basePrice: editPrice, 
       availableSpots: Math.min(editSpots, editCapacity), 
       capacity: editCapacity,
-      payment_mode: editPaymentMode, // 🌟 حفظ خيار طريقة الدفع في الـ Store ومنها لـ Supabase
+      payment_mode: editPaymentMode,
       valetName1: editValet1Name.trim(), valetPassword1: editValet1Pass.trim(),
       valetName2: editValet2Name.trim(), valetPassword2: editValet2Pass.trim(),
       valetName3: editValet3Name.trim(), valetPassword3: editValet3Pass.trim(),
@@ -880,7 +878,7 @@ export default function GarageDashboard() {
     setEditPrice(garage.basePrice); 
     setEditSpots(garage.availableSpots); 
     setEditCapacity(garage.capacity);
-    setEditPaymentMode((garage.payment_mode as 'cash' | 'wallet' | 'both') || 'both'); // 🌟 تعبئة القيمة المفتوحة بالبيانات الفعلية للجراج
+    setEditPaymentMode((garage.payment_mode as 'cash' | 'wallet' | 'both') || 'both');
     setEditValet1Name(garage.valetName1 || ''); setEditValet1Pass(garage.valetPassword1 || '');
     setEditValet2Name(garage.valetName2 || ''); setEditValet2Pass(garage.valetPassword2 || '');
     setEditValet3Name(garage.valetName3 || ''); setEditValet3Pass(garage.valetPassword3 || '');
@@ -964,9 +962,9 @@ export default function GarageDashboard() {
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>💰 سعر الساعة</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
                 <div className="flex items-center justify-between gap-4">
-                  <button onClick={() => setEditPrice(p => Math.max(5, p - 5))} className="active:scale-90" style={{ background: '#FF3333', color: '#fff', width: 52, height: 52, borderRadius: 16, display: 'flex', alignItems: 'center', justifyStyle: 'center' }}><Minus size={22} /></button>
+                  <button onClick={() => setEditPrice(p => Math.max(5, p - 5))} className="active:scale-90" style={{ background: '#FF3333', color: '#fff', width: 52, height: 52, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={22} /></button>
                   <div className="text-center flex-1"><input type="number" value={editPrice} onChange={e => setEditPrice(Math.max(1, parseInt(e.target.value) || 0))} className="bg-transparent text-center w-full outline-none font-mono font-black" style={{ fontSize: 40 }} /><div className="font-bold" style={{ fontSize: 11, color: '#94a3b8' }}>ج.م / ساعة</div></div>
-                  <button onClick={() => setEditPrice(p => p + 5)} className="active:scale-90" style={{ background: '#00CC66', color: '#fff', width: 52, height: 52, borderRadius: 16, display: 'flex', alignItems: 'center', justifyStyle: 'center' }}><Plus size={22} /></button>
+                  <button onClick={() => setEditPrice(p => p + 5)} className="active:scale-90" style={{ background: '#00CC66', color: '#fff', width: 52, height: 52, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={22} /></button>
                 </div>
               </div>
             </div>
@@ -976,9 +974,9 @@ export default function GarageDashboard() {
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🚗 الأماكن المتاحة</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
                 <div className="flex items-center justify-between gap-4">
-                  <button onClick={() => setEditSpots(s => Math.max(0, s - 1))} className="active:scale-90" style={{ background: '#FF3333', color: '#fff', width: 52, height: 52, borderRadius: 16, display: 'flex', alignItems: 'center', justifyStyle: 'center' }}><Minus size={22} /></button>
+                  <button onClick={() => setEditSpots(s => Math.max(0, s - 1))} className="active:scale-90" style={{ background: '#FF3333', color: '#fff', width: 52, height: 52, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={22} /></button>
                   <div className="text-center flex-1"><input type="number" value={editSpots} onChange={e => setEditSpots(Math.max(0, Math.min(editCapacity, parseInt(e.target.value) || 0)))} className="bg-transparent text-center w-full outline-none font-mono font-black" style={{ fontSize: 40, color: '#0066FF' }} /><div className="font-bold" style={{ fontSize: 11, color: '#94a3b8' }}>من {editCapacity} مكان</div></div>
-                  <button onClick={() => setEditSpots(s => Math.min(editCapacity, s + 1))} className="active:scale-90" style={{ background: '#00CC66', color: '#fff', width: 52, height: 52, borderRadius: 16, display: 'flex', alignItems: 'center', justifyStyle: 'center' }}><Plus size={22} /></button>
+                  <button onClick={() => setEditSpots(s => Math.min(editCapacity, s + 1))} className="active:scale-90" style={{ background: '#00CC66', color: '#fff', width: 52, height: 52, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={22} /></button>
                 </div>
               </div>
             </div>
@@ -988,14 +986,14 @@ export default function GarageDashboard() {
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🏢 السعة الكلية</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
                 <div className="flex items-center justify-between gap-4">
-                  <button onClick={() => setEditCapacity(c => Math.max(editSpots, c - 10))} className="active:scale-90" style={{ background: '#D0DCFF', color: '#64748b', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyStyle: 'center' }}><Minus size={18} /></button>
+                  <button onClick={() => setEditCapacity(c => Math.max(editSpots, c - 10))} className="active:scale-90" style={{ background: '#D0DCFF', color: '#64748b', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={18} /></button>
                   <div className="text-center flex-1"><input type="number" value={editCapacity} onChange={e => setEditCapacity(Math.max(editSpots, parseInt(e.target.value) || editSpots))} className="bg-transparent text-center w-full outline-none font-mono font-black" style={{ fontSize: 28, color: '#7C3AED' }} /></div>
-                  <button onClick={() => setEditCapacity(c => c + 10)} className="active:scale-90" style={{ background: '#D0DCFF', color: '#64748b', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyStyle: 'center' }}><Plus size={18} /></button>
+                  <button onClick={() => setEditCapacity(c => c + 10)} className="active:scale-90" style={{ background: '#D0DCFF', color: '#64748b', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={18} /></button>
                 </div>
               </div>
             </div>
 
-            {/* 🌟 طرق الدفع المقبولة - تحكم ثلاثي كامل ومتكامل مع الـ Backend */}
+            {/* طرق الدفع المقبولة للجراج */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>💳 طرق الدفع المقبولة في جراجك</label>
               <div className="grid grid-cols-3 gap-2">
@@ -1083,7 +1081,7 @@ export default function GarageDashboard() {
         </motion.div>
       )}
 
-      {/* Confirm Payment Modal - مع تعديل خيارات كاش ومحفظة تفاعلياً وبشكل منسق مع الـ 30 دقيقة */}
+      {/* Confirm Payment Modal - 🌟 السايس يحصل كاش فقط */}
       {confirmSession && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 flex items-end justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)' }} onClick={() => setConfirmSession(null)}>
           <motion.div initial={{ y: 100 }} animate={{ y: 0 }} transition={{ type: 'spring', damping: 25 }} className="w-full max-w-sm" style={{ background: '#fff', borderRadius: '32px 32px 20px 20px', padding: 24 }} onClick={e => e.stopPropagation()}>
@@ -1103,7 +1101,7 @@ export default function GarageDashboard() {
                 </div>
                 
                 <div className="text-center" style={{ background: '#fff', borderRadius: 16, padding: 12, border: '1px solid #E0EAFF' }}>
-                  <div style={{ fontSize: 11, color: '#7B8CA6' }}>المستحق</div>
+                  <div style={{ fontSize: 11, color: '#7B8CA6' }}>المستحق كاش</div>
                   <div className="font-black font-mono" style={{ fontSize: 24, color: confirmSession.cost === 0 ? '#FF9500' : '#00AA44' }}>
                     {confirmSession.cost}
                   </div>
@@ -1114,7 +1112,7 @@ export default function GarageDashboard() {
               {/* رسالة توضيحية لخصم الهدية الترحيبية الـ 30 دقيقة */}
               {confirmSession.cost === 0 && (
                 <div className="mt-3 text-center p-2 rounded-xl bg-amber-50 border border-amber-100 text-amber-700 font-black text-xs flex items-center justify-center gap-1.5">
-                  <Gift size={14} /> الـ 30 دقيقة الأولى مجانية كهدية ترحيبية 🎁
+                  <Gift size={14} /> أول 30 دقيقة مجانية كهدية ترحيبية 🎁
                 </div>
               )}
 
@@ -1126,52 +1124,14 @@ export default function GarageDashboard() {
               )}
             </div>
 
-            {/* اختيار طريقة السداد ديناميكياً حسب إعدادات هذا الجراج ونوع الركنة */}
+            {/* طريقة السداد: نقدي كاش يداً بيد دائماً للسايس */}
             <div className="mb-5">
-              <h4 className="font-black mb-3 text-right" style={{ fontSize: 12, color: '#7B8CA6' }}>طريقة السداد</h4>
-              
-              {/* إذا كانت ركنة يدوية (فالكاش هو الأساس دائماً) */}
-              {confirmSession.source === 'manual' ? (
-                <div className="text-center" style={{ background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', borderRadius: 20, padding: 18, color: '#fff' }}>
-                  <div style={{ fontSize: 32, marginBottom: 4 }}>💵</div>
-                  <div className="font-black" style={{ fontSize: 15 }}>سداد نقدي كاش</div>
-                </div>
-              ) : (
-                /* إذا كانت ركنة من التطبيق ⬅️ يتم فلترة الخيارات على حسب إعداد الجراج الحالي */
-                <div className="grid grid-cols-2 gap-3">
-                  {(garage.payment_mode === 'cash' || garage.payment_mode === 'both' || !garage.payment_mode) && (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmPaymentMethod('cash')}
-                      className="p-4 rounded-2xl font-black flex flex-col items-center justify-center gap-1.5 transition-all"
-                      style={{
-                        background: confirmPaymentMethod === 'cash' ? 'linear-gradient(135deg, #00CC66, #00AA55)' : '#F0F4FF',
-                        color: confirmPaymentMethod === 'cash' ? '#fff' : '#64748b',
-                        border: confirmPaymentMethod === 'cash' ? 'none' : '2.5px solid #D0DCFF',
-                      }}
-                    >
-                      <span style={{ fontSize: 24 }}>💵</span>
-                      <span style={{ fontSize: 12 }}>تحصيل كاش</span>
-                    </button>
-                  )}
-
-                  {(garage.payment_mode === 'wallet' || garage.payment_mode === 'both') && (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmPaymentMethod('wallet')}
-                      className="p-4 rounded-2xl font-black flex flex-col items-center justify-center gap-1.5 transition-all"
-                      style={{
-                        background: confirmPaymentMethod === 'wallet' ? 'linear-gradient(135deg, #0066FF, #0044DD)' : '#F0F4FF',
-                        color: confirmPaymentMethod === 'wallet' ? '#fff' : '#64748b',
-                        border: confirmPaymentMethod === 'wallet' ? 'none' : '2.5px solid #D0DCFF',
-                      }}
-                    >
-                      <span style={{ fontSize: 24 }}>👝</span>
-                      <span style={{ fontSize: 12 }}>خصم من المحفظة</span>
-                    </button>
-                  )}
-                </div>
-              )}
+              <h4 className="font-black mb-3 text-right" style={{ fontSize: 12, color: '#7B8CA6' }}>طريقة التحصيل</h4>
+              <div className="text-center" style={{ background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', borderRadius: 20, padding: 18, color: '#fff', boxShadow: '0 4px 14px rgba(0,204,102,0.2)' }}>
+                <div style={{ fontSize: 32, marginBottom: 4 }}>💵</div>
+                <div className="font-black" style={{ fontSize: 15 }}>سداد نقدي كاش</div>
+                <div className="text-[10px] opacity-90 mt-1 font-bold">يتم التحصيل يداً بيد من العميل</div>
+              </div>
             </div>
 
             <div className="flex gap-3">
@@ -1183,10 +1143,11 @@ export default function GarageDashboard() {
                   borderRadius: 20, 
                   fontSize: 14, 
                   color: '#fff', 
-                  background: confirmPaymentMethod === 'wallet' ? 'linear-gradient(135deg, #0066FF, #0044DD)' : 'linear-gradient(135deg,#00CC66,#00AA55)' 
+                  background: 'linear-gradient(135deg,#00CC66,#00AA55)',
+                  boxShadow: '0 6px 18px rgba(0,204,102,0.25)' 
                 }}
               >
-                <CheckCircle size={20} /> تأكيد ({confirmSession.cost} ج.م)
+                <CheckCircle size={20} /> تأكيد واستلام ({confirmSession.cost} ج.م)
               </button>
               <button onClick={() => setConfirmSession(null)} className="active:scale-95" style={{ background: '#F0F4FF', padding: '0 20px', borderRadius: 20, color: '#7B8CA6' }}><XCircle size={20} /></button>
             </div>
@@ -1357,14 +1318,14 @@ export default function GarageDashboard() {
           <div className="mb-5">
             <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#00AA44' }}>الجلسات النشطة ({valetActiveSessions.length}) <Clock size={16} /></h3>
 
-            {/* حقل البحث السريع */}
+            {/* حقل البحث برقم اللوحة */}
             {valetActiveSessions.length > 0 && (
               <div className="mb-3 relative">
                 <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94a3b8' }} />
                 <input
                   type="text"
                   value={plateSearch}
-                  onChange={(e) => setLogPaymentFilter && setPlateSearch(e.target.value)}
+                  onChange={(e) => setPlateSearch(e.target.value)}
                   placeholder="🔍 ابحث برقم اللوحة..."
                   className="w-full font-bold text-right outline-none"
                   style={{
