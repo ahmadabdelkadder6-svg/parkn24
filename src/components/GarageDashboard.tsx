@@ -322,31 +322,42 @@ export default function GarageDashboard() {
     () => sessions.filter(s => s.garageId === currentGarageId),
     [sessions, currentGarageId]
   );
-  const currentValetNameLocal = localStorage.getItem('valetName') || '';
 
-  const currentValetName =
-    valetNumber === '1' ? garage?.valetName1 :
-    valetNumber === '2' ? garage?.valetName2 :
-    valetNumber === '3' ? garage?.valetName3 :
-    '';
+  // 🌟 التحديد الصارم والدقيق لهوية السايس النشط بناءً على رقم السايس الحالي
+  const currentValetName = useMemo(() => {
+    if (!isValet || !valetNumber) return '';
+    const nameFromGarage =
+      valetNumber === '1' ? garage?.valetName1 :
+      valetNumber === '2' ? garage?.valetName2 :
+      valetNumber === '3' ? garage?.valetName3 : '';
 
+    return (nameFromGarage && nameFromGarage.trim()) ? nameFromGarage.trim() : `سايس ${valetNumber}`;
+  }, [isValet, valetNumber, garage]);
+
+  // 🌟 حصر الأسماء الخاصة بالسايس الحالي فقط لمنع اختلاط حسابات سايس 3 بسايس 1
   const myValetNames = useMemo(() => {
     const names = new Set<string>();
-    if (currentValetNameLocal) names.add(currentValetNameLocal.trim());
-    if (currentValetName) names.add(currentValetName.trim());
-    if (valetNumber) {
-      names.add(`سايس ${valetNumber}`);
-      names.add(`valet ${valetNumber}`);
-    }
+    if (!isValet || !valetNumber) return names;
+
+    const nameFromGarage =
+      valetNumber === '1' ? garage?.valetName1 :
+      valetNumber === '2' ? garage?.valetName2 :
+      valetNumber === '3' ? garage?.valetName3 : '';
+
+    if (nameFromGarage && nameFromGarage.trim()) names.add(nameFromGarage.trim());
+    names.add(`سايس ${valetNumber}`);
+    names.add(`valet ${valetNumber}`);
+    names.add(`السايس ${valetNumber}`);
+
     return names;
-  }, [currentValetNameLocal, currentValetName, valetNumber]);
+  }, [isValet, valetNumber, garage]);
 
   const garageValetNames = useMemo(() => {
     if (!garage) return [];
     return [
-      (garage.valetName1 || '').trim(),
-      (garage.valetName2 || '').trim(),
-      (garage.valetName3 || '').trim(),
+      (garage.valetName1 || '').trim() || 'سايس 1',
+      (garage.valetName2 || '').trim() || 'سايس 2',
+      (garage.valetName3 || '').trim() || 'سايس 3',
       'سايس 1', 'سايس 2', 'سايس 3'
     ].filter(Boolean);
   }, [garage]);
@@ -434,10 +445,11 @@ export default function GarageDashboard() {
     return getMyOwnedGarages(garage.ownerPhone || garage.phone || '');
   }, [getMyOwnedGarages, garage, garages]);
 
+  // 🌟 إسناد تلقائي للجلسات المكتملة عبر التطبيق/المحفظة إلى السايس المناوب الفعلي المفتوح تطبيقه حالياً
   useEffect(() => {
-    if (!isValet || !currentGarageId) return;
-    const currentValet = currentValetNameLocal || currentValetName || `سايس ${valetNumber}`;
-    if (!currentValet) return;
+    if (!isValet || !currentGarageId || !valetNumber) return;
+    const valetIdentity = currentValetName || `سايس ${valetNumber}`;
+    if (!valetIdentity) return;
 
     const unassignedCompletedSessions = sessions.filter(s => {
       if (s.garageId !== currentGarageId) return false;
@@ -450,9 +462,9 @@ export default function GarageDashboard() {
     });
 
     unassignedCompletedSessions.forEach(s => {
-      assignSessionToValet(s.id, currentValet);
+      assignSessionToValet(s.id, valetIdentity);
     });
-  }, [sessions, isValet, currentGarageId, currentValetNameLocal, currentValetName, valetNumber, assignSessionToValet]);
+  }, [sessions, isValet, currentGarageId, currentValetName, valetNumber, assignSessionToValet]);
 
   const filteredValetActiveSessions = useMemo(() => {
     if (!plateSearch.trim()) return valetActiveSessions;
@@ -676,13 +688,14 @@ export default function GarageDashboard() {
 
   const topCardConfirmedRevenue = useMemo(() => filteredStats.total, [filteredStats]);
 
+  // 🌟 تقرير السياس عند المالك معدّل بحيث يشمل السياس الثلاثة دائماً وبدقة
   const valetReport = useMemo(() => {
     if (!garage || !isOwner || !currentGarageId) return [];
     const garageValets = [
-      { name: (garage.valetName1 || '').trim(), defaultName: 'سايس 1', color: '#0066FF', icon: '🅿️1' },
-      { name: (garage.valetName2 || '').trim(), defaultName: 'سايس 2', color: '#7C3AED', icon: '🅿️2' },
-      { name: (garage.valetName3 || '').trim(), defaultName: 'سايس 3', color: '#FF8800', icon: '🅿️3' },
-    ].filter(v => v.name);
+      { name: (garage.valetName1 || '').trim() || 'سايس 1', defaultName: 'سايس 1', color: '#0066FF', icon: '🅿️1' },
+      { name: (garage.valetName2 || '').trim() || 'سايس 2', defaultName: 'سايس 2', color: '#7C3AED', icon: '🅿️2' },
+      { name: (garage.valetName3 || '').trim() || 'سايس 3', defaultName: 'سايس 3', color: '#FF8800', icon: '🅿️3' },
+    ];
     
     const ownerGarageCompleted = completedSessions.filter((s) => {
       if (s.garageId !== currentGarageId) return false;
@@ -782,7 +795,15 @@ export default function GarageDashboard() {
   const handleAddCar = async () => {
     if (!newCarPlate.trim()) { toast.error('أدخل رقم السيارة'); return; }
     const cp = newCarPlate.trim(); const pr = newCarPrice; const at = Date.now();
-    const sid = await addSession({ garageId: garage.id, carPlate: cp, startTime: at, status: 'active', source: 'manual', agreedPrice: pr, addedBy: isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '' } as any);
+    const sid = await addSession({ 
+      garageId: garage.id, 
+      carPlate: cp, 
+      startTime: at, 
+      status: 'active', 
+      source: 'manual', 
+      agreedPrice: pr, 
+      addedBy: isValet ? (currentValetName || `سايس ${valetNumber}`) : '' 
+    } as any);
     const fid = sid || `fallback-${at}`;
     setUndoableSessions(p => [...p, { sessionId: fid, localId: fid, carPlate: cp, price: pr, addedAt: at }]);
     toast.success(`تم إضافة السيارة بسعر ${pr} ج.م/ساعة`);
@@ -812,7 +833,7 @@ export default function GarageDashboard() {
     setConfirmPaymentMethod('cash');
   };
 
-  // 🌟 تعديل دالة التحصيل لربط السايس ومزامنة الحالة فوراً وبشكل ذري (Atomic) مع المتجر المحدث
+  // 🌟 تأكيد التحصيل وإسناد الجلسة باسم السايس النشط (سايس 3) فوراً
   const handleConfirmPayment = async () => {
     if (!confirmSession || isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
@@ -831,18 +852,18 @@ export default function GarageDashboard() {
         }
       }
 
-      // 🌟 تحديد السايس المسؤول حالياً
-      const currentValet = isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`).trim() : 'المالك';
+      // 🌟 التحديد الدقيق لاسم السايس الحالي
+      const valetIdentity = isValet ? (currentValetName || `سايس ${valetNumber}`) : 'المالك';
 
       setConfirmSession(null);
       setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
       
-      // 🌟 تمرير السايس المسؤول كمعامل خامس ليتم الحفظ الفوري والذري في السيرفر والمتجر المحلي معاً
-      await endSession(sc.id, sc.cost, pc, freeMinutesApplied, currentValet);
+      // 🌟 تمرير السايس مباشرة للـ Store ليتم حفظه في قاعدة البيانات فورياً
+      await endSession(sc.id, sc.cost, pc, freeMinutesApplied, valetIdentity);
       
       if (ia) await new Promise(r => setTimeout(r, 5000));
       await fetchGarageDailyStats();
-      toast.success(`تم تحصيل ${sc.cost} ج.م نقداً بالنجاح بواسطة ${currentValet} ✅`);
+      toast.success(`تم تحصيل ${sc.cost} ج.م نقداً بالنجاح بواسطة ${valetIdentity} ✅`);
     } catch (err: any) {
       toast.error(err.message || 'فشلت عملية التحصيل، برجاء المحاولة مجدداً.');
     } finally { 
@@ -886,7 +907,19 @@ export default function GarageDashboard() {
       if (existing) { await removeIncomingCar(carId); toast('الجلسة شغالة ✅', { icon: '🚗' }); return; }
       const ro = offers.find(o => normalizePlate(o.carPlate) === np && (o.status === 'pending' || o.status === 'accepted'));
       if (ro) cancelOffer(ro.id);
-      await addSession({ garageId: garage.id, carPlate: np, startTime: Date.now(), status: 'active', source: 'app', agreedPrice: car.agreedPrice, customerPhone: car.customerPhone, customerName: car.customerName, startedBy: 'garage', incomingCarId: carId, addedBy: isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '' } as any);
+      await addSession({ 
+        garageId: garage.id, 
+        carPlate: np, 
+        startTime: Date.now(), 
+        status: 'active', 
+        source: 'app', 
+        agreedPrice: car.agreedPrice, 
+        customerPhone: car.customerPhone, 
+        customerName: car.customerName, 
+        startedBy: 'garage', 
+        incomingCarId: carId, 
+        addedBy: isValet ? (currentValetName || `سايس ${valetNumber}`) : '' 
+      } as any);
       await removeIncomingCar(carId);
       await supabase.from('incoming_cars').delete().eq('car_plate', np).eq('garage_id', garage.id);
       toast.success(`بدأ حساب ${carPlate} 🚗`);
@@ -1592,8 +1625,8 @@ export default function GarageDashboard() {
                                 <div className="font-black" style={{ fontSize: 12, fontWeight: 950, color: '#0A1628' }}>{v.name}</div>
                                 <div className="font-black" style={{ fontSize: 9, color: '#94a3b8', fontWeight: 900 }}>{v.count} سيارة</div>
                               </div>
-                              <div style={{ width: 30, height: 30, borderRadius: 10, background: v.color, color: '#ffffff', display: 'flex', alignItems: 'center', justifyStyle: 'center', fontWeight: 950, fontSize: 12, textShadow: '0 1px 1px rgba(0,0,0,0.2)', justifyItems: 'center', alignContent: 'center', justifySelf: 'center' }}>
-                                <span className="m-auto text-center">{v.icon}</span>
+                              <div style={{ width: 30, height: 30, borderRadius: 10, background: v.color, color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 950, fontSize: 12, textShadow: '0 1px 1px rgba(0,0,0,0.2)' }}>
+                                <span>{v.icon}</span>
                               </div>
                             </div>
                           </div>
@@ -1674,7 +1707,7 @@ export default function GarageDashboard() {
                     {!isSettled && !isC ? (
                       <button 
                         onClick={async () => { 
-                          const currentValet = isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '';
+                          const currentValet = isValet ? (currentValetName || `سايس ${valetNumber}`) : '';
                           if (currentValet) {
                             await assignSessionToValet(session.id, currentValet);
                           }
