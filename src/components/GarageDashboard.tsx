@@ -313,7 +313,12 @@ export default function GarageDashboard() {
   const [garageRole] = useState<'owner' | 'valet'>(
     () => (localStorage.getItem('garageRole') as 'owner' | 'valet') || 'owner',
   );
-  const valetNumber = localStorage.getItem('valetNumber') || '';
+  
+  // 🌟 استخراج رقم السايس الصارم (1 أو 2 أو 3)
+  const valetNumber = useMemo(() => {
+    return (localStorage.getItem('valetNumber') || '').trim();
+  }, []);
+
   const isOwner = garageRole === 'owner';
   const isValet = garageRole === 'valet';
 
@@ -323,8 +328,8 @@ export default function GarageDashboard() {
     [sessions, currentGarageId]
   );
 
-  // 🌟 التحديد الصارم لهوية السايس النشط من رقم السايس المسجل دخوله حالياً
-  const activeValetName = useMemo(() => {
+  // 🌟 التحديد الصارم لهوية السايس النشط بناءً على رقم الدخول فقط (مثلاً: سايس 3)
+  const activeValetIdentity = useMemo(() => {
     if (!isValet || !valetNumber) return '';
     if (valetNumber === '1') return (garage?.valetName1 || '').trim() || 'سايس 1';
     if (valetNumber === '2') return (garage?.valetName2 || '').trim() || 'سايس 2';
@@ -332,31 +337,36 @@ export default function GarageDashboard() {
     return `سايس ${valetNumber}`;
   }, [isValet, valetNumber, garage]);
 
-  // تحديث الـ localStorage ليكون متطابقاً دائماً مع السايس المسجل حالياً
+  // تحديث فوري للمتصفح لمنع وجود أي اسم قديم لسايس 1
   useEffect(() => {
-    if (isValet && activeValetName) {
-      localStorage.setItem('valetName', activeValetName);
+    if (isValet && activeValetIdentity) {
+      localStorage.setItem('valetName', activeValetIdentity);
     }
-  }, [isValet, activeValetName]);
+  }, [isValet, activeValetIdentity]);
 
-  // 🌟 حصر الأسماء الخاصة بالسايس الحالي بدقة تامة لمنع نسب جلسات سايس 3 لسايس 1
-  const myValetNames = useMemo(() => {
-    const names = new Set<string>();
-    if (!isValet || !valetNumber) return names;
+  // 🌟 دالة فحص ذكية وقاطعة: هل هذه الجلسة تخص السايس الحالي؟
+  const isSessionBelongsToCurrentValet = useCallback((sessionAddedBy: string | undefined): boolean => {
+    if (!isValet || !valetNumber) return false;
+    if (!sessionAddedBy) return false;
 
+    const clean = sessionAddedBy.trim();
     const customName =
       valetNumber === '1' ? (garage?.valetName1 || '').trim() :
       valetNumber === '2' ? (garage?.valetName2 || '').trim() :
       valetNumber === '3' ? (garage?.valetName3 || '').trim() : '';
 
-    if (customName) names.add(customName.toLowerCase());
-    names.add(`سايس ${valetNumber}`.toLowerCase());
-    names.add(`السايس ${valetNumber}`.toLowerCase());
-    names.add(`valet ${valetNumber}`.toLowerCase());
-    names.add(`valet${valetNumber}`.toLowerCase());
+    // 1. فحص الاسم المخصص إذا وُجد
+    if (customName && clean.toLowerCase() === customName.toLowerCase()) {
+      return true;
+    }
 
-    return names;
-  }, [isValet, valetNumber, garage]);
+    // 2. فحص رقم السايس (3) حصرياً
+    if (clean.includes(valetNumber)) {
+      return true;
+    }
+
+    return clean === activeValetIdentity;
+  }, [isValet, valetNumber, garage, activeValetIdentity]);
 
   const garageValetNames = useMemo(() => {
     if (!garage) return [];
@@ -453,7 +463,7 @@ export default function GarageDashboard() {
 
   // 🌟 إسناد تلقائي للجلسات المكتملة عبر التطبيق/المحفظة إلى السايس المناوب الفعلي (سايس 3)
   useEffect(() => {
-    if (!isValet || !currentGarageId || !valetNumber || !activeValetName) return;
+    if (!isValet || !currentGarageId || !valetNumber || !activeValetIdentity) return;
 
     const unassignedCompletedSessions = sessions.filter(s => {
       if (s.garageId !== currentGarageId) return false;
@@ -466,9 +476,9 @@ export default function GarageDashboard() {
     });
 
     unassignedCompletedSessions.forEach(s => {
-      assignSessionToValet(s.id, activeValetName);
+      assignSessionToValet(s.id, activeValetIdentity);
     });
-  }, [sessions, isValet, currentGarageId, activeValetName, valetNumber, assignSessionToValet]);
+  }, [sessions, isValet, currentGarageId, activeValetIdentity, valetNumber, assignSessionToValet]);
 
   const filteredValetActiveSessions = useMemo(() => {
     if (!plateSearch.trim()) return valetActiveSessions;
@@ -611,7 +621,7 @@ export default function GarageDashboard() {
     return isFreeNow ? 0 : calculateCost(el, r);
   }, [garage?.basePrice]);
 
-  // 🌟 فلترة العمليات الخاصة بالسايس الحالي بدقة تامة
+  // 🌟 فلترة عمليات السايس الحالي بدقة تامة ومنع ظهور عمليات سايس 1
   const filteredCompleted = useMemo(() => {
     if (isValet) {
       const isActive =
@@ -642,21 +652,21 @@ export default function GarageDashboard() {
       
       if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter) return false;
       
-      const addedBy = ((s as any).addedBy || '').trim().toLowerCase();
+      const addedBy = ((s as any).addedBy || '').trim();
       
       if (isValet) {
-        const isMine = addedBy && myValetNames.has(addedBy);
+        const isMine = isSessionBelongsToCurrentValet(addedBy);
         const isUnassignedApp = !addedBy && s.source === 'app';
         if (!isMine && !isUnassignedApp) return false;
       }      
       
       if (isOwner && selectedValetFilter) { 
-        if (addedBy !== selectedValetFilter.trim().toLowerCase()) return false; 
+        if (addedBy.toLowerCase() !== selectedValetFilter.trim().toLowerCase()) return false; 
       }
       
       return true;
     });
-  }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, isOwner, myValetNames, selectedValetFilter, valetNumber, garage]);
+  }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, isOwner, isSessionBelongsToCurrentValet, selectedValetFilter, valetNumber, garage]);
 
   const filteredStats = useMemo(() => {
     const c = filteredCompleted.filter(s => s.revenueConfirmed);
@@ -693,7 +703,7 @@ export default function GarageDashboard() {
 
   const topCardConfirmedRevenue = useMemo(() => filteredStats.total, [filteredStats]);
 
-  // 🌟 تقرير السياس عند المالك معدّل ليفصل عمليات سايس 1 و 2 و 3 بشكل مستقل وحصري
+  // 🌟 تقرير السياس عند المالك يطابق بدقة كل سايس ورقمه بدون أي خلط
   const valetReport = useMemo(() => {
     if (!garage || !isOwner || !currentGarageId) return [];
     const garageValets = [
@@ -715,19 +725,15 @@ export default function GarageDashboard() {
     
     return garageValets.map((v) => {
       const displayName = v.customName || `سايس ${v.n}`;
-      const matchNames = new Set<string>([
-        displayName.toLowerCase(),
-        `سايس ${v.n}`.toLowerCase(),
-        `السايس ${v.n}`.toLowerCase(),
-        `valet ${v.n}`.toLowerCase(),
-        `valet${v.n}`.toLowerCase(),
-      ]);
-      if (v.customName) matchNames.add(v.customName.toLowerCase());
-
+      
       const vs = ownerGarageCompleted.filter((s) => {
         const addedBy = ((s as any).addedBy || '').trim().toLowerCase();
-        return matchNames.has(addedBy);
+        if (!addedBy) return false;
+        if (v.customName && addedBy === v.customName.toLowerCase()) return true;
+        if (addedBy.includes(v.n)) return true;
+        return false;
       });
+
       const confirmed = vs.filter((s) => s.revenueConfirmed);
       const ac = confirmed.filter((s) => s.source === 'app');
       const mc = confirmed.filter((s) => s.source === 'manual');
@@ -801,7 +807,7 @@ export default function GarageDashboard() {
             <h2 className="font-black" style={{ fontSize: 20, color: '#0A1628', marginBottom: 8 }}>الحساب غير مُفعل</h2>
             <p className="font-bold" style={{ fontSize: 13, color: '#7B8CA6', lineHeight: 1.8, marginBottom: 20 }}>تم تعطيل هذا الحساب مؤقتًا من قبل مالك الجراج.<br />برجاء التواصل معه لإعادة التفعيل.</p>
             <div style={{ background: '#FFF8F0', borderRadius: 16, padding: 14, border: '1.5px solid #FFD180', marginBottom: 16 }}>
-              <div className="font-black" style={{ fontSize: 15, color: '#0A1628' }}>{activeValetName}</div>
+              <div className="font-black" style={{ fontSize: 15, color: '#0A1628' }}>{activeValetIdentity}</div>
               <div className="font-bold" style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>{garage.name}</div>
             </div>
             <button onClick={() => { localStorage.removeItem('garageRole'); localStorage.removeItem('valetNumber'); localStorage.removeItem('valetName'); setCurrentGarageId(null); }} className="w-full font-black active:scale-95" style={{ background: '#F0F4FF', color: '#475569', padding: 14, borderRadius: 18, fontSize: 13, border: '2px solid #D0DCFF' }}>تسجيل خروج</button>
@@ -811,6 +817,7 @@ export default function GarageDashboard() {
     }
   }
 
+  // 🌟 إضافة سيارة يدوية باسم السايس الحالي الصارم (سايس 3)
   const handleAddCar = async () => {
     if (!newCarPlate.trim()) { toast.error('أدخل رقم السيارة'); return; }
     const cp = newCarPlate.trim(); const pr = newCarPrice; const at = Date.now();
@@ -821,7 +828,7 @@ export default function GarageDashboard() {
       status: 'active', 
       source: 'manual', 
       agreedPrice: pr, 
-      addedBy: isValet ? activeValetName : '' 
+      addedBy: isValet ? activeValetIdentity : '' 
     } as any);
     const fid = sid || `fallback-${at}`;
     setUndoableSessions(p => [...p, { sessionId: fid, localId: fid, carPlate: cp, price: pr, addedAt: at }]);
@@ -852,7 +859,7 @@ export default function GarageDashboard() {
     setConfirmPaymentMethod('cash');
   };
 
-  // 🌟 تأكيد التحصيل وإسناد الجلسة باسم السايس النشط (سايس 3) فوراً وبشكل ذري
+  // 🌟 إنهاء وتحصيل الجلسة وحفظها باسم السايس النشط (سايس 3) فورياً
   const handleConfirmPayment = async () => {
     if (!confirmSession || isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
@@ -871,18 +878,18 @@ export default function GarageDashboard() {
         }
       }
 
-      // 🌟 التحديد الصارم لاسم السايس الحالي (سايس 3)
-      const valetIdentity = isValet ? activeValetName : 'المالك';
+      // 🌟 اسم السايس المسؤول الفعلي عن التحصيل (سايس 3)
+      const valetIdentity = isValet ? activeValetIdentity : 'المالك';
 
       setConfirmSession(null);
       setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
       
-      // 🌟 تمرير السايس مباشرة للـ Store ليتم حفظه في قاعدة البيانات فورياً
+      // 🌟 تمرير اسم السايس 3 مباشرة للـ Store ليتم حفظه بشكل ذري في السيرفر
       await endSession(sc.id, sc.cost, pc, freeMinutesApplied, valetIdentity);
       
       if (ia) await new Promise(r => setTimeout(r, 5000));
       await fetchGarageDailyStats();
-      toast.success(`تم تحصيل ${sc.cost} ج.م نقداً بنجاح بواسطة ${valetIdentity} ✅`);
+      toast.success(`تم تحصيل ${sc.cost} ج.م نقداً بالنجاح بواسطة ${valetIdentity} ✅`);
     } catch (err: any) {
       toast.error(err.message || 'فشلت عملية التحصيل، برجاء المحاولة مجدداً.');
     } finally { 
@@ -937,7 +944,7 @@ export default function GarageDashboard() {
         customerName: car.customerName, 
         startedBy: 'garage', 
         incomingCarId: carId, 
-        addedBy: isValet ? activeValetName : '' 
+        addedBy: isValet ? activeValetIdentity : '' 
       } as any);
       await removeIncomingCar(carId);
       await supabase.from('incoming_cars').delete().eq('car_plate', np).eq('garage_id', garage.id);
@@ -981,7 +988,7 @@ export default function GarageDashboard() {
           <h2 className="font-black" style={{ fontSize: 20 }}>{garage.name}</h2>
           <div className="flex items-center gap-2 justify-end mt-1">
             <span className="font-bold flex items-center gap-1" style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, background: isOwner ? '#0066FF' : '#FF9500', color: '#fff' }}>
-              {isOwner ? <><Shield size={10} /> مالك</> : <><HardHat size={10} style={{ color: '#fff' }} /> <span style={{ color: '#fff', fontWeight: 900 }}>{activeValetName}</span></>}
+              {isOwner ? <><Shield size={10} /> مالك</> : <><HardHat size={10} style={{ color: '#fff' }} /> <span style={{ color: '#fff', fontWeight: 900 }}>{activeValetIdentity}</span></>}
             </span>
             <p className="flex items-center gap-1" style={{ fontSize: 11, color: '#7B8CA6' }}><MapPin size={11} /> {garage.location}</p>
           </div>
@@ -1443,7 +1450,7 @@ export default function GarageDashboard() {
       {isValet && (
         <div className="mb-5" style={{ background: '#fff', borderRadius: 20, padding: '12px 16px', border: '2px solid #D0DCFF' }}>
           <div className="flex items-center justify-between">
-            <span className="font-black flex items-center gap-1" style={{ fontSize: 14, color: '#0A1628' }}><HardHat size={16} style={{ color: '#FF9500' }} />{activeValetName}</span>
+            <span className="font-black flex items-center gap-1" style={{ fontSize: 14, color: '#0A1628' }}><HardHat size={16} style={{ color: '#FF9500' }} />{activeValetIdentity}</span>
             <div className="flex items-center gap-4">
               <div className="text-right"><div style={{ fontSize: 10, color: '#94a3b8' }}>السعر/ساعة</div><div className="font-black font-mono" style={{ fontSize: 17, color: '#0A1628', lineHeight: 1.1 }}>{garage.basePrice} ج</div></div>
               <div style={{ width: 2, height: 28, background: '#D0DCFF', borderRadius: 2 }} />
@@ -1683,7 +1690,7 @@ export default function GarageDashboard() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className="font-black text-slate-800 text-sm">📊 عملياتي اليوم ({activeValetName})</span>
+                  <span className="font-black text-slate-800 text-sm">📊 عملياتي اليوم ({activeValetIdentity})</span>
                 </div>
               </div>
             )}
@@ -1726,8 +1733,8 @@ export default function GarageDashboard() {
                     {!isSettled && !isC ? (
                       <button 
                         onClick={async () => { 
-                          if (activeValetName) {
-                            await assignSessionToValet(session.id, activeValetName);
+                          if (activeValetIdentity) {
+                            await assignSessionToValet(session.id, activeValetIdentity);
                           }
                           await confirmRevenue(session.id); 
                           await fetchGarageDailyStats(); 
@@ -1768,7 +1775,7 @@ export default function GarageDashboard() {
           {filteredCompleted.length === 0 && (
             <div className="text-center" style={{ background: '#fff', borderRadius: 24, padding: 32, border: '2px solid #D0DCFF' }}>
               <div style={{ fontSize: 36, marginBottom: 12 }}>📭</div>
-              <p className="font-bold" style={{ fontSize: 14, color: '#7B8CA6' }}>{isValet ? `لا توجد عمليات مسجلة باسمك اليوم (${activeValetName})` : 'لا توجد عمليات'}</p>
+              <p className="font-bold" style={{ fontSize: 14, color: '#7B8CA6' }}>{isValet ? `لا توجد عمليات مسجلة باسمك اليوم (${activeValetIdentity})` : 'لا توجد عمليات'}</p>
             </div>
           )}
         </div>
