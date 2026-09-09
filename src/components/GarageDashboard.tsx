@@ -423,7 +423,7 @@ export default function GarageDashboard() {
     minutes: number; source: 'app' | 'manual'; agreedPrice?: number;
   } | null>(null);
   
-  // 🌟 هنا: السايس يحصل نقدي كاش دائماً
+  // 🌟 السايس يحصل نقدي كاش دائماً
   const [confirmPaymentMethod, setConfirmPaymentMethod] = useState<string>('cash');
   
   const [garageDailyStats, setGarageDailyStats] = useState<DailyStat[]>([]);
@@ -437,25 +437,43 @@ export default function GarageDashboard() {
     return getMyOwnedGarages(garage.ownerPhone || garage.phone || '');
   }, [getMyOwnedGarages, garage, garages]);
 
-  // إسناد تلقائي للجلسة المكتملة من التطبيق للسايس المناوب
+  // 🌟 إسناد تلقائي للجلسات المكتملة عبر التطبيق/المحفظة للسايس النشط المفتوح جهازه حالياً
   useEffect(() => {
     if (!isValet || !currentGarageId) return;
-    const currentValet = currentValetNameLocal || currentValetName || `سايس ${valetNumber}`;
+    const currentValet = (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`).trim();
     if (!currentValet) return;
 
-    const unassignedCompletedSessions = sessions.filter(s => {
-      if (s.garageId !== currentGarageId) return false;
-      if (s.status !== 'completed') return false;
-      if (s.source !== 'app') return false;
-      
-      const isToday = timestampToLocalDate(toMs(s.endTime || s.startTime)) === getLocalToday();
-      const ab = ((s as any).addedBy || '').trim();
-      return isToday && !ab;
-    });
+    const claimUnassignedSessions = async () => {
+      // الحصول على جلسات التطبيق المكتملة اليوم والتي لا تحمل اسم أي سايس
+      const unassignedCompletedAppSessions = sessions.filter(s => {
+        if (s.garageId !== currentGarageId) return false;
+        if (s.status !== 'completed') return false;
+        if (s.source !== 'app') return false;
+        
+        const isToday = timestampToLocalDate(toMs(s.endTime || s.startTime)) === getLocalToday();
+        const ab = ((s as any).addedBy || '').trim();
+        return isToday && !ab;
+      });
 
-    unassignedCompletedSessions.forEach(s => {
-      assignSessionToValet(s.id, currentValet);
-    });
+      for (const s of unassignedCompletedAppSessions) {
+        try {
+          // تحديث مباشر في قاعدة البيانات بشكل آمن لضمان ملكية السايس الأسرع اتصالاً
+          const { error } = await supabase
+            .from('sessions')
+            .update({ added_by: currentValet })
+            .eq('id', s.id)
+            .is('added_by', null); // يضمن عدم الكتابة فوق سايس آخر إذا قام بالتحصيل قبله بأجزاء من الثانية
+
+          if (!error) {
+            await assignSessionToValet(s.id, currentValet);
+          }
+        } catch (e) {
+          console.warn('Auto-claim error:', e);
+        }
+      }
+    };
+
+    claimUnassignedSessions();
   }, [sessions, isValet, currentGarageId, currentValetNameLocal, currentValetName, valetNumber, assignSessionToValet]);
 
   const filteredValetActiveSessions = useMemo(() => {
@@ -804,7 +822,6 @@ export default function GarageDashboard() {
     const st = sessionObj ? toMs(sessionObj.startTime) : 0;
     const el = st > 0 ? Math.max(0, Math.floor((Date.now() - st) / 1000)) : 0;
     
-    // 🎁 إذا كانت المدة تحت الـ 30 دقيقة والهدية مفعلة، فالتكلفة 0 ج.م
     const isFreeNow = isFreeApplied && el <= 1800;
     const finalCost = isFreeNow ? 0 : (cost > 0 ? cost : getActiveCost(sessionObj));
 
@@ -818,21 +835,23 @@ export default function GarageDashboard() {
       agreedPrice: ap 
     });
 
-    // 🌟 السايس يحصل نقدي كاش دائماً يداً بيد
     setConfirmPaymentMethod('cash');
   };
 
+  // 🌟 تأكيد استلام النقدي وإسناده للسايس الحالي فوراً وحذفه من شاشات الآخرين
   const handleConfirmPayment = async () => {
     if (!confirmSession || isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
     pausePolling(20000);
+    
+    const currentValet = isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : 'المالك';
+    
     try {
       const sc = { ...confirmSession }; 
-      const pc = 'cash'; // 🌟 السداد نقدي كاش دائماً
+      const pc = 'cash'; 
       const sd = useStore.getState().sessions.find(s => s.id === sc.id);
       const ia = sd?.source === 'app';
       
-      // حساب دقائق الهدية الترحيبية المطبقة
       let freeMinutesApplied = 0;
       if (sd?.isFirstFreeSession === true) {
         const elapsedSeconds = Math.floor((Date.now() - toMs(sd.startTime)) / 1000);
@@ -841,18 +860,29 @@ export default function GarageDashboard() {
         }
       }
 
-      const currentValet = isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '';
-      if (currentValet && sd) {
-        await assignSessionToValet(sd.id, currentValet);
-      }
+      // 1. تحديث قاعدة البيانات فوراً بربط الجلسة بالسايس الذي يقوم بالتحصيل حالياً لضمان الملكية الكاملة للجلسة
+      const { error: dbError } = await supabase
+        .from('sessions')
+        .update({ 
+          added_by: currentValet,
+          status: 'completed',
+          payment_method: pc
+        })
+        .eq('id', sc.id);
 
+      if (dbError) throw dbError;
+
+      // 2. إبلاغ الـ Store المحلي لإجراء العمليات المتبقية
+      await assignSessionToValet(sc.id, currentValet);
       setConfirmSession(null);
       setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
       
       await endSession(sc.id, sc.cost, pc, freeMinutesApplied);
-      if (ia) await new Promise(r => setTimeout(r, 5000));
+      
+      if (ia) await new Promise(r => setTimeout(r, 2000));
+      await fetchAll();
       await fetchGarageDailyStats();
-      toast.success(`تم تحصيل ${sc.cost} ج.م نقداً بالنجاح ✅`);
+      toast.success(`تم تحصيل ${sc.cost} ج.م نقداً بنجاح بواسطة ${currentValet} ✅`);
     } catch (err: any) {
       toast.error(err.message || 'فشلت عملية التحصيل، برجاء المحاولة مجدداً.');
     } finally { 
