@@ -4,7 +4,7 @@ import {
   Car, Clock, LogOut, Plus, CheckCircle, XCircle, Settings,
   Minus, Save, MapPin, Edit3, Navigation, Phone, CarFront, FileText,
   CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
-  Search, X,
+  Search, X, CreditCard,
 } from 'lucide-react';
 import { useStore, pausePolling, normalizePlate } from '../store';
 import { supabase } from '../lib/supabase';
@@ -228,18 +228,11 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
   const mins = Math.floor(el / 60);
 
   const isFreeApplied = s.isFirstFreeSession === true;
-  const freeSeconds = isFreeApplied ? Math.min(el, 3600) : 0;
-  const billableSeconds = Math.max(0, el - freeSeconds);
-  const hrs = isFreeApplied ? calculateFullHours(billableSeconds) : calculateFullHours(el);
-
+  const isFreeNow = isFreeApplied && el <= 1800;
+  
+  const hrs = isFreeNow ? 0 : calculateFullHours(el);
   const rate = Number(s.agreedPrice ?? basePrice);
-  const cost = (() => {
-    if (el <= 0 || rate <= 0) return 0;
-    if (isFreeApplied) {
-      return calculateCost(billableSeconds, rate);
-    }
-    return calculateCost(el, rate);
-  })();
+  const cost = isFreeNow ? 0 : calculateCost(el, rate);
 
   const isM = s.source === 'manual';
 
@@ -262,7 +255,7 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
           
           {isFreeApplied && (
             <span className="font-black flex items-center gap-0.5 shrink-0" style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, background: '#FFF3E0', color: '#E65100', border: '1px solid #FFE0B2' }}>
-              <Gift size={10} /> ساعة مجانية
+              <Gift size={10} /> {isFreeNow ? 'هدية ترحيبية نشطة 🎁' : 'انتهت الهدية الترحيبية'}
             </span>
           )}
         </div>
@@ -295,8 +288,8 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
           )}
         </div>
 
-        <div className="font-black text-left" style={{ fontSize: cost === 0 && isFreeApplied ? 11 : 15, color: cost === 0 && isFreeApplied ? '#FF9500' : '#00AA44' }}>
-          {cost === 0 && isFreeApplied ? (
+        <div className="font-black text-left" style={{ fontSize: isFreeNow ? 11 : 15, color: isFreeNow ? '#FF9500' : '#00AA44' }}>
+          {isFreeNow ? (
             <span className="flex items-center gap-0.5 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg shadow-sm">
               🎁 مجاناً (0ج)
             </span>
@@ -405,23 +398,31 @@ export default function GarageDashboard() {
   const [newCarPrice, setNewCarPrice] = useState(garage?.basePrice || 15);
   const [showAddCar, setShowAddCar] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  
   const [editPrice, setEditPrice] = useState(garage?.basePrice || 15);
   const [editSpots, setEditSpots] = useState(garage?.availableSpots || 0);
   const [editCapacity, setEditCapacity] = useState(garage?.capacity || 50);
+  const [editPaymentMode, setEditPaymentMode] = useState<'cash' | 'wallet' | 'both'>(
+    (garage?.payment_mode as 'cash' | 'wallet' | 'both') || 'both'
+  );
   const [editValet1Name, setEditValet1Name] = useState(garage?.valetName1 || '');
   const [editValet1Pass, setEditValet1Pass] = useState(garage?.valetPassword1 || '');
   const [editValet2Name, setEditValet2Name] = useState(garage?.valetName2 || '');
   const [editValet2Pass, setEditValet2Pass] = useState(garage?.valetPassword2 || '');
   const [editValet3Name, setEditValet3Name] = useState(garage?.valetName3 || '');
   const [editValet3Pass, setEditValet3Pass] = useState(garage?.valetPassword3 || '');
+  
   const [logDateFrom, setLogDateFrom] = useState(() => getLocalToday());
   const [logDateTo, setLogDateTo] = useState(() => getLocalToday());
   const [logPaymentFilter, setLogPaymentFilter] = useState<string>('all');
+  
   const [confirmSession, setConfirmSession] = useState<{
     id: string; carPlate: string; cost: number; hours: number;
     minutes: number; source: 'app' | 'manual'; agreedPrice?: number;
   } | null>(null);
-  const [confirmPaymentMethod, setConfirmPaymentMethod] = useState('cash');
+  
+  const [confirmPaymentMethod, setConfirmPaymentMethod] = useState<string>('cash');
+  
   const [garageDailyStats, setGarageDailyStats] = useState<DailyStat[]>([]);
   const [valetEditSpots, setValetEditSpots] = useState(false);
   const [selectedValetFilter, setSelectedValetFilter] = useState<string | null>(null);
@@ -433,7 +434,6 @@ export default function GarageDashboard() {
     return getMyOwnedGarages(garage.ownerPhone || garage.phone || '');
   }, [getMyOwnedGarages, garage, garages]);
 
-  // 🌟 [النسب التلقائي الشامل للسايس المناوب]: إسناد أي جلسة مكتملة من التطبيق (كاش معلق / محفظة / مجاني) للسايس المتواجد على الشفت وتثبيتها في حسابه
   useEffect(() => {
     if (!isValet || !currentGarageId) return;
     const currentValet = currentValetNameLocal || currentValetName || `سايس ${valetNumber}`;
@@ -559,17 +559,13 @@ export default function GarageDashboard() {
   useEffect(() => { return () => { try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }; }, []);
 
   const getSessionRevenue = useCallback((s: any) => {
-    if (s.totalPrice != null && Number(s.totalPrice) > 0) return Number(s.totalPrice);
+    if (s.totalPrice != null) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
       const elSeconds = Math.max(0, Math.floor((toMs(s.endTime) - toMs(s.startTime)) / 1000));
       const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
       
-      if (s.isFirstFreeSession === true) {
-        const freeSeconds = Math.min(elSeconds, 3600);
-        const billableSeconds = Math.max(0, elSeconds - freeSeconds);
-        return calculateCost(billableSeconds, r);
-      }
-      return calculateCost(elSeconds, r);
+      const isFreeNow = s.isFirstFreeSession === true && elSeconds <= 1800;
+      return isFreeNow ? 0 : calculateCost(elSeconds, r);
     }
     return 0;
   }, [garage?.basePrice]);
@@ -595,15 +591,10 @@ export default function GarageDashboard() {
     const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
     if (el <= 0 || r <= 0) return 0;
 
-    if (s.isFirstFreeSession === true) {
-      const freeSeconds = Math.min(el, 3600);
-      const billableSeconds = Math.max(0, el - freeSeconds);
-      return calculateCost(billableSeconds, r);
-    }
-    return calculateCost(el, r);
+    const isFreeNow = s.isFirstFreeSession === true && el <= 1800;
+    return isFreeNow ? 0 : calculateCost(el, r);
   }, [garage?.basePrice]);
 
-  // 🌟 [الفلترة الحصرية للسايس]: يرى فقط العمليات المسجلة باسمه (سواء معلقة أو مؤكدة، كاش أو محفظة أو مجانية)
   const filteredCompleted = useMemo(() => {
     if (isValet) {
       const isActive =
@@ -639,8 +630,6 @@ export default function GarageDashboard() {
       if (isValet) {
         const isMine = addedBy && myValetNames.has(addedBy);
         const isUnassignedApp = !addedBy && s.source === 'app';
-        
-        // 🔒 السايس يرى فقط ما يخصه أو ما يلتقطه جهازه تلقائياً
         if (!isMine && !isUnassignedApp) return false;
       }      
       
@@ -744,8 +733,6 @@ export default function GarageDashboard() {
     return () => clearInterval(i);
   }, [undoableSessions.length]);
 
-  useEffect(() => { if (garage) setNewCarPrice(garage.basePrice); }, [garage?.basePrice, garage]);
-
   useEffect(() => {
     setUndoableSessions(p =>
       p.filter(u => Math.floor((Date.now() - u.addedAt) / 1000) < UNDO_TIMEOUT_SECONDS)
@@ -802,55 +789,86 @@ export default function GarageDashboard() {
     setNewCarPlate(''); setNewCarPrice(garage.basePrice); setShowAddCar(false);
   };
 
-  const openConfirmPayment = (sid: string, cp: string, cost: number, hrs: number, mins: number, source: 'app' | 'manual', ap?: number) => {
-    const fc = cost > 0 ? cost : (() => { const s = activeSessions.find(s => s.id === sid); return s ? getActiveCost(s) : 0; })();
-    setConfirmSession({ id: sid, carPlate: cp, cost: fc, hours: hrs, minutes: mins, source: source, agreedPrice: ap });
+  const openConfirmPayment = (sid: string, cp: string, cost: number, hrs: number, minutes: number, source: 'app' | 'manual', ap?: number) => {
+    const sessionObj = activeSessions.find(s => s.id === sid);
+    const isFreeApplied = sessionObj?.isFirstFreeSession === true;
+    
+    const st = sessionObj ? toMs(sessionObj.startTime) : 0;
+    const el = st > 0 ? Math.max(0, Math.floor((Date.now() - st) / 1000)) : 0;
+    
+    const isFreeNow = isFreeApplied && el <= 1800;
+    const finalCost = isFreeNow ? 0 : (cost > 0 ? cost : getActiveCost(sessionObj));
+
+    setConfirmSession({ 
+      id: sid, 
+      carPlate: cp, 
+      cost: finalCost, 
+      hours: isFreeNow ? 0 : hrs, 
+      minutes, 
+      source, 
+      agreedPrice: ap 
+    });
+
     setConfirmPaymentMethod('cash');
   };
 
+  // 🌟 تعديل دالة التحصيل لربط السايس ومزامنة الحالة فوراً وبشكل ذري (Atomic) مع المتجر المحدث
   const handleConfirmPayment = async () => {
     if (!confirmSession || isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
     pausePolling(20000);
     try {
-      const sc = { ...confirmSession }; const pc = confirmPaymentMethod;
+      const sc = { ...confirmSession }; 
+      const pc = 'cash';
       const sd = useStore.getState().sessions.find(s => s.id === sc.id);
       const ia = sd?.source === 'app';
       
       let freeMinutesApplied = 0;
       if (sd?.isFirstFreeSession === true) {
-        const elapsedMs = Date.now() - toMs(sd.startTime);
-        const freeMs = Math.min(elapsedMs, 60 * 60 * 1000);
-        freeMinutesApplied = Math.floor(freeMs / 60000);
+        const elapsedSeconds = Math.floor((Date.now() - toMs(sd.startTime)) / 1000);
+        if (elapsedSeconds <= 1800) {
+          freeMinutesApplied = Math.floor(elapsedSeconds / 60);
+        }
       }
 
-      const currentValet = isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '';
-      if (currentValet && sd) {
-        await assignSessionToValet(sd.id, currentValet);
-      }
+      // 🌟 تحديد السايس المسؤول حالياً
+      const currentValet = isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`).trim() : 'المالك';
 
       setConfirmSession(null);
       setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
       
-      await endSession(sc.id, sc.cost, pc, freeMinutesApplied);
+      // 🌟 تمرير السايس المسؤول كمعامل خامس ليتم الحفظ الفوري والذري في السيرفر والمتجر المحلي معاً
+      await endSession(sc.id, sc.cost, pc, freeMinutesApplied, currentValet);
+      
       if (ia) await new Promise(r => setTimeout(r, 5000));
       await fetchGarageDailyStats();
-      toast.success(`تم تحصيل ${sc.cost} ج.م ✅`);
-    } finally { setTimeout(() => { isEndingSessionRef.current = false; }, 2000); }
+      toast.success(`تم تحصيل ${sc.cost} ج.م نقداً بالنجاح بواسطة ${currentValet} ✅`);
+    } catch (err: any) {
+      toast.error(err.message || 'فشلت عملية التحصيل، برجاء المحاولة مجدداً.');
+    } finally { 
+      setTimeout(() => { isEndingSessionRef.current = false; }, 2000); 
+    }
   };
 
   const handleSaveSettings = () => {
     updateGarage(garage.id, {
-      basePrice: editPrice, availableSpots: Math.min(editSpots, editCapacity), capacity: editCapacity,
+      basePrice: editPrice, 
+      availableSpots: Math.min(editSpots, editCapacity), 
+      capacity: editCapacity,
+      payment_mode: editPaymentMode,
       valetName1: editValet1Name.trim(), valetPassword1: editValet1Pass.trim(),
       valetName2: editValet2Name.trim(), valetPassword2: editValet2Pass.trim(),
       valetName3: editValet3Name.trim(), valetPassword3: editValet3Pass.trim(),
     });
-    toast.success('تم تحديث الإعدادات ⚡'); setShowSettings(false);
+    toast.success('تم تحديث الإعدادات ⚡'); 
+    setShowSettings(false);
   };
 
   const openSettings = () => {
-    setEditPrice(garage.basePrice); setEditSpots(garage.availableSpots); setEditCapacity(garage.capacity);
+    setEditPrice(garage.basePrice); 
+    setEditSpots(garage.availableSpots); 
+    setEditCapacity(garage.capacity);
+    setEditPaymentMode((garage.payment_mode as 'cash' | 'wallet' | 'both') || 'both');
     setEditValet1Name(garage.valetName1 || ''); setEditValet1Pass(garage.valetPassword1 || '');
     setEditValet2Name(garage.valetName2 || ''); setEditValet2Pass(garage.valetPassword2 || '');
     setEditValet3Name(garage.valetName3 || ''); setEditValet3Pass(garage.valetPassword3 || '');
@@ -928,6 +946,8 @@ export default function GarageDashboard() {
               <button onClick={() => setShowSettings(false)} style={{ color: '#94a3b8', fontSize: 20 }}>✕</button>
               <h3 className="font-black flex items-center gap-2" style={{ fontSize: 18 }}><Settings size={18} style={{ color: '#0066FF' }} /> إعدادات الجراج</h3>
             </div>
+            
+            {/* سعر الساعة */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>💰 سعر الساعة</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
@@ -938,6 +958,8 @@ export default function GarageDashboard() {
                 </div>
               </div>
             </div>
+
+            {/* الأماكن المتاحة */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🚗 الأماكن المتاحة</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
@@ -948,6 +970,8 @@ export default function GarageDashboard() {
                 </div>
               </div>
             </div>
+
+            {/* السعة الكلية */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🏢 السعة الكلية</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
@@ -958,6 +982,59 @@ export default function GarageDashboard() {
                 </div>
               </div>
             </div>
+
+            {/* طرق الدفع المقبولة للجراج */}
+            <div className="mb-6">
+              <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>💳 طرق الدفع المقبولة في جراجك</label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditPaymentMode('cash')}
+                  className="p-2 py-3.5 rounded-2xl font-black flex flex-col items-center justify-center gap-1 active:scale-95 transition-all"
+                  style={{
+                    background: editPaymentMode === 'cash' ? '#FFF8F0' : '#F0F4FF',
+                    border: `2px solid ${editPaymentMode === 'cash' ? '#FF9500' : '#D0DCFF'}`,
+                    color: editPaymentMode === 'cash' ? '#E65100' : '#64748b',
+                  }}
+                >
+                  <span style={{ fontSize: 20 }}>💵</span>
+                  <span style={{ fontSize: 10, fontWeight: 900 }}>نقدي فقط</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setEditPaymentMode('wallet')}
+                  className="p-2 py-3.5 rounded-2xl font-black flex flex-col items-center justify-center gap-1 active:scale-95 transition-all"
+                  style={{
+                    background: editPaymentMode === 'wallet' ? '#F4F9FF' : '#F0F4FF',
+                    border: `2px solid ${editPaymentMode === 'wallet' ? '#7C3AED' : '#D0DCFF'}`,
+                    color: editPaymentMode === 'wallet' ? '#7C3AED' : '#64748b',
+                  }}
+                >
+                  <span style={{ fontSize: 20 }}>👝</span>
+                  <span style={{ fontSize: 10, fontWeight: 900 }}>محفظة فقط</span>
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={() => setEditPaymentMode('both')}
+                  className="p-2 py-3.5 rounded-2xl font-black flex flex-col items-center justify-center gap-1 active:scale-95 transition-all"
+                  style={{
+                    background: editPaymentMode === 'both' ? '#E6F4EA' : '#F0F4FF',
+                    border: `2px solid ${editPaymentMode === 'both' ? '#00CC66' : '#D0DCFF'}`,
+                    color: editPaymentMode === 'both' ? '#00AA44' : '#64748b',
+                  }}
+                >
+                  <div className="flex gap-0.5">
+                    <span style={{ fontSize: 16 }}>💵</span>
+                    <span style={{ fontSize: 16 }}>👝</span>
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 900 }}>الاثنين معاً</span>
+                </button>
+              </div>
+            </div>
+
+            {/* نسبة عمولة التطبيق */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>📊 نسبة عمولة التطبيق</label>
               <div style={{ background: '#FFF8F0', borderRadius: 22, padding: 16, border: '2px solid #FFD180' }}>
@@ -965,6 +1042,8 @@ export default function GarageDashboard() {
                 <div className="text-center mt-2"><span className="font-bold" style={{ fontSize: 10, color: '#94a3b8' }}>يتم تحديدها من إدارة التطبيق</span></div>
               </div>
             </div>
+
+            {/* إدارة السياس */}
             <div className="mb-6">
               <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🅿️ إدارة السياس</label>
               <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
@@ -998,15 +1077,34 @@ export default function GarageDashboard() {
           <motion.div initial={{ y: 100 }} animate={{ y: 0 }} transition={{ type: 'spring', damping: 25 }} className="w-full max-w-sm" style={{ background: '#fff', borderRadius: '32px 32px 20px 20px', padding: 24 }} onClick={e => e.stopPropagation()}>
             <div className="mx-auto mb-5" style={{ width: 40, height: 4, background: '#D0DCFF', borderRadius: 4 }} />
             <h3 className="font-black text-center mb-1" style={{ fontSize: 18 }}>تأكيد تحصيل السداد</h3>
+            
             <div className="mb-5" style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
               <div className="flex justify-between items-center mb-3">
                 <span className="font-bold" style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, background: confirmSession.source === 'manual' ? '#FF9500' : '#0066FF', color: '#fff' }}>{confirmSession.source === 'manual' ? 'يدوي' : 'تطبيق'}</span>
                 <div className="font-black" style={{ fontSize: 18 }}>🚗 {confirmSession.carPlate}</div>
               </div>
+              
               <div className="grid grid-cols-2 gap-3">
-                <div className="text-center" style={{ background: '#fff', borderRadius: 16, padding: 12, border: '1px solid #E0EAFF' }}><div style={{ fontSize: 11, color: '#7B8CA6' }}>المدة</div><div className="font-black font-mono" style={{ fontSize: 16 }}>{confirmSession.minutes} دقيقة</div></div>
-                <div className="text-center" style={{ background: '#fff', borderRadius: 16, padding: 12, border: '1px solid #E0EAFF' }}><div style={{ fontSize: 11, color: '#7B8CA6' }}>المستحق</div><div className="font-black font-mono" style={{ fontSize: 24, color: '#00AA44' }}>{confirmSession.cost > 0 ? confirmSession.cost : '0'}</div><div style={{ fontSize: 10, color: '#94a3b8' }}>ج.م</div></div>
+                <div className="text-center" style={{ background: '#fff', borderRadius: 16, padding: 12, border: '1px solid #E0EAFF' }}>
+                  <div style={{ fontSize: 11, color: '#7B8CA6' }}>المدة</div>
+                  <div className="font-black font-mono" style={{ fontSize: 16 }}>{confirmSession.minutes} دقيقة</div>
+                </div>
+                
+                <div className="text-center" style={{ background: '#fff', borderRadius: 16, padding: 12, border: '1px solid #E0EAFF' }}>
+                  <div style={{ fontSize: 11, color: '#7B8CA6' }}>المستحق كاش</div>
+                  <div className="font-black font-mono" style={{ fontSize: 24, color: confirmSession.cost === 0 ? '#FF9500' : '#00AA44' }}>
+                    {confirmSession.cost}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#94a3b8' }}>ج.م</div>
+                </div>
               </div>
+              
+              {confirmSession.cost === 0 && (
+                <div className="mt-3 text-center p-2 rounded-xl bg-amber-50 border border-amber-100 text-amber-700 font-black text-xs flex items-center justify-center gap-1.5">
+                  <Gift size={14} /> أول 30 دقيقة مجانية كهدية ترحيبية 🎁
+                </div>
+              )}
+
               {isOwner && confirmSession.source === 'app' && confirmSession.cost > 0 && (
                 <div className="mt-3 flex items-center justify-between" style={{ background: '#FFF8F0', borderRadius: 14, padding: '8px 12px', border: '1px solid #FFD180' }}>
                   <div className="flex items-center gap-1"><Percent size={12} style={{ color: '#FF9500' }} /><span className="font-bold" style={{ fontSize: 10, color: '#FF9500' }}>عمولة {garage.commissionRate ?? 10}%</span></div>
@@ -1014,12 +1112,31 @@ export default function GarageDashboard() {
                 </div>
               )}
             </div>
+
             <div className="mb-5">
-              <h4 className="font-black mb-3 text-right" style={{ fontSize: 12, color: '#7B8CA6' }}>طريقة السداد</h4>
-              <div className="text-center" style={{ background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', borderRadius: 20, padding: 18, color: '#fff' }}><div style={{ fontSize: 32, marginBottom: 4 }}>💵</div><div className="font-black" style={{ fontSize: 15 }}>سداد نقدي كاش</div></div>
+              <h4 className="font-black mb-3 text-right" style={{ fontSize: 12, color: '#7B8CA6' }}>طريقة التحصيل</h4>
+              <div className="text-center" style={{ background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', borderRadius: 20, padding: 18, color: '#fff', boxShadow: '0 4px 14px rgba(0,204,102,0.2)' }}>
+                <div style={{ fontSize: 32, marginBottom: 4 }}>💵</div>
+                <div className="font-black" style={{ fontSize: 15 }}>سداد نقدي كاش</div>
+                <div className="text-[10px] opacity-90 mt-1 font-bold">يتم التحصيل يداً بيد من العميل</div>
+              </div>
             </div>
+
             <div className="flex gap-3">
-              <button onClick={handleConfirmPayment} className="flex-1 font-black flex items-center justify-center gap-2 active:scale-95" style={{ padding: 18, borderRadius: 20, fontSize: 14, color: '#fff', background: 'linear-gradient(135deg,#00CC66,#00AA55)' }}><CheckCircle size={20} /> تأكيد ({confirmSession.cost} ج.م)</button>
+              <button 
+                onClick={handleConfirmPayment} 
+                className="flex-1 font-black flex items-center justify-center gap-2 active:scale-95" 
+                style={{ 
+                  padding: 18, 
+                  borderRadius: 20, 
+                  fontSize: 14, 
+                  color: '#fff', 
+                  background: 'linear-gradient(135deg,#00CC66,#00AA55)',
+                  boxShadow: '0 6px 18px rgba(0,204,102,0.25)' 
+                }}
+              >
+                <CheckCircle size={20} /> تأكيد واستلام ({confirmSession.cost} ج.م)
+              </button>
               <button onClick={() => setConfirmSession(null)} className="active:scale-95" style={{ background: '#F0F4FF', padding: '0 20px', borderRadius: 20, color: '#7B8CA6' }}><XCircle size={20} /></button>
             </div>
           </motion.div>
@@ -1086,7 +1203,7 @@ export default function GarageDashboard() {
       {/* السايس فقط */}
       {isValet && (
         <>
-          {/* 🚗 سيارات في الطريق */}
+          {/* سيارات في الطريق */}
           {carsOnTheWay.length > 0 && (
             <div className="mb-5">
               <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#0099DD' }}>
@@ -1189,7 +1306,6 @@ export default function GarageDashboard() {
           <div className="mb-5">
             <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#00AA44' }}>الجلسات النشطة ({valetActiveSessions.length}) <Clock size={16} /></h3>
 
-            {/* 🔍 [بحث سريع]: حقل البحث برقم اللوحة */}
             {valetActiveSessions.length > 0 && (
               <div className="mb-3 relative">
                 <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94a3b8' }} />
@@ -1476,8 +1592,8 @@ export default function GarageDashboard() {
                                 <div className="font-black" style={{ fontSize: 12, fontWeight: 950, color: '#0A1628' }}>{v.name}</div>
                                 <div className="font-black" style={{ fontSize: 9, color: '#94a3b8', fontWeight: 900 }}>{v.count} سيارة</div>
                               </div>
-                              <div style={{ width: 30, height: 30, borderRadius: 10, background: v.color, color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 950, fontSize: 12, textShadow: '0 1px 1px rgba(0,0,0,0.2)' }}>
-                                {v.icon}
+                              <div style={{ width: 30, height: 30, borderRadius: 10, background: v.color, color: '#ffffff', display: 'flex', alignItems: 'center', justifyStyle: 'center', fontWeight: 950, fontSize: 12, textShadow: '0 1px 1px rgba(0,0,0,0.2)', justifyItems: 'center', alignContent: 'center', justifySelf: 'center' }}>
+                                <span className="m-auto text-center">{v.icon}</span>
                               </div>
                             </div>
                           </div>
@@ -1558,7 +1674,6 @@ export default function GarageDashboard() {
                     {!isSettled && !isC ? (
                       <button 
                         onClick={async () => { 
-                          // 🌟 [النسب الفوري]: عند الضغط على تأكيد يتم تسجيل الجلسة باسم السايس الحالي فوراً
                           const currentValet = isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '';
                           if (currentValet) {
                             await assignSessionToValet(session.id, currentValet);
