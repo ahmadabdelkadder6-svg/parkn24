@@ -27,7 +27,7 @@ export interface Garage {
   valet2Active: boolean;
   valet3Active: boolean;
   isActive: boolean;
-  payment_mode?: 'cash' | 'wallet' | 'both'; // 🌟 تم ضبط الخيارات بدقة لمنع الأخطاء الإملائية
+  payment_mode?: 'cash' | 'wallet' | 'both'; 
 }
 
 export interface ParkingSession {
@@ -126,7 +126,7 @@ export const calculateBonus = (amount: number): number => {
   return eligibleTier ? eligibleTier.bonus : 0;
 };
 
-export const FREE_SESSION_DURATION_MS = 30 * 60 * 1000; // 🎁 أول 30 دقيقة مجانية
+export const FREE_SESSION_DURATION_MS = 30 * 60 * 1000; 
 
 export const isEligibleForFreeSession = (
   source: 'app' | 'manual',
@@ -151,7 +151,6 @@ export const calculateSessionPriceWithFreeGift = (
     };
   }
 
-  // 🕐 الحالة الأولى: مدة الركن 30 دقيقة أو أقل (مجانية بالكامل 0 ج.م)
   if (durationMs <= FREE_SESSION_DURATION_MS) {
     return {
       finalPrice: 0,
@@ -160,7 +159,6 @@ export const calculateSessionPriceWithFreeGift = (
     };
   }
 
-  // 🕐 الحالة الثانية: تجاوزت مدة الركن 30 دقيقة
   const finalPrice = originalPriceCalculator(durationMs, hourlyRate);
   return {
     finalPrice,
@@ -364,7 +362,7 @@ const mapGarage = (r: any): Garage => ({
   valet2Active: r.valet2_active !== false,
   valet3Active: r.valet3_active !== false,
   isActive: r.is_active !== false,
-  payment_mode: r.payment_mode || 'both', // 🌟 تحويل طريقة الدفع القادمة من قاعدة البيانات بـ Supabase
+  payment_mode: r.payment_mode || 'both', 
 });
 
 const mapSession = (r: any): ParkingSession => {
@@ -501,7 +499,7 @@ interface AppState {
     hasUsedFreeSession?: boolean;
     bonusBalance?: number;
   } | null) => void;
-  deductWallet: (amount: number) => Promise<boolean>; // 🌟 تم التعديل لتعود بـ boolean لضمان الإشعار بنجاح التحصيل أو فشله
+  deductWallet: (amount: number) => Promise<boolean>; 
   markFreeSessionUsed: () => Promise<void>;
   garages: Garage[];
   currentGarageId: string | null;
@@ -520,7 +518,7 @@ interface AppState {
   acknowledgedSessionIds: Set<string>;
   acknowledgeSession: (id: string) => void;
   addSession: (s: Omit<ParkingSession, 'id'>) => Promise<string>;
-  endSession: (id: string, totalPrice: number, paymentMethod: string, freeMinutesApplied?: number) => Promise<void>;
+  endSession: (id: string, totalPrice: number, paymentMethod: string, freeMinutesApplied?: number, addedBy?: string) => Promise<void>;
   cancelSession: (id: string) => void;
   removeSession: (id: string) => Promise<void>;
   confirmRevenue: (sessionId: string) => Promise<void>;
@@ -987,7 +985,7 @@ export const useStore = create<AppState>((set, get) => ({
       valet_name_2: (g as any).valetName2 || '', valet_password_2: (g as any).valetPassword2 || '',
       valet_name_3: (g as any).valetName3 || '', valet_password_3: (g as any).valetPassword3 || '',
       is_active: true,
-      payment_mode: 'both', // القيمة الافتراضية للجراجات الجديدة
+      payment_mode: 'both', 
     }).select();
     if (!error && data) set((st) => ({ garages: [...st.garages, ...data.map(mapGarage)] }));
   },
@@ -1024,7 +1022,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (updates.valetPassword2 !== undefined) db.valet_password_2 = updates.valetPassword2;
     if (updates.valetName3 !== undefined) db.valet_name_3 = updates.valetName3;
     if (updates.valetPassword3 !== undefined) db.valet_password_3 = updates.valetPassword3;
-    if (updates.payment_mode !== undefined) db.payment_mode = updates.payment_mode; // 🌟 تحديث وإرسال طريقة الدفع المقبولة لجدول garages بـ Supabase
+    if (updates.payment_mode !== undefined) db.payment_mode = updates.payment_mode; 
 
     pendingGarageUpdates.set(id, db);
     if (updateGarageTimeout) clearTimeout(updateGarageTimeout);
@@ -1206,7 +1204,8 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0) => {
+  // 🌟 تعديل دالة إنهاء الجلسة الذرية لتمرير السايس المسؤول وإثبات ملكيتها في قاعدة البيانات فورياً
+  endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0, addedBy) => {
     const now = Date.now();
     const session = get().sessions.find((s) => s.id === id);
     if (!session) { console.error('❌ الجلسة مش موجودة:', id); return; }
@@ -1222,7 +1221,6 @@ export const useStore = create<AppState>((set, get) => ({
 
       const garage = get().garages.find((g) => g.id === session.garageId);
       
-      // 🛡️ التحقق من وسيلة الدفع المقبولة للجراج برمجياً لمنع أي تلاعب
       if (garage && garage.payment_mode) {
         if (garage.payment_mode === 'cash' && paymentMethod === 'wallet') {
           throw new Error('عذراً، هذا الجراج يقبل الدفع النقدي (كاش) فقط حالياً.');
@@ -1241,6 +1239,9 @@ export const useStore = create<AppState>((set, get) => ({
 
       const isAutoConfirmed = paymentMethod === 'wallet';
 
+      // 🌟 هنا نُحدد من هو السايس المسؤول بشكل فوري ونهائي
+      const finalAddedBy = resolveAddedBy(addedBy ?? session.addedBy);
+
       const endedSession: ParkingSession = {
         ...session,
         endTime: now,
@@ -1252,13 +1253,13 @@ export const useStore = create<AppState>((set, get) => ({
         netRevenue,
         settled: false,
         freeMinutesApplied: freeMinutesApplied || session.freeMinutesApplied || 0,
+        addedBy: finalAddedBy, // 🌟 حفظه في الحالة المحلية
       };
 
       locallyEndedSessions.set(id, endedSession);
       set((st) => ({ sessions: st.sessions.map((s) => (s.id === id ? endedSession : s)) }));
       await get().adjustGarageSpots(session.garageId, +1);
 
-      // 👝 خصم المحفظة التلقائي للعميل إذا كانت طريقة الدفع محفظة وجلسة من التطبيق
       if (paymentMethod === 'wallet' && isAppSession) {
         await get().deductWallet(safeTotalPrice);
       }
@@ -1285,6 +1286,7 @@ export const useStore = create<AppState>((set, get) => ({
 
       if (!isSupabaseConfigured()) return;
 
+      // 🌟 التحديث الفوري والذري لبيانات الجلسة متضمنة السايس (added_by)
       const { error } = await supabase
         .from('sessions')
         .update({
@@ -1297,6 +1299,7 @@ export const useStore = create<AppState>((set, get) => ({
           net_revenue: netRevenue,
           settled: false,
           free_minutes_applied: freeMinutesApplied || session.freeMinutesApplied || 0,
+          added_by: finalAddedBy || null // 🌟 الربط المباشر في خطوة برمجية واحدة
         })
         .eq('id', id)
         .eq('status', 'active');
@@ -1513,7 +1516,7 @@ export const useStore = create<AppState>((set, get) => ({
       if (!userData) throw new Error('User account not found');
 
       const baseAmount = Number(dbRow.amount || topUp.amount || 0);
-      const bonusAmount = calculateBonus(baseAmount); // 🎁 استخدام بونص الشحن الموحد المستورد من الـ Store
+      const bonusAmount = calculateBonus(baseAmount); 
 
       const totalToAdd = baseAmount + bonusAmount;
       const newWallet = Number(userData.wallet || 0) + totalToAdd;
