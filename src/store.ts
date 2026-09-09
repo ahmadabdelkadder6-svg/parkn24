@@ -1326,10 +1326,18 @@ export const useStore = create<AppState>((set, get) => ({
   confirmRevenue: async (sessionId) => {
     set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: true } : s)) }));
     pausePolling(2000);
-    if (!isSupabaseConfigured()) return;
-    const { error } = await supabase.from('sessions').update({ revenue_confirmed: true }).eq('id', sessionId);
-    if (error) {
-      console.error('❌', error);
+    if (!isSupabaseConfigured()) {
+      pausePolling(0);
+      return;
+    }
+    try {
+      const { error } = await supabase.from('sessions').update({ revenue_confirmed: true }).eq('id', sessionId);
+      if (error) {
+        console.error('❌', error);
+        set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: false } : s)) }));
+      }
+    } catch (err) {
+      console.error('❌ confirmRevenue Error:', err);
       set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: false } : s)) }));
     } finally {
       pausePolling(0);
@@ -1339,10 +1347,18 @@ export const useStore = create<AppState>((set, get) => ({
   unconfirmRevenue: async (sessionId) => {
     set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: false } : s)) }));
     pausePolling(2000);
-    if (!isSupabaseConfigured()) return;
-    const { error } = await supabase.from('sessions').update({ revenue_confirmed: false }).eq('id', sessionId);
-    if (error) {
-      console.error('❌', error);
+    if (!isSupabaseConfigured()) {
+      pausePolling(0);
+      return;
+    }
+    try {
+      const { error } = await supabase.from('sessions').update({ revenue_confirmed: false }).eq('id', sessionId);
+      if (error) {
+        console.error('❌', error);
+        set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: true } : s)) }));
+      }
+    } catch (err) {
+      console.error('❌ unconfirmRevenue Error:', err);
       set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: true } : s)) }));
     } finally {
       pausePolling(0);
