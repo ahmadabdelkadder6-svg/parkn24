@@ -1025,7 +1025,7 @@ export default function AdminDashboard() {
                         }}>
                           <div className="flex justify-between items-start mb-1.5">
                             <div className="flex items-center gap-1" style={{ padding: '3px 8px', borderRadius: 8, background: isAdminToGarage ? '#EBFDF2' : '#FFF3F3' }}>
-                              {isAdminToGarage ? <ArrowUp size={10} style={{ color: '#00AA44' }} : <ArrowDown size={10} style={{ color: '#CC0000' }} />}
+                              {isAdminToGarage ? <ArrowUp size={10} style={{ color: '#00AA44' }} /> : <ArrowDown size={10} style={{ color: '#CC0000' }} />}
                               <span className="font-black" style={{ fontSize: 9, color: isAdminToGarage ? '#00AA44' : '#CC0000' }}>
                                 {isAdminToGarage ? 'أرسل الأدمن' : 'استلم الأدمن'}
                               </span>
@@ -1650,7 +1650,6 @@ export default function AdminDashboard() {
           )}
         </div>
       </div>
-
       {/* ══ Add Garage ══ */}
       <div className="mb-20">
         <h3 className="font-black mb-4 flex items-center gap-2 justify-end" style={{ fontSize: 16, color: '#0066FF' }}>إضافة جراج جديد <Plus size={18} /></h3>
