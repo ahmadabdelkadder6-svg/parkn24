@@ -423,7 +423,6 @@ export default function GarageDashboard() {
     minutes: number; source: 'app' | 'manual'; agreedPrice?: number;
   } | null>(null);
   
-  // 🌟 السايس يحصل نقدي كاش دائماً
   const [confirmPaymentMethod, setConfirmPaymentMethod] = useState<string>('cash');
   
   const [garageDailyStats, setGarageDailyStats] = useState<DailyStat[]>([]);
@@ -444,7 +443,6 @@ export default function GarageDashboard() {
     if (!currentValet) return;
 
     const claimUnassignedSessions = async () => {
-      // الحصول على جلسات التطبيق المكتملة اليوم والتي لا تحمل اسم أي سايس
       const unassignedCompletedAppSessions = sessions.filter(s => {
         if (s.garageId !== currentGarageId) return false;
         if (s.status !== 'completed') return false;
@@ -457,12 +455,11 @@ export default function GarageDashboard() {
 
       for (const s of unassignedCompletedAppSessions) {
         try {
-          // تحديث مباشر في قاعدة البيانات بشكل آمن لضمان ملكية السايس الأسرع اتصالاً
           const { error } = await supabase
             .from('sessions')
             .update({ added_by: currentValet })
             .eq('id', s.id)
-            .is('added_by', null); // يضمن عدم الكتابة فوق سايس آخر إذا قام بالتحصيل قبله بأجزاء من الثانية
+            .is('added_by', null);
 
           if (!error) {
             await assignSessionToValet(s.id, currentValet);
@@ -814,7 +811,7 @@ export default function GarageDashboard() {
     setNewCarPlate(''); setNewCarPrice(garage.basePrice); setShowAddCar(false);
   };
 
-  // 🌟 فتح شاشة تأكيد التحصيل (دائماً نقدي كاش للسايس)
+  // فتح شاشة تأكيد التحصيل
   const openConfirmPayment = (sid: string, cp: string, cost: number, hrs: number, minutes: number, source: 'app' | 'manual', ap?: number) => {
     const sessionObj = activeSessions.find(s => s.id === sid);
     const isFreeApplied = sessionObj?.isFirstFreeSession === true;
@@ -838,13 +835,13 @@ export default function GarageDashboard() {
     setConfirmPaymentMethod('cash');
   };
 
-  // 🌟 تأكيد استلام النقدي وإسناده للسايس الحالي فوراً وحذفه من شاشات الآخرين
+  // تأكيد استلام النقدي وإسناده للسايس الحالي فوراً وحذفه من شاشات الآخرين
   const handleConfirmPayment = async () => {
     if (!confirmSession || isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
     pausePolling(20000);
     
-    const currentValet = isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : 'المالك';
+    const currentValet = isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`).trim() : 'المالك';
     
     try {
       const sc = { ...confirmSession }; 
@@ -872,11 +869,12 @@ export default function GarageDashboard() {
 
       if (dbError) throw dbError;
 
-      // 2. إبلاغ الـ Store المحلي لإجراء العمليات المتبقية
+      // 2. إسناد محلي للمزامنة السريعة
       await assignSessionToValet(sc.id, currentValet);
       setConfirmSession(null);
       setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
       
+      // 3. إنهاء الجلسة في المتجر
       await endSession(sc.id, sc.cost, pc, freeMinutesApplied);
       
       if (ia) await new Promise(r => setTimeout(r, 2000));
@@ -1111,7 +1109,7 @@ export default function GarageDashboard() {
         </motion.div>
       )}
 
-      {/* Confirm Payment Modal - 🌟 السايس يحصل كاش فقط */}
+      {/* Confirm Payment Modal */}
       {confirmSession && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 flex items-end justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)' }} onClick={() => setConfirmSession(null)}>
           <motion.div initial={{ y: 100 }} animate={{ y: 0 }} transition={{ type: 'spring', damping: 25 }} className="w-full max-w-sm" style={{ background: '#fff', borderRadius: '32px 32px 20px 20px', padding: 24 }} onClick={e => e.stopPropagation()}>
@@ -1245,7 +1243,7 @@ export default function GarageDashboard() {
       {/* السايس فقط */}
       {isValet && (
         <>
-          {/* 🚗 سيارات في الطريق */}
+          {/* سيارات في الطريق */}
           {carsOnTheWay.length > 0 && (
             <div className="mb-5">
               <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#0099DD' }}>
@@ -1635,8 +1633,8 @@ export default function GarageDashboard() {
                                 <div className="font-black" style={{ fontSize: 12, fontWeight: 950, color: '#0A1628' }}>{v.name}</div>
                                 <div className="font-black" style={{ fontSize: 9, color: '#94a3b8', fontWeight: 900 }}>{v.count} سيارة</div>
                               </div>
-                              <div style={{ width: 30, height: 30, borderRadius: 10, background: v.color, color: '#ffffff', display: 'flex', alignItems: 'center', justifyStyle: 'center', fontWeight: 950, fontSize: 12, textShadow: '0 1px 1px rgba(0,0,0,0.2)', justifyItems: 'center', alignContent: 'center', justifySelf: 'center' }}>
-                                <span className="m-auto text-center">{v.icon}</span>
+                              <div style={{ width: 30, height: 30, borderRadius: 10, background: v.color, color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 950, fontSize: 12, textShadow: '0 1px 1px rgba(0,0,0,0.2)' }}>
+                                <span>{v.icon}</span>
                               </div>
                             </div>
                           </div>
