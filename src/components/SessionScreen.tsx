@@ -27,8 +27,7 @@ const safeParseTime = (value: any): number => {
     return Number.isFinite(ms) && ms > 0 ? ms : 0;
   }
   if (typeof value === 'number') {
-    if (value < 1_000_000_000_000) return value * 1000 : value;
-    return value;
+    return value < 1_000_000_000_000 ? value * 1000 : value;
   }
   return 0;
 };
