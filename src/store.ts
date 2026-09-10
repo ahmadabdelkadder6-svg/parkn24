@@ -474,6 +474,22 @@ const resolveAddedBy = (explicitAddedBy?: string): string => {
   return '';
 };
 
+// ===================== ⏱️ توحيد وضبط توقيت السيرفر الدولي =====================
+let serverTimeOffset = 0;
+
+export const syncServerTime = (serverDateStr?: string) => {
+  if (!serverDateStr) return;
+  const serverMs = new Date(serverDateStr).getTime();
+  if (serverMs > 0) {
+    serverTimeOffset = serverMs - Date.now();
+  }
+};
+
+// 🌟 دالة قراءة الوقت الحقيقي الموحد دولياً لجميع الأجهزة
+export const getServerNow = (): number => {
+  return Date.now() + serverTimeOffset;
+};
+
 // ===================== State Interface =====================
 interface AppState {
   view: ViewType;
@@ -611,14 +627,15 @@ export const useStore = create<AppState>((set, get) => ({
           phone: cleanPhone,
           carPlate: cleanPlate,
           wallet: Number(existingUser.wallet || 0),
-          hasUsedFreeSession: finalHasUsedFree,
+          hasUsedFreeSession: finalHasFreeSession,
           bonusBalance: Number(existingUser.bonus_balance ?? 0),
         };
+        const finalHasFreeSession = finalHasUsedFree;
         set({ currentUser: updated }); safeSetStorage('currentUser', updated);
         await supabase.from('users').update({
           name: cleanName,
           car_plate: cleanPlate,
-          has_used_free_session: finalHasUsedFree
+          has_used_free_session: finalHasFreeSession
         }).eq('phone', cleanPhone);
       } else {
         const { data: newUser } = await supabase
@@ -821,6 +838,11 @@ export const useStore = create<AppState>((set, get) => ({
       supabase.from('incoming_cars').select('*').order('created_at', { ascending: false }),
       supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(20),
     ]);
+
+    // ⏱️ مزامنة التوقيت مع قاعدة البيانات تلقائياً بمجرد استلام أي جلسة من السيرفر
+    if (activeAndUnsettledRes.data && activeAndUnsettledRes.data[0]?.created_at) {
+      syncServerTime(activeAndUnsettledRes.data[0].created_at);
+    }
 
     const currentGarages = get().garages;
     const fetchedGarages = g.data?.length ? g.data.map(mapGarage) : currentGarages;
@@ -1130,7 +1152,7 @@ export const useStore = create<AppState>((set, get) => ({
       }
 
       // ⏱️ تسجيل وتوحيد التوقيت بصيغة ISO String لمنع التباين والاختلاف بين الهواتف
-      const startTimeISO = typeof s.startTime === 'string' ? s.startTime : new Date().toISOString();
+      const startTimeISO = typeof s.startTime === 'string' ? s.startTime : new Date(getServerNow()).toISOString();
 
       const optimisticSession: ParkingSession = {
         ...s,
@@ -1207,7 +1229,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   // 🌟 دالة إنهاء الجلسة الذرية لحفظ دقيق وتحديث الإيرادات محلياً وفي السيرفر فورا
   endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0, addedBy) => {
-    const nowISO = new Date().toISOString();
+    const nowISO = new Date(getServerNow()).toISOString();
     const session = get().sessions.find((s) => s.id === id);
     if (!session) { console.error('❌ الجلسة مش موجودة:', id); return; }
     if (session.status !== 'active') { console.warn('⚠️ الجلسة مش نشطة:', session.status); return; }

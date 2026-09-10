@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, useMemo, lazy, Suspense, Component, ErrorI
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
-import { useStore, setupRealtime, normalizePlate } from './store';
+// 🌟 استيراد التوقيت الموحد ودوال البصمة الموحدة
+import { useStore, setupRealtime, normalizePlate, normalizePhone, getServerNow } from './store';
 import { cn } from './utils/cn';
 
 // Screens
@@ -24,6 +25,16 @@ import InstallQRCodePage from './components/InstallQRCodePage';
 // Lazy Components
 const GarageDashboard = lazy(() => import('./components/GarageDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
+
+// ⏱️ دالة تحويل التوقيت الشاملة للأرقام والـ ISO Strings
+const toMs = (value: any): number => {
+  if (!value) return 0;
+  if (typeof value === 'number') {
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
 // 🛡️ صمام الأمان المدمج مباشرة لمنع الشاشة البيضاء بدون الحاجة لملفات خارجية
 class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: boolean }> {
@@ -205,27 +216,27 @@ export default function App() {
     if (view !== 'user') return;
 
     const userPlate = normalizePlate(currentUser.carPlate);
-    const userPhone = currentUser.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
+    const userPhone = currentUser.phone ? normalizePhone(currentUser.phone) : '';
 
     const myActiveSession = sessions.find((s) => {
       if (s.status !== 'active') return false;
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-      const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
-      const samePhone = !!userPhone && sPhone === userPhone;
+      const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+      const samePhone = Boolean(userPhone && sPhone === userPhone);
       return samePlate || samePhone;
     });
 
     const myIncoming = incomingCars.find((c) => {
       if (c.status !== 'coming') return false;
       const samePlate = !!userPlate && normalizePlate(c.carPlate) === userPlate;
-      const cPhone = c.customerPhone ? c.customerPhone.replace(/[^\d+]/g, '') : '';
-      const samePhone = !!userPhone && cPhone === userPhone;
+      const cPhone = c.customerPhone ? normalizePhone(c.customerPhone) : '';
+      const samePhone = Boolean(userPhone && cPhone === userPhone);
       return samePlate || samePhone;
     });
 
     if (myActiveSession) {
       prevActiveSessionRef.current = myActiveSession.id;
-      lastActiveTimeRef.current = Date.now();
+      lastActiveTimeRef.current = getServerNow();
       noSessionCountRef.current = 0;
       sessionEndToastShown.current = false;
       setSelectedGarageId(myActiveSession.garageId);
@@ -256,22 +267,15 @@ export default function App() {
         .filter((s) => {
           if (s.status !== 'completed') return false;
           const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-          const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
-          const samePhone = !!userPhone && sPhone === userPhone;
+          const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+          const samePhone = Boolean(userPhone && sPhone === userPhone);
           return samePlate || samePhone;
         })
-        .sort((a, b) => {
-          const endA = typeof a.endTime === 'number' ? a.endTime : 0;
-          const endB = typeof b.endTime === 'number' ? b.endTime : 0;
-          return endB - endA;
-        })[0];
+        .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
 
       if (lastCompleted) {
-        const endTime =
-          typeof lastCompleted.endTime === 'number'
-            ? lastCompleted.endTime
-            : 0;
-        const timeSinceEnd = Date.now() - endTime;
+        const endTime = toMs(lastCompleted.endTime);
+        const timeSinceEnd = getServerNow() - endTime;
 
         const freshAcknowledged = acknowledgedSessionIds;
         const isNotAcknowledged = freshAcknowledged ? !freshAcknowledged.has(lastCompleted.id) : true;
@@ -294,27 +298,27 @@ export default function App() {
     if (!currentUser || view !== 'user') return;
 
     const userPlate = normalizePlate(currentUser.carPlate);
-    const userPhone = currentUser.phone ? currentUser.phone.replace(/[^\d+]/g, '') : '';
+    const userPhone = currentUser.phone ? normalizePhone(currentUser.phone) : '';
 
     const myActiveSession = sessions.find((s) => {
       if (s.status !== 'active') return false;
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-      const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
-      const samePhone = !!userPhone && sPhone === userPhone;
+      const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+      const samePhone = Boolean(userPhone && sPhone === userPhone);
       return samePlate || samePhone;
     });
 
     const myIncoming = incomingCars.find((c) => {
       if (c.status !== 'coming') return false;
       const samePlate = !!userPlate && normalizePlate(c.carPlate) === userPlate;
-      const cPhone = c.customerPhone ? c.customerPhone.replace(/[^\d+]/g, '') : '';
-      const samePhone = !!userPhone && cPhone === userPhone;
+      const cPhone = c.customerPhone ? normalizePhone(c.customerPhone) : '';
+      const samePhone = Boolean(userPhone && cPhone === userPhone);
       return samePlate || samePhone;
     });
 
     if (myActiveSession) {
       noSessionCountRef.current = 0;
-      lastActiveTimeRef.current = Date.now();
+      lastActiveTimeRef.current = getServerNow();
       sessionEndToastShown.current = false;
 
       if (sessionTransitionTimer.current) {
@@ -339,7 +343,7 @@ export default function App() {
 
     if (prevActiveSessionRef.current) {
       noSessionCountRef.current += 1;
-      const timeSinceLastActive = Date.now() - lastActiveTimeRef.current;
+      const timeSinceLastActive = getServerNow() - lastActiveTimeRef.current;
 
       if (noSessionCountRef.current < 3 || timeSinceLastActive < 8000) {
         return;
@@ -351,13 +355,13 @@ export default function App() {
         sessionTransitionTimer.current = null;
         const freshState = useStore.getState();
         const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
-        const freshPhone = freshState.currentUser?.phone ? freshState.currentUser.phone.replace(/[^\d+]/g, '') : '';
+        const freshPhone = freshState.currentUser?.phone ? normalizePhone(freshState.currentUser.phone) : '';
 
         const stillActive = freshState.sessions.find((s) => {
           if (s.status !== 'active') return false;
           const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-          const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
-          const samePhone = !!freshPhone && sPhone === freshPhone;
+          const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+          const samePhone = Boolean(freshPhone && sPhone === freshPhone);
           return samePlate || samePhone;
         });
 
@@ -380,15 +384,11 @@ export default function App() {
             .filter((s) => {
               if (s.status !== 'completed') return false;
               const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-              const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
-              const samePhone = !!freshPhone && sPhone === freshPhone;
+              const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+              const samePhone = Boolean(freshPhone && sPhone === freshPhone);
               return samePlate || samePhone;
             })
-            .sort((a, b) => {
-              const endA = typeof a.endTime === 'number' ? a.endTime : 0;
-              const endB = typeof b.endTime === 'number' ? b.endTime : 0;
-              return endB - endA;
-            })[0];
+            .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
 
           if (lastCompleted) {
             const freshAcknowledged = freshState.acknowledgedSessionIds;
@@ -414,21 +414,21 @@ export default function App() {
       const timeout = setTimeout(() => {
         const freshState = useStore.getState();
         const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
-        const freshPhone = freshState.currentUser?.phone ? freshState.currentUser.phone.replace(/[^\d+]/g, '') : '';
+        const freshPhone = freshState.currentUser?.phone ? normalizePhone(freshState.currentUser.phone) : '';
 
         const freshIncoming = freshState.incomingCars.find((c) => {
           if (c.status !== 'coming') return false;
           const samePlate = !!freshPlate && normalizePlate(c.carPlate) === freshPlate;
-          const cPhone = c.customerPhone ? c.customerPhone.replace(/[^\d+]/g, '') : '';
-          const samePhone = !!freshPhone && cPhone === freshPhone;
+          const cPhone = c.customerPhone ? normalizePhone(c.customerPhone) : '';
+          const samePhone = Boolean(freshPhone && cPhone === freshPhone);
           return samePlate || samePhone;
         });
 
         const freshSession = freshState.sessions.find((s) => {
           if (s.status !== 'active') return false;
           const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-          const sPhone = (s as any).customerPhone ? (s as any).customerPhone.replace(/[^\d+]/g, '') : '';
-          const samePhone = !!freshPhone && sPhone === freshPhone;
+          const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+          const samePhone = Boolean(freshPhone && sPhone === freshPhone);
           return samePlate || samePhone;
         });
 

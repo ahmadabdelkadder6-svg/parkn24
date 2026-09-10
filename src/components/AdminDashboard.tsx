@@ -6,8 +6,8 @@ import {
   Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown,
   Settings, CalendarDays,
 } from 'lucide-react';
-// 🌟 استيراد دوال البصمة الموحدة والبونص من الـ store لضمان مطابقة آمنة وخالية من التلاعب
-import { useStore, pausePolling, normalizePlate, normalizePhone, calculateBonus } from '../store';
+// 🌟 استيرادgetServerNow لتوحيد وضبط التوقيت الدولي ومنع فرق الثواني في الإقفال المالي والتسويات
+import { useStore, pausePolling, normalizePlate, normalizePhone, calculateBonus, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
@@ -20,7 +20,7 @@ const toMs = (value: any): number => {
     return Number.isFinite(ms) && ms > 0 ? ms : 0;
   }
   if (typeof value === 'number') {
-    if (value < 1_000_000_000_000) return value * 1000;
+    if (value < 1_000_000_000_000) return value * 1000 : value;
     return value;
   }
   return 0;
@@ -32,18 +32,18 @@ const timestampToLocalDate = (ts: number): string => {
 };
 
 const getLocalToday = (): string => {
-  const n = new Date();
+  const n = new Date(getServerNow());
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
 };
 
 const getLocalYesterday = (): string => {
-  const d = new Date();
+  const d = new Date(getServerNow());
   d.setDate(d.getDate() - 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
 const getLocalDaysAgo = (days: number): string => {
-  const d = new Date();
+  const d = new Date(getServerNow());
   d.setDate(d.getDate() - days);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
@@ -471,7 +471,7 @@ export default function AdminDashboard() {
         wallet_collected: garageData.walletRevenue,
         commission_amount: garageData.commission,
         notes: `تسوية ${garageData.totalCount} جلسة`,
-        created_at: new Date().toISOString(),
+        created_at: new Date(getServerNow()).toISOString(), // ✅ تم التعديل: توثيق دقيق لتوقيت السيرفر
       };
 
       const { error: insertError } = await supabase
@@ -486,7 +486,7 @@ export default function AdminDashboard() {
           const batch = garageData.sessionIds.slice(i, i + batchSize);
           const { error: updateError } = await supabase
             .from('sessions')
-            .update({ settled: true, settled_at: new Date().toISOString() })
+            .update({ settled: true, settled_at: new Date(getServerNow()).toISOString() }) // ✅ تم التعديل: مزامنة وقت إقفال الجلسات
             .in('id', batch);
 
           if (updateError) {
@@ -519,7 +519,7 @@ export default function AdminDashboard() {
 
     const loadingToast = toast.loading('جاري تنظيف وتخفيف قاعدة البيانات...');
     try {
-      const thirtyDaysAgo = new Date();
+      const thirtyDaysAgo = new Date(getServerNow()); // ✅ تم التعديل: تتبع دقيق لتاريخ المسح بالتوقيت الموحد
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const limitDateISO = thirtyDaysAgo.toISOString();
 
@@ -1037,7 +1037,7 @@ export default function AdminDashboard() {
                           </div>
                           <div className="flex justify-between items-center" style={{ borderTop: '1px dashed #F0F4FF', paddingTop: 6 }}>
                             <div className="font-black font-mono" style={{ fontSize: 18, color: isAdminToGarage ? '#00AA44' : '#CC0000' }}>
-                              {r.amount.toFixed(0)} <span style={{ fontSize: 10 }}>ج.م</span>
+                              {r.amount.amount ? r.amount.toFixed(0) : Number(r.amount).toFixed(0)} <span style={{ fontSize: 10 }}>ج.م</span>
                             </div>
                             <div className="text-right font-black" style={{ fontSize: 10, color: '#000000', lineHeight: 1.5 }}>
                               <div>{r.session_count} جلسة مقفلة 🔒</div>
@@ -1640,7 +1640,7 @@ export default function AdminDashboard() {
                         textShadow: '0 1px 2px rgba(0,0,0,0.15)'
                       }}
                     >
-                      <Settings size={14} />
+                      <Navigation size={14} />
                       دخول وإدارة
                     </button>
                   </div>

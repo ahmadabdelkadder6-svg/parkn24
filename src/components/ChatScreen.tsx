@@ -12,7 +12,8 @@ import {
   Clock,
   XCircle,
 } from 'lucide-react';
-import { useStore } from '../store';
+// 🌟 استيراد التوقيت الموحد ودوال مطابقة الهواتف
+import { useStore, getServerNow, normalizePhone } from '../store';
 import toast from 'react-hot-toast';
 
 const MESSAGE_TYPES = [
@@ -70,8 +71,14 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null);
 
+  const userPhoneClean = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
+
+  // ✅ جلب رسائل المستخدم بالهاتف الموحد بدقة
   const myMessages = (messages ?? [])
-    .filter((m) => m.userPhone === currentUser?.phone)
+    .filter((m) => {
+      const msgPhone = m.userPhone ? normalizePhone(m.userPhone) : '';
+      return userPhoneClean && msgPhone === userPhoneClean;
+    })
     .sort((a, b) => b.timestamp - a.timestamp);
 
   const handleSend = async () => {
@@ -165,10 +172,10 @@ export default function ChatScreen() {
     );
   };
 
+  // ✅ حساب فارق التوقيت النسبي بالاعتماد على توقيت السيرفر الموحد
   const formatTime = (timestamp: number) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
+    const nowMs = getServerNow();
+    const diffMs = Math.max(0, nowMs - timestamp);
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
@@ -177,7 +184,7 @@ export default function ChatScreen() {
     if (diffMins < 60) return `منذ ${diffMins} دقيقة`;
     if (diffHours < 24) return `منذ ${diffHours} ساعة`;
     if (diffDays < 7) return `منذ ${diffDays} يوم`;
-    return date.toLocaleDateString('ar-EG', {
+    return new Date(timestamp).toLocaleDateString('ar-EG', {
       month: 'short',
       day: 'numeric',
     });
@@ -366,7 +373,6 @@ export default function ChatScreen() {
                     onClick={() =>
                       setSelectedMessage(isExpanded ? null : msg.id)
                     }
-                    // 🌟 جعل كروت الرسائل ذات خلفية فاتحة ناصعة لتبسيط قراءة النصوص السوداء الغليظة
                     className={`rounded-2xl p-4 border cursor-pointer transition-all active:scale-[0.98] shadow-md ${
                       msg.status === 'replied'
                         ? 'bg-white border-emerald-400 shadow-emerald-500/5'
@@ -400,15 +406,14 @@ export default function ChatScreen() {
                       </div>
                     )}
 
-                    {/* 🌟 محتوى الشكوى أو الرسالة داخل البوكس بخط أسود غليظ ومقروء بوضوح */}
                     <div
                       className={`text-right leading-relaxed ${
                         isExpanded ? '' : 'line-clamp-2'
                       }`}
                       style={{
                         fontSize: '13.5px',
-                        fontWeight: 900, // خط أسود ثقيل جداً
-                        color: '#000000', // أسود ناصع
+                        fontWeight: 900,
+                        color: '#000000',
                       }}
                     >
                       {msg.message}
@@ -416,7 +421,6 @@ export default function ChatScreen() {
 
                     <AnimatePresence>
                       {isExpanded && msg.reply && (
-                        // 🌟 صندوق الرد من الإدارة بخلفية عشبية وتأطير زمردي أنيق
                         <motion.div
                           initial={{ opacity: 0, height: 0 }}
                           animate={{ opacity: 1, height: 'auto' }}
@@ -430,13 +434,12 @@ export default function ChatScreen() {
                             <CheckCircle size={11} className="text-emerald-600" />
                           </div>
                           
-                          {/* 🌟 رد الإدارة يظهر داخل البوكس بخط أسود ثقيل وكبير ومميز */}
                           <p 
                             className="text-right leading-relaxed"
                             style={{
                               fontSize: '14px',
-                              fontWeight: 950, // خط أسود فائق الغلظة والوضوح
-                              color: '#000000', // أسود ناصع
+                              fontWeight: 950,
+                              color: '#000000',
                             }}
                           >
                             {msg.reply}

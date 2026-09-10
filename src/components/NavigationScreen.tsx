@@ -12,8 +12,8 @@ import {
   Gift,
   CreditCard,
 } from 'lucide-react';
-// 🌟 استيراد دوال البصمة الموحدة من الـ store لضمان التوافق التام مع باقي الشاشات
-import { useStore, normalizePlate, normalizePhone } from '../store';
+// 🌟 استيراد getServerNow ودوال البصمة الموحدة من الـ store لضمان المزامنة التامة
+import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import {
   calculateDistance,
   distanceToMinutes,
@@ -165,7 +165,7 @@ export default function NavigationScreen() {
   const userPosRef = useRef(userPos);
   const currentUserRef = useRef(currentUser);
   const lastCarIdRef = useRef<string | null>(null);
-  const screenEnteredRef = useRef(Date.now());
+  const screenEnteredRef = useRef(getServerNow());
   const navigatedToSessionRef = useRef(false);
   const isArrivingRef = useRef(false);
   const pushSentRef = useRef(false);
@@ -292,12 +292,13 @@ export default function NavigationScreen() {
       return;
     }
 
-    screenEnteredRef.current = Date.now();
+    // ✅ استخدام توقيت السيرفر الموحد
+    screenEnteredRef.current = getServerNow();
     setCancelTimeLeft(CANCEL_WINDOW_SECONDS);
     setCanCancel(true);
 
     const interval = window.setInterval(() => {
-      const elapsed = Math.floor((Date.now() - screenEnteredRef.current) / 1000);
+      const elapsed = Math.floor((getServerNow() - screenEnteredRef.current) / 1000);
       const left = Math.max(0, CANCEL_WINDOW_SECONDS - elapsed);
       setCancelTimeLeft(left);
       if (left <= 0) {
@@ -326,7 +327,8 @@ export default function NavigationScreen() {
 
     if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
 
-    const elapsed = Math.floor((Date.now() - screenEnteredRef.current) / 1000);
+    // ✅ حساب مدة الانتظار بدقة بالغة بالتوقيت الموحد
+    const elapsed = Math.floor((getServerNow() - screenEnteredRef.current) / 1000);
     const msLeft = Math.max(0, (CANCEL_WINDOW_SECONDS - elapsed) * 1000);
 
     pushTimerRef.current = setTimeout(async () => {
@@ -513,10 +515,13 @@ export default function NavigationScreen() {
       );
       if (relatedOffer) cancelOffer(relatedOffer.id);
 
+      // ⏱️ توحيد التوقيت بصيغة ISO بتوقيت السيرفر لمنع أي فارق زمني
+      const startTimeISO = new Date(getServerNow()).toISOString();
+
       await addSession({
         garageId: garage.id,
         carPlate: myIncomingCar.carPlate,
-        startTime: Date.now(),
+        startTime: startTimeISO,
         status: 'active',
         source: 'app',
         agreedPrice: myIncomingCar.agreedPrice,

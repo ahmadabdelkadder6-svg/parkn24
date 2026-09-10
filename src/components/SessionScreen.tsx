@@ -7,9 +7,10 @@ import {
   Gift,
   Sparkles,
   CreditCard,
+  Smartphone,
 } from 'lucide-react';
-// 🌟 استيراد دوال البصمة الموحدة من الـ store لضمان مطابقة اللوحات والأرقام بنسبة 100%
-import { useStore, normalizePlate, normalizePhone } from '../store';
+// 🌟 استيراد getServerNow ودوال البصمة لضمان مطابقة العداد بالملي ثانية بين جميع الهواتف
+import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import {
   calculateFullHours,
   calculateCost,
@@ -26,7 +27,7 @@ const safeParseTime = (value: any): number => {
     return Number.isFinite(ms) && ms > 0 ? ms : 0;
   }
   if (typeof value === 'number') {
-    if (value < 1_000_000_000_000) return value * 1000;
+    if (value < 1_000_000_000_000) return value * 1000 : value;
     return value;
   }
   return 0;
@@ -101,11 +102,11 @@ export default function SessionScreen() {
     }
   }, [activeSession?.id]);
 
-  // حساب وقت البداية
+  // ✅ حساب وقت البداية مع Fallback بتوقيت السيرفر الموحد
   const activeStartMs = useMemo(() => {
     if (!activeSession) return 0;
     const ms = safeParseTime(activeSession.startTime);
-    return ms > 0 ? ms : Date.now();
+    return ms > 0 ? ms : getServerNow();
   }, [activeSession?.id, activeSession?.startTime]);
 
   // 📡 جلب البيانات في الخلفية
@@ -154,7 +155,7 @@ export default function SessionScreen() {
     };
   }, [userPlate, userPhone, fetchAll]);
 
-  // عداد الثواني اللحظي
+  // ⏱️ عداد الثواني اللحظي الموحد مع سيرفر قاعدة البيانات
   useEffect(() => {
     if (!activeSession || activeStartMs <= 0) {
       setElapsed(0);
@@ -162,7 +163,7 @@ export default function SessionScreen() {
     }
 
     const calcElapsed = () => {
-      const now = Date.now();
+      const now = getServerNow();
       const diff = now - activeStartMs;
       return Math.max(0, Math.floor(diff / 1000));
     };
@@ -374,6 +375,26 @@ export default function SessionScreen() {
           <p className="text-[10px] text-amber-600 font-bold">💰 سعر خاص متفق عليه: {sessionRate} ج.م/ساعة (بدل {garage.basePrice} ج.م)</p>
         </div>
       )}
+
+      {/* 🌟💡 بانر إرشادي ذكي وودي: خلص مشوارك براحتك 💡🌟 */}
+      <motion.div
+        initial={{ opacity: 0, y: 5 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3.5 mb-4 shadow-sm flex items-start gap-3"
+      >
+        <div className="bg-amber-100 text-amber-600 p-2 rounded-xl shrink-0 mt-0.5">
+          <Sparkles size={20} />
+        </div>
+        <div className="text-right flex-1">
+          <div className="text-xs font-black text-slate-800 mb-1 flex items-center gap-1.5 justify-end">
+            <span>✨ خلص مشوارك براحتك</span>
+            <Smartphone size={13} className="text-slate-400" />
+          </div>
+          <p className="text-[10.5px] font-bold text-slate-500 leading-relaxed">
+            وقت الركنة محفوظ بالثانية في الخلفية. أغلق التطبيق الآن وافتحه عند العودة للجراج لإنهاء الجلسة.
+          </p>
+        </div>
+      </motion.div>
 
       {/* بيانات السيارة والسعر */}
       <div className="w-full grid grid-cols-2 gap-3 mb-4">

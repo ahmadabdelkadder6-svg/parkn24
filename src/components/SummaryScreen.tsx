@@ -7,8 +7,8 @@ import {
   AlertTriangle,
   Gift,
 } from 'lucide-react';
-// 🌟 استيراد دوال البصمة الموحدة من الـ store لضمان مطابقة دقيقة وخالية من تلاعب الثغرات
-import { useStore, pausePolling, normalizePlate, normalizePhone } from '../store';
+// 🌟 استيراد دوال البصمة الموحدة والتوقيت الدولي الموحد لضمان مطابقة دقيقة وخالية من تلاعب الثغرات
+import { useStore, pausePolling, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
@@ -173,7 +173,8 @@ export default function SummaryScreen() {
     const endMs = toMs(lastCompletedSession.endTime);
     if (!endMs) return;
 
-    const timeSinceEnd = Date.now() - endMs;
+    // ✅ تم التعديل: حساب انتهاء الجلسة وفقاً لتوقيت السيرفر الموحد
+    const timeSinceEnd = getServerNow() - endMs;
     if (timeSinceEnd > 10 * 60 * 1000) return;
 
     autoRedirectedRef.current = true;
@@ -206,7 +207,7 @@ export default function SummaryScreen() {
   const durationSeconds = referenceSession
     ? referenceSession.status === 'completed' && referenceSession.endTime
       ? Math.floor((toMs(referenceSession.endTime) - toMs(referenceSession.startTime)) / 1000)
-      : Math.floor((Date.now() - toMs(referenceSession.startTime)) / 1000)
+      : Math.floor((getServerNow() - toMs(referenceSession.startTime)) / 1000) // ✅ تم التعديل: حساب ثواني الجلسة بالتوقيت الموحد
     : 0;
 
   const durationMinutes = Math.floor(durationSeconds / 60);

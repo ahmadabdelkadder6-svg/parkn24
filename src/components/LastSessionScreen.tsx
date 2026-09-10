@@ -12,8 +12,8 @@ import {
   Sparkles,
   CheckCircle2,
 } from 'lucide-react';
-// 🌟 استيراد دوال البصمة الموحدة من الـ store لضمان مطابقة اللوحات والأرقام بدقة 100%
-import { useStore, normalizePlate, normalizePhone } from '../store';
+// 🌟 استيراد دوال البصمة والتوقيت الموحد من الـ store لضمان مطابقة البيانات بدقة 100%
+import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { calculateFullHours, calculateCost, formatTime } from '../utils/pricing';
 import toast from 'react-hot-toast';
 import { useEffect, useRef, useMemo } from 'react';
@@ -132,7 +132,7 @@ export default function LastSessionScreen() {
 
   /* ── Computed ── */
   const startTime = toMs(lastSession.startTime);
-  const endTime = toMs(lastSession.endTime);
+  const endTime = toMs(lastSession.endTime) || getServerNow();
 
   const elapsedSeconds = Math.max(0, Math.floor((endTime - startTime) / 1000));
   const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);

@@ -6,7 +6,8 @@ import {
   CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
   Search, X, CreditCard,
 } from 'lucide-react';
-import { useStore, pausePolling, normalizePlate } from '../store';
+// ⏱️ تم استيراد دالة getServerNow لمزامنة توقيت الأجهزة بالملي ثانية
+import { useStore, pausePolling, normalizePlate, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
@@ -224,7 +225,8 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
   }, []);
 
   const st = toMs(s.startTime);
-  const el = st > 0 ? Math.max(0, Math.floor((Date.now() - st) / 1000)) : 0;
+  // ✅ تم التعديل: يعتمد على توقيت السيرفر الموحد لجميع الهواتف
+  const el = st > 0 ? Math.max(0, Math.floor((getServerNow() - st) / 1000)) : 0;
   const mins = Math.floor(el / 60);
 
   const isFreeApplied = s.isFirstFreeSession === true;
@@ -356,7 +358,8 @@ export default function GarageDashboard() {
       if (s.status !== 'active') return false;
       const st = toMs(s.startTime);
       if (st <= 0) return false;
-      const elapsedMs = Date.now() - st;
+      // ✅ تم التعديل: حساب فرق الأماكن والانتهاء بتوقيت السيرفر الموحد
+      const elapsedMs = getServerNow() - st;
       if (elapsedMs >= 24 * 60 * 60 * 1000) return false;
       return true;
     });
@@ -463,6 +466,9 @@ export default function GarageDashboard() {
     });
   }, [valetActiveSessions, plateSearch]);
 
+  const filteredValetActiveSessionsRef = useRef(filteredValetActiveSessions);
+  useEffect(() => { filteredValetActiveSessionsRef.current = filteredValetActiveSessions; }, [filteredValetActiveSessions]);
+
   const fetchGarageDailyStats = useCallback(async () => {
     if (!currentGarageId) return;
     try {
@@ -541,8 +547,9 @@ export default function GarageDashboard() {
   useEffect(() => {
     carsOnTheWay.forEach(car => {
       if (approachAlertedRef.current.has(car.id)) return;
+      // ✅ تم التعديل: ضبط فارق الوقت في حساب زمن الوصول المتبقي بالتوقيت الموحد
       const s = toMs(car.startTime);
-      const el = (Date.now() - s) / 60000;
+      const el = (getServerNow() - s) / 60000;
       const rem = Math.max(0, car.estimatedArrival - el);
       if (rem <= 2 && rem >= 0 && car.estimatedArrival > 2) {
         approachAlertedRef.current.add(car.id);
@@ -587,7 +594,8 @@ export default function GarageDashboard() {
 
   const getActiveCost = useCallback((s: any) => {
     const st = toMs(s.startTime);
-    const el = st > 0 ? Math.max(0, Math.floor((Date.now() - st) / 1000)) : 0;
+    // ✅ تم التعديل: جلب السعر المباشر بتوقيت السيرفر الموحد
+    const el = st > 0 ? Math.max(0, Math.floor((getServerNow() - st) / 1000)) : 0;
     const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
     if (el <= 0 || r <= 0) return 0;
 
@@ -724,7 +732,8 @@ export default function GarageDashboard() {
     toast('تم إلغاء ' + un.carPlate + ' ↩️', { icon: '🔙' });
   }, [garage, removeSession]);
 
-  const getUndoRemainingSeconds = useCallback((addedAt: number) => Math.max(0, UNDO_TIMEOUT_SECONDS - Math.floor((Date.now() - addedAt) / 1000)), []);
+  // ✅ تم التعديل: تتبع التراجع باستخدام توقيت السيرفر الموحد
+  const getUndoRemainingSeconds = useCallback((addedAt: number) => Math.max(0, UNDO_TIMEOUT_SECONDS - Math.floor((getServerNow() - addedAt) / 1000)), []);
 
   const [undoTick, setUndoTick] = useState(0);
   useEffect(() => {
@@ -735,7 +744,8 @@ export default function GarageDashboard() {
 
   useEffect(() => {
     setUndoableSessions(p =>
-      p.filter(u => Math.floor((Date.now() - u.addedAt) / 1000) < UNDO_TIMEOUT_SECONDS)
+      // ✅ تم التعديل: إزالة الجلسات القابلة للتراجع بالتوقيت الموحد
+      p.filter(u => Math.floor((getServerNow() - u.addedAt) / 1000) < UNDO_TIMEOUT_SECONDS)
         .map(u => {
           const e = sessions.find(s => s.id === u.sessionId);
           if (!e) { const n = sessions.find(s => s.carPlate === u.carPlate && s.source === 'manual' && s.status === 'active' && Math.abs(toMs(s.startTime) - u.addedAt) < 5000); if (n) return { ...u, sessionId: n.id }; }
@@ -784,7 +794,8 @@ export default function GarageDashboard() {
     if (!newCarPlate.trim()) { toast.error('أدخل رقم السيارة'); return; }
     const cp = newCarPlate.trim(); 
     const pr = newCarPrice; 
-    const at = Date.now();
+    // ✅ تم التعديل: تدوين وقت إرسال الطلب بتوقيت السيرفر الموحد
+    const at = getServerNow();
     // ⏱️ استخدام ISO String لتوحيد التوقيت بين كل الأجهزة
     const startTimeISO = new Date(at).toISOString();
     
@@ -811,7 +822,8 @@ export default function GarageDashboard() {
     const isFreeApplied = sessionObj?.isFirstFreeSession === true;
     
     const st = sessionObj ? toMs(sessionObj.startTime) : 0;
-    const el = st > 0 ? Math.max(0, Math.floor((Date.now() - st) / 1000)) : 0;
+    // ✅ تم التعديل: تتبع دقيق للوقت المنقضي عند الحفظ
+    const el = st > 0 ? Math.max(0, Math.floor((getServerNow() - st) / 1000)) : 0;
     
     const isFreeNow = isFreeApplied && el <= 1800;
     const finalCost = isFreeNow ? 0 : (cost > 0 ? cost : getActiveCost(sessionObj));
@@ -848,7 +860,8 @@ export default function GarageDashboard() {
       // 🎁 3. حساب الدقائق المجانية الترحيبية إن وُجدت
       let freeMinutesApplied = 0;
       if (sd?.isFirstFreeSession === true) {
-        const elapsedSeconds = Math.floor((Date.now() - toMs(sd.startTime)) / 1000);
+        // ✅ تم التعديل: تتبع الثواني عند الدفع على خوادمنا بالوقت الموحد
+        const elapsedSeconds = Math.floor((getServerNow() - toMs(sd.startTime)) / 1000);
         if (elapsedSeconds <= 1800) {
           freeMinutesApplied = Math.floor(elapsedSeconds / 60);
         }
@@ -929,7 +942,7 @@ export default function GarageDashboard() {
       if (ro) cancelOffer(ro.id);
 
       // ⏱️ توحيد التوقيت باستخدام ISO لمنع فرق الثواني بين جهاز العميل والسايس
-      const startTimeISO = new Date().toISOString();
+      const startTimeISO = new Date(getServerNow()).toISOString();
 
       await addSession({ 
         garageId: garage.id, 
@@ -957,8 +970,9 @@ export default function GarageDashboard() {
     }
   };
 
+  // ✅ تم التعديل: حساب دقيق ومزامن للوقت المتبقي لسيارة في الطريق
   const calculateRemainingTime = (st: number | string, em: number) =>
-    Math.max(0, em - Math.floor((Date.now() - toMs(st)) / 60000));
+    Math.max(0, em - Math.floor((getServerNow() - toMs(st)) / 60000));
 
   return (
     <div className="h-full overflow-y-auto" style={{ background: '#EBF2FF', color: '#0A1628', padding: 16 }}>
