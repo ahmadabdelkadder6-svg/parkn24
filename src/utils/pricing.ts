@@ -2,7 +2,7 @@
  * ✅ حساب الساعات المحسوبة (من 1 إلى 60 دقيقة = ساعة، من 61 إلى 120 = ساعتان.. إلخ)
  */
 export function calculateFullHours(elapsedSeconds: number): number {
-  if (elapsedSeconds <= 0) return 0;
+  if (!elapsedSeconds || elapsedSeconds <= 0 || isNaN(elapsedSeconds)) return 0;
   return Math.ceil(elapsedSeconds / 3600);
 }
 
@@ -10,7 +10,7 @@ export function calculateFullHours(elapsedSeconds: number): number {
  * ✅ حساب التكلفة العادية
  */
 export function calculateCost(elapsedSeconds: number, ratePerHour: number): number {
-  if (elapsedSeconds <= 0 || ratePerHour <= 0) return 0;
+  if (!elapsedSeconds || elapsedSeconds <= 0 || !ratePerHour || ratePerHour <= 0) return 0;
   return calculateFullHours(elapsedSeconds) * ratePerHour;
 }
 
@@ -31,7 +31,7 @@ export function calculateCostWithLoyalty(
   isFree: boolean;
   savedAmount: number;
 } {
-  if (ratePerHour <= 0 || elapsedSeconds <= 0) {
+  if (!ratePerHour || ratePerHour <= 0 || !elapsedSeconds || elapsedSeconds <= 0) {
     return { cost: 0, paidHours: 0, totalHours: 0, isFree: isFreeSession, savedAmount: 0 };
   }
 
@@ -63,10 +63,11 @@ export function calculateCostWithLoyalty(
  * ✅ تنسيق الوقت اللحظي إلى (00:00:00)
  */
 export function formatTime(totalSeconds: number): string {
-  if (totalSeconds <= 0) return '00:00:00';
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
+  if (!totalSeconds || totalSeconds <= 0 || isNaN(totalSeconds)) return '00:00:00';
+  const total = Math.floor(totalSeconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
@@ -74,10 +75,14 @@ export function formatTime(totalSeconds: number): string {
  * ✅ حساب الوقت المتبقي لانتهاء الساعة الحالية
  */
 export function getRemainingInCurrentHour(elapsedSeconds: number): { minutes: number; seconds: number } {
-  if (elapsedSeconds <= 0) return { minutes: 59, seconds: 59 };
-  const secondsInCurrentHour = elapsedSeconds % 3600;
+  if (!elapsedSeconds || elapsedSeconds <= 0 || isNaN(elapsedSeconds)) {
+    return { minutes: 59, seconds: 59 };
+  }
+  const secondsInCurrentHour = Math.floor(elapsedSeconds) % 3600;
   const remaining = 3600 - secondsInCurrentHour;
-  if (remaining <= 0 || remaining >= 3600) return { minutes: 59, seconds: 59 };
+  if (remaining <= 0 || remaining >= 3600) {
+    return { minutes: 59, seconds: 59 };
+  }
   return {
     minutes: Math.floor(remaining / 60),
     seconds: remaining % 60,
