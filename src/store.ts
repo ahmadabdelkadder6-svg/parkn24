@@ -326,6 +326,41 @@ const getMs = (value?: number | string) => {
   return 0; 
 };
 
+// ===================== ⏱️ مزامنة ذرية حقيقية مع سيرفر السحاب =====================
+let serverTimeOffset = 0;
+let isSyncingClock = false;
+
+export const syncServerClock = async () => {
+  if (isSyncingClock || !isSupabaseConfigured()) return;
+  isSyncingClock = true;
+  try {
+    const t0 = Date.now();
+    const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/`, {
+      method: 'HEAD',
+      headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY }
+    });
+    const t1 = Date.now();
+    const serverDateHeader = resp.headers.get('date');
+    if (serverDateHeader) {
+      const roundTrip = (t1 - t0) / 2;
+      const serverTimestamp = new Date(serverDateHeader).getTime() + roundTrip;
+      serverTimeOffset = serverTimestamp - Date.now();
+    }
+  } catch (e) {
+    // Graceful fallback
+  } finally {
+    isSyncingClock = false;
+  }
+};
+
+// 🌟 قراءة الوقت الموحد الحقيقي المتطابق مع السيرفر
+export const getServerNow = (): number => {
+  return Date.now() + serverTimeOffset;
+};
+
+// تشغيل المزامنة المبدئية فوراً
+syncServerClock();
+
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   const active = list.filter((s) => s.status === 'active');
   const completed = list.filter((s) => s.status === 'completed');
@@ -377,7 +412,7 @@ const mapGarage = (r: any): Garage => ({
 });
 
 const mapSession = (r: any): ParkingSession => {
-  const nowMs = Date.now();
+  const nowMs = getServerNow();
   const rawStart = r.start_time;
   let startTime: string;
   if (typeof rawStart === 'string') {
@@ -479,18 +514,6 @@ const resolveAddedBy = (explicitAddedBy?: string): string => {
   if (valetName) return valetName;
   if (garageRole === 'valet') return `سايس ${valetNumber}`;
   return '';
-};
-
-// ===================== ⏱️ توقيت حقيقي موحد يبدأ من 00:00:00 فوراً =====================
-let serverTimeOffset = 0;
-
-export const syncServerTime = (offsetMs = 0) => {
-  serverTimeOffset = offsetMs;
-};
-
-// 🌟 قراءة الوقت الحقيقي بدون أي إزاحة خاطئة
-export const getServerNow = (): number => {
-  return Date.now() + serverTimeOffset;
 };
 
 // ===================== State Interface =====================
@@ -820,6 +843,9 @@ export const useStore = create<AppState>((set, get) => ({
       return;
     }
 
+    // مزامنة التوقيت الذري في الخلفية
+    syncServerClock();
+
     const [g, activeAndUnsettledRes, recentSettledRes, o, w, ic, msgs] = await Promise.all([
       supabase.from('garages').select('*'),
       supabase
@@ -868,7 +894,7 @@ export const useStore = create<AppState>((set, get) => ({
       cs.status === 'active' &&
       !supabaseActiveKeys.has(`${normalizePlate(cs.carPlate)}::${cs.source}`) &&
       !deletedSessionIds.has(cs.id) &&
-      Date.now() - getMs(cs.startTime) < 15000
+      getServerNow() - getMs(cs.startTime) < 15000
     );
 
     const mergedSessions = supabaseSessions
@@ -893,7 +919,7 @@ export const useStore = create<AppState>((set, get) => ({
           if (ss.status === 'active' && localVersion.status === 'active') {
             return {
               ...localVersion,
-              startTime: ss.startTime,
+              startTime: localVersion.startTime || ss.startTime,
               synced: true,
               addedBy: ss.addedBy || localVersion.addedBy || '',
               customerPhone: ss.customerPhone || localVersion.customerPhone,
@@ -1148,8 +1174,8 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
 
-      // ⏱️ توحيد بدء الجلسة في هذه اللحظة بالذات (00:00:00)
-      const startTimeISO = typeof s.startTime === 'string' ? s.startTime : new Date(Date.now()).toISOString();
+      // ⏱️ توحيد توقيت البداية بالسيرفر الذري
+      const startTimeISO = typeof s.startTime === 'string' ? s.startTime : new Date(getServerNow()).toISOString();
 
       const optimisticSession: ParkingSession = {
         ...s,
@@ -1225,7 +1251,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0, addedBy) => {
-    const nowISO = new Date(Date.now()).toISOString();
+    const nowISO = new Date(getServerNow()).toISOString();
     const session = get().sessions.find((s) => s.id === id);
     if (!session) { console.error('❌ الجلسة مش موجودة:', id); return; }
     if (session.status !== 'active') { console.warn('⚠️ الجلسة مش نشطة:', session.status); return; }
