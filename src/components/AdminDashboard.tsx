@@ -4,9 +4,9 @@ import {
   Shield, Clock, CheckCircle, XCircle, MapPin, Warehouse, Plus,
   MessageCircle, Send, Receipt, Search, HardHat, Percent, DollarSign,
   Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown,
-  Settings, CalendarDays,
+  Settings, CalendarDays, Navigation,
 } from 'lucide-react';
-// 🌟 استيرادgetServerNow لتوحيد وضبط التوقيت الدولي ومنع فرق الثواني في الإقفال المالي والتسويات
+// 🌟 استيراد getServerNow لتوحيد وضبط التوقيت الدولي ومنع فرق الثواني في الإقفال المالي والتسويات
 import { useStore, pausePolling, normalizePlate, normalizePhone, calculateBonus, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateCost } from '../utils/pricing';
@@ -20,8 +20,7 @@ const toMs = (value: any): number => {
     return Number.isFinite(ms) && ms > 0 ? ms : 0;
   }
   if (typeof value === 'number') {
-    if (value < 1_000_000_000_000) return value * 1000 : value;
-    return value;
+    return value < 1_000_000_000_000 ? value * 1000 : value;
   }
   return 0;
 };
@@ -471,7 +470,7 @@ export default function AdminDashboard() {
         wallet_collected: garageData.walletRevenue,
         commission_amount: garageData.commission,
         notes: `تسوية ${garageData.totalCount} جلسة`,
-        created_at: new Date(getServerNow()).toISOString(), // ✅ تم التعديل: توثيق دقيق لتوقيت السيرفر
+        created_at: new Date(getServerNow()).toISOString(), // ✅ توثيق دقيق لتوقيت السيرفر
       };
 
       const { error: insertError } = await supabase
@@ -486,7 +485,7 @@ export default function AdminDashboard() {
           const batch = garageData.sessionIds.slice(i, i + batchSize);
           const { error: updateError } = await supabase
             .from('sessions')
-            .update({ settled: true, settled_at: new Date(getServerNow()).toISOString() }) // ✅ تم التعديل: مزامنة وقت إقفال الجلسات
+            .update({ settled: true, settled_at: new Date(getServerNow()).toISOString() }) // ✅ مزامنة وقت إقفال الجلسات
             .in('id', batch);
 
           if (updateError) {
@@ -519,7 +518,7 @@ export default function AdminDashboard() {
 
     const loadingToast = toast.loading('جاري تنظيف وتخفيف قاعدة البيانات...');
     try {
-      const thirtyDaysAgo = new Date(getServerNow()); // ✅ تم التعديل: تتبع دقيق لتاريخ المسح بالتوقيت الموحد
+      const thirtyDaysAgo = new Date(getServerNow()); // ✅ تتبع دقيق لتاريخ المسح بالتوقيت الموحد
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const limitDateISO = thirtyDaysAgo.toISOString();
 
@@ -1037,7 +1036,7 @@ export default function AdminDashboard() {
                           </div>
                           <div className="flex justify-between items-center" style={{ borderTop: '1px dashed #F0F4FF', paddingTop: 6 }}>
                             <div className="font-black font-mono" style={{ fontSize: 18, color: isAdminToGarage ? '#00AA44' : '#CC0000' }}>
-                              {r.amount.amount ? r.amount.toFixed(0) : Number(r.amount).toFixed(0)} <span style={{ fontSize: 10 }}>ج.م</span>
+                              {Number(r.amount || 0).toFixed(0)} <span style={{ fontSize: 10 }}>ج.م</span>
                             </div>
                             <div className="text-right font-black" style={{ fontSize: 10, color: '#000000', lineHeight: 1.5 }}>
                               <div>{r.session_count} جلسة مقفلة 🔒</div>
