@@ -34,8 +34,8 @@ export interface ParkingSession {
   id: string;
   garageId: string;
   carPlate: string;
-  startTime: number | string; // ⏱️ تم التعديل لدعم التوقيت الموحد ISO لمنع فرق الثواني
-  endTime?: number | string;  // ⏱️ تم التعديل لدعم التوقيت الموحد ISO لمنع فرق الثواني
+  startTime: number | string;
+  endTime?: number | string;
   totalPrice?: number;
   paymentMethod?: string;
   status: 'active' | 'completed';
@@ -313,9 +313,16 @@ export const normalizePhone = (phone?: string): string => {
 
 const samePlate = (a?: string, b?: string) =>
   normalizePlate(a) !== '' && normalizePlate(a) === normalizePlate(b);
+
 const getMs = (value?: number | string) => { 
-  if (typeof value === 'number') return value; 
-  if (typeof value === 'string') return new Date(value).getTime();
+  if (!value) return 0;
+  if (typeof value === 'number') {
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+  if (typeof value === 'string') {
+    const ms = new Date(value).getTime();
+    return Number.isFinite(ms) ? ms : 0;
+  }
   return 0; 
 };
 
@@ -474,18 +481,14 @@ const resolveAddedBy = (explicitAddedBy?: string): string => {
   return '';
 };
 
-// ===================== ⏱️ توحيد وضبط توقيت السيرفر الدولي =====================
+// ===================== ⏱️ توقيت حقيقي موحد يبدأ من 00:00:00 فوراً =====================
 let serverTimeOffset = 0;
 
-export const syncServerTime = (serverDateStr?: string) => {
-  if (!serverDateStr) return;
-  const serverMs = new Date(serverDateStr).getTime();
-  if (serverMs > 0) {
-    serverTimeOffset = serverMs - Date.now();
-  }
+export const syncServerTime = (offsetMs = 0) => {
+  serverTimeOffset = offsetMs;
 };
 
-// 🌟 دالة قراءة الوقت الحقيقي الموحد دولياً لجميع الأجهزة
+// 🌟 قراءة الوقت الحقيقي بدون أي إزاحة خاطئة
 export const getServerNow = (): number => {
   return Date.now() + serverTimeOffset;
 };
@@ -534,7 +537,7 @@ interface AppState {
   endSession: (id: string, totalPrice: number, paymentMethod: string, freeMinutesApplied?: number, addedBy?: string) => Promise<void>;
   cancelSession: (id: string) => void;
   removeSession: (id: string) => Promise<void>;
-  confirmRevenue: (sessionId: string) => Promise<void>;
+  confirmRevenue: (sessionId: string, addedBy?: string) => Promise<void>;
   unconfirmRevenue: (sessionId: string) => Promise<void>;
   assignSessionToValet: (sessionId: string, valetName: string) => Promise<void>;
   offers: Offer[];
@@ -627,15 +630,14 @@ export const useStore = create<AppState>((set, get) => ({
           phone: cleanPhone,
           carPlate: cleanPlate,
           wallet: Number(existingUser.wallet || 0),
-          hasUsedFreeSession: finalHasFreeSession,
+          hasUsedFreeSession: finalHasUsedFree,
           bonusBalance: Number(existingUser.bonus_balance ?? 0),
         };
-        const finalHasFreeSession = finalHasUsedFree;
         set({ currentUser: updated }); safeSetStorage('currentUser', updated);
         await supabase.from('users').update({
           name: cleanName,
           car_plate: cleanPlate,
-          has_used_free_session: finalHasFreeSession
+          has_used_free_session: finalHasUsedFree
         }).eq('phone', cleanPhone);
       } else {
         const { data: newUser } = await supabase
@@ -838,11 +840,6 @@ export const useStore = create<AppState>((set, get) => ({
       supabase.from('incoming_cars').select('*').order('created_at', { ascending: false }),
       supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(20),
     ]);
-
-    // ⏱️ مزامنة التوقيت مع قاعدة البيانات تلقائياً بمجرد استلام أي جلسة من السيرفر
-    if (activeAndUnsettledRes.data && activeAndUnsettledRes.data[0]?.created_at) {
-      syncServerTime(activeAndUnsettledRes.data[0].created_at);
-    }
 
     const currentGarages = get().garages;
     const fetchedGarages = g.data?.length ? g.data.map(mapGarage) : currentGarages;
@@ -1089,7 +1086,7 @@ export const useStore = create<AppState>((set, get) => ({
       return existing?.id ?? '';
     }
     sessionStartLocks.add(lockKey);
-    pausePolling(2000); // ⚡ تقليل التجميد من 8 ثوانٍ إلى ثانيتين فقط
+    pausePolling(2000);
 
     try {
       const existingLocal = get().sessions.find((existing) =>
@@ -1151,8 +1148,8 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
 
-      // ⏱️ تسجيل وتوحيد التوقيت بصيغة ISO String لمنع التباين والاختلاف بين الهواتف
-      const startTimeISO = typeof s.startTime === 'string' ? s.startTime : new Date(getServerNow()).toISOString();
+      // ⏱️ توحيد بدء الجلسة في هذه اللحظة بالذات (00:00:00)
+      const startTimeISO = typeof s.startTime === 'string' ? s.startTime : new Date(Date.now()).toISOString();
 
       const optimisticSession: ParkingSession = {
         ...s,
@@ -1223,13 +1220,12 @@ export const useStore = create<AppState>((set, get) => ({
       return sessionId;
     } finally {
       sessionStartLocks.delete(lockKey);
-      pausePolling(0); // ⚡ فك التجميد فوراً لتحديث العداد في نفس الثانية
+      pausePolling(0);
     }
   },
 
-  // 🌟 دالة إنهاء الجلسة الذرية لحفظ دقيق وتحديث الإيرادات محلياً وفي السيرفر فورا
   endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0, addedBy) => {
-    const nowISO = new Date(getServerNow()).toISOString();
+    const nowISO = new Date(Date.now()).toISOString();
     const session = get().sessions.find((s) => s.id === id);
     if (!session) { console.error('❌ الجلسة مش موجودة:', id); return; }
     if (session.status !== 'active') { console.warn('⚠️ الجلسة مش نشطة:', session.status); return; }
@@ -1237,7 +1233,7 @@ export const useStore = create<AppState>((set, get) => ({
     const lockKey = `${session.garageId}:${normalizePlate(session.carPlate)}`;
     if (sessionEndLocks.has(lockKey)) return;
     sessionEndLocks.add(lockKey);
-    pausePolling(2000); // ⚡ تقليل التجميد من 15 ثانية لثانيتين فقط
+    pausePolling(2000);
 
     try {
       const safeTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
@@ -1260,8 +1256,6 @@ export const useStore = create<AppState>((set, get) => ({
       const netRevenue = Math.round((safeTotalPrice - commissionAmount) * 100) / 100;
 
       const isAutoConfirmed = paymentMethod === 'wallet';
-
-      // 🅿️ تحديد السايس المسؤول المسجل محلياً أو ممرر برمجياً
       const finalAddedBy = resolveAddedBy(addedBy ?? session.addedBy);
 
       const endedSession: ParkingSession = {
@@ -1308,7 +1302,6 @@ export const useStore = create<AppState>((set, get) => ({
 
       if (!isSupabaseConfigured()) return;
 
-      // 🚀 حفظ ذري وفوري بالسيرفر يجمع تحديث الحالة والدفع والسايس المسؤول معاً في ضربة واحدة
       const { error } = await supabase
         .from('sessions')
         .update({
@@ -1340,12 +1333,12 @@ export const useStore = create<AppState>((set, get) => ({
     } finally {
       setTimeout(() => {
         sessionEndLocks.delete(lockKey);
-        pausePolling(0); // ⚡ فك التجميد فوراً بدون تأخير ليتزامن تليفون العميل
+        pausePolling(0);
       }, 500);
     }
   },
 
-  confirmRevenue: async (sessionId) => {
+  confirmRevenue: async (sessionId, addedBy) => {
     set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: true } : s)) }));
     pausePolling(2000);
     if (!isSupabaseConfigured()) {
@@ -1353,7 +1346,9 @@ export const useStore = create<AppState>((set, get) => ({
       return;
     }
     try {
-      const { error } = await supabase.from('sessions').update({ revenue_confirmed: true }).eq('id', sessionId);
+      const updateData: Record<string, unknown> = { revenue_confirmed: true };
+      if (addedBy) updateData.added_by = addedBy;
+      const { error } = await supabase.from('sessions').update(updateData).eq('id', sessionId);
       if (error) {
         console.error('❌', error);
         set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: false } : s)) }));
@@ -1720,7 +1715,6 @@ let pauseTimeout: ReturnType<typeof setTimeout> | null = null;
 
 export function pausePolling(duration = 5000) {
   if (duration <= 0) {
-    // ⚡ فك التجميد فوراً بدون انتظار عند تمرير القيمة صفر
     isOperationInProgress = false;
     if (pauseTimeout) {
       clearTimeout(pauseTimeout);
