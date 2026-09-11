@@ -1497,35 +1497,6 @@ export default function GarageDashboard() {
       {/* 👑 بانر حالة السياس للمالك */}
       {isOwner && <OwnerValetLocationBanner valetLocations={valetLocations} />}
 
-      {/* 📍 إشعار التواجد للسايس داخل النطاق */}
-      {isValet && geofenceState.status === 'inside' && (
-        <motion.div
-          initial={{ opacity: 0, y: -5 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-3 flex items-center justify-between"
-          style={{
-            background: '#EAF8EE',
-            borderRadius: 14,
-            padding: '8px 14px',
-            border: '1.5px solid #A6E9B8',
-          }}
-        >
-          <span className="font-mono font-black text-xs text-emerald-600">
-            {geofenceState.distance != null ? `${geofenceState.distance}م من المركز` : 'متصل'}
-          </span>
-          <div className="flex items-center gap-1.5">
-            <span className="font-black text-xs text-emerald-700">
-              📍 متواجد داخل نطاق الجراج ({GEOFENCE_RADIUS_METERS}م)
-            </span>
-            <motion.div
-              animate={{ scale: [1, 1.3, 1] }}
-              transition={{ repeat: Infinity, duration: 2 }}
-              className="w-2 h-2 rounded-full bg-emerald-500"
-            />
-          </div>
-        </motion.div>
-      )}
-
       {/* Settings Modal */}
       {isOwner && showSettings && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)' }} onClick={() => setShowSettings(false)}>
