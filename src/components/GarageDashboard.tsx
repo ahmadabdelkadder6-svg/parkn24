@@ -14,8 +14,11 @@ import { subscribeToPush } from '../lib/pushManager';
 
 const UNDO_TIMEOUT_SECONDS = 30;
 const GEOFENCE_RADIUS_METERS = 250;
-const VALET_PING_INTERVAL_MS = 8000; // السايس يرسل موقعه كل 8 ثوانٍ
-const VALET_OFFLINE_THRESHOLD_MS = 30000; // يعتبر السايس غير متصل لو انقطع لأكثر من 30 ثانية
+
+// ⏱️ إعدادات التزامن الذكي للخلفية
+const VALET_PING_INTERVAL_MS = 8000; // نبضة كل 8 ثوانٍ أثناء فتح التطبيق
+const VALET_LIVE_THRESHOLD_MS = 25000; // 25 ثانية للبث المباشر
+const VALET_BACKGROUND_GRACE_MS = 10 * 60 * 1000; // 🟢 10 دقائق سماح يظل فيها "متواجد" في الخلفية
 
 interface UndoableSession {
   sessionId: string;
@@ -41,7 +44,7 @@ interface DailyStat {
 }
 
 // ==========================================
-// 🌍 نظام السياج الجغرافي العبقري (GEOFENCE ENGINE)
+// 🌍 نظام السياج الجغرافي الذكي (GEOFENCE ENGINE)
 // ==========================================
 
 interface GeofenceState {
@@ -52,7 +55,6 @@ interface GeofenceState {
   errorMessage?: string;
 }
 
-// استخراج إحداثيات الجراج بذكاء مهما كان اسمها في قاعدة البيانات
 const extractGarageCoords = (garage: any): { lat: number; lng: number } | null => {
   if (!garage) return null;
   const lat = parseFloat(garage.latitude ?? garage.lat ?? garage.location_lat);
@@ -63,7 +65,6 @@ const extractGarageCoords = (garage: any): { lat: number; lng: number } | null =
   return null;
 };
 
-// حساب المسافة الدقيقة بالمتر (Haversine Formula)
 const haversineDistance = (
   lat1: number, lon1: number,
   lat2: number, lon2: number
@@ -80,7 +81,7 @@ const haversineDistance = (
 };
 
 /**
- * هوك تتبع موقع السايس (متوافق 100% مع iOS Safari و Android Chrome)
+ * تتبع الموقع مع التوافق التام للهواتف الذكية
  */
 const useValetGeofence = (
   enabled: boolean,
@@ -108,7 +109,7 @@ const useValetGeofence = (
         distance: null,
         accuracy: null,
         lastCheck: Date.now(),
-        errorMessage: 'لم يتم تحديد موقع الجراج على الخريطة من قبل المالك'
+        errorMessage: 'لم يتم تسجيل إحداثيات الجراج على الخريطة'
       });
       return;
     }
@@ -119,7 +120,7 @@ const useValetGeofence = (
         distance: null,
         accuracy: null,
         lastCheck: Date.now(),
-        errorMessage: 'جهازك لا يدعم خاصية تحديد الموقع GPS'
+        errorMessage: 'خاصية الـ GPS غير مدعومة على هذا الجهاز'
       });
       return;
     }
@@ -142,12 +143,12 @@ const useValetGeofence = (
       let errorStatus: GeofenceState['status'] = 'error';
 
       if (error.code === error.PERMISSION_DENIED) {
-        errorMsg = 'يجب السماح بالوصول للموقع لتسجيل الدخول والعمل';
+        errorMsg = 'يجب تفعيل إذن الموقع للتمكن من العمل';
         errorStatus = 'denied';
       } else if (error.code === error.POSITION_UNAVAILABLE) {
-        errorMsg = 'خدمة الموقع غير متاحة، يرجى تفعيل الـ GPS في الهاتف';
+        errorMsg = 'يرجى تشغيل الـ GPS بالهاتف';
       } else if (error.code === error.TIMEOUT) {
-        errorMsg = 'استغرق تحديد الموقع وقتاً طويلاً، جاري إعادة المحاولة...';
+        errorMsg = 'استغرق تحديد الموقع وقتاً طويلاً...';
       }
 
       setState({
@@ -159,17 +160,13 @@ const useValetGeofence = (
       });
     };
 
-    // تشغيل التتبع المباشر بدون تعليق
     const options: PositionOptions = {
       enableHighAccuracy: true,
       timeout: 10000,
       maximumAge: 0,
     };
 
-    // قراءة أولية فورية
     navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options);
-
-    // تتبع دائم مستمر
     watchIdRef.current = navigator.geolocation.watchPosition(handleSuccess, handleError, options);
 
     return () => {
@@ -184,7 +181,7 @@ const useValetGeofence = (
 };
 
 /**
- * هوك إدارة مواقع السياس لشاشة المالك (مع كشف المتصل والمنقطع)
+ * 👑 هوك مراقبة السياس للمالك (يدعم إظهار السايس كمتواجد حتى لو في الخلفية)
  */
 interface ValetLocationInfo {
   valetNumber: number;
@@ -193,6 +190,7 @@ interface ValetLocationInfo {
   status: 'inside' | 'outside' | 'offline' | 'inactive';
   distance: number | null;
   lastSeen: number | null;
+  isBackground?: boolean;
 }
 
 const useOwnerValetLocations = (
@@ -234,15 +232,26 @@ const useOwnerValetLocations = (
         const lastSeenMs = new Date(record.updated_at).getTime();
         const diff = now - lastSeenMs;
 
-        // إذا لم يرسل نبضة منذ أكثر من 30 ثانية = غير متصل
-        if (diff > VALET_OFFLINE_THRESHOLD_MS) {
-          v.status = 'offline';
-          v.distance = record.distance;
-          v.lastSeen = lastSeenMs;
-        } else {
+        // 🟢 1. بث مباشر حي
+        if (diff <= VALET_LIVE_THRESHOLD_MS) {
           v.status = record.is_inside ? 'inside' : 'outside';
           v.distance = record.distance;
           v.lastSeen = lastSeenMs;
+          v.isBackground = false;
+        } 
+        // 🟢 2. في الخلفية أو الشاشة مقفلة وهو داخل النطاق (خلال مهلة الـ 10 دقائق)
+        else if (diff <= VALET_BACKGROUND_GRACE_MS && record.is_inside) {
+          v.status = 'inside'; // يظل ظاهراً كمتواجد!
+          v.distance = record.distance;
+          v.lastSeen = lastSeenMs;
+          v.isBackground = true;
+        } 
+        // ⚪ 3. انقطع لأكثر من 10 دقائق أو كان خارج النطاق
+        else {
+          v.status = 'offline';
+          v.distance = record.distance;
+          v.lastSeen = lastSeenMs;
+          v.isBackground = false;
         }
       });
 
@@ -256,7 +265,6 @@ const useOwnerValetLocations = (
     fetchLocations();
     const interval = setInterval(fetchLocations, 10000);
 
-    // تتبع التحديثات اللحظية عبر Supabase Realtime
     const channel = supabase
       .channel(`valet-locations-channel-${garageId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'valet_locations', filter: `garage_id=eq.${garageId}` }, () => {
@@ -274,7 +282,7 @@ const useOwnerValetLocations = (
 };
 
 /**
- * شاشة حجب السايس عند خروجه من الـ 250 متر أو إغلاق الموقع
+ * شاشة الحجب للسايس خارج النطاق
  */
 const ValetGeofenceBlockScreen = memo(function ValetGeofenceBlockScreen({
   geofenceState,
@@ -301,9 +309,9 @@ const ValetGeofenceBlockScreen = memo(function ValetGeofenceBlockScreen({
           <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: 'linear' }} className="mx-auto mb-6 w-20 h-20 flex items-center justify-center">
             <Locate size={64} style={{ color: '#4DA6FF' }} />
           </motion.div>
-          <h2 className="font-black text-white mb-2" style={{ fontSize: 22 }}>جاري تحديد موقعك الجغرافي...</h2>
+          <h2 className="font-black text-white mb-2" style={{ fontSize: 22 }}>جاري تأكيد موقعك الجغرافي...</h2>
           <p className="font-bold" style={{ color: '#90CAF9', fontSize: 13, lineHeight: 1.8 }}>
-            يرجى الموافقة على طلب إذن الموقع في المتصفح<br />لفتح شاشة العمليات
+            يرجى الموافقة على إذن الموقع لفتح الشاشة
           </p>
         </motion.div>
       </div>
@@ -313,7 +321,6 @@ const ValetGeofenceBlockScreen = memo(function ValetGeofenceBlockScreen({
   return (
     <div className="fixed inset-0 z-[99999] flex items-center justify-center p-5" style={{ background: 'linear-gradient(180deg, #1A0808 0%, #2A0E0E 40%, #0A1628 100%)' }}>
       <motion.div initial={{ opacity: 0, y: 25 }} animate={{ opacity: 1, y: 0 }} className="text-center max-w-sm w-full">
-        {/* الأيقونة */}
         <div className="relative mx-auto mb-5 w-24 h-24 flex items-center justify-center">
           <div className="w-full h-full rounded-full flex items-center justify-center" style={{ background: isDenied ? 'rgba(255,51,51,0.2)' : isOutside ? 'rgba(255,149,0,0.2)' : 'rgba(255,51,51,0.2)', border: `2px solid ${isOutside ? '#FF9500' : '#FF3333'}` }}>
             {isDenied ? <MapPinOff size={44} style={{ color: '#FF4D4D' }} /> : isOutside ? <AlertTriangle size={44} style={{ color: '#FF9500' }} /> : <WifiOff size={44} style={{ color: '#FF4D4D' }} />}
@@ -328,13 +335,13 @@ const ValetGeofenceBlockScreen = memo(function ValetGeofenceBlockScreen({
         <p className="font-bold mb-5" style={{ color: '#B0C4DE', fontSize: 13, lineHeight: 2 }}>
           {isDenied ? (
             <>
-              لا يمكنك استقبال أو إدارة السيارات بدون تفعيل GPS.<br />
-              <span className="text-amber-400">افتح قفل الموقع بأعلى المتصفح واضغط "سماح".</span>
+              لا يمكنك العمل بدون تفعيل GPS.<br />
+              <span className="text-amber-400">افتح إعدادات المتصفح واضغط "سماح للموقع".</span>
             </>
           ) : isOutside ? (
             <>
               أنت بعيد عن جراج <span className="text-blue-400 font-black">{garageName}</span>.<br />
-              النطاق المسموح للعمل هو <span className="text-emerald-400 font-black">{GEOFENCE_RADIUS_METERS} متر</span> فقط.
+              النطاق المسموح به هو <span className="text-emerald-400 font-black">{GEOFENCE_RADIUS_METERS} متر</span> فقط.
             </>
           ) : (
             geofenceState.errorMessage || 'تأكد من تشغيل الـ GPS بالهاتف والمحاولة مجدداً.'
@@ -371,7 +378,7 @@ const ValetGeofenceBlockScreen = memo(function ValetGeofenceBlockScreen({
 });
 
 /**
- * 👑 بانر المالك الاحترافي لمتابعة السياس جغرافياً
+ * 👑 بانر المالك
  */
 const OwnerValetLocationBanner = memo(function OwnerValetLocationBanner({
   valetLocations,
@@ -383,23 +390,47 @@ const OwnerValetLocationBanner = memo(function OwnerValetLocationBanner({
   const getStatusDisplay = (v: ValetLocationInfo) => {
     switch (v.status) {
       case 'inside':
-        return { icon: '🟢', label: 'متواجد', color: '#00AA44', bg: '#EAF8EE', border: '#A6E9B8' };
+        return { 
+          icon: '🟢', 
+          label: v.isBackground ? 'متواجد (في الجيب)' : 'متواجد', 
+          color: '#00AA44', 
+          bg: '#EAF8EE', 
+          border: '#A6E9B8' 
+        };
       case 'outside':
-        return { icon: '🔴', label: `بعيد (${v.distance ?? '?'}م)`, color: '#FF3333', bg: '#FFF1F1', border: '#FFB8B8' };
+        return { 
+          icon: '🔴', 
+          label: `بعيد (${v.distance ?? '?'}م)`, 
+          color: '#FF3333', 
+          bg: '#FFF1F1', 
+          border: '#FFB8B8' 
+        };
       case 'offline':
-        return { icon: '⚪', label: 'غير متصل', color: '#64748B', bg: '#F1F5F9', border: '#CBD5E1' };
+        return { 
+          icon: '⚪', 
+          label: 'غير متصل', 
+          color: '#64748B', 
+          bg: '#F1F5F9', 
+          border: '#CBD5E1' 
+        };
       case 'inactive':
-        return { icon: '⏸️', label: 'معطّل', color: '#94A3B8', bg: '#F8FAFC', border: '#E2E8F0' };
+        return { 
+          icon: '⏸️', 
+          label: 'معطّل', 
+          color: '#94A3B8', 
+          bg: '#F8FAFC', 
+          border: '#E2E8F0' 
+        };
     }
   };
 
   return (
     <div className="mb-4" style={{ background: '#ffffff', borderRadius: 18, padding: '10px 14px', border: '1.5px solid #D0DCFF', boxShadow: '0 3px 10px rgba(0,102,255,0.03)' }}>
       <div className="flex items-center justify-between mb-2 pb-1.5" style={{ borderBottom: '1px solid #F0F4FF' }}>
-        <span className="font-bold text-[10px] text-slate-400">تحديث فوري GPS</span>
+        <span className="font-bold text-[10px] text-slate-400">تتبع ذكي GPS</span>
         <div className="flex items-center gap-1">
           <MapPin size={13} style={{ color: '#0066FF' }} />
-          <span className="font-black text-xs text-slate-800">حالة السياس الجغرافية</span>
+          <span className="font-black text-xs text-slate-800">حالة تواجد السياس</span>
         </div>
       </div>
 
@@ -738,35 +769,63 @@ export default function GarageDashboard() {
   }, [garage]);
 
   // ==========================================
-  // 📍 تفعيل وتطبيق السياج الجغرافي
+  // 📍 تتبع ومزامنة السياج الجغرافي
   // ==========================================
   const geofenceState = useValetGeofence(isValet, garageCoords, GEOFENCE_RADIUS_METERS);
 
-  // إرسال موقع وحالة السايس للسيرفر (Ping دوري كل 8 ثوانٍ)
-  useEffect(() => {
+  const reportLocation = useCallback(async (isInside: boolean, distance: number | null) => {
     if (!isValet || !currentGarageId || !valetNumber) return;
-    if (geofenceState.status === 'loading') return;
+    try {
+      await supabase.from('valet_locations').upsert(
+        {
+          garage_id: currentGarageId,
+          valet_number: parseInt(valetNumber),
+          is_inside: isInside,
+          distance: distance,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'garage_id,valet_number' }
+      );
+    } catch {}
+  }, [isValet, currentGarageId, valetNumber]);
 
-    const syncLocationToServer = async () => {
-      try {
-        const isInside = geofenceState.status === 'inside';
-        await supabase.from('valet_locations').upsert(
-          {
-            garage_id: currentGarageId,
-            valet_number: parseInt(valetNumber),
-            is_inside: isInside,
-            distance: geofenceState.distance,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'garage_id,valet_number' }
-        );
-      } catch {}
+  // 1. نبضات مستمرة أثناء فتح التطبيق
+  useEffect(() => {
+    if (!isValet || geofenceState.status === 'loading') return;
+    const isInside = geofenceState.status === 'inside';
+    reportLocation(isInside, geofenceState.distance);
+
+    const interval = setInterval(() => {
+      reportLocation(isInside, geofenceState.distance);
+    }, VALET_PING_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [isValet, geofenceState.status, geofenceState.distance, reportLocation]);
+
+  // 2. ⚡ إرسال نبضة وداع فورية عند وضع التطبيق بالخلفية أو قفل الشاشة
+  useEffect(() => {
+    if (!isValet) return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        // التطبيق دخل الخلفية / الشاشة قفلت: نرسل آخر حالة مؤكدة فوراً
+        if (geofenceState.status === 'inside') {
+          reportLocation(true, geofenceState.distance);
+        }
+      } else if (document.visibilityState === 'visible') {
+        // السايس فتح التطبيق مجدداً: ننعش بيانات الموقع فوراً
+        if (garageCoords) {
+          navigator.geolocation?.getCurrentPosition((pos) => {
+            const dist = haversineDistance(pos.coords.latitude, pos.coords.longitude, garageCoords.lat, garageCoords.lng);
+            reportLocation(dist <= GEOFENCE_RADIUS_METERS, Math.round(dist));
+          }, () => {}, { enableHighAccuracy: true, timeout: 5000 });
+        }
+      }
     };
 
-    syncLocationToServer();
-    const interval = setInterval(syncLocationToServer, VALET_PING_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [isValet, currentGarageId, valetNumber, geofenceState.status, geofenceState.distance]);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isValet, geofenceState.status, geofenceState.distance, garageCoords, reportLocation]);
 
   // قائمة مواقع السياس للمالك
   const valetLocations = useOwnerValetLocations(isOwner, currentGarageId, garage);
@@ -2162,7 +2221,7 @@ export default function GarageDashboard() {
                                 <div className="font-black" style={{ fontSize: 12, fontWeight: 950, color: '#0A1628' }}>{v.name}</div>
                                 <div className="font-black" style={{ fontSize: 9, color: '#94a3b8', fontWeight: 900 }}>{v.count} سيارة</div>
                               </div>
-                              <div style={{ width: 30, height: 30, borderRadius: 10, background: v.color, color: '#ffffff', display: 'flex', alignItems: 'center', justifyStyle: 'center', fontWeight: 950, fontSize: 12, textShadow: '0 1px 1px rgba(0,0,0,0.2)', justifyItems: 'center', alignContent: 'center', justifySelf: 'center' }}>
+                              <div style={{ width: 30, height: 30, borderRadius: 10, background: v.color, color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 950, fontSize: 12, textShadow: '0 1px 1px rgba(0,0,0,0.2)' }}>
                                 <span className="m-auto text-center">{v.icon}</span>
                               </div>
                             </div>
