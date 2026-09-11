@@ -371,7 +371,6 @@ export default function GarageDashboard() {
         setIsLocationDenied(false);
         setIsCheckingGPS(false);
 
-        // إرسال التحديث لغرفة المالك
         trackValetPresence(distMeters, isInside);
       },
       (error) => {
@@ -383,7 +382,12 @@ export default function GarageDashboard() {
     );
   }, [isValet, garage, trackValetPresence]);
 
-  // 🛰️ اشتراك المالك والسايس في قناة البث المباشر للموقع (Presence Channel)
+  const checkValetLocationRef = useRef(checkValetLocation);
+  useEffect(() => {
+    checkValetLocationRef.current = checkValetLocation;
+  }, [checkValetLocation]);
+
+  // 🛰️ اشتراك المالك والسايس بقناة البث المباشر (مستقر ومثبت تماماً يمنع إعادة الاتصال)
   useEffect(() => {
     if (!currentGarageId) return;
 
@@ -395,11 +399,11 @@ export default function GarageDashboard() {
     channel
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
-        setValetsPresenceMap(state);
+        setValetsPresenceMap(state || {});
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED' && isValet) {
-          checkValetLocation();
+          checkValetLocationRef.current();
         }
       });
 
@@ -409,13 +413,16 @@ export default function GarageDashboard() {
       supabase.removeChannel(channel);
       presenceChannelRef.current = null;
     };
-  }, [currentGarageId, isValet, valetNumber, checkValetLocation]);
+  }, [currentGarageId, isValet, valetNumber]); // تم تثبيت القناة عبر إزالة دالة checkValetLocation المتغيرة من قائمة التبعيات
 
+  // فحص دوري للموقع يعمل بثبات تام كل 45 ثانية في الخلفية صامتاً
   useEffect(() => {
-    checkValetLocation();
-    const interval = setInterval(checkValetLocation, 45000);
+    checkValetLocationRef.current();
+    const interval = setInterval(() => {
+      checkValetLocationRef.current();
+    }, 45000);
     return () => clearInterval(interval);
-  }, [checkValetLocation]);
+  }, []);
 
   const isValetOutsideGarage = useMemo(() => {
     if (!isValet) return false;
@@ -424,7 +431,7 @@ export default function GarageDashboard() {
     return valetDistanceMeters > MAX_VALET_DISTANCE_METERS;
   }, [isValet, isLocationDenied, valetDistanceMeters]);
 
-  // 📊 استخراج وتجهيز بيانات السياس الحية لشاشة المالك
+  // 📊 استخراج وتجهيز بيانات السياس الحية لشاشة المالك بشكل مبسط ومصغر
   const activeValetsLocationStatus = useMemo(() => {
     if (!isOwner || !garage) return [];
 
@@ -442,7 +449,7 @@ export default function GarageDashboard() {
         return {
           ...v,
           status: 'offline' as const,
-          label: 'غير متصل ⚪',
+          label: 'مغلق ⚪',
           distanceText: '---',
           isInside: false,
         };
@@ -454,7 +461,7 @@ export default function GarageDashboard() {
       return {
         ...v,
         status: isInside ? ('inside' as const) : ('outside' as const),
-        label: isInside ? 'متواجد 🟢' : 'خارج الجراج 🔴',
+        label: isInside ? `🟢 ${dist} م` : `🔴 ${dist >= 1000 ? `${(dist / 1000).toFixed(1)}كم` : `${dist}م`}`,
         distanceText: dist >= 1000 ? `${(dist / 1000).toFixed(1)} كم` : `${dist} م`,
         isInside,
         updatedAt: presenceEntry.updatedAt,
@@ -874,7 +881,7 @@ export default function GarageDashboard() {
   const [undoTick, setUndoTick] = useState(0);
   useEffect(() => {
     if (undoableSessions.length === 0) return;
-    const i = setInterval(() => setUndoTick(t => t + 1), 5000);
+    const i = setInterval(() => setTick(t => t + 1), 5000);
     return () => clearInterval(i);
   }, [undoableSessions.length]);
 
@@ -1219,7 +1226,7 @@ export default function GarageDashboard() {
                       ? 'bg-emerald-600 text-white'
                       : v.status === 'outside'
                       ? 'bg-rose-600 text-white'
-                      : 'bg-slate-300 text-slate-600'
+                      : 'bg-slate-300 text-slate-650'
                   }`}
                 >
                   {v.status === 'inside' ? `🟢 ${v.distanceText}` : v.status === 'outside' ? `🔴 ${v.distanceText}` : '⚪ مغلق'}
