@@ -4,9 +4,8 @@ import {
   Car, Clock, LogOut, Plus, CheckCircle, XCircle, Settings,
   Minus, Save, MapPin, Edit3, Navigation, Phone, CarFront, FileText,
   CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
-  Search, X, CreditCard,
+  Search, X, CreditCard, MapPinOff, Locate, AlertTriangle, Wifi, WifiOff,
 } from 'lucide-react';
-// ⏱️ استيراد getServerNow لمزامنة التوقيت بدقة بالملي ثانية
 import { useStore, pausePolling, normalizePlate, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
@@ -14,6 +13,8 @@ import toast from 'react-hot-toast';
 import { subscribeToPush } from '../lib/pushManager';
 
 const UNDO_TIMEOUT_SECONDS = 30;
+const GEOFENCE_RADIUS_METERS = 250;
+const GEOFENCE_CHECK_INTERVAL = 10000; // كل 10 ثوانٍ
 
 interface UndoableSession {
   sessionId: string;
@@ -37,6 +38,649 @@ interface DailyStat {
   confirmed_revenue: number;
   pending_revenue: number;
 }
+
+// ========================
+// 🌍 نظام السياج الجغرافي
+// ========================
+
+interface GeofenceState {
+  status: 'loading' | 'granted' | 'denied' | 'unavailable' | 'inside' | 'outside' | 'error';
+  distance: number | null;
+  accuracy: number | null;
+  lastCheck: number;
+  errorMessage?: string;
+}
+
+/**
+ * حساب المسافة بين نقطتين بالمتر باستخدام صيغة Haversine
+ */
+const haversineDistance = (
+  lat1: number, lon1: number,
+  lat2: number, lon2: number
+): number => {
+  const R = 6371000; // نصف قطر الأرض بالمتر
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+/**
+ * هوك السياج الجغرافي - يتتبع موقع السايس باستمرار
+ */
+const useValetGeofence = (
+  enabled: boolean,
+  garageLat?: number,
+  garageLng?: number,
+  radiusMeters: number = GEOFENCE_RADIUS_METERS
+): GeofenceState => {
+  const [state, setState] = useState<GeofenceState>({
+    status: 'loading',
+    distance: null,
+    accuracy: null,
+    lastCheck: 0,
+  });
+  const watchIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!enabled) {
+      setState({ status: 'inside', distance: 0, accuracy: null, lastCheck: Date.now() });
+      return;
+    }
+
+    if (!garageLat || !garageLng) {
+      setState({ status: 'inside', distance: 0, accuracy: null, lastCheck: Date.now() });
+      return;
+    }
+
+    if (!('geolocation' in navigator)) {
+      setState({
+        status: 'unavailable',
+        distance: null,
+        accuracy: null,
+        lastCheck: Date.now(),
+        errorMessage: 'المتصفح لا يدعم تحديد الموقع',
+      });
+      return;
+    }
+
+    // طلب الإذن أولاً
+    const startTracking = async () => {
+      try {
+        const permission = await navigator.permissions?.query({ name: 'geolocation' });
+
+        if (permission && permission.state === 'denied') {
+          setState({
+            status: 'denied',
+            distance: null,
+            accuracy: null,
+            lastCheck: Date.now(),
+            errorMessage: 'تم رفض إذن الموقع. يرجى تفعيله من إعدادات المتصفح.',
+          });
+          return;
+        }
+
+        // تتبع مستمر بـ watchPosition
+        watchIdRef.current = navigator.geolocation.watchPosition(
+          (position) => {
+            const { latitude, longitude, accuracy } = position.coords;
+            const dist = haversineDistance(latitude, longitude, garageLat, garageLng);
+            const isInside = dist <= radiusMeters;
+
+            setState({
+              status: isInside ? 'inside' : 'outside',
+              distance: Math.round(dist),
+              accuracy: Math.round(accuracy),
+              lastCheck: Date.now(),
+            });
+          },
+          (error) => {
+            let errorMsg = 'خطأ في تحديد الموقع';
+            let errorStatus: GeofenceState['status'] = 'error';
+
+            switch (error.code) {
+              case error.PERMISSION_DENIED:
+                errorMsg = 'يجب تفعيل صلاحية الموقع لاستخدام التطبيق';
+                errorStatus = 'denied';
+                break;
+              case error.POSITION_UNAVAILABLE:
+                errorMsg = 'الموقع غير متاح حالياً، تأكد من تفعيل GPS';
+                errorStatus = 'error';
+                break;
+              case error.TIMEOUT:
+                errorMsg = 'انتهت مهلة تحديد الموقع، حاول مرة أخرى';
+                errorStatus = 'error';
+                break;
+            }
+
+            setState({
+              status: errorStatus,
+              distance: null,
+              accuracy: null,
+              lastCheck: Date.now(),
+              errorMessage: errorMsg,
+            });
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: GEOFENCE_CHECK_INTERVAL,
+          }
+        );
+      } catch {
+        setState({
+          status: 'error',
+          distance: null,
+          accuracy: null,
+          lastCheck: Date.now(),
+          errorMessage: 'فشل في الوصول لخدمة الموقع',
+        });
+      }
+    };
+
+    startTracking();
+
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+    };
+  }, [enabled, garageLat, garageLng, radiusMeters]);
+
+  return state;
+};
+
+/**
+ * هوك حالة جميع السياس الجغرافية (للمالك)
+ */
+interface ValetLocationInfo {
+  valetNumber: number;
+  valetName: string;
+  isActive: boolean;
+  status: 'inside' | 'outside' | 'unknown' | 'inactive';
+  distance: number | null;
+  lastSeen: number | null;
+}
+
+const useOwnerValetLocations = (
+  enabled: boolean,
+  garageId?: string,
+  garage?: any
+): ValetLocationInfo[] => {
+  const [locations, setLocations] = useState<ValetLocationInfo[]>([]);
+
+  useEffect(() => {
+    if (!enabled || !garageId || !garage) {
+      setLocations([]);
+      return;
+    }
+
+    const fetchLocations = async () => {
+      try {
+        const { data } = await supabase
+          .from('valet_locations')
+          .select('*')
+          .eq('garage_id', garageId)
+          .gte('updated_at', new Date(Date.now() - 60000).toISOString()); // آخر دقيقة
+
+        const valets: ValetLocationInfo[] = [
+          { valetNumber: 1, valetName: garage.valetName1 || 'سايس 1', isActive: garage.valet1Active ?? false, status: 'unknown', distance: null, lastSeen: null },
+          { valetNumber: 2, valetName: garage.valetName2 || 'سايس 2', isActive: garage.valet2Active ?? false, status: 'unknown', distance: null, lastSeen: null },
+          { valetNumber: 3, valetName: garage.valetName3 || 'سايس 3', isActive: garage.valet3Active ?? false, status: 'unknown', distance: null, lastSeen: null },
+        ].filter(v => v.valetName && v.valetName.trim());
+
+        if (data) {
+          valets.forEach(v => {
+            const loc = data.find((d: any) => d.valet_number === v.valetNumber);
+            if (!v.isActive) {
+              v.status = 'inactive';
+            } else if (loc) {
+              v.status = loc.is_inside ? 'inside' : 'outside';
+              v.distance = loc.distance;
+              v.lastSeen = new Date(loc.updated_at).getTime();
+            }
+          });
+        } else {
+          valets.forEach(v => {
+            if (!v.isActive) v.status = 'inactive';
+          });
+        }
+
+        setLocations(valets);
+      } catch {
+        // صامت
+      }
+    };
+
+    fetchLocations();
+    const interval = setInterval(fetchLocations, 15000);
+    return () => clearInterval(interval);
+  }, [enabled, garageId, garage?.valet1Active, garage?.valet2Active, garage?.valet3Active,
+    garage?.valetName1, garage?.valetName2, garage?.valetName3]);
+
+  return locations;
+};
+
+/**
+ * رفع موقع السايس للسيرفر
+ */
+const reportValetLocation = async (
+  garageId: string,
+  valetNumber: string,
+  isInside: boolean,
+  distance: number | null
+) => {
+  try {
+    await supabase.from('valet_locations').upsert(
+      {
+        garage_id: garageId,
+        valet_number: parseInt(valetNumber),
+        is_inside: isInside,
+        distance: distance,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'garage_id,valet_number' }
+    );
+  } catch {
+    // صامت
+  }
+};
+
+/**
+ * شاشة حجب السايس خارج النطاق
+ */
+const ValetGeofenceBlockScreen = memo(function ValetGeofenceBlockScreen({
+  geofenceState,
+  garageName,
+  valetName,
+  distance,
+  onRetry,
+}: {
+  geofenceState: GeofenceState;
+  garageName: string;
+  valetName: string;
+  distance: number | null;
+  onRetry: () => void;
+}) {
+  const isDenied = geofenceState.status === 'denied';
+  const isOutside = geofenceState.status === 'outside';
+  const isError = geofenceState.status === 'error' || geofenceState.status === 'unavailable';
+  const isLoading = geofenceState.status === 'loading';
+
+  if (isLoading) {
+    return (
+      <div className="fixed inset-0 z-[99999] flex items-center justify-center" style={{ background: 'linear-gradient(180deg, #0A1628 0%, #1E3A5F 100%)' }}>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center px-8"
+        >
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ repeat: Infinity, duration: 2, ease: 'linear' }}
+            className="mx-auto mb-6"
+            style={{ width: 80, height: 80 }}
+          >
+            <Locate size={80} style={{ color: '#4DA6FF' }} />
+          </motion.div>
+          <h2 className="font-black text-white mb-3" style={{ fontSize: 22 }}>
+            جاري تحديد موقعك...
+          </h2>
+          <p className="font-bold" style={{ color: '#7BB8E8', fontSize: 14, lineHeight: 2 }}>
+            يرجى السماح بالوصول للموقع
+            <br />
+            لتتمكن من استخدام لوحة السايس
+          </p>
+          <div className="mt-6 flex items-center justify-center gap-2">
+            <motion.div
+              animate={{ scale: [1, 1.3, 1] }}
+              transition={{ repeat: Infinity, duration: 1, delay: 0 }}
+              className="w-2.5 h-2.5 rounded-full bg-blue-400"
+            />
+            <motion.div
+              animate={{ scale: [1, 1.3, 1] }}
+              transition={{ repeat: Infinity, duration: 1, delay: 0.2 }}
+              className="w-2.5 h-2.5 rounded-full bg-blue-400"
+            />
+            <motion.div
+              animate={{ scale: [1, 1.3, 1] }}
+              transition={{ repeat: Infinity, duration: 1, delay: 0.4 }}
+              className="w-2.5 h-2.5 rounded-full bg-blue-400"
+            />
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center" style={{ background: 'linear-gradient(180deg, #1A0A0A 0%, #2D1212 50%, #0A1628 100%)' }}>
+      <motion.div
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: 'spring', damping: 20 }}
+        className="text-center px-6 max-w-sm w-full"
+      >
+        {/* أيقونة متحركة */}
+        <motion.div
+          animate={isOutside ? { y: [0, -8, 0] } : {}}
+          transition={{ repeat: Infinity, duration: 2 }}
+          className="mx-auto mb-5"
+        >
+          <div className="relative mx-auto" style={{ width: 100, height: 100 }}>
+            {isDenied ? (
+              <div className="w-full h-full rounded-full flex items-center justify-center" style={{ background: 'rgba(255,51,51,0.15)', border: '3px solid rgba(255,51,51,0.3)' }}>
+                <MapPinOff size={48} style={{ color: '#FF6666' }} />
+              </div>
+            ) : isOutside ? (
+              <div className="w-full h-full rounded-full flex items-center justify-center" style={{ background: 'rgba(255,149,0,0.15)', border: '3px solid rgba(255,149,0,0.3)' }}>
+                <AlertTriangle size={48} style={{ color: '#FF9500' }} />
+              </div>
+            ) : (
+              <div className="w-full h-full rounded-full flex items-center justify-center" style={{ background: 'rgba(255,51,51,0.15)', border: '3px solid rgba(255,51,51,0.3)' }}>
+                <WifiOff size={48} style={{ color: '#FF6666' }} />
+              </div>
+            )}
+
+            {/* نبض خارجي */}
+            <motion.div
+              animate={{ scale: [1, 1.5, 1], opacity: [0.3, 0, 0.3] }}
+              transition={{ repeat: Infinity, duration: 2 }}
+              className="absolute inset-0 rounded-full"
+              style={{ border: `2px solid ${isDenied || isError ? '#FF3333' : '#FF9500'}` }}
+            />
+          </div>
+        </motion.div>
+
+        {/* العنوان */}
+        <h2 className="font-black mb-2" style={{ fontSize: 24, color: '#ffffff' }}>
+          {isDenied ? '📍 الموقع مطلوب' :
+            isOutside ? '🚫 خارج نطاق الجراج' :
+              '⚠️ خطأ في تحديد الموقع'}
+        </h2>
+
+        {/* الرسالة */}
+        <p className="font-bold mb-5" style={{ color: '#A0B4CC', fontSize: 14, lineHeight: 2.2 }}>
+          {isDenied ? (
+            <>
+              يجب تفعيل صلاحية الموقع
+              <br />
+              من إعدادات المتصفح لتتمكن من العمل
+            </>
+          ) : isOutside ? (
+            <>
+              أنت خارج نطاق جراج <span className="text-blue-400 font-black">{garageName}</span>
+              <br />
+              يجب أن تكون على بُعد {GEOFENCE_RADIUS_METERS} متر كحد أقصى
+            </>
+          ) : (
+            <>
+              {geofenceState.errorMessage || 'تأكد من تفعيل GPS وأعد المحاولة'}
+            </>
+          )}
+        </p>
+
+        {/* بطاقة المسافة (فقط لو خارج النطاق) */}
+        {isOutside && distance != null && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="mb-6 mx-auto"
+            style={{
+              background: 'rgba(255,149,0,0.08)',
+              border: '2px solid rgba(255,149,0,0.25)',
+              borderRadius: 20,
+              padding: '16px 20px',
+              maxWidth: 280,
+            }}
+          >
+            <div className="flex items-center justify-between">
+              <div className="text-left">
+                <div className="font-black font-mono" style={{ fontSize: 32, color: '#FF9500' }}>
+                  {distance}
+                </div>
+                <div className="font-bold" style={{ fontSize: 11, color: '#CC7700' }}>متر بعيد</div>
+              </div>
+              <div className="text-right">
+                <div className="font-bold" style={{ fontSize: 11, color: '#A0B4CC' }}>المسموح</div>
+                <div className="font-black font-mono" style={{ fontSize: 18, color: '#4DA6FF' }}>
+                  {GEOFENCE_RADIUS_METERS}م
+                </div>
+              </div>
+            </div>
+
+            {/* شريط المسافة */}
+            <div className="mt-3 relative" style={{ height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 6 }}>
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${Math.min(100, (GEOFENCE_RADIUS_METERS / distance) * 100)}%` }}
+                transition={{ duration: 1, ease: 'easeOut' }}
+                style={{ height: '100%', background: '#FF9500', borderRadius: 6 }}
+              />
+              <div
+                className="absolute top-1/2 -translate-y-1/2"
+                style={{
+                  left: `${Math.min(95, (GEOFENCE_RADIUS_METERS / Math.max(distance, 1)) * 100)}%`,
+                  width: 2,
+                  height: 14,
+                  background: '#4DA6FF',
+                  borderRadius: 2,
+                }}
+              />
+            </div>
+          </motion.div>
+        )}
+
+        {/* معلومات السايس */}
+        <div
+          className="mb-6 mx-auto"
+          style={{
+            background: 'rgba(255,255,255,0.05)',
+            border: '1.5px solid rgba(255,255,255,0.1)',
+            borderRadius: 16,
+            padding: '12px 16px',
+            maxWidth: 280,
+          }}
+        >
+          <div className="flex items-center justify-between">
+            <div className="font-bold" style={{ fontSize: 11, color: '#64748B' }}>
+              <MapPin size={12} className="inline ml-1" />
+              {garageName}
+            </div>
+            <div className="font-black" style={{ fontSize: 13, color: '#ffffff' }}>
+              <HardHat size={14} className="inline ml-1" style={{ color: '#FF9500' }} />
+              {valetName}
+            </div>
+          </div>
+        </div>
+
+        {/* أزرار */}
+        <div className="space-y-3 max-w-[280px] mx-auto">
+          {(isError || isOutside) && (
+            <button
+              onClick={onRetry}
+              className="w-full font-black flex items-center justify-center gap-2 active:scale-95 transition-all"
+              style={{
+                background: 'linear-gradient(135deg, #0066FF, #0044DD)',
+                color: '#fff',
+                padding: 16,
+                borderRadius: 18,
+                fontSize: 15,
+                boxShadow: '0 6px 20px rgba(0,102,255,0.35)',
+                border: 'none',
+              }}
+            >
+              <Locate size={20} />
+              تحديث الموقع
+            </button>
+          )}
+
+          {isDenied && (
+            <div className="space-y-2">
+              <div
+                className="font-bold text-center"
+                style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  borderRadius: 14,
+                  padding: '12px 16px',
+                  fontSize: 11,
+                  color: '#A0B4CC',
+                  lineHeight: 2,
+                  border: '1px solid rgba(255,255,255,0.08)',
+                }}
+              >
+                <span className="font-black text-white block mb-1">كيفية التفعيل:</span>
+                📱 افتح إعدادات المتصفح ← الخصوصية
+                <br />
+                ← أذونات الموقع ← السماح لهذا الموقع
+              </div>
+              <button
+                onClick={onRetry}
+                className="w-full font-black flex items-center justify-center gap-2 active:scale-95 transition-all"
+                style={{
+                  background: 'linear-gradient(135deg, #00CC66, #00AA55)',
+                  color: '#fff',
+                  padding: 16,
+                  borderRadius: 18,
+                  fontSize: 15,
+                  boxShadow: '0 6px 20px rgba(0,204,102,0.35)',
+                  border: 'none',
+                }}
+              >
+                <Locate size={20} />
+                حاولت التفعيل - أعد المحاولة
+              </button>
+            </div>
+          )}
+
+          <button
+            onClick={() => {
+              localStorage.removeItem('garageRole');
+              localStorage.removeItem('valetNumber');
+              localStorage.removeItem('valetName');
+              useStore.getState().setCurrentGarageId(null);
+            }}
+            className="w-full font-black flex items-center justify-center gap-2 active:scale-95 transition-all"
+            style={{
+              background: 'rgba(255,255,255,0.06)',
+              color: '#94a3b8',
+              padding: 14,
+              borderRadius: 18,
+              fontSize: 13,
+              border: '1.5px solid rgba(255,255,255,0.1)',
+            }}
+          >
+            <LogOut size={16} />
+            تسجيل خروج
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+});
+
+/**
+ * بانر حالة السياس الجغرافية (للمالك)
+ */
+const OwnerValetLocationBanner = memo(function OwnerValetLocationBanner({
+  valetLocations,
+}: {
+  valetLocations: ValetLocationInfo[];
+}) {
+  if (valetLocations.length === 0) return null;
+
+  const activeValets = valetLocations.filter(v => v.status !== 'inactive' && v.valetName.trim());
+  if (activeValets.length === 0) return null;
+
+  const getStatusConfig = (status: ValetLocationInfo['status']) => {
+    switch (status) {
+      case 'inside':
+        return { icon: '🟢', label: 'متواجد', color: '#00CC66', bg: '#E6F9EE', border: '#B2EDCC' };
+      case 'outside':
+        return { icon: '🔴', label: 'خارج النطاق', color: '#FF3333', bg: '#FFF0F0', border: '#FFCCCC' };
+      case 'unknown':
+        return { icon: '⚪', label: 'غير محدد', color: '#94a3b8', bg: '#F8FAFC', border: '#E2E8F0' };
+      case 'inactive':
+        return { icon: '⏸️', label: 'معطّل', color: '#94a3b8', bg: '#F1F5F9', border: '#CBD5E1' };
+      default:
+        return { icon: '⚪', label: 'غير محدد', color: '#94a3b8', bg: '#F8FAFC', border: '#E2E8F0' };
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mb-4"
+      style={{
+        background: '#ffffff',
+        borderRadius: 18,
+        padding: '10px 14px',
+        border: '1.5px solid #D0DCFF',
+        boxShadow: '0 3px 12px rgba(0,102,255,0.04)',
+      }}
+    >
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="flex items-center gap-1">
+          <span className="font-bold" style={{ fontSize: 10, color: '#94a3b8' }}>
+            تحديث تلقائي كل 15 ثانية
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <MapPin size={13} style={{ color: '#0066FF' }} />
+          <span className="font-black" style={{ fontSize: 11, color: '#334155' }}>
+            📍 مواقع السياس
+          </span>
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        {activeValets.map((v) => {
+          const config = getStatusConfig(v.status);
+          return (
+            <div
+              key={v.valetNumber}
+              className="flex-1 text-center transition-all"
+              style={{
+                background: config.bg,
+                border: `1.5px solid ${config.border}`,
+                borderRadius: 14,
+                padding: '8px 6px',
+              }}
+            >
+              <div className="flex items-center justify-center gap-1 mb-1">
+                <span style={{ fontSize: 10 }}>{config.icon}</span>
+                <span className="font-black" style={{ fontSize: 10, color: '#334155' }}>
+                  🅿️{v.valetNumber}
+                </span>
+              </div>
+              <div className="font-black truncate" style={{ fontSize: 10, color: '#0A1628', maxWidth: 80, margin: '0 auto' }}>
+                {v.valetName}
+              </div>
+              <div className="font-black mt-0.5" style={{ fontSize: 9, color: config.color }}>
+                {config.label}
+              </div>
+              {v.status === 'outside' && v.distance != null && (
+                <div className="font-mono font-black mt-0.5" style={{ fontSize: 9, color: '#FF3333' }}>
+                  {v.distance}م بعيد
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+});
+
+// ========================
+// أدوات مساعدة (بدون تغيير)
+// ========================
 
 const toMs = (value: any): number => {
   if (!value) return 0;
@@ -350,6 +994,42 @@ export default function GarageDashboard() {
       'سايس 1', 'سايس 2', 'سايس 3'
     ].filter(Boolean);
   }, [garage]);
+
+  // ========================
+  // 🌍 تفعيل السياج الجغرافي
+  // ========================
+  const geofenceState = useValetGeofence(
+    isValet,
+    garage?.latitude,
+    garage?.longitude,
+    GEOFENCE_RADIUS_METERS
+  );
+
+  // رفع موقع السايس للسيرفر بشكل دوري
+  useEffect(() => {
+    if (!isValet || !currentGarageId || !valetNumber) return;
+    if (geofenceState.status === 'loading') return;
+
+    const isInside = geofenceState.status === 'inside';
+    reportValetLocation(currentGarageId, valetNumber, isInside, geofenceState.distance);
+  }, [isValet, currentGarageId, valetNumber, geofenceState.status, geofenceState.distance]);
+
+  // حالة مواقع السياس للمالك
+  const valetLocations = useOwnerValetLocations(isOwner, currentGarageId, garage);
+
+  // هل السايس محجوب؟
+  const isValetBlocked = isValet && (
+    geofenceState.status === 'outside' ||
+    geofenceState.status === 'denied' ||
+    geofenceState.status === 'error' ||
+    geofenceState.status === 'unavailable' ||
+    geofenceState.status === 'loading'
+  );
+
+  const handleGeofenceRetry = useCallback(() => {
+    // إعادة تحميل الصفحة لإعادة طلب الإذن
+    window.location.reload();
+  }, []);
 
   const activeSessions = useMemo(() => {
     return garageSessions.filter(s => {
@@ -744,6 +1424,21 @@ export default function GarageDashboard() {
     );
   }, [undoTick, sessions]);
 
+  // ========================
+  // 🛡️ شاشة حجب السايس خارج النطاق
+  // ========================
+  if (isValetBlocked && garage) {
+    return (
+      <ValetGeofenceBlockScreen
+        geofenceState={geofenceState}
+        garageName={garage.name}
+        valetName={currentValetName || currentValetNameLocal || `سايس ${valetNumber}`}
+        distance={geofenceState.distance}
+        onRetry={handleGeofenceRetry}
+      />
+    );
+  }
+
   if (!garage) {
     return (
       <div className="h-full flex flex-col items-center justify-center px-6" style={{ background: '#EBF2FF', color: '#0A1628' }}>
@@ -779,7 +1474,6 @@ export default function GarageDashboard() {
     }
   }
 
-  // 🚀 دالة إضافة سيارة يدوياً: توقيت موحد ودقيق
   const handleAddCar = async () => {
     if (!newCarPlate.trim()) { toast.error('أدخل رقم السيارة'); return; }
     const cp = newCarPlate.trim(); 
@@ -825,11 +1519,9 @@ export default function GarageDashboard() {
       agreedPrice: ap 
     });
 
-    // 💵 تثبيت طريقة التحصيل دائماً على كاش
     setConfirmPaymentMethod('cash');
   };
 
-  // 🌟 دالة التحصيل المطورة: السايس يحصل كاش دائماً في كل الحالات
   const handleConfirmPayment = async () => {
     if (!confirmSession || isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
@@ -840,10 +1532,8 @@ export default function GarageDashboard() {
       const sc = { ...confirmSession }; 
       const sd = useStore.getState().sessions.find(s => s.id === sc.id);
       
-      // 💵 🔒 قفل إجباري: السايس يُحصّل كاش دائماً في كل الحالات (يدوي أو تطبيق)
       const pc = (isValet || sc.source === 'manual') ? 'cash' : (confirmPaymentMethod || 'cash');
       
-      // 🎁 حساب الدقائق المجانية الترحيبية إن وُجدت
       let freeMinutesApplied = 0;
       if (sd?.isFirstFreeSession === true) {
         const elapsedSeconds = Math.floor((getServerNow() - toMs(sd.startTime)) / 1000);
@@ -852,19 +1542,15 @@ export default function GarageDashboard() {
         }
       }
 
-      // 🅿️ تحديد السايس المسؤول بدقة
       const currentValet = isValet 
         ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`).trim() 
         : 'المالك';
 
-      // تحديث واجهة المستخدم فورياً
       setConfirmSession(null);
       setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
       
-      // إنهاء الجلسة وحفظها بالسيرفر
       await endSession(sc.id, sc.cost, pc, freeMinutesApplied, currentValet);
       
-      // تحديث الإحصائيات اليومية
       await fetchGarageDailyStats();
       
       const paymentText = pc === 'cash' ? 'نقداً (كاش)' : 'من المحفظة الرقمية';
@@ -903,7 +1589,6 @@ export default function GarageDashboard() {
     setShowSettings(true);
   };
 
-  // 🚗 دالة وصول السيارة
   const handleCarArrived = async (car: any) => {
     const carId: string = car.id; 
     const carPlate: string = car.carPlate;
@@ -995,6 +1680,38 @@ export default function GarageDashboard() {
         {isOwner && <button onClick={openSettings} className="active:scale-90" style={{ background: '#0066FF', padding: 14, borderRadius: 20, color: '#fff' }}><Settings size={20} /></button>}
         {isValet && <div style={{ width: 48 }} />}
       </div>
+
+      {/* 🌍 بانر مواقع السياس (للمالك فقط) */}
+      {isOwner && <OwnerValetLocationBanner valetLocations={valetLocations} />}
+
+      {/* 🌍 مؤشر الموقع للسايس (داخل النطاق) */}
+      {isValet && geofenceState.status === 'inside' && (
+        <motion.div
+          initial={{ opacity: 0, y: -5 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-3 flex items-center justify-between"
+          style={{
+            background: '#E6F9EE',
+            borderRadius: 14,
+            padding: '8px 14px',
+            border: '1.5px solid #B2EDCC',
+          }}
+        >
+          <span className="font-mono font-black" style={{ fontSize: 10, color: '#00AA44' }}>
+            {geofenceState.distance != null ? `${geofenceState.distance}م` : ''}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="font-black" style={{ fontSize: 11, color: '#00AA44' }}>
+              📍 متواجد داخل نطاق الجراج
+            </span>
+            <motion.div
+              animate={{ scale: [1, 1.3, 1] }}
+              transition={{ repeat: Infinity, duration: 2 }}
+              className="w-2 h-2 rounded-full bg-emerald-500"
+            />
+          </div>
+        </motion.div>
+      )}
 
       {/* Settings Modal */}
       {isOwner && showSettings && (
@@ -1171,12 +1888,10 @@ export default function GarageDashboard() {
               )}
             </div>
 
-            {/* 💵 قفل طريقة التحصيل على كاش فقط للسايس أو للجلسات اليدوية */}
             <div className="mb-5">
               <h4 className="font-black mb-3 text-right" style={{ fontSize: 12, color: '#7B8CA6' }}>طريقة التحصيل</h4>
 
               {isValet || confirmSession.source === 'manual' ? (
-                /* 🔒 إجبار التحصيل النقدي كاش للسايس */
                 <div className="text-center" style={{ background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', borderRadius: 20, padding: 18, color: '#fff', boxShadow: '0 4px 14px rgba(0,204,102,0.2)' }}>
                   <div style={{ fontSize: 32, marginBottom: 4 }}>💵</div>
                   <div className="font-black" style={{ fontSize: 16 }}>سداد نقدي (كاش)</div>
@@ -1185,7 +1900,6 @@ export default function GarageDashboard() {
                   </div>
                 </div>
               ) : (
-                /* خيارات المالك في حال كان هو من يقوم بالإقفال لجلسة تطبيق */
                 <div className="space-y-2">
                   {(garage.payment_mode === 'cash' || garage.payment_mode === 'both' || !garage.payment_mode) && (
                     <button
@@ -1708,7 +2422,7 @@ export default function GarageDashboard() {
                                 <div className="font-black" style={{ fontSize: 12, fontWeight: 950, color: '#0A1628' }}>{v.name}</div>
                                 <div className="font-black" style={{ fontSize: 9, color: '#94a3b8', fontWeight: 900 }}>{v.count} سيارة</div>
                               </div>
-                              <div style={{ width: 30, height: 30, borderRadius: 10, background: v.color, color: '#ffffff', display: 'flex', alignItems: 'center', justifyStyle: 'center', fontWeight: 950, fontSize: 12, textShadow: '0 1px 1px rgba(0,0,0,0.2)', justifyItems: 'center', alignContent: 'center', justifySelf: 'center' }}>
+                              <div style={{ width: 30, height: 30, borderRadius: 10, background: v.color, color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 950, fontSize: 12, textShadow: '0 1px 1px rgba(0,0,0,0.2)' }}>
                                 <span className="m-auto text-center">{v.icon}</span>
                               </div>
                             </div>
