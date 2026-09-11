@@ -4,16 +4,18 @@ import {
   Car, Clock, LogOut, Plus, CheckCircle, XCircle, Settings,
   Minus, Save, MapPin, Edit3, Navigation, Phone, CarFront, FileText,
   CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
-  Search, X, CreditCard,
+  Search, X, CreditCard, Compass, AlertCircle, RefreshCw, Radio,
 } from 'lucide-react';
-// ⏱️ استيراد getServerNow لمزامنة التوقيت بدقة بالملي ثانية
 import { useStore, pausePolling, normalizePlate, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
+import { calculateDistance } from '../utils/distance';
 import toast from 'react-hot-toast';
 import { subscribeToPush } from '../lib/pushManager';
 
 const UNDO_TIMEOUT_SECONDS = 30;
+// 📍 أقصى مسافة مسموحة للسايس (250 متر حول الجراج)
+const MAX_VALET_DISTANCE_METERS = 250;
 
 interface UndoableSession {
   sessionId: string;
@@ -318,6 +320,148 @@ export default function GarageDashboard() {
   const isValet = garageRole === 'valet';
 
   const garage = garages.find(g => g.id === currentGarageId);
+
+  // 📍🛰️ منظومة الـ Geofencing وتتبع موقع السياس
+  const [valetDistanceMeters, setValetDistanceMeters] = useState<number | null>(null);
+  const [isLocationDenied, setIsLocationDenied] = useState(false);
+  const [isCheckingGPS, setIsCheckingGPS] = useState(true);
+  const [valetsPresenceMap, setValetsPresenceMap] = useState<Record<string, any>>({});
+
+  const presenceChannelRef = useRef<any>(null);
+
+  // 📡 إرسال وتتبع موقع السايس لحظياً إلى السيرفر
+  const trackValetPresence = useCallback((distMeters: number, inside: boolean) => {
+    if (!presenceChannelRef.current || !isValet) return;
+    try {
+      presenceChannelRef.current.track({
+        valetNumber,
+        valetName: localStorage.getItem('valetName') || `سايس ${valetNumber}`,
+        distanceMeters: distMeters,
+        isInside: inside,
+        updatedAt: getServerNow(),
+      });
+    } catch (e) {
+      console.warn('Presence track error:', e);
+    }
+  }, [isValet, valetNumber]);
+
+  const checkValetLocation = useCallback(() => {
+    if (!isValet || !garage || !garage.lat || !garage.lng) {
+      setIsCheckingGPS(false);
+      return;
+    }
+
+    if (!('geolocation' in navigator)) {
+      setIsLocationDenied(true);
+      setIsCheckingGPS(false);
+      return;
+    }
+
+    setIsCheckingGPS(true);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const uLat = position.coords.latitude;
+        const uLng = position.coords.longitude;
+        const distKm = calculateDistance(uLat, uLng, garage.lat, garage.lng);
+        const distMeters = Math.round(distKm * 1000);
+        const isInside = distMeters <= MAX_VALET_DISTANCE_METERS;
+
+        setValetDistanceMeters(distMeters);
+        setIsLocationDenied(false);
+        setIsCheckingGPS(false);
+
+        // إرسال التحديث لغرفة المالك
+        trackValetPresence(distMeters, isInside);
+      },
+      (error) => {
+        console.warn('GPS location error:', error);
+        setIsLocationDenied(true);
+        setIsCheckingGPS(false);
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 5000 }
+    );
+  }, [isValet, garage, trackValetPresence]);
+
+  // 🛰️ اشتراك المالك والسايس في قناة البث المباشر للموقع (Presence Channel)
+  useEffect(() => {
+    if (!currentGarageId) return;
+
+    const channelName = `garage_valets_live_${currentGarageId}`;
+    const channel = supabase.channel(channelName, {
+      config: { presence: { key: isValet ? `valet_${valetNumber}` : `owner_${Date.now()}` } }
+    });
+
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        setValetsPresenceMap(state);
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED' && isValet) {
+          checkValetLocation();
+        }
+      });
+
+    presenceChannelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+      presenceChannelRef.current = null;
+    };
+  }, [currentGarageId, isValet, valetNumber, checkValetLocation]);
+
+  useEffect(() => {
+    checkValetLocation();
+    const interval = setInterval(checkValetLocation, 45000);
+    return () => clearInterval(interval);
+  }, [checkValetLocation]);
+
+  const isValetOutsideGarage = useMemo(() => {
+    if (!isValet) return false;
+    if (isLocationDenied) return true;
+    if (valetDistanceMeters === null) return false;
+    return valetDistanceMeters > MAX_VALET_DISTANCE_METERS;
+  }, [isValet, isLocationDenied, valetDistanceMeters]);
+
+  // 📊 استخراج وتجهيز بيانات السياس الحية لشاشة المالك
+  const activeValetsLocationStatus = useMemo(() => {
+    if (!isOwner || !garage) return [];
+
+    const valetsConfig = [
+      { num: '1', name: (garage.valetName1 || '').trim() || 'سايس 1', active: (garage as any).valet1Active },
+      { num: '2', name: (garage.valetName2 || '').trim() || 'سايس 2', active: (garage as any).valet2Active },
+      { num: '3', name: (garage.valetName3 || '').trim() || 'سايس 3', active: (garage as any).valet3Active },
+    ];
+
+    return valetsConfig.map((v) => {
+      const presenceKey = `valet_${v.num}`;
+      const presenceEntry = valetsPresenceMap[presenceKey]?.[0];
+
+      if (!presenceEntry) {
+        return {
+          ...v,
+          status: 'offline' as const,
+          label: 'غير متصل (التطبيق مغلق)',
+          distanceText: '---',
+          isInside: false,
+        };
+      }
+
+      const dist = presenceEntry.distanceMeters ?? 0;
+      const isInside = presenceEntry.isInside === true;
+
+      return {
+        ...v,
+        status: isInside ? ('inside' as const) : ('outside' as const),
+        label: isInside ? '🟢 داخل الجراج (متواجد)' : '🔴 خارج نطاق الجراج',
+        distanceText: dist >= 1000 ? `${(dist / 1000).toFixed(1)} كم` : `${dist} متر`,
+        isInside,
+        updatedAt: presenceEntry.updatedAt,
+      };
+    });
+  }, [isOwner, garage, valetsPresenceMap]);
+
   const garageSessions = useMemo(
     () => sessions.filter(s => s.garageId === currentGarageId),
     [sessions, currentGarageId]
@@ -511,11 +655,12 @@ export default function GarageDashboard() {
       if (document.visibilityState === 'visible') {
         silentSync();
         fetchAll();
+        checkValetLocation();
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [currentGarageId, fetchAll]);
+  }, [currentGarageId, fetchAll, checkValetLocation]);
 
   useEffect(() => {
     const ids = new Set(carsOnTheWay.map(c => c.id));
@@ -779,7 +924,63 @@ export default function GarageDashboard() {
     }
   }
 
-  // 🚀 دالة إضافة سيارة يدوياً: توقيت موحد ودقيق
+  // 🛑 قفل شاشة السايس إذا كان خارج نطاق الجراج
+  if (isValet && isValetOutsideGarage) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center px-6 text-center" style={{ background: '#0A1628', color: '#ffffff' }}>
+        <div style={{ background: '#1E293B', borderRadius: 28, padding: 28, maxWidth: 360, width: '100%', border: '2px solid #EF4444', boxShadow: '0 10px 40px rgba(239, 68, 68, 0.2)' }}>
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center animate-bounce">
+            <Compass size={36} />
+          </div>
+
+          <h2 className="font-black text-xl text-white mb-2">أنت خارج نطاق الجراج</h2>
+
+          <p className="font-bold text-xs text-slate-300 leading-relaxed mb-4">
+            {isLocationDenied ? (
+              <span>⚠️ برجاء تفعيل خدمة الموقع (GPS) وإعطاء الصلاحية للتطبيق للتأكد من تواجدك داخل الجراج لمتابعة العمل.</span>
+            ) : (
+              <span>حفاظاً على دقة الحسابات، لا يمكنك متابعة أو تسجيل جلسات الركن إلا أثناء التواجد الفعلي داخل موقع الجراج.</span>
+            )}
+          </p>
+
+          {valetDistanceMeters !== null && !isLocationDenied && (
+            <div className="mb-4 bg-slate-900 border border-slate-700 rounded-2xl p-3">
+              <span className="text-[11px] text-slate-400 block mb-1">المسافة الحالية عن الجراج:</span>
+              <span className="font-mono font-black text-amber-400 text-lg">
+                {valetDistanceMeters >= 1000 ? `${(valetDistanceMeters / 1000).toFixed(1)} كم` : `${valetDistanceMeters} متر`}
+              </span>
+              <span className="text-[10px] text-slate-500 block mt-1">(المسموح به: حتى {MAX_VALET_DISTANCE_METERS} متر)</span>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <button
+              onClick={checkValetLocation}
+              disabled={isCheckingGPS}
+              className="w-full font-black py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg"
+            >
+              <RefreshCw size={14} className={isCheckingGPS ? 'animate-spin' : ''} />
+              {isCheckingGPS ? 'جاري التحقق من موقعك...' : '🔄 تحديث الموقع'}
+            </button>
+
+            <button
+              onClick={() => {
+                localStorage.removeItem('garageRole');
+                localStorage.removeItem('valetNumber');
+                localStorage.removeItem('valetName');
+                setCurrentGarageId(null);
+              }}
+              className="w-full font-bold py-3 rounded-2xl bg-slate-800 text-slate-400 hover:text-white text-xs active:scale-95 transition-all"
+            >
+              تسجيل خروج
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 🚀 دالة إضافة سيارة يدوياً
   const handleAddCar = async () => {
     if (!newCarPlate.trim()) { toast.error('أدخل رقم السيارة'); return; }
     const cp = newCarPlate.trim(); 
@@ -825,11 +1026,9 @@ export default function GarageDashboard() {
       agreedPrice: ap 
     });
 
-    // 💵 تثبيت طريقة التحصيل دائماً على كاش
     setConfirmPaymentMethod('cash');
   };
 
-  // 🌟 دالة التحصيل المطورة: السايس يحصل كاش دائماً في كل الحالات
   const handleConfirmPayment = async () => {
     if (!confirmSession || isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
@@ -840,10 +1039,8 @@ export default function GarageDashboard() {
       const sc = { ...confirmSession }; 
       const sd = useStore.getState().sessions.find(s => s.id === sc.id);
       
-      // 💵 🔒 قفل إجباري: السايس يُحصّل كاش دائماً في كل الحالات (يدوي أو تطبيق)
       const pc = (isValet || sc.source === 'manual') ? 'cash' : (confirmPaymentMethod || 'cash');
       
-      // 🎁 حساب الدقائق المجانية الترحيبية إن وُجدت
       let freeMinutesApplied = 0;
       if (sd?.isFirstFreeSession === true) {
         const elapsedSeconds = Math.floor((getServerNow() - toMs(sd.startTime)) / 1000);
@@ -852,19 +1049,14 @@ export default function GarageDashboard() {
         }
       }
 
-      // 🅿️ تحديد السايس المسؤول بدقة
       const currentValet = isValet 
         ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`).trim() 
         : 'المالك';
 
-      // تحديث واجهة المستخدم فورياً
       setConfirmSession(null);
       setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
       
-      // إنهاء الجلسة وحفظها بالسيرفر
       await endSession(sc.id, sc.cost, pc, freeMinutesApplied, currentValet);
-      
-      // تحديث الإحصائيات اليومية
       await fetchGarageDailyStats();
       
       const paymentText = pc === 'cash' ? 'نقداً (كاش)' : 'من المحفظة الرقمية';
@@ -903,7 +1095,6 @@ export default function GarageDashboard() {
     setShowSettings(true);
   };
 
-  // 🚗 دالة وصول السيارة
   const handleCarArrived = async (car: any) => {
     const carId: string = car.id; 
     const carPlate: string = car.carPlate;
@@ -995,6 +1186,84 @@ export default function GarageDashboard() {
         {isOwner && <button onClick={openSettings} className="active:scale-90" style={{ background: '#0066FF', padding: 14, borderRadius: 20, color: '#fff' }}><Settings size={20} /></button>}
         {isValet && <div style={{ width: 48 }} />}
       </div>
+
+      {/* 📡 شاشة تتبع موقع السياس الحية لمالك الجراج */}
+      {isOwner && activeValetsLocationStatus.length > 0 && (
+        <div className="mb-4 bg-white border-2 border-indigo-100 rounded-3xl p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2.5">
+            <div className="flex items-center gap-1.5 text-indigo-600 font-bold text-[10px] bg-indigo-50 px-2.5 py-1 rounded-full">
+              <Radio size={12} className="animate-pulse text-red-500" />
+              <span>بث حي بالـ GPS</span>
+            </div>
+            <div className="flex items-center gap-1 text-slate-800 font-black text-xs">
+              <span>📡 تتبع تواجد السياس</span>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {activeValetsLocationStatus.map((v) => (
+              <div
+                key={v.num}
+                className={`flex items-center justify-between p-2.5 rounded-2xl border transition-all ${
+                  v.status === 'inside'
+                    ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+                    : v.status === 'outside'
+                    ? 'bg-rose-50/70 border-rose-200 text-rose-950'
+                    : 'bg-slate-50 border-slate-200 text-slate-500'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-black text-xs">
+                    {v.distanceText}
+                  </span>
+                  <span
+                    className={`text-[9px] font-black px-2 py-0.5 rounded-lg ${
+                      v.status === 'inside'
+                        ? 'bg-emerald-600 text-white'
+                        : v.status === 'outside'
+                        ? 'bg-rose-600 text-white'
+                        : 'bg-slate-300 text-slate-700'
+                    }`}
+                  >
+                    {v.status === 'inside' ? 'متواجد' : v.status === 'outside' ? 'خارج الجراج' : 'مغلق'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="text-right">
+                    <span className="font-black text-xs block text-slate-900">{v.name}</span>
+                    <span className="text-[9px] font-bold text-slate-500">سايس {v.num}</span>
+                  </div>
+                  <div
+                    className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs ${
+                      v.status === 'inside'
+                        ? 'bg-emerald-500 text-white'
+                        : v.status === 'outside'
+                        ? 'bg-rose-500 text-white'
+                        : 'bg-slate-200 text-slate-600'
+                    }`}
+                  >
+                    {v.num}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* شارة توضيح حالة تواجد السايس في الموقع */}
+      {isValet && (
+        <div className="mb-4 flex items-center justify-between px-4 py-2.5 rounded-2xl bg-emerald-50 border border-emerald-200">
+          <button onClick={checkValetLocation} className="text-emerald-700 font-black text-[10.5px] flex items-center gap-1 active:scale-95">
+            <RefreshCw size={11} /> تحديث الموقع
+          </button>
+          <div className="flex items-center gap-1.5 text-emerald-800 text-xs font-black">
+            <span>📍 متواجد داخل نطاق الجراج ({valetDistanceMeters ?? 0} م)</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          </div>
+        </div>
+      )}
 
       {/* Settings Modal */}
       {isOwner && showSettings && (
@@ -1171,12 +1440,10 @@ export default function GarageDashboard() {
               )}
             </div>
 
-            {/* 💵 قفل طريقة التحصيل على كاش فقط للسايس أو للجلسات اليدوية */}
             <div className="mb-5">
               <h4 className="font-black mb-3 text-right" style={{ fontSize: 12, color: '#7B8CA6' }}>طريقة التحصيل</h4>
 
               {isValet || confirmSession.source === 'manual' ? (
-                /* 🔒 إجبار التحصيل النقدي كاش للسايس */
                 <div className="text-center" style={{ background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', borderRadius: 20, padding: 18, color: '#fff', boxShadow: '0 4px 14px rgba(0,204,102,0.2)' }}>
                   <div style={{ fontSize: 32, marginBottom: 4 }}>💵</div>
                   <div className="font-black" style={{ fontSize: 16 }}>سداد نقدي (كاش)</div>
@@ -1185,7 +1452,6 @@ export default function GarageDashboard() {
                   </div>
                 </div>
               ) : (
-                /* خيارات المالك في حال كان هو من يقوم بالإقفال لجلسة تطبيق */
                 <div className="space-y-2">
                   {(garage.payment_mode === 'cash' || garage.payment_mode === 'both' || !garage.payment_mode) && (
                     <button
