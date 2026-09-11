@@ -328,10 +328,18 @@ const ValetGeofenceBlockScreen = memo(function ValetGeofenceBlockScreen({
           <motion.div animate={{ scale: [1, 1.4, 1], opacity: [0.4, 0, 0.4] }} transition={{ repeat: Infinity, duration: 2 }} className="absolute inset-0 rounded-full" style={{ border: `2px solid ${isOutside ? '#FF9500' : '#FF3333'}` }} />
         </div>
 
-        <h2 className="font-black text-white mb-2" style={{ fontSize: 22 }}>
-          {isDenied ? '📍 تفعيل الموقع إجباري' : isOutside ? '🚫 خارج نطاق الجراج' : isNoCoords ? '⚠️ إعدادات الموقع ناقصة' : '⚠️ تعذر تحديد موقعك'}
-        </h2>
-
+<h2 
+  className="font-black mb-3" 
+  style={{ 
+    fontSize: 25, 
+    fontWeight: 900, 
+    color: '#ffffff', 
+    textShadow: '0 2px 10px rgba(0,0,0,0.6)',
+    letterSpacing: '0.5px'
+  }}
+>
+  {isDenied ? '📍 تفعيل الموقع إجباري' : isOutside ? '🚫 خارج نطاق الجراج' : isNoCoords ? '⚠️ إعدادات الموقع ناقصة' : '⚠️ تعذر تحديد موقعك'}
+</h2>
         <p className="font-bold mb-5" style={{ color: '#B0C4DE', fontSize: 13, lineHeight: 2 }}>
           {isDenied ? (
             <>
