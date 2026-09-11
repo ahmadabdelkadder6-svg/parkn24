@@ -375,23 +375,53 @@ export default function SessionScreen() {
         </div>
       )}
 
-      {/* 🌟💡 بانر إرشادي ذكي وودي: خلص مشوارك براحتك 💡🌟 */}
+      {/* 🌟💡 بانر إرشادي احترافي ومنسق بأعلى وضوح وتباين 💡🌟 */}
       <motion.div
-        initial={{ opacity: 0, y: 5 }}
+        initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3.5 mb-4 shadow-sm flex items-start gap-3"
+        className="w-full mb-4 relative overflow-hidden rounded-2xl p-4 text-right transition-all"
+        style={{
+          background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 50%, #FFFDF5 100%)',
+          border: '1.5px solid #FDE68A',
+          boxShadow: '0 4px 16px rgba(245, 158, 11, 0.08)',
+        }}
       >
-        <div className="bg-amber-100 text-amber-600 p-2 rounded-xl shrink-0 mt-0.5">
-          <Sparkles size={20} />
-        </div>
-        <div className="text-right flex-1">
-          <div className="text-xs font-black text-slate-800 mb-1 flex items-center gap-1.5 justify-end">
-            <span>✨ خلص مشوارك براحتك</span>
-            <Smartphone size={13} className="text-slate-400" />
+        <div className="flex items-start gap-3">
+          {/* أيقونة مميزة ملفتة */}
+          <div 
+            className="shrink-0 rounded-xl p-2.5 flex items-center justify-center shadow-sm"
+            style={{
+              background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+              color: '#FFFFFF',
+            }}
+          >
+            <Sparkles size={20} className="animate-pulse" />
           </div>
-          <p className="text-[10.5px] font-bold text-slate-500 leading-relaxed">
-            وقت الركنة محفوظ بالثانية في الخلفية. أغلق التطبيق الآن وافتحه عند العودة للجراج لإنهاء الجلسة.
-          </p>
+
+          {/* النص المنسق والمقروء بوضوح فائق */}
+          <div className="flex-1">
+            <div className="flex items-center gap-1.5 justify-end mb-1">
+              <span 
+                className="text-amber-950 font-black tracking-tight"
+                style={{ fontSize: '14px', fontWeight: 950 }}
+              >
+                ✨ خلّص مشوارك براحتك
+              </span>
+            </div>
+            
+            <p 
+              className="leading-relaxed"
+              style={{ 
+                fontSize: '12.5px', 
+                color: '#381A02', 
+                lineHeight: '1.6',
+                fontWeight: 800
+              }}
+            >
+              وقت الركنة <span style={{ color: '#B45309', fontWeight: 950 }}>محفوظ بالثانية</span> في الخلفية. 
+              أغلق التطبيق الآن وافتحه عند العودة للجراج لإنهاء الجلسة.
+            </p>
+          </div>
         </div>
       </motion.div>
 

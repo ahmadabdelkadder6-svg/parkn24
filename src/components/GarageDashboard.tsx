@@ -6,7 +6,7 @@ import {
   CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
   Search, X, CreditCard,
 } from 'lucide-react';
-// ⏱️ تم استيراد دالة getServerNow لمزامنة توقيت الأجهزة بالملي ثانية
+// ⏱️ استيراد getServerNow لمزامنة التوقيت بدقة بالملي ثانية
 import { useStore, pausePolling, normalizePlate, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
@@ -45,8 +45,7 @@ const toMs = (value: any): number => {
     return Number.isFinite(ms) && ms > 0 ? ms : 0;
   }
   if (typeof value === 'number') {
-    if (value < 1_000_000_000_000) return value * 1000;
-    return value;
+    return value < 1_000_000_000_000 ? value * 1000 : value;
   }
   return 0;
 };
@@ -62,7 +61,7 @@ const formatElapsed = (totalSeconds: number): string => {
 };
 
 const getLocalToday = (): string => {
-  const n = new Date();
+  const n = new Date(getServerNow());
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
 };
 
@@ -225,7 +224,6 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
   }, []);
 
   const st = toMs(s.startTime);
-  // ✅ تم التعديل: يعتمد على توقيت السيرفر الموحد لجميع الهواتف
   const el = st > 0 ? Math.max(0, Math.floor((getServerNow() - st) / 1000)) : 0;
   const mins = Math.floor(el / 60);
 
@@ -358,7 +356,6 @@ export default function GarageDashboard() {
       if (s.status !== 'active') return false;
       const st = toMs(s.startTime);
       if (st <= 0) return false;
-      // ✅ تم التعديل: حساب فرق الأماكن والانتهاء بتوقيت السيرفر الموحد
       const elapsedMs = getServerNow() - st;
       if (elapsedMs >= 24 * 60 * 60 * 1000) return false;
       return true;
@@ -466,9 +463,6 @@ export default function GarageDashboard() {
     });
   }, [valetActiveSessions, plateSearch]);
 
-  const filteredValetActiveSessionsRef = useRef(filteredValetActiveSessions);
-  useEffect(() => { filteredValetActiveSessionsRef.current = filteredValetActiveSessions; }, [filteredValetActiveSessions]);
-
   const fetchGarageDailyStats = useCallback(async () => {
     if (!currentGarageId) return;
     try {
@@ -547,7 +541,6 @@ export default function GarageDashboard() {
   useEffect(() => {
     carsOnTheWay.forEach(car => {
       if (approachAlertedRef.current.has(car.id)) return;
-      // ✅ تم التعديل: ضبط فارق الوقت في حساب زمن الوصول المتبقي بالتوقيت الموحد
       const s = toMs(car.startTime);
       const el = (getServerNow() - s) / 60000;
       const rem = Math.max(0, car.estimatedArrival - el);
@@ -594,7 +587,6 @@ export default function GarageDashboard() {
 
   const getActiveCost = useCallback((s: any) => {
     const st = toMs(s.startTime);
-    // ✅ تم التعديل: جلب السعر المباشر بتوقيت السيرفر الموحد
     const el = st > 0 ? Math.max(0, Math.floor((getServerNow() - st) / 1000)) : 0;
     const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
     if (el <= 0 || r <= 0) return 0;
@@ -612,7 +604,7 @@ export default function GarageDashboard() {
       if (!isActive) return [];
     }
 
-    const today = new Date();
+    const today = new Date(getServerNow());
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
     const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1;
 
@@ -732,7 +724,6 @@ export default function GarageDashboard() {
     toast('تم إلغاء ' + un.carPlate + ' ↩️', { icon: '🔙' });
   }, [garage, removeSession]);
 
-  // ✅ تم التعديل: تتبع التراجع باستخدام توقيت السيرفر الموحد
   const getUndoRemainingSeconds = useCallback((addedAt: number) => Math.max(0, UNDO_TIMEOUT_SECONDS - Math.floor((getServerNow() - addedAt) / 1000)), []);
 
   const [undoTick, setUndoTick] = useState(0);
@@ -744,7 +735,6 @@ export default function GarageDashboard() {
 
   useEffect(() => {
     setUndoableSessions(p =>
-      // ✅ تم التعديل: إزالة الجلسات القابلة للتراجع بالتوقيت الموحد
       p.filter(u => Math.floor((getServerNow() - u.addedAt) / 1000) < UNDO_TIMEOUT_SECONDS)
         .map(u => {
           const e = sessions.find(s => s.id === u.sessionId);
@@ -794,9 +784,7 @@ export default function GarageDashboard() {
     if (!newCarPlate.trim()) { toast.error('أدخل رقم السيارة'); return; }
     const cp = newCarPlate.trim(); 
     const pr = newCarPrice; 
-    // ✅ تم التعديل: تدوين وقت إرسال الطلب بتوقيت السيرفر الموحد
     const at = getServerNow();
-    // ⏱️ استخدام ISO String لتوحيد التوقيت بين كل الأجهزة
     const startTimeISO = new Date(at).toISOString();
     
     const sid = await addSession({ 
@@ -822,7 +810,6 @@ export default function GarageDashboard() {
     const isFreeApplied = sessionObj?.isFirstFreeSession === true;
     
     const st = sessionObj ? toMs(sessionObj.startTime) : 0;
-    // ✅ تم التعديل: تتبع دقيق للوقت المنقضي عند الحفظ
     const el = st > 0 ? Math.max(0, Math.floor((getServerNow() - st) / 1000)) : 0;
     
     const isFreeNow = isFreeApplied && el <= 1800;
@@ -838,48 +825,46 @@ export default function GarageDashboard() {
       agreedPrice: ap 
     });
 
-    // 💵 الجلسات اليدوية تُحصّل كاش دائماً، وجلسات التطبيق نبدأ بكاش كافتراضي
+    // 💵 تثبيت طريقة التحصيل دائماً على كاش
     setConfirmPaymentMethod('cash');
   };
 
-  // 🌟 دالة التحصيل المطورة: سرعة صاروخية، إجبار كاش للجلسات اليدوية، وربط ذري بالسايس
+  // 🌟 دالة التحصيل المطورة: السايس يحصل كاش دائماً في كل الحالات
   const handleConfirmPayment = async () => {
     if (!confirmSession || isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
     
-    // ⚡ 1. إيقاف مؤقت لثانيتين فقط لمنع تضارب القراءة والكتابة
     pausePolling(2000);
     
     try {
       const sc = { ...confirmSession }; 
       const sd = useStore.getState().sessions.find(s => s.id === sc.id);
       
-      // 💵 2. إجبار الجلسات اليدوية على الكاش، وجلسات التطبيق حسب الطريقة المختارة
-      const pc = sc.source === 'manual' ? 'cash' : (confirmPaymentMethod || 'cash');
+      // 💵 🔒 قفل إجباري: السايس يُحصّل كاش دائماً في كل الحالات (يدوي أو تطبيق)
+      const pc = (isValet || sc.source === 'manual') ? 'cash' : (confirmPaymentMethod || 'cash');
       
-      // 🎁 3. حساب الدقائق المجانية الترحيبية إن وُجدت
+      // 🎁 حساب الدقائق المجانية الترحيبية إن وُجدت
       let freeMinutesApplied = 0;
       if (sd?.isFirstFreeSession === true) {
-        // ✅ تم التعديل: تتبع الثواني عند الدفع على خوادمنا بالوقت الموحد
         const elapsedSeconds = Math.floor((getServerNow() - toMs(sd.startTime)) / 1000);
         if (elapsedSeconds <= 1800) {
           freeMinutesApplied = Math.floor(elapsedSeconds / 60);
         }
       }
 
-      // 🅿️ 4. تحديد السايس المسؤول بدقة متناهية
+      // 🅿️ تحديد السايس المسؤول بدقة
       const currentValet = isValet 
         ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`).trim() 
         : 'المالك';
 
-      // 5. تحديث واجهة المستخدم فورياً
+      // تحديث واجهة المستخدم فورياً
       setConfirmSession(null);
       setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
       
-      // 🚀 6. إنهاء الجلسة وحفظها بالسيرفر والمتجر المحلي بشكل ذري (Atomic)
+      // إنهاء الجلسة وحفظها بالسيرفر
       await endSession(sc.id, sc.cost, pc, freeMinutesApplied, currentValet);
       
-      // 📊 7. تحديث الإحصائيات اليومية فوراً
+      // تحديث الإحصائيات اليومية
       await fetchGarageDailyStats();
       
       const paymentText = pc === 'cash' ? 'نقداً (كاش)' : 'من المحفظة الرقمية';
@@ -888,7 +873,6 @@ export default function GarageDashboard() {
       console.error('Payment Error:', err);
       toast.error(err.message || 'فشلت عملية التحصيل، برجاء المحاولة مجدداً.');
     } finally { 
-      // ⚡ 8. فك التجميد فوراً بالملي ثانية لضمان مزامنة لحظية مع شاشة العميل
       pausePolling(0);
       setTimeout(() => { isEndingSessionRef.current = false; }, 800); 
     }
@@ -919,14 +903,13 @@ export default function GarageDashboard() {
     setShowSettings(true);
   };
 
-  // 🚗 دالة وصول السيارة: توقيت دقيق موحد وبدون تأخير
+  // 🚗 دالة وصول السيارة
   const handleCarArrived = async (car: any) => {
     const carId: string = car.id; 
     const carPlate: string = car.carPlate;
     if (processedCarsRef.current.has(carId)) return;
     processedCarsRef.current.add(carId);
     
-    // ⚡ تقليل التجميد من 10 ثوانٍ إلى ثانيتين فقط
     pausePolling(2000);
     
     try {
@@ -941,7 +924,6 @@ export default function GarageDashboard() {
       const ro = offers.find(o => normalizePlate(o.carPlate) === np && (o.status === 'pending' || o.status === 'accepted'));
       if (ro) cancelOffer(ro.id);
 
-      // ⏱️ توحيد التوقيت باستخدام ISO لمنع فرق الثواني بين جهاز العميل والسايس
       const startTimeISO = new Date(getServerNow()).toISOString();
 
       await addSession({ 
@@ -965,12 +947,10 @@ export default function GarageDashboard() {
       processedCarsRef.current.delete(carId); 
       toast.error('حدث خطأ، حاول مرة أخرى'); 
     } finally {
-      // ⚡ فك التجميد فوراً لتشغيل العداد في نفس اللحظة على جميع الأجهزة
       pausePolling(0);
     }
   };
 
-  // ✅ تم التعديل: حساب دقيق ومزامن للوقت المتبقي لسيارة في الطريق
   const calculateRemainingTime = (st: number | string, em: number) =>
     Math.max(0, em - Math.floor((getServerNow() - toMs(st)) / 60000));
 
@@ -1191,19 +1171,21 @@ export default function GarageDashboard() {
               )}
             </div>
 
-            {/* 💵💳 اختيار طريقة التحصيل: كاش إجباري لليدوي، ومتعدد لجلسات التطبيق */}
+            {/* 💵 قفل طريقة التحصيل على كاش فقط للسايس أو للجلسات اليدوية */}
             <div className="mb-5">
               <h4 className="font-black mb-3 text-right" style={{ fontSize: 12, color: '#7B8CA6' }}>طريقة التحصيل</h4>
 
-              {confirmSession.source === 'manual' ? (
-                /* الجلسات اليدوية: سداد نقدي إجباري */
+              {isValet || confirmSession.source === 'manual' ? (
+                /* 🔒 إجبار التحصيل النقدي كاش للسايس */
                 <div className="text-center" style={{ background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', borderRadius: 20, padding: 18, color: '#fff', boxShadow: '0 4px 14px rgba(0,204,102,0.2)' }}>
                   <div style={{ fontSize: 32, marginBottom: 4 }}>💵</div>
-                  <div className="font-black" style={{ fontSize: 15 }}>سداد نقدي كاش (يدوياً)</div>
-                  <div className="text-[10px] opacity-90 mt-1 font-bold">العميل غير مسجل بالتطبيق - يتم التحصيل يداً بيد</div>
+                  <div className="font-black" style={{ fontSize: 16 }}>سداد نقدي (كاش)</div>
+                  <div className="text-[11px] opacity-90 mt-1 font-bold">
+                    {isValet ? 'صلاحية السايس: تحصيل نقدي كاش يداً بيد من العميل' : 'العميل غير مسجل بالتطبيق - يتم التحصيل يداً بيد'}
+                  </div>
                 </div>
               ) : (
-                /* جلسات التطبيق: خيارات متعددة حسب إعدادات الجراج */
+                /* خيارات المالك في حال كان هو من يقوم بالإقفال لجلسة تطبيق */
                 <div className="space-y-2">
                   {(garage.payment_mode === 'cash' || garage.payment_mode === 'both' || !garage.payment_mode) && (
                     <button
@@ -1565,8 +1547,8 @@ export default function GarageDashboard() {
 
             <div className="flex gap-1.5 mb-2">
               <button onClick={() => { setLogDateFrom(getLocalToday()); setLogDateTo(getLocalToday()); }} className="flex-1 active:scale-95" style={{ background: '#0066FF', color: '#ffffff', padding: '6px 0', borderRadius: 10, fontSize: 10, fontWeight: 950, textShadow: '0 1px 1px rgba(0,0,0,0.15)', boxShadow: '0 2px 8px rgba(0,102,255,0.2)', border: 'none' }}>📅 اليوم</button>
-              <button onClick={() => { const d = new Date(); d.setDate(d.getDate() - 7); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`); setLogDateTo(getLocalToday()); }} className="flex-1 active:scale-95" style={{ background: '#F0F4FF', color: '#334155', padding: '6px 0', borderRadius: 10, fontSize: 10, fontWeight: 950, border: '1.5px solid #D0DCFF' }}>آخر أسبوع</button>
-              <button onClick={() => { const d = new Date(); d.setDate(1); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`); setLogDateTo(getLocalToday()); }} className="flex-1 active:scale-95" style={{ background: '#F0F4FF', color: '#334155', padding: '6px 0', borderRadius: 10, fontSize: 10, fontWeight: 950, border: '1.5px solid #D0DCFF' }}>هذا الشهر</button>
+              <button onClick={() => { const d = new Date(getServerNow()); d.setDate(d.getDate() - 7); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`); setLogDateTo(getLocalToday()); }} className="flex-1 active:scale-95" style={{ background: '#F0F4FF', color: '#334155', padding: '6px 0', borderRadius: 10, fontSize: 10, fontWeight: 950, border: '1.5px solid #D0DCFF' }}>آخر أسبوع</button>
+              <button onClick={() => { const d = new Date(getServerNow()); d.setDate(1); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`); setLogDateTo(getLocalToday()); }} className="flex-1 active:scale-95" style={{ background: '#F0F4FF', color: '#334155', padding: '6px 0', borderRadius: 10, fontSize: 10, fontWeight: 950, border: '1.5px solid #D0DCFF' }}>هذا الشهر</button>
             </div>
 
             <div className="flex gap-1.5">
@@ -1812,7 +1794,7 @@ export default function GarageDashboard() {
                           if (currentValet) {
                             await assignSessionToValet(session.id, currentValet);
                           }
-                          await confirmRevenue(session.id); 
+                          await confirmRevenue(session.id, currentValet); 
                           await fetchGarageDailyStats(); 
                           toast.success('تأكيد ✅'); 
                         }} 
