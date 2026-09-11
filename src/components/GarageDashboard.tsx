@@ -4,7 +4,7 @@ import {
   Car, Clock, LogOut, Plus, CheckCircle, XCircle, Settings,
   Minus, Save, MapPin, Edit3, Navigation, Phone, CarFront, FileText,
   CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
-  Search, X, CreditCard, AlertTriangle, Lock, Crosshair
+  Search, X, CreditCard,
 } from 'lucide-react';
 // ⏱️ استيراد getServerNow لمزامنة التوقيت بدقة بالملي ثانية
 import { useStore, pausePolling, normalizePlate, getServerNow } from '../store';
@@ -14,7 +14,6 @@ import toast from 'react-hot-toast';
 import { subscribeToPush } from '../lib/pushManager';
 
 const UNDO_TIMEOUT_SECONDS = 30;
-const MAX_ALLOWED_DISTANCE_METERS = 250; // 🎯 أقصى مسافة مسموح بها للسايس (250 متر)
 
 interface UndoableSession {
   sessionId: string;
@@ -205,7 +204,6 @@ interface ActiveSessionCardProps {
   session: any;
   basePrice: number;
   undoableSession?: UndoableSession;
-  isOutOfRange?: boolean;
   onEndSession: (id: string, carPlate: string, cost: number, hours: number, minutes: number, source: 'app' | 'manual', agreedPrice?: number) => void;
   onUndo: (un: UndoableSession) => void;
   getUndoRemainingSeconds: (addedAt: number) => number;
@@ -215,7 +213,6 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
   session: s,
   basePrice,
   undoableSession: un,
-  isOutOfRange = false,
   onEndSession,
   onUndo,
   getUndoRemainingSeconds,
@@ -268,30 +265,23 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
       <div className="flex justify-between items-center" style={{ paddingTop: 4 }}>
         <div className="flex items-center gap-1.5">
           <button 
-            onClick={() => {
-              if (isOutOfRange) {
-                toast.error('⚠️ لا يمكنك التحصيل وأنت خارج نطاق الجراج (أكثر من 250 متر)');
-                return;
-              }
-              onEndSession(s.id, s.carPlate, cost, hrs, mins, s.source, s.agreedPrice);
-            }} 
-            disabled={isOutOfRange}
-            className={`active:scale-95 transition-all flex items-center justify-center font-black ${isOutOfRange ? 'opacity-50 cursor-not-allowed !bg-slate-400' : '!text-white'}`}
+            onClick={() => onEndSession(s.id, s.carPlate, cost, hrs, mins, s.source, s.agreedPrice)} 
+            className="active:scale-95 transition-all flex items-center justify-center font-black !text-white"
             style={{ 
-              background: isOutOfRange ? '#94a3b8' : 'linear-gradient(135deg,#FF3333,#CC0000)', 
+              background: 'linear-gradient(135deg,#FF3333,#CC0000)', 
               padding: '8px 14px',
               borderRadius: 12, 
               fontSize: '11.5px',
               fontWeight: 900,
               color: '#ffffff',
               border: 'none',
-              cursor: isOutOfRange ? 'not-allowed' : 'pointer',
+              cursor: 'pointer',
               textShadow: '0 1px 2px rgba(0,0,0,0.35)'
             }}
           >
-            {isOutOfRange ? <><Lock size={12} className="ml-1" /> مقفل خارج النطاق</> : 'إنهاء وتحصيل'}
+            إنهاء وتحصيل
           </button>
-          {un && !isOutOfRange && (
+          {un && (
             <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} onClick={() => onUndo(un)} className="font-black flex items-center gap-1 active:scale-95 text-white" style={{ background: '#FF9500', padding: '8px 12px', borderRadius: 12, fontSize: 10, border: 'none' }}>
               <Undo2 size={12} /> ({getUndoRemainingSeconds(un.addedAt)}ث)
             </motion.button>
@@ -415,9 +405,6 @@ export default function GarageDashboard() {
   const [editPaymentMode, setEditPaymentMode] = useState<'cash' | 'wallet' | 'both'>(
     (garage?.payment_mode as 'cash' | 'wallet' | 'both') || 'both'
   );
-  const [editLatitude, setEditLatitude] = useState<number | null>((garage as any)?.latitude || null);
-  const [editLongitude, setEditLongitude] = useState<number | null>((garage as any)?.longitude || null);
-
   const [editValet1Name, setEditValet1Name] = useState(garage?.valetName1 || '');
   const [editValet1Pass, setEditValet1Pass] = useState(garage?.valetPassword1 || '');
   const [editValet2Name, setEditValet2Name] = useState(garage?.valetName2 || '');
@@ -442,116 +429,10 @@ export default function GarageDashboard() {
   const [plateSearch, setPlateSearch] = useState('');
 
   const [showSwitcher, setShowSwitcher] = useState(false);
-  
-  // 🛰️ متغيرات حالة الـ GPS الآمنة
-  const [valetLocations, setValetLocations] = useState<any[]>([]);
-  const [myValetDistance, setMyValetDistance] = useState<number | null>(null);
-  const [gpsActive, setGpsActive] = useState<boolean>(true);
-
-  // هل الجراج لديه إحداثيات مسجلة؟
-  const hasGarageGps = Boolean((garage as any)?.latitude && (garage as any)?.longitude);
-
-  // السايس خارج النطاق فقط إذا كان الجراج مسجل له إحداثيات والمسافة تتجاوز 250 متر
-  const isOutOfRange = isValet && hasGarageGps && (myValetDistance === null || myValetDistance > MAX_ALLOWED_DISTANCE_METERS);
-
   const myGarages = useMemo(() => {
     if (!garage) return [];
     return getMyOwnedGarages(garage.ownerPhone || garage.phone || '');
   }, [getMyOwnedGarages, garage, garages]);
-
-  // 🛰️ تأثير إرسال إشارات الـ GPS الحية المشفرة والآمنة (للسايس عبر السيرفر RPC)
-  useEffect(() => {
-    if (!isValet || !currentGarageId || !valetNumber) return;
-
-    let watchId: number | null = null;
-
-    // الدالة الآمنة التي تتصل بالسيرفر مباشرة
-    const sendGpsSignal = async (lat: number, lng: number) => {
-      try {
-        const { data, error } = await supabase.rpc('update_valet_gps', {
-          p_garage_id: currentGarageId,
-          p_valet_number: parseInt(valetNumber),
-          p_latitude: lat,
-          p_longitude: lng,
-        });
-
-        if (!error && data) {
-          // السيرفر هو الذي يرجع المسافة بعد حسابها بدقة وأمان
-          setMyValetDistance(data.distance_meters);
-          setGpsActive(true);
-        }
-      } catch (err) {
-        console.warn('Secure GPS transmission error:', err);
-      }
-    };
-
-    if ('geolocation' in navigator) {
-      watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          sendGpsSignal(
-            position.coords.latitude, 
-            position.coords.longitude
-          );
-        },
-        (error) => {
-          console.warn('فشل التقاط GPS:', error.message);
-          setGpsActive(false);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
-      );
-    } else {
-      setGpsActive(false);
-    }
-
-    return () => {
-      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-    };
-  }, [isValet, currentGarageId, valetNumber]);
-
-  // 📡 جلب مواقع وحالة اتصال السياس كل 10 ثوانٍ (للمالك)
-  useEffect(() => {
-    if (!isOwner || !currentGarageId) return;
-
-    const fetchLiveGpsData = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('valet_locations')
-          .select('*')
-          .eq('garage_id', currentGarageId);
-
-        if (!error && data) {
-          setValetLocations(data);
-        }
-      } catch (err) {
-        console.warn('Error fetching valet positions:', err);
-      }
-    };
-
-    fetchLiveGpsData();
-    const intervalId = setInterval(fetchLiveGpsData, 10000); // تحديث دوري إجباري كل 10 ثوانٍ
-
-    return () => clearInterval(intervalId);
-  }, [isOwner, currentGarageId]);
-
-  // التقاط موقع الجراج الحالي للمالك بضغطة زر
-  const handleCaptureCurrentGarageLocation = () => {
-    if (!('geolocation' in navigator)) {
-      toast.error('المتصفح لا يدعم الـ GPS');
-      return;
-    }
-    toast.loading('جاري التقاط إحداثيات موقعك الحالي...', { id: 'gps-loading' });
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setEditLatitude(pos.coords.latitude);
-        setEditLongitude(pos.coords.longitude);
-        toast.success(`تم تحديد موقع الجراج بنجاح! 📍`, { id: 'gps-loading' });
-      },
-      (err) => {
-        toast.error('تعذر تحديد الموقع. تأكد من تفعيل الـ GPS بالهاتف.', { id: 'gps-loading' });
-      },
-      { enableHighAccuracy: true }
-    );
-  };
 
   useEffect(() => {
     if (!isValet || !currentGarageId) return;
@@ -636,22 +517,19 @@ export default function GarageDashboard() {
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [currentGarageId, fetchAll]);
 
-  // 🔕 كتم الإشعارات والتنبيهات للسيارات إذا كان السايس خارج الـ 250 متر
   useEffect(() => {
     const ids = new Set(carsOnTheWay.map(c => c.id));
     carsOnTheWay.forEach(car => {
       if (!prevIncomingIdsRef.current.has(car.id) && !document.hidden) {
-        if (!isOutOfRange) {
-          fireNewCarAlert(car.carPlate);
-          toast(`🚨 سيارة في الطريق!\n🚗 رقم السيارة: ${car.carPlate}`, { duration: 10000, icon: '🚨' });
-        }
+        fireNewCarAlert(car.carPlate);
+        toast(`🚨 سيارة في الطريق!\n🚗 رقم السيارة: ${car.carPlate}`, { duration: 10000, icon: '🚨' });
       }
     });
     prevIncomingIdsRef.current.forEach(id => {
       if (!ids.has(id)) { approachAlertedRef.current.delete(id); try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }
     });
     prevIncomingIdsRef.current = ids;
-  }, [carsOnTheWay, isOutOfRange]);
+  }, [carsOnTheWay]);
 
   const [carsTick, setCarsTick] = useState(0);
   useEffect(() => {
@@ -668,19 +546,15 @@ export default function GarageDashboard() {
       const rem = Math.max(0, car.estimatedArrival - el);
       if (rem <= 2 && rem >= 0 && car.estimatedArrival > 2) {
         approachAlertedRef.current.add(car.id);
-        if (!document.hidden && !isOutOfRange) { 
-          fireApproachingAlert(car.carPlate); 
-          toast(`🚗 على وشك الوصول!\n${car.carPlate}`, { duration: 10000, icon: '⏰' }); 
-        }
+        if (!document.hidden) { fireApproachingAlert(car.carPlate); toast(`🚗 على وشك الوصول!\n${car.carPlate}`, { duration: 10000, icon: '⏰' }); }
       }
     });
-  }, [carsOnTheWay, carsTick, isOutOfRange]);
+  }, [carsOnTheWay, carsTick]);
 
   useEffect(() => {
-    if (isOutOfRange) return;
     garageOffers.forEach(o => { if (!prevOfferIdsRef.current.has(o.id)) toast(`💰 عرض جديد!\n🚗 ${o.carPlate} - ${o.offeredPrice} ج.م/ساعة`, { duration: 8000, icon: '💰' }); });
     prevOfferIdsRef.current = new Set(garageOffers.map(o => o.id));
-  }, [garageOffers, isOutOfRange]);
+  }, [garageOffers]);
 
   useEffect(() => { return () => { try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }; }, []);
 
@@ -905,11 +779,8 @@ export default function GarageDashboard() {
     }
   }
 
+  // 🚀 دالة إضافة سيارة يدوياً: توقيت موحد ودقيق
   const handleAddCar = async () => {
-    if (isOutOfRange) {
-      toast.error('⚠️ لا يمكنك إضافة سيارات وأنت خارج نطاق الـ 250 متر من الجراج!');
-      return;
-    }
     if (!newCarPlate.trim()) { toast.error('أدخل رقم السيارة'); return; }
     const cp = newCarPlate.trim(); 
     const pr = newCarPrice; 
@@ -935,11 +806,6 @@ export default function GarageDashboard() {
   };
 
   const openConfirmPayment = (sid: string, cp: string, cost: number, hrs: number, minutes: number, source: 'app' | 'manual', ap?: number) => {
-    if (isOutOfRange) {
-      toast.error('⚠️ أنت خارج نطاق الجراج، لا يمكنك إجراء التحصيل الآن!');
-      return;
-    }
-
     const sessionObj = activeSessions.find(s => s.id === sid);
     const isFreeApplied = sessionObj?.isFirstFreeSession === true;
     
@@ -959,14 +825,12 @@ export default function GarageDashboard() {
       agreedPrice: ap 
     });
 
+    // 💵 تثبيت طريقة التحصيل دائماً على كاش
     setConfirmPaymentMethod('cash');
   };
 
+  // 🌟 دالة التحصيل المطورة: السايس يحصل كاش دائماً في كل الحالات
   const handleConfirmPayment = async () => {
-    if (isOutOfRange) {
-      toast.error('⚠️ أنت خارج نطاق الجراج، يرجى الاقتراب لإتمام التحصيل!');
-      return;
-    }
     if (!confirmSession || isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
     
@@ -976,8 +840,10 @@ export default function GarageDashboard() {
       const sc = { ...confirmSession }; 
       const sd = useStore.getState().sessions.find(s => s.id === sc.id);
       
+      // 💵 🔒 قفل إجباري: السايس يُحصّل كاش دائماً في كل الحالات (يدوي أو تطبيق)
       const pc = (isValet || sc.source === 'manual') ? 'cash' : (confirmPaymentMethod || 'cash');
       
+      // 🎁 حساب الدقائق المجانية الترحيبية إن وُجدت
       let freeMinutesApplied = 0;
       if (sd?.isFirstFreeSession === true) {
         const elapsedSeconds = Math.floor((getServerNow() - toMs(sd.startTime)) / 1000);
@@ -986,15 +852,19 @@ export default function GarageDashboard() {
         }
       }
 
+      // 🅿️ تحديد السايس المسؤول بدقة
       const currentValet = isValet 
         ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`).trim() 
         : 'المالك';
 
+      // تحديث واجهة المستخدم فورياً
       setConfirmSession(null);
       setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
       
+      // إنهاء الجلسة وحفظها بالسيرفر
       await endSession(sc.id, sc.cost, pc, freeMinutesApplied, currentValet);
       
+      // تحديث الإحصائيات اليومية
       await fetchGarageDailyStats();
       
       const paymentText = pc === 'cash' ? 'نقداً (كاش)' : 'من المحفظة الرقمية';
@@ -1008,19 +878,17 @@ export default function GarageDashboard() {
     }
   };
 
-  const handleSaveSettings = async () => {
-    await updateGarage(garage.id, {
+  const handleSaveSettings = () => {
+    updateGarage(garage.id, {
       basePrice: editPrice, 
       availableSpots: Math.min(editSpots, editCapacity), 
       capacity: editCapacity,
       payment_mode: editPaymentMode,
-      latitude: editLatitude,
-      longitude: editLongitude,
       valetName1: editValet1Name.trim(), valetPassword1: editValet1Pass.trim(),
       valetName2: editValet2Name.trim(), valetPassword2: editValet2Pass.trim(),
       valetName3: editValet3Name.trim(), valetPassword3: editValet3Pass.trim(),
-    } as any);
-    toast.success('تم حفظ وتحديث الإعدادات والموقع بنجاح ⚡'); 
+    });
+    toast.success('تم تحديث الإعدادات ⚡'); 
     setShowSettings(false);
   };
 
@@ -1029,19 +897,14 @@ export default function GarageDashboard() {
     setEditSpots(garage.availableSpots); 
     setEditCapacity(garage.capacity);
     setEditPaymentMode((garage.payment_mode as 'cash' | 'wallet' | 'both') || 'both');
-    setEditLatitude((garage as any)?.latitude || null);
-    setEditLongitude((garage as any)?.longitude || null);
     setEditValet1Name(garage.valetName1 || ''); setEditValet1Pass(garage.valetPassword1 || '');
     setEditValet2Name(garage.valetName2 || ''); setEditValet2Pass(garage.valetPassword2 || '');
     setEditValet3Name(garage.valetName3 || ''); setEditValet3Pass(garage.valetPassword3 || '');
     setShowSettings(true);
   };
 
+  // 🚗 دالة وصول السيارة
   const handleCarArrived = async (car: any) => {
-    if (isOutOfRange) {
-      toast.error('⚠️ لا يمكنك بدء حساب السيارة وأنت خارج نطاق الجراج!');
-      return;
-    }
     const carId: string = car.id; 
     const carPlate: string = car.carPlate;
     if (processedCarsRef.current.has(carId)) return;
@@ -1133,40 +996,6 @@ export default function GarageDashboard() {
         {isValet && <div style={{ width: 48 }} />}
       </div>
 
-      {/* تنبيه للمالك إذا لم يتم تحديد موقع الجراج بعد */}
-      {isOwner && !hasGarageGps && (
-        <div onClick={openSettings} className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-2xl flex items-center justify-between cursor-pointer active:scale-98">
-          <span className="text-[11px] font-black bg-amber-500 text-white px-2 py-1 rounded-lg">تحديد الآن 📍</span>
-          <div className="text-right">
-            <div className="font-black text-xs text-amber-900">⚠️ موقع الجراج غير محدد على الخريطة!</div>
-            <div className="text-[10px] text-amber-700">اضغط هنا لتثبيت موقع الجراج وتفعيل حماية السياس بالـ GPS</div>
-          </div>
-        </div>
-      )}
-
-      {/* ⚠️ شريط تحذيري بارز للسايس عند خروجه من نطاق الـ 250 متر */}
-      {isValet && isOutOfRange && (
-        <motion.div 
-          initial={{ opacity: 0, y: -10 }} 
-          animate={{ opacity: 1, y: 0 }} 
-          className="mb-5 p-4 rounded-2xl bg-rose-50 border-2 border-rose-300 text-rose-800 shadow-md text-right flex items-start gap-3"
-        >
-          <div className="p-2 rounded-xl bg-rose-200 text-rose-700 shrink-0">
-            <AlertTriangle size={24} />
-          </div>
-          <div className="flex-1">
-            <h4 className="font-black text-sm mb-1 text-rose-900">
-              ⛔ أنت خارج نطاق الجراج المسموح (أكثر من 250 متر)
-            </h4>
-            <p className="text-xs font-bold leading-relaxed text-rose-700">
-              {myValetDistance !== null 
-                ? `أنت حالياً على بُعد ${Math.round(myValetDistance)} متر. تم قفل استقبال الطلبات وإضافة السيارات والتحصيل حتى تعود لنطاق الجراج.`
-                : 'برجاء تفعيل خدمة الموقع الجغرافي (GPS) للسماح لك باستقبال السيارات والتحصيل.'}
-            </p>
-          </div>
-        </motion.div>
-      )}
-
       {/* Settings Modal */}
       {isOwner && showSettings && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)' }} onClick={() => setShowSettings(false)}>
@@ -1174,27 +1003,6 @@ export default function GarageDashboard() {
             <div className="flex items-center justify-between mb-6">
               <button onClick={() => setShowSettings(false)} style={{ color: '#94a3b8', fontSize: 20 }}>✕</button>
               <h3 className="font-black flex items-center gap-2" style={{ fontSize: 18 }}><Settings size={18} style={{ color: '#0066FF' }} /> إعدادات الجراج</h3>
-            </div>
-
-            {/* 📍 تثبيت موقع الجراج على الخريطة */}
-            <div className="mb-6">
-              <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>📍 إحداثيات موقع الجراج (GPS)</label>
-              <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 14, border: '2px solid #D0DCFF' }}>
-                <button
-                  type="button"
-                  onClick={handleCaptureCurrentGarageLocation}
-                  className="w-full py-3 px-4 rounded-xl font-black text-white flex items-center justify-center gap-2 active:scale-95 shadow-md"
-                  style={{ background: 'linear-gradient(135deg, #0066FF 0%, #0044DD 100%)' }}
-                >
-                  <Crosshair size={18} />
-                  <span>تثبيت موقع الجراج من مكاني الآن 📍</span>
-                </button>
-                <div className="mt-2 text-center text-[10px] font-bold text-slate-500">
-                  {editLatitude && editLongitude 
-                    ? `🟢 تم التحديد: (${editLatitude.toFixed(4)}, ${editLongitude.toFixed(4)})` 
-                    : '⚪ لم يتم تسجيل الإحداثيات بعد'}
-                </div>
-              </div>
             </div>
             
             {/* سعر الساعة */}
@@ -1363,10 +1171,12 @@ export default function GarageDashboard() {
               )}
             </div>
 
+            {/* 💵 قفل طريقة التحصيل على كاش فقط للسايس أو للجلسات اليدوية */}
             <div className="mb-5">
               <h4 className="font-black mb-3 text-right" style={{ fontSize: 12, color: '#7B8CA6' }}>طريقة التحصيل</h4>
 
               {isValet || confirmSession.source === 'manual' ? (
+                /* 🔒 إجبار التحصيل النقدي كاش للسايس */
                 <div className="text-center" style={{ background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', borderRadius: 20, padding: 18, color: '#fff', boxShadow: '0 4px 14px rgba(0,204,102,0.2)' }}>
                   <div style={{ fontSize: 32, marginBottom: 4 }}>💵</div>
                   <div className="font-black" style={{ fontSize: 16 }}>سداد نقدي (كاش)</div>
@@ -1375,6 +1185,7 @@ export default function GarageDashboard() {
                   </div>
                 </div>
               ) : (
+                /* خيارات المالك في حال كان هو من يقوم بالإقفال لجلسة تطبيق */
                 <div className="space-y-2">
                   {(garage.payment_mode === 'cash' || garage.payment_mode === 'both' || !garage.payment_mode) && (
                     <button
@@ -1505,85 +1316,11 @@ export default function GarageDashboard() {
         )}
       </div>
 
-      {/* 📡 كارت حالة تواجد السياس المباشرة (GPS Live) للمالك فقط */}
-      {isOwner && (
-        <div className="mb-5 bg-white border-2 border-blue-100 rounded-2xl p-4 shadow-sm text-right">
-          <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
-            <span className="text-[10px] bg-blue-50 text-blue-600 font-black px-2 py-0.5 rounded-lg animate-pulse">📡 مباشر</span>
-            <h3 className="font-black text-slate-800 text-[13.5px] flex items-center gap-1.5">
-              📡 حالة تواجد السياس المباشرة (GPS Live)
-            </h3>
-          </div>
-          <div className="space-y-2.5">
-            {[
-              { n: 1, name: garage.valetName1 || 'سايس 1', activeKey: 'valet1Active' },
-              { n: 2, name: garage.valetName2 || 'سايس 2', activeKey: 'valet2Active' },
-              { n: 3, name: garage.valetName3 || 'سايس 3', activeKey: 'valet3Active' },
-            ].map(v => {
-              const loc = valetLocations.find(l => l.valet_number === v.n);
-              const isConfigured = (garage as any)[v.activeKey];
-
-              let status: 'online_inside' | 'online_outside' | 'offline' = 'offline';
-              let formattedDistance = 'غير متصل ⚪';
-
-              if (isConfigured && loc && loc.last_seen) {
-                const lastSeenMs = new Date(loc.last_seen).getTime();
-                const isRecent = (getServerNow() - lastSeenMs) < 20000;
-
-                if (isRecent) {
-                  const dist = loc.distance_meters ?? 9999;
-                  if (dist <= MAX_ALLOWED_DISTANCE_METERS) {
-                    status = 'online_inside';
-                    formattedDistance = `داخل الجراج • على بُعد ${Math.round(dist)} متر`;
-                  } else {
-                    status = 'online_outside';
-                    formattedDistance = dist < 1000 
-                      ? `خارج نطاق الجراج • على بُعد ${Math.round(dist)} متر` 
-                      : `خارج نطاق الجراج • على بُعد ${(dist / 1000).toFixed(1)} كم`;
-                  }
-                }
-              }
-
-              return (
-                <div key={v.n} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-50 bg-slate-50/50">
-                  <div className="flex items-center gap-1.5">
-                    {status === 'online_inside' ? (
-                      <span className="font-black text-[10.5px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                        {formattedDistance}
-                      </span>
-                    ) : status === 'online_outside' ? (
-                      <span className="font-black text-[10.5px] text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-                        {formattedDistance}
-                      </span>
-                    ) : (
-                      <span className="font-bold text-[10.5px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">
-                        غير متصل ⚪
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="text-right">
-                      <div className="font-black text-xs text-slate-800">{v.name}</div>
-                      <div className="text-[9px] text-slate-400 font-bold">🅿️ سايس {v.n}</div>
-                    </div>
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs ${status !== 'offline' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'}`}>
-                      {v.n}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {/* السايس فقط */}
       {isValet && (
         <>
-          {/* سيارات في الطريق (تظهر فقط إذا كان السايس داخل النطاق) */}
-          {!isOutOfRange && carsOnTheWay.length > 0 && (
+          {/* سيارات في الطريق */}
+          {carsOnTheWay.length > 0 && (
             <div className="mb-5">
               <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#0099DD' }}>
                 <span className="font-black" style={{ background: '#0099DD', color: '#fff', fontSize: 12, padding: '3px 12px', borderRadius: 20 }}>
@@ -1642,8 +1379,7 @@ export default function GarageDashboard() {
             </div>
           )}
 
-          {/* عروض الأسعار (تظهر فقط إذا كان داخل النطاق) */}
-          {!isOutOfRange && garageOffers.length > 0 && (
+          {garageOffers.length > 0 && (
             <div className="mb-5">
               <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#FF9500' }}>عروض أسعار ({garageOffers.length})</h3>
               <div className="space-y-3">
@@ -1660,29 +1396,9 @@ export default function GarageDashboard() {
             </div>
           )}
 
-          {/* إضافة سيارة (مقفل عند الخروج من النطاق) */}
           <div className="mb-5">
             {!showAddCar ? (
-              <button 
-                onClick={() => {
-                  if (isOutOfRange) {
-                    toast.error('⚠️ لا يمكنك إضافة سيارات وأنت خارج نطاق الـ 250 متر!');
-                    return;
-                  }
-                  setShowAddCar(true);
-                }} 
-                disabled={garage.availableSpots <= 0 || isOutOfRange} 
-                className={`w-full font-black flex items-center justify-center gap-2 active:scale-95 ${isOutOfRange ? 'opacity-50 cursor-not-allowed' : ''}`} 
-                style={{ 
-                  background: isOutOfRange ? '#94a3b8' : garage.availableSpots > 0 ? 'linear-gradient(135deg,#0066FF,#0044DD)' : '#D0DCFF', 
-                  color: garage.availableSpots > 0 && !isOutOfRange ? '#fff' : '#94a3b8', 
-                  borderRadius: 22, 
-                  padding: 18, 
-                  fontSize: 15 
-                }}
-              >
-                {isOutOfRange ? <><Lock size={18} /> مقفل (أنت خارج نطاق الـ 250 متر)</> : <><Plus size={22} /> {garage.availableSpots > 0 ? 'إضافة سيارة جديدة' : 'لا توجد أماكن'}</>}
-              </button>
+              <button onClick={() => setShowAddCar(true)} disabled={garage.availableSpots <= 0} className="w-full font-black flex items-center justify-center gap-2 active:scale-95" style={{ background: garage.availableSpots > 0 ? 'linear-gradient(135deg,#0066FF,#0044DD)' : '#D0DCFF', color: garage.availableSpots > 0 ? '#fff' : '#94a3b8', borderRadius: 22, padding: 18, fontSize: 15 }}><Plus size={22} /> {garage.availableSpots > 0 ? 'إضافة سيارة جديدة' : 'لا توجد أماكن'}</button>
             ) : (
               <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3" style={{ background: '#fff', border: '2.5px solid #0066FF', borderRadius: 24, padding: 18 }}>
                 <input className="w-full font-bold text-right outline-none" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 14, borderRadius: 18, fontSize: 15 }} placeholder="رقم لوحة السيارة" value={newCarPlate} onChange={e => setNewCarPlate(e.target.value)} />
@@ -1761,7 +1477,6 @@ export default function GarageDashboard() {
                       session={s}
                       basePrice={garage.basePrice}
                       undoableSession={un}
-                      isOutOfRange={isOutOfRange}
                       onEndSession={openConfirmPayment}
                       onUndo={handleUndoSession}
                       getUndoRemainingSeconds={getUndoRemainingSeconds}
@@ -2075,10 +1790,6 @@ export default function GarageDashboard() {
                     {!isSettled && !isC ? (
                       <button 
                         onClick={async () => { 
-                          if (isOutOfRange) {
-                            toast.error('⚠️ لا يمكنك تأكيد العمليات وأنت خارج نطاق الجراج!');
-                            return;
-                          }
                           const currentValet = isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '';
                           if (currentValet) {
                             await assignSessionToValet(session.id, currentValet);
@@ -2087,8 +1798,7 @@ export default function GarageDashboard() {
                           await fetchGarageDailyStats(); 
                           toast.success('تأكيد ✅'); 
                         }} 
-                        disabled={isOutOfRange}
-                        className={`active:scale-95 ${isOutOfRange ? 'opacity-50 cursor-not-allowed !bg-slate-400' : ''}`} 
+                        className="active:scale-95" 
                         style={{ background: '#FF9500', color: '#ffffff', padding: '2.5px 8px', borderRadius: 8, fontSize: 8.5, fontWeight: 950, textShadow: '0 1px 1px rgba(0,0,0,0.15)', border: 'none' }}
                       >
                         ⏳ تأكيد
