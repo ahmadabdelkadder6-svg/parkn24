@@ -4,17 +4,18 @@ import {
   Car, Clock, LogOut, Plus, CheckCircle, XCircle, Settings,
   Minus, Save, MapPin, Edit3, Navigation, Phone, CarFront, FileText,
   CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
-  Search, X, CreditCard, AlertTriangle, Lock
+  Search, X, CreditCard, Compass, AlertCircle, RefreshCw, Radio,
 } from 'lucide-react';
-// ⏱️ استيراد getServerNow لمزامنة التوقيت بدقة بالملي ثانية
 import { useStore, pausePolling, normalizePlate, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
+import { calculateDistance } from '../utils/distance';
 import toast from 'react-hot-toast';
 import { subscribeToPush } from '../lib/pushManager';
 
 const UNDO_TIMEOUT_SECONDS = 30;
-const MAX_ALLOWED_DISTANCE_METERS = 250; // 🎯 أقصى مسافة مسموح بها للسايس (250 متر)
+// 📍 أقصى مسافة مسموحة للسايس (250 متر حول الجراج)
+const MAX_VALET_DISTANCE_METERS = 250;
 
 interface UndoableSession {
   sessionId: string;
@@ -205,7 +206,6 @@ interface ActiveSessionCardProps {
   session: any;
   basePrice: number;
   undoableSession?: UndoableSession;
-  isOutOfRange?: boolean;
   onEndSession: (id: string, carPlate: string, cost: number, hours: number, minutes: number, source: 'app' | 'manual', agreedPrice?: number) => void;
   onUndo: (un: UndoableSession) => void;
   getUndoRemainingSeconds: (addedAt: number) => number;
@@ -215,7 +215,6 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
   session: s,
   basePrice,
   undoableSession: un,
-  isOutOfRange = false,
   onEndSession,
   onUndo,
   getUndoRemainingSeconds,
@@ -268,30 +267,23 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
       <div className="flex justify-between items-center" style={{ paddingTop: 4 }}>
         <div className="flex items-center gap-1.5">
           <button 
-            onClick={() => {
-              if (isOutOfRange) {
-                toast.error('⚠️ لا يمكنك التحصيل وأنت خارج نطاق الجراج (أكثر من 250 متر)');
-                return;
-              }
-              onEndSession(s.id, s.carPlate, cost, hrs, mins, s.source, s.agreedPrice);
-            }} 
-            disabled={isOutOfRange}
-            className={`active:scale-95 transition-all flex items-center justify-center font-black ${isOutOfRange ? 'opacity-50 cursor-not-allowed !bg-slate-400' : '!text-white'}`}
+            onClick={() => onEndSession(s.id, s.carPlate, cost, hrs, mins, s.source, s.agreedPrice)} 
+            className="active:scale-95 transition-all flex items-center justify-center font-black !text-white"
             style={{ 
-              background: isOutOfRange ? '#94a3b8' : 'linear-gradient(135deg,#FF3333,#CC0000)', 
+              background: 'linear-gradient(135deg,#FF3333,#CC0000)', 
               padding: '8px 14px',
               borderRadius: 12, 
               fontSize: '11.5px',
               fontWeight: 900,
               color: '#ffffff',
               border: 'none',
-              cursor: isOutOfRange ? 'not-allowed' : 'pointer',
+              cursor: 'pointer',
               textShadow: '0 1px 2px rgba(0,0,0,0.35)'
             }}
           >
-            {isOutOfRange ? <><Lock size={12} className="ml-1" /> مقفل خارج النطاق</> : 'إنهاء وتحصيل'}
+            إنهاء وتحصيل
           </button>
-          {un && !isOutOfRange && (
+          {un && (
             <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} onClick={() => onUndo(un)} className="font-black flex items-center gap-1 active:scale-95 text-white" style={{ background: '#FF9500', padding: '8px 12px', borderRadius: 12, fontSize: 10, border: 'none' }}>
               <Undo2 size={12} /> ({getUndoRemainingSeconds(un.addedAt)}ث)
             </motion.button>
@@ -328,6 +320,155 @@ export default function GarageDashboard() {
   const isValet = garageRole === 'valet';
 
   const garage = garages.find(g => g.id === currentGarageId);
+
+  // 📍🛰️ منظومة الـ Geofencing وتتبع موقع السياس
+  const [valetDistanceMeters, setValetDistanceMeters] = useState<number | null>(null);
+  const [isLocationDenied, setIsLocationDenied] = useState(false);
+  const [isCheckingGPS, setIsCheckingGPS] = useState(true);
+  const [valetsPresenceMap, setValetsPresenceMap] = useState<Record<string, any>>({});
+
+  const presenceChannelRef = useRef<any>(null);
+
+  // 📡 إرسال وتتبع موقع السايس لحظياً إلى السيرفر
+  const trackValetPresence = useCallback((distMeters: number, inside: boolean) => {
+    if (!presenceChannelRef.current || !isValet) return;
+    try {
+      presenceChannelRef.current.track({
+        valetNumber,
+        valetName: localStorage.getItem('valetName') || `سايس ${valetNumber}`,
+        distanceMeters: distMeters,
+        isInside: inside,
+        updatedAt: getServerNow(),
+      });
+    } catch (e) {
+      console.warn('Presence track error:', e);
+    }
+  }, [isValet, valetNumber]);
+
+  const checkValetLocation = useCallback(() => {
+    if (!isValet || !garage || !garage.lat || !garage.lng) {
+      setIsCheckingGPS(false);
+      return;
+    }
+
+    if (!('geolocation' in navigator)) {
+      setIsLocationDenied(true);
+      setIsCheckingGPS(false);
+      return;
+    }
+
+    setIsCheckingGPS(true);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const uLat = position.coords.latitude;
+        const uLng = position.coords.longitude;
+        const distKm = calculateDistance(uLat, uLng, garage.lat, garage.lng);
+        const distMeters = Math.round(distKm * 1000);
+        const isInside = distMeters <= MAX_VALET_DISTANCE_METERS;
+
+        setValetDistanceMeters(distMeters);
+        setIsLocationDenied(false);
+        setIsCheckingGPS(false);
+
+        trackValetPresence(distMeters, isInside);
+      },
+      (error) => {
+        console.warn('GPS location error:', error);
+        setIsLocationDenied(true);
+        setIsCheckingGPS(false);
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 5000 }
+    );
+  }, [isValet, garage, trackValetPresence]);
+
+  const checkValetLocationRef = useRef(checkValetLocation);
+  useEffect(() => {
+    checkValetLocationRef.current = checkValetLocation;
+  }, [checkValetLocation]);
+
+  // 🛰️ اشتراك المالك والسايس بقناة البث المباشر (مستقر ومثبت تماماً يمنع إعادة الاشتراك اللانهائي)
+  useEffect(() => {
+    if (!currentGarageId) return;
+
+    const channelName = `garage_valets_live_${currentGarageId}`;
+    const channel = supabase.channel(channelName, {
+      config: { presence: { key: isValet ? `valet_${valetNumber}` : `owner_${Date.now()}` } }
+    });
+
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        // ✅ تم الاستنساخ باستخدام { ... } لإجبار الشاشة على التحديث فورياً بدون تعليق
+        setValetsPresenceMap({ ...channel.presenceState() });
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED' && isValet) {
+          checkValetLocationRef.current();
+        }
+      });
+
+    presenceChannelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+      presenceChannelRef.current = null;
+    };
+  }, [currentGarageId, isValet, valetNumber]); // تم استبعاد دالة checkValetLocation لمنع تكرار الاشتراك بقناة البث المباشر
+
+  // فحص دوري للموقع يعمل بثبات تام كل 45 ثانية في الخلفية صامتاً
+  useEffect(() => {
+    checkValetLocationRef.current();
+    const interval = setInterval(() => {
+      checkValetLocationRef.current();
+    }, 45000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const isValetOutsideGarage = useMemo(() => {
+    if (!isValet) return false;
+    if (isLocationDenied) return true;
+    if (valetDistanceMeters === null) return false;
+    return valetDistanceMeters > MAX_VALET_DISTANCE_METERS;
+  }, [isValet, isLocationDenied, valetDistanceMeters]);
+
+  // 📊 استخراج وتجهيز بيانات السياس الحية لشاشة المالك بشكل مبسط ومصغر
+  const activeValetsLocationStatus = useMemo(() => {
+    if (!isOwner || !garage) return [];
+
+    const valetsConfig = [
+      { num: '1', name: (garage.valetName1 || '').trim() || 'سايس 1', active: (garage as any).valet1Active },
+      { num: '2', name: (garage.valetName2 || '').trim() || 'سايس 2', active: (garage as any).valet2Active },
+      { num: '3', name: (garage.valetName3 || '').trim() || 'سايس 3', active: (garage as any).valet3Active },
+    ];
+
+    return valetsConfig.map((v) => {
+      const presenceKey = `valet_${v.num}`;
+      const presenceEntry = valetsPresenceMap[presenceKey]?.[0];
+
+      if (!presenceEntry) {
+        return {
+          ...v,
+          status: 'offline' as const,
+          label: 'مغلق ⚪',
+          distanceText: '---',
+          isInside: false,
+        };
+      }
+
+      const dist = presenceEntry.distanceMeters ?? 0;
+      const isInside = presenceEntry.isInside === true;
+
+      return {
+        ...v,
+        status: isInside ? ('inside' as const) : ('outside' as const),
+        label: isInside ? `🟢 ${dist} م` : `🔴 ${dist >= 1000 ? `${(dist / 1000).toFixed(1)}كم` : `${dist}م`}`,
+        distanceText: dist >= 1000 ? `${(dist / 1000).toFixed(1)} كم` : `${dist} م`,
+        isInside,
+        updatedAt: presenceEntry.updatedAt,
+      };
+    });
+  }, [isOwner, garage, valetsPresenceMap]);
+
   const garageSessions = useMemo(
     () => sessions.filter(s => s.garageId === currentGarageId),
     [sessions, currentGarageId]
@@ -439,133 +580,10 @@ export default function GarageDashboard() {
   const [plateSearch, setPlateSearch] = useState('');
 
   const [showSwitcher, setShowSwitcher] = useState(false);
-  
-  // 🛰️ متغيرات حالة الـ GPS والمسافة للسايس والمالك
-  const [valetLocations, setValetLocations] = useState<any[]>([]);
-  const [myValetDistance, setMyValetDistance] = useState<number | null>(null);
-  const [gpsActive, setGpsActive] = useState<boolean>(false);
-
-  // 🔒 التحقق الصارم: هل السايس خارج نطاق الـ 250 متر؟
-  const isOutOfRange = isValet && (!gpsActive || myValetDistance === null || myValetDistance > MAX_ALLOWED_DISTANCE_METERS);
-
   const myGarages = useMemo(() => {
     if (!garage) return [];
     return getMyOwnedGarages(garage.ownerPhone || garage.phone || '');
   }, [getMyOwnedGarages, garage, garages]);
-
-  // 🛰️ تأثير إرسال إشارات الـ GPS الحية وحساب المسافة بدقة للسايس
-  useEffect(() => {
-    if (!isValet || !currentGarageId || !valetNumber || !garage) return;
-
-    let watchId: number | null = null;
-
-    const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-      const R = 6371e3; // نصف قطر الأرض بالمتر
-      const φ1 = lat1 * Math.PI / 180;
-      const φ2 = lat2 * Math.PI / 180;
-      const Δφ = (lat2 - lat1) * Math.PI / 180;
-      const Δλ = (lon2 - lon1) * Math.PI / 180;
-
-      const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-                Math.cos(φ1) * Math.cos(φ2) *
-                Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-      return R * c;
-    };
-
-    const sendGpsSignal = async (lat: number, lng: number) => {
-      const garageLat = (garage as any).latitude || 30.0444; 
-      const garageLng = (garage as any).longitude || 31.2357;
-
-      const distance = calculateDistance(lat, lng, garageLat, garageLng);
-      setMyValetDistance(distance);
-      setGpsActive(true);
-
-      try {
-        const rawPayload = { lat, lng, distance, t: Date.now() };
-        const encryptedPayload = btoa(encodeURIComponent(JSON.stringify(rawPayload)));
-
-        await supabase.from('valet_locations').upsert({
-          garage_id: currentGarageId,
-          valet_number: parseInt(valetNumber),
-          encrypted_payload: encryptedPayload,
-          latitude: lat,
-          longitude: lng,
-          distance_meters: distance,
-          last_seen: new Date().toISOString()
-        }, { onConflict: 'garage_id,valet_number' });
-
-      } catch (err) {
-        console.warn('GPS transmission error:', err);
-      }
-    };
-
-    if ('geolocation' in navigator) {
-      watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          sendGpsSignal(position.coords.latitude, position.coords.longitude);
-        },
-        (error) => {
-          console.warn('GPS positioning failure:', error);
-          setGpsActive(false);
-        },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-      );
-    } else {
-      setGpsActive(false);
-    }
-
-    const disconnectGpsSignal = () => {
-      const payload = JSON.stringify({
-        garage_id: currentGarageId,
-        valet_number: parseInt(valetNumber),
-        last_seen: new Date(0).toISOString()
-      });
-      const blob = new Blob([payload], { type: 'application/json' });
-      navigator.sendBeacon && navigator.sendBeacon(`${(supabase as any).supabaseUrl}/rest/v1/valet_locations`, blob);
-    };
-
-    window.addEventListener('beforeunload', disconnectGpsSignal);
-    window.addEventListener('unload', disconnectGpsSignal);
-
-    return () => {
-      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-      window.removeEventListener('beforeunload', disconnectGpsSignal);
-      window.removeEventListener('unload', disconnectGpsSignal);
-      
-      supabase.from('valet_locations').upsert({
-        garage_id: currentGarageId,
-        valet_number: parseInt(valetNumber),
-        last_seen: new Date(0).toISOString()
-      }, { onConflict: 'garage_id,valet_number' }).then();
-    };
-  }, [isValet, currentGarageId, valetNumber, garage]);
-
-  // 📡 جلب مواقع وحالة اتصال السياس كل 10 ثوانٍ (للمالك)
-  useEffect(() => {
-    if (!isOwner || !currentGarageId) return;
-
-    const fetchLiveGpsData = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('valet_locations')
-          .select('*')
-          .eq('garage_id', currentGarageId);
-
-        if (!error && data) {
-          setValetLocations(data);
-        }
-      } catch (err) {
-        console.warn('Error fetching valet positions:', err);
-      }
-    };
-
-    fetchLiveGpsData();
-    const intervalId = setInterval(fetchLiveGpsData, 10000); // تحديث دوري إجباري كل 10 ثوانٍ
-
-    return () => clearInterval(intervalId);
-  }, [isOwner, currentGarageId]);
 
   useEffect(() => {
     if (!isValet || !currentGarageId) return;
@@ -644,28 +662,26 @@ export default function GarageDashboard() {
       if (document.visibilityState === 'visible') {
         silentSync();
         fetchAll();
+        checkValetLocation();
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [currentGarageId, fetchAll]);
+  }, [currentGarageId, fetchAll, checkValetLocation]);
 
-  // 🔕 كتم الإشعارات والتنبيهات للسيارات إذا كان السايس خارج الـ 250 متر
   useEffect(() => {
     const ids = new Set(carsOnTheWay.map(c => c.id));
     carsOnTheWay.forEach(car => {
       if (!prevIncomingIdsRef.current.has(car.id) && !document.hidden) {
-        if (!isOutOfRange) {
-          fireNewCarAlert(car.carPlate);
-          toast(`🚨 سيارة في الطريق!\n🚗 رقم السيارة: ${car.carPlate}`, { duration: 10000, icon: '🚨' });
-        }
+        fireNewCarAlert(car.carPlate);
+        toast(`🚨 سيارة في الطريق!\n🚗 رقم السيارة: ${car.carPlate}`, { duration: 10000, icon: '🚨' });
       }
     });
     prevIncomingIdsRef.current.forEach(id => {
       if (!ids.has(id)) { approachAlertedRef.current.delete(id); try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }
     });
     prevIncomingIdsRef.current = ids;
-  }, [carsOnTheWay, isOutOfRange]);
+  }, [carsOnTheWay]);
 
   const [carsTick, setCarsTick] = useState(0);
   useEffect(() => {
@@ -682,19 +698,15 @@ export default function GarageDashboard() {
       const rem = Math.max(0, car.estimatedArrival - el);
       if (rem <= 2 && rem >= 0 && car.estimatedArrival > 2) {
         approachAlertedRef.current.add(car.id);
-        if (!document.hidden && !isOutOfRange) { 
-          fireApproachingAlert(car.carPlate); 
-          toast(`🚗 على وشك الوصول!\n${car.carPlate}`, { duration: 10000, icon: '⏰' }); 
-        }
+        if (!document.hidden) { fireApproachingAlert(car.carPlate); toast(`🚗 على وشك الوصول!\n${car.carPlate}`, { duration: 10000, icon: '⏰' }); }
       }
     });
-  }, [carsOnTheWay, carsTick, isOutOfRange]);
+  }, [carsOnTheWay, carsTick]);
 
   useEffect(() => {
-    if (isOutOfRange) return; // عدم إظهار إشعارات العروض إذا كان خارج النطاق
     garageOffers.forEach(o => { if (!prevOfferIdsRef.current.has(o.id)) toast(`💰 عرض جديد!\n🚗 ${o.carPlate} - ${o.offeredPrice} ج.م/ساعة`, { duration: 8000, icon: '💰' }); });
     prevOfferIdsRef.current = new Set(garageOffers.map(o => o.id));
-  }, [garageOffers, isOutOfRange]);
+  }, [garageOffers]);
 
   useEffect(() => { return () => { try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }; }, []);
 
@@ -819,9 +831,9 @@ export default function GarageDashboard() {
   const valetReport = useMemo(() => {
     if (!garage || !isOwner || !currentGarageId) return [];
     const garageValets = [
-      { name: (garage.valetName1 || '').trim(), defaultName: 'سايس 1', color: '#0066FF', icon: '🅿️1' },
-      { name: (garage.valetName2 || '').trim(), defaultName: 'سايس 2', color: '#7C3AED', icon: '🅿️2' },
-      { name: (garage.valetName3 || '').trim(), defaultName: 'سايس 3', color: '#FF8800', icon: '🅿️3' },
+      { name: (garage.valetName1 || '').trim() || 'سايس 1', defaultName: 'سايس 1', color: '#0066FF', icon: '🅿️1' },
+      { name: (garage.valetName2 || '').trim() || 'سايس 2', defaultName: 'سايس 2', color: '#7C3AED', icon: '🅿️2' },
+      { name: (garage.valetName3 || '').trim() || 'سايس 3', defaultName: 'سايس 3', color: '#FF8800', icon: '🅿️3' },
     ].filter(v => v.name);
     
     const ownerGarageCompleted = completedSessions.filter((s) => {
@@ -869,7 +881,7 @@ export default function GarageDashboard() {
   const [undoTick, setUndoTick] = useState(0);
   useEffect(() => {
     if (undoableSessions.length === 0) return;
-    const i = setInterval(() => setUndoTick(t => t + 1), 5000);
+    const i = setInterval(() => setTick(t => t + 1), 5000);
     return () => clearInterval(i);
   }, [undoableSessions.length]);
 
@@ -919,11 +931,66 @@ export default function GarageDashboard() {
     }
   }
 
+  // 🛑 قفل شاشة السايس إذا كان خارج نطاق الجراج
+  if (isValet && isValetOutsideGarage) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center px-6 text-center" style={{ background: '#0F172A', color: '#ffffff' }}>
+        <div style={{ background: '#1E293B', borderRadius: 28, padding: 28, maxWidth: 360, width: '100%', border: '2px solid #EF4444', boxShadow: '0 10px 40px rgba(239, 68, 68, 0.2)' }}>
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center animate-bounce">
+            <Compass size={36} />
+          </div>
+
+          <h2 className="text-white mb-2" style={{ fontSize: '20px', fontWeight: 950 }}>أنت خارج نطاق الجراج</h2>
+
+          <p className="leading-relaxed mb-5" style={{ fontSize: '13px', color: '#FFFFFF', fontWeight: 950 }}>
+            {isLocationDenied ? (
+              <span>⚠️ يرجى تفعيل خدمة الموقع (GPS) في هاتفك وإعطاء الصلاحية للتطبيق للتأكد من تواجدك داخل الجراج لمتابعة العمل.</span>
+            ) : (
+              <span>حفاظاً على دقة الحسابات والأمان، لا يمكنك رؤية أو تسجيل جلسات الركن إلا أثناء التواجد الفعلي داخل موقع الجراج.</span>
+            )}
+          </p>
+
+          {valetDistanceMeters !== null && !isLocationDenied && (
+            <div className="mb-5 bg-slate-900 border border-slate-700 rounded-2xl p-4">
+              <span className="block mb-1" style={{ fontSize: '11px', color: '#94A3B8', fontWeight: 800 }}>مسافتك الحالية عن الجراج:</span>
+              <span className="font-mono text-amber-400 text-xl" style={{ fontWeight: 950 }}>
+                {valetDistanceMeters >= 1000 ? `${(valetDistanceMeters / 1000).toFixed(1)} كم` : `${valetDistanceMeters} متر`}
+              </span>
+              <span className="block mt-1" style={{ fontSize: '10px', color: '#64748B', fontWeight: 700 }}>(المسموح به: حتى {MAX_VALET_DISTANCE_METERS} متر فقط)</span>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <button
+              onClick={checkValetLocation}
+              disabled={isCheckingGPS}
+              className="w-full font-black py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs flex items-center justify-center gap-2 active:scale-95 transition-all"
+              style={{ fontWeight: 950, fontSize: '13px' }}
+            >
+              <RefreshCw size={14} className={isCheckingGPS ? 'animate-spin' : ''} />
+              {isCheckingGPS ? 'جاري التحقق من موقعك...' : '🔄 تحديث الموقع الآن'}
+            </button>
+
+            <button
+              onClick={() => {
+                localStorage.removeItem('garageRole');
+                localStorage.removeItem('valetNumber');
+                localStorage.removeItem('valetName');
+                setCurrentGarageId(null);
+              }}
+              className="w-full py-3 rounded-2xl bg-slate-800 text-slate-400 hover:text-white text-xs active:scale-95 transition-all"
+              style={{ fontWeight: 800 }}
+            >
+              تسجيل خروج
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 🚀 دالة إضافة سيارة يدوياً
   const handleAddCar = async () => {
-    if (isOutOfRange) {
-      toast.error('⚠️ لا يمكنك إضافة سيارات وأنت خارج نطاق الـ 250 متر من الجراج!');
-      return;
-    }
     if (!newCarPlate.trim()) { toast.error('أدخل رقم السيارة'); return; }
     const cp = newCarPlate.trim(); 
     const pr = newCarPrice; 
@@ -949,11 +1016,6 @@ export default function GarageDashboard() {
   };
 
   const openConfirmPayment = (sid: string, cp: string, cost: number, hrs: number, minutes: number, source: 'app' | 'manual', ap?: number) => {
-    if (isOutOfRange) {
-      toast.error('⚠️ أنت خارج نطاق الجراج، لا يمكنك إجراء التحصيل الآن!');
-      return;
-    }
-
     const sessionObj = activeSessions.find(s => s.id === sid);
     const isFreeApplied = sessionObj?.isFirstFreeSession === true;
     
@@ -977,10 +1039,6 @@ export default function GarageDashboard() {
   };
 
   const handleConfirmPayment = async () => {
-    if (isOutOfRange) {
-      toast.error('⚠️ أنت خارج نطاق الجراج، يرجى الاقتراب لإتمام التحصيل!');
-      return;
-    }
     if (!confirmSession || isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
     
@@ -1008,7 +1066,6 @@ export default function GarageDashboard() {
       setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
       
       await endSession(sc.id, sc.cost, pc, freeMinutesApplied, currentValet);
-      
       await fetchGarageDailyStats();
       
       const paymentText = pc === 'cash' ? 'نقداً (كاش)' : 'من المحفظة الرقمية';
@@ -1048,10 +1105,6 @@ export default function GarageDashboard() {
   };
 
   const handleCarArrived = async (car: any) => {
-    if (isOutOfRange) {
-      toast.error('⚠️ لا يمكنك بدء حساب السيارة وأنت خارج نطاق الجراج!');
-      return;
-    }
     const carId: string = car.id; 
     const carPlate: string = car.carPlate;
     if (processedCarsRef.current.has(carId)) return;
@@ -1143,652 +1196,44 @@ export default function GarageDashboard() {
         {isValet && <div style={{ width: 48 }} />}
       </div>
 
-      {/* ⚠️ شريط تحذيري بارز للسايس عند خروجه من نطاق الـ 250 متر أو إيقاف الـ GPS */}
-      {isValet && isOutOfRange && (
-        <motion.div 
-          initial={{ opacity: 0, y: -10 }} 
-          animate={{ opacity: 1, y: 0 }} 
-          className="mb-5 p-4 rounded-2xl bg-rose-50 border-2 border-rose-300 text-rose-800 shadow-md text-right flex items-start gap-3"
-        >
-          <div className="p-2 rounded-xl bg-rose-200 text-rose-700 shrink-0">
-            <AlertTriangle size={24} />
+      {/* 📡 شاشة تتبع موقع السياس الحية المدمجة والمبسطة لمالك الجراج */}
+      {isOwner && activeValetsLocationStatus.length > 0 && (
+        <div className="mb-4 bg-white border border-slate-200 rounded-3xl p-3 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5 text-indigo-600 font-black text-[10px]">
+              <Radio size={12} className="animate-pulse text-red-500" />
+              <span>تتبع مباشر (GPS)</span>
+            </div>
+            <span className="font-black text-slate-850" style={{ fontSize: 11 }}>حالة السياس</span>
           </div>
-          <div className="flex-1">
-            <h4 className="font-black text-sm mb-1 text-rose-900">
-              ⛔ أنت خارج نطاق الجراج المسموح (أكثر من 250 متر)
-            </h4>
-            <p className="text-xs font-bold leading-relaxed text-rose-700">
-              {myValetDistance !== null 
-                ? `أنت حالياً على بُعد ${Math.round(myValetDistance)} متر. تم قفل استقبال الطلبات وإضافة السيارات والتحصيل حتى تعود لنطاق الجراج.`
-                : 'برجاء تفعيل خدمة الموقع الجغرافي (GPS) للسماح لك باستقبال السيارات والتحصيل.'}
-            </p>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Settings Modal */}
-      {isOwner && showSettings && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)' }} onClick={() => setShowSettings(false)}>
-          <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="w-full max-w-sm max-h-[90vh] overflow-y-auto" style={{ background: '#fff', borderRadius: 32, padding: 24 }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-6">
-              <button onClick={() => setShowSettings(false)} style={{ color: '#94a3b8', fontSize: 20 }}>✕</button>
-              <h3 className="font-black flex items-center gap-2" style={{ fontSize: 18 }}><Settings size={18} style={{ color: '#0066FF' }} /> إعدادات الجراج</h3>
-            </div>
-            
-            {/* سعر الساعة */}
-            <div className="mb-6">
-              <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>💰 سعر الساعة</label>
-              <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
-                <div className="flex items-center justify-between gap-4">
-                  <button onClick={() => setEditPrice(p => Math.max(5, p - 5))} className="active:scale-90" style={{ background: '#FF3333', color: '#fff', width: 52, height: 52, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={22} /></button>
-                  <div className="text-center flex-1"><input type="number" value={editPrice} onChange={e => setEditPrice(Math.max(1, parseInt(e.target.value) || 0))} className="bg-transparent text-center w-full outline-none font-mono font-black" style={{ fontSize: 40 }} /><div className="font-bold" style={{ fontSize: 11, color: '#94a3b8' }}>ج.م / ساعة</div></div>
-                  <button onClick={() => setEditPrice(p => p + 5)} className="active:scale-90" style={{ background: '#00CC66', color: '#fff', width: 52, height: 52, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={22} /></button>
-                </div>
-              </div>
-            </div>
-
-            {/* الأماكن المتاحة */}
-            <div className="mb-6">
-              <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🚗 الأماكن المتاحة</label>
-              <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
-                <div className="flex items-center justify-between gap-4">
-                  <button onClick={() => setEditSpots(s => Math.max(0, s - 1))} className="active:scale-90" style={{ background: '#FF3333', color: '#fff', width: 52, height: 52, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={22} /></button>
-                  <div className="text-center flex-1"><input type="number" value={editSpots} onChange={e => setEditSpots(Math.max(0, Math.min(editCapacity, parseInt(e.target.value) || 0)))} className="bg-transparent text-center w-full outline-none font-mono font-black" style={{ fontSize: 40, color: '#0066FF' }} /><div className="font-bold" style={{ fontSize: 11, color: '#94a3b8' }}>من {editCapacity} مكان</div></div>
-                  <button onClick={() => setEditSpots(s => Math.min(editCapacity, s + 1))} className="active:scale-90" style={{ background: '#00CC66', color: '#fff', width: 52, height: 52, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={22} /></button>
-                </div>
-              </div>
-            </div>
-
-            {/* السعة الكلية */}
-            <div className="mb-6">
-              <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🏢 السعة الكلية</label>
-              <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
-                <div className="flex items-center justify-between gap-4">
-                  <button onClick={() => setEditCapacity(c => Math.max(editSpots, c - 10))} className="active:scale-90" style={{ background: '#D0DCFF', color: '#64748b', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={18} /></button>
-                  <div className="text-center flex-1"><input type="number" value={editCapacity} onChange={e => setEditCapacity(Math.max(editSpots, parseInt(e.target.value) || editSpots))} className="bg-transparent text-center w-full outline-none font-mono font-black" style={{ fontSize: 28, color: '#7C3AED' }} /></div>
-                  <button onClick={() => setEditCapacity(c => c + 10)} className="active:scale-90" style={{ background: '#D0DCFF', color: '#64748b', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={18} /></button>
-                </div>
-              </div>
-            </div>
-
-            {/* طرق الدفع المقبولة للجراج */}
-            <div className="mb-6">
-              <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>💳 طرق الدفع المقبولة في جراجك</label>
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEditPaymentMode('cash')}
-                  className="p-2 py-3.5 rounded-2xl font-black flex flex-col items-center justify-center gap-1 active:scale-95 transition-all"
-                  style={{
-                    background: editPaymentMode === 'cash' ? '#FFF8F0' : '#F0F4FF',
-                    border: `2px solid ${editPaymentMode === 'cash' ? '#FF9500' : '#D0DCFF'}`,
-                    color: editPaymentMode === 'cash' ? '#E65100' : '#64748b',
-                  }}
-                >
-                  <span style={{ fontSize: 20 }}>💵</span>
-                  <span style={{ fontSize: 10, fontWeight: 900 }}>نقدي فقط</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setEditPaymentMode('wallet')}
-                  className="p-2 py-3.5 rounded-2xl font-black flex flex-col items-center justify-center gap-1 active:scale-95 transition-all"
-                  style={{
-                    background: editPaymentMode === 'wallet' ? '#F4F9FF' : '#F0F4FF',
-                    border: `2px solid ${editPaymentMode === 'wallet' ? '#7C3AED' : '#D0DCFF'}`,
-                    color: editPaymentMode === 'wallet' ? '#7C3AED' : '#64748b',
-                  }}
-                >
-                  <span style={{ fontSize: 20 }}>👝</span>
-                  <span style={{ fontSize: 10, fontWeight: 900 }}>محفظة فقط</span>
-                </button>
-                
-                <button
-                  type="button"
-                  onClick={() => setEditPaymentMode('both')}
-                  className="p-2 py-3.5 rounded-2xl font-black flex flex-col items-center justify-center gap-1 active:scale-95 transition-all"
-                  style={{
-                    background: editPaymentMode === 'both' ? '#E6F4EA' : '#F0F4FF',
-                    border: `2px solid ${editPaymentMode === 'both' ? '#00CC66' : '#D0DCFF'}`,
-                    color: editPaymentMode === 'both' ? '#00AA44' : '#64748b',
-                  }}
-                >
-                  <div className="flex gap-0.5">
-                    <span style={{ fontSize: 16 }}>💵</span>
-                    <span style={{ fontSize: 16 }}>👝</span>
-                  </div>
-                  <span style={{ fontSize: 10, fontWeight: 900 }}>الاثنين معاً</span>
-                </button>
-              </div>
-            </div>
-
-            {/* نسبة عمولة التطبيق */}
-            <div className="mb-6">
-              <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>📊 نسبة عمولة التطبيق</label>
-              <div style={{ background: '#FFF8F0', borderRadius: 22, padding: 16, border: '2px solid #FFD180' }}>
-                <div className="flex items-center justify-center gap-2"><Percent size={20} style={{ color: '#FF9500' }} /><span className="font-black font-mono" style={{ fontSize: 32, color: '#FF9500' }}>{garage.commissionRate ?? 10}</span><span className="font-bold" style={{ fontSize: 12, color: '#94a3b8' }}>% على جلسات التطبيق</span></div>
-                <div className="text-center mt-2"><span className="font-bold" style={{ fontSize: 10, color: '#94a3b8' }}>يتم تحديدها من إدارة التطبيق</span></div>
-              </div>
-            </div>
-
-            {/* إدارة السياس */}
-            <div className="mb-6">
-              <label className="font-black block text-right mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>🅿️ إدارة السياس</label>
-              <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
-                {[
-                  { n: 1, name: editValet1Name, setName: setEditValet1Name, pass: editValet1Pass, setPass: setEditValet1Pass, color: '#0066FF', active: (garage as any).valet1Active, activeKey: 'valet1Active' as const },
-                  { n: 2, name: editValet2Name, setName: setEditValet2Name, pass: editValet2Pass, setPass: setEditValet2Pass, color: '#7C3AED', active: (garage as any).valet2Active, activeKey: 'valet2Active' as const },
-                  { n: 3, name: editValet3Name, setName: setEditValet3Name, pass: editValet3Pass, setPass: setEditValet3Pass, color: '#FF8800', active: (garage as any).valet3Active, activeKey: 'valet3Active' as const },
-                ].map((v, i) => (
-                  <div key={i} className={i < 2 ? 'mb-4 pb-4' : ''} style={i < 2 ? { borderBottom: '1px solid #D0DCFF' } : {}}>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-bold" style={{ fontSize: 10, color: !(v.name || v.pass) ? '#CBD5E1' : v.active ? '#00AA44' : '#FF3333' }}>{!(v.name || v.pass) ? '⚪ غير مُعد' : v.active ? '🟢 مفعّل' : '🔴 معطّل'}</span>
-                      <div className="flex items-center gap-2">
-                        {(v.name || v.pass) && (<button onClick={(e) => { e.stopPropagation(); updateGarage(garage.id, { [v.activeKey]: !v.active } as any); }} className="font-black active:scale-95" style={{ fontSize: 9, padding: '4px 10px', borderRadius: 10, background: v.active ? '#FF3333' : '#00CC66', color: '#fff' }}>{v.active ? 'تعطيل' : 'تفعيل'}</button>)}
-                        <span className="font-black" style={{ fontSize: 12 }}>🅿️ سايس {v.n}</span>
-                      </div>
-                    </div>
-                    <input type="text" value={v.name} onChange={e => v.setName(e.target.value)} className="w-full text-right outline-none font-bold mb-2" style={{ background: '#fff', border: `2px solid ${v.name ? v.color : '#D0DCFF'}`, padding: 12, borderRadius: 14, fontSize: 14 }} placeholder={`اسم سايس ${v.n}`} />
-                    <input type="text" value={v.pass} onChange={e => v.setPass(e.target.value)} className="w-full text-center outline-none font-mono font-black" style={{ background: '#fff', border: `2px solid ${v.pass ? v.color : '#D0DCFF'}`, padding: 12, borderRadius: 14, fontSize: 16, letterSpacing: 3 }} placeholder={`كلمة مرور سايس ${v.n}`} />
-                  </div>
-                ))}
-              </div>
-            </div>
-            <button onClick={handleSaveSettings} className="w-full font-black flex items-center justify-center gap-2 active:scale-95" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', padding: 18, borderRadius: 20, fontSize: 15 }}><Save size={20} /> حفظ التغييرات</button>
-          </motion.div>
-        </motion.div>
-      )}
-
-      {/* Confirm Payment Modal */}
-      {confirmSession && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 flex items-end justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)' }} onClick={() => setConfirmSession(null)}>
-          <motion.div initial={{ y: 100 }} animate={{ y: 0 }} transition={{ type: 'spring', damping: 25 }} className="w-full max-w-sm" style={{ background: '#fff', borderRadius: '32px 32px 20px 20px', padding: 24 }} onClick={e => e.stopPropagation()}>
-            <div className="mx-auto mb-5" style={{ width: 40, height: 4, background: '#D0DCFF', borderRadius: 4 }} />
-            <h3 className="font-black text-center mb-1" style={{ fontSize: 18 }}>تأكيد تحصيل السداد</h3>
-            
-            <div className="mb-5" style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
-              <div className="flex justify-between items-center mb-3">
-                <span className="font-bold" style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, background: confirmSession.source === 'manual' ? '#FF9500' : '#0066FF', color: '#fff' }}>{confirmSession.source === 'manual' ? 'يدوي' : 'تطبيق'}</span>
-                <div className="font-black" style={{ fontSize: 18 }}>🚗 {confirmSession.carPlate}</div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-3">
-                <div className="text-center" style={{ background: '#fff', borderRadius: 16, padding: 12, border: '1px solid #E0EAFF' }}>
-                  <div style={{ fontSize: 11, color: '#7B8CA6' }}>المدة</div>
-                  <div className="font-black font-mono" style={{ fontSize: 16 }}>{confirmSession.minutes} دقيقة</div>
-                </div>
-                
-                <div className="text-center" style={{ background: '#fff', borderRadius: 16, padding: 12, border: '1px solid #E0EAFF' }}>
-                  <div style={{ fontSize: 11, color: '#7B8CA6' }}>المستحق</div>
-                  <div className="font-black font-mono" style={{ fontSize: 24, color: confirmSession.cost === 0 ? '#FF9500' : '#00AA44' }}>
-                    {confirmSession.cost}
-                  </div>
-                  <div style={{ fontSize: 10, color: '#94a3b8' }}>ج.م</div>
-                </div>
-              </div>
-              
-              {confirmSession.cost === 0 && (
-                <div className="mt-3 text-center p-2 rounded-xl bg-amber-50 border border-amber-100 text-amber-700 font-black text-xs flex items-center justify-center gap-1.5">
-                  <Gift size={14} /> أول 30 دقيقة مجانية كهدية ترحيبية 🎁
-                </div>
-              )}
-
-              {isOwner && confirmSession.source === 'app' && confirmSession.cost > 0 && (
-                <div className="mt-3 flex items-center justify-between" style={{ background: '#FFF8F0', borderRadius: 14, padding: '8px 12px', border: '1px solid #FFD180' }}>
-                  <div className="flex items-center gap-1"><Percent size={12} style={{ color: '#FF9500' }} /><span className="font-bold" style={{ fontSize: 10, color: '#FF9500' }}>عمولة {garage.commissionRate ?? 10}%</span></div>
-                  <span className="font-black font-mono" style={{ fontSize: 13, color: '#FF9500' }}>{Math.round((confirmSession.cost * (garage.commissionRate ?? 10) / 100) * 100) / 100} ج.م</span>
-                </div>
-              )}
-            </div>
-
-            <div className="mb-5">
-              <h4 className="font-black mb-3 text-right" style={{ fontSize: 12, color: '#7B8CA6' }}>طريقة التحصيل</h4>
-
-              {isValet || confirmSession.source === 'manual' ? (
-                <div className="text-center" style={{ background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', borderRadius: 20, padding: 18, color: '#fff', boxShadow: '0 4px 14px rgba(0,204,102,0.2)' }}>
-                  <div style={{ fontSize: 32, marginBottom: 4 }}>💵</div>
-                  <div className="font-black" style={{ fontSize: 16 }}>سداد نقدي (كاش)</div>
-                  <div className="text-[11px] opacity-90 mt-1 font-bold">
-                    {isValet ? 'صلاحية السايس: تحصيل نقدي كاش يداً بيد من العميل' : 'العميل غير مسجل بالتطبيق - يتم التحصيل يداً بيد'}
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {(garage.payment_mode === 'cash' || garage.payment_mode === 'both' || !garage.payment_mode) && (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmPaymentMethod('cash')}
-                      className="w-full p-3.5 rounded-2xl flex items-center justify-between font-black transition-all active:scale-[0.98]"
-                      style={{
-                        background: confirmPaymentMethod === 'cash' ? '#E6F4EA' : '#F8FAFF',
-                        border: `2.5px solid ${confirmPaymentMethod === 'cash' ? '#00CC66' : '#D0DCFF'}`,
-                        color: confirmPaymentMethod === 'cash' ? '#00AA44' : '#64748b'
-                      }}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span style={{ fontSize: 20 }}>💵</span>
-                        <div className="text-right">
-                          <div style={{ fontSize: 13, fontWeight: 900 }}>سداد نقدي (كاش)</div>
-                          <div style={{ fontSize: 9, fontWeight: 700, opacity: 0.7 }}>تحصيل يداً بيد من العميل</div>
-                        </div>
-                      </div>
-                      {confirmPaymentMethod === 'cash' && (
-                        <span className="font-black" style={{ fontSize: 10, background: '#00CC66', color: '#fff', padding: '3px 10px', borderRadius: 10 }}>✓ محدد</span>
-                      )}
-                    </button>
-                  )}
-
-                  {(garage.payment_mode === 'wallet' || garage.payment_mode === 'both') && (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmPaymentMethod('wallet')}
-                      className="w-full p-3.5 rounded-2xl flex items-center justify-between font-black transition-all active:scale-[0.98]"
-                      style={{
-                        background: confirmPaymentMethod === 'wallet' ? '#F4F9FF' : '#F8FAFF',
-                        border: `2.5px solid ${confirmPaymentMethod === 'wallet' ? '#0066FF' : '#D0DCFF'}`,
-                        color: confirmPaymentMethod === 'wallet' ? '#0066FF' : '#64748b'
-                      }}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span style={{ fontSize: 20 }}>👝</span>
-                        <div className="text-right">
-                          <div style={{ fontSize: 13, fontWeight: 900 }}>خصم من المحفظة</div>
-                          <div style={{ fontSize: 9, fontWeight: 700, opacity: 0.7 }}>خصم تلقائي من رصيد العميل</div>
-                        </div>
-                      </div>
-                      {confirmPaymentMethod === 'wallet' && (
-                        <span className="font-black" style={{ fontSize: 10, background: '#0066FF', color: '#fff', padding: '3px 10px', borderRadius: 10 }}>✓ محدد</span>
-                      )}
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-3">
-              <button 
-                onClick={handleConfirmPayment} 
-                className="flex-1 font-black flex items-center justify-center gap-2 active:scale-95" 
-                style={{ 
-                  padding: 18, 
-                  borderRadius: 20, 
-                  fontSize: 14, 
-                  color: '#fff', 
-                  background: 'linear-gradient(135deg,#00CC66,#00AA55)',
-                  boxShadow: '0 6px 18px rgba(0,204,102,0.25)' 
-                }}
+          <div className="grid grid-cols-3 gap-2">
+            {activeValetsLocationStatus.map((v) => (
+              <div
+                key={v.num}
+                className={`p-2 rounded-2xl border text-center flex flex-col justify-center items-center ${
+                  v.status === 'inside'
+                    ? 'bg-emerald-50/60 border-emerald-200'
+                    : v.status === 'outside'
+                    ? 'bg-rose-50/60 border-rose-200'
+                    : 'bg-slate-50 border-slate-200'
+                }`}
               >
-                <CheckCircle size={20} /> تأكيد واستلام ({confirmSession.cost} ج.م)
-              </button>
-              <button onClick={() => setConfirmSession(null)} className="active:scale-95" style={{ background: '#F0F4FF', padding: '0 20px', borderRadius: 20, color: '#7B8CA6' }}><XCircle size={20} /></button>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-
-      {/* Stats Cards */}
-      <div className={`grid ${isOwner ? 'grid-cols-3' : 'grid-cols-2'} gap-3 mb-5`}>
-        {isOwner ? (
-          <>
-            <div className="text-center transition-all" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', borderRadius: 16, padding: '8px 10px', color: '#ffffff', boxShadow: '0 4px 14px rgba(0,204,102,0.22)' }}>
-              <div className="flex items-center justify-center gap-1 mb-0.5" style={{ opacity: 0.95 }}>
-                <span className="font-bold text-[10px]" style={{ color: '#ffffff' }}>مؤكد</span>
-              </div>
-              <div className="font-black font-mono leading-none" style={{ fontSize: 18, fontWeight: 950, color: '#ffffff' }}>
-                {topCardConfirmedRevenue.toFixed(0)} <span style={{ fontSize: 10, fontWeight: 800 }}>ج</span>
-              </div>
-            </div>
-
-            <div onClick={openSettings} className="text-center cursor-pointer active:scale-95 transition-all" style={{ background: 'linear-gradient(135deg,#0066FF,#0044DD)', borderRadius: 16, padding: '8px 10px', color: '#ffffff', boxShadow: '0 4px 14px rgba(0,102,255,0.22)' }}>
-              <div className="flex items-center justify-center gap-1 mb-0.5" style={{ opacity: 0.95 }}>
-                <Car size={12} style={{ color: '#ffffff' }} />
-                <span className="font-bold text-[10px]" style={{ color: '#ffffff' }}>شاغر</span>
-              </div>
-              <div className="font-black font-mono leading-none" style={{ fontSize: 18, fontWeight: 950, color: '#ffffff' }}>
-                {garage.availableSpots}
-              </div>
-            </div>
-
-            <div onClick={openSettings} className="text-center cursor-pointer active:scale-95 transition-all" style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', borderRadius: 16, padding: '8px 10px', color: '#ffffff', boxShadow: '0 4px 14px rgba(124,58,237,0.22)' }}>
-              <div className="flex items-center justify-center gap-1 mb-0.5" style={{ opacity: 0.95 }}>
-                <span className="font-bold text-[10px]" style={{ color: '#ffffff' }}>سعر/ساعة</span>
-              </div>
-              <div className="font-black font-mono leading-none" style={{ fontSize: 18, fontWeight: 950, color: '#ffffff' }}>
-                {garage.basePrice} <span style={{ fontSize: 10, fontWeight: 800 }}>ج</span>
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="text-center transition-all" style={{ background: 'linear-gradient(135deg,#0066FF,#0044DD)', borderRadius: 16, padding: '8px 10px', color: '#fff', boxShadow: '0 4px 14px rgba(0,102,255,0.22)' }}>
-              <div className="flex items-center justify-center gap-1 mb-0.5" style={{ opacity: 0.9 }}>
-                <Car size={13} />
-                <span className="font-bold text-[10px]">جلساتي</span>
-              </div>
-              <div className="font-black font-mono leading-none" style={{ fontSize: 20 }}>
-                {valetActiveSessions.length}
-              </div>
-            </div>
-
-            <div className="text-center transition-all" style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', borderRadius: 16, padding: '8px 10px', color: '#fff', boxShadow: '0 4px 14px rgba(124,58,237,0.22)' }}>
-              <div className="flex items-center justify-center gap-1 mb-0.5" style={{ opacity: 0.9 }}>
-                <Car size={13} />
-                <span className="font-bold text-[10px]">شاغر</span>
-              </div>
-              <div className="font-black font-mono leading-none" style={{ fontSize: 20 }}>
-                {garage.availableSpots}
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* 📡 كارت حالة تواجد السياس المباشرة (GPS Live) للمالك فقط */}
-      {isOwner && (
-        <div className="mb-5 bg-white border-2 border-blue-100 rounded-2xl p-4 shadow-sm text-right">
-          <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
-            <span className="text-[10px] bg-blue-50 text-blue-600 font-black px-2 py-0.5 rounded-lg animate-pulse">📡 مباشر</span>
-            <h3 className="font-black text-slate-800 text-[13.5px] flex items-center gap-1.5">
-              📡 حالة تواجد السياس المباشرة (GPS Live)
-            </h3>
-          </div>
-          <div className="space-y-2.5">
-            {[
-              { n: 1, name: garage.valetName1 || 'سايس 1', activeKey: 'valet1Active' },
-              { n: 2, name: garage.valetName2 || 'سايس 2', activeKey: 'valet2Active' },
-              { n: 3, name: garage.valetName3 || 'سايس 3', activeKey: 'valet3Active' },
-            ].map(v => {
-              const loc = valetLocations.find(l => l.valet_number === v.n);
-              const isConfigured = (garage as any)[v.activeKey];
-
-              let status: 'online_inside' | 'online_outside' | 'offline' = 'offline';
-              let formattedDistance = 'غير متصل ⚪';
-
-              if (isConfigured && loc && loc.last_seen) {
-                const lastSeenMs = new Date(loc.last_seen).getTime();
-                const isRecent = (getServerNow() - lastSeenMs) < 20000;
-
-                if (isRecent) {
-                  const dist = loc.distance_meters ?? 9999;
-                  if (dist <= MAX_ALLOWED_DISTANCE_METERS) {
-                    status = 'online_inside';
-                    formattedDistance = `داخل الجراج • على بُعد ${Math.round(dist)} متر`;
-                  } else {
-                    status = 'online_outside';
-                    formattedDistance = dist < 1000 
-                      ? `خارج نطاق الجراج • على بُعد ${Math.round(dist)} متر` 
-                      : `خارج نطاق الجراج • على بُعد ${(dist / 1000).toFixed(1)} كم`;
-                  }
-                }
-              }
-
-              return (
-                <div key={v.n} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-50 bg-slate-50/50">
-                  <div className="flex items-center gap-1.5">
-                    {status === 'online_inside' ? (
-                      <span className="font-black text-[10.5px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                        {formattedDistance}
-                      </span>
-                    ) : status === 'online_outside' ? (
-                      <span className="font-black text-[10.5px] text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-                        {formattedDistance}
-                      </span>
-                    ) : (
-                      <span className="font-bold text-[10.5px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">
-                        غير متصل ⚪
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="text-right">
-                      <div className="font-black text-xs text-slate-800">{v.name}</div>
-                      <div className="text-[9px] text-slate-400 font-bold">🅿️ سايس {v.n}</div>
-                    </div>
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs ${status !== 'offline' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'}`}>
-                      {v.n}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* السايس فقط */}
-      {isValet && (
-        <>
-          {/* سيارات في الطريق (تظهر فقط إذا كان السايس داخل النطاق) */}
-          {!isOutOfRange && carsOnTheWay.length > 0 && (
-            <div className="mb-5">
-              <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#0099DD' }}>
-                <span className="font-black" style={{ background: '#0099DD', color: '#fff', fontSize: 12, padding: '3px 12px', borderRadius: 20 }}>
-                  {carsOnTheWay.length}
+                <span className="font-black text-[11px] text-slate-900 block truncate w-full">{v.name}</span>
+                <span className="text-[9px] font-black text-slate-400 block mt-0.5">سايس {v.num}</span>
+                <span
+                  className={`text-[9px] font-black px-1.5 py-0.5 rounded-md mt-1 block w-fit ${
+                    v.status === 'inside'
+                      ? 'bg-emerald-600 text-white'
+                      : v.status === 'outside'
+                      ? 'bg-rose-600 text-white'
+                      : 'bg-slate-300 text-slate-650'
+                  }`}
+                >
+                  {v.status === 'inside' ? `🟢 ${v.distanceText}` : v.status === 'outside' ? `🔴 ${v.distanceText}` : '⚪ مغلق'}
                 </span>
-                سيارات في الطريق <Navigation size={16} className="animate-pulse" />
-              </h3>
-              <div className="space-y-3">
-                {carsOnTheWay.map(car => {
-                  const rem = calculateRemainingTime(car.startTime, car.estimatedArrival);
-                  return (
-                    <motion.div 
-                      key={car.id} 
-                      initial={{ opacity: 0, x: 20 }} 
-                      animate={{ opacity: 1, x: 0 }} 
-                      style={{ 
-                        background: '#fff', 
-                        border: '2.5px solid #00BBE0', 
-                        borderRadius: 24, 
-                        padding: 18,
-                        boxShadow: '0 4px 16px rgba(0, 153, 221, 0.08)'
-                      }}
-                    >
-                      <div className="flex justify-between items-center mb-4">
-                        <div className="flex items-center gap-2">
-                          <motion.div animate={{ x: [0, -4, 0] }} transition={{ repeat: Infinity, duration: 1.5 }} style={{ background: '#0099DD', borderRadius: 14, padding: 8, color: '#fff' }}>
-                            <CarFront size={20} />
-                          </motion.div>
-                          <span className="font-black font-mono" style={{ background: rem <= 2 ? '#FF9500' : '#0099DD', color: '#fff', fontSize: 11, padding: '5px 12px', borderRadius: 12 }}>
-                            {rem > 0 ? `${rem} دقيقة` : 'وصل تقريباً ⏰'}
-                          </span>
-                        </div>
-                        <div className="font-black text-slate-900" style={{ fontSize: 18 }}>
-                          🚗 {car.carPlate}
-                        </div>
-                      </div>
-
-                      <button 
-                        onClick={() => handleCarArrived(car)} 
-                        className="w-full font-black flex items-center justify-center gap-2 active:scale-95 transition-all shadow-md" 
-                        style={{ 
-                          background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', 
-                          color: '#fff', 
-                          borderRadius: 16, 
-                          padding: 14, 
-                          fontSize: 14,
-                          boxShadow: '0 6px 18px rgba(0, 204, 102, 0.25)' 
-                        }}
-                      >
-                        <CheckCircle size={18} /> وصلت وبدء الحساب
-                      </button>
-                    </motion.div>
-                  );
-                })}
               </div>
-            </div>
-          )}
-
-          {/* عروض الأسعار (تظهر فقط إذا كان داخل النطاق) */}
-          {!isOutOfRange && garageOffers.length > 0 && (
-            <div className="mb-5">
-              <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#FF9500' }}>عروض أسعار ({garageOffers.length})</h3>
-              <div className="space-y-3">
-                {garageOffers.map(o => (
-                  <motion.div key={o.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} style={{ background: '#fff', border: '2.5px solid #FFD180', borderRadius: 24, padding: 18 }}>
-                    <div className="flex justify-between items-center mb-3"><div className="font-black font-mono" style={{ fontSize: 22 }}>{o.offeredPrice} ج.م</div><div className="font-black" style={{ fontSize: 15 }}>🚗 {o.carPlate}</div></div>
-                    <div className="flex gap-2">
-                      <button onClick={() => { updateOffer(o.id, 'accepted'); toast.success('تم القبول'); }} className="flex-1 font-black flex items-center justify-center gap-1 active:scale-95" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', borderRadius: 16, padding: 14, fontSize: 13 }}><CheckCircle size={18} /> قبول</button>
-                      <button onClick={() => { updateOffer(o.id, 'rejected'); toast.error('تم الرفض'); }} className="flex-1 font-black flex items-center justify-center gap-1 active:scale-95" style={{ background: 'linear-gradient(135deg,#FF3333,#CC0000)', color: '#fff', borderRadius: 16, padding: 14, fontSize: 13 }}><XCircle size={18} /> رفض</button>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* إضافة سيارة (مقفل عند الخروج من النطاق) */}
-          <div className="mb-5">
-            {!showAddCar ? (
-              <button 
-                onClick={() => {
-                  if (isOutOfRange) {
-                    toast.error('⚠️ لا يمكنك إضافة سيارات وأنت خارج نطاق الـ 250 متر!');
-                    return;
-                  }
-                  setShowAddCar(true);
-                }} 
-                disabled={garage.availableSpots <= 0 || isOutOfRange} 
-                className={`w-full font-black flex items-center justify-center gap-2 active:scale-95 ${isOutOfRange ? 'opacity-50 cursor-not-allowed' : ''}`} 
-                style={{ 
-                  background: isOutOfRange ? '#94a3b8' : garage.availableSpots > 0 ? 'linear-gradient(135deg,#0066FF,#0044DD)' : '#D0DCFF', 
-                  color: garage.availableSpots > 0 && !isOutOfRange ? '#fff' : '#94a3b8', 
-                  borderRadius: 22, 
-                  padding: 18, 
-                  fontSize: 15 
-                }}
-              >
-                {isOutOfRange ? <><Lock size={18} /> مقفل (أنت خارج نطاق الـ 250 متر)</> : <><Plus size={22} /> {garage.availableSpots > 0 ? 'إضافة سيارة جديدة' : 'لا توجد أماكن'}</>}
-              </button>
-            ) : (
-              <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3" style={{ background: '#fff', border: '2.5px solid #0066FF', borderRadius: 24, padding: 18 }}>
-                <input className="w-full font-bold text-right outline-none" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 14, borderRadius: 18, fontSize: 15 }} placeholder="رقم لوحة السيارة" value={newCarPlate} onChange={e => setNewCarPlate(e.target.value)} />
-                <div>
-                  <label className="font-bold block text-right mb-1" style={{ fontSize: 11, color: '#7B8CA6' }}>💰 سعر الساعة</label>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => setNewCarPrice(p => Math.max(5, p - 5))} className="active:scale-90" style={{ background: '#FF3333', color: '#fff', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={18} /></button>
-                    <input type="number" value={newCarPrice} onChange={e => setNewCarPrice(Math.max(1, parseInt(e.target.value) || 1))} className="flex-1 text-center font-black outline-none font-mono" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 10, borderRadius: 14, fontSize: 20 }} />
-                    <button onClick={() => setNewCarPrice(p => p + 5)} className="active:scale-90" style={{ background: '#00CC66', color: '#fff', width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={18} /></button>
-                  </div>
-                  <div className="flex gap-1.5 mt-2 justify-end">{[10, 15, 20, 25, 30].map(p => (<button key={p} onClick={() => setNewCarPrice(p)} className="font-black active:scale-95" style={{ padding: '5px 12px', borderRadius: 10, fontSize: 11, background: newCarPrice === p ? '#0066FF' : '#F0F4FF', color: newCarPrice === p ? '#fff' : '#64748b', border: newCarPrice === p ? 'none' : '2px solid #D0DCFF' }}>{p}</button>))}</div>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={handleAddCar} className="flex-1 font-black active:scale-95" style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', borderRadius: 18, padding: 14, fontSize: 14 }}>إضافة ({newCarPrice} ج.م/ساعة)</button>
-                  <button onClick={() => { setShowAddCar(false); setNewCarPlate(''); setNewCarPrice(garage.basePrice); }} className="flex-1 font-black active:scale-95" style={{ background: '#F0F4FF', color: '#64748b', borderRadius: 18, padding: 14, fontSize: 14, border: '2px solid #D0DCFF' }}>إلغاء</button>
-                </div>
-              </motion.div>
-            )}
+            ))}
           </div>
-
-          <div className="mb-5">
-            <h3 className="font-black mb-3 flex items-center gap-2 justify-end" style={{ fontSize: 15, color: '#00AA44' }}>الجلسات النشطة ({valetActiveSessions.length}) <Clock size={16} /></h3>
-
-            {valetActiveSessions.length > 0 && (
-              <div className="mb-3 relative">
-                <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94a3b8' }} />
-                <input
-                  type="text"
-                  value={plateSearch}
-                  onChange={(e) => setPlateSearch(e.target.value)}
-                  placeholder="🔍 ابحث برقم اللوحة..."
-                  className="w-full font-bold text-right outline-none"
-                  style={{
-                    background: '#fff',
-                    border: '2px solid #D0DCFF',
-                    padding: '10px 36px 10px 34px',
-                    borderRadius: 14,
-                    fontSize: 13,
-                    color: '#0A1628',
-                  }}
-                />
-                {plateSearch && (
-                  <button
-                    onClick={() => setPlateSearch('')}
-                    className="absolute left-2.5 top-1/2 -translate-y-1/2 active:scale-90"
-                    style={{
-                      background: '#FF3333',
-                      color: '#fff',
-                      width: 22,
-                      height: 22,
-                      borderRadius: 8,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      border: 'none',
-                    }}
-                    title="مسح البحث"
-                  >
-                    <X size={13} strokeWidth={3} />
-                  </button>
-                )}
-              </div>
-            )}
-
-            <div className="space-y-3">
-              {filteredValetActiveSessions.length === 0 ? (
-                <div className="text-center" style={{ background: '#fff', borderRadius: 22, padding: 28, border: '2px solid #D0DCFF', color: '#94a3b8', fontSize: 14 }}>
-                  {plateSearch ? `🔍 لا توجد نتائج للبحث "${plateSearch}"` : 'لا توجد جلسات نشطة'}
-                </div>
-              ) : (
-                filteredValetActiveSessions.map(s => {
-                  const un = undoableSessions.find(u => u.sessionId === s.id || u.localId === s.id);
-                  return (
-                    <ActiveSessionCard
-                      key={s.id}
-                      session={s}
-                      basePrice={garage.basePrice}
-                      undoableSession={un}
-                      isOutOfRange={isOutOfRange}
-                      onEndSession={openConfirmPayment}
-                      onUndo={handleUndoSession}
-                      getUndoRemainingSeconds={getUndoRemainingSeconds}
-                    />
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Owner info bar */}
-      {isOwner && (
-        <div className="mb-5 flex items-center justify-between" style={{ background: '#fff', borderRadius: 20, padding: '12px 16px', border: '2px solid #D0DCFF' }}>
-          <button onClick={openSettings} className="font-bold flex items-center gap-1" style={{ fontSize: 11, color: '#0066FF' }}><Settings size={14} /> تعديل</button>
-          <div className="flex items-center gap-3">
-            <span style={{ fontSize: 11, color: '#7B8CA6' }}>السعر: <span className="font-mono font-black" style={{ color: '#00AA44' }}>{garage.basePrice}ج</span></span>
-            <div style={{ width: 2, height: 14, background: '#D0DCFF', borderRadius: 2 }} />
-            <span style={{ fontSize: 11, color: '#7B8CA6' }}>عمولة: <span className="font-mono font-black" style={{ color: '#FF9500' }}>{garage.commissionRate ?? 10}%</span></span>
-            <div style={{ width: 2, height: 14, background: '#D0DCFF', borderRadius: 2 }} />
-            <span style={{ fontSize: 11, color: '#7B8CA6' }}>متاح: <span className="font-mono font-black" style={{ color: '#0066FF' }}>{garage.availableSpots}/{garage.capacity}</span></span>
-          </div>
-        </div>
-      )}
-
-      {/* Valet info bar */}
-      {isValet && (
-        <div className="mb-5" style={{ background: '#fff', borderRadius: 20, padding: '12px 16px', border: '2px solid #D0DCFF' }}>
-          <div className="flex items-center justify-between">
-            <span className="font-black flex items-center gap-1" style={{ fontSize: 14, color: '#0A1628' }}><HardHat size={16} style={{ color: '#FF9500' }} />{currentValetName || `سايس ${valetNumber}`}</span>
-            <div className="flex items-center gap-4">
-              <div className="text-right"><div style={{ fontSize: 10, color: '#94a3b8' }}>السعر/ساعة</div><div className="font-black font-mono" style={{ fontSize: 17, color: '#0A1628', lineHeight: 1.1 }}>{garage.basePrice} ج</div></div>
-              <div style={{ width: 2, height: 28, background: '#D0DCFF', borderRadius: 2 }} />
-              <div className="text-right"><div style={{ fontSize: 10, color: '#94a3b8' }}>الأماكن المتاحة</div><div className="font-black font-mono" style={{ fontSize: 17, color: '#0A1628', lineHeight: 1.1 }}>{garage.availableSpots}/{garage.capacity}</div></div>
-              <div style={{ width: 2, height: 28, background: '#D0DCFF', borderRadius: 2 }} />
-              <button onClick={() => setValetEditSpots(!valetEditSpots)} className="active:scale-95 flex items-center gap-1" style={{ fontSize: 11, color: valetEditSpots ? '#0066FF' : '#7B8CA6', background: 'transparent' }}><Edit3 size={12} style={{ color: '#0066FF' }} /></button>
-            </div>
-          </div>
-          {valetEditSpots && (
-            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mt-3 pt-3" style={{ borderTop: '1px solid #D0DCFF' }}>
-              <div className="flex items-center justify-between gap-3">
-                <button onClick={async () => { if (garage.availableSpots <= 0) return; await adjustGarageSpots(garage.id, -1); toast('تم تقليل عدد الأماكن ➖', { icon: '🚗' }); }} disabled={garage.availableSpots <= 0} className="active:scale-90" style={{ background: garage.availableSpots > 0 ? '#FF3333' : '#E2E8F0', color: garage.availableSpots > 0 ? '#fff' : '#94a3b8', width: 46, height: 46, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={20} /></button>
-                <div className="text-center flex-1"><div className="font-black font-mono" style={{ fontSize: 30, color: '#0066FF' }}>{garage.availableSpots}</div><div className="font-bold" style={{ fontSize: 10, color: '#94a3b8' }}>أماكن شاغرة من {garage.capacity}</div></div>
-                <button onClick={async () => { if (garage.availableSpots >= garage.capacity) return; await adjustGarageSpots(garage.id, 1); toast('تم زيادة عدد الأماكن ➕', { icon: '✅' }); }} disabled={garage.availableSpots >= garage.capacity} className="active:scale-90" style={{ background: garage.availableSpots < garage.capacity ? '#00CC66' : '#E2E8F0', color: garage.availableSpots < garage.capacity ? '#fff' : '#94a3b8', width: 46, height: 46, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={20} /></button>
-              </div>
-              <button onClick={() => setValetEditSpots(false)} className="w-full mt-2 font-bold active:scale-95" style={{ background: '#F0F4FF', color: '#64748b', padding: 10, borderRadius: 14, fontSize: 11, border: '1.5px solid #D0DCFF' }}>إغلاق ✕</button>
-            </motion.div>
-          )}
         </div>
       )}
 
@@ -2053,10 +1498,6 @@ export default function GarageDashboard() {
                     {!isSettled && !isC ? (
                       <button 
                         onClick={async () => { 
-                          if (isOutOfRange) {
-                            toast.error('⚠️ لا يمكنك تأكيد العمليات وأنت خارج نطاق الجراج!');
-                            return;
-                          }
                           const currentValet = isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '';
                           if (currentValet) {
                             await assignSessionToValet(session.id, currentValet);
@@ -2065,8 +1506,7 @@ export default function GarageDashboard() {
                           await fetchGarageDailyStats(); 
                           toast.success('تأكيد ✅'); 
                         }} 
-                        disabled={isOutOfRange}
-                        className={`active:scale-95 ${isOutOfRange ? 'opacity-50 cursor-not-allowed !bg-slate-400' : ''}`} 
+                        className="active:scale-95" 
                         style={{ background: '#FF9500', color: '#ffffff', padding: '2.5px 8px', borderRadius: 8, fontSize: 8.5, fontWeight: 950, textShadow: '0 1px 1px rgba(0,0,0,0.15)', border: 'none' }}
                       >
                         ⏳ تأكيد
