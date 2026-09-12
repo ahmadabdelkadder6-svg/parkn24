@@ -6,7 +6,6 @@ import {
   Car,
   Search,
   Navigation,
-  Clock,
   Locate,
   Filter,
   Plus,
@@ -20,8 +19,10 @@ import {
   Gift,
   Sparkles,
   ChevronDown,
+  Wallet,
+  TrendingUp,
+  Shield,
 } from 'lucide-react';
-// 🌟 استيراد normalizePlate و normalizePhone الموحدين من الـ store لربط أمني وثيق
 import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
 import {
   calculateDistance,
@@ -62,16 +63,16 @@ const safeParseTime = (value: unknown): number => {
   return 0;
 };
 
-// 🎨 نظام الألوان والأيقونات المميزة لكل منطقة (بصري احترافي فقط)
-const AREA_THEMES: Record<string, { icon: string; gradient: string; solid: string; light: string; border: string; }> = {
-  'وسط البلد':      { icon: '🏢', gradient: 'linear-gradient(135deg, #0066FF, #4D00FF)', solid: '#0066FF', light: '#EBF2FF', border: '#A0C4FF' },
-  'مصر الجديدة':    { icon: '🏰', gradient: 'linear-gradient(135deg, #FF6B6B, #E63946)', solid: '#E63946', light: '#FFF1F1', border: '#FFB8B8' },
-  'مدينة نصر':     { icon: '🏙️', gradient: 'linear-gradient(135deg, #7C3AED, #5B21B6)', solid: '#7C3AED', light: '#F5F0FF', border: '#D6BEFF' },
-  'المعادي':       { icon: '🌳', gradient: 'linear-gradient(135deg, #00CC66, #00AA55)', solid: '#00AA55', light: '#EAF8EE', border: '#A6E9B8' },
-  'المهندسين':     { icon: '🛍️', gradient: 'linear-gradient(135deg, #FF9500, #FF7700)', solid: '#FF9500', light: '#FFF8F0', border: '#FFD180' },
-  'الدقي':         { icon: '🎓', gradient: 'linear-gradient(135deg, #0099DD, #0077BB)', solid: '#0099DD', light: '#E0F4FF', border: '#A0DDFF' },
-  'التجمع الخامس': { icon: '💎', gradient: 'linear-gradient(135deg, #06B6D4, #0E7490)', solid: '#0891B2', light: '#E0F7FA', border: '#A0E8F0' },
-  'مناطق أخرى':    { icon: '📍', gradient: 'linear-gradient(135deg, #64748B, #334155)', solid: '#475569', light: '#F1F5F9', border: '#CBD5E1' },
+// 🎨 نظام ألوان احترافي عالمي - Premium International Design System
+const AREA_THEMES: Record<string, { icon: string; gradient: string; solid: string; light: string; border: string; accent: string; }> = {
+  'وسط البلد':      { icon: '🏢', gradient: 'linear-gradient(135deg, #1E40AF, #3B82F6)', solid: '#2563EB', light: '#EFF6FF', border: '#BFDBFE', accent: '#1E3A8A' },
+  'مصر الجديدة':    { icon: '🏰', gradient: 'linear-gradient(135deg, #DC2626, #EF4444)', solid: '#DC2626', light: '#FEF2F2', border: '#FECACA', accent: '#991B1B' },
+  'مدينة نصر':     { icon: '🏙️', gradient: 'linear-gradient(135deg, #6D28D9, #8B5CF6)', solid: '#7C3AED', light: '#F5F3FF', border: '#DDD6FE', accent: '#5B21B6' },
+  'المعادي':       { icon: '🌳', gradient: 'linear-gradient(135deg, #059669, #10B981)', solid: '#059669', light: '#ECFDF5', border: '#A7F3D0', accent: '#047857' },
+  'المهندسين':     { icon: '🛍️', gradient: 'linear-gradient(135deg, #EA580C, #F97316)', solid: '#EA580C', light: '#FFF7ED', border: '#FED7AA', accent: '#C2410C' },
+  'الدقي':         { icon: '🎓', gradient: 'linear-gradient(135deg, #0284C7, #0EA5E9)', solid: '#0284C7', light: '#F0F9FF', border: '#BAE6FD', accent: '#075985' },
+  'التجمع الخامس': { icon: '💎', gradient: 'linear-gradient(135deg, #0891B2, #06B6D4)', solid: '#0891B2', light: '#ECFEFF', border: '#A5F3FC', accent: '#155E75' },
+  'مناطق أخرى':    { icon: '📍', gradient: 'linear-gradient(135deg, #475569, #64748B)', solid: '#475569', light: '#F8FAFC', border: '#CBD5E1', accent: '#334155' },
 };
 
 const getAreaTheme = (name: string) => AREA_THEMES[name] || AREA_THEMES['مناطق أخرى'];
@@ -105,8 +106,6 @@ export default function GarageListScreen() {
   const [locationLoading, setLocationLoading] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
   const [isAbuseDetected, setIsAbuseDetected] = useState(false);
-
-  // 🗺️ حالة فتح وإغلاق كروت المناطق
   const [expandedArea, setExpandedArea] = useState<string | null>(null);
 
   const autoNavigatedRef = useRef<string | null>(null);
@@ -359,9 +358,6 @@ export default function GarageListScreen() {
     return filtered;
   }, [garagesWithDistance, search, showNearbyOnly]);
 
-  // ==========================================
-  // 🗺️ نظام فرز وتجميع الجراجات حسب المنطقة الجغرافية
-  // ==========================================
   const areaGroups = useMemo(() => {
     const groups: Record<string, GarageWithDistance[]> = {};
     
@@ -448,480 +444,666 @@ export default function GarageListScreen() {
     }
   };
 
+  const walletBalance = currentUser?.wallet || 0;
+  const isLowBalance = walletBalance < 30;
+
   return (
-    <div className="h-full flex flex-col overflow-hidden" style={{ background: '#EBF2FF', color: '#0A1628' }}>
-      {/* Header */}
-      <div className="px-4 pt-10 pb-3 shadow-sm z-10" style={{ background: '#ffffff' }}>
-        <div className="flex justify-between items-center mb-4">
-          <div>
-            <h1 className="text-xl font-black" style={{ color: '#0A1628' }}>
-              أهلاً {currentUser?.name || 'بك'} 👋
+    <div className="h-full flex flex-col overflow-hidden" style={{ background: '#F5F7FA', color: '#0A1628' }}>
+      
+      {/* ═══════════════════════════════════════════════
+          🎨 HEADER — Premium International Style
+          ═══════════════════════════════════════════════ */}
+      <div 
+        className="relative z-10"
+        style={{ 
+          background: 'linear-gradient(180deg, #0A1628 0%, #1E293B 100%)',
+          paddingTop: 44,
+          paddingBottom: 20,
+          borderBottomLeftRadius: 28,
+          borderBottomRightRadius: 28,
+          boxShadow: '0 4px 20px rgba(10, 22, 40, 0.15)',
+        }}
+      >
+        {/* شريط علوي: تحية + شعار */}
+        <div className="flex justify-between items-center px-5 mb-5">
+          <div className="flex-1">
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <span className="text-[10px] font-bold" style={{ color: 'rgba(255,255,255,0.5)', letterSpacing: 1 }}>
+                GOOD DAY
+              </span>
+              <div className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
+            </div>
+            <h1 className="text-lg font-black text-white leading-tight">
+              {currentUser?.name || 'مرحباً بك'} 👋
             </h1>
-            <p className="text-xs font-bold mt-0.5" style={{ color: '#7B8CA6' }}>
-              ابحث عن أقرب مكان ركن لسيارتك
-            </p>
           </div>
-          <img
-            src="/images/logo.png"
-            alt="بركن"
-            className="w-12 h-12 object-contain"
-            style={{
-              borderRadius: 16,
-              boxShadow: '0 4px 20px rgba(0,102,255,0.15)',
-              border: '2px solid #E0EAFF',
-            }}
-          />
+          
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setScreen('chat')}
+              className="w-10 h-10 rounded-full flex items-center justify-center active:scale-95 transition-transform relative"
+              style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)' }}
+            >
+              <MessageCircle size={17} className="text-white" />
+            </button>
+            <img
+              src="/images/logo.png"
+              alt="بركن"
+              className="w-11 h-11 object-contain"
+              style={{
+                borderRadius: 14,
+                background: '#fff',
+                padding: 3,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+              }}
+            />
+          </div>
         </div>
 
-        {/* بطاقة المحفظة */}
-        <div
-          style={{
-            background: 'linear-gradient(135deg, #0055FF 0%, #3B00E3 50%, #8A00FF 100%)',
-            borderRadius: 22,
-            padding: '16px',
-            marginBottom: 12,
-            boxShadow: '0 8px 24px rgba(59, 0, 227, 0.28)',
-            color: '#ffffff',
-            position: 'relative',
-            overflow: 'hidden',
-          }}
-        >
-          <div style={{ position: 'absolute', top: '-40%', left: '-15%', width: '110px', height: '110px', background: 'rgba(255,255,255,0.15)', borderRadius: '50%', filter: 'blur(25px)' }} />
-          <div style={{ position: 'absolute', bottom: '-30%', right: '-10%', width: '90px', height: '90px', background: 'rgba(0,204,102,0.2)', borderRadius: '50%', filter: 'blur(22px)' }} />
-
-          <div className="flex justify-between items-center relative z-10 mb-3">
-            <div>
-              <div className="text-[9px] font-black tracking-widest flex items-center gap-1" style={{ opacity: 0.85 }}>
-                <span>💳 رصيد محفظتك</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+        {/* ═══ بطاقة المحفظة الاحترافية (Premium Wallet Card) ═══ */}
+        <div className="px-5">
+          <div
+            style={{
+              background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFF 100%)',
+              borderRadius: 24,
+              padding: '18px 20px',
+              boxShadow: '0 12px 32px rgba(0, 0, 0, 0.15), 0 2px 6px rgba(0,0,0,0.05)',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            {/* عناصر تصميمية خلفية */}
+            <div style={{ 
+              position: 'absolute', 
+              top: -30, 
+              right: -30, 
+              width: 120, 
+              height: 120, 
+              background: 'radial-gradient(circle, rgba(0,102,255,0.06) 0%, transparent 70%)', 
+              borderRadius: '50%',
+            }} />
+            
+            {/* رأس البطاقة */}
+            <div className="flex justify-between items-start mb-4 relative z-10">
+              <div>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Wallet size={11} style={{ color: '#64748B' }} />
+                  <span className="text-[9px] font-black" style={{ color: '#64748B', letterSpacing: 1.5 }}>
+                    WALLET BALANCE
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="font-black font-mono" style={{ fontSize: 28, color: '#0A1628', lineHeight: 1 }}>
+                    {walletBalance.toLocaleString()}
+                  </span>
+                  <span className="text-xs font-black" style={{ color: '#64748B' }}>ج.م</span>
+                </div>
               </div>
-              <div className="font-black font-mono flex items-baseline gap-1" style={{ fontSize: 24, lineHeight: 1.1, textShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
-                {currentUser?.wallet || 0}
-                <span className="text-[10px] font-bold" style={{ opacity: 0.9 }}>ج.م</span>
+
+              {/* لوحة السيارة (Egyptian Plate) */}
+              <div style={{ 
+                background: '#ffffff', 
+                border: '2px solid #0A1628', 
+                borderRadius: 8, 
+                boxShadow: '0 3px 8px rgba(0,0,0,0.15)', 
+                overflow: 'hidden', 
+                minWidth: 92,
+              }}>
+                <div style={{ 
+                  height: 6, 
+                  background: 'linear-gradient(90deg, #DC2626 0%, #FFFFFF 33%, #FFFFFF 66%, #000 100%)',
+                }} />
+                <div className="py-1 px-2 text-center font-black font-mono flex items-center justify-center gap-1" style={{ color: '#0A1628', fontSize: 11 }}>
+                  <span>🇪🇬</span>
+                  <span>{currentUser?.carPlate || '---'}</span>
+                </div>
               </div>
             </div>
 
-            <div className="flex gap-2 items-center">
+            {/* أزرار العمليات */}
+            <div className="flex gap-2 relative z-10">
+              <button
+                onClick={() => setShowTopUp(true)}
+                className="flex-1 flex items-center justify-center gap-1.5 font-black active:scale-[0.98] transition-all"
+                style={{ 
+                  background: 'linear-gradient(135deg, #0066FF 0%, #0044DD 100%)', 
+                  color: '#fff', 
+                  borderRadius: 14, 
+                  padding: '11px 0', 
+                  fontSize: 12,
+                  boxShadow: '0 6px 16px rgba(0,102,255,0.3)',
+                }}
+              >
+                <Plus size={14} strokeWidth={3} />
+                <span>شحن المحفظة</span>
+              </button>
+
               {myTopUps.length > 0 && (
                 <button
                   onClick={() => setShowHistory(!showHistory)}
-                  className="flex items-center justify-center p-2.5 rounded-xl transition-all relative"
-                  style={{ background: showHistory ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.15)', color: '#ffffff', border: '1.5px solid rgba(255,255,255,0.25)' }}
+                  className="flex items-center justify-center px-3.5 active:scale-95 transition-all relative"
+                  style={{ 
+                    background: showHistory ? '#0A1628' : '#F1F5F9', 
+                    color: showHistory ? '#fff' : '#0A1628', 
+                    borderRadius: 14,
+                    border: '1.5px solid ' + (showHistory ? '#0A1628' : '#E2E8F0'),
+                  }}
                   title="سجل العمليات"
                 >
                   <History size={16} />
                   {pendingTopUpsCount > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 w-4.5 h-4.5 rounded-full bg-amber-400 text-slate-950 font-black text-[9px] flex items-center justify-center animate-bounce">
+                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-400 text-slate-950 font-black text-[8px] flex items-center justify-center border-2 border-white">
                       {pendingTopUpsCount}
                     </span>
                   )}
                 </button>
               )}
-
-              <button
-                onClick={() => setShowTopUp(true)}
-                className="flex items-center gap-1 font-black active:scale-95 transition-all"
-                style={{ background: '#ffffff', color: '#0055FF', borderRadius: 12, padding: '8px 14px', fontSize: 12, boxShadow: '0 4px 14px rgba(255,255,255,0.3)' }}
-              >
-                <Plus size={14} strokeWidth={3} />
-                <span>اشحن الآن</span>
-              </button>
             </div>
-          </div>
 
-          <div className="pt-2.5 border-t border-white/20 flex items-center justify-between gap-2 relative z-10">
-            {(!currentUser?.wallet || currentUser.wallet < 30) ? (
-              <button
-                onClick={() => setShowTopUp(true)}
-                className="flex-1 text-right flex items-center gap-1.5 bg-white/10 hover:bg-white/20 active:scale-95 transition-all px-2.5 py-1.5 rounded-xl border border-white/15"
-              >
-                <div className="w-5 h-5 rounded-full bg-amber-400 flex items-center justify-center shrink-0 shadow-sm">
-                  <Zap size={11} className="fill-slate-950 text-slate-950" />
+            {/* شريط الحالة السفلي */}
+            <div className="mt-3.5 pt-3 border-t flex items-center justify-between gap-2" style={{ borderColor: '#EEF2F7' }}>
+              {isLowBalance ? (
+                <div className="flex items-center gap-1.5 flex-1">
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: '#FEF3C7' }}>
+                    <Zap size={11} className="text-amber-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-black text-[10.5px] text-amber-700 truncate">اشحن الآن ووفر وقتك</div>
+                    <div className="font-bold text-[9px] text-slate-500 truncate">خروج فوري بدون فكة ⚡</div>
+                  </div>
                 </div>
-                <div className="flex-1 overflow-hidden">
-                  <div className="font-black text-[11px] text-amber-300 truncate">ادفع نقدي او اشحن محفظتك ووفر وقتك ✨</div>
-                  <div className="font-bold text-[9px] text-white/85 truncate">خروج فوري بضغطة زر بدون فكة ⚡</div>
+              ) : (
+                <div className="flex items-center gap-1.5 flex-1">
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: '#D1FAE5' }}>
+                    <Shield size={11} className="text-emerald-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-black text-[10.5px] text-emerald-700 truncate">رصيدك آمن ومحمي</div>
+                    <div className="font-bold text-[9px] text-slate-500 truncate">جاهز للخروج الفوري</div>
+                  </div>
                 </div>
-              </button>
-            ) : (
-              <div className="flex-1 text-right flex items-center gap-1.5 bg-white/5 px-2.5 py-1.5 rounded-xl border border-white/10">
-                <div className="w-5 h-5 rounded-full bg-emerald-400 flex items-center justify-center shrink-0 shadow-sm">
-                  <CheckCircle2 size={11} className="text-slate-950 animate-pulse" />
-                </div>
-                <div className="flex-1 overflow-hidden">
-                  <div className="font-black text-[11px] text-emerald-300 truncate">رصيدك ممتاز ومؤمن! 💎</div>
-                  <div className="font-bold text-[9px] text-white/80 truncate">جاهز للركن والخروج الذكي فوراً</div>
-                </div>
-              </div>
-            )}
+              )}
 
-            <div style={{ background: '#ffffff', border: '2px solid #1E293B', borderRadius: 8, boxShadow: '0 4px 10px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: '95px', flexShrink: 0 }}>
-              <div className="flex items-center justify-between px-1.5" style={{ height: '5px', background: 'linear-gradient(90deg, #0066FF, #0055DD)' }}>
-                <span style={{ fontSize: '4px', color: '#fff', fontWeight: 900 }}>EGYPT</span>
-                <span style={{ fontSize: '4px', color: '#fff', fontWeight: 900 }}>مصر</span>
-              </div>
-              <div className="py-0.5 px-2 text-center font-black flex items-center justify-center gap-1" style={{ color: '#0F172A', fontSize: '11px', letterSpacing: '0.5px' }}>
-                <span>🇪🇬</span>
-                <span className="font-mono">{currentUser?.carPlate || '---'}</span>
+              <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ background: '#F1F5F9' }}>
+                <TrendingUp size={10} className="text-blue-600" />
+                <span className="text-[9px] font-black text-blue-700">نشط</span>
               </div>
             </div>
           </div>
-        </div>
-
-        {/* سجل شحن المحفظة */}
-        <AnimatePresence>
-          {showHistory && myTopUps.length > 0 && (
-            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mb-3 overflow-hidden" style={{ background: '#ffffff', border: '2px solid #D0DCFF', borderRadius: 20, padding: '14px', boxShadow: '0 4px 12px rgba(0,102,255,0.05)' }}>
-              <div className="flex justify-between items-center mb-2.5 pb-2" style={{ borderBottom: '1.5px solid #F0F4FF' }}>
-                <button onClick={() => setShowHistory(false)} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
-                <h3 className="font-black text-xs flex items-center gap-1.5 text-slate-800">سجل شحن محفظتي <History size={13} className="text-blue-600" /></h3>
-              </div>
-              <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
-                {myTopUps.map((topUp) => {
-                  const isPending = topUp.status === 'pending';
-                  const isApproved = topUp.status === 'approved';
-                  return (
-                    <div key={topUp.id} className="flex justify-between items-center p-2.5 rounded-xl border" style={{ background: isPending ? '#FFFBF0' : isApproved ? '#F0FFF5' : '#F8FAFF', borderColor: isPending ? '#FFEAA7' : isApproved ? '#B8E994' : '#E2E8F0' }}>
-                      <div className="text-left">
-                        <div className="font-black font-mono text-sm" style={{ color: isApproved ? '#2E7D32' : isPending ? '#D4AF37' : '#64748B' }}>{topUp.amount} ج.م</div>
-                        <div className="text-[9px] text-slate-400 font-mono mt-0.5">كود: {topUp.transactionId || topUp.id.substring(0, 8).toUpperCase()}</div>
-                      </div>
-                      <div className="text-right flex items-center gap-2">
-                        <div>
-                          <div className="font-black text-[10px]" style={{ color: '#0A1628' }}>{topUp.method === 'instapay' ? '📱 إنستاباي' : '📲 محفظة كاش'}</div>
-                          <div className="text-[9px] font-bold text-slate-400 mt-0.5">{new Date(topUp.timestamp).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
-                        </div>
-                        <div className="shrink-0">
-                          {isPending ? (
-                            <span className="font-black text-[9px] px-2 py-1 rounded-lg bg-amber-100 text-amber-800 flex items-center gap-0.5 animate-pulse">⏳ معلق</span>
-                          ) : isApproved ? (
-                            <span className="font-black text-[9px] px-2 py-1 rounded-lg bg-emerald-100 text-emerald-800 flex items-center gap-0.5"><CheckCircle2 size={10} /> تم</span>
-                          ) : (
-                            <span className="font-black text-[9px] px-2 py-1 rounded-lg bg-rose-100 text-rose-800 flex items-center gap-0.5"><XCircle size={10} /> مرفوض</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* 🎁 بانر ترحيبي */}
-        {isEligibleForFreeSession && !activeSession && !myIncomingCar && (
-          <motion.div initial={{ opacity: 0, y: -15, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} className="w-full mb-3 overflow-hidden relative" style={{ background: '#ffffff', borderRadius: 22, padding: '16px', boxShadow: '0 10px 25px rgba(0, 102, 255, 0.05), 0 2px 6px rgba(0,0,0,0.02)', border: '2px solid #FFF1F2' }}>
-            <div className="absolute -top-10 -right-10 w-24 h-24 bg-rose-100/50 rounded-full filter blur-xl" />
-            <div className="absolute -bottom-10 -left-10 w-24 h-24 bg-amber-100/40 rounded-full filter blur-xl" />
-            <div className="flex items-center gap-3.5 relative z-10">
-              <motion.div animate={{ rotate: [0, -5, 5, 0], scale: [1, 1.03, 1] }} transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }} className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #FFEDD5 0%, #FEE2E2 100%)', border: '1.5px solid #FCA5A5' }}>
-                <Gift size={22} className="text-red-500" />
-              </motion.div>
-              <div className="flex-1 text-right">
-                <div className="flex items-center gap-1.5 justify-end mb-1">
-                  <span className="font-bold text-slate-800 text-[11px]">نورت عائلتنا الجديدة! 🎉</span>
-                  <span className="font-black text-[9px] px-2.5 py-0.5 rounded-full leading-none shrink-0" style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#D97706' }}>🎁 هدية ترحيبية</span>
-                </div>
-                <h4 className="font-black text-slate-900 leading-tight" style={{ fontSize: '13.5px' }}>
-                  أول ركنة لك معنا <span className="text-red-500 font-black">مجانية بالكامل! 🎁</span>
-                </h4>
-                <p className="text-slate-500 font-bold leading-normal mt-1" style={{ fontSize: '10px' }}>
-                  احجز الآن من التطبيق واستمتع بـ <span className="text-emerald-600 font-black">أول 30 دقيقة مجاناً 100%</span> كهدية ترحيبية مميزة لك في أول زيارة 🎈
-                </p>
-              </div>
-            </div>
-          </motion.div>
-        )}
-
-        {activeSession && (
-          <motion.button initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} onClick={() => { setSelectedGarageId(activeSession.garageId); setScreen('session'); }} className="w-full mb-3 flex items-center justify-between active:scale-[0.98] transition-all text-right" style={{ background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', borderRadius: 20, padding: '14px 16px', color: '#ffffff', boxShadow: '0 8px 24px rgba(0,204,102,0.3)' }}>
-            <div className="flex items-center gap-2">
-              <motion.span animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 1.5 }} className="w-3 h-3 rounded-full bg-white block" />
-              <span className="text-xs font-black">عرض الجلسة ←</span>
-            </div>
-            <div>
-              <div className="text-sm font-black flex items-center gap-1 justify-end"><Zap size={15} /> جلسة ركن نشطة</div>
-              <div className="text-[10px]" style={{ opacity: 0.85 }}>اضغط للمتابعة والتفاصيل</div>
-            </div>
-          </motion.button>
-        )}
-
-        {!activeSession && myIncomingCar && (
-          <motion.button initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} onClick={() => { setSelectedGarageId(myIncomingCar.garageId); setScreen('navigation'); }} className="w-full mb-3 flex items-center justify-between active:scale-[0.98] transition-all text-right" style={{ background: 'linear-gradient(135deg, #0099DD 0%, #0077BB 100%)', borderRadius: 20, padding: '14px 16px', color: '#ffffff', boxShadow: '0 8px 24px rgba(0,153,221,0.3)' }}>
-            <div className="flex items-center gap-2">
-              <motion.span animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 1.5 }} className="w-3 h-3 rounded-full bg-white block" />
-              <span className="text-xs font-black">عرض التوجيه ←</span>
-            </div>
-            <div>
-              <div className="text-sm font-black flex items-center gap-1 justify-end"><Navigation size={15} /> حجز نشط (في الطريق)</div>
-              <div className="text-[10px]" style={{ opacity: 0.85 }}>اضغط لفتح الخريطة والتوجيه</div>
-            </div>
-          </motion.button>
-        )}
-
-        {/* شريط البحث والفلاتر */}
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search size={18} className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: '#94a3b8' }} />
-            <input
-              className="w-full font-bold outline-none text-sm"
-              style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: '12px 38px 12px 34px', borderRadius: 16, color: '#0A1628' }}
-              placeholder="ابحث باسم الجراج أو المنطقة..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            {search && (
-              <button onClick={() => setSearch('')} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X size={16} /></button>
-            )}
-          </div>
-
-          <button onClick={getUserLocation} disabled={locationLoading} className="active:scale-95 transition-all flex items-center justify-center" style={{ background: locationLoading ? '#E2E8F0' : '#0066FF', color: locationLoading ? '#94a3b8' : '#fff', borderRadius: 16, padding: '0 14px', boxShadow: locationLoading ? 'none' : '0 4px 14px rgba(0,102,255,0.25)' }} title="تحديد موقعي">
-            <Locate size={18} className={locationLoading ? 'animate-spin' : ''} />
-          </button>
-
-          <button onClick={() => setShowNearbyOnly(!showNearbyOnly)} className="font-black text-xs active:scale-95 transition-all whitespace-nowrap flex items-center gap-1" style={{ background: showNearbyOnly ? '#0066FF' : '#F0F4FF', color: showNearbyOnly ? '#fff' : '#64748b', borderRadius: 16, padding: '0 14px', border: showNearbyOnly ? 'none' : '2px solid #D0DCFF', boxShadow: showNearbyOnly ? '0 4px 14px rgba(0,102,255,0.25)' : 'none' }}>
-            <Filter size={13} /> {showNearbyOnly ? 'الكل' : 'قريب'}
-          </button>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-4 pt-3 pb-8">
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          {hasCompletedSession && (
-            <button onClick={() => setScreen('lastSession')} className="flex items-center gap-2 active:scale-[0.97] transition-all text-right" style={{ background: '#ffffff', border: '1.5px solid #D0DCFF', borderRadius: 16, padding: '10px 12px', boxShadow: '0 2px 8px rgba(0,102,255,0.04)' }}>
-              <div style={{ background: '#0066FF', borderRadius: 10, padding: 6, color: '#fff' }}><Receipt size={14} /></div>
-              <div className="flex-1">
-                <div className="font-black text-xs" style={{ color: '#0A1628' }}>آخر جلسة</div>
-                <div style={{ fontSize: 9, color: '#94a3b8' }}>عرض الإيصال</div>
-              </div>
-            </button>
-          )}
+      {/* ═══════════════════════════════════════════════
+          📜 CONTENT — Scrollable Area
+          ═══════════════════════════════════════════════ */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="px-4 pt-4 pb-8">
+          
+          {/* سجل شحن المحفظة */}
+          <AnimatePresence>
+            {showHistory && myTopUps.length > 0 && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0, marginBottom: 0 }} 
+                animate={{ opacity: 1, height: 'auto', marginBottom: 12 }} 
+                exit={{ opacity: 0, height: 0, marginBottom: 0 }} 
+                className="overflow-hidden" 
+                style={{ background: '#ffffff', border: '1.5px solid #E2E8F0', borderRadius: 20, padding: 14 }}
+              >
+                <div className="flex justify-between items-center mb-2.5 pb-2 border-b border-slate-100">
+                  <button onClick={() => setShowHistory(false)} className="text-slate-400 hover:text-slate-600">
+                    <X size={16} />
+                  </button>
+                  <h3 className="font-black text-xs flex items-center gap-1.5 text-slate-800">
+                    سجل الشحن الأخير <History size={13} className="text-blue-600" />
+                  </h3>
+                </div>
+                <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
+                  {myTopUps.map((topUp) => {
+                    const isPending = topUp.status === 'pending';
+                    const isApproved = topUp.status === 'approved';
+                    return (
+                      <div 
+                        key={topUp.id} 
+                        className="flex justify-between items-center p-2.5 rounded-xl" 
+                        style={{ 
+                          background: isPending ? '#FFFBEB' : isApproved ? '#F0FDF4' : '#F8FAFC', 
+                          border: '1px solid ' + (isPending ? '#FDE68A' : isApproved ? '#BBF7D0' : '#E2E8F0'),
+                        }}
+                      >
+                        <div className="text-left">
+                          <div className="font-black font-mono text-sm" style={{ color: isApproved ? '#059669' : isPending ? '#D97706' : '#64748B' }}>
+                            {topUp.amount} ج.م
+                          </div>
+                          <div className="text-[9px] text-slate-400 font-mono mt-0.5">
+                            #{topUp.transactionId || topUp.id.substring(0, 8).toUpperCase()}
+                          </div>
+                        </div>
+                        <div className="text-right flex items-center gap-2">
+                          <div>
+                            <div className="font-black text-[10px]" style={{ color: '#0A1628' }}>
+                              {topUp.method === 'instapay' ? '📱 إنستاباي' : '📲 محفظة كاش'}
+                            </div>
+                            <div className="text-[9px] font-bold text-slate-400 mt-0.5">
+                              {new Date(topUp.timestamp).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          </div>
+                          <div className="shrink-0">
+                            {isPending ? (
+                              <span className="font-black text-[9px] px-2 py-1 rounded-lg bg-amber-100 text-amber-800">⏳ معلق</span>
+                            ) : isApproved ? (
+                              <span className="font-black text-[9px] px-2 py-1 rounded-lg bg-emerald-100 text-emerald-800 flex items-center gap-0.5">
+                                <CheckCircle2 size={10} /> تم
+                              </span>
+                            ) : (
+                              <span className="font-black text-[9px] px-2 py-1 rounded-lg bg-rose-100 text-rose-800 flex items-center gap-0.5">
+                                <XCircle size={10} /> مرفوض
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          <button onClick={() => setScreen('chat')} className={`flex items-center gap-2 active:scale-[0.97] transition-all text-right ${!hasCompletedSession ? 'col-span-2' : ''}`} style={{ background: '#ffffff', border: '1.5px solid #E0D6FF', borderRadius: 16, padding: '10px 12px', boxShadow: '0 2px 8px rgba(124, 58, 237, 0.04)' }}>
-            <div style={{ background: '#7C3AED', borderRadius: 10, padding: 6, color: '#fff' }}><MessageCircle size={14} /></div>
-            <div className="flex-1">
-              <div className="font-black text-xs" style={{ color: '#0A1628' }}>تواصل معنا</div>
-              <div style={{ fontSize: 9, color: '#94a3b8' }}>شكاوى واستفسارات</div>
-            </div>
-          </button>
-        </div>
-
-        {/* ══════════════════════════════════════════════════════
-            🎨 نظام الأكورديون المطور بصرياً (Premium Accordion)
-            ══════════════════════════════════════════════════════ */}
-        {areaGroups.length > 0 ? (
-          <div className="space-y-3.5">
-            {areaGroups.map((group, groupIdx) => {
-              const isExpanded = expandedArea === group.name;
-              const totalAvailableSpots = group.garages.reduce((sum, g) => sum + (g.availableSpots || 0), 0);
-              const occupancyPercentage = group.totalCapacity > 0 
-                ? Math.min(100, Math.round((totalAvailableSpots / group.totalCapacity) * 100))
-                : 0;
-
-              return (
-                <motion.div
-                  key={group.name}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: groupIdx * 0.05, type: 'spring', damping: 22 }}
-                  className="overflow-hidden"
-                  style={{
-                    background: '#ffffff',
-                    borderRadius: 22,
-                    border: `2px solid ${isExpanded ? group.theme.solid : '#E2E8F0'}`,
-                    boxShadow: isExpanded
-                      ? `0 14px 32px ${group.theme.solid}18, 0 4px 12px rgba(0,0,0,0.04)`
-                      : '0 3px 10px rgba(0,0,0,0.03)',
-                    transition: 'border-color 0.4s, box-shadow 0.4s',
+          {/* 🎁 بانر ترحيبي احترافي */}
+          {isEligibleForFreeSession && !activeSession && !myIncomingCar && (
+            <motion.div 
+              initial={{ opacity: 0, y: -15 }} 
+              animate={{ opacity: 1, y: 0 }} 
+              className="w-full mb-3 overflow-hidden relative" 
+              style={{ 
+                background: 'linear-gradient(135deg, #FFF7ED 0%, #FFFBEB 100%)',
+                borderRadius: 20, 
+                padding: 16, 
+                border: '1.5px solid #FDE68A',
+                boxShadow: '0 6px 18px rgba(251, 191, 36, 0.12)',
+              }}
+            >
+              <div className="absolute -top-8 -right-8 w-20 h-20 bg-amber-200/40 rounded-full filter blur-xl" />
+              <div className="flex items-center gap-3 relative z-10">
+                <motion.div 
+                  animate={{ rotate: [0, -5, 5, 0] }} 
+                  transition={{ repeat: Infinity, duration: 3 }} 
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" 
+                  style={{ 
+                    background: 'linear-gradient(135deg, #F59E0B 0%, #DC2626 100%)',
+                    boxShadow: '0 6px 14px rgba(245, 158, 11, 0.4)',
                   }}
                 >
-                  {/* ═══ رأس بطاقة المنطقة (Header) ═══ */}
-                  <button
-                    onClick={() => setExpandedArea(isExpanded ? null : group.name)}
-                    className="w-full p-4 flex items-center justify-between text-right bg-transparent border-none cursor-pointer outline-none active:scale-[0.99] transition-transform"
+                  <Gift size={22} className="text-white" />
+                </motion.div>
+                <div className="flex-1 text-right">
+                  <div className="flex items-center gap-1.5 justify-end mb-0.5">
+                    <span className="font-black text-[8px] px-2 py-0.5 rounded-full" style={{ background: '#DC2626', color: '#fff' }}>
+                      🎁 هدية ترحيبية
+                    </span>
+                  </div>
+                  <h4 className="font-black text-slate-900 leading-tight text-[13px]">
+                    أول ركنة <span className="text-red-600">مجانية بالكامل!</span>
+                  </h4>
+                  <p className="text-slate-600 font-bold text-[10px] mt-0.5">
+                    استمتع بـ <span className="text-emerald-600 font-black">30 دقيقة مجانية</span> في أول زيارة
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* بطاقة الجلسة النشطة */}
+          {activeSession && (
+            <motion.button 
+              initial={{ opacity: 0, y: -10 }} 
+              animate={{ opacity: 1, y: 0 }} 
+              onClick={() => { setSelectedGarageId(activeSession.garageId); setScreen('session'); }} 
+              className="w-full mb-3 flex items-center justify-between active:scale-[0.98] transition-all text-right relative overflow-hidden" 
+              style={{ 
+                background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                borderRadius: 20, 
+                padding: '14px 16px', 
+                color: '#fff', 
+                boxShadow: '0 8px 20px rgba(5, 150, 105, 0.3)',
+              }}
+            >
+              <div className="absolute -top-10 -left-10 w-24 h-24 bg-white/10 rounded-full blur-xl" />
+              <div className="flex items-center gap-2 relative z-10">
+                <motion.span animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 1.5 }} className="w-2.5 h-2.5 rounded-full bg-white block" />
+                <span className="text-xs font-black">عرض ←</span>
+              </div>
+              <div className="relative z-10">
+                <div className="text-sm font-black flex items-center gap-1 justify-end">
+                  <Zap size={15} /> جلسة ركن نشطة
+                </div>
+                <div className="text-[10px] opacity-90">اضغط للمتابعة</div>
+              </div>
+            </motion.button>
+          )}
+
+          {/* بطاقة الحجز النشط */}
+          {!activeSession && myIncomingCar && (
+            <motion.button 
+              initial={{ opacity: 0, y: -10 }} 
+              animate={{ opacity: 1, y: 0 }} 
+              onClick={() => { setSelectedGarageId(myIncomingCar.garageId); setScreen('navigation'); }} 
+              className="w-full mb-3 flex items-center justify-between active:scale-[0.98] transition-all text-right relative overflow-hidden" 
+              style={{ 
+                background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                borderRadius: 20, 
+                padding: '14px 16px', 
+                color: '#fff', 
+                boxShadow: '0 8px 20px rgba(2, 132, 199, 0.3)',
+              }}
+            >
+              <div className="absolute -top-10 -left-10 w-24 h-24 bg-white/10 rounded-full blur-xl" />
+              <div className="flex items-center gap-2 relative z-10">
+                <motion.span animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 1.5 }} className="w-2.5 h-2.5 rounded-full bg-white block" />
+                <span className="text-xs font-black">توجيه ←</span>
+              </div>
+              <div className="relative z-10">
+                <div className="text-sm font-black flex items-center gap-1 justify-end">
+                  <Navigation size={15} /> حجز في الطريق
+                </div>
+                <div className="text-[10px] opacity-90">اضغط لفتح الخريطة</div>
+              </div>
+            </motion.button>
+          )}
+
+          {/* ═══ شريط البحث والفلاتر الاحترافي ═══ */}
+          <div className="mb-4">
+            <div className="flex gap-2 mb-2.5">
+              <div className="relative flex-1">
+                <Search size={17} className="absolute right-4 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
+                <input
+                  className="w-full font-bold outline-none text-sm"
+                  style={{ 
+                    background: '#ffffff',
+                    border: '1.5px solid #E2E8F0',
+                    padding: '13px 42px 13px 34px', 
+                    borderRadius: 16, 
+                    color: '#0A1628',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                  }}
+                  placeholder="ابحث عن جراج أو منطقة..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                {search && (
+                  <button onClick={() => setSearch('')} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+
+              <button 
+                onClick={getUserLocation} 
+                disabled={locationLoading} 
+                className="active:scale-95 transition-all flex items-center justify-center" 
+                style={{ 
+                  background: locationLoading ? '#F1F5F9' : '#0A1628',
+                  color: locationLoading ? '#94A3B8' : '#fff', 
+                  borderRadius: 16, 
+                  width: 48,
+                  boxShadow: locationLoading ? 'none' : '0 4px 12px rgba(10, 22, 40, 0.15)',
+                }} 
+                title="تحديد موقعي"
+              >
+                <Locate size={17} className={locationLoading ? 'animate-spin' : ''} />
+              </button>
+            </div>
+
+            {/* أزرار الفلاتر السريعة */}
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setShowNearbyOnly(!showNearbyOnly)} 
+                className="font-black text-[11px] active:scale-95 transition-all flex items-center gap-1.5" 
+                style={{ 
+                  background: showNearbyOnly ? '#0066FF' : '#ffffff',
+                  color: showNearbyOnly ? '#fff' : '#475569', 
+                  borderRadius: 12, 
+                  padding: '8px 14px', 
+                  border: '1.5px solid ' + (showNearbyOnly ? '#0066FF' : '#E2E8F0'),
+                  boxShadow: showNearbyOnly ? '0 4px 10px rgba(0,102,255,0.2)' : '0 2px 4px rgba(0,0,0,0.02)',
+                }}
+              >
+                <Filter size={12} /> {showNearbyOnly ? 'إظهار الكل' : 'الأقرب فقط'}
+              </button>
+
+              {hasCompletedSession && (
+                <button 
+                  onClick={() => setScreen('lastSession')} 
+                  className="font-black text-[11px] active:scale-95 transition-all flex items-center gap-1.5" 
+                  style={{ 
+                    background: '#ffffff', 
+                    color: '#475569', 
+                    borderRadius: 12, 
+                    padding: '8px 14px', 
+                    border: '1.5px solid #E2E8F0',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                  }}
+                >
+                  <Receipt size={12} /> آخر إيصال
+                </button>
+              )}
+
+              <div className="flex-1" />
+
+              <div className="flex items-center gap-1 text-[10px] font-black text-slate-500">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>{filteredGarages.length} جراج متاح</span>
+              </div>
+            </div>
+          </div>
+
+          {/* ═══════════════════════════════════════════════
+              🗺️ مجموعات المناطق (Premium Accordion)
+              ═══════════════════════════════════════════════ */}
+          {areaGroups.length > 0 ? (
+            <div className="space-y-3">
+              {areaGroups.map((group, groupIdx) => {
+                const isExpanded = expandedArea === group.name;
+                const totalAvailableSpots = group.garages.reduce((sum, g) => sum + (g.availableSpots || 0), 0);
+                const occupancyPercentage = group.totalCapacity > 0 
+                  ? Math.min(100, Math.round((totalAvailableSpots / group.totalCapacity) * 100))
+                  : 0;
+
+                return (
+                  <motion.div
+                    key={group.name}
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: groupIdx * 0.04, type: 'spring', damping: 24 }}
+                    className="overflow-hidden"
+                    style={{
+                      background: '#ffffff',
+                      borderRadius: 20,
+                      border: '1.5px solid ' + (isExpanded ? group.theme.solid : '#E8EEF7'),
+                      boxShadow: isExpanded
+                        ? `0 10px 24px ${group.theme.solid}15, 0 2px 6px rgba(0,0,0,0.03)`
+                        : '0 2px 8px rgba(0,0,0,0.03)',
+                      transition: 'border-color 0.3s, box-shadow 0.3s',
+                    }}
                   >
-                    {/* الجانب الأيسر: عداد ورقم الجراجات + سهم الفتح */}
-                    <div className="flex items-center gap-2.5 shrink-0">
-                      <div
-                        className="flex flex-col items-center justify-center rounded-2xl"
-                        style={{
-                          background: isExpanded ? group.theme.gradient : group.theme.light,
-                          padding: '6px 10px',
-                          minWidth: 44,
-                          boxShadow: isExpanded ? `0 4px 12px ${group.theme.solid}45` : 'none',
-                          transition: 'all 0.3s',
-                        }}
-                      >
-                        <span 
-                          className="font-black font-mono leading-none" 
-                          style={{ 
-                            fontSize: 17, 
-                            color: isExpanded ? '#ffffff' : group.theme.solid,
-                            textShadow: isExpanded ? '0 1px 2px rgba(0,0,0,0.15)' : 'none'
+                    {/* ═══ Header ═══ */}
+                    <button
+                      onClick={() => setExpandedArea(isExpanded ? null : group.name)}
+                      className="w-full p-3.5 flex items-center justify-between text-right bg-transparent border-none cursor-pointer outline-none active:scale-[0.995] transition-transform"
+                    >
+                      {/* اليسار: عداد + سهم */}
+                      <div className="flex items-center gap-2.5 shrink-0">
+                        <div
+                          className="flex flex-col items-center justify-center"
+                          style={{
+                            background: isExpanded ? group.theme.gradient : group.theme.light,
+                            padding: '5px 9px',
+                            minWidth: 40,
+                            borderRadius: 12,
+                            border: '1px solid ' + (isExpanded ? 'transparent' : group.theme.border),
                           }}
                         >
-                          {group.garages.length}
-                        </span>
-                        <span 
-                          className="font-black" 
-                          style={{ 
-                            fontSize: 8, 
-                            color: isExpanded ? 'rgba(255,255,255,0.85)' : group.theme.solid,
-                            marginTop: 2
-                          }}
-                        >
-                          جراج
-                        </span>
-                      </div>
-
-                      <motion.div
-                        animate={{ rotate: isExpanded ? 180 : 0 }}
-                        transition={{ type: 'spring', damping: 15 }}
-                        className="rounded-full flex items-center justify-center"
-                        style={{
-                          background: isExpanded ? group.theme.solid : '#F0F4FF',
-                          width: 32,
-                          height: 32,
-                          boxShadow: isExpanded ? `0 3px 10px ${group.theme.solid}40` : 'none',
-                        }}
-                      >
-                        <ChevronDown 
-                          size={18} 
-                          strokeWidth={3} 
-                          style={{ color: isExpanded ? '#ffffff' : '#64748B' }} 
-                        />
-                      </motion.div>
-                    </div>
-
-                    {/* الجانب الأيمن: اسم المنطقة والأيقونة والمعلومات */}
-                    <div className="flex items-center gap-3 flex-1 justify-end">
-                      <div className="text-right flex-1">
-                        <div className="flex items-center gap-2 justify-end mb-1">
-                          <h3 
-                            className="font-black leading-none" 
+                          <span 
+                            className="font-black font-mono leading-none" 
                             style={{ 
-                              fontSize: 16, 
-                              color: isExpanded ? group.theme.solid : '#0A1628',
-                              transition: 'color 0.3s'
+                              fontSize: 15, 
+                              color: isExpanded ? '#fff' : group.theme.solid,
                             }}
                           >
-                            {group.name}
-                          </h3>
+                            {group.garages.length}
+                          </span>
+                          <span 
+                            className="font-black leading-none mt-0.5" 
+                            style={{ 
+                              fontSize: 7.5, 
+                              color: isExpanded ? 'rgba(255,255,255,0.85)' : group.theme.solid,
+                              letterSpacing: 0.5,
+                            }}
+                          >
+                            جراج
+                          </span>
                         </div>
 
-                         {/* شريط الأماكن الشاغرة (عرض الشواغر المتاحة فقط) */}
-                        <div className="flex items-center gap-2 justify-end mt-1.5">
-                          <div className="flex items-center gap-1">
-                            <span 
-                              className="font-black font-mono" 
+                        <motion.div
+                          animate={{ rotate: isExpanded ? 180 : 0 }}
+                          transition={{ type: 'spring', damping: 15 }}
+                          className="rounded-full flex items-center justify-center"
+                          style={{
+                            background: isExpanded ? group.theme.solid : '#F1F5F9',
+                            width: 28,
+                            height: 28,
+                          }}
+                        >
+                          <ChevronDown 
+                            size={16} 
+                            strokeWidth={3} 
+                            style={{ color: isExpanded ? '#fff' : '#64748B' }} 
+                          />
+                        </motion.div>
+                      </div>
+
+                      {/* اليمين: الاسم والمعلومات */}
+                      <div className="flex items-center gap-2.5 flex-1 justify-end">
+                        <div className="text-right flex-1">
+                          <div className="flex items-center gap-1.5 justify-end mb-1">
+                            <h3 
+                              className="font-black leading-none" 
                               style={{ 
-                                fontSize: 13, 
-                                color: totalAvailableSpots > 0 ? '#00AA44' : '#FF3333',
+                                fontSize: 15, 
+                                color: isExpanded ? group.theme.accent : '#0A1628',
                               }}
+                            >
+                              {group.name}
+                            </h3>
+                          </div>
+
+                          {/* عدد الأماكن المتاحة */}
+                          <div className="flex items-center gap-1.5 justify-end mb-1.5">
+                            <span className="text-[10px] font-bold text-slate-600">
+                              مكان متاح
+                            </span>
+                            <span 
+                              className="font-black font-mono text-[13px]" 
+                              style={{ color: totalAvailableSpots > 0 ? '#059669' : '#DC2626' }}
                             >
                               {totalAvailableSpots}
                             </span>
-                            <span className="text-[11px] font-black text-slate-700">
-                              ركنة شاغرة متاحة حالياً 🚗
-                            </span>
+                            <div 
+                              className="w-1.5 h-1.5 rounded-full"
+                              style={{ 
+                                background: totalAvailableSpots > 0 ? '#10B981' : '#EF4444',
+                                boxShadow: '0 0 6px ' + (totalAvailableSpots > 0 ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.5)'),
+                              }}
+                            />
+                          </div>
+
+                          {/* شريط التقدم */}
+                          <div 
+                            className="relative overflow-hidden" 
+                            style={{ 
+                              height: 3.5, 
+                              background: '#F1F5F9',
+                              borderRadius: 4,
+                            }}
+                          >
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${occupancyPercentage}%` }}
+                              transition={{ duration: 0.8, ease: 'easeOut', delay: 0.1 + groupIdx * 0.04 }}
+                              style={{
+                                height: '100%',
+                                borderRadius: 4,
+                                background: totalAvailableSpots > 0
+                                  ? 'linear-gradient(90deg, #10B981, #059669)'
+                                  : 'linear-gradient(90deg, #EF4444, #DC2626)',
+                              }}
+                            />
                           </div>
                         </div>
 
-                        {/* شريط التقدم البصري */}
-                        <div 
-                          className="mt-1.5 relative overflow-hidden" 
-                          style={{ 
-                            height: 4, 
-                            background: '#F1F5F9',
-                            borderRadius: 4,
-                            width: '100%'
+                        {/* أيقونة المنطقة */}
+                        <div
+                          className="rounded-2xl flex items-center justify-center shrink-0"
+                          style={{
+                            background: isExpanded ? group.theme.gradient : group.theme.light,
+                            width: 48,
+                            height: 48,
+                            fontSize: 22,
+                            boxShadow: isExpanded 
+                              ? `0 6px 14px ${group.theme.solid}40`
+                              : 'none',
+                            border: '1.5px solid ' + (isExpanded ? 'transparent' : group.theme.border),
                           }}
                         >
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${occupancyPercentage}%` }}
-                            transition={{ duration: 0.8, ease: 'easeOut', delay: 0.1 + groupIdx * 0.05 }}
-                            style={{
-                              height: '100%',
-                              borderRadius: 4,
-                              background: totalAvailableSpots > 0
-                                ? 'linear-gradient(90deg, #00CC66, #00AA55)'
-                                : 'linear-gradient(90deg, #FF3333, #CC0000)',
-                              boxShadow: totalAvailableSpots > 0 
-                                ? '0 0 8px rgba(0,204,102,0.4)' 
-                                : '0 0 8px rgba(255,51,51,0.4)',
-                            }}
-                          />
+                          <span>{group.theme.icon}</span>
                         </div>
                       </div>
+                    </button>
 
-                      {/* أيقونة المنطقة (كبيرة ودائرية) */}
-                      <div
-                        className="rounded-2xl flex items-center justify-center shrink-0"
-                        style={{
-                          background: isExpanded ? group.theme.gradient : group.theme.light,
-                          width: 52,
-                          height: 52,
-                          fontSize: 26,
-                          boxShadow: isExpanded 
-                            ? `0 6px 16px ${group.theme.solid}45, inset 0 2px 4px rgba(255,255,255,0.2)`
-                            : `0 2px 8px ${group.theme.solid}18`,
-                          border: `2px solid ${isExpanded ? '#ffffff' : group.theme.border}`,
-                          transition: 'all 0.3s',
-                        }}
-                      >
-                        <span style={{ filter: isExpanded ? 'brightness(1.2)' : 'none' }}>
-                          {group.theme.icon}
-                        </span>
-                      </div>
-                    </div>
-                  </button>
-
-                  {/* ═══ محتوى المنطقة المنسدل (Garages) ═══ */}
-                  <AnimatePresence initial={false}>
-                    {isExpanded && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ type: 'spring', damping: 26, stiffness: 200 }}
-                        style={{
-                          borderTop: `1.5px dashed ${group.theme.border}`,
-                          background: `linear-gradient(180deg, ${group.theme.light}55 0%, #FAFBFF 100%)`,
-                          padding: '14px 12px 16px',
-                        }}
-                      >
-                        <div className="space-y-3">
-                          {group.garages.map((garage, i) => (
-                            <GarageCard
-                              key={garage.id}
-                              garage={garage}
-                              index={i}
-                              onSelect={() => handleDirectBooking(garage)}
-                              isNearby={garage.classification === 'nearby'}
-                              isClosest={i === 0 && garage.classification === 'nearby'}
-                              hasActiveSession={Boolean(activeSession)}
-                              hasIncomingCar={Boolean(myIncomingCar)}
-                              disabled={isBooking}
-                            />
-                          ))}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-center py-16">
-            <div className="text-5xl mb-3">🔍</div>
-            <p className="text-sm font-black" style={{ color: '#64748b' }}>لا توجد جراجات مطابقة للبحث</p>
-            <p className="text-xs mt-1" style={{ color: '#94a3b8' }}>جرب تغيير كلمة البحث أو إلغاء تصفية القريب</p>
-          </div>
-        )}
+                    {/* ═══ Content ═══ */}
+                    <AnimatePresence initial={false}>
+                      {isExpanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ type: 'spring', damping: 26, stiffness: 200 }}
+                          style={{
+                            borderTop: '1px dashed ' + group.theme.border,
+                            background: group.theme.light + '30',
+                            padding: '12px 10px 14px',
+                          }}
+                        >
+                          <div className="space-y-2.5">
+                            {group.garages.map((garage, i) => (
+                              <GarageCard
+                                key={garage.id}
+                                garage={garage}
+                                index={i}
+                                onSelect={() => handleDirectBooking(garage)}
+                                isNearby={garage.classification === 'nearby'}
+                                isClosest={i === 0 && garage.classification === 'nearby'}
+                                hasActiveSession={Boolean(activeSession)}
+                                hasIncomingCar={Boolean(myIncomingCar)}
+                                disabled={isBooking}
+                              />
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-16">
+              <div className="text-5xl mb-3">🔍</div>
+              <p className="text-sm font-black text-slate-600">لا توجد نتائج</p>
+              <p className="text-xs mt-1 text-slate-400">جرّب كلمة بحث مختلفة</p>
+            </div>
+          )}
+        </div>
       </div>
 
       <AnimatePresence>
@@ -959,14 +1141,26 @@ function WelcomeGiftModal() {
     <AnimatePresence>
       {show && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[999] flex items-center justify-center p-5" onClick={handleClose}>
-          <motion.div initial={{ scale: 0.85, opacity: 0, y: 40 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.85, opacity: 0, y: 40 }} className="bg-white rounded-[2rem] p-7 max-w-sm w-full text-center relative overflow-hidden" style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }} onClick={(e) => e.stopPropagation()}>
+          <motion.div 
+            initial={{ scale: 0.85, opacity: 0, y: 40 }} 
+            animate={{ scale: 1, opacity: 1, y: 0 }} 
+            exit={{ scale: 0.85, opacity: 0, y: 40 }} 
+            className="bg-white rounded-[2rem] p-7 max-w-sm w-full text-center relative overflow-hidden" 
+            style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }} 
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="absolute -top-10 -right-10 w-28 h-28 bg-rose-100/60 rounded-full filter blur-xl" />
             <div className="absolute -bottom-10 -left-10 w-28 h-28 bg-amber-100/50 rounded-full filter blur-xl" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-40 h-40 bg-blue-50/40 rounded-full filter blur-2xl" />
 
-            <button onClick={handleClose} className="absolute top-4 left-4 text-slate-300 hover:text-slate-500 transition-colors z-10"><X size={20} /></button>
+            <button onClick={handleClose} className="absolute top-4 left-4 text-slate-300 hover:text-slate-500 transition-colors z-10">
+              <X size={20} />
+            </button>
 
-            <motion.div animate={{ rotate: [0, -8, 8, 0], scale: [1, 1.05, 1] }} transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }} className="w-20 h-20 bg-gradient-to-br from-amber-400 to-rose-500 rounded-full flex items-center justify-center mx-auto mb-5 shadow-lg shadow-rose-200/50 relative z-10">
+            <motion.div 
+              animate={{ rotate: [0, -8, 8, 0], scale: [1, 1.05, 1] }} 
+              transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }} 
+              className="w-20 h-20 bg-gradient-to-br from-amber-400 to-rose-500 rounded-full flex items-center justify-center mx-auto mb-5 shadow-lg shadow-rose-200/50 relative z-10"
+            >
               <Gift size={36} className="text-white" />
             </motion.div>
 
@@ -975,16 +1169,25 @@ function WelcomeGiftModal() {
               نورتنا في عائلة <span className="font-black text-blue-600">Park'n 24</span> وحبينا نفرحك بهدية حلوة 🌟
             </p>
 
-            <div className="relative z-10 mb-6" style={{ background: 'linear-gradient(135deg, #FFF7ED 0%, #FEF3C7 50%, #FFEDD5 100%)', borderRadius: 20, padding: '18px 16px', border: '2px solid #FCD34D' }}>
+            <div className="relative z-10 mb-6" style={{ background: 'linear-gradient(135deg, #FFF7ED 0%, #FEF3C7 100%)', borderRadius: 20, padding: 18, border: '2px solid #FCD34D' }}>
               <div className="flex items-center justify-center gap-2 mb-2">
                 <Sparkles size={18} className="text-amber-500 animate-pulse" />
-                <span className="font-black text-amber-700" style={{ fontSize: 18 }}>أول 30 دقيقة ركنة مجاناً!</span>
+                <span className="font-black text-amber-700 text-lg">أول 30 دقيقة مجاناً!</span>
                 <Sparkles size={18} className="text-amber-500 animate-pulse" />
               </div>
-              <p className="text-amber-600 font-bold text-xs leading-relaxed">احجز ركنتك الأولى من التطبيق وهنركنلك أول 30 دقيقة ببلاش تماماً 🚗✨</p>
+              <p className="text-amber-600 font-bold text-xs">احجز ركنتك الأولى واستمتع بأول 30 دقيقة ببلاش 🚗✨</p>
             </div>
 
-            <button onClick={handleClose} className="w-full font-black py-4 rounded-2xl text-sm active:scale-95 transition-all shadow-lg relative z-10" style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)', color: '#ffffff', fontWeight: 950, fontSize: 15, boxShadow: '0 6px 20px rgba(37,99,235,0.3)', textShadow: '0 1px 2px rgba(0,0,0,0.15)' }}>
+            <button 
+              onClick={handleClose} 
+              className="w-full font-black py-4 rounded-2xl text-sm active:scale-95 transition-all relative z-10" 
+              style={{ 
+                background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)', 
+                color: '#fff', 
+                fontSize: 15, 
+                boxShadow: '0 6px 20px rgba(37,99,235,0.3)',
+              }}
+            >
               يلا نبدأ! 🚀
             </button>
           </motion.div>
@@ -995,7 +1198,7 @@ function WelcomeGiftModal() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   ██  GARAGE CARD
+   ██  GARAGE CARD — Premium International Style
    ════════════════════════════════════════════════════════════ */
 const GarageCard = memo(function GarageCard({
   garage,
@@ -1010,103 +1213,118 @@ const GarageCard = memo(function GarageCard({
   const isBusy = hasActiveSession || hasIncomingCar;
   const isFull = garage.availableSpots === 0;
 
-  const borderColor = isClosest && !isBusy ? '#0066FF' : isNearby ? '#00CC66' : '#D0DCFF';
-  const glowColor = isClosest && !isBusy
-    ? 'rgba(0,102,255,0.08)'
-    : isNearby
-    ? 'rgba(0,204,102,0.05)'
-    : 'none';
-
   const btnBg = (() => {
     if (isFull) return '#E2E8F0';
-    if (hasActiveSession) return 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)';
-    if (hasIncomingCar) return 'linear-gradient(135deg, #0099DD 0%, #0077BB 100%)';
+    if (hasActiveSession) return 'linear-gradient(135deg, #059669 0%, #047857 100%)';
+    if (hasIncomingCar) return 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)';
     if (isClosest) return 'linear-gradient(135deg, #0066FF 0%, #0044DD 100%)';
-    if (isNearby) return 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)';
-    return 'linear-gradient(135deg, #0066FF 0%, #4D00FF 100%)';
+    if (isNearby) return 'linear-gradient(135deg, #059669 0%, #047857 100%)';
+    return 'linear-gradient(135deg, #0A1628 0%, #1E293B 100%)';
   })();
 
   const btnLabel = (() => {
-    if (isFull) return 'ممتلئ - لا توجد أماكن';
+    if (isFull) return 'ممتلئ';
     if (hasActiveSession) return '⚡ الجلسة النشطة';
     if (hasIncomingCar) return '📍 الحجز النشط';
-    if (isClosest) return 'احجز في الأقرب إليك';
-    if (isNearby) return 'احجز الآن - قريب';
+    if (isClosest) return 'احجز الآن • الأقرب';
+    if (isNearby) return 'احجز الآن';
     return 'احجز مكانك';
   })();
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.04 }}
+      transition={{ delay: index * 0.03 }}
       onClick={!disabled && !isFull ? onSelect : undefined}
-      className={`transition-all text-right ${!isFull && !disabled ? 'active:scale-[0.99] cursor-pointer' : 'cursor-not-allowed opacity-95'}`}
+      className={`text-right transition-all ${!isFull && !disabled ? 'active:scale-[0.98] cursor-pointer' : 'cursor-not-allowed opacity-95'}`}
       style={{
         background: '#ffffff',
-        border: `1.5px solid ${borderColor}`,
-        borderRadius: 18,
-        padding: '12px 14px', 
-        boxShadow: `0 4px 14px ${glowColor}, 0 2px 4px rgba(0,0,0,0.02)`,
+        border: '1.5px solid ' + (isClosest && !isBusy ? '#0066FF40' : isNearby ? '#05966930' : '#E2E8F0'),
+        borderRadius: 16,
+        padding: 12,
+        boxShadow: isClosest && !isBusy 
+          ? '0 4px 12px rgba(0,102,255,0.08)' 
+          : '0 2px 6px rgba(0,0,0,0.03)',
       }}
     >
-      <div className="flex justify-between items-center mb-1.5">
+      {/* ═══ Header ═══ */}
+      <div className="flex justify-between items-start mb-2">
+        {/* اليسار: الشارات */}
         <div className="flex items-center gap-1 flex-wrap">
-          <div className="flex items-center gap-0.5 font-black text-white" style={{ background: '#FF9500', fontSize: 10, padding: '2px 6px', borderRadius: 8 }}>
-            <Star size={9} fill="currentColor" />
+          <div className="flex items-center gap-0.5 font-black text-white" style={{ background: '#F59E0B', fontSize: 9.5, padding: '2px 6px', borderRadius: 6 }}>
+            <Star size={8} fill="currentColor" />
             {garage.rating}
           </div>
 
           {garage.payment_mode === 'cash' && (
-            <span style={{ background: '#FFF3E0', color: '#E65100', border: '1px solid #FFE0B2', fontSize: 9.5, padding: '2.5px 7px', borderRadius: 8, fontWeight: 900 }}>💵 نقدي فقط</span>
+            <span style={{ background: '#FFF7ED', color: '#C2410C', border: '1px solid #FED7AA', fontSize: 9, padding: '2px 6px', borderRadius: 6, fontWeight: 900 }}>
+              💵 نقدي
+            </span>
           )}
 
           {garage.payment_mode === 'wallet' && (
-            <span style={{ background: '#F3E5F5', color: '#7B1FA2', border: '1px solid #E1BEE7', fontSize: 9.5, padding: '2.5px 7px', borderRadius: 8, fontWeight: 900 }}>👝 محفظة فقط</span>
+            <span style={{ background: '#F5F3FF', color: '#6D28D9', border: '1px solid #DDD6FE', fontSize: 9, padding: '2px 6px', borderRadius: 6, fontWeight: 900 }}>
+              👝 محفظة
+            </span>
           )}
 
           {isFull && (
-            <span style={{ background: '#FF3333', color: '#ffffff', fontSize: 10, padding: '3px 8px', borderRadius: 10, fontWeight: 950, textShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>ممتلئ</span>
+            <span style={{ background: '#DC2626', color: '#fff', fontSize: 9, padding: '2px 6px', borderRadius: 6, fontWeight: 900 }}>
+              ممتلئ
+            </span>
           )}
 
           {!isBusy && isClosest && !isFull && (
-            <span style={{ background: '#0066FF', color: '#ffffff', fontWeight: 900, fontSize: 9.5, padding: '2.5px 7px', borderRadius: 8, boxShadow: '0 2px 6px rgba(0, 102, 255, 0.35)' }}>📍 الأقرب</span>
-          )}
-          {!isBusy && !isClosest && isNearby && !isFull && (
-            <span style={{ background: '#00CC66', color: '#ffffff', fontSize: 10, padding: '3px 8px', borderRadius: 10, fontWeight: 950, textShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>قريب</span>
+            <span style={{ background: '#0066FF', color: '#fff', fontSize: 9, padding: '2px 6px', borderRadius: 6, fontWeight: 900 }}>
+              📍 الأقرب
+            </span>
           )}
         </div>
 
-        <h3 className="text-sm font-black text-slate-900" style={{ lineHeight: 1.2 }}>{garage.name}</h3>
+        {/* اليمين: اسم الجراج */}
+        <h3 className="text-[13.5px] font-black text-slate-900 text-right" style={{ lineHeight: 1.3 }}>
+          {garage.name}
+        </h3>
       </div>
 
-      <div className="flex items-center gap-1 justify-end mb-2 text-slate-400" style={{ fontSize: 10 }}>
-        <span className="truncate max-w-[180px]">{garage.location}</span>
+      {/* ═══ Location ═══ */}
+      <div className="flex items-center gap-1 justify-end mb-2.5 text-slate-500" style={{ fontSize: 10 }}>
+        <span className="truncate max-w-[200px] font-bold">{garage.location}</span>
         <MapPin size={10} className="shrink-0" />
       </div>
 
-      <div className="flex items-center justify-between gap-2 mb-2.5">
-        <div className="flex items-center gap-1 shadow-sm shrink-0" style={{ background: isNearby ? 'linear-gradient(135deg, #00CC66, #00AA55)' : 'linear-gradient(135deg, #7C3AED, #5B21B6)', borderRadius: 10, padding: '5px 10px', fontSize: 11, color: '#ffffff' }}>
-          <Navigation size={12} className="rotate-45" style={{ color: '#ffffff' }} />
-          <span className="font-mono tracking-wider" style={{ color: '#ffffff', fontWeight: 900 }}>{formatDuration(garage.minutes)}</span>
+      {/* ═══ Info Row ═══ */}
+      <div className="flex items-center justify-between gap-2 mb-2.5 py-2 px-2.5 rounded-xl" style={{ background: '#F8FAFC', border: '1px solid #F1F5F9' }}>
+        {/* Duration */}
+        <div className="flex items-center gap-1">
+          <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: isNearby ? '#D1FAE5' : '#E0E7FF' }}>
+            <Navigation size={11} className="rotate-45" style={{ color: isNearby ? '#059669' : '#4F46E5' }} />
+          </div>
+          <span className="font-black font-mono text-[11px]" style={{ color: isNearby ? '#059669' : '#4F46E5' }}>
+            {formatDuration(garage.minutes)}
+          </span>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-1 shrink-0">
-            <Car size={14} style={{ color: '#0066FF' }} />
-            <span className="font-black font-mono text-sm text-blue-600">{garage.availableSpots}</span>
-            <span className="text-[9px] font-bold text-slate-500">شاغر</span>
-          </div>
-          
-          <div style={{ width: 1.5, height: 12, background: '#E2E8F0' }} />
-          
-          <div className="flex items-center gap-1 shrink-0">
-            <span className="font-black font-mono text-sm text-emerald-600">{garage.basePrice}</span>
-            <span className="text-[9px] font-bold text-slate-500">ج.م/س</span>
-          </div>
+        <div style={{ width: 1, height: 20, background: '#E2E8F0' }} />
+
+        {/* Available spots */}
+        <div className="flex items-center gap-1">
+          <Car size={13} style={{ color: '#0066FF' }} />
+          <span className="font-black font-mono text-[13px] text-blue-600">{garage.availableSpots}</span>
+          <span className="text-[9px] font-bold text-slate-500">شاغر</span>
+        </div>
+
+        <div style={{ width: 1, height: 20, background: '#E2E8F0' }} />
+
+        {/* Price */}
+        <div className="flex items-center gap-1">
+          <span className="font-black font-mono text-[13px] text-emerald-600">{garage.basePrice}</span>
+          <span className="text-[9px] font-bold text-slate-500">ج.م/س</span>
         </div>
       </div>
 
+      {/* ═══ CTA Button ═══ */}
       <button
         disabled={isFull || disabled}
         onClick={(e) => {
@@ -1114,9 +1332,18 @@ const GarageCard = memo(function GarageCard({
           if (!isFull && !disabled) onSelect();
         }}
         className="w-full font-black flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all"
-        style={{ background: btnBg, color: isFull ? '#94a3b8' : '#ffffff', borderRadius: 12, padding: '9px 0', fontSize: 12, border: 'none', cursor: 'pointer' }}
+        style={{ 
+          background: btnBg, 
+          color: isFull ? '#94A3B8' : '#fff', 
+          borderRadius: 12, 
+          padding: '10px 0', 
+          fontSize: 12, 
+          border: 'none', 
+          cursor: isFull ? 'not-allowed' : 'pointer',
+          boxShadow: !isFull ? '0 4px 10px rgba(0,0,0,0.08)' : 'none',
+        }}
       >
-        <Car size={14} />
+        <Car size={13} />
         <span>{btnLabel}</span>
       </button>
     </motion.div>
