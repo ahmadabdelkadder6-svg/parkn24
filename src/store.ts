@@ -336,9 +336,12 @@ export const syncServerClock = async () => {
   isSyncingClock = true;
   try {
     const t0 = Date.now();
-    const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/`, {
+    const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/garages?select=id&limit=1`, {
       method: 'HEAD',
-      headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY }
+      headers: { 
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` // 👈 تم إضافة مفتاح التوثيق لحل الـ 401
+      }
     });
     const t1 = Date.now();
     const serverDateHeader = resp.headers.get('date');
@@ -353,7 +356,6 @@ export const syncServerClock = async () => {
     isSyncingClock = false;
   }
 };
-
 // 🌟 قراءة الوقت الموحد الحقيقي المتطابق مع السيرفر
 export const getServerNow = (): number => {
   return Date.now() + serverTimeOffset;
