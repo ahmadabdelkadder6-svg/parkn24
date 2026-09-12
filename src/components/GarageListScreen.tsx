@@ -811,21 +811,20 @@ export default function GarageListScreen() {
                           </h3>
                         </div>
 
-                        {/* شريط الأماكن الشاغرة (Progress Bar) */}
+                         {/* شريط الأماكن الشاغرة (عرض الشواغر المتاحة فقط) */}
                         <div className="flex items-center gap-2 justify-end mt-1.5">
                           <div className="flex items-center gap-1">
-                            <span className="text-[9px] font-black text-slate-400">من {group.totalCapacity}</span>
                             <span 
                               className="font-black font-mono" 
                               style={{ 
-                                fontSize: 11, 
+                                fontSize: 13, 
                                 color: totalAvailableSpots > 0 ? '#00AA44' : '#FF3333',
                               }}
                             >
                               {totalAvailableSpots}
                             </span>
-                            <span className="text-[10px] font-black" style={{ color: '#334155' }}>
-                              🚗 شاغر
+                            <span className="text-[11px] font-black text-slate-700">
+                              ركنة شاغرة متاحة حالياً 🚗
                             </span>
                           </div>
                         </div>
