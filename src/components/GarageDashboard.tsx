@@ -81,7 +81,7 @@ const haversineDistance = (
 };
 
 /**
- * تتبع الموقع مع التوافق التام للهواتف الذكية
+ * هوك تتبع الموقع الحاسم والصارم (يكتشف قفل الـ GPS فوراً)
  */
 const useValetGeofence = (
   enabled: boolean,
@@ -147,8 +147,10 @@ const useValetGeofence = (
         errorStatus = 'denied';
       } else if (error.code === error.POSITION_UNAVAILABLE) {
         errorMsg = 'يرجى تشغيل الـ GPS بالهاتف';
+        errorStatus = 'error';
       } else if (error.code === error.TIMEOUT) {
-        errorMsg = 'استغرق تحديد الموقع وقتاً طويلاً...';
+        errorMsg = 'انقطعت إشارة الـ GPS، يرجى تفعيل الموقع';
+        errorStatus = 'error';
       }
 
       setState({
@@ -160,20 +162,27 @@ const useValetGeofence = (
       });
     };
 
-    const options: PositionOptions = {
+    const strictOptions: PositionOptions = {
       enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 0,
+      timeout: 3000,
+      maximumAge: 0, // 🔒 منع الكاش نهائياً وإجبار الموبايل على إرسال إشارة حية
     };
 
-    navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options);
-    watchIdRef.current = navigator.geolocation.watchPosition(handleSuccess, handleError, options);
+    // 1. تشغيل الفحص الفوري
+    navigator.geolocation.getCurrentPosition(handleSuccess, handleError, strictOptions);
+    watchIdRef.current = navigator.geolocation.watchPosition(handleSuccess, handleError, strictOptions);
+
+    // 2. ⚡ نبض فحص نشط كل 4 ثوانٍ لكشف قفل الـ GPS فوراً
+    const heartbeatInterval = setInterval(() => {
+      navigator.geolocation.getCurrentPosition(handleSuccess, handleError, strictOptions);
+    }, 4000);
 
     return () => {
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
       }
+      clearInterval(heartbeatInterval);
     };
   }, [enabled, garageCoords?.lat, garageCoords?.lng, radiusMeters]);
 
@@ -348,28 +357,31 @@ const ValetGeofenceBlockScreen = memo(function ValetGeofenceBlockScreen({
             </>
           ) : isOutside ? (
             <>
-              أنت بعيد عن جراج <span className="text-blue-400 font-black">{garageName}</span>.<br />
-              النطاق المسموح به هو <span className="text-emerald-400 font-black">{GEOFENCE_RADIUS_METERS} متر</span> فقط.
+              أنت خارج نطاق جراج <span className="text-blue-400 font-black">{garageName}</span>.<br />
+              يجب التواجد داخل مقر الجراج لمتابعة العمل واستقبال السيارات.
             </>
           ) : (
             geofenceState.errorMessage || 'تأكد من تشغيل الـ GPS بالهاتف والمحاولة مجدداً.'
           )}
         </p>
 
-        {isOutside && distance != null && (
-          <div className="mb-5 mx-auto p-4 rounded-2xl" style={{ background: 'rgba(255,149,0,0.1)', border: '1.5px solid rgba(255,149,0,0.3)', maxWidth: 280 }}>
-            <div className="flex justify-between items-center mb-2">
-              <div className="text-left">
-                <div className="font-black font-mono" style={{ fontSize: 28, color: '#FF9500' }}>{distance}م</div>
-                <div className="text-[10px] font-bold text-amber-500">مسافتك الحالية</div>
-              </div>
-              <div className="text-right">
-                <div className="font-black font-mono text-blue-400" style={{ fontSize: 18 }}>{GEOFENCE_RADIUS_METERS}م</div>
-                <div className="text-[10px] font-bold text-slate-400">أقصى حد مسموح</div>
-              </div>
-            </div>
-          </div>
-        )}
+ {isOutside && distance != null && (
+  <div 
+    className="mb-5 mx-auto p-3.5 rounded-2xl text-center" 
+    style={{ 
+      background: 'rgba(255,149,0,0.1)', 
+      border: '1.5px solid rgba(255,149,0,0.35)', 
+      maxWidth: 240 
+    }}
+  >
+    <div className="font-black font-mono" style={{ fontSize: 32, color: '#FF9500', lineHeight: 1.1 }}>
+      {distance} <span style={{ fontSize: 14, fontWeight: 900 }}>متر</span>
+    </div>
+    <div className="text-[11px] font-black text-amber-400 mt-1">
+      📍 مسافتك الحالية عن الجراج
+    </div>
+  </div>
+)}
 
         <div className="space-y-2.5 max-w-[280px] mx-auto">
           <button onClick={onRetry} className="w-full font-black flex items-center justify-center gap-2 active:scale-95 py-3.5 rounded-2xl text-white shadow-lg" style={{ background: 'linear-gradient(135deg, #0066FF, #0044DD)', fontSize: 14 }}>
