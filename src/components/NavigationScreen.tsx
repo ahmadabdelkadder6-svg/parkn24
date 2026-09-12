@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   Navigation,
@@ -36,6 +36,7 @@ import { supabase } from '../lib/supabase';
 
 /* ─── Constants ─── */
 const CANCEL_WINDOW_SECONDS = 30; // مهلة الـ 30 ثانية للعميل قبل إشعار السايس
+const GPS_DEADBAND_METERS = 6; // 🛡️ فلتر منع رعشة الخريطة - لا يتحدث الموقع إلا بعد تحرك حقيقي 6 أمتار
 
 /* ─── Icons ─── */
 const userIcon = new L.DivIcon({
@@ -60,6 +61,22 @@ const toMs = (value: any): number => {
   }
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
+};
+
+/* ─── Helper: حساب المسافة بالمتر لفلتر منع الرعشة ─── */
+const getDistanceMeters = (
+  lat1: number, lon1: number,
+  lat2: number, lon2: number
+): number => {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 };
 
 /* ─── Map controller (محمي بالكامل من الانهيار والشاشة البيضاء) ─── */
@@ -172,6 +189,9 @@ export default function NavigationScreen() {
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const realtimeChannelRef = useRef<any>(null);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  
+  // 🛡️ ذاكرة الموقع الأخير المستقر لفلترة ضوضاء الـ GPS ومنع رعشة الخريطة
+  const lastStableCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
     userPosRef.current = userPos;
@@ -260,23 +280,58 @@ export default function NavigationScreen() {
     };
   }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
 
-  /* ─── GPS ─── */
+  /* ─── GPS مع فلتر منع رعشة الخريطة (Deadband Filter) ─── */
+  const handleGpsUpdate = useCallback((p: GeolocationPosition) => {
+    const newLat = p.coords.latitude;
+    const newLng = p.coords.longitude;
+
+    // 🛡️ فلتر الحماية من الرعشة: نتحقق من المسافة الفعلية بين النقطة الحالية والسابقة
+    if (lastStableCoordsRef.current) {
+      const distanceMoved = getDistanceMeters(
+        lastStableCoordsRef.current.lat,
+        lastStableCoordsRef.current.lng,
+        newLat,
+        newLng
+      );
+
+      // ⚡ إذا كانت الحركة أقل من 6 أمتار = ضوضاء GPS = تجاهل تام (لا رعشة)
+      if (distanceMoved < GPS_DEADBAND_METERS) {
+        return;
+      }
+    }
+
+    // ✅ تحديث الموقع فقط إذا كانت الحركة حقيقية أو أول قراءة على الإطلاق
+    lastStableCoordsRef.current = { lat: newLat, lng: newLng };
+    setUserPos({ lat: newLat, lng: newLng });
+  }, []);
+
   useEffect(() => {
     if (!('geolocation' in navigator)) return;
 
+    // القراءة الأولية الفورية (بدون فلتر لأنها الأولى)
     navigator.geolocation.getCurrentPosition(
-      (p) => setUserPos({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      (p) => {
+        const newLat = p.coords.latitude;
+        const newLng = p.coords.longitude;
+        lastStableCoordsRef.current = { lat: newLat, lng: newLng };
+        setUserPos({ lat: newLat, lng: newLng });
+      },
       () => {},
     );
 
+    // 📡 تتبع مستمر مع فلتر الاستقرار
     const id = navigator.geolocation.watchPosition(
-      (p) => setUserPos({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      handleGpsUpdate,
       () => {},
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 5000 },
+      { 
+        enableHighAccuracy: true, 
+        maximumAge: 3000, // 🔒 كاش 3 ثوانٍ لتخفيف الضغط على معالج الهاتف
+        timeout: 10000 
+      },
     );
 
     return () => navigator.geolocation.clearWatch(id);
-  }, []);
+  }, [handleGpsUpdate]);
 
   /* ─── تحميل الخريطة ─── */
   useEffect(() => {
@@ -613,11 +668,14 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* 🗺️ الخريطة المحدثة والمجانية 100% */}
-        <div className="w-full h-44 rounded-2xl overflow-hidden border border-slate-800 relative shrink-0 shadow-lg">
+        {/* 🗺️ الخريطة المستقرة (بدون رعشة بفضل فلتر الـ 6 أمتار) */}
+        <div 
+          className="w-full h-44 rounded-2xl overflow-hidden border border-slate-800 relative shrink-0 shadow-lg"
+          style={{ transform: 'translateZ(0)' }} // 🚀 تسريع بالمعالج الرسومي (GPU Acceleration) لمنع أي وميض
+        >
           {mapReady ? (
             <MapContainer
-              key={`map-nav-${garage.id}-${userPos.lat}-${userPos.lng}`}
+              key={`map-nav-${garage.id}`}
               center={[garage.lat || 30.0444, garage.lng || 31.2357]}
               zoom={15}
               style={{ width: '100%', height: '100%' }}
