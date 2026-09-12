@@ -81,7 +81,7 @@ const haversineDistance = (
 };
 
 /**
- * هوك تتبع الموقع الحاسم والصارم (يكتشف قفل الـ GPS فوراً)
+ * هوك تتبع الموقع المستقر والذكي (يمنع الخروج العشوائي والتكرار المزعج)
  */
 const useValetGeofence = (
   enabled: boolean,
@@ -96,6 +96,7 @@ const useValetGeofence = (
   });
 
   const watchIdRef = useRef<number | null>(null);
+  const lastValidInsideTsRef = useRef<number>(0);
 
   useEffect(() => {
     if (!enabled) {
@@ -129,66 +130,78 @@ const useValetGeofence = (
       const { latitude, longitude, accuracy } = position.coords;
       const dist = haversineDistance(latitude, longitude, garageCoords.lat, garageCoords.lng);
       const isInside = dist <= radiusMeters;
+      const now = Date.now();
+
+      if (isInside) {
+        lastValidInsideTsRef.current = now;
+      }
 
       setState({
         status: isInside ? 'inside' : 'outside',
         distance: Math.round(dist),
         accuracy: Math.round(accuracy),
-        lastCheck: Date.now(),
+        lastCheck: now,
       });
     };
 
     const handleError = (error: GeolocationPositionError) => {
-      let errorMsg = 'تعذر تحديد موقعك الحالي';
-      let errorStatus: GeofenceState['status'] = 'error';
+      const now = Date.now();
+      const timeSinceLastInside = now - lastValidInsideTsRef.current;
 
+      // 🚨 لو السايس قفل إذن الموقع من المتصفح يدوياً: نقفل فوراً
       if (error.code === error.PERMISSION_DENIED) {
-        errorMsg = 'يجب تفعيل إذن الموقع للتمكن من العمل';
-        errorStatus = 'denied';
-      } else if (error.code === error.POSITION_UNAVAILABLE) {
-        errorMsg = 'يرجى تشغيل الـ GPS بالهاتف';
-        errorStatus = 'error';
+        setState({
+          status: 'denied',
+          distance: null,
+          accuracy: null,
+          lastCheck: now,
+          errorMessage: 'يجب تفعيل إذن الموقع للتمكن من العمل',
+        });
+        return;
+      }
+
+      // 🛡️ ميزة الاستقرار: لو كان السايس مؤكد تواجده بالداخل خلال آخر 25 ثانية
+      // وحدث ضعف مؤقت في إشارة القمر الصناعي، لا نطرده للشاشة الحمراء ونتركه يعمل بسلاسة
+      if (lastValidInsideTsRef.current > 0 && timeSinceLastInside < 25000) {
+        return;
+      }
+
+      let errorMsg = 'تعذر تحديد موقعك الحالي';
+      if (error.code === error.POSITION_UNAVAILABLE) {
+        errorMsg = 'يرجى التأكد من تشغيل الـ GPS بالهاتف';
       } else if (error.code === error.TIMEOUT) {
-        errorMsg = 'انقطعت إشارة الـ GPS، يرجى تفعيل الموقع';
-        errorStatus = 'error';
+        errorMsg = 'ضعف في إشارة الـ GPS، جاري إعادة المحاولة تلقائياً...';
       }
 
       setState({
-        status: errorStatus,
+        status: 'error',
         distance: null,
         accuracy: null,
-        lastCheck: Date.now(),
+        lastCheck: now,
         errorMessage: errorMsg,
       });
     };
 
-    const strictOptions: PositionOptions = {
+    // إعدادات مريحة ومستقرة لحساس الموبايل
+    const stableOptions: PositionOptions = {
       enableHighAccuracy: true,
-      timeout: 3000,
-      maximumAge: 0, // 🔒 منع الكاش نهائياً وإجبار الموبايل على إرسال إشارة حية
+      timeout: 12000,   // مهلة 12 ثانية كافية لالتقاط القمر الصناعي بدون أخطاء
+      maximumAge: 4000,  // كاش 4 ثوانٍ يمنع الضغط على معالج الموبايل
     };
 
-    // 1. تشغيل الفحص الفوري
-    navigator.geolocation.getCurrentPosition(handleSuccess, handleError, strictOptions);
-    watchIdRef.current = navigator.geolocation.watchPosition(handleSuccess, handleError, strictOptions);
-
-    // 2. ⚡ نبض فحص نشط كل 4 ثوانٍ لكشف قفل الـ GPS فوراً
-    const heartbeatInterval = setInterval(() => {
-      navigator.geolocation.getCurrentPosition(handleSuccess, handleError, strictOptions);
-    }, 4000);
+    // تشغيل المراقبة المستمرة بدون الحاجة للضغط على أي أزرار
+    watchIdRef.current = navigator.geolocation.watchPosition(handleSuccess, handleError, stableOptions);
 
     return () => {
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
       }
-      clearInterval(heartbeatInterval);
     };
   }, [enabled, garageCoords?.lat, garageCoords?.lng, radiusMeters]);
 
   return state;
 };
-
 /**
  * 👑 هوك مراقبة السياس للمالك (يدعم إظهار السايس كمتواجد حتى لو في الخلفية)
  */
