@@ -469,11 +469,11 @@ export default function NavigationScreen() {
   }
 
   /* ─── الحسابات التقريبية الأصلية فائقة السرعة والمطابقة ─── */
-  const distanceKm = calculateDistance(
+  const distance = calculateDistance(
     userPos.lat, userPos.lng,
     garage.lat, garage.lng,
   );
-  const minutes = distanceToMinutes(distanceKm);
+  const minutes = distanceToMinutes(distance);
 
   const coordsText = `${garage.lat},${garage.lng}`;
   const isEligibleForFree = currentUser && !currentUser.hasUsedFreeSession;
