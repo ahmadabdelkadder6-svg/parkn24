@@ -177,6 +177,10 @@ export default function NavigationScreen() {
   const [mapReady, setMapReady] = useState(false);
   const [pushStatus, setPushStatus] = useState<'waiting' | 'sent' | 'cancelled'>('waiting');
 
+  // 📡 تخزين قراءات مسار الشوارع الفعلي لـ OSRM
+  const [realDistanceKm, setRealDistanceKm] = useState<number | null>(null);
+  const [realDurationMins, setRealDurationMins] = useState<number | null>(null);
+
   /* ── Refs ── */
   const userPosRef = useRef(userPos);
   const currentUserRef = useRef(currentUser);
@@ -189,7 +193,6 @@ export default function NavigationScreen() {
   const realtimeChannelRef = useRef<any>(null);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
-  // 🛡️ ذاكرة الموقع الأخير المستقر لفلترة ضوضاء الـ GPS
   const lastStableCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
@@ -279,12 +282,11 @@ export default function NavigationScreen() {
     };
   }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
 
-  /* ─── GPS مع الفحص الأولي الفوري (بدون رعشة وبدقة 100%) ─── */
+  /* ─── GPS مع الفحص الأولي الفوري ─── */
   const handleGpsUpdate = useCallback((p: GeolocationPosition) => {
     const newLat = p.coords.latitude;
     const newLng = p.coords.longitude;
 
-    // 🚀 أول قراءة حقيقية للموقع: يتم اعتمادها فوراً لتحديث المسافة والوقت بدقة وبدون أي فلترة من أول ثانية
     if (lastStableCoordsRef.current === null) {
       lastStableCoordsRef.current = { lat: newLat, lng: newLng };
       setUserPos({ lat: newLat, lng: newLng });
@@ -298,7 +300,6 @@ export default function NavigationScreen() {
       newLng
     );
 
-    // ⚡ فلترة الرعشة تعمل فقط بعد الاستقرار وتأكيد الحركة الفعالة لأكثر من 6 أمتار
     if (distanceMoved >= GPS_DEADBAND_METERS) {
       lastStableCoordsRef.current = { lat: newLat, lng: newLng };
       setUserPos({ lat: newLat, lng: newLng });
@@ -308,7 +309,6 @@ export default function NavigationScreen() {
   useEffect(() => {
     if (!('geolocation' in navigator)) return;
 
-    // جلب خاطف وفوري لتأكيد أول إحداثيات ومنع الفروقات الزمنية
     navigator.geolocation.getCurrentPosition(
       (p) => {
         const newLat = p.coords.latitude;
@@ -317,10 +317,9 @@ export default function NavigationScreen() {
         setUserPos({ lat: newLat, lng: newLng });
       },
       () => {},
-      { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 } // قراءة طازجة 100%
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
     );
 
-    // تتبع مستمر ودقيق
     const id = navigator.geolocation.watchPosition(
       handleGpsUpdate,
       () => {},
@@ -333,6 +332,42 @@ export default function NavigationScreen() {
 
     return () => navigator.geolocation.clearWatch(id);
   }, [handleGpsUpdate]);
+
+  /* ─── 🛣️ جلب مسار الشوارع الفعلي وحسابه بدقة من OSRM Engine ─── */
+  useEffect(() => {
+    if (!garage || !userPos.lat || !userPos.lng) return;
+
+    let active = true;
+
+    const fetchRealStreetRoute = async () => {
+      try {
+        // الاستعلام من خادم الطرق المفتوح (OSRM) بصيغة خط الطول أولاً ثم خط العرض
+        const url = `https://router.project-osrm.org/route/v1/driving/${userPos.lng},${userPos.lat};${garage.lng},${garage.lat}?overview=false`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('OSRM network response error');
+        
+        const data = await res.json();
+        
+        if (active && data.routes && data.routes[0]) {
+          const route = data.routes[0];
+          setRealDistanceKm(route.distance / 1000); // تحويل المتر إلى كيلومتر
+          setRealDurationMins(Math.round(route.duration / 60)); // تحويل الثواني لدقائق
+        }
+      } catch (err) {
+        // نظام الطوارئ (Fallback): تصفير القيم المباشرة ليعتمد الكود تلقائياً على الحساب التقريبي القديم
+        if (active) {
+          setRealDistanceKm(null);
+          setRealDurationMins(null);
+        }
+      }
+    };
+
+    fetchRealStreetRoute();
+
+    return () => {
+      active = false;
+    };
+  }, [userPos.lat, userPos.lng, garage?.lat, garage?.lng]);
 
   /* ─── تحميل الخريطة ─── */
   useEffect(() => {
@@ -398,16 +433,16 @@ export default function NavigationScreen() {
 
       try {
         pushSentRef.current = true;
-        const dist = calculateDistance(
-          userPosRef.current.lat, userPosRef.current.lng,
-          garage.lat, garage.lng,
-        );
-        const estimatedMinutes = distanceToMinutes(dist);
+        
+        // استخدام مسار الشوارع الفعلي إذا كان متوفراً للإرسال للسايس
+        const finalEstimatedMinutes = realDurationMins !== null 
+          ? realDurationMins 
+          : distanceToMinutes(calculateDistance(userPosRef.current.lat, userPosRef.current.lng, garage.lat, garage.lng));
 
         await sendCarComingPush({
           garageId: garage.id,
           carPlate: myIncomingCar.carPlate,
-          estimatedMinutes: Math.max(1, estimatedMinutes),
+          estimatedMinutes: Math.max(1, finalEstimatedMinutes),
           customerName: currentUserRef.current?.name,
           agreedPrice: myIncomingCar.agreedPrice,
         });
@@ -426,7 +461,7 @@ export default function NavigationScreen() {
         pushTimerRef.current = null;
       }
     };
-  }, [myIncomingCar?.id, selectedGarageId, garage]);
+  }, [myIncomingCar?.id, selectedGarageId, garage, realDurationMins]);
 
   /* ─── الانتقال اللحظي الفوري لشاشة العداد ─── */
   useEffect(() => {
@@ -469,12 +504,10 @@ export default function NavigationScreen() {
     );
   }
 
-  /* ─── Computed ─── */
-  const distance = calculateDistance(
-    userPos.lat, userPos.lng,
-    garage.lat, garage.lng,
-  );
-  const minutes = distanceToMinutes(distance);
+  /* ─── 🛣️ حساب وعرض المسافات الحقيقية للشوارع أو التقريبية ─── */
+  const displayDistance = realDistanceKm !== null ? realDistanceKm : calculateDistance(userPos.lat, userPos.lng, garage.lat, garage.lng);
+  const displayMinutes = realDurationMins !== null ? realDurationMins : distanceToMinutes(calculateDistance(userPos.lat, userPos.lng, garage.lat, garage.lng));
+
   const coordsText = `${garage.lat},${garage.lng}`;
   const isEligibleForFree = currentUser && !currentUser.hasUsedFreeSession;
 
@@ -638,11 +671,11 @@ export default function NavigationScreen() {
             <div className="flex items-center gap-2">
               <Clock size={15} className="text-blue-600" />
               <span className="text-sm font-black text-blue-600 font-mono">
-                {formatDuration(minutes)}
+                {formatDuration(displayMinutes)}
               </span>
               <span className="text-slate-300">·</span>
               <span className="text-xs text-slate-600 font-mono font-bold">
-                {distance.toFixed(1)} كم
+                {displayDistance.toFixed(1)} كم
               </span>
             </div>
             
@@ -666,7 +699,7 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* 🗺️ الخريطة المستقرة (بدون رعشة بفضل فلتر الـ 6 أمتار) */}
+        {/* 🗺️ الخريطة المستقرة */}
         <div 
           className="w-full h-44 rounded-2xl overflow-hidden border border-slate-800 relative shrink-0 shadow-lg"
           style={{ transform: 'translateZ(0)' }} 
