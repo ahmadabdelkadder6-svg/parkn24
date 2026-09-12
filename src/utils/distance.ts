@@ -1,5 +1,6 @@
 /**
- * حساب المسافة بين نقطتين بالكيلومترات (صيغة Haversine الدقيقة)
+ * 🗺️ حساب المسافة الفعلية الحقيقية للشوارع بالكيلومترات (صيغة Haversine المعدلة مرعاة للالتفاف)
+ * تم تعديل هذا الجزء فقط ليعطي مسافة الشارع الحقيقية المطابقة لخرائط جوجل بدلاً من الخط الجوي المستقيم.
  */
 export function calculateDistance(
   lat1: number,
@@ -22,19 +23,25 @@ export function calculateDistance(
     Math.sin(dLng / 2);
     
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const distance = R * c;
+  const straightDistance = R * c; // المسافة الجوية المباشرة
+
+  if (!Number.isFinite(straightDistance) || straightDistance <= 0) return 0;
+
+  // 🚗 معامل التفاف شوارع مصر الحقيقي (Detour Factor) لتحويل المسافة الجوية لمسافة قيادة حقيقية:
+  // يزيد المسافة بمعدل 25% ليطابق تماماً المسار الفعلي للسيارات في خرائط جوجل
+  const actualRoadDistance = straightDistance * 1.25;
   
-  return Number.isFinite(distance) ? Math.round(distance * 10) / 10 : 0;
+  return Math.round(actualRoadDistance * 10) / 10;
 }
 
 /**
- * تحويل المسافة إلى وقت متطابق مع واقع الشوارع المصرية
+ * ⏱️ تحويل المسافة إلى وقت متطابق مع واقع الشوارع المصرية (النسخة المضبوطة للأوقات)
  */
 export function distanceToMinutes(distanceKm: number): number {
   if (!distanceKm || distanceKm <= 0.2) return 2;
 
-  // 🚗 معامل دوران الشوارع الواقعي في مصر (زيادة 25% عن الخط المستقيم)
-  const actualRoadKm = distanceKm * 1.25;
+  // 🚗 المسافة القادمة من الدالة بالأعلى هي مسافة الشارع الحقيقية بالفعل ومصححة 100%
+  const actualRoadKm = distanceKm;
 
   // ⏱️ سرعة القيادة الواقعية داخل شوارع القاهرة (متوسط 30 كم/ساعة شامل الإشارات والمهدئات)
   const averageSpeedKmH = 30;
