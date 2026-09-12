@@ -177,10 +177,6 @@ export default function NavigationScreen() {
   const [mapReady, setMapReady] = useState(false);
   const [pushStatus, setPushStatus] = useState<'waiting' | 'sent' | 'cancelled'>('waiting');
 
-  // 📡 تخزين قراءات مسار الشوارع الفعلي لـ OSRM
-  const [realDistanceKm, setRealDistanceKm] = useState<number | null>(null);
-  const [realDurationMins, setRealDurationMins] = useState<number | null>(null);
-
   /* ── Refs ── */
   const userPosRef = useRef(userPos);
   const currentUserRef = useRef(currentUser);
@@ -193,6 +189,7 @@ export default function NavigationScreen() {
   const realtimeChannelRef = useRef<any>(null);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
+  // 🛡️ ذاكرة الموقع الأخير المستقر لفلترة ضوضاء الـ GPS
   const lastStableCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
@@ -282,11 +279,12 @@ export default function NavigationScreen() {
     };
   }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
 
-  /* ─── GPS مع الفحص الأولي الفوري ─── */
+  /* ─── GPS مع الفحص الأولي الفوري وتطبيق فلتر الرعشة ─── */
   const handleGpsUpdate = useCallback((p: GeolocationPosition) => {
     const newLat = p.coords.latitude;
     const newLng = p.coords.longitude;
 
+    // 🚀 القراءة الأولى الفورية لسرعة المزامنة وعرض الإحداثيات الفعلية بدون أي فلترة
     if (lastStableCoordsRef.current === null) {
       lastStableCoordsRef.current = { lat: newLat, lng: newLng };
       setUserPos({ lat: newLat, lng: newLng });
@@ -300,6 +298,7 @@ export default function NavigationScreen() {
       newLng
     );
 
+    // ⚡ يتم تطبيق فلتر الـ 6 أمتار لمنع الرعشة أثناء الحركة
     if (distanceMoved >= GPS_DEADBAND_METERS) {
       lastStableCoordsRef.current = { lat: newLat, lng: newLng };
       setUserPos({ lat: newLat, lng: newLng });
@@ -309,6 +308,7 @@ export default function NavigationScreen() {
   useEffect(() => {
     if (!('geolocation' in navigator)) return;
 
+    // لقطة موقع أولية سريعة جداً لمنع البقاء في إحداثيات القاهرة الافتراضية
     navigator.geolocation.getCurrentPosition(
       (p) => {
         const newLat = p.coords.latitude;
@@ -332,42 +332,6 @@ export default function NavigationScreen() {
 
     return () => navigator.geolocation.clearWatch(id);
   }, [handleGpsUpdate]);
-
-  /* ─── 🛣️ جلب مسار الشوارع الفعلي وحسابه بدقة من OSRM Engine ─── */
-  useEffect(() => {
-    if (!garage || !userPos.lat || !userPos.lng) return;
-
-    let active = true;
-
-    const fetchRealStreetRoute = async () => {
-      try {
-        // الاستعلام من خادم الطرق المفتوح (OSRM) بصيغة خط الطول أولاً ثم خط العرض
-        const url = `https://router.project-osrm.org/route/v1/driving/${userPos.lng},${userPos.lat};${garage.lng},${garage.lat}?overview=false`;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error('OSRM network response error');
-        
-        const data = await res.json();
-        
-        if (active && data.routes && data.routes[0]) {
-          const route = data.routes[0];
-          setRealDistanceKm(route.distance / 1000); // تحويل المتر إلى كيلومتر
-          setRealDurationMins(Math.round(route.duration / 60)); // تحويل الثواني لدقائق
-        }
-      } catch (err) {
-        // نظام الطوارئ (Fallback): تصفير القيم المباشرة ليعتمد الكود تلقائياً على الحساب التقريبي القديم
-        if (active) {
-          setRealDistanceKm(null);
-          setRealDurationMins(null);
-        }
-      }
-    };
-
-    fetchRealStreetRoute();
-
-    return () => {
-      active = false;
-    };
-  }, [userPos.lat, userPos.lng, garage?.lat, garage?.lng]);
 
   /* ─── تحميل الخريطة ─── */
   useEffect(() => {
@@ -433,16 +397,16 @@ export default function NavigationScreen() {
 
       try {
         pushSentRef.current = true;
-        
-        // استخدام مسار الشوارع الفعلي إذا كان متوفراً للإرسال للسايس
-        const finalEstimatedMinutes = realDurationMins !== null 
-          ? realDurationMins 
-          : distanceToMinutes(calculateDistance(userPosRef.current.lat, userPosRef.current.lng, garage.lat, garage.lng));
+        const dist = calculateDistance(
+          userPosRef.current.lat, userPosRef.current.lng,
+          garage.lat, garage.lng,
+        );
+        const estimatedMinutes = distanceToMinutes(dist);
 
         await sendCarComingPush({
           garageId: garage.id,
           carPlate: myIncomingCar.carPlate,
-          estimatedMinutes: Math.max(1, finalEstimatedMinutes),
+          estimatedMinutes: Math.max(1, estimatedMinutes),
           customerName: currentUserRef.current?.name,
           agreedPrice: myIncomingCar.agreedPrice,
         });
@@ -461,7 +425,7 @@ export default function NavigationScreen() {
         pushTimerRef.current = null;
       }
     };
-  }, [myIncomingCar?.id, selectedGarageId, garage, realDurationMins]);
+  }, [myIncomingCar?.id, selectedGarageId, garage]);
 
   /* ─── الانتقال اللحظي الفوري لشاشة العداد ─── */
   useEffect(() => {
@@ -504,9 +468,12 @@ export default function NavigationScreen() {
     );
   }
 
-  /* ─── 🛣️ حساب وعرض المسافات الحقيقية للشوارع أو التقريبية ─── */
-  const displayDistance = realDistanceKm !== null ? realDistanceKm : calculateDistance(userPos.lat, userPos.lng, garage.lat, garage.lng);
-  const displayMinutes = realDurationMins !== null ? realDurationMins : distanceToMinutes(calculateDistance(userPos.lat, userPos.lng, garage.lat, garage.lng));
+  /* ─── الحسابات التقريبية الأصلية فائقة السرعة والمطابقة ─── */
+  const distance = calculateDistance(
+    userPos.lat, userPos.lng,
+    garage.lat, garage.lng,
+  );
+  const minutes = distanceToMinutes(distance);
 
   const coordsText = `${garage.lat},${garage.lng}`;
   const isEligibleForFree = currentUser && !currentUser.hasUsedFreeSession;
@@ -671,11 +638,11 @@ export default function NavigationScreen() {
             <div className="flex items-center gap-2">
               <Clock size={15} className="text-blue-600" />
               <span className="text-sm font-black text-blue-600 font-mono">
-                {formatDuration(displayMinutes)}
+                {formatDuration(minutes)}
               </span>
               <span className="text-slate-300">·</span>
               <span className="text-xs text-slate-600 font-mono font-bold">
-                {displayDistance.toFixed(1)} كم
+                {distance.toFixed(1)} كم
               </span>
             </div>
             
@@ -699,7 +666,7 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* 🗺️ الخريطة المستقرة */}
+        {/* 🗺️ الخريطة المستقرة (بدون رعشة) */}
         <div 
           className="w-full h-44 rounded-2xl overflow-hidden border border-slate-800 relative shrink-0 shadow-lg"
           style={{ transform: 'translateZ(0)' }} 
