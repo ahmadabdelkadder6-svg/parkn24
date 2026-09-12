@@ -96,7 +96,6 @@ function MapController({
       } catch {}
     }, 250);
 
-    // 🛡️ صمام أمان صارم للتحقق من سلامة الإحداثيات ومنع الـ NaN تماماً
     const isValidCoord = (c: [number, number]) =>
       Array.isArray(c) &&
       typeof c[0] === 'number' && !isNaN(c[0]) && c[0] !== 0 &&
@@ -190,7 +189,7 @@ export default function NavigationScreen() {
   const realtimeChannelRef = useRef<any>(null);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
-  // 🛡️ ذاكرة الموقع الأخير المستقر لفلترة ضوضاء الـ GPS ومنع رعشة الخريطة
+  // 🛡️ ذاكرة الموقع الأخير المستقر لفلترة ضوضاء الـ GPS
   const lastStableCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
@@ -280,35 +279,36 @@ export default function NavigationScreen() {
     };
   }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
 
-  /* ─── GPS مع فلتر منع رعشة الخريطة (Deadband Filter) ─── */
+  /* ─── GPS مع الفحص الأولي الفوري (بدون رعشة وبدقة 100%) ─── */
   const handleGpsUpdate = useCallback((p: GeolocationPosition) => {
     const newLat = p.coords.latitude;
     const newLng = p.coords.longitude;
 
-    // 🛡️ فلتر الحماية من الرعشة: نتحقق من المسافة الفعلية بين النقطة الحالية والسابقة
-    if (lastStableCoordsRef.current) {
-      const distanceMoved = getDistanceMeters(
-        lastStableCoordsRef.current.lat,
-        lastStableCoordsRef.current.lng,
-        newLat,
-        newLng
-      );
-
-      // ⚡ إذا كانت الحركة أقل من 6 أمتار = ضوضاء GPS = تجاهل تام (لا رعشة)
-      if (distanceMoved < GPS_DEADBAND_METERS) {
-        return;
-      }
+    // 🚀 أول قراءة حقيقية للموقع: يتم اعتمادها فوراً لتحديث المسافة والوقت بدقة وبدون أي فلترة من أول ثانية
+    if (lastStableCoordsRef.current === null) {
+      lastStableCoordsRef.current = { lat: newLat, lng: newLng };
+      setUserPos({ lat: newLat, lng: newLng });
+      return;
     }
 
-    // ✅ تحديث الموقع فقط إذا كانت الحركة حقيقية أو أول قراءة على الإطلاق
-    lastStableCoordsRef.current = { lat: newLat, lng: newLng };
-    setUserPos({ lat: newLat, lng: newLng });
+    const distanceMoved = getDistanceMeters(
+      lastStableCoordsRef.current.lat,
+      lastStableCoordsRef.current.lng,
+      newLat,
+      newLng
+    );
+
+    // ⚡ فلترة الرعشة تعمل فقط بعد الاستقرار وتأكيد الحركة الفعالة لأكثر من 6 أمتار
+    if (distanceMoved >= GPS_DEADBAND_METERS) {
+      lastStableCoordsRef.current = { lat: newLat, lng: newLng };
+      setUserPos({ lat: newLat, lng: newLng });
+    }
   }, []);
 
   useEffect(() => {
     if (!('geolocation' in navigator)) return;
 
-    // القراءة الأولية الفورية (بدون فلتر لأنها الأولى)
+    // جلب خاطف وفوري لتأكيد أول إحداثيات ومنع الفروقات الزمنية
     navigator.geolocation.getCurrentPosition(
       (p) => {
         const newLat = p.coords.latitude;
@@ -317,15 +317,16 @@ export default function NavigationScreen() {
         setUserPos({ lat: newLat, lng: newLng });
       },
       () => {},
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 } // قراءة طازجة 100%
     );
 
-    // 📡 تتبع مستمر مع فلتر الاستقرار
+    // تتبع مستمر ودقيق
     const id = navigator.geolocation.watchPosition(
       handleGpsUpdate,
       () => {},
       { 
         enableHighAccuracy: true, 
-        maximumAge: 3000, // 🔒 كاش 3 ثوانٍ لتخفيف الضغط على معالج الهاتف
+        maximumAge: 3000, 
         timeout: 10000 
       },
     );
@@ -347,7 +348,6 @@ export default function NavigationScreen() {
       return;
     }
 
-    // ✅ استخدام توقيت السيرفر الموحد
     screenEnteredRef.current = getServerNow();
     setCancelTimeLeft(CANCEL_WINDOW_SECONDS);
     setCanCancel(true);
@@ -382,7 +382,6 @@ export default function NavigationScreen() {
 
     if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
 
-    // ✅ حساب مدة الانتظار بدقة بالغة بالتوقيت الموحد
     const elapsed = Math.floor((getServerNow() - screenEnteredRef.current) / 1000);
     const msLeft = Math.max(0, (CANCEL_WINDOW_SECONDS - elapsed) * 1000);
 
@@ -570,7 +569,6 @@ export default function NavigationScreen() {
       );
       if (relatedOffer) cancelOffer(relatedOffer.id);
 
-      // ⏱️ توحيد التوقيت بصيغة ISO بتوقيت السيرفر لمنع أي فارق زمني
       const startTimeISO = new Date(getServerNow()).toISOString();
 
       await addSession({
@@ -671,7 +669,7 @@ export default function NavigationScreen() {
         {/* 🗺️ الخريطة المستقرة (بدون رعشة بفضل فلتر الـ 6 أمتار) */}
         <div 
           className="w-full h-44 rounded-2xl overflow-hidden border border-slate-800 relative shrink-0 shadow-lg"
-          style={{ transform: 'translateZ(0)' }} // 🚀 تسريع بالمعالج الرسومي (GPU Acceleration) لمنع أي وميض
+          style={{ transform: 'translateZ(0)' }} 
         >
           {mapReady ? (
             <MapContainer
