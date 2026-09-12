@@ -1694,15 +1694,12 @@ export default function GarageDashboard() {
             <div className="mb-5">
               <h4 className="font-black mb-3 text-right" style={{ fontSize: 12, color: '#7B8CA6' }}>طريقة التحصيل</h4>
 
-              {isValet || confirmSession.source === 'manual' ? (
-                <div className="text-center" style={{ background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', borderRadius: 20, padding: 18, color: '#fff', boxShadow: '0 4px 14px rgba(0,204,102,0.2)' }}>
-                  <div style={{ fontSize: 32, marginBottom: 4 }}>💵</div>
-                  <div className="font-black" style={{ fontSize: 16 }}>سداد نقدي (كاش)</div>
-                  <div className="text-[11px] opacity-90 mt-1 font-bold">
-                    {isValet ? 'صلاحية السايس: تحصيل نقدي كاش يداً بيد من العميل' : 'العميل غير مسجل بالتطبيق - يتم التحصيل يداً بيد'}
-                  </div>
-                </div>
-              ) : (
+{isValet || confirmSession.source === 'manual' ? (
+  <div className="text-center" style={{ background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', borderRadius: 20, padding: 16, color: '#fff', boxShadow: '0 4px 14px rgba(0,204,102,0.2)' }}>
+    <div style={{ fontSize: 30, marginBottom: 4 }}>💵</div>
+    <div className="font-black" style={{ fontSize: 16 }}>سداد نقدي (كاش)</div>
+  </div>
+) : (
                 <div className="space-y-2">
                   {(garage.payment_mode === 'cash' || garage.payment_mode === 'both' || !garage.payment_mode) && (
                     <button
