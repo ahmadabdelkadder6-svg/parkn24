@@ -19,6 +19,8 @@ import {
   XCircle,
   Gift,
   Sparkles,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 // 🌟 استيراد normalizePlate و normalizePhone الموحدين من الـ store لربط أمني وثيق
 import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
@@ -90,6 +92,9 @@ export default function GarageListScreen() {
   const [locationLoading, setLocationLoading] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
   const [isAbuseDetected, setIsAbuseDetected] = useState(false);
+
+  // 🗺️ حالة فتح وإغلاق كروت المناطق
+  const [expandedArea, setExpandedArea] = useState<string | null>(null);
 
   const autoNavigatedRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
@@ -332,7 +337,7 @@ export default function GarageListScreen() {
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       filtered = filtered.filter(
-        (g) => g.name.toLowerCase().includes(q) || g.location.toLowerCase().includes(q)
+        (g) => g.name.toLowerCase().includes(q) || g.location.toLowerCase().includes(q) || (g.area || '').toLowerCase().includes(q)
       );
     }
     if (showNearbyOnly) {
@@ -341,15 +346,48 @@ export default function GarageListScreen() {
     return filtered;
   }, [garagesWithDistance, search, showNearbyOnly]);
 
-  const nearbyGarages = useMemo(
-    () => filteredGarages.filter((g) => g.classification === 'nearby'),
-    [filteredGarages]
-  );
+  // ==========================================
+  // 🗺️ نظام فرز وتجميع الجراجات حسب المنطقة الجغرافية
+  // ==========================================
+  const areaGroups = useMemo(() => {
+    const groups: Record<string, GarageWithDistance[]> = {};
+    
+    filteredGarages.forEach(g => {
+      // وضع جراجات بدون منطقة محددة في تصنيف "مناطق أخرى"
+      const zone = (g as any).area || 'مناطق أخرى';
+      if (!groups[zone]) groups[zone] = [];
+      groups[zone].push(g);
+    });
 
-  const farGarages = useMemo(
-    () => filteredGarages.filter((g) => g.classification === 'far'),
-    [filteredGarages]
-  );
+    const icons: Record<string, string> = {
+      'وسط البلد': '🏢',
+      'مصر الجديدة': '🏰',
+      'مدينة نصر': '🏙️',
+      'المعادي': '🌳',
+      'المهندسين': '🛍️',
+      'الدقي': '🎓',
+      'التجمع الخامس': '💎',
+      'عام': '🅿️',
+      'مناطق أخرى': '📍'
+    };
+
+    return Object.keys(groups).map(name => ({
+      name,
+      icon: icons[name] || '📍',
+      garages: groups[name]
+    })).sort((a, b) => {
+      if (a.name === 'مناطق أخرى') return 1;
+      if (b.name === 'مناطق أخرى') return -1;
+      return a.name.localeCompare(b.name, 'ar');
+    });
+  }, [filteredGarages]);
+
+  // فتح المنطقة الأولى تلقائياً عند بدء البحث لتسهيل العرض للعميل
+  useEffect(() => {
+    if (search.trim() && areaGroups.length > 0) {
+      setExpandedArea(areaGroups[0].name);
+    }
+  }, [search, areaGroups]);
 
   const handleDirectBooking = async (garage: GarageWithDistance) => {
     if (!currentUser) {
@@ -381,11 +419,10 @@ export default function GarageListScreen() {
       return;
     }
 
-    // 🛡️ فحص الرصيد الأمني للجراجات التي تدعم المحفظة فقط
     const userWallet = currentUser.wallet || 0;
     if (garage.payment_mode === 'wallet' && userWallet <= 0 && !isEligibleForFreeSession) {
       toast.error('عذراً، هذا الجراج يقبل الدفع بالمحفظة فقط. يرجى شحن محفظتك للمتابعة.');
-      setShowTopUp(true); // فتح شاشة الشحن فوراً تسهيلاً للعميل
+      setShowTopUp(true); 
       return;
     }
 
@@ -684,7 +721,7 @@ export default function GarageListScreen() {
           )}
         </AnimatePresence>
 
-        {/* 🎁 بانر ترحيبي محدث لـ 30 دقيقة */}
+        {/* 🎁 بانر ترحيبي لـ 30 دقيقة */}
         {isEligibleForFreeSession && !activeSession && !myIncomingCar && (
           <motion.div
             initial={{ opacity: 0, y: -15, scale: 0.95 }}
@@ -827,7 +864,7 @@ export default function GarageListScreen() {
               style={{ color: '#94a3b8' }}
             />
             <input
-              className="w-full font-bold outline-none text-sm"
+              className="w-full font-bold outline-none text-sm animate-none"
               style={{
                 background: '#F0F4FF',
                 border: '2px solid #D0DCFF',
@@ -835,7 +872,7 @@ export default function GarageListScreen() {
                 borderRadius: 16,
                 color: '#0A1628',
               }}
-              placeholder="ابحث عن جراج..."
+              placeholder="ابحث باسم الجراج أو المنطقة..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -934,81 +971,81 @@ export default function GarageListScreen() {
           </button>
         </div>
 
-        {nearbyGarages.length > 0 && (
-          <div className="mb-5">
-            <div className="flex items-center gap-2 mb-3 justify-end">
-              <span
-                className="font-black"
-                style={{
-                  background: '#00CC66',
-                  color: '#fff',
-                  fontSize: 10,
-                  padding: '2px 8px',
-                  borderRadius: 20,
-                }}
-              >
-                {nearbyGarages.length}
-              </span>
-              <h2 className="text-xs font-black flex items-center gap-1.5" style={{ color: '#00AA44' }}>
-                أماكن قريبة منك <Navigation size={14} />
-              </h2>
-            </div>
-            <div className="space-y-3">
-              {nearbyGarages.map((garage, i) => (
-                <GarageCard
-                  key={garage.id}
-                  garage={garage}
-                  index={i}
-                  onSelect={() => handleDirectBooking(garage)}
-                  isNearby
-                  isClosest={i === 0}
-                  hasActiveSession={Boolean(activeSession)}
-                  hasIncomingCar={Boolean(myIncomingCar)}
-                  disabled={isBooking}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+        {/* 🗺️ عرض الجراجات بنظام فرز وتصنيف المناطق الأنيق وقابل التمدد (Accordion) */}
+        {areaGroups.length > 0 ? (
+          <div className="space-y-3">
+            {areaGroups.map((group) => {
+              const isExpanded = expandedArea === group.name;
+              const totalAvailableSpots = group.garages.reduce((sum, g) => sum + (g.availableSpots || 0), 0);
 
-        {farGarages.length > 0 && !showNearbyOnly && (
-          <div className="mb-5">
-            <div className="flex items-center gap-2 mb-3 justify-end">
-              <span
-                className="font-black"
-                style={{
-                  background: '#7C3AED',
-                  color: '#fff',
-                  fontSize: 10,
-                  padding: '2px 8px',
-                  borderRadius: 20,
-                }}
-              >
-                {farGarages.length}
-              </span>
-              <h2 className="text-xs font-black flex items-center gap-1.5" style={{ color: '#5B21B6' }}>
-                خيارات إضافية <Clock size={14} />
-              </h2>
-            </div>
-            <div className="space-y-3">
-              {farGarages.map((garage, i) => (
-                <GarageCard
-                  key={garage.id}
-                  garage={garage}
-                  index={i}
-                  onSelect={() => handleDirectBooking(garage)}
-                  isNearby={false}
-                  isClosest={nearbyGarages.length === 0 && i === 0}
-                  hasActiveSession={Boolean(activeSession)}
-                  hasIncomingCar={Boolean(myIncomingCar)}
-                  disabled={isBooking}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+              return (
+                <div
+                  key={group.name}
+                  className="bg-white rounded-2xl overflow-hidden border-2 transition-all duration-300"
+                  style={{
+                    borderColor: isExpanded ? '#0066FF' : '#E2E8F0',
+                    boxShadow: isExpanded ? '0 10px 25px rgba(0,102,255,0.06)' : 'none',
+                  }}
+                >
+                  {/* رأس بطاقة المنطقة */}
+                  <button
+                    onClick={() => setExpandedArea(isExpanded ? null : group.name)}
+                    className="w-full p-4 flex items-center justify-between text-right bg-transparent border-none cursor-pointer outline-none"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black text-slate-400">({group.garages.length} جراج)</span>
+                      {isExpanded ? (
+                        <ChevronUp size={18} className="text-blue-600" />
+                      ) : (
+                        <ChevronDown size={18} className="text-slate-400" />
+                      )}
+                    </div>
 
-        {filteredGarages.length === 0 && (
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <span className="font-black text-slate-800 text-sm block">
+                          {group.icon} {group.name}
+                        </span>
+                        <span className="text-[10px] font-black text-emerald-600 block mt-0.5">
+                          🟢 متاح {totalAvailableSpots} مكان شاغر الآن
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* قائمة الجراجات التابعة للمنطقة المفتوحة بسلاسة */}
+                  <AnimatePresence initial={false}>
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ type: 'spring', damping: 25, stiffness: 180 }}
+                        className="bg-slate-50 border-t border-[#F0F4FF] px-3 pb-4 pt-2"
+                      >
+                        <div className="space-y-3">
+                          {group.garages.map((garage, i) => (
+                            <GarageCard
+                              key={garage.id}
+                              garage={garage}
+                              index={i}
+                              onSelect={() => handleDirectBooking(garage)}
+                              isNearby={garage.classification === 'nearby'}
+                              isClosest={i === 0 && garage.classification === 'nearby'}
+                              hasActiveSession={Boolean(activeSession)}
+                              hasIncomingCar={Boolean(myIncomingCar)}
+                              disabled={isBooking}
+                            />
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
           <div className="text-center py-16">
             <div className="text-5xl mb-3">🔍</div>
             <p className="text-sm font-black" style={{ color: '#64748b' }}>
@@ -1196,7 +1233,7 @@ const GarageCard = memo(function GarageCard({
             {garage.rating}
           </div>
 
-          {/* 🌟 شارة "نقدي فقط" الذكية */}
+          {/* 🌟 شارة "نقدي فقط" */}
           {garage.payment_mode === 'cash' && (
             <span
               style={{ 
@@ -1213,7 +1250,7 @@ const GarageCard = memo(function GarageCard({
             </span>
           )}
 
-          {/* 🌟 شارة "محفظة فقط" الذكية */}
+          {/* 🌟 شارة "محفظة فقط" */}
           {garage.payment_mode === 'wallet' && (
             <span
               style={{ 

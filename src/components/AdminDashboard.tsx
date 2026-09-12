@@ -4,7 +4,7 @@ import {
   Shield, Clock, CheckCircle, XCircle, MapPin, Warehouse, Plus,
   MessageCircle, Send, Receipt, Search, HardHat, Percent, DollarSign,
   Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown,
-  Settings, CalendarDays, Navigation,
+  Settings, CalendarDays, Navigation, Globe,
 } from 'lucide-react';
 // 🌟 استيراد getServerNow لتوحيد وضبط التوقيت الدولي ومنع فرق الثواني في الإقفال المالي والتسويات
 import { useStore, pausePolling, normalizePlate, normalizePhone, calculateBonus, getServerNow } from '../store';
@@ -83,6 +83,10 @@ export default function AdminDashboard() {
   const [processingTopUpId, setProcessingTopUpId] = useState<string | null>(null);
   const [editingCommissionGarageId, setEditingCommissionGarageId] = useState<string | null>(null);
   const [editCommissionRate, setEditCommissionRate] = useState(10);
+  
+  // 🗺️ حالة تعديل المنطقة الجغرافية للجراج الحالي
+  const [editArea, setEditArea] = useState('وسط البلد');
+
   const [settlementRecords, setSettlementRecords] = useState<SettlementRecord[]>([]);
   const [confirmSettlementGarageId, setConfirmSettlementGarageId] = useState<string | null>(null);
   const [processingSettlement, setProcessingSettlement] = useState(false);
@@ -105,6 +109,10 @@ export default function AdminDashboard() {
   const [gPhone, setGPhone] = useState('');
   const [lat, setLat] = useState(30.04);
   const [lng, setLng] = useState(31.23);
+  
+  // 🗺️ حالة المنطقة الجغرافية للجراج الجديد
+  const [gArea, setGArea] = useState('وسط البلد');
+
   const [gValet1Name, setGValet1Name] = useState('');
   const [gValet1Pass, setGValet1Pass] = useState('');
   const [gValet2Name, setGValet2Name] = useState('');
@@ -290,8 +298,10 @@ export default function AdminDashboard() {
       valetName1: gValet1Name, valetPassword1: gValet1Pass,
       valetName2: gValet2Name, valetPassword2: gValet2Pass,
       valetName3: gValet3Name, valetPassword3: gValet3Pass,
+      area: gArea, // 🗺️ إرسال المنطقة المختارة للجراج الجديد
     } as any);
     setGName(''); setGUser(''); setGPhone('');
+    setGArea('وسط البلد');
     setGValet1Name(''); setGValet1Pass('');
     setGValet2Name(''); setGValet2Pass('');
     setGValet3Name(''); setGValet3Pass('');
@@ -299,9 +309,10 @@ export default function AdminDashboard() {
   };
 
   const handleSaveCommission = (garageId: string) => {
-    updateGarage(garageId, { commissionRate: editCommissionRate });
+    // 🗺️ تحديث نسبة العمولة والمنطقة معاً في قاعدة البيانات والستور
+    updateGarage(garageId, { commissionRate: editCommissionRate, area: editArea });
     setEditingCommissionGarageId(null);
-    toast.success(`تم تحديث العمولة إلى ${editCommissionRate}% ✅`);
+    toast.success(`تم تحديث بيانات جراج ${garages.find(g => g.id === garageId)?.name} بنجاح ✅`);
   };
 
   const handleAdminEnterGarage = (g: typeof garages[0]) => {
@@ -387,7 +398,7 @@ export default function AdminDashboard() {
       }
 
       const baseAmount = Number(dbRow.amount || topUp.amount || 0);
-      const bonusAmount = calculateBonus(baseAmount); // 🎁 بونص الشحن الموحد من الـ Store
+      const bonusAmount = calculateBonus(baseAmount);
 
       const totalToAdd = baseAmount + bonusAmount;
       const newWallet = Number(userData.wallet || 0) + totalToAdd;
@@ -470,7 +481,7 @@ export default function AdminDashboard() {
         wallet_collected: garageData.walletRevenue,
         commission_amount: garageData.commission,
         notes: `تسوية ${garageData.totalCount} جلسة`,
-        created_at: new Date(getServerNow()).toISOString(), // ✅ توثيق دقيق لتوقيت السيرفر
+        created_at: new Date(getServerNow()).toISOString(),
       };
 
       const { error: insertError } = await supabase
@@ -485,7 +496,7 @@ export default function AdminDashboard() {
           const batch = garageData.sessionIds.slice(i, i + batchSize);
           const { error: updateError } = await supabase
             .from('sessions')
-            .update({ settled: true, settled_at: new Date(getServerNow()).toISOString() }) // ✅ مزامنة وقت إقفال الجلسات
+            .update({ settled: true, settled_at: new Date(getServerNow()).toISOString() })
             .in('id', batch);
 
           if (updateError) {
@@ -518,7 +529,7 @@ export default function AdminDashboard() {
 
     const loadingToast = toast.loading('جاري تنظيف وتخفيف قاعدة البيانات...');
     try {
-      const thirtyDaysAgo = new Date(getServerNow()); // ✅ تتبع دقيق لتاريخ المسح بالتوقيت الموحد
+      const thirtyDaysAgo = new Date(getServerNow());
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const limitDateISO = thirtyDaysAgo.toISOString();
 
@@ -549,13 +560,8 @@ export default function AdminDashboard() {
   const fetchGarageDailyStatsRef = useRef(fetchGarageDailyStats);
   useEffect(() => { fetchGarageDailyStatsRef.current = fetchGarageDailyStats; }, []);
 
-  async function fetchGarageDailyStats() {
-    // دالة فارغة لحفظ المرجع المتوافق مع تحديثات الجراج
-  }
+  async function fetchGarageDailyStats() {}
 
-  /* ─────────────────────────────────────────────
-     📡 REALTIME GLOBAL - الأدمن يتلقى تحديثات شاملة فوراً
-     ───────────────────────────────────────────── */
   useEffect(() => {
     const channel = supabase
       .channel('admin-realtime-global')
@@ -1411,7 +1417,6 @@ export default function AdminDashboard() {
 
                   {msg.subject && <div className="font-black mb-1 text-right text-slate-900" style={{ fontSize: 12.5 }}>{msg.subject}</div>}
                   
-                  {/* محتوى الشكوى بالخط العريض المقروء بامتياز للأدمن */}
                   <div 
                     className={`text-right leading-relaxed mb-2 cursor-pointer ${isExp ? '' : 'line-clamp-2'}`} 
                     style={{ fontSize: '12px', fontWeight: 950, color: '#000000' }} 
@@ -1465,7 +1470,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* 🏢 إدارة وجرد الجراجات الموفر للمساحة */}
+      {/* 🏢 إدارة وجرد الجراجات */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
           <span className="font-black" style={{ background: '#4D00FF', color: '#fff', fontSize: 10, padding: '3.5px 12px', borderRadius: 20 }}>
@@ -1477,7 +1482,6 @@ export default function AdminDashboard() {
         </div>
 
         <div className="space-y-3 mb-4">
-          {/* 🔍 شريط البحث السريع عن جراج */}
           <div className="relative">
             <Search size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: '#94a3b8' }} />
             <input 
@@ -1496,7 +1500,6 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* صندوق احتواء ذكي يوفر 50% من مساحة الشاشة للأدمن */}
         <div 
           className="space-y-3 max-h-[380px] overflow-y-auto pr-1.5"
           style={{
@@ -1551,54 +1554,87 @@ export default function AdminDashboard() {
                         </span>
                       ))}
                     </div>
-                    <div className="flex items-center gap-1 text-slate-500 text-right truncate" style={{ fontSize: 10, fontWeight: 700 }}>
-                      <span className="truncate max-w-[150px]">{g.location}</span>
-                      <MapPin size={10} className="shrink-0" />
+                    
+                    {/* 🗺️ عرض المنطقة الجغرافية للجراج في البطاقة الرئيسية للأدمن */}
+                    <div className="flex items-center gap-1.5 text-slate-500 font-bold" style={{ fontSize: 10 }}>
+                      <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md text-[9px] font-black">🗺️ {g.area || 'مناطق أخرى'}</span>
+                      <span style={{ color: '#E2E8F0' }}>·</span>
+                      <span className="truncate max-w-[100px]">{g.location}</span>
+                      <MapPin size={10} className="shrink-0 text-slate-400" />
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between gap-2 mb-2" style={{ background: '#FFF8F0', borderRadius: 12, padding: '6px 10px', border: '1.5px solid #FFD180' }}>
-                    <div className="flex items-center gap-1.5">
-                      {!isEditingComm ? (
-                        <button
-                          onClick={() => { setEditingCommissionGarageId(g.id); setEditCommissionRate(g.commissionRate ?? 10); }}
-                          className="font-black active:scale-95 flex items-center gap-0.5"
-                          style={{ background: '#FF9500', color: '#fff', padding: '3px 8px', borderRadius: 8, fontSize: 9, fontWeight: 950, textShadow: '0 1px 1px rgba(0,0,0,0.1)' }}
-                        >
-                          <Edit3 size={9} /> تعديل
-                        </button>
-                      ) : (
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => handleSaveCommission(g.id)} className="font-black active:scale-95"
-                            style={{ background: '#00CC66', color: '#fff', padding: '3px 8px', borderRadius: 8, fontSize: 9, fontWeight: 950 }}>حفظ</button>
-                          <button onClick={() => setEditingCommissionGarageId(null)} className="font-black active:scale-95"
-                            style={{ background: '#F0F4FF', color: '#475569', padding: '3px 8px', borderRadius: 8, fontSize: 9, fontWeight: 900, border: '1px solid #D0DCFF' }}>✕</button>
-                        </div>
-                      )}
-                      {isEditingComm && (
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => setEditCommissionRate(r => Math.max(0, r - 1))} className="active:scale-90 flex items-center justify-center"
-                            style={{ background: '#FF3333', color: '#fff', width: 22, height: 22, borderRadius: 7 }}>
-                            <Minus size={11} />
+                  {/* صندوق تعديل العمولة والمنطقة معاً للأدمن */}
+                  <div className="flex flex-col gap-2 mb-2" style={{ background: '#FFF8F0', borderRadius: 14, padding: '10px 12px', border: '1.5px solid #FFD180' }}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        {!isEditingComm ? (
+                          <button
+                            onClick={() => { 
+                              setEditingCommissionGarageId(g.id); 
+                              setEditCommissionRate(g.commissionRate ?? 10); 
+                              setEditArea(g.area || 'وسط البلد'); // 🗺️ تهيئة حالة المنطقة للجراج المحدد
+                            }}
+                            className="font-black active:scale-95 flex items-center gap-0.5"
+                            style={{ background: '#FF9500', color: '#fff', padding: '4px 10px', borderRadius: 8, fontSize: 9.5, fontWeight: 950, textShadow: '0 1px 1px rgba(0,0,0,0.1)' }}
+                          >
+                            <Edit3 size={9} /> تعديل البيانات
                           </button>
-                          <input type="number" value={editCommissionRate} onChange={e => setEditCommissionRate(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
-                            className="bg-transparent text-center outline-none font-mono font-black"
-                            style={{ width: 34, fontSize: 13, fontWeight: 950, color: '#FF9500', background: '#fff', border: '1px solid #FFD180', borderRadius: 6, padding: '2px 0' }} />
-                          <button onClick={() => setEditCommissionRate(r => Math.min(100, r + 1))} className="active:scale-90 flex items-center justify-center"
-                            style={{ background: '#00CC66', color: '#fff', width: 22, height: 22, borderRadius: 7 }}>
-                            <Plus size={11} />
-                          </button>
-                        </div>
-                      )}
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => handleSaveCommission(g.id)} className="font-black active:scale-95"
+                              style={{ background: '#00CC66', color: '#fff', padding: '4px 10px', borderRadius: 8, fontSize: 9.5, fontWeight: 950 }}>حفظ</button>
+                            <button onClick={() => setEditingCommissionGarageId(null)} className="font-black active:scale-95"
+                              style={{ background: '#F0F4FF', color: '#475569', padding: '4px 10px', borderRadius: 8, fontSize: 9.5, fontWeight: 900, border: '1px solid #D0DCFF' }}>✕</button>
+                          </div>
+                        )}
+                        {isEditingComm && (
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => setEditCommissionRate(r => Math.max(0, r - 1))} className="active:scale-90 flex items-center justify-center"
+                              style={{ background: '#FF3333', color: '#fff', width: 22, height: 22, borderRadius: 7 }}>
+                              <Minus size={11} />
+                            </button>
+                            <input type="number" value={editCommissionRate} onChange={e => setEditCommissionRate(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                              className="bg-transparent text-center outline-none font-mono font-black"
+                              style={{ width: 34, fontSize: 13, fontWeight: 950, color: '#FF9500', background: '#fff', border: '1px solid #FFD180', borderRadius: 6, padding: '2px 0' }} />
+                            <button onClick={() => setEditCommissionRate(r => Math.min(100, r + 1))} className="active:scale-90 flex items-center justify-center"
+                              style={{ background: '#00CC66', color: '#fff', width: 22, height: 22, borderRadius: 7 }}>
+                              <Plus size={11} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <Percent size={11} style={{ color: '#FF9500' }} />
+                        <span className="font-black font-mono text-sm" style={{ fontWeight: 950, color: '#FF9500' }}>
+                          {isEditingComm ? editCommissionRate : (g.commissionRate ?? 10)}%
+                        </span>
+                        <span className="font-black" style={{ fontSize: 9.5, color: '#94a3b8', fontWeight: 900 }}>عمولة التطبيق</span>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-1">
-                      <Percent size={11} style={{ color: '#FF9500' }} />
-                      <span className="font-black font-mono" style={{ fontSize: 14, fontWeight: 950, color: '#FF9500', textShadow: '0 1px 1px rgba(0,0,0,0.05)' }}>
-                        {isEditingComm ? editCommissionRate : (g.commissionRate ?? 10)}%
-                      </span>
-                      <span className="font-black" style={{ fontSize: 9, color: '#94a3b8', fontWeight: 900 }}>عمولة</span>
-                    </div>
+                    {/* 🗺️ اختيار المنطقة الجغرافية أثناء وضع التعديل للأدمن */}
+                    {isEditingComm && (
+                      <div className="pt-2 border-t border-dashed border-amber-300 flex items-center justify-between gap-2">
+                        <select
+                          value={editArea}
+                          onChange={(e) => setEditArea(e.target.value)}
+                          className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs"
+                          style={{ background: '#fff', border: '1.5px solid #FFD180', color: '#0A1628' }}
+                        >
+                          <option value="وسط البلد">🏢 وسط البلد</option>
+                          <option value="مصر الجديدة">🏰 مصر الجديدة</option>
+                          <option value="مدينة نصر">🏙️ مدينة نصر</option>
+                          <option value="المعادي">🌳 المعادي</option>
+                          <option value="المهندسين">🛍️ المهندسين</option>
+                          <option value="الدقي">🎓 الدقي</option>
+                          <option value="التجمع الخامس">💎 التجمع الخامس</option>
+                          <option value="مناطق أخرى">📍 مناطق أخرى</option>
+                        </select>
+                        <span className="font-black text-[10px] text-amber-700">🗺️ المنطقة الجغرافية:</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -1649,6 +1685,7 @@ export default function AdminDashboard() {
           )}
         </div>
       </div>
+      
       {/* ══ Add Garage ══ */}
       <div className="mb-20">
         <h3 className="font-black mb-4 flex items-center gap-2 justify-end" style={{ fontSize: 16, color: '#0066FF' }}>إضافة جراج جديد <Plus size={18} /></h3>
@@ -1657,6 +1694,33 @@ export default function AdminDashboard() {
           <div className="flex gap-2">
             <input className="flex-1 font-bold text-right outline-none" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 14, borderRadius: 16, fontSize: 12, color: '#0A1628' }} placeholder="المستخدم" value={gUser} onChange={e => setGUser(e.target.value)} />
             <input className="flex-1 font-bold text-right outline-none" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 14, borderRadius: 16, fontSize: 12, color: '#0A1628' }} placeholder="الهاتف" value={gPhone} onChange={e => setGPhone(e.target.value)} />
+          </div>
+
+          {/* 🗺️ قائمة اختيار المنطقة الجغرافية للجراج الجديد */}
+          <div className="mb-4 text-right">
+            <label className="font-black block text-right mb-2" style={{ fontSize: 11, color: '#7B8CA6' }}>🗺️ المنطقة الجغرافية للجراج</label>
+            <select
+              value={gArea}
+              onChange={e => setGArea(e.target.value)}
+              className="w-full font-bold text-right outline-none"
+              style={{ 
+                background: '#F0F4FF', 
+                border: '2px solid #D0DCFF', 
+                padding: 16, 
+                borderRadius: 18, 
+                fontSize: 13, 
+                color: '#0A1628' 
+              }}
+            >
+              <option value="وسط البلد">🏢 وسط البلد</option>
+              <option value="مصر الجديدة">🏰 مصر الجديدة</option>
+              <option value="مدينة نصر">🏙️ مدينة نصر</option>
+              <option value="المعادي">🌳 المعادي</option>
+              <option value="المهندسين">🛍️ المهندسين</option>
+              <option value="الدقي">🎓 الدقي</option>
+              <option value="التجمع الخامس">💎 التجمع الخامس</option>
+              <option value="مناطق أخرى">📍 مناطق أخرى</option>
+            </select>
           </div>
 
           <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>

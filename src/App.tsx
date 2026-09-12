@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo, lazy, Suspense, Component, ErrorI
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
-// 🌟 استيراد التوقيت الموحد ودوال البصمة الموحدة
+// 🌟 استيراد التوقيت الموحد ودوال البصمة الموحدة من الـ store لربط تقني متماسك
 import { useStore, setupRealtime, normalizePlate, normalizePhone, getServerNow } from './store';
 import { cn } from './utils/cn';
 
@@ -36,7 +36,7 @@ const toMs = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-// 🛡️ صمام الأمان المدمج مباشرة لمنع الشاشة البيضاء بدون الحاجة لملفات خارجية
+// 🛡️ صمام الأمان المدمج مباشرة لمنع الشاشة البيضاء في حالة حدوث أي تحديث شبكي مفاجئ
 class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: boolean }> {
   public state = { hasError: false };
 
@@ -53,16 +53,17 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
       return (
         <div className="h-screen w-screen bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center" dir="rtl">
           <div className="text-5xl mb-4">🚗</div>
-          <h2 className="text-xl font-black mb-2">حدث تحديث بسيط في النظام</h2>
-          <p className="text-slate-400 text-xs font-bold mb-6">اضغط بالأسفل للعودة فوراً لمتابعة حجزك وركنتك</p>
+          <h2 className="text-xl font-black mb-2 font-sans">تحديث لحظي ذكي</h2>
+          <p className="text-slate-400 text-xs font-bold mb-6">حدثنا بعض الخصائص، اضغط بالأسفل للعودة فوراً لمتابعة حجزك</p>
           <button
             onClick={() => {
               this.setState({ hasError: false });
               window.location.href = '/';
             }}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-black px-8 py-3.5 rounded-2xl text-sm active:scale-95 transition-all shadow-lg"
+            className="bg-blue-600 hover:bg-blue-700 text-white font-black px-8 py-4 rounded-2xl text-sm active:scale-95 transition-all shadow-lg"
+            style={{ boxShadow: '0 6px 20px rgba(37,99,235,0.35)' }}
           >
-            🔄 إعادة التحميل والمتابعة
+            🔄 إعادة تحميل التطبيق ومتابعة الحجز
           </button>
         </div>
       );
@@ -292,7 +293,7 @@ export default function App() {
     }
   }, [dataLoaded]);
 
-  // مراقبة الجلسة والتنقل اللحظي بين الشاشات
+  // مراقبة الجلسة والتنقل اللحظي الفوري بين الشاشات
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser || view !== 'user') return;
@@ -474,12 +475,16 @@ export default function App() {
           className="max-w-md mx-auto h-dvh bg-white text-slate-900 relative flex flex-col overflow-hidden"
           style={{ fontFamily: "'Cairo', sans-serif" }}
         >
+          {/* 👑 شريط الأدمن العلوي التفاعلي المحسّن والأكثر فخامة */}
           {adminAccess && (
-            <div className="absolute top-3 left-3 z-[9999] flex gap-0.5 bg-white/90 p-0.5 rounded-full backdrop-blur-md border border-slate-200 shadow-sm">
+            <div 
+              className="absolute top-3.5 left-3.5 z-[9999] flex gap-1 bg-white/80 p-1 rounded-full backdrop-blur-md border border-slate-200/60 shadow-lg"
+              style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.04)' }}
+            >
               {[
-                { id: 'user' as const, label: 'حريف' },
-                { id: 'garage' as const, label: 'جراج' },
-                { id: 'admin' as const, label: 'أدمن' },
+                { id: 'user' as const, label: '👤 حريف' },
+                { id: 'garage' as const, label: '🅿️ جراج' },
+                { id: 'admin' as const, label: '👑 أدمن' },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -496,12 +501,12 @@ export default function App() {
                     setView(tab.id);
                   }}
                   className={cn(
-                    'px-3 py-1.5 rounded-full text-[10px] font-black transition-all',
+                    'px-3.5 py-2 rounded-full text-[10px] font-black transition-all duration-300 active:scale-95',
                     view === tab.id
                       ? tab.id === 'admin'
-                        ? 'bg-purple-600 text-white'
-                        : 'bg-blue-600 text-white'
-                      : 'text-slate-600'
+                        ? 'bg-purple-600 text-white shadow-md shadow-purple-200'
+                        : 'bg-blue-600 text-white shadow-md shadow-blue-200'
+                      : 'text-slate-600 hover:text-slate-950 hover:bg-slate-100/50'
                   )}
                 >
                   {tab.label}

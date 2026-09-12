@@ -28,6 +28,7 @@ export interface Garage {
   valet3Active: boolean;
   isActive: boolean;
   payment_mode?: 'cash' | 'wallet' | 'both'; 
+  area?: string; // 🗺️ المنطقة الجغرافية للجراج (مثال: وسط البلد، مصر الجديدة، المعادي)
 }
 
 export interface ParkingSession {
@@ -409,6 +410,7 @@ const mapGarage = (r: any): Garage => ({
   valet3Active: r.valet3_active !== false,
   isActive: r.is_active !== false,
   payment_mode: r.payment_mode || 'both', 
+  area: r.area || 'مناطق أخرى', // 🗺️ قراءة عمود المنطقة من قاعدة البيانات
 });
 
 const mapSession = (r: any): ParkingSession => {
@@ -543,8 +545,8 @@ interface AppState {
   garages: Garage[];
   currentGarageId: string | null;
   setCurrentGarageId: (id: string | null) => void;
-  addGarage: (g: Omit<Garage, 'id' | 'rating' | 'availableSpots' | 'commissionRate' | 'valet1Active' | 'valet2Active' | 'valet3Active' | 'isActive'> & { capacity: number; ownerPhone?: string }) => Promise<void>;
-  updateGarage: (id: string, updates: Partial<Pick<Garage, 'basePrice' | 'availableSpots' | 'capacity' | 'commissionRate' | 'valet1Active' | 'valet2Active' | 'valet3Active' | 'ownerPhone' | 'isActive' | 'payment_mode'>> & {
+  addGarage: (g: Omit<Garage, 'id' | 'rating' | 'availableSpots' | 'commissionRate' | 'valet1Active' | 'valet2Active' | 'valet3Active' | 'isActive'> & { capacity: number; ownerPhone?: string; area?: string }) => Promise<void>;
+  updateGarage: (id: string, updates: Partial<Pick<Garage, 'basePrice' | 'availableSpots' | 'capacity' | 'commissionRate' | 'valet1Active' | 'valet2Active' | 'valet3Active' | 'ownerPhone' | 'isActive' | 'payment_mode' | 'area'>> & {
     valetName1?: string; valetPassword1?: string;
     valetName2?: string; valetPassword2?: string;
     valetName3?: string; valetPassword3?: string;
@@ -1028,6 +1030,7 @@ export const useStore = create<AppState>((set, get) => ({
       valet_name_3: (g as any).valetName3 || '', valet_password_3: (g as any).valetPassword3 || '',
       is_active: true,
       payment_mode: 'both', 
+      area: (g as any).area || 'مناطق أخرى', // 🗺️ حفظ المنطقة الجغرافية
     }).select();
     if (!error && data) set((st) => ({ garages: [...st.garages, ...data.map(mapGarage)] }));
   },
@@ -1065,6 +1068,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (updates.valetName3 !== undefined) db.valet_name_3 = updates.valetName3;
     if (updates.valetPassword3 !== undefined) db.valet_password_3 = updates.valetPassword3;
     if (updates.payment_mode !== undefined) db.payment_mode = updates.payment_mode; 
+    if (updates.area !== undefined) db.area = updates.area; // 🗺️ تحديث حقل المنطقة
 
     pendingGarageUpdates.set(id, db);
     if (updateGarageTimeout) clearTimeout(updateGarageTimeout);
