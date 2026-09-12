@@ -256,22 +256,19 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-// 🛡️ توحيد بصمة لوحة السيارة لمنع أي تلاعب أو تخطي للفحص الأمني
 export const getPlateFingerprint = (plate?: string): string => {
   if (!plate) return '';
 
   let str = plate
     .trim()
     .toUpperCase()
-    .replace(/[\u064B-\u065F\u0670]/g, '') // إزالة التشكيل
-    .replace(/[\s\-_.\/\\,|+*#@!~]/g, ''); // إزالة المسافات والفواصل والشرطات
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/[\s\-_.\/\\,|+*#@!~]/g, '');
 
-  // تحويل الأرقام الشرقية والهندية لإنجليزية موحدة
   str = str
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
     .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)));
 
-  // تحويل الحروف الإنجليزية إلى مقابلها العربي بدقة
   const enToArMap: Record<string, string> = {
     'A': 'ا', 'B': 'ب', 'C': 'س', 'D': 'د', 'E': 'ي', 'F': 'ف',
     'G': 'ج', 'H': 'ه', 'I': 'ي', 'J': 'ج', 'K': 'ك', 'L': 'ل',
@@ -281,10 +278,9 @@ export const getPlateFingerprint = (plate?: string): string => {
   };
   str = str.replace(/[A-Z]/g, (char) => enToArMap[char] || '');
 
-  // معالجة وتوحيد الهمزات والحروف المتشابهة في العربية
   const arNormalizeMap: Record<string, string> = {
     'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ٱ': 'ا', 'ء': 'ا',
-    'ة': 'ه', // توحيد التاء المربوطة بالهاء لمنع تلاعب (ة / ه)
+    'ة': 'ت',
     'ى': 'ي', 'ئ': 'ي', 'ی': 'ي',
     'ؤ': 'و',
     'ك': 'ك', 'ک': 'ك',
@@ -357,45 +353,41 @@ export const syncServerClock = async () => {
   }
 };
 
+// 🌟 قراءة الوقت الموحد الحقيقي المتطابق مع السيرفر
 export const getServerNow = (): number => {
   return Date.now() + serverTimeOffset;
 };
 
+// تشغيل المزامنة المبدئية فوراً
 syncServerClock();
 
-// 🛡️ تجميع ومنع أي تلاعب بجلسات مكررة نشطة لنفس السيارة داخل نفس الجراج
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   const active = list.filter((s) => s.status === 'active');
   const completed = list.filter((s) => s.status === 'completed');
-  const bestByPlate = new Map<string, ParkingSession>();
+  const bestByPlateSource = new Map<string, ParkingSession>();
 
   for (const session of active) {
     const plate = normalizePlate(session.carPlate);
     if (!plate) continue;
-    // تم إلغاء الفصل بالمصدر لمنع ازدواجية (App vs Manual) لنفس السيارة بالجراج
-    const key = `${plate}::${session.garageId}`;
-    const existing = bestByPlate.get(key);
-    if (!existing) { 
-      bestByPlate.set(key, session); 
-      continue; 
-    }
-    
+    const key = `${plate}::${session.garageId}::${session.source}`;
+    const existing = bestByPlateSource.get(key);
+    if (!existing) { bestByPlateSource.set(key, session); continue; }
     const sessionSynced = session.synced === true;
     const existingSynced = existing.synced === true;
     if (sessionSynced && !existingSynced) {
-      bestByPlate.set(key, session);
+      bestByPlateSource.set(key, session);
     } else if (!sessionSynced && existingSynced) {
-      // الاحتفاظ بالجلسة المتزامنة بالفعل
+      // keep existing
     } else {
       const sessionStart = getMs(session.startTime);
       const existingStart = getMs(existing.startTime);
       if (sessionStart > 0 && existingStart > 0 && sessionStart < existingStart) {
-        bestByPlate.set(key, session);
+        bestByPlateSource.set(key, session);
       }
     }
   }
 
-  return [...Array.from(bestByPlate.values()), ...completed].sort((a, b) => {
+  return [...Array.from(bestByPlateSource.values()), ...completed].sort((a, b) => {
     const aTime = a.status === 'active' ? getMs(a.startTime) : typeof a.endTime === 'number' || typeof a.endTime === 'string' ? getMs(a.endTime) : 0;
     const bTime = b.status === 'active' ? getMs(b.startTime) : typeof b.endTime === 'number' || typeof b.endTime === 'string' ? getMs(b.endTime) : 0;
     return bTime - aTime;
@@ -851,6 +843,7 @@ export const useStore = create<AppState>((set, get) => ({
       return;
     }
 
+    // مزامنة التوقيت الذري في الخلفية
     syncServerClock();
 
     const [g, activeAndUnsettledRes, recentSettledRes, o, w, ic, msgs] = await Promise.all([
@@ -893,13 +886,13 @@ export const useStore = create<AppState>((set, get) => ({
     const supabaseSessionIds = new Set(supabaseSessions.map((ss) => ss.id));
     const currentSessions = get().sessions;
     const supabaseActiveKeys = new Set(
-      supabaseSessions.filter((ss) => ss.status === 'active').map((ss) => `${normalizePlate(ss.carPlate)}`)
+      supabaseSessions.filter((ss) => ss.status === 'active').map((ss) => `${normalizePlate(ss.carPlate)}::${ss.source}`)
     );
 
     const localOnlySessions = currentSessions.filter((cs) =>
       !supabaseSessionIds.has(cs.id) &&
       cs.status === 'active' &&
-      !supabaseActiveKeys.has(`${normalizePlate(cs.carPlate)}`) &&
+      !supabaseActiveKeys.has(`${normalizePlate(cs.carPlate)}::${cs.source}`) &&
       !deletedSessionIds.has(cs.id) &&
       getServerNow() - getMs(cs.startTime) < 15000
     );
@@ -1112,27 +1105,18 @@ export const useStore = create<AppState>((set, get) => ({
     const normalizedPlate = normalizePlate(s.carPlate);
     if (!normalizedPlate) return '';
     const sessionId = crypto.randomUUID();
-    
-    // قفل التزامن باللوحة والجراج لمنع الإرسال المكرر في نفس الملي ثانية
-    const lockKey = `${normalizedPlate}::${s.garageId}`;
+    const lockKey = `${normalizedPlate}::${s.source}`;
 
     if (sessionStartLocks.has(lockKey)) {
-      const existing = get().sessions.find((x) => 
-        samePlate(x.carPlate, normalizedPlate) && 
-        x.status === 'active' && 
-        x.garageId === s.garageId
-      );
+      const existing = get().sessions.find((x) => samePlate(x.carPlate, normalizedPlate) && x.status === 'active' && x.source === s.source);
       return existing?.id ?? '';
     }
     sessionStartLocks.add(lockKey);
     pausePolling(2000);
 
     try {
-      // 🔒 فحص وحماية صارمة: منع جلستين نشطتين لنفس اللوحة تماماً
       const existingLocal = get().sessions.find((existing) =>
-        samePlate(existing.carPlate, normalizedPlate) && 
-        existing.status === 'active' && 
-        existing.garageId === s.garageId
+        samePlate(existing.carPlate, normalizedPlate) && existing.status === 'active' && existing.source === s.source
       );
       if (existingLocal) return existingLocal.id;
 
@@ -1190,6 +1174,7 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
 
+      // ⏱️ توحيد توقيت البداية بالسيرفر الذري
       const startTimeISO = typeof s.startTime === 'string' ? s.startTime : new Date(getServerNow()).toISOString();
 
       const optimisticSession: ParkingSession = {
@@ -1354,7 +1339,7 @@ export const useStore = create<AppState>((set, get) => ({
           commission_amount: commissionAmount,
           net_revenue: netRevenue,
           settled: false,
-          free_minutes_applied: free_minutes_applied || session.freeMinutesApplied || 0,
+          free_minutes_applied: freeMinutesApplied || session.freeMinutesApplied || 0,
           added_by: finalAddedBy || null
         })
         .eq('id', id)
