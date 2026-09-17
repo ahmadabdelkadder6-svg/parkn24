@@ -73,102 +73,19 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
 }
 
 /* ════════════════════════════════════════════════════════════
-   👑 PLAYFAIR ITALIC & SAGE HAZE EDITORIAL HERO
+   👑 AURORA-STYLE HERO FOR EGYPTIAN STREETS × PARK'N 24
    ════════════════════════════════════════════════════════════ */
 interface AuroraLandingProps {
   onEnter: () => void;
 }
 
-const ONBOARDING_RAIL = [
-  { step: '٠١', title: 'استكشاف حي', desc: 'أقرب الجراجات الشاغرة' },
-  { step: '٠٢', title: 'حجز مؤكد', desc: 'مكانك مضمون برقم لوحتك' },
-  { step: '٠٣', title: 'توجيه دقيق', desc: 'مسار مباشر بدون دوران' },
-  { step: '٠٤', title: 'انطلاق فوري', desc: 'دفع ذكي وبدون فكة' },
-];
-
 function AuroraLanding({ onEnter }: AuroraLandingProps) {
   const [isExiting, setIsExiting] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const handleEnter = () => {
     setIsExiting(true);
     setTimeout(() => onEnter(), 500);
   };
-
-  // 🌿 محاكاة سديم المريمية المضيء (Sage Haze Atmospheric Particle Engine)
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let animationId: number;
-    let width = (canvas.width = window.innerWidth);
-    let height = (canvas.height = window.innerHeight);
-
-    const handleResize = () => {
-      if (!canvas) return;
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
-    };
-    window.addEventListener('resize', handleResize);
-
-    const hazes: {
-      x: number;
-      y: number;
-      size: number;
-      speedY: number;
-      speedX: number;
-      alpha: number;
-      pulse: number;
-    }[] = [];
-
-    for (let i = 0; i < 30; i++) {
-      hazes.push({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        size: Math.random() * 2.5 + 1,
-        speedY: -(Math.random() * 0.35 + 0.15),
-        speedX: (Math.random() - 0.5) * 0.3,
-        alpha: Math.random() * 0.6 + 0.2,
-        pulse: Math.random() * Math.PI * 2,
-      });
-    }
-
-    const render = () => {
-      ctx.clearRect(0, 0, width, height);
-
-      for (let i = 0; i < hazes.length; i++) {
-        const h = hazes[i];
-        h.y += h.speedY;
-        h.x += h.speedX;
-        h.pulse += 0.025;
-
-        if (h.y < -10) {
-          h.y = height + 10;
-          h.x = Math.random() * width;
-        }
-
-        const currentAlpha = h.alpha * (0.5 + Math.sin(h.pulse) * 0.5);
-        ctx.fillStyle = `rgba(132, 169, 140, ${Math.max(0, currentAlpha)})`;
-        ctx.shadowColor = '#84A98C';
-        ctx.shadowBlur = 8;
-        ctx.beginPath();
-        ctx.arc(h.x, h.y, h.size, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      }
-
-      animationId = requestAnimationFrame(render);
-    };
-
-    render();
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      cancelAnimationFrame(animationId);
-    };
-  }, []);
 
   return (
     <AnimatePresence>
@@ -179,39 +96,13 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
           transition={{ duration: 0.5, ease: 'easeInOut' }}
           className="fixed inset-0 z-[999999]"
           style={{
-            background: '#070C0A',
-            fontFamily: "'DM Sans', 'Cairo', sans-serif",
+            background: '#000',
             overflow: 'hidden',
           }}
         >
-          {/* استيراد خطوط Playfair Display و DM Sans و Cairo */}
+          {/* تحميل خطوط Plus Jakarta Sans و Inter و Cairo للتناغم بين التصميم الأصلي والعربية */}
           <style>{`
-            @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,800;1,9..40,700&family=Playfair+Display:ital,wght@1,600;1,700;1,900&family=Cairo:wght@600;700;800;900&display=swap');
-
-            /* توهج سديم المريمية الحريري */
-            @keyframes sageHazeShift {
-              0% { opacity: 0.45; transform: translate(-50%, -15%) scale(0.95); }
-              50% { opacity: 0.75; transform: translate(-50%, -8%) scale(1.1); }
-              100% { opacity: 0.45; transform: translate(-50%, -15%) scale(0.95); }
-            }
-
-            /* نبض الخط الفاصل بين مراحل الركوب */
-            @keyframes railGlow {
-              0% { opacity: 0.3; }
-              50% { opacity: 0.8; }
-              100% { opacity: 0.3; }
-            }
-
-            .playfair-italic-cut {
-              font-family: 'Playfair Display', serif;
-              font-style: italic;
-              font-weight: 900;
-              letter-spacing: -0.01em;
-            }
-
-            .dm-sans-bold {
-              font-family: 'DM Sans', 'Cairo', sans-serif;
-            }
+            @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=Cairo:wght@500;600;700;800;900&display=swap');
           `}</style>
 
           <section
@@ -219,108 +110,149 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
               position: 'relative',
               width: '100%',
               height: '100vh',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
               overflow: 'hidden',
+              direction: 'rtl',
             }}
           >
-            {/* 🌌 التدرج اللوني المخملي لسديم المريمية (Sage Haze Core) */}
+            {/* 🎬 فيديو الخلفية الأصلي لأورورا (سريع من CDN مباشر) */}
+            <video
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                transform: 'translateZ(0)',
+              }}
+              src="https://pub-1e5b4001b36b47e28e6a2fb775966a79.r2.dev/templates/aurora/hero.mp4"
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="auto"
+              disablePictureInPicture
+              // @ts-ignore
+              disableRemotePlayback
+            />
+
+            {/* 🎨 طبقات التعتيم الأصلية الخفيفة من تصميم Aurora */}
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.15)' }} />
             <div
               style={{
                 position: 'absolute',
                 inset: 0,
-                background: 'radial-gradient(ellipse at 50% 35%, #13241B 0%, #0B1611 45%, #050A08 100%)',
+                background: 'linear-gradient(to bottom, rgba(0,0,0,0.18) 0%, transparent 25%, transparent 55%, rgba(0,0,0,0.35) 100%)',
               }}
             />
-
-            {/* 🌿 شفق المريمية المتوهج في الأفق الأوسط */}
             <div
               style={{
                 position: 'absolute',
-                top: '10%',
+                inset: 0,
+                background: 'linear-gradient(to left, rgba(0,0,0,0.12) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.12) 100%)',
+              }}
+            />
+
+            {/* ✨ التوهج الزمردي المميز من Aurora في الأعلى */}
+            <div
+              style={{
+                position: 'absolute',
+                top: '-14%',
                 left: '50%',
-                width: '130vw',
-                height: '60vh',
-                background: 'radial-gradient(ellipse at 50% 30%, rgba(132, 169, 140, 0.28) 0%, rgba(82, 121, 111, 0.15) 50%, transparent 80%)',
-                filter: 'blur(55px)',
-                animation: 'sageHazeShift 7s ease-in-out infinite',
+                transform: 'translateX(-50%)',
+                width: '1000px',
+                height: '720px',
+                background: 'radial-gradient(ellipse at 50% 30%, rgba(6,95,70,0.22) 0%, transparent 68%)',
                 pointerEvents: 'none',
               }}
             />
 
-            {/* 🌫️ قماش جزيئات السديم الصاعد */}
-            <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 10 }} />
-
-            {/* 🔝 الهيدر العلوي الأنيق + زر الدخول الفوري */}
-            <div
+            {/* 🚗 شعار السيارة الأصلي في الشريط العلوي (Aurora Navbar Style) */}
+            <motion.nav
+              initial={{ opacity: 0, y: -16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, ease: 'easeOut' }}
               style={{
-                position: 'relative',
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
                 zIndex: 50,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '38px 24px 10px',
+                padding: '26px 32px',
+                direction: 'ltr',
               }}
             >
-              <button
-                onClick={handleEnter}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.06)',
-                  border: '1px solid rgba(132, 169, 140, 0.35)',
-                  color: '#CAD2C5',
-                  padding: '7px 15px',
-                  borderRadius: '999px',
-                  fontSize: '11.5px',
-                  fontWeight: 700,
-                  backdropFilter: 'blur(10px)',
-                  cursor: 'pointer',
-                }}
-              >
-                تخطي للرئيسية ✕
-              </button>
-
-              <div
-                style={{
-                  background: 'rgba(11, 22, 17, 0.85)',
-                  border: '1.5px solid rgba(132, 169, 140, 0.4)',
-                  padding: '7px 16px',
-                  borderRadius: '999px',
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-                  backdropFilter: 'blur(14px)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                }}
-              >
-                <span style={{ color: '#ffffff', fontWeight: 900, fontSize: '14.5px' }}>
-                  Park'n <span style={{ color: '#84A98C' }}>24</span>
-                </span>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#84A98C" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <svg
+                  width="34"
+                  height="34"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#fff"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
                   <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C1.4 11 1 11.9 1 13v3c0 .6.4 1 1 1h2" />
                   <circle cx="7" cy="17" r="2" />
                   <path d="M9 17h6" />
                   <circle cx="17" cy="17" r="2" />
                 </svg>
+                <span
+                  style={{
+                    fontSize: '15px',
+                    fontWeight: 700,
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    color: '#fff',
+                    letterSpacing: '-0.01em',
+                  }}
+                >
+                  Park'n <span style={{ color: '#10b981' }}>24</span>
+                </span>
               </div>
-            </div>
 
-            {/* 📝 المحتوى التحريري الرئيسي: الوعد والبرهان */}
+              <motion.button
+                onClick={handleEnter}
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.97 }}
+                style={{
+                  padding: '10px 22px',
+                  borderRadius: '999px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  fontFamily: "'Cairo', sans-serif",
+                  color: '#111',
+                  background: '#fff',
+                  boxShadow: '0 4px 18px rgba(0,0,0,0.25)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  direction: 'rtl',
+                }}
+              >
+                تخطي للتطبيق ←
+              </motion.button>
+            </motion.nav>
+
+            {/* 📝 المحتوى مثبت من الأسفل جهة اليمين (RTL Aurora-style anchor) */}
             <div
               style={{
                 position: 'relative',
-                zIndex: 40,
+                zIndex: 10,
                 display: 'flex',
                 flexDirection: 'column',
-                alignItems: 'center',
-                textAlign: 'center',
-                paddingLeft: '20px',
-                paddingRight: '20px',
-                marginTop: 'auto',
-                marginBottom: '16px',
+                height: '100%',
+                justifyContent: 'flex-end',
+                paddingBottom: '20vh',
+                paddingRight: '32px',
+                paddingLeft: '32px',
+                alignItems: 'flex-start',
+                textAlign: 'right',
               }}
             >
-              {/* شارة البرهان */}
+              {/* شارة الثقة (Aurora Trusted Badge Style) */}
               <motion.div
                 initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -328,175 +260,188 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '8px',
+                  gap: '10px',
                   borderRadius: '999px',
-                  padding: '5px 14px 5px 6px',
-                  background: 'rgba(132, 169, 140, 0.1)',
-                  border: '1px solid rgba(132, 169, 140, 0.35)',
-                  backdropFilter: 'blur(12px)',
-                  marginBottom: '14px',
+                  padding: '6px 6px 6px 16px',
+                  background: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                  backdropFilter: 'blur(10px)',
+                  WebkitBackdropFilter: 'blur(10px)',
+                  width: 'fit-content',
                   direction: 'rtl',
                 }}
               >
+                <div style={{ display: 'flex' }}>
+                  {[0, 1, 2].map((i) => (
+                    <div
+                      key={i}
+                      style={{
+                        width: '22px',
+                        height: '22px',
+                        borderRadius: '999px',
+                        background: 'linear-gradient(135deg, #10b981, #047857)',
+                        border: '2px solid rgba(10,20,16,0.9)',
+                        marginRight: i === 0 ? 0 : '-8px',
+                      }}
+                    />
+                  ))}
+                </div>
                 <span
                   style={{
-                    background: 'linear-gradient(135deg, #84A98C, #52796F)',
-                    color: '#070C0A',
-                    fontSize: '10px',
-                    fontWeight: 900,
-                    padding: '2px 8px',
-                    borderRadius: '999px',
+                    fontSize: '12.5px',
+                    color: 'rgba(255,255,255,0.85)',
+                    fontFamily: "'Cairo', sans-serif",
+                    fontWeight: 600,
                   }}
                 >
-                  البرهان والوعد
-                </span>
-                <span style={{ fontSize: '11.5px', color: '#CAD2C5', fontWeight: 700 }}>
-                  أكثر من ١٠ آلاف ركنة ناجحة بدون دقيقة انتظار
+                  انضم لأكثر من{' '}
+                  <strong style={{ color: '#fff', fontWeight: 800 }}>10 آلاف سائق</strong> يومياً
                 </span>
               </motion.div>
 
-              {/* 📰 العنوان التحريري: Playfair Italic يقطع عبارة DM Sans */}
+              {/* 📰 العنوان الرئيسي بنفس روح Aurora مع لمسة عربية فاخرة */}
               <motion.h1
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 22 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.25, ease: 'easeOut' }}
-                className="dm-sans-bold"
                 style={{
+                  fontFamily: "'Cairo', sans-serif",
                   fontWeight: 800,
-                  fontSize: 'clamp(1.9rem, 5.8vw, 3.2rem)',
-                  lineHeight: 1.25,
+                  fontSize: 'clamp(2.4rem, 5vw, 4.2rem)',
+                  lineHeight: 1.15,
                   letterSpacing: '-0.02em',
-                  color: '#ffffff',
-                  direction: 'rtl',
-                  textShadow: '0 4px 20px rgba(0,0,0,0.8)',
+                  color: '#fff',
+                  marginTop: '22px',
+                  maxWidth: '560px',
+                  textShadow: '0 4px 24px rgba(0,0,0,0.4)',
                 }}
               >
-                الوصول يبدأ من
+                شوارع مصر
                 <br />
                 <span
-                  className="playfair-italic-cut"
                   style={{
-                    background: 'linear-gradient(135deg, #FFFFFF 0%, #CAD2C5 40%, #84A98C 85%, #52796F 100%)',
+                    background: 'linear-gradient(135deg, #6EE7B7 0%, #10b981 60%, #047857 100%)',
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
-                    fontSize: 'clamp(2.4rem, 7.4vw, 4rem)',
-                    padding: '0 6px',
-                    filter: 'drop-shadow(0 2px 14px rgba(132,169,140,0.4))',
+                    backgroundClip: 'text',
                   }}
                 >
-                  راحة البال
+                  تنتظرك بذكاء
                 </span>
-                <br />
-                قبل أن تدير محركك
               </motion.h1>
 
-              {/* الوصف التحريري */}
+              {/* الوصف التحفيزي بأسلوب Aurora الأنيق */}
               <motion.p
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.4, ease: 'easeOut' }}
-                className="dm-sans-bold"
+                transition={{ duration: 0.8, delay: 0.42, ease: 'easeOut' }}
                 style={{
-                  marginTop: '12px',
-                  fontSize: '14px',
+                  marginTop: '16px',
+                  fontSize: '15px',
                   lineHeight: 1.7,
-                  color: 'rgba(202, 210, 197, 0.85)',
-                  fontWeight: 600,
-                  maxWidth: '360px',
-                  direction: 'rtl',
-                  textShadow: '0 2px 8px rgba(0,0,0,0.6)',
-                }}
-              >
-                لا دوران عشوائي في المدينة، مكانك محجوز ومؤمن في جراجات معتمدة بلمسة واحدة ⚡
-              </motion.p>
-            </div>
-
-            {/* 🛤️ مسار الخطوات الأربع المتراص على الأرضية (The 4-Step Onboarding Rail across the floor) */}
-            <div
-              style={{
-                position: 'relative',
-                zIndex: 40,
-                padding: '0 16px 28px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                width: '100%',
-                background: 'linear-gradient(to top, #050A08 85%, transparent 100%)',
-              }}
-            >
-              {/* شريط المراحل الأربعة المتصلة */}
-              <motion.div
-                initial={{ opacity: 0, y: 18 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.5, ease: 'easeOut' }}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(4, 1fr)',
-                  gap: '6px',
-                  width: '100%',
+                  color: 'rgba(255,255,255,0.75)',
+                  fontFamily: "'Cairo', sans-serif",
+                  fontWeight: 500,
                   maxWidth: '380px',
-                  direction: 'rtl',
-                  marginBottom: '20px',
+                  textShadow: '0 2px 10px rgba(0,0,0,0.5)',
                 }}
               >
-                {ONBOARDING_RAIL.map((item, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      background: 'rgba(19, 36, 27, 0.75)',
-                      border: '1px solid rgba(132, 169, 140, 0.25)',
-                      borderRadius: '12px',
-                      padding: '8px 4px',
-                      textAlign: 'center',
-                      backdropFilter: 'blur(10px)',
-                    }}
-                  >
-                    <div style={{ color: '#84A98C', fontWeight: 900, fontSize: '10px', marginBottom: '2px' }}>
-                      {item.step}
-                    </div>
-                    <div style={{ color: '#FFFFFF', fontWeight: 800, fontSize: '11px', lineHeight: 1.2 }}>
-                      {item.title}
-                    </div>
-                    <div style={{ color: 'rgba(202, 210, 197, 0.65)', fontWeight: 600, fontSize: '8.5px', marginTop: '3px', lineHeight: 1.2 }}>
-                      {item.desc}
-                    </div>
-                  </div>
-                ))}
-              </motion.div>
+                من وسط البلد للمعادي، ومن مدينة نصر للتجمع.. Park'n 24 يفتحلك أقرب جراج بضغطة زر.
+              </motion.p>
 
-              {/* 🚀 زر البدء الفاخر المنسجم مع سديم المريمية */}
+              {/* الأزرار بنفس ستايل Aurora (Get Started + Play) */}
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.62, ease: 'easeOut' }}
-                style={{ width: '100%', maxWidth: '300px' }}
+                transition={{ duration: 0.8, delay: 0.58, ease: 'easeOut' }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '14px',
+                  marginTop: '30px',
+                  direction: 'rtl',
+                }}
               >
                 <motion.button
                   onClick={handleEnter}
-                  whileHover={{ scale: 1.04 }}
-                  whileTap={{ scale: 0.96 }}
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
                   style={{
-                    width: '100%',
-                    padding: '16px 36px',
+                    padding: '14px 32px',
                     borderRadius: '999px',
-                    background: 'linear-gradient(135deg, #84A98C 0%, #52796F 100%)',
-                    color: '#070C0A',
-                    fontSize: '16.5px',
-                    fontWeight: 900,
-                    border: 'none',
+                    background: '#0a0a0a',
+                    color: '#fff',
+                    fontSize: '15px',
+                    fontWeight: 700,
+                    fontFamily: "'Cairo', sans-serif",
+                    border: '1px solid rgba(255,255,255,0.18)',
                     cursor: 'pointer',
-                    boxShadow: '0 8px 30px rgba(82,121,111,0.5), 0 0 20px rgba(132,169,140,0.3)',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '10px',
-                    textShadow: '0 1px 1px rgba(255,255,255,0.25)',
+                    gap: '8px',
+                    boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
                   }}
                 >
                   <span>يلا نبدأ</span>
-                  <span style={{ fontSize: '19px' }}>🚀</span>
+                  <span style={{ fontSize: '16px' }}>🚀</span>
+                </motion.button>
+
+                <motion.button
+                  onClick={handleEnter}
+                  aria-label="Watch demo"
+                  whileHover={{ scale: 1.08 }}
+                  whileTap={{ scale: 0.93 }}
+                  style={{
+                    width: '46px',
+                    height: '46px',
+                    borderRadius: '999px',
+                    background: 'rgba(255,255,255,0.15)',
+                    border: '1px solid rgba(255,255,255,0.28)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backdropFilter: 'blur(8px)',
+                    WebkitBackdropFilter: 'blur(8px)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
                 </motion.button>
               </motion.div>
+            </div>
+
+            {/* 🇪🇬 شارة المدينة السفلية جهة اليسار (Egyptian Cities Chip - Aurora Signature Corner) */}
+            <div
+              style={{
+                position: 'absolute',
+                bottom: '34px',
+                left: '32px',
+                zIndex: 10,
+                display: 'flex',
+                gap: '8px',
+                direction: 'rtl',
+              }}
+            >
+              {['🕌 القاهرة', '🌊 الإسكندرية', '🌴 الجيزة'].map((city) => (
+                <div
+                  key={city}
+                  style={{
+                    padding: '7px 14px',
+                    borderRadius: '999px',
+                    border: '1px solid rgba(255,255,255,0.22)',
+                    background: 'rgba(0,0,0,0.35)',
+                    backdropFilter: 'blur(8px)',
+                    color: 'rgba(255,255,255,0.85)',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    fontFamily: "'Cairo', sans-serif",
+                  }}
+                >
+                  {city}
+                </div>
+              ))}
             </div>
           </section>
         </motion.div>
