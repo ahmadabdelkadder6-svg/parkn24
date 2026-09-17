@@ -73,11 +73,18 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
 }
 
 /* ════════════════════════════════════════════════════════════
-   👑 AMBER VISOR & PEOPLE-OVER-MACHINES EDITORIAL HERO
+   👑 PLAYFAIR ITALIC & SAGE HAZE EDITORIAL HERO
    ════════════════════════════════════════════════════════════ */
 interface AuroraLandingProps {
   onEnter: () => void;
 }
+
+const ONBOARDING_RAIL = [
+  { step: '٠١', title: 'استكشاف حي', desc: 'أقرب الجراجات الشاغرة' },
+  { step: '٠٢', title: 'حجز مؤكد', desc: 'مكانك مضمون برقم لوحتك' },
+  { step: '٠٣', title: 'توجيه دقيق', desc: 'مسار مباشر بدون دوران' },
+  { step: '٠٤', title: 'انطلاق فوري', desc: 'دفع ذكي وبدون فكة' },
+];
 
 function AuroraLanding({ onEnter }: AuroraLandingProps) {
   const [isExiting, setIsExiting] = useState(false);
@@ -88,7 +95,7 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
     setTimeout(() => onEnter(), 500);
   };
 
-  // ✨ جزيئات الضوء الكهرماني العائم في حزمة الشعاع (Amber Light Motes)
+  // 🌿 محاكاة سديم المريمية المضيء (Sage Haze Atmospheric Particle Engine)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -106,7 +113,7 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
     };
     window.addEventListener('resize', handleResize);
 
-    const motes: {
+    const hazes: {
       x: number;
       y: number;
       size: number;
@@ -116,14 +123,14 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
       pulse: number;
     }[] = [];
 
-    for (let i = 0; i < 35; i++) {
-      motes.push({
+    for (let i = 0; i < 30; i++) {
+      hazes.push({
         x: Math.random() * width,
         y: Math.random() * height,
-        size: Math.random() * 2 + 0.8,
-        speedY: (Math.random() - 0.5) * 0.4,
-        speedX: Math.random() * 0.6 + 0.2,
-        alpha: Math.random() * 0.7 + 0.2,
+        size: Math.random() * 2.5 + 1,
+        speedY: -(Math.random() * 0.35 + 0.15),
+        speedX: (Math.random() - 0.5) * 0.3,
+        alpha: Math.random() * 0.6 + 0.2,
         pulse: Math.random() * Math.PI * 2,
       });
     }
@@ -131,22 +138,23 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
     const render = () => {
       ctx.clearRect(0, 0, width, height);
 
-      for (let i = 0; i < motes.length; i++) {
-        const m = motes[i];
-        m.x += m.speedX;
-        m.y += m.speedY;
-        m.pulse += 0.03;
+      for (let i = 0; i < hazes.length; i++) {
+        const h = hazes[i];
+        h.y += h.speedY;
+        h.x += h.speedX;
+        h.pulse += 0.025;
 
-        if (m.x > width + 10) m.x = -10;
-        if (m.y < -10) m.y = height + 10;
-        if (m.y > height + 10) m.y = -10;
+        if (h.y < -10) {
+          h.y = height + 10;
+          h.x = Math.random() * width;
+        }
 
-        const currentAlpha = m.alpha * (0.5 + Math.sin(m.pulse) * 0.5);
-        ctx.fillStyle = `rgba(245, 158, 11, ${Math.max(0, currentAlpha)})`;
-        ctx.shadowColor = '#F59E0B';
-        ctx.shadowBlur = 6;
+        const currentAlpha = h.alpha * (0.5 + Math.sin(h.pulse) * 0.5);
+        ctx.fillStyle = `rgba(132, 169, 140, ${Math.max(0, currentAlpha)})`;
+        ctx.shadowColor = '#84A98C';
+        ctx.shadowBlur = 8;
         ctx.beginPath();
-        ctx.arc(m.x, m.y, m.size, 0, Math.PI * 2);
+        ctx.arc(h.x, h.y, h.size, 0, Math.PI * 2);
         ctx.fill();
         ctx.shadowBlur = 0;
       }
@@ -171,35 +179,38 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
           transition={{ duration: 0.5, ease: 'easeInOut' }}
           className="fixed inset-0 z-[999999]"
           style={{
-            background: '#07090E',
-            fontFamily: "'Cairo', sans-serif",
+            background: '#070C0A',
+            fontFamily: "'DM Sans', 'Cairo', sans-serif",
             overflow: 'hidden',
           }}
         >
-          {/* تحميل خطوط السيريف والتايبوجرافي التحريري الفاخر */}
+          {/* استيراد خطوط Playfair Display و DM Sans و Cairo */}
           <style>{`
-            @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,600;1,700;1,900&family=Plus+Jakarta+Sans:wght@700;800;900&family=Cairo:wght@600;700;800;900&display=swap');
+            @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,800;1,9..40,700&family=Playfair+Display:ital,wght@1,600;1,700;1,900&family=Cairo:wght@600;700;800;900&display=swap');
 
-            /* مسح الضوء الكهرماني عبر القناع الزجاجي */
-            @keyframes visorRake {
-              0% { transform: translateX(-140%) rotate(-25deg); opacity: 0; }
-              20% { opacity: 0.85; }
-              80% { opacity: 0.85; }
-              100% { transform: translateX(140%) rotate(-25deg); opacity: 0; }
+            /* توهج سديم المريمية الحريري */
+            @keyframes sageHazeShift {
+              0% { opacity: 0.45; transform: translate(-50%, -15%) scale(0.95); }
+              50% { opacity: 0.75; transform: translate(-50%, -8%) scale(1.1); }
+              100% { opacity: 0.45; transform: translate(-50%, -15%) scale(0.95); }
             }
 
-            /* توهج كهرماني دافئ نبضي */
-            @keyframes amberGlowAura {
-              0% { opacity: 0.4; transform: translate(-50%, -20%) scale(0.95); }
-              50% { opacity: 0.75; transform: translate(-50%, -15%) scale(1.1); }
-              100% { opacity: 0.4; transform: translate(-50%, -20%) scale(0.95); }
+            /* نبض الخط الفاصل بين مراحل الركوب */
+            @keyframes railGlow {
+              0% { opacity: 0.3; }
+              50% { opacity: 0.8; }
+              100% { opacity: 0.3; }
             }
 
-            .italic-serif-break {
-              font-family: 'Playfair Display', 'Cairo', serif;
+            .playfair-italic-cut {
+              font-family: 'Playfair Display', serif;
               font-style: italic;
               font-weight: 900;
               letter-spacing: -0.01em;
+            }
+
+            .dm-sans-bold {
+              font-family: 'DM Sans', 'Cairo', sans-serif;
             }
           `}</style>
 
@@ -214,94 +225,34 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
               overflow: 'hidden',
             }}
           >
-            {/* 🌌 خلفية الظلال والعمق السينمائي */}
+            {/* 🌌 التدرج اللوني المخملي لسديم المريمية (Sage Haze Core) */}
             <div
               style={{
                 position: 'absolute',
                 inset: 0,
-                background: 'radial-gradient(ellipse at 50% 30%, #15100B 0%, #090B10 50%, #040508 100%)',
+                background: 'radial-gradient(ellipse at 50% 35%, #13241B 0%, #0B1611 45%, #050A08 100%)',
               }}
             />
 
-            {/* 🟠 شفق الضوء الكهرماني المتوهج في الأفق */}
+            {/* 🌿 شفق المريمية المتوهج في الأفق الأوسط */}
             <div
               style={{
                 position: 'absolute',
-                top: '5%',
+                top: '10%',
                 left: '50%',
                 width: '130vw',
-                height: '55vh',
-                background: 'radial-gradient(ellipse at 50% 25%, rgba(245, 158, 11, 0.28) 0%, rgba(217, 119, 6, 0.12) 45%, transparent 75%)',
-                filter: 'blur(50px)',
-                animation: 'amberGlowAura 6s ease-in-out infinite',
+                height: '60vh',
+                background: 'radial-gradient(ellipse at 50% 30%, rgba(132, 169, 140, 0.28) 0%, rgba(82, 121, 111, 0.15) 50%, transparent 80%)',
+                filter: 'blur(55px)',
+                animation: 'sageHazeShift 7s ease-in-out infinite',
                 pointerEvents: 'none',
               }}
             />
 
-            {/* 🥽 مجسم القناع الزجاجي والضوء الكهرماني المائل (Visor with Raking Light) */}
-            <div
-              style={{
-                position: 'absolute',
-                top: '36%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                width: '100%',
-                maxWidth: '360px',
-                height: '220px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 10,
-                pointerEvents: 'none',
-              }}
-            >
-              <div style={{ position: 'relative', width: '310px', height: '170px' }}>
-                {/* قوس انحناء القناع الزجاجي الفاخر */}
-                <svg width="310" height="170" viewBox="0 0 310 170" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  {/* تظليل الزجاج العاتم المنحني */}
-                  <path
-                    d="M20 130 C 20 50, 70 20, 155 20 C 240 20, 290 50, 290 130 C 290 150, 20 150, 20 130 Z"
-                    fill="url(#visorGlass)"
-                    stroke="rgba(245, 158, 11, 0.35)"
-                    strokeWidth="1.8"
-                  />
-                  {/* إطار القناع الرياضي */}
-                  <path
-                    d="M15 130 C 15 45, 68 12, 155 12 C 242 12, 295 45, 295 130"
-                    stroke="#1C1F28"
-                    strokeWidth="4"
-                    strokeLinecap="round"
-                  />
-                  <defs>
-                    <linearGradient id="visorGlass" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#0B0D14" stopOpacity="0.95" />
-                      <stop offset="50%" stopColor="#17120C" stopOpacity="0.85" />
-                      <stop offset="100%" stopColor="#05070A" stopOpacity="0.95" />
-                    </linearGradient>
-                  </defs>
-                </svg>
+            {/* 🌫️ قماش جزيئات السديم الصاعد */}
+            <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 10 }} />
 
-                {/* ⚡ شعاع الضوء الكهرماني الحاد الذي يمسح القناع (Raking Amber Light Beam) */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '-30%',
-                    left: '-20%',
-                    width: '60px',
-                    height: '240px',
-                    background: 'linear-gradient(90deg, transparent 0%, rgba(254, 243, 199, 0.8) 50%, rgba(245, 158, 11, 0.95) 70%, transparent 100%)',
-                    filter: 'blur(8px)',
-                    animation: 'visorRake 3.8s cubic-bezier(0.4, 0, 0.2, 1) infinite',
-                    boxShadow: '0 0 35px rgba(245, 158, 11, 0.85)',
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* ✨ جزيئات وشرارات الضوء الكهرماني */}
-            <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 12 }} />
-
-            {/* 🔝 الهيدر العلوي وشعار التطبيق + زر التخطي */}
+            {/* 🔝 الهيدر العلوي الأنيق + زر الدخول الفوري */}
             <div
               style={{
                 position: 'relative',
@@ -316,8 +267,8 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 onClick={handleEnter}
                 style={{
                   background: 'rgba(255, 255, 255, 0.06)',
-                  border: '1px solid rgba(245, 158, 11, 0.3)',
-                  color: '#FEF3C7',
+                  border: '1px solid rgba(132, 169, 140, 0.35)',
+                  color: '#CAD2C5',
                   padding: '7px 15px',
                   borderRadius: '999px',
                   fontSize: '11.5px',
@@ -331,8 +282,8 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
 
               <div
                 style={{
-                  background: 'rgba(10, 13, 20, 0.85)',
-                  border: '1.5px solid rgba(245, 158, 11, 0.4)',
+                  background: 'rgba(11, 22, 17, 0.85)',
+                  border: '1.5px solid rgba(132, 169, 140, 0.4)',
                   padding: '7px 16px',
                   borderRadius: '999px',
                   boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
@@ -343,9 +294,9 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 }}
               >
                 <span style={{ color: '#ffffff', fontWeight: 900, fontSize: '14.5px' }}>
-                  Park'n <span style={{ color: '#F59E0B' }}>24</span>
+                  Park'n <span style={{ color: '#84A98C' }}>24</span>
                 </span>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#84A98C" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C1.4 11 1 11.9 1 13v3c0 .6.4 1 1 1h2" />
                   <circle cx="7" cy="17" r="2" />
                   <path d="M9 17h6" />
@@ -354,7 +305,7 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
               </div>
             </div>
 
-            {/* 📝 المحتوى التحريري والبراهين المتراصة (The Proof Stacked Underneath) */}
+            {/* 📝 المحتوى التحريري الرئيسي: الوعد والبرهان */}
             <div
               style={{
                 position: 'relative',
@@ -365,10 +316,11 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 textAlign: 'center',
                 paddingLeft: '20px',
                 paddingRight: '20px',
-                paddingBottom: '40px',
+                marginTop: 'auto',
+                marginBottom: '16px',
               }}
             >
-              {/* شارة فلسفة الناس فوق الآلات */}
+              {/* شارة البرهان */}
               <motion.div
                 initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -379,8 +331,8 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                   gap: '8px',
                   borderRadius: '999px',
                   padding: '5px 14px 5px 6px',
-                  background: 'rgba(245, 158, 11, 0.08)',
-                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  background: 'rgba(132, 169, 140, 0.1)',
+                  border: '1px solid rgba(132, 169, 140, 0.35)',
                   backdropFilter: 'blur(12px)',
                   marginBottom: '14px',
                   direction: 'rtl',
@@ -388,28 +340,29 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
               >
                 <span
                   style={{
-                    background: 'linear-gradient(135deg, #F59E0B, #D97706)',
-                    color: '#07090E',
+                    background: 'linear-gradient(135deg, #84A98C, #52796F)',
+                    color: '#070C0A',
                     fontSize: '10px',
                     fontWeight: 900,
                     padding: '2px 8px',
                     borderRadius: '999px',
                   }}
                 >
-                  فلسفة الخدمة
+                  البرهان والوعد
                 </span>
-                <span style={{ fontSize: '11.5px', color: '#FEF3C7', fontWeight: 700 }}>
-                  الإنسان أولاً • رعاية تصنع الفارق
+                <span style={{ fontSize: '11.5px', color: '#CAD2C5', fontWeight: 700 }}>
+                  أكثر من ١٠ آلاف ركنة ناجحة بدون دقيقة انتظار
                 </span>
               </motion.div>
 
-              {/* 📰 العنوان المكسور على خط السيريف الإيطاليك الفخم */}
+              {/* 📰 العنوان التحريري: Playfair Italic يقطع عبارة DM Sans */}
               <motion.h1
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.25, ease: 'easeOut' }}
+                className="dm-sans-bold"
                 style={{
-                  fontWeight: 900,
+                  fontWeight: 800,
                   fontSize: 'clamp(1.9rem, 5.8vw, 3.2rem)',
                   lineHeight: 1.25,
                   letterSpacing: '-0.02em',
@@ -418,78 +371,105 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                   textShadow: '0 4px 20px rgba(0,0,0,0.8)',
                 }}
               >
-                الذكاء يرشدك... لكن
+                الوصول يبدأ من
                 <br />
                 <span
-                  className="italic-serif-break"
+                  className="playfair-italic-cut"
                   style={{
-                    background: 'linear-gradient(135deg, #FFFBEB 0%, #FDE68A 35%, #F59E0B 75%, #D97706 100%)',
+                    background: 'linear-gradient(135deg, #FFFFFF 0%, #CAD2C5 40%, #84A98C 85%, #52796F 100%)',
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
-                    fontSize: 'clamp(2.3rem, 7vw, 3.8rem)',
+                    fontSize: 'clamp(2.4rem, 7.4vw, 4rem)',
                     padding: '0 6px',
-                    filter: 'drop-shadow(0 2px 14px rgba(245,158,11,0.4))',
+                    filter: 'drop-shadow(0 2px 14px rgba(132,169,140,0.4))',
                   }}
                 >
-                  العناية الإنسانية
+                  راحة البال
                 </span>
                 <br />
-                تحمي سيارتك
+                قبل أن تدير محركك
               </motion.h1>
 
-              {/* 📊 الأدلة والبراهين المتراصة (The Proof Stacked Underneath) */}
-              <motion.div
+              {/* الوصف التحريري */}
+              <motion.p
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.45, ease: 'easeOut' }}
+                transition={{ duration: 0.8, delay: 0.4, ease: 'easeOut' }}
+                className="dm-sans-bold"
                 style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '7px',
-                  width: '100%',
-                  maxWidth: '330px',
-                  marginTop: '16px',
+                  marginTop: '12px',
+                  fontSize: '14px',
+                  lineHeight: 1.7,
+                  color: 'rgba(202, 210, 197, 0.85)',
+                  fontWeight: 600,
+                  maxWidth: '360px',
                   direction: 'rtl',
+                  textShadow: '0 2px 8px rgba(0,0,0,0.6)',
                 }}
               >
-                {[
-                  { icon: '👥', bold: 'سياس معتمدون ومدربون', text: 'استقبال شخصي وعناية تامة بمركبتك' },
-                  { icon: '🛡️', bold: 'إشراف بشري حي 24/7', text: 'أمان واقعي يتجاوز الكاميرات الصامتة' },
-                  { icon: '⚡', bold: 'حجز فوري ودفع ذكي', text: 'سرعة التكنولوجيا مع دفء الضيافة' },
-                ].map((proof, idx) => (
+                لا دوران عشوائي في المدينة، مكانك محجوز ومؤمن في جراجات معتمدة بلمسة واحدة ⚡
+              </motion.p>
+            </div>
+
+            {/* 🛤️ مسار الخطوات الأربع المتراص على الأرضية (The 4-Step Onboarding Rail across the floor) */}
+            <div
+              style={{
+                position: 'relative',
+                zIndex: 40,
+                padding: '0 16px 28px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                width: '100%',
+                background: 'linear-gradient(to top, #050A08 85%, transparent 100%)',
+              }}
+            >
+              {/* شريط المراحل الأربعة المتصلة */}
+              <motion.div
+                initial={{ opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.5, ease: 'easeOut' }}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(4, 1fr)',
+                  gap: '6px',
+                  width: '100%',
+                  maxWidth: '380px',
+                  direction: 'rtl',
+                  marginBottom: '20px',
+                }}
+              >
+                {ONBOARDING_RAIL.map((item, idx) => (
                   <div
                     key={idx}
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      background: 'rgba(15, 18, 28, 0.75)',
-                      border: '1px solid rgba(245, 158, 11, 0.2)',
-                      padding: '7px 12px',
-                      borderRadius: '14px',
+                      background: 'rgba(19, 36, 27, 0.75)',
+                      border: '1px solid rgba(132, 169, 140, 0.25)',
+                      borderRadius: '12px',
+                      padding: '8px 4px',
+                      textAlign: 'center',
                       backdropFilter: 'blur(10px)',
-                      textAlign: 'right',
                     }}
                   >
-                    <span style={{ fontSize: '15px' }}>{proof.icon}</span>
-                    <div style={{ flex: 1 }}>
-                      <span style={{ color: '#FEF3C7', fontWeight: 800, fontSize: '11.5px', marginLeft: '4px' }}>
-                        {proof.bold}:
-                      </span>
-                      <span style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 600, fontSize: '11px' }}>
-                        {proof.text}
-                      </span>
+                    <div style={{ color: '#84A98C', fontWeight: 900, fontSize: '10px', marginBottom: '2px' }}>
+                      {item.step}
+                    </div>
+                    <div style={{ color: '#FFFFFF', fontWeight: 800, fontSize: '11px', lineHeight: 1.2 }}>
+                      {item.title}
+                    </div>
+                    <div style={{ color: 'rgba(202, 210, 197, 0.65)', fontWeight: 600, fontSize: '8.5px', marginTop: '3px', lineHeight: 1.2 }}>
+                      {item.desc}
                     </div>
                   </div>
                 ))}
               </motion.div>
 
-              {/* 🚀 زر البدء الفاخر المتوهج باللون الكهرماني */}
+              {/* 🚀 زر البدء الفاخر المنسجم مع سديم المريمية */}
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.6, ease: 'easeOut' }}
-                style={{ marginTop: '22px', width: '100%', maxWidth: '300px' }}
+                transition={{ duration: 0.8, delay: 0.62, ease: 'easeOut' }}
+                style={{ width: '100%', maxWidth: '300px' }}
               >
                 <motion.button
                   onClick={handleEnter}
@@ -499,18 +479,18 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                     width: '100%',
                     padding: '16px 36px',
                     borderRadius: '999px',
-                    background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
-                    color: '#07090E',
+                    background: 'linear-gradient(135deg, #84A98C 0%, #52796F 100%)',
+                    color: '#070C0A',
                     fontSize: '16.5px',
                     fontWeight: 900,
                     border: 'none',
                     cursor: 'pointer',
-                    boxShadow: '0 8px 30px rgba(245,158,11,0.5), 0 0 20px rgba(253,230,138,0.3)',
+                    boxShadow: '0 8px 30px rgba(82,121,111,0.5), 0 0 20px rgba(132,169,140,0.3)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '10px',
-                    textShadow: '0 1px 1px rgba(255,255,255,0.2)',
+                    textShadow: '0 1px 1px rgba(255,255,255,0.25)',
                   }}
                 >
                   <span>يلا نبدأ</span>
