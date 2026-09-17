@@ -27,7 +27,7 @@ const GarageDashboard = lazy(() => import('./components/GarageDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 
 /* ════════════════════════════════════════════════════════════
-   👑 AURORA LANDING COMPONENT (مدمج داخلياً لضمان نجاح الـ Build)
+   👑 AURORA LANDING COMPONENT (تحديث سينمائي مخصص للموبايل والأسفلت)
    ════════════════════════════════════════════════════════════ */
 interface AuroraLandingProps {
   onEnter: () => void;
@@ -68,9 +68,9 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
               overflow: 'hidden',
             }}
           >
-            {/* 🎬 فيديو الخلفية المحسّن فائق السرعة */}
+            {/* 🎬 فيديو الأسفلت العمودي الأصلي عالي الجودة والسرعة بدلاً من الرمل */}
             <video
-              src="https://pub-1e5b4001b36b47e28e6a2fb775966a79.r2.dev/templates/aurora/hero.mp4"
+              src="https://videos.pexels.com/video-files/8089018/8089018-uhd_1440_2732_25fps.mp4"
               autoPlay
               muted
               loop
@@ -85,18 +85,19 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 width: '100%',
                 height: '100%',
                 objectFit: 'cover',
+                objectPosition: 'center',
                 transform: 'translateZ(0)',
               }}
             />
 
             {/* 🎨 طبقات التعتيم البصرية */}
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.20)' }} />
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.30)' }} />
             <div
               style={{
                 position: 'absolute',
                 inset: 0,
                 background:
-                  'linear-gradient(to bottom, rgba(0,0,0,0.15) 0%, transparent 30%, transparent 55%, rgba(0,0,0,0.35) 100%)',
+                  'linear-gradient(to bottom, rgba(0,0,0,0.20) 0%, transparent 35%, transparent 60%, rgba(0,0,0,0.45) 100%)',
               }}
             />
             <div
@@ -104,7 +105,7 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 position: 'absolute',
                 inset: 0,
                 background:
-                  'linear-gradient(to right, rgba(0,0,0,0.10) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.10) 100%)',
+                  'linear-gradient(to right, rgba(0,0,0,0.15) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.15) 100%)',
               }}
             />
 
@@ -118,7 +119,7 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 width: '1000px',
                 height: '720px',
                 background:
-                  'radial-gradient(ellipse at 50% 30%, rgba(6,95,70,0.22) 0%, transparent 68%)',
+                  'radial-gradient(ellipse at 50% 30%, rgba(16,185,129,0.22) 0%, transparent 68%)',
                 pointerEvents: 'none',
               }}
             />
@@ -170,9 +171,9 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 flexDirection: 'column',
                 height: '100%',
                 justifyContent: 'flex-start',
-                paddingTop: '24vh',
-                paddingLeft: '64px',
-                paddingRight: '24px',
+                paddingTop: '26vh',
+                paddingLeft: '32px',
+                paddingRight: '32px',
               }}
             >
               {/* شارة الترحيب بعدد السائقين */}
@@ -192,6 +193,7 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                   WebkitBackdropFilter: 'blur(10px)',
                   width: 'fit-content',
                   direction: 'rtl',
+                  alignSelf: 'center',
                 }}
               >
                 <div style={{ display: 'flex' }}>
@@ -211,10 +213,10 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 </div>
                 <span
                   style={{
-                    fontSize: '12.5px',
+                    fontSize: '12px',
                     color: 'rgba(255,255,255,0.85)',
                     fontFamily: "'Cairo', sans-serif",
-                    fontWeight: 600,
+                    fontWeight: 700,
                   }}
                 >
                   انضم لأكثر من{' '}
@@ -229,15 +231,15 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 transition={{ duration: 0.8, delay: 0.25, ease: 'easeOut' }}
                 style={{
                   fontFamily: "'Cairo', sans-serif",
-                  fontWeight: 800,
-                  fontSize: 'clamp(2.4rem, 4.6vw, 4.1rem)',
-                  lineHeight: 1.15,
+                  fontWeight: 900,
+                  fontSize: 'clamp(2.1rem, 5.2vw, 3.8rem)',
+                  lineHeight: 1.2,
                   letterSpacing: '-0.01em',
                   color: '#fff',
-                  marginTop: '22px',
-                  maxWidth: '580px',
+                  marginTop: '26px',
+                  textAlign: 'center',
                   direction: 'rtl',
-                  textShadow: '0 4px 20px rgba(0,0,0,0.35)',
+                  textShadow: '0 4px 20px rgba(0,0,0,0.5)',
                 }}
               >
                 اركن سيارتك
@@ -260,80 +262,50 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.42, ease: 'easeOut' }}
                 style={{
-                  marginTop: '16px',
-                  fontSize: '15px',
-                  lineHeight: 1.75,
-                  color: 'rgba(255,255,255,0.75)',
+                  marginTop: '18px',
+                  fontSize: '14.5px',
+                  lineHeight: 1.8,
+                  color: 'rgba(255,255,255,0.8)',
                   fontFamily: "'Cairo', sans-serif",
-                  fontWeight: 500,
-                  maxWidth: '380px',
+                  fontWeight: 600,
+                  textAlign: 'center',
                   direction: 'rtl',
                 }}
               >
                 وفّر وقتك ومجهودك، احجز أقرب جراج ليك وادفع فورياً بدون فكة أو انتظار ⚡
               </motion.p>
 
-              {/* زر البدء التفاعلي */}
+              {/* زر البدء التفاعلي في المنتصف تماماً */}
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.58, ease: 'easeOut' }}
-                style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '34px' }}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '36px' }}
               >
                 <motion.button
                   onClick={handleEnter}
                   whileHover={{ scale: 1.04 }}
                   whileTap={{ scale: 0.96 }}
                   style={{
-                    padding: '16px 34px',
+                    padding: '18px 48px',
                     borderRadius: '999px',
-                    background: '#0a0a0a',
+                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                     color: '#fff',
-                    fontSize: '16px',
-                    fontWeight: 800,
+                    fontSize: '17px',
+                    fontWeight: 900,
                     fontFamily: "'Cairo', sans-serif",
-                    border: '1px solid rgba(255,255,255,0.18)',
+                    border: 'none',
                     cursor: 'pointer',
-                    boxShadow: '0 10px 30px rgba(0,0,0,0.4)',
+                    boxShadow: '0 10px 30px rgba(16,185,129,0.4)',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '10px',
+                    gap: '12px',
                   }}
                 >
                   <span>يلا نبدأ</span>
                   <span style={{ fontSize: '18px' }}>🚀</span>
                 </motion.button>
               </motion.div>
-
-              {/* نص الضمان الفرعي */}
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.8, delay: 0.8, ease: 'easeOut' }}
-                style={{
-                  marginTop: '20px',
-                  fontSize: '12px',
-                  color: 'rgba(255,255,255,0.55)',
-                  fontFamily: "'Cairo', sans-serif",
-                  fontWeight: 600,
-                  direction: 'rtl',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                }}
-              >
-                <span
-                  style={{
-                    width: '6px',
-                    height: '6px',
-                    borderRadius: '50%',
-                    background: '#10b981',
-                    display: 'inline-block',
-                    boxShadow: '0 0 8px rgba(16, 185, 129, 0.6)',
-                  }}
-                />
-                مجاناً • بدون تعقيدات • تجربة سلسة
-              </motion.p>
             </div>
           </section>
         </motion.div>
