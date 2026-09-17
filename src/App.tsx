@@ -21,11 +21,326 @@ import LastSessionScreen from './components/LastSessionScreen';
 import ChatScreen from './components/ChatScreen';
 import InstallPage from './components/InstallPage';
 import InstallQRCodePage from './components/InstallQRCodePage';
-import AuroraLanding from './components/AuroraLanding'; // 🆕 استيراد شاشة الترحيب الفاخرة
 
 // Lazy Components
 const GarageDashboard = lazy(() => import('./components/GarageDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
+
+/* ════════════════════════════════════════════════════════════
+   👑 AURORA LANDING COMPONENT (مدمج داخلياً لضمان نجاح الـ Build)
+   ════════════════════════════════════════════════════════════ */
+interface AuroraLandingProps {
+  onEnter: () => void;
+}
+
+function AuroraLanding({ onEnter }: AuroraLandingProps) {
+  const [isExiting, setIsExiting] = useState(false);
+
+  const handleEnter = () => {
+    setIsExiting(true);
+    setTimeout(() => onEnter(), 500);
+  };
+
+  return (
+    <AnimatePresence>
+      {!isExiting && (
+        <motion.div
+          initial={{ opacity: 1 }}
+          exit={{ opacity: 0, scale: 1.05 }}
+          transition={{ duration: 0.5, ease: 'easeInOut' }}
+          className="fixed inset-0 z-[999999]"
+          style={{
+            background: '#000',
+            fontFamily: "'Inter', sans-serif",
+            overflow: 'hidden',
+          }}
+        >
+          {/* تحميل خطوط الترحيب */}
+          <style>{`
+            @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Cairo:wght@400;600;700;800;900&display=swap');
+          `}</style>
+
+          <section
+            style={{
+              position: 'relative',
+              width: '100%',
+              height: '100vh',
+              overflow: 'hidden',
+            }}
+          >
+            {/* 🎬 فيديو الخلفية المحسّن فائق السرعة */}
+            <video
+              src="https://pub-1e5b4001b36b47e28e6a2fb775966a79.r2.dev/templates/aurora/hero.mp4"
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="auto"
+              disablePictureInPicture
+              // @ts-ignore
+              disableRemotePlayback
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                transform: 'translateZ(0)',
+              }}
+            />
+
+            {/* 🎨 طبقات التعتيم البصرية */}
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.20)' }} />
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background:
+                  'linear-gradient(to bottom, rgba(0,0,0,0.15) 0%, transparent 30%, transparent 55%, rgba(0,0,0,0.35) 100%)',
+              }}
+            />
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background:
+                  'linear-gradient(to right, rgba(0,0,0,0.10) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.10) 100%)',
+              }}
+            />
+
+            {/* ✨ التوهج الأخضر الفاخر */}
+            <div
+              style={{
+                position: 'absolute',
+                top: '-14%',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: '1000px',
+                height: '720px',
+                background:
+                  'radial-gradient(ellipse at 50% 30%, rgba(6,95,70,0.22) 0%, transparent 68%)',
+                pointerEvents: 'none',
+              }}
+            />
+
+            {/* 🚗 شعار السيارة الأيقوني في الأعلى */}
+            <motion.div
+              initial={{ opacity: 0, y: -16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, ease: 'easeOut' }}
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                zIndex: 50,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '26px 44px',
+              }}
+            >
+              <svg
+                width="42"
+                height="42"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#fff"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                xmlns="http://www.w3.org/2000/svg"
+                style={{
+                  filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.4))',
+                }}
+              >
+                <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C1.4 11 1 11.9 1 13v3c0 .6.4 1 1 1h2" />
+                <circle cx="7" cy="17" r="2" />
+                <path d="M9 17h6" />
+                <circle cx="17" cy="17" r="2" />
+              </svg>
+            </motion.div>
+
+            {/* 📝 النصوص والأزرار الترحيبية */}
+            <div
+              style={{
+                position: 'relative',
+                zIndex: 10,
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%',
+                justifyContent: 'flex-start',
+                paddingTop: '24vh',
+                paddingLeft: '64px',
+                paddingRight: '24px',
+              }}
+            >
+              {/* شارة الترحيب بعدد السائقين */}
+              <motion.div
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, delay: 0.1, ease: 'easeOut' }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  borderRadius: '999px',
+                  padding: '6px 16px 6px 6px',
+                  background: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                  backdropFilter: 'blur(10px)',
+                  WebkitBackdropFilter: 'blur(10px)',
+                  width: 'fit-content',
+                  direction: 'rtl',
+                }}
+              >
+                <div style={{ display: 'flex' }}>
+                  {[0, 1, 2].map((i) => (
+                    <div
+                      key={i}
+                      style={{
+                        width: '22px',
+                        height: '22px',
+                        borderRadius: '999px',
+                        background: 'linear-gradient(135deg, #10b981, #047857)',
+                        border: '2px solid rgba(10,20,16,0.9)',
+                        marginRight: i === 0 ? 0 : '-8px',
+                      }}
+                    />
+                  ))}
+                </div>
+                <span
+                  style={{
+                    fontSize: '12.5px',
+                    color: 'rgba(255,255,255,0.85)',
+                    fontFamily: "'Cairo', sans-serif",
+                    fontWeight: 600,
+                  }}
+                >
+                  انضم لأكثر من{' '}
+                  <strong style={{ color: '#fff', fontWeight: 800 }}>10 آلاف سائق</strong>
+                </span>
+              </motion.div>
+
+              {/* العنوان العربي المطور */}
+              <motion.h1
+                initial={{ opacity: 0, y: 22 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.25, ease: 'easeOut' }}
+                style={{
+                  fontFamily: "'Cairo', sans-serif",
+                  fontWeight: 800,
+                  fontSize: 'clamp(2.4rem, 4.6vw, 4.1rem)',
+                  lineHeight: 1.15,
+                  letterSpacing: '-0.01em',
+                  color: '#fff',
+                  marginTop: '22px',
+                  maxWidth: '580px',
+                  direction: 'rtl',
+                  textShadow: '0 4px 20px rgba(0,0,0,0.35)',
+                }}
+              >
+                اركن سيارتك
+                <br />
+                <span
+                  style={{
+                    background: 'linear-gradient(135deg, #6EE7B7 0%, #10b981 100%)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text',
+                  }}
+                >
+                  بضغطة زر واحدة
+                </span>
+              </motion.h1>
+
+              {/* الوصف التحفيزي */}
+              <motion.p
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.42, ease: 'easeOut' }}
+                style={{
+                  marginTop: '16px',
+                  fontSize: '15px',
+                  lineHeight: 1.75,
+                  color: 'rgba(255,255,255,0.75)',
+                  fontFamily: "'Cairo', sans-serif",
+                  fontWeight: 500,
+                  maxWidth: '380px',
+                  direction: 'rtl',
+                }}
+              >
+                وفّر وقتك ومجهودك، احجز أقرب جراج ليك وادفع فورياً بدون فكة أو انتظار ⚡
+              </motion.p>
+
+              {/* زر البدء التفاعلي */}
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.58, ease: 'easeOut' }}
+                style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '34px' }}
+              >
+                <motion.button
+                  onClick={handleEnter}
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.96 }}
+                  style={{
+                    padding: '16px 34px',
+                    borderRadius: '999px',
+                    background: '#0a0a0a',
+                    color: '#fff',
+                    fontSize: '16px',
+                    fontWeight: 800,
+                    fontFamily: "'Cairo', sans-serif",
+                    border: '1px solid rgba(255,255,255,0.18)',
+                    cursor: 'pointer',
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.4)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                  }}
+                >
+                  <span>يلا نبدأ</span>
+                  <span style={{ fontSize: '18px' }}>🚀</span>
+                </motion.button>
+              </motion.div>
+
+              {/* نص الضمان الفرعي */}
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.8, delay: 0.8, ease: 'easeOut' }}
+                style={{
+                  marginTop: '20px',
+                  fontSize: '12px',
+                  color: 'rgba(255,255,255,0.55)',
+                  fontFamily: "'Cairo', sans-serif",
+                  fontWeight: 600,
+                  direction: 'rtl',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <span
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: '#10b981',
+                    display: 'inline-block',
+                    boxShadow: '0 0 8px rgba(16, 185, 129, 0.6)',
+                  }}
+                />
+                مجاناً • بدون تعقيدات • تجربة سلسة
+              </motion.p>
+            </div>
+          </section>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
 
 // ⏱️ دالة تحويل التوقيت الشاملة للأرقام والـ ISO Strings
 const toMs = (value: any): number => {
@@ -112,13 +427,12 @@ export default function App() {
 
   const [adminAccess, setAdminAccess] = useState(false);
 
-  // 🟢 حالة إظهار شاشة الترحيب الفاخرة للعملاء مرة واحدة في الـ Session
+  // 🟢 حالة الحماية للتحقق من عرض شاشة الترحيب مرة واحدة في الـ Session
   const [showLanding, setShowLanding] = useState(true);
 
   const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
 
   useEffect(() => {
-    // التحقق مما إذا كانت شاشة الهبوط قد عُرضت بالفعل في هذه الجلسة
     const shown = sessionStorage.getItem('landingShown') === 'true';
     if (shown) {
       setShowLanding(false);
