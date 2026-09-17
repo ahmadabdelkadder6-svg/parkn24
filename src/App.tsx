@@ -27,7 +27,7 @@ const GarageDashboard = lazy(() => import('./components/GarageDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 
 /* ════════════════════════════════════════════════════════════
-   👑 AURORA LANDING COMPONENT (المشهد السينمائي للأسفلت المبلل والسيارة الفاخرة)
+   👑 AURORA LANDING COMPONENT (تنسيق مخصص للموبايل والأسفلت الأصلي)
    ════════════════════════════════════════════════════════════ */
 interface AuroraLandingProps {
   onEnter: () => void;
@@ -50,59 +50,14 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
           transition={{ duration: 0.5, ease: 'easeInOut' }}
           className="fixed inset-0 z-[999999]"
           style={{
-            background: '#02050e',
+            background: '#000',
             fontFamily: "'Cairo', sans-serif",
             overflow: 'hidden',
           }}
         >
-          {/* تحميل خطوط الترحيب */}
+          {/* تحميل خطوط الترحيب العريضة والجميلة */}
           <style>{`
             @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Cairo:wght@400;600;700;800;900&display=swap');
-            
-            /* حركة خطوط الأسفلت */
-            @keyframes roadLines {
-              0% { transform: translateY(-100%) scaleY(0.5); opacity: 0; }
-              50% { opacity: 0.8; }
-              100% { transform: translateY(400px) scaleY(1.8); opacity: 0; }
-            }
-
-            /* حركة سقوط قطرات المطر النيون */
-            @keyframes neonRain {
-              0% { background-position: 0px 0px; }
-              100% { background-position: 40px 800px; }
-            }
-
-            /* اهتزاز طبيعي للسيارة أثناء السير */
-            @keyframes carVibration {
-              0% { transform: translateY(0px) rotate(0deg); }
-              50% { transform: translateY(-2px) rotate(0.2deg); }
-              100% { transform: translateY(0px) rotate(0deg); }
-            }
-
-            /* تموجات الإضاءة المنعكسة على الأسفلت مائي اللمعة */
-            @keyframes wetReflection {
-              0% { opacity: 0.4; filter: blur(15px); }
-              50% { opacity: 0.7; filter: blur(25px); }
-              100% { opacity: 0.4; filter: blur(15px); }
-            }
-
-            .neon-rain-overlay {
-              position: absolute;
-              inset: 0;
-              background-image: linear-gradient(rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.08) 80%, rgba(255, 255, 255, 0) 100%);
-              background-size: 3px 200px;
-              animation: neonRain 0.6s linear infinite;
-              pointer-events: none;
-            }
-
-            .road-dashed-line {
-              position: absolute;
-              width: 5px;
-              height: 120px;
-              background: linear-gradient(180deg, rgba(16,185,129,0.9), rgba(255,255,255,0.85));
-              box-shadow: 0 0 15px rgba(16,185,129,0.8), 0 0 30px rgba(16,185,129,0.4);
-              border-radius: 4px;
-            }
           `}</style>
 
           <section
@@ -110,215 +65,118 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
               position: 'relative',
               width: '100%',
               height: '100vh',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
               overflow: 'hidden',
             }}
           >
-            {/* 🛣️ مشهد طريق الأسفلت المبلل الداكن ليلاً مع حبيبات لمعة المطر */}
+            {/* 🎬 فيديو الأسفلت المبلل الأصلي عالي الجودة والسرعة مع ضبط التموضع ليناسب الموبايل */}
+            <video
+              src="https://pub-1e5b4001b36b47e28e6a2fb775966a79.r2.dev/templates/aurora/hero.mp4"
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="auto"
+              disablePictureInPicture
+              // @ts-ignore
+              disableRemotePlayback
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                objectPosition: '55% center', // ضبط محاذاة الفيديو ليبقى الطريق والأسفلت بمنتصف شاشة الموبايل تماماً
+                transform: 'translateZ(0)',
+              }}
+            />
+
+            {/* 🎨 طبقات التعتيم والظلال البصرية لتعزيز تباين النصوص وتأمين الرؤية ليلاً */}
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)' }} />
             <div
               style={{
                 position: 'absolute',
                 inset: 0,
-                background: 'linear-gradient(180deg, #030611 0%, #060c1d 40%, #0d1830 70%, #040816 100%)',
+                background:
+                  'linear-gradient(to bottom, rgba(0,0,0,0.25) 0%, transparent 40%, transparent 60%, rgba(0,0,0,0.50) 100%)',
               }}
             />
-
-            {/* نسيج الأسفلت الخشن مع قطرات نيون متلألئة */}
             <div
               style={{
                 position: 'absolute',
                 inset: 0,
-                backgroundImage: 'radial-gradient(rgba(16,185,129,0.06) 1.5px, transparent 1.5px), radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px)',
-                backgroundSize: '32px 32px, 16px 16px',
-                opacity: 0.85,
+                background:
+                  'linear-gradient(to right, rgba(0,0,0,0.20) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.20) 100%)',
               }}
             />
 
-            {/* 🌧️ قطرات المطر المتساقطة بتأثير النيون */}
-            <div className="neon-rain-overlay" />
-
-            {/* 🟢 شفق أورورا الأخضر المضيء في سماء الأفق */}
+            {/* ✨ توهج أخضر خفيف يطابق التصميم الأصلي للأورورا */}
             <div
               style={{
                 position: 'absolute',
-                top: 0,
+                top: '-14%',
                 left: '50%',
                 transform: 'translateX(-50%)',
-                width: '140vw',
-                height: '50vh',
-                background: 'radial-gradient(ellipse at 50% 10%, rgba(16,185,129,0.3) 0%, rgba(5,150,105,0.1) 50%, transparent 80%)',
-                filter: 'blur(40px)',
+                width: '1000px',
+                height: '720px',
+                background:
+                  'radial-gradient(ellipse at 50% 30%, rgba(16,185,129,0.25) 0%, transparent 68%)',
                 pointerEvents: 'none',
               }}
             />
 
-            {/* 🛣️ خطوط طريق الأسفلت المبلل ثلاثية الأبعاد والمتحركة */}
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                display: 'flex',
-                justifyContent: 'center',
-                perspective: '500px',
-                pointerEvents: 'none',
-              }}
-            >
-              <div
-                style={{
-                  position: 'relative',
-                  width: '280px',
-                  height: '100%',
-                  transform: 'rotateX(52deg)',
-                  display: 'flex',
-                  justifyContent: 'center',
-                }}
-              >
-                {/* خطوط الطريق المتعاقبة لمحاكاة السير السريع */}
-                <div className="road-dashed-line" style={{ top: '0%', animation: 'roadLines 2s linear infinite' }} />
-                <div className="road-dashed-line" style={{ top: '0%', animation: 'roadLines 2s linear infinite 0.66s' }} />
-                <div className="road-dashed-line" style={{ top: '0%', animation: 'roadLines 2s linear infinite 1.33s' }} />
-              </div>
-            </div>
-
-            {/* 🚗 شعار السيارة الأنيق في الجزء العلوي */}
+            {/* 🚗 شعار السيارة الأيقوني في الجزء العلوي من الشاشة */}
             <motion.div
-              initial={{ opacity: 0, y: -20 }}
+              initial={{ opacity: 0, y: -16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, ease: 'easeOut' }}
+              transition={{ duration: 0.6, ease: 'easeOut' }}
               style={{
-                position: 'relative',
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
                 zIndex: 50,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                paddingTop: '40px',
+                padding: '26px 44px',
               }}
             >
-              <div
+              <svg
+                width="42"
+                height="42"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#fff"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                xmlns="http://www.w3.org/2000/svg"
                 style={{
-                  background: 'rgba(5, 12, 28, 0.75)',
-                  border: '1.5px solid rgba(16,185,129,0.4)',
-                  padding: '12px 18px',
-                  borderRadius: '24px',
-                  boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 0 20px rgba(16,185,129,0.2)',
-                  backdropFilter: 'blur(16px)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
+                  filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.4))',
                 }}
               >
-                <svg
-                  width="34"
-                  height="34"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#10b981"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  xmlns="http://www.w3.org/2000/svg"
-                  style={{
-                    filter: 'drop-shadow(0 0 8px rgba(16,185,129,0.8))',
-                  }}
-                >
-                  <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C1.4 11 1 11.9 1 13v3c0 .6.4 1 1 1h2" />
-                  <circle cx="7" cy="17" r="2" />
-                  <path d="M9 17h6" />
-                  <circle cx="17" cy="17" r="2" />
-                </svg>
-                <span
-                  style={{
-                    color: '#ffffff',
-                    fontWeight: 900,
-                    fontSize: '17px',
-                    letterSpacing: '0.5px',
-                    textShadow: '0 2px 8px rgba(0,0,0,0.5)',
-                  }}
-                >
-                  Park'n <span style={{ color: '#10b981' }}>24</span>
-                </span>
-              </div>
+                <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C1.4 11 1 11.9 1 13v3c0 .6.4 1 1 1h2" />
+                <circle cx="7" cy="17" r="2" />
+                <path d="M9 17h6" />
+                <circle cx="17" cy="17" r="2" />
+              </svg>
             </motion.div>
 
-            {/* 🚘 رسمة السيارة الرياضية الفاخرة بالكامل في منتصف الشاشة مع الحركة التفاعلية */}
-            <div
-              style={{
-                position: 'absolute',
-                top: '44%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                width: '100%',
-                maxWidth: '310px',
-                height: '180px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 20,
-                pointerEvents: 'none',
-              }}
-            >
-              <div style={{ animation: 'carVibration 1.5s ease-in-out infinite', position: 'relative' }}>
-                <svg width="270" height="150" viewBox="0 0 260 150" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  {/* إضاءة النيون الخضراء المنعكسة تحت هيكل السيارة على الأسفلت المبلل */}
-                  <ellipse cx="130" cy="132" rx="95" ry="14" fill="url(#underglow)"/>
-                  
-                  {/* الهيكل الخارجي للسيارة (رؤية خلفية سينمائية) */}
-                  <path d="M40 120 C 35 110, 45 60, 60 55 C 70 50, 80 40, 100 36 C 115 33, 145 33, 160 36 C 180 40, 190 50, 200 55 C 215 60, 225 110, 220 120 C 215 130, 45 130, 40 120 Z" fill="#090d18" stroke="#25354c" strokeWidth="2.5"/>
-                  
-                  {/* زجاج المقصورة الخلفي مع لمعة الانعكاس النيون */}
-                  <path d="M72 55 C 82 45, 95 41, 130 41 C 165 41, 178 45, 188 55 C 178 80, 82 80, 72 55 Z" fill="#03050c" stroke="rgba(16,185,129,0.3)" strokeWidth="1.5"/>
-                  
-                  {/* الجناح الخلفي للسيارة (Spoiler) */}
-                  <path d="M48 54 L 212 54 C 212 54, 217 47, 202 47 L 58 47 C 43 47, 48 54, 48 54 Z" fill="#04060d" stroke="#25354c"/>
-                  
-                  {/* مصابيح LED الخلفية الحمراء المتوهجة بالكامل (Neon LED Tail-lights) */}
-                  <path d="M44 95 C 60 90, 200 90, 216 95 L 214 100 C 190 96, 70 96, 46 100 Z" fill="#ff2a55" filter="url(#glow-red)"/>
-                  <path d="M44 95 C 60 90, 200 90, 216 95" stroke="#ff4d79" strokeWidth="2.5" filter="url(#glow-red-bright)"/>
-                  
-                  {/* نظام العادم الثنائي الفاخر ومشتت الهواء */}
-                  <rect x="74" y="121" width="22" height="8" rx="4" fill="#0c101a" stroke="#475569"/>
-                  <rect x="164" y="121" width="22" height="8" rx="4" fill="#0c101a" stroke="#475569"/>
-                  
-                  {/* لوحة السيارة بركن 24 */}
-                  <rect x="110" y="111" width="40" height="15" rx="3" fill="#0b0f19" stroke="#10b981" strokeWidth="1.2"/>
-                  <text x="130" y="121" fill="#ffffff" fontFamily="Cairo" fontSize="7.5" fontWeight="900" textAnchor="middle" letterSpacing="0.5">PARK'N</text>
-                  
-                  {/* تدرجات الفلاتر الضوئية والنيون */}
-                  <defs>
-                    <radialGradient id="underglow" cx="50%" cy="50%" r="50%">
-                      <stop offset="0%" stopColor="#10b981" stopOpacity="0.8"/>
-                      <stop offset="100%" stopColor="#10b981" stopOpacity="0"/>
-                    </radialGradient>
-                    <filter id="glow-red" x="-20%" y="-20%" width="140%" height="140%">
-                      <feGaussianBlur stdDeviation="8" result="blur" />
-                      <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                    </filter>
-                    <filter id="glow-red-bright" x="-20%" y="-20%" width="140%" height="140%">
-                      <feGaussianBlur stdDeviation="2" result="blur" />
-                      <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                    </filter>
-                  </defs>
-                </svg>
-              </div>
-            </div>
-
-            {/* 📝 المحتوى النصي الفاخر وزر البداية (في الجزء السفلي من الموبايل لسهولة الاستخدام) */}
+            {/* 📝 النصوص والأزرار الترحيبية */}
             <div
               style={{
                 position: 'relative',
-                zIndex: 40,
+                zIndex: 10,
                 display: 'flex',
                 flexDirection: 'column',
-                alignItems: 'center',
-                textAlign: 'center',
+                height: '100%',
+                justifyContent: 'flex-start',
+                paddingTop: '26vh',
                 paddingLeft: '24px',
                 paddingRight: '24px',
-                paddingBottom: '50px',
               }}
             >
-              {/* شارة عدد السائقين */}
+              {/* شارة الترحيب بعدد السائقين */}
               <motion.div
                 initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -329,13 +187,13 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                   gap: '10px',
                   borderRadius: '999px',
                   padding: '6px 16px 6px 6px',
-                  background: 'rgba(5, 12, 28, 0.65)',
-                  border: '1px solid rgba(16,185,129,0.3)',
-                  backdropFilter: 'blur(12px)',
-                  WebkitBackdropFilter: 'blur(12px)',
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+                  background: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                  backdropFilter: 'blur(10px)',
+                  WebkitBackdropFilter: 'blur(10px)',
+                  width: 'fit-content',
                   direction: 'rtl',
-                  marginBottom: '20px',
+                  alignSelf: 'center',
                 }}
               >
                 <div style={{ display: 'flex' }}>
@@ -347,7 +205,7 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                         height: '22px',
                         borderRadius: '999px',
                         background: 'linear-gradient(135deg, #10b981, #047857)',
-                        border: '2px solid rgba(4,7,17,0.9)',
+                        border: '2px solid rgba(10,20,16,0.9)',
                         marginRight: i === 0 ? 0 : '-8px',
                       }}
                     />
@@ -356,95 +214,96 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 <span
                   style={{
                     fontSize: '12px',
-                    color: 'rgba(255,255,255,0.9)',
+                    color: 'rgba(255,255,255,0.85)',
+                    fontFamily: "'Cairo', sans-serif",
                     fontWeight: 700,
                   }}
                 >
-                  انضم لأكثر من{' '}
-                  <strong style={{ color: '#6EE7B7', fontWeight: 900 }}>10 آلاف سائق</strong>
+                  انضم لأكثر من نورتنا!{' '}
+                  <strong style={{ color: '#fff', fontWeight: 800 }}>10 آلاف سائق</strong>
                 </span>
               </motion.div>
 
-              {/* العنوان الرئيسي المبهر باللغة العربية */}
+              {/* العنوان العربي المطور */}
               <motion.h1
                 initial={{ opacity: 0, y: 22 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.25, ease: 'easeOut' }}
                 style={{
+                  fontFamily: "'Cairo', sans-serif",
                   fontWeight: 900,
-                  fontSize: 'clamp(2.1rem, 6.2vw, 3.5rem)',
+                  fontSize: 'clamp(2.1rem, 5.2vw, 3.8rem)',
                   lineHeight: 1.2,
-                  letterSpacing: '-0.02em',
-                  color: '#ffffff',
+                  letterSpacing: '-0.01em',
+                  color: '#fff',
+                  marginTop: '26px',
+                  textAlign: 'center',
                   direction: 'rtl',
-                  textShadow: '0 4px 24px rgba(0,0,0,0.7)',
+                  textShadow: '0 4px 20px rgba(0,0,0,0.5)',
                 }}
               >
                 اركن سيارتك
                 <br />
                 <span
                   style={{
-                    background: 'linear-gradient(135deg, #A7F3D0 0%, #34D399 50%, #10B981 100%)',
+                    background: 'linear-gradient(135deg, #6EE7B7 0%, #10b981 100%)',
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
                     backgroundClip: 'text',
-                    filter: 'drop-shadow(0 2px 14px rgba(16,185,129,0.4))',
                   }}
                 >
                   بضغطة زر واحدة
                 </span>
               </motion.h1>
 
-              {/* الوصف التحفيزي السريع */}
+              {/* الوصف التحفيزي */}
               <motion.p
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.42, ease: 'easeOut' }}
                 style={{
-                  marginTop: '14px',
-                  fontSize: '14px',
-                  lineHeight: 1.7,
-                  color: 'rgba(255,255,255,0.82)',
+                  marginTop: '18px',
+                  fontSize: '14.5px',
+                  lineHeight: 1.8,
+                  color: 'rgba(255,255,255,0.8)',
+                  fontFamily: "'Cairo', sans-serif",
                   fontWeight: 600,
-                  maxWidth: '360px',
+                  textAlign: 'center',
                   direction: 'rtl',
-                  textShadow: '0 2px 8px rgba(0,0,0,0.5)',
                 }}
               >
                 وفّر وقتك ومجهودك، احجز أقرب جراج ليك وادفع فورياً بدون فكة أو انتظار ⚡
               </motion.p>
 
-              {/* 🚀 زر يلا نبدأ الفاخر والمميز */}
+              {/* زر البدء التفاعلي في المنتصف تماماً بلون أورورا الأخضر المضيء */}
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.58, ease: 'easeOut' }}
-                style={{ marginTop: '28px', width: '100%', maxWidth: '300px' }}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '36px' }}
               >
                 <motion.button
                   onClick={handleEnter}
                   whileHover={{ scale: 1.04 }}
                   whileTap={{ scale: 0.96 }}
                   style={{
-                    width: '100%',
-                    padding: '18px 36px',
+                    padding: '18px 48px',
                     borderRadius: '999px',
-                    background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-                    color: '#ffffff',
+                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    color: '#fff',
                     fontSize: '17px',
                     fontWeight: 900,
+                    fontFamily: "'Cairo', sans-serif",
                     border: 'none',
                     cursor: 'pointer',
-                    boxShadow: '0 10px 32px rgba(16,185,129,0.5), 0 0 20px rgba(52,211,153,0.3)',
+                    boxShadow: '0 10px 30px rgba(16,185,129,0.4)',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '10px',
-                    textShadow: '0 1px 2px rgba(0,0,0,0.25)',
+                    gap: '12px',
                   }}
                 >
                   <span>يلا نبدأ</span>
-                  <span style={{ fontSize: '20px' }}>🚀</span>
+                  <span style={{ fontSize: '18px' }}>🚀</span>
                 </motion.button>
               </motion.div>
             </div>
