@@ -20,8 +20,6 @@ import {
   Gift,
   Sparkles,
   ChevronDown,
-  AlertTriangle,
-  CreditCard,
 } from 'lucide-react';
 // 🌟 استيراد normalizePlate و normalizePhone الموحدين من الـ store لربط أمني وثيق
 import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
@@ -100,10 +98,6 @@ export default function GarageListScreen() {
   const [showNearbyOnly, setShowNearbyOnly] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  
-  // 🔘 حالات نافذة تأكيد إنهاء الجلسة المضافة حديثاً
-  const [showConfirmEndSession, setShowConfirmEndSession] = useState(false);
-
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>({
     lat: 30.0444,
     lng: 31.2357,
@@ -365,6 +359,9 @@ export default function GarageListScreen() {
     return filtered;
   }, [garagesWithDistance, search, showNearbyOnly]);
 
+  // ==========================================
+  // 🗺️ نظام فرز وتجميع الجراجات حسب المنطقة الجغرافية
+  // ==========================================
   const areaGroups = useMemo(() => {
     const groups: Record<string, GarageWithDistance[]> = {};
     
@@ -399,8 +396,6 @@ export default function GarageListScreen() {
     }
 
     if (activeSession) {
-      setSelectedGarageId(activeSession.garageId);
-      // بدلاً من التوجيه المباشر، يمكنك هنا اختيار إظهار نافذة التأكيد إذا ضغط العميل على إنهاء الجلسة
       setSelectedGarageId(activeSession.garageId);
       setScreen('session');
       toast('لديك جلسة ركن نشطة بالفعل! 🚗', { icon: '⚡' });
@@ -450,17 +445,6 @@ export default function GarageListScreen() {
       toast.error('حدث خطأ أثناء إتمام الحجز');
     } finally {
       setIsBooking(false);
-    }
-  };
-
-  // ⚡ وظيفة تأكيد إنهاء الجلسة واستكمال الدفع
-  const handleConfirmPaymentAndEnd = () => {
-    setShowConfirmEndSession(false);
-    if (activeSession) {
-      setSelectedGarageId(activeSession.garageId);
-      // هنا نوجهه مباشرة لشاشة الدفع والتحصيل (أو شاشة تفاصيل الجلسة لتنفيذ عملية الدفع والإنهاء)
-      setScreen('session'); 
-      toast.success('جاري تجهيز الفاتورة وحساب التكلفة... 💸', { icon: '🧾' });
     }
   };
 
@@ -650,22 +634,15 @@ export default function GarageListScreen() {
           </motion.div>
         )}
 
-        {/* 🚨 زر الجلسة النشطة (عند النقر عليه يظهر للتأكيد) */}
         {activeSession && (
-          <motion.button 
-            initial={{ opacity: 0, y: -10 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            onClick={() => setShowConfirmEndSession(true)} // تفعيل نافذة التأكيد الاحترافية
-            className="w-full mb-3 flex items-center justify-between active:scale-[0.98] transition-all text-right" 
-            style={{ background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', borderRadius: 20, padding: '14px 16px', color: '#ffffff', boxShadow: '0 8px 24px rgba(0,204,102,0.3)' }}
-          >
+          <motion.button initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} onClick={() => { setSelectedGarageId(activeSession.garageId); setScreen('session'); }} className="w-full mb-3 flex items-center justify-between active:scale-[0.98] transition-all text-right" style={{ background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)', borderRadius: 20, padding: '14px 16px', color: '#ffffff', boxShadow: '0 8px 24px rgba(0,204,102,0.3)' }}>
             <div className="flex items-center gap-2">
               <motion.span animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 1.5 }} className="w-3 h-3 rounded-full bg-white block" />
-              <span className="text-xs font-black">إنهاء وتحصيل ←</span>
+              <span className="text-xs font-black">عرض الجلسة ←</span>
             </div>
             <div>
               <div className="text-sm font-black flex items-center gap-1 justify-end"><Zap size={15} /> جلسة ركن نشطة</div>
-              <div className="text-[10px]" style={{ opacity: 0.85 }}>اضغط لطلب إنهاء الجلسة والدفع</div>
+              <div className="text-[10px]" style={{ opacity: 0.85 }}>اضغط للمتابعة والتفاصيل</div>
             </div>
           </motion.button>
         )}
@@ -731,7 +708,9 @@ export default function GarageListScreen() {
           </button>
         </div>
 
-        {/* 🗺️ نظام الأكورديون المطور بصرياً */}
+        {/* ══════════════════════════════════════════════════════
+            🎨 نظام الأكورديون المطور بصرياً (Premium Accordion)
+            ══════════════════════════════════════════════════════ */}
         {areaGroups.length > 0 ? (
           <div className="space-y-3.5">
             {areaGroups.map((group, groupIdx) => {
@@ -758,10 +737,12 @@ export default function GarageListScreen() {
                     transition: 'border-color 0.4s, box-shadow 0.4s',
                   }}
                 >
+                  {/* ═══ رأس بطاقة المنطقة (Header) ═══ */}
                   <button
                     onClick={() => setExpandedArea(isExpanded ? null : group.name)}
                     className="w-full p-4 flex items-center justify-between text-right bg-transparent border-none cursor-pointer outline-none active:scale-[0.99] transition-transform"
                   >
+                    {/* الجانب الأيسر: عداد ورقم الجراجات + سهم الفتح */}
                     <div className="flex items-center gap-2.5 shrink-0">
                       <div
                         className="flex flex-col items-center justify-center rounded-2xl"
@@ -814,6 +795,7 @@ export default function GarageListScreen() {
                       </motion.div>
                     </div>
 
+                    {/* الجانب الأيمن: اسم المنطقة والأيقونة والمعلومات */}
                     <div className="flex items-center gap-3 flex-1 justify-end">
                       <div className="text-right flex-1">
                         <div className="flex items-center gap-2 justify-end mb-1">
@@ -829,6 +811,7 @@ export default function GarageListScreen() {
                           </h3>
                         </div>
 
+                         {/* شريط الأماكن الشاغرة (عرض الشواغر المتاحة فقط) */}
                         <div className="flex items-center gap-2 justify-end mt-1.5">
                           <div className="flex items-center gap-1">
                             <span 
@@ -846,6 +829,7 @@ export default function GarageListScreen() {
                           </div>
                         </div>
 
+                        {/* شريط التقدم البصري */}
                         <div 
                           className="mt-1.5 relative overflow-hidden" 
                           style={{ 
@@ -873,6 +857,7 @@ export default function GarageListScreen() {
                         </div>
                       </div>
 
+                      {/* أيقونة المنطقة (كبيرة ودائرية) */}
                       <div
                         className="rounded-2xl flex items-center justify-center shrink-0"
                         style={{
@@ -894,6 +879,7 @@ export default function GarageListScreen() {
                     </div>
                   </button>
 
+                  {/* ═══ محتوى المنطقة المنسدل (Garages) ═══ */}
                   <AnimatePresence initial={false}>
                     {isExpanded && (
                       <motion.div
@@ -942,125 +928,7 @@ export default function GarageListScreen() {
         {showTopUp && <TopUpWalletModal onClose={() => setShowTopUp(false)} />}
       </AnimatePresence>
 
-      {/* 🚨 مودال تأكيد إنهاء الجلسة واستكمال التحصيل والدفع */}
-      <AnimatePresence>
-        {showConfirmEndSession && (
-          <ConfirmEndSessionModal 
-            onClose={() => setShowConfirmEndSession(false)} 
-            onConfirm={handleConfirmPaymentAndEnd} 
-          />
-        )}
-      </AnimatePresence>
-
       <WelcomeGiftModal />
-    </div>
-  );
-}
-
-/* ════════════════════════════════════════════════════════════
-   🚨 MODAL: CONFIRM END SESSION & PROCEED TO PAYMENT (New!)
-   ════════════════════════════════════════════════════════════ */
-interface ConfirmEndSessionModalProps {
-  onClose: () => void;
-  onConfirm: () => void;
-}
-
-function ConfirmEndSessionModal({ onClose, onConfirm }: ConfirmEndSessionModalProps) {
-  return (
-    <div 
-      className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[9999] flex items-center justify-center p-5"
-      onClick={onClose}
-    >
-      <motion.div 
-        initial={{ scale: 0.9, opacity: 0, y: 30 }} 
-        animate={{ scale: 1, opacity: 1, y: 0 }} 
-        exit={{ scale: 0.9, opacity: 0, y: 30 }}
-        transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-        className="bg-white rounded-[2.5rem] p-7 max-w-sm w-full text-center relative overflow-hidden" 
-        style={{ boxShadow: '0 25px 60px rgba(0,0,0,0.3)', border: '2px solid #E2E8F0' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* خلفيات بصرية مبهرة */}
-        <div className="absolute -top-12 -right-12 w-32 h-32 bg-rose-100/40 rounded-full filter blur-2xl" />
-        <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-amber-100/30 rounded-full filter blur-2xl" />
-
-        <button 
-          onClick={onClose} 
-          className="absolute top-5 left-5 text-slate-300 hover:text-slate-500 transition-colors z-10 p-1 bg-slate-50 rounded-full"
-        >
-          <X size={18} />
-        </button>
-
-        {/* أيقونة تحذيرية حركية نبضية */}
-        <div className="relative z-10 flex justify-center mb-6">
-          <motion.div 
-            animate={{ scale: [1, 1.05, 1], rotate: [0, -2, 2, 0] }}
-            transition={{ repeat: Infinity, duration: 2.5, ease: 'easeInOut' }}
-            className="w-20 h-20 bg-gradient-to-tr from-amber-500 to-rose-500 rounded-full flex items-center justify-center shadow-lg shadow-rose-200/50"
-          >
-            <AlertTriangle size={36} className="text-white" />
-          </motion.div>
-        </div>
-
-        <h3 className="text-xl font-black text-slate-900 mb-3 relative z-10">
-          تأكيد إنهاء الركن والدفع؟ ⏱️
-        </h3>
-        
-        <p className="text-slate-500 text-xs mb-6 leading-relaxed relative z-10 font-bold px-2">
-          هل أنت متأكد من رغبتك في إيقاف عداد الوقت الحالي والانتقال إلى شاشة الدفع والتحصيل؟ سيتم احتساب المدة بدقة وإصدار الفاتورة.
-        </p>
-
-        {/* تفاصيل التنبيه البصري */}
-        <div 
-          className="relative z-10 mb-6 flex items-start gap-2.5 text-right" 
-          style={{ background: '#FFFDF5', borderRadius: 18, padding: '12px 14px', border: '1.5px solid #FEF08A' }}
-        >
-          <Clock size={16} className="text-amber-600 shrink-0 mt-0.5" />
-          <div>
-            <span className="font-black text-amber-900 block text-xs mb-0.5">ملاحظة أمنية هامة</span>
-            <span className="text-[10px] font-bold text-amber-700 leading-normal block">
-              بمجرد التأكيد، لا يمكن التراجع عن إنهاء الجلسة ويجب التوجه الفوري للخروج بعد إتمام العملية.
-            </span>
-          </div>
-        </div>
-
-        {/* أزرار الإجراءات الاحترافية */}
-        <div className="space-y-3 relative z-10">
-          {/* زر التأكيد واستكمال الدفع */}
-          <button 
-            onClick={onConfirm} 
-            className="w-full font-black py-4 rounded-2xl text-sm active:scale-95 transition-all flex items-center justify-center gap-2" 
-            style={{ 
-              background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', 
-              color: '#ffffff', 
-              fontWeight: 950, 
-              fontSize: 14, 
-              boxShadow: '0 6px 20px rgba(16,185,129,0.3)',
-              border: 'none',
-              cursor: 'pointer'
-            }}
-          >
-            <CreditCard size={16} />
-            <span>تأكيد وإنهاء الجلسة والدفع 💳</span>
-          </button>
-
-          {/* زر العودة للعداد */}
-          <button 
-            onClick={onClose} 
-            className="w-full font-black py-4 rounded-2xl text-xs active:scale-95 transition-all flex items-center justify-center gap-1.5" 
-            style={{ 
-              background: '#F1F5F9', 
-              color: '#475569', 
-              fontWeight: 900,
-              border: '1.5px solid #E2E8F0',
-              cursor: 'pointer'
-            }}
-          >
-            <Clock size={14} className="animate-spin-slow" />
-            <span>إلغاء والعودة لعداد الوقت ⏱️</span>
-          </button>
-        </div>
-      </motion.div>
     </div>
   );
 }
