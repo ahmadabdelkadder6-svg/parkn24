@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Clock,
   Car,
@@ -7,6 +7,8 @@ import {
   Gift,
   Sparkles,
   CreditCard,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
 // 🌟 استيراد getServerNow ودوال البصمة لضمان مطابقة العداد بالملي ثانية بين جميع الهواتف
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
@@ -53,6 +55,9 @@ export default function SessionScreen() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [elapsed, setElapsed] = useState(0);
+  
+  // 🔘 حالة فتح وإغلاق نافذة تأكيد إنهاء الجلسة
+  const [showConfirmEnd, setShowConfirmEnd] = useState(false);
 
   const isMySessionRow = (row: any) => {
     if (!row) return false;
@@ -258,6 +263,12 @@ export default function SessionScreen() {
     }
   }, [isFirstFreeApplied, elapsed, sessionRate]);
 
+  // دالة تفعيل وتأكيد الانتقال لشاشة ملخص الدفع النهائي
+  const handleConfirmEndSession = () => {
+    setShowConfirmEndSession(false);
+    setScreen('summary');
+  };
+
   // إذا لم تكن هناك جلسة نشطة
   if (!activeSession) {
     return (
@@ -441,9 +452,9 @@ export default function SessionScreen() {
         </div>
       </div>
 
-      {/* زر إنهاء الجلسة */}
+      {/* زر إنهاء الجلسة - الآن يفتح نافذة التأكيد الاحترافية */}
       <button
-        onClick={() => setScreen('summary')}
+        onClick={() => setShowConfirmEndSession(true)}
         className="w-full py-4 rounded-2xl active:scale-95 transition-all mb-2.5 flex items-center justify-center gap-2 shadow-xl"
         style={{
           background: 'linear-gradient(135deg, #FF3333 0%, #CC0000 100%)',
@@ -467,6 +478,156 @@ export default function SessionScreen() {
       >
         العودة للقائمة
       </button>
+
+      {/* 🚨 مودال تأكيد إنهاء الجلسة واستكمال الدفع */}
+      <AnimatePresence>
+        {showConfirmEndSession && (
+          <ConfirmEndParkingModal 
+            onClose={() => setShowConfirmEndSession(false)}
+            onConfirm={handleConfirmEndSession}
+            isFree={isFreeNow}
+            cost={displayedCost}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   🚨 MODAL: CONFIRM END SESSION (Custom for Session Screen)
+   ════════════════════════════════════════════════════════════ */
+interface ConfirmEndParkingModalProps {
+  onClose: () => void;
+  onConfirm: () => void;
+  isFree: boolean;
+  cost: number;
+}
+
+function ConfirmEndParkingModal({ onClose, onConfirm, isFree, cost }: ConfirmEndParkingModalProps) {
+  return (
+    <div 
+      className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[9999] flex items-center justify-center p-5"
+      onClick={onClose}
+    >
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0, y: 30 }} 
+        animate={{ scale: 1, opacity: 1, y: 0 }} 
+        exit={{ scale: 0.9, opacity: 0, y: 30 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 360 }}
+        className="bg-white rounded-[2.5rem] p-7 max-w-sm w-full text-center relative overflow-hidden" 
+        style={{ boxShadow: '0 25px 60px rgba(0,0,0,0.4)', border: '2px solid #E2E8F0' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* تأثيرات خلفية مبهرة ملائمة للعملية */}
+        {isFree ? (
+          <>
+            <div className="absolute -top-12 -right-12 w-32 h-32 bg-amber-100/50 rounded-full filter blur-2xl" />
+            <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-emerald-100/40 rounded-full filter blur-2xl" />
+          </>
+        ) : (
+          <>
+            <div className="absolute -top-12 -right-12 w-32 h-32 bg-rose-100/40 rounded-full filter blur-2xl" />
+            <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-amber-100/30 rounded-full filter blur-2xl" />
+          </>
+        )}
+
+        <button 
+          onClick={onClose} 
+          className="absolute top-5 left-5 text-slate-300 hover:text-slate-500 transition-colors z-10 p-1 bg-slate-50 rounded-full"
+        >
+          <X size={18} />
+        </button>
+
+        {/* الأيقونة المركزية التفاعلية */}
+        <div className="relative z-10 flex justify-center mb-5">
+          {isFree ? (
+            <motion.div 
+              animate={{ scale: [1, 1.08, 1], rotate: [0, -3, 3, 0] }}
+              transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
+              className="w-20 h-20 bg-gradient-to-tr from-amber-400 to-emerald-500 rounded-full flex items-center justify-center shadow-lg shadow-emerald-200/50"
+            >
+              <Gift size={38} className="text-white" />
+            </motion.div>
+          ) : (
+            <motion.div 
+              animate={{ scale: [1, 1.05, 1], rotate: [0, -2, 2, 0] }}
+              transition={{ repeat: Infinity, duration: 2.5, ease: 'easeInOut' }}
+              className="w-20 h-20 bg-gradient-to-tr from-rose-500 to-amber-500 rounded-full flex items-center justify-center shadow-lg shadow-rose-200/50"
+            >
+              <AlertTriangle size={36} className="text-white" />
+            </motion.div>
+          )}
+        </div>
+
+        <h3 className="text-xl font-black text-slate-900 mb-2 relative z-10">
+          هل تريد إنهاء الركنة الآن؟ 🏁
+        </h3>
+        
+        <p className="text-slate-500 text-xs mb-5 leading-relaxed relative z-10 font-bold px-2">
+          {isFree ? (
+            <span>أنت حالياً ضمن العرض الترويجي. عند الإنهاء لن يتم احتساب أي مبالغ مالية! 🎉</span>
+          ) : (
+            <span>عند تأكيد إنهاء الجلسة، سيتم إيقاف العداد فوراً وحساب التكلفة المستحقة للدفع.</span>
+          )}
+        </p>
+
+        {/* عرض الحساب والمبلغ المستحق داخل المودال */}
+        <div 
+          className="relative z-10 mb-6 py-4 px-3 rounded-2xl border text-center"
+          style={{
+            background: isFree ? '#F0FDF4' : '#FFFDF5',
+            borderColor: isFree ? '#BBF7D0' : '#FEF08A'
+          }}
+        >
+          <div className="text-[10px] text-slate-500 font-bold mb-1">المبلغ المطلوب سداده</div>
+          <div className={`text-3xl font-black font-mono ${isFree ? 'text-emerald-600' : 'text-slate-900'}`}>
+            {isFree ? '0.00' : cost} <span className="text-xs font-black">ج.م</span>
+          </div>
+          {isFree && (
+            <span className="text-[9.5px] font-black text-emerald-700 mt-1 block">ركنة ترحيبية مجانية 100% 🎁</span>
+          )}
+        </div>
+
+        {/* أزرار اتخاذ القرار */}
+        <div className="space-y-3 relative z-10">
+          <button 
+            onClick={onConfirm} 
+            className="w-full font-black py-4 rounded-2xl text-sm active:scale-95 transition-all flex items-center justify-center gap-2" 
+            style={{ 
+              background: isFree 
+                ? 'linear-gradient(135deg, #10B981 0%, #059669 100%)' 
+                : 'linear-gradient(135deg, #FF3333 0%, #CC0000 100%)', 
+              color: '#ffffff', 
+              fontWeight: 950, 
+              fontSize: 14, 
+              boxShadow: isFree 
+                ? '0 6px 20px rgba(16,185,129,0.3)' 
+                : '0 6px 20px rgba(255,51,51,0.3)',
+              border: 'none',
+              cursor: 'pointer'
+            }}
+          >
+            <CreditCard size={16} />
+            <span>تأكيد الخروج واستكمال الدفع 💳</span>
+          </button>
+
+          <button 
+            onClick={onClose} 
+            className="w-full font-black py-3.5 rounded-2xl text-xs active:scale-95 transition-all flex items-center justify-center gap-1.5" 
+            style={{ 
+              background: '#F1F5F9', 
+              color: '#475569', 
+              fontWeight: 900,
+              border: '1.5px solid #E2E8F0',
+              cursor: 'pointer'
+            }}
+          >
+            <Clock size={14} />
+            <span>تراجع والعودة للعداد النشط ⏱️</span>
+          </button>
+        </div>
+      </motion.div>
+    </div>
   );
 }
