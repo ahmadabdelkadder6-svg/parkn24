@@ -353,7 +353,7 @@ const ValetGeofenceBlockScreen = memo(function ValetGeofenceBlockScreen({
           ) : isOutside ? (
             <>
               أنت خارج نطاق جراج <span className="text-blue-400 font-black">{garageName}</span>.<br />
-              يجب التواجد داخل مقر الجراج لمتابعة العمل واستقبال السيارات.
+              يجب التواجد داخل مقر الجراج لمتابعة العمل واستقبل السيارات.
             </>
           ) : (
             geofenceState.errorMessage || 'تأكد من تشغيل الـ GPS بالهاتف والمحاولة مجدداً.'
@@ -741,16 +741,16 @@ export default function GarageDashboard() {
     () => (localStorage.getItem('garageRole') as 'owner' | 'valet') || 'owner',
   );
 
-  // 🟢 وضع معاينة السايس من حساب المالك (بدون تغيير localStorage ولا الصلاحيات الحقيقية)
+  // 🟢 وضع معاينة السايس الذكي (دون تخزين أي صلاحيات أو بيانات خاطئة في الـ LocalStorage)
   const [ownerValetView, setOwnerValetView] = useState(false);
 
   const isRealValet = garageRole === 'valet';
   const isOwner = garageRole === 'owner' && !ownerValetView;
   const isValet = isRealValet || ownerValetView;
 
-  // المالك أثناء المعاينة يستخدم دور "سايس 1"
+  // 🟢 عند المعاينة، نستخدم معرّف افتراضي للمالك بدلاً من سرقة رقم السايس 1
   const valetNumber = ownerValetView
-    ? '1'
+    ? 'owner'
     : localStorage.getItem('valetNumber') || '';
 
   const garage = garages.find(g => g.id === currentGarageId);
@@ -762,14 +762,21 @@ export default function GarageDashboard() {
   );
   const currentValetNameLocal = ownerValetView ? '' : (localStorage.getItem('valetName') || '');
 
-  const currentValetName =
-    valetNumber === '1' ? garage?.valetName1 :
-    valetNumber === '2' ? garage?.valetName2 :
-    valetNumber === '3' ? garage?.valetName3 :
-    '';
+  // 🟢 اسم السايس النشط للشاشة (المعاينة تُظهر "المالك")
+  const currentValetName = ownerValetView
+    ? 'المالك'
+    : valetNumber === '1' ? garage?.valetName1 :
+      valetNumber === '2' ? garage?.valetName2 :
+      valetNumber === '3' ? garage?.valetName3 :
+      '';
 
   const myValetNames = useMemo(() => {
     const names = new Set<string>();
+    if (ownerValetView) {
+      names.add('المالك');
+      names.add('المالك (معاينة)');
+      return names;
+    }
     if (currentValetNameLocal) names.add(currentValetNameLocal.trim());
     if (currentValetName) names.add(currentValetName.trim());
     if (valetNumber) {
@@ -777,7 +784,7 @@ export default function GarageDashboard() {
       names.add(`valet ${valetNumber}`);
     }
     return names;
-  }, [currentValetNameLocal, currentValetName, valetNumber]);
+  }, [currentValetNameLocal, currentValetName, valetNumber, ownerValetView]);
 
   const garageValetNames = useMemo(() => {
     if (!garage) return [];
@@ -790,7 +797,7 @@ export default function GarageDashboard() {
   }, [garage]);
 
   // ==========================================
-  // 📍 GPS للسايس الحقيقي فقط
+  // 📍 GPS للسايس الحقيقي فقط (المالك مستثنى تماماً)
   // ==========================================
   const geofenceState = useValetGeofence(isRealValet, garageCoords, GEOFENCE_RADIUS_METERS);
 
@@ -846,7 +853,7 @@ export default function GarageDashboard() {
 
   const valetLocations = useOwnerValetLocations(isOwner, currentGarageId, garage);
 
-  // 🛡️ حظر الجيوفنس يخص السايس الحقيقي فقط
+  // 🛡️ حظر السايس الحقيقي خارج النطاق
   const isValetBlocked = isRealValet && geofenceState.status !== 'inside';
 
   const handleGeofenceRetry = useCallback(() => {
@@ -866,7 +873,7 @@ export default function GarageDashboard() {
 
   const valetActiveSessions = useMemo(() => {
     if (!isValet) return activeSessions;
-    if (ownerValetView) return activeSessions; // 🟢 المالك في المعاينة يرى كل الجلسات
+    if (ownerValetView) return activeSessions; // 🟢 المالك يشرف على كل السيارات
 
     const isActive =
       valetNumber === '1' ? garage?.valet1Active :
@@ -1510,7 +1517,7 @@ export default function GarageDashboard() {
             </button>
           )}
 
-          {/* 🟢 زر معاينة شاشة السايس (يظهر للمالك فقط) */}
+          {/* 🟢 زر تفعيل وضع السايس للمالك */}
           {isOwner && (
             <button
               onClick={() => {
@@ -1538,7 +1545,7 @@ export default function GarageDashboard() {
           <h2 className="font-black" style={{ fontSize: 20 }}>{garage.name}</h2>
           <div className="flex items-center gap-2 justify-end mt-1">
             <span className="font-bold flex items-center gap-1" style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, background: isOwner ? '#0066FF' : '#FF9500', color: '#fff' }}>
-              {isOwner ? <><Shield size={10} /> مالك</> : <><HardHat size={10} style={{ color: '#fff' }} /> <span style={{ color: '#fff', fontWeight: 900 }}>سايس {valetNumber}</span> {currentValetName && <span style={{ color: '#fff', fontWeight: 900 }}> - {currentValetName}</span>}</>}
+              {isOwner ? <><Shield size={10} /> مالك</> : <><HardHat size={10} style={{ color: '#fff' }} /> <span style={{ color: '#fff', fontWeight: 900 }}>{ownerValetView ? 'المالك (معاينة)' : `سايس ${valetNumber}`}</span> {currentValetName && !ownerValetView && <span style={{ color: '#fff', fontWeight: 900 }}> - {currentValetName}</span>}</>}
             </span>
             <p className="flex items-center gap-1" style={{ fontSize: 11, color: '#7B8CA6' }}><MapPin size={11} /> {garage.location}</p>
           </div>
@@ -1547,7 +1554,7 @@ export default function GarageDashboard() {
         {isValet && <div style={{ width: 48 }} />}
       </div>
 
-      {/* 🟢 شريط تنبيه المعاينة (يظهر فقط للمالك أثناء تصفح شاشة السايس) */}
+      {/* 🟢 شريط تنبيه المعاينة للمالك */}
       {ownerValetView && (
         <motion.div 
           initial={{ opacity: 0, y: -8 }} 
@@ -1575,7 +1582,7 @@ export default function GarageDashboard() {
           </span>
           <div className="flex items-center gap-1.5 flex-1 justify-end mr-2">
             <span className="font-black text-amber-900" style={{ fontSize: 11.5 }}>
-              وضع معاينة السايس نشط
+              وضع معاينة السايس نشط (العمليات تسجل باسم المالك)
             </span>
             <Eye size={15} style={{ color: '#E65100' }} className="shrink-0" />
           </div>
@@ -2084,7 +2091,7 @@ export default function GarageDashboard() {
       {isValet && (
         <div className="mb-5" style={{ background: '#fff', borderRadius: 20, padding: '12px 16px', border: '2px solid #D0DCFF' }}>
           <div className="flex items-center justify-between">
-            <span className="font-black flex items-center gap-1" style={{ fontSize: 14, color: '#0A1628' }}><HardHat size={16} style={{ color: '#FF9500' }} />{currentValetName || `سايس ${valetNumber}`}</span>
+            <span className="font-black flex items-center gap-1" style={{ fontSize: 14, color: '#0A1628' }}><HardHat size={16} style={{ color: '#FF9500' }} />{ownerValetView ? 'المالك (معاينة)' : (currentValetName || `سايس ${valetNumber}`)}</span>
             <div className="flex items-center gap-4">
               <div className="text-right"><div style={{ fontSize: 10, color: '#94a3b8' }}>السعر/ساعة</div><div className="font-black font-mono" style={{ fontSize: 17, color: '#0A1628', lineHeight: 1.1 }}>{garage.basePrice} ج</div></div>
               <div style={{ width: 2, height: 28, background: '#D0DCFF', borderRadius: 2 }} />
