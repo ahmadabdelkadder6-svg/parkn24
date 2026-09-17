@@ -15,7 +15,7 @@ import WaitingScreen from './components/WaitingScreen';
 import NavigationScreen from './components/NavigationScreen';
 import SessionScreen from './components/SessionScreen';
 import SummaryScreen from './components/SummaryScreen';
-import GarageLoginScreen = lazy(() => import('./components/GarageLoginScreen'));
+import GarageLoginScreen from './components/GarageLoginScreen';
 import InstallPWA from './components/InstallPWA';
 import LastSessionScreen from './components/LastSessionScreen';
 import ChatScreen from './components/ChatScreen';
@@ -25,6 +25,52 @@ import InstallQRCodePage from './components/InstallQRCodePage';
 // Lazy Components
 const GarageDashboard = lazy(() => import('./components/GarageDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
+
+// ⏱️ دالة تحويل التوقيت الشاملة للأرقام والـ ISO Strings
+const toMs = (value: any): number => {
+  if (!value) return 0;
+  if (typeof value === 'number') {
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+// 🛡️ صمام الأمان المدمج مباشرة لمنع الشاشة البيضاء في حالة حدوث أي تحديث شبكي مفاجئ
+class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: boolean }> {
+  public state = { hasError: false };
+
+  public static getDerivedStateFromError(_: Error) {
+    return { hasError: true };
+  }
+
+  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('App Error Boundary caught:', error, errorInfo);
+  }
+
+  public render() {
+    if (this.state.hasError) {
+      return (
+        <div className="h-screen w-screen bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center" dir="rtl">
+          <div className="text-5xl mb-4">🚗</div>
+          <h2 className="text-xl font-black mb-2 font-sans">تحديث لحظي ذكي</h2>
+          <p className="text-slate-400 text-xs font-bold mb-6">حدثنا بعض الخصائص، اضغط بالأسفل للعودة فوراً لمتابعة حجزك</p>
+          <button
+            onClick={() => {
+              this.setState({ hasError: false });
+              window.location.href = '/';
+            }}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-black px-8 py-4 rounded-2xl text-sm active:scale-95 transition-all shadow-lg"
+            style={{ boxShadow: '0 6px 20px rgba(37,99,235,0.35)' }}
+          >
+            🔄 إعادة تحميل التطبيق ومتابعة الحجز
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 /* ════════════════════════════════════════════════════════════
    👑 MOLTEN GOLD HOURGLASS ENGINE (سيمفونية الوقت الفاخرة برمجياً)
@@ -60,7 +106,6 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
     };
     window.addEventListener('resize', handleResize);
 
-    // الرمل الذهبي المنصهر
     const grains: {
       x: number;
       y: number;
@@ -73,10 +118,10 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
     }[] = [];
 
     const grainColors = [
-      'rgba(212, 175, 55, ',  // ذهب عتيق
-      'rgba(255, 223, 0, ',   // ذهب لامع
-      'rgba(245, 158, 11, ',  // أمبر دافئ
-      'rgba(251, 191, 36, ',  // عسلي مضيء
+      'rgba(212, 175, 55, ',
+      'rgba(255, 223, 0, ',
+      'rgba(245, 158, 11, ',
+      'rgba(251, 191, 36, ',
     ];
 
     const createGrain = (x: number, y: number, isFloating = false) => {
@@ -93,17 +138,15 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
       };
     };
 
-    // إحداثيات الساعة الرملية في المنتصف
     const centerX = width / 2;
     const centerY = height * 0.42;
     const glassHeight = 180;
     const neckY = centerY;
 
     const render = () => {
-      ctx.fillStyle = 'rgba(3, 7, 18, 0.2)'; // تأثير المسارات المخملية
+      ctx.fillStyle = 'rgba(3, 7, 18, 0.2)';
       ctx.fillRect(0, 0, width, height);
 
-      // 1. رسم هالة زجاجية نيون زرقاء وذهبية من وحي الشعار
       const glassGlow = ctx.createRadialGradient(centerX, centerY, 10, centerX, centerY, 120);
       glassGlow.addColorStop(0, 'rgba(0, 102, 255, 0.08)');
       glassGlow.addColorStop(0.5, 'rgba(212, 175, 55, 0.04)');
@@ -113,31 +156,22 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
       ctx.arc(centerX, centerY, 140, 0, Math.PI * 2);
       ctx.fill();
 
-      // 2. توليد مستمر لحبات الذهب المنصهرة من الأعلى والأسفل
       if (grains.length < 180) {
-        // حبات تسقط من الخزان العلوي
         grains.push(createGrain(centerX + (Math.random() - 0.5) * 40, centerY - glassHeight / 2));
-        // حبات ترتفع وتتحدى الجاذبية من الخزان السفلي
         grains.push(createGrain(centerX + (Math.random() - 0.5) * 40, centerY + glassHeight / 2, true));
       }
 
-      // 3. تحديث ورسم الرمل الذهبي المنصهر
       for (let i = grains.length - 1; i >= 0; i--) {
         const p = grains[i];
         p.x += p.speedX;
         p.y += p.speedY;
         p.angle += 0.02;
 
-        // فيزياء الساعة الرملية وتدفق الرمل الملتوي عند عنق الزجاج
-        const distFromCenter = p.x - centerX;
         const distFromNeck = Math.abs(p.y - neckY);
-
         if (distFromNeck < 40) {
-          // جذب الحبات تدريجياً نحو المنتصف الضيق
           p.x += (centerX - p.x) * 0.12;
         }
 
-        // رسم حبة الرمل المتوهجة
         ctx.shadowColor = '#D4AF37';
         ctx.shadowBlur = Math.sin(p.angle) * 4 + 4;
         ctx.fillStyle = `${p.color}${p.alpha})`;
@@ -146,28 +180,23 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        // إعادة تدوير الرمل عند تخطي الحدود
         if (p.y > centerY + glassHeight / 2 + 10 || p.y < centerY - glassHeight / 2 - 10) {
           grains.splice(i, 1);
         }
       }
 
-      // 4. رسم الخطوط الأنيقة المستوحاة من شعار السيارة لقفص الساعة الرملية
       ctx.strokeStyle = 'rgba(212, 175, 55, 0.25)';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      // الخزان العلوي
       ctx.moveTo(centerX - 50, centerY - glassHeight / 2);
       ctx.lineTo(centerX + 50, centerY - glassHeight / 2);
       ctx.lineTo(centerX - 10, centerY);
-      // الخزان السفلي
       ctx.lineTo(centerX - 50, centerY + glassHeight / 2);
       ctx.lineTo(centerX + 50, centerY + glassHeight / 2);
       ctx.lineTo(centerX + 10, centerY);
       ctx.closePath();
       ctx.stroke();
 
-      // مصابيح نيون الشعار في القمة والقاع
       ctx.fillStyle = '#0066FF';
       ctx.shadowColor = '#0066FF';
       ctx.shadowBlur = 10;
@@ -204,11 +233,9 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
             overflow: 'hidden',
           }}
         >
-          {/* تحميل خطوط الترحيب */}
           <style>{`
             @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Cairo:wght@400;600;700;800;900&display=swap');
             
-            /* نبضات الشفق الذهبي والنيوني */
             @keyframes moltenGlow {
               0% { opacity: 0.4; transform: translate(-50%, -30%) scale(0.95); }
               50% { opacity: 0.7; transform: translate(-50%, -20%) scale(1.1); }
@@ -227,7 +254,6 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
               overflow: 'hidden',
             }}
           >
-            {/* 🌌 خلفية مخملية عميقة */}
             <div
               style={{
                 position: 'absolute',
@@ -236,7 +262,6 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
               }}
             />
 
-            {/* ✨ شفق أورورا الكهرومغناطيسي المتوهج (أزرق نيون وذهب عتيق) */}
             <div
               style={{
                 position: 'absolute',
@@ -251,10 +276,8 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
               }}
             />
 
-            {/* ⏳ قماش الرمل والتدفق الذهب الفاخر */}
             <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5 }} />
 
-            {/* 🚗 شعار الهوية الأنيق والمضيء في الجزء العلوي */}
             <motion.div
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -314,7 +337,6 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
               </div>
             </motion.div>
 
-            {/* 📝 المحتوى النصي والأزرار في الجزء السفلي (سهولة الاستخدام على الموبايل) */}
             <div
               style={{
                 position: 'relative',
@@ -328,7 +350,6 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 paddingBottom: '50px',
               }}
             >
-              {/* شارة عدد السائقين */}
               <motion.div
                 initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -375,7 +396,6 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 </span>
               </motion.div>
 
-              {/* العنوان الرئيسي الفاخر باللغة العربية */}
               <motion.h1
                 initial={{ opacity: 0, y: 22 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -405,7 +425,6 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 </span>
               </motion.h1>
 
-              {/* الوصف التحفيزي */}
               <motion.p
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -424,7 +443,6 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 رصيد وقتك يستحق الحفاظ عليه. رتب أولوياتك، احجز مكانك بثوانٍ وانطلق بذكاء ⚡
               </motion.p>
 
-              {/* 🚀 زر البدء الفاخر (يلا نبدأ) */}
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -463,52 +481,6 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
       )}
     </AnimatePresence>
   );
-}
-
-// ⏱️ دالة تحويل التوقيت الشاملة للأرقام والـ ISO Strings
-const toMs = (value: any): number => {
-  if (!value) return 0;
-  if (typeof value === 'number') {
-    return value < 1_000_000_000_000 ? value * 1000 : value;
-  }
-  const parsed = new Date(value).getTime();
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
-// 🛡️ صمام الأمان المدمج مباشرة لمنع الشاشة البيضاء في حالة حدوث أي تحديث شبكي مفاجئ
-class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: boolean }> {
-  public state = { hasError: false };
-
-  public static getDerivedStateFromError(_: Error) {
-    return { hasError: true };
-  }
-
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('App Error Boundary caught:', error, errorInfo);
-  }
-
-  public render() {
-    if (this.state.hasError) {
-      return (
-        <div className="h-screen w-screen bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center" dir="rtl">
-          <div className="text-5xl mb-4">🚗</div>
-          <h2 className="text-xl font-black mb-2 font-sans">تحديث لحظي ذكي</h2>
-          <p className="text-slate-400 text-xs font-bold mb-6">حدثنا بعض الخصائص، اضغط بالأسفل للعودة فوراً لمتابعة حجزك</p>
-          <button
-            onClick={() => {
-              this.setState({ hasError: false });
-              window.location.href = '/';
-            }}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-black px-8 py-4 rounded-2xl text-sm active:scale-95 transition-all shadow-lg"
-            style={{ boxShadow: '0 6px 20px rgba(37,99,235,0.35)' }}
-          >
-            🔄 إعادة تحميل التطبيق ومتابعة الحجز
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
 }
 
 const VALID_SCREENS = [
