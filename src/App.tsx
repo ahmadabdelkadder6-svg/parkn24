@@ -27,7 +27,7 @@ const GarageDashboard = lazy(() => import('./components/GarageDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 
 /* ════════════════════════════════════════════════════════════
-   👑 AURORA LANDING COMPONENT (تنسيق مخصص للموبايل والأسفلت الأصلي)
+   👑 AURORA NEURAL INTERFACE (الواجهة العصبية والتشخيصية الذكية)
    ════════════════════════════════════════════════════════════ */
 interface AuroraLandingProps {
   onEnter: () => void;
@@ -35,11 +35,110 @@ interface AuroraLandingProps {
 
 function AuroraLanding({ onEnter }: AuroraLandingProps) {
   const [isExiting, setIsExiting] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const handleEnter = () => {
     setIsExiting(true);
     setTimeout(() => onEnter(), 500);
   };
+
+  // 🧠 محرك الجسيمات والنبضات العصبية (Neural Synapse Particle Engine)
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animationId: number;
+    let width = (canvas.width = window.innerWidth);
+    let height = (canvas.height = window.innerHeight);
+
+    const handleResize = () => {
+      if (!canvas) return;
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    };
+    window.addEventListener('resize', handleResize);
+
+    // إنشاء العقد العصبية
+    const nodes: { x: number; y: number; vx: number; vy: number; radius: number; pulse: number }[] = [];
+    const nodeCount = Math.min(28, Math.floor(width / 14));
+
+    for (let i = 0; i < nodeCount; i++) {
+      nodes.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: (Math.random() - 0.5) * 0.6,
+        vy: (Math.random() - 0.5) * 0.6,
+        radius: Math.random() * 2 + 1.2,
+        pulse: Math.random() * Math.PI * 2,
+      });
+    }
+
+    let frame = 0;
+    const render = () => {
+      frame += 0.03;
+      ctx.clearRect(0, 0, width, height);
+
+      // تحديث ورسم الروابط العصبية المتوهجة
+      for (let i = 0; i < nodes.length; i++) {
+        const n1 = nodes[i];
+        n1.x += n1.vx;
+        n1.y += n1.vy;
+        n1.pulse += 0.04;
+
+        if (n1.x < 0 || n1.x > width) n1.vx *= -1;
+        if (n1.y < 0 || n1.y > height) n1.vy *= -1;
+
+        for (let j = i + 1; j < nodes.length; j++) {
+          const n2 = nodes[j];
+          const dx = n1.x - n2.x;
+          const dy = n1.y - n2.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < 130) {
+            const alpha = (1 - dist / 130) * 0.28;
+            ctx.strokeStyle = `rgba(16, 185, 129, ${alpha})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(n1.x, n1.y);
+            ctx.lineTo(n2.x, n2.y);
+            ctx.stroke();
+
+            // نبضة بيانات كهربائية تتحرك بين العقد
+            if (Math.sin(frame + i * 2) > 0.8) {
+              const packetProgress = (Math.sin(frame * 2 + i) + 1) / 2;
+              const px = n1.x + (n2.x - n1.x) * packetProgress;
+              const py = n1.y + (n2.y - n1.y) * packetProgress;
+              ctx.fillStyle = 'rgba(52, 211, 153, 0.9)';
+              ctx.shadowColor = '#10b981';
+              ctx.shadowBlur = 8;
+              ctx.beginPath();
+              ctx.arc(px, py, 2.2, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.shadowBlur = 0;
+            }
+          }
+        }
+
+        // رسم العقدة العصبية
+        const currentRadius = n1.radius + Math.sin(n1.pulse) * 0.8;
+        ctx.fillStyle = 'rgba(16, 185, 129, 0.75)';
+        ctx.beginPath();
+        ctx.arc(n1.x, n1.y, Math.max(1, currentRadius), 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      animationId = requestAnimationFrame(render);
+    };
+
+    render();
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(animationId);
+    };
+  }, []);
 
   return (
     <AnimatePresence>
@@ -50,14 +149,72 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
           transition={{ duration: 0.5, ease: 'easeInOut' }}
           className="fixed inset-0 z-[999999]"
           style={{
-            background: '#000',
+            background: '#02050e',
             fontFamily: "'Cairo', sans-serif",
             overflow: 'hidden',
           }}
         >
-          {/* تحميل خطوط الترحيب العريضة والجميلة */}
+          {/* تحميل خطوط الترحيب */}
           <style>{`
             @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Cairo:wght@400;600;700;800;900&display=swap');
+            
+            /* تدوير رادار الفحص التشخيصي */
+            @keyframes hudRotate {
+              0% { transform: translate(-50%, -50%) rotate(0deg); }
+              100% { transform: translate(-50%, -50%) rotate(360deg); }
+            }
+            @keyframes hudRotateReverse {
+              0% { transform: translate(-50%, -50%) rotate(360deg); }
+              100% { transform: translate(-50%, -50%) rotate(0deg); }
+            }
+
+            /* نبضات الشفق العصبي */
+            @keyframes auroraGlow {
+              0% { opacity: 0.35; transform: translate(-50%, -30%) scale(0.95); }
+              50% { opacity: 0.7; transform: translate(-50%, -20%) scale(1.15); }
+              100% { opacity: 0.35; transform: translate(-50%, -30%) scale(0.95); }
+            }
+
+            /* خطوط المسح الضوئي المستقبلي */
+            @keyframes scanline {
+              0% { transform: translateY(-100%); }
+              100% { transform: translateY(100vh); }
+            }
+
+            .hud-ring-outer {
+              position: absolute;
+              top: 42%;
+              left: 50%;
+              width: 330px;
+              height: 330px;
+              border-radius: 50%;
+              border: 1.5px dashed rgba(16, 185, 129, 0.35);
+              animation: hudRotate 24s linear infinite;
+              pointer-events: none;
+            }
+
+            .hud-ring-inner {
+              position: absolute;
+              top: 42%;
+              left: 50%;
+              width: 250px;
+              height: 250px;
+              border-radius: 50%;
+              border: 1px solid rgba(52, 211, 153, 0.2);
+              border-top: 2px solid #10b981;
+              border-bottom: 2px solid #06b6d4;
+              animation: hudRotateReverse 14s linear infinite;
+              pointer-events: none;
+            }
+
+            .scanline-beam {
+              position: absolute;
+              inset: 0;
+              background: linear-gradient(180deg, transparent 0%, rgba(16, 185, 129, 0.08) 50%, transparent 100%);
+              height: 120px;
+              animation: scanline 4s linear infinite;
+              pointer-events: none;
+            }
           `}</style>
 
           <section
@@ -65,118 +222,226 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
               position: 'relative',
               width: '100%',
               height: '100vh',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
               overflow: 'hidden',
             }}
           >
-            {/* 🎬 فيديو الأسفلت المبلل الأصلي عالي الجودة والسرعة مع ضبط التموضع ليناسب الموبايل */}
-            <video
-              src="https://pub-1e5b4001b36b47e28e6a2fb775966a79.r2.dev/templates/aurora/hero.mp4"
-              autoPlay
-              muted
-              loop
-              playsInline
-              preload="auto"
-              disablePictureInPicture
-              // @ts-ignore
-              disableRemotePlayback
+            {/* 🌌 خلفية المصفوفة العصبية العميقة */}
+            <div
               style={{
                 position: 'absolute',
                 inset: 0,
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                objectPosition: '55% center', // ضبط محاذاة الفيديو ليبقى الطريق والأسفلت بمنتصف شاشة الموبايل تماماً
-                transform: 'translateZ(0)',
+                background: 'radial-gradient(ellipse at 50% 40%, #061527 0%, #030814 60%, #01040a 100%)',
               }}
             />
 
-            {/* 🎨 طبقات التعتيم والظلال البصرية لتعزيز تباين النصوص وتأمين الرؤية ليلاً */}
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)' }} />
+            {/* ✨ شفق أورورا الكهرومغناطيسي المتوهج */}
             <div
               style={{
                 position: 'absolute',
-                inset: 0,
-                background:
-                  'linear-gradient(to bottom, rgba(0,0,0,0.25) 0%, transparent 40%, transparent 60%, rgba(0,0,0,0.50) 100%)',
-              }}
-            />
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                background:
-                  'linear-gradient(to right, rgba(0,0,0,0.20) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.20) 100%)',
-              }}
-            />
-
-            {/* ✨ توهج أخضر خفيف يطابق التصميم الأصلي للأورورا */}
-            <div
-              style={{
-                position: 'absolute',
-                top: '-14%',
+                top: 0,
                 left: '50%',
-                transform: 'translateX(-50%)',
-                width: '1000px',
-                height: '720px',
-                background:
-                  'radial-gradient(ellipse at 50% 30%, rgba(16,185,129,0.25) 0%, transparent 68%)',
+                width: '140vw',
+                height: '70vh',
+                background: 'radial-gradient(ellipse at 50% 20%, rgba(16, 185, 129, 0.35) 0%, rgba(6, 182, 212, 0.2) 45%, transparent 75%)',
+                filter: 'blur(55px)',
+                animation: 'auroraGlow 6s ease-in-out infinite',
                 pointerEvents: 'none',
               }}
             />
 
-            {/* 🚗 شعار السيارة الأيقوني في الجزء العلوي من الشاشة */}
+            {/* 🧠 قماش النبضات والشبكات العصبية التفاعلية */}
+            <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5 }} />
+
+            {/* 📡 حلقات التشخيص الرقمي والرادار الذكي (Neural Telemetry Rings) */}
+            <div className="hud-ring-outer" />
+            <div className="hud-ring-inner" />
+            <div className="scanline-beam" />
+
+            {/* 🚗 شعار الهوية الأنيق في الجزء العلوي */}
             <motion.div
-              initial={{ opacity: 0, y: -16 }}
+              initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, ease: 'easeOut' }}
+              transition={{ duration: 0.7, ease: 'easeOut' }}
               style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
+                position: 'relative',
                 zIndex: 50,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                padding: '26px 44px',
+                paddingTop: '40px',
               }}
             >
-              <svg
-                width="42"
-                height="42"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#fff"
-                strokeWidth="1.7"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                xmlns="http://www.w3.org/2000/svg"
+              <div
                 style={{
-                  filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.4))',
+                  background: 'rgba(3, 10, 24, 0.75)',
+                  border: '1.5px solid rgba(16, 185, 129, 0.4)',
+                  padding: '12px 20px',
+                  borderRadius: '24px',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 0 24px rgba(16, 185, 129, 0.25)',
+                  backdropFilter: 'blur(16px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
                 }}
               >
-                <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C1.4 11 1 11.9 1 13v3c0 .6.4 1 1 1h2" />
-                <circle cx="7" cy="17" r="2" />
-                <path d="M9 17h6" />
-                <circle cx="17" cy="17" r="2" />
-              </svg>
+                <svg
+                  width="34"
+                  height="34"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#10b981"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  xmlns="http://www.w3.org/2000/svg"
+                  style={{
+                    filter: 'drop-shadow(0 0 8px rgba(16, 185, 129, 0.8))',
+                  }}
+                >
+                  <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C1.4 11 1 11.9 1 13v3c0 .6.4 1 1 1h2" />
+                  <circle cx="7" cy="17" r="2" />
+                  <path d="M9 17h6" />
+                  <circle cx="17" cy="17" r="2" />
+                </svg>
+                <span
+                  style={{
+                    color: '#ffffff',
+                    fontWeight: 900,
+                    fontSize: '18px',
+                    letterSpacing: '0.5px',
+                    textShadow: '0 2px 8px rgba(0,0,0,0.6)',
+                  }}
+                >
+                  Park'n <span style={{ color: '#10b981' }}>24</span>
+                </span>
+              </div>
             </motion.div>
 
-            {/* 📝 النصوص والأزرار الترحيبية */}
+            {/* 🚘 مجسم السيارة العصبية والأشعة التشخيصية في قلب الشاشة */}
+            <div
+              style={{
+                position: 'absolute',
+                top: '42%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '100%',
+                maxWidth: '320px',
+                height: '200px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 20,
+                pointerEvents: 'none',
+              }}
+            >
+              <div style={{ position: 'relative' }}>
+                <svg width="280" height="150" viewBox="0 0 260 150" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  {/* توهج النيون العصبي السفلي */}
+                  <ellipse cx="130" cy="132" rx="95" ry="14" fill="url(#neural-underglow)" />
+
+                  {/* الهيكل الخارجي للسيارة */}
+                  <path
+                    d="M40 120 C 35 110, 45 60, 60 55 C 70 50, 80 40, 100 36 C 115 33, 145 33, 160 36 C 180 40, 190 50, 200 55 C 215 60, 225 110, 220 120 C 215 130, 45 130, 40 120 Z"
+                    fill="#050b18"
+                    stroke="#1e3a5f"
+                    strokeWidth="2.2"
+                  />
+
+                  {/* الزجاج والمقصورة التشخيصية */}
+                  <path
+                    d="M72 55 C 82 45, 95 41, 130 41 C 165 41, 178 45, 188 55 C 178 80, 82 80, 72 55 Z"
+                    fill="#02060f"
+                    stroke="rgba(16,185,129,0.4)"
+                    strokeWidth="1.5"
+                  />
+
+                  {/* الجناح الخلفي */}
+                  <path d="M48 54 L 212 54 C 212 54, 217 47, 202 47 L 58 47 C 43 47, 48 54, 48 54 Z" fill="#040814" stroke="#1e3a5f" />
+
+                  {/* مصابيح LED الخلفية المتوهجة بالكامل */}
+                  <path d="M44 95 C 60 90, 200 90, 216 95 L 214 100 C 190 96, 70 96, 46 100 Z" fill="#ff1e56" filter="url(#glow-red)" />
+                  <path d="M44 95 C 60 90, 200 90, 216 95" stroke="#ff4d79" strokeWidth="2.5" filter="url(#glow-red-bright)" />
+
+                  {/* لوحة السيارة بركن 24 */}
+                  <rect x="110" y="111" width="40" height="15" rx="3" fill="#040914" stroke="#10b981" strokeWidth="1.2" />
+                  <text x="130" y="121" fill="#ffffff" fontFamily="Cairo" fontSize="7.5" fontWeight="900" textAnchor="middle" letterSpacing="0.5">
+                    PARK'N
+                  </text>
+
+                  {/* تدرجات الفلاتر والنيون */}
+                  <defs>
+                    <radialGradient id="neural-underglow" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stopColor="#10b981" stopOpacity="0.85" />
+                      <stop offset="60%" stopColor="#06b6d4" stopOpacity="0.35" />
+                      <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
+                    </radialGradient>
+                    <filter id="glow-red" x="-20%" y="-20%" width="140%" height="140%">
+                      <feGaussianBlur stdDeviation="8" result="blur" />
+                      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                    </filter>
+                    <filter id="glow-red-bright" x="-20%" y="-20%" width="140%" height="140%">
+                      <feGaussianBlur stdDeviation="2" result="blur" />
+                      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                    </filter>
+                  </defs>
+                </svg>
+
+                {/* إحداثيات تشخيصية دقيقة حول السيارة */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '-15px',
+                    right: '-25px',
+                    fontSize: '9px',
+                    fontFamily: 'monospace',
+                    color: '#10b981',
+                    background: 'rgba(3,10,24,0.8)',
+                    padding: '2px 6px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(16,185,129,0.4)',
+                    boxShadow: '0 0 10px rgba(16,185,129,0.3)',
+                  }}
+                >
+                  SYSTEM: 100%
+                </div>
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '5px',
+                    left: '-25px',
+                    fontSize: '9px',
+                    fontFamily: 'monospace',
+                    color: '#06b6d4',
+                    background: 'rgba(3,10,24,0.8)',
+                    padding: '2px 6px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(6,182,212,0.4)',
+                    boxShadow: '0 0 10px rgba(6,182,212,0.3)',
+                  }}
+                >
+                  GPS: ACTIVE
+                </div>
+              </div>
+            </div>
+
+            {/* 📝 المحتوى النصي والأزرار التحفيزية في الجزء السفلي */}
             <div
               style={{
                 position: 'relative',
-                zIndex: 10,
+                zIndex: 40,
                 display: 'flex',
                 flexDirection: 'column',
-                height: '100%',
-                justifyContent: 'flex-start',
-                paddingTop: '26vh',
+                alignItems: 'center',
+                textAlign: 'center',
                 paddingLeft: '24px',
                 paddingRight: '24px',
+                paddingBottom: '48px',
               }}
             >
-              {/* شارة الترحيب بعدد السائقين */}
+              {/* شارة عدد السائقين */}
               <motion.div
                 initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -187,13 +452,13 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                   gap: '10px',
                   borderRadius: '999px',
                   padding: '6px 16px 6px 6px',
-                  background: 'rgba(255,255,255,0.08)',
-                  border: '1px solid rgba(255,255,255,0.18)',
-                  backdropFilter: 'blur(10px)',
-                  WebkitBackdropFilter: 'blur(10px)',
-                  width: 'fit-content',
+                  background: 'rgba(3, 10, 24, 0.75)',
+                  border: '1px solid rgba(16,185,129,0.35)',
+                  backdropFilter: 'blur(12px)',
+                  WebkitBackdropFilter: 'blur(12px)',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
                   direction: 'rtl',
-                  alignSelf: 'center',
+                  marginBottom: '18px',
                 }}
               >
                 <div style={{ display: 'flex' }}>
@@ -204,8 +469,8 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                         width: '22px',
                         height: '22px',
                         borderRadius: '999px',
-                        background: 'linear-gradient(135deg, #10b981, #047857)',
-                        border: '2px solid rgba(10,20,16,0.9)',
+                        background: 'linear-gradient(135deg, #10b981, #06b6d4)',
+                        border: '2px solid rgba(2,5,14,0.9)',
                         marginRight: i === 0 ? 0 : '-8px',
                       }}
                     />
@@ -214,42 +479,39 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 <span
                   style={{
                     fontSize: '12px',
-                    color: 'rgba(255,255,255,0.85)',
-                    fontFamily: "'Cairo', sans-serif",
+                    color: 'rgba(255,255,255,0.9)',
                     fontWeight: 700,
                   }}
                 >
-                  انضم لأكثر من نورتنا!{' '}
-                  <strong style={{ color: '#fff', fontWeight: 800 }}>10 آلاف سائق</strong>
+                  انضم لأكثر من{' '}
+                  <strong style={{ color: '#6EE7B7', fontWeight: 900 }}>10 آلاف سائق</strong>
                 </span>
               </motion.div>
 
-              {/* العنوان العربي المطور */}
+              {/* العنوان العربي المبهر */}
               <motion.h1
                 initial={{ opacity: 0, y: 22 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.25, ease: 'easeOut' }}
                 style={{
-                  fontFamily: "'Cairo', sans-serif",
                   fontWeight: 900,
-                  fontSize: 'clamp(2.1rem, 5.2vw, 3.8rem)',
+                  fontSize: 'clamp(2.1rem, 6.2vw, 3.5rem)',
                   lineHeight: 1.2,
-                  letterSpacing: '-0.01em',
-                  color: '#fff',
-                  marginTop: '26px',
-                  textAlign: 'center',
+                  letterSpacing: '-0.02em',
+                  color: '#ffffff',
                   direction: 'rtl',
-                  textShadow: '0 4px 20px rgba(0,0,0,0.5)',
+                  textShadow: '0 4px 24px rgba(0,0,0,0.8)',
                 }}
               >
                 اركن سيارتك
                 <br />
                 <span
                   style={{
-                    background: 'linear-gradient(135deg, #6EE7B7 0%, #10b981 100%)',
+                    background: 'linear-gradient(135deg, #A7F3D0 0%, #34D399 50%, #06B6D4 100%)',
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
                     backgroundClip: 'text',
+                    filter: 'drop-shadow(0 2px 14px rgba(16,185,129,0.5))',
                   }}
                 >
                   بضغطة زر واحدة
@@ -262,48 +524,50 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.42, ease: 'easeOut' }}
                 style={{
-                  marginTop: '18px',
-                  fontSize: '14.5px',
-                  lineHeight: 1.8,
-                  color: 'rgba(255,255,255,0.8)',
-                  fontFamily: "'Cairo', sans-serif",
+                  marginTop: '14px',
+                  fontSize: '14px',
+                  lineHeight: 1.7,
+                  color: 'rgba(255,255,255,0.85)',
                   fontWeight: 600,
-                  textAlign: 'center',
+                  maxWidth: '360px',
                   direction: 'rtl',
+                  textShadow: '0 2px 8px rgba(0,0,0,0.6)',
                 }}
               >
                 وفّر وقتك ومجهودك، احجز أقرب جراج ليك وادفع فورياً بدون فكة أو انتظار ⚡
               </motion.p>
 
-              {/* زر البدء التفاعلي في المنتصف تماماً بلون أورورا الأخضر المضيء */}
+              {/* 🚀 زر البدء الفاخر */}
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.58, ease: 'easeOut' }}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '36px' }}
+                style={{ marginTop: '28px', width: '100%', maxWidth: '300px' }}
               >
                 <motion.button
                   onClick={handleEnter}
                   whileHover={{ scale: 1.04 }}
                   whileTap={{ scale: 0.96 }}
                   style={{
-                    padding: '18px 48px',
+                    width: '100%',
+                    padding: '18px 36px',
                     borderRadius: '999px',
-                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                    color: '#fff',
+                    background: 'linear-gradient(135deg, #10B981 0%, #059669 50%, #0891B2 100%)',
+                    color: '#ffffff',
                     fontSize: '17px',
                     fontWeight: 900,
-                    fontFamily: "'Cairo', sans-serif",
                     border: 'none',
                     cursor: 'pointer',
-                    boxShadow: '0 10px 30px rgba(16,185,129,0.4)',
+                    boxShadow: '0 10px 32px rgba(16,185,129,0.55), 0 0 20px rgba(6,182,212,0.35)',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '12px',
+                    justifyContent: 'center',
+                    gap: '10px',
+                    textShadow: '0 1px 2px rgba(0,0,0,0.3)',
                   }}
                 >
                   <span>يلا نبدأ</span>
-                  <span style={{ fontSize: '18px' }}>🚀</span>
+                  <span style={{ fontSize: '20px' }}>🚀</span>
                 </motion.button>
               </motion.div>
             </div>
