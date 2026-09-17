@@ -55,7 +55,7 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
             overflow: 'hidden',
           }}
         >
-          {/* تحميل خطوط الترحيب */}
+          {/* تحميل خطوط الترحيب العريضة والجميلة */}
           <style>{`
             @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Cairo:wght@400;600;700;800;900&display=swap');
           `}</style>
@@ -68,9 +68,9 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
               overflow: 'hidden',
             }}
           >
-            {/* 🎬 فيديو الأسفلت العمودي الأصلي عالي الجودة والسرعة بدلاً من الرمل */}
+            {/* 🎬 فيديو الأسفلت المبلل العمودي المباشر فائق السرعة والمطابق لمقاييس الموبايل */}
             <video
-              src="https://videos.pexels.com/video-files/8089018/8089018-uhd_1440_2732_25fps.mp4"
+              src="https://assets.mixkit.co/videos/preview/mixkit-driving-in-a-wet-city-street-at-night-vertical-shot-34333-large.mp4"
               autoPlay
               muted
               loop
@@ -90,14 +90,14 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
               }}
             />
 
-            {/* 🎨 طبقات التعتيم البصرية */}
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.30)' }} />
+            {/* 🎨 طبقات التعتيم والظلال البصرية لتعزيز تباين النصوص */}
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)' }} />
             <div
               style={{
                 position: 'absolute',
                 inset: 0,
                 background:
-                  'linear-gradient(to bottom, rgba(0,0,0,0.20) 0%, transparent 35%, transparent 60%, rgba(0,0,0,0.45) 100%)',
+                  'linear-gradient(to bottom, rgba(0,0,0,0.25) 0%, transparent 40%, transparent 60%, rgba(0,0,0,0.50) 100%)',
               }}
             />
             <div
@@ -105,11 +105,11 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 position: 'absolute',
                 inset: 0,
                 background:
-                  'linear-gradient(to right, rgba(0,0,0,0.15) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.15) 100%)',
+                  'linear-gradient(to right, rgba(0,0,0,0.20) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.20) 100%)',
               }}
             />
 
-            {/* ✨ التوهج الأخضر الفاخر */}
+            {/* ✨ توهج أخضر خفيف يطابق التصميم الأصلي للأورورا */}
             <div
               style={{
                 position: 'absolute',
@@ -119,12 +119,12 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 width: '1000px',
                 height: '720px',
                 background:
-                  'radial-gradient(ellipse at 50% 30%, rgba(16,185,129,0.22) 0%, transparent 68%)',
+                  'radial-gradient(ellipse at 50% 30%, rgba(16,185,129,0.25) 0%, transparent 68%)',
                 pointerEvents: 'none',
               }}
             />
 
-            {/* 🚗 شعار السيارة الأيقوني في الأعلى */}
+            {/* 🚗 شعار السيارة الأنيق في الجزء العلوي من الشاشة */}
             <motion.div
               initial={{ opacity: 0, y: -16 }}
               animate={{ opacity: 1, y: 0 }}
@@ -162,7 +162,7 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
               </svg>
             </motion.div>
 
-            {/* 📝 النصوص والأزرار الترحيبية */}
+            {/* 📝 المحتوى النصي والأزرار */}
             <div
               style={{
                 position: 'relative',
@@ -219,7 +219,7 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                     fontWeight: 700,
                   }}
                 >
-                  انضم لأكثر من{' '}
+                  انضم لأكثر من_نورتنا!{' '}
                   <strong style={{ color: '#fff', fontWeight: 800 }}>10 آلاف سائق</strong>
                 </span>
               </motion.div>
@@ -275,7 +275,7 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 وفّر وقتك ومجهودك، احجز أقرب جراج ليك وادفع فورياً بدون فكة أو انتظار ⚡
               </motion.p>
 
-              {/* زر البدء التفاعلي في المنتصف تماماً */}
+              {/* زر البدء التفاعلي في المنتصف تماماً بلون أورورا الأخضر المضيء */}
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -369,7 +369,7 @@ const VALID_SCREENS = [
   'summary',
   'lastSession',
   'chat',
-] as const;
+ ] as const;
 
 export default function App() {
   const {
