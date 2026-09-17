@@ -21,6 +21,7 @@ import LastSessionScreen from './components/LastSessionScreen';
 import ChatScreen from './components/ChatScreen';
 import InstallPage from './components/InstallPage';
 import InstallQRCodePage from './components/InstallQRCodePage';
+import AuroraLanding from './components/AuroraLanding'; // 🆕 استيراد شاشة الترحيب الفاخرة
 
 // Lazy Components
 const GarageDashboard = lazy(() => import('./components/GarageDashboard'));
@@ -111,7 +112,23 @@ export default function App() {
 
   const [adminAccess, setAdminAccess] = useState(false);
 
+  // 🟢 حالة إظهار شاشة الترحيب الفاخرة للعملاء مرة واحدة في الـ Session
+  const [showLanding, setShowLanding] = useState(true);
+
   const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
+
+  useEffect(() => {
+    // التحقق مما إذا كانت شاشة الهبوط قد عُرضت بالفعل في هذه الجلسة
+    const shown = sessionStorage.getItem('landingShown') === 'true';
+    if (shown) {
+      setShowLanding(false);
+    }
+  }, []);
+
+  const handleEnterLanding = () => {
+    sessionStorage.setItem('landingShown', 'true');
+    setShowLanding(false);
+  };
 
   useEffect(() => {
     if (window.location.pathname === '/admin' || window.location.hash === '#admin') {
@@ -470,6 +487,9 @@ export default function App() {
 
   return (
     <ErrorBoundary>
+      {/* 🟢 شاشة الترحيب الفاخرة لـ Aurora تظهر قبل الدخول للتطبيق */}
+      {showLanding && <AuroraLanding onEnter={handleEnterLanding} />}
+
       <AuthGate>
         <div
           className="max-w-md mx-auto h-dvh bg-white text-slate-900 relative flex flex-col overflow-hidden"
@@ -509,7 +529,7 @@ export default function App() {
                       : 'text-white/70 hover:text-white hover:bg-white/10'
                   )}
                   style={{ 
-                    fontWeight: 900,
+                    fontWeight: 950,
                     textShadow: '0 1px 2px rgba(0,0,0,0.2)'
                   }}
                 >
