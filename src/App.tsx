@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useMemo, lazy, Suspense, Component, ErrorI
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
-// 🌟 استيراد التوقيت الموحد ودوال البصمة الموحدة من الـ store لربط تقني متماسك
 import { useStore, setupRealtime, normalizePlate, normalizePhone, getServerNow } from './store';
 import { cn } from './utils/cn';
 
@@ -22,11 +21,9 @@ import ChatScreen from './components/ChatScreen';
 import InstallPage from './components/InstallPage';
 import InstallQRCodePage from './components/InstallQRCodePage';
 
-// Lazy Components
 const GarageDashboard = lazy(() => import('./components/GarageDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 
-// ⏱️ دالة تحويل التوقيت الشاملة للأرقام والـ ISO Strings
 const toMs = (value: any): number => {
   if (!value) return 0;
   if (typeof value === 'number') {
@@ -36,7 +33,6 @@ const toMs = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-// 🛡️ صمام الأمان المدمج مباشرة لمنع الشاشة البيضاء في حالة حدوث أي تحديث شبكي مفاجئ
 class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: boolean }> {
   public state = { hasError: false };
 
@@ -73,8 +69,8 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
 }
 
 /* ════════════════════════════════════════════════════════════
-   🔥 FLUXORA-STYLE HERO FOR PARK'N 24
-   Deep ember black bleeding into molten orange & amber horizon
+   🔥🌧️ FLUXORA-STYLE HERO — GLOWING CAR IN THE RAIN
+   سيارة فاخرة بأنوار برتقالية ملتهبة تحت سماء ممطرة
    ════════════════════════════════════════════════════════════ */
 interface FluxoraLandingProps {
   onEnter: () => void;
@@ -82,84 +78,113 @@ interface FluxoraLandingProps {
 
 function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
   const [isExiting, setIsExiting] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    // نُشغّل الفيديو بشكل قسري لتخطي أي حجب متصفح على الهواتف
-    const play = video.play();
-    if (play?.catch) play.catch(() => {});
-
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      video.pause();
-      setReady(true);
-    }
-  }, []);
+  const [imgLoaded, setImgLoaded] = useState(false);
 
   const handleEnter = () => {
     setIsExiting(true);
-    setTimeout(() => onEnter(), 500);
+    setTimeout(() => onEnter(), 600);
   };
+
+  // تحميل الصورة مسبقاً
+  useEffect(() => {
+    const img = new Image();
+    img.src = 'https://images.unsplash.com/photo-1544636331-e26879cd4d9b?auto=format&fit=crop&w=1400&q=85';
+    img.onload = () => setImgLoaded(true);
+    // fallback بعد 4 ثواني لو النت بطيء
+    const t = setTimeout(() => setImgLoaded(true), 4000);
+    return () => clearTimeout(t);
+  }, []);
 
   return (
     <AnimatePresence>
       {!isExiting && (
         <motion.div
           initial={{ opacity: 1 }}
-          exit={{ opacity: 0, scale: 1.03 }}
-          transition={{ duration: 0.5, ease: 'easeInOut' }}
+          exit={{ opacity: 0, scale: 1.02, filter: 'blur(8px)' }}
+          transition={{ duration: 0.6, ease: 'easeInOut' }}
           className="fixed inset-0 z-[999999]"
           style={{
-            background: 'linear-gradient(165deg, #2a0b02 0%, #120400 70%)',
+            background: '#0a1628',
             overflow: 'hidden',
             height: '100dvh',
           }}
         >
-          {/* 🎨 تحميل خطوط Fluxora الأصلية مع دعم العربية بخط Cairo الفاخر */}
           <style>{`
-            @import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=Inter:wght@400;500;600&family=Instrument+Serif:ital@1&family=Cairo:wght@400;500;600;700;800;900&display=swap');
+            @import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Instrument+Serif:ital@1&family=Cairo:wght@400;500;600;700;800;900&display=swap');
 
-            :root {
-              --ground: #2a0b02;
-              --ground-deep: #120400;
-              --ink: #ffffff;
-              --ink-soft: rgba(255, 255, 255, 0.72);
-              --ink-faint: rgba(255, 255, 255, 0.46);
-              --flame: #ff3d00;
-              --flame-lit: #ff8a1f;
-              --glass: rgba(56, 20, 6, 0.42);
-              --hair: rgba(255, 255, 255, 0.14);
-              --hair-soft: rgba(255, 255, 255, 0.08);
-              --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+            /* ═══ 🌧️ تأثير المطر المتساقط CSS فقط ═══ */
+            .rain-container {
+              position: absolute;
+              inset: 0;
+              overflow: hidden;
+              pointer-events: none;
+              z-index: 5;
+            }
+            .rain-drop {
+              position: absolute;
+              width: 1.5px;
+              background: linear-gradient(to bottom, transparent, rgba(200, 220, 255, 0.35), transparent);
+              animation: rain-fall linear infinite;
+              opacity: 0;
+            }
+            @keyframes rain-fall {
+              0% {
+                transform: translateY(-100vh) translateX(0px);
+                opacity: 0;
+              }
+              10% { opacity: 1; }
+              90% { opacity: 0.6; }
+              100% {
+                transform: translateY(110vh) translateX(-15px);
+                opacity: 0;
+              }
             }
 
+            /* ═══ 🔥 وهج أنوار السيارة البرتقالي النابض ═══ */
+            @keyframes car-glow-pulse {
+              0%, 100% { opacity: 0.6; transform: scale(1); }
+              50% { opacity: 0.9; transform: scale(1.05); }
+            }
+
+            @keyframes car-glow-pulse-2 {
+              0%, 100% { opacity: 0.4; transform: scale(1); }
+              50% { opacity: 0.7; transform: scale(1.08); }
+            }
+
+            /* ═══ تأثير بخار الأسفلت المبلول ═══ */
+            @keyframes mist-drift {
+              0% { transform: translateX(-30%) scaleY(1); opacity: 0.3; }
+              50% { transform: translateX(10%) scaleY(1.1); opacity: 0.5; }
+              100% { transform: translateX(-30%) scaleY(1); opacity: 0.3; }
+            }
+
+            /* ═══ الأنيميشن الأصلية من Fluxora ═══ */
             .fluxora-hero-block {
               animation: fluxora-rise 0.95s cubic-bezier(0.16, 1, 0.3, 1) both;
             }
-            .fluxora-delay-1 { animation-delay: 0.06s; }
-            .fluxora-delay-2 { animation-delay: 0.14s; }
-            .fluxora-delay-3 { animation-delay: 0.20s; }
-            .fluxora-delay-4 { animation-delay: 0.28s; }
-            .fluxora-delay-5 { animation-delay: 0.36s; }
+            .fd-1 { animation-delay: 0.06s; }
+            .fd-2 { animation-delay: 0.14s; }
+            .fd-3 { animation-delay: 0.20s; }
+            .fd-4 { animation-delay: 0.28s; }
+            .fd-5 { animation-delay: 0.36s; }
 
             @keyframes fluxora-rise {
               from { opacity: 0; transform: translateY(22px); }
               to { opacity: 1; transform: none; }
             }
 
-            .fluxora-video {
+            /* ═══ تأثير ظهور صورة السيارة ═══ */
+            .car-image {
               opacity: 0;
-              transform: scale(1.04);
-              transition: opacity 1.1s cubic-bezier(0.16, 1, 0.3, 1), transform 2.4s cubic-bezier(0.16, 1, 0.3, 1);
+              transform: scale(1.06);
+              transition: opacity 1.4s cubic-bezier(0.16, 1, 0.3, 1), transform 2.6s cubic-bezier(0.16, 1, 0.3, 1);
             }
-            .fluxora-video.is-ready {
+            .car-image.is-loaded {
               opacity: 1;
               transform: scale(1);
             }
 
+            /* ═══ الزر الملتهب ═══ */
             .fluxora-btn-flame {
               display: inline-flex;
               align-items: center;
@@ -170,7 +195,7 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
               color: #fff;
               font-weight: 700;
               font-family: 'Cairo', sans-serif;
-              box-shadow: 0 14px 40px rgba(255, 61, 0, 0.38);
+              box-shadow: 0 14px 40px rgba(255, 61, 0, 0.35);
               transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
               border: 0;
               cursor: pointer;
@@ -186,77 +211,168 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
               gap: 8px;
               padding: 0.72em 1.35em;
               border-radius: 999px;
-              background: #fff;
+              background: rgba(255,255,255,0.95);
               color: #180600;
               font-family: 'Cairo', sans-serif;
               font-weight: 600;
-              box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+              box-shadow: 0 10px 26px rgba(0, 0, 0, 0.25);
               transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
               border: 0;
               cursor: pointer;
             }
             .fluxora-btn-light:hover {
               transform: translateY(-1px);
-              background: #fff4ec;
-            }
-
-            .fluxora-content-wrapper {
-              padding: 86px 20px 26px 20px;
-            }
-
-            @media (min-width: 480px) {
-              .fluxora-content-wrapper {
-                padding: 96px 32px 26px 32px;
-              }
+              background: #fff;
             }
 
             @media (prefers-reduced-motion: reduce) {
               .fluxora-hero-block { animation: none; }
-              .fluxora-video { opacity: 1; transform: none; }
+              .car-image { opacity: 1; transform: none; }
+              .rain-drop { animation: none; display: none; }
             }
           `}</style>
 
-          {/* 🎬 خلفية الفيديو الملتهبة مع صورة بديلة فاخرة تظهر فوراً على الهواتف */}
-          <div style={{ position: 'absolute', inset: 0, zIndex: -1 }}>
-            <video
-              ref={videoRef}
-              className={`fluxora-video ${ready ? 'is-ready' : ''}`}
+          {/* ═══════════════════════════════════════════
+              🎨 طبقة الخلفية: سماء فاتحة ممطرة + سيارة
+              ═══════════════════════════════════════════ */}
+
+          {/* 🌅 السماء المتدرجة الفاتحة الجميلة */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'linear-gradient(175deg, #3a4f7a 0%, #5c6d93 18%, #8899b5 35%, #a8b5cc 50%, #c4ceda 65%, #7a8aa8 85%, #2d3a52 100%)',
+              zIndex: 1,
+            }}
+          />
+
+          {/* 🚗 صورة السيارة الفاخرة */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 2,
+            }}
+          >
+            <img
+              className={`car-image ${imgLoaded ? 'is-loaded' : ''}`}
+              src="https://images.unsplash.com/photo-1544636331-e26879cd4d9b?auto=format&fit=crop&w=1400&q=85"
+              alt=""
+              aria-hidden="true"
               style={{
                 width: '100%',
                 height: '100%',
                 objectFit: 'cover',
-                objectPosition: '68% center',
-              }}
-              poster="https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1200&q=80"
-              src="https://pub-1e5b4001b36b47e28e6a2fb775966a79.r2.dev/prompt-assets/fluxora/hero-loop.mp4"
-              autoPlay
-              muted
-              loop
-              playsInline
-              // @ts-ignore
-              webkit-playsinline="true"
-              preload="auto"
-              aria-hidden="true"
-              onCanPlay={() => setReady(true)}
-              disablePictureInPicture
-              // @ts-ignore
-              disableRemotePlayback
-            />
-            {/* 🔥 طبقة التعتيم الملتهبة الأصلية من Fluxora - غير متماثلة لخدمة سطوع الفيديو من اليمين */}
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                background: `
-                  linear-gradient(264deg, rgba(10, 3, 0, 0.9) 0%, rgba(14, 4, 0, 0.66) 30%, rgba(20, 6, 0, 0.16) 52%, rgba(20, 6, 0, 0) 68%),
-                  linear-gradient(0deg, rgba(9, 2, 0, 0.78) 0%, rgba(9, 2, 0, 0.12) 28%, rgba(0, 0, 0, 0) 46%),
-                  linear-gradient(180deg, rgba(8, 2, 0, 0.5) 0%, rgba(0, 0, 0, 0) 22%)
-                `,
+                objectPosition: 'center 70%',
               }}
             />
           </div>
 
-          {/* 🚗 شريط التنقل العلوي الشفاف الفاخر */}
+          {/* 🔥 وهج الأنوار البرتقالية الأمامية للسيارة (يمين ويسار) */}
+          <div
+            style={{
+              position: 'absolute',
+              bottom: '18%',
+              left: '25%',
+              width: '220px',
+              height: '120px',
+              borderRadius: '50%',
+              background: 'radial-gradient(ellipse, rgba(255, 100, 0, 0.55) 0%, rgba(255, 61, 0, 0.25) 40%, transparent 70%)',
+              filter: 'blur(30px)',
+              zIndex: 3,
+              animation: 'car-glow-pulse 3s ease-in-out infinite',
+              pointerEvents: 'none',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              bottom: '18%',
+              right: '25%',
+              width: '220px',
+              height: '120px',
+              borderRadius: '50%',
+              background: 'radial-gradient(ellipse, rgba(255, 138, 31, 0.5) 0%, rgba(255, 100, 0, 0.2) 40%, transparent 70%)',
+              filter: 'blur(30px)',
+              zIndex: 3,
+              animation: 'car-glow-pulse-2 3.5s ease-in-out infinite 0.5s',
+              pointerEvents: 'none',
+            }}
+          />
+
+          {/* 🔥 انعكاس الأنوار على الأسفلت المبلول */}
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: '10%',
+              right: '10%',
+              height: '25%',
+              background: 'linear-gradient(to top, rgba(255, 80, 0, 0.12) 0%, rgba(255, 120, 30, 0.06) 40%, transparent 100%)',
+              filter: 'blur(20px)',
+              zIndex: 3,
+              pointerEvents: 'none',
+            }}
+          />
+
+          {/* 💨 بخار الأسفلت المبلول */}
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: '15%',
+              background: 'linear-gradient(to top, rgba(180, 200, 220, 0.2) 0%, transparent 100%)',
+              filter: 'blur(15px)',
+              zIndex: 4,
+              animation: 'mist-drift 12s ease-in-out infinite',
+              pointerEvents: 'none',
+            }}
+          />
+
+          {/* 🌧️ قطرات المطر المتساقطة */}
+          <div className="rain-container">
+            {Array.from({ length: 80 }).map((_, i) => {
+              const left = Math.random() * 100;
+              const duration = 0.6 + Math.random() * 0.7;
+              const delay = Math.random() * 3;
+              const height = 18 + Math.random() * 25;
+              const opacity = 0.15 + Math.random() * 0.3;
+              return (
+                <div
+                  key={i}
+                  className="rain-drop"
+                  style={{
+                    left: `${left}%`,
+                    height: `${height}px`,
+                    animationDuration: `${duration}s`,
+                    animationDelay: `${delay}s`,
+                    opacity,
+                  }}
+                />
+              );
+            })}
+          </div>
+
+          {/* 🎨 طبقة الضباب اللطيفة على الحواف (التعتيم) */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 6,
+              background: `
+                linear-gradient(264deg, rgba(10, 22, 40, 0.85) 0%, rgba(14, 20, 35, 0.55) 30%, rgba(20, 28, 45, 0.1) 55%, rgba(20, 28, 45, 0) 70%),
+                linear-gradient(0deg, rgba(9, 15, 30, 0.8) 0%, rgba(9, 15, 30, 0.1) 30%, rgba(0, 0, 0, 0) 50%),
+                linear-gradient(180deg, rgba(8, 14, 28, 0.45) 0%, rgba(0, 0, 0, 0) 25%)
+              `,
+              pointerEvents: 'none',
+            }}
+          />
+
+          {/* ═══════════════════════════════════════════
+              🚗 شريط التنقل العلوي الشفاف
+              ═══════════════════════════════════════════ */}
           <motion.nav
             initial={{ opacity: 0, y: -16 }}
             animate={{ opacity: 1, y: 0 }}
@@ -274,7 +390,6 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
               direction: 'ltr',
             }}
           >
-            {/* شعار Park'n 24 بشكل ألسنة اللهب المميزة لـ Fluxora */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <svg viewBox="0 0 28 28" fill="none" aria-hidden="true" width="28" height="28">
                 <path d="M14 1.6 20.3 8 14 14.4 7.7 8 14 1.6Z" fill="#FF6A00" />
@@ -288,6 +403,7 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                   fontWeight: 600,
                   letterSpacing: '-0.025em',
                   color: '#fff',
+                  textShadow: '0 2px 8px rgba(0,0,0,0.3)',
                 }}
               >
                 Park'n <span style={{ color: '#FF8A1F' }}>24</span>
@@ -305,9 +421,10 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
             </motion.button>
           </motion.nav>
 
-          {/* 📝 محتوى Hero الأساسي بأسلوب Fluxora مع مضمون Park'n 24 */}
+          {/* ═══════════════════════════════════════════
+              📝 محتوى Hero الأساسي
+              ═══════════════════════════════════════════ */}
           <div
-            className="fluxora-content-wrapper"
             style={{
               position: 'relative',
               zIndex: 10,
@@ -315,11 +432,12 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'center',
+              padding: '86px 20px 26px 20px',
               direction: 'rtl',
             }}
           >
             <div style={{ maxWidth: '640px' }}>
-              {/* 🌍 السطر التمهيدي الفاخر مع الأيقونة والخط الفاصل الرفيع */}
+              {/* 🌍 السطر التمهيدي */}
               <div
                 className="fluxora-hero-block"
                 style={{
@@ -327,7 +445,7 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                   alignItems: 'center',
                   gap: '10px',
                   paddingTop: '13px',
-                  borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                  borderTop: '1px solid rgba(255, 255, 255, 0.12)',
                   width: 'fit-content',
                   maxWidth: '320px',
                 }}
@@ -335,7 +453,7 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
-                  stroke="rgba(255,255,255,0.46)"
+                  stroke="rgba(255,255,255,0.5)"
                   strokeWidth="1.3"
                   width="20"
                   height="20"
@@ -349,7 +467,7 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                     fontFamily: "'Cairo', sans-serif",
                     fontSize: '11.5px',
                     lineHeight: 1.45,
-                    color: 'rgba(255,255,255,0.46)',
+                    color: 'rgba(255,255,255,0.55)',
                     fontWeight: 500,
                   }}
                 >
@@ -357,21 +475,21 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                 </span>
               </div>
 
-              {/* 🔥 العنوان الرئيسي الملتهم بلمسة الخط المائل الفاخر (Instrument Serif) */}
+              {/* 🔥 العنوان الرئيسي الملتهب مع اللمسة المائلة */}
               <h1
-                className="fluxora-hero-block fluxora-delay-1"
+                className="fluxora-hero-block fd-1"
                 style={{
                   marginTop: '24px',
                   fontFamily: "'Cairo', sans-serif",
-                  fontSize: 'clamp(2.4rem, 6.4vw, 5.4rem)',
+                  fontSize: 'clamp(2.2rem, 6.4vw, 5rem)',
                   fontWeight: 800,
                   lineHeight: 1.05,
                   letterSpacing: '-0.035em',
                   color: '#fff',
-                  textShadow: '0 6px 40px rgba(0, 0, 0, 0.45)',
+                  textShadow: '0 6px 40px rgba(0, 0, 0, 0.5)',
                 }}
               >
-                ركن سيارتك<br />
+                اركن عربيتك<br />
                 في أي مكان<br />
                 بلا{' '}
                 <em
@@ -380,36 +498,41 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                     fontWeight: 400,
                     fontStyle: 'italic',
                     letterSpacing: '-0.005em',
+                    background: 'linear-gradient(96deg, #ff6a00, #ff8a1f)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text',
                   }}
                 >
                   زحمة
                 </em>
               </h1>
 
-              {/* 📝 الوصف التحفيزي الأنيق */}
+              {/* الوصف */}
               <p
-                className="fluxora-hero-block fluxora-delay-2"
+                className="fluxora-hero-block fd-2"
                 style={{
                   marginTop: '20px',
-                  maxWidth: '410px',
+                  maxWidth: '380px',
                   fontFamily: "'Cairo', sans-serif",
-                  fontSize: '15px',
-                  lineHeight: 1.58,
+                  fontSize: '14.5px',
+                  lineHeight: 1.6,
                   color: 'rgba(255, 255, 255, 0.72)',
                   fontWeight: 500,
+                  textShadow: '0 2px 8px rgba(0,0,0,0.3)',
                 }}
               >
-                من وسط البلد للمعادي، ومن مدينة نصر للتجمع.. نفتحلك أقرب جراج بضغطة زر بدون معاناة أو انتظار.
+                حتى تحت المطر.. Park'n 24 يفتحلك أقرب جراج بضغطة زر. من وسط البلد للتجمع، عربيتك في أمان.
               </p>
 
-              {/* 🔥 زر الحث الملتهب الفاخر مع الأفاتار الأربعة والشهادة */}
+              {/* 🔥 زر الحث الملتهب + الأفاتار */}
               <div
-                className="fluxora-hero-block fluxora-delay-3"
+                className="fluxora-hero-block fd-3"
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   flexWrap: 'wrap',
-                  gap: '20px',
+                  gap: '18px',
                   marginTop: '26px',
                 }}
               >
@@ -444,7 +567,6 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                   </span>
                 </button>
 
-                {/* 👥 الأفاتار المتراكبة الأربعة كإثبات اجتماعي */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ display: 'flex' }}>
                     {[
@@ -460,7 +582,7 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                           height: '28px',
                           marginRight: i === 0 ? 0 : '-9px',
                           borderRadius: '999px',
-                          border: '2px solid rgba(22, 7, 0, 0.85)',
+                          border: '2px solid rgba(10, 22, 40, 0.7)',
                           background: `linear-gradient(140deg, ${c.a}, ${c.b})`,
                         }}
                       />
@@ -472,7 +594,7 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                       fontFamily: "'Cairo', sans-serif",
                       fontSize: '10px',
                       lineHeight: 1.4,
-                      color: 'rgba(255,255,255,0.46)',
+                      color: 'rgba(255,255,255,0.5)',
                     }}
                   >
                     <strong
@@ -489,14 +611,14 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                 </div>
               </div>
 
-              {/* 📊 بطاقات الإحصائيات الزجاجية الفاخرة (Glassmorphism الأصلي) */}
+              {/* 📊 بطاقات الإحصائيات الزجاجية */}
               <ul
-                className="fluxora-hero-block fluxora-delay-4"
+                className="fluxora-hero-block fd-4"
                 style={{
                   display: 'flex',
                   flexWrap: 'wrap',
-                  gap: '14px',
-                  margin: '30px 0 0',
+                  gap: '12px',
+                  margin: '28px 0 0',
                   padding: 0,
                   listStyle: 'none',
                 }}
@@ -511,26 +633,26 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                       position: 'relative',
                       display: 'grid',
                       alignContent: 'space-between',
-                      width: '180px',
-                      minHeight: '116px',
-                      padding: '18px',
+                      width: '170px',
+                      minHeight: '110px',
+                      padding: '16px',
                       border: '1px solid rgba(255, 255, 255, 0.14)',
                       borderRadius: '16px',
                       background: stat.gradient
-                        ? 'linear-gradient(150deg, rgba(120, 30, 4, 0.5), rgba(48, 14, 2, 0.5))'
-                        : 'rgba(56, 20, 6, 0.42)',
-                      backdropFilter: 'blur(16px) saturate(1.1)',
-                      WebkitBackdropFilter: 'blur(16px) saturate(1.1)',
+                        ? 'linear-gradient(150deg, rgba(255, 80, 0, 0.2), rgba(255, 138, 31, 0.1))'
+                        : 'rgba(15, 25, 50, 0.45)',
+                      backdropFilter: 'blur(20px) saturate(1.2)',
+                      WebkitBackdropFilter: 'blur(20px) saturate(1.2)',
                       boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.09)',
                     }}
                   >
                     <span
                       style={{
                         position: 'absolute',
-                        top: '14px',
-                        left: '16px',
-                        fontSize: '15px',
-                        color: 'rgba(255,255,255,0.46)',
+                        top: '12px',
+                        left: '14px',
+                        fontSize: '14px',
+                        color: 'rgba(255,255,255,0.3)',
                       }}
                     >
                       *
@@ -538,7 +660,7 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                     <span
                       style={{
                         fontFamily: "'Cairo', sans-serif",
-                        fontSize: 'clamp(1.5rem, 2.4vw, 2.1rem)',
+                        fontSize: 'clamp(1.4rem, 2.4vw, 2rem)',
                         fontWeight: 700,
                         lineHeight: 1,
                         letterSpacing: '-0.03em',
@@ -550,7 +672,7 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                     <span
                       style={{
                         fontFamily: "'Cairo', sans-serif",
-                        fontSize: '11.5px',
+                        fontSize: '11px',
                         fontWeight: 500,
                         color: 'rgba(255,255,255,0.46)',
                       }}
@@ -560,11 +682,11 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                     <span
                       style={{
                         position: 'absolute',
-                        left: '16px',
-                        bottom: '22px',
+                        left: '14px',
+                        bottom: '18px',
                         width: '14px',
                         height: '1px',
-                        background: 'rgba(255, 255, 255, 0.28)',
+                        background: 'rgba(255, 255, 255, 0.2)',
                       }}
                     />
                   </li>
@@ -573,9 +695,9 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
             </div>
           </div>
 
-          {/* 🏙️ الشريط السفلي: العلامة المائية العملاقة + شارات مدن مصر */}
+          {/* 🏙️ الشريط السفلي */}
           <div
-            className="fluxora-hero-block fluxora-delay-5"
+            className="fluxora-hero-block fd-5"
             style={{
               position: 'absolute',
               bottom: 0,
@@ -586,18 +708,18 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
               alignItems: 'flex-end',
               justifyContent: 'space-between',
               gap: '24px',
-              padding: '0 20px 22px 20px',
+              padding: '0 20px 20px 20px',
               direction: 'ltr',
             }}
           >
             <span
               style={{
                 fontFamily: "'Inter Tight', sans-serif",
-                fontSize: 'clamp(2.4rem, 8vw, 5.5rem)',
+                fontSize: 'clamp(2.2rem, 8vw, 5rem)',
                 fontWeight: 700,
                 lineHeight: 0.8,
                 letterSpacing: '-0.05em',
-                color: 'rgba(255, 255, 255, 0.055)',
+                color: 'rgba(255, 255, 255, 0.05)',
                 userSelect: 'none',
               }}
             >
@@ -608,10 +730,10 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
               <span
                 style={{
                   display: 'block',
-                  marginBottom: '10px',
+                  marginBottom: '8px',
                   fontFamily: "'Cairo', sans-serif",
-                  fontSize: '11.5px',
-                  color: 'rgba(255,255,255,0.46)',
+                  fontSize: '11px',
+                  color: 'rgba(255,255,255,0.4)',
                   fontWeight: 600,
                 }}
               >
@@ -621,7 +743,7 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 'clamp(8px, 2vw, 16px)',
+                  gap: '6px',
                   margin: 0,
                   padding: 0,
                   listStyle: 'none',
@@ -631,18 +753,14 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                   <li
                     key={city}
                     style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '7px',
                       fontFamily: "'Cairo', sans-serif",
-                      fontSize: '12px',
+                      fontSize: '10.5px',
                       fontWeight: 700,
-                      letterSpacing: '-0.01em',
-                      color: 'rgba(255,255,255,0.86)',
-                      padding: '5px 10px',
+                      color: 'rgba(255,255,255,0.8)',
+                      padding: '4px 10px',
                       borderRadius: '999px',
-                      border: '1px solid rgba(255,255,255,0.14)',
-                      background: 'rgba(0,0,0,0.35)',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      background: 'rgba(10, 22, 40, 0.5)',
                       backdropFilter: 'blur(8px)',
                     }}
                   >
@@ -697,7 +815,6 @@ export default function App() {
 
   const [adminAccess, setAdminAccess] = useState(false);
 
-  // 🟢 تظهر الشاشة الفاخرة مرة واحدة فقط في اليوم (تتجدد تلقائياً كل يوم جديد بالـ localStorage)
   const [showLanding, setShowLanding] = useState(() => {
     const today = new Date().toDateString();
     const lastShownDate = localStorage.getItem('fluxora_landing_last_date');
@@ -712,7 +829,6 @@ export default function App() {
     setShowLanding(false);
   };
 
-  // 🚀 تفعيل تسريع وحقن رابط الخطوط مباشرة في الـ <head> لضمان ظهور خط Cairo فوراً على الهواتف
   useEffect(() => {
     if (document.getElementById('google-fonts-optimized')) return;
 
@@ -730,7 +846,7 @@ export default function App() {
     const link = document.createElement('link');
     link.id = 'google-fonts-optimized';
     link.rel = 'stylesheet';
-    link.href = 'https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter+Tight:wght@400;500;600;700&family=Inter:wght@400;500;600&family=Instrument+Serif:ital@1&display=swap';
+    link.href = 'https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter+Tight:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Instrument+Serif:ital@1&display=swap';
     document.head.appendChild(link);
   }, []);
 
@@ -831,7 +947,6 @@ export default function App() {
     }
   }, [view]);
 
-  // فحص الجلسة عند التحميل المبدئي
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser) return;
@@ -914,7 +1029,6 @@ export default function App() {
     }
   }, [dataLoaded]);
 
-  // مراقبة الجلسة والتنقل اللحظي الفوري بين الشاشات
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser || view !== 'user') return;
@@ -1091,7 +1205,6 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      {/* 🔥 شاشة Fluxora الترحيبية الملتهبة تظهر مرة واحدة فقط في اليوم */}
       {showLanding && <FluxoraLanding onEnter={handleEnterLanding} />}
 
       <AuthGate>
@@ -1099,7 +1212,6 @@ export default function App() {
           className="max-w-md mx-auto h-dvh bg-white text-slate-900 relative flex flex-col overflow-hidden"
           style={{ fontFamily: "'Cairo', 'Noto Sans Arabic', system-ui, sans-serif" }}
         >
-          {/* 👑 شريط الأدمن العلوي الزجاجي الداكن الفاخر بنصوص بيضاء عريضة جداً */}
           {adminAccess && (
             <div 
               className="absolute top-3.5 left-3.5 z-[9999] flex gap-1 bg-slate-950/90 p-1 rounded-full backdrop-blur-md border border-white/10 shadow-2xl"
