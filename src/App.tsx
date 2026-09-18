@@ -73,14 +73,31 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
 }
 
 /* ════════════════════════════════════════════════════════════
-   👑 AURORA-STYLE HERO - OPTIMIZED FOR ALL MOBILE SCREENS
+   🔥 FLUXORA-STYLE HERO FOR PARK'N 24
+   Deep ember black bleeding into molten orange & amber horizon
    ════════════════════════════════════════════════════════════ */
-interface AuroraLandingProps {
+interface FluxoraLandingProps {
   onEnter: () => void;
 }
 
-function AuroraLanding({ onEnter }: AuroraLandingProps) {
+function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
   const [isExiting, setIsExiting] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    // نُشغّل الفيديو بشكل قسري لتخطي أي حجب متصفح على الهواتف
+    const play = video.play();
+    if (play?.catch) play.catch(() => {});
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      video.pause();
+      setReady(true);
+    }
+  }, []);
 
   const handleEnter = () => {
     setIsExiting(true);
@@ -92,372 +109,549 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
       {!isExiting && (
         <motion.div
           initial={{ opacity: 1 }}
-          exit={{ opacity: 0, scale: 1.05 }}
+          exit={{ opacity: 0, scale: 1.03 }}
           transition={{ duration: 0.5, ease: 'easeInOut' }}
           className="fixed inset-0 z-[999999]"
           style={{
-            background: '#000',
+            background: 'linear-gradient(165deg, #2a0b02 0%, #120400 70%)',
             overflow: 'hidden',
-            height: '100dvh', // استخدام dynamic view height لمنع الاقتطاع في المتصفحات
+            height: '100dvh',
           }}
         >
-          {/* تحميل خطوط التناغم وتنسيقات الاستجابة للهواتف */}
+          {/* 🎨 تحميل خطوط Fluxora الأصلية مع دعم العربية بخط Cairo الفاخر */}
           <style>{`
-            @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=Cairo:wght@500;600;700;800;900&display=swap');
-            
-            /* فئات الاستجابة الذكية للهواتف (Responsive CSS) */
-            .aurora-nav-bar {
-              padding: 16px 20px !important;
+            @import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=Inter:wght@400;500;600&family=Instrument+Serif:ital@1&family=Cairo:wght@400;500;600;700;800;900&display=swap');
+
+            :root {
+              --ground: #2a0b02;
+              --ground-deep: #120400;
+              --ink: #ffffff;
+              --ink-soft: rgba(255, 255, 255, 0.72);
+              --ink-faint: rgba(255, 255, 255, 0.46);
+              --flame: #ff3d00;
+              --flame-lit: #ff8a1f;
+              --glass: rgba(56, 20, 6, 0.42);
+              --hair: rgba(255, 255, 255, 0.14);
+              --hair-soft: rgba(255, 255, 255, 0.08);
+              --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
             }
-            .aurora-content-wrapper {
-              padding: 0 20px 14dvh 20px !important;
+
+            .fluxora-hero-block {
+              animation: fluxora-rise 0.95s cubic-bezier(0.16, 1, 0.3, 1) both;
             }
-            
+            .fluxora-delay-1 { animation-delay: 0.06s; }
+            .fluxora-delay-2 { animation-delay: 0.14s; }
+            .fluxora-delay-3 { animation-delay: 0.20s; }
+            .fluxora-delay-4 { animation-delay: 0.28s; }
+            .fluxora-delay-5 { animation-delay: 0.36s; }
+
+            @keyframes fluxora-rise {
+              from { opacity: 0; transform: translateY(22px); }
+              to { opacity: 1; transform: none; }
+            }
+
+            .fluxora-video {
+              opacity: 0;
+              transform: scale(1.04);
+              transition: opacity 1.1s cubic-bezier(0.16, 1, 0.3, 1), transform 2.4s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            .fluxora-video.is-ready {
+              opacity: 1;
+              transform: scale(1);
+            }
+
+            .fluxora-btn-flame {
+              display: inline-flex;
+              align-items: center;
+              gap: 10px;
+              padding: 0.5em 0.5em 0.5em 1.5em;
+              border-radius: 999px;
+              background: linear-gradient(96deg, #ff3d00 0%, #ff8a1f 100%);
+              color: #fff;
+              font-weight: 700;
+              font-family: 'Cairo', sans-serif;
+              box-shadow: 0 14px 40px rgba(255, 61, 0, 0.38);
+              transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+              border: 0;
+              cursor: pointer;
+            }
+            .fluxora-btn-flame:hover {
+              transform: translateY(-2px);
+              box-shadow: 0 20px 52px rgba(255, 61, 0, 0.5);
+            }
+
+            .fluxora-btn-light {
+              display: inline-flex;
+              align-items: center;
+              gap: 8px;
+              padding: 0.72em 1.35em;
+              border-radius: 999px;
+              background: #fff;
+              color: #180600;
+              font-family: 'Cairo', sans-serif;
+              font-weight: 600;
+              box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+              transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+              border: 0;
+              cursor: pointer;
+            }
+            .fluxora-btn-light:hover {
+              transform: translateY(-1px);
+              background: #fff4ec;
+            }
+
+            .fluxora-content-wrapper {
+              padding: 86px 20px 26px 20px;
+            }
+
             @media (min-width: 480px) {
-              .aurora-nav-bar {
-                padding: 26px 32px !important;
+              .fluxora-content-wrapper {
+                padding: 96px 32px 26px 32px;
               }
-              .aurora-content-wrapper {
-                padding: 0 32px 18dvh 32px !important;
-              }
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+              .fluxora-hero-block { animation: none; }
+              .fluxora-video { opacity: 1; transform: none; }
             }
           `}</style>
 
-          <section
-            style={{
-              position: 'relative',
-              width: '100%',
-              height: '100dvh',
-              overflow: 'hidden',
-              direction: 'rtl',
-            }}
-          >
-            {/* 🎬 فيديو الخلفية (ممتد ومغطى بالكامل دون أي تشوه) */}
+          {/* 🎬 خلفية الفيديو الملتهبة مع صورة بديلة فاخرة تظهر فوراً على الهواتف */}
+          <div style={{ position: 'absolute', inset: 0, zIndex: -1 }}>
             <video
+              ref={videoRef}
+              className={`fluxora-video ${ready ? 'is-ready' : ''}`}
               style={{
-                position: 'absolute',
-                inset: 0,
                 width: '100%',
                 height: '100%',
                 objectFit: 'cover',
-                transform: 'translateZ(0)',
+                objectPosition: '68% center',
               }}
-              src="https://pub-1e5b4001b36b47e28e6a2fb775966a79.r2.dev/templates/aurora/hero.mp4"
+              poster="https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1200&q=80"
+              src="https://pub-1e5b4001b36b47e28e6a2fb775966a79.r2.dev/prompt-assets/fluxora/hero-loop.mp4"
               autoPlay
               muted
               loop
               playsInline
+              // @ts-ignore
+              webkit-playsinline="true"
               preload="auto"
+              aria-hidden="true"
+              onCanPlay={() => setReady(true)}
               disablePictureInPicture
               // @ts-ignore
               disableRemotePlayback
             />
-
-            {/* 🎨 طبقات التعتيم والتدرج اللوني لتحسين وضوح المحتوى والنصوص */}
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.22)' }} />
+            {/* 🔥 طبقة التعتيم الملتهبة الأصلية من Fluxora - غير متماثلة لخدمة سطوع الفيديو من اليمين */}
             <div
               style={{
                 position: 'absolute',
                 inset: 0,
-                background: 'linear-gradient(to bottom, rgba(0,0,0,0.15) 0%, transparent 35%, rgba(0,0,0,0.75) 100%)',
+                background: `
+                  linear-gradient(264deg, rgba(10, 3, 0, 0.9) 0%, rgba(14, 4, 0, 0.66) 30%, rgba(20, 6, 0, 0.16) 52%, rgba(20, 6, 0, 0) 68%),
+                  linear-gradient(0deg, rgba(9, 2, 0, 0.78) 0%, rgba(9, 2, 0, 0.12) 28%, rgba(0, 0, 0, 0) 46%),
+                  linear-gradient(180deg, rgba(8, 2, 0, 0.5) 0%, rgba(0, 0, 0, 0) 22%)
+                `,
               }}
             />
+          </div>
 
-            {/* ✨ التوهج الزمردي المميز متناسق مع الشاشات الصغيرة */}
-            <div
-              style={{
-                position: 'absolute',
-                top: '-10%',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                width: '100%',
-                maxWidth: '600px',
-                height: '400px',
-                background: 'radial-gradient(ellipse at 50% 30%, rgba(16,185,129,0.2) 0%, transparent 70%)',
-                pointerEvents: 'none',
-              }}
-            />
-
-            {/* 🚗 شريط التنقل العلوي المرن */}
-            <motion.nav
-              initial={{ opacity: 0, y: -16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, ease: 'easeOut' }}
-              className="aurora-nav-bar"
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                zIndex: 50,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                direction: 'ltr',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <svg
-                  width="28"
-                  height="28"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#fff"
-                  strokeWidth="1.7"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C1.4 11 1 11.9 1 13v3c0 .6.4 1 1 1h2" />
-                  <circle cx="7" cy="17" r="2" />
-                  <path d="M9 17h6" />
-                  <circle cx="17" cy="17" r="2" />
-                </svg>
-                <span
-                  style={{
-                    fontSize: '14px',
-                    fontWeight: 700,
-                    fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    color: '#fff',
-                    letterSpacing: '-0.01em',
-                  }}
-                >
-                  Park'n <span style={{ color: '#10b981' }}>24</span>
-                </span>
-              </div>
-
-              <motion.button
-                onClick={handleEnter}
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.97 }}
+          {/* 🚗 شريط التنقل العلوي الشفاف الفاخر */}
+          <motion.nav
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: 'easeOut' }}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              zIndex: 50,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '18px 20px',
+              direction: 'ltr',
+            }}
+          >
+            {/* شعار Park'n 24 بشكل ألسنة اللهب المميزة لـ Fluxora */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <svg viewBox="0 0 28 28" fill="none" aria-hidden="true" width="28" height="28">
+                <path d="M14 1.6 20.3 8 14 14.4 7.7 8 14 1.6Z" fill="#FF6A00" />
+                <path d="M6.4 9.3 12.7 15.7 6.4 22.1 0.1 15.7 6.4 9.3Z" fill="#FF3D00" />
+                <path d="M21.6 9.3 27.9 15.7 21.6 22.1 15.3 15.7 21.6 9.3Z" fill="#FF9A2E" />
+              </svg>
+              <span
                 style={{
-                  padding: '8px 16px',
-                  borderRadius: '999px',
-                  fontSize: '11.5px',
+                  fontFamily: "'Inter Tight', sans-serif",
+                  fontSize: '18px',
                   fontWeight: 600,
-                  fontFamily: "'Cairo', sans-serif",
-                  color: '#111',
-                  background: '#fff',
-                  boxShadow: '0 4px 18px rgba(0,0,0,0.25)',
-                  border: 'none',
-                  cursor: 'pointer',
-                  direction: 'rtl',
-                }}
-              >
-                تخطي للتطبيق ←
-              </motion.button>
-            </motion.nav>
-
-            {/* 📝 حاوية المحتوى متموضعة بذكاء في الجزء السفلي بمرونة كاملة */}
-            <div
-              className="aurora-content-wrapper"
-              style={{
-                position: 'relative',
-                zIndex: 10,
-                display: 'flex',
-                flexDirection: 'column',
-                height: '100%',
-                justifyContent: 'flex-end',
-                alignItems: 'flex-start',
-                textAlign: 'right',
-                boxSizing: 'border-box',
-              }}
-            >
-              {/* شارة الثقة المرنة للهواتف */}
-              <motion.div
-                initial={{ opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.7, delay: 0.1, ease: 'easeOut' }}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  borderRadius: '999px',
-                  padding: '4px 4px 4px 12px',
-                  background: 'rgba(255,255,255,0.08)',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  backdropFilter: 'blur(10px)',
-                  WebkitBackdropFilter: 'blur(10px)',
-                  maxWidth: '100%',
-                  boxSizing: 'border-box',
-                  direction: 'rtl',
-                }}
-              >
-                <div style={{ display: 'flex', flexShrink: 0 }}>
-                  {[0, 1, 2].map((i) => (
-                    <div
-                      key={i}
-                      style={{
-                        width: '18px',
-                        height: '18px',
-                        borderRadius: '999px',
-                        background: 'linear-gradient(135deg, #10b981, #047857)',
-                        border: '1.5px solid rgba(10,20,16,0.9)',
-                        marginRight: i === 0 ? 0 : '-6px',
-                      }}
-                    />
-                  ))}
-                </div>
-                <span
-                  style={{
-                    fontSize: '11px',
-                    color: 'rgba(255,255,255,0.85)',
-                    fontFamily: "'Cairo', sans-serif",
-                    fontWeight: 600,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  مش أي حد يركن{' '}
-                  <strong style={{ color: '#fff', fontWeight: 800 }}>انضم للحريفة واضمن مكانك</strong>
-                </span>
-              </motion.div>
-
-              {/* 📰 العنوان الرئيسي مع تعديل "تنتظرك بذكاء" للون الأبيض الصافي وبنفس الأبعاد والحجم */}
-              <motion.h1
-                initial={{ opacity: 0, y: 22 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.25, ease: 'easeOut' }}
-                style={{
-                  fontFamily: "'Cairo', sans-serif",
-                  fontWeight: 800,
-                  fontSize: 'clamp(2.1rem, 6.5vw, 3.8rem)', // حجم مرن جداً يمنع الخروج عن الإطار في الهواتف
-                  lineHeight: 1.2,
-                  letterSpacing: '-0.02em',
+                  letterSpacing: '-0.025em',
                   color: '#fff',
-                  marginTop: '16px',
-                  maxWidth: '100%',
-                  textShadow: '0 4px 24px rgba(0,0,0,0.5)',
                 }}
               >
-                شوارع مصر
-                <br />
-                <span
-                  style={{
-                    color: '#ffffff', // تغيير اللون للأبيض الصافي كلياً مع الحفاظ على الأبعاد والسماكة
-                    display: 'inline-block',
-                  }}
-                >
-                  تنتظرك بذكاء
-                </span>
-              </motion.h1>
+                Park'n <span style={{ color: '#FF8A1F' }}>24</span>
+              </span>
+            </div>
 
-              {/* الوصف التحفيزي */}
-              <motion.p
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.42, ease: 'easeOut' }}
-                style={{
-                  marginTop: '12px',
-                  fontSize: '13.5px',
-                  lineHeight: 1.6,
-                  color: 'rgba(255,255,255,0.75)',
-                  fontFamily: "'Cairo', sans-serif",
-                  fontWeight: 500,
-                  maxWidth: '320px',
-                  textShadow: '0 2px 10px rgba(0,0,0,0.5)',
-                }}
-              >
-                من وسط البلد للمعادي، ومن مدينة نصر للتجمع.. Park'n 24 يفتحلك أقرب جراج بضغطة زر.
-              </motion.p>
+            <motion.button
+              onClick={handleEnter}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.97 }}
+              className="fluxora-btn-light"
+              style={{ fontSize: '12.5px', direction: 'rtl' }}
+            >
+              تخطي للتطبيق
+            </motion.button>
+          </motion.nav>
 
-              {/* أزرار الحث على اتخاذ إجراء */}
-              <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.58, ease: 'easeOut' }}
+          {/* 📝 محتوى Hero الأساسي بأسلوب Fluxora مع مضمون Park'n 24 */}
+          <div
+            className="fluxora-content-wrapper"
+            style={{
+              position: 'relative',
+              zIndex: 10,
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              direction: 'rtl',
+            }}
+          >
+            <div style={{ maxWidth: '640px' }}>
+              {/* 🌍 السطر التمهيدي الفاخر مع الأيقونة والخط الفاصل الرفيع */}
+              <div
+                className="fluxora-hero-block"
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '12px',
-                  marginTop: '24px',
-                  width: '100%',
-                  direction: 'rtl',
+                  gap: '10px',
+                  paddingTop: '13px',
+                  borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                  width: 'fit-content',
+                  maxWidth: '320px',
                 }}
               >
-                <motion.button
-                  onClick={handleEnter}
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="rgba(255,255,255,0.46)"
+                  strokeWidth="1.3"
+                  width="20"
+                  height="20"
+                  style={{ flex: 'none' }}
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M3 12h18M12 3c2.5 2.6 3.7 5.7 3.7 9S14.5 18.4 12 21c-2.5-2.6-3.7-5.7-3.7-9S9.5 5.6 12 3Z" />
+                </svg>
+                <span
                   style={{
-                    padding: '12px 28px',
-                    borderRadius: '999px',
-                    background: '#0a0a0a',
-                    color: '#fff',
-                    fontSize: '14px',
-                    fontWeight: 700,
                     fontFamily: "'Cairo', sans-serif",
-                    border: '1px solid rgba(255,255,255,0.18)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
+                    fontSize: '11.5px',
+                    lineHeight: 1.45,
+                    color: 'rgba(255,255,255,0.46)',
+                    fontWeight: 500,
                   }}
+                >
+                  نخدم آلاف السائقين<br />في شوارع مصر يومياً
+                </span>
+              </div>
+
+              {/* 🔥 العنوان الرئيسي الملتهم بلمسة الخط المائل الفاخر (Instrument Serif) */}
+              <h1
+                className="fluxora-hero-block fluxora-delay-1"
+                style={{
+                  marginTop: '24px',
+                  fontFamily: "'Cairo', sans-serif",
+                  fontSize: 'clamp(2.4rem, 6.4vw, 5.4rem)',
+                  fontWeight: 800,
+                  lineHeight: 1.05,
+                  letterSpacing: '-0.035em',
+                  color: '#fff',
+                  textShadow: '0 6px 40px rgba(0, 0, 0, 0.45)',
+                }}
+              >
+                ركن سيارتك<br />
+                في أي مكان<br />
+                بلا{' '}
+                <em
+                  style={{
+                    fontFamily: "'Instrument Serif', Georgia, serif",
+                    fontWeight: 400,
+                    fontStyle: 'italic',
+                    letterSpacing: '-0.005em',
+                  }}
+                >
+                  زحمة
+                </em>
+              </h1>
+
+              {/* 📝 الوصف التحفيزي الأنيق */}
+              <p
+                className="fluxora-hero-block fluxora-delay-2"
+                style={{
+                  marginTop: '20px',
+                  maxWidth: '410px',
+                  fontFamily: "'Cairo', sans-serif",
+                  fontSize: '15px',
+                  lineHeight: 1.58,
+                  color: 'rgba(255, 255, 255, 0.72)',
+                  fontWeight: 500,
+                }}
+              >
+                من وسط البلد للمعادي، ومن مدينة نصر للتجمع.. نفتحلك أقرب جراج بضغطة زر بدون معاناة أو انتظار.
+              </p>
+
+              {/* 🔥 زر الحث الملتهب الفاخر مع الأفاتار الأربعة والشهادة */}
+              <div
+                className="fluxora-hero-block fluxora-delay-3"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '20px',
+                  marginTop: '26px',
+                }}
+              >
+                <button
+                  onClick={handleEnter}
+                  className="fluxora-btn-flame"
+                  style={{ fontSize: '15px' }}
                 >
                   <span>يلا نبدأ</span>
-                  <span style={{ fontSize: '14px' }}>🚀</span>
-                </motion.button>
+                  <span
+                    style={{
+                      display: 'grid',
+                      placeItems: 'center',
+                      width: '2.55em',
+                      height: '2.55em',
+                      borderRadius: '999px',
+                      background: '#fff',
+                      color: '#1a0600',
+                    }}
+                  >
+                    <svg
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      style={{ width: '1.15em', height: '1.15em', transform: 'scaleX(-1)' }}
+                    >
+                      <path d="M4 10h12M11 5l5 5-5 5" />
+                    </svg>
+                  </span>
+                </button>
 
-                <motion.button
-                  onClick={handleEnter}
-                  aria-label="Watch demo"
-                  whileHover={{ scale: 1.08 }}
-                  whileTap={{ scale: 0.93 }}
-                  style={{
-                    width: '42px',
-                    height: '42px',
-                    borderRadius: '999px',
-                    background: 'rgba(255,255,255,0.15)',
-                    border: '1px solid rgba(255,255,255,0.28)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backdropFilter: 'blur(8px)',
-                    WebkitBackdropFilter: 'blur(8px)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="#fff">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                </motion.button>
-              </motion.div>
+                {/* 👥 الأفاتار المتراكبة الأربعة كإثبات اجتماعي */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ display: 'flex' }}>
+                    {[
+                      { a: '#ff7a3d', b: '#ffb27a' },
+                      { a: '#6f4bd8', b: '#a98cff' },
+                      { a: '#1f9ea8', b: '#63d6df' },
+                      { a: '#d8434b', b: '#ff8a8f' },
+                    ].map((c, i) => (
+                      <span
+                        key={i}
+                        style={{
+                          width: '28px',
+                          height: '28px',
+                          marginRight: i === 0 ? 0 : '-9px',
+                          borderRadius: '999px',
+                          border: '2px solid rgba(22, 7, 0, 0.85)',
+                          background: `linear-gradient(140deg, ${c.a}, ${c.b})`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <div
+                    style={{
+                      display: 'grid',
+                      fontFamily: "'Cairo', sans-serif",
+                      fontSize: '10px',
+                      lineHeight: 1.4,
+                      color: 'rgba(255,255,255,0.46)',
+                    }}
+                  >
+                    <strong
+                      style={{
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        color: 'rgba(255,255,255,0.9)',
+                      }}
+                    >
+                      +650 حريف سعيد
+                    </strong>
+                    خدمة 24 ساعة
+                  </div>
+                </div>
+              </div>
+
+              {/* 📊 بطاقات الإحصائيات الزجاجية الفاخرة (Glassmorphism الأصلي) */}
+              <ul
+                className="fluxora-hero-block fluxora-delay-4"
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '14px',
+                  margin: '30px 0 0',
+                  padding: 0,
+                  listStyle: 'none',
+                }}
+              >
+                {[
+                  { value: '+150', label: 'جراج متعاون', gradient: false },
+                  { value: '98%', label: 'رضا العملاء', gradient: true },
+                ].map((stat) => (
+                  <li
+                    key={stat.label}
+                    style={{
+                      position: 'relative',
+                      display: 'grid',
+                      alignContent: 'space-between',
+                      width: '180px',
+                      minHeight: '116px',
+                      padding: '18px',
+                      border: '1px solid rgba(255, 255, 255, 0.14)',
+                      borderRadius: '16px',
+                      background: stat.gradient
+                        ? 'linear-gradient(150deg, rgba(120, 30, 4, 0.5), rgba(48, 14, 2, 0.5))'
+                        : 'rgba(56, 20, 6, 0.42)',
+                      backdropFilter: 'blur(16px) saturate(1.1)',
+                      WebkitBackdropFilter: 'blur(16px) saturate(1.1)',
+                      boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.09)',
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: '14px',
+                        left: '16px',
+                        fontSize: '15px',
+                        color: 'rgba(255,255,255,0.46)',
+                      }}
+                    >
+                      *
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: "'Cairo', sans-serif",
+                        fontSize: 'clamp(1.5rem, 2.4vw, 2.1rem)',
+                        fontWeight: 700,
+                        lineHeight: 1,
+                        letterSpacing: '-0.03em',
+                        color: '#fff',
+                      }}
+                    >
+                      {stat.value}
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: "'Cairo', sans-serif",
+                        fontSize: '11.5px',
+                        fontWeight: 500,
+                        color: 'rgba(255,255,255,0.46)',
+                      }}
+                    >
+                      {stat.label}
+                    </span>
+                    <span
+                      style={{
+                        position: 'absolute',
+                        left: '16px',
+                        bottom: '22px',
+                        width: '14px',
+                        height: '1px',
+                        background: 'rgba(255, 255, 255, 0.28)',
+                      }}
+                    />
+                  </li>
+                ))}
+              </ul>
             </div>
+          </div>
 
-            {/* 🇪🇬 شارة المدن الجانبية المتناسقة مع أسفل الشاشات */}
-            <div
+          {/* 🏙️ الشريط السفلي: العلامة المائية العملاقة + شارات مدن مصر */}
+          <div
+            className="fluxora-hero-block fluxora-delay-5"
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              zIndex: 20,
+              display: 'flex',
+              alignItems: 'flex-end',
+              justifyContent: 'space-between',
+              gap: '24px',
+              padding: '0 20px 22px 20px',
+              direction: 'ltr',
+            }}
+          >
+            <span
               style={{
-                position: 'absolute',
-                bottom: '16px',
-                left: '20px',
-                zIndex: 10,
-                display: 'flex',
-                gap: '6px',
-                direction: 'rtl',
+                fontFamily: "'Inter Tight', sans-serif",
+                fontSize: 'clamp(2.4rem, 8vw, 5.5rem)',
+                fontWeight: 700,
+                lineHeight: 0.8,
+                letterSpacing: '-0.05em',
+                color: 'rgba(255, 255, 255, 0.055)',
+                userSelect: 'none',
               }}
             >
-              {['🕌 القاهرة', '🌴 الجيزة'].map((city) => (
-                <div
-                  key={city}
-                  style={{
-                    padding: '5px 10px',
-                    borderRadius: '999px',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    background: 'rgba(0,0,0,0.45)',
-                    backdropFilter: 'blur(8px)',
-                    color: 'rgba(255,255,255,0.85)',
-                    fontSize: '10px',
-                    fontWeight: 700,
-                    fontFamily: "'Cairo', sans-serif",
-                  }}
-                >
-                  {city}
-                </div>
-              ))}
+              PARK
+            </span>
+
+            <div style={{ textAlign: 'right', direction: 'rtl' }}>
+              <span
+                style={{
+                  display: 'block',
+                  marginBottom: '10px',
+                  fontFamily: "'Cairo', sans-serif",
+                  fontSize: '11.5px',
+                  color: 'rgba(255,255,255,0.46)',
+                  fontWeight: 600,
+                }}
+              >
+                نغطي أفخم مدن مصر
+              </span>
+              <ul
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'clamp(8px, 2vw, 16px)',
+                  margin: 0,
+                  padding: 0,
+                  listStyle: 'none',
+                }}
+              >
+                {['🕌 القاهرة', '🌴 الجيزة'].map((city) => (
+                  <li
+                    key={city}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '7px',
+                      fontFamily: "'Cairo', sans-serif",
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      letterSpacing: '-0.01em',
+                      color: 'rgba(255,255,255,0.86)',
+                      padding: '5px 10px',
+                      borderRadius: '999px',
+                      border: '1px solid rgba(255,255,255,0.14)',
+                      background: 'rgba(0,0,0,0.35)',
+                      backdropFilter: 'blur(8px)',
+                    }}
+                  >
+                    {city}
+                  </li>
+                ))}
+              </ul>
             </div>
-          </section>
+          </div>
         </motion.div>
       )}
     </AnimatePresence>
@@ -503,20 +697,43 @@ export default function App() {
 
   const [adminAccess, setAdminAccess] = useState(false);
 
-  // 🟢 تظهر الشاشة الفاخرة مرة واحدة فقط في اليوم (تتجدد تلقائياً كل يوم جديد)
+  // 🟢 تظهر الشاشة الفاخرة مرة واحدة فقط في اليوم (تتجدد تلقائياً كل يوم جديد بالـ localStorage)
   const [showLanding, setShowLanding] = useState(() => {
-    const today = new Date().toDateString(); // تاريخ اليوم الحالي
-    const lastShownDate = localStorage.getItem('aurora_landing_last_date');
-    return lastShownDate !== today; // لو ظهرت النهاردة خلاص مش هتظهر تاني
+    const today = new Date().toDateString();
+    const lastShownDate = localStorage.getItem('fluxora_landing_last_date');
+    return lastShownDate !== today;
   });
 
   const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
 
   const handleEnterLanding = () => {
     const today = new Date().toDateString();
-    localStorage.setItem('aurora_landing_last_date', today); // حفظ تاريخ اليوم
+    localStorage.setItem('fluxora_landing_last_date', today);
     setShowLanding(false);
   };
+
+  // 🚀 تفعيل تسريع وحقن رابط الخطوط مباشرة في الـ <head> لضمان ظهور خط Cairo فوراً على الهواتف
+  useEffect(() => {
+    if (document.getElementById('google-fonts-optimized')) return;
+
+    const preconnect1 = document.createElement('link');
+    preconnect1.rel = 'preconnect';
+    preconnect1.href = 'https://fonts.googleapis.com';
+    document.head.appendChild(preconnect1);
+
+    const preconnect2 = document.createElement('link');
+    preconnect2.rel = 'preconnect';
+    preconnect2.href = 'https://fonts.gstatic.com';
+    preconnect2.crossOrigin = 'anonymous';
+    document.head.appendChild(preconnect2);
+
+    const link = document.createElement('link');
+    link.id = 'google-fonts-optimized';
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter+Tight:wght@400;500;600;700&family=Inter:wght@400;500;600&family=Instrument+Serif:ital@1&display=swap';
+    document.head.appendChild(link);
+  }, []);
+
   useEffect(() => {
     if (window.location.pathname === '/admin' || window.location.hash === '#admin') {
       setAdminAccess(true);
@@ -874,13 +1091,13 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      {/* 🟢 شاشة الترحيب الفاخرة لـ Aurora تظهر قبل الدخول للتطبيق */}
-      {showLanding && <AuroraLanding onEnter={handleEnterLanding} />}
+      {/* 🔥 شاشة Fluxora الترحيبية الملتهبة تظهر مرة واحدة فقط في اليوم */}
+      {showLanding && <FluxoraLanding onEnter={handleEnterLanding} />}
 
       <AuthGate>
         <div
           className="max-w-md mx-auto h-dvh bg-white text-slate-900 relative flex flex-col overflow-hidden"
-          style={{ fontFamily: "'Cairo', sans-serif" }}
+          style={{ fontFamily: "'Cairo', 'Noto Sans Arabic', system-ui, sans-serif" }}
         >
           {/* 👑 شريط الأدمن العلوي الزجاجي الداكن الفاخر بنصوص بيضاء عريضة جداً */}
           {adminAccess && (
