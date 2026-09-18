@@ -503,23 +503,20 @@ export default function App() {
 
   const [adminAccess, setAdminAccess] = useState(false);
 
-  // 🟢 حالة الحماية للتحقق من عرض شاشة الترحيب مرة واحدة في الـ Session
-  const [showLanding, setShowLanding] = useState(true);
+  // 🟢 تظهر الشاشة الفاخرة مرة واحدة فقط في اليوم (تتجدد تلقائياً كل يوم جديد)
+  const [showLanding, setShowLanding] = useState(() => {
+    const today = new Date().toDateString(); // تاريخ اليوم الحالي
+    const lastShownDate = localStorage.getItem('aurora_landing_last_date');
+    return lastShownDate !== today; // لو ظهرت النهاردة خلاص مش هتظهر تاني
+  });
 
   const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
 
-  useEffect(() => {
-    const shown = sessionStorage.getItem('landingShown') === 'true';
-    if (shown) {
-      setShowLanding(false);
-    }
-  }, []);
-
   const handleEnterLanding = () => {
-    sessionStorage.setItem('landingShown', 'true');
+    const today = new Date().toDateString();
+    localStorage.setItem('aurora_landing_last_date', today); // حفظ تاريخ اليوم
     setShowLanding(false);
   };
-
   useEffect(() => {
     if (window.location.pathname === '/admin' || window.location.hash === '#admin') {
       setAdminAccess(true);

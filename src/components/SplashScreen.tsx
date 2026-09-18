@@ -18,7 +18,7 @@ export default function SplashScreen() {
         >
           <img
             src="/images/logo.png"
-            alt="بركن - parkn24"
+            alt="بركن - Park'n24"
             className="w-40 h-40 object-contain rounded-3xl shadow-xl bg-white p-2 border border-slate-200"
           />
         </motion.div>
@@ -38,7 +38,7 @@ export default function SplashScreen() {
           transition={{ delay: 0.25 }}
           className="text-xs font-black text-blue-600 mb-3 tracking-widest"
         >
-          PARKN24
+           Park'n24
         </motion.p>
 
         <motion.p
