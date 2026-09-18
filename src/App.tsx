@@ -73,7 +73,7 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
 }
 
 /* ════════════════════════════════════════════════════════════
-   👑 AURORA-STYLE HERO FOR EGYPTIAN STREETS × PARK'N 24
+   👑 AURORA-STYLE HERO - OPTIMIZED FOR ALL MOBILE SCREENS
    ════════════════════════════════════════════════════════════ */
 interface AuroraLandingProps {
   onEnter: () => void;
@@ -98,23 +98,41 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
           style={{
             background: '#000',
             overflow: 'hidden',
+            height: '100dvh', // استخدام dynamic view height لمنع الاقتطاع في المتصفحات
           }}
         >
-          {/* تحميل خطوط Plus Jakarta Sans و Inter و Cairo للتناغم بين التصميم الأصلي والعربية */}
+          {/* تحميل خطوط التناغم وتنسيقات الاستجابة للهواتف */}
           <style>{`
             @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=Cairo:wght@500;600;700;800;900&display=swap');
+            
+            /* فئات الاستجابة الذكية للهواتف (Responsive CSS) */
+            .aurora-nav-bar {
+              padding: 16px 20px !important;
+            }
+            .aurora-content-wrapper {
+              padding: 0 20px 14dvh 20px !important;
+            }
+            
+            @media (min-width: 480px) {
+              .aurora-nav-bar {
+                padding: 26px 32px !important;
+              }
+              .aurora-content-wrapper {
+                padding: 0 32px 18dvh 32px !important;
+              }
+            }
           `}</style>
 
           <section
             style={{
               position: 'relative',
               width: '100%',
-              height: '100vh',
+              height: '100dvh',
               overflow: 'hidden',
               direction: 'rtl',
             }}
           >
-            {/* 🎬 فيديو الخلفية الأصلي لأورورا (سريع من CDN مباشر) */}
+            {/* 🎬 فيديو الخلفية (ممتد ومغطى بالكامل دون أي تشوه) */}
             <video
               style={{
                 position: 'absolute',
@@ -135,44 +153,39 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
               disableRemotePlayback
             />
 
-            {/* 🎨 طبقات التعتيم الأصلية الخفيفة من تصميم Aurora */}
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.15)' }} />
+            {/* 🎨 طبقات التعتيم والتدرج اللوني لتحسين وضوح المحتوى والنصوص */}
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.22)' }} />
             <div
               style={{
                 position: 'absolute',
                 inset: 0,
-                background: 'linear-gradient(to bottom, rgba(0,0,0,0.18) 0%, transparent 25%, transparent 55%, rgba(0,0,0,0.35) 100%)',
-              }}
-            />
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                background: 'linear-gradient(to left, rgba(0,0,0,0.12) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.12) 100%)',
+                background: 'linear-gradient(to bottom, rgba(0,0,0,0.15) 0%, transparent 35%, rgba(0,0,0,0.75) 100%)',
               }}
             />
 
-            {/* ✨ التوهج الزمردي المميز من Aurora في الأعلى */}
+            {/* ✨ التوهج الزمردي المميز متناسق مع الشاشات الصغيرة */}
             <div
               style={{
                 position: 'absolute',
-                top: '-14%',
+                top: '-10%',
                 left: '50%',
                 transform: 'translateX(-50%)',
-                width: '1000px',
-                height: '720px',
-                background: 'radial-gradient(ellipse at 50% 30%, rgba(6,95,70,0.22) 0%, transparent 68%)',
+                width: '100%',
+                maxWidth: '600px',
+                height: '400px',
+                background: 'radial-gradient(ellipse at 50% 30%, rgba(16,185,129,0.2) 0%, transparent 70%)',
                 pointerEvents: 'none',
               }}
             />
 
-            {/* 🚗 شعار السيارة الأصلي في الشريط العلوي (Aurora Navbar Style) */}
+            {/* 🚗 شريط التنقل العلوي المرن */}
             <motion.nav
               initial={{ opacity: 0, y: -16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, ease: 'easeOut' }}
+              className="aurora-nav-bar"
               style={{
-                position: 'fixed',
+                position: 'absolute',
                 top: 0,
                 left: 0,
                 right: 0,
@@ -180,14 +193,13 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '26px 32px',
                 direction: 'ltr',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <svg
-                  width="34"
-                  height="34"
+                  width="28"
+                  height="28"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="#fff"
@@ -203,7 +215,7 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 </svg>
                 <span
                   style={{
-                    fontSize: '15px',
+                    fontSize: '14px',
                     fontWeight: 700,
                     fontFamily: "'Plus Jakarta Sans', sans-serif",
                     color: '#fff',
@@ -219,9 +231,9 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 whileHover={{ scale: 1.04 }}
                 whileTap={{ scale: 0.97 }}
                 style={{
-                  padding: '10px 22px',
+                  padding: '8px 16px',
                   borderRadius: '999px',
-                  fontSize: '13px',
+                  fontSize: '11.5px',
                   fontWeight: 600,
                   fontFamily: "'Cairo', sans-serif",
                   color: '#111',
@@ -236,8 +248,9 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
               </motion.button>
             </motion.nav>
 
-            {/* 📝 المحتوى مثبت من الأسفل جهة اليمين (RTL Aurora-style anchor) */}
+            {/* 📝 حاوية المحتوى متموضعة بذكاء في الجزء السفلي بمرونة كاملة */}
             <div
+              className="aurora-content-wrapper"
               style={{
                 position: 'relative',
                 zIndex: 10,
@@ -245,14 +258,12 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 flexDirection: 'column',
                 height: '100%',
                 justifyContent: 'flex-end',
-                paddingBottom: '20vh',
-                paddingRight: '32px',
-                paddingLeft: '32px',
                 alignItems: 'flex-start',
                 textAlign: 'right',
+                boxSizing: 'border-box',
               }}
             >
-              {/* شارة الثقة (Aurora Trusted Badge Style) */}
+              {/* شارة الثقة المرنة للهواتف */}
               <motion.div
                 initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -260,46 +271,50 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '10px',
+                  gap: '8px',
                   borderRadius: '999px',
-                  padding: '6px 6px 6px 16px',
+                  padding: '4px 4px 4px 12px',
                   background: 'rgba(255,255,255,0.08)',
-                  border: '1px solid rgba(255,255,255,0.18)',
+                  border: '1px solid rgba(255,255,255,0.15)',
                   backdropFilter: 'blur(10px)',
                   WebkitBackdropFilter: 'blur(10px)',
-                  width: 'fit-content',
+                  maxWidth: '100%',
+                  boxSizing: 'border-box',
                   direction: 'rtl',
                 }}
               >
-                <div style={{ display: 'flex' }}>
+                <div style={{ display: 'flex', flexShrink: 0 }}>
                   {[0, 1, 2].map((i) => (
                     <div
                       key={i}
                       style={{
-                        width: '22px',
-                        height: '22px',
+                        width: '18px',
+                        height: '18px',
                         borderRadius: '999px',
                         background: 'linear-gradient(135deg, #10b981, #047857)',
-                        border: '2px solid rgba(10,20,16,0.9)',
-                        marginRight: i === 0 ? 0 : '-8px',
+                        border: '1.5px solid rgba(10,20,16,0.9)',
+                        marginRight: i === 0 ? 0 : '-6px',
                       }}
                     />
                   ))}
                 </div>
                 <span
                   style={{
-                    fontSize: '12.5px',
+                    fontSize: '11px',
                     color: 'rgba(255,255,255,0.85)',
                     fontFamily: "'Cairo', sans-serif",
                     fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
                   }}
                 >
-                  انضم لأكثر من{' '}
-                  <strong style={{ color: '#fff', fontWeight: 800 }}>الاف الحريفن ركن </strong> يومياً
+                  مش أي حد يركن{' '}
+                  <strong style={{ color: '#fff', fontWeight: 800 }}>انضم للحريفة واضمن مكانك</strong>
                 </span>
               </motion.div>
 
-              {/* 📰 العنوان الرئيسي بنفس روح Aurora مع لمسة عربية فاخرة */}
+              {/* 📰 العنوان الرئيسي مع تعديل "تنتظرك بذكاء" للون الأبيض الصافي وبنفس الأبعاد والحجم */}
               <motion.h1
                 initial={{ opacity: 0, y: 22 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -307,49 +322,47 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 style={{
                   fontFamily: "'Cairo', sans-serif",
                   fontWeight: 800,
-                  fontSize: 'clamp(2.4rem, 5vw, 4.2rem)',
-                  lineHeight: 1.15,
+                  fontSize: 'clamp(2.1rem, 6.5vw, 3.8rem)', // حجم مرن جداً يمنع الخروج عن الإطار في الهواتف
+                  lineHeight: 1.2,
                   letterSpacing: '-0.02em',
                   color: '#fff',
-                  marginTop: '22px',
-                  maxWidth: '560px',
-                  textShadow: '0 4px 24px rgba(0,0,0,0.4)',
+                  marginTop: '16px',
+                  maxWidth: '100%',
+                  textShadow: '0 4px 24px rgba(0,0,0,0.5)',
                 }}
               >
                 شوارع مصر
                 <br />
                 <span
                   style={{
-                    background: 'linear-gradient(135deg, #6EE7B7 0%, #10b981 60%, #047857 100%)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                    backgroundClip: 'text',
+                    color: '#ffffff', // تغيير اللون للأبيض الصافي كلياً مع الحفاظ على الأبعاد والسماكة
+                    display: 'inline-block',
                   }}
                 >
                   تنتظرك بذكاء
                 </span>
               </motion.h1>
 
-              {/* الوصف التحفيزي بأسلوب Aurora الأنيق */}
+              {/* الوصف التحفيزي */}
               <motion.p
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.42, ease: 'easeOut' }}
                 style={{
-                  marginTop: '16px',
-                  fontSize: '15px',
-                  lineHeight: 1.7,
+                  marginTop: '12px',
+                  fontSize: '13.5px',
+                  lineHeight: 1.6,
                   color: 'rgba(255,255,255,0.75)',
                   fontFamily: "'Cairo', sans-serif",
                   fontWeight: 500,
-                  maxWidth: '380px',
+                  maxWidth: '320px',
                   textShadow: '0 2px 10px rgba(0,0,0,0.5)',
                 }}
               >
                 من وسط البلد للمعادي، ومن مدينة نصر للتجمع.. Park'n 24 يفتحلك أقرب جراج بضغطة زر.
               </motion.p>
 
-              {/* الأزرار بنفس ستايل Aurora (Get Started + Play) */}
+              {/* أزرار الحث على اتخاذ إجراء */}
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -357,8 +370,9 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '14px',
-                  marginTop: '30px',
+                  gap: '12px',
+                  marginTop: '24px',
+                  width: '100%',
                   direction: 'rtl',
                 }}
               >
@@ -367,11 +381,11 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.97 }}
                   style={{
-                    padding: '14px 32px',
+                    padding: '12px 28px',
                     borderRadius: '999px',
                     background: '#0a0a0a',
                     color: '#fff',
-                    fontSize: '15px',
+                    fontSize: '14px',
                     fontWeight: 700,
                     fontFamily: "'Cairo', sans-serif",
                     border: '1px solid rgba(255,255,255,0.18)',
@@ -383,7 +397,7 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                   }}
                 >
                   <span>يلا نبدأ</span>
-                  <span style={{ fontSize: '16px' }}>🚀</span>
+                  <span style={{ fontSize: '14px' }}>🚀</span>
                 </motion.button>
 
                 <motion.button
@@ -392,8 +406,8 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                   whileHover={{ scale: 1.08 }}
                   whileTap={{ scale: 0.93 }}
                   style={{
-                    width: '46px',
-                    height: '46px',
+                    width: '42px',
+                    height: '42px',
                     borderRadius: '999px',
                     background: 'rgba(255,255,255,0.15)',
                     border: '1px solid rgba(255,255,255,0.28)',
@@ -405,36 +419,36 @@ function AuroraLanding({ onEnter }: AuroraLandingProps) {
                     cursor: 'pointer',
                   }}
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="#fff">
                     <path d="M8 5v14l11-7z" />
                   </svg>
                 </motion.button>
               </motion.div>
             </div>
 
-            {/* 🇪🇬 شارة المدينة السفلية جهة اليسار (Egyptian Cities Chip - Aurora Signature Corner) */}
+            {/* 🇪🇬 شارة المدن الجانبية المتناسقة مع أسفل الشاشات */}
             <div
               style={{
                 position: 'absolute',
-                bottom: '34px',
-                left: '32px',
+                bottom: '16px',
+                left: '20px',
                 zIndex: 10,
                 display: 'flex',
-                gap: '8px',
+                gap: '6px',
                 direction: 'rtl',
               }}
             >
-              {['🕌 القاهرة',  '🌴 الجيزة'].map((city) => (
+              {['🕌 القاهرة', '🌴 الجيزة'].map((city) => (
                 <div
                   key={city}
                   style={{
-                    padding: '7px 14px',
+                    padding: '5px 10px',
                     borderRadius: '999px',
-                    border: '1px solid rgba(255,255,255,0.22)',
-                    background: 'rgba(0,0,0,0.35)',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    background: 'rgba(0,0,0,0.45)',
                     backdropFilter: 'blur(8px)',
                     color: 'rgba(255,255,255,0.85)',
-                    fontSize: '11px',
+                    fontSize: '10px',
                     fontWeight: 700,
                     fontFamily: "'Cairo', sans-serif",
                   }}
