@@ -96,7 +96,7 @@ function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: 
 }
 
 /* ════════════════════════════════════════════════════════════
-   ☀️ PARK'N 24 HERO — (hero-car.webp FROM PUBLIC)
+   ☀️ PARK'N 24 HERO — FULL-SCREEN CINEMATIC BLEND
    ════════════════════════════════════════════════════════════ */
 interface ParkLandingProps {
   onEnter: () => void;
@@ -118,17 +118,13 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
       {!isExiting && (
         <motion.div
           initial={{ opacity: 1 }}
-          exit={{ opacity: 0, scale: 1.02, filter: 'blur(8px)' }}
+          exit={{ opacity: 0, scale: 1.03, filter: 'blur(10px)' }}
           transition={{ duration: 0.5, ease: 'easeInOut' }}
-          className="fixed inset-0 z-[999999] flex flex-col justify-between"
-          style={{
-            background: 'linear-gradient(180deg, #dbeafe 0%, #eff6ff 40%, #ffffff 100%)',
-            overflow: 'hidden',
-            height: '100dvh',
-          }}
+          className="fixed inset-0 z-[999999] flex flex-col justify-between overflow-hidden bg-slate-950"
+          style={{ height: '100dvh' }}
         >
           <style>{`
-            @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter+Tight:wght@400;500;600;700;800&display=swap');
+            @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter+Tight:wght@400;500;600;700;800;900&display=swap');
 
             .hero-block {
               animation: rise-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -138,119 +134,161 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             .delay-3 { animation-delay: 0.3s; }
 
             @keyframes rise-up {
-              from { opacity: 0; transform: translateY(20px); }
+              from { opacity: 0; transform: translateY(24px); }
               to { opacity: 1; transform: none; }
             }
 
-            .btn-brand {
+            .btn-brand-glow {
               display: inline-flex;
               align-items: center;
-              gap: 12px;
-              padding: 0.7em 0.8em 0.7em 2em;
+              justify-content: space-between;
+              gap: 16px;
+              padding: 0.8em 1.2em 0.8em 2.2em;
               border-radius: 999px;
-              background: ${BRAND_BLUE};
+              background: linear-gradient(135deg, #1d68dc 0%, #1656b8 100%);
               color: #fff;
-              font-weight: 800;
+              font-weight: 900;
               font-family: 'Cairo', sans-serif;
-              box-shadow: 0 10px 30px rgba(22, 86, 184, 0.35);
-              transition: transform 0.3s ease, box-shadow 0.3s ease;
-              border: 0;
+              box-shadow: 0 12px 35px rgba(22, 86, 184, 0.45);
+              transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+              border: 1px solid rgba(255, 255, 255, 0.25);
               cursor: pointer;
             }
-            .btn-brand:hover {
-              transform: translateY(-3px);
-              box-shadow: 0 15px 40px rgba(22, 86, 184, 0.45);
+            .btn-brand-glow:hover {
+              transform: translateY(-2px) scale(1.02);
+              box-shadow: 0 16px 45px rgba(22, 86, 184, 0.6);
+            }
+            .btn-brand-glow:active {
+              transform: scale(0.97);
             }
 
-            .btn-skip {
+            .btn-glass-skip {
               display: inline-flex;
               align-items: center;
-              gap: 8px;
-              padding: 0.6em 1.2em;
+              gap: 6px;
+              padding: 0.5em 1.2em;
               border-radius: 999px;
-              background: rgba(255, 255, 255, 0.9);
-              backdrop-filter: blur(10px);
-              color: ${BRAND_BLUE};
+              background: rgba(15, 23, 42, 0.6);
+              backdrop-filter: blur(16px);
+              -webkit-backdrop-filter: blur(16px);
+              color: #f8fafc;
               font-family: 'Cairo', sans-serif;
               font-weight: 800;
-              box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-              border: 1px solid rgba(255,255,255,0.8);
+              font-size: 13px;
+              box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+              border: 1px solid rgba(255, 255, 255, 0.15);
+              transition: all 0.2s ease;
               cursor: pointer;
+            }
+            .btn-glass-skip:hover {
+              background: rgba(255, 255, 255, 0.2);
+              color: #ffffff;
             }
           `}</style>
 
-          {/* 🛡️ شريط التنقل العلوي */}
+          {/* 🚗 1. خلفية الصورة المدمجة بكامل الشاشة */}
+          <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+            <img
+              src="/hero-car.webp"
+              alt="Park'n 24 Car"
+              className="w-full h-full object-cover object-center"
+              style={{
+                filter: 'brightness(0.95) contrast(1.05)',
+              }}
+            />
+
+            {/* 🎨 2. تدرجات الدمج السينمائي الذكي (تزيل أي خطوط أو انقسامات) */}
+            <div
+              className="absolute inset-0"
+              style={{
+                background: `
+                  linear-gradient(180deg, 
+                    rgba(10, 18, 36, 0.88) 0%, 
+                    rgba(10, 18, 36, 0.45) 40%, 
+                    rgba(10, 18, 36, 0.75) 75%, 
+                    rgba(10, 18, 36, 0.96) 100%
+                  )
+                `,
+              }}
+            />
+          </div>
+
+          {/* 🛡️ 3. شريط الهيدر العلوي */}
           <motion.nav
-            initial={{ opacity: 0, y: -16 }}
+            initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, ease: 'easeOut' }}
-            className="w-full flex items-center justify-between px-6 py-5 z-50"
+            className="w-full flex items-center justify-between px-6 py-6 z-20 relative"
             style={{ direction: 'ltr' }}
           >
+            {/* اللوجو عربي وإنجليزي */}
             <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.15' }}>
-              <span style={{ fontFamily: "'Cairo', sans-serif", fontSize: '15px', fontWeight: 900, color: BRAND_BLUE }}>
+              <span style={{ fontFamily: "'Cairo', sans-serif", fontSize: '16px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.01em' }}>
                 بركن <span style={{ color: BRAND_GREEN }}>24</span>
               </span>
-              <span style={{ fontFamily: "'Inter Tight', sans-serif", fontSize: '17px', fontWeight: 900, color: BRAND_BLUE }}>
+              <span style={{ fontFamily: "'Inter Tight', sans-serif", fontSize: '18px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.02em' }}>
                 Park'n <span style={{ color: BRAND_GREEN }}>24</span>
               </span>
             </div>
 
-            <button onClick={handleEnter} className="btn-skip" style={{ fontSize: '13px', direction: 'rtl' }}>
-              تخطي 
+            <button onClick={handleEnter} className="btn-glass-skip" style={{ direction: 'rtl' }}>
+              تخطي ✕
             </button>
           </motion.nav>
 
-          {/* 📝 النصوص وزر الحجز */}
+          {/* 📝 4. المحتوى التفاعلي المدمج في الأسفل والوسط */}
           <div
-            className="px-6 z-20"
-            style={{
-              paddingTop: '2dvh',
-              direction: 'rtl',
-            }}
+            className="px-6 pb-10 z-20 relative flex flex-col justify-end max-w-lg mx-auto w-full"
+            style={{ direction: 'rtl' }}
           >
+            {/* العنوان الرئيسي */}
             <h1
               className="hero-block delay-1"
               style={{
                 fontFamily: "'Cairo', sans-serif",
-                fontSize: 'clamp(2rem, 6.5vw, 3.2rem)',
+                fontSize: 'clamp(2.1rem, 7vw, 3.4rem)',
                 fontWeight: 900,
-                lineHeight: 1.2,
-                color: '#0f172a',
+                lineHeight: 1.15,
+                color: '#ffffff',
+                textShadow: '0 4px 20px rgba(0,0,0,0.5)',
               }}
             >
               انسى لفة كل يوم..<br />
-              <span style={{ color: BRAND_BLUE }}>ركنتك مضمونة</span><br />
+              <span style={{ color: '#60a5fa' }}>ركنتك مضمونة</span><br />
               <span style={{ color: BRAND_GREEN }}>قبل ما توصل!</span>
             </h1>
 
+            {/* الوصف التوضيحي */}
             <p
               className="hero-block delay-2"
               style={{
-                marginTop: '12px',
-                maxWidth: '340px',
+                marginTop: '14px',
                 fontFamily: "'Cairo', sans-serif",
-                fontSize: '14px',
+                fontSize: '15px',
                 lineHeight: 1.6,
-                color: '#475569',
-                fontWeight: 700,
+                color: '#cbd5e1',
+                fontWeight: 600,
+                textShadow: '0 2px 10px rgba(0,0,0,0.4)',
+                maxWidth: '380px',
               }}
             >
               مع Park'n 24، حدد وجهتك، اضمن مكانك في أقرب جراج، ووفر وقتك وبنزينك بضغطة زر واحدة.
             </p>
 
-            <div className="hero-block delay-3" style={{ marginTop: '20px' }}>
-              <button onClick={handleEnter} className="btn-brand" style={{ fontSize: '15px' }}>
+            {/* زر الحجز السريع */}
+            <div className="hero-block delay-3" style={{ marginTop: '26px' }}>
+              <button onClick={handleEnter} className="btn-brand-glow w-full sm:w-auto" style={{ fontSize: '16px' }}>
                 <span>احجز ركنتك الآن 🚀</span>
                 <span
                   style={{
                     display: 'grid',
                     placeItems: 'center',
-                    width: '2.2em',
-                    height: '2.2em',
+                    width: '2.4em',
+                    height: '2.4em',
                     borderRadius: '999px',
-                    background: '#fff',
-                    color: BRAND_BLUE,
+                    background: 'rgba(255, 255, 255, 0.2)',
+                    backdropFilter: 'blur(8px)',
+                    color: '#fff',
                   }}
                 >
                   <svg
@@ -267,26 +305,7 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
                 </span>
               </button>
             </div>
-          </div>
 
-          {/* 🚗 صورة السيارة المضغوطة مباشرة من مجلد public */}
-          <div
-            className="w-full relative z-10 flex items-end justify-center"
-            style={{
-              height: '45dvh',
-              marginTop: 'auto',
-            }}
-          >
-            <img
-              src="/hero-car.webp"
-              alt="Park'n 24 Car"
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                objectPosition: 'center bottom',
-              }}
-            />
           </div>
 
         </motion.div>
