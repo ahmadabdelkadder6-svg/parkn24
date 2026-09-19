@@ -189,13 +189,15 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
           {/* 🚗 1. خلفية الصورة المدمجة بكامل الشاشة */}
           <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
             <img
-              src="/hero-car.webp"
-              alt="Park'n 24 Car"
-              className="w-full h-full object-cover object-center"
-              style={{
-                filter: 'brightness(0.95) contrast(1.05)',
-              }}
-            />
+  src="https://images.unsplash.com/photo-1617531653332-bd46c24f2068?auto=format&fit=crop&w=1080&q=70&fm=webp"
+  alt="Park'n 24 Car"
+  loading="eager"
+  fetchPriority="high"
+  className="w-full h-full object-cover object-center"
+  style={{
+    filter: 'brightness(0.95) contrast(1.05)',
+  }}
+/>
 
             {/* 🎨 2. تدرجات الدمج السينمائي الذكي (تزيل أي خطوط أو انقسامات) */}
             <div
