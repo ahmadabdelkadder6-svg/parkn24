@@ -246,7 +246,7 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             }}
           />
 
-          {/* 🛡️ شريط التنقل العلوي مع اللوجو والاسم الجديد المقتبس من الصورة */}
+          {/* 🛡️ شريط التنقل العلوي بالاسم فقط (عربي وإنجليزي) */}
           <motion.nav
             initial={{ opacity: 0, y: -16 }}
             animate={{ opacity: 1, y: 0 }}
@@ -264,32 +264,30 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
               direction: 'ltr',
             }}
           >
-            {/* اللوجو على اليسار */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <ParkShieldLogo width={34} height={40} />
-              <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
-                <span
-                  style={{
-                    fontFamily: "'Cairo', sans-serif",
-                    fontSize: '13px',
-                    fontWeight: 900,
-                    color: BRAND_BLUE,
-                  }}
-                >
-                  بركن <span style={{ color: BRAND_GREEN }}>24</span>
-                </span>
-                <span
-                  style={{
-                    fontFamily: "'Inter Tight', sans-serif",
-                    fontSize: '15px',
-                    fontWeight: 900,
-                    letterSpacing: '-0.02em',
-                    color: BRAND_BLUE,
-                  }}
-                >
-                  Park'n <span style={{ color: BRAND_GREEN }}>24</span>
-                </span>
-              </div>
+            {/* النص العربي والإنجليزي متراكبان بأسلوب واضح وأنيق على اليسار */}
+            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.15' }}>
+              <span
+                style={{
+                  fontFamily: "'Cairo', sans-serif",
+                  fontSize: '15px',
+                  fontWeight: 900,
+                  color: BRAND_BLUE,
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                بركن <span style={{ color: BRAND_GREEN }}>24</span>
+              </span>
+              <span
+                style={{
+                  fontFamily: "'Inter Tight', sans-serif",
+                  fontSize: '17px',
+                  fontWeight: 900,
+                  letterSpacing: '-0.02em',
+                  color: BRAND_BLUE,
+                }}
+              >
+                Park'n <span style={{ color: BRAND_GREEN }}>24</span>
+              </span>
             </div>
 
             <button
@@ -301,7 +299,7 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             </button>
           </motion.nav>
 
-          {/* 📝 المحتوى التحفيزي الخيار الأول */}
+          {/* 📝 المحتوى التحفيزي */}
           <div
             style={{
               position: 'relative',
@@ -316,7 +314,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
           >
             <div style={{ maxWidth: '640px' }}>
               
-              {/* 📰 العنوان الرئيسي الخيار الأول */}
               <h1
                 className="hero-block delay-1"
                 style={{
@@ -333,7 +330,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
                 <span style={{ color: BRAND_GREEN }}>قبل ما توصل!</span>
               </h1>
 
-              {/* 📝 الوصف التوضيحي الخيار الأول */}
               <p
                 className="hero-block delay-2"
                 style={{
@@ -349,7 +345,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
                 مع Park'n 24، الشارع أسهل بكتير. حدد وجهتك، اضمن مكانك في أقرب جراج، ووفر وقتك وبنزينك بضغطة زر واحدة.
               </p>
 
-              {/* 🚀 الزر الخيار الأول */}
               <div
                 className="hero-block delay-3"
                 style={{
@@ -396,7 +391,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
     </AnimatePresence>
   );
 }
-
 const VALID_SCREENS = [
   'splash',
   'list',
