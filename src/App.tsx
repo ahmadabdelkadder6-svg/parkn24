@@ -96,7 +96,7 @@ function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: 
 }
 
 /* ════════════════════════════════════════════════════════════
-   ☀️ PARK'N 24 HERO — FIXED CAR DISPLAY
+   ☀️ PARK'N 24 HERO — (hero-car.webp FROM PUBLIC)
    ════════════════════════════════════════════════════════════ */
 interface ParkLandingProps {
   onEnter: () => void;
@@ -112,10 +112,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
 
   const BRAND_BLUE = '#1656b8';
   const BRAND_GREEN = '#8cc63f';
-
-  // ⚠️ هام: تأكد من كتابة اسم الصورة وامتدادها كما هو في مجلد public تماماً
-  // أمثلة: '/car.png' أو '/car.jpg' أو '/hero-car.webp'
-  const CAR_IMAGE_SRC = '/hero-car.webp';
 
   return (
     <AnimatePresence>
@@ -273,7 +269,7 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             </div>
           </div>
 
-          {/* 🚗 صورة السيارة (واضحة وبدون حجب) */}
+          {/* 🚗 صورة السيارة المضغوطة مباشرة من مجلد public */}
           <div
             className="w-full relative z-10 flex items-end justify-center"
             style={{
@@ -282,17 +278,13 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             }}
           >
             <img
-              src={CAR_IMAGE_SRC}
+              src="/hero-car.webp"
               alt="Park'n 24 Car"
               style={{
                 width: '100%',
                 height: '100%',
                 objectFit: 'cover',
                 objectPosition: 'center bottom',
-              }}
-              onError={(e) => {
-                // إذا لم يجد الصورة في الـ public يعرض صورة بديلة تلقائياً لكي لا تصبح بيضاء
-                (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1617531653332-bd46c24f2068?auto=format&fit=crop&w=1000&q=80';
               }}
             />
           </div>
