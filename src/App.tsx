@@ -69,8 +69,34 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
 }
 
 /* ════════════════════════════════════════════════════════════
-   ☀️ PARK'N 24 HERO — CLEAN, CHIC, BRANDED DAYLIGHT
-   تصميم بسيط، هوية بصرية كاملة، سيارة مصغرة بالأسفل
+   🛡️ PARK'N 24 BRAND LOGO (مستوحى من الشعار المرفق)
+   ════════════════════════════════════════════════════════════ */
+function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: number }) {
+  return (
+    <svg viewBox="0 0 100 115" width={width} height={height} fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* الدرع الأزرق الخارجي */}
+      <path d="M50 2 C78 2, 98 14, 98 26 C98 76, 75 104, 50 114 C25 104, 2 76, 2 26 C2 14, 22 2, 50 2 Z" fill="#1656b8" />
+      {/* الإطار الداخلي للدرع */}
+      <path d="M50 8 C72 8, 90 18, 90 28 C90 70, 70 96, 50 105 C30 96, 10 70, 10 28 C10 18, 28 8, 50 8 Z" stroke="#ffffff" strokeWidth="2.5" fill="none" opacity="0.95" />
+      
+      {/* حرف P الأخضر الكبيرة */}
+      <path d="M26 30 H48 C60 30, 62 48, 48 48 H38 V78 H26 V30 Z M38 38 V40 H46 C48 40, 48 38, 46 38 Z" fill="#8cc63f" />
+      
+      {/* أيقونة الساعة 24 فوق الـ P */}
+      <path d="M64 30 A 10 10 0 1 1 58 44" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+      <polyline points="64 34, 64 40, 68 40" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <text x="69" y="52" fill="#ffffff" fontSize="9" fontWeight="900" fontFamily="sans-serif">24</text>
+      
+      {/* أيقونة السيارة البيضاء تحت الـ P */}
+      <path d="M58 64 L62 58 H74 L78 64 H80 C81.5 64 82 65 82 66.5 V72 H54 V66.5 C54 65 54.5 64 56 64 Z" fill="#ffffff" />
+      <circle cx="61" cy="72" r="2.2" fill="#1656b8" />
+      <circle cx="75" cy="72" r="2.2" fill="#1656b8" />
+    </svg>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   ☀️ PARK'N 24 HERO — OPTION 1 IMPLEMENTATION
    ════════════════════════════════════════════════════════════ */
 interface ParkLandingProps {
   onEnter: () => void;
@@ -85,7 +111,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
     setTimeout(() => onEnter(), 600);
   };
 
-  // الألوان الرسمية للتطبيق
   const BRAND_BLUE = '#1656b8';
   const BRAND_GREEN = '#8cc63f';
 
@@ -106,14 +131,13 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
           transition={{ duration: 0.6, ease: 'easeInOut' }}
           className="fixed inset-0 z-[999999]"
           style={{
-            // خلفية سماء نهارية زرقاء فاتحة وجميلة
             background: 'linear-gradient(180deg, #7db9e8 0%, #c4e0f5 40%, #e8f4f8 100%)',
             overflow: 'hidden',
             height: '100dvh',
           }}
         >
           <style>{`
-            @import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Instrument+Serif:ital@1&family=Cairo:wght@400;500;600;700;800;900&display=swap');
+            @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter+Tight:wght@400;500;600;700;800&display=swap');
 
             .hero-block {
               animation: rise-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -137,12 +161,11 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
               transform: scale(1) translateY(0);
             }
 
-            /* زر التطبيق الرسمي (أزرق) */
             .btn-brand {
               display: inline-flex;
               align-items: center;
-              gap: 10px;
-              padding: 0.6em 0.8em 0.6em 1.8em;
+              gap: 12px;
+              padding: 0.7em 0.8em 0.7em 2em;
               border-radius: 999px;
               background: ${BRAND_BLUE};
               color: #fff;
@@ -164,15 +187,15 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
               gap: 8px;
               padding: 0.6em 1.2em;
               border-radius: 999px;
-              background: rgba(255, 255, 255, 0.8);
+              background: rgba(255, 255, 255, 0.85);
               backdrop-filter: blur(10px);
               -webkit-backdrop-filter: blur(10px);
               color: ${BRAND_BLUE};
               font-family: 'Cairo', sans-serif;
-              font-weight: 700;
+              font-weight: 800;
               box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
               transition: transform 0.3s ease, background 0.3s ease;
-              border: 1px solid rgba(255,255,255,0.6);
+              border: 1px solid rgba(255,255,255,0.7);
               cursor: pointer;
             }
             .btn-skip:hover {
@@ -186,23 +209,21 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             }
           `}</style>
 
-          {/* ═══════════════════════════════════════════
-              🚗 صورة السيارة (مصغرة بذكاء للموبايل)
-              ═══════════════════════════════════════════ */}
+          {/* 🚗 صورة السيارة المصغرة */}
           <div
             style={{
               position: 'absolute',
               bottom: 0,
               left: 0,
               right: 0,
-              height: '60dvh', // تظهر في النصف السفلي فقط
+              height: '58dvh',
               zIndex: 1,
             }}
           >
             <img
               className={`car-image ${imgLoaded ? 'is-loaded' : ''}`}
               src="https://images.unsplash.com/photo-1617531653332-bd46c24f2068?auto=format&fit=crop&w=1200&q=80"
-              alt="Chic simple car"
+              alt="Park'n 24 Car"
               aria-hidden="true"
               style={{
                 width: '100%',
@@ -215,20 +236,17 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             />
           </div>
 
-          {/* طبقة تفتيح خلف النصوص */}
           <div
             style={{
               position: 'absolute',
               inset: 0,
               zIndex: 2,
-              background: 'linear-gradient(to bottom, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 60%)',
+              background: 'linear-gradient(to bottom, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0) 65%)',
               pointerEvents: 'none',
             }}
           />
 
-          {/* ═══════════════════════════════════════════
-              🛡️ شريط التنقل العلوي (اللوجو على اليسار)
-              ═══════════════════════════════════════════ */}
+          {/* 🛡️ شريط التنقل العلوي مع اللوجو والاسم الجديد المقتبس من الصورة */}
           <motion.nav
             initial={{ opacity: 0, y: -16 }}
             animate={{ opacity: 1, y: 0 }}
@@ -243,26 +261,35 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
               alignItems: 'center',
               justifyContent: 'space-between',
               padding: '20px 24px',
-              direction: 'ltr', // يضمن بقاء اللوجو يساراً والزر يميناً
+              direction: 'ltr',
             }}
           >
-            {/* اللوجو أعلى اليسار (درع أزرق وحرف P أخضر) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <svg viewBox="0 0 100 120" width="28" height="34" fill="none">
-                <path d="M50 0 L100 20 L100 80 C100 100 50 120 50 120 C50 120 0 100 0 80 L0 20 Z" fill={BRAND_BLUE}/>
-                <text x="50" y="82" fontFamily="Arial, sans-serif" fontSize="65" fontWeight="900" fill={BRAND_GREEN} textAnchor="middle">P</text>
-              </svg>
-              <span
-                style={{
-                  fontFamily: "'Inter Tight', sans-serif",
-                  fontSize: '20px',
-                  fontWeight: 900,
-                  letterSpacing: '-0.02em',
-                  color: BRAND_BLUE,
-                }}
-              >
-                Park'n <span style={{ color: BRAND_GREEN }}>24</span>
-              </span>
+            {/* اللوجو على اليسار */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <ParkShieldLogo width={34} height={40} />
+              <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
+                <span
+                  style={{
+                    fontFamily: "'Cairo', sans-serif",
+                    fontSize: '13px',
+                    fontWeight: 900,
+                    color: BRAND_BLUE,
+                  }}
+                >
+                  بركن <span style={{ color: BRAND_GREEN }}>24</span>
+                </span>
+                <span
+                  style={{
+                    fontFamily: "'Inter Tight', sans-serif",
+                    fontSize: '15px',
+                    fontWeight: 900,
+                    letterSpacing: '-0.02em',
+                    color: BRAND_BLUE,
+                  }}
+                >
+                  Park'n <span style={{ color: BRAND_GREEN }}>24</span>
+                </span>
+              </div>
             </div>
 
             <button
@@ -274,9 +301,7 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             </button>
           </motion.nav>
 
-          {/* ═══════════════════════════════════════════
-              📝 محتوى النصوص الأساسي (مرفوع لأعلى)
-              ═══════════════════════════════════════════ */}
+          {/* 📝 المحتوى التحفيزي الخيار الأول */}
           <div
             style={{
               position: 'relative',
@@ -284,62 +309,51 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
               height: '100%',
               display: 'flex',
               flexDirection: 'column',
-              justifyContent: 'flex-start', // رفع المحتوى لأعلى
-              padding: '16dvh 24px 26px 24px', // مسافة من الأعلى
+              justifyContent: 'flex-start',
+              padding: '16dvh 24px 26px 24px',
               direction: 'rtl',
             }}
           >
             <div style={{ maxWidth: '640px' }}>
               
-              {/* 🔥 العنوان الرئيسي (أنيق وداكن) */}
+              {/* 📰 العنوان الرئيسي الخيار الأول */}
               <h1
                 className="hero-block delay-1"
                 style={{
                   fontFamily: "'Cairo', sans-serif",
-                  fontSize: 'clamp(2.8rem, 8vw, 5.5rem)',
+                  fontSize: 'clamp(2.2rem, 6.8vw, 4.8rem)',
                   fontWeight: 900,
-                  lineHeight: 1.1,
-                  letterSpacing: '-0.03em',
+                  lineHeight: 1.15,
+                  letterSpacing: '-0.02em',
                   color: '#0f172a',
                 }}
               >
-                اركن عربيتك<br />
-                في أي مكان<br />
-                بلا{' '}
-                <em
-                  style={{
-                    fontFamily: "'Instrument Serif', Georgia, serif",
-                    fontWeight: 400,
-                    fontStyle: 'italic',
-                    letterSpacing: '-0.005em',
-                    color: BRAND_GREEN, // لون أخضر اللوجو بدلاً من البرتقالي
-                  }}
-                >
-                  زحمة
-                </em>
+                انسى لفة كل يوم..<br />
+                <span style={{ color: BRAND_BLUE }}>ركنتك مضمونة</span><br />
+                <span style={{ color: BRAND_GREEN }}>قبل ما توصل!</span>
               </h1>
 
-              {/* 📝 الوصف (بلون أزرق اللوجو) */}
+              {/* 📝 الوصف التوضيحي الخيار الأول */}
               <p
                 className="hero-block delay-2"
                 style={{
                   marginTop: '16px',
-                  maxWidth: '320px',
+                  maxWidth: '360px',
                   fontFamily: "'Cairo', sans-serif",
                   fontSize: '15px',
                   lineHeight: 1.6,
-                  color: BRAND_BLUE, // لون أزرق اللوجو
-                  fontWeight: 800,
+                  color: '#334155',
+                  fontWeight: 700,
                 }}
               >
-                نهار مشرق ويوم جميل.. Park'n 24 يفتحلك أقرب جراج بضغطة زر. من وسط البلد للتجمع، عربيتك في أمان.
+                مع Park'n 24، الشارع أسهل بكتير. حدد وجهتك، اضمن مكانك في أقرب جراج، ووفر وقتك وبنزينك بضغطة زر واحدة.
               </p>
 
-              {/* 🔥 زر "يلا نبدأ" (بلون أزرق اللوجو) */}
+              {/* 🚀 الزر الخيار الأول */}
               <div
                 className="hero-block delay-3"
                 style={{
-                  marginTop: '32px',
+                  marginTop: '28px',
                 }}
               >
                 <button
@@ -347,7 +361,7 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
                   className="btn-brand"
                   style={{ fontSize: '16px' }}
                 >
-                  <span>يلا نبدأ</span>
+                  <span>احجز ركنتك الآن 🚀</span>
                   <span
                     style={{
                       display: 'grid',
@@ -356,7 +370,7 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
                       height: '2.4em',
                       borderRadius: '999px',
                       background: '#fff',
-                      color: BRAND_BLUE, // السهم بلون أزرق اللوجو
+                      color: BRAND_BLUE,
                     }}
                   >
                     <svg
@@ -453,7 +467,7 @@ export default function App() {
     const link = document.createElement('link');
     link.id = 'google-fonts-optimized';
     link.rel = 'stylesheet';
-    link.href = 'https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter+Tight:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Instrument+Serif:ital@1&display=swap';
+    link.href = 'https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter+Tight:wght@400;500;600;700;800&display=swap';
     document.head.appendChild(link);
   }, []);
 
