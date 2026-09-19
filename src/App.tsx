@@ -69,14 +69,14 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
 }
 
 /* ════════════════════════════════════════════════════════════
-   ☀️ FLUXORA-STYLE HERO — BEAUTIFUL DAYLIGHT & CHIC CAR
-   نهار مشرق جميل، سيارة بسيطة وأنيقة مصغرة للموبايل
+   ☀️ PARK'N 24 HERO — CLEAN, CHIC, BRANDED DAYLIGHT
+   تصميم بسيط، هوية بصرية كاملة، سيارة مصغرة بالأسفل
    ════════════════════════════════════════════════════════════ */
-interface FluxoraLandingProps {
+interface ParkLandingProps {
   onEnter: () => void;
 }
 
-function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
+function ParkLanding({ onEnter }: ParkLandingProps) {
   const [isExiting, setIsExiting] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
 
@@ -85,10 +85,12 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
     setTimeout(() => onEnter(), 600);
   };
 
-  // تحميل الصورة مسبقاً
+  // الألوان الرسمية للتطبيق
+  const BRAND_BLUE = '#1656b8';
+  const BRAND_GREEN = '#8cc63f';
+
   useEffect(() => {
     const img = new Image();
-    // سيارة بيضاء بسيطة وأنيقة في وضح النهار
     img.src = 'https://images.unsplash.com/photo-1617531653332-bd46c24f2068?auto=format&fit=crop&w=1200&q=80';
     img.onload = () => setImgLoaded(true);
     const t = setTimeout(() => setImgLoaded(true), 4000);
@@ -113,21 +115,18 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
           <style>{`
             @import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Instrument+Serif:ital@1&family=Cairo:wght@400;500;600;700;800;900&display=swap');
 
-            .fluxora-hero-block {
-              animation: fluxora-rise 0.95s cubic-bezier(0.16, 1, 0.3, 1) both;
+            .hero-block {
+              animation: rise-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
             }
-            .fd-1 { animation-delay: 0.06s; }
-            .fd-2 { animation-delay: 0.14s; }
-            .fd-3 { animation-delay: 0.20s; }
-            .fd-4 { animation-delay: 0.28s; }
-            .fd-5 { animation-delay: 0.36s; }
+            .delay-1 { animation-delay: 0.1s; }
+            .delay-2 { animation-delay: 0.2s; }
+            .delay-3 { animation-delay: 0.3s; }
 
-            @keyframes fluxora-rise {
-              from { opacity: 0; transform: translateY(22px); }
+            @keyframes rise-up {
+              from { opacity: 0; transform: translateY(20px); }
               to { opacity: 1; transform: none; }
             }
 
-            /* تأثير نعومة دخول صورة السيارة */
             .car-image {
               opacity: 0;
               transform: scale(1.05) translateY(10px);
@@ -138,52 +137,51 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
               transform: scale(1) translateY(0);
             }
 
-            /* الزر البرتقالي الملتهب (يبرز بقوة في النهار) */
-            .fluxora-btn-flame {
+            /* زر التطبيق الرسمي (أزرق) */
+            .btn-brand {
               display: inline-flex;
               align-items: center;
               gap: 10px;
-              padding: 0.5em 0.5em 0.5em 1.5em;
+              padding: 0.6em 0.8em 0.6em 1.8em;
               border-radius: 999px;
-              background: linear-gradient(96deg, #ff3d00 0%, #ff8a1f 100%);
+              background: ${BRAND_BLUE};
               color: #fff;
-              font-weight: 700;
+              font-weight: 800;
               font-family: 'Cairo', sans-serif;
-              box-shadow: 0 10px 30px rgba(255, 61, 0, 0.25);
-              transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+              box-shadow: 0 10px 30px rgba(22, 86, 184, 0.35);
+              transition: transform 0.3s ease, box-shadow 0.3s ease;
               border: 0;
               cursor: pointer;
             }
-            .fluxora-btn-flame:hover {
-              transform: translateY(-2px);
-              box-shadow: 0 15px 40px rgba(255, 61, 0, 0.35);
+            .btn-brand:hover {
+              transform: translateY(-3px);
+              box-shadow: 0 15px 40px rgba(22, 86, 184, 0.45);
             }
 
-            /* الزر الشفاف النهاري */
-            .fluxora-btn-light {
+            .btn-skip {
               display: inline-flex;
               align-items: center;
               gap: 8px;
-              padding: 0.72em 1.35em;
+              padding: 0.6em 1.2em;
               border-radius: 999px;
-              background: rgba(255, 255, 255, 0.7);
+              background: rgba(255, 255, 255, 0.8);
               backdrop-filter: blur(10px);
               -webkit-backdrop-filter: blur(10px);
-              color: #1e293b;
+              color: ${BRAND_BLUE};
               font-family: 'Cairo', sans-serif;
               font-weight: 700;
               box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-              transition: transform 0.35s ease, background 0.35s ease;
-              border: 1px solid rgba(255,255,255,0.5);
+              transition: transform 0.3s ease, background 0.3s ease;
+              border: 1px solid rgba(255,255,255,0.6);
               cursor: pointer;
             }
-            .fluxora-btn-light:hover {
-              transform: translateY(-1px);
-              background: rgba(255, 255, 255, 0.95);
+            .btn-skip:hover {
+              transform: translateY(-2px);
+              background: #fff;
             }
 
             @media (prefers-reduced-motion: reduce) {
-              .fluxora-hero-block { animation: none; }
+              .hero-block { animation: none; }
               .car-image { opacity: 1; transform: none; }
             }
           `}</style>
@@ -197,8 +195,7 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
               bottom: 0,
               left: 0,
               right: 0,
-              // أخذت 60% من الشاشة السفلية فقط لتبقى السيارة صغيرة وواضحة جداً
-              height: '60dvh',
+              height: '60dvh', // تظهر في النصف السفلي فقط
               zIndex: 1,
             }}
           >
@@ -211,28 +208,26 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                 width: '100%',
                 height: '100%',
                 objectFit: 'cover',
-                // تركيز الصورة من المنتصف والأسفل لضمان ظهور السيارة بالكامل
                 objectPosition: 'center 80%',
-                // دمج قمة الصورة بسلاسة مع سماء الخلفية الزرقاء
                 WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 25%, black 100%)',
                 maskImage: 'linear-gradient(to bottom, transparent 0%, black 25%, black 100%)',
               }}
             />
           </div>
 
-          {/* 🎨 طبقة خفيفة جداً لتحسين قراءة النصوص النهارية بدون حجب السماء */}
+          {/* طبقة تفتيح خلف النصوص */}
           <div
             style={{
               position: 'absolute',
               inset: 0,
               zIndex: 2,
-              background: 'linear-gradient(to left, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.2) 60%, transparent 100%)',
+              background: 'linear-gradient(to bottom, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 60%)',
               pointerEvents: 'none',
             }}
           />
 
           {/* ═══════════════════════════════════════════
-              🚗 شريط التنقل العلوي النهاري
+              🛡️ شريط التنقل العلوي (اللوجو على اليسار)
               ═══════════════════════════════════════════ */}
           <motion.nav
             initial={{ opacity: 0, y: -16 }}
@@ -247,43 +242,40 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              padding: '18px 20px',
-              direction: 'ltr',
+              padding: '20px 24px',
+              direction: 'ltr', // يضمن بقاء اللوجو يساراً والزر يميناً
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <svg viewBox="0 0 28 28" fill="none" aria-hidden="true" width="28" height="28">
-                <path d="M14 1.6 20.3 8 14 14.4 7.7 8 14 1.6Z" fill="#FF6A00" />
-                <path d="M6.4 9.3 12.7 15.7 6.4 22.1 0.1 15.7 6.4 9.3Z" fill="#FF3D00" />
-                <path d="M21.6 9.3 27.9 15.7 21.6 22.1 15.3 15.7 21.6 9.3Z" fill="#FF9A2E" />
+            {/* اللوجو أعلى اليسار (درع أزرق وحرف P أخضر) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <svg viewBox="0 0 100 120" width="28" height="34" fill="none">
+                <path d="M50 0 L100 20 L100 80 C100 100 50 120 50 120 C50 120 0 100 0 80 L0 20 Z" fill={BRAND_BLUE}/>
+                <text x="50" y="82" fontFamily="Arial, sans-serif" fontSize="65" fontWeight="900" fill={BRAND_GREEN} textAnchor="middle">P</text>
               </svg>
               <span
                 style={{
                   fontFamily: "'Inter Tight', sans-serif",
-                  fontSize: '18px',
-                  fontWeight: 700,
-                  letterSpacing: '-0.025em',
-                  // لون داكن أنيق ليناسب النهار
-                  color: '#0f172a',
+                  fontSize: '20px',
+                  fontWeight: 900,
+                  letterSpacing: '-0.02em',
+                  color: BRAND_BLUE,
                 }}
               >
-                Park'n <span style={{ color: '#FF6A00' }}>24</span>
+                Park'n <span style={{ color: BRAND_GREEN }}>24</span>
               </span>
             </div>
 
-            <motion.button
+            <button
               onClick={handleEnter}
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.97 }}
-              className="fluxora-btn-light"
-              style={{ fontSize: '12.5px', direction: 'rtl' }}
+              className="btn-skip"
+              style={{ fontSize: '13px', direction: 'rtl' }}
             >
-              تخطي للتطبيق
-            </motion.button>
+              تخطي 
+            </button>
           </motion.nav>
 
           {/* ═══════════════════════════════════════════
-              📝 محتوى Hero الأساسي (ألوان نهارية)
+              📝 محتوى النصوص الأساسي (مرفوع لأعلى)
               ═══════════════════════════════════════════ */}
           <div
             style={{
@@ -292,62 +284,23 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
               height: '100%',
               display: 'flex',
               flexDirection: 'column',
-              justifyContent: 'center',
-              padding: '86px 20px 26px 20px',
+              justifyContent: 'flex-start', // رفع المحتوى لأعلى
+              padding: '16dvh 24px 26px 24px', // مسافة من الأعلى
               direction: 'rtl',
             }}
           >
             <div style={{ maxWidth: '640px' }}>
-              {/* 🌍 السطر التمهيدي */}
-              <div
-                className="fluxora-hero-block"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  paddingTop: '13px',
-                  borderTop: '1.5px solid rgba(0, 0, 0, 0.08)',
-                  width: 'fit-content',
-                  maxWidth: '320px',
-                }}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#475569"
-                  strokeWidth="1.5"
-                  width="20"
-                  height="20"
-                  style={{ flex: 'none' }}
-                >
-                  <circle cx="12" cy="12" r="9" />
-                  <path d="M3 12h18M12 3c2.5 2.6 3.7 5.7 3.7 9S14.5 18.4 12 21c-2.5-2.6-3.7-5.7-3.7-9S9.5 5.6 12 3Z" />
-                </svg>
-                <span
-                  style={{
-                    fontFamily: "'Cairo', sans-serif",
-                    fontSize: '11.5px',
-                    lineHeight: 1.45,
-                    color: '#475569', // رمادي داكن للنهار
-                    fontWeight: 600,
-                  }}
-                >
-                  نخدم آلاف السائقين<br />في شوارع مصر يومياً
-                </span>
-              </div>
-
+              
               {/* 🔥 العنوان الرئيسي (أنيق وداكن) */}
               <h1
-                className="fluxora-hero-block fd-1"
+                className="hero-block delay-1"
                 style={{
-                  marginTop: '22px',
                   fontFamily: "'Cairo', sans-serif",
-                  fontSize: 'clamp(2.4rem, 6.4vw, 5.2rem)',
+                  fontSize: 'clamp(2.8rem, 8vw, 5.5rem)',
                   fontWeight: 900,
-                  lineHeight: 1.05,
-                  letterSpacing: '-0.035em',
-                  color: '#0f172a', // كحلي غامق جداً
-                  textShadow: '0 4px 20px rgba(255, 255, 255, 0.8)', // توهج أبيض خفيف خلف النص
+                  lineHeight: 1.1,
+                  letterSpacing: '-0.03em',
+                  color: '#0f172a',
                 }}
               >
                 اركن عربيتك<br />
@@ -359,279 +312,71 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                     fontWeight: 400,
                     fontStyle: 'italic',
                     letterSpacing: '-0.005em',
-                    background: 'linear-gradient(96deg, #ff3d00, #ff8a1f)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                    backgroundClip: 'text',
+                    color: BRAND_GREEN, // لون أخضر اللوجو بدلاً من البرتقالي
                   }}
                 >
                   زحمة
                 </em>
               </h1>
 
-              {/* الوصف */}
+              {/* 📝 الوصف (بلون أزرق اللوجو) */}
               <p
-                className="fluxora-hero-block fd-2"
+                className="hero-block delay-2"
                 style={{
                   marginTop: '16px',
-                  maxWidth: '360px',
+                  maxWidth: '320px',
                   fontFamily: "'Cairo', sans-serif",
-                  fontSize: '14.5px',
+                  fontSize: '15px',
                   lineHeight: 1.6,
-                  color: '#334155', // رمادي متوسط
-                  fontWeight: 600,
+                  color: BRAND_BLUE, // لون أزرق اللوجو
+                  fontWeight: 800,
                 }}
               >
                 نهار مشرق ويوم جميل.. Park'n 24 يفتحلك أقرب جراج بضغطة زر. من وسط البلد للتجمع، عربيتك في أمان.
               </p>
 
-              {/* 🔥 زر الحث + الأفاتار */}
+              {/* 🔥 زر "يلا نبدأ" (بلون أزرق اللوجو) */}
               <div
-                className="fluxora-hero-block fd-3"
+                className="hero-block delay-3"
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '18px',
-                  marginTop: '26px',
+                  marginTop: '32px',
                 }}
               >
                 <button
                   onClick={handleEnter}
-                  className="fluxora-btn-flame"
-                  style={{ fontSize: '15px' }}
+                  className="btn-brand"
+                  style={{ fontSize: '16px' }}
                 >
                   <span>يلا نبدأ</span>
                   <span
                     style={{
                       display: 'grid',
                       placeItems: 'center',
-                      width: '2.55em',
-                      height: '2.55em',
+                      width: '2.4em',
+                      height: '2.4em',
                       borderRadius: '999px',
                       background: '#fff',
-                      color: '#1a0600',
+                      color: BRAND_BLUE, // السهم بلون أزرق اللوجو
                     }}
                   >
                     <svg
                       viewBox="0 0 20 20"
                       fill="none"
                       stroke="currentColor"
-                      strokeWidth="1.7"
+                      strokeWidth="2.5"
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      style={{ width: '1.15em', height: '1.15em', transform: 'scaleX(-1)' }}
+                      style={{ width: '1.2em', height: '1.2em', transform: 'scaleX(-1)' }}
                     >
                       <path d="M4 10h12M11 5l5 5-5 5" />
                     </svg>
                   </span>
                 </button>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{ display: 'flex' }}>
-                    {[
-                      { a: '#ff7a3d', b: '#ffb27a' },
-                      { a: '#6f4bd8', b: '#a98cff' },
-                      { a: '#1f9ea8', b: '#63d6df' },
-                      { a: '#d8434b', b: '#ff8a8f' },
-                    ].map((c, i) => (
-                      <span
-                        key={i}
-                        style={{
-                          width: '28px',
-                          height: '28px',
-                          marginRight: i === 0 ? 0 : '-9px',
-                          borderRadius: '999px',
-                          border: '2px solid #fff',
-                          background: `linear-gradient(140deg, ${c.a}, ${c.b})`,
-                          boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
-                        }}
-                      />
-                    ))}
-                  </div>
-                  <div
-                    style={{
-                      display: 'grid',
-                      fontFamily: "'Cairo', sans-serif",
-                      fontSize: '10.5px',
-                      lineHeight: 1.4,
-                      color: '#475569',
-                    }}
-                  >
-                    <strong
-                      style={{
-                        fontSize: '12px',
-                        fontWeight: 800,
-                        color: '#0f172a',
-                      }}
-                    >
-                      +650 حريف سعيد
-                    </strong>
-                    خدمة 24 ساعة
-                  </div>
-                </div>
               </div>
 
-              {/* 📊 بطاقات الإحصائيات (الزجاج الثلجي الفاتح) */}
-              <ul
-                className="fluxora-hero-block fd-4"
-                style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: '12px',
-                  margin: '28px 0 0',
-                  padding: 0,
-                  listStyle: 'none',
-                }}
-              >
-                {[
-                  { value: '+150', label: 'جراج متعاون', flame: false },
-                  { value: '98%', label: 'رضا العملاء', flame: true },
-                ].map((stat) => (
-                  <li
-                    key={stat.label}
-                    style={{
-                      position: 'relative',
-                      display: 'grid',
-                      alignContent: 'space-between',
-                      width: '160px',
-                      minHeight: '105px',
-                      padding: '16px',
-                      border: '1px solid rgba(255, 255, 255, 0.7)',
-                      borderRadius: '16px',
-                      background: stat.flame
-                        ? 'linear-gradient(150deg, rgba(255, 240, 230, 0.8), rgba(255, 255, 255, 0.6))'
-                        : 'rgba(255, 255, 255, 0.55)',
-                      backdropFilter: 'blur(16px) saturate(1.2)',
-                      WebkitBackdropFilter: 'blur(16px) saturate(1.2)',
-                      boxShadow: '0 8px 30px rgba(0, 0, 0, 0.04)',
-                    }}
-                  >
-                    <span
-                      style={{
-                        position: 'absolute',
-                        top: '12px',
-                        left: '14px',
-                        fontSize: '14px',
-                        color: stat.flame ? '#ff6a00' : '#94a3b8',
-                      }}
-                    >
-                      *
-                    </span>
-                    <span
-                      style={{
-                        fontFamily: "'Cairo', sans-serif",
-                        fontSize: 'clamp(1.4rem, 2.4vw, 2rem)',
-                        fontWeight: 800,
-                        lineHeight: 1,
-                        letterSpacing: '-0.03em',
-                        color: stat.flame ? '#ff3d00' : '#0f172a',
-                      }}
-                    >
-                      {stat.value}
-                    </span>
-                    <span
-                      style={{
-                        fontFamily: "'Cairo', sans-serif",
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        color: '#475569',
-                      }}
-                    >
-                      {stat.label}
-                    </span>
-                    <span
-                      style={{
-                        position: 'absolute',
-                        left: '14px',
-                        bottom: '18px',
-                        width: '14px',
-                        height: '1.5px',
-                        background: stat.flame ? 'rgba(255, 61, 0, 0.3)' : 'rgba(15, 23, 42, 0.15)',
-                      }}
-                    />
-                  </li>
-                ))}
-              </ul>
             </div>
           </div>
 
-          {/* 🏙️ الشريط السفلي */}
-          <div
-            className="fluxora-hero-block fd-5"
-            style={{
-              position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              zIndex: 20,
-              display: 'flex',
-              alignItems: 'flex-end',
-              justifyContent: 'space-between',
-              gap: '24px',
-              padding: '0 20px 20px 20px',
-              direction: 'ltr',
-            }}
-          >
-            {/* العلامة المائية الشفافة بالنهار */}
-            <span
-              style={{
-                fontFamily: "'Inter Tight', sans-serif",
-                fontSize: 'clamp(2.2rem, 8vw, 5rem)',
-                fontWeight: 800,
-                lineHeight: 0.8,
-                letterSpacing: '-0.05em',
-                color: 'rgba(0, 0, 0, 0.04)',
-                userSelect: 'none',
-              }}
-            >
-              PARK
-            </span>
-
-            <div style={{ textAlign: 'right', direction: 'rtl' }}>
-              <span
-                style={{
-                  display: 'block',
-                  marginBottom: '8px',
-                  fontFamily: "'Cairo', sans-serif",
-                  fontSize: '11px',
-                  color: '#475569',
-                  fontWeight: 700,
-                }}
-              >
-                نغطي أفخم مدن مصر
-              </span>
-              <ul
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  margin: 0,
-                  padding: 0,
-                  listStyle: 'none',
-                }}
-              >
-                {['🕌 القاهرة', '🌴 الجيزة'].map((city) => (
-                  <li
-                    key={city}
-                    style={{
-                      fontFamily: "'Cairo', sans-serif",
-                      fontSize: '10.5px',
-                      fontWeight: 800,
-                      color: '#0f172a',
-                      padding: '4px 10px',
-                      borderRadius: '999px',
-                      border: '1px solid rgba(0,0,0,0.06)',
-                      background: 'rgba(255, 255, 255, 0.7)',
-                      backdropFilter: 'blur(8px)',
-                    }}
-                  >
-                    {city}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
         </motion.div>
       )}
     </AnimatePresence>
@@ -679,7 +424,7 @@ export default function App() {
 
   const [showLanding, setShowLanding] = useState(() => {
     const today = new Date().toDateString();
-    const lastShownDate = localStorage.getItem('fluxora_landing_last_date');
+    const lastShownDate = localStorage.getItem('parkn24_landing_last_date');
     return lastShownDate !== today;
   });
 
@@ -687,7 +432,7 @@ export default function App() {
 
   const handleEnterLanding = () => {
     const today = new Date().toDateString();
-    localStorage.setItem('fluxora_landing_last_date', today);
+    localStorage.setItem('parkn24_landing_last_date', today);
     setShowLanding(false);
   };
 
@@ -1067,7 +812,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      {showLanding && <FluxoraLanding onEnter={handleEnterLanding} />}
+      {showLanding && <ParkLanding onEnter={handleEnterLanding} />}
 
       <AuthGate>
         <div
