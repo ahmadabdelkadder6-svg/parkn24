@@ -96,7 +96,7 @@ function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: 
 }
 
 /* ════════════════════════════════════════════════════════════
-   ☀️ PARK'N 24 HERO — OPTION 1 IMPLEMENTATION
+   ☀️ PARK'N 24 HERO — OPTION 1 IMPLEMENTATION (LOCAL PUBLIC IMAGE)
    ════════════════════════════════════════════════════════════ */
 interface ParkLandingProps {
   onEnter: () => void;
@@ -114,13 +114,18 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
   const BRAND_BLUE = '#1656b8';
   const BRAND_GREEN = '#8cc63f';
 
+  // 🏎️ مسار الصورة داخل مجلد public مباشرة
+  // (لو اسم صورتك مختلف مثل /car.webp أو /car.png قم بتغيير الاسم هنا فقط)
+  const CAR_IMAGE_SRC = '/hero-car.webp';
+
   useEffect(() => {
     const img = new Image();
-    img.src = 'https://images.unsplash.com/photo-1617531653332-bd46c24f2068?auto=format&fit=crop&w=1200&q=80';
+    img.src = CAR_IMAGE_SRC;
     img.onload = () => setImgLoaded(true);
-    const t = setTimeout(() => setImgLoaded(true), 4000);
+    img.onerror = () => setImgLoaded(true); // صمام أمان في حال حدوث أي خطأ
+    const t = setTimeout(() => setImgLoaded(true), 1200); // تم تقليل وقت الانتظار لأن الصورة محلية وسريعة جداً
     return () => clearTimeout(t);
-  }, []);
+  }, [CAR_IMAGE_SRC]);
 
   return (
     <AnimatePresence>
@@ -209,7 +214,7 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             }
           `}</style>
 
-          {/* 🚗 صورة السيارة المصغرة */}
+          {/* 🚗 صورة السيارة المحلية من مجلد public */}
           <div
             style={{
               position: 'absolute',
@@ -222,7 +227,7 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
           >
             <img
               className={`car-image ${imgLoaded ? 'is-loaded' : ''}`}
-              src="https://images.unsplash.com/photo-1617531653332-bd46c24f2068?auto=format&fit=crop&w=1200&q=80"
+              src={CAR_IMAGE_SRC}
               alt="Park'n 24 Car"
               aria-hidden="true"
               style={{
