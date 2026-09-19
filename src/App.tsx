@@ -96,7 +96,7 @@ function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: 
 }
 
 /* ════════════════════════════════════════════════════════════
-   ☀️ PARK'N 24 HERO — OPTION 1 IMPLEMENTATION (LOCAL PUBLIC IMAGE)
+   ☀️ PARK'N 24 HERO — FIXED CAR DISPLAY
    ════════════════════════════════════════════════════════════ */
 interface ParkLandingProps {
   onEnter: () => void;
@@ -104,28 +104,18 @@ interface ParkLandingProps {
 
 function ParkLanding({ onEnter }: ParkLandingProps) {
   const [isExiting, setIsExiting] = useState(false);
-  const [imgLoaded, setImgLoaded] = useState(false);
 
   const handleEnter = () => {
     setIsExiting(true);
-    setTimeout(() => onEnter(), 600);
+    setTimeout(() => onEnter(), 500);
   };
 
   const BRAND_BLUE = '#1656b8';
   const BRAND_GREEN = '#8cc63f';
 
-  // 🏎️ مسار الصورة داخل مجلد public مباشرة
-  // (لو اسم صورتك مختلف مثل /car.webp أو /car.png قم بتغيير الاسم هنا فقط)
+  // ⚠️ هام: تأكد من كتابة اسم الصورة وامتدادها كما هو في مجلد public تماماً
+  // أمثلة: '/car.png' أو '/car.jpg' أو '/hero-car.webp'
   const CAR_IMAGE_SRC = '/hero-car.webp';
-
-  useEffect(() => {
-    const img = new Image();
-    img.src = CAR_IMAGE_SRC;
-    img.onload = () => setImgLoaded(true);
-    img.onerror = () => setImgLoaded(true); // صمام أمان في حال حدوث أي خطأ
-    const t = setTimeout(() => setImgLoaded(true), 1200); // تم تقليل وقت الانتظار لأن الصورة محلية وسريعة جداً
-    return () => clearTimeout(t);
-  }, [CAR_IMAGE_SRC]);
 
   return (
     <AnimatePresence>
@@ -133,10 +123,10 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
         <motion.div
           initial={{ opacity: 1 }}
           exit={{ opacity: 0, scale: 1.02, filter: 'blur(8px)' }}
-          transition={{ duration: 0.6, ease: 'easeInOut' }}
-          className="fixed inset-0 z-[999999]"
+          transition={{ duration: 0.5, ease: 'easeInOut' }}
+          className="fixed inset-0 z-[999999] flex flex-col justify-between"
           style={{
-            background: 'linear-gradient(180deg, #7db9e8 0%, #c4e0f5 40%, #e8f4f8 100%)',
+            background: 'linear-gradient(180deg, #dbeafe 0%, #eff6ff 40%, #ffffff 100%)',
             overflow: 'hidden',
             height: '100dvh',
           }}
@@ -154,16 +144,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             @keyframes rise-up {
               from { opacity: 0; transform: translateY(20px); }
               to { opacity: 1; transform: none; }
-            }
-
-            .car-image {
-              opacity: 0;
-              transform: scale(1.05) translateY(10px);
-              transition: opacity 1.4s cubic-bezier(0.16, 1, 0.3, 1), transform 2.6s cubic-bezier(0.16, 1, 0.3, 1);
-            }
-            .car-image.is-loaded {
-              opacity: 1;
-              transform: scale(1) translateY(0);
             }
 
             .btn-brand {
@@ -192,203 +172,129 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
               gap: 8px;
               padding: 0.6em 1.2em;
               border-radius: 999px;
-              background: rgba(255, 255, 255, 0.85);
+              background: rgba(255, 255, 255, 0.9);
               backdrop-filter: blur(10px);
-              -webkit-backdrop-filter: blur(10px);
               color: ${BRAND_BLUE};
               font-family: 'Cairo', sans-serif;
               font-weight: 800;
               box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-              transition: transform 0.3s ease, background 0.3s ease;
-              border: 1px solid rgba(255,255,255,0.7);
+              border: 1px solid rgba(255,255,255,0.8);
               cursor: pointer;
-            }
-            .btn-skip:hover {
-              transform: translateY(-2px);
-              background: #fff;
-            }
-
-            @media (prefers-reduced-motion: reduce) {
-              .hero-block { animation: none; }
-              .car-image { opacity: 1; transform: none; }
             }
           `}</style>
 
-          {/* 🚗 صورة السيارة المحلية من مجلد public */}
-          <div
-            style={{
-              position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              height: '58dvh',
-              zIndex: 1,
-            }}
-          >
-            <img
-              className={`car-image ${imgLoaded ? 'is-loaded' : ''}`}
-              src={CAR_IMAGE_SRC}
-              alt="Park'n 24 Car"
-              aria-hidden="true"
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                objectPosition: 'center 80%',
-                WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 25%, black 100%)',
-                maskImage: 'linear-gradient(to bottom, transparent 0%, black 25%, black 100%)',
-              }}
-            />
-          </div>
-
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              zIndex: 2,
-              background: 'linear-gradient(to bottom, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0) 65%)',
-              pointerEvents: 'none',
-            }}
-          />
-
-          {/* 🛡️ شريط التنقل العلوي بالاسم فقط (عربي وإنجليزي) */}
+          {/* 🛡️ شريط التنقل العلوي */}
           <motion.nav
             initial={{ opacity: 0, y: -16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, ease: 'easeOut' }}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              zIndex: 50,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '20px 24px',
-              direction: 'ltr',
-            }}
+            className="w-full flex items-center justify-between px-6 py-5 z-50"
+            style={{ direction: 'ltr' }}
           >
-            {/* النص العربي والإنجليزي متراكبان بأسلوب واضح وأنيق على اليسار */}
             <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.15' }}>
-              <span
-                style={{
-                  fontFamily: "'Cairo', sans-serif",
-                  fontSize: '15px',
-                  fontWeight: 900,
-                  color: BRAND_BLUE,
-                  letterSpacing: '-0.01em',
-                }}
-              >
+              <span style={{ fontFamily: "'Cairo', sans-serif", fontSize: '15px', fontWeight: 900, color: BRAND_BLUE }}>
                 بركن <span style={{ color: BRAND_GREEN }}>24</span>
               </span>
-              <span
-                style={{
-                  fontFamily: "'Inter Tight', sans-serif",
-                  fontSize: '17px',
-                  fontWeight: 900,
-                  letterSpacing: '-0.02em',
-                  color: BRAND_BLUE,
-                }}
-              >
+              <span style={{ fontFamily: "'Inter Tight', sans-serif", fontSize: '17px', fontWeight: 900, color: BRAND_BLUE }}>
                 Park'n <span style={{ color: BRAND_GREEN }}>24</span>
               </span>
             </div>
 
-            <button
-              onClick={handleEnter}
-              className="btn-skip"
-              style={{ fontSize: '13px', direction: 'rtl' }}
-            >
+            <button onClick={handleEnter} className="btn-skip" style={{ fontSize: '13px', direction: 'rtl' }}>
               تخطي 
             </button>
           </motion.nav>
 
-          {/* 📝 المحتوى التحفيزي */}
+          {/* 📝 النصوص وزر الحجز */}
           <div
+            className="px-6 z-20"
             style={{
-              position: 'relative',
-              zIndex: 10,
-              height: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'flex-start',
-              padding: '16dvh 24px 26px 24px',
+              paddingTop: '2dvh',
               direction: 'rtl',
             }}
           >
-            <div style={{ maxWidth: '640px' }}>
-              
-              <h1
-                className="hero-block delay-1"
-                style={{
-                  fontFamily: "'Cairo', sans-serif",
-                  fontSize: 'clamp(2.2rem, 6.8vw, 4.8rem)',
-                  fontWeight: 900,
-                  lineHeight: 1.15,
-                  letterSpacing: '-0.02em',
-                  color: '#0f172a',
-                }}
-              >
-                انسى لفة كل يوم..<br />
-                <span style={{ color: BRAND_BLUE }}>ركنتك مضمونة</span><br />
-                <span style={{ color: BRAND_GREEN }}>قبل ما توصل!</span>
-              </h1>
+            <h1
+              className="hero-block delay-1"
+              style={{
+                fontFamily: "'Cairo', sans-serif",
+                fontSize: 'clamp(2rem, 6.5vw, 3.2rem)',
+                fontWeight: 900,
+                lineHeight: 1.2,
+                color: '#0f172a',
+              }}
+            >
+              انسى لفة كل يوم..<br />
+              <span style={{ color: BRAND_BLUE }}>ركنتك مضمونة</span><br />
+              <span style={{ color: BRAND_GREEN }}>قبل ما توصل!</span>
+            </h1>
 
-              <p
-                className="hero-block delay-2"
-                style={{
-                  marginTop: '16px',
-                  maxWidth: '360px',
-                  fontFamily: "'Cairo', sans-serif",
-                  fontSize: '15px',
-                  lineHeight: 1.6,
-                  color: '#334155',
-                  fontWeight: 700,
-                }}
-              >
-                مع Park'n 24، الشارع أسهل بكتير. حدد وجهتك، اضمن مكانك في أقرب جراج، ووفر وقتك وبنزينك بضغطة زر واحدة.
-              </p>
+            <p
+              className="hero-block delay-2"
+              style={{
+                marginTop: '12px',
+                maxWidth: '340px',
+                fontFamily: "'Cairo', sans-serif",
+                fontSize: '14px',
+                lineHeight: 1.6,
+                color: '#475569',
+                fontWeight: 700,
+              }}
+            >
+              مع Park'n 24، حدد وجهتك، اضمن مكانك في أقرب جراج، ووفر وقتك وبنزينك بضغطة زر واحدة.
+            </p>
 
-              <div
-                className="hero-block delay-3"
-                style={{
-                  marginTop: '28px',
-                }}
-              >
-                <button
-                  onClick={handleEnter}
-                  className="btn-brand"
-                  style={{ fontSize: '16px' }}
+            <div className="hero-block delay-3" style={{ marginTop: '20px' }}>
+              <button onClick={handleEnter} className="btn-brand" style={{ fontSize: '15px' }}>
+                <span>احجز ركنتك الآن 🚀</span>
+                <span
+                  style={{
+                    display: 'grid',
+                    placeItems: 'center',
+                    width: '2.2em',
+                    height: '2.2em',
+                    borderRadius: '999px',
+                    background: '#fff',
+                    color: BRAND_BLUE,
+                  }}
                 >
-                  <span>احجز ركنتك الآن 🚀</span>
-                  <span
-                    style={{
-                      display: 'grid',
-                      placeItems: 'center',
-                      width: '2.4em',
-                      height: '2.4em',
-                      borderRadius: '999px',
-                      background: '#fff',
-                      color: BRAND_BLUE,
-                    }}
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ width: '1.2em', height: '1.2em', transform: 'scaleX(-1)' }}
                   >
-                    <svg
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      style={{ width: '1.2em', height: '1.2em', transform: 'scaleX(-1)' }}
-                    >
-                      <path d="M4 10h12M11 5l5 5-5 5" />
-                    </svg>
-                  </span>
-                </button>
-              </div>
-
+                    <path d="M4 10h12M11 5l5 5-5 5" />
+                  </svg>
+                </span>
+              </button>
             </div>
+          </div>
+
+          {/* 🚗 صورة السيارة (واضحة وبدون حجب) */}
+          <div
+            className="w-full relative z-10 flex items-end justify-center"
+            style={{
+              height: '45dvh',
+              marginTop: 'auto',
+            }}
+          >
+            <img
+              src={CAR_IMAGE_SRC}
+              alt="Park'n 24 Car"
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                objectPosition: 'center bottom',
+              }}
+              onError={(e) => {
+                // إذا لم يجد الصورة في الـ public يعرض صورة بديلة تلقائياً لكي لا تصبح بيضاء
+                (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1617531653332-bd46c24f2068?auto=format&fit=crop&w=1000&q=80';
+              }}
+            />
           </div>
 
         </motion.div>
