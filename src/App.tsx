@@ -69,8 +69,8 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
 }
 
 /* ════════════════════════════════════════════════════════════
-   🔥🌧️ FLUXORA-STYLE HERO — GLOWING CAR IN THE RAIN
-   سيارة فاخرة بأنوار برتقالية ملتهبة تحت سماء ممطرة
+   ☀️ FLUXORA-STYLE HERO — BEAUTIFUL DAYLIGHT & CHIC CAR
+   نهار مشرق جميل، سيارة بسيطة وأنيقة مصغرة للموبايل
    ════════════════════════════════════════════════════════════ */
 interface FluxoraLandingProps {
   onEnter: () => void;
@@ -88,9 +88,9 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
   // تحميل الصورة مسبقاً
   useEffect(() => {
     const img = new Image();
-    img.src = 'https://images.unsplash.com/photo-1544636331-e26879cd4d9b?auto=format&fit=crop&w=1400&q=85';
+    // سيارة بيضاء بسيطة وأنيقة في وضح النهار
+    img.src = 'https://images.unsplash.com/photo-1617531653332-bd46c24f2068?auto=format&fit=crop&w=1200&q=80';
     img.onload = () => setImgLoaded(true);
-    // fallback بعد 4 ثواني لو النت بطيء
     const t = setTimeout(() => setImgLoaded(true), 4000);
     return () => clearTimeout(t);
   }, []);
@@ -104,7 +104,8 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
           transition={{ duration: 0.6, ease: 'easeInOut' }}
           className="fixed inset-0 z-[999999]"
           style={{
-            background: '#0a1628',
+            // خلفية سماء نهارية زرقاء فاتحة وجميلة
+            background: 'linear-gradient(180deg, #7db9e8 0%, #c4e0f5 40%, #e8f4f8 100%)',
             overflow: 'hidden',
             height: '100dvh',
           }}
@@ -112,53 +113,6 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
           <style>{`
             @import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Instrument+Serif:ital@1&family=Cairo:wght@400;500;600;700;800;900&display=swap');
 
-            /* ═══ 🌧️ تأثير المطر المتساقط CSS فقط ═══ */
-            .rain-container {
-              position: absolute;
-              inset: 0;
-              overflow: hidden;
-              pointer-events: none;
-              z-index: 5;
-            }
-            .rain-drop {
-              position: absolute;
-              width: 1.5px;
-              background: linear-gradient(to bottom, transparent, rgba(200, 220, 255, 0.35), transparent);
-              animation: rain-fall linear infinite;
-              opacity: 0;
-            }
-            @keyframes rain-fall {
-              0% {
-                transform: translateY(-100vh) translateX(0px);
-                opacity: 0;
-              }
-              10% { opacity: 1; }
-              90% { opacity: 0.6; }
-              100% {
-                transform: translateY(110vh) translateX(-15px);
-                opacity: 0;
-              }
-            }
-
-            /* ═══ 🔥 وهج أنوار السيارة البرتقالي النابض ═══ */
-            @keyframes car-glow-pulse {
-              0%, 100% { opacity: 0.6; transform: scale(1); }
-              50% { opacity: 0.9; transform: scale(1.05); }
-            }
-
-            @keyframes car-glow-pulse-2 {
-              0%, 100% { opacity: 0.4; transform: scale(1); }
-              50% { opacity: 0.7; transform: scale(1.08); }
-            }
-
-            /* ═══ تأثير بخار الأسفلت المبلول ═══ */
-            @keyframes mist-drift {
-              0% { transform: translateX(-30%) scaleY(1); opacity: 0.3; }
-              50% { transform: translateX(10%) scaleY(1.1); opacity: 0.5; }
-              100% { transform: translateX(-30%) scaleY(1); opacity: 0.3; }
-            }
-
-            /* ═══ الأنيميشن الأصلية من Fluxora ═══ */
             .fluxora-hero-block {
               animation: fluxora-rise 0.95s cubic-bezier(0.16, 1, 0.3, 1) both;
             }
@@ -173,18 +127,18 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
               to { opacity: 1; transform: none; }
             }
 
-            /* ═══ تأثير ظهور صورة السيارة ═══ */
+            /* تأثير نعومة دخول صورة السيارة */
             .car-image {
               opacity: 0;
-              transform: scale(1.06);
+              transform: scale(1.05) translateY(10px);
               transition: opacity 1.4s cubic-bezier(0.16, 1, 0.3, 1), transform 2.6s cubic-bezier(0.16, 1, 0.3, 1);
             }
             .car-image.is-loaded {
               opacity: 1;
-              transform: scale(1);
+              transform: scale(1) translateY(0);
             }
 
-            /* ═══ الزر الملتهب ═══ */
+            /* الزر البرتقالي الملتهب (يبرز بقوة في النهار) */
             .fluxora-btn-flame {
               display: inline-flex;
               align-items: center;
@@ -195,183 +149,90 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
               color: #fff;
               font-weight: 700;
               font-family: 'Cairo', sans-serif;
-              box-shadow: 0 14px 40px rgba(255, 61, 0, 0.35);
+              box-shadow: 0 10px 30px rgba(255, 61, 0, 0.25);
               transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
               border: 0;
               cursor: pointer;
             }
             .fluxora-btn-flame:hover {
               transform: translateY(-2px);
-              box-shadow: 0 20px 52px rgba(255, 61, 0, 0.5);
+              box-shadow: 0 15px 40px rgba(255, 61, 0, 0.35);
             }
 
+            /* الزر الشفاف النهاري */
             .fluxora-btn-light {
               display: inline-flex;
               align-items: center;
               gap: 8px;
               padding: 0.72em 1.35em;
               border-radius: 999px;
-              background: rgba(255,255,255,0.95);
-              color: #180600;
+              background: rgba(255, 255, 255, 0.7);
+              backdrop-filter: blur(10px);
+              -webkit-backdrop-filter: blur(10px);
+              color: #1e293b;
               font-family: 'Cairo', sans-serif;
-              font-weight: 600;
-              box-shadow: 0 10px 26px rgba(0, 0, 0, 0.25);
-              transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-              border: 0;
+              font-weight: 700;
+              box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+              transition: transform 0.35s ease, background 0.35s ease;
+              border: 1px solid rgba(255,255,255,0.5);
               cursor: pointer;
             }
             .fluxora-btn-light:hover {
               transform: translateY(-1px);
-              background: #fff;
+              background: rgba(255, 255, 255, 0.95);
             }
 
             @media (prefers-reduced-motion: reduce) {
               .fluxora-hero-block { animation: none; }
               .car-image { opacity: 1; transform: none; }
-              .rain-drop { animation: none; display: none; }
             }
           `}</style>
 
           {/* ═══════════════════════════════════════════
-              🎨 طبقة الخلفية: سماء فاتحة ممطرة + سيارة
+              🚗 صورة السيارة (مصغرة بذكاء للموبايل)
               ═══════════════════════════════════════════ */}
-
-          {/* 🌅 السماء المتدرجة الفاتحة الجميلة */}
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'linear-gradient(175deg, #3a4f7a 0%, #5c6d93 18%, #8899b5 35%, #a8b5cc 50%, #c4ceda 65%, #7a8aa8 85%, #2d3a52 100%)',
-              zIndex: 1,
-            }}
-          />
-
-          {/* 🚗 صورة السيارة الفاخرة */}
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              zIndex: 2,
-            }}
-          >
-            <img
-              className={`car-image ${imgLoaded ? 'is-loaded' : ''}`}
-              src="https://images.unsplash.com/photo-1544636331-e26879cd4d9b?auto=format&fit=crop&w=1400&q=85"
-              alt=""
-              aria-hidden="true"
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                objectPosition: 'center 70%',
-              }}
-            />
-          </div>
-
-          {/* 🔥 وهج الأنوار البرتقالية الأمامية للسيارة (يمين ويسار) */}
-          <div
-            style={{
-              position: 'absolute',
-              bottom: '18%',
-              left: '25%',
-              width: '220px',
-              height: '120px',
-              borderRadius: '50%',
-              background: 'radial-gradient(ellipse, rgba(255, 100, 0, 0.55) 0%, rgba(255, 61, 0, 0.25) 40%, transparent 70%)',
-              filter: 'blur(30px)',
-              zIndex: 3,
-              animation: 'car-glow-pulse 3s ease-in-out infinite',
-              pointerEvents: 'none',
-            }}
-          />
-          <div
-            style={{
-              position: 'absolute',
-              bottom: '18%',
-              right: '25%',
-              width: '220px',
-              height: '120px',
-              borderRadius: '50%',
-              background: 'radial-gradient(ellipse, rgba(255, 138, 31, 0.5) 0%, rgba(255, 100, 0, 0.2) 40%, transparent 70%)',
-              filter: 'blur(30px)',
-              zIndex: 3,
-              animation: 'car-glow-pulse-2 3.5s ease-in-out infinite 0.5s',
-              pointerEvents: 'none',
-            }}
-          />
-
-          {/* 🔥 انعكاس الأنوار على الأسفلت المبلول */}
-          <div
-            style={{
-              position: 'absolute',
-              bottom: 0,
-              left: '10%',
-              right: '10%',
-              height: '25%',
-              background: 'linear-gradient(to top, rgba(255, 80, 0, 0.12) 0%, rgba(255, 120, 30, 0.06) 40%, transparent 100%)',
-              filter: 'blur(20px)',
-              zIndex: 3,
-              pointerEvents: 'none',
-            }}
-          />
-
-          {/* 💨 بخار الأسفلت المبلول */}
           <div
             style={{
               position: 'absolute',
               bottom: 0,
               left: 0,
               right: 0,
-              height: '15%',
-              background: 'linear-gradient(to top, rgba(180, 200, 220, 0.2) 0%, transparent 100%)',
-              filter: 'blur(15px)',
-              zIndex: 4,
-              animation: 'mist-drift 12s ease-in-out infinite',
-              pointerEvents: 'none',
+              // أخذت 60% من الشاشة السفلية فقط لتبقى السيارة صغيرة وواضحة جداً
+              height: '60dvh',
+              zIndex: 1,
             }}
-          />
-
-          {/* 🌧️ قطرات المطر المتساقطة */}
-          <div className="rain-container">
-            {Array.from({ length: 80 }).map((_, i) => {
-              const left = Math.random() * 100;
-              const duration = 0.6 + Math.random() * 0.7;
-              const delay = Math.random() * 3;
-              const height = 18 + Math.random() * 25;
-              const opacity = 0.15 + Math.random() * 0.3;
-              return (
-                <div
-                  key={i}
-                  className="rain-drop"
-                  style={{
-                    left: `${left}%`,
-                    height: `${height}px`,
-                    animationDuration: `${duration}s`,
-                    animationDelay: `${delay}s`,
-                    opacity,
-                  }}
-                />
-              );
-            })}
+          >
+            <img
+              className={`car-image ${imgLoaded ? 'is-loaded' : ''}`}
+              src="https://images.unsplash.com/photo-1617531653332-bd46c24f2068?auto=format&fit=crop&w=1200&q=80"
+              alt="Chic simple car"
+              aria-hidden="true"
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                // تركيز الصورة من المنتصف والأسفل لضمان ظهور السيارة بالكامل
+                objectPosition: 'center 80%',
+                // دمج قمة الصورة بسلاسة مع سماء الخلفية الزرقاء
+                WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 25%, black 100%)',
+                maskImage: 'linear-gradient(to bottom, transparent 0%, black 25%, black 100%)',
+              }}
+            />
           </div>
 
-          {/* 🎨 طبقة الضباب اللطيفة على الحواف (التعتيم) */}
+          {/* 🎨 طبقة خفيفة جداً لتحسين قراءة النصوص النهارية بدون حجب السماء */}
           <div
             style={{
               position: 'absolute',
               inset: 0,
-              zIndex: 6,
-              background: `
-                linear-gradient(264deg, rgba(10, 22, 40, 0.85) 0%, rgba(14, 20, 35, 0.55) 30%, rgba(20, 28, 45, 0.1) 55%, rgba(20, 28, 45, 0) 70%),
-                linear-gradient(0deg, rgba(9, 15, 30, 0.8) 0%, rgba(9, 15, 30, 0.1) 30%, rgba(0, 0, 0, 0) 50%),
-                linear-gradient(180deg, rgba(8, 14, 28, 0.45) 0%, rgba(0, 0, 0, 0) 25%)
-              `,
+              zIndex: 2,
+              background: 'linear-gradient(to left, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.2) 60%, transparent 100%)',
               pointerEvents: 'none',
             }}
           />
 
           {/* ═══════════════════════════════════════════
-              🚗 شريط التنقل العلوي الشفاف
+              🚗 شريط التنقل العلوي النهاري
               ═══════════════════════════════════════════ */}
           <motion.nav
             initial={{ opacity: 0, y: -16 }}
@@ -400,13 +261,13 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                 style={{
                   fontFamily: "'Inter Tight', sans-serif",
                   fontSize: '18px',
-                  fontWeight: 600,
+                  fontWeight: 700,
                   letterSpacing: '-0.025em',
-                  color: '#fff',
-                  textShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                  // لون داكن أنيق ليناسب النهار
+                  color: '#0f172a',
                 }}
               >
-                Park'n <span style={{ color: '#FF8A1F' }}>24</span>
+                Park'n <span style={{ color: '#FF6A00' }}>24</span>
               </span>
             </div>
 
@@ -422,7 +283,7 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
           </motion.nav>
 
           {/* ═══════════════════════════════════════════
-              📝 محتوى Hero الأساسي
+              📝 محتوى Hero الأساسي (ألوان نهارية)
               ═══════════════════════════════════════════ */}
           <div
             style={{
@@ -445,7 +306,7 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                   alignItems: 'center',
                   gap: '10px',
                   paddingTop: '13px',
-                  borderTop: '1px solid rgba(255, 255, 255, 0.12)',
+                  borderTop: '1.5px solid rgba(0, 0, 0, 0.08)',
                   width: 'fit-content',
                   maxWidth: '320px',
                 }}
@@ -453,8 +314,8 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
-                  stroke="rgba(255,255,255,0.5)"
-                  strokeWidth="1.3"
+                  stroke="#475569"
+                  strokeWidth="1.5"
                   width="20"
                   height="20"
                   style={{ flex: 'none' }}
@@ -467,26 +328,26 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                     fontFamily: "'Cairo', sans-serif",
                     fontSize: '11.5px',
                     lineHeight: 1.45,
-                    color: 'rgba(255,255,255,0.55)',
-                    fontWeight: 500,
+                    color: '#475569', // رمادي داكن للنهار
+                    fontWeight: 600,
                   }}
                 >
                   نخدم آلاف السائقين<br />في شوارع مصر يومياً
                 </span>
               </div>
 
-              {/* 🔥 العنوان الرئيسي الملتهب مع اللمسة المائلة */}
+              {/* 🔥 العنوان الرئيسي (أنيق وداكن) */}
               <h1
                 className="fluxora-hero-block fd-1"
                 style={{
-                  marginTop: '24px',
+                  marginTop: '22px',
                   fontFamily: "'Cairo', sans-serif",
-                  fontSize: 'clamp(2.2rem, 6.4vw, 5rem)',
-                  fontWeight: 800,
+                  fontSize: 'clamp(2.4rem, 6.4vw, 5.2rem)',
+                  fontWeight: 900,
                   lineHeight: 1.05,
                   letterSpacing: '-0.035em',
-                  color: '#fff',
-                  textShadow: '0 6px 40px rgba(0, 0, 0, 0.5)',
+                  color: '#0f172a', // كحلي غامق جداً
+                  textShadow: '0 4px 20px rgba(255, 255, 255, 0.8)', // توهج أبيض خفيف خلف النص
                 }}
               >
                 اركن عربيتك<br />
@@ -498,7 +359,7 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                     fontWeight: 400,
                     fontStyle: 'italic',
                     letterSpacing: '-0.005em',
-                    background: 'linear-gradient(96deg, #ff6a00, #ff8a1f)',
+                    background: 'linear-gradient(96deg, #ff3d00, #ff8a1f)',
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
                     backgroundClip: 'text',
@@ -512,20 +373,19 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
               <p
                 className="fluxora-hero-block fd-2"
                 style={{
-                  marginTop: '20px',
-                  maxWidth: '380px',
+                  marginTop: '16px',
+                  maxWidth: '360px',
                   fontFamily: "'Cairo', sans-serif",
                   fontSize: '14.5px',
                   lineHeight: 1.6,
-                  color: 'rgba(255, 255, 255, 0.72)',
-                  fontWeight: 500,
-                  textShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                  color: '#334155', // رمادي متوسط
+                  fontWeight: 600,
                 }}
               >
-                حتى تحت المطر.. Park'n 24 يفتحلك أقرب جراج بضغطة زر. من وسط البلد للتجمع، عربيتك في أمان.
+                نهار مشرق ويوم جميل.. Park'n 24 يفتحلك أقرب جراج بضغطة زر. من وسط البلد للتجمع، عربيتك في أمان.
               </p>
 
-              {/* 🔥 زر الحث الملتهب + الأفاتار */}
+              {/* 🔥 زر الحث + الأفاتار */}
               <div
                 className="fluxora-hero-block fd-3"
                 style={{
@@ -582,8 +442,9 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                           height: '28px',
                           marginRight: i === 0 ? 0 : '-9px',
                           borderRadius: '999px',
-                          border: '2px solid rgba(10, 22, 40, 0.7)',
+                          border: '2px solid #fff',
                           background: `linear-gradient(140deg, ${c.a}, ${c.b})`,
+                          boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
                         }}
                       />
                     ))}
@@ -592,16 +453,16 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                     style={{
                       display: 'grid',
                       fontFamily: "'Cairo', sans-serif",
-                      fontSize: '10px',
+                      fontSize: '10.5px',
                       lineHeight: 1.4,
-                      color: 'rgba(255,255,255,0.5)',
+                      color: '#475569',
                     }}
                   >
                     <strong
                       style={{
                         fontSize: '12px',
-                        fontWeight: 700,
-                        color: 'rgba(255,255,255,0.9)',
+                        fontWeight: 800,
+                        color: '#0f172a',
                       }}
                     >
                       +650 حريف سعيد
@@ -611,7 +472,7 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                 </div>
               </div>
 
-              {/* 📊 بطاقات الإحصائيات الزجاجية */}
+              {/* 📊 بطاقات الإحصائيات (الزجاج الثلجي الفاتح) */}
               <ul
                 className="fluxora-hero-block fd-4"
                 style={{
@@ -624,8 +485,8 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                 }}
               >
                 {[
-                  { value: '+150', label: 'جراج متعاون', gradient: false },
-                  { value: '98%', label: 'رضا العملاء', gradient: true },
+                  { value: '+150', label: 'جراج متعاون', flame: false },
+                  { value: '98%', label: 'رضا العملاء', flame: true },
                 ].map((stat) => (
                   <li
                     key={stat.label}
@@ -633,17 +494,17 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                       position: 'relative',
                       display: 'grid',
                       alignContent: 'space-between',
-                      width: '170px',
-                      minHeight: '110px',
+                      width: '160px',
+                      minHeight: '105px',
                       padding: '16px',
-                      border: '1px solid rgba(255, 255, 255, 0.14)',
+                      border: '1px solid rgba(255, 255, 255, 0.7)',
                       borderRadius: '16px',
-                      background: stat.gradient
-                        ? 'linear-gradient(150deg, rgba(255, 80, 0, 0.2), rgba(255, 138, 31, 0.1))'
-                        : 'rgba(15, 25, 50, 0.45)',
-                      backdropFilter: 'blur(20px) saturate(1.2)',
-                      WebkitBackdropFilter: 'blur(20px) saturate(1.2)',
-                      boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.09)',
+                      background: stat.flame
+                        ? 'linear-gradient(150deg, rgba(255, 240, 230, 0.8), rgba(255, 255, 255, 0.6))'
+                        : 'rgba(255, 255, 255, 0.55)',
+                      backdropFilter: 'blur(16px) saturate(1.2)',
+                      WebkitBackdropFilter: 'blur(16px) saturate(1.2)',
+                      boxShadow: '0 8px 30px rgba(0, 0, 0, 0.04)',
                     }}
                   >
                     <span
@@ -652,7 +513,7 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                         top: '12px',
                         left: '14px',
                         fontSize: '14px',
-                        color: 'rgba(255,255,255,0.3)',
+                        color: stat.flame ? '#ff6a00' : '#94a3b8',
                       }}
                     >
                       *
@@ -661,10 +522,10 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                       style={{
                         fontFamily: "'Cairo', sans-serif",
                         fontSize: 'clamp(1.4rem, 2.4vw, 2rem)',
-                        fontWeight: 700,
+                        fontWeight: 800,
                         lineHeight: 1,
                         letterSpacing: '-0.03em',
-                        color: '#fff',
+                        color: stat.flame ? '#ff3d00' : '#0f172a',
                       }}
                     >
                       {stat.value}
@@ -673,8 +534,8 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                       style={{
                         fontFamily: "'Cairo', sans-serif",
                         fontSize: '11px',
-                        fontWeight: 500,
-                        color: 'rgba(255,255,255,0.46)',
+                        fontWeight: 700,
+                        color: '#475569',
                       }}
                     >
                       {stat.label}
@@ -685,8 +546,8 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                         left: '14px',
                         bottom: '18px',
                         width: '14px',
-                        height: '1px',
-                        background: 'rgba(255, 255, 255, 0.2)',
+                        height: '1.5px',
+                        background: stat.flame ? 'rgba(255, 61, 0, 0.3)' : 'rgba(15, 23, 42, 0.15)',
                       }}
                     />
                   </li>
@@ -712,14 +573,15 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
               direction: 'ltr',
             }}
           >
+            {/* العلامة المائية الشفافة بالنهار */}
             <span
               style={{
                 fontFamily: "'Inter Tight', sans-serif",
                 fontSize: 'clamp(2.2rem, 8vw, 5rem)',
-                fontWeight: 700,
+                fontWeight: 800,
                 lineHeight: 0.8,
                 letterSpacing: '-0.05em',
-                color: 'rgba(255, 255, 255, 0.05)',
+                color: 'rgba(0, 0, 0, 0.04)',
                 userSelect: 'none',
               }}
             >
@@ -733,8 +595,8 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                   marginBottom: '8px',
                   fontFamily: "'Cairo', sans-serif",
                   fontSize: '11px',
-                  color: 'rgba(255,255,255,0.4)',
-                  fontWeight: 600,
+                  color: '#475569',
+                  fontWeight: 700,
                 }}
               >
                 نغطي أفخم مدن مصر
@@ -755,12 +617,12 @@ function FluxoraLanding({ onEnter }: FluxoraLandingProps) {
                     style={{
                       fontFamily: "'Cairo', sans-serif",
                       fontSize: '10.5px',
-                      fontWeight: 700,
-                      color: 'rgba(255,255,255,0.8)',
+                      fontWeight: 800,
+                      color: '#0f172a',
                       padding: '4px 10px',
                       borderRadius: '999px',
-                      border: '1px solid rgba(255,255,255,0.12)',
-                      background: 'rgba(10, 22, 40, 0.5)',
+                      border: '1px solid rgba(0,0,0,0.06)',
+                      background: 'rgba(255, 255, 255, 0.7)',
                       backdropFilter: 'blur(8px)',
                     }}
                   >
