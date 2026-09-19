@@ -96,7 +96,7 @@ function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: 
 }
 
 /* ════════════════════════════════════════════════════════════
-   ☀️ PARK'N 24 HERO — FULL-SCREEN CINEMATIC BLEND
+   ☀️ PARK'N 24 HERO — FULL-SCREEN CINEMATIC BLEND (FIXED CACHE)
    ════════════════════════════════════════════════════════════ */
 interface ParkLandingProps {
   onEnter: () => void;
@@ -112,6 +112,9 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
 
   const BRAND_BLUE = '#1656b8';
   const BRAND_GREEN = '#8cc63f';
+
+  // ⚡ تم تغيير رقم الإصدار هنا لـ v=999 لإجبار المتصفح على حذف كاش الصورة القديمة فوراً وعرض المضغوطة الجديدة
+  const CAR_IMAGE_SRC = '/hero-car.webp?v=999';
 
   return (
     <AnimatePresence>
@@ -146,7 +149,7 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
               padding: 0.8em 1.2em 0.8em 2.2em;
               border-radius: 999px;
               background: linear-gradient(135deg, #1d68dc 0%, #1656b8 100%);
-              color: #fff;
+              color: #fff !important;
               font-weight: 900;
               font-family: 'Cairo', sans-serif;
               box-shadow: 0 12px 35px rgba(22, 86, 184, 0.45);
@@ -171,7 +174,7 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
               background: rgba(15, 23, 42, 0.6);
               backdrop-filter: blur(16px);
               -webkit-backdrop-filter: blur(16px);
-              color: #f8fafc;
+              color: #f8fafc !important;
               font-family: 'Cairo', sans-serif;
               font-weight: 800;
               font-size: 13px;
@@ -182,24 +185,24 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             }
             .btn-glass-skip:hover {
               background: rgba(255, 255, 255, 0.2);
-              color: #ffffff;
+              color: #ffffff !important;
             }
           `}</style>
 
           {/* 🚗 1. خلفية الصورة المدمجة بكامل الشاشة */}
           <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
             <img
-  src="https://images.unsplash.com/photo-1617531653332-bd46c24f2068?auto=format&fit=crop&w=1080&q=70&fm=webp"
-  alt="Park'n 24 Car"
-  loading="eager"
-  fetchPriority="high"
-  className="w-full h-full object-cover object-center"
-  style={{
-    filter: 'brightness(0.95) contrast(1.05)',
-  }}
-/>
+              src={CAR_IMAGE_SRC}
+              alt="Park'n 24 Car"
+              loading="eager"
+              fetchPriority="high"
+              className="w-full h-full object-cover object-center"
+              style={{
+                filter: 'brightness(0.95) contrast(1.05)',
+              }}
+            />
 
-            {/* 🎨 2. تدرجات الدمج السينمائي الذكي (تزيل أي خطوط أو انقسامات) */}
+            {/* 🎨 2. تدرجات الدمج السينمائي الذكي */}
             <div
               className="absolute inset-0"
               style={{
