@@ -1782,10 +1782,10 @@ export default function GarageDashboard() {
               <input type="date" value={logDateTo} onChange={e => setLogDateTo(e.target.value)} className="flex-1 font-bold outline-none text-center text-[10px] p-1.5 rounded border border-slate-200" style={{ color: BRAND.blue }} />
             </div>
 
-            <div className="flex gap-1 mb-2">
-              <button onClick={() => { setLogDateFrom(getLocalToday()); setLogDateTo(getLocalToday()); }} className="flex-1 font-black py-1 rounded text-[9px] border-0 text-white cursor-pointer" style={{ background: BRAND.blue }}>📅 اليوم</button>
-              <button onClick={() => { const d = new Date(getServerNow()); d.setDate(d.getDate() - 7); setLogDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`); setLogDateTo(getLocalToday()); }} className="flex-1 font-bold py-1 rounded text-[9px] border bg-white cursor-pointer" style={{ borderColor: BRAND.border }}>آخر أسبوع</button>
-            </div>
+<div className="flex gap-1 mb-2">
+  <button onClick={() => { setLogDateFrom(getLocalToday()); setLogDateTo(getLocalToday()); }} className="flex-1 font-black py-1 rounded text-[9px] border-0 text-white cursor-pointer" style={{ background: BRAND.blue }}>📅 اليوم</button>
+  <button onClick={() => { const d = new Date(getServerNow()); const firstDay = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; setLogDateFrom(firstDay); setLogDateTo(getLocalToday()); }} className="flex-1 font-bold py-1 rounded text-[9px] border bg-white cursor-pointer" style={{ borderColor: BRAND.border }}>📅 الشهر كامل</button>
+</div>
 
             <div className="flex gap-1">
               {[{ id: 'all', label: 'الكل' }, { id: 'cash', label: 'نقدي' }, { id: 'wallet', label: 'محفظة' }].map(f => (
