@@ -25,10 +25,10 @@ const BRAND = {
   blue: '#1656b8',       // الأزرق الرسمي للوجو
   blueDark: '#0f3d85',   // الكحلي الفخم
   blueLight: '#e8f0fe',  // الأزرق الفاتح جداً
-  blueSoft: '#f0f5ff',   // خلفية ناعمة مريحة
+  blueSoft: 'rgba(22, 86, 184, 0.08)', // كحلي زجاجي ناعم
   green: '#8cc63f',      // الأخضر الرسمي للوجو
   greenDark: '#6ea62a',  // أخضر داكن للخطوط والنصوص
-  greenLight: '#f2fae6', // خلفية خضراء ناعمة
+  greenLight: 'rgba(140, 198, 63, 0.12)', // خلفية خضراء ناعمة
   navy: '#0a1628',       // الكحلي الليلي الغامق
   slate: '#475569',      // الرمادي الهادئ
   slateMuted: '#94a3b8', // الرمادي الباهت
@@ -476,18 +476,6 @@ const OwnerValetLocationBanner = memo(function OwnerValetLocationBanner({
 // ==========================================
 // أدوات مساعدة
 // ==========================================
-
-const toMs = (value: any): number => {
-  if (!value) return 0;
-  if (typeof value === 'string') {
-    const ms = new Date(value).getTime();
-    return Number.isFinite(ms) && ms > 0 ? ms : 0;
-  }
-  if (typeof value === 'number') {
-    return value < 1_000_000_000_000 ? value * 1000 : value;
-  }
-  return 0;
-};
 
 const formatElapsed = (totalSeconds: number): string => {
   if (totalSeconds < 0) totalSeconds = 0;
@@ -1059,30 +1047,7 @@ export default function GarageDashboard() {
     );
   }, [undoTick, sessions]);
 
-  // 🛡️ حظر السايس الحقيقي فقط
-  if (isValetBlocked && garage) {
-    return (
-      <ValetGeofenceBlockScreen
-        geofenceState={geofenceState}
-        garageName={garage.name}
-        valetName={currentValetName || currentValetNameLocal || `سايس ${valetNumber}`}
-        distance={geofenceState.distance}
-        onRetry={handleGeofenceRetry}
-      />
-    );
-  }
-
-  if (!garage) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center px-6" style={{ background: BRAND.bg, color: BRAND.navy }}>
-        <div style={{ background: BRAND.card, borderRadius: 28, padding: 32, textAlign: 'center', maxWidth: 360, width: '100%', boxShadow: '0 4px 20px rgba(0,0,0,0.04)', border: `1px solid ${BRAND.border}` }}>
-          <div style={{ fontSize: 48, marginBottom: 14 }}>⏳</div>
-          <h2 className="font-black text-base" style={{ color: BRAND.navy, marginBottom: 8 }}>جاري تحميل البيانات</h2>
-          <p className="font-bold text-xs" style={{ color: BRAND.slateMuted, lineHeight: 1.8 }}>انتظر لحظة...</p>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => { return () => { try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }; }, []);
 
   const handleAddCar = async () => {
     if (!newCarPlate.trim()) { toast.error('أدخل رقم السيارة'); return; }
