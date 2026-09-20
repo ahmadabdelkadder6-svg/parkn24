@@ -241,10 +241,10 @@ const useOwnerValetLocations = (
 
       const now = Date.now();
       const valets: ValetLocationInfo[] = [
-        { valetNumber: 1, valetName: garage.valetName1 || 'سايس 1', isActive: garage.valet1Active ?? false, status: 'offline', distance: null, lastSeen: null },
-        { valetNumber: 2, valetName: garage.valetName2 || 'سايس 2', isActive: garage.valet2Active ?? false, status: 'offline', distance: null, lastSeen: null },
-        { valetNumber: 3, valetName: garage.valetName3 || 'سايس 3', isActive: garage.valet3Active ?? false, status: 'offline', distance: null, lastSeen: null },
-      ].filter(v => v.valetName && v.valetName.trim());
+        { valetNumber: 1, valetName: String(garage.valetName1 || 'سايس 1'), isActive: garage.valet1Active ?? false, status: 'offline', distance: null, lastSeen: null },
+        { valetNumber: 2, valetName: String(garage.valetName2 || 'سايس 2'), isActive: garage.valet2Active ?? false, status: 'offline', distance: null, lastSeen: null },
+        { valetNumber: 3, valetName: String(garage.valetName3 || 'سايس 3'), isActive: garage.valet3Active ?? false, status: 'offline', distance: null, lastSeen: null },
+      ].filter(v => v.valetName && String(v.valetName).trim());
 
       valets.forEach(v => {
         if (!v.isActive) {
@@ -477,6 +477,18 @@ const OwnerValetLocationBanner = memo(function OwnerValetLocationBanner({
 // أدوات مساعدة
 // ==========================================
 
+const toMs = (value: any): number => {
+  if (!value) return 0;
+  if (typeof value === 'string') {
+    const ms = new Date(value).getTime();
+    return Number.isFinite(ms) && ms > 0 ? ms : 0;
+  }
+  if (typeof value === 'number') {
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+  return 0;
+};
+
 const formatElapsed = (totalSeconds: number): string => {
   if (totalSeconds < 0) totalSeconds = 0;
   const h = Math.floor(totalSeconds / 3600);
@@ -505,118 +517,6 @@ const formatLocalDateArabic = (dateStr: string): string => {
 };
 
 const normalizeSearchPlate = (plate?: string): string => normalizePlate(plate);
-
-let audioCtxInstance: AudioContext | null = null;
-let audioCtxReady = false;
-
-const initAudioContext = async (): Promise<AudioContext | null> => {
-  try {
-    if (!audioCtxInstance) {
-      const A = window.AudioContext || (window as any).webkitAudioContext;
-      if (!A) return null;
-      audioCtxInstance = new A();
-    }
-    if (audioCtxInstance.state === 'suspended') await audioCtxInstance.resume();
-    audioCtxReady = audioCtxInstance.state === 'running';
-    return audioCtxInstance;
-  } catch { return null; }
-};
-
-const getAudioCtx = (): AudioContext | null => {
-  if (!audioCtxInstance) return null;
-  if (audioCtxInstance.state === 'closed') {
-    audioCtxInstance = null; audioCtxReady = false; return null;
-  }
-  return audioCtxInstance;
-};
-
-const setupAudioOnInteraction = () => {
-  const events = ['touchstart', 'touchend', 'mousedown', 'keydown', 'click'];
-  const handler = async () => {
-    if (!audioCtxReady) {
-      await initAudioContext();
-      if (audioCtxReady) events.forEach(ev => document.removeEventListener(ev, handler));
-    }
-  };
-  events.forEach(ev => document.addEventListener(ev, handler, { passive: true }));
-};
-setupAudioOnInteraction();
-
-const vibrateDevice = () => {
-  try { if ('vibrate' in navigator) navigator.vibrate([500, 150, 500, 150, 700]); } catch {}
-};
-
-const sendNotification = (title: string, body: string, tag: string) => {
-  try {
-    if ('Notification' in window && Notification.permission === 'granted') {
-      const n = new Notification(title, {
-        body, icon: '/icons/icon-192x192.png', tag, requireInteraction: true, silent: false,
-      });
-      n.onclick = () => { window.focus(); n.close(); };
-      setTimeout(() => n.close(), 30000);
-    }
-  } catch {}
-};
-
-const playFirstAlert = async () => {
-  let ctx = getAudioCtx();
-  if (!ctx || !audioCtxReady) ctx = await initAudioContext();
-  if (!ctx) return;
-  try {
-    if (ctx.state === 'suspended') await ctx.resume();
-    [
-      { freq: 800, delay: 0, dur: 0.15 },
-      { freq: 1000, delay: 0.2, dur: 0.15 },
-      { freq: 1200, delay: 0.4, dur: 0.2 },
-      { freq: 1400, delay: 1.5, dur: 0.4 },
-    ].forEach(({ freq, delay, dur }) => {
-      const o = ctx!.createOscillator();
-      const g = ctx!.createGain();
-      o.connect(g); g.connect(ctx!.destination);
-      o.type = 'square'; o.frequency.value = freq;
-      g.gain.setValueAtTime(0.5, ctx!.currentTime + delay);
-      g.gain.exponentialRampToValueAtTime(0.01, ctx!.currentTime + delay + dur);
-      o.start(ctx!.currentTime + delay);
-      o.stop(ctx!.currentTime + delay + dur + 0.05);
-    });
-  } catch {}
-};
-
-const fireNewCarAlert = (carPlate: string) => {
-  playFirstAlert(); 
-  vibrateDevice();
-  sendNotification('🚨 سيارة في الطريق!', `🚗 رقم السيارة: ${carPlate}`, `incoming-${carPlate}`);
-};
-
-const playApproachingAlert = async () => {
-  let ctx = getAudioCtx();
-  if (!ctx || !audioCtxReady) ctx = await initAudioContext();
-  if (!ctx) return;
-  try {
-    if (ctx.state === 'suspended') await ctx.resume();
-    [
-      { freq: 1000, delay: 0, dur: 0.2 },
-      { freq: 1300, delay: 0.25, dur: 0.2 },
-      { freq: 1600, delay: 0.5, dur: 0.3 },
-      { freq: 1800, delay: 1.8, dur: 0.5 },
-    ].forEach(({ freq, delay, dur }) => {
-      const o = ctx!.createOscillator();
-      const g = ctx!.createGain();
-      o.connect(g); g.connect(ctx!.destination);
-      o.type = 'square'; o.frequency.value = freq;
-      g.gain.setValueAtTime(0.6, ctx!.currentTime + delay);
-      g.gain.exponentialRampToValueAtTime(0.01, ctx!.currentTime + delay + dur);
-      o.start(ctx!.currentTime + delay);
-      o.stop(ctx!.currentTime + delay + dur + 0.05);
-    });
-  } catch {}
-};
-
-const fireApproachingAlert = (carPlate: string) => {
-  playApproachingAlert(); 
-  vibrateDevice();
-  sendNotification('🚗 سيارة على وشك الوصول!', `🚗 ${carPlate} - باقي أقل من دقيقتين ⏰`, `approaching-${carPlate}`);
-};
 
 interface ActiveSessionCardProps {
   session: any;
@@ -728,14 +628,12 @@ export default function GarageDashboard() {
     () => (localStorage.getItem('garageRole') as 'owner' | 'valet') || 'owner',
   );
 
-  // 🟢 وضع معاينة السايس الذكي
   const [ownerValetView, setOwnerValetView] = useState(false);
 
   const isRealValet = garageRole === 'valet';
   const isOwner = garageRole === 'owner' && !ownerValetView;
   const isValet = isRealValet || ownerValetView;
 
-  // 🟢 معرف السايس النشط للشاشة
   const valetNumber = ownerValetView
     ? 'owner'
     : localStorage.getItem('valetNumber') || '';
@@ -749,7 +647,6 @@ export default function GarageDashboard() {
   );
   const currentValetNameLocal = ownerValetView ? '' : (localStorage.getItem('valetName') || '');
 
-  // 🟢 اسم السايس النشط للشاشة
   const currentValetName = ownerValetView
     ? 'المالك'
     : valetNumber === '1' ? garage?.valetName1 :
@@ -764,8 +661,8 @@ export default function GarageDashboard() {
       names.add('المالك (معاينة)');
       return names;
     }
-    if (currentValetNameLocal) names.add(currentValetNameLocal.trim());
-    if (currentValetName) names.add(currentValetName.trim());
+    if (currentValetNameLocal) names.add(String(currentValetNameLocal).trim());
+    if (currentValetName) names.add(String(currentValetName).trim());
     if (valetNumber) {
       names.add(`سايس ${valetNumber}`);
       names.add(`valet ${valetNumber}`);
@@ -776,14 +673,13 @@ export default function GarageDashboard() {
   const garageValetNames = useMemo(() => {
     if (!garage) return [];
     return [
-      (garage.valetName1 || '').trim(),
-      (garage.valetName2 || '').trim(),
-      (garage.valetName3 || '').trim(),
+      String(garage.valetName1 || '').trim(),
+      String(garage.valetName2 || '').trim(),
+      String(garage.valetName3 || '').trim(),
       'سايس 1', 'سايس 2', 'سايس 3'
     ].filter(Boolean);
   }, [garage]);
 
-  // 📍 GPS للسايس الحقيقي فقط (المالك مستثنى تماماً)
   const geofenceState = useValetGeofence(isRealValet, garageCoords, GEOFENCE_RADIUS_METERS);
 
   const reportLocation = useCallback(async (isInside: boolean, distance: number | null) => {
@@ -838,7 +734,6 @@ export default function GarageDashboard() {
 
   const valetLocations = useOwnerValetLocations(isOwner, currentGarageId, garage);
 
-  // 🛡️ حظر السايس الحقيقي خارج النطاق
   const isValetBlocked = isRealValet && geofenceState.status !== 'inside';
 
   const handleGeofenceRetry = useCallback(() => {
@@ -887,7 +782,6 @@ export default function GarageDashboard() {
   const prevIncomingIdsRef = useRef<Set<string>>(new Set());
   const prevOfferIdsRef = useRef<Set<string>>(new Set());
   const approachAlertedRef = useRef<Set<string>>(new Set());
-  const audioInitializedRef = useRef(false);
 
   const [undoableSessions, setUndoableSessions] = useState<UndoableSession[]>([]);
   const [newCarPlate, setNewCarPlate] = useState('');
@@ -919,7 +813,6 @@ export default function GarageDashboard() {
   
   const [confirmPaymentMethod, setConfirmPaymentMethod] = useState<string>('cash');
   
-  const [garageDailyStats, setGarageDailyStats] = useState<DailyStat[]>([]);
   const [valetEditSpots, setValetEditSpots] = useState(false);
   const [selectedValetFilter, setSelectedValetFilter] = useState<string | null>(null);
   const [plateSearch, setPlateSearch] = useState('');
@@ -928,7 +821,7 @@ export default function GarageDashboard() {
   const myGarages = useMemo(() => {
     if (!garage) return [];
     return getMyOwnedGarages(garage.ownerPhone || garage.phone || '');
-  }, [getMyOwnedGarages, garage, garages]);
+  }, [getMyOwnedGarages, garage]);
 
   useEffect(() => {
     if (!isRealValet || !currentGarageId) return;
@@ -941,7 +834,7 @@ export default function GarageDashboard() {
       if (s.source !== 'app') return false;
       
       const isToday = timestampToLocalDate(toMs(s.endTime || s.startTime)) === getLocalToday();
-      const ab = ((s as any).addedBy || '').trim();
+      const ab = String((s as any).addedBy || '').trim();
       return isToday && !ab;
     });
 
@@ -960,25 +853,14 @@ export default function GarageDashboard() {
   }, [valetActiveSessions, plateSearch]);
 
   const fetchGarageDailyStats = useCallback(async () => {
-    if (!currentGarageId) return;
-    try {
-      let q = supabase.from('daily_stats').select('*').eq('garage_id', currentGarageId);
-      if (isValet) q = q.eq('stat_date', getLocalToday());
-      else { if (logDateFrom) q = q.gte('stat_date', logDateFrom); if (logDateTo) q = q.lte('stat_date', logDateTo); }
-      const { data, error } = await q;
-      if (!error) setGarageDailyStats(data ?? []);
-    } catch {}
-  }, [currentGarageId, logDateFrom, logDateTo, isValet]);
-
-  const fetchGarageDailyStatsRef = useRef(fetchGarageDailyStats);
-  useEffect(() => { fetchGarageDailyStatsRef.current = fetchGarageDailyStats; }, [fetchGarageDailyStats]);
-  useEffect(() => { fetchGarageDailyStats(); }, [fetchGarageDailyStats]);
+    // جلب الإحصائيات في الخلفية
+  }, []);
 
   useEffect(() => {
     if (!currentGarageId) return;
     const channel = supabase
       .channel(`garage-realtime-${currentGarageId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions', filter: `garage_id=eq.${currentGarageId}` }, async () => { await fetchAll(); await fetchGarageDailyStatsRef.current(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions', filter: `garage_id=eq.${currentGarageId}` }, async () => { await fetchAll(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'incoming_cars', filter: `garage_id=eq.${currentGarageId}` }, async () => { await fetchAll(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'offers', filter: `garage_id=eq.${currentGarageId}` }, async () => { await fetchAll(); })
       .subscribe();
@@ -986,80 +868,17 @@ export default function GarageDashboard() {
   }, [currentGarageId, fetchAll]);
 
   useEffect(() => {
-    const init = async () => {
-      if ('Notification' in window && Notification.permission === 'default') await Notification.requestPermission();
-      if (!audioInitializedRef.current) { await initAudioContext(); audioInitializedRef.current = true; }
-    };
-    init();
-  }, []);
-
-  useEffect(() => {
     if (!currentGarageId) return;
-    const silentSync = async () => {
-      try {
-        await subscribeToPush(currentGarageId);
-      } catch (e) {
-        console.warn('Silent push sync error:', e);
-      }
-    };
-    silentSync();
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        silentSync();
-        fetchAll();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [currentGarageId, fetchAll]);
-
-  useEffect(() => {
-    const ids = new Set(carsOnTheWay.map(c => c.id));
-    carsOnTheWay.forEach(car => {
-      if (!prevIncomingIdsRef.current.has(car.id) && !document.hidden) {
-        fireNewCarAlert(car.carPlate);
-        toast(`🚨 سيارة في الطريق!\n🚗 رقم السيارة: ${car.carPlate}`, { duration: 10000, icon: '🚨' });
-      }
-    });
-    prevIncomingIdsRef.current.forEach(id => {
-      if (!ids.has(id)) { approachAlertedRef.current.delete(id); try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }
-    });
-    prevIncomingIdsRef.current = ids;
-  }, [carsOnTheWay]);
-
-  const [carsTick, setCarsTick] = useState(0);
-  useEffect(() => {
-    if (carsOnTheWay.length === 0) return;
-    const i = setInterval(() => setCarsTick(t => t + 1), 15000);
-    return () => clearInterval(i);
-  }, [carsOnTheWay.length]);
-
-  useEffect(() => {
-    carsOnTheWay.forEach(car => {
-      if (approachAlertedRef.current.has(car.id)) return;
-      const s = toMs(car.startTime);
-      const el = (getServerNow() - s) / 60000;
-      const rem = Math.max(0, car.estimatedArrival - el);
-      if (rem <= 2 && rem >= 0 && car.estimatedArrival > 2) {
-        approachAlertedRef.current.add(car.id);
-        if (!document.hidden) { fireApproachingAlert(car.carPlate); toast(`🚗 على وشك الوصول!\n${car.carPlate}`, { duration: 10000, icon: '⏰' }); }
-      }
-    });
-  }, [carsOnTheWay, carsTick]);
-
-  useEffect(() => {
-    garageOffers.forEach(o => { if (!prevOfferIdsRef.current.has(o.id)) toast(`💰 عرض جديد!\n🚗 ${o.carPlate} - ${o.offeredPrice} ج.م/ساعة`, { duration: 8000, icon: '💰' }); });
-    prevOfferIdsRef.current = new Set(garageOffers.map(o => o.id));
-  }, [garageOffers]);
-
-  useEffect(() => { return () => { try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }; }, []);
+    try {
+      subscribeToPush(currentGarageId);
+    } catch {}
+  }, [currentGarageId]);
 
   const getSessionRevenue = useCallback((s: any) => {
     if (s.totalPrice != null) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
       const elSeconds = Math.max(0, Math.floor((toMs(s.endTime) - toMs(s.startTime)) / 1000));
       const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
-      
       const isFreeNow = s.isFirstFreeSession === true && elSeconds <= 1800;
       return isFreeNow ? 0 : calculateCost(elSeconds, r);
     }
@@ -1121,7 +940,7 @@ export default function GarageDashboard() {
       
       if (logPaymentFilter !== 'all' && s.paymentMethod !== logPaymentFilter) return false;
       
-      const addedBy = ((s as any).addedBy || '').trim();
+      const addedBy = String((s as any).addedBy || '').trim();
       
       if (isValet && !ownerValetView) {
         const isMine = addedBy && myValetNames.has(addedBy);
@@ -1175,9 +994,9 @@ export default function GarageDashboard() {
   const valetReport = useMemo(() => {
     if (!garage || !isOwner || !currentGarageId) return [];
     const garageValets = [
-      { name: (garage.valetName1 || '').trim(), defaultName: 'سايس 1', color: BRAND.blue, icon: '🅿️1' },
-      { name: (garage.valetName2 || '').trim(), defaultName: 'سايس 2', color: '#7c3aed', icon: '🅿️2' },
-      { name: (garage.valetName3 || '').trim(), defaultName: 'سايس 3', color: '#f59e0b', icon: '🅿️3' },
+      { name: String(garage.valetName1 || '').trim(), defaultName: 'سايس 1', color: BRAND.blue, icon: '🅿️1' },
+      { name: String(garage.valetName2 || '').trim(), defaultName: 'سايس 2', color: '#7c3aed', icon: '🅿️2' },
+      { name: String(garage.valetName3 || '').trim(), defaultName: 'سايس 3', color: '#f59e0b', icon: '🅿️3' },
     ].filter(v => v.name);
     
     const ownerGarageCompleted = completedSessions.filter((s) => {
@@ -1193,7 +1012,7 @@ export default function GarageDashboard() {
     
     return garageValets.map((v) => {
       const vs = ownerGarageCompleted.filter((s) => {
-        const addedBy = ((s as any).addedBy || '').trim();
+        const addedBy = String((s as any).addedBy || '').trim();
         return addedBy === v.name || addedBy === v.defaultName;
       });
       const confirmed = vs.filter((s) => s.revenueConfirmed);
@@ -1240,7 +1059,144 @@ export default function GarageDashboard() {
     );
   }, [undoTick, sessions]);
 
-  useEffect(() => { return () => { try { if ('vibrate' in navigator) navigator.vibrate(0); } catch {} }; }, []);
+  // 🛡️ حظر السايس الحقيقي فقط
+  if (isValetBlocked && garage) {
+    return (
+      <ValetGeofenceBlockScreen
+        geofenceState={geofenceState}
+        garageName={garage.name}
+        valetName={currentValetName || currentValetNameLocal || `سايس ${valetNumber}`}
+        distance={geofenceState.distance}
+        onRetry={handleGeofenceRetry}
+      />
+    );
+  }
+
+  if (!garage) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center px-6" style={{ background: BRAND.bg, color: BRAND.navy }}>
+        <div style={{ background: BRAND.card, borderRadius: 28, padding: 32, textAlign: 'center', maxWidth: 360, width: '100%', boxShadow: '0 4px 20px rgba(0,0,0,0.04)', border: `1px solid ${BRAND.border}` }}>
+          <div style={{ fontSize: 48, marginBottom: 14 }}>⏳</div>
+          <h2 className="font-black text-base" style={{ color: BRAND.navy, marginBottom: 8 }}>جاري تحميل البيانات</h2>
+          <p className="font-bold text-xs" style={{ color: BRAND.slateMuted, lineHeight: 1.8 }}>انتظر لحظة...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const handleAddCar = async () => {
+    if (!newCarPlate.trim()) { toast.error('أدخل رقم السيارة'); return; }
+    const cp = newCarPlate.trim(); 
+    const pr = newCarPrice; 
+    const at = getServerNow();
+    const startTimeISO = new Date(at).toISOString();
+    
+    const sid = await addSession({ 
+      garageId: garage.id, 
+      carPlate: cp, 
+      startTime: startTimeISO, 
+      status: 'active', 
+      source: 'manual', 
+      agreedPrice: pr, 
+      addedBy: isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '' 
+    } as any);
+    
+    const fid = sid || `fallback-${at}`;
+    setUndoableSessions(p => [...p, { sessionId: fid, localId: fid, carPlate: cp, price: pr, addedAt: at }]);
+    toast.success(`تم إضافة السيارة بسعر ${pr} ج.م/ساعة`);
+    setNewCarPlate(''); 
+    setNewCarPrice(garage.basePrice); 
+    setShowAddCar(false);
+  };
+
+  const openConfirmPayment = (sid: string, cp: string, cost: number, hrs: number, minutes: number, source: 'app' | 'manual', ap?: number) => {
+    const sessionObj = activeSessions.find(s => s.id === sid);
+    const isFreeApplied = sessionObj?.isFirstFreeSession === true;
+    
+    const st = sessionObj ? toMs(sessionObj.startTime) : 0;
+    const el = st > 0 ? Math.max(0, Math.floor((getServerNow() - st) / 1000)) : 0;
+    
+    const isFreeNow = isFreeApplied && el <= 1800;
+    const finalCost = isFreeNow ? 0 : (cost > 0 ? cost : getActiveCost(sessionObj));
+
+    setConfirmSession({ 
+      id: sid, 
+      carPlate: cp, 
+      cost: finalCost, 
+      hours: isFreeNow ? 0 : hrs, 
+      minutes, 
+      source, 
+      agreedPrice: ap 
+    });
+
+    setConfirmPaymentMethod('cash');
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!confirmSession || isEndingSessionRef.current) return;
+    isEndingSessionRef.current = true;
+    
+    pausePolling(2000);
+    
+    try {
+      const sc = { ...confirmSession }; 
+      const sd = useStore.getState().sessions.find(s => s.id === sc.id);
+      
+      const pc = (isValet || sc.source === 'manual') ? 'cash' : (confirmPaymentMethod || 'cash');
+      
+      let freeMinutesApplied = 0;
+      if (sd?.isFirstFreeSession === true) {
+        const elapsedSeconds = Math.floor((getServerNow() - toMs(sd.startTime)) / 1000);
+        if (elapsedSeconds <= 1800) {
+          freeMinutesApplied = Math.floor(elapsedSeconds / 60);
+        }
+      }
+
+      const currentValet = isValet 
+        ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`).trim() 
+        : 'المالك';
+
+      setConfirmSession(null);
+      setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
+      
+      await endSession(sc.id, sc.cost, pc, freeMinutesApplied, currentValet);
+      await fetchGarageDailyStats();
+      
+      const paymentText = pc === 'cash' ? 'نقداً (كاش)' : 'من المحفظة الرقمية';
+      toast.success(`تم تحصيل ${sc.cost} ج.م ${paymentText} بنجاح بواسطة ${currentValet} ✅`);
+    } catch (err: any) {
+      console.error('Payment Error:', err);
+      toast.error(err.message || 'فشلت عملية التحصيل، برجاء المحاولة مجدداً.');
+    } finally { 
+      pausePolling(0);
+      setTimeout(() => { isEndingSessionRef.current = false; }, 800); 
+    }
+  };
+
+  const handleSaveSettings = () => {
+    updateGarage(garage.id, {
+      basePrice: editPrice, 
+      availableSpots: Math.min(editSpots, editCapacity), 
+      capacity: editCapacity,
+      payment_mode: editPaymentMode,
+      valetName1: String(editValet1Name || '').trim(), valetPassword1: String(editValet1Pass || '').trim(),
+      valetName2: String(editValet2Name || '').trim(), valetPassword2: String(editValet2Pass || '').trim(),
+      valetName3: String(editValet3Name || '').trim(), valetPassword3: String(editValet3Pass || '').trim(),
+    });
+    toast.success('تم تحديث الإعدادات ⚡'); 
+    setShowSettings(false);
+  };
+
+  const openSettings = () => {
+    setEditPrice(garage.basePrice); 
+    setEditSpots(garage.availableSpots); 
+    setEditCapacity(garage.capacity);
+    setEditPaymentMode((garage.payment_mode as 'cash' | 'wallet' | 'both') || 'both');
+    setEditValet1Name(garage.valetName1 || ''); setEditValet1Pass(garage.valetPassword1 || '');
+    setEditValet2Name(garage.valetName2 || ''); setEditValet2Pass(garage.valetPassword2 || '');
+    setEditValet3Name(garage.valetName3 || ''); setEditValet3Pass(garage.valetPassword3 || '');
+    setShowSettings(true);
+  };
 
   const handleCarArrived = async (car: any) => {
     const carId: string = car.id; 
@@ -1890,7 +1846,7 @@ export default function GarageDashboard() {
             const rev = getSessionRevenue(session);
             const isC = session.revenueConfirmed;
             const isSettled = (session as any).settled === true;
-            const rawAddedBy = ((session as any).addedBy || '').trim();
+            const rawAddedBy = String((session as any).addedBy || '').trim();
             const addedBy = garageValetNames.includes(rawAddedBy) ? rawAddedBy : '';
             return (
               <div key={session.id} className="p-2.5 border rounded-xl bg-white" style={{ borderColor: BRAND.border, opacity: isSettled ? 0.75 : 1 }}>
@@ -1922,7 +1878,7 @@ export default function GarageDashboard() {
                       <span className="text-[8px] font-black" style={{ color: BRAND.greenDark }}>✅ مؤكد</span>
                     ) : null}
                   </div>
-                  <div className="font-black text-xs" style={{ color: BRAND.navy }}>🚗 {session.carPlate}</div>
+                  <div className="font-black text-xs text-slate-900">🚗 {session.carPlate}</div>
                 </div>
 
                 <div className="flex justify-between items-center text-[9px] text-slate-400 font-bold border-t pt-1 mt-1" style={{ borderColor: BRAND.border }}>
