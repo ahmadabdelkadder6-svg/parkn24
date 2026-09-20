@@ -1291,13 +1291,11 @@ export default function GarageDashboard() {
   const handleConfirmPayment = async () => {
     if (!confirmSession || isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
-    
     pausePolling(2000);
     
     try {
       const sc = { ...confirmSession }; 
-      const sd = useStore.getState().sessions.find(s => s.id === sc.id);
-      
+      const sd = (sessions || []).find(s => s && s.id === sc.id);
       const pc = (isValet || sc.source === 'manual') ? 'cash' : (confirmPaymentMethod || 'cash');
       
       let freeMinutesApplied = 0;
@@ -1315,14 +1313,16 @@ export default function GarageDashboard() {
       setConfirmSession(null);
       setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
       
+      // 🌟 [السطر السحري الجديد]: تصغير وتصفير البحث فوراً لإرجاع القائمة كاملة
+      setPlateSearch(''); 
+
       await endSession(sc.id, sc.cost, pc, freeMinutesApplied, currentValet);
-      await fetchGarageDailyStats();
       
       const paymentText = pc === 'cash' ? 'نقداً (كاش)' : 'من المحفظة الرقمية';
-      toast.success(`تم تحصيل ${sc.cost} ج.م ${paymentText} بنجاح بواسطة ${currentValet} ✅`);
+      toast.success(`تم تحصيل ${sc.cost} ج.م ${paymentText} بنجاح ✅`);
     } catch (err: any) {
       console.error('Payment Error:', err);
-      toast.error(err.message || 'فشلت عملية التحصيل، برجاء المحاولة مجدداً.');
+      toast.error(err.message || 'فشلت عملية التحصيل');
     } finally { 
       pausePolling(0);
       setTimeout(() => { isEndingSessionRef.current = false; }, 800); 
