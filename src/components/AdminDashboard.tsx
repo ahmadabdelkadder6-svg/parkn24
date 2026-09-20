@@ -332,14 +332,22 @@ export default function AdminDashboard() {
   };
 
   const handleAdminEnterGarage = (g: typeof garages[0]) => {
-    localStorage.removeItem('garageRole');
+    // 1️⃣ تثبيت دور المالك المباشر لمنع مطالبة الأدمن بأي كلمات مرور للسياس
+    localStorage.setItem('garageRole', 'owner');
     localStorage.removeItem('valetNumber');
     localStorage.removeItem('valetName');
-    localStorage.removeItem('currentGarageId');
-    localStorage.setItem('garagePrefillUsername', g.username);
-    localStorage.setItem('garagePrefillPhone', g.phone);
-    setCurrentGarageId(null);
+    
+    // 2️⃣ ربط معرف الجراج المختار مباشرة في التخزين المحلي والـ Store لفتح البوابة فوراً
+    localStorage.setItem('currentGarageId', g.id);
+    setCurrentGarageId(g.id);
+    
+    // 3️⃣ توجيه الرؤية فوراً لشاشة الجراج لتعرض لوحة التحكم مباشرة وبسلاسة
     setView('garage');
+    
+    toast.success(`👋 تم الدخول المباشر لإدارة جراج: ${g.name}`, {
+      icon: '🅿️',
+      duration: 3000
+    });
   };
 
   const handleApproveTopUp = async (id: string, amount: number) => {
