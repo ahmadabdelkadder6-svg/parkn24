@@ -257,19 +257,28 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
+// 🛡️ دالة البصمة الأمنية المحدثة للوحات لمنع الاحتيال وتكرار العروض تماماً
 export const getPlateFingerprint = (plate?: string): string => {
   if (!plate) return '';
 
+  // 1️⃣ تنظيف مبدئي وإزالة الفراغات والتشكيل
   let str = plate
     .trim()
     .toUpperCase()
-    .replace(/[\u064B-\u065F\u0670]/g, '')
-    .replace(/[\s\-_.\/\\,|+*#@!~]/g, '');
+    .replace(/[\u064B-\u065F\u0670]/g, '') // إزالة علامات التشكيل والتنوين
+    .replace(/[\s\-_.\/\\,|+*#@!~()_]/g, ''); // إزالة كافة الرموز والمسافات والشرطات
 
-  str = str
-    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶٧٨٩'.indexOf(d)));
+  // 2️⃣ توحيد وتحويل الأرقام الهندية/الشرقية والشرقية المتطرفة إلى أرقام غربية قياسية (0-9)
+  const easternArabicNums = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+  const persianNums = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+  const standardNums = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
+  for (let i = 0; i < 10; i++) {
+    str = str.replace(new RegExp(easternArabicNums[i], 'g'), standardNums[i]);
+    str = str.replace(new RegExp(persianNums[i], 'g'), standardNums[i]);
+  }
+
+  // 3️⃣ خريطة تحويل الحروف الإنجليزية إلى حروف عربية كصمام أمان
   const enToArMap: Record<string, string> = {
     'A': 'ا', 'B': 'ب', 'C': 'س', 'D': 'د', 'E': 'ي', 'F': 'ف',
     'G': 'ج', 'H': 'ه', 'I': 'ي', 'J': 'ج', 'K': 'ك', 'L': 'ل',
@@ -279,9 +288,10 @@ export const getPlateFingerprint = (plate?: string): string => {
   };
   str = str.replace(/[A-Z]/g, (char) => enToArMap[char] || '');
 
+  // 4️⃣ توحيد الحروف المتشابهة لمنع العميل من الاحتيال بكتابة (ة) بدل (هـ) أو (أ) بدل (ا)
   const arNormalizeMap: Record<string, string> = {
     'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ٱ': 'ا', 'ء': 'ا',
-    'ة': 'ت',
+    'ة': 'ه', 'ت': 'ه', // توحيد التاء المربوطة والمفتوحة بالهاء في البصمة لمنع تكرار العرض
     'ى': 'ي', 'ئ': 'ي', 'ی': 'ي',
     'ؤ': 'و',
     'ك': 'ك', 'ک': 'ك',
@@ -289,6 +299,7 @@ export const getPlateFingerprint = (plate?: string): string => {
   };
   str = str.replace(/./g, (char) => arNormalizeMap[char] || char);
 
+  // 5️⃣ فرز الحروف الصافية والأرقام لإنتاج البصمة الأمنية المشتركة
   const letters = str.replace(/[^ \u0600-\u06FF]/g, '').replace(/\s+/g, '');
   const digits = str.replace(/[^0-9]/g, '');
 
@@ -340,7 +351,7 @@ export const syncServerClock = async () => {
       method: 'HEAD',
       headers: { 
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` // 👈 تم إضافة مفتاح التوثيق لحل الـ 401
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` 
       }
     });
     const t1 = Date.now();
@@ -351,12 +362,12 @@ export const syncServerClock = async () => {
       serverTimeOffset = serverTimestamp - Date.now();
     }
   } catch (e) {
-    // Graceful fallback
+    // Fallback
   } finally {
     isSyncingClock = false;
   }
 };
-// 🌟 قراءة الوقت الموحد الحقيقي المتطابق مع السيرفر
+
 export const getServerNow = (): number => {
   return Date.now() + serverTimeOffset;
 };
@@ -412,7 +423,7 @@ const mapGarage = (r: any): Garage => ({
   valet3Active: r.valet3_active !== false,
   isActive: r.is_active !== false,
   payment_mode: r.payment_mode || 'both', 
-  area: r.area || 'مناطق أخرى', // 🗺️ قراءة عمود المنطقة من قاعدة البيانات
+  area: r.area || 'مناطق أخرى', 
 });
 
 const mapSession = (r: any): ParkingSession => {
@@ -847,7 +858,6 @@ export const useStore = create<AppState>((set, get) => ({
       return;
     }
 
-    // مزامنة التوقيت الذري في الخلفية
     syncServerClock();
 
     const [g, activeAndUnsettledRes, recentSettledRes, o, w, ic, msgs] = await Promise.all([
@@ -1032,7 +1042,7 @@ export const useStore = create<AppState>((set, get) => ({
       valet_name_3: (g as any).valetName3 || '', valet_password_3: (g as any).valetPassword3 || '',
       is_active: true,
       payment_mode: 'both', 
-      area: (g as any).area || 'مناطق أخرى', // 🗺️ حفظ المنطقة الجغرافية
+      area: (g as any).area || 'مناطق أخرى', 
     }).select();
     if (!error && data) set((st) => ({ garages: [...st.garages, ...data.map(mapGarage)] }));
   },
@@ -1070,7 +1080,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (updates.valetName3 !== undefined) db.valet_name_3 = updates.valetName3;
     if (updates.valetPassword3 !== undefined) db.valet_password_3 = updates.valetPassword3;
     if (updates.payment_mode !== undefined) db.payment_mode = updates.payment_mode; 
-    if (updates.area !== undefined) db.area = updates.area; // 🗺️ تحديث حقل المنطقة
+    if (updates.area !== undefined) db.area = updates.area; 
 
     pendingGarageUpdates.set(id, db);
     if (updateGarageTimeout) clearTimeout(updateGarageTimeout);
@@ -1180,7 +1190,6 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
 
-      // ⏱️ توحيد توقيت البداية بالسيرفر الذري
       const startTimeISO = typeof s.startTime === 'string' ? s.startTime : new Date(getServerNow()).toISOString();
 
       const optimisticSession: ParkingSession = {

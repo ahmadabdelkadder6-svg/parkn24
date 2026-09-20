@@ -24,10 +24,22 @@ export default function RegisterScreen() {
     setPhone(digitsOnly);
   };
 
-  // 🚗 قبول الحروف العربية والأرقام فقط في اللوحة
+  // 🚗 فلترة صارمة للغاية لرقم اللوحة (حروف عربية وأرقام ومسافات فقط)
   const handlePlateChange = (val: string) => {
-    const arabicPlateOnly = val.replace(/[^0-9\u0600-\u06FF\s]/g, '');
-    setCarPlate(arabicPlateOnly);
+    // 🇪🇬 السماح فقط بالحروف العربية (أ-ي)، الأرقام العربية (٠-٩)، الأرقام العادية (0-9)، والمسافة
+    const cleaned = val.replace(/[^\u0621-\u064A\u0660-\u06690-9\s]/g, '');
+    
+    // منع المسافات المتكررة
+    const singleSpaceOnly = cleaned.replace(/\s+/g, ' ');
+
+    if (val !== cleaned) {
+      toast.error('يرجى كتابة الحروف العربية والأرقام فقط 🇪🇬', {
+        id: 'plate-lang-warn',
+        duration: 2000,
+      });
+    }
+
+    setCarPlate(singleSpaceOnly);
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -45,9 +57,24 @@ export default function RegisterScreen() {
       return; 
     }
 
+    const plateTrimmed = carPlate.trim();
+    if (!plateTrimmed) {
+      toast.error('يرجى إدخال رقم اللوحة');
+      return;
+    }
+
+    // 🛡️ فحص أمان اللوحة: يجب أن تحتوي على حروف عربية وأرقام معاً (وليس نوعاً واحداً فقط)
+    const hasArabicLetters = /[\u0621-\u064A]/.test(plateTrimmed);
+    const hasNumbers = /[\u0660-\u06690-9]/.test(plateTrimmed);
+
+    if (!hasArabicLetters || !hasNumbers) {
+      toast.error('رقم اللوحة غير مكتمل! يجب إدخال حروف عربية وأرقام معاً (مثال: أ ب ج ١٢٣)');
+      return;
+    }
+
     const cleanPlate = normalizePlate(carPlate);
     if (!cleanPlate) { 
-      toast.error('يرجى إدخال رقم اللوحة بالحروف والأرقام العربية'); 
+      toast.error('يرجى إدخال رقم اللوحة بالحروف والأرقام العربية المعتمدة'); 
       return; 
     }
 
@@ -87,7 +114,7 @@ export default function RegisterScreen() {
           </motion.div>
           <h2 className="text-2xl font-black text-white">سجل بياناتك للبدء</h2>
           
-          {/* 🎁 بانر ترويجي للـ 30 دقيقة المجانية بخط أسود تقيل جداً وواضح */}
+          {/* 🎁 بانر ترويجي للـ 30 دقيقة المجانية */}
           <div 
             className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-2xl shadow-lg shadow-amber-500/20"
             style={{
@@ -99,7 +126,7 @@ export default function RegisterScreen() {
             <span 
               style={{
                 color: '#000000',
-                fontWeight: 950,
+                fontWeight: 955,
                 fontSize: '12px',
                 letterSpacing: '0.2px',
               }}

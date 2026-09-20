@@ -287,9 +287,9 @@ export default function GarageListScreen() {
             <h1 className="text-lg font-black" style={{ color: BRAND.blueDark }}>
               أهلاً {currentUser?.name || 'بك'} 👋
             </h1>
-            <p className="text-xs font-semibold mt-0.5" style={{ color: BRAND.slate }}>
-              رصيدك وسيارتك في مكان واحد
-            </p>
+<p className="text-xs font-semibold mt-0.5" style={{ color: BRAND.slate }}>
+  اركن وادفع بضغطة واحدة.. بدون لفة وبدون فكة 🚗
+</p>
           </div>
           <span className="font-black text-xl" style={{ color: BRAND.blue }}>
             بركن <span style={{ color: BRAND.green }}>24</span>
@@ -639,7 +639,7 @@ const GarageCard = memo(function GarageCard({
     if (isFull) return 'ممتلئ';
     if (hasActiveSession) return 'الجلسة النشطة ⚡';
     if (hasIncomingCar) return 'الحجز النشط 📍';
-    return `احجز الآن (قريب)`;
+    return 'احجز الآن';
   })();
 
   return (
@@ -656,34 +656,46 @@ const GarageCard = memo(function GarageCard({
         cursor: isFull ? 'not-allowed' : 'pointer',
       }}
     >
-      {/* سطر الاسم والتقييم */}
+      {/* سطر الاسم + التقييم + طريقة الدفع */}
       <div className="flex justify-between items-center mb-1">
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-wrap">
           <span className="flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded" style={{ background: '#fef3c7', color: '#b45309' }}>
             <Star size={8} fill="currentColor" /> {garage.rating}
           </span>
+
+          {/* 💰 طريقة الدفع واضحة من الخارج */}
+          {garage.payment_mode === 'cash' && (
+            <span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa' }}>
+              💵 نقدي
+            </span>
+          )}
           {garage.payment_mode === 'wallet' && (
-            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-slate-100" style={{ color: BRAND.slate }}>👝 محفظة فقط</span>
+            <span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#f0f5ff', color: BRAND.blue, border: `1px solid ${BRAND.border}` }}>
+              👝 محفظة
+            </span>
+          )}
+          {garage.payment_mode === 'both' && (
+            <span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#f0fdf4', color: BRAND.greenDark, border: `1px solid #bbf7d0` }}>
+              💵👝 نقدي ومحفظة
+            </span>
           )}
         </div>
         <h4 className="text-xs font-black" style={{ color: BRAND.blueDark }}>{garage.name}</h4>
       </div>
 
-      {/* سطر الموقع المبسط */}
+      {/* الموقع */}
       <div className="flex items-center gap-1 justify-end text-[10px] mb-2" style={{ color: BRAND.slate }}>
         <span>{garage.location}</span>
         <MapPin size={10} />
       </div>
 
-      {/* البيانات الرئيسية: الوقت والشاغر والسعر */}
+      {/* البيانات: الوقت + الشاغر + السعر */}
       <div className="flex items-center justify-between mt-2 pt-2 border-t" style={{ borderColor: BRAND.border }}>
-        {/* الوقت */}
         <div className="flex items-center gap-1 text-[10px] font-bold" style={{ color: BRAND.slate }}>
           <Navigation size={10} className="rotate-45" />
           <span>{formatDuration(garage.minutes)}</span>
         </div>
 
-        {/* الأماكن المتاحة والسعر */}
         <div className="flex items-center gap-3 text-xs">
           <div className="flex items-center gap-1">
             <span className="font-mono font-black" style={{ color: BRAND.blue }}>{garage.availableSpots}</span>
@@ -696,7 +708,7 @@ const GarageCard = memo(function GarageCard({
         </div>
       </div>
 
-      {/* زر الحجز الموحد */}
+      {/* زر الحجز */}
       <button
         disabled={isFull || disabled}
         className="w-full border-0 font-black py-2.5 rounded-10 mt-3 text-xs text-white cursor-pointer"
