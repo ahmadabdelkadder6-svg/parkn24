@@ -257,7 +257,7 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-// 🛡️ دالة البصمة الفولاذية الموحدة للوحات السيارات (تمنع التحايل تماماً 100%)
+// 🛡️ دالة البصمة الفولاذية الموحدة لجميع لوحات السيارات (تمنع التحايل ومطابقة لقاعدة البيانات القديمة 100%)
 export const getPlateFingerprint = (plate?: any): string => {
   if (!plate) return '';
   let str = String(plate).trim();
@@ -271,10 +271,10 @@ export const getPlateFingerprint = (plate?: any): string => {
   // 3️⃣ تفكيك الـ Unicode لتوحيد الحروف المركبة (NFKD Normalization)
   str = str.normalize('NFKD');
 
-  // 4️⃣ حذف الهمزات العائمة وعلامات التشكيل بعد التفكيك
+  // 4️⃣ حذف الهمزات وعلامات التشكيل بعد التفكيك
   str = str.replace(/[\u064B-\u065F\u0670\u0654\u0655\u0653]/g, '');
 
-  // 5️⃣ تحويل كافة الأرقام الهندية/الشرقية (١٢٣) والفارسية (۱۲۳) إلى أرقام عادية (123)
+  // 5️⃣ تحويل كافة الأرقام الهندية والشرقية (١٢٣ / ۱۲۳) إلى أرقام عادية (123)
   const easternDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
   const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
   for (let i = 0; i <= 9; i++) {
@@ -293,7 +293,7 @@ export const getPlateFingerprint = (plate?: any): string => {
   };
   str = str.replace(/[A-Z]/g, (ch) => enToAr[ch] || '');
 
-  // 7️⃣ 🌟 [توحيد الحروف المتشابهة لقطع أي محاولة تحايل]:
+  // 7️⃣ توحيد الحروف المتشابهة لقطع أي محاولة تلاعب
   // تحويل كافة أشكال الألف والهمزات (أ / إ / آ / ٱ / ا) إلى حرف "ا" موحد
   str = str.replace(/[\u0622\u0623\u0625\u0671\u0672\u0673\u0675\u0627]/g, 'ا');
 
@@ -309,13 +309,16 @@ export const getPlateFingerprint = (plate?: any): string => {
   // توحيد الكاف الفارسية والمعربة (ک / گ -> ك)
   str = str.replace(/[کگ]/g, 'ك');
 
-  // 8️⃣ عزل الحروف الصافية والأرقام لإنتاج بصمة رقمية لا تقبل التكرار
+  // 8️⃣ عزل الحروف الصافية والأرقام
   const letters = str.replace(/[^ا-ي]/g, '');
   const digits = str.replace(/[^0-9]/g, '');
 
   if (!letters && !digits) return '';
+  if (!letters) return `_${digits}`;
+  if (!digits) return `${letters}_`;
 
-  return `${letters}${digits}`;
+  // 🌟 إرجاع البصمة بالشرطة السفلية لضمان مطابقة الـ Database القديمة والجديدة فوراً!
+  return `${letters}_${digits}`;
 };
 
 export const normalizePlate = (plate?: any): string => {
