@@ -1882,20 +1882,12 @@ export default function GarageDashboard() {
                 </div>
 
                 <div className="flex justify-between items-center text-[9px] text-slate-400 font-bold border-t pt-1 mt-1" style={{ borderColor: BRAND.border }}>
-                  {/* 👤 عرض من المسؤول عن الجلسة */}
-                  <span style={{ color: BRAND.slate }}>
-                    👤 بواسطة: <b style={{ color: BRAND.navy }}>{session.addedBy || 'المالك'}</b>
-                  </span>
-                  
+                  <span>{session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📱 تحويل'}</span>
                   {time && <span className="font-mono">{time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })} · {time.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}</span>}
                 </div>
-
-                <div className="flex items-center justify-start mt-1">
-                  <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white" style={{ background: isSettled ? BRAND.slateMuted : session.paymentMethod === 'cash' ? BRAND.greenDark : session.paymentMethod === 'wallet' ? BRAND.blue : '#fb923c' }}>
-                    {session.paymentMethod === 'cash' ? '💵 نقدي كاش' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📱 تحويل'}
-                  </span>
-                </div>
+              </div>
             );
+
           })}
           {filteredCompleted.length === 0 && (
             <div className="text-center py-6 border-2 border-dashed rounded-xl text-xs font-bold" style={{ borderColor: BRAND.border, color: BRAND.slateMuted }}>
