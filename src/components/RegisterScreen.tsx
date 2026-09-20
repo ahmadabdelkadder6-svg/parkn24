@@ -18,9 +18,17 @@ export default function RegisterScreen() {
     setName(arabicOnly);
   };
 
-  // 📱 قبول 11 رقماً فقط في الهاتف
+  // 📱 فلترة لحظية فائقة الذكاء أثناء الكتابة للهواتف المصرية
   const handlePhoneChange = (val: string) => {
-    const digitsOnly = val.replace(/[^\d]/g, '').slice(0, 11);
+    // 1️⃣ تحويل الأرقام الهندية/الشرقية (٠-٩) إلى أرقام عادية (0-9)
+    let digits = val;
+    const arabicNums = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+    for (let i = 0; i < 10; i++) {
+      digits = digits.split(arabicNums[i]).join(String(i));
+    }
+    
+    // 2️⃣ إزالة أي شيء ليس رقماً والالتزام بـ 11 خانة كحد أقصى
+    const digitsOnly = digits.replace(/[^\d]/g, '').slice(0, 11);
     setPhone(digitsOnly);
   };
 
@@ -47,13 +55,21 @@ export default function RegisterScreen() {
     if (loading) return;
 
     if (!name.trim() || name.trim().length < 3) { 
-      toast.error('يرجى إدخال اسمك باللغة العربية'); 
+      toast.error('يرجى إدخال اسمك باللغة العربية (3 حروف على الأقل)'); 
       return; 
     }
     
+    // 🇪🇬 الفحص الصارم والدقيق لشبكات المحمول المصرية المعتمدة
     const cleanPhone = normalizePhone(phone);
-    if (cleanPhone.length !== 11 || !cleanPhone.startsWith('01')) { 
-      toast.error('رقم الموبايل يجب أن يتكون من 11 رقماً ويبدأ بـ 01 (مثل: 010 / 011 / 012 / 015)'); 
+    
+    // Regex فحص: 11 رقماً، يبدأ بـ 01 ثم (0 أو 1 أو 2 أو 5) ثم 8 أرقام
+    const isValidEgyptianMobile = /^01[0125][0-9]{8}$/.test(cleanPhone);
+
+    if (!isValidEgyptianMobile) { 
+      toast.error('رقم الهاتف غير صحيح! يجب أن يتكون من 11 رقماً ويبدأ بـ (010 / 011 / 012 / 015) 🇪🇬', {
+        duration: 4500,
+        icon: '📱'
+      }); 
       return; 
     }
 
@@ -153,13 +169,13 @@ export default function RegisterScreen() {
             </div>
           </div>
 
-          {/* الهاتف (11 رقم) */}
+          {/* الهاتف (11 رقم مصري معتمد) */}
           <div>
             <div className="flex justify-between items-center mb-1.5 mr-1">
               <span className="text-[10px] font-mono font-black text-blue-400" dir="ltr">
                 {phone.length}/11
               </span>
-              <label className="text-xs font-black text-slate-400">رقم الموبايل (11 رقم)</label>
+              <label className="text-xs font-black text-slate-400">رقم الموبايل (مثال: 012 / 010 / 011 / 015)</label>
             </div>
             <div className="relative">
               <input

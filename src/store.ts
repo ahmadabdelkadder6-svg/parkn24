@@ -257,70 +257,102 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-// 🛡️ دالة البصمة الأمنية المحدثة للوحات لمنع الاحتيال وتكرار العروض تماماً
-export const getPlateFingerprint = (plate?: string): string => {
+// 🛡️ دالة البصمة الفولاذية الموحدة للوحات السيارات (تمنع التحايل تماماً 100%)
+export const getPlateFingerprint = (plate?: any): string => {
   if (!plate) return '';
+  let str = String(plate).trim();
 
-  // 1️⃣ تنظيف مبدئي وإزالة الفراغات والتشكيل
-  let str = plate
-    .trim()
-    .toUpperCase()
-    .replace(/[\u064B-\u065F\u0670]/g, '') // إزالة علامات التشكيل والتنوين
-    .replace(/[\s\-_.\/\\,|+*#@!~()_]/g, ''); // إزالة كافة الرموز والمسافات والشرطات
+  // 1️⃣ إزالة المسافات الصامتة والفواصل الخفية ورموز الـ Unicode الخاصة
+  str = str.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '');
 
-  // 2️⃣ توحيد وتحويل الأرقام الهندية/الشرقية والشرقية المتطرفة إلى أرقام غربية قياسية (0-9)
-  const easternArabicNums = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
-  const persianNums = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
-  const standardNums = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+  // 2️⃣ إزالة التطويل والكشيدة (ـ) والتشكيل والتنوين
+  str = str.replace(/\u0640/g, '');
 
-  for (let i = 0; i < 10; i++) {
-    str = str.replace(new RegExp(easternArabicNums[i], 'g'), standardNums[i]);
-    str = str.replace(new RegExp(persianNums[i], 'g'), standardNums[i]);
+  // 3️⃣ تفكيك الـ Unicode لتوحيد الحروف المركبة (NFKD Normalization)
+  str = str.normalize('NFKD');
+
+  // 4️⃣ حذف الهمزات العائمة وعلامات التشكيل بعد التفكيك
+  str = str.replace(/[\u064B-\u065F\u0670\u0654\u0655\u0653]/g, '');
+
+  // 5️⃣ تحويل كافة الأرقام الهندية/الشرقية (١٢٣) والفارسية (۱۲۳) إلى أرقام عادية (123)
+  const easternDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+  const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+  for (let i = 0; i <= 9; i++) {
+    str = str.split(easternDigits[i]).join(String(i));
+    str = str.split(persianDigits[i]).join(String(i));
   }
 
-  // 3️⃣ خريطة تحويل الحروف الإنجليزية إلى حروف عربية كصمام أمان
-  const enToArMap: Record<string, string> = {
+  // 6️⃣ تحويل الحروف الإنجليزية إلى عربية في حال حاول كتابتها بالإنجليزية
+  str = str.toUpperCase();
+  const enToAr: Record<string, string> = {
     'A': 'ا', 'B': 'ب', 'C': 'س', 'D': 'د', 'E': 'ي', 'F': 'ف',
     'G': 'ج', 'H': 'ه', 'I': 'ي', 'J': 'ج', 'K': 'ك', 'L': 'ل',
     'M': 'م', 'N': 'ن', 'O': 'و', 'P': 'ب', 'Q': 'ق', 'R': 'ر',
     'S': 'س', 'T': 'ط', 'U': 'و', 'V': 'ف', 'W': 'و', 'X': 'س',
     'Y': 'ي', 'Z': 'ز'
   };
-  str = str.replace(/[A-Z]/g, (char) => enToArMap[char] || '');
+  str = str.replace(/[A-Z]/g, (ch) => enToAr[ch] || '');
 
-  // 4️⃣ توحيد الحروف المتشابهة لمنع العميل من الاحتيال بكتابة (ة) بدل (هـ) أو (أ) بدل (ا)
-  const arNormalizeMap: Record<string, string> = {
-    'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ٱ': 'ا', 'ء': 'ا',
-    'ة': 'ه', 'ت': 'ه', // توحيد التاء المربوطة والمفتوحة بالهاء في البصمة لمنع تكرار العرض
-    'ى': 'ي', 'ئ': 'ي', 'ی': 'ي',
-    'ؤ': 'و',
-    'ك': 'ك', 'ک': 'ك',
-    'پ': 'ب', 'چ': 'ج', 'ژ': 'ز', 'گ': 'ك', 'ڤ': 'ف',
-  };
-  str = str.replace(/./g, (char) => arNormalizeMap[char] || char);
+  // 7️⃣ 🌟 [توحيد الحروف المتشابهة لقطع أي محاولة تحايل]:
+  // تحويل كافة أشكال الألف والهمزات (أ / إ / آ / ٱ / ا) إلى حرف "ا" موحد
+  str = str.replace(/[\u0622\u0623\u0625\u0671\u0672\u0673\u0675\u0627]/g, 'ا');
 
-  // 5️⃣ فرز الحروف الصافية والأرقام لإنتاج البصمة الأمنية المشتركة
-  const letters = str.replace(/[^ \u0600-\u06FF]/g, '').replace(/\s+/g, '');
+  // توحيد الهمزات المنفصلة وعلى الياء والواو (ء / ئ / ؤ)
+  str = str.replace(/[ءئ]/g, 'ي').replace(/ؤ/g, 'و');
+
+  // توحيد التاء المربوطة بالهاء (ة -> ه)
+  str = str.replace(/ة/g, 'ه');
+
+  // توحيد الألف المقصورة بالياء (ى -> ي)
+  str = str.replace(/[ىی]/g, 'ي');
+
+  // توحيد الكاف الفارسية والمعربة (ک / گ -> ك)
+  str = str.replace(/[کگ]/g, 'ك');
+
+  // 8️⃣ عزل الحروف الصافية والأرقام لإنتاج بصمة رقمية لا تقبل التكرار
+  const letters = str.replace(/[^ا-ي]/g, '');
   const digits = str.replace(/[^0-9]/g, '');
 
   if (!letters && !digits) return '';
-  if (!letters) return `_${digits}`;
-  if (!digits) return `${letters}_`;
 
-  return `${letters}_${digits}`;
+  return `${letters}${digits}`;
 };
 
-export const normalizePlate = (plate?: string): string => {
+export const normalizePlate = (plate?: any): string => {
   return getPlateFingerprint(plate);
 };
 
-export const normalizePhone = (phone?: string): string => {
+// 📱 دالة تنظيف وتوحيد رقم الهاتف المصري
+export const normalizePhone = (phone?: any): string => {
   if (!phone) return '';
-  let clean = phone.replace(/[^\d]/g, '');
+  let str = String(phone).trim();
+
+  // تحويل الأرقام الهندية/الشرقية (٠-٩) إلى أرقام إنجليزية (0-9)
+  const arabicNums = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+  for (let i = 0; i < 10; i++) {
+    str = str.replace(new RegExp(arabicNums[i], 'g'), String(i));
+  }
+
+  // إزالة أي رموز أو حروف ومسافات
+  let clean = str.replace(/[^\d]/g, '');
+
+  // إزالة كود مصر الدولي (+20 أو 0020 أو 20) إن وجد
   if (clean.startsWith('0020')) clean = clean.substring(4);
   else if (clean.startsWith('20')) clean = clean.substring(2);
-  if (!clean.startsWith('0') && clean.length === 10) clean = '0' + clean;
+
+  // لو المستخدم بدأ بـ 10 أو 11 أو 12 أو 15 مباشرة (بدون الصفر الأول) بنضيف الصفر تلقائياً
+  if ((clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('12') || clean.startsWith('15')) && clean.length === 10) {
+    clean = '0' + clean;
+  }
+
   return clean.substring(0, 11);
+};
+
+// 🇪🇬 دالة فحص صارمة للتأكد أن الرقم مصري صحيح (11 رقم ويبدأ بـ 010 / 011 / 012 / 015)
+export const isValidEgyptianPhone = (phone: string): boolean => {
+  const clean = normalizePhone(phone);
+  // فحص: 11 رقم، يبدأ بـ 01، ثم يليه (0 أو 1 أو 2 أو 5)، ثم 8 أرقام
+  return /^01[0125][0-9]{8}$/.test(clean);
 };
 
 const samePlate = (a?: string, b?: string) =>
