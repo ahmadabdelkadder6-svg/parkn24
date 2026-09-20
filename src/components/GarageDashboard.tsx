@@ -1815,6 +1815,60 @@ export default function GarageDashboard() {
                   </div>
                 </div>
 
+                {/* 📊 بانر العمولة وصافي الأرباح مع كارت تسوية الحساب المالي */}
+                {filteredStats.totalCommission > 0 && (
+                  <div className="space-y-2 mb-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="text-center transition-all" style={{ background: BRAND.card, border: `1px solid ${BRAND.border}`, borderRadius: 16, padding: '8px 10px' }}>
+                        <div className="font-bold mb-0.5" style={{ fontSize: 9, color: BRAND.slate }}>عمولة التطبيق</div>
+                        <div className="font-black font-mono leading-none" style={{ fontSize: 16, color: '#f59e0b' }}>
+                          {filteredStats.totalCommission.toFixed(0)} <span style={{ fontSize: 9 }}>ج.م</span>
+                        </div>
+                      </div>
+
+                      <div className="text-center transition-all" style={{ background: BRAND.card, border: `1px solid ${BRAND.border}`, borderRadius: 16, padding: '8px 10px' }}>
+                        <div className="font-bold mb-0.5" style={{ fontSize: 9, color: BRAND.slate }}>صافي أرباحك</div>
+                        <div className="font-black font-mono leading-none" style={{ fontSize: 16, color: BRAND.greenDark }}>
+                          {filteredStats.totalNet.toFixed(0)} <span style={{ fontSize: 9 }}>ج.m</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ⚖️ كارت تسوية الحساب المالي مع التطبيق */}
+                    {(() => {
+                      const settlement = filteredStats.activeWallet - filteredStats.activeCommission;
+                      const isGarageOwed = settlement > 0;
+                      const absSettlement = Math.abs(settlement).toFixed(0);
+
+                      if (settlement === 0 && filteredStats.activeWallet === 0 && filteredStats.activeCommission === 0) return null;
+
+                      return (
+                        <div 
+                          className="text-center transition-all p-3.5 border rounded-xl" 
+                          style={{ 
+                            background: settlement === 0 ? BRAND.blueSoft : isGarageOwed ? BRAND.greenLight : '#fff5f5', 
+                            borderColor: settlement === 0 ? BRAND.blue : isGarageOwed ? BRAND.green : '#fca5a5' 
+                          }}
+                        >
+                          <div className="flex justify-between items-center">
+                            <div className="font-black font-mono text-base" style={{ color: settlement === 0 ? BRAND.blue : isGarageOwed ? BRAND.greenDark : '#c53030' }}>
+                              {absSettlement} ج.م
+                            </div>
+                            <div className="text-right">
+                              <div className="font-black text-xs" style={{ color: BRAND.navy }}>
+                                {settlement === 0 ? '⚖️ الحساب متزن تماماً' : isGarageOwed ? '🟢 مستحق لك طرف التطبيق' : '🔴 مستحق عليك للتطبيق'}
+                              </div>
+                              <div className="font-bold text-[9px] mt-0.5" style={{ color: BRAND.slate }}>
+                                {isGarageOwed ? 'مبالغ المحفظة المستلمة أكبر من العمولة' : 'عمولة التطبيق أكبر من تحصيلات المحفظة'}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
                 {valetReport.length > 0 && (
                   <div className="mb-3 space-y-1.5">
                     <h4 className="font-black text-[10px] text-right" style={{ color: BRAND.slate }}>تقرير السياس</h4>
@@ -1882,8 +1936,18 @@ export default function GarageDashboard() {
                 </div>
 
                 <div className="flex justify-between items-center text-[9px] text-slate-400 font-bold border-t pt-1 mt-1" style={{ borderColor: BRAND.border }}>
-                  <span>{session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📱 تحويل'}</span>
+                  {/* 👤 عرض من المسؤول عن الجلسة */}
+                  <span style={{ color: BRAND.slate }}>
+                    👤 بواسطة: <b style={{ color: BRAND.navy }}>{session.addedBy || 'المالك'}</b>
+                  </span>
+                  
                   {time && <span className="font-mono">{time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })} · {time.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}</span>}
+                </div>
+
+                <div className="flex items-center justify-start mt-1">
+                  <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white" style={{ background: isSettled ? BRAND.slateMuted : session.paymentMethod === 'cash' ? BRAND.greenDark : session.paymentMethod === 'wallet' ? BRAND.blue : '#fb923c' }}>
+                    {session.paymentMethod === 'cash' ? '💵 نقدي كاش' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📱 تحويل'}
+                  </span>
                 </div>
               </div>
             );
