@@ -4,13 +4,30 @@ import {
   Shield, Clock, CheckCircle, XCircle, MapPin, Warehouse, Plus,
   MessageCircle, Send, Receipt, Search, HardHat, Percent, DollarSign,
   Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown,
-  Settings, CalendarDays, Navigation, Globe,
+  Settings, CalendarDays, Navigation, Globe, X
 } from 'lucide-react';
-// 🌟 استيراد getServerNow لتوحيد وضبط التوقيت الدولي ومنع فرق الثواني في الإقفال المالي والتسويات
+// 🌟 استيراد المزامنة الأمنية ودوال الهوية الموحدة من الـ Store
 import { useStore, pausePolling, normalizePlate, normalizePhone, calculateBonus, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
+
+/* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
+const BRAND = {
+  blue: '#1656b8',       // الأزرق الرسمي
+  blueDark: '#0f3d85',   // الكحلي الداكن
+  blueLight: '#e8f0fe',  // الأزرق الفاتح جداً
+  blueSoft: '#f0f5ff',   // خلفية ناعمة
+  green: '#8cc63f',      // الأخضر الرسمي
+  greenDark: '#6ea62a',  // الأخضر الداكن
+  greenLight: '#f2fae6', // الخلفية الخضراء الناعمة
+  navy: '#0a1628',       // الكحلي الليلي الغامق
+  slate: '#475569',      // الرمادي الهادئ
+  slateMuted: '#94a3b8', // الرمادي الباهت
+  border: '#e2e8f0',     // الحدود الرمادية الهادئة
+  card: '#ffffff',       // الكروت البيضاء النظيفة
+  bg: '#f4f7fc',         // الخلفية العامة المريحة
+};
 
 /* ─── Helpers ─── */
 const toMs = (value: any): number => {
@@ -139,7 +156,7 @@ export default function AdminDashboard() {
 
   useEffect(() => { fetchSettlements(); }, [fetchSettlements]);
 
-  /* ─── Revenue Calculation with 30 Minutes Free Gift Logic ─── */
+  /* ─── Revenue Calculation ─── */
   const getRevenue = useCallback((s: any) => {
     if (s.totalPrice != null) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
@@ -149,7 +166,7 @@ export default function AdminDashboard() {
       const rate = Number(s.agreedPrice ?? g?.basePrice ?? 0);
       const elapsedSeconds = Math.max(0, Math.floor((en - st) / 1000));
 
-      // 🎁 الهدية الترحيبية: 30 دقيقة مجاناً (1800 ثانية). إذا تجاوزها يُحاسب بالكامل
+      // 🎁 الهدية الترحيبية: 30 دقيقة مجاناً
       const isFreeNow = s.isFirstFreeSession === true && elapsedSeconds <= 1800;
       return isFreeNow ? 0 : calculateCost(elapsedSeconds, rate);
     }
@@ -298,7 +315,7 @@ export default function AdminDashboard() {
       valetName1: gValet1Name, valetPassword1: gValet1Pass,
       valetName2: gValet2Name, valetPassword2: gValet2Pass,
       valetName3: gValet3Name, valetPassword3: gValet3Pass,
-      area: gArea, // 🗺️ إرسال المنطقة المختارة للجراج الجديد
+      area: gArea, 
     } as any);
     setGName(''); setGUser(''); setGPhone('');
     setGArea('وسط البلد');
@@ -309,7 +326,6 @@ export default function AdminDashboard() {
   };
 
   const handleSaveCommission = (garageId: string) => {
-    // 🗺️ تحديث نسبة العمولة والمنطقة معاً في قاعدة البيانات والستور
     updateGarage(garageId, { commissionRate: editCommissionRate, area: editArea });
     setEditingCommissionGarageId(null);
     toast.success(`تم تحديث بيانات جراج ${garages.find(g => g.id === garageId)?.name} بنجاح ✅`);
@@ -577,69 +593,56 @@ export default function AdminDashboard() {
   }, [fetchAll]);
 
   return (
-    <div className="h-full overflow-y-auto pt-16" style={{ background: '#EBF2FF', color: '#0A1628', padding: 16 }}>
+    <div className="h-full overflow-y-auto pt-16 px-4 pb-12" style={{ background: BRAND.bg, color: BRAND.navy }}>
 
       {/* ══ Header ══ */}
-      <div className="flex justify-between items-center mb-6 pb-4" style={{ borderBottom: '2px solid #D0DCFF' }}>
-        <button onClick={() => { localStorage.removeItem('adminSession'); logout(); }} className="font-black active:scale-95 transition-all"
-          style={{ background: 'linear-gradient(135deg,#FF3333,#CC0000)', color: '#fff', padding: '10px 18px', borderRadius: 16, fontSize: 11, boxShadow: '0 4px 16px rgba(255,51,51,0.3)' }}>
+      <div className="flex justify-between items-center mb-6 pb-4" style={{ borderBottom: `1px solid ${BRAND.border}` }}>
+        <button 
+          onClick={() => { localStorage.removeItem('adminSession'); logout(); }} 
+          className="font-black active:scale-95 transition-all text-xs border-0 px-4 py-2.5 rounded-xl cursor-pointer"
+          style={{ background: '#fef2f2', color: '#b91c1c', border: '1px solid #fca5a5' }}
+        >
           تسجيل خروج
         </button>
-        <h2 className="font-black flex items-center gap-2" style={{ fontSize: 20, color: '#4D00FF' }}>
-          لوحة المشرف العام <Shield size={22} />
+        <h2 className="font-black flex items-center gap-2 text-base" style={{ color: BRAND.blueDark }}>
+          لوحة المشرف العام <Shield size={18} style={{ color: BRAND.blue }} />
         </h2>
-        <div className="font-bold" style={{ background: '#fff', border: '2px solid #D0DCFF', padding: '8px 14px', borderRadius: 14, fontSize: 11, color: '#7B8CA6' }}>
+        <div className="font-bold text-xs px-3 py-1.5 rounded-lg" style={{ background: BRAND.blueSoft, color: BRAND.blue, border: `1px solid ${BRAND.border}` }}>
           {sessions.length} عملية
         </div>
       </div>
 
       {/* ══ Date Filter ══ */}
       <div 
-        className="mb-4" 
+        className="mb-5" 
         style={{ 
-          background: '#fff', 
-          border: '1.5px solid #D0DCFF', 
-          borderRadius: 18, 
-          padding: '12px 14px', 
-          boxShadow: '0 3px 12px rgba(0,102,255,0.04)' 
+          background: BRAND.card, 
+          border: `1px solid ${BRAND.border}`, 
+          borderRadius: 20, 
+          padding: 14, 
+          boxShadow: '0 2px 12px rgba(0,0,0,0.02)' 
         }}
       >
-        <div className="flex items-center gap-1.5 mb-2">
+        <div className="flex items-center gap-1.5 mb-3">
           <input 
             type="date" 
             value={dateFrom} 
             onChange={e => setDateFrom(e.target.value)} 
-            className="flex-1 font-black outline-none text-center font-mono" 
-            style={{ 
-              background: '#F0F4FF', 
-              border: '1.5px solid #D0DCFF', 
-              padding: '6px 4px', 
-              borderRadius: 10, 
-              fontSize: 11, 
-              fontWeight: 950, 
-              color: '#0066FF' 
-            }} 
+            className="flex-1 font-black outline-none text-center font-mono py-2 rounded-xl text-xs border border-slate-200" 
+            style={{ background: BRAND.blueSoft, color: BRAND.blueDark }} 
           />
-          <span className="font-black text-slate-400" style={{ fontSize: 11, fontWeight: 950 }}>←</span>
+          <span className="font-black text-slate-400 text-xs">←</span>
           <input 
             type="date" 
             value={dateTo} 
             onChange={e => setDateTo(e.target.value)} 
-            className="flex-1 font-black outline-none text-center font-mono" 
-            style={{ 
-              background: '#F0F4FF', 
-              border: '1.5px solid #D0DCFF', 
-              padding: '6px 4px', 
-              borderRadius: 10, 
-              fontSize: 11, 
-              fontWeight: 950, 
-              color: '#0066FF' 
-            }} 
+            className="flex-1 font-black outline-none text-center font-mono py-2 rounded-xl text-xs border border-slate-200" 
+            style={{ background: BRAND.blueSoft, color: BRAND.blueDark }} 
           />
-          <CalendarDays size={16} style={{ color: '#0066FF' }} className="shrink-0" />
+          <CalendarDays size={16} style={{ color: BRAND.blue }} className="shrink-0" />
         </div>
 
-        <div className="flex gap-1 mb-2">
+        <div className="flex gap-1.5 mb-3">
           {[
             { label: '📅 اليوم', onClick: setToday, active: dateFrom === getLocalToday() && dateTo === getLocalToday() },
             { label: 'أمس', onClick: () => { setDateFrom(getLocalYesterday()); setDateTo(getLocalYesterday()); }, active: dateFrom === getLocalYesterday() && dateTo === getLocalYesterday() },
@@ -649,17 +652,11 @@ export default function AdminDashboard() {
             <button 
               key={b.label} 
               onClick={b.onClick} 
-              className="flex-1 active:scale-95 transition-all" 
+              className="flex-1 font-black py-2 rounded-lg text-xs cursor-pointer border-0 active:scale-95 transition-all" 
               style={{ 
-                background: b.active ? '#0066FF' : '#F8FAFF', 
-                color: b.active ? '#ffffff' : '#475569', 
-                padding: '6px 0', 
-                borderRadius: 10, 
-                fontSize: 10, 
-                fontWeight: 950,
-                border: b.active ? 'none' : '1.5px solid #D0DCFF',
-                textShadow: b.active ? '0 1px 1px rgba(0,0,0,0.15)' : 'none',
-                boxShadow: b.active ? '0 2px 8px rgba(0,102,255,0.2)' : 'none'
+                background: b.active ? BRAND.blue : BRAND.blueSoft, 
+                color: b.active ? '#ffffff' : BRAND.slate, 
+                border: b.active ? 'none' : `1px solid ${BRAND.border}`
               }}
             >
               {b.label}
@@ -667,19 +664,11 @@ export default function AdminDashboard() {
           ))}
         </div>
 
-        <div className="pt-2 border-t border-dashed border-slate-200">
+        <div className="pt-3 border-t border-dashed" style={{ borderColor: BRAND.border }}>
           <button 
             onClick={handleDatabaseCleanup} 
-            className="w-full font-black active:scale-95 transition-all flex items-center justify-center gap-1.5"
-            style={{ 
-              background: 'linear-gradient(135deg,#1E293B,#0F172A)', 
-              color: '#ffffff', 
-              padding: '7px 0', 
-              borderRadius: 10, 
-              fontSize: 10.5, 
-              fontWeight: 950,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.12)' 
-            }}
+            className="w-full font-black py-2 rounded-lg text-xs cursor-pointer border-0 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+            style={{ background: BRAND.navy, color: '#ffffff' }}
           >
             🧹 تنظيف الأرشيف (+30 يوم)
           </button>
@@ -687,36 +676,24 @@ export default function AdminDashboard() {
       </div>
 
       {/* ══ Revenue Stats ══ */}
-      <div className="grid grid-cols-2 gap-2 mb-3">
+      <div className="grid grid-cols-2 gap-2.5 mb-4">
         <div 
-          className="text-center transition-all" 
-          style={{ 
-            background: 'linear-gradient(135deg,#0066FF,#4D00FF)', 
-            borderRadius: 16, 
-            padding: '9px 10px', 
-            color: '#ffffff', 
-            boxShadow: '0 4px 14px rgba(0,102,255,0.22)' 
-          }}
+          className="text-center p-3 rounded-xl border" 
+          style={{ background: BRAND.card, borderColor: BRAND.border }}
         >
-          <div className="font-bold mb-0.5" style={{ fontSize: 9.5, fontWeight: 900, opacity: 0.95, color: '#ffffff' }}>الإيرادات المؤكدة</div>
-          <div className="font-black font-mono leading-none my-1" style={{ fontSize: 20, fontWeight: 950, color: '#ffffff', textShadow: '0 1px 2px rgba(0,0,0,0.15)' }}>
-            {totalsFromSessions.totalRevenueConfirmed.toFixed(0)} <span style={{ fontSize: 10, fontWeight: 800 }}>ج.م</span>
+          <div className="text-[10px] font-bold" style={{ color: BRAND.slate }}>الإيرادات المؤكدة</div>
+          <div className="font-black font-mono text-lg mt-1" style={{ color: BRAND.blue }}>
+            {totalsFromSessions.totalRevenueConfirmed.toFixed(0)} <span className="text-[10px] font-bold text-slate-400">ج.م</span>
           </div>
         </div>
 
         <div 
-          className="text-center transition-all" 
-          style={{ 
-            background: 'linear-gradient(135deg,#00CC66,#00AA55)', 
-            borderRadius: 16, 
-            padding: '9px 10px', 
-            color: '#ffffff', 
-            boxShadow: '0 4px 14px rgba(0,204,102,0.22)' 
-          }}
+          className="text-center p-3 rounded-xl border" 
+          style={{ background: BRAND.card, borderColor: BRAND.border }}
         >
-          <div className="font-bold mb-0.5" style={{ fontSize: 9.5, fontWeight: 900, opacity: 0.95, color: '#ffffff' }}>إجمالي العمليات</div>
-          <div className="font-black font-mono leading-none my-1" style={{ fontSize: 20, fontWeight: 950, color: '#ffffff', textShadow: '0 1px 2px rgba(0,0,0,0.15)' }}>
-            {totalsFromSessions.totalSessionsCount} <span style={{ fontSize: 10, fontWeight: 800 }}>عملية</span>
+          <div className="text-[10px] font-bold" style={{ color: BRAND.slate }}>إجمالي العمليات</div>
+          <div className="font-black font-mono text-lg mt-1" style={{ color: BRAND.blue }}>
+            {totalsFromSessions.totalSessionsCount} <span className="text-[10px] font-bold text-slate-400">عملية</span>
           </div>
         </div>
       </div>
@@ -725,38 +702,33 @@ export default function AdminDashboard() {
       {commissionStats.totalCommission > 0 && (
         <>
           <div 
-            className="flex justify-between items-stretch mb-3 text-center" 
-            style={{ 
-              background: '#ffffff', 
-              borderRadius: 18, 
-              padding: '12px 10px', 
-              border: '1.5px solid #FFD180',
-              boxShadow: '0 4px 16px rgba(255,149,0,0.06)'
-            }}
+            className="flex justify-between items-stretch mb-3 text-center border" 
+            style={{ background: BRAND.card, borderColor: BRAND.border, borderRadius: 16, padding: '12px 10px' }}
           >
-            <div className="flex-1 flex flex-col justify-center items-center border-l border-slate-150">
-              <span className="text-[10px] font-black text-slate-400 mb-1 block">💳 الإيراد الكلي</span>
-              <span className="font-mono font-black text-slate-800 text-sm" style={{ fontSize: '15px', fontWeight: 950 }}>
-                {commissionStats.totalRevenue.toFixed(0)} <span style={{ fontSize: '10px', fontWeight: 800 }}>ج</span>
+            <div className="flex-1 flex flex-col justify-center items-center border-l" style={{ borderColor: BRAND.border }}>
+              <span className="text-[9px] font-black mb-1 block" style={{ color: BRAND.slateMuted }}>💳 الإيراد الكلي</span>
+              <span className="font-mono font-black text-sm" style={{ color: BRAND.navy }}>
+                {commissionStats.totalRevenue.toFixed(0)} <span className="text-[9px] font-bold">ج</span>
               </span>
             </div>
 
-            <div className="flex-1 flex flex-col justify-center items-center border-l border-slate-150">
-              <span className="text-[10px] font-black text-amber-600 mb-1 flex items-center gap-0.5 justify-center">
-                <Percent size={10} className="text-amber-500" /> عمولة التطبيق
+            <div className="flex-1 flex flex-col justify-center items-center border-l" style={{ borderColor: BRAND.border }}>
+              <span className="text-[9px] font-black mb-1 flex items-center gap-0.5 justify-center" style={{ color: '#d97706' }}>
+                <Percent size={10} /> عمولة التطبيق
               </span>
-              <span className="font-mono font-black text-amber-600 text-sm" style={{ fontSize: '15px', fontWeight: 950 }}>
-                {commissionStats.totalCommission.toFixed(0)} <span style={{ fontSize: '10px', fontWeight: 800 }}>ج</span>
+              <span className="font-mono font-black text-sm" style={{ color: '#d97706' }}>
+                {commissionStats.totalCommission.toFixed(0)} <span className="text-[9px] font-bold">ج</span>
               </span>
             </div>
 
             <div className="flex-1 flex flex-col justify-center items-center">
-              <span className="text-[10px] font-black text-emerald-600 mb-1 block">🟢 صافي الربح</span>
-              <span className="font-mono font-black text-emerald-600 text-sm" style={{ fontSize: '15px', fontWeight: 950 }}>
-                {commissionStats.totalNet.toFixed(0)} <span style={{ fontSize: '10px', fontWeight: 800 }}>ج</span>
+              <span className="text-[9px] font-black mb-1 block" style={{ color: BRAND.greenDark }}>🟢 صافي الربح</span>
+              <span className="font-mono font-black text-sm" style={{ color: BRAND.greenDark }}>
+                {commissionStats.totalNet.toFixed(0)} <span className="text-[9px] font-bold">ج</span>
               </span>
             </div>
           </div>
+
           {(() => {
             const settlement = commissionStats.totalSettlement;
             const adminOwesGarages = settlement > 0;
@@ -764,37 +736,36 @@ export default function AdminDashboard() {
 
             return (
               <div 
-                className="mb-3 transition-all"
+                className="mb-4 border"
                 style={{ 
-                  background: adminOwesGarages ? 'linear-gradient(135deg,#EBFDF2,#D8F5E0)' : 'linear-gradient(135deg,#FFF3F3,#FFE8E8)', 
-                  border: `2px solid ${adminOwesGarages ? '#00CC66' : '#FF3333'}`, 
+                  background: adminOwesGarages ? BRAND.greenLight : '#fff5f5', 
+                  borderColor: adminOwesGarages ? BRAND.green : '#fca5a5', 
                   borderRadius: 16, 
-                  padding: '10px 12px',
-                  boxShadow: `0 4px 14px ${adminOwesGarages ? 'rgba(0,204,102,0.12)' : 'rgba(255,51,51,0.12)'}`
+                  padding: 12,
                 }}
               >
-                <div className="flex justify-between items-center mb-1.5">
-                  <div className="font-black font-mono leading-none" style={{ fontSize: 20, fontWeight: 950, color: adminOwesGarages ? '#00AA44' : '#CC0000' }}>
-                    {absVal} <span style={{ fontSize: 10, fontWeight: 800 }}>ج.م</span>
+                <div className="flex justify-between items-center mb-2">
+                  <div className="font-black font-mono text-lg" style={{ color: adminOwesGarages ? BRAND.greenDark : '#c53030' }}>
+                    {absVal} <span className="text-[10px] font-bold">ج.م</span>
                   </div>
                   <div className="text-right">
-                    <span className="font-black text-xs block" style={{ fontWeight: 950, color: '#0A1628' }}>
+                    <span className="font-black text-xs block" style={{ color: BRAND.navy }}>
                       {adminOwesGarages ? '🟢 مستحق للجراجات' : '🔴 مستحق للتطبيق'}
                     </span>
-                    <span className="font-bold text-[9px] text-slate-500">
+                    <span className="font-bold text-[9px]" style={{ color: BRAND.slate }}>
                       {adminOwesGarages ? 'تحويل من الأدمن' : 'تحصيل من الجراج'}
                     </span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-slate-200/60">
-                  <div className="text-center bg-white rounded-lg p-1 border border-slate-200 flex items-center justify-center gap-1.5">
-                    <span style={{ fontSize: 8.5, color: '#7B8CA6', fontWeight: 900 }}>💳 محفظة:</span>
-                    <span className="font-black font-mono text-xs text-blue-600" style={{ fontWeight: 950 }}>{commissionStats.totalWalletCollected.toFixed(0)}ج</span>
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-dashed" style={{ borderColor: adminOwesGarages ? '#c8e6a0' : '#fecaca' }}>
+                  <div className="text-center bg-white rounded-lg p-1.5 border border-slate-200 flex items-center justify-center gap-1">
+                    <span className="text-[9px] font-bold" style={{ color: BRAND.slate }}>💳 محفظة:</span>
+                    <span className="font-black font-mono text-xs" style={{ color: BRAND.blue }}>{commissionStats.totalWalletCollected.toFixed(0)}ج</span>
                   </div>
-                  <div className="text-center bg-white rounded-lg p-1 border border-amber-200 flex items-center justify-center gap-1.5">
-                    <span style={{ fontSize: 8.5, color: '#FF9500', fontWeight: 900 }}>📊 عمولة:</span>
-                    <span className="font-black font-mono text-xs text-amber-600" style={{ fontWeight: 950 }}>{commissionStats.totalCommission.toFixed(0)}ج</span>
+                  <div className="text-center bg-white rounded-lg p-1.5 border border-amber-200 flex items-center justify-center gap-1">
+                    <span className="text-[9px] font-bold" style={{ color: '#d97706' }}>📊 عمولة:</span>
+                    <span className="font-black font-mono text-xs" style={{ color: '#d97706' }}>{commissionStats.totalCommission.toFixed(0)}ج</span>
                   </div>
                 </div>
               </div>
@@ -805,30 +776,30 @@ export default function AdminDashboard() {
 
       {/* ══ Pending Revenue Banner ══ */}
       {(totalsFromSessions.totalPendingRevenue > 0 || totalsFromSessions.pendingCount > 0) && (
-        <div className="mb-5 flex items-center justify-between" style={{ background: 'linear-gradient(135deg,#FF9500,#FF7700)', borderRadius: 22, padding: '16px 20px', color: '#fff', boxShadow: '0 6px 24px rgba(255,149,0,0.3)' }}>
+        <div className="mb-5 flex items-center justify-between px-4 py-3 rounded-xl text-white" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>
           <div className="text-right">
-            <h3 className="font-black" style={{ fontSize: 14 }}>⏳ إيرادات معلقة ({totalsFromSessions.pendingCount})</h3>
-            <p style={{ fontSize: 10, opacity: 0.8 }}>تحتاج تأكيد</p>
+            <h3 className="font-black text-xs">⏳ إيرادات معلقة ({totalsFromSessions.pendingCount})</h3>
+            <p className="text-[9px] opacity-80 mt-0.5">تحتاج تأكيد</p>
           </div>
-          <div className="font-black font-mono" style={{ fontSize: 24 }}>{totalsFromSessions.totalPendingRevenue.toFixed(0)} <span style={{ fontSize: 12 }}>ج.م</span></div>
+          <div className="font-black font-mono text-xl">{totalsFromSessions.totalPendingRevenue.toFixed(0)} <span className="text-xs">ج.م</span></div>
         </div>
       )}
 
       {/* ══ Accordion Settlements ══ */}
       <div className="mb-6 space-y-2">
         <div className="flex items-center justify-between mb-3">
-          <span className="font-black" style={{ background: '#0066FF', color: '#fff', fontSize: 11, padding: '3.5px 12px', borderRadius: 20 }}>
+          <span className="font-black text-[9px] px-2.5 py-0.5 rounded-full text-white" style={{ background: BRAND.blue }}>
             {commissionStats.perGarage.length} جراجات نشطة
           </span>
-          <h3 className="font-black flex items-center gap-2" style={{ fontSize: 16, color: '#0A1628' }}>
+          <h3 className="font-black text-xs" style={{ color: BRAND.navy }}>
             📊 التسويات النشطة للجراجات
           </h3>
         </div>
 
         {commissionStats.perGarage.length === 0 ? (
-          <div className="text-center py-8" style={{ background: '#fff', borderRadius: 20, border: '2px dashed #D0DCFF' }}>
-            <span style={{ fontSize: 36, display: 'block', marginBottom: 8 }}>⚖️</span>
-            <p className="font-black text-xs" style={{ color: '#64748b' }}>جميع حسابات الجراجات متزنة ومقفلة بالكامل!</p>
+          <div className="text-center py-8 border-2 border-dashed rounded-2xl" style={{ background: BRAND.card, borderColor: BRAND.border }}>
+            <span className="text-2xl block mb-1">⚖️</span>
+            <p className="font-black text-[11px]" style={{ color: BRAND.slate }}>جميع حسابات الجراجات متزنة ومقفلة بالكامل!</p>
           </div>
         ) : (
           commissionStats.perGarage.map(g => {
@@ -843,12 +814,9 @@ export default function AdminDashboard() {
                 key={g.id} 
                 className="transition-all"
                 style={{ 
-                  background: '#fff', 
-                  border: isExpanded 
-                    ? `2.5px solid ${adminOwesGarage ? '#00CC66' : '#FF3333'}` 
-                    : '1.5px solid #D0DCFF', 
+                  background: BRAND.card, 
+                  border: `1.5px solid ${isExpanded ? (adminOwesGarage ? BRAND.green : '#fca5a5') : BRAND.border}`, 
                   borderRadius: 18, 
-                  boxShadow: isExpanded ? '0 8px 24px rgba(0,0,0,0.06)' : 'none',
                   overflow: 'hidden'
                 }}
               >
@@ -859,19 +827,19 @@ export default function AdminDashboard() {
                   }}
                   className="flex justify-between items-center p-4 cursor-pointer active:scale-[0.99] transition-all"
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="font-black" style={{ fontSize: 11, color: adminOwesGarage ? '#00AA44' : '#CC0000' }}>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-black text-[10px]" style={{ color: adminOwesGarage ? BRAND.greenDark : '#c53030' }}>
                       {adminOwesGarage ? 'أرسل للجراج' : 'اطلب من الجراج'}
                     </span>
-                    <span className="font-black font-mono" style={{ fontSize: 16, color: adminOwesGarage ? '#00AA44' : '#CC0000' }}>
+                    <span className="font-black font-mono text-base" style={{ color: adminOwesGarage ? BRAND.greenDark : '#c53030' }}>
                       {absSettlement} ج.م
                     </span>
-                    <span className="font-bold" style={{ fontSize: 11, color: '#94a3b8' }}>{isExpanded ? '▲' : '▼'}</span>
+                    <span className="font-bold text-xs" style={{ color: BRAND.slateMuted }}>{isExpanded ? '▲' : '▼'}</span>
                   </div>
 
                   <div className="text-right">
-                    <div className="font-black" style={{ fontSize: 14, color: '#0A1628' }}>{g.name}</div>
-                    <div className="font-bold" style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>{g.totalCount} جلسة معلقة تسويتها</div>
+                    <div className="font-black text-sm" style={{ color: BRAND.navy }}>{g.name}</div>
+                    <div className="font-bold text-[9px]" style={{ color: BRAND.slate, marginTop: 2 }}>{g.totalCount} جلسة معلقة تسويتها</div>
                   </div>
                 </div>
 
@@ -881,29 +849,29 @@ export default function AdminDashboard() {
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
                       exit={{ opacity: 0, height: 0 }}
-                      style={{ borderTop: '1px solid #F0F4FF', background: '#FAFBFF', padding: '0 16px 16px 16px' }}
+                      style={{ borderTop: `1px solid ${BRAND.border}`, background: BRAND.bg, padding: '0 16px 16px 16px' }}
                     >
                       <div className="grid grid-cols-3 gap-2 my-3">
-                        <div className="text-center" style={{ background: '#F8FAFF', borderRadius: 12, padding: '8px 4px', border: '1px solid #D0DCFF' }}>
-                          <div style={{ fontSize: 8, color: '#7B8CA6', fontWeight: 900 }}>تحصيل محفظة</div>
-                          <div className="font-black font-mono" style={{ fontSize: 13, color: '#0066FF', marginTop: 2 }}>{g.walletRevenue.toFixed(0)}</div>
+                        <div className="text-center bg-white rounded-xl p-2 border" style={{ borderColor: BRAND.border }}>
+                          <div className="text-[8px] font-bold" style={{ color: BRAND.slate }}>تحصيل محفظة</div>
+                          <div className="font-black font-mono text-xs mt-1" style={{ color: BRAND.blue }}>{g.walletRevenue.toFixed(0)}</div>
                         </div>
-                        <div className="text-center" style={{ background: '#FFF8F0', borderRadius: 12, padding: '8px 4px', border: '1px solid #FFD180' }}>
-                          <div style={{ fontSize: 8, color: '#FF9500', fontWeight: 900 }}>عمولتنا {g.commissionRate}%</div>
-                          <div className="font-black font-mono" style={{ fontSize: 13, color: '#FF9500', marginTop: 2 }}>{g.commission.toFixed(0)}</div>
+                        <div className="text-center bg-white rounded-xl p-2 border border-amber-200">
+                          <div className="text-[8px] font-bold" style={{ color: '#d97706' }}>عمولتنا {g.commissionRate}%</div>
+                          <div className="font-black font-mono text-xs mt-1" style={{ color: '#d97706' }}>{g.commission.toFixed(0)}</div>
                         </div>
-                        <div className="text-center" style={{ background: adminOwesGarage ? '#EBFDF2' : '#FFF3F3', borderRadius: 12, padding: '8px 4px', border: `1px solid ${adminOwesGarage ? '#00CC66' : '#FF3333'}` }}>
-                          <div style={{ fontSize: 8, color: adminOwesGarage ? '#00AA44' : '#CC0000', fontWeight: 900 }}>الفرق للتسوية</div>
-                          <div className="font-black font-mono" style={{ fontSize: 15, color: adminOwesGarage ? '#00AA44' : '#CC0000', marginTop: 2 }}>{absSettlement}</div>
+                        <div className="text-center rounded-xl p-2 border" style={{ background: adminOwesGarage ? BRAND.greenLight : '#fff5f5', borderColor: adminOwesGarage ? BRAND.green : '#fca5a5' }}>
+                          <div className="text-[8px] font-bold" style={{ color: adminOwesGarage ? BRAND.greenDark : '#c53030' }}>الفرق للتسوية</div>
+                          <div className="font-black font-mono text-sm mt-1" style={{ color: adminOwesGarage ? BRAND.greenDark : '#c53030' }}>{absSettlement}</div>
                         </div>
                       </div>
 
                       {isConfirming ? (
-                        <div style={{ background: '#FFF8F0', border: '2px solid #FFD180', borderRadius: 16, padding: 12 }}>
-                          <p className="font-black text-center mb-1.5" style={{ fontSize: 11, color: '#3D1F00' }}>
-                            ⚠️ هل تم فعلياً {adminOwesGarage ? 'تحويل' : 'استلام'} <span style={{ fontSize: 14, color: adminOwesGarage ? '#00AA44' : '#CC0000' }}>{absSettlement} ج.م</span>؟
+                        <div className="p-3 border rounded-xl bg-white" style={{ borderColor: BRAND.border }}>
+                          <p className="font-black text-center text-[11px] mb-1" style={{ color: BRAND.navy }}>
+                            ⚠️ هل تم فعلياً {adminOwesGarage ? 'تحويل' : 'استلام'} <span style={{ color: adminOwesGarage ? BRAND.greenDark : '#c53030' }}>{absSettlement} ج.م</span>؟
                           </p>
-                          <p className="text-center mb-3" style={{ fontSize: 9, color: '#7B8CA6' }}>
+                          <p className="text-center text-[9px] mb-3" style={{ color: BRAND.slate }}>
                             عند التأكيد سيتم قفل {g.totalCount} جلسة نهائياً ولن تظهر في الحسابات مرة أخرى.
                           </p>
                           <div className="flex gap-2">
@@ -913,16 +881,16 @@ export default function AdminDashboard() {
                                 setActiveAccordionGarageId(null);
                               }} 
                               disabled={processingSettlement}
-                              className="flex-1 font-black active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1"
-                              style={{ background: '#00CC66', color: '#fff', padding: 10, borderRadius: 12, fontSize: 12 }}
+                              className="flex-1 font-black py-2 rounded-lg text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1"
+                              style={{ background: BRAND.greenDark }}
                             >
-                              <Lock size={14} /> {processingSettlement ? 'جاري الإقفال...' : 'تأكيد وإقفال'}
+                              <Lock size={12} /> {processingSettlement ? 'جاري الإقفال...' : 'تأكيد وإقفال'}
                             </button>
                             <button 
                               onClick={() => setConfirmSettlementGarageId(null)} 
                               disabled={processingSettlement}
-                              className="flex-1 font-black active:scale-95"
-                              style={{ background: '#F0F4FF', color: '#475569', padding: 10, borderRadius: 12, fontSize: 12, border: '1px solid #D0DCFF' }}
+                              className="flex-1 font-black py-2 rounded-lg text-xs cursor-pointer border bg-white"
+                              style={{ color: BRAND.slate, borderColor: BRAND.border }}
                             >
                               إلغاء
                             </button>
@@ -931,17 +899,12 @@ export default function AdminDashboard() {
                       ) : (
                         <button 
                           onClick={() => setConfirmSettlementGarageId(g.id)} 
-                          className="w-full font-black active:scale-95 flex items-center justify-center gap-2"
+                          className="w-full font-black py-2.5 rounded-xl text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1.5"
                           style={{ 
-                            background: `linear-gradient(135deg, ${adminOwesGarage ? '#00CC66,#00AA55' : '#FF3333,#CC0000'})`, 
-                            color: '#fff', 
-                            padding: 12, 
-                            borderRadius: 14, 
-                            fontSize: 12,
-                            boxShadow: `0 4px 12px ${adminOwesGarage ? 'rgba(0,204,102,0.3)' : 'rgba(255,51,51,0.3)'}`
+                            background: adminOwesGarage ? BRAND.greenDark : '#dc2626', 
                           }}
                         >
-                          <Lock size={14} /> تسجيل تسوية وإقفال ({absSettlement} ج.م)
+                          <Lock size={12} /> تسجيل تسوية وإقفال ({absSettlement} ج.م)
                         </button>
                       )}
                     </motion.div>
@@ -957,25 +920,18 @@ export default function AdminDashboard() {
       <div className="mb-5">
         <button 
           onClick={() => { setShowArchive(!showArchive); setVisibleSettlements(4); setArchiveSearch(''); }} 
-          className="w-full font-black flex items-center justify-between active:scale-95 transition-all"
-          style={{ 
-            background: '#fff', 
-            border: '2.5px solid #0A1628', 
-            borderRadius: 18, 
-            padding: '14px 18px',
-            color: '#000000' 
-          }}
+          className="w-full font-black flex items-center justify-between bg-white border cursor-pointer px-4 py-3 rounded-xl"
+          style={{ borderColor: BRAND.border, color: BRAND.navy }}
         >
-          <span className="font-black" style={{ fontSize: 12, color: '#0066FF' }}>{showArchive ? '▲ إخفاء الأرشيف' : '▼ عرض الأرشيف'}</span>
-          <div className="flex items-center gap-2">
-            <span className="font-black" style={{ fontSize: 11, color: '#000000', opacity: 0.7 }}>({settlementRecords.length} تسوية)</span>
-            <span className="font-black" style={{ fontSize: 14, color: '#000000' }}>📂 أرشيف التسويات</span>
-            <Archive size={18} style={{ color: '#000000' }} />
+          <span className="text-xs font-black" style={{ color: BRAND.blue }}>{showArchive ? '▲ إخفاء الأرشيف' : '▼ عرض الأرشيف'}</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-bold" style={{ color: BRAND.slate }}>({settlementRecords.length} تسوية)</span>
+            <span className="text-xs font-black">📂 أرشيف التسويات</span>
           </div>
         </button>
 
         {showArchive && (
-          <div className="mt-3 space-y-3" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', borderRadius: 20, padding: 12 }}>
+          <div className="mt-3 space-y-3 p-3 rounded-xl border bg-white" style={{ borderColor: BRAND.border }}>
             {settlementRecords.length > 4 && (
               <div className="relative">
                 <input 
@@ -983,17 +939,9 @@ export default function AdminDashboard() {
                   value={archiveSearch}
                   onChange={(e) => { setArchiveSearch(e.target.value); setVisibleSettlements(4); }}
                   placeholder="ابحث باسم الجراج في الأرشيف..." 
-                  className="w-full font-bold text-right outline-none"
-                  style={{
-                    background: '#ffffff',
-                    border: '1.5px solid #D0DCFF',
-                    padding: '10px 14px 10px 34px',
-                    borderRadius: 12,
-                    fontSize: 12,
-                    color: '#0A1628'
-                  }}
+                  className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200"
+                  style={{ color: BRAND.navy }}
                 />
-                <span className="absolute left-3 top-1/2 -translate-y-1/2" style={{ fontSize: 12, color: '#94a3b8' }}>🔍</span>
               </div>
             )}
 
@@ -1004,10 +952,10 @@ export default function AdminDashboard() {
 
               if (filtered.length === 0) {
                 return (
-                  <div className="text-center py-6" style={{ background: '#fff', borderRadius: 16, border: '2px solid #D0DCFF' }}>
-                    <div style={{ fontSize: 36, marginBottom: 8 }}>📭</div>
-                    <p className="font-black" style={{ fontSize: 12, color: '#94a3b8' }}>
-                      {archiveSearch ? `لا توجد تسويات مطابقة لـ "${archiveSearch}"` : 'لم يتم تسجيل أي تسويات بعد'}
+                  <div className="text-center py-6 border-2 border-dashed rounded-xl" style={{ borderColor: BRAND.border }}>
+                    <div className="text-2xl mb-1">📭</div>
+                    <p className="font-black text-xs" style={{ color: BRAND.slateMuted }}>
+                      {archiveSearch ? `لا توجد تسويات لـ "${archiveSearch}"` : 'لم يتم تسجيل أي تسويات بعد'}
                     </p>
                   </div>
                 );
@@ -1021,39 +969,25 @@ export default function AdminDashboard() {
                     {sliced.map(r => {
                       const isAdminToGarage = r.direction === 'admin_to_garage';
                       return (
-                        <div key={r.id} style={{ 
-                          background: '#fff', 
-                          border: `2px solid ${isAdminToGarage ? '#66DDAA' : '#FFA0A0'}`, 
-                          borderRadius: 16, 
-                          padding: 12,
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
-                        }}>
-                          <div className="flex justify-between items-start mb-1.5">
-                            <div className="flex items-center gap-1" style={{ padding: '3px 8px', borderRadius: 8, background: isAdminToGarage ? '#EBFDF2' : '#FFF3F3' }}>
-                              {isAdminToGarage ? <ArrowUp size={10} style={{ color: '#00AA44' }} /> : <ArrowDown size={10} style={{ color: '#CC0000' }} />}
-                              <span className="font-black" style={{ fontSize: 9, color: isAdminToGarage ? '#00AA44' : '#CC0000' }}>
-                                {isAdminToGarage ? 'أرسل الأدمن' : 'استلم الأدمن'}
-                              </span>
+                        <div key={r.id} className="p-3 border rounded-xl" style={{ borderColor: BRAND.border }}>
+                          <div className="flex justify-between items-start mb-2">
+                            <div className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black" style={{ background: isAdminToGarage ? BRAND.greenLight : '#fff5f5', color: isAdminToGarage ? BRAND.greenDark : '#c53030' }}>
+                              {isAdminToGarage ? 'أرسل الأدمن' : 'استلم الأدمن'}
                             </div>
                             <div className="text-right">
-                              <div className="font-black" style={{ fontSize: 13, color: '#000000' }}>{r.garage_name}</div>
-                              <div className="font-black font-mono" style={{ fontSize: 9, color: '#94a3b8', marginTop: 1 }}>{r.settlement_date}</div>
+                              <div className="font-black text-xs" style={{ color: BRAND.navy }}>{r.garage_name}</div>
+                              <div className="font-bold text-[9px] font-mono mt-0.5" style={{ color: BRAND.slateMuted }}>{r.settlement_date}</div>
                             </div>
                           </div>
-                          <div className="flex justify-between items-center" style={{ borderTop: '1px dashed #F0F4FF', paddingTop: 6 }}>
-                            <div className="font-black font-mono" style={{ fontSize: 18, color: isAdminToGarage ? '#00AA44' : '#CC0000' }}>
-                              {Number(r.amount || 0).toFixed(0)} <span style={{ fontSize: 10 }}>ج.م</span>
+                          <div className="flex justify-between items-center border-t border-dashed pt-2 mt-2" style={{ borderColor: BRAND.border }}>
+                            <div className="font-black font-mono text-base" style={{ color: isAdminToGarage ? BRAND.greenDark : '#c53030' }}>
+                              {Number(r.amount || 0).toFixed(0)} <span className="text-[10px]">ج.م</span>
                             </div>
-                            <div className="text-right font-black" style={{ fontSize: 10, color: '#000000', lineHeight: 1.5 }}>
+                            <div className="text-right font-bold text-[10px]" style={{ color: BRAND.navy, lineHeight: 1.4 }}>
                               <div>{r.session_count} جلسة مقفلة 🔒</div>
-                              <div style={{ fontSize: 9, opacity: 0.6 }}>محفظة: {r.wallet_collected.toFixed(0)}ج · عمولة: {r.commission_amount.toFixed(0)}ج</div>
+                              <div className="text-[8px]" style={{ color: BRAND.slate }}>محفظة: {r.wallet_collected.toFixed(0)}ج · عمولة: {r.commission_amount.toFixed(0)}ج</div>
                             </div>
                           </div>
-                          {r.notes && (
-                            <div className="mt-1.5 text-right font-black" style={{ background: '#F8FAFF', borderRadius: 8, padding: '6px 10px', fontSize: 10, color: '#000000', border: '1px solid #D0DCFF' }}>
-                              📝 {r.notes}
-                            </div>
-                          )}
                         </div>
                       );
                     })}
@@ -1062,18 +996,12 @@ export default function AdminDashboard() {
                   {filtered.length > visibleSettlements && (
                     <button
                       onClick={() => setVisibleSettlements(prev => prev + 5)}
-                      className="w-full font-black active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
-                      style={{ background: '#fff', border: '2px solid #D0DCFF', borderRadius: 14, color: '#0066FF', padding: '10px 0', fontSize: 12 }}
+                      className="w-full font-black py-2 rounded-lg text-[10px] cursor-pointer bg-white border border-slate-200"
+                      style={{ color: BRAND.blue }}
                     >
-                      <span>🔄 عرض المزيد ({filtered.length - visibleSettlements} تسوية أخرى)</span>
+                      عرض المزيد ({filtered.length - visibleSettlements} أخرى)
                     </button>
                   )}
-
-                  <div className="text-center">
-                    <span className="font-bold" style={{ fontSize: 9, color: '#000000', opacity: 0.6 }}>
-                      عرض {Math.min(visibleSettlements, filtered.length)} من {filtered.length} تسوية
-                    </span>
-                  </div>
                 </>
               );
             })()}
@@ -1084,76 +1012,61 @@ export default function AdminDashboard() {
       {/* ══ Revenue Report ══ */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-3">
-          <span className="font-black" style={{ fontSize: 10, background: '#0066FF', color: '#fff', padding: '3.5px 12px', borderRadius: 20 }}>
+          <span className="font-black text-[9px] px-2 py-0.5 rounded bg-slate-200" style={{ color: BRAND.slate }}>
             {garageReport.length} جراج
           </span>
-          <h3 className="font-black flex items-center gap-1.5 text-right" style={{ fontSize: 14, color: '#334155' }}>
+          <h3 className="font-black text-xs" style={{ color: BRAND.navy }}>
             📊 تقرير الإيرادات
           </h3>
         </div>
 
         {garageReport.length === 0 ? (
-          <div className="text-center py-8" style={{ background: '#fff', borderRadius: 18, border: '2px dashed #D0DCFF' }}>
-            <span style={{ fontSize: 32, display: 'block', marginBottom: 6 }}>📭</span>
-            <p className="font-black text-xs" style={{ color: '#94a3b8' }}>لا توجد جراجات نشطة في هذه الفترة</p>
+          <div className="text-center py-8 border-2 border-dashed rounded-xl" style={{ borderColor: BRAND.border }}>
+            <span className="text-2xl block mb-1">📭</span>
+            <p className="font-black text-xs" style={{ color: BRAND.slate }}>لا توجد جراجات نشطة في هذه الفترة</p>
           </div>
         ) : (
           <div className="space-y-2">
             {garageReport.map(r => (
               <div 
                 key={r.garageId} 
-                style={{ 
-                  background: '#ffffff', 
-                  border: '1.5px solid #D0DCFF', 
-                  borderRadius: 16, 
-                  padding: '10px 12px',
-                  boxShadow: '0 2px 8px rgba(0,102,255,0.03)'
-                }}
+                className="p-3 border"
+                style={{ background: BRAND.card, borderColor: BRAND.border, borderRadius: 16 }}
               >
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-1.5">
-                    <span className="font-black font-mono" style={{ fontSize: 16, fontWeight: 950, color: '#00AA44', textShadow: '0 0.5px 1px rgba(0,0,0,0.05)' }}>
-                      {r.revenue.toFixed(0)} <span style={{ fontSize: 9, fontWeight: 800 }}>ج</span>
+                    <span className="font-black font-mono text-base" style={{ color: BRAND.greenDark }}>
+                      {r.revenue.toFixed(0)} <span className="text-[10px] font-bold">ج</span>
                     </span>
-                    <span className="font-black text-[8px] text-white px-1.5 py-0.5 rounded-md" style={{ background: '#00CC66' }}>مؤكد</span>
+                    <span className="text-[8px] font-black text-white px-1.5 py-0.5 rounded" style={{ background: BRAND.green }}>مؤكد</span>
                   </div>
                   <div className="text-right">
-                    <span className="font-black text-slate-900" style={{ fontSize: 13, fontWeight: 950 }}>{r.name}</span>
-                    <span className="font-bold text-slate-400 block" style={{ fontSize: 9 }}>{r.count} جلسة</span>
+                    <span className="font-black text-xs" style={{ color: BRAND.navy }}>{r.name}</span>
+                    <span className="text-[9px] font-bold block" style={{ color: BRAND.slate }}>{r.count} جلسة</span>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-1" style={{ background: '#F8FAFF', borderRadius: 10, padding: '5px 8px', border: '1px solid #E9EEFF' }}>
-                  <div className="flex items-center gap-0.5">
-                    <Percent size={9} className="text-amber-500" />
-                    <span className="font-black font-mono text-amber-600" style={{ fontSize: 11, fontWeight: 950 }}>{r.commissionRate}%</span>
+                <div className="flex items-center justify-between gap-1 py-1 px-2.5 rounded-lg border" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
+                  <div className="flex items-center gap-0.5 text-[10px]">
+                    <Percent size={9} style={{ color: BRAND.slate }} />
+                    <span className="font-black font-mono" style={{ color: BRAND.slate }}>{r.commissionRate}%</span>
                   </div>
-
-                  <div style={{ width: 1, height: 14, background: '#D0DCFF' }} />
-
-                  <div className="flex items-center gap-0.5">
-                    <span className="font-black text-[8px] text-amber-600">⏳</span>
-                    <span className="font-black font-mono text-amber-600" style={{ fontSize: 11, fontWeight: 950 }}>
+                  <div style={{ width: 1, height: 12, background: BRAND.border }} />
+                  <div className="flex items-center gap-0.5 text-[10px]">
+                    <span className="text-[9px]">⏳</span>
+                    <span className="font-black font-mono text-amber-600">
                       {r.pendingRevenue > 0 ? `${r.pendingRevenue.toFixed(0)}ج` : '—'}
                     </span>
                   </div>
-
-                  <div style={{ width: 1, height: 14, background: '#D0DCFF' }} />
-
-                  <div className="flex items-center gap-0.5">
-                    <span className="text-[8px]">💵</span>
-                    <span className="font-black font-mono text-emerald-600" style={{ fontSize: 11, fontWeight: 950 }}>
-                      {r.cash.toFixed(0)}
-                    </span>
+                  <div style={{ width: 1, height: 12, background: BRAND.border }} />
+                  <div className="flex items-center gap-0.5 text-[10px]">
+                    <span className="text-[9px]">💵</span>
+                    <span className="font-black font-mono text-emerald-600">{r.cash.toFixed(0)}</span>
                   </div>
-
-                  <div style={{ width: 1, height: 14, background: '#D0DCFF' }} />
-
-                  <div className="flex items-center gap-0.5">
-                    <span className="text-[8px]">👝</span>
-                    <span className="font-black font-mono text-blue-600" style={{ fontSize: 11, fontWeight: 950 }}>
-                      {r.wallet.toFixed(0)}
-                    </span>
+                  <div style={{ width: 1, height: 12, background: BRAND.border }} />
+                  <div className="flex items-center gap-0.5 text-[10px]">
+                    <span className="text-[9px]">👝</span>
+                    <span className="font-black font-mono text-blue-600">{r.wallet.toFixed(0)}</span>
                   </div>
                 </div>
               </div>
@@ -1164,41 +1077,49 @@ export default function AdminDashboard() {
 
       {/* ══ Revenue Sessions ══ */}
       <div className="mb-8">
-        <h3 className="font-black mb-4 flex items-center gap-2 justify-end" style={{ fontSize: 16, color: '#334155' }}>إدارة الجلسات ({filteredSessions.length}) <Receipt size={18} /></h3>
+        <h3 className="font-black mb-3 text-right text-xs" style={{ color: BRAND.navy }}>إدارة الجلسات ({filteredSessions.length})</h3>
         <div className="space-y-3 mb-4">
-          <div className="flex gap-2">
+          <div className="flex gap-1.5">
             {[
-              { id: 'pending' as const, label: `⏳ معلق (${filteredSessions.filter(s => !s?.revenueConfirmed).length})`, bg: '#FF9500', shadow: 'rgba(255,149,0,0.3)' },
-              { id: 'confirmed' as const, label: `✅ مؤكد (${filteredSessions.filter(s => s?.revenueConfirmed).length})`, bg: '#00CC66', shadow: 'rgba(0,204,102,0.3)' },
-              { id: 'all' as const, label: `الكل (${filteredSessions.length})`, bg: '#0066FF', shadow: 'rgba(0,102,255,0.3)' },
+              { id: 'pending' as const, label: `⏳ معلق (${filteredSessions.filter(s => !s?.revenueConfirmed).length})`, bg: '#f59e0b' },
+              { id: 'confirmed' as const, label: `✅ مؤكد (${filteredSessions.filter(s => s?.revenueConfirmed).length})`, bg: BRAND.greenDark },
+              { id: 'all' as const, label: `الكل (${filteredSessions.length})`, bg: BRAND.blue },
             ].map(b => (
-              <button key={b.id} onClick={() => setRevenueFilter(b.id)} className="flex-1 font-black transition-all active:scale-95"
-                style={{ padding: '12px 0', borderRadius: 16, fontSize: 12, background: revenueFilter === b.id ? b.bg : '#fff', color: revenueFilter === b.id ? '#fff' : '#7B8CA6', boxShadow: revenueFilter === b.id ? `0 4px 16px ${b.shadow}` : 'none', border: revenueFilter !== b.id ? '2px solid #D0DCFF' : 'none' }}>
+              <button 
+                key={b.id} 
+                onClick={() => setRevenueFilter(b.id)} 
+                className="flex-1 font-black py-2 rounded-xl text-[10px] border-0 cursor-pointer transition-all"
+                style={{ 
+                  background: revenueFilter === b.id ? b.bg : BRAND.blueSoft, 
+                  color: revenueFilter === b.id ? '#fff' : BRAND.slate, 
+                  border: revenueFilter !== b.id ? `1px solid ${BRAND.border}` : 'none' 
+                }}
+              >
                 {b.label}
               </button>
             ))}
           </div>
           <div className="relative">
-            <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: '#94a3b8' }} />
-            <input type="text" value={sessionSearch} onChange={e => setSessionSearch(e.target.value)} placeholder="ابحث برقم العربية..." className="w-full font-bold outline-none"
-              style={{ background: '#fff', border: '2px solid #D0DCFF', padding: '14px 40px 14px 40px', borderRadius: 18, fontSize: 13, color: '#0A1628' }} />
-            {sessionSearch && <button onClick={() => setSessionSearch('')} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94a3b8' }}><XCircle size={16} /></button>}
+            <Search size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: BRAND.slateMuted }} />
+            <input 
+              type="text" 
+              value={sessionSearch} 
+              onChange={e => setSessionSearch(e.target.value)} 
+              placeholder="ابحث برقم العربية..." 
+              className="w-full font-bold outline-none text-xs py-2.5 px-9 rounded-xl border border-slate-200"
+              style={{ color: BRAND.navy }}
+            />
+            {sessionSearch && <button onClick={() => setSessionSearch('')} className="absolute left-3 top-1/2 -translate-y-1/2 border-0 bg-transparent cursor-pointer" style={{ color: BRAND.slateMuted }}><X size={14} /></button>}
           </div>
         </div>
 
         {/* صندوق الجلسات المتدفق */}
-        <div 
-          className="space-y-3 max-h-[380px] overflow-y-auto pr-1.5"
-          style={{
-            scrollbarWidth: 'thin',
-            scrollbarColor: '#CBD5E1 transparent',
-          }}
-        >
+        <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
           {displayedRevenueSessions.length === 0 ? (
-            <div className="text-center" style={{ background: '#fff', borderRadius: 24, padding: 32, border: '2px solid #D0DCFF' }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>
-              <p className="font-bold" style={{ fontSize: 14, color: '#94a3b8' }}>
-                {sessionSearch ? `لا توجد نتائج لـ "${sessionSearch}"` : revenueFilter === 'pending' ? 'لا توجد معلقة' : 'لا توجد جلسات'}
+            <div className="text-center py-8 bg-white border rounded-2xl" style={{ borderColor: BRAND.border }}>
+              <div className="text-2xl mb-1">📭</div>
+              <p className="font-bold text-xs" style={{ color: BRAND.slateMuted }}>
+                {sessionSearch ? `لا توجد نتائج لـ "${sessionSearch}"` : 'لا توجد جلسات'}
               </p>
             </div>
           ) : (
@@ -1213,79 +1134,66 @@ export default function AdminDashboard() {
               const isDel = deleteConfirmId === session.id;
               const isSettled = (session as any)?.settled === true;
               return (
-                <div key={session.id} style={{ 
-                  background: isDel ? '#FFE0E0' : isSettled ? '#F1F5F9' : session.revenueConfirmed ? '#F0FFF5' : '#FFFAF0', 
-                  border: `2.5px solid ${isDel ? '#FF6666' : isSettled ? '#CBD5E1' : session.revenueConfirmed ? '#66DDAA' : '#FFD180'}`, 
-                  borderRadius: 22, 
-                  padding: 16,
-                  opacity: isSettled ? 0.75 : 1 
-                }}>
+                <div 
+                  key={session.id} 
+                  className="border"
+                  style={{ 
+                    background: isDel ? '#fef2f2' : isSettled ? BRAND.bg : session.revenueConfirmed ? BRAND.greenLight : BRAND.blueSoft, 
+                    borderColor: isDel ? '#fca5a5' : isSettled ? BRAND.border : session.revenueConfirmed ? BRAND.green : BRAND.border, 
+                    borderRadius: 18, 
+                    padding: 14,
+                    opacity: isSettled ? 0.75 : 1 
+                  }}
+                >
                   <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono font-black" style={{ fontSize: 16, color: session.revenueConfirmed ? '#00AA44' : '#E65100' }}>{Number(rev || 0).toFixed(0)} ج.م</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-mono font-black text-sm" style={{ color: session.revenueConfirmed ? BRAND.greenDark : '#d97706' }}>{Number(rev || 0).toFixed(0)} ج.م</span>
                       {[
-                        { show: true, bg: session.source === 'manual' ? '#FF9500' : '#0066FF', text: session.source === 'manual' ? 'يدوي' : 'تطبيق' },
-                        { show: !!session.paymentMethod, bg: session.paymentMethod === 'cash' ? '#00CC66' : session.paymentMethod === 'instapay' ? '#7C3AED' : session.paymentMethod === 'wallet' ? '#0066FF' : '#FF8800', text: session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستا' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش' },
-                        { show: true, bg: session.revenueConfirmed ? '#00CC66' : '#FF9500', text: session.revenueConfirmed ? '✅ مؤكد' : '⏳ معلق' },
-                        { show: isSettled, bg: '#94a3b8', text: '🔒 تمت التسوية' },
-                        { show: session.isFirstFreeSession === true, bg: '#E65100', text: rev === 0 ? '🎁 ركن ترحيبي مجاني' : '🎁 بونص ترحيبي منتهي' } 
+                        { show: true, bg: session.source === 'manual' ? '#f59e0b' : BRAND.blue, text: session.source === 'manual' ? 'يدوي' : 'تطبيق' },
+                        { show: !!session.paymentMethod, bg: BRAND.navy, text: session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستا' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش' },
+                        { show: true, bg: session.revenueConfirmed ? BRAND.green : '#f59e0b', text: session.revenueConfirmed ? '✅ مؤكد' : '⏳ معلق' },
+                        { show: isSettled, bg: BRAND.slateMuted, text: '🔒 تمت التسوية' },
+                        { show: session.isFirstFreeSession === true, bg: '#c2410c', text: rev === 0 ? '🎁 ركن مجاني' : '🎁 بونص منتهي' } 
                       ].filter(b => b.show).map((b, i) => (
-                        <span key={i} className="font-bold" style={{ fontSize: 9, padding: '4px 10px', borderRadius: 12, background: b.bg, color: '#fff' }}>{b.text}</span>
+                        <span key={i} className="font-black text-[8px] px-1.5 py-0.5 rounded text-white" style={{ background: b.bg }}>{b.text}</span>
                       ))}
                     </div>
                     <div className="text-right">
-                      <div className="font-black" style={{ fontSize: 14, color: '#0A1628' }}>🚗 {session.carPlate}</div>
-                      <div style={{ fontSize: 10, color: '#94a3b8' }}>{g?.name || '—'}</div>
+                      <div className="font-black text-xs" style={{ color: BRAND.navy }}>🚗 {session.carPlate}</div>
+                      <div className="text-[9px] font-bold" style={{ color: BRAND.slateMuted }}>{g?.name || '—'}</div>
                     </div>
                   </div>
 
                   {session.source === 'app' && comm > 0 && (
-                    <div className="flex items-center gap-3 mb-2" style={{ background: '#FFF8F0', borderRadius: 12, padding: '6px 10px', border: '1px solid #FFD180' }}>
-                      <div className="flex items-center gap-1">
-                        <Percent size={10} style={{ color: '#FF9500' }} />
-                        <span className="font-bold" style={{ fontSize: 9, color: '#FF9500' }}>عمولة {g?.commissionRate ?? 10}%: {Number(comm || 0).toFixed(0)} ج.م</span>
-                      </div>
-                      <div style={{ width: 1, height: 12, background: '#FFD180' }} />
-                      <div className="flex items-center gap-1">
-                        <DollarSign size={10} style={{ color: '#00AA44' }} />
-                        <span className="font-bold" style={{ fontSize: 9, color: '#00AA44' }}>صافي: {Number(net || 0).toFixed(0)} ج.م</span>
-                      </div>
+                    <div className="flex items-center gap-2 mb-2 p-1.5 rounded-lg border bg-white" style={{ borderColor: BRAND.border }}>
+                      <span className="font-bold text-[9px]" style={{ color: BRAND.slate }}>عمولة {g?.commissionRate ?? 10}%: {Number(comm || 0).toFixed(0)} ج.م</span>
+                      <div style={{ width: 1, height: 10, background: BRAND.border }} />
+                      <span className="font-bold text-[9px]" style={{ color: BRAND.greenDark }}>صافي: {Number(net || 0).toFixed(0)} ج.م</span>
                     </div>
                   )}
 
-                  {time && <div className="font-mono text-left mb-2" style={{ fontSize: 10, color: '#94a3b8' }}>{time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })} · {time.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}</div>}
+                  {time && <div className="font-mono text-left mb-2 text-[9px]" style={{ color: BRAND.slateMuted }}>{time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })} · {time.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}</div>}
                   {isDel ? (
-                    <div className="space-y-2" style={{ background: '#FFE0E0', borderRadius: 16, padding: 14, border: '1px solid #FFA0A0' }}>
-                      <p className="font-black text-center" style={{ fontSize: 13, color: '#CC0000' }}>⚠️ حذف نهائياً؟</p>
-                      <p className="text-center" style={{ fontSize: 11, color: '#FF3333' }}>🚗 {session.carPlate} · {Number(rev || 0).toFixed(0)} ج.م</p>
+                    <div className="p-3 border rounded-xl bg-white text-center" style={{ borderColor: BRAND.border }}>
+                      <p className="font-black text-xs text-red-600 mb-1">⚠️ حذف نهائياً؟</p>
+                      <p className="text-[10px] text-slate-500 mb-3">🚗 {session.carPlate} · {Number(rev || 0).toFixed(0)} ج.م</p>
                       <div className="flex gap-2">
-                        <button onClick={async () => { await removeSession(session.id); setDeleteConfirmId(null); toast.success('تم الحذف 🗑️'); }} className="flex-1 font-black active:scale-95"
-                          style={{ background: '#FF3333', color: '#fff', padding: 12, borderRadius: 14, fontSize: 12 }}>🗑️ تأكيد</button>
-                        <button onClick={() => setDeleteConfirmId(null)} className="flex-1 font-black active:scale-95"
-                          style={{ background: '#F0F4FF', color: '#475569', padding: 12, borderRadius: 14, fontSize: 12, border: '2px solid #D0DCFF' }}>إلغاء</button>
+                        <button onClick={async () => { await removeSession(session.id); setDeleteConfirmId(null); toast.success('تم الحذف 🗑️'); }} className="flex-1 font-black py-2 rounded-lg text-xs cursor-pointer border-0 text-white bg-red-600">🗑️ تأكيد</button>
+                        <button onClick={() => setDeleteConfirmId(null)} className="flex-1 font-black py-2 rounded-lg text-xs cursor-pointer border bg-white" style={{ color: BRAND.slate, borderColor: BRAND.border }}>إلغاء</button>
                       </div>
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">
                       {session.revenueConfirmed ? (
-                        <button onClick={async () => {
-                          await unconfirmRevenue(session.id);
-                          toast('إلغاء ↩️', { icon: '⏳' });
-                        }} disabled={isSettled} className="flex-1 font-black active:scale-95 disabled:opacity-50"
-                          style={{ background: '#FF9500', color: '#fff', padding: 10, borderRadius: 14, fontSize: 11 }}>
+                        <button onClick={async () => { await unconfirmRevenue(session.id); toast('إلغاء ↩️', { icon: '⏳' }); }} disabled={isSettled} className="flex-1 font-black py-1.5 rounded-lg text-[10px] cursor-pointer border-0 text-white disabled:opacity-50" style={{ background: '#f59e0b' }}>
                           ↩️ إلغاء التأكيد
                         </button>
                       ) : (
-                        <button onClick={async () => {
-                          await confirmRevenue(session.id, session.addedBy);
-                          toast.success('تأكيد ✅');
-                        }} className="flex-1 font-black active:scale-95"
-                          style={{ background: '#00CC66', color: '#fff', padding: 10, borderRadius: 14, fontSize: 11 }}>
+                        <button onClick={async () => { await confirmRevenue(session.id, session.addedBy); toast.success('تأكيد ✅'); }} className="flex-1 font-black py-1.5 rounded-lg text-[10px] cursor-pointer border-0 text-white" style={{ background: BRAND.greenDark }}>
                           ✅ تأكيد الإيراد
                         </button>
                       )}
-                      <button onClick={() => setDeleteConfirmId(session.id)} disabled={isSettled} className="font-black active:scale-95 disabled:opacity-50"
-                        style={{ background: '#FFE0E0', color: '#CC0000', padding: '10px 16px', borderRadius: 14, fontSize: 11 }}>🗑️</button>
+                      <button onClick={() => setDeleteConfirmId(session.id)} disabled={isSettled} className="font-black py-1.5 px-3 rounded-lg text-[10px] cursor-pointer border-0 disabled:opacity-50 text-red-600 bg-red-50 border border-red-200">🗑️</button>
                     </div>
                   )}
                 </div>
@@ -1297,169 +1205,135 @@ export default function AdminDashboard() {
 
       {/* ══ Pending Top-ups ══ */}
       <div className="mb-8">
-        <h3 className="font-black mb-4 flex items-center gap-2 justify-end" style={{ fontSize: 16, color: '#FF8800' }}>اعتمادات معلقة ({pendingTopUps.length}) <Clock size={18} /></h3>
+        <h3 className="font-black mb-3 text-right text-xs" style={{ color: BRAND.navy }}>اعتمادات شحن معلقة ({pendingTopUps.length})</h3>
         <div className="space-y-3">
           {pendingTopUps.map(w => (
-            <div key={w.id} style={{ background: '#fff', border: '2px solid #FFD180', borderRadius: 18, padding: '12px 14px', boxShadow: '0 3px 12px rgba(255,149,0,0.06)' }}>
+            <div key={w.id} className="border p-3" style={{ background: BRAND.card, borderColor: BRAND.border, borderRadius: 18 }}>
               <div className="flex justify-between items-center mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="font-black" style={{ fontSize: 9, padding: '3px 10px', borderRadius: 10, background: w.method === 'instapay' ? '#7C3AED' : '#FF8800', color: '#fff' }}>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-black text-[9px] px-2 py-0.5 rounded text-white" style={{ background: w.method === 'instapay' ? '#7C3AED' : '#f59e0b' }}>
                     {w.method === 'instapay' ? '📱 إنستاباي' : '📲 كاش'}
                   </span>
-                  <span className="font-bold font-mono" style={{ fontSize: 9, color: '#94a3b8' }}>
+                  <span className="font-bold font-mono text-[9px]" style={{ color: BRAND.slateMuted }}>
                     {new Date(w.timestamp).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
-                <div className="font-black font-mono" style={{ fontSize: 22, fontWeight: 950, color: '#0A1628' }}>
-                  {w.amount} <span style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8' }}>ج.م</span>
+                <div className="font-black font-mono text-lg text-slate-900">
+                  {w.amount} <span className="text-[10px] font-bold text-slate-400">ج.م</span>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-2 mb-2" style={{ background: '#F8FAFF', borderRadius: 12, padding: '6px 10px', border: '1px solid #E9EEFF' }}>
-                <div className="flex items-center gap-2 flex-wrap">
-                  {w.userName && <span className="font-black" style={{ fontSize: 11, color: '#0A1628' }}>👤 {w.userName}</span>}
-                  {w.carPlate && <span className="font-black" style={{ fontSize: 11, color: '#E65100' }}>🚗 {w.carPlate}</span>}
+              <div className="flex items-center justify-between gap-2 mb-2 p-2 rounded-lg border bg-slate-50" style={{ borderColor: BRAND.border }}>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {w.userName && <span className="font-black text-[10px]" style={{ color: BRAND.navy }}>👤 {w.userName}</span>}
+                  {w.carPlate && <span className="font-black text-[10px]" style={{ color: '#c2410c' }}>🚗 {w.carPlate}</span>}
                 </div>
-                {w.userPhone && <span className="font-black font-mono" style={{ fontSize: 11, color: '#0066FF' }}>{w.userPhone}</span>}
+                {w.userPhone && <span className="font-black font-mono text-[10px]" style={{ color: BRAND.blue }}>{w.userPhone}</span>}
               </div>
 
               <div className="flex gap-2">
                 <button 
                   onClick={() => handleApproveTopUp(w.id, w.amount)} 
                   disabled={processingTopUpId === w.id}
-                  className="flex-1 font-black flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ 
-                    background: 'linear-gradient(135deg,#00CC66,#00AA55)', 
-                    color: '#ffffff', 
-                    padding: '10px 0', 
-                    borderRadius: 14, 
-                    fontSize: 12, 
-                    fontWeight: 950,
-                    boxShadow: '0 4px 14px rgba(0,204,102,0.25)',
-                    textShadow: '0 1px 2px rgba(0,0,0,0.15)'
-                  }}
+                  className="flex-1 font-black py-2 rounded-lg text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1.5"
+                  style={{ background: BRAND.greenDark }}
                 >
-                  <CheckCircle size={16} />
+                  <CheckCircle size={14} />
                   {processingTopUpId === w.id ? 'جاري...' : 'اعتماد'}
                 </button>
                 <button 
                   onClick={() => handleRejectTopUp(w.id)} 
                   disabled={processingTopUpId === w.id}
-                  className="font-black flex items-center justify-center active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ 
-                    background: 'linear-gradient(135deg,#FF3333,#CC0000)', 
-                    color: '#ffffff', 
-                    padding: '10px 16px', 
-                    borderRadius: 14,
-                    boxShadow: '0 3px 12px rgba(255,51,51,0.2)'
-                  }}
+                  className="font-black py-2 px-4 rounded-lg cursor-pointer border text-red-600 bg-red-50"
+                  style={{ borderColor: '#fca5a5' }}
                 >
-                  <XCircle size={16} />
+                  <XCircle size={14} />
                 </button>
               </div>
             </div>
           ))}
           {pendingTopUps.length === 0 && (
-            <div className="text-center" style={{ background: '#fff', borderRadius: 24, padding: 28, border: '2px solid #D0DCFF', color: '#94a3b8', fontSize: 14 }}>لا توجد اعتمادات معلقة</div>
+            <div className="text-center py-6 border-2 border-dashed rounded-2xl text-xs font-bold" style={{ borderColor: BRAND.border, color: BRAND.slate }}>لا توجد اعتمادات معلقة</div>
           )}
         </div>
       </div>
 
       {/* ══ Messages ══ */}
       <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <span className="font-black" style={{ background: '#FF3333', color: '#fff', padding: '5px 14px', borderRadius: 12, fontSize: 11, boxShadow: '0 2px 8px rgba(255,51,51,0.3)' }}>{pendingMessages.length} جديد</span>
-          <h3 className="font-black flex items-center gap-2" style={{ fontSize: 16, color: '#0066FF' }}>الرسائل والشكاوى <MessageCircle size={18} /></h3>
+        <div className="flex items-center justify-between mb-3">
+          <span className="font-black text-[9px] px-2 py-0.5 rounded text-white" style={{ background: '#ef4444' }}>{pendingMessages.length} جديد</span>
+          <h3 className="font-black text-xs" style={{ color: BRAND.navy }}>الرسائل والشكاوى <MessageCircle size={16} /></h3>
         </div>
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-1.5 mb-3">
           {[
-            { id: 'all' as const, label: `الكل (${allMessages.length})`, bg: '#0066FF', shadow: 'rgba(0,102,255,0.3)' },
-            { id: 'pending' as const, label: `⏳ معلقة (${pendingMessages.length})`, bg: '#FF9500', shadow: 'rgba(255,149,0,0.3)' },
+            { id: 'all' as const, label: `الكل (${allMessages.length})`, bg: BRAND.blue },
+            { id: 'pending' as const, label: `⏳ معلقة (${pendingMessages.length})`, bg: '#f59e0b' },
           ].map(b => (
-            <button key={b.id} onClick={() => setMessagesTab(b.id)} className="flex-1 font-black transition-all active:scale-95"
-              style={{ padding: '12px 0', borderRadius: 16, fontSize: 12, background: messagesTab === b.id ? b.bg : '#fff', color: messagesTab === b.id ? '#fff' : '#7B8CA6', boxShadow: messagesTab === b.id ? `0 4px 16px ${b.shadow}` : 'none', border: messagesTab !== b.id ? '2px solid #D0DCFF' : 'none' }}>
+            <button key={b.id} onClick={() => setMessagesTab(b.id)} className="flex-1 font-black py-2 rounded-xl text-[10px] border-0 cursor-pointer transition-all"
+              style={{ background: messagesTab === b.id ? b.bg : BRAND.blueSoft, color: messagesTab === b.id ? '#fff' : BRAND.slate, border: messagesTab !== b.id ? `1px solid ${BRAND.border}` : 'none' }}>
               {b.label}
             </button>
           ))}
         </div> 
-        <div 
-          className="space-y-3 max-h-[350px] overflow-y-auto pr-1.5"
-          style={{
-            scrollbarWidth: 'thin',
-            scrollbarColor: '#CBD5E1 transparent',
-          }}
-        >
+        <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
           {displayedMessages.length === 0 ? (
-            <div className="text-center animate-pulse" style={{ background: '#fff', borderRadius: 24, padding: 28, border: '2px solid #D0DCFF', color: '#94a3b8', fontSize: 13 }}>لا توجد رسائل</div>
+            <div className="text-center py-6 bg-white border rounded-2xl text-xs font-bold" style={{ borderColor: BRAND.border, color: BRAND.slate }}>لا توجد رسائل</div>
           ) : (
             displayedMessages.map(msg => {
               const isExp = expandedMessage === msg.id; 
               const isRep = replyingTo === msg.id;
               return (
-                <div key={msg.id} style={{ background: msg.status === 'pending' ? '#FFFAF0' : msg.status === 'replied' ? '#F0FFF5' : '#fff', border: `2.5px solid ${msg.status === 'pending' ? '#FFD180' : msg.status === 'replied' ? '#66DDAA' : '#D0DCFF'}`, borderRadius: 20, padding: 14 }}>
-                  <div className="flex justify-between items-start mb-2">
+                <div key={msg.id} className="border p-3.5" style={{ background: msg.status === 'pending' ? '#fff7ed' : msg.status === 'replied' ? BRAND.greenLight : '#fff', borderColor: msg.status === 'pending' ? '#fed7aa' : msg.status === 'replied' ? BRAND.green : BRAND.border, borderRadius: 18 }}>
+                  <div className="flex justify-between items-center mb-2">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-black" style={{ fontSize: 9, padding: '3px 10px', borderRadius: 10, background: msg.status === 'pending' ? '#FF9500' : msg.status === 'replied' ? '#00CC66' : '#94a3b8', color: '#fff' }}>
+                      <span className="font-black text-[8px] px-1.5 py-0.5 rounded text-white" style={{ background: msg.status === 'pending' ? '#f59e0b' : msg.status === 'replied' ? BRAND.green : BRAND.slate }}>
                         {msg.status === 'pending' ? '⏳ معلقة' : msg.status === 'replied' ? '✅ تم الرد' : '🔒 مغلقة'}
                       </span>
-                      <span style={{ fontSize: 9, color: '#94a3b8', fontWeight: 900 }}>{formatMsgTime(msg.timestamp)}</span>
+                      <span className="text-[9px] font-bold" style={{ color: BRAND.slateMuted }}>{formatMsgTime(msg.timestamp)}</span>
                     </div>
-                    <span className="font-black" style={{ fontSize: 9, background: '#F0F4FF', padding: '3px 10px', borderRadius: 10, color: '#7B8CA6' }}>{getTypeEmoji(msg.type)} {getTypeLabel(msg.type)}</span>
+                    <span className="font-black text-[9px] px-2 py-0.5 rounded" style={{ background: BRAND.blueSoft, color: BRAND.slate }}>{getTypeEmoji(msg.type)} {getTypeLabel(msg.type)}</span>
                   </div>
 
-                  <div className="flex items-center justify-between mb-2" style={{ background: '#F0F4FF', borderRadius: 12, padding: '6px 10px', border: '1px solid #D0DCFF' }}>
-                    <span className="font-mono font-bold" style={{ fontSize: 10, color: '#7B8CA6' }}>{msg.userPhone}</span>
-                    <div className="flex items-center gap-2">
-                      {msg.userName && <span className="font-black" style={{ fontSize: 10.5, color: '#0A1628' }}>{msg.userName}</span>}
-                      {msg.carPlate && <span className="font-black font-mono" style={{ fontSize: 10, color: '#0066FF' }}>🚗 {msg.carPlate}</span>}
+                  <div className="flex items-center justify-between mb-2 p-1.5 rounded-lg border bg-slate-50" style={{ borderColor: BRAND.border }}>
+                    <span className="font-mono font-bold text-[10px]" style={{ color: BRAND.blue }}>{msg.userPhone}</span>
+                    <div className="flex items-center gap-1.5">
+                      {msg.userName && <span className="font-black text-[10px]" style={{ color: BRAND.navy }}>{msg.userName}</span>}
+                      {msg.carPlate && <span className="font-black font-mono text-[10px]" style={{ color: BRAND.blue }}>🚗 {msg.carPlate}</span>}
                     </div>
                   </div>
 
-                  {msg.subject && <div className="font-black mb-1 text-right text-slate-900" style={{ fontSize: 12.5 }}>{msg.subject}</div>}
+                  {msg.subject && <div className="font-black mb-1 text-right text-xs" style={{ color: BRAND.navy }}>{msg.subject}</div>}
                   
                   <div 
                     className={`text-right leading-relaxed mb-2 cursor-pointer ${isExp ? '' : 'line-clamp-2'}`} 
-                    style={{ fontSize: '12px', fontWeight: 950, color: '#000000' }} 
+                    style={{ fontSize: '11px', fontWeight: 950, color: '#000000' }} 
                     onClick={() => setExpandedMessage(isExp ? null : msg.id)}
                   >
                     {msg.message}
                   </div>
 
-                  {!isExp && msg.message.length > 80 && <button onClick={() => setExpandedMessage(msg.id)} className="font-black mb-2 text-blue-600" style={{ fontSize: 10 }}>عرض الكامل ↓</button>}
+                  {!isExp && msg.message.length > 80 && <button onClick={() => setExpandedMessage(msg.id)} className="font-black mb-2 text-blue-600 border-0 bg-transparent cursor-pointer" style={{ fontSize: 9.5 }}>عرض الكامل ↓</button>}
                   
                   {msg.reply && (
-                    <div className="mb-2.5" style={{ background: '#E8FFF0', border: '1.5px solid #66DDAA', borderRadius: 14, padding: 10 }}>
-                      <div className="font-black text-right mb-1" style={{ fontSize: 9.5, color: '#00AA44' }}>ردك السابق:</div>
-                      
-                      <div 
-                        className="text-right leading-relaxed" 
-                        style={{ fontSize: '12.5px', fontWeight: 950, color: '#000000' }}
-                      >
-                        {msg.reply}
-                      </div>
-
-                      {msg.repliedAt && <div className="text-left mt-1 font-bold" style={{ fontSize: 8.5, color: '#66DDAA' }}>{formatMsgTime(msg.repliedAt)}</div>}
+                    <div className="mb-2.5 p-2.5 rounded-lg border" style={{ background: BRAND.greenLight, borderColor: BRAND.green }}>
+                      <div className="font-black text-right mb-1 text-[9px]" style={{ color: BRAND.greenDark }}>ردك السابق:</div>
+                      <div className="text-right leading-relaxed text-[11px] font-bold" style={{ color: BRAND.navy }}>{msg.reply}</div>
                     </div>
                   )}
 
                   {msg.status !== 'closed' && (
                     isRep ? (
                       <div className="space-y-2">
-                        <textarea value={replyText} onChange={e => setReplyText(e.target.value)} placeholder="اكتب ردك..." rows={3} className="w-full font-bold text-right outline-none resize-none"
-                          style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 10, borderRadius: 14, fontSize: 12, color: '#0A1628' }} />
+                        <textarea value={replyText} onChange={e => setReplyText(e.target.value)} placeholder="اكتب ردك هنا..." rows={3} className="w-full font-bold text-right outline-none resize-none text-xs p-2.5 rounded-xl border border-slate-200" />
                         <div className="flex gap-2">
-                          <button onClick={async () => { if (!replyText.trim()) { toast.error('اكتب الرد'); return; } await replyMessage(msg.id, replyText.trim()); toast.success('تم ✅'); setReplyText(''); setReplyingTo(null); }} className="flex-1 font-black flex items-center justify-center gap-1.5 active:scale-95"
-                            style={{ background: 'linear-gradient(135deg,#00CC66,#00AA55)', color: '#fff', padding: 10, borderRadius: 14, fontSize: 12 }}><Send size={14} />إرسال الرد</button>
-                          <button onClick={() => { setReplyingTo(null); setReplyText(''); }} className="font-black active:scale-95"
-                            style={{ background: '#F0F4FF', color: '#475569', padding: '10px 16px', borderRadius: 14, fontSize: 12, border: '2px solid #D0DCFF' }}>إلغاء</button>
+                          <button onClick={async () => { if (!replyText.trim()) { toast.error('اكتب الرد'); return; } await replyMessage(msg.id, replyText.trim()); toast.success('تم ✅'); setReplyText(''); setReplyingTo(null); }} className="flex-1 font-black py-2 rounded-lg text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1" style={{ background: BRAND.greenDark }}><Send size={12} />إرسال</button>
+                          <button onClick={() => { setReplyingTo(null); setReplyText(''); }} className="font-black py-2 px-4 rounded-lg text-xs cursor-pointer border bg-white" style={{ color: BRAND.slate, borderColor: BRAND.border }}>إلغاء</button>
                         </div>
                       </div>
                     ) : (
                       <div className="flex gap-2">
-                        <button onClick={() => { setReplyingTo(msg.id); setReplyText(''); setExpandedMessage(msg.id); }} className="flex-1 font-black flex items-center justify-center gap-1.5 active:scale-95"
-                          style={{ background: '#0066FF', color: '#fff', padding: 10, borderRadius: 14, fontSize: 12, boxShadow: '0 4px 12px rgba(0,102,255,0.2)' }}><Send size={14} />{msg.reply ? 'تعديل الرد' : 'الرد على الرسالة'}</button>
-                        <button onClick={async () => { await closeMessage(msg.id); toast.success('تم الإغلاق'); }} className="font-black active:scale-95"
-                          style={{ background: '#F0F4FF', color: '#475569', padding: '10px 16px', borderRadius: 14, fontSize: 12, border: '2px solid #D0DCFF' }}>إلغاء</button>
+                        <button onClick={() => { setReplyingTo(msg.id); setReplyText(''); setExpandedMessage(msg.id); }} className="flex-1 font-black py-2 rounded-lg text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1" style={{ background: BRAND.blue }}><Send size={12} />{msg.reply ? 'تعديل الرد' : 'الرد على الرسالة'}</button>
+                        <button onClick={async () => { await closeMessage(msg.id); toast.success('تم الإغلاق'); }} className="font-black py-2 px-4 rounded-lg text-xs cursor-pointer border bg-white" style={{ color: BRAND.slate, borderColor: BRAND.border }}>إلغاء</button>
                       </div>
                     )
                   )}
@@ -1473,44 +1347,38 @@ export default function AdminDashboard() {
       {/* 🏢 إدارة وجرد الجراجات */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
-          <span className="font-black" style={{ background: '#4D00FF', color: '#fff', fontSize: 10, padding: '3.5px 12px', borderRadius: 20 }}>
+          <span className="font-black text-[9px] px-2 py-0.5 rounded bg-slate-200" style={{ color: BRAND.slate }}>
             {filteredGaragesForAdmin.length} جراج نشط
           </span>
-          <h3 className="font-black flex items-center gap-2" style={{ fontSize: 15, color: '#334155' }}>
-            إدارة الجراجات <Warehouse size={18} />
+          <h3 className="font-black text-xs" style={{ color: BRAND.navy }}>
+            إدارة وجرد الجراجات
           </h3>
         </div>
 
         <div className="space-y-3 mb-4">
           <div className="relative">
-            <Search size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: '#94a3b8' }} />
+            <Search size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: BRAND.slateMuted }} />
             <input 
               type="text" 
               value={garageSearch} 
               onChange={e => setGarageSearch(e.target.value)} 
               placeholder="ابحث عن جراج بالاسم..." 
-              className="w-full font-bold outline-none"
-              style={{ background: '#fff', border: '2px solid #D0DCFF', padding: '12px 40px 12px 40px', borderRadius: 18, fontSize: 12.5, color: '#0A1628' }} 
+              className="w-full font-bold outline-none text-xs py-2.5 px-9 rounded-xl border border-slate-200"
+              style={{ color: BRAND.navy }}
             />
             {garageSearch && (
-              <button onClick={() => setGarageSearch('')} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                <XCircle size={16} />
+              <button onClick={() => setGarageSearch('')} className="absolute left-3 top-1/2 -translate-y-1/2 border-0 bg-transparent cursor-pointer" style={{ color: BRAND.slateMuted }}>
+                <X size={14} />
               </button>
             )}
           </div>
         </div>
 
-        <div 
-          className="space-y-3 max-h-[380px] overflow-y-auto pr-1.5"
-          style={{
-            scrollbarWidth: 'thin',
-            scrollbarColor: '#CBD5E1 transparent',
-          }}
-        >
+        <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
           {filteredGaragesForAdmin.length === 0 ? (
-            <div className="text-center py-10" style={{ background: '#fff', borderRadius: 24, padding: 32, border: '2px solid #D0DCFF' }}>
-              <div style={{ fontSize: 36, marginBottom: 8 }}>🔍</div>
-              <p className="font-bold text-xs" style={{ color: '#94a3b8' }}>لا توجد جراجات مطابقة للبحث "{garageSearch}"</p>
+            <div className="text-center py-10 bg-white border rounded-2xl" style={{ borderColor: BRAND.border }}>
+              <div className="text-2xl mb-1">🔍</div>
+              <p className="font-bold text-xs" style={{ color: BRAND.slateMuted }}>لا توجد جراجات مطابقة للبحث</p>
             </div>
           ) : (
             filteredGaragesForAdmin.map(g => {
@@ -1518,46 +1386,38 @@ export default function AdminDashboard() {
               const ownerPhone = (g as any).ownerPhone || g.phone;
               const sameOwnerCount = garages.filter((x: any) => (normalizePhone(x.ownerPhone || x.phone) === normalizePhone(ownerPhone))).length;
               return (
-                <div key={g.id} style={{ background: '#fff', border: '2px solid #D0DCFF', borderRadius: 18, padding: '12px 14px', boxShadow: '0 3px 12px rgba(0,102,255,0.04)' }}>
+                <div key={g.id} className="border p-3.5" style={{ background: BRAND.card, borderColor: BRAND.border, borderRadius: 18 }}>
                   <div className="flex justify-between items-center mb-2">
-                    <div className="flex items-center gap-1.5" style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', borderRadius: 12, padding: '5px 10px', color: '#fff', boxShadow: '0 3px 10px rgba(0,102,255,0.25)' }}>
-                      <span className="font-black font-mono" style={{ fontSize: 15, fontWeight: 950, textShadow: '0 1px 2px rgba(0,0,0,0.15)' }}>{g.availableSpots}</span>
-                      <span className="font-bold" style={{ fontSize: 9, opacity: 0.95 }}>شاغر</span>
+                    <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-white" style={{ background: BRAND.blue }}>
+                      <span className="font-black font-mono text-sm">{g.availableSpots}</span>
+                      <span className="font-bold text-[9px] opacity-80">شاغر</span>
                     </div>
                     
                     <div className="text-right flex items-center gap-1.5 flex-wrap justify-end">
                       {sameOwnerCount > 1 && (
-                        <span className="font-black" style={{ 
-                          fontSize: 9, 
-                          padding: '2.5px 7px', 
-                          borderRadius: 8, 
-                          background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', 
-                          color: '#fff',
-                          fontWeight: 900
-                        }}>
+                        <span className="font-black text-[9px] px-2 py-0.5 rounded" style={{ background: BRAND.blueSoft, color: BRAND.blue }}>
                           👑 {sameOwnerCount}
                         </span>
                       )}
-                      <span className="font-black text-slate-900" style={{ fontSize: 15, fontWeight: 950 }}>{g.name}</span>
+                      <span className="font-black text-xs" style={{ color: BRAND.navy }}>{g.name}</span>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between mb-2 gap-2">
+                  <div className="flex items-center justify-between mb-3 gap-2">
                     <div className="flex flex-wrap gap-1 justify-start">
                       {[
-                        { n: 1, name: (g as any).valetName1, pw: (g as any).valetPassword1, color: '#0066FF' },
-                        { n: 2, name: (g as any).valetName2, pw: (g as any).valetPassword2, color: '#7C3AED' },
-                        { n: 3, name: (g as any).valetName3, pw: (g as any).valetPassword3, color: '#FF8800' },
+                        { n: 1, name: (g as any).valetName1, pw: (g as any).valetPassword1, color: BRAND.blue },
+                        { n: 2, name: (g as any).valetName2, pw: (g as any).valetPassword2, color: '#7c3aed' },
+                        { n: 3, name: (g as any).valetName3, pw: (g as any).valetPassword3, color: '#f59e0b' },
                       ].filter(v => v.pw).map(v => (
-                        <span key={v.n} className="font-bold flex items-center gap-0.5" style={{ fontSize: 8, color: v.color, background: `${v.color}15`, padding: '1.5px 6px', borderRadius: 6, fontWeight: 900 }}>
-                          <HardHat size={7} /> {v.name || `س${v.n}`}
+                        <span key={v.n} className="font-bold text-[8px] px-1.5 py-0.5 rounded" style={{ color: v.color, background: BRAND.bg, border: `1px solid ${BRAND.border}` }}>
+                          👤 {v.name || `س${v.n}`}
                         </span>
                       ))}
                     </div>
                     
-                    {/* 🗺️ عرض المنطقة الجغرافية للجراج في البطاقة الرئيسية للأدمن */}
-                    <div className="flex items-center gap-1.5 text-slate-500 font-bold" style={{ fontSize: 10 }}>
-                      <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md text-[9px] font-black">🗺️ {g.area || 'مناطق أخرى'}</span>
+                    <div className="flex items-center gap-1.5 text-slate-500 font-bold text-[9px]">
+                      <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[8px] font-black">🗺️ {g.area || 'مناطق أخرى'}</span>
                       <span style={{ color: '#E2E8F0' }}>·</span>
                       <span className="truncate max-w-[100px]">{g.location}</span>
                       <MapPin size={10} className="shrink-0 text-slate-400" />
@@ -1565,7 +1425,7 @@ export default function AdminDashboard() {
                   </div>
 
                   {/* صندوق تعديل العمولة والمنطقة معاً للأدمن */}
-                  <div className="flex flex-col gap-2 mb-2" style={{ background: '#FFF8F0', borderRadius: 14, padding: '10px 12px', border: '1.5px solid #FFD180' }}>
+                  <div className="flex flex-col gap-2 mb-3 p-3 rounded-xl border bg-slate-50" style={{ borderColor: BRAND.border }}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5">
                         {!isEditingComm ? (
@@ -1573,32 +1433,28 @@ export default function AdminDashboard() {
                             onClick={() => { 
                               setEditingCommissionGarageId(g.id); 
                               setEditCommissionRate(g.commissionRate ?? 10); 
-                              setEditArea(g.area || 'وسط البلد'); // 🗺️ تهيئة حالة المنطقة للجراج المحدد
+                              setEditArea(g.area || 'وسط البلد'); 
                             }}
-                            className="font-black active:scale-95 flex items-center gap-0.5"
-                            style={{ background: '#FF9500', color: '#fff', padding: '4px 10px', borderRadius: 8, fontSize: 9.5, fontWeight: 950, textShadow: '0 1px 1px rgba(0,0,0,0.1)' }}
+                            className="font-black border-0 py-1 px-2.5 rounded-lg text-[9px] cursor-pointer text-white"
+                            style={{ background: '#f59e0b' }}
                           >
-                            <Edit3 size={9} /> تعديل البيانات
+                            تعديل البيانات
                           </button>
                         ) : (
                           <div className="flex items-center gap-1">
-                            <button onClick={() => handleSaveCommission(g.id)} className="font-black active:scale-95"
-                              style={{ background: '#00CC66', color: '#fff', padding: '4px 10px', borderRadius: 8, fontSize: 9.5, fontWeight: 950 }}>حفظ</button>
-                            <button onClick={() => setEditingCommissionGarageId(null)} className="font-black active:scale-95"
-                              style={{ background: '#F0F4FF', color: '#475569', padding: '4px 10px', borderRadius: 8, fontSize: 9.5, fontWeight: 900, border: '1px solid #D0DCFF' }}>✕</button>
+                            <button onClick={() => handleSaveCommission(g.id)} className="font-black py-1 px-2.5 rounded-lg text-[9px] cursor-pointer border-0 text-white" style={{ background: BRAND.greenDark }}>حفظ</button>
+                            <button onClick={() => setEditingCommissionGarageId(null)} className="font-black py-1 px-2.5 rounded-lg text-[9px] cursor-pointer border bg-white" style={{ color: BRAND.slate, borderColor: BRAND.border }}>✕</button>
                           </div>
                         )}
                         {isEditingComm && (
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => setEditCommissionRate(r => Math.max(0, r - 1))} className="active:scale-90 flex items-center justify-center"
-                              style={{ background: '#FF3333', color: '#fff', width: 22, height: 22, borderRadius: 7 }}>
+                          <div className="flex items-center gap-1 bg-white p-1 rounded-lg border">
+                            <button onClick={() => setEditCommissionRate(r => Math.max(0, r - 1))} className="border-0 cursor-pointer flex items-center justify-center rounded" style={{ background: '#fee2e2', color: '#dc2626', width: 20, height: 22 }}>
                               <Minus size={11} />
                             </button>
                             <input type="number" value={editCommissionRate} onChange={e => setEditCommissionRate(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
-                              className="bg-transparent text-center outline-none font-mono font-black"
-                              style={{ width: 34, fontSize: 13, fontWeight: 950, color: '#FF9500', background: '#fff', border: '1px solid #FFD180', borderRadius: 6, padding: '2px 0' }} />
-                            <button onClick={() => setEditCommissionRate(r => Math.min(100, r + 1))} className="active:scale-90 flex items-center justify-center"
-                              style={{ background: '#00CC66', color: '#fff', width: 22, height: 22, borderRadius: 7 }}>
+                              className="bg-transparent text-center outline-none font-mono font-black text-xs border-0"
+                              style={{ width: 28, color: '#f59e0b' }} />
+                            <button onClick={() => setEditCommissionRate(r => Math.min(100, r + 1))} className="border-0 cursor-pointer flex items-center justify-center rounded" style={{ background: '#d1fae5', color: '#10b981', width: 20, height: 22 }}>
                               <Plus size={11} />
                             </button>
                           </div>
@@ -1606,22 +1462,22 @@ export default function AdminDashboard() {
                       </div>
 
                       <div className="flex items-center gap-1">
-                        <Percent size={11} style={{ color: '#FF9500' }} />
-                        <span className="font-black font-mono text-sm" style={{ fontWeight: 950, color: '#FF9500' }}>
+                        <Percent size={11} style={{ color: BRAND.slate }} />
+                        <span className="font-black font-mono text-xs" style={{ color: BRAND.navy }}>
                           {isEditingComm ? editCommissionRate : (g.commissionRate ?? 10)}%
                         </span>
-                        <span className="font-black" style={{ fontSize: 9.5, color: '#94a3b8', fontWeight: 900 }}>عمولة التطبيق</span>
+                        <span className="font-bold text-[9px]" style={{ color: BRAND.slateMuted }}>عمولة التطبيق</span>
                       </div>
                     </div>
 
-                    {/* 🗺️ اختيار المنطقة الجغرافية أثناء وضع التعديل للأدمن */}
+                    {/* اختيار المنطقة الجغرافية أثناء وضع التعديل */}
                     {isEditingComm && (
-                      <div className="pt-2 border-t border-dashed border-amber-300 flex items-center justify-between gap-2">
+                      <div className="pt-2 border-t border-dashed flex items-center justify-between gap-2" style={{ borderColor: BRAND.border }}>
                         <select
                           value={editArea}
                           onChange={(e) => setEditArea(e.target.value)}
-                          className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs"
-                          style={{ background: '#fff', border: '1.5px solid #FFD180', color: '#0A1628' }}
+                          className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"
+                          style={{ background: '#fff', borderColor: BRAND.border, color: BRAND.navy }}
                         >
                           <option value="وسط البلد">🏢 وسط البلد</option>
                           <option value="مصر الجديدة">🏰 مصر الجديدة</option>
@@ -1632,7 +1488,7 @@ export default function AdminDashboard() {
                           <option value="التجمع الخامس">💎 التجمع الخامس</option>
                           <option value="مناطق أخرى">📍 مناطق أخرى</option>
                         </select>
-                        <span className="font-black text-[10px] text-amber-700">🗺️ المنطقة الجغرافية:</span>
+                        <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية:</span>
                       </div>
                     )}
                   </div>
@@ -1643,40 +1499,21 @@ export default function AdminDashboard() {
                       onClick={() => {
                         const newStatus = g.isActive === false ? true : false;
                         updateGarage(g.id, { isActive: newStatus });
-                        toast.success(newStatus ? `تم تفعيل ${g.name} للعملاء 🟢` : `تم تعطيل ${g.name} 🔴`);
+                        toast.success(newStatus ? `تم تفعيل ${g.name} 🟢` : `تم تعطيل ${g.name} 🔴`);
                       }}
-                      className="font-black active:scale-95 transition-all flex items-center justify-center gap-1"
-                      style={{
-                        background: g.isActive !== false ? '#00CC66' : '#FF3333',
-                        color: '#ffffff',
-                        padding: '9px 10px',
-                        borderRadius: 12,
-                        fontSize: 10,
-                        fontWeight: 950,
-                        boxShadow: g.isActive !== false ? '0 3px 10px rgba(0,204,102,0.25)' : '0 3px 10px rgba(255,51,51,0.25)',
-                        textShadow: '0 1px 1px rgba(0,0,0,0.15)',
-                        flexShrink: 0
-                      }}
+                      className="font-black py-2 px-3 rounded-xl text-[10px] cursor-pointer border-0 text-white flex items-center justify-center gap-1"
+                      style={{ background: g.isActive !== false ? BRAND.greenDark : '#dc2626' }}
                     >
                       <span>{g.isActive !== false ? '🟢 مفعّل' : '🔴 معطّل'}</span>
                     </button>
 
                     <button
                       onClick={() => handleAdminEnterGarage(g)}
-                      className="flex-1 font-black active:scale-95 transition-all flex items-center justify-center gap-1.5"
-                      style={{ 
-                        background: 'linear-gradient(135deg,#0066FF,#0044DD)', 
-                        color: '#ffffff', 
-                        padding: '9px 0', 
-                        borderRadius: 12, 
-                        fontSize: 12, 
-                        fontWeight: 950,
-                        boxShadow: '0 4px 14px rgba(0,102,255,0.28)',
-                        textShadow: '0 1px 2px rgba(0,0,0,0.15)'
-                      }}
+                      className="flex-1 font-black py-2 rounded-xl text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1.5"
+                      style={{ background: BRAND.blue }}
                     >
                       <Navigation size={14} />
-                      دخول وإدارة
+                      دخول وإدارة الجراج
                     </button>
                   </div>
                 </div>
@@ -1688,29 +1525,22 @@ export default function AdminDashboard() {
       
       {/* ══ Add Garage ══ */}
       <div className="mb-20">
-        <h3 className="font-black mb-4 flex items-center gap-2 justify-end" style={{ fontSize: 16, color: '#0066FF' }}>إضافة جراج جديد <Plus size={18} /></h3>
-        <div className="space-y-4" style={{ background: '#fff', border: '2.5px solid #D0DCFF', borderRadius: 28, padding: 22, boxShadow: '0 4px 20px rgba(0,102,255,0.06)' }}>
-          <input className="w-full font-bold text-right outline-none" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 16, borderRadius: 18, fontSize: 14, color: '#0A1628' }} placeholder="اسم الجراج" value={gName} onChange={e => setGName(e.target.value)} />
+        <h3 className="font-black mb-3 text-right text-xs" style={{ color: BRAND.navy }}>إضافة جراج جديد للشبكة</h3>
+        <div className="space-y-4 p-5 bg-white border" style={{ borderColor: BRAND.border, borderRadius: 24 }}>
+          <input className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="اسم الجراج" value={gName} onChange={e => setGName(e.target.value)} />
           <div className="flex gap-2">
-            <input className="flex-1 font-bold text-right outline-none" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 14, borderRadius: 16, fontSize: 12, color: '#0A1628' }} placeholder="المستخدم" value={gUser} onChange={e => setGUser(e.target.value)} />
-            <input className="flex-1 font-bold text-right outline-none" style={{ background: '#F0F4FF', border: '2px solid #D0DCFF', padding: 14, borderRadius: 16, fontSize: 12, color: '#0A1628' }} placeholder="الهاتف" value={gPhone} onChange={e => setGPhone(e.target.value)} />
+            <input className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="اسم المستخدم" value={gUser} onChange={e => setGUser(e.target.value)} />
+            <input className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="رقم الهاتف" value={gPhone} onChange={e => setGPhone(e.target.value)} />
           </div>
 
-          {/* 🗺️ قائمة اختيار المنطقة الجغرافية للجراج الجديد */}
-          <div className="mb-4 text-right">
-            <label className="font-black block text-right mb-2" style={{ fontSize: 11, color: '#7B8CA6' }}>🗺️ المنطقة الجغرافية للجراج</label>
+          {/* اختيار المنطقة الجغرافية للجراج الجديد */}
+          <div className="text-right">
+            <label className="font-black block text-right mb-1.5 text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية للجراج</label>
             <select
               value={gArea}
               onChange={e => setGArea(e.target.value)}
-              className="w-full font-bold text-right outline-none"
-              style={{ 
-                background: '#F0F4FF', 
-                border: '2px solid #D0DCFF', 
-                padding: 16, 
-                borderRadius: 18, 
-                fontSize: 13, 
-                color: '#0A1628' 
-              }}
+              className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200"
+              style={{ color: BRAND.navy }}
             >
               <option value="وسط البلد">🏢 وسط البلد</option>
               <option value="مصر الجديدة">🏰 مصر الجديدة</option>
@@ -1723,56 +1553,51 @@ export default function AdminDashboard() {
             </select>
           </div>
 
-          <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
-            <div className="font-bold mb-3 text-right flex items-center gap-2 justify-end" style={{ fontSize: 12, color: '#7B8CA6' }}>
-              <HardHat size={14} /> السياس (اختياري)
+          <div className="p-3 border rounded-xl" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
+            <div className="font-bold mb-3 text-right text-[10px]" style={{ color: BRAND.slate }}>
+              👤 حسابات السياس (اختياري)
             </div>
             {[
-              { n: 1, name: gValet1Name, setName: setGValet1Name, pass: gValet1Pass, setPass: setGValet1Pass, color: '#0066FF' },
-              { n: 2, name: gValet2Name, setName: setGValet2Name, pass: gValet2Pass, setPass: setGValet2Pass, color: '#7C3AED' },
-              { n: 3, name: gValet3Name, setName: setGValet3Name, pass: gValet3Pass, setPass: setGValet3Pass, color: '#FF8800' },
+              { n: 1, name: gValet1Name, setName: setGValet1Name, pass: gValet1Pass, setPass: setGValet1Pass, color: BRAND.blue },
+              { n: 2, name: gValet2Name, setName: setGValet2Name, pass: gValet2Pass, setPass: setGValet2Pass, color: '#7c3aed' },
+              { n: 3, name: gValet3Name, setName: setGValet3Name, pass: gValet3Pass, setPass: setGValet3Pass, color: '#f59e0b' },
             ].map((v, i) => (
-              <div key={i} className={i < 2 ? 'mb-3 pb-3' : ''} style={i < 2 ? { borderBottom: '1px solid #D0DCFF' } : {}}>
+              <div key={i} className={i < 2 ? 'mb-3 pb-3 border-b border-dashed' : ''} style={{ borderColor: BRAND.border }}>
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="font-bold" style={{ fontSize: 10, color: (v.name || v.pass) ? v.color : '#CBD5E1' }}>
+                  <span className="font-bold text-[9px]" style={{ color: (v.name || v.pass) ? BRAND.greenDark : BRAND.slateMuted }}>
                     {(v.name || v.pass) ? '✅ مفعّل' : '❌ غير مفعّل'}
                   </span>
-                  <span className="font-black" style={{ fontSize: 11, color: '#0A1628' }}>🅿️ سايس {v.n}</span>
+                  <span className="font-black text-[10px]" style={{ color: BRAND.navy }}>سايس {v.n}</span>
                 </div>
                 <div className="flex gap-2">
-                  <input type="text" value={v.name} onChange={e => v.setName(e.target.value)} className="flex-1 font-bold text-right outline-none"
-                    style={{ background: '#fff', border: `2px solid ${v.name ? v.color : '#D0DCFF'}`, padding: 10, borderRadius: 12, fontSize: 12, color: '#0A1628' }} placeholder="الاسم" />
-                  <input type="text" value={v.pass} onChange={e => v.setPass(e.target.value)} className="flex-1 font-mono font-black text-center outline-none"
-                    style={{ background: '#fff', border: `2px solid ${v.pass ? v.color : '#D0DCFF'}`, padding: 10, borderRadius: 12, fontSize: 13, color: '#0A1628', letterSpacing: 2 }} placeholder="الباسورد" />
+                  <input type="text" value={v.name} onChange={e => v.setName(e.target.value)} className="flex-1 font-bold text-right outline-none text-xs py-2 px-2.5 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="الاسم" />
+                  <input type="text" value={v.pass} onChange={e => v.setPass(e.target.value)} className="flex-1 font-mono font-black text-center outline-none text-xs py-2 px-2.5 rounded-lg border border-slate-200" style={{ color: BRAND.navy, letterSpacing: 2 }} placeholder="الباسورد" />
                 </div>
               </div>
             ))}
           </div>
 
-          <div style={{ background: '#F0F4FF', borderRadius: 22, padding: 16, border: '2px solid #D0DCFF' }}>
-            <div className="font-bold mb-2" style={{ fontSize: 11, color: '#0066FF' }}>📍 تحديد الإحداثيات</div>
-            <div className="grid grid-cols-2 gap-3 font-mono mb-3">
+          <div className="p-3 border rounded-xl" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
+            <div className="font-bold mb-2 text-[10px]" style={{ color: BRAND.slate }}>📍 تحديد الإحداثيات الجغرافية</div>
+            <div className="grid grid-cols-2 gap-3 font-mono">
               {[{ label: 'خط العرض', value: lat, set: setLat }, { label: 'خط الطول', value: lng, set: setLng }].map(c => (
                 <div key={c.label}>
-                  <span style={{ fontSize: 9, color: '#94a3b8' }}>{c.label}</span>
-                  <input type="number" value={c.value} onChange={e => c.set(parseFloat(e.target.value))} className="w-full outline-none"
-                    style={{ background: '#fff', border: '2px solid #D0DCFF', padding: 10, borderRadius: 14, fontSize: 12, color: '#0A1628' }} step="0.000001" />
+                  <span className="text-[9px] text-slate-400 block mb-0.5">{c.label}</span>
+                  <input type="number" value={c.value} onChange={e => c.set(parseFloat(e.target.value))} className="w-full font-bold outline-none text-xs py-2 px-2.5 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} step="0.000001" />
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="text-center" style={{ background: '#F0F4FF', borderRadius: 22, padding: 18, border: '2px solid #D0DCFF' }}>
-            <div style={{ fontSize: 28, marginBottom: 8 }}>📍</div>
-            <div className="font-bold mb-2" style={{ fontSize: 12, color: '#7B8CA6' }}>الموقع المحدد</div>
-            <div className="font-black font-mono" style={{ fontSize: 15, color: '#0066FF' }}>{lat.toFixed(4)}, {lng.toFixed(4)}</div>
-            <button type="button" onClick={() => { if ('geolocation' in navigator) navigator.geolocation.getCurrentPosition(p => { setLat(p.coords.latitude); setLng(p.coords.longitude); toast.success('تم'); }, () => toast.error('تعذر')); }} className="font-black active:scale-95 mt-3"
-              style={{ background: '#0066FF', color: '#fff', padding: '10px 20px', borderRadius: 16, fontSize: 12, boxShadow: '0 4px 16px rgba(0,102,255,0.3)' }}>📍 موقعي الحالي</button>
+          <div className="text-center p-3 border rounded-xl" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
+            <div className="font-bold mb-1 text-[11px]" style={{ color: BRAND.navy }}>الموقع الإحداثي الحالي للمتصفح</div>
+            <div className="font-black font-mono text-xs" style={{ color: BRAND.blue }}>{lat.toFixed(4)}, {lng.toFixed(4)}</div>
+            <button type="button" onClick={() => { if ('geolocation' in navigator) navigator.geolocation.getCurrentPosition(p => { setLat(p.coords.latitude); setLng(p.coords.longitude); toast.success('تم تحديد الإحداثيات'); }, () => toast.error('تعذر التحديد')); }} className="font-black py-1.5 px-3 rounded-lg text-[10px] cursor-pointer border bg-white mt-2" style={{ color: BRAND.blue, borderColor: BRAND.blue }}>📍 استخدام موقعي الحالي</button>
           </div>
 
-          <button onClick={handleAddGarage} className="w-full font-black active:scale-95 transition-all"
-            style={{ background: 'linear-gradient(135deg,#0066FF,#4D00FF)', color: '#fff', padding: 20, borderRadius: 22, fontSize: 16, boxShadow: '0 8px 32px rgba(0,102,255,0.35)' }}>
-            حفظ الجراج
+          <button onClick={handleAddGarage} className="w-full font-black py-3.5 border-0 text-white rounded-xl text-xs active:scale-[0.98] transition-all cursor-pointer"
+            style={{ background: BRAND.blue, boxShadow: `0 4px 14px ${BRAND.blue}25` }}>
+            حفظ وتسجيل الجراج بالشبكة 🚀
           </button>
         </div>
       </div>

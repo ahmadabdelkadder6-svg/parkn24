@@ -7,6 +7,7 @@ import {
   Gift,
   Sparkles,
   CreditCard,
+  XCircle,
 } from 'lucide-react';
 // 🌟 استيراد getServerNow ودوال البصمة لضمان مطابقة العداد بالملي ثانية بين جميع الهواتف
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
@@ -18,6 +19,22 @@ import {
 } from '../utils/pricing';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+
+/* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
+const BRAND = {
+  blue: '#1656b8',       // الأزرق الرسمي
+  blueDark: '#0f3d85',   // الكحلي الفخم
+  blueLight: '#e8f0fe',  // الأزرق الفاتح جداً
+  blueSoft: 'rgba(22, 86, 184, 0.08)', // كحلي زجاجي ناعم
+  green: '#8cc63f',      // الأخضر الرسمي
+  greenDark: '#6ea62a',  // أخضر داكن للخطوط
+  greenLight: 'rgba(140, 198, 63, 0.12)', // خلفية خضراء ناعمة
+  navy: '#0a1628',       // الكحلي الليلي الغامق للواجهة
+  navyLight: '#111e36',  // كحلي أفتح للبطاقات والـ overlays
+  slate: '#64748b',      // الرمادي الهادئ
+  slateMuted: '#94a3b8', // الرمادي الباهت
+  border: 'rgba(255, 255, 255, 0.08)', // حدود زجاجية رفيعة
+};
 
 const safeParseTime = (value: any): number => {
   if (!value) return 0;
@@ -217,7 +234,7 @@ export default function SessionScreen() {
   const sessionRate = Number(activeSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const isFirstFreeApplied = activeSession?.isFirstFreeSession === true;
 
-  // 🎁 الحسابات التفاعلية لـ (30 دقيقة = 1800 ثانية مجانية)
+  // 🎁 الحسابات التفاعلية لـ (30 دقيقة مجانية)
   const { displayedCost, displayedHours, countdownLabel, countdownTime, isFreeNow } = useMemo(() => {
     const defaultCountdown = { minutes: 59, seconds: 59 };
 
@@ -232,7 +249,6 @@ export default function SessionScreen() {
       };
     }
 
-    // 🕐 أول 30 دقيقة (1800 ثانية) مجانية بالكامل
     if (elapsed <= 1800) {
       const freeTimeRemaining = Math.max(0, 1800 - elapsed);
       const minutes = Math.floor(freeTimeRemaining / 60);
@@ -240,12 +256,11 @@ export default function SessionScreen() {
       return {
         displayedCost: 0,
         displayedHours: 0,
-        countdownLabel: 'الوقت المتبقي لانتهاء الـ 30 دقيقة المجانية الهدية 🎁',
+        countdownLabel: 'ينتهي الركن المجاني الهدية خلال 🎁',
         countdownTime: { minutes, seconds },
         isFreeNow: true,
       };
     } else {
-      // 🕐 بعد انتهاء الـ 30 دقيقة، يتم المحاسبة بالساعة الكاملة
       const calculatedCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(elapsed) : defaultCountdown;
       const totalHours = calculateFullHours(elapsed);
       return {
@@ -258,18 +273,19 @@ export default function SessionScreen() {
     }
   }, [isFirstFreeApplied, elapsed, sessionRate]);
 
-  // إذا لم تكن هناك جلسة نشطة
+  // شاشة الانتظار والمزامنة
   if (!activeSession) {
     return (
-      <div className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8">
+      <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8 text-right" style={{ background: BRAND.navy }}>
         <div className="text-4xl mb-4 animate-bounce">⏳</div>
-        <p className="text-slate-500 text-sm font-bold text-center mb-2">جاري مزامنة بيانات الجلسة...</p>
-        <p className="text-slate-400 text-xs text-center mb-4">ستظهر بيانات العداد فور استلامها</p>
+        <p className="text-slate-400 text-sm font-bold text-center mb-2">جاري مزامنة بيانات الجلسة...</p>
+        <p className="text-slate-500 text-xs text-center mb-6">ستظهر بيانات العداد فور استلامها من السيرفر</p>
         <button
           onClick={() => setScreen('list')}
-          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center gap-2 shadow-md"
+          className="bg-blue-600 text-white border-0 px-8 py-3.5 rounded-2xl font-black text-xs active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
+          style={{ background: BRAND.blue, boxShadow: `0 4px 14px ${BRAND.blue}25` }}
         >
-          <ArrowRight size={16} /> <span>العودة للقائمة</span>
+          <ArrowRight size={15} /> <span>العودة للقائمة الرئيسية</span>
         </button>
       </div>
     );
@@ -279,24 +295,29 @@ export default function SessionScreen() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-6 overflow-y-auto"
+      className="h-full text-white flex flex-col items-center justify-center p-6 overflow-y-auto safe-top safe-bottom"
+      style={{ background: BRAND.navy }}
     >
       {/* 🎁 شارة مميزة علوية ترحيبية في العداد إذا كانت الجلسة مجانية */}
       {isFirstFreeApplied && (
         <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
+          initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className="w-full bg-gradient-to-r from-amber-400 to-orange-500 rounded-2xl p-3 mb-4 shadow-md border-2 border-white flex items-center gap-3"
+          className="w-full border rounded-2xl p-3 mb-4 flex items-center gap-3"
+          style={{
+            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.18) 100%)',
+            borderColor: 'rgba(245,158,11,0.3)',
+          }}
         >
-          <div className="bg-white/20 p-2 rounded-xl text-white">
+          <div className="p-2 rounded-xl text-amber-400 shrink-0" style={{ background: 'rgba(245,158,11,0.15)' }}>
             <Gift size={20} className="animate-pulse" />
           </div>
           <div className="text-right flex-1">
-            <div className="font-black text-white flex items-center gap-1 justify-end" style={{ fontSize: 12 }}>
+            <div className="font-black flex items-center gap-1 justify-end text-xs text-amber-400">
               <span>هدية ترحيبية نشطة</span>
               <Sparkles size={12} className="text-yellow-200" />
             </div>
-            <div className="text-white/90 font-bold" style={{ fontSize: 9.5 }}>
+            <div className="font-bold text-[10px] mt-0.5" style={{ color: BRAND.slateMuted }}>
               {isFreeNow 
                 ? 'أنت الآن في أول 30 دقيقة مجانية بالكامل! 🎁' 
                 : 'انتهت الـ 30 دقيقة المجانية وتم بدء الاحتساب بالسعر العادي ✅'}
@@ -305,58 +326,58 @@ export default function SessionScreen() {
         </motion.div>
       )}
 
-      {/* حلقة العداد الدائرية مع تكييف الألوان */}
+      {/* حلقة العداد الدائرية الكبيرة المتوهجة بالكامل */}
       <motion.div
         animate={{
           boxShadow: isFreeNow
             ? [
-                '0 0 0px rgba(245,158,11,0.15)',
-                '0 0 50px rgba(245,158,11,0.25)',
-                '0 0 0px rgba(245,158,11,0.15)',
+                '0 0 0px rgba(140, 198, 63, 0.1)',
+                '0 0 40px rgba(140, 198, 63, 0.25)',
+                '0 0 0px rgba(140, 198, 63, 0.1)',
               ]
             : [
-                '0 0 0px rgba(59,130,246,0.15)',
-                '0 0 50px rgba(59,130,246,0.2)',
-                '0 0 0px rgba(59,130,246,0.15)',
+                '0 0 0px rgba(22, 86, 184, 0.1)',
+                '0 0 40px rgba(22, 86, 184, 0.25)',
+                '0 0 0px rgba(22, 86, 184, 0.1)',
               ],
         }}
-        transition={{ repeat: Infinity, duration: 2 }}
-        className={`w-40 h-40 rounded-full flex flex-col items-center justify-center border-4 mb-4 shadow-lg ${
-          isFreeNow 
-            ? 'bg-amber-50 border-amber-300 shadow-amber-100' 
-            : 'bg-blue-50 border-blue-300 shadow-blue-100'
-        }`}
+        transition={{ repeat: Infinity, duration: 2.5 }}
+        className="w-36 h-36 rounded-full flex flex-col items-center justify-center border-2 mb-5 shadow-lg"
+        style={{
+          background: BRAND.navyLight,
+          borderColor: isFreeNow ? BRAND.green : BRAND.blue,
+        }}
       >
-        <Clock size={22} className={isFreeNow ? 'text-amber-500 mb-1' : 'text-blue-600 mb-1'} />
-        <div className="text-2xl font-black font-mono text-slate-900">{formatTime(elapsed)}</div>
-        <div className="text-[9px] text-slate-500 font-bold mt-0.5">مدة الركن الفعلية</div>
+        <Clock size={20} style={{ color: isFreeNow ? BRAND.green : BRAND.blue }} className="mb-1" />
+        <div className="text-2xl font-black font-mono text-white leading-none">{formatTime(elapsed)}</div>
+        <div className="text-[9px] font-bold mt-1.5" style={{ color: BRAND.slateMuted }}>مدة الركن الفعلية</div>
       </motion.div>
 
       {/* كارت الحساب التفاعلي مع الهدية والعداد */}
-      <div className="w-full bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-2xl p-3.5 mb-3.5 shadow-sm">
-        <div className="flex justify-between items-center mb-2.5">
+      <div className="w-full border rounded-2xl p-4 mb-4" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+        <div className="flex justify-between items-center mb-3">
           <div className="text-center">
-            <div className={`text-2xl font-black font-mono ${isFreeNow ? 'text-amber-500' : 'text-blue-600'}`}>
+            <div className="text-xl font-black font-mono" style={{ color: isFreeNow ? BRAND.green : BRAND.blue }}>
               {displayedHours}
             </div>
-            <div className="text-[9px] text-slate-500 font-bold">ساعة محسوبة</div>
+            <div className="text-[9px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>ساعة محسوبة</div>
           </div>
-          <div className="text-2xl font-black text-slate-300">=</div>
+          <div className="text-lg font-black" style={{ color: BRAND.border }}>=</div>
           <div className="text-center">
-            <div className={`text-2xl font-black font-mono ${isFreeNow ? 'text-emerald-500 animate-pulse' : 'text-emerald-600'}`}>
-              {displayedCost} <span className="text-xs">ج.م</span>
+            <div className="text-xl font-black font-mono" style={{ color: BRAND.green }}>
+              {displayedCost} <span className="text-[10px]">ج.م</span>
             </div>
-            <div className="text-[9px] text-slate-500 font-bold">إجمالي الحساب حتى الآن</div>
+            <div className="text-[9px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>إجمالي الحساب حتى الآن</div>
           </div>
         </div>
 
         {/* عداد التنازل الديناميكي */}
-        <div className="bg-white/80 rounded-xl p-2.5 text-center border border-slate-100">
-          <div className="text-[9px] text-slate-500 mb-0.5 font-bold">{countdownLabel}</div>
-          <div className={`text-base font-black font-mono ${isFreeNow ? 'text-amber-500' : 'text-blue-500'}`}>
+        <div className="rounded-xl p-2.5 text-center border" style={{ background: BRAND.blueSoft, borderColor: BRAND.border }}>
+          <div className="text-[9px] mb-0.5 font-bold" style={{ color: BRAND.slateMuted }}>{countdownLabel}</div>
+          <div className="text-sm font-black font-mono" style={{ color: isFreeNow ? BRAND.green : BRAND.blue }}>
             {String(countdownTime?.minutes ?? 0).padStart(2, '0')}:{String(countdownTime?.seconds ?? 0).padStart(2, '0')}
           </div>
-          <div className="text-[8.5px] text-slate-400 mt-0.5">
+          <div className="text-[8px] mt-0.5 font-semibold" style={{ color: BRAND.slateMuted }}>
             {isFreeNow ? (
               <span>استمتع بالركن المجاني في أول نصف ساعة 🥳</span>
             ) : (
@@ -369,103 +390,103 @@ export default function SessionScreen() {
       </div>
 
       {sessionRate !== garage?.basePrice && garage && (
-        <div className="w-full bg-amber-50 border border-amber-200 rounded-xl p-2 mb-3 text-center">
-          <p className="text-[10px] text-amber-600 font-bold">💰 سعر خاص متفق عليه: {sessionRate} ج.م/ساعة (بدل {garage.basePrice} ج.م)</p>
+        <div className="w-full rounded-xl p-2 mb-3 text-center border" style={{ background: 'rgba(245,158,11,0.06)', borderColor: 'rgba(245,158,11,0.2)' }}>
+          <p className="text-[9px] font-bold text-amber-500">💰 سعر خاص متفق عليه: {sessionRate} ج.م/ساعة (بدلاً من {garage.basePrice} ج.م)</p>
         </div>
       )}
 
-      {/* 🌟💡 بانر إرشادي متناسق ومدمج ومريح للشاشة 💡🌟 */}
+      {/* 💡 بانر إرشادي متناسق ومدمج ومريح للشاشة 💡 */}
       <div 
-        className="w-full rounded-2xl p-3 mb-3.5 text-center shadow-sm"
+        className="w-full rounded-2xl p-3.5 mb-4 text-center border"
         style={{
-          background: '#FFFBF2',
-          border: '1.5px solid #FED7AA',
+          background: 'rgba(255, 255, 255, 0.02)',
+          borderColor: BRAND.border,
         }}
       >
-        <div className="flex items-center justify-center gap-1.5 mb-1 font-black text-amber-900" style={{ fontSize: '13px' }}>
-          <Sparkles size={14} className="text-amber-600 shrink-0" />
-          <span>✨ خلّص مشوارك براحتك</span>
+        <div className="flex items-center justify-center gap-1.5 mb-1 font-black text-white" style={{ fontSize: '12px' }}>
+          <Sparkles size={13} className="text-yellow-400 shrink-0 animate-pulse" />
+          <span>خلّص مشوارك براحتك 🚗✨</span>
         </div>
         <p 
-          className="font-bold text-amber-950 leading-normal mx-auto"
+          className="font-bold leading-relaxed mx-auto"
           style={{ 
-            fontSize: '11px',
-            lineHeight: '1.5',
-            maxWidth: '300px'
+            fontSize: '10px',
+            color: BRAND.slateMuted,
+            maxWidth: '280px'
           }}
         >
-          وقت الركنة <span className="text-amber-700 font-black">محفوظ بالثانية</span> في الخلفية. 
+          وقت الركنة <span className="font-black text-white">محفوظ بالثانية</span> في الخلفية. 
           أغلق التطبيق الآن وافتحه عند العودة للجراج لإنهاء الجلسة.
         </p>
       </div>
 
       {/* بيانات السيارة والسعر */}
-      <div className="w-full grid grid-cols-2 gap-2.5 mb-3">
-        <div className="bg-white border border-slate-200 p-3 rounded-2xl text-center shadow-sm">
-          <Car size={18} className="text-blue-600 mx-auto mb-1" />
-          <div className="text-sm font-black text-slate-900">{activeSession.carPlate || currentUser?.carPlate || '---'}</div>
-          <div className="text-[9px] text-slate-500 font-bold">رقم السيارة</div>
+      <div className="w-full grid grid-cols-2 gap-2.5 mb-4">
+        <div className="border p-3 rounded-2xl text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+          <Car size={16} style={{ color: BRAND.blue }} className="mx-auto mb-1" />
+          <div className="text-xs font-black text-white">{activeSession.carPlate || currentUser?.carPlate || '---'}</div>
+          <div className="text-[9px] font-bold mt-1.5" style={{ color: BRAND.slateMuted }}>رقم السيارة</div>
         </div>
-        <div className="bg-white border border-slate-200 p-3 rounded-2xl text-center shadow-sm">
-          <div className="font-black text-purple-600 mb-1" style={{ fontSize: 12, lineHeight: 1.1 }}>جنيه</div>
-          <div className="text-sm font-black text-purple-600 font-mono">{sessionRate} ج.م</div>
-          <div className="text-[9px] text-slate-500 font-bold">سعر الساعة العادي</div>
+        <div className="border p-3 rounded-2xl text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+          <div className="font-black text-xs mb-1" style={{ color: BRAND.green }}>ج.م/ساعة</div>
+          <div className="text-xs font-black font-mono text-white">{sessionRate} ج.م</div>
+          <div className="text-[9px] font-bold mt-1.5" style={{ color: BRAND.slateMuted }}>السعر العادي</div>
         </div>
       </div>
 
       {garage && (
-        <div className="bg-white border border-slate-200 p-3 rounded-2xl w-full text-center mb-3 shadow-sm">
-          <div className="text-[10px] text-slate-500 font-bold mb-0.5">الجراج</div>
-          <div className="text-base font-black text-slate-900">{garage.name}</div>
+        <div className="border p-3.5 rounded-2xl w-full text-center mb-3" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+          <div className="text-[8px] font-bold mb-0.5" style={{ color: BRAND.slateMuted }}>الجراج الحالي</div>
+          <div className="text-xs font-black" style={{ color: '#ffffff' }}>{garage.name}</div>
         </div>
       )}
 
-      <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 mb-3 text-center">
-        <p className="text-[9.5px] text-slate-400 font-bold">
+      <div className="w-full text-center mb-3.5">
+        <span className="font-bold text-[9px]" style={{ color: BRAND.slateMuted }}>
           {activeSession.source === 'app' ? '📱 بدأت من التطبيق' : '🅿️ بدأت من الجراج'}
           {(activeSession as any).startedBy === 'garage' && ' (بواسطة السايس)'}
-        </p>
+        </span>
       </div>
 
-      {/* 🌟 بانر توضيح طرق الدفع المتاحة في الجراج */}
-      <div className="w-full bg-blue-50 border border-blue-200 rounded-xl p-2.5 mb-3.5 text-center">
-        <div className="flex items-center justify-center gap-1.5 text-blue-600 text-[10.5px] font-bold">
-          <CreditCard size={13} />
+      {/* 💳 بانر توضيح طرق الدفع المتاحة في الجراج */}
+      <div className="w-full border rounded-xl p-2.5 mb-4 text-center" style={{ background: BRAND.blueSoft, borderColor: BRAND.border }}>
+        <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold" style={{ color: BRAND.blue }}>
+          <CreditCard size={12} />
           {garage?.payment_mode === 'cash' ? (
-            <span>💵 هذا الجراج يقبل الدفع النقدي (كاش) فقط</span>
+            <span>💵 يقبل الدفع النقدي (كاش) فقط</span>
           ) : garage?.payment_mode === 'wallet' ? (
-            <span>👝 هذا الجراج يقبل الدفع بالمحفظة فقط</span>
+            <span>👝 يقبل الدفع والخصم من المحفظة فقط</span>
           ) : (
-            <span>💳 يقبل الدفع نقدي (كاش) أو خصماً من المحفظة</span>
+            <span>💳 يقبل الدفع كاش أو الخصم من المحفظة</span>
           )}
         </div>
       </div>
 
-      {/* زر إنهاء الجلسة */}
+      {/* زر إنهاء الجلسة الفاخر باللون الأحمر الإرشادي المضاء */}
       <button
         onClick={() => setScreen('summary')}
-        className="w-full py-4 rounded-2xl active:scale-95 transition-all mb-2.5 flex items-center justify-center gap-2 shadow-xl"
+        className="w-full py-3.5 rounded-xl active:scale-[0.98] transition-all mb-3 flex items-center justify-center border-0 text-white cursor-pointer font-black"
         style={{
-          background: 'linear-gradient(135deg, #FF3333 0%, #CC0000 100%)',
-          boxShadow: '0 8px 24px rgba(255, 51, 51, 0.35)',
-          border: 'none',
-          cursor: 'pointer'
+          background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+          boxShadow: '0 4px 14px rgba(220,38,38,0.25)',
         }}
       >
-        <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
+        <span className="text-center text-sm font-black" style={{ color: '#ffffff' }}>
           {isFreeNow ? (
             <span>🚗 إنهاء الجلسة (مجاناً 🎁)</span>
           ) : (
-            <span>🚗 إنهاء الجلسة ({displayedCost} ج.م)</span>
+            <span>🚗 إنهاء الجلسة وحساب التكلفة ({displayedCost} ج.م)</span>
           )}
         </span>
       </button>
 
+      {/* زر العودة الصامت */}
       <button
         onClick={() => setScreen('list')}
-        className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 py-2.5 rounded-2xl font-bold text-xs active:scale-95 transition-all"
+        className="w-full py-2.5 rounded-xl border cursor-pointer bg-transparent text-xs"
+        style={{ color: BRAND.slateMuted, borderColor: BRAND.border }}
       >
-        العودة للقائمة
+        العودة للقائمة الرئيسية
       </button>
     </motion.div>
   );

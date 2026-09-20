@@ -16,6 +16,22 @@ import {
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { calculateFullHours, calculateCost, formatTime } from '../utils/pricing';
 
+/* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
+const BRAND = {
+  blue: '#1656b8',       // الأزرق الرسمي
+  blueDark: '#0f3d85',   // الكحلي الفخم
+  blueLight: '#e8f0fe',  // الأزرق الفاتح جداً
+  blueSoft: 'rgba(22, 86, 184, 0.12)', // كحلي زجاجي ناعم
+  green: '#8cc63f',      // الأخضر الرسمي
+  greenDark: '#6ea62a',  // أخضر داكن للخطوط
+  greenLight: 'rgba(140, 198, 63, 0.12)', // خلفية خضراء ناعمة
+  navy: '#0a1628',       // الكحلي الليلي الغامق
+  navyLight: '#111e36',  // كحلي أفتح للبطاقات
+  slate: '#64748b',      // الرمادي الهادئ
+  slateMuted: '#94a3b8', // الرمادي الباهت
+  border: 'rgba(255, 255, 255, 0.08)', // حدود زجاجية رفيعة
+};
+
 const toMs = (value: any): number => {
   if (!value) return 0;
   if (typeof value === 'number') {
@@ -95,17 +111,17 @@ export default function LastSessionCard() {
   const getPaymentInfo = (method?: string) => {
     switch (method) {
       case 'cash':
-        return { label: 'سداد نقدي كاش', icon: '💵', color: 'text-emerald-400', bg: 'bg-emerald-500/20' };
+        return { label: 'سداد نقدي كاش', icon: '💵', color: BRAND.green, bg: BRAND.greenLight };
       case 'instapay':
-        return { label: 'دفع عبر إنستاباي', icon: '📱', color: 'text-purple-400', bg: 'bg-purple-500/20' };
+        return { label: 'دفع عبر إنستاباي', icon: '📱', color: '#c084fc', bg: 'rgba(192, 132, 252, 0.12)' };
       case 'wallet':
-        return { label: 'خصم من المحفظة', icon: '👝', color: 'text-blue-400', bg: 'bg-blue-500/20' };
+        return { label: 'خصم من المحفظة', icon: '👝', color: '#60a5fa', bg: BRAND.blueSoft };
       case 'free':
-        return { label: 'ركنة ترحيبية مجانية', icon: '🎁', color: 'text-amber-400', bg: 'bg-amber-500/20' };
+        return { label: 'ركنة ترحيبية مجانية', icon: '🎁', color: BRAND.green, bg: BRAND.greenLight };
       case 'cashwallet':
-        return { label: 'محفظة كاش إلكترونية', icon: '📲', color: 'text-orange-400', bg: 'bg-orange-500/20' };
+        return { label: 'محفظة كاش إلكترونية', icon: '📲', color: '#fb923c', bg: 'rgba(251, 146, 60, 0.12)' };
       default:
-        return { label: 'سداد نقدي كاش', icon: '💵', color: 'text-emerald-400', bg: 'bg-emerald-500/20' };
+        return { label: 'سداد نقدي كاش', icon: '💵', color: BRAND.green, bg: BRAND.greenLight };
     }
   };
 
@@ -113,171 +129,193 @@ export default function LastSessionCard() {
 
   const sourceInfo =
     lastSession.source === 'app'
-      ? { label: 'حجز تطبيق', color: 'text-blue-400', bg: 'bg-blue-500/20' }
-      : { label: 'ركن يدوي', color: 'text-amber-400', bg: 'bg-amber-500/20' };
+      ? { label: 'حجز تطبيق', color: '#60a5fa', bg: BRAND.blueSoft }
+      : { label: 'ركن يدوي', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' };
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.2 }}
-      className="w-full mb-6"
+      transition={{ delay: 0.15 }}
+      className="w-full mb-5 text-right"
+      style={{ direction: 'rtl' }}
     >
-      {/* العنوان */}
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-[10px] text-slate-500 font-bold">
+      {/* رأس البطاقة */}
+      <div className="flex items-center justify-between mb-2.5 px-1">
+        <h3 className="text-xs font-black flex items-center gap-1.5" style={{ color: BRAND.navy }}>
+          <Receipt size={14} style={{ color: BRAND.blue }} />
+          إيصال آخر جلسة ركن
+        </h3>
+        <span className="text-[10px] font-bold" style={{ color: BRAND.slate }}>
           {formatDateTime(endDate)}
         </span>
-        <h3 className="text-sm font-black text-slate-700 flex items-center gap-2">
-          إيصال آخر جلسة ركن
-          <Receipt size={15} className="text-blue-600" />
-        </h3>
       </div>
 
-      {/* البطاقة الرئيسية */}
-      <div className="bg-gradient-to-bl from-slate-900 to-slate-950 border border-slate-800 rounded-3xl p-5 shadow-2xl text-white relative overflow-hidden">
-        
-        {/* لمسة إضاءة علوية */}
-        <div className="absolute top-0 right-0 w-40 h-40 bg-blue-600/10 rounded-full filter blur-3xl pointer-events-none" />
+      {/* البطاقة الرقمية الفاخرة */}
+      <div 
+        className="rounded-3xl p-4.5 text-white relative overflow-hidden border"
+        style={{
+          background: BRAND.navy,
+          borderColor: BRAND.border,
+          boxShadow: '0 8px 30px rgba(10, 22, 40, 0.12)',
+        }}
+      >
+        {/* لمسة إضاءة ناعمة في الزاوية */}
+        <div 
+          className="absolute -top-12 -right-12 w-32 h-32 rounded-full pointer-events-none"
+          style={{ background: `${BRAND.blue}18`, filter: 'blur(30px)' }} 
+        />
 
-        {/* الجراج ورقم السيارة */}
-        <div className="flex justify-between items-start mb-4 relative z-10">
-          <div className="flex items-center gap-1.5 flex-wrap">
+        {/* الجراج ورقم السيارة والبصمة */}
+        <div className="flex justify-between items-start mb-3.5 relative z-10">
+          <div className="text-right">
+            <div className="text-sm font-black text-white font-mono flex items-center gap-1">
+              🚗 {lastSession.carPlate}
+            </div>
+            {garage && (
+              <div className="flex items-center gap-1 mt-0.5" style={{ color: BRAND.slateMuted }}>
+                <MapPin size={10} />
+                <span className="text-[10px] font-bold">{garage.name}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1 flex-wrap justify-end">
             <span
-              className={`text-[9.5px] px-2.5 py-1 rounded-xl font-black ${sourceInfo.bg} ${sourceInfo.color}`}
+              className="text-[9px] px-2 py-0.5 rounded-lg font-black"
+              style={{ background: sourceInfo.bg, color: sourceInfo.color }}
             >
               {sourceInfo.label}
             </span>
             {isFirstFreeApplied && (
-              <span className="text-[9.5px] px-2.5 py-1 rounded-xl font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                <Gift size={10} /> {isFree ? 'هدية ترحيبية 🎁' : 'عرض 30 دقيقة'}
+              <span 
+                className="text-[9px] px-2 py-0.5 rounded-lg font-black flex items-center gap-1 border"
+                style={{ 
+                  background: BRAND.greenLight, 
+                  color: BRAND.green, 
+                  borderColor: `${BRAND.green}40` 
+                }}
+              >
+                <Gift size={9} /> {isFree ? 'هدية ترحيبية 🎁' : 'عرض 30 د'}
               </span>
-            )}
-          </div>
-          <div className="text-right">
-            <div className="text-base font-black text-white flex items-center gap-1.5 justify-end">
-              🚗 {lastSession.carPlate}
-            </div>
-            {garage && (
-              <div className="flex items-center gap-1 justify-end mt-1 text-slate-400">
-                <span className="text-[11px] font-bold">{garage.name}</span>
-                <MapPin size={11} className="text-slate-500" />
-              </div>
             )}
           </div>
         </div>
 
-        {/* التكلفة الكبيرة */}
+        {/* المربع المالي الرئيسي للمبلغ */}
         <div
-          className="rounded-2xl p-5 mb-4 text-center border border-white/10 relative z-10"
+          className="rounded-2xl p-4 mb-3 text-center border relative z-10"
           style={{
-            background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%)',
-            boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.1)',
+            background: BRAND.navyLight,
+            borderColor: BRAND.border,
           }}
         >
-          <div className="mb-2 font-bold text-slate-400 text-xs">
+          <div className="text-[9px] font-bold mb-1 tracking-wider" style={{ color: BRAND.slateMuted }}>
             إجمالي المبلغ المحصل
           </div>
 
-          <div className="flex items-baseline justify-center gap-1.5">
+          <div className="flex items-baseline justify-center gap-1">
             <span
-              className="font-mono"
+              className="font-mono text-4xl font-black leading-none"
               style={{
-                fontSize: 48,
-                fontWeight: 900,
-                lineHeight: 1,
-                color: isFree ? '#10B981' : '#FFFFFF',
+                color: isFree ? BRAND.green : '#ffffff',
+                letterSpacing: '-1px',
               }}
             >
               {cost.toFixed(0)}
             </span>
-
             <span
-              style={{
-                fontSize: 18,
-                fontWeight: 800,
-                color: isFree ? '#10B981' : '#94A3B8',
-              }}
+              className="text-sm font-black"
+              style={{ color: isFree ? BRAND.green : BRAND.slateMuted }}
             >
               ج.م
             </span>
           </div>
 
-          {/* 🎁 شارة التوفير إذا طُبق العرض */}
+          {/* شارة التوفير إذا طُبق العرض */}
           {isFree ? (
-            <div className="mt-3 inline-flex items-center gap-1 px-3 py-1 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[10.5px] font-black">
-              <CheckCircle2 size={12} /> أول 30 دقيقة مجانية كهدية ترحيبية! 🎉
+            <div 
+              className="mt-2.5 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-black border"
+              style={{ background: BRAND.greenLight, color: BRAND.green, borderColor: `${BRAND.green}30` }}
+            >
+              <CheckCircle2 size={11} /> أول 30 دقيقة مجانية كهدية ترحيبية! 🎉
             </div>
           ) : isFirstFreeApplied ? (
-            <div className="mt-2 text-slate-400 text-[10px] font-bold">
-              ⏰ تم انتهاء أول 30 دقيقة مجانية وتم حساب الوقت الإضافي
+            <div className="mt-1.5 text-[9px] font-bold" style={{ color: BRAND.slateMuted }}>
+              ⏰ انتهت أول 30 دقيقة وتم حساب الوقت الإضافي
             </div>
           ) : null}
         </div>
 
-        {/* تفاصيل الوقت */}
-        <div className="grid grid-cols-3 gap-2 mb-4 relative z-10">
-          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-2.5 text-center">
-            <Clock size={15} className="text-blue-400 mx-auto mb-1" />
-            <div className="text-xs font-black text-white font-mono">
+        {/* شبكة تفاصيل الوقت والساعات والسعر */}
+        <div className="grid grid-cols-3 gap-2 mb-3 relative z-10">
+          <div className="border rounded-xl p-2 text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+            <Clock size={12} style={{ color: BRAND.blue }} className="mx-auto mb-1" />
+            <div className="text-[11px] font-black text-white font-mono">
               {formatTime(elapsedSeconds)}
             </div>
-            <div className="text-[9px] text-slate-400 font-bold mt-0.5">المدة الكلية</div>
+            <div className="text-[8px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>المدة الكلية</div>
           </div>
-          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-2.5 text-center">
-            <Timer size={15} className="text-purple-400 mx-auto mb-1" />
-            <div className="text-xs font-black text-purple-300 font-mono">
+          <div className="border rounded-xl p-2 text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+            <Timer size={12} style={{ color: '#c084fc' }} className="mx-auto mb-1" />
+            <div className="text-[11px] font-black font-mono" style={{ color: '#c084fc' }}>
               {hours}
             </div>
-            <div className="text-[9px] text-slate-400 font-bold mt-0.5">
+            <div className="text-[8px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>
               {isFree ? 'مجانية (0س)' : 'ساعة محسوبة'}
             </div>
           </div>
-          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-2.5 text-center">
-            <DollarSign size={15} className="text-amber-400 mx-auto mb-1" />
-            <div className="text-xs font-black text-amber-300 font-mono">
+          <div className="border rounded-xl p-2 text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+            <DollarSign size={12} style={{ color: BRAND.green }} className="mx-auto mb-1" />
+            <div className="text-[11px] font-black font-mono" style={{ color: BRAND.green }}>
               {rate}
             </div>
-            <div className="text-[9px] text-slate-400 font-bold mt-0.5">ج.م/ساعة</div>
+            <div className="text-[8px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>ج.م/ساعة</div>
           </div>
         </div>
 
         {/* وقت الدخول والخروج */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-3 mb-4 space-y-2 relative z-10">
+        <div className="border rounded-xl p-2.5 mb-3 space-y-1.5 relative z-10" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-emerald-400 font-mono">
+            <div className="flex items-center gap-1.5" style={{ color: BRAND.slateMuted }}>
+              <Calendar size={11} />
+              <span className="text-[10px] font-bold">وقت الدخول:</span>
+            </div>
+            <span className="text-[10.5px] font-black text-emerald-400 font-mono">
               {formatTimeOnly(startDate)}
             </span>
-            <div className="flex items-center gap-1.5 text-slate-400">
-              <span className="text-[11px] font-bold">وقت الدخول</span>
-              <Calendar size={12} />
-            </div>
           </div>
-          <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
-            <span className="text-xs font-black text-rose-400 font-mono">
+
+          <div className="border-t border-dashed" style={{ borderColor: BRAND.border }} />
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5" style={{ color: BRAND.slateMuted }}>
+              <Calendar size={11} />
+              <span className="text-[10px] font-bold">وقت الخروج:</span>
+            </div>
+            <span className="text-[10.5px] font-black text-red-400 font-mono">
               {formatTimeOnly(endDate)}
             </span>
-            <div className="flex items-center gap-1.5 text-slate-400">
-              <span className="text-[11px] font-bold">وقت الخروج</span>
-              <Calendar size={12} />
-            </div>
           </div>
         </div>
 
         {/* طريقة الدفع */}
-        <div className={`${paymentInfo.bg} border border-white/5 rounded-2xl p-3 flex items-center justify-between relative z-10`}>
-          <div className="flex items-center gap-2">
-            <CreditCard size={16} className={paymentInfo.color} />
-            <span className={`text-xs font-black ${paymentInfo.color}`}>
+        <div 
+          className="border rounded-xl p-2.5 flex items-center justify-between relative z-10"
+          style={{ background: paymentInfo.bg, borderColor: BRAND.border }}
+        >
+          <div className="flex items-center gap-1.5">
+            <CreditCard size={13} style={{ color: paymentInfo.color }} />
+            <span className="text-[10.5px] font-black" style={{ color: paymentInfo.color }}>
               {paymentInfo.label}
             </span>
           </div>
-          <div className="text-2xl">{paymentInfo.icon}</div>
+          <span className="text-base">{paymentInfo.icon}</span>
         </div>
 
-        {/* تاريخ الجلسة */}
-        <div className="mt-3 text-center relative z-10">
-          <span className="text-[10px] text-slate-500 font-mono font-bold">
+        {/* التذييل التاريخي */}
+        <div className="mt-2.5 text-center relative z-10">
+          <span className="text-[9px] font-mono font-bold" style={{ color: BRAND.slateMuted }}>
             {formatDateTime(startDate)} • إجمالي المدة {totalMinutes} دقيقة
           </span>
         </div>

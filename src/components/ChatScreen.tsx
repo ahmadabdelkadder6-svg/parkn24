@@ -11,10 +11,28 @@ import {
   CheckCircle,
   Clock,
   XCircle,
+  X,
+  Sparkles,
 } from 'lucide-react';
 // 🌟 استيراد التوقيت الموحد ودوال مطابقة الهواتف
 import { useStore, getServerNow, normalizePhone } from '../store';
 import toast from 'react-hot-toast';
+
+/* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
+const BRAND = {
+  blue: '#1656b8',       // الأزرق الرسمي
+  blueDark: '#0f3d85',   // الكحلي الفخم
+  blueLight: '#e8f0fe',  // الأزرق الفاتح جداً
+  blueSoft: 'rgba(22, 86, 184, 0.12)', // كحلي زجاجي ناعم
+  green: '#8cc63f',      // الأخضر الرسمي
+  greenDark: '#6ea62a',  // أخضر داكن للخطوط
+  greenLight: 'rgba(140, 198, 63, 0.12)', // خلفية خضراء ناعمة
+  navy: '#0a1628',       // الكحلي الليلي الغامق للواجهة
+  navyLight: '#111e36',  // كحلي أفتح للبطاقات والـ overlays
+  slate: '#64748b',      // الرمادي الهادئ
+  slateMuted: '#94a3b8', // الرمادي الباهت
+  border: 'rgba(255, 255, 255, 0.08)', // حدود زجاجية رفيعة
+};
 
 const MESSAGE_TYPES = [
   {
@@ -22,9 +40,9 @@ const MESSAGE_TYPES = [
     label: 'شكوى',
     icon: AlertTriangle,
     emoji: '🚨',
-    color: 'text-red-600',
-    bg: 'bg-red-50',
-    border: 'border-red-100',
+    color: '#f87171',
+    bg: 'rgba(239, 68, 68, 0.12)',
+    border: 'rgba(239, 68, 68, 0.25)',
     description: 'مشكلة مع جراج أو خدمة',
   },
   {
@@ -32,9 +50,9 @@ const MESSAGE_TYPES = [
     label: 'استفسار',
     icon: HelpCircle,
     emoji: '❓',
-    color: 'text-blue-600',
-    bg: 'bg-blue-50',
-    border: 'border-blue-100',
+    color: '#60a5fa',
+    bg: BRAND.blueSoft,
+    border: 'rgba(96, 165, 250, 0.25)',
     description: 'سؤال عام عن الخدمة',
   },
   {
@@ -42,20 +60,20 @@ const MESSAGE_TYPES = [
     label: 'اقتراح',
     icon: Lightbulb,
     emoji: '💡',
-    color: 'text-amber-600',
-    bg: 'bg-amber-50',
-    border: 'border-amber-100',
-    description: 'فكرة لتحسين التطبيق',
+    color: '#fbbf24',
+    bg: 'rgba(251, 191, 36, 0.12)',
+    border: 'rgba(251, 191, 36, 0.25)',
+    description: 'فكرة لتطوير التطبيق',
   },
   {
     id: 'technical' as const,
     label: 'مشكلة تقنية',
     icon: Wrench,
     emoji: '🔧',
-    color: 'text-purple-600',
-    bg: 'bg-purple-50',
-    border: 'border-purple-100',
-    description: 'خطأ أو عطل في التطبيق',
+    color: '#c084fc',
+    bg: 'rgba(192, 132, 252, 0.12)',
+    border: 'rgba(192, 132, 252, 0.25)',
+    description: 'خطأ أو عطل بالتطبيق',
   },
 ];
 
@@ -133,29 +151,29 @@ export default function ChatScreen() {
         return {
           label: 'بانتظار الرد',
           icon: Clock,
-          color: 'text-amber-700',
-          bg: 'bg-amber-100',
+          color: '#fbbf24',
+          bg: 'rgba(251, 191, 36, 0.12)',
         };
       case 'replied':
         return {
           label: 'تم الرد',
           icon: CheckCircle,
-          color: 'text-emerald-700',
-          bg: 'bg-emerald-100',
+          color: BRAND.green,
+          bg: BRAND.greenLight,
         };
       case 'closed':
         return {
           label: 'مغلقة',
           icon: XCircle,
-          color: 'text-slate-600',
-          bg: 'bg-slate-150',
+          color: BRAND.slateMuted,
+          bg: 'rgba(255, 255, 255, 0.05)',
         };
       default:
         return {
           label: 'غير محدد',
           icon: Clock,
-          color: 'text-slate-600',
-          bg: 'bg-slate-100',
+          color: BRAND.slateMuted,
+          bg: 'rgba(255, 255, 255, 0.05)',
         };
     }
   };
@@ -165,9 +183,9 @@ export default function ChatScreen() {
       MESSAGE_TYPES.find((t) => t.id === type) || {
         label: 'رسالة',
         emoji: '💬',
-        color: 'text-slate-600',
-        bg: 'bg-slate-100',
-        border: 'border-slate-200',
+        color: BRAND.slateMuted,
+        bg: 'rgba(255, 255, 255, 0.05)',
+        border: BRAND.border,
       }
     );
   };
@@ -194,46 +212,55 @@ export default function ChatScreen() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full bg-slate-950 text-white flex flex-col safe-top safe-bottom"
+      className="h-full flex flex-col safe-top safe-bottom text-right"
+      style={{ background: BRAND.navy, color: '#ffffff', direction: 'rtl' }}
     >
-      {/* Header */}
+      {/* ══ Header ══ */}
       <div className="flex items-center justify-between px-4 pt-12 pb-3 shrink-0">
         <button
           onClick={() => setScreen('list')}
-          className="bg-slate-900 p-2.5 rounded-xl border border-slate-800 active:scale-90 transition-all"
+          className="p-2.5 rounded-xl border cursor-pointer bg-white/5 active:scale-90 transition-all text-slate-300"
+          style={{ borderColor: BRAND.border }}
         >
           <ArrowRight size={18} />
         </button>
-        <h2 className="text-sm font-black flex items-center gap-2">
-          <MessageCircle size={16} className="text-blue-400" />
-          تواصل معنا
+        <h2 className="text-xs font-black flex items-center gap-1.5" style={{ color: '#ffffff' }}>
+          <MessageCircle size={16} style={{ color: BRAND.blue }} />
+          مركز الدعم والتواصل
         </h2>
         <div className="w-10" />
       </div>
 
-      {/* Content */}
-      <div className="flex-1 px-4 pb-4 overflow-y-auto">
+      {/* ══ Content ══ */}
+      <div className="flex-1 px-4 pb-4 overflow-y-auto space-y-3">
         {!showNewMessage && (
           <motion.button
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             onClick={() => setShowNewMessage(true)}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-900/30 mb-4"
+            className="w-full border-0 text-white py-3.5 rounded-xl font-black text-xs flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] transition-all"
+            style={{ background: BRAND.blue, boxShadow: `0 4px 14px ${BRAND.blue}25` }}
           >
-            <Send size={16} />
-            رسالة جديدة
+            <Send size={15} />
+            كتابة رسالة جديدة للإدارة
           </motion.button>
         )}
 
+        {/* ✉️ نموذج إرسال رسالة جديدة */}
         <AnimatePresence>
           {showNewMessage && (
             <motion.div
-              initial={{ opacity: 0, y: -20, scale: 0.95 }}
+              initial={{ opacity: 0, y: -15, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -20, scale: 0.95 }}
-              className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-4 space-y-4"
+              exit={{ opacity: 0, y: -15, scale: 0.98 }}
+              className="border rounded-2xl p-4 space-y-3.5"
+              style={{ background: BRAND.navyLight, borderColor: BRAND.border }}
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between pb-2 border-b" style={{ borderColor: BRAND.border }}>
+                <h3 className="text-xs font-black text-white flex items-center gap-1.5">
+                  <Sparkles size={13} style={{ color: BRAND.green }} />
+                  رسالة جديدة للإدارة
+                </h3>
                 <button
                   onClick={() => {
                     setShowNewMessage(false);
@@ -241,124 +268,124 @@ export default function ChatScreen() {
                     setSubject('');
                     setMessageText('');
                   }}
-                  className="text-slate-500 hover:text-white text-lg transition-colors"
+                  className="text-slate-400 hover:text-white border-0 bg-transparent cursor-pointer"
                 >
-                  ✕
+                  <X size={16} />
                 </button>
-                <h3 className="text-sm font-black text-white">
-                  رسالة جديدة ✉️
-                </h3>
               </div>
 
+              {/* اختيار نوع الرسالة */}
               <div>
-                <label className="text-[10px] text-slate-500 font-bold block text-right mb-2">
-                  نوع الرسالة *
+                <label className="text-[10px] font-bold block mb-2" style={{ color: BRAND.slateMuted }}>
+                  اختر نوع الرسالة *
                 </label>
                 <div className="grid grid-cols-2 gap-2">
-                  {MESSAGE_TYPES.map((type) => (
-                    <button
-                      key={type.id}
-                      onClick={() => setSelectedType(type.id)}
-                      className={`p-3 rounded-xl border text-center transition-all active:scale-95 ${
-                        selectedType === type.id
-                          ? `bg-white border-blue-500 ring-1 ring-opacity-50`
-                          : 'bg-slate-950 border-slate-800'
-                      }`}
-                    >
-                      <div className="text-xl mb-1">{type.emoji}</div>
-                      <div
-                        className={`text-[10px] font-black ${
-                          selectedType === type.id
-                            ? 'text-blue-600'
-                            : 'text-slate-500'
-                        }`}
+                  {MESSAGE_TYPES.map((type) => {
+                    const isSelected = selectedType === type.id;
+                    return (
+                      <button
+                        key={type.id}
+                        type="button"
+                        onClick={() => setSelectedType(type.id)}
+                        className="p-2.5 rounded-xl border text-center transition-all cursor-pointer"
+                        style={{
+                          background: isSelected ? type.bg : 'rgba(255, 255, 255, 0.02)',
+                          borderColor: isSelected ? type.color : BRAND.border,
+                        }}
                       >
-                        {type.label}
-                      </div>
-                      <div className="text-[8px] text-slate-600 mt-0.5">
-                        {type.description}
-                      </div>
-                    </button>
-                  ))}
+                        <div className="text-lg mb-0.5">{type.emoji}</div>
+                        <div
+                          className="text-[10px] font-black"
+                          style={{ color: isSelected ? type.color : '#ffffff' }}
+                        >
+                          {type.label}
+                        </div>
+                        <div className="text-[8px] mt-0.5" style={{ color: BRAND.slateMuted }}>
+                          {type.description}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
+              {/* عنوان الرسالة */}
               <div>
-                <label className="text-[10px] text-slate-500 font-bold block text-right mb-1">
-                  الموضوع (اختياري)
+                <label className="text-[10px] font-bold block mb-1" style={{ color: BRAND.slateMuted }}>
+                  عنوان الموضوع (اختياري)
                 </label>
                 <input
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
-                  placeholder="مثال: مشكلة في الحساب"
-                  className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-right font-bold text-white outline-none text-sm placeholder:text-slate-600"
+                  placeholder="مثال: استفسار عن رصيد المحفظة"
+                  className="w-full border p-2.5 rounded-xl font-bold text-white outline-none text-xs"
+                  style={{ background: BRAND.navy, borderColor: BRAND.border }}
                 />
               </div>
 
+              {/* نص الرسالة */}
               <div>
-                <label className="text-[10px] text-slate-500 font-bold block text-right mb-1">
-                  رسالتك *
+                <label className="text-[10px] font-bold block mb-1" style={{ color: BRAND.slateMuted }}>
+                  تفاصيل الرسالة *
                 </label>
                 <textarea
                   value={messageText}
                   onChange={(e) => setMessageText(e.target.value)}
-                  placeholder="اكتب رسالتك هنا بالتفصيل..."
+                  placeholder="اكتب رسالتك أو استفسارك بالتفصيل..."
                   rows={4}
-                  className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-right font-bold text-white outline-none text-sm placeholder:text-slate-600 resize-none"
+                  className="w-full border p-2.5 rounded-xl font-bold text-white outline-none text-xs resize-none"
+                  style={{ background: BRAND.navy, borderColor: BRAND.border }}
                 />
               </div>
 
-              <div className="bg-slate-950 rounded-xl p-3 space-y-1 border border-slate-800">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-slate-500 font-mono">
-                    {currentUser?.phone}
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-bold">
-                    المرسل
-                  </span>
+              {/* بيانات المرسل التلقائية */}
+              <div className="rounded-xl p-2.5 space-y-1 border" style={{ background: BRAND.navy, borderColor: BRAND.border }}>
+                <div className="flex items-center justify-between text-[9.5px]">
+                  <span className="font-mono text-slate-400">{currentUser?.phone}</span>
+                  <span style={{ color: BRAND.slateMuted }}>رقم الهاتف:</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-blue-400 font-mono">
-                    {currentUser?.carPlate}
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-bold">
-                    السيارة
-                  </span>
+                <div className="flex items-center justify-between text-[9.5px]">
+                  <span className="font-mono text-blue-400">🚗 {currentUser?.carPlate}</span>
+                  <span style={{ color: BRAND.slateMuted }}>رقم اللوحة:</span>
                 </div>
               </div>
 
+              {/* زر الإرسال */}
               <button
+                type="button"
                 onClick={handleSend}
                 disabled={sending || !selectedType || !messageText.trim()}
-                className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all ${
-                  sending || !selectedType || !messageText.trim()
-                    ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-900/30 active:scale-95'
-                }`}
+                className="w-full py-3 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 border-0 text-white cursor-pointer active:scale-[0.98] transition-all disabled:opacity-50"
+                style={{ background: BRAND.greenDark }}
               >
-                <Send size={16} />
-                {sending ? 'جاري الإرسال...' : 'إرسال الرسالة'}
+                <Send size={14} />
+                {sending ? 'جاري الإرسال...' : 'إرسال الرسالة للإدارة'}
               </button>
             </motion.div>
           )}
         </AnimatePresence>
 
+        {/* 📬 سجل الرسائل والردود */}
         <div>
-          <h3 className="text-xs font-black text-slate-400 mb-3 flex items-center gap-2 justify-end">
-            رسائلي ({myMessages.length})
-            <MessageCircle size={12} />
-          </h3>
+          <div className="flex items-center justify-between mb-2.5 px-1">
+            <span className="text-[9px] px-2 py-0.5 rounded border" style={{ background: BRAND.navyLight, borderColor: BRAND.border, color: BRAND.slateMuted }}>
+              {myMessages.length} رسالة
+            </span>
+            <h3 className="text-xs font-black flex items-center gap-1" style={{ color: BRAND.slateMuted }}>
+              سجل رسائلي
+            </h3>
+          </div>
 
           {myMessages.length === 0 ? (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center">
-              <div className="text-3xl mb-3">💬</div>
-              <p className="text-slate-500 text-sm font-bold">لا توجد رسائل</p>
-              <p className="text-slate-600 text-xs mt-1">
-                أرسل رسالتك الأولى وسنرد عليك قريباً
+            <div className="border rounded-2xl p-8 text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+              <div className="text-3xl mb-2">💬</div>
+              <p className="text-white text-xs font-bold">لا توجد رسائل سابقة</p>
+              <p className="text-[10px] mt-1" style={{ color: BRAND.slateMuted }}>
+                أرسل رسالتك وسيتواصل معك فريق الدعم فوراً
               </p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {myMessages.map((msg) => {
                 const statusInfo = getStatusInfo(msg.status);
                 const typeInfo = getTypeInfo(msg.type);
@@ -368,85 +395,77 @@ export default function ChatScreen() {
                 return (
                   <motion.div
                     key={msg.id}
-                    initial={{ opacity: 0, y: 10 }}
+                    initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    onClick={() =>
-                      setSelectedMessage(isExpanded ? null : msg.id)
-                    }
-                    className={`rounded-2xl p-4 border cursor-pointer transition-all active:scale-[0.98] shadow-md ${
-                      msg.status === 'replied'
-                        ? 'bg-white border-emerald-400 shadow-emerald-500/5'
-                        : msg.status === 'closed'
-                        ? 'bg-slate-100 border-slate-300'
-                        : 'bg-white border-slate-200'
-                    }`}
+                    onClick={() => setSelectedMessage(isExpanded ? null : msg.id)}
+                    className="border rounded-2xl p-3.5 cursor-pointer transition-all active:scale-[0.99]"
+                    style={{
+                      background: msg.status === 'replied' ? 'rgba(140, 198, 63, 0.04)' : BRAND.navyLight,
+                      borderColor: msg.status === 'replied' ? BRAND.green + '40' : BRAND.border,
+                    }}
                   >
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex items-center gap-2">
+                    {/* شريط الحالة والنوع */}
+                    <div className="flex justify-between items-center mb-2">
+                      <div className="flex items-center gap-1.5">
                         <span
-                          className={`text-[9px] px-2 py-0.5 rounded-full font-black flex items-center gap-1 ${statusInfo.bg} ${statusInfo.color}`}
+                          className="text-[8.5px] px-2 py-0.5 rounded-full font-black flex items-center gap-1"
+                          style={{ background: statusInfo.bg, color: statusInfo.color }}
                         >
                           <StatusIcon size={9} />
                           {statusInfo.label}
                         </span>
-                        <span className="text-[9px] text-slate-500 font-bold">
+                        <span className="text-[9px]" style={{ color: BRAND.slateMuted }}>
                           {formatTime(msg.timestamp)}
                         </span>
                       </div>
+
                       <span
-                        className={`text-[9px] px-2 py-0.5 rounded-full font-black ${typeInfo.bg} ${typeInfo.color}`}
+                        className="text-[8.5px] px-2 py-0.5 rounded-full font-bold"
+                        style={{ background: typeInfo.bg, color: typeInfo.color }}
                       >
                         {typeInfo.emoji} {typeInfo.label}
                       </span>
                     </div>
 
+                    {/* الموضوع */}
                     {msg.subject && (
-                      <div className="text-xs font-black text-slate-900 mb-1 text-right">
+                      <div className="text-xs font-black text-white mb-1">
                         {msg.subject}
                       </div>
                     )}
 
+                    {/* نص الرسالة */}
                     <div
-                      className={`text-right leading-relaxed ${
-                        isExpanded ? '' : 'line-clamp-2'
-                      }`}
-                      style={{
-                        fontSize: '13.5px',
-                        fontWeight: 900,
-                        color: '#000000',
-                      }}
+                      className={`leading-relaxed text-xs font-medium ${isExpanded ? '' : 'line-clamp-2'}`}
+                      style={{ color: '#e2e8f0' }}
                     >
                       {msg.message}
                     </div>
 
+                    {/* صندوق رد الإدارة */}
                     <AnimatePresence>
                       {isExpanded && msg.reply && (
                         <motion.div
                           initial={{ opacity: 0, height: 0 }}
                           animate={{ opacity: 1, height: 'auto' }}
                           exit={{ opacity: 0, height: 0 }}
-                          className="mt-3 bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 shadow-inner"
+                          className="mt-3 border rounded-xl p-3"
+                          style={{
+                            background: BRAND.navy,
+                            borderColor: BRAND.green + '50',
+                          }}
                         >
-                          <div className="flex items-center gap-1.5 justify-end mb-1.5">
-                            <span className="text-[10px] text-emerald-700 font-black">
-                              رد الإدارة
-                            </span>
-                            <CheckCircle size={11} className="text-emerald-600" />
+                          <div className="flex items-center gap-1 mb-1" style={{ color: BRAND.green }}>
+                            <CheckCircle size={12} />
+                            <span className="text-[10px] font-black">رد إدارة Park'n 24:</span>
                           </div>
                           
-                          <p 
-                            className="text-right leading-relaxed"
-                            style={{
-                              fontSize: '14px',
-                              fontWeight: 950,
-                              color: '#000000',
-                            }}
-                          >
+                          <p className="leading-relaxed text-xs font-bold text-white">
                             {msg.reply}
                           </p>
 
                           {msg.repliedAt && (
-                            <div className="text-[8px] text-emerald-600 text-left mt-2 font-bold">
+                            <div className="text-[8.5px] text-left mt-1.5 font-mono" style={{ color: BRAND.slateMuted }}>
                               {formatTime(msg.repliedAt)}
                             </div>
                           )}
@@ -454,17 +473,20 @@ export default function ChatScreen() {
                       )}
                     </AnimatePresence>
 
-                    {!isExpanded && (msg.reply || msg.message.length > 80) && (
-                      <div className="text-[8px] text-blue-600 text-center mt-2 font-black">
-                        اضغط لعرض التفاصيل والردود ↓
+                    {/* تنبيه بالرد الجديد إن وُجد */}
+                    {msg.status === 'replied' && !isExpanded && (
+                      <div 
+                        className="mt-2.5 rounded-lg p-1.5 text-center border flex items-center justify-center gap-1"
+                        style={{ background: BRAND.greenLight, borderColor: BRAND.green + '30', color: BRAND.green }}
+                      >
+                        <CheckCircle size={11} />
+                        <span className="text-[9px] font-black">وصلك رد رسمي من الإدارة - اضغط للقراءة</span>
                       </div>
                     )}
 
-                    {msg.status === 'replied' && !isExpanded && (
-                      <div className="mt-2 bg-emerald-100 border border-emerald-200 rounded-lg p-1.5 text-center">
-                        <span className="text-[9px] text-emerald-700 font-black">
-                          ✅ وصلك رد جديد - اضغط لقراءته
-                        </span>
+                    {!isExpanded && !msg.reply && msg.message.length > 80 && (
+                      <div className="text-[8.5px] text-center mt-2 font-bold" style={{ color: BRAND.blue }}>
+                        عرض النص بالكامل ↓
                       </div>
                     )}
                   </motion.div>

@@ -34,6 +34,22 @@ import {
 import L from 'leaflet';
 import { supabase } from '../lib/supabase';
 
+/* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
+const BRAND = {
+  blue: '#1656b8',       // الأزرق الرسمي للوجو
+  blueDark: '#0f3d85',   // الكحلي الفخم
+  blueLight: '#e8f0fe',  // الأزرق الفاتح جداً
+  blueSoft: 'rgba(22, 86, 184, 0.08)', // كحلي زجاجي ناعم
+  green: '#8cc63f',      // الأخضر الرسمي للوجو
+  greenDark: '#6ea62a',  // أخضر داكن للخطوط والنصوص
+  greenLight: 'rgba(140, 198, 63, 0.12)', // خلفية خضراء ناعمة
+  navy: '#0a1628',       // الكحلي الليلي الغامق للواجهة الداكنة
+  navyLight: '#111e36',  // كحلي أفتح للبطاقات والـ overlays
+  slate: '#64748b',      // الرمادي الهادئ
+  slateMuted: '#94a3b8', // الرمادي الباهت
+  border: 'rgba(255, 255, 255, 0.08)', // حدود زجاجية رفيعة
+};
+
 /* ─── Constants ─── */
 const CANCEL_WINDOW_SECONDS = 30; // مهلة الـ 30 ثانية للعميل قبل إشعار السايس
 const GPS_DEADBAND_METERS = 6; // 🛡️ فلتر منع رعشة الخريطة - لا يتحدث الموقع إلا بعد تحرك حقيقي 6 أمتار
@@ -41,16 +57,16 @@ const GPS_DEADBAND_METERS = 6; // 🛡️ فلتر منع رعشة الخريط�
 /* ─── Icons ─── */
 const userIcon = new L.DivIcon({
   className: 'bg-transparent',
-  html: `<div style="width:38px;height:38px;background:#2563eb;border-radius:50%;border:2.5px solid white;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">🚗</div>`,
-  iconSize: [38, 38],
-  iconAnchor: [19, 19],
+  html: `<div style="width:36px;height:38px;background:${BRAND.blue};border-radius:50%;border:2px solid white;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 4px 12px rgba(0,0,0,0.3);">🚗</div>`,
+  iconSize: [36, 38],
+  iconAnchor: [18, 19],
 });
 
 const garageIcon = new L.DivIcon({
   className: 'bg-transparent',
-  html: `<div style="width:38px;height:38px;background:#059669;border-radius:50%;border:2.5px solid white;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">🅿️</div>`,
-  iconSize: [38, 38],
-  iconAnchor: [19, 19],
+  html: `<div style="width:36px;height:38px;background:${BRAND.green};border-radius:50%;border:2px solid white;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 4px 12px rgba(0,0,0,0.3);">🅿️</div>`,
+  iconSize: [36, 38],
+  iconAnchor: [18, 19],
 });
 
 /* ─── Helper: توحيد تحويل الوقت ─── */
@@ -79,7 +95,7 @@ const getDistanceMeters = (
   return R * c;
 };
 
-/* ─── Map controller (محمي بالكامل من الانهيار والشاشة البيضاء) ─── */
+/* ─── Map controller (محمي بالكامل من الانهيار) ─── */
 function MapController({
   userPos,
   garagePos,
@@ -200,9 +216,7 @@ export default function NavigationScreen() {
     currentUserRef.current = currentUser;
   }, [currentUser]);
 
-  /* ─────────────────────────────────────────────
-     ██  REALTIME فائق السرعة
-     ───────────────────────────────────────────── */
+  /* ─── REALTIME ─── */
   useEffect(() => {
     if (!userPlateNav && !userPhoneClean) return;
 
@@ -279,12 +293,11 @@ export default function NavigationScreen() {
     };
   }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
 
-  /* ─── GPS مع الفحص الأولي الفوري وتطبيق فلتر الرعشة ─── */
+  /* ─── GPS مع تطبيق فلتر الرعشة ─── */
   const handleGpsUpdate = useCallback((p: GeolocationPosition) => {
     const newLat = p.coords.latitude;
     const newLng = p.coords.longitude;
 
-    // 🚀 القراءة الأولى الفورية لسرعة المزامنة وعرض الإحداثيات الفعلية بدون أي فلترة
     if (lastStableCoordsRef.current === null) {
       lastStableCoordsRef.current = { lat: newLat, lng: newLng };
       setUserPos({ lat: newLat, lng: newLng });
@@ -298,7 +311,6 @@ export default function NavigationScreen() {
       newLng
     );
 
-    // ⚡ يتم تطبيق فلتر الـ 6 أمتار لمنع الرعشة أثناء الحركة
     if (distanceMoved >= GPS_DEADBAND_METERS) {
       lastStableCoordsRef.current = { lat: newLat, lng: newLng };
       setUserPos({ lat: newLat, lng: newLng });
@@ -308,7 +320,6 @@ export default function NavigationScreen() {
   useEffect(() => {
     if (!('geolocation' in navigator)) return;
 
-    // لقطة موقع أولية سريعة جداً لمنع البقاء في إحداثيات القاهرة الافتراضية
     navigator.geolocation.getCurrentPosition(
       (p) => {
         const newLat = p.coords.latitude;
@@ -364,7 +375,7 @@ export default function NavigationScreen() {
     return () => window.clearInterval(interval);
   }, [myIncomingCar?.id]);
 
-  /* ─── إرسال Push للجراج فور انتهاء الـ 30 ثانية ─── */
+  /* ─── إرسال Push للجراج ─── */
   useEffect(() => {
     if (!myIncomingCar || !garage) return;
 
@@ -450,7 +461,6 @@ export default function NavigationScreen() {
     setScreen('session');
   }, [myActiveSession, selectedGarageId, setSelectedGarageId, setScreen]);
 
-  /* ─── Guard ─── */
   if (!garage) {
     return (
       <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8 text-right">
@@ -468,7 +478,6 @@ export default function NavigationScreen() {
     );
   }
 
-  /* ─── الحسابات التقريبية الأصلية فائقة السرعة والمطابقة ─── */
   const distance = calculateDistance(
     userPos.lat, userPos.lng,
     garage.lat, garage.lng,
@@ -599,23 +608,25 @@ export default function NavigationScreen() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full bg-slate-950 text-white flex flex-col safe-top safe-bottom text-right"
+      className="h-full flex flex-col safe-top safe-bottom text-right"
+      style={{ background: BRAND.navy, color: '#ffffff' }}
     >
       {/* ══ Header ══ */}
       <div className="flex items-center justify-between px-4 pt-12 pb-2 shrink-0">
         <button
           onClick={() => setScreen('list')}
-          className="bg-slate-900 p-2.5 rounded-xl border border-slate-800 active:scale-90 transition-all"
+          className="p-2.5 rounded-xl border cursor-pointer bg-white/5 active:scale-90 transition-all"
+          style={{ borderColor: BRAND.border, color: '#fff' }}
         >
           <ArrowRight size={18} />
         </button>
 
-        <h2 className="text-sm font-black flex items-center gap-1.5" style={{ color: '#ffffff' }}>
+        <h2 className="text-xs font-black flex items-center gap-1.5" style={{ color: '#ffffff' }}>
           <motion.div
             animate={{ x: [0, -3, 0] }}
             transition={{ repeat: Infinity, duration: 1.5 }}
           >
-            <Navigation size={16} className="text-blue-400" />
+            <Navigation size={15} style={{ color: BRAND.blue }} />
           </motion.div>
           التوجيه للجراج
         </h2>
@@ -628,20 +639,20 @@ export default function NavigationScreen() {
 
         {/* 🏢 بطاقة اسم الجراج */}
         <div
-          className="rounded-2xl p-3.5 shrink-0 shadow-md"
+          className="rounded-2xl p-4 shrink-0 border"
           style={{
-            background: '#ffffff',
-            border: '1.5px solid #E2E8F0',
+            background: BRAND.navyLight,
+            borderColor: BRAND.border,
           }}
         >
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
-              <Clock size={15} className="text-blue-600" />
-              <span className="text-sm font-black text-blue-600 font-mono">
+              <Clock size={15} style={{ color: BRAND.green }} />
+              <span className="text-sm font-black font-mono" style={{ color: BRAND.green }}>
                 {formatDuration(minutes)}
               </span>
-              <span className="text-slate-300">·</span>
-              <span className="text-xs text-slate-600 font-mono font-bold">
+              <span style={{ color: BRAND.border }}>·</span>
+              <span className="text-xs font-mono font-bold" style={{ color: BRAND.slateMuted }}>
                 {distance.toFixed(1)} كم
               </span>
             </div>
@@ -649,18 +660,18 @@ export default function NavigationScreen() {
             <div className="text-right flex flex-col items-end">
               <span
                 style={{
-                  color: '#000000',
-                  fontSize: '16px',
-                  fontWeight: 900,
+                  color: '#ffffff',
+                  fontSize: '15px',
+                  fontWeight: 950,
                   display: 'block',
                   lineHeight: '1.2',
                 }}
               >
                 {garage.name}
               </span>
-              <div className="flex items-center gap-1 justify-end text-[10px] text-slate-500 mt-1 font-bold">
+              <div className="flex items-center gap-1 justify-end text-[10px] mt-1 font-bold" style={{ color: BRAND.slateMuted }}>
                 <span>{garage.location}</span>
-                <MapPin size={10} className="text-slate-400" />
+                <MapPin size={10} style={{ color: BRAND.slateMuted }} />
               </div>
             </div>
           </div>
@@ -668,8 +679,8 @@ export default function NavigationScreen() {
 
         {/* 🗺️ الخريطة المستقرة (بدون رعشة) */}
         <div 
-          className="w-full h-44 rounded-2xl overflow-hidden border border-slate-800 relative shrink-0 shadow-lg"
-          style={{ transform: 'translateZ(0)' }} 
+          className="w-full h-44 rounded-2xl overflow-hidden relative shrink-0 border"
+          style={{ transform: 'translateZ(0)', borderColor: BRAND.border }} 
         >
           {mapReady ? (
             <MapContainer
@@ -694,7 +705,7 @@ export default function NavigationScreen() {
                   [userPos.lat, userPos.lng],
                   [garage.lat, garage.lng],
                 ]}
-                color="#2563eb"
+                color={BRAND.blue}
                 weight={4}
                 dashArray="8, 8"
               />
@@ -705,14 +716,14 @@ export default function NavigationScreen() {
             </MapContainer>
           ) : (
             <div className="w-full h-full bg-slate-900 flex items-center justify-center">
-              <div className="text-slate-500 text-sm font-bold animate-pulse">
+              <div className="text-slate-500 text-xs font-bold animate-pulse">
                 🗺️ جاري تحميل الخريطة...
               </div>
             </div>
           )}
 
-          <div className="absolute top-3 left-3 bg-slate-900/90 backdrop-blur border border-slate-700 text-[10px] px-2.5 py-1 rounded-full text-slate-300 z-[400] flex items-center gap-1.5 pointer-events-none">
-            <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+          <div className="absolute top-3 left-3 border text-[9px] px-2.5 py-1 rounded-full z-[400] flex items-center gap-1.5 pointer-events-none" style={{ background: 'rgba(10,22,40,0.85)', borderColor: BRAND.border, color: BRAND.slateMuted }}>
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
             تتبع مباشر
           </div>
         </div>
@@ -723,20 +734,18 @@ export default function NavigationScreen() {
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.98 }}
             onClick={openExternalMaps}
-            className="w-full relative overflow-hidden flex items-center justify-center gap-2.5 py-3.5 px-4 rounded-xl shadow-lg cursor-pointer"
+            className="w-full relative overflow-hidden flex items-center justify-center gap-2 py-3 px-4 rounded-xl cursor-pointer border-0 text-white font-black"
             style={{
-              background: 'linear-gradient(135deg, #0066FF 0%, #0033BB 100%)',
-              boxShadow: '0 6px 18px rgba(0, 102, 255, 0.35)',
-              color: '#ffffff',
+              background: BRAND.blue,
+              boxShadow: `0 4px 14px ${BRAND.blue}25`,
             }}
           >
-            <Navigation size={18} color="#ffffff" className="animate-bounce shrink-0" />
+            <Navigation size={16} color="#ffffff" className="animate-bounce shrink-0" />
             <span
               style={{
                 color: '#ffffff',
-                fontSize: '15px',
-                fontWeight: 900,
-                letterSpacing: '0.3px',
+                fontSize: '14px',
+                fontWeight: 950,
               }}
             >
               شغل الـ GPS وابدأ التحرك فوراً! 🗺️🚀
@@ -745,28 +754,29 @@ export default function NavigationScreen() {
 
           <button
             onClick={copyCoords}
-            className="flex items-center justify-center gap-1 text-[11px] text-slate-400 hover:text-slate-200 py-0.5 transition-all"
+            className="flex items-center justify-center gap-1 text-[10px] py-0.5 border-0 bg-transparent cursor-pointer"
+            style={{ color: BRAND.slateMuted }}
           >
-            <Copy size={12} className="text-slate-500" />
+            <Copy size={11} style={{ color: BRAND.slateMuted }} />
             <span>نسخ إحداثيات الجراج الجغرافية</span>
           </button>
         </div>
 
         {/* معلومات السعر والأماكن وطرق الدفع المقبولة */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 shrink-0 space-y-2">
+        <div className="border rounded-xl p-3.5 shrink-0 space-y-2.5" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold">
+            <div className="flex items-center gap-1 text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>
               <Car size={12} />
               <span>
                 {myIncomingCar?.agreedPrice ?? garage.basePrice} ج.م/ساعة
               </span>
             </div>
-            <span className="text-xs font-black text-blue-400 font-mono">
+            <span className="text-xs font-black font-mono" style={{ color: BRAND.blue }}>
               🚗 {currentUser?.carPlate}
             </span>
           </div>
 
-          <div className="flex items-center justify-between border-t border-slate-800/80 pt-2">
+          <div className="flex items-center justify-between border-t pt-2" style={{ borderColor: BRAND.border }}>
             <span
               className={`text-xs font-black font-mono ${
                 garage.availableSpots > 0 ? 'text-emerald-400' : 'text-red-400'
@@ -774,12 +784,12 @@ export default function NavigationScreen() {
             >
               {garage.availableSpots} / {garage.capacity}
             </span>
-            <span className="text-[10px] text-slate-400 font-bold">الأماكن المتاحة الآن</span>
+            <span className="text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>الأماكن المتاحة الآن</span>
           </div>
 
           {/* 🌟 شارة وسيلة الدفع المقبولة بالجراج */}
-          <div className="flex items-center justify-between border-t border-slate-800/80 pt-2">
-            <span className="text-xs font-black text-amber-400 flex items-center gap-1">
+          <div className="flex items-center justify-between border-t pt-2" style={{ borderColor: BRAND.border }}>
+            <span className="text-xs font-black flex items-center gap-1" style={{ color: BRAND.green }}>
               <CreditCard size={12} />
               {garage.payment_mode === 'cash'
                 ? '💵 نقدي فقط'
@@ -787,13 +797,13 @@ export default function NavigationScreen() {
                 ? '👝 محفظة فقط'
                 : '💳 نقدي ومحفظة'}
             </span>
-            <span className="text-[10px] text-slate-400 font-bold">طريقة الدفع المقبولة</span>
+            <span className="text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>طريقة الدفع المقبولة</span>
           </div>
 
           {/* 🎁 شارة الهدية الترحيبية إن وجدت */}
           {isEligibleForFree && (
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 text-center flex items-center justify-center gap-1 text-amber-300 text-[10.5px] font-black">
-              <Gift size={13} className="text-amber-400" />
+            <div className="border rounded-lg p-2 text-center flex items-center justify-center gap-1 text-[10px] font-black" style={{ background: BRAND.greenLight, borderColor: BRAND.green + '40', color: BRAND.green }}>
+              <Gift size={12} style={{ color: BRAND.green }} />
               <span>أول 30 دقيقة مجاناً كهدية ترحيبية لك في هذا الحجز! 🎁</span>
             </div>
           )}
@@ -802,34 +812,29 @@ export default function NavigationScreen() {
         {/* 🔔 مؤشر حالة الـ Push */}
         {myIncomingCar && (
           <div
-            className={`rounded-xl p-3 flex items-center gap-2 shrink-0 border ${
-              pushStatus === 'sent'
-                ? 'bg-emerald-600/10 border-emerald-500/20'
-                : pushStatus === 'cancelled'
-                  ? 'bg-red-600/10 border-red-500/20'
-                  : 'bg-cyan-600/10 border-cyan-500/20'
-            }`}
+            className="rounded-xl p-3 flex items-center gap-2 shrink-0 border"
+            style={{ 
+              background: pushStatus === 'sent' ? BRAND.greenLight : 'rgba(245, 158, 11, 0.08)', 
+              borderColor: pushStatus === 'sent' ? BRAND.green + '20' : 'rgba(245, 158, 11, 0.2)' 
+            }}
           >
             <span
-              className={`w-2 h-2 rounded-full shrink-0 ${
+              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                 pushStatus === 'sent'
                   ? 'bg-emerald-500'
                   : pushStatus === 'cancelled'
                     ? 'bg-red-500'
-                    : 'bg-cyan-500 animate-pulse'
+                    : 'bg-amber-500 animate-pulse'
               }`}
             />
             <span
-              className={`text-[10px] font-bold ${
-                pushStatus === 'sent'
-                  ? 'text-emerald-400'
-                  : pushStatus === 'cancelled'
-                    ? 'text-red-400'
-                    : 'text-cyan-400'
-              }`}
+              className="text-[10px] font-bold"
+              style={{ 
+                color: pushStatus === 'sent' ? BRAND.green : '#f59e0b'
+              }}
             >
               {pushStatus === 'sent'
-                ? '✅ تم إشعار الجراج بقدومك'
+                ? '✅ تم إشعار الجراج بقدومك وتأكيد حجزك'
                 : pushStatus === 'cancelled'
                   ? '❌ تم إلغاء الإشعار'
                   : `⏳ سيتم إشعار الجراج تلقائياً بعد ${cancelTimeLeft} ثانية`}
@@ -842,15 +847,14 @@ export default function NavigationScreen() {
           <button
             onClick={handleCarArrived}
             disabled={isArrivingRef.current}
-            className="w-full py-4 rounded-2xl active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
+            className="w-full py-3.5 rounded-xl active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 disabled:opacity-50 border-0 text-white cursor-pointer"
             style={{
-              background: 'linear-gradient(135deg, #00CC66 0%, #00AA55 100%)',
-              boxShadow: '0 8px 24px rgba(0,204,102,0.3)',
-              border: 'none',
+              background: BRAND.greenDark,
+              boxShadow: `0 4px 14px ${BRAND.green}20`,
             }}
           >
-            <Navigation size={18} color="#ffffff" />
-            <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
+            <Navigation size={16} color="#ffffff" />
+            <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 950, fontSize: '15px' }}>
               📍 وصلت الجراج وبدء الركن
             </span>
           </button>
@@ -868,13 +872,14 @@ export default function NavigationScreen() {
               <>
                 <button
                   onClick={handleCancelBooking}
-                  className="w-full bg-slate-900 border border-red-500/20 text-red-400 py-3 rounded-xl font-black text-xs active:scale-95 transition-transform flex items-center justify-center gap-2"
+                  className="w-full border py-3 rounded-xl font-black text-xs active:scale-95 transition-transform flex items-center justify-center gap-1.5 bg-transparent cursor-pointer"
+                  style={{ color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.3)' }}
                 >
-                  <XCircle size={16} />
+                  <XCircle size={15} />
                   إلغاء الحجز ({cancelTimeLeft}ث)
                 </button>
 
-                <div className="mt-1.5 bg-slate-800 rounded-full h-1 overflow-hidden">
+                <div className="mt-1.5 bg-white/5 rounded-full h-1 overflow-hidden" style={{ background: BRAND.border }}>
                   <div
                     className="h-full bg-red-500 transition-all duration-1000"
                     style={{
@@ -889,16 +894,15 @@ export default function NavigationScreen() {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 onClick={handleCancelBooking}
-                className="w-full py-3.5 rounded-xl active:scale-95 transition-all flex items-center justify-center gap-2 shadow-sm"
+                className="w-full py-3 rounded-xl active:scale-95 transition-all flex items-center justify-center gap-2 border bg-transparent cursor-pointer"
                 style={{
-                  background: '#1E293B',
-                  color: '#CBD5E1',
-                  border: '1.5px solid #334155',
-                  fontSize: 13,
+                  color: BRAND.slateMuted,
+                  borderColor: BRAND.border,
+                  fontSize: 12,
                   fontWeight: 900,
                 }}
               >
-                <XCircle size={15} className="text-slate-400" />
+                <XCircle size={14} style={{ color: BRAND.slateMuted }} />
                 <span>إلغاء الحجز واختيار جراج آخر</span>
               </motion.button>
             )}
