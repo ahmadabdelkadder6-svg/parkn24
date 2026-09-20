@@ -50,36 +50,64 @@ if (typeof window !== 'undefined') {
   events.forEach(e => document.addEventListener(e, onFirstTouch, { passive: true }));
 }
 
+// 🔊 أقصى وأقوى صوت إنذار (نغمات طوارئ حادة ومضاعفة لاختراق الضوضاء)
 const playCarArrivalAlarm = async () => {
   try {
     await unlockAudioEngine();
     if (!garageAudioCtx) return;
     if (garageAudioCtx.state === 'suspended') await garageAudioCtx.resume();
 
-    for (let i = 0; i < 5; i++) {
-      const delay = i * 0.22;
-      const osc = garageAudioCtx.createOscillator();
-      const gain = garageAudioCtx.createGain();
+    const now = garageAudioCtx.currentTime;
 
-      osc.connect(gain);
-      gain.connect(garageAudioCtx.destination);
+    // رفع الصوت لأقصى طاقة 100%
+    const masterGain = garageAudioCtx.createGain();
+    masterGain.gain.setValueAtTime(1.0, now);
+    masterGain.connect(garageAudioCtx.destination);
 
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(i % 2 === 0 ? 900 : 1300, garageAudioCtx.currentTime + delay);
+    // 8 نبضات إنذار حادة وسريعة جداً
+    for (let i = 0; i < 8; i++) {
+      const start = now + (i * 0.25);
+      const duration = 0.22;
 
-      gain.gain.setValueAtTime(0.7, garageAudioCtx.currentTime + delay);
-      gain.gain.exponentialRampToValueAtTime(0.01, garageAudioCtx.currentTime + delay + 0.18);
+      // مولد صوت 1: نغمة حادة جداً
+      const osc1 = garageAudioCtx.createOscillator();
+      // مولد صوت 2: نغمة جرس مضاعفة للحدة
+      const osc2 = garageAudioCtx.createOscillator();
+      const noteGain = garageAudioCtx.createGain();
 
-      osc.start(garageAudioCtx.currentTime + delay);
-      osc.stop(garageAudioCtx.currentTime + delay + 0.2);
+      osc1.type = 'sawtooth';
+      osc2.type = 'square';
+
+      // الترددات الحادة الخارقة (1400Hz و 2600Hz)
+      const freq = i % 2 === 0 ? 1400 : 2600;
+      osc1.frequency.setValueAtTime(freq, start);
+      osc2.frequency.setValueAtTime(freq * 1.25, start);
+
+      noteGain.gain.setValueAtTime(1.0, start);
+      noteGain.gain.exponentialRampToValueAtTime(0.01, start + duration);
+
+      osc1.connect(noteGain);
+      osc2.connect(noteGain);
+      noteGain.connect(masterGain);
+
+      osc1.start(start);
+      osc2.start(start);
+      osc1.stop(start + duration + 0.02);
+      osc2.stop(start + duration + 0.02);
     }
-  } catch {}
+  } catch (e) {
+    console.warn('Audio error:', e);
+  }
 };
 
+// 📳 أقصى نمط اهتزاز عنيف ومستمر للهاتف (8 ثوانٍ رنين طوارئ)
 const triggerVibration = () => {
   try {
     if ('vibrate' in navigator) {
-      navigator.vibrate([800, 200, 800, 200, 1000]);
+      navigator.vibrate([
+        1500, 100, 1500, 100, 1500, 100, // رنات طويلة متواصلة
+        2000, 150, 2000                  // رنة ختامية قوية
+      ]);
     }
   } catch {}
 };
