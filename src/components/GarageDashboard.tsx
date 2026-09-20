@@ -19,7 +19,107 @@ const GEOFENCE_RADIUS_METERS = 250;
 const VALET_PING_INTERVAL_MS = 8000;
 const VALET_LIVE_THRESHOLD_MS = 25000;
 const VALET_BACKGROUND_GRACE_MS = 10 * 60 * 1000;
+// ─── 🔔 نظام الصوت والتنبيهات المدمج داخل الشاشة ───────────────────
+let garageAudioCtx: AudioContext | null = null;
+let isAudioUnlocked = false;
 
+const unlockAudioEngine = async () => {
+  if (isAudioUnlocked && garageAudioCtx && garageAudioCtx.state === 'running') return;
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    if (!garageAudioCtx) garageAudioCtx = new AudioCtx();
+    if (garageAudioCtx.state === 'suspended') await garageAudioCtx.resume();
+
+    const buf = garageAudioCtx.createBuffer(1, 1, 22050);
+    const src = garageAudioCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(garageAudioCtx.destination);
+    src.start(0);
+
+    isAudioUnlocked = true;
+  } catch {}
+};
+
+if (typeof window !== 'undefined') {
+  const events = ['touchstart', 'touchend', 'mousedown', 'keydown', 'click'];
+  const onFirstTouch = () => {
+    unlockAudioEngine();
+    events.forEach(e => document.removeEventListener(e, onFirstTouch));
+  };
+  events.forEach(e => document.addEventListener(e, onFirstTouch, { passive: true }));
+}
+
+const playCarArrivalAlarm = async () => {
+  try {
+    await unlockAudioEngine();
+    if (!garageAudioCtx) return;
+    if (garageAudioCtx.state === 'suspended') await garageAudioCtx.resume();
+
+    for (let i = 0; i < 5; i++) {
+      const delay = i * 0.22;
+      const osc = garageAudioCtx.createOscillator();
+      const gain = garageAudioCtx.createGain();
+
+      osc.connect(gain);
+      gain.connect(garageAudioCtx.destination);
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(i % 2 === 0 ? 900 : 1300, garageAudioCtx.currentTime + delay);
+
+      gain.gain.setValueAtTime(0.7, garageAudioCtx.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.01, garageAudioCtx.currentTime + delay + 0.18);
+
+      osc.start(garageAudioCtx.currentTime + delay);
+      osc.stop(garageAudioCtx.currentTime + delay + 0.2);
+    }
+  } catch {}
+};
+
+const triggerVibration = () => {
+  try {
+    if ('vibrate' in navigator) {
+      navigator.vibrate([800, 200, 800, 200, 1000]);
+    }
+  } catch {}
+};
+
+const triggerSystemNotification = async (title: string, body: string, tag = 'valet-alarm') => {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+    const options: NotificationOptions = {
+      body,
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-192x192.png',
+      tag,
+      requireInteraction: true,
+      renotify: true,
+      vibrate: [800, 200, 800, 200, 1000],
+      data: { url: '/garage' },
+    };
+
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.ready;
+      if (reg && reg.showNotification) {
+        await reg.showNotification(title, options);
+        return;
+      }
+    }
+
+    new Notification(title, options);
+  } catch {}
+};
+
+const fireIncomingCarAlert = (carPlate: string) => {
+  playCarArrivalAlarm();
+  triggerVibration();
+  triggerSystemNotification(
+    '🚨 سيارة في الطريق إليك!',
+    `🚗 لوحة السيارة: ${carPlate} • استعد للاستقبال فوراً!`,
+    `incoming-${carPlate}`
+  );
+};
 /* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
   blue: '#1656b8',       // الأزرق الرسمي للوجو
@@ -817,7 +917,35 @@ export default function GarageDashboard() {
   const [selectedValetFilter, setSelectedValetFilter] = useState<string | null>(null);
   const [plateSearch, setPlateSearch] = useState('');
 
+  // ✅ تعريف حالة مبدل الجراجات بشكل صحيح
   const [showSwitcher, setShowSwitcher] = useState(false);
+
+  // 1️⃣ طلب إذن الإشعارات للسايس فقط عند فتح الشاشة
+  useEffect(() => {
+    if (isValet && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, [isValet]);
+
+  // 2️⃣ إطلاق الإنذار الصوتي والاهتزاز للسايس فقط 🅿️ (المالك مستثنى تماماً)
+  useEffect(() => {
+    if (!carsOnTheWay || carsOnTheWay.length === 0) return;
+
+    const ids = new Set(carsOnTheWay.map(c => c.id));
+
+    carsOnTheWay.forEach(car => {
+      if (!prevIncomingIdsRef.current.has(car.id)) {
+        // 🛡️ التنبيه يعمل فقط لشاشة السايس
+        if (isValet) {
+          fireIncomingCarAlert(car.carPlate);
+          toast(`🚨 سيارة في الطريق!\n🚗 ${car.carPlate}`, { duration: 8000, icon: '🚨' });
+        }
+      }
+    });
+
+    prevIncomingIdsRef.current = ids;
+  }, [carsOnTheWay, isValet]);
+
   const myGarages = useMemo(() => {
     if (!garage) return [];
     return getMyOwnedGarages(garage.ownerPhone || garage.phone || '');

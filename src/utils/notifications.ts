@@ -1,121 +1,138 @@
 // src/utils/notifications.ts
 
 /**
- * ✅ نظام التنبيهات الصوتية والاهتزاز الفائق للسايس
+ * 🌟 نظام التنبيهات الصوتية والإشعارات والاهتزاز لتطبيق Park'n 24
+ * متوافق بالكامل مع هواتف Android, iPhone والحواسيب
  */
 
-// ─── تشغيل صوت التنبيه (Web Audio API) ──────────────────────────────────
-let audioContext: AudioContext | null = null;
+let audioCtx: AudioContext | null = null;
+let isAudioUnlocked = false;
 
-const getAudioContext = async (): Promise<AudioContext | null> => {
+// ─── 1. فك قفل محرك الصوت من أول لمسة على الشاشة ─────────────────────────
+export const unlockAudio = async () => {
+  if (isAudioUnlocked && audioCtx && audioCtx.state === 'running') return;
+
   try {
-    if (!audioContext) {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return null;
-      audioContext = new AudioCtx();
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    if (!audioCtx) {
+      audioCtx = new AudioContextClass();
     }
-    // إيقاظ الصوت إذا كان المتصفح وضعه في وضع السكون
-    if (audioContext.state === 'suspended') {
-      await audioContext.resume();
+
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
     }
-    return audioContext;
+
+    // تشغيل نبضة صامتة لتفعيل الصوت في المتصفح
+    const buffer = audioCtx.createBuffer(1, 1, 22050);
+    const source = audioCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioCtx.destination);
+    source.start(0);
+
+    isAudioUnlocked = true;
   } catch (e) {
-    console.warn('⚠️ تعذر تشغيل محرك الصوت:', e);
-    return null;
+    console.warn('⚠️ تعذر تفعيل محرك الصوت:', e);
   }
 };
 
-// ✅ صوت تنبيه عادي (نغمات صاعدة)
-export const playAlertSound = async (repeat = 3) => {
-  try {
-    const ctx = await getAudioContext();
-    if (!ctx) return;
+// فك القفل تلقائياً مع أول لمسة للمستخدم
+if (typeof window !== 'undefined') {
+  const unlockEvents = ['touchstart', 'touchend', 'mousedown', 'keydown', 'click'];
+  const onFirstGesture = () => {
+    unlockAudio();
+    unlockEvents.forEach(evt => document.removeEventListener(evt, onFirstGesture));
+  };
+  unlockEvents.forEach(evt => document.addEventListener(evt, onFirstGesture, { passive: true }));
+}
 
-    const playBeep = (delay: number, frequency: number, duration: number) => {
-      const oscillator = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-
-      oscillator.connect(gainNode);
-      gainNode.connect(ctx.destination);
-
-      oscillator.type = 'square';
-      oscillator.frequency.value = frequency;
-
-      gainNode.gain.setValueAtTime(0.5, ctx.currentTime + delay);
-      gainNode.gain.exponentialRampToValueAtTime(
-        0.01,
-        ctx.currentTime + delay + duration
-      );
-
-      oscillator.start(ctx.currentTime + delay);
-      oscillator.stop(ctx.currentTime + delay + duration + 0.05);
-    };
-
-    for (let i = 0; i < repeat; i++) {
-      const baseDelay = i * 0.7;
-      playBeep(baseDelay, 800, 0.15);
-      playBeep(baseDelay + 0.2, 1000, 0.15);
-      playBeep(baseDelay + 0.4, 1200, 0.2);
-    }
-  } catch (err) {
-    console.warn('⚠️ خطأ في تشغيل الصوت:', err);
-  }
-};
-
-// ✅ صوت تنبيه عاجل قوي جداً (طوارئ وصول سيارة)
+// ─── 2. نغمات التنبيه (توليد إلكتروني نقي بدون ملفات خارجية) ──────────────
 export const playUrgentSound = async () => {
   try {
-    const ctx = await getAudioContext();
-    if (!ctx) return;
+    await unlockAudio();
+    if (!audioCtx) return;
 
-    for (let i = 0; i < 6; i++) {
-      const delay = i * 0.35;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+    }
+
+    // نغمة طوارئ ثنائية التردد (5 نبضات متتابعة)
+    for (let i = 0; i < 5; i++) {
+      const delay = i * 0.22;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
 
       osc.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(audioCtx.destination);
 
       osc.type = 'sawtooth';
-      osc.frequency.value = i % 2 === 0 ? 1000 : 1500;
+      osc.frequency.setValueAtTime(i % 2 === 0 ? 880 : 1320, audioCtx.currentTime + delay);
 
-      gain.gain.setValueAtTime(0.6, ctx.currentTime + delay);
-      gain.gain.exponentialRampToValueAtTime(
-        0.01,
-        ctx.currentTime + delay + 0.25
-      );
+      gain.gain.setValueAtTime(0.7, audioCtx.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + delay + 0.18);
 
-      osc.start(ctx.currentTime + delay);
-      osc.stop(ctx.currentTime + delay + 0.3);
+      osc.start(audioCtx.currentTime + delay);
+      osc.stop(audioCtx.currentTime + delay + 0.2);
     }
   } catch (err) {
-    console.warn('⚠️ خطأ في تشغيل صوت الطوارئ:', err);
+    console.warn('⚠️ خطأ في تشغيل صوت الإنذار:', err);
   }
 };
 
-// ─── اهتزاز الجهاز (Vibration API) ─────────────────────────────────────────
-export const vibrateDevice = (pattern?: number[]) => {
+export const playNormalAlert = async () => {
+  try {
+    await unlockAudio();
+    if (!audioCtx) return;
+
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+    }
+
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+    osc.frequency.setValueAtTime(900, audioCtx.currentTime + 0.15);
+
+    gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+
+    osc.start(audioCtx.currentTime);
+    osc.stop(audioCtx.currentTime + 0.38);
+  } catch (err) {
+    console.warn('⚠️ خطأ في تشغيل التنبيه:', err);
+  }
+};
+
+// ─── 3. اهتزاز الهاتف ───────────────────────────────────────────────────
+export const vibrateUrgent = () => {
   try {
     if ('vibrate' in navigator) {
-      const defaultPattern = [500, 150, 500, 150, 700];
-      navigator.vibrate(pattern || defaultPattern);
+      navigator.vibrate([
+        800, 200, 800, 200, 800, 200, // رنة 1
+        1000, 300, 1000               // رنة 2
+      ]);
       return true;
     }
-    return false;
-  } catch {
-    return false;
-  }
+  } catch {}
+  return false;
 };
 
-// ✅ اهتزاز عاجل (نمط رنين مكالمة الهاتف)
-export const vibrateUrgent = () => {
-  return vibrateDevice([
-    1000, 300, 1000, 300, 1000, 300, // رنة 1
-    1000, 300, 1000, 300, 1000, 300  // رنة 2
-  ]);
+export const vibrateDevice = (pattern: number[] = [500, 150, 500]) => {
+  try {
+    if ('vibrate' in navigator) {
+      navigator.vibrate(pattern);
+      return true;
+    }
+  } catch {}
+  return false;
 };
 
-// ─── إيقاف الاهتزاز ───────────────────────────────────────────────────────
 export const stopVibration = () => {
   try {
     if ('vibrate' in navigator) {
@@ -124,118 +141,75 @@ export const stopVibration = () => {
   } catch {}
 };
 
-// ─── تنبيه كامل (صوت + اهتزاز) ───────────────────────────────────────────
-export const fireFullAlert = () => {
-  playUrgentSound();
-  vibrateUrgent();
-};
-
-export const fireNormalAlert = () => {
-  playAlertSound(2);
-  vibrateDevice();
-};
-
-// ─── طلب إذن الإشعارات ────────────────────────────────────────────────────
+// ─── 4. طلب إذن الإشعارات ───────────────────────────────────────────────
 export const requestNotificationPermission = async (): Promise<boolean> => {
   try {
     if (!('Notification' in window)) return false;
     if (Notification.permission === 'granted') return true;
     if (Notification.permission === 'denied') return false;
 
-    const permission = await Notification.requestPermission();
-    return permission === 'granted';
+    const result = await Notification.requestPermission();
+    return result === 'granted';
   } catch {
     return false;
   }
 };
 
-// ─── إرسال إشعار محلي آمن متوافق مع هواتف أندرويد وChrome ────────────────
+// ─── 5. إظهار الإشعار في شريط التنبيهات ───────────────────────────────────
 export const sendLocalNotification = async (
   title: string,
   body: string,
-  options?: {
-    tag?: string;
-    requireInteraction?: boolean;
-    vibrate?: number[];
-    icon?: string;
-    data?: Record<string, unknown>;
-  }
+  tag = 'valet-urgent-alarm'
 ) => {
   try {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
-    const notificationOptions: NotificationOptions = {
+    const options: NotificationOptions = {
       body,
-      icon: options?.icon || '/icons/icon-192x192.png',
+      icon: '/icons/icon-192x192.png',
       badge: '/icons/icon-192x192.png',
-      tag: options?.tag || 'valet-urgent-alarm',
-      requireInteraction: options?.requireInteraction ?? true,
+      tag,
+      requireInteraction: true,
       renotify: true,
-      vibrate: options?.vibrate || [1000, 300, 1000, 300, 1000, 300],
-      data: options?.data || { url: '/garage' },
+      vibrate: [800, 200, 800, 200, 1000],
+      data: { url: '/garage' },
     };
 
-    // 🛡️ [الحل الجذري لهواتف أندرويد]: استخدام ServiceWorkerRegistration لإظهار الإشعار بدون خطأ
+    // إرسال عبر Service Worker (متوافق مع أندرويد)
     if ('serviceWorker' in navigator) {
       try {
         const reg = await navigator.serviceWorker.ready;
         if (reg && reg.showNotification) {
-          await reg.showNotification(title, notificationOptions);
+          await reg.showNotification(title, options);
           return;
         }
-      } catch (e) {
-        console.warn('ServiceWorker notification fallback to window Notification:', e);
-      }
+      } catch {}
     }
 
-    // Fallback للأجهزة المكتبية القديمة
-    const n = new Notification(title, notificationOptions);
-    n.onclick = () => {
-      window.focus();
-      n.close();
-    };
+    // Fallback للحواسيب
+    new Notification(title, options);
   } catch (err) {
-    console.error('❌ فشل إرسال الإشعار المحلي:', err);
+    console.warn('⚠️ تعذر إظهار الإشعار في النظام:', err);
   }
 };
 
-// ✅ إشعار سيارة قادمة للجراج
-export const notifyIncomingCar = (
-  carPlate: string,
-  customerName?: string,
-  agreedPrice?: number
-) => {
-  // 1. تشغيل الصوت والاهتزاز اللحظي
-  fireFullAlert();
-
-  // 2. إرسال الإشعار لشاشة الهاتف
-  const body = `🚗 لوحة السيارة: ${carPlate} • استعد للاستقبال فوراً!`;
-
-  sendLocalNotification('🚨 سيارة في الطريق إليك!', body, {
-    tag: `incoming-${carPlate}`,
-    requireInteraction: true,
-    vibrate: [1000, 300, 1000, 300, 1000, 300],
-    data: { url: '/garage', carPlate },
-  });
-
-  // 3. رنة تذكيرية إضافية بعد 6 ثوانٍ لو السايس لم يفتح الشاشة
-  const repeatTimer = setTimeout(() => {
-    if (document.hidden) {
-      playUrgentSound();
-      vibrateUrgent();
-    }
-  }, 6000);
-
-  return () => {
-    clearTimeout(repeatTimer);
-  };
+// ─── 6. التنبيهات المجمعة المباشرة ──────────────────────────────────────
+export const notifyIncomingCar = (carPlate: string) => {
+  playUrgentSound();
+  vibrateUrgent();
+  sendLocalNotification(
+    '🚨 سيارة في الطريق إليك!',
+    `🚗 رقم اللوحة: ${carPlate} • استعد للاستقبال فوراً!`,
+    `incoming-${carPlate}`
+  );
 };
 
-// ✅ إشعار عرض سعر جديد
 export const notifyNewOffer = (carPlate: string, price: number) => {
-  fireNormalAlert();
-  sendLocalNotification('💰 عرض سعر جديد!', `🚗 ${carPlate} - ${price} ج.م/ساعة`, {
-    tag: `offer-${carPlate}`,
-    requireInteraction: true,
-  });
+  playNormalAlert();
+  vibrateDevice([400, 150, 400]);
+  sendLocalNotification(
+    '💰 عرض سعر جديد!',
+    `🚗 السيارة ${carPlate} - عرضت: ${price} ج.م/ساعة`,
+    `offer-${carPlate}`
+  );
 };
