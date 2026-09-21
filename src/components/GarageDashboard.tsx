@@ -752,11 +752,16 @@ export default function GarageDashboard() {
     getMyOwnedGarages,
   } = useStore();
 
-  const [garageRole] = useState<'owner' | 'valet'>(
-    () => (localStorage.getItem('garageRole') as 'owner' | 'valet') || 'owner',
-  );
+  // 1️⃣ قراءة مباشرة للدور من الـ localStorage
+  const garageRole = (localStorage.getItem('garageRole') as 'owner' | 'valet') || 'owner';
 
+  // 2️⃣ تعريف الـ State أولاً (لازم يتكتب قبل الـ useEffect!)
   const [ownerValetView, setOwnerValetView] = useState(false);
+
+  // 3️⃣ الـ useEffect يأتي بعد تعريف الـ State
+  useEffect(() => {
+    setOwnerValetView(false);
+  }, [currentGarageId]);
 
   const isRealValet = garageRole === 'valet';
   const isOwner = garageRole === 'owner' && !ownerValetView;
@@ -768,7 +773,6 @@ export default function GarageDashboard() {
 
   const garage = garages.find(g => g.id === currentGarageId);
   const garageCoords = useMemo(() => extractGarageCoords(garage), [garage]);
-
   const garageSessions = useMemo(
     () => sessions.filter(s => s.garageId === currentGarageId),
     [sessions, currentGarageId]
