@@ -600,7 +600,7 @@ export default function GarageListScreen() {
         {showTopUp && <TopUpWalletModal onClose={() => setShowTopUp(false)} />}
       </AnimatePresence>
 
-      {/* 📲 نافذة تكبير الباركود لمشاركته بسهولة */}
+      {/* 📲 نافذة تكبير الباركود لمشاركته مع الأصدقاء واستلام الهدية */}
       <AnimatePresence>
         {showQrModal && (
           <div 
@@ -616,6 +616,7 @@ export default function GarageListScreen() {
               style={{ background: BRAND.card }}
               onClick={e => e.stopPropagation()}
             >
+              {/* زر الإغلاق */}
               <button 
                 onClick={() => setShowQrModal(false)}
                 className="absolute top-4 left-4 text-slate-400 font-black text-sm border-0 bg-transparent cursor-pointer"
@@ -623,14 +624,29 @@ export default function GarageListScreen() {
                 ✕
               </button>
 
+              {/* أيقونة الهدية الترحيبية */}
+              <div 
+                className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2"
+                style={{ background: BRAND.greenLight }}
+              >
+                <Gift size={20} style={{ color: BRAND.greenDark }} />
+              </div>
+
+              {/* العنوان الجديد المحفز للمشاركة */}
               <h3 className="text-sm font-black mb-1" style={{ color: BRAND.blueDark }}>
                 📲 شارك بركن 24 مع أصحابك
               </h3>
-              <p className="text-[10px] font-bold mb-4" style={{ color: BRAND.slate }}>
-                وجّه كاميرا الموبايل نحو الكود لفتح وتثبيت التطبيق فوراً 🚀
+
+              {/* النص التحفيزي بـ 30 دقيقة مجاناً */}
+              <p className="text-[11px] font-bold mb-4 leading-relaxed" style={{ color: BRAND.slate }}>
+                امسح الكود بموبايل صاحبك لتنزيل التطبيق وسبهم يستمتعوا بـ <span className="font-black" style={{ color: BRAND.greenDark }}>أول 30 دقيقة ركن مجاناً! 🎁🚀</span>
               </p>
 
-              <div className="w-48 h-48 mx-auto p-2 bg-white rounded-2xl border-2 shadow-inner flex items-center justify-center mb-4" style={{ borderColor: BRAND.border }}>
+              {/* إطار الباركود */}
+              <div 
+                className="w-48 h-48 mx-auto p-2 bg-white rounded-2xl border-2 shadow-inner flex items-center justify-center mb-4" 
+                style={{ borderColor: BRAND.blue }}
+              >
                 <img 
                   src="/app-qr.png" 
                   alt="QR Code" 
@@ -641,18 +657,18 @@ export default function GarageListScreen() {
                 />
               </div>
 
+              {/* زر الإغلاق والمشاركة */}
               <button
                 onClick={() => setShowQrModal(false)}
-                className="w-full py-3 rounded-xl font-black text-xs text-white border-0 cursor-pointer active:scale-95 transition-all"
+                className="w-full py-3 rounded-xl font-black text-xs text-white border-0 cursor-pointer active:scale-95 transition-all shadow-md"
                 style={{ background: BRAND.blue }}
               >
-                إغلاق
+                تم المسح / إغلاق
               </button>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
-
       <WelcomeGiftModal />
     </div>
   );
