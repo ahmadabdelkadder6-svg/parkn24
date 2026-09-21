@@ -198,7 +198,7 @@ export default function GarageLoginScreen() {
                   color: role === 'valet' ? '#ffffff' : BRAND.slateMuted,
                 }}
               >
-                <HardHat size={14} /> مشرف
+                <HardHat size={14} /> مشرف الجراج
               </button>
             </div>
 
