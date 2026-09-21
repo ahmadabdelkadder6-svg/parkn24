@@ -944,7 +944,7 @@ export default function GarageDashboard() {
   const [valetEditSpots, setValetEditSpots] = useState(false);
   const [selectedValetFilter, setSelectedValetFilter] = useState<string | null>(null);
   const [plateSearch, setPlateSearch] = useState('');
-
+   const [showValetQrModal, setShowValetQrModal] = useState(false);
   // ✅ تعريف حالة مبدل الجراجات بشكل صحيح
   const [showSwitcher, setShowSwitcher] = useState(false);
 
@@ -1766,6 +1766,42 @@ export default function GarageDashboard() {
       {/* السايس فقط */}
       {isValet && (
         <>
+          {/* 📲 كارت الباركود الذكي للسايس لتسويق التطبيق للعملاء */}
+          <div
+            onClick={() => setShowValetQrModal(true)}
+            className="mb-4 border rounded-2xl p-3 flex items-center justify-between text-right cursor-pointer active:scale-[0.98] transition-all"
+            style={{
+              background: BRAND.card,
+              borderColor: BRAND.border,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="w-12 h-12 p-1 rounded-xl bg-white border flex items-center justify-center shrink-0 shadow-sm"
+                style={{ borderColor: BRAND.blue }}
+              >
+                <img
+                  src="/app-qr.png"
+                  alt="QR Code"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+
+              <div className="text-right">
+                <span className="text-[9px] font-black px-2 py-0.5 rounded text-white inline-block mb-0.5" style={{ background: BRAND.greenDark }}>
+                  🎁 كود الهدية للعميل
+                </span>
+                <h4 className="text-xs font-black" style={{ color: BRAND.navy }}>
+                  ريّح نفسك وخف الزحمة قدام الجراج 📲
+                </h4>
+                <p className="text-[10px] font-bold mt-0.5" style={{ color: BRAND.slate }}>
+                  خلّي العميل يمسح الكود بموبايله وياخد أول 30 دقيقة مجاناً! 🚀
+                </p>
+              </div>
+            </div>
+            <QrCode size={18} style={{ color: BRAND.blue }} className="shrink-0" />
+          </div>
           {/* سيارات في الطريق */}
           {carsOnTheWay.length > 0 && (
             <div className="mb-5">
@@ -2151,6 +2187,59 @@ export default function GarageDashboard() {
               </div>
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+      {/* 📲 نافذة تكبير باركود السايس للعميل */}
+      <AnimatePresence>
+        {showValetQrModal && (
+          <div
+            className="fixed inset-0 z-[99999] flex items-center justify-center p-5"
+            style={{ background: 'rgba(10,22,40,0.8)', backdropFilter: 'blur(6px)' }}
+            onClick={() => setShowValetQrModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.85, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.85, opacity: 0 }}
+              className="rounded-3xl p-6 text-center max-w-xs w-full shadow-2xl relative"
+              style={{ background: BRAND.card }}
+              onClick={e => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setShowValetQrModal(false)}
+                className="absolute top-4 left-4 text-slate-400 font-black text-sm border-0 bg-transparent cursor-pointer"
+              >
+                ✕
+              </button>
+
+              <div className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2" style={{ background: BRAND.greenLight }}>
+                <Gift size={20} style={{ color: BRAND.greenDark }} />
+              </div>
+
+              <h3 className="text-sm font-black mb-1" style={{ color: BRAND.navy }}>
+                امسح الكود واحجز ركنتك فوراً! 🎁
+              </h3>
+              <p className="text-[10px] font-bold mb-4" style={{ color: BRAND.slate }}>
+                احصل على <span style={{ color: BRAND.greenDark }} className="font-black">أول 30 دقيقة مجاناً</span> وحسابك ينزل هنا تلقائياً بدون فكة ولا دوشة!
+              </p>
+
+              <div className="w-48 h-48 mx-auto p-2 bg-white rounded-2xl border-2 shadow-inner flex items-center justify-center mb-4" style={{ borderColor: BRAND.blue }}>
+                <img
+                  src="/app-qr.png"
+                  alt="QR Code"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+
+              <button
+                onClick={() => setShowValetQrModal(false)}
+                className="w-full py-3 rounded-xl font-black text-xs text-white border-0 cursor-pointer active:scale-95 transition-all"
+                style={{ background: BRAND.blue }}
+              >
+                تم المسح / إغلاق
+              </button>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>
