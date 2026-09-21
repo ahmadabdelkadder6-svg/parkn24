@@ -1724,8 +1724,8 @@ export default function GarageDashboard() {
         </motion.div>
       )}
 
-      {/* Stats Cards */}
-      <div className={`grid ${isOwner ? 'grid-cols-3' : 'grid-cols-2'} gap-2.5 mb-5`}>
+       {/* Stats Cards */}
+      <div className={`grid ${isOwner ? 'grid-cols-3' : 'grid-cols-2'} gap-2 mb-3`}>
         {isOwner ? (
           <>
             <div className="text-center p-3 rounded-xl border bg-white" style={{ borderColor: BRAND.border }}>
@@ -1753,16 +1753,17 @@ export default function GarageDashboard() {
           </>
         ) : (
           <>
-            <div className="text-center p-3 rounded-xl border bg-white" style={{ borderColor: BRAND.border }}>
-              <div className="text-[10px] font-bold text-slate-400 mb-0.5">جلساتي النشطة</div>
-              <div className="font-black font-mono text-lg" style={{ color: BRAND.blue }}>
+            {/* ⚡ كروت المشرف تم تصغيرها للنصف تماماً لتوفير مساحة الشاشة */}
+            <div className="text-center py-1.5 px-2 rounded-xl border bg-white" style={{ borderColor: BRAND.border }}>
+              <div className="text-[9px] font-bold text-slate-400 mb-0.5">جلساتي النشطة</div>
+              <div className="font-black font-mono text-sm leading-none" style={{ color: BRAND.blue }}>
                 {valetActiveSessions.length}
               </div>
             </div>
 
-            <div className="text-center p-3 rounded-xl border bg-white" style={{ borderColor: BRAND.border }}>
-              <div className="text-[10px] font-bold text-slate-400 mb-0.5">شاغر</div>
-              <div className="font-black font-mono text-lg" style={{ color: BRAND.greenDark }}>
+            <div className="text-center py-1.5 px-2 rounded-xl border bg-white" style={{ borderColor: BRAND.border }}>
+              <div className="text-[9px] font-bold text-slate-400 mb-0.5">شاغر</div>
+              <div className="font-black font-mono text-sm leading-none" style={{ color: BRAND.greenDark }}>
                 {garage.availableSpots}
               </div>
             </div>
