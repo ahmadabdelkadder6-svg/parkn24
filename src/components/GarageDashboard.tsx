@@ -1800,7 +1800,7 @@ export default function GarageDashboard() {
                   🎁 كود الهدية للعميل
                 </span>
                 <h4 className="text-xs font-black" style={{ color: BRAND.navy }}>
-                  ريّح نفسك وخف الزحمة قدام الجراج 📲
+                  امسح الكود لفتح وتنزيل التطبيق📲
                 </h4>
                 <p className="text-[10px] font-bold mt-0.5" style={{ color: BRAND.slate }}>
                   خلّي العميل يمسح الكود بموبايله وياخد أول 30 دقيقة مجاناً! 🚀
@@ -2253,4 +2253,4 @@ export default function GarageDashboard() {
       </AnimatePresence>
     </div>
   );
-}
+}[
