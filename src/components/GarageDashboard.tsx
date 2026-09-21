@@ -1272,6 +1272,7 @@ export default function GarageDashboard() {
     setShowAddCar(false);
   };
 
+   // 🛡️ دالة فتح نافذة التحصيل مع التأمين الفوري للشاشة
   const openConfirmPayment = (sid: string, cp: string, cost: number, hrs: number, minutes: number, source: 'app' | 'manual', ap?: number) => {
     const sessionObj = activeSessions.find(s => s.id === sid);
     const isFreeApplied = sessionObj?.isFirstFreeSession === true;
@@ -1293,11 +1294,18 @@ export default function GarageDashboard() {
     });
 
     setConfirmPaymentMethod('cash');
+
+    // 🌟 [تأمين 1]: تصفير البحث فوراً لتجهيز القائمة في الخلفية
+    setPlateSearch('');
   };
 
+  // 🛡️ دالة إتمام التحصيل والتسجيل مع أقصى حماية للبيانات
   const handleConfirmPayment = async () => {
+    // 🌟 [تأمين 2 - صمام منع الضغط المزدوج]: لو المشرف ضغط مرتين ورا بعض بسرعة ما تتكررش العملية
     if (!confirmSession || isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
+    
+    // 🌟 [تأمين 3]: إيقاف التحديث الخلفي مؤقتاً لمدة ثانيتين لمنع تضارب البيانات أثناء الدفع
     pausePolling(2000);
     
     try {
@@ -1305,6 +1313,7 @@ export default function GarageDashboard() {
       const sd = (sessions || []).find(s => s && s.id === sc.id);
       const pc = (isValet || sc.source === 'manual') ? 'cash' : (confirmPaymentMethod || 'cash');
       
+      // 🌟 [تأمين 4]: حساب الدقائق الترحيبية المجانية بمنتهى الدقة بدون أي تلاعب
       let freeMinutesApplied = 0;
       if (sd?.isFirstFreeSession === true) {
         const elapsedSeconds = Math.floor((getServerNow() - toMs(sd.startTime)) / 1000);
@@ -1317,20 +1326,21 @@ export default function GarageDashboard() {
         ? (currentValetNameLocal || currentValetName || `مشرف ${valetNumber}`).trim() 
         : 'المالك';
 
+      // مسح البحث وقفل النافذة فوراً لسرعة استجابة التطبيق
+      setPlateSearch('');
       setConfirmSession(null);
       setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
-      
-      // تصغير وتصفير البحث فوراً لإرجاع القائمة كاملة
-      setPlateSearch(''); 
 
+      // تسجيل العملية في قاعدة البيانات وإنهاء الركنة
       await endSession(sc.id, sc.cost, pc, freeMinutesApplied, currentValet);
       
       const paymentText = pc === 'cash' ? 'نقداً (كاش)' : 'من المحفظة الرقمية';
       toast.success(`تم تحصيل ${sc.cost} ج.م ${paymentText} بنجاح ✅`);
     } catch (err: any) {
       console.error('Payment Error:', err);
-      toast.error(err.message || 'فشلت عملية التحصيل');
+      toast.error(err.message || 'فشلت عملية التحصيل، يرجى المحاولة مرة أخرى');
     } finally { 
+      // 🌟 [تأمين 5]: إعادة التزامن وفك حظر الضغط بأمان
       pausePolling(0);
       setTimeout(() => { isEndingSessionRef.current = false; }, 800); 
     }
