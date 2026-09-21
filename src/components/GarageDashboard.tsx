@@ -371,9 +371,9 @@ const useOwnerValetLocations = (
 
       const now = Date.now();
       const valets: ValetLocationInfo[] = [
-        { valetNumber: 1, valetName: String(garage.valetName1 || 'سايس 1'), isActive: garage.valet1Active ?? false, status: 'offline', distance: null, lastSeen: null },
-        { valetNumber: 2, valetName: String(garage.valetName2 || 'سايس 2'), isActive: garage.valet2Active ?? false, status: 'offline', distance: null, lastSeen: null },
-        { valetNumber: 3, valetName: String(garage.valetName3 || 'سايس 3'), isActive: garage.valet3Active ?? false, status: 'offline', distance: null, lastSeen: null },
+        { valetNumber: 1, valetName: String(garage.valetName1 || 'مشرف 1'), isActive: garage.valet1Active ?? false, status: 'offline', distance: null, lastSeen: null },
+        { valetNumber: 2, valetName: String(garage.valetName2 || 'مشرف 2'), isActive: garage.valet2Active ?? false, status: 'offline', distance: null, lastSeen: null },
+        { valetNumber: 3, valetName: String(garage.valetName3 || 'مشرف 3'), isActive: garage.valet3Active ?? false, status: 'offline', distance: null, lastSeen: null },
       ].filter(v => v.valetName && String(v.valetName).trim());
 
       valets.forEach(v => {
@@ -579,7 +579,7 @@ const OwnerValetLocationBanner = memo(function OwnerValetLocationBanner({
         <span className="font-bold text-[9px]" style={{ color: BRAND.slateMuted }}>تتبع ذكي GPS</span>
         <div className="flex items-center gap-1">
           <MapPin size={13} style={{ color: BRAND.blue }} />
-          <span className="font-black text-xs" style={{ color: BRAND.navy }}>حالة تواجد السياس</span>
+          <span className="font-black text-xs" style={{ color: BRAND.navy }}>حالة تواجد المشرفين</span>
         </div>
       </div>
 
@@ -794,6 +794,7 @@ export default function GarageDashboard() {
     if (currentValetNameLocal) names.add(String(currentValetNameLocal).trim());
     if (currentValetName) names.add(String(currentValetName).trim());
     if (valetNumber) {
+      names.add(`مشرف ${valetNumber}`);
       names.add(`سايس ${valetNumber}`);
       names.add(`valet ${valetNumber}`);
     }
@@ -806,6 +807,7 @@ export default function GarageDashboard() {
       String(garage.valetName1 || '').trim(),
       String(garage.valetName2 || '').trim(),
       String(garage.valetName3 || '').trim(),
+      'مشرف 1', 'مشرف 2', 'مشرف 3',
       'سايس 1', 'سايس 2', 'سايس 3'
     ].filter(Boolean);
   }, [garage]);
@@ -919,7 +921,7 @@ export default function GarageDashboard() {
   const [showAddCar, setShowAddCar] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   
-  // 📲 حالة نافذة الباركود للسايس
+  // 📲 حالة نافذة الباركود لمشرف الجراج
   const [showValetQrModal, setShowValetQrModal] = useState(false);
 
   const [editPrice, setEditPrice] = useState(garage?.basePrice || 15);
@@ -953,14 +955,14 @@ export default function GarageDashboard() {
   // مبدل الجراجات
   const [showSwitcher, setShowSwitcher] = useState(false);
 
-  // 1️⃣ طلب إذن الإشعارات للسايس فقط عند فتح الشاشة
+  // 1️⃣ طلب إذن الإشعارات لمشرف الجراج فقط عند فتح الشاشة
   useEffect(() => {
     if (isValet && 'Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
   }, [isValet]);
 
-  // 2️⃣ إطلاق الإنذار الصوتي والاهتزاز للسايس فقط 🅿️ (المالك مستثنى تماماً)
+  // 2️⃣ إطلاق الإنذار الصوتي والاهتزاز للمشرف فقط 🅿️ (المالك مستثنى تماماً)
   useEffect(() => {
     if (!carsOnTheWay || carsOnTheWay.length === 0) return;
 
@@ -968,7 +970,7 @@ export default function GarageDashboard() {
 
     carsOnTheWay.forEach(car => {
       if (!prevIncomingIdsRef.current.has(car.id)) {
-        // 🛡️ التنبيه يعمل فقط لشاشة السايس
+        // 🛡️ التنبيه يعمل فقط لشاشة المشرف
         if (isValet) {
           fireIncomingCarAlert(car.carPlate);
           toast(`🚨 سيارة في الطريق!\n🚗 ${car.carPlate}`, { duration: 8000, icon: '🚨' });
@@ -986,7 +988,7 @@ export default function GarageDashboard() {
 
   useEffect(() => {
     if (!isRealValet || !currentGarageId) return;
-    const currentValet = currentValetNameLocal || currentValetName || `سايس ${valetNumber}`;
+    const currentValet = currentValetNameLocal || currentValetName || `مشرف ${valetNumber}`;
     if (!currentValet) return;
 
     const unassignedCompletedSessions = sessions.filter(s => {
@@ -1155,9 +1157,9 @@ export default function GarageDashboard() {
   const valetReport = useMemo(() => {
     if (!garage || !isOwner || !currentGarageId) return [];
     const garageValets = [
-      { name: String(garage.valetName1 || '').trim(), defaultName: 'سايس 1', color: BRAND.blue, icon: '🅿️1' },
-      { name: String(garage.valetName2 || '').trim(), defaultName: 'سايس 2', color: '#7c3aed', icon: '🅿️2' },
-      { name: String(garage.valetName3 || '').trim(), defaultName: 'سايس 3', color: '#f59e0b', icon: '🅿️3' },
+      { name: String(garage.valetName1 || '').trim(), defaultName: 'مشرف 1', color: BRAND.blue, icon: '🅿️1' },
+      { name: String(garage.valetName2 || '').trim(), defaultName: 'مشرف 2', color: '#7c3aed', icon: '🅿️2' },
+      { name: String(garage.valetName3 || '').trim(), defaultName: 'مشرف 3', color: '#f59e0b', icon: '🅿️3' },
     ].filter(v => v.name);
     
     const ownerGarageCompleted = completedSessions.filter((s) => {
@@ -1220,13 +1222,13 @@ export default function GarageDashboard() {
     );
   }, [undoTick, sessions]);
 
-  // 🛡️ حظر السايس الحقيقي فقط
+  // 🛡️ حظر المشرف الحقيقي فقط في حال كان خارج النطاق الجغرافي
   if (isValetBlocked && garage) {
     return (
       <ValetGeofenceBlockScreen
         geofenceState={geofenceState}
         garageName={garage.name}
-        valetName={currentValetName || currentValetNameLocal || `سايس ${valetNumber}`}
+        valetName={currentValetName || currentValetNameLocal || `مشرف ${valetNumber}`}
         distance={geofenceState.distance}
         onRetry={handleGeofenceRetry}
       />
@@ -1259,7 +1261,7 @@ export default function GarageDashboard() {
       status: 'active', 
       source: 'manual', 
       agreedPrice: pr, 
-      addedBy: isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '' 
+      addedBy: isValet ? (currentValetNameLocal || currentValetName || `مشرف ${valetNumber}`) : '' 
     } as any);
     
     const fid = sid || `fallback-${at}`;
@@ -1312,7 +1314,7 @@ export default function GarageDashboard() {
       }
 
       const currentValet = isValet 
-        ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`).trim() 
+        ? (currentValetNameLocal || currentValetName || `مشرف ${valetNumber}`).trim() 
         : 'المالك';
 
       setConfirmSession(null);
@@ -1392,7 +1394,7 @@ export default function GarageDashboard() {
         customerName: car.customerName, 
         startedBy: 'garage', 
         incomingCarId: carId, 
-        addedBy: isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '' 
+        addedBy: isValet ? (currentValetNameLocal || currentValetName || `مشرف ${valetNumber}`) : '' 
       } as any);
       
       await removeIncomingCar(carId);
@@ -1452,12 +1454,12 @@ export default function GarageDashboard() {
             </button>
           )}
 
-          {/* 🟢 زر تفعيل وضع السايس للمالك */}
+          {/* 🟢 زر تفعيل وضع المشرف للمالك */}
           {isOwner && (
             <button
               onClick={() => {
                 setOwnerValetView(true);
-                toast.success('دخلت شاشة السايس 🅿️', { icon: '👁️' });
+                toast.success('دخلت شاشة مشرف الجراج 🅿️', { icon: '👁️' });
               }}
               className="active:scale-95 font-black flex items-center gap-1.5 border-0 text-white py-2 px-3 rounded-xl text-xs cursor-pointer"
               style={{
@@ -1465,7 +1467,7 @@ export default function GarageDashboard() {
               }}
             >
               <HardHat size={13} />
-              <span>شاشة السايس</span>
+              <span>شاشة المشرف</span>
             </button>
           )}
         </div>
@@ -1474,7 +1476,7 @@ export default function GarageDashboard() {
           <h2 className="font-black text-base" style={{ color: BRAND.navy }}>{garage.name}</h2>
           <div className="flex items-center gap-1.5 justify-end mt-1">
             <span className="font-bold flex items-center gap-1 text-[9px] px-2 py-0.5 rounded text-white" style={{ background: isOwner ? BRAND.blue : '#f59e0b' }}>
-              {isOwner ? <><Shield size={9} /> مالك</> : <><HardHat size={9} /> <span>{ownerValetView ? 'المالك (معاينة)' : `سايس ${valetNumber}`}</span> {currentValetName && !ownerValetView && <span> - {currentValetName}</span>}</>}
+              {isOwner ? <><Shield size={9} /> مالك</> : <><HardHat size={9} /> <span>{ownerValetView ? 'المالك (معاينة)' : `مشرف ${valetNumber}`}</span> {currentValetName && !ownerValetView && <span> - {currentValetName}</span>}</>}
             </span>
             <p className="flex items-center gap-1 text-[10px] text-slate-400 font-bold"><MapPin size={10} /> {garage.location}</p>
           </div>
@@ -1506,14 +1508,14 @@ export default function GarageDashboard() {
           </span>
           <div className="flex items-center gap-1.5 flex-1 justify-end mr-2">
             <span className="font-black text-xs" style={{ color: '#92400e' }}>
-              وضع معاينة السايس نشط (العمليات تسجل باسم المالك)
+              وضع معاينة مشرف الجراج نشط (العمليات تسجل باسم المالك)
             </span>
             <Eye size={14} style={{ color: '#b45309' }} className="shrink-0" />
           </div>
         </motion.div>
       )}
 
-      {/* 👑 بانر حالة السياس للمالك */}
+      {/* 👑 بانر حالة المشرفين للمالك */}
       {isOwner && <OwnerValetLocationBanner valetLocations={valetLocations} />}
 
       {/* Settings Modal */}
@@ -1606,7 +1608,7 @@ export default function GarageDashboard() {
             </div>
 
             <div className="mb-5">
-              <label className="font-black block text-right mb-1.5 text-[10px]" style={{ color: BRAND.slate }}>🅿️ إدارة السياس</label>
+              <label className="font-black block text-right mb-1.5 text-[10px]" style={{ color: BRAND.slate }}>🅿️ إدارة مشرفي الجراج</label>
               <div className="border rounded-xl p-3 space-y-3" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
                 {[
                   { n: 1, name: editValet1Name, setName: setEditValet1Name, pass: editValet1Pass, setPass: setEditValet1Pass, color: BRAND.blue, active: (garage as any).valet1Active, activeKey: 'valet1Active' as const },
@@ -1618,11 +1620,11 @@ export default function GarageDashboard() {
                       <span className="font-bold text-[9px]" style={{ color: !(v.name || v.pass) ? BRAND.slateMuted : v.active ? BRAND.greenDark : '#ef4444' }}>{!(v.name || v.pass) ? '⚪ غير مُعد' : v.active ? '🟢 مفعّل' : '🔴 معطّل'}</span>
                       <div className="flex items-center gap-1.5">
                         {(v.name || v.pass) && (<button onClick={(e) => { e.stopPropagation(); updateGarage(garage.id, { [v.activeKey]: !v.active } as any); }} className="font-black text-[8px] py-0.5 px-2 rounded cursor-pointer border-0 text-white" style={{ background: v.active ? '#ef4444' : BRAND.greenDark }}>{v.active ? 'تعطيل' : 'تفعيل'}</button>)}
-                        <span className="font-black text-[10px]" style={{ color: BRAND.navy }}>🅿️ سايس {v.n}</span>
+                        <span className="font-black text-[10px]" style={{ color: BRAND.navy }}>🅿️ مشرف {v.n}</span>
                       </div>
                     </div>
-                    <input type="text" value={v.name} onChange={e => v.setName(e.target.value)} className="w-full text-right outline-none font-bold mb-1.5 text-xs p-2 rounded-lg border border-slate-200" placeholder={`اسم سايس ${v.n}`} />
-                    <input type="text" value={v.pass} onChange={e => v.setPass(e.target.value)} className="w-full text-center outline-none font-mono font-black text-sm p-2 rounded-lg border border-slate-200" placeholder={`كلمة مرور سايس ${v.n}`} />
+                    <input type="text" value={v.name} onChange={e => v.setName(e.target.value)} className="w-full text-right outline-none font-bold mb-1.5 text-xs p-2 rounded-lg border border-slate-200" placeholder={`اسم مشرف ${v.n}`} />
+                    <input type="text" value={v.pass} onChange={e => v.setPass(e.target.value)} className="w-full text-center outline-none font-mono font-black text-sm p-2 rounded-lg border border-slate-200" placeholder={`كلمة مرور مشرف ${v.n}`} />
                   </div>
                 ))}
               </div>
@@ -1768,10 +1770,10 @@ export default function GarageDashboard() {
         )}
       </div>
 
-      {/* السايس فقط */}
+      {/* المشرف فقط */}
       {isValet && (
         <>
-          {/* 📲 كارت الباركود الذكي للسايس لتسويق التطبيق للعملاء */}
+          {/* 📲 كارت الباركود الذكي لمشرف الجراج لتسويق التطبيق للعملاء */}
           <div
             onClick={() => setShowValetQrModal(true)}
             className="mb-4 border rounded-2xl p-3 flex items-center justify-between text-right cursor-pointer active:scale-[0.98] transition-all"
@@ -1798,7 +1800,7 @@ export default function GarageDashboard() {
                   🎁 كود الهدية للعميل
                 </span>
                 <h4 className="text-xs font-black" style={{ color: BRAND.navy }}>
-                  امسح الكود لفتح وتنزيل التطبيق 📲
+                  ريّح نفسك وخف الزحمة قدام الجراج 📲
                 </h4>
                 <p className="text-[10px] font-bold mt-0.5" style={{ color: BRAND.slate }}>
                   خلّي العميل يمسح الكود بموبايله وياخد أول 30 دقيقة مجاناً! 🚀
@@ -1947,7 +1949,7 @@ export default function GarageDashboard() {
       {isValet && (
         <div className="mb-4 p-3 border rounded-xl bg-white" style={{ borderColor: BRAND.border }}>
           <div className="flex items-center justify-between">
-            <span className="font-black text-xs flex items-center gap-1" style={{ color: BRAND.navy }}><HardHat size={14} style={{ color: '#f59e0b' }} />{ownerValetView ? 'المالك (معاينة)' : (currentValetName || `سايس ${valetNumber}`)}</span>
+            <span className="font-black text-xs flex items-center gap-1" style={{ color: BRAND.navy }}><HardHat size={14} style={{ color: '#f59e0b' }} />{ownerValetView ? 'المالك (معاينة)' : (currentValetName || `مشرف ${valetNumber}`)}</span>
             <div className="flex items-center gap-3">
               <div className="text-right"><div className="text-[8px] text-slate-400">السعر/ساعة</div><div className="font-black font-mono text-xs">{garage.basePrice} ج</div></div>
               <div style={{ width: 1, height: 16, background: BRAND.border }} />
@@ -2069,7 +2071,7 @@ export default function GarageDashboard() {
 
                 {valetReport.length > 0 && (
                   <div className="mb-3 space-y-1.5">
-                    <h4 className="font-black text-[10px] text-right" style={{ color: BRAND.slate }}>تقرير السياس</h4>
+                    <h4 className="font-black text-[10px] text-right" style={{ color: BRAND.slate }}>تقرير المشرفين</h4>
                     {valetReport.map((v, i) => (
                       <div key={i} onClick={() => setSelectedValetFilter(selectedValetFilter === v.name ? null : v.name)} className="p-2.5 border rounded-xl bg-white flex justify-between items-center cursor-pointer" style={{ borderColor: selectedValetFilter === v.name ? BRAND.blue : BRAND.border }}>
                         <span className="font-mono font-black text-xs" style={{ color: BRAND.blue }}>{v.total.toFixed(0)} ج.م</span>
@@ -2115,7 +2117,7 @@ export default function GarageDashboard() {
                     {!isSettled && !isC ? (
                       <button 
                         onClick={async () => { 
-                          const currentValet = isValet ? (currentValetNameLocal || currentValetName || `سايس ${valetNumber}`) : '';
+                          const currentValet = isValet ? (currentValetNameLocal || currentValetName || `مشرف ${valetNumber}`) : '';
                           if (currentValet) await assignSessionToValet(session.id, currentValet);
                           await confirmRevenue(session.id, currentValet); 
                           await fetchGarageDailyStats(); 
@@ -2159,7 +2161,7 @@ export default function GarageDashboard() {
         </div>
       </div>
 
-      {/* 📲 نافذة تكبير باركود السايس للعميل */}
+      {/* 📲 نافذة تكبير باركود مشرف الجراج للعميل */}
       <AnimatePresence>
         {showValetQrModal && (
           <div
