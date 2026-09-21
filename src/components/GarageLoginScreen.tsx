@@ -99,7 +99,7 @@ export default function GarageLoginScreen() {
       }
 
       if (valetNumber === 0) {
-        toast.error('كلمة مرور المشرف غير صحيحة');
+        toast.error('كلمة مرور الفالية غير صحيحة');
         return;
       }
 
@@ -114,8 +114,8 @@ export default function GarageLoginScreen() {
 
       toast.success(
         valetName
-          ? `✅ مرحباً ${valetName} - مشرف ${valetNumber}`
-          : `✅ تم الدخول كمشرف جراج ${valetNumber}`
+          ? `✅ مرحباً ${valetName} - فالية ${valetNumber}`
+          : `✅ تم الدخول كفالية جراج ${valetNumber}`
       );
 
       completeGarageLogin(found.id);
@@ -198,7 +198,7 @@ export default function GarageLoginScreen() {
                   color: role === 'valet' ? '#ffffff' : BRAND.slateMuted,
                 }}
               >
-                <HardHat size={14} /> مشرف الجراج
+                <HardHat size={14} /> فالية الجراج
               </button>
             </div>
 
@@ -221,7 +221,7 @@ export default function GarageLoginScreen() {
 
               {role === 'valet' && (
                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="space-y-2">
-                  <label className="text-[10px] font-bold block mb-1" style={{ color: BRAND.slateMuted }}>كلمة مرور المشرف السرية</label>
+                  <label className="text-[10px] font-bold block mb-1" style={{ color: BRAND.slateMuted }}>كلمة مرور الفالية السرية</label>
                   <div className="relative">
                     <Lock size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: BRAND.slateMuted }} />
                     <input type="password" className="w-full py-3 px-3.5 pr-10 text-center font-mono font-black outline-none text-sm rounded-xl border text-white tracking-widest" style={{ background: BRAND.navy, borderColor: BRAND.border }} placeholder="••••" value={valetPassword} onChange={(e) => setValetPassword(e.target.value)} />
@@ -243,7 +243,7 @@ export default function GarageLoginScreen() {
               )}
 
               <button type="button" onClick={handleLogin} className="w-full font-black py-3.5 rounded-xl text-xs border-0 text-white cursor-pointer flex items-center justify-center gap-1.5" style={{ background: BRAND.blue }}>
-                <span>{role === 'owner' ? 'دخول لوحة المالك' : 'دخول وردية المشرف'}</span>
+                <span>{role === 'owner' ? 'دخول لوحة المالك' : 'دخول وردية الفالية'}</span>
                 <ArrowRight size={15} className="rotate-180" />
               </button>
             </div>
