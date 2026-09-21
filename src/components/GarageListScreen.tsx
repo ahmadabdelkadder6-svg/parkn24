@@ -38,7 +38,7 @@ const BRAND = {
   blueDark: '#0f3d85',   // كحلي داكن للنصوص والعناوين
   green: '#8cc63f',      // الأخضر الرسمي للوجو
   greenDark: '#6ea62a',  // أخضر داكن للقراءة
-  bg: '#f4f7fc',         // خلفية التطبيق (رمادي هادئ جداً مريح للعين)
+  bg: '#f8fafc',         // خلفية التطبيق (رمادي هادئ جداً مريح للعين)
   card: '#ffffff',       // كروت بيضاء نظيفة
   slate: '#475569',      // لون النصوص الجانبية
   border: '#e2e8f0',     // حدود رفيعة جداً هادئة
@@ -465,7 +465,7 @@ export default function GarageListScreen() {
       {/* ═══ CONTENT ═══ */}
       <div className="flex-1 overflow-y-auto px-4 pt-3 pb-8">
 
-        {/* أزرار المساعدة والباركود */}
+        {/* أزرار المساعدة */}
         <div className="grid grid-cols-2 gap-2 mb-3">
           {hasCompletedSession && (
             <button
@@ -488,7 +488,7 @@ export default function GarageListScreen() {
           </button>
         </div>
 
-        {/* 📲 كارت الباركود الذكي لمشاركة التطبيق والتعرف السريع */}
+        {/* 📲 كارت الباركود الذكي لمشاركة التطبيق */}
         <div 
           onClick={() => setShowQrModal(true)}
           className="mb-4 border rounded-2xl p-3 flex items-center justify-between text-right cursor-pointer active:scale-[0.98] transition-all"
@@ -508,7 +508,6 @@ export default function GarageListScreen() {
                 alt="كود بركن 24" 
                 className="w-full h-full object-contain"
                 onError={(e) => {
-                  // Fallback بسيط في حال عدم رفع الصورة بعد
                   (e.target as HTMLElement).style.display = 'none';
                 }}
               />
@@ -516,13 +515,13 @@ export default function GarageListScreen() {
 
             <div className="text-right">
               <span className="text-[9px] font-black px-2 py-0.5 rounded text-white inline-block mb-0.5" style={{ background: BRAND.blue }}>
-                📲 كود بركن 24
+                📲 شارك بركن 24
               </span>
               <h4 className="text-xs font-black" style={{ color: BRAND.blueDark }}>
-                باركود المسح والتعرف السريع
+                امسح الكود لفتح وتنزيل التطبيق
               </h4>
               <p className="text-[10px] font-bold mt-0.5" style={{ color: BRAND.slate }}>
-                اضغط لتكبير الكود لمسحه عند الوصول للساس ✨
+                عجبتك السهولة؟ شارك الكود مع زمايلك وخلي الكل يركن أسرع! 🚀
               </p>
             </div>
           </div>
@@ -601,7 +600,7 @@ export default function GarageListScreen() {
         {showTopUp && <TopUpWalletModal onClose={() => setShowTopUp(false)} />}
       </AnimatePresence>
 
-      {/* 📲 نافذة تكبير الباركود المسموح بمسحها من كاميرا السايس */}
+      {/* 📲 نافذة تكبير الباركود لمشاركته بسهولة */}
       <AnimatePresence>
         {showQrModal && (
           <div 
@@ -625,10 +624,10 @@ export default function GarageListScreen() {
               </button>
 
               <h3 className="text-sm font-black mb-1" style={{ color: BRAND.blueDark }}>
-                📲 باركود بركن 24
+                📲 شارك بركن 24 مع أصحابك
               </h3>
               <p className="text-[10px] font-bold mb-4" style={{ color: BRAND.slate }}>
-                امسح الكود عبر كاميرا الموبايل لفتح التطبيق
+                وجّه كاميرا الموبايل نحو الكود لفتح وتثبيت التطبيق فوراً 🚀
               </p>
 
               <div className="w-48 h-48 mx-auto p-2 bg-white rounded-2xl border-2 shadow-inner flex items-center justify-center mb-4" style={{ borderColor: BRAND.border }}>
@@ -637,7 +636,6 @@ export default function GarageListScreen() {
                   alt="QR Code" 
                   className="w-full h-full object-contain"
                   onError={(e) => {
-                    // رسالة بديلة توضيحية في حال عدم توفر الصورة
                     (e.target as HTMLElement).style.display = 'none';
                   }}
                 />
