@@ -19,6 +19,7 @@ import {
   Gift,
   Sparkles,
   ChevronDown,
+  QrCode,
 } from 'lucide-react';
 import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
 import {
@@ -37,7 +38,7 @@ const BRAND = {
   blueDark: '#0f3d85',   // كحلي داكن للنصوص والعناوين
   green: '#8cc63f',      // الأخضر الرسمي للوجو
   greenDark: '#6ea62a',  // أخضر داكن للقراءة
-  bg: '#f8fafc',         // خلفية التطبيق (رمادي هادئ جداً مريح للعين)
+  bg: '#f4f7fc',         // خلفية التطبيق (رمادي هادئ جداً مريح للعين)
   card: '#ffffff',       // كروت بيضاء نظيفة
   slate: '#475569',      // لون النصوص الجانبية
   border: '#e2e8f0',     // حدود رفيعة جداً هادئة
@@ -106,6 +107,7 @@ export default function GarageListScreen() {
   const [showNearbyOnly, setShowNearbyOnly] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false); // 📲 حالة عرض نافذة الباركود المكبرة
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>({
     lat: 30.0444,
     lng: 31.2357,
@@ -287,9 +289,9 @@ export default function GarageListScreen() {
             <h1 className="text-lg font-black" style={{ color: BRAND.blueDark }}>
               أهلاً {currentUser?.name || 'بك'} 👋
             </h1>
-<p className="text-xs font-semibold mt-0.5" style={{ color: BRAND.slate }}>
-  اركن وادفع بضغطة واحدة.. بدون لفة وبدون فكة 🚗
-</p>
+            <p className="text-xs font-semibold mt-0.5" style={{ color: BRAND.slate }}>
+              اركن وادفع بضغطة واحدة.. بدون لفة وبدون فكة 🚗
+            </p>
           </div>
           <span className="font-black text-xl" style={{ color: BRAND.blue }}>
             بركن <span style={{ color: BRAND.green }}>24</span>
@@ -320,7 +322,7 @@ export default function GarageListScreen() {
               {myTopUps.length > 0 && (
                 <button
                   onClick={() => setShowHistory(!showHistory)}
-                  className="p-2.5 rounded-xl transition-all relative border border-white/20 bg-white/10 text-white"
+                  className="p-2.5 rounded-xl transition-all relative border border-white/20 bg-white/10 text-white cursor-pointer"
                 >
                   <History size={16} />
                   {pendingTopUpsCount > 0 && (
@@ -331,7 +333,7 @@ export default function GarageListScreen() {
 
               <button
                 onClick={() => setShowTopUp(true)}
-                className="flex items-center gap-1 font-black active:scale-95 transition-all text-xs"
+                className="flex items-center gap-1 font-black active:scale-95 transition-all text-xs cursor-pointer border-0"
                 style={{ background: '#ffffff', color: BRAND.blue, borderRadius: 10, padding: '8px 14px' }}
               >
                 <Plus size={13} strokeWidth={3} />
@@ -360,7 +362,7 @@ export default function GarageListScreen() {
             >
               <div className="flex justify-between items-center mb-2.5">
                 <span className="text-[11px] font-black" style={{ color: BRAND.slate }}>سجل الشحن الأخير:</span>
-                <button onClick={() => setShowHistory(false)} style={{ color: BRAND.slate }}><X size={14} /></button>
+                <button onClick={() => setShowHistory(false)} className="border-0 bg-transparent cursor-pointer" style={{ color: BRAND.slate }}><X size={14} /></button>
               </div>
               <div className="space-y-1.5">
                 {myTopUps.map((topUp) => (
@@ -463,8 +465,8 @@ export default function GarageListScreen() {
       {/* ═══ CONTENT ═══ */}
       <div className="flex-1 overflow-y-auto px-4 pt-3 pb-8">
 
-        {/* أزرار المساعدة */}
-        <div className="grid grid-cols-2 gap-2 mb-4">
+        {/* أزرار المساعدة والباركود */}
+        <div className="grid grid-cols-2 gap-2 mb-3">
           {hasCompletedSession && (
             <button
               onClick={() => setScreen('lastSession')}
@@ -484,6 +486,47 @@ export default function GarageListScreen() {
             <MessageCircle size={14} />
             <span>الدعم والشكاوى</span>
           </button>
+        </div>
+
+        {/* 📲 كارت الباركود الذكي لمشاركة التطبيق والتعرف السريع */}
+        <div 
+          onClick={() => setShowQrModal(true)}
+          className="mb-4 border rounded-2xl p-3 flex items-center justify-between text-right cursor-pointer active:scale-[0.98] transition-all"
+          style={{ 
+            background: BRAND.card, 
+            borderColor: BRAND.border,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <div 
+              className="w-12 h-12 p-1 rounded-xl bg-white border flex items-center justify-center shrink-0 shadow-sm"
+              style={{ borderColor: BRAND.blue }}
+            >
+              <img 
+                src="/app-qr.png" 
+                alt="كود بركن 24" 
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  // Fallback بسيط في حال عدم رفع الصورة بعد
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+            </div>
+
+            <div className="text-right">
+              <span className="text-[9px] font-black px-2 py-0.5 rounded text-white inline-block mb-0.5" style={{ background: BRAND.blue }}>
+                📲 كود بركن 24
+              </span>
+              <h4 className="text-xs font-black" style={{ color: BRAND.blueDark }}>
+                باركود المسح والتعرف السريع
+              </h4>
+              <p className="text-[10px] font-bold mt-0.5" style={{ color: BRAND.slate }}>
+                اضغط لتكبير الكود لمسحه عند الوصول للساس ✨
+              </p>
+            </div>
+          </div>
+          <QrCode size={18} style={{ color: BRAND.blue }} className="shrink-0" />
         </div>
 
         {/* ═══ القائمة والأكورديون النظيف المبسط جداً ═══ */}
@@ -556,6 +599,60 @@ export default function GarageListScreen() {
 
       <AnimatePresence>
         {showTopUp && <TopUpWalletModal onClose={() => setShowTopUp(false)} />}
+      </AnimatePresence>
+
+      {/* 📲 نافذة تكبير الباركود المسموح بمسحها من كاميرا السايس */}
+      <AnimatePresence>
+        {showQrModal && (
+          <div 
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-5"
+            style={{ background: 'rgba(10,22,40,0.75)', backdropFilter: 'blur(6px)' }}
+            onClick={() => setShowQrModal(false)}
+          >
+            <motion.div 
+              initial={{ scale: 0.85, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.85, opacity: 0 }}
+              className="rounded-3xl p-6 text-center max-w-xs w-full shadow-2xl relative"
+              style={{ background: BRAND.card }}
+              onClick={e => e.stopPropagation()}
+            >
+              <button 
+                onClick={() => setShowQrModal(false)}
+                className="absolute top-4 left-4 text-slate-400 font-black text-sm border-0 bg-transparent cursor-pointer"
+              >
+                ✕
+              </button>
+
+              <h3 className="text-sm font-black mb-1" style={{ color: BRAND.blueDark }}>
+                📲 باركود بركن 24
+              </h3>
+              <p className="text-[10px] font-bold mb-4" style={{ color: BRAND.slate }}>
+                امسح الكود عبر كاميرا الموبايل لفتح التطبيق
+              </p>
+
+              <div className="w-48 h-48 mx-auto p-2 bg-white rounded-2xl border-2 shadow-inner flex items-center justify-center mb-4" style={{ borderColor: BRAND.border }}>
+                <img 
+                  src="/app-qr.png" 
+                  alt="QR Code" 
+                  className="w-full h-full object-contain"
+                  onError={(e) => {
+                    // رسالة بديلة توضيحية في حال عدم توفر الصورة
+                    (e.target as HTMLElement).style.display = 'none';
+                  }}
+                />
+              </div>
+
+              <button
+                onClick={() => setShowQrModal(false)}
+                className="w-full py-3 rounded-xl font-black text-xs text-white border-0 cursor-pointer active:scale-95 transition-all"
+                style={{ background: BRAND.blue }}
+              >
+                إغلاق
+              </button>
+            </motion.div>
+          </div>
+        )}
       </AnimatePresence>
 
       <WelcomeGiftModal />
