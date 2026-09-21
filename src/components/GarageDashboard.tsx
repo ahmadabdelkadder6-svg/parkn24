@@ -4,7 +4,7 @@ import {
   Car, Clock, LogOut, Plus, CheckCircle, XCircle, Settings,
   Minus, Save, MapPin, Edit3, Navigation, Phone, CarFront, FileText,
   CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
-  Search, X, CreditCard, MapPinOff, Locate, AlertTriangle, Wifi, WifiOff, Eye,
+  Search, X, CreditCard, MapPinOff, Locate, AlertTriangle, Wifi, WifiOff, Eye, QrCode
 } from 'lucide-react';
 import { useStore, pausePolling, normalizePlate, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
@@ -19,6 +19,7 @@ const GEOFENCE_RADIUS_METERS = 250;
 const VALET_PING_INTERVAL_MS = 8000;
 const VALET_LIVE_THRESHOLD_MS = 25000;
 const VALET_BACKGROUND_GRACE_MS = 10 * 60 * 1000;
+
 // ─── 🔔 نظام الصوت والتنبيهات المدمج داخل الشاشة ───────────────────
 let garageAudioCtx: AudioContext | null = null;
 let isAudioUnlocked = false;
@@ -148,6 +149,7 @@ const fireIncomingCarAlert = (carPlate: string) => {
     `incoming-${carPlate}`
   );
 };
+
 /* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
   blue: '#1656b8',       // الأزرق الرسمي للوجو
@@ -917,6 +919,9 @@ export default function GarageDashboard() {
   const [showAddCar, setShowAddCar] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   
+  // 📲 حالة نافذة الباركود للسايس
+  const [showValetQrModal, setShowValetQrModal] = useState(false);
+
   const [editPrice, setEditPrice] = useState(garage?.basePrice || 15);
   const [editSpots, setEditSpots] = useState(garage?.availableSpots || 0);
   const [editCapacity, setEditCapacity] = useState(garage?.capacity || 50);
@@ -945,7 +950,7 @@ export default function GarageDashboard() {
   const [selectedValetFilter, setSelectedValetFilter] = useState<string | null>(null);
   const [plateSearch, setPlateSearch] = useState('');
 
-  // ✅ تعريف حالة مبدل الجراجات بشكل صحيح
+  // مبدل الجراجات
   const [showSwitcher, setShowSwitcher] = useState(false);
 
   // 1️⃣ طلب إذن الإشعارات للسايس فقط عند فتح الشاشة
@@ -1313,7 +1318,7 @@ export default function GarageDashboard() {
       setConfirmSession(null);
       setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
       
-      // 🌟 [السطر السحري الجديد]: تصغير وتصفير البحث فوراً لإرجاع القائمة كاملة
+      // تصغير وتصفير البحث فوراً لإرجاع القائمة كاملة
       setPlateSearch(''); 
 
       await endSession(sc.id, sc.cost, pc, freeMinutesApplied, currentValet);
@@ -1766,6 +1771,43 @@ export default function GarageDashboard() {
       {/* السايس فقط */}
       {isValet && (
         <>
+          {/* 📲 كارت الباركود الذكي للسايس لتسويق التطبيق للعملاء */}
+          <div
+            onClick={() => setShowValetQrModal(true)}
+            className="mb-4 border rounded-2xl p-3 flex items-center justify-between text-right cursor-pointer active:scale-[0.98] transition-all"
+            style={{
+              background: BRAND.card,
+              borderColor: BRAND.border,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="w-12 h-12 p-1 rounded-xl bg-white border flex items-center justify-center shrink-0 shadow-sm"
+                style={{ borderColor: BRAND.blue }}
+              >
+                <img
+                  src="/app-qr.png"
+                  alt="QR Code"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+
+              <div className="text-right">
+                <span className="text-[9px] font-black px-2 py-0.5 rounded text-white inline-block mb-0.5" style={{ background: BRAND.greenDark }}>
+                  🎁 كود الهدية للعميل
+                </span>
+                <h4 className="text-xs font-black" style={{ color: BRAND.navy }}>
+                  ريّح نفسك وخف الزحمة قدام الجراج 📲
+                </h4>
+                <p className="text-[10px] font-bold mt-0.5" style={{ color: BRAND.slate }}>
+                  خلّي العميل يمسح الكود بموبايله وياخد أول 30 دقيقة مجاناً! 🚀
+                </p>
+              </div>
+            </div>
+            <QrCode size={18} style={{ color: BRAND.blue }} className="shrink-0" />
+          </div>
+
           {/* سيارات في الطريق */}
           {carsOnTheWay.length > 0 && (
             <div className="mb-5">
@@ -1938,10 +1980,10 @@ export default function GarageDashboard() {
               <input type="date" value={logDateTo} onChange={e => setLogDateTo(e.target.value)} className="flex-1 font-bold outline-none text-center text-[10px] p-1.5 rounded border border-slate-200" style={{ color: BRAND.blue }} />
             </div>
 
-<div className="flex gap-1 mb-2">
-  <button onClick={() => { setLogDateFrom(getLocalToday()); setLogDateTo(getLocalToday()); }} className="flex-1 font-black py-1 rounded text-[9px] border-0 text-white cursor-pointer" style={{ background: BRAND.blue }}>📅 اليوم</button>
-  <button onClick={() => { const d = new Date(getServerNow()); const firstDay = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; setLogDateFrom(firstDay); setLogDateTo(getLocalToday()); }} className="flex-1 font-bold py-1 rounded text-[9px] border bg-white cursor-pointer" style={{ borderColor: BRAND.border }}>📅 الشهر كامل</button>
-</div>
+            <div className="flex gap-1 mb-2">
+              <button onClick={() => { setLogDateFrom(getLocalToday()); setLogDateTo(getLocalToday()); }} className="flex-1 font-black py-1 rounded text-[9px] border-0 text-white cursor-pointer" style={{ background: BRAND.blue }}>📅 اليوم</button>
+              <button onClick={() => { const d = new Date(getServerNow()); const firstDay = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; setLogDateFrom(firstDay); setLogDateTo(getLocalToday()); }} className="flex-1 font-bold py-1 rounded text-[9px] border bg-white cursor-pointer" style={{ borderColor: BRAND.border }}>📅 الشهر كامل</button>
+            </div>
 
             <div className="flex gap-1">
               {[{ id: 'all', label: 'الكل' }, { id: 'cash', label: 'نقدي' }, { id: 'wallet', label: 'محفظة' }].map(f => (
@@ -1985,7 +2027,7 @@ export default function GarageDashboard() {
                       <div className="text-center transition-all" style={{ background: BRAND.card, border: `1px solid ${BRAND.border}`, borderRadius: 16, padding: '8px 10px' }}>
                         <div className="font-bold mb-0.5" style={{ fontSize: 9, color: BRAND.slate }}>صافي أرباحك</div>
                         <div className="font-black font-mono leading-none" style={{ fontSize: 16, color: BRAND.greenDark }}>
-                          {filteredStats.totalNet.toFixed(0)} <span style={{ fontSize: 9 }}>ج.m</span>
+                          {filteredStats.totalNet.toFixed(0)} <span style={{ fontSize: 9 }}>ج.م</span>
                         </div>
                       </div>
                     </div>
@@ -2116,6 +2158,60 @@ export default function GarageDashboard() {
           )}
         </div>
       </div>
+
+      {/* 📲 نافذة تكبير باركود السايس للعميل */}
+      <AnimatePresence>
+        {showValetQrModal && (
+          <div
+            className="fixed inset-0 z-[99999] flex items-center justify-center p-5"
+            style={{ background: 'rgba(10,22,40,0.8)', backdropFilter: 'blur(6px)' }}
+            onClick={() => setShowValetQrModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.85, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.85, opacity: 0 }}
+              className="rounded-3xl p-6 text-center max-w-xs w-full shadow-2xl relative"
+              style={{ background: BRAND.card }}
+              onClick={e => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setShowValetQrModal(false)}
+                className="absolute top-4 left-4 text-slate-400 font-black text-sm border-0 bg-transparent cursor-pointer"
+              >
+                ✕
+              </button>
+
+              <div className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2" style={{ background: BRAND.greenLight }}>
+                <Gift size={20} style={{ color: BRAND.greenDark }} />
+              </div>
+
+              <h3 className="text-sm font-black mb-1" style={{ color: BRAND.navy }}>
+                امسح الكود واحجز ركنتك فوراً! 🎁
+              </h3>
+              <p className="text-[10px] font-bold mb-4" style={{ color: BRAND.slate }}>
+                احصل على <span style={{ color: BRAND.greenDark }} className="font-black">أول 30 دقيقة مجاناً</span> وحسابك ينزل هنا تلقائياً بدون فكة ولا دوشة!
+              </p>
+
+              <div className="w-48 h-48 mx-auto p-2 bg-white rounded-2xl border-2 shadow-inner flex items-center justify-center mb-4" style={{ borderColor: BRAND.blue }}>
+                <img
+                  src="/app-qr.png"
+                  alt="QR Code"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+
+              <button
+                onClick={() => setShowValetQrModal(false)}
+                className="w-full py-3 rounded-xl font-black text-xs text-white border-0 cursor-pointer active:scale-95 transition-all"
+                style={{ background: BRAND.blue }}
+              >
+                تم المسح / إغلاق
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Switcher Modal */}
       <AnimatePresence>
