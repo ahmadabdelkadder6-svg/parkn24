@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { X, Copy, ExternalLink, ArrowRight, CheckCircle, Plus, Minus, Phone, Send, Sparkles } from 'lucide-react';
+import { X, Copy, ExternalLink, ArrowRight, CheckCircle, Plus, Minus, Phone, Send, Sparkles, ShieldCheck } from 'lucide-react';
 // 🌟 استيراد مصفوفة الباقات الموحدة ودالة البونص ودالة تنظيف الهاتف من الـ Store مباشرة
 import { useStore, TOPUP_TIERS, calculateBonus, normalizePhone } from '../store';
 import toast from 'react-hot-toast';
@@ -145,7 +145,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
 
               {/* بطاقة الرصيد الحالي للعميل كحلي فاخر وموحد */}
               <div
-                className="text-center mb-5 rounded-2xl p-4 text-white"
+                className="text-center mb-4 rounded-2xl p-4 text-white"
                 style={{
                   background: BRAND.blue,
                   boxShadow: `0 4px 14px ${BRAND.blue}18`
@@ -153,6 +153,16 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
               >
                 <div className="text-[10px] font-bold opacity-80 mb-0.5">رصيدك الحالي بالمحفظة</div>
                 <div className="text-2xl font-black font-mono">{currentUser?.wallet || 0} <span className="text-xs font-bold">ج.م</span></div>
+              </div>
+
+              {/* 💡 شريط توضيحي لاستخدام المحفظة في الركن ودرع الأمان */}
+              <div className="mb-4 p-2 rounded-xl border flex items-center justify-between" style={{ background: BRAND.blueSoft, borderColor: BRAND.border }}>
+                <div className="flex items-center gap-1.5">
+                  <ShieldCheck size={14} style={{ color: BRAND.blue }} />
+                  <span className="text-[10px] font-black" style={{ color: BRAND.blueDark }}>
+                    جاهز لسداد الركنات وتفعيل درع الحماية الفضائية 🛡️
+                  </span>
+                </div>
               </div>
 
               {/* 🏆 الباقات التوفيرية النظيفة */}

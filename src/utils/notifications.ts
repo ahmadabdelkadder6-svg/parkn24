@@ -42,12 +42,59 @@ if (typeof window !== 'undefined') {
   const unlockEvents = ['touchstart', 'touchend', 'mousedown', 'keydown', 'click'];
   const onFirstGesture = () => {
     unlockAudio();
-    unlockEvents.forEach(evt => document.removeEventListener(evt, onFirstGesture));
+    unlockEvents.forEach((evt) => document.removeEventListener(evt, onFirstGesture));
   };
-  unlockEvents.forEach(evt => document.addEventListener(evt, onFirstGesture, { passive: true }));
+  unlockEvents.forEach((evt) => document.addEventListener(evt, onFirstGesture, { passive: true }));
 }
 
 // ─── 2. نغمات التنبيه (توليد إلكتروني نقي بدون ملفات خارجية) ──────────────
+
+// 🚨 صفارة إنذار اختراق درع الأمان الفضائي (حادة وعنيفة ومضاعفة)
+export const playBreachAlarmSound = async () => {
+  try {
+    await unlockAudio();
+    if (!audioCtx) return;
+
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+    }
+
+    const now = audioCtx.currentTime;
+    const masterGain = audioCtx.createGain();
+    masterGain.gain.setValueAtTime(1.0, now);
+    masterGain.connect(audioCtx.destination);
+
+    // 8 نبضات إنذار حادة وسريعة لاختراق الضوضاء (ترددات 1500Hz و 2400Hz)
+    for (let i = 0; i < 8; i++) {
+      const delay = i * 0.24;
+      const osc1 = audioCtx.createOscillator();
+      const osc2 = audioCtx.createOscillator();
+      const noteGain = audioCtx.createGain();
+
+      osc1.type = 'sawtooth';
+      osc2.type = 'square';
+
+      const freq = i % 2 === 0 ? 1500 : 2400;
+      osc1.frequency.setValueAtTime(freq, now + delay);
+      osc2.frequency.setValueAtTime(freq * 1.2, now + delay);
+
+      noteGain.gain.setValueAtTime(0.9, now + delay);
+      noteGain.gain.exponentialRampToValueAtTime(0.01, now + delay + 0.22);
+
+      osc1.connect(noteGain);
+      osc2.connect(noteGain);
+      noteGain.connect(masterGain);
+
+      osc1.start(now + delay);
+      osc2.start(now + delay);
+      osc1.stop(now + delay + 0.24);
+      osc2.stop(now + delay + 0.24);
+    }
+  } catch (err) {
+    console.warn('⚠️ خطأ في تشغيل إنذار اختراق الدرع:', err);
+  }
+};
+
 export const playUrgentSound = async () => {
   try {
     await unlockAudio();
@@ -110,6 +157,20 @@ export const playNormalAlert = async () => {
 };
 
 // ─── 3. اهتزاز الهاتف ───────────────────────────────────────────────────
+
+// 📳 اهتزاز طوارئ عنيف لكسر فقاعة الأمان (رنات طويلة وقوية متتالية)
+export const vibrateBreach = () => {
+  try {
+    if ('vibrate' in navigator) {
+      navigator.vibrate([
+        1200, 100, 1200, 100, 1500, 150, 2000
+      ]);
+      return true;
+    }
+  } catch {}
+  return false;
+};
+
 export const vibrateUrgent = () => {
   try {
     if ('vibrate' in navigator) {
@@ -194,6 +255,18 @@ export const sendLocalNotification = async (
 };
 
 // ─── 6. التنبيهات المجمعة المباشرة ──────────────────────────────────────
+
+// 🚨 إنذار الطوارئ المجمع لاختراق درع الأمان الفضائي للسيارة
+export const notifySecurityBreach = (carPlate: string, distanceMeters?: number) => {
+  playBreachAlarmSound();
+  vibrateBreach();
+  sendLocalNotification(
+    '🚨 تحذير أمني: تم رصد تحرك سيارتك!',
+    `🚗 السيارة [${carPlate}] غادرت فقاعة الأمان الفضائية (${distanceMeters ? distanceMeters + 'م' : '25م'}) بدون إذن خروج!`,
+    `breach-${carPlate}`
+  );
+};
+
 export const notifyIncomingCar = (carPlate: string) => {
   playUrgentSound();
   vibrateUrgent();

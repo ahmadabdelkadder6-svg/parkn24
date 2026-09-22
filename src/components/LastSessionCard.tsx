@@ -11,6 +11,7 @@ import {
   Receipt,
   Gift,
   CheckCircle2,
+  Shield,
 } from 'lucide-react';
 // 🌟 استيراد دوال البصمة والتوقيت الموحد من الـ store لضمان مطابقة اللوحات والأرقام بدقة 100%
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
@@ -72,22 +73,28 @@ export default function LastSessionCard() {
   const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);
   const totalMinutes = Math.floor(elapsedSeconds / 60);
 
+  // 🛡️ التحقق من تفعيل درع الأمان الفضائي VIP
+  const hasSecurityShield = (lastSession as any).securityShieldActive === true;
+  const shieldFee = hasSecurityShield ? 10 : 0;
+
   // 🎁 [منطق الهدية الترحيبية]: أول 30 دقيقة مجانية (1800 ثانية)
   const isFirstFreeApplied = lastSession.isFirstFreeSession === true;
   
-  const isFree = isFirstFreeApplied && (
+  const isFreeParking = isFirstFreeApplied && (
     lastSession.totalPrice === 0 ||
     lastSession.paymentMethod === 'free' ||
+    (lastSession.totalPrice != null && lastSession.totalPrice <= shieldFee) ||
     (lastSession.totalPrice == null && elapsedSeconds <= 1800)
   );
 
-  const hours = isFree ? 0 : calculateFullHours(elapsedSeconds);
-  const rawCost = calculateCost(elapsedSeconds, rate);
+  const hours = isFreeParking ? 0 : calculateFullHours(elapsedSeconds);
+  const rawParkingCost = calculateCost(elapsedSeconds, rate);
+  const parkingCost = isFreeParking ? 0 : rawParkingCost;
   
   const cost =
     lastSession.totalPrice != null
       ? Number(lastSession.totalPrice)
-      : (isFree ? 0 : rawCost);
+      : (parkingCost + shieldFee);
 
   const startDate = new Date(startTime);
   const endDate = new Date(endTime);
@@ -125,7 +132,9 @@ export default function LastSessionCard() {
     }
   };
 
-  const paymentInfo = getPaymentInfo(isFree ? 'free' : lastSession.paymentMethod);
+  const paymentInfo = getPaymentInfo(
+    isFreeParking && !hasSecurityShield ? 'free' : lastSession.paymentMethod
+  );
 
   const sourceInfo =
     lastSession.source === 'app'
@@ -187,6 +196,21 @@ export default function LastSessionCard() {
             >
               {sourceInfo.label}
             </span>
+
+            {/* شارة درع الأمان الفضائي */}
+            {hasSecurityShield && (
+              <span 
+                className="text-[9px] px-2 py-0.5 rounded-lg font-black flex items-center gap-1 border"
+                style={{ 
+                  background: 'rgba(56, 189, 248, 0.12)', 
+                  color: '#38bdf8', 
+                  borderColor: 'rgba(56, 189, 248, 0.3)' 
+                }}
+              >
+                <Shield size={9} /> درع VIP (+10ج)
+              </span>
+            )}
+
             {isFirstFreeApplied && (
               <span 
                 className="text-[9px] px-2 py-0.5 rounded-lg font-black flex items-center gap-1 border"
@@ -196,7 +220,7 @@ export default function LastSessionCard() {
                   borderColor: `${BRAND.green}40` 
                 }}
               >
-                <Gift size={9} /> {isFree ? 'هدية ترحيبية 🎁' : 'عرض 30 د'}
+                <Gift size={9} /> {isFreeParking ? 'هدية ترحيبية 🎁' : 'عرض 30 د'}
               </span>
             )}
           </div>
@@ -218,7 +242,7 @@ export default function LastSessionCard() {
             <span
               className="font-mono text-4xl font-black leading-none"
               style={{
-                color: isFree ? BRAND.green : '#ffffff',
+                color: isFreeParking && !hasSecurityShield ? BRAND.green : '#ffffff',
                 letterSpacing: '-1px',
               }}
             >
@@ -226,19 +250,23 @@ export default function LastSessionCard() {
             </span>
             <span
               className="text-sm font-black"
-              style={{ color: isFree ? BRAND.green : BRAND.slateMuted }}
+              style={{ color: isFreeParking && !hasSecurityShield ? BRAND.green : BRAND.slateMuted }}
             >
               ج.م
             </span>
           </div>
 
-          {/* شارة التوفير إذا طُبق العرض */}
-          {isFree ? (
+          {/* شارة التوفير أو تفصيل الدرع */}
+          {isFreeParking && !hasSecurityShield ? (
             <div 
               className="mt-2.5 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-black border"
               style={{ background: BRAND.greenLight, color: BRAND.green, borderColor: `${BRAND.green}30` }}
             >
               <CheckCircle2 size={11} /> أول 30 دقيقة مجانية كهدية ترحيبية! 🎉
+            </div>
+          ) : hasSecurityShield ? (
+            <div className="mt-1.5 text-[9px] font-bold text-sky-400">
+              🛡️ شامل 10 ج.م درع الحماية الفضائية الذكية
             </div>
           ) : isFirstFreeApplied ? (
             <div className="mt-1.5 text-[9px] font-bold" style={{ color: BRAND.slateMuted }}>
@@ -262,7 +290,7 @@ export default function LastSessionCard() {
               {hours}
             </div>
             <div className="text-[8px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>
-              {isFree ? 'مجانية (0س)' : 'ساعة محسوبة'}
+              {isFreeParking ? 'مجانية (0س)' : 'ساعة محسوبة'}
             </div>
           </div>
           <div className="border rounded-xl p-2 text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>

@@ -55,6 +55,13 @@ export interface ParkingSession {
   settled_at?: string;
   freeMinutesApplied?: number;
   isFirstFreeSession?: boolean;
+
+  // 🛡️ حقول درع الأمان الفضائي والفقاعة الجغرافية المحدثة
+  parkedLat?: number;
+  parkedLng?: number;
+  carBluetoothId?: string;
+  securityShieldActive?: boolean;
+  isBreached?: boolean;
 }
 
 export interface Offer {
@@ -486,6 +493,8 @@ const mapSession = (r: any): ParkingSession => {
   }
 
   const isFree = r.is_first_free_session === true || r.is_first_free_session === 'true' || r.is_first_free_session === 1;
+  const shieldActive = r.security_shield_active === true || r.security_shield_active === 'true' || r.security_shield_active === 1;
+  const breachedVal = r.is_breached === true || r.is_breached === 'true' || r.is_breached === 1;
 
   return {
     id: r.id,
@@ -511,6 +520,13 @@ const mapSession = (r: any): ParkingSession => {
     settled_at: r.settled_at || undefined,
     freeMinutesApplied: r.free_minutes_applied != null ? Number(r.free_minutes_applied) : 0,
     isFirstFreeSession: isFree,
+
+    // 🛡️ تعيين حقول الحماية الفضائية والفقاعة الجغرافية
+    parkedLat: r.parked_lat != null ? Number(r.parked_lat) : undefined,
+    parkedLng: r.parked_lng != null ? Number(r.parked_lng) : undefined,
+    carBluetoothId: r.car_bluetooth_id || undefined,
+    securityShieldActive: shieldActive,
+    isBreached: breachedVal,
   };
 };
 
@@ -562,7 +578,7 @@ const resolveAddedBy = (explicitAddedBy?: string): string => {
   const valetNumber = localStorage.getItem('valetNumber') || '';
   if (garageRole === 'owner') return '';
   if (valetName) return valetName;
-  if (garageRole === 'valet') return `سايس ${valetNumber}`;
+  if (garageRole === 'valet') return `مشرف ${valetNumber}`;
   return '';
 };
 
@@ -613,6 +629,11 @@ interface AppState {
   confirmRevenue: (sessionId: string, addedBy?: string) => Promise<void>;
   unconfirmRevenue: (sessionId: string) => Promise<void>;
   assignSessionToValet: (sessionId: string, valetName: string) => Promise<void>;
+
+  // 🛡️ دوال تفعيل درع الأمان الفضائي والفقاعة ورصد البلوتوث
+  setSessionSecurityShield: (sessionId: string, lat: number, lng: number, bluetoothId?: string) => Promise<void>;
+  triggerSessionBreach: (sessionId: string, isBreached: boolean) => Promise<void>;
+
   offers: Offer[];
   addOffer: (o: Omit<Offer, 'id' | 'timestamp'>) => void;
   updateOffer: (id: string, status: Offer['status'], counterPrice?: number) => void;
@@ -977,6 +998,13 @@ export const useStore = create<AppState>((set, get) => ({
               settled_at: ss.settled_at || localVersion.settled_at,
               isFirstFreeSession: ss.isFirstFreeSession ?? localVersion.isFirstFreeSession,
               freeMinutesApplied: ss.freeMinutesApplied ?? localVersion.freeMinutesApplied,
+
+              // مزامنة حقول درع الأمان الفضائي والفقاعة الجغرافية
+              parkedLat: ss.parkedLat ?? localVersion.parkedLat,
+              parkedLng: ss.parkedLng ?? localVersion.parkedLng,
+              carBluetoothId: ss.carBluetoothId ?? localVersion.carBluetoothId,
+              securityShieldActive: ss.securityShieldActive ?? localVersion.securityShieldActive,
+              isBreached: ss.isBreached ?? localVersion.isBreached,
             };
           }
           if (localVersion.totalPrice != null && localVersion.totalPrice > 0) return localVersion;
@@ -1244,6 +1272,13 @@ export const useStore = create<AppState>((set, get) => ({
         settled: false,
         isFirstFreeSession: eligibleForFree,
         freeMinutesApplied: 0,
+
+        // إدراج الحقول الافتراضية محلياً في الـ Store
+        parkedLat: (s as any).parkedLat || undefined,
+        parkedLng: (s as any).parkedLng || undefined,
+        carBluetoothId: (s as any).carBluetoothId || undefined,
+        securityShieldActive: (s as any).securityShieldActive ?? true,
+        isBreached: (s as any).isBreached ?? false,
       };
 
       set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]) }));
@@ -1271,6 +1306,13 @@ export const useStore = create<AppState>((set, get) => ({
           settled: false,
           is_first_free_session: eligibleForFree,
           free_minutes_applied: 0,
+
+          // إرسال الحقول الفضائية والفقاعة والدرع لقاعدة البيانات
+          parked_lat: (s as any).parkedLat || null,
+          parked_lng: (s as any).parkedLng || null,
+          car_bluetooth_id: (s as any).carBluetoothId || null,
+          security_shield_active: (s as any).securityShieldActive ?? true,
+          is_breached: (s as any).isBreached ?? false,
         }).select().single();
 
         if (error) {
@@ -1472,6 +1514,60 @@ export const useStore = create<AppState>((set, get) => ({
       if (error) console.error('❌ assignSessionToValet error:', error);
     } catch (err) {
       console.error('❌ assignSessionToValet unexpected error:', err);
+    }
+  },
+
+  // 🛡️ تنفيذ دوال تعيين درع الأمان الفضائي والفقاعة ورصد البلوتوث الذكي
+  setSessionSecurityShield: async (sessionId: string, lat: number, lng: number, bluetoothId?: string) => {
+    try {
+      if (isSupabaseConfigured()) {
+        await supabase
+          .from('sessions')
+          .update({
+            parked_lat: lat,
+            parked_lng: lng,
+            car_bluetooth_id: bluetoothId || null,
+            security_shield_active: true,
+            is_breached: false,
+          })
+          .eq('id', sessionId);
+      }
+
+      set((state) => ({
+        sessions: state.sessions.map((s) =>
+          s.id === sessionId
+            ? {
+                ...s,
+                parkedLat: lat,
+                parkedLng: lng,
+                carBluetoothId: bluetoothId,
+                securityShieldActive: true,
+                isBreached: false,
+              }
+            : s
+        ),
+      }));
+    } catch (e) {
+      console.warn('Error setting security shield:', e);
+    }
+  },
+
+  triggerSessionBreach: async (sessionId: string, isBreached: boolean) => {
+    try {
+      if (isSupabaseConfigured()) {
+        await supabase
+          .from('sessions')
+          .update({ is_breached: isBreached })
+          .eq('id', sessionId);
+      }
+
+      set((state) => ({
+        sessions: state.sessions.map((s) =>
+          s.id === sessionId ? { ...s, isBreached } : s
+        ),
+      }));
+    } catch (e) {
+      console.warn('Error updating breach status:', e);
     }
   },
 

@@ -4,13 +4,14 @@ import {
   Car, Clock, LogOut, Plus, CheckCircle, XCircle, Settings,
   Minus, Save, MapPin, Edit3, Navigation, Phone, CarFront, FileText,
   CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
-  Search, X, CreditCard, MapPinOff, Locate, AlertTriangle, Wifi, WifiOff, Eye, QrCode
+  Search, X, CreditCard, MapPinOff, Locate, AlertTriangle, Wifi, WifiOff, Eye, QrCode,
+  Compass, Activity
 } from 'lucide-react';
 import { useStore, pausePolling, normalizePlate, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
-import { calculateFullHours, calculateCost } from '../utils/pricing';
+import { calculateFullHours, calculateCost, SECURITY_SHIELD_FEE } from '../utils/pricing';
 import toast from 'react-hot-toast';
-import { subscribeToPush } from '../lib/pushManager';
+import { subscribeToPush, sendSecurityBreachPush } from '../lib/pushManager';
 
 const UNDO_TIMEOUT_SECONDS = 30;
 const GEOFENCE_RADIUS_METERS = 250;
@@ -680,27 +681,44 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
   
   const hrs = isFreeNow ? 0 : calculateFullHours(el);
   const rate = Number(s.agreedPrice ?? basePrice);
-  const cost = isFreeNow ? 0 : calculateCost(el, rate);
+  
+  // 🛡️ احتساب درع الأمان (+10 ج.م ثابتة)
+  const isShieldActive = s.securityShieldActive === true;
+  const shieldFee = isShieldActive ? 10 : 0;
+  const baseCost = isFreeNow ? 0 : calculateCost(el, rate);
+  const cost = isFreeNow ? (isShieldActive ? 10 : 0) : (baseCost + shieldFee);
 
+  const isBreached = s.isBreached === true;
   const isM = s.source === 'manual';
 
   return (
     <div 
       style={{ 
-        background: isM ? BRAND.card : BRAND.blueSoft, 
-        border: `1px solid ${isM ? BRAND.border : BRAND.blueLight}`, 
+        background: isBreached 
+          ? '#fff5f5' 
+          : isM 
+            ? BRAND.card 
+            : BRAND.blueSoft, 
+        border: `1.5px solid ${isBreached ? '#ef4444' : isM ? BRAND.border : BRAND.blueLight}`, 
         borderRadius: 16, 
         padding: '12px 14px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+        boxShadow: isBreached ? '0 4px 14px rgba(239,68,68,0.15)' : '0 2px 8px rgba(0,0,0,0.02)'
       }}
-      className="mb-2"
+      className={`mb-2 transition-all ${isBreached ? 'animate-pulse' : ''}`}
     >
       <div className="flex justify-between items-center mb-2">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <motion.span animate={{ scale: [1, 1.25, 1] }} transition={{ repeat: Infinity, duration: 1.5 }} className="rounded-full shrink-0" style={{ width: 8, height: 8, background: isM ? '#f59e0b' : BRAND.green }} />
+          <motion.span animate={{ scale: isBreached ? [1, 1.4, 1] : [1, 1.25, 1] }} transition={{ repeat: Infinity, duration: 1.5 }} className="rounded-full shrink-0" style={{ width: 8, height: 8, background: isBreached ? '#ef4444' : isM ? '#f59e0b' : BRAND.green }} />
           <span className="font-bold text-slate-500 font-mono" style={{ fontSize: 11 }}>{formatElapsed(el)} • {hrs}س</span>
           <span className="font-black text-white shrink-0 text-[8px] px-2 py-0.5 rounded" style={{ background: isM ? '#f59e0b' : BRAND.blue }}>{isM ? 'يدوي' : 'تطبيق'}</span>
           
+          {/* 🛡️ شارة درع الأمان VIP */}
+          {isShieldActive && (
+            <span className="font-black flex items-center gap-0.5 shrink-0 text-[8px] px-2 py-0.5 rounded text-sky-700 bg-sky-100 border border-sky-300">
+              <Shield size={9} /> درع VIP (+10ج)
+            </span>
+          )}
+
           {isFreeApplied && (
             <span className="font-black flex items-center gap-0.5 shrink-0 text-[8px] px-2 py-0.5 rounded" style={{ background: BRAND.greenLight, color: BRAND.greenDark, border: `1px solid ${BRAND.green}40` }}>
               <Gift size={10} /> {isFreeNow ? 'هدية ترحيبية نشطة 🎁' : 'انتهت الهدية الترحيبية'}
@@ -709,6 +727,14 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
         </div>
         <div className="font-black text-slate-900 text-sm">🚗 {s.carPlate}</div>
       </div>
+
+      {/* تنبيه كسر الفقاعة الجغرافية في الكارت */}
+      {isBreached && (
+        <div className="mb-2 p-1.5 rounded-lg bg-red-100 border border-red-300 text-red-800 text-[10px] font-black flex items-center justify-between">
+          <span>🚨 تحذير: السيارة غادرت فقاعة ركنتها (25م)!</span>
+          <AlertTriangle size={12} className="text-red-600 animate-bounce" />
+        </div>
+      )}
 
       <div className="flex justify-between items-center border-t pt-2 mt-2" style={{ borderColor: BRAND.border }}>
         <div className="flex items-center gap-1.5">
@@ -728,8 +754,8 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
           )}
         </div>
 
-        <div className="font-black text-left" style={{ fontSize: isFreeNow ? 11 : 14, color: isFreeNow ? '#f59e0b' : BRAND.greenDark }}>
-          {isFreeNow ? (
+        <div className="font-black text-left" style={{ fontSize: isFreeNow && !isShieldActive ? 11 : 14, color: isFreeNow && !isShieldActive ? '#f59e0b' : BRAND.greenDark }}>
+          {isFreeNow && !isShieldActive ? (
             <span className="flex items-center gap-0.5 px-2 py-0.5 rounded-lg text-[10px]" style={{ background: BRAND.greenLight, border: `1px solid ${BRAND.green}30` }}>
               🎁 مجاناً (0ج)
             </span>
@@ -752,6 +778,9 @@ export default function GarageDashboard() {
     removeSession, offers, updateOffer, cancelOffer, updateGarage, incomingCars,
     removeIncomingCar, fetchAll, confirmRevenue, assignSessionToValet, adjustGarageSpots,
     getMyOwnedGarages,
+    // 🛡️ استدعاء دوال الحماية من الـ Store
+    setSessionSecurityShield,
+    triggerSessionBreach,
   } = useStore();
 
   const [garageRole] = useState<'owner' | 'valet'>(
@@ -883,6 +912,27 @@ export default function GarageDashboard() {
     });
   }, [garageSessions]);
 
+  // 🚨 [رصد فوري لكسر فقاعة الأمان الجغرافية للسيارات المحمية]
+  useEffect(() => {
+    const breachedSession = activeSessions.find(s => s.isBreached === true && s.securityShieldActive === true);
+    if (breachedSession) {
+      fireIncomingCarAlert(breachedSession.carPlate);
+      toast.error(`🚨 إنذار طوارئ: السيارة [${breachedSession.carPlate}] خرجت من فقاعة الأمان (25م)!`, {
+        duration: 8000,
+        icon: '🚨',
+      });
+      // إرسال Push Notification فوري عاجل
+      if (currentGarageId) {
+        sendSecurityBreachPush({
+          garageId: currentGarageId,
+          carPlate: breachedSession.carPlate,
+          distanceMeters: 25,
+          customerPhone: breachedSession.customerPhone,
+        });
+      }
+    }
+  }, [activeSessions, currentGarageId]);
+
   const valetActiveSessions = useMemo(() => {
     if (!isValet) return activeSessions;
     if (ownerValetView) return activeSessions; 
@@ -944,6 +994,7 @@ export default function GarageDashboard() {
   const [confirmSession, setConfirmSession] = useState<{
     id: string; carPlate: string; cost: number; hours: number;
     minutes: number; source: 'app' | 'manual'; agreedPrice?: number;
+    shieldFee?: number;
   } | null>(null);
   
   const [confirmPaymentMethod, setConfirmPaymentMethod] = useState<string>('cash');
@@ -1039,11 +1090,15 @@ export default function GarageDashboard() {
 
   const getSessionRevenue = useCallback((s: any) => {
     if (s.totalPrice != null) return Number(s.totalPrice);
+    const isShieldActive = s.securityShieldActive === true;
+    const shieldFee = isShieldActive ? 10 : 0;
+
     if (s.endTime && s.startTime) {
       const elSeconds = Math.max(0, Math.floor((toMs(s.endTime) - toMs(s.startTime)) / 1000));
       const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
       const isFreeNow = s.isFirstFreeSession === true && elSeconds <= 1800;
-      return isFreeNow ? 0 : calculateCost(elSeconds, r);
+      const base = isFreeNow ? 0 : calculateCost(elSeconds, r);
+      return base + shieldFee;
     }
     return 0;
   }, [garage?.basePrice]);
@@ -1067,10 +1122,14 @@ export default function GarageDashboard() {
     const st = toMs(s.startTime);
     const el = st > 0 ? Math.max(0, Math.floor((getServerNow() - st) / 1000)) : 0;
     const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
-    if (el <= 0 || r <= 0) return 0;
+    const isShieldActive = s.securityShieldActive === true;
+    const shieldFee = isShieldActive ? 10 : 0;
+
+    if (el <= 0 && !isShieldActive) return 0;
 
     const isFreeNow = s.isFirstFreeSession === true && el <= 1800;
-    return isFreeNow ? 0 : calculateCost(el, r);
+    const base = isFreeNow ? 0 : calculateCost(el, r);
+    return base + shieldFee;
   }, [garage?.basePrice]);
 
   const filteredCompleted = useMemo(() => {
@@ -1272,7 +1331,7 @@ export default function GarageDashboard() {
     setShowAddCar(false);
   };
 
-   // 🛡️ دالة فتح نافذة التحصيل مع التأمين الفوري للشاشة
+  // 🛡️ دالة فتح نافذة التحصيل مع التأمين الفوري للشاشة
   const openConfirmPayment = (sid: string, cp: string, cost: number, hrs: number, minutes: number, source: 'app' | 'manual', ap?: number) => {
     const sessionObj = activeSessions.find(s => s.id === sid);
     const isFreeApplied = sessionObj?.isFirstFreeSession === true;
@@ -1281,7 +1340,7 @@ export default function GarageDashboard() {
     const el = st > 0 ? Math.max(0, Math.floor((getServerNow() - st) / 1000)) : 0;
     
     const isFreeNow = isFreeApplied && el <= 1800;
-    const finalCost = isFreeNow ? 0 : (cost > 0 ? cost : getActiveCost(sessionObj));
+    const finalCost = isFreeNow && !(sessionObj as any)?.securityShieldActive ? 0 : (cost > 0 ? cost : getActiveCost(sessionObj));
 
     setConfirmSession({ 
       id: sid, 
@@ -1290,7 +1349,8 @@ export default function GarageDashboard() {
       hours: isFreeNow ? 0 : hrs, 
       minutes, 
       source, 
-      agreedPrice: ap 
+      agreedPrice: ap,
+      shieldFee: (sessionObj as any)?.securityShieldActive ? 10 : 0
     });
 
     setConfirmPaymentMethod('cash');
@@ -1325,6 +1385,9 @@ export default function GarageDashboard() {
       const currentValet = isValet 
         ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`).trim() 
         : 'المالك';
+
+      // 🛡️ تصفير حالة كسر الأمان عند الدفع وإغلاق الدرع
+      await triggerSessionBreach(sc.id, false);
 
       // مسح البحث وقفل النافذة فوراً لسرعة استجابة التطبيق
       setPlateSearch('');
@@ -1393,7 +1456,7 @@ export default function GarageDashboard() {
 
       const startTimeISO = new Date(getServerNow()).toISOString();
 
-      await addSession({ 
+      const sid = await addSession({ 
         garageId: garage.id, 
         carPlate: np, 
         startTime: startTimeISO, 
@@ -1407,6 +1470,11 @@ export default function GarageDashboard() {
         addedBy: isValet ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`) : '' 
       } as any);
       
+      // 🛡️ تثبيت مرساة فقاعة الأمان الفضائية للسيارة فور وصولها
+      if (sid && garageCoords) {
+        await setSessionSecurityShield(sid, garageCoords.lat, garageCoords.lng);
+      }
+
       await removeIncomingCar(carId);
       await supabase.from('incoming_cars').delete().eq('car_plate', np).eq('garage_id', garage.id);
       toast.success(`بدأ حساب ${carPlate} 🚗`);
@@ -1671,6 +1739,13 @@ export default function GarageDashboard() {
                 </div>
               </div>
               
+              {/* تفصيل درع الأمان في نافذة التحصيل */}
+              {confirmSession.shieldFee ? (
+                <div className="mt-2 text-center p-1.5 rounded-lg text-sky-800 font-black text-[9px] bg-sky-50 border border-sky-200">
+                  🛡️ شامل 10 ج.م خدمة درع الأمان والتعقب الفضائي VIP
+                </div>
+              ) : null}
+
               {confirmSession.cost === 0 && (
                 <div className="mt-2.5 text-center p-1.5 rounded-lg text-emerald-800 font-bold text-[10px] flex items-center justify-center gap-1" style={{ background: BRAND.greenLight }}>
                   <Gift size={12} /> أول 30 دقيقة مجانية كهدية ترحيبية 🎁
@@ -1734,7 +1809,7 @@ export default function GarageDashboard() {
         </motion.div>
       )}
 
-       {/* الفالية فقط */}
+      {/* الفالية فقط */}
       {isValet && (
         <>
           {/* 📲 كارت الباركود الذكي لفالية الجراج لتسويق التطبيق للعملاء */}
@@ -1764,7 +1839,7 @@ export default function GarageDashboard() {
                   🎁 كود الهدية للعميل
                 </span>
                 <h4 className="text-xs font-black" style={{ color: BRAND.navy }}>
-                  امسح الكود لفتح وتنزيل التطبيق  📲
+                  امسح الكود لفتح وتنزيل التطبيق 📲
                 </h4>
                 <p className="text-[10px] font-bold mt-0.5" style={{ color: BRAND.slate }}>
                   خلّي العميل يمسح الكود بموبايله وياخد أول 30 دقيقة مجاناً! 🚀

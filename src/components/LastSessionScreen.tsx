@@ -11,6 +11,7 @@ import {
   Gift,
   Sparkles,
   CheckCircle2,
+  Shield,
 } from 'lucide-react';
 // 🌟 استيراد دوال البصمة والتوقيت الموحد من الـ store لضمان مطابقة البيانات بدقة 100%
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
@@ -156,24 +157,29 @@ export default function LastSessionScreen() {
   const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);
   const totalMinutes = Math.floor(elapsedSeconds / 60);
 
-  // 🎁 [منطق الهدية]: التحقق مما إذا كانت الجلسة مجانية
+  // 🛡️ فحص تفعيل درع الأمان الفضائي VIP
+  const hasSecurityShield = (lastSession as any).securityShieldActive === true;
+  const shieldFee = hasSecurityShield ? 10 : 0;
+
+  // 🎁 [منطق الهدية]: التحقق مما إذا كانت الجلسة مستحقة للركن المجاني
   const isFirstFreeApplied = lastSession.isFirstFreeSession === true;
   
-  const isFree = isFirstFreeApplied && (
+  const isFreeParking = isFirstFreeApplied && (
     lastSession.totalPrice === 0 ||
     lastSession.paymentMethod === 'free' ||
+    (lastSession.totalPrice != null && lastSession.totalPrice <= shieldFee) ||
     (lastSession.totalPrice == null && elapsedSeconds <= 1800)
   );
 
-  const billableHours = isFree ? 0 : calculateFullHours(elapsedSeconds);
-  const rawCost = calculateCost(elapsedSeconds, rate);
+  const billableHours = isFreeParking ? 0 : calculateFullHours(elapsedSeconds);
+  const rawParkingCost = calculateCost(elapsedSeconds, rate);
 
-  const cost =
-    lastSession.totalPrice != null
-      ? Number(lastSession.totalPrice)
-      : (isFree ? 0 : rawCost);
+  const parkingCost = isFreeParking ? 0 : rawParkingCost;
+  const totalCost = lastSession.totalPrice != null
+    ? Number(lastSession.totalPrice)
+    : (parkingCost + shieldFee);
 
-  const savedAmount = isFree ? rawCost : 0;
+  const savedAmount = isFreeParking ? rawParkingCost : 0;
 
   const startDate = new Date(startTime);
   const endDate = new Date(endTime);
@@ -234,7 +240,9 @@ export default function LastSessionScreen() {
     }
   };
 
-  const paymentInfo = getPaymentInfo(isFree ? 'free' : lastSession.paymentMethod);
+  const paymentInfo = getPaymentInfo(
+    isFreeParking && !hasSecurityShield ? 'free' : lastSession.paymentMethod
+  );
 
   const sourceInfo =
     lastSession.source === 'app'
@@ -253,9 +261,9 @@ export default function LastSessionScreen() {
 ⏰ وقت الدخول: ${formatTimeOnly(startDate)}
 ⏰ وقت الخروج: ${formatTimeOnly(endDate)}
 ⏱️ المدة الكلية: ${totalMinutes} دقيقة
-${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أول 30 دقيقة - وفرت ${savedAmount.toFixed(0)} ج.م)\n` : `⏱️ الساعات المحسوبة: ${billableHours} ساعة\n`}━━━━━━━━━━━━━━━━━━
+${isFreeParking ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أول 30 دقيقة - وفرت ${savedAmount.toFixed(0)} ج.م)\n` : `⏱️ الساعات المحسوبة: ${billableHours} ساعة\n`}${hasSecurityShield ? `🛡️ درع الحماية والتعقب الفضائي VIP: مفعّل (+10 ج.م)\n` : ''}━━━━━━━━━━━━━━━━━━
 💰 سعر الساعة: ${rate} ج.م
-💵 الإجمالي المدفوع: ${cost.toFixed(0)} ج.م
+💵 الإجمالي المدفوع: ${totalCost.toFixed(0)} ج.م
 💳 طريقة الدفع: ${paymentInfo.label}
 📋 نوع الجلسة: ${sourceInfo.label}`;
 
@@ -344,7 +352,7 @@ ${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أو
           className="border rounded-3xl p-5 text-center relative overflow-hidden"
           style={{
             background: BRAND.navyLight,
-            borderColor: isFree ? BRAND.green + '40' : BRAND.border,
+            borderColor: isFreeParking && !hasSecurityShield ? BRAND.green + '40' : BRAND.border,
             boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
           }}
         >
@@ -358,15 +366,15 @@ ${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أو
             <span
               className="font-mono text-5xl font-black leading-none"
               style={{
-                color: isFree ? BRAND.green : '#ffffff',
+                color: isFreeParking && !hasSecurityShield ? BRAND.green : '#ffffff',
                 letterSpacing: '-1px',
               }}
             >
-              {cost.toFixed(0)}
+              {totalCost.toFixed(0)}
             </span>
             <span
               className="text-base font-black"
-              style={{ color: isFree ? BRAND.green : BRAND.slateMuted }}
+              style={{ color: isFreeParking && !hasSecurityShield ? BRAND.green : BRAND.slateMuted }}
             >
               ج.م
             </span>
@@ -381,22 +389,40 @@ ${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أو
             }}
           >
             <span>{paymentInfo.icon}</span>
-            <span>{isFree ? 'ركن مجاني ترحيبي 🎁' : `تم السداد: ${paymentInfo.label}`}</span>
+            <span>{isFreeParking && !hasSecurityShield ? 'ركن مجاني ترحيبي 🎁' : `تم السداد: ${paymentInfo.label}`}</span>
           </div>
+
+          {/* 🛡️ تفصيل الفاتورة الشفاف مع درع الأمان */}
+          {hasSecurityShield && (
+            <div className="bg-slate-900/60 rounded-xl p-2.5 my-2.5 space-y-1.5 text-xs text-right border border-white/5">
+              <div className="flex justify-between items-center text-[10px]">
+                <span className="font-mono font-black text-white">{parkingCost.toFixed(0)} ج.م</span>
+                <span style={{ color: BRAND.slateMuted }}>💵 تكلفة ركن الوقت:</span>
+              </div>
+              <div className="flex justify-between items-center text-[10px] text-emerald-400 font-bold">
+                <span className="font-mono font-black">+10 ج.م</span>
+                <span>🛡️ درع الحماية والتعقب الفضائي VIP:</span>
+              </div>
+              <div className="flex justify-between items-center pt-1 border-t border-dashed border-white/10 text-white font-black text-[10px]">
+                <span className="font-mono">{totalCost.toFixed(0)} ج.م</span>
+                <span>💰 الإجمالي المدفوع:</span>
+              </div>
+            </div>
+          )}
 
           {/* سطر توضيحي للحساب */}
           <div className="text-[10px] font-bold mt-2" style={{ color: BRAND.slateMuted }}>
-            {isFree ? (
+            {isFreeParking ? (
               <span style={{ color: BRAND.green }}>
                 (تم تطبيق الهدية الترحيبية: ركن {totalMinutes} دقيقة مجاناً وفرت {savedAmount.toFixed(0)} ج.م 🎁)
               </span>
             ) : isFirstFreeApplied ? (
               <span className="text-amber-400">
-                (انتهت أول 30 دقيقة مجانية: تم احتساب {billableHours} ساعة = {cost.toFixed(0)} ج.م)
+                (انتهت أول 30 دقيقة مجانية: تم احتساب {billableHours} ساعة)
               </span>
             ) : (
               <span>
-                {billableHours} ساعة × {rate} ج.م = {cost.toFixed(0)} ج.م
+                {billableHours} ساعة × {rate} ج.م = {parkingCost.toFixed(0)} ج.م
               </span>
             )}
           </div>
@@ -419,7 +445,7 @@ ${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أو
               {billableHours}
             </div>
             <div className="text-[8px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>
-              {isFree ? 'مجانية (0س)' : 'ساعات محسوبة'}
+              {isFreeParking ? 'مجانية (0س)' : 'ساعات محسوبة'}
             </div>
           </div>
           <div className="border rounded-2xl p-3 text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>

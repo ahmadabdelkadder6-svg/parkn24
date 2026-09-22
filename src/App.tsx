@@ -5,6 +5,9 @@ import toast from 'react-hot-toast';
 import { useStore, setupRealtime, normalizePlate, normalizePhone, getServerNow } from './store';
 import { cn } from './utils/cn';
 
+// 🛡️ استيراد نغمات واهتزازات الطوارئ لدرع الأمان الفضائي
+import { playBreachAlarmSound, vibrateBreach, notifySecurityBreach } from './utils/notifications';
+
 // Screens
 import AuthGate from './components/AuthGate';
 import SplashScreen from './components/SplashScreen';
@@ -277,7 +280,7 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
                 maxWidth: '380px',
               }}
             >
-              مع Park'n 24، حدد وجهتك، اضمن مكانك في أقرب جراج، ووفر وقتك وبنزينك بضغطة زر واحدة.
+              مع Park'n 24, حدد وجهتك، اضمن مكانك في أقرب جراج، ووفر وقتك وبنزينك بضغطة زر واحدة.
             </p>
 
             {/* زر الحجز السريع */}
@@ -489,13 +492,43 @@ export default function App() {
     }
   }, [view]);
 
+  const userPlate = currentUser ? normalizePlate(currentUser.carPlate) : '';
+  const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
+
+  // ✅ البحث عن الجلسة النشطة الحالية للعميل لمراقبة الأمان
+  const activeSession = useMemo(() => {
+    if (!currentUser) return null;
+    return sessions.find((s) => {
+      if (s.status !== 'active') return false;
+      const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+      const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+      const samePhone = Boolean(userPhone && sPhone === userPhone);
+      return samePlate || samePhone;
+    });
+  }, [sessions, userPlate, userPhone, currentUser]);
+
+  // 🚨 [رصد فوري متكامل لكسر درع الأمان والفقاعة الجغرافية على مستوى التطبيق بالكامل]
+  useEffect(() => {
+    if (currentUser && activeSession && activeSession.isBreached && activeSession.securityShieldActive) {
+      // إطلاق صفارات الإنذار فوراً، والاهتزاز العنيف، وإرسال تنبيه في شريط الهاتف
+      playBreachAlarmSound();
+      vibrateBreach();
+      notifySecurityBreach(activeSession.carPlate, 25);
+
+      // تكرار الإنذار كل 5 ثوانٍ طالما لم يقم العميل بإغلاقه أو تحصيل العداد
+      const alarmInterval = setInterval(() => {
+        playBreachAlarmSound();
+        vibrateBreach();
+      }, 5000);
+
+      return () => clearInterval(alarmInterval);
+    }
+  }, [activeSession?.id, activeSession?.isBreached, activeSession?.securityShieldActive, currentUser]);
+
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser) return;
     if (view !== 'user') return;
-
-    const userPlate = normalizePlate(currentUser.carPlate);
-    const userPhone = currentUser.phone ? normalizePhone(currentUser.phone) : '';
 
     const myActiveSession = sessions.find((s) => {
       if (s.status !== 'active') return false;
@@ -574,9 +607,6 @@ export default function App() {
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser || view !== 'user') return;
-
-    const userPlate = normalizePlate(currentUser.carPlate);
-    const userPhone = currentUser.phone ? normalizePhone(currentUser.phone) : '';
 
     const myActiveSession = sessions.find((s) => {
       if (s.status !== 'active') return false;

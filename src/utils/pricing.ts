@@ -1,4 +1,9 @@
 /**
+ * 🛡️ الرسوم الثابتة لخدمة درع الحماية والتعقب الفضائي VIP (+10 ج.م لكل ركنة)
+ */
+export const SECURITY_SHIELD_FEE = 10;
+
+/**
  * ✅ حساب الساعات المحسوبة (من 1 إلى 60 دقيقة = ساعة، من 61 إلى 120 = ساعتان.. إلخ)
  */
 export function calculateFullHours(elapsedSeconds: number): number {
@@ -56,6 +61,38 @@ export function calculateCostWithLoyalty(
     totalHours: standardHours,
     isFree: false,
     savedAmount: 0,
+  };
+}
+
+/**
+ * 🛡️💰 حساب التكلفة الإجمالية الشاملة (ركن الوقت + درع الأمان الفضائي الاختياري + الهدية الترحيبية)
+ */
+export function calculateTotalSessionCost(
+  elapsedSeconds: number,
+  ratePerHour: number,
+  isFreeSession: boolean = false,
+  hasSecurityShield: boolean = false
+): {
+  parkingCost: number;
+  shieldFee: number;
+  totalCost: number;
+  paidHours: number;
+  totalHours: number;
+  isFree: boolean;
+  savedAmount: number;
+} {
+  const loyalty = calculateCostWithLoyalty(elapsedSeconds, ratePerHour, isFreeSession);
+  const shieldFee = hasSecurityShield ? SECURITY_SHIELD_FEE : 0;
+  const totalCost = loyalty.cost + shieldFee;
+
+  return {
+    parkingCost: loyalty.cost,
+    shieldFee,
+    totalCost,
+    paidHours: loyalty.paidHours,
+    totalHours: loyalty.totalHours,
+    isFree: loyalty.isFree,
+    savedAmount: loyalty.savedAmount,
   };
 }
 

@@ -11,6 +11,7 @@ import {
   Copy,
   Gift,
   CreditCard,
+  Shield,
 } from 'lucide-react';
 // 🌟 استيراد getServerNow ودوال البصمة الموحدة من الـ store لضمان المزامنة التامة
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
@@ -51,7 +52,7 @@ const BRAND = {
 };
 
 /* ─── Constants ─── */
-const CANCEL_WINDOW_SECONDS = 30; // مهلة الـ 30 ثانية للعميل قبل إشعار السايس
+const CANCEL_WINDOW_SECONDS = 30; // مهلة الـ 30 ثانية للعميل قبل إشعار فالية الجراج
 const GPS_DEADBAND_METERS = 6; // 🛡️ فلتر منع رعشة الخريطة - لا يتحدث الموقع إلا بعد تحرك حقيقي 6 أمتار
 
 /* ─── Icons ─── */
@@ -153,6 +154,8 @@ export default function NavigationScreen() {
     sessions,
     addSession,
     fetchAll,
+    // 🛡️ استدعاء دالة درع الأمان الفضائي
+    setSessionSecurityShield,
   } = useStore();
 
   const garage = garages.find((g) => g.id === selectedGarageId);
@@ -580,7 +583,7 @@ export default function NavigationScreen() {
 
       const startTimeISO = new Date(getServerNow()).toISOString();
 
-      await addSession({
+      const sid = await addSession({
         garageId: garage.id,
         carPlate: myIncomingCar.carPlate,
         startTime: startTimeISO,
@@ -591,7 +594,20 @@ export default function NavigationScreen() {
         customerName: currentUser?.name,
         startedBy: 'customer',
         incomingCarId: myIncomingCar.id,
+        parkedLat: userPos.lat || garage.lat,
+        parkedLng: userPos.lng || garage.lng,
+        securityShieldActive: true,
+        isBreached: false,
       } as any);
+
+      // 🛡️ تثبيت مرساة القمر الصناعي لفقاعة الأمان فور بدء الركن
+      if (sid) {
+        await setSessionSecurityShield(
+          sid,
+          userPos.lat || garage.lat,
+          userPos.lng || garage.lng
+        );
+      }
 
       await removeIncomingCar(myIncomingCar.id);
       navigatedToSessionRef.current = true;
@@ -691,7 +707,7 @@ export default function NavigationScreen() {
               zoomControl={false}
             >
               <TileLayer
-                url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+                url="https://tile.openstreetmap.org/{z}/{y}.png"
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               />
               <Marker position={[userPos.lat, userPos.lng]} icon={userIcon}>
@@ -800,6 +816,15 @@ export default function NavigationScreen() {
             <span className="text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>طريقة الدفع المقبولة</span>
           </div>
 
+          {/* 🛡️ شارة درع الأمان والتعقب الفضائي التوضيحية */}
+          <div className="flex items-center justify-between border-t pt-2" style={{ borderColor: BRAND.border }}>
+            <span className="text-xs font-black flex items-center gap-1 text-sky-400">
+              <Shield size={12} />
+              <span>حراسة فضائية متاحة (+10ج)</span>
+            </span>
+            <span className="text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>درع الأمان VIP</span>
+          </div>
+
           {/* 🎁 شارة الهدية الترحيبية إن وجدت */}
           {isEligibleForFree && (
             <div className="border rounded-lg p-2 text-center flex items-center justify-center gap-1 text-[10px] font-black" style={{ background: BRAND.greenLight, borderColor: BRAND.green + '40', color: BRAND.green }}>
@@ -889,7 +914,7 @@ export default function NavigationScreen() {
                 </div>
               </>
             ) : (
-              // 🚀 المرحلة الثانية: بعد انتهاء الـ 30 ثانية وإرسال الإشعار للسايس
+              // 🚀 المرحلة الثانية: بعد انتهاء الـ 30 ثانية وإرسال الإشعار
               <motion.button
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}

@@ -113,7 +113,7 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
     }
 
     if (permission !== 'granted') {
-      console.warn('❌ تم رفض إذن الإشعارات من السايس');
+      console.warn('❌ تم رفض إذن الإشعارات');
       return false;
     }
 
@@ -180,7 +180,6 @@ export const sendCarComingPush = async ({
   agreedPrice?:     number;
 }): Promise<boolean> => {
   try {
-    // 🌟 توحيد بصمة اللوحة في الوسوم لضمان مطابقتها بدقة
     const plateFingerprint = normalizePlate(carPlate) || carPlate;
     const immediateTag = `incoming-${plateFingerprint}`;
     const scheduledTag = `approaching-${plateFingerprint}`;
@@ -231,6 +230,52 @@ export const sendCarComingPush = async ({
     return result.ok;
   } catch (err) {
     console.error('❌ خطأ في sendCarComingPush:', err);
+    return false;
+  }
+};
+
+// ─── 🚨 إرسال إشعار طوارئ باختراق درع الأمان الفضائي للسيارة ───────────────
+export const sendSecurityBreachPush = async ({
+  garageId,
+  carPlate,
+  distanceMeters,
+  customerPhone,
+}: {
+  garageId:        string;
+  carPlate:        string;
+  distanceMeters?: number;
+  customerPhone?:  string;
+}): Promise<boolean> => {
+  try {
+    const plateFingerprint = normalizePlate(carPlate) || carPlate;
+    const breachTag = `breach-${plateFingerprint}`;
+
+    const payload: SendPushPayload = {
+      garageId,
+      urgency: 'high',
+      ttl: 0, // إرسال لحظي فوري بدون أي تأخير
+
+      immediate: {
+        title: '🚨 تحذير أمني: تم رصد تحرك سيارة!',
+        body:  `🚗 السيارة [${carPlate}] غادرت فقاعة الأمان (${distanceMeters ? distanceMeters + 'م' : '25م'}) بدون إذن خروج!`,
+        tag:   breachTag,
+        data: {
+          type:           'security_breach',
+          carPlate,
+          garageId,
+          url:            '/garage',
+          customerPhone:  customerPhone ?? null,
+          distanceMeters: distanceMeters ?? null,
+          sentAt:         new Date().toISOString(),
+        },
+      },
+      scheduled: null,
+    };
+
+    const result = await supabaseFetch('send-push-notification', payload);
+    return result.ok;
+  } catch (err) {
+    console.error('❌ خطأ في sendSecurityBreachPush:', err);
     return false;
   }
 };

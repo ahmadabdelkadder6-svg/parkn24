@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, Clock, CheckCircle, XCircle, MapPin, Warehouse, Plus,
@@ -9,7 +9,7 @@ import {
 // 🌟 استيراد المزامنة الأمنية ودوال الهوية الموحدة من الـ Store
 import { useStore, pausePolling, normalizePlate, normalizePhone, calculateBonus, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
-import { calculateCost } from '../utils/pricing';
+import { calculateCost, SECURITY_SHIELD_FEE } from '../utils/pricing';
 import toast from 'react-hot-toast';
 
 /* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
@@ -156,9 +156,14 @@ export default function AdminDashboard() {
 
   useEffect(() => { fetchSettlements(); }, [fetchSettlements]);
 
-  /* ─── Revenue Calculation ─── */
+  /* ─── 💰 احتساب إيرادات الجلسات والدرع الفضائي VIP ─── */
   const getRevenue = useCallback((s: any) => {
     if (s.totalPrice != null) return Number(s.totalPrice);
+    
+    // 🛡️ احتساب رسوم درع الأمان الفضائي VIP
+    const isShieldActive = s.securityShieldActive === true;
+    const shieldFee = isShieldActive ? SECURITY_SHIELD_FEE : 0;
+
     if (s.endTime && s.startTime) {
       const st = toMs(s.startTime);
       const en = toMs(s.endTime);
@@ -168,7 +173,8 @@ export default function AdminDashboard() {
 
       // 🎁 الهدية الترحيبية: 30 دقيقة مجاناً
       const isFreeNow = s.isFirstFreeSession === true && elapsedSeconds <= 1800;
-      return isFreeNow ? 0 : calculateCost(elapsedSeconds, rate);
+      const baseCost = isFreeNow ? 0 : calculateCost(elapsedSeconds, rate);
+      return baseCost + shieldFee;
     }
     return 0;
   }, [garages]);
@@ -1154,13 +1160,14 @@ export default function AdminDashboard() {
                   }}
                 >
                   <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center gap-1.5 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap text-right">
                       <span className="font-mono font-black text-sm" style={{ color: session.revenueConfirmed ? BRAND.greenDark : '#d97706' }}>{Number(rev || 0).toFixed(0)} ج.م</span>
                       {[
                         { show: true, bg: session.source === 'manual' ? '#f59e0b' : BRAND.blue, text: session.source === 'manual' ? 'يدوي' : 'تطبيق' },
                         { show: !!session.paymentMethod, bg: BRAND.navy, text: session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستا' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش' },
                         { show: true, bg: session.revenueConfirmed ? BRAND.green : '#f59e0b', text: session.revenueConfirmed ? '✅ مؤكد' : '⏳ معلق' },
                         { show: isSettled, bg: BRAND.slateMuted, text: '🔒 تمت التسوية' },
+                        { show: session.securityShieldActive === true, bg: '#0369a1', text: '🛡️ درع VIP (+10ج)' },
                         { show: session.isFirstFreeSession === true, bg: '#c2410c', text: rev === 0 ? '🎁 ركن مجاني' : '🎁 بونص منتهي' } 
                       ].filter(b => b.show).map((b, i) => (
                         <span key={i} className="font-black text-[8px] px-1.5 py-0.5 rounded text-white" style={{ background: b.bg }}>{b.text}</span>
@@ -1425,7 +1432,7 @@ export default function AdminDashboard() {
                     </div>
                     
                     <div className="flex items-center gap-1.5 text-slate-500 font-bold text-[9px]">
-                      <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[8px] font-black">🗺️ {g.area || 'مناطق أخرى'}</span>
+                      <span className="font-black text-[8px] px-2 py-0.5 rounded" style={{ background: BRAND.blueSoft, color: BRAND.blue }}>🗺️ {g.area || 'مناطق أخرى'}</span>
                       <span style={{ color: '#E2E8F0' }}>·</span>
                       <span className="truncate max-w-[100px]">{g.location}</span>
                       <MapPin size={10} className="shrink-0 text-slate-400" />
@@ -1575,7 +1582,7 @@ export default function AdminDashboard() {
                   <span className="font-bold text-[9px]" style={{ color: (v.name || v.pass) ? BRAND.greenDark : BRAND.slateMuted }}>
                     {(v.name || v.pass) ? '✅ مفعّل' : '❌ غير مفعّل'}
                   </span>
-                  <span className="font-black text-[10px]" style={{ color: BRAND.navy }}>سايس {v.n}</span>
+                  <span className="font-black text-[10px]" style={{ color: BRAND.navy }}>فالية {v.n}</span>
                 </div>
                 <div className="flex gap-2">
                   <input type="text" value={v.name} onChange={e => v.setName(e.target.value)} className="flex-1 font-bold text-right outline-none text-xs py-2 px-2.5 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="الاسم" />
