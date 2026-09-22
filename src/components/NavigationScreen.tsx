@@ -596,7 +596,7 @@ export default function NavigationScreen() {
         incomingCarId: myIncomingCar.id,
         parkedLat: userPos.lat || garage.lat,
         parkedLng: userPos.lng || garage.lng,
-        securityShieldActive: true,
+        securityShieldActive: false, // 🔒 مطفأ افتراضياً (0 ج.م) والعميل يفعله برغبته
         isBreached: false,
       } as any);
 

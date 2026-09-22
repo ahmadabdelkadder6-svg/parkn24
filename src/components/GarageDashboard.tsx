@@ -1455,20 +1455,6 @@ export default function GarageDashboard() {
       if (ro) cancelOffer(ro.id);
 
       const startTimeISO = new Date(getServerNow()).toISOString();
-
-      const sid = await addSession({ 
-        garageId: garage.id, 
-        carPlate: np, 
-        startTime: startTimeISO, 
-        status: 'active', 
-        source: 'app', 
-        agreedPrice: car.agreedPrice, 
-        customerPhone: car.customerPhone, 
-        customerName: car.customerName, 
-        startedBy: 'garage', 
-        incomingCarId: carId, 
-        addedBy: isValet ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`) : '' 
-      } as any);
       
       // 🛡️ تثبيت مرساة فقاعة الأمان الفضائية للسيارة فور وصولها
       if (sid && garageCoords) {

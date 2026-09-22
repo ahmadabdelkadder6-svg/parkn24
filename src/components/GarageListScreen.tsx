@@ -275,29 +275,6 @@ export default function GarageListScreen() {
     return () => { isSubscribed = false; clearInterval(interval); document.removeEventListener('visibilitychange', handleVisibility); window.removeEventListener('focus', handleFocus); supabase.removeChannel(channel); };
   }, [normalizedUserPlate, cleanUserPhone, fetchAll]);
 
-  // 🛡️ [تثبيت أوتوماتيكي فوري لمرساة القمر الصناعي للسيارة عند بدء الجلسة]
-  useEffect(() => {
-    if (activeSession && activeSession.status === 'active' && !activeSession.parkedLat) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setSessionSecurityShield(
-            activeSession.id,
-            position.coords.latitude,
-            position.coords.longitude
-          );
-          toast.success('🚀 تم تفعيل فقاعة الأمان الفضائية وتثبيت مرساة القمر الصناعي للسيارة تلقائياً!', { icon: '🛡️', duration: 4000 });
-        },
-        () => {
-          const garage = garages.find(g => g.id === activeSession.garageId);
-          if (garage) {
-            setSessionSecurityShield(activeSession.id, garage.lat, garage.lng);
-            toast.success('🚀 تم تثبيت مرساة أمان السيارة الجغرافية على موقع الجراج لضعف إشارة الـ GPS!', { icon: '🛡️', duration: 4000 });
-          }
-        },
-        { enableHighAccuracy: true, timeout: 6000 }
-      );
-    }
-  }, [activeSession, garages, setSessionSecurityShield]);
 
   // 🚨 [رصد فوري لحالة كسر الفقاعة وتشغيل الإنذار]
   useEffect(() => {

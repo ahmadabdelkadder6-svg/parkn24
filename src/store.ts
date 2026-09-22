@@ -1277,7 +1277,7 @@ export const useStore = create<AppState>((set, get) => ({
         parkedLat: (s as any).parkedLat || undefined,
         parkedLng: (s as any).parkedLng || undefined,
         carBluetoothId: (s as any).carBluetoothId || undefined,
-        securityShieldActive: (s as any).securityShieldActive ?? true,
+              securityShieldActive: (s as any).securityShieldActive ?? false,
         isBreached: (s as any).isBreached ?? false,
       };
 
@@ -1311,7 +1311,7 @@ export const useStore = create<AppState>((set, get) => ({
           parked_lat: (s as any).parkedLat || null,
           parked_lng: (s as any).parkedLng || null,
           car_bluetooth_id: (s as any).carBluetoothId || null,
-          security_shield_active: (s as any).securityShieldActive ?? true,
+          security_shield_active: (s as any).securityShieldActive ?? false,
           is_breached: (s as any).isBreached ?? false,
         }).select().single();
 
