@@ -104,14 +104,12 @@ const playBreachAlarm = async () => {
     masterGain.gain.setValueAtTime(1.0, now);
     masterGain.connect(customerAudioCtx.destination);
     
-    // 6 صفارات إنذار حادة لخلخلة الانتباه وتحذير العميل فوراً
     for (let i = 0; i < 6; i++) {
       const start = now + (i * 0.35);
       const osc = customerAudioCtx.createOscillator();
       const gain = customerAudioCtx.createGain();
       
       osc.type = 'sawtooth';
-      // ترددات تحذيرية حادة متبادلة
       osc.frequency.setValueAtTime(i % 2 === 0 ? 1600 : 2200, start);
       
       gain.gain.setValueAtTime(0.8, start);
@@ -147,8 +145,6 @@ export default function GarageListScreen() {
     fetchAll,
     acknowledgedSessionIds,
     walletTopUps,
-    // 🛡️ الحقول والدوال المضافة لدرع الأمان
-    setSessionSecurityShield,
     triggerSessionBreach,
   } = useStore();
 
@@ -157,7 +153,7 @@ export default function GarageListScreen() {
   const [showTopUp, setShowTopUp] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
-  const [showSosModal, setShowSosModal] = useState(false); // نافذة تقرير الشرطة
+  const [showSosModal, setShowSosModal] = useState(false); 
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>({
     lat: 30.0444,
     lng: 31.2357,
@@ -271,19 +267,27 @@ export default function GarageListScreen() {
     const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
     const handleFocus = () => refetch();
     document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', handleFocus);
+    window.addEventListener('focus', refetch);
     return () => { isSubscribed = false; clearInterval(interval); document.removeEventListener('visibilitychange', handleVisibility); window.removeEventListener('focus', handleFocus); supabase.removeChannel(channel); };
   }, [normalizedUserPlate, cleanUserPhone, fetchAll]);
 
+  // 🛡️ فحص حالة تفعيل الدرع الفضائي بدقة في الصفحة الرئيسية للعميل
+  const isShieldActive = useMemo(() => {
+    if (!activeSession) return false;
+    return Boolean(
+      activeSession.securityShieldActive === true ||
+      (activeSession as any).security_shield_active === true
+    );
+  }, [activeSession]);
 
-  // 🚨 [رصد فوري لحالة كسر الفقاعة وتشغيل الإنذار]
+  // 🚨 [رصد فوري لحالة كسر الفقاعة وتشغيل الإنذار فقط إذا كان الدرع نشطاً]
   useEffect(() => {
-    if (activeSession && activeSession.isBreached) {
+    if (activeSession && isShieldActive && activeSession.isBreached) {
       playBreachAlarm();
       const interval = setInterval(playBreachAlarm, 4000);
       return () => clearInterval(interval);
     }
-  }, [activeSession?.isBreached]);
+  }, [activeSession?.isBreached, isShieldActive]);
 
   useEffect(() => {
     if (!activeSession) { autoNavigatedRef.current = null; return; }
@@ -402,7 +406,6 @@ export default function GarageListScreen() {
             </div>
           </div>
 
-          {/* 🚙 رقم السيارة بحجم كبير وواضح وبارز */}
           <div className="mt-2 pt-2 border-t border-white/20 flex items-center justify-between">
             <span className="text-[11px] font-black text-white">🚙 رقم السيارة:</span>
             <span className="font-mono font-black text-sm bg-white text-[#1656b8] px-3 py-1 rounded-lg shadow-sm tracking-wider">
@@ -411,7 +414,7 @@ export default function GarageListScreen() {
           </div>
         </div>
 
-        {/* 📲 كارت الباركود الذكي لمشاركة التطبيق أسفل المحفظة */}
+        {/* 📲 كارت الباركود الذكي */}
         <div 
           onClick={() => setShowQrModal(true)}
           className="mb-3 border rounded-xl p-2 flex items-center justify-between text-right cursor-pointer active:scale-[0.98] transition-all"
@@ -451,8 +454,8 @@ export default function GarageListScreen() {
           <QrCode size={16} style={{ color: BRAND.blue }} className="shrink-0" />
         </div>
 
-        {/* 🛡️ [كارت درع الأمان الفضائي الحصري للعميل] */}
-        {activeSession && (
+        {/* 🛡️ [كارت درع الأمان الفضائي الحصري للعميل - مصلح ومحمي ليظهر فقط عند التفعيل الفعلي] */}
+        {activeSession && isShieldActive && (
           <div
             className="mb-3 border rounded-2xl p-3 flex flex-col gap-2 relative overflow-hidden"
             style={{
@@ -497,7 +500,6 @@ export default function GarageListScreen() {
               )}
             </div>
 
-            {/* تفاصيل المرساة الجغرافية */}
             {activeSession.parkedLat && (
               <div className="mt-1 pt-2 border-t flex justify-between items-center text-[8px] font-black" style={{ borderColor: activeSession.isBreached ? '#fee2e2' : '#334155' }}>
                 <span style={{ color: activeSession.isBreached ? '#991b1b' : '#94a3b8' }}>
@@ -737,7 +739,6 @@ export default function GarageListScreen() {
               style={{ background: BRAND.card }}
               onClick={e => e.stopPropagation()}
             >
-              {/* زر الإغلاق */}
               <button 
                 onClick={() => setShowQrModal(false)}
                 className="absolute top-4 left-4 text-slate-400 font-black text-sm border-0 bg-transparent cursor-pointer"
@@ -745,7 +746,6 @@ export default function GarageListScreen() {
                 ✕
               </button>
 
-              {/* أيقونة الهدية الترحيبية */}
               <div 
                 className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2"
                 style={{ background: BRAND.green + '20' }}
@@ -761,7 +761,6 @@ export default function GarageListScreen() {
                 امسح الكود بموبايل صاحبك لتنزيل التطبيق وسبهم يستمتعوا بـ <span className="font-black" style={{ color: BRAND.greenDark }}>أول 30 دقيقة ركن مجاناً! 🎁🚀</span>
               </p>
 
-              {/* إطار الباركود */}
               <div 
                 className="w-48 h-48 mx-auto p-2 bg-white rounded-2xl border-2 shadow-inner flex items-center justify-center mb-4" 
                 style={{ borderColor: BRAND.blue }}
@@ -776,7 +775,6 @@ export default function GarageListScreen() {
                 />
               </div>
 
-              {/* زر الإغلاق والمشاركة */}
               <button
                 onClick={() => setShowQrModal(false)}
                 className="w-full py-3 rounded-xl font-black text-xs text-white border-0 cursor-pointer active:scale-95 transition-all shadow-md"
@@ -791,7 +789,7 @@ export default function GarageListScreen() {
 
       {/* 🚔 [نافذة إنذار الطوارئ وتقرير الشرطة SOS - للفقاعة الجغرافية] */}
       <AnimatePresence>
-        {showSosModal && activeSession && activeSession.isBreached && (
+        {showSosModal && activeSession && isShieldActive && activeSession.isBreached && (
           <div 
             className="fixed inset-0 z-[99999] flex items-center justify-center p-5"
             style={{ background: 'rgba(127,29,29,0.9)', backdropFilter: 'blur(8px)' }}
@@ -964,7 +962,6 @@ const GarageCard = memo(function GarageCard({
         cursor: isFull ? 'not-allowed' : 'pointer',
       }}
     >
-      {/* سطر الاسم + التقييم + طريقة الدفع */}
       <div className="flex justify-between items-center mb-1">
         <div className="flex items-center gap-1 flex-wrap">
           <span className="flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded" style={{ background: '#fef3c7', color: '#b45309' }}>
@@ -990,13 +987,11 @@ const GarageCard = memo(function GarageCard({
         <h4 className="text-xs font-black" style={{ color: BRAND.blueDark }}>{garage.name}</h4>
       </div>
 
-      {/* الموقع */}
       <div className="flex items-center gap-1 justify-end text-[10px] mb-2" style={{ color: BRAND.slate }}>
         <span>{garage.location}</span>
         <MapPin size={10} />
       </div>
 
-      {/* البيانات: الوقت + الشاغر + السعر */}
       <div className="flex items-center justify-between mt-2 pt-2 border-t" style={{ borderColor: BRAND.border }}>
         <div className="flex items-center gap-1 text-[10px] font-bold" style={{ color: BRAND.slate }}>
           <Navigation size={10} className="rotate-45" />
@@ -1015,7 +1010,6 @@ const GarageCard = memo(function GarageCard({
         </div>
       </div>
 
-      {/* زر الحجز */}
       <button
         disabled={isFull || disabled}
         className="w-full border-0 font-black py-2.5 rounded-10 mt-3 text-xs text-white cursor-pointer"
