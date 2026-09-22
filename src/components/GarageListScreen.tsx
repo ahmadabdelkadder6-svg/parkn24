@@ -284,70 +284,110 @@ export default function GarageListScreen() {
 
       {/* ═══ HEADER ═══ */}
       <div className="px-5 pt-10 pb-4 z-10" style={{ background: BRAND.card, borderBottom: `1px solid ${BRAND.border}` }}>
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex justify-between items-center mb-3">
           <div>
-            <h1 className="text-lg font-black" style={{ color: BRAND.blueDark }}>
+            <h1 className="text-base font-black" style={{ color: BRAND.blueDark }}>
               أهلاً {currentUser?.name || 'بك'} 👋
             </h1>
-            <p className="text-xs font-semibold mt-0.5" style={{ color: BRAND.slate }}>
+            <p className="text-[10px] font-bold mt-0.5" style={{ color: BRAND.slate }}>
               اركن وادفع بضغطة واحدة.. بدون لفة وبدون فكة 🚗
             </p>
           </div>
-          <span className="font-black text-xl" style={{ color: BRAND.blue }}>
+          <span className="font-black text-lg" style={{ color: BRAND.blue }}>
             بركن <span style={{ color: BRAND.green }}>24</span>
           </span>
         </div>
 
-        {/* 💳 بطاقة المحفظة المبسطة والراقية جداً */}
+        {/* 💳 بطاقة المحفظة (تم تصغير حجمها للنصف مع الحفاظ على وضوح وسماكة الخط) */}
         <div
           style={{
             background: BRAND.blue,
-            borderRadius: 18,
-            padding: '16px',
-            marginBottom: 12,
-            boxShadow: '0 4px 16px rgba(22,86,184,0.12)',
+            borderRadius: 14,
+            padding: '10px 14px',
+            marginBottom: 8,
+            boxShadow: '0 4px 12px rgba(22,86,184,0.12)',
             color: '#ffffff',
           }}
         >
           <div className="flex justify-between items-center">
             <div>
-              <span className="text-[10px] font-bold opacity-80 block mb-1">💳 رصيد محفظتك الحالي</span>
-              <div className="font-black font-mono flex items-baseline gap-1" style={{ fontSize: 28 }}>
+              <span className="text-[9px] font-black opacity-90 block mb-0.5">💳 رصيد محفظتك الحالي</span>
+              <div className="font-black font-mono flex items-baseline gap-1" style={{ fontSize: 20 }}>
                 {currentUser?.wallet || 0}
-                <span className="text-xs font-bold opacity-70">ج.م</span>
+                <span className="text-[11px] font-black opacity-85">ج.م</span>
               </div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-1.5">
               {myTopUps.length > 0 && (
                 <button
                   onClick={() => setShowHistory(!showHistory)}
-                  className="p-2.5 rounded-xl transition-all relative border border-white/20 bg-white/10 text-white cursor-pointer"
+                  className="p-2 rounded-lg transition-all relative border border-white/20 bg-white/10 text-white cursor-pointer"
                 >
-                  <History size={16} />
+                  <History size={13} />
                   {pendingTopUpsCount > 0 && (
-                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-400" />
+                    <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-amber-400" />
                   )}
                 </button>
               )}
 
               <button
                 onClick={() => setShowTopUp(true)}
-                className="flex items-center gap-1 font-black active:scale-95 transition-all text-xs cursor-pointer border-0"
-                style={{ background: '#ffffff', color: BRAND.blue, borderRadius: 10, padding: '8px 14px' }}
+                className="flex items-center gap-1 font-black active:scale-95 transition-all text-[11px] cursor-pointer border-0"
+                style={{ background: '#ffffff', color: BRAND.blue, borderRadius: 8, padding: '6px 10px' }}
               >
-                <Plus size={13} strokeWidth={3} />
+                <Plus size={11} strokeWidth={3} />
                 <span>شحن رصيد</span>
               </button>
             </div>
           </div>
 
-          <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
-            <span className="text-[10px] font-bold opacity-80">🚙 رقم السيارة:</span>
-            <span className="font-mono font-black text-xs bg-white/15 px-3 py-1 rounded-lg">
+          <div className="mt-1.5 pt-1.5 border-t border-white/10 flex items-center justify-between">
+            <span className="text-[9px] font-black opacity-90">🚙 رقم السيارة:</span>
+            <span className="font-mono font-black text-[10px] bg-white/15 px-2 py-0.5 rounded-md">
               {currentUser?.carPlate || '---'}
             </span>
           </div>
+        </div>
+
+        {/* 📲 كارت الباركود الذكي لمشاركة التطبيق (تم رفعه ليكون أسفل المحفظة مباشرة بشكل متناسق) */}
+        <div 
+          onClick={() => setShowQrModal(true)}
+          className="mb-3 border rounded-xl p-2 flex items-center justify-between text-right cursor-pointer active:scale-[0.98] transition-all"
+          style={{ 
+            background: BRAND.bg, 
+            borderColor: BRAND.border,
+            boxShadow: '0 2px 6px rgba(0,0,0,0.01)'
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <div 
+              className="w-10 h-10 p-0.5 rounded-lg bg-white border flex items-center justify-center shrink-0 shadow-sm"
+              style={{ borderColor: BRAND.blue }}
+            >
+              <img 
+                src="/app-qr.png" 
+                alt="كود بركن 24" 
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+            </div>
+
+            <div className="text-right">
+              <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white inline-block mb-0.5" style={{ background: BRAND.blue }}>
+                📲 شارك بركن 24
+              </span>
+              <h4 className="text-[11px] font-black" style={{ color: BRAND.blueDark }}>
+                امسح الكود لفتح وتنزيل التطبيق
+              </h4>
+              <p className="text-[9px] font-black mt-0.5" style={{ color: BRAND.slate }}>
+                شارك الكود مع زملائك ليركنوا أسرع! 🚀
+              </p>
+            </div>
+          </div>
+          <QrCode size={16} style={{ color: BRAND.blue }} className="shrink-0" />
         </div>
 
         {/* سجل الشحن المبسط */}
@@ -488,46 +528,6 @@ export default function GarageListScreen() {
           </button>
         </div>
 
-        {/* 📲 كارت الباركود الذكي لمشاركة التطبيق */}
-        <div 
-          onClick={() => setShowQrModal(true)}
-          className="mb-4 border rounded-2xl p-3 flex items-center justify-between text-right cursor-pointer active:scale-[0.98] transition-all"
-          style={{ 
-            background: BRAND.card, 
-            borderColor: BRAND.border,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
-          }}
-        >
-          <div className="flex items-center gap-3">
-            <div 
-              className="w-12 h-12 p-1 rounded-xl bg-white border flex items-center justify-center shrink-0 shadow-sm"
-              style={{ borderColor: BRAND.blue }}
-            >
-              <img 
-                src="/app-qr.png" 
-                alt="كود بركن 24" 
-                className="w-full h-full object-contain"
-                onError={(e) => {
-                  (e.target as HTMLElement).style.display = 'none';
-                }}
-              />
-            </div>
-
-            <div className="text-right">
-              <span className="text-[9px] font-black px-2 py-0.5 rounded text-white inline-block mb-0.5" style={{ background: BRAND.blue }}>
-                📲 شارك بركن 24
-              </span>
-              <h4 className="text-xs font-black" style={{ color: BRAND.blueDark }}>
-                امسح الكود لفتح وتنزيل التطبيق
-              </h4>
-              <p className="text-[10px] font-bold mt-0.5" style={{ color: BRAND.slate }}>
-                عجبتك السهولة؟ شارك الكود مع زمايلك وخلي الكل يركن أسرع! 🚀
-              </p>
-            </div>
-          </div>
-          <QrCode size={18} style={{ color: BRAND.blue }} className="shrink-0" />
-        </div>
-
         {/* ═══ القائمة والأكورديون النظيف المبسط جداً ═══ */}
         {areaGroups.length > 0 ? (
           <div className="space-y-2.5">
@@ -627,7 +627,7 @@ export default function GarageListScreen() {
               {/* أيقونة الهدية الترحيبية */}
               <div 
                 className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2"
-                style={{ background: BRAND.greenLight }}
+                style={{ background: BRAND.green + '20' }}
               >
                 <Gift size={20} style={{ color: BRAND.greenDark }} />
               </div>

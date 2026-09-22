@@ -1895,20 +1895,6 @@ export default function GarageDashboard() {
         </>
       )}
 
-      {/* Owner info bar */}
-      {isOwner && (
-        <div className="mb-4 flex items-center justify-between p-3 border rounded-xl bg-white" style={{ borderColor: BRAND.border }}>
-          <button onClick={openSettings} className="font-bold flex items-center gap-1 text-[10px] border-0 bg-transparent cursor-pointer" style={{ color: BRAND.blue }}><Settings size={12} /> تعديل</button>
-          <div className="flex items-center gap-2.5 text-[10px] text-slate-500 font-bold">
-            <span>السعر: <b className="font-mono text-slate-800">{garage.basePrice}ج</b></span>
-            <span>·</span>
-            <span>عمولة: <b className="font-mono text-slate-800">{garage.commissionRate ?? 10}%</b></span>
-            <span>·</span>
-            <span>متاح: <b className="font-mono" style={{ color: BRAND.blue }}>{garage.availableSpots}/{garage.capacity}</b></span>
-          </div>
-        </div>
-      )}
-
       {/* Valet info bar */}
       {isValet && (
         <div className="mb-4 p-3 border rounded-xl bg-white" style={{ borderColor: BRAND.border }}>
