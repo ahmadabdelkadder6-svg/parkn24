@@ -239,8 +239,7 @@ export default function SessionScreen() {
     if (!activeSession) return false;
     return Boolean(
       activeSession.securityShieldActive === true ||
-      (activeSession as any).security_shield_active === true ||
-      (activeSession as any).securityShield === true
+      (activeSession as any).security_shield_active === true
     );
   }, [activeSession]);
 
@@ -331,27 +330,22 @@ export default function SessionScreen() {
     }
   }, [isFirstFreeApplied, elapsed, sessionRate]);
 
-  // 🛡️ احتساب رسوم الدرع (+10 ج.م ثابتة)
-  const shieldCost = isShieldActive ? 10 : 0;
-  const finalTotalCost = isFreeNow ? (isShieldActive ? 10 : 0) : (displayedCost + shieldCost);
+  // 🛡️ احتساب رسوم الدرع الفضائي (+10 ج.م ثابتة)
+  const shieldCost = isShieldActive ? (SECURITY_SHIELD_FEE || 10) : 0;
+  const finalTotalCost = isFreeNow ? (isShieldActive ? (SECURITY_SHIELD_FEE || 10) : 0) : (displayedCost + shieldCost);
 
-  // 🛡️ دالة التفعيل المباشرة والمؤمنة 100%
+  // 🛡️ دالة التفعيل المباشرة والمؤمنة 100% بدون أي كود مكرر خاطئ
   const handleActivateSecurityShield = async () => {
-    if (!activeSession?.id || togglingShield) return;
-
-    if (isShieldActive) {
-      toast('درع الحماية مفعل ومثبت بالفعل 🛡️', { icon: 'ℹ️' });
-      return;
-    }
+    if (!activeSession?.id || togglingShield || isShieldActive) return;
 
     setTogglingShield(true);
-    const toastId = toast.loading('جاري تفعيل الحراسة الفضائية...');
+    const toastId = toast.loading('جاري تفعيل درع الحماية الفضائية...');
 
     try {
       let targetLat = garage?.lat || 30.0444;
       let targetLng = garage?.lng || 31.2357;
 
-      // محاولة الحصول على الموقع السريع بدون تعليق الواجهة
+      // محاولة الحصول على إحداثيات الهاتف بسرعة
       if ('geolocation' in navigator) {
         try {
           const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
@@ -363,40 +357,11 @@ export default function SessionScreen() {
           });
           targetLat = pos.coords.latitude;
           targetLng = pos.coords.longitude;
-        } catch {
-          // استخدام إحداثيات الجراج كاحتياط فوري
-        }
-      }
-
-      // 1️⃣ استدعاء دالة الـ Store بالـ Signature السليم
-      if (typeof setSessionSecurityShield === 'function') {
-        try {
-          await setSessionSecurityShield(activeSession.id, true, targetLat, targetLng);
         } catch {}
       }
 
-      // 2️⃣ تحديث مباشر في قاعدة بيانات Supabase لضمان الحفظ الفوري
-      await supabase
-        .from('sessions')
-        .update({
-          security_shield_active: true,
-          securityShieldActive: true,
-          is_breached: false,
-          isBreached: false,
-          shield_lat: targetLat,
-          shield_lng: targetLng,
-          shield_activated_at: new Date().toISOString(),
-        } as any)
-        .eq('id', activeSession.id);
-
-      // 3️⃣ تحديث الجلسة محلياً في الـ Zustand Store بشكل فوري
-      useStore.setState((state) => ({
-        sessions: state.sessions.map((s) =>
-          s.id === activeSession.id
-            ? { ...s, securityShieldActive: true, isBreached: false }
-            : s
-        ),
-      }));
+      // ✅ استدعاء دالة الـ Store الموحدة ذات الأعمدة السليمة (آمنة تماماً)
+      await setSessionSecurityShield(activeSession.id, true, targetLat, targetLng);
 
       toast.dismiss(toastId);
       toast.success('🛡️ تم تفعيل درع الحماية وتثبيته بالفاتورة (+10 ج.م)', { duration: 4000 });
@@ -404,7 +369,7 @@ export default function SessionScreen() {
     } catch (err: any) {
       console.error('Failed to activate security shield:', err);
       toast.dismiss(toastId);
-      toast.error('تعذر تفعيل الدرع، يرجى المحاولة مرة أخرى');
+      toast.error('عذراً، فشل تفعيل الحماية. يرجى المحاولة لاحقاً');
     } finally {
       setTogglingShield(false);
     }
@@ -488,13 +453,13 @@ export default function SessionScreen() {
                     تقرير SOS 🚔
                   </button>
                 )}
-                {/* 🔒 تم قفل الدرع تماماً بعد التفعيل لمنع الإلغاء */}
+                {/* 🔒 مغلق تماماً بعد التفعيل بنجاح لحماية الفاتورة وأمان السيارة */}
                 <span className="py-1.5 px-3 rounded-xl font-black text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
                   <CheckCircle size={12} /> تم تأكيد الحماية للفاتورة
                 </span>
               </div>
             ) : (
-              /* زر التفعيل يظهر فقط عندما يكون الدرع مقفولاً */
+              /* زر التفعيل يظهر بشكل طبيعي إذا كان الدرع مغلقاً تلقائياً */
               <button
                 type="button"
                 onClick={handleActivateSecurityShield}
@@ -519,7 +484,7 @@ export default function SessionScreen() {
           <div className="text-right">
             <span className="text-[9px] font-bold text-slate-400 block">رسوم الخدمة</span>
             <span className="text-xs font-black font-mono" style={{ color: isShieldActive ? BRAND.green : '#ffffff' }}>
-              {isShieldActive ? '+10.00 ج.م مضافة' : '+10.00 ج.م فقط'}
+              {isShieldActive ? `+${SECURITY_SHIELD_FEE || 10}.00 ج.م مضافة` : `+${SECURITY_SHIELD_FEE || 10}.00 ج.م فقط`}
             </span>
           </div>
         </div>
@@ -603,7 +568,7 @@ export default function SessionScreen() {
 
           {isShieldActive && (
             <div className="flex justify-between items-center text-emerald-400">
-              <span className="font-black font-mono">+10.00 ج.م</span>
+              <span className="font-black font-mono">+{SECURITY_SHIELD_FEE || 10}.00 ج.م</span>
               <span className="font-bold text-[10px]">🛡️ درع الحماية والتعقب الفضائي VIP:</span>
             </div>
           )}
