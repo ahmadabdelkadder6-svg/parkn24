@@ -656,6 +656,7 @@ interface ActiveSessionCardProps {
   onEndSession: (id: string, carPlate: string, cost: number, hours: number, minutes: number, source: 'app' | 'manual', agreedPrice?: number) => void;
   onUndo: (un: UndoableSession) => void;
   getUndoRemainingSeconds: (addedAt: number) => number;
+  onToggleShield: (id: string, active: boolean) => void; // 🛡️ ممرر للتحكم في درع الأمان تفاعلياً
 }
 
 const ActiveSessionCard = memo(function ActiveSessionCard({
@@ -665,6 +666,7 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
   onEndSession,
   onUndo,
   getUndoRemainingSeconds,
+  onToggleShield,
 }: ActiveSessionCardProps) {
   const [, setLocalTick] = useState(0);
   useEffect(() => {
@@ -712,12 +714,21 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
           <span className="font-bold text-slate-500 font-mono" style={{ fontSize: 11 }}>{formatElapsed(el)} • {hrs}س</span>
           <span className="font-black text-white shrink-0 text-[8px] px-2 py-0.5 rounded" style={{ background: isM ? '#f59e0b' : BRAND.blue }}>{isM ? 'يدوي' : 'تطبيق'}</span>
           
-          {/* 🛡️ شارة درع الأمان VIP */}
-          {isShieldActive && (
-            <span className="font-black flex items-center gap-0.5 shrink-0 text-[8px] px-2 py-0.5 rounded text-sky-700 bg-sky-100 border border-sky-300">
-              <Shield size={9} /> درع VIP (+10ج)
-            </span>
-          )}
+          {/* 🛡️ زر تفاعلي للتحكم في درع الأمان VIP (مفتوح للسايس والعميل في أي وقت) */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleShield(s.id, !isShieldActive);
+            }}
+            className={`font-black flex items-center gap-1 shrink-0 text-[9px] px-2 py-0.5 rounded-lg border cursor-pointer active:scale-95 transition-all ${
+              isShieldActive 
+                ? 'bg-sky-50 text-sky-700 border-sky-300 hover:bg-sky-100' 
+                : 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200'
+            }`}
+          >
+            <Shield size={10} className={isShieldActive ? 'fill-sky-700 text-sky-700 animate-pulse' : 'text-slate-400'} />
+            <span>{isShieldActive ? 'درع VIP نشط (+10ج)' : 'تفعيل الدرع'}</span>
+          </button>
 
           {isFreeApplied && (
             <span className="font-black flex items-center gap-0.5 shrink-0 text-[8px] px-2 py-0.5 rounded" style={{ background: BRAND.greenLight, color: BRAND.greenDark, border: `1px solid ${BRAND.green}40` }}>
@@ -778,7 +789,7 @@ export default function GarageDashboard() {
     removeSession, offers, updateOffer, cancelOffer, updateGarage, incomingCars,
     removeIncomingCar, fetchAll, confirmRevenue, assignSessionToValet, adjustGarageSpots,
     getMyOwnedGarages,
-    // 🛡️ استدعاء دوال الحماية من الـ Store
+    // 🛡️ استدعاء دوال الحماية من الـ Store للتحكم التفاعلي بالدرع
     setSessionSecurityShield,
     triggerSessionBreach,
   } = useStore();
@@ -1320,6 +1331,7 @@ export default function GarageDashboard() {
       status: 'active', 
       source: 'manual', 
       agreedPrice: pr, 
+      securityShieldActive: false, // 🛡️ معطل افتراضياً للركن اليدوي والسايس يفعله إن أراد
       addedBy: isValet ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`) : '' 
     } as any);
     
@@ -1464,7 +1476,9 @@ export default function GarageDashboard() {
 
       const startTimeISO = new Date(getServerNow()).toISOString();
 
-      // ✅ بدء الجلسة بأمان تام وبدون تفعيل إجباري للدرع (الدرع يفعله العميل باختياره)
+      // ✅ حل المشكلة الأولى: يرث حالة درع الأمان التي حددها العميل على هاتفه بدلاً من الإلغاء القسري
+      const initialShield = car.securityShieldActive === true || car.securityShield === true || false;
+
       await addSession({ 
         garageId: garage.id, 
         carPlate: np || carPlate, 
@@ -1477,7 +1491,7 @@ export default function GarageDashboard() {
         startedBy: 'garage', 
         incomingCarId: carId, 
         addedBy: isValet ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`) : '',
-        securityShieldActive: false, // 🔒 مطفأ افتراضياً والعميل يفعله برغبته
+        securityShieldActive: initialShield, 
         isBreached: false,
       } as any);
       
@@ -1486,7 +1500,7 @@ export default function GarageDashboard() {
         await removeIncomingCar(carId);
       } catch {}
 
-      toast.success(`بدأ حساب ${carPlate} 🚗`);
+      toast.success(`بدأ حساب ${carPlate} 🚗 ${initialShield ? '🛡️ مع درع VIP' : ''}`);
     } catch (e: any) { 
       console.error('handleCarArrived error:', e);
       processedCarsRef.current.delete(carId); 
@@ -1971,6 +1985,15 @@ export default function GarageDashboard() {
                       onEndSession={openConfirmPayment}
                       onUndo={handleUndoSession}
                       getUndoRemainingSeconds={getUndoRemainingSeconds}
+                      onToggleShield={async (id, active) => {
+                        try {
+                          // ✅ يتيح للسايس التعديل التفاعلي الفوري على حالة الدرع في قاعدة البيانات
+                          await setSessionSecurityShield(id, active);
+                          toast.success(active ? '🛡️ تم تفعيل درع الأمان بنجاح' : '🛡️ تم إلغاء درع الأمان');
+                        } catch {
+                          toast.error('عذراً، فشل تعديل حالة الدرع');
+                        }
+                      }}
                     />
                   );
                 })
@@ -1986,7 +2009,7 @@ export default function GarageDashboard() {
           <div className="flex items-center justify-between">
             <span className="font-black text-xs flex items-center gap-1" style={{ color: BRAND.navy }}><HardHat size={14} style={{ color: '#f59e0b' }} />{ownerValetView ? 'المالك (معاينة)' : (currentValetName || `فالية ${valetNumber}`)}</span>
             <div className="flex items-center gap-3">
-              <div className="text-right"><div className="text-[8px] text-slate-400">السعر/ساعة</div><div className="font-black font-mono text-xs">{garage.basePrice} ج</div></div>
+              <div className="text-right"><div className="text-[8px] text-slate-400">السعر/ساعة</div><div className="font-black font-mono text-xs">{garage.basePrice}</div></div>
               <div style={{ width: 1, height: 16, background: BRAND.border }} />
               <div className="text-right"><div className="text-[8px] text-slate-400">الشاغر</div><div className="font-black font-mono text-xs" style={{ color: BRAND.blue }}>{garage.availableSpots}/{garage.capacity}</div></div>
               <button onClick={() => setValetEditSpots(!valetEditSpots)} className="border-0 bg-transparent cursor-pointer" style={{ color: BRAND.blue }}><Edit3 size={12} /></button>
