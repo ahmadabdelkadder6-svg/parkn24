@@ -9,11 +9,8 @@ import {
   CreditCard,
   XCircle,
   Shield,
-  ShieldCheck,
+  CheckCircle,
   AlertTriangle,
-  Locate,
-  Navigation,
-  Compass,
 } from 'lucide-react';
 // 🌟 استيراد getServerNow ودوال البصمة لضمان مطابقة العداد بالملي ثانية بين جميع الهواتف
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
@@ -238,14 +235,20 @@ export default function SessionScreen() {
     return () => clearInterval(interval);
   }, [activeSession?.id, activeStartMs]);
 
-  // 🚨 رصد حالة الاختراق فقط في حال كان الدرع مفعلاً باختيار العميل
+  // 🛡️ فحص حالة الدرع بدقة
+  const isShieldActive = useMemo(() => {
+    if (!activeSession) return false;
+    return Boolean(activeSession.securityShieldActive === true || (activeSession as any).security_shield_active === true);
+  }, [activeSession]);
+
+  // 🚨 رصد حالة الاختراق
   useEffect(() => {
-    if (activeSession && activeSession.securityShieldActive && activeSession.isBreached) {
+    if (activeSession && isShieldActive && activeSession.isBreached) {
       playCustomerBreachAlarm();
       const interval = setInterval(playCustomerBreachAlarm, 4000);
       return () => clearInterval(interval);
     }
-  }, [activeSession?.id, activeSession?.isBreached, activeSession?.securityShieldActive]);
+  }, [activeSession?.id, activeSession?.isBreached, isShieldActive]);
 
   useEffect(() => {
     if (!activeSession) { redirectedToSessionRef.current = false; return; }
@@ -327,39 +330,50 @@ export default function SessionScreen() {
     }
   }, [isFirstFreeApplied, elapsed, sessionRate]);
 
-  // 🛡️ فحص حالة الدرع: إذا كان مفعلاً من قبل العميل يضيف 10 ج.م، وإذا كان معطلاً يضيف 0 ج.م
-  const isShieldActive = activeSession?.securityShieldActive === true;
   const shieldCost = isShieldActive ? SECURITY_SHIELD_FEE : 0;
   const finalTotalCost = displayedCost + shieldCost;
 
-  // 🛡️ دالة التفعيل المؤمنة (تفعيل باتجاه واحد فقط لمنع التحايل)
+  // 🛡️ زر تفعيل الحماية الفضائية السريع والمحصن ضد التعليق
   const handleActivateSecurityShield = async () => {
-    if (!activeSession || isShieldActive || togglingShield) return;
+    if (!activeSession || togglingShield) return;
+    
+    if (isShieldActive) {
+      toast('درع الحماية مفعل بالفعل ومثبت بالفاتورة 🛡️', { icon: 'ℹ️' });
+      return;
+    }
+
     setTogglingShield(true);
+    const toastId = toast.loading('جاري ربط وتفعيل الحماية الفضائية...');
+
+    let targetLat = garage?.lat || 30.0444;
+    let targetLng = garage?.lng || 31.2357;
 
     try {
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          await setSessionSecurityShield(
-            activeSession.id,
-            pos.coords.latitude,
-            pos.coords.longitude
-          );
-          toast.success('🛡️ تم تفعيل الحراسة الفضائية وتثبيتها بالفاتورة (+10 ج.م)', { icon: '🛰️', duration: 4000 });
-          setTogglingShield(false);
-        },
-        async () => {
-          const lat = garage?.lat || 30.0444;
-          const lng = garage?.lng || 31.2357;
-          await setSessionSecurityShield(activeSession.id, lat, lng);
-          toast.success('🛡️ تم تفعيل الحراسة الفضائية وتثبيتها بالفاتورة (+10 ج.م)', { icon: '🛰️', duration: 4000 });
-          setTogglingShield(false);
-        },
-        { enableHighAccuracy: true, timeout: 6000 }
-      );
-    } catch (e) {
-      console.error(e);
-      toast.error('عذراً، فشل تفعيل درع الأمان.');
+      if ('geolocation' in navigator) {
+        try {
+          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: false,
+              timeout: 2500,
+              maximumAge: 10000,
+            });
+          });
+          targetLat = pos.coords.latitude;
+          targetLng = pos.coords.longitude;
+        } catch (gpsErr) {
+          console.log('Using garage coordinates fallback for shield');
+        }
+      }
+
+      await setSessionSecurityShield(activeSession.id, targetLat, targetLng);
+
+      toast.dismiss(toastId);
+      toast.success('🛡️ تم تفعيل الحراسة الفضائية وتثبيتها بالفاتورة (+10 ج.م)', { icon: '🛰️', duration: 4000 });
+    } catch (err: any) {
+      console.error('Failed to activate security shield:', err);
+      toast.dismiss(toastId);
+      toast.error('حدث خطأ أثناء التفعيل، يرجى المحاولة ثانية');
+    } finally {
       setTogglingShield(false);
     }
   };
@@ -388,7 +402,7 @@ export default function SessionScreen() {
       className="h-full text-white flex flex-col items-center justify-center p-6 overflow-y-auto safe-top safe-bottom"
       style={{ background: BRAND.navy }}
     >
-      {/* 🛡️ كارت درع الأمان الفضائي VIP (مؤمن ضد التحايل بعد الشراء) */}
+      {/* 🛡️ كارت درع الأمان الفضائي VIP التفاعلي المباشر */}
       <div
         className="w-full border-2 rounded-2xl p-4 mb-4 text-right transition-all relative overflow-hidden"
         style={{
@@ -433,7 +447,6 @@ export default function SessionScreen() {
         <div className="flex items-center justify-between border-t pt-3" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
           <div>
             {isShieldActive ? (
-              // 🔒 بعد التفعيل: تظهر كشارة خضراء مقفولة ومؤكدة (لا يمكن إلغاؤها للتهرب من الرسوم)
               <div className="flex items-center gap-1.5">
                 {activeSession.isBreached && (
                   <button
@@ -448,8 +461,8 @@ export default function SessionScreen() {
                 </span>
               </div>
             ) : (
-              // 🔘 قبل التفعيل: زر التفعيل الاختياري
               <button
+                type="button"
                 onClick={handleActivateSecurityShield}
                 disabled={togglingShield}
                 className="py-2 px-4 rounded-xl font-black text-xs border-0 cursor-pointer text-white active:scale-95 transition-all shadow-md flex items-center gap-1.5"
@@ -633,7 +646,7 @@ export default function SessionScreen() {
 
       {/* شريط توضيح الدفع المتاح في الجراج */}
       <div className="w-full border rounded-xl p-2.5 mb-4 text-center" style={{ background: BRAND.blueSoft, borderColor: BRAND.border }}>
-        <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold" style={{ color: BRAND.blue }}>
+        <div className="flex items-center justify-between gap-1.5 text-[10px] font-bold text-center" style={{ color: BRAND.blue }}>
           <CreditCard size={12} />
           {garage?.payment_mode === 'cash' ? (
             <span>💵 يقبل الدفع النقدي (كاش) فقط</span>
