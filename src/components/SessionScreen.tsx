@@ -410,76 +410,84 @@ export default function SessionScreen() {
       className="h-full text-white flex flex-col items-center justify-center p-6 overflow-y-auto safe-top safe-bottom"
       style={{ background: BRAND.navy }}
     >
-      {/* 🛡️ كارت درع الأمان الفضائي VIP الاختياري للعميل */}
+      {/* 🛡️ كارت درع الأمان الفضائي VIP مع زر تفعيل/إلغاء واضح جداً وصريح */}
       <div
-        className="w-full border rounded-2xl p-3.5 mb-4 text-right transition-all relative overflow-hidden"
+        className="w-full border-2 rounded-2xl p-4 mb-4 text-right transition-all relative overflow-hidden"
         style={{
           background: isShieldActive 
             ? activeSession.isBreached 
               ? 'linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%)'
-              : 'linear-gradient(135deg, #111827 0%, #0f172a 100%)'
+              : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)'
             : 'rgba(255,255,255,0.03)',
           borderColor: isShieldActive 
             ? activeSession.isBreached 
               ? '#ef4444' 
               : BRAND.blue 
-            : 'rgba(255,255,255,0.1)',
-          boxShadow: isShieldActive ? '0 6px 20px rgba(22,86,184,0.15)' : 'none',
+            : 'rgba(255,255,255,0.15)',
+          boxShadow: isShieldActive ? '0 8px 24px rgba(22,86,184,0.2)' : 'none',
         }}
       >
-        <div className="flex justify-between items-center mb-1.5">
-          <div className="flex items-center gap-1.5">
-            <span className="relative flex h-2 w-2">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isShieldActive ? activeSession.isBreached ? 'bg-red-400' : 'bg-sky-400' : 'bg-slate-500'}`}></span>
-              <span className={`relative inline-flex rounded-full h-2 w-2 ${isShieldActive ? activeSession.isBreached ? 'bg-red-500' : 'bg-sky-500' : 'bg-slate-600'}`}></span>
+        {/* السطر العلوي: العنوان + شارة الحالة */}
+        <div className="flex justify-between items-center mb-2">
+          <div 
+            onClick={handleToggleSecurityShield}
+            className="cursor-pointer flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all active:scale-95"
+            style={{
+              background: isShieldActive ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255,255,255,0.05)',
+              borderColor: isShieldActive ? '#38bdf8' : 'rgba(255,255,255,0.1)',
+            }}
+          >
+            <span className="text-[10px] font-black" style={{ color: isShieldActive ? '#38bdf8' : BRAND.slateMuted }}>
+              {isShieldActive ? '🟢 الحماية شَغّالة' : '⚪ غَير مُفعّل'}
             </span>
-            <span className="text-[9px] font-black" style={{ color: isShieldActive ? activeSession.isBreached ? '#fca5a5' : '#38bdf8' : BRAND.slateMuted }}>
-              {isShieldActive ? activeSession.isBreached ? '🚨 تم رصد حركة!' : '🛰️ الحراسة الفضائية نشطة' : '⚪ خدمة اختيارية (غير مفعلة)'}
-            </span>
+            <span className={`w-2 h-2 rounded-full ${isShieldActive ? 'bg-sky-400 animate-ping' : 'bg-slate-500'}`} />
           </div>
 
-          <Shield size={16} style={{ color: isShieldActive ? activeSession.isBreached ? '#ef4444' : BRAND.green : BRAND.slateMuted }} />
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-xs font-black text-white">درع الحماية الفضائية VIP</h3>
+            <Shield size={16} style={{ color: isShieldActive ? BRAND.green : BRAND.slateMuted }} />
+          </div>
         </div>
 
-        <h3 className="text-xs font-black mb-1 text-white flex items-center justify-end gap-1">
-          <span>حراسة وتتبع السيارة بالأقمار الصناعية</span>
-          <Sparkles size={12} className="text-yellow-400" />
-        </h3>
-
-        <p className="text-[9.5px] font-bold leading-relaxed mb-3" style={{ color: isShieldActive && activeSession.isBreached ? '#fee2e2' : BRAND.slateMuted }}>
+        {/* الوصف التوضيحي */}
+        <p className="text-[10px] font-bold leading-relaxed mb-3" style={{ color: isShieldActive && activeSession.isBreached ? '#fee2e2' : BRAND.slateMuted }}>
           {isShieldActive 
             ? activeSession.isBreached 
-              ? 'تنبيه طارئ! السيارة غادرت فقاعة الأمان (25م) بدون تصريح!'
-              : 'السيارة محاطة بفقاعة أمان فضائية (25م)، وسيصلك إنذار فوري لو تحركت.'
-            : 'احمِ سيارتك طوال فترة غيابك برادار فضائي ينبهك فوراً لو تحركت من مكانها.'}
+              ? '🚨 تنبيه طارئ! السيارة غادرت فقاعة الأمان (25م) بدون تصريح!'
+              : '🔒 سيارتك مراقبة بالأقمار الصناعية ومثبتة بمرساة أمان (25م).'
+            : 'خدمة حراسة اختيارية تنبهك فوراً بصفارة إنذار لو تحركت سيارتك من الجراج.'}
         </p>
 
-        <div className="flex items-center justify-between border-t pt-2.5" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-          <div className="flex gap-2 items-center">
-            {isShieldActive && activeSession.isBreached && (
-              <button
-                onClick={() => setShowSosModal(true)}
-                className="py-1 px-2.5 rounded-lg font-black text-[9px] text-white border-0 bg-red-600 active:scale-95 transition-all cursor-pointer shadow-md"
-              >
-                تقرير SOS 🚔
-              </button>
+        {/* زر التفعيل والتعطيل الكبير والواضح */}
+        <div className="flex items-center justify-between border-t pt-3" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+          <button
+            onClick={handleToggleSecurityShield}
+            disabled={togglingShield}
+            className="py-2 px-4 rounded-xl font-black text-xs border-0 cursor-pointer text-white active:scale-95 transition-all shadow-lg flex items-center gap-1.5"
+            style={{
+              background: isShieldActive 
+                ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' 
+                : 'linear-gradient(135deg, #1656b8 0%, #1d68dc 100%)',
+            }}
+          >
+            {togglingShield ? (
+              <span>جاري المعالجة...</span>
+            ) : isShieldActive ? (
+              <>
+                <XCircle size={14} />
+                <span>إلغاء الحماية (إيقاف)</span>
+              </>
+            ) : (
+              <>
+                <Shield size={14} />
+                <span>تفعيل الحماية الآن 🛡️</span>
+              </>
             )}
-
-            <button
-              onClick={handleToggleSecurityShield}
-              disabled={togglingShield}
-              className="py-1.5 px-3 rounded-xl font-black text-[10px] border-0 cursor-pointer text-white active:scale-95 transition-all shadow-md flex items-center gap-1"
-              style={{
-                background: isShieldActive ? '#ef4444' : BRAND.blue,
-              }}
-            >
-              {togglingShield ? 'جاري...' : isShieldActive ? 'إلغاء التفعيل ✕' : 'تفعيل الحماية 🛡️'}
-            </button>
-          </div>
+          </button>
 
           <div className="text-right">
-            <span className="text-[9px] font-bold text-slate-400 block">رسوم الحماية</span>
-            <span className="text-[11px] font-black font-mono" style={{ color: isShieldActive ? BRAND.green : BRAND.slateMuted }}>
+            <span className="text-[9px] font-bold text-slate-400 block">رسوم الخدمة</span>
+            <span className="text-xs font-black font-mono" style={{ color: isShieldActive ? BRAND.green : '#ffffff' }}>
               {isShieldActive ? '+10.00 ج.م مضافة' : '+10.00 ج.م فقط'}
             </span>
           </div>
