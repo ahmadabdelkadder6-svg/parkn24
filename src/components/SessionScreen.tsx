@@ -12,11 +12,10 @@ import {
   CheckCircle,
   AlertTriangle,
 } from 'lucide-react';
-// 🌟 استيراد getServerNow ودوال البصمة لضمان مطابقة العداد بالملي ثانية بين جميع الهواتف
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import {
-  calculateFullHours,
   calculateCost,
+  calculateFullHours,
   formatTime,
   getRemainingInCurrentHour,
   SECURITY_SHIELD_FEE,
@@ -24,20 +23,19 @@ import {
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
-/* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
-  blue: '#1656b8',       // الأزرق الرسمي
-  blueDark: '#0f3d85',   // الكحلي الفخم
-  blueLight: '#e8f0fe',  // الأزرق الفاتح جداً
-  blueSoft: 'rgba(22, 86, 184, 0.08)', // كحلي زجاجي ناعم
-  green: '#8cc63f',      // الأخضر الرسمي
-  greenDark: '#6ea62a',  // أخضر داكن للخطوط
-  greenLight: 'rgba(140, 198, 63, 0.12)', // خلفية خضراء ناعمة
-  navy: '#0a1628',       // الكحلي الليلي الغامق للواجهة
-  navyLight: '#111e36',  // كحلي أفتح للبطاقات والـ overlays
-  slate: '#64748b',      // الرمادي الهادئ
-  slateMuted: '#94a3b8', // الرمادي الباهت
-  border: 'rgba(255, 255, 255, 0.08)', // حدود زجاجية رفيعة
+  blue: '#1656b8',
+  blueDark: '#0f3d85',
+  blueLight: '#e8f0fe',
+  blueSoft: 'rgba(22, 86, 184, 0.08)',
+  green: '#8cc63f',
+  greenDark: '#6ea62a',
+  greenLight: 'rgba(140, 198, 63, 0.12)',
+  navy: '#0a1628',
+  navyLight: '#111e36',
+  slate: '#64748b',
+  slateMuted: '#94a3b8',
+  border: 'rgba(255, 255, 255, 0.08)',
 };
 
 const safeParseTime = (value: any): number => {
@@ -52,7 +50,6 @@ const safeParseTime = (value: any): number => {
   return 0;
 };
 
-// 🔊 نظام صوت إنذار الاختراق اللحظي لهاتف العميل
 let customerBreachAudioCtx: AudioContext | null = null;
 const playCustomerBreachAlarm = async () => {
   try {
@@ -235,13 +232,12 @@ export default function SessionScreen() {
     return () => clearInterval(interval);
   }, [activeSession?.id, activeStartMs]);
 
-  // 🛡️ فحص حالة الدرع بدقة
+  // 🛡️ فحص حالة الدرع لضمان تحديث الواجهة تلقائياً
   const isShieldActive = useMemo(() => {
     if (!activeSession) return false;
     return Boolean(activeSession.securityShieldActive === true || (activeSession as any).security_shield_active === true);
   }, [activeSession]);
 
-  // 🚨 رصد حالة الاختراق
   useEffect(() => {
     if (activeSession && isShieldActive && activeSession.isBreached) {
       playCustomerBreachAlarm();
@@ -291,7 +287,6 @@ export default function SessionScreen() {
   const sessionRate = Number(activeSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const isFirstFreeApplied = activeSession?.isFirstFreeSession === true;
 
-  // 🎁 الحسابات التفاعلية
   const { displayedCost, displayedHours, countdownLabel, countdownTime, isFreeNow } = useMemo(() => {
     const defaultCountdown = { minutes: 59, seconds: 59 };
 
@@ -333,7 +328,6 @@ export default function SessionScreen() {
   const shieldCost = isShieldActive ? SECURITY_SHIELD_FEE : 0;
   const finalTotalCost = displayedCost + shieldCost;
 
-  // 🛡️ زر تفعيل الحماية الفضائية السريع والمحصن ضد التعليق
   const handleActivateSecurityShield = async () => {
     if (!activeSession || togglingShield) return;
     
@@ -365,6 +359,7 @@ export default function SessionScreen() {
         }
       }
 
+      // ✅ تفعيل الحماية في قاعدة البيانات وقفلها نهائياً
       await setSessionSecurityShield(activeSession.id, targetLat, targetLng);
 
       toast.dismiss(toastId);
@@ -402,7 +397,7 @@ export default function SessionScreen() {
       className="h-full text-white flex flex-col items-center justify-center p-6 overflow-y-auto safe-top safe-bottom"
       style={{ background: BRAND.navy }}
     >
-      {/* 🛡️ كارت درع الأمان الفضائي VIP التفاعلي المباشر */}
+      {/* 🛡️ كارت درع الأمان الفضائي VIP التفاعلي المباشر للعميل */}
       <div
         className="w-full border-2 rounded-2xl p-4 mb-4 text-right transition-all relative overflow-hidden"
         style={{
@@ -456,11 +451,13 @@ export default function SessionScreen() {
                     تقرير SOS 🚔
                   </button>
                 )}
+                {/* 🔒 تم قفل الدرع نهائياً عند التفعيل بنجاح ولا يوجد زر للإلغاء */}
                 <span className="py-1.5 px-3 rounded-xl font-black text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
                   <CheckCircle size={12} /> تم تأكيد الحماية للفاتورة
                 </span>
               </div>
             ) : (
+              /* زر التفعيل يظهر فقط في حال كان الدرع مغلقاً للعميل */
               <button
                 type="button"
                 onClick={handleActivateSecurityShield}
@@ -491,7 +488,6 @@ export default function SessionScreen() {
         </div>
       </div>
 
-      {/* 🎁 شارة مميزة علوية ترحيبية في العداد إذا كانت الجلسة مجانية */}
       {isFirstFreeApplied && (
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
@@ -519,7 +515,6 @@ export default function SessionScreen() {
         </motion.div>
       )}
 
-      {/* حلقة العداد الدائرية الكبيرة */}
       <motion.div
         animate={{
           boxShadow: isFreeNow
@@ -546,7 +541,6 @@ export default function SessionScreen() {
         <div className="text-[8px] font-bold mt-1.5" style={{ color: BRAND.slateMuted }}>مدة الركن الفعلية</div>
       </motion.div>
 
-      {/* كارت الحساب التفاعلي */}
       <div className="w-full border rounded-2xl p-4 mb-4" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
         <div className="flex justify-between items-center mb-3">
           <div className="text-center">
@@ -564,7 +558,6 @@ export default function SessionScreen() {
           </div>
         </div>
 
-        {/* تفصيل الفاتورة الشفاف */}
         <div className="bg-slate-900/40 rounded-xl p-2.5 mb-2.5 space-y-1.5 text-xs text-right border border-white/5">
           <div className="flex justify-between items-center">
             <span className="font-black font-mono text-white">{displayedCost} ج.م</span>
@@ -584,7 +577,6 @@ export default function SessionScreen() {
           </div>
         </div>
 
-        {/* عداد التنازل الديناميكي */}
         <div className="rounded-xl p-2 text-center border" style={{ background: BRAND.blueSoft, borderColor: BRAND.border }}>
           <div className="text-[8px] mb-0.5 font-bold" style={{ color: BRAND.slateMuted }}>{countdownLabel}</div>
           <div className="text-xs font-black font-mono" style={{ color: isFreeNow ? BRAND.green : BRAND.blue }}>
@@ -599,7 +591,6 @@ export default function SessionScreen() {
         </div>
       )}
 
-      {/* 💡 بانر إرشادي متناسق ومدمج ومريح للشاشة */}
       <div 
         className="w-full rounded-2xl p-3 text-center border"
         style={{
@@ -623,7 +614,6 @@ export default function SessionScreen() {
         </p>
       </div>
 
-      {/* بيانات السيارة والسعر */}
       <div className="w-full grid grid-cols-2 gap-2.5 mb-3 mt-3">
         <div className="border p-2.5 rounded-2xl text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
           <Car size={14} style={{ color: BRAND.blue }} className="mx-auto mb-1" />
@@ -644,7 +634,6 @@ export default function SessionScreen() {
         </div>
       )}
 
-      {/* شريط توضيح الدفع المتاح في الجراج */}
       <div className="w-full border rounded-xl p-2.5 mb-4 text-center" style={{ background: BRAND.blueSoft, borderColor: BRAND.border }}>
         <div className="flex items-center justify-between gap-1.5 text-[10px] font-bold text-center" style={{ color: BRAND.blue }}>
           <CreditCard size={12} />
@@ -658,7 +647,6 @@ export default function SessionScreen() {
         </div>
       </div>
 
-      {/* زر إنهاء الجلسة الفاخر */}
       <button
         onClick={() => setScreen('summary')}
         className="w-full py-3.5 rounded-xl active:scale-[0.98] transition-all mb-3 flex items-center justify-center border-0 text-white cursor-pointer font-black"
@@ -676,7 +664,6 @@ export default function SessionScreen() {
         </span>
       </button>
 
-      {/* زر العودة الصامت */}
       <button
         onClick={() => setScreen('list')}
         className="w-full py-2.5 rounded-xl border cursor-pointer bg-transparent text-xs"
@@ -685,7 +672,6 @@ export default function SessionScreen() {
         العودة للقائمة الرئيسية
       </button>
 
-      {/* 🚔 [نافذة تقرير الطوارئ SOS لكسر فقاعة الأمان الجغرافية للعميل] */}
       <AnimatePresence>
         {showSosModal && activeSession && isShieldActive && activeSession.isBreached && (
           <div 

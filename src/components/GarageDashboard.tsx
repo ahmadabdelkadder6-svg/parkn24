@@ -16,12 +16,10 @@ import { subscribeToPush, sendSecurityBreachPush } from '../lib/pushManager';
 const UNDO_TIMEOUT_SECONDS = 30;
 const GEOFENCE_RADIUS_METERS = 250;
 
-// ⏱️ إعدادات التزامن الذكي للخلفية
 const VALET_PING_INTERVAL_MS = 8000;
 const VALET_LIVE_THRESHOLD_MS = 25000;
 const VALET_BACKGROUND_GRACE_MS = 10 * 60 * 1000;
 
-// ─── 🔔 نظام الصوت والتنبيهات المدمج داخل الشاشة ───────────────────
 let garageAudioCtx: AudioContext | null = null;
 let isAudioUnlocked = false;
 
@@ -52,7 +50,6 @@ if (typeof window !== 'undefined') {
   events.forEach(e => document.addEventListener(e, onFirstTouch, { passive: true }));
 }
 
-// 🔊 أقصى وأقوى صوت إنذار (نغمات طوارئ حادة ومضاعفة لاختراق الضوضاء)
 const playCarArrivalAlarm = async () => {
   try {
     await unlockAudioEngine();
@@ -60,27 +57,21 @@ const playCarArrivalAlarm = async () => {
     if (garageAudioCtx.state === 'suspended') await garageAudioCtx.resume();
 
     const now = garageAudioCtx.currentTime;
-
-    // رفع الصوت لأقصى طاقة 100%
     const masterGain = garageAudioCtx.createGain();
     masterGain.gain.setValueAtTime(1.0, now);
     masterGain.connect(garageAudioCtx.destination);
 
-    // 8 نبضات إنذار حادة وسريعة جداً
     for (let i = 0; i < 8; i++) {
       const start = now + (i * 0.25);
       const duration = 0.22;
 
-      // مولد صوت 1: نغمة حادة جداً
       const osc1 = garageAudioCtx.createOscillator();
-      // مولد صوت 2: نغمة جرس مضاعفة للحدة
       const osc2 = garageAudioCtx.createOscillator();
       const noteGain = garageAudioCtx.createGain();
 
       osc1.type = 'sawtooth';
       osc2.type = 'square';
 
-      // الترددات الحادة الخارقة (1400Hz و 2600Hz)
       const freq = i % 2 === 0 ? 1400 : 2600;
       osc1.frequency.setValueAtTime(freq, start);
       osc2.frequency.setValueAtTime(freq * 1.25, start);
@@ -102,14 +93,10 @@ const playCarArrivalAlarm = async () => {
   }
 };
 
-// 📳 أقصى نمط اهتزاز عنيف ومستمر للهاتف (8 ثوانٍ رنين طوارئ)
 const triggerVibration = () => {
   try {
     if ('vibrate' in navigator) {
-      navigator.vibrate([
-        1500, 100, 1500, 100, 1500, 100, // رنات طويلة متواصلة
-        2000, 150, 2000                  // رنة ختامية قوية
-      ]);
+      navigator.vibrate([1500, 100, 1500, 100, 1500, 100, 2000, 150, 2000]);
     }
   } catch {}
 };
@@ -151,21 +138,20 @@ const fireIncomingCarAlert = (carPlate: string) => {
   );
 };
 
-/* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
-  blue: '#1656b8',       // الأزرق الرسمي للوجو
-  blueDark: '#0f3d85',   // الكحلي الفخم
-  blueLight: '#e8f0fe',  // الأزرق الفاتح جداً
-  blueSoft: '#f0f5ff',   // خلفية ناعمة مريحة
-  green: '#8cc63f',      // الأخضر الرسمي للوجو
-  greenDark: '#6ea62a',  // أخضر داكن للخطوط والنصوص
-  greenLight: '#f2fae6', // خلفية خضراء ناعمة
-  navy: '#0a1628',       // الكحلي الليلي الغامق
-  slate: '#475569',      // الرمادي الهادئ
-  slateMuted: '#94a3b8', // الرمادي الباهت
-  border: '#e2e8f0',     // الحدود الرمادية الناعمة
-  card: '#ffffff',       // الكروت البيضاء النظيفة
-  bg: '#f4f7fc',         // الخلفية العامة المريحة
+  blue: '#1656b8',
+  blueDark: '#0f3d85',
+  blueLight: '#e8f0fe',
+  blueSoft: '#f0f5ff',
+  green: '#8cc63f',
+  greenDark: '#6ea62a',
+  greenLight: '#f2fae6',
+  navy: '#0a1628',
+  slate: '#475569',
+  slateMuted: '#94a3b8',
+  border: '#e2e8f0',
+  card: '#ffffff',
+  bg: '#f4f7fc',
 };
 
 interface UndoableSession {
@@ -175,25 +161,6 @@ interface UndoableSession {
   price: number;
   addedAt: number;
 }
-
-interface DailyStat {
-  garage_id: string;
-  stat_date: string;
-  total_sessions: number;
-  manual_sessions: number;
-  app_sessions: number;
-  total_revenue: number;
-  cash_revenue: number;
-  instapay_revenue: number;
-  wallet_revenue: number;
-  cashwallet_revenue: number;
-  confirmed_revenue: number;
-  pending_revenue: number;
-}
-
-// ==========================================
-// 🌍 نظام السياج الجغرافي الذكي (GEOFENCE ENGINE)
-// ==========================================
 
 interface GeofenceState {
   status: 'loading' | 'inside' | 'outside' | 'denied' | 'error' | 'no_garage_coords';
@@ -604,10 +571,6 @@ const OwnerValetLocationBanner = memo(function OwnerValetLocationBanner({
   );
 });
 
-// ==========================================
-// أدوات مساعدة
-// ==========================================
-
 const toMs = (value: any): number => {
   if (!value) return 0;
   if (typeof value === 'string') {
@@ -640,13 +603,6 @@ const timestampToLocalDate = (ts: number): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-const formatLocalDateArabic = (dateStr: string): string => {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString('ar-EG', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-  });
-};
-
 const normalizeSearchPlate = (plate?: string): string => normalizePlate(plate);
 
 interface ActiveSessionCardProps {
@@ -656,9 +612,9 @@ interface ActiveSessionCardProps {
   onEndSession: (id: string, carPlate: string, cost: number, hours: number, minutes: number, source: 'app' | 'manual', agreedPrice?: number) => void;
   onUndo: (un: UndoableSession) => void;
   getUndoRemainingSeconds: (addedAt: number) => number;
-  onToggleShield: (id: string, active: boolean) => void; // 🛡️ ممرر للتحكم في درع الأمان تفاعلياً
 }
 
+// 🛡️ شارة الدرع أصبحت للقراءة فقط تماماً (ولا يمكن للسايس الضغط عليها أو تغييرها)
 const ActiveSessionCard = memo(function ActiveSessionCard({
   session: s,
   basePrice,
@@ -666,7 +622,6 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
   onEndSession,
   onUndo,
   getUndoRemainingSeconds,
-  onToggleShield,
 }: ActiveSessionCardProps) {
   const [, setLocalTick] = useState(0);
   useEffect(() => {
@@ -684,7 +639,6 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
   const hrs = isFreeNow ? 0 : calculateFullHours(el);
   const rate = Number(s.agreedPrice ?? basePrice);
   
-  // 🛡️ احتساب درع الأمان (+10 ج.م ثابتة)
   const isShieldActive = s.securityShieldActive === true;
   const shieldFee = isShieldActive ? 10 : 0;
   const baseCost = isFreeNow ? 0 : calculateCost(el, rate);
@@ -714,21 +668,12 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
           <span className="font-bold text-slate-500 font-mono" style={{ fontSize: 11 }}>{formatElapsed(el)} • {hrs}س</span>
           <span className="font-black text-white shrink-0 text-[8px] px-2 py-0.5 rounded" style={{ background: isM ? '#f59e0b' : BRAND.blue }}>{isM ? 'يدوي' : 'تطبيق'}</span>
           
-          {/* 🛡️ زر تفاعلي للتحكم في درع الأمان VIP (مفتوح للسايس والعميل في أي وقت) */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleShield(s.id, !isShieldActive);
-            }}
-            className={`font-black flex items-center gap-1 shrink-0 text-[9px] px-2 py-0.5 rounded-lg border cursor-pointer active:scale-95 transition-all ${
-              isShieldActive 
-                ? 'bg-sky-50 text-sky-700 border-sky-300 hover:bg-sky-100' 
-                : 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200'
-            }`}
-          >
-            <Shield size={10} className={isShieldActive ? 'fill-sky-700 text-sky-700 animate-pulse' : 'text-slate-400'} />
-            <span>{isShieldActive ? 'درع VIP نشط (+10ج)' : 'تفعيل الدرع'}</span>
-          </button>
+          {/* 🛡️ شارة أمان للقراءة فقط - تظهر للسايس فقط لتوضيح تفعيل العميل للدرع */}
+          {isShieldActive && (
+            <span className="font-black flex items-center gap-0.5 shrink-0 text-[8.5px] px-2 py-0.5 rounded text-sky-700 bg-sky-100 border border-sky-300">
+              <Shield size={9} className="fill-sky-700" /> درع VIP نشط (+10ج)
+            </span>
+          )}
 
           {isFreeApplied && (
             <span className="font-black flex items-center gap-0.5 shrink-0 text-[8px] px-2 py-0.5 rounded" style={{ background: BRAND.greenLight, color: BRAND.greenDark, border: `1px solid ${BRAND.green}40` }}>
@@ -739,7 +684,6 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
         <div className="font-black text-slate-900 text-sm">🚗 {s.carPlate}</div>
       </div>
 
-      {/* تنبيه كسر الفقاعة الجغرافية في الكارت */}
       {isBreached && (
         <div className="mb-2 p-1.5 rounded-lg bg-red-100 border border-red-300 text-red-800 text-[10px] font-black flex items-center justify-between">
           <span>🚨 تحذير: السيارة غادرت فقاعة ركنتها (25م)!</span>
@@ -779,18 +723,12 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
   );
 });
 
-// ==========================================
-// المكون الرئيسي: DASHBOARD
-// ==========================================
-
 export default function GarageDashboard() {
   const {
     garages, currentGarageId, setCurrentGarageId, sessions, addSession, endSession,
     removeSession, offers, updateOffer, cancelOffer, updateGarage, incomingCars,
     removeIncomingCar, fetchAll, confirmRevenue, assignSessionToValet, adjustGarageSpots,
     getMyOwnedGarages,
-    // 🛡️ استدعاء دوال الحماية من الـ Store للتحكم التفاعلي بالدرع
-    setSessionSecurityShield,
     triggerSessionBreach,
   } = useStore();
 
@@ -923,7 +861,6 @@ export default function GarageDashboard() {
     });
   }, [garageSessions]);
 
-  // 🚨 [رصد فوري لكسر فقاعة الأمان الجغرافية للسيارات المحمية]
   useEffect(() => {
     const breachedSession = activeSessions.find(s => s.isBreached === true && s.securityShieldActive === true);
     if (breachedSession) {
@@ -932,7 +869,6 @@ export default function GarageDashboard() {
         duration: 8000,
         icon: '🚨',
       });
-      // إرسال Push Notification فوري عاجل
       if (currentGarageId) {
         sendSecurityBreachPush({
           garageId: currentGarageId,
@@ -982,7 +918,6 @@ export default function GarageDashboard() {
   const [showAddCar, setShowAddCar] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   
-  // 📲 حالة نافذة الباركود لفالية الجراج
   const [showValetQrModal, setShowValetQrModal] = useState(false);
 
   const [editPrice, setEditPrice] = useState(garage?.basePrice || 15);
@@ -1014,17 +949,14 @@ export default function GarageDashboard() {
   const [selectedValetFilter, setSelectedValetFilter] = useState<string | null>(null);
   const [plateSearch, setPlateSearch] = useState('');
 
-  // مبدل الجراجات
   const [showSwitcher, setShowSwitcher] = useState(false);
 
-  // 1️⃣ طلب إذن الإشعارات لفالية الجراج فقط عند فتح الشاشة
   useEffect(() => {
     if (isValet && 'Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
   }, [isValet]);
 
-  // 2️⃣ إطلاق الإنذار الصوتي والاهتزاز للفالية فقط 🅿️ (المالك مستثنى تماماً)
   useEffect(() => {
     if (!carsOnTheWay || carsOnTheWay.length === 0) return;
 
@@ -1032,7 +964,6 @@ export default function GarageDashboard() {
 
     carsOnTheWay.forEach(car => {
       if (!prevIncomingIdsRef.current.has(car.id)) {
-        // 🛡️ التنبيه يعمل فقط لشاشة الفالية
         if (isValet) {
           fireIncomingCarAlert(car.carPlate);
           toast(`🚨 سيارة في الطريق!\n🚗 ${car.carPlate}`, { duration: 8000, icon: '🚨' });
@@ -1078,7 +1009,6 @@ export default function GarageDashboard() {
   }, [valetActiveSessions, plateSearch]);
 
   const fetchGarageDailyStats = useCallback(async () => {
-    // جلب الإحصائيات في الخلفية
   }, []);
 
   useEffect(() => {
@@ -1292,7 +1222,6 @@ export default function GarageDashboard() {
     );
   }, [undoTick, sessions]);
 
-  // 🛡️ حظر الفالية الحقيقي فقط في حال كان خارج النطاق الجغرافي
   if (isValetBlocked && garage) {
     return (
       <ValetGeofenceBlockScreen
@@ -1331,7 +1260,7 @@ export default function GarageDashboard() {
       status: 'active', 
       source: 'manual', 
       agreedPrice: pr, 
-      securityShieldActive: false, // 🛡️ معطل افتراضياً للركن اليدوي والسايس يفعله إن أراد
+      securityShieldActive: false, // 🛡️ الدرع مقفول ومطفأ تماماً عند تسجيل السيارة يدوياً
       addedBy: isValet ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`) : '' 
     } as any);
     
@@ -1343,7 +1272,6 @@ export default function GarageDashboard() {
     setShowAddCar(false);
   };
 
-  // 🛡️ دالة فتح نافذة التحصيل مع التأمين الفوري للشاشة
   const openConfirmPayment = (sid: string, cp: string, cost: number, hrs: number, minutes: number, source: 'app' | 'manual', ap?: number) => {
     const sessionObj = activeSessions.find(s => s.id === sid);
     const isFreeApplied = sessionObj?.isFirstFreeSession === true;
@@ -1366,18 +1294,12 @@ export default function GarageDashboard() {
     });
 
     setConfirmPaymentMethod('cash');
-
-    // 🌟 [تأمين 1]: تصفير البحث فوراً لتجهيز القائمة في الخلفية
     setPlateSearch('');
   };
 
-  // 🛡️ دالة إتمام التحصيل والتسجيل مع أقصى حماية للبيانات
   const handleConfirmPayment = async () => {
-    // 🌟 [تأمين 2 - صمام منع الضغط المزدوج]: لو الفالية ضغط مرتين ورا بعض بسرعة ما تتكررش العملية
     if (!confirmSession || isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
-    
-    // 🌟 [تأمين 3]: إيقاف التحديث الخلفي مؤقتاً لمدة ثانيتين لمنع تضارب البيانات أثناء الدفع
     pausePolling(2000);
     
     try {
@@ -1385,7 +1307,6 @@ export default function GarageDashboard() {
       const sd = (sessions || []).find(s => s && s.id === sc.id);
       const pc = (isValet || sc.source === 'manual') ? 'cash' : (confirmPaymentMethod || 'cash');
       
-      // 🌟 [تأمين 4]: حساب الدقائق الترحيبية المجانية بمنتهى الدقة بدون أي تلاعب
       let freeMinutesApplied = 0;
       if (sd?.isFirstFreeSession === true) {
         const elapsedSeconds = Math.floor((getServerNow() - toMs(sd.startTime)) / 1000);
@@ -1398,15 +1319,12 @@ export default function GarageDashboard() {
         ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`).trim() 
         : 'المالك';
 
-      // 🛡️ تصفير حالة كسر الأمان عند الدفع وإغلاق الدرع
       await triggerSessionBreach(sc.id, false);
 
-      // مسح البحث وقفل النافذة فوراً لسرعة استجابة التطبيق
       setPlateSearch('');
       setConfirmSession(null);
       setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
 
-      // تسجيل العملية في قاعدة البيانات وإنهاء الركنة
       await endSession(sc.id, sc.cost, pc, freeMinutesApplied, currentValet);
       
       const paymentText = pc === 'cash' ? 'نقداً (كاش)' : 'من المحفظة الرقمية';
@@ -1415,7 +1333,6 @@ export default function GarageDashboard() {
       console.error('Payment Error:', err);
       toast.error(err.message || 'فشلت عملية التحصيل، يرجى المحاولة مرة أخرى');
     } finally { 
-      // 🌟 [تأمين 5]: إعادة التزامن وفك حظر الضغط بأمان
       pausePolling(0);
       setTimeout(() => { isEndingSessionRef.current = false; }, 800); 
     }
@@ -1466,7 +1383,6 @@ export default function GarageDashboard() {
         return; 
       }
       
-      // إلغاء أي عرض معلق في الخلفية بهدوء
       try {
         const ro = offers.find(
           o => normalizePlate(o.carPlate) === np && (o.status === 'pending' || o.status === 'accepted')
@@ -1476,9 +1392,7 @@ export default function GarageDashboard() {
 
       const startTimeISO = new Date(getServerNow()).toISOString();
 
-      // ✅ حل المشكلة الأولى: يرث حالة درع الأمان التي حددها العميل على هاتفه بدلاً من الإلغاء القسري
-      const initialShield = car.securityShieldActive === true || car.securityShield === true || false;
-
+      // 🛡️ الدرع يبدأ مقفولاً ومطفأ تماماً (العميل يفعله لاحقاً من موبايله)
       await addSession({ 
         garageId: garage.id, 
         carPlate: np || carPlate, 
@@ -1491,16 +1405,15 @@ export default function GarageDashboard() {
         startedBy: 'garage', 
         incomingCarId: carId, 
         addedBy: isValet ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`) : '',
-        securityShieldActive: initialShield, 
+        securityShieldActive: false, // 🔒 معطل إجبارياً عند البداية
         isBreached: false,
       } as any);
       
-      // حذف السيارة من قائمة السيارات القادمة
       try {
         await removeIncomingCar(carId);
       } catch {}
 
-      toast.success(`بدأ حساب ${carPlate} 🚗 ${initialShield ? '🛡️ مع درع VIP' : ''}`);
+      toast.success(`بدأ حساب ${carPlate} 🚗`);
     } catch (e: any) { 
       console.error('handleCarArrived error:', e);
       processedCarsRef.current.delete(carId); 
@@ -1556,7 +1469,6 @@ export default function GarageDashboard() {
             </button>
           )}
 
-          {/* 🟢 زر تفعيل وضع الفالية للمالك */}
           {isOwner && (
             <button
               onClick={() => {
@@ -1587,7 +1499,6 @@ export default function GarageDashboard() {
         {isValet && <div style={{ width: 44 }} />}
       </div>
 
-      {/* 🟢 شريط تنبيه المعاينة للمالك */}
       {ownerValetView && (
         <motion.div 
           initial={{ opacity: 0, y: -8 }} 
@@ -1617,7 +1528,6 @@ export default function GarageDashboard() {
         </motion.div>
       )}
 
-      {/* 👑 بانر حالة الفالية للمالك */}
       {isOwner && <OwnerValetLocationBanner valetLocations={valetLocations} />}
 
       {/* Settings Modal */}
@@ -1763,7 +1673,6 @@ export default function GarageDashboard() {
                 </div>
               </div>
               
-              {/* تفصيل درع الأمان في نافذة التحصيل */}
               {confirmSession.shieldFee ? (
                 <div className="mt-2 text-center p-1.5 rounded-lg text-sky-800 font-black text-[9px] bg-sky-50 border border-sky-200">
                   🛡️ شامل 10 ج.م خدمة درع الأمان والتعقب الفضائي VIP
@@ -1836,7 +1745,6 @@ export default function GarageDashboard() {
       {/* الفالية فقط */}
       {isValet && (
         <>
-          {/* 📲 كارت الباركود الذكي لفالية الجراج لتسويق التطبيق للعملاء */}
           <div
             onClick={() => setShowValetQrModal(true)}
             className="mb-4 border rounded-2xl p-3 flex items-center justify-between text-right cursor-pointer active:scale-[0.98] transition-all"
@@ -1873,7 +1781,6 @@ export default function GarageDashboard() {
             <QrCode size={18} style={{ color: BRAND.blue }} className="shrink-0" />
           </div>
 
-          {/* سيارات في الطريق */}
           {carsOnTheWay.length > 0 && (
             <div className="mb-5">
               <h3 className="font-black mb-2 text-right text-xs" style={{ color: BRAND.blue }}>
@@ -1985,15 +1892,6 @@ export default function GarageDashboard() {
                       onEndSession={openConfirmPayment}
                       onUndo={handleUndoSession}
                       getUndoRemainingSeconds={getUndoRemainingSeconds}
-                      onToggleShield={async (id, active) => {
-                        try {
-                          // ✅ يتيح للسايس التعديل التفاعلي الفوري على حالة الدرع في قاعدة البيانات
-                          await setSessionSecurityShield(id, active);
-                          toast.success(active ? '🛡️ تم تفعيل درع الأمان بنجاح' : '🛡️ تم إلغاء درع الأمان');
-                        } catch {
-                          toast.error('عذراً، فشل تعديل حالة الدرع');
-                        }
-                      }}
                     />
                   );
                 })
@@ -2003,13 +1901,12 @@ export default function GarageDashboard() {
         </>
       )}
 
-      {/* Valet info bar */}
       {isValet && (
         <div className="mb-4 p-3 border rounded-xl bg-white" style={{ borderColor: BRAND.border }}>
           <div className="flex items-center justify-between">
             <span className="font-black text-xs flex items-center gap-1" style={{ color: BRAND.navy }}><HardHat size={14} style={{ color: '#f59e0b' }} />{ownerValetView ? 'المالك (معاينة)' : (currentValetName || `فالية ${valetNumber}`)}</span>
             <div className="flex items-center gap-3">
-              <div className="text-right"><div className="text-[8px] text-slate-400">السعر/ساعة</div><div className="font-black font-mono text-xs">{garage.basePrice}</div></div>
+              <div className="text-right"><div className="text-[8px] text-slate-400">السعر/ساعة</div><div className="font-black font-mono text-xs">{garage.basePrice} ج</div></div>
               <div style={{ width: 1, height: 16, background: BRAND.border }} />
               <div className="text-right"><div className="text-[8px] text-slate-400">الشاغر</div><div className="font-black font-mono text-xs" style={{ color: BRAND.blue }}>{garage.availableSpots}/{garage.capacity}</div></div>
               <button onClick={() => setValetEditSpots(!valetEditSpots)} className="border-0 bg-transparent cursor-pointer" style={{ color: BRAND.blue }}><Edit3 size={12} /></button>
@@ -2025,7 +1922,6 @@ export default function GarageDashboard() {
         </div>
       )}
 
-      {/* سجل العمليات */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
           <span className="font-bold text-[9px] px-2 py-0.5 rounded bg-slate-200" style={{ color: BRAND.slate }}>{filteredCompleted.length} عملية اليوم</span>
@@ -2073,7 +1969,6 @@ export default function GarageDashboard() {
                   </div>
                 </div>
 
-                {/* 📊 بانر العمولة وصافي الأرباح مع كارت تسوية الحساب المالي */}
                 {filteredStats.totalCommission > 0 && (
                   <div className="space-y-2 mb-3">
                     <div className="grid grid-cols-2 gap-2">
@@ -2092,7 +1987,6 @@ export default function GarageDashboard() {
                       </div>
                     </div>
 
-                    {/* ⚖️ كارت تسوية الحساب المالي مع التطبيق */}
                     {(() => {
                       const settlement = filteredStats.activeWallet - filteredStats.activeCommission;
                       const isGarageOwed = settlement > 0;
@@ -2194,7 +2088,6 @@ export default function GarageDashboard() {
                 </div>
 
                 <div className="flex justify-between items-center text-[9px] text-slate-400 font-bold border-t pt-1 mt-1" style={{ borderColor: BRAND.border }}>
-                  {/* 👤 عرض من المسؤول عن الجلسة */}
                   <span style={{ color: BRAND.slate }}>
                     👤 بواسطة: <b style={{ color: BRAND.navy }}>{session.addedBy || 'المالك'}</b>
                   </span>
@@ -2219,7 +2112,6 @@ export default function GarageDashboard() {
         </div>
       </div>
 
-      {/* 📲 نافذة تكبير باركود فالية الجراج للعميل */}
       <AnimatePresence>
         {showValetQrModal && (
           <div
@@ -2273,7 +2165,6 @@ export default function GarageDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Switcher Modal */}
       <AnimatePresence>
         {showSwitcher && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[10000] flex items-end justify-center p-4" style={{ background: 'rgba(10,22,40,0.6)', backdropFilter: 'blur(4px)' }} onClick={() => setShowSwitcher(false)}>
