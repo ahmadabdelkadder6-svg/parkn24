@@ -107,7 +107,7 @@ export default function GarageListScreen() {
   const [showNearbyOnly, setShowNearbyOnly] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [showQrModal, setShowQrModal] = useState(false); // 📲 حالة عرض نافذة الباركود المكبرة
+  const [showQrModal, setShowQrModal] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>({
     lat: 30.0444,
     lng: 31.2357,
@@ -298,7 +298,7 @@ export default function GarageListScreen() {
           </span>
         </div>
 
-        {/* 💳 بطاقة المحفظة (تم تصغير حجمها للنصف مع الحفاظ على وضوح وسماكة الخط) */}
+        {/* 💳 بطاقة المحفظة (نصف الحجم مع لوحة سيارة واضحة وكبيرة) */}
         <div
           style={{
             background: BRAND.blue,
@@ -342,13 +342,16 @@ export default function GarageListScreen() {
             </div>
           </div>
 
-<div className="mt-2 pt-2 border-t border-white/20 flex items-center justify-between">
-  <span className="text-[11px] font-black text-white">🚙 رقم السيارة:</span>
-  <span className="font-mono font-black text-sm bg-white text-[#1656b8] px-3 py-1 rounded-lg shadow-sm tracking-wider">
-    {currentUser?.carPlate || '---'}
-  </span>
-</div>
-        {/* 📲 كارت الباركود الذكي لمشاركة التطبيق (تم رفعه ليكون أسفل المحفظة مباشرة بشكل متناسق) */}
+          {/* 🚙 رقم السيارة بحجم كبير وواضح وبارز */}
+          <div className="mt-2 pt-2 border-t border-white/20 flex items-center justify-between">
+            <span className="text-[11px] font-black text-white">🚙 رقم السيارة:</span>
+            <span className="font-mono font-black text-sm bg-white text-[#1656b8] px-3 py-1 rounded-lg shadow-sm tracking-wider">
+              {currentUser?.carPlate || '---'}
+            </span>
+          </div>
+        </div>
+
+        {/* 📲 كارت الباركود الذكي لمشاركة التطبيق أسفل المحفظة */}
         <div 
           onClick={() => setShowQrModal(true)}
           className="mb-3 border rounded-xl p-2 flex items-center justify-between text-right cursor-pointer active:scale-[0.98] transition-all"
@@ -526,7 +529,7 @@ export default function GarageListScreen() {
           </button>
         </div>
 
-        {/* ═══ القائمة والأكورديون النظيف المبسط جداً ═══ */}
+        {/* ═══ القائمة والأكورديون ═══ */}
         {areaGroups.length > 0 ? (
           <div className="space-y-2.5">
             {areaGroups.map((group) => {
@@ -598,7 +601,7 @@ export default function GarageListScreen() {
         {showTopUp && <TopUpWalletModal onClose={() => setShowTopUp(false)} />}
       </AnimatePresence>
 
-      {/* 📲 نافذة تكبير الباركود لمشاركته مع الأصدقاء واستلام الهدية */}
+      {/* 📲 نافذة تكبير الباركود */}
       <AnimatePresence>
         {showQrModal && (
           <div 
@@ -630,12 +633,10 @@ export default function GarageListScreen() {
                 <Gift size={20} style={{ color: BRAND.greenDark }} />
               </div>
 
-              {/* العنوان الجديد المحفز للمشاركة */}
               <h3 className="text-sm font-black mb-1" style={{ color: BRAND.blueDark }}>
                 📲 شارك بركن 24 مع أصحابك
               </h3>
 
-              {/* النص التحفيزي بـ 30 دقيقة مجاناً */}
               <p className="text-[11px] font-bold mb-4 leading-relaxed" style={{ color: BRAND.slate }}>
                 امسح الكود بموبايل صاحبك لتنزيل التطبيق وسبهم يستمتعوا بـ <span className="font-black" style={{ color: BRAND.greenDark }}>أول 30 دقيقة ركن مجاناً! 🎁🚀</span>
               </p>
@@ -772,7 +773,6 @@ const GarageCard = memo(function GarageCard({
             <Star size={8} fill="currentColor" /> {garage.rating}
           </span>
 
-          {/* 💰 طريقة الدفع واضحة من الخارج */}
           {garage.payment_mode === 'cash' && (
             <span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa' }}>
               💵 نقدي
