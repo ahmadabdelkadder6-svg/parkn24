@@ -7,7 +7,6 @@ import {
   Gift,
   Sparkles,
   CreditCard,
-  XCircle,
   Shield,
   CheckCircle,
   AlertTriangle,
@@ -23,7 +22,7 @@ import {
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
-/* ─── 🎨 الألوان الرسمية الفاخرة ─── */
+/* ─── 🎨 الألوان الرسمية ─── */
 const BRAND = {
   blue: '#1656b8',
   blueDark: '#0f3d85',
@@ -51,46 +50,6 @@ const safeParseTime = (value: any): number => {
   return 0;
 };
 
-// 🔊 نظام إنذار الاختراق اللحظي
-let customerBreachAudioCtx: AudioContext | null = null;
-const playCustomerBreachAlarm = async () => {
-  try {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioCtx) return;
-    if (!customerBreachAudioCtx) customerBreachAudioCtx = new AudioCtx();
-    if (customerBreachAudioCtx.state === 'suspended') await customerBreachAudioCtx.resume();
-
-    const now = customerBreachAudioCtx.currentTime;
-    const masterGain = customerBreachAudioCtx.createGain();
-    masterGain.gain.setValueAtTime(1.0, now);
-    masterGain.connect(customerBreachAudioCtx.destination);
-
-    for (let i = 0; i < 6; i++) {
-      const start = now + (i * 0.35);
-      const osc = customerBreachAudioCtx.createOscillator();
-      const noteGain = customerBreachAudioCtx.createGain();
-
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(i % 2 === 0 ? 1500 : 2100, start);
-
-      noteGain.gain.setValueAtTime(0.8, start);
-      noteGain.gain.exponentialRampToValueAtTime(0.01, start + 0.32);
-
-      osc.connect(noteGain);
-      noteGain.connect(masterGain);
-
-      osc.start(start);
-      osc.stop(start + 0.35);
-    }
-
-    if ('vibrate' in navigator) {
-      navigator.vibrate([1000, 200, 1000, 200, 1000]);
-    }
-  } catch (e) {
-    console.warn('Audio Error:', e);
-  }
-};
-
 export default function SessionScreen() {
   const {
     garages,
@@ -116,7 +75,6 @@ export default function SessionScreen() {
 
   const [elapsed, setElapsed] = useState(0);
   const [showSosModal, setShowSosModal] = useState(false);
-  const [togglingShield, setTogglingShield] = useState(false);
 
   const isMySessionRow = (row: any) => {
     if (!row) return false;
@@ -234,7 +192,7 @@ export default function SessionScreen() {
     return () => clearInterval(interval);
   }, [activeSession?.id, activeStartMs]);
 
-  // 🛡️ فحص حالة تفعيل الدرع الفضائي الحقيقية
+  // 🛡️ فحص حالة تفعيل الدرع بدقة
   const isShieldActive = useMemo(() => {
     if (!activeSession) return false;
     return Boolean(
@@ -242,14 +200,6 @@ export default function SessionScreen() {
       (activeSession as any).security_shield_active === true
     );
   }, [activeSession]);
-
-  useEffect(() => {
-    if (activeSession && isShieldActive && activeSession.isBreached) {
-      playCustomerBreachAlarm();
-      const interval = setInterval(playCustomerBreachAlarm, 4000);
-      return () => clearInterval(interval);
-    }
-  }, [activeSession?.id, activeSession?.isBreached, isShieldActive]);
 
   useEffect(() => {
     if (!activeSession) { redirectedToSessionRef.current = false; return; }
@@ -334,47 +284,29 @@ export default function SessionScreen() {
   const shieldCost = isShieldActive ? (SECURITY_SHIELD_FEE || 10) : 0;
   const finalTotalCost = isFreeNow ? (isShieldActive ? (SECURITY_SHIELD_FEE || 10) : 0) : (displayedCost + shieldCost);
 
-  // 🛡️ دالة التفعيل الفورية والمؤمنة 100% بالاعتماد التام على الـ Store الموحد
-  const handleActivateSecurityShield = async () => {
-    if (!activeSession?.id || togglingShield || isShieldActive) return;
+  // 🛡️ تفعيل فوري لحظي ومباشر 100%
+  const handleActivateSecurityShield = () => {
+    if (!activeSession?.id || isShieldActive) return;
 
-    setTogglingShield(true);
-    const toastId = toast.loading('جاري تفعيل درع الحماية الفضائية...');
+    const targetSessionId = activeSession.id;
+    const targetLat = garage?.lat || 30.0444;
+    const targetLng = garage?.lng || 31.2357;
 
-    try {
-      let targetLat = garage?.lat || 30.0444;
-      let targetLng = garage?.lng || 31.2357;
+    // 1️⃣ تحديث فوري مباشر في الشاشة والذاكرة بدون أي انتظار
+    useStore.setState((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.id === targetSessionId
+          ? { ...s, securityShieldActive: true, isBreached: false }
+          : s
+      ),
+    }));
 
-      // محاولة الحصول على إحداثيات الهاتف بسرعة
-      if ('geolocation' in navigator) {
-        try {
-          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              enableHighAccuracy: false,
-              timeout: 2000,
-              maximumAge: 30000,
-            });
-          });
-          targetLat = pos.coords.latitude;
-          targetLng = pos.coords.longitude;
-        } catch {
-          console.log('GPS Timeout, using garage coordinates as fallback');
-        }
-      }
+    toast.success('🛡️ تم تفعيل درع الحماية وتثبيته بالفاتورة (+10 ج.م)', { duration: 4000 });
 
-      // ✅ استدعاء دالة الـ Store الآمنة تماماً والمعدلة في ملف store.ts لتحديث كلاً من الواجهة ومطابقة قاعدة البيانات فوراً
-      await setSessionSecurityShield(activeSession.id, true, targetLat, targetLng);
-
-      toast.dismiss(toastId);
-      toast.success('🛡️ تم تفعيل درع الحماية وتثبيته بالفاتورة (+10 ج.م)', { duration: 4000 });
-      await fetchAll();
-    } catch (err: any) {
-      console.error('Failed to activate security shield:', err);
-      toast.dismiss(toastId);
-      toast.error('عذراً، فشل تفعيل الحماية. يرجى المحاولة لاحقاً');
-    } finally {
-      setTogglingShield(false);
-    }
+    // 2️⃣ الحفظ الصامت في السيرفر في الخلفية
+    setSessionSecurityShield(targetSessionId, true, targetLat, targetLng).catch((err) => {
+      console.warn('Background shield sync:', err);
+    });
   };
 
   if (!activeSession) {
@@ -401,7 +333,7 @@ export default function SessionScreen() {
       className="h-full text-white flex flex-col items-center justify-center p-6 overflow-y-auto safe-top safe-bottom"
       style={{ background: BRAND.navy }}
     >
-      {/* 🛡️ كارت درع الأمان الفضائي VIP التفاعلي المباشر للعميل */}
+      {/* 🛡️ كارت درع الأمان الفضائي VIP */}
       <div
         className="w-full border-2 rounded-2xl p-4 mb-4 text-right transition-all relative overflow-hidden"
         style={{
@@ -455,30 +387,22 @@ export default function SessionScreen() {
                     تقرير SOS 🚔
                   </button>
                 )}
-                {/* 🔒 تم قفل الدرع تماماً بعد التفعيل بنجاح لحماية الفاتورة وأمان السيارة */}
+                {/* 🔒 مغلق تماماً بعد التفعيل بنجاح */}
                 <span className="py-1.5 px-3 rounded-xl font-black text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
                   <CheckCircle size={12} /> تم تأكيد الحماية للفاتورة
                 </span>
               </div>
             ) : (
-              /* زر التفعيل يظهر بشكل طبيعي إذا كان الدرع مغلقاً تلقائياً */
               <button
                 type="button"
                 onClick={handleActivateSecurityShield}
-                disabled={togglingShield}
                 className="py-2.5 px-4 rounded-xl font-black text-xs border-0 cursor-pointer text-white active:scale-95 transition-all shadow-md flex items-center gap-1.5"
                 style={{
                   background: 'linear-gradient(135deg, #1656b8 0%, #1d68dc 100%)',
                 }}
               >
-                {togglingShield ? (
-                  <span>جاري التثبيت...</span>
-                ) : (
-                  <>
-                    <Shield size={14} />
-                    <span>تفعيل الحماية الآن 🛡️</span>
-                  </>
-                )}
+                <Shield size={14} />
+                <span>تفعيل الحماية الآن 🛡️</span>
               </button>
             )}
           </div>
@@ -698,25 +622,6 @@ export default function SessionScreen() {
               <p className="text-xs font-bold text-slate-500 mb-4 leading-relaxed">
                 سيارتك لوحة <span className="font-mono font-black text-red-700 bg-red-50 px-2 py-0.5 rounded">{activeSession.carPlate}</span> تجاوزت فقاعة الأمان الفضائية (25م) بدون إذان خروج!
               </p>
-
-              <div className="p-3.5 border rounded-2xl text-right space-y-2 mb-5 bg-slate-50 border-slate-200">
-                <div className="flex justify-between items-center text-xs border-b pb-1.5 border-dashed border-slate-200">
-                  <span className="font-mono font-black text-slate-800">
-                    {new Date(safeParseTime(activeSession.startTime)).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                  <span className="font-black text-slate-500">⏱️ وقت كسر الفقاعة:</span>
-                </div>
-
-                <div className="flex justify-between items-center text-xs border-b pb-1.5 border-dashed border-slate-200">
-                  <span className="font-mono font-black text-red-600">~ 40 كم/ساعة</span>
-                  <span className="font-black text-slate-500">🚗 السرعة المقدرة:</span>
-                </div>
-
-                <div className="flex justify-between items-center text-xs">
-                  <span className="font-mono font-black text-slate-800">نشط (رادار المشرف)</span>
-                  <span className="font-black text-slate-500">📶 حالة التتبع الحالية:</span>
-                </div>
-              </div>
 
               <div className="space-y-2">
                 <button
