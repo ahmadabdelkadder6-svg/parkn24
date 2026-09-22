@@ -7,14 +7,16 @@ import {
   Gift,
   Sparkles,
   CreditCard,
+  XCircle,
   Shield,
   CheckCircle,
   AlertTriangle,
 } from 'lucide-react';
+// 🌟 استيراد getServerNow ودوال البصمة لضمان مطابقة العداد بالملي ثانية بين جميع الهواتف
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import {
-  calculateCost,
   calculateFullHours,
+  calculateCost,
   formatTime,
   getRemainingInCurrentHour,
   SECURITY_SHIELD_FEE,
@@ -22,20 +24,20 @@ import {
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
-/* ─── 🎨 الألوان الرسمية ─── */
+/* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
-  blue: '#1656b8',
-  blueDark: '#0f3d85',
-  blueLight: '#e8f0fe',
-  blueSoft: 'rgba(22, 86, 184, 0.08)',
-  green: '#8cc63f',
-  greenDark: '#6ea62a',
-  greenLight: 'rgba(140, 198, 63, 0.12)',
-  navy: '#0a1628',
-  navyLight: '#111e36',
-  slate: '#64748b',
-  slateMuted: '#94a3b8',
-  border: 'rgba(255, 255, 255, 0.08)',
+  blue: '#1656b8',       // الأزرق الرسمي
+  blueDark: '#0f3d85',   // الكحلي الفخم
+  blueLight: '#e8f0fe',  // الأزرق الفاتح جداً
+  blueSoft: 'rgba(22, 86, 184, 0.08)', // كحلي زجاجي ناعم
+  green: '#8cc63f',      // الأخضر الرسمي
+  greenDark: '#6ea62a',  // أخضر داكن للخطوط
+  greenLight: 'rgba(140, 198, 63, 0.12)', // خلفية خضراء ناعمة
+  navy: '#0a1628',       // الكحلي الليلي الغامق للواجهة
+  navyLight: '#111e36',  // كحلي أفتح للبطاقات والـ overlays
+  slate: '#64748b',      // الرمادي الهادئ
+  slateMuted: '#94a3b8', // الرمادي الباهت
+  border: 'rgba(255, 255, 255, 0.08)', // حدود زجاجية رفيعة
 };
 
 const safeParseTime = (value: any): number => {
@@ -48,6 +50,46 @@ const safeParseTime = (value: any): number => {
     return value < 1_000_000_000_000 ? value * 1000 : value;
   }
   return 0;
+};
+
+// 🔊 نظام صوت إنذار الاختراق اللحظي لهاتف العميل
+let customerBreachAudioCtx: AudioContext | null = null;
+const playCustomerBreachAlarm = async () => {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    if (!customerBreachAudioCtx) customerBreachAudioCtx = new AudioCtx();
+    if (customerBreachAudioCtx.state === 'suspended') await customerBreachAudioCtx.resume();
+
+    const now = customerBreachAudioCtx.currentTime;
+    const masterGain = customerBreachAudioCtx.createGain();
+    masterGain.gain.setValueAtTime(1.0, now);
+    masterGain.connect(customerBreachAudioCtx.destination);
+
+    for (let i = 0; i < 6; i++) {
+      const start = now + (i * 0.35);
+      const osc = customerBreachAudioCtx.createOscillator();
+      const noteGain = customerBreachAudioCtx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(i % 2 === 0 ? 1500 : 2100, start);
+
+      noteGain.gain.setValueAtTime(0.8, start);
+      noteGain.gain.exponentialRampToValueAtTime(0.01, start + 0.32);
+
+      osc.connect(noteGain);
+      noteGain.connect(masterGain);
+
+      osc.start(start);
+      osc.stop(start + 0.35);
+    }
+
+    if ('vibrate' in navigator) {
+      navigator.vibrate([1000, 200, 1000, 200, 1000]);
+    }
+  } catch (e) {
+    console.warn('Audio Error:', e);
+  }
 };
 
 export default function SessionScreen() {
@@ -75,6 +117,7 @@ export default function SessionScreen() {
 
   const [elapsed, setElapsed] = useState(0);
   const [showSosModal, setShowSosModal] = useState(false);
+  const [togglingShield, setTogglingShield] = useState(false);
 
   const isMySessionRow = (row: any) => {
     if (!row) return false;
@@ -192,14 +235,20 @@ export default function SessionScreen() {
     return () => clearInterval(interval);
   }, [activeSession?.id, activeStartMs]);
 
-  // 🛡️ فحص حالة تفعيل الدرع بدقة
+  // 🛡️ فحص حالة الدرع بدقة
   const isShieldActive = useMemo(() => {
     if (!activeSession) return false;
-    return Boolean(
-      activeSession.securityShieldActive === true ||
-      (activeSession as any).security_shield_active === true
-    );
+    return Boolean(activeSession.securityShieldActive === true || (activeSession as any).security_shield_active === true);
   }, [activeSession]);
+
+  // 🚨 رصد حالة الاختراق
+  useEffect(() => {
+    if (activeSession && isShieldActive && activeSession.isBreached) {
+      playCustomerBreachAlarm();
+      const interval = setInterval(playCustomerBreachAlarm, 4000);
+      return () => clearInterval(interval);
+    }
+  }, [activeSession?.id, activeSession?.isBreached, isShieldActive]);
 
   useEffect(() => {
     if (!activeSession) { redirectedToSessionRef.current = false; return; }
@@ -242,6 +291,7 @@ export default function SessionScreen() {
   const sessionRate = Number(activeSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const isFirstFreeApplied = activeSession?.isFirstFreeSession === true;
 
+  // 🎁 الحسابات التفاعلية
   const { displayedCost, displayedHours, countdownLabel, countdownTime, isFreeNow } = useMemo(() => {
     const defaultCountdown = { minutes: 59, seconds: 59 };
 
@@ -280,33 +330,52 @@ export default function SessionScreen() {
     }
   }, [isFirstFreeApplied, elapsed, sessionRate]);
 
-  // 🛡️ احتساب رسوم الدرع الفضائي (+10 ج.م ثابتة)
-  const shieldCost = isShieldActive ? (SECURITY_SHIELD_FEE || 10) : 0;
-  const finalTotalCost = isFreeNow ? (isShieldActive ? (SECURITY_SHIELD_FEE || 10) : 0) : (displayedCost + shieldCost);
+  const shieldCost = isShieldActive ? SECURITY_SHIELD_FEE : 0;
+  const finalTotalCost = displayedCost + shieldCost;
 
-  // 🛡️ تفعيل فوري لحظي ومباشر 100%
-  const handleActivateSecurityShield = () => {
-    if (!activeSession?.id || isShieldActive) return;
+  // 🛡️ زر تفعيل الحماية الفضائية السريع والمحصن ضد التعليق
+  const handleActivateSecurityShield = async () => {
+    if (!activeSession || togglingShield) return;
+    
+    if (isShieldActive) {
+      toast('درع الحماية مفعل بالفعل ومثبت بالفاتورة 🛡️', { icon: 'ℹ️' });
+      return;
+    }
 
-    const targetSessionId = activeSession.id;
-    const targetLat = garage?.lat || 30.0444;
-    const targetLng = garage?.lng || 31.2357;
+    setTogglingShield(true);
+    const toastId = toast.loading('جاري ربط وتفعيل الحماية الفضائية...');
 
-    // 1️⃣ تحديث فوري مباشر في الشاشة والذاكرة بدون أي انتظار
-    useStore.setState((state) => ({
-      sessions: state.sessions.map((s) =>
-        s.id === targetSessionId
-          ? { ...s, securityShieldActive: true, isBreached: false }
-          : s
-      ),
-    }));
+    let targetLat = garage?.lat || 30.0444;
+    let targetLng = garage?.lng || 31.2357;
 
-    toast.success('🛡️ تم تفعيل درع الحماية وتثبيته بالفاتورة (+10 ج.م)', { duration: 4000 });
+    try {
+      if ('geolocation' in navigator) {
+        try {
+          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: false,
+              timeout: 2500,
+              maximumAge: 10000,
+            });
+          });
+          targetLat = pos.coords.latitude;
+          targetLng = pos.coords.longitude;
+        } catch (gpsErr) {
+          console.log('Using garage coordinates fallback for shield');
+        }
+      }
 
-    // 2️⃣ الحفظ الصامت في السيرفر في الخلفية
-    setSessionSecurityShield(targetSessionId, true, targetLat, targetLng).catch((err) => {
-      console.warn('Background shield sync:', err);
-    });
+      await setSessionSecurityShield(activeSession.id, targetLat, targetLng);
+
+      toast.dismiss(toastId);
+      toast.success('🛡️ تم تفعيل الحراسة الفضائية وتثبيتها بالفاتورة (+10 ج.م)', { icon: '🛰️', duration: 4000 });
+    } catch (err: any) {
+      console.error('Failed to activate security shield:', err);
+      toast.dismiss(toastId);
+      toast.error('حدث خطأ أثناء التفعيل، يرجى المحاولة ثانية');
+    } finally {
+      setTogglingShield(false);
+    }
   };
 
   if (!activeSession) {
@@ -333,7 +402,7 @@ export default function SessionScreen() {
       className="h-full text-white flex flex-col items-center justify-center p-6 overflow-y-auto safe-top safe-bottom"
       style={{ background: BRAND.navy }}
     >
-      {/* 🛡️ كارت درع الأمان الفضائي VIP */}
+      {/* 🛡️ كارت درع الأمان الفضائي VIP التفاعلي المباشر */}
       <div
         className="w-full border-2 rounded-2xl p-4 mb-4 text-right transition-all relative overflow-hidden"
         style={{
@@ -387,7 +456,6 @@ export default function SessionScreen() {
                     تقرير SOS 🚔
                   </button>
                 )}
-                {/* 🔒 مغلق تماماً بعد التفعيل بنجاح */}
                 <span className="py-1.5 px-3 rounded-xl font-black text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
                   <CheckCircle size={12} /> تم تأكيد الحماية للفاتورة
                 </span>
@@ -396,13 +464,20 @@ export default function SessionScreen() {
               <button
                 type="button"
                 onClick={handleActivateSecurityShield}
-                className="py-2.5 px-4 rounded-xl font-black text-xs border-0 cursor-pointer text-white active:scale-95 transition-all shadow-md flex items-center gap-1.5"
+                disabled={togglingShield}
+                className="py-2 px-4 rounded-xl font-black text-xs border-0 cursor-pointer text-white active:scale-95 transition-all shadow-md flex items-center gap-1.5"
                 style={{
                   background: 'linear-gradient(135deg, #1656b8 0%, #1d68dc 100%)',
                 }}
               >
-                <Shield size={14} />
-                <span>تفعيل الحماية الآن 🛡️</span>
+                {togglingShield ? (
+                  <span>جاري التثبيت...</span>
+                ) : (
+                  <>
+                    <Shield size={14} />
+                    <span>تفعيل الحماية الآن 🛡️</span>
+                  </>
+                )}
               </button>
             )}
           </div>
@@ -410,12 +485,13 @@ export default function SessionScreen() {
           <div className="text-right">
             <span className="text-[9px] font-bold text-slate-400 block">رسوم الخدمة</span>
             <span className="text-xs font-black font-mono" style={{ color: isShieldActive ? BRAND.green : '#ffffff' }}>
-              {isShieldActive ? `+${SECURITY_SHIELD_FEE || 10}.00 ج.م مضافة` : `+${SECURITY_SHIELD_FEE || 10}.00 ج.م فقط`}
+              {isShieldActive ? '+10.00 ج.م مضافة' : '+10.00 ج.م فقط'}
             </span>
           </div>
         </div>
       </div>
 
+      {/* 🎁 شارة مميزة علوية ترحيبية في العداد إذا كانت الجلسة مجانية */}
       {isFirstFreeApplied && (
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
@@ -443,6 +519,7 @@ export default function SessionScreen() {
         </motion.div>
       )}
 
+      {/* حلقة العداد الدائرية الكبيرة */}
       <motion.div
         animate={{
           boxShadow: isFreeNow
@@ -469,6 +546,7 @@ export default function SessionScreen() {
         <div className="text-[8px] font-bold mt-1.5" style={{ color: BRAND.slateMuted }}>مدة الركن الفعلية</div>
       </motion.div>
 
+      {/* كارت الحساب التفاعلي */}
       <div className="w-full border rounded-2xl p-4 mb-4" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
         <div className="flex justify-between items-center mb-3">
           <div className="text-center">
@@ -486,6 +564,7 @@ export default function SessionScreen() {
           </div>
         </div>
 
+        {/* تفصيل الفاتورة الشفاف */}
         <div className="bg-slate-900/40 rounded-xl p-2.5 mb-2.5 space-y-1.5 text-xs text-right border border-white/5">
           <div className="flex justify-between items-center">
             <span className="font-black font-mono text-white">{displayedCost} ج.م</span>
@@ -494,7 +573,7 @@ export default function SessionScreen() {
 
           {isShieldActive && (
             <div className="flex justify-between items-center text-emerald-400">
-              <span className="font-black font-mono">+{SECURITY_SHIELD_FEE || 10}.00 ج.م</span>
+              <span className="font-black font-mono">+10.00 ج.م</span>
               <span className="font-bold text-[10px]">🛡️ درع الحماية والتعقب الفضائي VIP:</span>
             </div>
           )}
@@ -505,6 +584,7 @@ export default function SessionScreen() {
           </div>
         </div>
 
+        {/* عداد التنازل الديناميكي */}
         <div className="rounded-xl p-2 text-center border" style={{ background: BRAND.blueSoft, borderColor: BRAND.border }}>
           <div className="text-[8px] mb-0.5 font-bold" style={{ color: BRAND.slateMuted }}>{countdownLabel}</div>
           <div className="text-xs font-black font-mono" style={{ color: isFreeNow ? BRAND.green : BRAND.blue }}>
@@ -519,6 +599,7 @@ export default function SessionScreen() {
         </div>
       )}
 
+      {/* 💡 بانر إرشادي متناسق ومدمج ومريح للشاشة */}
       <div 
         className="w-full rounded-2xl p-3 text-center border"
         style={{
@@ -542,6 +623,7 @@ export default function SessionScreen() {
         </p>
       </div>
 
+      {/* بيانات السيارة والسعر */}
       <div className="w-full grid grid-cols-2 gap-2.5 mb-3 mt-3">
         <div className="border p-2.5 rounded-2xl text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
           <Car size={14} style={{ color: BRAND.blue }} className="mx-auto mb-1" />
@@ -562,6 +644,7 @@ export default function SessionScreen() {
         </div>
       )}
 
+      {/* شريط توضيح الدفع المتاح في الجراج */}
       <div className="w-full border rounded-xl p-2.5 mb-4 text-center" style={{ background: BRAND.blueSoft, borderColor: BRAND.border }}>
         <div className="flex items-center justify-between gap-1.5 text-[10px] font-bold text-center" style={{ color: BRAND.blue }}>
           <CreditCard size={12} />
@@ -575,6 +658,7 @@ export default function SessionScreen() {
         </div>
       </div>
 
+      {/* زر إنهاء الجلسة الفاخر */}
       <button
         onClick={() => setScreen('summary')}
         className="w-full py-3.5 rounded-xl active:scale-[0.98] transition-all mb-3 flex items-center justify-center border-0 text-white cursor-pointer font-black"
@@ -592,6 +676,7 @@ export default function SessionScreen() {
         </span>
       </button>
 
+      {/* زر العودة الصامت */}
       <button
         onClick={() => setScreen('list')}
         className="w-full py-2.5 rounded-xl border cursor-pointer bg-transparent text-xs"
@@ -600,6 +685,7 @@ export default function SessionScreen() {
         العودة للقائمة الرئيسية
       </button>
 
+      {/* 🚔 [نافذة تقرير الطوارئ SOS لكسر فقاعة الأمان الجغرافية للعميل] */}
       <AnimatePresence>
         {showSosModal && activeSession && isShieldActive && activeSession.isBreached && (
           <div 
@@ -611,7 +697,7 @@ export default function SessionScreen() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="rounded-3xl p-6 text-center max-w-sm w-full shadow-2xl relative bg-white"
+              className="rounded-3xl p-6 text-center max-w-sm w-full shadow-2xl relative bg-white text-slate-800"
               onClick={e => e.stopPropagation()}
             >
               <div className="w-14 h-12 rounded-full flex items-center justify-center mx-auto mb-3 bg-red-100 animate-pulse">
@@ -620,8 +706,27 @@ export default function SessionScreen() {
 
               <h3 className="text-base font-black text-red-900 mb-1">🚨 تم رصد حركة غير مصرحة لسيارتك!</h3>
               <p className="text-xs font-bold text-slate-500 mb-4 leading-relaxed">
-                سيارتك لوحة <span className="font-mono font-black text-red-700 bg-red-50 px-2 py-0.5 rounded">{activeSession.carPlate}</span> تجاوزت فقاعة الأمان الفضائية (25م) بدون إذان خروج!
+                سيارتك لوحة <span className="font-mono font-black text-red-700 bg-red-50 px-2 py-0.5 rounded">{activeSession.carPlate}</span> تجاوزت فقاعة الأمان الفضائية (25م) بدون إذن خروج!
               </p>
+
+              <div className="p-3.5 border rounded-2xl text-right space-y-2 mb-5 bg-slate-50 border-slate-200">
+                <div className="flex justify-between items-center text-xs border-b pb-1.5 border-dashed border-slate-200">
+                  <span className="font-mono font-black text-slate-800">
+                    {new Date(safeParseTime(activeSession.startTime)).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  <span className="font-black text-slate-500">⏱️ وقت كسر الفقاعة:</span>
+                </div>
+
+                <div className="flex justify-between items-center text-xs border-b pb-1.5 border-dashed border-slate-200">
+                  <span className="font-mono font-black text-red-600">~ 40 كم/ساعة</span>
+                  <span className="font-black text-slate-500">🚗 السرعة المقدرة:</span>
+                </div>
+
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-mono font-black text-slate-800">نشط (رادار القمر الصناعي)</span>
+                  <span className="font-black text-slate-500">📶 حالة التتبع الحالية:</span>
+                </div>
+              </div>
 
               <div className="space-y-2">
                 <button
