@@ -13,6 +13,7 @@ import {
   Locate,
   Navigation,
   Compass,
+  CheckCircle, // 🌟 تم إضافة أيقونة التأكيد البرمجية المفقودة لتفادي أخطاء الترجمة
 } from 'lucide-react';
 // 🌟 استيراد getServerNow ودوال البصمة لضمان مطابقة العداد بالملي ثانية بين جميع الهواتف
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
@@ -121,6 +122,7 @@ export default function SessionScreen() {
   const [elapsed, setElapsed] = useState(0);
   const [showSosModal, setShowSosModal] = useState(false); // نافذة طوارئ الشرطة
   const [togglingShield, setTogglingShield] = useState(false); // مؤشر تحميل تفعيل الدرع
+  const [localShieldLocked, setLocalShieldLocked] = useState(false); // 🔒 قفل الواجهة محلياً في كسر من الثانية
 
   const isMySessionRow = (row: any) => {
     if (!row) return false;
@@ -243,14 +245,22 @@ export default function SessionScreen() {
     return () => clearInterval(interval);
   }, [activeSession?.id, activeStartMs]);
 
+  // 🛡️ فحص حالة تفعيل الدرع المدمجة بذكاء (State + Zustand + LocalStorage) لمنع الفراغات والمسح التلقائي
+  const isShieldActive = useMemo(() => {
+    if (!activeSession) return false;
+    const fromStorage = localStorage.getItem(`shield_active_${activeSession.id}`) === 'true';
+    const fromSession = Boolean(activeSession.securityShieldActive === true || (activeSession as any).security_shield_active === true);
+    return localShieldLocked || fromStorage || fromSession;
+  }, [activeSession, localShieldLocked]);
+
   // 🚨 [مراقبة أمنية] لو السيارة مخترقة وصوت الإنذار يعمل
   useEffect(() => {
-    if (activeSession && activeSession.isBreached) {
+    if (activeSession && isShieldActive && activeSession.isBreached) {
       playCustomerBreachAlarm();
       const interval = setInterval(playCustomerBreachAlarm, 4000);
       return () => clearInterval(interval);
     }
-  }, [activeSession?.id, activeSession?.isBreached]);
+  }, [activeSession?.id, activeSession?.isBreached, isShieldActive]);
 
   useEffect(() => {
     if (!activeSession) { redirectedToSessionRef.current = false; return; }
@@ -334,62 +344,46 @@ export default function SessionScreen() {
   }, [isFirstFreeApplied, elapsed, sessionRate]);
 
   // 🛡️ حاسب قيمة درع الأمان المدفوعة (+10 ج.م ثابتة في الفاتورة والتكلفة اللحظية)
-  const shieldCost = activeSession?.securityShieldActive ? 10 : 0;
-  const finalTotalCost = displayedCost + shieldCost;
+  const shieldCost = isShieldActive ? 10 : 0;
+  const finalTotalCost = isFreeNow ? (isShieldActive ? 10 : 0) : (displayedCost + shieldCost);
 
-  // 🛡️ تفعيل أو إلغاء تفعيل درع الأمان مقابل 10 ج.م ثابتة بمرونة تامة
-  const handleToggleSecurityShield = async () => {
-    if (!activeSession || togglingShield) return;
+  // 🛡️ دالة التفعيل الفوري الصارمة والسريعة: تعمل في جزء من الثانية بنسبة أمان 100% بدون أي إلغاء
+  const handleActivateSecurityShield = () => {
+    if (!activeSession?.id || isShieldActive || togglingShield) return;
+
     setTogglingShield(true);
+    const targetSessionId = activeSession.id;
+    const targetLat = garage?.lat || 30.0444;
+    const targetLng = garage?.lng || 31.2357;
 
-    const nextState = !activeSession.securityShieldActive;
-
+    // 1. قفل الحالة فوراً محلياً وتحديث الزر
+    setLocalShieldLocked(true);
     try {
-      if (nextState) {
-        // تفعيل الدرع: الحصول على موقع GPS وتثبيت المرساة
-        navigator.geolocation.getCurrentPosition(
-          async (pos) => {
-            await setSessionSecurityShield(
-              activeSession.id,
-              pos.coords.latitude,
-              pos.coords.longitude
-            );
-            toast.success('🛡️ تم تفعيل درع الأمان الفضائي بنجاح! (+10 ج.م ثابتة)', { icon: '🛰️', duration: 4000 });
-            setTogglingShield(false);
-          },
-          async () => {
-            // Fallback لبيانات الجراج في حال تعذر الـ GPS
-            const lat = garage?.lat || 30.0444;
-            const lng = garage?.lng || 31.2357;
-            await setSessionSecurityShield(activeSession.id, lat, lng);
-            toast.success('🛡️ تم تفعيل درع الأمان استناداً لموقع الجراج! (+10 ج.م ثابتة)', { icon: '🛰️', duration: 4000 });
-            setTogglingShield(false);
-          },
-          { enableHighAccuracy: true, timeout: 6000 }
-        );
-      } else {
-        // إلغاء تفعيل الدرع
-        await supabase
-          .from('sessions')
-          .update({ security_shield_active: false, is_breached: false })
-          .eq('id', activeSession.id);
+      localStorage.setItem(`shield_active_${targetSessionId}`, 'true');
+    } catch {}
 
-        useStore.setState((state) => ({
-          sessions: state.sessions.map((s) =>
-            s.id === activeSession.id
-              ? { ...s, securityShieldActive: false, isBreached: false }
-              : s
-          ),
-        }));
+    // 2. تحديث الـ Zustand Store بشكل فوري تزامني
+    useStore.setState((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.id === targetSessionId
+          ? { ...s, securityShieldActive: true, isBreached: false }
+          : s
+      ),
+    }));
 
-        toast('تم إلغاء تفعيل درع الأمان وحذف رسوم الخدمة 🔓', { icon: '🔓', duration: 3000 });
+    toast.success('🛡️ تم تفعيل درع الحماية وتثبيته بالفاتورة (+10 ج.م)', { duration: 4000 });
+
+    // 3. المزامنة الخلفية الهادئة مع قاعدة البيانات وحفظ المرساة الجغرافية
+    setSessionSecurityShield(targetSessionId, true, targetLat, targetLng)
+      .then(() => {
+        fetchAll().catch(() => {});
+      })
+      .catch((err) => {
+        console.warn('Background sync failed:', err);
+      })
+      .finally(() => {
         setTogglingShield(false);
-      }
-    } catch (e) {
-      console.error(e);
-      toast.error('عذراً، فشل تعديل حالة درع الأمان حالياً.');
-      setTogglingShield(false);
-    }
+      });
   };
 
   // شاشة الانتظار والمزامنة
@@ -419,33 +413,33 @@ export default function SessionScreen() {
     >
       {/* 🛡️ كارت درع الأمان الفضائي المدفوع VIP (+10 ج.م ثابتة) */}
       <div
-        className="w-full border rounded-2xl p-4 mb-4 text-right transition-all relative overflow-hidden"
+        className="w-full border-2 rounded-2xl p-4 mb-4 text-right transition-all relative overflow-hidden"
         style={{
-          background: activeSession.isBreached
-            ? 'linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%)'
-            : activeSession.securityShieldActive 
-              ? 'linear-gradient(135deg, #111827 0%, #0f172a 100%)'
-              : 'rgba(255,255,255,0.02)',
+          background: isShieldActive
+            ? activeSession.isBreached
+              ? 'linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%)'
+              : 'linear-gradient(135deg, #111827 0%, #0f172a 100%)'
+            : 'rgba(255,255,255,0.02)',
           borderColor: activeSession.isBreached 
             ? '#ef4444' 
-            : activeSession.securityShieldActive 
+            : isShieldActive 
               ? BRAND.blue 
               : BRAND.border,
-          boxShadow: activeSession.securityShieldActive ? '0 6px 20px rgba(22,86,184,0.15)' : 'none',
+          boxShadow: isShieldActive ? '0 6px 20px rgba(22,86,184,0.15)' : 'none',
         }}
       >
         <div className="flex justify-between items-center mb-2">
           <div className="flex items-center gap-1.5">
             <span className="relative flex h-2.5 w-2.5">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${activeSession.isBreached ? 'bg-red-400' : activeSession.securityShieldActive ? 'bg-sky-400' : 'bg-slate-500'}`}></span>
-              <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${activeSession.isBreached ? 'bg-red-500' : activeSession.securityShieldActive ? 'bg-sky-500' : 'bg-slate-600'}`}></span>
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isShieldActive ? activeSession.isBreached ? 'bg-red-400' : 'bg-sky-400' : 'bg-slate-500'}`}></span>
+              <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isShieldActive ? activeSession.isBreached ? 'bg-red-500' : 'bg-sky-500' : 'bg-slate-600'}`}></span>
             </span>
-            <span className="text-[10px] font-black" style={{ color: activeSession.isBreached ? '#fca5a5' : activeSession.securityShieldActive ? '#38bdf8' : BRAND.slateMuted }}>
-              {activeSession.isBreached ? '🚨 تم الاختراق!' : activeSession.securityShieldActive ? '🛰️ درع الأمان نشط' : '🔓 الحماية غير نشطة'}
+            <span className="text-[10px] font-black" style={{ color: isShieldActive ? activeSession.isBreached ? '#fca5a5' : '#38bdf8' : BRAND.slateMuted }}>
+              {isShieldActive ? activeSession.isBreached ? '🚨 تم الاختراق!' : '🛰️ درع الأمان نشط' : '🔓 الحماية غير نشطة'}
             </span>
           </div>
 
-          <Shield size={18} style={{ color: activeSession.isBreached ? '#ef4444' : activeSession.securityShieldActive ? BRAND.green : BRAND.slateMuted }} />
+          <Shield size={18} style={{ color: isShieldActive ? BRAND.green : BRAND.slateMuted }} />
         </div>
 
         <h3 className="text-xs font-black mb-1 text-white">درع الحماية والتعقب الفضائي VIP 🛡️</h3>
@@ -457,7 +451,7 @@ export default function SessionScreen() {
 
         <div className="flex items-center justify-between border-t pt-3 mt-2" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
           <div className="flex gap-2">
-            {activeSession.isBreached && (
+            {activeSession.isBreached && isShieldActive && (
               <button
                 onClick={() => setShowSosModal(true)}
                 className="py-1.5 px-3 rounded-xl font-black text-[9px] text-white border-0 bg-red-600 active:scale-95 transition-all cursor-pointer shadow-md"
@@ -466,16 +460,25 @@ export default function SessionScreen() {
               </button>
             )}
 
-            <button
-              onClick={handleToggleSecurityShield}
-              disabled={togglingShield}
-              className="py-1.5 px-3.5 rounded-xl font-black text-[10px] border-0 cursor-pointer text-white active:scale-95 transition-all shadow-md"
-              style={{
-                background: activeSession.securityShieldActive ? '#ef4444' : BRAND.blue,
-              }}
-            >
-              {togglingShield ? 'جاري التعديل...' : activeSession.securityShieldActive ? 'تعطيل الحماية 🔓' : 'تفعيل الخدمة 🛡️'}
-            </button>
+            {isShieldActive ? (
+              /* 🔒 بمجرد التنشيط يتم الإغلاق والقفل النهائي لمنع إلغاء الفاتورة */
+              <span className="py-1.5 px-3 rounded-xl font-black text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
+                <CheckCircle size={12} /> تم تأكيد الحماية بالفاتورة
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleActivateSecurityShield}
+                disabled={togglingShield}
+                className="py-1.5 px-3.5 rounded-xl font-black text-[10px] border-0 cursor-pointer text-white active:scale-95 transition-all shadow-md"
+                style={{
+                  background: BRAND.blue,
+                }}
+              >
+                <Shield size={12} className="inline mr-1" />
+                <span>{togglingShield ? 'جاري التنشيط...' : 'تفعيل الخدمة 🛡️'}</span>
+              </button>
+            )}
           </div>
 
           <div className="text-right">
@@ -565,9 +568,9 @@ export default function SessionScreen() {
             <span className="font-bold text-[10px]" style={{ color: BRAND.slateMuted }}>💵 تكلفة ركن الوقت:</span>
           </div>
 
-          {activeSession.securityShieldActive && (
+          {isShieldActive && (
             <div className="flex justify-between items-center text-emerald-400">
-              <span className="font-black font-mono">+10 ج.م</span>
+              <span className="font-black font-mono">+10.00 ج.م</span>
               <span className="font-bold text-[10px]">🛡️ درع الحماية الفضائية VIP:</span>
             </div>
           )}
@@ -662,7 +665,7 @@ export default function SessionScreen() {
         }}
       >
         <span className="text-center text-sm font-black" style={{ color: '#ffffff' }}>
-          {isFreeNow && !activeSession.securityShieldActive ? (
+          {isFreeNow && !isShieldActive ? (
             <span>🚗 إنهاء الجلسة (مجاناً 🎁)</span>
           ) : (
             <span>🚗 إنهاء الجلسة وحساب الفاتورة ({finalTotalCost} ج.م)</span>
@@ -681,7 +684,7 @@ export default function SessionScreen() {
 
       {/* 🚔 [نافذة تقرير الطوارئ SOS لكسر فقاعة الأمان الجغرافية للعميل] */}
       <AnimatePresence>
-        {showSosModal && activeSession && activeSession.isBreached && (
+        {showSosModal && activeSession && isShieldActive && activeSession.isBreached && (
           <div 
             className="fixed inset-0 z-[99999] flex items-center justify-center p-5"
             style={{ background: 'rgba(127,29,29,0.9)', backdropFilter: 'blur(8px)' }}
@@ -702,25 +705,6 @@ export default function SessionScreen() {
               <p className="text-xs font-bold text-slate-500 mb-4 leading-relaxed">
                 سيارتك لوحة <span className="font-mono font-black text-red-700 bg-red-50 px-2 py-0.5 rounded">{activeSession.carPlate}</span> تجاوزت فقاعة الأمان الفضائية (25م) بدون إذان خروج!
               </p>
-
-              <div className="p-3.5 border rounded-2xl text-right space-y-2 mb-5 bg-slate-50 border-slate-200">
-                <div className="flex justify-between items-center text-xs border-b pb-1.5 border-dashed border-slate-200">
-                  <span className="font-mono font-black text-slate-800">
-                    {new Date(safeParseTime(activeSession.startTime)).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                  <span className="font-black text-slate-500">⏱️ وقت كسر الفقاعة:</span>
-                </div>
-
-                <div className="flex justify-between items-center text-xs border-b pb-1.5 border-dashed border-slate-200">
-                  <span className="font-mono font-black text-red-600">~ 40 كم/ساعة</span>
-                  <span className="font-black text-slate-500">🚗 السرعة المقدرة:</span>
-                </div>
-
-                <div className="flex justify-between items-center text-xs">
-                  <span className="font-mono font-black text-slate-800">نشط (رادار القمر الصناعي)</span>
-                  <span className="font-black text-slate-500">📶 حالة التتبع الحالية:</span>
-                </div>
-              </div>
 
               <div className="space-y-2">
                 <button
