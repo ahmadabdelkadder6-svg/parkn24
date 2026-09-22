@@ -332,56 +332,34 @@ export default function SessionScreen() {
   const shieldCost = isShieldActive ? SECURITY_SHIELD_FEE : 0;
   const finalTotalCost = displayedCost + shieldCost;
 
-  // 🛡️ دالة التبديل الاختيارية (Toggle) الحرة للعميل
-  const handleToggleSecurityShield = async () => {
-    if (!activeSession || togglingShield) return;
+  // 🛡️ دالة التفعيل المؤمنة (تفعيل باتجاه واحد فقط لمنع التحايل)
+  const handleActivateSecurityShield = async () => {
+    if (!activeSession || isShieldActive || togglingShield) return;
     setTogglingShield(true);
 
-    const nextState = !isShieldActive;
-
     try {
-      if (nextState) {
-        // تفعيل الدرع باختيار العميل
-        navigator.geolocation.getCurrentPosition(
-          async (pos) => {
-            await setSessionSecurityShield(
-              activeSession.id,
-              pos.coords.latitude,
-              pos.coords.longitude
-            );
-            toast.success('🛡️ تم تفعيل درع الأمان الفضائي بنجاح! (+10 ج.م)', { icon: '🛰️', duration: 4000 });
-            setTogglingShield(false);
-          },
-          async () => {
-            const lat = garage?.lat || 30.0444;
-            const lng = garage?.lng || 31.2357;
-            await setSessionSecurityShield(activeSession.id, lat, lng);
-            toast.success('🛡️ تم تفعيل درع الأمان استناداً لموقع الجراج! (+10 ج.م)', { icon: '🛰️', duration: 4000 });
-            setTogglingShield(false);
-          },
-          { enableHighAccuracy: true, timeout: 6000 }
-        );
-      } else {
-        // إلغاء تفعيل الدرع
-        await supabase
-          .from('sessions')
-          .update({ security_shield_active: false, is_breached: false })
-          .eq('id', activeSession.id);
-
-        useStore.setState((state) => ({
-          sessions: state.sessions.map((s) =>
-            s.id === activeSession.id
-              ? { ...s, securityShieldActive: false, isBreached: false }
-              : s
-          ),
-        }));
-
-        toast('تم إلغاء تفعيل درع الأمان وحذف الرسوم 🔓', { icon: '🔓', duration: 3000 });
-        setTogglingShield(false);
-      }
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          await setSessionSecurityShield(
+            activeSession.id,
+            pos.coords.latitude,
+            pos.coords.longitude
+          );
+          toast.success('🛡️ تم تفعيل الحراسة الفضائية وتثبيتها بالفاتورة (+10 ج.م)', { icon: '🛰️', duration: 4000 });
+          setTogglingShield(false);
+        },
+        async () => {
+          const lat = garage?.lat || 30.0444;
+          const lng = garage?.lng || 31.2357;
+          await setSessionSecurityShield(activeSession.id, lat, lng);
+          toast.success('🛡️ تم تفعيل الحراسة الفضائية وتثبيتها بالفاتورة (+10 ج.م)', { icon: '🛰️', duration: 4000 });
+          setTogglingShield(false);
+        },
+        { enableHighAccuracy: true, timeout: 6000 }
+      );
     } catch (e) {
       console.error(e);
-      toast.error('عذراً، فشل تعديل حالة درع الأمان.');
+      toast.error('عذراً، فشل تفعيل درع الأمان.');
       setTogglingShield(false);
     }
   };
@@ -410,80 +388,86 @@ export default function SessionScreen() {
       className="h-full text-white flex flex-col items-center justify-center p-6 overflow-y-auto safe-top safe-bottom"
       style={{ background: BRAND.navy }}
     >
-      {/* 🛡️ كارت درع الأمان الفضائي VIP مع زر تفعيل/إلغاء واضح جداً وصريح */}
+      {/* 🛡️ كارت درع الأمان الفضائي VIP (مؤمن ضد التحايل بعد الشراء) */}
       <div
         className="w-full border-2 rounded-2xl p-4 mb-4 text-right transition-all relative overflow-hidden"
         style={{
           background: isShieldActive 
             ? activeSession.isBreached 
               ? 'linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%)'
-              : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)'
+              : 'linear-gradient(135deg, #0f172a 0%, #111e36 100%)'
             : 'rgba(255,255,255,0.03)',
           borderColor: isShieldActive 
             ? activeSession.isBreached 
               ? '#ef4444' 
-              : BRAND.blue 
-            : 'rgba(255,255,255,0.15)',
-          boxShadow: isShieldActive ? '0 8px 24px rgba(22,86,184,0.2)' : 'none',
+              : BRAND.green 
+            : 'rgba(255,255,255,0.12)',
+          boxShadow: isShieldActive ? '0 8px 24px rgba(140,198,63,0.15)' : 'none',
         }}
       >
-        {/* السطر العلوي: العنوان + شارة الحالة */}
-        <div className="flex justify-between items-center mb-2">
-          <div 
-            onClick={handleToggleSecurityShield}
-            className="cursor-pointer flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all active:scale-95"
-            style={{
-              background: isShieldActive ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255,255,255,0.05)',
-              borderColor: isShieldActive ? '#38bdf8' : 'rgba(255,255,255,0.1)',
-            }}
-          >
-            <span className="text-[10px] font-black" style={{ color: isShieldActive ? '#38bdf8' : BRAND.slateMuted }}>
-              {isShieldActive ? '🟢 الحماية شَغّالة' : '⚪ غَير مُفعّل'}
+        <div className="flex justify-between items-center mb-1.5">
+          <div className="flex items-center gap-1.5">
+            <span className="relative flex h-2 w-2">
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isShieldActive ? activeSession.isBreached ? 'bg-red-400' : 'bg-emerald-400' : 'bg-slate-500'}`}></span>
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${isShieldActive ? activeSession.isBreached ? 'bg-red-500' : 'bg-emerald-500' : 'bg-slate-600'}`}></span>
             </span>
-            <span className={`w-2 h-2 rounded-full ${isShieldActive ? 'bg-sky-400 animate-ping' : 'bg-slate-500'}`} />
+            <span className="text-[9.5px] font-black" style={{ color: isShieldActive ? activeSession.isBreached ? '#fca5a5' : BRAND.green : BRAND.slateMuted }}>
+              {isShieldActive ? activeSession.isBreached ? '🚨 تم رصد حركة!' : '🛰️ الحراسة الفضائية نشطة ومؤمنة' : '⚪ خدمة اختيارية'}
+            </span>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <h3 className="text-xs font-black text-white">درع الحماية الفضائية VIP</h3>
             <Shield size={16} style={{ color: isShieldActive ? BRAND.green : BRAND.slateMuted }} />
           </div>
         </div>
 
-        {/* الوصف التوضيحي */}
         <p className="text-[10px] font-bold leading-relaxed mb-3" style={{ color: isShieldActive && activeSession.isBreached ? '#fee2e2' : BRAND.slateMuted }}>
           {isShieldActive 
             ? activeSession.isBreached 
-              ? '🚨 تنبيه طارئ! السيارة غادرت فقاعة الأمان (25م) بدون تصريح!'
-              : '🔒 سيارتك مراقبة بالأقمار الصناعية ومثبتة بمرساة أمان (25م).'
-            : 'خدمة حراسة اختيارية تنبهك فوراً بصفارة إنذار لو تحركت سيارتك من الجراج.'}
+              ? '🚨 تنبيه طارئ! سيارتك غادرت فقاعة الأمان (25م) بدون تصريح خروج!'
+              : '🔒 سيارتك مراقبة بالأقمار الصناعية ومثبتة بمرساة أمان (25م) حتى نهاية الجلسة.'
+            : 'تتبع سيارتك بالأقمار الصناعية واستلم إنذاراً فورياً لو تحركت من مكانها.'}
         </p>
 
-        {/* زر التفعيل والتعطيل الكبير والواضح */}
         <div className="flex items-center justify-between border-t pt-3" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-          <button
-            onClick={handleToggleSecurityShield}
-            disabled={togglingShield}
-            className="py-2 px-4 rounded-xl font-black text-xs border-0 cursor-pointer text-white active:scale-95 transition-all shadow-lg flex items-center gap-1.5"
-            style={{
-              background: isShieldActive 
-                ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' 
-                : 'linear-gradient(135deg, #1656b8 0%, #1d68dc 100%)',
-            }}
-          >
-            {togglingShield ? (
-              <span>جاري المعالجة...</span>
-            ) : isShieldActive ? (
-              <>
-                <XCircle size={14} />
-                <span>إلغاء الحماية (إيقاف)</span>
-              </>
+          <div>
+            {isShieldActive ? (
+              // 🔒 بعد التفعيل: تظهر كشارة خضراء مقفولة ومؤكدة (لا يمكن إلغاؤها للتهرب من الرسوم)
+              <div className="flex items-center gap-1.5">
+                {activeSession.isBreached && (
+                  <button
+                    onClick={() => setShowSosModal(true)}
+                    className="py-1 px-2.5 rounded-lg font-black text-[9px] text-white border-0 bg-red-600 active:scale-95 transition-all cursor-pointer shadow-md mr-1"
+                  >
+                    تقرير SOS 🚔
+                  </button>
+                )}
+                <span className="py-1.5 px-3 rounded-xl font-black text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
+                  <CheckCircle size={12} /> تم تأكيد الحماية للفاتورة
+                </span>
+              </div>
             ) : (
-              <>
-                <Shield size={14} />
-                <span>تفعيل الحماية الآن 🛡️</span>
-              </>
+              // 🔘 قبل التفعيل: زر التفعيل الاختياري
+              <button
+                onClick={handleActivateSecurityShield}
+                disabled={togglingShield}
+                className="py-2 px-4 rounded-xl font-black text-xs border-0 cursor-pointer text-white active:scale-95 transition-all shadow-md flex items-center gap-1.5"
+                style={{
+                  background: 'linear-gradient(135deg, #1656b8 0%, #1d68dc 100%)',
+                }}
+              >
+                {togglingShield ? (
+                  <span>جاري التثبيت...</span>
+                ) : (
+                  <>
+                    <Shield size={14} />
+                    <span>تفعيل الحماية الآن 🛡️</span>
+                  </>
+                )}
+              </button>
             )}
-          </button>
+          </div>
 
           <div className="text-right">
             <span className="text-[9px] font-bold text-slate-400 block">رسوم الخدمة</span>

@@ -1434,7 +1434,7 @@ export default function GarageDashboard() {
     setShowSettings(true);
   };
 
-  const handleCarArrived = async (car: any) => {
+   const handleCarArrived = async (car: any) => {
     const carId: string = car.id; 
     const carPlate: string = car.carPlate;
     if (processedCarsRef.current.has(carId)) return;
@@ -1444,27 +1444,51 @@ export default function GarageDashboard() {
     
     try {
       const np = normalizePlate(carPlate);
-      const existing = useStore.getState().sessions.find(s => normalizePlate(s.carPlate) === np && s.status === 'active');
+      const existing = useStore.getState().sessions.find(
+        s => normalizePlate(s.carPlate) === np && s.status === 'active'
+      );
+      
       if (existing) { 
-        await removeIncomingCar(carId); 
+        try { await removeIncomingCar(carId); } catch {}
         toast('الجلسة شغالة بالفعل ✅', { icon: '🚗' }); 
         return; 
       }
       
-      const ro = offers.find(o => normalizePlate(o.carPlate) === np && (o.status === 'pending' || o.status === 'accepted'));
-      if (ro) cancelOffer(ro.id);
+      // إلغاء أي عرض معلق في الخلفية بهدوء
+      try {
+        const ro = offers.find(
+          o => normalizePlate(o.carPlate) === np && (o.status === 'pending' || o.status === 'accepted')
+        );
+        if (ro) cancelOffer(ro.id);
+      } catch {}
 
       const startTimeISO = new Date(getServerNow()).toISOString();
-      
-      // 🛡️ تثبيت مرساة فقاعة الأمان الفضائية للسيارة فور وصولها
-      if (sid && garageCoords) {
-        await setSessionSecurityShield(sid, garageCoords.lat, garageCoords.lng);
-      }
 
-      await removeIncomingCar(carId);
-      await supabase.from('incoming_cars').delete().eq('car_plate', np).eq('garage_id', garage.id);
+      // ✅ بدء الجلسة بأمان تام وبدون تفعيل إجباري للدرع (الدرع يفعله العميل باختياره)
+      await addSession({ 
+        garageId: garage.id, 
+        carPlate: np || carPlate, 
+        startTime: startTimeISO, 
+        status: 'active', 
+        source: 'app', 
+        agreedPrice: car.agreedPrice ?? garage.basePrice, 
+        customerPhone: car.customerPhone, 
+        customerName: car.customerName, 
+        startedBy: 'garage', 
+        incomingCarId: carId, 
+        addedBy: isValet ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`) : '',
+        securityShieldActive: false, // 🔒 مطفأ افتراضياً والعميل يفعله برغبته
+        isBreached: false,
+      } as any);
+      
+      // حذف السيارة من قائمة السيارات القادمة
+      try {
+        await removeIncomingCar(carId);
+      } catch {}
+
       toast.success(`بدأ حساب ${carPlate} 🚗`);
-    } catch (e) { 
+    } catch (e: any) { 
+      console.error('handleCarArrived error:', e);
       processedCarsRef.current.delete(carId); 
       toast.error('حدث خطأ، حاول مرة أخرى'); 
     } finally {
