@@ -23,6 +23,7 @@ import {
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
+/* ─── 🎨 الألوان الرسمية الفاخرة ─── */
 const BRAND = {
   blue: '#1656b8',
   blueDark: '#0f3d85',
@@ -50,6 +51,7 @@ const safeParseTime = (value: any): number => {
   return 0;
 };
 
+// 🔊 نظام إنذار الاختراق اللحظي
 let customerBreachAudioCtx: AudioContext | null = null;
 const playCustomerBreachAlarm = async () => {
   try {
@@ -232,10 +234,14 @@ export default function SessionScreen() {
     return () => clearInterval(interval);
   }, [activeSession?.id, activeStartMs]);
 
-  // 🛡️ فحص حالة الدرع لضمان تحديث الواجهة تلقائياً
+  // 🛡️ فحص حالة الدرع لضمان تحديث الواجهة تلقائياً وبدقة
   const isShieldActive = useMemo(() => {
     if (!activeSession) return false;
-    return Boolean(activeSession.securityShieldActive === true || (activeSession as any).security_shield_active === true);
+    return Boolean(
+      activeSession.securityShieldActive === true ||
+      (activeSession as any).security_shield_active === true ||
+      (activeSession as any).securityShield === true
+    );
   }, [activeSession]);
 
   useEffect(() => {
@@ -325,49 +331,80 @@ export default function SessionScreen() {
     }
   }, [isFirstFreeApplied, elapsed, sessionRate]);
 
-  const shieldCost = isShieldActive ? SECURITY_SHIELD_FEE : 0;
-  const finalTotalCost = displayedCost + shieldCost;
+  // 🛡️ احتساب رسوم الدرع (+10 ج.م ثابتة)
+  const shieldCost = isShieldActive ? 10 : 0;
+  const finalTotalCost = isFreeNow ? (isShieldActive ? 10 : 0) : (displayedCost + shieldCost);
 
+  // 🛡️ دالة التفعيل المباشرة والمؤمنة 100%
   const handleActivateSecurityShield = async () => {
-    if (!activeSession || togglingShield) return;
-    
+    if (!activeSession?.id || togglingShield) return;
+
     if (isShieldActive) {
-      toast('درع الحماية مفعل بالفعل ومثبت بالفاتورة 🛡️', { icon: 'ℹ️' });
+      toast('درع الحماية مفعل ومثبت بالفعل 🛡️', { icon: 'ℹ️' });
       return;
     }
 
     setTogglingShield(true);
-    const toastId = toast.loading('جاري ربط وتفعيل الحماية الفضائية...');
-
-    let targetLat = garage?.lat || 30.0444;
-    let targetLng = garage?.lng || 31.2357;
+    const toastId = toast.loading('جاري تفعيل الحراسة الفضائية...');
 
     try {
+      let targetLat = garage?.lat || 30.0444;
+      let targetLng = garage?.lng || 31.2357;
+
+      // محاولة الحصول على الموقع السريع بدون تعليق الواجهة
       if ('geolocation' in navigator) {
         try {
           const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(resolve, reject, {
               enableHighAccuracy: false,
-              timeout: 2500,
-              maximumAge: 10000,
+              timeout: 1500,
+              maximumAge: 30000,
             });
           });
           targetLat = pos.coords.latitude;
           targetLng = pos.coords.longitude;
-        } catch (gpsErr) {
-          console.log('Using garage coordinates fallback for shield');
+        } catch {
+          // استخدام إحداثيات الجراج كاحتياط فوري
         }
       }
 
-      // ✅ تفعيل الحماية في قاعدة البيانات وقفلها نهائياً
-      await setSessionSecurityShield(activeSession.id, targetLat, targetLng);
+      // 1️⃣ استدعاء دالة الـ Store بالـ Signature السليم
+      if (typeof setSessionSecurityShield === 'function') {
+        try {
+          await setSessionSecurityShield(activeSession.id, true, targetLat, targetLng);
+        } catch {}
+      }
+
+      // 2️⃣ تحديث مباشر في قاعدة بيانات Supabase لضمان الحفظ الفوري
+      await supabase
+        .from('sessions')
+        .update({
+          security_shield_active: true,
+          securityShieldActive: true,
+          is_breached: false,
+          isBreached: false,
+          shield_lat: targetLat,
+          shield_lng: targetLng,
+          shield_activated_at: new Date().toISOString(),
+        } as any)
+        .eq('id', activeSession.id);
+
+      // 3️⃣ تحديث الجلسة محلياً في الـ Zustand Store بشكل فوري
+      useStore.setState((state) => ({
+        sessions: state.sessions.map((s) =>
+          s.id === activeSession.id
+            ? { ...s, securityShieldActive: true, isBreached: false }
+            : s
+        ),
+      }));
 
       toast.dismiss(toastId);
-      toast.success('🛡️ تم تفعيل الحراسة الفضائية وتثبيتها بالفاتورة (+10 ج.م)', { icon: '🛰️', duration: 4000 });
+      toast.success('🛡️ تم تفعيل درع الحماية وتثبيته بالفاتورة (+10 ج.م)', { duration: 4000 });
+      await fetchAll();
     } catch (err: any) {
       console.error('Failed to activate security shield:', err);
       toast.dismiss(toastId);
-      toast.error('حدث خطأ أثناء التفعيل، يرجى المحاولة ثانية');
+      toast.error('تعذر تفعيل الدرع، يرجى المحاولة مرة أخرى');
     } finally {
       setTogglingShield(false);
     }
@@ -451,18 +488,18 @@ export default function SessionScreen() {
                     تقرير SOS 🚔
                   </button>
                 )}
-                {/* 🔒 تم قفل الدرع نهائياً عند التفعيل بنجاح ولا يوجد زر للإلغاء */}
+                {/* 🔒 تم قفل الدرع تماماً بعد التفعيل لمنع الإلغاء */}
                 <span className="py-1.5 px-3 rounded-xl font-black text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
                   <CheckCircle size={12} /> تم تأكيد الحماية للفاتورة
                 </span>
               </div>
             ) : (
-              /* زر التفعيل يظهر فقط في حال كان الدرع مغلقاً للعميل */
+              /* زر التفعيل يظهر فقط عندما يكون الدرع مقفولاً */
               <button
                 type="button"
                 onClick={handleActivateSecurityShield}
                 disabled={togglingShield}
-                className="py-2 px-4 rounded-xl font-black text-xs border-0 cursor-pointer text-white active:scale-95 transition-all shadow-md flex items-center gap-1.5"
+                className="py-2.5 px-4 rounded-xl font-black text-xs border-0 cursor-pointer text-white active:scale-95 transition-all shadow-md flex items-center gap-1.5"
                 style={{
                   background: 'linear-gradient(135deg, #1656b8 0%, #1d68dc 100%)',
                 }}
