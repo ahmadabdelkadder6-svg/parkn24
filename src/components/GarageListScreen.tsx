@@ -342,13 +342,12 @@ export default function GarageListScreen() {
             </div>
           </div>
 
-          <div className="mt-1.5 pt-1.5 border-t border-white/10 flex items-center justify-between">
-            <span className="text-[9px] font-black opacity-90">🚙 رقم السيارة:</span>
-            <span className="font-mono font-black text-[10px] bg-white/15 px-2 py-0.5 rounded-md">
-              {currentUser?.carPlate || '---'}
-            </span>
-          </div>
-        </div>
+      <div className="mt-2 pt-2 border-t border-white/20 flex items-center justify-between">
+  <span className="text-[11px] font-black text-white">🚙 رقم السيارة:</span>
+  <span className="font-mono font-black text-sm bg-white text-[#1656b8] px-3 py-1 rounded-lg shadow-sm tracking-wider">
+    {currentUser?.carPlate || '---'}
+  </span>
+</div>>
 
         {/* 📲 كارت الباركود الذكي لمشاركة التطبيق (تم رفعه ليكون أسفل المحفظة مباشرة بشكل متناسق) */}
         <div 
