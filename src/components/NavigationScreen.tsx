@@ -596,18 +596,9 @@ export default function NavigationScreen() {
         incomingCarId: myIncomingCar.id,
         parkedLat: userPos.lat || garage.lat,
         parkedLng: userPos.lng || garage.lng,
-        securityShieldActive: false, // 🔒 مطفأ افتراضياً (0 ج.م) والعميل يفعله برغبته
+        securityShieldActive: false, // 🔒 تفعيل الدرع يبدأ دائمًا بـ false افتراضيًا لعدم فرض رسوم 10ج
         isBreached: false,
       } as any);
-
-      // 🛡️ تثبيت مرساة القمر الصناعي لفقاعة الأمان فور بدء الركن
-      if (sid) {
-        await setSessionSecurityShield(
-          sid,
-          userPos.lat || garage.lat,
-          userPos.lng || garage.lng
-        );
-      }
 
       await removeIncomingCar(myIncomingCar.id);
       navigatedToSessionRef.current = true;
@@ -707,7 +698,7 @@ export default function NavigationScreen() {
               zoomControl={false}
             >
               <TileLayer
-                url="https://tile.openstreetmap.org/{z}/{y}.png"
+                url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               />
               <Marker position={[userPos.lat, userPos.lng]} icon={userIcon}>

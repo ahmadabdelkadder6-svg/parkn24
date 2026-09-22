@@ -175,7 +175,7 @@ export const calculateSessionPriceWithFreeGift = (
   };
 };
 
-// ===================== 🛡️ طبقات الحماية الأمنية المحدثة =====================
+// ===================== 🛡️ طبقات الحماية الأمنية المحدد =====================
 
 const rateLimiter = {
   canProceed(): boolean {
@@ -281,7 +281,7 @@ export const getPlateFingerprint = (plate?: any): string => {
   // 4️⃣ حذف الهمزات وعلامات التشكيل بعد التفكيك
   str = str.replace(/[\u064B-\u065F\u0670\u0654\u0655\u0653]/g, '');
 
-  // 5️⃣ تحويل كافة الأرقام الهندية والشرقية (١٢٣ / ۱۲۳) إلى أرقام عادية (123)
+  // 5️⃣ تحويل كافة الأرقام الهندية والشرقية (١٢٣ / ۱٢٣) إلى أرقام عادية (123)
   const easternDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
   const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
   for (let i = 0; i <= 9; i++) {
@@ -630,7 +630,7 @@ interface AppState {
   unconfirmRevenue: (sessionId: string) => Promise<void>;
   assignSessionToValet: (sessionId: string, valetName: string) => Promise<void>;
 
-  // 🛡️ دوال تفعيل درع الأمان الفضائي والفقاعة ورصد البلوتوث
+  // 🛡️ دوال تفعيل درع الأمان الفضائي والفقاعة ورصد البلوتوث الذكي
   setSessionSecurityShield: (sessionId: string, lat: number, lng: number, bluetoothId?: string) => Promise<void>;
   triggerSessionBreach: (sessionId: string, isBreached: boolean) => Promise<void>;
 
@@ -1273,11 +1273,11 @@ export const useStore = create<AppState>((set, get) => ({
         isFirstFreeSession: eligibleForFree,
         freeMinutesApplied: 0,
 
-        // إدراج الحقول الافتراضية محلياً في الـ Store
+        // 🛡️ حماية: القيمة الافتراضية للدرع والكسر تبدأ دائمًا بـ false صراحةً
         parkedLat: (s as any).parkedLat || undefined,
         parkedLng: (s as any).parkedLng || undefined,
         carBluetoothId: (s as any).carBluetoothId || undefined,
-              securityShieldActive: (s as any).securityShieldActive ?? false,
+        securityShieldActive: (s as any).securityShieldActive ?? false,
         isBreached: (s as any).isBreached ?? false,
       };
 
@@ -1307,7 +1307,7 @@ export const useStore = create<AppState>((set, get) => ({
           is_first_free_session: eligibleForFree,
           free_minutes_applied: 0,
 
-          // إرسال الحقول الفضائية والفقاعة والدرع لقاعدة البيانات
+          // 🛡️ صمام الأمان: إرسال القيمة الصريحة لـ Supabase لتبدأ الحماية دائماً بـ false
           parked_lat: (s as any).parkedLat || null,
           parked_lng: (s as any).parkedLng || null,
           car_bluetooth_id: (s as any).carBluetoothId || null,
