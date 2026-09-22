@@ -234,7 +234,7 @@ export default function SessionScreen() {
     return () => clearInterval(interval);
   }, [activeSession?.id, activeStartMs]);
 
-  // 🛡️ فحص حالة الدرع لضمان تحديث الواجهة تلقائياً وبدقة
+  // 🛡️ فحص حالة تفعيل الدرع الفضائي الحقيقية
   const isShieldActive = useMemo(() => {
     if (!activeSession) return false;
     return Boolean(
@@ -334,7 +334,7 @@ export default function SessionScreen() {
   const shieldCost = isShieldActive ? (SECURITY_SHIELD_FEE || 10) : 0;
   const finalTotalCost = isFreeNow ? (isShieldActive ? (SECURITY_SHIELD_FEE || 10) : 0) : (displayedCost + shieldCost);
 
-  // 🛡️ دالة التفعيل المباشرة والمؤمنة 100% بدون أي كود مكرر خاطئ
+  // 🛡️ دالة التفعيل الفورية والمؤمنة 100% بالاعتماد التام على الـ Store الموحد
   const handleActivateSecurityShield = async () => {
     if (!activeSession?.id || togglingShield || isShieldActive) return;
 
@@ -351,16 +351,18 @@ export default function SessionScreen() {
           const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(resolve, reject, {
               enableHighAccuracy: false,
-              timeout: 1500,
+              timeout: 2000,
               maximumAge: 30000,
             });
           });
           targetLat = pos.coords.latitude;
           targetLng = pos.coords.longitude;
-        } catch {}
+        } catch {
+          console.log('GPS Timeout, using garage coordinates as fallback');
+        }
       }
 
-      // ✅ استدعاء دالة الـ Store الموحدة ذات الأعمدة السليمة (آمنة تماماً)
+      // ✅ استدعاء دالة الـ Store الآمنة تماماً والمعدلة في ملف store.ts لتحديث كلاً من الواجهة ومطابقة قاعدة البيانات فوراً
       await setSessionSecurityShield(activeSession.id, true, targetLat, targetLng);
 
       toast.dismiss(toastId);
@@ -453,7 +455,7 @@ export default function SessionScreen() {
                     تقرير SOS 🚔
                   </button>
                 )}
-                {/* 🔒 مغلق تماماً بعد التفعيل بنجاح لحماية الفاتورة وأمان السيارة */}
+                {/* 🔒 تم قفل الدرع تماماً بعد التفعيل بنجاح لحماية الفاتورة وأمان السيارة */}
                 <span className="py-1.5 px-3 rounded-xl font-black text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
                   <CheckCircle size={12} /> تم تأكيد الحماية للفاتورة
                 </span>
@@ -685,7 +687,7 @@ export default function SessionScreen() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="rounded-3xl p-6 text-center max-w-sm w-full shadow-2xl relative bg-white text-slate-800"
+              className="rounded-3xl p-6 text-center max-w-sm w-full shadow-2xl relative bg-white"
               onClick={e => e.stopPropagation()}
             >
               <div className="w-14 h-12 rounded-full flex items-center justify-center mx-auto mb-3 bg-red-100 animate-pulse">
@@ -694,7 +696,7 @@ export default function SessionScreen() {
 
               <h3 className="text-base font-black text-red-900 mb-1">🚨 تم رصد حركة غير مصرحة لسيارتك!</h3>
               <p className="text-xs font-bold text-slate-500 mb-4 leading-relaxed">
-                سيارتك لوحة <span className="font-mono font-black text-red-700 bg-red-50 px-2 py-0.5 rounded">{activeSession.carPlate}</span> تجاوزت فقاعة الأمان الفضائية (25م) بدون إذن خروج!
+                سيارتك لوحة <span className="font-mono font-black text-red-700 bg-red-50 px-2 py-0.5 rounded">{activeSession.carPlate}</span> تجاوزت فقاعة الأمان الفضائية (25م) بدون إذان خروج!
               </p>
 
               <div className="p-3.5 border rounded-2xl text-right space-y-2 mb-5 bg-slate-50 border-slate-200">
@@ -711,7 +713,7 @@ export default function SessionScreen() {
                 </div>
 
                 <div className="flex justify-between items-center text-xs">
-                  <span className="font-mono font-black text-slate-800">نشط (رادار القمر الصناعي)</span>
+                  <span className="font-mono font-black text-slate-800">نشط (رادار المشرف)</span>
                   <span className="font-black text-slate-500">📶 حالة التتبع الحالية:</span>
                 </div>
               </div>
