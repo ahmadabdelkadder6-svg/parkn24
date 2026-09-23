@@ -712,10 +712,10 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
           <span className="font-bold text-slate-500 font-mono" style={{ fontSize: 11 }}>{formatElapsed(el)} • {hrs}س</span>
           <span className="font-black text-white shrink-0 text-[8px] px-2 py-0.5 rounded" style={{ background: isM ? '#f59e0b' : BRAND.blue }}>{isM ? 'يدوي' : 'تطبيق'}</span>
           
-          {/* 🛡️ شارة درع الأمان VIP */}
+          {/* 🛡️ شارة درع الأمان VIP للقراءة فقط */}
           {isShieldActive && (
             <span className="font-black flex items-center gap-0.5 shrink-0 text-[8px] px-2 py-0.5 rounded text-sky-700 bg-sky-100 border border-sky-300">
-              <Shield size={9} /> درع VIP (+10ج)
+              <Shield size={9} className="fill-sky-700" /> درع VIP (+10ج)
             </span>
           )}
 
@@ -728,20 +728,30 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
         <div className="font-black text-slate-900 text-sm">🚗 {s.carPlate}</div>
       </div>
 
-{/* 🛡️ صمام الأمان: منع السايس من إنهاء الجلسة أثناء الإنذار */}
-{isBreached ? (
-  <div className="flex items-center gap-1 py-2 px-3 rounded-xl bg-red-800 text-white font-black text-[10px] animate-pulse">
-    <span>🔒 مقفول أمنياً (بانتظار العميل)</span>
-  </div>
-) : (
-  <button 
-    onClick={() => onEndSession(s.id, s.carPlate, cost, hrs, mins, s.source, s.agreedPrice)} 
-    className="active:scale-[0.98] transition-all flex items-center justify-center font-black text-white border-0 py-2 px-4 rounded-xl cursor-pointer text-xs"
-    style={{ background: '#dc2626' }}
-  >
-    إنهاء وتحصيل
-  </button>
-)}
+      {/* تنبيه كسر الفقاعة الجغرافية في الكارت */}
+      {isBreached && (
+        <div className="mb-2 p-1.5 rounded-lg bg-red-100 border border-red-300 text-red-800 text-[10px] font-black flex items-center justify-between">
+          <span>🚨 تحذير: السيارة غادرت فقاعة ركنتها (25م)!</span>
+          <AlertTriangle size={12} className="text-red-600 animate-bounce" />
+        </div>
+      )}
+
+      <div className="flex justify-between items-center border-t pt-2 mt-2" style={{ borderColor: BRAND.border }}>
+        <div className="flex items-center gap-1.5">
+          {isBreached && isShieldActive ? (
+            <div className="flex items-center gap-1 py-2 px-3 rounded-xl bg-red-800 text-white font-black text-[10px] animate-pulse">
+              <span>🔒 مقفول أمنياً (إنذار سرقة)</span>
+            </div>
+          ) : (
+            <button 
+              onClick={() => onEndSession(s.id, s.carPlate, cost, hrs, mins, s.source, s.agreedPrice)} 
+              className="active:scale-[0.98] transition-all flex items-center justify-center font-black text-white border-0 py-2 px-4 rounded-xl cursor-pointer text-xs"
+              style={{ background: '#dc2626' }}
+            >
+              إنهاء وتحصيل
+            </button>
+          )}
+
           {un && (
             <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} onClick={() => onUndo(un)} className="font-black flex items-center gap-1 active:scale-95 text-white border-0 py-2 px-3 rounded-xl text-[10px] cursor-pointer" style={{ background: '#f59e0b' }}>
               <Undo2 size={12} /> ({getUndoRemainingSeconds(un.addedAt)}ث)
@@ -762,7 +772,6 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
     </div>
   );
 });
-
 // ==========================================
 // المكون الرئيسي: DASHBOARD
 // ==========================================
