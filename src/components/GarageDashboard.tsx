@@ -1324,6 +1324,7 @@ export default function GarageDashboard() {
       status: 'active', 
       source: 'manual', 
       agreedPrice: pr, 
+      securityShieldActive: false, // 🛡️ إغلاق وقفل درع الأمان إجبارياً وصراحةً عند الإضافة اليدوية للسايس
       addedBy: isValet ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`) : '' 
     } as any);
     
