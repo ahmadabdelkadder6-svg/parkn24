@@ -1437,24 +1437,17 @@ export const useStore = create<AppState>((set, get) => ({
         .eq('id', id)
         .eq('status', 'active');
 
-      if (error) {
+       if (error) {
         console.error('❌ خطأ في إنهاء الجلسة بالسيرفر:', error);
       } else {
-        setTimeout(() => {
-          locallyEndedSessions.delete(id);
-        }, 3000);
+        locallyEndedSessions.delete(id);
+        // ⚡ تحديث فوري مباشر بدون انتظار 3.5 ثوانٍ
+        await get().fetchAll();
       }
-
-      setTimeout(() => {
-        get().fetchAll();
-      }, 3500);
     } finally {
-      setTimeout(() => {
-        sessionEndLocks.delete(lockKey);
-        pausePolling(0);
-      }, 500);
+      sessionEndLocks.delete(lockKey);
+      pausePolling(0);
     }
-  },
 
   confirmRevenue: async (sessionId, addedBy) => {
     set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: true } : s)) }));

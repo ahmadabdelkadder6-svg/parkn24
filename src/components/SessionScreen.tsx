@@ -110,6 +110,8 @@ export default function SessionScreen() {
   const redirectedToSummaryRef = useRef(false);
   const redirectedToSessionRef = useRef(false);
   const activeSessionIdRef = useRef<string | null>(null);
+  const realtimeChannelRef = useRef<any>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [elapsed, setElapsed] = useState(0);
   const [showSosModal, setShowSosModal] = useState(false);
@@ -189,6 +191,73 @@ export default function SessionScreen() {
     }
   }, [activeSession?.id, activeSession?.isBreached, isShieldActive]);
 
+  // 📡 Realtime الاستجابة الفورية واللحظية لنبضة السيرفر عند الإنهاء
+  useEffect(() => {
+    if (!userPlate && !userPhone) return;
+    let cancelled = false;
+
+    const refetch = async () => {
+      if (cancelled) return;
+      try { await fetchAll(); } catch (e) { console.error('❌', e); }
+    };
+
+    const channel = supabase
+      .channel(`customer-session-live-${userPlate || userPhone}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sessions' },
+        async (payload) => {
+          const newRow = payload.new as any;
+          const oldRow = payload.old as any;
+
+          // ⚡ بمجرد ما السايس ينهي الجلسة، انتقل لشاشة الدفع فوراً في 0.1 ثانية
+          if (newRow && newRow.status === 'completed' && isMySessionRow(newRow)) {
+            if (newRow.garage_id || newRow.garageId) {
+              setSelectedGarageId(newRow.garage_id || newRow.garageId);
+            }
+            if (typeof acknowledgeSession === 'function') {
+              acknowledgeSession(newRow.id);
+            }
+            toast.success('تم إنهاء الجلسة بنجاح ✅', { icon: '🏁', duration: 3000 });
+            setScreen('summary');
+            return;
+          }
+
+          if (isMySessionRow(newRow) || isMySessionRow(oldRow)) {
+            await refetch();
+          }
+        },
+      )
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+    pollingRef.current = setInterval(refetch, 4000);
+
+    const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', refetch);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', refetch);
+      if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+      if (realtimeChannelRef.current) { supabase.removeChannel(realtimeChannelRef.current); realtimeChannelRef.current = null; }
+    };
+  }, [userPlate, userPhone, fetchAll, setScreen, setSelectedGarageId, acknowledgeSession]);
+
+  const lastCompletedSession = useMemo(() => {
+    return sessions
+      .filter((s) => {
+        if (!s || s.status !== 'completed') return false;
+        const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+        const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+        const samePhoneMatch = Boolean(userPhone && sPhone === userPhone);
+        return samePlateMatch || samePhoneMatch;
+      })
+      .sort((a, b) => safeParseTime(b.endTime) - safeParseTime(a.endTime))[0];
+  }, [sessions, userPlate, userPhone]);
+
   const sessionRate = Number(activeSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const isFirstFreeApplied = activeSession?.isFirstFreeSession === true;
 
@@ -262,22 +331,6 @@ export default function SessionScreen() {
     // 3. تحديث السيرفر
     setSessionSecurityShield(targetSessionId, true, targetLat, targetLng).catch(() => {});
   };
-
-  if (!activeSession) {
-    return (
-      <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8 text-right" style={{ background: BRAND.navy }}>
-        <div className="text-4xl mb-4 animate-bounce">⏳</div>
-        <p className="text-slate-400 text-sm font-bold text-center mb-2">جاري مزامنة بيانات الجلسة...</p>
-        <button
-          onClick={() => setScreen('list')}
-          className="bg-blue-600 text-white border-0 px-8 py-3.5 rounded-2xl font-black text-xs active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
-          style={{ background: BRAND.blue }}
-        >
-          <ArrowRight size={15} /> <span>العودة للقائمة الرئيسية</span>
-        </button>
-      </div>
-    );
-  }
 
   return (
     <motion.div
