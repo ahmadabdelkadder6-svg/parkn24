@@ -191,61 +191,70 @@ export default function SessionScreen() {
     }
   }, [activeSession?.id, activeSession?.isBreached, isShieldActive]);
 
-  // 📡 Realtime الاستجابة الفورية واللحظية لنبضة السيرفر عند الإنهاء
+  // 📡 Realtime الاستجابة الفورية لنبضة السيرفر (0.2 ثانية)
   useEffect(() => {
     if (!userPlate && !userPhone) return;
     let cancelled = false;
 
-    const refetch = async () => {
+    const fastCheck = async () => {
       if (cancelled) return;
-      try { await fetchAll(); } catch (e) { console.error('❌', e); }
+      try {
+        await fetchAll();
+      } catch (e) {
+        console.error('❌', e);
+      }
     };
 
+    // قناة البث المباشر من السيرفر
     const channel = supabase
-      .channel(`customer-session-live-${userPlate || userPhone}`)
+      .channel(`customer-live-session-${userPlate || userPhone}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'sessions' },
-        async (payload) => {
-          const newRow = payload.new as any;
-          const oldRow = payload.old as any;
-
-          // ⚡ بمجرد ما السايس ينهي الجلسة، انتقل لشاشة الدفع فوراً في 0.1 ثانية
-          if (newRow && newRow.status === 'completed' && isMySessionRow(newRow)) {
-            if (newRow.garage_id || newRow.garageId) {
-              setSelectedGarageId(newRow.garage_id || newRow.garageId);
+        { event: 'UPDATE', schema: 'public', table: 'sessions' },
+        (payload) => {
+          const updatedRow = payload.new as any;
+          if (updatedRow && isMySessionRow(updatedRow)) {
+            // ⚡ إذا أنهى السايس الجلسة، انتقل فوراً لشاشة الدفع في 0.1 ثانية
+            if (updatedRow.status === 'completed') {
+              if (updatedRow.garage_id || updatedRow.garageId) {
+                setSelectedGarageId(updatedRow.garage_id || updatedRow.garageId);
+              }
+              if (typeof acknowledgeSession === 'function') {
+                acknowledgeSession(updatedRow.id);
+              }
+              // تحديث الجلسة محلياً فوراً
+              useStore.setState((state) => ({
+                sessions: state.sessions.map((s) =>
+                  s.id === updatedRow.id ? { ...s, ...updatedRow, status: 'completed' } : s
+                ),
+              }));
+              toast.success('تم إنهاء الجلسة بنجاح ✅', { icon: '🏁', duration: 3000 });
+              setScreen('summary');
+              return;
             }
-            if (typeof acknowledgeSession === 'function') {
-              acknowledgeSession(newRow.id);
-            }
-            toast.success('تم إنهاء الجلسة بنجاح ✅', { icon: '🏁', duration: 3000 });
-            setScreen('summary');
-            return;
+            fastCheck();
           }
-
-          if (isMySessionRow(newRow) || isMySessionRow(oldRow)) {
-            await refetch();
-          }
-        },
+        }
       )
       .subscribe();
 
     realtimeChannelRef.current = channel;
-    pollingRef.current = setInterval(refetch, 4000);
+    
+    // ⚡ فحص سريع كل ثانية ونصف كاحتياط أمان
+    pollingRef.current = setInterval(fastCheck, 1500);
 
-    const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
+    const handleVisibility = () => { if (document.visibilityState === 'visible') fastCheck(); };
     document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', refetch);
+    window.addEventListener('focus', fastCheck);
 
     return () => {
       cancelled = true;
       document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', refetch);
+      window.removeEventListener('focus', fastCheck);
       if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
       if (realtimeChannelRef.current) { supabase.removeChannel(realtimeChannelRef.current); realtimeChannelRef.current = null; }
     };
   }, [userPlate, userPhone, fetchAll, setScreen, setSelectedGarageId, acknowledgeSession]);
-
   const lastCompletedSession = useMemo(() => {
     return sessions
       .filter((s) => {
