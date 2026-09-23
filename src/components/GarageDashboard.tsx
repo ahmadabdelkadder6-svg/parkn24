@@ -728,25 +728,20 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
         <div className="font-black text-slate-900 text-sm">🚗 {s.carPlate}</div>
       </div>
 
-      {/* تنبيه كسر الفقاعة الجغرافية في الكارت */}
-      {isBreached && (
-        <div className="mb-2 p-1.5 rounded-lg bg-red-100 border border-red-300 text-red-800 text-[10px] font-black flex items-center justify-between">
-          <span>🚨 تحذير: السيارة غادرت فقاعة ركنتها (25م)!</span>
-          <AlertTriangle size={12} className="text-red-600 animate-bounce" />
-        </div>
-      )}
-
-      <div className="flex justify-between items-center border-t pt-2 mt-2" style={{ borderColor: BRAND.border }}>
-        <div className="flex items-center gap-1.5">
-          <button 
-            onClick={() => onEndSession(s.id, s.carPlate, cost, hrs, mins, s.source, s.agreedPrice)} 
-            className="active:scale-[0.98] transition-all flex items-center justify-center font-black text-white border-0 py-2 px-4 rounded-xl cursor-pointer text-xs"
-            style={{ 
-              background: '#dc2626', 
-            }}
-          >
-            إنهاء وتحصيل
-          </button>
+{/* 🛡️ صمام الأمان: منع السايس من إنهاء الجلسة أثناء الإنذار */}
+{isBreached ? (
+  <div className="flex items-center gap-1 py-2 px-3 rounded-xl bg-red-800 text-white font-black text-[10px] animate-pulse">
+    <span>🔒 مقفول أمنياً (بانتظار العميل)</span>
+  </div>
+) : (
+  <button 
+    onClick={() => onEndSession(s.id, s.carPlate, cost, hrs, mins, s.source, s.agreedPrice)} 
+    className="active:scale-[0.98] transition-all flex items-center justify-center font-black text-white border-0 py-2 px-4 rounded-xl cursor-pointer text-xs"
+    style={{ background: '#dc2626' }}
+  >
+    إنهاء وتحصيل
+  </button>
+)}
           {un && (
             <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} onClick={() => onUndo(un)} className="font-black flex items-center gap-1 active:scale-95 text-white border-0 py-2 px-3 rounded-xl text-[10px] cursor-pointer" style={{ background: '#f59e0b' }}>
               <Undo2 size={12} /> ({getUndoRemainingSeconds(un.addedAt)}ث)
@@ -1371,6 +1366,19 @@ export default function GarageDashboard() {
     try {
       const sc = { ...confirmSession }; 
       const sd = (sessions || []).find(s => s && s.id === sc.id);
+
+      // 🚨🚨 [تأمين أمني فولاذي]: منع السايس أو الفالية من إنهاء الجلسة والتحصيل نهائياً أثناء سرقة أو حركة السيارة النشطة
+      if (sd?.isBreached === true && sd?.securityShieldActive === true) {
+        toast.error('🚫 تحذير أمني: لا يمكن إنهاء أو تحصيل الجلسة أثناء حالة الإنذار! يجب على العميل إلغاء إنذار السرقة من هاتفه أولاً.', {
+          duration: 6000,
+          icon: '🛑',
+        });
+        setConfirmSession(null); // إغلاق نافذة التحصيل فوراً لمنع التحايل
+        isEndingSessionRef.current = false;
+        pausePolling(0); // إعادة التحديث التلقائي
+        return; // إيقاف تنفيذ الدالة فوراً ومنع التحصيل والخصم
+      }
+
       const pc = (isValet || sc.source === 'manual') ? 'cash' : (confirmPaymentMethod || 'cash');
       
       // 🌟 [تأمين 4]: حساب الدقائق الترحيبية المجانية بمنتهى الدقة بدون أي تلاعب

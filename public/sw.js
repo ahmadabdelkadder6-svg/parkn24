@@ -1,5 +1,5 @@
-// ✅ رقم الـ Version - تم التحديث لـ v8 لإجبار المتصفحات على تحديث السيرفس ووركر فوراً
-const CACHE_NAME    = 'parknow-v8'; 
+// ✅ رقم الـ Version - تم التحديث لـ v9 لإجبار المتصفحات على التحديث الفوري
+const CACHE_NAME    = 'parknow-v9'; 
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
 // ✅ منع تكرار نفس الإشعار خلال 3 ثوانٍ
@@ -11,7 +11,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting(); // تفعيل فوري بدون انتظار
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 Service Worker Installed (v8)');
+      console.log('📦 Service Worker Installed (v9)');
       return cache.addAll(STATIC_ASSETS);
     })
   );
@@ -64,52 +64,49 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// ─── 4. Push (استقبال الإشعار الفوري وإيقاظ الهاتف بنمط رنين قوي) ─────────
+// ─── 4. Push (استقبال الإشعار وإيقاظ الهاتف حتى لو كان مقفولاً) ─────────
 self.addEventListener('push', (event) => {
-  let title     = '🚨 سيارة في الطريق إليك!';
-  let body      = '🚗 تقترب سيارة جديدة من الجراج الآن، استعد!';
+  let title     = '🚨 تنبيه من بركن 24';
+  let body      = 'لديك تحديث جديد بخصوص ركنتك';
   const icon    = '/icons/icon-192x192.png';
   const badge   = '/icons/icon-192x192.png';
-  let tag       = 'incoming-alert';
+  let tag       = 'valet-urgent-alarm';
   let url       = '/';
   let extraData = {};
+  let isBreach  = false;
 
   try {
     if (event.data) {
       const payload = event.data.json();
       console.log('📨 Push received in SW:', payload);
 
-      if (payload.notification) {
-        title = payload.notification.title || title;
-        body  = payload.notification.body  || body;
-      }
+      const notificationData = payload.data || payload.immediate?.data || {};
+      extraData = notificationData;
+      url = notificationData.url || payload.url || '/';
 
-      if (payload.data) {
-        extraData = payload.data;
-        tag       = payload.data.tag || payload.tag || tag;
-        url       = payload.data.url || '/';
-      }
-
-      // دعم Flat Payload
-      if (!payload.notification && !payload.data) {
-        title = payload.title || title;
-        body  = payload.body  || body;
-        tag   = payload.tag   || tag;
-      }
-
-      // استخلاص رقم اللوحة وعرضه بوضوح
-      let plate = '';
-      if (typeof tag === 'string' && tag.startsWith('incoming-')) {
-        plate = tag.replace('incoming-', '');
-      } else if (payload.carPlate || payload.car_plate) {
-        plate = payload.carPlate || payload.car_plate;
-      } else if (payload.data && (payload.data.carPlate || payload.data.car_plate)) {
-        plate = payload.data.carPlate || payload.data.car_plate;
-      }
-
-      if (plate) {
+      // 🚨 1. هل الإشعار خاص باختراق درع الأمان / السرقة؟
+      if (
+        notificationData.type === 'security_breach' ||
+        (payload.tag && payload.tag.startsWith('breach-')) ||
+        (payload.immediate?.tag && payload.immediate.tag.startsWith('breach-'))
+      ) {
+        isBreach = true;
+        title = payload.immediate?.title || payload.title || '🚨 تحذير أمني: تم رصد تحرك سيارة!';
+        body  = payload.immediate?.body  || payload.body  || `🚗 سيارتك تجاوزت فقاعة الأمان بالجراج بدون تصريح!`;
+        tag   = `breach-${Date.now()}`;
+      } 
+      // 🚗 2. هل الإشعار خاص بسيارة قادمة في الطريق؟
+      else if (notificationData.type === 'incoming_car' || (payload.tag && payload.tag.startsWith('incoming-'))) {
+        const plate = notificationData.carPlate || payload.carPlate || '';
         title = '🚨 سيارة في الطريق إليك!';
-        body  = `🚗 رقم السيارة: ${plate} • استعد للاستقبال!`;
+        body  = plate ? `🚗 رقم السيارة: ${plate} • استعد للاستقبال!` : 'تقترب سيارة جديدة من الجراج الآن، استعد!';
+        tag   = `incoming-${plate || Date.now()}`;
+      }
+      // ⏰ 3. إشعار عادي / اقتراب
+      else {
+        title = payload.notification?.title || payload.immediate?.title || payload.title || title;
+        body  = payload.notification?.body  || payload.immediate?.body  || payload.body  || body;
+        tag   = payload.tag || payload.immediate?.tag || tag;
       }
     }
   } catch (err) {
@@ -131,25 +128,25 @@ self.addEventListener('push', (event) => {
     if (now - t > 30000) recentNotifications.delete(k);
   }
 
-  // 🚨 [نمط رنين مكالمة الهاتف العنيف]: اهتزاز متواصل 10 ثوانٍ لإيقاظ السايس في الشارع
+  // 📳 نمط الاهتزاز (اهتزاز طوارئ أطول لو سرقة، ونمط رنين لو وصول سيارة)
+  const vibrationPattern = isBreach
+    ? [1500, 100, 1500, 100, 1500, 100, 2000, 150, 2000] // سرينة طوارئ واختراق
+    : [1000, 300, 1000, 300, 1000, 300, 1000, 300, 1200, 400, 1200]; // وصول سيارة
+
   const options = {
     body,
     icon,
     badge,
-    vibrate: [
-      1000, 300, 1000, 300, 1000, 300, // الرنة الأولى
-      1000, 300, 1000, 300, 1000, 300, // الرنة الثانية
-      1200, 400, 1200                  // رنة تأكيدية أخيرة
-    ],
-    requireInteraction: true,           // يظل معروضاً على شاشة القفل ولا يختفي حتى يفتحه السايس
-    tag: 'valet-urgent-alarm',         // تاغ موحد لإيقاظ الشاشة
-    renotify: true,                    // يرن ويهتز حتى لو كان هناك إشعار سابق
+    vibrate: vibrationPattern,
+    requireInteraction: true,  // يظل معروضاً على شاشة القفل ولا يختفي حتى يفتحه المستخدم
+    tag: tag,
+    renotify: true,           // يرن ويهتز حتى لو كان هناك إشعار سابق
     silent: false,
     timestamp: now,
     data: { url, ...extraData },
     actions: [
-      { action: 'open',    title: '🚗 فتح التطبيق فوراً' },
-      { action: 'dismiss', title: '✕ إغلاق'             },
+      { action: 'open',    title: isBreach ? '🚨 فتح تقرير SOS' : '🚗 فتح التطبيق فوراً' },
+      { action: 'dismiss', title: '✕ إغلاق' },
     ],
   };
 
@@ -158,7 +155,7 @@ self.addEventListener('push', (event) => {
   );
 });
 
-// ─── 5. Notification Click (فتح لوحة الجراج مباشرة) ──────────
+// ─── 5. Notification Click (فتح الصفحة المناسبة عند الضغط) ──────────
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
