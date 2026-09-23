@@ -1437,17 +1437,17 @@ export const useStore = create<AppState>((set, get) => ({
         .eq('id', id)
         .eq('status', 'active');
 
-       if (error) {
+      if (error) {
         console.error('❌ خطأ في إنهاء الجلسة بالسيرفر:', error);
       } else {
         locallyEndedSessions.delete(id);
-        // ⚡ تحديث فوري مباشر بدون انتظار 3.5 ثوانٍ
-        await get().fetchAll();
+        get().fetchAll();
       }
     } finally {
       sessionEndLocks.delete(lockKey);
       pausePolling(0);
     }
+  },
 
   confirmRevenue: async (sessionId, addedBy) => {
     set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: true } : s)) }));
