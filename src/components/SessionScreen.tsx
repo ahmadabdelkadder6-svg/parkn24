@@ -10,8 +10,17 @@ import {
   Shield,
   CheckCircle,
   AlertTriangle,
+  Radar, // 🛰️ إضافة أيقونة الرادار للتتبع الحي
 } from 'lucide-react';
-import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
+import { 
+  useStore, 
+  normalizePlate, 
+  normalizePhone, 
+  getServerNow,
+  calculateDistanceMeters, // 📐 حساب المسافة الفعلية بالمتر
+  assessRiskLevel,          // 🎯 تقييم مستوى الخطر الذكي
+  RiskLevel                 // النوع البرمجي لمستويات الخطر
+} from '../store';
 import {
   calculateCost,
   calculateFullHours,
@@ -116,6 +125,10 @@ export default function SessionScreen() {
   const [elapsed, setElapsed] = useState(0);
   const [showSosModal, setShowSosModal] = useState(false);
   const [localShieldLocked, setLocalShieldLocked] = useState(false);
+  
+  // 📍 حقول رصد موقع العميل الجغرافي لحظياً لتفعيل معادلة القرب والبعد
+  const [customerLat, setCustomerLat] = useState<number | null>(null);
+  const [customerLng, setCustomerLng] = useState<number | null>(null);
 
   const isMySessionRow = (row: any) => {
     if (!row) return false;
@@ -181,15 +194,51 @@ export default function SessionScreen() {
     return localShieldLocked || fromStorage || fromSession;
   }, [activeSession, localShieldLocked]);
 
-  // 🚨 [تشغيل صوت الإنذار والـ SOS فقط لو العربية اتسجل عليها اختراق/سرقة فعلي]
+  // 🛰️ [رادار الأقمار الصناعية الحي لتتبع موقع العميل الفعلي]
   useEffect(() => {
-    if (activeSession && isShieldActive && activeSession.isBreached) {
+    if (!activeSession || !isShieldActive) return;
+    if (!('geolocation' in navigator)) return;
+
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        setCustomerLat(pos.coords.latitude);
+        setCustomerLng(pos.coords.longitude);
+      },
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 2000, timeout: 5000 }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [activeSession?.id, isShieldActive]);
+
+  // 📐 حساب المسافة الفعلية بالامتار بين موقع العميل ومكان الركنة
+  const distanceToCar = useMemo(() => {
+    if (!activeSession || !customerLat || !customerLng) return null;
+    const pLat = activeSession.parkedLat || garage?.lat;
+    const pLng = activeSession.parkedLng || garage?.lng;
+    if (!pLat || !pLng) return null;
+    return calculateDistanceMeters(customerLat, customerLng, pLat, pLng);
+  }, [activeSession, customerLat, customerLng, garage]);
+
+  // 🎯 تحديد مستوى الخطر الحقيقي بناء على المسافة وحالة كسر الفقاعة
+  const riskLevel: RiskLevel = useMemo(() => {
+    if (!activeSession || !isShieldActive) return 'safe';
+    return assessRiskLevel(
+      distanceToCar ?? 0,
+      activeSession.isBreached === true,
+      isShieldActive
+    );
+  }, [activeSession, isShieldActive, distanceToCar]);
+
+  // 🚨 [تشغيل صوت الإنذار والـ SOS فقط لو العربية اتسجل عليها سرقة حقيقية وكان العميل بعيداً]
+  useEffect(() => {
+    if (activeSession && isShieldActive && activeSession.isBreached && riskLevel === 'danger') {
       playCustomerBreachAlarm();
       setShowSosModal(true);
       const interval = setInterval(playCustomerBreachAlarm, 4000);
       return () => clearInterval(interval);
     }
-  }, [activeSession?.id, activeSession?.isBreached, isShieldActive]);
+  }, [activeSession?.id, activeSession?.isBreached, isShieldActive, riskLevel]);
 
   // 📡 Realtime الاستجابة الفورية لنبضة السيرفر (0.2 ثانية)
   useEffect(() => {
@@ -205,7 +254,6 @@ export default function SessionScreen() {
       }
     };
 
-    // قناة البث المباشر من السيرفر
     const channel = supabase
       .channel(`customer-live-session-${userPlate || userPhone}`)
       .on(
@@ -214,7 +262,7 @@ export default function SessionScreen() {
         (payload) => {
           const updatedRow = payload.new as any;
           if (updatedRow && isMySessionRow(updatedRow)) {
-            // ⚡ إذا أنهى السايس الجلسة، انتقل فوراً لشاشة الدفع في 0.1 ثانية
+            // ⚡ إذا أنهى السايس الجلسة، انتقل فوراً لشاشة الملخص في 0.1 ثانية
             if (updatedRow.status === 'completed') {
               if (updatedRow.garage_id || updatedRow.garageId) {
                 setSelectedGarageId(updatedRow.garage_id || updatedRow.garageId);
@@ -239,8 +287,6 @@ export default function SessionScreen() {
       .subscribe();
 
     realtimeChannelRef.current = channel;
-    
-    // ⚡ فحص سريع كل ثانية ونصف كاحتياط أمان
     pollingRef.current = setInterval(fastCheck, 1500);
 
     const handleVisibility = () => { if (document.visibilityState === 'visible') fastCheck(); };
@@ -255,6 +301,7 @@ export default function SessionScreen() {
       if (realtimeChannelRef.current) { supabase.removeChannel(realtimeChannelRef.current); realtimeChannelRef.current = null; }
     };
   }, [userPlate, userPhone, fetchAll, setScreen, setSelectedGarageId, acknowledgeSession]);
+
   const lastCompletedSession = useMemo(() => {
     return sessions
       .filter((s) => {
@@ -341,6 +388,30 @@ export default function SessionScreen() {
     setSessionSecurityShield(targetSessionId, true, targetLat, targetLng).catch(() => {});
   };
 
+  // 🎨 تدرج ألوان مستوى الخطر للتنبيه الذكي
+  const riskColors = {
+    safe: { bg: 'rgba(140,198,63,0.1)', border: BRAND.green, text: BRAND.green, label: '🟢 آمن', icon: '✅' },
+    warning: { bg: 'rgba(245,158,11,0.15)', border: '#f59e0b', text: '#f59e0b', label: '🟡 تنبيه', icon: '⚠️' },
+    danger: { bg: 'rgba(239,68,68,0.15)', border: '#ef4444', text: '#ef4444', label: '🔴 خطر', icon: '🚨' },
+  };
+  const rc = riskColors[riskLevel];
+
+  if (!activeSession) {
+    return (
+      <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8 text-right" style={{ background: BRAND.navy }}>
+        <div className="text-4xl mb-4 animate-bounce">⏳</div>
+        <p className="text-slate-400 text-sm font-bold text-center mb-2">جاري مزامنة بيانات الجلسة...</p>
+        <button
+          onClick={() => setScreen('list')}
+          className="bg-blue-600 text-white border-0 px-8 py-3.5 rounded-2xl font-black text-xs active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
+          style={{ background: BRAND.blue }}
+        >
+          <ArrowRight size={15} /> <span>العودة للقائمة الرئيسية</span>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -348,6 +419,24 @@ export default function SessionScreen() {
       className="h-full text-white flex flex-col items-center justify-center p-6 overflow-y-auto safe-top safe-bottom"
       style={{ background: BRAND.navy }}
     >
+      {/* 🛰️ [شريط رادار الرصد ومسافة العميل اللحظية] */}
+      {isShieldActive && distanceToCar !== null && (
+        <div className="w-full border-2 rounded-2xl p-3 mb-3 flex items-center justify-between transition-all" style={{ background: rc.bg, borderColor: rc.border }}>
+          <div className="flex items-center gap-2">
+            <Radar size={16} style={{ color: rc.text }} className="animate-spin" />
+            <span className="text-xs font-black" style={{ color: rc.text }}>{rc.label}</span>
+          </div>
+          <div className="text-right">
+            <div className="font-mono font-black text-lg" style={{ color: rc.text }}>
+              {distanceToCar}<span className="text-[10px]">م</span>
+            </div>
+            <div className="text-[8px] font-bold" style={{ color: BRAND.slateMuted }}>
+              المسافة بينك وبين سيارتك
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 🛡️ كارت درع الأمان الفضائي VIP */}
       <div
         className="w-full border-2 rounded-2xl p-4 mb-4 text-right transition-all relative overflow-hidden"
@@ -394,7 +483,7 @@ export default function SessionScreen() {
           <div>
             {isShieldActive ? (
               <div className="flex items-center gap-1.5">
-                {activeSession.isBreached && (
+                {activeSession.isBreached && riskLevel === 'danger' && (
                   <button
                     onClick={() => setShowSosModal(true)}
                     className="py-1 px-2.5 rounded-lg font-black text-[9px] text-white border-0 bg-red-600 active:scale-95 transition-all cursor-pointer shadow-md mr-1"
@@ -430,6 +519,33 @@ export default function SessionScreen() {
           </div>
         </div>
       </div>
+
+      {isFirstFreeApplied && (
+        <motion.div
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="w-full border rounded-2xl p-3 mb-4 flex items-center gap-3"
+          style={{
+            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.18) 100%)',
+            borderColor: 'rgba(245,158,11,0.3)',
+          }}
+        >
+          <div className="p-2 rounded-xl text-amber-400 shrink-0" style={{ background: 'rgba(245,158,11,0.15)' }}>
+            <Gift size={20} className="animate-pulse" />
+          </div>
+          <div className="text-right flex-1">
+            <div className="font-black flex items-center gap-1 justify-end text-xs text-amber-400">
+              <span>هدية ترحيبية نشطة</span>
+              <Sparkles size={12} className="text-yellow-200" />
+            </div>
+            <div className="font-bold text-[10px] mt-0.5" style={{ color: BRAND.slateMuted }}>
+              {isFreeNow 
+                ? 'أنت الآن في أول 30 دقيقة مجانية بالكامل! 🎁' 
+                : 'انتهت الـ 30 دقيقة المجانية وتم بدء الاحتساب بالسعر العادي ✅'}
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* العداد الدائري */}
       <motion.div
@@ -513,9 +629,9 @@ export default function SessionScreen() {
         العودة للقائمة الرئيسية
       </button>
 
-      {/* 🚔 نافذة طوارئ SOS عند الاختراق الفعلي فقط */}
+      {/* 🚔 نافذة طوارئ SOS عند الاختراق الفعلي فقط ومستويات الخطر القصوى */}
       <AnimatePresence>
-        {showSosModal && activeSession && isShieldActive && activeSession.isBreached && (
+        {showSosModal && activeSession && isShieldActive && activeSession.isBreached && riskLevel === 'danger' && (
           <div 
             className="fixed inset-0 z-[99999] flex items-center justify-center p-5"
             style={{ background: 'rgba(127,29,29,0.9)', backdropFilter: 'blur(8px)' }}

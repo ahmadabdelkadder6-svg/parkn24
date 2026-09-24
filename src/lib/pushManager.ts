@@ -1,4 +1,4 @@
-import { normalizePlate } from '../store';
+import { normalizePlate, normalizePhone } from '../store';
 
 // ─── VAPID & Supabase Configuration ─────────────────────────────
 const VAPID_PUBLIC_KEY =
@@ -16,11 +16,13 @@ interface PushPayloadNotification {
 }
 
 interface SendPushPayload {
-  garageId:  string;
-  urgency?:  'high' | 'normal';
-  ttl?:      number;
-  immediate: PushPayloadNotification;
-  scheduled: (PushPayloadNotification & { sendAt: string }) | null;
+  garageId?:  string;
+  userPhone?: string;
+  carPlate?:  string;
+  urgency?:   'high' | 'normal';
+  ttl?:       number;
+  immediate:  PushPayloadNotification;
+  scheduled:  (PushPayloadNotification & { sendAt: string }) | null;
 }
 
 // ─── Helper: تحويل VAPID Key ────────────────────────────────────
@@ -96,8 +98,10 @@ export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration
   }
 };
 
-// ─── الاشتراك في Push Notifications ────────────────────────────
-export const subscribeToPush = async (garageId: string): Promise<boolean> => {
+// ─── الاشتراك في Push Notifications (يدعم السايس والعميل) ────────
+export const subscribeToPush = async (
+  target: string | { garageId?: string; userPhone?: string; carPlate?: string }
+): Promise<boolean> => {
   try {
     if (!('PushManager' in window)) {
       console.warn('❌ Push غير مدعوم في هذا المتصفح');
@@ -144,6 +148,10 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
       return false;
     }
 
+    const garageId = typeof target === 'string' ? target : target.garageId;
+    const userPhone = typeof target === 'object' ? normalizePhone(target.userPhone) : undefined;
+    const carPlate = typeof target === 'object' ? normalizePlate(target.carPlate) : undefined;
+
     const result = await supabaseFetch('save-push-subscription', {
       subscription: {
         endpoint: sub.endpoint,
@@ -152,7 +160,9 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
           auth:   sub.keys.auth,
         },
       },
-      garageId,
+      garageId:  garageId  || null,
+      userPhone: userPhone || null,
+      carPlate:  carPlate  || null,
       isNew,
       userAgent: navigator.userAgent,
       subscribedAt: new Date().toISOString(),
@@ -165,7 +175,7 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
   }
 };
 
-// ─── إرسال تنبيه "سيارة في الطريق" بأعلى أولوية طوارئ ──────────────
+// ─── إرسال تنبيه "سيارة في الطريق" بأعلى أولوية طوارئ للسايس ──────
 export const sendCarComingPush = async ({
   garageId,
   carPlate,
@@ -234,7 +244,7 @@ export const sendCarComingPush = async ({
   }
 };
 
-// ─── 🚨 إرسال إشعار طوارئ باختراق درع الأمان الفضائي للسيارة ───────────────
+// ─── 🚨 إرسال إشعار طوارئ باختراق درع الأمان الفضائي (للعميل والسايس) ──────
 export const sendSecurityBreachPush = async ({
   garageId,
   carPlate,
@@ -248,24 +258,28 @@ export const sendSecurityBreachPush = async ({
 }): Promise<boolean> => {
   try {
     const plateFingerprint = normalizePlate(carPlate) || carPlate;
+    const cleanPhone = customerPhone ? normalizePhone(customerPhone) : undefined;
     const breachTag = `breach-${plateFingerprint}`;
 
     const payload: SendPushPayload = {
       garageId,
-      urgency: 'high',
-      ttl: 0, // إرسال لحظي فوري بدون أي تأخير
+      userPhone: cleanPhone,
+      carPlate:  plateFingerprint,
+      urgency:   'high',
+      ttl: 0, // إرسال لحظي فوري بدون أي تأخير 0.01s
 
       immediate: {
         title: '🚨 تحذير أمني: تم رصد تحرك سيارة!',
-        body:  `🚗 السيارة [${carPlate}] غادرت فقاعة الأمان (${distanceMeters ? distanceMeters + 'م' : '25م'}) بدون إذن خروج!`,
+        body:  `🚗 سيارتك لوحة [${carPlate}] غادرت فقاعة الأمان بالجراج (${distanceMeters ? distanceMeters + 'م' : '25م'}) بدون إذن خروج!`,
         tag:   breachTag,
         data: {
           type:           'security_breach',
           carPlate,
           garageId,
-          url:            '/garage',
-          customerPhone:  customerPhone ?? null,
+          url:            '/session', // 🌟 يفتح شاشة الـ SOS للعميل مباشرة
+          customerPhone:  cleanPhone ?? null,
           distanceMeters: distanceMeters ?? null,
+          isBreached:     true,
           sentAt:         new Date().toISOString(),
         },
       },
@@ -345,10 +359,12 @@ export const checkPushSubscriptionStatus = async () => {
   }
 };
 
-export const refreshPushSubscriptionIfNeeded = async (garageId: string): Promise<void> => {
-  if (!garageId) return;
+export const refreshPushSubscriptionIfNeeded = async (
+  target: string | { garageId?: string; userPhone?: string; carPlate?: string }
+): Promise<void> => {
+  if (!target) return;
   const status = await checkPushSubscriptionStatus();
   if (status.isSupported && status.permission === 'granted') {
-    await subscribeToPush(garageId);
+    await subscribeToPush(target);
   }
 };

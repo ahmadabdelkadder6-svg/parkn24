@@ -1,5 +1,5 @@
-// ✅ رقم الـ Version - تم التحديث لـ v9 لإجبار المتصفحات على التحديث الفوري
-const CACHE_NAME    = 'parknow-v9'; 
+// ✅ رقم الـ Version - تم التحديث لـ v10 لإجبار جميع المتصفحات على التحديث الفوري
+const CACHE_NAME    = 'parknow-v10'; 
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
 // ✅ منع تكرار نفس الإشعار خلال 3 ثوانٍ
@@ -11,8 +11,10 @@ self.addEventListener('install', (event) => {
   self.skipWaiting(); // تفعيل فوري بدون انتظار
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 Service Worker Installed (v9)');
-      return cache.addAll(STATIC_ASSETS);
+      console.log('📦 Service Worker Installed (v10)');
+      return cache.addAll(STATIC_ASSETS).catch((err) => {
+        console.warn('Assets cache warning:', err);
+      });
     })
   );
 });
@@ -64,7 +66,7 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// ─── 4. Push (استقبال الإشعار وإيقاظ الهاتف حتى لو كان مقفولاً) ─────────
+// ─── 4. Push (استقبال الإشعار الفوري وإيقاظ الهاتف وشاشته مطفأة) ─────────
 self.addEventListener('push', (event) => {
   let title     = '🚨 تنبيه من بركن 24';
   let body      = 'لديك تحديث جديد بخصوص ركنتك';
@@ -77,32 +79,44 @@ self.addEventListener('push', (event) => {
 
   try {
     if (event.data) {
-      const payload = event.data.json();
+      let payload = {};
+      try {
+        payload = event.data.json();
+      } catch {
+        payload = { body: event.data.text() };
+      }
+
       console.log('📨 Push received in SW:', payload);
 
-      const notificationData = payload.data || payload.immediate?.data || {};
+      const notificationData = payload.data || payload.immediate?.data || payload.record || {};
       extraData = notificationData;
-      url = notificationData.url || payload.url || '/';
+      url = notificationData.url || payload.url || payload.immediate?.data?.url || '/';
 
       // 🚨 1. هل الإشعار خاص باختراق درع الأمان / السرقة؟
       if (
         notificationData.type === 'security_breach' ||
         (payload.tag && payload.tag.startsWith('breach-')) ||
-        (payload.immediate?.tag && payload.immediate.tag.startsWith('breach-'))
+        (payload.immediate?.tag && payload.immediate.tag.startsWith('breach-')) ||
+        payload.isBreached === true
       ) {
         isBreach = true;
-        title = payload.immediate?.title || payload.title || '🚨 تحذير أمني: تم رصد تحرك سيارة!';
-        body  = payload.immediate?.body  || payload.body  || `🚗 سيارتك تجاوزت فقاعة الأمان بالجراج بدون تصريح!`;
-        tag   = `breach-${Date.now()}`;
-      } 
-      // 🚗 2. هل الإشعار خاص بسيارة قادمة في الطريق؟
-      else if (notificationData.type === 'incoming_car' || (payload.tag && payload.tag.startsWith('incoming-'))) {
         const plate = notificationData.carPlate || payload.carPlate || '';
-        title = '🚨 سيارة في الطريق إليك!';
-        body  = plate ? `🚗 رقم السيارة: ${plate} • استعد للاستقبال!` : 'تقترب سيارة جديدة من الجراج الآن، استعد!';
+        title = payload.immediate?.title || payload.title || '🚨 تحذير أمني: تم رصد تحرك سيارة!';
+        body  = payload.immediate?.body  || payload.body  || (plate ? `🚗 سيارتك لوحة [${plate}] تجاوزت سياج الأمان بدون تصريح!` : '🚗 تم رصد خروج سيارتك من سياج الجراج!');
+        tag   = `breach-${plate || Date.now()}`;
+      } 
+      // 🚗 2. هل الإشعار خاص بسيارة قادمة في الطريق للجراج؟
+      else if (
+        notificationData.type === 'incoming_car' ||
+        (payload.tag && payload.tag.startsWith('incoming-')) ||
+        (payload.immediate?.tag && payload.immediate.tag.startsWith('incoming-'))
+      ) {
+        const plate = notificationData.carPlate || payload.carPlate || '';
+        title = payload.immediate?.title || payload.title || '🚨 سيارة في الطريق إليك!';
+        body  = payload.immediate?.body  || payload.body  || (plate ? `🚗 رقم السيارة: ${plate} • استعد للاستقبال فوراً!` : 'تقترب سيارة جديدة من الجراج الآن، استعد!');
         tag   = `incoming-${plate || Date.now()}`;
       }
-      // ⏰ 3. إشعار عادي / اقتراب
+      // ⏰ 3. إشعار عادي / اقتراب موعد الوصول
       else {
         title = payload.notification?.title || payload.immediate?.title || payload.title || title;
         body  = payload.notification?.body  || payload.immediate?.body  || payload.body  || body;
@@ -128,19 +142,19 @@ self.addEventListener('push', (event) => {
     if (now - t > 30000) recentNotifications.delete(k);
   }
 
-  // 📳 نمط الاهتزاز (اهتزاز طوارئ أطول لو سرقة، ونمط رنين لو وصول سيارة)
+  // 📳 نمط الاهتزاز العنيف (سرينة اختراق طوارئ طويلة جداً vs رنة وصول سيارة)
   const vibrationPattern = isBreach
-    ? [1500, 100, 1500, 100, 1500, 100, 2000, 150, 2000] // سرينة طوارئ واختراق
-    : [1000, 300, 1000, 300, 1000, 300, 1000, 300, 1200, 400, 1200]; // وصول سيارة
+    ? [1500, 100, 1500, 100, 1500, 100, 2000, 150, 2000] // رنات طوارئ طويلة لاختراق الصوت
+    : [1000, 300, 1000, 300, 1000, 300, 1000, 300, 1200, 400, 1200]; // رنة فالية وصول سيارة
 
   const options = {
     body,
     icon,
     badge,
     vibrate: vibrationPattern,
-    requireInteraction: true,  // يظل معروضاً على شاشة القفل ولا يختفي حتى يفتحه المستخدم
+    requireInteraction: true, // يظل معروضاً على شاشة القفل ولا يختفي حتى يفتحه المستخدم
     tag: tag,
-    renotify: true,           // يرن ويهتز حتى لو كان هناك إشعار سابق
+    renotify: true,          // يرن ويهتز حتى لو كان هناك إشعار سابق
     silent: false,
     timestamp: now,
     data: { url, ...extraData },
@@ -155,7 +169,7 @@ self.addEventListener('push', (event) => {
   );
 });
 
-// ─── 5. Notification Click (فتح الصفحة المناسبة عند الضغط) ──────────
+// ─── 5. Notification Click (فتح وتوجيه الصفحة المناسبة عند الضغط) ──────────
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
@@ -169,11 +183,17 @@ self.addEventListener('notificationclick', (event) => {
     clients
       .matchAll({ type: 'window', includeUncontrolled: true })
       .then((clientList) => {
+        // لو التبويب مفتوح في الخلفية، اجلبه للأمام فوراً
         for (const client of clientList) {
           if ('focus' in client) {
+            client.postMessage({
+              type: 'NOTIFICATION_CLICKED',
+              data: event.notification.data,
+            });
             return client.focus();
           }
         }
+        // لو التطبيق مقفول، افتح نافذة جديدة بالرابط المطلوب
         if (clients.openWindow) {
           return clients.openWindow(targetUrl);
         }

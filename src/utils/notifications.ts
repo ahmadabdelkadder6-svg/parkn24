@@ -220,7 +220,9 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
 export const sendLocalNotification = async (
   title: string,
   body: string,
-  tag = 'valet-urgent-alarm'
+  tag = 'valet-urgent-alarm',
+  url = '/session',
+  extraData: Record<string, unknown> = {}
 ) => {
   try {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
@@ -233,10 +235,10 @@ export const sendLocalNotification = async (
       requireInteraction: true,
       renotify: true,
       vibrate: [800, 200, 800, 200, 1000],
-      data: { url: '/garage' },
+      data: { url, ...extraData },
     };
 
-    // إرسال عبر Service Worker (متوافق مع أندرويد)
+    // إرسال عبر Service Worker (متوافق مع أندرويد وآيفون PWA)
     if ('serviceWorker' in navigator) {
       try {
         const reg = await navigator.serviceWorker.ready;
@@ -256,14 +258,16 @@ export const sendLocalNotification = async (
 
 // ─── 6. التنبيهات المجمعة المباشرة ──────────────────────────────────────
 
-// 🚨 إنذار الطوارئ المجمع لاختراق درع الأمان الفضائي للسيارة
+// 🚨 إنذار الطوارئ المجمع لاختراق درع الأمان الفضائي للسيارة (يوجه لشاشة الـ SOS)
 export const notifySecurityBreach = (carPlate: string, distanceMeters?: number) => {
   playBreachAlarmSound();
   vibrateBreach();
   sendLocalNotification(
     '🚨 تحذير أمني: تم رصد تحرك سيارتك!',
-    `🚗 السيارة [${carPlate}] غادرت فقاعة الأمان الفضائية (${distanceMeters ? distanceMeters + 'م' : '25م'}) بدون إذن خروج!`,
-    `breach-${carPlate}`
+    `🚗 السيارة [${carPlate}] غادرت فقاعة الأمان بالجراج (${distanceMeters ? distanceMeters + 'م' : '25م'}) بدون إذن خروج!`,
+    `breach-${carPlate}`,
+    '/session',
+    { type: 'security_breach', carPlate, isBreached: true }
   );
 };
 
@@ -273,7 +277,9 @@ export const notifyIncomingCar = (carPlate: string) => {
   sendLocalNotification(
     '🚨 سيارة في الطريق إليك!',
     `🚗 رقم اللوحة: ${carPlate} • استعد للاستقبال فوراً!`,
-    `incoming-${carPlate}`
+    `incoming-${carPlate}`,
+    '/garage',
+    { type: 'incoming_car', carPlate }
   );
 };
 
@@ -283,6 +289,8 @@ export const notifyNewOffer = (carPlate: string, price: number) => {
   sendLocalNotification(
     '💰 عرض سعر جديد!',
     `🚗 السيارة ${carPlate} - عرضت: ${price} ج.م/ساعة`,
-    `offer-${carPlate}`
+    `offer-${carPlate}`,
+    '/garage',
+    { type: 'new_offer', carPlate, price }
   );
 };

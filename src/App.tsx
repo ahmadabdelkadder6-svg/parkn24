@@ -116,7 +116,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
   const BRAND_BLUE = '#1656b8';
   const BRAND_GREEN = '#8cc63f';
 
-  // ⚡ تم تغيير رقم الإصدار هنا لـ v=999 لإجبار المتصفح على حذف كاش الصورة القديمة فوراً وعرض المضغوطة الجديدة
   const CAR_IMAGE_SRC = '/hero-car.webp?v=999';
 
   return (
@@ -192,7 +191,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             }
           `}</style>
 
-          {/* 🚗 1. خلفية الصورة المدمجة بكامل الشاشة */}
           <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
             <img
               src={CAR_IMAGE_SRC}
@@ -205,7 +203,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
               }}
             />
 
-            {/* 🎨 2. تدرجات الدمج السينمائي الذكي */}
             <div
               className="absolute inset-0"
               style={{
@@ -221,7 +218,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             />
           </div>
 
-          {/* 🛡️ 3. شريط الهيدر العلوي */}
           <motion.nav
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -229,7 +225,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             className="w-full flex items-center justify-between px-6 py-6 z-20 relative"
             style={{ direction: 'ltr' }}
           >
-            {/* اللوجو عربي وإنجليزي */}
             <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.15' }}>
               <span style={{ fontFamily: "'Cairo', sans-serif", fontSize: '16px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.01em' }}>
                 بركن <span style={{ color: BRAND_GREEN }}>24</span>
@@ -244,12 +239,10 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             </button>
           </motion.nav>
 
-          {/* 📝 4. المحتوى التفاعلي المدمج في الأسفل والوسط */}
           <div
             className="px-6 pb-10 z-20 relative flex flex-col justify-end max-w-lg mx-auto w-full"
             style={{ direction: 'rtl' }}
           >
-            {/* العنوان الرئيسي */}
             <h1
               className="hero-block delay-1"
               style={{
@@ -266,7 +259,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
               <span style={{ color: BRAND_GREEN }}>قبل ما توصل!</span>
             </h1>
 
-            {/* الوصف التوضيحي */}
             <p
               className="hero-block delay-2"
               style={{
@@ -283,7 +275,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
               مع Park'n 24, حدد وجهتك، اضمن مكانك في أقرب جراج، ووفر وقتك وبنزينك بضغطة زر واحدة.
             </p>
 
-            {/* زر الحجز السريع */}
             <div className="hero-block delay-3" style={{ marginTop: '26px' }}>
               <button onClick={handleEnter} className="btn-brand-glow w-full sm:w-auto" style={{ fontSize: '16px' }}>
                 <span>احجز ركنتك الآن 🚀</span>
@@ -359,6 +350,10 @@ export default function App() {
   const sessionTransitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [adminAccess, setAdminAccess] = useState(false);
+
+  // 📍 تتبع موقع العميل الجغرافي لحظياً لتقييم مستويات خطر الاختراق
+  const [customerLat, setCustomerLat] = useState<number | null>(null);
+  const [customerLng, setCustomerLng] = useState<number | null>(null);
 
   const [showLanding, setShowLanding] = useState(() => {
     const today = new Date().toDateString();
@@ -507,9 +502,47 @@ export default function App() {
     });
   }, [sessions, userPlate, userPhone, currentUser]);
 
-  // 🚨 [رصد فوري متكامل لكسر درع الأمان والفقاعة الجغرافية على مستوى التطبيق بالكامل]
+  const garage = garages?.find((g) => g.id === activeSession?.garageId);
+
+  // 🛰️ تتبع موقع العميل الجغرافي بالـ GPS لحظة بلحظة إذا كان الدرع نشطاً
   useEffect(() => {
-    if (currentUser && activeSession && activeSession.isBreached && activeSession.securityShieldActive) {
+    if (!activeSession || !activeSession.securityShieldActive) {
+      setCustomerLat(null);
+      setCustomerLng(null);
+      return;
+    }
+    if (!('geolocation' in navigator)) return;
+    const wid = navigator.geolocation.watchPosition(
+      (pos) => {
+        setCustomerLat(pos.coords.latitude);
+        setCustomerLng(pos.coords.longitude);
+      },
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 2000, timeout: 5000 }
+    );
+    return () => navigator.geolocation.clearWatch(wid);
+  }, [activeSession?.id, activeSession?.securityShieldActive]);
+
+  // 📐 حساب المسافة الفعلية الفورية بين موقع العميل ومكان الركنة
+  const distanceToCar = useMemo(() => {
+    if (!activeSession || !customerLat || !customerLng) return null;
+    const pLat = activeSession.parkedLat || garage?.lat;
+    const pLng = activeSession.parkedLng || garage?.lng;
+    if (!pLat || !pLng) return null;
+    return calculateDistanceMeters(customerLat, customerLng, pLat, pLng);
+  }, [activeSession, customerLat, customerLng, garage]);
+
+  // 🎯 تحديد مستوى الخطر الجغرافي الفعلي لمنع الإزعاج الكاذب أثناء الاقتراب
+  const isFarAway = useMemo(() => {
+    if (!activeSession) return false;
+    if (!activeSession.securityShieldActive || !activeSession.isBreached) return false;
+    if (distanceToCar === null) return true; // تفعيل الحماية افتراضياً عند تعذر قراءة الـ GPS
+    return distanceToCar > 25; // خطر حقيقي فقط خارج الـ 25 متر
+  }, [activeSession, distanceToCar]);
+
+  // 🚨 [رصد فوري متكامل لكسر درع الأمان والفقاعة الجغرافية - يثور فقط إذا كان العميل بعيداً عن سيارته]
+  useEffect(() => {
+    if (currentUser && activeSession && activeSession.isBreached && activeSession.securityShieldActive && isFarAway) {
       // إطلاق صفارات الإنذار فوراً، والاهتزاز العنيف، وإرسال تنبيه في شريط الهاتف
       playBreachAlarmSound();
       vibrateBreach();
@@ -523,7 +556,7 @@ export default function App() {
 
       return () => clearInterval(alarmInterval);
     }
-  }, [activeSession?.id, activeSession?.isBreached, activeSession?.securityShieldActive, currentUser]);
+  }, [activeSession?.id, activeSession?.isBreached, activeSession?.securityShieldActive, currentUser, isFarAway]);
 
   useEffect(() => {
     if (!dataLoaded) return;

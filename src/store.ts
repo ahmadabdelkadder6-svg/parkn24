@@ -264,24 +264,15 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-// 🛡️ دالة البصمة الفولاذية الموحدة لجميع لوحات السيارات (تمنع التحايل ومطابقة لقاعدة البيانات القديمة 100%)
 export const getPlateFingerprint = (plate?: any): string => {
   if (!plate) return '';
   let str = String(plate).trim();
 
-  // 1️⃣ إزالة المسافات الصامتة والفواصل الخفية ورموز الـ Unicode الخاصة
   str = str.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '');
-
-  // 2️⃣ إزالة التطويل والكشيدة (ـ) والتشكيل والتنوين
   str = str.replace(/\u0640/g, '');
-
-  // 3️⃣ تفكيك الـ Unicode لتوحيد الحروف المركبة (NFKD Normalization)
   str = str.normalize('NFKD');
-
-  // 4️⃣ حذف الهمزات وعلامات التشكيل بعد التفكيك
   str = str.replace(/[\u064B-\u065F\u0670\u0654\u0655\u0653]/g, '');
 
-  // 5️⃣ تحويل كافة الأرقام الهندية والشرقية (١٢٣ / ۱۲۳) إلى أرقام عادية (123)
   const easternDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
   const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
   for (let i = 0; i <= 9; i++) {
@@ -289,7 +280,6 @@ export const getPlateFingerprint = (plate?: any): string => {
     str = str.split(persianDigits[i]).join(String(i));
   }
 
-  // 6️⃣ تحويل الحروف الإنجليزية إلى عربية في حال حاول كتابتها بالإنجليزية
   str = str.toUpperCase();
   const enToAr: Record<string, string> = {
     'A': 'ا', 'B': 'ب', 'C': 'س', 'D': 'د', 'E': 'ي', 'F': 'ف',
@@ -300,23 +290,12 @@ export const getPlateFingerprint = (plate?: any): string => {
   };
   str = str.replace(/[A-Z]/g, (ch) => enToAr[ch] || '');
 
-  // 7️⃣ توحيد الحروف المتشابهة لقطع أي محاولة تلاعب
-  // تحويل كافة أشكال الألف والهمزات (أ / إ / آ / ٱ / ا) إلى حرف "ا" موحد
   str = str.replace(/[\u0622\u0623\u0625\u0671\u0672\u0673\u0675\u0627]/g, 'ا');
-
-  // توحيد الهمزات المنفصلة وعلى الياء والواو (ء / ئ / ؤ)
   str = str.replace(/[ءئ]/g, 'ي').replace(/ؤ/g, 'و');
-
-  // توحيد التاء المربوطة بالهاء (ة -> ه)
   str = str.replace(/ة/g, 'ه');
-
-  // توحيد الألف المقصورة بالياء (ى -> ي)
   str = str.replace(/[ىی]/g, 'ي');
-
-  // توحيد الكاف الفارسية والمعربة (ک / گ -> ك)
   str = str.replace(/[کگ]/g, 'ك');
 
-  // 8️⃣ عزل الحروف الصافية والأرقام
   const letters = str.replace(/[^ا-ي]/g, '');
   const digits = str.replace(/[^0-9]/g, '');
 
@@ -324,7 +303,6 @@ export const getPlateFingerprint = (plate?: any): string => {
   if (!letters) return `_${digits}`;
   if (!digits) return `${letters}_`;
 
-  // 🌟 إرجاع البصمة بالشرطة السفلية لضمان مطابقة الـ Database القديمة والجديدة فوراً!
   return `${letters}_${digits}`;
 };
 
@@ -332,25 +310,20 @@ export const normalizePlate = (plate?: any): string => {
   return getPlateFingerprint(plate);
 };
 
-// 📱 دالة تنظيف وتوحيد رقم الهاتف المصري
 export const normalizePhone = (phone?: any): string => {
   if (!phone) return '';
   let str = String(phone).trim();
 
-  // تحويل الأرقام الهندية/الشرقية (٠-٩) إلى أرقام إنجليزية (0-9)
   const arabicNums = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
   for (let i = 0; i < 10; i++) {
     str = str.replace(new RegExp(arabicNums[i], 'g'), String(i));
   }
 
-  // إزالة أي رموز أو حروف ومسافات
   let clean = str.replace(/[^\d]/g, '');
 
-  // إزالة كود مصر الدولي (+20 أو 0020 أو 20) إن وجد
   if (clean.startsWith('0020')) clean = clean.substring(4);
   else if (clean.startsWith('20')) clean = clean.substring(2);
 
-  // لو المستخدم بدأ بـ 10 أو 11 أو 12 أو 15 مباشرة (بدون الصفر الأول) بنضيف الصفر تلقائياً
   if ((clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('12') || clean.startsWith('15')) && clean.length === 10) {
     clean = '0' + clean;
   }
@@ -358,10 +331,8 @@ export const normalizePhone = (phone?: any): string => {
   return clean.substring(0, 11);
 };
 
-// 🇪🇬 دالة فحص صارمة للتأكد أن الرقم مصري صحيح (11 رقم ويبدأ بـ 010 / 011 / 012 / 015)
 export const isValidEgyptianPhone = (phone: string): boolean => {
   const clean = normalizePhone(phone);
-  // فحص: 11 رقم، يبدأ بـ 01، ثم يليه (0 أو 1 أو 2 أو 5)، ثم 8 أرقام
   return /^01[0125][0-9]{8}$/.test(clean);
 };
 
@@ -414,7 +385,6 @@ export const getServerNow = (): number => {
   return Date.now() + serverTimeOffset;
 };
 
-// تشغيل المزامنة المبدئية فوراً
 syncServerClock();
 
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
@@ -582,6 +552,92 @@ const resolveAddedBy = (explicitAddedBy?: string): string => {
   return '';
 };
 
+// ==========================================
+// 🧠 محرك الذكاء المكاني والأمني (Spatial Security Engine)
+// ==========================================
+
+export const calculateDistanceMeters = (
+  lat1: number, lng1: number,
+  lat2: number, lng2: number
+): number => {
+  const R = 6371e3; // Earth radius in meters
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+};
+
+export const checkSpatialCollision = (
+  sessions: ParkingSession[],
+  newLat: number,
+  newLng: number,
+  excludeId?: string
+): ParkingSession | null => {
+  for (const s of sessions) {
+    if (s.id === excludeId) continue;
+    if (s.status !== 'active') continue;
+    if (!s.securityShieldActive) continue;
+    const sLat = s.parkedLat;
+    const sLng = s.parkedLng;
+    if (!sLat || !sLng) continue;
+    const dist = calculateDistanceMeters(newLat, newLng, sLat, sLng);
+    if (dist < 2.5) return s; // أقل من 2.5 متر = نفس الباكية بالمللي!
+  }
+  return null;
+};
+
+export const checkHumanBreach = (
+  sessions: ParkingSession[],
+  valetLat: number,
+  valetLng: number
+): ParkingSession | null => {
+  for (const s of sessions) {
+    if (s.status !== 'active') continue;
+    if (!s.securityShieldActive) continue;
+    const sLat = s.parkedLat;
+    const sLng = s.parkedLng;
+    if (!sLat || !sLng) continue;
+    const dist = calculateDistanceMeters(valetLat, valetLng, sLat, sLng);
+    if (dist < 2) return s; // داخل مساحة العربية (أقل من 2 متر)
+  }
+  return null;
+};
+
+export const checkAdjacentSpot = (
+  sessions: ParkingSession[],
+  targetLat: number,
+  targetLng: number,
+  excludeId?: string
+): boolean => {
+  for (const s of sessions) {
+    if (s.id === excludeId) continue;
+    if (s.status !== 'active') continue;
+    const sLat = s.parkedLat;
+    const sLng = s.parkedLng;
+    if (!sLat || !sLng) continue;
+    const dist = calculateDistanceMeters(targetLat, targetLng, sLat, sLng);
+    if (dist >= 3 && dist <= 10) return true;
+  }
+  return false;
+};
+
+export type RiskLevel = 'safe' | 'warning' | 'danger';
+
+export const assessRiskLevel = (
+  customerDist: number,
+  isBreached: boolean,
+  isShieldActive: boolean
+): RiskLevel => {
+  if (!isShieldActive || !isBreached) return 'safe';
+  if (customerDist <= 25) return 'safe';
+  if (customerDist <= 100) return 'warning';
+  return 'danger';
+};
+
 // ===================== State Interface =====================
 interface AppState {
   view: ViewType;
@@ -631,7 +687,7 @@ interface AppState {
   assignSessionToValet: (sessionId: string, valetName: string) => Promise<void>;
 
   // 🛡️ دوال تفعيل درع الأمان الفضائي والفقاعة ورصد البلوتوث
-  setSessionSecurityShield: (sessionId: string, lat: number, lng: number, bluetoothId?: string) => Promise<void>;
+  setSessionSecurityShield: (sessionId: string, active: boolean, lat?: number, lng?: number, bluetoothId?: string) => Promise<void>;
   triggerSessionBreach: (sessionId: string, isBreached: boolean) => Promise<void>;
 
   offers: Offer[];
@@ -653,7 +709,7 @@ interface AppState {
   logout: () => void;
 }
 
-// ===================== Store =====================
+// ===================== Store Implementation =====================
 export const useStore = create<AppState>((set, get) => ({
   view: (() => { try { const saved = localStorage.getItem('appView'); return (saved as ViewType) || 'user'; } catch { return 'user' as ViewType; } })(),
   setView: (v) => { set({ view: v }); localStorage.setItem('appView', v); },
@@ -812,9 +868,7 @@ export const useStore = create<AppState>((set, get) => ({
             if (currentWallet >= amount) {
               const newWallet = currentWallet - amount;
               const { error: updateError } = await supabase
-                .from('users')
-                .update({ wallet: newWallet })
-                .eq('phone', user.phone);
+                .from('users').update({ wallet: newWallet }).eq('phone', user.phone);
 
               if (!updateError) {
                 const updated = { ...user, wallet: newWallet };
@@ -843,18 +897,11 @@ export const useStore = create<AppState>((set, get) => ({
     set({ currentUser: updated });
     safeSetStorage('currentUser', updated);
 
-    try {
-      localStorage.removeItem('showWelcomeGift');
-    } catch (e) {}
+    try { localStorage.removeItem('showWelcomeGift'); } catch (e) {}
 
     if (!isSupabaseConfigured()) return;
-    const { error } = await supabase
-      .from('users')
-      .update({ has_used_free_session: true })
-      .eq('phone', user.phone);
-    if (error) {
-      console.error('❌ Failed to mark free session used:', error);
-    }
+    const { error } = await supabase.from('users').update({ has_used_free_session: true }).eq('phone', user.phone);
+    if (error) console.error('❌ Failed to mark free session used:', error);
   },
 
   garages: [],
@@ -999,11 +1046,16 @@ export const useStore = create<AppState>((set, get) => ({
               isFirstFreeSession: ss.isFirstFreeSession ?? localVersion.isFirstFreeSession,
               freeMinutesApplied: ss.freeMinutesApplied ?? localVersion.freeMinutesApplied,
 
-              // مزامنة حقول درع الأمان الفضائي والفقاعة الجغرافية
               parkedLat: ss.parkedLat ?? localVersion.parkedLat,
               parkedLng: ss.parkedLng ?? localVersion.parkedLng,
               carBluetoothId: ss.carBluetoothId ?? localVersion.carBluetoothId,
-              securityShieldActive: ss.securityShieldActive ?? localVersion.securityShieldActive,
+              
+              // حارس الذاكرة: حماية الـ polling من إرجاع الدرع للقيمة القديمة قبل انتهاء حفظ السيرفر
+              securityShieldActive: Boolean(
+                ss.securityShieldActive || 
+                localVersion.securityShieldActive || 
+                localStorage.getItem(`shield_active_${ss.id}`) === 'true'
+              ),
               isBreached: ss.isBreached ?? localVersion.isBreached,
             };
           }
@@ -1169,7 +1221,7 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const pending = pendingGarageUpdates.get(id);
       if (pending && Object.keys(pending).length > 0) {
-        const { error: flushError } = await supabase.from('garages').update(pending).eq('id', id);
+        const { error: flushError = null } = await supabase.from('garages').update(pending).eq('id', id);
         if (flushError) { console.error('❌', flushError); await get().fetchAll(); return; }
         pendingGarageUpdates.delete(id);
         if (pendingGarageUpdates.size === 0 && updateGarageTimeout) { clearTimeout(updateGarageTimeout); updateGarageTimeout = null; }
@@ -1273,12 +1325,12 @@ export const useStore = create<AppState>((set, get) => ({
         isFirstFreeSession: eligibleForFree,
         freeMinutesApplied: 0,
 
-        // إدراج الحقول الافتراضية محلياً في الـ Store
+        // 🛡️ تفعيل الدرع إجبارياً يبدأ بـ false مغلق ومطفأ تماماً (سواء للعميل أو السايس)
         parkedLat: (s as any).parkedLat || undefined,
         parkedLng: (s as any).parkedLng || undefined,
         carBluetoothId: (s as any).carBluetoothId || undefined,
-        securityShieldActive: (s as any).securityShieldActive ?? true,
-        isBreached: (s as any).isBreached ?? false,
+        securityShieldActive: false, // 🔒 مغلق افتراضياً عند الإضافة لمنع التفعيل العشوائي تلقائياً
+        isBreached: false,
       };
 
       set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]) }));
@@ -1307,12 +1359,11 @@ export const useStore = create<AppState>((set, get) => ({
           is_first_free_session: eligibleForFree,
           free_minutes_applied: 0,
 
-          // إرسال الحقول الفضائية والفقاعة والدرع لقاعدة البيانات
           parked_lat: (s as any).parkedLat || null,
           parked_lng: (s as any).parkedLng || null,
           car_bluetooth_id: (s as any).carBluetoothId || null,
-          security_shield_active: (s as any).securityShieldActive ?? true,
-          is_breached: (s as any).isBreached ?? false,
+          security_shield_active: false, // 🔒 تعيين false مباشر في قاعدة البيانات
+          is_breached: false,
         }).select().single();
 
         if (error) {
@@ -1431,7 +1482,7 @@ export const useStore = create<AppState>((set, get) => ({
           commission_amount: commissionAmount,
           net_revenue: netRevenue,
           settled: false,
-          free_minutes_applied: freeMinutesApplied || session.freeMinutesApplied || 0,
+          free_minutes_applied: free_minutes_applied || session.freeMinutesApplied || 0,
           added_by: finalAddedBy || null
         })
         .eq('id', id)
@@ -1441,7 +1492,8 @@ export const useStore = create<AppState>((set, get) => ({
         console.error('❌ خطأ في إنهاء الجلسة بالسيرفر:', error);
       } else {
         locallyEndedSessions.delete(id);
-        get().fetchAll();
+        // ⚡ تحديث فوري مباشر بدون انتظار 3.5 ثوانٍ
+        await get().fetchAll();
       }
     } finally {
       sessionEndLocks.delete(lockKey);
@@ -1510,38 +1562,37 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 🛡️ تنفيذ دوال تعيين درع الأمان الفضائي والفقاعة ورصد البلوتوث الذكي
-  setSessionSecurityShield: async (sessionId: string, lat: number, lng: number, bluetoothId?: string) => {
+  // 🛡️ دالة تفعيل درع الأمان الفضائية المحدثة
+  setSessionSecurityShield: async (sessionId: string, active: boolean, lat?: number, lng?: number, bluetoothId?: string) => {
     try {
-      if (isSupabaseConfigured()) {
-        await supabase
-          .from('sessions')
-          .update({
-            parked_lat: lat,
-            parked_lng: lng,
-            car_bluetooth_id: bluetoothId || null,
-            security_shield_active: true,
-            is_breached: false,
-          })
-          .eq('id', sessionId);
-      }
-
+      // 1. تثبيت فوري في Zustand
       set((state) => ({
         sessions: state.sessions.map((s) =>
           s.id === sessionId
-            ? {
-                ...s,
-                parkedLat: lat,
-                parkedLng: lng,
-                carBluetoothId: bluetoothId,
-                securityShieldActive: true,
-                isBreached: false,
-              }
+            ? { ...s, securityShieldActive: active, isBreached: false }
             : s
         ),
       }));
+
+      // 2. حفظ في الـ LocalStorage لمنع مسحه عند إعادة التحميل
+      try {
+        localStorage.setItem(`shield_active_${sessionId}`, active ? 'true' : 'false');
+      } catch {}
+
+      // 3. تحديث قاعدة البيانات في Supabase
+      if (isSupabaseConfigured()) {
+        const updateData: any = {
+          security_shield_active: active,
+          is_breached: false,
+        };
+        if (lat) updateData.parked_lat = lat;
+        if (lng) updateData.parked_lng = lng;
+        if (bluetoothId) updateData.car_bluetooth_id = bluetoothId;
+
+        await supabase.from('sessions').update(updateData).eq('id', sessionId);
+      }
     } catch (e) {
-      console.warn('Error setting security shield:', e);
+      console.warn('Error saving shield to Supabase:', e);
     }
   },
 
@@ -1726,9 +1777,7 @@ export const useStore = create<AppState>((set, get) => ({
       const newWallet = Number(userData.wallet || 0) + totalToAdd;
 
       const { error: walletError } = await supabase
-        .from('users')
-        .update({ wallet: newWallet })
-        .eq('id', userData.id);
+        .from('users').update({ wallet: newWallet }).eq('id', userData.id);
 
       if (walletError) throw walletError;
 

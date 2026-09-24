@@ -7,7 +7,7 @@ import {
   Search, X, CreditCard, MapPinOff, Locate, AlertTriangle, Wifi, WifiOff, Eye, QrCode,
   Compass, Activity
 } from 'lucide-react';
-import { useStore, pausePolling, normalizePlate, getServerNow } from '../store';
+import { useStore, pausePolling, normalizePlate, getServerNow, calculateDistanceMeters, checkSpatialCollision, checkHumanBreach } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost, SECURITY_SHIELD_FEE } from '../utils/pricing';
 import toast from 'react-hot-toast';
@@ -772,6 +772,7 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
     </div>
   );
 });
+
 // ==========================================
 // المكون الرئيسي: DASHBOARD
 // ==========================================
@@ -1317,6 +1318,17 @@ export default function GarageDashboard() {
     const at = getServerNow();
     const startTimeISO = new Date(at).toISOString();
     
+    // 💥 فحص التصادم المكاني: هل فيه عربية VIP في نفس المكان؟
+    if (garageCoords) {
+      const collision = checkSpatialCollision(sessions, garageCoords.lat, garageCoords.lng);
+      if (collision) {
+        toast.error(`🚨 تنبيه: المكان محجوز للعربية [${collision.carPlate}] وجلسة الدرع نشطة!`, { duration: 5000 });
+        // إطلاق إنذار لصاحب العربية الأولى
+        await triggerSessionBreach(collision.id, true);
+        return;
+      }
+    }
+
     const sid = await addSession({ 
       garageId: garage.id, 
       carPlate: cp, 
@@ -1472,6 +1484,17 @@ export default function GarageDashboard() {
       const ro = offers.find(o => normalizePlate(o.carPlate) === np && (o.status === 'pending' || o.status === 'accepted'));
       if (ro) cancelOffer(ro.id);
 
+      // 💥 فحص التصادم المكاني قبل بدء الجلسة
+      if (garageCoords) {
+        const collision = checkSpatialCollision(sessions, garageCoords.lat, garageCoords.lng);
+        if (collision) {
+          toast.error(`🚨 المكان محجوز للعربية [${collision.carPlate}]!`, { duration: 5000 });
+          await triggerSessionBreach(collision.id, true);
+          processedCarsRef.current.delete(carId);
+          return;
+        }
+      }
+
       const startTimeISO = new Date(getServerNow()).toISOString();
 
       const sid = await addSession({ 
@@ -1485,12 +1508,14 @@ export default function GarageDashboard() {
         customerName: car.customerName, 
         startedBy: 'garage', 
         incomingCarId: carId, 
+        securityShieldActive: false, // 🔒 مطفأ افتراضياً والعميل يفعله برغبته
+        isBreached: false,
         addedBy: isValet ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`) : '' 
       } as any);
       
       // 🛡️ تثبيت مرساة فقاعة الأمان الفضائية للسيارة فور وصولها
       if (sid && garageCoords) {
-        await setSessionSecurityShield(sid, garageCoords.lat, garageCoords.lng);
+        await setSessionSecurityShield(sid, true, garageCoords.lat, garageCoords.lng);
       }
 
       await removeIncomingCar(carId);
@@ -2293,7 +2318,7 @@ export default function GarageDashboard() {
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
+      </ AnimatePresence>
     </div>
   );
 }

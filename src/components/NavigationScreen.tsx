@@ -596,14 +596,15 @@ export default function NavigationScreen() {
         incomingCarId: myIncomingCar.id,
         parkedLat: userPos.lat || garage.lat,
         parkedLng: userPos.lng || garage.lng,
-        securityShieldActive: true,
+        securityShieldActive: false, // 🔒 معطل تلقائياً كبداية والعميل يفعله برغبته لاحقاً
         isBreached: false,
       } as any);
 
-      // 🛡️ تثبيت مرساة القمر الصناعي لفقاعة الأمان فور بدء الركن
+      // 🛡️ تثبيت مرساة القمر الصناعي لفقاعة الأمان فور بدء الركن (تبدأ مغلقة لسلامة التوقيع)
       if (sid) {
         await setSessionSecurityShield(
           sid,
+          false, // 🔒 نرسل حالة الدرع المغلق افتراضياً هنا لتتوافق مع التوقيع السليم
           userPos.lat || garage.lat,
           userPos.lng || garage.lng
         );
