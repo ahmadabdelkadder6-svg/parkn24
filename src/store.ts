@@ -1325,11 +1325,12 @@ export const useStore = create<AppState>((set, get) => ({
       const isAppBooking = s.source === 'app';
       const cleanPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
       const currentUserState = get().currentUser;
-      const eligibleForFree = isAppBooking && currentUserState?.hasUsedFreeSession !== true;
+      
+      // 🔒 لا يتفعل الدرع تلقائياً أبداً إلا لو ورث قيمة true صريحة من حجز العميل بالتطبيق
+      const inheritsShield = s.securityShieldActive === true || s.securityShieldActive === 'true';
 
       const startTimeISO = typeof s.startTime === 'string' ? s.startTime : new Date(getServerNow()).toISOString();
 
-      // ⚡ 1️⃣ إنشاء وحفظ الجلسة فوراً في الذاكرة المحلية (بدون انتظار أي شبكة لتشغيل العداد في 0.01 ثانية)
       const optimisticSession: ParkingSession = {
         ...s,
         id: sessionId,
@@ -1345,12 +1346,12 @@ export const useStore = create<AppState>((set, get) => ({
         commissionAmount: 0,
         netRevenue: 0,
         settled: false,
-        isFirstFreeSession: eligibleForFree,
+        isFirstFreeSession: isAppBooking && currentUserState?.hasUsedFreeSession !== true,
         freeMinutesApplied: 0,
         parkedLat: (s as any).parkedLat || undefined,
         parkedLng: (s as any).parkedLng || undefined,
         carBluetoothId: (s as any).carBluetoothId || undefined,
-        securityShieldActive: false, // 🔒 يبدأ معطلاً والعميل يفعله برغبته
+        securityShieldActive: inheritsShield, // 🔒 مغلق افتراضياً إلا لو وُرث صراحة
         isBreached: false,
       };
 
@@ -1359,7 +1360,6 @@ export const useStore = create<AppState>((set, get) => ({
 
       if (!isSupabaseConfigured()) return sessionId;
 
-      // ⚡ 2️⃣ الحفظ الصامت في قاعدة البيانات في الخلفية بدون حظر الشاشة
       try {
         const { data, error } = await supabase.from('sessions').insert({
           id: sessionId,
@@ -1373,17 +1373,17 @@ export const useStore = create<AppState>((set, get) => ({
           added_by: addedByValue,
           customer_phone: cleanPhone || null,
           customer_name: (s as any).customerName || null,
-          incoming_car_id: null, // تجنب تعارض المفاتيح الأجنبية عند مسح السيارة
+          incoming_car_id: null, 
           started_by: (s as any).startedBy || null,
           commission_amount: 0,
           net_revenue: 0,
           settled: false,
-          is_first_free_session: eligibleForFree,
+          is_first_free_session: isAppBooking && currentUserState?.hasUsedFreeSession !== true,
           free_minutes_applied: 0,
           parked_lat: (s as any).parkedLat || null,
           parked_lng: (s as any).parkedLng || null,
           car_bluetooth_id: (s as any).carBluetoothId || null,
-          security_shield_active: false,
+          security_shield_active: inheritsShield, // 🔒 تعيين القيمة الصحيحة في قاعدة البيانات
           is_breached: false,
         }).select().single();
 

@@ -1469,13 +1469,12 @@ export default function GarageDashboard() {
   };
 
   const handleCarArrived = async (car: any) => {
-    const carId: string = car.id; 
+    const carId: string = car.id;
     const carPlate: string = car.carPlate;
     if (processedCarsRef.current.has(carId)) return;
     processedCarsRef.current.add(carId);
-    
     pausePolling(2000);
-    
+
     try {
       const np = normalizePlate(carPlate);
       const existing = useStore.getState().sessions.find(s => normalizePlate(s.carPlate) === np && s.status === 'active');
@@ -1499,8 +1498,10 @@ export default function GarageDashboard() {
         }
       }
 
-      const startTimeISO = new Date(getServerNow()).toISOString();
+      // 🛡️ وراثة اختيار العميل الفعلي لدرع الأمان من طلبه بالتطبيق
+      const inheritsShieldActive = car.securityShieldActive === true || car.securityShield === true || false;
 
+      const startTimeISO = new Date(getServerNow()).toISOString();
       const sid = await addSession({ 
         garageId: garage.id, 
         carPlate: np, 
@@ -1512,19 +1513,19 @@ export default function GarageDashboard() {
         customerName: car.customerName, 
         startedBy: 'garage', 
         incomingCarId: carId, 
-        securityShieldActive: false, // 🔒 مطفأ افتراضياً والعميل يفعله برغبته
+        securityShieldActive: inheritsShieldActive, // 🔒 وراثة حالة الدرع الحقيقية للعميل
         isBreached: false,
         addedBy: isValet ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`) : '' 
       } as any);
       
-      // 🛡️ تثبيت مرساة فقاعة الأمان الفضائية للسيارة فور وصولها
+      // 🛡️ المزامنة الآمنة للمرساة الجغرافية
       if (sid && garageCoords) {
-        await setSessionSecurityShield(sid, true, garageCoords.lat, garageCoords.lng);
+        await setSessionSecurityShield(sid, inheritsShieldActive, garageCoords.lat, garageCoords.lng);
       }
 
       await removeIncomingCar(carId);
       await supabase.from('incoming_cars').delete().eq('car_plate', np).eq('garage_id', garage.id);
-      toast.success(`بدأ حساب ${carPlate} 🚗`);
+      toast.success(`بدأ حساب ${carPlate} 🚗 ${inheritsShieldActive ? '🛡️ مع درع VIP' : ''}`);
     } catch (e) { 
       processedCarsRef.current.delete(carId); 
       toast.error('حدث خطأ، حاول مرة أخرى'); 
