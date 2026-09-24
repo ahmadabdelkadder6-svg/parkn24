@@ -73,8 +73,8 @@ export default function LastSessionCard() {
   const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);
   const totalMinutes = Math.floor(elapsedSeconds / 60);
 
-  // 🛡️ التحقق من تفعيل درع الأمان الفضائي VIP
-  const hasSecurityShield = (lastSession as any).securityShieldActive === true;
+  // 🛡️ التحقق من تفعيل درع الأمان الفضائي VIP (قراءة صارمة ومحصنة من قاعدة البيانات)
+  const hasSecurityShield = lastSession.securityShieldActive === true || (lastSession as any).security_shield_active === true;
   const shieldFee = hasSecurityShield ? 10 : 0;
 
   // 🎁 [منطق الهدية الترحيبية]: أول 30 دقيقة مجانية (1800 ثانية)
@@ -88,13 +88,12 @@ export default function LastSessionCard() {
   );
 
   const hours = isFreeParking ? 0 : calculateFullHours(elapsedSeconds);
-  const rawParkingCost = calculateCost(elapsedSeconds, rate);
-  const parkingCost = isFreeParking ? 0 : rawParkingCost;
-  
-  const cost =
-    lastSession.totalPrice != null
-      ? Number(lastSession.totalPrice)
-      : (parkingCost + shieldFee);
+
+  // ⚡ موازنة الفاتورة الإعجازية: قراءة المدفوع الحقيقي من قاعدة البيانات
+  const cost = lastSession.totalPrice != null ? Number(lastSession.totalPrice) : 0;
+
+  // ⚡ التكلفة الصافية للركن = الإجمالي المدفوع - رسوم الدرع (إذا تفعل فقط)
+  const parkingCost = isFreeParking ? 0 : Math.max(0, cost - shieldFee);
 
   const startDate = new Date(startTime);
   const endDate = new Date(endTime);
@@ -342,7 +341,7 @@ export default function LastSessionCard() {
         </div>
 
         {/* التذييل التاريخي */}
-        <div className="mt-2.5 text-center relative z-10">
+        <div className="text-center relative z-10 mt-2.5">
           <span className="text-[9px] font-mono font-bold" style={{ color: BRAND.slateMuted }}>
             {formatDateTime(startDate)} • إجمالي المدة {totalMinutes} دقيقة
           </span>

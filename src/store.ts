@@ -274,7 +274,7 @@ export const getPlateFingerprint = (plate?: any): string => {
   str = str.replace(/[\u064B-\u065F\u0670\u0654\u0655\u0653]/g, '');
 
   const easternDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
-  const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+  const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '٨', '٩'];
   for (let i = 0; i <= 9; i++) {
     str = str.split(easternDigits[i]).join(String(i));
     str = str.split(persianDigits[i]).join(String(i));
@@ -556,12 +556,11 @@ const resolveAddedBy = (explicitAddedBy?: string): string => {
 // 🧠 محرك الذكاء المكاني والأمني ومصفوفة الفلاتر (Spatial Security Engine)
 // ==========================================
 
-// 📐 حساب المسافة بالمتر بين نقطتين (Haversine Formula)
 export const calculateDistanceMeters = (
   lat1: number, lng1: number,
   lat2: number, lng2: number
 ): number => {
-  const R = 6371e3; // نصف قطر الأرض بالمتر
+  const R = 6371e3; // Earth radius in meters
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
   const a =
@@ -572,7 +571,6 @@ export const calculateDistanceMeters = (
   return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 };
 
-// 💥 1. فحص التصادم المكاني فائق الدقة (أقل من 2.5 متر = نفس الباكية)
 export const checkSpatialCollision = (
   sessions: ParkingSession[],
   newLat: number,
@@ -587,12 +585,11 @@ export const checkSpatialCollision = (
     const sLng = s.parkedLng;
     if (!sLat || !sLng) continue;
     const dist = calculateDistanceMeters(newLat, newLng, sLat, sLng);
-    if (dist < 2.5) return s;
+    if (dist < 2.5) return s; // أقل من 2.5 متر = نفس الباكية بالمللي!
   }
   return null;
 };
 
-// 🚶‍♂️ 2. فحص الاختراق البشري (مرور تليفون السايس في مساحة صاج العربية < 2م)
 export const checkHumanBreach = (
   sessions: ParkingSession[],
   valetLat: number,
@@ -605,12 +602,11 @@ export const checkHumanBreach = (
     const sLng = s.parkedLng;
     if (!sLat || !sLng) continue;
     const dist = calculateDistanceMeters(valetLat, valetLng, sLat, sLng);
-    if (dist < 2) return s;
+    if (dist < 2) return s; // داخل مساحة العربية (أقل من 2 متر)
   }
   return null;
 };
 
-// 🏗️ 3. فحص الجار الملاصق (الباكيات المجاورة من 3 إلى 10 أمتار)
 export const checkAdjacentSpot = (
   sessions: ParkingSession[],
   targetLat: number,
@@ -629,7 +625,6 @@ export const checkAdjacentSpot = (
   return false;
 };
 
-// 🎯 4. تصنيف وتقييم مستوى الخطر اللحظي
 export type RiskLevel = 'safe' | 'warning' | 'danger';
 
 export const assessRiskLevel = (
@@ -638,12 +633,12 @@ export const assessRiskLevel = (
   isShieldActive: boolean
 ): RiskLevel => {
   if (!isShieldActive || !isBreached) return 'safe';
-  if (customerDist <= 25) return 'safe';     // العميل قريب = استلام هادئ
-  if (customerDist <= 100) return 'warning';  // منطقة وسطى
-  return 'danger';                            // العميل بعيد = سرقة مؤكدة
+  if (customerDist <= 25) return 'safe';
+  if (customerDist <= 100) return 'warning';
+  return 'danger';
 };
 
-// 🛡️ 5. مصفوفة فلاتر منع الإنذارات الكاذبة (Anti-False-Alarm Guard)
+// 🛡️ مصفوفة فلاتر منع الإنذارات الكاذبة (Anti-False-Alarm Guard)
 export interface GPSReading {
   lat: number;
   lng: number;
@@ -1302,7 +1297,7 @@ export const useStore = create<AppState>((set, get) => ({
     } catch (err) { console.error('❌', err); await get().fetchAll(); }
   },
 
-   addSession: async (s) => {
+  addSession: async (s) => {
     const normalizedPlate = normalizePlate(s.carPlate);
     if (!normalizedPlate) return '';
     const sessionId = crypto.randomUUID();
@@ -1325,12 +1320,11 @@ export const useStore = create<AppState>((set, get) => ({
       const isAppBooking = s.source === 'app';
       const cleanPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
       const currentUserState = get().currentUser;
-      
-      // 🔒 لا يتفعل الدرع تلقائياً أبداً إلا لو ورث قيمة true صريحة من حجز العميل بالتطبيق
-      const inheritsShield = s.securityShieldActive === true || s.securityShieldActive === 'true';
+      const eligibleForFree = isAppBooking && currentUserState?.hasUsedFreeSession !== true;
 
       const startTimeISO = typeof s.startTime === 'string' ? s.startTime : new Date(getServerNow()).toISOString();
 
+      // ⚡ 1️⃣ إنشاء وحفظ الجلسة فوراً في الذاكرة المحلية (بدون انتظار أي شبكة لتشغيل العداد في 0.01 ثانية)
       const optimisticSession: ParkingSession = {
         ...s,
         id: sessionId,
@@ -1346,12 +1340,12 @@ export const useStore = create<AppState>((set, get) => ({
         commissionAmount: 0,
         netRevenue: 0,
         settled: false,
-        isFirstFreeSession: isAppBooking && currentUserState?.hasUsedFreeSession !== true,
+        isFirstFreeSession: eligibleForFree,
         freeMinutesApplied: 0,
         parkedLat: (s as any).parkedLat || undefined,
         parkedLng: (s as any).parkedLng || undefined,
         carBluetoothId: (s as any).carBluetoothId || undefined,
-        securityShieldActive: inheritsShield, // 🔒 مغلق افتراضياً إلا لو وُرث صراحة
+        securityShieldActive: false, // 🔒 يبدأ معطلاً والعميل يفعله برغبته
         isBreached: false,
       };
 
@@ -1360,6 +1354,7 @@ export const useStore = create<AppState>((set, get) => ({
 
       if (!isSupabaseConfigured()) return sessionId;
 
+      // ⚡ 2️⃣ الحفظ الصامت في قاعدة البيانات في الخلفية بدون حظر الشاشة
       try {
         const { data, error } = await supabase.from('sessions').insert({
           id: sessionId,
@@ -1373,17 +1368,17 @@ export const useStore = create<AppState>((set, get) => ({
           added_by: addedByValue,
           customer_phone: cleanPhone || null,
           customer_name: (s as any).customerName || null,
-          incoming_car_id: null, 
+          incoming_car_id: null, // تجنب تعارض المفاتيح الأجنبية عند مسح السيارة
           started_by: (s as any).startedBy || null,
           commission_amount: 0,
           net_revenue: 0,
           settled: false,
-          is_first_free_session: isAppBooking && currentUserState?.hasUsedFreeSession !== true,
+          is_first_free_session: eligibleForFree,
           free_minutes_applied: 0,
           parked_lat: (s as any).parkedLat || null,
           parked_lng: (s as any).parkedLng || null,
           car_bluetooth_id: (s as any).carBluetoothId || null,
-          security_shield_active: inheritsShield, // 🔒 تعيين القيمة الصحيحة في قاعدة البيانات
+          security_shield_active: false,
           is_breached: false,
         }).select().single();
 
@@ -1431,9 +1426,20 @@ export const useStore = create<AppState>((set, get) => ({
 
       const commissionRate = garage?.commissionRate ?? 10;
       const isAppSession = session.source === 'app';
+      
+      // 🛡️ تقسيم رسوم درع الأمان (10 ج.م): 4 ج للتطبيق و 6 ج للجراج
+      const isShieldActive = session.securityShieldActive === true;
+      const appShieldShare = isShieldActive ? 4 : 0;      // 👈 حصتك الثابتة من الدرع
+      
+      // حساب ثمن وقت الركن الصافي بدون الدرع لحساب عمولة الجراج بدقة
+      const baseParkingPrice = isShieldActive ? Math.max(0, safeTotalPrice - 10) : safeTotalPrice;
+
+      // عمولة التطبيق = (نسبة العمولة من وقت الركن) + (حصتك من الدرع 4 ج)
       const commissionAmount = isAppSession
-        ? Math.round(((safeTotalPrice * commissionRate) / 100) * 100) / 100
-        : 0;
+        ? Math.round(((baseParkingPrice * commissionRate) / 100) * 100) / 100 + appShieldShare
+        : appShieldShare;
+
+      // صافي إيراد الجراج = الإجمالي الكلي - عمولة التطبيق
       const netRevenue = Math.round((safeTotalPrice - commissionAmount) * 100) / 100;
 
       const isAutoConfirmed = paymentMethod === 'wallet';

@@ -25,9 +25,10 @@ import {
   AlertTriangle,
   Compass,
   Activity,
-   Copy,
+  Copy,
 } from 'lucide-react';
-import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone, getServerNow } from '../store';
+// 🌟 استيراد calculateDistanceMeters لحساب تباعد العميل عن المرساة
+import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone, getServerNow, calculateDistanceMeters } from '../store';
 import {
   calculateDistance,
   distanceToMinutes,
@@ -218,6 +219,10 @@ export default function GarageListScreen() {
       .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
   }, [sessions, normalizedUserPlate, cleanUserPhone, acknowledgedSessionIds]);
 
+  const garage = garages?.find(
+    (g) => g.id === activeSession?.garageId
+  );
+
   const hasCompletedSession = useMemo(() => {
     if (activeSession) return false;
     return sessions.some((s: Session) => normalizePlate(s.carPlate) === normalizedUserPlate && s.status === 'completed');
@@ -281,15 +286,32 @@ export default function GarageListScreen() {
     );
   }, [activeSession]);
 
-  // 🚨 [رصد فوري لحالة كسر الفقاعة وتشغيل الإنذار فقط إذا كان الدرع نشطاً وعاملاً على قاعدة البيانات]
+  // 📐 حساب المسافة الفعلية الحالية بين موقع العميل ومكان الركنة
+  const distanceToCar = useMemo(() => {
+    if (!activeSession || !userLocation.lat || !userLocation.lng) return null;
+    const pLat = activeSession.parkedLat || garage?.lat;
+    const pLng = activeSession.parkedLng || garage?.lng;
+    if (!pLat || !pLng) return null;
+    return calculateDistanceMeters(userLocation.lat, userLocation.lng, pLat, pLng);
+  }, [activeSession, userLocation.lat, userLocation.lng, garage]);
+
+  // 🎯 تحديد مستوى الخطر الجغرافي الفعلي لمنع الإزعاج الكاذب أثناء الاقتراب
+  const isFarAway = useMemo(() => {
+    if (!activeSession) return false;
+    if (!isShieldActive || !activeSession.isBreached) return false;
+    if (distanceToCar === null) return true; // تفعيل الحماية افتراضياً عند تعذر قراءة الـ GPS
+    return distanceToCar > 25; // خطر حقيقي فقط خارج الـ 25 متر
+  }, [activeSession, isShieldActive, distanceToCar]);
+
+  // 🚨 [رصد فوري لحالة كسر الفقاعة وتشغيل الإنذار فقط إذا كان الدرع نشطاً وعاملاً والعميل بعيداً عن سيارته]
   useEffect(() => {
-    if (activeSession && isShieldActive && activeSession.isBreached) {
+    if (activeSession && isShieldActive && activeSession.isBreached && isFarAway) {
       playBreachAlarm();
-      setShowSosModal(true); // فتح نافذة الطوارئ والـ SOS تلقائياً لإشراك العميل فوراً
+      setShowSosModal(true); // فتح شاشة الطوارئ والـ SOS تلقائياً للعميل
       const interval = setInterval(playBreachAlarm, 4000);
       return () => clearInterval(interval);
     }
-  }, [activeSession?.isBreached, isShieldActive]);
+  }, [activeSession?.isBreached, isShieldActive, isFarAway]);
 
   useEffect(() => {
     if (!activeSession) { autoNavigatedRef.current = null; return; }
@@ -456,13 +478,13 @@ export default function GarageListScreen() {
           <QrCode size={16} style={{ color: BRAND.blue }} className="shrink-0" />
         </div>
 
-        {/* 🛡️ [كارت درع الأمان الفضائي الحصري للعميل - مصلح ومحمي ليظهر فقط عند التفعيل الفعلي] */}
+        {/* 🛡️ [كارت درع الأمان الفضائي الحصري للعميل - مصلح ومحمي ليظهر فقط عند التفعيل الفعلي والبعد عن السيارة] */}
         {activeSession && isShieldActive && (
           <div
             className="mb-3 border rounded-2xl p-3 flex flex-col gap-2 relative overflow-hidden"
             style={{
-              background: activeSession.isBreached ? '#fff5f5' : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-              borderColor: activeSession.isBreached ? '#fca5a5' : BRAND.border,
+              background: (activeSession.isBreached && isFarAway) ? '#fff5f5' : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+              borderColor: (activeSession.isBreached && isFarAway) ? '#fca5a5' : BRAND.border,
               boxShadow: '0 4px 14px rgba(0,0,0,0.05)',
               color: '#ffffff',
             }}
@@ -470,29 +492,29 @@ export default function GarageListScreen() {
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-1.5">
                 <span className="relative flex h-2 w-2">
-                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${activeSession.isBreached ? 'bg-red-500' : 'bg-emerald-400'}`}></span>
-                  <span className={`relative inline-flex rounded-full h-2 w-2 ${activeSession.isBreached ? 'bg-red-600' : 'bg-emerald-500'}`}></span>
+                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${(activeSession.isBreached && isFarAway) ? 'bg-red-500' : 'bg-emerald-400'}`}></span>
+                  <span className={`relative inline-flex rounded-full h-2 w-2 ${(activeSession.isBreached && isFarAway) ? 'bg-red-600' : 'bg-emerald-500'}`}></span>
                 </span>
-                <span className="text-[10px] font-black opacity-90" style={{ color: activeSession.isBreached ? '#991b1b' : '#38bdf8' }}>
-                  {activeSession.isBreached ? '🚨 تم الاختراق وصدمات الأمان تعمل!' : '🛰️ متصل بالأقمار الصناعية'}
+                <span className="text-[10px] font-black opacity-90" style={{ color: (activeSession.isBreached && isFarAway) ? '#991b1b' : '#38bdf8' }}>
+                  {(activeSession.isBreached && isFarAway) ? '🚨 تم الاختراق وصدمات الأمان تعمل!' : '🛰️ متصل بالأقمار الصناعية'}
                 </span>
               </div>
-              <Shield size={16} style={{ color: activeSession.isBreached ? '#ef4444' : BRAND.green }} />
+              <Shield size={16} style={{ color: (activeSession.isBreached && isFarAway) ? '#ef4444' : BRAND.green }} />
             </div>
 
             <div className="flex justify-between items-center mt-1">
               <div className="text-right">
-                <h4 className="text-xs font-black" style={{ color: activeSession.isBreached ? '#7f1d1d' : '#ffffff' }}>
-                  درع الأمان الفضائي للسيارة {activeSession.isBreached ? '⚠️' : '🛡️'}
+                <h4 className="text-xs font-black" style={{ color: (activeSession.isBreached && isFarAway) ? '#7f1d1d' : '#ffffff' }}>
+                  درع الأمان الفضائي للسيارة {(activeSession.isBreached && isFarAway) ? '⚠️' : '🛡️'}
                 </h4>
-                <p className="text-[9px] font-bold mt-0.5" style={{ color: activeSession.isBreached ? '#b91c1c' : '#94a3b8' }}>
-                  {activeSession.isBreached 
+                <p className="text-[9px] font-bold mt-0.5" style={{ color: (activeSession.isBreached && isFarAway) ? '#b91c1c' : '#94a3b8' }}>
+                  {(activeSession.isBreached && isFarAway) 
                     ? 'السيارة غادرت فقاعة الأمان الجغرافية (25م) بدون تصريح!' 
                     : 'فقاعة الأمان اللاسلكية نشطة حول السيارة وتحميها بالكامل.'}
                 </p>
               </div>
 
-              {activeSession.isBreached && (
+              {(activeSession.isBreached && isFarAway) && (
                 <button
                   onClick={() => setShowSosModal(true)}
                   className="py-1.5 px-3 rounded-xl font-black text-[9px] text-white border-0 bg-red-600 active:scale-95 transition-all cursor-pointer shadow-md"
@@ -503,12 +525,12 @@ export default function GarageListScreen() {
             </div>
 
             {activeSession.parkedLat && (
-              <div className="mt-1 pt-2 border-t flex justify-between items-center text-[8px] font-black" style={{ borderColor: activeSession.isBreached ? '#fee2e2' : '#334155' }}>
-                <span style={{ color: activeSession.isBreached ? '#991b1b' : '#94a3b8' }}>
+              <div className="mt-1 pt-2 border-t flex justify-between items-center text-[8px] font-black" style={{ borderColor: (activeSession.isBreached && isFarAway) ? '#fee2e2' : '#334155' }}>
+                <span style={{ color: (activeSession.isBreached && isFarAway) ? '#991b1b' : '#94a3b8' }}>
                   📍 المرساة: ({activeSession.parkedLat.toFixed(4)}, {activeSession.parkedLng?.toFixed(4)})
                 </span>
-                <span style={{ color: activeSession.isBreached ? '#991b1b' : BRAND.green }}>
-                  {activeSession.isBreached ? '⚠️ خارج النطاق الجغرافي' : '🔒 مثبت في الموقف'}
+                <span style={{ color: (activeSession.isBreached && isFarAway) ? '#991b1b' : BRAND.green }}>
+                  {(activeSession.isBreached && isFarAway) ? '⚠️ خارج النطاق الجغرافي' : '🔒 مثبت في الموقف'}
                 </span>
               </div>
             )}
@@ -820,7 +842,7 @@ export default function GarageListScreen() {
       </AnimatePresence>
       {/* 🚔 [نافذة إنذار الطوارئ وتقرير الشرطة SOS - للفقاعة الجغرافية وسرقة الصاج الحقيقية] */}
       <AnimatePresence>
-        {showSosModal && activeSession && isShieldActive && activeSession.isBreached && (
+        {showSosModal && activeSession && isShieldActive && activeSession.isBreached && isFarAway && (
           <div 
             className="fixed inset-0 z-[99999] flex items-center justify-center p-5"
             style={{ background: 'rgba(127,29,29,0.9)', backdropFilter: 'blur(8px)' }}
@@ -830,7 +852,7 @@ export default function GarageListScreen() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="rounded-3xl p-6 text-center max-w-sm w-full shadow-2xl relative bg-white"
+              className="rounded-3xl p-6 text-center max-w-sm w-full shadow-2xl relative bg-white text-slate-800"
               onClick={e => e.stopPropagation()}
             >
               <div className="w-14 h-12 rounded-full flex items-center justify-center mx-auto mb-3 bg-red-100 animate-pulse">
@@ -864,6 +886,7 @@ export default function GarageListScreen() {
               <div className="space-y-2">
                 <button
                   onClick={async () => {
+                    localStorage.removeItem(`breach_silenced_${activeSession.id}`);
                     await triggerSessionBreach(activeSession.id, false);
                     setShowSosModal(false);
                     toast.success('تم إلغاء الإنذار وتأكيد أمان الحركة بنجاح.');
@@ -875,7 +898,8 @@ export default function GarageListScreen() {
 
                 <button
                   onClick={() => {
-                    toast.success('🚀 تم توليد وتصدير تقرير SOS ومسار السرعة لجهات الطوارئ فوراً!');
+                    localStorage.setItem(`breach_silenced_${activeSession.id}`, 'true');
+                    toast.success('🚀 تم كتم الصوت محلياً وتصدير بيانات الموقع والسرعة لجهات الطوارئ فوراً!');
                     setShowSosModal(false);
                   }}
                   className="w-full py-3 rounded-xl font-black text-xs text-white border-0 bg-red-700 active:scale-95 transition-all cursor-pointer shadow-md"
@@ -884,7 +908,11 @@ export default function GarageListScreen() {
                 </button>
 
                 <button
-                  onClick={() => setShowSosModal(false)}
+                  onClick={() => {
+                    localStorage.setItem(`breach_silenced_${activeSession.id}`, 'true');
+                    setShowSosModal(false);
+                    toast('تم كتم صوت الإنذار مؤقتاً 🔕');
+                  }}
                   className="w-full py-2.5 rounded-xl font-bold text-[11px] text-slate-500 bg-transparent border border-slate-200 cursor-pointer"
                 >
                   إغلاق المؤقت
@@ -918,7 +946,7 @@ function WelcomeGiftModal() {
   return (
     <AnimatePresence>
       {show && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center p-5" style={{ background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)' }} onClick={handleClose}>
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-5" style={{ background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)' }} onClick={handleClose}>
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}

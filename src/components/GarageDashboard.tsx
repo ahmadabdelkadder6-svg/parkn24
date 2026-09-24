@@ -679,7 +679,6 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
   const isFreeApplied = s.isFirstFreeSession === true;
   const isFreeNow = isFreeApplied && el <= 1800;
   
-  const hrs = isFreeNow ? 0 : calculateFullHours(el);
   const rate = Number(s.agreedPrice ?? basePrice);
   
   // 🛡️ احتساب درع الأمان (+10 ج.م ثابتة)
@@ -691,6 +690,9 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
   // 🔒 الفلتر الصارم: لا يُعتبر الكارت مخترقاً إطلاقاً إلا لو كان الدرع مفعّلاً فعلياً
   const isBreached = s.isBreached === true && isShieldActive;
   const isM = s.source === 'manual';
+
+  // حساب الـ hours لإظهارها في الشارة التوضيحية
+  const hrs = isFreeNow ? 0 : calculateFullHours(el);
 
   return (
     <div 
@@ -1048,7 +1050,7 @@ export default function GarageDashboard() {
 
   useEffect(() => {
     if (!isRealValet || !currentGarageId) return;
-    const currentValet = currentValetNameLocal || currentValetName || `فالية ${valetNumber}`;
+    const currentValet = currentValetNameLocal || currentValetName || `fvalet ${valetNumber}`;
     if (!currentValet) return;
 
     const unassignedCompletedSessions = sessions.filter(s => {
@@ -1112,12 +1114,21 @@ export default function GarageDashboard() {
     return 0;
   }, [garage?.basePrice]);
 
+  // ⚖️ تعديل الـ تقسيم المالي لعمولة المطور (4 ج.م) والـ جراج (6 ج.م) في تسوية المحفظة للأدمن والمالك
   const getSessionCommission = useCallback((s: any) => {
-    if (s.source !== 'app') return 0;
+    const isShield = s.securityShieldActive === true;
+    const appShieldShare = isShield ? 4 : 0; // 👈 نصيبك الثابت من درع الأمان (4 جنيه)
+    
+    if (s.source !== 'app') return appShieldShare;
+    
     const rev = getSessionRevenue(s);
-    if (rev <= 0) return 0;
+    if (rev <= 0) return appShieldShare;
+    
+    // حساب عمولة وقت الركن فقط بدون الـ 10 جنيه بتاعة الدرع
+    const timeOnlyPrice = isShield ? Math.max(0, rev - 10) : rev;
     const rate = garage?.commissionRate ?? 10;
-    return Math.round((rev * rate / 100) * 100) / 100;
+    
+    return Math.round(((timeOnlyPrice * rate) / 100) * 100) / 100 + appShieldShare;
   }, [getSessionRevenue, garage?.commissionRate]);
 
   const getSessionNetRevenue = useCallback((s: any) => {
@@ -2351,7 +2362,7 @@ export default function GarageDashboard() {
             </motion.div>
           </motion.div>
         )}
-      </ AnimatePresence>
+      </AnimatePresence>
     </div>
   );
 }

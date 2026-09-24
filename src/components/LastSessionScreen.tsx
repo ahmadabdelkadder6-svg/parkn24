@@ -157,8 +157,8 @@ export default function LastSessionScreen() {
   const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);
   const totalMinutes = Math.floor(elapsedSeconds / 60);
 
-  // 🛡️ فحص تفعيل درع الأمان الفضائي VIP
-  const hasSecurityShield = (lastSession as any).securityShieldActive === true;
+  // 🛡️ فحص تفعيل درع الأمان الفضائي VIP (قراءة صارمة من قاعدة البيانات)
+  const hasSecurityShield = lastSession.securityShieldActive === true || (lastSession as any).security_shield_active === true;
   const shieldFee = hasSecurityShield ? 10 : 0;
 
   // 🎁 [منطق الهدية]: التحقق مما إذا كانت الجلسة مستحقة للركن المجاني
@@ -172,14 +172,14 @@ export default function LastSessionScreen() {
   );
 
   const billableHours = isFreeParking ? 0 : calculateFullHours(elapsedSeconds);
-  const rawParkingCost = calculateCost(elapsedSeconds, rate);
 
-  const parkingCost = isFreeParking ? 0 : rawParkingCost;
-  const totalCost = lastSession.totalPrice != null
-    ? Number(lastSession.totalPrice)
-    : (parkingCost + shieldFee);
+  // ⚡ موازنة الفاتورة: الإجمالي الحقيقي المدفوع من قاعدة البيانات
+  const totalCost = lastSession.totalPrice != null ? Number(lastSession.totalPrice) : 0;
 
-  const savedAmount = isFreeParking ? rawParkingCost : 0;
+  // ⚡ وقت الركن الصافي = الإجمالي المدفوع - رسوم الدرع (إذا كان مفعلاً فقط)
+  const parkingCost = isFreeParking ? 0 : Math.max(0, totalCost - shieldFee);
+
+  const savedAmount = isFreeParking ? calculateCost(elapsedSeconds, rate) : 0;
 
   const startDate = new Date(startTime);
   const endDate = new Date(endTime);
