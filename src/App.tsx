@@ -72,25 +72,17 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
 }
 
 /* ════════════════════════════════════════════════════════════
-   🛡️ PARK'N 24 BRAND LOGO (مستوحى من الشعار المرفق)
+   🛡️ PARK'N 24 BRAND LOGO
    ════════════════════════════════════════════════════════════ */
 function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: number }) {
   return (
     <svg viewBox="0 0 100 115" width={width} height={height} fill="none" xmlns="http://www.w3.org/2000/svg">
-      {/* الدرع الأزرق الخارجي */}
       <path d="M50 2 C78 2, 98 14, 98 26 C98 76, 75 104, 50 114 C25 104, 2 76, 2 26 C2 14, 22 2, 50 2 Z" fill="#1656b8" />
-      {/* الإطار الداخلي للدرع */}
       <path d="M50 8 C72 8, 90 18, 90 28 C90 70, 70 96, 50 105 C30 96, 10 70, 10 28 C10 18, 28 8, 50 8 Z" stroke="#ffffff" strokeWidth="2.5" fill="none" opacity="0.95" />
-      
-      {/* حرف P الأخضر الكبيرة */}
       <path d="M26 30 H48 C60 30, 62 48, 48 48 H38 V78 H26 V30 Z M38 38 V40 H46 C48 40, 48 38, 46 38 Z" fill="#8cc63f" />
-      
-      {/* أيقونة الساعة 24 فوق الـ P */}
       <path d="M64 30 A 10 10 0 1 1 58 44" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" fill="none" />
       <polyline points="64 34, 64 40, 68 40" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
       <text x="69" y="52" fill="#ffffff" fontSize="9" fontWeight="900" fontFamily="sans-serif">24</text>
-      
-      {/* أيقونة السيارة البيضاء تحت الـ P */}
       <path d="M58 64 L62 58 H74 L78 64 H80 C81.5 64 82 65 82 66.5 V72 H54 V66.5 C54 65 54.5 64 56 64 Z" fill="#ffffff" />
       <circle cx="61" cy="72" r="2.2" fill="#1656b8" />
       <circle cx="75" cy="72" r="2.2" fill="#1656b8" />
@@ -99,7 +91,7 @@ function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: 
 }
 
 /* ════════════════════════════════════════════════════════════
-   ☀️ PARK'N 24 HERO — FULL-SCREEN CINEMATIC BLEND (FIXED CACHE)
+   ☀️ PARK'N 24 HERO
    ════════════════════════════════════════════════════════════ */
 interface ParkLandingProps {
   onEnter: () => void;
@@ -113,9 +105,7 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
     setTimeout(() => onEnter(), 500);
   };
 
-  const BRAND_BLUE = '#1656b8';
   const BRAND_GREEN = '#8cc63f';
-
   const CAR_IMAGE_SRC = '/hero-car.webp?v=999';
 
   return (
@@ -312,6 +302,7 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
     </AnimatePresence>
   );
 }
+
 const VALID_SCREENS = [
   'splash',
   'list',
@@ -325,6 +316,7 @@ const VALID_SCREENS = [
 
 export default function App() {
   const {
+    garages, // 👈 تم إضافة استخراج الجراجات لحل الخطأ
     view,
     setView,
     screen,
@@ -529,7 +521,17 @@ export default function App() {
     const pLat = activeSession.parkedLat || garage?.lat;
     const pLng = activeSession.parkedLng || garage?.lng;
     if (!pLat || !pLng) return null;
-    return calculateDistanceMeters(customerLat, customerLng, pLat, pLng);
+    
+    // حساب المسافة بمعادلة Haversine
+    const R = 6371e3;
+    const dLat = ((pLat - customerLat) * Math.PI) / 180;
+    const dLng = ((pLng - customerLng) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((customerLat * Math.PI) / 180) *
+      Math.cos((pLat * Math.PI) / 180) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
   }, [activeSession, customerLat, customerLng, garage]);
 
   // 🎯 تحديد مستوى الخطر الجغرافي الفعلي لمنع الإزعاج الكاذب أثناء الاقتراب
