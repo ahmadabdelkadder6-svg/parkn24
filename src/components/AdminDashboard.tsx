@@ -180,13 +180,20 @@ export default function AdminDashboard() {
   }, [garages]);
 
   const getCommission = useCallback((s: any) => {
-    if (s.source !== 'app') return 0;
+    const isShield = s.securityShieldActive === true;
+    const appShieldShare = isShield ? 4 : 0; // 👈 نصيب المنصة الثابت من درع الأمان (4 جنيه)
+    
+    if (s.source !== 'app') return appShieldShare;
+    
     const rev = getRevenue(s);
-    if (rev <= 0) return 0;
+    if (rev <= 0) return appShieldShare;
+    
+    // حساب عمولة وقت الركن فقط بعد طرح الـ 10 جنيه للدرع
+    const timeOnlyPrice = isShield ? Math.max(0, rev - 10) : rev;
     const g = garages.find((ga: any) => ga.id === s.garageId);
     const rate = g?.commissionRate ?? 10;
-    const commission = (rev * rate) / 100;
-    return Math.round(commission * 100) / 100;
+    
+    return Math.round(((timeOnlyPrice * rate) / 100) * 100) / 100 + appShieldShare;
   }, [garages, getRevenue]);
 
   const completedSessions = useMemo(() => sessions.filter(s => s.status === 'completed'), [sessions]);
