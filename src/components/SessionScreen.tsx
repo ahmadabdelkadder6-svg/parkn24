@@ -10,16 +10,16 @@ import {
   Shield,
   CheckCircle,
   AlertTriangle,
-  Radar, // 🛰️ إضافة أيقونة الرادار للتتبع الحي
+  Radar,
 } from 'lucide-react';
 import { 
   useStore, 
   normalizePlate, 
   normalizePhone, 
   getServerNow,
-  calculateDistanceMeters, // 📐 حساب المسافة الفعلية بالمتر
-  assessRiskLevel,          // 🎯 تقييم مستوى الخطر الذكي
-  RiskLevel                 // النوع البرمجي لمستويات الخطر
+  calculateDistanceMeters,
+  assessRiskLevel,
+  RiskLevel
 } from '../store';
 import {
   calculateCost,
@@ -31,7 +31,7 @@ import {
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
-/* ─── 🎨 الألوان الرسمية الفاخرة ─── */
+/* ─── 🎨 الألوان الرسمية ─── */
 const BRAND = {
   blue: '#1656b8',
   blueDark: '#0f3d85',
@@ -116,8 +116,6 @@ export default function SessionScreen() {
   const userPlate = normalizePlate(currentUser?.carPlate);
   const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
-  const redirectedToSummaryRef = useRef(false);
-  const redirectedToSessionRef = useRef(false);
   const activeSessionIdRef = useRef<string | null>(null);
   const realtimeChannelRef = useRef<any>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -125,8 +123,6 @@ export default function SessionScreen() {
   const [elapsed, setElapsed] = useState(0);
   const [showSosModal, setShowSosModal] = useState(false);
   const [localShieldLocked, setLocalShieldLocked] = useState(false);
-  
-  // 📍 حقول رصد موقع العميل الجغرافي لحظياً لتفعيل معادلة القرب والبعد
   const [customerLat, setCustomerLat] = useState<number | null>(null);
   const [customerLng, setCustomerLng] = useState<number | null>(null);
 
@@ -140,6 +136,7 @@ export default function SessionScreen() {
     );
   };
 
+  // 🌟 استخراج الجلسة النشطة الحالية بثبات تام
   const activeSession = useMemo(() => {
     return sessions
       .filter((s) => {
@@ -160,8 +157,11 @@ export default function SessionScreen() {
   useEffect(() => {
     if (activeSession?.id) {
       activeSessionIdRef.current = activeSession.id;
+      if (activeSession.garageId) {
+        setSelectedGarageId(activeSession.garageId);
+      }
     }
-  }, [activeSession?.id]);
+  }, [activeSession?.id, activeSession?.garageId, setSelectedGarageId]);
 
   const activeStartMs = useMemo(() => {
     if (!activeSession) return 0;
@@ -186,7 +186,7 @@ export default function SessionScreen() {
     return () => clearInterval(interval);
   }, [activeSession?.id, activeStartMs]);
 
-  // 🛡️ فحص حالة تفعيل الدرع المدمجة (State + Storage + Session)
+  // 🛡️ فحص حالة تفعيل الدرع المدمجة
   const isShieldActive = useMemo(() => {
     if (!activeSession) return false;
     const fromStorage = localStorage.getItem(`shield_active_${activeSession.id}`) === 'true';
@@ -194,7 +194,7 @@ export default function SessionScreen() {
     return localShieldLocked || fromStorage || fromSession;
   }, [activeSession, localShieldLocked]);
 
-  // 🛰️ [رادار الأقمار الصناعية الحي لتتبع موقع العميل الفعلي]
+  // 🛰️ تتبع موقع العميل الفعلي بالـ GPS
   useEffect(() => {
     if (!activeSession || !isShieldActive) return;
     if (!('geolocation' in navigator)) return;
@@ -211,7 +211,7 @@ export default function SessionScreen() {
     return () => navigator.geolocation.clearWatch(watchId);
   }, [activeSession?.id, isShieldActive]);
 
-  // 📐 حساب المسافة الفعلية بالامتار بين موقع العميل ومكان الركنة
+  // 📐 حساب المسافة الفعلية بين العميل ومكان الركنة
   const distanceToCar = useMemo(() => {
     if (!activeSession || !customerLat || !customerLng) return null;
     const pLat = activeSession.parkedLat || garage?.lat;
@@ -220,7 +220,7 @@ export default function SessionScreen() {
     return calculateDistanceMeters(customerLat, customerLng, pLat, pLng);
   }, [activeSession, customerLat, customerLng, garage]);
 
-  // 🎯 تحديد مستوى الخطر الحقيقي بناء على المسافة وحالة كسر الفقاعة
+  // 🎯 مستوى الخطر الذكي
   const riskLevel: RiskLevel = useMemo(() => {
     if (!activeSession || !isShieldActive) return 'safe';
     return assessRiskLevel(
@@ -230,7 +230,7 @@ export default function SessionScreen() {
     );
   }, [activeSession, isShieldActive, distanceToCar]);
 
-  // 🚨 [تشغيل صوت الإنذار والـ SOS فقط لو العربية اتسجل عليها سرقة حقيقية وكان العميل بعيداً]
+  // 🚨 تشغيل صوت الإنذار والـ SOS عند الخطر المؤكد
   useEffect(() => {
     if (activeSession && isShieldActive && activeSession.isBreached && riskLevel === 'danger') {
       playCustomerBreachAlarm();
@@ -240,7 +240,7 @@ export default function SessionScreen() {
     }
   }, [activeSession?.id, activeSession?.isBreached, isShieldActive, riskLevel]);
 
-  // 📡 Realtime الاستجابة الفورية لنبضة السيرفر (0.2 ثانية)
+  // 📡 Realtime الاستجابة الفورية عند إنهاء الجلسة فقط
   useEffect(() => {
     if (!userPlate && !userPhone) return;
     let cancelled = false;
@@ -249,9 +249,7 @@ export default function SessionScreen() {
       if (cancelled) return;
       try {
         await fetchAll();
-      } catch (e) {
-        console.error('❌', e);
-      }
+      } catch (e) {}
     };
 
     const channel = supabase
@@ -262,15 +260,14 @@ export default function SessionScreen() {
         (payload) => {
           const updatedRow = payload.new as any;
           if (updatedRow && isMySessionRow(updatedRow)) {
-            // ⚡ إذا أنهى السايس الجلسة، انتقل فوراً لشاشة الملخص في 0.1 ثانية
-            if (updatedRow.status === 'completed') {
+            // ⚡ إذا أنهى السايس الجلسة الحالية
+            if (updatedRow.status === 'completed' && activeSessionIdRef.current === updatedRow.id) {
               if (updatedRow.garage_id || updatedRow.garageId) {
                 setSelectedGarageId(updatedRow.garage_id || updatedRow.garageId);
               }
               if (typeof acknowledgeSession === 'function') {
                 acknowledgeSession(updatedRow.id);
               }
-              // تحديث الجلسة محلياً فوراً
               useStore.setState((state) => ({
                 sessions: state.sessions.map((s) =>
                   s.id === updatedRow.id ? { ...s, ...updatedRow, status: 'completed' } : s
@@ -287,32 +284,14 @@ export default function SessionScreen() {
       .subscribe();
 
     realtimeChannelRef.current = channel;
-    pollingRef.current = setInterval(fastCheck, 1500);
-
-    const handleVisibility = () => { if (document.visibilityState === 'visible') fastCheck(); };
-    document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', fastCheck);
+    pollingRef.current = setInterval(fastCheck, 2000);
 
     return () => {
       cancelled = true;
-      document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', fastCheck);
-      if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
-      if (realtimeChannelRef.current) { supabase.removeChannel(realtimeChannelRef.current); realtimeChannelRef.current = null; }
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      if (realtimeChannelRef.current) supabase.removeChannel(realtimeChannelRef.current);
     };
   }, [userPlate, userPhone, fetchAll, setScreen, setSelectedGarageId, acknowledgeSession]);
-
-  const lastCompletedSession = useMemo(() => {
-    return sessions
-      .filter((s) => {
-        if (!s || s.status !== 'completed') return false;
-        const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-        const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-        const samePhoneMatch = Boolean(userPhone && sPhone === userPhone);
-        return samePlateMatch || samePhoneMatch;
-      })
-      .sort((a, b) => safeParseTime(b.endTime) - safeParseTime(a.endTime))[0];
-  }, [sessions, userPlate, userPhone]);
 
   const sessionRate = Number(activeSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const isFirstFreeApplied = activeSession?.isFirstFreeSession === true;
@@ -367,13 +346,11 @@ export default function SessionScreen() {
     const targetLat = garage?.lat || 30.0444;
     const targetLng = garage?.lng || 31.2357;
 
-    // 1. قفل محلي فوري
     setLocalShieldLocked(true);
     try {
       localStorage.setItem(`shield_active_${targetSessionId}`, 'true');
     } catch {}
 
-    // 2. تحديث الـ Store
     useStore.setState((state) => ({
       sessions: state.sessions.map((s) =>
         s.id === targetSessionId
@@ -383,27 +360,28 @@ export default function SessionScreen() {
     }));
 
     toast.success('🛡️ تم تفعيل درع الحماية وتثبيته بالفاتورة (+10 ج.م)', { duration: 4000 });
-
-    // 3. تحديث السيرفر
     setSessionSecurityShield(targetSessionId, true, targetLat, targetLng).catch(() => {});
   };
 
-  // 🎨 تدرج ألوان مستوى الخطر للتنبيه الذكي
   const riskColors = {
-    safe: { bg: 'rgba(140,198,63,0.1)', border: BRAND.green, text: BRAND.green, label: '🟢 آمن', icon: '✅' },
-    warning: { bg: 'rgba(245,158,11,0.15)', border: '#f59e0b', text: '#f59e0b', label: '🟡 تنبيه', icon: '⚠️' },
-    danger: { bg: 'rgba(239,68,68,0.15)', border: '#ef4444', text: '#ef4444', label: '🔴 خطر', icon: '🚨' },
+    safe: { bg: 'rgba(140,198,63,0.1)', border: BRAND.green, text: BRAND.green, label: '🟢 آمن' },
+    warning: { bg: 'rgba(245,158,11,0.15)', border: '#f59e0b', text: '#f59e0b', label: '🟡 تنبيه' },
+    danger: { bg: 'rgba(239,68,68,0.15)', border: '#ef4444', text: '#ef4444', label: '🔴 خطر' },
   };
   const rc = riskColors[riskLevel];
 
+  // في حال لم يتم العثور على الجلسة بعد
   if (!activeSession) {
     return (
       <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8 text-right" style={{ background: BRAND.navy }}>
         <div className="text-4xl mb-4 animate-bounce">⏳</div>
         <p className="text-slate-400 text-sm font-bold text-center mb-2">جاري مزامنة بيانات الجلسة...</p>
         <button
-          onClick={() => setScreen('list')}
-          className="bg-blue-600 text-white border-0 px-8 py-3.5 rounded-2xl font-black text-xs active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
+          onClick={() => {
+            fetchAll();
+            setScreen('list');
+          }}
+          className="bg-blue-600 text-white border-0 px-8 py-3.5 rounded-2xl font-black text-xs active:scale-95 transition-all flex items-center gap-2 cursor-pointer mt-4"
           style={{ background: BRAND.blue }}
         >
           <ArrowRight size={15} /> <span>العودة للقائمة الرئيسية</span>
@@ -491,7 +469,6 @@ export default function SessionScreen() {
                     تقرير SOS 🚔
                   </button>
                 )}
-                {/* 🔒 مقفول تماماً بعد التفعيل لحماية الفاتورة */}
                 <span className="py-1.5 px-3 rounded-xl font-black text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
                   <CheckCircle size={12} /> تم تأكيد الحماية للفاتورة
                 </span>
@@ -629,7 +606,7 @@ export default function SessionScreen() {
         العودة للقائمة الرئيسية
       </button>
 
-      {/* 🚔 نافذة طوارئ SOS عند الاختراق الفعلي فقط ومستويات الخطر القصوى */}
+      {/* 🚔 نافذة طوارئ SOS عند الاختراق الفعلي فقط */}
       <AnimatePresence>
         {showSosModal && activeSession && isShieldActive && activeSession.isBreached && riskLevel === 'danger' && (
           <div 
