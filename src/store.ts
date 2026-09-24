@@ -553,14 +553,15 @@ const resolveAddedBy = (explicitAddedBy?: string): string => {
 };
 
 // ==========================================
-// 🧠 محرك الذكاء المكاني والأمني (Spatial Security Engine)
+// 🧠 محرك الذكاء المكاني والأمني ومصفوفة الفلاتر (Spatial Security Engine)
 // ==========================================
 
+// 📐 حساب المسافة بالمتر بين نقطتين (Haversine Formula)
 export const calculateDistanceMeters = (
   lat1: number, lng1: number,
   lat2: number, lng2: number
 ): number => {
-  const R = 6371e3; // Earth radius in meters
+  const R = 6371e3; // نصف قطر الأرض بالمتر
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
   const a =
@@ -571,6 +572,7 @@ export const calculateDistanceMeters = (
   return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 };
 
+// 💥 1. فحص التصادم المكاني فائق الدقة (أقل من 2.5 متر = نفس الباكية)
 export const checkSpatialCollision = (
   sessions: ParkingSession[],
   newLat: number,
@@ -585,11 +587,12 @@ export const checkSpatialCollision = (
     const sLng = s.parkedLng;
     if (!sLat || !sLng) continue;
     const dist = calculateDistanceMeters(newLat, newLng, sLat, sLng);
-    if (dist < 2.5) return s; // أقل من 2.5 متر = نفس الباكية بالمللي!
+    if (dist < 2.5) return s;
   }
   return null;
 };
 
+// 🚶‍♂️ 2. فحص الاختراق البشري (مرور تليفون السايس في مساحة صاج العربية < 2م)
 export const checkHumanBreach = (
   sessions: ParkingSession[],
   valetLat: number,
@@ -602,11 +605,12 @@ export const checkHumanBreach = (
     const sLng = s.parkedLng;
     if (!sLat || !sLng) continue;
     const dist = calculateDistanceMeters(valetLat, valetLng, sLat, sLng);
-    if (dist < 2) return s; // داخل مساحة العربية (أقل من 2 متر)
+    if (dist < 2) return s;
   }
   return null;
 };
 
+// 🏗️ 3. فحص الجار الملاصق (الباكيات المجاورة من 3 إلى 10 أمتار)
 export const checkAdjacentSpot = (
   sessions: ParkingSession[],
   targetLat: number,
@@ -625,6 +629,7 @@ export const checkAdjacentSpot = (
   return false;
 };
 
+// 🎯 4. تصنيف وتقييم مستوى الخطر اللحظي
 export type RiskLevel = 'safe' | 'warning' | 'danger';
 
 export const assessRiskLevel = (
@@ -633,9 +638,74 @@ export const assessRiskLevel = (
   isShieldActive: boolean
 ): RiskLevel => {
   if (!isShieldActive || !isBreached) return 'safe';
-  if (customerDist <= 25) return 'safe';
-  if (customerDist <= 100) return 'warning';
-  return 'danger';
+  if (customerDist <= 25) return 'safe';     // العميل قريب = استلام هادئ
+  if (customerDist <= 100) return 'warning';  // منطقة وسطى
+  return 'danger';                            // العميل بعيد = سرقة مؤكدة
+};
+
+// 🛡️ 5. مصفوفة فلاتر منع الإنذارات الكاذبة (Anti-False-Alarm Guard)
+export interface GPSReading {
+  lat: number;
+  lng: number;
+  accuracy: number;
+  timestamp: number;
+}
+
+export const validateSecurityBreach = ({
+  previousReading,
+  currentReading,
+  anchorLat,
+  anchorLng,
+  garageRadiusMeters = 250,
+  consecutiveBreachCount = 0,
+}: {
+  previousReading?: GPSReading;
+  currentReading: GPSReading;
+  anchorLat: number;
+  anchorLng: number;
+  garageRadiusMeters?: number;
+  consecutiveBreachCount: number;
+}): { shouldAlarm: boolean; isInternalShuffle: boolean; newBreachCount: number } => {
+  
+  // 1️⃣ فلتر دقة الـ GPS: استبعاد القراءات الضعيفة والمهزوزة (> 15م)
+  if (currentReading.accuracy > 15) {
+    return { shouldAlarm: false, isInternalShuffle: false, newBreachCount: consecutiveBreachCount };
+  }
+
+  // 2️⃣ فلتر القفزات المستحيلة فيزيائياً (> 140 كم/س)
+  if (previousReading) {
+    const timeDeltaSeconds = Math.max(1, (currentReading.timestamp - previousReading.timestamp) / 1000);
+    const distanceDeltaMeters = calculateDistanceMeters(
+      previousReading.lat, previousReading.lng,
+      currentReading.lat, currentReading.lng
+    );
+    const speedKmh = (distanceDeltaMeters / timeDeltaSeconds) * 3.6;
+
+    if (speedKmh > 140) {
+      return { shouldAlarm: false, isInternalShuffle: false, newBreachCount: 0 };
+    }
+  }
+
+  // 3️⃣ حساب المسافة عن مرساة الركنة
+  const distFromAnchor = calculateDistanceMeters(currentReading.lat, currentReading.lng, anchorLat, anchorLng);
+
+  // إذا لم تتجاوز مرساة الـ 25م = آمن
+  if (distFromAnchor <= 25) {
+    return { shouldAlarm: false, isInternalShuffle: false, newBreachCount: 0 };
+  }
+
+  // 4️⃣ فلتر المناورة الداخلية: تحركت برة الـ 25م ولكن ما زالت داخل الجراج (الـ 250م)
+  if (distFromAnchor <= garageRadiusMeters) {
+    return { shouldAlarm: false, isInternalShuffle: true, newBreachCount: 0 };
+  }
+
+  // 5️⃣ قاعدة الصمود والتأكيد الثلاثي (3-Strike Rule)
+  const updatedCount = consecutiveBreachCount + 1;
+  if (updatedCount >= 3) {
+    return { shouldAlarm: true, isInternalShuffle: false, newBreachCount: updatedCount };
+  }
+
+  return { shouldAlarm: false, isInternalShuffle: false, newBreachCount: updatedCount };
 };
 
 // ===================== State Interface =====================
