@@ -397,15 +397,23 @@ export default function SessionScreen() {
       className="h-full text-white flex flex-col items-center justify-center p-6 overflow-y-auto safe-top safe-bottom"
       style={{ background: BRAND.navy }}
     >
-      {/* 🛰️ [شريط رادار الرصد ومسافة العميل اللحظية] */}
+      {/* 🛰️ [شريط رادار الرصد ومسافة العميل اللحظية - محمي تماماً من الإنذار الكاذب] */}
       {isShieldActive && distanceToCar !== null && (
-        <div className="w-full border-2 rounded-2xl p-3 mb-3 flex items-center justify-between transition-all" style={{ background: rc.bg, borderColor: rc.border }}>
+        <div 
+          className="w-full border-2 rounded-2xl p-3 mb-3 flex items-center justify-between transition-all" 
+          style={{ 
+            background: activeSession.isBreached ? rc.bg : 'rgba(56, 189, 248, 0.08)', 
+            borderColor: activeSession.isBreached ? rc.border : 'rgba(56, 189, 248, 0.3)' 
+          }}
+        >
           <div className="flex items-center gap-2">
-            <Radar size={16} style={{ color: rc.text }} className="animate-spin" />
-            <span className="text-xs font-black" style={{ color: rc.text }}>{rc.label}</span>
+            <Radar size={16} style={{ color: activeSession.isBreached ? rc.text : '#38bdf8' }} className="animate-spin" />
+            <span className="text-xs font-black" style={{ color: activeSession.isBreached ? rc.text : '#38bdf8' }}>
+              {activeSession.isBreached ? rc.label : '🛰️ رادار القمر الصناعي متصل'}
+            </span>
           </div>
           <div className="text-right">
-            <div className="font-mono font-black text-lg" style={{ color: rc.text }}>
+            <div className="font-mono font-black text-lg" style={{ color: activeSession.isBreached ? rc.text : '#ffffff' }}>
               {distanceToCar}<span className="text-[10px]">م</span>
             </div>
             <div className="text-[8px] font-bold" style={{ color: BRAND.slateMuted }}>
@@ -414,7 +422,6 @@ export default function SessionScreen() {
           </div>
         </div>
       )}
-
       {/* 🛡️ كارت درع الأمان الفضائي VIP */}
       <div
         className="w-full border-2 rounded-2xl p-4 mb-4 text-right transition-all relative overflow-hidden"
