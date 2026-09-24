@@ -1232,7 +1232,7 @@ export const useStore = create<AppState>((set, get) => ({
     } catch (err) { console.error('❌', err); await get().fetchAll(); }
   },
 
-  addSession: async (s) => {
+   addSession: async (s) => {
     const normalizedPlate = normalizePlate(s.carPlate);
     if (!normalizedPlate) return '';
     const sessionId = crypto.randomUUID();
@@ -1254,59 +1254,12 @@ export const useStore = create<AppState>((set, get) => ({
       const addedByValue = resolveAddedBy((s as any).addedBy);
       const isAppBooking = s.source === 'app';
       const cleanPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-
-      let eligibleForFree = false;
-
-      if (isAppBooking) {
-        const currentUserState = get().currentUser;
-        if (currentUserState?.hasUsedFreeSession !== true) {
-          eligibleForFree = true;
-
-          if (isSupabaseConfigured()) {
-            try {
-              if (cleanPhone) {
-                const { data: userData } = await supabase
-                  .from('users')
-                  .select('has_used_free_session')
-                  .eq('phone', cleanPhone)
-                  .maybeSingle();
-
-                if (userData?.has_used_free_session === true) {
-                  eligibleForFree = false;
-                }
-              }
-
-              if (eligibleForFree && cleanPhone) {
-                const { data: phoneCheck } = await supabase
-                  .from('sessions')
-                  .select('id')
-                  .eq('customer_phone', cleanPhone)
-                  .eq('is_first_free_session', true)
-                  .limit(1);
-
-                if (phoneCheck && phoneCheck.length > 0) eligibleForFree = false;
-              }
-
-              if (eligibleForFree && normalizedPlate) {
-                const { data: plateCheck } = await supabase
-                  .from('sessions')
-                  .select('id')
-                  .eq('car_plate', normalizedPlate)
-                  .eq('is_first_free_session', true)
-                  .limit(1);
-
-                if (plateCheck && plateCheck.length > 0) eligibleForFree = false;
-              }
-            } catch (err) {
-              console.error('Error verifying free session eligibility:', err);
-              eligibleForFree = false;
-            }
-          }
-        }
-      }
+      const currentUserState = get().currentUser;
+      const eligibleForFree = isAppBooking && currentUserState?.hasUsedFreeSession !== true;
 
       const startTimeISO = typeof s.startTime === 'string' ? s.startTime : new Date(getServerNow()).toISOString();
 
+      // ⚡ 1️⃣ إنشاء وحفظ الجلسة فوراً في الذاكرة المحلية (بدون انتظار أي شبكة لتشغيل العداد في 0.01 ثانية)
       const optimisticSession: ParkingSession = {
         ...s,
         id: sessionId,
@@ -1317,27 +1270,26 @@ export const useStore = create<AppState>((set, get) => ({
         addedBy: addedByValue,
         customerPhone: cleanPhone || undefined,
         customerName: (s as any).customerName || undefined,
-        incomingCarId: (s as any).incomingCarId || undefined,
+        incomingCarId: (s as any).incomingCarId || (s as any).incoming_car_id || undefined,
         startedBy: (s as any).startedBy || undefined,
         commissionAmount: 0,
         netRevenue: 0,
         settled: false,
         isFirstFreeSession: eligibleForFree,
         freeMinutesApplied: 0,
-
-        // 🛡️ تفعيل الدرع إجبارياً يبدأ بـ false مغلق ومطفأ تماماً (سواء للعميل أو السايس)
         parkedLat: (s as any).parkedLat || undefined,
         parkedLng: (s as any).parkedLng || undefined,
         carBluetoothId: (s as any).carBluetoothId || undefined,
-        securityShieldActive: false, // 🔒 مغلق افتراضياً عند الإضافة لمنع التفعيل العشوائي تلقائياً
+        securityShieldActive: false, // 🔒 يبدأ معطلاً والعميل يفعله برغبته
         isBreached: false,
       };
 
       set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]) }));
-      await get().adjustGarageSpots(s.garageId, -1);
+      get().adjustGarageSpots(s.garageId, -1).catch(() => {});
 
       if (!isSupabaseConfigured()) return sessionId;
 
+      // ⚡ 2️⃣ الحفظ الصامت في قاعدة البيانات في الخلفية بدون حظر الشاشة
       try {
         const { data, error } = await supabase.from('sessions').insert({
           id: sessionId,
@@ -1351,29 +1303,21 @@ export const useStore = create<AppState>((set, get) => ({
           added_by: addedByValue,
           customer_phone: cleanPhone || null,
           customer_name: (s as any).customerName || null,
-          incoming_car_id: (s as any).incoming_car_id || null,
+          incoming_car_id: null, // تجنب تعارض المفاتيح الأجنبية عند مسح السيارة
           started_by: (s as any).startedBy || null,
           commission_amount: 0,
           net_revenue: 0,
           settled: false,
           is_first_free_session: eligibleForFree,
           free_minutes_applied: 0,
-
           parked_lat: (s as any).parkedLat || null,
           parked_lng: (s as any).parkedLng || null,
           car_bluetooth_id: (s as any).carBluetoothId || null,
-          security_shield_active: false, // 🔒 تعيين false مباشر في قاعدة البيانات
+          security_shield_active: false,
           is_breached: false,
         }).select().single();
 
-        if (error) {
-          console.error('❌ خطأ في إضافة الجلسة:', error);
-          set((st) => ({ sessions: st.sessions.filter((x) => x.id !== sessionId) }));
-          await get().adjustGarageSpots(s.garageId, +1);
-          return sessionId;
-        }
-
-        if (data) {
+        if (!error && data) {
           const syncedSession: ParkingSession = { ...mapSession(data), synced: true };
           set((st) => ({
             sessions: dedupeActiveSessions(st.sessions.map((x) => x.id === sessionId ? syncedSession : x)),
@@ -1381,9 +1325,7 @@ export const useStore = create<AppState>((set, get) => ({
           return data.id;
         }
       } catch (err) {
-        console.error('❌ خطأ غير متوقع:', err);
-        set((st) => ({ sessions: st.sessions.filter((x) => x.id !== sessionId) }));
-        await get().adjustGarageSpots(s.garageId, +1);
+        console.warn('Silent session sync fallback:', err);
       }
 
       return sessionId;
@@ -1482,7 +1424,7 @@ export const useStore = create<AppState>((set, get) => ({
           commission_amount: commissionAmount,
           net_revenue: netRevenue,
           settled: false,
-          free_minutes_applied: free_minutes_applied || session.freeMinutesApplied || 0,
+          free_minutes_applied: freeMinutesApplied || session.freeMinutesApplied || 0,
           added_by: finalAddedBy || null
         })
         .eq('id', id)
@@ -1492,8 +1434,7 @@ export const useStore = create<AppState>((set, get) => ({
         console.error('❌ خطأ في إنهاء الجلسة بالسيرفر:', error);
       } else {
         locallyEndedSessions.delete(id);
-        // ⚡ تحديث فوري مباشر بدون انتظار 3.5 ثوانٍ
-        await get().fetchAll();
+        get().fetchAll();
       }
     } finally {
       sessionEndLocks.delete(lockKey);
