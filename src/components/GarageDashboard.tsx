@@ -688,7 +688,8 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
   const baseCost = isFreeNow ? 0 : calculateCost(el, rate);
   const cost = isFreeNow ? (isShieldActive ? 10 : 0) : (baseCost + shieldFee);
 
-  const isBreached = s.isBreached === true;
+  // 🔒 الفلتر الصارم: لا يُعتبر الكارت مخترقاً إطلاقاً إلا لو كان الدرع مفعّلاً فعلياً
+  const isBreached = s.isBreached === true && isShieldActive;
   const isM = s.source === 'manual';
 
   return (
@@ -728,7 +729,7 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
         <div className="font-black text-slate-900 text-sm">🚗 {s.carPlate}</div>
       </div>
 
-      {/* تنبيه كسر الفقاعة الجغرافية في الكارت */}
+      {/* تنبيه كسر الفقاعة الجغرافية في الكارت - يظهر فقط إذا كان الدرع مفعلاً */}
       {isBreached && (
         <div className="mb-2 p-1.5 rounded-lg bg-red-100 border border-red-300 text-red-800 text-[10px] font-black flex items-center justify-between">
           <span>🚨 تحذير: السيارة غادرت فقاعة ركنتها (25م)!</span>
@@ -738,7 +739,7 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
 
       <div className="flex justify-between items-center border-t pt-2 mt-2" style={{ borderColor: BRAND.border }}>
         <div className="flex items-center gap-1.5">
-          {isBreached && isShieldActive ? (
+          {isBreached ? (
             <div className="flex items-center gap-1 py-2 px-3 rounded-xl bg-red-800 text-white font-black text-[10px] animate-pulse">
               <span>🔒 مقفول أمنياً (إنذار سرقة)</span>
             </div>

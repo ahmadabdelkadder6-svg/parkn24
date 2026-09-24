@@ -125,6 +125,9 @@ export default function SessionScreen() {
   const [localShieldLocked, setLocalShieldLocked] = useState(false);
   const [customerLat, setCustomerLat] = useState<number | null>(null);
   const [customerLng, setCustomerLng] = useState<number | null>(null);
+  
+  // 🔇 حالة كتم الصوت المحلية على التليفون الحالي لمنع تكرار الإنذار
+  const [localSilenced, setLocalSilenced] = useState(false);
 
   const isMySessionRow = (row: any) => {
     if (!row) return false;
@@ -230,17 +233,39 @@ export default function SessionScreen() {
     );
   }, [activeSession, isShieldActive, distanceToCar]);
 
-  // 🚨 تشغيل وتكرار صوت الإنذار + فتح شاشة الـ SOS تلقائياً في وش العميل
+  // 🔇 دمج كتم الصوت المحلي مع إشعار السيرفر والـ LocalStorage
+  const isBreachMuted = useMemo(() => {
+    if (!activeSession) return false;
+    const fromStorage = localStorage.getItem(`breach_silenced_${activeSession.id}`) === 'true';
+    return localSilenced || fromStorage;
+  }, [activeSession, localSilenced]);
+
+  // إعادة ضبط كتم الصوت تلقائياً عند زوال الخطر وعودة السيارة آمنة
+  useEffect(() => {
+    if (activeSession && !activeSession.isBreached) {
+      setLocalSilenced(false);
+      localStorage.removeItem(`breach_silenced_${activeSession.id}`);
+    }
+  }, [activeSession?.isBreached, activeSession?.id]);
+
+  // 🚨 تشغيل وتكرار صوت الإنذار + فتح شاشة الـ SOS تلقائياً في وش العميل مع دعم الكتم
   useEffect(() => {
     if (activeSession && isShieldActive && activeSession.isBreached) {
+      if (isBreachMuted) return; // 🔒 لو تم كتم الصوت يدوياً لا تطلق السرينة
+
       setShowSosModal(true); // 👈 فتح نافذة الطوارئ فوراً في وش العميل
       playCustomerBreachAlarm();
       const interval = setInterval(() => {
+        const stillMuted = localStorage.getItem(`breach_silenced_${activeSession.id}`) === 'true';
+        if (stillMuted) {
+          clearInterval(interval);
+          return;
+        }
         playCustomerBreachAlarm(); // تكرار الإنذار كل 3.5 ثانية
       }, 3500);
       return () => clearInterval(interval);
     }
-  }, [activeSession?.id, activeSession?.isBreached, isShieldActive]);
+  }, [activeSession?.id, activeSession?.isBreached, isShieldActive, isBreachMuted]);
 
   // 📡 Realtime الاستجابة الفورية عند إنهاء الجلسة فقط
   useEffect(() => {
@@ -424,6 +449,7 @@ export default function SessionScreen() {
           </div>
         </div>
       )}
+
       {/* 🛡️ كارت درع الأمان الفضائي VIP */}
       <div
         className="w-full border-2 rounded-2xl p-4 mb-4 text-right transition-all relative overflow-hidden"
@@ -470,7 +496,7 @@ export default function SessionScreen() {
           <div>
             {isShieldActive ? (
               <div className="flex items-center gap-1.5">
-                {activeSession.isBreached && riskLevel === 'danger' && (
+                {activeSession.isBreached && (
                   <button
                     onClick={() => setShowSosModal(true)}
                     className="py-1 px-2.5 rounded-lg font-black text-[9px] text-white border-0 bg-red-600 active:scale-95 transition-all cursor-pointer shadow-md mr-1"
@@ -500,7 +526,7 @@ export default function SessionScreen() {
           <div className="text-right">
             <span className="text-[9px] font-bold text-slate-400 block">رسوم الخدمة</span>
             <span className="text-xs font-black font-mono" style={{ color: isShieldActive ? BRAND.green : '#ffffff' }}>
-              {isShieldActive ? '+10 ج.م مضافة' : '+10 ج.م فقط'}
+              {isShieldActive ? '+10.00 ج.م مضافة' : '+10.00 ج.م فقط'}
             </span>
           </div>
         </div>
@@ -537,7 +563,7 @@ export default function SessionScreen() {
       <motion.div
         animate={{
           boxShadow: isFreeNow
-            ? ['0 0 0px rgba(140, 198, 63, 0.1)', '0 0 40px rgba(140, 198, 63, 0.25)', '0 0 0px rgba(140, 198, 63, 0.1)']
+            ? ['0 0 0px rgba(140,198,63,0.1)', '0 0 40px rgba(140,198,63,0.25)', '0 0 0px rgba(140,198,63,0.1)']
             : ['0 0 0px rgba(22, 86, 184, 0.1)', '0 0 40px rgba(22, 86, 184, 0.25)', '0 0 0px rgba(22, 86, 184, 0.1)'],
         }}
         transition={{ repeat: Infinity, duration: 2.5 }}
@@ -615,7 +641,7 @@ export default function SessionScreen() {
         العودة للقائمة الرئيسية
       </button>
 
-       {/* 🚔 نافذة طوارئ SOS عند الاختراق - تفتح تلقائياً وتتيح إيقاف الإنذار فوراً */}
+      {/* 🚔 نافذة طوارئ SOS عند الاختراق الفعلي فقط ومستويات الخطر القصوى */}
       <AnimatePresence>
         {showSosModal && activeSession && isShieldActive && activeSession.isBreached && (
           <div 
@@ -636,13 +662,16 @@ export default function SessionScreen() {
 
               <h3 className="text-base font-black text-red-900 mb-1">🚨 تم رصد حركة غير مصرحة لسيارتك!</h3>
               <p className="text-xs font-bold text-slate-500 mb-4 leading-relaxed">
-                سيارتك لوحة <span className="font-mono font-black text-red-700 bg-red-50 px-2 py-0.5 rounded">{activeSession.carPlate}</span> غادرت سياج الأمان (25م) بدون تصريح خروج!
+                سيارتك لوحة <span className="font-mono font-black text-red-700 bg-red-50 px-2 py-0.5 rounded">{activeSession.carPlate}</span> تجاوزت فقاعة الأمان بالجراج بدون تصريح خروج!
               </p>
 
               <div className="space-y-2.5">
                 {/* 🟢 الزر الأخضر: يوقف السرينة فوراً ويفك حظر السايس وتفضل الجلسة شغالة */}
                 <button
                   onClick={async () => {
+                    localStorage.removeItem(`breach_silenced_${activeSession.id}`);
+                    setLocalShieldLocked(false);
+                    setLocalSilenced(false); // 👈 إرجاع وضع الصوت طبيعياً بعد زوال الخطر
                     await triggerSessionBreach(activeSession.id, false);
                     setShowSosModal(false);
                     toast.success('تم إيقاف الإنذار وتأكيد أمان حركتك بنجاح ✅', { duration: 4000 });
@@ -652,10 +681,12 @@ export default function SessionScreen() {
                   <span>✅ أنا اللي بستلم العربية (إيقاف الإنذار)</span>
                 </button>
 
-                {/* 🚨 الزر الأحمر: إرسال تقرير السرقة والبيانات للشرطة */}
+                {/* 🚨 الزر الأحمر: إرسال تقرير السرقة والبيانات للشرطة مع كتم الصوت محلياً فوراً */}
                 <button
                   onClick={() => {
-                    toast.success('🚀 تم تصدير بيانات الموقع والسرعة لجهات الطوارئ فوراً!');
+                    localStorage.setItem(`breach_silenced_${activeSession.id}`, 'true');
+                    setLocalSilenced(true); // 👈 كتم الصوت محلياً فوراً لترك المجال للاتصال
+                    toast.success('🚀 تم كتم الصوت محلياً وتصدير بيانات الموقع والسرعة لجهات الطوارئ فوراً!');
                     setShowSosModal(false);
                   }}
                   className="w-full py-3 rounded-xl font-black text-xs text-white border-0 bg-red-700 active:scale-95 transition-all cursor-pointer shadow-md"
@@ -663,9 +694,14 @@ export default function SessionScreen() {
                   🚔 إرسال تقرير SOS عاجل للشرطة
                 </button>
 
-                {/* ✕ زر الإغلاق المؤقت */}
+                {/* ✕ زر الإغلاق المؤقت وكتم الصوت محلياً */}
                 <button
-                  onClick={() => setShowSosModal(false)}
+                  onClick={() => {
+                    localStorage.setItem(`breach_silenced_${activeSession.id}`, 'true');
+                    setLocalSilenced(true); // 👈 كتم الصوت محلياً فوراً لمنع التكرار المزعج
+                    setShowSosModal(false);
+                    toast('تم كتم صوت الإنذار مؤقتاً 🔕');
+                  }}
                   className="w-full py-2.5 rounded-xl font-bold text-xs text-slate-500 bg-slate-100 border border-slate-200 cursor-pointer active:scale-95 transition-all"
                 >
                   إغلاق المؤقت

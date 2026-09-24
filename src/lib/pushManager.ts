@@ -7,6 +7,9 @@ const VAPID_PUBLIC_KEY =
 const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL      as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
+// ─── ذاكرة إدارة تكرار إشعارات الطوارئ كل 3 ثوانٍ ────────────────────
+const activeBreachIntervals = new Map<string, ReturnType<typeof setInterval>>();
+
 // ─── Types ──────────────────────────────────────────────────────
 interface PushPayloadNotification {
   title: string;
@@ -244,7 +247,7 @@ export const sendCarComingPush = async ({
   }
 };
 
-// ─── 🚨 إرسال إشعار طوارئ باختراق درع الأمان الفضائي (للعميل والسايس) ──────
+// ─── 🚨 إرسال إشعار طوارئ باختراق درع الأمان (نبضة واحدة مع Tag متغير للرنين) ──────
 export const sendSecurityBreachPush = async ({
   garageId,
   carPlate,
@@ -259,7 +262,9 @@ export const sendSecurityBreachPush = async ({
   try {
     const plateFingerprint = normalizePlate(carPlate) || carPlate;
     const cleanPhone = customerPhone ? normalizePhone(customerPhone) : undefined;
-    const breachTag = `breach-${plateFingerprint}`;
+    
+    // ⚡ إضافة Timestamp متغير للـ Tag لإجبار الهاتف على تشغيل نغمة واهتزاز جديد في كل مرة
+    const breachTag = `breach-${plateFingerprint}-${Date.now()}`;
 
     const payload: SendPushPayload = {
       garageId,
@@ -276,7 +281,7 @@ export const sendSecurityBreachPush = async ({
           type:           'security_breach',
           carPlate,
           garageId,
-          url:            '/session', // 🌟 يفتح شاشة الـ SOS للعميل مباشرة
+          url:            '/session',
           customerPhone:  cleanPhone ?? null,
           distanceMeters: distanceMeters ?? null,
           isBreached:     true,
@@ -291,6 +296,46 @@ export const sendSecurityBreachPush = async ({
   } catch (err) {
     console.error('❌ خطأ في sendSecurityBreachPush:', err);
     return false;
+  }
+};
+
+// ─── 🔁 تشغيل حلقة تكرار إشعارات الطوارئ كل 3 ثوانٍ للعميل والسايس ────────
+export const startSecurityBreachLoop = ({
+  garageId,
+  carPlate,
+  distanceMeters,
+  customerPhone,
+  intervalMs = 3000,
+}: {
+  garageId:        string;
+  carPlate:        string;
+  distanceMeters?: number;
+  customerPhone?:  string;
+  intervalMs?:     number;
+}) => {
+  const plateKey = normalizePlate(carPlate) || carPlate;
+
+  // إذا كانت الحلقة تعمل بالفعل لنفس السيارة، لا تكرر الـ Interval
+  if (activeBreachIntervals.has(plateKey)) return;
+
+  // 1️⃣ إرسال فوري للنبضة الأولى
+  sendSecurityBreachPush({ garageId, carPlate, distanceMeters, customerPhone });
+
+  // 2️⃣ تكرار الإرسال كل 3 ثوانٍ ورا بعض
+  const intervalId = setInterval(() => {
+    sendSecurityBreachPush({ garageId, carPlate, distanceMeters, customerPhone });
+  }, intervalMs);
+
+  activeBreachIntervals.set(plateKey, intervalId);
+};
+
+// ─── 🛑 إيقاف حلقة تكرار إشعارات الطوارئ فور إلغاء الإنذار أو السداد ───────
+export const stopSecurityBreachLoop = (carPlate: string) => {
+  const plateKey = normalizePlate(carPlate) || carPlate;
+  const intervalId = activeBreachIntervals.get(plateKey);
+  if (intervalId) {
+    clearInterval(intervalId);
+    activeBreachIntervals.delete(plateKey);
   }
 };
 

@@ -542,23 +542,57 @@ export default function App() {
     return distanceToCar > 25; // خطر حقيقي فقط خارج الـ 25 متر
   }, [activeSession, distanceToCar]);
 
-  // 🚨 [رصد فوري متكامل لكسر درع الأمان والفقاعة الجغرافية - يثور فقط إذا كان العميل بعيداً عن سيارته]
+  // 🚨 [رصد فوري متكامل لكسر درع الأمان - تكرار مستمر وتوجيه فوري لشاشة الـ SOS]
   useEffect(() => {
-    if (currentUser && activeSession && activeSession.isBreached && activeSession.securityShieldActive && isFarAway) {
-      // إطلاق صفارات الإنذار فوراً، والاهتزاز العنيف، وإرسال تنبيه في شريط الهاتف
+    if (!currentUser || !activeSession) return;
+    
+    // إذا انتهى الاختراق وعادت السيارة آمنة، نظف كاش كتم الصوت تلقائياً
+    if (!activeSession.isBreached || !activeSession.securityShieldActive) {
+      localStorage.removeItem(`breach_silenced_${activeSession.id}`);
+      return;
+    }
+    
+    // 🔒 [صمام كتم الصوت]: لو العميل كتم الصوت يدوياً من الشاشة، لا تطلق الإنذار مجدداً
+    const isLocallySilenced = localStorage.getItem(`breach_silenced_${activeSession.id}`) === 'true';
+    if (isLocallySilenced) return;
+
+    if (activeSession.isBreached && activeSession.securityShieldActive && isFarAway) {
+      
+      // توجيه العميل فوراً لشاشة العداد لتفتح نافذة الـ SOS في وجهه
+      if (safeScreen !== 'session') {
+        setSelectedGarageId(activeSession.garageId);
+        setScreen('session');
+      }
+
+      // إطلاق الإنذار والاهتزاز الفوري
       playBreachAlarmSound();
       vibrateBreach();
       notifySecurityBreach(activeSession.carPlate, 25);
 
-      // تكرار الإنذار كل 5 ثوانٍ طالما لم يقم العميل بإغلاقه أو تحصيل العداد
+      // تكرار الإنذار والاهتزاز ورا بعض كل 3.5 ثوانٍ
       const alarmInterval = setInterval(() => {
+        // فحص مستمر أثناء دوران الـ Interval لو تم كتم الصوت أوقف التكرار فوراً
+        const stillSilenced = localStorage.getItem(`breach_silenced_${activeSession.id}`) === 'true';
+        if (stillSilenced) {
+          clearInterval(alarmInterval);
+          return;
+        }
         playBreachAlarmSound();
         vibrateBreach();
-      }, 5000);
+      }, 3500);
 
       return () => clearInterval(alarmInterval);
     }
-  }, [activeSession?.id, activeSession?.isBreached, activeSession?.securityShieldActive, currentUser, isFarAway]);
+  }, [
+    activeSession?.id, 
+    activeSession?.isBreached, 
+    activeSession?.securityShieldActive, 
+    currentUser, 
+    isFarAway, 
+    safeScreen, 
+    setSelectedGarageId, 
+    setScreen
+  ]);
 
   useEffect(() => {
     if (!dataLoaded) return;
