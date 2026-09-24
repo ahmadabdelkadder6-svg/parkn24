@@ -230,15 +230,17 @@ export default function SessionScreen() {
     );
   }, [activeSession, isShieldActive, distanceToCar]);
 
-  // 🚨 تشغيل صوت الإنذار والـ SOS عند الخطر المؤكد
+  // 🚨 تشغيل وتكرار صوت الإنذار + فتح شاشة الـ SOS تلقائياً في وش العميل
   useEffect(() => {
-    if (activeSession && isShieldActive && activeSession.isBreached && riskLevel === 'danger') {
+    if (activeSession && isShieldActive && activeSession.isBreached) {
+      setShowSosModal(true); // 👈 فتح نافذة الطوارئ فوراً في وش العميل
       playCustomerBreachAlarm();
-      setShowSosModal(true);
-      const interval = setInterval(playCustomerBreachAlarm, 4000);
+      const interval = setInterval(() => {
+        playCustomerBreachAlarm(); // تكرار الإنذار كل 3.5 ثانية
+      }, 3500);
       return () => clearInterval(interval);
     }
-  }, [activeSession?.id, activeSession?.isBreached, isShieldActive, riskLevel]);
+  }, [activeSession?.id, activeSession?.isBreached, isShieldActive]);
 
   // 📡 Realtime الاستجابة الفورية عند إنهاء الجلسة فقط
   useEffect(() => {
@@ -498,7 +500,7 @@ export default function SessionScreen() {
           <div className="text-right">
             <span className="text-[9px] font-bold text-slate-400 block">رسوم الخدمة</span>
             <span className="text-xs font-black font-mono" style={{ color: isShieldActive ? BRAND.green : '#ffffff' }}>
-              {isShieldActive ? '+10 ج.م مضافة' : '+10.00 ج.م فقط'}
+              {isShieldActive ? '+10 ج.م مضافة' : '+10 ج.م فقط'}
             </span>
           </div>
         </div>
@@ -613,12 +615,12 @@ export default function SessionScreen() {
         العودة للقائمة الرئيسية
       </button>
 
-      {/* 🚔 نافذة طوارئ SOS عند الاختراق الفعلي فقط */}
+       {/* 🚔 نافذة طوارئ SOS عند الاختراق - تفتح تلقائياً وتتيح إيقاف الإنذار فوراً */}
       <AnimatePresence>
-        {showSosModal && activeSession && isShieldActive && activeSession.isBreached && riskLevel === 'danger' && (
+        {showSosModal && activeSession && isShieldActive && activeSession.isBreached && (
           <div 
             className="fixed inset-0 z-[99999] flex items-center justify-center p-5"
-            style={{ background: 'rgba(127,29,29,0.9)', backdropFilter: 'blur(8px)' }}
+            style={{ background: 'rgba(127,29,29,0.92)', backdropFilter: 'blur(8px)' }}
             onClick={() => setShowSosModal(false)}
           >
             <motion.div
@@ -634,21 +636,23 @@ export default function SessionScreen() {
 
               <h3 className="text-base font-black text-red-900 mb-1">🚨 تم رصد حركة غير مصرحة لسيارتك!</h3>
               <p className="text-xs font-bold text-slate-500 mb-4 leading-relaxed">
-                سيارتك لوحة <span className="font-mono font-black text-red-700 bg-red-50 px-2 py-0.5 rounded">{activeSession.carPlate}</span> تجاوزت فقاعة الأمان بالجراج بدون تصريح خروج!
+                سيارتك لوحة <span className="font-mono font-black text-red-700 bg-red-50 px-2 py-0.5 rounded">{activeSession.carPlate}</span> غادرت سياج الأمان (25م) بدون تصريح خروج!
               </p>
 
-              <div className="space-y-2">
+              <div className="space-y-2.5">
+                {/* 🟢 الزر الأخضر: يوقف السرينة فوراً ويفك حظر السايس وتفضل الجلسة شغالة */}
                 <button
                   onClick={async () => {
                     await triggerSessionBreach(activeSession.id, false);
                     setShowSosModal(false);
-                    toast.success('تم إلغاء الإنذار وتأكيد أمان الحركة بنجاح.');
+                    toast.success('تم إيقاف الإنذار وتأكيد أمان حركتك بنجاح ✅', { duration: 4000 });
                   }}
-                  className="w-full py-3 rounded-xl font-black text-xs text-white border-0 bg-emerald-600 active:scale-95 transition-all cursor-pointer shadow-md"
+                  className="w-full py-3.5 rounded-xl font-black text-xs text-white border-0 bg-emerald-600 active:scale-95 transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5"
                 >
-                  ✅ إلغاء الإنذار (حركة مصرحة مني)
+                  <span>✅ أنا اللي بستلم العربية (إيقاف الإنذار)</span>
                 </button>
 
+                {/* 🚨 الزر الأحمر: إرسال تقرير السرقة والبيانات للشرطة */}
                 <button
                   onClick={() => {
                     toast.success('🚀 تم تصدير بيانات الموقع والسرعة لجهات الطوارئ فوراً!');
@@ -659,11 +663,12 @@ export default function SessionScreen() {
                   🚔 إرسال تقرير SOS عاجل للشرطة
                 </button>
 
+                {/* ✕ زر الإغلاق المؤقت */}
                 <button
                   onClick={() => setShowSosModal(false)}
-                  className="w-full py-2 rounded-xl font-bold text-xs text-slate-500 bg-transparent border border-slate-200 cursor-pointer"
+                  className="w-full py-2.5 rounded-xl font-bold text-xs text-slate-500 bg-slate-100 border border-slate-200 cursor-pointer active:scale-95 transition-all"
                 >
-                  إغلاق النافذة
+                  إغلاق المؤقت
                 </button>
               </div>
             </motion.div>

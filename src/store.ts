@@ -1609,6 +1609,13 @@ export const useStore = create<AppState>((set, get) => ({
 
   triggerSessionBreach: async (sessionId: string, isBreached: boolean) => {
     try {
+      // 🔒 التحقق من أن السيارة مفعلة الدرع قبل تشغيل حالة السرقة
+      const session = get().sessions.find(s => s.id === sessionId);
+      if (isBreached && session && !session.securityShieldActive) {
+        console.warn('⚠️ تم رفض إطلاق إنذار لسيارة غير مفعلة للدرع');
+        return; 
+      }
+
       if (isSupabaseConfigured()) {
         await supabase
           .from('sessions')

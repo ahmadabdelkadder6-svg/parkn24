@@ -917,16 +917,19 @@ export default function GarageDashboard() {
     });
   }, [garageSessions]);
 
-  // 🚨 [رصد فوري لكسر فقاعة الأمان الجغرافية للسيارات المحمية]
+  // 🚨 [رصد فوري لكسر فقاعة الأمان - فقط وحصرياً للسيارات المفعل عليها الدرع]
   useEffect(() => {
-    const breachedSession = activeSessions.find(s => s.isBreached === true && s.securityShieldActive === true);
+    const breachedSession = activeSessions.find(s => 
+      s.isBreached === true && 
+      s.securityShieldActive === true // 👈 شرط صارم: الدرع لازم يكون مفعل
+    );
+
     if (breachedSession) {
       fireIncomingCarAlert(breachedSession.carPlate);
       toast.error(`🚨 إنذار طوارئ: السيارة [${breachedSession.carPlate}] خرجت من فقاعة الأمان (25م)!`, {
         duration: 8000,
         icon: '🚨',
       });
-      // إرسال Push Notification فوري عاجل
       if (currentGarageId) {
         sendSecurityBreachPush({
           garageId: currentGarageId,
