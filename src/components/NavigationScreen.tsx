@@ -582,42 +582,41 @@ export default function NavigationScreen() {
       if (relatedOffer) cancelOffer(relatedOffer.id);
 
       const startTimeISO = new Date(getServerNow()).toISOString();
+      const incomingId = myIncomingCar.id;
+      const currentPlate = myIncomingCar.carPlate;
+      const agreedPr = myIncomingCar.agreedPrice;
 
-      const sid = await addSession({
+      // 🌟 1. تثبيت معرف الجراج المختار أولاً
+      setSelectedGarageId(garage.id);
+
+      // 🌟 2. إنشاء الجلسة وتثبيت إحداثيات المكان في خطوة واحدة سريعة (الدرع معطل افتراضياً)
+      await addSession({
         garageId: garage.id,
-        carPlate: myIncomingCar.carPlate,
+        carPlate: currentPlate,
         startTime: startTimeISO,
         status: 'active',
         source: 'app',
-        agreedPrice: myIncomingCar.agreedPrice,
+        agreedPrice: agreedPr,
         customerPhone: currentUser?.phone,
         customerName: currentUser?.name,
         startedBy: 'customer',
-        incomingCarId: myIncomingCar.id,
+        incomingCarId: incomingId,
         parkedLat: userPos.lat || garage.lat,
         parkedLng: userPos.lng || garage.lng,
-        securityShieldActive: false, // 🔒 معطل تلقائياً كبداية والعميل يفعله برغبته لاحقاً
+        securityShieldActive: false, // 🔒 يبدأ معطلاً والعميل يفعله برغبته من شاشة العداد
         isBreached: false,
       } as any);
 
-      // 🛡️ تثبيت مرساة القمر الصناعي لفقاعة الأمان فور بدء الركن (تبدأ مغلقة لسلامة التوقيع)
-      if (sid) {
-        await setSessionSecurityShield(
-          sid,
-          false, // 🔒 نرسل حالة الدرع المغلق افتراضياً هنا لتتوافق مع التوقيع السليم
-          userPos.lat || garage.lat,
-          userPos.lng || garage.lng
-        );
-      }
-
-      await removeIncomingCar(myIncomingCar.id);
+      // 🌟 3. حذف الحجز والانتقال اللحظي المباشر لشاشة العداد
+      removeIncomingCar(incomingId).catch(() => {});
       navigatedToSessionRef.current = true;
       setScreen('session');
+      toast.success('تم بدء حساب الركن بنجاح! ⏱️🚗', { duration: 2500 });
     } catch (err) {
-      console.error('❌ خطأ:', err);
+      console.error('❌ خطأ في بدء الركن:', err);
       toast.error('حدث خطأ، حاول مرة أخرى');
     } finally {
-      setTimeout(() => { isArrivingRef.current = false; }, 3000);
+      setTimeout(() => { isArrivingRef.current = false; }, 2000);
     }
   };
 

@@ -659,6 +659,7 @@ export default function App() {
       return samePlate || samePhone;
     });
 
+    // 🟢 1️⃣ إذا كان هناك جلسة نشطة: تثبيت العميل فوراً في شاشة العداد
     if (myActiveSession) {
       noSessionCountRef.current = 0;
       lastActiveTimeRef.current = getServerNow();
@@ -684,75 +685,33 @@ export default function App() {
       return;
     }
 
-    if (prevActiveSessionRef.current) {
-      noSessionCountRef.current += 1;
-      const timeSinceLastActive = getServerNow() - lastActiveTimeRef.current;
-
-      if (noSessionCountRef.current < 3 || timeSinceLastActive < 8000) {
-        return;
+    // 📍 2️⃣ إذا كان في الطريق: تثبيت العميل في شاشة الملاحة
+    if (myIncoming) {
+      setSelectedGarageId(myIncoming.garageId);
+      if (
+        safeScreen !== 'navigation' &&
+        safeScreen !== 'session' &&
+        safeScreen !== 'summary'
+      ) {
+        setScreen('navigation');
       }
-
-      if (sessionTransitionTimer.current) return;
-
-      sessionTransitionTimer.current = setTimeout(() => {
-        sessionTransitionTimer.current = null;
-        const freshState = useStore.getState();
-        const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
-        const freshPhone = freshState.currentUser?.phone ? normalizePhone(freshState.currentUser.phone) : '';
-
-        const stillActive = freshState.sessions.find((s) => {
-          if (s.status !== 'active') return false;
-          const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-          const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-          const samePhone = Boolean(freshPhone && sPhone === freshPhone);
-          return samePlate || samePhone;
-        });
-
-        if (stillActive) {
-          noSessionCountRef.current = 0;
-          prevActiveSessionRef.current = stillActive.id;
-          return;
-        }
-
-        const currentScreen = freshState.screen;
-        prevActiveSessionRef.current = null;
-        noSessionCountRef.current = 0;
-
-        if (
-          currentScreen === 'session' ||
-          currentScreen === 'navigation' ||
-          currentScreen === 'waiting'
-        ) {
-          const lastCompleted = freshState.sessions
-            .filter((s) => {
-              if (s.status !== 'completed') return false;
-              const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-              const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-              const samePhone = Boolean(freshPhone && sPhone === freshPhone);
-              return samePlate || samePhone;
-            })
-            .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
-
-          if (lastCompleted) {
-            const freshAcknowledged = freshState.acknowledgedSessionIds;
-            const isNotAcknowledged = freshAcknowledged ? !freshAcknowledged.has(lastCompleted.id) : true;
-            if (isNotAcknowledged) {
-              setSelectedGarageId(lastCompleted.garageId);
-              setScreen('summary');
-              return;
-            }
-          }
-
-          if (!sessionEndToastShown.current) {
-            sessionEndToastShown.current = true;
-            toast.success('تم إنهاء الجلسة والعودة للرئيسية');
-          }
-          setSelectedGarageId(null);
-          setScreen('list');
-        }
-      }, 3000);
+      return;
     }
 
+    // 🏁 3️⃣ الانتقال لشاشة الفاتورة فقط للجلسة التي كانت نشطة بالفعل وانتهت لتوها (بمطابقة الـ ID)
+    if (prevActiveSessionRef.current && safeScreen === 'session') {
+      const targetSessionId = prevActiveSessionRef.current;
+      const justCompleted = sessions.find((s) => s.id === targetSessionId && s.status === 'completed');
+
+      if (justCompleted) {
+        prevActiveSessionRef.current = null;
+        setSelectedGarageId(justCompleted.garageId);
+        setScreen('summary');
+        return;
+      }
+    }
+
+    // 🔄 4️⃣ العودة الآمنة للقائمة فقط عند إلغاء الحجز بشكل صريح
     if (!myActiveSession && safeScreen === 'navigation' && !myIncoming) {
       const timeout = setTimeout(() => {
         const freshState = useStore.getState();
