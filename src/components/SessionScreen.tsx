@@ -123,10 +123,12 @@ export default function SessionScreen() {
   const [elapsed, setElapsed] = useState(0);
   const [showSosModal, setShowSosModal] = useState(false);
   const [localShieldLocked, setLocalShieldLocked] = useState(false);
+  
+  // موقع العميل بالـ GPS
   const [customerLat, setCustomerLat] = useState<number | null>(null);
   const [customerLng, setCustomerLng] = useState<number | null>(null);
   
-  // 🔇 حالة كتم الصوت المحلية على التليفون الحالي
+  // كتم الصوت محلياً
   const [localSilenced, setLocalSilenced] = useState(false);
 
   const isMySessionRow = (row: any) => {
@@ -209,7 +211,7 @@ export default function SessionScreen() {
         setCustomerLng(pos.coords.longitude);
       },
       () => {},
-      { enableHighAccuracy: true, maximumAge: 0 } // ⚡ منع الكاش تماماً
+      { enableHighAccuracy: true, maximumAge: 0 }
     );
 
     const watchId = navigator.geolocation.watchPosition(
@@ -224,16 +226,6 @@ export default function SessionScreen() {
     return () => navigator.geolocation.clearWatch(watchId);
   }, [activeSession?.id, isShieldActive]);
 
-  // 🔒 صمام الأمان الفولاذي: حفظ إحداثيات مرساة الركنة محلياً لمنع ضياعها أو ارتدادها عند غلق الصفحة
-  useEffect(() => {
-    if (activeSession?.id && activeSession.parkedLat && activeSession.parkedLng) {
-      try {
-        localStorage.setItem(`shield_lat_${activeSession.id}`, String(activeSession.parkedLat));
-        localStorage.setItem(`shield_lng_${activeSession.id}`, String(activeSession.parkedLng));
-      } catch {}
-    }
-  }, [activeSession?.id, activeSession?.parkedLat, activeSession?.parkedLng]);
-
   // 📐 حساب المسافة الفعلية بين العميل ومكان الركنة مع معالجة المزامنة الذاكرية
   const distanceToCar = useMemo(() => {
     if (!activeSession || !customerLat || !customerLng) return null;
@@ -246,7 +238,7 @@ export default function SessionScreen() {
     
     const rawDist = calculateDistanceMeters(customerLat, customerLng, pLat, pLng);
     
-    // ⚡ فلتر الرعشة والنعومة: لو المسافة أقل من أو تساوي 3 أمتار نعتبرها بجوار السيارة (0 متر) لإلغاء أي اهتزاز بصري
+    // ⚡ فلتر الرعشة والنعومة: لو المسافة أقل من 3 أمتار نعتبرها بجوار السيارة (0 متر)
     return rawDist <= 3 ? 0 : rawDist;
   }, [activeSession, customerLat, customerLng, garage]);
 
@@ -392,7 +384,7 @@ export default function SessionScreen() {
   const shieldCost = isShieldActive ? 10 : 0;
   const finalTotalCost = isFreeNow ? (isShieldActive ? 10 : 0) : (displayedCost + shieldCost);
 
-  // 🛡️ دالة التفعيل الفوري اللحظية المحدثة لحفظ الموقع محلياً ولحظياً
+  // 🛡️ دالة التفعيل الفوري اللحظية المحدثة لحفظ الموقع محلياً
   const handleActivateSecurityShield = () => {
     if (!activeSession?.id || isShieldActive) return;
 
@@ -402,14 +394,7 @@ export default function SessionScreen() {
     let targetLat = garage?.lat || 30.0444;
     let targetLng = garage?.lng || 31.2357;
 
-    if (customerLat && customerLng) {
-      targetLat = customerLat;
-      targetLng = customerLng;
-      try {
-        localStorage.setItem(`shield_lat_${targetSessionId}`, String(targetLat));
-        localStorage.setItem(`shield_lng_${targetSessionId}`, String(targetLng));
-      } catch {}
-    } else if ('geolocation' in navigator) {
+    if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           targetLat = pos.coords.latitude;
@@ -425,6 +410,8 @@ export default function SessionScreen() {
         },
         { enableHighAccuracy: true, timeout: 3000 }
       );
+    } else {
+      setSessionSecurityShield(targetSessionId, true, targetLat, targetLng).catch(() => {});
     }
 
     setLocalShieldLocked(true);
@@ -435,16 +422,12 @@ export default function SessionScreen() {
     useStore.setState((state) => ({
       sessions: state.sessions.map((s) =>
         s.id === targetSessionId
-          ? { ...s, securityShieldActive: true, isBreached: false, parkedLat: targetLat, parkedLng: targetLng }
+          ? { ...s, securityShieldActive: true, isBreached: false }
           : s
       ),
     }));
 
     toast.success('🛡️ تم تفعيل درع الحماية وتثبيته بالفاتورة (+10 ج.م)', { duration: 4000 });
-    
-    if (customerLat && customerLng) {
-      setSessionSecurityShield(targetSessionId, true, targetLat, targetLng).catch(() => {});
-    }
   };
 
   const riskColors = {
@@ -481,7 +464,7 @@ export default function SessionScreen() {
       className="h-full text-white flex flex-col items-center justify-center p-6 overflow-y-auto safe-top safe-bottom"
       style={{ background: BRAND.navy }}
     >
-      {/* 🛰️ [شريط رادار الرصد ومسافة العميل اللحظية - محمي تماماً من الإنذار الكاذب ورعشة الشاشة] */}
+      {/* 🛰️ [شريط رادار الرصد ومسافة العميل اللحظية - محمي تماماً من الإنذار الكاذب] */}
       {isShieldActive && distanceToCar !== null && (
         <div 
           className="w-full border-2 rounded-2xl p-3 mb-3 flex items-center justify-between transition-all" 
@@ -583,38 +566,11 @@ export default function SessionScreen() {
           <div className="text-right">
             <span className="text-[9px] font-bold text-slate-400 block">رسوم الخدمة</span>
             <span className="text-xs font-black font-mono" style={{ color: isShieldActive ? BRAND.green : '#ffffff' }}>
-              {isShieldActive ? '+10.00 ج.م مضافة' : '+10.00 ج.م فقط'}
+              {isShieldActive ? '+10 ج.م مضافة' : '+10 ج.م فقط'}
             </span>
           </div>
         </div>
       </div>
-
-      {isFirstFreeApplied && (
-        <motion.div
-          initial={{ scale: 0.95, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="w-full border rounded-2xl p-3 mb-4 flex items-center gap-3"
-          style={{
-            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.18) 100%)',
-            borderColor: 'rgba(245,158,11,0.3)',
-          }}
-        >
-          <div className="p-2 rounded-xl text-amber-400 shrink-0" style={{ background: 'rgba(245,158,11,0.15)' }}>
-            <Gift size={20} className="animate-pulse" />
-          </div>
-          <div className="text-right flex-1">
-            <div className="font-black flex items-center gap-1 justify-end text-xs text-amber-400">
-              <span>هدية ترحيبية نشطة</span>
-              <Sparkles size={12} className="text-yellow-200" />
-            </div>
-            <div className="font-bold text-[10px] mt-0.5" style={{ color: BRAND.slateMuted }}>
-              {isFreeNow 
-                ? 'أنت الآن في أول 30 دقيقة مجانية بالكامل! 🎁' 
-                : 'انتهت الـ 30 دقيقة المجانية وتم بدء الاحتساب بالسعر العادي ✅'}
-            </div>
-          </div>
-        </motion.div>
-      )}
 
       {/* العداد الدائري */}
       <motion.div
