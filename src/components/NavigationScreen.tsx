@@ -517,6 +517,7 @@ export default function NavigationScreen() {
   const handleCancelBooking = async () => {
     if (!currentUser || !myIncomingCar) return;
 
+    // 1️⃣ إيقاف جميع مؤقتات الإشعارات فوراً
     if (pushTimerRef.current) {
       clearTimeout(pushTimerRef.current);
       pushTimerRef.current = null;
@@ -524,10 +525,11 @@ export default function NavigationScreen() {
     pushSentRef.current = true;
     setPushStatus('cancelled');
 
-    if (pushStatus === 'sent') {
-      await cancelScheduledPush(garage.id, myIncomingCar.carPlate);
+    if (pushStatus === 'sent' && garage) {
+      cancelScheduledPush(garage.id, myIncomingCar.carPlate).catch(() => {});
     }
 
+    // 2️⃣ البحث عن العروض المعلقة وإلغائها
     const activeOffer = offers.find(
       (o) =>
         o.userId === currentUser.phone &&
@@ -535,12 +537,22 @@ export default function NavigationScreen() {
     );
     if (activeOffer) cancelOffer(activeOffer.id);
 
-    removeIncomingCar(myIncomingCar.id);
-    toast.success('تم إلغاء الحجز، يمكنك اختيار جراج آخر 🚗');
-    setSelectedGarageId(null);
-    setScreen('list');
-  };
+    const targetCarId = myIncomingCar.id;
 
+    // 3️⃣ تحديث الـ Store المحلي فوراً لمسح السيارة القادمة (لقطع الطريق على App.tsx ومنعه من إرجاع الشاشة)
+    useStore.setState((state) => ({
+      incomingCars: state.incomingCars.filter((c) => c.id !== targetCarId)
+    }));
+
+    // 4️⃣ الانتقال الفوري والمضمون للقائمة الرئيسية وتصفير الجراج
+    setScreen('list');
+    setSelectedGarageId(null);
+
+    // 5️⃣ الحذف الصامت والنهائي للحجز من قاعدة البيانات في الخلفية
+    removeIncomingCar(targetCarId).catch(() => {});
+    
+    toast.success('تم إلغاء الحجز، يمكنك اختيار جراج آخر 🚗');
+  };
   const handleCarArrived = async () => {
     if (isArrivingRef.current) return;
     isArrivingRef.current = true;
