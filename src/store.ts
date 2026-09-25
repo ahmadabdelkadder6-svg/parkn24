@@ -28,7 +28,7 @@ export interface Garage {
   valet3Active: boolean;
   isActive: boolean;
   payment_mode?: 'cash' | 'wallet' | 'both'; 
-  area?: string; // 🗺️ المنطقة الجغرافية للجراج (مثال: وسط البلد، مصر الجديدة، المعادي)
+  area?: string; // 🗺️ المنطقة الجغرافية للجراج
 }
 
 export interface ParkingSession {
@@ -466,6 +466,14 @@ const mapSession = (r: any): ParkingSession => {
   const shieldActive = r.security_shield_active === true || r.security_shield_active === 'true' || r.security_shield_active === 1;
   const breachedVal = r.is_breached === true || r.is_breached === 'true' || r.is_breached === 1;
 
+  // 🔒 قفل تأكيد الإيراد الصارم: يقرأ من السيرفر أو من الذاكرة المحلية لمنع أي ارتداد
+  const isRevenueConfirmed =
+    r.revenue_confirmed === true ||
+    r.revenue_confirmed === 'true' ||
+    r.revenue_confirmed === 1 ||
+    r.revenueConfirmed === true ||
+    localStorage.getItem(`revenue_confirmed_${r.id}`) === 'true';
+
   return {
     id: r.id,
     garageId: r.garage_id,
@@ -478,7 +486,7 @@ const mapSession = (r: any): ParkingSession => {
     source: r.source,
     agreedPrice: r.agreed_price != null ? Number(r.agreed_price) : undefined,
     synced: true,
-    revenueConfirmed: r.revenue_confirmed ?? false,
+    revenueConfirmed: isRevenueConfirmed,
     addedBy: r.added_by || '',
     customerPhone: r.customer_phone || undefined,
     customerName: r.customer_name || undefined,
@@ -667,12 +675,10 @@ export const validateSecurityBreach = ({
   consecutiveBreachCount: number;
 }): { shouldAlarm: boolean; isInternalShuffle: boolean; newBreachCount: number } => {
   
-  // 1️⃣ فلتر دقة الـ GPS: استبعاد القراءات الضعيفة والمهزوزة (> 15م)
   if (currentReading.accuracy > 15) {
     return { shouldAlarm: false, isInternalShuffle: false, newBreachCount: consecutiveBreachCount };
   }
 
-  // 2️⃣ فلتر القفزات المستحيلة فيزيائياً (> 140 كم/س)
   if (previousReading) {
     const timeDeltaSeconds = Math.max(1, (currentReading.timestamp - previousReading.timestamp) / 1000);
     const distanceDeltaMeters = calculateDistanceMeters(
@@ -686,20 +692,16 @@ export const validateSecurityBreach = ({
     }
   }
 
-  // 3️⃣ حساب المسافة عن مرساة الركنة
   const distFromAnchor = calculateDistanceMeters(currentReading.lat, currentReading.lng, anchorLat, anchorLng);
 
-  // إذا لم تتجاوز مرساة الـ 25م = آمن
   if (distFromAnchor <= 25) {
     return { shouldAlarm: false, isInternalShuffle: false, newBreachCount: 0 };
   }
 
-  // 4️⃣ فلتر المناورة الداخلية: تحركت برة الـ 25م ولكن ما زالت داخل الجراج (الـ 250م)
   if (distFromAnchor <= garageRadiusMeters) {
     return { shouldAlarm: false, isInternalShuffle: true, newBreachCount: 0 };
   }
 
-  // 5️⃣ قاعدة الصمود والتأكيد الثلاثي (3-Strike Rule)
   const updatedCount = consecutiveBreachCount + 1;
   if (updatedCount >= 3) {
     return { shouldAlarm: true, isInternalShuffle: false, newBreachCount: updatedCount };
@@ -1098,7 +1100,7 @@ export const useStore = create<AppState>((set, get) => ({
           if (localVersion.status === 'completed') {
             return {
               ...localVersion,
-              revenueConfirmed: ss.revenueConfirmed || localVersion.revenueConfirmed,
+              revenueConfirmed: ss.revenueConfirmed || localVersion.revenueConfirmed || localStorage.getItem(`revenue_confirmed_${ss.id}`) === 'true',
               settled: ss.settled ?? localVersion.settled,
               settled_at: ss.settled_at || localVersion.settled_at,
             };
@@ -1373,7 +1375,7 @@ export const useStore = create<AppState>((set, get) => ({
           added_by: addedByValue,
           customer_phone: cleanPhone || null,
           customer_name: (s as any).customerName || null,
-          incoming_car_id: null, // تجنب تعارض المفاتيح الأجنبية عند مسح السيارة
+          incoming_car_id: null, 
           started_by: (s as any).startedBy || null,
           commission_amount: 0,
           net_revenue: 0,
@@ -1505,7 +1507,7 @@ export const useStore = create<AppState>((set, get) => ({
           commission_amount: commissionAmount,
           net_revenue: netRevenue,
           settled: false,
-          free_minutes_applied: free_minutes_applied || session.freeMinutesApplied || 0,
+          free_minutes_applied: freeMinutesApplied || session.freeMinutesApplied || 0, // 👈 تم تصحيح اسم المتغير هنا لمنع الخطأ
           added_by: finalAddedBy || null
         })
         .eq('id', id)
@@ -1532,7 +1534,7 @@ export const useStore = create<AppState>((set, get) => ({
       localStorage.setItem(`revenue_confirmed_${sessionId}`, 'true');
     } catch {}
 
-    pausePolling(3000); // ⚡ تجميد الـ Polling لمدة 3 ثوانٍ للاستقرار
+    pausePolling(3000); // ⚡ تجميد الـ Polling للاستقرار
 
     if (!isSupabaseConfigured()) {
       pausePolling(0);
@@ -1546,11 +1548,9 @@ export const useStore = create<AppState>((set, get) => ({
       
       if (error) {
         console.error('❌ Supabase confirm error:', error);
-        // التراجع في حال حدوث خطأ حقيقي
         try { localStorage.removeItem(`revenue_confirmed_${sessionId}`); } catch {}
         set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: false } : s)) }));
       } else {
-        // تحديث وجلب فوري متزامن
         await get().fetchAll();
       }
     } catch (err) {
@@ -1974,7 +1974,7 @@ export const useStore = create<AppState>((set, get) => ({
   closeMessage: async (id) => {
     set((st) => ({ messages: (st.messages ?? []).map((msg) => (msg.id === id ? { ...msg, status: 'closed' as const } : msg)) }));
     if (!isSupabaseConfigured()) return;
-    const { error } = await supabase.from('messages').update({ status: 'closed' }).eq('id', id);
+    const { error = null } = await supabase.from('messages').update({ status: 'closed' }).eq('id', id);
     if (error) console.error('❌', error);
   },
 }));
