@@ -96,7 +96,7 @@ const getDistanceMeters = (
   return R * c;
 };
 
-/* ─── Map controller (محمي بالكامل من الانهيار) ─── */
+/* ─── Map controller (محمي ومحدث فائق السرعة) ─── */
 function MapController({
   userPos,
   garagePos,
@@ -107,11 +107,12 @@ function MapController({
   const map = useMap();
 
   useEffect(() => {
-    setTimeout(() => {
+    // ⚡ إعادة ضبط أبعاد الخريطة فور فتح الشاشة لعرض الشوارع فوراً
+    const timer = setTimeout(() => {
       try {
         map.invalidateSize();
       } catch {}
-    }, 250);
+    }, 150);
 
     const isValidCoord = (c: [number, number]) =>
       Array.isArray(c) &&
@@ -121,7 +122,7 @@ function MapController({
     if (isValidCoord(userPos) && isValidCoord(garagePos)) {
       try {
         const bounds = L.latLngBounds([userPos, garagePos]);
-        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+        map.fitBounds(bounds, { padding: [35, 35], maxZoom: 16 });
       } catch {
         try {
           map.setView(garagePos, 15);
@@ -132,11 +133,12 @@ function MapController({
         map.setView(garagePos, 15);
       } catch {}
     }
+
+    return () => clearTimeout(timer);
   }, [map, userPos, garagePos]);
 
   return null;
 }
-
 /* ════════════════════════════════════════════════════════════
    ██  MAIN NAVIGATION SCREEN
    ════════════════════════════════════════════════════════════ */
@@ -705,57 +707,58 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* 🗺️ الخريطة المستقرة (بدون رعشة) */}
-        <div 
-          className="w-full h-44 rounded-2xl overflow-hidden relative shrink-0 border"
-          style={{ transform: 'translateZ(0)', borderColor: BRAND.border }} 
-        >
-          {mapReady ? (
-            <MapContainer
-              key={`map-nav-${garage.id}`}
-              center={[garage.lat || 30.0444, garage.lng || 31.2357]}
-              zoom={15}
-              style={{ width: '100%', height: '100%' }}
-              zoomControl={false}
-            >
-              <TileLayer
-                url="https://tile.openstreetmap.org/{z}/{y}.png"
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              />
-              <Marker position={[userPos.lat, userPos.lng]} icon={userIcon}>
-                <Popup>موقعك الحالي 🚗</Popup>
-              </Marker>
-              <Marker position={[garage.lat, garage.lng]} icon={garageIcon}>
-                <Popup>{garage.name} 🅿️</Popup>
-              </Marker>
-              <Polyline
-                positions={[
-                  [userPos.lat, userPos.lng],
-                  [garage.lat, garage.lng],
-                ]}
-                color={BRAND.blue}
-                weight={4}
-                dashArray="8, 8"
-              />
-              <MapController
-                userPos={[userPos.lat, userPos.lng]}
-                garagePos={[garage.lat, garage.lng]}
-              />
-            </MapContainer>
-          ) : (
-            <div className="w-full h-full bg-slate-900 flex items-center justify-center">
-              <div className="text-slate-500 text-xs font-bold animate-pulse">
-                🗺️ جاري تحميل الخريطة...
-              </div>
+      {/* 🗺️ الخريطة المستقرة (بدون رعشة) */}
+      <div 
+        className="w-full h-44 rounded-2xl overflow-hidden relative shrink-0 border"
+        style={{ transform: 'translateZ(0)', borderColor: BRAND.border }} 
+      >
+        {mapReady && garage ? (
+          <MapContainer
+            key={`map-nav-${garage.id}`}
+            center={[garage.lat || 30.0444, garage.lng || 31.2357]}
+            zoom={15}
+            style={{ width: '100%', height: '100%', background: '#0a1628' }}
+            zoomControl={false}
+          >
+            {/* ⚡ تم إصلاح رابط الخريطة إلى الصيغة العالمية السريعة لتنزيل الشوارع فوراً */}
+            <TileLayer
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              subdomains={['a', 'b', 'c']}
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            />
+            <Marker position={[userPos.lat, userPos.lng]} icon={userIcon}>
+              <Popup>موقعك الحالي 🚗</Popup>
+            </Marker>
+            <Marker position={[garage.lat, garage.lng]} icon={garageIcon}>
+              <Popup>{garage.name} 🅿️</Popup>
+            </Marker>
+            <Polyline
+              positions={[
+                [userPos.lat, userPos.lng],
+                [garage.lat, garage.lng],
+              ]}
+              color={BRAND.blue}
+              weight={4}
+              dashArray="8, 8"
+            />
+            <MapController
+              userPos={[userPos.lat, userPos.lng]}
+              garagePos={[garage.lat, garage.lng]}
+            />
+          </MapContainer>
+        ) : (
+          <div className="w-full h-full bg-slate-900 flex items-center justify-center">
+            <div className="text-slate-500 text-xs font-bold animate-pulse">
+              🗺️ جاري تحميل الخريطة...
             </div>
-          )}
-
-          <div className="absolute top-3 left-3 border text-[9px] px-2.5 py-1 rounded-full z-[400] flex items-center gap-1.5 pointer-events-none" style={{ background: 'rgba(10,22,40,0.85)', borderColor: BRAND.border, color: BRAND.slateMuted }}>
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
-            تتبع مباشر
           </div>
-        </div>
+        )}
 
+        <div className="absolute top-3 left-3 border text-[9px] px-2.5 py-1 rounded-full z-[400] flex items-center gap-1.5 pointer-events-none" style={{ background: 'rgba(10,22,40,0.85)', borderColor: BRAND.border, color: BRAND.slateMuted }}>
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
+          تتبع مباشر
+        </div>
+      </div>
         {/* 🚀 زر توجيه الخرائط */}
         <div className="flex flex-col gap-1.5 shrink-0">
           <motion.button
