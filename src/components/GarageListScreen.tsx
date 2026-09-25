@@ -20,6 +20,7 @@ import {
   Sparkles,
   ChevronDown,
   QrCode,
+   Copy,
 } from 'lucide-react';
 import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
 import {
@@ -601,11 +602,11 @@ export default function GarageListScreen() {
         {showTopUp && <TopUpWalletModal onClose={() => setShowTopUp(false)} />}
       </AnimatePresence>
 
-      {/* 📲 نافذة تكبير الباركود */}
+      {/* 📲 نافذة تكبير الباركود مع ميزة نسخ ومشاركة الرابط */}
       <AnimatePresence>
         {showQrModal && (
           <div 
-            className="fixed inset-0 z-[9999] flex items-center justify-center p-5"
+            className="fixed inset-0 z-[999] flex items-center justify-center p-5"
             style={{ background: 'rgba(10,22,40,0.75)', backdropFilter: 'blur(6px)' }}
             onClick={() => setShowQrModal(false)}
           >
@@ -625,7 +626,6 @@ export default function GarageListScreen() {
                 ✕
               </button>
 
-              {/* أيقونة الهدية الترحيبية */}
               <div 
                 className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2"
                 style={{ background: BRAND.green + '20' }}
@@ -637,13 +637,13 @@ export default function GarageListScreen() {
                 📲 شارك بركن 24 مع أصحابك
               </h3>
 
-              <p className="text-[11px] font-bold mb-4 leading-relaxed" style={{ color: BRAND.slate }}>
-                امسح الكود بموبايل صاحبك لتنزيل التطبيق وسبهم يستمتعوا بـ <span className="font-black" style={{ color: BRAND.greenDark }}>أول 30 دقيقة ركن مجاناً! 🎁🚀</span>
+              <p className="text-[11px] font-bold mb-3 leading-relaxed" style={{ color: BRAND.slate }}>
+                امسح الكود أو انسخ الرابط وشاركه مع أصحابك ليركنوا ويستمتعوا بـ <span className="font-black" style={{ color: BRAND.greenDark }}>أول 30 دقيقة مجاناً! 🎁🚀</span>
               </p>
 
               {/* إطار الباركود */}
               <div 
-                className="w-48 h-48 mx-auto p-2 bg-white rounded-2xl border-2 shadow-inner flex items-center justify-center mb-4" 
+                className="w-44 h-44 mx-auto p-2 bg-white rounded-2xl border-2 shadow-inner flex items-center justify-center mb-3" 
                 style={{ borderColor: BRAND.blue }}
               >
                 <img 
@@ -656,14 +656,41 @@ export default function GarageListScreen() {
                 />
               </div>
 
-              {/* زر الإغلاق والمشاركة */}
-              <button
-                onClick={() => setShowQrModal(false)}
-                className="w-full py-3 rounded-xl font-black text-xs text-white border-0 cursor-pointer active:scale-95 transition-all shadow-md"
-                style={{ background: BRAND.blue }}
-              >
-                تم المسح / إغلاق
-              </button>
+              {/* 🔗 زر نسخ ومشاركة رابط التطبيق */}
+              <div className="space-y-2">
+                <button
+                  onClick={async () => {
+                    const appUrl = window.location.origin;
+                    try {
+                      if (navigator.clipboard?.writeText) {
+                        await navigator.clipboard.writeText(appUrl);
+                      } else {
+                        const el = document.createElement('textarea');
+                        el.value = appUrl;
+                        document.body.appendChild(el);
+                        el.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(el);
+                      }
+                      toast.success('تم نسخ رابط التطبيق بنجاح! 📋🚀', { duration: 3000 });
+                    } catch {
+                      toast.error('تعذر نسخ الرابط');
+                    }
+                  }}
+                  className="w-full py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all border-0 text-white shadow-sm"
+                  style={{ background: BRAND.greenDark }}
+                >
+                  <Copy size={14} />
+                  <span>نسخ رابط التطبيق 🔗</span>
+                </button>
+
+                <button
+                  onClick={() => setShowQrModal(false)}
+                  className="w-full py-2.5 rounded-xl font-bold text-xs text-slate-500 bg-slate-100 border border-slate-200 cursor-pointer active:scale-95 transition-all"
+                >
+                  إغلاق النافذة
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

@@ -4,7 +4,7 @@ import {
   Car, Clock, LogOut, Plus, CheckCircle, XCircle, Settings,
   Minus, Save, MapPin, Edit3, Navigation, Phone, CarFront, FileText,
   CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
-  Search, X, CreditCard, MapPinOff, Locate, AlertTriangle, Wifi, WifiOff, Eye, QrCode
+  Search, X, CreditCard, MapPinOff, Locate, AlertTriangle, Wifi, WifiOff, Eye, QrCode, Copy
 } from 'lucide-react';
 import { useStore, pausePolling, normalizePlate, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
@@ -2111,7 +2111,7 @@ export default function GarageDashboard() {
         </div>
       </div>
 
-      {/* 📲 نافذة تكبير باركود فالية الجراج للعميل */}
+      {/* 📲 نافذة تكبير باركود فالية الجراج مع زر نسخ الرابط */}
       <AnimatePresence>
         {showValetQrModal && (
           <div
@@ -2141,11 +2141,11 @@ export default function GarageDashboard() {
               <h3 className="text-sm font-black mb-1" style={{ color: BRAND.navy }}>
                 امسح الكود واحجز ركنتك فوراً! 🎁
               </h3>
-              <p className="text-[10px] font-bold mb-4" style={{ color: BRAND.slate }}>
+              <p className="text-[10px] font-bold mb-3" style={{ color: BRAND.slate }}>
                 احصل على <span style={{ color: BRAND.greenDark }} className="font-black">أول 30 دقيقة مجاناً</span> وحسابك ينزل هنا تلقائياً بدون فكة ولا دوشة!
               </p>
 
-              <div className="w-48 h-48 mx-auto p-2 bg-white rounded-2xl border-2 shadow-inner flex items-center justify-center mb-4" style={{ borderColor: BRAND.blue }}>
+              <div className="w-44 h-44 mx-auto p-2 bg-white rounded-2xl border-2 shadow-inner flex items-center justify-center mb-3" style={{ borderColor: BRAND.blue }}>
                 <img
                   src="/app-qr.png"
                   alt="QR Code"
@@ -2153,18 +2153,45 @@ export default function GarageDashboard() {
                 />
               </div>
 
-              <button
-                onClick={() => setShowValetQrModal(false)}
-                className="w-full py-3 rounded-xl font-black text-xs text-white border-0 cursor-pointer active:scale-95 transition-all"
-                style={{ background: BRAND.blue }}
-              >
-                تم المسح / إغلاق
-              </button>
+              {/* 🔗 زر نسخ رابط التطبيق للسايس + زر الإغلاق */}
+              <div className="space-y-2">
+                <button
+                  onClick={async () => {
+                    const appUrl = window.location.origin;
+                    try {
+                      if (navigator.clipboard?.writeText) {
+                        await navigator.clipboard.writeText(appUrl);
+                      } else {
+                        const el = document.createElement('textarea');
+                        el.value = appUrl;
+                        document.body.appendChild(el);
+                        el.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(el);
+                      }
+                      toast.success('تم نسخ رابط التطبيق للعميل! 📋🚀', { duration: 3000 });
+                    } catch {
+                      toast.error('تعذر نسخ الرابط');
+                    }
+                  }}
+                  className="w-full py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all border-0 text-white shadow-sm"
+                  style={{ background: BRAND.greenDark }}
+                >
+                  <Copy size={14} />
+                  <span>نسخ رابط التطبيق للعميل 🔗</span>
+                </button>
+
+                <button
+                  onClick={() => setShowValetQrModal(false)}
+                  className="w-full py-2.5 rounded-xl font-bold text-xs text-slate-500 bg-slate-100 border border-slate-200 cursor-pointer active:scale-95 transition-all"
+                >
+                  تم المسح / إغلاق
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
-
       {/* Switcher Modal */}
       <AnimatePresence>
         {showSwitcher && (
