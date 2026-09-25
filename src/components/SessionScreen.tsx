@@ -527,7 +527,7 @@ export default function SessionScreen() {
         <p className="text-[10px] font-bold leading-relaxed mb-3" style={{ color: isShieldActive && activeSession.isBreached ? '#fee2e2' : BRAND.slateMuted }}>
           {isShieldActive 
             ? activeSession.isBreached 
-              ? '🚨 إنذار طارئ! سيارتك غادرت فقاعة الأمان بالجراج (15م) بدون تصريح خروج!'
+              ? '🚨 إنذار طارئ! سيارتك غادرت فقاعة الأمان بالجراج (25م) بدون تصريح خروج!'
               : '🔒 سيارتك مراقبة بالأقمار الصناعية ومثبتة بمرساة أمان بالجراج حتى عودتك.'
             : 'تتبع سيارتك بالأقمار الصناعية واستلم إنذاراً فورياً لو تحركت من مكانها.'}
         </p>
