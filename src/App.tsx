@@ -539,7 +539,7 @@ export default function App() {
     if (!activeSession) return false;
     if (!activeSession.securityShieldActive || !activeSession.isBreached) return false;
     if (distanceToCar === null) return true; // تفعيل الحماية افتراضياً عند تعذر قراءة الـ GPS
-    return distanceToCar > 25; // خطر حقيقي فقط خارج الـ 25 متر
+    return distanceToCar > 15; // خطر حقيقي فقط خارج الـ 25 متر
   }, [activeSession, distanceToCar]);
 
   // 🚨 [رصد فوري متكامل لكسر درع الأمان - تكرار مستمر وتوجيه فوري لشاشة الـ SOS]
@@ -567,7 +567,7 @@ export default function App() {
       // إطلاق الإنذار والاهتزاز الفوري
       playBreachAlarmSound();
       vibrateBreach();
-      notifySecurityBreach(activeSession.carPlate, 25);
+      notifySecurityBreach(activeSession.carPlate, 15);
 
       // تكرار الإنذار والاهتزاز ورا بعض كل 3.5 ثوانٍ
       const alarmInterval = setInterval(() => {

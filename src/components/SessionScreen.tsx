@@ -123,10 +123,12 @@ export default function SessionScreen() {
   const [elapsed, setElapsed] = useState(0);
   const [showSosModal, setShowSosModal] = useState(false);
   const [localShieldLocked, setLocalShieldLocked] = useState(false);
+  
+  // موقع العميل بالـ GPS
   const [customerLat, setCustomerLat] = useState<number | null>(null);
   const [customerLng, setCustomerLng] = useState<number | null>(null);
   
-  // 🔇 حالة كتم الصوت المحلية على التليفون الحالي لمنع تكرار الإنذار
+  // كتم الصوت محلياً
   const [localSilenced, setLocalSilenced] = useState(false);
 
   const isMySessionRow = (row: any) => {
@@ -197,10 +199,20 @@ export default function SessionScreen() {
     return localShieldLocked || fromStorage || fromSession;
   }, [activeSession, localShieldLocked]);
 
-  // 🛰️ تتبع موقع العميل الفعلي بالـ GPS
+  // 🛰️ تتبع موقع العميل الفعلي بالـ GPS بوضع الدقة الفائقة وبدون كاش لتحديث فوري
   useEffect(() => {
     if (!activeSession || !isShieldActive) return;
     if (!('geolocation' in navigator)) return;
+
+    // جلب فوري للموقع الأولي لكسر الانتظار
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCustomerLat(pos.coords.latitude);
+        setCustomerLng(pos.coords.longitude);
+      },
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 0 }
+    );
 
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
@@ -208,19 +220,26 @@ export default function SessionScreen() {
         setCustomerLng(pos.coords.longitude);
       },
       () => {},
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 5000 }
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 } // ⚡ فرض الدقة القصوى ومنع الكاش
     );
 
     return () => navigator.geolocation.clearWatch(watchId);
   }, [activeSession?.id, isShieldActive]);
 
-  // 📐 حساب المسافة الفعلية بين العميل ومكان الركنة
+  // 📐 حساب المسافة الفعلية بين العميل ومكان الركنة مع معالجة المزامنة الذاكرية
   const distanceToCar = useMemo(() => {
     if (!activeSession || !customerLat || !customerLng) return null;
-    const pLat = activeSession.parkedLat || garage?.lat;
-    const pLng = activeSession.parkedLng || garage?.lng;
+    
+    // ⚡ السلسلة الذهبية لمرساة المكان: قاعدة البيانات أولاً ⬅️ كاش التليفون ثانياً ⬅️ إحداثيات الجراج ثالثاً
+    const pLat = activeSession.parkedLat || Number(localStorage.getItem(`shield_lat_${activeSession.id}`)) || garage?.lat;
+    const pLng = activeSession.parkedLng || Number(localStorage.getItem(`shield_lng_${activeSession.id}`)) || garage?.lng;
+    
     if (!pLat || !pLng) return null;
-    return calculateDistanceMeters(customerLat, customerLng, pLat, pLng);
+    
+    const rawDist = calculateDistanceMeters(customerLat, customerLng, pLat, pLng);
+    
+    // ⚡ فلتر الرعشة والنعومة: لو المسافة أقل من 3 أمتار نعتبرها بجوار السيارة (0 متر)
+    return rawDist <= 3 ? 0 : rawDist;
   }, [activeSession, customerLat, customerLng, garage]);
 
   // 🎯 مستوى الخطر الذكي
@@ -233,14 +252,14 @@ export default function SessionScreen() {
     );
   }, [activeSession, isShieldActive, distanceToCar]);
 
-  // 🔇 دمج كتم الصوت المحلي مع إشعار السيرفر والـ LocalStorage
+  // 🔇 دمج كتم الصوت المحلي مع إشعار السيرفر
   const isBreachMuted = useMemo(() => {
     if (!activeSession) return false;
     const fromStorage = localStorage.getItem(`breach_silenced_${activeSession.id}`) === 'true';
     return localSilenced || fromStorage;
   }, [activeSession, localSilenced]);
 
-  // إعادة ضبط كتم الصوت تلقائياً عند زوال الخطر وعودة السيارة آمنة
+  // إعادة ضبط كتم الصوت تلقائياً عند زوال الخطر
   useEffect(() => {
     if (activeSession && !activeSession.isBreached) {
       setLocalSilenced(false);
@@ -248,12 +267,12 @@ export default function SessionScreen() {
     }
   }, [activeSession?.isBreached, activeSession?.id]);
 
-  // 🚨 تشغيل وتكرار صوت الإنذار + فتح شاشة الـ SOS تلقائياً في وش العميل مع دعم الكتم
+  // 🚨 تشغيل وتكرار صوت الإنذار + فتح شاشة الـ SOS تلقائياً في وش العميل
   useEffect(() => {
     if (activeSession && isShieldActive && activeSession.isBreached) {
-      if (isBreachMuted) return; // 🔒 لو تم كتم الصوت يدوياً لا تطلق السرينة
+      if (isBreachMuted) return; // 🔒 لو العميل كتم الصوت لا تشغل السرينة
 
-      setShowSosModal(true); // 👈 فتح نافذة الطوارئ فوراً في وش العميل
+      setShowSosModal(true); 
       playCustomerBreachAlarm();
       const interval = setInterval(() => {
         const stillMuted = localStorage.getItem(`breach_silenced_${activeSession.id}`) === 'true';
@@ -365,13 +384,35 @@ export default function SessionScreen() {
   const shieldCost = isShieldActive ? 10 : 0;
   const finalTotalCost = isFreeNow ? (isShieldActive ? 10 : 0) : (displayedCost + shieldCost);
 
-  // 🛡️ دالة التفعيل الفوري اللحظية
+  // 🛡️ دالة التفعيل الفوري اللحظية المحدثة لحفظ الموقع محلياً
   const handleActivateSecurityShield = () => {
     if (!activeSession?.id || isShieldActive) return;
 
     const targetSessionId = activeSession.id;
-    const targetLat = garage?.lat || 30.0444;
-    const targetLng = garage?.lng || 31.2357;
+    
+    // التقاط إحداثيات المرساة الحالية الدقيقة بالـ GPS وحفظها محلياً في كسر من الثانية
+    let targetLat = garage?.lat || 30.0444;
+    let targetLng = garage?.lng || 31.2357;
+
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          targetLat = pos.coords.latitude;
+          targetLng = pos.coords.longitude;
+          try {
+            localStorage.setItem(`shield_lat_${targetSessionId}`, String(targetLat));
+            localStorage.setItem(`shield_lng_${targetSessionId}`, String(targetLng));
+          } catch {}
+          setSessionSecurityShield(targetSessionId, true, targetLat, targetLng).catch(() => {});
+        },
+        () => {
+          setSessionSecurityShield(targetSessionId, true, targetLat, targetLng).catch(() => {});
+        },
+        { enableHighAccuracy: true, timeout: 3000 }
+      );
+    } else {
+      setSessionSecurityShield(targetSessionId, true, targetLat, targetLng).catch(() => {});
+    }
 
     setLocalShieldLocked(true);
     try {
@@ -387,7 +428,6 @@ export default function SessionScreen() {
     }));
 
     toast.success('🛡️ تم تفعيل درع الحماية وتثبيته بالفاتورة (+10 ج.م)', { duration: 4000 });
-    setSessionSecurityShield(targetSessionId, true, targetLat, targetLng).catch(() => {});
   };
 
   const riskColors = {
@@ -441,7 +481,7 @@ export default function SessionScreen() {
           </div>
           <div className="text-right">
             <div className="font-mono font-black text-lg" style={{ color: activeSession.isBreached ? rc.text : '#ffffff' }}>
-              {distanceToCar}<span className="text-[10px]">م</span>
+              {distanceToCar === 0 ? '🔒 بجوار السيارة' : `${distanceToCar}م`}
             </div>
             <div className="text-[8px] font-bold" style={{ color: BRAND.slateMuted }}>
               المسافة بينك وبين سيارتك
@@ -487,7 +527,7 @@ export default function SessionScreen() {
         <p className="text-[10px] font-bold leading-relaxed mb-3" style={{ color: isShieldActive && activeSession.isBreached ? '#fee2e2' : BRAND.slateMuted }}>
           {isShieldActive 
             ? activeSession.isBreached 
-              ? '🚨 إنذار طارئ! سيارتك غادرت فقاعة الأمان بالجراج (25م) بدون تصريح خروج!'
+              ? '🚨 إنذار طارئ! سيارتك غادرت فقاعة الأمان بالجراج (15م) بدون تصريح خروج!'
               : '🔒 سيارتك مراقبة بالأقمار الصناعية ومثبتة بمرساة أمان بالجراج حتى عودتك.'
             : 'تتبع سيارتك بالأقمار الصناعية واستلم إنذاراً فورياً لو تحركت من مكانها.'}
         </p>
@@ -531,33 +571,6 @@ export default function SessionScreen() {
           </div>
         </div>
       </div>
-
-      {isFirstFreeApplied && (
-        <motion.div
-          initial={{ scale: 0.95, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="w-full border rounded-2xl p-3 mb-4 flex items-center gap-3"
-          style={{
-            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.18) 100%)',
-            borderColor: 'rgba(245,158,11,0.3)',
-          }}
-        >
-          <div className="p-2 rounded-xl text-amber-400 shrink-0" style={{ background: 'rgba(245,158,11,0.15)' }}>
-            <Gift size={20} className="animate-pulse" />
-          </div>
-          <div className="text-right flex-1">
-            <div className="font-black flex items-center gap-1 justify-end text-xs text-amber-400">
-              <span>هدية ترحيبية نشطة</span>
-              <Sparkles size={12} className="text-yellow-200" />
-            </div>
-            <div className="font-bold text-[10px] mt-0.5" style={{ color: BRAND.slateMuted }}>
-              {isFreeNow 
-                ? 'أنت الآن في أول 30 دقيقة مجانية بالكامل! 🎁' 
-                : 'انتهت الـ 30 دقيقة المجانية وتم بدء الاحتساب بالسعر العادي ✅'}
-            </div>
-          </div>
-        </motion.div>
-      )}
 
       {/* العداد الدائري */}
       <motion.div
@@ -671,7 +684,7 @@ export default function SessionScreen() {
                   onClick={async () => {
                     localStorage.removeItem(`breach_silenced_${activeSession.id}`);
                     setLocalShieldLocked(false);
-                    setLocalSilenced(false); // 👈 إرجاع وضع الصوت طبيعياً بعد زوال الخطر
+                    setLocalSilenced(false); // إرجاع وضع الصوت طبيعياً بعد زوال الخطر
                     await triggerSessionBreach(activeSession.id, false);
                     setShowSosModal(false);
                     toast.success('تم إيقاف الإنذار وتأكيد أمان حركتك بنجاح ✅', { duration: 4000 });
@@ -685,7 +698,7 @@ export default function SessionScreen() {
                 <button
                   onClick={() => {
                     localStorage.setItem(`breach_silenced_${activeSession.id}`, 'true');
-                    setLocalSilenced(true); // 👈 كتم الصوت محلياً فوراً لترك المجال للاتصال
+                    setLocalSilenced(true); // كتم الصوت محلياً فوراً لترك المجال للاتصال
                     toast.success('🚀 تم كتم الصوت محلياً وتصدير بيانات الموقع والسرعة لجهات الطوارئ فوراً!');
                     setShowSosModal(false);
                   }}
@@ -698,7 +711,7 @@ export default function SessionScreen() {
                 <button
                   onClick={() => {
                     localStorage.setItem(`breach_silenced_${activeSession.id}`, 'true');
-                    setLocalSilenced(true); // 👈 كتم الصوت محلياً فوراً لمنع التكرار المزعج
+                    setLocalSilenced(true); // كتم الصوت محلياً فوراً لمنع التكرار المزعج
                     setShowSosModal(false);
                     toast('تم كتم صوت الإنذار مؤقتاً 🔕');
                   }}

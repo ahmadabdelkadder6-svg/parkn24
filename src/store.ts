@@ -646,7 +646,7 @@ export const assessRiskLevel = (
   isShieldActive: boolean
 ): RiskLevel => {
   if (!isShieldActive || !isBreached) return 'safe';
-  if (customerDist <= 25) return 'safe';     // العميل قريب = استلام هادئ
+  if (customerDist <= 15) return 'safe';     // العميل قريب = استلام هادئ
   if (customerDist <= 100) return 'warning';  // منطقة وسطى
   return 'danger';                            // العميل بعيد = سرقة مؤكدة
 };
@@ -675,10 +675,12 @@ export const validateSecurityBreach = ({
   consecutiveBreachCount: number;
 }): { shouldAlarm: boolean; isInternalShuffle: boolean; newBreachCount: number } => {
   
+  // 1️⃣ فلتر دقة الـ GPS: استبعاد القراءات الضعيفة والمهزوزة (> 15م)
   if (currentReading.accuracy > 15) {
     return { shouldAlarm: false, isInternalShuffle: false, newBreachCount: consecutiveBreachCount };
   }
 
+  // 2️⃣ فلتر القفزات المستحيلة فيزيائياً (> 140 كم/س)
   if (previousReading) {
     const timeDeltaSeconds = Math.max(1, (currentReading.timestamp - previousReading.timestamp) / 1000);
     const distanceDeltaMeters = calculateDistanceMeters(
@@ -692,16 +694,20 @@ export const validateSecurityBreach = ({
     }
   }
 
+  // 3️⃣ حساب المسافة عن مرساة الركنة
   const distFromAnchor = calculateDistanceMeters(currentReading.lat, currentReading.lng, anchorLat, anchorLng);
 
-  if (distFromAnchor <= 25) {
+  // إذا لم تتجاوز مرساة الـ 25م = آمن
+  if (distFromAnchor <= 15) {
     return { shouldAlarm: false, isInternalShuffle: false, newBreachCount: 0 };
   }
 
+  // 4️⃣ فلتر المناورة الداخلية: تحركت برة الـ 25م ولكن ما زالت داخل الجراج (الـ 250م)
   if (distFromAnchor <= garageRadiusMeters) {
     return { shouldAlarm: false, isInternalShuffle: true, newBreachCount: 0 };
   }
 
+  // 5️⃣ قاعدة الصمود والتأكيد الثلاثي (3-Strike Rule)
   const updatedCount = consecutiveBreachCount + 1;
   if (updatedCount >= 3) {
     return { shouldAlarm: true, isInternalShuffle: false, newBreachCount: updatedCount };
@@ -1375,7 +1381,7 @@ export const useStore = create<AppState>((set, get) => ({
           added_by: addedByValue,
           customer_phone: cleanPhone || null,
           customer_name: (s as any).customerName || null,
-          incoming_car_id: null, 
+          incoming_car_id: null, // تجنب تعارض المفاتيح الأجنبية عند مسح السيارة
           started_by: (s as any).startedBy || null,
           commission_amount: 0,
           net_revenue: 0,
@@ -1507,7 +1513,7 @@ export const useStore = create<AppState>((set, get) => ({
           commission_amount: commissionAmount,
           net_revenue: netRevenue,
           settled: false,
-          free_minutes_applied: freeMinutesApplied || session.freeMinutesApplied || 0, // 👈 تم تصحيح اسم المتغير هنا لمنع الخطأ
+          free_minutes_applied: free_minutes_applied || session.freeMinutesApplied || 0, // 👈 تم تصحيح اسم المتغير هنا لمنع الخطأ
           added_by: finalAddedBy || null
         })
         .eq('id', id)
@@ -1548,9 +1554,11 @@ export const useStore = create<AppState>((set, get) => ({
       
       if (error) {
         console.error('❌ Supabase confirm error:', error);
+        // التراجع في حال حدوث خطأ حقيقي
         try { localStorage.removeItem(`revenue_confirmed_${sessionId}`); } catch {}
         set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: false } : s)) }));
       } else {
+        // تحديث وجلب فوري متزامن
         await get().fetchAll();
       }
     } catch (err) {

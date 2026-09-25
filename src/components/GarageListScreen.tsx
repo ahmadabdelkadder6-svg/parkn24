@@ -300,7 +300,7 @@ export default function GarageListScreen() {
     if (!activeSession) return false;
     if (!isShieldActive || !activeSession.isBreached) return false;
     if (distanceToCar === null) return true; // تفعيل الحماية افتراضياً عند تعذر قراءة الـ GPS
-    return distanceToCar > 25; // خطر حقيقي فقط خارج الـ 25 متر
+    return distanceToCar > 15; // خطر حقيقي فقط خارج الـ 15 متر
   }, [activeSession, isShieldActive, distanceToCar]);
 
   // 🚨 [رصد فوري لحالة كسر الفقاعة وتشغيل الإنذار فقط إذا كان الدرع نشطاً وعاملاً والعميل بعيداً عن سيارته]
@@ -509,7 +509,7 @@ export default function GarageListScreen() {
                 </h4>
                 <p className="text-[9px] font-bold mt-0.5" style={{ color: (activeSession.isBreached && isFarAway) ? '#b91c1c' : '#94a3b8' }}>
                   {(activeSession.isBreached && isFarAway) 
-                    ? 'السيارة غادرت فقاعة الأمان الجغرافية (25م) بدون تصريح!' 
+                    ? 'السيارة غادرت فقاعة الأمان الجغرافية (15م) بدون تصريح!' 
                     : 'فقاعة الأمان اللاسلكية نشطة حول السيارة وتحميها بالكامل.'}
                 </p>
               </div>
@@ -861,7 +861,7 @@ export default function GarageListScreen() {
 
               <h3 className="text-base font-black text-red-900 mb-1">🚨 تم رصد حركة غير مصرحة لسيارتك!</h3>
               <p className="text-xs font-bold text-slate-500 mb-4 leading-relaxed">
-                سيارتك لوحة <span className="font-mono font-black text-red-700 bg-red-50 px-2 py-0.5 rounded">{activeSession.carPlate}</span> تجاوزت سياج الجراج الجغرافي (25م) بدون إذان خروج!
+                سيارتك لوحة <span className="font-mono font-black text-red-700 bg-red-50 px-2 py-0.5 rounded">{activeSession.carPlate}</span> تجاوزت سياج الجراج الجغرافي (15م) بدون إذان خروج!
               </p>
 
               <div className="p-3.5 border rounded-2xl text-right space-y-2 mb-5 bg-slate-50 border-slate-200">

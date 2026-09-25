@@ -264,7 +264,7 @@ export const notifySecurityBreach = (carPlate: string, distanceMeters?: number) 
   vibrateBreach();
   sendLocalNotification(
     '🚨 تحذير أمني: تم رصد تحرك سيارتك!',
-    `🚗 السيارة [${carPlate}] غادرت فقاعة الأمان بالجراج (${distanceMeters ? distanceMeters + 'م' : '25م'}) بدون إذن خروج!`,
+    `🚗 السيارة [${carPlate}] غادرت فقاعة الأمان بالجراج (${distanceMeters ? distanceMeters + 'م' : '15م'}) بدون إذن خروج!`,
     `breach-${carPlate}`,
     '/session',
     { type: 'security_breach', carPlate, isBreached: true }

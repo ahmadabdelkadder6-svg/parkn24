@@ -734,7 +734,7 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
       {/* تنبيه كسر الفقاعة الجغرافية في الكارت - يظهر فقط إذا كان الدرع مفعلاً */}
       {isBreached && (
         <div className="mb-2 p-1.5 rounded-lg bg-red-100 border border-red-300 text-red-800 text-[10px] font-black flex items-center justify-between">
-          <span>🚨 تحذير: السيارة غادرت فقاعة ركنتها (25م)!</span>
+          <span>🚨 تحذير: السيارة غادرت فقاعة ركنتها (15م)!</span>
           <AlertTriangle size={12} className="text-red-600 animate-bounce" />
         </div>
       )}
@@ -929,7 +929,7 @@ export default function GarageDashboard() {
 
     if (breachedSession) {
       fireIncomingCarAlert(breachedSession.carPlate);
-      toast.error(`🚨 إنذار طوارئ: السيارة [${breachedSession.carPlate}] خرجت من فقاعة الأمان (25م)!`, {
+      toast.error(`🚨 إنذار طوارئ: السيارة [${breachedSession.carPlate}] خرجت من فقاعة الأمان (15م)!`, {
         duration: 8000,
         icon: '🚨',
       });
@@ -937,7 +937,7 @@ export default function GarageDashboard() {
         sendSecurityBreachPush({
           garageId: currentGarageId,
           carPlate: breachedSession.carPlate,
-          distanceMeters: 25,
+          distanceMeters: 15,
           customerPhone: breachedSession.customerPhone,
         });
       }
