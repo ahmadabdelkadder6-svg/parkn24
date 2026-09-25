@@ -1524,8 +1524,16 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   confirmRevenue: async (sessionId, addedBy) => {
+    // 1. تأكيد محلي تفاؤلي فوري
     set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: true } : s)) }));
-    pausePolling(2000);
+    
+    // 2. قفل الحالة محلياً ضد الارتداد لمنع مسحها أثناء الـ Polling
+    try {
+      localStorage.setItem(`revenue_confirmed_${sessionId}`, 'true');
+    } catch {}
+
+    pausePolling(3000); // ⚡ تجميد الـ Polling لمدة 3 ثوانٍ للاستقرار
+
     if (!isSupabaseConfigured()) {
       pausePolling(0);
       return;
@@ -1533,13 +1541,21 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const updateData: Record<string, unknown> = { revenue_confirmed: true };
       if (addedBy) updateData.added_by = addedBy;
+      
       const { error } = await supabase.from('sessions').update(updateData).eq('id', sessionId);
+      
       if (error) {
-        console.error('❌', error);
+        console.error('❌ Supabase confirm error:', error);
+        // التراجع في حال حدوث خطأ حقيقي
+        try { localStorage.removeItem(`revenue_confirmed_${sessionId}`); } catch {}
         set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: false } : s)) }));
+      } else {
+        // تحديث وجلب فوري متزامن
+        await get().fetchAll();
       }
     } catch (err) {
       console.error('❌ confirmRevenue Error:', err);
+      try { localStorage.removeItem(`revenue_confirmed_${sessionId}`); } catch {}
       set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: false } : s)) }));
     } finally {
       pausePolling(0);
@@ -1547,20 +1563,33 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   unconfirmRevenue: async (sessionId) => {
+    // 1. إلغاء تأكيد محلي فوري
     set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: false } : s)) }));
-    pausePolling(2000);
+    
+    // 2. قفل الحالة محلياً ضد الارتداد
+    try {
+      localStorage.setItem(`revenue_confirmed_${sessionId}`, 'false');
+    } catch {}
+
+    pausePolling(3000);
+
     if (!isSupabaseConfigured()) {
       pausePolling(0);
       return;
     }
     try {
       const { error } = await supabase.from('sessions').update({ revenue_confirmed: false }).eq('id', sessionId);
+      
       if (error) {
-        console.error('❌', error);
+        console.error('❌ Supabase unconfirm error:', error);
+        try { localStorage.setItem(`revenue_confirmed_${sessionId}`, 'true'); } catch {}
         set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: true } : s)) }));
+      } else {
+        await get().fetchAll();
       }
     } catch (err) {
       console.error('❌ unconfirmRevenue Error:', err);
+      try { localStorage.setItem(`revenue_confirmed_${sessionId}`, 'true'); } catch {}
       set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: true } : s)) }));
     } finally {
       pausePolling(0);
