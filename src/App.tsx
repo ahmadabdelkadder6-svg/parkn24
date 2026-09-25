@@ -5,9 +5,6 @@ import toast from 'react-hot-toast';
 import { useStore, setupRealtime, normalizePlate, normalizePhone, getServerNow } from './store';
 import { cn } from './utils/cn';
 
-// 🛡️ استيراد نغمات واهتزازات الطوارئ لدرع الأمان الفضائي
-import { playBreachAlarmSound, vibrateBreach, notifySecurityBreach } from './utils/notifications';
-
 // Screens
 import AuthGate from './components/AuthGate';
 import SplashScreen from './components/SplashScreen';
@@ -72,17 +69,25 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
 }
 
 /* ════════════════════════════════════════════════════════════
-   🛡️ PARK'N 24 BRAND LOGO
+   🛡️ PARK'N 24 BRAND LOGO (مستوحى من الشعار المرفق)
    ════════════════════════════════════════════════════════════ */
 function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: number }) {
   return (
     <svg viewBox="0 0 100 115" width={width} height={height} fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* الدرع الأزرق الخارجي */}
       <path d="M50 2 C78 2, 98 14, 98 26 C98 76, 75 104, 50 114 C25 104, 2 76, 2 26 C2 14, 22 2, 50 2 Z" fill="#1656b8" />
+      {/* الإطار الداخلي للدرع */}
       <path d="M50 8 C72 8, 90 18, 90 28 C90 70, 70 96, 50 105 C30 96, 10 70, 10 28 C10 18, 28 8, 50 8 Z" stroke="#ffffff" strokeWidth="2.5" fill="none" opacity="0.95" />
+      
+      {/* حرف P الأخضر الكبيرة */}
       <path d="M26 30 H48 C60 30, 62 48, 48 48 H38 V78 H26 V30 Z M38 38 V40 H46 C48 40, 48 38, 46 38 Z" fill="#8cc63f" />
+      
+      {/* أيقونة الساعة 24 فوق الـ P */}
       <path d="M64 30 A 10 10 0 1 1 58 44" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" fill="none" />
       <polyline points="64 34, 64 40, 68 40" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
       <text x="69" y="52" fill="#ffffff" fontSize="9" fontWeight="900" fontFamily="sans-serif">24</text>
+      
+      {/* أيقونة السيارة البيضاء تحت الـ P */}
       <path d="M58 64 L62 58 H74 L78 64 H80 C81.5 64 82 65 82 66.5 V72 H54 V66.5 C54 65 54.5 64 56 64 Z" fill="#ffffff" />
       <circle cx="61" cy="72" r="2.2" fill="#1656b8" />
       <circle cx="75" cy="72" r="2.2" fill="#1656b8" />
@@ -91,7 +96,7 @@ function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: 
 }
 
 /* ════════════════════════════════════════════════════════════
-   ☀️ PARK'N 24 HERO
+   ☀️ PARK'N 24 HERO — FULL-SCREEN CINEMATIC BLEND (FIXED CACHE)
    ════════════════════════════════════════════════════════════ */
 interface ParkLandingProps {
   onEnter: () => void;
@@ -105,7 +110,10 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
     setTimeout(() => onEnter(), 500);
   };
 
+  const BRAND_BLUE = '#1656b8';
   const BRAND_GREEN = '#8cc63f';
+
+  // ⚡ تم تغيير رقم الإصدار هنا لـ v=999 لإجبار المتصفح على حذف كاش الصورة القديمة فوراً وعرض المضغوطة الجديدة
   const CAR_IMAGE_SRC = '/hero-car.webp?v=999';
 
   return (
@@ -181,6 +189,7 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             }
           `}</style>
 
+          {/* 🚗 1. خلفية الصورة المدمجة بكامل الشاشة */}
           <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
             <img
               src={CAR_IMAGE_SRC}
@@ -193,6 +202,7 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
               }}
             />
 
+            {/* 🎨 2. تدرجات الدمج السينمائي الذكي */}
             <div
               className="absolute inset-0"
               style={{
@@ -208,6 +218,7 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             />
           </div>
 
+          {/* 🛡️ 3. شريط الهيدر العلوي */}
           <motion.nav
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -215,6 +226,7 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             className="w-full flex items-center justify-between px-6 py-6 z-20 relative"
             style={{ direction: 'ltr' }}
           >
+            {/* اللوجو عربي وإنجليزي */}
             <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.15' }}>
               <span style={{ fontFamily: "'Cairo', sans-serif", fontSize: '16px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.01em' }}>
                 بركن <span style={{ color: BRAND_GREEN }}>24</span>
@@ -229,10 +241,12 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             </button>
           </motion.nav>
 
+          {/* 📝 4. المحتوى التفاعلي المدمج في الأسفل والوسط */}
           <div
             className="px-6 pb-10 z-20 relative flex flex-col justify-end max-w-lg mx-auto w-full"
             style={{ direction: 'rtl' }}
           >
+            {/* العنوان الرئيسي */}
             <h1
               className="hero-block delay-1"
               style={{
@@ -249,6 +263,7 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
               <span style={{ color: BRAND_GREEN }}>قبل ما توصل!</span>
             </h1>
 
+            {/* الوصف التوضيحي */}
             <p
               className="hero-block delay-2"
               style={{
@@ -262,9 +277,10 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
                 maxWidth: '380px',
               }}
             >
-              مع Park'n 24, حدد وجهتك، اضمن مكانك في أقرب جراج، ووفر وقتك وبنزينك بضغطة زر واحدة.
+              مع Park'n 24، حدد وجهتك، اضمن مكانك في أقرب جراج، ووفر وقتك وبنزينك بضغطة زر واحدة.
             </p>
 
+            {/* زر الحجز السريع */}
             <div className="hero-block delay-3" style={{ marginTop: '26px' }}>
               <button onClick={handleEnter} className="btn-brand-glow w-full sm:w-auto" style={{ fontSize: '16px' }}>
                 <span>احجز ركنتك الآن 🚀</span>
@@ -302,7 +318,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
     </AnimatePresence>
   );
 }
-
 const VALID_SCREENS = [
   'splash',
   'list',
@@ -316,7 +331,6 @@ const VALID_SCREENS = [
 
 export default function App() {
   const {
-    garages, // 👈 تم إضافة استخراج الجراجات لحل الخطأ
     view,
     setView,
     screen,
@@ -342,10 +356,6 @@ export default function App() {
   const sessionTransitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [adminAccess, setAdminAccess] = useState(false);
-
-  // 📍 تتبع موقع العميل الجغرافي لحظياً لتقييم مستويات خطر الاختراق
-  const [customerLat, setCustomerLat] = useState<number | null>(null);
-  const [customerLng, setCustomerLng] = useState<number | null>(null);
 
   const [showLanding, setShowLanding] = useState(() => {
     const today = new Date().toDateString();
@@ -479,125 +489,13 @@ export default function App() {
     }
   }, [view]);
 
-  const userPlate = currentUser ? normalizePlate(currentUser.carPlate) : '';
-  const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
-
-  // ✅ البحث عن الجلسة النشطة الحالية للعميل لمراقبة الأمان
-  const activeSession = useMemo(() => {
-    if (!currentUser) return null;
-    return sessions.find((s) => {
-      if (s.status !== 'active') return false;
-      const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-      const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-      const samePhone = Boolean(userPhone && sPhone === userPhone);
-      return samePlate || samePhone;
-    });
-  }, [sessions, userPlate, userPhone, currentUser]);
-
-  const garage = garages?.find((g) => g.id === activeSession?.garageId);
-
-  // 🛰️ تتبع موقع العميل الجغرافي بالـ GPS لحظة بلحظة إذا كان الدرع نشطاً
-  useEffect(() => {
-    if (!activeSession || !activeSession.securityShieldActive) {
-      setCustomerLat(null);
-      setCustomerLng(null);
-      return;
-    }
-    if (!('geolocation' in navigator)) return;
-    const wid = navigator.geolocation.watchPosition(
-      (pos) => {
-        setCustomerLat(pos.coords.latitude);
-        setCustomerLng(pos.coords.longitude);
-      },
-      () => {},
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 5000 }
-    );
-    return () => navigator.geolocation.clearWatch(wid);
-  }, [activeSession?.id, activeSession?.securityShieldActive]);
-
-  // 📐 حساب المسافة الفعلية الفورية بين موقع العميل ومكان الركنة
-  const distanceToCar = useMemo(() => {
-    if (!activeSession || !customerLat || !customerLng) return null;
-    const pLat = activeSession.parkedLat || garage?.lat;
-    const pLng = activeSession.parkedLng || garage?.lng;
-    if (!pLat || !pLng) return null;
-    
-    // حساب المسافة بمعادلة Haversine
-    const R = 6371e3;
-    const dLat = ((pLat - customerLat) * Math.PI) / 180;
-    const dLng = ((pLng - customerLng) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((customerLat * Math.PI) / 180) *
-      Math.cos((pLat * Math.PI) / 180) *
-      Math.sin(dLng / 2) * Math.sin(dLng / 2);
-    return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-  }, [activeSession, customerLat, customerLng, garage]);
-
-  // 🎯 تحديد مستوى الخطر الجغرافي الفعلي لمنع الإزعاج الكاذب أثناء الاقتراب
-  const isFarAway = useMemo(() => {
-    if (!activeSession) return false;
-    if (!activeSession.securityShieldActive || !activeSession.isBreached) return false;
-    if (distanceToCar === null) return true; // تفعيل الحماية افتراضياً عند تعذر قراءة الـ GPS
-    return distanceToCar > 15; // خطر حقيقي فقط خارج الـ 25 متر
-  }, [activeSession, distanceToCar]);
-
-  // 🚨 [رصد فوري متكامل لكسر درع الأمان - تكرار مستمر وتوجيه فوري لشاشة الـ SOS]
-  useEffect(() => {
-    if (!currentUser || !activeSession) return;
-    
-    // إذا انتهى الاختراق وعادت السيارة آمنة، نظف كاش كتم الصوت تلقائياً
-    if (!activeSession.isBreached || !activeSession.securityShieldActive) {
-      localStorage.removeItem(`breach_silenced_${activeSession.id}`);
-      return;
-    }
-    
-    // 🔒 [صمام كتم الصوت]: لو العميل كتم الصوت يدوياً من الشاشة، لا تطلق الإنذار مجدداً
-    const isLocallySilenced = localStorage.getItem(`breach_silenced_${activeSession.id}`) === 'true';
-    if (isLocallySilenced) return;
-
-    if (activeSession.isBreached && activeSession.securityShieldActive && isFarAway) {
-      
-      // توجيه العميل فوراً لشاشة العداد لتفتح نافذة الـ SOS في وجهه
-      if (safeScreen !== 'session') {
-        setSelectedGarageId(activeSession.garageId);
-        setScreen('session');
-      }
-
-      // إطلاق الإنذار والاهتزاز الفوري
-      playBreachAlarmSound();
-      vibrateBreach();
-      notifySecurityBreach(activeSession.carPlate, 15);
-
-      // تكرار الإنذار والاهتزاز ورا بعض كل 3.5 ثوانٍ
-      const alarmInterval = setInterval(() => {
-        // فحص مستمر أثناء دوران الـ Interval لو تم كتم الصوت أوقف التكرار فوراً
-        const stillSilenced = localStorage.getItem(`breach_silenced_${activeSession.id}`) === 'true';
-        if (stillSilenced) {
-          clearInterval(alarmInterval);
-          return;
-        }
-        playBreachAlarmSound();
-        vibrateBreach();
-      }, 3500);
-
-      return () => clearInterval(alarmInterval);
-    }
-  }, [
-    activeSession?.id, 
-    activeSession?.isBreached, 
-    activeSession?.securityShieldActive, 
-    currentUser, 
-    isFarAway, 
-    safeScreen, 
-    setSelectedGarageId, 
-    setScreen
-  ]);
-
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser) return;
     if (view !== 'user') return;
+
+    const userPlate = normalizePlate(currentUser.carPlate);
+    const userPhone = currentUser.phone ? normalizePhone(currentUser.phone) : '';
 
     const myActiveSession = sessions.find((s) => {
       if (s.status !== 'active') return false;
@@ -677,6 +575,9 @@ export default function App() {
     if (!dataLoaded) return;
     if (!currentUser || view !== 'user') return;
 
+    const userPlate = normalizePlate(currentUser.carPlate);
+    const userPhone = currentUser.phone ? normalizePhone(currentUser.phone) : '';
+
     const myActiveSession = sessions.find((s) => {
       if (s.status !== 'active') return false;
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
@@ -693,7 +594,6 @@ export default function App() {
       return samePlate || samePhone;
     });
 
-    // 🟢 1️⃣ إذا كان هناك جلسة نشطة: تثبيت العميل فوراً في شاشة العداد
     if (myActiveSession) {
       noSessionCountRef.current = 0;
       lastActiveTimeRef.current = getServerNow();
@@ -719,33 +619,75 @@ export default function App() {
       return;
     }
 
-    // 📍 2️⃣ إذا كان في الطريق: تثبيت العميل في شاشة الملاحة
-    if (myIncoming) {
-      setSelectedGarageId(myIncoming.garageId);
-      if (
-        safeScreen !== 'navigation' &&
-        safeScreen !== 'session' &&
-        safeScreen !== 'summary'
-      ) {
-        setScreen('navigation');
-      }
-      return;
-    }
+    if (prevActiveSessionRef.current) {
+      noSessionCountRef.current += 1;
+      const timeSinceLastActive = getServerNow() - lastActiveTimeRef.current;
 
-    // 🏁 3️⃣ الانتقال لشاشة الفاتورة فقط للجلسة التي كانت نشطة بالفعل وانتهت لتوها (بمطابقة الـ ID)
-    if (prevActiveSessionRef.current && safeScreen === 'session') {
-      const targetSessionId = prevActiveSessionRef.current;
-      const justCompleted = sessions.find((s) => s.id === targetSessionId && s.status === 'completed');
-
-      if (justCompleted) {
-        prevActiveSessionRef.current = null;
-        setSelectedGarageId(justCompleted.garageId);
-        setScreen('summary');
+      if (noSessionCountRef.current < 3 || timeSinceLastActive < 8000) {
         return;
       }
+
+      if (sessionTransitionTimer.current) return;
+
+      sessionTransitionTimer.current = setTimeout(() => {
+        sessionTransitionTimer.current = null;
+        const freshState = useStore.getState();
+        const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
+        const freshPhone = freshState.currentUser?.phone ? normalizePhone(freshState.currentUser.phone) : '';
+
+        const stillActive = freshState.sessions.find((s) => {
+          if (s.status !== 'active') return false;
+          const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
+          const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+          const samePhone = Boolean(freshPhone && sPhone === freshPhone);
+          return samePlate || samePhone;
+        });
+
+        if (stillActive) {
+          noSessionCountRef.current = 0;
+          prevActiveSessionRef.current = stillActive.id;
+          return;
+        }
+
+        const currentScreen = freshState.screen;
+        prevActiveSessionRef.current = null;
+        noSessionCountRef.current = 0;
+
+        if (
+          currentScreen === 'session' ||
+          currentScreen === 'navigation' ||
+          currentScreen === 'waiting'
+        ) {
+          const lastCompleted = freshState.sessions
+            .filter((s) => {
+              if (s.status !== 'completed') return false;
+              const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
+              const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+              const samePhone = Boolean(freshPhone && sPhone === freshPhone);
+              return samePlate || samePhone;
+            })
+            .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
+
+          if (lastCompleted) {
+            const freshAcknowledged = freshState.acknowledgedSessionIds;
+            const isNotAcknowledged = freshAcknowledged ? !freshAcknowledged.has(lastCompleted.id) : true;
+            if (isNotAcknowledged) {
+              setSelectedGarageId(lastCompleted.garageId);
+              setScreen('summary');
+              return;
+            }
+          }
+
+          if (!sessionEndToastShown.current) {
+            sessionEndToastShown.current = true;
+            toast.success('تم إنهاء الجلسة والعودة للرئيسية');
+          }
+          setSelectedGarageId(null);
+          setScreen('list');
+        }
+      }, 3000);
     }
 
-    // 🔄 4️⃣ العودة الآمنة للقائمة فقط عند إلغاء الحجز بشكل صريح
     if (!myActiveSession && safeScreen === 'navigation' && !myIncoming) {
       const timeout = setTimeout(() => {
         const freshState = useStore.getState();

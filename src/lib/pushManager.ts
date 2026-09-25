@@ -1,4 +1,4 @@
-import { normalizePlate, normalizePhone } from '../store';
+import { normalizePlate } from '../store';
 
 // ─── VAPID & Supabase Configuration ─────────────────────────────
 const VAPID_PUBLIC_KEY =
@@ -6,9 +6,6 @@ const VAPID_PUBLIC_KEY =
 
 const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL      as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-
-// ─── ذاكرة إدارة تكرار إشعارات الطوارئ كل 3 ثوانٍ ────────────────────
-const activeBreachIntervals = new Map<string, ReturnType<typeof setInterval>>();
 
 // ─── Types ──────────────────────────────────────────────────────
 interface PushPayloadNotification {
@@ -19,13 +16,11 @@ interface PushPayloadNotification {
 }
 
 interface SendPushPayload {
-  garageId?:  string;
-  userPhone?: string;
-  carPlate?:  string;
-  urgency?:   'high' | 'normal';
-  ttl?:       number;
-  immediate:  PushPayloadNotification;
-  scheduled:  (PushPayloadNotification & { sendAt: string }) | null;
+  garageId:  string;
+  urgency?:  'high' | 'normal';
+  ttl?:      number;
+  immediate: PushPayloadNotification;
+  scheduled: (PushPayloadNotification & { sendAt: string }) | null;
 }
 
 // ─── Helper: تحويل VAPID Key ────────────────────────────────────
@@ -101,10 +96,8 @@ export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration
   }
 };
 
-// ─── الاشتراك في Push Notifications (يدعم السايس والعميل) ────────
-export const subscribeToPush = async (
-  target: string | { garageId?: string; userPhone?: string; carPlate?: string }
-): Promise<boolean> => {
+// ─── الاشتراك في Push Notifications ────────────────────────────
+export const subscribeToPush = async (garageId: string): Promise<boolean> => {
   try {
     if (!('PushManager' in window)) {
       console.warn('❌ Push غير مدعوم في هذا المتصفح');
@@ -120,7 +113,7 @@ export const subscribeToPush = async (
     }
 
     if (permission !== 'granted') {
-      console.warn('❌ تم رفض إذن الإشعارات');
+      console.warn('❌ تم رفض إذن الإشعارات من السايس');
       return false;
     }
 
@@ -151,10 +144,6 @@ export const subscribeToPush = async (
       return false;
     }
 
-    const garageId = typeof target === 'string' ? target : target.garageId;
-    const userPhone = typeof target === 'object' ? normalizePhone(target.userPhone) : undefined;
-    const carPlate = typeof target === 'object' ? normalizePlate(target.carPlate) : undefined;
-
     const result = await supabaseFetch('save-push-subscription', {
       subscription: {
         endpoint: sub.endpoint,
@@ -163,9 +152,7 @@ export const subscribeToPush = async (
           auth:   sub.keys.auth,
         },
       },
-      garageId:  garageId  || null,
-      userPhone: userPhone || null,
-      carPlate:  carPlate  || null,
+      garageId,
       isNew,
       userAgent: navigator.userAgent,
       subscribedAt: new Date().toISOString(),
@@ -178,7 +165,7 @@ export const subscribeToPush = async (
   }
 };
 
-// ─── إرسال تنبيه "سيارة في الطريق" بأعلى أولوية طوارئ للسايس ──────
+// ─── إرسال تنبيه "سيارة في الطريق" بأعلى أولوية طوارئ ──────────────
 export const sendCarComingPush = async ({
   garageId,
   carPlate,
@@ -193,6 +180,7 @@ export const sendCarComingPush = async ({
   agreedPrice?:     number;
 }): Promise<boolean> => {
   try {
+    // 🌟 توحيد بصمة اللوحة في الوسوم لضمان مطابقتها بدقة
     const plateFingerprint = normalizePlate(carPlate) || carPlate;
     const immediateTag = `incoming-${plateFingerprint}`;
     const scheduledTag = `approaching-${plateFingerprint}`;
@@ -244,98 +232,6 @@ export const sendCarComingPush = async ({
   } catch (err) {
     console.error('❌ خطأ في sendCarComingPush:', err);
     return false;
-  }
-};
-
-// ─── 🚨 إرسال إشعار طوارئ باختراق درع الأمان (نبضة واحدة مع Tag متغير للرنين) ──────
-export const sendSecurityBreachPush = async ({
-  garageId,
-  carPlate,
-  distanceMeters,
-  customerPhone,
-}: {
-  garageId:        string;
-  carPlate:        string;
-  distanceMeters?: number;
-  customerPhone?:  string;
-}): Promise<boolean> => {
-  try {
-    const plateFingerprint = normalizePlate(carPlate) || carPlate;
-    const cleanPhone = customerPhone ? normalizePhone(customerPhone) : undefined;
-    
-    // ⚡ إضافة Timestamp متغير للـ Tag لإجبار الهاتف على تشغيل نغمة واهتزاز جديد في كل مرة
-    const breachTag = `breach-${plateFingerprint}-${Date.now()}`;
-
-    const payload: SendPushPayload = {
-      garageId,
-      userPhone: cleanPhone,
-      carPlate:  plateFingerprint,
-      urgency:   'high',
-      ttl: 0, // إرسال لحظي فوري بدون أي تأخير 0.01s
-
-      immediate: {
-        title: '🚨 تحذير أمني: تم رصد تحرك سيارة!',
-        body:  `🚗 سيارتك لوحة [${carPlate}] غادرت فقاعة الأمان بالجراج (${distanceMeters ? distanceMeters + 'م' : '25م'}) بدون إذن خروج!`,
-        tag:   breachTag,
-        data: {
-          type:           'security_breach',
-          carPlate,
-          garageId,
-          url:            '/session',
-          customerPhone:  cleanPhone ?? null,
-          distanceMeters: distanceMeters ?? null,
-          isBreached:     true,
-          sentAt:         new Date().toISOString(),
-        },
-      },
-      scheduled: null,
-    };
-
-    const result = await supabaseFetch('send-push-notification', payload);
-    return result.ok;
-  } catch (err) {
-    console.error('❌ خطأ في sendSecurityBreachPush:', err);
-    return false;
-  }
-};
-
-// ─── 🔁 تشغيل حلقة تكرار إشعارات الطوارئ كل 3 ثوانٍ للعميل والسايس ────────
-export const startSecurityBreachLoop = ({
-  garageId,
-  carPlate,
-  distanceMeters,
-  customerPhone,
-  intervalMs = 3000,
-}: {
-  garageId:        string;
-  carPlate:        string;
-  distanceMeters?: number;
-  customerPhone?:  string;
-  intervalMs?:     number;
-}) => {
-  const plateKey = normalizePlate(carPlate) || carPlate;
-
-  // إذا كانت الحلقة تعمل بالفعل لنفس السيارة، لا تكرر الـ Interval
-  if (activeBreachIntervals.has(plateKey)) return;
-
-  // 1️⃣ إرسال فوري للنبضة الأولى
-  sendSecurityBreachPush({ garageId, carPlate, distanceMeters, customerPhone });
-
-  // 2️⃣ تكرار الإرسال كل 3 ثوانٍ ورا بعض
-  const intervalId = setInterval(() => {
-    sendSecurityBreachPush({ garageId, carPlate, distanceMeters, customerPhone });
-  }, intervalMs);
-
-  activeBreachIntervals.set(plateKey, intervalId);
-};
-
-// ─── 🛑 إيقاف حلقة تكرار إشعارات الطوارئ فور إلغاء الإنذار أو السداد ───────
-export const stopSecurityBreachLoop = (carPlate: string) => {
-  const plateKey = normalizePlate(carPlate) || carPlate;
-  const intervalId = activeBreachIntervals.get(plateKey);
-  if (intervalId) {
-    clearInterval(intervalId);
-    activeBreachIntervals.delete(plateKey);
   }
 };
 
@@ -404,12 +300,10 @@ export const checkPushSubscriptionStatus = async () => {
   }
 };
 
-export const refreshPushSubscriptionIfNeeded = async (
-  target: string | { garageId?: string; userPhone?: string; carPlate?: string }
-): Promise<void> => {
-  if (!target) return;
+export const refreshPushSubscriptionIfNeeded = async (garageId: string): Promise<void> => {
+  if (!garageId) return;
   const status = await checkPushSubscriptionStatus();
   if (status.isSupported && status.permission === 'granted') {
-    await subscribeToPush(target);
+    await subscribeToPush(garageId);
   }
 };

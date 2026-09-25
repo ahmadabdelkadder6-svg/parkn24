@@ -20,15 +20,8 @@ import {
   Sparkles,
   ChevronDown,
   QrCode,
-  Shield,
-  Volume2,
-  AlertTriangle,
-  Compass,
-  Activity,
-  Copy,
 } from 'lucide-react';
-// 🌟 استيراد calculateDistanceMeters لحساب تباعد العميل عن المرساة
-import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone, getServerNow, calculateDistanceMeters } from '../store';
+import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
 import {
   calculateDistance,
   distanceToMinutes,
@@ -92,45 +85,6 @@ const AREA_ICONS: Record<string, string> = {
   'مناطق أخرى': '📍',
 };
 
-// 🔊 نظام إنذار اختراق درع السيارة لهاتف العميل
-let customerAudioCtx: AudioContext | null = null;
-const playBreachAlarm = async () => {
-  try {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioCtx) return;
-    if (!customerAudioCtx) customerAudioCtx = new AudioCtx();
-    if (customerAudioCtx.state === 'suspended') await customerAudioCtx.resume();
-    
-    const now = customerAudioCtx.currentTime;
-    const masterGain = customerAudioCtx.createGain();
-    masterGain.gain.setValueAtTime(1.0, now);
-    masterGain.connect(customerAudioCtx.destination);
-    
-    for (let i = 0; i < 6; i++) {
-      const start = now + (i * 0.35);
-      const osc = customerAudioCtx.createOscillator();
-      const gain = customerAudioCtx.createGain();
-      
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(i % 2 === 0 ? 1600 : 2200, start);
-      
-      gain.gain.setValueAtTime(0.8, start);
-      gain.gain.exponentialRampToValueAtTime(0.01, start + 0.32);
-      
-      osc.connect(gain);
-      gain.connect(masterGain);
-      osc.start(start);
-      osc.stop(start + 0.35);
-    }
-    
-    if ('vibrate' in navigator) {
-      navigator.vibrate([1000, 200, 1000, 200, 1000]);
-    }
-  } catch (e) {
-    console.warn('Audio Context Error:', e);
-  }
-};
-
 /* ════════════════════════════════════════════════════════════
    ██  MAIN SCREEN
    ════════════════════════════════════════════════════════════ */
@@ -147,7 +101,6 @@ export default function GarageListScreen() {
     fetchAll,
     acknowledgedSessionIds,
     walletTopUps,
-    triggerSessionBreach,
   } = useStore();
 
   const [search, setSearch] = useState('');
@@ -155,7 +108,6 @@ export default function GarageListScreen() {
   const [showTopUp, setShowTopUp] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
-  const [showSosModal, setShowSosModal] = useState(false); 
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>({
     lat: 30.0444,
     lng: 31.2357,
@@ -219,10 +171,6 @@ export default function GarageListScreen() {
       .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
   }, [sessions, normalizedUserPlate, cleanUserPhone, acknowledgedSessionIds]);
 
-  const garage = garages?.find(
-    (g) => g.id === activeSession?.garageId
-  );
-
   const hasCompletedSession = useMemo(() => {
     if (activeSession) return false;
     return sessions.some((s: Session) => normalizePlate(s.carPlate) === normalizedUserPlate && s.status === 'completed');
@@ -276,42 +224,6 @@ export default function GarageListScreen() {
     window.addEventListener('focus', handleFocus);
     return () => { isSubscribed = false; clearInterval(interval); document.removeEventListener('visibilitychange', handleVisibility); window.removeEventListener('focus', handleFocus); supabase.removeChannel(channel); };
   }, [normalizedUserPlate, cleanUserPhone, fetchAll]);
-
-  // 🛡️ فحص حالة تفعيل الدرع الفضائي بدقة في الصفحة الرئيسية للعميل
-  const isShieldActive = useMemo(() => {
-    if (!activeSession) return false;
-    return Boolean(
-      activeSession.securityShieldActive === true ||
-      (activeSession as any).security_shield_active === true
-    );
-  }, [activeSession]);
-
-  // 📐 حساب المسافة الفعلية الحالية بين موقع العميل ومكان الركنة
-  const distanceToCar = useMemo(() => {
-    if (!activeSession || !userLocation.lat || !userLocation.lng) return null;
-    const pLat = activeSession.parkedLat || garage?.lat;
-    const pLng = activeSession.parkedLng || garage?.lng;
-    if (!pLat || !pLng) return null;
-    return calculateDistanceMeters(userLocation.lat, userLocation.lng, pLat, pLng);
-  }, [activeSession, userLocation.lat, userLocation.lng, garage]);
-
-  // 🎯 تحديد مستوى الخطر الجغرافي الفعلي لمنع الإزعاج الكاذب أثناء الاقتراب
-  const isFarAway = useMemo(() => {
-    if (!activeSession) return false;
-    if (!isShieldActive || !activeSession.isBreached) return false;
-    if (distanceToCar === null) return true; // تفعيل الحماية افتراضياً عند تعذر قراءة الـ GPS
-    return distanceToCar > 15; // خطر حقيقي فقط خارج الـ 15 متر
-  }, [activeSession, isShieldActive, distanceToCar]);
-
-  // 🚨 [رصد فوري لحالة كسر الفقاعة وتشغيل الإنذار فقط إذا كان الدرع نشطاً وعاملاً والعميل بعيداً عن سيارته]
-  useEffect(() => {
-    if (activeSession && isShieldActive && activeSession.isBreached && isFarAway) {
-      playBreachAlarm();
-      setShowSosModal(true); // فتح شاشة الطوارئ والـ SOS تلقائياً للعميل
-      const interval = setInterval(playBreachAlarm, 4000);
-      return () => clearInterval(interval);
-    }
-  }, [activeSession?.isBreached, isShieldActive, isFarAway]);
 
   useEffect(() => {
     if (!activeSession) { autoNavigatedRef.current = null; return; }
@@ -386,7 +298,7 @@ export default function GarageListScreen() {
           </span>
         </div>
 
-        {/* 💳 بطاقة المحفظة */}
+        {/* 💳 بطاقة المحفظة (نصف الحجم مع لوحة سيارة واضحة وكبيرة) */}
         <div
           style={{
             background: BRAND.blue,
@@ -430,6 +342,7 @@ export default function GarageListScreen() {
             </div>
           </div>
 
+          {/* 🚙 رقم السيارة بحجم كبير وواضح وبارز */}
           <div className="mt-2 pt-2 border-t border-white/20 flex items-center justify-between">
             <span className="text-[11px] font-black text-white">🚙 رقم السيارة:</span>
             <span className="font-mono font-black text-sm bg-white text-[#1656b8] px-3 py-1 rounded-lg shadow-sm tracking-wider">
@@ -438,7 +351,7 @@ export default function GarageListScreen() {
           </div>
         </div>
 
-        {/* 📲 كارت الباركود الذكي */}
+        {/* 📲 كارت الباركود الذكي لمشاركة التطبيق أسفل المحفظة */}
         <div 
           onClick={() => setShowQrModal(true)}
           className="mb-3 border rounded-xl p-2 flex items-center justify-between text-right cursor-pointer active:scale-[0.98] transition-all"
@@ -477,65 +390,6 @@ export default function GarageListScreen() {
           </div>
           <QrCode size={16} style={{ color: BRAND.blue }} className="shrink-0" />
         </div>
-
-        {/* 🛡️ [كارت درع الأمان الفضائي الحصري للعميل - مصلح ومحمي ليظهر فقط عند التفعيل الفعلي والبعد عن السيارة] */}
-        {activeSession && isShieldActive && (
-          <div
-            className="mb-3 border rounded-2xl p-3 flex flex-col gap-2 relative overflow-hidden"
-            style={{
-              background: (activeSession.isBreached && isFarAway) ? '#fff5f5' : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-              borderColor: (activeSession.isBreached && isFarAway) ? '#fca5a5' : BRAND.border,
-              boxShadow: '0 4px 14px rgba(0,0,0,0.05)',
-              color: '#ffffff',
-            }}
-          >
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-1.5">
-                <span className="relative flex h-2 w-2">
-                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${(activeSession.isBreached && isFarAway) ? 'bg-red-500' : 'bg-emerald-400'}`}></span>
-                  <span className={`relative inline-flex rounded-full h-2 w-2 ${(activeSession.isBreached && isFarAway) ? 'bg-red-600' : 'bg-emerald-500'}`}></span>
-                </span>
-                <span className="text-[10px] font-black opacity-90" style={{ color: (activeSession.isBreached && isFarAway) ? '#991b1b' : '#38bdf8' }}>
-                  {(activeSession.isBreached && isFarAway) ? '🚨 تم الاختراق وصدمات الأمان تعمل!' : '🛰️ متصل بالأقمار الصناعية'}
-                </span>
-              </div>
-              <Shield size={16} style={{ color: (activeSession.isBreached && isFarAway) ? '#ef4444' : BRAND.green }} />
-            </div>
-
-            <div className="flex justify-between items-center mt-1">
-              <div className="text-right">
-                <h4 className="text-xs font-black" style={{ color: (activeSession.isBreached && isFarAway) ? '#7f1d1d' : '#ffffff' }}>
-                  درع الأمان الفضائي للسيارة {(activeSession.isBreached && isFarAway) ? '⚠️' : '🛡️'}
-                </h4>
-                <p className="text-[9px] font-bold mt-0.5" style={{ color: (activeSession.isBreached && isFarAway) ? '#b91c1c' : '#94a3b8' }}>
-                  {(activeSession.isBreached && isFarAway) 
-                    ? 'السيارة غادرت فقاعة الأمان الجغرافية (15م) بدون تصريح!' 
-                    : 'فقاعة الأمان اللاسلكية نشطة حول السيارة وتحميها بالكامل.'}
-                </p>
-              </div>
-
-              {(activeSession.isBreached && isFarAway) && (
-                <button
-                  onClick={() => setShowSosModal(true)}
-                  className="py-1.5 px-3 rounded-xl font-black text-[9px] text-white border-0 bg-red-600 active:scale-95 transition-all cursor-pointer shadow-md"
-                >
-                  عرض تقرير SOS 🚔
-                </button>
-              )}
-            </div>
-
-            {activeSession.parkedLat && (
-              <div className="mt-1 pt-2 border-t flex justify-between items-center text-[8px] font-black" style={{ borderColor: (activeSession.isBreached && isFarAway) ? '#fee2e2' : '#334155' }}>
-                <span style={{ color: (activeSession.isBreached && isFarAway) ? '#991b1b' : '#94a3b8' }}>
-                  📍 المرساة: ({activeSession.parkedLat.toFixed(4)}, {activeSession.parkedLng?.toFixed(4)})
-                </span>
-                <span style={{ color: (activeSession.isBreached && isFarAway) ? '#991b1b' : BRAND.green }}>
-                  {(activeSession.isBreached && isFarAway) ? '⚠️ خارج النطاق الجغرافي' : '🔒 مثبت في الموقف'}
-                </span>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* سجل الشحن المبسط */}
         <AnimatePresence>
@@ -747,11 +601,11 @@ export default function GarageListScreen() {
         {showTopUp && <TopUpWalletModal onClose={() => setShowTopUp(false)} />}
       </AnimatePresence>
 
-      {/* 📲 نافذة تكبير الباركود مع ميزة نسخ ومشاركة الرابط */}
+      {/* 📲 نافذة تكبير الباركود */}
       <AnimatePresence>
         {showQrModal && (
           <div 
-            className="fixed inset-0 z-[999] flex items-center justify-center p-5"
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-5"
             style={{ background: 'rgba(10,22,40,0.75)', backdropFilter: 'blur(6px)' }}
             onClick={() => setShowQrModal(false)}
           >
@@ -771,6 +625,7 @@ export default function GarageListScreen() {
                 ✕
               </button>
 
+              {/* أيقونة الهدية الترحيبية */}
               <div 
                 className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2"
                 style={{ background: BRAND.green + '20' }}
@@ -782,13 +637,13 @@ export default function GarageListScreen() {
                 📲 شارك بركن 24 مع أصحابك
               </h3>
 
-              <p className="text-[11px] font-bold mb-3 leading-relaxed" style={{ color: BRAND.slate }}>
-                امسح الكود أو انسخ الرابط وشاركه مع أصحابك ليركنوا ويستمتعوا بـ <span className="font-black" style={{ color: BRAND.greenDark }}>أول 30 دقيقة مجاناً! 🎁🚀</span>
+              <p className="text-[11px] font-bold mb-4 leading-relaxed" style={{ color: BRAND.slate }}>
+                امسح الكود بموبايل صاحبك لتنزيل التطبيق وسبهم يستمتعوا بـ <span className="font-black" style={{ color: BRAND.greenDark }}>أول 30 دقيقة ركن مجاناً! 🎁🚀</span>
               </p>
 
               {/* إطار الباركود */}
               <div 
-                className="w-44 h-44 mx-auto p-2 bg-white rounded-2xl border-2 shadow-inner flex items-center justify-center mb-3" 
+                className="w-48 h-48 mx-auto p-2 bg-white rounded-2xl border-2 shadow-inner flex items-center justify-center mb-4" 
                 style={{ borderColor: BRAND.blue }}
               >
                 <img 
@@ -801,128 +656,18 @@ export default function GarageListScreen() {
                 />
               </div>
 
-              {/* 🔗 زر نسخ ومشاركة رابط التطبيق */}
-              <div className="space-y-2">
-                <button
-                  onClick={async () => {
-                    const appUrl = window.location.origin;
-                    try {
-                      if (navigator.clipboard?.writeText) {
-                        await navigator.clipboard.writeText(appUrl);
-                      } else {
-                        const el = document.createElement('textarea');
-                        el.value = appUrl;
-                        document.body.appendChild(el);
-                        el.select();
-                        document.execCommand('copy');
-                        document.body.removeChild(el);
-                      }
-                      toast.success('تم نسخ رابط التطبيق بنجاح! 📋🚀', { duration: 3000 });
-                    } catch {
-                      toast.error('تعذر نسخ الرابط');
-                    }
-                  }}
-                  className="w-full py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all border-0 text-white shadow-sm"
-                  style={{ background: BRAND.greenDark }}
-                >
-                  <Copy size={14} />
-                  <span>نسخ رابط التطبيق 🔗</span>
-                </button>
-
-                <button
-                  onClick={() => setShowQrModal(false)}
-                  className="w-full py-2.5 rounded-xl font-bold text-xs text-slate-500 bg-slate-100 border border-slate-200 cursor-pointer active:scale-95 transition-all"
-                >
-                  إغلاق النافذة
-                </button>
-              </div>
+              {/* زر الإغلاق والمشاركة */}
+              <button
+                onClick={() => setShowQrModal(false)}
+                className="w-full py-3 rounded-xl font-black text-xs text-white border-0 cursor-pointer active:scale-95 transition-all shadow-md"
+                style={{ background: BRAND.blue }}
+              >
+                تم المسح / إغلاق
+              </button>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
-      {/* 🚔 [نافذة إنذار الطوارئ وتقرير الشرطة SOS - للفقاعة الجغرافية وسرقة الصاج الحقيقية] */}
-      <AnimatePresence>
-        {showSosModal && activeSession && isShieldActive && activeSession.isBreached && isFarAway && (
-          <div 
-            className="fixed inset-0 z-[99999] flex items-center justify-center p-5"
-            style={{ background: 'rgba(127,29,29,0.9)', backdropFilter: 'blur(8px)' }}
-            onClick={() => setShowSosModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="rounded-3xl p-6 text-center max-w-sm w-full shadow-2xl relative bg-white text-slate-800"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="w-14 h-12 rounded-full flex items-center justify-center mx-auto mb-3 bg-red-100 animate-pulse">
-                <AlertTriangle size={28} className="text-red-600" />
-              </div>
-
-              <h3 className="text-base font-black text-red-900 mb-1">🚨 تم رصد حركة غير مصرحة لسيارتك!</h3>
-              <p className="text-xs font-bold text-slate-500 mb-4 leading-relaxed">
-                سيارتك لوحة <span className="font-mono font-black text-red-700 bg-red-50 px-2 py-0.5 rounded">{activeSession.carPlate}</span> تجاوزت سياج الجراج الجغرافي (15م) بدون إذان خروج!
-              </p>
-
-              <div className="p-3.5 border rounded-2xl text-right space-y-2 mb-5 bg-slate-50 border-slate-200">
-                <div className="flex justify-between items-center text-xs border-b pb-1.5 border-dashed border-slate-200">
-                  <span className="font-mono font-black text-slate-800">
-                    {new Date(safeParseTime(activeSession.startTime)).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                  <span className="font-black text-slate-500">⏱️ وقت كسر الفقاعة:</span>
-                </div>
-
-                <div className="flex justify-between items-center text-xs border-b pb-1.5 border-dashed border-slate-200">
-                  <span className="font-mono font-black text-red-600">~ 40 كم/ساعة</span>
-                  <span className="font-black text-slate-500">🚗 السرعة المقدرة:</span>
-                </div>
-
-                <div className="flex justify-between items-center text-xs">
-                  <span className="font-mono font-black text-slate-800">نشط (رادار المشرف)</span>
-                  <span className="font-black text-slate-500">📶 حالة التتبع الحالية:</span>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <button
-                  onClick={async () => {
-                    localStorage.removeItem(`breach_silenced_${activeSession.id}`);
-                    await triggerSessionBreach(activeSession.id, false);
-                    setShowSosModal(false);
-                    toast.success('تم إلغاء الإنذار وتأكيد أمان الحركة بنجاح.');
-                  }}
-                  className="w-full py-3 rounded-xl font-black text-xs text-white border-0 bg-emerald-600 active:scale-95 transition-all cursor-pointer shadow-md"
-                >
-                  ✅ إلغاء الإنذار (حركة مصرحة مني)
-                </button>
-
-                <button
-                  onClick={() => {
-                    localStorage.setItem(`breach_silenced_${activeSession.id}`, 'true');
-                    toast.success('🚀 تم كتم الصوت محلياً وتصدير بيانات الموقع والسرعة لجهات الطوارئ فوراً!');
-                    setShowSosModal(false);
-                  }}
-                  className="w-full py-3 rounded-xl font-black text-xs text-white border-0 bg-red-700 active:scale-95 transition-all cursor-pointer shadow-md"
-                >
-                  🚔 إرسال تقرير SOS عاجل للشرطة
-                </button>
-
-                <button
-                  onClick={() => {
-                    localStorage.setItem(`breach_silenced_${activeSession.id}`, 'true');
-                    setShowSosModal(false);
-                    toast('تم كتم صوت الإنذار مؤقتاً 🔕');
-                  }}
-                  className="w-full py-2.5 rounded-xl font-bold text-[11px] text-slate-500 bg-transparent border border-slate-200 cursor-pointer"
-                >
-                  إغلاق المؤقت
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
       <WelcomeGiftModal />
     </div>
   );
@@ -946,7 +691,7 @@ function WelcomeGiftModal() {
   return (
     <AnimatePresence>
       {show && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center p-5" style={{ background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)' }} onClick={handleClose}>
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-5" style={{ background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)' }} onClick={handleClose}>
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -1021,6 +766,7 @@ const GarageCard = memo(function GarageCard({
         cursor: isFull ? 'not-allowed' : 'pointer',
       }}
     >
+      {/* سطر الاسم + التقييم + طريقة الدفع */}
       <div className="flex justify-between items-center mb-1">
         <div className="flex items-center gap-1 flex-wrap">
           <span className="flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded" style={{ background: '#fef3c7', color: '#b45309' }}>
@@ -1046,11 +792,13 @@ const GarageCard = memo(function GarageCard({
         <h4 className="text-xs font-black" style={{ color: BRAND.blueDark }}>{garage.name}</h4>
       </div>
 
+      {/* الموقع */}
       <div className="flex items-center gap-1 justify-end text-[10px] mb-2" style={{ color: BRAND.slate }}>
         <span>{garage.location}</span>
         <MapPin size={10} />
       </div>
 
+      {/* البيانات: الوقت + الشاغر + السعر */}
       <div className="flex items-center justify-between mt-2 pt-2 border-t" style={{ borderColor: BRAND.border }}>
         <div className="flex items-center gap-1 text-[10px] font-bold" style={{ color: BRAND.slate }}>
           <Navigation size={10} className="rotate-45" />
@@ -1069,6 +817,7 @@ const GarageCard = memo(function GarageCard({
         </div>
       </div>
 
+      {/* زر الحجز */}
       <button
         disabled={isFull || disabled}
         className="w-full border-0 font-black py-2.5 rounded-10 mt-3 text-xs text-white cursor-pointer"

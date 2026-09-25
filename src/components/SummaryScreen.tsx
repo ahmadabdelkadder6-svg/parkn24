@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   CheckCircle,
   Home,
@@ -6,7 +6,6 @@ import {
   Wallet,
   AlertTriangle,
   Gift,
-  Shield,
 } from 'lucide-react';
 // 🌟 استيراد دوال البصمة الموحدة والتوقيت الدولي الموحد لضمان مطابقة دقيقة وخالية من تلاعب الثغرات
 import { useStore, pausePolling, normalizePlate, normalizePhone, getServerNow } from '../store';
@@ -174,7 +173,7 @@ export default function SummaryScreen() {
     const endMs = toMs(lastCompletedSession.endTime);
     if (!endMs) return;
 
-    // ✅ حساب انتهاء الجلسة وفقاً لتوقيت السيرفر الموحد
+    // ✅ تم التعديل: حساب انتهاء الجلسة وفقاً لتوقيت السيرفر الموحد
     const timeSinceEnd = getServerNow() - endMs;
     if (timeSinceEnd > 10 * 60 * 1000) return;
 
@@ -208,30 +207,25 @@ export default function SummaryScreen() {
   const durationSeconds = referenceSession
     ? referenceSession.status === 'completed' && referenceSession.endTime
       ? Math.floor((toMs(referenceSession.endTime) - toMs(referenceSession.startTime)) / 1000)
-      : Math.floor((getServerNow() - toMs(referenceSession.startTime)) / 1000) // ✅ حساب ثواني الجلسة بالتوقيت الموحد
+      : Math.floor((getServerNow() - toMs(referenceSession.startTime)) / 1000) // ✅ تم التعديل: حساب ثواني الجلسة بالتوقيت الموحد
     : 0;
 
   const durationMinutes = Math.floor(durationSeconds / 60);
   const sessionRate = Number(referenceSession?.agreedPrice ?? garage?.basePrice ?? 0);
 
-  // 🛡️ فحص احتساب درع الأمان الفضائي VIP (+10 ج.م ثابتة في الملخص)
-  const hasSecurityShield = referenceSession?.securityShieldActive === true;
-  const shieldFee = hasSecurityShield ? 10 : 0;
-
-  // 🎁 منطق حساب الـ 30 دقيقة المجانية
+  // 🌟 منطق حساب الـ 30 دقيقة المجانية
   const isFirstFreeApplied = useMemo(() => {
     return referenceSession?.isFirstFreeSession === true;
   }, [referenceSession]);
 
-  const isFreeParkingNow = isFirstFreeApplied && durationSeconds <= 1800; // 30 دقيقة أو أقل
-  const billableHours = isFreeParkingNow ? 0 : calculateFullHours(durationSeconds);
-  const freeMinutesApplied = isFreeParkingNow ? Math.floor(durationSeconds / 60) : 0;
+  const isFreeNow = isFirstFreeApplied && durationSeconds <= 1800; // 30 دقيقة أو أقل
+  const billableHours = isFreeNow ? 0 : calculateFullHours(durationSeconds);
+  const freeMinutesApplied = isFreeNow ? Math.floor(durationSeconds / 60) : 0;
 
-  const originalParkingPrice = useMemo(() => {
+  const originalPrice = useMemo(() => {
     return calculateCost(durationSeconds, sessionRate);
   }, [durationSeconds, sessionRate]);
 
-  // إجمالي الفاتورة الموحد (تكلفة الركن + رسوم درع الأمان)
   const totalPrice = useMemo(() => {
     if (
       referenceSession?.status === 'completed' &&
@@ -239,11 +233,10 @@ export default function SummaryScreen() {
     ) {
       return Number(referenceSession.totalPrice);
     }
-    const parkingPrice = isFreeParkingNow ? 0 : calculateCost(durationSeconds, sessionRate);
-    return parkingPrice + shieldFee;
-  }, [referenceSession, isFreeParkingNow, durationSeconds, sessionRate, shieldFee]);
+    return isFreeNow ? 0 : calculateCost(durationSeconds, sessionRate);
+  }, [referenceSession, isFreeNow, durationSeconds, sessionRate]);
 
-  const discountAmount = isFreeParkingNow ? originalParkingPrice : 0;
+  const discountAmount = isFreeNow ? originalPrice : 0;
 
   const walletBalance = currentUser?.wallet ?? 0;
   const canPayWallet = walletBalance >= totalPrice;
@@ -369,7 +362,7 @@ export default function SummaryScreen() {
             {doneTotalPrice} ج.م
           </div>
           <div className="text-xs text-slate-400 mb-2">
-            {doneMethod === 'free' || isFreeParkingNow ? (
+            {doneMethod === 'free' || isFreeNow ? (
               <span>(تم ركن {durationMinutes} دقيقة مجاناً كهدية ترحيبية 🎁)</span>
             ) : (
               <span>{billableHours} ساعة × {sessionRate} ج.م</span>
@@ -436,7 +429,7 @@ export default function SummaryScreen() {
       className="h-full bg-white text-slate-900 p-6 overflow-y-auto"
     >
       <div className="pt-10 mb-6">
-        <h2 className="text-2xl font-black text-center mb-2 text-slate-900">ملخص الحساب والفاتورة</h2>
+        <h2 className="text-2xl font-black text-center mb-2 text-slate-900">ملخص الجلسة</h2>
         <p className="text-slate-500 text-sm text-center">
           {activeSession ? 'راجع التفاصيل وأكد الدفع' : 'تم إنهاء الجلسة'}
         </p>
@@ -457,7 +450,7 @@ export default function SummaryScreen() {
 
       <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-4 shadow-sm">
         <div className="text-center mb-3">
-          {isFreeParkingNow && !hasSecurityShield ? (
+          {isFreeNow ? (
             <>
               <div className="text-4xl font-black text-emerald-600 font-mono mb-0.5">
                 0 ج.م
@@ -472,45 +465,38 @@ export default function SummaryScreen() {
               {totalPrice} ج.م
             </div>
           )}
-          <div className="text-[10px] text-slate-400 font-bold">إجمالي المبلغ النهائي المستحق للدفع</div>
+          <div className="text-[10px] text-slate-400 font-bold">إجمالي التكلفة الحالية</div>
         </div>
 
-        <div className="bg-gray-50 rounded-xl p-3 border border-slate-100 text-right">
+        <div className="bg-gray-50 rounded-xl p-3 border border-slate-100">
           <div className="flex items-center justify-center gap-2 mb-2">
             <Calculator size={14} className="text-blue-600" />
-            <span className="text-[10px] text-slate-500 font-bold">تفاصيل وتفصيل الفاتورة</span>
+            <span className="text-[10px] text-slate-500 font-bold">تفاصيل الحساب الفعلي</span>
           </div>
           <div className="space-y-1.5">
             <div className="flex justify-between text-xs">
+              <span className="text-slate-500">مدة الركن الكلية</span>
               <span className="font-black text-slate-900 font-mono">{durationMinutes} دقيقة</span>
-              <span className="text-slate-500">⏳ مدة الركن الكلية</span>
             </div>
 
-            {isFreeParkingNow && (
+            {isFreeNow && (
               <div className="flex justify-between text-xs text-emerald-600 font-bold">
-                <span className="font-mono">مطبق (توفير {discountAmount} ج.م)</span>
                 <span className="flex items-center gap-1">🎁 خصم الهدية الترحيبية</span>
+                <span className="font-mono">مجاني بالكامل (أول 30 دقيقة)</span>
               </div>
             )}
 
             <div className="flex justify-between text-xs">
+              <span className="text-slate-500">الساعات المحتسبة للدفع</span>
               <span className="font-black text-blue-600 font-mono">
                 {billableHours} ساعة
               </span>
-              <span className="text-slate-500">⏱️ الساعات المحتسبة للدفع</span>
             </div>
 
             <div className="flex justify-between text-xs">
+              <span className="text-slate-500">سعر الساعة</span>
               <span className="font-black text-purple-600 font-mono">{sessionRate} ج.م</span>
-              <span className="text-slate-500">💵 سعر ساعة الجراج</span>
             </div>
-
-            {hasSecurityShield && (
-              <div className="flex justify-between text-xs text-emerald-600 font-bold border-t border-dashed pt-1.5 mt-1">
-                <span className="font-mono font-black">+10.00 ج.م</span>
-                <span className="flex items-center gap-1">🛡️ درع الحماية والتعقب الفضائي VIP</span>
-              </div>
-            )}
 
             {garage && sessionRate !== garage.basePrice && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-1.5 text-center">
@@ -522,10 +508,10 @@ export default function SummaryScreen() {
 
             <div className="border-t border-slate-200 pt-1.5">
               <div className="flex justify-between text-xs">
+                <span className="text-slate-700 font-bold">الإجمالي المطلوب سداده</span>
                 <span className="font-black text-emerald-600 font-mono">
                   {totalPrice} ج.م
                 </span>
-                <span className="text-slate-700 font-bold">الإجمالي المطلوب سداده</span>
               </div>
             </div>
           </div>
@@ -552,7 +538,7 @@ export default function SummaryScreen() {
         <>
           {totalPrice > 0 && (
             <div className="mb-6">
-              <h3 className="text-sm font-black text-slate-700 mb-3 text-right">طريقة الدفع المقبولة</h3>
+              <h3 className="text-sm font-black text-slate-700 mb-3 text-right">طريقة الدفع</h3>
               <div className={`grid ${methods.length === 1 ? 'grid-cols-1' : 'grid-cols-2'} gap-3`}>
                 {methods.map((m) => (
                   <button
@@ -592,7 +578,7 @@ export default function SummaryScreen() {
                   className="mt-3 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2"
                 >
                   <AlertTriangle size={18} className="text-red-500 shrink-0" />
-                  <div className="text-right">
+                  <div>
                     <p className="text-xs text-red-600 font-bold">رصيد المحفظة غير كافي</p>
                     <p className="text-[10px] text-red-400">
                       المطلوب: {totalPrice} ج.م | رصيدك: {walletBalance} ج.م
@@ -605,10 +591,10 @@ export default function SummaryScreen() {
                 <motion.div
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-2 text-right"
+                  className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-2"
                 >
                   <Wallet size={18} className="text-blue-600 shrink-0" />
-                  <div className="text-right">
+                  <div>
                     <p className="text-xs text-blue-600 font-bold">
                       سيتم خصم {totalPrice} ج.م من رصيدك تلقائياً
                     </p>

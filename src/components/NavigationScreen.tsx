@@ -11,7 +11,6 @@ import {
   Copy,
   Gift,
   CreditCard,
-  Shield,
 } from 'lucide-react';
 // 🌟 استيراد getServerNow ودوال البصمة الموحدة من الـ store لضمان المزامنة التامة
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
@@ -52,7 +51,7 @@ const BRAND = {
 };
 
 /* ─── Constants ─── */
-const CANCEL_WINDOW_SECONDS = 30; // مهلة الـ 30 ثانية للعميل قبل إشعار فالية الجراج
+const CANCEL_WINDOW_SECONDS = 30; // مهلة الـ 30 ثانية للعميل قبل إشعار السايس
 const GPS_DEADBAND_METERS = 6; // 🛡️ فلتر منع رعشة الخريطة - لا يتحدث الموقع إلا بعد تحرك حقيقي 6 أمتار
 
 /* ─── Icons ─── */
@@ -96,7 +95,7 @@ const getDistanceMeters = (
   return R * c;
 };
 
-/* ─── Map controller (محمي ومحدث فائق السرعة) ─── */
+/* ─── Map controller (محمي بالكامل من الانهيار) ─── */
 function MapController({
   userPos,
   garagePos,
@@ -107,12 +106,11 @@ function MapController({
   const map = useMap();
 
   useEffect(() => {
-    // ⚡ إعادة ضبط أبعاد الخريطة فور فتح الشاشة لعرض الشوارع فوراً
-    const timer = setTimeout(() => {
+    setTimeout(() => {
       try {
         map.invalidateSize();
       } catch {}
-    }, 150);
+    }, 250);
 
     const isValidCoord = (c: [number, number]) =>
       Array.isArray(c) &&
@@ -122,7 +120,7 @@ function MapController({
     if (isValidCoord(userPos) && isValidCoord(garagePos)) {
       try {
         const bounds = L.latLngBounds([userPos, garagePos]);
-        map.fitBounds(bounds, { padding: [35, 35], maxZoom: 16 });
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
       } catch {
         try {
           map.setView(garagePos, 15);
@@ -133,12 +131,11 @@ function MapController({
         map.setView(garagePos, 15);
       } catch {}
     }
-
-    return () => clearTimeout(timer);
   }, [map, userPos, garagePos]);
 
   return null;
 }
+
 /* ════════════════════════════════════════════════════════════
    ██  MAIN NAVIGATION SCREEN
    ════════════════════════════════════════════════════════════ */
@@ -156,8 +153,6 @@ export default function NavigationScreen() {
     sessions,
     addSession,
     fetchAll,
-    // 🛡️ استدعاء دالة درع الأمان الفضائي
-    setSessionSecurityShield,
   } = useStore();
 
   const garage = garages.find((g) => g.id === selectedGarageId);
@@ -519,7 +514,6 @@ export default function NavigationScreen() {
   const handleCancelBooking = async () => {
     if (!currentUser || !myIncomingCar) return;
 
-    // 1️⃣ إيقاف جميع مؤقتات الإشعارات فوراً
     if (pushTimerRef.current) {
       clearTimeout(pushTimerRef.current);
       pushTimerRef.current = null;
@@ -527,11 +521,10 @@ export default function NavigationScreen() {
     pushSentRef.current = true;
     setPushStatus('cancelled');
 
-    if (pushStatus === 'sent' && garage) {
-      cancelScheduledPush(garage.id, myIncomingCar.carPlate).catch(() => {});
+    if (pushStatus === 'sent') {
+      await cancelScheduledPush(garage.id, myIncomingCar.carPlate);
     }
 
-    // 2️⃣ البحث عن العروض المعلقة وإلغائها
     const activeOffer = offers.find(
       (o) =>
         o.userId === currentUser.phone &&
@@ -539,22 +532,12 @@ export default function NavigationScreen() {
     );
     if (activeOffer) cancelOffer(activeOffer.id);
 
-    const targetCarId = myIncomingCar.id;
-
-    // 3️⃣ تحديث الـ Store المحلي فوراً لمسح السيارة القادمة (لقطع الطريق على App.tsx ومنعه من إرجاع الشاشة)
-    useStore.setState((state) => ({
-      incomingCars: state.incomingCars.filter((c) => c.id !== targetCarId)
-    }));
-
-    // 4️⃣ الانتقال الفوري والمضمون للقائمة الرئيسية وتصفير الجراج
-    setScreen('list');
-    setSelectedGarageId(null);
-
-    // 5️⃣ الحذف الصامت والنهائي للحجز من قاعدة البيانات في الخلفية
-    removeIncomingCar(targetCarId).catch(() => {});
-    
+    removeIncomingCar(myIncomingCar.id);
     toast.success('تم إلغاء الحجز، يمكنك اختيار جراج آخر 🚗');
+    setSelectedGarageId(null);
+    setScreen('list');
   };
+
   const handleCarArrived = async () => {
     if (isArrivingRef.current) return;
     isArrivingRef.current = true;
@@ -596,41 +579,28 @@ export default function NavigationScreen() {
       if (relatedOffer) cancelOffer(relatedOffer.id);
 
       const startTimeISO = new Date(getServerNow()).toISOString();
-      const incomingId = myIncomingCar.id;
-      const currentPlate = myIncomingCar.carPlate;
-      const agreedPr = myIncomingCar.agreedPrice;
 
-      // 🌟 1. تثبيت معرف الجراج المختار أولاً
-      setSelectedGarageId(garage.id);
-
-      // 🌟 2. إنشاء الجلسة وتثبيت إحداثيات المكان في خطوة واحدة سريعة (الدرع معطل افتراضياً)
       await addSession({
         garageId: garage.id,
-        carPlate: currentPlate,
+        carPlate: myIncomingCar.carPlate,
         startTime: startTimeISO,
         status: 'active',
         source: 'app',
-        agreedPrice: agreedPr,
+        agreedPrice: myIncomingCar.agreedPrice,
         customerPhone: currentUser?.phone,
         customerName: currentUser?.name,
         startedBy: 'customer',
-        incomingCarId: incomingId,
-        parkedLat: userPos.lat || garage.lat,
-        parkedLng: userPos.lng || garage.lng,
-        securityShieldActive: false, // 🔒 يبدأ معطلاً والعميل يفعله برغبته من شاشة العداد
-        isBreached: false,
+        incomingCarId: myIncomingCar.id,
       } as any);
 
-      // 🌟 3. حذف الحجز والانتقال اللحظي المباشر لشاشة العداد
-      removeIncomingCar(incomingId).catch(() => {});
+      await removeIncomingCar(myIncomingCar.id);
       navigatedToSessionRef.current = true;
       setScreen('session');
-      toast.success('تم بدء حساب الركن بنجاح! ⏱️🚗', { duration: 2500 });
     } catch (err) {
-      console.error('❌ خطأ في بدء الركن:', err);
+      console.error('❌ خطأ:', err);
       toast.error('حدث خطأ، حاول مرة أخرى');
     } finally {
-      setTimeout(() => { isArrivingRef.current = false; }, 2000);
+      setTimeout(() => { isArrivingRef.current = false; }, 3000);
     }
   };
 
@@ -707,58 +677,57 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-      {/* 🗺️ الخريطة المستقرة (بدون رعشة) */}
-      <div 
-        className="w-full h-44 rounded-2xl overflow-hidden relative shrink-0 border"
-        style={{ transform: 'translateZ(0)', borderColor: BRAND.border }} 
-      >
-        {mapReady && garage ? (
-          <MapContainer
-            key={`map-nav-${garage.id}`}
-            center={[garage.lat || 30.0444, garage.lng || 31.2357]}
-            zoom={15}
-            style={{ width: '100%', height: '100%', background: '#0a1628' }}
-            zoomControl={false}
-          >
-            {/* ⚡ تم إصلاح رابط الخريطة إلى الصيغة العالمية السريعة لتنزيل الشوارع فوراً */}
-            <TileLayer
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              subdomains={['a', 'b', 'c']}
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            />
-            <Marker position={[userPos.lat, userPos.lng]} icon={userIcon}>
-              <Popup>موقعك الحالي 🚗</Popup>
-            </Marker>
-            <Marker position={[garage.lat, garage.lng]} icon={garageIcon}>
-              <Popup>{garage.name} 🅿️</Popup>
-            </Marker>
-            <Polyline
-              positions={[
-                [userPos.lat, userPos.lng],
-                [garage.lat, garage.lng],
-              ]}
-              color={BRAND.blue}
-              weight={4}
-              dashArray="8, 8"
-            />
-            <MapController
-              userPos={[userPos.lat, userPos.lng]}
-              garagePos={[garage.lat, garage.lng]}
-            />
-          </MapContainer>
-        ) : (
-          <div className="w-full h-full bg-slate-900 flex items-center justify-center">
-            <div className="text-slate-500 text-xs font-bold animate-pulse">
-              🗺️ جاري تحميل الخريطة...
+        {/* 🗺️ الخريطة المستقرة (بدون رعشة) */}
+        <div 
+          className="w-full h-44 rounded-2xl overflow-hidden relative shrink-0 border"
+          style={{ transform: 'translateZ(0)', borderColor: BRAND.border }} 
+        >
+          {mapReady ? (
+            <MapContainer
+              key={`map-nav-${garage.id}`}
+              center={[garage.lat || 30.0444, garage.lng || 31.2357]}
+              zoom={15}
+              style={{ width: '100%', height: '100%' }}
+              zoomControl={false}
+            >
+              <TileLayer
+                url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              />
+              <Marker position={[userPos.lat, userPos.lng]} icon={userIcon}>
+                <Popup>موقعك الحالي 🚗</Popup>
+              </Marker>
+              <Marker position={[garage.lat, garage.lng]} icon={garageIcon}>
+                <Popup>{garage.name} 🅿️</Popup>
+              </Marker>
+              <Polyline
+                positions={[
+                  [userPos.lat, userPos.lng],
+                  [garage.lat, garage.lng],
+                ]}
+                color={BRAND.blue}
+                weight={4}
+                dashArray="8, 8"
+              />
+              <MapController
+                userPos={[userPos.lat, userPos.lng]}
+                garagePos={[garage.lat, garage.lng]}
+              />
+            </MapContainer>
+          ) : (
+            <div className="w-full h-full bg-slate-900 flex items-center justify-center">
+              <div className="text-slate-500 text-xs font-bold animate-pulse">
+                🗺️ جاري تحميل الخريطة...
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        <div className="absolute top-3 left-3 border text-[9px] px-2.5 py-1 rounded-full z-[400] flex items-center gap-1.5 pointer-events-none" style={{ background: 'rgba(10,22,40,0.85)', borderColor: BRAND.border, color: BRAND.slateMuted }}>
-          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
-          تتبع مباشر
+          <div className="absolute top-3 left-3 border text-[9px] px-2.5 py-1 rounded-full z-[400] flex items-center gap-1.5 pointer-events-none" style={{ background: 'rgba(10,22,40,0.85)', borderColor: BRAND.border, color: BRAND.slateMuted }}>
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
+            تتبع مباشر
+          </div>
         </div>
-      </div>
+
         {/* 🚀 زر توجيه الخرائط */}
         <div className="flex flex-col gap-1.5 shrink-0">
           <motion.button
@@ -829,15 +798,6 @@ export default function NavigationScreen() {
                 : '💳 نقدي ومحفظة'}
             </span>
             <span className="text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>طريقة الدفع المقبولة</span>
-          </div>
-
-          {/* 🛡️ شارة درع الأمان والتعقب الفضائي التوضيحية */}
-          <div className="flex items-center justify-between border-t pt-2" style={{ borderColor: BRAND.border }}>
-            <span className="text-xs font-black flex items-center gap-1 text-sky-400">
-              <Shield size={12} />
-              <span>حراسة فضائية متاحة (+10ج)</span>
-            </span>
-            <span className="text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>درع الأمان VIP</span>
           </div>
 
           {/* 🎁 شارة الهدية الترحيبية إن وجدت */}
@@ -929,7 +889,7 @@ export default function NavigationScreen() {
                 </div>
               </>
             ) : (
-              // 🚀 المرحلة الثانية: بعد انتهاء الـ 30 ثانية وإرسال الإشعار
+              // 🚀 المرحلة الثانية: بعد انتهاء الـ 30 ثانية وإرسال الإشعار للسايس
               <motion.button
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
