@@ -526,7 +526,7 @@ export default function SessionScreen() {
           <div className="text-right">
             <span className="text-[9px] font-bold text-slate-400 block">رسوم الخدمة</span>
             <span className="text-xs font-black font-mono" style={{ color: isShieldActive ? BRAND.green : '#ffffff' }}>
-              {isShieldActive ? '+10.00 ج.م مضافة' : '+10.00 ج.م فقط'}
+              {isShieldActive ? '+10 ج.م مضافة' : '+10. ج.م فقط'}
             </span>
           </div>
         </div>
