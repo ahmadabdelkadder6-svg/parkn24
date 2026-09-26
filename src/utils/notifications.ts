@@ -48,56 +48,6 @@ if (typeof window !== 'undefined') {
 }
 
 // ─── 2. نغمات التنبيه (توليد إلكتروني نقي بدون ملفات خارجية) ──────────────
-
-// 🚨 أقصى وأقوى صوت إنذار أمني لكسر الدرع وحركة السيارة
-export const playSecurityBreachAlarm = async () => {
-  try {
-    await unlockAudio();
-    if (!audioCtx) return;
-
-    if (audioCtx.state === 'suspended') {
-      await audioCtx.resume();
-    }
-
-    const now = audioCtx.currentTime;
-    const masterGain = audioCtx.createGain();
-    masterGain.gain.setValueAtTime(1.0, now);
-    masterGain.connect(audioCtx.destination);
-
-    // 8 نبضات إنذار طوارئ حادة وفائقة التردد (1400Hz و 2600Hz)
-    for (let i = 0; i < 8; i++) {
-      const start = now + (i * 0.22);
-      const duration = 0.20;
-
-      const osc1 = audioCtx.createOscillator();
-      const osc2 = audioCtx.createOscillator();
-      const noteGain = audioCtx.createGain();
-
-      osc1.type = 'sawtooth';
-      osc2.type = 'square';
-
-      const freq = i % 2 === 0 ? 1400 : 2600;
-      osc1.frequency.setValueAtTime(freq, start);
-      osc2.frequency.setValueAtTime(freq * 1.25, start);
-
-      noteGain.gain.setValueAtTime(1.0, start);
-      noteGain.gain.exponentialRampToValueAtTime(0.01, start + duration);
-
-      osc1.connect(noteGain);
-      osc2.connect(noteGain);
-      noteGain.connect(masterGain);
-
-      osc1.start(start);
-      osc2.start(start);
-      osc1.stop(start + duration + 0.02);
-      osc2.stop(start + duration + 0.02);
-    }
-  } catch (err) {
-    console.warn('⚠️ خطأ في تشغيل صوت إنذار الطوارئ:', err);
-  }
-};
-
-// 🔊 صوت قدوم سيارة في الطريق للسايس
 export const playUrgentSound = async () => {
   try {
     await unlockAudio();
@@ -119,18 +69,17 @@ export const playUrgentSound = async () => {
       osc.type = 'sawtooth';
       osc.frequency.setValueAtTime(i % 2 === 0 ? 880 : 1320, audioCtx.currentTime + delay);
 
-      gain.gain.setValueAtTime(0.8, audioCtx.currentTime + delay);
+      gain.gain.setValueAtTime(0.7, audioCtx.currentTime + delay);
       gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + delay + 0.18);
 
       osc.start(audioCtx.currentTime + delay);
       osc.stop(audioCtx.currentTime + delay + 0.2);
     }
   } catch (err) {
-    console.warn('⚠️ خطأ في تشغيل صوت التنبيه:', err);
+    console.warn('⚠️ خطأ في تشغيل صوت الإنذار:', err);
   }
 };
 
-// 🔔 تنبيه عادي للعروض والتحديثات
 export const playNormalAlert = async () => {
   try {
     await unlockAudio();
@@ -160,29 +109,13 @@ export const playNormalAlert = async () => {
   }
 };
 
-// ─── 3. أنماط اهتزاز الهاتف ─────────────────────────────────────────────
-
-// 📳 اهتزاز الطوارئ والسرقة الشديد
-export const vibrateBreach = () => {
-  try {
-    if ('vibrate' in navigator) {
-      navigator.vibrate([
-        1500, 100, 1500, 100, 1500, 100, // رنات قوية متتالية
-        2000, 150, 2000                  // رنة ختامية
-      ]);
-      return true;
-    }
-  } catch {}
-  return false;
-};
-
-// 📳 اهتزاز قدوم سيارة للسايس
+// ─── 3. اهتزاز الهاتف ───────────────────────────────────────────────────
 export const vibrateUrgent = () => {
   try {
     if ('vibrate' in navigator) {
       navigator.vibrate([
-        800, 200, 800, 200, 800, 200,
-        1000, 300, 1000
+        800, 200, 800, 200, 800, 200, // رنة 1
+        1000, 300, 1000               // رنة 2
       ]);
       return true;
     }
@@ -242,6 +175,7 @@ export const sendLocalNotification = async (
       data: { url: '/garage' },
     };
 
+    // إرسال عبر Service Worker (متوافق مع أندرويد)
     if ('serviceWorker' in navigator) {
       try {
         const reg = await navigator.serviceWorker.ready;
@@ -252,30 +186,14 @@ export const sendLocalNotification = async (
       } catch {}
     }
 
+    // Fallback للحواسيب
     new Notification(title, options);
   } catch (err) {
     console.warn('⚠️ تعذر إظهار الإشعار في النظام:', err);
   }
 };
 
-// ─── 6. دوال التنبيهات المجمعة المباشرة ──────────────────────────────────
-
-// 🚨 إنذار اختراق درع الأمان وسرقة السيارة
-export const notifySecurityBreach = (carPlate: string, slotId?: string, reason?: string) => {
-  playSecurityBreachAlarm();
-  vibrateBreach();
-
-  const slotText = slotId ? ` بالمربع [${slotId}]` : '';
-  const reasonText = reason ? ` • ${reason}` : ' • استعد لإيقاف البوابة فوراً!';
-
-  sendLocalNotification(
-    `🚨 إنذار سرقة: تحرك سيارة${slotText}!`,
-    `🚗 لوحة السيارة: ${carPlate}${reasonText}`,
-    `breach-${carPlate}-${Date.now()}`
-  );
-};
-
-// 🚗 تنبيه قدوم سيارة للسايس
+// ─── 6. التنبيهات المجمعة المباشرة ──────────────────────────────────────
 export const notifyIncomingCar = (carPlate: string) => {
   playUrgentSound();
   vibrateUrgent();
@@ -286,7 +204,6 @@ export const notifyIncomingCar = (carPlate: string) => {
   );
 };
 
-// 💰 تنبيه عرض سعر جديد
 export const notifyNewOffer = (carPlate: string, price: number) => {
   playNormalAlert();
   vibrateDevice([400, 150, 400]);

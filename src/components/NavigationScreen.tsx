@@ -1,4 +1,3 @@
-// src/components/NavigationScreen.tsx
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -20,7 +19,6 @@ import {
   distanceToMinutes,
   formatDuration,
 } from '../utils/distance';
-import { assignChessSlot } from '../utils/chessGridEngine';
 import toast from 'react-hot-toast';
 import { sendCarComingPush, cancelScheduledPush } from '../lib/pushManager';
 
@@ -53,8 +51,8 @@ const BRAND = {
 };
 
 /* ─── Constants ─── */
-const CANCEL_WINDOW_SECONDS = 30; // ⏱️ مهلة الـ 30 ثانية المعتمدة قبل إرسال إشعار السايس
-const GPS_DEADBAND_METERS = 6;   // 🛡️ فلتر منع رعشة الخريطة
+const CANCEL_WINDOW_SECONDS = 30; // مهلة الـ 30 ثانية للعميل قبل إشعار السايس
+const GPS_DEADBAND_METERS = 6; // 🛡️ فلتر منع رعشة الخريطة - لا يتحدث الموقع إلا بعد تحرك حقيقي 6 أمتار
 
 /* ─── Icons ─── */
 const userIcon = new L.DivIcon({
@@ -71,6 +69,7 @@ const garageIcon = new L.DivIcon({
   iconAnchor: [18, 19],
 });
 
+/* ─── Helper: توحيد تحويل الوقت ─── */
 const toMs = (value: any): number => {
   if (!value) return 0;
   if (typeof value === 'number') {
@@ -80,6 +79,7 @@ const toMs = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+/* ─── Helper: حساب المسافة بالمتر لفلتر منع الرعشة ─── */
 const getDistanceMeters = (
   lat1: number, lon1: number,
   lat2: number, lon2: number
@@ -95,6 +95,7 @@ const getDistanceMeters = (
   return R * c;
 };
 
+/* ─── Map controller (محمي بالكامل من الانهيار) ─── */
 function MapController({
   userPos,
   garagePos,
@@ -135,6 +136,9 @@ function MapController({
   return null;
 }
 
+/* ════════════════════════════════════════════════════════════
+   ██  MAIN NAVIGATION SCREEN
+   ════════════════════════════════════════════════════════════ */
 export default function NavigationScreen() {
   const {
     garages,
@@ -155,28 +159,27 @@ export default function NavigationScreen() {
   const userPlateNav = normalizePlate(currentUser?.carPlate);
   const userPhoneClean = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
-  // 🛡️ الكشف المزدوج والآمن عن السيارة القادمة (لوحة + هاتف)
+  /* ── الكشف عن السيارة القادمة ── */
   const myIncomingCar = useMemo(() => {
-    return incomingCars.find((c) => {
-      if (c.status !== 'coming') return false;
-      const samePlate = !!userPlateNav && normalizePlate(c.carPlate) === userPlateNav;
-      const cPhone = c.customerPhone ? normalizePhone(c.customerPhone) : '';
-      const samePhone = Boolean(userPhoneClean && cPhone === userPhoneClean);
-      const sameGarage = selectedGarageId ? String(c.garageId) === String(selectedGarageId) : true;
-      return (samePlate || samePhone) && sameGarage;
-    });
-  }, [incomingCars, selectedGarageId, userPlateNav, userPhoneClean]);
+    return incomingCars.find(
+      (c) =>
+        c.garageId === selectedGarageId &&
+        normalizePlate(c.carPlate) === userPlateNav &&
+        c.status === 'coming',
+    );
+  }, [incomingCars, selectedGarageId, userPlateNav]);
 
-  // ✅ الكشف اللحظي عن الجلسة النشطة
+  /* ✅ الكشف اللحظي عن الجلسة النشطة */
   const myActiveSession = useMemo(() => {
     return sessions
-      .filter((sess) => {
-        if (sess.status !== 'active') return false;
-        const samePlate = !!userPlateNav && normalizePlate(sess.carPlate) === userPlateNav;
-        const sPhone = (sess as any).customerPhone ? normalizePhone((sess as any).customerPhone) : '';
-        const samePhone = Boolean(userPhoneClean && sPhone === userPhoneClean);
-        return samePlate || samePhone;
-      })
+      .filter(
+        (sess) =>
+          sess.status === 'active' &&
+          (
+            normalizePlate(sess.carPlate) === userPlateNav ||
+            (userPhoneClean && normalizePhone((sess as any).customerPhone || '') === userPhoneClean)
+          ),
+      )
       .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
   }, [sessions, userPlateNav, userPhoneClean]);
 
@@ -201,6 +204,8 @@ export default function NavigationScreen() {
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const realtimeChannelRef = useRef<any>(null);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  
+  // 🛡️ ذاكرة الموقع الأخير المستقر لفلترة ضوضاء الـ GPS
   const lastStableCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
@@ -268,6 +273,13 @@ export default function NavigationScreen() {
     realtimeChannelRef.current = channel;
     pollingIntervalRef.current = setInterval(fastFetch, 1500);
 
+    const handleFocus = () => fastFetch();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') fastFetch();
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
       cancelled = true;
       supabase.removeChannel(channel);
@@ -276,10 +288,12 @@ export default function NavigationScreen() {
         clearInterval(pollingIntervalRef.current);
         pollingIntervalRef.current = null;
       }
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
 
-  /* ─── GPS ─── */
+  /* ─── GPS مع تطبيق فلتر الرعشة ─── */
   const handleGpsUpdate = useCallback((p: GeolocationPosition) => {
     const newLat = p.coords.latitude;
     const newLng = p.coords.longitude;
@@ -320,19 +334,30 @@ export default function NavigationScreen() {
     const id = navigator.geolocation.watchPosition(
       handleGpsUpdate,
       () => {},
-      { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 },
+      { 
+        enableHighAccuracy: true, 
+        maximumAge: 3000, 
+        timeout: 10000 
+      },
     );
 
     return () => navigator.geolocation.clearWatch(id);
   }, [handleGpsUpdate]);
 
+  /* ─── تحميل الخريطة ─── */
   useEffect(() => {
     const t = setTimeout(() => setMapReady(true), 200);
     return () => clearTimeout(t);
   }, []);
 
-  /* ─── ⏱️ مؤقت الإلغاء (30 ثانية دقيقة) ─── */
+  /* ─── مؤقت الإلغاء (30 ثانية) ─── */
   useEffect(() => {
+    if (!myIncomingCar) {
+      setCancelTimeLeft(CANCEL_WINDOW_SECONDS);
+      setCanCancel(true);
+      return;
+    }
+
     screenEnteredRef.current = getServerNow();
     setCancelTimeLeft(CANCEL_WINDOW_SECONDS);
     setCanCancel(true);
@@ -350,15 +375,13 @@ export default function NavigationScreen() {
     return () => window.clearInterval(interval);
   }, [myIncomingCar?.id]);
 
-  /* ─── ⏳ إرسال الـ Push للسايس فقط بعد انتهاء مهلة الـ 30 ثانية ─── */
+  /* ─── إرسال Push للجراج ─── */
   useEffect(() => {
-    if (!garage) return;
+    if (!myIncomingCar || !garage) return;
 
-    const carId = myIncomingCar?.id || `${userPlateNav}-${selectedGarageId}`;
-
-    if (lastCarIdRef.current !== carId) {
+    if (lastCarIdRef.current !== myIncomingCar.id) {
       pushSentRef.current = false;
-      lastCarIdRef.current = carId;
+      lastCarIdRef.current = myIncomingCar.id;
       setPushStatus('waiting');
     }
 
@@ -372,12 +395,14 @@ export default function NavigationScreen() {
     const elapsed = Math.floor((getServerNow() - screenEnteredRef.current) / 1000);
     const msLeft = Math.max(0, (CANCEL_WINDOW_SECONDS - elapsed) * 1000);
 
-    // جدولة إرسال التنبيه للسايس بعد انتهاء الـ 30 ثانية
     pushTimerRef.current = setTimeout(async () => {
       const freshState = useStore.getState();
-      const carPlate = myIncomingCar?.carPlate || currentUserRef.current?.carPlate;
-      
-      if (!carPlate || pushSentRef.current) {
+      const stillComing = freshState.incomingCars.find(
+        (c) => c.id === myIncomingCar.id && c.status === 'coming',
+      );
+
+      if (!stillComing || pushSentRef.current) {
+        setPushStatus('cancelled');
         return;
       }
 
@@ -391,10 +416,10 @@ export default function NavigationScreen() {
 
         await sendCarComingPush({
           garageId: garage.id,
-          carPlate: carPlate,
+          carPlate: myIncomingCar.carPlate,
           estimatedMinutes: Math.max(1, estimatedMinutes),
           customerName: currentUserRef.current?.name,
-          agreedPrice: myIncomingCar?.agreedPrice ?? garage.basePrice,
+          agreedPrice: myIncomingCar.agreedPrice,
         });
 
         setPushStatus('sent');
@@ -411,9 +436,9 @@ export default function NavigationScreen() {
         pushTimerRef.current = null;
       }
     };
-  }, [garage, myIncomingCar?.id, userPlateNav, selectedGarageId]);
+  }, [myIncomingCar?.id, selectedGarageId, garage]);
 
-  /* ─── الانتقال التلقائي لشاشة العداد ─── */
+  /* ─── الانتقال اللحظي الفوري لشاشة العداد ─── */
   useEffect(() => {
     if (!myActiveSession) {
       navigatedToSessionRef.current = false;
@@ -427,6 +452,11 @@ export default function NavigationScreen() {
       setSelectedGarageId(myActiveSession.garageId);
     }
 
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+
     toast.success('بدأ حساب الركن الآن! ⏱️', { icon: '🚗', duration: 2500 });
     setScreen('session');
   }, [myActiveSession, selectedGarageId, setSelectedGarageId, setScreen]);
@@ -435,19 +465,29 @@ export default function NavigationScreen() {
     return (
       <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8 text-right">
         <div className="text-4xl mb-4">🔍</div>
-        <p className="text-slate-400 text-sm font-bold text-center mb-6">لم يتم تحديد جراج</p>
-        <button onClick={() => setScreen('list')} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm">
+        <p className="text-slate-400 text-sm font-bold text-center mb-6">
+          لم يتم تحديد جراج
+        </p>
+        <button
+          onClick={() => setScreen('list')}
+          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all"
+        >
           العودة للقائمة
         </button>
       </div>
     );
   }
 
-  const distance = calculateDistance(userPos.lat, userPos.lng, garage.lat, garage.lng);
+  const distance = calculateDistance(
+    userPos.lat, userPos.lng,
+    garage.lat, garage.lng,
+  );
   const minutes = distanceToMinutes(distance);
+
   const coordsText = `${garage.lat},${garage.lng}`;
   const isEligibleForFree = currentUser && !currentUser.hasUsedFreeSession;
 
+  /* ─── Handlers ─── */
   const copyCoords = async () => {
     try {
       if (navigator.clipboard?.writeText) {
@@ -472,7 +512,7 @@ export default function NavigationScreen() {
   };
 
   const handleCancelBooking = async () => {
-    if (!currentUser) return;
+    if (!currentUser || !myIncomingCar) return;
 
     if (pushTimerRef.current) {
       clearTimeout(pushTimerRef.current);
@@ -481,54 +521,48 @@ export default function NavigationScreen() {
     pushSentRef.current = true;
     setPushStatus('cancelled');
 
-    const carPlate = myIncomingCar?.carPlate || currentUser?.carPlate;
-    if (carPlate && pushStatus === 'sent') {
-      await cancelScheduledPush(garage.id, carPlate);
+    if (pushStatus === 'sent') {
+      await cancelScheduledPush(garage.id, myIncomingCar.carPlate);
     }
 
     const activeOffer = offers.find(
-      (o) => o.userId === currentUser.phone && (o.status === 'pending' || o.status === 'accepted')
+      (o) =>
+        o.userId === currentUser.phone &&
+        (o.status === 'pending' || o.status === 'accepted'),
     );
     if (activeOffer) cancelOffer(activeOffer.id);
 
-    if (myIncomingCar) {
-      removeIncomingCar(myIncomingCar.id);
-    }
-
+    removeIncomingCar(myIncomingCar.id);
     toast.success('تم إلغاء الحجز، يمكنك اختيار جراج آخر 🚗');
     setSelectedGarageId(null);
     setScreen('list');
   };
 
-  // 🚀 بدء الركن الفوري بدون أي تعليق
   const handleCarArrived = async () => {
     if (isArrivingRef.current) return;
     isArrivingRef.current = true;
 
-    // إلغاء مؤقت الـ Push لتجنب إرسال إشعار قدوم بعد الوصول
-    if (pushTimerRef.current) {
-      clearTimeout(pushTimerRef.current);
-      pushTimerRef.current = null;
-    }
-
     try {
-      const state = useStore.getState();
-      const carPlateToUse = myIncomingCar?.carPlate || currentUser?.carPlate;
-      if (!carPlateToUse) {
-        toast.error('رقم لوحة السيارة غير متوفر');
-        isArrivingRef.current = false;
+      if (!myIncomingCar || !garage) {
+        if (myActiveSession) {
+          navigatedToSessionRef.current = true;
+          setScreen('session');
+        }
         return;
       }
 
-      const np = normalizePlate(carPlateToUse);
+      const state = useStore.getState();
       const alreadyActive = state.sessions.find(
         (s) =>
           s.status === 'active' &&
-          (normalizePlate(s.carPlate) === np || (userPhoneClean && normalizePhone((s as any).customerPhone || '') === userPhoneClean))
+          (
+            normalizePlate(s.carPlate) === userPlateNav ||
+            (userPhoneClean && normalizePhone((s as any).customerPhone || '') === userPhoneClean)
+          ),
       );
 
       if (alreadyActive) {
-        if (myIncomingCar) await removeIncomingCar(myIncomingCar.id);
+        await removeIncomingCar(myIncomingCar.id);
         if (alreadyActive.garageId !== selectedGarageId) {
           setSelectedGarageId(alreadyActive.garageId);
         }
@@ -537,43 +571,36 @@ export default function NavigationScreen() {
         return;
       }
 
-      let assignedSlot = undefined;
-      if (garage.lat && garage.lng) {
-        const activeSessionsCount = state.sessions.filter(s => s.garageId === garage.id && s.status === 'active').length;
-        const slot = assignChessSlot(activeSessionsCount);
-        assignedSlot = slot.slotId;
-      }
+      const relatedOffer = offers.find(
+        (o) =>
+          o.carPlate === myIncomingCar.carPlate &&
+          (o.status === 'pending' || o.status === 'accepted'),
+      );
+      if (relatedOffer) cancelOffer(relatedOffer.id);
 
       const startTimeISO = new Date(getServerNow()).toISOString();
 
       await addSession({
         garageId: garage.id,
-        carPlate: carPlateToUse,
+        carPlate: myIncomingCar.carPlate,
         startTime: startTimeISO,
         status: 'active',
         source: 'app',
-        agreedPrice: myIncomingCar?.agreedPrice ?? garage.basePrice,
+        agreedPrice: myIncomingCar.agreedPrice,
         customerPhone: currentUser?.phone,
         customerName: currentUser?.name,
         startedBy: 'customer',
-        incomingCarId: myIncomingCar?.id || undefined,
-        securityShieldActive: false,
-        shieldLocked: false,
-        slotId: assignedSlot,
+        incomingCarId: myIncomingCar.id,
       } as any);
 
-      if (myIncomingCar) {
-        await removeIncomingCar(myIncomingCar.id);
-      }
-
+      await removeIncomingCar(myIncomingCar.id);
       navigatedToSessionRef.current = true;
       setScreen('session');
-      toast.success('بدأ حساب الركن الآن! ⏱️', { icon: '🚗' });
     } catch (err) {
-      console.error('❌ خطأ في تحويل العداد:', err);
-      setScreen('session');
+      console.error('❌ خطأ:', err);
+      toast.error('حدث خطأ، حاول مرة أخرى');
     } finally {
-      setTimeout(() => { isArrivingRef.current = false; }, 2000);
+      setTimeout(() => { isArrivingRef.current = false; }, 3000);
     }
   };
 
@@ -595,7 +622,10 @@ export default function NavigationScreen() {
         </button>
 
         <h2 className="text-xs font-black flex items-center gap-1.5" style={{ color: '#ffffff' }}>
-          <motion.div animate={{ x: [0, -3, 0] }} transition={{ repeat: Infinity, duration: 1.5 }}>
+          <motion.div
+            animate={{ x: [0, -3, 0] }}
+            transition={{ repeat: Infinity, duration: 1.5 }}
+          >
             <Navigation size={15} style={{ color: BRAND.blue }} />
           </motion.div>
           التوجيه للجراج
@@ -608,7 +638,13 @@ export default function NavigationScreen() {
       <div className="flex-1 px-4 pb-4 flex flex-col gap-3 overflow-y-auto">
 
         {/* 🏢 بطاقة اسم الجراج */}
-        <div className="rounded-2xl p-4 shrink-0 border" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+        <div
+          className="rounded-2xl p-4 shrink-0 border"
+          style={{
+            background: BRAND.navyLight,
+            borderColor: BRAND.border,
+          }}
+        >
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
               <Clock size={15} style={{ color: BRAND.green }} />
@@ -622,7 +658,15 @@ export default function NavigationScreen() {
             </div>
             
             <div className="text-right flex flex-col items-end">
-              <span style={{ color: '#ffffff', fontSize: '15px', fontWeight: 950, display: 'block', lineHeight: '1.2' }}>
+              <span
+                style={{
+                  color: '#ffffff',
+                  fontSize: '15px',
+                  fontWeight: 950,
+                  display: 'block',
+                  lineHeight: '1.2',
+                }}
+              >
                 {garage.name}
               </span>
               <div className="flex items-center gap-1 justify-end text-[10px] mt-1 font-bold" style={{ color: BRAND.slateMuted }}>
@@ -633,8 +677,11 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* 🗺️ الخريطة المستقرة */}
-        <div className="w-full h-44 rounded-2xl overflow-hidden relative shrink-0 border" style={{ transform: 'translateZ(0)', borderColor: BRAND.border }}>
+        {/* 🗺️ الخريطة المستقرة (بدون رعشة) */}
+        <div 
+          className="w-full h-44 rounded-2xl overflow-hidden relative shrink-0 border"
+          style={{ transform: 'translateZ(0)', borderColor: BRAND.border }} 
+        >
           {mapReady ? (
             <MapContainer
               key={`map-nav-${garage.id}`}
@@ -643,19 +690,35 @@ export default function NavigationScreen() {
               style={{ width: '100%', height: '100%' }}
               zoomControl={false}
             >
-              <TileLayer url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap' />
+              <TileLayer
+                url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              />
               <Marker position={[userPos.lat, userPos.lng]} icon={userIcon}>
                 <Popup>موقعك الحالي 🚗</Popup>
               </Marker>
               <Marker position={[garage.lat, garage.lng]} icon={garageIcon}>
                 <Popup>{garage.name} 🅿️</Popup>
               </Marker>
-              <Polyline positions={[[userPos.lat, userPos.lng], [garage.lat, garage.lng]]} color={BRAND.blue} weight={4} dashArray="8, 8" />
-              <MapController userPos={[userPos.lat, userPos.lng]} garagePos={[garage.lat, garage.lng]} />
+              <Polyline
+                positions={[
+                  [userPos.lat, userPos.lng],
+                  [garage.lat, garage.lng],
+                ]}
+                color={BRAND.blue}
+                weight={4}
+                dashArray="8, 8"
+              />
+              <MapController
+                userPos={[userPos.lat, userPos.lng]}
+                garagePos={[garage.lat, garage.lng]}
+              />
             </MapContainer>
           ) : (
             <div className="w-full h-full bg-slate-900 flex items-center justify-center">
-              <div className="text-slate-500 text-xs font-bold animate-pulse">🗺️ جاري تحميل الخريطة...</div>
+              <div className="text-slate-500 text-xs font-bold animate-pulse">
+                🗺️ جاري تحميل الخريطة...
+              </div>
             </div>
           )}
 
@@ -672,26 +735,41 @@ export default function NavigationScreen() {
             whileTap={{ scale: 0.98 }}
             onClick={openExternalMaps}
             className="w-full relative overflow-hidden flex items-center justify-center gap-2 py-3 px-4 rounded-xl cursor-pointer border-0 text-white font-black"
-            style={{ background: BRAND.blue, boxShadow: `0 4px 14px ${BRAND.blue}25` }}
+            style={{
+              background: BRAND.blue,
+              boxShadow: `0 4px 14px ${BRAND.blue}25`,
+            }}
           >
             <Navigation size={16} color="#ffffff" className="animate-bounce shrink-0" />
-            <span style={{ color: '#ffffff', fontSize: '14px', fontWeight: 950 }}>
+            <span
+              style={{
+                color: '#ffffff',
+                fontSize: '14px',
+                fontWeight: 950,
+              }}
+            >
               شغل الـ GPS وابدأ التحرك فوراً! 🗺️🚀
             </span>
           </motion.button>
 
-          <button onClick={copyCoords} className="flex items-center justify-center gap-1 text-[10px] py-0.5 border-0 bg-transparent cursor-pointer" style={{ color: BRAND.slateMuted }}>
+          <button
+            onClick={copyCoords}
+            className="flex items-center justify-center gap-1 text-[10px] py-0.5 border-0 bg-transparent cursor-pointer"
+            style={{ color: BRAND.slateMuted }}
+          >
             <Copy size={11} style={{ color: BRAND.slateMuted }} />
             <span>نسخ إحداثيات الجراج الجغرافية</span>
           </button>
         </div>
 
-        {/* معلومات السعر والأماكن */}
+        {/* معلومات السعر والأماكن وطرق الدفع المقبولة */}
         <div className="border rounded-xl p-3.5 shrink-0 space-y-2.5" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1 text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>
               <Car size={12} />
-              <span>{myIncomingCar?.agreedPrice ?? garage.basePrice} ج.م/ساعة</span>
+              <span>
+                {myIncomingCar?.agreedPrice ?? garage.basePrice} ج.م/ساعة
+              </span>
             </div>
             <span className="text-xs font-black font-mono" style={{ color: BRAND.blue }}>
               🚗 {currentUser?.carPlate}
@@ -699,20 +777,30 @@ export default function NavigationScreen() {
           </div>
 
           <div className="flex items-center justify-between border-t pt-2" style={{ borderColor: BRAND.border }}>
-            <span className={`text-xs font-black font-mono ${garage.availableSpots > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            <span
+              className={`text-xs font-black font-mono ${
+                garage.availableSpots > 0 ? 'text-emerald-400' : 'text-red-400'
+              }`}
+            >
               {garage.availableSpots} / {garage.capacity}
             </span>
             <span className="text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>الأماكن المتاحة الآن</span>
           </div>
 
+          {/* 🌟 شارة وسيلة الدفع المقبولة بالجراج */}
           <div className="flex items-center justify-between border-t pt-2" style={{ borderColor: BRAND.border }}>
             <span className="text-xs font-black flex items-center gap-1" style={{ color: BRAND.green }}>
               <CreditCard size={12} />
-              {garage.payment_mode === 'cash' ? '💵 نقدي فقط' : garage.payment_mode === 'wallet' ? '👝 محفظة فقط' : '💳 نقدي ومحفظة'}
+              {garage.payment_mode === 'cash'
+                ? '💵 نقدي فقط'
+                : garage.payment_mode === 'wallet'
+                ? '👝 محفظة فقط'
+                : '💳 نقدي ومحفظة'}
             </span>
             <span className="text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>طريقة الدفع المقبولة</span>
           </div>
 
+          {/* 🎁 شارة الهدية الترحيبية إن وجدت */}
           {isEligibleForFree && (
             <div className="border rounded-lg p-2 text-center flex items-center justify-center gap-1 text-[10px] font-black" style={{ background: BRAND.greenLight, borderColor: BRAND.green + '40', color: BRAND.green }}>
               <Gift size={12} style={{ color: BRAND.green }} />
@@ -721,36 +809,38 @@ export default function NavigationScreen() {
           )}
         </div>
 
-        {/* 🔔 مؤشر حالة الإشعار المتزامن مع عداد الـ 30 ثانية */}
-        <div
-          className="rounded-xl p-3 flex items-center gap-2 shrink-0 border"
-          style={{ 
-            background: pushStatus === 'sent' ? BRAND.greenLight : 'rgba(245, 158, 11, 0.08)', 
-            borderColor: pushStatus === 'sent' ? BRAND.green + '20' : 'rgba(245, 158, 11, 0.2)' 
-          }}
-        >
-          <span
-            className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-              pushStatus === 'sent'
-                ? 'bg-emerald-500'
-                : pushStatus === 'cancelled'
-                  ? 'bg-red-500'
-                  : 'bg-amber-500 animate-pulse'
-            }`}
-          />
-          <span
-            className="text-[10px] font-bold"
+        {/* 🔔 مؤشر حالة الـ Push */}
+        {myIncomingCar && (
+          <div
+            className="rounded-xl p-3 flex items-center gap-2 shrink-0 border"
             style={{ 
-              color: pushStatus === 'sent' ? BRAND.green : '#f59e0b'
+              background: pushStatus === 'sent' ? BRAND.greenLight : 'rgba(245, 158, 11, 0.08)', 
+              borderColor: pushStatus === 'sent' ? BRAND.green + '20' : 'rgba(245, 158, 11, 0.2)' 
             }}
           >
-            {pushStatus === 'sent'
-              ? '✅ تم إشعار الجراج بقدومك وتأكيد حجزك'
-              : pushStatus === 'cancelled'
-                ? '❌ تم إلغاء الإشعار'
-                : `⏳ سيتم إشعار الجراج تلقائياً بعد ${cancelTimeLeft} ثانية`}
-          </span>
-        </div>
+            <span
+              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                pushStatus === 'sent'
+                  ? 'bg-emerald-500'
+                  : pushStatus === 'cancelled'
+                    ? 'bg-red-500'
+                    : 'bg-amber-500 animate-pulse'
+              }`}
+            />
+            <span
+              className="text-[10px] font-bold"
+              style={{ 
+                color: pushStatus === 'sent' ? BRAND.green : '#f59e0b'
+              }}
+            >
+              {pushStatus === 'sent'
+                ? '✅ تم إشعار الجراج بقدومك وتأكيد حجزك'
+                : pushStatus === 'cancelled'
+                  ? '❌ تم إلغاء الإشعار'
+                  : `⏳ سيتم إشعار الجراج تلقائياً بعد ${cancelTimeLeft} ثانية`}
+            </span>
+          </div>
+        )}
 
         {/* زر وصلت للجراج */}
         {!myActiveSession && (
@@ -758,7 +848,10 @@ export default function NavigationScreen() {
             onClick={handleCarArrived}
             disabled={isArrivingRef.current}
             className="w-full py-3.5 rounded-xl active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 disabled:opacity-50 border-0 text-white cursor-pointer"
-            style={{ background: BRAND.greenDark, boxShadow: `0 4px 14px ${BRAND.green}20` }}
+            style={{
+              background: BRAND.greenDark,
+              boxShadow: `0 4px 14px ${BRAND.green}20`,
+            }}
           >
             <Navigation size={16} color="#ffffff" />
             <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 950, fontSize: '15px' }}>
@@ -767,10 +860,15 @@ export default function NavigationScreen() {
           </button>
         )}
 
-        {/* 🔄 زر الإلغاء الذكي مع العداد التنازلي التفاعلي */}
-        {!myActiveSession && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="shrink-0">
+        {/* 🔄 زر الإلغاء الذكي والمتحول */}
+        {myIncomingCar && !myActiveSession && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="shrink-0"
+          >
             {canCancel ? (
+              // ⏱️ المرحلة الأولى: أول 30 ثانية (إلغاء سريع بعداد تنازلي)
               <>
                 <button
                   onClick={handleCancelBooking}
@@ -780,17 +878,29 @@ export default function NavigationScreen() {
                   <XCircle size={15} />
                   إلغاء الحجز ({cancelTimeLeft}ث)
                 </button>
+
                 <div className="mt-1.5 bg-white/5 rounded-full h-1 overflow-hidden" style={{ background: BRAND.border }}>
-                  <div className="h-full bg-red-500 transition-all duration-1000" style={{ width: `${(cancelTimeLeft / CANCEL_WINDOW_SECONDS) * 100}%` }} />
+                  <div
+                    className="h-full bg-red-500 transition-all duration-1000"
+                    style={{
+                      width: `${(cancelTimeLeft / CANCEL_WINDOW_SECONDS) * 100}%`,
+                    }}
+                  />
                 </div>
               </>
             ) : (
+              // 🚀 المرحلة الثانية: بعد انتهاء الـ 30 ثانية وإرسال الإشعار للسايس
               <motion.button
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 onClick={handleCancelBooking}
                 className="w-full py-3 rounded-xl active:scale-95 transition-all flex items-center justify-center gap-2 border bg-transparent cursor-pointer"
-                style={{ color: BRAND.slateMuted, borderColor: BRAND.border, fontSize: 12, fontWeight: 900 }}
+                style={{
+                  color: BRAND.slateMuted,
+                  borderColor: BRAND.border,
+                  fontSize: 12,
+                  fontWeight: 900,
+                }}
               >
                 <XCircle size={14} style={{ color: BRAND.slateMuted }} />
                 <span>إلغاء الحجز واختيار جراج آخر</span>
