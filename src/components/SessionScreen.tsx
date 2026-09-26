@@ -13,7 +13,6 @@ import {
   Lock,
   Compass,
   Radio,
-  MapPin,
 } from 'lucide-react';
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import {
@@ -25,20 +24,20 @@ import { captureMagneticMass } from '../utils/batShieldEngine';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
-/* ─── 🎨 الألوان الرسمية ─── */
+/* ─── 🎨 الألوان الرسمية الأصلية لتطبيق Park'n 24 ─── */
 const BRAND = {
-  blue: '#1656b8',
-  blueDark: '#0f3d85',
-  blueLight: '#e8f0fe',
-  blueSoft: 'rgba(22, 86, 184, 0.08)',
-  green: '#8cc63f',
-  greenDark: '#6ea62a',
-  greenLight: 'rgba(140, 198, 63, 0.12)',
-  navy: '#0a1628',
-  navyLight: '#111e36',
-  slate: '#64748b',
-  slateMuted: '#94a3b8',
-  border: 'rgba(255, 255, 255, 0.08)',
+  blue: '#1656b8',       // الأزرق الرسمي
+  blueDark: '#0f3d85',   // الكحلي الفخم
+  blueLight: '#e8f0fe',  // الأزرق الفاتح جداً
+  blueSoft: 'rgba(22, 86, 184, 0.08)', // كحلي زجاجي ناعم
+  green: '#8cc63f',      // الأخضر الرسمي
+  greenDark: '#6ea62a',  // أخضر داكن للخطوط
+  greenLight: 'rgba(140, 198, 63, 0.12)', // خلفية خضراء ناعمة
+  navy: '#0a1628',       // الكحلي الليلي الغامق
+  navyLight: '#111e36',  // كحلي للبطاقات
+  slate: '#64748b',      // الرمادي الهادئ
+  slateMuted: '#94a3b8', // الرمادي الباهت
+  border: 'rgba(255, 255, 255, 0.08)', // حدود زجاجية رفيعة
 };
 
 const safeParseTime = (value: any): number => {
@@ -150,12 +149,10 @@ export default function SessionScreen() {
   useEffect(() => {
     if (!('geolocation' in navigator)) return;
 
-    // لو الدرع مفعل نأخذ إحداثيات مكان الركنة الدقيقة
     const carLat = activeSession?.shieldAnchorLat ? parseFloat(String(activeSession.shieldAnchorLat)) : null;
     const carLng = activeSession?.shieldAnchorLng ? parseFloat(String(activeSession.shieldAnchorLng)) : null;
 
     if (!carLat || !carLng) {
-      // إذا لم يفعل الدرع بعد، المسافة تعتبر 0م لأن العميل في الجراج
       setDistanceToCar(0);
       return;
     }
@@ -165,7 +162,6 @@ export default function SessionScreen() {
         const clientLat = pos.coords.latitude;
         const clientLng = pos.coords.longitude;
         const rawDist = haversineDistMeters(clientLat, clientLng, carLat, carLng);
-        // لو المسافة أقل من 4 متر تعتبر 0 متر بالضبط (بجوار السيارة)
         const finalDist = rawDist <= 4 ? 0 : Math.round(rawDist);
         setDistanceToCar(finalDist);
       },
@@ -289,7 +285,6 @@ export default function SessionScreen() {
         const clientLat = pos.coords.latitude;
         const clientLng = pos.coords.longitude;
 
-        // إحداثيات الجراج بأمان
         const garageLat = garage ? parseFloat(String((garage as any).lat ?? (garage as any).latitude ?? clientLat)) : clientLat;
         const garageLng = garage ? parseFloat(String((garage as any).lng ?? (garage as any).longitude ?? clientLng)) : clientLng;
 
@@ -314,10 +309,10 @@ export default function SessionScreen() {
           }
 
           toast.success('🛡️ تم تفعيل درع الأمان VIP وتأمين مكان السيارة بنجاح!', { id: 'shield_activation', duration: 5000 });
-          setDistanceToCar(0); // تصبح المسافة 0م فوراً
+          setDistanceToCar(0);
           await fetchAll();
         } catch {
-          toast.error('حدث خطأ أثناء التفعيل، يرجى المحاولة مرة أخرى.', { id: 'shield_activation' });
+          toast.error('حدث خطأ أثناء التفعيل، يرجى المحاولة ثانية.', { id: 'shield_activation' });
         } finally {
           setIsActivatingShield(false);
         }
@@ -350,7 +345,7 @@ export default function SessionScreen() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full text-white flex flex-col justify-between p-5 overflow-y-auto safe-top safe-bottom"
+      className="h-full text-white flex flex-col justify-between p-5 overflow-y-auto safe-top safe-bottom text-right"
       style={{ background: BRAND.navy, direction: 'rtl' }}
     >
       {/* ═══ الجزء العلوي ═══ */}
@@ -493,7 +488,7 @@ export default function SessionScreen() {
           <Compass size={16} className="text-sky-400/60 shrink-0" />
         </div>
 
-        {/* 🛡️ بطاقة درع الأمان VIP المبسطة والفاخرة */}
+        {/* 🛡️ بطاقة درع الأمان VIP الفاخرة والمبسطة */}
         {activeSession.source === 'app' && (
           <div 
             className="w-full mt-3 rounded-2xl p-4 border transition-all"
@@ -580,7 +575,7 @@ export default function SessionScreen() {
         )}
       </div>
 
-      {/* ═══ الجزء السفلي ═══ */}
+      {/* ═══ الجزء السفلي: أزرار الإنهاء والعودة ═══ */}
       <div className="pt-2 shrink-0 space-y-2">
         <button
           onClick={() => setScreen('summary')}

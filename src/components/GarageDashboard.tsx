@@ -931,7 +931,7 @@ export default function GarageDashboard() {
     [offers, currentGarageId]
   );
   const carsOnTheWay = useMemo(
-    () => incomingCars.filter(c => c.garageId === currentGarageId && c.status === 'coming'),
+    () => (incomingCars || []).filter(c => String(c.garageId) === String(currentGarageId) && c.status === 'coming'),
     [incomingCars, currentGarageId]
   );
 
