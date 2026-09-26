@@ -416,7 +416,7 @@ const useOwnerValetLocations = (
   return locations;
 };
 
-// 👑 بانر متابعة الفالية المباشر للمالك والأدمن
+// 👑 مكون تتبع السياس المتواجدين (تمت إعادته وتأمينه لحل مشكلة الانهيار)
 const OwnerValetLocationBanner = memo(function OwnerValetLocationBanner({
   valetLocations,
 }: {
@@ -585,40 +585,6 @@ const ValetGeofenceBlockScreen = memo(function ValetGeofenceBlockScreen({
   );
 });
 
-const toMs = (value: any): number => {
-  if (!value) return 0;
-  if (typeof value === 'string') {
-    const ms = new Date(value).getTime();
-    return Number.isFinite(ms) && ms > 0 ? ms : 0;
-  }
-  if (typeof value === 'number') {
-    return value < 1_000_000_000_000 ? value * 1000 : value;
-  }
-  return 0;
-};
-
-const formatElapsed = (totalSeconds: number): string => {
-  if (totalSeconds < 0) totalSeconds = 0;
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  if (h > 0) return `${h}س ${m}د ${s}ث`;
-  if (m > 0) return `${m}د ${s}ث`;
-  return `${s}ث`;
-};
-
-const getLocalToday = (): string => {
-  const n = new Date(getServerNow());
-  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
-};
-
-const timestampToLocalDate = (ts: number): string => {
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-
-const normalizeSearchPlate = (plate?: string): string => normalizePlate(plate);
-
 interface ActiveSessionCardProps {
   session: any;
   basePrice: number;
@@ -757,6 +723,7 @@ export default function GarageDashboard() {
 
   const [ownerValetView, setOwnerValetView] = useState(false);
 
+  // 🌟 إلغاء الـ useState وجعل قراءة الدور لحظية لمنع تجميد شاشات الأدمن والسايس
   const garageRole = isAdmin ? 'owner' : ((localStorage.getItem('garageRole') as 'owner' | 'valet') || 'owner');
 
   const isRealValet = !isAdmin && garageRole === 'valet';
@@ -1180,7 +1147,6 @@ export default function GarageDashboard() {
     const at = getServerNow();
     const startTimeISO = new Date(at).toISOString();
     
-      // 🎯 تعيين مربع شطرنج تلقائي تتابعي ومضمون للسايس يدوياً دون أي فحص تصادم معقد
     let assignedSlot = undefined;
     const slot = assignChessSlot(activeSessions.length);
     assignedSlot = slot.slotId;
@@ -1318,7 +1284,7 @@ export default function GarageDashboard() {
     
     pausePolling(2000);
     
-     try {
+    try {
       const np = normalizePlate(carPlate);
       const existing = useStore.getState().sessions.find(s => normalizePlate(s.carPlate) === np && s.status === 'active');
       if (existing) { 
@@ -1330,7 +1296,6 @@ export default function GarageDashboard() {
       const ro = offers.find(o => normalizePlate(o.carPlate) === np && (o.status === 'pending' || o.status === 'accepted'));
       if (ro) cancelOffer(ro.id);
 
-      // 🎯 تعيين مربع الشطرنج تتابعياً وبسهولة فور الاستلام والوصول
       let assignedSlot = undefined;
       const activeSessionsCount = activeSessions.length;
       const slot = assignChessSlot(activeSessionsCount);
@@ -1349,23 +1314,8 @@ export default function GarageDashboard() {
         customerName: car.customerName, 
         startedBy: 'garage', 
         incomingCarId: carId, 
-        securityShieldActive: car.securityShieldActive ?? false, // وراثة اختيار العميل التلقائي
-        slotId: assignedSlot, // حفظ رقم المربع المخصص
-        addedBy: isValet ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`) : '' 
-      } as any);
-
-      await addSession({ 
-        garageId: garage.id, 
-        carPlate: np, 
-        startTime: startTimeISO, 
-        status: 'active', 
-        source: 'app', 
-        agreedPrice: car.agreedPrice, 
-        customerPhone: car.customerPhone, 
-        customerName: car.customerName, 
-        startedBy: 'garage', 
-        incomingCarId: carId, 
         securityShieldActive: car.securityShieldActive ?? false,
+        slotId: assignedSlot,
         addedBy: isValet ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`) : '' 
       } as any);
       
@@ -1591,7 +1541,7 @@ export default function GarageDashboard() {
                 ))}
               </div>
             </div>
-            <button onClick={handleSaveSettings} className="w-full font-black flex items-center justify-center gap-2 active:scale-95 py-3 rounded-xl text-white border-0 cursor-pointer text-xs" style={{ background: BRAND.blue }}><Save size={16} /> حفظ التغييرات</button>
+            <button onClick={handleSaveSettings} className="w-full font-black py-3 rounded-xl text-white border-0 cursor-pointer text-xs" style={{ background: BRAND.blue }}><Save size={16} /> حفظ التغييرات</button>
           </motion.div>
         </motion.div>
       )}
@@ -1704,7 +1654,7 @@ export default function GarageDashboard() {
                 style={{ borderColor: BRAND.blue }}
               >
                 <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin : 'https://parkn24.com')}&color=16-86-184`}
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin : 'https://parkn24.com')}&color=16-86-184`}
                   alt="QR Code"
                   className="w-full h-full object-contain"
                 />

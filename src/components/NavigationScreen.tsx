@@ -97,7 +97,7 @@ const getDistanceMeters = (
   return R * c;
 };
 
-/* ─── Map controller (محمي بالكامل من الانهيار) ─── */
+/* ─── Map controller ─── */
 function MapController({
   userPos,
   garagePos,
@@ -161,7 +161,7 @@ export default function NavigationScreen() {
   const userPlateNav = normalizePlate(currentUser?.carPlate);
   const userPhoneClean = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
-  /* ── 🛡️ الكشف المزدوج والآمن عن السيارة القادمة لمنع اختفاء العداد المفاجئ ── */
+  /* ── الكشف المزدوج والآمن عن السيارة القادمة (لوحة + هاتف) لمنع اختفاء العداد ── */
   const myIncomingCar = useMemo(() => {
     if (!selectedGarageId) return undefined;
     return incomingCars.find((c) => {
@@ -173,7 +173,7 @@ export default function NavigationScreen() {
     });
   }, [incomingCars, selectedGarageId, userPlateNav, userPhoneClean]);
 
-  /* ✅ الكشف اللحظي المزدوج والموثق عن الجلسة النشطة للتوجيه التلقائي الفوري */
+  /* ✅ الكشف اللحظي المزدوج عن الجلسة النشطة */
   const myActiveSession = useMemo(() => {
     return sessions
       .filter((sess) => {
@@ -207,8 +207,6 @@ export default function NavigationScreen() {
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const realtimeChannelRef = useRef<any>(null);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  
-  // 🛡️ ذاكرة الموقع الأخير المستقر لفلترة ضوضاء الـ GPS
   const lastStableCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
@@ -296,7 +294,7 @@ export default function NavigationScreen() {
     };
   }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
 
-  /* ─── GPS مع تطبيق فلتر الرعشة ─── */
+  /* ─── GPS ─── */
   const handleGpsUpdate = useCallback((p: GeolocationPosition) => {
     const newLat = p.coords.latitude;
     const newLng = p.coords.longitude;
@@ -347,13 +345,12 @@ export default function NavigationScreen() {
     return () => navigator.geolocation.clearWatch(id);
   }, [handleGpsUpdate]);
 
-  /* ─── تحميل الخريطة ─── */
   useEffect(() => {
     const t = setTimeout(() => setMapReady(true), 200);
     return () => clearTimeout(t);
   }, []);
 
-  /* ─── مؤقت الإلغاء (30 ثانية حقيقية ومؤمنة) ─── */
+  /* ─── ⏱️ مؤقت الإلغاء (عداد تنازلي ثابت ومستقر على واجهة المستخدم) ─── */
   useEffect(() => {
     screenEnteredRef.current = getServerNow();
     setCancelTimeLeft(CANCEL_WINDOW_SECONDS);
@@ -370,7 +367,7 @@ export default function NavigationScreen() {
     }, 1000);
 
     return () => window.clearInterval(interval);
-  }, [myIncomingCar?.id]);
+  }, []);
 
   /* ─── إرسال Push للجراج ─── */
   useEffect(() => {
@@ -435,7 +432,7 @@ export default function NavigationScreen() {
     };
   }, [myIncomingCar?.id, selectedGarageId, garage]);
 
-  /* ─── الانتقال اللحظي الفوري لشاشة العداد ─── */
+  /* ─── الانتقال التلقائي لشاشة العداد ─── */
   useEffect(() => {
     if (!myActiveSession) {
       navigatedToSessionRef.current = false;
@@ -826,37 +823,35 @@ export default function NavigationScreen() {
         </div>
 
         {/* 🔔 مؤشر حالة الـ Push */}
-        {myIncomingCar && (
-          <div
-            className="rounded-xl p-3 flex items-center gap-2 shrink-0 border"
+        <div
+          className="rounded-xl p-3 flex items-center gap-2 shrink-0 border"
+          style={{ 
+            background: pushStatus === 'sent' ? BRAND.greenLight : 'rgba(245, 158, 11, 0.08)', 
+            borderColor: pushStatus === 'sent' ? BRAND.green + '20' : 'rgba(245, 158, 11, 0.2)' 
+          }}
+        >
+          <span
+            className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+              pushStatus === 'sent'
+                ? 'bg-emerald-500'
+                : pushStatus === 'cancelled'
+                  ? 'bg-red-500'
+                  : 'bg-amber-500 animate-pulse'
+            }`}
+          />
+          <span
+            className="text-[10px] font-bold"
             style={{ 
-              background: pushStatus === 'sent' ? BRAND.greenLight : 'rgba(245, 158, 11, 0.08)', 
-              borderColor: pushStatus === 'sent' ? BRAND.green + '20' : 'rgba(245, 158, 11, 0.2)' 
+              color: pushStatus === 'sent' ? BRAND.green : '#f59e0b'
             }}
           >
-            <span
-              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                pushStatus === 'sent'
-                  ? 'bg-emerald-500'
-                  : pushStatus === 'cancelled'
-                    ? 'bg-red-500'
-                    : 'bg-amber-500 animate-pulse'
-              }`}
-            />
-            <span
-              className="text-[10px] font-bold"
-              style={{ 
-                color: pushStatus === 'sent' ? BRAND.green : '#f59e0b'
-              }}
-            >
-              {pushStatus === 'sent'
-                ? '✅ تم إشعار الجراج بقدومك وتأكيد حجزك'
-                : pushStatus === 'cancelled'
-                  ? '❌ تم إلغاء الإشعار'
-                  : `⏳ سيتم إشعار الجراج تلقائياً بعد ${cancelTimeLeft} ثانية`}
-            </span>
-          </div>
-        )}
+            {pushStatus === 'sent'
+              ? '✅ تم إشعار الجراج بقدومك وتأكيد حجزك'
+              : pushStatus === 'cancelled'
+                ? '❌ تم إلغاء الإشعار'
+                : `⏳ سيتم إشعار الجراج تلقائياً بعد ${cancelTimeLeft} ثانية`}
+          </span>
+        </div>
 
         {/* زر وصلت للجراج */}
         {!myActiveSession && (
@@ -877,7 +872,7 @@ export default function NavigationScreen() {
         )}
 
         {/* 🔄 زر الإلغاء الذكي والمتحول */}
-        {myIncomingCar && !myActiveSession && (
+        {!myActiveSession && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
