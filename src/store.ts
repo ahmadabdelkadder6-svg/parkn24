@@ -1,3 +1,4 @@
+// src/store.ts
 import { create } from 'zustand';
 import { supabase } from './lib/supabase';
 
@@ -28,7 +29,7 @@ export interface Garage {
   valet3Active: boolean;
   isActive: boolean;
   payment_mode?: 'cash' | 'wallet' | 'both'; 
-  area?: string; // 🗺️ المنطقة الجغرافية للجراج (مثال: وسط البلد، مصر الجديدة، المعادي)
+  area?: string; // 🗺️ المنطقة الجغرافية للجراج
 }
 
 export interface ParkingSession {
@@ -55,6 +56,19 @@ export interface ParkingSession {
   settled_at?: string;
   freeMinutesApplied?: number;
   isFirstFreeSession?: boolean;
+
+  // 🛡️ الحقول الأمنية والفيزيائية الجديدة لمنظومة الشطرنج والخفاش
+  securityShieldActive?: boolean;
+  isBreached?: boolean;
+  magneticBaseline?: number;
+  shieldAnchorLat?: number;
+  shieldAnchorLng?: number;
+  shieldActivatedAt?: string | number;
+  shieldLocked?: boolean;
+  responsibleValet?: string;
+  valetNumber?: number;
+  slotId?: string;
+  breachReason?: string;
 }
 
 export interface Offer {
@@ -92,6 +106,7 @@ export interface IncomingCar {
   startTime: number;
   estimatedArrival: number;
   status: 'coming';
+  securityShieldActive?: boolean;
 }
 
 export interface Message {
@@ -257,24 +272,30 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-// 🛡️ دالة البصمة الفولاذية الموحدة لجميع لوحات السيارات (تمنع التحايل ومطابقة لقاعدة البيانات القديمة 100%)
+export const haversineDistanceMeters = (
+  lat1: number, lon1: number,
+  lat2: number, lon2: number
+): number => {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+// 🛡️ دالة البصمة الفولاذية الموحدة لجميع لوحات السيارات
 export const getPlateFingerprint = (plate?: any): string => {
   if (!plate) return '';
   let str = String(plate).trim();
 
-  // 1️⃣ إزالة المسافات الصامتة والفواصل الخفية ورموز الـ Unicode الخاصة
   str = str.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '');
-
-  // 2️⃣ إزالة التطويل والكشيدة (ـ) والتشكيل والتنوين
   str = str.replace(/\u0640/g, '');
-
-  // 3️⃣ تفكيك الـ Unicode لتوحيد الحروف المركبة (NFKD Normalization)
   str = str.normalize('NFKD');
-
-  // 4️⃣ حذف الهمزات وعلامات التشكيل بعد التفكيك
   str = str.replace(/[\u064B-\u065F\u0670\u0654\u0655\u0653]/g, '');
 
-  // 5️⃣ تحويل كافة الأرقام الهندية والشرقية (١٢٣ / ۱۲۳) إلى أرقام عادية (123)
   const easternDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
   const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
   for (let i = 0; i <= 9; i++) {
@@ -282,7 +303,6 @@ export const getPlateFingerprint = (plate?: any): string => {
     str = str.split(persianDigits[i]).join(String(i));
   }
 
-  // 6️⃣ تحويل الحروف الإنجليزية إلى عربية في حال حاول كتابتها بالإنجليزية
   str = str.toUpperCase();
   const enToAr: Record<string, string> = {
     'A': 'ا', 'B': 'ب', 'C': 'س', 'D': 'د', 'E': 'ي', 'F': 'ف',
@@ -293,23 +313,12 @@ export const getPlateFingerprint = (plate?: any): string => {
   };
   str = str.replace(/[A-Z]/g, (ch) => enToAr[ch] || '');
 
-  // 7️⃣ توحيد الحروف المتشابهة لقطع أي محاولة تلاعب
-  // تحويل كافة أشكال الألف والهمزات (أ / إ / آ / ٱ / ا) إلى حرف "ا" موحد
   str = str.replace(/[\u0622\u0623\u0625\u0671\u0672\u0673\u0675\u0627]/g, 'ا');
-
-  // توحيد الهمزات المنفصلة وعلى الياء والواو (ء / ئ / ؤ)
   str = str.replace(/[ءئ]/g, 'ي').replace(/ؤ/g, 'و');
-
-  // توحيد التاء المربوطة بالهاء (ة -> ه)
   str = str.replace(/ة/g, 'ه');
-
-  // توحيد الألف المقصورة بالياء (ى -> ي)
   str = str.replace(/[ىی]/g, 'ي');
-
-  // توحيد الكاف الفارسية والمعربة (ک / گ -> ك)
   str = str.replace(/[کگ]/g, 'ك');
 
-  // 8️⃣ عزل الحروف الصافية والأرقام
   const letters = str.replace(/[^ا-ي]/g, '');
   const digits = str.replace(/[^0-9]/g, '');
 
@@ -317,7 +326,6 @@ export const getPlateFingerprint = (plate?: any): string => {
   if (!letters) return `_${digits}`;
   if (!digits) return `${letters}_`;
 
-  // 🌟 إرجاع البصمة بالشرطة السفلية لضمان مطابقة الـ Database القديمة والجديدة فوراً!
   return `${letters}_${digits}`;
 };
 
@@ -325,25 +333,20 @@ export const normalizePlate = (plate?: any): string => {
   return getPlateFingerprint(plate);
 };
 
-// 📱 دالة تنظيف وتوحيد رقم الهاتف المصري
 export const normalizePhone = (phone?: any): string => {
   if (!phone) return '';
   let str = String(phone).trim();
 
-  // تحويل الأرقام الهندية/الشرقية (٠-٩) إلى أرقام إنجليزية (0-9)
   const arabicNums = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
   for (let i = 0; i < 10; i++) {
     str = str.replace(new RegExp(arabicNums[i], 'g'), String(i));
   }
 
-  // إزالة أي رموز أو حروف ومسافات
   let clean = str.replace(/[^\d]/g, '');
 
-  // إزالة كود مصر الدولي (+20 أو 0020 أو 20) إن وجد
   if (clean.startsWith('0020')) clean = clean.substring(4);
   else if (clean.startsWith('20')) clean = clean.substring(2);
 
-  // لو المستخدم بدأ بـ 10 أو 11 أو 12 أو 15 مباشرة (بدون الصفر الأول) بنضيف الصفر تلقائياً
   if ((clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('12') || clean.startsWith('15')) && clean.length === 10) {
     clean = '0' + clean;
   }
@@ -351,10 +354,8 @@ export const normalizePhone = (phone?: any): string => {
   return clean.substring(0, 11);
 };
 
-// 🇪🇬 دالة فحص صارمة للتأكد أن الرقم مصري صحيح (11 رقم ويبدأ بـ 010 / 011 / 012 / 015)
 export const isValidEgyptianPhone = (phone: string): boolean => {
   const clean = normalizePhone(phone);
-  // فحص: 11 رقم، يبدأ بـ 01، ثم يليه (0 أو 1 أو 2 أو 5)، ثم 8 أرقام
   return /^01[0125][0-9]{8}$/.test(clean);
 };
 
@@ -407,7 +408,6 @@ export const getServerNow = (): number => {
   return Date.now() + serverTimeOffset;
 };
 
-// تشغيل المزامنة المبدئية فوراً
 syncServerClock();
 
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
@@ -511,6 +511,19 @@ const mapSession = (r: any): ParkingSession => {
     settled_at: r.settled_at || undefined,
     freeMinutesApplied: r.free_minutes_applied != null ? Number(r.free_minutes_applied) : 0,
     isFirstFreeSession: isFree,
+
+    // 🛡️ الحقول الأمنية والفيزيائية الجديدة لشطرنج الخفاش
+    securityShieldActive: r.security_shield_active ?? false,
+    isBreached: r.is_breached ?? false,
+    magneticBaseline: r.magnetic_baseline != null ? Number(r.magnetic_baseline) : undefined,
+    shieldAnchorLat: r.shield_anchor_lat != null ? Number(r.shield_anchor_lat) : undefined,
+    shieldAnchorLng: r.shield_anchor_lng != null ? Number(r.shield_anchor_lng) : undefined,
+    shieldActivatedAt: r.shield_activated_at || undefined,
+    shieldLocked: r.shield_locked ?? false,
+    responsibleValet: r.responsible_valet || undefined,
+    valetNumber: r.valet_number != null ? Number(r.valet_number) : undefined,
+    slotId: r.slot_id || undefined,
+    breachReason: r.breach_reason || undefined,
   };
 };
 
@@ -535,6 +548,7 @@ const mapIncoming = (r: any): IncomingCar => ({
   startTime: new Date(r.created_at).getTime(),
   estimatedArrival: r.estimated_arrival,
   status: 'coming',
+  securityShieldActive: r.security_shield_active ?? false,
 });
 
 const mapMessage = (r: any): Message => ({
@@ -630,6 +644,11 @@ interface AppState {
   closeMessage: (id: string) => Promise<void>;
   fetchAll: () => Promise<void>;
   logout: () => void;
+
+  // 🛡️ دوال الحماية المتقدمة والنبضات الجديدة لشطرنج الخفاش
+  setSessionSecurityShield: (sessionId: string, active: boolean, lat?: number, lng?: number, magneticVal?: number) => Promise<void>;
+  activateShield: (sessionId: string, clientLat: number, clientLng: number, garageLat: number, garageLng: number, magnetic: number, bleId?: string) => Promise<{ success: boolean; reason?: string; distance?: number }>;
+  triggerSessionBreach: (sessionId: string, isBreached: boolean, reason?: string) => Promise<void>;
 }
 
 // ===================== Store =====================
@@ -977,6 +996,19 @@ export const useStore = create<AppState>((set, get) => ({
               settled_at: ss.settled_at || localVersion.settled_at,
               isFirstFreeSession: ss.isFirstFreeSession ?? localVersion.isFirstFreeSession,
               freeMinutesApplied: ss.freeMinutesApplied ?? localVersion.freeMinutesApplied,
+              
+              // مزامنة حقول الحماية والفيزياء
+              securityShieldActive: ss.securityShieldActive ?? localVersion.securityShieldActive,
+              isBreached: ss.isBreached ?? localVersion.isBreached,
+              magneticBaseline: ss.magneticBaseline ?? localVersion.magneticBaseline,
+              shieldAnchorLat: ss.shieldAnchorLat ?? localVersion.shieldAnchorLat,
+              shieldAnchorLng: ss.shieldAnchorLng ?? localVersion.shieldAnchorLng,
+              shieldActivatedAt: ss.shieldActivatedAt ?? localVersion.shieldActivatedAt,
+              shieldLocked: ss.shieldLocked ?? localVersion.shieldLocked,
+              responsibleValet: ss.responsibleValet ?? localVersion.responsibleValet,
+              valetNumber: ss.valetNumber ?? localVersion.valetNumber,
+              slotId: ss.slotId ?? localVersion.slotId,
+              breachReason: ss.breachReason ?? localVersion.breachReason,
             };
           }
           if (localVersion.totalPrice != null && localVersion.totalPrice > 0) return localVersion;
@@ -1244,6 +1276,9 @@ export const useStore = create<AppState>((set, get) => ({
         settled: false,
         isFirstFreeSession: eligibleForFree,
         freeMinutesApplied: 0,
+
+        // وراثة درع الأمان التلقائي من طلب السيارة القادمة
+        securityShieldActive: s.securityShieldActive ?? false,
       };
 
       set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]) }));
@@ -1271,6 +1306,7 @@ export const useStore = create<AppState>((set, get) => ({
           settled: false,
           is_first_free_session: eligibleForFree,
           free_minutes_applied: 0,
+          security_shield_active: s.securityShieldActive ?? false,
         }).select().single();
 
         if (error) {
@@ -1326,9 +1362,18 @@ export const useStore = create<AppState>((set, get) => ({
 
       const commissionRate = garage?.commissionRate ?? 10;
       const isAppSession = session.source === 'app';
-      const commissionAmount = isAppSession
-        ? Math.round(((safeTotalPrice * commissionRate) / 100) * 100) / 100
+      
+      // 🛡️ حساب الحصص المالية للدرع والوقت (10ج = 5ج للتطبيق + 5ج للجراج)
+      const isShieldActive = isAppSession && (session.securityShieldActive === true);
+      const shieldTimeOnlyPrice = isShieldActive ? Math.max(0, safeTotalPrice - 10) : safeTotalPrice;
+
+      // عمولة وقت الركن فقط
+      const timeCommission = isAppSession
+        ? Math.round(((shieldTimeOnlyPrice * commissionRate) / 100) * 100) / 100
         : 0;
+
+      // إضافة الـ 5ج عمولة درع الأمان للتطبيق
+      const commissionAmount = timeCommission + (isShieldActive ? 5 : 0);
       const netRevenue = Math.round((safeTotalPrice - commissionAmount) * 100) / 100;
 
       const isAutoConfirmed = paymentMethod === 'wallet';
@@ -1702,7 +1747,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   addIncomingCar: async (c) => {
     const incomingId = crypto.randomUUID();
-    const newC: IncomingCar = { ...c, id: incomingId, startTime: Date.now(), status: 'coming' };
+    const newC: IncomingCar = { ...c, id: incomingId, startTime: Date.now(), status: 'coming', securityShieldActive: c.securityShieldActive ?? false };
     set((st) => ({ incomingCars: [newC, ...st.incomingCars] }));
     if (!isSupabaseConfigured()) return;
     try {
@@ -1710,6 +1755,7 @@ export const useStore = create<AppState>((set, get) => ({
         id: incomingId, garage_id: c.garageId, car_plate: c.carPlate,
         customer_name: c.customerName, customer_phone: c.customerPhone,
         agreed_price: c.agreedPrice, estimated_arrival: c.estimatedArrival,
+        security_shield_active: c.securityShieldActive ?? false,
       }).select().single();
       if (error) { console.error('❌', error); set((st) => ({ incomingCars: st.incomingCars.filter((x) => x.id !== incomingId) })); return; }
       if (data) set((st) => ({ incomingCars: st.incomingCars.map((x) => (x.id === incomingId ? mapIncoming(data) : x)) }));
@@ -1780,6 +1826,110 @@ export const useStore = create<AppState>((set, get) => ({
     if (!isSupabaseConfigured()) return;
     const { error } = await supabase.from('messages').update({ status: 'closed' }).eq('id', id);
     if (error) console.error('❌', error);
+  },
+
+  // 🛡️ [دالة 1]: تفعيل درع الأمان التلقائي العادي (Compatibility Fallback)
+  setSessionSecurityShield: async (sessionId, active, lat, lng, magneticVal) => {
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.id === sessionId
+          ? {
+              ...s,
+              securityShieldActive: active,
+              shieldAnchorLat: lat,
+              shieldAnchorLng: lng,
+              magneticBaseline: magneticVal || 65,
+              isBreached: false,
+            }
+          : s
+      ),
+    }));
+
+    if (!isSupabaseConfigured()) return;
+    try {
+      await supabase.from('sessions').update({
+        security_shield_active: active,
+        magnetic_baseline: magneticVal || 65,
+        shield_anchor_lat: lat,
+        shield_anchor_lng: lng,
+        is_breached: false,
+      }).eq('id', sessionId);
+    } catch {}
+  },
+
+  // 🛡️ [دالة 2]: تفعيل الدرع الفولاذي بقفل نهائي وشرط الـ 250م للجراج
+  activateShield: async (sessionId, clientLat, clientLng, garageLat, garageLng, magnetic, bleId) => {
+    const dist = haversineDistanceMeters(clientLat, clientLng, garageLat, garageLng);
+    
+    // فحص شرط الـ 250 متر الصارم
+    if (dist > 250) {
+      return { success: false, reason: 'outside_geofence', distance: Math.round(dist) };
+    }
+
+    const now = Date.now();
+    const nowISO = new Date(now).toISOString();
+
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.id === sessionId
+          ? {
+              ...s,
+              securityShieldActive: true,
+              shieldLocked: true, // 🔒 قفل الزر نهائياً لمنع العميل من التحايل والإلغاء
+              shieldActivatedAt: now,
+              anchorLat: clientLat,
+              anchorLng: clientLng,
+              magneticBaseline: magnetic,
+              bleDeviceId: bleId,
+              isBreached: false,
+            }
+          : s
+      ),
+    }));
+
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('sessions').update({
+          security_shield_active: true,
+          shield_locked: true,
+          shield_activated_at: nowISO,
+          shield_anchor_lat: clientLat,
+          shield_anchor_lng: clientLng,
+          magnetic_baseline: magnetic,
+          ble_device_id: bleId,
+          is_breached: false,
+        }).eq('id', sessionId);
+      } catch (err) {
+        console.error('Error syncing shield activation to Supabase:', err);
+      }
+    }
+
+    return { success: true, distance: Math.round(dist) };
+  },
+
+  // 🛡️ [دالة 3]: إطلاق وتصفير إنذار سرقة السيارة والـ GPS
+  triggerSessionBreach: async (sessionId, isBreached, reason) => {
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.id === sessionId
+          ? {
+              ...s,
+              isBreached,
+              breachReason: isBreached ? (reason || 'تم رصد حركة صاج مريبة عن الركنة!') : undefined,
+            }
+          : s
+      ),
+    }));
+
+    if (!isSupabaseConfigured()) return;
+    try {
+      await supabase.from('sessions').update({
+        is_breached: isBreached,
+        breach_reason: isBreached ? (reason || 'تم رصد حركة صاج مريبة عن الركنة!') : null,
+      }).eq('id', sessionId);
+    } catch (err) {
+      console.error('Error syncing breach state to Supabase:', err);
+    }
   },
 }));
 

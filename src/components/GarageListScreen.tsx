@@ -1,3 +1,4 @@
+// src/components/GarageListScreen.tsx
 import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -20,7 +21,8 @@ import {
   Sparkles,
   ChevronDown,
   QrCode,
-   Copy,
+  Copy,
+  Shield,
 } from 'lucide-react';
 import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
 import {
@@ -33,16 +35,16 @@ import TopUpWalletModal from './TopUpWalletModal';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 
-// 🎨 الألوان الرسمية الموحدة لتطبيق Park'n 24 (مريحة للعين وفخمة)
+// 🎨 الألوان الرسمية الموحدة لتطبيق Park'n 24
 const BRAND = {
   blue: '#1656b8',       // الأزرق الرسمي للوجو
   blueDark: '#0f3d85',   // كحلي داكن للنصوص والعناوين
   green: '#8cc63f',      // الأخضر الرسمي للوجو
   greenDark: '#6ea62a',  // أخضر داكن للقراءة
-  bg: '#f8fafc',         // خلفية التطبيق (رمادي هادئ جداً مريح للعين)
+  bg: '#f8fafc',         // خلفية التطبيق
   card: '#ffffff',       // كروت بيضاء نظيفة
   slate: '#475569',      // لون النصوص الجانبية
-  border: '#e2e8f0',     // حدود رفيعة جداً هادئة
+  border: '#e2e8f0',     // حدود رفيعة
 };
 
 interface GarageWithDistance extends Garage {
@@ -74,7 +76,7 @@ const safeParseTime = (value: unknown): number => {
   return 0;
 };
 
-// أيقونات المناطق هادئة وبسيطة
+// أيقونات المناطق
 const AREA_ICONS: Record<string, string> = {
   'وسط البلد': '🏢',
   'مصر الجديدة': '🏰',
@@ -270,14 +272,37 @@ export default function GarageListScreen() {
     if (myIncomingCar) { setSelectedGarageId(myIncomingCar.garageId); setScreen('navigation'); return; }
     if (offers.some((o) => o.userId === currentUser.phone && o.status === 'pending')) { toast.error('لديك عرض معلق بالفعل'); return; }
     if (garage.availableSpots <= 0) { toast.error('لا توجد أماكن متاحة حالياً'); return; }
+    
     const userWallet = currentUser.wallet || 0;
-    if (garage.payment_mode === 'wallet' && userWallet <= 0 && !isEligibleForFreeSession) { toast.error('عذراً، هذا الجراج يقبل الدفع بالمحفظة فقط. يرجى شحن محفظتك للمتابعة.'); setShowTopUp(true); return; }
+    if (garage.payment_mode === 'wallet' && userWallet <= 0 && !isEligibleForFreeSession) { 
+      toast.error('عذراً، هذا الجراج يقبل الدفع بالمحفظة فقط. يرجى شحن محفظتك للمتابعة.'); 
+      setShowTopUp(true); 
+      return; 
+    }
+
     try {
-      setIsBooking(true); setSelectedGarageId(garage.id);
-      await addIncomingCar({ garageId: garage.id, carPlate: currentUser.carPlate, customerName: currentUser.name, customerPhone: currentUser.phone, agreedPrice: garage.basePrice, estimatedArrival: Math.max(3, garage.minutes) });
+      setIsBooking(true); 
+      setSelectedGarageId(garage.id);
+      
+      // 🛡️ إنشاء الحجز مع جعل الدرع مطفأ افتراضياً ليقوم العميل بتفعيله لاحقاً بضغطة زر
+      await addIncomingCar({ 
+        garageId: garage.id, 
+        carPlate: currentUser.carPlate, 
+        customerName: currentUser.name, 
+        customerPhone: currentUser.phone, 
+        agreedPrice: garage.basePrice, 
+        estimatedArrival: Math.max(3, garage.minutes),
+        securityShieldActive: false // الدرع مطفأ افتراضياً
+      });
+
       toast.success(`تم الحجز بنجاح 🚗`);
       setScreen('navigation');
-    } catch (e) { console.error(e); toast.error('حدث خطأ أثناء إتمام الحجز'); } finally { setIsBooking(false); }
+    } catch (e) { 
+      console.error(e); 
+      toast.error('حدث خطأ أثناء إتمام الحجز'); 
+    } finally { 
+      setIsBooking(false); 
+    }
   };
 
   return (
@@ -299,7 +324,7 @@ export default function GarageListScreen() {
           </span>
         </div>
 
-        {/* 💳 بطاقة المحفظة (نصف الحجم مع لوحة سيارة واضحة وكبيرة) */}
+        {/* 💳 بطاقة المحفظة */}
         <div
           style={{
             background: BRAND.blue,
@@ -343,7 +368,7 @@ export default function GarageListScreen() {
             </div>
           </div>
 
-          {/* 🚙 رقم السيارة بحجم كبير وواضح وبارز */}
+          {/* 🚙 رقم السيارة */}
           <div className="mt-2 pt-2 border-t border-white/20 flex items-center justify-between">
             <span className="text-[11px] font-black text-white">🚙 رقم السيارة:</span>
             <span className="font-mono font-black text-sm bg-white text-[#1656b8] px-3 py-1 rounded-lg shadow-sm tracking-wider">
@@ -352,7 +377,7 @@ export default function GarageListScreen() {
           </div>
         </div>
 
-        {/* 📲 كارت الباركود الذكي لمشاركة التطبيق أسفل المحفظة */}
+        {/* 📲 كارت الباركود الذكي */}
         <div 
           onClick={() => setShowQrModal(true)}
           className="mb-3 border rounded-xl p-2 flex items-center justify-between text-right cursor-pointer active:scale-[0.98] transition-all"
@@ -368,12 +393,9 @@ export default function GarageListScreen() {
               style={{ borderColor: BRAND.blue }}
             >
               <img 
-                src="/app-qr.png" 
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin : 'https://parkn24.com')}&color=16-86-184`}
                 alt="كود بركن 24" 
                 className="w-full h-full object-contain"
-                onError={(e) => {
-                  (e.target as HTMLElement).style.display = 'none';
-                }}
               />
             </div>
 
@@ -418,7 +440,7 @@ export default function GarageListScreen() {
           )}
         </AnimatePresence>
 
-        {/* بانر الهدية الترحيبية الهادئ */}
+        {/* بانر الهدية الترحيبية */}
         {isEligibleForFreeSession && !activeSession && !myIncomingCar && (
           <div
             className="mb-3 p-3 rounded-16 flex items-center gap-2.5"
@@ -456,7 +478,7 @@ export default function GarageListScreen() {
           </button>
         )}
 
-        {/* شريط البحث الموحد المريح للعين */}
+        {/* شريط البحث الموحد */}
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: BRAND.slate }} />
@@ -569,7 +591,7 @@ export default function GarageListScreen() {
                     </div>
                   </button>
 
-                  {/* قائمة الجراجات تحت المنطقة عند الفتح */}
+                  {/* قائمة الجراجات */}
                   {isExpanded && (
                     <div style={{ background: BRAND.bg, padding: '10px', borderTop: `1px solid ${BRAND.border}` }} className="space-y-2">
                       {group.garages.map((garage, i) => (
@@ -602,7 +624,7 @@ export default function GarageListScreen() {
         {showTopUp && <TopUpWalletModal onClose={() => setShowTopUp(false)} />}
       </AnimatePresence>
 
-      {/* 📲 نافذة تكبير الباركود مع ميزة نسخ ومشاركة الرابط */}
+      {/* 📲 نافذة الباركود الذكية ومشاركة الرابط */}
       <AnimatePresence>
         {showQrModal && (
           <div 
@@ -618,7 +640,6 @@ export default function GarageListScreen() {
               style={{ background: BRAND.card }}
               onClick={e => e.stopPropagation()}
             >
-              {/* زر الإغلاق */}
               <button 
                 onClick={() => setShowQrModal(false)}
                 className="absolute top-4 left-4 text-slate-400 font-black text-sm border-0 bg-transparent cursor-pointer"
@@ -647,16 +668,13 @@ export default function GarageListScreen() {
                 style={{ borderColor: BRAND.blue }}
               >
                 <img 
-                  src="/app-qr.png" 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin : 'https://parkn24.com')}&color=16-86-184`} 
                   alt="QR Code" 
                   className="w-full h-full object-contain"
-                  onError={(e) => {
-                    (e.target as HTMLElement).style.display = 'none';
-                  }}
                 />
               </div>
 
-              {/* 🔗 زر نسخ ومشاركة رابط التطبيق */}
+              {/* أزرار النسخ والإغلاق */}
               <div className="space-y-2">
                 <button
                   onClick={async () => {
@@ -695,13 +713,14 @@ export default function GarageListScreen() {
           </div>
         )}
       </AnimatePresence>
+
       <WelcomeGiftModal />
     </div>
   );
 }
 
 /* ════════════════════════════════════════════════════════════
-   ██  WELCOME GIFT MODAL (MINIMALIST)
+   ██  WELCOME GIFT MODAL
    ════════════════════════════════════════════════════════════ */
 function WelcomeGiftModal() {
   const [show, setShow] = useState(false);
@@ -751,7 +770,7 @@ function WelcomeGiftModal() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   ██  GARAGE CARD (CLEAN & SIMPLE)
+   ██  GARAGE CARD
    ════════════════════════════════════════════════════════════ */
 const GarageCard = memo(function GarageCard({
   garage,

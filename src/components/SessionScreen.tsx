@@ -1,5 +1,6 @@
+// src/components/SessionScreen.tsx
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Clock,
   Car,
@@ -8,15 +9,21 @@ import {
   Sparkles,
   CreditCard,
   XCircle,
+  Shield,
+  Zap,
+  Lock,
+  AlertTriangle,
 } from 'lucide-react';
 // 🌟 استيراد getServerNow ودوال البصمة لضمان مطابقة العداد بالملي ثانية بين جميع الهواتف
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import {
   calculateFullHours,
   calculateCost,
+  calculateCostWithLoyalty,
   formatTime,
   getRemainingInCurrentHour,
 } from '../utils/pricing';
+import { captureMagneticMass } from '../utils/batShieldEngine';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
@@ -58,6 +65,7 @@ export default function SessionScreen() {
     setSelectedGarageId,
     acknowledgedSessionIds,
     acknowledgeSession,
+    activateShield,
   } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
@@ -70,6 +78,7 @@ export default function SessionScreen() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [elapsed, setElapsed] = useState(0);
+  const [isActivatingShield, setIsActivatingShield] = useState(false);
 
   const isMySessionRow = (row: any) => {
     if (!row) return false;
@@ -233,45 +242,100 @@ export default function SessionScreen() {
 
   const sessionRate = Number(activeSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const isFirstFreeApplied = activeSession?.isFirstFreeSession === true;
+  const isShieldActive = activeSession?.securityShieldActive === true;
 
-  // 🎁 الحسابات التفاعلية لـ (30 دقيقة مجانية)
+  // 🎁 الحسابات التفاعلية لـ (30 دقيقة مجانية) و درع الأمان VIP
   const { displayedCost, displayedHours, countdownLabel, countdownTime, isFreeNow } = useMemo(() => {
     const defaultCountdown = { minutes: 59, seconds: 59 };
 
-    if (!isFirstFreeApplied) {
-      const calculatedCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(elapsed) : defaultCountdown;
-      return {
-        displayedCost: calculateCost(elapsed, sessionRate),
-        displayedHours: calculateFullHours(elapsed),
-        countdownLabel: 'الوقت المتبقي حتى الساعة التالية',
-        countdownTime: calculatedCountdown || defaultCountdown,
-        isFreeNow: false,
-      };
-    }
+    const loyaltyCalc = calculateCostWithLoyalty(
+      elapsed,
+      sessionRate,
+      isFirstFreeApplied,
+      isShieldActive
+    );
 
-    if (elapsed <= 1800) {
+    let countdownLabel = 'الوقت المتبقي حتى الساعة التالية';
+    let countdownTime = getRemainingInCurrentHour ? getRemainingInCurrentHour(elapsed) : defaultCountdown;
+
+    if (isFirstFreeApplied && elapsed <= 1800) {
       const freeTimeRemaining = Math.max(0, 1800 - elapsed);
       const minutes = Math.floor(freeTimeRemaining / 60);
       const seconds = freeTimeRemaining % 60;
-      return {
-        displayedCost: 0,
-        displayedHours: 0,
-        countdownLabel: 'ينتهي الركن المجاني الهدية خلال 🎁',
-        countdownTime: { minutes, seconds },
-        isFreeNow: true,
-      };
-    } else {
-      const calculatedCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(elapsed) : defaultCountdown;
-      const totalHours = calculateFullHours(elapsed);
-      return {
-        displayedCost: calculateCost(elapsed, sessionRate),
-        displayedHours: totalHours,
-        countdownLabel: 'الوقت المتبقي حتى الساعة التالية',
-        countdownTime: calculatedCountdown || defaultCountdown,
-        isFreeNow: false,
-      };
+      countdownLabel = 'ينتهي الركن المجاني الهدية خلال 🎁';
+      countdownTime = { minutes, seconds };
     }
-  }, [isFirstFreeApplied, elapsed, sessionRate]);
+
+    return {
+      displayedCost: loyaltyCalc.cost,
+      displayedHours: loyaltyCalc.totalHours,
+      countdownLabel,
+      countdownTime,
+      isFreeNow: loyaltyCalc.isFree,
+    };
+  }, [isFirstFreeApplied, elapsed, sessionRate, isShieldActive]);
+
+  // 🛡️ تفعيل درع الأمان بقفل نهائي وفحص السياج الجغرافي 250م للجراج
+  const handleEnableShield = async () => {
+    if (!activeSession || !garage) return;
+    setIsActivatingShield(true);
+
+    toast.loading('جاري فحص إحداثيات موقعك والارتباط الفضائي...', { id: 'shield_activation' });
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const clientLat = pos.coords.latitude;
+        const clientLng = pos.coords.longitude;
+
+        try {
+          // 1. أخذ لقطة فورية لبصمة الصاج المغناطيسية
+          const magnetic = await captureMagneticMass();
+
+          // 2. محاولة تفعيل الحماية والتحقق من السياج الجغرافي للجراج
+          const result = await activateShield(
+            activeSession.id,
+            clientLat,
+            clientLng,
+            garage.lat,
+            garage.lng,
+            magnetic
+          );
+
+          if (!result.success) {
+            if (result.reason === 'outside_geofence') {
+              toast.error(
+                `⛔ تفعيل الدرع غير مسموح!\nأنت على بعد ${result.distance}م من الجراج.\n` +
+                `يجب التواجد في محيط الجراج (250م) لبدء الحماية وتأمين الصاج.`,
+                { id: 'shield_activation', duration: 7000 }
+              );
+            } else {
+              toast.error('حدث خطأ أثناء فحص الحساسات، يرجى المحاولة مرة أخرى.', { id: 'shield_activation' });
+            }
+            setIsActivatingShield(false);
+            return;
+          }
+
+          toast.success(
+            `🛡️ تم تفعيل درع الأمان VIP بنجاح!\n` +
+            `📍 تم تسجيل المرساة الجغرافية وبصمة الصاج.\n` +
+            `💰 تمت إضافة 10 ج.م كرسوم حماية ثابتة للفاتورة.`,
+            { id: 'shield_activation', duration: 6000 }
+          );
+          
+          await fetchAll();
+        } catch (err) {
+          toast.error('تعذر رصد المجال المغناطيسي، تأكد من دعم الحساسات بالهاتف.', { id: 'shield_activation' });
+        } finally {
+          setIsActivatingShield(false);
+        }
+      },
+      () => {
+        toast.error('⚠️ يجب السماح بإذن الموقع الجغرافي (GPS) لتفعيل درع الأمان وتأمين سيارتك.', { id: 'shield_activation', duration: 5000 });
+        setIsActivatingShield(false);
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
 
   // شاشة الانتظار والمزامنة
   if (!activeSession) {
@@ -335,6 +399,12 @@ export default function SessionScreen() {
                 '0 0 40px rgba(140, 198, 63, 0.25)',
                 '0 0 0px rgba(140, 198, 63, 0.1)',
               ]
+            : isShieldActive
+            ? [
+                '0 0 0px rgba(14, 165, 233, 0.1)',
+                '0 0 40px rgba(14, 165, 233, 0.25)',
+                '0 0 0px rgba(14, 165, 233, 0.1)',
+              ]
             : [
                 '0 0 0px rgba(22, 86, 184, 0.1)',
                 '0 0 40px rgba(22, 86, 184, 0.25)',
@@ -345,10 +415,10 @@ export default function SessionScreen() {
         className="w-36 h-36 rounded-full flex flex-col items-center justify-center border-2 mb-5 shadow-lg"
         style={{
           background: BRAND.navyLight,
-          borderColor: isFreeNow ? BRAND.green : BRAND.blue,
+          borderColor: isFreeNow ? BRAND.green : isShieldActive ? '#0ea5e9' : BRAND.blue,
         }}
       >
-        <Clock size={20} style={{ color: isFreeNow ? BRAND.green : BRAND.blue }} className="mb-1" />
+        <Clock size={20} style={{ color: isFreeNow ? BRAND.green : isShieldActive ? '#0ea5e9' : BRAND.blue }} className="mb-1" />
         <div className="text-2xl font-black font-mono text-white leading-none">{formatTime(elapsed)}</div>
         <div className="text-[9px] font-bold mt-1.5" style={{ color: BRAND.slateMuted }}>مدة الركن الفعلية</div>
       </motion.div>
@@ -388,6 +458,96 @@ export default function SessionScreen() {
           </div>
         </div>
       </div>
+
+      {/* ===================== 🛡️ لوحة درع الأمان VIP التفاعلية ===================== */}
+      {activeSession.source === 'app' && (
+        <div 
+          className="w-full border rounded-2xl p-4 mb-4 transition-all"
+          style={{
+            background: isShieldActive 
+              ? 'linear-gradient(135deg, rgba(14, 165, 233, 0.04) 0%, rgba(14, 165, 233, 0.08) 100%)' 
+              : BRAND.navyLight,
+            borderColor: isShieldActive ? '#0ea5e950' : BRAND.border,
+            boxShadow: isShieldActive ? '0 4px 20px rgba(14, 165, 233, 0.1)' : 'none'
+          }}
+        >
+          <div className="flex justify-between items-start mb-3">
+            <span className="font-black text-white shrink-0 text-[8px] px-2.5 py-1 rounded-full flex items-center gap-1 border"
+              style={{
+                background: isShieldActive ? '#0ea5e9' : 'rgba(255,255,255,0.05)',
+                borderColor: isShieldActive ? '#38bdf8' : BRAND.border
+              }}
+            >
+              <Zap size={10} className={isShieldActive ? 'animate-bounce' : ''} />
+              {isShieldActive ? 'نشط ومحمي 🔒' : 'إضافي اختياري'}
+            </span>
+            <div className="flex items-center gap-1.5 justify-end">
+              <span className="font-black text-sm" style={{ color: isShieldActive ? '#38bdf8' : '#ffffff' }}>
+                درع الأمان الفضائي VIP
+              </span>
+              <Shield size={16} className={isShieldActive ? 'text-sky-400 fill-sky-400/20' : 'text-slate-400'} />
+            </div>
+          </div>
+
+          <p className="font-semibold text-right leading-relaxed mb-4 text-[10px]" style={{ color: BRAND.slateMuted }}>
+            {isShieldActive ? (
+              <span>
+                🔒 سيارتك الآن تحت الحراسة الفيزيائية الفورية! تم تأمين المربع بلقطة لصدى الصاج ومجال المغناطيسية والـ GPS. عند أي حركة مريبة لـ 15م، سينطلق إنذار الطوارئ للسايس وتُقفل الجلسة فوراً.
+              </span>
+            ) : (
+              <span>
+                تأمين شامل بالذكاء الاصطناعي ضد السرقة والاحتكاك. يقوم السيرفر بلقطة مغناطيسية ورصد صدى هيكل صاج سيارتك وتدحرج الكاوتش. تكلفة الحماية ثابتة (10 ج.م) تضاف للفاتورة النهائية.
+              </span>
+            )}
+          </p>
+
+          <AnimatePresence mode="wait">
+            {!isShieldActive ? (
+              <motion.button
+                key="activate-btn"
+                onClick={handleEnableShield}
+                disabled={isActivatingShield}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="w-full py-3 rounded-xl font-black text-xs border-0 text-white flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] transition-all"
+                style={{
+                  background: 'linear-gradient(135deg, #1d68dc 0%, #1656b8 100%)',
+                  boxShadow: '0 4px 14px rgba(22, 86, 184, 0.25)',
+                }}
+              >
+                {isActivatingShield ? (
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    جاري التحقق والارتباط...
+                  </span>
+                ) : (
+                  <>
+                    <Shield size={14} />
+                    <span>تفعيل الحماية الفضائية وتأمين السيارة (+10 ج.م)</span>
+                  </>
+                )}
+              </motion.button>
+            ) : (
+              <motion.div
+                key="activated-msg"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="rounded-xl p-3 border text-center flex items-center justify-center gap-1.5"
+                style={{
+                  background: 'rgba(14, 165, 233, 0.08)',
+                  borderColor: '#0ea5e930',
+                }}
+              >
+                <Lock size={12} className="text-sky-400" />
+                <span className="font-black text-[10px] text-sky-400">
+                  الحماية مفعلة وثابتة ولا يمكن إلغاؤها لحين مغادرة الجراج أمنياً
+                </span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
 
       {sessionRate !== garage?.basePrice && garage && (
         <div className="w-full rounded-xl p-2 mb-3 text-center border" style={{ background: 'rgba(245,158,11,0.06)', borderColor: 'rgba(245,158,11,0.2)' }}>
@@ -473,7 +633,7 @@ export default function SessionScreen() {
       >
         <span className="text-center text-sm font-black" style={{ color: '#ffffff' }}>
           {isFreeNow ? (
-            <span>🚗 إنهاء الجلسة (مجاناً 🎁)</span>
+            <span>🚗 إنهاء الجلسة (تحصيل: {isShieldActive ? '10 ج.م الدرع 🛡️' : 'مجاناً 🎁'})</span>
           ) : (
             <span>🚗 إنهاء الجلسة وحساب التكلفة ({displayedCost} ج.م)</span>
           )}

@@ -1,3 +1,4 @@
+// src/components/TopUpWalletModal.tsx
 import { useState, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { X, Copy, ExternalLink, ArrowRight, CheckCircle, Plus, Minus, Phone, Send, Sparkles } from 'lucide-react';
@@ -49,11 +50,22 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
   const currentBonus = useMemo(() => calculateBonus(amount), [amount]);
   const totalReceived = useMemo(() => amount + currentBonus, [amount, currentBonus]);
 
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text).then(
-      () => toast.success(`تم نسخ ${label}`),
-      () => toast.error('فشل النسخ')
-    );
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const el = document.createElement('textarea');
+        el.value = text;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+      }
+      toast.success(`تم نسخ ${label}`);
+    } catch {
+      toast.error('فشل النسخ');
+    }
   };
 
   const handleSubmitTopUp = async () => {

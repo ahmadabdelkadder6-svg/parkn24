@@ -1,3 +1,4 @@
+// src/pages/AdminDashboard.tsx
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -166,21 +167,30 @@ export default function AdminDashboard() {
       const rate = Number(s.agreedPrice ?? g?.basePrice ?? 0);
       const elapsedSeconds = Math.max(0, Math.floor((en - st) / 1000));
 
-      // 🎁 الهدية الترحيبية: 30 دقيقة مجاناً
-      const isFreeNow = s.isFirstFreeSession === true && elapsedSeconds <= 1800;
+      // 🎁 الهدية الترحيبية: 30 دقيقة مجاناً فقط وحصرياً لطلبات التطبيق
+      const isFreeNow = s.source === 'app' && s.isFirstFreeSession === true && elapsedSeconds <= 1800;
       return isFreeNow ? 0 : calculateCost(elapsedSeconds, rate);
     }
     return 0;
   }, [garages]);
 
+  // 🛡️ [حساب العمولات مع تقسيم الدرع]: يقتطع 5 ج.م للتطبيق فوراً من الجلسة المفعلة، ويحسب عمولة الجراج على الباقي
   const getCommission = useCallback((s: any) => {
-    if (s.source !== 'app') return 0;
+    if (s.source !== 'app') return 0; // الركنات اليدوية للسايس معفاة 100% من العمولة ومستحيل تحمل درعاً
+    
     const rev = getRevenue(s);
     if (rev <= 0) return 0;
+    
+    const isShieldActive = s.securityShieldActive === true;
+    const shieldAppShare = isShieldActive ? 5 : 0; // نصيب المطور الثابت (5 ج.م)
+
+    // حساب العمولة على قيمة وقت الركنة فقط (بدون الـ 10 ج.م لدرع الأمان)
+    const timeOnlyRevenue = isShieldActive ? Math.max(0, rev - 10) : rev;
     const g = garages.find((ga: any) => ga.id === s.garageId);
     const rate = g?.commissionRate ?? 10;
-    const commission = (rev * rate) / 100;
-    return Math.round(commission * 100) / 100;
+    
+    const commissionOnTime = (timeOnlyRevenue * rate) / 100;
+    return Math.round((commissionOnTime + shieldAppShare) * 100) / 100;
   }, [garages, getRevenue]);
 
   const completedSessions = useMemo(() => sessions.filter(s => s.status === 'completed'), [sessions]);

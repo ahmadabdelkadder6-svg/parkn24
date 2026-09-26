@@ -1,3 +1,4 @@
+// src/components/NavigationScreen.tsx
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -11,6 +12,7 @@ import {
   Copy,
   Gift,
   CreditCard,
+  Shield,
 } from 'lucide-react';
 // 🌟 استيراد getServerNow ودوال البصمة الموحدة من الـ store لضمان المزامنة التامة
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
@@ -19,6 +21,7 @@ import {
   distanceToMinutes,
   formatDuration,
 } from '../utils/distance';
+import { assignChessSlot, checkChessCollision } from '../utils/chessGridEngine';
 import toast from 'react-hot-toast';
 import { sendCarComingPush, cancelScheduledPush } from '../lib/pushManager';
 
@@ -578,6 +581,24 @@ export default function NavigationScreen() {
       );
       if (relatedOffer) cancelOffer(relatedOffer.id);
 
+      // 🛡️ فحص التصادم الميكرو-مكاني بمربع الشطرنج
+      if (garage.lat && garage.lng) {
+        const collision = checkChessCollision(state.sessions, garage.lat, garage.lng, 4);
+        if (collision) {
+          toast.error(`المكان محجوز لسيارة أخرى [${collision.carPlate}] تحت حماية درع VIP!`, { duration: 5000 });
+          isArrivingRef.current = false;
+          return;
+        }
+      }
+
+      // تخصيص مربع شطرنج تلقائي
+      let assignedSlot = undefined;
+      if (garage.lat && garage.lng) {
+        const activeSessionsCount = state.sessions.filter(s => s.garageId === garage.id && s.status === 'active').length;
+        const slot = assignChessSlot(activeSessionsCount, garage.lat, garage.lng);
+        assignedSlot = slot.slotId;
+      }
+
       const startTimeISO = new Date(getServerNow()).toISOString();
 
       await addSession({
@@ -591,6 +612,9 @@ export default function NavigationScreen() {
         customerName: currentUser?.name,
         startedBy: 'customer',
         incomingCarId: myIncomingCar.id,
+        securityShieldActive: false, // 🔒 الدرع مطفأ افتراضياً ويفعل لاحقاً بضغطة زر من SessionScreen
+        shieldLocked: false,
+        slotId: assignedSlot,
       } as any);
 
       await removeIncomingCar(myIncomingCar.id);
