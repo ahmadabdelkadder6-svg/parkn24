@@ -12,7 +12,6 @@ import {
   Copy,
   Gift,
   CreditCard,
-  Shield,
 } from 'lucide-react';
 // 🌟 استيراد getServerNow ودوال البصمة الموحدة من الـ store لضمان المزامنة التامة
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
@@ -162,27 +161,28 @@ export default function NavigationScreen() {
   const userPlateNav = normalizePlate(currentUser?.carPlate);
   const userPhoneClean = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
-  /* ── الكشف عن السيارة القادمة ── */
+  /* ── 🛡️ الكشف المزدوج والآمن عن السيارة القادمة (لوحة + هاتف) لمنع اختفاء العداد ── */
   const myIncomingCar = useMemo(() => {
-    return incomingCars.find(
-      (c) =>
-        c.garageId === selectedGarageId &&
-        normalizePlate(c.carPlate) === userPlateNav &&
-        c.status === 'coming',
-    );
-  }, [incomingCars, selectedGarageId, userPlateNav]);
+    if (!selectedGarageId) return undefined;
+    return incomingCars.find((c) => {
+      if (c.garageId !== selectedGarageId || c.status !== 'coming') return false;
+      const samePlate = !!userPlateNav && normalizePlate(c.carPlate) === userPlateNav;
+      const cPhone = c.customerPhone ? normalizePhone(c.customerPhone) : '';
+      const samePhone = Boolean(userPhoneClean && cPhone === userPhoneClean);
+      return samePlate || samePhone;
+    });
+  }, [incomingCars, selectedGarageId, userPlateNav, userPhoneClean]);
 
-  /* ✅ الكشف اللحظي عن الجلسة النشطة */
+  /* ✅ الكشف اللحظي المزدوج عن الجلسة النشطة */
   const myActiveSession = useMemo(() => {
     return sessions
-      .filter(
-        (sess) =>
-          sess.status === 'active' &&
-          (
-            normalizePlate(sess.carPlate) === userPlateNav ||
-            (userPhoneClean && normalizePhone((sess as any).customerPhone || '') === userPhoneClean)
-          ),
-      )
+      .filter((sess) => {
+        if (sess.status !== 'active') return false;
+        const samePlate = !!userPlateNav && normalizePlate(sess.carPlate) === userPlateNav;
+        const sPhone = (sess as any).customerPhone ? normalizePhone((sess as any).customerPhone) : '';
+        const samePhone = Boolean(userPhoneClean && sPhone === userPhoneClean);
+        return samePlate || samePhone;
+      })
       .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
   }, [sessions, userPlateNav, userPhoneClean]);
 
@@ -581,22 +581,27 @@ export default function NavigationScreen() {
       );
       if (relatedOffer) cancelOffer(relatedOffer.id);
 
-      // 🛡️ فحص التصادم الميكرو-مكاني بمربع الشطرنج
-      if (garage.lat && garage.lng) {
-        const collision = checkChessCollision(state.sessions, garage.lat, garage.lng, 4);
-        if (collision) {
-          toast.error(`المكان محجوز لسيارة أخرى [${collision.carPlate}] تحت حماية درع VIP!`, { duration: 5000 });
-          isArrivingRef.current = false;
-          return;
-        }
-      }
-
-      // تخصيص مربع شطرنج تلقائي
+      // 🛡️ فحص التصادم الميكرو-مكاني بمربع الشطرنج الافتراضي الفرعي بدلاً من مركز الجراج
       let assignedSlot = undefined;
+      let slotLat = garage.lat;
+      let slotLng = garage.lng;
+
       if (garage.lat && garage.lng) {
         const activeSessionsCount = state.sessions.filter(s => s.garageId === garage.id && s.status === 'active').length;
         const slot = assignChessSlot(activeSessionsCount, garage.lat, garage.lng);
         assignedSlot = slot.slotId;
+        slotLat = slot.lat;
+        slotLng = slot.lng;
+      }
+
+      if (assignedSlot && garage.lat && garage.lng) {
+        // فحص التصادم عند إحداثيات المربع المعين وليس مركز الجراج لتلافي التجميد
+        const collision = checkChessCollision(state.sessions, slotLat, slotLng, 4);
+        if (collision) {
+          toast.error(`المربع [${assignedSlot}] محجوز حالياً لسيارة أخرى تحت حماية درع VIP!`, { duration: 5000 });
+          isArrivingRef.current = false;
+          return;
+        }
       }
 
       const startTimeISO = new Date(getServerNow()).toISOString();
