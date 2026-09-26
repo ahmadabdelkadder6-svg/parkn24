@@ -753,19 +753,20 @@ export default function GarageDashboard() {
     getMyOwnedGarages, setSessionSecurityShield, triggerSessionBreach, activateShield,
   } = useStore();
 
+  // 1️⃣ قراءة الدور الفعلي المسجل في الدخول (سايس أو مالك)
+  const storedRole = (localStorage.getItem('garageRole') as 'owner' | 'valet') || 'owner';
+
+  // 2️⃣ هل داخل كـ أدمن فقط لو مش مسجل كـ سايس
   const isAdmin = useMemo(() => {
-    return localStorage.getItem('adminAccess') === 'true' || window.location.hash === '#admin';
-  }, []);
+    return (localStorage.getItem('adminAccess') === 'true' || window.location.hash === '#admin') && storedRole !== 'valet';
+  }, [storedRole]);
 
   const [ownerValetView, setOwnerValetView] = useState(false);
 
-  // 🌟 قراءة الدور لحظياً لمنع تجميد شاشات الأدمن والسايس
-  const garageRole = isAdmin ? 'owner' : ((localStorage.getItem('garageRole') as 'owner' | 'valet') || 'owner');
-
-  const isRealValet = !isAdmin && garageRole === 'valet';
-  const isOwner = isAdmin || (garageRole === 'owner' && !ownerValetView);
+  // 3️⃣ الفصل الحقيقي والصارم بين السايس والمالك
+  const isRealValet = storedRole === 'valet';
+  const isOwner = !isRealValet && !ownerValetView;
   const isValet = isRealValet || ownerValetView;
-
   const valetNumber = ownerValetView
     ? 'owner'
     : localStorage.getItem('valetNumber') || '';
@@ -1405,7 +1406,8 @@ export default function GarageDashboard() {
             </button>
           )}
 
-          {isOwner && !isAdmin && (
+          {/* 🟢 زر التبديل لشاشة الفالية للمالك والأدمن */}
+          {isOwner && (
             <button
               onClick={() => {
                 setOwnerValetView(true);
@@ -1414,9 +1416,10 @@ export default function GarageDashboard() {
               className="active:scale-95 font-black flex items-center gap-1.5 border-0 text-white py-2 px-3 rounded-xl text-xs cursor-pointer"
               style={{
                 background: BRAND.navy,
+                boxShadow: '0 4px 12px rgba(10,22,40,0.2)'
               }}
             >
-              <HardHat size={13} />
+              <HardHat size={14} style={{ color: '#f59e0b' }} />
               <span>شاشة الفالية</span>
             </button>
           )}
