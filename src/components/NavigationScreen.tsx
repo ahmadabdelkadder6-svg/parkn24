@@ -20,7 +20,7 @@ import {
   distanceToMinutes,
   formatDuration,
 } from '../utils/distance';
-import { assignChessSlot, checkChessCollision } from '../utils/chessGridEngine';
+import { assignChessSlot } from '../utils/chessGridEngine';
 import toast from 'react-hot-toast';
 import { sendCarComingPush, cancelScheduledPush } from '../lib/pushManager';
 
@@ -161,7 +161,7 @@ export default function NavigationScreen() {
   const userPlateNav = normalizePlate(currentUser?.carPlate);
   const userPhoneClean = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
-  /* ── 🛡️ الكشف المزدوج والآمن عن السيارة القادمة (لوحة + هاتف) لمنع اختفاء العداد ── */
+  /* ── 🛡️ الكشف المزدوج والآمن عن السيارة القادمة لمنع اختفاء العداد المفاجئ ── */
   const myIncomingCar = useMemo(() => {
     if (!selectedGarageId) return undefined;
     return incomingCars.find((c) => {
@@ -173,7 +173,7 @@ export default function NavigationScreen() {
     });
   }, [incomingCars, selectedGarageId, userPlateNav, userPhoneClean]);
 
-  /* ✅ الكشف اللحظي المزدوج عن الجلسة النشطة */
+  /* ✅ الكشف اللحظي المزدوج والموثق عن الجلسة النشطة للتوجيه التلقائي الفوري */
   const myActiveSession = useMemo(() => {
     return sessions
       .filter((sess) => {
@@ -353,14 +353,8 @@ export default function NavigationScreen() {
     return () => clearTimeout(t);
   }, []);
 
-  /* ─── مؤقت الإلغاء (30 ثانية) ─── */
+  /* ─── مؤقت الإلغاء (30 ثانية حقيقية ومؤمنة) ─── */
   useEffect(() => {
-    if (!myIncomingCar) {
-      setCancelTimeLeft(CANCEL_WINDOW_SECONDS);
-      setCanCancel(true);
-      return;
-    }
-
     screenEnteredRef.current = getServerNow();
     setCancelTimeLeft(CANCEL_WINDOW_SECONDS);
     setCanCancel(true);
@@ -515,7 +509,7 @@ export default function NavigationScreen() {
   };
 
   const handleCancelBooking = async () => {
-    if (!currentUser || !myIncomingCar) return;
+    if (!currentUser) return;
 
     if (pushTimerRef.current) {
       clearTimeout(pushTimerRef.current);
@@ -524,7 +518,7 @@ export default function NavigationScreen() {
     pushSentRef.current = true;
     setPushStatus('cancelled');
 
-    if (pushStatus === 'sent') {
+    if (myIncomingCar && pushStatus === 'sent') {
       await cancelScheduledPush(garage.id, myIncomingCar.carPlate);
     }
 
@@ -535,37 +529,41 @@ export default function NavigationScreen() {
     );
     if (activeOffer) cancelOffer(activeOffer.id);
 
-    removeIncomingCar(myIncomingCar.id);
+    if (myIncomingCar) {
+      removeIncomingCar(myIncomingCar.id);
+    }
+
     toast.success('تم إلغاء الحجز، يمكنك اختيار جراج آخر 🚗');
     setSelectedGarageId(null);
     setScreen('list');
   };
 
+  // 🚀 بدء الركن الفوري بدون تجميد أو تعليق
   const handleCarArrived = async () => {
     if (isArrivingRef.current) return;
     isArrivingRef.current = true;
 
     try {
-      if (!myIncomingCar || !garage) {
-        if (myActiveSession) {
-          navigatedToSessionRef.current = true;
-          setScreen('session');
-        }
+      const state = useStore.getState();
+      const carPlateToUse = myIncomingCar?.carPlate || currentUser?.carPlate;
+      if (!carPlateToUse) {
+        toast.error('رقم لوحة السيارة غير متوفر');
+        isArrivingRef.current = false;
         return;
       }
 
-      const state = useStore.getState();
+      const np = normalizePlate(carPlateToUse);
       const alreadyActive = state.sessions.find(
         (s) =>
           s.status === 'active' &&
           (
-            normalizePlate(s.carPlate) === userPlateNav ||
+            normalizePlate(s.carPlate) === np ||
             (userPhoneClean && normalizePhone((s as any).customerPhone || '') === userPhoneClean)
           ),
       );
 
       if (alreadyActive) {
-        await removeIncomingCar(myIncomingCar.id);
+        if (myIncomingCar) await removeIncomingCar(myIncomingCar.id);
         if (alreadyActive.garageId !== selectedGarageId) {
           setSelectedGarageId(alreadyActive.garageId);
         }
@@ -576,60 +574,49 @@ export default function NavigationScreen() {
 
       const relatedOffer = offers.find(
         (o) =>
-          o.carPlate === myIncomingCar.carPlate &&
+          normalizePlate(o.carPlate) === np &&
           (o.status === 'pending' || o.status === 'accepted'),
       );
       if (relatedOffer) cancelOffer(relatedOffer.id);
 
-      // 🛡️ فحص التصادم الميكرو-مكاني بمربع الشطرنج الافتراضي الفرعي بدلاً من مركز الجراج
+      // تعيين مربع شطرنج تلقائي تتابعي خفيف وخالٍ من تعقيدات فحص التصادم المكاني القديمة
       let assignedSlot = undefined;
-      let slotLat = garage.lat;
-      let slotLng = garage.lng;
-
       if (garage.lat && garage.lng) {
         const activeSessionsCount = state.sessions.filter(s => s.garageId === garage.id && s.status === 'active').length;
-        const slot = assignChessSlot(activeSessionsCount, garage.lat, garage.lng);
+        const slot = assignChessSlot(activeSessionsCount);
         assignedSlot = slot.slotId;
-        slotLat = slot.lat;
-        slotLng = slot.lng;
-      }
-
-      if (assignedSlot && garage.lat && garage.lng) {
-        // فحص التصادم عند إحداثيات المربع المعين وليس مركز الجراج لتلافي التجميد
-        const collision = checkChessCollision(state.sessions, slotLat, slotLng, 4);
-        if (collision) {
-          toast.error(`المربع [${assignedSlot}] محجوز حالياً لسيارة أخرى تحت حماية درع VIP!`, { duration: 5000 });
-          isArrivingRef.current = false;
-          return;
-        }
       }
 
       const startTimeISO = new Date(getServerNow()).toISOString();
 
       await addSession({
         garageId: garage.id,
-        carPlate: myIncomingCar.carPlate,
+        carPlate: carPlateToUse,
         startTime: startTimeISO,
         status: 'active',
         source: 'app',
-        agreedPrice: myIncomingCar.agreedPrice,
+        agreedPrice: myIncomingCar?.agreedPrice ?? garage.basePrice,
         customerPhone: currentUser?.phone,
         customerName: currentUser?.name,
         startedBy: 'customer',
-        incomingCarId: myIncomingCar.id,
+        incomingCarId: myIncomingCar?.id || undefined,
         securityShieldActive: false, // 🔒 الدرع مطفأ افتراضياً ويفعل لاحقاً بضغطة زر من SessionScreen
         shieldLocked: false,
         slotId: assignedSlot,
       } as any);
 
-      await removeIncomingCar(myIncomingCar.id);
+      if (myIncomingCar) {
+        await removeIncomingCar(myIncomingCar.id);
+      }
+
       navigatedToSessionRef.current = true;
       setScreen('session');
     } catch (err) {
-      console.error('❌ خطأ:', err);
-      toast.error('حدث خطأ، حاول مرة أخرى');
+      console.error('❌ خطأ في تحويل العداد:', err);
+      toast.error('حدث خطأ، جاري فتح العداد مباشرة');
+      setScreen('session');
     } finally {
-      setTimeout(() => { isArrivingRef.current = false; }, 3000);
+      setTimeout(() => { isArrivingRef.current = false; }, 2000);
     }
   };
 

@@ -17,7 +17,7 @@ import {
   detectTireRollingRumble, 
   detectGroundSeismicMotion 
 } from '../utils/batShieldEngine';
-import { assignChessSlot, checkChessCollision } from '../utils/chessGridEngine';
+import { assignChessSlot } from '../utils/chessGridEngine';
 import toast from 'react-hot-toast';
 import { subscribeToPush } from '../lib/pushManager';
 
@@ -200,6 +200,24 @@ const haversineDistance = (
   return R * c;
 };
 
+interface GeofenceState {
+  status: 'loading' | 'inside' | 'outside' | 'denied' | 'error' | 'no_garage_coords';
+  distance: number | null;
+  accuracy: number | null;
+  lastCheck: number;
+  errorMessage?: string;
+}
+
+interface ValetLocationInfo {
+  valetNumber: number;
+  valetName: string;
+  isActive: boolean;
+  status: 'inside' | 'outside' | 'offline' | 'inactive';
+  distance: number | null;
+  lastSeen: number | null;
+  isBackground?: boolean;
+}
+
 const useValetGeofence = (
   enabled: boolean,
   garageCoords: { lat: number; lng: number } | null,
@@ -315,24 +333,6 @@ const useValetGeofence = (
   return state;
 };
 
-interface GeofenceState {
-  status: 'loading' | 'inside' | 'outside' | 'denied' | 'error' | 'no_garage_coords';
-  distance: number | null;
-  accuracy: number | null;
-  lastCheck: number;
-  errorMessage?: string;
-}
-
-interface ValetLocationInfo {
-  valetNumber: number;
-  valetName: string;
-  isActive: boolean;
-  status: 'inside' | 'outside' | 'offline' | 'inactive';
-  distance: number | null;
-  lastSeen: number | null;
-  isBackground?: boolean;
-}
-
 const useOwnerValetLocations = (
   enabled: boolean,
   garageId?: string,
@@ -415,6 +415,175 @@ const useOwnerValetLocations = (
 
   return locations;
 };
+
+// 👑 بانر متابعة الفالية المباشر للمالك والأدمن
+const OwnerValetLocationBanner = memo(function OwnerValetLocationBanner({
+  valetLocations,
+}: {
+  valetLocations: ValetLocationInfo[];
+}) {
+  if (!valetLocations || valetLocations.length === 0) return null;
+
+  const getStatusDisplay = (v: ValetLocationInfo) => {
+    switch (v.status) {
+      case 'inside':
+        return { 
+          icon: '🟢', 
+          label: v.isBackground ? 'متواجد (في الخلفية)' : 'متواجد', 
+          color: BRAND.greenDark, 
+          bg: BRAND.greenLight, 
+          border: '#c8e6a0' 
+        };
+      case 'outside':
+        return { 
+          icon: '🔴', 
+          label: `بعيد (${v.distance ?? '?'}م)`, 
+          color: '#c53030', 
+          bg: '#fff5f5', 
+          border: '#fbcfe8' 
+        };
+      case 'offline':
+        return { 
+          icon: '⚪', 
+          label: 'غير متصل', 
+          color: BRAND.slate, 
+          bg: BRAND.bg, 
+          border: BRAND.border 
+        };
+      case 'inactive':
+        return { 
+          icon: '⏸️', 
+          label: 'معطّل', 
+          color: BRAND.slateMuted, 
+          bg: BRAND.bg, 
+          border: BRAND.border 
+        };
+    }
+  };
+
+  return (
+    <div className="mb-4" style={{ background: BRAND.card, borderRadius: 18, padding: '12px 14px', border: `1px solid ${BRAND.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+      <div className="flex items-center justify-between mb-2 pb-1.5 border-b" style={{ borderColor: BRAND.border }}>
+        <span className="font-bold text-[9px]" style={{ color: BRAND.slateMuted }}>تتبع ذكي GPS</span>
+        <div className="flex items-center gap-1">
+          <MapPin size={13} style={{ color: BRAND.blue }} />
+          <span className="font-black text-xs" style={{ color: BRAND.navy }}>حالة تواجد الفالية</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        {valetLocations.map((v) => {
+          const cfg = getStatusDisplay(v);
+          return (
+            <div key={v.valetNumber} className="text-center p-2 rounded-xl border" style={{ background: cfg.bg, borderColor: cfg.border }}>
+              <div className="flex items-center justify-center gap-1">
+                <span className="text-xs">{cfg.icon}</span>
+                <span className="font-black text-[10px] text-slate-800 truncate">{v.valetName}</span>
+              </div>
+              <div className="font-black font-mono mt-0.5" style={{ fontSize: 9, color: cfg.color }}>
+                {cfg.label}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
+
+const ValetGeofenceBlockScreen = memo(function ValetGeofenceBlockScreen({
+  geofenceState,
+  garageName,
+  valetName,
+  distance,
+  onRetry,
+}: {
+  geofenceState: GeofenceState;
+  garageName: string;
+  valetName: string;
+  distance: number | null;
+  onRetry: () => void;
+}) {
+  const isDenied = geofenceState.status === 'denied';
+  const isOutside = geofenceState.status === 'outside';
+  const isNoCoords = geofenceState.status === 'no_garage_coords';
+  const isLoading = geofenceState.status === 'loading';
+
+  if (isLoading) {
+    return (
+      <div className="fixed inset-0 z-[99999] flex items-center justify-center p-6" style={{ background: BRAND.navy }}>
+        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center">
+          <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: 'linear' }} className="mx-auto mb-6 w-16 h-16 flex items-center justify-center">
+            <Locate size={48} style={{ color: BRAND.blue }} />
+          </motion.div>
+          <h2 className="font-black text-white text-base mb-2">جاري تأكيد موقعك الجغرافي...</h2>
+          <p className="font-bold text-xs" style={{ color: BRAND.slateMuted, lineHeight: 1.8 }}>
+            يرجى الموافقة على إذن الموقع لفتح الشاشة
+          </p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-5" style={{ background: 'linear-gradient(180deg, #111827 0%, #0a1628 100%)' }}>
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center max-w-sm w-full">
+        <div className="relative mx-auto mb-5 w-20 h-24 flex items-center justify-center">
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: BRAND.blueSoft, border: `1.5px solid ${isOutside ? BRAND.green : '#ef4444'}` }}>
+            {isDenied ? <MapPinOff size={32} style={{ color: '#ef4444' }} /> : isOutside ? <AlertTriangle size={32} style={{ color: BRAND.green }} /> : <WifiOff size={32} style={{ color: '#ef4444' }} />}
+          </div>
+        </div>
+
+        <h2 className="font-black text-lg text-white mb-2">
+          {isDenied ? '📍 تفعيل الموقع إجباري' : isOutside ? '🚫 خارج نطاق الجراج' : isNoCoords ? '⚠️ إعدادات الموقع ناقصة' : '⚠️ تعذر تحديد موقعك'}
+        </h2>
+        <p className="font-semibold text-xs mb-5" style={{ color: BRAND.slateMuted, lineHeight: 1.8 }}>
+          {isDenied ? (
+            <>
+              لا يمكنك العمل بدون تفعيل GPS.<br />
+              <span style={{ color: BRAND.green }}>افتح إعدادات المتصفح واضغط "سماح للموقع".</span>
+            </>
+          ) : isOutside ? (
+            <>
+              أنت خارج نطاق جراج <span className="font-black" style={{ color: BRAND.blueLight }}>{garageName}</span>.<br />
+              يجب التواجد داخل مقر الجراج لمتابعة العمل واستلام السيارات.
+            </>
+          ) : (
+            geofenceState.errorMessage || 'تأكد من تشغيل الـ GPS بالهاتف والمحاولة مجدداً.'
+          )}
+        </p>
+
+        {isOutside && distance != null && (
+          <div 
+            className="mb-5 mx-auto p-3 rounded-xl text-center" 
+            style={{ 
+              background: BRAND.blueSoft, 
+              border: `1px solid ${BRAND.border}`, 
+              maxWidth: 200 
+            }}
+          >
+            <div className="font-black font-mono text-2xl" style={{ color: BRAND.blue, lineHeight: 1.1 }}>
+              {distance} <span style={{ fontSize: 12, fontWeight: 900 }}>متر</span>
+            </div>
+            <div className="text-[10px] font-black mt-1" style={{ color: BRAND.slate }}>
+              📍 مسافتك الحالية عن الجراج
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-2.5 max-w-[260px] mx-auto">
+          <button onClick={onRetry} className="w-full font-black flex items-center justify-center gap-2 active:scale-95 py-3 rounded-xl text-white border-0 cursor-pointer text-xs" style={{ background: BRAND.blue, boxShadow: `0 4px 12px ${BRAND.blue}25` }}>
+            <Locate size={16} /> تحديث موقعي الآن
+          </button>
+          
+          <button onClick={() => { localStorage.removeItem('garageRole'); localStorage.removeItem('valetNumber'); localStorage.removeItem('valetName'); useStore.getState().setCurrentGarageId(null); }} className="w-full font-black py-2.5 rounded-xl border cursor-pointer bg-transparent text-xs" style={{ color: BRAND.slateMuted, borderColor: BRAND.border }}>
+            تسجيل خروج
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+});
 
 const toMs = (value: any): number => {
   if (!value) return 0;
@@ -582,14 +751,12 @@ export default function GarageDashboard() {
     getMyOwnedGarages, setSessionSecurityShield, triggerSessionBreach, activateShield,
   } = useStore();
 
-  // 🌟 الكشف الفوري عما إذا كان المستخدم مشرفاً عاماً (Admin)
   const isAdmin = useMemo(() => {
     return localStorage.getItem('adminAccess') === 'true' || window.location.hash === '#admin';
   }, []);
 
   const [ownerValetView, setOwnerValetView] = useState(false);
 
-  // 🌟 قراءة الدور مباشرة لضمان عدم تجميده كـ Valet للأدمن
   const garageRole = isAdmin ? 'owner' : ((localStorage.getItem('garageRole') as 'owner' | 'valet') || 'owner');
 
   const isRealValet = !isAdmin && garageRole === 'valet';
@@ -600,7 +767,6 @@ export default function GarageDashboard() {
     ? 'owner'
     : localStorage.getItem('valetNumber') || '';
 
-  // جلب البيانات فور فتح الشاشة
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
@@ -681,7 +847,6 @@ export default function GarageDashboard() {
 
   const valetLocations = useOwnerValetLocations(isOwner, currentGarageId, garage);
 
-  // 🛡️ حظر الفالية الحقيقي فقط إذا كان خارج النطاق (الأدمن والمالك مستثنون دائماً)
   const isValetBlocked = isRealValet && geofenceState.status !== 'inside';
 
   const activeSessions = useMemo(() => {
@@ -695,7 +860,6 @@ export default function GarageDashboard() {
     });
   }, [garageSessions]);
 
-  // 🚨 [رصد فيزيائي متطور لكسر فقاعة الأمان - كل 12 ثانية]
   useEffect(() => {
     if (!isValet || activeSessions.length === 0) return;
 
@@ -806,14 +970,12 @@ export default function GarageDashboard() {
   const [plateSearch, setPlateSearch] = useState('');
   const [showSwitcher, setShowSwitcher] = useState(false);
 
-  // إذن الإشعارات للفالية
   useEffect(() => {
     if (isValet && 'Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
   }, [isValet]);
 
-  // إنذار قدوم السيارة للفالية فقط
   useEffect(() => {
     if (!carsOnTheWay || carsOnTheWay.length === 0) return;
     const ids = new Set(carsOnTheWay.map(c => c.id));
@@ -970,7 +1132,6 @@ export default function GarageDashboard() {
 
   const getUndoRemainingSeconds = useCallback((addedAt: number) => Math.max(0, UNDO_TIMEOUT_SECONDS - Math.floor((getServerNow() - addedAt) / 1000)), []);
 
-  // زر العودة الذكي (يرجع للأدمن فوراً لو كان أدمن، أو يسجل خروج)
   const handleExitScreen = () => {
     if (ownerValetView) {
       setOwnerValetView(false);
@@ -1019,19 +1180,10 @@ export default function GarageDashboard() {
     const at = getServerNow();
     const startTimeISO = new Date(at).toISOString();
     
-    if (garageCoords) {
-      const collision = checkChessCollision(sessions, garageCoords.lat, garageCoords.lng, 4);
-      if (collision) {
-        toast.error(`🚨 خطأ: المكان محجوز للعربية [${collision.carPlate}] تحت حماية درع VIP!`, { duration: 5000 });
-        return;
-      }
-    }
-
+      // 🎯 تعيين مربع شطرنج تلقائي تتابعي ومضمون للسايس يدوياً دون أي فحص تصادم معقد
     let assignedSlot = undefined;
-    if (garageCoords) {
-      const slot = assignChessSlot(activeSessions.length, garageCoords.lat, garageCoords.lng);
-      assignedSlot = slot.slotId;
-    }
+    const slot = assignChessSlot(activeSessions.length);
+    assignedSlot = slot.slotId;
 
     const sid = await addSession({ 
       garageId: garage.id, 
@@ -1166,7 +1318,7 @@ export default function GarageDashboard() {
     
     pausePolling(2000);
     
-    try {
+     try {
       const np = normalizePlate(carPlate);
       const existing = useStore.getState().sessions.find(s => normalizePlate(s.carPlate) === np && s.status === 'active');
       if (existing) { 
@@ -1178,7 +1330,29 @@ export default function GarageDashboard() {
       const ro = offers.find(o => normalizePlate(o.carPlate) === np && (o.status === 'pending' || o.status === 'accepted'));
       if (ro) cancelOffer(ro.id);
 
+      // 🎯 تعيين مربع الشطرنج تتابعياً وبسهولة فور الاستلام والوصول
+      let assignedSlot = undefined;
+      const activeSessionsCount = activeSessions.length;
+      const slot = assignChessSlot(activeSessionsCount);
+      assignedSlot = slot.slotId;
+
       const startTimeISO = new Date(getServerNow()).toISOString();
+
+      await addSession({ 
+        garageId: garage.id, 
+        carPlate: np, 
+        startTime: startTimeISO, 
+        status: 'active', 
+        source: 'app', 
+        agreedPrice: car.agreedPrice, 
+        customerPhone: car.customerPhone, 
+        customerName: car.customerName, 
+        startedBy: 'garage', 
+        incomingCarId: carId, 
+        securityShieldActive: car.securityShieldActive ?? false, // وراثة اختيار العميل التلقائي
+        slotId: assignedSlot, // حفظ رقم المربع المخصص
+        addedBy: isValet ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`) : '' 
+      } as any);
 
       await addSession({ 
         garageId: garage.id, 
@@ -1303,6 +1477,7 @@ export default function GarageDashboard() {
         </motion.div>
       )}
 
+      {/* 👑 بانر حالة الفالية للمالك والأدمن */}
       {isOwner && <OwnerValetLocationBanner valetLocations={valetLocations} />}
 
       {/* Settings Modal */}
