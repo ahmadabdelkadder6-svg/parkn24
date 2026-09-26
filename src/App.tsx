@@ -1,3 +1,4 @@
+// src/App.tsx
 import { useEffect, useRef, useState, useMemo, lazy, Suspense, Component, ErrorInfo, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
@@ -68,36 +69,6 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
   }
 }
 
-/* ════════════════════════════════════════════════════════════
-   🛡️ PARK'N 24 BRAND LOGO (مستوحى من الشعار المرفق)
-   ════════════════════════════════════════════════════════════ */
-function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: number }) {
-  return (
-    <svg viewBox="0 0 100 115" width={width} height={height} fill="none" xmlns="http://www.w3.org/2000/svg">
-      {/* الدرع الأزرق الخارجي */}
-      <path d="M50 2 C78 2, 98 14, 98 26 C98 76, 75 104, 50 114 C25 104, 2 76, 2 26 C2 14, 22 2, 50 2 Z" fill="#1656b8" />
-      {/* الإطار الداخلي للدرع */}
-      <path d="M50 8 C72 8, 90 18, 90 28 C90 70, 70 96, 50 105 C30 96, 10 70, 10 28 C10 18, 28 8, 50 8 Z" stroke="#ffffff" strokeWidth="2.5" fill="none" opacity="0.95" />
-      
-      {/* حرف P الأخضر الكبيرة */}
-      <path d="M26 30 H48 C60 30, 62 48, 48 48 H38 V78 H26 V30 Z M38 38 V40 H46 C48 40, 48 38, 46 38 Z" fill="#8cc63f" />
-      
-      {/* أيقونة الساعة 24 فوق الـ P */}
-      <path d="M64 30 A 10 10 0 1 1 58 44" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-      <polyline points="64 34, 64 40, 68 40" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-      <text x="69" y="52" fill="#ffffff" fontSize="9" fontWeight="900" fontFamily="sans-serif">24</text>
-      
-      {/* أيقونة السيارة البيضاء تحت الـ P */}
-      <path d="M58 64 L62 58 H74 L78 64 H80 C81.5 64 82 65 82 66.5 V72 H54 V66.5 C54 65 54.5 64 56 64 Z" fill="#ffffff" />
-      <circle cx="61" cy="72" r="2.2" fill="#1656b8" />
-      <circle cx="75" cy="72" r="2.2" fill="#1656b8" />
-    </svg>
-  );
-}
-
-/* ════════════════════════════════════════════════════════════
-   ☀️ PARK'N 24 HERO — FULL-SCREEN CINEMATIC BLEND (FIXED CACHE)
-   ════════════════════════════════════════════════════════════ */
 interface ParkLandingProps {
   onEnter: () => void;
 }
@@ -110,10 +81,7 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
     setTimeout(() => onEnter(), 500);
   };
 
-  const BRAND_BLUE = '#1656b8';
   const BRAND_GREEN = '#8cc63f';
-
-  // ⚡ تم تغيير رقم الإصدار هنا لـ v=999 لإجبار المتصفح على حذف كاش الصورة القديمة فوراً وعرض المضغوطة الجديدة
   const CAR_IMAGE_SRC = '/hero-car.webp?v=999';
 
   return (
@@ -189,7 +157,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             }
           `}</style>
 
-          {/* 🚗 1. خلفية الصورة المدمجة بكامل الشاشة */}
           <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
             <img
               src={CAR_IMAGE_SRC}
@@ -202,7 +169,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
               }}
             />
 
-            {/* 🎨 2. تدرجات الدمج السينمائي الذكي */}
             <div
               className="absolute inset-0"
               style={{
@@ -218,7 +184,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             />
           </div>
 
-          {/* 🛡️ 3. شريط الهيدر العلوي */}
           <motion.nav
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -226,7 +191,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             className="w-full flex items-center justify-between px-6 py-6 z-20 relative"
             style={{ direction: 'ltr' }}
           >
-            {/* اللوجو عربي وإنجليزي */}
             <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.15' }}>
               <span style={{ fontFamily: "'Cairo', sans-serif", fontSize: '16px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.01em' }}>
                 بركن <span style={{ color: BRAND_GREEN }}>24</span>
@@ -241,12 +205,10 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             </button>
           </motion.nav>
 
-          {/* 📝 4. المحتوى التفاعلي المدمج في الأسفل والوسط */}
           <div
             className="px-6 pb-10 z-20 relative flex flex-col justify-end max-w-lg mx-auto w-full"
             style={{ direction: 'rtl' }}
           >
-            {/* العنوان الرئيسي */}
             <h1
               className="hero-block delay-1"
               style={{
@@ -263,7 +225,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
               <span style={{ color: BRAND_GREEN }}>قبل ما توصل!</span>
             </h1>
 
-            {/* الوصف التوضيحي */}
             <p
               className="hero-block delay-2"
               style={{
@@ -280,7 +241,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
               مع Park'n 24، حدد وجهتك، اضمن مكانك في أقرب جراج، ووفر وقتك وبنزينك بضغطة زر واحدة.
             </p>
 
-            {/* زر الحجز السريع */}
             <div className="hero-block delay-3" style={{ marginTop: '26px' }}>
               <button onClick={handleEnter} className="btn-brand-glow w-full sm:w-auto" style={{ fontSize: '16px' }}>
                 <span>احجز ركنتك الآن 🚀</span>
@@ -310,14 +270,13 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
                 </span>
               </button>
             </div>
-
           </div>
-
         </motion.div>
       )}
     </AnimatePresence>
   );
 }
+
 const VALID_SCREENS = [
   'splash',
   'list',
@@ -372,27 +331,6 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (document.getElementById('google-fonts-optimized')) return;
-
-    const preconnect1 = document.createElement('link');
-    preconnect1.rel = 'preconnect';
-    preconnect1.href = 'https://fonts.googleapis.com';
-    document.head.appendChild(preconnect1);
-
-    const preconnect2 = document.createElement('link');
-    preconnect2.rel = 'preconnect';
-    preconnect2.href = 'https://fonts.gstatic.com';
-    preconnect2.crossOrigin = 'anonymous';
-    document.head.appendChild(preconnect2);
-
-    const link = document.createElement('link');
-    link.id = 'google-fonts-optimized';
-    link.rel = 'stylesheet';
-    link.href = 'https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter+Tight:wght@400;500;600;700;800&display=swap';
-    document.head.appendChild(link);
-  }, []);
-
-  useEffect(() => {
     if (window.location.pathname === '/admin' || window.location.hash === '#admin') {
       setAdminAccess(true);
       localStorage.setItem('adminAccess', 'true');
@@ -418,6 +356,7 @@ export default function App() {
     }
   }, [safeScreen, screen, setScreen, dataLoaded, view]);
 
+  // 🌟 تهيئة التطبيق وجلب البيانات قبل تحديد الشاشة لتثبيت حجز العميل
   useEffect(() => {
     const init = async () => {
       const justInstalled = localStorage.getItem('pwaJustInstalled') === 'true';
@@ -433,18 +372,6 @@ export default function App() {
         setView('user');
         setScreen('splash');
         setSelectedGarageId(null);
-      }
-
-      const savedScreen = localStorage.getItem('appScreen');
-
-      if (
-        savedScreen === 'session' ||
-        savedScreen === 'navigation' ||
-        savedScreen === 'waiting' ||
-        savedScreen === 'offer' ||
-        (savedScreen && !VALID_SCREENS.includes(savedScreen as any))
-      ) {
-        localStorage.removeItem('appScreen');
       }
 
       const urlParams = new URLSearchParams(window.location.search);
@@ -473,10 +400,15 @@ export default function App() {
         }
       }
 
+      // ⏳ جلب البيانات فوراً لضمان وجود الجلسات والحجوزات قبل إتاحة الواجهة
+      try {
+        await fetchAll();
+      } catch (e) {
+        console.error('Background fetch error:', e);
+      }
+
       setDataLoaded(true);
       initialLoadDone.current = true;
-
-      fetchAll().catch((e) => console.error('Background fetch error:', e));
       setupRealtime();
     };
 
@@ -489,6 +421,7 @@ export default function App() {
     }
   }, [view]);
 
+  // 🔒 المزامنة الصارمة: الحفاظ على شاشة التوجيه أو العداد عند الـ Refresh ومنع العودة للرئيسية
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser) return;
@@ -513,6 +446,7 @@ export default function App() {
       return samePlate || samePhone;
     });
 
+    // 1️⃣ لو الجلسة نشطة ⬅️ افتح شاشة العداد فوراً
     if (myActiveSession) {
       prevActiveSessionRef.current = myActiveSession.id;
       lastActiveTimeRef.current = getServerNow();
@@ -525,6 +459,7 @@ export default function App() {
       return;
     }
 
+    // 2️⃣ لو في حجز نشط (في الطريق) ⬅️ اثبت على شاشة التوجيه NavigationScreen
     if (myIncoming) {
       setSelectedGarageId(myIncoming.garageId);
       if (
@@ -537,6 +472,7 @@ export default function App() {
       return;
     }
 
+    // 3️⃣ لو مفيش حجز ولا جلسة ⬅️ افحص الإيصالات المعلقة
     if (
       safeScreen === 'session' ||
       safeScreen === 'navigation' ||
@@ -569,7 +505,7 @@ export default function App() {
       setSelectedGarageId(null);
       setScreen('list');
     }
-  }, [dataLoaded]);
+  }, [dataLoaded, sessions, incomingCars, currentUser, view]);
 
   useEffect(() => {
     if (!dataLoaded) return;
@@ -583,14 +519,6 @@ export default function App() {
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
       const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
       const samePhone = Boolean(userPhone && sPhone === userPhone);
-      return samePlate || samePhone;
-    });
-
-    const myIncoming = incomingCars.find((c) => {
-      if (c.status !== 'coming') return false;
-      const samePlate = !!userPlate && normalizePlate(c.carPlate) === userPlate;
-      const cPhone = c.customerPhone ? normalizePhone(c.customerPhone) : '';
-      const samePhone = Boolean(userPhone && cPhone === userPhone);
       return samePlate || samePhone;
     });
 
@@ -618,124 +546,7 @@ export default function App() {
       }
       return;
     }
-
-    if (prevActiveSessionRef.current) {
-      noSessionCountRef.current += 1;
-      const timeSinceLastActive = getServerNow() - lastActiveTimeRef.current;
-
-      if (noSessionCountRef.current < 3 || timeSinceLastActive < 8000) {
-        return;
-      }
-
-      if (sessionTransitionTimer.current) return;
-
-      sessionTransitionTimer.current = setTimeout(() => {
-        sessionTransitionTimer.current = null;
-        const freshState = useStore.getState();
-        const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
-        const freshPhone = freshState.currentUser?.phone ? normalizePhone(freshState.currentUser.phone) : '';
-
-        const stillActive = freshState.sessions.find((s) => {
-          if (s.status !== 'active') return false;
-          const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-          const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-          const samePhone = Boolean(freshPhone && sPhone === freshPhone);
-          return samePlate || samePhone;
-        });
-
-        if (stillActive) {
-          noSessionCountRef.current = 0;
-          prevActiveSessionRef.current = stillActive.id;
-          return;
-        }
-
-        const currentScreen = freshState.screen;
-        prevActiveSessionRef.current = null;
-        noSessionCountRef.current = 0;
-
-        if (
-          currentScreen === 'session' ||
-          currentScreen === 'navigation' ||
-          currentScreen === 'waiting'
-        ) {
-          const lastCompleted = freshState.sessions
-            .filter((s) => {
-              if (s.status !== 'completed') return false;
-              const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-              const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-              const samePhone = Boolean(freshPhone && sPhone === freshPhone);
-              return samePlate || samePhone;
-            })
-            .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
-
-          if (lastCompleted) {
-            const freshAcknowledged = freshState.acknowledgedSessionIds;
-            const isNotAcknowledged = freshAcknowledged ? !freshAcknowledged.has(lastCompleted.id) : true;
-            if (isNotAcknowledged) {
-              setSelectedGarageId(lastCompleted.garageId);
-              setScreen('summary');
-              return;
-            }
-          }
-
-          if (!sessionEndToastShown.current) {
-            sessionEndToastShown.current = true;
-            toast.success('تم إنهاء الجلسة والعودة للرئيسية');
-          }
-          setSelectedGarageId(null);
-          setScreen('list');
-        }
-      }, 3000);
-    }
-
-    if (!myActiveSession && safeScreen === 'navigation' && !myIncoming) {
-      const timeout = setTimeout(() => {
-        const freshState = useStore.getState();
-        const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
-        const freshPhone = freshState.currentUser?.phone ? normalizePhone(freshState.currentUser.phone) : '';
-
-        const freshIncoming = freshState.incomingCars.find((c) => {
-          if (c.status !== 'coming') return false;
-          const samePlate = !!freshPlate && normalizePlate(c.carPlate) === freshPlate;
-          const cPhone = c.customerPhone ? normalizePhone(c.customerPhone) : '';
-          const samePhone = Boolean(freshPhone && cPhone === freshPhone);
-          return samePlate || samePhone;
-        });
-
-        const freshSession = freshState.sessions.find((s) => {
-          if (s.status !== 'active') return false;
-          const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-          const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-          const samePhone = Boolean(freshPhone && sPhone === freshPhone);
-          return samePlate || samePhone;
-        });
-
-        if (!freshIncoming && !freshSession) {
-          setSelectedGarageId(null);
-          setScreen('list');
-        }
-      }, 3000);
-
-      return () => clearTimeout(timeout);
-    }
-  }, [
-    sessions,
-    currentUser,
-    view,
-    safeScreen,
-    incomingCars,
-    dataLoaded,
-    setScreen,
-    setSelectedGarageId,
-  ]);
-
-  useEffect(() => {
-    return () => {
-      if (sessionTransitionTimer.current) {
-        clearTimeout(sessionTransitionTimer.current);
-      }
-    };
-  }, []);
+  }, [sessions, currentUser, view, safeScreen, dataLoaded, setScreen, setSelectedGarageId]);
 
   if (pathname === '/install') {
     return <InstallPage />;
@@ -772,8 +583,6 @@ export default function App() {
                       localStorage.removeItem('garageRole');
                       localStorage.removeItem('valetNumber');
                       localStorage.removeItem('valetName');
-                      localStorage.removeItem('garagePrefillUsername');
-                      localStorage.removeItem('garagePrefillPhone');
                       setCurrentGarageId(null);
                     }
                     setView(tab.id);
