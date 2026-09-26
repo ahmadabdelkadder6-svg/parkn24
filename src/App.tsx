@@ -307,13 +307,6 @@ export default function App() {
 
   const prevActiveSessionRef = useRef<string | null>(null);
   const [dataLoaded, setDataLoaded] = useState(false);
-  const initialLoadDone = useRef(false);
-
-  const noSessionCountRef = useRef(0);
-  const lastActiveTimeRef = useRef(0);
-  const sessionEndToastShown = useRef(false);
-  const sessionTransitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const [adminAccess, setAdminAccess] = useState(false);
 
   const [showLanding, setShowLanding] = useState(() => {
@@ -356,24 +349,9 @@ export default function App() {
     }
   }, [safeScreen, screen, setScreen, dataLoaded, view]);
 
-  // 🌟 تهيئة التطبيق وجلب البيانات قبل تحديد الشاشة لتثبيت حجز العميل
+  // 🌟 1️⃣ تهيئة التطبيق وجلب البيانات في البداية
   useEffect(() => {
     const init = async () => {
-      const justInstalled = localStorage.getItem('pwaJustInstalled') === 'true';
-      const isStandalone =
-        window.matchMedia('(display-mode: standalone)').matches ||
-        (window.navigator as any).standalone === true;
-
-      if (justInstalled && isStandalone) {
-        localStorage.removeItem('pwaJustInstalled');
-        localStorage.setItem('appView', 'user');
-        localStorage.setItem('appScreen', 'splash');
-        localStorage.removeItem('selectedGarageId');
-        setView('user');
-        setScreen('splash');
-        setSelectedGarageId(null);
-      }
-
       const urlParams = new URLSearchParams(window.location.search);
       const isGarageFromURL = urlParams.has('garage');
       const isAdminFromURL =
@@ -400,15 +378,13 @@ export default function App() {
         }
       }
 
-      // ⏳ جلب البيانات فوراً لضمان وجود الجلسات والحجوزات قبل إتاحة الواجهة
       try {
         await fetchAll();
       } catch (e) {
-        console.error('Background fetch error:', e);
+        console.error('Initial fetch error:', e);
       }
 
       setDataLoaded(true);
-      initialLoadDone.current = true;
       setupRealtime();
     };
 
@@ -421,7 +397,7 @@ export default function App() {
     }
   }, [view]);
 
-  // 🔒 المزامنة الصارمة: الحفاظ على شاشة التوجيه أو العداد عند الـ Refresh ومنع العودة للرئيسية
+  // 🌟 2️⃣ الحفاظ على الجلسات واستعادة الشاشة عند الـ Refresh فقط (بدون طرد العميل من شاشة التوجيه)
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser) return;
@@ -446,38 +422,27 @@ export default function App() {
       return samePlate || samePhone;
     });
 
-    // 1️⃣ لو الجلسة نشطة ⬅️ افتح شاشة العداد فوراً
+    // لو العربية بدأت ركنتها فعلياً ⬅️ افتح شاشة العداد فوراً
     if (myActiveSession) {
       prevActiveSessionRef.current = myActiveSession.id;
-      lastActiveTimeRef.current = getServerNow();
-      noSessionCountRef.current = 0;
-      sessionEndToastShown.current = false;
       setSelectedGarageId(myActiveSession.garageId);
-      if (safeScreen !== 'session' && safeScreen !== 'summary') {
+      if (screen !== 'session' && screen !== 'summary') {
         setScreen('session');
       }
       return;
     }
 
-    // 2️⃣ لو في حجز نشط (في الطريق) ⬅️ اثبت على شاشة التوجيه NavigationScreen
+    // لو العربية في الطريق وموجود حجز نشط ⬅️ افتح شاشة التوجيه
     if (myIncoming) {
       setSelectedGarageId(myIncoming.garageId);
-      if (
-        safeScreen !== 'navigation' &&
-        safeScreen !== 'session' &&
-        safeScreen !== 'summary'
-      ) {
+      if (screen !== 'navigation' && screen !== 'session' && screen !== 'summary') {
         setScreen('navigation');
       }
       return;
     }
 
-    // 3️⃣ لو مفيش حجز ولا جلسة ⬅️ افحص الإيصالات المعلقة
-    if (
-      safeScreen === 'session' ||
-      safeScreen === 'navigation' ||
-      safeScreen === 'waiting'
-    ) {
+    // لو تم إنهاء الجلسة حديثاً من السايس ⬅️ افتح الفاتورة
+    if (screen === 'session') {
       const lastCompleted = sessions
         .filter((s) => {
           if (s.status !== 'completed') return false;
@@ -491,7 +456,6 @@ export default function App() {
       if (lastCompleted) {
         const endTime = toMs(lastCompleted.endTime);
         const timeSinceEnd = getServerNow() - endTime;
-
         const freshAcknowledged = acknowledgedSessionIds;
         const isNotAcknowledged = freshAcknowledged ? !freshAcknowledged.has(lastCompleted.id) : true;
 
@@ -501,15 +465,14 @@ export default function App() {
           return;
         }
       }
-
       setSelectedGarageId(null);
       setScreen('list');
     }
-  }, [dataLoaded, sessions, incomingCars, currentUser, view]);
+  }, [dataLoaded, sessions, incomingCars, currentUser, view, screen]);
 
+  // 🌟 3️⃣ مراقبة بدء الجلسة النشطة أثناء تواجد العميل في شاشة التوجيه
   useEffect(() => {
-    if (!dataLoaded) return;
-    if (!currentUser || view !== 'user') return;
+    if (!dataLoaded || !currentUser || view !== 'user') return;
 
     const userPlate = normalizePlate(currentUser.carPlate);
     const userPhone = currentUser.phone ? normalizePhone(currentUser.phone) : '';
@@ -522,31 +485,14 @@ export default function App() {
       return samePlate || samePhone;
     });
 
-    if (myActiveSession) {
-      noSessionCountRef.current = 0;
-      lastActiveTimeRef.current = getServerNow();
-      sessionEndToastShown.current = false;
-
-      if (sessionTransitionTimer.current) {
-        clearTimeout(sessionTransitionTimer.current);
-        sessionTransitionTimer.current = null;
+    if (myActiveSession && myActiveSession.id !== prevActiveSessionRef.current) {
+      prevActiveSessionRef.current = myActiveSession.id;
+      setSelectedGarageId(myActiveSession.garageId);
+      if (screen !== 'session' && screen !== 'summary' && screen !== 'lastSession' && screen !== 'chat') {
+        setScreen('session');
       }
-
-      if (myActiveSession.id !== prevActiveSessionRef.current) {
-        prevActiveSessionRef.current = myActiveSession.id;
-        setSelectedGarageId(myActiveSession.garageId);
-        if (
-          safeScreen !== 'session' &&
-          safeScreen !== 'summary' &&
-          safeScreen !== 'lastSession' &&
-          safeScreen !== 'chat'
-        ) {
-          setScreen('session');
-        }
-      }
-      return;
     }
-  }, [sessions, currentUser, view, safeScreen, dataLoaded, setScreen, setSelectedGarageId]);
+  }, [sessions, currentUser, view, dataLoaded, screen, setScreen, setSelectedGarageId]);
 
   if (pathname === '/install') {
     return <InstallPage />;
