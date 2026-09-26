@@ -1857,13 +1857,19 @@ export const useStore = create<AppState>((set, get) => ({
     } catch {}
   },
 
-  // 🛡️ [دالة 2]: تفعيل الدرع الفولاذي بقفل نهائي وشرط الـ 250م للجراج
+  // 🛡️ تفعيل الدرع الفولاذي مع فحص جغرافي ذكي وتثبيت نقطة الركنة
   activateShield: async (sessionId, clientLat, clientLng, garageLat, garageLng, magnetic, bleId) => {
-    const dist = haversineDistanceMeters(clientLat, clientLng, garageLat, garageLng);
-    
-    // فحص شرط الـ 250 متر الصارم
-    if (dist > 250) {
-      return { success: false, reason: 'outside_geofence', distance: Math.round(dist) };
+    const validGarageLat = parseFloat(String(garageLat || 0));
+    const validGarageLng = parseFloat(String(garageLng || 0));
+
+    let dist = 0;
+    // لو الجراج له إحداثيات مسجلة فعلياً نحسب المسافة
+    if (validGarageLat !== 0 && validGarageLng !== 0) {
+      dist = haversineDistanceMeters(clientLat, clientLng, validGarageLat, validGarageLng);
+      // سماحية ذكية للأجهزة أثناء الركن الفعلي
+      if (dist > 350) {
+        return { success: false, reason: 'outside_geofence', distance: Math.round(dist) };
+      }
     }
 
     const now = Date.now();
@@ -1875,10 +1881,10 @@ export const useStore = create<AppState>((set, get) => ({
           ? {
               ...s,
               securityShieldActive: true,
-              shieldLocked: true, // 🔒 قفل الزر نهائياً لمنع العميل من التحايل والإلغاء
+              shieldLocked: true,
               shieldActivatedAt: now,
-              anchorLat: clientLat,
-              anchorLng: clientLng,
+              shieldAnchorLat: clientLat, // 📍 تثبيت مكان الركنة الدقيق في لحظة التفعيل
+              shieldAnchorLng: clientLng,
               magneticBaseline: magnetic,
               bleDeviceId: bleId,
               isBreached: false,
@@ -1900,7 +1906,7 @@ export const useStore = create<AppState>((set, get) => ({
           is_breached: false,
         }).eq('id', sessionId);
       } catch (err) {
-        console.error('Error syncing shield activation to Supabase:', err);
+        console.error('Error syncing shield activation:', err);
       }
     }
 
