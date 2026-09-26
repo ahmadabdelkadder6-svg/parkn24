@@ -21,12 +21,89 @@ import { assignChessSlot } from '../utils/chessGridEngine';
 import toast from 'react-hot-toast';
 import { subscribeToPush } from '../lib/pushManager';
 
+// ─── ⏱️ الإعدادات والثوابت الأساسية ───────────────────────────
 const UNDO_TIMEOUT_SECONDS = 30;
 const GEOFENCE_RADIUS_METERS = 250;
-
 const VALET_PING_INTERVAL_MS = 8000;
 const VALET_LIVE_THRESHOLD_MS = 25000;
 const VALET_BACKGROUND_GRACE_MS = 10 * 60 * 1000;
+
+/* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
+const BRAND = {
+  blue: '#1656b8',
+  blueDark: '#0f3d85',
+  blueLight: '#e8f0fe',
+  blueSoft: '#f0f5ff',
+  green: '#8cc63f',
+  greenDark: '#6ea62a',
+  greenLight: '#f2fae6',
+  navy: '#0a1628',
+  slate: '#475569',
+  slateMuted: '#94a3b8',
+  border: '#e2e8f0',
+  card: '#ffffff',
+  bg: '#f4f7fc',
+};
+
+// ─── 🛠️ الدوال المساعدة الأساسية (تعريف موحد في قمة الملف) ───────────
+export const toMs = (value: any): number => {
+  if (!value) return 0;
+  if (typeof value === 'string') {
+    const ms = new Date(value).getTime();
+    return Number.isFinite(ms) && ms > 0 ? ms : 0;
+  }
+  if (typeof value === 'number') {
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+  return 0;
+};
+
+export const formatElapsed = (totalSeconds: number): string => {
+  if (totalSeconds < 0) totalSeconds = 0;
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) return `${h}س ${m}د ${s}ث`;
+  if (m > 0) return `${m}د ${s}ث`;
+  return `${s}ث`;
+};
+
+export const getLocalToday = (): string => {
+  const n = new Date(getServerNow());
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+};
+
+export const timestampToLocalDate = (ts: number): string => {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+export const normalizeSearchPlate = (plate?: string): string => normalizePlate(plate);
+
+export const extractGarageCoords = (garage: any): { lat: number; lng: number } | null => {
+  if (!garage) return null;
+  const lat = parseFloat(garage.latitude ?? garage.lat ?? garage.location_lat);
+  const lng = parseFloat(garage.longitude ?? garage.lng ?? garage.location_lng);
+  if (Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0) {
+    return { lat, lng };
+  }
+  return null;
+};
+
+export const haversineDistance = (
+  lat1: number, lon1: number,
+  lat2: number, lon2: number
+): number => {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
 
 // ─── 🔔 نظام الصوت والتنبيهات المدمج داخل الشاشة ───────────────────
 let garageAudioCtx: AudioContext | null = null;
@@ -150,23 +227,7 @@ const fireIncomingCarAlert = (carPlate: string) => {
   );
 };
 
-/* ─── 🎨 الألوان الرسمية ─── */
-const BRAND = {
-  blue: '#1656b8',
-  blueDark: '#0f3d85',
-  blueLight: '#e8f0fe',
-  blueSoft: '#f0f5ff',
-  green: '#8cc63f',
-  greenDark: '#6ea62a',
-  greenLight: '#f2fae6',
-  navy: '#0a1628',
-  slate: '#475569',
-  slateMuted: '#94a3b8',
-  border: '#e2e8f0',
-  card: '#ffffff',
-  bg: '#f4f7fc',
-};
-
+// ─── Interfaces ────────────────────────────────────────────────
 interface UndoableSession {
   sessionId: string;
   localId: string;
@@ -174,31 +235,6 @@ interface UndoableSession {
   price: number;
   addedAt: number;
 }
-
-const extractGarageCoords = (garage: any): { lat: number; lng: number } | null => {
-  if (!garage) return null;
-  const lat = parseFloat(garage.latitude ?? garage.lat ?? garage.location_lat);
-  const lng = parseFloat(garage.longitude ?? garage.lng ?? garage.location_lng);
-  if (Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0) {
-    return { lat, lng };
-  }
-  return null;
-};
-
-const haversineDistance = (
-  lat1: number, lon1: number,
-  lat2: number, lon2: number
-): number => {
-  const R = 6371000;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-};
 
 interface GeofenceState {
   status: 'loading' | 'inside' | 'outside' | 'denied' | 'error' | 'no_garage_coords';
@@ -218,6 +254,7 @@ interface ValetLocationInfo {
   isBackground?: boolean;
 }
 
+// ─── Custom Hooks ──────────────────────────────────────────────
 const useValetGeofence = (
   enabled: boolean,
   garageCoords: { lat: number; lng: number } | null,
@@ -416,7 +453,7 @@ const useOwnerValetLocations = (
   return locations;
 };
 
-// 👑 مكون تتبع السياس المتواجدين (تمت إعادته وتأمينه لحل مشكلة الانهيار)
+// ─── Sub-Components (Memoized) ─────────────────────────────────
 const OwnerValetLocationBanner = memo(function OwnerValetLocationBanner({
   valetLocations,
 }: {
@@ -708,7 +745,6 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
 // ==========================================
 // المكون الرئيسي: DASHBOARD
 // ==========================================
-
 export default function GarageDashboard() {
   const {
     garages, currentGarageId, setCurrentGarageId, setView, sessions, addSession, endSession,
@@ -723,7 +759,7 @@ export default function GarageDashboard() {
 
   const [ownerValetView, setOwnerValetView] = useState(false);
 
-  // 🌟 إلغاء الـ useState وجعل قراءة الدور لحظية لمنع تجميد شاشات الأدمن والسايس
+  // 🌟 قراءة الدور لحظياً لمنع تجميد شاشات الأدمن والسايس
   const garageRole = isAdmin ? 'owner' : ((localStorage.getItem('garageRole') as 'owner' | 'valet') || 'owner');
 
   const isRealValet = !isAdmin && garageRole === 'valet';
@@ -922,6 +958,7 @@ export default function GarageDashboard() {
   const [editValet3Name, setEditValet3Name] = useState(garage?.valetName3 || '');
   const [editValet3Pass, setEditValet3Pass] = useState(garage?.valetPassword3 || '');
   
+  // 🌟 هنا كانت تحدث المشكلة: الآن getLocalToday معرفة ومؤكدة بالقمة
   const [logDateFrom, setLogDateFrom] = useState(() => getLocalToday());
   const [logDateTo, setLogDateTo] = useState(() => getLocalToday());
   const [logPaymentFilter, setLogPaymentFilter] = useState<string>('all');
@@ -1654,7 +1691,7 @@ export default function GarageDashboard() {
                 style={{ borderColor: BRAND.blue }}
               >
                 <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin : 'https://parkn24.com')}&color=16-86-184`}
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin : 'https://parkn24.com')}&color=16-86-184`}
                   alt="QR Code"
                   className="w-full h-full object-contain"
                 />
