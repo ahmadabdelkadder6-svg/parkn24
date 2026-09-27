@@ -9,9 +9,8 @@ import {
   ShieldCheck,
   Sparkles,
 } from 'lucide-react';
-// 🌟 استيراد دوال البصمة الموحدة والتوقيت الدولي الموحد لضمان مطابقة دقيقة وخالية من تلاعب الثغرات
 import { useStore, pausePolling, normalizePlate, normalizePhone, getServerNow } from '../store';
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { calculateFullHours, calculateCost, calculateTotalCostWithShield } from '../utils/pricing';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
@@ -53,24 +52,24 @@ export default function SummaryScreen() {
   const realtimeChannelRef = useRef<any>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const isMySession = (s: any): boolean => {
+  const isMySession = useCallback((s: any): boolean => {
     const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
     const sPhone = s.customerPhone ? normalizePhone(s.customerPhone) : '';
     const samePhone = Boolean(userPhone && sPhone === userPhone);
     return samePlate || samePhone;
-  };
+  }, [userPlate, userPhone]);
 
   const activeSession = useMemo(() => {
     return sessions
       .filter((s) => s.status === 'active' && isMySession(s))
       .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
-  }, [sessions, userPlate, userPhone]);
+  }, [sessions, isMySession]);
 
   const lastCompletedSession = useMemo(() => {
     return sessions
       .filter((s) => s.status === 'completed' && isMySession(s))
       .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
-  }, [sessions, userPlate, userPhone]);
+  }, [sessions, isMySession]);
 
   const referenceSession = activeSession ?? lastCompletedSession;
 
@@ -78,10 +77,8 @@ export default function SummaryScreen() {
     garages.find((g) => g.id === selectedGarageId) ??
     garages.find((g) => g.id === referenceSession?.garageId);
 
-  // 🌟 التحقق الدقيق من طريقة الدفع المقبولة في الجراج
   const paymentMode = (garage?.payment_mode as 'cash' | 'wallet' | 'both') || 'both';
 
-  // إنشاء قائمة طرق الدفع ديناميكياً بحسب إعداد الجراج
   const methods = useMemo(() => {
     const list = [];
     if (paymentMode === 'cash' || paymentMode === 'both') {
@@ -104,6 +101,7 @@ export default function SummaryScreen() {
     }
   }, [paymentMode]);
 
+  // ✅ Realtime مع تصحيح وحماية دوال الأحداث تماماً
   useEffect(() => {
     if (!userPlate && !userPhone) return;
     if (done) return;
@@ -149,13 +147,17 @@ export default function SummaryScreen() {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') refetch();
     };
+    const handleWindowFocus = () => {
+      refetch();
+    };
+
     document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', refetch);
+    window.addEventListener('focus', handleWindowFocus);
 
     return () => {
       cancelled = true;
       document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('focus', handleWindowFocus);
       if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
       if (realtimeChannelRef.current) {
         supabase.removeChannel(realtimeChannelRef.current);
@@ -212,11 +214,9 @@ export default function SummaryScreen() {
   const durationMinutes = Math.floor(durationSeconds / 60);
   const sessionRate = Number(referenceSession?.agreedPrice ?? garage?.basePrice ?? 0);
 
-  // 🛡️ فحص هل كان درع VIP مفعّلاً
   const isShield = referenceSession?.is_shield_active === true;
   const isFirstFreeApplied = referenceSession?.isFirstFreeSession === true;
 
-  // 🛡️ الحسابات المالية الدقيقة مع درع الأمان VIP والـ 10 جنيه
   const pricingSummary = useMemo(() => {
     return calculateTotalCostWithShield(durationSeconds, sessionRate, isFirstFreeApplied, isShield);
   }, [durationSeconds, sessionRate, isFirstFreeApplied, isShield]);
@@ -376,7 +376,6 @@ export default function SummaryScreen() {
             </div>
           )}
 
-          {/* شارة درع VIP المميزة في شاشة الإتمام */}
           {isShield && (
             <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black bg-amber-50 text-amber-600 border border-amber-200 mb-2 mx-auto">
               <ShieldCheck size={12} className="text-amber-500" />
@@ -420,7 +419,7 @@ export default function SummaryScreen() {
             setSelectedGarageId(null);
             setScreen('list');
           }}
-          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100"
+          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100 cursor-pointer"
         >
           <Home size={20} className="text-white" />
           <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
@@ -565,7 +564,7 @@ export default function SummaryScreen() {
                   <button
                     key={m.id}
                     onClick={() => setPaymentMethod(m.id)}
-                    className={`py-3 px-3 rounded-2xl border text-center transition-all relative flex flex-col items-center justify-center min-h-[110px] ${
+                    className={`py-3 px-3 rounded-2xl border text-center transition-all relative flex flex-col items-center justify-center min-h-[110px] cursor-pointer ${
                       paymentMethod === m.id
                         ? m.id === 'wallet'
                           ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-400'
@@ -632,7 +631,7 @@ export default function SummaryScreen() {
           <button
             onClick={handleConfirm}
             disabled={totalPrice > 0 && paymentMethod === 'wallet' && !canPayWallet}
-            className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 text-white ${
+            className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 text-white cursor-pointer ${
               totalPrice === 0
                 ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-100'
                 : paymentMethod === 'wallet' && !canPayWallet
@@ -677,7 +676,7 @@ export default function SummaryScreen() {
             setSelectedGarageId(null);
             setScreen('list');
           }}
-          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100 mt-4"
+          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100 mt-4 cursor-pointer"
         >
           <Home size={20} className="text-white" />
           <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
