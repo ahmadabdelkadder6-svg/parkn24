@@ -180,7 +180,6 @@ export const sendCarComingPush = async ({
   agreedPrice?:     number;
 }): Promise<boolean> => {
   try {
-    // 🌟 توحيد بصمة اللوحة في الوسوم لضمان مطابقتها بدقة
     const plateFingerprint = normalizePlate(carPlate) || carPlate;
     const immediateTag = `incoming-${plateFingerprint}`;
     const scheduledTag = `approaching-${plateFingerprint}`;
