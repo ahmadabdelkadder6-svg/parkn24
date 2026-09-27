@@ -6,12 +6,11 @@ import {
   Wallet,
   AlertTriangle,
   Gift,
-  ShieldCheck,
-  Sparkles,
 } from 'lucide-react';
+// 🌟 استيراد دوال البصمة الموحدة والتوقيت الدولي الموحد لضمان مطابقة دقيقة وخالية من تلاعب الثغرات
 import { useStore, pausePolling, normalizePlate, normalizePhone, getServerNow } from '../store';
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { calculateFullHours, calculateCost, calculateTotalCostWithShield } from '../utils/pricing';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 
@@ -38,7 +37,7 @@ export default function SummaryScreen() {
     acknowledgeSession,
   } = useStore();
 
-  const userPlate = normalizePlate(currentUser?.carPlate || '');
+  const userPlate = normalizePlate(currentUser?.carPlate);
   const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'wallet' | 'free'>('cash');
@@ -52,35 +51,35 @@ export default function SummaryScreen() {
   const realtimeChannelRef = useRef<any>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ✅ صمام أمان محصن ضد undefined
-  const isMySession = useCallback((s: any): boolean => {
-    if (!s) return false;
-    const samePlate = !!userPlate && normalizePlate(s.carPlate || '') === userPlate;
+  const isMySession = (s: any): boolean => {
+    const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
     const sPhone = s.customerPhone ? normalizePhone(s.customerPhone) : '';
     const samePhone = Boolean(userPhone && sPhone === userPhone);
     return samePlate || samePhone;
-  }, [userPlate, userPhone]);
+  };
 
   const activeSession = useMemo(() => {
-    return (sessions || [])
-      .filter((s) => s && s.status === 'active' && isMySession(s))
+    return sessions
+      .filter((s) => s.status === 'active' && isMySession(s))
       .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
-  }, [sessions, isMySession]);
+  }, [sessions, userPlate, userPhone]);
 
   const lastCompletedSession = useMemo(() => {
-    return (sessions || [])
-      .filter((s) => s && s.status === 'completed' && isMySession(s))
+    return sessions
+      .filter((s) => s.status === 'completed' && isMySession(s))
       .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
-  }, [sessions, isMySession]);
+  }, [sessions, userPlate, userPhone]);
 
   const referenceSession = activeSession ?? lastCompletedSession;
 
   const garage =
-    (garages || []).find((g) => g && g.id === selectedGarageId) ??
-    (garages || []).find((g) => g && g.id === referenceSession?.garageId);
+    garages.find((g) => g.id === selectedGarageId) ??
+    garages.find((g) => g.id === referenceSession?.garageId);
 
+  // 🌟 التحقق الدقيق من طريقة الدفع المقبولة في الجراج
   const paymentMode = (garage?.payment_mode as 'cash' | 'wallet' | 'both') || 'both';
 
+  // إنشاء قائمة طرق الدفع ديناميكياً بحسب إعداد الجراج
   const methods = useMemo(() => {
     const list = [];
     if (paymentMode === 'cash' || paymentMode === 'both') {
@@ -89,12 +88,14 @@ export default function SummaryScreen() {
     if (paymentMode === 'wallet' || paymentMode === 'both') {
       list.push({ id: 'wallet' as const, label: 'خصم من المحفظة', icon: '👝' });
     }
+    // Fallback لو مفيش حاجة رجعت كاش افتراضي
     if (list.length === 0) {
       list.push({ id: 'cash' as const, label: 'سداد نقدي كاش', icon: '💵' });
     }
     return list;
   }, [paymentMode]);
 
+  // تحويل وتثبيت الاختيار تلقائياً بناءً على وضع الجراج
   useEffect(() => {
     if (paymentMode === 'cash') {
       setPaymentMethod('cash');
@@ -103,7 +104,6 @@ export default function SummaryScreen() {
     }
   }, [paymentMode]);
 
-  // Realtime
   useEffect(() => {
     if (!userPlate && !userPhone) return;
     if (done) return;
@@ -128,7 +128,7 @@ export default function SummaryScreen() {
 
           const myRow = (r: any) => {
             if (!r) return false;
-            const plate = normalizePlate(r.car_plate || r.carPlate || '');
+            const plate = normalizePlate(r.car_plate || r.carPlate);
             const phone = normalizePhone(r.customer_phone || r.customerPhone || '');
             return (
               (!!userPlate && plate === userPlate) ||
@@ -149,17 +149,13 @@ export default function SummaryScreen() {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') refetch();
     };
-    const handleWindowFocus = () => {
-      refetch();
-    };
-
     document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('focus', refetch);
 
     return () => {
       cancelled = true;
       document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('focus', refetch);
       if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
       if (realtimeChannelRef.current) {
         supabase.removeChannel(realtimeChannelRef.current);
@@ -177,6 +173,7 @@ export default function SummaryScreen() {
     const endMs = toMs(lastCompletedSession.endTime);
     if (!endMs) return;
 
+    // ✅ تم التعديل: حساب انتهاء الجلسة وفقاً لتوقيت السيرفر الموحد
     const timeSinceEnd = getServerNow() - endMs;
     if (timeSinceEnd > 10 * 60 * 1000) return;
 
@@ -210,23 +207,24 @@ export default function SummaryScreen() {
   const durationSeconds = referenceSession
     ? referenceSession.status === 'completed' && referenceSession.endTime
       ? Math.floor((toMs(referenceSession.endTime) - toMs(referenceSession.startTime)) / 1000)
-      : Math.floor((getServerNow() - toMs(referenceSession.startTime)) / 1000)
+      : Math.floor((getServerNow() - toMs(referenceSession.startTime)) / 1000) // ✅ تم التعديل: حساب ثواني الجلسة بالتوقيت الموحد
     : 0;
 
   const durationMinutes = Math.floor(durationSeconds / 60);
   const sessionRate = Number(referenceSession?.agreedPrice ?? garage?.basePrice ?? 0);
 
-  const isShield = referenceSession?.is_shield_active === true;
-  const isFirstFreeApplied = referenceSession?.isFirstFreeSession === true;
+  // 🌟 منطق حساب الـ 30 دقيقة المجانية
+  const isFirstFreeApplied = useMemo(() => {
+    return referenceSession?.isFirstFreeSession === true;
+  }, [referenceSession]);
 
-  const pricingSummary = useMemo(() => {
-    return calculateTotalCostWithShield(durationSeconds, sessionRate, isFirstFreeApplied, isShield);
-  }, [durationSeconds, sessionRate, isFirstFreeApplied, isShield]);
-
-  const isFreeNow = pricingSummary.isFree;
-  const billableHours = pricingSummary.paidHours;
+  const isFreeNow = isFirstFreeApplied && durationSeconds <= 1800; // 30 دقيقة أو أقل
+  const billableHours = isFreeNow ? 0 : calculateFullHours(durationSeconds);
   const freeMinutesApplied = isFreeNow ? Math.floor(durationSeconds / 60) : 0;
-  const discountAmount = pricingSummary.savedAmount;
+
+  const originalPrice = useMemo(() => {
+    return calculateCost(durationSeconds, sessionRate);
+  }, [durationSeconds, sessionRate]);
 
   const totalPrice = useMemo(() => {
     if (
@@ -235,8 +233,10 @@ export default function SummaryScreen() {
     ) {
       return Number(referenceSession.totalPrice);
     }
-    return pricingSummary.totalCost;
-  }, [referenceSession, pricingSummary.totalCost]);
+    return isFreeNow ? 0 : calculateCost(durationSeconds, sessionRate);
+  }, [referenceSession, isFreeNow, durationSeconds, sessionRate]);
+
+  const discountAmount = isFreeNow ? originalPrice : 0;
 
   const walletBalance = currentUser?.wallet ?? 0;
   const canPayWallet = walletBalance >= totalPrice;
@@ -246,8 +246,8 @@ export default function SummaryScreen() {
 
     if (!activeSession || activeSession.status !== 'active') {
       const freshState = useStore.getState();
-      const freshCompleted = (freshState.sessions || [])
-        .filter((s) => s && s.status === 'completed' && isMySession(s))
+      const freshCompleted = freshState.sessions
+        .filter((s) => s.status === 'completed' && isMySession(s))
         .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
 
       const actualPrice =
@@ -273,7 +273,7 @@ export default function SummaryScreen() {
       console.error('❌ endSession error:', err);
       await fetchAll();
 
-      const check = useStore.getState().sessions.find((s) => s && s.id === activeSession.id);
+      const check = useStore.getState().sessions.find((s) => s.id === activeSession.id);
       if (!check || check.status === 'completed') {
         const actualPrice = check?.totalPrice != null ? Number(check.totalPrice) : price;
         const actualMethod = check?.paymentMethod ?? method;
@@ -362,26 +362,16 @@ export default function SummaryScreen() {
             {doneTotalPrice} ج.م
           </div>
           <div className="text-xs text-slate-400 mb-2">
-            {doneMethod === 'free' || (isFreeNow && !isShield) ? (
+            {doneMethod === 'free' || isFreeNow ? (
               <span>(تم ركن {durationMinutes} دقيقة مجاناً كهدية ترحيبية 🎁)</span>
             ) : (
-              <span>
-                {billableHours} ساعة × {sessionRate} ج.م
-                {isShield ? ' + 10ج درع VIP' : ''}
-              </span>
+              <span>{billableHours} ساعة × {sessionRate} ج.م</span>
             )}
           </div>
 
           {doneMethod === 'free' && discountAmount > 0 && (
             <div className="inline-block px-3 py-1 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-600 mb-2">
               🎁 وفرت {discountAmount} ج.م من العرض الترحيبي!
-            </div>
-          )}
-
-          {isShield && (
-            <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black bg-amber-50 text-amber-600 border border-amber-200 mb-2 mx-auto">
-              <ShieldCheck size={12} className="text-amber-500" />
-              <span>تمت حماية السيارة بدرع VIP بنجاح 👑</span>
             </div>
           )}
 
@@ -421,7 +411,7 @@ export default function SummaryScreen() {
             setSelectedGarageId(null);
             setScreen('list');
           }}
-          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100 cursor-pointer"
+          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100"
         >
           <Home size={20} className="text-white" />
           <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
@@ -458,10 +448,9 @@ export default function SummaryScreen() {
         </motion.div>
       )}
 
-      {/* بطاقة تفاصيل التكلفة والحساب */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-4 shadow-sm">
         <div className="text-center mb-3">
-          {isFreeNow && !isShield ? (
+          {isFreeNow ? (
             <>
               <div className="text-4xl font-black text-emerald-600 font-mono mb-0.5">
                 0 ج.م
@@ -476,7 +465,7 @@ export default function SummaryScreen() {
               {totalPrice} ج.م
             </div>
           )}
-          <div className="text-[10px] text-slate-400 font-bold">إجمالي التكلفة المطلوبة</div>
+          <div className="text-[10px] text-slate-400 font-bold">إجمالي التكلفة الحالية</div>
         </div>
 
         <div className="bg-gray-50 rounded-xl p-3 border border-slate-100">
@@ -493,7 +482,7 @@ export default function SummaryScreen() {
             {isFreeNow && (
               <div className="flex justify-between text-xs text-emerald-600 font-bold">
                 <span className="flex items-center gap-1">🎁 خصم الهدية الترحيبية</span>
-                <span className="font-mono">ركن مجاني (أول 30 دقيقة)</span>
+                <span className="font-mono">مجاني بالكامل (أول 30 دقيقة)</span>
               </div>
             )}
 
@@ -508,17 +497,6 @@ export default function SummaryScreen() {
               <span className="text-slate-500">سعر الساعة</span>
               <span className="font-black text-purple-600 font-mono">{sessionRate} ج.م</span>
             </div>
-
-            {/* تفصيل رسوم درع الأمان VIP */}
-            {isShield && (
-              <div className="flex justify-between text-xs text-amber-600 font-bold border-t border-dashed border-amber-200 pt-1.5 mt-1.5">
-                <span className="flex items-center gap-1">
-                  <ShieldCheck size={13} className="text-amber-500" />
-                  تأمين درع الأمان VIP:
-                </span>
-                <span className="font-mono font-black">+ 10 ج.م</span>
-              </div>
-            )}
 
             {garage && sessionRate !== garage.basePrice && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-1.5 text-center">
@@ -566,7 +544,7 @@ export default function SummaryScreen() {
                   <button
                     key={m.id}
                     onClick={() => setPaymentMethod(m.id)}
-                    className={`py-3 px-3 rounded-2xl border text-center transition-all relative flex flex-col items-center justify-center min-h-[110px] cursor-pointer ${
+                    className={`py-3 px-3 rounded-2xl border text-center transition-all relative flex flex-col items-center justify-center min-h-[110px] ${
                       paymentMethod === m.id
                         ? m.id === 'wallet'
                           ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-400'
@@ -629,11 +607,11 @@ export default function SummaryScreen() {
             </div>
           )}
 
-          {/* زر التأكيد والدفع */}
+          {/* 🌟 زر التأكيد المرن */}
           <button
             onClick={handleConfirm}
             disabled={totalPrice > 0 && paymentMethod === 'wallet' && !canPayWallet}
-            className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 text-white cursor-pointer ${
+            className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 text-white ${
               totalPrice === 0
                 ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-100'
                 : paymentMethod === 'wallet' && !canPayWallet
@@ -678,7 +656,7 @@ export default function SummaryScreen() {
             setSelectedGarageId(null);
             setScreen('list');
           }}
-          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100 mt-4 cursor-pointer"
+          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100 mt-4"
         >
           <Home size={20} className="text-white" />
           <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>

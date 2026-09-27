@@ -1,9 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  X, Copy, ExternalLink, ArrowRight, CheckCircle, Plus, Minus, 
-  Phone, Send, Sparkles, ShieldCheck, Lock 
-} from 'lucide-react';
+import { X, Copy, ExternalLink, ArrowRight, CheckCircle, Plus, Minus, Phone, Send, Sparkles } from 'lucide-react';
 // 🌟 استيراد مصفوفة الباقات الموحدة ودالة البونص ودالة تنظيف الهاتف من الـ Store مباشرة
 import { useStore, TOPUP_TIERS, calculateBonus, normalizePhone } from '../store';
 import toast from 'react-hot-toast';
@@ -27,7 +24,6 @@ const BRAND = {
   border: '#e2e8f0',     // حدود رفيعة هادئة
   card: '#ffffff',
   bg: '#f8fafc',
-  gold: '#fbbf24',       // لون ذهبي VIP
 };
 
 // 🛡️ توليد كود مرجعي فريد ومستحيل التكرار
@@ -128,7 +124,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-        className="bg-white rounded-t-[2.2rem] w-full max-w-md max-h-[92vh] overflow-y-auto scrollbar-none"
+        className="bg-white rounded-t-[2.2rem] w-full max-w-md max-h-[92vh] overflow-y-auto"
         style={{ boxShadow: '0 -8px 32px rgba(0,0,0,0.12)' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -240,14 +236,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                     <span className="text-xs font-black font-mono" style={{ color: BRAND.greenDark }}>+{currentBonus} ج 🎁</span>
                   </div>
                 </div>
-              </div>
-
-              {/* 💡 لافتة إرشادية ذكية لحث العميل على تفعيل درع الأمان VIP */}
-              <div className="mb-4 p-3 border rounded-xl bg-amber-400/5 text-right flex items-center gap-2" style={{ borderColor: BRAND.gold + '40' }}>
-                <ShieldCheck size={18} className="text-amber-500 shrink-0 animate-pulse" />
-                <p className="text-[9.5px] font-bold text-amber-600 leading-normal">
-                  💡 تذكير: تفعيل <b>درع الأمان VIP الحصري</b> لتأمين سيارتك بالكامل يتطلب وجود 10 ج.م إضافية في رصيد محفظتك لتغطية رسوم الحماية الفيزيائية.
-                </p>
               </div>
 
               {/* زر التقدم للخطوة التالية */}
@@ -406,12 +394,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                     </div>
                   </div>
                 )}
-              </div>
-
-              {/* لافتة توثيق الأمان المالي */}
-              <div className="mb-4 text-center flex items-center justify-center gap-1 text-[10px] text-slate-400 font-bold">
-                <Lock size={11} />
-                <span>جميع المعاملات والتحويلات مشفرة ومؤمنة بالكامل 🔒</span>
               </div>
 
               {/* زر إرسال الطلب النهائي */}

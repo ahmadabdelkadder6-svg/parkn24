@@ -4,8 +4,7 @@ import {
   Shield, Clock, CheckCircle, XCircle, MapPin, Warehouse, Plus,
   MessageCircle, Send, Receipt, Search, HardHat, Percent, DollarSign,
   Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown,
-  Settings, CalendarDays, Navigation, Globe, X,
-  ShieldCheck, ShieldAlert, Activity, Sparkles
+  Settings, CalendarDays, Navigation, Globe, X
 } from 'lucide-react';
 // 🌟 استيراد المزامنة الأمنية ودوال الهوية الموحدة من الـ Store
 import { useStore, pausePolling, normalizePlate, normalizePhone, calculateBonus, getServerNow } from '../store';
@@ -28,7 +27,6 @@ const BRAND = {
   border: '#e2e8f0',     // الحدود الرمادية الهادئة
   card: '#ffffff',       // الكروت البيضاء النظيفة
   bg: '#f4f7fc',         // الخلفية العامة المريحة
-  gold: '#fbbf24',       // لون ذهبي VIP
 };
 
 /* ─── Helpers ─── */
@@ -118,16 +116,16 @@ export default function AdminDashboard() {
   const [garageSearch, setGarageSearch] = useState('');
   const filteredGaragesForAdmin = useMemo(() => {
     const q = garageSearch.trim().toLowerCase();
-    if (!q) return garages || [];
-    return (garages || []).filter(g => g && g.name.toLowerCase().includes(q));
+    if (!q) return garages;
+    return garages.filter(g => g.name.toLowerCase().includes(q));
   }, [garages, garageSearch]);
 
   /* ─── Add Garage State ─── */
   const [gName, setGName] = useState('');
   const [gUser, setGUser] = useState('');
   const [gPhone, setGPhone] = useState('');
-  const [lat, setLat] = useState(30.0444);
-  const [lng, setLng] = useState(31.2357);
+  const [lat, setLat] = useState(30.04);
+  const [lng, setLng] = useState(31.23);
   
   // 🗺️ حالة المنطقة الجغرافية للجراج الجديد
   const [gArea, setGArea] = useState('وسط البلد');
@@ -158,51 +156,38 @@ export default function AdminDashboard() {
 
   useEffect(() => { fetchSettlements(); }, [fetchSettlements]);
 
-  /* ─── 🛡️ الحسابات المالية الذكية المتناغمة مع درع الأمان VIP ─── */
+  /* ─── Revenue Calculation ─── */
   const getRevenue = useCallback((s: any) => {
-    if (!s) return 0;
     if (s.totalPrice != null) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
       const st = toMs(s.startTime);
       const en = toMs(s.endTime);
-      const g = (garages || []).find((ga: any) => ga && ga.id === s.garageId);
+      const g = garages.find((ga: any) => ga.id === s.garageId);
       const rate = Number(s.agreedPrice ?? g?.basePrice ?? 0);
       const elapsedSeconds = Math.max(0, Math.floor((en - st) / 1000));
 
       // 🎁 الهدية الترحيبية: 30 دقيقة مجاناً
       const isFreeNow = s.isFirstFreeSession === true && elapsedSeconds <= 1800;
-      const baseCost = isFreeNow ? 0 : calculateCost(elapsedSeconds, rate);
-
-      // 🛡️ درع الأمان VIP: إضافة 10 ج.م على الفاتورة الإجمالية
-      const isShield = s.is_shield_active === true;
-      return isShield ? baseCost + 10 : baseCost;
+      return isFreeNow ? 0 : calculateCost(elapsedSeconds, rate);
     }
     return 0;
   }, [garages]);
 
   const getCommission = useCallback((s: any) => {
-    if (!s) return 0;
-    if (s.source !== 'app') return s.is_shield_active === true ? 5 : 0; // لو الجلسة يدوية والدرع مفعل، نصيب التطبيق 5ج
+    if (s.source !== 'app') return 0;
     const rev = getRevenue(s);
-    if (rev <= 0) return s.is_shield_active === true ? 5 : 0;
-    const g = (garages || []).find((ga: any) => ga && ga.id === s.garageId);
+    if (rev <= 0) return 0;
+    const g = garages.find((ga: any) => ga.id === s.garageId);
     const rate = g?.commissionRate ?? 10;
-    
-    // إزالة الـ 10 جنيه من الوعاء الضريبي/النسبة لحساب العمولة المئوية الأساسية أولاً
-    const isShield = s.is_shield_active === true;
-    const baseRev = isShield ? Math.max(0, rev - 10) : rev;
-    const baseCommission = (baseRev * rate) / 100;
-    
-    // إضافة الـ 5ج (حصة التطبيق للدرع) للعمولة الإجمالية
-    const finalCommission = isShield ? baseCommission + 5 : baseCommission;
-    return Math.round(finalCommission * 100) / 100;
+    const commission = (rev * rate) / 100;
+    return Math.round(commission * 100) / 100;
   }, [garages, getRevenue]);
 
-  const completedSessions = useMemo(() => (sessions || []).filter(s => s && s.status === 'completed'), [sessions]);
+  const completedSessions = useMemo(() => sessions.filter(s => s.status === 'completed'), [sessions]);
 
   const filteredSessions = useMemo(() => {
     return completedSessions.filter(s => {
-      if (!s || !s.endTime) return false;
+      if (!s.endTime) return false;
       const d = timestampToLocalDate(toMs(s.endTime));
       if (dateFrom && d < dateFrom) return false;
       if (dateTo && d > dateTo) return false;
@@ -211,8 +196,8 @@ export default function AdminDashboard() {
   }, [completedSessions, dateFrom, dateTo]);
 
   const totalsFromSessions = useMemo(() => {
-    const confirmed = filteredSessions.filter(s => s && s.revenueConfirmed);
-    const pending = filteredSessions.filter(s => s && !s.revenueConfirmed);
+    const confirmed = filteredSessions.filter(s => s.revenueConfirmed);
+    const pending = filteredSessions.filter(s => !s.revenueConfirmed);
     const totalRevenueConfirmed = confirmed.reduce((sum, s) => sum + getRevenue(s), 0);
     const totalPendingRevenue = pending.reduce((sum, s) => sum + getRevenue(s), 0);
     const totalSessionsCount = filteredSessions.length;
@@ -226,18 +211,17 @@ export default function AdminDashboard() {
 
   const commissionStats = useMemo(() => {
     const confirmed = filteredSessions.filter(
-      s => s && s.revenueConfirmed && !(s as any).settled
+      s => s.revenueConfirmed && !(s as any).settled && s.source === 'app'
     );
     const totalCommission = confirmed.reduce((a, s) => a + getCommission(s), 0);
     const totalRevenue = confirmed.reduce((a, s) => a + getRevenue(s), 0);
     const totalNet = totalRevenue - totalCommission;
 
-    const perGarage = (garages || []).map(g => {
-      if (!g) return null;
-      const gs = confirmed.filter(s => s && s.garageId === g.id);
+    const perGarage = garages.map(g => {
+      const gs = confirmed.filter(s => s.garageId === g.id);
       const gCommission = gs.reduce((a, s) => a + getCommission(s), 0);
       const gRevenue = gs.reduce((a, s) => a + getRevenue(s), 0);
-      const walletRevenue = gs.filter(s => s && s.paymentMethod === 'wallet').reduce((a, s) => a + getRevenue(s), 0);
+      const walletRevenue = gs.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getRevenue(s), 0);
       const sessionIds = gs.map(s => s.id);
       return {
         id: g.id,
@@ -247,33 +231,32 @@ export default function AdminDashboard() {
         commission: gCommission,
         netRevenue: gRevenue - gCommission,
         walletRevenue,
-        appCount: gs.filter(s => s && s.source === 'app').length,
+        appCount: gs.length,
         totalCount: gs.length,
         sessionIds,
       };
-    }).filter(g => g && g.totalCount > 0) as any[];
+    }).filter(g => g.totalCount > 0);
 
-    const totalWalletCollected = confirmed.filter(s => s && s.paymentMethod === 'wallet').reduce((a, s) => a + getRevenue(s), 0);
+    const totalWalletCollected = confirmed.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getRevenue(s), 0);
     const totalSettlement = totalWalletCollected - totalCommission;
 
     return { totalCommission, totalRevenue, totalNet, perGarage, totalWalletCollected, totalSettlement };
   }, [filteredSessions, garages, getRevenue, getCommission]);
 
   const garageReport = useMemo(() => {
-    return (garages || [])
+    return garages
       .map(g => {
-        if (!g) return null;
-        const gs = filteredSessions.filter(s => s && s.garageId === g.id);
-        const confirmed = gs.filter(s => s && s.revenueConfirmed);
-        const pending = gs.filter(s => s && !s.revenueConfirmed);
+        const gs = filteredSessions.filter(s => s.garageId === g.id);
+        const confirmed = gs.filter(s => s.revenueConfirmed);
+        const pending = gs.filter(s => !s.revenueConfirmed);
 
         const revenue = confirmed.reduce((sum, s) => sum + getRevenue(s), 0);
         const pendingRevenue = pending.reduce((sum, s) => sum + getRevenue(s), 0);
 
-        const cash = confirmed.filter(s => s && s.paymentMethod === 'cash').reduce((sum, s) => sum + getRevenue(s), 0);
-        const instapay = confirmed.filter(s => s && s.paymentMethod === 'instapay').reduce((sum, s) => sum + getRevenue(s), 0);
-        const wallet = confirmed.filter(s => s && s.paymentMethod === 'wallet').reduce((sum, s) => sum + getRevenue(s), 0);
-        const cashwallet = confirmed.filter(s => s && s.paymentMethod === 'cashwallet').reduce((sum, sumSession) => sum + getRevenue(sumSession), 0);
+        const cash = confirmed.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + getRevenue(s), 0);
+        const instapay = confirmed.filter(s => s.paymentMethod === 'instapay').reduce((sum, s) => sum + getRevenue(s), 0);
+        const wallet = confirmed.filter(s => s.paymentMethod === 'wallet').reduce((sum, s) => sum + getRevenue(s), 0);
+        const cashwallet = confirmed.filter(s => s.paymentMethod === 'cashwallet').reduce((sum, sumSession) => sum + getRevenue(sumSession), 0);
 
         return {
           name: g.name,
@@ -288,25 +271,25 @@ export default function AdminDashboard() {
           cashwallet,
         };
       })
-      .filter(r => r && (r.count > 0 || r.revenue > 0 || r.pendingRevenue > 0)) as any[];
+      .filter(r => r.count > 0 || r.revenue > 0 || r.pendingRevenue > 0);
   }, [garages, filteredSessions, getRevenue]);
 
-  const pendingTopUps = (walletTopUps || []).filter(w => w && w.status === 'pending');
+  const pendingTopUps = walletTopUps.filter(w => w.status === 'pending');
 
   const displayedRevenueSessions = useMemo(() => {
     const searchTerm = sessionSearch.trim().toUpperCase();
     let f = searchTerm ? completedSessions : filteredSessions;
 
-    if (revenueFilter === 'confirmed') f = f.filter(s => s && s.revenueConfirmed);
-    else if (revenueFilter === 'pending') f = f.filter(s => s && !s.revenueConfirmed);
+    if (revenueFilter === 'confirmed') f = f.filter(s => s.revenueConfirmed);
+    else if (revenueFilter === 'pending') f = f.filter(s => !s.revenueConfirmed);
 
     if (searchTerm) {
-      f = f.filter(s => s && (s.carPlate ?? '').toUpperCase().includes(searchTerm));
+      f = f.filter(s => (s.carPlate ?? '').toUpperCase().includes(searchTerm));
     }
 
     const sorted = [...f].sort((a, b) => {
-      const endA = a && a.endTime ? toMs(a.endTime) : 0;
-      const endB = b && b.endTime ? toMs(b.endTime) : 0;
+      const endA = a.endTime ? toMs(a.endTime) : 0;
+      const endB = b.endTime ? toMs(b.endTime) : 0;
       return endB - endA;
     });
 
@@ -314,8 +297,8 @@ export default function AdminDashboard() {
   }, [completedSessions, filteredSessions, revenueFilter, sessionSearch]);
 
   const safeMessages = messages ?? [];
-  const pendingMessages = safeMessages.filter(m => m && m.status === 'pending');
-  const allMessages = [...safeMessages].filter(Boolean).sort((a, b) => b.timestamp - a.timestamp);
+  const pendingMessages = safeMessages.filter(m => m.status === 'pending');
+  const allMessages = [...safeMessages].sort((a, b) => b.timestamp - a.timestamp);
   const displayedMessages = messagesTab === 'pending' ? pendingMessages : allMessages;
 
   const getTypeEmoji = (t: string) => { switch (t) { case 'complaint': return '🚨'; case 'inquiry': return '❓'; case 'suggestion': return '💡'; case 'technical': return '🔧'; default: return '💬'; } };
@@ -345,17 +328,20 @@ export default function AdminDashboard() {
   const handleSaveCommission = (garageId: string) => {
     updateGarage(garageId, { commissionRate: editCommissionRate, area: editArea });
     setEditingCommissionGarageId(null);
-    toast.success(`تم تحديث بيانات جراج ${garages.find(g => g && g.id === garageId)?.name} بنجاح ✅`);
+    toast.success(`تم تحديث بيانات جراج ${garages.find(g => g.id === garageId)?.name} بنجاح ✅`);
   };
 
   const handleAdminEnterGarage = (g: typeof garages[0]) => {
+    // 1️⃣ تثبيت دور المالك المباشر لمنع مطالبة الأدمن بأي كلمات مرور للسياس
     localStorage.setItem('garageRole', 'owner');
     localStorage.removeItem('valetNumber');
     localStorage.removeItem('valetName');
     
+    // 2️⃣ ربط معرف الجراج المختار مباشرة في التخزين المحلي والـ Store لفتح البوابة فوراً
     localStorage.setItem('currentGarageId', g.id);
     setCurrentGarageId(g.id);
     
+    // 3️⃣ توجيه الرؤية فوراً لشاشة الجراج لتعرض لوحة التحكم مباشرة وبسلاسة
     setView('garage');
     
     toast.success(`👋 تم الدخول المباشر لإدارة جراج: ${g.name}`, {
@@ -370,7 +356,7 @@ export default function AdminDashboard() {
     const loadingToast = toast.loading('جاري اعتماد الرصيد في المحفظة...');
 
     try {
-      const topUp = (walletTopUps || []).find((w) => w && w.id === id);
+      const topUp = walletTopUps.find((w) => w.id === id);
       if (!topUp) {
         toast.dismiss(loadingToast);
         toast.error('طلب الشحن غير موجود');
@@ -494,7 +480,7 @@ export default function AdminDashboard() {
 
   const handleConfirmSettlement = async (garageId: string) => {
     if (processingSettlement) return;
-    const garageData = commissionStats.perGarage.find(g => g && g.id === garageId);
+    const garageData = commissionStats.perGarage.find(g => g.id === garageId);
     if (!garageData) {
       toast.error('لا توجد بيانات للجراج');
       return;
@@ -703,7 +689,7 @@ export default function AdminDashboard() {
           className="text-center p-3 rounded-xl border" 
           style={{ background: BRAND.card, borderColor: BRAND.border }}
         >
-          <div className="text-[10px] font-bold" style={{ color: BRAND.slate }}> can be confirmed</div>
+          <div className="text-[10px] font-bold" style={{ color: BRAND.slate }}>الإيرادات المؤكدة</div>
           <div className="font-black font-mono text-lg mt-1" style={{ color: BRAND.blue }}>
             {totalsFromSessions.totalRevenueConfirmed.toFixed(0)} <span className="text-[10px] font-bold text-slate-400">ج.م</span>
           </div>
@@ -738,7 +724,7 @@ export default function AdminDashboard() {
               <span className="text-[9px] font-black mb-1 flex items-center gap-0.5 justify-center" style={{ color: '#d97706' }}>
                 <Percent size={10} /> عمولة التطبيق
               </span>
-              <span className="font-mono font-black text-sm animate-pulse" style={{ color: '#d97706' }}>
+              <span className="font-mono font-black text-sm" style={{ color: '#d97706' }}>
                 {commissionStats.totalCommission.toFixed(0)} <span className="text-[9px] font-bold">ج</span>
               </span>
             </div>
@@ -825,7 +811,6 @@ export default function AdminDashboard() {
           </div>
         ) : (
           commissionStats.perGarage.map(g => {
-            if (!g) return null;
             const settlement = g.walletRevenue - g.commission;
             const adminOwesGarage = settlement > 0;
             const absSettlement = Math.abs(settlement).toFixed(0);
@@ -970,7 +955,7 @@ export default function AdminDashboard() {
 
             {(() => {
               const filtered = settlementRecords.filter(r => 
-                r && r.garage_name.toLowerCase().includes(archiveSearch.trim().toLowerCase())
+                r.garage_name.toLowerCase().includes(archiveSearch.trim().toLowerCase())
               );
 
               if (filtered.length === 0) {
@@ -990,7 +975,6 @@ export default function AdminDashboard() {
                 <>
                   <div className="space-y-2">
                     {sliced.map(r => {
-                      if (!r) return null;
                       const isAdminToGarage = r.direction === 'admin_to_garage';
                       return (
                         <div key={r.id} className="p-3 border rounded-xl" style={{ borderColor: BRAND.border }}>
@@ -1051,53 +1035,50 @@ export default function AdminDashboard() {
           </div>
         ) : (
           <div className="space-y-2">
-            {garageReport.map(r => {
-              if (!r) return null;
-              return (
-                <div 
-                  key={r.garageId} 
-                  className="p-3 border"
-                  style={{ background: BRAND.card, borderColor: BRAND.border, borderRadius: 16 }}
-                >
-                  <div className="flex justify-between items-center mb-2">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-black font-mono text-base" style={{ color: BRAND.greenDark }}>
-                        {r.revenue.toFixed(0)} <span className="text-[10px] font-bold">ج</span>
-                      </span>
-                      <span className="text-[8px] font-black text-white px-1.5 py-0.5 rounded" style={{ background: BRAND.green }}>مؤكد</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="font-black text-xs" style={{ color: BRAND.navy }}>{r.name}</span>
-                      <span className="text-[9px] font-bold block" style={{ color: BRAND.slate }}>{r.count} جلسة</span>
-                    </div>
+            {garageReport.map(r => (
+              <div 
+                key={r.garageId} 
+                className="p-3 border"
+                style={{ background: BRAND.card, borderColor: BRAND.border, borderRadius: 16 }}
+              >
+                <div className="flex justify-between items-center mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-black font-mono text-base" style={{ color: BRAND.greenDark }}>
+                      {r.revenue.toFixed(0)} <span className="text-[10px] font-bold">ج</span>
+                    </span>
+                    <span className="text-[8px] font-black text-white px-1.5 py-0.5 rounded" style={{ background: BRAND.green }}>مؤكد</span>
                   </div>
-
-                  <div className="flex items-center justify-between gap-1 py-1 px-2.5 rounded-lg border" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
-                    <div className="flex items-center gap-0.5 text-[10px]">
-                      <Percent size={9} style={{ color: BRAND.slate }} />
-                      <span className="font-black font-mono" style={{ color: BRAND.slate }}>{r.commissionRate}%</span>
-                    </div>
-                    <div style={{ width: 1, height: 12, background: BRAND.border }} />
-                    <div className="flex items-center gap-0.5 text-[10px]">
-                      <span className="text-[9px]">⏳</span>
-                      <span className="font-black font-mono text-amber-600">
-                        {r.pendingRevenue > 0 ? `${r.pendingRevenue.toFixed(0)}ج` : '—'}
-                      </span>
-                    </div>
-                    <div style={{ width: 1, height: 12, background: BRAND.border }} />
-                    <div className="flex items-center gap-0.5 text-[10px]">
-                      <span className="text-[9px]">💵</span>
-                      <span className="font-black font-mono text-emerald-600">{r.cash.toFixed(0)}</span>
-                    </div>
-                    <div style={{ width: 1, height: 12, background: BRAND.border }} />
-                    <div className="flex items-center gap-0.5 text-[10px]">
-                      <span className="text-[9px]">👝</span>
-                      <span className="font-black font-mono text-blue-600">{r.wallet.toFixed(0)}</span>
-                    </div>
+                  <div className="text-right">
+                    <span className="font-black text-xs" style={{ color: BRAND.navy }}>{r.name}</span>
+                    <span className="text-[9px] font-bold block" style={{ color: BRAND.slate }}>{r.count} جلسة</span>
                   </div>
                 </div>
-              );
-            })}
+
+                <div className="flex items-center justify-between gap-1 py-1 px-2.5 rounded-lg border" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
+                  <div className="flex items-center gap-0.5 text-[10px]">
+                    <Percent size={9} style={{ color: BRAND.slate }} />
+                    <span className="font-black font-mono" style={{ color: BRAND.slate }}>{r.commissionRate}%</span>
+                  </div>
+                  <div style={{ width: 1, height: 12, background: BRAND.border }} />
+                  <div className="flex items-center gap-0.5 text-[10px]">
+                    <span className="text-[9px]">⏳</span>
+                    <span className="font-black font-mono text-amber-600">
+                      {r.pendingRevenue > 0 ? `${r.pendingRevenue.toFixed(0)}ج` : '—'}
+                    </span>
+                  </div>
+                  <div style={{ width: 1, height: 12, background: BRAND.border }} />
+                  <div className="flex items-center gap-0.5 text-[10px]">
+                    <span className="text-[9px]">💵</span>
+                    <span className="font-black font-mono text-emerald-600">{r.cash.toFixed(0)}</span>
+                  </div>
+                  <div style={{ width: 1, height: 12, background: BRAND.border }} />
+                  <div className="flex items-center gap-0.5 text-[10px]">
+                    <span className="text-[9px]">👝</span>
+                    <span className="font-black font-mono text-blue-600">{r.wallet.toFixed(0)}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -1108,8 +1089,8 @@ export default function AdminDashboard() {
         <div className="space-y-3 mb-4">
           <div className="flex gap-1.5">
             {[
-              { id: 'pending' as const, label: `⏳ معلق (${filteredSessions.filter(s => s && !s.revenueConfirmed).length})`, bg: '#f59e0b' },
-              { id: 'confirmed' as const, label: `✅ مؤكد (${filteredSessions.filter(s => s && s.revenueConfirmed).length})`, bg: BRAND.greenDark },
+              { id: 'pending' as const, label: `⏳ معلق (${filteredSessions.filter(s => !s?.revenueConfirmed).length})`, bg: '#f59e0b' },
+              { id: 'confirmed' as const, label: `✅ مؤكد (${filteredSessions.filter(s => s?.revenueConfirmed).length})`, bg: BRAND.greenDark },
               { id: 'all' as const, label: `الكل (${filteredSessions.length})`, bg: BRAND.blue },
             ].map(b => (
               <button 
@@ -1152,23 +1133,21 @@ export default function AdminDashboard() {
           ) : (
             displayedRevenueSessions.map(session => {
               if (!session) return null;
-              const g = (garages || []).find((ga: any) => ga && ga.id === session.garageId);
+              const g = (garages || []).find((ga: any) => ga?.id === session.garageId);
               const rev = getRevenue(session);
               const comm = getCommission(session);
               const net = rev - comm;
               const et = session.endTime ? typeof session.endTime === 'number' ? session.endTime : new Date(session.endTime).getTime() : null;
               const time = et ? new Date(et) : null;
               const isDel = deleteConfirmId === session.id;
-              const isSettled = (session as any).settled === true;
-              const isShield = session.is_shield_active === true;
-              
+              const isSettled = (session as any)?.settled === true;
               return (
                 <div 
                   key={session.id} 
                   className="border"
                   style={{ 
                     background: isDel ? '#fef2f2' : isSettled ? BRAND.bg : session.revenueConfirmed ? BRAND.greenLight : BRAND.blueSoft, 
-                    borderColor: isDel ? '#fca5a5' : isShield ? BRAND.gold : isSettled ? BRAND.border : session.revenueConfirmed ? BRAND.green : BRAND.border, 
+                    borderColor: isDel ? '#fca5a5' : isSettled ? BRAND.border : session.revenueConfirmed ? BRAND.green : BRAND.border, 
                     borderRadius: 18, 
                     padding: 14,
                     opacity: isSettled ? 0.75 : 1 
@@ -1176,17 +1155,15 @@ export default function AdminDashboard() {
                 >
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-mono font-black text-sm animate-pulse" style={{ color: isShield ? BRAND.gold : session.revenueConfirmed ? BRAND.greenDark : '#d97706' }}>{Number(rev || 0).toFixed(0)} ج.م</span>
+                      <span className="font-mono font-black text-sm" style={{ color: session.revenueConfirmed ? BRAND.greenDark : '#d97706' }}>{Number(rev || 0).toFixed(0)} ج.م</span>
                       {[
-                        { show: isShield, bg: BRAND.gold, text: '🛡️ درع VIP', color: '#000' },
-                        { show: session.source === 'manual', bg: '#f59e0b', text: 'يدوي' },
-                        { show: session.source === 'app', bg: BRAND.blue, text: 'تطبيق' },
+                        { show: true, bg: session.source === 'manual' ? '#f59e0b' : BRAND.blue, text: session.source === 'manual' ? 'يدوي' : 'تطبيق' },
                         { show: !!session.paymentMethod, bg: BRAND.navy, text: session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستا' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش' },
                         { show: true, bg: session.revenueConfirmed ? BRAND.green : '#f59e0b', text: session.revenueConfirmed ? '✅ مؤكد' : '⏳ معلق' },
                         { show: isSettled, bg: BRAND.slateMuted, text: '🔒 تمت التسوية' },
                         { show: session.isFirstFreeSession === true, bg: '#c2410c', text: rev === 0 ? '🎁 ركن مجاني' : '🎁 بونص منتهي' } 
                       ].filter(b => b.show).map((b, i) => (
-                        <span key={i} className="font-black text-[8px] px-1.5 py-0.5 rounded text-white animate-pulse" style={{ background: b.bg, color: b.color || '#fff' }}>{b.text}</span>
+                        <span key={i} className="font-black text-[8px] px-1.5 py-0.5 rounded text-white" style={{ background: b.bg }}>{b.text}</span>
                       ))}
                     </div>
                     <div className="text-right">
@@ -1194,14 +1171,6 @@ export default function AdminDashboard() {
                       <div className="text-[9px] font-bold" style={{ color: BRAND.slateMuted }}>{g?.name || '—'}</div>
                     </div>
                   </div>
-
-                  {/* تفاصيل حصة درع الأمان VIP للأدمن والجراج في الفاتورة */}
-                  {isShield && (
-                    <div className="mb-2 p-2 rounded-xl border bg-gradient-to-r from-amber-500/5 to-transparent text-[9.5px] font-bold text-amber-600 flex justify-between items-center" style={{ borderColor: BRAND.gold + '30' }}>
-                      <span>تأمين درع الأمان VIP مفعّل 🛡️</span>
-                      <span>مناصفة: 5ج للتطبيق + 5ج للجراج 🤝</span>
-                    </div>
-                  )}
 
                   {session.source === 'app' && comm > 0 && (
                     <div className="flex items-center gap-2 mb-2 p-1.5 rounded-lg border bg-white" style={{ borderColor: BRAND.border }}>
@@ -1246,54 +1215,51 @@ export default function AdminDashboard() {
       <div className="mb-8">
         <h3 className="font-black mb-3 text-right text-xs" style={{ color: BRAND.navy }}>اعتمادات شحن معلقة ({pendingTopUps.length})</h3>
         <div className="space-y-3">
-          {pendingTopUps.map(w => {
-            if (!w) return null;
-            return (
-              <div key={w.id} className="border p-3" style={{ background: BRAND.card, borderColor: BRAND.border, borderRadius: 18 }}>
-                <div className="flex justify-between items-center mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-black text-[9px] px-2 py-0.5 rounded text-white" style={{ background: w.method === 'instapay' ? '#7C3AED' : '#f59e0b' }}>
-                      {w.method === 'instapay' ? '📱 إنستاباي' : '📲 كاش'}
-                    </span>
-                    <span className="font-bold font-mono text-[9px]" style={{ color: BRAND.slateMuted }}>
-                      {new Date(w.timestamp).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                  <div className="font-black font-mono text-lg text-slate-900">
-                    {w.amount} <span className="text-[10px] font-bold text-slate-400">ج.م</span>
-                  </div>
+          {pendingTopUps.map(w => (
+            <div key={w.id} className="border p-3" style={{ background: BRAND.card, borderColor: BRAND.border, borderRadius: 18 }}>
+              <div className="flex justify-between items-center mb-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-black text-[9px] px-2 py-0.5 rounded text-white" style={{ background: w.method === 'instapay' ? '#7C3AED' : '#f59e0b' }}>
+                    {w.method === 'instapay' ? '📱 إنستاباي' : '📲 كاش'}
+                  </span>
+                  <span className="font-bold font-mono text-[9px]" style={{ color: BRAND.slateMuted }}>
+                    {new Date(w.timestamp).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </span>
                 </div>
-
-                <div className="flex items-center justify-between gap-2 mb-2 p-2 rounded-lg border bg-slate-50" style={{ borderColor: BRAND.border }}>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {w.userName && <span className="font-black text-[10px]" style={{ color: BRAND.navy }}>👤 {w.userName}</span>}
-                    {w.carPlate && <span className="font-black text-[10px]" style={{ color: '#c2410c' }}>🚗 {w.carPlate}</span>}
-                  </div>
-                  {w.userPhone && <span className="font-black font-mono text-[10px]" style={{ color: BRAND.blue }}>{w.userPhone}</span>}
-                </div>
-
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => handleApproveTopUp(w.id, w.amount)} 
-                    disabled={processingTopUpId === w.id}
-                    className="flex-1 font-black py-2 rounded-lg text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1.5"
-                    style={{ background: BRAND.greenDark }}
-                  >
-                    <CheckCircle size={14} />
-                    {processingTopUpId === w.id ? 'جاري...' : 'اعتماد'}
-                  </button>
-                  <button 
-                    onClick={() => handleRejectTopUp(w.id)} 
-                    disabled={processingTopUpId === w.id}
-                    className="font-black py-2 px-4 rounded-lg cursor-pointer border text-red-600 bg-red-50"
-                    style={{ borderColor: '#fca5a5' }}
-                  >
-                    <XCircle size={14} />
-                  </button>
+                <div className="font-black font-mono text-lg text-slate-900">
+                  {w.amount} <span className="text-[10px] font-bold text-slate-400">ج.م</span>
                 </div>
               </div>
-            );
-          })}
+
+              <div className="flex items-center justify-between gap-2 mb-2 p-2 rounded-lg border bg-slate-50" style={{ borderColor: BRAND.border }}>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {w.userName && <span className="font-black text-[10px]" style={{ color: BRAND.navy }}>👤 {w.userName}</span>}
+                  {w.carPlate && <span className="font-black text-[10px]" style={{ color: '#c2410c' }}>🚗 {w.carPlate}</span>}
+                </div>
+                {w.userPhone && <span className="font-black font-mono text-[10px]" style={{ color: BRAND.blue }}>{w.userPhone}</span>}
+              </div>
+
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => handleApproveTopUp(w.id, w.amount)} 
+                  disabled={processingTopUpId === w.id}
+                  className="flex-1 font-black py-2 rounded-lg text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1.5"
+                  style={{ background: BRAND.greenDark }}
+                >
+                  <CheckCircle size={14} />
+                  {processingTopUpId === w.id ? 'جاري...' : 'اعتماد'}
+                </button>
+                <button 
+                  onClick={() => handleRejectTopUp(w.id)} 
+                  disabled={processingTopUpId === w.id}
+                  className="font-black py-2 px-4 rounded-lg cursor-pointer border text-red-600 bg-red-50"
+                  style={{ borderColor: '#fca5a5' }}
+                >
+                  <XCircle size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
           {pendingTopUps.length === 0 && (
             <div className="text-center py-6 border-2 border-dashed rounded-2xl text-xs font-bold" style={{ borderColor: BRAND.border, color: BRAND.slate }}>لا توجد اعتمادات معلقة</div>
           )}
@@ -1322,7 +1288,6 @@ export default function AdminDashboard() {
             <div className="text-center py-6 bg-white border rounded-2xl text-xs font-bold" style={{ borderColor: BRAND.border, color: BRAND.slate }}>لا توجد رسائل</div>
           ) : (
             displayedMessages.map(msg => {
-              if (!msg) return null;
               const isExp = expandedMessage === msg.id; 
               const isRep = replyingTo === msg.id;
               return (
@@ -1425,10 +1390,9 @@ export default function AdminDashboard() {
             </div>
           ) : (
             filteredGaragesForAdmin.map(g => {
-              if (!g) return null;
               const isEditingComm = editingCommissionGarageId === g.id;
               const ownerPhone = (g as any).ownerPhone || g.phone;
-              const sameOwnerCount = (garages || []).filter((x: any) => x && (normalizePhone(x.ownerPhone || x.phone) === normalizePhone(ownerPhone))).length;
+              const sameOwnerCount = garages.filter((x: any) => (normalizePhone(x.ownerPhone || x.phone) === normalizePhone(ownerPhone))).length;
               return (
                 <div key={g.id} className="border p-3.5" style={{ background: BRAND.card, borderColor: BRAND.border, borderRadius: 18 }}>
                   <div className="flex justify-between items-center mb-2">
@@ -1479,7 +1443,8 @@ export default function AdminDashboard() {
                               setEditCommissionRate(g.commissionRate ?? 10); 
                               setEditArea(g.area || 'وسط البلد'); 
                             }}
-                            className="font-black border-0 py-1 px-2.5 rounded-lg text-[9px] cursor-pointer text-white bg-amber-500"
+                            className="font-black border-0 py-1 px-2.5 rounded-lg text-[9px] cursor-pointer text-white"
+                            style={{ background: '#f59e0b' }}
                           >
                             تعديل البيانات
                           </button>

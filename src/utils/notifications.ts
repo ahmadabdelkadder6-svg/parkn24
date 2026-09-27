@@ -3,7 +3,6 @@
 /**
  * 🌟 نظام التنبيهات الصوتية والإشعارات والاهتزاز لتطبيق Park'n 24
  * متوافق بالكامل مع هواتف Android, iPhone والحواسيب
- * مدمج مع درع الأمان VIP وصفارة الطوارئ 2600Hz
  */
 
 let audioCtx: AudioContext | null = null;
@@ -110,66 +109,6 @@ export const playNormalAlert = async () => {
   }
 };
 
-// 🛡️ نغمة تفعيل درع الأمان VIP الفاخرة (نغمة تأكيد تكنولوجية متصاعدة)
-export const playShieldActivationSound = async () => {
-  try {
-    await unlockAudio();
-    if (!audioCtx) return;
-    if (audioCtx.state === 'suspended') await audioCtx.resume();
-
-    const notes = [523.25, 659.25, 783.99, 1046.50]; // نغمات موسيقية تأكيدية
-    notes.forEach((freq, index) => {
-      if (!audioCtx) return;
-      const delay = index * 0.08;
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, audioCtx.currentTime + delay);
-
-      gain.gain.setValueAtTime(0.4, audioCtx.currentTime + delay);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + 0.15);
-
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-
-      osc.start(audioCtx.currentTime + delay);
-      osc.stop(audioCtx.currentTime + delay + 0.16);
-    });
-  } catch (e) {
-    console.warn('⚠️ خطأ في صوت تفعيل الدرع:', e);
-  }
-};
-
-// 🚨 صفارة إنذار اختراق الدرع الحادة (2600Hz Sawtooth Alarm)
-export const playShieldBreachSiren = async () => {
-  try {
-    await unlockAudio();
-    if (!audioCtx) return;
-    if (audioCtx.state === 'suspended') await audioCtx.resume();
-
-    for (let i = 0; i < 8; i++) {
-      const delay = i * 0.18;
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(i % 2 === 0 ? 2600 : 1300, audioCtx.currentTime + delay);
-
-      gain.gain.setValueAtTime(0.8, audioCtx.currentTime + delay);
-      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + delay + 0.15);
-
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-
-      osc.start(audioCtx.currentTime + delay);
-      osc.stop(audioCtx.currentTime + delay + 0.17);
-    }
-  } catch (e) {
-    console.warn('⚠️ خطأ في صفارة الاختراق:', e);
-  }
-};
-
 // ─── 3. اهتزاز الهاتف ───────────────────────────────────────────────────
 export const vibrateUrgent = () => {
   try {
@@ -272,38 +211,5 @@ export const notifyNewOffer = (carPlate: string, price: number) => {
     '💰 عرض سعر جديد!',
     `🚗 السيارة ${carPlate} - عرضت: ${price} ج.م/ساعة`,
     `offer-${carPlate}`
-  );
-};
-
-// 🛡️ تنبيه تفعيل درع الأمان VIP بنجاح
-export const notifyShieldActivated = (carPlate: string) => {
-  playShieldActivationSound();
-  vibrateDevice([100, 50, 100]);
-  sendLocalNotification(
-    '🛡️ تم تفعيل درع الأمان VIP بنجاح',
-    `🚗 سيارتك [${carPlate}] تحت حماية الرادار الفيزيائي والمغناطيسي والسياج الجغرافي.`,
-    `shield-${carPlate}`
-  );
-};
-
-// 🚨 بروتوكول إنذار الاختراق والسرقة اللحظي
-export const notifyShieldBreach = (carPlate: string, reason: string) => {
-  playShieldBreachSiren();
-  vibrateUrgent();
-  sendLocalNotification(
-    '🚨 إنذار أمني: تحرك أو محاولة سرقة!',
-    `🚗 السيارة [${carPlate}]: ${reason}`,
-    `breach-${carPlate}`
-  );
-};
-
-// ⚠️ تنبيه اقتراب السيارة من حدود سياج الجراج 250م
-export const notifyGeofenceWarning = (carPlate: string, distanceMeters: number) => {
-  playNormalAlert();
-  vibrateDevice([300, 100, 300]);
-  sendLocalNotification(
-    '⚠️ تنبيه السياج الجغرافي',
-    `🚗 السيارة [${carPlate}] على بُعد ${distanceMeters}م من حدود الجراج.`,
-    `geofence-${carPlate}`
   );
 };

@@ -1,5 +1,3 @@
-// src/lib/pushManager.ts
-
 import { normalizePlate } from '../store';
 
 // ─── VAPID & Supabase Configuration ─────────────────────────────
@@ -35,11 +33,11 @@ const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   return new Uint8Array([...rawData].map((c) => c.charCodeAt(0)));
 };
 
-// ─── Helper: Supabase Fetch مع Retry سريع وصارم ────────────────────────
+// ─── Helper: Supabase Fetch مع Retry سريع ────────────────────────
 const supabaseFetch = async (
   path:    string,
   body:    unknown,
-  retries: number = 3 // تم رفع المحاولات لـ 3 لضمان إيصال بلاغ الاختراق تحت أي ظرف شبكة
+  retries: number = 2
 ): Promise<{ ok: boolean; data?: unknown; error?: string }> => {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -71,8 +69,7 @@ const supabaseFetch = async (
       }
     }
 
-    // الانتظار المتصاعد السريع قبل إعادة المحاولة (Linear Backoff)
-    await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+    await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
   }
 
   return { ok: false, error: 'Max retries exceeded' };
@@ -183,6 +180,7 @@ export const sendCarComingPush = async ({
   agreedPrice?:     number;
 }): Promise<boolean> => {
   try {
+    // 🌟 توحيد بصمة اللوحة في الوسوم لضمان مطابقتها بدقة
     const plateFingerprint = normalizePlate(carPlate) || carPlate;
     const immediateTag = `incoming-${plateFingerprint}`;
     const scheduledTag = `approaching-${plateFingerprint}`;
@@ -233,57 +231,6 @@ export const sendCarComingPush = async ({
     return result.ok;
   } catch (err) {
     console.error('❌ خطأ في sendCarComingPush:', err);
-    return false;
-  }
-};
-
-// ─── 🛡️ إرسال تنبيه الاختراق والإنذار بالسرقة بأقوى أولوية فورية صلبة ───
-export const sendSecurityBreachPush = async ({
-  garageId,
-  carPlate,
-  reason,
-  ownerPhone,
-  sessionId,
-}: {
-  garageId:   string;
-  carPlate:   string;
-  reason:     string;
-  ownerPhone: string;
-  sessionId:  string;
-}): Promise<boolean> => {
-  try {
-    const plateFingerprint = normalizePlate(carPlate) || carPlate;
-    const breachTag = `security-breach-${plateFingerprint}`;
-
-    const payload: SendPushPayload = {
-      garageId,
-      urgency: 'high',  // 🚨 إجبار الهواتف على الاستيقاظ الفوري لتنبيه المستخدم والسايس
-      ttl: 0,           // 🚨 زمن عيش صفري: إيصال الإشعار حالاً أو إسقاطه، يمنع الطابور والتأخير
-
-      immediate: {
-        title: '🚨 إنذار سرقة نشط فوراً!',
-        body:  `⚠️ تحذير أمني: السيارة [${carPlate}] تتحرك الآن! • السبب: ${reason}`,
-        tag:   breachTag,
-        data: {
-          type:        'security_breach',
-          carPlate,
-          garageId,
-          sessionId,
-          ownerPhone,
-          url:         '/garage',
-          reason,
-          vibrate:     [1000, 200, 1000, 200, 1500, 300, 2000], // اهتزاز طوارئ طويل وعنيف
-          sound:       'urgent_siren.mp3',                       // النغمة الطارئة القصوى
-          sentAt:      new Date().toISOString(),
-        },
-      },
-      scheduled: null, // لا يوجد أي جدولة في الاختراق، العمل لحظي وفوري
-    };
-
-    const result = await supabaseFetch('send-push-notification', payload);
-    return result.ok;
-  } catch (err) {
-    console.error('❌ خطأ في إرسال إشعار الاختراق الفوري:', err);
     return false;
   }
 };

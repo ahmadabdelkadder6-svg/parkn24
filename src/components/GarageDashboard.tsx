@@ -4,8 +4,7 @@ import {
   Car, Clock, LogOut, Plus, CheckCircle, XCircle, Settings,
   Minus, Save, MapPin, Edit3, Navigation, Phone, CarFront, FileText,
   CalendarDays, Undo2, Shield, HardHat, Users, Percent, Building2, Gift,
-  Search, X, CreditCard, MapPinOff, Locate, AlertTriangle, Wifi, WifiOff, Eye, QrCode, Copy,
-  ShieldCheck, ShieldAlert, Activity, RefreshCw
+  Search, X, CreditCard, MapPinOff, Locate, AlertTriangle, Wifi, WifiOff, Eye, QrCode, Copy
 } from 'lucide-react';
 import { useStore, pausePolling, normalizePlate, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
@@ -13,18 +12,15 @@ import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
 import { subscribeToPush } from '../lib/pushManager';
 
-import { checkCollision } from '../utils/collisionGuard';
-import { checkGeofence } from '../utils/geofenceEngine';
-import { alarmCascade } from '../utils/alarmCascadeEngine';
-import { evaluatePhysicalTireBreach } from '../utils/batShieldEngine';
-
 const UNDO_TIMEOUT_SECONDS = 30;
 const GEOFENCE_RADIUS_METERS = 250;
 
+// ⏱️ إعدادات التزامن الذكي للخلفية
 const VALET_PING_INTERVAL_MS = 8000;
 const VALET_LIVE_THRESHOLD_MS = 25000;
 const VALET_BACKGROUND_GRACE_MS = 10 * 60 * 1000;
 
+// ─── 🔔 نظام الصوت والتنبيهات المدمج داخل الشاشة ───────────────────
 let garageAudioCtx: AudioContext | null = null;
 let isAudioUnlocked = false;
 
@@ -55,6 +51,7 @@ if (typeof window !== 'undefined') {
   events.forEach(e => document.addEventListener(e, onFirstTouch, { passive: true }));
 }
 
+// 🔊 أقصى وأقوى صوت إنذار (نغمات طوارئ حادة ومضاعفة لاختراق الضوضاء)
 const playCarArrivalAlarm = async () => {
   try {
     await unlockAudioEngine();
@@ -62,20 +59,27 @@ const playCarArrivalAlarm = async () => {
     if (garageAudioCtx.state === 'suspended') await garageAudioCtx.resume();
 
     const now = garageAudioCtx.currentTime;
+
+    // رفع الصوت لأقصى طاقة 100%
     const masterGain = garageAudioCtx.createGain();
     masterGain.gain.setValueAtTime(1.0, now);
     masterGain.connect(garageAudioCtx.destination);
 
+    // 8 نبضات إنذار حادة وسريعة جداً
     for (let i = 0; i < 8; i++) {
       const start = now + (i * 0.25);
       const duration = 0.22;
+
+      // مولد صوت 1: نغمة حادة جداً
       const osc1 = garageAudioCtx.createOscillator();
+      // مولد صوت 2: نغمة جرس مضاعفة للحدة
       const osc2 = garageAudioCtx.createOscillator();
       const noteGain = garageAudioCtx.createGain();
 
       osc1.type = 'sawtooth';
       osc2.type = 'square';
 
+      // الترددات الحادة الخارقة (1400Hz و 2600Hz)
       const freq = i % 2 === 0 ? 1400 : 2600;
       osc1.frequency.setValueAtTime(freq, start);
       osc2.frequency.setValueAtTime(freq * 1.25, start);
@@ -92,13 +96,19 @@ const playCarArrivalAlarm = async () => {
       osc1.stop(start + duration + 0.02);
       osc2.stop(start + duration + 0.02);
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn('Audio error:', e);
+  }
 };
 
+// 📳 أقصى نمط اهتزاز عنيف ومستمر للهاتف (8 ثوانٍ رنين طوارئ)
 const triggerVibration = () => {
   try {
     if ('vibrate' in navigator) {
-      navigator.vibrate([1500, 100, 1500, 100, 1500, 100, 2000, 150, 2000]);
+      navigator.vibrate([
+        1500, 100, 1500, 100, 1500, 100, // رنات طويلة متواصلة
+        2000, 150, 2000                  // رنة ختامية قوية
+      ]);
     }
   } catch {}
 };
@@ -140,21 +150,21 @@ const fireIncomingCarAlert = (carPlate: string) => {
   );
 };
 
+/* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
-  blue: '#1656b8',
-  blueDark: '#0f3d85',
-  blueLight: '#e8f0fe',
-  blueSoft: '#f0f5ff',
-  green: '#8cc63f',
-  greenDark: '#6ea62a',
-  greenLight: '#f2fae6',
-  navy: '#0a1628',
-  slate: '#475569',
-  slateMuted: '#94a3b8',
-  border: '#e2e8f0',
-  card: '#ffffff',
-  bg: '#f4f7fc',
-  gold: '#fbbf24',
+  blue: '#1656b8',       // الأزرق الرسمي للوجو
+  blueDark: '#0f3d85',   // الكحلي الفخم
+  blueLight: '#e8f0fe',  // الأزرق الفاتح جداً
+  blueSoft: '#f0f5ff',   // خلفية ناعمة مريحة
+  green: '#8cc63f',      // الأخضر الرسمي للوجو
+  greenDark: '#6ea62a',  // أخضر داكن للخطوط والنصوص
+  greenLight: '#f2fae6', // خلفية خضراء ناعمة
+  navy: '#0a1628',       // الكحلي الليلي الغامق
+  slate: '#475569',      // الرمادي الهادئ
+  slateMuted: '#94a3b8', // الرمادي الباهت
+  border: '#e2e8f0',     // الحدود الرمادية الناعمة
+  card: '#ffffff',       // الكروت البيضاء النظيفة
+  bg: '#f4f7fc',         // الخلفية العامة المريحة
 };
 
 interface UndoableSession {
@@ -164,6 +174,25 @@ interface UndoableSession {
   price: number;
   addedAt: number;
 }
+
+interface DailyStat {
+  garage_id: string;
+  stat_date: string;
+  total_sessions: number;
+  manual_sessions: number;
+  app_sessions: number;
+  total_revenue: number;
+  cash_revenue: number;
+  instapay_revenue: number;
+  wallet_revenue: number;
+  cashwallet_revenue: number;
+  confirmed_revenue: number;
+  pending_revenue: number;
+}
+
+// ==========================================
+// 🌍 نظام السياج الجغرافي الذكي (GEOFENCE ENGINE)
+// ==========================================
 
 interface GeofenceState {
   status: 'loading' | 'inside' | 'outside' | 'denied' | 'error' | 'no_garage_coords';
@@ -345,7 +374,7 @@ const useOwnerValetLocations = (
         { valetNumber: 1, valetName: String(garage.valetName1 || 'فالية 1'), isActive: garage.valet1Active ?? false, status: 'offline', distance: null, lastSeen: null },
         { valetNumber: 2, valetName: String(garage.valetName2 || 'فالية 2'), isActive: garage.valet2Active ?? false, status: 'offline', distance: null, lastSeen: null },
         { valetNumber: 3, valetName: String(garage.valetName3 || 'فالية 3'), isActive: garage.valet3Active ?? false, status: 'offline', distance: null, lastSeen: null },
-      ].filter(v => v.name);
+      ].filter(v => v.valetName && String(v.valetName).trim());
 
       valets.forEach(v => {
         if (!v.isActive) {
@@ -574,6 +603,10 @@ const OwnerValetLocationBanner = memo(function OwnerValetLocationBanner({
   );
 });
 
+// ==========================================
+// أدوات مساعدة
+// ==========================================
+
 const toMs = (value: any): number => {
   if (!value) return 0;
   if (typeof value === 'string') {
@@ -606,6 +639,13 @@ const timestampToLocalDate = (ts: number): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+const formatLocalDateArabic = (dateStr: string): string => {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('ar-EG', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  });
+};
+
 const normalizeSearchPlate = (plate?: string): string => normalizePlate(plate);
 
 interface ActiveSessionCardProps {
@@ -631,94 +671,70 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
     return () => clearInterval(i);
   }, []);
 
-  const _st = toMs(s.startTime);
-  const _el = _st > 0 ? Math.max(0, Math.floor((getServerNow() - _st) / 1000)) : 0;
-  const _mins = Math.floor(_el / 60);
+  const st = toMs(s.startTime);
+  const el = st > 0 ? Math.max(0, Math.floor((getServerNow() - st) / 1000)) : 0;
+  const mins = Math.floor(el / 60);
 
-  const _isFreeApplied = s.isFirstFreeSession === true;
-  const _isFreeNow = _isFreeApplied && _el <= 1800;
+  const isFreeApplied = s.isFirstFreeSession === true;
+  const isFreeNow = isFreeApplied && el <= 1800;
   
-  const _hrs = _isFreeNow ? 0 : calculateFullHours(_el);
-  const _rate = Number(s.agreedPrice ?? basePrice);
-  const _cost = _isFreeNow ? 0 : calculateCost(_el, _rate);
+  const hrs = isFreeNow ? 0 : calculateFullHours(el);
+  const rate = Number(s.agreedPrice ?? basePrice);
+  const cost = isFreeNow ? 0 : calculateCost(el, rate);
 
-  const _isM = s.source === 'manual';
-  const _isShield = s.is_shield_active === true;
-  const _isBreached = !!s.breach_reason;
+  const isM = s.source === 'manual';
 
   return (
     <div 
       style={{ 
-        background: _isBreached ? '#fff5f5' : _isShield ? 'linear-gradient(135deg, #fefef2 0%, #fffdf0 100%)' : _isM ? BRAND.card : BRAND.blueSoft, 
-        border: `1.5px solid ${_isBreached ? '#feb2b2' : _isShield ? BRAND.gold : _isM ? BRAND.border : BRAND.blueLight}`, 
+        background: isM ? BRAND.card : BRAND.blueSoft, 
+        border: `1px solid ${isM ? BRAND.border : BRAND.blueLight}`, 
         borderRadius: 16, 
         padding: '12px 14px',
-        boxShadow: _isShield ? '0 4px 12px rgba(251,191,36,0.12)' : '0 2px 8px rgba(0,0,0,0.02)'
+        boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
       }}
-      className="mb-2 relative"
+      className="mb-2"
     >
       <div className="flex justify-between items-center mb-2">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="rounded-full shrink-0" style={{ width: 8, height: 8, background: _isBreached ? '#ef4444' : _isShield ? BRAND.gold : _isM ? '#f59e0b' : BRAND.green }} />
-          <span className="font-bold text-slate-500 font-mono" style={{ fontSize: 11 }}>{formatElapsed(_el)} • {_hrs}س</span>
+          <motion.span animate={{ scale: [1, 1.25, 1] }} transition={{ repeat: Infinity, duration: 1.5 }} className="rounded-full shrink-0" style={{ width: 8, height: 8, background: isM ? '#f59e0b' : BRAND.green }} />
+          <span className="font-bold text-slate-500 font-mono" style={{ fontSize: 11 }}>{formatElapsed(el)} • {hrs}س</span>
+          <span className="font-black text-white shrink-0 text-[8px] px-2 py-0.5 rounded" style={{ background: isM ? '#f59e0b' : BRAND.blue }}>{isM ? 'يدوي' : 'تطبيق'}</span>
           
-          {_isBreached ? (
-            <span className="font-black text-white shrink-0 text-[8px] px-2 py-0.5 rounded bg-red-600 animate-pulse">⚠️ اختراق نشط!</span>
-          ) : _isShield ? (
-            <span className="font-black text-slate-950 shrink-0 text-[8px] px-2 py-0.5 rounded bg-amber-400">🛡️ درع VIP</span>
-          ) : (
-            <span className="font-black text-white shrink-0 text-[8px] px-2 py-0.5 rounded" style={{ background: _isM ? '#f59e0b' : BRAND.blue }}>{_isM ? 'يدوي' : 'تطبيق'}</span>
-          )}
-          
-          {_isFreeApplied && (
+          {isFreeApplied && (
             <span className="font-black flex items-center gap-0.5 shrink-0 text-[8px] px-2 py-0.5 rounded" style={{ background: BRAND.greenLight, color: BRAND.greenDark, border: `1px solid ${BRAND.green}40` }}>
-              <Gift size={10} /> {_isFreeNow ? 'هدية ترحيبية نشطة 🎁' : 'انتهت الهدية الترحيبية'}
+              <Gift size={10} /> {isFreeNow ? 'هدية ترحيبية نشطة 🎁' : 'انتهت الهدية الترحيبية'}
             </span>
           )}
         </div>
-        <div className="font-black text-slate-900 text-sm flex items-center gap-1">
-          {_isShield && <span className="text-xs">🛡️</span>}
-          <span>🚗 {s.carPlate}</span>
-        </div>
+        <div className="font-black text-slate-900 text-sm">🚗 {s.carPlate}</div>
       </div>
-
-      {_isBreached && (
-        <div className="bg-red-50 text-red-700 text-[10px] font-black p-2 rounded-xl mb-3 border border-red-200">
-          🚨 {s.breach_reason}
-        </div>
-      )}
 
       <div className="flex justify-between items-center border-t pt-2 mt-2" style={{ borderColor: BRAND.border }}>
         <div className="flex items-center gap-1.5">
-          {_isBreached ? (
-            <div className="text-[10px] font-black text-red-600 flex items-center gap-1 bg-red-100 px-3 py-2 rounded-xl border border-red-200">
-              <ShieldAlert size={12} /> البوابة مغلقة أمنياً للسرقة 🚫
-            </div>
-          ) : (
-            <button 
-              onClick={() => onEndSession(s.id, s.carPlate, _cost, _hrs, _mins, s.source, s.agreedPrice)} 
-              className="active:scale-[0.98] transition-all flex items-center justify-center font-black text-white border-0 py-2 px-4 rounded-xl cursor-pointer text-xs bg-red-600"
-            >
-              إنهاء وتحصيل
-            </button>
-          )}
-
-          {un && !_isBreached && (
+          <button 
+            onClick={() => onEndSession(s.id, s.carPlate, cost, hrs, mins, s.source, s.agreedPrice)} 
+            className="active:scale-[0.98] transition-all flex items-center justify-center font-black text-white border-0 py-2 px-4 rounded-xl cursor-pointer text-xs"
+            style={{ 
+              background: '#dc2626', 
+            }}
+          >
+            إنهاء وتحصيل
+          </button>
+          {un && (
             <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} onClick={() => onUndo(un)} className="font-black flex items-center gap-1 active:scale-95 text-white border-0 py-2 px-3 rounded-xl text-[10px] cursor-pointer" style={{ background: '#f59e0b' }}>
               <Undo2 size={12} /> ({getUndoRemainingSeconds(un.addedAt)}ث)
             </motion.button>
           )}
         </div>
 
-        <div className="font-black text-left" style={{ fontSize: _isFreeNow ? 11 : 14, color: _isFreeNow ? '#f59e0b' : BRAND.greenDark }}>
-          {_isFreeNow ? (
+        <div className="font-black text-left" style={{ fontSize: isFreeNow ? 11 : 14, color: isFreeNow ? '#f59e0b' : BRAND.greenDark }}>
+          {isFreeNow ? (
             <span className="flex items-center gap-0.5 px-2 py-0.5 rounded-lg text-[10px]" style={{ background: BRAND.greenLight, border: `1px solid ${BRAND.green}30` }}>
               🎁 مجاناً (0ج)
             </span>
           ) : (
-            <span className="font-mono text-sm font-black">
-              {_isShield ? _cost + 10 : _cost} ج.م
-            </span>
+            <span className="font-mono text-sm font-black">{cost} ج.م</span>
           )}
         </div>
       </div>
@@ -735,7 +751,7 @@ export default function GarageDashboard() {
     garages, currentGarageId, setCurrentGarageId, sessions, addSession, endSession,
     removeSession, offers, updateOffer, cancelOffer, updateGarage, incomingCars,
     removeIncomingCar, fetchAll, confirmRevenue, assignSessionToValet, adjustGarageSpots,
-    getMyOwnedGarages, triggerSessionBreach, clearSessionBreach
+    getMyOwnedGarages,
   } = useStore();
 
   const [garageRole] = useState<'owner' | 'valet'>(
@@ -752,11 +768,11 @@ export default function GarageDashboard() {
     ? 'owner'
     : localStorage.getItem('valetNumber') || '';
 
-  const garage = (garages || []).find(g => g && g.id === currentGarageId);
+  const garage = garages.find(g => g.id === currentGarageId);
   const garageCoords = useMemo(() => extractGarageCoords(garage), [garage]);
 
   const garageSessions = useMemo(
-    () => (sessions || []).filter(s => s && s.garageId === currentGarageId),
+    () => sessions.filter(s => s.garageId === currentGarageId),
     [sessions, currentGarageId]
   );
   const currentValetNameLocal = ownerValetView ? '' : (localStorage.getItem('valetName') || '');
@@ -798,30 +814,9 @@ export default function GarageDashboard() {
 
   const geofenceState = useValetGeofence(isRealValet, garageCoords, GEOFENCE_RADIUS_METERS);
 
-  const lastReportedStateRef = useRef<{ isInside: boolean; distance: number | null }>({
-    isInside: true,
-    distance: null
-  });
-  const lastReportTimeRef = useRef<number>(0);
-
   const reportLocation = useCallback(async (isInside: boolean, distance: number | null) => {
     if (!isRealValet || !currentGarageId || !valetNumber) return;
-    
-    const now = Date.now();
-    const stateChanged = 
-      lastReportedStateRef.current.isInside !== isInside || 
-      Math.abs((lastReportedStateRef.current.distance || 0) - (distance || 0)) > 30;
-
-    const isHeartbeatNeeded = (now - lastReportTimeRef.current) > 120000;
-
-    if (!stateChanged && !isHeartbeatNeeded && lastReportTimeRef.current > 0) {
-      return; 
-    }
-
     try {
-      lastReportedStateRef.current = { isInside, distance };
-      lastReportTimeRef.current = now;
-
       await supabase.from('valet_locations').upsert(
         {
           garage_id: currentGarageId,
@@ -832,7 +827,7 @@ export default function GarageDashboard() {
         },
         { onConflict: 'garage_id,valet_number' }
       );
-    } catch (e) {}
+    } catch {}
   }, [isRealValet, currentGarageId, valetNumber]);
 
   useEffect(() => {
@@ -879,7 +874,7 @@ export default function GarageDashboard() {
 
   const activeSessions = useMemo(() => {
     return garageSessions.filter(s => {
-      if (!s || s.status !== 'active') return false;
+      if (s.status !== 'active') return false;
       const st = toMs(s.startTime);
       if (st <= 0) return false;
       const elapsedMs = getServerNow() - st;
@@ -902,23 +897,17 @@ export default function GarageDashboard() {
   }, [activeSessions, isValet, valetNumber, garage, ownerValetView]);
 
   const completedSessions = useMemo(
-    () => (sessions || []).filter(s => s && s.status === 'completed' && s.garageId === currentGarageId),
-    [sessions, currentGarageId]
+    () => garageSessions.filter(s => s.status === 'completed'),
+    [garageSessions]
   );
-  
   const garageOffers = useMemo(
-    () => (offers || []).filter(o => o && o.garageId === currentGarageId && o.status === 'pending'),
+    () => offers.filter(o => o.garageId === currentGarageId && o.status === 'pending'),
     [offers, currentGarageId]
   );
-  
   const carsOnTheWay = useMemo(
-    () => (incomingCars || []).filter(c => c && c.garageId === currentGarageId && c.status === 'coming'),
+    () => incomingCars.filter(c => c.garageId === currentGarageId && c.status === 'coming'),
     [incomingCars, currentGarageId]
   );
-
-  const activeBreachesCount = useMemo(() => {
-    return (activeSessions || []).filter(s => s && !!s.breach_reason).length;
-  }, [activeSessions]);
 
   const processedCarsRef = useRef<Set<string>>(new Set());
   const isEndingSessionRef = useRef(false);
@@ -932,6 +921,7 @@ export default function GarageDashboard() {
   const [showAddCar, setShowAddCar] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   
+  // 📲 حالة نافذة الباركود لفالية الجراج
   const [showValetQrModal, setShowValetQrModal] = useState(false);
 
   const [editPrice, setEditPrice] = useState(garage?.basePrice || 15);
@@ -962,14 +952,17 @@ export default function GarageDashboard() {
   const [selectedValetFilter, setSelectedValetFilter] = useState<string | null>(null);
   const [plateSearch, setPlateSearch] = useState('');
 
+  // مبدل الجراجات
   const [showSwitcher, setShowSwitcher] = useState(false);
 
+  // 1️⃣ طلب إذن الإشعارات لفالية الجراج فقط عند فتح الشاشة
   useEffect(() => {
     if (isValet && 'Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
   }, [isValet]);
 
+  // 2️⃣ إطلاق الإنذار الصوتي والاهتزاز للفالية فقط 🅿️ (المالك مستثنى تماماً)
   useEffect(() => {
     if (!carsOnTheWay || carsOnTheWay.length === 0) return;
 
@@ -977,6 +970,7 @@ export default function GarageDashboard() {
 
     carsOnTheWay.forEach(car => {
       if (!prevIncomingIdsRef.current.has(car.id)) {
+        // 🛡️ التنبيه يعمل فقط لشاشة الفالية
         if (isValet) {
           fireIncomingCarAlert(car.carPlate);
           toast(`🚨 سيارة في الطريق!\n🚗 ${car.carPlate}`, { duration: 8000, icon: '🚨' });
@@ -986,55 +980,6 @@ export default function GarageDashboard() {
 
     prevIncomingIdsRef.current = ids;
   }, [carsOnTheWay, isValet]);
-
-  useEffect(() => {
-    if (!garage || !isValet) return;
-
-    const runValetSecurityRadar = async () => {
-      const shieldedSessions = activeSessions.filter(s => s && s.is_shield_active);
-      if (shieldedSessions.length === 0) return;
-
-      for (const s of shieldedSessions) {
-        const carLat = s.anchor_lat || s.lat || garage.lat;
-        const carLng = s.anchor_lng || s.lng || garage.lng;
-
-        const geofence = checkGeofence(carLat, carLng, {
-          name: "منطقة الجراج",
-          lat: garage.lat,
-          lng: garage.lng,
-          radiusMeters: GEOFENCE_RADIUS_METERS
-        });
-
-        if (!geofence.isInside) {
-          const reason = `🚨 رصد خروج السيارة عن نطاق سياج الجراج بـ ${geofence.distanceFromEdge}م!`;
-          await triggerSessionBreach(s.id, reason);
-          alarmCascade.triggerBreachProtocol({
-            sessionId: s.id,
-            plateNumber: s.carPlate,
-            reason
-          });
-          toast.error(`⚠️ اختراق أمني نشط: سيارة ${s.carPlate} خرجت عن النطاق!`, { duration: 6000 });
-          continue;
-        }
-
-        if (s.magnetic_baseline) {
-          const physicalBreach = await evaluatePhysicalTireBreach(s.magnetic_baseline);
-          if (physicalBreach.isBreached) {
-            await triggerSessionBreach(s.id, physicalBreach.reason);
-            alarmCascade.triggerBreachProtocol({
-              sessionId: s.id,
-              plateNumber: s.carPlate,
-              reason: physicalBreach.reason
-            });
-            toast.error(`⚠️ اختراق فيزيائي: سيارة ${s.carPlate}: ${physicalBreach.reason}`, { duration: 6000 });
-          }
-        }
-      }
-    };
-
-    const interval = setInterval(runValetSecurityRadar, 12000);
-    return () => clearInterval(interval);
-  }, [activeSessions, garage, isValet, triggerSessionBreach]);
 
   const myGarages = useMemo(() => {
     if (!garage) return [];
@@ -1046,8 +991,8 @@ export default function GarageDashboard() {
     const currentValet = currentValetNameLocal || currentValetName || `فالية ${valetNumber}`;
     if (!currentValet) return;
 
-    const unassignedCompletedSessions = (sessions || []).filter(s => {
-      if (!s || s.garageId !== currentGarageId) return false;
+    const unassignedCompletedSessions = sessions.filter(s => {
+      if (s.garageId !== currentGarageId) return false;
       if (s.status !== 'completed') return false;
       if (s.source !== 'app') return false;
       
@@ -1065,56 +1010,67 @@ export default function GarageDashboard() {
     if (!plateSearch.trim()) return valetActiveSessions;
     const query = normalizeSearchPlate(plateSearch);
     return valetActiveSessions.filter(s => {
-      const plate = normalizeSearchPlate(s?.carPlate);
+      const plate = normalizeSearchPlate(s.carPlate);
       return plate.includes(query);
     });
   }, [valetActiveSessions, plateSearch]);
 
+  const fetchGarageDailyStats = useCallback(async () => {
+    // جلب الإحصائيات في الخلفية
+  }, []);
+
+  useEffect(() => {
+    if (!currentGarageId) return;
+    const channel = supabase
+      .channel(`garage-realtime-${currentGarageId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions', filter: `garage_id=eq.${currentGarageId}` }, async () => { await fetchAll(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'incoming_cars', filter: `garage_id=eq.${currentGarageId}` }, async () => { await fetchAll(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'offers', filter: `garage_id=eq.${currentGarageId}` }, async () => { await fetchAll(); })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [currentGarageId, fetchAll]);
+
+  useEffect(() => {
+    if (!currentGarageId) return;
+    try {
+      subscribeToPush(currentGarageId);
+    } catch {}
+  }, [currentGarageId]);
+
   const getSessionRevenue = useCallback((s: any) => {
-    if (!s) return 0;
     if (s.totalPrice != null) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
       const elSeconds = Math.max(0, Math.floor((toMs(s.endTime) - toMs(s.startTime)) / 1000));
       const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
       const isFreeNow = s.isFirstFreeSession === true && elSeconds <= 1800;
-      
-      const isShield = s.is_shield_active === true;
-      const baseCost = isFreeNow ? 0 : calculateCost(elSeconds, r);
-      return isShield ? baseCost + 10 : baseCost;
+      return isFreeNow ? 0 : calculateCost(elSeconds, r);
     }
     return 0;
   }, [garage?.basePrice]);
 
   const getSessionCommission = useCallback((s: any) => {
-    if (!s) return 0;
-    if (s.source !== 'app') return s.is_shield_active ? 5 : 0;
-    const isFreeNow = s.isFirstFreeSession === true && s.endTime && s.startTime && Math.max(0, Math.floor((toMs(s.endTime) - toMs(s.startTime)) / 1000)) <= 1800;
-    const rev = getSessionRevenue(s) - (s.is_shield_active ? 10 : 0);
-    if (rev <= 0 && isFreeNow) return s.is_shield_active ? 5 : 0;
-    
+    if (s.source !== 'app') return 0;
+    const rev = getSessionRevenue(s);
+    if (rev <= 0) return 0;
     const rate = garage?.commissionRate ?? 10;
-    const baseComm = Math.round((rev * rate / 100) * 100) / 100;
-    return s.is_shield_active ? baseComm + 5 : baseComm;
+    return Math.round((rev * rate / 100) * 100) / 100;
   }, [getSessionRevenue, garage?.commissionRate]);
 
   const getSessionNetRevenue = useCallback((s: any) => {
-    if (!s) return 0;
     const rev = getSessionRevenue(s);
-    if (s.source !== 'app') return rev - (s.is_shield_active ? 5 : 0);
+    if (s.source !== 'app') return rev;
     const comm = getSessionCommission(s);
     return Math.round((rev - comm) * 100) / 100;
   }, [getSessionRevenue, getSessionCommission]);
 
   const getActiveCost = useCallback((s: any) => {
-    if (!s) return 0;
     const st = toMs(s.startTime);
     const el = st > 0 ? Math.max(0, Math.floor((getServerNow() - st) / 1000)) : 0;
     const r = Number(s.agreedPrice ?? garage?.basePrice ?? 0);
-    if (el <= 0 || r <= 0) return s.is_shield_active ? 10 : 0;
+    if (el <= 0 || r <= 0) return 0;
 
     const isFreeNow = s.isFirstFreeSession === true && el <= 1800;
-    const baseCost = isFreeNow ? 0 : calculateCost(el, r);
-    return s.is_shield_active ? baseCost + 10 : baseCost;
+    return isFreeNow ? 0 : calculateCost(el, r);
   }, [garage?.basePrice]);
 
   const filteredCompleted = useMemo(() => {
@@ -1134,7 +1090,6 @@ export default function GarageDashboard() {
     const boundaryTo = logDateTo ? new Date(`${logDateTo}T23:59:59.999`).getTime() : 0;
 
     return completedSessions.filter(s => {
-      if (!s) return false;
       if (s.endTime) {
         const endMs = toMs(s.endTime);
         if (isValet) { 
@@ -1165,23 +1120,23 @@ export default function GarageDashboard() {
   }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, isRealValet, isOwner, ownerValetView, myValetNames, selectedValetFilter, valetNumber, garage]);
 
   const filteredStats = useMemo(() => {
-    const c = filteredCompleted.filter(s => s && s.revenueConfirmed);
-    const u = filteredCompleted.filter(s => s && !s.revenueConfirmed);
-    const activeC = c.filter(s => s && !(s as any).settled);
+    const c = filteredCompleted.filter(s => s.revenueConfirmed);
+    const u = filteredCompleted.filter(s => !s.revenueConfirmed);
+    const activeC = c.filter(s => !(s as any).settled);
 
-    const cash = c.filter(s => s && s.paymentMethod === 'cash').reduce((a, s) => a + getSessionRevenue(s), 0);
-    const instapay = c.filter(s => s && s.paymentMethod === 'instapay').reduce((a, s) => a + getSessionRevenue(s), 0);
-    const wallet = c.filter(s => s && s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
-    const cashwallet = c.filter(s => s && s.paymentMethod === 'cashwallet').reduce((a, sumSession) => a + getSessionRevenue(sumSession), 0);
+    const cash = c.filter(s => s.paymentMethod === 'cash').reduce((a, s) => a + getSessionRevenue(s), 0);
+    const instapay = c.filter(s => s.paymentMethod === 'instapay').reduce((a, s) => a + getSessionRevenue(s), 0);
+    const wallet = c.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
+    const cashwallet = c.filter(s => s.paymentMethod === 'cashwallet').reduce((a, sumSession) => a + getSessionRevenue(sumSession), 0);
     
-    const manual = c.filter(s => s && s.source === 'manual');
-    const app = c.filter(s => s && s.source === 'app');
+    const manual = c.filter(s => s.source === 'manual');
+    const app = c.filter(s => s.source === 'app');
     
     const totalCommission = c.reduce((a, s) => a + getSessionCommission(s), 0);
     const totalNet = c.reduce((a, s) => a + getSessionNetRevenue(s), 0);
     const confirmedTotal = cash + instapay + wallet + cashwallet;
 
-    const activeWallet = activeC.filter(s => s && s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
+    const activeWallet = activeC.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
     const activeCommission = activeC.reduce((a, s) => a + getSessionCommission(s), 0);
 
     return {
@@ -1208,7 +1163,7 @@ export default function GarageDashboard() {
     ].filter(v => v.name);
     
     const ownerGarageCompleted = completedSessions.filter((s) => {
-      if (!s || s.garageId !== currentGarageId) return false;
+      if (s.garageId !== currentGarageId) return false;
       if (s.endTime) {
         const d = timestampToLocalDate(toMs(s.endTime));
         if (logDateFrom && d < logDateFrom) return false;
@@ -1223,9 +1178,9 @@ export default function GarageDashboard() {
         const addedBy = String((s as any).addedBy || '').trim();
         return addedBy === v.name || addedBy === v.defaultName;
       });
-      const confirmed = vs.filter((s) => s && s.revenueConfirmed);
-      const ac = confirmed.filter((s) => s && s.source === 'app');
-      const mc = confirmed.filter((s) => s && s.source === 'manual');
+      const confirmed = vs.filter((s) => s.revenueConfirmed);
+      const ac = confirmed.filter((s) => s.source === 'app');
+      const mc = confirmed.filter((s) => s.source === 'manual');
       return {
         name: v.name, color: v.color, icon: v.icon, count: vs.length,
         appCount: ac.length, manualCount: mc.length,
@@ -1241,7 +1196,7 @@ export default function GarageDashboard() {
     removeSession(un.sessionId);
     if (un.localId !== un.sessionId) removeSession(un.localId);
     const cs = useStore.getState().sessions;
-    const ms = (cs || []).find(s => s && s.carPlate === un.carPlate && s.source === 'manual' && s.status === 'active' && Math.abs(toMs(s.startTime) - un.addedAt) < 5000);
+    const ms = cs.find(s => s.carPlate === un.carPlate && s.source === 'manual' && s.status === 'active' && Math.abs(toMs(s.startTime) - un.addedAt) < 5000);
     if (ms) removeSession(ms.id);
     setUndoableSessions(p => p.filter(u => u.sessionId !== un.sessionId && u.localId !== un.localId));
     toast('تم إلغاء ' + un.carPlate + ' ↩️', { icon: '🔙' });
@@ -1252,7 +1207,7 @@ export default function GarageDashboard() {
   const [undoTick, setUndoTick] = useState(0);
   useEffect(() => {
     if (undoableSessions.length === 0) return;
-    const i = setInterval(() => setUndoTick(t => t + 1), 1000);
+    const i = setInterval(() => setUndoTick(t => t + 1), 5000);
     return () => clearInterval(i);
   }, [undoableSessions.length]);
 
@@ -1260,62 +1215,14 @@ export default function GarageDashboard() {
     setUndoableSessions(p =>
       p.filter(u => Math.floor((getServerNow() - u.addedAt) / 1000) < UNDO_TIMEOUT_SECONDS)
         .map(u => {
-          const e = (sessions || []).find(s => s && s.id === u.sessionId);
-          if (!e) { const n = (sessions || []).find(s => s && s.carPlate === u.carPlate && s.source === 'manual' && s.status === 'active' && Math.abs(toMs(s.startTime) - u.addedAt) < 5000); if (n) return { ...u, sessionId: n.id }; }
+          const e = sessions.find(s => s.id === u.sessionId);
+          if (!e) { const n = sessions.find(s => s.carPlate === u.carPlate && s.source === 'manual' && s.status === 'active' && Math.abs(toMs(s.startTime) - u.addedAt) < 5000); if (n) return { ...u, sessionId: n.id }; }
           return u;
         }),
     );
   }, [undoTick, sessions]);
 
-  // 🚀 صمام التحصيل الفوري والذكي للسايس (نقدي كاش دائماً وبدون أي تجميد)
-  const handleConfirmPayment = async () => {
-    if (!confirmSession || isEndingSessionRef.current) return;
-    isEndingSessionRef.current = true;
-    
-    pausePolling(5000);
-    
-    const sc = { ...confirmSession }; 
-    const sd = (sessions || []).find(s => s && s.id === sc.id);
-
-    if (sd?.breach_reason) {
-      toast.error("🚫 عذراً! السيارة مغلقة أمنياً لوجود بلاغ سرقة نشط. يرجى مراجعة المالك وفك الحظر أولاً!", { duration: 6000 });
-      setConfirmSession(null);
-      isEndingSessionRef.current = false;
-      pausePolling(0);
-      return;
-    }
-
-    setPlateSearch('');
-    setConfirmSession(null);
-    setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
-
-    try {
-      const pc = 'cash'; 
-      
-      let freeMinutesApplied = 0;
-      if (sd?.isFirstFreeSession === true) {
-        const elapsedSeconds = Math.floor((getServerNow() - toMs(sd.startTime)) / 1000);
-        if (elapsedSeconds <= 1800) {
-          freeMinutesApplied = Math.floor(elapsedSeconds / 60);
-        }
-      }
-
-      const currentValet = isValet 
-        ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`).trim() 
-        : 'المالك';
-
-      await endSession(sc.id, sc.cost, pc, freeMinutesApplied, currentValet);
-      
-      toast.success(`تم تحصيل ${sc.cost} ج.م نقداً (كاش) بنجاح ✅`);
-    } catch (err: any) {
-      console.error('Payment Error:', err);
-      toast.error(err.message || 'فشلت عملية التحصيل، يرجى المحاولة مرة أخرى');
-    } finally { 
-      pausePolling(0);
-      isEndingSessionRef.current = false;
-    }
-  };
-
+  // 🛡️ حظر الفالية الحقيقي فقط في حال كان خارج النطاق الجغرافي
   if (isValetBlocked && garage) {
     return (
       <ValetGeofenceBlockScreen
@@ -1346,27 +1253,6 @@ export default function GarageDashboard() {
     const pr = newCarPrice; 
     const at = getServerNow();
     const startTimeISO = new Date(at).toISOString();
-
-    const shielded = activeSessions.filter(s => s && s.is_shield_active);
-    const protectedCars = shielded.map(s => ({
-      session_id: s.id,
-      plate_number: s.carPlate,
-      lat: s.anchor_lat || s.lat || garage.lat,
-      lng: s.anchor_lng || s.lng || garage.lng,
-      shield_active: true
-    }));
-
-    const collisionResult = checkCollision(
-      garageCoords?.lat || garage.lat,
-      garageCoords?.lng || garage.lng,
-      protectedCars,
-      3.0
-    );
-
-    if (collisionResult.isCollision) {
-      toast.error(collisionResult.message, { icon: '🚫', duration: 5000 });
-      return;
-    }
     
     const sid = await addSession({ 
       garageId: garage.id, 
@@ -1386,8 +1272,9 @@ export default function GarageDashboard() {
     setShowAddCar(false);
   };
 
+   // 🛡️ دالة فتح نافذة التحصيل مع التأمين الفوري للشاشة
   const openConfirmPayment = (sid: string, cp: string, cost: number, hrs: number, minutes: number, source: 'app' | 'manual', ap?: number) => {
-    const sessionObj = activeSessions.find(s => s && s.id === sid);
+    const sessionObj = activeSessions.find(s => s.id === sid);
     const isFreeApplied = sessionObj?.isFirstFreeSession === true;
     
     const st = sessionObj ? toMs(sessionObj.startTime) : 0;
@@ -1407,7 +1294,56 @@ export default function GarageDashboard() {
     });
 
     setConfirmPaymentMethod('cash');
+
+    // 🌟 [تأمين 1]: تصفير البحث فوراً لتجهيز القائمة في الخلفية
     setPlateSearch('');
+  };
+
+  // 🛡️ دالة إتمام التحصيل والتسجيل مع أقصى حماية للبيانات
+  const handleConfirmPayment = async () => {
+    // 🌟 [تأمين 2 - صمام منع الضغط المزدوج]: لو الفالية ضغط مرتين ورا بعض بسرعة ما تتكررش العملية
+    if (!confirmSession || isEndingSessionRef.current) return;
+    isEndingSessionRef.current = true;
+    
+    // 🌟 [تأمين 3]: إيقاف التحديث الخلفي مؤقتاً لمدة ثانيتين لمنع تضارب البيانات أثناء الدفع
+    pausePolling(2000);
+    
+    try {
+      const sc = { ...confirmSession }; 
+      const sd = (sessions || []).find(s => s && s.id === sc.id);
+      const pc = (isValet || sc.source === 'manual') ? 'cash' : (confirmPaymentMethod || 'cash');
+      
+      // 🌟 [تأمين 4]: حساب الدقائق الترحيبية المجانية بمنتهى الدقة بدون أي تلاعب
+      let freeMinutesApplied = 0;
+      if (sd?.isFirstFreeSession === true) {
+        const elapsedSeconds = Math.floor((getServerNow() - toMs(sd.startTime)) / 1000);
+        if (elapsedSeconds <= 1800) {
+          freeMinutesApplied = Math.floor(elapsedSeconds / 60);
+        }
+      }
+
+      const currentValet = isValet 
+        ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`).trim() 
+        : 'المالك';
+
+      // مسح البحث وقفل النافذة فوراً لسرعة استجابة التطبيق
+      setPlateSearch('');
+      setConfirmSession(null);
+      setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
+
+      // تسجيل العملية في قاعدة البيانات وإنهاء الركنة
+      await endSession(sc.id, sc.cost, pc, freeMinutesApplied, currentValet);
+      
+      const paymentText = pc === 'cash' ? 'نقداً (كاش)' : 'من المحفظة الرقمية';
+      toast.success(`تم تحصيل ${sc.cost} ج.م ${paymentText} بنجاح ✅`);
+    } catch (err: any) {
+      console.error('Payment Error:', err);
+      toast.error(err.message || 'فشلت عملية التحصيل، يرجى المحاولة مرة أخرى');
+    } finally { 
+      // 🌟 [تأمين 5]: إعادة التزامن وفك حظر الضغط بأمان
+      pausePolling(0);
+      setTimeout(() => { isEndingSessionRef.current = false; }, 800); 
+    }
   };
 
   const handleSaveSettings = () => {
@@ -1445,36 +1381,14 @@ export default function GarageDashboard() {
     
     try {
       const np = normalizePlate(carPlate);
-      const existing = useStore.getState().sessions.find(s => s && normalizePlate(s.carPlate) === np && s.status === 'active');
+      const existing = useStore.getState().sessions.find(s => normalizePlate(s.carPlate) === np && s.status === 'active');
       if (existing) { 
         await removeIncomingCar(carId); 
         toast('الجلسة شغالة بالفعل ✅', { icon: '🚗' }); 
         return; 
       }
-
-      const shielded = activeSessions.filter(s => s && s.is_shield_active);
-      const protectedCars = shielded.map(s => ({
-        session_id: s.id,
-        plate_number: s.carPlate,
-        lat: s.anchor_lat || s.lat || garage.lat,
-        lng: s.anchor_lng || s.lng || garage.lng,
-        shield_active: true
-      }));
-
-      const collisionResult = checkCollision(
-        garageCoords?.lat || garage.lat,
-        garageCoords?.lng || garage.lng,
-        protectedCars,
-        3.0
-      );
-
-      if (collisionResult.isCollision) {
-        toast.error(collisionResult.message, { icon: '🚫', duration: 6000 });
-        processedCarsRef.current.delete(carId);
-        return;
-      }
       
-      const ro = (offers || []).find(o => o && normalizePlate(o.carPlate) === np && (o.status === 'pending' || o.status === 'accepted'));
+      const ro = offers.find(o => normalizePlate(o.carPlate) === np && (o.status === 'pending' || o.status === 'accepted'));
       if (ro) cancelOffer(ro.id);
 
       const startTimeISO = new Date(getServerNow()).toISOString();
@@ -1510,26 +1424,7 @@ export default function GarageDashboard() {
   return (
     <div className="h-full overflow-y-auto" style={{ background: BRAND.bg, color: BRAND.navy, padding: 16 }}>
 
-      <AnimatePresence>
-        {activeBreachesCount > 0 && (
-          <motion.div 
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="mb-4 bg-red-600 text-white rounded-2xl p-4 flex flex-col gap-2 shadow-xl border border-red-500 animate-pulse text-right"
-          >
-            <div className="flex justify-between items-center">
-              <span className="bg-white text-red-600 font-extrabold text-[9px] px-2.5 py-1 rounded-full animate-bounce">قفل البوابة 🚫</span>
-              <div className="flex items-center gap-1.5">
-                <h3 className="text-xs font-black">رصد محاولة اختراق أو حركة مشبوهة!</h3>
-                <ShieldAlert size={16} />
-              </div>
-            </div>
-            <p className="text-[10px] opacity-90 font-bold">يرجى منع خروج السيارات المخترقة وإغلاق منافذ التحصيل فوراً لتأمين الجراج.</p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
+      {/* Header */}
       <div className="flex justify-between items-center mb-5 pt-14">
         <div className="flex gap-2 items-center">
           <button 
@@ -1569,6 +1464,7 @@ export default function GarageDashboard() {
             </button>
           )}
 
+          {/* 🟢 زر تفعيل وضع الفالية للمالك */}
           {isOwner && (
             <button
               onClick={() => {
@@ -1576,7 +1472,9 @@ export default function GarageDashboard() {
                 toast.success('دخلت شاشة فالية الجراج 🅿️', { icon: '👁️' });
               }}
               className="active:scale-95 font-black flex items-center gap-1.5 border-0 text-white py-2 px-3 rounded-xl text-xs cursor-pointer"
-              style={{ background: BRAND.navy }}
+              style={{
+                background: BRAND.navy,
+              }}
             >
               <HardHat size={13} />
               <span>شاشة الفالية</span>
@@ -1597,6 +1495,7 @@ export default function GarageDashboard() {
         {isValet && <div style={{ width: 44 }} />}
       </div>
 
+      {/* 🟢 شريط تنبيه المعاينة للمالك */}
       {ownerValetView && (
         <motion.div 
           initial={{ opacity: 0, y: -8 }} 
@@ -1606,9 +1505,15 @@ export default function GarageDashboard() {
             toast.success('عدت لشاشة المالك 🛡️', { icon: '↩️' });
           }}
           className="mb-4 flex items-center justify-between p-2.5 px-3 rounded-xl cursor-pointer border"
-          style={{ background: '#fffbeb', borderColor: '#fde68a' }}
+          style={{ 
+            background: '#fffbeb', 
+            borderColor: '#fde68a',
+          }}
         >
-          <span className="font-black text-white text-[9px] px-2.5 py-1 rounded animate-pulse" style={{ background: '#b45309' }}>
+          <span className="font-black text-white text-[9px] px-2.5 py-1 rounded animate-pulse" 
+            style={{ 
+              background: '#b45309', 
+            }}>
             الرجوع للمالك ↩️
           </span>
           <div className="flex items-center gap-1.5 flex-1 justify-end mr-2">
@@ -1620,6 +1525,7 @@ export default function GarageDashboard() {
         </motion.div>
       )}
 
+      {/* 👑 بانر حالة الفالية للمالك */}
       {isOwner && <OwnerValetLocationBanner valetLocations={valetLocations} />}
 
       {/* Settings Modal */}
@@ -1773,16 +1679,52 @@ export default function GarageDashboard() {
             </div>
 
             <div className="mb-5">
-              <h4 className="font-black mb-2 text-right text-[10px]" style={{ color: BRAND.slate }}>طريقة التحصيل المعتمدة</h4>
-              <div className="text-center p-3 rounded-xl border" style={{ background: BRAND.greenLight, borderColor: BRAND.green }}>
-                <div className="font-black text-xs" style={{ color: BRAND.greenDark }}>💵 سداد نقدي كاش (يداً بيد للسايس)</div>
-              </div>
+              <h4 className="font-black mb-2 text-right text-[10px]" style={{ color: BRAND.slate }}>طريقة التحصيل</h4>
+
+              {isValet || confirmSession.source === 'manual' ? (
+                <div className="text-center p-3 rounded-xl border" style={{ background: BRAND.greenLight, borderColor: BRAND.green }}>
+                  <div className="font-black text-xs" style={{ color: BRAND.greenDark }}>💵 سداد نقدي (كاش يداً بيد)</div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmPaymentMethod('cash')}
+                    className="w-full p-2.5 rounded-xl flex items-center justify-between font-black border cursor-pointer"
+                    style={{
+                      background: confirmPaymentMethod === 'cash' ? '#fff7ed' : BRAND.bg,
+                      borderColor: confirmPaymentMethod === 'cash' ? '#f97316' : BRAND.border,
+                      color: confirmPaymentMethod === 'cash' ? '#c2410c' : BRAND.slate
+                    }}
+                  >
+                    <span className="text-xs">💵 سداد نقدي (كاش)</span>
+                    {confirmPaymentMethod === 'cash' && <span className="text-[9px] px-2 py-0.5 rounded text-white bg-orange-600">✓ محدد</span>}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setConfirmPaymentMethod('wallet')}
+                    className="w-full p-2.5 rounded-xl flex items-center justify-between font-black border cursor-pointer"
+                    style={{
+                      background: confirmPaymentMethod === 'wallet' ? BRAND.blueSoft : BRAND.bg,
+                      borderColor: confirmPaymentMethod === 'wallet' ? BRAND.blue : BRAND.border,
+                      color: confirmPaymentMethod === 'wallet' ? BRAND.blue : BRAND.slate
+                    }}
+                  >
+                    <span className="text-xs">👝 خصم من المحفظة</span>
+                    {confirmPaymentMethod === 'wallet' && <span className="text-[9px] px-2 py-0.5 rounded text-white bg-blue-600">✓ محدد</span>}
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2">
               <button 
                 onClick={handleConfirmPayment} 
-                className="flex-1 font-black flex items-center justify-center gap-1.5 py-3 rounded-xl text-xs text-white border-0 cursor-pointer bg-emerald-600"
+                className="flex-1 font-black flex items-center justify-center gap-1.5 py-3 rounded-xl text-xs text-white border-0 cursor-pointer" 
+                style={{ 
+                  background: BRAND.greenDark,
+                }}
               >
                 <CheckCircle size={16} /> تأكيد واستلام ({confirmSession.cost} ج.م)
               </button>
@@ -1792,10 +1734,10 @@ export default function GarageDashboard() {
         </motion.div>
       )}
 
-      {/* الفالية فقط */}
+       {/* الفالية فقط */}
       {isValet && (
         <>
-          {/* كارت الباركود الذكي */}
+          {/* 📲 كارت الباركود الذكي لفالية الجراج لتسويق التطبيق للعملاء */}
           <div
             onClick={() => setShowValetQrModal(true)}
             className="mb-4 border rounded-2xl p-3 flex items-center justify-between text-right cursor-pointer active:scale-[0.98] transition-all"
@@ -1916,7 +1858,7 @@ export default function GarageDashboard() {
 
             {valetActiveSessions.length > 0 && (
               <div className="mb-3 relative">
-                <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: BRAND.slateMuted }} />
                 <input
                   type="text"
                   value={plateSearch}
@@ -2023,55 +1965,59 @@ export default function GarageDashboard() {
                   </div>
                 </div>
 
-                <div className="space-y-2 mb-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="text-center transition-all" style={{ background: BRAND.card, border: `1px solid ${BRAND.border}`, borderRadius: 16, padding: '8px 10px' }}>
-                      <div className="font-bold mb-0.5" style={{ fontSize: 9, color: BRAND.slate }}>عمولة التطبيق</div>
-                      <div className="font-black font-mono leading-none" style={{ fontSize: 16, color: '#f59e0b' }}>
-                        {filteredStats.totalCommission.toFixed(0)} <span style={{ fontSize: 9 }}>ج.م</span>
+                {/* 📊 بانر العمولة وصافي الأرباح مع كارت تسوية الحساب المالي */}
+                {filteredStats.totalCommission > 0 && (
+                  <div className="space-y-2 mb-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="text-center transition-all" style={{ background: BRAND.card, border: `1px solid ${BRAND.border}`, borderRadius: 16, padding: '8px 10px' }}>
+                        <div className="font-bold mb-0.5" style={{ fontSize: 9, color: BRAND.slate }}>عمولة التطبيق</div>
+                        <div className="font-black font-mono leading-none" style={{ fontSize: 16, color: '#f59e0b' }}>
+                          {filteredStats.totalCommission.toFixed(0)} <span style={{ fontSize: 9 }}>ج.م</span>
+                        </div>
+                      </div>
+
+                      <div className="text-center transition-all" style={{ background: BRAND.card, border: `1px solid ${BRAND.border}`, borderRadius: 16, padding: '8px 10px' }}>
+                        <div className="font-bold mb-0.5" style={{ fontSize: 9, color: BRAND.slate }}>صافي أرباحك</div>
+                        <div className="font-black font-mono leading-none" style={{ fontSize: 16, color: BRAND.greenDark }}>
+                          {filteredStats.totalNet.toFixed(0)} <span style={{ fontSize: 9 }}>ج.م</span>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="text-center transition-all" style={{ background: BRAND.card, border: `1px solid ${BRAND.border}`, borderRadius: 16, padding: '8px 10px' }}>
-                      <div className="font-bold mb-0.5" style={{ fontSize: 9, color: BRAND.slate }}>صافي أرباحك</div>
-                      <div className="font-black font-mono leading-none" style={{ fontSize: 16, color: BRAND.greenDark }}>
-                        {filteredStats.totalNet.toFixed(0)} <span style={{ fontSize: 9 }}>ج.م</span>
-                      </div>
-                    </div>
-                  </div>
+                    {/* ⚖️ كارت تسوية الحساب المالي مع التطبيق */}
+                    {(() => {
+                      const settlement = filteredStats.activeWallet - filteredStats.activeCommission;
+                      const isGarageOwed = settlement > 0;
+                      const absSettlement = Math.abs(settlement).toFixed(0);
 
-                  {(() => {
-                    const settlement = filteredStats.activeWallet - filteredStats.activeCommission;
-                    const isGarageOwed = settlement > 0;
-                    const absSettlement = Math.abs(settlement).toFixed(0);
+                      if (settlement === 0 && filteredStats.activeWallet === 0 && filteredStats.activeCommission === 0) return null;
 
-                    if (settlement === 0 && filteredStats.activeWallet === 0 && filteredStats.activeCommission === 0) return null;
-
-                    return (
-                      <div 
-                        className="text-center transition-all p-3.5 border rounded-xl" 
-                        style={{ 
-                          background: settlement === 0 ? BRAND.blueSoft : isGarageOwed ? BRAND.greenLight : '#fff5f5', 
-                          borderColor: settlement === 0 ? BRAND.blue : isGarageOwed ? BRAND.green : '#fca5a5' 
-                        }}
-                      >
-                        <div className="flex justify-between items-center">
-                          <div className="font-black font-mono text-base" style={{ color: settlement === 0 ? BRAND.blue : isGarageOwed ? BRAND.greenDark : '#c53030' }}>
-                            {absSettlement} ج.م
-                          </div>
-                          <div className="text-right">
-                            <div className="font-black text-xs" style={{ color: BRAND.navy }}>
-                              {settlement === 0 ? '⚖️ الحساب متزن تماماً' : isGarageOwed ? '🟢 مستحق لك طرف التطبيق' : '🔴 مستحق عليك للتطبيق'}
+                      return (
+                        <div 
+                          className="text-center transition-all p-3.5 border rounded-xl" 
+                          style={{ 
+                            background: settlement === 0 ? BRAND.blueSoft : isGarageOwed ? BRAND.greenLight : '#fff5f5', 
+                            borderColor: settlement === 0 ? BRAND.blue : isGarageOwed ? BRAND.green : '#fca5a5' 
+                          }}
+                        >
+                          <div className="flex justify-between items-center">
+                            <div className="font-black font-mono text-base" style={{ color: settlement === 0 ? BRAND.blue : isGarageOwed ? BRAND.greenDark : '#c53030' }}>
+                              {absSettlement} ج.م
                             </div>
-                            <div className="font-bold text-[9px] mt-0.5" style={{ color: BRAND.slate }}>
-                              {isGarageOwed ? 'مبالغ المحفظة المستلمة أكبر من العمولة' : 'عمولة التطبيق أكبر من تحصيلات المحفظة'}
+                            <div className="text-right">
+                              <div className="font-black text-xs" style={{ color: BRAND.navy }}>
+                                {settlement === 0 ? '⚖️ الحساب متزن تماماً' : isGarageOwed ? '🟢 مستحق لك طرف التطبيق' : '🔴 مستحق عليك للتطبيق'}
+                              </div>
+                              <div className="font-bold text-[9px] mt-0.5" style={{ color: BRAND.slate }}>
+                                {isGarageOwed ? 'مبالغ المحفظة المستلمة أكبر من العمولة' : 'عمولة التطبيق أكبر من تحصيلات المحفظة'}
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })()}
-                </div>
+                      );
+                    })()}
+                  </div>
+                )}
 
                 {valetReport.length > 0 && (
                   <div className="mb-3 space-y-1.5">
@@ -2098,7 +2044,6 @@ export default function GarageDashboard() {
 
         <div className="space-y-1.5">
           {filteredCompleted.slice(0, 30).map(session => {
-            if (!session) return null;
             const isM = session.source === 'manual';
             const et = session.endTime ? toMs(session.endTime) : null;
             const time = et ? new Date(et) : null;
@@ -2107,19 +2052,17 @@ export default function GarageDashboard() {
             const isSettled = (session as any).settled === true;
             const rawAddedBy = String((session as any).addedBy || '').trim();
             const addedBy = garageValetNames.includes(rawAddedBy) ? rawAddedBy : '';
-            const isShield = session.is_shield_active === true;
-
             return (
-              <div key={session.id} className="p-2.5 border rounded-xl bg-white" style={{ borderColor: isShield ? BRAND.gold : BRAND.border, opacity: isSettled ? 0.75 : 1 }}>
+              <div key={session.id} className="p-2.5 border rounded-xl bg-white" style={{ borderColor: BRAND.border, opacity: isSettled ? 0.75 : 1 }}>
                 <div className="flex justify-between items-center mb-1 gap-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {(isOwner || !isC) && (
-                      <span className="font-mono font-black text-xs" style={{ color: isShield ? BRAND.gold : isSettled ? BRAND.slateMuted : rev === 0 && session.isFirstFreeSession ? BRAND.greenDark : BRAND.navy }}>
+                      <span className="font-mono font-black text-xs" style={{ color: isSettled ? BRAND.slateMuted : rev === 0 && session.isFirstFreeSession ? BRAND.greenDark : BRAND.navy }}>
                         {rev === 0 && session.isFirstFreeSession ? '🎁 مجانية' : `${rev.toFixed(0)} ج`}
                       </span>
                     )}
-                    <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white" style={{ background: isShield ? BRAND.gold : isSettled ? BRAND.slateMuted : isM ? '#f59e0b' : BRAND.blue, color: isShield ? '#000' : '#fff' }}>
-                      {isShield ? '🛡️ درع VIP' : isSettled ? '🔒 مقفلة' : isM ? 'يدوي' : 'تطبيق'}
+                    <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white" style={{ background: isSettled ? BRAND.slateMuted : isM ? '#f59e0b' : BRAND.blue }}>
+                      {isSettled ? '🔒 مقفلة' : isM ? 'يدوي' : 'تطبيق'}
                     </span>
                     {!isSettled && !isC ? (
                       <button 
@@ -2127,20 +2070,23 @@ export default function GarageDashboard() {
                           const currentValet = isValet ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`) : '';
                           if (currentValet) await assignSessionToValet(session.id, currentValet);
                           await confirmRevenue(session.id, currentValet); 
+                          await fetchGarageDailyStats(); 
                           toast.success('تأكيد ✅'); 
                         }} 
-                        className="text-[8px] font-black px-2 py-0.5 rounded border-0 text-white cursor-pointer bg-amber-500"
+                        className="text-[8px] font-black px-2 py-0.5 rounded border-0 text-white cursor-pointer"
+                        style={{ background: '#f59e0b' }}
                       >
                         ⏳ تأكيد
                       </button>
                     ) : !isSettled ? (
-                      <span className="text-[8px] font-black text-emerald-600">✅ مؤكد</span>
+                      <span className="text-[8px] font-black" style={{ color: BRAND.greenDark }}>✅ مؤكد</span>
                     ) : null}
                   </div>
                   <div className="font-black text-xs text-slate-900">🚗 {session.carPlate}</div>
                 </div>
 
                 <div className="flex justify-between items-center text-[9px] text-slate-400 font-bold border-t pt-1 mt-1" style={{ borderColor: BRAND.border }}>
+                  {/* 👤 عرض من المسؤول عن الجلسة */}
                   <span style={{ color: BRAND.slate }}>
                     👤 بواسطة: <b style={{ color: BRAND.navy }}>{session.addedBy || 'المالك'}</b>
                   </span>
@@ -2148,16 +2094,14 @@ export default function GarageDashboard() {
                   {time && <span className="font-mono">{time.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })} · {time.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}</span>}
                 </div>
 
-                <div className="flex items-center justify-between mt-1">
+                <div className="flex items-center justify-start mt-1">
                   <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white" style={{ background: isSettled ? BRAND.slateMuted : session.paymentMethod === 'cash' ? BRAND.greenDark : session.paymentMethod === 'wallet' ? BRAND.blue : '#fb923c' }}>
                     {session.paymentMethod === 'cash' ? '💵 نقدي كاش' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📱 تحويل'}
                   </span>
-                  {isShield && (
-                    <span className="text-[8px] text-amber-500 font-black">مناصفة: 5ج للتطبيق + 5ج للجراج 🤝</span>
-                  )}
                 </div>
               </div>
             );
+
           })}
           {filteredCompleted.length === 0 && (
             <div className="text-center py-6 border-2 border-dashed rounded-xl text-xs font-bold" style={{ borderColor: BRAND.border, color: BRAND.slateMuted }}>
@@ -2167,7 +2111,7 @@ export default function GarageDashboard() {
         </div>
       </div>
 
-      {/* نافذة تكبير باركود فالية الجراج */}
+      {/* 📲 نافذة تكبير باركود فالية الجراج مع زر نسخ الرابط */}
       <AnimatePresence>
         {showValetQrModal && (
           <div
@@ -2209,6 +2153,7 @@ export default function GarageDashboard() {
                 />
               </div>
 
+              {/* 🔗 زر نسخ رابط التطبيق للسايس + زر الإغلاق */}
               <div className="space-y-2">
                 <button
                   onClick={async () => {
@@ -2247,7 +2192,6 @@ export default function GarageDashboard() {
           </div>
         )}
       </AnimatePresence>
-
       {/* Switcher Modal */}
       <AnimatePresence>
         {showSwitcher && (

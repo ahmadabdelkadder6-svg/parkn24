@@ -1,13 +1,4 @@
 /**
- * ⏱️ محرك حسابات الوقت والتكلفة المحدث + طبقة درع الأمان VIP (10 ج.م)
- */
-
-// 🛡️ الثوابت المالية لدرع الأمان VIP
-export const SHIELD_VIP_FEE = 10;          // إجمالي رسوم الدرع (10 جنيه)
-export const SHIELD_APP_SHARE = 5;         // نصيب التطبيق (5 جنيه)
-export const SHIELD_GARAGE_SHARE = 5;      // نصيب الجراج (5 جنيه)
-
-/**
  * ✅ حساب الساعات المحسوبة (من 1 إلى 60 دقيقة = ساعة، من 61 إلى 120 = ساعتان.. إلخ)
  */
 export function calculateFullHours(elapsedSeconds: number): number {
@@ -65,50 +56,6 @@ export function calculateCostWithLoyalty(
     totalHours: standardHours,
     isFree: false,
     savedAmount: 0,
-  };
-}
-
-/**
- * 🛡️✨ دالة احترافية شاملة لحساب التكلفة النهائية مع درع الأمان VIP
- * تدمج الركنة + الهدية الترحيبية + رسوم الـ 10 جنيه الخاصة بالدرع
- */
-export function calculateTotalCostWithShield(
-  elapsedSeconds: number,
-  ratePerHour: number,
-  isFreeSession: boolean = false,
-  isShieldActive: boolean = false
-): {
-  totalCost: number;          // الإجمالي النهائي المطلوب دفعه
-  parkingCost: number;        // تكلفة الركن فقط (بعد خصم الهدية إن وجدت)
-  shieldFee: number;          // رسوم الدرع (10ج لو فعال أو 0)
-  appShieldShare: number;     // نصيب التطبيق من الدرع (5ج)
-  garageShieldShare: number;  // نصيب الجراج من الدرع (5ج)
-  paidHours: number;
-  totalHours: number;
-  isFree: boolean;
-  savedAmount: number;
-} {
-  // 1. حساب تكلفة الركن الأساسية باستخدام المعادلة الأصلية
-  const basePricing = calculateCostWithLoyalty(elapsedSeconds, ratePerHour, isFreeSession);
-  
-  // 2. حساب رسوم الدرع الذكي VIP
-  const shieldFee = isShieldActive ? SHIELD_VIP_FEE : 0;
-  const appShieldShare = isShieldActive ? SHIELD_APP_SHARE : 0;
-  const garageShieldShare = isShieldActive ? SHIELD_GARAGE_SHARE : 0;
-
-  // 3. الإجمالي النهائي (سعر الركنة + 10 جنيه تأمين الدرع)
-  const totalCost = basePricing.cost + shieldFee;
-
-  return {
-    totalCost,
-    parkingCost: basePricing.cost,
-    shieldFee,
-    appShieldShare,
-    garageShieldShare,
-    paidHours: basePricing.paidHours,
-    totalHours: basePricing.totalHours,
-    isFree: basePricing.isFree,
-    savedAmount: basePricing.savedAmount,
   };
 }
 

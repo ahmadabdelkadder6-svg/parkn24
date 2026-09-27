@@ -11,7 +11,6 @@ import {
   Copy,
   Gift,
   CreditCard,
-  ShieldCheck,
 } from 'lucide-react';
 // 🌟 استيراد getServerNow ودوال البصمة الموحدة من الـ store لضمان المزامنة التامة
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
@@ -41,7 +40,7 @@ const BRAND = {
   blueDark: '#0f3d85',   // الكحلي الفخم
   blueLight: '#e8f0fe',  // الأزرق الفاتح جداً
   blueSoft: 'rgba(22, 86, 184, 0.08)', // كحلي زجاجي ناعم
-  green: '#8cc63f',      // الأخضر الرسمي للباص
+  green: '#8cc63f',      // الأخضر الرسمي للوجو
   greenDark: '#6ea62a',  // أخضر داكن للخطوط والنصوص
   greenLight: 'rgba(140, 198, 63, 0.12)', // خلفية خضراء ناعمة
   navy: '#0a1628',       // الكحلي الليلي الغامق للواجهة الداكنة
@@ -96,7 +95,7 @@ const getDistanceMeters = (
   return R * c;
 };
 
-/* ─── Map controller ─── */
+/* ─── Map controller (محمي بالكامل من الانهيار) ─── */
 function MapController({
   userPos,
   garagePos,
@@ -156,30 +155,28 @@ export default function NavigationScreen() {
     fetchAll,
   } = useStore();
 
-  const garage = (garages || []).find((g) => g && g.id === selectedGarageId);
-  const userPlateNav = normalizePlate(currentUser?.carPlate || '');
+  const garage = garages.find((g) => g.id === selectedGarageId);
+  const userPlateNav = normalizePlate(currentUser?.carPlate);
   const userPhoneClean = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
-  /* ── الكشف عن السيارة القادمة مع صمامات الحماية ── */
+  /* ── الكشف عن السيارة القادمة ── */
   const myIncomingCar = useMemo(() => {
-    return (incomingCars || []).find(
+    return incomingCars.find(
       (c) =>
-        c &&
         c.garageId === selectedGarageId &&
-        normalizePlate(c.carPlate || '') === userPlateNav &&
+        normalizePlate(c.carPlate) === userPlateNav &&
         c.status === 'coming',
     );
   }, [incomingCars, selectedGarageId, userPlateNav]);
 
   /* ✅ الكشف اللحظي عن الجلسة النشطة */
   const myActiveSession = useMemo(() => {
-    return (sessions || [])
+    return sessions
       .filter(
         (sess) =>
-          sess &&
           sess.status === 'active' &&
           (
-            normalizePlate(sess.carPlate || '') === userPlateNav ||
+            normalizePlate(sess.carPlate) === userPlateNav ||
             (userPhoneClean && normalizePhone((sess as any).customerPhone || '') === userPhoneClean)
           ),
       )
@@ -219,7 +216,7 @@ export default function NavigationScreen() {
     currentUserRef.current = currentUser;
   }, [currentUser]);
 
-  /* ─── REALTIME المطور مع حماية ضد الانهيارات ─── */
+  /* ─── REALTIME ─── */
   useEffect(() => {
     if (!userPlateNav && !userPhoneClean) return;
 
@@ -238,7 +235,7 @@ export default function NavigationScreen() {
 
     const isMySessionPayload = (row: any): boolean => {
       if (!row) return false;
-      const plate = normalizePlate(row.car_plate || row.carPlate || '');
+      const plate = normalizePlate(row.car_plate || row.carPlate);
       const phone = normalizePhone(row.customer_phone || row.customerPhone || '');
       return (
         (!!userPlateNav && plate === userPlateNav) ||
@@ -274,7 +271,7 @@ export default function NavigationScreen() {
       .subscribe();
 
     realtimeChannelRef.current = channel;
-    pollingIntervalRef.current = setInterval(fastFetch, 2000);
+    pollingIntervalRef.current = setInterval(fastFetch, 1500);
 
     const handleFocus = () => fastFetch();
     const handleVisibility = () => {
@@ -400,8 +397,8 @@ export default function NavigationScreen() {
 
     pushTimerRef.current = setTimeout(async () => {
       const freshState = useStore.getState();
-      const stillComing = (freshState.incomingCars || []).find(
-        (c) => c && c.id === myIncomingCar.id && c.status === 'coming',
+      const stillComing = freshState.incomingCars.find(
+        (c) => c.id === myIncomingCar.id && c.status === 'coming',
       );
 
       if (!stillComing || pushSentRef.current) {
@@ -473,7 +470,7 @@ export default function NavigationScreen() {
         </p>
         <button
           onClick={() => setScreen('list')}
-          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all cursor-pointer"
+          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all"
         >
           العودة للقائمة
         </button>
@@ -528,9 +525,8 @@ export default function NavigationScreen() {
       await cancelScheduledPush(garage.id, myIncomingCar.carPlate);
     }
 
-    const activeOffer = (offers || []).find(
+    const activeOffer = offers.find(
       (o) =>
-        o &&
         o.userId === currentUser.phone &&
         (o.status === 'pending' || o.status === 'accepted'),
     );
@@ -556,12 +552,11 @@ export default function NavigationScreen() {
       }
 
       const state = useStore.getState();
-      const alreadyActive = (state.sessions || []).find(
+      const alreadyActive = state.sessions.find(
         (s) =>
-          s &&
           s.status === 'active' &&
           (
-            normalizePlate(s.carPlate || '') === userPlateNav ||
+            normalizePlate(s.carPlate) === userPlateNav ||
             (userPhoneClean && normalizePhone((s as any).customerPhone || '') === userPhoneClean)
           ),
       );
@@ -576,9 +571,8 @@ export default function NavigationScreen() {
         return;
       }
 
-      const relatedOffer = (offers || []).find(
+      const relatedOffer = offers.find(
         (o) =>
-          o &&
           o.carPlate === myIncomingCar.carPlate &&
           (o.status === 'pending' || o.status === 'accepted'),
       );
@@ -597,8 +591,6 @@ export default function NavigationScreen() {
         customerName: currentUser?.name,
         startedBy: 'customer',
         incomingCarId: myIncomingCar.id,
-        anchor_lat: userPos.lat,
-        anchor_lng: userPos.lng,
       } as any);
 
       await removeIncomingCar(myIncomingCar.id);
@@ -643,7 +635,7 @@ export default function NavigationScreen() {
       </div>
 
       {/* ══ Content ══ */}
-      <div className="flex-1 px-4 pb-4 flex flex-col gap-3 overflow-y-auto scrollbar-none">
+      <div className="flex-1 px-4 pb-4 flex flex-col gap-3 overflow-y-auto">
 
         {/* 🏢 بطاقة اسم الجراج */}
         <div
@@ -685,7 +677,7 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* 🗺️ الخريطة المستقرة */}
+        {/* 🗺️ الخريطة المستقرة (بدون رعشة) */}
         <div 
           className="w-full h-44 rounded-2xl overflow-hidden relative shrink-0 border"
           style={{ transform: 'translateZ(0)', borderColor: BRAND.border }} 
@@ -770,7 +762,7 @@ export default function NavigationScreen() {
           </button>
         </div>
 
-        {/* معلومات السعر والأماكن وطرق الدفع */}
+        {/* معلومات السعر والأماكن وطرق الدفع المقبولة */}
         <div className="border rounded-xl p-3.5 shrink-0 space-y-2.5" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1 text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>
@@ -795,6 +787,7 @@ export default function NavigationScreen() {
             <span className="text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>الأماكن المتاحة الآن</span>
           </div>
 
+          {/* 🌟 شارة وسيلة الدفع المقبولة بالجراج */}
           <div className="flex items-center justify-between border-t pt-2" style={{ borderColor: BRAND.border }}>
             <span className="text-xs font-black flex items-center gap-1" style={{ color: BRAND.green }}>
               <CreditCard size={12} />
@@ -807,6 +800,7 @@ export default function NavigationScreen() {
             <span className="text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>طريقة الدفع المقبولة</span>
           </div>
 
+          {/* 🎁 شارة الهدية الترحيبية إن وجدت */}
           {isEligibleForFree && (
             <div className="border rounded-lg p-2 text-center flex items-center justify-center gap-1 text-[10px] font-black" style={{ background: BRAND.greenLight, borderColor: BRAND.green + '40', color: BRAND.green }}>
               <Gift size={12} style={{ color: BRAND.green }} />
@@ -815,6 +809,7 @@ export default function NavigationScreen() {
           )}
         </div>
 
+        {/* 🔔 مؤشر حالة الـ Push */}
         {myIncomingCar && (
           <div
             className="rounded-xl p-3 flex items-center gap-2 shrink-0 border"
@@ -847,6 +842,7 @@ export default function NavigationScreen() {
           </div>
         )}
 
+        {/* زر وصلت للجراج */}
         {!myActiveSession && (
           <button
             onClick={handleCarArrived}
@@ -864,6 +860,7 @@ export default function NavigationScreen() {
           </button>
         )}
 
+        {/* 🔄 زر الإلغاء الذكي والمتحول */}
         {myIncomingCar && !myActiveSession && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -871,6 +868,7 @@ export default function NavigationScreen() {
             className="shrink-0"
           >
             {canCancel ? (
+              // ⏱️ المرحلة الأولى: أول 30 ثانية (إلغاء سريع بعداد تنازلي)
               <>
                 <button
                   onClick={handleCancelBooking}
@@ -891,6 +889,7 @@ export default function NavigationScreen() {
                 </div>
               </>
             ) : (
+              // 🚀 المرحلة الثانية: بعد انتهاء الـ 30 ثانية وإرسال الإشعار للسايس
               <motion.button
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}

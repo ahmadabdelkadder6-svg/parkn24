@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { motion } from 'framer-motion';
 import {
   Clock,
   Car,
@@ -7,47 +7,33 @@ import {
   Gift,
   Sparkles,
   CreditCard,
-  Shield,
-  ShieldCheck,
-  ShieldAlert,
-  Zap,
-  Activity,
-  Lock,
-  Unlock,
-  Radio,
+  XCircle,
 } from 'lucide-react';
+// 🌟 استيراد getServerNow ودوال البصمة لضمان مطابقة العداد بالملي ثانية بين جميع الهواتف
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import {
   calculateFullHours,
   calculateCost,
   formatTime,
   getRemainingInCurrentHour,
-  calculateTotalCostWithShield,
 } from '../utils/pricing';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
-
-import { requestLocationPermission, getCurrentLocation, startDistanceTracking } from '../utils/distanceTracker';
-import { checkGeofence } from '../utils/geofenceEngine';
-import { captureFullPhysicalShield } from '../utils/batShieldEngine';
-import { notifyShieldActivated } from '../utils/notifications';
 
 /* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
   blue: '#1656b8',       // الأزرق الرسمي
   blueDark: '#0f3d85',   // الكحلي الفخم
   blueLight: '#e8f0fe',  // الأزرق الفاتح جداً
-  blueSoft: 'rgba(22, 86, 184, 0.08)', 
+  blueSoft: 'rgba(22, 86, 184, 0.08)', // كحلي زجاجي ناعم
   green: '#8cc63f',      // الأخضر الرسمي
-  greenDark: '#6ea62a',  // أخضر داكن
-  greenLight: 'rgba(140, 198, 63, 0.12)', 
+  greenDark: '#6ea62a',  // أخضر داكن للخطوط
+  greenLight: 'rgba(140, 198, 63, 0.12)', // خلفية خضراء ناعمة
   navy: '#0a1628',       // الكحلي الليلي الغامق للواجهة
-  navyLight: '#111e36',  // كحلي أفتح للبطاقات
-  slate: '#64748b',      
-  slateMuted: '#94a3b8', 
-  border: 'rgba(255, 255, 255, 0.08)', 
-  gold: '#fbbf24',       // ذهبي VIP ملكي متوهج
-  goldGlow: 'rgba(251, 191, 36, 0.25)',
+  navyLight: '#111e36',  // كحلي أفتح للبطاقات والـ overlays
+  slate: '#64748b',      // الرمادي الهادئ
+  slateMuted: '#94a3b8', // الرمادي الباهت
+  border: 'rgba(255, 255, 255, 0.08)', // حدود زجاجية رفيعة
 };
 
 const safeParseTime = (value: any): number => {
@@ -72,10 +58,9 @@ export default function SessionScreen() {
     setSelectedGarageId,
     acknowledgedSessionIds,
     acknowledgeSession,
-    toggleShield,
   } = useStore();
 
-  const userPlate = normalizePlate(currentUser?.carPlate || '');
+  const userPlate = normalizePlate(currentUser?.carPlate);
   const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
   const redirectedToSummaryRef = useRef(false);
@@ -85,48 +70,45 @@ export default function SessionScreen() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [elapsed, setElapsed] = useState(0);
-  const [isTogglingShield, setIsTogglingShield] = useState(false);
-  const [localDistance, setLocalDistance] = useState<string | null>(null);
 
-  const isMySessionRow = useCallback((row: any) => {
+  const isMySessionRow = (row: any) => {
     if (!row) return false;
-    const rowPlate = normalizePlate(row.car_plate || row.carPlate || '');
+    const rowPlate = normalizePlate(row.car_plate || row.carPlate);
     const rowPhone = normalizePhone(row.customer_phone || row.customerPhone || '');
     return (
       (!!userPlate && rowPlate === userPlate) ||
       (!!userPhone && rowPhone === userPhone)
     );
-  }, [userPlate, userPhone]);
+  };
 
-  // البحث عن الجلسة النشطة
+  // ✅ البحث عن الجلسة النشطة بالبصمة الموحدة
   const activeSession = useMemo(() => {
-    return (sessions || [])
+    return sessions
       .filter((s) => {
         if (!s || s.status !== 'active') return false;
         if (acknowledgedSessionIds?.has(s.id)) return false;
-        const samePlateMatch = !!userPlate && normalizePlate(s.carPlate || '') === userPlate;
-        const sPhone = (s as any)?.customerPhone ? normalizePhone((s as any).customerPhone) : '';
+        const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+        const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
         const samePhoneMatch = Boolean(userPhone && sPhone === userPhone);
         return samePlateMatch || samePhoneMatch;
       })
       .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
   }, [sessions, userPlate, userPhone, acknowledgedSessionIds]);
 
-  // البحث عن آخر جلسة مكتملة
   const lastCompletedSession = useMemo(() => {
-    return (sessions || [])
+    return sessions
       .filter((s) => {
         if (!s || s.status !== 'completed') return false;
-        const samePlateMatch = !!userPlate && normalizePlate(s.carPlate || '') === userPlate;
-        const sPhone = (s as any)?.customerPhone ? normalizePhone((s as any).customerPhone) : '';
+        const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+        const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
         const samePhoneMatch = Boolean(userPhone && sPhone === userPhone);
         return samePlateMatch || samePhoneMatch;
       })
       .sort((a, b) => safeParseTime(b.endTime) - safeParseTime(a.endTime))[0];
   }, [sessions, userPlate, userPhone]);
 
-  const garage = (garages || []).find(
-    (g) => g && g.id === (activeSession?.garageId ?? lastCompletedSession?.garageId),
+  const garage = garages?.find(
+    (g) => g.id === (activeSession?.garageId ?? lastCompletedSession?.garageId),
   );
 
   useEffect(() => {
@@ -135,12 +117,14 @@ export default function SessionScreen() {
     }
   }, [activeSession?.id]);
 
+  // ✅ حساب وقت البداية مع Fallback بتوقيت السيرفر الموحد
   const activeStartMs = useMemo(() => {
     if (!activeSession) return 0;
     const ms = safeParseTime(activeSession.startTime);
     return ms > 0 ? ms : getServerNow();
   }, [activeSession?.id, activeSession?.startTime]);
 
+  // 📡 جلب البيانات في الخلفية
   useEffect(() => {
     fetchAll().catch((e) => console.error('Fetch error:', e));
   }, [fetchAll]);
@@ -173,26 +157,20 @@ export default function SessionScreen() {
     realtimeChannelRef.current = channel;
     pollingRef.current = setInterval(refetch, 4000);
 
-    const handleVisibility = () => { 
-      if (document.visibilityState === 'visible') refetch(); 
-    };
-    const handleWindowFocus = () => { 
-      refetch(); 
-    };
-
+    const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
     document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('focus', refetch);
 
     return () => {
       cancelled = true;
       document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('focus', refetch);
       if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
       if (realtimeChannelRef.current) { supabase.removeChannel(realtimeChannelRef.current); realtimeChannelRef.current = null; }
     };
-  }, [userPlate, userPhone, fetchAll, isMySessionRow]);
+  }, [userPlate, userPhone, fetchAll]);
 
-  // عداد الثواني اللحظي
+  // ⏱️ عداد الثواني اللحظي الموحد مع سيرفر قاعدة البيانات
   useEffect(() => {
     if (!activeSession || activeStartMs <= 0) {
       setElapsed(0);
@@ -214,27 +192,6 @@ export default function SessionScreen() {
     return () => clearInterval(interval);
   }, [activeSession?.id, activeStartMs]);
 
-  // تتبع المسافة والنبض الحصري للدرع VIP
-  useEffect(() => {
-    if (!activeSession?.is_shield_active) {
-      setLocalDistance(null);
-      return;
-    }
-
-    const carLat = activeSession.anchor_lat || (activeSession as any).lat;
-    const carLng = activeSession.anchor_lng || (activeSession as any).lng;
-
-    if (!carLat || !carLng) return;
-
-    const stopDistanceUpdates = startDistanceTracking(carLat, carLng, (reading) => {
-      setLocalDistance(reading.displayText);
-    });
-
-    return () => {
-      stopDistanceUpdates();
-    };
-  }, [activeSession?.is_shield_active, activeSession?.anchor_lat, activeSession?.anchor_lng]);
-
   useEffect(() => {
     if (!activeSession) { redirectedToSessionRef.current = false; return; }
     if (redirectedToSessionRef.current) return;
@@ -242,7 +199,7 @@ export default function SessionScreen() {
     if (activeSession.garageId) setSelectedGarageId(activeSession.garageId);
   }, [activeSession?.id, activeSession?.garageId, setSelectedGarageId]);
 
-  // التحويل التلقائي الفوري لشاشة الملخص فور إنهاء الجلسة
+  // التحويل التلقائي عند انتهاء الجلسة
   useEffect(() => {
     if (activeSession) {
       redirectedToSummaryRef.current = false;
@@ -250,14 +207,14 @@ export default function SessionScreen() {
     }
 
     if (activeSessionIdRef.current) {
-      const targetSession = (sessions || []).find((s) => s && s.id === activeSessionIdRef.current);
+      const targetSession = sessions.find((s) => s.id === activeSessionIdRef.current);
       if (targetSession && targetSession.status === 'completed' && !redirectedToSummaryRef.current) {
         redirectedToSummaryRef.current = true;
         if (targetSession.garageId) setSelectedGarageId(targetSession.garageId);
         if (typeof acknowledgeSession === 'function') acknowledgeSession(targetSession.id);
         activeSessionIdRef.current = null;
-        toast.success('تم إنهاء الجلسة بنجاح ✅', { icon: '🏁', duration: 3000 });
-        setScreen('summary');
+        toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
+        setTimeout(() => { setScreen('summary'); }, 400);
         return;
       }
     }
@@ -269,25 +226,23 @@ export default function SessionScreen() {
         if (lastCompletedSession.garageId) setSelectedGarageId(lastCompletedSession.garageId);
         if (typeof acknowledgeSession === 'function') acknowledgeSession(lastCompletedSession.id);
         toast.success('تم إنهاء الجلسة بنجاح ✅', { icon: '🏁', duration: 3000 });
-        setScreen('summary');
+        setTimeout(() => { setScreen('summary'); }, 400);
       }
     }
   }, [activeSession, lastCompletedSession, sessions, setScreen, setSelectedGarageId, acknowledgedSessionIds, acknowledgeSession]);
 
   const sessionRate = Number(activeSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const isFirstFreeApplied = activeSession?.isFirstFreeSession === true;
-  const isShieldActive = activeSession?.is_shield_active === true;
 
-  const pricingSummary = useMemo(() => {
-    return calculateTotalCostWithShield(elapsed, sessionRate, isFirstFreeApplied, isShieldActive);
-  }, [elapsed, sessionRate, isFirstFreeApplied, isShieldActive]);
-
-  const { countdownLabel, countdownTime, isFreeNow } = useMemo(() => {
+  // 🎁 الحسابات التفاعلية لـ (30 دقيقة مجانية)
+  const { displayedCost, displayedHours, countdownLabel, countdownTime, isFreeNow } = useMemo(() => {
     const defaultCountdown = { minutes: 59, seconds: 59 };
 
     if (!isFirstFreeApplied) {
       const calculatedCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(elapsed) : defaultCountdown;
       return {
+        displayedCost: calculateCost(elapsed, sessionRate),
+        displayedHours: calculateFullHours(elapsed),
         countdownLabel: 'الوقت المتبقي حتى الساعة التالية',
         countdownTime: calculatedCountdown || defaultCountdown,
         isFreeNow: false,
@@ -299,103 +254,38 @@ export default function SessionScreen() {
       const minutes = Math.floor(freeTimeRemaining / 60);
       const seconds = freeTimeRemaining % 60;
       return {
+        displayedCost: 0,
+        displayedHours: 0,
         countdownLabel: 'ينتهي الركن المجاني الهدية خلال 🎁',
         countdownTime: { minutes, seconds },
         isFreeNow: true,
       };
     } else {
       const calculatedCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(elapsed) : defaultCountdown;
+      const totalHours = calculateFullHours(elapsed);
       return {
+        displayedCost: calculateCost(elapsed, sessionRate),
+        displayedHours: totalHours,
         countdownLabel: 'الوقت المتبقي حتى الساعة التالية',
         countdownTime: calculatedCountdown || defaultCountdown,
         isFreeNow: false,
       };
     }
-  }, [isFirstFreeApplied, elapsed]);
+  }, [isFirstFreeApplied, elapsed, sessionRate]);
 
-  // معالج تفعيل درع الأمان VIP الفوري والموثوق
-  const handleToggleShield = async () => {
-    if (!activeSession || isTogglingShield) return;
-    setIsTogglingShield(true);
-
-    try {
-      if (!isShieldActive) {
-        const hasPermission = await requestLocationPermission();
-        if (!hasPermission) {
-          toast.error("⚠️ يرجى تفعيل إذن الموقع الجغرافي لتأمين الركنة!");
-          setIsTogglingShield(false);
-          return;
-        }
-
-        let location = await getCurrentLocation();
-        
-        if (!location) {
-          if (garage && garage.lat && garage.lng) {
-            location = { lat: garage.lat, lng: garage.lng };
-            toast.success("📡 تم الاستعانة بموقع الجراج لتفعيل الأمان لضعف إشارة الموقع", { duration: 3000 });
-          }
-        }
-
-        if (!location) {
-          toast.error("⚠️ تعذر تحديد إحداثيات الموقع حالياً.");
-          setIsTogglingShield(false);
-          return;
-        }
-
-        const garageObj = {
-          name: garage?.name || "الجراج الحالي",
-          lat: garage?.lat || location.lat,
-          lng: garage?.lng || location.lng,
-          radiusMeters: 250,
-        };
-
-        const geofenceCheck = checkGeofence(location.lat, location.lng, garageObj);
-        if (!geofenceCheck.isInside) {
-          toast.error(`🚫 لا يمكن تفعيل الدرع خارج نطاق الجراج بـ ${geofenceCheck.distanceFromEdge}م!`);
-          setIsTogglingShield(false);
-          return;
-        }
-
-        toast.loading("🛡️ جاري تفعيل مستشعرات درع الأمان VIP...", { id: "shield-init" });
-        const physicalData = await captureFullPhysicalShield();
-
-        await toggleShield(
-          activeSession.id,
-          true,
-          location.lat,
-          location.lng,
-          physicalData.magneticBaseline || undefined,
-          physicalData.echoSignature || undefined,
-          physicalData.bleDeviceId || undefined
-        );
-
-        notifyShieldActivated(activeSession?.carPlate || currentUser?.carPlate || "");
-        toast.success("🛡️ تم تفعيل درع الأمان VIP بنجاح (+10 ج.م)", { id: "shield-init", icon: "👑" });
-      } else {
-        await toggleShield(activeSession.id, false);
-        toast.success("🔓 تم إيقاف الدرع والعودة للوضع الطبيعي");
-      }
-    } catch (err) {
-      toast.error("❌ فشل تشغيل مستشعرات الأمان", { id: "shield-init" });
-    } finally {
-      setIsTogglingShield(false);
-    }
-  };
-
+  // شاشة الانتظار والمزامنة
   if (!activeSession) {
-    if (lastCompletedSession) {
-      setScreen('summary');
-      return null;
-    }
     return (
-      <div className="h-full flex flex-col items-center justify-center p-8 text-right" style={{ background: BRAND.navy, color: '#fff' }}>
+      <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8 text-right" style={{ background: BRAND.navy }}>
         <div className="text-4xl mb-4 animate-bounce">⏳</div>
-        <p className="text-slate-400 text-sm font-bold text-center mb-2">جاري تحضير ملخص الجلسة...</p>
+        <p className="text-slate-400 text-sm font-bold text-center mb-2">جاري مزامنة بيانات الجلسة...</p>
+        <p className="text-slate-500 text-xs text-center mb-6">ستظهر بيانات العداد فور استلامها من السيرفر</p>
         <button
           onClick={() => setScreen('list')}
-          className="bg-blue-600 text-white border-0 px-8 py-3.5 rounded-2xl font-black text-xs active:scale-95 transition-all flex items-center gap-2 cursor-pointer mt-4"
+          className="bg-blue-600 text-white border-0 px-8 py-3.5 rounded-2xl font-black text-xs active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
+          style={{ background: BRAND.blue, boxShadow: `0 4px 14px ${BRAND.blue}25` }}
         >
-          <ArrowRight size={15} /> <span>العودة للرئيسية</span>
+          <ArrowRight size={15} /> <span>العودة للقائمة الرئيسية</span>
         </button>
       </div>
     );
@@ -405,15 +295,15 @@ export default function SessionScreen() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full text-white flex flex-col items-center justify-start p-5 overflow-y-auto safe-top safe-bottom scrollbar-none"
+      className="h-full text-white flex flex-col items-center justify-center p-6 overflow-y-auto safe-top safe-bottom"
       style={{ background: BRAND.navy }}
     >
-      {/* 🎁 شارة الهدية الترحيبية */}
+      {/* 🎁 شارة مميزة علوية ترحيبية في العداد إذا كانت الجلسة مجانية */}
       {isFirstFreeApplied && (
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className="w-full border rounded-2xl p-3 mb-3 flex items-center gap-3"
+          className="w-full border rounded-2xl p-3 mb-4 flex items-center gap-3"
           style={{
             background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.18) 100%)',
             borderColor: 'rgba(245,158,11,0.3)',
@@ -436,7 +326,7 @@ export default function SessionScreen() {
         </motion.div>
       )}
 
-      {/* ⏱️ 1. العداد الدائري في الأعلى */}
+      {/* حلقة العداد الدائرية الكبيرة المتوهجة بالكامل */}
       <motion.div
         animate={{
           boxShadow: isFreeNow
@@ -452,7 +342,7 @@ export default function SessionScreen() {
               ],
         }}
         transition={{ repeat: Infinity, duration: 2.5 }}
-        className="w-36 h-36 rounded-full flex flex-col items-center justify-center border-2 mb-5 shadow-lg shrink-0"
+        className="w-36 h-36 rounded-full flex flex-col items-center justify-center border-2 mb-5 shadow-lg"
         style={{
           background: BRAND.navyLight,
           borderColor: isFreeNow ? BRAND.green : BRAND.blue,
@@ -463,152 +353,25 @@ export default function SessionScreen() {
         <div className="text-[9px] font-bold mt-1.5" style={{ color: BRAND.slateMuted }}>مدة الركن الفعلية</div>
       </motion.div>
 
-      {/* 🛡️ 2. لوحة درع الأمان VIP الملكية في المنتصف تماماً */}
-      <div 
-        className="w-full border-2 rounded-3xl p-5 mb-4 text-right transition-all duration-300 relative overflow-hidden shadow-2xl"
-        style={{
-          background: isShieldActive 
-            ? 'linear-gradient(135deg, #111e36 0%, #0c1830 100%)' 
-            : 'linear-gradient(135deg, #13223f 0%, #111e36 100%)',
-          borderColor: BRAND.gold,
-          boxShadow: isShieldActive 
-            ? `0 0 25px rgba(251, 191, 36, 0.25), inset 0 0 15px rgba(251, 191, 36, 0.1)` 
-            : `0 4px 20px rgba(0, 0, 0, 0.35)`,
-        }}
-      >
-        <div className="absolute top-0 right-0 w-24 h-24 bg-amber-400/10 rounded-full blur-2xl pointer-events-none" />
-
-        <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-3">
-          <div 
-            className="flex items-center gap-1 px-3 py-1.5 rounded-full font-black text-xs font-mono"
-            style={{
-              background: isShieldActive ? BRAND.gold : 'rgba(251, 191, 36, 0.15)',
-              color: isShieldActive ? '#0a1628' : BRAND.gold,
-              border: `1.5px solid ${BRAND.gold}`,
-            }}
-          >
-            <span>{isShieldActive ? '🛡️ مفعّل ونشط' : '+10 ج.م فقط'}</span>
-          </div>
-
-          <div className="flex items-center gap-2.5">
-            <div className="text-right">
-              <h3 className="text-sm font-black text-white flex items-center gap-1.5 justify-end">
-                <span>درع الأمان VIP الذكي</span>
-                <Sparkles size={14} className="text-yellow-400 animate-pulse" />
-              </h3>
-              <p className="text-[10px] text-amber-300 font-bold mt-0.5">
-                تأمين ركنة السيارة وحمايتها من السرقة
-              </p>
-            </div>
-            <div 
-              className="p-2.5 rounded-2xl shrink-0"
-              style={{
-                background: isShieldActive ? BRAND.gold : 'rgba(255, 255, 255, 0.05)',
-                color: isShieldActive ? '#0a1628' : BRAND.gold,
-              }}
-            >
-              {isShieldActive ? <ShieldCheck size={22} className="animate-pulse" /> : <Shield size={22} />}
-            </div>
-          </div>
-        </div>
-
-        {/* شرح بسيط للخدمة */}
-        <div className="text-right space-y-2 mb-4 bg-black/25 p-3 rounded-2xl border border-white/5 shadow-inner">
-          <div className="flex items-center gap-2 justify-end text-[11px] font-bold text-slate-200">
-            <span>تتبع موقع سيارتك وحركتها بدقة لحظة بلحظة 📍</span>
-          </div>
-          <div className="flex items-center gap-2 justify-end text-[11px] font-bold text-slate-200">
-            <span>إنذار طوارئ فوري واهتزاز عند تحرك السيارة 🚨</span>
-          </div>
-          <div className="flex items-center gap-2 justify-end text-[11px] font-bold text-slate-200">
-            <span>رادار مباشر يرشدك لمكان السيارة خطوة بخطوة 📏</span>
-          </div>
-        </div>
-
-        {/* مؤشرات الرادار */}
-        <AnimatePresence>
-          {isShieldActive && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="mb-3.5 flex flex-col gap-2 overflow-hidden"
-            >
-              <div className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-2.5">
-                <span className="text-[10px] font-black text-emerald-400 font-mono">نشط ومستقر 🟢</span>
-                <div className="flex items-center gap-1.5 text-[10px] font-black text-slate-200">
-                  <span>مستشعر اهتزاز وحركة السيارة:</span>
-                  <Activity size={13} className="text-emerald-400 animate-pulse" />
-                </div>
-              </div>
-
-              {localDistance && (
-                <div className="flex items-center justify-between bg-gradient-to-r from-amber-500/20 to-transparent border border-amber-500/30 rounded-xl p-2.5">
-                  <span className="text-xs font-black text-amber-300 font-mono">{localDistance}</span>
-                  <div className="flex items-center gap-1.5 text-[10px] font-black text-amber-300">
-                    <span>رادار المسافة المباشر:</span>
-                    <Radio size={14} className="text-amber-400 animate-spin" />
-                  </div>
-                </div>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* زر التفعيل الكبير والبارز */}
-        <motion.button
-          whileHover={{ scale: 1.01 }}
-          whileTap={{ scale: 0.96 }}
-          onClick={handleToggleShield}
-          disabled={isTogglingShield}
-          className="w-full py-4 px-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 cursor-pointer border-0 shadow-lg transition-all active:scale-95"
-          style={{
-            background: isShieldActive 
-              ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' 
-              : 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
-            color: isShieldActive ? '#ffffff' : '#0a1628',
-            boxShadow: isShieldActive 
-              ? '0 4px 14px rgba(220, 38, 38, 0.35)' 
-              : '0 4px 18px rgba(251, 191, 36, 0.45)',
-          }}
-        >
-          {isTogglingShield ? (
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-current animate-ping" />
-              جاري تشغيل الحماية وتوثيق الموقع...
-            </span>
-          ) : isShieldActive ? (
-            <>
-              <Unlock size={15} />
-              <span>إيقاف درع الأمان VIP والعودة للوضع الطبيعي</span>
-            </>
-          ) : (
-            <>
-              <Lock size={15} />
-              <span className="text-sm font-black">⚡ تفعيل درع الأمان VIP الآن (10 ج.م فقط)</span>
-            </>
-          )}
-        </motion.button>
-      </div>
-
-      {/* 3. كارت الحساب والعداد */}
-      <div className="w-full border rounded-2xl p-4 mb-3.5 shrink-0" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+      {/* كارت الحساب التفاعلي مع الهدية والعداد */}
+      <div className="w-full border rounded-2xl p-4 mb-4" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
         <div className="flex justify-between items-center mb-3">
           <div className="text-center">
             <div className="text-xl font-black font-mono" style={{ color: isFreeNow ? BRAND.green : BRAND.blue }}>
-              {pricingSummary.paidHours}
+              {displayedHours}
             </div>
             <div className="text-[9px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>ساعة محسوبة</div>
           </div>
           <div className="text-lg font-black" style={{ color: BRAND.border }}>=</div>
           <div className="text-center">
             <div className="text-xl font-black font-mono" style={{ color: BRAND.green }}>
-              {pricingSummary.totalCost} <span className="text-[10px]">ج.م</span>
+              {displayedCost} <span className="text-[10px]">ج.م</span>
             </div>
             <div className="text-[9px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>إجمالي الحساب حتى الآن</div>
           </div>
         </div>
 
+        {/* عداد التنازل الديناميكي */}
         <div className="rounded-xl p-2.5 text-center border" style={{ background: BRAND.blueSoft, borderColor: BRAND.border }}>
           <div className="text-[9px] mb-0.5 font-bold" style={{ color: BRAND.slateMuted }}>{countdownLabel}</div>
           <div className="text-sm font-black font-mono" style={{ color: isFreeNow ? BRAND.green : BRAND.blue }}>
@@ -616,34 +379,52 @@ export default function SessionScreen() {
           </div>
           <div className="text-[8px] mt-0.5 font-semibold" style={{ color: BRAND.slateMuted }}>
             {isFreeNow ? (
-              <span>استمتع بالركن المجاني في أول نصف ساعة 🎁</span>
+              <span>استمتع بالركن المجاني في أول نصف ساعة 🥳</span>
             ) : (
               <span>
-                بعدها ستُحسب ساعة إضافية ({pricingSummary.paidHours + 1} × {sessionRate} = {(pricingSummary.paidHours + 1) * sessionRate} ج.م)
+                بعدها ستُحسب ساعة إضافية ({displayedHours + 1} × {sessionRate} = {(displayedHours + 1) * sessionRate} ج.م)
               </span>
             )}
           </div>
         </div>
+      </div>
 
-        {isShieldActive && (
-          <div className="mt-3 pt-3 border-t border-white/5 flex flex-col gap-1 text-[10px] font-bold text-slate-400">
-            <div className="flex justify-between">
-              <span>قيمة ركن السيارة:</span>
-              <span className="text-white font-mono">{pricingSummary.parkingCost} ج.م</span>
-            </div>
-            <div className="flex justify-between text-amber-400">
-              <span>تأمين درع الأمان VIP:</span>
-              <span className="font-mono">+ {pricingSummary.shieldFee} ج.م</span>
-            </div>
-          </div>
-        )}
+      {sessionRate !== garage?.basePrice && garage && (
+        <div className="w-full rounded-xl p-2 mb-3 text-center border" style={{ background: 'rgba(245,158,11,0.06)', borderColor: 'rgba(245,158,11,0.2)' }}>
+          <p className="text-[9px] font-bold text-amber-500">💰 سعر خاص متفق عليه: {sessionRate} ج.م/ساعة (بدلاً من {garage.basePrice} ج.م)</p>
+        </div>
+      )}
+
+      {/* 💡 بانر إرشادي متناسق ومدمج ومريح للشاشة 💡 */}
+      <div 
+        className="w-full rounded-2xl p-3.5 mb-4 text-center border"
+        style={{
+          background: 'rgba(255, 255, 255, 0.02)',
+          borderColor: BRAND.border,
+        }}
+      >
+        <div className="flex items-center justify-center gap-1.5 mb-1 font-black text-white" style={{ fontSize: '12px' }}>
+          <Sparkles size={13} className="text-yellow-400 shrink-0 animate-pulse" />
+          <span>خلّص مشوارك براحتك 🚗✨</span>
+        </div>
+        <p 
+          className="font-bold leading-relaxed mx-auto"
+          style={{ 
+            fontSize: '10px',
+            color: BRAND.slateMuted,
+            maxWidth: '280px'
+          }}
+        >
+          وقت الركنة <span className="font-black text-white">محفوظ بالثانية</span> في الخلفية. 
+          أغلق التطبيق الآن وافتحه عند العودة للجراج لإنهاء الجلسة.
+        </p>
       </div>
 
       {/* بيانات السيارة والسعر */}
-      <div className="w-full grid grid-cols-2 gap-2.5 mb-3 shrink-0">
+      <div className="w-full grid grid-cols-2 gap-2.5 mb-4">
         <div className="border p-3 rounded-2xl text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
           <Car size={16} style={{ color: BRAND.blue }} className="mx-auto mb-1" />
-          <div className="text-xs font-black text-white">{activeSession?.carPlate || currentUser?.carPlate || '---'}</div>
+          <div className="text-xs font-black text-white">{activeSession.carPlate || currentUser?.carPlate || '---'}</div>
           <div className="text-[9px] font-bold mt-1.5" style={{ color: BRAND.slateMuted }}>رقم السيارة</div>
         </div>
         <div className="border p-3 rounded-2xl text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
@@ -654,14 +435,21 @@ export default function SessionScreen() {
       </div>
 
       {garage && (
-        <div className="border p-3 rounded-2xl w-full text-center mb-3 shrink-0" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+        <div className="border p-3.5 rounded-2xl w-full text-center mb-3" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
           <div className="text-[8px] font-bold mb-0.5" style={{ color: BRAND.slateMuted }}>الجراج الحالي</div>
           <div className="text-xs font-black" style={{ color: '#ffffff' }}>{garage.name}</div>
         </div>
       )}
 
-      {/* طرق الدفع المقبولة بالجراج */}
-      <div className="w-full border rounded-xl p-2.5 mb-4 text-center shrink-0" style={{ background: BRAND.blueSoft, borderColor: BRAND.border }}>
+      <div className="w-full text-center mb-3.5">
+        <span className="font-bold text-[9px]" style={{ color: BRAND.slateMuted }}>
+          {activeSession.source === 'app' ? '📱 بدأت من التطبيق' : '🅿️ بدأت من الجراج'}
+          {(activeSession as any).startedBy === 'garage' && ' (بواسطة السايس)'}
+        </span>
+      </div>
+
+      {/* 💳 بانر توضيح طرق الدفع المتاحة في الجراج */}
+      <div className="w-full border rounded-xl p-2.5 mb-4 text-center" style={{ background: BRAND.blueSoft, borderColor: BRAND.border }}>
         <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold" style={{ color: BRAND.blue }}>
           <CreditCard size={12} />
           {garage?.payment_mode === 'cash' ? (
@@ -674,28 +462,28 @@ export default function SessionScreen() {
         </div>
       </div>
 
-      {/* زر إنهاء الجلسة */}
+      {/* زر إنهاء الجلسة الفاخر باللون الأحمر الإرشادي المضاء */}
       <button
         onClick={() => setScreen('summary')}
-        className="w-full py-3.5 rounded-2xl active:scale-[0.98] transition-all mb-2.5 flex items-center justify-center border-0 text-white cursor-pointer font-black shrink-0"
+        className="w-full py-3.5 rounded-xl active:scale-[0.98] transition-all mb-3 flex items-center justify-center border-0 text-white cursor-pointer font-black"
         style={{
           background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
           boxShadow: '0 4px 14px rgba(220,38,38,0.25)',
         }}
       >
         <span className="text-center text-sm font-black" style={{ color: '#ffffff' }}>
-          {isFreeNow && !isShieldActive ? (
+          {isFreeNow ? (
             <span>🚗 إنهاء الجلسة (مجاناً 🎁)</span>
           ) : (
-            <span>🚗 إنهاء الجلسة وحساب التكلفة ({pricingSummary.totalCost} ج.م)</span>
+            <span>🚗 إنهاء الجلسة وحساب التكلفة ({displayedCost} ج.م)</span>
           )}
         </span>
       </button>
 
-      {/* زر العودة */}
+      {/* زر العودة الصامت */}
       <button
         onClick={() => setScreen('list')}
-        className="w-full py-2.5 rounded-xl border cursor-pointer bg-transparent text-xs shrink-0 mb-4"
+        className="w-full py-2.5 rounded-xl border cursor-pointer bg-transparent text-xs"
         style={{ color: BRAND.slateMuted, borderColor: BRAND.border }}
       >
         العودة للقائمة الرئيسية
