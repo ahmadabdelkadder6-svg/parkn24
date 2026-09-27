@@ -9,7 +9,7 @@
  * 4. إدارة حالة الإنذار وإيقافه
  */
 
-import { supabase } from './supabaseClient'; // يتم استيراد عميل supabase الحالي لديك
+import { supabase } from '../lib/supabase'; // ✅ تم تصحيح المسار ليتطابق مع مشروعك
 
 export interface BreachPayload {
   sessionId: string;
@@ -72,7 +72,6 @@ class AlarmCascadeService {
   // ──────────────────────────────────────────────
   public startTacticalVibration() {
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      // نمط اهتزاز تحذيري: 500ms اهتزاز، 100ms توقف، تكرار مستمر
       navigator.vibrate([500, 100, 500, 100, 800, 200, 1000]);
     }
   }
@@ -91,7 +90,7 @@ class AlarmCascadeService {
       this.audioCtx = null;
     }
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      navigator.vibrate(0); // إيقاف الاهتزاز فوراً
+      navigator.vibrate(0);
     }
   }
 
@@ -132,7 +131,6 @@ class AlarmCascadeService {
   // 5️⃣ فحص أمان التحصيل (هل مسموح للسايس إنهاء الجلسة والدفع؟)
   // ──────────────────────────────────────────────
   public isCheckoutAllowed(session: { breach_reason?: string | null }): boolean {
-    // إذا كان هناك سبب اختراق مسجل -> حظر التحصيل فوراً
     return !session?.breach_reason;
   }
 }
