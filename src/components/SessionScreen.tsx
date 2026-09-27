@@ -100,7 +100,7 @@ export default function SessionScreen() {
     );
   }, [userPlate, userPhone]);
 
-  // البحث عن الجلسة النشطة
+  // البحث عن الجلسة النشطة بالبصمة الموحدة
   const activeSession = useMemo(() => {
     return sessions
       .filter((s) => {
@@ -143,12 +143,12 @@ export default function SessionScreen() {
     return ms > 0 ? ms : getServerNow();
   }, [activeSession?.id, activeSession?.startTime]);
 
-  // جلب البيانات
+  // جلب البيانات في الخلفية
   useEffect(() => {
     fetchAll().catch((e) => console.error('Fetch error:', e));
   }, [fetchAll]);
 
-  // ✅ Realtime مع تصحيح وحماية تعريف دوال الأحداث تماماً
+  // Realtime مع حماية دوال التحديث اللحظي لمنع التوقف
   useEffect(() => {
     if (!userPlate && !userPhone) return;
     let cancelled = false;
@@ -195,7 +195,7 @@ export default function SessionScreen() {
     };
   }, [userPlate, userPhone, fetchAll, isMySessionRow]);
 
-  // عداد الثواني اللحظي
+  // عداد الثواني اللحظي الموحد مع سيرفر قاعدة البيانات
   useEffect(() => {
     if (!activeSession || activeStartMs <= 0) {
       setElapsed(0);
@@ -217,7 +217,7 @@ export default function SessionScreen() {
     return () => clearInterval(interval);
   }, [activeSession?.id, activeStartMs]);
 
-  // رادار المسافة الحقيقية للدرع VIP
+  // تتبع المسافة والنبض الحصري للدرع الذهبي النشط
   useEffect(() => {
     if (!activeSession?.is_shield_active) {
       setLocalDistance(null);
@@ -245,7 +245,7 @@ export default function SessionScreen() {
     if (activeSession.garageId) setSelectedGarageId(activeSession.garageId);
   }, [activeSession?.id, activeSession?.garageId, setSelectedGarageId]);
 
-  // ✅ التحويل التلقائي الفوري لشاشة الملخص فور إنهاء الجلسة
+  // التحويل التلقائي الفوري لشاشة الملخص فور إنهاء الجلسة لمنع الوقوف على جاري التحميل
   useEffect(() => {
     if (activeSession) {
       redirectedToSummaryRef.current = false;
@@ -316,7 +316,7 @@ export default function SessionScreen() {
     }
   }, [isFirstFreeApplied, elapsed]);
 
-  // معالج تفعيل وإلغاء درع الأمان VIP
+  // 🛡️ معالج تفعيل درع الأمان VIP مع صمام الأمان الجغرافي للـ GPS لضمان التنشيط دائماً
   const handleToggleShield = async () => {
     if (!activeSession || isTogglingShield) return;
     setIsTogglingShield(true);
@@ -330,9 +330,19 @@ export default function SessionScreen() {
           return;
         }
 
-        const location = await getCurrentLocation();
+        // 🌟 [صمام أمان الـ GPS]: جلب الإحداثيات اللحظية مع تفعيل معالج السقوط التلقائي على إحداثيات الجراج
+        let location = await getCurrentLocation();
+        
         if (!location) {
-          toast.error("⚠️ تعذر تحديد إحداثيات الركنة الدقيقة.");
+          console.warn("📡 GPS Signal weak indoors. Auto-falling back to Garage Coordinates.");
+          if (garage && garage.lat && garage.lng) {
+            location = { lat: garage.lat, lng: garage.lng };
+            toast.success("📡 تم ربط الدرع بموقع الجراج تلقائياً لضعف إشارة الموقع", { duration: 3000 });
+          }
+        }
+
+        if (!location) {
+          toast.error("⚠️ تعذر تحديد إحداثيات الركنة الدقيقة حالياً.");
           setIsTogglingShield(false);
           return;
         }
@@ -344,6 +354,7 @@ export default function SessionScreen() {
           radiusMeters: 250,
         };
 
+        // فحص سياج الجراج الإجباري (نطاق 250م)
         const geofenceCheck = checkGeofence(location.lat, location.lng, garageObj);
         if (!geofenceCheck.isInside) {
           toast.error(`🚫 لا يمكن تفعيل الدرع خارج نطاق الجراج بـ ${geofenceCheck.distanceFromEdge}م!`);
@@ -377,26 +388,6 @@ export default function SessionScreen() {
       setIsTogglingShield(false);
     }
   };
-
-  // ✅ في حال انتهاء الجلسة، الانتقال مباشرة لـ summary بدلاً من شاشة التحميل
-  if (!activeSession) {
-    if (lastCompletedSession) {
-      setScreen('summary');
-      return null;
-    }
-    return (
-      <div className="h-full flex flex-col items-center justify-center p-8 text-right" style={{ background: BRAND.navy, color: '#fff' }}>
-        <div className="text-4xl mb-4 animate-bounce">⏳</div>
-        <p className="text-slate-400 text-sm font-bold text-center mb-2">جاري تحضير ملخص الجلسة...</p>
-        <button
-          onClick={() => setScreen('list')}
-          className="bg-blue-600 text-white border-0 px-8 py-3.5 rounded-2xl font-black text-xs active:scale-95 transition-all flex items-center gap-2 cursor-pointer mt-4"
-        >
-          <ArrowRight size={15} /> <span>العودة للرئيسية</span>
-        </button>
-      </div>
-    );
-  }
 
   return (
     <motion.div
@@ -433,9 +424,7 @@ export default function SessionScreen() {
         </motion.div>
       )}
 
-      {/* ════════════════════════════════════════════════════════════════
-          🛡️ كارت وزر درع الأمان VIP الفاخر والتفاعلي بوضوح تام
-         ════════════════════════════════════════════════════════════════ */}
+      {/* 🛡️ لوحة درع الأمان VIP الفاخر والتفاعلي بوضوح تام */}
       <div 
         className="w-full border-2 rounded-3xl p-4 mb-4 text-right transition-all duration-300 relative overflow-hidden shadow-2xl"
         style={{
@@ -446,9 +435,7 @@ export default function SessionScreen() {
           boxShadow: isShieldActive ? '0 10px 30px rgba(251, 191, 36, 0.2)' : '0 6px 20px rgba(0,0,0,0.2)',
         }}
       >
-        {/* رأس كارت الدرع */}
         <div className="flex items-center justify-between mb-3 border-b border-white/10 pb-3">
-          {/* شارة السعر الواضحة */}
           <div 
             className="flex items-center gap-1 px-3 py-1.5 rounded-full font-black text-xs font-mono"
             style={{
@@ -482,7 +469,6 @@ export default function SessionScreen() {
           </div>
         </div>
 
-        {/* شرح مبسط للخدمة */}
         <p className="text-[10px] text-slate-300 font-bold leading-relaxed mb-3.5 bg-black/20 p-2.5 rounded-xl border border-white/5">
           🔒 <b className="text-white">مميزات الخدمة:</b> يقفل مكان سيارتك بمرساة GPS وسياج 250م، ويرصد أي محاولة صدم أو تحريك لصاج السيارة، ويُفعل رادار مباشر يعرض مسافتك عنها حتى 0م عند الوصول.
         </p>
