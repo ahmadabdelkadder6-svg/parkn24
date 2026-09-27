@@ -13,7 +13,6 @@ import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
 import { subscribeToPush } from '../lib/pushManager';
 
-// 🛡️ استيراد وحدات درع الأمان السبعة
 import { checkCollision } from '../utils/collisionGuard';
 import { checkGeofence } from '../utils/geofenceEngine';
 import { alarmCascade } from '../utils/alarmCascadeEngine';
@@ -22,12 +21,10 @@ import { evaluatePhysicalTireBreach } from '../utils/batShieldEngine';
 const UNDO_TIMEOUT_SECONDS = 30;
 const GEOFENCE_RADIUS_METERS = 250;
 
-// ⏱️ إعدادات التزامن الذكي للخلفية
 const VALET_PING_INTERVAL_MS = 8000;
 const VALET_LIVE_THRESHOLD_MS = 25000;
 const VALET_BACKGROUND_GRACE_MS = 10 * 60 * 1000;
 
-// ─── 🔔 نظام الصوت والتنبيهات المدمج داخل الشاشة ───────────────────
 let garageAudioCtx: AudioContext | null = null;
 let isAudioUnlocked = false;
 
@@ -58,7 +55,6 @@ if (typeof window !== 'undefined') {
   events.forEach(e => document.addEventListener(e, onFirstTouch, { passive: true }));
 }
 
-// 🔊 أقصى وأقوى صوت إنذار
 const playCarArrivalAlarm = async () => {
   try {
     await unlockAudioEngine();
@@ -66,7 +62,6 @@ const playCarArrivalAlarm = async () => {
     if (garageAudioCtx.state === 'suspended') await garageAudioCtx.resume();
 
     const now = garageAudioCtx.currentTime;
-
     const masterGain = garageAudioCtx.createGain();
     masterGain.gain.setValueAtTime(1.0, now);
     masterGain.connect(garageAudioCtx.destination);
@@ -74,7 +69,6 @@ const playCarArrivalAlarm = async () => {
     for (let i = 0; i < 8; i++) {
       const start = now + (i * 0.25);
       const duration = 0.22;
-
       const osc1 = garageAudioCtx.createOscillator();
       const osc2 = garageAudioCtx.createOscillator();
       const noteGain = garageAudioCtx.createGain();
@@ -98,19 +92,13 @@ const playCarArrivalAlarm = async () => {
       osc1.stop(start + duration + 0.02);
       osc2.stop(start + duration + 0.02);
     }
-  } catch (e) {
-    console.warn('Audio error:', e);
-  }
+  } catch (e) {}
 };
 
-// 📳 أقصى نمط اهتزاز عنيف ومستمر للهاتف
 const triggerVibration = () => {
   try {
     if ('vibrate' in navigator) {
-      navigator.vibrate([
-        1500, 100, 1500, 100, 1500, 100,
-        2000, 150, 2000
-      ]);
+      navigator.vibrate([1500, 100, 1500, 100, 1500, 100, 2000, 150, 2000]);
     }
   } catch {}
 };
@@ -152,7 +140,6 @@ const fireIncomingCarAlert = (carPlate: string) => {
   );
 };
 
-/* ─── 🎨 الألوان الرسمية ─── */
 const BRAND = {
   blue: '#1656b8',
   blueDark: '#0f3d85',
@@ -663,7 +650,7 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
     <div 
       style={{ 
         background: _isBreached ? '#fff5f5' : _isShield ? 'linear-gradient(135deg, #fefef2 0%, #fffdf0 100%)' : _isM ? BRAND.card : BRAND.blueSoft, 
-        border: `1.5px solid _isBreached ? '#feb2b2' : _isShield ? BRAND.gold : _isM ? BRAND.border : BRAND.blueLight`, 
+        border: `1.5px solid ${_isBreached ? '#feb2b2' : _isShield ? BRAND.gold : _isM ? BRAND.border : BRAND.blueLight}`, 
         borderRadius: 16, 
         padding: '12px 14px',
         boxShadow: _isShield ? '0 4px 12px rgba(251,191,36,0.12)' : '0 2px 8px rgba(0,0,0,0.02)'
@@ -684,7 +671,7 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
           )}
           
           {_isFreeApplied && (
-            <span className="font-black flex items-center gap-0.5 shrink-0 text-[8px] px-2 py-0.5 rounded" style={{ background: BRAND.greenLight, color: BRAND.greenDark, border: `1px solid BRAND.green40` }}>
+            <span className="font-black flex items-center gap-0.5 shrink-0 text-[8px] px-2 py-0.5 rounded" style={{ background: BRAND.greenLight, color: BRAND.greenDark, border: `1px solid ${BRAND.green}40` }}>
               <Gift size={10} /> {_isFreeNow ? 'هدية ترحيبية نشطة 🎁' : 'انتهت الهدية الترحيبية'}
             </span>
           )}
@@ -725,7 +712,7 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
 
         <div className="font-black text-left" style={{ fontSize: _isFreeNow ? 11 : 14, color: _isFreeNow ? '#f59e0b' : BRAND.greenDark }}>
           {_isFreeNow ? (
-            <span className="flex items-center gap-0.5 px-2 py-0.5 rounded-lg text-[10px]" style={{ background: BRAND.greenLight, border: `1px solid BRAND.green30` }}>
+            <span className="flex items-center gap-0.5 px-2 py-0.5 rounded-lg text-[10px]" style={{ background: BRAND.greenLight, border: `1px solid ${BRAND.green}30` }}>
               🎁 مجاناً (0ج)
             </span>
           ) : (
@@ -811,9 +798,30 @@ export default function GarageDashboard() {
 
   const geofenceState = useValetGeofence(isRealValet, garageCoords, GEOFENCE_RADIUS_METERS);
 
+  const lastReportedStateRef = useRef<{ isInside: boolean; distance: number | null }>({
+    isInside: true,
+    distance: null
+  });
+  const lastReportTimeRef = useRef<number>(0);
+
   const reportLocation = useCallback(async (isInside: boolean, distance: number | null) => {
     if (!isRealValet || !currentGarageId || !valetNumber) return;
+    
+    const now = Date.now();
+    const stateChanged = 
+      lastReportedStateRef.current.isInside !== isInside || 
+      Math.abs((lastReportedStateRef.current.distance || 0) - (distance || 0)) > 30;
+
+    const isHeartbeatNeeded = (now - lastReportTimeRef.current) > 120000;
+
+    if (!stateChanged && !isHeartbeatNeeded && lastReportTimeRef.current > 0) {
+      return; 
+    }
+
     try {
+      lastReportedStateRef.current = { isInside, distance };
+      lastReportTimeRef.current = now;
+
       await supabase.from('valet_locations').upsert(
         {
           garage_id: currentGarageId,
@@ -824,7 +832,7 @@ export default function GarageDashboard() {
         },
         { onConflict: 'garage_id,valet_number' }
       );
-    } catch {}
+    } catch (e) {}
   }, [isRealValet, currentGarageId, valetNumber]);
 
   useEffect(() => {
@@ -865,6 +873,10 @@ export default function GarageDashboard() {
 
   const isValetBlocked = isRealValet && geofenceState.status !== 'inside';
 
+  const handleGeofenceRetry = useCallback(() => {
+    window.location.reload();
+  }, []);
+
   const activeSessions = useMemo(() => {
     return garageSessions.filter(s => {
       if (!s || s.status !== 'active') return false;
@@ -904,7 +916,6 @@ export default function GarageDashboard() {
     [incomingCars, currentGarageId]
   );
 
-  // 🛡️ رصد وجود سيارات مخترقة نشطة (مكانه في الأعلى لمنع خطأ الرندر)
   const activeBreachesCount = useMemo(() => {
     return (activeSessions || []).filter(s => s && !!s.breach_reason).length;
   }, [activeSessions]);
@@ -953,14 +964,12 @@ export default function GarageDashboard() {
 
   const [showSwitcher, setShowSwitcher] = useState(false);
 
-  // 1️⃣ طلب إذن الإشعارات لفالية الجراج
   useEffect(() => {
     if (isValet && 'Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
   }, [isValet]);
 
-  // 2️⃣ إطلاق الإنذار الصوتي والاهتزاز للفالية فقط
   useEffect(() => {
     if (!carsOnTheWay || carsOnTheWay.length === 0) return;
 
@@ -978,7 +987,6 @@ export default function GarageDashboard() {
     prevIncomingIdsRef.current = ids;
   }, [carsOnTheWay, isValet]);
 
-  // 🛡️ [رادار الأمان الدوري للسايس في الخلفية صامتاً]
   useEffect(() => {
     if (!garage || !isValet) return;
 
@@ -1035,7 +1043,7 @@ export default function GarageDashboard() {
 
   useEffect(() => {
     if (!isRealValet || !currentGarageId) return;
-    const currentValet = currentValetNameLocal || currentValetName || `fvalet ${valetNumber}`;
+    const currentValet = currentValetNameLocal || currentValetName || `فالية ${valetNumber}`;
     if (!currentValet) return;
 
     const unassignedCompletedSessions = (sessions || []).filter(s => {
@@ -1259,18 +1267,16 @@ export default function GarageDashboard() {
     );
   }, [undoTick, sessions]);
 
-  // 🛡️ [صمام التحصيل الفوري والذكي المانع لأي تعليق أو تجميد للشاشة للأبد]
+  // 🚀 صمام التحصيل الفوري والذكي للسايس (نقدي كاش دائماً وبدون أي تجميد)
   const handleConfirmPayment = async () => {
     if (!confirmSession || isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
     
-    // إيقاف مؤقت للتزامن صمام أمان لتدفق البيانات
     pausePolling(5000);
     
     const sc = { ...confirmSession }; 
     const sd = (sessions || []).find(s => s && s.id === sc.id);
 
-    // الحظر الأمني المباشر
     if (sd?.breach_reason) {
       toast.error("🚫 عذراً! السيارة مغلقة أمنياً لوجود بلاغ سرقة نشط. يرجى مراجعة المالك وفك الحظر أولاً!", { duration: 6000 });
       setConfirmSession(null);
@@ -1279,13 +1285,11 @@ export default function GarageDashboard() {
       return;
     }
 
-    // 🚀 [أهم خطوة]: تصفير مدخلات الواجهة وإغلاق النوافذ محلياً فوراً وبـ 10 ملي ثانية قبل انتظار السيرفر
     setPlateSearch('');
     setConfirmSession(null);
     setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
 
     try {
-      // إجبار الدفع النقدي (كاش) دائماً لجميع عمليات تحصيل السايس والمالك
       const pc = 'cash'; 
       
       let freeMinutesApplied = 0;
@@ -1300,7 +1304,6 @@ export default function GarageDashboard() {
         ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`).trim() 
         : 'المالك';
 
-      // التنفيذ يتم الآن بالخلفية بشكل صامت وسلس وبدون أي تعليق
       await endSession(sc.id, sc.cost, pc, freeMinutesApplied, currentValet);
       
       toast.success(`تم تحصيل ${sc.cost} ج.م نقداً (كاش) بنجاح ✅`);
@@ -1312,10 +1315,6 @@ export default function GarageDashboard() {
       isEndingSessionRef.current = false;
     }
   };
-
-  const handleGeofenceRetry = useCallback(() => {
-    window.location.reload();
-  }, []);
 
   if (isValetBlocked && garage) {
     return (
@@ -1511,7 +1510,6 @@ export default function GarageDashboard() {
   return (
     <div className="h-full overflow-y-auto" style={{ background: BRAND.bg, color: BRAND.navy, padding: 16 }}>
 
-      {/* 🚨 لافتة تحذير طوارئ حمراء تومض عند رصد محاولة سرقة */}
       <AnimatePresence>
         {activeBreachesCount > 0 && (
           <motion.div 
@@ -1532,7 +1530,6 @@ export default function GarageDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Header */}
       <div className="flex justify-between items-center mb-5 pt-14">
         <div className="flex gap-2 items-center">
           <button 
@@ -1600,7 +1597,6 @@ export default function GarageDashboard() {
         {isValet && <div style={{ width: 44 }} />}
       </div>
 
-      {/* شريط تنبيه المعاينة للمالك */}
       {ownerValetView && (
         <motion.div 
           initial={{ opacity: 0, y: -8 }} 
@@ -1624,7 +1620,6 @@ export default function GarageDashboard() {
         </motion.div>
       )}
 
-      {/* بانر حالة الفالية للمالك */}
       {isOwner && <OwnerValetLocationBanner valetLocations={valetLocations} />}
 
       {/* Settings Modal */}
@@ -1777,7 +1772,6 @@ export default function GarageDashboard() {
               )}
             </div>
 
-            {/* ✅ [تثبيت وحل التجمّد]: سداد نقدي كاش دائماً وبدون أي تضارب أو Choice Functions مكسورة */}
             <div className="mb-5">
               <h4 className="font-black mb-2 text-right text-[10px]" style={{ color: BRAND.slate }}>طريقة التحصيل المعتمدة</h4>
               <div className="text-center p-3 rounded-xl border" style={{ background: BRAND.greenLight, borderColor: BRAND.green }}>
@@ -1897,7 +1891,7 @@ export default function GarageDashboard() {
 
           <div className="mb-5">
             {!showAddCar ? (
-              <button onClick={() => setShowAddCar(true)} disabled={garage.availableSpots <= 0} className="w-full font-black flex items-center justify-center gap-2 py-3.5 rounded-xl text-white border-0 cursor-pointer text-xs animate-none" style={{ background: garage.availableSpots > 0 ? BRAND.blue : BRAND.border, color: garage.availableSpots > 0 ? '#fff' : BRAND.slateMuted }}><Plus size={16} /> {garage.availableSpots > 0 ? 'إضافة سيارة جديدة' : 'لا توجد أماكن'}</button>
+              <button onClick={() => setShowAddCar(true)} disabled={garage.availableSpots <= 0} className="w-full font-black flex items-center justify-center gap-2 py-3.5 rounded-xl text-white border-0 cursor-pointer text-xs" style={{ background: garage.availableSpots > 0 ? BRAND.blue : BRAND.border, color: garage.availableSpots > 0 ? '#fff' : BRAND.slateMuted }}><Plus size={16} /> {garage.availableSpots > 0 ? 'إضافة سيارة جديدة' : 'لا توجد أماكن'}</button>
             ) : (
               <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3 p-4 border rounded-2xl bg-white" style={{ borderColor: BRAND.blue }}>
                 <input className="w-full font-bold text-right outline-none text-xs p-2.5 rounded-lg border border-slate-200" placeholder="رقم لوحة السيارة" value={newCarPlate} onChange={e => setNewCarPlate(e.target.value)} />
@@ -2029,59 +2023,55 @@ export default function GarageDashboard() {
                   </div>
                 </div>
 
-                {/* 📊 بانر العمولة وصافي الأرباح التنافسي */}
-                {filteredStats.totalCommission > 0 && (
-                  <div className="space-y-2 mb-3">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="text-center transition-all" style={{ background: BRAND.card, border: `1px solid ${BRAND.border}`, borderRadius: 16, padding: '8px 10px' }}>
-                        <div className="font-bold mb-0.5" style={{ fontSize: 9, color: BRAND.slate }}>عمولة التطبيق</div>
-                        <div className="font-black font-mono leading-none" style={{ fontSize: 16, color: '#f59e0b' }}>
-                          {filteredStats.totalCommission.toFixed(0)} <span style={{ fontSize: 9 }}>ج.م</span>
-                        </div>
-                      </div>
-
-                      <div className="text-center transition-all" style={{ background: BRAND.card, border: `1px solid ${BRAND.border}`, borderRadius: 16, padding: '8px 10px' }}>
-                        <div className="font-bold mb-0.5" style={{ fontSize: 9, color: BRAND.slate }}>صافي أرباحك</div>
-                        <div className="font-black font-mono leading-none" style={{ fontSize: 16, color: BRAND.greenDark }}>
-                          {filteredStats.totalNet.toFixed(0)} <span style={{ fontSize: 9 }}>ج.م</span>
-                        </div>
+                <div className="space-y-2 mb-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="text-center transition-all" style={{ background: BRAND.card, border: `1px solid ${BRAND.border}`, borderRadius: 16, padding: '8px 10px' }}>
+                      <div className="font-bold mb-0.5" style={{ fontSize: 9, color: BRAND.slate }}>عمولة التطبيق</div>
+                      <div className="font-black font-mono leading-none" style={{ fontSize: 16, color: '#f59e0b' }}>
+                        {filteredStats.totalCommission.toFixed(0)} <span style={{ fontSize: 9 }}>ج.م</span>
                       </div>
                     </div>
 
-                    {/* ⚖️ كارت تسوية الحساب المالي مع التطبيق */}
-                    {(() => {
-                      const settlement = filteredStats.activeWallet - filteredStats.activeCommission;
-                      const isGarageOwed = settlement > 0;
-                      const absSettlement = Math.abs(settlement).toFixed(0);
+                    <div className="text-center transition-all" style={{ background: BRAND.card, border: `1px solid ${BRAND.border}`, borderRadius: 16, padding: '8px 10px' }}>
+                      <div className="font-bold mb-0.5" style={{ fontSize: 9, color: BRAND.slate }}>صافي أرباحك</div>
+                      <div className="font-black font-mono leading-none" style={{ fontSize: 16, color: BRAND.greenDark }}>
+                        {filteredStats.totalNet.toFixed(0)} <span style={{ fontSize: 9 }}>ج.م</span>
+                      </div>
+                    </div>
+                  </div>
 
-                      if (settlement === 0 && filteredStats.activeWallet === 0 && filteredStats.activeCommission === 0) return null;
+                  {(() => {
+                    const settlement = filteredStats.activeWallet - filteredStats.activeCommission;
+                    const isGarageOwed = settlement > 0;
+                    const absSettlement = Math.abs(settlement).toFixed(0);
 
-                      return (
-                        <div 
-                          className="text-center transition-all p-3.5 border rounded-xl" 
-                          style={{ 
-                            background: settlement === 0 ? BRAND.blueSoft : isGarageOwed ? BRAND.greenLight : '#fff5f5', 
-                            borderColor: settlement === 0 ? BRAND.blue : isGarageOwed ? BRAND.green : '#fca5a5' 
-                          }}
-                        >
-                          <div className="flex justify-between items-center">
-                            <div className="font-black font-mono text-base" style={{ color: settlement === 0 ? BRAND.blue : isGarageOwed ? BRAND.greenDark : '#c53030' }}>
-                              {absSettlement} ج.م
+                    if (settlement === 0 && filteredStats.activeWallet === 0 && filteredStats.activeCommission === 0) return null;
+
+                    return (
+                      <div 
+                        className="text-center transition-all p-3.5 border rounded-xl" 
+                        style={{ 
+                          background: settlement === 0 ? BRAND.blueSoft : isGarageOwed ? BRAND.greenLight : '#fff5f5', 
+                          borderColor: settlement === 0 ? BRAND.blue : isGarageOwed ? BRAND.green : '#fca5a5' 
+                        }}
+                      >
+                        <div className="flex justify-between items-center">
+                          <div className="font-black font-mono text-base" style={{ color: settlement === 0 ? BRAND.blue : isGarageOwed ? BRAND.greenDark : '#c53030' }}>
+                            {absSettlement} ج.م
+                          </div>
+                          <div className="text-right">
+                            <div className="font-black text-xs" style={{ color: BRAND.navy }}>
+                              {settlement === 0 ? '⚖️ الحساب متزن تماماً' : isGarageOwed ? '🟢 مستحق لك طرف التطبيق' : '🔴 مستحق عليك للتطبيق'}
                             </div>
-                            <div className="text-right">
-                              <div className="font-black text-xs" style={{ color: BRAND.navy }}>
-                                {settlement === 0 ? '⚖️ الحساب متزن تماماً' : isGarageOwed ? '🟢 مستحق لك طرف التطبيق' : '🔴 مستحق عليك للتطبيق'}
-                              </div>
-                              <div className="font-bold text-[9px] mt-0.5" style={{ color: BRAND.slate }}>
-                                {isGarageOwed ? 'مبالغ المحفظة المستلمة أكبر من العمولة' : 'عمولة التطبيق أكبر من تحصيلات المحفظة'}
-                              </div>
+                            <div className="font-bold text-[9px] mt-0.5" style={{ color: BRAND.slate }}>
+                              {isGarageOwed ? 'مبالغ المحفظة المستلمة أكبر من العمولة' : 'عمولة التطبيق أكبر من تحصيلات المحفظة'}
                             </div>
                           </div>
                         </div>
-                      );
-                    })()}
-                  </div>
-                )}
+                      </div>
+                    );
+                  })()}
+                </div>
 
                 {valetReport.length > 0 && (
                   <div className="mb-3 space-y-1.5">
@@ -2120,7 +2110,7 @@ export default function GarageDashboard() {
             const isShield = session.is_shield_active === true;
 
             return (
-              <div key={session.id} className="p-2.5 border rounded-xl bg-white animate-none" style={{ borderColor: isShield ? BRAND.gold : BRAND.border, opacity: isSettled ? 0.75 : 1 }}>
+              <div key={session.id} className="p-2.5 border rounded-xl bg-white" style={{ borderColor: isShield ? BRAND.gold : BRAND.border, opacity: isSettled ? 0.75 : 1 }}>
                 <div className="flex justify-between items-center mb-1 gap-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {(isOwner || !isC) && (

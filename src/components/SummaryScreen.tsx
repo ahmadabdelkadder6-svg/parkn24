@@ -38,7 +38,7 @@ export default function SummaryScreen() {
     acknowledgeSession,
   } = useStore();
 
-  const userPlate = normalizePlate(currentUser?.carPlate);
+  const userPlate = normalizePlate(currentUser?.carPlate || '');
   const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'wallet' | 'free'>('cash');
@@ -52,30 +52,32 @@ export default function SummaryScreen() {
   const realtimeChannelRef = useRef<any>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // ✅ صمام أمان محصن ضد undefined
   const isMySession = useCallback((s: any): boolean => {
-    const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+    if (!s) return false;
+    const samePlate = !!userPlate && normalizePlate(s.carPlate || '') === userPlate;
     const sPhone = s.customerPhone ? normalizePhone(s.customerPhone) : '';
     const samePhone = Boolean(userPhone && sPhone === userPhone);
     return samePlate || samePhone;
   }, [userPlate, userPhone]);
 
   const activeSession = useMemo(() => {
-    return sessions
-      .filter((s) => s.status === 'active' && isMySession(s))
+    return (sessions || [])
+      .filter((s) => s && s.status === 'active' && isMySession(s))
       .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
   }, [sessions, isMySession]);
 
   const lastCompletedSession = useMemo(() => {
-    return sessions
-      .filter((s) => s.status === 'completed' && isMySession(s))
+    return (sessions || [])
+      .filter((s) => s && s.status === 'completed' && isMySession(s))
       .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
   }, [sessions, isMySession]);
 
   const referenceSession = activeSession ?? lastCompletedSession;
 
   const garage =
-    garages.find((g) => g.id === selectedGarageId) ??
-    garages.find((g) => g.id === referenceSession?.garageId);
+    (garages || []).find((g) => g && g.id === selectedGarageId) ??
+    (garages || []).find((g) => g && g.id === referenceSession?.garageId);
 
   const paymentMode = (garage?.payment_mode as 'cash' | 'wallet' | 'both') || 'both';
 
@@ -101,7 +103,7 @@ export default function SummaryScreen() {
     }
   }, [paymentMode]);
 
-  // ✅ Realtime مع تصحيح وحماية دوال الأحداث تماماً
+  // Realtime
   useEffect(() => {
     if (!userPlate && !userPhone) return;
     if (done) return;
@@ -126,7 +128,7 @@ export default function SummaryScreen() {
 
           const myRow = (r: any) => {
             if (!r) return false;
-            const plate = normalizePlate(r.car_plate || r.carPlate);
+            const plate = normalizePlate(r.car_plate || r.carPlate || '');
             const phone = normalizePhone(r.customer_phone || r.customerPhone || '');
             return (
               (!!userPlate && plate === userPlate) ||
@@ -244,8 +246,8 @@ export default function SummaryScreen() {
 
     if (!activeSession || activeSession.status !== 'active') {
       const freshState = useStore.getState();
-      const freshCompleted = freshState.sessions
-        .filter((s) => s.status === 'completed' && isMySession(s))
+      const freshCompleted = (freshState.sessions || [])
+        .filter((s) => s && s.status === 'completed' && isMySession(s))
         .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
 
       const actualPrice =
@@ -271,7 +273,7 @@ export default function SummaryScreen() {
       console.error('❌ endSession error:', err);
       await fetchAll();
 
-      const check = useStore.getState().sessions.find((s) => s.id === activeSession.id);
+      const check = useStore.getState().sessions.find((s) => s && s.id === activeSession.id);
       if (!check || check.status === 'completed') {
         const actualPrice = check?.totalPrice != null ? Number(check.totalPrice) : price;
         const actualMethod = check?.paymentMethod ?? method;

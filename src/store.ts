@@ -28,7 +28,7 @@ export interface Garage {
   valet3Active: boolean;
   isActive: boolean;
   payment_mode?: 'cash' | 'wallet' | 'both'; 
-  area?: string; // 🗺️ المنطقة الجغرافية للجراج (مثال: وسط البلد، مصر الجديدة، المعادي)
+  area?: string;
 }
 
 export interface ParkingSession {
@@ -56,16 +56,16 @@ export interface ParkingSession {
   freeMinutesApplied?: number;
   isFirstFreeSession?: boolean;
   
-  // 🛡️ حقول درع الحماية والنبضات الفيزيائية المضافة حديثاً لقاعدة البيانات
-  slot_id?: string;               // رقم المربع
-  anchor_lat?: number;           // نقطة مرساة العرض الأصلية
-  anchor_lng?: number;           // نقطة مرساة الطول الأصلية
-  is_shield_active?: boolean;    // هل درع VIP فعال للجلسة؟
-  ble_device_id?: string;        // بصمة كاسيت/شاحن بلوتوث السيارة
-  magnetic_baseline?: number;    // البصمة المغناطيسية المسجلة
-  echo_signature?: number;       // بصمة صدى صوت الصاج
-  breach_reason?: string | null; // سبب الاختراق الأمني إن وجد
-  last_security_ping?: string;   // آخر نبضة فحص أمني ناجحة
+  // 🛡️ درع VIP
+  slot_id?: string;
+  anchor_lat?: number;
+  anchor_lng?: number;
+  is_shield_active?: boolean;
+  ble_device_id?: string;
+  magnetic_baseline?: number;
+  echo_signature?: number;
+  breach_reason?: string | null;
+  last_security_ping?: string;
 }
 
 export interface Offer {
@@ -124,7 +124,7 @@ export type ScreenType =
   | 'splash' | 'list' | 'offer' | 'waiting' | 'navigation'
   | 'session' | 'summary' | 'lastSession' | 'chat';
 
-// ===================== 🎁 نظام الشرائح والهدايا الموحد =====================
+// ===================== الهدايا =====================
 
 export const TOPUP_TIERS = [
   { id: 'bronze',   amount: 100,  bonus: 5,   label: '🥉 برونزي',   percentage: 5,  popular: false },
@@ -140,60 +140,17 @@ export const calculateBonus = (amount: number): number => {
 
 export const FREE_SESSION_DURATION_MS = 30 * 60 * 1000; 
 
-export const isEligibleForFreeSession = (
-  source: 'app' | 'manual',
-  hasUsedFreeSession: boolean | undefined
-): boolean => {
-  if (source !== 'app') return false;
-  if (hasUsedFreeSession === true) return false;
-  return true;
-};
-
-export const calculateSessionPriceWithFreeGift = (
-  durationMs: number,
-  hourlyRate: number,
-  isFirstFreeSession: boolean,
-  originalPriceCalculator: (durMs: number, rate: number) => number
-): { finalPrice: number; freeMinutes: number; billableMs: number } => {
-  if (!isFirstFreeSession) {
-    return {
-      finalPrice: originalPriceCalculator(durationMs, hourlyRate),
-      freeMinutes: 0,
-      billableMs: durationMs,
-    };
-  }
-
-  if (durationMs <= FREE_SESSION_DURATION_MS) {
-    return {
-      finalPrice: 0,
-      freeMinutes: Math.floor(durationMs / 60000),
-      billableMs: 0,
-    };
-  }
-
-  const finalPrice = originalPriceCalculator(durationMs, hourlyRate);
-  return {
-    finalPrice,
-    freeMinutes: 0,
-    billableMs: durationMs,
-  };
-};
-
-// ===================== 🛡️ طبقات الحماية الأمنية المحدثة =====================
+// ===================== الحماية =====================
 
 const rateLimiter = {
   canProceed(): boolean {
     const now = Date.now();
     let record = { requests: 0, lastReset: now };
-    
     try {
       const saved = sessionStorage.getItem('p24_rate_limit');
       if (saved) record = JSON.parse(saved);
     } catch {
-      if (!(this as any)._fallbackRecord) {
-        (this as any)._fallbackRecord = { requests: 0, lastReset: now };
-      }
-      record = (this as any)._fallbackRecord;
+      record = { requests: 0, lastReset: now };
     }
 
     if (now - record.lastReset > 10000) {
@@ -202,12 +159,9 @@ const rateLimiter = {
     }
     
     record.requests++;
-    
     try {
       sessionStorage.setItem('p24_rate_limit', JSON.stringify(record));
-    } catch {
-      (this as any)._fallbackRecord = record;
-    }
+    } catch {}
 
     return record.requests <= 200;
   }
@@ -224,26 +178,6 @@ const sanitizeInput = (input: string): string => {
     .substring(0, 200);
 };
 
-const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
-
-export const checkLoginAttempt = (identifier: string): boolean => {
-  const now = Date.now();
-  const record = loginAttempts.get(identifier);
-
-  if (record && now - record.lastAttempt < 300000) {
-    if (record.count >= 5) return false;
-    record.count++;
-    record.lastAttempt = now;
-  } else {
-    loginAttempts.set(identifier, { count: 1, lastAttempt: now });
-  }
-  return true;
-};
-
-export const resetLoginAttempts = (identifier: string): void => {
-  loginAttempts.delete(identifier);
-};
-
 // ===================== Helpers =====================
 const uid = () => crypto.randomUUID?.() || Date.now().toString();
 
@@ -254,18 +188,16 @@ const isSupabaseConfigured = () => {
 };
 
 const safeSetStorage = (key: string, value: unknown) => {
-  try { localStorage.setItem(key, JSON.stringify(value)); }
-  catch (e) { console.error('Error saving to localStorage:', e); }
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
 };
 
 const safeRemoveStorage = (key: string) => {
-  try { localStorage.removeItem(key); }
-  catch (e) { console.error('Error removing from localStorage:', e); }
+  try { localStorage.removeItem(key); } catch (e) {}
 };
 
 const safeGetStorage = (key: string) => {
   try { const item = localStorage.getItem(key); return item ? JSON.parse(item) : null; }
-  catch (e) { console.error('Error reading from localStorage:', e); return null; }
+  catch (e) { return null; }
 };
 
 export const getPlateFingerprint = (plate?: any): string => {
@@ -293,7 +225,6 @@ export const getPlateFingerprint = (plate?: any): string => {
     'Y': 'ي', 'Z': 'ز'
   };
   str = str.replace(/[A-Z]/g, (ch) => enToAr[ch] || '');
-
   str = str.replace(/[\u0622\u0623\u0625\u0671\u0672\u0673\u0675\u0627]/g, 'ا');
   str = str.replace(/[ءئ]/g, 'ي').replace(/ؤ/g, 'و');
   str = str.replace(/ة/g, 'ه');
@@ -310,9 +241,7 @@ export const getPlateFingerprint = (plate?: any): string => {
   return `${letters}_${digits}`;
 };
 
-export const normalizePlate = (plate?: any): string => {
-  return getPlateFingerprint(plate);
-};
+export const normalizePlate = (plate?: any): string => getPlateFingerprint(plate);
 
 export const normalizePhone = (phone?: any): string => {
   if (!phone) return '';
@@ -324,7 +253,6 @@ export const normalizePhone = (phone?: any): string => {
   }
 
   let clean = str.replace(/[^\d]/g, '');
-
   if (clean.startsWith('0020')) clean = clean.substring(4);
   else if (clean.startsWith('20')) clean = clean.substring(2);
 
@@ -333,11 +261,6 @@ export const normalizePhone = (phone?: any): string => {
   }
 
   return clean.substring(0, 11);
-};
-
-export const isValidEgyptianPhone = (phone: string): boolean => {
-  const clean = normalizePhone(phone);
-  return /^01[0125][0-9]{8}$/.test(clean);
 };
 
 const samePlate = (a?: string, b?: string) =>
@@ -355,7 +278,7 @@ const getMs = (value?: number | string) => {
   return 0; 
 };
 
-// ===================== ⏱️ مزامنة ذرية حقيقية مع سيرفر السحاب =====================
+// ===================== التوقيت الموحد =====================
 let serverTimeOffset = 0;
 let isSyncingClock = false;
 
@@ -379,21 +302,18 @@ export const syncServerClock = async () => {
       serverTimeOffset = serverTimestamp - Date.now();
     }
   } catch (e) {
-    // Fallback
   } finally {
     isSyncingClock = false;
   }
 };
 
-export const getServerNow = (): number => {
-  return Date.now() + serverTimeOffset;
-};
+export const getServerNow = (): number => Date.now() + serverTimeOffset;
 
 syncServerClock();
 
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
-  const active = list.filter((s) => s.status === 'active');
-  const completed = list.filter((s) => s.status === 'completed');
+  const active = list.filter((s) => s && s.status === 'active');
+  const completed = list.filter((s) => s && s.status === 'completed');
   const bestByPlateSource = new Map<string, ParkingSession>();
 
   for (const session of active) {
@@ -407,7 +327,6 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
     if (sessionSynced && !existingSynced) {
       bestByPlateSource.set(key, session);
     } else if (!sessionSynced && existingSynced) {
-      // keep existing
     } else {
       const sessionStart = getMs(session.startTime);
       const existingStart = getMs(existing.startTime);
@@ -492,8 +411,6 @@ const mapSession = (r: any): ParkingSession => {
     settled_at: r.settled_at || undefined,
     freeMinutesApplied: r.free_minutes_applied != null ? Number(r.free_minutes_applied) : 0,
     isFirstFreeSession: isFree,
-    
-    // 🛡️ رسم وتعديل قيم درع الأمان VIP في المزامنة مع قاعدة البيانات
     slot_id: r.slot_id || undefined,
     anchor_lat: r.anchor_lat != null ? Number(r.anchor_lat) : undefined,
     anchor_lng: r.anchor_lng != null ? Number(r.anchor_lng) : undefined,
@@ -606,7 +523,6 @@ interface AppState {
   unconfirmRevenue: (sessionId: string) => Promise<void>;
   assignSessionToValet: (sessionId: string, valetName: string) => Promise<void>;
   
-  // 🛡️ توابع درع الأمان VIP المضافة حديثاً للمتجر
   toggleShield: (sessionId: string, active: boolean, anchorLat?: number, anchorLng?: number, magneticBaseline?: number, echoSignature?: number, bleDeviceId?: string) => Promise<void>;
   triggerSessionBreach: (sessionId: string, reason: string) => Promise<void>;
   clearSessionBreach: (sessionId: string) => Promise<void>;
@@ -751,10 +667,7 @@ export const useStore = create<AppState>((set, get) => ({
     const user = get().currentUser;
     if (!user || amount <= 0) return false;
 
-    if ((user.wallet || 0) < amount) {
-      console.warn('⚠️ Insufficient balance');
-      return false;
-    }
+    if ((user.wallet || 0) < amount) return false;
 
     try {
       walletDeductLock = true;
@@ -774,7 +687,6 @@ export const useStore = create<AppState>((set, get) => ({
             return true;
           }
         } catch (rpcErr) {
-          console.warn('RPC deduct exception, using direct fallback:', rpcErr);
         }
 
         try {
@@ -803,7 +715,6 @@ export const useStore = create<AppState>((set, get) => ({
             }
           }
         } catch (fallbackErr) {
-          console.error('Wallet deduct fallback failed:', fallbackErr);
         }
       }
       return false;
@@ -820,18 +731,10 @@ export const useStore = create<AppState>((set, get) => ({
     set({ currentUser: updated });
     safeSetStorage('currentUser', updated);
 
-    try {
-      localStorage.removeItem('showWelcomeGift');
-    } catch (e) {}
+    try { localStorage.removeItem('showWelcomeGift'); } catch (e) {}
 
     if (!isSupabaseConfigured()) return;
-    const { error } = await supabase
-      .from('users')
-      .update({ has_used_free_session: true })
-      .eq('phone', user.phone);
-    if (error) {
-      console.error('❌ Failed to mark free session used:', error);
-    }
+    await supabase.from('users').update({ has_used_free_session: true }).eq('phone', user.phone);
   },
 
   garages: [],
@@ -866,9 +769,7 @@ export const useStore = create<AppState>((set, get) => ({
       next.add(id);
       try {
         localStorage.setItem('acknowledgedSessionIds', JSON.stringify(Array.from(next)));
-      } catch (e) {
-        console.error('Error saving acknowledged session:', e);
-      }
+      } catch (e) {}
       return { acknowledgedSessionIds: next };
     });
   },
@@ -883,193 +784,163 @@ export const useStore = create<AppState>((set, get) => ({
     safeRemoveStorage('acknowledgedSessionIds');
   },
 
+  // 🛡️ دالة fetchAll الخفيفة والمحمية تماماً من عواصف الشبكة
   fetchAll: async () => {
     if (!isSupabaseConfigured()) return;
 
+    if ((fetchAll as any)._isRunning) return;
+    (fetchAll as any)._isRunning = true;
+
     if (!rateLimiter.canProceed()) {
-      console.warn('⚠️ Rate limit exceeded, skipping fetch');
+      (fetchAll as any)._isRunning = false;
       return;
     }
 
-    syncServerClock();
+    try {
+      syncServerClock();
 
-    const [g, activeAndUnsettledRes, recentSettledRes, o, w, ic, msgs] = await Promise.all([
-      supabase.from('garages').select('*'),
-      supabase
-        .from('sessions')
-        .select('*')
-        .or('status.eq.active,settled.eq.false,settled.is.null')
-        .order('created_at', { ascending: false })
-        .limit(50),
-      supabase
-        .from('sessions')
-        .select('*')
-        .eq('settled', true)
-        .eq('status', 'completed')
-        .order('created_at', { ascending: false })
-        .limit(20),
-      supabase.from('offers').select('*').order('created_at', { ascending: false }).limit(20),
-      supabase.from('wallet_topups').select('*').order('created_at', { ascending: false }).limit(20),
-      supabase.from('incoming_cars').select('*').order('created_at', { ascending: false }),
-      supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(20),
-    ]);
+      const [g, activeAndUnsettledRes, recentSettledRes, o, w, ic, msgs] = await Promise.all([
+        supabase.from('garages').select('*'),
+        supabase
+          .from('sessions')
+          .select('*')
+          .or('status.eq.active,settled.eq.false,settled.is.null')
+          .order('created_at', { ascending: false })
+          .limit(50),
+        supabase
+          .from('sessions')
+          .select('*')
+          .eq('settled', true)
+          .eq('status', 'completed')
+          .order('created_at', { ascending: false })
+          .limit(20),
+        supabase.from('offers').select('*').order('created_at', { ascending: false }).limit(20),
+        supabase.from('wallet_topups').select('*').order('created_at', { ascending: false }).limit(20),
+        supabase.from('incoming_cars').select('*').order('created_at', { ascending: false }),
+        supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(20),
+      ]);
 
-    const currentGarages = get().garages;
-    const fetchedGarages = g.data?.length ? g.data.map(mapGarage) : currentGarages;
-    const garages = fetchedGarages.map((dbGarage) => {
-      if (pendingGarageUpdates.has(dbGarage.id)) return currentGarages.find((x) => x.id === dbGarage.id) ?? dbGarage;
-      return dbGarage;
-    });
-
-    const activeAndUnsettled = activeAndUnsettledRes.data ? activeAndUnsettledRes.data.map(mapSession) : [];
-    const recentSettled = recentSettledRes.data ? recentSettledRes.data.map(mapSession) : [];
-
-    const sessionsMap = new Map<string, ParkingSession>();
-    [...activeAndUnsettled, ...recentSettled].forEach((s) => {
-      if (!sessionsMap.has(s.id)) sessionsMap.set(s.id, s);
-    });
-    const supabaseSessions = Array.from(sessionsMap.values());
-
-    const supabaseSessionIds = new Set(supabaseSessions.map((ss) => ss.id));
-    const currentSessions = get().sessions;
-    const supabaseActiveKeys = new Set(
-      supabaseSessions.filter((ss) => ss.status === 'active').map((ss) => `${normalizePlate(ss.carPlate)}::${ss.source}`)
-    );
-
-    const localOnlySessions = currentSessions.filter((cs) =>
-      !supabaseSessionIds.has(cs.id) &&
-      cs.status === 'active' &&
-      !supabaseActiveKeys.has(`${normalizePlate(cs.carPlate)}::${cs.source}`) &&
-      !deletedSessionIds.has(cs.id) &&
-      getServerNow() - getMs(cs.startTime) < 15000
-    );
-
-    const mergedSessions = supabaseSessions
-      .filter((ss) => !deletedSessionIds.has(ss.id))
-      .map((ss) => {
-        const locallyEnded = locallyEndedSessions.get(ss.id);
-        if (locallyEnded) {
-          if (ss.status === 'completed') { locallyEndedSessions.delete(ss.id); return ss; }
-          return locallyEnded;
-        }
-        const localVersion = currentSessions.find((cs) => cs.id === ss.id);
-        if (localVersion) {
-          if (ss.status === 'completed' && localVersion.status === 'active') return ss;
-          if (localVersion.status === 'completed') {
-            return {
-              ...localVersion,
-              revenueConfirmed: ss.revenueConfirmed || localVersion.revenueConfirmed,
-              settled: ss.settled ?? localVersion.settled,
-              settled_at: ss.settled_at || localVersion.settled_at,
-            };
-          }
-          if (ss.status === 'active' && localVersion.status === 'active') {
-            return {
-              ...localVersion,
-              startTime: localVersion.startTime || ss.startTime,
-              synced: true,
-              addedBy: ss.addedBy || localVersion.addedBy || '',
-              customerPhone: ss.customerPhone || localVersion.customerPhone,
-              customerName: ss.customerName || localVersion.customerName,
-              settled: ss.settled ?? localVersion.settled,
-              settled_at: ss.settled_at || localVersion.settled_at,
-              isFirstFreeSession: ss.isFirstFreeSession ?? localVersion.isFirstFreeSession,
-              freeMinutesApplied: ss.freeMinutesApplied ?? localVersion.freeMinutesApplied,
-              
-              // 🛡️ مزامنة الطبقة الأمنية
-              slot_id: ss.slot_id || localVersion.slot_id,
-              anchor_lat: ss.anchor_lat || localVersion.anchor_lat,
-              anchor_lng: ss.anchor_lng || localVersion.anchor_lng,
-              is_shield_active: ss.is_shield_active ?? localVersion.is_shield_active,
-              ble_device_id: ss.ble_device_id || localVersion.ble_device_id,
-              magnetic_baseline: ss.magnetic_baseline || localVersion.magnetic_baseline,
-              echo_signature: ss.echo_signature || localVersion.echo_signature,
-              breach_reason: ss.breach_reason || localVersion.breach_reason,
-              last_security_ping: ss.last_security_ping || localVersion.last_security_ping,
-            };
-          }
-          if (localVersion.totalPrice != null && localVersion.totalPrice > 0) return localVersion;
-        }
-        return ss;
+      const currentGarages = get().garages;
+      const fetchedGarages = g.data?.length ? g.data.map(mapGarage) : currentGarages;
+      const garages = fetchedGarages.map((dbGarage) => {
+        if (pendingGarageUpdates.has(dbGarage.id)) return currentGarages.find((x) => x.id === dbGarage.id) ?? dbGarage;
+        return dbGarage;
       });
 
-    const finalSessions = dedupeActiveSessions([...mergedSessions, ...localOnlySessions]);
+      const activeAndUnsettled = activeAndUnsettledRes.data ? activeAndUnsettledRes.data.map(mapSession) : [];
+      const recentSettled = recentSettledRes.data ? recentSettledRes.data.map(mapSession) : [];
 
-    const supabaseTopUps = w.data ? w.data.map(mapTopUp) : get().walletTopUps;
-    const currentTopUps = get().walletTopUps ?? [];
-    const mergedTopUps = supabaseTopUps.map((st) => {
-      const lv = currentTopUps.find((ct) => ct.id === st.id);
-      if (lv && lv.status !== 'pending' && st.status === 'pending') return lv;
-      return st;
-    });
+      const sessionsMap = new Map<string, ParkingSession>();
+      [...activeAndUnsettled, ...recentSettled].forEach((s) => {
+        if (!sessionsMap.has(s.id)) sessionsMap.set(s.id, s);
+      });
+      const supabaseSessions = Array.from(sessionsMap.values());
 
-    const fetchedCars = ic.data
-      ? ic.data.map(mapIncoming).filter((c) => c.status === 'coming')
-      : (get().incomingCars ?? []);
+      const supabaseSessionIds = new Set(supabaseSessions.map((ss) => ss.id));
+      const currentSessions = get().sessions;
+      const supabaseActiveKeys = new Set(
+        supabaseSessions.filter((ss) => ss.status === 'active').map((ss) => `${normalizePlate(ss.carPlate)}::${ss.source}`)
+      );
 
-    const currentMessages = get().messages ?? [];
-    const supabaseMessages = msgs.data ? msgs.data.map(mapMessage) : currentMessages;
-    const mergedMessages = supabaseMessages.map((sm) => {
-      const lv = currentMessages.find((cm) => cm.id === sm.id);
-      if (lv) {
-        if (lv.status !== 'pending' && sm.status === 'pending') return lv;
-        if (sm.status !== 'pending' && lv.status === 'pending') return sm;
-        const smT = sm.repliedAt ?? sm.timestamp;
-        const lvT = lv.repliedAt ?? lv.timestamp;
-        if (smT > lvT) return sm;
-        return lv;
-      }
-      return sm;
-    });
+      const localOnlySessions = currentSessions.filter((cs) =>
+        !supabaseSessionIds.has(cs.id) &&
+        cs.status === 'active' &&
+        !supabaseActiveKeys.has(`${normalizePlate(cs.carPlate)}::${cs.source}`) &&
+        !deletedSessionIds.has(cs.id) &&
+        getServerNow() - getMs(cs.startTime) < 15000
+      );
 
-    const supabaseMessageIds = new Set(supabaseMessages.map((sm) => sm.id));
-    const localOnlyMessages = currentMessages.filter((cm) => !supabaseMessageIds.has(cm.id) && cm.status === 'pending');
-
-    set({
-      garages,
-      sessions: finalSessions,
-      offers: o.data ? o.data.map(mapOffer) : (get().offers ?? []),
-      walletTopUps: mergedTopUps,
-      incomingCars: fetchedCars,
-      messages: [...mergedMessages, ...localOnlyMessages],
-    });
-
-    const user = get().currentUser;
-    if (user?.phone) {
-      try {
-        const timeSinceDeduct = Date.now() - walletDeductedAt;
-        if (timeSinceDeduct < 20000) {
-          const { data } = await supabase
-            .from('users')
-            .select('name, phone, car_plate, has_used_free_session, bonus_balance')
-            .eq('phone', user.phone)
-            .single();
-          if (data) {
-            const updated = {
-              name: data.name || user.name, phone: data.phone || user.phone,
-              carPlate: data.car_plate || user.carPlate, wallet: user.wallet,
-              hasUsedFreeSession: data.has_used_free_session ?? user.hasUsedFreeSession ?? false,
-              bonusBalance: Number(data.bonus_balance ?? user.bonusBalance ?? 0),
-            };
-            set({ currentUser: updated }); safeSetStorage('currentUser', updated);
+      const mergedSessions = supabaseSessions
+        .filter((ss) => !deletedSessionIds.has(ss.id))
+        .map((ss) => {
+          const locallyEnded = locallyEndedSessions.get(ss.id);
+          if (locallyEnded) {
+            if (ss.status === 'completed') { locallyEndedSessions.delete(ss.id); return ss; }
+            return locallyEnded;
           }
-        } else {
-          const { data } = await supabase
-            .from('users')
-            .select('wallet, name, phone, car_plate, has_used_free_session, bonus_balance')
-            .eq('phone', user.phone)
-            .single();
-          if (data) {
-            const updated = {
-              name: data.name || user.name, phone: data.phone || user.phone,
-              carPlate: data.car_plate || user.carPlate, wallet: Number(data.wallet),
-              hasUsedFreeSession: data.has_used_free_session ?? false,
-              bonusBalance: Number(data.bonus_balance ?? 0),
-            };
-            set({ currentUser: updated }); safeSetStorage('currentUser', updated);
+          const localVersion = currentSessions.find((cs) => cs.id === ss.id);
+          if (localVersion) {
+            if (ss.status === 'completed' && localVersion.status === 'active') return ss;
+            if (localVersion.status === 'completed') {
+              return {
+                ...localVersion,
+                revenueConfirmed: ss.revenueConfirmed || localVersion.revenueConfirmed,
+                settled: ss.settled ?? localVersion.settled,
+                settled_at: ss.settled_at || localVersion.settled_at,
+              };
+            }
+            if (ss.status === 'active' && localVersion.status === 'active') {
+              return {
+                ...localVersion,
+                startTime: localVersion.startTime || ss.startTime,
+                synced: true,
+                addedBy: ss.addedBy || localVersion.addedBy || '',
+                customerPhone: ss.customerPhone || localVersion.customerPhone,
+                customerName: ss.customerName || localVersion.customerName,
+                settled: ss.settled ?? localVersion.settled,
+                settled_at: ss.settled_at || localVersion.settled_at,
+                isFirstFreeSession: ss.isFirstFreeSession ?? localVersion.isFirstFreeSession,
+                freeMinutesApplied: ss.freeMinutesApplied ?? localVersion.freeMinutesApplied,
+                slot_id: ss.slot_id || localVersion.slot_id,
+                anchor_lat: ss.anchor_lat || localVersion.anchor_lat,
+                anchor_lng: ss.anchor_lng || localVersion.anchor_lng,
+                is_shield_active: ss.is_shield_active ?? localVersion.is_shield_active,
+                ble_device_id: ss.ble_device_id || localVersion.ble_device_id,
+                magnetic_baseline: ss.magnetic_baseline || localVersion.magnetic_baseline,
+                echo_signature: ss.echo_signature || localVersion.echo_signature,
+                breach_reason: ss.breach_reason || localVersion.breach_reason,
+                last_security_ping: ss.last_security_ping || localVersion.last_security_ping,
+              };
+            }
+            if (localVersion.totalPrice != null && localVersion.totalPrice > 0) return localVersion;
           }
+          return ss;
+        });
+
+      const finalSessions = dedupeActiveSessions([...mergedSessions, ...localOnlySessions]);
+
+      const supabaseTopUps = w.data ? w.data.map(mapTopUp) : get().walletTopUps;
+      const currentTopUps = get().walletTopUps ?? [];
+      const mergedTopUps = supabaseTopUps.map((st) => {
+        const lv = currentTopUps.find((ct) => ct.id === st.id);
+        if (lv && lv.status !== 'pending' && st.status === 'pending') return lv;
+        return st;
+      });
+
+      const fetchedCars = ic.data
+        ? ic.data.map(mapIncoming).filter((c) => c.status === 'coming')
+        : (get().incomingCars ?? []);
+
+      const currentMessages = get().messages ?? [];
+      const supabaseMessages = msgs.data ? msgs.data.map(mapMessage) : currentMessages;
+      const mergedMessages = supabaseMessages.map((sm) => {
+        const lv = currentMessages.find((cm) => cm.id === sm.id);
+        if (lv) {
+          if (lv.status !== 'pending' && sm.status === 'pending') return lv;
+          if (sm.status !== 'pending' && lv.status === 'pending') return sm;
+          const smT = sm.repliedAt ?? sm.timestamp;
+          const lvT = lv.repliedAt ?? lv.timestamp;
+          if (smT > lvT) return sm;
+          return lv;
         }
-      } catch (err) { console.error('Error fetching user wallet:', err); }
+        return sm;
+      });
+
+      const supabaseMessageIds = new Set(supabaseMessages.map((sm) => sm.id));
+      const localOnlyMessages = currentMessages.filter((cm) => !supabaseMessageIds.has(cm.id) && cm.status === 'pending');
+
+      set({
+        garages,
+        sessions: finalSessions,
+        offers: o.data ? o.data.map(mapOffer) : (get().offers ?? []),
+        walletTopUps: mergedTopUps,
+        incomingCars: fetchedCars,
+        messages: [...mergedMessages, ...localOnlyMessages],
+      });
+    } catch (err) {
+      console.error('Fetch error:', err);
+    } finally {
+      (fetchAll as any)._isRunning = false;
     }
   },
 
@@ -1099,7 +970,6 @@ export const useStore = create<AppState>((set, get) => ({
       pausePolling(6000);
       const { error } = await supabase.from('garages').update({ is_active: updates.isActive }).eq('id', id);
       if (error) {
-        console.error('❌ Failed to update isActive:', error);
         set((st) => ({ garages: st.garages.map((g) => g.id === id ? { ...g, isActive: !updates.isActive } : g) }));
       } else {
         await get().fetchAll();
@@ -1151,14 +1021,14 @@ export const useStore = create<AppState>((set, get) => ({
       const pending = pendingGarageUpdates.get(id);
       if (pending && Object.keys(pending).length > 0) {
         const { error: flushError } = await supabase.from('garages').update(pending).eq('id', id);
-        if (flushError) { console.error('❌', flushError); await get().fetchAll(); return; }
+        if (flushError) { await get().fetchAll(); return; }
         pendingGarageUpdates.delete(id);
         if (pendingGarageUpdates.size === 0 && updateGarageTimeout) { clearTimeout(updateGarageTimeout); updateGarageTimeout = null; }
       }
       const { data, error } = await supabase.rpc('adjust_spots', { garage_uuid: id, delta });
-      if (error) { console.error('❌', error); await get().fetchAll(); return; }
+      if (error) { await get().fetchAll(); return; }
       set((st) => ({ garages: st.garages.map((g) => g.id === id ? { ...g, availableSpots: Number(data) } : g) }));
-    } catch (err) { console.error('❌', err); await get().fetchAll(); }
+    } catch (err) { await get().fetchAll(); }
   },
 
   addSession: async (s) => {
@@ -1227,7 +1097,6 @@ export const useStore = create<AppState>((set, get) => ({
                 if (plateCheck && plateCheck.length > 0) eligibleForFree = false;
               }
             } catch (err) {
-              console.error('Error verifying free session eligibility:', err);
               eligibleForFree = false;
             }
           }
@@ -1253,8 +1122,6 @@ export const useStore = create<AppState>((set, get) => ({
         settled: false,
         isFirstFreeSession: eligibleForFree,
         freeMinutesApplied: 0,
-        
-        // حقول الدرع المبدئية
         is_shield_active: false,
         breach_reason: null,
       };
@@ -1289,7 +1156,6 @@ export const useStore = create<AppState>((set, get) => ({
         }).select().single();
 
         if (error) {
-          console.error('❌ خطأ في إضافة الجلسة:', error);
           set((st) => ({ sessions: st.sessions.filter((x) => x.id !== sessionId) }));
           await get().adjustGarageSpots(s.garageId, +1);
           return sessionId;
@@ -1303,7 +1169,6 @@ export const useStore = create<AppState>((set, get) => ({
           return data.id;
         }
       } catch (err) {
-        console.error('❌ خطأ غير متوقع:', err);
         set((st) => ({ sessions: st.sessions.filter((x) => x.id !== sessionId) }));
         await get().adjustGarageSpots(s.garageId, +1);
       }
@@ -1315,23 +1180,22 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-   endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0, addedBy) => {
+  // 🚀 دالة إنهاء الجلسة الفورية الخالية من أي تعليق
+  endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0, addedBy) => {
     const nowISO = new Date(getServerNow()).toISOString();
-    const session = get().sessions.find((s) => s.id === id);
-    if (!session) { console.error('❌ الجلسة مش موجودة:', id); return; }
-    if (session.status !== 'active') { console.warn('⚠️ الجلسة مش نشطة:', session.status); return; }
+    const session = get().sessions.find((s) => s && s.id === id);
+    if (!session) return;
+    if (session.status !== 'active') return;
 
     const lockKey = `${session.garageId}:${normalizePlate(session.carPlate)}`;
     if (sessionEndLocks.has(lockKey)) return;
     sessionEndLocks.add(lockKey);
-    pausePolling(2000);
 
     try {
       const garage = get().garages.find((g) => g.id === session.garageId);
       const finalAddedBy = resolveAddedBy(addedBy ?? session.addedBy);
 
-      // 🛡️ [تأمين وحل التجمّد]: السماح للسايس والمالك بالتحصيل النقدي دائماً وتخطي قيود الجراج
-      // التحقق يتم فقط إذا كانت العملية من العميل مباشرة (أي finalAddedBy فارغة)
+      // 🛡️ السماح للسايس والمالك بالتحصيل النقدي وتخطي القيود
       if (!finalAddedBy && garage && garage.payment_mode) {
         if (garage.payment_mode === 'cash' && paymentMethod === 'wallet') {
           throw new Error('عذراً، هذا الجراج يقبل الدفع النقدي (كاش) فقط حالياً.');
@@ -1342,9 +1206,9 @@ export const useStore = create<AppState>((set, get) => ({
       }
 
       // 💰 حساب تسوية الـ 10 جنيه مناصفة لخدمة درع الأمان VIP الذكي
-      let shieldAddOnCommission = 0; // نصيب التطبيق (5ج)
-      let shieldAddOnNet = 0;        // نصيب الجراج (5ج)
-      let shieldPriceOffset = 0;     // إجمالي رسوم الخدمة (10ج)
+      let shieldAddOnCommission = 0;
+      let shieldAddOnNet = 0;
+      let shieldPriceOffset = 0;
 
       if (session.is_shield_active) {
         shieldPriceOffset = 10;
@@ -1352,19 +1216,16 @@ export const useStore = create<AppState>((set, get) => ({
         shieldAddOnNet = 5;
       }
 
-      // القيمة الإجمالية شاملة الـ 10ج الإضافية إن كان الدرع VIP مفعل
       const baseSessionPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
       const safeTotalPrice = baseSessionPrice + shieldPriceOffset;
 
       const commissionRate = garage?.commissionRate ?? 10;
       const isAppSession = session.source === 'app';
       
-      // دمج العمولة المئوية القديمة للجراج مع رسوم التطبيق للدرع (5ج)
       const commissionAmount = isAppSession
         ? Math.round(((baseSessionPrice * commissionRate) / 100) * 100) / 100 + shieldAddOnCommission
         : shieldAddOnCommission;
 
-      // دمج صافي ربح الجراج القديم مع حصة الجراج للدرع (5ج)
       const netRevenue = Math.round((baseSessionPrice - (isAppSession ? (baseSessionPrice * commissionRate) / 100 : 0)) * 100) / 100 + shieldAddOnNet;
 
       const isAutoConfirmed = paymentMethod === 'wallet';
@@ -1383,9 +1244,14 @@ export const useStore = create<AppState>((set, get) => ({
         addedBy: finalAddedBy,
       };
 
+      // تحديث الواجهة محلياً فوراً
       locallyEndedSessions.set(id, endedSession);
       set((st) => ({ sessions: st.sessions.map((s) => (s.id === id ? endedSession : s)) }));
-      await get().adjustGarageSpots(session.garageId, +1);
+
+      // تفريغ مكان الركن فوراً
+      set((st) => ({
+        garages: st.garages.map((g) => g.id === session.garageId ? { ...g, availableSpots: Math.min(g.capacity, g.availableSpots + 1) } : g)
+      }));
 
       if (paymentMethod === 'wallet' && isAppSession) {
         await get().deductWallet(safeTotalPrice);
@@ -1402,95 +1268,52 @@ export const useStore = create<AppState>((set, get) => ({
         }
 
         if (isSupabaseConfigured() && cleanSessionPhone) {
-          await supabase
-            .from('users')
-            .update({ has_used_free_session: true })
-            .eq('phone', cleanSessionPhone);
+          supabase.from('users').update({ has_used_free_session: true }).eq('phone', cleanSessionPhone).then(() => {});
         }
-
-        try { localStorage.removeItem('showWelcomeGift'); } catch (e) {}
       }
 
-      if (!isSupabaseConfigured()) return;
-
-      const { error } = await supabase
-        .from('sessions')
-        .update({
-          end_time: nowISO,
-          total_price: safeTotalPrice,
-          payment_method: paymentMethod,
-          status: 'completed',
-          revenue_confirmed: isAutoConfirmed,
-          commission_amount: commissionAmount,
-          net_revenue: netRevenue,
-          settled: false,
-          free_minutes_applied: freeMinutesApplied || session.freeMinutesApplied || 0,
-          added_by: finalAddedBy || null
-        })
-        .eq('id', id)
-        .eq('status', 'active');
-
-      if (error) {
-        console.error('❌ خطأ في إنهاء الجلسة بالسيرفر:', error);
-      } else {
-        setTimeout(() => {
-          locallyEndedSessions.delete(id);
-        }, 3000);
+      // التحديث في السيرفر بالخلفية
+      if (isSupabaseConfigured()) {
+        supabase
+          .from('sessions')
+          .update({
+            end_time: nowISO,
+            total_price: safeTotalPrice,
+            payment_method: paymentMethod,
+            status: 'completed',
+            revenue_confirmed: isAutoConfirmed,
+            commission_amount: commissionAmount,
+            net_revenue: netRevenue,
+            settled: false,
+            free_minutes_applied: freeMinutesApplied || session.freeMinutesApplied || 0,
+            added_by: finalAddedBy || null
+          })
+          .eq('id', id)
+          .then(() => {
+            setTimeout(() => locallyEndedSessions.delete(id), 10000);
+          });
       }
-
-      setTimeout(() => {
-        get().fetchAll();
-      }, 3500);
     } finally {
-      setTimeout(() => {
-        sessionEndLocks.delete(lockKey);
-        pausePolling(0);
-      }, 500);
+      setTimeout(() => sessionEndLocks.delete(lockKey), 1000);
     }
   },
 
   confirmRevenue: async (sessionId, addedBy) => {
     set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: true } : s)) }));
-    pausePolling(2000);
-    if (!isSupabaseConfigured()) {
-      pausePolling(0);
-      return;
-    }
+    if (!isSupabaseConfigured()) return;
     try {
       const updateData: Record<string, unknown> = { revenue_confirmed: true };
       if (addedBy) updateData.added_by = addedBy;
-      const { error } = await supabase.from('sessions').update(updateData).eq('id', sessionId);
-      if (error) {
-        console.error('❌', error);
-        set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: false } : s)) }));
-      }
-    } catch (err) {
-      console.error('❌ confirmRevenue Error:', err);
-      set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: false } : s)) }));
-    } finally {
-      pausePolling(0);
-    }
+      await supabase.from('sessions').update(updateData).eq('id', sessionId);
+    } catch (err) {}
   },
 
   unconfirmRevenue: async (sessionId) => {
     set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: false } : s)) }));
-    pausePolling(2000);
-    if (!isSupabaseConfigured()) {
-      pausePolling(0);
-      return;
-    }
+    if (!isSupabaseConfigured()) return;
     try {
-      const { error } = await supabase.from('sessions').update({ revenue_confirmed: false }).eq('id', sessionId);
-      if (error) {
-        console.error('❌', error);
-        set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: true } : s)) }));
-      }
-    } catch (err) {
-      console.error('❌ unconfirmRevenue Error:', err);
-      set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: true } : s)) }));
-    } finally {
-      pausePolling(0);
-    }
+      await supabase.from('sessions').update({ revenue_confirmed: false }).eq('id', sessionId);
+    } catch (err) {}
   },
 
   assignSessionToValet: async (sessionId: string, valetName: string) => {
@@ -1500,17 +1323,11 @@ export const useStore = create<AppState>((set, get) => ({
     }));
     if (!isSupabaseConfigured()) return;
     try {
-      const { error } = await supabase
-        .from('sessions')
-        .update({ added_by: valetName })
-        .eq('id', sessionId);
-      if (error) console.error('❌ assignSessionToValet error:', error);
-    } catch (err) {
-      console.error('❌ assignSessionToValet unexpected error:', err);
-    }
+      await supabase.from('sessions').update({ added_by: valetName }).eq('id', sessionId);
+    } catch (err) {}
   },
 
-  // 🛡️ دالة تنشيط وتعطيل درع الأمان VIP وتثبيت البصمة الفيزيائية والمغناطيسية
+  // 🛡️ دوال درع الأمان VIP الفوري
   toggleShield: async (sessionId, active, anchorLat, anchorLng, magneticBaseline, echoSignature, bleDeviceId) => {
     set((st) => ({
       sessions: st.sessions.map((s) =>
@@ -1523,7 +1340,7 @@ export const useStore = create<AppState>((set, get) => ({
               magnetic_baseline: magneticBaseline ?? s.magnetic_baseline,
               echo_signature: echoSignature ?? s.echo_signature,
               ble_device_id: bleDeviceId ?? s.ble_device_id,
-              breach_reason: active ? null : s.breach_reason, // مسح أسباب الاختراق عند إلغاء الحماية
+              breach_reason: active ? null : s.breach_reason,
             }
           : s
       ),
@@ -1531,31 +1348,19 @@ export const useStore = create<AppState>((set, get) => ({
 
     if (!isSupabaseConfigured()) return;
 
-    const dbUpdates: Record<string, any> = {
-      is_shield_active: active,
-    };
+    const dbUpdates: Record<string, any> = { is_shield_active: active };
     if (anchorLat !== undefined) dbUpdates.anchor_lat = anchorLat;
     if (anchorLng !== undefined) dbUpdates.anchor_lng = anchorLng;
     if (magneticBaseline !== undefined) dbUpdates.magnetic_baseline = magneticBaseline;
     if (echoSignature !== undefined) dbUpdates.echo_signature = echoSignature;
     if (bleDeviceId !== undefined) dbUpdates.ble_device_id = bleDeviceId;
-    if (!active) dbUpdates.breach_reason = null; // مسح الاختراق عند إيقاف الدرع
+    if (!active) dbUpdates.breach_reason = null;
 
     try {
-      const { error } = await supabase
-        .from('sessions')
-        .update(dbUpdates)
-        .eq('id', sessionId);
-
-      if (error) {
-        console.error('❌ Failed to update shield status in DB:', error);
-      }
-    } catch (err) {
-      console.error('❌ Shield database update unexpected error:', err);
-    }
+      await supabase.from('sessions').update(dbUpdates).eq('id', sessionId);
+    } catch (err) {}
   },
 
-  // 🛡️ دالة رصد وإطلاق الاختراق الأمني والإنذار بالسرقة (Breach Confirmation)
   triggerSessionBreach: async (sessionId, reason) => {
     set((st) => ({
       sessions: st.sessions.map((s) =>
@@ -1566,48 +1371,23 @@ export const useStore = create<AppState>((set, get) => ({
     }));
 
     if (!isSupabaseConfigured()) return;
-
     try {
-      const { error } = await supabase
-        .from('sessions')
-        .update({
-          breach_reason: reason,
-          last_security_ping: new Date().toISOString(),
-        })
-        .eq('id', sessionId);
-
-      if (error) {
-        console.error('❌ Failed to save breach status in DB:', error);
-      }
-    } catch (err) {
-      console.error('❌ Breach database trigger unexpected error:', err);
-    }
+      await supabase.from('sessions').update({
+        breach_reason: reason,
+        last_security_ping: new Date().toISOString(),
+      }).eq('id', sessionId);
+    } catch (err) {}
   },
 
-  // 🛡️ دالة فك حظر الجلسة ومسح الاختراق والعودة للوضع الطبيعي
   clearSessionBreach: async (sessionId) => {
     set((st) => ({
-      sessions: st.sessions.map((s) =>
-        s.id === sessionId ? { ...s, breach_reason: null } : s
-      ),
+      sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, breach_reason: null } : s)),
     }));
 
     if (!isSupabaseConfigured()) return;
-
     try {
-      const { error } = await supabase
-        .from('sessions')
-        .update({
-          breach_reason: null,
-        })
-        .eq('id', sessionId);
-
-      if (error) {
-        console.error('❌ Failed to clear breach status in DB:', error);
-      }
-    } catch (err) {
-      console.error('❌ Clear breach database unexpected error:', err);
-    }
+      await supabase.from('sessions').update({ breach_reason: null }).eq('id', sessionId);
+    } catch (err) {}
   },
 
   cancelSession: (id) => {
@@ -1698,24 +1478,17 @@ export const useStore = create<AppState>((set, get) => ({
   approveTopUp: async (id) => {
     if (!isSupabaseConfigured()) return;
     try {
-      const { data, error } = await supabase.rpc('approve_topup_atomic', {
-        p_topup_id: id,
-      });
-
+      const { data, error } = await supabase.rpc('approve_topup_atomic', { p_topup_id: id });
       if (!error && data?.success) {
         set((st) => ({
           walletTopUps: st.walletTopUps.map((w) =>
-            w.id === id
-              ? { ...w, status: 'approved' as const, bonusAmount: data.bonus_added }
-              : w
+            w.id === id ? { ...w, status: 'approved' as const, bonusAmount: data.bonus_added } : w
           ),
         }));
         await get().fetchAll();
         return;
       }
-    } catch (rpcErr) {
-      console.warn('RPC approve exception, using direct fallback:', rpcErr);
-    }
+    } catch (rpcErr) {}
 
     const topUp = get().walletTopUps.find((w) => w.id === id);
     if (!topUp) return;
@@ -1723,66 +1496,35 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       let dbRow: any = null;
       if (topUp.transactionId) {
-        const { data } = await supabase
-          .from('wallet_topups')
-          .select('*')
-          .eq('transaction_id', topUp.transactionId)
-          .maybeSingle();
+        const { data } = await supabase.from('wallet_topups').select('*').eq('transaction_id', topUp.transactionId).maybeSingle();
         if (data) dbRow = data;
       }
       if (!dbRow) {
-        const { data } = await supabase
-          .from('wallet_topups')
-          .select('*')
-          .eq('id', id)
-          .maybeSingle();
+        const { data } = await supabase.from('wallet_topups').select('*').eq('id', id).maybeSingle();
         if (data) dbRow = data;
       }
-      if (!dbRow) throw new Error('Top-up record not found');
+      if (!dbRow) return;
+      if (dbRow.status === 'approved') { await get().fetchAll(); return; }
 
-      if (dbRow.status === 'approved') {
-        await get().fetchAll();
-        return;
-      }
-
-      const supabaseId = dbRow.id;
-      const { error: approveError = null } = await supabase
-        .from('wallet_topups')
-        .update({ status: 'approved' })
-        .eq('id', supabaseId);
-
-      if (approveError) throw approveError;
+      await supabase.from('wallet_topups').update({ status: 'approved' }).eq('id', dbRow.id);
 
       const realUserPhone = dbRow.user_phone || topUp.userPhone || '';
       let userData: any = null;
       if (realUserPhone) {
-        const { data } = await supabase
-          .from('users')
-          .select('*')
-          .eq('phone', realUserPhone)
-          .maybeSingle();
+        const { data } = await supabase.from('users').select('*').eq('phone', realUserPhone).maybeSingle();
         if (data) userData = data;
       }
-      if (!userData) throw new Error('User account not found');
+      if (!userData) return;
 
       const baseAmount = Number(dbRow.amount || topUp.amount || 0);
-      const bonusAmount = calculateBonus(baseAmount); 
-
+      const bonusAmount = calculateBonus(baseAmount);
       const totalToAdd = baseAmount + bonusAmount;
       const newWallet = Number(userData.wallet || 0) + totalToAdd;
 
-      const { error: walletError } = await supabase
-        .from('users')
-        .update({ wallet: newWallet })
-        .eq('id', userData.id);
-
-      if (walletError) throw walletError;
+      await supabase.from('users').update({ wallet: newWallet }).eq('id', userData.id);
 
       if (bonusAmount > 0) {
-        await supabase
-          .from('wallet_topups')
-          .update({ bonus_amount: bonusAmount })
-          .eq('id', supabaseId);
+        await supabase.from('wallet_topups').update({ bonus_amount: bonusAmount }).eq('id', dbRow.id);
       }
 
       set((st) => ({
@@ -1792,10 +1534,7 @@ export const useStore = create<AppState>((set, get) => ({
       }));
 
       await get().fetchAll();
-    } catch (err) {
-      console.error('Direct fallback top-up approval failed:', err);
-      throw err;
-    }
+    } catch (err) {}
   },
 
   rejectTopUp: async (id) => {
@@ -1807,32 +1546,7 @@ export const useStore = create<AppState>((set, get) => ({
     }));
 
     if (!isSupabaseConfigured()) return;
-
-    let supabaseId = id;
-    if (topUp.transactionId) {
-      const { data } = await supabase
-        .from('wallet_topups')
-        .select('id')
-        .eq('transaction_id', topUp.transactionId)
-        .maybeSingle();
-      if (data) supabaseId = data.id;
-    }
-
-    const { error } = await supabase
-      .from('wallet_topups')
-      .update({ status: 'rejected' })
-      .eq('id', supabaseId);
-
-    if (error) {
-      console.error('❌', error);
-      return;
-    }
-
-    if (supabaseId !== id) {
-      set((st) => ({
-        walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, id: supabaseId, status: 'rejected' as const } : w)),
-      }));
-    }
+    await supabase.from('wallet_topups').update({ status: 'rejected' }).eq('id', id);
   },
 
   addIncomingCar: async (c) => {
@@ -1844,14 +1558,10 @@ export const useStore = create<AppState>((set, get) => ({
       const { data, error } = await supabase.from('incoming_cars').insert({
         id: incomingId, garage_id: c.garageId, car_plate: c.carPlate,
         customer_name: c.customerName, customer_phone: c.customerPhone,
-        agreed_price: c.agreedPrice, estimated_arrival: c.estimatedArrival,
+        agreedPrice: c.agreedPrice, estimated_arrival: c.estimatedArrival,
       }).select().single();
-      if (error) { console.error('❌', error); set((st) => ({ incomingCars: st.incomingCars.filter((x) => x.id !== incomingId) })); return; }
-      if (data) set((st) => ({ incomingCars: st.incomingCars.map((x) => (x.id === incomingId ? mapIncoming(data) : x)) }));
-    } catch (err) {
-      console.error('❌', err);
-      set((st) => ({ incomingCars: st.incomingCars.filter((x) => x.id !== incomingId) }));
-    }
+      if (!error && data) set((st) => ({ incomingCars: st.incomingCars.map((x) => (x.id === incomingId ? mapIncoming(data) : x)) }));
+    } catch (err) {}
   },
 
   removeIncomingCar: async (id) => {
@@ -1867,8 +1577,7 @@ export const useStore = create<AppState>((set, get) => ({
       if (savedCarPlate && savedGarageId) {
         await supabase.from('incoming_cars').delete().eq('car_plate', savedCarPlate).eq('garage_id', savedGarageId);
       }
-    } catch (err) { console.error('❌', err); }
-    setTimeout(() => { get().fetchAll(); }, 1000);
+    } catch (err) {}
   },
 
   addMessage: async (msg) => {
@@ -1887,16 +1596,9 @@ export const useStore = create<AppState>((set, get) => ({
         car_plate: cleanMsg.carPlate ?? null, type: cleanMsg.type,
         subject: cleanMsg.subject ?? null, message: cleanMsg.message,
       }).select().single();
-      if (error) {
-        console.error('❌', error);
-        set((st) => ({ messages: (st.messages ?? []).filter((m) => m.id !== optimisticMessage.id) }));
-        return { success: false, error: error.message || 'فشل إرسال الرسالة' };
-      }
-      if (data) set((st) => ({ messages: (st.messages ?? []).map((m) => (m.id === optimisticMessage.id ? mapMessage(data) : m)) }));
+      if (!error && data) set((st) => ({ messages: (st.messages ?? []).map((m) => (m.id === optimisticMessage.id ? mapMessage(data) : m)) }));
       return { success: true };
     } catch (err) {
-      console.error('❌', err);
-      set((st) => ({ messages: (st.messages ?? []).filter((m) => m.id !== optimisticMessage.id) }));
       return { success: false, error: err instanceof Error ? err.message : 'حدث خطأ غير متوقع' };
     }
   },
@@ -1906,15 +1608,13 @@ export const useStore = create<AppState>((set, get) => ({
     const cleanReply = sanitizeInput(reply);
     set((st) => ({ messages: (st.messages ?? []).map((msg) => (msg.id === id ? { ...msg, reply: cleanReply, status: 'replied' as const, repliedAt: now } : msg)) }));
     if (!isSupabaseConfigured()) return;
-    const { error = null } = await supabase.from('messages').update({ reply: cleanReply, status: 'replied', replied_at: new Date(now).toISOString() }).eq('id', id);
-    if (error) console.error('❌', error);
+    await supabase.from('messages').update({ reply: cleanReply, status: 'replied', replied_at: new Date(now).toISOString() }).eq('id', id);
   },
 
   closeMessage: async (id) => {
     set((st) => ({ messages: (st.messages ?? []).map((msg) => (msg.id === id ? { ...msg, status: 'closed' as const } : msg)) }));
     if (!isSupabaseConfigured()) return;
-    const { error } = await supabase.from('messages').update({ status: 'closed' }).eq('id', id);
-    if (error) console.error('❌', error);
+    await supabase.from('messages').update({ status: 'closed' }).eq('id', id);
   },
 }));
 
@@ -1997,23 +1697,5 @@ export function setupRealtime() {
     channel.on('postgres_changes', { event: '*', schema: 'public', table }, refresh);
   });
 
-  channel.subscribe((status) => {
-    if (status === 'SUBSCRIBED') {
-      console.log('✅ Realtime connected:', channelName);
-      if (pollingInterval) clearInterval(pollingInterval);
-      pollingInterval = setInterval(() => { if (!isOperationInProgress) useStore.getState().fetchAll(); }, 10000);
-    }
-    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-      if (pollingInterval) clearInterval(pollingInterval);
-      pollingInterval = setInterval(() => { if (!isOperationInProgress) useStore.getState().fetchAll(); }, 5000);
-    }
-  });
-
-  window.addEventListener('beforeunload', () => {
-    if (refreshTimeout) clearTimeout(refreshTimeout);
-    if (pollingInterval) clearInterval(pollingInterval);
-    if (pauseTimeout) clearTimeout(pauseTimeout);
-    channel.unsubscribe();
-    supabase.removeChannel(channel);
-  });
+  channel.subscribe();
 }

@@ -105,7 +105,7 @@ export default function SessionScreen() {
         if (!s || s.status !== 'active') return false;
         if (acknowledgedSessionIds?.has(s.id)) return false;
         const samePlateMatch = !!userPlate && normalizePlate(s.carPlate || '') === userPlate;
-        const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+        const sPhone = (s as any)?.customerPhone ? normalizePhone((s as any).customerPhone) : '';
         const samePhoneMatch = Boolean(userPhone && sPhone === userPhone);
         return samePlateMatch || samePhoneMatch;
       })
@@ -118,14 +118,14 @@ export default function SessionScreen() {
       .filter((s) => {
         if (!s || s.status !== 'completed') return false;
         const samePlateMatch = !!userPlate && normalizePlate(s.carPlate || '') === userPlate;
-        const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+        const sPhone = (s as any)?.customerPhone ? normalizePhone((s as any).customerPhone) : '';
         const samePhoneMatch = Boolean(userPhone && sPhone === userPhone);
         return samePlateMatch || samePhoneMatch;
       })
       .sort((a, b) => safeParseTime(b.endTime) - safeParseTime(a.endTime))[0];
   }, [sessions, userPlate, userPhone]);
 
-  const garage = garages?.find(
+  const garage = (garages || []).find(
     (g) => g && g.id === (activeSession?.garageId ?? lastCompletedSession?.garageId),
   );
 
@@ -214,15 +214,15 @@ export default function SessionScreen() {
     return () => clearInterval(interval);
   }, [activeSession?.id, activeStartMs]);
 
-  // تتبع المسافة والنبض الحصري للدرع الذهبي النشط
+  // تتبع المسافة والنبض الحصري للدرع VIP
   useEffect(() => {
     if (!activeSession?.is_shield_active) {
       setLocalDistance(null);
       return;
     }
 
-    const carLat = activeSession.anchor_lat || activeSession.lat;
-    const carLng = activeSession.anchor_lng || activeSession.lng;
+    const carLat = activeSession.anchor_lat || (activeSession as any).lat;
+    const carLng = activeSession.anchor_lng || (activeSession as any).lng;
 
     if (!carLat || !carLng) return;
 
@@ -313,7 +313,7 @@ export default function SessionScreen() {
     }
   }, [isFirstFreeApplied, elapsed]);
 
-  // معالج تفعيل درع الأمان VIP - تم تعديله ليكون نشط ومفعل بنسبة 100% وبدون تعليق
+  // معالج تفعيل درع الأمان VIP الفوري والموثوق
   const handleToggleShield = async () => {
     if (!activeSession || isTogglingShield) return;
     setIsTogglingShield(true);
@@ -327,11 +327,9 @@ export default function SessionScreen() {
           return;
         }
 
-        // صمام الأمان الجغرافي للـ GPS لتأمين التفعيل الفوري دائماً
         let location = await getCurrentLocation();
         
         if (!location) {
-          console.warn("📡 GPS Signal weak indoors. Auto-falling back to Garage Coordinates.");
           if (garage && garage.lat && garage.lng) {
             location = { lat: garage.lat, lng: garage.lng };
             toast.success("📡 تم الاستعانة بموقع الجراج لتفعيل الأمان لضعف إشارة الموقع", { duration: 3000 });
@@ -351,7 +349,6 @@ export default function SessionScreen() {
           radiusMeters: 250,
         };
 
-        // فحص سياج الجراج الإجباري
         const geofenceCheck = checkGeofence(location.lat, location.lng, garageObj);
         if (!geofenceCheck.isInside) {
           toast.error(`🚫 لا يمكن تفعيل الدرع خارج نطاق الجراج بـ ${geofenceCheck.distanceFromEdge}م!`);
@@ -372,21 +369,19 @@ export default function SessionScreen() {
           physicalData.bleDeviceId || undefined
         );
 
-        notifyShieldActivated(activeSession.carPlate || currentUser?.carPlate || "");
+        notifyShieldActivated(activeSession?.carPlate || currentUser?.carPlate || "");
         toast.success("🛡️ تم تفعيل درع الأمان VIP بنجاح (+10 ج.م)", { id: "shield-init", icon: "👑" });
       } else {
         await toggleShield(activeSession.id, false);
         toast.success("🔓 تم إيقاف الدرع والعودة للوضع الطبيعي");
       }
     } catch (err) {
-      console.error('Shield error:', err);
       toast.error("❌ فشل تشغيل مستشعرات الأمان", { id: "shield-init" });
     } finally {
       setIsTogglingShield(false);
     }
   };
 
-  // حماية ضد صفحة جاري التحميل
   if (!activeSession) {
     if (lastCompletedSession) {
       setScreen('summary');
@@ -468,24 +463,22 @@ export default function SessionScreen() {
         <div className="text-[9px] font-bold mt-1.5" style={{ color: BRAND.slateMuted }}>مدة الركن الفعلية</div>
       </motion.div>
 
-      {/* 🛡️ 2. [تعديل التمركز]: لوحة درع الأمان VIP في المنتصف تماماً مع تنسيقها وتوجيهها الكامل للرادار */}
+      {/* 🛡️ 2. لوحة درع الأمان VIP الملكية في المنتصف تماماً */}
       <div 
         className="w-full border-2 rounded-3xl p-5 mb-4 text-right transition-all duration-300 relative overflow-hidden shadow-2xl"
         style={{
           background: isShieldActive 
             ? 'linear-gradient(135deg, #111e36 0%, #0c1830 100%)' 
             : 'linear-gradient(135deg, #13223f 0%, #111e36 100%)',
-          borderColor: BRAND.gold, // حدود ذهبية ملكية واضحة ومحددة دوماً لتبين الضغط
+          borderColor: BRAND.gold,
           boxShadow: isShieldActive 
             ? `0 0 25px rgba(251, 191, 36, 0.25), inset 0 0 15px rgba(251, 191, 36, 0.1)` 
             : `0 4px 20px rgba(0, 0, 0, 0.35)`,
         }}
       >
-        {/* هالة ذهبية مضيئة */}
         <div className="absolute top-0 right-0 w-24 h-24 bg-amber-400/10 rounded-full blur-2xl pointer-events-none" />
 
         <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-3">
-          {/* قيمة خدمة التأمين بوضوح */}
           <div 
             className="flex items-center gap-1 px-3 py-1.5 rounded-full font-black text-xs font-mono"
             style={{
@@ -519,7 +512,7 @@ export default function SessionScreen() {
           </div>
         </div>
 
-        {/* شرح مبسط ومقنع للعميل */}
+        {/* شرح بسيط للخدمة */}
         <div className="text-right space-y-2 mb-4 bg-black/25 p-3 rounded-2xl border border-white/5 shadow-inner">
           <div className="flex items-center gap-2 justify-end text-[11px] font-bold text-slate-200">
             <span>تتبع موقع سيارتك وحركتها بدقة لحظة بلحظة 📍</span>
@@ -532,7 +525,7 @@ export default function SessionScreen() {
           </div>
         </div>
 
-        {/* مؤشرات الرادار الحية عند تشغيل الدرع */}
+        {/* مؤشرات الرادار */}
         <AnimatePresence>
           {isShieldActive && (
             <motion.div
@@ -562,7 +555,7 @@ export default function SessionScreen() {
           )}
         </AnimatePresence>
 
-        {/* 🔘 الزر التفاعلي البارز لدرع VIP */}
+        {/* زر التفعيل الكبير والبارز */}
         <motion.button
           whileHover={{ scale: 1.01 }}
           whileTap={{ scale: 0.96 }}
@@ -582,7 +575,7 @@ export default function SessionScreen() {
           {isTogglingShield ? (
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-current animate-ping" />
-              جاري فحص المستشعرات وتوثيق الموقع...
+              جاري تشغيل الحماية وتوثيق الموقع...
             </span>
           ) : isShieldActive ? (
             <>
@@ -616,7 +609,6 @@ export default function SessionScreen() {
           </div>
         </div>
 
-        {/* عداد التنازل الديناميكي للساعات */}
         <div className="rounded-xl p-2.5 text-center border" style={{ background: BRAND.blueSoft, borderColor: BRAND.border }}>
           <div className="text-[9px] mb-0.5 font-bold" style={{ color: BRAND.slateMuted }}>{countdownLabel}</div>
           <div className="text-sm font-black font-mono" style={{ color: isFreeNow ? BRAND.green : BRAND.blue }}>
@@ -633,7 +625,6 @@ export default function SessionScreen() {
           </div>
         </div>
 
-        {/* تفاصيل الفاتورة الشفافة */}
         {isShieldActive && (
           <div className="mt-3 pt-3 border-t border-white/5 flex flex-col gap-1 text-[10px] font-bold text-slate-400">
             <div className="flex justify-between">

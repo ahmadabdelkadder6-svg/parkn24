@@ -279,7 +279,7 @@ export default function GarageListScreen() {
 
   const handleDirectBooking = async (garage: GarageWithDistance) => {
     if (!currentUser) { toast.error('سجل بياناتك أولاً'); return; }
-    if (activeSession) { setSelectedGarageId(activeSession.garageId); setScreen('session'); return; }
+    if (activeSession) { setSelectedGarageId(activeSession?.garageId); setScreen('session'); return; }
     if (myIncomingCar) { setSelectedGarageId(myIncomingCar.garageId); setScreen('navigation'); return; }
     if ((offers || []).some((o) => o && o.userId === currentUser.phone && o.status === 'pending')) { toast.error('لديك عرض معلق بالفعل'); return; }
     if (garage.availableSpots <= 0) { toast.error('لا توجد أماكن متاحة حالياً'); return; }
@@ -444,30 +444,33 @@ export default function GarageListScreen() {
           </div>
         )}
 
-        {/* 🛡️ شريط الجلسة النشطة */}
+        {/* 🛡️ شريط الجلسة النشطة بنمطه الملكي الذهبي المضيء */}
         {activeSession && (
           <button
-            onClick={() => { setSelectedGarageId(activeSession.garageId); setScreen('session'); }}
-            className="w-full mb-3 flex items-center justify-between px-4 py-3 rounded-16 border-0 text-white cursor-pointer active:scale-98 transition-all"
+            onClick={() => { setSelectedGarageId(activeSession?.garageId); setScreen('session'); }}
+            className="w-full mb-3.5 flex items-center justify-between px-4 py-3.5 rounded-2xl border-0 text-white cursor-pointer active:scale-95 transition-all relative overflow-hidden"
             style={{ 
-              background: activeSession.is_shield_active 
+              background: activeSession?.is_shield_active 
                 ? 'linear-gradient(135deg, #1d68dc 0%, #0f3d85 100%)' 
                 : BRAND.greenDark,
-              boxShadow: activeSession.is_shield_active 
-                ? '0 4px 15px rgba(29, 104, 220, 0.35)' 
+              boxShadow: activeSession?.is_shield_active 
+                ? '0 6px 20px rgba(29, 104, 220, 0.4), 0 0 12px rgba(251, 191, 36, 0.2)' 
                 : 'none',
-              border: activeSession.is_shield_active ? `1.5px solid ${BRAND.gold}` : 'none'
+              border: activeSession?.is_shield_active ? `2px solid ${BRAND.gold}` : 'none'
             }}
           >
-            <span className="text-xs font-black flex items-center gap-1">
-              {activeSession.is_shield_active && <Sparkles size={12} className="text-amber-300 animate-pulse" />}
-              عرض التفاصيل والمسافة الحية ←
+            {activeSession?.is_shield_active && (
+              <div className="absolute -top-10 -right-10 w-20 h-20 bg-amber-400/10 rounded-full blur-xl pointer-events-none" />
+            )}
+            <span className="text-xs font-black flex items-center gap-1.5 relative z-10">
+              {activeSession?.is_shield_active && <Sparkles size={13} className="text-amber-300 animate-pulse shrink-0" />}
+              <span>عرض التفاصيل والمسافة الحية ←</span>
             </span>
-            <span className="text-xs font-black flex items-center gap-1.5">
-              {activeSession.is_shield_active ? (
+            <span className="text-xs font-black flex items-center gap-1.5 relative z-10">
+              {activeSession?.is_shield_active ? (
                 <>
-                  <ShieldCheck size={14} className="text-amber-400" />
-                  <span>درع VIP نشط ومحمي بالكامل 👑</span>
+                  <ShieldCheck size={15} className="text-amber-400 shrink-0" />
+                  <span className="text-amber-300 font-extrabold">درع الأمان VIP نشط 👑</span>
                 </>
               ) : (
                 '🚙 لديك جلسة ركن نشطة الآن'

@@ -1,3 +1,5 @@
+// src/utils/collisionGuard.ts
+
 // ============================================================
 // 🛡️ Collision Guard - نظام منع التصادم البسيط والاحترافي
 // ============================================================
@@ -55,11 +57,11 @@ export function checkCollision(
   newLat: number,
   newLng: number,
   protectedCars: ProtectedCar[],
-  minDistanceMeters: number = 3.0 // 3 متر = طول سيارة + هامش أمان
+  minDistanceMeters: number = 3.0 // 3 متر حد أمان لمنع التصادم
 ): CollisionResult {
 
-  // لو مفيش عربيات محمية → مفيش تصادم
-  if (!protectedCars || protectedCars.length === 0) {
+  // لو مفيش إحداثيات صالحة أو مفيش سيارات محمية → مفيش تصادم
+  if (!newLat || !newLng || !protectedCars || protectedCars.length === 0) {
     return {
       isCollision: false,
       nearestCar: null,
@@ -68,13 +70,14 @@ export function checkCollision(
     };
   }
 
-  // لف على كل العربيات المحمية ودور على الأقرب
   let nearestCar: ProtectedCar | null = null;
   let shortestDistance = Infinity;
 
   for (const car of protectedCars) {
-    // تجاهل العربيات اللي درعها مش شغال
-    if (!car.shield_active) continue;
+    // تجاهل العناصر غير الصالحة أو التي لم تفعل الدرع
+    if (!car || !car.shield_active || typeof car.lat !== 'number' || typeof car.lng !== 'number') {
+      continue;
+    }
 
     const distance = calculateDistanceMeters(
       newLat,
@@ -89,23 +92,22 @@ export function checkCollision(
     }
   }
 
-  // لو أقرب عربية أقرب من الحد الأدنى → تصادم!
+  // لو أقرب سيارة أقرب من الحد الأدنى → تصادم!
   if (nearestCar && shortestDistance < minDistanceMeters) {
     return {
       isCollision: true,
       nearestCar,
-      distanceMeters: Math.round(shortestDistance * 100) / 100,
+      distanceMeters: Math.round(shortestDistance * 10) / 10,
       message: `🚫 ممنوع! في سيارة محمية على بُعد ${Math.round(shortestDistance)}م فقط${
         nearestCar.plate_number ? ` (${nearestCar.plate_number})` : ""
       }`,
     };
   }
 
-  // مفيش تصادم
   return {
     isCollision: false,
     nearestCar,
-    distanceMeters: Math.round(shortestDistance * 100) / 100,
+    distanceMeters: Math.round(shortestDistance * 10) / 10,
     message: `✅ المكان آمن، أقرب سيارة على بُعد ${Math.round(shortestDistance)}م`,
   };
 }
@@ -119,6 +121,5 @@ export function isSpotSafe(
   protectedCars: ProtectedCar[],
   minDistanceMeters: number = 3.0
 ): boolean {
-  return !checkCollision(newLat, newLng, protectedCars, minDistanceMeters)
-    .isCollision;
+  return !checkCollision(newLat, newLng, protectedCars, minDistanceMeters).isCollision;
 }

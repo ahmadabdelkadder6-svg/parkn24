@@ -404,7 +404,7 @@ export default function App() {
       return;
     }
 
-    // 1. مراقبة الاختراق
+    // 1. مراقبة الاختراق والتحقق منها أمنياً
     if (activeUserSession.breach_reason) {
       setIsSystemBreached(true);
       setActiveBreachReason(activeUserSession.breach_reason);
@@ -455,6 +455,15 @@ export default function App() {
       setGeofenceWarning(null);
     }
   }, [activeUserSession?.id, activeUserSession?.is_shield_active, activeUserSession?.breach_reason]);
+
+  // ✅ كتم الاهتزازات عند إغلاق أو تحميل التطبيق لأول مرة (منع خطأ Chrome Blocked Vibrate)
+  useEffect(() => {
+    return () => {
+      try {
+        alarmCascade.stopAlarm();
+      } catch (e) {}
+    };
+  }, []);
 
   useEffect(() => {
     if (!dataLoaded) return;
@@ -535,7 +544,7 @@ export default function App() {
     }
   }, [view]);
 
-  // ✅ معالجة الحالات مع حماية ضد undefined
+  // ✅ معالجة الجلسات والترانزيت وحمايتها بصمام ثنائي
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser) return;
@@ -814,7 +823,7 @@ export default function App() {
             <div className="text-7xl mb-4 animate-bounce">🚨</div>
             <h1 className="text-3xl font-black mb-2 font-sans">تنبيه اختراق أمني نشط!</h1>
             <p className="text-lg font-bold text-white/90 max-w-sm mb-6">
-              {activeBreachReason || "تم رصد محاولة تحريك أو سرقة السيارة خارج نطاق الأمان!"}
+              {activeBreachReason || "تم رصد محاولة سرقة أو حركة غير مصرح بها خارج الجراج!"}
             </p>
             {activeUserSession && (
               <div className="bg-white/10 px-6 py-4 rounded-2xl mb-8">
@@ -824,7 +833,9 @@ export default function App() {
             )}
             <button
               onClick={() => {
-                alarmCascade.stopAlarm();
+                try {
+                  alarmCascade.stopAlarm();
+                } catch (e) {}
                 setIsSystemBreached(false);
               }}
               className="bg-white text-red-600 font-black px-8 py-4 rounded-2xl text-sm active:scale-95 transition-all shadow-xl cursor-pointer"
