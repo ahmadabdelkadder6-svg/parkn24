@@ -1,3 +1,4 @@
+// src/utils/batShieldEngine.ts
 
 let audioCtx: AudioContext | null = null;
 
@@ -11,6 +12,13 @@ const getAudioContext = (): AudioContext | null => {
   }
   return audioCtx;
 };
+
+export interface PhysicalFingerprint {
+  magneticBaseline: number | null;
+  echoSignature: number | null;
+  bleDeviceId: string | null;
+  timestamp: number;
+}
 
 /**
  * 🦇 1. إطلاق نبضة الشيرب الفوق صوتية (Chirp Ultrasonic Pulse)
@@ -95,15 +103,13 @@ export const detectTireRollingRumble = async (durationMs: number = 800): Promise
     const ctx = getAudioContext();
     if (!ctx || !navigator.mediaDevices?.getUserMedia) return false;
 
-    // فتح ميكروفون الهاتف لفترة خاطفة (800ms)
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     const source = ctx.createMediaStreamSource(stream);
 
-    // 🎯 فلتر مخصص لتردد دبدبة الكاوتش فقط (Bandpass 30Hz - 75Hz)
     const filter = ctx.createBiquadFilter();
     filter.type = 'bandpass';
-    filter.frequency.value = 52.5; // مركز التردد
-    filter.Q.value = 2.5;         // عزل أي صوت بشري أو كلام
+    filter.frequency.value = 52.5;
+    filter.Q.value = 2.5;
 
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 256;
@@ -121,14 +127,12 @@ export const detectTireRollingRumble = async (durationMs: number = 800): Promise
       const checkRumble = () => {
         analyser.getByteFrequencyData(dataArray);
         
-        // حساب متوسط طاقة التردد المنخفض الخاص باحتكاك الكاوتش
         let sum = 0;
-        for (let i = 0; i < 8; i++) { // البينز الخاصة بـ 30-75Hz
+        for (let i = 0; i < 8; i++) {
           sum += dataArray[i];
         }
         const avgRumbleEnergy = sum / 8;
 
-        // لو الطاقة تخطت عتبة اهتزاز دوران الكاوتش الثقيل
         if (avgRumbleEnergy > 65) {
           detectedCount++;
         }
@@ -136,10 +140,9 @@ export const detectTireRollingRumble = async (durationMs: number = 800): Promise
         if (Date.now() - startTime < durationMs) {
           requestAnimationFrame(checkRumble);
         } else {
-          // إيقاف المايكروفون فوراً لتوفير البطارية والخصوصية
           stream.getTracks().forEach(track => track.stop());
           source.disconnect();
-          resolve(detectedCount >= 3); // تأكيد وجود دبدبة تدحرج كاوتش
+          resolve(detectedCount >= 3);
         }
       };
 
@@ -166,7 +169,6 @@ export const detectGroundSeismicMotion = (): Promise<boolean> => {
       if (!acc) return;
 
       const zDelta = Math.abs((acc.z || 9.8) - 9.8);
-      // اهتزاز ميكانيكي أرضي بتردد منخفض
       if (zDelta > 0.45 && zDelta < 2.5) {
         spikeCount++;
       }
@@ -182,26 +184,39 @@ export const detectGroundSeismicMotion = (): Promise<boolean> => {
 };
 
 /**
- * ⚖️ 5. ميزان القرار الفيزيائي المدمج (Unified Physics Breach Check)
+ * 🛡️ 5. أخذ البصمة الفيزيائية الشاملة لحظة تفعيل درع الأمان VIP
+ */
+export const captureFullPhysicalShield = async (
+  bleId: string | null = null
+): Promise<PhysicalFingerprint> => {
+  const [mag, chirpSuccess] = await Promise.all([
+    captureMagneticMass(),
+    emitBatChirpPulse(),
+  ]);
+
+  return {
+    magneticBaseline: mag,
+    echoSignature: chirpSuccess ? 92.5 : 50.0,
+    bleDeviceId: bleId || null,
+    timestamp: Date.now(),
+  };
+};
+
+/**
+ * ⚖️ 6. ميزان القرار الفيزيائي المدمج (Unified Physics Breach Check)
  * يدمج الخفاش + المغناطيسية + صوت تدحرج الكاوتش + اهتزاز الخرسانة
  */
 export const evaluatePhysicalTireBreach = async (
   baselineMagnetic: number
 ): Promise<{ isBreached: boolean; reason: string }> => {
-  // 1. فحص البصمة المغناطيسية
   const currentMag = await captureMagneticMass();
   const magDrop = baselineMagnetic > 0 ? ((baselineMagnetic - currentMag) / baselineMagnetic) * 100 : 0;
   
-  // 2. إطلاق نبضة الشيرب الفوق صوتية
   await emitBatChirpPulse();
 
-  // 3. فحص صوت تدحرج الكاوتش على الخرسانة
   const isTireRumbling = await detectTireRollingRumble(500);
-
-  // 4. فحص الاهتزاز الزلزالي
   const isSeismicVibrating = await detectGroundSeismicMotion();
 
-  // 🚨 لو المجال انهار ومعه صوت تدحرج كاوتش أو اهتزاز خرسانة
   if (magDrop > 35 && (isTireRumbling || isSeismicVibrating)) {
     return {
       isBreached: true,
@@ -209,7 +224,6 @@ export const evaluatePhysicalTireBreach = async (
     };
   }
 
-  // 🚨 لو الكاوتش دار بقوة واختفت الكتلة
   if (isTireRumbling && isSeismicVibrating) {
     return {
       isBreached: true,
