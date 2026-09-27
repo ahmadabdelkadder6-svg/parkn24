@@ -358,7 +358,7 @@ const useOwnerValetLocations = (
         { valetNumber: 1, valetName: String(garage.valetName1 || 'فالية 1'), isActive: garage.valet1Active ?? false, status: 'offline', distance: null, lastSeen: null },
         { valetNumber: 2, valetName: String(garage.valetName2 || 'فالية 2'), isActive: garage.valet2Active ?? false, status: 'offline', distance: null, lastSeen: null },
         { valetNumber: 3, valetName: String(garage.valetName3 || 'فالية 3'), isActive: garage.valet3Active ?? false, status: 'offline', distance: null, lastSeen: null },
-      ].filter(v => v.valetName && String(v.valetName).trim());
+      ].filter(v => v.name);
 
       valets.forEach(v => {
         if (!v.isActive) {
@@ -644,58 +644,58 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
     return () => clearInterval(i);
   }, []);
 
-  const st = toMs(s.startTime);
-  const el = st > 0 ? Math.max(0, Math.floor((getServerNow() - st) / 1000)) : 0;
-  const mins = Math.floor(el / 60);
+  const _st = toMs(s.startTime);
+  const _el = _st > 0 ? Math.max(0, Math.floor((getServerNow() - _st) / 1000)) : 0;
+  const _mins = Math.floor(_el / 60);
 
-  const isFreeApplied = s.isFirstFreeSession === true;
-  const isFreeNow = isFreeApplied && el <= 1800;
+  const _isFreeApplied = s.isFirstFreeSession === true;
+  const _isFreeNow = _isFreeApplied && _el <= 1800;
   
-  const hrs = isFreeNow ? 0 : calculateFullHours(el);
-  const rate = Number(s.agreedPrice ?? basePrice);
-  const cost = isFreeNow ? 0 : calculateCost(el, rate);
+  const _hrs = _isFreeNow ? 0 : calculateFullHours(_el);
+  const _rate = Number(s.agreedPrice ?? basePrice);
+  const _cost = _isFreeNow ? 0 : calculateCost(_el, _rate);
 
-  const isM = s.source === 'manual';
-  const isShield = s.is_shield_active === true;
-  const isBreached = !!s.breach_reason;
+  const _isM = s.source === 'manual';
+  const _isShield = s.is_shield_active === true;
+  const _isBreached = !!s.breach_reason;
 
   return (
     <div 
       style={{ 
-        background: isBreached ? '#fff5f5' : isShield ? 'linear-gradient(135deg, #fefef2 0%, #fffdf0 100%)' : isM ? BRAND.card : BRAND.blueSoft, 
-        border: `1.5px solid ${isBreached ? '#feb2b2' : isShield ? BRAND.gold : isM ? BRAND.border : BRAND.blueLight}`, 
+        background: _isBreached ? '#fff5f5' : _isShield ? 'linear-gradient(135deg, #fefef2 0%, #fffdf0 100%)' : _isM ? BRAND.card : BRAND.blueSoft, 
+        border: `1.5px solid _isBreached ? '#feb2b2' : _isShield ? BRAND.gold : _isM ? BRAND.border : BRAND.blueLight`, 
         borderRadius: 16, 
         padding: '12px 14px',
-        boxShadow: isShield ? '0 4px 12px rgba(251,191,36,0.12)' : '0 2px 8px rgba(0,0,0,0.02)'
+        boxShadow: _isShield ? '0 4px 12px rgba(251,191,36,0.12)' : '0 2px 8px rgba(0,0,0,0.02)'
       }}
       className="mb-2 relative"
     >
       <div className="flex justify-between items-center mb-2">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="rounded-full shrink-0" style={{ width: 8, height: 8, background: isBreached ? '#ef4444' : isShield ? BRAND.gold : isM ? '#f59e0b' : BRAND.green }} />
-          <span className="font-bold text-slate-500 font-mono" style={{ fontSize: 11 }}>{formatElapsed(el)} • {hrs}س</span>
+          <span className="rounded-full shrink-0" style={{ width: 8, height: 8, background: _isBreached ? '#ef4444' : _isShield ? BRAND.gold : _isM ? '#f59e0b' : BRAND.green }} />
+          <span className="font-bold text-slate-500 font-mono" style={{ fontSize: 11 }}>{formatElapsed(_el)} • {_hrs}س</span>
           
-          {isBreached ? (
-            <span className="font-black text-white shrink-0 text-[8px] px-2 py-0.5 rounded bg-red-600">⚠️ اختراق نشط!</span>
-          ) : isShield ? (
+          {_isBreached ? (
+            <span className="font-black text-white shrink-0 text-[8px] px-2 py-0.5 rounded bg-red-600 animate-pulse">⚠️ اختراق نشط!</span>
+          ) : _isShield ? (
             <span className="font-black text-slate-950 shrink-0 text-[8px] px-2 py-0.5 rounded bg-amber-400">🛡️ درع VIP</span>
           ) : (
-            <span className="font-black text-white shrink-0 text-[8px] px-2 py-0.5 rounded" style={{ background: isM ? '#f59e0b' : BRAND.blue }}>{isM ? 'يدوي' : 'تطبيق'}</span>
+            <span className="font-black text-white shrink-0 text-[8px] px-2 py-0.5 rounded" style={{ background: _isM ? '#f59e0b' : BRAND.blue }}>{_isM ? 'يدوي' : 'تطبيق'}</span>
           )}
           
-          {isFreeApplied && (
-            <span className="font-black flex items-center gap-0.5 shrink-0 text-[8px] px-2 py-0.5 rounded" style={{ background: BRAND.greenLight, color: BRAND.greenDark, border: `1px solid ${BRAND.green}40` }}>
-              <Gift size={10} /> {isFreeNow ? 'هدية ترحيبية نشطة 🎁' : 'انتهت الهدية الترحيبية'}
+          {_isFreeApplied && (
+            <span className="font-black flex items-center gap-0.5 shrink-0 text-[8px] px-2 py-0.5 rounded" style={{ background: BRAND.greenLight, color: BRAND.greenDark, border: `1px solid BRAND.green40` }}>
+              <Gift size={10} /> {_isFreeNow ? 'هدية ترحيبية نشطة 🎁' : 'انتهت الهدية الترحيبية'}
             </span>
           )}
         </div>
         <div className="font-black text-slate-900 text-sm flex items-center gap-1">
-          {isShield && <span className="text-xs">🛡️</span>}
+          {_isShield && <span className="text-xs">🛡️</span>}
           <span>🚗 {s.carPlate}</span>
         </div>
       </div>
 
-      {isBreached && (
+      {_isBreached && (
         <div className="bg-red-50 text-red-700 text-[10px] font-black p-2 rounded-xl mb-3 border border-red-200">
           🚨 {s.breach_reason}
         </div>
@@ -703,34 +703,34 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
 
       <div className="flex justify-between items-center border-t pt-2 mt-2" style={{ borderColor: BRAND.border }}>
         <div className="flex items-center gap-1.5">
-          {isBreached ? (
+          {_isBreached ? (
             <div className="text-[10px] font-black text-red-600 flex items-center gap-1 bg-red-100 px-3 py-2 rounded-xl border border-red-200">
               <ShieldAlert size={12} /> البوابة مغلقة أمنياً للسرقة 🚫
             </div>
           ) : (
             <button 
-              onClick={() => onEndSession(s.id, s.carPlate, cost, hrs, mins, s.source, s.agreedPrice)} 
+              onClick={() => onEndSession(s.id, s.carPlate, _cost, _hrs, _mins, s.source, s.agreedPrice)} 
               className="active:scale-[0.98] transition-all flex items-center justify-center font-black text-white border-0 py-2 px-4 rounded-xl cursor-pointer text-xs bg-red-600"
             >
               إنهاء وتحصيل
             </button>
           )}
 
-          {un && !isBreached && (
+          {un && !_isBreached && (
             <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} onClick={() => onUndo(un)} className="font-black flex items-center gap-1 active:scale-95 text-white border-0 py-2 px-3 rounded-xl text-[10px] cursor-pointer" style={{ background: '#f59e0b' }}>
               <Undo2 size={12} /> ({getUndoRemainingSeconds(un.addedAt)}ث)
             </motion.button>
           )}
         </div>
 
-        <div className="font-black text-left" style={{ fontSize: isFreeNow ? 11 : 14, color: isFreeNow ? '#f59e0b' : BRAND.greenDark }}>
-          {isFreeNow ? (
-            <span className="flex items-center gap-0.5 px-2 py-0.5 rounded-lg text-[10px]" style={{ background: BRAND.greenLight, border: `1px solid ${BRAND.green}30` }}>
+        <div className="font-black text-left" style={{ fontSize: _isFreeNow ? 11 : 14, color: _isFreeNow ? '#f59e0b' : BRAND.greenDark }}>
+          {_isFreeNow ? (
+            <span className="flex items-center gap-0.5 px-2 py-0.5 rounded-lg text-[10px]" style={{ background: BRAND.greenLight, border: `1px solid BRAND.green30` }}>
               🎁 مجاناً (0ج)
             </span>
           ) : (
             <span className="font-mono text-sm font-black">
-              {isShield ? cost + 10 : cost} ج.م
+              {_isShield ? _cost + 10 : _cost} ج.م
             </span>
           )}
         </div>
@@ -894,19 +894,21 @@ export default function GarageDashboard() {
   }, [activeSessions, isValet, valetNumber, garage, ownerValetView]);
 
   const completedSessions = useMemo(
-    () => garageSessions.filter(s => s && s.status === 'completed'),
-    [garageSessions]
+    () => (sessions || []).filter(s => s && s.status === 'completed' && s.garageId === currentGarageId),
+    [sessions, currentGarageId]
   );
+  
   const garageOffers = useMemo(
     () => (offers || []).filter(o => o && o.garageId === currentGarageId && o.status === 'pending'),
     [offers, currentGarageId]
   );
+  
   const carsOnTheWay = useMemo(
     () => (incomingCars || []).filter(c => c && c.garageId === currentGarageId && c.status === 'coming'),
     [incomingCars, currentGarageId]
   );
 
-  // 🛡️ رصد وجود سيارات مخترقة نشطة (تم نقله هنا في البداية مع باقي الـ Hooks لتفادي خطأ React Error #310)
+  // 🛡️ رصد وجود سيارات مخترقة نشطة (مكانه في الأعلى لمنع خطأ الرندر)
   const activeBreachesCount = useMemo(() => {
     return (activeSessions || []).filter(s => s && !!s.breach_reason).length;
   }, [activeSessions]);
@@ -980,7 +982,7 @@ export default function GarageDashboard() {
     prevIncomingIdsRef.current = ids;
   }, [carsOnTheWay, isValet]);
 
-  // 🛡️ [رادار الأمان الدوري للسايس في الخلفية]
+  // 🛡️ [رادار الأمان الدوري للسايس في الخلفية صامتاً]
   useEffect(() => {
     if (!garage || !isValet) return;
 
@@ -1037,7 +1039,7 @@ export default function GarageDashboard() {
 
   useEffect(() => {
     if (!isRealValet || !currentGarageId) return;
-    const currentValet = currentValetNameLocal || currentValetName || `فالية ${valetNumber}`;
+    const currentValet = currentValetNameLocal || currentValetName || `fvalet ${valetNumber}`;
     if (!currentValet) return;
 
     const unassignedCompletedSessions = (sessions || []).filter(s => {
@@ -1161,21 +1163,21 @@ export default function GarageDashboard() {
   const filteredStats = useMemo(() => {
     const c = filteredCompleted.filter(s => s && s.revenueConfirmed);
     const u = filteredCompleted.filter(s => s && !s.revenueConfirmed);
-    const activeC = c.filter(s => !(s as any).settled);
+    const activeC = c.filter(s => s && !(s as any).settled);
 
-    const cash = c.filter(s => s.paymentMethod === 'cash').reduce((a, s) => a + getSessionRevenue(s), 0);
-    const instapay = c.filter(s => s.paymentMethod === 'instapay').reduce((a, s) => a + getSessionRevenue(s), 0);
-    const wallet = c.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
-    const cashwallet = c.filter(s => s.paymentMethod === 'cashwallet').reduce((a, sumSession) => a + getSessionRevenue(sumSession), 0);
+    const cash = c.filter(s => s && s.paymentMethod === 'cash').reduce((a, s) => a + getSessionRevenue(s), 0);
+    const instapay = c.filter(s => s && s.paymentMethod === 'instapay').reduce((a, s) => a + getSessionRevenue(s), 0);
+    const wallet = c.filter(s => s && s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
+    const cashwallet = c.filter(s => s && s.paymentMethod === 'cashwallet').reduce((a, sumSession) => a + getSessionRevenue(sumSession), 0);
     
-    const manual = c.filter(s => s.source === 'manual');
-    const app = c.filter(s => s.source === 'app');
+    const manual = c.filter(s => s && s.source === 'manual');
+    const app = c.filter(s => s && s.source === 'app');
     
     const totalCommission = c.reduce((a, s) => a + getSessionCommission(s), 0);
     const totalNet = c.reduce((a, s) => a + getSessionNetRevenue(s), 0);
     const confirmedTotal = cash + instapay + wallet + cashwallet;
 
-    const activeWallet = activeC.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
+    const activeWallet = activeC.filter(s => s && s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
     const activeCommission = activeC.reduce((a, s) => a + getSessionCommission(s), 0);
 
     return {
@@ -1217,9 +1219,9 @@ export default function GarageDashboard() {
         const addedBy = String((s as any).addedBy || '').trim();
         return addedBy === v.name || addedBy === v.defaultName;
       });
-      const confirmed = vs.filter((s) => s.revenueConfirmed);
-      const ac = confirmed.filter((s) => s.source === 'app');
-      const mc = confirmed.filter((s) => s.source === 'manual');
+      const confirmed = vs.filter((s) => s && s.revenueConfirmed);
+      const ac = confirmed.filter((s) => s && s.source === 'app');
+      const mc = confirmed.filter((s) => s && s.source === 'manual');
       return {
         name: v.name, color: v.color, icon: v.icon, count: vs.length,
         appCount: ac.length, manualCount: mc.length,
@@ -1261,7 +1263,64 @@ export default function GarageDashboard() {
     );
   }, [undoTick, sessions]);
 
-  // 🛡️ فحص حظر الفالية خارج النطاق الجغرافي
+  // 🛡️ [صمام التحصيل الفوري والذكي المانع لأي تعليق أو تجميد للشاشة للأبد]
+  const handleConfirmPayment = async () => {
+    if (!confirmSession || isEndingSessionRef.current) return;
+    isEndingSessionRef.current = true;
+    
+    // إيقاف مؤقت للتزامن صمام أمان لتدفق البيانات
+    pausePolling(5000);
+    
+    const sc = { ...confirmSession }; 
+    const sd = (sessions || []).find(s => s && s.id === sc.id);
+
+    // الحظر الأمني المباشر
+    if (sd?.breach_reason) {
+      toast.error("🚫 عذراً! السيارة مغلقة أمنياً لوجود بلاغ سرقة نشط. يرجى مراجعة المالك وفك الحظر أولاً!", { duration: 6000 });
+      setConfirmSession(null);
+      isEndingSessionRef.current = false;
+      pausePolling(0);
+      return;
+    }
+
+    // 🚀 [أهم خطوة]: تصفير مدخلات الواجهة وإغلاق النوافذ محلياً فوراً وبـ 10 ملي ثانية قبل انتظار السيرفر
+    setPlateSearch('');
+    setConfirmSession(null);
+    setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
+
+    try {
+      // إجبار الدفع النقدي (كاش) دائماً لجميع عمليات تحصيل السايس والمالك
+      const pc = 'cash'; 
+      
+      let freeMinutesApplied = 0;
+      if (sd?.isFirstFreeSession === true) {
+        const elapsedSeconds = Math.floor((getServerNow() - toMs(sd.startTime)) / 1000);
+        if (elapsedSeconds <= 1800) {
+          freeMinutesApplied = Math.floor(elapsedSeconds / 60);
+        }
+      }
+
+      const currentValet = isValet 
+        ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`).trim() 
+        : 'المالك';
+
+      // التنفيذ يتم الآن بالخلفية بشكل صامت وسلس وبدون أي تعليق
+      await endSession(sc.id, sc.cost, pc, freeMinutesApplied, currentValet);
+      
+      toast.success(`تم تحصيل ${sc.cost} ج.م نقداً (كاش) بنجاح ✅`);
+    } catch (err: any) {
+      console.error('Payment Error:', err);
+      toast.error(err.message || 'فشلت عملية التحصيل، يرجى المحاولة مرة أخرى');
+    } finally { 
+      pausePolling(0);
+      isEndingSessionRef.current = false;
+    }
+  };
+
+  const handleGeofenceRetry = useCallback(() => {
+    window.location.reload();
+  }, []);
+
   if (isValetBlocked && garage) {
     return (
       <ValetGeofenceBlockScreen
@@ -1354,59 +1413,6 @@ export default function GarageDashboard() {
 
     setConfirmPaymentMethod('cash');
     setPlateSearch('');
-  };
-
-   const handleConfirmPayment = async () => {
-    if (!confirmSession || isEndingSessionRef.current) return;
-    isEndingSessionRef.current = true;
-    
-    // إيقاف مؤقت للتزامن صمام أمان لتدفق البيانات
-    pausePolling(5000);
-    
-    const sc = { ...confirmSession }; 
-    const sd = (sessions || []).find(s => s && s.id === sc.id);
-
-    // التحقق من الحظر الأمني للاختراق
-    if (sd?.breach_reason) {
-      toast.error("🚫 عذراً! السيارة مغلقة أمنياً لوجود بلاغ سرقة نشط. يرجى مراجعة المالك وفك الحظر أولاً!", { duration: 6000 });
-      setConfirmSession(null);
-      isEndingSessionRef.current = false;
-      pausePolling(0);
-      return;
-    }
-
-    // 🚀 [صمام منع التجمّد]: إغلاق النافذة وتصفير البحث فوراً وبجزء من الثانية دون انتظار استجابة السيرفر
-    setPlateSearch('');
-    setConfirmSession(null);
-    setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
-
-    try {
-      // إجبار الدفع النقدي (كاش) دائماً لعمليات السايس
-      const pc = 'cash'; 
-      
-      let freeMinutesApplied = 0;
-      if (sd?.isFirstFreeSession === true) {
-        const elapsedSeconds = Math.floor((getServerNow() - toMs(sd.startTime)) / 1000);
-        if (elapsedSeconds <= 1800) {
-          freeMinutesApplied = Math.floor(elapsedSeconds / 60);
-        }
-      }
-
-      const currentValet = isValet 
-        ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`).trim() 
-        : 'المالك';
-
-      // الحفظ والتحديث يتمان الآن صامتين في الخلفية دون أي تجميد تشعر به أيدي السايس
-      await endSession(sc.id, sc.cost, pc, freeMinutesApplied, currentValet);
-      
-      toast.success(`تم تحصيل ${sc.cost} ج.م نقداً (كاش) بنجاح ✅`);
-    } catch (err: any) {
-      console.error('Payment Error:', err);
-      toast.error(err.message || 'فشلت عملية التحصيل، يرجى المحاولة مرة أخرى');
-    } finally { 
-      pausePolling(0);
-      isEndingSessionRef.current = false;
-    }
   };
 
   const handleSaveSettings = () => {
@@ -1509,7 +1515,7 @@ export default function GarageDashboard() {
   return (
     <div className="h-full overflow-y-auto" style={{ background: BRAND.bg, color: BRAND.navy, padding: 16 }}>
 
-      {/* 🚨 لافتة تحذير طوارئ حمراء تومض على شاشة السايس عند رصد محاولة سرقة */}
+      {/* 🚨 لافتة تحذير طوارئ حمراء تومض عند رصد محاولة سرقة */}
       <AnimatePresence>
         {activeBreachesCount > 0 && (
           <motion.div 
@@ -1775,18 +1781,18 @@ export default function GarageDashboard() {
               )}
             </div>
 
- <div className="mb-5">
-  <h4 className="font-black mb-2 text-right text-[10px]" style={{ color: BRAND.slate }}>طريقة التحصيل المعتمدة</h4>
-  <div className="text-center p-3 rounded-xl border" style={{ background: BRAND.greenLight, borderColor: BRAND.green }}>
-    <div className="font-black text-xs" style={{ color: BRAND.greenDark }}>💵 سداد نقدي كاش (يداً بيد للسايس)</div>
-  </div>
-</div>
+            {/* ✅ [تثبيت وحل التجمّد]: سداد نقدي كاش دائماً وبدون أي تضارب أو Choice Functions مكسورة */}
+            <div className="mb-5">
+              <h4 className="font-black mb-2 text-right text-[10px]" style={{ color: BRAND.slate }}>طريقة التحصيل المعتمدة</h4>
+              <div className="text-center p-3 rounded-xl border" style={{ background: BRAND.greenLight, borderColor: BRAND.green }}>
+                <div className="font-black text-xs" style={{ color: BRAND.greenDark }}>💵 سداد نقدي كاش (يداً بيد للسايس)</div>
+              </div>
+            </div>
 
             <div className="flex gap-2">
               <button 
                 onClick={handleConfirmPayment} 
-                className="flex-1 font-black flex items-center justify-center gap-1.5 py-3 rounded-xl text-xs text-white border-0 cursor-pointer" 
-                style={{ background: BRAND.greenDark }}
+                className="flex-1 font-black flex items-center justify-center gap-1.5 py-3 rounded-xl text-xs text-white border-0 cursor-pointer bg-emerald-600"
               >
                 <CheckCircle size={16} /> تأكيد واستلام ({confirmSession.cost} ج.م)
               </button>
@@ -1895,7 +1901,7 @@ export default function GarageDashboard() {
 
           <div className="mb-5">
             {!showAddCar ? (
-              <button onClick={() => setShowAddCar(true)} disabled={garage.availableSpots <= 0} className="w-full font-black flex items-center justify-center gap-2 py-3.5 rounded-xl text-white border-0 cursor-pointer text-xs" style={{ background: garage.availableSpots > 0 ? BRAND.blue : BRAND.border, color: garage.availableSpots > 0 ? '#fff' : BRAND.slateMuted }}><Plus size={16} /> {garage.availableSpots > 0 ? 'إضافة سيارة جديدة' : 'لا توجد أماكن'}</button>
+              <button onClick={() => setShowAddCar(true)} disabled={garage.availableSpots <= 0} className="w-full font-black flex items-center justify-center gap-2 py-3.5 rounded-xl text-white border-0 cursor-pointer text-xs animate-none" style={{ background: garage.availableSpots > 0 ? BRAND.blue : BRAND.border, color: garage.availableSpots > 0 ? '#fff' : BRAND.slateMuted }}><Plus size={16} /> {garage.availableSpots > 0 ? 'إضافة سيارة جديدة' : 'لا توجد أماكن'}</button>
             ) : (
               <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3 p-4 border rounded-2xl bg-white" style={{ borderColor: BRAND.blue }}>
                 <input className="w-full font-bold text-right outline-none text-xs p-2.5 rounded-lg border border-slate-200" placeholder="رقم لوحة السيارة" value={newCarPlate} onChange={e => setNewCarPlate(e.target.value)} />
@@ -2106,6 +2112,7 @@ export default function GarageDashboard() {
 
         <div className="space-y-1.5">
           {filteredCompleted.slice(0, 30).map(session => {
+            if (!session) return null;
             const isM = session.source === 'manual';
             const et = session.endTime ? toMs(session.endTime) : null;
             const time = et ? new Date(et) : null;
@@ -2117,7 +2124,7 @@ export default function GarageDashboard() {
             const isShield = session.is_shield_active === true;
 
             return (
-              <div key={session.id} className="p-2.5 border rounded-xl bg-white" style={{ borderColor: isShield ? BRAND.gold : BRAND.border, opacity: isSettled ? 0.75 : 1 }}>
+              <div key={session.id} className="p-2.5 border rounded-xl bg-white animate-none" style={{ borderColor: isShield ? BRAND.gold : BRAND.border, opacity: isSettled ? 0.75 : 1 }}>
                 <div className="flex justify-between items-center mb-1 gap-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {(isOwner || !isC) && (

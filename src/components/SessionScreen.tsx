@@ -47,7 +47,7 @@ const BRAND = {
   slateMuted: '#94a3b8', 
   border: 'rgba(255, 255, 255, 0.08)', 
   gold: '#fbbf24',       // ذهبي VIP ملكي متوهج
-  goldGlow: 'rgba(251, 191, 36, 0.35)',
+  goldGlow: 'rgba(251, 191, 36, 0.25)',
 };
 
 const safeParseTime = (value: any): number => {
@@ -145,7 +145,7 @@ export default function SessionScreen() {
     fetchAll().catch((e) => console.error('Fetch error:', e));
   }, [fetchAll]);
 
-  // Realtime مع حماية تامة من التجميد
+  // Realtime
   useEffect(() => {
     if (!userPlate && !userPhone) return;
     let cancelled = false;
@@ -214,7 +214,7 @@ export default function SessionScreen() {
     return () => clearInterval(interval);
   }, [activeSession?.id, activeStartMs]);
 
-  // تتبع المسافة والنبض الحصري للدرع VIP
+  // تتبع المسافة والنبض الحصري للدرع الذهبي النشط
   useEffect(() => {
     if (!activeSession?.is_shield_active) {
       setLocalDistance(null);
@@ -313,7 +313,7 @@ export default function SessionScreen() {
     }
   }, [isFirstFreeApplied, elapsed]);
 
-  // معالج تفعيل درع الأمان VIP
+  // معالج تفعيل درع الأمان VIP - تم تعديله ليكون نشط ومفعل بنسبة 100% وبدون تعليق
   const handleToggleShield = async () => {
     if (!activeSession || isTogglingShield) return;
     setIsTogglingShield(true);
@@ -327,18 +327,19 @@ export default function SessionScreen() {
           return;
         }
 
+        // صمام الأمان الجغرافي للـ GPS لتأمين التفعيل الفوري دائماً
         let location = await getCurrentLocation();
         
         if (!location) {
           console.warn("📡 GPS Signal weak indoors. Auto-falling back to Garage Coordinates.");
           if (garage && garage.lat && garage.lng) {
             location = { lat: garage.lat, lng: garage.lng };
-            toast.success("📡 تم ربط الدرع بموقع الجراج تلقائياً لضعف إشارة الموقع", { duration: 3000 });
+            toast.success("📡 تم الاستعانة بموقع الجراج لتفعيل الأمان لضعف إشارة الموقع", { duration: 3000 });
           }
         }
 
         if (!location) {
-          toast.error("⚠️ تعذر تحديد إحداثيات الركنة الدقيقة حالياً.");
+          toast.error("⚠️ تعذر تحديد إحداثيات الموقع حالياً.");
           setIsTogglingShield(false);
           return;
         }
@@ -350,6 +351,7 @@ export default function SessionScreen() {
           radiusMeters: 250,
         };
 
+        // فحص سياج الجراج الإجباري
         const geofenceCheck = checkGeofence(location.lat, location.lng, garageObj);
         if (!geofenceCheck.isInside) {
           toast.error(`🚫 لا يمكن تفعيل الدرع خارج نطاق الجراج بـ ${geofenceCheck.distanceFromEdge}م!`);
@@ -357,7 +359,7 @@ export default function SessionScreen() {
           return;
         }
 
-        toast.loading("🦇 جاري تفعيل مستشعرات درع الأمان VIP...", { id: "shield-init" });
+        toast.loading("🛡️ جاري تفعيل مستشعرات درع الأمان VIP...", { id: "shield-init" });
         const physicalData = await captureFullPhysicalShield();
 
         await toggleShield(
@@ -374,7 +376,7 @@ export default function SessionScreen() {
         toast.success("🛡️ تم تفعيل درع الأمان VIP بنجاح (+10 ج.م)", { id: "shield-init", icon: "👑" });
       } else {
         await toggleShield(activeSession.id, false);
-        toast.success("🔓 تم إيقاف الدرع والعودة للوضع العادي");
+        toast.success("🔓 تم إيقاف الدرع والعودة للوضع الطبيعي");
       }
     } catch (err) {
       console.error('Shield error:', err);
@@ -384,7 +386,7 @@ export default function SessionScreen() {
     }
   };
 
-  // حماية ضد التحويل لصفحة التحميل
+  // حماية ضد صفحة جاري التحميل
   if (!activeSession) {
     if (lastCompletedSession) {
       setScreen('summary');
@@ -439,20 +441,47 @@ export default function SessionScreen() {
         </motion.div>
       )}
 
-      {/* 🛡️ [تعديل التصميم]: كارت وزر درع الأمان VIP الفاخر بوضوح فائق وتوهج نيون ذهبي جذّاب */}
+      {/* ⏱️ 1. العداد الدائري في الأعلى */}
+      <motion.div
+        animate={{
+          boxShadow: isFreeNow
+            ? [
+                '0 0 0px rgba(140, 198, 63, 0.1)',
+                '0 0 40px rgba(140, 198, 63, 0.25)',
+                '0 0 0px rgba(140, 198, 63, 0.1)',
+              ]
+            : [
+                '0 0 0px rgba(22, 86, 184, 0.1)',
+                '0 0 40px rgba(22, 86, 184, 0.25)',
+                '0 0 0px rgba(22, 86, 184, 0.1)',
+              ],
+        }}
+        transition={{ repeat: Infinity, duration: 2.5 }}
+        className="w-36 h-36 rounded-full flex flex-col items-center justify-center border-2 mb-5 shadow-lg shrink-0"
+        style={{
+          background: BRAND.navyLight,
+          borderColor: isFreeNow ? BRAND.green : BRAND.blue,
+        }}
+      >
+        <Clock size={20} style={{ color: isFreeNow ? BRAND.green : BRAND.blue }} className="mb-1" />
+        <div className="text-2xl font-black font-mono text-white leading-none">{formatTime(elapsed)}</div>
+        <div className="text-[9px] font-bold mt-1.5" style={{ color: BRAND.slateMuted }}>مدة الركن الفعلية</div>
+      </motion.div>
+
+      {/* 🛡️ 2. [تعديل التمركز]: لوحة درع الأمان VIP في المنتصف تماماً مع تنسيقها وتوجيهها الكامل للرادار */}
       <div 
-        className="w-full border-2 rounded-3xl p-5 mb-5 text-right transition-all duration-300 relative overflow-hidden shadow-2xl"
+        className="w-full border-2 rounded-3xl p-5 mb-4 text-right transition-all duration-300 relative overflow-hidden shadow-2xl"
         style={{
           background: isShieldActive 
             ? 'linear-gradient(135deg, #111e36 0%, #0c1830 100%)' 
             : 'linear-gradient(135deg, #13223f 0%, #111e36 100%)',
-          borderColor: isShieldActive ? BRAND.gold : BRAND.gold, // حدود ذهبية ممتدة وواضحة دائماً
+          borderColor: BRAND.gold, // حدود ذهبية ملكية واضحة ومحددة دوماً لتبين الضغط
           boxShadow: isShieldActive 
             ? `0 0 25px rgba(251, 191, 36, 0.25), inset 0 0 15px rgba(251, 191, 36, 0.1)` 
             : `0 4px 20px rgba(0, 0, 0, 0.35)`,
         }}
       >
-        {/* هالة نيون خلفية مضيئة */}
+        {/* هالة ذهبية مضيئة */}
         <div className="absolute top-0 right-0 w-24 h-24 bg-amber-400/10 rounded-full blur-2xl pointer-events-none" />
 
         <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-3">
@@ -490,7 +519,7 @@ export default function SessionScreen() {
           </div>
         </div>
 
-        {/* 📋 شرح مبسط للمميزات بدون تعقيدات ميكانيكية */}
+        {/* شرح مبسط ومقنع للعميل */}
         <div className="text-right space-y-2 mb-4 bg-black/25 p-3 rounded-2xl border border-white/5 shadow-inner">
           <div className="flex items-center gap-2 justify-end text-[11px] font-bold text-slate-200">
             <span>تتبع موقع سيارتك وحركتها بدقة لحظة بلحظة 📍</span>
@@ -569,34 +598,7 @@ export default function SessionScreen() {
         </motion.button>
       </div>
 
-      {/* حلقة العداد الدائرية */}
-      <motion.div
-        animate={{
-          boxShadow: isFreeNow
-            ? [
-                '0 0 0px rgba(140, 198, 63, 0.1)',
-                '0 0 40px rgba(140, 198, 63, 0.25)',
-                '0 0 0px rgba(140, 198, 63, 0.1)',
-              ]
-            : [
-                '0 0 0px rgba(22, 86, 184, 0.1)',
-                '0 0 40px rgba(22, 86, 184, 0.25)',
-                '0 0 0px rgba(22, 86, 184, 0.1)',
-              ],
-        }}
-        transition={{ repeat: Infinity, duration: 2.5 }}
-        className="w-36 h-36 rounded-full flex flex-col items-center justify-center border-2 mb-4 shadow-lg shrink-0"
-        style={{
-          background: BRAND.navyLight,
-          borderColor: isFreeNow ? BRAND.green : BRAND.blue,
-        }}
-      >
-        <Clock size={20} style={{ color: isFreeNow ? BRAND.green : BRAND.blue }} className="mb-1" />
-        <div className="text-2xl font-black font-mono text-white leading-none">{formatTime(elapsed)}</div>
-        <div className="text-[9px] font-bold mt-1.5" style={{ color: BRAND.slateMuted }}>مدة الركن الفعلية</div>
-      </motion.div>
-
-      {/* كارت الحساب التفاعلي */}
+      {/* 3. كارت الحساب والعداد */}
       <div className="w-full border rounded-2xl p-4 mb-3.5 shrink-0" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
         <div className="flex justify-between items-center mb-3">
           <div className="text-center">
