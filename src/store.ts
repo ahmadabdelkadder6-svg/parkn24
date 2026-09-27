@@ -1315,7 +1315,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0, addedBy) => {
+   endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0, addedBy) => {
     const nowISO = new Date(getServerNow()).toISOString();
     const session = get().sessions.find((s) => s.id === id);
     if (!session) { console.error('❌ الجلسة مش موجودة:', id); return; }
@@ -1328,8 +1328,11 @@ export const useStore = create<AppState>((set, get) => ({
 
     try {
       const garage = get().garages.find((g) => g.id === session.garageId);
-      
-      if (garage && garage.payment_mode) {
+      const finalAddedBy = resolveAddedBy(addedBy ?? session.addedBy);
+
+      // 🛡️ [تأمين وحل التجمّد]: السماح للسايس والمالك بالتحصيل النقدي دائماً وتخطي قيود الجراج
+      // التحقق يتم فقط إذا كانت العملية من العميل مباشرة (أي finalAddedBy فارغة)
+      if (!finalAddedBy && garage && garage.payment_mode) {
         if (garage.payment_mode === 'cash' && paymentMethod === 'wallet') {
           throw new Error('عذراً، هذا الجراج يقبل الدفع النقدي (كاش) فقط حالياً.');
         }
@@ -1365,7 +1368,6 @@ export const useStore = create<AppState>((set, get) => ({
       const netRevenue = Math.round((baseSessionPrice - (isAppSession ? (baseSessionPrice * commissionRate) / 100 : 0)) * 100) / 100 + shieldAddOnNet;
 
       const isAutoConfirmed = paymentMethod === 'wallet';
-      const finalAddedBy = resolveAddedBy(addedBy ?? session.addedBy);
 
       const endedSession: ParkingSession = {
         ...session,
