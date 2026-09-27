@@ -2,14 +2,9 @@
 
 /**
  * 🚨 بروتوكول الإنذار الشامل وقفل التحصيل (The Alarm Cascade Engine)
- * مسؤول عن:
- * 1. صفارة الطوارئ الصوتية الحادة (2600Hz)
- * 2. نمط الاهتزاز التكتيكي للهاتف
- * 3. قفل التحصيل المالي ومنع خروج السيارة في قاعدة البيانات
- * 4. إدارة حالة الإنذار وإيقافه
  */
 
-import { supabase } from '../lib/supabase'; // ✅ تم تصحيح المسار ليتطابق مع مشروعك
+import { supabase } from '../lib/supabase';
 
 export interface BreachPayload {
   sessionId: string;
@@ -22,6 +17,7 @@ export interface BreachPayload {
 class AlarmCascadeService {
   private audioCtx: AudioContext | null = null;
   private isAlarmPlaying = false;
+  private isVibrating = false;
   private sirenInterval: any = null;
 
   // ──────────────────────────────────────────────
@@ -44,7 +40,6 @@ class AlarmCascadeService {
         const osc = this.audioCtx.createOscillator();
         const gain = this.audioCtx.createGain();
 
-        // التبديل بين 2600Hz و 1200Hz لاختراق أي ضوضاء محيطة
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(highTone ? 2600 : 1200, this.audioCtx.currentTime);
 
@@ -68,16 +63,21 @@ class AlarmCascadeService {
   }
 
   // ──────────────────────────────────────────────
-  // 2️⃣ الاهتزاز التكتيكي العنيف (Tactical Haptic Vibration)
+  // 2️⃣ الاهتزاز التكتيكي العنيف (آمن ومحمي)
   // ──────────────────────────────────────────────
   public startTacticalVibration() {
-    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      navigator.vibrate([500, 100, 500, 100, 800, 200, 1000]);
+    try {
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        this.isVibrating = true;
+        navigator.vibrate([500, 100, 500, 100, 800, 200, 1000]);
+      }
+    } catch (e) {
+      // تجاهل الحظر المسبق للمتصفح بأمان
     }
   }
 
   // ──────────────────────────────────────────────
-  // 3️⃣ إيقاف الإنذار والصفارة
+  // 3️⃣ إيقاف الإنذار والصفارة (بدون أخطاء للمتصفح)
   // ──────────────────────────────────────────────
   public stopAlarm() {
     this.isAlarmPlaying = false;
@@ -89,21 +89,23 @@ class AlarmCascadeService {
       this.audioCtx.close().catch(() => {});
       this.audioCtx = null;
     }
-    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      navigator.vibrate(0);
+    // لا نستدعي إيقاف الاهتزاز إلا لو كان قد اشتغل بالفعل لمنع تدخل المتصفح
+    if (this.isVibrating && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(0);
+      } catch {}
+      this.isVibrating = false;
     }
   }
 
   // ──────────────────────────────────────────────
-  // 4️⃣ بروتوكول الاختراق الكامل (تحديث السيرفر + قفل التحصيل)
+  // 4️⃣ بروتوكول الاختراق الكامل
   // ──────────────────────────────────────────────
   public async triggerBreachProtocol(payload: BreachPayload): Promise<boolean> {
     try {
-      // 1. تشغيل الصوت والاهتزاز محلياً فوراً
       this.startEmergencySiren();
       this.startTacticalVibration();
 
-      // 2. تحديث جدول الجلسات وقفل الخروج فوراً (Hard Lock)
       if (supabase) {
         const { error } = await supabase
           .from('sessions')
@@ -128,7 +130,7 @@ class AlarmCascadeService {
   }
 
   // ──────────────────────────────────────────────
-  // 5️⃣ فحص أمان التحصيل (هل مسموح للسايس إنهاء الجلسة والدفع؟)
+  // 5️⃣ فحص أمان التحصيل
   // ──────────────────────────────────────────────
   public isCheckoutAllowed(session: { breach_reason?: string | null }): boolean {
     return !session?.breach_reason;

@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { useStore, setupRealtime, normalizePlate, normalizePhone, getServerNow } from './store';
 import { cn } from './utils/cn';
 
-// 🛡️ استيراد محركات الأمان الذكية والخدمات المميزة
+// 🛡️ استيراد محركات الأمان الذكية
 import { startDistanceTracking, requestLocationPermission } from './utils/distanceTracker';
 import { checkGeofence } from './utils/geofenceEngine';
 import { alarmCascade } from './utils/alarmCascadeEngine';
@@ -75,26 +75,7 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
 }
 
 /* ════════════════════════════════════════════════════════════
-   🛡️ PARK'N 24 BRAND LOGO (مستوحى من الشعار المرفق)
-   ════════════════════════════════════════════════════════════ */
-function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: number }) {
-  return (
-    <svg viewBox="0 0 100 115" width={width} height={height} fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M50 2 C78 2, 98 14, 98 26 C98 76, 75 104, 50 114 C25 104, 2 76, 2 26 C2 14, 22 2, 50 2 Z" fill="#1656b8" />
-      <path d="M50 8 C72 8, 90 18, 90 28 C90 70, 70 96, 50 105 C30 96, 10 70, 10 28 C10 18, 28 8, 50 8 Z" stroke="#ffffff" strokeWidth="2.5" fill="none" opacity="0.95" />
-      <path d="M26 30 H48 C60 30, 62 48, 48 48 H38 V78 H26 V30 Z M38 38 V40 H46 C48 40, 48 38, 46 38 Z" fill="#8cc63f" />
-      <path d="M64 30 A 10 10 0 1 1 58 44" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-      <polyline points="64 34, 64 40, 68 40" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-      <text x="69" y="52" fill="#ffffff" fontSize="9" fontWeight="900" fontFamily="sans-serif">24</text>
-      <path d="M58 64 L62 58 H74 L78 64 H80 C81.5 64 82 65 82 66.5 V72 H54 V66.5 C54 65 54.5 64 56 64 Z" fill="#ffffff" />
-      <circle cx="61" cy="72" r="2.2" fill="#1656b8" />
-      <circle cx="75" cy="72" r="2.2" fill="#1656b8" />
-    </svg>
-  );
-}
-
-/* ════════════════════════════════════════════════════════════
-   ☀️ PARK'N 24 HERO — FULL-SCREEN CINEMATIC BLEND (FIXED CACHE)
+   ☀️ PARK'N 24 HERO LANDING
    ════════════════════════════════════════════════════════════ */
 interface ParkLandingProps {
   onEnter: () => void;
@@ -399,34 +380,31 @@ export default function App() {
     return screen;
   }, [screen, currentUser]);
 
-  // تحديد الجلسة النشطة الحالية للمستخدم
+  // ✅ تحديد الجلسة النشطة بأقصى درجات الأمان وحماية ضد الـ undefined
   const activeUserSession = useMemo(() => {
     if (!currentUser) return null;
-    const userPlate = normalizePlate(currentUser.carPlate);
-    const userPhone = currentUser.phone ? normalizePhone(currentUser.phone) : '';
+    const userPlate = normalizePlate(currentUser?.carPlate || '');
+    const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
-    return sessions.find((s) => {
-      if (s.status !== 'active') return false;
-      const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-      const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+    return (sessions || []).find((s) => {
+      if (!s || s.status !== 'active') return false;
+      const samePlate = !!userPlate && normalizePlate(s?.carPlate || '') === userPlate;
+      const sPhone = (s as any)?.customerPhone ? normalizePhone((s as any).customerPhone) : '';
       return samePlate || Boolean(userPhone && sPhone === userPhone);
     });
   }, [sessions, currentUser]);
 
-  // ═══════════════════════════════════════════════════════
-  // 🛡️ تفعيل ميزة تتبع المسافة الحية حصرياً مع درع الأمان VIP
-  // ═══════════════════════════════════════════════════════
+  // 🛡️ تتبع درع الأمان والمسافة الحية
   useEffect(() => {
     if (!activeUserSession) {
       setRealtimeDistance(null);
       setGeofenceWarning(null);
       setIsSystemBreached(false);
       setActiveBreachReason(null);
-      alarmCascade.stopAlarm();
       return;
     }
 
-    // 1. مراقبة حدوث اختراق نشط للسيارة
+    // 1. مراقبة الاختراق
     if (activeUserSession.breach_reason) {
       setIsSystemBreached(true);
       setActiveBreachReason(activeUserSession.breach_reason);
@@ -438,7 +416,7 @@ export default function App() {
       alarmCascade.stopAlarm();
     }
 
-    // 2. ميزة المسافة الحقيقية الحصرية: لا تعمل نهائياً إلا إذا كان درع VIP مفعلاً
+    // 2. تتبع المسافة الحية فقط عند تفعيل الدرع
     if (activeUserSession.is_shield_active) {
       requestLocationPermission().then((granted) => {
         if (!granted) {
@@ -446,16 +424,13 @@ export default function App() {
           return;
         }
 
-        const carLat = activeUserSession.anchor_lat || activeUserSession.lat;
-        const carLng = activeUserSession.anchor_lng || activeUserSession.lng;
+        const carLat = activeUserSession.anchor_lat || (activeUserSession as any).lat;
+        const carLng = activeUserSession.anchor_lng || (activeUserSession as any).lng;
 
         if (carLat && carLng) {
-          // تشغيل رادار التتبع الفعلي المميز (تحديث حي كل 3 ثوانٍ)
           const stopTracking = startDistanceTracking(carLat, carLng, (reading) => {
-            // المسافة الحقيقية: 0م لو العميل بجوار السيارة مباشرة
             setRealtimeDistance(reading.displayText);
 
-            // فحص سياج الجراج الجغرافي 250م لمنع الابتعاد بالسرقة
             const geofence = checkGeofence(carLat, carLng, {
               name: "منطقة الأمان",
               lat: carLat,
@@ -476,17 +451,10 @@ export default function App() {
         }
       });
     } else {
-      // الخدمة مغلقة ومحجوبة تماماً عند إطفاء الدرع
       setRealtimeDistance(null);
       setGeofenceWarning(null);
     }
   }, [activeUserSession?.id, activeUserSession?.is_shield_active, activeUserSession?.breach_reason]);
-
-  useEffect(() => {
-    return () => {
-      alarmCascade.stopAlarm();
-    };
-  }, []);
 
   useEffect(() => {
     if (!dataLoaded) return;
@@ -567,26 +535,27 @@ export default function App() {
     }
   }, [view]);
 
+  // ✅ معالجة الحالات مع حماية ضد undefined
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser) return;
     if (view !== 'user') return;
 
-    const userPlate = normalizePlate(currentUser.carPlate);
-    const userPhone = currentUser.phone ? normalizePhone(currentUser.phone) : '';
+    const userPlate = normalizePlate(currentUser?.carPlate || '');
+    const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
-    const myActiveSession = sessions.find((s) => {
-      if (s.status !== 'active') return false;
-      const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-      const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+    const myActiveSession = (sessions || []).find((s) => {
+      if (!s || s.status !== 'active') return false;
+      const samePlate = !!userPlate && normalizePlate(s?.carPlate || '') === userPlate;
+      const sPhone = (s as any)?.customerPhone ? normalizePhone((s as any).customerPhone) : '';
       const samePhone = Boolean(userPhone && sPhone === userPhone);
       return samePlate || samePhone;
     });
 
-    const myIncoming = incomingCars.find((c) => {
-      if (c.status !== 'coming') return false;
-      const samePlate = !!userPlate && normalizePlate(c.carPlate) === userPlate;
-      const cPhone = c.customerPhone ? normalizePhone(c.customerPhone) : '';
+    const myIncoming = (incomingCars || []).find((c) => {
+      if (!c || c.status !== 'coming') return false;
+      const samePlate = !!userPlate && normalizePlate(c?.carPlate || '') === userPlate;
+      const cPhone = c?.customerPhone ? normalizePhone(c.customerPhone) : '';
       const samePhone = Boolean(userPhone && cPhone === userPhone);
       return samePlate || samePhone;
     });
@@ -620,11 +589,11 @@ export default function App() {
       safeScreen === 'navigation' ||
       safeScreen === 'waiting'
     ) {
-      const lastCompleted = sessions
+      const lastCompleted = (sessions || [])
         .filter((s) => {
-          if (s.status !== 'completed') return false;
-          const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-          const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+          if (!s || s.status !== 'completed') return false;
+          const samePlate = !!userPlate && normalizePlate(s?.carPlate || '') === userPlate;
+          const sPhone = (s as any)?.customerPhone ? normalizePhone((s as any).customerPhone) : '';
           const samePhone = Boolean(userPhone && sPhone === userPhone);
           return samePlate || samePhone;
         })
@@ -653,21 +622,21 @@ export default function App() {
     if (!dataLoaded) return;
     if (!currentUser || view !== 'user') return;
 
-    const userPlate = normalizePlate(currentUser.carPlate);
-    const userPhone = currentUser.phone ? normalizePhone(currentUser.phone) : '';
+    const userPlate = normalizePlate(currentUser?.carPlate || '');
+    const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
-    const myActiveSession = sessions.find((s) => {
-      if (s.status !== 'active') return false;
-      const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-      const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+    const myActiveSession = (sessions || []).find((s) => {
+      if (!s || s.status !== 'active') return false;
+      const samePlate = !!userPlate && normalizePlate(s?.carPlate || '') === userPlate;
+      const sPhone = (s as any)?.customerPhone ? normalizePhone((s as any).customerPhone) : '';
       const samePhone = Boolean(userPhone && sPhone === userPhone);
       return samePlate || samePhone;
     });
 
-    const myIncoming = incomingCars.find((c) => {
-      if (c.status !== 'coming') return false;
-      const samePlate = !!userPlate && normalizePlate(c.carPlate) === userPlate;
-      const cPhone = c.customerPhone ? normalizePhone(c.customerPhone) : '';
+    const myIncoming = (incomingCars || []).find((c) => {
+      if (!c || c.status !== 'coming') return false;
+      const samePlate = !!userPlate && normalizePlate(c?.carPlate || '') === userPlate;
+      const cPhone = c?.customerPhone ? normalizePhone(c.customerPhone) : '';
       const samePhone = Boolean(userPhone && cPhone === userPhone);
       return samePlate || samePhone;
     });
@@ -710,13 +679,13 @@ export default function App() {
       sessionTransitionTimer.current = setTimeout(() => {
         sessionTransitionTimer.current = null;
         const freshState = useStore.getState();
-        const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
+        const freshPlate = normalizePlate(freshState.currentUser?.carPlate || '');
         const freshPhone = freshState.currentUser?.phone ? normalizePhone(freshState.currentUser.phone) : '';
 
-        const stillActive = freshState.sessions.find((s) => {
-          if (s.status !== 'active') return false;
-          const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-          const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+        const stillActive = (freshState.sessions || []).find((s) => {
+          if (!s || s.status !== 'active') return false;
+          const samePlate = !!freshPlate && normalizePlate(s?.carPlate || '') === freshPlate;
+          const sPhone = (s as any)?.customerPhone ? normalizePhone((s as any).customerPhone) : '';
           const samePhone = Boolean(freshPhone && sPhone === freshPhone);
           return samePlate || samePhone;
         });
@@ -736,11 +705,11 @@ export default function App() {
           currentScreen === 'navigation' ||
           currentScreen === 'waiting'
         ) {
-          const lastCompleted = freshState.sessions
+          const lastCompleted = (freshState.sessions || [])
             .filter((s) => {
-              if (s.status !== 'completed') return false;
-              const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-              const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+              if (!s || s.status !== 'completed') return false;
+              const samePlate = !!freshPlate && normalizePlate(s?.carPlate || '') === freshPlate;
+              const sPhone = (s as any)?.customerPhone ? normalizePhone((s as any).customerPhone) : '';
               const samePhone = Boolean(freshPhone && sPhone === freshPhone);
               return samePlate || samePhone;
             })
@@ -769,21 +738,21 @@ export default function App() {
     if (!myActiveSession && safeScreen === 'navigation' && !myIncoming) {
       const timeout = setTimeout(() => {
         const freshState = useStore.getState();
-        const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
+        const freshPlate = normalizePlate(freshState.currentUser?.carPlate || '');
         const freshPhone = freshState.currentUser?.phone ? normalizePhone(freshState.currentUser.phone) : '';
 
-        const freshIncoming = freshState.incomingCars.find((c) => {
-          if (c.status !== 'coming') return false;
-          const samePlate = !!freshPlate && normalizePlate(c.carPlate) === freshPlate;
-          const cPhone = c.customerPhone ? normalizePhone(c.customerPhone) : '';
+        const freshIncoming = (freshState.incomingCars || []).find((c) => {
+          if (!c || c.status !== 'coming') return false;
+          const samePlate = !!freshPlate && normalizePlate(c?.carPlate || '') === freshPlate;
+          const cPhone = c?.customerPhone ? normalizePhone(c.customerPhone) : '';
           const samePhone = Boolean(freshPhone && cPhone === freshPhone);
           return samePlate || samePhone;
         });
 
-        const freshSession = freshState.sessions.find((s) => {
-          if (s.status !== 'active') return false;
-          const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-          const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+        const freshSession = (freshState.sessions || []).find((s) => {
+          if (!s || s.status !== 'active') return false;
+          const samePlate = !!freshPlate && normalizePlate(s?.carPlate || '') === freshPlate;
+          const sPhone = (s as any)?.customerPhone ? normalizePhone((s as any).customerPhone) : '';
           const samePhone = Boolean(freshPhone && sPhone === freshPhone);
           return samePlate || samePhone;
         });
@@ -823,7 +792,6 @@ export default function App() {
     return <InstallQRCodePage />;
   }
 
-  // حساب عمولة الجلسة (10 جنيه مناصفة) لعرضها في تفاصيل حماية الدرع
   const commissionDetails = useMemo(() => {
     return calculateSessionCommission();
   }, []);
@@ -832,7 +800,7 @@ export default function App() {
     <ErrorBoundary>
       {showLanding && <ParkLanding onEnter={handleEnterLanding} />}
 
-      {/* 🚨 وميض شاشة الإنذار الشامل باللون الأحمر (The Alarm Cascade Overlay) */}
+      {/* 🚨 وميض شاشة الإنذار الشامل باللون الأحمر */}
       <AnimatePresence>
         {isSystemBreached && (
           <motion.div
@@ -851,7 +819,7 @@ export default function App() {
             {activeUserSession && (
               <div className="bg-white/10 px-6 py-4 rounded-2xl mb-8">
                 <p className="text-sm opacity-80 font-bold">لوحة السيارة</p>
-                <p className="text-2xl font-black tracking-widest">{activeUserSession.carPlate}</p>
+                <p className="text-2xl font-black tracking-widest">{activeUserSession?.carPlate || '---'}</p>
               </div>
             )}
             <button
@@ -859,7 +827,7 @@ export default function App() {
                 alarmCascade.stopAlarm();
                 setIsSystemBreached(false);
               }}
-              className="bg-white text-red-600 font-black px-8 py-4 rounded-2xl text-sm active:scale-95 transition-all shadow-xl"
+              className="bg-white text-red-600 font-black px-8 py-4 rounded-2xl text-sm active:scale-95 transition-all shadow-xl cursor-pointer"
             >
               🔕 إيقاف التنبيه الصوتي مؤقتاً
             </button>
@@ -872,7 +840,7 @@ export default function App() {
           className="max-w-md mx-auto h-dvh bg-white text-slate-900 relative flex flex-col overflow-hidden"
           style={{ fontFamily: "'Cairo', 'Noto Sans Arabic', system-ui, sans-serif" }}
         >
-          {/* 🛡️ الهيدر الفاخر والمميز لدرع الأمان الحصري ورادار المسافة */}
+          {/* 🛡️ الهيدر الفاخر لدرع الأمان VIP ورادار المسافة */}
           {activeUserSession && activeUserSession.is_shield_active && (
             <div 
               className="w-full bg-gradient-to-r from-blue-700 via-indigo-800 to-blue-900 text-white px-4 py-3 flex flex-col gap-1 shadow-xl z-[999] border-b border-indigo-400/20" 
@@ -887,7 +855,6 @@ export default function App() {
                   </div>
                 </div>
                 
-                {/* ميزة رادار المسافة الحصري تظهر بفخامة هنا فقط لأن الدرع مفعّل */}
                 {realtimeDistance && (
                   <motion.div 
                     initial={{ scale: 0.9, opacity: 0 }}
@@ -905,7 +872,6 @@ export default function App() {
                 <p className="text-[10px] font-black text-yellow-300 animate-pulse">{geofenceWarning}</p>
               )}
 
-              {/* تفاصيل التسوية والعمولة والـ 10 جنيه */}
               <div className="flex justify-between items-center text-[9px] text-indigo-200 border-t border-white/10 pt-1 mt-1 font-bold">
                 <span>تأمين الركنة النشط: {commissionDetails.totalFee} ج</span>
                 <span>(مناصفة: {commissionDetails.appShare}ج للتطبيق + {commissionDetails.garageShare}ج للجراج)</span>
