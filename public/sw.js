@@ -1,5 +1,5 @@
-// ✅ رقم الـ Version - تم التحديث لـ v8 لإجبار المتصفحات على تحديث السيرفس ووركر فوراً
-const CACHE_NAME    = 'parknow-v8'; 
+// ✅ رقم الـ Version - تم التحديث لـ v9 لإجبار المتصفحات على تفعيل درع الأمان الفوري
+const CACHE_NAME    = 'parknow-v9'; 
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
 // ✅ منع تكرار نفس الإشعار خلال 3 ثوانٍ
@@ -11,7 +11,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting(); // تفعيل فوري بدون انتظار
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 Service Worker Installed (v8)');
+      console.log('📦 Service Worker Installed (v9 - VIP Security Shield)');
       return cache.addAll(STATIC_ASSETS);
     })
   );
@@ -64,7 +64,7 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// ─── 4. Push (استقبال الإشعار الفوري وإيقاظ الهاتف بنمط رنين قوي) ─────────
+// ─── 4. Push (استقبال الإشعار الفوري وإيقاظ الهاتف بأقصى قوة طوارئ) ─────────
 self.addEventListener('push', (event) => {
   let title     = '🚨 سيارة في الطريق إليك!';
   let body      = '🚗 تقترب سيارة جديدة من الجراج الآن، استعد!';
@@ -107,7 +107,7 @@ self.addEventListener('push', (event) => {
         plate = payload.data.carPlate || payload.data.car_plate;
       }
 
-      if (plate) {
+      if (plate && !tag.includes('breach')) {
         title = '🚨 سيارة في الطريق إليك!';
         body  = `🚗 رقم السيارة: ${plate} • استعد للاستقبال!`;
       }
@@ -116,12 +116,18 @@ self.addEventListener('push', (event) => {
     console.error('❌ Push parse error:', err);
   }
 
+  // فحص هل هذا الإشعار هو إنذار اختراق أمني أو محاولة سرقة (الطبقة 6)
+  const isSecurityBreach = 
+    extraData.type === 'security_breach' ||
+    (typeof tag === 'string' && tag.startsWith('security-breach')) ||
+    (typeof title === 'string' && (title.includes('إنذار سرقة') || title.includes('اختراق')));
+
   // منع التكرار اللحظي
   const dedupKey  = tag;
   const lastShown = recentNotifications.get(dedupKey);
   const now       = Date.now();
 
-  if (lastShown && (now - lastShown) < DEDUP_WINDOW_MS) {
+  if (lastShown && (now - lastShown) < DEDUP_WINDOW_MS && !isSecurityBreach) {
     return;
   }
 
@@ -131,26 +137,44 @@ self.addEventListener('push', (event) => {
     if (now - t > 30000) recentNotifications.delete(k);
   }
 
-  // 🚨 [نمط رنين مكالمة الهاتف العنيف]: اهتزاز متواصل 10 ثوانٍ لإيقاظ السايس في الشارع
+  // 🚨 تخصيص نمط الرنين والاهتزاز لأقصى حد في حالات الاختراق الأمني
+  let vibrationPattern = [
+    1000, 300, 1000, 300, 1000, 300,
+    1000, 300, 1000, 300, 1000, 300,
+    1200, 400, 1200
+  ];
+
+  let notificationActions = [
+    { action: 'open',    title: '🚗 فتح التطبيق فوراً' },
+    { action: 'dismiss', title: '✕ إغلاق'             },
+  ];
+
+  if (isSecurityBreach) {
+    // 🚨 نمط اهتزاز عنيف جداً ومزدوج لحالات السرقة (الطبقة 6)
+    vibrationPattern = [
+      1500, 100, 1500, 100, 1500, 100,
+      2000, 150, 2000, 150, 2500, 200,
+      3000
+    ];
+
+    notificationActions = [
+      { action: 'open',    title: '🚨 قفل البوابة فوراً' },
+      { action: 'dismiss', title: '✕ كتم'             },
+    ];
+  }
+
   const options = {
     body,
     icon,
     badge,
-    vibrate: [
-      1000, 300, 1000, 300, 1000, 300, // الرنة الأولى
-      1000, 300, 1000, 300, 1000, 300, // الرنة الثانية
-      1200, 400, 1200                  // رنة تأكيدية أخيرة
-    ],
-    requireInteraction: true,           // يظل معروضاً على شاشة القفل ولا يختفي حتى يفتحه السايس
-    tag: 'valet-urgent-alarm',         // تاغ موحد لإيقاظ الشاشة
+    vibrate: vibrationPattern,
+    requireInteraction: true,           // يظل معروضاً على شاشة القفل ولا يختفي حتى يتفاعل السايس
+    tag: isSecurityBreach ? 'security-breach-urgent' : 'valet-urgent-alarm',
     renotify: true,                    // يرن ويهتز حتى لو كان هناك إشعار سابق
     silent: false,
     timestamp: now,
     data: { url, ...extraData },
-    actions: [
-      { action: 'open',    title: '🚗 فتح التطبيق فوراً' },
-      { action: 'dismiss', title: '✕ إغلاق'             },
-    ],
+    actions: notificationActions,
   };
 
   event.waitUntil(

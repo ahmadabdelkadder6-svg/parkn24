@@ -6,11 +6,13 @@ import {
   Wallet,
   AlertTriangle,
   Gift,
+  ShieldCheck,
+  Sparkles,
 } from 'lucide-react';
 // 🌟 استيراد دوال البصمة الموحدة والتوقيت الدولي الموحد لضمان مطابقة دقيقة وخالية من تلاعب الثغرات
 import { useStore, pausePolling, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { calculateFullHours, calculateCost } from '../utils/pricing';
+import { calculateFullHours, calculateCost, calculateTotalCostWithShield } from '../utils/pricing';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 
@@ -88,14 +90,12 @@ export default function SummaryScreen() {
     if (paymentMode === 'wallet' || paymentMode === 'both') {
       list.push({ id: 'wallet' as const, label: 'خصم من المحفظة', icon: '👝' });
     }
-    // Fallback لو مفيش حاجة رجعت كاش افتراضي
     if (list.length === 0) {
       list.push({ id: 'cash' as const, label: 'سداد نقدي كاش', icon: '💵' });
     }
     return list;
   }, [paymentMode]);
 
-  // تحويل وتثبيت الاختيار تلقائياً بناءً على وضع الجراج
   useEffect(() => {
     if (paymentMode === 'cash') {
       setPaymentMethod('cash');
@@ -155,7 +155,7 @@ export default function SummaryScreen() {
     return () => {
       cancelled = true;
       document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', refetch);
+      window.removeEventListener('focus', handleFocus);
       if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
       if (realtimeChannelRef.current) {
         supabase.removeChannel(realtimeChannelRef.current);
@@ -173,7 +173,6 @@ export default function SummaryScreen() {
     const endMs = toMs(lastCompletedSession.endTime);
     if (!endMs) return;
 
-    // ✅ تم التعديل: حساب انتهاء الجلسة وفقاً لتوقيت السيرفر الموحد
     const timeSinceEnd = getServerNow() - endMs;
     if (timeSinceEnd > 10 * 60 * 1000) return;
 
@@ -207,24 +206,25 @@ export default function SummaryScreen() {
   const durationSeconds = referenceSession
     ? referenceSession.status === 'completed' && referenceSession.endTime
       ? Math.floor((toMs(referenceSession.endTime) - toMs(referenceSession.startTime)) / 1000)
-      : Math.floor((getServerNow() - toMs(referenceSession.startTime)) / 1000) // ✅ تم التعديل: حساب ثواني الجلسة بالتوقيت الموحد
+      : Math.floor((getServerNow() - toMs(referenceSession.startTime)) / 1000)
     : 0;
 
   const durationMinutes = Math.floor(durationSeconds / 60);
   const sessionRate = Number(referenceSession?.agreedPrice ?? garage?.basePrice ?? 0);
 
-  // 🌟 منطق حساب الـ 30 دقيقة المجانية
-  const isFirstFreeApplied = useMemo(() => {
-    return referenceSession?.isFirstFreeSession === true;
-  }, [referenceSession]);
+  // 🛡️ فحص هل كان درع VIP مفعّلاً
+  const isShield = referenceSession?.is_shield_active === true;
+  const isFirstFreeApplied = referenceSession?.isFirstFreeSession === true;
 
-  const isFreeNow = isFirstFreeApplied && durationSeconds <= 1800; // 30 دقيقة أو أقل
-  const billableHours = isFreeNow ? 0 : calculateFullHours(durationSeconds);
+  // 🛡️ الحسابات المالية الدقيقة مع درع الأمان VIP والـ 10 جنيه
+  const pricingSummary = useMemo(() => {
+    return calculateTotalCostWithShield(durationSeconds, sessionRate, isFirstFreeApplied, isShield);
+  }, [durationSeconds, sessionRate, isFirstFreeApplied, isShield]);
+
+  const isFreeNow = pricingSummary.isFree;
+  const billableHours = pricingSummary.paidHours;
   const freeMinutesApplied = isFreeNow ? Math.floor(durationSeconds / 60) : 0;
-
-  const originalPrice = useMemo(() => {
-    return calculateCost(durationSeconds, sessionRate);
-  }, [durationSeconds, sessionRate]);
+  const discountAmount = pricingSummary.savedAmount;
 
   const totalPrice = useMemo(() => {
     if (
@@ -233,10 +233,8 @@ export default function SummaryScreen() {
     ) {
       return Number(referenceSession.totalPrice);
     }
-    return isFreeNow ? 0 : calculateCost(durationSeconds, sessionRate);
-  }, [referenceSession, isFreeNow, durationSeconds, sessionRate]);
-
-  const discountAmount = isFreeNow ? originalPrice : 0;
+    return pricingSummary.totalCost;
+  }, [referenceSession, pricingSummary.totalCost]);
 
   const walletBalance = currentUser?.wallet ?? 0;
   const canPayWallet = walletBalance >= totalPrice;
@@ -362,16 +360,27 @@ export default function SummaryScreen() {
             {doneTotalPrice} ج.م
           </div>
           <div className="text-xs text-slate-400 mb-2">
-            {doneMethod === 'free' || isFreeNow ? (
+            {doneMethod === 'free' || (isFreeNow && !isShield) ? (
               <span>(تم ركن {durationMinutes} دقيقة مجاناً كهدية ترحيبية 🎁)</span>
             ) : (
-              <span>{billableHours} ساعة × {sessionRate} ج.م</span>
+              <span>
+                {billableHours} ساعة × {sessionRate} ج.م
+                {isShield ? ' + 10ج درع VIP' : ''}
+              </span>
             )}
           </div>
 
           {doneMethod === 'free' && discountAmount > 0 && (
             <div className="inline-block px-3 py-1 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-600 mb-2">
               🎁 وفرت {discountAmount} ج.م من العرض الترحيبي!
+            </div>
+          )}
+
+          {/* شارة درع VIP المميزة في شاشة الإتمام */}
+          {isShield && (
+            <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black bg-amber-50 text-amber-600 border border-amber-200 mb-2 mx-auto">
+              <ShieldCheck size={12} className="text-amber-500" />
+              <span>تمت حماية السيارة بدرع VIP بنجاح 👑</span>
             </div>
           )}
 
@@ -448,9 +457,10 @@ export default function SummaryScreen() {
         </motion.div>
       )}
 
+      {/* بطاقة تفاصيل التكلفة والحساب */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-4 shadow-sm">
         <div className="text-center mb-3">
-          {isFreeNow ? (
+          {isFreeNow && !isShield ? (
             <>
               <div className="text-4xl font-black text-emerald-600 font-mono mb-0.5">
                 0 ج.م
@@ -465,7 +475,7 @@ export default function SummaryScreen() {
               {totalPrice} ج.م
             </div>
           )}
-          <div className="text-[10px] text-slate-400 font-bold">إجمالي التكلفة الحالية</div>
+          <div className="text-[10px] text-slate-400 font-bold">إجمالي التكلفة المطلوبة</div>
         </div>
 
         <div className="bg-gray-50 rounded-xl p-3 border border-slate-100">
@@ -482,7 +492,7 @@ export default function SummaryScreen() {
             {isFreeNow && (
               <div className="flex justify-between text-xs text-emerald-600 font-bold">
                 <span className="flex items-center gap-1">🎁 خصم الهدية الترحيبية</span>
-                <span className="font-mono">مجاني بالكامل (أول 30 دقيقة)</span>
+                <span className="font-mono">ركن مجاني (أول 30 دقيقة)</span>
               </div>
             )}
 
@@ -497,6 +507,17 @@ export default function SummaryScreen() {
               <span className="text-slate-500">سعر الساعة</span>
               <span className="font-black text-purple-600 font-mono">{sessionRate} ج.م</span>
             </div>
+
+            {/* تفصيل رسوم درع الأمان VIP */}
+            {isShield && (
+              <div className="flex justify-between text-xs text-amber-600 font-bold border-t border-dashed border-amber-200 pt-1.5 mt-1.5">
+                <span className="flex items-center gap-1">
+                  <ShieldCheck size={13} className="text-amber-500" />
+                  تأمين درع الأمان VIP:
+                </span>
+                <span className="font-mono font-black">+ 10 ج.م</span>
+              </div>
+            )}
 
             {garage && sessionRate !== garage.basePrice && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-1.5 text-center">
@@ -607,7 +628,7 @@ export default function SummaryScreen() {
             </div>
           )}
 
-          {/* 🌟 زر التأكيد المرن */}
+          {/* زر التأكيد والدفع */}
           <button
             onClick={handleConfirm}
             disabled={totalPrice > 0 && paymentMethod === 'wallet' && !canPayWallet}

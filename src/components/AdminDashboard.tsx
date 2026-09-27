@@ -4,7 +4,8 @@ import {
   Shield, Clock, CheckCircle, XCircle, MapPin, Warehouse, Plus,
   MessageCircle, Send, Receipt, Search, HardHat, Percent, DollarSign,
   Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown,
-  Settings, CalendarDays, Navigation, Globe, X
+  Settings, CalendarDays, Navigation, Globe, X,
+  ShieldCheck, ShieldAlert, Activity, Sparkles
 } from 'lucide-react';
 // 🌟 استيراد المزامنة الأمنية ودوال الهوية الموحدة من الـ Store
 import { useStore, pausePolling, normalizePlate, normalizePhone, calculateBonus, getServerNow } from '../store';
@@ -27,6 +28,7 @@ const BRAND = {
   border: '#e2e8f0',     // الحدود الرمادية الهادئة
   card: '#ffffff',       // الكروت البيضاء النظيفة
   bg: '#f4f7fc',         // الخلفية العامة المريحة
+  gold: '#fbbf24',       // لون ذهبي VIP
 };
 
 /* ─── Helpers ─── */
@@ -124,8 +126,8 @@ export default function AdminDashboard() {
   const [gName, setGName] = useState('');
   const [gUser, setGUser] = useState('');
   const [gPhone, setGPhone] = useState('');
-  const [lat, setLat] = useState(30.04);
-  const [lng, setLng] = useState(31.23);
+  const [lat, setLat] = useState(30.0444);
+  const [lng, setLng] = useState(31.2357);
   
   // 🗺️ حالة المنطقة الجغرافية للجراج الجديد
   const [gArea, setGArea] = useState('وسط البلد');
@@ -156,7 +158,7 @@ export default function AdminDashboard() {
 
   useEffect(() => { fetchSettlements(); }, [fetchSettlements]);
 
-  /* ─── Revenue Calculation ─── */
+  /* ─── 🛡️ الحسابات المالية الذكية المتناغمة مع درع الأمان VIP ─── */
   const getRevenue = useCallback((s: any) => {
     if (s.totalPrice != null) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
@@ -168,19 +170,30 @@ export default function AdminDashboard() {
 
       // 🎁 الهدية الترحيبية: 30 دقيقة مجاناً
       const isFreeNow = s.isFirstFreeSession === true && elapsedSeconds <= 1800;
-      return isFreeNow ? 0 : calculateCost(elapsedSeconds, rate);
+      const baseCost = isFreeNow ? 0 : calculateCost(elapsedSeconds, rate);
+
+      // 🛡️ درع الأمان VIP: إضافة 10 ج.م على الفاتورة الإجمالية
+      const isShield = s.is_shield_active === true;
+      return isShield ? baseCost + 10 : baseCost;
     }
     return 0;
   }, [garages]);
 
   const getCommission = useCallback((s: any) => {
-    if (s.source !== 'app') return 0;
+    if (s.source !== 'app') return s.is_shield_active === true ? 5 : 0; // لو الجلسة يدوية والدرع مفعل، نصيب التطبيق 5ج
     const rev = getRevenue(s);
-    if (rev <= 0) return 0;
+    if (rev <= 0) return s.is_shield_active === true ? 5 : 0;
     const g = garages.find((ga: any) => ga.id === s.garageId);
     const rate = g?.commissionRate ?? 10;
-    const commission = (rev * rate) / 100;
-    return Math.round(commission * 100) / 100;
+    
+    // إزالة الـ 10 جنيه من الوعاء الضريبي/النسبة لحساب العمولة المئوية الأساسية أولاً
+    const isShield = s.is_shield_active === true;
+    const baseRev = isShield ? Math.max(0, rev - 10) : rev;
+    const baseCommission = (baseRev * rate) / 100;
+    
+    // إضافة الـ 5ج (حصة التطبيق للدرع) للعمولة الإجمالية
+    const finalCommission = isShield ? baseCommission + 5 : baseCommission;
+    return Math.round(finalCommission * 100) / 100;
   }, [garages, getRevenue]);
 
   const completedSessions = useMemo(() => sessions.filter(s => s.status === 'completed'), [sessions]);
@@ -211,7 +224,7 @@ export default function AdminDashboard() {
 
   const commissionStats = useMemo(() => {
     const confirmed = filteredSessions.filter(
-      s => s.revenueConfirmed && !(s as any).settled && s.source === 'app'
+      s => s.revenueConfirmed && !(s as any).settled
     );
     const totalCommission = confirmed.reduce((a, s) => a + getCommission(s), 0);
     const totalRevenue = confirmed.reduce((a, s) => a + getRevenue(s), 0);
@@ -231,7 +244,7 @@ export default function AdminDashboard() {
         commission: gCommission,
         netRevenue: gRevenue - gCommission,
         walletRevenue,
-        appCount: gs.length,
+        appCount: gs.filter(s => s.source === 'app').length,
         totalCount: gs.length,
         sessionIds,
       };
@@ -332,16 +345,13 @@ export default function AdminDashboard() {
   };
 
   const handleAdminEnterGarage = (g: typeof garages[0]) => {
-    // 1️⃣ تثبيت دور المالك المباشر لمنع مطالبة الأدمن بأي كلمات مرور للسياس
     localStorage.setItem('garageRole', 'owner');
     localStorage.removeItem('valetNumber');
     localStorage.removeItem('valetName');
     
-    // 2️⃣ ربط معرف الجراج المختار مباشرة في التخزين المحلي والـ Store لفتح البوابة فوراً
     localStorage.setItem('currentGarageId', g.id);
     setCurrentGarageId(g.id);
     
-    // 3️⃣ توجيه الرؤية فوراً لشاشة الجراج لتعرض لوحة التحكم مباشرة وبسلاسة
     setView('garage');
     
     toast.success(`👋 تم الدخول المباشر لإدارة جراج: ${g.name}`, {
@@ -689,7 +699,7 @@ export default function AdminDashboard() {
           className="text-center p-3 rounded-xl border" 
           style={{ background: BRAND.card, borderColor: BRAND.border }}
         >
-          <div className="text-[10px] font-bold" style={{ color: BRAND.slate }}>الإيرادات المؤكدة</div>
+          <div className="text-[10px] font-bold" style={{ color: BRAND.slate }}> can be confirmed</div>
           <div className="font-black font-mono text-lg mt-1" style={{ color: BRAND.blue }}>
             {totalsFromSessions.totalRevenueConfirmed.toFixed(0)} <span className="text-[10px] font-bold text-slate-400">ج.م</span>
           </div>
@@ -706,7 +716,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ══ Commission Card ══ */}
+      {/* ══ Commission Card (أرباح الأدمن من ركنات التطبيق ودرع VIP الجديد) ══ */}
       {commissionStats.totalCommission > 0 && (
         <>
           <div 
@@ -724,7 +734,7 @@ export default function AdminDashboard() {
               <span className="text-[9px] font-black mb-1 flex items-center gap-0.5 justify-center" style={{ color: '#d97706' }}>
                 <Percent size={10} /> عمولة التطبيق
               </span>
-              <span className="font-mono font-black text-sm" style={{ color: '#d97706' }}>
+              <span className="font-mono font-black text-sm animate-pulse" style={{ color: '#d97706' }}>
                 {commissionStats.totalCommission.toFixed(0)} <span className="text-[9px] font-bold">ج</span>
               </span>
             </div>
@@ -1141,13 +1151,15 @@ export default function AdminDashboard() {
               const time = et ? new Date(et) : null;
               const isDel = deleteConfirmId === session.id;
               const isSettled = (session as any)?.settled === true;
+              const isShield = session.is_shield_active === true;
+              
               return (
                 <div 
                   key={session.id} 
                   className="border"
                   style={{ 
                     background: isDel ? '#fef2f2' : isSettled ? BRAND.bg : session.revenueConfirmed ? BRAND.greenLight : BRAND.blueSoft, 
-                    borderColor: isDel ? '#fca5a5' : isSettled ? BRAND.border : session.revenueConfirmed ? BRAND.green : BRAND.border, 
+                    borderColor: isDel ? '#fca5a5' : isShield ? BRAND.gold : isSettled ? BRAND.border : session.revenueConfirmed ? BRAND.green : BRAND.border, 
                     borderRadius: 18, 
                     padding: 14,
                     opacity: isSettled ? 0.75 : 1 
@@ -1155,15 +1167,17 @@ export default function AdminDashboard() {
                 >
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-mono font-black text-sm" style={{ color: session.revenueConfirmed ? BRAND.greenDark : '#d97706' }}>{Number(rev || 0).toFixed(0)} ج.م</span>
+                      <span className="font-mono font-black text-sm animate-pulse" style={{ color: isShield ? BRAND.gold : session.revenueConfirmed ? BRAND.greenDark : '#d97706' }}>{Number(rev || 0).toFixed(0)} ج.م</span>
                       {[
-                        { show: true, bg: session.source === 'manual' ? '#f59e0b' : BRAND.blue, text: session.source === 'manual' ? 'يدوي' : 'تطبيق' },
+                        { show: isShield, bg: BRAND.gold, text: '🛡️ درع VIP', color: '#000' },
+                        { show: session.source === 'manual', bg: '#f59e0b', text: 'يدوي' },
+                        { show: session.source === 'app', bg: BRAND.blue, text: 'تطبيق' },
                         { show: !!session.paymentMethod, bg: BRAND.navy, text: session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستا' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش' },
                         { show: true, bg: session.revenueConfirmed ? BRAND.green : '#f59e0b', text: session.revenueConfirmed ? '✅ مؤكد' : '⏳ معلق' },
                         { show: isSettled, bg: BRAND.slateMuted, text: '🔒 تمت التسوية' },
                         { show: session.isFirstFreeSession === true, bg: '#c2410c', text: rev === 0 ? '🎁 ركن مجاني' : '🎁 بونص منتهي' } 
                       ].filter(b => b.show).map((b, i) => (
-                        <span key={i} className="font-black text-[8px] px-1.5 py-0.5 rounded text-white" style={{ background: b.bg }}>{b.text}</span>
+                        <span key={i} className="font-black text-[8px] px-1.5 py-0.5 rounded text-white animate-pulse" style={{ background: b.bg, color: b.color || '#fff' }}>{b.text}</span>
                       ))}
                     </div>
                     <div className="text-right">
@@ -1171,6 +1185,14 @@ export default function AdminDashboard() {
                       <div className="text-[9px] font-bold" style={{ color: BRAND.slateMuted }}>{g?.name || '—'}</div>
                     </div>
                   </div>
+
+                  {/* تفاصيل حصة درع الأمان VIP للأدمن والجراج في الفاتورة */}
+                  {isShield && (
+                    <div className="mb-2 p-2 rounded-xl border bg-gradient-to-r from-amber-500/5 to-transparent text-[9.5px] font-bold text-amber-600 flex justify-between items-center" style={{ borderColor: BRAND.gold + '30' }}>
+                      <span>تأمين درع الأمان VIP مفعّل 🛡️</span>
+                      <span>مناصفة: 5ج للتطبيق + 5ج للجراج 🤝</span>
+                    </div>
+                  )}
 
                   {session.source === 'app' && comm > 0 && (
                     <div className="flex items-center gap-2 mb-2 p-1.5 rounded-lg border bg-white" style={{ borderColor: BRAND.border }}>

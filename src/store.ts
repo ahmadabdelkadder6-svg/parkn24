@@ -55,6 +55,17 @@ export interface ParkingSession {
   settled_at?: string;
   freeMinutesApplied?: number;
   isFirstFreeSession?: boolean;
+  
+  // 🛡️ حقول درع الحماية والنبضات الفيزيائية المضافة حديثاً لقاعدة البيانات
+  slot_id?: string;               // رقم المربع
+  anchor_lat?: number;           // نقطة مرساة العرض الأصلية
+  anchor_lng?: number;           // نقطة مرساة الطول الأصلية
+  is_shield_active?: boolean;    // هل درع VIP فعال للجلسة؟
+  ble_device_id?: string;        // بصمة كاسيت/شاحن بلوتوث السيارة
+  magnetic_baseline?: number;    // البصمة المغناطيسية المسجلة
+  echo_signature?: number;       // بصمة صدى صوت الصاج
+  breach_reason?: string | null; // سبب الاختراق الأمني إن وجد
+  last_security_ping?: string;   // آخر نبضة فحص أمني ناجحة
 }
 
 export interface Offer {
@@ -257,24 +268,15 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-// 🛡️ دالة البصمة الفولاذية الموحدة لجميع لوحات السيارات (تمنع التحايل ومطابقة لقاعدة البيانات القديمة 100%)
 export const getPlateFingerprint = (plate?: any): string => {
   if (!plate) return '';
   let str = String(plate).trim();
 
-  // 1️⃣ إزالة المسافات الصامتة والفواصل الخفية ورموز الـ Unicode الخاصة
   str = str.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '');
-
-  // 2️⃣ إزالة التطويل والكشيدة (ـ) والتشكيل والتنوين
   str = str.replace(/\u0640/g, '');
-
-  // 3️⃣ تفكيك الـ Unicode لتوحيد الحروف المركبة (NFKD Normalization)
   str = str.normalize('NFKD');
-
-  // 4️⃣ حذف الهمزات وعلامات التشكيل بعد التفكيك
   str = str.replace(/[\u064B-\u065F\u0670\u0654\u0655\u0653]/g, '');
 
-  // 5️⃣ تحويل كافة الأرقام الهندية والشرقية (١٢٣ / ۱۲۳) إلى أرقام عادية (123)
   const easternDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
   const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
   for (let i = 0; i <= 9; i++) {
@@ -282,7 +284,6 @@ export const getPlateFingerprint = (plate?: any): string => {
     str = str.split(persianDigits[i]).join(String(i));
   }
 
-  // 6️⃣ تحويل الحروف الإنجليزية إلى عربية في حال حاول كتابتها بالإنجليزية
   str = str.toUpperCase();
   const enToAr: Record<string, string> = {
     'A': 'ا', 'B': 'ب', 'C': 'س', 'D': 'د', 'E': 'ي', 'F': 'ف',
@@ -293,23 +294,12 @@ export const getPlateFingerprint = (plate?: any): string => {
   };
   str = str.replace(/[A-Z]/g, (ch) => enToAr[ch] || '');
 
-  // 7️⃣ توحيد الحروف المتشابهة لقطع أي محاولة تلاعب
-  // تحويل كافة أشكال الألف والهمزات (أ / إ / آ / ٱ / ا) إلى حرف "ا" موحد
   str = str.replace(/[\u0622\u0623\u0625\u0671\u0672\u0673\u0675\u0627]/g, 'ا');
-
-  // توحيد الهمزات المنفصلة وعلى الياء والواو (ء / ئ / ؤ)
   str = str.replace(/[ءئ]/g, 'ي').replace(/ؤ/g, 'و');
-
-  // توحيد التاء المربوطة بالهاء (ة -> ه)
   str = str.replace(/ة/g, 'ه');
-
-  // توحيد الألف المقصورة بالياء (ى -> ي)
   str = str.replace(/[ىی]/g, 'ي');
-
-  // توحيد الكاف الفارسية والمعربة (ک / گ -> ك)
   str = str.replace(/[کگ]/g, 'ك');
 
-  // 8️⃣ عزل الحروف الصافية والأرقام
   const letters = str.replace(/[^ا-ي]/g, '');
   const digits = str.replace(/[^0-9]/g, '');
 
@@ -317,7 +307,6 @@ export const getPlateFingerprint = (plate?: any): string => {
   if (!letters) return `_${digits}`;
   if (!digits) return `${letters}_`;
 
-  // 🌟 إرجاع البصمة بالشرطة السفلية لضمان مطابقة الـ Database القديمة والجديدة فوراً!
   return `${letters}_${digits}`;
 };
 
@@ -325,25 +314,20 @@ export const normalizePlate = (plate?: any): string => {
   return getPlateFingerprint(plate);
 };
 
-// 📱 دالة تنظيف وتوحيد رقم الهاتف المصري
 export const normalizePhone = (phone?: any): string => {
   if (!phone) return '';
   let str = String(phone).trim();
 
-  // تحويل الأرقام الهندية/الشرقية (٠-٩) إلى أرقام إنجليزية (0-9)
   const arabicNums = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
   for (let i = 0; i < 10; i++) {
     str = str.replace(new RegExp(arabicNums[i], 'g'), String(i));
   }
 
-  // إزالة أي رموز أو حروف ومسافات
   let clean = str.replace(/[^\d]/g, '');
 
-  // إزالة كود مصر الدولي (+20 أو 0020 أو 20) إن وجد
   if (clean.startsWith('0020')) clean = clean.substring(4);
   else if (clean.startsWith('20')) clean = clean.substring(2);
 
-  // لو المستخدم بدأ بـ 10 أو 11 أو 12 أو 15 مباشرة (بدون الصفر الأول) بنضيف الصفر تلقائياً
   if ((clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('12') || clean.startsWith('15')) && clean.length === 10) {
     clean = '0' + clean;
   }
@@ -351,10 +335,8 @@ export const normalizePhone = (phone?: any): string => {
   return clean.substring(0, 11);
 };
 
-// 🇪🇬 دالة فحص صارمة للتأكد أن الرقم مصري صحيح (11 رقم ويبدأ بـ 010 / 011 / 012 / 015)
 export const isValidEgyptianPhone = (phone: string): boolean => {
   const clean = normalizePhone(phone);
-  // فحص: 11 رقم، يبدأ بـ 01، ثم يليه (0 أو 1 أو 2 أو 5)، ثم 8 أرقام
   return /^01[0125][0-9]{8}$/.test(clean);
 };
 
@@ -407,7 +389,6 @@ export const getServerNow = (): number => {
   return Date.now() + serverTimeOffset;
 };
 
-// تشغيل المزامنة المبدئية فوراً
 syncServerClock();
 
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
@@ -511,6 +492,17 @@ const mapSession = (r: any): ParkingSession => {
     settled_at: r.settled_at || undefined,
     freeMinutesApplied: r.free_minutes_applied != null ? Number(r.free_minutes_applied) : 0,
     isFirstFreeSession: isFree,
+    
+    // 🛡️ رسم وتعديل قيم درع الأمان VIP في المزامنة مع قاعدة البيانات
+    slot_id: r.slot_id || undefined,
+    anchor_lat: r.anchor_lat != null ? Number(r.anchor_lat) : undefined,
+    anchor_lng: r.anchor_lng != null ? Number(r.anchor_lng) : undefined,
+    is_shield_active: r.is_shield_active === true,
+    ble_device_id: r.ble_device_id || undefined,
+    magnetic_baseline: r.magnetic_baseline != null ? Number(r.magnetic_baseline) : undefined,
+    echo_signature: r.echo_signature != null ? Number(r.echo_signature) : undefined,
+    breach_reason: r.breach_reason || null,
+    last_security_ping: r.last_security_ping || undefined,
   };
 };
 
@@ -613,6 +605,12 @@ interface AppState {
   confirmRevenue: (sessionId: string, addedBy?: string) => Promise<void>;
   unconfirmRevenue: (sessionId: string) => Promise<void>;
   assignSessionToValet: (sessionId: string, valetName: string) => Promise<void>;
+  
+  // 🛡️ توابع درع الأمان VIP المضافة حديثاً للمتجر
+  toggleShield: (sessionId: string, active: boolean, anchorLat?: number, anchorLng?: number, magneticBaseline?: number, echoSignature?: number, bleDeviceId?: string) => Promise<void>;
+  triggerSessionBreach: (sessionId: string, reason: string) => Promise<void>;
+  clearSessionBreach: (sessionId: string) => Promise<void>;
+  
   offers: Offer[];
   addOffer: (o: Omit<Offer, 'id' | 'timestamp'>) => void;
   updateOffer: (id: string, status: Offer['status'], counterPrice?: number) => void;
@@ -977,6 +975,17 @@ export const useStore = create<AppState>((set, get) => ({
               settled_at: ss.settled_at || localVersion.settled_at,
               isFirstFreeSession: ss.isFirstFreeSession ?? localVersion.isFirstFreeSession,
               freeMinutesApplied: ss.freeMinutesApplied ?? localVersion.freeMinutesApplied,
+              
+              // 🛡️ مزامنة الطبقة الأمنية
+              slot_id: ss.slot_id || localVersion.slot_id,
+              anchor_lat: ss.anchor_lat || localVersion.anchor_lat,
+              anchor_lng: ss.anchor_lng || localVersion.anchor_lng,
+              is_shield_active: ss.is_shield_active ?? localVersion.is_shield_active,
+              ble_device_id: ss.ble_device_id || localVersion.ble_device_id,
+              magnetic_baseline: ss.magnetic_baseline || localVersion.magnetic_baseline,
+              echo_signature: ss.echo_signature || localVersion.echo_signature,
+              breach_reason: ss.breach_reason || localVersion.breach_reason,
+              last_security_ping: ss.last_security_ping || localVersion.last_security_ping,
             };
           }
           if (localVersion.totalPrice != null && localVersion.totalPrice > 0) return localVersion;
@@ -1244,6 +1253,10 @@ export const useStore = create<AppState>((set, get) => ({
         settled: false,
         isFirstFreeSession: eligibleForFree,
         freeMinutesApplied: 0,
+        
+        // حقول الدرع المبدئية
+        is_shield_active: false,
+        breach_reason: null,
       };
 
       set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]) }));
@@ -1263,7 +1276,7 @@ export const useStore = create<AppState>((set, get) => ({
           revenue_confirmed: false,
           added_by: addedByValue,
           customer_phone: cleanPhone || null,
-          customer_name: (s as any).customerName || null,
+          customer_name: (s as any).customer_name || null,
           incoming_car_id: (s as any).incoming_car_id || null,
           started_by: (s as any).startedBy || null,
           commission_amount: 0,
@@ -1271,6 +1284,8 @@ export const useStore = create<AppState>((set, get) => ({
           settled: false,
           is_first_free_session: eligibleForFree,
           free_minutes_applied: 0,
+          is_shield_active: false,
+          breach_reason: null,
         }).select().single();
 
         if (error) {
@@ -1312,7 +1327,6 @@ export const useStore = create<AppState>((set, get) => ({
     pausePolling(2000);
 
     try {
-      const safeTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
       const garage = get().garages.find((g) => g.id === session.garageId);
       
       if (garage && garage.payment_mode) {
@@ -1324,12 +1338,31 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
 
+      // 💰 حساب تسوية الـ 10 جنيه مناصفة لخدمة درع الأمان VIP الذكي
+      let shieldAddOnCommission = 0; // نصيب التطبيق (5ج)
+      let shieldAddOnNet = 0;        // نصيب الجراج (5ج)
+      let shieldPriceOffset = 0;     // إجمالي رسوم الخدمة (10ج)
+
+      if (session.is_shield_active) {
+        shieldPriceOffset = 10;
+        shieldAddOnCommission = 5;
+        shieldAddOnNet = 5;
+      }
+
+      // القيمة الإجمالية شاملة الـ 10ج الإضافية إن كان الدرع VIP مفعل
+      const baseSessionPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
+      const safeTotalPrice = baseSessionPrice + shieldPriceOffset;
+
       const commissionRate = garage?.commissionRate ?? 10;
       const isAppSession = session.source === 'app';
+      
+      // دمج العمولة المئوية القديمة للجراج مع رسوم التطبيق للدرع (5ج)
       const commissionAmount = isAppSession
-        ? Math.round(((safeTotalPrice * commissionRate) / 100) * 100) / 100
-        : 0;
-      const netRevenue = Math.round((safeTotalPrice - commissionAmount) * 100) / 100;
+        ? Math.round(((baseSessionPrice * commissionRate) / 100) * 100) / 100 + shieldAddOnCommission
+        : shieldAddOnCommission;
+
+      // دمج صافي ربح الجراج القديم مع حصة الجراج للدرع (5ج)
+      const netRevenue = Math.round((baseSessionPrice - (isAppSession ? (baseSessionPrice * commissionRate) / 100 : 0)) * 100) / 100 + shieldAddOnNet;
 
       const isAutoConfirmed = paymentMethod === 'wallet';
       const finalAddedBy = resolveAddedBy(addedBy ?? session.addedBy);
@@ -1472,6 +1505,106 @@ export const useStore = create<AppState>((set, get) => ({
       if (error) console.error('❌ assignSessionToValet error:', error);
     } catch (err) {
       console.error('❌ assignSessionToValet unexpected error:', err);
+    }
+  },
+
+  // 🛡️ دالة تنشيط وتعطيل درع الأمان VIP وتثبيت البصمة الفيزيائية والمغناطيسية
+  toggleShield: async (sessionId, active, anchorLat, anchorLng, magneticBaseline, echoSignature, bleDeviceId) => {
+    set((st) => ({
+      sessions: st.sessions.map((s) =>
+        s.id === sessionId
+          ? {
+              ...s,
+              is_shield_active: active,
+              anchor_lat: anchorLat ?? s.anchor_lat,
+              anchor_lng: anchorLng ?? s.anchor_lng,
+              magnetic_baseline: magneticBaseline ?? s.magnetic_baseline,
+              echo_signature: echoSignature ?? s.echo_signature,
+              ble_device_id: bleDeviceId ?? s.ble_device_id,
+              breach_reason: active ? null : s.breach_reason, // مسح أسباب الاختراق عند إلغاء الحماية
+            }
+          : s
+      ),
+    }));
+
+    if (!isSupabaseConfigured()) return;
+
+    const dbUpdates: Record<string, any> = {
+      is_shield_active: active,
+    };
+    if (anchorLat !== undefined) dbUpdates.anchor_lat = anchorLat;
+    if (anchorLng !== undefined) dbUpdates.anchor_lng = anchorLng;
+    if (magneticBaseline !== undefined) dbUpdates.magnetic_baseline = magneticBaseline;
+    if (echoSignature !== undefined) dbUpdates.echo_signature = echoSignature;
+    if (bleDeviceId !== undefined) dbUpdates.ble_device_id = bleDeviceId;
+    if (!active) dbUpdates.breach_reason = null; // مسح الاختراق عند إيقاف الدرع
+
+    try {
+      const { error } = await supabase
+        .from('sessions')
+        .update(dbUpdates)
+        .eq('id', sessionId);
+
+      if (error) {
+        console.error('❌ Failed to update shield status in DB:', error);
+      }
+    } catch (err) {
+      console.error('❌ Shield database update unexpected error:', err);
+    }
+  },
+
+  // 🛡️ دالة رصد وإطلاق الاختراق الأمني والإنذار بالسرقة (Breach Confirmation)
+  triggerSessionBreach: async (sessionId, reason) => {
+    set((st) => ({
+      sessions: st.sessions.map((s) =>
+        s.id === sessionId
+          ? { ...s, breach_reason: reason, last_security_ping: new Date().toISOString() }
+          : s
+      ),
+    }));
+
+    if (!isSupabaseConfigured()) return;
+
+    try {
+      const { error } = await supabase
+        .from('sessions')
+        .update({
+          breach_reason: reason,
+          last_security_ping: new Date().toISOString(),
+        })
+        .eq('id', sessionId);
+
+      if (error) {
+        console.error('❌ Failed to save breach status in DB:', error);
+      }
+    } catch (err) {
+      console.error('❌ Breach database trigger unexpected error:', err);
+    }
+  },
+
+  // 🛡️ دالة فك حظر الجلسة ومسح الاختراق والعودة للوضع الطبيعي
+  clearSessionBreach: async (sessionId) => {
+    set((st) => ({
+      sessions: st.sessions.map((s) =>
+        s.id === sessionId ? { ...s, breach_reason: null } : s
+      ),
+    }));
+
+    if (!isSupabaseConfigured()) return;
+
+    try {
+      const { error } = await supabase
+        .from('sessions')
+        .update({
+          breach_reason: null,
+        })
+        .eq('id', sessionId);
+
+      if (error) {
+        console.error('❌ Failed to clear breach status in DB:', error);
+      }
+    } catch (err) {
+      console.error('❌ Clear breach database unexpected error:', err);
     }
   },
 

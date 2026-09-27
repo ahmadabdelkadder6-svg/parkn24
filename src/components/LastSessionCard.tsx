@@ -11,6 +11,8 @@ import {
   Receipt,
   Gift,
   CheckCircle2,
+  ShieldCheck,
+  Sparkles,
 } from 'lucide-react';
 // 🌟 استيراد دوال البصمة والتوقيت الموحد من الـ store لضمان مطابقة اللوحات والأرقام بدقة 100%
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
@@ -30,6 +32,7 @@ const BRAND = {
   slate: '#64748b',      // الرمادي الهادئ
   slateMuted: '#94a3b8', // الرمادي الباهت
   border: 'rgba(255, 255, 255, 0.08)', // حدود زجاجية رفيعة
+  gold: '#fbbf24',       // لون ذهبي لدرع VIP
 };
 
 const toMs = (value: any): number => {
@@ -72,11 +75,14 @@ export default function LastSessionCard() {
   const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);
   const totalMinutes = Math.floor(elapsedSeconds / 60);
 
+  // 🛡️ فحص هل كان درع الأمان VIP مفعلاً في هذه الجلسة
+  const isShield = lastSession.is_shield_active === true;
+
   // 🎁 [منطق الهدية الترحيبية]: أول 30 دقيقة مجانية (1800 ثانية)
   const isFirstFreeApplied = lastSession.isFirstFreeSession === true;
   
   const isFree = isFirstFreeApplied && (
-    lastSession.totalPrice === 0 ||
+    lastSession.totalPrice === (isShield ? 10 : 0) ||
     lastSession.paymentMethod === 'free' ||
     (lastSession.totalPrice == null && elapsedSeconds <= 1800)
   );
@@ -87,7 +93,7 @@ export default function LastSessionCard() {
   const cost =
     lastSession.totalPrice != null
       ? Number(lastSession.totalPrice)
-      : (isFree ? 0 : rawCost);
+      : (isFree ? (isShield ? 10 : 0) : rawCost + (isShield ? 10 : 0));
 
   const startDate = new Date(startTime);
   const endDate = new Date(endTime);
@@ -125,7 +131,7 @@ export default function LastSessionCard() {
     }
   };
 
-  const paymentInfo = getPaymentInfo(isFree ? 'free' : lastSession.paymentMethod);
+  const paymentInfo = getPaymentInfo(isFree && !isShield ? 'free' : lastSession.paymentMethod);
 
   const sourceInfo =
     lastSession.source === 'app'
@@ -156,14 +162,16 @@ export default function LastSessionCard() {
         className="rounded-3xl p-4.5 text-white relative overflow-hidden border"
         style={{
           background: BRAND.navy,
-          borderColor: BRAND.border,
-          boxShadow: '0 8px 30px rgba(10, 22, 40, 0.12)',
+          borderColor: isShield ? BRAND.gold : BRAND.border,
+          boxShadow: isShield 
+            ? '0 8px 30px rgba(251, 191, 36, 0.15)' 
+            : '0 8px 30px rgba(10, 22, 40, 0.12)',
         }}
       >
         {/* لمسة إضاءة ناعمة في الزاوية */}
         <div 
           className="absolute -top-12 -right-12 w-32 h-32 rounded-full pointer-events-none"
-          style={{ background: `${BRAND.blue}18`, filter: 'blur(30px)' }} 
+          style={{ background: isShield ? 'rgba(251, 191, 36, 0.12)' : `${BRAND.blue}18`, filter: 'blur(30px)' }} 
         />
 
         {/* الجراج ورقم السيارة والبصمة */}
@@ -181,12 +189,28 @@ export default function LastSessionCard() {
           </div>
 
           <div className="flex items-center gap-1 flex-wrap justify-end">
+            {/* شارة درع الأمان VIP المميزة */}
+            {isShield && (
+              <span
+                className="text-[9px] px-2 py-0.5 rounded-lg font-black flex items-center gap-1 border animate-pulse"
+                style={{
+                  background: 'rgba(251, 191, 36, 0.15)',
+                  color: BRAND.gold,
+                  borderColor: 'rgba(251, 191, 36, 0.35)',
+                }}
+              >
+                <ShieldCheck size={10} className="text-amber-400" />
+                درع VIP مفعّل 👑
+              </span>
+            )}
+
             <span
               className="text-[9px] px-2 py-0.5 rounded-lg font-black"
               style={{ background: sourceInfo.bg, color: sourceInfo.color }}
             >
               {sourceInfo.label}
             </span>
+
             {isFirstFreeApplied && (
               <span 
                 className="text-[9px] px-2 py-0.5 rounded-lg font-black flex items-center gap-1 border"
@@ -218,7 +242,7 @@ export default function LastSessionCard() {
             <span
               className="font-mono text-4xl font-black leading-none"
               style={{
-                color: isFree ? BRAND.green : '#ffffff',
+                color: isFree && !isShield ? BRAND.green : '#ffffff',
                 letterSpacing: '-1px',
               }}
             >
@@ -226,7 +250,7 @@ export default function LastSessionCard() {
             </span>
             <span
               className="text-sm font-black"
-              style={{ color: isFree ? BRAND.green : BRAND.slateMuted }}
+              style={{ color: isFree && !isShield ? BRAND.green : BRAND.slateMuted }}
             >
               ج.م
             </span>
@@ -245,6 +269,20 @@ export default function LastSessionCard() {
               ⏰ انتهت أول 30 دقيقة وتم حساب الوقت الإضافي
             </div>
           ) : null}
+
+          {/* تفاصيل خدمة درع الأمان VIP إن وجدت */}
+          {isShield && (
+            <div 
+              className="mt-3 pt-2 border-t flex items-center justify-between text-[10px] font-bold"
+              style={{ borderColor: 'rgba(255,255,255,0.08)' }}
+            >
+              <span className="flex items-center gap-1 text-amber-300">
+                <Sparkles size={11} className="text-yellow-400" />
+                تأمين درع الأمان VIP:
+              </span>
+              <span className="font-mono font-black text-amber-400">+ 10 ج.م</span>
+            </div>
+          )}
         </div>
 
         {/* شبكة تفاصيل الوقت والساعات والسعر */}

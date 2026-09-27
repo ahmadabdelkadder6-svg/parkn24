@@ -11,6 +11,7 @@ import {
   Gift,
   Sparkles,
   CheckCircle2,
+  ShieldCheck,
 } from 'lucide-react';
 // 🌟 استيراد دوال البصمة والتوقيت الموحد من الـ store لضمان مطابقة البيانات بدقة 100%
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
@@ -33,6 +34,7 @@ const BRAND = {
   slate: '#64748b',      // الرمادي الهادئ
   slateMuted: '#94a3b8', // الرمادي الباهت
   border: 'rgba(255, 255, 255, 0.08)', // حدود زجاجية رفيعة
+  gold: '#fbbf24',       // لون ذهبي لدرع VIP
 };
 
 /* ─── Helper: توحيد تحويل الوقت من أي مصدر ─── */
@@ -156,11 +158,14 @@ export default function LastSessionScreen() {
   const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);
   const totalMinutes = Math.floor(elapsedSeconds / 60);
 
+  // 🛡️ فحص هل كان درع الأمان VIP مفعلاً
+  const isShield = lastSession.is_shield_active === true;
+
   // 🎁 [منطق الهدية]: التحقق مما إذا كانت الجلسة مجانية
   const isFirstFreeApplied = lastSession.isFirstFreeSession === true;
   
   const isFree = isFirstFreeApplied && (
-    lastSession.totalPrice === 0 ||
+    lastSession.totalPrice === (isShield ? 10 : 0) ||
     lastSession.paymentMethod === 'free' ||
     (lastSession.totalPrice == null && elapsedSeconds <= 1800)
   );
@@ -171,7 +176,7 @@ export default function LastSessionScreen() {
   const cost =
     lastSession.totalPrice != null
       ? Number(lastSession.totalPrice)
-      : (isFree ? 0 : rawCost);
+      : (isFree ? (isShield ? 10 : 0) : rawCost + (isShield ? 10 : 0));
 
   const savedAmount = isFree ? rawCost : 0;
 
@@ -234,7 +239,7 @@ export default function LastSessionScreen() {
     }
   };
 
-  const paymentInfo = getPaymentInfo(isFree ? 'free' : lastSession.paymentMethod);
+  const paymentInfo = getPaymentInfo(isFree && !isShield ? 'free' : lastSession.paymentMethod);
 
   const sourceInfo =
     lastSession.source === 'app'
@@ -253,7 +258,7 @@ export default function LastSessionScreen() {
 ⏰ وقت الدخول: ${formatTimeOnly(startDate)}
 ⏰ وقت الخروج: ${formatTimeOnly(endDate)}
 ⏱️ المدة الكلية: ${totalMinutes} دقيقة
-${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أول 30 دقيقة - وفرت ${savedAmount.toFixed(0)} ج.م)\n` : `⏱️ الساعات المحسوبة: ${billableHours} ساعة\n`}━━━━━━━━━━━━━━━━━━
+${isShield ? `🛡️ درع الأمان VIP: مفعّل ومؤمّن (+10 ج.م)\n` : ''}${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أول 30 دقيقة - وفرت ${savedAmount.toFixed(0)} ج.م)\n` : `⏱️ الساعات المحسوبة: ${billableHours} ساعة\n`}━━━━━━━━━━━━━━━━━━
 💰 سعر الساعة: ${rate} ج.م
 💵 الإجمالي المدفوع: ${cost.toFixed(0)} ج.م
 💳 طريقة الدفع: ${paymentInfo.label}
@@ -306,7 +311,7 @@ ${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أو
       </div>
 
       {/* ══ Content ══ */}
-      <div className="flex-1 px-4 pb-4 overflow-y-auto space-y-3">
+      <div className="flex-1 px-4 pb-4 overflow-y-auto space-y-3 scrollbar-none">
 
         {/* التاريخ */}
         <div className="text-center">
@@ -316,18 +321,41 @@ ${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أو
         </div>
 
         {/* رقم السيارة والجراج */}
-        <div className="border rounded-2xl p-3.5 space-y-2.5" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+        <div 
+          className="border rounded-2xl p-3.5 space-y-2.5" 
+          style={{ 
+            background: BRAND.navyLight, 
+            borderColor: isShield ? BRAND.gold : BRAND.border 
+          }}
+        >
           <div className="flex justify-between items-center">
-            <span
-              className="text-[9px] px-2.5 py-1 rounded-lg font-black"
-              style={{ background: sourceInfo.bg, color: sourceInfo.color }}
-            >
-              {sourceInfo.label}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span
+                className="text-[9px] px-2.5 py-1 rounded-lg font-black"
+                style={{ background: sourceInfo.bg, color: sourceInfo.color }}
+              >
+                {sourceInfo.label}
+              </span>
+              {/* شارة درع VIP المميزة */}
+              {isShield && (
+                <span 
+                  className="text-[9px] px-2 py-0.5 rounded-lg font-black flex items-center gap-1 border animate-pulse"
+                  style={{ 
+                    background: 'rgba(251, 191, 36, 0.15)', 
+                    color: BRAND.gold, 
+                    borderColor: 'rgba(251, 191, 36, 0.35)' 
+                  }}
+                >
+                  <ShieldCheck size={11} className="text-amber-400" />
+                  درع VIP مفعّل 👑
+                </span>
+              )}
+            </div>
             <div className="text-base font-black text-white font-mono">
               🚗 {lastSession.carPlate}
             </div>
           </div>
+
           {garage && (
             <div className="rounded-xl p-2.5 flex items-center justify-between border" style={{ background: BRAND.navy, borderColor: BRAND.border }}>
               <div className="flex items-center gap-1 text-[10px]" style={{ color: BRAND.slateMuted }}>
@@ -339,13 +367,15 @@ ${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أو
           )}
         </div>
 
-        {/* 💳 بطاقة الإيصال المالي الفاخرة (Apple / Revolut Style) */}
+        {/* 💳 بطاقة الإيصال المالي الفاخرة */}
         <div
           className="border rounded-3xl p-5 text-center relative overflow-hidden"
           style={{
             background: BRAND.navyLight,
-            borderColor: isFree ? BRAND.green + '40' : BRAND.border,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+            borderColor: isShield ? BRAND.gold : isFree ? BRAND.green + '40' : BRAND.border,
+            boxShadow: isShield 
+              ? '0 8px 32px rgba(251, 191, 36, 0.15)' 
+              : '0 8px 32px rgba(0,0,0,0.25)',
           }}
         >
           {/* عنوان الكارت */}
@@ -358,7 +388,7 @@ ${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أو
             <span
               className="font-mono text-5xl font-black leading-none"
               style={{
-                color: isFree ? BRAND.green : '#ffffff',
+                color: isFree && !isShield ? BRAND.green : '#ffffff',
                 letterSpacing: '-1px',
               }}
             >
@@ -366,7 +396,7 @@ ${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أو
             </span>
             <span
               className="text-base font-black"
-              style={{ color: isFree ? BRAND.green : BRAND.slateMuted }}
+              style={{ color: isFree && !isShield ? BRAND.green : BRAND.slateMuted }}
             >
               ج.م
             </span>
@@ -381,25 +411,39 @@ ${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أو
             }}
           >
             <span>{paymentInfo.icon}</span>
-            <span>{isFree ? 'ركن مجاني ترحيبي 🎁' : `تم السداد: ${paymentInfo.label}`}</span>
+            <span>{isFree && !isShield ? 'ركن مجاني ترحيبي 🎁' : `تم السداد: ${paymentInfo.label}`}</span>
           </div>
 
           {/* سطر توضيحي للحساب */}
           <div className="text-[10px] font-bold mt-2" style={{ color: BRAND.slateMuted }}>
-            {isFree ? (
+            {isFree && !isShield ? (
               <span style={{ color: BRAND.green }}>
                 (تم تطبيق الهدية الترحيبية: ركن {totalMinutes} دقيقة مجاناً وفرت {savedAmount.toFixed(0)} ج.م 🎁)
               </span>
             ) : isFirstFreeApplied ? (
               <span className="text-amber-400">
-                (انتهت أول 30 دقيقة مجانية: تم احتساب {billableHours} ساعة = {cost.toFixed(0)} ج.م)
+                (أول 30 دقيقة مجاناً + {isShield ? '10ج درع VIP' : ''} + الساعات الإضافية = {cost.toFixed(0)} ج.م)
               </span>
             ) : (
               <span>
-                {billableHours} ساعة × {rate} ج.م = {cost.toFixed(0)} ج.م
+                {billableHours} ساعة × {rate} ج.م {isShield ? '+ 10ج درع VIP' : ''} = {cost.toFixed(0)} ج.م
               </span>
             )}
           </div>
+
+          {/* تفاصيل خدمة درع الأمان VIP */}
+          {isShield && (
+            <div 
+              className="mt-3 pt-2.5 border-t flex items-center justify-between text-[10px] font-bold"
+              style={{ borderColor: 'rgba(255,255,255,0.08)' }}
+            >
+              <span className="flex items-center gap-1 text-amber-300">
+                <Sparkles size={11} className="text-yellow-400" />
+                تأمين درع الأمان VIP الفيزيائي:
+              </span>
+              <span className="font-mono font-black text-amber-400">+ 10 ج.م</span>
+            </div>
+          )}
         </div>
 
         {/* تفاصيل الوقت بالأعمدة الثلاثية */}

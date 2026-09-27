@@ -5,6 +5,12 @@ import toast from 'react-hot-toast';
 import { useStore, setupRealtime, normalizePlate, normalizePhone, getServerNow } from './store';
 import { cn } from './utils/cn';
 
+// 🛡️ استيراد محركات الأمان الذكية والخدمات المميزة
+import { startDistanceTracking, requestLocationPermission } from './utils/distanceTracker';
+import { checkGeofence } from './utils/geofenceEngine';
+import { alarmCascade } from './utils/alarmCascadeEngine';
+import { calculateSessionCommission } from './utils/commissionEngine';
+
 // Screens
 import AuthGate from './components/AuthGate';
 import SplashScreen from './components/SplashScreen';
@@ -74,20 +80,12 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
 function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: number }) {
   return (
     <svg viewBox="0 0 100 115" width={width} height={height} fill="none" xmlns="http://www.w3.org/2000/svg">
-      {/* الدرع الأزرق الخارجي */}
       <path d="M50 2 C78 2, 98 14, 98 26 C98 76, 75 104, 50 114 C25 104, 2 76, 2 26 C2 14, 22 2, 50 2 Z" fill="#1656b8" />
-      {/* الإطار الداخلي للدرع */}
       <path d="M50 8 C72 8, 90 18, 90 28 C90 70, 70 96, 50 105 C30 96, 10 70, 10 28 C10 18, 28 8, 50 8 Z" stroke="#ffffff" strokeWidth="2.5" fill="none" opacity="0.95" />
-      
-      {/* حرف P الأخضر الكبيرة */}
       <path d="M26 30 H48 C60 30, 62 48, 48 48 H38 V78 H26 V30 Z M38 38 V40 H46 C48 40, 48 38, 46 38 Z" fill="#8cc63f" />
-      
-      {/* أيقونة الساعة 24 فوق الـ P */}
       <path d="M64 30 A 10 10 0 1 1 58 44" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" fill="none" />
       <polyline points="64 34, 64 40, 68 40" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
       <text x="69" y="52" fill="#ffffff" fontSize="9" fontWeight="900" fontFamily="sans-serif">24</text>
-      
-      {/* أيقونة السيارة البيضاء تحت الـ P */}
       <path d="M58 64 L62 58 H74 L78 64 H80 C81.5 64 82 65 82 66.5 V72 H54 V66.5 C54 65 54.5 64 56 64 Z" fill="#ffffff" />
       <circle cx="61" cy="72" r="2.2" fill="#1656b8" />
       <circle cx="75" cy="72" r="2.2" fill="#1656b8" />
@@ -112,8 +110,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
 
   const BRAND_BLUE = '#1656b8';
   const BRAND_GREEN = '#8cc63f';
-
-  // ⚡ تم تغيير رقم الإصدار هنا لـ v=999 لإجبار المتصفح على حذف كاش الصورة القديمة فوراً وعرض المضغوطة الجديدة
   const CAR_IMAGE_SRC = '/hero-car.webp?v=999';
 
   return (
@@ -189,7 +185,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             }
           `}</style>
 
-          {/* 🚗 1. خلفية الصورة المدمجة بكامل الشاشة */}
           <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
             <img
               src={CAR_IMAGE_SRC}
@@ -197,12 +192,8 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
               loading="eager"
               fetchPriority="high"
               className="w-full h-full object-cover object-center"
-              style={{
-                filter: 'brightness(0.95) contrast(1.05)',
-              }}
+              style={{ filter: 'brightness(0.95) contrast(1.05)' }}
             />
-
-            {/* 🎨 2. تدرجات الدمج السينمائي الذكي */}
             <div
               className="absolute inset-0"
               style={{
@@ -218,7 +209,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             />
           </div>
 
-          {/* 🛡️ 3. شريط الهيدر العلوي */}
           <motion.nav
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -226,7 +216,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             className="w-full flex items-center justify-between px-6 py-6 z-20 relative"
             style={{ direction: 'ltr' }}
           >
-            {/* اللوجو عربي وإنجليزي */}
             <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.15' }}>
               <span style={{ fontFamily: "'Cairo', sans-serif", fontSize: '16px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.01em' }}>
                 بركن <span style={{ color: BRAND_GREEN }}>24</span>
@@ -241,12 +230,10 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
             </button>
           </motion.nav>
 
-          {/* 📝 4. المحتوى التفاعلي المدمج في الأسفل والوسط */}
           <div
             className="px-6 pb-10 z-20 relative flex flex-col justify-end max-w-lg mx-auto w-full"
             style={{ direction: 'rtl' }}
           >
-            {/* العنوان الرئيسي */}
             <h1
               className="hero-block delay-1"
               style={{
@@ -263,7 +250,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
               <span style={{ color: BRAND_GREEN }}>قبل ما توصل!</span>
             </h1>
 
-            {/* الوصف التوضيحي */}
             <p
               className="hero-block delay-2"
               style={{
@@ -280,7 +266,6 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
               مع Park'n 24، حدد وجهتك، اضمن مكانك في أقرب جراج، ووفر وقتك وبنزينك بضغطة زر واحدة.
             </p>
 
-            {/* زر الحجز السريع */}
             <div className="hero-block delay-3" style={{ marginTop: '26px' }}>
               <button onClick={handleEnter} className="btn-brand-glow w-full sm:w-auto" style={{ fontSize: '16px' }}>
                 <span>احجز ركنتك الآن 🚀</span>
@@ -310,14 +295,13 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
                 </span>
               </button>
             </div>
-
           </div>
-
         </motion.div>
       )}
     </AnimatePresence>
   );
 }
+
 const VALID_SCREENS = [
   'splash',
   'list',
@@ -356,6 +340,12 @@ export default function App() {
   const sessionTransitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [adminAccess, setAdminAccess] = useState(false);
+
+  // 🛡️ حالات درع الأمان والخدمات المميزة الحصرية
+  const [realtimeDistance, setRealtimeDistance] = useState<string | null>(null);
+  const [geofenceWarning, setGeofenceWarning] = useState<string | null>(null);
+  const [isSystemBreached, setIsSystemBreached] = useState(false);
+  const [activeBreachReason, setActiveBreachReason] = useState<string | null>(null);
 
   const [showLanding, setShowLanding] = useState(() => {
     const today = new Date().toDateString();
@@ -397,7 +387,6 @@ export default function App() {
       setAdminAccess(true);
       localStorage.setItem('adminAccess', 'true');
     }
-
     if (localStorage.getItem('adminAccess') === 'true') {
       setAdminAccess(true);
     }
@@ -409,6 +398,95 @@ export default function App() {
     }
     return screen;
   }, [screen, currentUser]);
+
+  // تحديد الجلسة النشطة الحالية للمستخدم
+  const activeUserSession = useMemo(() => {
+    if (!currentUser) return null;
+    const userPlate = normalizePlate(currentUser.carPlate);
+    const userPhone = currentUser.phone ? normalizePhone(currentUser.phone) : '';
+
+    return sessions.find((s) => {
+      if (s.status !== 'active') return false;
+      const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+      const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+      return samePlate || Boolean(userPhone && sPhone === userPhone);
+    });
+  }, [sessions, currentUser]);
+
+  // ═══════════════════════════════════════════════════════
+  // 🛡️ تفعيل ميزة تتبع المسافة الحية حصرياً مع درع الأمان VIP
+  // ═══════════════════════════════════════════════════════
+  useEffect(() => {
+    if (!activeUserSession) {
+      setRealtimeDistance(null);
+      setGeofenceWarning(null);
+      setIsSystemBreached(false);
+      setActiveBreachReason(null);
+      alarmCascade.stopAlarm();
+      return;
+    }
+
+    // 1. مراقبة حدوث اختراق نشط للسيارة
+    if (activeUserSession.breach_reason) {
+      setIsSystemBreached(true);
+      setActiveBreachReason(activeUserSession.breach_reason);
+      alarmCascade.startEmergencySiren();
+      alarmCascade.startTacticalVibration();
+    } else {
+      setIsSystemBreached(false);
+      setActiveBreachReason(null);
+      alarmCascade.stopAlarm();
+    }
+
+    // 2. ميزة المسافة الحقيقية الحصرية: لا تعمل نهائياً إلا إذا كان درع VIP مفعلاً
+    if (activeUserSession.is_shield_active) {
+      requestLocationPermission().then((granted) => {
+        if (!granted) {
+          setRealtimeDistance("⚠️ يرجى السماح بالموقع لتفعيل رادار المسافة");
+          return;
+        }
+
+        const carLat = activeUserSession.anchor_lat || activeUserSession.lat;
+        const carLng = activeUserSession.anchor_lng || activeUserSession.lng;
+
+        if (carLat && carLng) {
+          // تشغيل رادار التتبع الفعلي المميز (تحديث حي كل 3 ثوانٍ)
+          const stopTracking = startDistanceTracking(carLat, carLng, (reading) => {
+            // المسافة الحقيقية: 0م لو العميل بجوار السيارة مباشرة
+            setRealtimeDistance(reading.displayText);
+
+            // فحص سياج الجراج الجغرافي 250م لمنع الابتعاد بالسرقة
+            const geofence = checkGeofence(carLat, carLng, {
+              name: "منطقة الأمان",
+              lat: carLat,
+              lng: carLng,
+              radiusMeters: 250,
+            });
+
+            if (!geofence.isInside) {
+              setGeofenceWarning(`🚨 تحذير: السيارة تجاوزت سياج الجراج بـ ${geofence.distanceFromEdge}م!`);
+            } else {
+              setGeofenceWarning(null);
+            }
+          });
+
+          return () => {
+            stopTracking();
+          };
+        }
+      });
+    } else {
+      // الخدمة مغلقة ومحجوبة تماماً عند إطفاء الدرع
+      setRealtimeDistance(null);
+      setGeofenceWarning(null);
+    }
+  }, [activeUserSession?.id, activeUserSession?.is_shield_active, activeUserSession?.breach_reason]);
+
+  useEffect(() => {
+    return () => {
+      alarmCascade.stopAlarm();
+    };
+  }, []);
 
   useEffect(() => {
     if (!dataLoaded) return;
@@ -745,15 +823,96 @@ export default function App() {
     return <InstallQRCodePage />;
   }
 
+  // حساب عمولة الجلسة (10 جنيه مناصفة) لعرضها في تفاصيل حماية الدرع
+  const commissionDetails = useMemo(() => {
+    return calculateSessionCommission();
+  }, []);
+
   return (
     <ErrorBoundary>
       {showLanding && <ParkLanding onEnter={handleEnterLanding} />}
+
+      {/* 🚨 وميض شاشة الإنذار الشامل باللون الأحمر (The Alarm Cascade Overlay) */}
+      <AnimatePresence>
+        {isSystemBreached && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: [0.9, 0.4, 0.9] }}
+            transition={{ repeat: Infinity, duration: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[999999] bg-red-600/90 flex flex-col items-center justify-center text-white p-6 text-center pointer-events-auto"
+            dir="rtl"
+          >
+            <div className="text-7xl mb-4 animate-bounce">🚨</div>
+            <h1 className="text-3xl font-black mb-2 font-sans">تنبيه اختراق أمني نشط!</h1>
+            <p className="text-lg font-bold text-white/90 max-w-sm mb-6">
+              {activeBreachReason || "تم رصد محاولة تحريك أو سرقة السيارة خارج نطاق الأمان!"}
+            </p>
+            {activeUserSession && (
+              <div className="bg-white/10 px-6 py-4 rounded-2xl mb-8">
+                <p className="text-sm opacity-80 font-bold">لوحة السيارة</p>
+                <p className="text-2xl font-black tracking-widest">{activeUserSession.carPlate}</p>
+              </div>
+            )}
+            <button
+              onClick={() => {
+                alarmCascade.stopAlarm();
+                setIsSystemBreached(false);
+              }}
+              className="bg-white text-red-600 font-black px-8 py-4 rounded-2xl text-sm active:scale-95 transition-all shadow-xl"
+            >
+              🔕 إيقاف التنبيه الصوتي مؤقتاً
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AuthGate>
         <div
           className="max-w-md mx-auto h-dvh bg-white text-slate-900 relative flex flex-col overflow-hidden"
           style={{ fontFamily: "'Cairo', 'Noto Sans Arabic', system-ui, sans-serif" }}
         >
+          {/* 🛡️ الهيدر الفاخر والمميز لدرع الأمان الحصري ورادار المسافة */}
+          {activeUserSession && activeUserSession.is_shield_active && (
+            <div 
+              className="w-full bg-gradient-to-r from-blue-700 via-indigo-800 to-blue-900 text-white px-4 py-3 flex flex-col gap-1 shadow-xl z-[999] border-b border-indigo-400/20" 
+              dir="rtl"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg animate-pulse">🛡️</span>
+                  <div>
+                    <span className="text-xs font-black block leading-none">درع الحماية VIP نشط</span>
+                    <span className="text-[9px] text-indigo-200 font-bold">حماية فيزيائية ثلاثية ومغناطيسية</span>
+                  </div>
+                </div>
+                
+                {/* ميزة رادار المسافة الحصري تظهر بفخامة هنا فقط لأن الدرع مفعّل */}
+                {realtimeDistance && (
+                  <motion.div 
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 px-3 py-1 rounded-full text-xs font-black flex items-center gap-1 shadow-lg"
+                    style={{ border: '1px solid rgba(255,255,255,0.3)' }}
+                  >
+                    <span className="w-1.5 h-1.5 bg-slate-950 rounded-full animate-ping"></span>
+                    <span>المسافة: {realtimeDistance}</span>
+                  </motion.div>
+                )}
+              </div>
+
+              {geofenceWarning && (
+                <p className="text-[10px] font-black text-yellow-300 animate-pulse">{geofenceWarning}</p>
+              )}
+
+              {/* تفاصيل التسوية والعمولة والـ 10 جنيه */}
+              <div className="flex justify-between items-center text-[9px] text-indigo-200 border-t border-white/10 pt-1 mt-1 font-bold">
+                <span>تأمين الركنة النشط: {commissionDetails.totalFee} ج</span>
+                <span>(مناصفة: {commissionDetails.appShare}ج للتطبيق + {commissionDetails.garageShare}ج للجراج)</span>
+              </div>
+            </div>
+          )}
+
           {adminAccess && (
             <div 
               className="absolute top-3.5 left-3.5 z-[9999] flex gap-1 bg-slate-950/90 p-1 rounded-full backdrop-blur-md border border-white/10 shadow-2xl"

@@ -11,6 +11,7 @@ import {
   Copy,
   Gift,
   CreditCard,
+  ShieldCheck,
 } from 'lucide-react';
 // 🌟 استيراد getServerNow ودوال البصمة الموحدة من الـ store لضمان المزامنة التامة
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
@@ -95,7 +96,7 @@ const getDistanceMeters = (
   return R * c;
 };
 
-/* ─── Map controller (محمي بالكامل من الانهيار) ─── */
+/* ─── Map controller ─── */
 function MapController({
   userPos,
   garagePos,
@@ -591,6 +592,8 @@ export default function NavigationScreen() {
         customerName: currentUser?.name,
         startedBy: 'customer',
         incomingCarId: myIncomingCar.id,
+        anchor_lat: userPos.lat,
+        anchor_lng: userPos.lng,
       } as any);
 
       await removeIncomingCar(myIncomingCar.id);
@@ -635,7 +638,7 @@ export default function NavigationScreen() {
       </div>
 
       {/* ══ Content ══ */}
-      <div className="flex-1 px-4 pb-4 flex flex-col gap-3 overflow-y-auto">
+      <div className="flex-1 px-4 pb-4 flex flex-col gap-3 overflow-y-auto scrollbar-none">
 
         {/* 🏢 بطاقة اسم الجراج */}
         <div
