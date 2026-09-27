@@ -32,7 +32,7 @@ import { checkGeofence } from '../utils/geofenceEngine';
 import { captureFullPhysicalShield } from '../utils/batShieldEngine';
 import { notifyShieldActivated } from '../utils/notifications';
 
-/* ─── 🎨 الألوان الرسمية ─── */
+/* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
   blue: '#1656b8',       // الأزرق الرسمي
   blueDark: '#0f3d85',   // الكحلي الفخم
@@ -46,8 +46,8 @@ const BRAND = {
   slate: '#64748b',      
   slateMuted: '#94a3b8', 
   border: 'rgba(255, 255, 255, 0.08)', 
-  gold: '#fbbf24',       // ذهبي VIP
-  goldLight: 'rgba(251, 191, 36, 0.15)',
+  gold: '#fbbf24',       // ذهبي VIP ملكي متوهج
+  goldGlow: 'rgba(251, 191, 36, 0.35)',
 };
 
 const safeParseTime = (value: any): number => {
@@ -75,7 +75,7 @@ export default function SessionScreen() {
     toggleShield,
   } = useStore();
 
-  const userPlate = normalizePlate(currentUser?.carPlate);
+  const userPlate = normalizePlate(currentUser?.carPlate || '');
   const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
   const redirectedToSummaryRef = useRef(false);
@@ -90,7 +90,7 @@ export default function SessionScreen() {
 
   const isMySessionRow = useCallback((row: any) => {
     if (!row) return false;
-    const rowPlate = normalizePlate(row.car_plate || row.carPlate);
+    const rowPlate = normalizePlate(row.car_plate || row.carPlate || '');
     const rowPhone = normalizePhone(row.customer_phone || row.customerPhone || '');
     return (
       (!!userPlate && rowPlate === userPlate) ||
@@ -145,7 +145,7 @@ export default function SessionScreen() {
     fetchAll().catch((e) => console.error('Fetch error:', e));
   }, [fetchAll]);
 
-  // Realtime
+  // Realtime مع حماية تامة من التجميد
   useEffect(() => {
     if (!userPlate && !userPhone) return;
     let cancelled = false;
@@ -214,7 +214,7 @@ export default function SessionScreen() {
     return () => clearInterval(interval);
   }, [activeSession?.id, activeStartMs]);
 
-  // تتبع المسافة والنبض الحصري للدرع الذهبي النشط
+  // تتبع المسافة والنبض الحصري للدرع VIP
   useEffect(() => {
     if (!activeSession?.is_shield_active) {
       setLocalDistance(null);
@@ -242,7 +242,7 @@ export default function SessionScreen() {
     if (activeSession.garageId) setSelectedGarageId(activeSession.garageId);
   }, [activeSession?.id, activeSession?.garageId, setSelectedGarageId]);
 
-  // التحويل التلقائي الفوري لشاشة الملخص فور إنهاء الجلسة لمنع الوقوف على جاري التحميل
+  // التحويل التلقائي الفوري لشاشة الملخص فور إنهاء الجلسة
   useEffect(() => {
     if (activeSession) {
       redirectedToSummaryRef.current = false;
@@ -313,6 +313,7 @@ export default function SessionScreen() {
     }
   }, [isFirstFreeApplied, elapsed]);
 
+  // معالج تفعيل درع الأمان VIP
   const handleToggleShield = async () => {
     if (!activeSession || isTogglingShield) return;
     setIsTogglingShield(true);
@@ -356,7 +357,7 @@ export default function SessionScreen() {
           return;
         }
 
-        toast.loading("🦇 جاري فحص صدى الصاج والبصمة المغناطيسية...", { id: "shield-init" });
+        toast.loading("🦇 جاري تفعيل مستشعرات درع الأمان VIP...", { id: "shield-init" });
         const physicalData = await captureFullPhysicalShield();
 
         await toggleShield(
@@ -382,6 +383,26 @@ export default function SessionScreen() {
       setIsTogglingShield(false);
     }
   };
+
+  // حماية ضد التحويل لصفحة التحميل
+  if (!activeSession) {
+    if (lastCompletedSession) {
+      setScreen('summary');
+      return null;
+    }
+    return (
+      <div className="h-full flex flex-col items-center justify-center p-8 text-right" style={{ background: BRAND.navy, color: '#fff' }}>
+        <div className="text-4xl mb-4 animate-bounce">⏳</div>
+        <p className="text-slate-400 text-sm font-bold text-center mb-2">جاري تحضير ملخص الجلسة...</p>
+        <button
+          onClick={() => setScreen('list')}
+          className="bg-blue-600 text-white border-0 px-8 py-3.5 rounded-2xl font-black text-xs active:scale-95 transition-all flex items-center gap-2 cursor-pointer mt-4"
+        >
+          <ArrowRight size={15} /> <span>العودة للرئيسية</span>
+        </button>
+      </div>
+    );
+  }
 
   return (
     <motion.div
@@ -418,36 +439,42 @@ export default function SessionScreen() {
         </motion.div>
       )}
 
-      {/* 🛡️ لوحة درع الأمان VIP الفاخر والتفاعلي بوضوح تام */}
+      {/* 🛡️ [تعديل التصميم]: كارت وزر درع الأمان VIP الفاخر بوضوح فائق وتوهج نيون ذهبي جذّاب */}
       <div 
-        className="w-full border-2 rounded-3xl p-4 mb-4 text-right transition-all duration-300 relative overflow-hidden shadow-2xl"
+        className="w-full border-2 rounded-3xl p-5 mb-5 text-right transition-all duration-300 relative overflow-hidden shadow-2xl"
         style={{
           background: isShieldActive 
-            ? 'linear-gradient(135deg, #111e36 0%, #0d1b2a 100%)' 
-            : 'linear-gradient(135deg, #111e36 0%, #152238 100%)',
-          borderColor: isShieldActive ? BRAND.gold : 'rgba(251, 191, 36, 0.35)',
-          boxShadow: isShieldActive ? '0 10px 30px rgba(251, 191, 36, 0.2)' : '0 6px 20px rgba(0,0,0,0.2)',
+            ? 'linear-gradient(135deg, #111e36 0%, #0c1830 100%)' 
+            : 'linear-gradient(135deg, #13223f 0%, #111e36 100%)',
+          borderColor: isShieldActive ? BRAND.gold : BRAND.gold, // حدود ذهبية ممتدة وواضحة دائماً
+          boxShadow: isShieldActive 
+            ? `0 0 25px rgba(251, 191, 36, 0.25), inset 0 0 15px rgba(251, 191, 36, 0.1)` 
+            : `0 4px 20px rgba(0, 0, 0, 0.35)`,
         }}
       >
-        <div className="flex items-center justify-between mb-3 border-b border-white/10 pb-3">
+        {/* هالة نيون خلفية مضيئة */}
+        <div className="absolute top-0 right-0 w-24 h-24 bg-amber-400/10 rounded-full blur-2xl pointer-events-none" />
+
+        <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-3">
+          {/* قيمة خدمة التأمين بوضوح */}
           <div 
             className="flex items-center gap-1 px-3 py-1.5 rounded-full font-black text-xs font-mono"
             style={{
               background: isShieldActive ? BRAND.gold : 'rgba(251, 191, 36, 0.15)',
               color: isShieldActive ? '#0a1628' : BRAND.gold,
-              border: `1px solid ${BRAND.gold}`,
+              border: `1.5px solid ${BRAND.gold}`,
             }}
           >
-            <span>{isShieldActive ? '🛡️ مفعّل' : '+10 ج.م فقط'}</span>
+            <span>{isShieldActive ? '🛡️ مفعّل ونشط' : '+10 ج.م فقط'}</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <div className="text-right">
               <h3 className="text-sm font-black text-white flex items-center gap-1.5 justify-end">
                 <span>درع الأمان VIP الذكي</span>
-                <Sparkles size={14} className="text-amber-400" />
+                <Sparkles size={14} className="text-yellow-400 animate-pulse" />
               </h3>
-              <p className="text-[10px] text-amber-300/80 font-bold mt-0.5">
+              <p className="text-[10px] text-amber-300 font-bold mt-0.5">
                 تأمين ركنة السيارة وحمايتها من السرقة
               </p>
             </div>
@@ -463,20 +490,20 @@ export default function SessionScreen() {
           </div>
         </div>
 
-        {/* شرح مبسط للميزة بدون تفاصيل صاج معقدة بناءً على طلبك */}
-        <div className="text-right space-y-2 mb-3.5 bg-black/25 p-3 rounded-2xl border border-white/5">
-          <div className="flex items-center gap-2 justify-end text-xs font-bold text-white">
-            <span>تتبع موقع سيارتك وحركتها لحظة بلحظة 📍</span>
+        {/* 📋 شرح مبسط للمميزات بدون تعقيدات ميكانيكية */}
+        <div className="text-right space-y-2 mb-4 bg-black/25 p-3 rounded-2xl border border-white/5 shadow-inner">
+          <div className="flex items-center gap-2 justify-end text-[11px] font-bold text-slate-200">
+            <span>تتبع موقع سيارتك وحركتها بدقة لحظة بلحظة 📍</span>
           </div>
-          <div className="flex items-center gap-2 justify-end text-xs font-bold text-white">
+          <div className="flex items-center gap-2 justify-end text-[11px] font-bold text-slate-200">
             <span>إنذار طوارئ فوري واهتزاز عند تحرك السيارة 🚨</span>
           </div>
-          <div className="flex items-center gap-2 justify-end text-xs font-bold text-white">
+          <div className="flex items-center gap-2 justify-end text-[11px] font-bold text-slate-200">
             <span>رادار مباشر يرشدك لمكان السيارة خطوة بخطوة 📏</span>
           </div>
         </div>
 
-        {/* مؤشرات الرادار الحية عند التشغيل */}
+        {/* مؤشرات الرادار الحية عند تشغيل الدرع */}
         <AnimatePresence>
           {isShieldActive && (
             <motion.div
@@ -526,12 +553,12 @@ export default function SessionScreen() {
           {isTogglingShield ? (
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-current animate-ping" />
-              جاري فحص المستشعرات...
+              جاري فحص المستشعرات وتوثيق الموقع...
             </span>
           ) : isShieldActive ? (
             <>
               <Unlock size={15} />
-              <span>إيقاف درع الأمان VIP والعودة للوضع العادي</span>
+              <span>إيقاف درع الأمان VIP والعودة للوضع الطبيعي</span>
             </>
           ) : (
             <>
@@ -623,7 +650,7 @@ export default function SessionScreen() {
       <div className="w-full grid grid-cols-2 gap-2.5 mb-3 shrink-0">
         <div className="border p-3 rounded-2xl text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
           <Car size={16} style={{ color: BRAND.blue }} className="mx-auto mb-1" />
-          <div className="text-xs font-black text-white">{activeSession.carPlate || currentUser?.carPlate || '---'}</div>
+          <div className="text-xs font-black text-white">{activeSession?.carPlate || currentUser?.carPlate || '---'}</div>
           <div className="text-[9px] font-bold mt-1.5" style={{ color: BRAND.slateMuted }}>رقم السيارة</div>
         </div>
         <div className="border p-3 rounded-2xl text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>

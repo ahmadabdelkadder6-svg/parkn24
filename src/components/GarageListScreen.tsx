@@ -156,7 +156,7 @@ export default function GarageListScreen() {
     return currentUser && !currentUser.hasUsedFreeSession && !isAbuseDetected;
   }, [currentUser, isAbuseDetected]);
 
-  // ✅ حماية كاملة من undefined داخل find و filter
+  // ✅ حماية كاملة من استدعاء مصفوفات فارغة أو قيم غير معرفة
   const activeSession = useMemo(() => {
     if (!normalizedUserPlate && !cleanUserPhone) return undefined;
     return (sessions || [])
@@ -171,28 +171,28 @@ export default function GarageListScreen() {
       .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
   }, [sessions, normalizedUserPlate, cleanUserPhone, acknowledgedSessionIds]);
 
-  // ✅ تصحيح الخطأ الشهير: فحص s أولاً قبل قراءة s.carPlate
+  // ✅ تصحيح كامل لمنع محاولة القراءة من كائنات undefined
   const hasCompletedSession = useMemo(() => {
     if (activeSession) return false;
     return (sessions || []).some((s: Session) => 
-      s && normalizePlate(s.carPlate || '') === normalizedUserPlate && s.status === 'completed'
+      s && s.carPlate && normalizePlate(s.carPlate || '') === normalizedUserPlate && s.status === 'completed'
     );
   }, [sessions, normalizedUserPlate, activeSession]);
 
   const myIncomingCar = useMemo(() => {
     if (!normalizedUserPlate) return undefined;
     return (incomingCars || [])
-      .filter((c: IncomingCar) => c && normalizePlate(c.carPlate || '') === normalizedUserPlate && c.status === 'coming')
+      .filter((c: IncomingCar) => c && c.carPlate && normalizePlate(c.carPlate || '') === normalizedUserPlate && c.status === 'coming')
       .sort((a, b) => safeParseTime(b.startTime || 0) - safeParseTime(a.startTime || 0))[0];
   }, [incomingCars, normalizedUserPlate]);
 
   const myTopUps = useMemo(() => {
     if (!cleanUserPhone || !walletTopUps) return [];
-    return walletTopUps.filter((w) => w && w.userPhone === cleanUserPhone).sort((a, b) => b.timestamp - a.timestamp).slice(0, 3);
+    return (walletTopUps || []).filter((w) => w && w.userPhone === cleanUserPhone).sort((a, b) => b.timestamp - a.timestamp).slice(0, 3);
   }, [walletTopUps, cleanUserPhone]);
 
   const pendingTopUpsCount = useMemo(() => {
-    return myTopUps.filter((w) => w && w.status === 'pending').length;
+    return (myTopUps || []).filter((w) => w && w.status === 'pending').length;
   }, [myTopUps]);
 
   const getUserLocation = useCallback(() => {
@@ -249,15 +249,26 @@ export default function GarageListScreen() {
     let filtered = garagesWithDistance;
     if (search.trim()) {
       const q = search.trim().toLowerCase();
-      filtered = filtered.filter((g) => g && (g.name.toLowerCase().includes(q) || g.location.toLowerCase().includes(q) || (g.area || '').toLowerCase().includes(q)));
+      filtered = filtered.filter((g) => 
+        g && (
+          (g.name && g.name.toLowerCase().includes(q)) || 
+          (g.location && g.location.toLowerCase().includes(q)) || 
+          ((g.area || '').toLowerCase().includes(q))
+        )
+      );
     }
-    if (showNearbyOnly) { filtered = filtered.filter((g) => g.classification === 'nearby'); }
+    if (showNearbyOnly) { filtered = filtered.filter((g) => g && g.classification === 'nearby'); }
     return filtered;
   }, [garagesWithDistance, search, showNearbyOnly]);
 
   const areaGroups = useMemo(() => {
     const groups: Record<string, GarageWithDistance[]> = {};
-    filteredGarages.forEach(g => { const zone = (g as any).area || 'مناطق أخرى'; if (!groups[zone]) groups[zone] = []; groups[zone].push(g); });
+    filteredGarages.forEach(g => { 
+      if (!g) return;
+      const zone = (g as any).area || 'مناطق أخرى'; 
+      if (!groups[zone]) groups[zone] = []; 
+      groups[zone].push(g); 
+    });
     return Object.keys(groups).map(name => ({
       name, garages: groups[name],
       totalCapacity: groups[name].reduce((sum, g) => sum + (g.capacity || 0), 0),
