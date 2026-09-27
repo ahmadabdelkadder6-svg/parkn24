@@ -32,21 +32,21 @@ import { checkGeofence } from '../utils/geofenceEngine';
 import { captureFullPhysicalShield } from '../utils/batShieldEngine';
 import { notifyShieldActivated } from '../utils/notifications';
 
-/* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
+/* ─── 🎨 الألوان الرسمية ─── */
 const BRAND = {
   blue: '#1656b8',       // الأزرق الرسمي
   blueDark: '#0f3d85',   // الكحلي الفخم
   blueLight: '#e8f0fe',  // الأزرق الفاتح جداً
-  blueSoft: 'rgba(22, 86, 184, 0.08)', // كحلي زجاجي ناعم
+  blueSoft: 'rgba(22, 86, 184, 0.08)', 
   green: '#8cc63f',      // الأخضر الرسمي
-  greenDark: '#6ea62a',  // أخضر داكن للخطوط
-  greenLight: 'rgba(140, 198, 63, 0.12)', // خلفية خضراء ناعمة
+  greenDark: '#6ea62a',  // أخضر داكن
+  greenLight: 'rgba(140, 198, 63, 0.12)', 
   navy: '#0a1628',       // الكحلي الليلي الغامق للواجهة
   navyLight: '#111e36',  // كحلي أفتح للبطاقات
-  slate: '#64748b',      // الرمادي الهادئ
-  slateMuted: '#94a3b8', // الرمادي الباهت
-  border: 'rgba(255, 255, 255, 0.08)', // حدود زجاجية رفيعة
-  gold: '#fbbf24',       // لون ذهبي VIP
+  slate: '#64748b',      
+  slateMuted: '#94a3b8', 
+  border: 'rgba(255, 255, 255, 0.08)', 
+  gold: '#fbbf24',       // ذهبي VIP
   goldLight: 'rgba(251, 191, 36, 0.15)',
 };
 
@@ -85,8 +85,6 @@ export default function SessionScreen() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [elapsed, setElapsed] = useState(0);
-
-  // 🛡️ حالات درع الأمان VIP والمسافات الفورية المخصصة
   const [isTogglingShield, setIsTogglingShield] = useState(false);
   const [localDistance, setLocalDistance] = useState<string | null>(null);
 
@@ -100,13 +98,13 @@ export default function SessionScreen() {
     );
   }, [userPlate, userPhone]);
 
-  // البحث عن الجلسة النشطة بالبصمة الموحدة
+  // البحث عن الجلسة النشطة
   const activeSession = useMemo(() => {
-    return sessions
+    return (sessions || [])
       .filter((s) => {
         if (!s || s.status !== 'active') return false;
         if (acknowledgedSessionIds?.has(s.id)) return false;
-        const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+        const samePlateMatch = !!userPlate && normalizePlate(s.carPlate || '') === userPlate;
         const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
         const samePhoneMatch = Boolean(userPhone && sPhone === userPhone);
         return samePlateMatch || samePhoneMatch;
@@ -116,10 +114,10 @@ export default function SessionScreen() {
 
   // البحث عن آخر جلسة مكتملة
   const lastCompletedSession = useMemo(() => {
-    return sessions
+    return (sessions || [])
       .filter((s) => {
         if (!s || s.status !== 'completed') return false;
-        const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+        const samePlateMatch = !!userPlate && normalizePlate(s.carPlate || '') === userPlate;
         const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
         const samePhoneMatch = Boolean(userPhone && sPhone === userPhone);
         return samePlateMatch || samePhoneMatch;
@@ -128,7 +126,7 @@ export default function SessionScreen() {
   }, [sessions, userPlate, userPhone]);
 
   const garage = garages?.find(
-    (g) => g.id === (activeSession?.garageId ?? lastCompletedSession?.garageId),
+    (g) => g && g.id === (activeSession?.garageId ?? lastCompletedSession?.garageId),
   );
 
   useEffect(() => {
@@ -143,12 +141,11 @@ export default function SessionScreen() {
     return ms > 0 ? ms : getServerNow();
   }, [activeSession?.id, activeSession?.startTime]);
 
-  // جلب البيانات في الخلفية
   useEffect(() => {
     fetchAll().catch((e) => console.error('Fetch error:', e));
   }, [fetchAll]);
 
-  // Realtime مع حماية دوال التحديث اللحظي لمنع التوقف
+  // Realtime
   useEffect(() => {
     if (!userPlate && !userPhone) return;
     let cancelled = false;
@@ -195,7 +192,7 @@ export default function SessionScreen() {
     };
   }, [userPlate, userPhone, fetchAll, isMySessionRow]);
 
-  // عداد الثواني اللحظي الموحد مع سيرفر قاعدة البيانات
+  // عداد الثواني اللحظي
   useEffect(() => {
     if (!activeSession || activeStartMs <= 0) {
       setElapsed(0);
@@ -253,7 +250,7 @@ export default function SessionScreen() {
     }
 
     if (activeSessionIdRef.current) {
-      const targetSession = sessions.find((s) => s.id === activeSessionIdRef.current);
+      const targetSession = (sessions || []).find((s) => s && s.id === activeSessionIdRef.current);
       if (targetSession && targetSession.status === 'completed' && !redirectedToSummaryRef.current) {
         redirectedToSummaryRef.current = true;
         if (targetSession.garageId) setSelectedGarageId(targetSession.garageId);
@@ -316,7 +313,6 @@ export default function SessionScreen() {
     }
   }, [isFirstFreeApplied, elapsed]);
 
-  // 🛡️ معالج تفعيل درع الأمان VIP مع صمام الأمان الجغرافي للـ GPS لضمان التنشيط دائماً
   const handleToggleShield = async () => {
     if (!activeSession || isTogglingShield) return;
     setIsTogglingShield(true);
@@ -330,7 +326,6 @@ export default function SessionScreen() {
           return;
         }
 
-        // 🌟 [صمام أمان الـ GPS]: جلب الإحداثيات اللحظية مع تفعيل معالج السقوط التلقائي على إحداثيات الجراج
         let location = await getCurrentLocation();
         
         if (!location) {
@@ -354,7 +349,6 @@ export default function SessionScreen() {
           radiusMeters: 250,
         };
 
-        // فحص سياج الجراج الإجباري (نطاق 250م)
         const geofenceCheck = checkGeofence(location.lat, location.lng, garageObj);
         if (!geofenceCheck.isInside) {
           toast.error(`🚫 لا يمكن تفعيل الدرع خارج نطاق الجراج بـ ${geofenceCheck.distanceFromEdge}م!`);
@@ -454,7 +448,7 @@ export default function SessionScreen() {
                 <Sparkles size={14} className="text-amber-400" />
               </h3>
               <p className="text-[10px] text-amber-300/80 font-bold mt-0.5">
-                تأمين فيزيائي كامل + رادار المسافة المباشرة
+                تأمين ركنة السيارة وحمايتها من السرقة
               </p>
             </div>
             <div 
@@ -469,9 +463,18 @@ export default function SessionScreen() {
           </div>
         </div>
 
-        <p className="text-[10px] text-slate-300 font-bold leading-relaxed mb-3.5 bg-black/20 p-2.5 rounded-xl border border-white/5">
-          🔒 <b className="text-white">مميزات الخدمة:</b> يقفل مكان سيارتك بمرساة GPS وسياج 250م، ويرصد أي محاولة صدم أو تحريك لصاج السيارة، ويُفعل رادار مباشر يعرض مسافتك عنها حتى 0م عند الوصول.
-        </p>
+        {/* شرح مبسط للميزة بدون تفاصيل صاج معقدة بناءً على طلبك */}
+        <div className="text-right space-y-2 mb-3.5 bg-black/25 p-3 rounded-2xl border border-white/5">
+          <div className="flex items-center gap-2 justify-end text-xs font-bold text-white">
+            <span>تتبع موقع سيارتك وحركتها لحظة بلحظة 📍</span>
+          </div>
+          <div className="flex items-center gap-2 justify-end text-xs font-bold text-white">
+            <span>إنذار طوارئ فوري واهتزاز عند تحرك السيارة 🚨</span>
+          </div>
+          <div className="flex items-center gap-2 justify-end text-xs font-bold text-white">
+            <span>رادار مباشر يرشدك لمكان السيارة خطوة بخطوة 📏</span>
+          </div>
+        </div>
 
         {/* مؤشرات الرادار الحية عند التشغيل */}
         <AnimatePresence>
@@ -485,7 +488,7 @@ export default function SessionScreen() {
               <div className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-2.5">
                 <span className="text-[10px] font-black text-emerald-400 font-mono">نشط ومستقر 🟢</span>
                 <div className="flex items-center gap-1.5 text-[10px] font-black text-slate-200">
-                  <span>مستشعر اهتزاز الصاج والخرسانة:</span>
+                  <span>مستشعر اهتزاز وحركة السيارة:</span>
                   <Activity size={13} className="text-emerald-400 animate-pulse" />
                 </div>
               </div>
@@ -494,7 +497,7 @@ export default function SessionScreen() {
                 <div className="flex items-center justify-between bg-gradient-to-r from-amber-500/20 to-transparent border border-amber-500/30 rounded-xl p-2.5">
                   <span className="text-xs font-black text-amber-300 font-mono">{localDistance}</span>
                   <div className="flex items-center gap-1.5 text-[10px] font-black text-amber-300">
-                    <span>رادار المسافة الفعلي:</span>
+                    <span>رادار المسافة المباشر:</span>
                     <Radio size={14} className="text-amber-400 animate-spin" />
                   </div>
                 </div>
@@ -503,13 +506,13 @@ export default function SessionScreen() {
           )}
         </AnimatePresence>
 
-        {/* 🔘 الزر التفاعلي البارز والكبير لدرع VIP */}
+        {/* 🔘 الزر التفاعلي البارز لدرع VIP */}
         <motion.button
           whileHover={{ scale: 1.01 }}
           whileTap={{ scale: 0.96 }}
           onClick={handleToggleShield}
           disabled={isTogglingShield}
-          className="w-full py-3.5 px-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 cursor-pointer border-0 shadow-lg transition-all active:scale-95"
+          className="w-full py-4 px-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 cursor-pointer border-0 shadow-lg transition-all active:scale-95"
           style={{
             background: isShieldActive 
               ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' 

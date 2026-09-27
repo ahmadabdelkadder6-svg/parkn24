@@ -1356,15 +1356,17 @@ export default function GarageDashboard() {
     setPlateSearch('');
   };
 
-  const handleConfirmPayment = async () => {
+   const handleConfirmPayment = async () => {
     if (!confirmSession || isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
     
+    // إيقاف مؤقت للتزامن صمام أمان لتدفق البيانات
     pausePolling(5000);
     
     const sc = { ...confirmSession }; 
     const sd = (sessions || []).find(s => s && s.id === sc.id);
 
+    // التحقق من الحظر الأمني للاختراق
     if (sd?.breach_reason) {
       toast.error("🚫 عذراً! السيارة مغلقة أمنياً لوجود بلاغ سرقة نشط. يرجى مراجعة المالك وفك الحظر أولاً!", { duration: 6000 });
       setConfirmSession(null);
@@ -1373,12 +1375,14 @@ export default function GarageDashboard() {
       return;
     }
 
+    // 🚀 [صمام منع التجمّد]: إغلاق النافذة وتصفير البحث فوراً وبجزء من الثانية دون انتظار استجابة السيرفر
     setPlateSearch('');
     setConfirmSession(null);
     setUndoableSessions(p => p.filter(u => u.sessionId !== sc.id && u.localId !== sc.id));
 
     try {
-      const pc = sc.source === 'manual' ? 'cash' : (confirmPaymentMethod || 'cash');
+      // إجبار الدفع النقدي (كاش) دائماً لعمليات السايس
+      const pc = 'cash'; 
       
       let freeMinutesApplied = 0;
       if (sd?.isFirstFreeSession === true) {
@@ -1392,10 +1396,10 @@ export default function GarageDashboard() {
         ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`).trim() 
         : 'المالك';
 
+      // الحفظ والتحديث يتمان الآن صامتين في الخلفية دون أي تجميد تشعر به أيدي السايس
       await endSession(sc.id, sc.cost, pc, freeMinutesApplied, currentValet);
       
-      const paymentText = pc === 'cash' ? 'نقداً (كاش)' : 'من المحفظة الرقمية';
-      toast.success(`تم تحصيل ${sc.cost} ج.م ${paymentText} بنجاح ✅`);
+      toast.success(`تم تحصيل ${sc.cost} ج.م نقداً (كاش) بنجاح ✅`);
     } catch (err: any) {
       console.error('Payment Error:', err);
       toast.error(err.message || 'فشلت عملية التحصيل، يرجى المحاولة مرة أخرى');
@@ -1771,45 +1775,12 @@ export default function GarageDashboard() {
               )}
             </div>
 
-            <div className="mb-5">
-              <h4 className="font-black mb-2 text-right text-[10px]" style={{ color: BRAND.slate }}>طريقة التحصيل</h4>
-
-              {confirmSession.source === 'manual' ? (
-                <div className="text-center p-3 rounded-xl border" style={{ background: BRAND.greenLight, borderColor: BRAND.green }}>
-                  <div className="font-black text-xs" style={{ color: BRAND.greenDark }}>💵 سداد نقدي (كاش يداً بيد)</div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => setConfirmPaymentMethod('cash')}
-                    className="w-full p-2.5 rounded-xl flex items-center justify-between font-black border cursor-pointer text-right"
-                    style={{
-                      background: confirmPaymentMethod === 'cash' ? '#fff7ed' : BRAND.bg,
-                      borderColor: confirmPaymentMethod === 'cash' ? '#f97316' : BRAND.border,
-                      color: confirmPaymentMethod === 'cash' ? '#c2410c' : BRAND.slate
-                    }}
-                  >
-                    <span className="text-xs">💵 سداد نقدي (كاش)</span>
-                    {confirmPaymentMethod === 'cash' && <span className="text-[9px] px-2 py-0.5 rounded text-white bg-orange-600">✓ محدد</span>}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setConfirmPaymentMethod('wallet')}
-                    className="w-full p-2.5 rounded-xl flex items-center justify-between font-black border cursor-pointer text-right"
-                    style={{
-                      background: confirmPaymentMethod === 'wallet' ? BRAND.blueSoft : BRAND.bg,
-                      borderColor: confirmPaymentMethod === 'wallet' ? BRAND.blue : BRAND.border,
-                      color: confirmPaymentMethod === 'wallet' ? BRAND.blue : BRAND.slate
-                    }}
-                  >
-                    <span className="text-xs">👝 خصم من المحفظة</span>
-                    {confirmPaymentMethod === 'wallet' && <span className="text-[9px] px-2 py-0.5 rounded text-white bg-blue-600">✓ محدد</span>}
-                  </button>
-                </div>
-              )}
-            </div>
+ <div className="mb-5">
+  <h4 className="font-black mb-2 text-right text-[10px]" style={{ color: BRAND.slate }}>طريقة التحصيل المعتمدة</h4>
+  <div className="text-center p-3 rounded-xl border" style={{ background: BRAND.greenLight, borderColor: BRAND.green }}>
+    <div className="font-black text-xs" style={{ color: BRAND.greenDark }}>💵 سداد نقدي كاش (يداً بيد للسايس)</div>
+  </div>
+</div>
 
             <div className="flex gap-2">
               <button 
