@@ -865,10 +865,6 @@ export default function GarageDashboard() {
 
   const isValetBlocked = isRealValet && geofenceState.status !== 'inside';
 
-  const handleGeofenceRetry = useCallback(() => {
-    window.location.reload();
-  }, []);
-
   const activeSessions = useMemo(() => {
     return garageSessions.filter(s => {
       if (!s || s.status !== 'active') return false;
