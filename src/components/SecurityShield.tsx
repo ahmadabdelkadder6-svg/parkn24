@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { useStore, normalizePlate } from '../store';
 import { supabase } from '../lib/supabase';
 
-// حساب المسافة بالأمتار بدقة
+// 1️⃣ حساب المسافة بالأمتار بدقة (Haversine Formula)
 const calculateDistanceMeters = (
   lat1: number, lon1: number,
   lat2: number, lon2: number
@@ -22,36 +22,75 @@ const calculateDistanceMeters = (
   return Math.round(R * c);
 };
 
-// تشغيل صافرة الإنذار الصوتية
-const playTheftSirenSound = () => {
+// 2️⃣ تشغيل صافرة الإنذار الصوتية الحادة (Siren Sweep)
+const playTheftSirenSound = async () => {
   try {
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) return;
     const ctx = new AudioCtx();
+    if (ctx.state === 'suspended') {
+      await ctx.resume().catch(() => {});
+    }
+
     const now = ctx.currentTime;
     const masterGain = ctx.createGain();
     masterGain.gain.setValueAtTime(1.0, now);
     masterGain.connect(ctx.destination);
 
-    for (let i = 0; i < 6; i++) {
-      const start = now + (i * 0.35);
+    for (let i = 0; i < 8; i++) {
+      const start = now + (i * 0.3);
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
 
       osc.type = 'sawtooth';
       osc.frequency.setValueAtTime(900, start);
-      osc.frequency.linearRampToValueAtTime(2400, start + 0.3);
+      osc.frequency.linearRampToValueAtTime(2400, start + 0.28);
 
-      gain.gain.setValueAtTime(0.8, start);
-      gain.gain.exponentialRampToValueAtTime(0.01, start + 0.32);
+      gain.gain.setValueAtTime(0.9, start);
+      gain.gain.exponentialRampToValueAtTime(0.01, start + 0.29);
 
       osc.connect(gain);
       gain.connect(masterGain);
 
       osc.start(start);
-      osc.stop(start + 0.34);
+      osc.stop(start + 0.3);
     }
   } catch {}
+};
+
+// 3️⃣ إرسال إشعار قفل الشاشة (Lock-Screen Wakeup Alert)
+const triggerSystemTheftNotification = async (title: string, body: string, carPlate: string) => {
+  try {
+    if (!('Notification' in window)) return;
+    if (Notification.permission !== 'granted') {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') return;
+    }
+
+    const options: NotificationOptions = {
+      body,
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-192x192.png',
+      tag: `theft-emergency-${carPlate || 'car'}`,
+      requireInteraction: true, // يظل ثابتاً على شاشة القفل ولا يختفي حتى يفتحه المستخدم
+      renotify: true,
+      silent: false,
+      vibrate: [1500, 200, 1500, 200, 1500, 200, 2000],
+      data: { url: window.location.pathname },
+    };
+
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.ready;
+      if (reg && reg.showNotification) {
+        await reg.showNotification(title, options);
+        return;
+      }
+    }
+
+    new Notification(title, options);
+  } catch (e) {
+    console.warn('System notification error:', e);
+  }
 };
 
 interface SecurityShieldProps {
@@ -83,7 +122,7 @@ export default function SecurityShield({
   const carAnchorRef = useRef<{ lat: number; lng: number } | null>(null);
   const garageOriginRef = useRef<{ lat: number; lng: number } | null>(null);
 
-  // 🚨 دالة إطلاق الإنذار الشاملة (صوت + اهتزاز + شاشة حمراء)
+  // 🚨 دالة إطلاق الإنذار الشاملة (صوت + اهتزاز + إشعار شاشة القفل + شاشة حمراء)
   const triggerAlarm = (plate: string, reason: string, targetSessionId?: string) => {
     setIsBreached(true);
     setBreachAlert({
@@ -92,11 +131,21 @@ export default function SecurityShield({
       sessionId: targetSessionId,
     });
 
+    // 🔊 1. تشغيل صافرة الإنذار
     playTheftSirenSound();
 
+    // 📳 2. اهتزاز الطوارئ المستمر
     if (navigator.vibrate) {
       navigator.vibrate([1000, 200, 1000, 200, 1500, 200, 2000]);
     }
+
+    // 📲 3. إيقاظ شاشة القفل وإرسال إشعار الهاتف المباشر (للسايس والعميل)
+    const notifTitle = view === 'garage'
+      ? '🚨 تحذير للسايس: سيارة تتحرك في الجراج!'
+      : '🚨 إنذار سرقة عاجل لسيارتك!';
+    const notifBody = `🚗 السيارة: ${plate || ''} • ${reason || 'تم رصد حركة غير مصرح بها! اضغط فوراً للفحص'}`;
+
+    triggerSystemTheftNotification(notifTitle, notifBody, plate);
   };
 
   /* ═══════════════════════════════════════════
@@ -114,13 +163,11 @@ export default function SecurityShield({
           const newRow = payload.new as any;
           if (!newRow) return;
 
-          // إذا تم تفعيل is_breached في أي جلسة نشطة
           if (newRow.is_breached === true && newRow.status === 'active') {
             const rowPlate = normalizePlate(newRow.car_plate || newRow.carPlate);
             const isMyCar = userPlateClean && rowPlate === userPlateClean;
             const isMyGarage = currentGarageId && newRow.garage_id === currentGarageId;
 
-            // إطلاق الإنذار لو الجلسة تخص العميل الحالي أو تخص جراج السايس الحالي
             if (isMyCar || isMyGarage || view === 'admin' || !currentUser) {
               triggerAlarm(
                 newRow.car_plate,
@@ -129,7 +176,6 @@ export default function SecurityShield({
               );
             }
           } else if (newRow.is_breached === false) {
-            // إيقاف الإنذار تلقائياً لو تم تصفيره من الـ SQL
             setIsBreached(false);
             setBreachAlert(null);
           }

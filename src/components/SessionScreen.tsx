@@ -239,14 +239,19 @@ export default function SessionScreen() {
   const sessionRate = Number(activeSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const isFirstFreeApplied = activeSession?.isFirstFreeSession === true;
 
-  // 🛡️ دالة تفعيل درع الأمان الاختياري (+10 جنيه)
+  // 🛡️ دالة تفعيل الدرع وطلب إذن إيقاظ شاشة القفل
   const handleToggleShield = async () => {
     if (!activeSession || isActivatingShield) return;
     setIsActivatingShield(true);
     const loadingToast = toast.loading('جاري تفعيل درع حماية السيارة بالرادار...');
 
     try {
-      // 1. تحديث قاعدة البيانات في السحابة
+      // 1. طلب إذن الإشعارات لإيقاظ شاشة القفل في حال السرقة
+      if ('Notification' in window && Notification.permission !== 'granted') {
+        await Notification.requestPermission();
+      }
+
+      // 2. تحديث قاعدة البيانات في السحابة
       const { error } = await supabase
         .from('sessions')
         .update({ shield_enabled: true, shield_price: 10 })
@@ -254,7 +259,7 @@ export default function SessionScreen() {
 
       if (error) throw error;
 
-      // 2. تحديث الحالة في الـ Zustand Store محلياً
+      // 3. تحديث الحالة في الـ Zustand Store
       const updatedSessions = sessions.map((s) =>
         s.id === activeSession.id
           ? { ...s, shieldEnabled: true, shieldPrice: 10 }
@@ -263,7 +268,7 @@ export default function SessionScreen() {
       useStore.setState({ sessions: updatedSessions });
 
       toast.dismiss(loadingToast);
-      toast.success('🛡️ تم تفعيل درع حماية السيارة من السرقة! (+10 ج على الفاتورة)', {
+      toast.success('🛡️ تم تفعيل درع الأمان وربط هاتفك بنظام إنذار شاشة القفل! (+10 ج)', {
         duration: 4500,
       });
 
