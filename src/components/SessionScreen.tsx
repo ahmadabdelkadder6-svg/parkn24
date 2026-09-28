@@ -25,18 +25,18 @@ import toast from 'react-hot-toast';
 
 /* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
-  blue: '#1656b8',       // الأزرق الرسمي
-  blueDark: '#0f3d85',   // الكحلي الفخم
-  blueLight: '#e8f0fe',  // الأزرق الفاتح جداً
-  blueSoft: 'rgba(22, 86, 184, 0.08)', // كحلي زجاجي ناعم
-  green: '#8cc63f',      // الأخضر الرسمي
-  greenDark: '#6ea62a',  // أخضر داكن للخطوط
-  greenLight: 'rgba(140, 198, 63, 0.12)', // خلفية خضراء ناعمة
-  navy: '#0a1628',       // الكحلي الليلي الغامق للواجهة
-  navyLight: '#111e36',  // كحلي أفتح للبطاقات والـ overlays
-  slate: '#64748b',      // الرمادي الهادئ
-  slateMuted: '#94a3b8', // الرمادي الباهت
-  border: 'rgba(255, 255, 255, 0.08)', // حدود زجاجية رفيعة
+  blue: '#38bdf8',       // أزرق سماوي مضيء عالي التباين للشمس
+  blueDark: '#0f3d85',   
+  blueLight: '#e8f0fe',  
+  blueSoft: 'rgba(56, 189, 248, 0.08)', 
+  green: '#4ade80',      // زمردي مضيء جداً للنهار
+  greenDark: '#4ade80',  
+  greenLight: 'rgba(74, 222, 128, 0.12)', 
+  navy: '#0a1628',       
+  navyLight: '#111e36',  
+  slate: '#94a3b8',      
+  slateMuted: '#cbd5e1', // رمادي فاتح جداً عالي الوضوح
+  border: 'rgba(255, 255, 255, 0.1)', 
 };
 
 const safeParseTime = (value: any): number => {
@@ -332,7 +332,7 @@ export default function SessionScreen() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full text-white flex flex-col items-center overflow-y-auto px-4 pt-12 pb-6 text-right"
+      className="h-full text-white flex flex-col items-center overflow-y-auto px-4 pt-14 pb-6 text-right"
       style={{ background: BRAND.navy }}
     >
       {/* 🎁 شارة الهدية الترحيبية - مضغوطة */}
@@ -350,50 +350,51 @@ export default function SessionScreen() {
           <div className="text-right flex-1">
             <div className="font-black text-[10px] text-amber-400">هدية ترحيبية نشطة 🎉</div>
             <div className="font-bold text-[9px] mt-0.5" style={{ color: BRAND.slateMuted }}>
-              {isFreeNow ? 'أول 30 دقيقة مجانية بالكامل! 🎁' : 'انتهت الـ 30 دقيقة المجانية وبدأ الاحتساب العادي'}
+              {isFreeNow ? 'أنت الآن في أول 30 دقيقة مجانية بالكامل! 🎁' : 'انتهت الـ 30 دقيقة المجانية وبدأ الاحتساب العادي'}
             </div>
           </div>
         </motion.div>
       )}
 
-      {/* حلقة العداد الدائرية الكبيرة - مصغرة لتوفير مساحة */}
+      {/* ☀️ حلقة العداد الدائرية الكبيرة المضاءة للنهار والشارع (w-32 h-32) ☀️ */}
       <motion.div
         animate={{
           boxShadow: isFreeNow
-            ? ['0 0 0px rgba(140, 198, 63, 0.1)', '0 0 25px rgba(140, 198, 63, 0.2)', '0 0 0px rgba(140, 198, 63, 0.1)']
-            : ['0 0 0px rgba(22, 86, 184, 0.1)', '0 0 25px rgba(22, 86, 184, 0.2)', '0 0 0px rgba(22, 86, 184, 0.1)'],
+            ? ['0 0 0px rgba(74, 222, 128, 0.15)', '0 0 35px rgba(74, 222, 128, 0.45)', '0 0 0px rgba(74, 222, 128, 0.15)']
+            : ['0 0 0px rgba(56, 189, 248, 0.15)', '0 0 35px rgba(56, 189, 248, 0.45)', '0 0 0px rgba(56, 189, 248, 0.15)'],
         }}
         transition={{ repeat: Infinity, duration: 2.5 }}
-        className="w-28 h-28 rounded-full flex flex-col items-center justify-center border mb-3 shadow-md shrink-0"
+        className="w-32 h-32 rounded-full flex flex-col items-center justify-center border-2 mb-4 shadow-xl shrink-0"
         style={{
           background: BRAND.navyLight,
           borderColor: isFreeNow ? BRAND.green : BRAND.blue,
         }}
       >
-        <Clock size={16} style={{ color: isFreeNow ? BRAND.green : BRAND.blue }} className="mb-0.5" />
-        <div className="text-xl font-black font-mono text-white leading-none">{formatTime(elapsed)}</div>
-        <div className="text-[8px] font-bold mt-1" style={{ color: BRAND.slateMuted }}>مدة الركن الفعلية</div>
+        <Clock size={18} style={{ color: isFreeNow ? BRAND.green : BRAND.blue }} className="mb-0.5 animate-pulse" />
+        <div className="text-2xl font-black font-mono text-white leading-none tracking-wider">{formatTime(elapsed)}</div>
+        <div className="text-[8px] font-black mt-1" style={{ color: BRAND.slateMuted, letterSpacing: '0.5px' }}>مدة الركن الفعلية</div>
       </motion.div>
 
       {/* كارت الحساب التفاعلي والعد التنازلي - مدمج ومضغوط */}
       <div className="w-full border rounded-xl p-3 mb-2 shrink-0" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
         <div className="flex justify-between items-center mb-2 px-1">
           <div className="text-center">
-            <div className="text-base font-black font-mono" style={{ color: isFreeNow ? BRAND.green : BRAND.blue }}>{displayedHours}</div>
-            <div className="text-[8px] font-bold" style={{ color: BRAND.slateMuted }}>ساعة محسوبة</div>
+            {/* أرقام فخمة وضخمة */}
+            <div className="text-2xl font-black font-mono text-white">{displayedHours}</div>
+            <div className="text-[8.5px] font-black" style={{ color: BRAND.slateMuted }}>ساعة محسوبة</div>
           </div>
-          <div className="text-xs font-black text-slate-500">=</div>
+          <div className="text-sm font-black text-slate-500">=</div>
           <div className="text-center">
-            <div className="text-base font-black font-mono" style={{ color: BRAND.green }}>
-              {displayedCost} <span className="text-[9px]">ج.م</span>
+            <div className="text-2xl font-black font-mono" style={{ color: BRAND.green }}>
+              {displayedCost} <span className="text-[10px] font-black">ج.م</span>
             </div>
-            <div className="text-[8px] font-bold" style={{ color: BRAND.slateMuted }}>حساب الركنة حتى الآن</div>
+            <div className="text-[8.5px] font-black" style={{ color: BRAND.slateMuted }}>حساب الركنة حتى الآن</div>
           </div>
         </div>
 
         {/* التنازلي الصغير */}
         <div className="rounded-lg p-2 text-center border bg-blue-950/20" style={{ borderColor: BRAND.border }}>
-          <div className="text-[8px] font-bold" style={{ color: BRAND.slateMuted }}>{countdownLabel}</div>
+          <div className="text-[8.5px] font-black" style={{ color: BRAND.slateMuted }}>{countdownLabel}</div>
           <div className="text-xs font-black font-mono" style={{ color: isFreeNow ? BRAND.green : BRAND.blue }}>
             {String(countdownTime?.minutes ?? 0).padStart(2, '0')}:{String(countdownTime?.seconds ?? 0).padStart(2, '0')}
           </div>
@@ -489,21 +490,21 @@ export default function SessionScreen() {
         </p>
       </div>
 
-      {/* بيانات السيارة والسعر - مصغرة */}
+      {/* 🚙 بيانات السيارة والسعر - مصغرة ومضاءة جداً للشارع 🚙 */}
       <div className="w-full grid grid-cols-2 gap-2 mb-2 shrink-0">
         <div className="border p-2 rounded-xl text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
           <Car size={13} style={{ color: BRAND.blue }} className="mx-auto mb-0.5" />
-          <div className="text-[11px] font-black text-white">{activeSession.carPlate || currentUser?.carPlate || '---'}</div>
-          <div className="text-[8px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>رقم السيارة</div>
+          <div className="text-[12px] font-black text-white font-mono tracking-wide">{activeSession.carPlate || currentUser?.carPlate || '---'}</div>
+          <div className="text-[8px] font-black mt-0.5" style={{ color: BRAND.slateMuted }}>رقم السيارة</div>
         </div>
         <div className="border p-2 rounded-xl text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
           <div className="font-black text-[9px] mb-0.5" style={{ color: BRAND.green }}>ج.م/ساعة</div>
-          <div className="text-[11px] font-black font-mono text-white">{sessionRate} ج.م</div>
-          <div className="text-[8px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>السعر العادي</div>
+          <div className="text-[12px] font-black font-mono text-white">{sessionRate} ج.م</div>
+          <div className="text-[8px] font-black mt-0.5" style={{ color: BRAND.slateMuted }}>السعر العادي</div>
         </div>
       </div>
 
-      {/* 🏢 معلومات الجراج ونوع الحجز مدمجة في صف واحد خفيف جداً لتوفير المساحة */}
+      {/* 🏢 معلومات الجراج ونوع الحجز */}
       {garage && (
         <div className="w-full border border-white/5 p-2 rounded-xl text-center bg-white/5 flex justify-between items-center text-[10px] mb-2 shrink-0">
           <span style={{ color: BRAND.slateMuted }}>{garage.name} 🅿️</span>
@@ -514,7 +515,7 @@ export default function SessionScreen() {
         </div>
       )}
 
-      {/* 💳 طرق الدفع المقبولة - مصغرة جداً */}
+      {/* 💳 طرق الدفع المقبولة */}
       <div className="w-full border rounded-lg p-1.5 mb-3 text-center shrink-0" style={{ background: BRAND.blueSoft, borderColor: BRAND.border }}>
         <div className="flex items-center justify-center gap-1 text-[9.5px] font-bold" style={{ color: BRAND.blue }}>
           <CreditCard size={11} />
@@ -528,7 +529,7 @@ export default function SessionScreen() {
         </div>
       </div>
 
-      {/* زر إنهاء الجلسة الفاخر - واضح وبارز وبحجم مثالي */}
+      {/* زر إنهاء الجلسة الفاخر - عالي الوضوح */}
       <button
         onClick={() => setScreen('summary')}
         className="w-full py-3.5 rounded-xl active:scale-[0.98] transition-all mb-2 flex items-center justify-center border-0 text-white cursor-pointer font-black shrink-0"
