@@ -92,27 +92,58 @@ export default function SummaryScreen() {
   const walletBalance = currentUser?.wallet ?? 0;
   const canPayWallet = walletBalance >= totalPrice;
 
+  // 🛡️ دالة تأكيد السداد الآمنة والمحمية بالكامل من تعليق الشاشة
   const handleConfirm = async () => {
     if (isEndingRef.current) return;
     isEndingRef.current = true;
 
     try {
+      // 1. إذا كانت الركنة مجانية بالكامل
       if (totalPrice === 0) {
-        await endSession(activeSession!.id, 0, 'free', Math.floor(durationSeconds / 60));
-        setDoneTotalPrice(0); setDoneMethod('free'); setDone(true);
+        if (activeSession) {
+          await endSession(activeSession.id, 0, 'free', Math.floor(durationSeconds / 60));
+        }
+        setDoneTotalPrice(0); 
+        setDoneMethod('free'); 
+        setDone(true);
         return;
       }
 
+      // 2. الدفع والخصم من المحفظة الرقمية
       if (paymentMethod === 'wallet') {
-        if (!canPayWallet) { toast.error('رصيد المحفظة غير كافي'); return; }
-        await endSession(activeSession!.id, totalPrice, 'wallet');
-        setDoneTotalPrice(totalPrice); setDoneMethod('wallet'); setRemainingWallet(walletBalance - totalPrice); setDone(true);
+        if (!canPayWallet) { 
+          toast.error('رصيد المحفظة غير كافي لشحن هذه الفاتورة'); 
+          isEndingRef.current = false; // 👈 فك قفل الزر فوراً عند عدم كفاية الرصيد لمنع تعليق الشاشة!
+          return; 
+        }
+        
+        if (activeSession) {
+          await endSession(activeSession.id, totalPrice, 'wallet');
+        }
+        
+        deductWallet(totalPrice);
+        setDoneTotalPrice(totalPrice); 
+        setDoneMethod('wallet'); 
+        setRemainingWallet(walletBalance - totalPrice); 
+        setDone(true);
         return;
       }
 
-      await endSession(activeSession!.id, totalPrice, 'cash');
-      setDoneTotalPrice(totalPrice); setDoneMethod('cash'); setRemainingWallet(walletBalance); setDone(true);
-    } finally { setTimeout(() => { isEndingRef.current = false; }, 2000); }
+      // 3. الدفع نقداً (كاش) يداً بيد للسايس
+      if (activeSession) {
+        await endSession(activeSession.id, totalPrice, 'cash');
+      }
+      setDoneTotalPrice(totalPrice); 
+      setDoneMethod('cash'); 
+      setRemainingWallet(walletBalance); 
+      setDone(true);
+    } catch (err) {
+      console.error('Error confirming payment:', err);
+      toast.error('حدث خطأ غير متوقع، يرجى المحاولة مرة أخرى');
+    } finally {
+      // فك قفل الزر تلقائياً في نهاية العملية أو عند الفشل
+      isEndingRef.current = false;
+    }
   };
 
   if (done) {
