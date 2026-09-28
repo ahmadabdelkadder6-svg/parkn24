@@ -1,3 +1,5 @@
+// src/components/SessionScreen.tsx
+
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -8,6 +10,8 @@ import {
   Sparkles,
   CreditCard,
   XCircle,
+  Shield, // 👈 استيراد أيقونة الدرع
+  CheckCircle2,
 } from 'lucide-react';
 // 🌟 استيراد getServerNow ودوال البصمة لضمان مطابقة العداد بالملي ثانية بين جميع الهواتف
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
@@ -70,6 +74,7 @@ export default function SessionScreen() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [elapsed, setElapsed] = useState(0);
+  const [isActivatingShield, setIsActivatingShield] = useState(false);
 
   const isMySessionRow = (row: any) => {
     if (!row) return false;
@@ -234,6 +239,44 @@ export default function SessionScreen() {
   const sessionRate = Number(activeSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const isFirstFreeApplied = activeSession?.isFirstFreeSession === true;
 
+  // 🛡️ دالة تفعيل درع الأمان الاختياري (+10 جنيه)
+  const handleToggleShield = async () => {
+    if (!activeSession || isActivatingShield) return;
+    setIsActivatingShield(true);
+    const loadingToast = toast.loading('جاري تفعيل درع حماية السيارة بالرادار...');
+
+    try {
+      // 1. تحديث قاعدة البيانات في السحابة
+      const { error } = await supabase
+        .from('sessions')
+        .update({ shield_enabled: true, shield_price: 10 })
+        .eq('id', activeSession.id);
+
+      if (error) throw error;
+
+      // 2. تحديث الحالة في الـ Zustand Store محلياً
+      const updatedSessions = sessions.map((s) =>
+        s.id === activeSession.id
+          ? { ...s, shieldEnabled: true, shieldPrice: 10 }
+          : s
+      );
+      useStore.setState({ sessions: updatedSessions });
+
+      toast.dismiss(loadingToast);
+      toast.success('🛡️ تم تفعيل درع حماية السيارة من السرقة! (+10 ج على الفاتورة)', {
+        duration: 4500,
+      });
+
+      await fetchAll();
+    } catch (e: any) {
+      toast.dismiss(loadingToast);
+      toast.error('تعذر تفعيل الدرع حالياً، تأكد من اتصالك بالإنترنت');
+      console.error('Shield activation error:', e);
+    } finally {
+      setIsActivatingShield(false);
+    }
+  };
+
   // 🎁 الحسابات التفاعلية لـ (30 دقيقة مجانية)
   const { displayedCost, displayedHours, countdownLabel, countdownTime, isFreeNow } = useMemo(() => {
     const defaultCountdown = { minutes: 59, seconds: 59 };
@@ -272,6 +315,10 @@ export default function SessionScreen() {
       };
     }
   }, [isFirstFreeApplied, elapsed, sessionRate]);
+
+  // التكلفة الإجمالية الظاهرة في زر الإنهاء (تشمل الـ 10 ج لو الدرع مفعّل)
+  const isShieldActive = activeSession?.shieldEnabled === true;
+  const finalTotalAmount = displayedCost + (isShieldActive ? 10 : 0);
 
   // شاشة الانتظار والمزامنة
   if (!activeSession) {
@@ -367,7 +414,7 @@ export default function SessionScreen() {
             <div className="text-xl font-black font-mono" style={{ color: BRAND.green }}>
               {displayedCost} <span className="text-[10px]">ج.م</span>
             </div>
-            <div className="text-[9px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>إجمالي الحساب حتى الآن</div>
+            <div className="text-[9px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>حساب الركنة حتى الآن</div>
           </div>
         </div>
 
@@ -394,6 +441,73 @@ export default function SessionScreen() {
           <p className="text-[9px] font-bold text-amber-500">💰 سعر خاص متفق عليه: {sessionRate} ج.م/ساعة (بدلاً من {garage.basePrice} ج.م)</p>
         </div>
       )}
+
+      {/* 🛡️ بطاقة تفعيل درع حماية السيارة من السرقة (+10 جنيه) 🛡️ */}
+      <div className="w-full mb-4">
+        {!isShieldActive ? (
+          <motion.div
+            initial={{ scale: 0.98 }}
+            animate={{ scale: 1 }}
+            className="w-full border rounded-2xl p-3.5 text-right relative overflow-hidden"
+            style={{
+              background: 'linear-gradient(135deg, rgba(22, 86, 184, 0.15) 0%, rgba(15, 61, 133, 0.25) 100%)',
+              borderColor: 'rgba(56, 189, 248, 0.3)',
+              boxShadow: '0 4px 20px rgba(22, 86, 184, 0.15)',
+            }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="bg-sky-500/20 text-sky-300 text-[10px] font-black px-2.5 py-0.5 rounded-full border border-sky-400/30">
+                +10 ج فقط للفاتورة
+              </span>
+              <div className="flex items-center gap-1.5 font-black text-xs text-white">
+                <span>درع حماية السيارة من السرقة</span>
+                <Shield size={16} className="text-sky-400" />
+              </div>
+            </div>
+
+            <p className="text-[10px] font-semibold text-slate-300 leading-relaxed mb-3">
+              رادار ذكي يراقب سيارتك لحظياً (مدى 250م) ويطلق إنذاراً فورياً لك وللسايس عند أي محاولة سحب أو تحريك غير مصرح بها.
+            </p>
+
+            <button
+              onClick={handleToggleShield}
+              disabled={isActivatingShield}
+              className="w-full py-2.5 rounded-xl font-black text-xs text-white flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all border-0"
+              style={{
+                background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                boxShadow: '0 4px 14px rgba(2, 132, 199, 0.3)',
+              }}
+            >
+              <Shield size={14} />
+              <span>{isActivatingShield ? 'جاري التفعيل...' : 'تأمين سيارتي بالرادار الآن 🛡️ (+10 ج)'}</span>
+            </button>
+          </motion.div>
+        ) : (
+          <div
+            className="w-full border rounded-2xl p-3.5 text-right flex items-center justify-between"
+            style={{
+              background: 'rgba(2, 132, 199, 0.12)',
+              borderColor: '#0284c7',
+            }}
+          >
+            <span className="text-[10px] font-black bg-sky-500 text-white px-2.5 py-1 rounded-lg">
+              +10 ج بالفاتورة
+            </span>
+            <div className="flex items-center gap-2">
+              <div className="text-right">
+                <div className="font-black text-xs text-sky-300 flex items-center justify-end gap-1">
+                  <span>درع الرادار نشط ويؤمن سيارتك</span>
+                  <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
+                </div>
+                <div className="text-[9px] font-bold text-slate-400 mt-0.5">
+                  حراسة مشددة وإنذار مزدوج متصل بالسايس 🛰️
+                </div>
+              </div>
+              <Shield size={22} className="text-sky-400 shrink-0" />
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* 💡 بانر إرشادي متناسق ومدمج ومريح للشاشة 💡 */}
       <div 
@@ -472,10 +586,13 @@ export default function SessionScreen() {
         }}
       >
         <span className="text-center text-sm font-black" style={{ color: '#ffffff' }}>
-          {isFreeNow ? (
+          {isFreeNow && !isShieldActive ? (
             <span>🚗 إنهاء الجلسة (مجاناً 🎁)</span>
           ) : (
-            <span>🚗 إنهاء الجلسة وحساب التكلفة ({displayedCost} ج.م)</span>
+            <span>
+              🚗 إنهاء الجلسة وحساب التكلفة ({finalTotalAmount} ج.م)
+              {isShieldActive && <span className="text-[11px] opacity-90"> (شامل الدرع 🛡️)</span>}
+            </span>
           )}
         </span>
       </button>

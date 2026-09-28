@@ -1,3 +1,5 @@
+// src/components/SummaryScreen.tsx
+
 import { motion } from 'framer-motion';
 import {
   CheckCircle,
@@ -6,8 +8,9 @@ import {
   Wallet,
   AlertTriangle,
   Gift,
+  Shield, // 👈 استيراد أيقونة الدرع
 } from 'lucide-react';
-// 🌟 استيراد دوال البصمة الموحدة والتوقيت الدولي الموحد لضمان مطابقة دقيقة وخالية من تلاعب الثغرات
+// 🌟 استيراد getServerNow ودوال البصمة لضمان مطابقة دقيقة وخالية من تلاعب الثغرات
 import { useStore, pausePolling, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
@@ -79,7 +82,6 @@ export default function SummaryScreen() {
   // 🌟 التحقق الدقيق من طريقة الدفع المقبولة في الجراج
   const paymentMode = (garage?.payment_mode as 'cash' | 'wallet' | 'both') || 'both';
 
-  // إنشاء قائمة طرق الدفع ديناميكياً بحسب إعداد الجراج
   const methods = useMemo(() => {
     const list = [];
     if (paymentMode === 'cash' || paymentMode === 'both') {
@@ -88,14 +90,12 @@ export default function SummaryScreen() {
     if (paymentMode === 'wallet' || paymentMode === 'both') {
       list.push({ id: 'wallet' as const, label: 'خصم من المحفظة', icon: '👝' });
     }
-    // Fallback لو مفيش حاجة رجعت كاش افتراضي
     if (list.length === 0) {
       list.push({ id: 'cash' as const, label: 'سداد نقدي كاش', icon: '💵' });
     }
     return list;
   }, [paymentMode]);
 
-  // تحويل وتثبيت الاختيار تلقائياً بناءً على وضع الجراج
   useEffect(() => {
     if (paymentMode === 'cash') {
       setPaymentMethod('cash');
@@ -173,7 +173,6 @@ export default function SummaryScreen() {
     const endMs = toMs(lastCompletedSession.endTime);
     if (!endMs) return;
 
-    // ✅ تم التعديل: حساب انتهاء الجلسة وفقاً لتوقيت السيرفر الموحد
     const timeSinceEnd = getServerNow() - endMs;
     if (timeSinceEnd > 10 * 60 * 1000) return;
 
@@ -207,13 +206,20 @@ export default function SummaryScreen() {
   const durationSeconds = referenceSession
     ? referenceSession.status === 'completed' && referenceSession.endTime
       ? Math.floor((toMs(referenceSession.endTime) - toMs(referenceSession.startTime)) / 1000)
-      : Math.floor((getServerNow() - toMs(referenceSession.startTime)) / 1000) // ✅ تم التعديل: حساب ثواني الجلسة بالتوقيت الموحد
+      : Math.floor((getServerNow() - toMs(referenceSession.startTime)) / 1000)
     : 0;
 
   const durationMinutes = Math.floor(durationSeconds / 60);
   const sessionRate = Number(referenceSession?.agreedPrice ?? garage?.basePrice ?? 0);
 
-  // 🌟 منطق حساب الـ 30 دقيقة المجانية
+  // 🛡️ فحص تفعيل درع حماية السيارة بالرادار
+  const isShieldActive = useMemo(() => {
+    return referenceSession?.shieldEnabled === true;
+  }, [referenceSession]);
+
+  const shieldPrice = isShieldActive ? 10 : 0;
+
+  // 🌟 أول 30 دقيقة مجانية كهدية ترحيبية
   const isFirstFreeApplied = useMemo(() => {
     return referenceSession?.isFirstFreeSession === true;
   }, [referenceSession]);
@@ -226,6 +232,7 @@ export default function SummaryScreen() {
     return calculateCost(durationSeconds, sessionRate);
   }, [durationSeconds, sessionRate]);
 
+  // إجمالي السعر الشامل (وقت الركنة + الـ 10 ج للدرع)
   const totalPrice = useMemo(() => {
     if (
       referenceSession?.status === 'completed' &&
@@ -233,8 +240,9 @@ export default function SummaryScreen() {
     ) {
       return Number(referenceSession.totalPrice);
     }
-    return isFreeNow ? 0 : calculateCost(durationSeconds, sessionRate);
-  }, [referenceSession, isFreeNow, durationSeconds, sessionRate]);
+    const baseCost = isFreeNow ? 0 : calculateCost(durationSeconds, sessionRate);
+    return baseCost + shieldPrice;
+  }, [referenceSession, isFreeNow, durationSeconds, sessionRate, shieldPrice]);
 
   const discountAmount = isFreeNow ? originalPrice : 0;
 
@@ -267,7 +275,9 @@ export default function SummaryScreen() {
     pausePolling(15000);
 
     try {
-      await endSession(activeSession.id, price, method, freeMinutesApplied);
+      // 🌟 [تأمين وحماية الفواتير]: نرسل السعر الصافي للركن فقط إلى السيرفر، لأن الـ store سيضيف الـ 10 ج تلقائياً ويوزع الأرباح 50/50 لمنع أي تكرار مالي
+      const basePriceOnly = isShieldActive ? Math.max(0, price - 10) : price;
+      await endSession(activeSession.id, basePriceOnly, method, freeMinutesApplied);
       return true;
     } catch (err) {
       console.error('❌ endSession error:', err);
@@ -369,6 +379,13 @@ export default function SummaryScreen() {
             )}
           </div>
 
+          {/* 🛡️ إشعار شمول درع حماية السيارة في شاشة النجاح */}
+          {isShieldActive && (
+            <div className="text-[10px] font-bold text-sky-600 mb-2 flex items-center justify-center gap-1">
+              <Shield size={11} /> يشمل 10 ج.م خدمة درع حماية السيارة من السرقة
+            </div>
+          )}
+
           {doneMethod === 'free' && discountAmount > 0 && (
             <div className="inline-block px-3 py-1 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-600 mb-2">
               🎁 وفرت {discountAmount} ج.م من العرض الترحيبي!
@@ -450,7 +467,7 @@ export default function SummaryScreen() {
 
       <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-4 shadow-sm">
         <div className="text-center mb-3">
-          {isFreeNow ? (
+          {isFreeNow && !isShieldActive ? (
             <>
               <div className="text-4xl font-black text-emerald-600 font-mono mb-0.5">
                 0 ج.م
@@ -465,7 +482,7 @@ export default function SummaryScreen() {
               {totalPrice} ج.م
             </div>
           )}
-          <div className="text-[10px] text-slate-400 font-bold">إجمالي التكلفة الحالية</div>
+          <div className="text-[10px] text-slate-400 font-bold">إجمالي التكلفة الشاملة</div>
         </div>
 
         <div className="bg-gray-50 rounded-xl p-3 border border-slate-100">
@@ -487,16 +504,19 @@ export default function SummaryScreen() {
             )}
 
             <div className="flex justify-between text-xs">
-              <span className="text-slate-500">الساعات المحتسبة للدفع</span>
-              <span className="font-black text-blue-600 font-mono">
-                {billableHours} ساعة
+              <span className="text-slate-500">رسم ساعة الانتظار</span>
+              <span className="font-black text-slate-900 font-mono">
+                {billableHours} ساعة × {sessionRate} ج.م
               </span>
             </div>
 
-            <div className="flex justify-between text-xs">
-              <span className="text-slate-500">سعر الساعة</span>
-              <span className="font-black text-purple-600 font-mono">{sessionRate} ج.م</span>
-            </div>
+            {/* 🛡️ إضافة تفاصيل درع حماية السيارة من السرقة داخل الفاتورة */}
+            {isShieldActive && (
+              <div className="flex justify-between text-xs text-sky-600 font-bold">
+                <span className="flex items-center gap-1">🛡️ درع حماية السيارة بالرادار</span>
+                <span className="font-mono font-black">+10 ج.م</span>
+              </div>
+            )}
 
             {garage && sessionRate !== garage.basePrice && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-1.5 text-center">
@@ -607,7 +627,6 @@ export default function SummaryScreen() {
             </div>
           )}
 
-          {/* 🌟 زر التأكيد المرن */}
           <button
             onClick={handleConfirm}
             disabled={totalPrice > 0 && paymentMethod === 'wallet' && !canPayWallet}

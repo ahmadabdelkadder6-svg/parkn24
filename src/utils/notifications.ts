@@ -3,6 +3,7 @@
 /**
  * 🌟 نظام التنبيهات الصوتية والإشعارات والاهتزاز لتطبيق Park'n 24
  * متوافق بالكامل مع هواتف Android, iPhone والحواسيب
+ * مدمج به نظام صافرات إنذار درع الأمان ومكافحة السرقة 🛡️
  */
 
 let audioCtx: AudioContext | null = null;
@@ -47,7 +48,80 @@ if (typeof window !== 'undefined') {
   unlockEvents.forEach(evt => document.addEventListener(evt, onFirstGesture, { passive: true }));
 }
 
-// ─── 2. نغمات التنبيه (توليد إلكتروني نقي بدون ملفات خارجية) ──────────────
+// ─── 2. نغمات التنبيه والإنذار (توليد إلكتروني نقي) ─────────────────────────
+
+// 🚨 صافرة إنذار السرقة واختراق درع الأمان (نغمات شرطة متصاعدة حادة لاختراق الضوضاء)
+export const playTheftSirenSound = async () => {
+  try {
+    await unlockAudio();
+    if (!audioCtx) return;
+
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+    }
+
+    const now = audioCtx.currentTime;
+    const masterGain = audioCtx.createGain();
+    masterGain.gain.setValueAtTime(1.0, now);
+    masterGain.connect(audioCtx.destination);
+
+    // صافرة إنذار مكررة لـ 6 دورات سريعة
+    for (let i = 0; i < 6; i++) {
+      const start = now + (i * 0.35);
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.type = 'sawtooth';
+      // تردد يتصاعد من 900Hz إلى 2400Hz في كل دورة
+      osc.frequency.setValueAtTime(900, start);
+      osc.frequency.linearRampToValueAtTime(2400, start + 0.3);
+
+      gain.gain.setValueAtTime(0.8, start);
+      gain.gain.exponentialRampToValueAtTime(0.01, start + 0.32);
+
+      osc.connect(gain);
+      gain.connect(masterGain);
+
+      osc.start(start);
+      osc.stop(start + 0.34);
+    }
+  } catch (err) {
+    console.warn('⚠️ خطأ في تشغيل صافرة الإنذار:', err);
+  }
+};
+
+// 🛡️ نغمة تأكيد تفعيل درع الرادار بنجاح
+export const playShieldArmedSound = async () => {
+  try {
+    await unlockAudio();
+    if (!audioCtx) return;
+
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+    }
+
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, now); // D5
+    osc.frequency.exponentialRampToValueAtTime(880, now + 0.15); // A5
+
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.2);
+  } catch (err) {
+    console.warn('⚠️ خطأ في تشغيل صوت التأكيد:', err);
+  }
+};
+
+// نغمة طوارئ سيارة في الطريق
 export const playUrgentSound = async () => {
   try {
     await unlockAudio();
@@ -80,6 +154,7 @@ export const playUrgentSound = async () => {
   }
 };
 
+// نغمة تنبيه عادية
 export const playNormalAlert = async () => {
   try {
     await unlockAudio();
@@ -175,7 +250,6 @@ export const sendLocalNotification = async (
       data: { url: '/garage' },
     };
 
-    // إرسال عبر Service Worker (متوافق مع أندرويد)
     if ('serviceWorker' in navigator) {
       try {
         const reg = await navigator.serviceWorker.ready;
@@ -186,7 +260,6 @@ export const sendLocalNotification = async (
       } catch {}
     }
 
-    // Fallback للحواسيب
     new Notification(title, options);
   } catch (err) {
     console.warn('⚠️ تعذر إظهار الإشعار في النظام:', err);
@@ -194,6 +267,29 @@ export const sendLocalNotification = async (
 };
 
 // ─── 6. التنبيهات المجمعة المباشرة ──────────────────────────────────────
+
+// 🚨 إنذار سرقة السيارة أو تحريكها
+export const notifyTheftBreach = (carPlate: string, reason: string) => {
+  playTheftSirenSound();
+  vibrateDevice([1000, 200, 1000, 200, 1500]);
+  sendLocalNotification(
+    '🚨 إنذار سرقة عاجل لمركبتك!',
+    `🚗 السيارة ${carPlate} • ${reason}`,
+    `theft-${carPlate}`
+  );
+};
+
+// 🛡️ إشعار تأكيد تفعيل درع الأمان بالرادار
+export const notifyShieldActivated = (carPlate: string) => {
+  playShieldArmedSound();
+  vibrateDevice([150, 80, 150]);
+  sendLocalNotification(
+    '🛡️ تم تفعيل درع الأمان بالرادار',
+    `🚗 السيارة ${carPlate} مؤمنة الآن على مدى 250 متراً`,
+    `shield-${carPlate}`
+  );
+};
+
 export const notifyIncomingCar = (carPlate: string) => {
   playUrgentSound();
   vibrateUrgent();

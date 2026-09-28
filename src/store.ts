@@ -1,3 +1,5 @@
+// src/store.ts
+
 import { create } from 'zustand';
 import { supabase } from './lib/supabase';
 
@@ -28,7 +30,7 @@ export interface Garage {
   valet3Active: boolean;
   isActive: boolean;
   payment_mode?: 'cash' | 'wallet' | 'both'; 
-  area?: string; // 🗺️ المنطقة الجغرافية للجراج (مثال: وسط البلد، مصر الجديدة، المعادي)
+  area?: string; // 🗺️ المنطقة الجغرافية للجراج (وسط البلد، مصر الجديدة، إلخ)
 }
 
 export interface ParkingSession {
@@ -55,6 +57,9 @@ export interface ParkingSession {
   settled_at?: string;
   freeMinutesApplied?: number;
   isFirstFreeSession?: boolean;
+  // 🛡️ حقول درع الحماية والـ 10 جنيه الجديدة (دون المساس بالحقول السابقة)
+  shieldEnabled?: boolean;
+  shieldPrice?: number;
 }
 
 export interface Offer {
@@ -257,24 +262,14 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
-// 🛡️ دالة البصمة الفولاذية الموحدة لجميع لوحات السيارات (تمنع التحايل ومطابقة لقاعدة البيانات القديمة 100%)
 export const getPlateFingerprint = (plate?: any): string => {
   if (!plate) return '';
   let str = String(plate).trim();
-
-  // 1️⃣ إزالة المسافات الصامتة والفواصل الخفية ورموز الـ Unicode الخاصة
   str = str.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '');
-
-  // 2️⃣ إزالة التطويل والكشيدة (ـ) والتشكيل والتنوين
   str = str.replace(/\u0640/g, '');
-
-  // 3️⃣ تفكيك الـ Unicode لتوحيد الحروف المركبة (NFKD Normalization)
   str = str.normalize('NFKD');
-
-  // 4️⃣ حذف الهمزات وعلامات التشكيل بعد التفكيك
   str = str.replace(/[\u064B-\u065F\u0670\u0654\u0655\u0653]/g, '');
 
-  // 5️⃣ تحويل كافة الأرقام الهندية والشرقية (١٢٣ / ۱۲۳) إلى أرقام عادية (123)
   const easternDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
   const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
   for (let i = 0; i <= 9; i++) {
@@ -282,7 +277,6 @@ export const getPlateFingerprint = (plate?: any): string => {
     str = str.split(persianDigits[i]).join(String(i));
   }
 
-  // 6️⃣ تحويل الحروف الإنجليزية إلى عربية في حال حاول كتابتها بالإنجليزية
   str = str.toUpperCase();
   const enToAr: Record<string, string> = {
     'A': 'ا', 'B': 'ب', 'C': 'س', 'D': 'د', 'E': 'ي', 'F': 'ف',
@@ -292,24 +286,12 @@ export const getPlateFingerprint = (plate?: any): string => {
     'Y': 'ي', 'Z': 'ز'
   };
   str = str.replace(/[A-Z]/g, (ch) => enToAr[ch] || '');
-
-  // 7️⃣ توحيد الحروف المتشابهة لقطع أي محاولة تلاعب
-  // تحويل كافة أشكال الألف والهمزات (أ / إ / آ / ٱ / ا) إلى حرف "ا" موحد
   str = str.replace(/[\u0622\u0623\u0625\u0671\u0672\u0673\u0675\u0627]/g, 'ا');
-
-  // توحيد الهمزات المنفصلة وعلى الياء والواو (ء / ئ / ؤ)
   str = str.replace(/[ءئ]/g, 'ي').replace(/ؤ/g, 'و');
-
-  // توحيد التاء المربوطة بالهاء (ة -> ه)
   str = str.replace(/ة/g, 'ه');
-
-  // توحيد الألف المقصورة بالياء (ى -> ي)
   str = str.replace(/[ىی]/g, 'ي');
-
-  // توحيد الكاف الفارسية والمعربة (ک / گ -> ك)
   str = str.replace(/[کگ]/g, 'ك');
 
-  // 8️⃣ عزل الحروف الصافية والأرقام
   const letters = str.replace(/[^ا-ي]/g, '');
   const digits = str.replace(/[^0-9]/g, '');
 
@@ -317,7 +299,6 @@ export const getPlateFingerprint = (plate?: any): string => {
   if (!letters) return `_${digits}`;
   if (!digits) return `${letters}_`;
 
-  // 🌟 إرجاع البصمة بالشرطة السفلية لضمان مطابقة الـ Database القديمة والجديدة فوراً!
   return `${letters}_${digits}`;
 };
 
@@ -325,36 +306,25 @@ export const normalizePlate = (plate?: any): string => {
   return getPlateFingerprint(plate);
 };
 
-// 📱 دالة تنظيف وتوحيد رقم الهاتف المصري
 export const normalizePhone = (phone?: any): string => {
   if (!phone) return '';
   let str = String(phone).trim();
-
-  // تحويل الأرقام الهندية/الشرقية (٠-٩) إلى أرقام إنجليزية (0-9)
   const arabicNums = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
   for (let i = 0; i < 10; i++) {
     str = str.replace(new RegExp(arabicNums[i], 'g'), String(i));
   }
-
-  // إزالة أي رموز أو حروف ومسافات
   let clean = str.replace(/[^\d]/g, '');
-
-  // إزالة كود مصر الدولي (+20 أو 0020 أو 20) إن وجد
   if (clean.startsWith('0020')) clean = clean.substring(4);
   else if (clean.startsWith('20')) clean = clean.substring(2);
 
-  // لو المستخدم بدأ بـ 10 أو 11 أو 12 أو 15 مباشرة (بدون الصفر الأول) بنضيف الصفر تلقائياً
   if ((clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('12') || clean.startsWith('15')) && clean.length === 10) {
     clean = '0' + clean;
   }
-
   return clean.substring(0, 11);
 };
 
-// 🇪🇬 دالة فحص صارمة للتأكد أن الرقم مصري صحيح (11 رقم ويبدأ بـ 010 / 011 / 012 / 015)
 export const isValidEgyptianPhone = (phone: string): boolean => {
   const clean = normalizePhone(phone);
-  // فحص: 11 رقم، يبدأ بـ 01، ثم يليه (0 أو 1 أو 2 أو 5)، ثم 8 أرقام
   return /^01[0125][0-9]{8}$/.test(clean);
 };
 
@@ -407,7 +377,6 @@ export const getServerNow = (): number => {
   return Date.now() + serverTimeOffset;
 };
 
-// تشغيل المزامنة المبدئية فوراً
 syncServerClock();
 
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
@@ -511,6 +480,9 @@ const mapSession = (r: any): ParkingSession => {
     settled_at: r.settled_at || undefined,
     freeMinutesApplied: r.free_minutes_applied != null ? Number(r.free_minutes_applied) : 0,
     isFirstFreeSession: isFree,
+    // 🛡️ مزامنة حقول الحماية الاختيارية
+    shieldEnabled: r.shield_enabled ?? false,
+    shieldPrice: r.shield_price != null ? Number(r.shield_price) : 0,
   };
 };
 
@@ -977,6 +949,8 @@ export const useStore = create<AppState>((set, get) => ({
               settled_at: ss.settled_at || localVersion.settled_at,
               isFirstFreeSession: ss.isFirstFreeSession ?? localVersion.isFirstFreeSession,
               freeMinutesApplied: ss.freeMinutesApplied ?? localVersion.freeMinutesApplied,
+              shieldEnabled: ss.shieldEnabled ?? localVersion.shieldEnabled,
+              shieldPrice: ss.shieldPrice ?? localVersion.shieldPrice,
             };
           }
           if (localVersion.totalPrice != null && localVersion.totalPrice > 0) return localVersion;
@@ -1227,6 +1201,10 @@ export const useStore = create<AppState>((set, get) => ({
 
       const startTimeISO = typeof s.startTime === 'string' ? s.startTime : new Date(getServerNow()).toISOString();
 
+      // 🛡️ تحديد تكلفة الدرع إن تم تفعيله
+      const shieldEnabled = s.shieldEnabled ?? false;
+      const shieldPrice = shieldEnabled ? 10 : 0;
+
       const optimisticSession: ParkingSession = {
         ...s,
         id: sessionId,
@@ -1244,6 +1222,8 @@ export const useStore = create<AppState>((set, get) => ({
         settled: false,
         isFirstFreeSession: eligibleForFree,
         freeMinutesApplied: 0,
+        shieldEnabled,
+        shieldPrice,
       };
 
       set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]) }));
@@ -1271,6 +1251,9 @@ export const useStore = create<AppState>((set, get) => ({
           settled: false,
           is_first_free_session: eligibleForFree,
           free_minutes_applied: 0,
+          // 🛡️ الحفظ في السحابة
+          shield_enabled: shieldEnabled,
+          shield_price: shieldPrice,
         }).select().single();
 
         if (error) {
@@ -1312,7 +1295,7 @@ export const useStore = create<AppState>((set, get) => ({
     pausePolling(2000);
 
     try {
-      const safeTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
+      const basePrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
       const garage = get().garages.find((g) => g.id === session.garageId);
       
       if (garage && garage.payment_mode) {
@@ -1324,12 +1307,28 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
 
+      // 🛡️ احتساب تكلفة الرادار الفعلي (الدرع بقيمة 10 جنيهات)
+      const shieldPrice = session.shieldEnabled ? 10 : 0;
+      
+      // السعر النهائي المشمول بالفاتورة للعميل (سعر الركنة الأصلي + الـ 10 ج للدرع)
+      const finalTotalPrice = basePrice + shieldPrice;
+
       const commissionRate = garage?.commissionRate ?? 10;
       const isAppSession = session.source === 'app';
-      const commissionAmount = isAppSession
-        ? Math.round(((safeTotalPrice * commissionRate) / 100) * 100) / 100
+
+      // 1. حساب العمولة الأساسية على سعر الركن الفعلي فقط
+      let commissionAmount = isAppSession
+        ? Math.round(((basePrice * commissionRate) / 100) * 100) / 100
         : 0;
-      const netRevenue = Math.round((safeTotalPrice - commissionAmount) * 100) / 100;
+
+      // 2. حساب صافي دخل الركنة الأساسي للجراج
+      let netRevenue = Math.round((basePrice - commissionAmount) * 100) / 100;
+
+      // 3. تطبيق تسوية التقسيم الذكي للـ 10 جنيهات مناصفة (5 للمنصة و 5 للجراج)
+      if (session.shieldEnabled) {
+        commissionAmount += 5; // حصة المنصة المباشرة (5 ج)
+        netRevenue += 5;       // حصة الجراج المباشرة (5 ج)
+      }
 
       const isAutoConfirmed = paymentMethod === 'wallet';
       const finalAddedBy = resolveAddedBy(addedBy ?? session.addedBy);
@@ -1337,7 +1336,7 @@ export const useStore = create<AppState>((set, get) => ({
       const endedSession: ParkingSession = {
         ...session,
         endTime: nowISO,
-        totalPrice: safeTotalPrice,
+        totalPrice: finalTotalPrice, // السعر شامل الـ 10 ج للدرع
         paymentMethod,
         status: 'completed' as const,
         revenueConfirmed: isAutoConfirmed,
@@ -1353,7 +1352,7 @@ export const useStore = create<AppState>((set, get) => ({
       await get().adjustGarageSpots(session.garageId, +1);
 
       if (paymentMethod === 'wallet' && isAppSession) {
-        await get().deductWallet(safeTotalPrice);
+        await get().deductWallet(finalTotalPrice); // سحب قيمة الفاتورة كاملة (ركن + درع) من المحفظة
       }
 
       if (session.isFirstFreeSession) {
@@ -1382,7 +1381,7 @@ export const useStore = create<AppState>((set, get) => ({
         .from('sessions')
         .update({
           end_time: nowISO,
-          total_price: safeTotalPrice,
+          total_price: finalTotalPrice,
           payment_method: paymentMethod,
           status: 'completed',
           revenue_confirmed: isAutoConfirmed,

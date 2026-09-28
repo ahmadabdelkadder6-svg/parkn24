@@ -1,3 +1,5 @@
+// src/lib/pushManager.ts
+
 import { normalizePlate } from '../store';
 
 // ─── VAPID & Supabase Configuration ─────────────────────────────
@@ -230,6 +232,87 @@ export const sendCarComingPush = async ({
     return result.ok;
   } catch (err) {
     console.error('❌ خطأ في sendCarComingPush:', err);
+    return false;
+  }
+};
+
+// ─── 🛡️ إرسال إنذار سرقة عاجل عبر الـ Web Push (أعلى أولوية طوارئ) ───
+export const sendTheftAlertPush = async ({
+  garageId,
+  carPlate,
+  reason,
+}: {
+  garageId: string;
+  carPlate: string;
+  reason?:  string;
+}): Promise<boolean> => {
+  try {
+    const plateFingerprint = normalizePlate(carPlate) || carPlate;
+    const tag = `theft-alarm-${plateFingerprint}-${Date.now()}`;
+
+    const payload: SendPushPayload = {
+      garageId,
+      urgency: 'high',
+      ttl: 0, // تسليم فوري في نفس الثانية دون تأخير
+
+      immediate: {
+        title: '🚨 إنذار سرقة عاجل لمركبة!',
+        body:  `🚗 السيارة ${carPlate} • ${reason || 'تم رصد حركة غير مصرح بها!'}`,
+        tag,
+        data: {
+          type:      'theft_breach',
+          carPlate,
+          garageId,
+          url:       '/garage',
+          breachTime: new Date().toISOString(),
+        },
+      },
+      scheduled: null,
+    };
+
+    const result = await supabaseFetch('send-push-notification', payload);
+    return result.ok;
+  } catch (err) {
+    console.error('❌ خطأ في sendTheftAlertPush:', err);
+    return false;
+  }
+};
+
+// ─── 🛡️ إرسال إشعار تأكيد تفعيل درع الأمان ────────────────────────
+export const sendShieldActivatedPush = async ({
+  garageId,
+  carPlate,
+}: {
+  garageId: string;
+  carPlate: string;
+}): Promise<boolean> => {
+  try {
+    const plateFingerprint = normalizePlate(carPlate) || carPlate;
+    const tag = `shield-on-${plateFingerprint}`;
+
+    const payload: SendPushPayload = {
+      garageId,
+      urgency: 'normal',
+      ttl: 300,
+
+      immediate: {
+        title: '🛡️ تم تفعيل درع الرادار للمركبة',
+        body:  `🚗 السيارة ${carPlate} مؤمنة ومسجلة في رادار الحماية (+10 ج)`,
+        tag,
+        data: {
+          type:     'shield_activated',
+          carPlate,
+          garageId,
+          url:      '/garage',
+        },
+      },
+      scheduled: null,
+    };
+
+    const result = await supabaseFetch('send-push-notification', payload);
+    return result.ok;
+  } catch (err) {
+    console.error('❌ خطأ في sendShieldActivatedPush:', err);
     return false;
   }
 };

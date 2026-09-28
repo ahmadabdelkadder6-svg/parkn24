@@ -1,3 +1,5 @@
+// src/components/NavigationScreen.tsx
+
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -275,7 +277,7 @@ export default function NavigationScreen() {
 
     const handleFocus = () => fastFetch();
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') fastFetch();
+      if (document.visibilityState === 'visible') refetch();
     };
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibility);
@@ -787,7 +789,6 @@ export default function NavigationScreen() {
             <span className="text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>الأماكن المتاحة الآن</span>
           </div>
 
-          {/* 🌟 شارة وسيلة الدفع المقبولة بالجراج */}
           <div className="flex items-center justify-between border-t pt-2" style={{ borderColor: BRAND.border }}>
             <span className="text-xs font-black flex items-center gap-1" style={{ color: BRAND.green }}>
               <CreditCard size={12} />
@@ -868,7 +869,6 @@ export default function NavigationScreen() {
             className="shrink-0"
           >
             {canCancel ? (
-              // ⏱️ المرحلة الأولى: أول 30 ثانية (إلغاء سريع بعداد تنازلي)
               <>
                 <button
                   onClick={handleCancelBooking}
@@ -889,7 +889,6 @@ export default function NavigationScreen() {
                 </div>
               </>
             ) : (
-              // 🚀 المرحلة الثانية: بعد انتهاء الـ 30 ثانية وإرسال الإشعار للسايس
               <motion.button
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
