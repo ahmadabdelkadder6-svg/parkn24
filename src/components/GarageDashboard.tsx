@@ -1277,6 +1277,7 @@ export default function GarageDashboard() {
     setShowAddCar(false);
   };
 
+  // 🛡️ دالة فتح نافذة التحصيل المحدثة لتشمل قيمة الدرع تلقائياً
   const openConfirmPayment = (sid: string, cp: string, cost: number, hrs: number, minutes: number, source: 'app' | 'manual', ap?: number) => {
     const sessionObj = activeSessions.find(s => s.id === sid);
     const isFreeApplied = sessionObj?.isFirstFreeSession === true;
@@ -1285,12 +1286,16 @@ export default function GarageDashboard() {
     const el = st > 0 ? Math.max(0, Math.floor((getServerNow() - st) / 1000)) : 0;
     
     const isFreeNow = isFreeApplied && el <= 1800;
-    const finalCost = isFreeNow ? 0 : (cost > 0 ? cost : getActiveCost(sessionObj));
+    const baseCost = isFreeNow ? 0 : (cost > 0 ? cost : getActiveCost(sessionObj));
+
+    // 👈 إضافة 10 جنيهات لو الدرع مفعّل بالجلسة
+    const shieldPrice = sessionObj?.shieldEnabled ? 10 : 0;
+    const finalCostWithShield = baseCost + shieldPrice;
 
     setConfirmSession({ 
       id: sid, 
       carPlate: cp, 
-      cost: finalCost, 
+      cost: finalCostWithShield, // السعر شامل الدرع
       hours: isFreeNow ? 0 : hrs, 
       minutes, 
       source, 
@@ -1680,8 +1685,21 @@ export default function GarageDashboard() {
                   <Gift size={12} /> أول 30 دقيقة مجانية كهدية ترحيبية 🎁
                 </div>
               )}
-            </div>
 
+              {/* 🛡️ شارة توضيحية للسايس بأن الفاتورة تشمل 10 ج للدرع */}
+              {(() => {
+                const sessObj = activeSessions.find(s => s.id === confirmSession.id);
+                if (sessObj?.shieldEnabled) {
+                  return (
+                    <div className="mt-2 text-center p-2 rounded-lg text-sky-800 font-bold text-[10px] flex items-center justify-center gap-1 bg-sky-50 border border-sky-100">
+                      <Shield size={12} className="text-sky-600" />
+                      <span>الفاتورة تشمل 10 ج.م خدمة درع حماية السيارة 🛡️</span>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+            </div>
             <div className="mb-5">
               <h4 className="font-black mb-2 text-right text-[10px]" style={{ color: BRAND.slate }}>طريقة التحصيل</h4>
 
