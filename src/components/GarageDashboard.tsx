@@ -679,7 +679,7 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
   const rate = Number(s.agreedPrice ?? basePrice);
   const baseCost = isFreeNow ? 0 : calculateCost(el, rate);
 
-  // 🛡️ احتساب الـ 10 ج للدرع في المبلغ الظاهر بجانب الزر
+  // 🛡️ حساب الـ 10 ج للدرع في المبلغ الظاهر بجانب الزر
   const shieldPrice = s.shieldEnabled ? 10 : 0;
   const finalDisplayCost = baseCost + shieldPrice;
 
@@ -708,7 +708,7 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
             </span>
           )}
 
-          {/* 🛡️ شارة درع الرادار */}
+          {/* 🛡️ شارة درع الرادار الزرقاء المضيئة بجانب الشارات الأخرى */}
           {s.shieldEnabled && (
             <span className="font-black flex items-center gap-0.5 shrink-0 text-[8px] px-2 py-0.5 rounded animate-pulse" style={{ background: '#e0f2fe', color: '#0369a1', border: '1px solid #38bdf8' }}>
               <Shield size={10} /> درع الرادار نشط 🛡️ (+10ج)
@@ -736,7 +736,7 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
           )}
         </div>
 
-        {/* 💰 عرض المبلغ الإجمالي الشامل للدرع بجانب زر الإنهاء */}
+        {/* 💰 عرض المبلغ المظبوط شامل الـ 10 ج للدرع بجانب الزر بالقرش */}
         <div className="font-black text-left" style={{ fontSize: isFreeNow && !s.shieldEnabled ? 11 : 14, color: isFreeNow && !s.shieldEnabled ? '#f59e0b' : BRAND.greenDark }}>
           {isFreeNow && !s.shieldEnabled ? (
             <span className="flex items-center gap-0.5 px-2 py-0.5 rounded-lg text-[10px]" style={{ background: BRAND.greenLight, border: `1px solid ${BRAND.green}30` }}>
@@ -1289,7 +1289,7 @@ export default function GarageDashboard() {
     setShowAddCar(false);
   };
 
-  // 🛡️ دالة فتح نافذة التحصيل المحدثة لتشمل قيمة الدرع تلقائياً
+  // 🛡️ فتح نافذة التحصيل شاملة قيمة الدرع بدون أي نقص
   const openConfirmPayment = (sid: string, cp: string, cost: number, hrs: number, minutes: number, source: 'app' | 'manual', ap?: number) => {
     const sessionObj = activeSessions.find(s => s.id === sid);
     const isFreeApplied = sessionObj?.isFirstFreeSession === true;
@@ -1300,14 +1300,14 @@ export default function GarageDashboard() {
     const isFreeNow = isFreeApplied && el <= 1800;
     const baseCost = isFreeNow ? 0 : (cost > 0 ? cost : getActiveCost(sessionObj));
 
-    // 👈 إضافة 10 جنيهات لو الدرع مفعّل بالجلسة
+    // إضافة الـ 10 ج لو مفعّل
     const shieldPrice = sessionObj?.shieldEnabled ? 10 : 0;
     const finalCostWithShield = baseCost + shieldPrice;
 
     setConfirmSession({ 
       id: sid, 
       carPlate: cp, 
-      cost: finalCostWithShield, // السعر شامل الدرع
+      cost: finalCostWithShield, 
       hours: isFreeNow ? 0 : hrs, 
       minutes, 
       source, 
