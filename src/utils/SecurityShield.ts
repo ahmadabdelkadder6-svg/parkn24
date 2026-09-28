@@ -17,27 +17,130 @@
 
 import { useEffect, useState, useRef } from 'react';
 import toast from 'react-hot-toast';
-import {
-  lockCarRadarAnchor,
-  evaluateRadarDrift,
-  calculateDistanceMeters,
-  playShieldConfirmationChime,
-  RadarCarAnchor,
-} from '../utils/batShieldEngine';
+
+export interface RadarCarAnchor {
+  sessionId: string;
+  carPlate: string;
+  latitude: number;
+  longitude: number;
+  isActive: boolean;
+  timestamp: number;
+}
+
+// 1️⃣ حساب المسافة بالأمتار بدقة (Haversine Formula)
+const calculateDistanceMeters = (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number => {
+  const R = 6371e3;
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return Math.round(R * c);
+};
+
+// 2️⃣ تثبيت موقع السيارة في الرادار لحظة الركن
+const lockCarRadarAnchor = (
+  sessionId: string,
+  carPlate: string
+): Promise<RadarCarAnchor | null> => {
+  return new Promise((resolve) => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      return resolve(null);
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        resolve({
+          sessionId,
+          carPlate,
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          isActive: true,
+          timestamp: Date.now(),
+        });
+      },
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 6000 }
+    );
+  });
+};
+
+// 3️⃣ فحص إزاحة السيارة عن مكان ركنها
+const evaluateRadarDrift = (
+  anchor: RadarCarAnchor,
+  currentLat: number,
+  currentLng: number
+): { isBreached: boolean; driftDistance: number; reason: string } => {
+  const distance = calculateDistanceMeters(
+    anchor.latitude,
+    anchor.longitude,
+    currentLat,
+    currentLng
+  );
+
+  if (distance > 15) {
+    return {
+      isBreached: true,
+      driftDistance: distance,
+      reason: `🚨 تحذير سرقة: تم رصد تحرك السيارة مسافة ${distance} متراً عن موقع الركن!`,
+    };
+  }
+
+  return {
+    isBreached: false,
+    driftDistance: distance,
+    reason: 'السيارة في مكانها بأمان',
+  };
+};
+
+// 4️⃣ صوت تأكيد تفعيل الدرع
+const playShieldConfirmationChime = () => {
+  try {
+    const AudioCtx =
+      typeof window !== 'undefined'
+        ? window.AudioContext || (window as any).webkitAudioContext
+        : null;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15);
+
+    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.16);
+  } catch {}
+};
 
 interface SecurityShieldProps {
-  view: 'user' | 'garage' | 'admin';
-  isSessionActive: boolean;
+  view?: 'user' | 'garage' | 'admin';
+  isSessionActive?: boolean;
   isShieldEnabled?: boolean;
   sessionId?: string | null;
   carPlate?: string;
 }
 
 export default function SecurityShield({
-  view,
-  isSessionActive,
+  view = 'user',
+  isSessionActive = false,
   isShieldEnabled = false,
-  sessionId,
+  sessionId = null,
   carPlate = '',
 }: SecurityShieldProps) {
   // ─── حالات حماية التطبيق ───
@@ -55,7 +158,7 @@ export default function SecurityShield({
     reason: string;
   } | null>(null);
 
-  // ─── مراجع الذاكرة الصامتة (لا تسبب إعادة رسم الشاشة) ───
+  // ─── مراجع الذاكرة الصامتة ───
   const carAnchorRef = useRef<RadarCarAnchor | null>(null);
   const garageOriginRef = useRef<{ lat: number; lng: number } | null>(null);
   const breachCountRef = useRef(0);
@@ -64,10 +167,8 @@ export default function SecurityShield({
      🛡️ الطبقة الأولى: حماية التطبيق من الهاكرز
      ═══════════════════════════════════════════ */
   useEffect(() => {
-    // 1. منع كليك يمين
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
 
-    // 2. منع اختصارات DevTools
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
         e.key === 'F12' ||
@@ -80,7 +181,6 @@ export default function SecurityShield({
       }
     };
 
-    // 3. كشف التلاعب بالـ LocalStorage
     const handleStorageChange = (e: StorageEvent) => {
       if (
         e.key === 'adminAccess' ||
@@ -95,7 +195,6 @@ export default function SecurityShield({
         }, 1000);
       }
 
-      // استقبال إنذار السرقة المشترك
       if (e.key && e.key.startsWith('radar_breach_') && e.newValue) {
         try {
           const alert = JSON.parse(e.newValue);
@@ -109,13 +208,10 @@ export default function SecurityShield({
               navigator.vibrate([800, 200, 800, 200, 800]);
             }
           }
-        } catch {
-          // تجاهل
-        }
+        } catch {}
       }
     };
 
-    // 4. تعتيم الشاشة عند الخروج أو التصوير
     const handleVisibility = () => {
       setIsAppBlurred(document.hidden || !document.hasFocus());
     };
@@ -154,7 +250,6 @@ export default function SecurityShield({
     let radarTimer: NodeJS.Timeout | null = null;
 
     const setupRadar = async () => {
-      // تثبيت موقع السيارة
       const anchor = await lockCarRadarAnchor(sessionId, carPlate);
       if (anchor) {
         carAnchorRef.current = anchor;
@@ -169,7 +264,6 @@ export default function SecurityShield({
         );
       }
 
-      // فحص راداري كل 5 ثوانٍ (خفيف جداً)
       radarTimer = setInterval(() => {
         if (!isRunning || !navigator.geolocation) return;
 
@@ -189,14 +283,13 @@ export default function SecurityShield({
             setIsValetOutOfFence(dist > 250);
           }
 
-          // [ب] فحص إزاحة السيارة (ضد السرقة)
+          // [ب] فحص إزاحة السيارة
           if (carAnchorRef.current && !isValetOutOfFence) {
             const drift = evaluateRadarDrift(carAnchorRef.current, lat, lng);
 
             if (drift.isBreached) {
               breachCountRef.current += 1;
 
-              // التأكيد الثلاثي لمنع الإنذار الكاذب
               if (breachCountRef.current >= 3) {
                 breachCountRef.current = 0;
                 const alertPayload = {
@@ -216,7 +309,6 @@ export default function SecurityShield({
                   navigator.vibrate([800, 200, 800, 200, 800]);
                 }
 
-                // بث الإنذار للطرف الآخر
                 localStorage.setItem(
                   `radar_breach_${sessionId}`,
                   JSON.stringify(alertPayload)
@@ -237,11 +329,7 @@ export default function SecurityShield({
       if (radarTimer) clearInterval(radarTimer);
       if (sessionId) localStorage.removeItem(`radar_breach_${sessionId}`);
     };
-  }, [isSessionActive, isShieldEnabled, sessionId, carPlate, view]);
-
-  /* ═══════════════════════════════════════════
-     🎨 الشاشات البصرية للدرع
-     ═══════════════════════════════════════════ */
+  }, [isSessionActive, isShieldEnabled, sessionId, carPlate, view, isValetOutOfFence]);
 
   const handleDismiss = () => {
     setIsBreached(false);
@@ -251,7 +339,7 @@ export default function SecurityShield({
     toast.success('تم تأكيد الأمان واستئناف الحماية 🛡️');
   };
 
-  // 1️⃣ شاشة قفل التطبيق (تلاعب بالأكواد)
+  // 1️⃣ شاشة قفل التطبيق
   if (isTampered) {
     return (
       <div
@@ -269,7 +357,7 @@ export default function SecurityShield({
     );
   }
 
-  // 2️⃣ شاشة تعتيم البيانات (تصوير الشاشة)
+  // 2️⃣ شاشة تعتيم البيانات
   if (isAppBlurred) {
     return (
       <div className="fixed inset-0 z-[9999998] bg-slate-950/85 backdrop-blur-xl flex flex-col items-center justify-center text-center p-6">
@@ -314,7 +402,7 @@ export default function SecurityShield({
     );
   }
 
-  // 4️⃣ شاشة إنذار السرقة المزدوج (عميل + سايس)
+  // 4️⃣ شاشة إنذار السرقة المزدوج
   if (isBreached && breachAlert) {
     return (
       <div
