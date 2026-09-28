@@ -71,17 +71,17 @@ export default function SummaryScreen() {
   const durationMinutes = Math.floor(durationSeconds / 60);
   const sessionRate = Number(referenceSession?.agreedPrice ?? garage?.basePrice ?? 0);
 
-  // 🛡️ فحص الدرع
+  // 🛡️ فحص تفعيل الدرع وقيمته
   const isShieldActive = referenceSession?.shieldEnabled === true;
   const shieldPrice = isShieldActive ? 10 : 0;
 
-  // 🎁 فحص الهدية
+  // 🎁 فحص أول 30 دقيقة مجانية ترحيبية
   const isFirstFreeApplied = referenceSession?.isFirstFreeSession === true;
   const isFreeNow = isFirstFreeApplied && durationSeconds <= 1800;
   const billableHours = isFreeNow ? 0 : calculateFullHours(durationSeconds);
   const baseCost = isFreeNow ? 0 : calculateCost(durationSeconds, sessionRate);
 
-  // السعر الإجمالي النهائي
+  // السعر الإجمالي النهائي المعتمد
   const totalPrice = useMemo(() => {
     if (referenceSession?.status === 'completed' && referenceSession?.totalPrice != null) {
       return Number(referenceSession.totalPrice);
@@ -164,12 +164,54 @@ export default function SummaryScreen() {
           <h3 className="text-sm font-black text-right">طريقة الدفع</h3>
           <div className="grid grid-cols-2 gap-3">
             {methods.map((m) => (
-              <button key={m.id} onClick={() => setPaymentMethod(m.id)} className={`p-4 rounded-xl border text-center font-black ${paymentMethod === m.id ? 'bg-blue-50 border-blue-600 text-blue-700' : 'bg-slate-50'}`}>
-                <div className="text-2xl mb-1">{m.icon}</div>{m.label}
+              <button 
+                key={m.id} 
+                onClick={() => setPaymentMethod(m.id)} 
+                className={`py-3 px-3 rounded-2xl border text-center transition-all relative flex flex-col items-center justify-center min-h-[110px] ${
+                  paymentMethod === m.id 
+                    ? m.id === 'wallet' 
+                      ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-400 text-blue-700' 
+                      : 'bg-emerald-50 border-emerald-400 ring-1 ring-emerald-400 text-emerald-700' 
+                    : 'bg-slate-50 border-slate-200 text-slate-500'
+                }`}
+              >
+                <div className="text-2xl mb-1">{m.icon}</div>
+                <div className="font-black text-slate-800 leading-tight text-xs">{m.label}</div>
+                
+                {/* 💳 عرض الرصيد الحالي للعميل في كارت المحفظة */}
+                {m.id === 'wallet' && (
+                  <div className="mt-1.5 font-bold flex items-center justify-center gap-1 border-t border-blue-200/50 pt-1.5 w-full text-slate-600">
+                    <span className="text-[10px] font-black">رصيدك:</span>
+                    <span className="font-mono text-xs font-black">{walletBalance} ج</span>
+                  </div>
+                )}
               </button>
             ))}
           </div>
-          <button onClick={handleConfirm} className="w-full py-4 rounded-2xl font-black text-lg bg-emerald-600 text-white shadow-xl">
+
+          {/* ⚠️ في حال عدم كفاية رصيد المحفظة */}
+          {paymentMethod === 'wallet' && !canPayWallet && (
+            <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="mt-3 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2">
+              <AlertTriangle size={18} className="text-red-500 shrink-0" />
+              <div>
+                <p className="text-xs text-red-600 font-bold">رصيد المحفظة غير كافي</p>
+                <p className="text-[10px] text-red-400">المطلوب: {totalPrice} ج.م | رصيدك الحالي: {walletBalance} ج.م</p>
+              </div>
+            </motion.div>
+          )}
+
+          {/* 👝 تفاصيل الرصيد بعد الخصم المباشر من المحفظة */}
+          {paymentMethod === 'wallet' && canPayWallet && (
+            <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-2">
+              <Wallet size={18} className="text-blue-600 shrink-0" />
+              <div className="text-right">
+                <p className="text-xs text-blue-600 font-black">سيتم سحب وقيد الفاتورة من محفظتك تلقائياً</p>
+                <p className="text-[10px] text-blue-400 font-bold mt-0.5">الرصيد المتبقي بعد الخصم: <span className="font-mono font-black">{walletBalance - totalPrice} ج.م</span></p>
+              </div>
+            </motion.div>
+          )}
+
+          <button onClick={handleConfirm} disabled={paymentMethod === 'wallet' && !canPayWallet} className="w-full py-4 rounded-2xl font-black text-lg bg-emerald-600 text-white shadow-xl disabled:bg-slate-200 disabled:text-slate-400">
             تأكيد وإنهاء ({totalPrice} ج.م)
           </button>
         </div>
