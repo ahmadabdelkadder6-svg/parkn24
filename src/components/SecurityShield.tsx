@@ -8,15 +8,17 @@
  *   - كشف التلاعب بالـ LocalStorage
  *   - تعتيم الشاشة عند التصوير أو الخروج
  *
- * الطبقة الثانية: حماية السيارة من السرقة (Virtual Radar)
+ * الطبقة الثانية: حماية السيارة من السرقة (Virtual Radar + Cloud Realtime)
  *   - تثبيت موقع السيارة بالـ GPS لحظة الركن
- *   - رصد أي إزاحة أو سحب أو ونش
+ *   - رصد أي إزاحة أو سحب أو ونش (> 15 متر)
+ *   - الاستماع الفوري لإشارات السيرفر (Supabase Realtime is_breached)
  *   - سياج 250 متر للسايس
- *   - إنذار مزدوج للعميل والسايس
+ *   - إنذار مزدوج متزامن للعميل والسايس
  */
 
 import { useEffect, useState, useRef } from 'react';
 import toast from 'react-hot-toast';
+import { useStore } from '../store';
 
 export interface RadarCarAnchor {
   sessionId: string;
@@ -143,6 +145,9 @@ export default function SecurityShield({
   sessionId = null,
   carPlate = '',
 }: SecurityShieldProps) {
+  // ─── جلب قائمة الجلسات الحية من الـ Store ───
+  const sessions = useStore((state) => state.sessions);
+
   // ─── حالات حماية التطبيق ───
   const [isTampered, setIsTampered] = useState(false);
   const [isAppBlurred, setIsAppBlurred] = useState(false);
@@ -232,6 +237,33 @@ export default function SecurityShield({
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, []);
+
+  /* ═══════════════════════════════════════════
+     📡 المراقبة السحابية اللحظية (Supabase Realtime Cloud Sync)
+     ═══════════════════════════════════════════ */
+  useEffect(() => {
+    if (!isSessionActive) return;
+
+    const breachedSession = sessions.find((s) => {
+      if (s.status !== 'active') return false;
+      const matchesId = sessionId && s.id === sessionId;
+      const matchesPlate = carPlate && s.carPlate === carPlate;
+      return (matchesId || matchesPlate) && (s as any).is_breached === true;
+    });
+
+    if (breachedSession) {
+      setIsBreached(true);
+      setBreachAlert({
+        carPlate: breachedSession.carPlate || carPlate || 'المركبة',
+        reason:
+          (breachedSession as any).breach_reason ||
+          '🚨 تم رصد حركة وتحريك غير مصرح به للسيارة!',
+      });
+      if (navigator.vibrate) {
+        navigator.vibrate([1000, 200, 1000, 200, 1500]);
+      }
+    }
+  }, [sessions, isSessionActive, sessionId, carPlate]);
 
   /* ═══════════════════════════════════════════
      🛰️ الطبقة الثانية: رادار حماية السيارة

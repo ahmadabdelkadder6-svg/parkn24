@@ -60,6 +60,8 @@ export interface ParkingSession {
   // 🛡️ حقول درع الحماية والـ 10 جنيه الجديدة (دون المساس بالحقول السابقة)
   shieldEnabled?: boolean;
   shieldPrice?: number;
+  is_breached?: boolean;
+  breach_reason?: string;
 }
 
 export interface Offer {
@@ -483,6 +485,8 @@ const mapSession = (r: any): ParkingSession => {
     // 🛡️ مزامنة حقول الحماية الاختيارية
     shieldEnabled: r.shield_enabled ?? false,
     shieldPrice: r.shield_price != null ? Number(r.shield_price) : 0,
+      is_breached: r.is_breached ?? false,
+    breach_reason: r.breach_reason || '🚨 رصد تحرك غير مصرح به للمركبة!',
   };
 };
 
