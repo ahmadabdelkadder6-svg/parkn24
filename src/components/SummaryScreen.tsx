@@ -1,17 +1,8 @@
 // src/components/SummaryScreen.tsx
 
 import { motion } from 'framer-motion';
-import {
-  CheckCircle,
-  Home,
-  Calculator,
-  Wallet,
-  AlertTriangle,
-  Gift,
-  Shield, // 👈 استيراد أيقونة الدرع
-} from 'lucide-react';
-// 🌟 استيراد getServerNow ودوال البصمة لضمان مطابقة دقيقة وخالية من تلاعب الثغرات
-import { useStore, pausePolling, normalizePlate, normalizePhone, getServerNow } from '../store';
+import { CheckCircle, Home, Calculator, Wallet, AlertTriangle, Gift, Shield } from 'lucide-react';
+import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
@@ -19,25 +10,15 @@ import { supabase } from '../lib/supabase';
 
 const toMs = (value: any): number => {
   if (!value) return 0;
-  if (typeof value === 'number') {
-    return value < 1_000_000_000_000 ? value * 1000 : value;
-  }
+  if (typeof value === 'number') return value < 1_000_000_000_000 ? value * 1000 : value;
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
 export default function SummaryScreen() {
   const {
-    garages,
-    selectedGarageId,
-    sessions,
-    endSession,
-    setScreen,
-    setSelectedGarageId,
-    currentUser,
-    deductWallet,
-    fetchAll,
-    acknowledgeSession,
+    garages, selectedGarageId, sessions, endSession, setScreen, setSelectedGarageId,
+    currentUser, deductWallet, fetchAll, acknowledgeSession,
   } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
@@ -50,158 +31,36 @@ export default function SummaryScreen() {
   const [remainingWallet, setRemainingWallet] = useState(0);
 
   const isEndingRef = useRef(false);
-  const autoRedirectedRef = useRef(false);
-  const realtimeChannelRef = useRef<any>(null);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isMySession = (s: any): boolean => {
     const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
     const sPhone = s.customerPhone ? normalizePhone(s.customerPhone) : '';
-    const samePhone = Boolean(userPhone && sPhone === userPhone);
-    return samePlate || samePhone;
+    return samePlate || Boolean(userPhone && sPhone === userPhone);
   };
 
   const activeSession = useMemo(() => {
-    return sessions
-      .filter((s) => s.status === 'active' && isMySession(s))
-      .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
+    return sessions.filter((s) => s.status === 'active' && isMySession(s)).sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
   }, [sessions, userPlate, userPhone]);
 
   const lastCompletedSession = useMemo(() => {
-    return sessions
-      .filter((s) => s.status === 'completed' && isMySession(s))
-      .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
+    return sessions.filter((s) => s.status === 'completed' && isMySession(s)).sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
   }, [sessions, userPlate, userPhone]);
 
   const referenceSession = activeSession ?? lastCompletedSession;
-
-  const garage =
-    garages.find((g) => g.id === selectedGarageId) ??
-    garages.find((g) => g.id === referenceSession?.garageId);
-
-  // 🌟 التحقق الدقيق من طريقة الدفع المقبولة في الجراج
+  const garage = garages.find((g) => g.id === selectedGarageId) ?? garages.find((g) => g.id === referenceSession?.garageId);
   const paymentMode = (garage?.payment_mode as 'cash' | 'wallet' | 'both') || 'both';
 
   const methods = useMemo(() => {
     const list = [];
-    if (paymentMode === 'cash' || paymentMode === 'both') {
-      list.push({ id: 'cash' as const, label: 'سداد نقدي كاش', icon: '💵' });
-    }
-    if (paymentMode === 'wallet' || paymentMode === 'both') {
-      list.push({ id: 'wallet' as const, label: 'خصم من المحفظة', icon: '👝' });
-    }
-    if (list.length === 0) {
-      list.push({ id: 'cash' as const, label: 'سداد نقدي كاش', icon: '💵' });
-    }
-    return list;
+    if (paymentMode === 'cash' || paymentMode === 'both') list.push({ id: 'cash' as const, label: 'سداد نقدي كاش', icon: '💵' });
+    if (paymentMode === 'wallet' || paymentMode === 'both') list.push({ id: 'wallet' as const, label: 'خصم من المحفظة', icon: '👝' });
+    return list.length ? list : [{ id: 'cash' as const, label: 'سداد نقدي كاش', icon: '💵' }];
   }, [paymentMode]);
 
   useEffect(() => {
-    if (paymentMode === 'cash') {
-      setPaymentMethod('cash');
-    } else if (paymentMode === 'wallet') {
-      setPaymentMethod('wallet');
-    }
+    if (paymentMode === 'cash') setPaymentMethod('cash');
+    else if (paymentMode === 'wallet') setPaymentMethod('wallet');
   }, [paymentMode]);
-
-  useEffect(() => {
-    if (!userPlate && !userPhone) return;
-    if (done) return;
-
-    let cancelled = false;
-
-    const refetch = async () => {
-      if (cancelled || done) return;
-      try { await fetchAll(); } catch (e) { console.error('❌', e); }
-    };
-
-    refetch();
-
-    const channel = supabase
-      .channel(`summary-live-${userPlate || userPhone}-${Date.now()}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'sessions' },
-        async (payload) => {
-          const newRow = payload.new as any;
-          const oldRow = payload.old as any;
-
-          const myRow = (r: any) => {
-            if (!r) return false;
-            const plate = normalizePlate(r.car_plate || r.carPlate);
-            const phone = normalizePhone(r.customer_phone || r.customerPhone || '');
-            return (
-              (!!userPlate && plate === userPlate) ||
-              (!!userPhone && phone === userPhone)
-            );
-          };
-
-          if (myRow(newRow) || myRow(oldRow)) {
-            await refetch();
-          }
-        },
-      )
-      .subscribe();
-
-    realtimeChannelRef.current = channel;
-    pollingRef.current = setInterval(refetch, 4000);
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') refetch();
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', refetch);
-
-    return () => {
-      cancelled = true;
-      document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', refetch);
-      if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
-      if (realtimeChannelRef.current) {
-        supabase.removeChannel(realtimeChannelRef.current);
-        realtimeChannelRef.current = null;
-      }
-    };
-  }, [userPlate, userPhone, fetchAll, done]);
-
-  useEffect(() => {
-    if (done) return;
-    if (autoRedirectedRef.current) return;
-    if (activeSession) return;
-    if (!lastCompletedSession) return;
-
-    const endMs = toMs(lastCompletedSession.endTime);
-    if (!endMs) return;
-
-    const timeSinceEnd = getServerNow() - endMs;
-    if (timeSinceEnd > 10 * 60 * 1000) return;
-
-    autoRedirectedRef.current = true;
-
-    const price =
-      lastCompletedSession.totalPrice != null && Number(lastCompletedSession.totalPrice) >= 0
-        ? Number(lastCompletedSession.totalPrice)
-        : 0;
-
-    const method = lastCompletedSession.paymentMethod ?? 'cash';
-
-    setDoneTotalPrice(price);
-    setDoneMethod(method);
-    setRemainingWallet(currentUser?.wallet ?? 0);
-
-    if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
-
-    toast.success('تم إنهاء الجلسة بنجاح ✅', { icon: '🏁', duration: 3000 });
-    setTimeout(() => setDone(true), 300);
-  }, [
-    done,
-    activeSession?.id,
-    lastCompletedSession?.id,
-    lastCompletedSession?.endTime,
-    lastCompletedSession?.totalPrice,
-    lastCompletedSession?.paymentMethod,
-    currentUser?.wallet,
-  ]);
 
   const durationSeconds = referenceSession
     ? referenceSession.status === 'completed' && referenceSession.endTime
@@ -212,476 +71,108 @@ export default function SummaryScreen() {
   const durationMinutes = Math.floor(durationSeconds / 60);
   const sessionRate = Number(referenceSession?.agreedPrice ?? garage?.basePrice ?? 0);
 
-  // 🛡️ فحص تفعيل درع حماية السيارة بالرادار
-  const isShieldActive = useMemo(() => {
-    return referenceSession?.shieldEnabled === true;
-  }, [referenceSession]);
-
+  // 🛡️ فحص الدرع
+  const isShieldActive = referenceSession?.shieldEnabled === true;
   const shieldPrice = isShieldActive ? 10 : 0;
 
-  // 🌟 أول 30 دقيقة مجانية كهدية ترحيبية
-  const isFirstFreeApplied = useMemo(() => {
-    return referenceSession?.isFirstFreeSession === true;
-  }, [referenceSession]);
-
-  const isFreeNow = isFirstFreeApplied && durationSeconds <= 1800; // 30 دقيقة أو أقل
+  // 🎁 فحص الهدية
+  const isFirstFreeApplied = referenceSession?.isFirstFreeSession === true;
+  const isFreeNow = isFirstFreeApplied && durationSeconds <= 1800;
   const billableHours = isFreeNow ? 0 : calculateFullHours(durationSeconds);
-  const freeMinutesApplied = isFreeNow ? Math.floor(durationSeconds / 60) : 0;
+  const baseCost = isFreeNow ? 0 : calculateCost(durationSeconds, sessionRate);
 
-  const originalPrice = useMemo(() => {
-    return calculateCost(durationSeconds, sessionRate);
-  }, [durationSeconds, sessionRate]);
-
-  // إجمالي السعر الشامل (وقت الركنة + الـ 10 ج للدرع)
+  // السعر الإجمالي النهائي
   const totalPrice = useMemo(() => {
-    if (
-      referenceSession?.status === 'completed' &&
-      referenceSession?.totalPrice != null
-    ) {
+    if (referenceSession?.status === 'completed' && referenceSession?.totalPrice != null) {
       return Number(referenceSession.totalPrice);
     }
-    const baseCost = isFreeNow ? 0 : calculateCost(durationSeconds, sessionRate);
     return baseCost + shieldPrice;
-  }, [referenceSession, isFreeNow, durationSeconds, sessionRate, shieldPrice]);
-
-  const discountAmount = isFreeNow ? originalPrice : 0;
+  }, [referenceSession, baseCost, shieldPrice]);
 
   const walletBalance = currentUser?.wallet ?? 0;
   const canPayWallet = walletBalance >= totalPrice;
 
-  const safeEndSession = async (method: string, price: number): Promise<boolean> => {
-    if (isEndingRef.current) return false;
-
-    if (!activeSession || activeSession.status !== 'active') {
-      const freshState = useStore.getState();
-      const freshCompleted = freshState.sessions
-        .filter((s) => s.status === 'completed' && isMySession(s))
-        .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
-
-      const actualPrice =
-        freshCompleted?.totalPrice != null && Number(freshCompleted.totalPrice) >= 0
-          ? Number(freshCompleted.totalPrice)
-          : price;
-      const actualMethod = freshCompleted?.paymentMethod ?? method;
-
-      setDoneTotalPrice(actualPrice);
-      setDoneMethod(actualMethod);
-      setRemainingWallet(currentUser?.wallet ?? 0);
-      setDone(true);
-      return true;
-    }
-
+  const handleConfirm = async () => {
+    if (isEndingRef.current) return;
     isEndingRef.current = true;
-    pausePolling(15000);
 
     try {
-      // 🌟 [تأمين وحماية الفواتير]: نرسل السعر الصافي للركن فقط إلى السيرفر، لأن الـ store سيضيف الـ 10 ج تلقائياً ويوزع الأرباح 50/50 لمنع أي تكرار مالي
-      const basePriceOnly = isShieldActive ? Math.max(0, price - 10) : price;
-      await endSession(activeSession.id, basePriceOnly, method, freeMinutesApplied);
-      return true;
-    } catch (err) {
-      console.error('❌ endSession error:', err);
-      await fetchAll();
-
-      const check = useStore.getState().sessions.find((s) => s.id === activeSession.id);
-      if (!check || check.status === 'completed') {
-        const actualPrice = check?.totalPrice != null ? Number(check.totalPrice) : price;
-        const actualMethod = check?.paymentMethod ?? method;
-        setDoneTotalPrice(actualPrice);
-        setDoneMethod(actualMethod);
-        setRemainingWallet(currentUser?.wallet ?? 0);
-        setDone(true);
-        return true;
+      if (totalPrice === 0) {
+        await endSession(activeSession!.id, 0, 'free', Math.floor(durationSeconds / 60));
+        setDoneTotalPrice(0); setDoneMethod('free'); setDone(true);
+        return;
       }
-      return false;
-    } finally {
-      setTimeout(() => { isEndingRef.current = false; }, 3000);
-    }
-  };
 
-  const handleConfirm = async () => {
-    if (totalPrice === 0) {
-      const success = await safeEndSession('free', 0);
-      if (success) {
-        toast.success('تمت الركنة المجانية بنجاح! 🎁');
-        setDoneTotalPrice(0);
-        setDoneMethod('free');
-        setRemainingWallet(walletBalance);
-        setDone(true);
-      } else {
-        toast.error('حدث خطأ، حاول مرة أخرى');
+      if (paymentMethod === 'wallet') {
+        if (!canPayWallet) { toast.error('رصيد المحفظة غير كافي'); return; }
+        await endSession(activeSession!.id, totalPrice, 'wallet');
+        setDoneTotalPrice(totalPrice); setDoneMethod('wallet'); setRemainingWallet(walletBalance - totalPrice); setDone(true);
+        return;
       }
-      return;
-    }
 
-    if (paymentMethod === 'wallet') {
-      if (!canPayWallet) { toast.error('رصيد المحفظة غير كافي'); return; }
-      const newBalance = walletBalance - totalPrice;
-      deductWallet(totalPrice);
-      const success = await safeEndSession('wallet', totalPrice);
-      if (success) {
-        toast.success('تم الخصم من المحفظة بنجاح! ✅');
-        setDoneTotalPrice(totalPrice);
-        setDoneMethod('wallet');
-        setRemainingWallet(newBalance);
-        setDone(true);
-      } else {
-        deductWallet(-totalPrice);
-        toast.error('حدث خطأ، حاول مرة أخرى');
-      }
-      return;
-    }
-
-    const success = await safeEndSession('cash', totalPrice);
-    if (success) {
-      toast.success('تم إنهاء الجلسة بنجاح!');
-      setDoneTotalPrice(totalPrice);
-      setDoneMethod('cash');
-      setRemainingWallet(walletBalance);
-      setDone(true);
-    } else {
-      toast.error('حدث خطأ، حاول مرة أخرى');
-    }
+      await endSession(activeSession!.id, totalPrice, 'cash');
+      setDoneTotalPrice(totalPrice); setDoneMethod('cash'); setRemainingWallet(walletBalance); setDone(true);
+    } finally { setTimeout(() => { isEndingRef.current = false; }, 2000); }
   };
 
   if (done) {
     return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8"
-      >
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ type: 'spring', bounce: 0.5 }}
-        >
-          <CheckCircle size={80} className="text-emerald-500 mb-6" />
-        </motion.div>
+      <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} className="h-full bg-white text-slate-900 flex flex-col items-center justify-center p-8">
+        <CheckCircle size={80} className="text-emerald-500 mb-6" />
         <h2 className="text-3xl font-black text-emerald-600 mb-2">شكراً لك!</h2>
-        <p className="text-slate-500 text-sm mb-2 text-center">
-          {doneMethod === 'free'
-            ? 'تمت الركنة المجانية الترحيبية بنجاح 🎁'
-            : doneMethod === 'cash' || !doneMethod
-            ? 'تم إنهاء الجلسة بنجاح'
-            : 'تم الدفع بنجاح'}
-        </p>
-
         <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-6 text-center w-full shadow-sm">
-          <div className="text-4xl font-black text-slate-900 font-mono mb-1">
-            {doneTotalPrice} ج.م
-          </div>
-          <div className="text-xs text-slate-400 mb-2">
-            {doneMethod === 'free' || isFreeNow ? (
-              <span>(تم ركن {durationMinutes} دقيقة مجاناً كهدية ترحيبية 🎁)</span>
-            ) : (
-              <span>{billableHours} ساعة × {sessionRate} ج.م</span>
-            )}
-          </div>
-
-          {/* 🛡️ إشعار شمول درع حماية السيارة في شاشة النجاح */}
-          {isShieldActive && (
-            <div className="text-[10px] font-bold text-sky-600 mb-2 flex items-center justify-center gap-1">
-              <Shield size={11} /> يشمل 10 ج.م خدمة درع حماية السيارة من السرقة
-            </div>
-          )}
-
-          {doneMethod === 'free' && discountAmount > 0 && (
-            <div className="inline-block px-3 py-1 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-600 mb-2">
-              🎁 وفرت {discountAmount} ج.م من العرض الترحيبي!
-            </div>
-          )}
-
-          {doneMethod && (
-            <div
-              className={`inline-block px-3 py-1 rounded-full text-[10px] font-black block w-fit mx-auto ${
-                doneMethod === 'wallet'
-                  ? 'bg-blue-100 text-blue-600'
-                  : doneMethod === 'free'
-                  ? 'bg-amber-100 text-amber-700'
-                  : 'bg-emerald-100 text-emerald-600'
-              }`}
-            >
-              {doneMethod === 'wallet'
-                ? '👝 خصم من المحفظة'
-                : doneMethod === 'free'
-                ? '🎁 ركن مجاني ترحيبي'
-                : '💵 نقدي'}
-            </div>
-          )}
-
-          {doneMethod === 'wallet' && (
-            <div className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-2">
-              <span className="text-[10px] text-slate-500">الرصيد المتبقي: </span>
-              <span className="text-sm font-black text-blue-600 font-mono">
-                {remainingWallet} ج.م
-              </span>
-            </div>
-          )}
+          <div className="text-4xl font-black text-slate-900 font-mono mb-1">{doneTotalPrice} ج.م</div>
+          <div className="text-xs text-slate-400 mb-2">{billableHours} ساعة × {sessionRate} ج.م {isShieldActive && '+ 10ج درع 🛡️'}</div>
+          {isShieldActive && <div className="text-[10px] font-bold text-sky-600 mb-2 flex items-center justify-center gap-1"><Shield size={11} /> يشمل 10 ج.م خدمة درع حماية السيارة</div>}
         </div>
-
-        <button
-          onClick={() => {
-            if (lastCompletedSession && acknowledgeSession) {
-              acknowledgeSession(lastCompletedSession.id);
-            }
-            setSelectedGarageId(null);
-            setScreen('list');
-          }}
-          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100"
-        >
-          <Home size={20} className="text-white" />
-          <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
-            العودة للرئيسية
-          </span>
+        <button onClick={() => { setSelectedGarageId(null); setScreen('list'); }} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2">
+          <Home size={20} /> العودة للرئيسية
         </button>
       </motion.div>
     );
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="h-full bg-white text-slate-900 p-6 overflow-y-auto"
-    >
-      <div className="pt-10 mb-6">
-        <h2 className="text-2xl font-black text-center mb-2 text-slate-900">ملخص الجلسة</h2>
-        <p className="text-slate-500 text-sm text-center">
-          {activeSession ? 'راجع التفاصيل وأكد الدفع' : 'تم إنهاء الجلسة'}
-        </p>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="h-full bg-white text-slate-900 p-6 overflow-y-auto">
+      <div className="pt-10 mb-6 text-center">
+        <h2 className="text-2xl font-black text-slate-900">ملخص الفاتورة</h2>
       </div>
-
-      {!activeSession && lastCompletedSession && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4 flex items-center gap-2"
-        >
-          <CheckCircle size={16} className="text-emerald-500 shrink-0" />
-          <p className="text-xs text-emerald-700 font-bold">
-            ✅ تم إنهاء الجلسة وتحصيل المبلغ من الجراج
-          </p>
-        </motion.div>
-      )}
 
       <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-4 shadow-sm">
         <div className="text-center mb-3">
-          {isFreeNow && !isShieldActive ? (
-            <>
-              <div className="text-4xl font-black text-emerald-600 font-mono mb-0.5">
-                0 ج.م
-              </div>
-              <div className="inline-block px-3.5 py-1.5 rounded-full text-[10px] font-black bg-gradient-to-r from-amber-400 to-orange-500 text-white mb-2 shadow-sm flex items-center justify-center gap-1.5 w-fit mx-auto">
-                <Gift size={12} className="text-white" />
-                <span>ركنتك الأولى مجانية بالكامل! (أول 30 دقيقة 🎁)</span>
-              </div>
-            </>
-          ) : (
-            <div className="text-4xl font-black text-slate-900 font-mono mb-0.5">
-              {totalPrice} ج.م
+          <div className="text-4xl font-black text-slate-900 font-mono mb-0.5">{totalPrice} ج.م</div>
+          <div className="text-[10px] text-slate-400 font-bold">إجمالي المبلغ المطلوب سداده</div>
+        </div>
+
+        <div className="bg-gray-50 rounded-xl p-3 border border-slate-100 space-y-2 text-xs">
+          <div className="flex justify-between"><span className="text-slate-500">مدة الركن الكلية</span><span className="font-mono font-black">{durationMinutes} دقيقة</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">رسم الركن</span><span className="font-mono font-black">{baseCost} ج.م</span></div>
+          {isShieldActive && (
+            <div className="flex justify-between text-sky-600 font-bold">
+              <span className="flex items-center gap-1"><Shield size={12} /> درع حماية السيارة</span>
+              <span className="font-mono font-black">+10 ج.م</span>
             </div>
           )}
-          <div className="text-[10px] text-slate-400 font-bold">إجمالي التكلفة الشاملة</div>
-        </div>
-
-        <div className="bg-gray-50 rounded-xl p-3 border border-slate-100">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <Calculator size={14} className="text-blue-600" />
-            <span className="text-[10px] text-slate-500 font-bold">تفاصيل الحساب الفعلي</span>
-          </div>
-          <div className="space-y-1.5">
-            <div className="flex justify-between text-xs">
-              <span className="text-slate-500">مدة الركن الكلية</span>
-              <span className="font-black text-slate-900 font-mono">{durationMinutes} دقيقة</span>
-            </div>
-
-            {isFreeNow && (
-              <div className="flex justify-between text-xs text-emerald-600 font-bold">
-                <span className="flex items-center gap-1">🎁 خصم الهدية الترحيبية</span>
-                <span className="font-mono">مجاني بالكامل (أول 30 دقيقة)</span>
-              </div>
-            )}
-
-            <div className="flex justify-between text-xs">
-              <span className="text-slate-500">رسم ساعة الانتظار</span>
-              <span className="font-black text-slate-900 font-mono">
-                {billableHours} ساعة × {sessionRate} ج.م
-              </span>
-            </div>
-
-            {/* 🛡️ إضافة تفاصيل درع حماية السيارة من السرقة داخل الفاتورة */}
-            {isShieldActive && (
-              <div className="flex justify-between text-xs text-sky-600 font-bold">
-                <span className="flex items-center gap-1">🛡️ درع حماية السيارة بالرادار</span>
-                <span className="font-mono font-black">+10 ج.م</span>
-              </div>
-            )}
-
-            {garage && sessionRate !== garage.basePrice && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-1.5 text-center">
-                <p className="text-[9px] text-amber-600 font-bold">
-                  💰 سعر خاص متفق عليه (بدل {garage.basePrice} ج.م/ساعة)
-                </p>
-              </div>
-            )}
-
-            <div className="border-t border-slate-200 pt-1.5">
-              <div className="flex justify-between text-xs">
-                <span className="text-slate-700 font-bold">الإجمالي المطلوب سداده</span>
-                <span className="font-black text-emerald-600 font-mono">
-                  {totalPrice} ج.م
-                </span>
-              </div>
-            </div>
+          <div className="border-t pt-2 flex justify-between font-black text-emerald-600 text-sm">
+            <span>المجموع النهائي</span><span className="font-mono">{totalPrice} ج.م</span>
           </div>
         </div>
-
-        {!activeSession && lastCompletedSession?.paymentMethod && (
-          <div className="text-center mt-2">
-            <span
-              className={`inline-block px-3 py-1 rounded-full text-[10px] font-black ${
-                lastCompletedSession.paymentMethod === 'wallet'
-                  ? 'bg-blue-100 text-blue-600'
-                  : 'bg-emerald-100 text-emerald-600'
-              }`}
-            >
-              {lastCompletedSession.paymentMethod === 'wallet'
-                ? '👝 محفظة'
-                : '💵 نقدي'}
-            </span>
-          </div>
-        )}
       </div>
 
       {activeSession && (
-        <>
-          {totalPrice > 0 && (
-            <div className="mb-6">
-              <h3 className="text-sm font-black text-slate-700 mb-3 text-right">طريقة الدفع</h3>
-              <div className={`grid ${methods.length === 1 ? 'grid-cols-1' : 'grid-cols-2'} gap-3`}>
-                {methods.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => setPaymentMethod(m.id)}
-                    className={`py-3 px-3 rounded-2xl border text-center transition-all relative flex flex-col items-center justify-center min-h-[110px] ${
-                      paymentMethod === m.id
-                        ? m.id === 'wallet'
-                          ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-400'
-                          : 'bg-emerald-50 border-emerald-400 ring-1 ring-emerald-400'
-                        : 'bg-slate-50 border-slate-200 text-slate-500'
-                    }`}
-                  >
-                    <div className="text-2xl mb-1">{m.icon}</div>
-                    <div className="font-black text-slate-800 leading-tight" style={{ fontSize: '15px', fontWeight: 900 }}>
-                      {m.label}
-                    </div>
-                    {m.id === 'wallet' && (
-                      <div
-                        className="mt-1.5 font-bold flex items-center justify-center gap-1 border-t border-blue-200/50 pt-1.5 w-full"
-                        style={{ color: canPayWallet ? '#059669' : '#EF4444' }}
-                      >
-                        <span className="text-[10px] font-black text-slate-500">رصيدك:</span>
-                        <span className="font-mono" style={{ fontSize: '15px', fontWeight: 900 }}>
-                          {walletBalance}ج
-                        </span>
-                      </div>
-                    )}
-                  </button>
-                ))}
-              </div>
-
-              {paymentMethod === 'wallet' && !canPayWallet && (
-                <motion.div
-                  initial={{ opacity: 0, y: 5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mt-3 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2"
-                >
-                  <AlertTriangle size={18} className="text-red-500 shrink-0" />
-                  <div>
-                    <p className="text-xs text-red-600 font-bold">رصيد المحفظة غير كافي</p>
-                    <p className="text-[10px] text-red-400">
-                      المطلوب: {totalPrice} ج.م | رصيدك: {walletBalance} ج.م
-                    </p>
-                  </div>
-                </motion.div>
-              )}
-
-              {paymentMethod === 'wallet' && canPayWallet && (
-                <motion.div
-                  initial={{ opacity: 0, y: 5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-2"
-                >
-                  <Wallet size={18} className="text-blue-600 shrink-0" />
-                  <div>
-                    <p className="text-xs text-blue-600 font-bold">
-                      سيتم خصم {totalPrice} ج.م من رصيدك تلقائياً
-                    </p>
-                    <p className="text-[10px] text-blue-400">
-                      الرصيد بعد الخصم: {walletBalance - totalPrice} ج.م
-                    </p>
-                  </div>
-                </motion.div>
-              )}
-            </div>
-          )}
-
-          <button
-            onClick={handleConfirm}
-            disabled={totalPrice > 0 && paymentMethod === 'wallet' && !canPayWallet}
-            className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 text-white ${
-              totalPrice === 0
-                ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-100'
-                : paymentMethod === 'wallet' && !canPayWallet
-                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                : paymentMethod === 'wallet'
-                  ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-100'
-                  : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100'
-            }`}
-          >
-            {totalPrice === 0 ? (
-              <>
-                <Gift size={20} className="text-white animate-pulse" />
-                <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
-                  تأكيد إنهاء الجلسة مجاناً 🎁
-                </span>
-              </>
-            ) : paymentMethod === 'wallet' ? (
-              <>
-                <Wallet size={20} className="text-white" />
-                <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
-                  خصم من المحفظة ({totalPrice} ج.م)
-                </span>
-              </>
-            ) : (
-              <>
-                <CheckCircle size={20} className="text-white" />
-                <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
-                  تأكيد الدفع نقدي ({totalPrice} ج.م)
-                </span>
-              </>
-            )}
+        <div className="space-y-4">
+          <h3 className="text-sm font-black text-right">طريقة الدفع</h3>
+          <div className="grid grid-cols-2 gap-3">
+            {methods.map((m) => (
+              <button key={m.id} onClick={() => setPaymentMethod(m.id)} className={`p-4 rounded-xl border text-center font-black ${paymentMethod === m.id ? 'bg-blue-50 border-blue-600 text-blue-700' : 'bg-slate-50'}`}>
+                <div className="text-2xl mb-1">{m.icon}</div>{m.label}
+              </button>
+            ))}
+          </div>
+          <button onClick={handleConfirm} className="w-full py-4 rounded-2xl font-black text-lg bg-emerald-600 text-white shadow-xl">
+            تأكيد وإنهاء ({totalPrice} ج.م)
           </button>
-        </>
-      )}
-
-      {!activeSession && (
-        <button
-          onClick={() => {
-            if (lastCompletedSession && acknowledgeSession) {
-              acknowledgeSession(lastCompletedSession.id);
-            }
-            setSelectedGarageId(null);
-            setScreen('list');
-          }}
-          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100 mt-4"
-        >
-          <Home size={20} className="text-white" />
-          <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
-            العودة للرئيسية
-          </span>
-        </button>
+        </div>
       )}
     </motion.div>
   );
