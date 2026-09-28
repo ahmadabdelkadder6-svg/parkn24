@@ -10,10 +10,9 @@ import {
   Sparkles,
   CreditCard,
   XCircle,
-  Shield, // 👈 استيراد أيقونة الدرع
+  Shield,
   CheckCircle2,
 } from 'lucide-react';
-// 🌟 استيراد getServerNow ودوال البصمة لضمان مطابقة العداد بالملي ثانية بين جميع الهواتف
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import {
   calculateFullHours,
@@ -86,7 +85,6 @@ export default function SessionScreen() {
     );
   };
 
-  // ✅ البحث عن الجلسة النشطة بالبصمة الموحدة
   const activeSession = useMemo(() => {
     return sessions
       .filter((s) => {
@@ -122,14 +120,12 @@ export default function SessionScreen() {
     }
   }, [activeSession?.id]);
 
-  // ✅ حساب وقت البداية مع Fallback بتوقيت السيرفر الموحد
   const activeStartMs = useMemo(() => {
     if (!activeSession) return 0;
     const ms = safeParseTime(activeSession.startTime);
     return ms > 0 ? ms : getServerNow();
   }, [activeSession?.id, activeSession?.startTime]);
 
-  // 📡 جلب البيانات في الخلفية
   useEffect(() => {
     fetchAll().catch((e) => console.error('Fetch error:', e));
   }, [fetchAll]);
@@ -175,7 +171,7 @@ export default function SessionScreen() {
     };
   }, [userPlate, userPhone, fetchAll]);
 
-  // ⏱️ عداد الثواني اللحظي الموحد مع سيرفر قاعدة البيانات
+  // عداد الثواني
   useEffect(() => {
     if (!activeSession || activeStartMs <= 0) {
       setElapsed(0);
@@ -239,19 +235,17 @@ export default function SessionScreen() {
   const sessionRate = Number(activeSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const isFirstFreeApplied = activeSession?.isFirstFreeSession === true;
 
-  // 🛡️ دالة تفعيل الدرع وطلب إذن إيقاظ شاشة القفل
+  // 🛡️ تفعيل درع الأمان الاختياري (+10 جنيه)
   const handleToggleShield = async () => {
     if (!activeSession || isActivatingShield) return;
     setIsActivatingShield(true);
     const loadingToast = toast.loading('جاري تفعيل درع حماية السيارة بالرادار...');
 
     try {
-      // 1. طلب إذن الإشعارات لإيقاظ شاشة القفل في حال السرقة
       if ('Notification' in window && Notification.permission !== 'granted') {
         await Notification.requestPermission();
       }
 
-      // 2. تحديث قاعدة البيانات في السحابة
       const { error } = await supabase
         .from('sessions')
         .update({ shield_enabled: true, shield_price: 10 })
@@ -259,7 +253,6 @@ export default function SessionScreen() {
 
       if (error) throw error;
 
-      // 3. تحديث الحالة في الـ Zustand Store
       const updatedSessions = sessions.map((s) =>
         s.id === activeSession.id
           ? { ...s, shieldEnabled: true, shieldPrice: 10 }
@@ -268,7 +261,7 @@ export default function SessionScreen() {
       useStore.setState({ sessions: updatedSessions });
 
       toast.dismiss(loadingToast);
-      toast.success('🛡️ تم تفعيل درع الأمان وربط هاتفك بنظام إنذار شاشة القفل! (+10 ج)', {
+      toast.success('🛡️ تم تفعيل درع حماية السيارة من السرقة! (+10 ج على الفاتورة)', {
         duration: 4500,
       });
 
@@ -276,13 +269,12 @@ export default function SessionScreen() {
     } catch (e: any) {
       toast.dismiss(loadingToast);
       toast.error('تعذر تفعيل الدرع حالياً، تأكد من اتصالك بالإنترنت');
-      console.error('Shield activation error:', e);
     } finally {
       setIsActivatingShield(false);
     }
   };
 
-  // 🎁 الحسابات التفاعلية لـ (30 دقيقة مجانية)
+  // 🎁 الحسابات التفاعلية
   const { displayedCost, displayedHours, countdownLabel, countdownTime, isFreeNow } = useMemo(() => {
     const defaultCountdown = { minutes: 59, seconds: 59 };
 
@@ -321,11 +313,9 @@ export default function SessionScreen() {
     }
   }, [isFirstFreeApplied, elapsed, sessionRate]);
 
-  // التكلفة الإجمالية الظاهرة في زر الإنهاء (تشمل الـ 10 ج لو الدرع مفعّل)
   const isShieldActive = activeSession?.shieldEnabled === true;
   const finalTotalAmount = displayedCost + (isShieldActive ? 10 : 0);
 
-  // شاشة الانتظار والمزامنة
   if (!activeSession) {
     return (
       <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8 text-right" style={{ background: BRAND.navy }}>
@@ -347,10 +337,10 @@ export default function SessionScreen() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full text-white flex flex-col items-center justify-center p-6 overflow-y-auto safe-top safe-bottom"
+      className="h-full text-white flex flex-col items-center overflow-y-auto px-5 pt-14 pb-12 text-right"
       style={{ background: BRAND.navy }}
     >
-      {/* 🎁 شارة مميزة علوية ترحيبية في العداد إذا كانت الجلسة مجانية */}
+      {/* 🎁 شارة الهدية الترحيبية */}
       {isFirstFreeApplied && (
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
@@ -394,7 +384,7 @@ export default function SessionScreen() {
               ],
         }}
         transition={{ repeat: Infinity, duration: 2.5 }}
-        className="w-36 h-36 rounded-full flex flex-col items-center justify-center border-2 mb-5 shadow-lg"
+        className="w-36 h-36 rounded-full flex flex-col items-center justify-center border-2 mb-5 shadow-lg shrink-0"
         style={{
           background: BRAND.navyLight,
           borderColor: isFreeNow ? BRAND.green : BRAND.blue,
@@ -447,7 +437,7 @@ export default function SessionScreen() {
         </div>
       )}
 
-      {/* 🛡️ بطاقة تفعيل درع حماية السيارة من السرقة (+10 جنيه) 🛡️ */}
+      {/* 🛡️ بطاقة تفعيل درع حماية السيارة من السرقة (+10 جنيه) */}
       <div className="w-full mb-4">
         {!isShieldActive ? (
           <motion.div
@@ -514,7 +504,7 @@ export default function SessionScreen() {
         )}
       </div>
 
-      {/* 💡 بانر إرشادي متناسق ومدمج ومريح للشاشة 💡 */}
+      {/* 💡 بانر إرشادي متناسق ومدمج ومريح للشاشة */}
       <div 
         className="w-full rounded-2xl p-3.5 mb-4 text-center border"
         style={{
@@ -581,7 +571,7 @@ export default function SessionScreen() {
         </div>
       </div>
 
-      {/* زر إنهاء الجلسة الفاخر باللون الأحمر الإرشادي المضاء */}
+      {/* زر إنهاء الجلسة */}
       <button
         onClick={() => setScreen('summary')}
         className="w-full py-3.5 rounded-xl active:scale-[0.98] transition-all mb-3 flex items-center justify-center border-0 text-white cursor-pointer font-black"
