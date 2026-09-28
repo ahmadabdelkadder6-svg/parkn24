@@ -1283,7 +1283,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0, addedBy) => {
+   endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0, addedBy) => {
     const nowISO = new Date(getServerNow()).toISOString();
     const session = get().sessions.find((s) => s.id === id);
     if (!session) { console.error('❌ الجلسة مش موجودة:', id); return; }
@@ -1295,7 +1295,8 @@ export const useStore = create<AppState>((set, get) => ({
     pausePolling(2000);
 
     try {
-      const basePrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
+      // 1. السعر الإجمالي النهائي المحصل (شامل الركن + الدرع إن وجد)
+      const finalTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
       const garage = get().garages.find((g) => g.id === session.garageId);
       
       if (garage && garage.payment_mode) {
@@ -1307,27 +1308,25 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
 
-      // 🛡️ احتساب تكلفة الرادار الفعلي (الدرع بقيمة 10 جنيهات)
-      const shieldPrice = session.shieldEnabled ? 10 : 0;
-      
-      // السعر النهائي المشمول بالفاتورة للعميل (سعر الركنة الأصلي + الـ 10 ج للدرع)
-      const finalTotalPrice = basePrice + shieldPrice;
-
       const commissionRate = garage?.commissionRate ?? 10;
       const isAppSession = session.source === 'app';
 
-      // 1. حساب العمولة الأساسية على سعر الركن الفعلي فقط
+      // 2. فصل سعر وقت الركن عن سعر الدرع لمنع التكرار المالي
+      const isShield = session.shieldEnabled === true;
+      const parkingBasePrice = isShield ? Math.max(0, finalTotalPrice - 10) : finalTotalPrice;
+
+      // 3. حساب عمولة وقت الركن فقط
       let commissionAmount = isAppSession
-        ? Math.round(((basePrice * commissionRate) / 100) * 100) / 100
+        ? Math.round(((parkingBasePrice * commissionRate) / 100) * 100) / 100
         : 0;
 
-      // 2. حساب صافي دخل الركنة الأساسي للجراج
-      let netRevenue = Math.round((basePrice - commissionAmount) * 100) / 100;
+      // 4. حساب صافي دخل الجراج من وقت الركن
+      let netRevenue = Math.round((parkingBasePrice - commissionAmount) * 100) / 100;
 
-      // 3. تطبيق تسوية التقسيم الذكي للـ 10 جنيهات مناصفة (5 للمنصة و 5 للجراج)
-      if (session.shieldEnabled) {
-        commissionAmount += 5; // حصة المنصة المباشرة (5 ج)
-        netRevenue += 5;       // حصة الجراج المباشرة (5 ج)
+      // 5. توزيع الـ 10 ج مناصفة (5 ج عمولة للمنصة + 5 ج صافي للجراج)
+      if (isShield) {
+        commissionAmount += 5; // حصة المنصة
+        netRevenue += 5;       // حصة الجراج
       }
 
       const isAutoConfirmed = paymentMethod === 'wallet';
@@ -1336,7 +1335,7 @@ export const useStore = create<AppState>((set, get) => ({
       const endedSession: ParkingSession = {
         ...session,
         endTime: nowISO,
-        totalPrice: finalTotalPrice, // السعر شامل الـ 10 ج للدرع
+        totalPrice: finalTotalPrice, // السعر الإجمالي المظبوط بدون أي زيادة
         paymentMethod,
         status: 'completed' as const,
         revenueConfirmed: isAutoConfirmed,
@@ -1352,7 +1351,7 @@ export const useStore = create<AppState>((set, get) => ({
       await get().adjustGarageSpots(session.garageId, +1);
 
       if (paymentMethod === 'wallet' && isAppSession) {
-        await get().deductWallet(finalTotalPrice); // سحب قيمة الفاتورة كاملة (ركن + درع) من المحفظة
+        await get().deductWallet(finalTotalPrice);
       }
 
       if (session.isFirstFreeSession) {
