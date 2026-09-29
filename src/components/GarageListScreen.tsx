@@ -139,6 +139,7 @@ export default function GarageListScreen() {
     [currentUser?.phone]
   );
 
+  // ✅ الـ useEffect المعدّل - إزالة sessions لمنع الاستعلامات المتكررة وسرعة الأداء
   useEffect(() => {
     if (!currentUser) return;
     const checkAbuseHistory = async () => {
@@ -155,7 +156,7 @@ export default function GarageListScreen() {
       } catch (err) { console.error('Error verifying welcome gift eligibility:', err); }
     };
     checkAbuseHistory();
-  }, [currentUser, sessions, cleanUserPhone]);
+  }, [currentUser?.phone, currentUser?.carPlate, cleanUserPhone]); // 👈 تم الاستبدال هنا لمنع الاستنزاف
 
   const isEligibleForFreeSession = useMemo(() => {
     return currentUser && !currentUser.hasUsedFreeSession && !isAbuseDetected;
@@ -208,6 +209,7 @@ export default function GarageListScreen() {
 
   useEffect(() => { getUserLocation(); }, [getUserLocation]);
 
+  // ✅ تخفيف وقت طلب البيانات الاحتياطي لـ 18 ثانية لمنع البطء والضغط على البروسيسور والبطارية
   useEffect(() => {
     if (!normalizedUserPlate) return;
     let isSubscribed = true;
@@ -221,7 +223,10 @@ export default function GarageListScreen() {
     const channel = supabase.channel(`customer-realtime-${normalizedUserPlate}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, (payload) => { if (isMyRow(payload.new) || isMyRow(payload.old)) refetch(); })
       .subscribe();
-    const interval = setInterval(refetch, 20000);
+    
+    // تم زيادة المؤقت لـ 18000 (18 ثانية) بدلاً من 10 ثوانٍ لمنع البطء
+    const interval = setInterval(refetch, 18000); 
+    
     const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
     const handleFocus = () => refetch();
     document.addEventListener('visibilitychange', handleVisibility);

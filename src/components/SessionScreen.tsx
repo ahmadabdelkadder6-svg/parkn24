@@ -267,14 +267,18 @@ export default function SessionScreen() {
 
   const handleToggleShield = async () => {
     if (!activeSession || isActivatingShield) return;
+
+    // 📱 1. طلب إذن الإشعارات فوراً في أول لحظة لموافقة حماية iOS / Safari
+    try {
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {});
+      }
+    } catch {}
+
     setIsActivatingShield(true);
     const loadingToast = toast.loading('جاري تفعيل درع حماية السيارة بالرادار...');
 
     try {
-      if ('Notification' in window && Notification.permission !== 'granted') {
-        await Notification.requestPermission();
-      }
-
       const { error } = await supabase
         .from('sessions')
         .update({ shield_enabled: true, shield_price: 10 })
@@ -282,6 +286,26 @@ export default function SessionScreen() {
 
       if (error) throw error;
 
+      const updatedSessions = sessions.map((s) =>
+        s.id === activeSession.id
+          ? { ...s, shieldEnabled: true, shieldPrice: 10 }
+          : s
+      );
+      useStore.setState({ sessions: updatedSessions });
+
+      toast.dismiss(loadingToast);
+      toast.success('🛡️ تم تفعيل درع حماية السيارة من السرقة! (+10 ج على الفاتورة)', {
+        duration: 4500,
+      });
+
+      await fetchAll();
+    } catch (e: any) {
+      toast.dismiss(loadingToast);
+      toast.error('تعذر تفعيل الدرع حالياً، تأكد من اتصالك بالإنترنت');
+    } finally {
+      setIsActivatingShield(false);
+    }
+  };
       const updatedSessions = sessions.map((s) =>
         s.id === activeSession.id
           ? { ...s, shieldEnabled: true, shieldPrice: 10 }
