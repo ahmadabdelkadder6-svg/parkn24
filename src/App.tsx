@@ -432,7 +432,10 @@ export default function App() {
   if (pathname === '/install') return <InstallPage />;
   if (pathname === '/qr') return <InstallQRCodePage />;
 
-  const activeSessionForShield = currentUser && view === 'user' && safeScreen === 'session'
+// src/App.tsx
+
+  // 🛡️ استخراج الجلسة النشطة المؤمّنة للدرع (تعمل في أي شاشة وليس فقط session)
+  const activeSessionForShield = currentUser && view === 'user'
     ? sessions.find((s) => {
         if (s.status !== 'active') return false;
         const userPlate = normalizePlate(currentUser.carPlate);
@@ -443,12 +446,15 @@ export default function App() {
       })
     : null;
 
+  const isShieldOn = activeSessionForShield?.shieldEnabled === true;
+
   return (
     <ErrorBoundary>
+      {/* 🛡️ تفعيل درع الأمان الموحد ليعمل في كافة شاشات التطبيق */}
       <SecurityShield
         view={view}
-        isSessionActive={!!activeSessionForShield}
-        isShieldEnabled={!!activeSessionForShield}
+        isSessionActive={view === 'garage' ? true : !!activeSessionForShield}
+        isShieldEnabled={view === 'garage' ? true : isShieldOn}
         sessionId={activeSessionForShield?.id || null}
         carPlate={activeSessionForShield?.carPlate || ''}
       />
