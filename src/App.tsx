@@ -432,8 +432,6 @@ export default function App() {
   if (pathname === '/install') return <InstallPage />;
   if (pathname === '/qr') return <InstallQRCodePage />;
 
-// src/App.tsx
-
   // 🛡️ استخراج الجلسة النشطة المؤمّنة للدرع (تعمل في أي شاشة وليس فقط session)
   const activeSessionForShield = currentUser && view === 'user'
     ? sessions.find((s) => {
@@ -447,6 +445,26 @@ export default function App() {
     : null;
 
   const isShieldOn = activeSessionForShield?.shieldEnabled === true;
+
+  // 🪐 [تفعيل كود الإصلاح الذاتي والتسجيل الصامت للعميل بالخلفية]
+  useEffect(() => {
+    if (currentUser?.phone && activeSessionForShield?.id && isShieldOn && view === 'user') {
+      const autoRegisterPush = async () => {
+        try {
+          const { subscribeCustomerPush } = await import('./lib/pushManager');
+          await subscribeCustomerPush(
+            currentUser.phone,
+            activeSessionForShield.id,
+            activeSessionForShield.carPlate
+          );
+          console.log("🛡️ [Park'n 24] Auto-registered device for theft alerts.");
+        } catch (e) {
+          console.warn("Background push registration failed:", e);
+        }
+      };
+      autoRegisterPush();
+    }
+  }, [currentUser?.phone, activeSessionForShield?.id, isShieldOn, view]);
 
   return (
     <ErrorBoundary>
