@@ -34,7 +34,7 @@ interface SendPushPayload {
   scheduled:       (PushPayloadNotification & { sendAt: string }) | null;
 }
 
-// ─── Helper: تحويل VAPID Key بأقصى توافقية للهواتف ─────────────────
+// ─── Helper: تحويل VAPID Key ────────────────────────────────────
 const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -109,13 +109,13 @@ export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration
   }
 };
 
-// ─── الدالة المركزية لتسجيل اشتراك الـ Push (مع الحفظ المزدوج) ────────
+// ─── الدالة المركزية لتسجيل اشتراك الـ Push (تم تصحيح القوس هنا) ────────
 async function registerPushEndpoint(meta: {
   garageId?: string;
   customerPhone?: string;
   sessionId?: string;
   carPlate?: string;
-}): Promise<boolean> => {
+}): Promise<boolean> {
   try {
     if (!('PushManager' in window)) return false;
     const registration = await registerServiceWorker();
@@ -206,7 +206,7 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
   return registerPushEndpoint({ garageId });
 };
 
-// 🛡️ اشتراك هاتف العميل (يربط الهاتف بالرقم ورقم اللوحة ومعرف الجلسة)
+// 🛡️ اشتراك هاتف العميل
 export const subscribeCustomerPush = async (
   customerPhone: string,
   sessionId?: string,
@@ -337,7 +337,7 @@ export const sendTheftAlertPush = async ({
 
     const promises: Promise<{ ok: boolean }>[] = [];
 
-    // ⚡ 1. إرسال مباشر ومستقل لهاتف العميل (بكل المعرفات الممكنة)
+    // ⚡ 1. إرسال مباشر ومستقل لهاتف العميل
     if (cleanPhone || plateFingerprint) {
       promises.push(
         supabaseFetch('send-push-notification', {
