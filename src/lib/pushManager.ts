@@ -252,7 +252,7 @@ export const sendTheftAlertPush = async ({
       garageId:      garageId || null,
       customerPhone: customerPhone || null,
       urgency:       'high',
-      ttl:           0, // تسليم فوري في نفس الثانية دون تأخير
+      ttl:           0,
 
       immediate: {
         title: '🚨 إنذار سرقة عاجل لمركبتك!',
@@ -386,5 +386,24 @@ export const refreshPushSubscriptionIfNeeded = async (garageId: string): Promise
   const status = await checkPushSubscriptionStatus();
   if (status.isSupported && status.permission === 'granted') {
     await subscribeToPush(garageId);
+  }
+};
+
+// ─── 🛑 7. إيقاف تكرار إنذار السرقة (عند تأكيد الأمان) ─────────
+export const stopTheftAlarmRepeat = async ({
+  carPlate,
+}: {
+  carPlate: string;
+}): Promise<boolean> => {
+  try {
+    const result = await supabaseFetch('cancel-scheduled-alert', {
+      carPlate,
+      tags: [`theft-emergency`, `theft-repeat`],
+      action: 'stop_repeat',
+      cancelledAt: new Date().toISOString(),
+    });
+    return result.ok;
+  } catch {
+    return false;
   }
 };

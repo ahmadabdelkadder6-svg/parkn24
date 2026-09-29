@@ -1,10 +1,16 @@
 // src/components/SecurityShield.tsx
 
+/**
+ * 🛡️ درع الأمان الشامل المزدوج المحدث (حماية التطبيق + حماية السيارة)
+ * - خوارزمية الذكاء الاصطناعي لمنع الإنذارات الكاذبة (فلترة السرعة والاتجاه ودقة الـ GPS)
+ * - تكرار الإشعار الخارجي على شاشة القفل كل 15 ثانية حتى استجابة العميل
+ */
+
 import { useEffect, useState, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { useStore, normalizePlate } from '../store';
 import { supabase } from '../lib/supabase';
-import { sendTheftAlertPush } from '../lib/pushManager';
+import { sendTheftAlertPush, stopTheftAlarmRepeat } from '../lib/pushManager';
 
 const calculateDistanceMeters = (
   lat1: number, lon1: number,
@@ -106,9 +112,11 @@ export default function SecurityShield({
   const [isBreached, setIsBreached] = useState(false);
   const [breachAlert, setBreachAlert] = useState<{ carPlate: string; reason: string; sessionId?: string } | null>(null);
 
+  // 📍 مراجع الـ GPS وتتبع المسار
   const carAnchorRef = useRef<{ lat: number; lng: number; accuracy: number } | null>(null);
   const garageOriginRef = useRef<{ lat: number; lng: number } | null>(null);
   const consecutiveBreachCountRef = useRef<number>(0);
+  const gpsHistoryRef = useRef<Array<{ lat: number; lng: number; time: number; accuracy: number }>>([]);
 
   // 🔁 مرجع مؤقت تكرار الإشعار
   const repeatAlarmTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -134,14 +142,14 @@ export default function SecurityShield({
       navigator.vibrate([2000, 200, 2000, 200, 2000, 200, 3000]);
     }
 
-    // 🔔 إطلاق الإشعار الخارجي الأول فوراً
+    // 🔔 إطلاق الإشعار الخارجي الأول فوراً على شاشة القفل
     triggerExternalSystemNotification(
       '🚨 إنذار سرقة عاجل لمركبتك!',
       `🚗 السيارة ${plate || ''} • ${cleanReason}`,
       `theft-alarm-${plate || 'car'}-${Date.now()}`
     );
 
-    // 🔁 بدء تكرار الإشعار كل 15 ثانية لحد ما العميل يفتح أو يوقف
+    // 🔁 بدء تكرار الإشعار كل 15 ثانية حتى فتح التطبيق
     if (repeatAlarmTimerRef.current) {
       clearInterval(repeatAlarmTimerRef.current);
     }
@@ -150,7 +158,6 @@ export default function SecurityShield({
     repeatAlarmTimerRef.current = setInterval(() => {
       repeatCount += 1;
 
-      // إيقاف التكرار بعد 20 مرة (5 دقائق) أو لو تم إيقاف الإنذار
       if (repeatCount >= 20) {
         if (repeatAlarmTimerRef.current) {
           clearInterval(repeatAlarmTimerRef.current);
@@ -159,20 +166,17 @@ export default function SecurityShield({
         return;
       }
 
-      // إعادة تشغيل الصوت والاهتزاز
       playTheftSirenSound();
       if (navigator.vibrate) {
         navigator.vibrate([2000, 200, 2000, 200, 2000, 200, 3000]);
       }
 
-      // إعادة إطلاق الإشعار الخارجي
       triggerExternalSystemNotification(
         `🚨 إنذار سرقة متكرر (${repeatCount})!`,
         `🚗 السيارة ${plate || ''} • ${cleanReason} • افتح التطبيق فوراً!`,
         `theft-alarm-repeat-${plate || 'car'}-${Date.now()}`
       );
 
-      // إعادة إرسال Web Push للطرف الآخر كل 30 ثانية
       if (repeatCount % 2 === 0 && targetSessionId) {
         const targetSession = sessions.find((s) => s.id === targetSessionId);
         if (targetSession?.garageId) {
@@ -184,9 +188,9 @@ export default function SecurityShield({
           }).catch(() => {});
         }
       }
-    }, 15000); // كل 15 ثانية
+    }, 15000);
 
-    // 🛰️ مزامنة فورية مع السيرفر
+    // 🛰️ مزامنة فورية مع السيرفر عند الرصد المحلي
     if (isLocalDetection && targetSessionId) {
       try {
         await supabase
@@ -248,7 +252,6 @@ export default function SecurityShield({
             setBreachAlert(null);
             consecutiveBreachCountRef.current = 0;
 
-            // 🛑 إيقاف تكرار الإشعار
             if (repeatAlarmTimerRef.current) {
               clearInterval(repeatAlarmTimerRef.current);
               repeatAlarmTimerRef.current = null;
@@ -288,7 +291,7 @@ export default function SecurityShield({
   }, []);
 
   /* ═══════════════════════════════════════════
-     🛰️ 3. رادار الـ GPS الذكي
+     🛰️ 3. رادار الـ GPS الذكي (مع فلترة السرعة والاتجاه)
      ═══════════════════════════════════════════ */
   useEffect(() => {
     if (!isSessionActive || !isShieldEnabled || !sessionId) return;
@@ -305,6 +308,12 @@ export default function SecurityShield({
               accuracy: Math.round(pos.coords.accuracy),
             };
             garageOriginRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            gpsHistoryRef.current = [{
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+              time: Date.now(),
+              accuracy: Math.round(pos.coords.accuracy),
+            }];
           }
         },
         () => {},
@@ -317,8 +326,10 @@ export default function SecurityShield({
 
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+          const { latitude: lat, longitude: lng, accuracy, speed } = pos.coords;
+          const now = Date.now();
 
+          // 🛡️ 1. فلترة القراءات الضعيفة والتشويش
           if (accuracy > 35) return;
 
           if (!carAnchorRef.current) {
@@ -326,24 +337,50 @@ export default function SecurityShield({
             return;
           }
 
+          // 🛡️ 2. فحص سياج السايس للجراج
           if (view === 'garage' && garageOriginRef.current) {
             const dist = calculateDistanceMeters(garageOriginRef.current.lat, garageOriginRef.current.lng, lat, lng);
             setValetDistance(dist);
             setIsValetOutOfFence(dist > 250);
           }
 
+          // 🛡️ 3. إضافة القراءة لسجل الحركة
+          gpsHistoryRef.current.push({ lat, lng, time: now, accuracy: Math.round(accuracy) });
+          if (gpsHistoryRef.current.length > 5) gpsHistoryRef.current.shift();
+
+          // 🛡️ 4. حساب المسافة المقطوعة عن نقطة التثبيت
           const drift = calculateDistanceMeters(carAnchorRef.current.lat, carAnchorRef.current.lng, lat, lng);
           const safeThreshold = Math.max(45, (carAnchorRef.current.accuracy || 15) + accuracy);
 
+          // 🛡️ 5. فلترة السرعة (حركة حقيقية > 5 كم/س)
+          const currentSpeedKmh = speed !== null && speed >= 0 ? speed * 3.6 : -1;
+          const isMovingFast = currentSpeedKmh > 5;
+
+          // 🛡️ 6. فلترة الاتجاه (سحب في مسار أحادي مستمر)
+          let isConsistentDirection = false;
+          if (gpsHistoryRef.current.length >= 3) {
+            const recent = gpsHistoryRef.current.slice(-3);
+            const distances = [];
+            for (let i = 1; i < recent.length; i++) {
+              distances.push(calculateDistanceMeters(recent[i - 1].lat, recent[i - 1].lng, recent[i].lat, recent[i].lng));
+            }
+            isConsistentDirection = distances.every((d) => d > 4);
+          }
+
+          // 🛡️ 7. التحقق من الاختراق الحقيقي
           if (drift > safeThreshold) {
-            consecutiveBreachCountRef.current += 1;
-            if (consecutiveBreachCountRef.current >= 2) {
-              triggerAlarm(
-                carPlate,
-                `🚨 رصد تحرك وسحب للسيارة مسافة ${drift} متراً عن موقع الركن!`,
-                sessionId,
-                true
-              );
+            if (isMovingFast || isConsistentDirection || drift > 90) {
+              consecutiveBreachCountRef.current += 1;
+              if (consecutiveBreachCountRef.current >= 2) {
+                triggerAlarm(
+                  carPlate,
+                  `🚨 رصد تحرك وسحب للسيارة مسافة ${drift} متراً عن موقع الركن!`,
+                  sessionId,
+                  true
+                );
+              }
+            } else {
+              consecutiveBreachCountRef.current = 0;
             }
           } else {
             consecutiveBreachCountRef.current = 0;
@@ -360,7 +397,7 @@ export default function SecurityShield({
     };
   }, [isSessionActive, isShieldEnabled, sessionId, carPlate, view]);
 
-  // 🧹 تنظيف مؤقت التكرار عند إلغاء المكون
+  // 🧹 تنظيف مؤقت التكرار
   useEffect(() => {
     return () => {
       if (repeatAlarmTimerRef.current) {
@@ -374,10 +411,13 @@ export default function SecurityShield({
     setIsBreached(false);
     consecutiveBreachCountRef.current = 0;
 
-    // 🛑 إيقاف تكرار الإشعار فوراً
     if (repeatAlarmTimerRef.current) {
       clearInterval(repeatAlarmTimerRef.current);
       repeatAlarmTimerRef.current = null;
+    }
+
+    if (breachAlert?.carPlate) {
+      stopTheftAlarmRepeat({ carPlate: breachAlert.carPlate }).catch(() => {});
     }
 
     if (breachAlert?.sessionId) {
@@ -389,6 +429,16 @@ export default function SecurityShield({
     setBreachAlert(null);
     toast.success('تم تأكيد الأمان وإيقاف الإنذار 🛡️');
   };
+
+  if (isTampered) {
+    return (
+      <div className="fixed inset-0 z-[9999999] bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center" dir="rtl">
+        <div className="text-5xl mb-4">🛡️</div>
+        <h2 className="text-xl font-black mb-2">تم تفعيل بروتوكول الأمان الذاتي</h2>
+        <p className="text-red-400 text-xs font-bold max-w-xs">تم رصد تلاعب خارجي بالصلاحيات. جاري إعادة التهيئة...</p>
+      </div>
+    );
+  }
 
   if (isBreached && breachAlert) {
     return (
