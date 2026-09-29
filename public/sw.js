@@ -1,7 +1,7 @@
 // public/sw.js
 
-// ✅ تحديث رقم الإصدار لـ v12 للسيطرة الفورية
-const CACHE_NAME    = 'parkn24-shield-v12'; 
+// ✅ تحديث رقم الإصدار لـ v13 للسيطرة الفورية وتفعيل التوجيه الذكي
+const CACHE_NAME    = 'parkn24-shield-v13'; 
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
 const recentNotifications = new Map();
@@ -12,9 +12,10 @@ const activeTheftAlarms = new Map();
 
 // ─── 1. Install ───────────────────────────────────────────────
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
+  self.skipWaiting(); // تفعيل فوري بدون انتظار
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
+      console.log('📦 Service Worker Installed (v13 - Smart Deep Link Shield)');
       return cache.addAll(STATIC_ASSETS);
     })
   );
@@ -29,7 +30,7 @@ self.addEventListener('activate', (event) => {
           names.filter((n) => n !== CACHE_NAME).map((n) => caches.delete(n))
         )
       )
-      .then(() => self.clients.claim())
+      .then(() => self.clients.claim()) // السيطرة الفورية على كل التبويبات
   );
 });
 
@@ -82,9 +83,9 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// ─── 🔄 دالة تكرار الإشعار ────────────────────────────────────
+// ─── 🔄 دالة تكرار الإشعار في الخلفية ────────────────────────
 function scheduleTheftRepeat(title, body, carPlate, repeatCount = 0) {
-  const maxRepeats = 20;
+  const maxRepeats = 20; // 20 مرة × 15 ثانية = 5 دقائق
   if (repeatCount >= maxRepeats) {
     activeTheftAlarms.delete(carPlate);
     return;
@@ -96,7 +97,7 @@ function scheduleTheftRepeat(title, body, carPlate, repeatCount = 0) {
 
     const count = repeatCount + 1;
     const repeatTitle = `🚨 إنذار سرقة متكرر (${count}/${maxRepeats})!`;
-    const repeatBody = `🚗 ${carPlate} • السيارة لا تزال في خطر! افتح التطبيق فوراً!`;
+    const repeatBody = `🚗 ${carPlate} • السيارة في خطر! افتح التطبيق فوراً!`;
     const uniqueTag = `theft-repeat-${carPlate}-${Date.now()}`;
 
     const options = {
@@ -124,7 +125,7 @@ function scheduleTheftRepeat(title, body, carPlate, repeatCount = 0) {
   activeTheftAlarms.set(carPlate, timerId);
 }
 
-// ─── 4. Push ──────────────────────────────────────────────────
+// ─── 4. Push (استقبال الإشعار الفوري وإيقاظ الهاتف) ─────────────
 self.addEventListener('push', (event) => {
   let title     = '🚨 تنبيه عاجل من Park\'n 24';
   let body      = '🚗 يوجد تحديث جديد بخصوص حجزك أو سيارتك!';
@@ -238,7 +239,7 @@ self.addEventListener('push', (event) => {
   );
 });
 
-// ─── 5. Notification Click ────────────────────────────────────
+// ─── 5. Notification Click (التوجيه الذكي لشاشة الإنذار الحمراء) ──────────
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
@@ -250,15 +251,26 @@ self.addEventListener('notificationclick', (event) => {
 
   if (event.action === 'dismiss') return;
 
-  const targetUrl = event.notification.data?.url || '/';
+  // 🚨 إنشاء الرابط الذكي لفتح شاشة الإنذار الحمراء فوراً
+  let targetUrl = event.notification.data?.url || '/';
+  if (event.notification.data?.type === 'theft_breach' || event.notification.tag?.includes('theft')) {
+    targetUrl = `/?breach=true&carPlate=${encodeURIComponent(plate)}`;
+  }
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then((clientList) => {
         for (const client of clientList) {
-          if ('focus' in client) return client.focus();
+          if ('focus' in client) {
+            if ('navigate' in client) {
+              return client.navigate(targetUrl).then(() => client.focus());
+            }
+            return client.focus();
+          }
         }
-        if (clients.openWindow) return clients.openWindow(targetUrl);
+        if (clients.openWindow) {
+          return clients.openWindow(targetUrl);
+        }
       })
   );
 });

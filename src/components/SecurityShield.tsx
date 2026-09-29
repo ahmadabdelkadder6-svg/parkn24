@@ -2,7 +2,8 @@
 
 /**
  * 🛡️ درع الأمان الشامل المزدوج المحدث (حماية التطبيق + حماية السيارة)
- * 🔒 [إيقاف فوري ونهائي]: إرسال أمر إلغاء صريح للـ Service Worker وإعادة ضبط الرادار فور تأكيد الأمان ✅
+ * 🔒 [حماية مطلقة]: صلاحية إيقاف الإنذار محصورة بمالك السيارة (العميل) فقط!
+ * 🔇 [كتم الصوت المحلي]: متاح للعميل وللسايس كتم الصوت على أجهزتهم للتحدث مع بقاء الاختراق نشطاً.
  */
 
 import { useEffect, useState, useRef } from 'react';
@@ -122,7 +123,15 @@ export default function SecurityShield({
 
   const [isBreached, setIsBreached] = useState(false);
   const [breachAlert, setBreachAlert] = useState<{ carPlate: string; reason: string; sessionId?: string } | null>(null);
-  const [isValetMutedLocally, setIsValetMutedLocally] = useState(false);
+  
+  // 🔇 كتم الصوت والاهتزاز المحلي
+  const [isMutedLocally, setIsMutedLocally] = useState(false);
+  const isMutedLocallyRef = useRef(isMutedLocally);
+
+  // تحديث المرجع لتفادي مشاكل الـ Closure في المؤقتات
+  useEffect(() => {
+    isMutedLocallyRef.current = isMutedLocally;
+  }, [isMutedLocally]);
 
   const carAnchorRef = useRef<{ lat: number; lng: number; accuracy: number } | null>(null);
   const garageOriginRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -140,11 +149,10 @@ export default function SecurityShield({
     targetSessionId?: string,
     isLocalDetection = false
   ) => {
-    // لو تم تأكيد الأمان مؤخراً (خلال دقيقة)، لا تقبل أي إنذار محلي عابر
     if (Date.now() < dismissCooldownUntilRef.current) return;
 
     setIsBreached(true);
-    setIsValetMutedLocally(false);
+    setIsMutedLocally(false); // إعادة تفعيل الصوت لأي إنذار جديد
     const cleanReason = reason || '🚨 رصد محاولة تحريك وسرقة للسيارة!';
 
     setBreachAlert({
@@ -182,17 +190,20 @@ export default function SecurityShield({
         return;
       }
 
-      playTheftSirenSound();
-      if (navigator.vibrate) {
-        navigator.vibrate([2000, 200, 2000, 200, 2000, 200, 3000]);
-      }
+      // 🔇 تحقق لحظي من مرجع كتم الصوت قبل الرن أو الاهتزاز المكرر
+      if (!isMutedLocallyRef.current) {
+        playTheftSirenSound();
+        if (navigator.vibrate) {
+          navigator.vibrate([2000, 200, 2000, 200, 2000, 200, 3000]);
+        }
 
-      triggerExternalSystemNotification(
-        `🚨 إنذار سرقة متكرر (${repeatCount})!`,
-        `🚗 السيارة ${plate || ''} • ${cleanReason} • افتح التطبيق فوراً!`,
-        `theft-alarm-repeat-${plate || 'car'}-${Date.now()}`,
-        plate
-      );
+        triggerExternalSystemNotification(
+          `🚨 إنذار سرقة متكرر (${repeatCount})!`,
+          `🚗 السيارة ${plate || ''} • ${cleanReason} • افتح التطبيق فوراً!`,
+          `theft-alarm-repeat-${plate || 'car'}-${Date.now()}`,
+          plate
+        );
+      }
 
       if (repeatCount % 2 === 0 && targetSessionId) {
         const targetSession = sessions.find((s) => s.id === targetSessionId);
@@ -264,10 +275,9 @@ export default function SecurityShield({
               );
             }
           } else if (newRow.is_breached === false) {
-            // ✅ عندما يتم إيقاف الإنذار من السيرفر، يتم إيقاف كل شيء فوراً في كل الأجهزة
             setIsBreached(false);
             setBreachAlert(null);
-            setIsValetMutedLocally(false);
+            setIsMutedLocally(false);
             consecutiveBreachCountRef.current = 0;
 
             if (repeatAlarmTimerRef.current) {
@@ -412,6 +422,22 @@ export default function SecurityShield({
   }, [isSessionActive, isShieldEnabled, sessionId, carPlate, view]);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('breach') === 'true') {
+      const urlPlate = params.get('carPlate') || carPlate || 'المركبة';
+      triggerAlarm(
+        urlPlate,
+        '🚨 إنذار عاجل: تم رصد محاولة تحريك وسرقة لسيارتك!',
+        sessionId || undefined,
+        false
+      );
+      try {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } catch {}
+    }
+  }, [carPlate, sessionId]);
+
+  useEffect(() => {
     return () => {
       if (repeatAlarmTimerRef.current) {
         clearInterval(repeatAlarmTimerRef.current);
@@ -424,9 +450,8 @@ export default function SecurityShield({
   const handleOwnerDismiss = async () => {
     setIsBreached(false);
     consecutiveBreachCountRef.current = 0;
-    dismissCooldownUntilRef.current = Date.now() + 60000; // منع الـ GPS من إعادة تشغيل الإنذار لمدة دقيقة
+    dismissCooldownUntilRef.current = Date.now() + 60000;
 
-    // 🛑 1. إيقاف المؤقت في واجهة React
     if (repeatAlarmTimerRef.current) {
       clearInterval(repeatAlarmTimerRef.current);
       repeatAlarmTimerRef.current = null;
@@ -434,15 +459,16 @@ export default function SecurityShield({
 
     const currentPlate = breachAlert?.carPlate || carPlate;
 
-    // 🛑 2. إرسال أمر فوري للـ Service Worker لقتل كل المؤقتات ومسح الإشعارات من شاشة القفل
     killAllServiceWorkerTheftAlarms(currentPlate);
 
-    // 🛑 3. إيقاف التكرار في السيرفر
+    try {
+      window.history.replaceState({}, document.title, '/');
+    } catch {}
+
     if (currentPlate) {
       stopTheftAlarmRepeat({ carPlate: currentPlate }).catch(() => {});
     }
 
-    // 🔄 4. إعادة تعيين نقطة الرادار للموقع الحالي لمنع أي إنذار كاذب بعد الإيقاف
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition((pos) => {
         carAnchorRef.current = {
@@ -453,7 +479,6 @@ export default function SecurityShield({
       });
     }
 
-    // 🌐 5. تحديث السيرفر لإعلام هاتف السايس والأجهزة الأخرى بالإلغاء
     if (breachAlert?.sessionId) {
       await supabase
         .from('sessions')
@@ -465,17 +490,11 @@ export default function SecurityShield({
     toast.success('تم تأكيد الأمان وإيقاف الإنذار بالكامل 🛡️');
   };
 
-  // 🅿️ 2. دالة كتم الصوت لجهاز السايس
-  const handleValetMuteLocal = () => {
-    setIsValetMutedLocally(true);
-    if (repeatAlarmTimerRef.current) {
-      clearInterval(repeatAlarmTimerRef.current);
-      repeatAlarmTimerRef.current = null;
-    }
-    killAllServiceWorkerTheftAlarms(breachAlert?.carPlate || carPlate);
-    toast('تم كتم الصوت بجهازك • الإنذار مستمر لدى العميل حتى يؤكد الأمان ⚠️', {
-      icon: '🔇',
-      duration: 5000,
+  // 🔇 2. دالة كتم الصوت المؤقت (للعميل أو السايس)
+  const handleLocalMute = () => {
+    setIsMutedLocally(true);
+    toast('🔇 تم كتم الصوت مؤقتاً بجهازك لتتمكن من التحدث • الإنذار لا يزال نشطاً في قاعدة البيانات للطرف الآخر', {
+      duration: 4000,
     });
   };
 
@@ -505,32 +524,48 @@ export default function SecurityShield({
         </p>
 
         {isCarOwner ? (
-          <>
-            <p className="text-amber-300 text-[10px] font-black mb-6 animate-pulse">
-              ⚠️ بصفتك مالك السيارة، اضغط أدناه لتأكيد أمان سيارتك وإيقاف الإنذار
+          /* 👑 واجهة مالك السيارة: يملك صلاحية الإيقاف النهائي + كتم الصوت المؤقت */
+          <div className="w-full max-w-xs space-y-3">
+            <p className="text-amber-300 text-[10px] font-black mb-4 animate-pulse">
+              ⚠️ بصفتك مالك السيارة، اضغط أدناه لتأكيد أمان سيارتك وإيقاف الإنذار بالكامل
             </p>
+            
             <button
               onClick={handleOwnerDismiss}
-              className="bg-white hover:bg-slate-100 text-red-600 font-black px-10 py-4 rounded-2xl text-sm active:scale-95 transition-all shadow-2xl cursor-pointer"
+              className="w-full bg-white hover:bg-slate-100 text-red-600 font-black py-4 rounded-2xl text-sm active:scale-95 transition-all shadow-2xl cursor-pointer border-0"
             >
               🔕 تأكيد أمان سيارتي وإيقاف الإنذار
             </button>
-          </>
+
+            {!isMutedLocally ? (
+              <button
+                onClick={handleLocalMute}
+                className="w-full bg-white/10 hover:bg-white/20 text-white font-black py-3 rounded-xl text-xs border border-white/20 backdrop-blur-sm active:scale-95 transition-all cursor-pointer"
+              >
+                🔇 كتم صوت جهازي مؤقتاً للتحدث
+              </button>
+            ) : (
+              <div className="text-[10px] text-amber-300 font-bold py-2">
+                🔇 تم كتم صوت جهازك مؤقتاً • الإنذار لا يزال نشطاً في الجراج
+              </div>
+            )}
+          </div>
         ) : (
+          /* 🅿️ واجهة السايس: لا يملك صلاحية إيقاف إنذار العميل */
           <div className="w-full max-w-xs space-y-3 mt-2">
             <div className="p-3 bg-red-900/60 border border-red-500/50 rounded-xl text-[11px] font-bold text-amber-200">
               🔒 لا يمكن للسايس إيقاف الإنذار. في انتظار تأكيد الأمان من مالك السيارة حصراً.
             </div>
 
-            {!isValetMutedLocally ? (
+            {!isMutedLocally ? (
               <button
-                onClick={handleValetMuteLocal}
+                onClick={handleLocalMute}
                 className="w-full bg-slate-900/80 hover:bg-slate-900 text-slate-200 font-black py-3 rounded-xl text-xs border border-white/20 active:scale-95 transition-all cursor-pointer"
               >
                 🔇 كتم صوت جهازي فقط (الإنذار مستمر عند العميل)
               </button>
             ) : (
-              <div className="text-[10px] text-slate-300 font-bold">
+              <div className="text-[10px] text-slate-300 font-bold py-2">
                 🔇 تم كتم صوت جهازك • الإنذار مستمر لدى العميل
               </div>
             )}
