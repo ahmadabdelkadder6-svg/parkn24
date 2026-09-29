@@ -1,6 +1,6 @@
 // src/lib/pushManager.ts
 
-import { normalizePlate } from '../store';
+import { normalizePlate, normalizePhone } from '../store'; // 👈 استيراد normalizePhone لمنع أخطاء المطابقة الصامتة
 
 // ─── VAPID & Supabase Configuration ─────────────────────────────
 const VAPID_PUBLIC_KEY =
@@ -133,13 +133,16 @@ async function registerPushEndpoint(meta: { garageId?: string; customerPhone?: s
     const sub = subscription.toJSON();
     if (!sub.keys?.p256dh || !sub.keys?.auth) return false;
 
+    // 🧼 تطهير هاتف العميل قبل إرساله للسيرفر لضمان مطابقة البيانات 100%
+    const cleanCustomerPhone = meta.customerPhone ? normalizePhone(meta.customerPhone) : null;
+
     const result = await supabaseFetch('save-push-subscription', {
       subscription: {
         endpoint: sub.endpoint,
         keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
       },
       garageId: meta.garageId || null,
-      customerPhone: meta.customerPhone || null,
+      customerPhone: cleanCustomerPhone,
       sessionId: meta.sessionId || null,
       isNew,
       userAgent: navigator.userAgent,
@@ -163,7 +166,7 @@ export const subscribeCustomerPush = async (customerPhone: string, sessionId?: s
   return registerPushEndpoint({ customerPhone, sessionId });
 };
 
-// ─── 🚗 1. إرسال تنبيه "سيارة في الطريق" بأعلى أولوية طوارئ للسايس ───
+// ─── 🚗 1. إرسال تنبيه "سيارة في الطريق" للسايس ───
 export const sendCarComingPush = async ({
   garageId,
   carPlate,
@@ -232,7 +235,7 @@ export const sendCarComingPush = async ({
   }
 };
 
-// ─── 🚨 2. إرسال إنذار سرقة عاجل (للسايس والعميل معاً) ─────────────
+// ─── 🚨 2. إرسال إنذار سرقة عاجل بالتوازي (للسايس والعميل معاً) ─────────────
 export const sendTheftAlertPush = async ({
   garageId,
   customerPhone,
@@ -247,13 +250,12 @@ export const sendTheftAlertPush = async ({
   try {
     const plateFingerprint = normalizePlate(carPlate) || carPlate;
     const tag = `theft-alarm-${plateFingerprint}-${Date.now()}`;
+    const cleanPhone = customerPhone ? normalizePhone(customerPhone) : null;
 
-    const payload: SendPushPayload = {
-      garageId:      garageId || null,
-      customerPhone: customerPhone || null,
+    // البنية الأساسية للإنذار
+    const basePayload = {
       urgency:       'high',
       ttl:           0,
-
       immediate: {
         title: '🚨 إنذار سرقة عاجل لمركبتك!',
         body:  `🚗 السيارة ${carPlate} • ${reason || 'تم رصد حركة وسحب غير مصرح به!'}`,
@@ -261,7 +263,7 @@ export const sendTheftAlertPush = async ({
         data: {
           type:       'theft_breach',
           carPlate,
-          garageId,
+          garageId:   garageId || null,
           url:        '/',
           breachTime: new Date().toISOString(),
         },
@@ -269,8 +271,33 @@ export const sendTheftAlertPush = async ({
       scheduled: null,
     };
 
-    const result = await supabaseFetch('send-push-notification', payload);
-    return result.ok;
+    const promises: Promise<{ ok: boolean }>[] = [];
+
+    // ⚡ 1. إرسال إنذار فوري ومستقل لهاتف العميل المطهّر
+    if (cleanPhone) {
+      promises.push(
+        supabaseFetch('send-push-notification', {
+          ...basePayload,
+          customerPhone: cleanPhone,
+          garageId: null, // تصفير الجراج لتوجيهه للعميل فقط
+        })
+      );
+    }
+
+    // ⚡ 2. إرسال إنذار فوري ومستقل لجهاز السايس (الجراج)
+    if (garageId) {
+      promises.push(
+        supabaseFetch('send-push-notification', {
+          ...basePayload,
+          customerPhone: null, // تصفير العميل لتوجيهه للسايس فقط
+          garageId: garageId,
+        })
+      );
+    }
+
+    // إطلاق الطلبات بالتوازي لسرعة خارقة (< 1 ثانية للجهازين)
+    const results = await Promise.all(promises);
+    return results.every(r => r.ok);
   } catch (err) {
     console.error('❌ خطأ في sendTheftAlertPush:', err);
     return false;
