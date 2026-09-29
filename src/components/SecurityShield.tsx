@@ -164,13 +164,14 @@ export default function SecurityShield({
   };
 
   /* ═══════════════════════════════════════════
-     📡 1. الاستماع الصاعق عبر Supabase Realtime
+     📡 1. الاستماع الصاعق المباشر من السيرفر (Supabase Realtime)
      ═══════════════════════════════════════════ */
   useEffect(() => {
     const userPlateClean = normalizePlate(currentUser?.carPlate);
+    const userPhoneClean = currentUser?.phone ? currentUser.phone.replace(/[^\d]/g, '') : '';
 
     const channel = supabase
-      .channel(`security-shield-live-${Date.now()}`)
+      .channel(`security-shield-global-${Date.now()}`)
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'sessions' },
@@ -178,12 +179,19 @@ export default function SecurityShield({
           const newRow = payload.new as any;
           if (!newRow) return;
 
+          // 🚨 لو حصل اختراق أو تحريك للسيارة
           if (newRow.is_breached === true && newRow.status === 'active') {
             const rowPlate = normalizePlate(newRow.car_plate || newRow.carPlate);
-            const isMyCar = userPlateClean && rowPlate === userPlateClean;
-            const isMyGarage = currentGarageId && newRow.garage_id === currentGarageId;
+            const rowPhone = newRow.customer_phone ? String(newRow.customer_phone).replace(/[^\d]/g, '') : '';
 
-            if (isMyCar || isMyGarage || view === 'admin' || !currentUser) {
+            // فحص هل السيارة تخص هذا العميل أو هذا الجراج
+            const isMyCarByPlate = !!userPlateClean && rowPlate === userPlateClean;
+            const isMyCarByPhone = !!userPhoneClean && rowPhone === userPhoneClean;
+            const isMySessionId  = sessionId && newRow.id === sessionId;
+            const isMyGarage     = currentGarageId && newRow.garage_id === currentGarageId;
+
+            // إطلاق الإنذار فوراً لو كانت السيارة تخص العميل أو الجراج أو في شاشة الأدمن
+            if (isMyCarByPlate || isMyCarByPhone || isMySessionId || isMyGarage || view === 'admin') {
               triggerAlarm(
                 newRow.car_plate,
                 newRow.breach_reason || '🚨 تم رصد حركة وتحريك غير مصرح به للسيارة!',
@@ -194,7 +202,6 @@ export default function SecurityShield({
           } else if (newRow.is_breached === false) {
             setIsBreached(false);
             setBreachAlert(null);
-            consecutiveBreachCountRef.current = 0;
           }
         }
       )
@@ -203,7 +210,7 @@ export default function SecurityShield({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentUser?.carPlate, currentGarageId, view]);
+  }, [currentUser?.carPlate, currentUser?.phone, sessionId, currentGarageId, view]);
 
   /* ═══════════════════════════════════════════
      🛡️ 2. حماية المنصة
