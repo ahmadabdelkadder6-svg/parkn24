@@ -92,13 +92,11 @@ export default function SummaryScreen() {
   const walletBalance = currentUser?.wallet ?? 0;
   const canPayWallet = walletBalance >= totalPrice;
 
-  // 🛡️ دالة تأكيد السداد الآمنة والمحمية بالكامل من تعليق الشاشة
   const handleConfirm = async () => {
     if (isEndingRef.current) return;
     isEndingRef.current = true;
 
     try {
-      // 1. إذا كانت الركنة مجانية بالكامل
       if (totalPrice === 0) {
         if (activeSession) {
           await endSession(activeSession.id, 0, 'free', Math.floor(durationSeconds / 60));
@@ -109,11 +107,10 @@ export default function SummaryScreen() {
         return;
       }
 
-      // 2. الدفع والخصم من المحفظة الرقمية
       if (paymentMethod === 'wallet') {
         if (!canPayWallet) { 
           toast.error('رصيد المحفظة غير كافي لشحن هذه الفاتورة'); 
-          isEndingRef.current = false; // 👈 فك قفل الزر فوراً عند عدم كفاية الرصيد لمنع تعليق الشاشة!
+          isEndingRef.current = false;
           return; 
         }
         
@@ -129,7 +126,6 @@ export default function SummaryScreen() {
         return;
       }
 
-      // 3. الدفع نقداً (كاش) يداً بيد للسايس
       if (activeSession) {
         await endSession(activeSession.id, totalPrice, 'cash');
       }
@@ -141,7 +137,6 @@ export default function SummaryScreen() {
       console.error('Error confirming payment:', err);
       toast.error('حدث خطأ غير متوقع، يرجى المحاولة مرة أخرى');
     } finally {
-      // فك قفل الزر تلقائياً في نهاية العملية أو عند الفشل
       isEndingRef.current = false;
     }
   };
@@ -190,7 +185,8 @@ export default function SummaryScreen() {
         </div>
       </div>
 
-      {activeSession && (
+      {activeSession ? (
+        // 🟢 العميل يقوم بالدفع بنفسه
         <div className="space-y-4">
           <h3 className="text-sm font-black text-right">طريقة الدفع</h3>
           <div className="grid grid-cols-2 gap-3">
@@ -209,7 +205,6 @@ export default function SummaryScreen() {
                 <div className="text-2xl mb-1">{m.icon}</div>
                 <div className="font-black text-slate-800 leading-tight text-xs">{m.label}</div>
                 
-                {/* 💳 عرض الرصيد الحالي للعميل في كارت المحفظة */}
                 {m.id === 'wallet' && (
                   <div className="mt-1.5 font-bold flex items-center justify-center gap-1 border-t border-blue-200/50 pt-1.5 w-full text-slate-600">
                     <span className="text-[10px] font-black">رصيدك:</span>
@@ -220,7 +215,6 @@ export default function SummaryScreen() {
             ))}
           </div>
 
-          {/* ⚠️ في حال عدم كفاية رصيد المحفظة */}
           {paymentMethod === 'wallet' && !canPayWallet && (
             <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="mt-3 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2">
               <AlertTriangle size={18} className="text-red-500 shrink-0" />
@@ -231,7 +225,6 @@ export default function SummaryScreen() {
             </motion.div>
           )}
 
-          {/* 👝 تفاصيل الرصيد بعد الخصم المباشر من المحفظة */}
           {paymentMethod === 'wallet' && canPayWallet && (
             <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-2">
               <Wallet size={18} className="text-blue-600 shrink-0" />
@@ -244,6 +237,30 @@ export default function SummaryScreen() {
 
           <button onClick={handleConfirm} disabled={paymentMethod === 'wallet' && !canPayWallet} className="w-full py-4 rounded-2xl font-black text-lg bg-emerald-600 text-white shadow-xl disabled:bg-slate-200 disabled:text-slate-400">
             تأكيد وإنهاء ({totalPrice} ج.م)
+          </button>
+        </div>
+      ) : (
+        // 🟢 الجلسة تم إنهاؤها مسبقاً وتأكيدها من السايس كاش
+        <div className="space-y-4 mt-6">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-2.5 mb-2">
+            <CheckCircle className="text-emerald-500 shrink-0" size={20} />
+            <div className="text-right">
+              <p className="text-xs text-emerald-800 font-black">تم سداد الفاتورة نقداً للسايس ✅</p>
+              <p className="text-[10px] text-emerald-600 font-bold mt-0.5">تم تسجيل وتحصيل المعاملة يداً بيد بنجاح</p>
+            </div>
+          </div>
+
+          <button 
+            onClick={() => {
+              if (referenceSession) {
+                acknowledgeSession(referenceSession.id);
+              }
+              setSelectedGarageId(null);
+              setScreen('list');
+            }} 
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 shadow-lg transition-all active:scale-[0.98] cursor-pointer"
+          >
+            <Home size={20} /> العودة للرئيسية
           </button>
         </div>
       )}
