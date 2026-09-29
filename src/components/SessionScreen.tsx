@@ -1,5 +1,3 @@
-// src/components/SessionScreen.tsx
-
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -25,17 +23,17 @@ import toast from 'react-hot-toast';
 
 /* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
-  blue: '#38bdf8',       // أزرق سماوي مضيء عالي التباين للشمس
+  blue: '#38bdf8',
   blueDark: '#0f3d85',   
   blueLight: '#e8f0fe',  
   blueSoft: 'rgba(56, 189, 248, 0.08)', 
-  green: '#4ade80',      // زمردي مضيء جداً للنهار
+  green: '#4ade80',
   greenDark: '#4ade80',  
   greenLight: 'rgba(74, 222, 128, 0.12)', 
   navy: '#0a1628',       
   navyLight: '#111e36',  
   slate: '#94a3b8',      
-  slateMuted: '#cbd5e1', // رمادي فاتح جداً عالي الوضوح
+  slateMuted: '#cbd5e1',
   border: 'rgba(255, 255, 255, 0.1)', 
 };
 
@@ -199,21 +197,41 @@ export default function SessionScreen() {
     if (activeSession.garageId) setSelectedGarageId(activeSession.garageId);
   }, [activeSession?.id, activeSession?.garageId, setSelectedGarageId]);
 
+  // ✅ الـ useEffect المعدّل - تنظيف المؤقتات ومنع التعليق
   useEffect(() => {
     if (activeSession) {
       redirectedToSummaryRef.current = false;
       return;
     }
 
-    if (activeSessionIdRef.current) {
+    if (activeSessionIdRef.current && !redirectedToSummaryRef.current) {
       const targetSession = sessions.find((s) => s.id === activeSessionIdRef.current);
-      if (targetSession && targetSession.status === 'completed' && !redirectedToSummaryRef.current) {
+      if (targetSession && targetSession.status === 'completed') {
         redirectedToSummaryRef.current = true;
-        if (targetSession.garageId) setSelectedGarageId(targetSession.garageId);
-        if (typeof acknowledgeSession === 'function') acknowledgeSession(targetSession.id);
+
+        // 1. تنظيف المؤقتات والـ Listeners فوراً لمنع تجمد الشاشة
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+        if (realtimeChannelRef.current) {
+          supabase.removeChannel(realtimeChannelRef.current);
+          realtimeChannelRef.current = null;
+        }
+
+        // 2. تسجيل أن الجلسة تم استلامها وتأكيدها فوراً
+        if (typeof acknowledgeSession === 'function') {
+          acknowledgeSession(targetSession.id);
+        }
+        if (targetSession.garageId) {
+          setSelectedGarageId(targetSession.garageId);
+        }
+
         activeSessionIdRef.current = null;
-        toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
-        setTimeout(() => { setScreen('summary'); }, 400);
+        toast.success('تم إنهاء الجلسة واستلام الإيصال ✅', { icon: '🧾', duration: 2500 });
+
+        // 3. انتقال سريع ونظيف بدون setTimeout
+        setScreen('summary');
         return;
       }
     }
@@ -222,10 +240,24 @@ export default function SessionScreen() {
       const isNotAcknowledged = acknowledgedSessionIds ? !acknowledgedSessionIds.has(lastCompletedSession.id) : true;
       if (isNotAcknowledged) {
         redirectedToSummaryRef.current = true;
-        if (lastCompletedSession.garageId) setSelectedGarageId(lastCompletedSession.garageId);
-        if (typeof acknowledgeSession === 'function') acknowledgeSession(lastCompletedSession.id);
-        toast.success('تم إنهاء الجلسة بنجاح ✅', { icon: '🏁', duration: 3000 });
-        setTimeout(() => { setScreen('summary'); }, 400);
+
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+        if (realtimeChannelRef.current) {
+          supabase.removeChannel(realtimeChannelRef.current);
+          realtimeChannelRef.current = null;
+        }
+
+        if (typeof acknowledgeSession === 'function') {
+          acknowledgeSession(lastCompletedSession.id);
+        }
+        if (lastCompletedSession.garageId) {
+          setSelectedGarageId(lastCompletedSession.garageId);
+        }
+
+        setScreen('summary');
       }
     }
   }, [activeSession, lastCompletedSession, sessions, setScreen, setSelectedGarageId, acknowledgedSessionIds, acknowledgeSession]);
@@ -335,7 +367,6 @@ export default function SessionScreen() {
       className="h-full text-white flex flex-col items-center overflow-y-auto px-4 pt-14 pb-6 text-right"
       style={{ background: BRAND.navy }}
     >
-      {/* 🎁 شارة الهدية الترحيبية - مضغوطة */}
       {isFirstFreeApplied && (
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
@@ -356,7 +387,6 @@ export default function SessionScreen() {
         </motion.div>
       )}
 
-      {/* ☀️ حلقة العداد الدائرية الكبيرة المضاءة للنهار والشارع (w-32 h-32) ☀️ */}
       <motion.div
         animate={{
           boxShadow: isFreeNow
@@ -375,11 +405,9 @@ export default function SessionScreen() {
         <div className="text-[8px] font-black mt-1" style={{ color: BRAND.slateMuted, letterSpacing: '0.5px' }}>مدة الركن الفعلية</div>
       </motion.div>
 
-      {/* كارت الحساب التفاعلي والعد التنازلي - مدمج ومضغوط */}
       <div className="w-full border rounded-xl p-3 mb-2 shrink-0" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
         <div className="flex justify-between items-center mb-2 px-1">
           <div className="text-center">
-            {/* أرقام فخمة وضخمة */}
             <div className="text-2xl font-black font-mono text-white">{displayedHours}</div>
             <div className="text-[8.5px] font-black" style={{ color: BRAND.slateMuted }}>ساعة محسوبة</div>
           </div>
@@ -392,7 +420,6 @@ export default function SessionScreen() {
           </div>
         </div>
 
-        {/* التنازلي الصغير */}
         <div className="rounded-lg p-2 text-center border bg-blue-950/20" style={{ borderColor: BRAND.border }}>
           <div className="text-[8.5px] font-black" style={{ color: BRAND.slateMuted }}>{countdownLabel}</div>
           <div className="text-xs font-black font-mono" style={{ color: isFreeNow ? BRAND.green : BRAND.blue }}>
@@ -407,7 +434,6 @@ export default function SessionScreen() {
         </div>
       )}
 
-      {/* 🛡️ بطاقة تفعيل درع حماية السيارة - مضغوطة وموفرة للمساحة */}
       <div className="w-full mb-2 shrink-0">
         {!isShieldActive ? (
           <motion.div
@@ -473,7 +499,6 @@ export default function SessionScreen() {
         )}
       </div>
 
-      {/* 💡 بانر إرشادي متناسق ومدمج ومريح للشاشة */}
       <div 
         className="w-full rounded-xl p-2 mb-2 text-center border shrink-0"
         style={{
@@ -490,7 +515,6 @@ export default function SessionScreen() {
         </p>
       </div>
 
-      {/* 🚙 بيانات السيارة والسعر - مصغرة ومضاءة جداً للشارع 🚙 */}
       <div className="w-full grid grid-cols-2 gap-2 mb-2 shrink-0">
         <div className="border p-2 rounded-xl text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
           <Car size={13} style={{ color: BRAND.blue }} className="mx-auto mb-0.5" />
@@ -504,7 +528,6 @@ export default function SessionScreen() {
         </div>
       </div>
 
-      {/* 🏢 معلومات الجراج ونوع الحجز */}
       {garage && (
         <div className="w-full border border-white/5 p-2 rounded-xl text-center bg-white/5 flex justify-between items-center text-[10px] mb-2 shrink-0">
           <span style={{ color: BRAND.slateMuted }}>{garage.name} 🅿️</span>
@@ -515,7 +538,6 @@ export default function SessionScreen() {
         </div>
       )}
 
-      {/* 💳 طرق الدفع المقبولة */}
       <div className="w-full border rounded-lg p-1.5 mb-3 text-center shrink-0" style={{ background: BRAND.blueSoft, borderColor: BRAND.border }}>
         <div className="flex items-center justify-center gap-1 text-[9.5px] font-bold" style={{ color: BRAND.blue }}>
           <CreditCard size={11} />
@@ -529,7 +551,6 @@ export default function SessionScreen() {
         </div>
       </div>
 
-      {/* زر إنهاء الجلسة الفاخر - عالي الوضوح */}
       <button
         onClick={() => setScreen('summary')}
         className="w-full py-3.5 rounded-xl active:scale-[0.98] transition-all mb-2 flex items-center justify-center border-0 text-white cursor-pointer font-black shrink-0"
@@ -550,7 +571,6 @@ export default function SessionScreen() {
         </span>
       </button>
 
-      {/* زر العودة الصامت */}
       <button
         onClick={() => setScreen('list')}
         className="w-full py-2 rounded-xl border cursor-pointer bg-transparent text-[11px] shrink-0"

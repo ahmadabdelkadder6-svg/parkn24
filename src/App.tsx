@@ -20,7 +20,7 @@ import LastSessionScreen from './components/LastSessionScreen';
 import ChatScreen from './components/ChatScreen';
 import InstallPage from './components/InstallPage';
 import InstallQRCodePage from './components/InstallQRCodePage';
-import SecurityShield from './components/SecurityShield'; // 👈 إضافة الدرع
+import SecurityShield from './components/SecurityShield';
 
 const GarageDashboard = lazy(() => import('./components/GarageDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
@@ -69,9 +69,6 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
   }
 }
 
-/* ════════════════════════════════════════════════════════════
-   🛡️ PARK'N 24 BRAND LOGO (مستوحى من الشعار المرفق)
-   ════════════════════════════════════════════════════════════ */
 function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: number }) {
   return (
     <svg viewBox="0 0 100 115" width={width} height={height} fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -88,9 +85,6 @@ function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: 
   );
 }
 
-/* ════════════════════════════════════════════════════════════
-   ☀️ PARK'N 24 HERO — FULL-SCREEN CINEMATIC BLEND (FIXED CACHE)
-   ════════════════════════════════════════════════════════════ */
 interface ParkLandingProps {
   onEnter: () => void;
 }
@@ -333,73 +327,78 @@ export default function App() {
     }
   }, [dataLoaded]);
 
+  // ✅ الـ useEffect المعدّل - منع التعليق عند تحصيل كاش من السايس
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser || view !== 'user') return;
+
     const userPlate = normalizePlate(currentUser.carPlate);
     const userPhone = currentUser.phone ? normalizePhone(currentUser.phone) : '';
+
     const myActiveSession = sessions.find((s) => {
       if (s.status !== 'active') return false;
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
       const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
       return samePlate || Boolean(userPhone && sPhone === userPhone);
     });
+
     const myIncoming = incomingCars.find((c) => {
       if (c.status !== 'coming') return false;
       const samePlate = !!userPlate && normalizePlate(c.carPlate) === userPlate;
       const cPhone = c.customerPhone ? normalizePhone(c.customerPhone) : '';
       return samePlate || Boolean(userPhone && cPhone === userPhone);
     });
+
+    // إذا كانت هناك جلسة نشطة:
     if (myActiveSession) {
       noSessionCountRef.current = 0;
       lastActiveTimeRef.current = getServerNow();
       sessionEndToastShown.current = false;
-      if (sessionTransitionTimer.current) { clearTimeout(sessionTransitionTimer.current); sessionTransitionTimer.current = null; }
+      if (sessionTransitionTimer.current) {
+        clearTimeout(sessionTransitionTimer.current);
+        sessionTransitionTimer.current = null;
+      }
       if (myActiveSession.id !== prevActiveSessionRef.current) {
         prevActiveSessionRef.current = myActiveSession.id;
         setSelectedGarageId(myActiveSession.garageId);
-        if (safeScreen !== 'session' && safeScreen !== 'summary' && safeScreen !== 'lastSession' && safeScreen !== 'chat') setScreen('session');
+        if (safeScreen !== 'session' && safeScreen !== 'summary' && safeScreen !== 'lastSession' && safeScreen !== 'chat') {
+          setScreen('session');
+        }
       }
       return;
     }
+
+    // إذا انتهت الجلسة (السايس حصل نقدي أو محفظة):
     if (prevActiveSessionRef.current) {
-      noSessionCountRef.current += 1;
-      const timeSinceLastActive = getServerNow() - lastActiveTimeRef.current;
-      if (noSessionCountRef.current < 3 || timeSinceLastActive < 8000) return;
-      if (sessionTransitionTimer.current) return;
-      sessionTransitionTimer.current = setTimeout(() => {
+      const endedSessionId = prevActiveSessionRef.current;
+      prevActiveSessionRef.current = null; // تفريغ المرجع فوراً لمنع التكرار
+      noSessionCountRef.current = 0;
+
+      if (sessionTransitionTimer.current) {
+        clearTimeout(sessionTransitionTimer.current);
         sessionTransitionTimer.current = null;
-        const freshState = useStore.getState();
-        const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
-        const freshPhone = freshState.currentUser?.phone ? normalizePhone(freshState.currentUser.phone) : '';
-        const stillActive = freshState.sessions.find((s) => {
-          if (s.status !== 'active') return false;
-          const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-          const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-          return samePlate || Boolean(freshPhone && sPhone === freshPhone);
-        });
-        if (stillActive) { noSessionCountRef.current = 0; prevActiveSessionRef.current = stillActive.id; return; }
-        const currentScreen = freshState.screen;
-        prevActiveSessionRef.current = null;
-        noSessionCountRef.current = 0;
-        if (currentScreen === 'session' || currentScreen === 'navigation' || currentScreen === 'waiting') {
-          const lastCompleted = freshState.sessions.filter((s) => {
-            if (s.status !== 'completed') return false;
-            const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-            const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-            return samePlate || Boolean(freshPhone && sPhone === freshPhone);
-          }).sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
-          if (lastCompleted) {
-            const freshAcknowledged = freshState.acknowledgedSessionIds;
-            const isNotAcknowledged = freshAcknowledged ? !freshAcknowledged.has(lastCompleted.id) : true;
-            if (isNotAcknowledged) { setSelectedGarageId(lastCompleted.garageId); setScreen('summary'); return; }
-          }
-          if (!sessionEndToastShown.current) { sessionEndToastShown.current = true; toast.success('تم إنهاء الجلسة والعودة للرئيسية'); }
+      }
+
+      const freshState = useStore.getState();
+      const freshAcknowledged = freshState.acknowledgedSessionIds;
+      const isAlreadyAcknowledged = freshAcknowledged ? freshAcknowledged.has(endedSessionId) : false;
+
+      // لا نتدخل إذا كان العميل بالفعل في شاشة summary أو شاهد الإيصال
+      if (!isAlreadyAcknowledged && (safeScreen === 'session' || safeScreen === 'navigation' || safeScreen === 'waiting')) {
+        const endedSession = freshState.sessions.find(s => s.id === endedSessionId);
+        if (endedSession) {
+          freshState.acknowledgeSession(endedSession.id);
+          setSelectedGarageId(endedSession.garageId);
+          setScreen('summary');
+        } else {
           setSelectedGarageId(null);
           setScreen('list');
         }
-      }, 3000);
+      }
+      return;
     }
+
+    // تنظيف شاشة الملاحة لو الحجز انتهى
     if (!myActiveSession && safeScreen === 'navigation' && !myIncoming) {
       const timeout = setTimeout(() => {
         const freshState = useStore.getState();
@@ -417,8 +416,11 @@ export default function App() {
           const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
           return samePlate || Boolean(freshPhone && sPhone === freshPhone);
         });
-        if (!freshIncoming && !freshSession) { setSelectedGarageId(null); setScreen('list'); }
-      }, 3000);
+        if (!freshIncoming && !freshSession) {
+          setSelectedGarageId(null);
+          setScreen('list');
+        }
+      }, 2000);
       return () => clearTimeout(timeout);
     }
   }, [sessions, currentUser, view, safeScreen, incomingCars, dataLoaded, setScreen, setSelectedGarageId]);
@@ -430,7 +432,6 @@ export default function App() {
   if (pathname === '/install') return <InstallPage />;
   if (pathname === '/qr') return <InstallQRCodePage />;
 
-  // 👈 استخراج بيانات الجلسة النشطة للدرع (بدون تعديل أي منطق)
   const activeSessionForShield = currentUser && view === 'user' && safeScreen === 'session'
     ? sessions.find((s) => {
         if (s.status !== 'active') return false;
@@ -444,7 +445,6 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      {/* 🛡️ تفعيل درع الأمان الشامل (حماية التطبيق + حماية السيارة) */}
       <SecurityShield
         view={view}
         isSessionActive={!!activeSessionForShield}
