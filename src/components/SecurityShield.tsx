@@ -53,12 +53,11 @@ const playTheftSirenSound = () => {
   } catch {}
 };
 
-// 🚨 إطلاق الإشعار الخارجي على شاشة القفل بنمط الطوارئ
+// 🚨 إطلاق الإشعار الخارجي على شاشة القفل
 const triggerExternalSystemNotification = async (title: string, body: string, tag: string) => {
   try {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
-    const vibrationPattern = [1500, 200, 1500, 200, 2000, 200, 2000];
     const options: NotificationOptions = {
       body,
       icon: '/icons/icon-192x192.png',
@@ -66,7 +65,7 @@ const triggerExternalSystemNotification = async (title: string, body: string, ta
       tag,
       requireInteraction: true,
       renotify: true,
-      vibrate: vibrationPattern,
+      vibrate: [2000, 200, 2000, 200, 2000, 200, 3000],
       data: { url: '/', type: 'theft_breach' },
     };
 
@@ -111,6 +110,9 @@ export default function SecurityShield({
   const garageOriginRef = useRef<{ lat: number; lng: number } | null>(null);
   const consecutiveBreachCountRef = useRef<number>(0);
 
+  // 🔁 مرجع مؤقت تكرار الإشعار
+  const repeatAlarmTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const triggerAlarm = async (
     plate: string,
     reason: string,
@@ -132,14 +134,59 @@ export default function SecurityShield({
       navigator.vibrate([2000, 200, 2000, 200, 2000, 200, 3000]);
     }
 
-    // 🔔 إطلاق الإشعار الخارجي على شاشة القفل فوراً
+    // 🔔 إطلاق الإشعار الخارجي الأول فوراً
     triggerExternalSystemNotification(
       '🚨 إنذار سرقة عاجل لمركبتك!',
       `🚗 السيارة ${plate || ''} • ${cleanReason}`,
-      `theft-alarm-${plate || 'car'}`
+      `theft-alarm-${plate || 'car'}-${Date.now()}`
     );
 
-    // 🛰️ مزامنة فورية مع السيرفر وإيقاظ هاتف الطرف الآخر (السايس أو العميل)
+    // 🔁 بدء تكرار الإشعار كل 15 ثانية لحد ما العميل يفتح أو يوقف
+    if (repeatAlarmTimerRef.current) {
+      clearInterval(repeatAlarmTimerRef.current);
+    }
+
+    let repeatCount = 0;
+    repeatAlarmTimerRef.current = setInterval(() => {
+      repeatCount += 1;
+
+      // إيقاف التكرار بعد 20 مرة (5 دقائق) أو لو تم إيقاف الإنذار
+      if (repeatCount >= 20) {
+        if (repeatAlarmTimerRef.current) {
+          clearInterval(repeatAlarmTimerRef.current);
+          repeatAlarmTimerRef.current = null;
+        }
+        return;
+      }
+
+      // إعادة تشغيل الصوت والاهتزاز
+      playTheftSirenSound();
+      if (navigator.vibrate) {
+        navigator.vibrate([2000, 200, 2000, 200, 2000, 200, 3000]);
+      }
+
+      // إعادة إطلاق الإشعار الخارجي
+      triggerExternalSystemNotification(
+        `🚨 إنذار سرقة متكرر (${repeatCount})!`,
+        `🚗 السيارة ${plate || ''} • ${cleanReason} • افتح التطبيق فوراً!`,
+        `theft-alarm-repeat-${plate || 'car'}-${Date.now()}`
+      );
+
+      // إعادة إرسال Web Push للطرف الآخر كل 30 ثانية
+      if (repeatCount % 2 === 0 && targetSessionId) {
+        const targetSession = sessions.find((s) => s.id === targetSessionId);
+        if (targetSession?.garageId) {
+          sendTheftAlertPush({
+            garageId: targetSession.garageId,
+            customerPhone: (targetSession as any)?.customerPhone || currentUser?.phone,
+            carPlate: plate,
+            reason: cleanReason,
+          }).catch(() => {});
+        }
+      }
+    }, 15000); // كل 15 ثانية
+
+    // 🛰️ مزامنة فورية مع السيرفر
     if (isLocalDetection && targetSessionId) {
       try {
         await supabase
@@ -164,7 +211,7 @@ export default function SecurityShield({
   };
 
   /* ═══════════════════════════════════════════
-     📡 1. الاستماع الصاعق المباشر من السيرفر (Supabase Realtime)
+     📡 1. الاستماع الصاعق عبر Supabase Realtime
      ═══════════════════════════════════════════ */
   useEffect(() => {
     const userPlateClean = normalizePlate(currentUser?.carPlate);
@@ -179,18 +226,15 @@ export default function SecurityShield({
           const newRow = payload.new as any;
           if (!newRow) return;
 
-          // 🚨 لو حصل اختراق أو تحريك للسيارة
           if (newRow.is_breached === true && newRow.status === 'active') {
             const rowPlate = normalizePlate(newRow.car_plate || newRow.carPlate);
             const rowPhone = newRow.customer_phone ? String(newRow.customer_phone).replace(/[^\d]/g, '') : '';
 
-            // فحص هل السيارة تخص هذا العميل أو هذا الجراج
             const isMyCarByPlate = !!userPlateClean && rowPlate === userPlateClean;
             const isMyCarByPhone = !!userPhoneClean && rowPhone === userPhoneClean;
             const isMySessionId  = sessionId && newRow.id === sessionId;
             const isMyGarage     = currentGarageId && newRow.garage_id === currentGarageId;
 
-            // إطلاق الإنذار فوراً لو كانت السيارة تخص العميل أو الجراج أو في شاشة الأدمن
             if (isMyCarByPlate || isMyCarByPhone || isMySessionId || isMyGarage || view === 'admin') {
               triggerAlarm(
                 newRow.car_plate,
@@ -202,6 +246,13 @@ export default function SecurityShield({
           } else if (newRow.is_breached === false) {
             setIsBreached(false);
             setBreachAlert(null);
+            consecutiveBreachCountRef.current = 0;
+
+            // 🛑 إيقاف تكرار الإشعار
+            if (repeatAlarmTimerRef.current) {
+              clearInterval(repeatAlarmTimerRef.current);
+              repeatAlarmTimerRef.current = null;
+            }
           }
         }
       )
@@ -237,14 +288,13 @@ export default function SecurityShield({
   }, []);
 
   /* ═══════════════════════════════════════════
-     🛰️ 3. رادار الـ GPS الذكي (مانع الإنذارات الكاذبة 100%)
+     🛰️ 3. رادار الـ GPS الذكي
      ═══════════════════════════════════════════ */
   useEffect(() => {
     if (!isSessionActive || !isShieldEnabled || !sessionId) return;
 
     let isRunning = true;
 
-    // تسجيل نقطة تثبيت السيارة الأولية بدقة عالية
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
@@ -269,7 +319,6 @@ export default function SecurityShield({
         (pos) => {
           const { latitude: lat, longitude: lng, accuracy } = pos.coords;
 
-          // 🛡️ 1. فلترة القراءات الضعيفة (تجاهل التشويش)
           if (accuracy > 35) return;
 
           if (!carAnchorRef.current) {
@@ -277,20 +326,17 @@ export default function SecurityShield({
             return;
           }
 
-          // 🛡️ 2. فحص سياج السايس للجراج
           if (view === 'garage' && garageOriginRef.current) {
             const dist = calculateDistanceMeters(garageOriginRef.current.lat, garageOriginRef.current.lng, lat, lng);
             setValetDistance(dist);
             setIsValetOutOfFence(dist > 250);
           }
 
-          // 🛡️ 3. معادلة كشف السرقة بدون إنذار كاذب:
           const drift = calculateDistanceMeters(carAnchorRef.current.lat, carAnchorRef.current.lng, lat, lng);
           const safeThreshold = Math.max(45, (carAnchorRef.current.accuracy || 15) + accuracy);
 
           if (drift > safeThreshold) {
             consecutiveBreachCountRef.current += 1;
-            // التأكد بقراءتين متتاليتين لمنع أي خطأ عابر
             if (consecutiveBreachCountRef.current >= 2) {
               triggerAlarm(
                 carPlate,
@@ -314,9 +360,26 @@ export default function SecurityShield({
     };
   }, [isSessionActive, isShieldEnabled, sessionId, carPlate, view]);
 
+  // 🧹 تنظيف مؤقت التكرار عند إلغاء المكون
+  useEffect(() => {
+    return () => {
+      if (repeatAlarmTimerRef.current) {
+        clearInterval(repeatAlarmTimerRef.current);
+        repeatAlarmTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const handleDismiss = async () => {
     setIsBreached(false);
     consecutiveBreachCountRef.current = 0;
+
+    // 🛑 إيقاف تكرار الإشعار فوراً
+    if (repeatAlarmTimerRef.current) {
+      clearInterval(repeatAlarmTimerRef.current);
+      repeatAlarmTimerRef.current = null;
+    }
+
     if (breachAlert?.sessionId) {
       await supabase
         .from('sessions')
@@ -337,8 +400,11 @@ export default function SecurityShield({
         <span className="bg-red-900 text-red-100 text-sm font-black px-5 py-2 rounded-full mb-4 border border-red-700 shadow-md">
           🚗 السيارة: {breachAlert.carPlate}
         </span>
-        <p className="text-slate-100 text-sm font-bold max-w-xs mb-8 leading-relaxed">
+        <p className="text-slate-100 text-sm font-bold max-w-xs mb-3 leading-relaxed">
           {breachAlert.reason}
+        </p>
+        <p className="text-amber-300 text-[10px] font-black mb-8 animate-pulse">
+          ⚠️ يتم تكرار التنبيه كل 15 ثانية حتى تفتح التطبيق
         </p>
         <button
           onClick={handleDismiss}

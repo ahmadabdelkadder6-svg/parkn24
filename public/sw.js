@@ -1,10 +1,10 @@
 // public/sw.js
 
-// ✅ رقم الإصدار المحدث لإجبار المتصفحات على تحديث السيرفس ووركر فوراً
-const CACHE_NAME    = 'parkn24-shield-v9'; 
+// ✅ تحديث رقم الإصدار لـ v10 لإجبار المتصفحات على تفعيل التحديث فوراً
+const CACHE_NAME    = 'parkn24-shield-v10'; 
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
-// ✅ منع تكرار نفس الإشعار خلال 3 ثوانٍ
+// منع تكرار الإشعارات العادية فقط
 const recentNotifications = new Map();
 const DEDUP_WINDOW_MS     = 3000;
 
@@ -13,7 +13,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting(); // تفعيل فوري بدون انتظار
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 Service Worker Installed (v9 - Shield Protected)');
+      console.log('📦 Service Worker Installed (v10 - Maximum Emergency Shield)');
       return cache.addAll(STATIC_ASSETS);
     })
   );
@@ -33,7 +33,7 @@ self.addEventListener('activate', (event) => {
             })
         )
       )
-      .then(() => self.clients.claim()) // السيطرة الفورية على كل التبويبات المفتوحة
+      .then(() => self.clients.claim()) // السيطرة الفورية على كل التبويبات
   );
 });
 
@@ -66,7 +66,7 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// ─── 4. Push (استقبال الإشعار الفوري وإيقاظ الهاتف بنمط طوارئ) ─────────
+// ─── 4. Push (استقبال الإشعار الفوري وإيقاظ الهاتف بنمط طوارئ مكرر) ─────────
 self.addEventListener('push', (event) => {
   let title     = '🚨 تنبيه عاجل من Park\'n 24';
   let body      = '🚗 يوجد تحديث جديد بخصوص حجزك أو سيارتك!';
@@ -102,15 +102,15 @@ self.addEventListener('push', (event) => {
         if (payload.type === 'theft_breach') isTheftAlert = true;
       }
 
-      if (tag && tag.startsWith('theft-alarm-')) {
+      if (tag && (tag.startsWith('theft-alarm-') || tag.startsWith('theft-emergency-'))) {
         isTheftAlert = true;
       }
 
       // 🚨 تخصيص إنذار السرقة المباشر
       if (isTheftAlert) {
         title = payload.title || '🚨 إنذار سرقة عاجل لمركبتك!';
-        body  = payload.body  || '⚠️ تم رصد حركة غير مصرح بها للسيارة، يرجى التحقق فوراً!';
-        tag   = 'theft-emergency-alarm';
+        body  = payload.body  || '⚠️ تم رصد حركة غير مصرح بها للسيارة، افتح التطبيق فوراً!';
+        tag   = `theft-emergency-${Date.now()}`; // تاج فريد لإجبار الموبايل على الرنين والاهتزاز مع كل تكرار
       } else {
         // استخلاص رقم اللوحة وعرضه بوضوح للسيارات القادمة
         let plate = '';
@@ -132,24 +132,27 @@ self.addEventListener('push', (event) => {
     console.error('❌ Push parse error:', err);
   }
 
-  // منع التكرار اللحظي
-  const dedupKey  = tag;
-  const lastShown = recentNotifications.get(dedupKey);
-  const now       = Date.now();
+  // 🛡️ منع التكرار فقط للإشعارات العادية
+  // 🚨 إنذارات السرقة مسموح لها بالتكرار كل 15 ثانية لإيقاظ العميل والسايس
+  if (!isTheftAlert) {
+    const dedupKey  = tag;
+    const lastShown = recentNotifications.get(dedupKey);
+    const now       = Date.now();
 
-  if (lastShown && (now - lastShown) < DEDUP_WINDOW_MS) {
-    return;
-  }
+    if (lastShown && (now - lastShown) < DEDUP_WINDOW_MS) {
+      return;
+    }
 
-  recentNotifications.set(dedupKey, now);
+    recentNotifications.set(dedupKey, now);
 
-  for (const [k, t] of recentNotifications.entries()) {
-    if (now - t > 30000) recentNotifications.delete(k);
+    for (const [k, t] of recentNotifications.entries()) {
+      if (now - t > 30000) recentNotifications.delete(k);
+    }
   }
 
   // 🚨 [نمط اهتزاز الطوارئ]: اهتزاز متواصل ومضاعف لإنذار السرقة
   const vibrationPattern = isTheftAlert
-    ? [1500, 200, 1500, 200, 1500, 200, 2000] // اهتزاز طوارئ عنيف للسرقة
+    ? [2000, 200, 2000, 200, 2000, 200, 3000] // اهتزاز طوارئ عنيف ومتكرر
     : [
         1000, 300, 1000, 300, 1000, 300, // رنة وصول السيارة
         1000, 300, 1000, 300, 1000, 300, 
@@ -173,9 +176,9 @@ self.addEventListener('push', (event) => {
     vibrate: vibrationPattern,
     requireInteraction: true,           // يظل معروضاً على شاشة القفل ولا يختفي تلقائياً
     tag: tag,
-    renotify: true,                    // يرن ويهتز حتى لو كان هناك إشعار سابق
+    renotify: true,                    // يرن ويهتز مع كل إشعار جديد حتى لو الهاتف مغلق
     silent: false,
-    timestamp: now,
+    timestamp: Date.now(),
     data: { url, ...extraData },
     actions: actionButtons,
   };
