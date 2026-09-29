@@ -2,8 +2,7 @@
 
 /**
  * 🛡️ درع الأمان الشامل المزدوج المحدث (حماية التطبيق + حماية السيارة)
- * - خوارزمية الذكاء الاصطناعي لمنع الإنذارات الكاذبة (فلترة السرعة والاتجاه ودقة الـ GPS)
- * - تكرار الإشعار الخارجي على شاشة القفل كل 15 ثانية حتى استجابة العميل
+ * 🔒 [إيقاف فوري ونهائي]: إرسال أمر إلغاء صريح للـ Service Worker وإعادة ضبط الرادار فور تأكيد الأمان ✅
  */
 
 import { useEffect, useState, useRef } from 'react';
@@ -60,7 +59,7 @@ const playTheftSirenSound = () => {
 };
 
 // 🚨 إطلاق الإشعار الخارجي على شاشة القفل
-const triggerExternalSystemNotification = async (title: string, body: string, tag: string) => {
+const triggerExternalSystemNotification = async (title: string, body: string, tag: string, carPlate: string) => {
   try {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
@@ -72,7 +71,7 @@ const triggerExternalSystemNotification = async (title: string, body: string, ta
       requireInteraction: true,
       renotify: true,
       vibrate: [2000, 200, 2000, 200, 2000, 200, 3000],
-      data: { url: '/', type: 'theft_breach' },
+      data: { url: '/', type: 'theft_breach', carPlate },
     };
 
     if ('serviceWorker' in navigator) {
@@ -84,6 +83,18 @@ const triggerExternalSystemNotification = async (title: string, body: string, ta
     }
 
     new Notification(title, options);
+  } catch {}
+};
+
+// 🛑 دالة إلغاء ومسح كل إشعارات ومؤقتات السرقة من الـ Service Worker فوراً
+const killAllServiceWorkerTheftAlarms = (carPlate?: string) => {
+  try {
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'STOP_THEFT_ALARM',
+        carPlate: carPlate || '',
+      });
+    }
   } catch {}
 };
 
@@ -111,15 +122,17 @@ export default function SecurityShield({
 
   const [isBreached, setIsBreached] = useState(false);
   const [breachAlert, setBreachAlert] = useState<{ carPlate: string; reason: string; sessionId?: string } | null>(null);
+  const [isValetMutedLocally, setIsValetMutedLocally] = useState(false);
 
-  // 📍 مراجع الـ GPS وتتبع المسار
   const carAnchorRef = useRef<{ lat: number; lng: number; accuracy: number } | null>(null);
   const garageOriginRef = useRef<{ lat: number; lng: number } | null>(null);
   const consecutiveBreachCountRef = useRef<number>(0);
   const gpsHistoryRef = useRef<Array<{ lat: number; lng: number; time: number; accuracy: number }>>([]);
+  const dismissCooldownUntilRef = useRef<number>(0);
 
-  // 🔁 مرجع مؤقت تكرار الإشعار
   const repeatAlarmTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const isCarOwner = view === 'user' || view === 'admin';
 
   const triggerAlarm = async (
     plate: string,
@@ -127,7 +140,11 @@ export default function SecurityShield({
     targetSessionId?: string,
     isLocalDetection = false
   ) => {
+    // لو تم تأكيد الأمان مؤخراً (خلال دقيقة)، لا تقبل أي إنذار محلي عابر
+    if (Date.now() < dismissCooldownUntilRef.current) return;
+
     setIsBreached(true);
+    setIsValetMutedLocally(false);
     const cleanReason = reason || '🚨 رصد محاولة تحريك وسرقة للسيارة!';
 
     setBreachAlert({
@@ -142,14 +159,13 @@ export default function SecurityShield({
       navigator.vibrate([2000, 200, 2000, 200, 2000, 200, 3000]);
     }
 
-    // 🔔 إطلاق الإشعار الخارجي الأول فوراً على شاشة القفل
     triggerExternalSystemNotification(
       '🚨 إنذار سرقة عاجل لمركبتك!',
       `🚗 السيارة ${plate || ''} • ${cleanReason}`,
-      `theft-alarm-${plate || 'car'}-${Date.now()}`
+      `theft-alarm-${plate || 'car'}-${Date.now()}`,
+      plate
     );
 
-    // 🔁 بدء تكرار الإشعار كل 15 ثانية حتى فتح التطبيق
     if (repeatAlarmTimerRef.current) {
       clearInterval(repeatAlarmTimerRef.current);
     }
@@ -174,7 +190,8 @@ export default function SecurityShield({
       triggerExternalSystemNotification(
         `🚨 إنذار سرقة متكرر (${repeatCount})!`,
         `🚗 السيارة ${plate || ''} • ${cleanReason} • افتح التطبيق فوراً!`,
-        `theft-alarm-repeat-${plate || 'car'}-${Date.now()}`
+        `theft-alarm-repeat-${plate || 'car'}-${Date.now()}`,
+        plate
       );
 
       if (repeatCount % 2 === 0 && targetSessionId) {
@@ -190,7 +207,6 @@ export default function SecurityShield({
       }
     }, 15000);
 
-    // 🛰️ مزامنة فورية مع السيرفر عند الرصد المحلي
     if (isLocalDetection && targetSessionId) {
       try {
         await supabase
@@ -248,14 +264,18 @@ export default function SecurityShield({
               );
             }
           } else if (newRow.is_breached === false) {
+            // ✅ عندما يتم إيقاف الإنذار من السيرفر، يتم إيقاف كل شيء فوراً في كل الأجهزة
             setIsBreached(false);
             setBreachAlert(null);
+            setIsValetMutedLocally(false);
             consecutiveBreachCountRef.current = 0;
 
             if (repeatAlarmTimerRef.current) {
               clearInterval(repeatAlarmTimerRef.current);
               repeatAlarmTimerRef.current = null;
             }
+
+            killAllServiceWorkerTheftAlarms(newRow.car_plate);
           }
         }
       )
@@ -291,7 +311,7 @@ export default function SecurityShield({
   }, []);
 
   /* ═══════════════════════════════════════════
-     🛰️ 3. رادار الـ GPS الذكي (مع فلترة السرعة والاتجاه)
+     🛰️ 3. رادار الـ GPS الذكي
      ═══════════════════════════════════════════ */
   useEffect(() => {
     if (!isSessionActive || !isShieldEnabled || !sessionId) return;
@@ -323,13 +343,13 @@ export default function SecurityShield({
 
     const timer = setInterval(() => {
       if (!isRunning || !navigator.geolocation) return;
+      if (Date.now() < dismissCooldownUntilRef.current) return;
 
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const { latitude: lat, longitude: lng, accuracy, speed } = pos.coords;
           const now = Date.now();
 
-          // 🛡️ 1. فلترة القراءات الضعيفة والتشويش
           if (accuracy > 35) return;
 
           if (!carAnchorRef.current) {
@@ -337,26 +357,21 @@ export default function SecurityShield({
             return;
           }
 
-          // 🛡️ 2. فحص سياج السايس للجراج
           if (view === 'garage' && garageOriginRef.current) {
             const dist = calculateDistanceMeters(garageOriginRef.current.lat, garageOriginRef.current.lng, lat, lng);
             setValetDistance(dist);
             setIsValetOutOfFence(dist > 250);
           }
 
-          // 🛡️ 3. إضافة القراءة لسجل الحركة
           gpsHistoryRef.current.push({ lat, lng, time: now, accuracy: Math.round(accuracy) });
           if (gpsHistoryRef.current.length > 5) gpsHistoryRef.current.shift();
 
-          // 🛡️ 4. حساب المسافة المقطوعة عن نقطة التثبيت
           const drift = calculateDistanceMeters(carAnchorRef.current.lat, carAnchorRef.current.lng, lat, lng);
           const safeThreshold = Math.max(45, (carAnchorRef.current.accuracy || 15) + accuracy);
 
-          // 🛡️ 5. فلترة السرعة (حركة حقيقية > 5 كم/س)
           const currentSpeedKmh = speed !== null && speed >= 0 ? speed * 3.6 : -1;
           const isMovingFast = currentSpeedKmh > 5;
 
-          // 🛡️ 6. فلترة الاتجاه (سحب في مسار أحادي مستمر)
           let isConsistentDirection = false;
           if (gpsHistoryRef.current.length >= 3) {
             const recent = gpsHistoryRef.current.slice(-3);
@@ -367,7 +382,6 @@ export default function SecurityShield({
             isConsistentDirection = distances.every((d) => d > 4);
           }
 
-          // 🛡️ 7. التحقق من الاختراق الحقيقي
           if (drift > safeThreshold) {
             if (isMovingFast || isConsistentDirection || drift > 90) {
               consecutiveBreachCountRef.current += 1;
@@ -397,7 +411,6 @@ export default function SecurityShield({
     };
   }, [isSessionActive, isShieldEnabled, sessionId, carPlate, view]);
 
-  // 🧹 تنظيف مؤقت التكرار
   useEffect(() => {
     return () => {
       if (repeatAlarmTimerRef.current) {
@@ -407,27 +420,63 @@ export default function SecurityShield({
     };
   }, []);
 
-  const handleDismiss = async () => {
+  // 👑 1. دالة تأكيد الأمان من مالك السيارة (العميل)
+  const handleOwnerDismiss = async () => {
     setIsBreached(false);
     consecutiveBreachCountRef.current = 0;
+    dismissCooldownUntilRef.current = Date.now() + 60000; // منع الـ GPS من إعادة تشغيل الإنذار لمدة دقيقة
 
+    // 🛑 1. إيقاف المؤقت في واجهة React
     if (repeatAlarmTimerRef.current) {
       clearInterval(repeatAlarmTimerRef.current);
       repeatAlarmTimerRef.current = null;
     }
 
-    if (breachAlert?.carPlate) {
-      stopTheftAlarmRepeat({ carPlate: breachAlert.carPlate }).catch(() => {});
+    const currentPlate = breachAlert?.carPlate || carPlate;
+
+    // 🛑 2. إرسال أمر فوري للـ Service Worker لقتل كل المؤقتات ومسح الإشعارات من شاشة القفل
+    killAllServiceWorkerTheftAlarms(currentPlate);
+
+    // 🛑 3. إيقاف التكرار في السيرفر
+    if (currentPlate) {
+      stopTheftAlarmRepeat({ carPlate: currentPlate }).catch(() => {});
     }
 
+    // 🔄 4. إعادة تعيين نقطة الرادار للموقع الحالي لمنع أي إنذار كاذب بعد الإيقاف
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition((pos) => {
+        carAnchorRef.current = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: Math.round(pos.coords.accuracy || 15),
+        };
+      });
+    }
+
+    // 🌐 5. تحديث السيرفر لإعلام هاتف السايس والأجهزة الأخرى بالإلغاء
     if (breachAlert?.sessionId) {
       await supabase
         .from('sessions')
         .update({ is_breached: false })
         .eq('id', breachAlert.sessionId);
     }
+
     setBreachAlert(null);
-    toast.success('تم تأكيد الأمان وإيقاف الإنذار 🛡️');
+    toast.success('تم تأكيد الأمان وإيقاف الإنذار بالكامل 🛡️');
+  };
+
+  // 🅿️ 2. دالة كتم الصوت لجهاز السايس
+  const handleValetMuteLocal = () => {
+    setIsValetMutedLocally(true);
+    if (repeatAlarmTimerRef.current) {
+      clearInterval(repeatAlarmTimerRef.current);
+      repeatAlarmTimerRef.current = null;
+    }
+    killAllServiceWorkerTheftAlarms(breachAlert?.carPlate || carPlate);
+    toast('تم كتم الصوت بجهازك • الإنذار مستمر لدى العميل حتى يؤكد الأمان ⚠️', {
+      icon: '🔇',
+      duration: 5000,
+    });
   };
 
   if (isTampered) {
@@ -440,6 +489,7 @@ export default function SecurityShield({
     );
   }
 
+  // 🚨 شاشة إنذار السرقة الحمراء
   if (isBreached && breachAlert) {
     return (
       <div className="fixed inset-0 z-[9999999] bg-red-950/95 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 text-white animate-pulse" dir="rtl">
@@ -453,15 +503,60 @@ export default function SecurityShield({
         <p className="text-slate-100 text-sm font-bold max-w-xs mb-3 leading-relaxed">
           {breachAlert.reason}
         </p>
-        <p className="text-amber-300 text-[10px] font-black mb-8 animate-pulse">
-          ⚠️ يتم تكرار التنبيه كل 15 ثانية حتى تفتح التطبيق
-        </p>
-        <button
-          onClick={handleDismiss}
-          className="bg-white hover:bg-slate-100 text-red-600 font-black px-12 py-4 rounded-2xl text-sm active:scale-95 transition-all shadow-2xl cursor-pointer"
-        >
-          🔕 إيقاف الإنذار وتأكيد الأمان
-        </button>
+
+        {isCarOwner ? (
+          <>
+            <p className="text-amber-300 text-[10px] font-black mb-6 animate-pulse">
+              ⚠️ بصفتك مالك السيارة، اضغط أدناه لتأكيد أمان سيارتك وإيقاف الإنذار
+            </p>
+            <button
+              onClick={handleOwnerDismiss}
+              className="bg-white hover:bg-slate-100 text-red-600 font-black px-10 py-4 rounded-2xl text-sm active:scale-95 transition-all shadow-2xl cursor-pointer"
+            >
+              🔕 تأكيد أمان سيارتي وإيقاف الإنذار
+            </button>
+          </>
+        ) : (
+          <div className="w-full max-w-xs space-y-3 mt-2">
+            <div className="p-3 bg-red-900/60 border border-red-500/50 rounded-xl text-[11px] font-bold text-amber-200">
+              🔒 لا يمكن للسايس إيقاف الإنذار. في انتظار تأكيد الأمان من مالك السيارة حصراً.
+            </div>
+
+            {!isValetMutedLocally ? (
+              <button
+                onClick={handleValetMuteLocal}
+                className="w-full bg-slate-900/80 hover:bg-slate-900 text-slate-200 font-black py-3 rounded-xl text-xs border border-white/20 active:scale-95 transition-all cursor-pointer"
+              >
+                🔇 كتم صوت جهازي فقط (الإنذار مستمر عند العميل)
+              </button>
+            ) : (
+              <div className="text-[10px] text-slate-300 font-bold">
+                🔇 تم كتم صوت جهازك • الإنذار مستمر لدى العميل
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (isAppBlurred) {
+    return (
+      <div className="fixed inset-0 z-[9999998] bg-slate-950/85 backdrop-blur-xl flex flex-col items-center justify-center text-center p-6">
+        <div className="text-4xl mb-3">🛡️</div>
+        <h3 className="text-white font-black text-base" style={{ fontFamily: "'Cairo', sans-serif" }}>بركن <span className="text-[#8cc63f]">24</span></h3>
+        <p className="text-slate-400 text-xs mt-1 font-bold">البيانات مؤمنة لحمايتك</p>
+      </div>
+    );
+  }
+
+  if (view === 'garage' && isValetOutOfFence && isShieldEnabled) {
+    return (
+      <div className="fixed inset-0 z-[999999] bg-slate-950/95 backdrop-blur-xl flex flex-col items-center justify-center text-center p-6 text-white" dir="rtl">
+        <div className="w-20 h-20 bg-amber-500/20 border border-amber-500/40 rounded-full flex items-center justify-center text-4xl mb-5 animate-pulse text-amber-400">📍</div>
+        <h2 className="text-2xl font-black mb-2 text-amber-400">خارج نطاق السياج الأمني!</h2>
+        <span className="bg-amber-950/60 text-amber-300 text-xs font-bold px-4 py-1.5 rounded-full mb-4 border border-amber-800">أنت تبعد {valetDistance} متراً عن نطاق الحماية</span>
+        <p className="text-slate-300 text-xs max-w-xs font-bold leading-relaxed mb-6">تم حجب التطبيق. عد لمحيط الـ 250 متراً لفتح الشاشة تلقائياً.</p>
       </div>
     );
   }
