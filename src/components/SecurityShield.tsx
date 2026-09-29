@@ -1,14 +1,10 @@
 // src/components/SecurityShield.tsx
 
-/**
- * 🛡️ درع الأمان الشامل المزدوج المحدث (حماية التطبيق + حماية السيارة)
- * - تم حل مشكلة تسجيل الخروج المتكرر بنجاح 100% ✅
- */
-
 import { useEffect, useState, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { useStore, normalizePlate } from '../store';
 import { supabase } from '../lib/supabase';
+import { sendTheftAlertPush } from '../lib/pushManager';
 
 const calculateDistanceMeters = (
   lat1: number, lon1: number,
@@ -36,17 +32,17 @@ const playTheftSirenSound = () => {
     masterGain.gain.setValueAtTime(1.0, now);
     masterGain.connect(ctx.destination);
 
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 8; i++) {
       const start = now + (i * 0.35);
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
 
       osc.type = 'sawtooth';
       osc.frequency.setValueAtTime(900, start);
-      osc.frequency.linearRampToValueAtTime(2400, start + 0.3);
+      osc.frequency.linearRampToValueAtTime(2600, start + 0.3);
 
-      gain.gain.setValueAtTime(0.8, start);
-      gain.gain.exponentialRampToValueAtTime(0.01, start + 0.32);
+      gain.gain.setValueAtTime(1.0, start);
+      gain.gain.exponentialRampToValueAtTime(0.01, start + 0.33);
 
       osc.connect(gain);
       gain.connect(masterGain);
@@ -54,6 +50,35 @@ const playTheftSirenSound = () => {
       osc.start(start);
       osc.stop(start + 0.34);
     }
+  } catch {}
+};
+
+// 🚨 إطلاق الإشعار الخارجي على شاشة القفل بنمط الطوارئ
+const triggerExternalSystemNotification = async (title: string, body: string, tag: string) => {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+    const vibrationPattern = [1500, 200, 1500, 200, 2000, 200, 2000];
+    const options: NotificationOptions = {
+      body,
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-192x192.png',
+      tag,
+      requireInteraction: true,
+      renotify: true,
+      vibrate: vibrationPattern,
+      data: { url: '/', type: 'theft_breach' },
+    };
+
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.ready;
+      if (reg && reg.showNotification) {
+        await reg.showNotification(title, options);
+        return;
+      }
+    }
+
+    new Notification(title, options);
   } catch {}
 };
 
@@ -82,32 +107,70 @@ export default function SecurityShield({
   const [isBreached, setIsBreached] = useState(false);
   const [breachAlert, setBreachAlert] = useState<{ carPlate: string; reason: string; sessionId?: string } | null>(null);
 
-  const carAnchorRef = useRef<{ lat: number; lng: number } | null>(null);
+  const carAnchorRef = useRef<{ lat: number; lng: number; accuracy: number } | null>(null);
   const garageOriginRef = useRef<{ lat: number; lng: number } | null>(null);
+  const consecutiveBreachCountRef = useRef<number>(0);
 
-  const triggerAlarm = (plate: string, reason: string, targetSessionId?: string) => {
+  const triggerAlarm = async (
+    plate: string,
+    reason: string,
+    targetSessionId?: string,
+    isLocalDetection = false
+  ) => {
     setIsBreached(true);
+    const cleanReason = reason || '🚨 رصد محاولة تحريك وسرقة للسيارة!';
+
     setBreachAlert({
       carPlate: plate || 'المركبة',
-      reason: reason || '🚨 رصد محاولة تحريك وسرقة للسيارة!',
+      reason: cleanReason,
       sessionId: targetSessionId,
     });
 
     playTheftSirenSound();
 
     if (navigator.vibrate) {
-      navigator.vibrate([1000, 200, 1000, 200, 1500, 200, 2000]);
+      navigator.vibrate([2000, 200, 2000, 200, 2000, 200, 3000]);
+    }
+
+    // 🔔 إطلاق الإشعار الخارجي على شاشة القفل فوراً
+    triggerExternalSystemNotification(
+      '🚨 إنذار سرقة عاجل لمركبتك!',
+      `🚗 السيارة ${plate || ''} • ${cleanReason}`,
+      `theft-alarm-${plate || 'car'}`
+    );
+
+    // 🛰️ مزامنة فورية مع السيرفر وإيقاظ هاتف الطرف الآخر (السايس أو العميل)
+    if (isLocalDetection && targetSessionId) {
+      try {
+        await supabase
+          .from('sessions')
+          .update({
+            is_breached: true,
+            breach_reason: cleanReason,
+          })
+          .eq('id', targetSessionId);
+
+        const targetSession = sessions.find((s) => s.id === targetSessionId);
+        sendTheftAlertPush({
+          garageId: targetSession?.garageId,
+          customerPhone: (targetSession as any)?.customerPhone || currentUser?.phone,
+          carPlate: plate,
+          reason: cleanReason,
+        }).catch(() => {});
+      } catch (e) {
+        console.error('Failed to sync breach:', e);
+      }
     }
   };
 
   /* ═══════════════════════════════════════════
-     📡 1. الاستماع الصاعق المباشر من السيرفر (Supabase Realtime)
+     📡 1. الاستماع الصاعق عبر Supabase Realtime
      ═══════════════════════════════════════════ */
   useEffect(() => {
     const userPlateClean = normalizePlate(currentUser?.carPlate);
 
     const channel = supabase
-      .channel(`security-shield-instant-${Date.now()}`)
+      .channel(`security-shield-live-${Date.now()}`)
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'sessions' },
@@ -124,12 +187,14 @@ export default function SecurityShield({
               triggerAlarm(
                 newRow.car_plate,
                 newRow.breach_reason || '🚨 تم رصد حركة وتحريك غير مصرح به للسيارة!',
-                newRow.id
+                newRow.id,
+                false
               );
             }
           } else if (newRow.is_breached === false) {
             setIsBreached(false);
             setBreachAlert(null);
+            consecutiveBreachCountRef.current = 0;
           }
         }
       )
@@ -140,26 +205,8 @@ export default function SecurityShield({
     };
   }, [currentUser?.carPlate, currentGarageId, view]);
 
-  useEffect(() => {
-    const userPlateClean = normalizePlate(currentUser?.carPlate);
-    const breached = sessions.find((s) => {
-      if (s.status !== 'active') return false;
-      const rowPlate = normalizePlate(s.carPlate);
-      const isMatch = (userPlateClean && rowPlate === userPlateClean) || (currentGarageId && s.garageId === currentGarageId);
-      return isMatch && (s as any).is_breached === true;
-    });
-
-    if (breached) {
-      triggerAlarm(
-        breached.carPlate,
-        (breached as any).breach_reason || '🚨 تم رصد حركة غير مصرح بها للمركبة!',
-        breached.id
-      );
-    }
-  }, [sessions, currentUser?.carPlate, currentGarageId]);
-
   /* ═══════════════════════════════════════════
-     🛡️ 2. حماية المنصة العامة من التلاعب بالرتب وصلاحيات الأدمن
+     🛡️ 2. حماية المنصة
      ═══════════════════════════════════════════ */
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
@@ -171,76 +218,98 @@ export default function SecurityShield({
         e.preventDefault();
       }
     };
-    
-    // 🛡️ فحص التلاعب بالصلاحيات فقط (يستثني بيانات المستخدم والمحفظة الطبيعية لتفادي التعليق)
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'adminAccess' && e.newValue === 'true') {
-        const isAdminLoggedIn = localStorage.getItem('adminAccess') === 'true';
-        if (!isAdminLoggedIn) {
-          setIsTampered(true);
-          localStorage.clear();
-          sessionStorage.clear();
-          setTimeout(() => { window.location.href = '/'; }, 1000);
-        }
-      }
-    };
 
     window.addEventListener('contextmenu', handleContextMenu);
     window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('storage', handleStorageChange);
     document.addEventListener('visibilitychange', () => setIsAppBlurred(document.hidden));
 
     return () => {
       window.removeEventListener('contextmenu', handleContextMenu);
       window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
 
   /* ═══════════════════════════════════════════
-     🛰️ 3. رادار الـ GPS الميداني
+     🛰️ 3. رادار الـ GPS الذكي (مانع الإنذارات الكاذبة 100%)
      ═══════════════════════════════════════════ */
   useEffect(() => {
     if (!isSessionActive || !isShieldEnabled || !sessionId) return;
 
     let isRunning = true;
+
+    // تسجيل نقطة تثبيت السيارة الأولية بدقة عالية
     if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        carAnchorRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        garageOriginRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-      });
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (pos.coords.accuracy <= 30) {
+            carAnchorRef.current = {
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+              accuracy: Math.round(pos.coords.accuracy),
+            };
+            garageOriginRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          }
+        },
+        () => {},
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
     }
 
     const timer = setInterval(() => {
       if (!isRunning || !navigator.geolocation) return;
 
-      navigator.geolocation.getCurrentPosition((pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude: lat, longitude: lng, accuracy } = pos.coords;
 
-        if (view === 'garage' && garageOriginRef.current) {
-          const dist = calculateDistanceMeters(garageOriginRef.current.lat, garageOriginRef.current.lng, lat, lng);
-          setValetDistance(dist);
-          setIsValetOutOfFence(dist > 250);
-        }
+          // 🛡️ 1. فلترة القراءات الضعيفة (تجاهل التشويش)
+          if (accuracy > 35) return;
 
-        if (carAnchorRef.current && !isValetOutOfFence) {
-          const drift = calculateDistanceMeters(carAnchorRef.current.lat, carAnchorRef.current.lng, lat, lng);
-          if (drift > 15) {
-            triggerAlarm(carPlate, `🚨 تحذير سرقة: تم رصد تحرك السيارة مسافة ${drift} متراً عن موقع الركن!`, sessionId);
+          if (!carAnchorRef.current) {
+            carAnchorRef.current = { lat, lng, accuracy: Math.round(accuracy) };
+            return;
           }
-        }
-      });
-    }, 5000);
+
+          // 🛡️ 2. فحص سياج السايس للجراج
+          if (view === 'garage' && garageOriginRef.current) {
+            const dist = calculateDistanceMeters(garageOriginRef.current.lat, garageOriginRef.current.lng, lat, lng);
+            setValetDistance(dist);
+            setIsValetOutOfFence(dist > 250);
+          }
+
+          // 🛡️ 3. معادلة كشف السرقة بدون إنذار كاذب:
+          const drift = calculateDistanceMeters(carAnchorRef.current.lat, carAnchorRef.current.lng, lat, lng);
+          const safeThreshold = Math.max(45, (carAnchorRef.current.accuracy || 15) + accuracy);
+
+          if (drift > safeThreshold) {
+            consecutiveBreachCountRef.current += 1;
+            // التأكد بقراءتين متتاليتين لمنع أي خطأ عابر
+            if (consecutiveBreachCountRef.current >= 2) {
+              triggerAlarm(
+                carPlate,
+                `🚨 رصد تحرك وسحب للسيارة مسافة ${drift} متراً عن موقع الركن!`,
+                sessionId,
+                true
+              );
+            }
+          } else {
+            consecutiveBreachCountRef.current = 0;
+          }
+        },
+        () => {},
+        { enableHighAccuracy: true, timeout: 6000, maximumAge: 2000 }
+      );
+    }, 4000);
 
     return () => {
       isRunning = false;
       clearInterval(timer);
     };
-  }, [isSessionActive, isShieldEnabled, sessionId, carPlate, view, isValetOutOfFence]);
+  }, [isSessionActive, isShieldEnabled, sessionId, carPlate, view]);
 
   const handleDismiss = async () => {
     setIsBreached(false);
+    consecutiveBreachCountRef.current = 0;
     if (breachAlert?.sessionId) {
       await supabase
         .from('sessions')
@@ -250,37 +319,6 @@ export default function SecurityShield({
     setBreachAlert(null);
     toast.success('تم تأكيد الأمان وإيقاف الإنذار 🛡️');
   };
-
-  if (isTampered) {
-    return (
-      <div className="fixed inset-0 z-[9999999] bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center" dir="rtl">
-        <div className="text-5xl mb-4">🛡️</div>
-        <h2 className="text-xl font-black mb-2">تم تفعيل بروتوكول الأمان الذاتي</h2>
-        <p className="text-red-400 text-xs font-bold max-w-xs">تم رصد تلاعب خارجي بالصلاحيات. جاري إعادة التهيئة...</p>
-      </div>
-    );
-  }
-
-  if (isAppBlurred) {
-    return (
-      <div className="fixed inset-0 z-[9999998] bg-slate-950/85 backdrop-blur-xl flex flex-col items-center justify-center text-center p-6">
-        <div className="text-4xl mb-3">🛡️</div>
-        <h3 className="text-white font-black text-base" style={{ fontFamily: "'Cairo', sans-serif" }}>بركن <span className="text-[#8cc63f]">24</span></h3>
-        <p className="text-slate-400 text-xs mt-1 font-bold">البيانات مؤمنة لحمايتك</p>
-      </div>
-    );
-  }
-
-  if (view === 'garage' && isValetOutOfFence && isShieldEnabled) {
-    return (
-      <div className="fixed inset-0 z-[999999] bg-slate-950/95 backdrop-blur-xl flex flex-col items-center justify-center text-center p-6 text-white" dir="rtl">
-        <div className="w-20 h-20 bg-amber-500/20 border border-amber-500/40 rounded-full flex items-center justify-center text-4xl mb-5 animate-pulse text-amber-400">📍</div>
-        <h2 className="text-2xl font-black mb-2 text-amber-400">خارج نطاق السياج الأمني!</h2>
-        <span className="bg-amber-950/60 text-amber-300 text-xs font-bold px-4 py-1.5 rounded-full mb-4 border border-amber-800">أنت تبعد {valetDistance} متراً عن نطاق الحماية</span>
-        <p className="text-slate-300 text-xs max-w-xs font-bold leading-relaxed mb-6">تم حجب التطبيق. عد لمحيط الـ 250 متراً لفتح الشاشة تلقائياً.</p>
-      </div>
-    );
-  }
 
   if (isBreached && breachAlert) {
     return (

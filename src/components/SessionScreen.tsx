@@ -267,9 +267,10 @@ export default function SessionScreen() {
   const handleToggleShield = async () => {
     if (!activeSession || isActivatingShield) return;
 
+    // 📱 تسجيل اشتراك هاتف العميل في الـ Push لضمان وصول التنبيه الخارجي والشاشة مغلقة
     try {
-      if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission().catch(() => {});
+      if (currentUser?.phone) {
+        subscribeCustomerPush(currentUser.phone, activeSession.id).catch(() => {});
       }
     } catch {}
 

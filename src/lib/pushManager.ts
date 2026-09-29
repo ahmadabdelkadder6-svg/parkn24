@@ -18,19 +18,18 @@ interface PushPayloadNotification {
 }
 
 interface SendPushPayload {
-  garageId:  string;
-  urgency?:  'high' | 'normal';
-  ttl?:      number;
-  immediate: PushPayloadNotification;
-  scheduled: (PushPayloadNotification & { sendAt: string }) | null;
+  garageId?:      string | null;
+  customerPhone?: string | null;
+  urgency?:       'high' | 'normal';
+  ttl?:           number;
+  immediate:      PushPayloadNotification;
+  scheduled:      (PushPayloadNotification & { sendAt: string }) | null;
 }
 
 // ─── Helper: تحويل VAPID Key ────────────────────────────────────
 const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64  = (base64String + padding)
-    .replace(/-/g, '+')
-    .replace(/_/g, '/');
+  const base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
   const rawData = window.atob(base64);
   return new Uint8Array([...rawData].map((c) => c.charCodeAt(0)));
 };
@@ -71,7 +70,7 @@ const supabaseFetch = async (
       }
     }
 
-    await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+    await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
   }
 
   return { ok: false, error: 'Max retries exceeded' };
@@ -98,14 +97,10 @@ export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration
   }
 };
 
-// ─── الاشتراك في Push Notifications ────────────────────────────
-export const subscribeToPush = async (garageId: string): Promise<boolean> => {
+// ─── الدالة المركزية لتسجيل اشتراك الـ Push ──────────────────────
+async function registerPushEndpoint(meta: { garageId?: string; customerPhone?: string; sessionId?: string }): Promise<boolean> {
   try {
-    if (!('PushManager' in window)) {
-      console.warn('❌ Push غير مدعوم في هذا المتصفح');
-      return false;
-    }
-
+    if (!('PushManager' in window)) return false;
     const registration = await registerServiceWorker();
     if (!registration) return false;
 
@@ -113,14 +108,9 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
     if (permission === 'default') {
       permission = await Notification.requestPermission();
     }
-
-    if (permission !== 'granted') {
-      console.warn('❌ تم رفض إذن الإشعارات من السايس');
-      return false;
-    }
+    if (permission !== 'granted') return false;
 
     let subscription = await registration.pushManager.getSubscription();
-
     if (subscription) {
       try {
         const exp = subscription.expirationTime;
@@ -141,20 +131,16 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
     }
 
     const sub = subscription.toJSON();
-    if (!sub.keys?.p256dh || !sub.keys?.auth) {
-      console.error('❌ مفاتيح الـ subscription ناقصة');
-      return false;
-    }
+    if (!sub.keys?.p256dh || !sub.keys?.auth) return false;
 
     const result = await supabaseFetch('save-push-subscription', {
       subscription: {
         endpoint: sub.endpoint,
-        keys: {
-          p256dh: sub.keys.p256dh,
-          auth:   sub.keys.auth,
-        },
+        keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
       },
-      garageId,
+      garageId: meta.garageId || null,
+      customerPhone: meta.customerPhone || null,
+      sessionId: meta.sessionId || null,
       isNew,
       userAgent: navigator.userAgent,
       subscribedAt: new Date().toISOString(),
@@ -162,12 +148,22 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
 
     return result.ok;
   } catch (err) {
-    console.error('❌ خطأ في subscribeToPush:', err);
+    console.error('❌ خطأ في registerPushEndpoint:', err);
     return false;
   }
+}
+
+// 🛡️ اشتراك هاتف السايس / الجراج
+export const subscribeToPush = async (garageId: string): Promise<boolean> => {
+  return registerPushEndpoint({ garageId });
 };
 
-// ─── إرسال تنبيه "سيارة في الطريق" بأعلى أولوية طوارئ ──────────────
+// 🛡️ اشتراك هاتف العميل عند تفعيل الدرع لضمان وصول التنبيه الخارجي
+export const subscribeCustomerPush = async (customerPhone: string, sessionId?: string): Promise<boolean> => {
+  return registerPushEndpoint({ customerPhone, sessionId });
+};
+
+// ─── 🚗 1. إرسال تنبيه "سيارة في الطريق" بأعلى أولوية طوارئ للسايس ───
 export const sendCarComingPush = async ({
   garageId,
   carPlate,
@@ -236,34 +232,37 @@ export const sendCarComingPush = async ({
   }
 };
 
-// ─── 🛡️ إرسال إنذار سرقة عاجل عبر الـ Web Push (أعلى أولوية طوارئ) ───
+// ─── 🚨 2. إرسال إنذار سرقة عاجل (للسايس والعميل معاً) ─────────────
 export const sendTheftAlertPush = async ({
   garageId,
+  customerPhone,
   carPlate,
   reason,
 }: {
-  garageId: string;
-  carPlate: string;
-  reason?:  string;
+  garageId?:      string;
+  customerPhone?: string;
+  carPlate:       string;
+  reason?:        string;
 }): Promise<boolean> => {
   try {
     const plateFingerprint = normalizePlate(carPlate) || carPlate;
     const tag = `theft-alarm-${plateFingerprint}-${Date.now()}`;
 
     const payload: SendPushPayload = {
-      garageId,
-      urgency: 'high',
-      ttl: 0, // تسليم فوري في نفس الثانية دون تأخير
+      garageId:      garageId || null,
+      customerPhone: customerPhone || null,
+      urgency:       'high',
+      ttl:           0, // تسليم فوري في نفس الثانية دون تأخير
 
       immediate: {
-        title: '🚨 إنذار سرقة عاجل لمركبة!',
-        body:  `🚗 السيارة ${carPlate} • ${reason || 'تم رصد حركة غير مصرح بها!'}`,
+        title: '🚨 إنذار سرقة عاجل لمركبتك!',
+        body:  `🚗 السيارة ${carPlate} • ${reason || 'تم رصد حركة وسحب غير مصرح به!'}`,
         tag,
         data: {
-          type:      'theft_breach',
+          type:       'theft_breach',
           carPlate,
           garageId,
-          url:       '/garage',
+          url:        '/',
           breachTime: new Date().toISOString(),
         },
       },
@@ -278,7 +277,7 @@ export const sendTheftAlertPush = async ({
   }
 };
 
-// ─── 🛡️ إرسال إشعار تأكيد تفعيل درع الأمان ────────────────────────
+// ─── 🛡️ 3. إرسال إشعار تأكيد تفعيل درع الأمان ────────────────────────
 export const sendShieldActivatedPush = async ({
   garageId,
   carPlate,
@@ -317,7 +316,7 @@ export const sendShieldActivatedPush = async ({
   }
 };
 
-// ─── إلغاء التنبيه المجدول ──────────────────────────────────────
+// ─── 4. إلغاء التنبيه المجدول ──────────────────────────────────────
 export const cancelScheduledPush = async (
   garageId: string,
   carPlate: string
@@ -337,7 +336,7 @@ export const cancelScheduledPush = async (
   }
 };
 
-// ─── إلغاء الاشتراك ─────────────────────────────────────────────
+// ─── 5. إلغاء الاشتراك ─────────────────────────────────────────────
 export const unsubscribeFromPush = async (): Promise<boolean> => {
   try {
     const registration = await navigator.serviceWorker.ready;
@@ -355,12 +354,12 @@ export const unsubscribeFromPush = async (): Promise<boolean> => {
       return true;
     }
     return false;
-  } catch (err) {
+  } catch {
     return false;
   }
 };
 
-// ─── التحقق من حالة الاشتراك وتجديده ───────────────────────────
+// ─── 6. التحقق من حالة الاشتراك وتجديده ───────────────────────────
 export const checkPushSubscriptionStatus = async () => {
   const isSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
   if (!isSupported) return { isSubscribed: false, permission: 'denied', isSupported: false };
