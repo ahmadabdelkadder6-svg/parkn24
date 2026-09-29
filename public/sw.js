@@ -1,6 +1,6 @@
 // public/sw.js
 
-// ✅ الإصدار المحكم v13.1 - أقصى درجات الاستجابة لإنذارات السرقة
+// ✅ تحديث رقم الإصدار لـ v13 للسيطرة الفورية وتفعيل التوجيه الذكي
 const CACHE_NAME    = 'parkn24-shield-v13'; 
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
@@ -12,10 +12,10 @@ const activeTheftAlarms = new Map();
 
 // ─── 1. Install ───────────────────────────────────────────────
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
+  self.skipWaiting(); // تفعيل فوري بدون انتظار
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 Service Worker Installed (v13.1 - Bulletproof Shield)');
+      console.log('📦 Service Worker Installed (v13 - Smart Deep Link Shield)');
       return cache.addAll(STATIC_ASSETS);
     })
   );
@@ -30,7 +30,7 @@ self.addEventListener('activate', (event) => {
           names.filter((n) => n !== CACHE_NAME).map((n) => caches.delete(n))
         )
       )
-      .then(() => self.clients.claim())
+      .then(() => self.clients.claim()) // السيطرة الفورية على كل التبويبات
   );
 });
 
@@ -64,15 +64,15 @@ self.addEventListener('message', (event) => {
   if (event.data?.type === 'STOP_THEFT_ALARM') {
     const plate = event.data?.carPlate;
 
-    // مسح جميع المؤقتات فوراً
+    // 1. مسح وإلغاء جميع مؤقتات التكرار فوراً
     for (const [key, timerId] of activeTheftAlarms.entries()) {
-      if (!plate || key === plate || key === 'car') {
+      if (!plate || key === plate) {
         clearTimeout(timerId);
         activeTheftAlarms.delete(key);
       }
     }
 
-    // إغلاق كل الإشعارات المعلقة
+    // 2. إغلاق ومسح جميع إشعارات السرقة من شاشة القفل فوراً
     self.registration.getNotifications().then((notifications) => {
       notifications.forEach((n) => {
         if (n.tag && (n.tag.includes('theft') || n.tag.includes('emergency') || n.tag.includes('alarm'))) {
@@ -92,11 +92,12 @@ function scheduleTheftRepeat(title, body, carPlate, repeatCount = 0) {
   }
 
   const timerId = setTimeout(() => {
+    // التحقق من أن الإنذار لا يزال مطلوباً
     if (!activeTheftAlarms.has(carPlate)) return;
 
     const count = repeatCount + 1;
     const repeatTitle = `🚨 إنذار سرقة متكرر (${count}/${maxRepeats})!`;
-    const repeatBody = `🚗 ${carPlate !== 'car' ? carPlate : 'سيارتك'} • في خطر محقق! افتح التطبيق فوراً!`;
+    const repeatBody = `🚗 ${carPlate} • السيارة في خطر! افتح التطبيق فوراً!`;
     const uniqueTag = `theft-repeat-${carPlate}-${Date.now()}`;
 
     const options = {
@@ -117,6 +118,7 @@ function scheduleTheftRepeat(title, body, carPlate, repeatCount = 0) {
     };
 
     self.registration.showNotification(repeatTitle, options);
+
     scheduleTheftRepeat(title, body, carPlate, count);
   }, 15000);
 
@@ -164,13 +166,6 @@ self.addEventListener('push', (event) => {
         isTheftAlert = true;
       }
 
-      // 🛡️ استخراج اللوحة الاحتياطي لو لم تكن موجودة
-      if (!carPlate && tag) {
-        const parts = tag.split('-');
-        if (parts.length >= 3) carPlate = parts[2];
-      }
-      if (!carPlate) carPlate = 'car';
-
       if (isTheftAlert) {
         title = payload.title || '🚨 إنذار سرقة عاجل لمركبتك!';
         body  = payload.body  || '⚠️ تم رصد حركة غير مصرح بها للسيارة، افتح التطبيق فوراً!';
@@ -179,7 +174,7 @@ self.addEventListener('push', (event) => {
         let plate = '';
         if (typeof tag === 'string' && tag.startsWith('incoming-')) {
           plate = tag.replace('incoming-', '');
-        } else if (carPlate && carPlate !== 'car') {
+        } else if (carPlate) {
           plate = carPlate;
         }
 
@@ -234,7 +229,7 @@ self.addEventListener('push', (event) => {
 
   event.waitUntil(
     self.registration.showNotification(title, options).then(() => {
-      if (isTheftAlert) {
+      if (isTheftAlert && carPlate) {
         if (activeTheftAlarms.has(carPlate)) {
           clearTimeout(activeTheftAlarms.get(carPlate));
         }
@@ -248,16 +243,15 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  // 🛑 مسح مؤقت التكرار فور تفاعل المستخدم مع الإشعار
-  for (const [k, timerId] of activeTheftAlarms.entries()) {
-    clearTimeout(timerId);
-    activeTheftAlarms.delete(k);
+  const plate = event.notification.data?.carPlate || '';
+  if (plate && activeTheftAlarms.has(plate)) {
+    clearTimeout(activeTheftAlarms.get(plate));
+    activeTheftAlarms.delete(plate);
   }
 
-  // إذا ضغط على زر إيقاف الإنذار من شاشة القفل، نكتفي بالإغلاق
   if (event.action === 'dismiss') return;
 
-  const plate = event.notification.data?.carPlate || '';
+  // 🚨 إنشاء الرابط الذكي لفتح شاشة الإنذار الحمراء فوراً
   let targetUrl = event.notification.data?.url || '/';
   if (event.notification.data?.type === 'theft_breach' || event.notification.tag?.includes('theft')) {
     targetUrl = `/?breach=true&carPlate=${encodeURIComponent(plate)}`;
@@ -283,8 +277,9 @@ self.addEventListener('notificationclick', (event) => {
 
 // ─── 6. Notification Close ────────────────────────────────────
 self.addEventListener('notificationclose', (event) => {
-  for (const [k, timerId] of activeTheftAlarms.entries()) {
-    clearTimeout(timerId);
-    activeTheftAlarms.delete(k);
+  const plate = event.notification.data?.carPlate || '';
+  if (plate && activeTheftAlarms.has(plate)) {
+    clearTimeout(activeTheftAlarms.get(plate));
+    activeTheftAlarms.delete(plate);
   }
 });
