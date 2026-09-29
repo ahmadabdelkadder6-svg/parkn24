@@ -1,10 +1,13 @@
 // src/components/SecurityShield.tsx
-
 /**
- * 🛡️ درع الأمان الشامل المزدوج المحدث V4.0
- * ⚡ سرعة استجابة صاعقة (< 2 ثانية) للإشعارات الخارجية
- * 🅿️ وضع العمل المرن للسايس: كتم الصوت ومتابعة باقي السيارات عبر بانر عائم دون تعطيل
- * 👑 صلاحية إلغاء الإنذار من السيرفر محصورة بالعميل (المالك) فقط
+ * 🛡️ درع الأمان الشامل v6.0 - Park'n 24
+ * 
+ * ✅ الميزات الرئيسية:
+ * - قناة استماع لحظية مستقرة (لا تنقطع)
+ * - شاشة حمراء كاملة للعميل فقط
+ * - بانر عائم علوي للسايس (لا يعطل عمله)
+ * - كتم مزدوج بين العميل والسايس عند التأكيد
+ * - سارينة متواصلة داخل التطبيق + إنذارات خارجية مزعجة
  */
 
 import { useEffect, useState, useRef } from 'react';
@@ -12,7 +15,7 @@ import toast from 'react-hot-toast';
 import { useStore, normalizePlate } from '../store';
 import { supabase } from '../lib/supabase';
 import { sendTheftAlertPush, stopTheftAlarmRepeat } from '../lib/pushManager';
-import { Shield, VolumeX, AlertTriangle, CheckCircle } from 'lucide-react';
+import { VolumeX, X, Eye } from 'lucide-react';
 
 const calculateDistanceMeters = (
   lat1: number, lon1: number,
@@ -30,7 +33,7 @@ const calculateDistanceMeters = (
   return Math.round(R * c);
 };
 
-// 🔊 مشغل الصوت القابل للإيقاف الفوري
+// 🔊 مشغل الصوت الاحترافي
 let globalAudioCtx: AudioContext | null = null;
 let activeOscillators: OscillatorNode[] = [];
 
@@ -58,24 +61,33 @@ const playTheftSirenSound = () => {
     masterGain.gain.setValueAtTime(1.0, now);
     masterGain.connect(globalAudioCtx.destination);
 
-    for (let i = 0; i < 6; i++) {
-      const start = now + (i * 0.35);
-      const osc = globalAudioCtx.createOscillator();
+    for (let i = 0; i < 10; i++) {
+      const start = now + (i * 0.3);
+      const duration = 0.28;
+
+      const osc1 = globalAudioCtx.createOscillator();
+      const osc2 = globalAudioCtx.createOscillator();
       const gain = globalAudioCtx.createGain();
 
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(900, start);
-      osc.frequency.linearRampToValueAtTime(2600, start + 0.3);
+      osc1.type = 'sawtooth';
+      osc2.type = 'square';
+
+      const freq = i % 2 === 0 ? 1000 : 2200;
+      osc1.frequency.setValueAtTime(freq, start);
+      osc2.frequency.setValueAtTime(freq * 1.2, start);
 
       gain.gain.setValueAtTime(1.0, start);
-      gain.gain.exponentialRampToValueAtTime(0.01, start + 0.33);
+      gain.gain.exponentialRampToValueAtTime(0.01, start + duration);
 
-      osc.connect(gain);
+      osc1.connect(gain);
+      osc2.connect(gain);
       gain.connect(masterGain);
 
-      osc.start(start);
-      osc.stop(start + 0.34);
-      activeOscillators.push(osc);
+      osc1.start(start);
+      osc2.start(start);
+      osc1.stop(start + duration);
+      osc2.stop(start + duration);
+      activeOscillators.push(osc1, osc2);
     }
   } catch {}
 };
@@ -91,7 +103,7 @@ const triggerExternalSystemNotification = async (title: string, body: string, ta
       tag,
       requireInteraction: true,
       renotify: true,
-      vibrate: [2000, 200, 2000, 200, 2000, 200, 3000],
+      vibrate: [1000, 200, 1000, 200, 1500, 200, 2000],
       data: { url: '/', type: 'theft_breach', carPlate },
     };
 
@@ -102,11 +114,11 @@ const triggerExternalSystemNotification = async (title: string, body: string, ta
         return;
       }
     }
-
     new Notification(title, options);
   } catch {}
 };
 
+// 🛑 إيقاف كل تنبيهات الـ Service Worker
 const killAllServiceWorkerTheftAlarms = (carPlate?: string) => {
   try {
     if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
@@ -135,34 +147,35 @@ export default function SecurityShield({
 }: SecurityShieldProps) {
   const { currentUser, currentGarageId, sessions } = useStore();
 
-  const [isTampered, setIsTampered] = useState(false);
-  const [isAppBlurred, setIsAppBlurred] = useState(false);
-  const [isValetOutOfFence, setIsValetOutOfFence] = useState(false);
-  const [valetDistance, setValetDistance] = useState(0);
-
   const [isBreached, setIsBreached] = useState(false);
   const [breachAlert, setBreachAlert] = useState<{ carPlate: string; reason: string; sessionId?: string } | null>(null);
 
-  // 🔇 حالة كتم الصوت المحلية
   const [isMutedLocally, setIsMutedLocally] = useState(false);
   const isMutedLocallyRef = useRef(isMutedLocally);
 
-  // 🅿️ وضع العمل للسايس (إخفاء الشاشة الحمراء وإظهار البانر العائم لمتابعة باقي السيارات)
-  const [isValetMinimized, setIsValetMinimized] = useState(false);
+  const carAnchorRef = useRef<{ lat: number; lng: number; accuracy: number } | null>(null);
+  const garageOriginRef = useRef<{ lat: number; lng: number } | null>(null);
+  const dismissCooldownUntilRef = useRef<number>(0);
+  const repeatAlarmTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const isCarOwner = view === 'user' || view === 'admin';
+  const isValet = view === 'garage';
+
+  const stateRef = useRef({
+    currentUser, currentGarageId, sessionId, view, carPlate, isShieldEnabled, isSessionActive
+  });
+
+  useEffect(() => {
+    stateRef.current = {
+      currentUser, currentGarageId, sessionId, view, carPlate, isShieldEnabled, isSessionActive
+    };
+  }, [currentUser, currentGarageId, sessionId, view, carPlate, isShieldEnabled, isSessionActive]);
 
   useEffect(() => {
     isMutedLocallyRef.current = isMutedLocally;
   }, [isMutedLocally]);
 
-  const carAnchorRef = useRef<{ lat: number; lng: number; accuracy: number } | null>(null);
-  const garageOriginRef = useRef<{ lat: number; lng: number } | null>(null);
-  const consecutiveBreachCountRef = useRef<number>(0);
-  const dismissCooldownUntilRef = useRef<number>(0);
-
-  const repeatAlarmTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const isCarOwner = view === 'user' || view === 'admin';
-
+  // 🚨 دالة إطلاق الإنذار الرئيسية
   const triggerAlarm = (
     plate: string,
     reason: string,
@@ -173,7 +186,6 @@ export default function SecurityShield({
 
     setIsBreached(true);
     setIsMutedLocally(false);
-    setIsValetMinimized(false);
     const cleanReason = reason || '🚨 رصد محاولة تحريك وسرقة للسيارة!';
 
     setBreachAlert({
@@ -185,10 +197,9 @@ export default function SecurityShield({
     playTheftSirenSound();
 
     if (navigator.vibrate) {
-      navigator.vibrate([2000, 200, 2000, 200, 2000, 200, 3000]);
+      navigator.vibrate([1500, 150, 1500, 150, 2000]);
     }
 
-    // ⚡ 1. إطلاق الإشعار الخارجي فوراً وبدون أي انتظار
     triggerExternalSystemNotification(
       '🚨 إنذار سرقة عاجل لمركبتك!',
       `🚗 السيارة ${plate || ''} • ${cleanReason}`,
@@ -196,7 +207,6 @@ export default function SecurityShield({
       plate
     );
 
-    // ⚡ 2. إرسال الـ Web Push وتحديث السيرفر بالتوازي في الخلفية فوراً (< 1 ثانية)
     if (isLocalDetection && targetSessionId) {
       supabase
         .from('sessions')
@@ -216,7 +226,7 @@ export default function SecurityShield({
         });
     }
 
-    // 🔁 3. مؤقت التكرار
+    // 🔁 مؤقت التكرار الداخلي (بينما التطبيق مفتوح)
     if (repeatAlarmTimerRef.current) {
       clearInterval(repeatAlarmTimerRef.current);
     }
@@ -224,8 +234,7 @@ export default function SecurityShield({
     let repeatCount = 0;
     repeatAlarmTimerRef.current = setInterval(() => {
       repeatCount += 1;
-
-      if (repeatCount >= 20) {
+      if (repeatCount >= 30) {
         if (repeatAlarmTimerRef.current) {
           clearInterval(repeatAlarmTimerRef.current);
           repeatAlarmTimerRef.current = null;
@@ -236,28 +245,18 @@ export default function SecurityShield({
       if (!isMutedLocallyRef.current) {
         playTheftSirenSound();
         if (navigator.vibrate) {
-          navigator.vibrate([2000, 200, 2000, 200, 2000, 200, 3000]);
+          navigator.vibrate([1500, 150, 1500, 150, 2000]);
         }
-
-        triggerExternalSystemNotification(
-          `🚨 إنذار سرقة متكرر (${repeatCount})!`,
-          `🚗 السيارة ${plate || ''} • ${cleanReason} • افتح التطبيق فوراً!`,
-          `theft-alarm-repeat-${plate || 'car'}-${Date.now()}`,
-          plate
-        );
       }
-    }, 15000);
+    }, 8000); // كل 8 ثواني
   };
 
   /* ═══════════════════════════════════════════
-     📡 1. الاستماع اللحظي الصاعق (Supabase Realtime)
+     📡 قناة الاستماع اللحظي المستقرة (لا تنقطع)
      ═══════════════════════════════════════════ */
   useEffect(() => {
-    const userPlateClean = normalizePlate(currentUser?.carPlate);
-    const userPhoneClean = currentUser?.phone ? currentUser.phone.replace(/[^\d]/g, '') : '';
-
     const channel = supabase
-      .channel(`security-shield-global-${Date.now()}`)
+      .channel(`security-shield-persistent-${Date.now()}`)
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'sessions' },
@@ -265,16 +264,20 @@ export default function SecurityShield({
           const newRow = payload.new as any;
           if (!newRow) return;
 
+          const snap = stateRef.current;
+          const userPlateClean = normalizePlate(snap.currentUser?.carPlate);
+          const userPhoneClean = snap.currentUser?.phone ? snap.currentUser.phone.replace(/[^\d]/g, '') : '';
+
+          const rowPlate = normalizePlate(newRow.car_plate || newRow.carPlate);
+          const rowPhone = newRow.customer_phone ? String(newRow.customer_phone).replace(/[^\d]/g, '') : '';
+
+          const isMyCarByPlate = !!userPlateClean && rowPlate === userPlateClean;
+          const isMyCarByPhone = !!userPhoneClean && rowPhone === userPhoneClean;
+          const isMySessionId  = snap.sessionId && newRow.id === snap.sessionId;
+          const isMyGarage     = snap.currentGarageId && newRow.garage_id === snap.currentGarageId;
+
           if (newRow.is_breached === true && newRow.status === 'active') {
-            const rowPlate = normalizePlate(newRow.car_plate || newRow.carPlate);
-            const rowPhone = newRow.customer_phone ? String(newRow.customer_phone).replace(/[^\d]/g, '') : '';
-
-            const isMyCarByPlate = !!userPlateClean && rowPlate === userPlateClean;
-            const isMyCarByPhone = !!userPhoneClean && rowPhone === userPhoneClean;
-            const isMySessionId  = sessionId && newRow.id === sessionId;
-            const isMyGarage     = currentGarageId && newRow.garage_id === currentGarageId;
-
-            if (isMyCarByPlate || isMyCarByPhone || isMySessionId || isMyGarage || view === 'admin') {
+            if (isMyCarByPlate || isMyCarByPhone || isMySessionId || isMyGarage || snap.view === 'admin') {
               triggerAlarm(
                 newRow.car_plate,
                 newRow.breach_reason || '🚨 تم رصد حركة وتحريك غير مصرح به للسيارة!',
@@ -283,19 +286,19 @@ export default function SecurityShield({
               );
             }
           } else if (newRow.is_breached === false) {
-            setIsBreached(false);
-            setBreachAlert(null);
-            setIsMutedLocally(false);
-            setIsValetMinimized(false);
-            stopAllSirenSounds();
-            consecutiveBreachCountRef.current = 0;
-
-            if (repeatAlarmTimerRef.current) {
-              clearInterval(repeatAlarmTimerRef.current);
-              repeatAlarmTimerRef.current = null;
+            // 🔄 إخماد فوري متزامن للطرفين عند تأكيد العميل للأمان
+            if (isMyCarByPlate || isMyCarByPhone || isMySessionId || isMyGarage) {
+              console.log('✅ تم استقبال أمر إيقاف الإنذار من السيرفر');
+              setIsBreached(false);
+              setBreachAlert(null);
+              setIsMutedLocally(false);
+              stopAllSirenSounds();
+              if (repeatAlarmTimerRef.current) {
+                clearInterval(repeatAlarmTimerRef.current);
+                repeatAlarmTimerRef.current = null;
+              }
+              killAllServiceWorkerTheftAlarms(newRow.car_plate);
             }
-
-            killAllServiceWorkerTheftAlarms(newRow.car_plate);
           }
         }
       )
@@ -304,34 +307,10 @@ export default function SecurityShield({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentUser?.carPlate, currentUser?.phone, sessionId, currentGarageId, view]);
-
-  /* ═══════════════════════════════════════════
-     🛡️ 2. حماية المنصة
-     ═══════════════════════════════════════════ */
-  useEffect(() => {
-    const handleContextMenu = (e: MouseEvent) => e.preventDefault();
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.key === 'F12' ||
-        ((e.ctrlKey || e.metaKey) && e.shiftKey && ['I', 'J', 'C'].includes(e.key.toUpperCase()))
-      ) {
-        e.preventDefault();
-      }
-    };
-
-    window.addEventListener('contextmenu', handleContextMenu);
-    window.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('visibilitychange', () => setIsAppBlurred(document.hidden));
-
-    return () => {
-      window.removeEventListener('contextmenu', handleContextMenu);
-      window.removeEventListener('keydown', handleKeyDown);
-    };
   }, []);
 
   /* ═══════════════════════════════════════════
-     🛰️ 3. رادار الـ GPS فائق السرعة والدقة (فحص كل 2.5 ثانية)
+     🛰️ رادار الـ GPS للسيارة (مع منع الإنذارات الكاذبة)
      ═══════════════════════════════════════════ */
   useEffect(() => {
     if (!isSessionActive || !isShieldEnabled || !sessionId) return;
@@ -351,7 +330,7 @@ export default function SecurityShield({
           }
         },
         () => {},
-        { enableHighAccuracy: true, timeout: 5000 }
+        { enableHighAccuracy: true, timeout: 6000 }
       );
     }
 
@@ -362,30 +341,34 @@ export default function SecurityShield({
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const { latitude: lat, longitude: lng, accuracy, speed } = pos.coords;
-
           if (accuracy > 35) return;
+
+          const snap = stateRef.current;
+
+          // 💡 حماية العميل من الإنذارات الكاذبة عند الابتعاد بهاتفه
+          if (snap.view === 'user' && garageOriginRef.current) {
+            const userDistFromGarage = calculateDistanceMeters(
+              garageOriginRef.current.lat,
+              garageOriginRef.current.lng,
+              lat, lng
+            );
+            if (userDistFromGarage > 60) return;
+          }
 
           if (!carAnchorRef.current) {
             carAnchorRef.current = { lat, lng, accuracy: Math.round(accuracy) };
             return;
           }
 
-          if (view === 'garage' && garageOriginRef.current) {
-            const dist = calculateDistanceMeters(garageOriginRef.current.lat, garageOriginRef.current.lng, lat, lng);
-            setValetDistance(dist);
-            setIsValetOutOfFence(dist > 250);
-          }
-
           const drift = calculateDistanceMeters(carAnchorRef.current.lat, carAnchorRef.current.lng, lat, lng);
           const safeThreshold = Math.max(45, (carAnchorRef.current.accuracy || 15) + accuracy);
           const currentSpeedKmh = speed !== null && speed >= 0 ? speed * 3.6 : -1;
 
-          // ⚡ كشف فوري وسريع: لو الحركة مؤكدة (> 50 متر أو سرعة قيادة) ينطلق فوراً
           if (drift > safeThreshold) {
-            if (currentSpeedKmh > 4 || drift > 65) {
+            if (currentSpeedKmh > 5 || drift > 65) {
               triggerAlarm(
                 carPlate,
-                `🚨 رصد تحرك وسحب للسيارة مسافة ${drift} متراً عن موقع الركن!`,
+                `🚨 رصد سحب أو حركة غير مصرح بها للسيارة لمسافة ${drift} متراً!`,
                 sessionId,
                 true
               );
@@ -395,29 +378,13 @@ export default function SecurityShield({
         () => {},
         { enableHighAccuracy: true, timeout: 4000, maximumAge: 1000 }
       );
-    }, 2500); // دورة فحص سريعة كل 2.5 ثانية
+    }, 3000);
 
     return () => {
       isRunning = false;
       clearInterval(timer);
     };
   }, [isSessionActive, isShieldEnabled, sessionId, carPlate, view]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('breach') === 'true') {
-      const urlPlate = params.get('carPlate') || carPlate || 'المركبة';
-      triggerAlarm(
-        urlPlate,
-        '🚨 إنذار عاجل: تم رصد محاولة تحريك وسرقة لسيارتك!',
-        sessionId || undefined,
-        false
-      );
-      try {
-        window.history.replaceState({}, document.title, window.location.pathname);
-      } catch {}
-    }
-  }, [carPlate, sessionId]);
 
   useEffect(() => {
     return () => {
@@ -429,7 +396,7 @@ export default function SecurityShield({
     };
   }, []);
 
-  // 👑 1. دالة تأكيد الأمان النهائية من مالك السيارة فقط
+  // 👑 [العميل فقط] تأكيد الأمان النهائي وإيقاف الإنذار عند الطرفين
   const handleOwnerDismiss = async () => {
     stopAllSirenSounds();
     setIsBreached(false);
@@ -441,157 +408,155 @@ export default function SecurityShield({
     }
 
     const currentPlate = breachAlert?.carPlate || carPlate;
+    
+    // 1. إيقاف تنبيهات الـ Service Worker على هاتف العميل نفسه
     killAllServiceWorkerTheftAlarms(currentPlate);
 
-    try { window.history.replaceState({}, document.title, '/'); } catch {}
-
+    // 2. طلب إيقاف من السيرفر (للـ Push المتكررة)
     if (currentPlate) {
       stopTheftAlarmRepeat({ carPlate: currentPlate }).catch(() => {});
     }
 
+    // 3. تحديث قاعدة البيانات (سيصل للسايس عبر Realtime ويوقف الإنذار عنده)
     if (breachAlert?.sessionId) {
       await supabase
         .from('sessions')
-        .update({ is_breached: false })
+        .update({ is_breached: false, breach_reason: '' })
         .eq('id', breachAlert.sessionId);
+
+      useStore.setState((state) => ({
+        sessions: state.sessions.map((s) =>
+          s.id === breachAlert?.sessionId ? { ...s, is_breached: false, breach_reason: '' } : s
+        ),
+      }));
     }
 
     setBreachAlert(null);
-    toast.success('تم تأكيد الأمان وإيقاف الإنذار بالكامل 🛡️');
+    toast.success('تم إيقاف الإنذار وتأكيد أمان المركبة عند السايس أيضاً 🛡️', { duration: 4000 });
   };
 
-  // 🔇 2. كتم الصوت المباشر للعميل (للتحدث)
+  // 🔇 [العميل] كتم صوت مؤقت (للتحدث)
   const handleCustomerLocalMute = () => {
     stopAllSirenSounds();
     setIsMutedLocally(true);
     if (navigator.vibrate) navigator.vibrate(0);
-    toast.success('🔇 تم كتم الصوت بجهازك لتتمكن من التحدث • الإنذار مستمر في الجراج');
+    const currentPlate = breachAlert?.carPlate || carPlate;
+    killAllServiceWorkerTheftAlarms(currentPlate);
+    toast.success('🔇 تم كتم الصوت بجهازك • الإنذار مستمر عند السايس', { duration: 3500 });
   };
 
-  // 🅿️ 3. كتم السايس وتحويل الشاشة لبانر عائم لمتابعة عمل الجراج
-  const handleValetMuteAndWork = () => {
+  // 🅿️ [السايس] كتم الإنذار والاستمرار في العمل
+  const handleValetMute = () => {
     stopAllSirenSounds();
     setIsMutedLocally(true);
-    setIsValetMinimized(true);
     if (navigator.vibrate) navigator.vibrate(0);
-    killAllServiceWorkerTheftAlarms(breachAlert?.carPlate || carPlate);
-    toast('🔇 تم كتم الصوت وفتح لوحة الجراج للعمل • الإنذار مستمر لدى العميل ⚠️', {
+    const currentPlate = breachAlert?.carPlate || carPlate;
+    killAllServiceWorkerTheftAlarms(currentPlate);
+    toast('🔇 تم كتم الصوت • تابع فحص السيارة والإنذار قائم حتى يؤكد العميل', {
       icon: '🅿️',
-      duration: 5000,
+      duration: 4000,
     });
   };
 
-  if (isTampered) {
+  // ═══════════════════════════════════════════
+  // 🎨 الواجهات المرئية
+  // ═══════════════════════════════════════════
+
+  if (!isBreached || !breachAlert) return null;
+
+  // 🅿️ ═══════ واجهة السايس: بانر عائم دائم فقط (لا شاشة حمراء إطلاقاً) ═══════
+  if (isValet) {
     return (
-      <div className="fixed inset-0 z-[9999999] bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center" dir="rtl">
-        <div className="text-5xl mb-4">🛡️</div>
-        <h2 className="text-xl font-black mb-2">تم تفعيل بروتوكول الأمان الذاتي</h2>
-        <p className="text-red-400 text-xs font-bold max-w-xs">تم رصد تلاعب خارجي بالصلاحيات. جاري إعادة التهيئة...</p>
-      </div>
-    );
-  }
-
-  // 🚨 شاشة إنذار السرقة الحمراء
-  if (isBreached && breachAlert) {
-    // 🅿️ إذا كان السايس كتم الإنذار، نعرض له بانر علوي عائم ولا نعطل شاشته
-    if (view === 'garage' && isValetMinimized) {
-      return (
-        <div className="fixed top-2 left-2 right-2 z-[9999999] bg-red-600 text-white p-3 rounded-2xl shadow-2xl flex items-center justify-between border-2 border-white/40 animate-pulse" dir="rtl">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-base font-black">
-              🚨
+      <div 
+        className="fixed top-0 left-0 right-0 z-[9999999] p-2 pointer-events-none"
+        dir="rtl"
+      >
+        <div 
+          className={`max-w-md mx-auto rounded-2xl shadow-2xl p-3 pointer-events-auto border-2 ${!isMutedLocally ? 'animate-pulse' : ''}`}
+          style={{
+            background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)',
+            borderColor: 'rgba(255, 255, 255, 0.4)',
+            boxShadow: '0 10px 40px rgba(220, 38, 38, 0.6)',
+          }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0 text-xl">
+                🚨
+              </div>
+              <div className="text-right text-white min-w-0 flex-1">
+                <div className="text-[11px] font-black leading-tight">
+                  ⚠️ إنذار سرقة نشط!
+                </div>
+                <div className="text-[10px] font-bold text-red-100 truncate">
+                  🚗 {breachAlert.carPlate} • {isMutedLocally ? 'صوت مكتوم' : 'جاري التنبيه...'}
+                </div>
+                <div className="text-[9px] text-amber-200 font-bold mt-0.5 truncate">
+                  {breachAlert.reason.substring(0, 60)}
+                </div>
+              </div>
             </div>
-            <div className="text-right">
-              <div className="text-xs font-black">إنذار سرقة نشط: 🚗 {breachAlert.carPlate}</div>
-              <div className="text-[9px] text-red-100 font-bold">في انتظار تأكيد الأمان من العميل (تم كتم صوت الجراج)</div>
-            </div>
-          </div>
-          <button
-            onClick={() => setIsValetMinimized(false)}
-            className="bg-white text-red-600 text-[10px] font-black px-3 py-1.5 rounded-xl border-0 cursor-pointer active:scale-95"
-          >
-            عرض التفاصيل
-          </button>
-        </div>
-      );
-    }
-
-    return (
-      <div className="fixed inset-0 z-[9999999] bg-red-950/95 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 text-white animate-pulse" dir="rtl">
-        <div className="w-28 h-28 bg-red-600 rounded-full flex items-center justify-center text-6xl mb-6 shadow-2xl animate-bounce">
-          🚨
-        </div>
-        <h2 className="text-3xl font-black mb-2">إنذار سرقة عاجل!</h2>
-        <span className="bg-red-900 text-red-100 text-sm font-black px-5 py-2 rounded-full mb-4 border border-red-700 shadow-md">
-          🚗 السيارة: {breachAlert.carPlate}
-        </span>
-        <p className="text-slate-100 text-sm font-bold max-w-xs mb-4 leading-relaxed">
-          {breachAlert.reason}
-        </p>
-
-        {isCarOwner ? (
-          /* 👑 واجهة مالك السيارة: يملك صلاحية الإيقاف النهائي + كتم الصوت */
-          <div className="w-full max-w-xs space-y-2.5">
-            <button
-              onClick={handleOwnerDismiss}
-              className="w-full bg-white hover:bg-slate-100 text-red-600 font-black py-4 rounded-2xl text-sm active:scale-95 transition-all shadow-2xl cursor-pointer border-0"
-            >
-              🔕 تأكيد أمان سيارتي وإيقاف الإنذار
-            </button>
-
+            
             {!isMutedLocally ? (
               <button
-                onClick={handleCustomerLocalMute}
-                className="w-full bg-white/10 hover:bg-white/20 text-white font-black py-3 rounded-xl text-xs border border-white/20 backdrop-blur-sm active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                onClick={handleValetMute}
+                className="bg-white text-red-600 text-[10px] font-black px-3 py-2 rounded-xl border-0 cursor-pointer active:scale-95 shrink-0 flex items-center gap-1"
               >
-                <VolumeX size={14} /> كتم الصوت مؤقتاً للتحدث
+                <VolumeX size={12} /> كتم
               </button>
             ) : (
-              <div className="text-[10px] text-amber-300 font-bold py-1">
-                🔇 تم كتم الصوت بجهازك مؤقتاً • الإنذار مستمر في الجراج
+              <div className="bg-white/20 text-white text-[9px] font-black px-3 py-2 rounded-xl border border-white/40 shrink-0">
+                🔇 مكتوم
               </div>
             )}
           </div>
-        ) : (
-          /* 🅿️ واجهة السايس: كتم الصوت ومتابعة باقي سيارات الجراج */
-          <div className="w-full max-w-xs space-y-3 mt-2">
-            <div className="p-3 bg-red-900/60 border border-red-500/50 rounded-xl text-[11px] font-bold text-amber-200">
-              🔒 لا يمكن للسايس إلغاء الإنذار، لكن يمكنك كتم الصوت ومتابعة عمل الجراج.
+          
+          <div className="mt-2 pt-2 border-t border-white/20 text-center">
+            <div className="text-[9px] text-white font-bold flex items-center justify-center gap-1">
+              <Eye size={10} />
+              <span>افحص السيارة الآن • في انتظار تأكيد الأمان من العميل</span>
             </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-            <button
-              onClick={handleValetMuteAndWork}
-              className="w-full bg-white text-slate-900 hover:bg-slate-100 font-black py-3.5 rounded-xl text-xs active:scale-95 transition-all cursor-pointer border-0 shadow-lg flex items-center justify-center gap-2"
-            >
-              <VolumeX size={16} className="text-red-600" />
-              <span>🔇 كتم ومتابعة عمل الجراج (بانر عائم)</span>
-            </button>
+  // 👑 ═══════ واجهة العميل: شاشة حمراء كاملة ═══════
+  return (
+    <div className="fixed inset-0 z-[9999999] bg-red-950/95 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 text-white animate-pulse" dir="rtl">
+      <div className="w-24 h-24 bg-red-600 rounded-full flex items-center justify-center text-5xl mb-6 shadow-2xl animate-bounce">
+        🚨
+      </div>
+      <h2 className="text-2xl font-black mb-1">تحذير سرقة نشط!</h2>
+      <span className="bg-red-900 text-red-100 text-xs font-black px-4 py-1.5 rounded-full mb-4 border border-red-700 shadow-md">
+        🚗 لوحة السيارة: {breachAlert.carPlate}
+      </span>
+      <p className="text-slate-100 text-xs font-bold max-w-xs mb-6 leading-relaxed">
+        {breachAlert.reason}
+      </p>
+
+      <div className="w-full max-w-xs space-y-2.5">
+        <button
+          onClick={handleOwnerDismiss}
+          className="w-full bg-white text-red-600 font-black py-4 rounded-2xl text-xs active:scale-95 transition-all shadow-2xl cursor-pointer border-0"
+        >
+          🔕 تأكيد أمان سيارتي وإيقاف الإنذار نهائياً
+        </button>
+
+        {!isMutedLocally ? (
+          <button
+            onClick={handleCustomerLocalMute}
+            className="w-full bg-white/10 text-white font-black py-3 rounded-xl text-[11px] border border-white/20 backdrop-blur-sm active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            <VolumeX size={14} /> كتم صوت هاتفي مؤقتاً للتحدث
+          </button>
+        ) : (
+          <div className="text-[10px] text-amber-300 font-bold py-1">
+            🔇 تم كتم الصوت بجهازك • الإنذار مستمر عند السايس
           </div>
         )}
       </div>
-    );
-  }
-
-  if (isAppBlurred) {
-    return (
-      <div className="fixed inset-0 z-[9999998] bg-slate-950/85 backdrop-blur-xl flex flex-col items-center justify-center text-center p-6">
-        <div className="text-4xl mb-3">🛡️</div>
-        <h3 className="text-white font-black text-base" style={{ fontFamily: "'Cairo', sans-serif" }}>بركن <span className="text-[#8cc63f]">24</span></h3>
-        <p className="text-slate-400 text-xs mt-1 font-bold">البيانات مؤمنة لحمايتك</p>
-      </div>
-    );
-  }
-
-  if (view === 'garage' && isValetOutOfFence && isShieldEnabled) {
-    return (
-      <div className="fixed inset-0 z-[999999] bg-slate-950/95 backdrop-blur-xl flex flex-col items-center justify-center text-center p-6 text-white" dir="rtl">
-        <div className="w-20 h-20 bg-amber-500/20 border border-amber-500/40 rounded-full flex items-center justify-center text-4xl mb-5 animate-pulse text-amber-400">📍</div>
-        <h2 className="text-2xl font-black mb-2 text-amber-400">خارج نطاق السياج الأمني!</h2>
-        <span className="bg-amber-950/60 text-amber-300 text-xs font-bold px-4 py-1.5 rounded-full mb-4 border border-amber-800">أنت تبعد {valetDistance} متراً عن نطاق الحماية</span>
-        <p className="text-slate-300 text-xs max-w-xs font-bold leading-relaxed mb-6">تم حجب التطبيق. عد لمحيط الـ 250 متراً لفتح الشاشة تلقائياً.</p>
-      </div>
-    );
-  }
-
-  return null;
+    </div>
+  );
 }
