@@ -1,3 +1,5 @@
+// src/components/SessionScreen.tsx
+
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -23,17 +25,17 @@ import toast from 'react-hot-toast';
 
 /* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
-  blue: '#38bdf8',
+  blue: '#38bdf8',       // أزرق سماوي مضيء عالي التباين للشمس
   blueDark: '#0f3d85',   
   blueLight: '#e8f0fe',  
   blueSoft: 'rgba(56, 189, 248, 0.08)', 
-  green: '#4ade80',
+  green: '#4ade80',      // زمردي مضيء جداً للنهار
   greenDark: '#4ade80',  
   greenLight: 'rgba(74, 222, 128, 0.12)', 
   navy: '#0a1628',       
   navyLight: '#111e36',  
   slate: '#94a3b8',      
-  slateMuted: '#cbd5e1',
+  slateMuted: '#cbd5e1', // رمادي فاتح جداً عالي الوضوح
   border: 'rgba(255, 255, 255, 0.1)', 
 };
 
@@ -154,7 +156,7 @@ export default function SessionScreen() {
       .subscribe();
 
     realtimeChannelRef.current = channel;
-      pollingRef.current = setInterval(refetch, 15000);
+    pollingRef.current = setInterval(refetch, 12000);
 
     const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
     document.addEventListener('visibilitychange', handleVisibility);
@@ -197,7 +199,6 @@ export default function SessionScreen() {
     if (activeSession.garageId) setSelectedGarageId(activeSession.garageId);
   }, [activeSession?.id, activeSession?.garageId, setSelectedGarageId]);
 
-  // ✅ الـ useEffect المعدّل - تنظيف المؤقتات ومنع التعليق
   useEffect(() => {
     if (activeSession) {
       redirectedToSummaryRef.current = false;
@@ -209,7 +210,6 @@ export default function SessionScreen() {
       if (targetSession && targetSession.status === 'completed') {
         redirectedToSummaryRef.current = true;
 
-        // 1. تنظيف المؤقتات والـ Listeners فوراً لمنع تجمد الشاشة
         if (pollingRef.current) {
           clearInterval(pollingRef.current);
           pollingRef.current = null;
@@ -219,7 +219,6 @@ export default function SessionScreen() {
           realtimeChannelRef.current = null;
         }
 
-        // 2. تسجيل أن الجلسة تم استلامها وتأكيدها فوراً
         if (typeof acknowledgeSession === 'function') {
           acknowledgeSession(targetSession.id);
         }
@@ -230,7 +229,6 @@ export default function SessionScreen() {
         activeSessionIdRef.current = null;
         toast.success('تم إنهاء الجلسة واستلام الإيصال ✅', { icon: '🧾', duration: 2500 });
 
-        // 3. انتقال سريع ونظيف بدون setTimeout
         setScreen('summary');
         return;
       }
@@ -265,10 +263,10 @@ export default function SessionScreen() {
   const sessionRate = Number(activeSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const isFirstFreeApplied = activeSession?.isFirstFreeSession === true;
 
+  // ✅ الدالة بعد تصحيح الـ async
   const handleToggleShield = async () => {
     if (!activeSession || isActivatingShield) return;
 
-    // 📱 1. طلب إذن الإشعارات فوراً في أول لحظة لموافقة حماية iOS / Safari
     try {
       if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission().catch(() => {});
@@ -286,26 +284,6 @@ export default function SessionScreen() {
 
       if (error) throw error;
 
-      const updatedSessions = sessions.map((s) =>
-        s.id === activeSession.id
-          ? { ...s, shieldEnabled: true, shieldPrice: 10 }
-          : s
-      );
-      useStore.setState({ sessions: updatedSessions });
-
-      toast.dismiss(loadingToast);
-      toast.success('🛡️ تم تفعيل درع حماية السيارة من السرقة! (+10 ج على الفاتورة)', {
-        duration: 4500,
-      });
-
-      await fetchAll();
-    } catch (e: any) {
-      toast.dismiss(loadingToast);
-      toast.error('تعذر تفعيل الدرع حالياً، تأكد من اتصالك بالإنترنت');
-    } finally {
-      setIsActivatingShield(false);
-    }
-  };
       const updatedSessions = sessions.map((s) =>
         s.id === activeSession.id
           ? { ...s, shieldEnabled: true, shieldPrice: 10 }
