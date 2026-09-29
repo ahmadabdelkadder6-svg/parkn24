@@ -154,7 +154,7 @@ export default function SessionScreen() {
       .subscribe();
 
     realtimeChannelRef.current = channel;
-    pollingRef.current = setInterval(refetch, 4000);
+      pollingRef.current = setInterval(refetch, 15000);
 
     const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
     document.addEventListener('visibilitychange', handleVisibility);

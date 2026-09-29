@@ -221,7 +221,7 @@ export default function GarageListScreen() {
     const channel = supabase.channel(`customer-realtime-${normalizedUserPlate}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, (payload) => { if (isMyRow(payload.new) || isMyRow(payload.old)) refetch(); })
       .subscribe();
-    const interval = setInterval(refetch, 10000);
+    const interval = setInterval(refetch, 20000);
     const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
     const handleFocus = () => refetch();
     document.addEventListener('visibilitychange', handleVisibility);
