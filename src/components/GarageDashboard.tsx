@@ -13,8 +13,6 @@ import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
 import { subscribeToPush } from '../lib/pushManager';
-import SecurityShield from './SecurityShield';
-
 
 const UNDO_TIMEOUT_SECONDS = 30;
 const GEOFENCE_RADIUS_METERS = 250;
@@ -1423,18 +1421,6 @@ export default function GarageDashboard() {
 
   return (
     <div className="h-full overflow-y-auto" style={{ background: BRAND.bg, color: BRAND.navy, padding: 16 }}>
-
-      {/* 📡 تفعيل رادار الحماية على هاتف السايس للسيارات التي قامت بالتفعيل فقط */}
-      {valetActiveSessions.filter(s => s.shieldEnabled).map(s => (
-        <SecurityShield
-          key={`shield-valet-${s.id}`}
-          view="garage"
-          isSessionActive={true}
-          isShieldEnabled={true}
-          sessionId={s.id}
-          carPlate={s.carPlate}
-        />
-      ))}
 
       {/* Header */}
       <div className="flex justify-between items-center mb-5 pt-14">
