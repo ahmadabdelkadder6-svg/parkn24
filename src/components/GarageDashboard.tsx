@@ -13,6 +13,8 @@ import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
 import { subscribeToPush } from '../lib/pushManager';
+import SecurityShield from './SecurityShield';
+
 
 const UNDO_TIMEOUT_SECONDS = 30;
 const GEOFENCE_RADIUS_METERS = 250;
