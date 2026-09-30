@@ -232,7 +232,7 @@ export const sendCarComingPush = async ({
   }
 };
 
-// ─── 🚨 2. إرسال إنذار سرقة عاجل مع التوجيه المباشر لشاشة الإنذار للعميل ─────────────
+// ─── 🚨 2. إرسال إنذار سرقة عاجل (للسايس والعميل معاً) ─────────────
 export const sendTheftAlertPush = async ({
   garageId,
   customerPhone,
@@ -248,14 +248,11 @@ export const sendTheftAlertPush = async ({
     const plateFingerprint = normalizePlate(carPlate) || carPlate;
     const tag = `theft-alarm-${plateFingerprint}-${Date.now()}`;
 
-    // 🔗 رابط ذكي يوجه العميل مباشرة للشاشة الحمراء ويفتحها فوراً عند الضغط
-    const directTheftUrl = `/?breach=true&carPlate=${encodeURIComponent(carPlate)}`;
-
     const payload: SendPushPayload = {
       garageId:      garageId || null,
       customerPhone: customerPhone || null,
       urgency:       'high',
-      ttl:           0,
+      ttl:           0, // تسليم فوري في نفس الثانية دون تأخير
 
       immediate: {
         title: '🚨 إنذار سرقة عاجل لمركبتك!',
@@ -265,7 +262,7 @@ export const sendTheftAlertPush = async ({
           type:       'theft_breach',
           carPlate,
           garageId,
-          url:        directTheftUrl, // تم التعديل هنا ليفتح شاشة الإنذار مباشرة
+          url:        '/',
           breachTime: new Date().toISOString(),
         },
       },
@@ -389,24 +386,5 @@ export const refreshPushSubscriptionIfNeeded = async (garageId: string): Promise
   const status = await checkPushSubscriptionStatus();
   if (status.isSupported && status.permission === 'granted') {
     await subscribeToPush(garageId);
-  }
-};
-
-// ─── 🛑 7. إيقاف تكرار إنذار السرقة (عند تأكيد الأمان) ─────────
-export const stopTheftAlarmRepeat = async ({
-  carPlate,
-}: {
-  carPlate: string;
-}): Promise<boolean> => {
-  try {
-    const result = await supabaseFetch('cancel-scheduled-alert', {
-      carPlate,
-      tags: [`theft-emergency`, `theft-repeat`],
-      action: 'stop_repeat',
-      cancelledAt: new Date().toISOString(),
-    });
-    return result.ok;
-  } catch {
-    return false;
   }
 };
