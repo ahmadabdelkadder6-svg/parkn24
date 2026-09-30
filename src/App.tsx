@@ -87,7 +87,7 @@ function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: 
 }
 
 interface ParkLandingProps {
-  onEnter = () => void;
+  onEnter: () => void;
 }
 
 function ParkLanding({ onEnter }: ParkLandingProps) {
