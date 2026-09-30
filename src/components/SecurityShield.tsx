@@ -1,22 +1,43 @@
 // src/components/SecurityShield.tsx
 import { useEffect, useState, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { useStore, normalizePlate, normalizePhone } from '../store';
+import { useStore } from '../store';
 import { supabase } from '../lib/supabase';
 import { sendTheftAlertPush, stopTheftAlarmRepeat } from '../lib/pushManager';
 import { VolumeX, ShieldAlert } from 'lucide-react';
 
+// 🧼 دوال مطابقة خارقة تمنع أي خطأ في الحروف أو أرقام التليفونات
+const cleanLettersAndDigits = (str: any): string => {
+  if (!str) return '';
+  return String(str)
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/[ىی]/g, 'ي')
+    .replace(/[^ا-ي0-9a-zA-Z]/g, '')
+    .toLowerCase();
+};
+
+const cleanPhoneDigits = (str: any): string => {
+  if (!str) return '';
+  const digits = String(str).replace(/\D/g, '');
+  return digits.slice(-8); // مطابقة آخر 8 أرقام لتخطي أي كود دولة (+20 أو 002 أو 01)
+};
+
+// 🔊 نظام الصوت الذكي المزود بصمام كتم فوري (Master Gain)
 let globalAudioCtx: AudioContext | null = null;
-let activeOscillators: OscillatorNode[] = [];
+let globalMasterGain: GainNode | null = null;
 let isAudioUnlocked = false;
 
-// 🔊 فتح قفل الصوت للمتصفحات لمنع كتم السارينة على الموبايل
 const unlockAudioEngine = async () => {
   if (isAudioUnlocked && globalAudioCtx && globalAudioCtx.state === 'running') return;
   try {
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) return;
-    if (!globalAudioCtx) globalAudioCtx = new AudioCtx();
+    if (!globalAudioCtx) {
+      globalAudioCtx = new AudioCtx();
+      globalMasterGain = globalAudioCtx.createGain();
+      globalMasterGain.connect(globalAudioCtx.destination);
+    }
     if (globalAudioCtx.state === 'suspended') await globalAudioCtx.resume();
     isAudioUnlocked = true;
   } catch {}
@@ -31,41 +52,43 @@ if (typeof window !== 'undefined') {
   unlockEvents.forEach((e) => document.addEventListener(e, handleUnlock, { passive: true }));
 }
 
-const stopAllSirenSounds = () => {
+// 🔇 دالة الكتم الفورية الصامتة (تقطع الصوت في 0 جزء من الثانية)
+const stopAllSirenSoundsImmediately = () => {
   try {
-    activeOscillators.forEach((o) => { try { o.stop(); o.disconnect(); } catch {} });
-    activeOscillators = [];
-    if (globalAudioCtx && globalAudioCtx.state !== 'closed') {
-      globalAudioCtx.close().catch(() => {});
-      globalAudioCtx = null;
-      isAudioUnlocked = false;
+    if (globalMasterGain && globalAudioCtx) {
+      globalMasterGain.gain.cancelScheduledValues(globalAudioCtx.currentTime);
+      globalMasterGain.gain.setValueAtTime(0, globalAudioCtx.currentTime);
     }
+    if (navigator.vibrate) navigator.vibrate(0);
   } catch {}
 };
 
 const playTheftSirenSound = async () => {
   try {
     await unlockAudioEngine();
-    stopAllSirenSounds();
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioCtx) return;
-    globalAudioCtx = new AudioCtx();
+    if (!globalAudioCtx || !globalMasterGain) return;
     if (globalAudioCtx.state === 'suspended') await globalAudioCtx.resume();
 
     const now = globalAudioCtx.currentTime;
-    const gain = globalAudioCtx.createGain();
-    gain.gain.setValueAtTime(1.0, now);
-    gain.connect(globalAudioCtx.destination);
+    globalMasterGain.gain.cancelScheduledValues(now);
+    globalMasterGain.gain.setValueAtTime(1.0, now);
 
     for (let i = 0; i < 8; i++) {
       const start = now + (i * 0.3);
       const osc = globalAudioCtx.createOscillator();
+      const noteGain = globalAudioCtx.createGain();
+
       osc.type = 'sawtooth';
       osc.frequency.setValueAtTime(i % 2 === 0 ? 1000 : 2200, start);
-      osc.connect(gain);
+
+      noteGain.gain.setValueAtTime(1.0, start);
+      noteGain.gain.exponentialRampToValueAtTime(0.01, start + 0.28);
+
+      osc.connect(noteGain);
+      noteGain.connect(globalMasterGain);
+
       osc.start(start);
-      osc.stop(start + 0.28);
-      activeOscillators.push(osc);
+      osc.stop(start + 0.29);
     }
   } catch {}
 };
@@ -86,7 +109,7 @@ export default function SecurityShield({
   const [breachAlert, setBreachAlert] = useState<{ carPlate: string; reason: string; sessionId?: string } | null>(null);
   const [isMuted, setIsMuted] = useState(false);
 
-  const isMutedRef = useRef(isMuted);
+  const isMutedRef = useRef(false);
   const sirenIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stateRef = useRef({ currentUser, currentGarageId, sessionId, view, carPlate });
@@ -94,20 +117,11 @@ export default function SecurityShield({
     stateRef.current = { currentUser, currentGarageId, sessionId, view, carPlate };
   }, [currentUser, currentGarageId, sessionId, view, carPlate]);
 
-  useEffect(() => {
-    isMutedRef.current = isMuted;
-  }, [isMuted]);
-
-  // طلب إذن الإشعارات من المتصفح تلقائياً
-  useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => {});
-    }
-  }, []);
-
   const startSirenRepeat = () => {
     if (sirenIntervalRef.current) clearInterval(sirenIntervalRef.current);
-    playTheftSirenSound();
+    if (!isMutedRef.current) {
+      playTheftSirenSound();
+    }
     sirenIntervalRef.current = setInterval(() => {
       if (!isMutedRef.current) {
         playTheftSirenSound();
@@ -120,12 +134,13 @@ export default function SecurityShield({
       clearInterval(sirenIntervalRef.current);
       sirenIntervalRef.current = null;
     }
-    stopAllSirenSounds();
+    stopAllSirenSoundsImmediately();
   };
 
   const triggerAlarm = (plate: string, reason: string, targetSessionId?: string) => {
     setIsBreached(true);
     setIsMuted(false);
+    isMutedRef.current = false;
     setBreachAlert({ 
       carPlate: plate || 'المركبة', 
       reason: reason || '🚨 تم رصد حركة وتحريك غير مصرح به للسيارة!', 
@@ -135,7 +150,7 @@ export default function SecurityShield({
     if (navigator.vibrate) navigator.vibrate([1500, 200, 1500, 200, 2000]);
   };
 
-  // 📡 الاستماع اللحظي لسيرفر Supabase (ربط ثنائي فوري بين السايس والعميل)
+  // 📡 الاستماع اللحظي لسيرفر Supabase (بمطابقة مرنة ومضمونة 100%)
   useEffect(() => {
     const channel = supabase
       .channel(`shield-realtime-${Date.now()}`)
@@ -144,23 +159,28 @@ export default function SecurityShield({
         if (!row) return;
 
         const snap = stateRef.current;
-        const myPlate = snap.currentUser?.carPlate?.replace(/\s/g, '');
-        const rowPlate = row.car_plate?.replace(/\s/g, '');
+        const myPlate = cleanLettersAndDigits(snap.currentUser?.carPlate);
+        const rowPlate = cleanLettersAndDigits(row.car_plate || row.carPlate);
 
-        const isMatch =
-          (myPlate && rowPlate && myPlate === rowPlate) ||
-          (snap.currentUser?.phone && row.customer_phone && snap.currentUser.phone.slice(-8) === String(row.customer_phone).slice(-8)) ||
-          (snap.sessionId && row.id === snap.sessionId) ||
-          (snap.currentGarageId && row.garage_id === snap.currentGarageId) ||
-          snap.view === 'admin';
+        const myPhone = cleanPhoneDigits(snap.currentUser?.phone);
+        const rowPhone = cleanPhoneDigits(row.customer_phone || row.customerPhone);
+
+        const isMatchPlate = !!myPlate && !!rowPlate && myPlate === rowPlate;
+        const isMatchPhone = !!myPhone && !!rowPhone && myPhone === rowPhone;
+        const isMatchSession = !!snap.sessionId && row.id === snap.sessionId;
+        const isMatchGarage = !!snap.currentGarageId && (row.garage_id === snap.currentGarageId || row.garageId === snap.currentGarageId);
+        const isAdmin = snap.view === 'admin';
+
+        const isMatch = isMatchPlate || isMatchPhone || isMatchSession || isMatchGarage || isAdmin;
 
         if (row.is_breached === true && row.status === 'active' && isMatch) {
           triggerAlarm(row.car_plate, row.breach_reason, row.id);
         } else if (row.is_breached === false && isMatch) {
-          // 🔄 إيقاف الإنذار فوراً عند الطرفين بمجرد تأكيد الأمان
+          // 🔄 إيقاف الإنذار فوراً عند تأكيد العميل للأمان
           setIsBreached(false);
           setBreachAlert(null);
           setIsMuted(false);
+          isMutedRef.current = false;
           stopSirenRepeat();
           if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
             navigator.serviceWorker.controller.postMessage({ type: 'STOP_THEFT_ALARM' });
@@ -175,7 +195,7 @@ export default function SecurityShield({
     };
   }, []);
 
-  // فحص مباشر لو العميل فتح من شاشة القفل عبر الإشعار
+  // فحص مباشر لو العميل ضغط على إشعار من شاشة القفل
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('breach') === 'true') {
@@ -184,10 +204,11 @@ export default function SecurityShield({
     }
   }, [carPlate, sessionId]);
 
-  // إيقاف وتأكيد الأمان (العميل)
+  // إيقاف وتأكيد الأمان للعميل
   const handleDismiss = async () => {
     stopSirenRepeat();
     setIsBreached(false);
+    isMutedRef.current = true;
     
     if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
       navigator.serviceWorker.controller.postMessage({ type: 'STOP_THEFT_ALARM' });
@@ -202,25 +223,30 @@ export default function SecurityShield({
     toast.success('تم إيقاف الإنذار وتأكيد أمان المركبة 🛡️');
   };
 
-  // كتم الصوت
-  const handleMute = () => {
-    stopSirenRepeat();
+  // 🔇 كتم الصوت الفوري الصاعق (للسايس والعميل)
+  const handleMute = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    isMutedRef.current = true; // كتم المتغير المرجعي فوراً
     setIsMuted(true);
-    if (navigator.vibrate) navigator.vibrate(0);
+    stopSirenRepeat(); // قطع الصوت والاهتزاز فوراً في نفس اللحظة
+
     if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
       navigator.serviceWorker.controller.postMessage({ type: 'STOP_THEFT_ALARM' });
     }
-    toast.success('🔇 تم كتم الصوت');
+    toast.success('🔇 تم كتم الصوت فوراً');
   };
 
   if (!isBreached || !breachAlert) return null;
 
-  // 🅿️ واجهة السايس: بانر عائم علوي فقط (الشاشة تحته شغالة 100% ويستطيع استلام باقي السيارات بحرية)
+  // 🅿️ واجهة السايس: بانر عائم علوي دائم (مع زر كتم فوري يستجيب من اللمسة الأولى)
   if (view === 'garage') {
     return (
       <div className="fixed top-3 left-3 right-3 z-[9999999] pointer-events-none" dir="rtl">
         <div 
-          className="max-w-md mx-auto rounded-2xl shadow-2xl p-3.5 pointer-events-auto border-2 text-white flex items-center justify-between animate-pulse"
+          className="max-w-md mx-auto rounded-2xl shadow-2xl p-3.5 pointer-events-auto border-2 text-white flex items-center justify-between"
           style={{
             background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)',
             borderColor: 'rgba(255, 255, 255, 0.4)',
@@ -248,14 +274,15 @@ export default function SecurityShield({
           <div className="mr-2 shrink-0">
             {!isMuted ? (
               <button 
+                type="button"
                 onClick={handleMute} 
-                className="bg-white text-red-600 text-xs font-black px-3.5 py-2 rounded-xl border-0 cursor-pointer active:scale-95 shadow-md flex items-center gap-1"
+                className="bg-white text-red-600 text-xs font-black px-4 py-2.5 rounded-xl border-0 cursor-pointer active:scale-90 shadow-xl flex items-center gap-1.5 transition-transform"
               >
-                <VolumeX size={13} /> كتم
+                <VolumeX size={14} /> كتم الصوت
               </button>
             ) : (
-              <span className="text-[10px] font-black bg-white/20 px-2.5 py-1.5 rounded-lg border border-white/20 text-white">
-                🔇 مكتوم
+              <span className="text-[10px] font-black bg-white/20 px-3 py-2 rounded-lg border border-white/20 text-white block">
+                🔇 الصوت مكتوم
               </span>
             )}
           </div>
@@ -264,7 +291,7 @@ export default function SecurityShield({
     );
   }
 
-  // 👑 واجهة العميل: شاشة حمراء كاملة مع سارينة إنذار متكررة
+  // 👑 واجهة العميل: شاشة حمراء كاملة للسيطرة والتحذير الشديد
   return (
     <div className="fixed inset-0 z-[9999999] bg-red-950/95 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 text-white animate-pulse" dir="rtl">
       <div className="w-24 h-24 bg-red-600 rounded-full flex items-center justify-center text-5xl mb-6 shadow-2xl animate-bounce">🚨</div>
@@ -279,8 +306,8 @@ export default function SecurityShield({
           🔕 تأكيد أمان سيارتي وإيقاف الإنذار نهائياً
         </button>
         {!isMuted ? (
-          <button onClick={handleMute} className="w-full bg-white/10 text-white font-black py-3 rounded-xl text-[11px] border border-white/20 cursor-pointer active:scale-95 transition-all">
-            <VolumeX size={14} className="inline mr-1" /> كتم صوت هاتفي مؤقتاً
+          <button onClick={handleMute} className="w-full bg-white/10 text-white font-black py-3 rounded-xl text-[11px] border border-white/20 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5">
+            <VolumeX size={14} /> كتم صوت هاتفي مؤقتاً
           </button>
         ) : (
           <div className="text-[10px] text-amber-300 font-bold py-1">🔇 تم كتم الصوت بجهازك</div>
