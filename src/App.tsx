@@ -87,7 +87,7 @@ function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: 
 }
 
 interface ParkLandingProps {
-  onEnter: () => void;
+  onEnter = () => void;
 }
 
 function ParkLanding({ onEnter }: ParkLandingProps) {
@@ -434,7 +434,7 @@ export default function App() {
   if (pathname === '/qr') return <InstallQRCodePage />;
 
   // 🛡️ استخراج الجلسة النشطة المؤمّنة للدرع (تعمل في أي شاشة وليس فقط session)
-  const activeSessionForShield = currentUser && view === 'user' // 👈 تم حذف && safeScreen === 'session' لكي يعمل الرادار في كل الشاشات
+  const activeSessionForShield = currentUser && view === 'user' 
     ? sessions.find((s) => {
         if (s.status !== 'active') return false;
         const userPlate = normalizePlate(currentUser.carPlate);
@@ -447,25 +447,28 @@ export default function App() {
 
   const isShieldOn = activeSessionForShield?.shieldEnabled === true;
 
-  // 🪐 [تفعيل كود التسجيل الذاتي للعميل بالخلفية لضمان وصول التنبيهات الخارجية والشاشة مغلقة]
+  // 📱 تسجيل هاتف العميل فوراً في خوادم الـ Push أول ما يفتح التطبيق لضمان وصول التنبيه والتليفون مقفول في أي وقت
   useEffect(() => {
-    if (currentUser?.phone && activeSessionForShield?.id && isShieldOn && view === 'user') {
-      const autoRegisterPush = async () => {
+    if (currentUser?.phone && view === 'user') {
+      const registerPush = async () => {
         try {
+          if ('Notification' in window && Notification.permission === 'default') {
+            await Notification.requestPermission();
+          }
           const { subscribeCustomerPush } = await import('./lib/pushManager');
           await subscribeCustomerPush(
             currentUser.phone,
-            activeSessionForShield.id,
-            activeSessionForShield.carPlate
+            activeSessionForShield?.id || undefined,
+            activeSessionForShield?.carPlate || undefined
           );
-          console.log("🛡️ [Park'n 24] Auto-registered device for theft alerts.");
+          console.log("🛡️ [Park'n 24] Global Push registered successfully for closed-screen alerts.");
         } catch (e) {
           console.warn("Background push registration failed:", e);
         }
       };
-      autoRegisterPush();
+      registerPush();
     }
-  }, [currentUser?.phone, activeSessionForShield?.id, isShieldOn, view]);
+  }, [currentUser?.phone, activeSessionForShield?.id, view]);
 
   return (
     <ErrorBoundary>
