@@ -1,5 +1,3 @@
-// src/components/TopUpWalletModal.tsx
-
 import { useState, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { X, Copy, ExternalLink, ArrowRight, CheckCircle, Plus, Minus, Phone, Send, Sparkles } from 'lucide-react';
@@ -145,7 +143,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 <div className="w-6" />
               </div>
 
-              {/* بطاقة الرصيد الحالي للعميل */}
+              {/* بطاقة الرصيد الحالي للعميل كحلي فاخر وموحد */}
               <div
                 className="text-center mb-5 rounded-2xl p-4 text-white"
                 style={{
@@ -157,7 +155,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 <div className="text-2xl font-black font-mono">{currentUser?.wallet || 0} <span className="text-xs font-bold">ج.م</span></div>
               </div>
 
-              {/* 🏆 الباقات التوفيرية */}
+              {/* 🏆 الباقات التوفيرية النظيفة */}
               <div className="mb-4">
                 <div className="font-black text-xs mb-3 flex items-center justify-start gap-1" style={{ color: BRAND.slate }}>
                   <Sparkles size={14} style={{ color: '#f59e0b' }} />
@@ -194,7 +192,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
 
-              {/* حقل إدخال مبلغ مخصص */}
+              {/* حقل إدخال مبلغ مخصص هادئ */}
               <div className="mb-4">
                 <div className="font-black text-xs mb-2" style={{ color: BRAND.slate }}>أو حدد مبلغاً يدوياً:</div>
                 <div className="flex items-center justify-center gap-4 p-2.5 rounded-xl border" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
@@ -226,7 +224,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
 
-              {/* 🎁 بوكس تأكيد القيمة المضافة */}
+              {/* 🎁 بوكس تأكيد القيمة المضافة هادئ جداً */}
               <div className="mb-4 border-2 rounded-xl p-3 text-center" style={{ background: BRAND.greenLight, borderColor: BRAND.green }}>
                 <div className="flex items-center justify-between">
                   <div className="text-right">
@@ -317,7 +315,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 <div className="w-6" />
               </div>
 
-              {/* إيصال التحويل */}
+              {/* إيصال التحويل الداكن الأنيق */}
               <div
                 className="text-center mb-4 rounded-2xl p-4 text-white relative overflow-hidden"
                 style={{ background: BRAND.navy }}
@@ -352,7 +350,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 )}
               </div>
 
-              {/* تفاصيل التحويل المباشر */}
+              {/* أزرار التحويل المباشر الذكية */}
               <div className="border rounded-xl p-3.5 mb-5" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
                 {method === 'instapay' ? (
                   <>
@@ -398,7 +396,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 )}
               </div>
 
-              {/* زر إرسال الطلب */}
+              {/* زر إرسال الطلب النهائي */}
               <button
                 type="button"
                 onClick={handleSubmitTopUp}
@@ -415,7 +413,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
             </>
           )}
 
-          {/* ══════════ الخطوة 4: شاشة النجاح ══════════ */}
+          {/* ══════════ الخطوة 4: شاشة النجاح والنهاية ══════════ */}
           {step === 'done' && (
             <div className="text-center py-4">
               <CheckCircle size={64} style={{ color: BRAND.green }} className="mx-auto mb-3" />

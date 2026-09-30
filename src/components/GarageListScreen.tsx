@@ -1,5 +1,3 @@
-// src/components/GarageListScreen.tsx
-
 import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -22,8 +20,7 @@ import {
   Sparkles,
   ChevronDown,
   QrCode,
-  Copy,
-  Shield, // 👈 استيراد أيقونة الدرع
+   Copy,
 } from 'lucide-react';
 import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
 import {
@@ -139,7 +136,6 @@ export default function GarageListScreen() {
     [currentUser?.phone]
   );
 
-  // ✅ الـ useEffect المعدّل - إزالة sessions لمنع الاستعلامات المتكررة وسرعة الأداء
   useEffect(() => {
     if (!currentUser) return;
     const checkAbuseHistory = async () => {
@@ -156,7 +152,7 @@ export default function GarageListScreen() {
       } catch (err) { console.error('Error verifying welcome gift eligibility:', err); }
     };
     checkAbuseHistory();
-  }, [currentUser?.phone, currentUser?.carPlate, cleanUserPhone]); // 👈 تم الاستبدال هنا لمنع الاستنزاف
+  }, [currentUser, sessions, cleanUserPhone]);
 
   const isEligibleForFreeSession = useMemo(() => {
     return currentUser && !currentUser.hasUsedFreeSession && !isAbuseDetected;
@@ -209,7 +205,6 @@ export default function GarageListScreen() {
 
   useEffect(() => { getUserLocation(); }, [getUserLocation]);
 
-  // ✅ تخفيف وقت طلب البيانات الاحتياطي لـ 18 ثانية لمنع البطء والضغط على البروسيسور والبطارية
   useEffect(() => {
     if (!normalizedUserPlate) return;
     let isSubscribed = true;
@@ -223,10 +218,7 @@ export default function GarageListScreen() {
     const channel = supabase.channel(`customer-realtime-${normalizedUserPlate}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, (payload) => { if (isMyRow(payload.new) || isMyRow(payload.old)) refetch(); })
       .subscribe();
-    
-    // تم زيادة المؤقت لـ 18000 (18 ثانية) بدلاً من 10 ثوانٍ لمنع البطء
-    const interval = setInterval(refetch, 18000); 
-    
+    const interval = setInterval(refetch, 10000);
     const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
     const handleFocus = () => refetch();
     document.addEventListener('visibilitychange', handleVisibility);
@@ -307,7 +299,7 @@ export default function GarageListScreen() {
           </span>
         </div>
 
-        {/* 💳 بطاقة المحفظة */}
+        {/* 💳 بطاقة المحفظة (نصف الحجم مع لوحة سيارة واضحة وكبيرة) */}
         <div
           style={{
             background: BRAND.blue,
@@ -351,7 +343,7 @@ export default function GarageListScreen() {
             </div>
           </div>
 
-          {/* 🚙 رقم السيارة */}
+          {/* 🚙 رقم السيارة بحجم كبير وواضح وبارز */}
           <div className="mt-2 pt-2 border-t border-white/20 flex items-center justify-between">
             <span className="text-[11px] font-black text-white">🚙 رقم السيارة:</span>
             <span className="font-mono font-black text-sm bg-white text-[#1656b8] px-3 py-1 rounded-lg shadow-sm tracking-wider">
@@ -360,7 +352,7 @@ export default function GarageListScreen() {
           </div>
         </div>
 
-        {/* 📲 كارت الباركود الذكي */}
+        {/* 📲 كارت الباركود الذكي لمشاركة التطبيق أسفل المحفظة */}
         <div 
           onClick={() => setShowQrModal(true)}
           className="mb-3 border rounded-xl p-2 flex items-center justify-between text-right cursor-pointer active:scale-[0.98] transition-all"
@@ -426,7 +418,7 @@ export default function GarageListScreen() {
           )}
         </AnimatePresence>
 
-        {/* بانر الهدية الترحيبية */}
+        {/* بانر الهدية الترحيبية الهادئ */}
         {isEligibleForFreeSession && !activeSession && !myIncomingCar && (
           <div
             className="mb-3 p-3 rounded-16 flex items-center gap-2.5"
@@ -440,17 +432,15 @@ export default function GarageListScreen() {
           </div>
         )}
 
-        {/* الجلسة النشطة - معدلة لتعكس حالة تفعيل درع رادار الأمان */}
+        {/* الجلسة النشطة */}
         {activeSession && (
           <button
             onClick={() => { setSelectedGarageId(activeSession.garageId); setScreen('session'); }}
             className="w-full mb-3 flex items-center justify-between px-4 py-3 rounded-16 border-0 text-white cursor-pointer active:scale-98 transition-all"
-            style={{ background: activeSession.shieldEnabled ? BRAND.blue : BRAND.greenDark }}
+            style={{ background: BRAND.greenDark }}
           >
             <span className="text-xs font-black">عرض التفاصيل ←</span>
-            <span className="text-xs font-black flex items-center gap-1.5">
-              🚙 لديك جلسة ركن نشطة الآن {activeSession.shieldEnabled && '• 🛡️ مؤمن بالرادار'}
-            </span>
+            <span className="text-xs font-black flex items-center gap-1">🚙 لديك جلسة ركن نشطة الآن</span>
           </button>
         )}
 
@@ -466,7 +456,7 @@ export default function GarageListScreen() {
           </button>
         )}
 
-        {/* شريط البحث */}
+        {/* شريط البحث الموحد المريح للعين */}
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: BRAND.slate }} />
@@ -540,7 +530,7 @@ export default function GarageListScreen() {
           </button>
         </div>
 
-        {/* القائمة والأكورديون */}
+        {/* ═══ القائمة والأكورديون ═══ */}
         {areaGroups.length > 0 ? (
           <div className="space-y-2.5">
             {areaGroups.map((group) => {
@@ -557,6 +547,7 @@ export default function GarageListScreen() {
                     overflow: 'hidden',
                   }}
                 >
+                  {/* شريط المنطقة */}
                   <button
                     onClick={() => setExpandedArea(isExpanded ? null : group.name)}
                     className="w-full p-4 flex items-center justify-between text-right bg-transparent border-none cursor-pointer outline-none"
@@ -578,6 +569,7 @@ export default function GarageListScreen() {
                     </div>
                   </button>
 
+                  {/* قائمة الجراجات تحت المنطقة عند الفتح */}
                   {isExpanded && (
                     <div style={{ background: BRAND.bg, padding: '10px', borderTop: `1px solid ${BRAND.border}` }} className="space-y-2">
                       {group.garages.map((garage, i) => (
@@ -610,7 +602,7 @@ export default function GarageListScreen() {
         {showTopUp && <TopUpWalletModal onClose={() => setShowTopUp(false)} />}
       </AnimatePresence>
 
-      {/* نافذة الباركود لمشاركة التطبيق */}
+      {/* 📲 نافذة تكبير الباركود مع ميزة نسخ ومشاركة الرابط */}
       <AnimatePresence>
         {showQrModal && (
           <div 
@@ -626,6 +618,7 @@ export default function GarageListScreen() {
               style={{ background: BRAND.card }}
               onClick={e => e.stopPropagation()}
             >
+              {/* زر الإغلاق */}
               <button 
                 onClick={() => setShowQrModal(false)}
                 className="absolute top-4 left-4 text-slate-400 font-black text-sm border-0 bg-transparent cursor-pointer"
@@ -648,6 +641,7 @@ export default function GarageListScreen() {
                 امسح الكود أو انسخ الرابط وشاركه مع أصحابك ليركنوا ويستمتعوا بـ <span className="font-black" style={{ color: BRAND.greenDark }}>أول 30 دقيقة مجاناً! 🎁🚀</span>
               </p>
 
+              {/* إطار الباركود */}
               <div 
                 className="w-44 h-44 mx-auto p-2 bg-white rounded-2xl border-2 shadow-inner flex items-center justify-center mb-3" 
                 style={{ borderColor: BRAND.blue }}
@@ -662,6 +656,7 @@ export default function GarageListScreen() {
                 />
               </div>
 
+              {/* 🔗 زر نسخ ومشاركة رابط التطبيق */}
               <div className="space-y-2">
                 <button
                   onClick={async () => {
@@ -706,7 +701,7 @@ export default function GarageListScreen() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   ██  WELCOME GIFT MODAL
+   ██  WELCOME GIFT MODAL (MINIMALIST)
    ════════════════════════════════════════════════════════════ */
 function WelcomeGiftModal() {
   const [show, setShow] = useState(false);
@@ -756,7 +751,7 @@ function WelcomeGiftModal() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   ██  GARAGE CARD
+   ██  GARAGE CARD (CLEAN & SIMPLE)
    ════════════════════════════════════════════════════════════ */
 const GarageCard = memo(function GarageCard({
   garage,
@@ -798,6 +793,7 @@ const GarageCard = memo(function GarageCard({
         cursor: isFull ? 'not-allowed' : 'pointer',
       }}
     >
+      {/* سطر الاسم + التقييم + طريقة الدفع */}
       <div className="flex justify-between items-center mb-1">
         <div className="flex items-center gap-1 flex-wrap">
           <span className="flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded" style={{ background: '#fef3c7', color: '#b45309' }}>
@@ -823,11 +819,13 @@ const GarageCard = memo(function GarageCard({
         <h4 className="text-xs font-black" style={{ color: BRAND.blueDark }}>{garage.name}</h4>
       </div>
 
+      {/* الموقع */}
       <div className="flex items-center gap-1 justify-end text-[10px] mb-2" style={{ color: BRAND.slate }}>
         <span>{garage.location}</span>
         <MapPin size={10} />
       </div>
 
+      {/* البيانات: الوقت + الشاغر + السعر */}
       <div className="flex items-center justify-between mt-2 pt-2 border-t" style={{ borderColor: BRAND.border }}>
         <div className="flex items-center gap-1 text-[10px] font-bold" style={{ color: BRAND.slate }}>
           <Navigation size={10} className="rotate-45" />
@@ -846,6 +844,7 @@ const GarageCard = memo(function GarageCard({
         </div>
       </div>
 
+      {/* زر الحجز */}
       <button
         disabled={isFull || disabled}
         className="w-full border-0 font-black py-2.5 rounded-10 mt-3 text-xs text-white cursor-pointer"

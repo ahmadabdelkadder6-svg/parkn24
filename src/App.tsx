@@ -1,4 +1,3 @@
-// src/App.tsx
 import { useEffect, useRef, useState, useMemo, lazy, Suspense, Component, ErrorInfo, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
@@ -21,7 +20,6 @@ import LastSessionScreen from './components/LastSessionScreen';
 import ChatScreen from './components/ChatScreen';
 import InstallPage from './components/InstallPage';
 import InstallQRCodePage from './components/InstallQRCodePage';
-import SecurityShield from './components/SecurityShield';
 
 const GarageDashboard = lazy(() => import('./components/GarageDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
@@ -70,15 +68,26 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
   }
 }
 
+/* ════════════════════════════════════════════════════════════
+   🛡️ PARK'N 24 BRAND LOGO (مستوحى من الشعار المرفق)
+   ════════════════════════════════════════════════════════════ */
 function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: number }) {
   return (
     <svg viewBox="0 0 100 115" width={width} height={height} fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* الدرع الأزرق الخارجي */}
       <path d="M50 2 C78 2, 98 14, 98 26 C98 76, 75 104, 50 114 C25 104, 2 76, 2 26 C2 14, 22 2, 50 2 Z" fill="#1656b8" />
+      {/* الإطار الداخلي للدرع */}
       <path d="M50 8 C72 8, 90 18, 90 28 C90 70, 70 96, 50 105 C30 96, 10 70, 10 28 C10 18, 28 8, 50 8 Z" stroke="#ffffff" strokeWidth="2.5" fill="none" opacity="0.95" />
+      
+      {/* حرف P الأخضر الكبيرة */}
       <path d="M26 30 H48 C60 30, 62 48, 48 48 H38 V78 H26 V30 Z M38 38 V40 H46 C48 40, 48 38, 46 38 Z" fill="#8cc63f" />
+      
+      {/* أيقونة الساعة 24 فوق الـ P */}
       <path d="M64 30 A 10 10 0 1 1 58 44" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" fill="none" />
       <polyline points="64 34, 64 40, 68 40" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
       <text x="69" y="52" fill="#ffffff" fontSize="9" fontWeight="900" fontFamily="sans-serif">24</text>
+      
+      {/* أيقونة السيارة البيضاء تحت الـ P */}
       <path d="M58 64 L62 58 H74 L78 64 H80 C81.5 64 82 65 82 66.5 V72 H54 V66.5 C54 65 54.5 64 56 64 Z" fill="#ffffff" />
       <circle cx="61" cy="72" r="2.2" fill="#1656b8" />
       <circle cx="75" cy="72" r="2.2" fill="#1656b8" />
@@ -86,6 +95,9 @@ function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: 
   );
 }
 
+/* ════════════════════════════════════════════════════════════
+   ☀️ PARK'N 24 HERO — FULL-SCREEN CINEMATIC BLEND (FIXED CACHE)
+   ════════════════════════════════════════════════════════════ */
 interface ParkLandingProps {
   onEnter: () => void;
 }
@@ -100,6 +112,8 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
 
   const BRAND_BLUE = '#1656b8';
   const BRAND_GREEN = '#8cc63f';
+
+  // ⚡ تم تغيير رقم الإصدار هنا لـ v=999 لإجبار المتصفح على حذف كاش الصورة القديمة فوراً وعرض المضغوطة الجديدة
   const CAR_IMAGE_SRC = '/hero-car.webp?v=999';
 
   return (
@@ -114,73 +128,233 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
         >
           <style>{`
             @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter+Tight:wght@400;500;600;700;800;900&display=swap');
-            .hero-block { animation: rise-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+            .hero-block {
+              animation: rise-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+            }
             .delay-1 { animation-delay: 0.1s; }
             .delay-2 { animation-delay: 0.2s; }
             .delay-3 { animation-delay: 0.3s; }
-            @keyframes rise-up { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
-            .btn-brand-glow { display: inline-flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0.8em 1.2em 0.8em 2.2em; border-radius: 999px; background: linear-gradient(135deg, #1d68dc 0%, #1656b8 100%); color: #fff !important; font-weight: 900; font-family: 'Cairo', sans-serif; box-shadow: 0 12px 35px rgba(22, 86, 184, 0.45); transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); border: 1px solid rgba(255, 255, 255, 0.25); cursor: pointer; }
-            .btn-brand-glow:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 16px 45px rgba(22, 86, 184, 0.6); }
-            .btn-brand-glow:active { transform: scale(0.97); }
-            .btn-glass-skip { display: inline-flex; align-items: center; gap: 6px; padding: 0.5em 1.2em; border-radius: 999px; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); color: #f8fafc !important; font-family: 'Cairo', sans-serif; font-weight: 800; font-size: 13px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.15); transition: all 0.2s ease; cursor: pointer; }
-            .btn-glass-skip:hover { background: rgba(255, 255, 255, 0.2); color: #ffffff !important; }
+
+            @keyframes rise-up {
+              from { opacity: 0; transform: translateY(24px); }
+              to { opacity: 1; transform: none; }
+            }
+
+            .btn-brand-glow {
+              display: inline-flex;
+              align-items: center;
+              justify-content: space-between;
+              gap: 16px;
+              padding: 0.8em 1.2em 0.8em 2.2em;
+              border-radius: 999px;
+              background: linear-gradient(135deg, #1d68dc 0%, #1656b8 100%);
+              color: #fff !important;
+              font-weight: 900;
+              font-family: 'Cairo', sans-serif;
+              box-shadow: 0 12px 35px rgba(22, 86, 184, 0.45);
+              transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+              border: 1px solid rgba(255, 255, 255, 0.25);
+              cursor: pointer;
+            }
+            .btn-brand-glow:hover {
+              transform: translateY(-2px) scale(1.02);
+              box-shadow: 0 16px 45px rgba(22, 86, 184, 0.6);
+            }
+            .btn-brand-glow:active {
+              transform: scale(0.97);
+            }
+
+            .btn-glass-skip {
+              display: inline-flex;
+              align-items: center;
+              gap: 6px;
+              padding: 0.5em 1.2em;
+              border-radius: 999px;
+              background: rgba(15, 23, 42, 0.6);
+              backdrop-filter: blur(16px);
+              -webkit-backdrop-filter: blur(16px);
+              color: #f8fafc !important;
+              font-family: 'Cairo', sans-serif;
+              font-weight: 800;
+              font-size: 13px;
+              box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+              border: 1px solid rgba(255, 255, 255, 0.15);
+              transition: all 0.2s ease;
+              cursor: pointer;
+            }
+            .btn-glass-skip:hover {
+              background: rgba(255, 255, 255, 0.2);
+              color: #ffffff !important;
+            }
           `}</style>
 
+          {/* 🚗 1. خلفية الصورة المدمجة بكامل الشاشة */}
           <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-            <img src={CAR_IMAGE_SRC} alt="Park'n 24 Car" loading="eager" fetchPriority="high" className="w-full h-full object-cover object-center" style={{ filter: 'brightness(0.95) contrast(1.05)' }} />
-            <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(10, 18, 36, 0.88) 0%, rgba(10, 18, 36, 0.45) 40%, rgba(10, 18, 36, 0.75) 75%, rgba(10, 18, 36, 0.96) 100%)' }} />
+            <img
+              src={CAR_IMAGE_SRC}
+              alt="Park'n 24 Car"
+              loading="eager"
+              fetchPriority="high"
+              className="w-full h-full object-cover object-center"
+              style={{
+                filter: 'brightness(0.95) contrast(1.05)',
+              }}
+            />
+
+            {/* 🎨 2. تدرجات الدمج السينمائي الذكي */}
+            <div
+              className="absolute inset-0"
+              style={{
+                background: `
+                  linear-gradient(180deg, 
+                    rgba(10, 18, 36, 0.88) 0%, 
+                    rgba(10, 18, 36, 0.45) 40%, 
+                    rgba(10, 18, 36, 0.75) 75%, 
+                    rgba(10, 18, 36, 0.96) 100%
+                  )
+                `,
+              }}
+            />
           </div>
 
-          <motion.nav initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: 'easeOut' }} className="w-full flex items-center justify-between px-6 py-6 z-20 relative" style={{ direction: 'ltr' }}>
+          {/* 🛡️ 3. شريط الهيدر العلوي */}
+          <motion.nav
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: 'easeOut' }}
+            className="w-full flex items-center justify-between px-6 py-6 z-20 relative"
+            style={{ direction: 'ltr' }}
+          >
+            {/* اللوجو عربي وإنجليزي */}
             <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.15' }}>
-              <span style={{ fontFamily: "'Cairo', sans-serif", fontSize: '16px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.01em' }}>بركن <span style={{ color: BRAND_GREEN }}>24</span></span>
-              <span style={{ fontFamily: "'Inter Tight', sans-serif", fontSize: '18px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.02em' }}>Park'n <span style={{ color: BRAND_GREEN }}>24</span></span>
+              <span style={{ fontFamily: "'Cairo', sans-serif", fontSize: '16px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.01em' }}>
+                بركن <span style={{ color: BRAND_GREEN }}>24</span>
+              </span>
+              <span style={{ fontFamily: "'Inter Tight', sans-serif", fontSize: '18px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.02em' }}>
+                Park'n <span style={{ color: BRAND_GREEN }}>24</span>
+              </span>
             </div>
-            <button onClick={handleEnter} className="btn-glass-skip" style={{ direction: 'rtl' }}>تخطي ✕</button>
+
+            <button onClick={handleEnter} className="btn-glass-skip" style={{ direction: 'rtl' }}>
+              تخطي ✕
+            </button>
           </motion.nav>
 
-          <div className="px-6 pb-10 z-20 relative flex flex-col justify-end max-w-lg mx-auto w-full" style={{ direction: 'rtl' }}>
-            <h1 className="hero-block delay-1" style={{ fontFamily: "'Cairo', sans-serif", fontSize: 'clamp(2.1rem, 7vw, 3.4rem)', fontWeight: 900, lineHeight: 1.15, color: '#ffffff', textShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
-              انسى لفة كل يوم..<br /><span style={{ color: '#60a5fa' }}>ركنتك مضمونة</span><br /><span style={{ color: BRAND_GREEN }}>قبل ما توصل!</span>
+          {/* 📝 4. المحتوى التفاعلي المدمج في الأسفل والوسط */}
+          <div
+            className="px-6 pb-10 z-20 relative flex flex-col justify-end max-w-lg mx-auto w-full"
+            style={{ direction: 'rtl' }}
+          >
+            {/* العنوان الرئيسي */}
+            <h1
+              className="hero-block delay-1"
+              style={{
+                fontFamily: "'Cairo', sans-serif",
+                fontSize: 'clamp(2.1rem, 7vw, 3.4rem)',
+                fontWeight: 900,
+                lineHeight: 1.15,
+                color: '#ffffff',
+                textShadow: '0 4px 20px rgba(0,0,0,0.5)',
+              }}
+            >
+              انسى لفة كل يوم..<br />
+              <span style={{ color: '#60a5fa' }}>ركنتك مضمونة</span><br />
+              <span style={{ color: BRAND_GREEN }}>قبل ما توصل!</span>
             </h1>
-            <p className="hero-block delay-2" style={{ marginTop: '14px', fontFamily: "'Cairo', sans-serif", fontSize: '15px', lineHeight: 1.6, color: '#cbd5e1', fontWeight: 600, textShadow: '0 2px 10px rgba(0,0,0,0.4)', maxWidth: '380px' }}>
+
+            {/* الوصف التوضيحي */}
+            <p
+              className="hero-block delay-2"
+              style={{
+                marginTop: '14px',
+                fontFamily: "'Cairo', sans-serif",
+                fontSize: '15px',
+                lineHeight: 1.6,
+                color: '#cbd5e1',
+                fontWeight: 600,
+                textShadow: '0 2px 10px rgba(0,0,0,0.4)',
+                maxWidth: '380px',
+              }}
+            >
               مع Park'n 24، حدد وجهتك، اضمن مكانك في أقرب جراج، ووفر وقتك وبنزينك بضغطة زر واحدة.
             </p>
+
+            {/* زر الحجز السريع */}
             <div className="hero-block delay-3" style={{ marginTop: '26px' }}>
               <button onClick={handleEnter} className="btn-brand-glow w-full sm:w-auto" style={{ fontSize: '16px' }}>
                 <span>احجز ركنتك الآن 🚀</span>
-                <span style={{ display: 'grid', placeItems: 'center', width: '2.4em', height: '2.4em', borderRadius: '999px', background: 'rgba(255, 255, 255, 0.2)', backdropFilter: 'blur(8px)', color: '#fff' }}>
-                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '1.2em', height: '1.2em', transform: 'scaleX(-1)' }}>
+                <span
+                  style={{
+                    display: 'grid',
+                    placeItems: 'center',
+                    width: '2.4em',
+                    height: '2.4em',
+                    borderRadius: '999px',
+                    background: 'rgba(255, 255, 255, 0.2)',
+                    backdropFilter: 'blur(8px)',
+                    color: '#fff',
+                  }}
+                >
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ width: '1.2em', height: '1.2em', transform: 'scaleX(-1)' }}
+                  >
                     <path d="M4 10h12M11 5l5 5-5 5" />
                   </svg>
                 </span>
               </button>
             </div>
+
           </div>
+
         </motion.div>
       )}
     </AnimatePresence>
   );
 }
-
 const VALID_SCREENS = [
-  'splash', 'list', 'waiting', 'navigation', 'session', 'summary', 'lastSession', 'chat',
+  'splash',
+  'list',
+  'waiting',
+  'navigation',
+  'session',
+  'summary',
+  'lastSession',
+  'chat',
 ] as const;
 
 export default function App() {
   const {
-    view, setView, screen, setScreen, currentUser, currentGarageId,
-    setCurrentGarageId, sessions, selectedGarageId, setSelectedGarageId,
-    incomingCars, fetchAll, acknowledgedSessionIds,
+    view,
+    setView,
+    screen,
+    setScreen,
+    currentUser,
+    currentGarageId,
+    setCurrentGarageId,
+    sessions,
+    selectedGarageId,
+    setSelectedGarageId,
+    incomingCars,
+    fetchAll,
+    acknowledgedSessionIds,
   } = useStore();
 
   const prevActiveSessionRef = useRef<string | null>(null);
   const [dataLoaded, setDataLoaded] = useState(false);
   const initialLoadDone = useRef(false);
+
   const noSessionCountRef = useRef(0);
   const lastActiveTimeRef = useRef(0);
   const sessionEndToastShown = useRef(false);
   const sessionTransitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [adminAccess, setAdminAccess] = useState(false);
 
   const [showLanding, setShowLanding] = useState(() => {
@@ -199,15 +373,18 @@ export default function App() {
 
   useEffect(() => {
     if (document.getElementById('google-fonts-optimized')) return;
+
     const preconnect1 = document.createElement('link');
     preconnect1.rel = 'preconnect';
     preconnect1.href = 'https://fonts.googleapis.com';
     document.head.appendChild(preconnect1);
+
     const preconnect2 = document.createElement('link');
     preconnect2.rel = 'preconnect';
     preconnect2.href = 'https://fonts.gstatic.com';
     preconnect2.crossOrigin = 'anonymous';
     document.head.appendChild(preconnect2);
+
     const link = document.createElement('link');
     link.id = 'google-fonts-optimized';
     link.rel = 'stylesheet';
@@ -220,6 +397,7 @@ export default function App() {
       setAdminAccess(true);
       localStorage.setItem('adminAccess', 'true');
     }
+
     if (localStorage.getItem('adminAccess') === 'true') {
       setAdminAccess(true);
     }
@@ -235,100 +413,164 @@ export default function App() {
   useEffect(() => {
     if (!dataLoaded) return;
     if (view !== 'user') return;
-    if (safeScreen !== screen) setScreen(safeScreen as typeof screen);
+    if (safeScreen !== screen) {
+      setScreen(safeScreen as typeof screen);
+    }
   }, [safeScreen, screen, setScreen, dataLoaded, view]);
 
   useEffect(() => {
     const init = async () => {
       const justInstalled = localStorage.getItem('pwaJustInstalled') === 'true';
-      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
+      const isStandalone =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (window.navigator as any).standalone === true;
+
       if (justInstalled && isStandalone) {
         localStorage.removeItem('pwaJustInstalled');
         localStorage.setItem('appView', 'user');
         localStorage.setItem('appScreen', 'splash');
         localStorage.removeItem('selectedGarageId');
-        setView('user'); setScreen('splash'); setSelectedGarageId(null);
+        setView('user');
+        setScreen('splash');
+        setSelectedGarageId(null);
       }
+
       const savedScreen = localStorage.getItem('appScreen');
-      if (savedScreen === 'session' || savedScreen === 'navigation' || savedScreen === 'waiting' || savedScreen === 'offer' || (savedScreen && !VALID_SCREENS.includes(savedScreen as any))) {
+
+      if (
+        savedScreen === 'session' ||
+        savedScreen === 'navigation' ||
+        savedScreen === 'waiting' ||
+        savedScreen === 'offer' ||
+        (savedScreen && !VALID_SCREENS.includes(savedScreen as any))
+      ) {
         localStorage.removeItem('appScreen');
       }
+
       const urlParams = new URLSearchParams(window.location.search);
       const isGarageFromURL = urlParams.has('garage');
-      const isAdminFromURL = window.location.pathname === '/admin' || window.location.hash === '#admin';
+      const isAdminFromURL =
+        window.location.pathname === '/admin' ||
+        window.location.hash === '#admin';
+
       const savedView = localStorage.getItem('appView');
       const isGarageLoggedIn = localStorage.getItem('currentGarageId') || currentGarageId;
       const isAdminLoggedIn = localStorage.getItem('adminAccess') === 'true';
-      if (isAdminFromURL) setView('admin');
-      else if (isGarageFromURL) setView('garage');
-      else if (savedView && (savedView === 'user' || savedView === 'garage' || savedView === 'admin')) setView(savedView as any);
-      else { if (isAdminLoggedIn) setView('admin'); else if (isGarageLoggedIn) setView('garage'); else setView('user'); }
+
+      if (isAdminFromURL) {
+        setView('admin');
+      } else if (isGarageFromURL) {
+        setView('garage');
+      } else if (savedView && (savedView === 'user' || savedView === 'garage' || savedView === 'admin')) {
+        setView(savedView as any);
+      } else {
+        if (isAdminLoggedIn) {
+          setView('admin');
+        } else if (isGarageLoggedIn) {
+          setView('garage');
+        } else {
+          setView('user');
+        }
+      }
+
       setDataLoaded(true);
       initialLoadDone.current = true;
+
       fetchAll().catch((e) => console.error('Background fetch error:', e));
       setupRealtime();
     };
+
     init();
   }, []);
 
-  useEffect(() => { if (view) localStorage.setItem('appView', view); }, [view]);
+  useEffect(() => {
+    if (view) {
+      localStorage.setItem('appView', view);
+    }
+  }, [view]);
 
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser) return;
     if (view !== 'user') return;
+
     const userPlate = normalizePlate(currentUser.carPlate);
     const userPhone = currentUser.phone ? normalizePhone(currentUser.phone) : '';
+
     const myActiveSession = sessions.find((s) => {
       if (s.status !== 'active') return false;
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
       const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-      return samePlate || Boolean(userPhone && sPhone === userPhone);
+      const samePhone = Boolean(userPhone && sPhone === userPhone);
+      return samePlate || samePhone;
     });
+
     const myIncoming = incomingCars.find((c) => {
       if (c.status !== 'coming') return false;
       const samePlate = !!userPlate && normalizePlate(c.carPlate) === userPlate;
       const cPhone = c.customerPhone ? normalizePhone(c.customerPhone) : '';
-      return samePlate || Boolean(userPhone && cPhone === userPhone);
+      const samePhone = Boolean(userPhone && cPhone === userPhone);
+      return samePlate || samePhone;
     });
+
     if (myActiveSession) {
       prevActiveSessionRef.current = myActiveSession.id;
       lastActiveTimeRef.current = getServerNow();
       noSessionCountRef.current = 0;
       sessionEndToastShown.current = false;
       setSelectedGarageId(myActiveSession.garageId);
-      if (safeScreen !== 'session' && safeScreen !== 'summary') setScreen('session');
+      if (safeScreen !== 'session' && safeScreen !== 'summary') {
+        setScreen('session');
+      }
       return;
     }
+
     if (myIncoming) {
       setSelectedGarageId(myIncoming.garageId);
-      if (safeScreen !== 'navigation' && safeScreen !== 'session' && safeScreen !== 'summary') setScreen('navigation');
+      if (
+        safeScreen !== 'navigation' &&
+        safeScreen !== 'session' &&
+        safeScreen !== 'summary'
+      ) {
+        setScreen('navigation');
+      }
       return;
     }
-    if (safeScreen === 'session' || safeScreen === 'navigation' || safeScreen === 'waiting') {
-      const lastCompleted = sessions.filter((s) => {
-        if (s.status !== 'completed') return false;
-        const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-        const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-        return samePlate || Boolean(userPhone && sPhone === userPhone);
-      }).sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
+
+    if (
+      safeScreen === 'session' ||
+      safeScreen === 'navigation' ||
+      safeScreen === 'waiting'
+    ) {
+      const lastCompleted = sessions
+        .filter((s) => {
+          if (s.status !== 'completed') return false;
+          const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+          const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+          const samePhone = Boolean(userPhone && sPhone === userPhone);
+          return samePlate || samePhone;
+        })
+        .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
+
       if (lastCompleted) {
         const endTime = toMs(lastCompleted.endTime);
         const timeSinceEnd = getServerNow() - endTime;
+
         const freshAcknowledged = acknowledgedSessionIds;
         const isNotAcknowledged = freshAcknowledged ? !freshAcknowledged.has(lastCompleted.id) : true;
+
         if (endTime > 0 && timeSinceEnd < 60000 && isNotAcknowledged) {
           setSelectedGarageId(lastCompleted.garageId);
           setScreen('summary');
           return;
         }
       }
+
       setSelectedGarageId(null);
       setScreen('list');
     }
   }, [dataLoaded]);
 
-  // ✅ الـ useEffect المعدّل - منع التعليق عند تحصيل كاش من السايس
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser || view !== 'user') return;
@@ -340,147 +582,171 @@ export default function App() {
       if (s.status !== 'active') return false;
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
       const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-      return samePlate || Boolean(userPhone && sPhone === userPhone);
+      const samePhone = Boolean(userPhone && sPhone === userPhone);
+      return samePlate || samePhone;
     });
 
     const myIncoming = incomingCars.find((c) => {
       if (c.status !== 'coming') return false;
       const samePlate = !!userPlate && normalizePlate(c.carPlate) === userPlate;
       const cPhone = c.customerPhone ? normalizePhone(c.customerPhone) : '';
-      return samePlate || Boolean(userPhone && cPhone === userPhone);
+      const samePhone = Boolean(userPhone && cPhone === userPhone);
+      return samePlate || samePhone;
     });
 
-    // إذا كانت هناك جلسة نشطة:
     if (myActiveSession) {
       noSessionCountRef.current = 0;
       lastActiveTimeRef.current = getServerNow();
       sessionEndToastShown.current = false;
+
       if (sessionTransitionTimer.current) {
         clearTimeout(sessionTransitionTimer.current);
         sessionTransitionTimer.current = null;
       }
+
       if (myActiveSession.id !== prevActiveSessionRef.current) {
         prevActiveSessionRef.current = myActiveSession.id;
         setSelectedGarageId(myActiveSession.garageId);
-        if (safeScreen !== 'session' && safeScreen !== 'summary' && safeScreen !== 'lastSession' && safeScreen !== 'chat') {
+        if (
+          safeScreen !== 'session' &&
+          safeScreen !== 'summary' &&
+          safeScreen !== 'lastSession' &&
+          safeScreen !== 'chat'
+        ) {
           setScreen('session');
         }
       }
       return;
     }
 
-    // إذا انتهت الجلسة (السايس حصل نقدي أو محفظة):
     if (prevActiveSessionRef.current) {
-      const endedSessionId = prevActiveSessionRef.current;
-      prevActiveSessionRef.current = null; // تفريغ المرجع فوراً لمنع التكرار
-      noSessionCountRef.current = 0;
+      noSessionCountRef.current += 1;
+      const timeSinceLastActive = getServerNow() - lastActiveTimeRef.current;
 
-      if (sessionTransitionTimer.current) {
-        clearTimeout(sessionTransitionTimer.current);
-        sessionTransitionTimer.current = null;
+      if (noSessionCountRef.current < 3 || timeSinceLastActive < 8000) {
+        return;
       }
 
-      const freshState = useStore.getState();
-      const freshAcknowledged = freshState.acknowledgedSessionIds;
-      const isAlreadyAcknowledged = freshAcknowledged ? freshAcknowledged.has(endedSessionId) : false;
+      if (sessionTransitionTimer.current) return;
 
-      // لا نتدخل إذا كان العميل بالفعل في شاشة summary أو شاهد الإيصال
-      if (!isAlreadyAcknowledged && (safeScreen === 'session' || safeScreen === 'navigation' || safeScreen === 'waiting')) {
-        const endedSession = freshState.sessions.find(s => s.id === endedSessionId);
-        if (endedSession) {
-          freshState.acknowledgeSession(endedSession.id);
-          setSelectedGarageId(endedSession.garageId);
-          setScreen('summary');
-        } else {
+      sessionTransitionTimer.current = setTimeout(() => {
+        sessionTransitionTimer.current = null;
+        const freshState = useStore.getState();
+        const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
+        const freshPhone = freshState.currentUser?.phone ? normalizePhone(freshState.currentUser.phone) : '';
+
+        const stillActive = freshState.sessions.find((s) => {
+          if (s.status !== 'active') return false;
+          const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
+          const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+          const samePhone = Boolean(freshPhone && sPhone === freshPhone);
+          return samePlate || samePhone;
+        });
+
+        if (stillActive) {
+          noSessionCountRef.current = 0;
+          prevActiveSessionRef.current = stillActive.id;
+          return;
+        }
+
+        const currentScreen = freshState.screen;
+        prevActiveSessionRef.current = null;
+        noSessionCountRef.current = 0;
+
+        if (
+          currentScreen === 'session' ||
+          currentScreen === 'navigation' ||
+          currentScreen === 'waiting'
+        ) {
+          const lastCompleted = freshState.sessions
+            .filter((s) => {
+              if (s.status !== 'completed') return false;
+              const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
+              const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+              const samePhone = Boolean(freshPhone && sPhone === freshPhone);
+              return samePlate || samePhone;
+            })
+            .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
+
+          if (lastCompleted) {
+            const freshAcknowledged = freshState.acknowledgedSessionIds;
+            const isNotAcknowledged = freshAcknowledged ? !freshAcknowledged.has(lastCompleted.id) : true;
+            if (isNotAcknowledged) {
+              setSelectedGarageId(lastCompleted.garageId);
+              setScreen('summary');
+              return;
+            }
+          }
+
+          if (!sessionEndToastShown.current) {
+            sessionEndToastShown.current = true;
+            toast.success('تم إنهاء الجلسة والعودة للرئيسية');
+          }
           setSelectedGarageId(null);
           setScreen('list');
         }
-      }
-      return;
+      }, 3000);
     }
 
-    // تنظيف شاشة الملاحة لو الحجز انتهى
     if (!myActiveSession && safeScreen === 'navigation' && !myIncoming) {
       const timeout = setTimeout(() => {
         const freshState = useStore.getState();
         const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
         const freshPhone = freshState.currentUser?.phone ? normalizePhone(freshState.currentUser.phone) : '';
+
         const freshIncoming = freshState.incomingCars.find((c) => {
           if (c.status !== 'coming') return false;
           const samePlate = !!freshPlate && normalizePlate(c.carPlate) === freshPlate;
           const cPhone = c.customerPhone ? normalizePhone(c.customerPhone) : '';
-          return samePlate || Boolean(freshPhone && cPhone === freshPhone);
+          const samePhone = Boolean(freshPhone && cPhone === freshPhone);
+          return samePlate || samePhone;
         });
+
         const freshSession = freshState.sessions.find((s) => {
           if (s.status !== 'active') return false;
           const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
           const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-          return samePlate || Boolean(freshPhone && sPhone === freshPhone);
+          const samePhone = Boolean(freshPhone && sPhone === freshPhone);
+          return samePlate || samePhone;
         });
+
         if (!freshIncoming && !freshSession) {
           setSelectedGarageId(null);
           setScreen('list');
         }
-      }, 2000);
+      }, 3000);
+
       return () => clearTimeout(timeout);
     }
-  }, [sessions, currentUser, view, safeScreen, incomingCars, dataLoaded, setScreen, setSelectedGarageId]);
+  }, [
+    sessions,
+    currentUser,
+    view,
+    safeScreen,
+    incomingCars,
+    dataLoaded,
+    setScreen,
+    setSelectedGarageId,
+  ]);
 
   useEffect(() => {
-    return () => { if (sessionTransitionTimer.current) clearTimeout(sessionTransitionTimer.current); };
+    return () => {
+      if (sessionTransitionTimer.current) {
+        clearTimeout(sessionTransitionTimer.current);
+      }
+    };
   }, []);
 
-  if (pathname === '/install') return <InstallPage />;
-  if (pathname === '/qr') return <InstallQRCodePage />;
+  if (pathname === '/install') {
+    return <InstallPage />;
+  }
 
-  // 🛡️ استخراج الجلسة النشطة المؤمّنة للدرع (تعمل في أي شاشة وليس فقط session)
-  const activeSessionForShield = currentUser && view === 'user' 
-    ? sessions.find((s) => {
-        if (s.status !== 'active') return false;
-        const userPlate = normalizePlate(currentUser.carPlate);
-        const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-        const userPhone = currentUser.phone ? normalizePhone(currentUser.phone) : '';
-        const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-        return samePlate || Boolean(userPhone && sPhone === userPhone);
-      })
-    : null;
-
-  const isShieldOn = activeSessionForShield?.shieldEnabled === true;
-
-  // 📱 تسجيل هاتف العميل فوراً في خوادم الـ Push أول ما يفتح التطبيق لضمان وصول التنبيه والتليفون مقفول في أي وقت
-  useEffect(() => {
-    if (currentUser?.phone && view === 'user') {
-      const registerPush = async () => {
-        try {
-          if ('Notification' in window && Notification.permission === 'default') {
-            await Notification.requestPermission();
-          }
-          const { subscribeCustomerPush } = await import('./lib/pushManager');
-          await subscribeCustomerPush(
-            currentUser.phone,
-            activeSessionForShield?.id || undefined,
-            activeSessionForShield?.carPlate || undefined
-          );
-          console.log("🛡️ [Park'n 24] Global Push registered successfully for closed-screen alerts.");
-        } catch (e) {
-          console.warn("Background push registration failed:", e);
-        }
-      };
-      registerPush();
-    }
-  }, [currentUser?.phone, activeSessionForShield?.id, view]);
+  if (pathname === '/qr') {
+    return <InstallQRCodePage />;
+  }
 
   return (
     <ErrorBoundary>
-      {/* 🛡️ تفعيل درع الأمان الموحد ليعمل في كافة شاشات التطبيق لربط العميل والسايس */}
-      <SecurityShield
-        view={view}
-        isSessionActive={view === 'garage' ? true : !!activeSessionForShield}
-        isShieldEnabled={view === 'garage' ? true : isShieldOn}
-        sessionId={activeSessionForShield?.id || null}
-        carPlate={activeSessionForShield?.carPlate || ''}
-      />
-
       {showLanding && <ParkLanding onEnter={handleEnterLanding} />}
 
       <AuthGate>
@@ -489,7 +755,10 @@ export default function App() {
           style={{ fontFamily: "'Cairo', 'Noto Sans Arabic', system-ui, sans-serif" }}
         >
           {adminAccess && (
-            <div className="absolute top-3.5 left-3.5 z-[9999] flex gap-1 bg-slate-950/90 p-1 rounded-full backdrop-blur-md border border-white/10 shadow-2xl" style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.24)' }}>
+            <div 
+              className="absolute top-3.5 left-3.5 z-[9999] flex gap-1 bg-slate-950/90 p-1 rounded-full backdrop-blur-md border border-white/10 shadow-2xl"
+              style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.24)' }}
+            >
               {[
                 { id: 'user' as const, label: '👤 حريف' },
                 { id: 'garage' as const, label: '🅿️ جراج' },
@@ -517,7 +786,10 @@ export default function App() {
                         : 'bg-blue-600 text-white font-black shadow-lg shadow-blue-500/30'
                       : 'text-white/70 hover:text-white hover:bg-white/10'
                   )}
-                  style={{ fontWeight: 950, textShadow: '0 1px 2px rgba(0,0,0,0.2)' }}
+                  style={{ 
+                    fontWeight: 950,
+                    textShadow: '0 1px 2px rgba(0,0,0,0.2)'
+                  }}
                 >
                   {tab.label}
                 </button>
@@ -526,24 +798,48 @@ export default function App() {
           )}
           <main className="flex-1 overflow-hidden bg-white">
             {view === 'admin' && adminAccess ? (
-              <Suspense fallback={<div className="h-full bg-white flex flex-col items-center justify-center"><div className="text-3xl mb-3 animate-bounce">⚙️</div><p className="text-slate-500 text-sm font-bold animate-pulse">جاري فتح لوحة المشرف...</p></div>}>
+              <Suspense fallback={
+                <div className="h-full bg-white flex flex-col items-center justify-center">
+                  <div className="text-3xl mb-3 animate-bounce">⚙️</div>
+                  <p className="text-slate-500 text-sm font-bold animate-pulse">جاري فتح لوحة المشرف...</p>
+                </div>
+              }>
                 <AdminDashboard />
               </Suspense>
             ) : view === 'garage' ? (
               currentGarageId ? (
-                <Suspense fallback={<div className="h-full bg-white flex flex-col items-center justify-center"><div className="text-3xl mb-3 animate-bounce">🅿️</div><p className="text-slate-500 text-sm font-bold animate-pulse">جاري فتح لوحة الجراج...</p></div>}>
+                <Suspense fallback={
+                  <div className="h-full bg-white flex flex-col items-center justify-center">
+                    <div className="text-3xl mb-3 animate-bounce">🅿️</div>
+                    <p className="text-slate-500 text-sm font-bold animate-pulse">جاري فتح لوحة الجراج...</p>
+                  </div>
+                }>
                   <GarageDashboard />
                 </Suspense>
               ) : (
                 <GarageLoginScreen />
               )
             ) : !dataLoaded ? (
-              <div className="h-full bg-white flex flex-col items-center justify-center"><div className="text-4xl mb-4 animate-bounce">🚗</div><p className="text-slate-600 text-sm font-bold animate-pulse">جاري تحميل البيانات...</p></div>
+              <div className="h-full bg-white flex flex-col items-center justify-center">
+                <div className="text-4xl mb-4 animate-bounce">🚗</div>
+                <p className="text-slate-600 text-sm font-bold animate-pulse">
+                  جاري تحميل البيانات...
+                </p>
+              </div>
             ) : (
               <AnimatePresence mode="wait">
-                <motion.div key={safeScreen} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} className="h-full overflow-y-auto bg-white text-slate-900">
+                <motion.div
+                  key={safeScreen}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                  className="h-full overflow-y-auto bg-white text-slate-900"
+                >
                   {safeScreen === 'splash' && <SplashScreen />}
+
                   {!currentUser && safeScreen !== 'splash' && <RegisterScreen />}
+
                   {currentUser && (
                     <>
                       {safeScreen === 'list' && <GarageListScreen />}
@@ -554,11 +850,13 @@ export default function App() {
                       {safeScreen === 'chat' && <ChatScreen />}
                     </>
                   )}
+
                   {safeScreen === 'summary' && <SummaryScreen />}
                 </motion.div>
               </AnimatePresence>
             )}
           </main>
+
           <Toaster position="top-center" />
           <InstallPWA />
         </div>

@@ -1,10 +1,3 @@
-// src/utils/pricing.ts
-
-/**
- * 🛡️ ثوابت درع الحماية والخدمات الإضافية
- */
-export const SHIELD_SERVICE_PRICE = 10; // قيمة خدمة درع حماية السيارة من السرقة (10 ج.م)
-
 /**
  * ✅ حساب الساعات المحسوبة (من 1 إلى 60 دقيقة = ساعة، من 61 إلى 120 = ساعتان.. إلخ)
  */
@@ -14,7 +7,7 @@ export function calculateFullHours(elapsedSeconds: number): number {
 }
 
 /**
- * ✅ حساب التكلفة العادية لوقت الركن
+ * ✅ حساب التكلفة العادية
  */
 export function calculateCost(elapsedSeconds: number, ratePerHour: number): number {
   if (!elapsedSeconds || elapsedSeconds <= 0 || !ratePerHour || ratePerHour <= 0) return 0;
@@ -63,32 +56,6 @@ export function calculateCostWithLoyalty(
     totalHours: standardHours,
     isFree: false,
     savedAmount: 0,
-  };
-}
-
-/**
- * 🛡️ حساب التكلفة الإجمالية الشاملة لدرع الحماية (اختياري)
- */
-export function calculateTotalSessionCost(
-  elapsedSeconds: number,
-  ratePerHour: number,
-  isFreeSession: boolean = false,
-  isShieldEnabled: boolean = false
-): {
-  parkingCost: number;
-  shieldCost: number;
-  finalTotal: number;
-  isFreeParking: boolean;
-} {
-  const loyalty = calculateCostWithLoyalty(elapsedSeconds, ratePerHour, isFreeSession);
-  const shieldCost = isShieldEnabled ? SHIELD_SERVICE_PRICE : 0;
-  const finalTotal = loyalty.cost + shieldCost;
-
-  return {
-    parkingCost: loyalty.cost,
-    shieldCost,
-    finalTotal,
-    isFreeParking: loyalty.isFree,
   };
 }
 

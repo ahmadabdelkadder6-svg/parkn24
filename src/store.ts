@@ -1,5 +1,3 @@
-// src/store.ts
-
 import { create } from 'zustand';
 import { supabase } from './lib/supabase';
 
@@ -30,7 +28,7 @@ export interface Garage {
   valet3Active: boolean;
   isActive: boolean;
   payment_mode?: 'cash' | 'wallet' | 'both'; 
-  area?: string; // 🗺️ المنطقة الجغرافية للجراج (وسط البلد، مصر الجديدة، إلخ)
+  area?: string; // 🗺️ المنطقة الجغرافية للجراج (مثال: وسط البلد، مصر الجديدة، المعادي)
 }
 
 export interface ParkingSession {
@@ -57,11 +55,6 @@ export interface ParkingSession {
   settled_at?: string;
   freeMinutesApplied?: number;
   isFirstFreeSession?: boolean;
-  // 🛡️ حقول درع الحماية والمراقبة السحابية اللحظية للسيارة
-  shieldEnabled?: boolean;
-  shieldPrice?: number;
-  is_breached?: boolean;
-  breach_reason?: string;
 }
 
 export interface Offer {
@@ -264,14 +257,24 @@ const safeGetStorage = (key: string) => {
   catch (e) { console.error('Error reading from localStorage:', e); return null; }
 };
 
+// 🛡️ دالة البصمة الفولاذية الموحدة لجميع لوحات السيارات (تمنع التحايل ومطابقة لقاعدة البيانات القديمة 100%)
 export const getPlateFingerprint = (plate?: any): string => {
   if (!plate) return '';
   let str = String(plate).trim();
+
+  // 1️⃣ إزالة المسافات الصامتة والفواصل الخفية ورموز الـ Unicode الخاصة
   str = str.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '');
+
+  // 2️⃣ إزالة التطويل والكشيدة (ـ) والتشكيل والتنوين
   str = str.replace(/\u0640/g, '');
+
+  // 3️⃣ تفكيك الـ Unicode لتوحيد الحروف المركبة (NFKD Normalization)
   str = str.normalize('NFKD');
+
+  // 4️⃣ حذف الهمزات وعلامات التشكيل بعد التفكيك
   str = str.replace(/[\u064B-\u065F\u0670\u0654\u0655\u0653]/g, '');
 
+  // 5️⃣ تحويل كافة الأرقام الهندية والشرقية (١٢٣ / ۱۲۳) إلى أرقام عادية (123)
   const easternDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
   const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
   for (let i = 0; i <= 9; i++) {
@@ -279,6 +282,7 @@ export const getPlateFingerprint = (plate?: any): string => {
     str = str.split(persianDigits[i]).join(String(i));
   }
 
+  // 6️⃣ تحويل الحروف الإنجليزية إلى عربية في حال حاول كتابتها بالإنجليزية
   str = str.toUpperCase();
   const enToAr: Record<string, string> = {
     'A': 'ا', 'B': 'ب', 'C': 'س', 'D': 'د', 'E': 'ي', 'F': 'ف',
@@ -288,12 +292,24 @@ export const getPlateFingerprint = (plate?: any): string => {
     'Y': 'ي', 'Z': 'ز'
   };
   str = str.replace(/[A-Z]/g, (ch) => enToAr[ch] || '');
+
+  // 7️⃣ توحيد الحروف المتشابهة لقطع أي محاولة تلاعب
+  // تحويل كافة أشكال الألف والهمزات (أ / إ / آ / ٱ / ا) إلى حرف "ا" موحد
   str = str.replace(/[\u0622\u0623\u0625\u0671\u0672\u0673\u0675\u0627]/g, 'ا');
+
+  // توحيد الهمزات المنفصلة وعلى الياء والواو (ء / ئ / ؤ)
   str = str.replace(/[ءئ]/g, 'ي').replace(/ؤ/g, 'و');
+
+  // توحيد التاء المربوطة بالهاء (ة -> ه)
   str = str.replace(/ة/g, 'ه');
+
+  // توحيد الألف المقصورة بالياء (ى -> ي)
   str = str.replace(/[ىی]/g, 'ي');
+
+  // توحيد الكاف الفارسية والمعربة (ک / گ -> ك)
   str = str.replace(/[کگ]/g, 'ك');
 
+  // 8️⃣ عزل الحروف الصافية والأرقام
   const letters = str.replace(/[^ا-ي]/g, '');
   const digits = str.replace(/[^0-9]/g, '');
 
@@ -301,6 +317,7 @@ export const getPlateFingerprint = (plate?: any): string => {
   if (!letters) return `_${digits}`;
   if (!digits) return `${letters}_`;
 
+  // 🌟 إرجاع البصمة بالشرطة السفلية لضمان مطابقة الـ Database القديمة والجديدة فوراً!
   return `${letters}_${digits}`;
 };
 
@@ -308,25 +325,36 @@ export const normalizePlate = (plate?: any): string => {
   return getPlateFingerprint(plate);
 };
 
+// 📱 دالة تنظيف وتوحيد رقم الهاتف المصري
 export const normalizePhone = (phone?: any): string => {
   if (!phone) return '';
   let str = String(phone).trim();
+
+  // تحويل الأرقام الهندية/الشرقية (٠-٩) إلى أرقام إنجليزية (0-9)
   const arabicNums = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
   for (let i = 0; i < 10; i++) {
     str = str.replace(new RegExp(arabicNums[i], 'g'), String(i));
   }
+
+  // إزالة أي رموز أو حروف ومسافات
   let clean = str.replace(/[^\d]/g, '');
+
+  // إزالة كود مصر الدولي (+20 أو 0020 أو 20) إن وجد
   if (clean.startsWith('0020')) clean = clean.substring(4);
   else if (clean.startsWith('20')) clean = clean.substring(2);
 
+  // لو المستخدم بدأ بـ 10 أو 11 أو 12 أو 15 مباشرة (بدون الصفر الأول) بنضيف الصفر تلقائياً
   if ((clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('12') || clean.startsWith('15')) && clean.length === 10) {
     clean = '0' + clean;
   }
+
   return clean.substring(0, 11);
 };
 
+// 🇪🇬 دالة فحص صارمة للتأكد أن الرقم مصري صحيح (11 رقم ويبدأ بـ 010 / 011 / 012 / 015)
 export const isValidEgyptianPhone = (phone: string): boolean => {
   const clean = normalizePhone(phone);
+  // فحص: 11 رقم، يبدأ بـ 01، ثم يليه (0 أو 1 أو 2 أو 5)، ثم 8 أرقام
   return /^01[0125][0-9]{8}$/.test(clean);
 };
 
@@ -379,6 +407,7 @@ export const getServerNow = (): number => {
   return Date.now() + serverTimeOffset;
 };
 
+// تشغيل المزامنة المبدئية فوراً
 syncServerClock();
 
 const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
@@ -482,11 +511,6 @@ const mapSession = (r: any): ParkingSession => {
     settled_at: r.settled_at || undefined,
     freeMinutesApplied: r.free_minutes_applied != null ? Number(r.free_minutes_applied) : 0,
     isFirstFreeSession: isFree,
-    // 🛡️ مزامنة حقول الحماية الاختيارية والمراقبة السحابية اللحظية
-    shieldEnabled: r.shield_enabled === true || r.shield_enabled === 'true' || Number(r.shield_price) > 0,
-    shieldPrice: Number(r.shield_price) || (r.shield_enabled ? 10 : 0),
-    is_breached: r.is_breached ?? false,
-    breach_reason: r.breach_reason || '🚨 تم رصد حركة وتحريك غير مصرح به للسيارة!',
   };
 };
 
@@ -953,10 +977,6 @@ export const useStore = create<AppState>((set, get) => ({
               settled_at: ss.settled_at || localVersion.settled_at,
               isFirstFreeSession: ss.isFirstFreeSession ?? localVersion.isFirstFreeSession,
               freeMinutesApplied: ss.freeMinutesApplied ?? localVersion.freeMinutesApplied,
-              shieldEnabled: ss.shieldEnabled ?? localVersion.shieldEnabled,
-              shieldPrice: ss.shieldPrice ?? localVersion.shieldPrice,
-                is_breached: ss.is_breached ?? localVersion.is_breached,
-              breach_reason: ss.breach_reason || localVersion.breach_reason,
             };
           }
           if (localVersion.totalPrice != null && localVersion.totalPrice > 0) return localVersion;
@@ -1092,7 +1112,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (updates.valetPassword1 !== undefined) db.valet_password_1 = updates.valetPassword1;
     if (updates.valetName2 !== undefined) db.valet_name_2 = updates.valetName2;
     if (updates.valetPassword2 !== undefined) db.valet_password_2 = updates.valetPassword2;
-    if (updates.valetName3 !== undefined) db.valet_name_3 = updates.valet_name_3;
+    if (updates.valetName3 !== undefined) db.valet_name_3 = updates.valetName3;
     if (updates.valetPassword3 !== undefined) db.valet_password_3 = updates.valetPassword3;
     if (updates.payment_mode !== undefined) db.payment_mode = updates.payment_mode; 
     if (updates.area !== undefined) db.area = updates.area; 
@@ -1207,9 +1227,6 @@ export const useStore = create<AppState>((set, get) => ({
 
       const startTimeISO = typeof s.startTime === 'string' ? s.startTime : new Date(getServerNow()).toISOString();
 
-      const shieldEnabled = s.shieldEnabled ?? false;
-      const shieldPrice = shieldEnabled ? 10 : 0;
-
       const optimisticSession: ParkingSession = {
         ...s,
         id: sessionId,
@@ -1227,8 +1244,6 @@ export const useStore = create<AppState>((set, get) => ({
         settled: false,
         isFirstFreeSession: eligibleForFree,
         freeMinutesApplied: 0,
-        shieldEnabled,
-        shieldPrice,
       };
 
       set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]) }));
@@ -1256,8 +1271,6 @@ export const useStore = create<AppState>((set, get) => ({
           settled: false,
           is_first_free_session: eligibleForFree,
           free_minutes_applied: 0,
-          shield_enabled: shieldEnabled,
-          shield_price: shieldPrice,
         }).select().single();
 
         if (error) {
@@ -1299,7 +1312,7 @@ export const useStore = create<AppState>((set, get) => ({
     pausePolling(2000);
 
     try {
-      const finalTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
+      const safeTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
       const garage = get().garages.find((g) => g.id === session.garageId);
       
       if (garage && garage.payment_mode) {
@@ -1313,21 +1326,10 @@ export const useStore = create<AppState>((set, get) => ({
 
       const commissionRate = garage?.commissionRate ?? 10;
       const isAppSession = session.source === 'app';
-
-      const isShield = session.shieldEnabled === true || (session as any).shield_enabled === true;
-      const shieldFee = isShield ? 10 : 0;
-      const parkingBasePrice = Math.max(0, finalTotalPrice - shieldFee);
-
-      let commissionAmount = isAppSession
-        ? Math.round(((parkingBasePrice * commissionRate) / 100) * 100) / 100
+      const commissionAmount = isAppSession
+        ? Math.round(((safeTotalPrice * commissionRate) / 100) * 100) / 100
         : 0;
-
-      let netRevenue = Math.round((parkingBasePrice - commissionAmount) * 100) / 100;
-
-      if (isShield) {
-        commissionAmount += 5; 
-        netRevenue += 5;       
-      }
+      const netRevenue = Math.round((safeTotalPrice - commissionAmount) * 100) / 100;
 
       const isAutoConfirmed = paymentMethod === 'wallet';
       const finalAddedBy = resolveAddedBy(addedBy ?? session.addedBy);
@@ -1335,7 +1337,7 @@ export const useStore = create<AppState>((set, get) => ({
       const endedSession: ParkingSession = {
         ...session,
         endTime: nowISO,
-        totalPrice: finalTotalPrice, 
+        totalPrice: safeTotalPrice,
         paymentMethod,
         status: 'completed' as const,
         revenueConfirmed: isAutoConfirmed,
@@ -1344,8 +1346,6 @@ export const useStore = create<AppState>((set, get) => ({
         settled: false,
         freeMinutesApplied: freeMinutesApplied || session.freeMinutesApplied || 0,
         addedBy: finalAddedBy,
-        shieldEnabled: isShield,
-        shieldPrice: shieldFee,
       };
 
       locallyEndedSessions.set(id, endedSession);
@@ -1353,7 +1353,7 @@ export const useStore = create<AppState>((set, get) => ({
       await get().adjustGarageSpots(session.garageId, +1);
 
       if (paymentMethod === 'wallet' && isAppSession) {
-        await get().deductWallet(finalTotalPrice);
+        await get().deductWallet(safeTotalPrice);
       }
 
       if (session.isFirstFreeSession) {
@@ -1382,7 +1382,7 @@ export const useStore = create<AppState>((set, get) => ({
         .from('sessions')
         .update({
           end_time: nowISO,
-          total_price: finalTotalPrice,
+          total_price: safeTotalPrice,
           payment_method: paymentMethod,
           status: 'completed',
           revenue_confirmed: isAutoConfirmed,
@@ -1390,9 +1390,7 @@ export const useStore = create<AppState>((set, get) => ({
           net_revenue: netRevenue,
           settled: false,
           free_minutes_applied: freeMinutesApplied || session.freeMinutesApplied || 0,
-          added_by: finalAddedBy || null,
-          shield_enabled: isShield,
-          shield_price: shieldFee,
+          added_by: finalAddedBy || null
         })
         .eq('id', id)
         .eq('status', 'active');
@@ -1579,12 +1577,89 @@ export const useStore = create<AppState>((set, get) => ({
         }));
         await get().fetchAll();
         return;
-      } else {
-        throw new Error(data?.error || error?.message || 'فشل الاعتماد');
       }
-    } catch (rpcErr: any) {
-      console.error('RPC approve exception:', rpcErr);
-      throw rpcErr;
+    } catch (rpcErr) {
+      console.warn('RPC approve exception, using direct fallback:', rpcErr);
+    }
+
+    const topUp = get().walletTopUps.find((w) => w.id === id);
+    if (!topUp) return;
+
+    try {
+      let dbRow: any = null;
+      if (topUp.transactionId) {
+        const { data } = await supabase
+          .from('wallet_topups')
+          .select('*')
+          .eq('transaction_id', topUp.transactionId)
+          .maybeSingle();
+        if (data) dbRow = data;
+      }
+      if (!dbRow) {
+        const { data } = await supabase
+          .from('wallet_topups')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+        if (data) dbRow = data;
+      }
+      if (!dbRow) throw new Error('Top-up record not found');
+
+      if (dbRow.status === 'approved') {
+        await get().fetchAll();
+        return;
+      }
+
+      const supabaseId = dbRow.id;
+      const { error: approveError = null } = await supabase
+        .from('wallet_topups')
+        .update({ status: 'approved' })
+        .eq('id', supabaseId);
+
+      if (approveError) throw approveError;
+
+      const realUserPhone = dbRow.user_phone || topUp.userPhone || '';
+      let userData: any = null;
+      if (realUserPhone) {
+        const { data } = await supabase
+          .from('users')
+          .select('*')
+          .eq('phone', realUserPhone)
+          .maybeSingle();
+        if (data) userData = data;
+      }
+      if (!userData) throw new Error('User account not found');
+
+      const baseAmount = Number(dbRow.amount || topUp.amount || 0);
+      const bonusAmount = calculateBonus(baseAmount); 
+
+      const totalToAdd = baseAmount + bonusAmount;
+      const newWallet = Number(userData.wallet || 0) + totalToAdd;
+
+      const { error: walletError } = await supabase
+        .from('users')
+        .update({ wallet: newWallet })
+        .eq('id', userData.id);
+
+      if (walletError) throw walletError;
+
+      if (bonusAmount > 0) {
+        await supabase
+          .from('wallet_topups')
+          .update({ bonus_amount: bonusAmount })
+          .eq('id', supabaseId);
+      }
+
+      set((st) => ({
+        walletTopUps: st.walletTopUps.map((w) =>
+          w.id === id ? { ...w, status: 'approved' as const, bonusAmount } : w
+        ),
+      }));
+
+      await get().fetchAll();
+    } catch (err) {
+      console.error('Direct fallback top-up approval failed:', err);
+      throw err;
     }
   },
 

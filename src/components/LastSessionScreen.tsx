@@ -1,5 +1,3 @@
-// src/components/LastSessionScreen.tsx
-
 import { motion } from 'framer-motion';
 import {
   Clock,
@@ -13,7 +11,6 @@ import {
   Gift,
   Sparkles,
   CheckCircle2,
-  Shield, // 👈 استيراد أيقونة الدرع
 } from 'lucide-react';
 // 🌟 استيراد دوال البصمة والتوقيت الموحد من الـ store لضمان مطابقة البيانات بدقة 100%
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
@@ -159,10 +156,6 @@ export default function LastSessionScreen() {
   const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);
   const totalMinutes = Math.floor(elapsedSeconds / 60);
 
-  // 🛡️ فحص تفعيل درع الأمان
-  const isShieldEnabled = lastSession.shieldEnabled === true;
-  const shieldPrice = isShieldEnabled ? 10 : 0;
-
   // 🎁 [منطق الهدية]: التحقق مما إذا كانت الجلسة مجانية
   const isFirstFreeApplied = lastSession.isFirstFreeSession === true;
   
@@ -173,15 +166,14 @@ export default function LastSessionScreen() {
   );
 
   const billableHours = isFree ? 0 : calculateFullHours(elapsedSeconds);
-  const baseCost = isFree ? 0 : calculateCost(elapsedSeconds, rate);
-  const rawCost = baseCost + shieldPrice;
+  const rawCost = calculateCost(elapsedSeconds, rate);
 
   const cost =
     lastSession.totalPrice != null
       ? Number(lastSession.totalPrice)
-      : rawCost;
+      : (isFree ? 0 : rawCost);
 
-  const savedAmount = isFree ? baseCost : 0;
+  const savedAmount = isFree ? rawCost : 0;
 
   const startDate = new Date(startTime);
   const endDate = new Date(endTime);
@@ -249,7 +241,7 @@ export default function LastSessionScreen() {
       ? { label: 'حجز التطبيق', color: '#60a5fa', bg: 'rgba(96, 165, 250, 0.12)' }
       : { label: 'ركنة يدوية', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' };
 
-  /* ── نسخ التفاصيل المحدث مع بند درع الحماية ── */
+  /* ── نسخ التفاصيل ── */
   const copySessionDetails = async () => {
     const details = `🧾 تفاصيل جلسة الركن
 ━━━━━━━━━━━━━━━━━━
@@ -261,7 +253,7 @@ export default function LastSessionScreen() {
 ⏰ وقت الدخول: ${formatTimeOnly(startDate)}
 ⏰ وقت الخروج: ${formatTimeOnly(endDate)}
 ⏱️ المدة الكلية: ${totalMinutes} دقيقة
-${isShieldEnabled ? `🛡️ درع حماية السيارة من السرقة: مفعّل (+10 ج.م)\n` : ''}${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أول 30 دقيقة - وفرت ${savedAmount.toFixed(0)} ج.م)\n` : `⏱️ الساعات المحسوبة: ${billableHours} ساعة\n`}━━━━━━━━━━━━━━━━━━
+${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أول 30 دقيقة - وفرت ${savedAmount.toFixed(0)} ج.م)\n` : `⏱️ الساعات المحسوبة: ${billableHours} ساعة\n`}━━━━━━━━━━━━━━━━━━
 💰 سعر الساعة: ${rate} ج.م
 💵 الإجمالي المدفوع: ${cost.toFixed(0)} ج.م
 💳 طريقة الدفع: ${paymentInfo.label}
@@ -323,37 +315,19 @@ ${isShieldEnabled ? `🛡️ درع حماية السيارة من السرقة:
           </span>
         </div>
 
-        {/* رقم السيارة والجراج والشارات */}
+        {/* رقم السيارة والجراج */}
         <div className="border rounded-2xl p-3.5 space-y-2.5" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
           <div className="flex justify-between items-center">
-            <div className="flex items-center gap-1 flex-wrap">
-              <span
-                className="text-[9px] px-2.5 py-1 rounded-lg font-black"
-                style={{ background: sourceInfo.bg, color: sourceInfo.color }}
-              >
-                {sourceInfo.label}
-              </span>
-
-              {/* 🛡️ شارة درع الرادار */}
-              {isShieldEnabled && (
-                <span
-                  className="text-[9px] px-2.5 py-1 rounded-lg font-black flex items-center gap-1 border"
-                  style={{
-                    background: 'rgba(56, 189, 248, 0.15)',
-                    color: '#38bdf8',
-                    borderColor: 'rgba(56, 189, 248, 0.3)',
-                  }}
-                >
-                  <Shield size={10} /> درع الرادار (+10ج)
-                </span>
-              )}
-            </div>
-
+            <span
+              className="text-[9px] px-2.5 py-1 rounded-lg font-black"
+              style={{ background: sourceInfo.bg, color: sourceInfo.color }}
+            >
+              {sourceInfo.label}
+            </span>
             <div className="text-base font-black text-white font-mono">
               🚗 {lastSession.carPlate}
             </div>
           </div>
-
           {garage && (
             <div className="rounded-xl p-2.5 flex items-center justify-between border" style={{ background: BRAND.navy, borderColor: BRAND.border }}>
               <div className="flex items-center gap-1 text-[10px]" style={{ color: BRAND.slateMuted }}>
@@ -365,12 +339,12 @@ ${isShieldEnabled ? `🛡️ درع حماية السيارة من السرقة:
           )}
         </div>
 
-        {/* 💳 بطاقة الإيصال المالي الفاخرة */}
+        {/* 💳 بطاقة الإيصال المالي الفاخرة (Apple / Revolut Style) */}
         <div
           className="border rounded-3xl p-5 text-center relative overflow-hidden"
           style={{
             background: BRAND.navyLight,
-            borderColor: isFree && !isShieldEnabled ? BRAND.green + '40' : BRAND.border,
+            borderColor: isFree ? BRAND.green + '40' : BRAND.border,
             boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
           }}
         >
@@ -384,7 +358,7 @@ ${isShieldEnabled ? `🛡️ درع حماية السيارة من السرقة:
             <span
               className="font-mono text-5xl font-black leading-none"
               style={{
-                color: isFree && !isShieldEnabled ? BRAND.green : '#ffffff',
+                color: isFree ? BRAND.green : '#ffffff',
                 letterSpacing: '-1px',
               }}
             >
@@ -392,7 +366,7 @@ ${isShieldEnabled ? `🛡️ درع حماية السيارة من السرقة:
             </span>
             <span
               className="text-base font-black"
-              style={{ color: isFree && !isShieldEnabled ? BRAND.green : BRAND.slateMuted }}
+              style={{ color: isFree ? BRAND.green : BRAND.slateMuted }}
             >
               ج.م
             </span>
@@ -410,13 +384,6 @@ ${isShieldEnabled ? `🛡️ درع حماية السيارة من السرقة:
             <span>{isFree ? 'ركن مجاني ترحيبي 🎁' : `تم السداد: ${paymentInfo.label}`}</span>
           </div>
 
-          {/* سطر توضيحي لدرع الحماية */}
-          {isShieldEnabled && (
-            <div className="text-[10px] font-bold text-sky-400 mt-1 flex items-center justify-center gap-1">
-              <Shield size={11} /> يشمل 10 ج.م خدمة درع حماية السيارة من السرقة
-            </div>
-          )}
-
           {/* سطر توضيحي للحساب */}
           <div className="text-[10px] font-bold mt-2" style={{ color: BRAND.slateMuted }}>
             {isFree ? (
@@ -429,7 +396,7 @@ ${isShieldEnabled ? `🛡️ درع حماية السيارة من السرقة:
               </span>
             ) : (
               <span>
-                {billableHours} ساعة × {rate} ج.م {isShieldEnabled ? '+ 10 ج درع' : ''} = {cost.toFixed(0)} ج.م
+                {billableHours} ساعة × {rate} ج.م = {cost.toFixed(0)} ج.م
               </span>
             )}
           </div>

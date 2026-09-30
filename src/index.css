@@ -180,24 +180,3 @@ textarea {
 .bg-amber-600\/20, .bg-amber-500\/20 { background-color: #fef3c7 !important; border-color: #fbbf24 !important; }
 .bg-red-600\/20, .bg-red-500\/20 { background-color: #fee2e2 !important; border-color: #f87171 !important; }
 .bg-orange-600\/20, .bg-orange-500\/20 { background-color: #ffedd5 !important; border-color: #fb923c !important; }
-
-/* ========================================================= */
-/* 🚀 تسريع الأداء ومنع الرعشة والاهتزاز (GPU Optimization)   */
-/* ========================================================= */
-main,
-.max-w-md,
-[class*="overflow-y-auto"] {
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
-  will-change: transform, opacity;
-}
-
-/* تنعيم حركات Framer Motion ومنع قفزات الشاشة */
-[class*="motion-"],
-div[style*="transform"] {
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  transform-style: preserve-3d;
-}

@@ -1,5 +1,3 @@
-// src/components/LastSessionCard.tsx
-
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -13,7 +11,6 @@ import {
   Receipt,
   Gift,
   CheckCircle2,
-  Shield, // 👈 استيراد أيقونة الدرع
 } from 'lucide-react';
 // 🌟 استيراد دوال البصمة والتوقيت الموحد من الـ store لضمان مطابقة اللوحات والأرقام بدقة 100%
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
@@ -75,10 +72,6 @@ export default function LastSessionCard() {
   const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);
   const totalMinutes = Math.floor(elapsedSeconds / 60);
 
-  // 🛡️ فحص تفعيل درع الحماية وتكلفته
-  const isShieldEnabled = lastSession.shieldEnabled === true;
-  const shieldPrice = isShieldEnabled ? 10 : 0;
-
   // 🎁 [منطق الهدية الترحيبية]: أول 30 دقيقة مجانية (1800 ثانية)
   const isFirstFreeApplied = lastSession.isFirstFreeSession === true;
   
@@ -89,13 +82,12 @@ export default function LastSessionCard() {
   );
 
   const hours = isFree ? 0 : calculateFullHours(elapsedSeconds);
-  const baseCost = isFree ? 0 : calculateCost(elapsedSeconds, rate);
-  const rawCost = baseCost + shieldPrice;
+  const rawCost = calculateCost(elapsedSeconds, rate);
   
   const cost =
     lastSession.totalPrice != null
       ? Number(lastSession.totalPrice)
-      : rawCost;
+      : (isFree ? 0 : rawCost);
 
   const startDate = new Date(startTime);
   const endDate = new Date(endTime);
@@ -174,7 +166,7 @@ export default function LastSessionCard() {
           style={{ background: `${BRAND.blue}18`, filter: 'blur(30px)' }} 
         />
 
-        {/* الجراج ورقم السيارة والشارات */}
+        {/* الجراج ورقم السيارة والبصمة */}
         <div className="flex justify-between items-start mb-3.5 relative z-10">
           <div className="text-right">
             <div className="text-sm font-black text-white font-mono flex items-center gap-1">
@@ -195,21 +187,6 @@ export default function LastSessionCard() {
             >
               {sourceInfo.label}
             </span>
-
-            {/* 🛡️ شارة درع الرادار */}
-            {isShieldEnabled && (
-              <span
-                className="text-[9px] px-2 py-0.5 rounded-lg font-black flex items-center gap-1 border"
-                style={{
-                  background: 'rgba(56, 189, 248, 0.15)',
-                  color: '#38bdf8',
-                  borderColor: 'rgba(56, 189, 248, 0.3)',
-                }}
-              >
-                <Shield size={9} /> درع الرادار (+10ج)
-              </span>
-            )}
-
             {isFirstFreeApplied && (
               <span 
                 className="text-[9px] px-2 py-0.5 rounded-lg font-black flex items-center gap-1 border"
@@ -241,7 +218,7 @@ export default function LastSessionCard() {
             <span
               className="font-mono text-4xl font-black leading-none"
               style={{
-                color: isFree && !isShieldEnabled ? BRAND.green : '#ffffff',
+                color: isFree ? BRAND.green : '#ffffff',
                 letterSpacing: '-1px',
               }}
             >
@@ -249,28 +226,22 @@ export default function LastSessionCard() {
             </span>
             <span
               className="text-sm font-black"
-              style={{ color: isFree && !isShieldEnabled ? BRAND.green : BRAND.slateMuted }}
+              style={{ color: isFree ? BRAND.green : BRAND.slateMuted }}
             >
               ج.م
             </span>
           </div>
 
-          {/* توضيح درع الحماية أو الهدية */}
-          {isShieldEnabled && (
-            <div className="mt-2 text-[9.5px] font-bold text-sky-400 flex items-center justify-center gap-1">
-              <Shield size={10} /> يشمل 10 ج.م خدمة درع حماية السيارة من السرقة
-            </div>
-          )}
-
+          {/* شارة التوفير إذا طُبق العرض */}
           {isFree ? (
             <div 
-              className="mt-2 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-black border"
+              className="mt-2.5 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-black border"
               style={{ background: BRAND.greenLight, color: BRAND.green, borderColor: `${BRAND.green}30` }}
             >
               <CheckCircle2 size={11} /> أول 30 دقيقة مجانية كهدية ترحيبية! 🎉
             </div>
           ) : isFirstFreeApplied ? (
-            <div className="mt-1 text-[9px] font-bold" style={{ color: BRAND.slateMuted }}>
+            <div className="mt-1.5 text-[9px] font-bold" style={{ color: BRAND.slateMuted }}>
               ⏰ انتهت أول 30 دقيقة وتم حساب الوقت الإضافي
             </div>
           ) : null}

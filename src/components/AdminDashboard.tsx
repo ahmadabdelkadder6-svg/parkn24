@@ -1,5 +1,3 @@
-// src/components/AdminDashboard.tsx
-
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -16,19 +14,19 @@ import toast from 'react-hot-toast';
 
 /* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
-  blue: '#1656b8',       
-  blueDark: '#0f3d85',   
-  blueLight: '#e8f0fe',  
-  blueSoft: '#f0f5ff',   
-  green: '#8cc63f',      
-  greenDark: '#6ea62a',  
-  greenLight: '#f2fae6', 
-  navy: '#0a1628',       
-  slate: '#475569',      
-  slateMuted: '#94a3b8', 
-  border: '#e2e8f0',     
-  card: '#ffffff',       
-  bg: '#f4f7fc',         
+  blue: '#1656b8',       // الأزرق الرسمي
+  blueDark: '#0f3d85',   // الكحلي الداكن
+  blueLight: '#e8f0fe',  // الأزرق الفاتح جداً
+  blueSoft: '#f0f5ff',   // خلفية ناعمة
+  green: '#8cc63f',      // الأخضر الرسمي
+  greenDark: '#6ea62a',  // الأخضر الداكن
+  greenLight: '#f2fae6', // الخلفية الخضراء الناعمة
+  navy: '#0a1628',       // الكحلي الليلي الغامق
+  slate: '#475569',      // الرمادي الهادئ
+  slateMuted: '#94a3b8', // الرمادي الباهت
+  border: '#e2e8f0',     // الحدود الرمادية الهادئة
+  card: '#ffffff',       // الكروت البيضاء النظيفة
+  bg: '#f4f7fc',         // الخلفية العامة المريحة
 };
 
 /* ─── Helpers ─── */
@@ -103,6 +101,7 @@ export default function AdminDashboard() {
   const [editingCommissionGarageId, setEditingCommissionGarageId] = useState<string | null>(null);
   const [editCommissionRate, setEditCommissionRate] = useState(10);
   
+  // 🗺️ حالة تعديل المنطقة الجغرافية للجراج الحالي
   const [editArea, setEditArea] = useState('وسط البلد');
 
   const [settlementRecords, setSettlementRecords] = useState<SettlementRecord[]>([]);
@@ -113,6 +112,7 @@ export default function AdminDashboard() {
   const [visibleSettlements, setVisibleSettlements] = useState(4);
   const [activeAccordionGarageId, setActiveAccordionGarageId] = useState<string | null>(null);
   
+  // 🔍 تصفية وجرد البحث عن الجراجات
   const [garageSearch, setGarageSearch] = useState('');
   const filteredGaragesForAdmin = useMemo(() => {
     const q = garageSearch.trim().toLowerCase();
@@ -127,6 +127,7 @@ export default function AdminDashboard() {
   const [lat, setLat] = useState(30.04);
   const [lng, setLng] = useState(31.23);
   
+  // 🗺️ حالة المنطقة الجغرافية للجراج الجديد
   const [gArea, setGArea] = useState('وسط البلد');
 
   const [gValet1Name, setGValet1Name] = useState('');
@@ -161,50 +162,26 @@ export default function AdminDashboard() {
     if (s.endTime && s.startTime) {
       const st = toMs(s.startTime);
       const en = toMs(s.endTime);
-      const g = garages.find((ga: any) => ga?.id === s.garageId);
+      const g = garages.find((ga: any) => ga.id === s.garageId);
       const rate = Number(s.agreedPrice ?? g?.basePrice ?? 0);
       const elapsedSeconds = Math.max(0, Math.floor((en - st) / 1000));
 
+      // 🎁 الهدية الترحيبية: 30 دقيقة مجاناً
       const isFreeNow = s.isFirstFreeSession === true && elapsedSeconds <= 1800;
-      const baseCost = isFreeNow ? 0 : calculateCost(elapsedSeconds, rate);
-      // إضافة قيمة الدرع بشكل حيوي إن لم تكن مسجلة مسبقاً في الفاتورة النهائية
-      const shieldCost = s.shieldEnabled ? 10 : 0;
-      return baseCost + shieldCost;
+      return isFreeNow ? 0 : calculateCost(elapsedSeconds, rate);
     }
     return 0;
   }, [garages]);
 
-  // 🛡️ احتساب عمولة المنصة بدقة شاملة الـ 5 جنيهات المخصصة للمنصة من الدرع
   const getCommission = useCallback((s: any) => {
-    if (s.commissionAmount != null && s.commissionAmount > 0) {
-      return Number(s.commissionAmount);
-    }
-    if (s.source !== 'app' && !s.shieldEnabled) return 0;
-    
+    if (s.source !== 'app') return 0;
     const rev = getRevenue(s);
     if (rev <= 0) return 0;
-    const g = garages.find((ga: any) => ga?.id === s.garageId);
+    const g = garages.find((ga: any) => ga.id === s.garageId);
     const rate = g?.commissionRate ?? 10;
-
-    // حساب العمولة على سعر الركنة الصافي (قبل إضافة قيمة الدرع)
-    const basePrice = s.shieldEnabled ? Math.max(0, rev - 10) : rev;
-    const baseCommission = (basePrice * rate) / 100;
-    
-    // إضافة حصة المنصة الـ 5 ج من الدرع
-    const shieldCommission = s.shieldEnabled ? 5 : 0;
-    
-    return Math.round((baseCommission + shieldCommission) * 100) / 100;
+    const commission = (rev * rate) / 100;
+    return Math.round(commission * 100) / 100;
   }, [garages, getRevenue]);
-
-  // 🛡️ احتساب دخل الجراج الصافي بدقة شاملة الـ 5 جنيهات المخصصة للجراج من الدرع
-  const getNetRevenue = useCallback((s: any) => {
-    if (s.netRevenue != null && s.netRevenue > 0) {
-      return Number(s.netRevenue);
-    }
-    const rev = getRevenue(s);
-    const comm = getCommission(s);
-    return Math.round((rev - comm) * 100) / 100;
-  }, [getRevenue, getCommission]);
 
   const completedSessions = useMemo(() => sessions.filter(s => s.status === 'completed'), [sessions]);
 
@@ -233,9 +210,8 @@ export default function AdminDashboard() {
   }, [filteredSessions, getRevenue]);
 
   const commissionStats = useMemo(() => {
-    // تشمل التسويات أي جلسة مؤكدة وغير مسواة من خلال التطبيق أو الجلسات اليدوية المفعلة للدرع
     const confirmed = filteredSessions.filter(
-      s => s.revenueConfirmed && !(s as any).settled && (s.source === 'app' || s.shieldEnabled)
+      s => s.revenueConfirmed && !(s as any).settled && s.source === 'app'
     );
     const totalCommission = confirmed.reduce((a, s) => a + getCommission(s), 0);
     const totalRevenue = confirmed.reduce((a, s) => a + getRevenue(s), 0);
@@ -255,7 +231,7 @@ export default function AdminDashboard() {
         commission: gCommission,
         netRevenue: gRevenue - gCommission,
         walletRevenue,
-        appCount: gs.filter(s => s.source === 'app').length,
+        appCount: gs.length,
         totalCount: gs.length,
         sessionIds,
       };
@@ -356,13 +332,16 @@ export default function AdminDashboard() {
   };
 
   const handleAdminEnterGarage = (g: typeof garages[0]) => {
+    // 1️⃣ تثبيت دور المالك المباشر لمنع مطالبة الأدمن بأي كلمات مرور للسياس
     localStorage.setItem('garageRole', 'owner');
     localStorage.removeItem('valetNumber');
     localStorage.removeItem('valetName');
     
+    // 2️⃣ ربط معرف الجراج المختار مباشرة في التخزين المحلي والـ Store لفتح البوابة فوراً
     localStorage.setItem('currentGarageId', g.id);
     setCurrentGarageId(g.id);
     
+    // 3️⃣ توجيه الرؤية فوراً لشاشة الجراج لتعرض لوحة التحكم مباشرة وبسلاسة
     setView('garage');
     
     toast.success(`👋 تم الدخول المباشر لإدارة جراج: ${g.name}`, {
@@ -743,7 +722,7 @@ export default function AdminDashboard() {
 
             <div className="flex-1 flex flex-col justify-center items-center border-l" style={{ borderColor: BRAND.border }}>
               <span className="text-[9px] font-black mb-1 flex items-center gap-0.5 justify-center" style={{ color: '#d97706' }}>
-                <Percent size={10} /> عمولتنا + حمايتنا 🛡️
+                <Percent size={10} /> عمولة التطبيق
               </span>
               <span className="font-mono font-black text-sm" style={{ color: '#d97706' }}>
                 {commissionStats.totalCommission.toFixed(0)} <span className="text-[9px] font-bold">ج</span>
@@ -751,7 +730,7 @@ export default function AdminDashboard() {
             </div>
 
             <div className="flex-1 flex flex-col justify-center items-center">
-              <span className="text-[9px] font-black mb-1 block" style={{ color: BRAND.greenDark }}>🟢 صافي الجراجات</span>
+              <span className="text-[9px] font-black mb-1 block" style={{ color: BRAND.greenDark }}>🟢 صافي الربح</span>
               <span className="font-mono font-black text-sm" style={{ color: BRAND.greenDark }}>
                 {commissionStats.totalNet.toFixed(0)} <span className="text-[9px] font-bold">ج</span>
               </span>
@@ -896,7 +875,7 @@ export default function AdminDashboard() {
                       </div>
 
                       {isConfirming ? (
-                        <div className="p-3 border rounded-xl bg-white text-center" style={{ borderColor: BRAND.border }}>
+                        <div className="p-3 border rounded-xl bg-white" style={{ borderColor: BRAND.border }}>
                           <p className="font-black text-center text-[11px] mb-1" style={{ color: BRAND.navy }}>
                             ⚠️ هل تم فعلياً {adminOwesGarage ? 'تحويل' : 'استلام'} <span style={{ color: adminOwesGarage ? BRAND.greenDark : '#c53030' }}>{absSettlement} ج.م</span>؟
                           </p>
@@ -1157,7 +1136,7 @@ export default function AdminDashboard() {
               const g = (garages || []).find((ga: any) => ga?.id === session.garageId);
               const rev = getRevenue(session);
               const comm = getCommission(session);
-              const net = getNetRevenue(session);
+              const net = rev - comm;
               const et = session.endTime ? typeof session.endTime === 'number' ? session.endTime : new Date(session.endTime).getTime() : null;
               const time = et ? new Date(et) : null;
               const isDel = deleteConfirmId === session.id;
@@ -1182,8 +1161,7 @@ export default function AdminDashboard() {
                         { show: !!session.paymentMethod, bg: BRAND.navy, text: session.paymentMethod === 'cash' ? '💵 نقدي' : session.paymentMethod === 'instapay' ? '📱 إنستا' : session.paymentMethod === 'wallet' ? '👝 محفظة' : '📲 كاش' },
                         { show: true, bg: session.revenueConfirmed ? BRAND.green : '#f59e0b', text: session.revenueConfirmed ? '✅ مؤكد' : '⏳ معلق' },
                         { show: isSettled, bg: BRAND.slateMuted, text: '🔒 تمت التسوية' },
-                        { show: session.isFirstFreeSession === true, bg: '#c2410c', text: rev === 0 ? '🎁 ركن مجاني' : '🎁 بونص منتهي' },
-                        { show: session.shieldEnabled === true, bg: '#0284c7', text: '🛡️ درع الرادار' } 
+                        { show: session.isFirstFreeSession === true, bg: '#c2410c', text: rev === 0 ? '🎁 ركن مجاني' : '🎁 بونص منتهي' } 
                       ].filter(b => b.show).map((b, i) => (
                         <span key={i} className="font-black text-[8px] px-1.5 py-0.5 rounded text-white" style={{ background: b.bg }}>{b.text}</span>
                       ))}
@@ -1194,17 +1172,11 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  {(session.source === 'app' || session.shieldEnabled) && comm > 0 && (
+                  {session.source === 'app' && comm > 0 && (
                     <div className="flex items-center gap-2 mb-2 p-1.5 rounded-lg border bg-white" style={{ borderColor: BRAND.border }}>
-                      <span className="font-bold text-[9px]" style={{ color: BRAND.slate }}>
-                        عمولتنا: {Number(comm || 0).toFixed(0)} ج.م 
-                        {session.shieldEnabled && <span style={{ color: BRAND.blue }}> (شامل 5 ج أرباح الدرع 🛡️)</span>}
-                      </span>
+                      <span className="font-bold text-[9px]" style={{ color: BRAND.slate }}>عمولة {g?.commissionRate ?? 10}%: {Number(comm || 0).toFixed(0)} ج.م</span>
                       <div style={{ width: 1, height: 10, background: BRAND.border }} />
-                      <span className="font-bold text-[9px]" style={{ color: BRAND.greenDark }}>
-                        صافي الجراج: {Number(net || 0).toFixed(0)} ج.م
-                        {session.shieldEnabled && <span style={{ color: BRAND.greenDark }}> (شامل 5 ج أرباح الدرع 🛡️)</span>}
-                      </span>
+                      <span className="font-bold text-[9px]" style={{ color: BRAND.greenDark }}>صافي: {Number(net || 0).toFixed(0)} ج.م</span>
                     </div>
                   )}
 
@@ -1460,6 +1432,7 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
+                  {/* صندوق تعديل العمولة والمنطقة معاً للأدمن */}
                   <div className="flex flex-col gap-2 mb-3 p-3 rounded-xl border bg-slate-50" style={{ borderColor: BRAND.border }}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5">
@@ -1505,6 +1478,7 @@ export default function AdminDashboard() {
                       </div>
                     </div>
 
+                    {/* اختيار المنطقة الجغرافية أثناء وضع التعديل */}
                     {isEditingComm && (
                       <div className="pt-2 border-t border-dashed flex items-center justify-between gap-2" style={{ borderColor: BRAND.border }}>
                         <select
@@ -1567,6 +1541,7 @@ export default function AdminDashboard() {
             <input className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="رقم الهاتف" value={gPhone} onChange={e => setGPhone(e.target.value)} />
           </div>
 
+          {/* اختيار المنطقة الجغرافية للجراج الجديد */}
           <div className="text-right">
             <label className="font-black block text-right mb-1.5 text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية للجراج</label>
             <select
