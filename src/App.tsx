@@ -1,3 +1,4 @@
+// src/App.tsx
 import { useEffect, useRef, useState, useMemo, lazy, Suspense, Component, ErrorInfo, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
@@ -432,7 +433,8 @@ export default function App() {
   if (pathname === '/install') return <InstallPage />;
   if (pathname === '/qr') return <InstallQRCodePage />;
 
-  const activeSessionForShield = currentUser && view === 'user' && safeScreen === 'session'
+  // 🛡️ استخراج الجلسة النشطة المؤمّنة للدرع (تعمل في أي شاشة وليس فقط session)
+  const activeSessionForShield = currentUser && view === 'user' // 👈 تم حذف && safeScreen === 'session' لكي يعمل الرادار في كل الشاشات
     ? sessions.find((s) => {
         if (s.status !== 'active') return false;
         const userPlate = normalizePlate(currentUser.carPlate);
@@ -443,12 +445,35 @@ export default function App() {
       })
     : null;
 
+  const isShieldOn = activeSessionForShield?.shieldEnabled === true;
+
+  // 🪐 [تفعيل كود التسجيل الذاتي للعميل بالخلفية لضمان وصول التنبيهات الخارجية والشاشة مغلقة]
+  useEffect(() => {
+    if (currentUser?.phone && activeSessionForShield?.id && isShieldOn && view === 'user') {
+      const autoRegisterPush = async () => {
+        try {
+          const { subscribeCustomerPush } = await import('./lib/pushManager');
+          await subscribeCustomerPush(
+            currentUser.phone,
+            activeSessionForShield.id,
+            activeSessionForShield.carPlate
+          );
+          console.log("🛡️ [Park'n 24] Auto-registered device for theft alerts.");
+        } catch (e) {
+          console.warn("Background push registration failed:", e);
+        }
+      };
+      autoRegisterPush();
+    }
+  }, [currentUser?.phone, activeSessionForShield?.id, isShieldOn, view]);
+
   return (
     <ErrorBoundary>
+      {/* 🛡️ تفعيل درع الأمان الموحد ليعمل في كافة شاشات التطبيق لربط العميل والسايس */}
       <SecurityShield
         view={view}
-        isSessionActive={!!activeSessionForShield}
-        isShieldEnabled={!!activeSessionForShield}
+        isSessionActive={view === 'garage' ? true : !!activeSessionForShield}
+        isShieldEnabled={view === 'garage' ? true : isShieldOn}
         sessionId={activeSessionForShield?.id || null}
         carPlate={activeSessionForShield?.carPlate || ''}
       />
