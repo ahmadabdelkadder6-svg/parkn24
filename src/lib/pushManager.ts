@@ -1,6 +1,6 @@
 // src/lib/pushManager.ts
 
-import { normalizePlate } from '../store';
+import { normalizePlate, normalizePhone } from '../store';
 
 // ─── VAPID & Supabase Configuration ─────────────────────────────
 const VAPID_PUBLIC_KEY =
@@ -98,7 +98,7 @@ export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration
 };
 
 // ─── الدالة المركزية لتسجيل اشتراك الـ Push ──────────────────────
-async function registerPushEndpoint(meta: { garageId?: string; customerPhone?: string; sessionId?: string }): Promise<boolean> {
+async function registerPushEndpoint(meta: { garageId?: string; customerPhone?: string; sessionId?: string; carPlate?: string }): Promise<boolean> {
   try {
     if (!('PushManager' in window)) return false;
     const registration = await registerServiceWorker();
@@ -133,14 +133,18 @@ async function registerPushEndpoint(meta: { garageId?: string; customerPhone?: s
     const sub = subscription.toJSON();
     if (!sub.keys?.p256dh || !sub.keys?.auth) return false;
 
+    const cleanPhone = meta.customerPhone ? normalizePhone(meta.customerPhone) : null;
+    const cleanPlate = meta.carPlate ? normalizePlate(meta.carPlate) : null;
+
     const result = await supabaseFetch('save-push-subscription', {
       subscription: {
         endpoint: sub.endpoint,
         keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
       },
       garageId: meta.garageId || null,
-      customerPhone: meta.customerPhone || null,
+      customerPhone: cleanPhone,
       sessionId: meta.sessionId || null,
+      carPlate: cleanPlate,
       isNew,
       userAgent: navigator.userAgent,
       subscribedAt: new Date().toISOString(),
@@ -159,8 +163,8 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
 };
 
 // 🛡️ اشتراك هاتف العميل عند تفعيل الدرع لضمان وصول التنبيه الخارجي
-export const subscribeCustomerPush = async (customerPhone: string, sessionId?: string): Promise<boolean> => {
-  return registerPushEndpoint({ customerPhone, sessionId });
+export const subscribeCustomerPush = async (customerPhone: string, sessionId?: string, carPlate?: string): Promise<boolean> => {
+  return registerPushEndpoint({ customerPhone, sessionId, carPlate });
 };
 
 // ─── 🚗 1. إرسال تنبيه "سيارة في الطريق" بأعلى أولوية طوارئ للسايس ───
@@ -232,27 +236,35 @@ export const sendCarComingPush = async ({
   }
 };
 
-// ─── 🚨 2. إرسال إنذار سرقة عاجل (للسايس والعميل معاً) ─────────────
+// ─── 🚨 2. إرسال إنذار سرقة عاجل بالتوازي (للسايس والعميل معاً) ─────────────
 export const sendTheftAlertPush = async ({
   garageId,
   customerPhone,
   carPlate,
   reason,
+  sessionId,
 }: {
   garageId?:      string;
   customerPhone?: string;
   carPlate:       string;
   reason?:        string;
+  sessionId?:     string;
 }): Promise<boolean> => {
   try {
     const plateFingerprint = normalizePlate(carPlate) || carPlate;
     const tag = `theft-alarm-${plateFingerprint}-${Date.now()}`;
+    const cleanPhone = customerPhone ? normalizePhone(customerPhone) : null;
 
-    const payload: SendPushPayload = {
+    // 🔗 رابط التوجيه الذكي المباشر لشاشة الإنذار
+    const deepLinkUrl = `/?breach=true&carPlate=${encodeURIComponent(carPlate)}`;
+
+    const payload = {
       garageId:      garageId || null,
-      customerPhone: customerPhone || null,
+      customerPhone: cleanPhone,
+      carPlate:      carPlate,
+      sessionId:     sessionId || null,
       urgency:       'high',
-      ttl:           0, // تسليم فوري في نفس الثانية دون تأخير
+      ttl:           0, // تسليم فوري
 
       immediate: {
         title: '🚨 إنذار سرقة عاجل لمركبتك!',
@@ -261,16 +273,25 @@ export const sendTheftAlertPush = async ({
         data: {
           type:       'theft_breach',
           carPlate,
-          garageId,
-          url:        '/',
+          garageId:   garageId || null,
+          url:        deepLinkUrl, // يفتح شاشة الإنذار مباشرة
           breachTime: new Date().toISOString(),
+          tag,
         },
       },
       scheduled: null,
     };
 
-    const result = await supabaseFetch('send-push-notification', payload);
-    return result.ok;
+    const tasks: Promise<any>[] = [];
+    if (cleanPhone) {
+      tasks.push(supabaseFetch('send-push-notification', { ...payload, garageId: null, customerPhone: cleanPhone }));
+    }
+    if (garageId) {
+      tasks.push(supabaseFetch('send-push-notification', { ...payload, customerPhone: null, garageId }));
+    }
+
+    await Promise.all(tasks);
+    return true;
   } catch (err) {
     console.error('❌ خطأ في sendTheftAlertPush:', err);
     return false;
@@ -386,5 +407,24 @@ export const refreshPushSubscriptionIfNeeded = async (garageId: string): Promise
   const status = await checkPushSubscriptionStatus();
   if (status.isSupported && status.permission === 'granted') {
     await subscribeToPush(garageId);
+  }
+};
+
+// ─── 🛑 7. إيقاف تكرار إنذار السرقة (عند تأكيد الأمان) ─────────
+export const stopTheftAlarmRepeat = async ({
+  carPlate,
+}: {
+  carPlate: string;
+}): Promise<boolean> => {
+  try {
+    const result = await supabaseFetch('cancel-scheduled-alert', {
+      carPlate,
+      tags: [`theft-emergency`, `theft-repeat`],
+      action: 'stop_repeat',
+      cancelledAt: new Date().toISOString(),
+    });
+    return result.ok;
+  } catch {
+    return false;
   }
 };
