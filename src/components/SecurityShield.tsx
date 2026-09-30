@@ -1,247 +1,468 @@
 // src/components/SecurityShield.tsx
+
 import { useEffect, useState, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { useStore } from '../store';
+import { useStore, normalizePlate } from '../store';
 import { supabase } from '../lib/supabase';
-import { sendTheftAlertPush, stopTheftAlarmRepeat } from '../lib/pushManager';
-import { VolumeX, ShieldAlert } from 'lucide-react';
+import { sendTheftAlertPush } from '../lib/pushManager';
 
-// 🧼 دوال مطابقة خارقة تمنع أي خطأ في الحروف أو أرقام التليفونات
-const cleanLettersAndDigits = (str: any): string => {
-  if (!str) return '';
-  return String(str)
-    .replace(/[أإآ]/g, 'ا')
-    .replace(/ة/g, 'ه')
-    .replace(/[ىی]/g, 'ي')
-    .replace(/[^ا-ي0-9a-zA-Z]/g, '')
-    .toLowerCase();
+const calculateDistanceMeters = (
+  lat1: number, lon1: number,
+  lat2: number, lon2: number
+): number => {
+  const R = 6371e3;
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c);
 };
 
-const cleanPhoneDigits = (str: any): string => {
-  if (!str) return '';
-  const digits = String(str).replace(/\D/g, '');
-  return digits.slice(-8); // مطابقة آخر 8 أرقام لتخطي أي كود دولة (+20 أو 002 أو 01)
-};
-
-// 🔊 نظام الصوت الذكي المزود بصمام كتم فوري (Master Gain)
-let globalAudioCtx: AudioContext | null = null;
-let globalMasterGain: GainNode | null = null;
-let isAudioUnlocked = false;
-
-const unlockAudioEngine = async () => {
-  if (isAudioUnlocked && globalAudioCtx && globalAudioCtx.state === 'running') return;
+const playTheftSirenSound = () => {
   try {
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) return;
-    if (!globalAudioCtx) {
-      globalAudioCtx = new AudioCtx();
-      globalMasterGain = globalAudioCtx.createGain();
-      globalMasterGain.connect(globalAudioCtx.destination);
-    }
-    if (globalAudioCtx.state === 'suspended') await globalAudioCtx.resume();
-    isAudioUnlocked = true;
-  } catch {}
-};
-
-if (typeof window !== 'undefined') {
-  const unlockEvents = ['touchstart', 'touchend', 'click', 'keydown'];
-  const handleUnlock = () => {
-    unlockAudioEngine();
-    unlockEvents.forEach((e) => document.removeEventListener(e, handleUnlock));
-  };
-  unlockEvents.forEach((e) => document.addEventListener(e, handleUnlock, { passive: true }));
-}
-
-// 🔇 دالة الكتم الفورية الصامتة (تقطع الصوت في 0 جزء من الثانية)
-const stopAllSirenSoundsImmediately = () => {
-  try {
-    if (globalMasterGain && globalAudioCtx) {
-      globalMasterGain.gain.cancelScheduledValues(globalAudioCtx.currentTime);
-      globalMasterGain.gain.setValueAtTime(0, globalAudioCtx.currentTime);
-    }
-    if (navigator.vibrate) navigator.vibrate(0);
-  } catch {}
-};
-
-const playTheftSirenSound = async () => {
-  try {
-    await unlockAudioEngine();
-    if (!globalAudioCtx || !globalMasterGain) return;
-    if (globalAudioCtx.state === 'suspended') await globalAudioCtx.resume();
-
-    const now = globalAudioCtx.currentTime;
-    globalMasterGain.gain.cancelScheduledValues(now);
-    globalMasterGain.gain.setValueAtTime(1.0, now);
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(1.0, now);
+    masterGain.connect(ctx.destination);
 
     for (let i = 0; i < 8; i++) {
-      const start = now + (i * 0.3);
-      const osc = globalAudioCtx.createOscillator();
-      const noteGain = globalAudioCtx.createGain();
+      const start = now + (i * 0.35);
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
 
       osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(i % 2 === 0 ? 1000 : 2200, start);
+      osc.frequency.setValueAtTime(900, start);
+      osc.frequency.linearRampToValueAtTime(2600, start + 0.3);
 
-      noteGain.gain.setValueAtTime(1.0, start);
-      noteGain.gain.exponentialRampToValueAtTime(0.01, start + 0.28);
+      gain.gain.setValueAtTime(1.0, start);
+      gain.gain.exponentialRampToValueAtTime(0.01, start + 0.33);
 
-      osc.connect(noteGain);
-      noteGain.connect(globalMasterGain);
+      osc.connect(gain);
+      gain.connect(masterGain);
 
       osc.start(start);
-      osc.stop(start + 0.29);
+      osc.stop(start + 0.34);
     }
   } catch {}
 };
 
-export default function SecurityShield({
-  view = 'user',
-  sessionId = null,
-  carPlate = '',
-}: {
+// 🚨 إطلاق الإشعار الخارجي على شاشة القفل
+const triggerExternalSystemNotification = async (title: string, body: string, tag: string) => {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+    const options: NotificationOptions = {
+      body,
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-192x192.png',
+      tag,
+      requireInteraction: true,
+      renotify: true,
+      vibrate: [2000, 200, 2000, 200, 2000, 200, 3000],
+      data: { url: '/', type: 'theft_breach' },
+    };
+
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.ready;
+      if (reg && reg.showNotification) {
+        await reg.showNotification(title, options);
+        return;
+      }
+    }
+
+    new Notification(title, options);
+  } catch {}
+};
+
+interface SecurityShieldProps {
   view?: 'user' | 'garage' | 'admin';
   isSessionActive?: boolean;
   isShieldEnabled?: boolean;
   sessionId?: string | null;
   carPlate?: string;
-}) {
+}
+
+export default function SecurityShield({
+  view = 'user',
+  isSessionActive = false,
+  isShieldEnabled = false,
+  sessionId = null,
+  carPlate = '',
+}: SecurityShieldProps) {
   const { currentUser, currentGarageId, sessions } = useStore();
+
+  const [isTampered, setIsTampered] = useState(false);
+  const [isAppBlurred, setIsAppBlurred] = useState(false);
+  const [isValetOutOfFence, setIsValetOutOfFence] = useState(false);
+  const [valetDistance, setValetDistance] = useState(0);
+
   const [isBreached, setIsBreached] = useState(false);
   const [breachAlert, setBreachAlert] = useState<{ carPlate: string; reason: string; sessionId?: string } | null>(null);
   const [isMuted, setIsMuted] = useState(false);
 
-  const isMutedRef = useRef(false);
-  const sirenIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isMutedRef = useRef(isMuted);
+  const carAnchorRef = useRef<{ lat: number; lng: number; accuracy: number } | null>(null);
+  const garageOriginRef = useRef<{ lat: number; lng: number } | null>(null);
+  const consecutiveBreachCountRef = useRef<number>(0);
+
+  // 🔁 مرجع مؤقت تكرار الإشعار
+  const repeatAlarmTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stateRef = useRef({ currentUser, currentGarageId, sessionId, view, carPlate });
   useEffect(() => {
     stateRef.current = { currentUser, currentGarageId, sessionId, view, carPlate };
   }, [currentUser, currentGarageId, sessionId, view, carPlate]);
 
-  const startSirenRepeat = () => {
-    if (sirenIntervalRef.current) clearInterval(sirenIntervalRef.current);
-    if (!isMutedRef.current) {
-      playTheftSirenSound();
-    }
-    sirenIntervalRef.current = setInterval(() => {
-      if (!isMutedRef.current) {
-        playTheftSirenSound();
-      }
-    }, 5000);
-  };
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
 
-  const stopSirenRepeat = () => {
-    if (sirenIntervalRef.current) {
-      clearInterval(sirenIntervalRef.current);
-      sirenIntervalRef.current = null;
-    }
-    stopAllSirenSoundsImmediately();
-  };
-
-  const triggerAlarm = (plate: string, reason: string, targetSessionId?: string) => {
+  const triggerAlarm = async (
+    plate: string,
+    reason: string,
+    targetSessionId?: string,
+    isLocalDetection = false
+  ) => {
     setIsBreached(true);
     setIsMuted(false);
     isMutedRef.current = false;
-    setBreachAlert({ 
-      carPlate: plate || 'المركبة', 
-      reason: reason || '🚨 تم رصد حركة وتحريك غير مصرح به للسيارة!', 
-      sessionId: targetSessionId 
+    const cleanReason = reason || '🚨 رصد محاولة تحريك وسرقة للسيارة!';
+
+    setBreachAlert({
+      carPlate: plate || 'المركبة',
+      reason: cleanReason,
+      sessionId: targetSessionId,
     });
-    startSirenRepeat();
-    if (navigator.vibrate) navigator.vibrate([1500, 200, 1500, 200, 2000]);
+
+    playTheftSirenSound();
+
+    if (navigator.vibrate) {
+      navigator.vibrate([2000, 200, 2000, 200, 2000, 200, 3000]);
+    }
+
+    // 🔔 إطلاق الإشعار الخارجي الأول فوراً
+    triggerExternalSystemNotification(
+      '🚨 إنذار سرقة عاجل لمركبتك!',
+      `🚗 السيارة ${plate || ''} • ${cleanReason}`,
+      `theft-alarm-${plate || 'car'}-${Date.now()}`
+    );
+
+    // 🔁 بدء تكرار الإشعار كل 15 ثانية لحد ما العميل يفتح أو يوقف
+    if (repeatAlarmTimerRef.current) {
+      clearInterval(repeatAlarmTimerRef.current);
+    }
+
+    let repeatCount = 0;
+    repeatAlarmTimerRef.current = setInterval(() => {
+      repeatCount += 1;
+
+      // إيقاف التكرار بعد 20 مرة (5 دقائق) أو لو تم إيقاف الإنذار
+      if (repeatCount >= 20) {
+        if (repeatAlarmTimerRef.current) {
+          clearInterval(repeatAlarmTimerRef.current);
+          repeatAlarmTimerRef.current = null;
+        }
+        return;
+      }
+
+      // 🔇 إعادة تشغيل الصوت فقط إذا لم يتم الضغط على كتم الصوت
+      if (!isMutedRef.current) {
+        playTheftSirenSound();
+        if (navigator.vibrate) {
+          navigator.vibrate([2000, 200, 2000, 200, 2000, 200, 3000]);
+        }
+
+        // إعادة إطلاق الإشعار الخارجي
+        triggerExternalSystemNotification(
+          `🚨 إنذار سرقة متكرر (${repeatCount})!`,
+          `🚗 السيارة ${plate || ''} • ${cleanReason} • افتح التطبيق فوراً!`,
+          `theft-alarm-repeat-${plate || 'car'}-${Date.now()}`
+        );
+      }
+
+      // إعادة إرسال Web Push للطرف الآخر كل 30 ثانية
+      if (repeatCount % 2 === 0 && targetSessionId && !isMutedRef.current) {
+        const targetSession = sessions.find((s) => s.id === targetSessionId);
+        if (targetSession?.garageId) {
+          sendTheftAlertPush({
+            garageId: targetSession.garageId,
+            customerPhone: (targetSession as any)?.customerPhone || currentUser?.phone,
+            carPlate: plate,
+            reason: cleanReason,
+          }).catch(() => {});
+        }
+      }
+    }, 15000); // كل 15 ثانية
+
+    // 🛰️ مزامنة فورية مع السيرفر
+    if (isLocalDetection && targetSessionId) {
+      try {
+        await supabase
+          .from('sessions')
+          .update({
+            is_breached: true,
+            breach_reason: cleanReason,
+          })
+          .eq('id', targetSessionId);
+
+        const targetSession = sessions.find((s) => s.id === targetSessionId);
+        sendTheftAlertPush({
+          garageId: targetSession?.garageId,
+          customerPhone: (targetSession as any)?.customerPhone || currentUser?.phone,
+          carPlate: plate,
+          reason: cleanReason,
+        }).catch(() => {});
+      } catch (e) {
+        console.error('Failed to sync breach:', e);
+      }
+    }
   };
 
-  // 📡 الاستماع اللحظي لسيرفر Supabase (بمطابقة مرنة ومضمونة 100%)
+  /* ═══════════════════════════════════════════
+     📡 1. الاستماع الصاعق عبر Supabase Realtime
+     ═══════════════════════════════════════════ */
   useEffect(() => {
+    const userPlateClean = normalizePlate(currentUser?.carPlate);
+    const userPhoneClean = currentUser?.phone ? currentUser.phone.replace(/[^\d]/g, '') : '';
+
     const channel = supabase
-      .channel(`shield-realtime-${Date.now()}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sessions' }, (payload) => {
-        const row = payload.new as any;
-        if (!row) return;
+      .channel(`security-shield-global-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'sessions' },
+        (payload) => {
+          const newRow = payload.new as any;
+          if (!newRow) return;
 
-        const snap = stateRef.current;
-        const myPlate = cleanLettersAndDigits(snap.currentUser?.carPlate);
-        const rowPlate = cleanLettersAndDigits(row.car_plate || row.carPlate);
+          const snap = stateRef.current;
+          const myPlate = snap.currentUser?.carPlate?.replace(/\s/g, '');
+          const rowPlate = newRow.car_plate?.replace(/\s/g, '');
 
-        const myPhone = cleanPhoneDigits(snap.currentUser?.phone);
-        const rowPhone = cleanPhoneDigits(row.customer_phone || row.customerPhone);
+          const isMatch =
+            (myPlate && rowPlate && myPlate === rowPlate) ||
+            (snap.currentUser?.phone && newRow.customer_phone && snap.currentUser.phone.slice(-8) === String(newRow.customer_phone).slice(-8)) ||
+            (snap.sessionId && newRow.id === snap.sessionId) ||
+            (snap.currentGarageId && newRow.garage_id === snap.currentGarageId) ||
+            snap.view === 'admin';
 
-        const isMatchPlate = !!myPlate && !!rowPlate && myPlate === rowPlate;
-        const isMatchPhone = !!myPhone && !!rowPhone && myPhone === rowPhone;
-        const isMatchSession = !!snap.sessionId && row.id === snap.sessionId;
-        const isMatchGarage = !!snap.currentGarageId && (row.garage_id === snap.currentGarageId || row.garageId === snap.currentGarageId);
-        const isAdmin = snap.view === 'admin';
+          if (newRow.is_breached === true && newRow.status === 'active' && isMatch) {
+            triggerAlarm(
+              newRow.car_plate,
+              newRow.breach_reason || '🚨 تم رصد حركة وتحريك غير مصرح به للسيارة!',
+              newRow.id,
+              false
+            );
+          } else if (newRow.is_breached === false && isMatch) {
+            setIsBreached(false);
+            setBreachAlert(null);
+            setIsMuted(false);
+            isMutedRef.current = false;
+            consecutiveBreachCountRef.current = 0;
 
-        const isMatch = isMatchPlate || isMatchPhone || isMatchSession || isMatchGarage || isAdmin;
+            // 🛑 إيقاف تكرار الإشعار
+            if (repeatAlarmTimerRef.current) {
+              clearInterval(repeatAlarmTimerRef.current);
+              repeatAlarmTimerRef.current = null;
+            }
 
-        if (row.is_breached === true && row.status === 'active' && isMatch) {
-          triggerAlarm(row.car_plate, row.breach_reason, row.id);
-        } else if (row.is_breached === false && isMatch) {
-          // 🔄 إيقاف الإنذار فوراً عند تأكيد العميل للأمان
-          setIsBreached(false);
-          setBreachAlert(null);
-          setIsMuted(false);
-          isMutedRef.current = false;
-          stopSirenRepeat();
-          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({ type: 'STOP_THEFT_ALARM' });
+            // إرسال رسالة توجيهية لإيقاف السيرفس وركر
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+              navigator.serviceWorker.controller.postMessage({ type: 'STOP_THEFT_ALARM' });
+            }
           }
         }
-      })
+      )
       .subscribe();
 
-    return () => { 
-      supabase.removeChannel(channel); 
-      stopSirenRepeat();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser?.carPlate, currentUser?.phone, sessionId, currentGarageId, view]);
+
+  /* ═══════════════════════════════════════════
+     🛡️ 2. حماية المنصة
+     ═══════════════════════════════════════════ */
+  useEffect(() => {
+    const handleContextMenu = (e: MouseEvent) => e.preventDefault();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.key === 'F12' ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && ['I', 'J', 'C'].includes(e.key.toUpperCase()))
+      ) {
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener('contextmenu', handleContextMenu);
+    window.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('visibilitychange', () => setIsAppBlurred(document.hidden));
+
+    return () => {
+      window.removeEventListener('contextmenu', handleContextMenu);
+      window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
 
-  // فحص مباشر لو العميل ضغط على إشعار من شاشة القفل
+  /* ═══════════════════════════════════════════
+     🛰️ 3. رادار الـ GPS الذكي
+     ═══════════════════════════════════════════ */
+  useEffect(() => {
+    if (!isSessionActive || !isShieldEnabled || !sessionId) return;
+
+    let isRunning = true;
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (pos.coords.accuracy <= 30) {
+            carAnchorRef.current = {
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+              accuracy: Math.round(pos.coords.accuracy),
+            };
+            garageOriginRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          }
+        },
+        () => {},
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }
+
+    const timer = setInterval(() => {
+      if (!isRunning || !navigator.geolocation) return;
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+
+          if (accuracy > 35) return;
+
+          const snap = stateRef.current;
+
+          // حماية العميل من التنبيهات الكاذبة عند الابتعاد بهاتفه عن الجراج
+          if (snap.view === 'user' && garageOriginRef.current) {
+            const userDist = calculateDistanceMeters(garageOriginRef.current.lat, garageOriginRef.current.lng, lat, lng);
+            if (userDist > 60) return;
+          }
+
+          if (!carAnchorRef.current) {
+            carAnchorRef.current = { lat, lng, accuracy: Math.round(accuracy) };
+            return;
+          }
+
+          if (view === 'garage' && garageOriginRef.current) {
+            const dist = calculateDistanceMeters(garageOriginRef.current.lat, garageOriginRef.current.lng, lat, lng);
+            setValetDistance(dist);
+            setIsValetOutOfFence(dist > 250);
+          }
+
+          const drift = calculateDistanceMeters(carAnchorRef.current.lat, carAnchorRef.current.lng, lat, lng);
+          const safeThreshold = Math.max(45, (carAnchorRef.current.accuracy || 15) + accuracy);
+
+          if (drift > safeThreshold) {
+            consecutiveBreachCountRef.current += 1;
+            if (consecutiveBreachCountRef.current >= 2) {
+              triggerAlarm(
+                carPlate,
+                `🚨 رصد تحرك وسحب للسيارة مسافة ${drift} متراً عن موقع الركن!`,
+                sessionId,
+                true
+              );
+            }
+          } else {
+            consecutiveBreachCountRef.current = 0;
+          }
+        },
+        () => {},
+        { enableHighAccuracy: true, timeout: 6000, maximumAge: 2000 }
+      );
+    }, 4000);
+
+    return () => {
+      isRunning = false;
+      clearInterval(timer);
+    };
+  }, [isSessionActive, isShieldEnabled, sessionId, carPlate, view]);
+
+  // فحص الرابط المباشر عند فتح الإشعار الخارجي على شاشة القفل
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('breach') === 'true') {
-      triggerAlarm(params.get('carPlate') || carPlate || 'المركبة', '🚨 تم رصد محاولة تحريك وسرقة لسيارتك!', sessionId || undefined);
-      try { window.history.replaceState({}, document.title, window.location.pathname); } catch {}
+      const urlPlate = params.get('carPlate') || carPlate || 'المركبة';
+      triggerAlarm(
+        urlPlate,
+        '🚨 تم رصد حركة غير مصرح بها لسيارتك!',
+        sessionId || undefined,
+        false
+      );
+      try {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } catch {}
     }
   }, [carPlate, sessionId]);
 
-  // إيقاف وتأكيد الأمان للعميل
+  // 🧹 تنظيف مؤقت التكرار عند إلغاء المكون
+  useEffect(() => {
+    return () => {
+      if (repeatAlarmTimerRef.current) {
+        clearInterval(repeatAlarmTimerRef.current);
+        repeatAlarmTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  // إيقاف وتأكيد الأمان (العميل)
   const handleDismiss = async () => {
-    stopSirenRepeat();
     setIsBreached(false);
-    isMutedRef.current = true;
-    
+    consecutiveBreachCountRef.current = 0;
+    setIsMuted(false);
+    isMutedRef.current = false;
+
+    // 🛑 إيقاف تكرار الإشعار فوراً للـ Service Worker في شاشة القفل
     if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
       navigator.serviceWorker.controller.postMessage({ type: 'STOP_THEFT_ALARM' });
     }
-    const currentPlate = breachAlert?.carPlate || carPlate;
-    if (currentPlate) stopTheftAlarmRepeat({ carPlate: currentPlate });
+
+    if (repeatAlarmTimerRef.current) {
+      clearInterval(repeatAlarmTimerRef.current);
+      repeatAlarmTimerRef.current = null;
+    }
 
     if (breachAlert?.sessionId) {
-      await supabase.from('sessions').update({ is_breached: false, breach_reason: '' }).eq('id', breachAlert.sessionId);
+      await supabase
+        .from('sessions')
+        .update({ is_breached: false })
+        .eq('id', breachAlert.sessionId);
     }
     setBreachAlert(null);
-    toast.success('تم إيقاف الإنذار وتأكيد أمان المركبة 🛡️');
+    toast.success('تم تأكيد الأمان وإيقاف الإنذار 🛡️');
   };
 
-  // 🔇 كتم الصوت الفوري الصاعق (للسايس والعميل)
-  const handleMute = (e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    isMutedRef.current = true; // كتم المتغير المرجعي فوراً
+  // 🔇 كتم الصوت الفوري الصامت (للسايس والعميل)
+  const handleMute = () => {
     setIsMuted(true);
-    stopSirenRepeat(); // قطع الصوت والاهتزاز فوراً في نفس اللحظة
+    isMutedRef.current = true;
+    stopAllSirenSounds();
+    if (navigator.vibrate) navigator.vibrate(0);
 
+    // كتم وإيقاف إشعارات شاشة القفل أيضاً
     if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
       navigator.serviceWorker.controller.postMessage({ type: 'STOP_THEFT_ALARM' });
     }
-    toast.success('🔇 تم كتم الصوت فوراً');
+
+    toast.success('🔇 تم كتم الصوت');
   };
 
   if (!isBreached || !breachAlert) return null;
 
-  // 🅿️ واجهة السايس: بانر عائم علوي دائم (مع زر كتم فوري يستجيب من اللمسة الأولى)
+  // 🅿️ واجهة السايس: بانر عائم علوي دائم فقط (لا يعطل الشاشة إطلاقاً ولا يمنع استكمال العمل)
   if (view === 'garage') {
     return (
       <div className="fixed top-3 left-3 right-3 z-[9999999] pointer-events-none" dir="rtl">
@@ -276,13 +497,13 @@ export default function SecurityShield({
               <button 
                 type="button"
                 onClick={handleMute} 
-                className="bg-white text-red-600 text-xs font-black px-4 py-2.5 rounded-xl border-0 cursor-pointer active:scale-90 shadow-xl flex items-center gap-1.5 transition-transform"
+                className="bg-white text-red-600 text-xs font-black px-4 py-2 rounded-xl border-0 cursor-pointer active:scale-90 shadow-xl flex items-center gap-1"
               >
-                <VolumeX size={14} /> كتم الصوت
+                <VolumeX size={13} /> كتم
               </button>
             ) : (
               <span className="text-[10px] font-black bg-white/20 px-3 py-2 rounded-lg border border-white/20 text-white block">
-                🔇 الصوت مكتوم
+                🔇 مكتوم
               </span>
             )}
           </div>
@@ -291,7 +512,7 @@ export default function SecurityShield({
     );
   }
 
-  // 👑 واجهة العميل: شاشة حمراء كاملة للسيطرة والتحذير الشديد
+  // 👑 واجهة العميل: شاشة حمراء كاملة للتحذير والسيطرة
   return (
     <div className="fixed inset-0 z-[9999999] bg-red-950/95 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 text-white animate-pulse" dir="rtl">
       <div className="w-24 h-24 bg-red-600 rounded-full flex items-center justify-center text-5xl mb-6 shadow-2xl animate-bounce">🚨</div>
@@ -307,7 +528,7 @@ export default function SecurityShield({
         </button>
         {!isMuted ? (
           <button onClick={handleMute} className="w-full bg-white/10 text-white font-black py-3 rounded-xl text-[11px] border border-white/20 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5">
-            <VolumeX size={14} /> كتم صوت هاتفي مؤقتاً
+            <VolumeX size={14} className="inline mr-1" /> كتم صوت هاتفي مؤقتاً
           </button>
         ) : (
           <div className="text-[10px] text-amber-300 font-bold py-1">🔇 تم كتم الصوت بجهازك</div>

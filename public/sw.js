@@ -1,4 +1,6 @@
 // public/sw.js
+
+// ✅ إصدار v25 - مطور بالكامل بمطابقة ومسح الإنذارات الصامتة
 const CACHE_NAME    = 'parkn24-shield-v25'; 
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 const activeTheftAlarms = new Map();
