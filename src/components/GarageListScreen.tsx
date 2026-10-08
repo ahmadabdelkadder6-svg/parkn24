@@ -290,11 +290,8 @@ export default function GarageListScreen() {
   const filteredGarages = useMemo(() => {
     let filtered = garagesWithDistance;
     
-    // 🌟 فحص وتصفية التبويب النشط (حماية كاملة من تعارض vip/partner)
-    filtered = filtered.filter((g) => {
-      const type = g.garageType === 'partner' ? 'vip' : g.garageType;
-      return type === activeTab;
-    });
+    // 🌟 تصفية مباشرة ومطابقة تماماً لبيانات الـ Store
+    filtered = filtered.filter((g) => g.garageType === activeTab);
 
     if (search.trim()) {
       const q = search.trim().toLowerCase();

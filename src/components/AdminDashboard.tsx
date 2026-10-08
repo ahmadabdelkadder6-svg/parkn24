@@ -126,10 +126,8 @@ export default function AdminDashboard() {
     const q = garageSearch.trim().toLowerCase();
     
     // 1. تصفية الجراجات بحسب التبويب النشط في الأدمن
-    let list = garages.filter((g) => {
-      const type = g.garageType === 'partner' ? 'vip' : g.garageType;
-      return type === adminGarageTab;
-    });
+
+    let list = garages.filter((g) => g.garageType === adminGarageTab);
 
     // 2. تصفية بحسب نص البحث لو العميل كتب حاجة
     if (!q) return list;

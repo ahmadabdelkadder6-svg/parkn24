@@ -341,14 +341,48 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   });
 };
 
-// 🌟 الموازنة الذكية الفائقة: قراءة وتحديد الدليل من عمود valet_name_1 بدون أي حقول جديدة وبحماية العمولة الفارغة
+// 🌟 الموازنة الذكية الفائقة: جراج الدليل بياخد الأولوية القصوى لو لقى كلمة directory في السايس أو نوع الجراج
 const mapGarage = (r: any): Garage => {
-  const hasExplicitType = r.garage_type !== undefined && r.garage_type !== null;
-  
-  let isDirectory = false;
-  if (hasExplicitType) {
-    isDirectory = r.garage_type === 'directory';
-  } else {
+  // الفحص الأقوى والأشمل: لو السايس مكتوب فيه directory أو نوع الجراج في السيرفر directory
+  const isDirectory = 
+    r.valet_name_1 === 'directory' || 
+    r.garage_type === 'directory' ||
+    (!r.valet_name_1 && !r.valet_password_1) || 
+    String(r.username || '').startsWith('dir_') || 
+    r.location === 'دليل ركنات مجاني';
+
+  return {
+    id: r.id, 
+    name: r.name, 
+    username: r.username || '', 
+    phone: r.phone || '',
+    ownerPhone: r.owner_phone || r.phone || '',
+    location: r.location || '', 
+    lat: Number(r.lat) || 30.0444, 
+    lng: Number(r.lng) || 31.2357, 
+    capacity: Number(r.capacity) || 50,
+    availableSpots: Number(r.available_spots ?? r.capacity ?? 50), 
+    basePrice: Number(r.base_price || 15),
+    rating: Number(r.rating || 4.5),
+    valetName1: r.valet_name_1 === 'directory' ? '' : (r.valet_name_1 || ''), 
+    valetPassword1: r.valet_name_1 === 'directory' ? '' : (r.valet_password_1 || ''),
+    valetName2: r.valet_name_2 || '', valetPassword2: r.valet_password_2 || '',
+    valetName3: r.valet_name_3 || '', valetPassword3: r.valet_password_3 || '',
+    commissionRate: Number(r.commission_rate ?? 10),
+    valet1Active: r.valet1_active !== false,
+    valet2Active: r.valet2_active !== false,
+    valet3Active: r.valet3_active !== false,
+    isActive: r.is_active !== false,
+    payment_mode: r.payment_mode || 'both', 
+    area: r.area || 'مناطق أخرى',
+
+    // تصنيف قاطع ومطابق 100% للتبويبات
+    garageType: isDirectory ? 'directory' : 'vip',
+    priceType: r.price_type || (isDirectory ? (r.valet_password_1 === 'daily' || r.valet_password_1 === 'monthly' ? r.valet_password_1 : 'hourly') : 'hourly'),
+    dailyPrice: isDirectory ? Number(r.base_price) : undefined,
+    monthlyPrice: isDirectory ? Number(r.base_price) : undefined,
+  };
+};
     // 🛡️ فلترة أمنية ذكية تمنع اعتبار القيمة الفارغة (Null) للعمولة صفراً تلقائياً
     const isDirValet = r.valet_name_1 === 'directory';
     const isDirUser = String(r.username || '').startsWith('dir_');
