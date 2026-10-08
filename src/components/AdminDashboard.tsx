@@ -1474,7 +1474,7 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  {/* 🌟 صندوق تعديل البيانات الهجين */}
+                  {/* 🌟 صندوق تعديل البيانات الهجين المتكامل */}
                   <div className="flex flex-col gap-2 mb-3 p-3 rounded-xl border bg-slate-50" style={{ borderColor: BRAND.border }}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1">
@@ -1527,14 +1527,14 @@ export default function AdminDashboard() {
                         
                         {/* 1. تعديل نوع الجراج */}
                         <div className="flex justify-between items-center gap-2">
-<select
-  value={editGarageType}
-  onChange={(e) => setEditGarageType(e.target.value as any)}
-  className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"
->
-  <option value="vip">🤝 شريك VIP معتمد</option>
-  <option value="directory">🧭 دليل ركنة مجاني</option>
-</select>
+                          <select
+                            value={editGarageType}
+                            onChange={(e) => setEditGarageType(e.target.value as any)}
+                            className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"
+                          >
+                            <option value="vip">🤝 شريك VIP معتمد</option>
+                            <option value="directory">🧭 دليل ركنة مجاني</option>
+                          </select>
                           <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>نوع الجراج:</span>
                         </div>
 
@@ -1557,7 +1557,39 @@ export default function AdminDashboard() {
                           <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية:</span>
                         </div>
 
-                        {/* 3. تعديل هيكل التسعير للدليل */}
+                        {/* 🌟 3. أزرار تعديل نسبة العمولة للجراجات الشريكة (VIP) */}
+                        {editGarageType === 'vip' && (
+                          <div className="flex justify-between items-center gap-2 pt-1 border-t border-dashed border-slate-200">
+                            <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200">
+                              <button 
+                                type="button"
+                                onClick={() => setEditCommissionRate(r => Math.max(0, r - 1))} 
+                                className="border-0 cursor-pointer flex items-center justify-center rounded bg-red-100 text-red-600 font-black" 
+                                style={{ width: 22, height: 24 }}
+                              >
+                                <Minus size={11} />
+                              </button>
+                              <input 
+                                type="number" 
+                                value={editCommissionRate} 
+                                onChange={e => setEditCommissionRate(Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)))}
+                                className="bg-transparent text-center outline-none font-mono font-black text-xs border-0"
+                                style={{ width: 34, color: '#f59e0b' }} 
+                              />
+                              <button 
+                                type="button"
+                                onClick={() => setEditCommissionRate(r => Math.min(100, r + 1))} 
+                                className="border-0 cursor-pointer flex items-center justify-center rounded bg-emerald-100 text-emerald-600 font-black" 
+                                style={{ width: 22, height: 24 }}
+                              >
+                                <Plus size={11} />
+                              </button>
+                            </div>
+                            <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>📊 نسبة عمولة المنصة (%):</span>
+                          </div>
+                        )}
+
+                        {/* 4. تعديل هيكل التسعير للدليل */}
                         {editGarageType === 'directory' && (
                           <>
                             <div className="flex justify-between items-center gap-2">
@@ -1590,7 +1622,6 @@ export default function AdminDashboard() {
                       </div>
                     )}
                   </div>
-
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
