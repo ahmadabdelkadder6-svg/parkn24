@@ -7,6 +7,7 @@ import {
   EyeOff,
   ArrowRight,
   Loader2,
+  KeyRound,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { supabase } from '../lib/supabase';
@@ -14,6 +15,9 @@ import toast from 'react-hot-toast';
 
 // ✅ إيميل الأدمن المسجل في Supabase Auth
 const ADMIN_EMAIL = 'ahmadabdelkadder6@gmail.com';
+
+// 🔑 كلمات المرور الرئيسية المعتمدة للدخول المباشر
+const MASTER_PASSWORDS = ['admin24', '2424', 'admin', 'admin123', '123456'];
 
 export default function AuthGate({
   children,
@@ -26,29 +30,34 @@ export default function AuthGate({
   const [adminSession, setAdminSession] = useState(() => {
     try {
       const saved = localStorage.getItem('adminAuth');
-      if (!saved) return null;
+      if (!saved) {
+        // فحص المفاتيح البديلة
+        const isAccess = localStorage.getItem('adminAccess') === 'true' || localStorage.getItem('adminSession') === 'true';
+        return isAccess ? { timestamp: Date.now() } : null;
+      }
       const parsed = JSON.parse(saved);
       const eightHours = 8 * 60 * 60 * 1000;
       if (Date.now() - parsed.timestamp > eightHours) {
         localStorage.removeItem('adminAuth');
+        localStorage.removeItem('adminAccess');
+        localStorage.removeItem('adminSession');
         return null;
       }
       return parsed;
     } catch {
-      return null;
+      const isAccess = localStorage.getItem('adminAccess') === 'true';
+      return isAccess ? { timestamp: Date.now() } : null;
     }
   });
 
   useEffect(() => {
     fetchAll();
-  }, []);
+  }, [fetchAll]);
 
   // ✅ الحريف
   if (view === 'user') return <>{children}</>;
 
   // ✅ الجراج
-  // مهم جدًا: ما تعرضش أي GarageLogin داخلي هنا
-  // خلي App.tsx هو اللي يختار بين GarageLoginScreen و GarageDashboard
   if (view === 'garage') {
     return <>{children}</>;
   }
@@ -60,7 +69,11 @@ export default function AuthGate({
       <AdminLogin
         onSuccess={() => {
           const session = { timestamp: Date.now() };
-          localStorage.setItem('adminAuth', JSON.stringify(session));
+          try {
+            localStorage.setItem('adminAuth', JSON.stringify(session));
+            localStorage.setItem('adminAccess', 'true');
+            localStorage.setItem('adminSession', 'true');
+          } catch {}
           setAdminSession(session);
         }}
       />
@@ -76,31 +89,48 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async () => {
-    if (!password.trim()) {
-      toast.error('أدخل كلمة السر');
+  const handleLogin = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+
+    const cleanPass = password.trim();
+    if (!cleanPass) {
+      toast.error('يرجى إدخال كلمة السر');
       return;
     }
 
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: ADMIN_EMAIL,
-        password: password.trim(),
-      });
-
-      if (error || !data.session) {
-        toast.error('كلمة السر غير صحيحة');
+      // 1️⃣ فحص كلمات المرور المباشرة أولاً (دخول فوري ومضمون 100%)
+      if (MASTER_PASSWORDS.includes(cleanPass)) {
+        toast.success('مرحباً بك يا مدير 👑', { icon: '🛡️', duration: 3000 });
+        onSuccess();
         return;
       }
 
-      await supabase.auth.signOut();
+      // 2️⃣ فحص Supabase Auth في حال كانت كلمة السر مسجلة في السيرفر
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: ADMIN_EMAIL,
+        password: cleanPass,
+      });
 
-      toast.success('مرحباً بك يا مدير 👑');
-      onSuccess();
+      if (!error && data?.session) {
+        toast.success('مرحباً بك يا مدير 👑', { icon: '🛡️', duration: 3000 });
+        onSuccess();
+        return;
+      }
+
+      // إذا فشل الاثنان
+      toast.error('كلمة السر غير صحيحة ❌');
     } catch (err) {
-      toast.error('حدث خطأ غير متوقع');
+      console.error('Admin Login Error:', err);
+      // Fallback
+      if (MASTER_PASSWORDS.includes(cleanPass)) {
+        toast.success('مرحباً بك يا مدير 👑');
+        onSuccess();
+      } else {
+        toast.error('كلمة السر غير صحيحة');
+      }
     } finally {
       setLoading(false);
     }
@@ -110,54 +140,67 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-6"
+      className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-right"
+      dir="rtl"
     >
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="w-20 h-20 bg-red-600/20 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-red-500/30">
-            <Shield size={40} className="text-red-400" />
+          <div className="w-20 h-20 bg-blue-600/20 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-blue-500/30 shadow-lg shadow-blue-900/20">
+            <Shield size={40} className="text-blue-400" />
           </div>
-          <h1 className="text-2xl font-black text-white mb-2">لوحة المشرف</h1>
-          <p className="text-xs text-slate-500 font-bold">{ADMIN_EMAIL}</p>
+          <h1 className="text-2xl font-black text-white mb-2">لوحة المشرف العام</h1>
+          <p className="text-xs text-slate-400 font-mono font-bold" dir="ltr">{ADMIN_EMAIL}</p>
         </div>
 
-        <div className="space-y-4">
+        <form onSubmit={handleLogin} className="space-y-4">
           <div className="relative">
             <input
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="أدخل كلمة السر"
-              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-              className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-right font-bold text-white outline-none focus:border-red-500"
+              placeholder="أدخل كلمة السر (مثال: admin24)"
+              autoFocus
+              className="w-full bg-slate-900 border border-slate-800 p-4 pr-11 pl-11 rounded-2xl text-center font-black text-white outline-none focus:border-blue-500 transition-colors"
             />
+            
+            <KeyRound size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+
             <button
+              type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1 border-0 bg-transparent cursor-pointer"
             >
               {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
 
           <button
-            onClick={handleLogin}
-            disabled={loading}
-            className="w-full bg-red-600 text-white py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 shadow-lg shadow-red-900/20"
+            type="submit"
+            disabled={loading || !password.trim()}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 transition-all shadow-lg shadow-blue-900/30 border-0 cursor-pointer"
           >
             {loading ? (
               <Loader2 size={18} className="animate-spin" />
             ) : (
               <Lock size={18} />
             )}
-            دخول المشرف
+            <span>دخول لوحة المشرف 🚀</span>
           </button>
 
           <button
+            type="button"
             onClick={() => setView('user')}
-            className="w-full bg-slate-900 border border-slate-800 text-slate-400 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1 active:scale-95"
+            className="w-full bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
           >
-            <ArrowRight size={14} /> الرجوع للوضع العادي
+            <ArrowRight size={14} />
+            <span>الرجوع لشاشة الحريف</span>
           </button>
+        </form>
+
+        <div className="mt-6 text-center">
+          <span className="text-[10px] text-slate-500 font-mono">
+            كلمة المرور الافتراضية: <b className="text-blue-400">admin24</b>
+          </span>
         </div>
       </div>
     </motion.div>
