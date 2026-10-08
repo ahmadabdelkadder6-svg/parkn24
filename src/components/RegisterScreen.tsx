@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Car, Phone, User, ArrowRight, ShieldCheck, Sparkles, Loader2, Gift } from 'lucide-react';
 // 🌟 استيراد دوال البصمة الموحدة من الـ store لضمان مطابقة تامة مع قاعدة البيانات
@@ -12,32 +12,39 @@ export default function RegisterScreen() {
   const [carPlate, setCarPlate] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // ✍️ قبول الحروف العربية والمسافات فقط في الاسم
+  const isMountedRef = useRef(true);
+  const isSubmittingRef = useRef(false);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      isSubmittingRef.current = false;
+    };
+  }, []);
+
+  // ✍️ قبول الحروف العربية والمسافات فقط في الاسم وتنظيف المسافات المتكررة
   const handleNameChange = (val: string) => {
-    const arabicOnly = val.replace(/[^\u0600-\u06FF\s]/g, '');
+    const arabicOnly = val.replace(/[^\u0600-\u06FF\s]/g, '').replace(/\s+/g, ' ');
     setName(arabicOnly);
   };
 
   // 📱 فلترة لحظية فائقة الذكاء أثناء الكتابة للهواتف المصرية
   const handlePhoneChange = (val: string) => {
-    // 1️⃣ تحويل الأرقام الهندية/الشرقية (٠-٩) إلى أرقام عادية (0-9)
     let digits = val;
     const arabicNums = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
     for (let i = 0; i < 10; i++) {
       digits = digits.split(arabicNums[i]).join(String(i));
     }
     
-    // 2️⃣ إزالة أي شيء ليس رقماً والالتزام بـ 11 خانة كحد أقصى
+    // إزالة أي شيء ليس رقماً والالتزام بـ 11 خانة كحد أقصى
     const digitsOnly = digits.replace(/[^\d]/g, '').slice(0, 11);
     setPhone(digitsOnly);
   };
 
-  // 🚗 فلترة صارمة للغاية لرقم اللوحة (حروف عربية وأرقام ومسافات فقط)
+  // 🚗 فلترة صارمة لرقم اللوحة (حروف عربية وأرقام ومسافات فقط)
   const handlePlateChange = (val: string) => {
-    // 🇪🇬 السماح فقط بالحروف العربية (أ-ي)، الأرقام العربية (٠-٩)، الأرقام العادية (0-9)، والمسافة
     const cleaned = val.replace(/[^\u0621-\u064A\u0660-\u06690-9\s]/g, '');
-    
-    // منع المسافات المتكررة
     const singleSpaceOnly = cleaned.replace(/\s+/g, ' ');
 
     if (val !== cleaned) {
@@ -52,17 +59,17 @@ export default function RegisterScreen() {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (loading) return;
+    
+    // 🛡️ حماية فورية من الضغط المزدوج السريع
+    if (isSubmittingRef.current || loading) return;
 
     if (!name.trim() || name.trim().length < 3) { 
       toast.error('يرجى إدخال اسمك باللغة العربية (3 حروف على الأقل)'); 
       return; 
     }
     
-    // 🇪🇬 الفحص الصارم والدقيق لشبكات المحمول المصرية المعتمدة
+    // 🇪🇬 الفحص الصارم لرقم الهاتف المصري
     const cleanPhone = normalizePhone(phone);
-    
-    // Regex فحص: 11 رقماً، يبدأ بـ 01 ثم (0 أو 1 أو 2 أو 5) ثم 8 أرقام
     const isValidEgyptianMobile = /^01[0125][0-9]{8}$/.test(cleanPhone);
 
     if (!isValidEgyptianMobile) { 
@@ -79,36 +86,41 @@ export default function RegisterScreen() {
       return;
     }
 
-    // 🛡️ فحص أمان اللوحة: يجب أن تحتوي على حروف عربية وأرقام معاً (وليس نوعاً واحداً فقط)
-    const hasArabicLetters = /[\u0621-\u064A]/.test(plateTrimmed);
-    const hasNumbers = /[\u0660-\u06690-9]/.test(plateTrimmed);
+    // 🛡️ فحص اكتمال اللوحة عبر البصمة الفولاذية الموحدة (يجب أن تحتوي على حروف وأرقام معاً)
+    const cleanPlate = normalizePlate(plateTrimmed);
+    const plateParts = cleanPlate.split('_');
+    const hasValidLetters = plateParts[0] && plateParts[0].length > 0;
+    const hasValidDigits = plateParts[1] && plateParts[1].length > 0;
 
-    if (!hasArabicLetters || !hasNumbers) {
-      toast.error('رقم اللوحة غير مكتمل! يجب إدخال حروف عربية وأرقام معاً (مثال: أ ب ج ١٢٣)');
-      return;
-    }
-
-    const cleanPlate = normalizePlate(carPlate);
-    if (!cleanPlate) { 
-      toast.error('يرجى إدخال رقم اللوحة بالحروف والأرقام العربية المعتمدة'); 
+    if (!cleanPlate || !hasValidLetters || !hasValidDigits) { 
+      toast.error('رقم اللوحة غير مكتمل! يجب إدخال حروف عربية وأرقام معاً (مثال: أ ب ج ١٢٣)'); 
       return; 
     }
 
     try {
+      isSubmittingRef.current = true;
       setLoading(true);
+
       await setCurrentUser({
         name: name.trim(),
         phone: cleanPhone,
         carPlate: cleanPlate,
         wallet: 0,
       });
+
+      if (!isMountedRef.current) return;
       toast.success('تم تسجيل وتأمين بياناتك بنجاح! 🚗✨');
       setScreen('list');
     } catch (err) {
-      console.error(err);
-      toast.error('حدث خطأ أثناء التسجيل، حاول مجدداً');
+      console.error('Registration error:', err);
+      if (isMountedRef.current) {
+        toast.error('حدث خطأ أثناء التسجيل، حاول مجدداً');
+      }
     } finally {
-      setLoading(false);
+      isSubmittingRef.current = false;
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -117,17 +129,14 @@ export default function RegisterScreen() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       className="h-full bg-slate-950 text-white flex flex-col justify-between p-6 text-right overflow-y-auto"
+      dir="rtl"
     >
       <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full py-4">
         {/* Logo & Intro */}
         <div className="text-center mb-6">
-          <motion.div
-            animate={{ scale: [1, 1.05, 1] }}
-            transition={{ repeat: Infinity, duration: 3 }}
-            className="w-20 h-20 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-500/30"
-          >
+          <div className="w-20 h-20 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-500/30 transition-transform hover:scale-105">
             <Car size={40} className="text-white" />
-          </motion.div>
+          </div>
           <h2 className="text-2xl font-black text-white">سجل بياناتك للبدء</h2>
           
           {/* 🎁 بانر ترويجي للـ 30 دقيقة المجانية */}
@@ -163,9 +172,11 @@ export default function RegisterScreen() {
                 value={name}
                 onChange={(e) => handleNameChange(e.target.value)}
                 disabled={loading}
+                autoComplete="name"
+                spellCheck={false}
                 className="w-full bg-slate-900 border border-slate-800 rounded-2xl py-3.5 px-4 pr-11 text-sm font-bold text-white text-right outline-none focus:border-blue-500 transition-colors disabled:opacity-60"
               />
-              <User className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <User className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
             </div>
           </div>
 
@@ -180,15 +191,17 @@ export default function RegisterScreen() {
             <div className="relative">
               <input
                 type="tel"
+                inputMode="numeric"
                 placeholder="01xxxxxxxxx"
                 value={phone}
                 maxLength={11}
                 onChange={(e) => handlePhoneChange(e.target.value)}
                 disabled={loading}
+                autoComplete="tel"
                 className="w-full bg-slate-900 border border-slate-800 rounded-2xl py-3.5 px-4 pr-11 text-sm font-bold text-white text-left font-mono outline-none focus:border-blue-500 transition-colors disabled:opacity-60"
                 dir="ltr"
               />
-              <Phone className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <Phone className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
             </div>
           </div>
 
@@ -205,9 +218,10 @@ export default function RegisterScreen() {
                 value={carPlate}
                 onChange={(e) => handlePlateChange(e.target.value)}
                 disabled={loading}
+                spellCheck={false}
                 className="w-full bg-slate-900 border border-slate-800 rounded-2xl py-3.5 px-4 pr-11 text-sm font-black text-white text-center outline-none focus:border-blue-500 transition-colors tracking-wider disabled:opacity-60"
               />
-              <Car className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <Car className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
             </div>
             <p className="text-[10px] text-slate-500 mt-1 font-bold text-right mr-1">
               💡 اكتب الحروف والأرقام كما هي باللغة العربية على اللوحة

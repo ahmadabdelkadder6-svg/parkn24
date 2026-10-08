@@ -2,11 +2,12 @@
 
 /**
  * 🌟 نظام التنبيهات الصوتية والإشعارات والاهتزاز لتطبيق Park'n 24
- * متوافق بالكامل مع هواتف Android, iPhone والحواسيب
+ * موفر فائق للبطارية ومتوافق بالكامل مع هواتف Android, iPhone والحواسيب
  */
 
 let audioCtx: AudioContext | null = null;
 let isAudioUnlocked = false;
+let audioSuspendTimeout: ReturnType<typeof setTimeout> | null = null;
 
 // ─── 1. فك قفل محرك الصوت من أول لمسة على الشاشة ─────────────────────────
 export const unlockAudio = async () => {
@@ -47,7 +48,17 @@ if (typeof window !== 'undefined') {
   unlockEvents.forEach(evt => document.addEventListener(evt, onFirstGesture, { passive: true }));
 }
 
-// ─── 2. نغمات التنبيه (توليد إلكتروني نقي بدون ملفات خارجية) ──────────────
+// 🔋 دالة ذكية لتعليق محرك الصوت بعد انتهاء النغمة لتوفير طاقة المعالج والبطارية
+const scheduleAudioSuspend = () => {
+  if (audioSuspendTimeout) clearTimeout(audioSuspendTimeout);
+  audioSuspendTimeout = setTimeout(() => {
+    if (audioCtx && audioCtx.state === 'running') {
+      audioCtx.suspend().catch(() => {});
+    }
+  }, 3000);
+};
+
+// ─── 2. نغمات التنبيه (توليد إلكتروني نقي فائق القوة لاختراق الضوضاء) ──────
 export const playUrgentSound = async () => {
   try {
     await unlockAudio();
@@ -57,24 +68,46 @@ export const playUrgentSound = async () => {
       await audioCtx.resume();
     }
 
-    // نغمة طوارئ ثنائية التردد (5 نبضات متتابعة)
-    for (let i = 0; i < 5; i++) {
-      const delay = i * 0.22;
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
+    const now = audioCtx.currentTime;
 
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
+    // رفع الصوت لأقصى طاقة 100%
+    const masterGain = audioCtx.createGain();
+    masterGain.gain.setValueAtTime(1.0, now);
+    masterGain.connect(audioCtx.destination);
 
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(i % 2 === 0 ? 880 : 1320, audioCtx.currentTime + delay);
+    // 6 نبضات إنذار حادة وسريعة بنظام المولد المزدوج
+    for (let i = 0; i < 6; i++) {
+      const start = now + (i * 0.22);
+      const duration = 0.19;
 
-      gain.gain.setValueAtTime(0.7, audioCtx.currentTime + delay);
-      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + delay + 0.18);
+      const osc1 = audioCtx.createOscillator();
+      const osc2 = audioCtx.createOscillator();
+      const noteGain = audioCtx.createGain();
 
-      osc.start(audioCtx.currentTime + delay);
-      osc.stop(audioCtx.currentTime + delay + 0.2);
+      osc1.type = 'sawtooth';
+      osc2.type = 'square';
+
+      // ترددات حادة وقوية لاختراق الضوضاء (1200Hz و 2400Hz)
+      const freq = i % 2 === 0 ? 1200 : 2400;
+      osc1.frequency.setValueAtTime(freq, start);
+      osc2.frequency.setValueAtTime(freq * 1.2, start);
+
+      noteGain.gain.setValueAtTime(1.0, start);
+      noteGain.gain.exponentialRampToValueAtTime(0.01, start + duration);
+
+      osc1.connect(noteGain);
+      osc2.connect(noteGain);
+      noteGain.connect(masterGain);
+
+      osc1.start(start);
+      osc2.start(start);
+
+      // تنظيف العقد الصوتية فور انتهاء النبضة
+      osc1.stop(start + duration + 0.02);
+      osc2.stop(start + duration + 0.02);
     }
+
+    scheduleAudioSuspend();
   } catch (err) {
     console.warn('⚠️ خطأ في تشغيل صوت الإنذار:', err);
   }
@@ -96,14 +129,16 @@ export const playNormalAlert = async () => {
     gain.connect(audioCtx.destination);
 
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(600, audioCtx.currentTime);
-    osc.frequency.setValueAtTime(900, audioCtx.currentTime + 0.15);
+    osc.frequency.setValueAtTime(650, audioCtx.currentTime);
+    osc.frequency.setValueAtTime(950, audioCtx.currentTime + 0.15);
 
-    gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
 
     osc.start(audioCtx.currentTime);
     osc.stop(audioCtx.currentTime + 0.38);
+
+    scheduleAudioSuspend();
   } catch (err) {
     console.warn('⚠️ خطأ في تشغيل التنبيه:', err);
   }
@@ -114,8 +149,8 @@ export const vibrateUrgent = () => {
   try {
     if ('vibrate' in navigator) {
       navigator.vibrate([
-        800, 200, 800, 200, 800, 200, // رنة 1
-        1000, 300, 1000               // رنة 2
+        1000, 200, 1000, 200, 1000, 200, // رنة 1
+        1200, 300, 1200                  // رنة 2 تأكيدية
       ]);
       return true;
     }
@@ -148,8 +183,19 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
     if (Notification.permission === 'granted') return true;
     if (Notification.permission === 'denied') return false;
 
-    const result = await Notification.requestPermission();
-    return result === 'granted';
+    // دعم Promise و Callback للتوافق مع كل المتصفحات
+    return new Promise((resolve) => {
+      try {
+        const promise = Notification.requestPermission((permission) => {
+          resolve(permission === 'granted');
+        });
+        if (promise) {
+          promise.then((permission) => resolve(permission === 'granted')).catch(() => resolve(false));
+        }
+      } catch {
+        resolve(false);
+      }
+    });
   } catch {
     return false;
   }
@@ -159,7 +205,8 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
 export const sendLocalNotification = async (
   title: string,
   body: string,
-  tag = 'valet-urgent-alarm'
+  tag = 'valet-urgent-alarm',
+  url = '/garage'
 ) => {
   try {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
@@ -171,11 +218,11 @@ export const sendLocalNotification = async (
       tag,
       requireInteraction: true,
       renotify: true,
-      vibrate: [800, 200, 800, 200, 1000],
-      data: { url: '/garage' },
+      vibrate: [1000, 300, 1000, 300, 1200],
+      data: { url },
     };
 
-    // إرسال عبر Service Worker (متوافق مع أندرويد)
+    // إرسال عبر Service Worker (متوافق مع هواتف أندرويد و PWA)
     if ('serviceWorker' in navigator) {
       try {
         const reg = await navigator.serviceWorker.ready;
@@ -200,7 +247,8 @@ export const notifyIncomingCar = (carPlate: string) => {
   sendLocalNotification(
     '🚨 سيارة في الطريق إليك!',
     `🚗 رقم اللوحة: ${carPlate} • استعد للاستقبال فوراً!`,
-    `incoming-${carPlate}`
+    `incoming-${carPlate}`,
+    '/garage'
   );
 };
 
@@ -210,6 +258,7 @@ export const notifyNewOffer = (carPlate: string, price: number) => {
   sendLocalNotification(
     '💰 عرض سعر جديد!',
     `🚗 السيارة ${carPlate} - عرضت: ${price} ج.م/ساعة`,
-    `offer-${carPlate}`
+    `offer-${carPlate}`,
+    '/garage'
   );
 };

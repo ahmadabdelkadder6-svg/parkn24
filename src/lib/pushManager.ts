@@ -1,11 +1,13 @@
+// src/lib/pushManager.ts
+
 import { normalizePlate } from '../store';
 
 // ─── VAPID & Supabase Configuration ─────────────────────────────
 const VAPID_PUBLIC_KEY =
   'BOuP_HFhSSjHMsjf4KZJYLaFTv3RdI20Ux3an5LriaTBUN0iGlW-38zYGvROp26k7jcqhC_XpUotxzLR1IjQTI4';
 
-const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL      as string;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const SUPABASE_URL      = (import.meta.env.VITE_SUPABASE_URL as string) || '';
+const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || '';
 
 // ─── Types ──────────────────────────────────────────────────────
 interface PushPayloadNotification {
@@ -23,7 +25,7 @@ interface SendPushPayload {
   scheduled: (PushPayloadNotification & { sendAt: string }) | null;
 }
 
-// ─── Helper: تحويل VAPID Key ────────────────────────────────────
+// ─── Helper: تحويل VAPID Key بأمان ─────────────────────────────
 const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64  = (base64String + padding)
@@ -33,13 +35,20 @@ const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   return new Uint8Array([...rawData].map((c) => c.charCodeAt(0)));
 };
 
-// ─── Helper: Supabase Fetch مع Retry سريع ────────────────────────
+// ─── Helper: Supabase Fetch مع حماية الـ Timeout والـ Retry ──────
 const supabaseFetch = async (
   path:    string,
   body:    unknown,
   retries: number = 2
 ): Promise<{ ok: boolean; data?: unknown; error?: string }> => {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    return { ok: false, error: 'Supabase credentials missing' };
+  }
+
   for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 7000); // ⏱️ مهلة أقصاها 7 ثوانٍ لمنع تعليق التطبيق
+
     try {
       const response = await fetch(`${SUPABASE_URL}/functions/v1/${path}`, {
         method:  'POST',
@@ -48,7 +57,10 @@ const supabaseFetch = async (
           'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify(body),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const data = await response.json().catch(() => ({}));
@@ -61,15 +73,21 @@ const supabaseFetch = async (
         return { ok: false, error };
       }
 
-      console.warn(`⚠️ [${path}] Server error ${response.status}, attempt ${attempt + 1}`);
-    } catch (err) {
-      console.warn(`⚠️ [${path}] Network error, attempt ${attempt + 1}:`, err);
+      console.warn(`⚠️ [${path}] Server response ${response.status}, retrying (${attempt + 1}/${retries})...`);
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        console.warn(`⏱️ [${path}] Request timeout on attempt ${attempt + 1}`);
+      } else {
+        console.warn(`⚠️ [${path}] Network error on attempt ${attempt + 1}:`, err);
+      }
+
       if (attempt === retries) {
         return { ok: false, error: String(err) };
       }
     }
 
-    await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+    await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
   }
 
   return { ok: false, error: 'Max retries exceeded' };
@@ -77,8 +95,7 @@ const supabaseFetch = async (
 
 // ─── تسجيل Service Worker ───────────────────────────────────────
 export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null> => {
-  if (!('serviceWorker' in navigator)) {
-    console.warn('❌ Service Worker غير مدعوم');
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     return null;
   }
 
@@ -99,7 +116,7 @@ export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration
 // ─── الاشتراك في Push Notifications ────────────────────────────
 export const subscribeToPush = async (garageId: string): Promise<boolean> => {
   try {
-    if (!('PushManager' in window)) {
+    if (typeof window === 'undefined' || !('PushManager' in window) || !('Notification' in window)) {
       console.warn('❌ Push غير مدعوم في هذا المتصفح');
       return false;
     }
@@ -109,11 +126,19 @@ export const subscribeToPush = async (garageId: string): Promise<boolean> => {
 
     let permission = Notification.permission;
     if (permission === 'default') {
-      permission = await Notification.requestPermission();
+      // دعم التوافق مع كل المتصفحات
+      permission = await new Promise((resolve) => {
+        try {
+          const p = Notification.requestPermission((res) => resolve(res));
+          if (p) p.then(resolve).catch(() => resolve('denied'));
+        } catch {
+          resolve('denied');
+        }
+      });
     }
 
     if (permission !== 'granted') {
-      console.warn('❌ تم رفض إذن الإشعارات من السايس');
+      console.warn('❌ إذن الإشعارات غير مفعل');
       return false;
     }
 
@@ -180,7 +205,6 @@ export const sendCarComingPush = async ({
   agreedPrice?:     number;
 }): Promise<boolean> => {
   try {
-    // 🌟 توحيد بصمة اللوحة في الوسوم لضمان مطابقتها بدقة
     const plateFingerprint = normalizePlate(carPlate) || carPlate;
     const immediateTag = `incoming-${plateFingerprint}`;
     const scheduledTag = `approaching-${plateFingerprint}`;
@@ -258,6 +282,7 @@ export const cancelScheduledPush = async (
 // ─── إلغاء الاشتراك ─────────────────────────────────────────────
 export const unsubscribeFromPush = async (): Promise<boolean> => {
   try {
+    if (!('serviceWorker' in navigator)) return false;
     const registration = await navigator.serviceWorker.ready;
     const subscription = await registration.pushManager.getSubscription();
 
@@ -273,14 +298,19 @@ export const unsubscribeFromPush = async (): Promise<boolean> => {
       return true;
     }
     return false;
-  } catch (err) {
+  } catch {
     return false;
   }
 };
 
 // ─── التحقق من حالة الاشتراك وتجديده ───────────────────────────
 export const checkPushSubscriptionStatus = async () => {
-  const isSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const isSupported =
+    typeof window !== 'undefined' &&
+    'serviceWorker' in navigator &&
+    'PushManager' in window &&
+    'Notification' in window;
+
   if (!isSupported) return { isSubscribed: false, permission: 'denied', isSupported: false };
 
   const permission = Notification.permission;

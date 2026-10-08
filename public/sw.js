@@ -1,23 +1,30 @@
-// ✅ رقم الـ Version - تم التحديث لـ v8 لإجبار المتصفحات على تحديث السيرفس ووركر فوراً
-const CACHE_NAME    = 'parknow-v8'; 
+// ✅ رقم الـ Version - تم التحديث لـ v9 لإجبار المتصفحات على تحديث كل الشاشات والكاش فوراً
+const CACHE_NAME    = 'parkn24-v9'; 
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
 // ✅ منع تكرار نفس الإشعار خلال 3 ثوانٍ
 const recentNotifications = new Map();
 const DEDUP_WINDOW_MS     = 3000;
 
-// ─── 1. Install ───────────────────────────────────────────────
+// ─── 1. Message Listener (استقبال أمر التحديث الفوري من main.tsx) ───────
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// ─── 2. Install ───────────────────────────────────────────────
 self.addEventListener('install', (event) => {
   self.skipWaiting(); // تفعيل فوري بدون انتظار
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 Service Worker Installed (v8)');
+      console.log('📦 Service Worker Installed (v9)');
       return cache.addAll(STATIC_ASSETS);
     })
   );
 });
 
-// ─── 2. Activate ──────────────────────────────────────────────
+// ─── 3. Activate ──────────────────────────────────────────────
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
@@ -35,7 +42,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// ─── 3. Fetch ─────────────────────────────────────────────────
+// ─── 4. Fetch ─────────────────────────────────────────────────
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET')                   return;
   if (event.request.url.startsWith('chrome-extension')) return;
@@ -44,7 +51,7 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        if (response.status === 200) {
+        if (response && response.status === 200) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, clone);
@@ -64,7 +71,7 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// ─── 4. Push (استقبال الإشعار الفوري وإيقاظ الهاتف بنمط رنين قوي) ─────────
+// ─── 5. Push (استقبال الإشعار الفوري وإيقاظ الهاتف بنمط رنين قوي) ─────────
 self.addEventListener('push', (event) => {
   let title     = '🚨 سيارة في الطريق إليك!';
   let body      = '🚗 تقترب سيارة جديدة من الجراج الآن، استعد!';
@@ -158,7 +165,7 @@ self.addEventListener('push', (event) => {
   );
 });
 
-// ─── 5. Notification Click (فتح لوحة الجراج مباشرة) ──────────
+// ─── 6. Notification Click (فتح لوحة الجراج مباشرة وتوجيه التبويب) ──────────
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
@@ -173,7 +180,11 @@ self.addEventListener('notificationclick', (event) => {
       .matchAll({ type: 'window', includeUncontrolled: true })
       .then((clientList) => {
         for (const client of clientList) {
-          if ('focus' in client) {
+          if (client.url.includes(self.location.origin) && 'focus' in client) {
+            // توجيه التبويب المفتوح للصفحة المستهدفة فوراً
+            if (targetUrl && 'navigate' in client) {
+              client.navigate(targetUrl);
+            }
             return client.focus();
           }
         }
@@ -184,7 +195,7 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// ─── 6. Notification Close ────────────────────────────────────
+// ─── 7. Notification Close ────────────────────────────────────
 self.addEventListener('notificationclose', (event) => {
   console.log('🔕 تم إغلاق الإشعار:', event.notification.tag);
 });

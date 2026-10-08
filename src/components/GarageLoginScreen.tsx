@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Phone, User, Shield, HardHat, ArrowLeft, Building2, MapPin, Lock, ArrowRight } from 'lucide-react';
+import { Phone, User, Shield, HardHat, ArrowLeft, Building2, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { useStore, normalizePhone } from '../store';
 import toast from 'react-hot-toast';
 
@@ -36,9 +36,13 @@ export default function GarageLoginScreen() {
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<'owner' | 'valet'>('owner');
   const [valetPassword, setValetPassword] = useState('');
+  const [showValetPassword, setShowValetPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const [ownedGarages, setOwnedGarages] = useState<any[]>([]);
   const [loginStep, setLoginStep] = useState<'credentials' | 'select_garage'>('credentials');
+
+  const isSubmittingRef = useRef(false);
 
   useEffect(() => {
     const savedUsername = localStorage.getItem('garagePrefillUsername');
@@ -55,7 +59,10 @@ export default function GarageLoginScreen() {
     setView('garage');
   };
 
-  const handleLogin = () => {
+  const handleLogin = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (isSubmittingRef.current || loading) return;
+
     const cleanUsername = safeClean(username).toLowerCase();
     const cleanPhone = normalizePhone(phone);
 
@@ -64,77 +71,85 @@ export default function GarageLoginScreen() {
       return;
     }
 
-    const found = garages.find(
-      (g) =>
-        safeClean(g.username).toLowerCase() === cleanUsername &&
-        (normalizePhone(g.phone) === cleanPhone || normalizePhone(g.ownerPhone || '') === cleanPhone)
-    );
+    setLoading(true);
+    isSubmittingRef.current = true;
 
-    if (!found) {
-      toast.error('بيانات الدخول غير صحيحة، تأكد من اسم المستخدم ورقم الهاتف');
-      return;
-    }
-
-    localStorage.removeItem('garagePrefillUsername');
-    localStorage.removeItem('garagePrefillPhone');
-
-    if (role === 'valet') {
-      const pw = safeClean(valetPassword);
-      let valetNumber = 0;
-      let valetName = '';
-      let isActive = false;
-
-      if (pw && safeClean(found.valetPassword1) === pw) {
-        valetNumber = 1;
-        valetName = String(found.valetName1 || '');
-        isActive = found.valet1Active !== false;
-      } else if (pw && safeClean(found.valetPassword2) === pw) {
-        valetNumber = 2;
-        valetName = String(found.valetName2 || '');
-        isActive = found.valet2Active !== false;
-      } else if (pw && safeClean(found.valetPassword3) === pw) {
-        valetNumber = 3;
-        valetName = String(found.valetName3 || '');
-        isActive = found.valet3Active !== false;
-      }
-
-      if (valetNumber === 0) {
-        toast.error('كلمة مرور الفالية غير صحيحة');
-        return;
-      }
-
-      if (!isActive) {
-        toast.error('عذراً، هذا الحساب معطل حالياً من قبل المالك 🔒');
-        return;
-      }
-
-      localStorage.setItem('garageRole', 'valet');
-      localStorage.setItem('valetNumber', String(valetNumber));
-      localStorage.setItem('valetName', valetName);
-
-      toast.success(
-        valetName
-          ? `✅ مرحباً ${valetName} - فالية ${valetNumber}`
-          : `✅ تم الدخول كفالية جراج ${valetNumber}`
+    try {
+      const found = garages.find(
+        (g) =>
+          safeClean(g.username).toLowerCase() === cleanUsername &&
+          (normalizePhone(g.phone) === cleanPhone || normalizePhone(g.ownerPhone || '') === cleanPhone)
       );
 
-      completeGarageLogin(found.id);
-      return;
-    }
+      if (!found) {
+        toast.error('بيانات الدخول غير صحيحة، تأكد من اسم المستخدم ورقم الهاتف');
+        return;
+      }
 
-    localStorage.setItem('garageRole', 'owner');
-    localStorage.removeItem('valetNumber');
-    localStorage.removeItem('valetName');
+      localStorage.removeItem('garagePrefillUsername');
+      localStorage.removeItem('garagePrefillPhone');
 
-    const ownerPhone = found.ownerPhone || found.phone;
-    const myGarages = getMyOwnedGarages(ownerPhone);
+      if (role === 'valet') {
+        const pw = safeClean(valetPassword);
+        let valetNumber = 0;
+        let valetName = '';
+        let isActive = false;
 
-    if (myGarages.length > 1) {
-      setOwnedGarages(myGarages);
-      setLoginStep('select_garage');
-    } else {
-      toast.success('✅ تم الدخول كمالك الجراج');
-      completeGarageLogin(found.id);
+        if (pw && safeClean(found.valetPassword1) === pw) {
+          valetNumber = 1;
+          valetName = String(found.valetName1 || '');
+          isActive = found.valet1Active !== false;
+        } else if (pw && safeClean(found.valetPassword2) === pw) {
+          valetNumber = 2;
+          valetName = String(found.valetName2 || '');
+          isActive = found.valet2Active !== false;
+        } else if (pw && safeClean(found.valetPassword3) === pw) {
+          valetNumber = 3;
+          valetName = String(found.valetName3 || '');
+          isActive = found.valet3Active !== false;
+        }
+
+        if (valetNumber === 0) {
+          toast.error('كلمة مرور الفالية غير صحيحة');
+          return;
+        }
+
+        if (!isActive) {
+          toast.error('عذراً، هذا الحساب معطل حالياً من قبل المالك 🔒');
+          return;
+        }
+
+        localStorage.setItem('garageRole', 'valet');
+        localStorage.setItem('valetNumber', String(valetNumber));
+        localStorage.setItem('valetName', valetName);
+
+        toast.success(
+          valetName
+            ? `✅ مرحباً ${valetName} - فالية ${valetNumber}`
+            : `✅ تم الدخول كفالية جراج ${valetNumber}`
+        );
+
+        completeGarageLogin(found.id);
+        return;
+      }
+
+      localStorage.setItem('garageRole', 'owner');
+      localStorage.removeItem('valetNumber');
+      localStorage.removeItem('valetName');
+
+      const ownerPhone = found.ownerPhone || found.phone;
+      const myGarages = getMyOwnedGarages(ownerPhone);
+
+      if (myGarages.length > 1) {
+        setOwnedGarages(myGarages);
+        setLoginStep('select_garage');
+      } else {
+        toast.success('✅ تم الدخول كمالك الجراج');
+        completeGarageLogin(found.id);
+      }
+    } finally {
+      setLoading(false);
+      isSubmittingRef.current = false;
     }
   };
 
@@ -167,8 +182,15 @@ export default function GarageLoginScreen() {
       }}
     >
       <div className="text-center mb-6 relative z-10">
-        <div className="w-20 h-20 rounded-2xl p-2.5 mx-auto mb-3 flex items-center justify-center border" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
-          <img src="/images/logo.png" alt="بركن 24" className="w-full h-full object-contain" />
+        <div className="w-20 h-20 rounded-2xl p-2.5 mx-auto mb-3 flex items-center justify-center border shadow-lg" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+          <img 
+            src="/images/logo.png" 
+            alt="بركن 24" 
+            className="w-full h-full object-contain"
+            onError={(e) => {
+              (e.target as HTMLElement).style.display = 'none';
+            }} 
+          />
         </div>
         <h2 className="text-2xl font-black mb-0.5 tracking-tight text-white">بركن <span style={{ color: BRAND.green }}>24</span></h2>
         <p className="text-xs font-bold" style={{ color: BRAND.slateMuted }}>بوابة تسجيل دخول أصحاب الجراجات والسياس</p>
@@ -202,12 +224,22 @@ export default function GarageLoginScreen() {
               </button>
             </div>
 
-            <div className="space-y-3.5 p-5 rounded-3xl border shadow-xl" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+            <form onSubmit={handleLogin} className="space-y-3.5 p-5 rounded-3xl border shadow-xl" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
               <div>
                 <label className="text-[10px] font-bold block mb-1" style={{ color: BRAND.slateMuted }}>اسم المستخدم المسجل للجراج</label>
                 <div className="relative">
                   <User size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: BRAND.slateMuted }} />
-                  <input className="w-full py-3 px-3.5 pr-10 text-right font-bold outline-none text-xs rounded-xl border text-white" style={{ background: BRAND.navy, borderColor: BRAND.border }} placeholder="اسم المستخدم" value={username} onChange={(e) => setUsername(e.target.value)} />
+                  <input 
+                    type="text"
+                    inputMode="text"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    className="w-full py-3 px-3.5 pr-10 text-right font-bold outline-none text-xs rounded-xl border text-white" 
+                    style={{ background: BRAND.navy, borderColor: BRAND.border }} 
+                    placeholder="اسم المستخدم" 
+                    value={username} 
+                    onChange={(e) => setUsername(e.target.value)} 
+                  />
                 </div>
               </div>
 
@@ -215,16 +247,40 @@ export default function GarageLoginScreen() {
                 <label className="text-[10px] font-bold block mb-1" style={{ color: BRAND.slateMuted }}>رقم الهاتف المعتمد</label>
                 <div className="relative">
                   <Phone size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: BRAND.slateMuted }} />
-                  <input type="tel" dir="ltr" className="w-full py-3 px-3.5 pr-10 text-left font-mono font-bold outline-none text-xs rounded-xl border text-white" style={{ background: BRAND.navy, borderColor: BRAND.border }} placeholder="01xxxxxxxxx" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                  <input 
+                    type="tel" 
+                    dir="ltr" 
+                    inputMode="numeric"
+                    className="w-full py-3 px-3.5 pr-10 text-left font-mono font-bold outline-none text-xs rounded-xl border text-white" 
+                    style={{ background: BRAND.navy, borderColor: BRAND.border }} 
+                    placeholder="01xxxxxxxxx" 
+                    value={phone} 
+                    onChange={(e) => setPhone(e.target.value)} 
+                  />
                 </div>
               </div>
 
               {role === 'valet' && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="space-y-2">
+                <div className="space-y-2">
                   <label className="text-[10px] font-bold block mb-1" style={{ color: BRAND.slateMuted }}>كلمة مرور الفالية السرية</label>
-                  <div className="relative">
+                  <div className="relative flex items-center">
                     <Lock size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: BRAND.slateMuted }} />
-                    <input type="password" className="w-full py-3 px-3.5 pr-10 text-center font-mono font-black outline-none text-sm rounded-xl border text-white tracking-widest" style={{ background: BRAND.navy, borderColor: BRAND.border }} placeholder="••••" value={valetPassword} onChange={(e) => setValetPassword(e.target.value)} />
+                    <input 
+                      type={showValetPassword ? 'text' : 'password'} 
+                      inputMode="numeric"
+                      className="w-full py-3 px-10 text-center font-mono font-black outline-none text-sm rounded-xl border text-white tracking-widest" 
+                      style={{ background: BRAND.navy, borderColor: BRAND.border }} 
+                      placeholder="••••" 
+                      value={valetPassword} 
+                      onChange={(e) => setValetPassword(e.target.value)} 
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowValetPassword(!showValetPassword)}
+                      className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white border-0 bg-transparent cursor-pointer p-0.5"
+                    >
+                      {showValetPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
                   </div>
                   {selectedGarage && (
                     <div className="rounded-xl p-2 border text-center" style={{ background: BRAND.navy, borderColor: BRAND.border }}>
@@ -233,7 +289,7 @@ export default function GarageLoginScreen() {
                       </span>
                     </div>
                   )}
-                </motion.div>
+                </div>
               )}
 
               {selectedGarage && (
@@ -242,18 +298,23 @@ export default function GarageLoginScreen() {
                 </div>
               )}
 
-              <button type="button" onClick={handleLogin} className="w-full font-black py-3.5 rounded-xl text-xs border-0 text-white cursor-pointer flex items-center justify-center gap-1.5" style={{ background: BRAND.blue }}>
-                <span>{role === 'owner' ? 'دخول لوحة المالك' : 'دخول وردية الفالية'}</span>
+              <button 
+                type="submit" 
+                disabled={loading}
+                className="w-full font-black py-3.5 rounded-xl text-xs border-0 text-white cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 transition-all disabled:opacity-50" 
+                style={{ background: BRAND.blue }}
+              >
+                <span>{loading ? 'جاري التحقق...' : role === 'owner' ? 'دخول لوحة المالك 🚀' : 'دخول وردية الفالية 🚀'}</span>
                 <ArrowRight size={15} className="rotate-180" />
               </button>
-            </div>
+            </form>
           </motion.div>
         )}
 
         {loginStep === 'select_garage' && (
           <motion.div key="select_garage" initial={{ opacity: 0, x: -15 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 15 }} className="space-y-3.5 p-5 rounded-3xl border shadow-xl relative z-10" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
             <div className="flex justify-between items-center pb-2.5 border-b" style={{ borderColor: BRAND.border }}>
-              <button onClick={() => setLoginStep('credentials')} className="text-slate-400 hover:text-white p-1 rounded-lg border-0 bg-transparent cursor-pointer"><ArrowLeft size={18} /></button>
+              <button type="button" onClick={() => setLoginStep('credentials')} className="text-slate-400 hover:text-white p-1 rounded-lg border-0 bg-transparent cursor-pointer"><ArrowLeft size={18} /></button>
               <h3 className="font-black text-xs text-white flex items-center gap-1.5">
                 <span>اختر الجراج المطلوب إدارته</span>
                 <Building2 size={16} style={{ color: BRAND.blue }} />
@@ -261,7 +322,13 @@ export default function GarageLoginScreen() {
             </div>
             <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
               {ownedGarages.map((g) => (
-                <button key={g.id} onClick={() => { toast.success(`✅ تم فتح لوحة تحكم ${g.name}`); completeGarageLogin(g.id); }} className="w-full p-3.5 rounded-xl border text-right flex justify-between items-center cursor-pointer" style={{ background: BRAND.navy, borderColor: BRAND.border }}>
+                <button 
+                  key={g.id} 
+                  type="button"
+                  onClick={() => { toast.success(`✅ تم فتح لوحة تحكم ${g.name}`); completeGarageLogin(g.id); }} 
+                  className="w-full p-3.5 rounded-xl border text-right flex justify-between items-center cursor-pointer active:scale-95 transition-all" 
+                  style={{ background: BRAND.navy, borderColor: BRAND.border }}
+                >
                   <div className="font-mono font-black text-sm text-white">{g.availableSpots} <span className="text-[9px] text-slate-400">شاغر</span></div>
                   <div className="text-right flex-1 mr-3">
                     <div className="font-black text-xs text-white">🅿️ {g.name}</div>

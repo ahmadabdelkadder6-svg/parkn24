@@ -1,17 +1,29 @@
+// src/utils/pricing.ts
+
+/**
+ * ⏱️ الثوابت الزمنية لحساب الركنات
+ */
+export const SECONDS_IN_HOUR = 3600;
+export const FREE_SESSION_SECONDS = 1800; // 30 دقيقة مجانية (1800 ثانية)
+
 /**
  * ✅ حساب الساعات المحسوبة (من 1 إلى 60 دقيقة = ساعة، من 61 إلى 120 = ساعتان.. إلخ)
  */
 export function calculateFullHours(elapsedSeconds: number): number {
-  if (!elapsedSeconds || elapsedSeconds <= 0 || isNaN(elapsedSeconds)) return 0;
-  return Math.ceil(elapsedSeconds / 3600);
+  if (!Number.isFinite(elapsedSeconds) || elapsedSeconds <= 0) return 0;
+  const safeSeconds = Math.floor(elapsedSeconds);
+  return Math.ceil(safeSeconds / SECONDS_IN_HOUR);
 }
 
 /**
  * ✅ حساب التكلفة العادية
  */
 export function calculateCost(elapsedSeconds: number, ratePerHour: number): number {
-  if (!elapsedSeconds || elapsedSeconds <= 0 || !ratePerHour || ratePerHour <= 0) return 0;
-  return calculateFullHours(elapsedSeconds) * ratePerHour;
+  if (!Number.isFinite(elapsedSeconds) || elapsedSeconds <= 0) return 0;
+  if (!Number.isFinite(ratePerHour) || ratePerHour <= 0) return 0;
+  
+  const hours = calculateFullHours(elapsedSeconds);
+  return Math.round(hours * ratePerHour);
 }
 
 /**
@@ -31,15 +43,16 @@ export function calculateCostWithLoyalty(
   isFree: boolean;
   savedAmount: number;
 } {
-  if (!ratePerHour || ratePerHour <= 0 || !elapsedSeconds || elapsedSeconds <= 0) {
+  if (!Number.isFinite(ratePerHour) || ratePerHour <= 0 || !Number.isFinite(elapsedSeconds) || elapsedSeconds <= 0) {
     return { cost: 0, paidHours: 0, totalHours: 0, isFree: isFreeSession, savedAmount: 0 };
   }
 
-  const standardHours = calculateFullHours(elapsedSeconds);
-  const standardCost = standardHours * ratePerHour;
+  const safeSeconds = Math.floor(elapsedSeconds);
+  const standardHours = calculateFullHours(safeSeconds);
+  const standardCost = Math.round(standardHours * ratePerHour);
 
-  // إذا كانت الجلسة مستحقة للهدية ومدة الركن 30 دقيقة أو أقل
-  if (isFreeSession && elapsedSeconds <= 1800) {
+  // إذا كانت الجلسة مستحقة للهدية ومدة الركن 30 دقيقة أو أقل (<= 1800 ثانية)
+  if (isFreeSession && safeSeconds <= FREE_SESSION_SECONDS) {
     return {
       cost: 0,
       paidHours: 0,
@@ -49,7 +62,7 @@ export function calculateCostWithLoyalty(
     };
   }
 
-  // إذا تجاوزت الـ 30 دقيقة أو لم تكن مجانية
+  // إذا تجاوزت الـ 30 دقيقة أو لم تكن الجلسة مشمولة بالهدية
   return {
     cost: standardCost,
     paidHours: standardHours,
@@ -63,7 +76,7 @@ export function calculateCostWithLoyalty(
  * ✅ تنسيق الوقت اللحظي إلى (00:00:00)
  */
 export function formatTime(totalSeconds: number): string {
-  if (!totalSeconds || totalSeconds <= 0 || isNaN(totalSeconds)) return '00:00:00';
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return '00:00:00';
   const total = Math.floor(totalSeconds);
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
@@ -75,14 +88,17 @@ export function formatTime(totalSeconds: number): string {
  * ✅ حساب الوقت المتبقي لانتهاء الساعة الحالية
  */
 export function getRemainingInCurrentHour(elapsedSeconds: number): { minutes: number; seconds: number } {
-  if (!elapsedSeconds || elapsedSeconds <= 0 || isNaN(elapsedSeconds)) {
+  if (!Number.isFinite(elapsedSeconds) || elapsedSeconds <= 0) {
     return { minutes: 59, seconds: 59 };
   }
-  const secondsInCurrentHour = Math.floor(elapsedSeconds) % 3600;
-  const remaining = 3600 - secondsInCurrentHour;
-  if (remaining <= 0 || remaining >= 3600) {
+  const safeSeconds = Math.floor(elapsedSeconds);
+  const secondsInCurrentHour = safeSeconds % SECONDS_IN_HOUR;
+  const remaining = SECONDS_IN_HOUR - secondsInCurrentHour;
+  
+  if (remaining <= 0 || remaining >= SECONDS_IN_HOUR) {
     return { minutes: 59, seconds: 59 };
   }
+  
   return {
     minutes: Math.floor(remaining / 60),
     seconds: remaining % 60,
