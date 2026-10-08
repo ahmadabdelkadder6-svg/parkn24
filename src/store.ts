@@ -912,7 +912,44 @@ export const useStore = create<AppState>((set, get) => ({
       const addedByValue = resolveAddedBy(s.addedBy);
       const isAppBooking = s.source === 'app';
       const cleanPhone = s.customerPhone ? normalizePhone(s.customerPhone) : '';
-      const eligibleForFree = isAppBooking && get().currentUser?.hasUsedFreeSession !== true;
+
+      // 🛡️ فحص حقيقي ودقيق لسجل العميل في السيرفر لمنع تكرار الهدية الترحيبية
+      let eligibleForFree = false;
+      if (isAppBooking) {
+        if (s.isFirstFreeSession !== undefined) {
+          eligibleForFree = Boolean(s.isFirstFreeSession);
+        } else if (isSupabaseConfigured() && (cleanPhone || normalizedPlate)) {
+          try {
+            const query = cleanPhone 
+              ? `customer_phone.eq.${cleanPhone},car_plate.eq.${normalizedPlate}`
+              : `car_plate.eq.${normalizedPlate}`;
+            
+            // هل ركنت هذه السيارة بهدية من قبل؟
+            const { data: pastSessions } = await supabase
+              .from('sessions')
+              .select('id')
+              .eq('is_first_free_session', true)
+              .or(query)
+              .limit(1);
+
+            let userAlreadyUsed = false;
+            if (cleanPhone) {
+              const { data: uData } = await supabase
+                .from('users')
+                .select('has_used_free_session')
+                .eq('phone', cleanPhone)
+                .maybeSingle();
+              userAlreadyUsed = uData?.has_used_free_session === true;
+            }
+
+            // مؤهل فقط إذا لم يسبق له أخذ الهدية
+            eligibleForFree = !userAlreadyUsed && (!pastSessions || pastSessions.length === 0);
+          } catch (err) {
+            eligibleForFree = false;
+          }
+        }
+      }
+
       const startTimeISO = typeof s.startTime === 'string' ? s.startTime : new Date(getServerNow()).toISOString();
 
       const optimisticSession: ParkingSession = {
