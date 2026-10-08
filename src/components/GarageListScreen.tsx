@@ -20,7 +20,6 @@ import {
   ExternalLink,
   Edit3,
   Check,
-  ShieldAlert,
 } from 'lucide-react';
 import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
 import {
@@ -75,6 +74,7 @@ const safeParseTime = (value: unknown): number => {
   return 0;
 };
 
+// أيقونات المناطق هادئة وبسيطة
 const AREA_ICONS: Record<string, string> = {
   'وسط البلد': '🏢',
   'مصر الجديدة': '🏰',
@@ -86,6 +86,9 @@ const AREA_ICONS: Record<string, string> = {
   'مناطق أخرى': '📍',
 };
 
+/* ════════════════════════════════════════════════════════════
+   ██  MAIN SCREEN
+   ════════════════════════════════════════════════════════════ */
 export default function GarageListScreen() {
   const {
     garages,
@@ -108,7 +111,7 @@ export default function GarageListScreen() {
   const [showHistory, setShowHistory] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   
-  // 🌟 نظام التبويب الجديد (VIP vs الدليل المجاني)
+  // 🌟 نظام التبويب الجديد والمحسن (VIP vs الدليل المجاني)
   const [activeTab, setActiveTab] = useState<'vip' | 'directory'>('vip');
 
   const [reportingGarage, setReportingGarage] = useState<GarageWithDistance | null>(null);
@@ -211,6 +214,7 @@ export default function GarageListScreen() {
 
   useEffect(() => { getUserLocation(); }, [getUserLocation]);
 
+  // 🛡️ اشتراك لحظي أمني شامل لتحديث المحفظة
   useEffect(() => {
     if (!normalizedUserPlate && !cleanUserPhone) return;
     let isSubscribed = true;
@@ -286,8 +290,11 @@ export default function GarageListScreen() {
   const filteredGarages = useMemo(() => {
     let filtered = garagesWithDistance;
     
-    // 🌟 الفلترة بحسب التبويب النشط (VIP ضد الدليل)
-    filtered = filtered.filter((g) => g.garageType === activeTab);
+    // 🌟 فحص وتصفية التبويب النشط (حماية كاملة من تعارض vip/partner)
+    filtered = filtered.filter((g) => {
+      const type = g.garageType === 'partner' ? 'vip' : g.garageType;
+      return type === activeTab;
+    });
 
     if (search.trim()) {
       const q = search.trim().toLowerCase();
@@ -303,7 +310,7 @@ export default function GarageListScreen() {
     return Object.keys(groups).map(name => ({
       name, garages: groups[name],
       totalCapacity: groups[name].reduce((sum, g) => sum + (g.capacity || 0), 0),
-    })).sort((a, b) => { if (a.name === 'مناطق أخرى') return 1; if (a.name === 'مناطق أخرى') return -1; return a.name.localeCompare(b.name, 'ar'); });
+    })).sort((a, b) => { if (a.name === 'مناطق أخرى') return 1; if (b.name === 'مناطق أخرى') return -1; return a.name.localeCompare(b.name, 'ar'); });
   }, [filteredGarages]);
 
   useEffect(() => { if (search.trim() && areaGroups.length > 0) setExpandedArea(areaGroups[0].name); }, [search, areaGroups]);

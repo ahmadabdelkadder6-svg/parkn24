@@ -33,7 +33,7 @@ export interface Garage {
   area?: string;
   
   // 🌟 الخصائص المحسوبة تلقائياً لحفظ توافق الجداول القديمة
-  garageType?: 'partner' | 'directory';
+  garageType?: 'vip' | 'directory';
   priceType?: 'hourly' | 'daily' | 'monthly';
   dailyPrice?: number;
   monthlyPrice?: number;
@@ -341,14 +341,22 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   });
 };
 
-// 🌟 الموازنة الذكية الفائقة: قراءة وتحديد الدليل من عمود valet_name_1 بدون أي حقول جديدة
+// 🌟 الموازنة الذكية الفائقة: قراءة وتحديد الدليل من عمود valet_name_1 بدون أي حقول جديدة وبحماية العمولة الفارغة
 const mapGarage = (r: any): Garage => {
-  const isDirectory = 
-    r.valet_name_1 === 'directory' || 
-    (!r.valet_name_1 && !r.valet_password_1) || 
-    Number(r.commission_rate) === 0 || 
-    String(r.username || '').startsWith('dir_') || 
-    r.location === 'دليل ركنات مجاني';
+  const hasExplicitType = r.garage_type !== undefined && r.garage_type !== null;
+  
+  let isDirectory = false;
+  if (hasExplicitType) {
+    isDirectory = r.garage_type === 'directory';
+  } else {
+    // 🛡️ فلترة أمنية ذكية تمنع اعتبار القيمة الفارغة (Null) للعمولة صفراً تلقائياً
+    const isDirValet = r.valet_name_1 === 'directory';
+    const isDirUser = String(r.username || '').startsWith('dir_');
+    const isDirLocation = r.location === 'دليل ركنات مجاني';
+    const isExplicitZeroCommission = r.commission_rate !== undefined && r.commission_rate !== null && Number(r.commission_rate) === 0;
+
+    isDirectory = isDirValet || isDirUser || isDirLocation || isExplicitZeroCommission;
+  }
 
   return {
     id: r.id, 
@@ -363,7 +371,6 @@ const mapGarage = (r: any): Garage => {
     availableSpots: Number(r.available_spots ?? r.capacity ?? 50), 
     basePrice: Number(r.base_price || 15),
     rating: Number(r.rating || 4.5),
-    // إخفاء السترة الوهمية عن شاشة المالك والأدمن
     valetName1: r.valet_name_1 === 'directory' ? '' : (r.valet_name_1 || ''), 
     valetPassword1: r.valet_name_1 === 'directory' ? '' : (r.valet_password_1 || ''),
     valetName2: r.valet_name_2 || '', valetPassword2: r.valet_password_2 || '',
@@ -376,9 +383,9 @@ const mapGarage = (r: any): Garage => {
     payment_mode: r.payment_mode || 'both', 
     area: r.area || 'مناطق أخرى',
 
-    // 🌟 فك تشفير منظومة الدليل بشكل تلقائي وآمن
-    garageType: isDirectory ? 'directory' : 'partner',
-    priceType: isDirectory ? (r.valet_password_1 === 'daily' || r.valet_password_1 === 'monthly' ? r.valet_password_1 : 'hourly') : 'hourly',
+    // 🌟 تعيين الحقول المحسوبة تلقائياً بذكاء ومطابقتها لعلامة 'vip' بالملي
+    garageType: isDirectory ? 'directory' : 'vip',
+    priceType: r.price_type || (isDirectory ? (r.valet_password_1 === 'daily' || r.valet_password_1 === 'monthly' ? r.valet_password_1 : 'hourly') : 'hourly'),
     dailyPrice: isDirectory ? Number(r.base_price) : undefined,
     monthlyPrice: isDirectory ? Number(r.base_price) : undefined,
   };
@@ -726,7 +733,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 🌟 حيلة ذكية: تخزين نوع الدليل والأسعار داخل الأعمدة القديمة valet_name_1 لتجنب فشل السيرفر كلياً
   addGarage: async (g) => {
     const isDirectory = g.garageType === 'directory';
     const finalPrice = isDirectory 
@@ -734,28 +740,17 @@ export const useStore = create<AppState>((set, get) => ({
       : g.basePrice;
 
     const { data, error } = await supabase.from('garages').insert({
-      name: g.name, 
-      username: isDirectory ? `dir_${Date.now()}` : (g.username || `g_${Date.now()}`), 
-      phone: g.phone || '01000000000',
+      name: g.name, username: isDirectory ? `dir_${Date.now()}` : (g.username || `g_${Date.now()}`), phone: g.phone || '01000000000',
       owner_phone: g.ownerPhone || g.phone || '01000000000',
       location: isDirectory ? 'دليل ركنات مجاني' : g.location, 
-      lat: g.lat || 30.0444, 
-      lng: g.lng || 31.2357,
-      capacity: g.capacity || 50, 
-      available_spots: g.capacity || 50, 
-      base_price: finalPrice || 15, 
-      rating: 4.5,
-      commission_rate: isDirectory ? 0 : (g.commissionRate || 10),
-      valet1_active: !isDirectory, 
-      valet2_active: !isDirectory, 
-      valet3_active: !isDirectory,
-      // 🌟 التخزين الذكي في الأعمدة القديمة
+      lat: g.lat, lng: g.lng,
+      capacity: g.capacity, available_spots: g.capacity, base_price: finalPrice || 15, rating: 4.0,
+      commission_rate: isDirectory ? 0 : 10,
+      valet1_active: !isDirectory, valet2_active: !isDirectory, valet3_active: !isDirectory,
       valet_name_1: isDirectory ? 'directory' : (g.valetName1 || ''), 
       valet_password_1: isDirectory ? g.priceType : (g.valetPassword1 || ''),
-      valet_name_2: isDirectory ? '' : (g.valetName2 || ''), 
-      valet_password_2: isDirectory ? '' : (g.valetPassword2 || ''),
-      valet_name_3: isDirectory ? '' : (g.valetName3 || ''), 
-      valet_password_3: isDirectory ? '' : (g.valetPassword3 || ''),
+      valet_name_2: isDirectory ? '' : (g.valetName2 || ''), valet_password_2: isDirectory ? '' : (g.valetPassword2 || ''),
+      valet_name_3: isDirectory ? '' : (g.valetName3 || ''), valet_password_3: isDirectory ? '' : (g.valetPassword3 || ''),
       is_active: true,
       payment_mode: isDirectory ? 'cash' : 'both', 
       area: g.area || 'مناطق أخرى',
@@ -785,8 +780,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (updates.commissionRate !== undefined) dbUpdates.commission_rate = updates.commissionRate;
     if (updates.payment_mode !== undefined) dbUpdates.payment_mode = updates.payment_mode; 
     if (updates.area !== undefined) dbUpdates.area = updates.area; 
-    
-    // 🌟 التحديث التشاركي الذكي
+
     if (updates.garageType !== undefined) {
       dbUpdates.valet_name_1 = isDirectory ? 'directory' : (updates.valetName1 || '');
       dbUpdates.valet_password_1 = isDirectory ? (updates.priceType || 'hourly') : (updates.valetPassword1 || '');
@@ -797,17 +791,9 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // الإبلاغ التشاركي عن السعر
   reportPriceUpdate: async (garageId, newPrice, priceType = 'hourly') => {
     set((st) => ({
-      garages: st.garages.map((g) => {
-        if (g.id !== garageId) return g;
-        return {
-          ...g,
-          basePrice: newPrice,
-          dailyPrice: priceType === 'daily' ? newPrice : g.dailyPrice,
-        };
-      }),
+      garages: st.garages.map((g) => g.id === garageId ? { ...g, basePrice: newPrice, dailyPrice: newPrice } : g),
     }));
 
     if (isSupabaseConfigured()) {

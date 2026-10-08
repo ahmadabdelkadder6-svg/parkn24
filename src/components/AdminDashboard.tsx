@@ -118,12 +118,23 @@ export default function AdminDashboard() {
   const [visibleSettlements, setVisibleSettlements] = useState(4);
   const [activeAccordionGarageId, setActiveAccordionGarageId] = useState<string | null>(null);
   
+  // 🌟 فلترة جراجات الأدمن بحسب النوع (VIP ضد الدليل)
+  const [adminGarageTab, setAdminGarageTab] = useState<'vip' | 'directory'>('vip');
   const [garageSearch, setGarageSearch] = useState('');
+
   const filteredGaragesForAdmin = useMemo(() => {
     const q = garageSearch.trim().toLowerCase();
-    if (!q) return garages;
-    return garages.filter(g => g.name.toLowerCase().includes(q));
-  }, [garages, garageSearch]);
+    
+    // 1. تصفية الجراجات بحسب التبويب النشط في الأدمن
+    let list = garages.filter((g) => {
+      const type = g.garageType === 'partner' ? 'vip' : g.garageType;
+      return type === adminGarageTab;
+    });
+
+    // 2. تصفية بحسب نص البحث لو العميل كتب حاجة
+    if (!q) return list;
+    return list.filter(g => g.name.toLowerCase().includes(q));
+  }, [garages, garageSearch, adminGarageTab]);
 
   /* ─── Add Garage State ─── */
   const [gName, setGName] = useState('');
@@ -1343,13 +1354,42 @@ export default function AdminDashboard() {
 
       {/* 🏢 إدارة وجرد الجراجات */}
       <div className="mb-8">
-        <div className="flex items-center justify-between mb-3">
-          <span className="font-black text-[9px] px-2 py-0.5 rounded bg-slate-200" style={{ color: BRAND.slate }}>
-            {filteredGaragesForAdmin.length} جراج نشط
+        <div className="flex justify-between items-center mb-3">
+          <span className="font-black text-[9px] px-2.5 py-1 rounded bg-slate-200" style={{ color: BRAND.slate }}>
+            {filteredGaragesForAdmin.length} جراج نشط بالقسم
           </span>
           <h3 className="font-black text-xs" style={{ color: BRAND.navy }}>
             إدارة وجرد الجراجات
           </h3>
+        </div>
+
+        {/* 🌟 أزرار الفصل الذكية لجرد الأدمن (VIP ضد الدليل) */}
+        <div className="flex p-1 rounded-xl bg-slate-100 border border-slate-200 mb-3" style={{ direction: 'rtl' }}>
+          <button
+            type="button"
+            onClick={() => setAdminGarageTab('vip')}
+            className="flex-1 py-2 rounded-lg font-black text-[10px] cursor-pointer border-0 transition-all flex items-center justify-center gap-1"
+            style={{
+              background: adminGarageTab === 'vip' ? BRAND.blue : 'transparent',
+              color: adminGarageTab === 'vip' ? '#ffffff' : BRAND.slate,
+              boxShadow: adminGarageTab === 'vip' ? '0 2px 6px rgba(22,86,184,0.15)' : 'none',
+            }}
+          >
+            <span>⭐ جراجات VIP الشريكة</span>
+          </button>
+          
+          <button
+            type="button"
+            onClick={() => setAdminGarageTab('directory')}
+            className="flex-1 py-2 rounded-lg font-black text-[10px] cursor-pointer border-0 transition-all flex items-center justify-center gap-1"
+            style={{
+              background: adminGarageTab === 'directory' ? BRAND.blueDark : 'transparent',
+              color: adminGarageTab === 'directory' ? '#ffffff' : BRAND.slate,
+              boxShadow: adminGarageTab === 'directory' ? '0 2px 6px rgba(15,61,133,0.15)' : 'none',
+            }}
+          >
+            <span>🧭 دليل الركنات المجاني</span>
+          </button>
         </div>
 
         <div className="space-y-3 mb-4">
