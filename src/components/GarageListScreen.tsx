@@ -875,15 +875,15 @@ export default function GarageListScreen() {
         )}
       </AnimatePresence>
 
-      {/* 🌟 نافذة الإبلاغ عن تعديل سعر الجراج التشاركية */}
+      {/* 🌟 نافذة الإبلاغ عن تعديل سعر الجراج التشاركية - آمنة من إعادة تحميل الصفحة */}
       <AnimatePresence>
         {reportingGarage && (
-          <div
+          <div 
             className="fixed inset-0 z-[1000] flex items-center justify-center p-5"
             style={{ background: 'rgba(10,22,40,0.75)', backdropFilter: 'blur(6px)' }}
             onClick={() => setReportingGarage(null)}
           >
-            <motion.div
+            <motion.div 
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
@@ -892,7 +892,8 @@ export default function GarageListScreen() {
               onClick={e => e.stopPropagation()}
             >
               <div className="flex justify-between items-center mb-3">
-                <button
+                <button 
+                  type="button" // 🛡️ منع المزامنة وإعادة تحميل الصفحة
                   onClick={() => setReportingGarage(null)}
                   className="text-slate-400 font-black text-sm border-0 bg-transparent cursor-pointer"
                 >
@@ -917,7 +918,7 @@ export default function GarageListScreen() {
                   <div className="flex items-center justify-between gap-3">
                     {/* زر الناقص */}
                     <button 
-                      type="button" 
+                      type="button" // 🛡️ منع إعادة تحميل الصفحة
                       onClick={() => setUpdatedPriceInput(p => Math.max(5, (Number(p) || 0) - 5))} 
                       className="active:scale-90 border-0 rounded-xl text-white font-black w-10 h-10 flex items-center justify-center cursor-pointer bg-red-500 shadow-md shadow-red-500/10"
                     >
@@ -934,14 +935,13 @@ export default function GarageListScreen() {
                         onChange={(e) => {
                           const val = e.target.value;
                           if (val === '') {
-                            setUpdatedPriceInput(''); // السماح بالمسح الكامل أثناء الكتابة
+                            setUpdatedPriceInput(''); 
                           } else {
                             const parsed = parseInt(val, 10);
                             if (!isNaN(parsed)) setUpdatedPriceInput(parsed);
                           }
                         }}
                         onBlur={() => {
-                          // تأمين الحقل: لو سابه فاضي يرجع للقيمة الافتراضية للجراج
                           if (updatedPriceInput === '' || updatedPriceInput <= 0) {
                             setUpdatedPriceInput(reportingGarage.basePrice || 20);
                           }
@@ -956,7 +956,7 @@ export default function GarageListScreen() {
 
                     {/* زر الزائد */}
                     <button 
-                      type="button" 
+                      type="button" // 🛡️ منع إعادة تحميل الصفحة
                       onClick={() => setUpdatedPriceInput(p => (Number(p) || 0) + 5)} 
                       className="active:scale-90 border-0 rounded-xl text-white font-black w-10 h-10 flex items-center justify-center cursor-pointer bg-emerald-500 shadow-md shadow-emerald-500/10"
                     >
@@ -968,6 +968,7 @@ export default function GarageListScreen() {
 
               <div className="flex gap-2">
                 <button
+                  type="button" // 🛡️ منع إعادة تحميل الصفحة
                   onClick={handleSubmitPriceUpdate}
                   disabled={isSubmittingPrice}
                   className="flex-1 py-3 rounded-xl font-black text-xs text-white border-0 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1"
@@ -978,6 +979,7 @@ export default function GarageListScreen() {
                 </button>
 
                 <button
+                  type="button" // 🛡️ منع إعادة تحميل الصفحة
                   onClick={() => setReportingGarage(null)}
                   className="py-3 px-4 rounded-xl font-bold text-xs bg-slate-100 border border-slate-200 text-slate-500 cursor-pointer"
                 >
