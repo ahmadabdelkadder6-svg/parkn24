@@ -358,6 +358,10 @@ const mapSession = (r: any): ParkingSession => {
   const rawEnd = r.end_time;
   const endTime = rawEnd ? (typeof rawEnd === 'string' ? rawEnd : new Date(getMs(rawEnd)).toISOString()) : undefined;
 
+  // 🛡️ قفل أمان قاطع: الهدية الترحيبية فقط وفقط لحجوزات التطبيق (app) ومستحيل تطبق على اليدوي (manual)
+  const isApp = r.source === 'app';
+  const isFree = isApp && (r.is_first_free_session === true || r.is_first_free_session === 'true' || r.is_first_free_session === 1);
+
   return {
     id: r.id,
     garageId: r.garage_id,
@@ -381,7 +385,7 @@ const mapSession = (r: any): ParkingSession => {
     settled: r.settled ?? false,
     settled_at: r.settled_at || undefined,
     freeMinutesApplied: r.free_minutes_applied != null ? Number(r.free_minutes_applied) : 0,
-    isFirstFreeSession: r.is_first_free_session === true || r.is_first_free_session === 'true' || r.is_first_free_session === 1,
+    isFirstFreeSession: isFree, // 🔒 مستحيل يكون true إذا كان source manual
   };
 };
 
@@ -1029,7 +1033,7 @@ export const useStore = create<AppState>((set, get) => ({
     set((st) => ({ messages: [optimisticMessage, ...st.messages] }));
     if (!isSupabaseConfigured()) return { success: true };
     try {
-      const { data, error } = await supabase.from('messages').insert({
+      const { data, error = null } = await supabase.from('messages').insert({
         user_phone: cleanMsg.userPhone, user_name: cleanMsg.userName ?? null,
         car_plate: cleanMsg.carPlate ?? null, type: cleanMsg.type,
         subject: cleanMsg.subject ?? null, message: cleanMsg.message,

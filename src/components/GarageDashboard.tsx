@@ -664,8 +664,9 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
   const el = st > 0 ? Math.max(0, Math.floor((getServerNow() - st) / 1000)) : 0;
   const mins = Math.floor(el / 60);
 
-  const isFreeApplied = s.isFirstFreeSession === true;
-  const isFreeNow = isFreeApplied && el <= 1800;
+// 🛡️ الهدية تطبق فقط إذا كانت الجلسة من التطبيق ومسجلة كأول ركنة
+const isFreeApplied = s.source === 'app' && s.isFirstFreeSession === true;
+const isFreeNow = isFreeApplied && el <= 1800;
   
   const hrs = isFreeNow ? 0 : calculateFullHours(el);
   const rate = Number(s.agreedPrice ?? basePrice);
@@ -1309,7 +1310,7 @@ export default function GarageDashboard() {
 
   const openConfirmPayment = (sid: string, cp: string, cost: number, hrs: number, minutes: number, source: 'app' | 'manual', ap?: number) => {
     const sessionObj = activeSessions.find(s => s.id === sid);
-    const isFreeApplied = sessionObj?.isFirstFreeSession === true;
+    const isFreeApplied = sessionObj?.source === 'app' && sessionObj?.isFirstFreeSession === true;
     
     const st = sessionObj ? toMs(sessionObj.startTime) : 0;
     const el = st > 0 ? Math.max(0, Math.floor((getServerNow() - st) / 1000)) : 0;
@@ -1343,7 +1344,7 @@ export default function GarageDashboard() {
       const pc = (isValet || sc.source === 'manual') ? 'cash' : (confirmPaymentMethod || 'cash');
       
       let freeMinutesApplied = 0;
-      if (sd?.isFirstFreeSession === true) {
+      if (sd?.source === 'app' && sd?.isFirstFreeSession === true) {
         const elapsedSeconds = Math.floor((getServerNow() - toMs(sd.startTime)) / 1000);
         if (elapsedSeconds <= 1800) {
           freeMinutesApplied = Math.floor(elapsedSeconds / 60);
