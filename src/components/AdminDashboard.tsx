@@ -6,9 +6,8 @@ import {
   Shield, Clock, CheckCircle, XCircle, MapPin, Warehouse, Plus,
   MessageCircle, Send, Receipt, Search, HardHat, Percent, DollarSign,
   Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown,
-  Settings, CalendarDays, Navigation, Globe, X
+  Settings, CalendarDays, Navigation, Globe, X, ExternalLink, HelpCircle
 } from 'lucide-react';
-// 🌟 استيراد المزامنة الأمنية ودوال الهوية الموحدة من الـ Store
 import { useStore, pausePolling, normalizePlate, normalizePhone, calculateBonus, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateCost } from '../utils/pricing';
@@ -100,10 +99,16 @@ export default function AdminDashboard() {
   const [sessionSearch, setSessionSearch] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [processingTopUpId, setProcessingTopUpId] = useState<string | null>(null);
+  
+  // 🌟 حقول تعديل بيانات جراج الدليل والعمولة
   const [editingCommissionGarageId, setEditingCommissionGarageId] = useState<string | null>(null);
   const [editCommissionRate, setEditCommissionRate] = useState(10);
-  
   const [editArea, setEditArea] = useState('وسط البلد');
+  const [editGarageType, setEditGarageType] = useState<'partner' | 'directory'>('partner');
+  const [editPriceType, setEditPriceType] = useState<'hourly' | 'daily' | 'monthly'>('hourly');
+  const [editBasePrice, setEditBasePrice] = useState(15);
+  const [editDailyPrice, setEditDailyPrice] = useState(20);
+  const [editMonthlyPrice, setEditMonthlyPrice] = useState(1500);
 
   const [settlementRecords, setSettlementRecords] = useState<SettlementRecord[]>([]);
   const [confirmSettlementGarageId, setConfirmSettlementGarageId] = useState<string | null>(null);
@@ -126,8 +131,14 @@ export default function AdminDashboard() {
   const [gPhone, setGPhone] = useState('');
   const [lat, setLat] = useState(30.04);
   const [lng, setLng] = useState(31.23);
-  
   const [gArea, setGArea] = useState('وسط البلد');
+  
+  // 🌟 إضافات نموذج الدليل في الإضافة
+  const [gType, setGType] = useState<'partner' | 'directory'>('partner');
+  const [gPriceType, setGPriceType] = useState<'hourly' | 'daily' | 'monthly'>('hourly');
+  const [gBasePrice, setGBasePrice] = useState(15);
+  const [gDailyPrice, setGDailyPrice] = useState(20);
+  const [gMonthlyPrice, setGMonthlyPrice] = useState(1500);
 
   const [gValet1Name, setGValet1Name] = useState('');
   const [gValet1Pass, setGValet1Pass] = useState('');
@@ -173,7 +184,6 @@ export default function AdminDashboard() {
     return 0;
   }, [garages]);
 
-  // 🛡️ احتساب عمولة المنصة بدقة شاملة الـ 5 جنيهات المخصصة للمنصة من الدرع
   const getCommission = useCallback((s: any) => {
     if (s.commissionAmount != null && s.commissionAmount > 0) {
       return Number(s.commissionAmount);
@@ -192,7 +202,6 @@ export default function AdminDashboard() {
     return Math.round((baseCommission + shieldCommission) * 100) / 100;
   }, [garages, getRevenue]);
 
-  // 🛡️ احتساب دخل الجراج الصافي بدقة شاملة الـ 5 جنيهات المخصصة للجراج من الدرع
   const getNetRevenue = useCallback((s: any) => {
     if (s.netRevenue != null && s.netRevenue > 0) {
       return Number(s.netRevenue);
@@ -326,26 +335,62 @@ export default function AdminDashboard() {
   const setToday = () => { const t = getLocalToday(); setDateFrom(t); setDateTo(t); };
 
   const handleAddGarage = () => {
-    if (!gName || !gUser || !gPhone) { toast.error('أكمل الحقول الأساسية'); return; }
+    if (!gName) { toast.error('أدخل اسم الجراج'); return; }
+    
+    // لضمان سلامة الإرسال في حالة الدليل المجاني
+    const isDir = gType === 'directory';
+    if (!isDir && (!gUser || !gPhone)) {
+      toast.error('جراج الشريك يتطلب اسم مستخدم وهاتف للمالك');
+      return;
+    }
+
     addGarage({
-      name: gName, username: gUser, phone: gPhone,
-      ownerPhone: gPhone,
-      capacity: 50, basePrice: 15, location: 'موقع جديد', lat, lng,
-      valetName1: gValet1Name, valetPassword1: gValet1Pass,
-      valetName2: gValet2Name, valetPassword2: gValet2Pass,
-      valetName3: gValet3Name, valetPassword3: gValet3Pass,
-      area: gArea, 
+      name: gName, 
+      username: isDir ? `dir_${Date.now()}` : gUser, 
+      phone: isDir ? '' : gPhone,
+      ownerPhone: isDir ? '' : gPhone,
+      capacity: isDir ? 100 : 50, 
+      basePrice: isDir && gPriceType === 'hourly' ? gBasePrice : isDir && gPriceType === 'daily' ? gDailyPrice : gBasePrice, 
+      location: 'موقع دليل إلكتروني', 
+      lat, 
+      lng,
+      valetName1: isDir ? '' : gValet1Name, valetPassword1: isDir ? '' : gValet1Pass,
+      valetName2: isDir ? '' : gValet2Name, valetPassword2: isDir ? '' : gValet2Pass,
+      valetName3: isDir ? '' : gValet3Name, valetPassword3: isDir ? '' : gValet3Pass,
+      area: gArea,
+      // 🌟 الحقول التشاركية الجديدة
+      garageType: gType,
+      priceType: gPriceType,
+      dailyPrice: isDir && gPriceType === 'daily' ? gDailyPrice : undefined,
+      monthlyPrice: isDir && gPriceType === 'monthly' ? gMonthlyPrice : undefined,
     } as any);
+
     setGName(''); setGUser(''); setGPhone('');
     setGArea('وسط البلد');
     setGValet1Name(''); setGValet1Pass('');
     setGValet2Name(''); setGValet2Pass('');
     setGValet3Name(''); setGValet3Pass('');
-    toast.success('تم إضافة الجراج!');
+    setGType('partner');
+    setGPriceType('hourly');
+    toast.success('تمت إضافة الجراج بنجاح! 🎉');
   };
 
-  const handleSaveCommission = (garageId: string) => {
-    updateGarage(garageId, { commissionRate: editCommissionRate, area: editArea });
+  // 🌟 تعديل وحفظ بيانات الجراج بما فيها حقول الدليل والأسعار
+  const handleSaveGarageData = (garageId: string) => {
+    const isDir = editGarageType === 'directory';
+    const finalBasePrice = isDir && editPriceType === 'daily' ? editDailyPrice : isDir && editPriceType === 'monthly' ? editMonthlyPrice : editBasePrice;
+
+    updateGarage(garageId, { 
+      commissionRate: isDir ? 0 : editCommissionRate, 
+      area: editArea,
+      garageType: editGarageType,
+      priceType: editPriceType,
+      basePrice: finalBasePrice,
+      dailyPrice: editDailyPrice,
+      monthlyPrice: editMonthlyPrice,
+      lastPriceUpdate: new Date().toISOString(),
+      priceUpdatedBy: 'admin',
+    });
     setEditingCommissionGarageId(null);
     toast.success(`تم تحديث بيانات جراج ${garages.find(g => g.id === garageId)?.name} بنجاح ✅`);
   };
@@ -366,22 +411,17 @@ export default function AdminDashboard() {
     });
   };
 
-  // ✅ دالة اعتماد الشحن الآمنة والمحدثة بالربط المباشر مع الـ Store
   const handleApproveTopUp = async (id: string, amount: number) => {
     if (processingTopUpId) return;
     setProcessingTopUpId(id);
     const loadingToast = toast.loading('جاري اعتماد الرصيد في المحفظة...');
 
     try {
-      // 1. استدعاء دالة السيرفر الذرية من الـ Store مباشرة
       await approveTopUp(id);
-
       toast.dismiss(loadingToast);
       toast.success(`تم اعتماد شحن ${amount} ج.م وإضافة الرصيد للمحفظة بنجاح ✅`, {
         duration: 4000,
       });
-
-      // 2. تحديث البيانات اللحظية
       await fetchAll();
     } catch (error: any) {
       toast.dismiss(loadingToast);
@@ -392,20 +432,15 @@ export default function AdminDashboard() {
     }
   };
 
-  // ✅ دالة رفض شحن المحفظة
   const handleRejectTopUp = async (id: string) => {
     if (processingTopUpId) return;
     setProcessingTopUpId(id);
     const loadingToast = toast.loading('جاري رفض الطلب وإلغاء المعاملة...');
 
     try {
-      // 1. استدعاء دالة السيرفر للرفض من الـ Store مباشرة
       await rejectTopUp(id);
-      
       toast.dismiss(loadingToast);
       toast.error('تم رفض طلب الشحن وإلغاء المعاملة بنجاح ❌');
-      
-      // 2. تحديث البيانات اللحظية
       await fetchAll();
     } catch (error: any) {
       toast.dismiss(loadingToast);
@@ -519,13 +554,11 @@ export default function AdminDashboard() {
     }
   };
 
-  // 🚀 تطبيق نظام التحديث الذكي المخفف (Debounced Realtime Sync) لتوفير موارد السيرفر 90%
   useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     const triggerDebouncedFetch = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
-      // تجميع الأحداث والانتظار 1.5 ثانية لجلب كل التحديثات في طلب واحد مجمع
       debounceTimer = setTimeout(async () => {
         try {
           await fetchAll();
@@ -1347,18 +1380,27 @@ export default function AdminDashboard() {
           ) : (
             filteredGaragesForAdmin.map(g => {
               const isEditingComm = editingCommissionGarageId === g.id;
+              const isDirectory = g.garageType === 'directory';
               const ownerPhone = (g as any).ownerPhone || g.phone;
               const sameOwnerCount = garages.filter((x: any) => (normalizePhone(x.ownerPhone || x.phone) === normalizePhone(ownerPhone))).length;
               return (
                 <div key={g.id} className="border p-3.5" style={{ background: BRAND.card, borderColor: BRAND.border, borderRadius: 18 }}>
                   <div className="flex justify-between items-center mb-2">
-                    <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-white" style={{ background: BRAND.blue }}>
-                      <span className="font-black font-mono text-sm">{g.availableSpots}</span>
-                      <span className="font-bold text-[9px] opacity-80">شاغر</span>
+                    <div className="flex items-center gap-1">
+                      {isDirectory ? (
+                        <span className="font-black text-[9px] px-2.5 py-1 rounded-xl text-white bg-slate-600 flex items-center gap-1">
+                          🧭 دليل مجاني
+                        </span>
+                      ) : (
+                        <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-white" style={{ background: BRAND.blue }}>
+                          <span className="font-black font-mono text-sm">{g.availableSpots}</span>
+                          <span className="font-bold text-[9px] opacity-80">شاغر</span>
+                        </div>
+                      )}
                     </div>
                     
                     <div className="text-right flex items-center gap-1.5 flex-wrap justify-end">
-                      {sameOwnerCount > 1 && (
+                      {sameOwnerCount > 1 && !isDirectory && (
                         <span className="font-black text-[9px] px-2 py-0.5 rounded" style={{ background: BRAND.blueSoft, color: BRAND.blue }}>
                           👑 {sameOwnerCount}
                         </span>
@@ -1369,15 +1411,21 @@ export default function AdminDashboard() {
 
                   <div className="flex items-center justify-between mb-3 gap-2">
                     <div className="flex flex-wrap gap-1 justify-start">
-                      {[
-                        { n: 1, name: (g as any).valetName1, pw: (g as any).valetPassword1, color: BRAND.blue },
-                        { n: 2, name: (g as any).valetName2, pw: (g as any).valetPassword2, color: '#7c3aed' },
-                        { n: 3, name: (g as any).valetName3, pw: (g as any).valetPassword3, color: '#f59e0b' },
-                      ].filter(v => v.pw).map(v => (
-                        <span key={v.n} className="font-bold text-[8px] px-1.5 py-0.5 rounded" style={{ color: v.color, background: BRAND.bg, border: `1px solid ${BRAND.border}` }}>
-                          👤 {v.name || `س${v.n}`}
+                      {isDirectory ? (
+                        <span className="text-[9px] font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                          💵 الدفع نقدي للسايس
                         </span>
-                      ))}
+                      ) : (
+                        [
+                          { n: 1, name: (g as any).valetName1, pw: (g as any).valetPassword1, color: BRAND.blue },
+                          { n: 2, name: (g as any).valetName2, pw: (g as any).valetPassword2, color: '#7c3aed' },
+                          { n: 3, name: (g as any).valetName3, pw: (g as any).valetPassword3, color: '#f59e0b' },
+                        ].filter(v => v.pw).map(v => (
+                          <span key={v.n} className="font-bold text-[8px] px-1.5 py-0.5 rounded" style={{ color: v.color, background: BRAND.bg, border: `1px solid ${BRAND.border}` }}>
+                            👤 {v.name || `س${v.n}`}
+                          </span>
+                        ))
+                      )}
                     </div>
                     
                     <div className="flex items-center gap-1.5 text-slate-500 font-bold text-[9px]">
@@ -1388,15 +1436,21 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
+                  {/* 🌟 صندوق تعديل البيانات الهجين */}
                   <div className="flex flex-col gap-2 mb-3 p-3 rounded-xl border bg-slate-50" style={{ borderColor: BRAND.border }}>
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1">
                         {!isEditingComm ? (
                           <button
                             onClick={() => { 
                               setEditingCommissionGarageId(g.id); 
                               setEditCommissionRate(g.commissionRate ?? 10); 
                               setEditArea(g.area || 'وسط البلد'); 
+                              setEditGarageType(g.garageType || 'partner');
+                              setEditPriceType(g.priceType || 'hourly');
+                              setEditBasePrice(g.basePrice || 15);
+                              setEditDailyPrice(g.dailyPrice || 20);
+                              setEditMonthlyPrice(g.monthlyPrice || 1500);
                             }}
                             className="font-black border-0 py-1 px-2.5 rounded-lg text-[9px] cursor-pointer text-white"
                             style={{ background: '#f59e0b' }}
@@ -1405,52 +1459,96 @@ export default function AdminDashboard() {
                           </button>
                         ) : (
                           <div className="flex items-center gap-1">
-                            <button onClick={() => handleSaveCommission(g.id)} className="font-black py-1 px-2.5 rounded-lg text-[9px] cursor-pointer border-0 text-white" style={{ background: BRAND.greenDark }}>حفظ</button>
+                            <button onClick={() => handleSaveGarageData(g.id)} className="font-black py-1 px-2.5 rounded-lg text-[9px] cursor-pointer border-0 text-white" style={{ background: BRAND.greenDark }}>حفظ</button>
                             <button onClick={() => setEditingCommissionGarageId(null)} className="font-black py-1 px-2.5 rounded-lg text-[9px] cursor-pointer border bg-white" style={{ color: BRAND.slate, borderColor: BRAND.border }}>✕</button>
                           </div>
                         )}
-                        {isEditingComm && (
-                          <div className="flex items-center gap-1 bg-white p-1 rounded-lg border">
-                            <button onClick={() => setEditCommissionRate(r => Math.max(0, r - 1))} className="border-0 cursor-pointer flex items-center justify-center rounded" style={{ background: '#fee2e2', color: '#dc2626', width: 20, height: 22 }}>
-                              <Minus size={11} />
-                            </button>
-                            <input type="number" value={editCommissionRate} onChange={e => setEditCommissionRate(Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)))}
-                              className="bg-transparent text-center outline-none font-mono font-black text-xs border-0"
-                              style={{ width: 28, color: '#f59e0b' }} />
-                            <button onClick={() => setEditCommissionRate(r => Math.min(100, r + 1))} className="border-0 cursor-pointer flex items-center justify-center rounded" style={{ background: '#d1fae5', color: '#10b981', width: 20, height: 22 }}>
-                              <Plus size={11} />
-                            </button>
-                          </div>
-                        )}
                       </div>
 
+                      {/* إظهار بيانات التسعير والنوع */}
                       <div className="flex items-center gap-1">
-                        <Percent size={11} style={{ color: BRAND.slate }} />
-                        <span className="font-black font-mono text-xs" style={{ color: BRAND.navy }}>
-                          {isEditingComm ? editCommissionRate : (g.commissionRate ?? 10)}%
-                        </span>
-                        <span className="font-bold text-[9px]" style={{ color: BRAND.slateMuted }}>عمولة التطبيق</span>
+                        {isDirectory ? (
+                          <span className="font-black text-xs text-slate-700">
+                            {g.priceType === 'daily' ? `${g.dailyPrice || g.basePrice}ج/يوم` : g.priceType === 'monthly' ? `${g.monthlyPrice || 1500}ج/شهر` : `${g.basePrice}ج/ساعة`}
+                          </span>
+                        ) : (
+                          <>
+                            <Percent size={11} style={{ color: BRAND.slate }} />
+                            <span className="font-black font-mono text-xs" style={{ color: BRAND.navy }}>
+                              {isEditingComm ? editCommissionRate : (g.commissionRate ?? 10)}%
+                            </span>
+                            <span className="font-bold text-[9px]" style={{ color: BRAND.slateMuted }}>عمولة المنصة</span>
+                          </>
+                        )}
                       </div>
                     </div>
 
+                    {/* لوحة خيارات التعديل السريع حال التفعيل */}
                     {isEditingComm && (
-                      <div className="pt-2 border-t border-dashed flex items-center justify-between gap-2" style={{ borderColor: BRAND.border }}>
-                        <select
-                          value={editArea}
-                          onChange={(e) => setEditArea(e.target.value)}
-                          className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"
-                          style={{ background: '#fff', borderColor: BRAND.border, color: BRAND.navy }}
-                        >
-                          <option value="وسط البلد">🏢 وسط البلد</option>
-                          <option value="مصر الجديدة">🏰 مصر الجديدة</option>
-                          <option value="مدينة نصر">🏙️ مدينة نصر</option>
-                          <option value="المعادي">🌳 المعادي</option>
-                          <option value="المهندسين">🛍️ المهندسين</option>
-                          <option value="الدقي">🎓 الدقي</option>
-                          <option value="التجمع الخامس">💎 التجمع الخامس</option>
-                          <option value="مناطق أخرى">📍 مناطق أخرى</option>
-                        </select>
-                        <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية:</span>
+                      <div className="pt-2 border-t border-dashed space-y-2 text-right" style={{ borderColor: BRAND.border }}>
+                        
+                        {/* 1. تعديل نوع الجراج */}
+                        <div className="flex justify-between items-center gap-2">
+                          <select
+                            value={editGarageType}
+                            onChange={(e) => setEditGarageType(e.target.value as any)}
+                            className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"
+                          >
+                            <option value="partner">🤝 شريك VIP معتمد</option>
+                            <option value="directory">🧭 دليل ركنة مجاني</option>
+                          </select>
+                          <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>نوع الجراج:</span>
+                        </div>
+
+                        {/* 2. تعديل المنطقة */}
+                        <div className="flex justify-between items-center gap-2">
+                          <select
+                            value={editArea}
+                            onChange={(e) => setEditArea(e.target.value)}
+                            className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"
+                          >
+                            <option value="وسط البلد">🏢 وسط البلد</option>
+                            <option value="مصر الجديدة">🏰 مصر الجديدة</option>
+                            <option value="مدينة نصر">🏙️ مدينة نصر</option>
+                            <option value="المعادي">🌳 المعادي</option>
+                            <option value="المهندسين">🛍️ المهندسين</option>
+                            <option value="الدقي">🎓 الدقي</option>
+                            <option value="التجمع الخامس">💎 التجمع الخامس</option>
+                            <option value="مناطق أخرى">📍 مناطق أخرى</option>
+                          </select>
+                          <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية:</span>
+                        </div>
+
+                        {/* 3. تعديل هيكل التسعير للدليل */}
+                        {editGarageType === 'directory' && (
+                          <>
+                            <div className="flex justify-between items-center gap-2">
+                              <select
+                                value={editPriceType}
+                                onChange={(e) => setEditPriceType(e.target.value as any)}
+                                className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"
+                              >
+                                <option value="hourly">⏱️ بالساعة</option>
+                                <option value="daily">☀️ يومي ثابت</option>
+                                <option value="monthly">📅 اشتراك شهري</option>
+                              </select>
+                              <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>هيكل التسعير:</span>
+                            </div>
+
+                            <div className="flex justify-between items-center gap-2">
+                              {editPriceType === 'hourly' && (
+                                <input type="number" value={editBasePrice} onChange={e => setEditBasePrice(parseInt(e.target.value, 10) || 0)} className="w-24 text-center border p-1 rounded font-mono text-xs" />
+                              )}
+                              {editPriceType === 'daily' && (
+                                <input type="number" value={editDailyPrice} onChange={e => setEditDailyPrice(parseInt(e.target.value, 10) || 0)} className="w-24 text-center border p-1 rounded font-mono text-xs" />
+                              )}
+                              {editPriceType === 'monthly' && (
+                                <input type="number" value={editMonthlyPrice} onChange={e => setEditMonthlyPrice(parseInt(e.target.value, 10) || 0)} className="w-24 text-center border p-1 rounded font-mono text-xs" />
+                              )}
+                              <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>قيمة السعر الفعلي:</span>
+                            </div>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1469,14 +1567,16 @@ export default function AdminDashboard() {
                       <span>{g.isActive !== false ? '🟢 مفعّل' : '🔴 معطّل'}</span>
                     </button>
 
-                    <button
-                      onClick={() => handleAdminEnterGarage(g)}
-                      className="flex-1 font-black py-2 rounded-xl text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1.5"
-                      style={{ background: BRAND.blue }}
-                    >
-                      <Navigation size={14} />
-                      دخول وإدارة الجراج
-                    </button>
+                    {!isDirectory && (
+                      <button
+                        onClick={() => handleAdminEnterGarage(g)}
+                        className="flex-1 font-black py-2 rounded-xl text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1.5"
+                        style={{ background: BRAND.blue }}
+                      >
+                        <Navigation size={14} />
+                        دخول وإدارة الجراج
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -1489,11 +1589,29 @@ export default function AdminDashboard() {
       <div className="mb-20">
         <h3 className="font-black mb-3 text-right text-xs" style={{ color: BRAND.navy }}>إضافة جراج جديد للشبكة</h3>
         <div className="space-y-4 p-5 bg-white border" style={{ borderColor: BRAND.border, borderRadius: 24 }}>
-          <input className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="اسم الجراج" value={gName} onChange={e => setGName(e.target.value)} />
-          <div className="flex gap-2">
-            <input className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="اسم المستخدم" value={gUser} onChange={e => setGUser(e.target.value)} />
-            <input className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="رقم الهاتف" value={gPhone} onChange={e => setGPhone(e.target.value)} />
+          
+          {/* اختيار نوع الجراج المضاف */}
+          <div className="text-right">
+            <label className="font-black block text-right mb-1.5 text-[10px]" style={{ color: BRAND.slate }}>نوع الجراج المضاف للشبكة</label>
+            <select
+              value={gType}
+              onChange={e => setGType(e.target.value as any)}
+              className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200"
+              style={{ color: BRAND.navy }}
+            >
+              <option value="partner">🤝 جراج شريك VIP معتمد (حجوزات، تحصيل ومحفظة)</option>
+              <option value="directory">🧭 دليل ركنات مجاني (لوكيشن، سعر وملاحة سريعة)</option>
+            </select>
           </div>
+
+          <input className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="اسم الجراج أو الساحة" value={gName} onChange={e => setGName(e.target.value)} />
+          
+          {gType === 'partner' && (
+            <div className="flex gap-2">
+              <input className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="اسم المستخدم" value={gUser} onChange={e => setGUser(e.target.value)} />
+              <input className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="رقم هاتف المالك" value={gPhone} onChange={e => setGPhone(e.target.value)} />
+            </div>
+          )}
 
           <div className="text-right">
             <label className="font-black block text-right mb-1.5 text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية للجراج</label>
@@ -1514,29 +1632,68 @@ export default function AdminDashboard() {
             </select>
           </div>
 
-          <div className="p-3 border rounded-xl" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
-            <div className="font-bold mb-3 text-right text-[10px]" style={{ color: BRAND.slate }}>
-              👤 حسابات السياس (اختياري)
-            </div>
-            {[
-              { n: 1, name: gValet1Name, setName: setGValet1Name, pass: gValet1Pass, setPass: setGValet1Pass, color: BRAND.blue },
-              { n: 2, name: gValet2Name, setName: setGValet2Name, pass: gValet2Pass, setPass: setGValet2Pass, color: '#7c3aed' },
-              { n: 3, name: gValet3Name, setName: setGValet3Name, pass: gValet3Pass, setPass: setGValet3Pass, color: '#f59e0b' },
-            ].map((v, i) => (
-              <div key={i} className={i < 2 ? 'mb-3 pb-3 border-b border-dashed' : ''} style={{ borderColor: BRAND.border }}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="font-bold text-[9px]" style={{ color: (v.name || v.pass) ? BRAND.greenDark : BRAND.slateMuted }}>
-                    {(v.name || v.pass) ? '✅ مفعّل' : '❌ غير مفعّل'}
-                  </span>
-                  <span className="font-black text-[10px]" style={{ color: BRAND.navy }}>سايس {v.n}</span>
-                </div>
-                <div className="flex gap-2">
-                  <input type="text" value={v.name} onChange={e => v.setName(e.target.value)} className="flex-1 font-bold text-right outline-none text-xs py-2 px-2.5 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="الاسم" />
-                  <input type="text" value={v.pass} onChange={e => v.setPass(e.target.value)} className="flex-1 font-mono font-black text-center outline-none text-xs py-2 px-2.5 rounded-lg border border-slate-200" style={{ color: BRAND.navy, letterSpacing: 2 }} placeholder="الباسورد" />
-                </div>
+          {/* تسعير الجراج بناء على النوع */}
+          {gType === 'directory' ? (
+            <div className="p-3 border rounded-xl" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
+              <div className="font-bold mb-3 text-right text-[10px]" style={{ color: BRAND.slate }}>💰 هيكل وأسعار الركنة</div>
+              <div className="space-y-3">
+                <select
+                  value={gPriceType}
+                  onChange={e => setGPriceType(e.target.value as any)}
+                  className="w-full font-bold text-right outline-none text-xs p-2 rounded-lg border"
+                >
+                  <option value="hourly">⏱️ ركن بالساعة</option>
+                  <option value="daily">☀️ سعر يومي ثابت (Flat Rate)</option>
+                  <option value="monthly">📅 اشتراك شهري</option>
+                </select>
+
+                {gPriceType === 'hourly' && (
+                  <div>
+                    <label className="text-[9px] text-slate-400 block mb-0.5">سعر الساعة (بالجنيه):</label>
+                    <input type="number" value={gBasePrice} onChange={e => setGBasePrice(parseInt(e.target.value, 10) || 0)} className="w-full font-bold text-center text-xs p-2 rounded border" />
+                  </div>
+                )}
+
+                {gPriceType === 'daily' && (
+                  <div>
+                    <label className="text-[9px] text-slate-400 block mb-0.5">سعر اليوم بالكامل (بالجنيه):</label>
+                    <input type="number" value={gDailyPrice} onChange={e => setGDailyPrice(parseInt(e.target.value, 10) || 0)} className="w-full font-bold text-center text-xs p-2 rounded border" />
+                  </div>
+                )}
+
+                {gPriceType === 'monthly' && (
+                  <div>
+                    <label className="text-[9px] text-slate-400 block mb-0.5">سعر الاشتراك الشهري (بالجنيه):</label>
+                    <input type="number" value={gMonthlyPrice} onChange={e => setGMonthlyPrice(parseInt(e.target.value, 10) || 0)} className="w-full font-bold text-center text-xs p-2 rounded border" />
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <div className="p-3 border rounded-xl" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
+              <div className="font-bold mb-3 text-right text-[10px]" style={{ color: BRAND.slate }}>
+                👤 حسابات السياس (اختياري)
+              </div>
+              {[
+                { n: 1, name: gValet1Name, setName: setGValet1Name, pass: gValet1Pass, setPass: setGValet1Pass, color: BRAND.blue },
+                { n: 2, name: gValet2Name, setName: setGValet2Name, pass: gValet2Pass, setPass: setGValet2Pass, color: '#7c3aed' },
+                { n: 3, name: gValet3Name, setName: setGValet3Name, pass: gValet3Pass, setPass: setGValet3Pass, color: '#f59e0b' },
+              ].map((v, i) => (
+                <div key={i} className={i < 2 ? 'mb-3 pb-3 border-b border-dashed' : ''} style={{ borderColor: BRAND.border }}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="font-bold text-[9px]" style={{ color: (v.name || v.pass) ? BRAND.greenDark : BRAND.slateMuted }}>
+                      {(v.name || v.pass) ? '✅ مفعّل' : '❌ غير مفعّل'}
+                    </span>
+                    <span className="font-black text-[10px]" style={{ color: BRAND.navy }}>سايس {v.n}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <input type="text" value={v.name} onChange={e => v.setName(e.target.value)} className="flex-1 font-bold text-right outline-none text-xs py-2 px-2.5 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="الاسم" />
+                    <input type="text" value={v.pass} onChange={e => v.setPass(e.target.value)} className="flex-1 font-mono font-black text-center outline-none text-xs py-2 px-2.5 rounded-lg border border-slate-200" style={{ color: BRAND.navy, letterSpacing: 2 }} placeholder="الباسورد" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="p-3 border rounded-xl" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
             <div className="font-bold mb-2 text-[10px]" style={{ color: BRAND.slate }}>📍 تحديد الإحداثيات الجغرافية</div>
