@@ -969,6 +969,7 @@ export default function GarageDashboard() {
   const [confirmSession, setConfirmSession] = useState<{
     id: string; carPlate: string; cost: number; hours: number;
     minutes: number; source: 'app' | 'manual'; agreedPrice?: number;
+    isFirstFreeSession?: boolean; // 🌟 إضافة الفلتر هنا
   } | null>(null);
   
   const [confirmPaymentMethod, setConfirmPaymentMethod] = useState<string>('cash');
@@ -1325,13 +1326,13 @@ export default function GarageDashboard() {
       hours: isFreeNow ? 0 : hrs, 
       minutes, 
       source, 
-      agreedPrice: ap 
+      agreedPrice: ap,
+      isFirstFreeSession: isFreeNow // 🌟 تمرير حالة الهدية الحقيقية فقط للجلسة النشطة
     });
 
     setConfirmPaymentMethod('cash');
     setPlateSearch('');
   };
-
   const handleConfirmPayment = async () => {
     if (!confirmSession || isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
@@ -1679,7 +1680,8 @@ export default function GarageDashboard() {
                 </div>
               </div>
               
-              {confirmSession.cost === 0 && (
+              {/* 🌟 يظهر فقط وفقط إذا كانت الجلسة مؤهلة للهدية الترحيبية من التطبيق */}
+              {confirmSession.isFirstFreeSession && (
                 <div className="mt-2.5 text-center p-1.5 rounded-lg text-emerald-800 font-bold text-[10px] flex items-center justify-center gap-1" style={{ background: BRAND.greenLight }}>
                   🎁 أول 30 دقيقة مجانية كهدية ترحيبية 🎁
                 </div>
