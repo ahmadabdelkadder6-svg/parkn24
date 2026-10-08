@@ -1661,7 +1661,8 @@ export default function AdminDashboard() {
           
           {/* اختيار نوع الجراج المضاف */}
           <div className="text-right">
-            <label className="font-black block text-right mb-1.5 text-[10px]" style={{ color: BRAND.slate }}>نوع الجراج المضاف للشبكة</label><select
+            <label className="font-black block text-right mb-1.5 text-[10px]" style={{ color: BRAND.slate }}>نوع الجراج المضاف للشبكة</label>
+<select
   value={gType === 'partner' ? 'vip' : gType}
   onChange={e => setGType(e.target.value as any)}
   className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200"
