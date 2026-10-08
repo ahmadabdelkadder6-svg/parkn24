@@ -104,7 +104,7 @@ export default function AdminDashboard() {
   const [editingCommissionGarageId, setEditingCommissionGarageId] = useState<string | null>(null);
   const [editCommissionRate, setEditCommissionRate] = useState(10);
   const [editArea, setEditArea] = useState('وسط البلد');
-  const [editGarageType, setEditGarageType] = useState<'partner' | 'directory'>('partner');
+  const [editGarageType, setEditGarageType] = useState<'vip' | 'directory'>('vip');
   const [editPriceType, setEditPriceType] = useState<'hourly' | 'daily' | 'monthly'>('hourly');
   const [editBasePrice, setEditBasePrice] = useState(15);
   const [editDailyPrice, setEditDailyPrice] = useState(20);
@@ -1484,7 +1484,7 @@ export default function AdminDashboard() {
                               setEditingCommissionGarageId(g.id); 
                               setEditCommissionRate(g.commissionRate ?? 10); 
                               setEditArea(g.area || 'وسط البلد'); 
-                              setEditGarageType(g.garageType || 'partner');
+                              setEditGarageType(g.garageType || 'vip');
                               setEditPriceType(g.priceType || 'hourly');
                               setEditBasePrice(g.basePrice || 15);
                               setEditDailyPrice(g.dailyPrice || 20);
@@ -1527,14 +1527,14 @@ export default function AdminDashboard() {
                         
                         {/* 1. تعديل نوع الجراج */}
                         <div className="flex justify-between items-center gap-2">
-                          <select
-                            value={editGarageType}
-                            onChange={(e) => setEditGarageType(e.target.value as any)}
-                            className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"
-                          >
-                            <option value="partner">🤝 شريك VIP معتمد</option>
-                            <option value="directory">🧭 دليل ركنة مجاني</option>
-                          </select>
+<select
+  value={editGarageType}
+  onChange={(e) => setEditGarageType(e.target.value as any)}
+  className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"
+>
+  <option value="vip">🤝 شريك VIP معتمد</option>
+  <option value="directory">🧭 دليل ركنة مجاني</option>
+</select>
                           <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>نوع الجراج:</span>
                         </div>
 
@@ -1630,16 +1630,15 @@ export default function AdminDashboard() {
           
           {/* اختيار نوع الجراج المضاف */}
           <div className="text-right">
-            <label className="font-black block text-right mb-1.5 text-[10px]" style={{ color: BRAND.slate }}>نوع الجراج المضاف للشبكة</label>
-            <select
-              value={gType}
-              onChange={e => setGType(e.target.value as any)}
-              className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200"
-              style={{ color: BRAND.navy }}
-            >
-              <option value="partner">🤝 جراج شريك VIP معتمد (حجوزات، تحصيل ومحفظة)</option>
-              <option value="directory">🧭 دليل ركنات مجاني (لوكيشن، سعر وملاحة سريعة)</option>
-            </select>
+            <label className="font-black block text-right mb-1.5 text-[10px]" style={{ color: BRAND.slate }}>نوع الجراج المضاف للشبكة</label><select
+  value={gType === 'partner' ? 'vip' : gType}
+  onChange={e => setGType(e.target.value as any)}
+  className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200"
+  style={{ color: BRAND.navy }}
+>
+  <option value="vip">🤝 جراج شريك VIP معتمد (حجوزات، تحصيل ومحفظة)</option>
+  <option value="directory">🧭 دليل ركنات مجاني (لوكيشن، سعر وملاحة سريعة)</option>
+</select>
           </div>
 
           <input className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="اسم الجراج أو الساحة" value={gName} onChange={e => setGName(e.target.value)} />
