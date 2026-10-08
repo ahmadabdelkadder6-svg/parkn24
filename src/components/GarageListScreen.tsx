@@ -957,32 +957,23 @@ export default function GarageListScreen() {
             className="fixed inset-0 z-[2000] flex flex-col justify-between p-6 text-center"
             style={{ background: 'linear-gradient(180deg, #0f172a 0%, #020617 100%)' }}
           >
-            {/* الجزء العلوي الأنيق والآمن */}
+            {/* الجزء العلوي الأنيق والآمن والموفر للطاقة 100% */}
             <div className="pt-16 max-w-sm mx-auto w-full">
               <motion.div
-                initial={{ scale: 0.5, opacity: 0, y: 20 }}
+                initial={{ scale: 0.3, opacity: 0, y: 30 }}
                 animate={{ scale: 1, opacity: 1, y: 0 }}
-                transition={{ type: 'spring', damping: 12, stiffness: 200 }}
+                transition={{ type: 'spring', damping: 11, stiffness: 140 }}
                 className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 bg-slate-800 border-2 border-blue-500 shadow-lg shadow-blue-500/10"
               >
                 <motion.span 
                   className="text-4xl inline-block"
-                  animate={{ 
-                    y: [0, -6, 0],
-                    rotate: [-3, 3, -3],
-                  }}
-                  transition={{
-                    duration: 2,
-                    repeat: Infinity,
-                    ease: 'easeInOut',
-                    repeatType: 'mirror',
-                  }}
-                  style={{ willChange: 'transform' }}
+                  initial={{ rotate: -40, scale: 0.5 }}
+                  animate={{ rotate: 0, scale: 1 }}
+                  transition={{ type: 'spring', damping: 8, stiffness: 160, delay: 0.15 }}
                 >
                   🚙
                 </motion.span>
               </motion.div>
-
               <h2 className="text-xl font-black text-white mb-2">طريق السلامة يا بطل! 🛣️✨</h2>
               <p className="text-xs font-bold text-slate-400 mb-6 leading-relaxed">
                 جاري توجيهك الآن عبر خرائط جوجل إلى <b className="text-white">{activeDirectoryTrip.name}</b>
@@ -1000,7 +991,7 @@ export default function GarageListScreen() {
                   className="text-[12px] font-black text-white block mt-2 border-t border-slate-800 pt-3.5 leading-relaxed"
                   style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}
                 >
-                  💵 يرجى سداد الحساب كاش للسايس مباشرة عند الوصول
+                  💵 يرجى سداد الحساب كاش للسايس
                 </span>
               </div>
 
