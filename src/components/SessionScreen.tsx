@@ -360,20 +360,20 @@ export default function SessionScreen() {
       )}
 
       {/* حلقة العداد الدائرية الكبيرة المتوهجة بالكامل */}
-<div
-  className="w-36 h-36 rounded-full flex flex-col items-center justify-center border-2 mb-5 transition-shadow"
-  style={{
-    background: BRAND.navyLight,
-    borderColor: isFreeNow ? BRAND.green : BRAND.blue,
-    boxShadow: isFreeNow 
-      ? '0 0 30px rgba(140, 198, 63, 0.2)' 
-      : '0 0 30px rgba(22, 86, 184, 0.2)',
-  }}
->
+      <div
+        className="w-36 h-36 rounded-full flex flex-col items-center justify-center border-2 mb-5 transition-shadow"
+        style={{
+          background: BRAND.navyLight,
+          borderColor: isFreeNow ? BRAND.green : BRAND.blue,
+          boxShadow: isFreeNow 
+            ? '0 0 30px rgba(140, 198, 63, 0.2)' 
+            : '0 0 30px rgba(22, 86, 184, 0.2)',
+        }}
+      >
         <Clock size={20} style={{ color: isFreeNow ? BRAND.green : BRAND.blue }} className="mb-1" />
         <div className="text-2xl font-black font-mono text-white leading-none">{formatTime(elapsed)}</div>
         <div className="text-[9px] font-bold mt-1.5" style={{ color: BRAND.slateMuted }}>مدة الركن الفعلية</div>
-      </motion.div>
+      </div>
 
       {/* كارت الحساب التفاعلي مع الهدية والعداد */}
       <div className="w-full border rounded-2xl p-4 mb-4" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
@@ -487,6 +487,7 @@ export default function SessionScreen() {
       {/* زر إنهاء الجلسة الفاخر */}
       <button
         type="button"
+        aria-label="إنهاء الجلسة الحالية"
         onClick={() => setScreen('summary')}
         className="w-full py-3.5 rounded-xl active:scale-[0.98] transition-all mb-3 flex items-center justify-center border-0 text-white cursor-pointer font-black"
         style={{
@@ -506,6 +507,7 @@ export default function SessionScreen() {
       {/* زر العودة الصامت */}
       <button
         type="button"
+        aria-label="العودة للقائمة الرئيسية"
         onClick={() => setScreen('list')}
         className="w-full py-2.5 rounded-xl border cursor-pointer bg-transparent text-xs"
         style={{ color: BRAND.slateMuted, borderColor: BRAND.border }}
