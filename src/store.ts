@@ -32,13 +32,11 @@ export interface Garage {
   payment_mode?: 'cash' | 'wallet' | 'both'; 
   area?: string;
   
-  // 🌟 إضافات منظومة الدليل المجاني التشاركي
+  // 🌟 الخصائص المحسوبة تلقائياً لحفظ توافق الجداول القديمة
   garageType?: 'partner' | 'directory';
   priceType?: 'hourly' | 'daily' | 'monthly';
   dailyPrice?: number;
   monthlyPrice?: number;
-  lastPriceUpdate?: string;
-  priceUpdatedBy?: string;
 }
 
 export interface ParkingSession {
@@ -343,14 +341,14 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   });
 };
 
-// 🌟 الموازنة الذكية لتمثيل الجراجات (دليل / شريك) دون كسر قاعدة البيانات القديمة
+// 🌟 الموازنة الذكية الفائقة: قراءة وتحديد الدليل من عمود valet_name_1 بدون أي حقول جديدة
 const mapGarage = (r: any): Garage => {
-  const hasNoValet = !r.valet_name_1 && !r.valet_password_1;
-  const isZeroCommission = r.commission_rate !== undefined && Number(r.commission_rate) === 0;
-  const isDirUser = String(r.username || '').startsWith('dir_');
-  const dbType = r.garage_type || r.garage_type;
-  
-  const isDirectory = dbType === 'directory' || hasNoValet || isZeroCommission || isDirUser || r.location === 'دليل ركنات مجاني';
+  const isDirectory = 
+    r.valet_name_1 === 'directory' || 
+    (!r.valet_name_1 && !r.valet_password_1) || 
+    Number(r.commission_rate) === 0 || 
+    String(r.username || '').startsWith('dir_') || 
+    r.location === 'دليل ركنات مجاني';
 
   return {
     id: r.id, 
@@ -365,7 +363,9 @@ const mapGarage = (r: any): Garage => {
     availableSpots: Number(r.available_spots ?? r.capacity ?? 50), 
     basePrice: Number(r.base_price || 15),
     rating: Number(r.rating || 4.5),
-    valetName1: r.valet_name_1 || '', valetPassword1: r.valet_password_1 || '',
+    // إخفاء السترة الوهمية عن شاشة المالك والأدمن
+    valetName1: r.valet_name_1 === 'directory' ? '' : (r.valet_name_1 || ''), 
+    valetPassword1: r.valet_name_1 === 'directory' ? '' : (r.valet_password_1 || ''),
     valetName2: r.valet_name_2 || '', valetPassword2: r.valet_password_2 || '',
     valetName3: r.valet_name_3 || '', valetPassword3: r.valet_password_3 || '',
     commissionRate: Number(r.commission_rate ?? 10),
@@ -376,13 +376,11 @@ const mapGarage = (r: any): Garage => {
     payment_mode: r.payment_mode || 'both', 
     area: r.area || 'مناطق أخرى',
 
-    // 🌟 تعيين الحقول المحسوبة تلقائياً بذكاء
+    // 🌟 فك تشفير منظومة الدليل بشكل تلقائي وآمن
     garageType: isDirectory ? 'directory' : 'partner',
-    priceType: r.price_type || (isDirectory ? (Number(r.base_price) >= 20 ? 'daily' : 'hourly') : 'hourly'),
-    dailyPrice: r.daily_price != null ? Number(r.daily_price) : (isDirectory ? Number(r.base_price) : undefined),
-    monthlyPrice: r.monthly_price != null ? Number(r.monthly_price) : undefined,
-    lastPriceUpdate: r.last_price_update || undefined,
-    priceUpdatedBy: r.price_updated_by || undefined,
+    priceType: isDirectory ? (r.valet_password_1 === 'daily' || r.valet_password_1 === 'monthly' ? r.valet_password_1 : 'hourly') : 'hourly',
+    dailyPrice: isDirectory ? Number(r.base_price) : undefined,
+    monthlyPrice: isDirectory ? Number(r.base_price) : undefined,
   };
 };
 
@@ -452,8 +450,6 @@ const mapMessage = (r: any): Message => ({
   repliedAt: r.replied_at ? new Date(r.replied_at).getTime() : undefined,
 });
 
-let updateGarageTimeout: ReturnType<typeof setTimeout> | null = null;
-const pendingGarageUpdates: Map<string, Record<string, unknown>> = new Map();
 const sessionStartLocks = new Set<string>();
 const sessionEndLocks = new Set<string>();
 let walletDeductLock = false;
@@ -492,7 +488,7 @@ interface AppState {
   addGarage: (g: any) => Promise<void>;
   updateGarage: (id: string, updates: any) => Promise<void>;
   adjustGarageSpots: (id: string, delta: number) => Promise<void>;
-  reportPriceUpdate: (garageId: string, newPrice: number, priceType?: string) => Promise<void>; // 🌟 تحديث السعر التشاركي
+  reportPriceUpdate: (garageId: string, newPrice: number, priceType?: string) => Promise<void>; // 🌟 تحديث السعر
   selectedGarageId: string | null;
   setSelectedGarageId: (id: string | null) => void;
   getMyOwnedGarages: (phone: string) => Garage[];
@@ -730,29 +726,39 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  // 🌟 حيلة ذكية: تخزين نوع الدليل والأسعار داخل الأعمدة القديمة valet_name_1 لتجنب فشل السيرفر كلياً
   addGarage: async (g) => {
     const isDirectory = g.garageType === 'directory';
+    const finalPrice = isDirectory 
+      ? (g.priceType === 'daily' ? g.dailyPrice : g.priceType === 'monthly' ? g.monthlyPrice : g.basePrice)
+      : g.basePrice;
+
     const { data, error } = await supabase.from('garages').insert({
-      name: g.name, username: g.username, phone: g.phone,
-      owner_phone: g.ownerPhone || g.phone,
+      name: g.name, 
+      username: isDirectory ? `dir_${Date.now()}` : (g.username || `g_${Date.now()}`), 
+      phone: g.phone || '01000000000',
+      owner_phone: g.ownerPhone || g.phone || '01000000000',
       location: isDirectory ? 'دليل ركنات مجاني' : g.location, 
-      lat: g.lat, lng: g.lng,
-      capacity: g.capacity, available_spots: g.capacity, base_price: g.basePrice, rating: 4.0,
-      commission_rate: isDirectory ? 0 : 10,
-      valet1_active: !isDirectory, valet2_active: !isDirectory, valet3_active: !isDirectory,
-      valet_name_1: g.valetName1 || '', valet_password_1: g.valetPassword1 || '',
-      valet_name_2: g.valetName2 || '', valet_password_2: g.valetPassword2 || '',
-      valet_name_3: g.valetName3 || '', valet_password_3: g.valetPassword3 || '',
+      lat: g.lat || 30.0444, 
+      lng: g.lng || 31.2357,
+      capacity: g.capacity || 50, 
+      available_spots: g.capacity || 50, 
+      base_price: finalPrice || 15, 
+      rating: 4.5,
+      commission_rate: isDirectory ? 0 : (g.commissionRate || 10),
+      valet1_active: !isDirectory, 
+      valet2_active: !isDirectory, 
+      valet3_active: !isDirectory,
+      // 🌟 التخزين الذكي في الأعمدة القديمة
+      valet_name_1: isDirectory ? 'directory' : (g.valetName1 || ''), 
+      valet_password_1: isDirectory ? g.priceType : (g.valetPassword1 || ''),
+      valet_name_2: isDirectory ? '' : (g.valetName2 || ''), 
+      valet_password_2: isDirectory ? '' : (g.valetPassword2 || ''),
+      valet_name_3: isDirectory ? '' : (g.valetName3 || ''), 
+      valet_password_3: isDirectory ? '' : (g.valetPassword3 || ''),
       is_active: true,
       payment_mode: isDirectory ? 'cash' : 'both', 
       area: g.area || 'مناطق أخرى',
-      // 🌟 حفظ الحقول الجديدة لو موجودة
-      garage_type: g.garageType || 'partner',
-      price_type: g.priceType || 'hourly',
-      daily_price: g.dailyPrice || null,
-      monthly_price: g.monthlyPrice || null,
-      last_price_update: new Date().toISOString(),
-      price_updated_by: 'admin',
     }).select();
     if (!error && data) set((st) => ({ garages: [...st.garages, ...data.map(mapGarage)] }));
   },
@@ -766,24 +772,46 @@ export const useStore = create<AppState>((set, get) => ({
       return;
     }
 
+    const isDirectory = updates.garageType === 'directory';
+    const finalPrice = isDirectory 
+      ? (updates.priceType === 'daily' ? updates.dailyPrice : updates.priceType === 'monthly' ? updates.monthlyPrice : updates.basePrice)
+      : updates.basePrice;
+
     const dbUpdates: Record<string, unknown> = {};
-    if (updates.basePrice !== undefined) dbUpdates.base_price = updates.basePrice;
+    if (updates.name !== undefined) dbUpdates.name = updates.name;
+    if (finalPrice !== undefined) dbUpdates.base_price = finalPrice;
     if (updates.availableSpots !== undefined) dbUpdates.available_spots = updates.availableSpots;
     if (updates.capacity !== undefined) dbUpdates.capacity = updates.capacity;
     if (updates.commissionRate !== undefined) dbUpdates.commission_rate = updates.commissionRate;
     if (updates.payment_mode !== undefined) dbUpdates.payment_mode = updates.payment_mode; 
     if (updates.area !== undefined) dbUpdates.area = updates.area; 
     
-    // 🌟 دعم التعديلات الجديدة
-    if (updates.garageType !== undefined) dbUpdates.garage_type = updates.garageType;
-    if (updates.priceType !== undefined) dbUpdates.price_type = updates.priceType;
-    if (updates.dailyPrice !== undefined) dbUpdates.daily_price = updates.dailyPrice;
-    if (updates.monthlyPrice !== undefined) dbUpdates.monthly_price = updates.monthlyPrice;
-    if (updates.lastPriceUpdate !== undefined) dbUpdates.last_price_update = updates.lastPriceUpdate;
-    if (updates.priceUpdatedBy !== undefined) dbUpdates.price_updated_by = updates.priceUpdatedBy;
+    // 🌟 التحديث التشاركي الذكي
+    if (updates.garageType !== undefined) {
+      dbUpdates.valet_name_1 = isDirectory ? 'directory' : (updates.valetName1 || '');
+      dbUpdates.valet_password_1 = isDirectory ? (updates.priceType || 'hourly') : (updates.valetPassword1 || '');
+    }
 
     if (Object.keys(dbUpdates).length > 0) {
       await supabase.from('garages').update(dbUpdates).eq('id', id);
+    }
+  },
+
+  // الإبلاغ التشاركي عن السعر
+  reportPriceUpdate: async (garageId, newPrice, priceType = 'hourly') => {
+    set((st) => ({
+      garages: st.garages.map((g) => {
+        if (g.id !== garageId) return g;
+        return {
+          ...g,
+          basePrice: newPrice,
+          dailyPrice: priceType === 'daily' ? newPrice : g.dailyPrice,
+        };
+      }),
+    }));
+
+    if (isSupabaseConfigured()) {
+      await supabase.from('garages').update({ base_price: newPrice }).eq('id', garageId);
     }
   },
 
@@ -801,39 +829,6 @@ export const useStore = create<AppState>((set, get) => ({
         set((st) => ({ garages: st.garages.map((g) => g.id === id ? { ...g, availableSpots: Number(data) } : g) }));
       }
     } catch {}
-  },
-
-  // 🌟 دالة الإبلاغ التشاركي عن الأسعار
-  reportPriceUpdate: async (garageId, newPrice, priceType = 'hourly') => {
-    const nowISO = new Date().toISOString();
-    const updateObj: any = {
-      last_price_update: nowISO,
-      price_updated_by: 'user',
-    };
-
-    if (priceType === 'daily') {
-      updateObj.daily_price = newPrice;
-      updateObj.base_price = newPrice;
-    } else {
-      updateObj.base_price = newPrice;
-    }
-
-    set((st) => ({
-      garages: st.garages.map((g) => {
-        if (g.id !== garageId) return g;
-        return {
-          ...g,
-          basePrice: newPrice,
-          dailyPrice: priceType === 'daily' ? newPrice : g.dailyPrice,
-          lastPriceUpdate: nowISO,
-          priceUpdatedBy: 'user',
-        };
-      }),
-    }));
-
-    if (isSupabaseConfigured()) {
-      await supabase.from('garages').update(updateObj).eq('id', garageId);
-    }
   },
 
   addSession: async (s) => {
@@ -1143,7 +1138,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 }));
 
-// ===================== Realtime =====================
+// ===================== Realtime الفائق والخفيف =====================
 let realtimeStarted = false;
 let pollingInterval: ReturnType<typeof setInterval> | null = null;
 let isOperationInProgress = false;
