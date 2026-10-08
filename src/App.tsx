@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo, lazy, Suspense, Component, ErrorInfo, ReactNode } from 'react';
+import { useEffect, useRef, useState, useMemo, lazy, Suspense, Component, ErrorInfo, ReactNode, memo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
@@ -24,6 +24,9 @@ import InstallQRCodePage from './components/InstallQRCodePage';
 const GarageDashboard = lazy(() => import('./components/GarageDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 
+// علم لمنع تكرار بث قنوات السيرفر والاشتراكات اللحظية في التجهيز المزدوج
+let isRealtimeInitialized = false;
+
 const toMs = (value: any): number => {
   if (!value) return 0;
   if (typeof value === 'number') {
@@ -31,6 +34,31 @@ const toMs = (value: any): number => {
   }
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
+};
+
+// 🛡️ دالة آمنة للتعامل مع LocalStorage لمنع الانهيار في التصفح الخفي
+const safeLocalStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      return localStorage.getItem(key);
+    } catch (e) {
+      return null;
+    }
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      console.warn('LocalStorage is blocked or full');
+    }
+  },
+  removeItem: (key: string): void => {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {
+      // ignore
+    }
+  }
 };
 
 class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: boolean }> {
@@ -71,9 +99,17 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
 /* ════════════════════════════════════════════════════════════
    🛡️ PARK'N 24 BRAND LOGO (مستوحى من الشعار المرفق)
    ════════════════════════════════════════════════════════════ */
-function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: number }) {
+const ParkShieldLogo = memo(function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: number }) {
   return (
-    <svg viewBox="0 0 100 115" width={width} height={height} fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg 
+      viewBox="0 0 100 115" 
+      width={width} 
+      height={height} 
+      fill="none" 
+      xmlns="http://www.w3.org/2000/svg"
+      role="img"
+      aria-label="شعار بركن 24"
+    >
       {/* الدرع الأزرق الخارجي */}
       <path d="M50 2 C78 2, 98 14, 98 26 C98 76, 75 104, 50 114 C25 104, 2 76, 2 26 C2 14, 22 2, 50 2 Z" fill="#1656b8" />
       {/* الإطار الداخلي للدرع */}
@@ -93,27 +129,26 @@ function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: 
       <circle cx="75" cy="72" r="2.2" fill="#1656b8" />
     </svg>
   );
-}
+});
 
 /* ════════════════════════════════════════════════════════════
-   ☀️ PARK'N 24 HERO — FULL-SCREEN CINEMATIC BLEND (FIXED CACHE)
+   ☀️ PARK'N 24 HERO — FULL-SCREEN CINEMATIC BLEND
    ════════════════════════════════════════════════════════════ */
 interface ParkLandingProps {
   onEnter: () => void;
 }
 
-function ParkLanding({ onEnter }: ParkLandingProps) {
+const ParkLanding = memo(function ParkLanding({ onEnter }: ParkLandingProps) {
   const [isExiting, setIsExiting] = useState(false);
 
   const handleEnter = () => {
     setIsExiting(true);
-    setTimeout(() => onEnter(), 500);
+    const timer = setTimeout(() => onEnter(), 500);
+    return () => clearTimeout(timer);
   };
 
   const BRAND_BLUE = '#1656b8';
   const BRAND_GREEN = '#8cc63f';
-
-  // ⚡ تم تغيير رقم الإصدار هنا لـ v=999 لإجبار المتصفح على حذف كاش الصورة القديمة فوراً وعرض المضغوطة الجديدة
   const CAR_IMAGE_SRC = '/hero-car.webp?v=999';
 
   return (
@@ -317,7 +352,8 @@ function ParkLanding({ onEnter }: ParkLandingProps) {
       )}
     </AnimatePresence>
   );
-}
+});
+
 const VALID_SCREENS = [
   'splash',
   'list',
@@ -359,7 +395,7 @@ export default function App() {
 
   const [showLanding, setShowLanding] = useState(() => {
     const today = new Date().toDateString();
-    const lastShownDate = localStorage.getItem('parkn24_landing_last_date');
+    const lastShownDate = safeLocalStorage.getItem('parkn24_landing_last_date');
     return lastShownDate !== today;
   });
 
@@ -367,38 +403,18 @@ export default function App() {
 
   const handleEnterLanding = () => {
     const today = new Date().toDateString();
-    localStorage.setItem('parkn24_landing_last_date', today);
+    safeLocalStorage.setItem('parkn24_landing_last_date', today);
     setShowLanding(false);
   };
 
-  useEffect(() => {
-    if (document.getElementById('google-fonts-optimized')) return;
-
-    const preconnect1 = document.createElement('link');
-    preconnect1.rel = 'preconnect';
-    preconnect1.href = 'https://fonts.googleapis.com';
-    document.head.appendChild(preconnect1);
-
-    const preconnect2 = document.createElement('link');
-    preconnect2.rel = 'preconnect';
-    preconnect2.href = 'https://fonts.gstatic.com';
-    preconnect2.crossOrigin = 'anonymous';
-    document.head.appendChild(preconnect2);
-
-    const link = document.createElement('link');
-    link.id = 'google-fonts-optimized';
-    link.rel = 'stylesheet';
-    link.href = 'https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter+Tight:wght@400;500;600;700;800&display=swap';
-    document.head.appendChild(link);
-  }, []);
 
   useEffect(() => {
     if (window.location.pathname === '/admin' || window.location.hash === '#admin') {
       setAdminAccess(true);
-      localStorage.setItem('adminAccess', 'true');
+      safeLocalStorage.setItem('adminAccess', 'true');
     }
 
-    if (localStorage.getItem('adminAccess') === 'true') {
+    if (safeLocalStorage.getItem('adminAccess') === 'true') {
       setAdminAccess(true);
     }
   }, []);
@@ -420,22 +436,22 @@ export default function App() {
 
   useEffect(() => {
     const init = async () => {
-      const justInstalled = localStorage.getItem('pwaJustInstalled') === 'true';
+      const justInstalled = safeLocalStorage.getItem('pwaJustInstalled') === 'true';
       const isStandalone =
         window.matchMedia('(display-mode: standalone)').matches ||
         (window.navigator as any).standalone === true;
 
       if (justInstalled && isStandalone) {
-        localStorage.removeItem('pwaJustInstalled');
-        localStorage.setItem('appView', 'user');
-        localStorage.setItem('appScreen', 'splash');
-        localStorage.removeItem('selectedGarageId');
+        safeLocalStorage.removeItem('pwaJustInstalled');
+        safeLocalStorage.setItem('appView', 'user');
+        safeLocalStorage.setItem('appScreen', 'splash');
+        safeLocalStorage.removeItem('selectedGarageId');
         setView('user');
         setScreen('splash');
         setSelectedGarageId(null);
       }
 
-      const savedScreen = localStorage.getItem('appScreen');
+      const savedScreen = safeLocalStorage.getItem('appScreen');
 
       if (
         savedScreen === 'session' ||
@@ -444,7 +460,7 @@ export default function App() {
         savedScreen === 'offer' ||
         (savedScreen && !VALID_SCREENS.includes(savedScreen as any))
       ) {
-        localStorage.removeItem('appScreen');
+        safeLocalStorage.removeItem('appScreen');
       }
 
       const urlParams = new URLSearchParams(window.location.search);
@@ -453,9 +469,9 @@ export default function App() {
         window.location.pathname === '/admin' ||
         window.location.hash === '#admin';
 
-      const savedView = localStorage.getItem('appView');
-      const isGarageLoggedIn = localStorage.getItem('currentGarageId') || currentGarageId;
-      const isAdminLoggedIn = localStorage.getItem('adminAccess') === 'true';
+      const savedView = safeLocalStorage.getItem('appView');
+      const isGarageLoggedIn = safeLocalStorage.getItem('currentGarageId') || currentGarageId;
+      const isAdminLoggedIn = safeLocalStorage.getItem('adminAccess') === 'true';
 
       if (isAdminFromURL) {
         setView('admin');
@@ -477,7 +493,12 @@ export default function App() {
       initialLoadDone.current = true;
 
       fetchAll().catch((e) => console.error('Background fetch error:', e));
-      setupRealtime();
+
+      // 🛡️ حماية الاتصال اللحظي الفوري من التكرار والتحميل الزائد
+      if (!isRealtimeInitialized) {
+        setupRealtime();
+        isRealtimeInitialized = true;
+      }
     };
 
     init();
@@ -485,7 +506,7 @@ export default function App() {
 
   useEffect(() => {
     if (view) {
-      localStorage.setItem('appView', view);
+      safeLocalStorage.setItem('appView', view);
     }
   }, [view]);
 
@@ -729,10 +750,12 @@ export default function App() {
     setSelectedGarageId,
   ]);
 
+  // 🧹 تنظيف فوري ومضمون لكافة مؤقتات النقل والتحول عند الـ Unmount أو إعادة رندرة المكون
   useEffect(() => {
     return () => {
       if (sessionTransitionTimer.current) {
         clearTimeout(sessionTransitionTimer.current);
+        sessionTransitionTimer.current = null;
       }
     };
   }, []);
@@ -768,12 +791,12 @@ export default function App() {
                   key={tab.id}
                   onClick={() => {
                     if (tab.id === 'garage') {
-                      localStorage.removeItem('currentGarageId');
-                      localStorage.removeItem('garageRole');
-                      localStorage.removeItem('valetNumber');
-                      localStorage.removeItem('valetName');
-                      localStorage.removeItem('garagePrefillUsername');
-                      localStorage.removeItem('garagePrefillPhone');
+                      safeLocalStorage.removeItem('currentGarageId');
+                      safeLocalStorage.removeItem('garageRole');
+                      safeLocalStorage.removeItem('valetNumber');
+                      safeLocalStorage.removeItem('valetName');
+                      safeLocalStorage.removeItem('garagePrefillUsername');
+                      safeLocalStorage.removeItem('garagePrefillPhone');
                       setCurrentGarageId(null);
                     }
                     setView(tab.id);

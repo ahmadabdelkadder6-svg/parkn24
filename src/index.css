@@ -35,6 +35,9 @@ html {
   -webkit-tap-highlight-color: transparent;
   background-color: var(--bg);
   color: var(--text);
+  
+  /* إخفاء شريط التمرير لمتصفحات فايرفوكس */
+  scrollbar-width: none; 
 }
 
 body {
@@ -46,6 +49,9 @@ body {
   overscroll-behavior: none;
   -webkit-overflow-scrolling: touch;
   touch-action: manipulation;
+  
+  /* إخفاء شريط التمرير لمتصفحات إنترنت إكسبلورر القديمة */
+  -ms-overflow-style: none; 
 }
 
 #root {
@@ -60,7 +66,7 @@ body {
   box-sizing: border-box;
 }
 
-/* إخفاء شريط التمرير المزعج مع الحفاظ على إمكانية التمرير */
+/* إخفاء شريط التمرير المزعج لمتصفحات Chrome و Safari */
 ::-webkit-scrollbar {
   width: 0px;
   height: 0px;
@@ -180,3 +186,30 @@ textarea {
 .bg-amber-600\/20, .bg-amber-500\/20 { background-color: #fef3c7 !important; border-color: #fbbf24 !important; }
 .bg-red-600\/20, .bg-red-500\/20 { background-color: #fee2e2 !important; border-color: #f87171 !important; }
 .bg-orange-600\/20, .bg-orange-500\/20 { background-color: #ffedd5 !important; border-color: #fb923c !important; }
+
+/* ========================================================= */
+/* 🗺️ حل أمني جذري لانهيار خريطة Leaflet في وضعية RTL        */
+/* ========================================================= */
+.leaflet-container {
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  direction: rtl !important;
+  text-align: right !important;
+  font-family: 'Cairo', sans-serif !important;
+}
+
+/* ========================================================= */
+/* 📐 فئات التوافقية للحواف المستديرة المخصصة                 */
+/* ========================================================= */
+.rounded-16 { border-radius: 1rem !important; }
+.rounded-12 { border-radius: 0.75rem !important; }
+.rounded-10 { border-radius: 0.625rem !important; }
+
+/* تسريع عمليات الرسوميات والمؤثرات عبر كارت الشاشة (GPU) */
+.animate-spin, .animate-pulse {
+  will-change: transform, opacity;
+}

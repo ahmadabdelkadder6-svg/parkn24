@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   Clock,
@@ -7,7 +7,6 @@ import {
   Gift,
   Sparkles,
   CreditCard,
-  XCircle,
 } from 'lucide-react';
 // 🌟 استيراد getServerNow ودوال البصمة لضمان مطابقة العداد بالملي ثانية بين جميع الهواتف
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
@@ -63,15 +62,27 @@ export default function SessionScreen() {
   const userPlate = normalizePlate(currentUser?.carPlate);
   const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
+  const isMountedRef = useRef(true);
   const redirectedToSummaryRef = useRef(false);
   const redirectedToSessionRef = useRef(false);
   const activeSessionIdRef = useRef<string | null>(null);
   const realtimeChannelRef = useRef<any>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const summaryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [elapsed, setElapsed] = useState(0);
 
-  const isMySessionRow = (row: any) => {
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (summaryTimeoutRef.current) {
+        clearTimeout(summaryTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const isMySessionRow = useCallback((row: any) => {
     if (!row) return false;
     const rowPlate = normalizePlate(row.car_plate || row.carPlate);
     const rowPhone = normalizePhone(row.customer_phone || row.customerPhone || '');
@@ -79,7 +90,7 @@ export default function SessionScreen() {
       (!!userPlate && rowPlate === userPlate) ||
       (!!userPhone && rowPhone === userPhone)
     );
-  };
+  }, [userPlate, userPhone]);
 
   // ✅ البحث عن الجلسة النشطة بالبصمة الموحدة
   const activeSession = useMemo(() => {
@@ -122,7 +133,7 @@ export default function SessionScreen() {
     if (!activeSession) return 0;
     const ms = safeParseTime(activeSession.startTime);
     return ms > 0 ? ms : getServerNow();
-  }, [activeSession?.id, activeSession?.startTime]);
+  }, [activeSession]);
 
   // 📡 جلب البيانات في الخلفية
   useEffect(() => {
@@ -135,12 +146,15 @@ export default function SessionScreen() {
     let cancelled = false;
 
     const refetch = async () => {
-      if (cancelled) return;
-      try { await fetchAll(); } catch (e) { console.error('❌', e); }
+      if (cancelled || !isMountedRef.current) return;
+      try { 
+        await fetchAll(); 
+      } catch (e) { 
+        console.error('❌ Realtime fetch error:', e); 
+      }
     };
 
-    const channel = supabase
-      .channel(`customer-session-live-${userPlate || userPhone}`)
+    const channel = supabase.channel(`customer-session-live-${userPlate || userPhone}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'sessions' },
@@ -157,7 +171,9 @@ export default function SessionScreen() {
     realtimeChannelRef.current = channel;
     pollingRef.current = setInterval(refetch, 4000);
 
-    const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
+    const handleVisibility = () => { 
+      if (document.visibilityState === 'visible') refetch(); 
+    };
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('focus', refetch);
 
@@ -165,10 +181,16 @@ export default function SessionScreen() {
       cancelled = true;
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('focus', refetch);
-      if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
-      if (realtimeChannelRef.current) { supabase.removeChannel(realtimeChannelRef.current); realtimeChannelRef.current = null; }
+      if (pollingRef.current) { 
+        clearInterval(pollingRef.current); 
+        pollingRef.current = null; 
+      }
+      if (realtimeChannelRef.current) { 
+        supabase.removeChannel(realtimeChannelRef.current); 
+        realtimeChannelRef.current = null; 
+      }
     };
-  }, [userPlate, userPhone, fetchAll]);
+  }, [userPlate, userPhone, fetchAll, isMySessionRow]);
 
   // ⏱️ عداد الثواني اللحظي الموحد مع سيرفر قاعدة البيانات
   useEffect(() => {
@@ -186,18 +208,24 @@ export default function SessionScreen() {
     setElapsed(calcElapsed());
 
     const interval = setInterval(() => {
+      if (!isMountedRef.current) return;
       setElapsed(calcElapsed());
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [activeSession?.id, activeStartMs]);
+  }, [activeSession, activeStartMs]);
 
   useEffect(() => {
-    if (!activeSession) { redirectedToSessionRef.current = false; return; }
+    if (!activeSession) { 
+      redirectedToSessionRef.current = false; 
+      return; 
+    }
     if (redirectedToSessionRef.current) return;
     redirectedToSessionRef.current = true;
-    if (activeSession.garageId) setSelectedGarageId(activeSession.garageId);
-  }, [activeSession?.id, activeSession?.garageId, setSelectedGarageId]);
+    if (activeSession.garageId) {
+      setSelectedGarageId(activeSession.garageId);
+    }
+  }, [activeSession, setSelectedGarageId]);
 
   // التحويل التلقائي عند انتهاء الجلسة
   useEffect(() => {
@@ -214,7 +242,9 @@ export default function SessionScreen() {
         if (typeof acknowledgeSession === 'function') acknowledgeSession(targetSession.id);
         activeSessionIdRef.current = null;
         toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
-        setTimeout(() => { setScreen('summary'); }, 400);
+        summaryTimeoutRef.current = setTimeout(() => { 
+          if (isMountedRef.current) setScreen('summary'); 
+        }, 400);
         return;
       }
     }
@@ -226,7 +256,9 @@ export default function SessionScreen() {
         if (lastCompletedSession.garageId) setSelectedGarageId(lastCompletedSession.garageId);
         if (typeof acknowledgeSession === 'function') acknowledgeSession(lastCompletedSession.id);
         toast.success('تم إنهاء الجلسة بنجاح ✅', { icon: '🏁', duration: 3000 });
-        setTimeout(() => { setScreen('summary'); }, 400);
+        summaryTimeoutRef.current = setTimeout(() => { 
+          if (isMountedRef.current) setScreen('summary'); 
+        }, 400);
       }
     }
   }, [activeSession, lastCompletedSession, sessions, setScreen, setSelectedGarageId, acknowledgedSessionIds, acknowledgeSession]);
@@ -276,13 +308,14 @@ export default function SessionScreen() {
   // شاشة الانتظار والمزامنة
   if (!activeSession) {
     return (
-      <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8 text-right" style={{ background: BRAND.navy }}>
+      <div className="h-full text-white flex flex-col items-center justify-center p-8 text-right" style={{ background: BRAND.navy }}>
         <div className="text-4xl mb-4 animate-bounce">⏳</div>
         <p className="text-slate-400 text-sm font-bold text-center mb-2">جاري مزامنة بيانات الجلسة...</p>
         <p className="text-slate-500 text-xs text-center mb-6">ستظهر بيانات العداد فور استلامها من السيرفر</p>
         <button
+          type="button"
           onClick={() => setScreen('list')}
-          className="bg-blue-600 text-white border-0 px-8 py-3.5 rounded-2xl font-black text-xs active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
+          className="text-white border-0 px-8 py-3.5 rounded-2xl font-black text-xs active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
           style={{ background: BRAND.blue, boxShadow: `0 4px 14px ${BRAND.blue}25` }}
         >
           <ArrowRight size={15} /> <span>العودة للقائمة الرئيسية</span>
@@ -327,27 +360,16 @@ export default function SessionScreen() {
       )}
 
       {/* حلقة العداد الدائرية الكبيرة المتوهجة بالكامل */}
-      <motion.div
-        animate={{
-          boxShadow: isFreeNow
-            ? [
-                '0 0 0px rgba(140, 198, 63, 0.1)',
-                '0 0 40px rgba(140, 198, 63, 0.25)',
-                '0 0 0px rgba(140, 198, 63, 0.1)',
-              ]
-            : [
-                '0 0 0px rgba(22, 86, 184, 0.1)',
-                '0 0 40px rgba(22, 86, 184, 0.25)',
-                '0 0 0px rgba(22, 86, 184, 0.1)',
-              ],
-        }}
-        transition={{ repeat: Infinity, duration: 2.5 }}
-        className="w-36 h-36 rounded-full flex flex-col items-center justify-center border-2 mb-5 shadow-lg"
-        style={{
-          background: BRAND.navyLight,
-          borderColor: isFreeNow ? BRAND.green : BRAND.blue,
-        }}
-      >
+<div
+  className="w-36 h-36 rounded-full flex flex-col items-center justify-center border-2 mb-5 transition-shadow"
+  style={{
+    background: BRAND.navyLight,
+    borderColor: isFreeNow ? BRAND.green : BRAND.blue,
+    boxShadow: isFreeNow 
+      ? '0 0 30px rgba(140, 198, 63, 0.2)' 
+      : '0 0 30px rgba(22, 86, 184, 0.2)',
+  }}
+>
         <Clock size={20} style={{ color: isFreeNow ? BRAND.green : BRAND.blue }} className="mb-1" />
         <div className="text-2xl font-black font-mono text-white leading-none">{formatTime(elapsed)}</div>
         <div className="text-[9px] font-bold mt-1.5" style={{ color: BRAND.slateMuted }}>مدة الركن الفعلية</div>
@@ -362,7 +384,7 @@ export default function SessionScreen() {
             </div>
             <div className="text-[9px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>ساعة محسوبة</div>
           </div>
-          <div className="text-lg font-black" style={{ color: BRAND.border }}>=</div>
+          <div className="text-lg font-black" style={{ color: BRAND.slateMuted }}>=</div>
           <div className="text-center">
             <div className="text-xl font-black font-mono" style={{ color: BRAND.green }}>
               {displayedCost} <span className="text-[10px]">ج.م</span>
@@ -462,8 +484,9 @@ export default function SessionScreen() {
         </div>
       </div>
 
-      {/* زر إنهاء الجلسة الفاخر باللون الأحمر الإرشادي المضاء */}
+      {/* زر إنهاء الجلسة الفاخر */}
       <button
+        type="button"
         onClick={() => setScreen('summary')}
         className="w-full py-3.5 rounded-xl active:scale-[0.98] transition-all mb-3 flex items-center justify-center border-0 text-white cursor-pointer font-black"
         style={{
@@ -482,6 +505,7 @@ export default function SessionScreen() {
 
       {/* زر العودة الصامت */}
       <button
+        type="button"
         onClick={() => setScreen('list')}
         className="w-full py-2.5 rounded-xl border cursor-pointer bg-transparent text-xs"
         style={{ color: BRAND.slateMuted, borderColor: BRAND.border }}

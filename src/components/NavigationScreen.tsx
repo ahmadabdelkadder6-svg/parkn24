@@ -4,7 +4,6 @@ import {
   Navigation,
   MapPin,
   ArrowRight,
-  CheckCircle,
   Car,
   Clock,
   XCircle,
@@ -95,7 +94,7 @@ const getDistanceMeters = (
   return R * c;
 };
 
-/* ─── Map controller (محمي بالكامل من الانهيار) ─── */
+/* ─── Map controller (محمي بالكامل من الانهيار وموفر للذاكرة) ─── */
 function MapController({
   userPos,
   garagePos,
@@ -106,7 +105,7 @@ function MapController({
   const map = useMap();
 
   useEffect(() => {
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       try {
         map.invalidateSize();
       } catch {}
@@ -114,8 +113,8 @@ function MapController({
 
     const isValidCoord = (c: [number, number]) =>
       Array.isArray(c) &&
-      typeof c[0] === 'number' && !isNaN(c[0]) && c[0] !== 0 &&
-      typeof c[1] === 'number' && !isNaN(c[1]) && c[1] !== 0;
+      typeof c[0] === 'number' && Number.isFinite(c[0]) && !isNaN(c[0]) && c[0] !== 0 &&
+      typeof c[1] === 'number' && Number.isFinite(c[1]) && !isNaN(c[1]) && c[1] !== 0;
 
     if (isValidCoord(userPos) && isValidCoord(garagePos)) {
       try {
@@ -131,6 +130,14 @@ function MapController({
         map.setView(garagePos, 15);
       } catch {}
     }
+
+    // 🧹 دمج تنظيف المؤقت وإيقاف محرك الخريطة فوراً عند مغادرة الشاشة
+    return () => {
+      clearTimeout(timer);
+      try {
+        map.stop(); // 🛑 إيقاف أي أنيميشن أو رسم بالخلفية
+      } catch {}
+    };
   }, [map, userPos, garagePos]);
 
   return null;
@@ -194,12 +201,14 @@ export default function NavigationScreen() {
   const [pushStatus, setPushStatus] = useState<'waiting' | 'sent' | 'cancelled'>('waiting');
 
   /* ── Refs ── */
+  const isMountedRef = useRef(true);
   const userPosRef = useRef(userPos);
   const currentUserRef = useRef(currentUser);
   const lastCarIdRef = useRef<string | null>(null);
   const screenEnteredRef = useRef(getServerNow());
   const navigatedToSessionRef = useRef(false);
   const isArrivingRef = useRef(false);
+  const isCancellingRef = useRef(false);
   const pushSentRef = useRef(false);
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const realtimeChannelRef = useRef<any>(null);
@@ -207,6 +216,13 @@ export default function NavigationScreen() {
   
   // 🛡️ ذاكرة الموقع الأخير المستقر لفلترة ضوضاء الـ GPS
   const lastStableCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     userPosRef.current = userPos;
@@ -223,7 +239,7 @@ export default function NavigationScreen() {
     let cancelled = false;
 
     const fastFetch = async () => {
-      if (cancelled) return;
+      if (cancelled || !isMountedRef.current) return;
       try {
         await fetchAll();
       } catch (e) {
@@ -243,8 +259,7 @@ export default function NavigationScreen() {
       );
     };
 
-    const channel = supabase
-      .channel(`instant-nav-${userPlateNav || userPhoneClean}-${Date.now()}`)
+const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'sessions' },
@@ -252,10 +267,12 @@ export default function NavigationScreen() {
           const newRow = payload.new as any;
           if (isMySessionPayload(newRow) && newRow?.status === 'active') {
             await fastFetch();
-            if (newRow.garage_id || newRow.garageId) {
-              setSelectedGarageId(newRow.garage_id || newRow.garageId);
+            if (isMountedRef.current) {
+              if (newRow.garage_id || newRow.garageId) {
+                setSelectedGarageId(newRow.garage_id || newRow.garageId);
+              }
+              setScreen('session');
             }
-            setScreen('session');
           } else {
             fastFetch();
           }
@@ -282,8 +299,10 @@ export default function NavigationScreen() {
 
     return () => {
       cancelled = true;
-      supabase.removeChannel(channel);
-      realtimeChannelRef.current = null;
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
         pollingIntervalRef.current = null;
@@ -295,6 +314,7 @@ export default function NavigationScreen() {
 
   /* ─── GPS مع تطبيق فلتر الرعشة ─── */
   const handleGpsUpdate = useCallback((p: GeolocationPosition) => {
+    if (!isMountedRef.current) return;
     const newLat = p.coords.latitude;
     const newLng = p.coords.longitude;
 
@@ -322,6 +342,7 @@ export default function NavigationScreen() {
 
     navigator.geolocation.getCurrentPosition(
       (p) => {
+        if (!isMountedRef.current) return;
         const newLat = p.coords.latitude;
         const newLng = p.coords.longitude;
         lastStableCoordsRef.current = { lat: newLat, lng: newLng };
@@ -346,7 +367,9 @@ export default function NavigationScreen() {
 
   /* ─── تحميل الخريطة ─── */
   useEffect(() => {
-    const t = setTimeout(() => setMapReady(true), 200);
+    const t = setTimeout(() => {
+      if (isMountedRef.current) setMapReady(true);
+    }, 200);
     return () => clearTimeout(t);
   }, []);
 
@@ -365,10 +388,12 @@ export default function NavigationScreen() {
     const interval = window.setInterval(() => {
       const elapsed = Math.floor((getServerNow() - screenEnteredRef.current) / 1000);
       const left = Math.max(0, CANCEL_WINDOW_SECONDS - elapsed);
-      setCancelTimeLeft(left);
-      if (left <= 0) {
-        setCanCancel(false);
-        window.clearInterval(interval);
+      if (isMountedRef.current) {
+        setCancelTimeLeft(left);
+        if (left <= 0) {
+          setCanCancel(false);
+          window.clearInterval(interval);
+        }
       }
     }, 1000);
 
@@ -402,7 +427,7 @@ export default function NavigationScreen() {
       );
 
       if (!stillComing || pushSentRef.current) {
-        setPushStatus('cancelled');
+        if (isMountedRef.current) setPushStatus('cancelled');
         return;
       }
 
@@ -422,11 +447,11 @@ export default function NavigationScreen() {
           agreedPrice: myIncomingCar.agreedPrice,
         });
 
-        setPushStatus('sent');
+        if (isMountedRef.current) setPushStatus('sent');
       } catch (err) {
         console.error('❌ Push error:', err);
         pushSentRef.current = false;
-        setPushStatus('waiting');
+        if (isMountedRef.current) setPushStatus('waiting');
       }
     }, msLeft);
 
@@ -469,8 +494,9 @@ export default function NavigationScreen() {
           لم يتم تحديد جراج
         </p>
         <button
+          type="button"
           onClick={() => setScreen('list')}
-          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all"
+          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all border-0 cursor-pointer"
         >
           العودة للقائمة
         </button>
@@ -490,17 +516,20 @@ export default function NavigationScreen() {
   /* ─── Handlers ─── */
   const copyCoords = async () => {
     try {
-      if (navigator.clipboard?.writeText) {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
         await navigator.clipboard.writeText(coordsText);
+        toast.success('تم نسخ الإحداثيات!');
       } else {
         const el = document.createElement('textarea');
         el.value = coordsText;
+        el.style.position = 'fixed';
+        el.style.opacity = '0';
         document.body.appendChild(el);
         el.select();
         document.execCommand('copy');
         document.body.removeChild(el);
+        toast.success('تم نسخ الإحداثيات!');
       }
-      toast.success('تم نسخ الإحداثيات!');
     } catch {
       toast.error('فشل النسخ');
     }
@@ -512,34 +541,43 @@ export default function NavigationScreen() {
   };
 
   const handleCancelBooking = async () => {
+    if (isCancellingRef.current || isArrivingRef.current) return;
     if (!currentUser || !myIncomingCar) return;
 
-    if (pushTimerRef.current) {
-      clearTimeout(pushTimerRef.current);
-      pushTimerRef.current = null;
+    try {
+      isCancellingRef.current = true;
+      if (pushTimerRef.current) {
+        clearTimeout(pushTimerRef.current);
+        pushTimerRef.current = null;
+      }
+      pushSentRef.current = true;
+      if (isMountedRef.current) setPushStatus('cancelled');
+
+      if (pushStatus === 'sent' && garage) {
+        await cancelScheduledPush(garage.id, myIncomingCar.carPlate);
+      }
+
+      const activeOffer = offers.find(
+        (o) =>
+          o.userId === currentUser.phone &&
+          (o.status === 'pending' || o.status === 'accepted'),
+      );
+      if (activeOffer) cancelOffer(activeOffer.id);
+
+      await removeIncomingCar(myIncomingCar.id);
+      toast.success('تم إلغاء الحجز، يمكنك اختيار جراج آخر 🚗');
+      setSelectedGarageId(null);
+      setScreen('list');
+    } catch (err) {
+      console.error('Cancel booking error:', err);
+      toast.error('حدث خطأ أثناء إلغاء الحجز');
+    } finally {
+      isCancellingRef.current = false;
     }
-    pushSentRef.current = true;
-    setPushStatus('cancelled');
-
-    if (pushStatus === 'sent') {
-      await cancelScheduledPush(garage.id, myIncomingCar.carPlate);
-    }
-
-    const activeOffer = offers.find(
-      (o) =>
-        o.userId === currentUser.phone &&
-        (o.status === 'pending' || o.status === 'accepted'),
-    );
-    if (activeOffer) cancelOffer(activeOffer.id);
-
-    removeIncomingCar(myIncomingCar.id);
-    toast.success('تم إلغاء الحجز، يمكنك اختيار جراج آخر 🚗');
-    setSelectedGarageId(null);
-    setScreen('list');
   };
 
   const handleCarArrived = async () => {
-    if (isArrivingRef.current) return;
+    if (isArrivingRef.current || isCancellingRef.current) return;
     isArrivingRef.current = true;
 
     try {
@@ -600,7 +638,9 @@ export default function NavigationScreen() {
       console.error('❌ خطأ:', err);
       toast.error('حدث خطأ، حاول مرة أخرى');
     } finally {
-      setTimeout(() => { isArrivingRef.current = false; }, 3000);
+      setTimeout(() => { 
+        isArrivingRef.current = false; 
+      }, 2000);
     }
   };
 
@@ -614,6 +654,8 @@ export default function NavigationScreen() {
       {/* ══ Header ══ */}
       <div className="flex items-center justify-between px-4 pt-12 pb-2 shrink-0">
         <button
+          type="button"
+          aria-label="الرجوع للقائمة"
           onClick={() => setScreen('list')}
           className="p-2.5 rounded-xl border cursor-pointer bg-white/5 active:scale-90 transition-all"
           style={{ borderColor: BRAND.border, color: '#fff' }}
@@ -622,12 +664,9 @@ export default function NavigationScreen() {
         </button>
 
         <h2 className="text-xs font-black flex items-center gap-1.5" style={{ color: '#ffffff' }}>
-          <motion.div
-            animate={{ x: [0, -3, 0] }}
-            transition={{ repeat: Infinity, duration: 1.5 }}
-          >
-            <Navigation size={15} style={{ color: BRAND.blue }} />
-          </motion.div>
+<div className="animate-pulse">
+  <Navigation size={15} style={{ color: BRAND.blue }} />
+</div>
           التوجيه للجراج
         </h2>
 
@@ -731,6 +770,7 @@ export default function NavigationScreen() {
         {/* 🚀 زر توجيه الخرائط */}
         <div className="flex flex-col gap-1.5 shrink-0">
           <motion.button
+            type="button"
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.98 }}
             onClick={openExternalMaps}
@@ -753,6 +793,7 @@ export default function NavigationScreen() {
           </motion.button>
 
           <button
+            type="button"
             onClick={copyCoords}
             className="flex items-center justify-center gap-1 text-[10px] py-0.5 border-0 bg-transparent cursor-pointer"
             style={{ color: BRAND.slateMuted }}
@@ -763,7 +804,7 @@ export default function NavigationScreen() {
         </div>
 
         {/* معلومات السعر والأماكن وطرق الدفع المقبولة */}
-        <div className="border rounded-xl p-3.5 shrink-0 space-y-2.5" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+        <div className="border rounded-2xl p-3.5 shrink-0 space-y-2.5" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1 text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>
               <Car size={12} />
@@ -802,7 +843,7 @@ export default function NavigationScreen() {
 
           {/* 🎁 شارة الهدية الترحيبية إن وجدت */}
           {isEligibleForFree && (
-            <div className="border rounded-lg p-2 text-center flex items-center justify-center gap-1 text-[10px] font-black" style={{ background: BRAND.greenLight, borderColor: BRAND.green + '40', color: BRAND.green }}>
+            <div className="border rounded-xl p-2 text-center flex items-center justify-center gap-1 text-[10px] font-black" style={{ background: BRAND.greenLight, borderColor: BRAND.green + '40', color: BRAND.green }}>
               <Gift size={12} style={{ color: BRAND.green }} />
               <span>أول 30 دقيقة مجاناً كهدية ترحيبية لك في هذا الحجز! 🎁</span>
             </div>
@@ -812,7 +853,7 @@ export default function NavigationScreen() {
         {/* 🔔 مؤشر حالة الـ Push */}
         {myIncomingCar && (
           <div
-            className="rounded-xl p-3 flex items-center gap-2 shrink-0 border"
+            className="rounded-2xl p-3 flex items-center gap-2 shrink-0 border"
             style={{ 
               background: pushStatus === 'sent' ? BRAND.greenLight : 'rgba(245, 158, 11, 0.08)', 
               borderColor: pushStatus === 'sent' ? BRAND.green + '20' : 'rgba(245, 158, 11, 0.2)' 
@@ -845,8 +886,9 @@ export default function NavigationScreen() {
         {/* زر وصلت للجراج */}
         {!myActiveSession && (
           <button
+            type="button"
             onClick={handleCarArrived}
-            disabled={isArrivingRef.current}
+            disabled={isArrivingRef.current || isCancellingRef.current}
             className="w-full py-3.5 rounded-xl active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 disabled:opacity-50 border-0 text-white cursor-pointer"
             style={{
               background: BRAND.greenDark,
@@ -871,8 +913,10 @@ export default function NavigationScreen() {
               // ⏱️ المرحلة الأولى: أول 30 ثانية (إلغاء سريع بعداد تنازلي)
               <>
                 <button
+                  type="button"
                   onClick={handleCancelBooking}
-                  className="w-full border py-3 rounded-xl font-black text-xs active:scale-95 transition-transform flex items-center justify-center gap-1.5 bg-transparent cursor-pointer"
+                  disabled={isCancellingRef.current || isArrivingRef.current}
+                  className="w-full border py-3 rounded-xl font-black text-xs active:scale-95 transition-transform flex items-center justify-center gap-1.5 bg-transparent cursor-pointer disabled:opacity-50"
                   style={{ color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.3)' }}
                 >
                   <XCircle size={15} />
@@ -891,10 +935,12 @@ export default function NavigationScreen() {
             ) : (
               // 🚀 المرحلة الثانية: بعد انتهاء الـ 30 ثانية وإرسال الإشعار للسايس
               <motion.button
+                type="button"
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 onClick={handleCancelBooking}
-                className="w-full py-3 rounded-xl active:scale-95 transition-all flex items-center justify-center gap-2 border bg-transparent cursor-pointer"
+                disabled={isCancellingRef.current || isArrivingRef.current}
+                className="w-full py-3 rounded-xl active:scale-95 transition-all flex items-center justify-center gap-2 border bg-transparent cursor-pointer disabled:opacity-50"
                 style={{
                   color: BRAND.slateMuted,
                   borderColor: BRAND.border,

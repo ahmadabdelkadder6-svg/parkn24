@@ -3,24 +3,18 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   MapPin,
   Star,
-  Car,
   Search,
   Navigation,
   Locate,
-  Filter,
   Plus,
   Receipt,
   MessageCircle,
-  Zap,
   X,
   History,
-  CheckCircle2,
-  XCircle,
   Gift,
-  Sparkles,
   ChevronDown,
   QrCode,
-   Copy,
+  Copy,
 } from 'lucide-react';
 import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
 import {
@@ -205,25 +199,61 @@ export default function GarageListScreen() {
 
   useEffect(() => { getUserLocation(); }, [getUserLocation]);
 
+  // 🛡️ اشتراك لحظي أمني شامل لتحديث المحفظة فور قبول الإدارة لعملية الشحن
   useEffect(() => {
-    if (!normalizedUserPlate) return;
+    if (!normalizedUserPlate && !cleanUserPhone) return;
     let isSubscribed = true;
-    const refetch = async () => { if (!isSubscribed) return; try { await fetchAll(); } catch (e) { console.error('Realtime Fetch Error:', e); } };
+
+    const refetch = async () => { 
+      if (!isSubscribed) return; 
+      try { 
+        await fetchAll(); 
+      } catch (e) { 
+        console.error('Realtime Fetch Error:', e); 
+      } 
+    };
+
     const isMyRow = (row: any): boolean => {
       if (!row) return false;
       const plate = normalizePlate(row.car_plate || row.carPlate);
-      const phone = (row.customer_phone || row.customerPhone || '').replace(/[^\d+]/g, '');
+      const phone = (row.customer_phone || row.customerPhone || row.phone || row.userPhone || '').replace(/[^\d+]/g, '');
       return plate === normalizedUserPlate || Boolean(cleanUserPhone && phone === cleanUserPhone);
     };
-    const channel = supabase.channel(`customer-realtime-${normalizedUserPlate}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, (payload) => { if (isMyRow(payload.new) || isMyRow(payload.old)) refetch(); })
+
+    // 📡 الاشتراك في قنوات البث الفوري من Supabase
+    const channel = supabase.channel(`customer-realtime-wallet-${cleanUserPhone}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, (payload) => { 
+        if (isMyRow(payload.new) || isMyRow(payload.old)) refetch(); 
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_topups' }, (payload) => { 
+        if (isMyRow(payload.new) || isMyRow(payload.old)) {
+          refetch();
+          if (payload.event === 'UPDATE' && payload.new.status === 'approved') {
+            toast.success(`🎁 تم اعتماد شحن رصيد بمبلغ ${payload.new.amount} ج.م بنجاح!`, { icon: '💳' });
+          }
+        }
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users' }, (payload) => {
+        if (cleanUserPhone && payload.new.phone && normalizePhone(payload.new.phone) === cleanUserPhone) {
+          refetch(); // تحديث فوري لبيانات المستخدم ورصيد المحفظة عند الاعتماد
+        }
+      })
       .subscribe();
-    const interval = setInterval(refetch, 10000);
+
+    const interval = setInterval(refetch, 12000);
     const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
     const handleFocus = () => refetch();
+
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('focus', handleFocus);
-    return () => { isSubscribed = false; clearInterval(interval); document.removeEventListener('visibilitychange', handleVisibility); window.removeEventListener('focus', handleFocus); supabase.removeChannel(channel); };
+
+    return () => { 
+      isSubscribed = false; 
+      clearInterval(interval); 
+      document.removeEventListener('visibilitychange', handleVisibility); 
+      window.removeEventListener('focus', handleFocus); 
+      supabase.removeChannel(channel); 
+    };
   }, [normalizedUserPlate, cleanUserPhone, fetchAll]);
 
   useEffect(() => {
@@ -270,14 +300,34 @@ export default function GarageListScreen() {
     if (myIncomingCar) { setSelectedGarageId(myIncomingCar.garageId); setScreen('navigation'); return; }
     if (offers.some((o) => o.userId === currentUser.phone && o.status === 'pending')) { toast.error('لديك عرض معلق بالفعل'); return; }
     if (garage.availableSpots <= 0) { toast.error('لا توجد أماكن متاحة حالياً'); return; }
+    
     const userWallet = currentUser.wallet || 0;
-    if (garage.payment_mode === 'wallet' && userWallet <= 0 && !isEligibleForFreeSession) { toast.error('عذراً، هذا الجراج يقبل الدفع بالمحفظة فقط. يرجى شحن محفظتك للمتابعة.'); setShowTopUp(true); return; }
+    
+    // 🛡️ تحقق مالي آمن: يجب أن يغطي الرصيد الحد الأدنى (قيمة الساعة الأولى للجراج)
+    if (garage.payment_mode === 'wallet' && userWallet < garage.basePrice && !isEligibleForFreeSession) { 
+      toast.error(`عذراً، هذا الجراج يتطلب الدفع بالمحفظة. يرجى شحن محفظتك بمبلغ ${garage.basePrice} ج.م على الأقل للمتابعة.`); 
+      setShowTopUp(true); 
+      return; 
+    }
+
     try {
       setIsBooking(true); setSelectedGarageId(garage.id);
-      await addIncomingCar({ garageId: garage.id, carPlate: currentUser.carPlate, customerName: currentUser.name, customerPhone: currentUser.phone, agreedPrice: garage.basePrice, estimatedArrival: Math.max(3, garage.minutes) });
+      await addIncomingCar({ 
+        garageId: garage.id, 
+        carPlate: currentUser.carPlate, 
+        customerName: currentUser.name, 
+        customerPhone: currentUser.phone, 
+        agreedPrice: garage.basePrice, 
+        estimatedArrival: Math.max(3, garage.minutes) 
+      });
       toast.success(`تم الحجز بنجاح 🚗`);
       setScreen('navigation');
-    } catch (e) { console.error(e); toast.error('حدث خطأ أثناء إتمام الحجز'); } finally { setIsBooking(false); }
+    } catch (e) { 
+      console.error(e); 
+      toast.error('حدث خطأ أثناء إتمام الحجز'); 
+    } finally { 
+      setIsBooking(false); 
+    }
   };
 
   return (
@@ -421,7 +471,7 @@ export default function GarageListScreen() {
         {/* بانر الهدية الترحيبية الهادئ */}
         {isEligibleForFreeSession && !activeSession && !myIncomingCar && (
           <div
-            className="mb-3 p-3 rounded-16 flex items-center gap-2.5"
+            className="mb-3 p-3 rounded-2xl flex items-center gap-2.5"
             style={{ background: BRAND.green + '15', border: `1px solid ${BRAND.green}40` }}
           >
             <Gift size={16} style={{ color: BRAND.greenDark }} />
@@ -436,7 +486,7 @@ export default function GarageListScreen() {
         {activeSession && (
           <button
             onClick={() => { setSelectedGarageId(activeSession.garageId); setScreen('session'); }}
-            className="w-full mb-3 flex items-center justify-between px-4 py-3 rounded-16 border-0 text-white cursor-pointer active:scale-98 transition-all"
+            className="w-full mb-3 flex items-center justify-between px-4 py-3 rounded-2xl border-0 text-white cursor-pointer active:scale-98 transition-all"
             style={{ background: BRAND.greenDark }}
           >
             <span className="text-xs font-black">عرض التفاصيل ←</span>
@@ -448,7 +498,7 @@ export default function GarageListScreen() {
         {!activeSession && myIncomingCar && (
           <button
             onClick={() => { setSelectedGarageId(myIncomingCar.garageId); setScreen('navigation'); }}
-            className="w-full mb-3 flex items-center justify-between px-4 py-3 rounded-16 border-0 text-white cursor-pointer active:scale-98 transition-all"
+            className="w-full mb-3 flex items-center justify-between px-4 py-3 rounded-2xl border-0 text-white cursor-pointer active:scale-98 transition-all"
             style={{ background: BRAND.blue }}
           >
             <span className="text-xs font-black">فتح الخريطة التوجيهية ←</span>
@@ -492,7 +542,7 @@ export default function GarageListScreen() {
 
           <button
             onClick={() => setShowNearbyOnly(!showNearbyOnly)}
-            className="text-xs font-black px-3 rounded-12 border cursor-pointer"
+            className="text-xs font-black px-3 rounded-xl border cursor-pointer"
             style={{
               background: showNearbyOnly ? BRAND.blue : BRAND.card,
               color: showNearbyOnly ? '#fff' : BRAND.slate,
@@ -512,7 +562,7 @@ export default function GarageListScreen() {
           {hasCompletedSession && (
             <button
               onClick={() => setScreen('lastSession')}
-              className="flex items-center justify-center gap-2 py-2.5 rounded-12 border cursor-pointer text-xs font-bold"
+              className="flex items-center justify-center gap-2 py-2.5 rounded-xl border cursor-pointer text-xs font-bold"
               style={{ background: BRAND.card, borderColor: BRAND.border, color: BRAND.blueDark }}
             >
               <Receipt size={14} />
@@ -522,7 +572,7 @@ export default function GarageListScreen() {
 
           <button
             onClick={() => setScreen('chat')}
-            className={`flex items-center justify-center gap-2 py-2.5 rounded-12 border cursor-pointer text-xs font-bold ${!hasCompletedSession ? 'col-span-2' : ''}`}
+            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border cursor-pointer text-xs font-bold ${!hasCompletedSession ? 'col-span-2' : ''}`}
             style={{ background: BRAND.card, borderColor: BRAND.border, color: BRAND.blueDark }}
           >
             <MessageCircle size={14} />
@@ -656,21 +706,24 @@ export default function GarageListScreen() {
                 />
               </div>
 
-              {/* 🔗 زر نسخ ومشاركة رابط التطبيق */}
+              {/* 🔗 زر نسخ ومشاركة رابط التطبيق بشكل آمن ومتوافق */}
               <div className="space-y-2">
                 <button
                   onClick={async () => {
                     const appUrl = window.location.origin;
                     try {
-                      if (navigator.clipboard?.writeText) {
+                      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
                         await navigator.clipboard.writeText(appUrl);
                       } else {
-                        const el = document.createElement('textarea');
-                        el.value = appUrl;
-                        document.body.appendChild(el);
-                        el.select();
+                        // الآلية البديلة (Fallback) للمتصفحات القديمة أو بيئات الويب غير المؤمنة
+                        const textArea = document.createElement('textarea');
+                        textArea.value = appUrl;
+                        textArea.style.position = 'fixed';
+                        textArea.style.opacity = '0';
+                        document.body.appendChild(textArea);
+                        textArea.select();
                         document.execCommand('copy');
-                        document.body.removeChild(el);
+                        document.body.removeChild(textArea);
                       }
                       toast.success('تم نسخ رابط التطبيق بنجاح! 📋🚀', { duration: 3000 });
                     } catch {
@@ -738,7 +791,7 @@ function WelcomeGiftModal() {
 
             <button
               onClick={handleClose}
-              className="w-full py-3 rounded-12 font-black border-0 cursor-pointer text-white text-xs"
+              className="w-full py-3 rounded-xl font-black border-0 cursor-pointer text-white text-xs"
               style={{ background: BRAND.blue }}
             >
               جاهز للبدء 🚀
@@ -847,7 +900,7 @@ const GarageCard = memo(function GarageCard({
       {/* زر الحجز */}
       <button
         disabled={isFull || disabled}
-        className="w-full border-0 font-black py-2.5 rounded-10 mt-3 text-xs text-white cursor-pointer"
+        className="w-full border-0 font-black py-2.5 rounded-xl mt-3 text-xs text-white cursor-pointer"
         style={{ background: btnBg }}
       >
         {btnLabel}

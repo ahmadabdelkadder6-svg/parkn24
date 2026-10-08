@@ -1,8 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, memo, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   Clock,
-  Car,
   DollarSign,
   MapPin,
   CreditCard,
@@ -41,7 +40,7 @@ const toMs = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-export default function LastSessionCard() {
+const LastSessionCard = memo(function LastSessionCard() {
   const { sessions, garages, currentUser } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
@@ -61,54 +60,56 @@ export default function LastSessionCard() {
       .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
   }, [sessions, userPlate, userPhone]);
 
-  if (!lastSession) return null;
+  const garage = lastSession
+    ? garages.find((g) => g.id === lastSession.garageId)
+    : null;
 
-  const garage = garages.find((g) => g.id === lastSession.garageId);
-
-  const startTime = toMs(lastSession.startTime);
-  const endTime = toMs(lastSession.endTime) || getServerNow();
+  const startTime = toMs(lastSession?.startTime);
+  const endTime = toMs(lastSession?.endTime) || (lastSession ? getServerNow() : 0);
 
   const elapsedSeconds = Math.max(0, Math.floor((endTime - startTime) / 1000));
-  const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);
+  const rate = Number(lastSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const totalMinutes = Math.floor(elapsedSeconds / 60);
 
   // 🎁 [منطق الهدية الترحيبية]: أول 30 دقيقة مجانية (1800 ثانية)
-  const isFirstFreeApplied = lastSession.isFirstFreeSession === true;
+  const isFirstFreeApplied = lastSession?.isFirstFreeSession === true;
   
   const isFree = isFirstFreeApplied && (
-    lastSession.totalPrice === 0 ||
-    lastSession.paymentMethod === 'free' ||
-    (lastSession.totalPrice == null && elapsedSeconds <= 1800)
+    lastSession?.totalPrice === 0 ||
+    lastSession?.paymentMethod === 'free' ||
+    (lastSession?.totalPrice == null && elapsedSeconds <= 1800)
   );
 
   const hours = isFree ? 0 : calculateFullHours(elapsedSeconds);
   const rawCost = calculateCost(elapsedSeconds, rate);
   
   const cost =
-    lastSession.totalPrice != null
+    lastSession?.totalPrice != null
       ? Number(lastSession.totalPrice)
       : (isFree ? 0 : rawCost);
 
-  const startDate = new Date(startTime);
-  const endDate = new Date(endTime);
+  const startDate = useMemo(() => new Date(startTime > 0 ? startTime : getServerNow()), [startTime]);
+  const endDate = useMemo(() => new Date(endTime > 0 ? endTime : getServerNow()), [endTime]);
 
-  const formatDateTime = (date: Date) => {
+  const formatDateTime = useCallback((date: Date) => {
+    if (!date || isNaN(date.getTime())) return '---';
     return date.toLocaleDateString('ar-EG', {
       weekday: 'short',
       year: 'numeric',
       month: 'short',
       day: 'numeric',
     });
-  };
+  }, []);
 
-  const formatTimeOnly = (date: Date) => {
+  const formatTimeOnly = useCallback((date: Date) => {
+    if (!date || isNaN(date.getTime())) return '--:--';
     return date.toLocaleTimeString('ar-EG', {
       hour: '2-digit',
       minute: '2-digit',
     });
-  };
+  }, []);
 
-  const getPaymentInfo = (method?: string) => {
+  const getPaymentInfo = useCallback((method?: string) => {
     switch (method) {
       case 'cash':
         return { label: 'سداد نقدي كاش', icon: '💵', color: BRAND.green, bg: BRAND.greenLight };
@@ -123,14 +124,19 @@ export default function LastSessionCard() {
       default:
         return { label: 'سداد نقدي كاش', icon: '💵', color: BRAND.green, bg: BRAND.greenLight };
     }
-  };
+  }, []);
 
-  const paymentInfo = getPaymentInfo(isFree ? 'free' : lastSession.paymentMethod);
+  const paymentInfo = useMemo(() => {
+    return getPaymentInfo(isFree ? 'free' : lastSession?.paymentMethod);
+  }, [getPaymentInfo, isFree, lastSession?.paymentMethod]);
 
-  const sourceInfo =
-    lastSession.source === 'app'
+  const sourceInfo = useMemo(() => {
+    return lastSession?.source === 'app'
       ? { label: 'حجز تطبيق', color: '#60a5fa', bg: BRAND.blueSoft }
       : { label: 'ركن يدوي', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' };
+  }, [lastSession?.source]);
+
+  if (!lastSession) return null;
 
   return (
     <motion.div
@@ -322,4 +328,5 @@ export default function LastSessionCard() {
       </div>
     </motion.div>
   );
-}
+});
+

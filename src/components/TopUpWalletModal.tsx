@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { X, Copy, ExternalLink, ArrowRight, CheckCircle, Plus, Minus, Phone, Send, Sparkles } from 'lucide-react';
 // 🌟 استيراد مصفوفة الباقات الموحدة ودالة البونص ودالة تنظيف الهاتف من الـ Store مباشرة
@@ -8,6 +8,11 @@ import toast from 'react-hot-toast';
 const WALLET_NUMBER = '01229858104';
 const INSTAPAY_USERNAME = 'ahmed.ali858104';
 const INSTAPAY_LINK = `https://ipn.eg/S/${INSTAPAY_USERNAME}/instapay/9fp24n`;
+
+// 🛡️ حدود آمنة للمبلغ لمنع أي إدخال خبيث أو خاطئ
+const MIN_AMOUNT = 100;
+const MAX_AMOUNT = 100000;
+const STEP_AMOUNT = 50;
 
 // 🎨 الألوان الرسمية الفاخرة الموحدة لتطبيق Park'n 24
 const BRAND = {
@@ -33,6 +38,15 @@ function generateSecureReference(): string {
   return `TXN-${timestampPart}-${randomPart}`;
 }
 
+// 🛡️ دالة مساعدة آمنة لضبط المبلغ ضمن الحدود المسموح بها
+function clampAmount(value: number): number {
+  if (!Number.isFinite(value) || Number.isNaN(value)) return MIN_AMOUNT;
+  const intVal = Math.floor(value);
+  if (intVal < MIN_AMOUNT) return MIN_AMOUNT;
+  if (intVal > MAX_AMOUNT) return MAX_AMOUNT;
+  return intVal;
+}
+
 export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
   const { currentUser, addWalletTopUp } = useStore();
 
@@ -40,20 +54,55 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
   const [amount, setAmount] = useState<number>(100);
   const [method, setMethod] = useState<'instapay' | 'cashwallet'>('instapay');
   const [loading, setLoading] = useState(false);
-  
+
   // 🛡️ تثبيت الكود طوال فترة فتح النافذة لمنع التغيير العشوائي
   const [transactionId] = useState<string>(() => generateSecureReference());
   const isSubmittingRef = useRef(false);
+  const isMountedRef = useRef(true);
+
+  // 🧹 Cleanup لمنع تحديث state بعد unmount وتسرب الذاكرة
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      isSubmittingRef.current = false;
+    };
+  }, []);
 
   // 🎁 حساب البونص التفاعلي مباشرة من دالة الـ Store الموحدة
   const currentBonus = useMemo(() => calculateBonus(amount), [amount]);
   const totalReceived = useMemo(() => amount + currentBonus, [amount, currentBonus]);
 
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text).then(
-      () => toast.success(`تم نسخ ${label}`),
-      () => toast.error('فشل النسخ')
-    );
+  // 🛡️ منع إغلاق النافذة أثناء إرسال طلب حرج لحماية بيانات المستخدم
+  const handleSafeClose = () => {
+    if (loading || isSubmittingRef.current) {
+      toast.error('يرجى الانتظار حتى اكتمال إرسال الطلب');
+      return;
+    }
+    onClose();
+  };
+
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(text);
+        toast.success(`تم نسخ ${label}`);
+      } else {
+        // 🛡️ Fallback آمن للمتصفحات القديمة أو السياقات غير الآمنة (non-HTTPS)
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        toast.success(`تم نسخ ${label}`);
+      }
+    } catch (err) {
+      console.error('Copy failed:', err);
+      toast.error('فشل النسخ، يرجى النسخ يدوياً');
+    }
   };
 
   const handleSubmitTopUp = async () => {
@@ -71,15 +120,22 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
       return;
     }
 
-    if (amount < 100) {
-      toast.error('الحد الأدنى للشحن هو 100 ج.م');
+    // 🛡️ تحقق صارم من صحة المبلغ قبل أي إرسال
+    const safeAmount = clampAmount(amount);
+    if (safeAmount < MIN_AMOUNT) {
+      toast.error(`الحد الأدنى للشحن هو ${MIN_AMOUNT} ج.م`);
       return;
     }
+    if (safeAmount > MAX_AMOUNT) {
+      toast.error(`الحد الأقصى للشحن هو ${MAX_AMOUNT} ج.م`);
+      return;
+    }
+
+    const loadingToast = toast.loading('جاري إرسال طلب الشحن...');
 
     try {
       isSubmittingRef.current = true;
       setLoading(true);
-      const loadingToast = toast.loading('جاري إرسال طلب الشحن...');
 
       const userId = (currentUser as any).id || userPhone;
 
@@ -87,26 +143,36 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
         userId: userId,
         userName: currentUser.name || 'حريف',
         userPhone: userPhone,
-        amount: Math.floor(Number(amount)), // أرقام صحيحة فقط بدون كسور
+        amount: safeAmount, // 🛡️ استخدام القيمة الآمنة المحسوبة
         transactionId: transactionId,
         carPlate: currentUser.carPlate,
         method,
       } as any);
 
       toast.dismiss(loadingToast);
+
+      // 🧹 التأكد من أن المكون ما زال موجوداً قبل تحديث الـ state
+      if (!isMountedRef.current) return;
+
       toast.success(
-        currentBonus > 0 
-          ? `🎁 تم إرسال الطلب! ستحصل على ${amount} ج + ${currentBonus} ج بونص هدية عند الاعتماد`
+        currentBonus > 0
+          ? `🎁 تم إرسال الطلب! ستحصل على ${safeAmount} ج + ${currentBonus} ج بونص هدية عند الاعتماد`
           : 'تم إرسال طلب الشحن! ⏳ في انتظار اعتماد الإدارة',
         { duration: 5000 }
       );
       setStep('done');
     } catch (error) {
-      console.error(error);
-      toast.error('فشل إرسال الطلب، يرجى المحاولة لاحقاً');
-      isSubmittingRef.current = false;
+      console.error('Top-up error:', error);
+      toast.dismiss(loadingToast);
+      if (isMountedRef.current) {
+        toast.error('فشل إرسال الطلب، يرجى المحاولة لاحقاً');
+      }
     } finally {
-      setLoading(false);
+      // 🛡️ إعادة ضبط حالة الإرسال دائماً حتى يستطيع المستخدم إعادة المحاولة عند الفشل
+      isSubmittingRef.current = false;
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -117,7 +183,10 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-end justify-center"
       style={{ background: 'rgba(10,22,40,0.7)', backdropFilter: 'blur(4px)' }}
-      onClick={onClose}
+      onClick={handleSafeClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="topup-modal-title"
     >
       <motion.div
         initial={{ y: '100%' }}
@@ -138,8 +207,17 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
           {step === 'amount' && (
             <>
               <div className="flex items-center justify-between mb-4">
-                <button onClick={onClose} className="text-slate-400 hover:text-slate-600 border-0 bg-transparent cursor-pointer"><X size={20} /></button>
-                <h2 className="font-black text-sm" style={{ color: BRAND.blueDark }}>شحن رصيد المحفظة</h2>
+                <button
+                  type="button"
+                  onClick={handleSafeClose}
+                  aria-label="إغلاق النافذة"
+                  className="text-slate-400 hover:text-slate-600 border-0 bg-transparent cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+                <h2 id="topup-modal-title" className="font-black text-sm" style={{ color: BRAND.blueDark }}>
+                  شحن رصيد المحفظة
+                </h2>
                 <div className="w-6" />
               </div>
 
@@ -152,7 +230,9 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 }}
               >
                 <div className="text-[10px] font-bold opacity-80 mb-0.5">رصيدك الحالي بالمحفظة</div>
-                <div className="text-2xl font-black font-mono">{currentUser?.wallet || 0} <span className="text-xs font-bold">ج.م</span></div>
+                <div className="text-2xl font-black font-mono">
+                  {currentUser?.wallet || 0} <span className="text-xs font-bold">ج.م</span>
+                </div>
               </div>
 
               {/* 🏆 الباقات التوفيرية النظيفة */}
@@ -170,6 +250,8 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                         key={tier.id}
                         type="button"
                         onClick={() => setAmount(tier.amount)}
+                        aria-pressed={isSelected}
+                        aria-label={`اختيار باقة ${tier.label} بقيمة ${tier.amount} جنيه مع هدية ${tier.bonus} جنيه`}
                         className="relative p-3.5 rounded-xl border-2 text-center transition-all active:scale-[0.97] cursor-pointer"
                         style={{
                           borderColor: isSelected ? BRAND.blue : BRAND.border,
@@ -182,7 +264,9 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                           </span>
                         )}
                         <div className="font-black text-xs mb-0.5" style={{ color: BRAND.blueDark }}>{tier.label}</div>
-                        <div className="text-xl font-black font-mono text-slate-900">{tier.amount} <span className="text-xs font-bold text-slate-500">ج</span></div>
+                        <div className="text-xl font-black font-mono text-slate-900">
+                          {tier.amount} <span className="text-xs font-bold text-slate-500">ج</span>
+                        </div>
                         <div className="mt-1.5 inline-block font-black text-[10px] px-2.5 py-0.5 rounded-lg" style={{ background: BRAND.greenLight, color: BRAND.greenDark }}>
                           🎁 +{tier.bonus} ج هدية
                         </div>
@@ -198,8 +282,10 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 <div className="flex items-center justify-center gap-4 p-2.5 rounded-xl border" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
                   <button
                     type="button"
-                    onClick={() => setAmount((a) => Math.max(100, a - 50))}
-                    className="w-10 h-10 rounded-lg text-red-600 font-black flex items-center justify-center active:scale-90 border-0 cursor-pointer"
+                    onClick={() => setAmount((a) => clampAmount(a - STEP_AMOUNT))}
+                    aria-label={`إنقاص المبلغ ${STEP_AMOUNT} جنيه`}
+                    disabled={amount <= MIN_AMOUNT}
+                    className="w-10 h-10 rounded-lg text-red-600 font-black flex items-center justify-center active:scale-90 border-0 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                     style={{ background: '#fee2e2' }}
                   >
                     <Minus size={16} />
@@ -207,16 +293,27 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                   <div className="text-center">
                     <input
                       type="number"
+                      inputMode="numeric"
+                      min={MIN_AMOUNT}
+                      max={MAX_AMOUNT}
+                      step={STEP_AMOUNT}
                       value={amount}
-                      onChange={(e) => setAmount(Math.max(100, parseInt(e.target.value) || 100))}
+                      onChange={(e) => {
+                        // 🛡️ تحقق آمن من المدخلات مع التعامل مع NaN
+                        const parsed = parseInt(e.target.value, 10);
+                        setAmount(clampAmount(parsed));
+                      }}
+                      aria-label="مبلغ الشحن بالجنيه المصري"
                       className="bg-transparent text-center font-mono font-black text-2xl outline-none w-24 text-slate-900 border-0"
                     />
                     <span className="text-[10px] font-bold text-slate-400 block">جنيه مصري</span>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setAmount((a) => a + 50)}
-                    className="w-10 h-10 rounded-lg text-emerald-600 font-black flex items-center justify-center active:scale-90 border-0 cursor-pointer"
+                    onClick={() => setAmount((a) => clampAmount(a + STEP_AMOUNT))}
+                    aria-label={`زيادة المبلغ ${STEP_AMOUNT} جنيه`}
+                    disabled={amount >= MAX_AMOUNT}
+                    className="w-10 h-10 rounded-lg text-emerald-600 font-black flex items-center justify-center active:scale-90 border-0 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                     style={{ background: '#d1fae5' }}
                   >
                     <Plus size={16} />
@@ -242,8 +339,8 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
               <button
                 type="button"
                 onClick={() => setStep('method')}
-                disabled={amount < 100}
-                className="w-full text-white border-0 font-black py-3.5 rounded-xl text-xs active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
+                disabled={amount < MIN_AMOUNT}
+                className="w-full text-white border-0 font-black py-3.5 rounded-xl text-xs active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
                   background: BRAND.blue,
                   boxShadow: `0 4px 14px ${BRAND.blue}25`
@@ -259,7 +356,14 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
           {step === 'method' && (
             <>
               <div className="flex items-center justify-between mb-4">
-                <button onClick={() => setStep('amount')} className="text-slate-400 hover:text-slate-600 border-0 bg-transparent cursor-pointer"><ArrowRight size={20} /></button>
+                <button
+                  type="button"
+                  onClick={() => setStep('amount')}
+                  aria-label="العودة للخطوة السابقة"
+                  className="text-slate-400 hover:text-slate-600 border-0 bg-transparent cursor-pointer"
+                >
+                  <ArrowRight size={20} />
+                </button>
                 <h2 className="font-black text-sm" style={{ color: BRAND.blueDark }}>طريقة التحويل</h2>
                 <div className="w-6" />
               </div>
@@ -278,6 +382,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 <button
                   type="button"
                   onClick={() => { setMethod('instapay'); setStep('transfer'); }}
+                  aria-label="اختيار الدفع عبر إنستاباي"
                   className="w-full flex items-center gap-3 bg-white border border-slate-200 hover:border-purple-400 p-4 rounded-xl text-right active:scale-[0.98] transition-all cursor-pointer"
                 >
                   <div className="w-10 h-10 rounded-lg bg-purple-600 text-white flex items-center justify-center text-lg shrink-0">📱</div>
@@ -291,6 +396,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 <button
                   type="button"
                   onClick={() => { setMethod('cashwallet'); setStep('transfer'); }}
+                  aria-label="اختيار الدفع عبر محافظ الهاتف"
                   className="w-full flex items-center gap-3 bg-white border border-slate-200 hover:border-amber-400 p-4 rounded-xl text-right active:scale-[0.98] transition-all cursor-pointer"
                 >
                   <div className="w-10 h-10 rounded-lg bg-amber-500 text-white flex items-center justify-center text-lg shrink-0">📲</div>
@@ -308,7 +414,15 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
           {step === 'transfer' && (
             <>
               <div className="flex items-center justify-between mb-4">
-                <button onClick={() => setStep('method')} className="text-slate-400 hover:text-slate-600 border-0 bg-transparent cursor-pointer"><ArrowRight size={20} /></button>
+                <button
+                  type="button"
+                  onClick={() => setStep('method')}
+                  aria-label="العودة لاختيار طريقة الدفع"
+                  disabled={loading}
+                  className="text-slate-400 hover:text-slate-600 border-0 bg-transparent cursor-pointer disabled:opacity-40"
+                >
+                  <ArrowRight size={20} />
+                </button>
                 <h2 className="font-black text-sm" style={{ color: BRAND.blueDark }}>
                   {method === 'instapay' ? 'تحويل إنستاباي' : 'تحويل محفظة كاش'}
                 </h2>
@@ -358,7 +472,8 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                       href={INSTAPAY_LINK}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-full bg-purple-600 text-white font-black py-2.5 rounded-lg flex items-center justify-center gap-2 mb-3 text-xs shadow-sm active:scale-95 transition-all text-decoration-none"
+                      aria-label="فتح تطبيق إنستاباي في نافذة جديدة"
+                      className="w-full bg-purple-600 text-white font-black py-2.5 rounded-lg flex items-center justify-center gap-2 mb-3 text-xs shadow-sm active:scale-95 transition-all no-underline"
                     >
                       <ExternalLink size={14} /> فتح تطبيق إنستاباي للتحويل المباشر
                     </a>
@@ -366,6 +481,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                       <button
                         type="button"
                         onClick={() => copyToClipboard(`${INSTAPAY_USERNAME}@instapay`, 'عنوان التحويل')}
+                        aria-label="نسخ عنوان إنستاباي"
                         className="bg-blue-50 text-blue-600 font-black text-[10px] px-3 py-1.5 rounded-lg flex items-center gap-1 active:scale-90 transition-all border-0 cursor-pointer"
                       >
                         <Copy size={12} /> نسخ العنوان
@@ -381,13 +497,16 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                       <button
                         type="button"
                         onClick={() => copyToClipboard(WALLET_NUMBER, 'رقم المحفظة')}
+                        aria-label="نسخ رقم المحفظة"
                         className="bg-amber-100 text-amber-800 font-black text-[10px] px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 active:scale-90 transition-all border-0 cursor-pointer"
                       >
                         <Copy size={12} /> نسخ الرقم
                       </button>
                       <a
                         href={`tel:${WALLET_NUMBER}`}
-                        className="bg-slate-200 text-slate-700 font-bold text-[10px] px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 active:scale-90 transition-all text-decoration-none"
+                        rel="noopener noreferrer"
+                        aria-label={`الاتصال برقم ${WALLET_NUMBER}`}
+                        className="bg-slate-200 text-slate-700 font-bold text-[10px] px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 active:scale-90 transition-all no-underline"
                       >
                         <Phone size={12} /> اتصال فوري
                       </a>
@@ -401,7 +520,8 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 type="button"
                 onClick={handleSubmitTopUp}
                 disabled={loading}
-                className="w-full text-white border-0 font-black py-3.5 rounded-xl text-xs active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                aria-busy={loading}
+                className="w-full text-white border-0 font-black py-3.5 rounded-xl text-xs active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
                   background: BRAND.greenDark,
                   boxShadow: `0 4px 14px ${BRAND.green}30`
@@ -416,10 +536,10 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
           {/* ══════════ الخطوة 4: شاشة النجاح والنهاية ══════════ */}
           {step === 'done' && (
             <div className="text-center py-4">
-              <CheckCircle size={64} style={{ color: BRAND.green }} className="mx-auto mb-3" />
+              <CheckCircle size={64} style={{ color: BRAND.green }} className="mx-auto mb-3" aria-hidden="true" />
               <h3 className="text-lg font-black text-slate-900 mb-1">تم إرسال طلب الشحن بنجاح!</h3>
               <p className="text-[11px] text-slate-500 mb-4 font-bold">نقوم بمراجعة التحويل في ثوانٍ وإضافة الرصيد لمحفظتك فوراً ⏳</p>
-              
+
               <div className="border rounded-xl p-4 mb-5 text-right space-y-2" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-500 font-bold">المبلغ المرسل:</span>
@@ -440,6 +560,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
               <button
                 type="button"
                 onClick={onClose}
+                aria-label="العودة للشاشة الرئيسية"
                 className="w-full text-white border-0 font-black py-3.5 rounded-xl text-xs active:scale-[0.98] transition-all cursor-pointer"
                 style={{ background: BRAND.blue }}
               >

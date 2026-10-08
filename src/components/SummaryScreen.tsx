@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 // 🌟 استيراد دوال البصمة الموحدة والتوقيت الدولي الموحد لضمان مطابقة دقيقة وخالية من تلاعب الثغرات
 import { useStore, pausePolling, normalizePlate, normalizePhone, getServerNow } from '../store';
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { calculateFullHours, calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
@@ -32,7 +32,6 @@ export default function SummaryScreen() {
     setScreen,
     setSelectedGarageId,
     currentUser,
-    deductWallet,
     fetchAll,
     acknowledgeSession,
   } = useStore();
@@ -46,29 +45,40 @@ export default function SummaryScreen() {
   const [doneTotalPrice, setDoneTotalPrice] = useState(0);
   const [remainingWallet, setRemainingWallet] = useState(0);
 
+  const isMountedRef = useRef(true);
   const isEndingRef = useRef(false);
   const autoRedirectedRef = useRef(false);
   const realtimeChannelRef = useRef<any>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const isMySession = (s: any): boolean => {
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  const isMySession = useCallback((s: any): boolean => {
+    if (!s) return false;
     const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
     const sPhone = s.customerPhone ? normalizePhone(s.customerPhone) : '';
     const samePhone = Boolean(userPhone && sPhone === userPhone);
     return samePlate || samePhone;
-  };
+  }, [userPlate, userPhone]);
 
   const activeSession = useMemo(() => {
     return sessions
-      .filter((s) => s.status === 'active' && isMySession(s))
+      .filter((s) => s && s.status === 'active' && isMySession(s))
       .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
-  }, [sessions, userPlate, userPhone]);
+  }, [sessions, isMySession]);
 
   const lastCompletedSession = useMemo(() => {
     return sessions
-      .filter((s) => s.status === 'completed' && isMySession(s))
+      .filter((s) => s && s.status === 'completed' && isMySession(s))
       .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
-  }, [sessions, userPlate, userPhone]);
+  }, [sessions, isMySession]);
 
   const referenceSession = activeSession ?? lastCompletedSession;
 
@@ -88,7 +98,6 @@ export default function SummaryScreen() {
     if (paymentMode === 'wallet' || paymentMode === 'both') {
       list.push({ id: 'wallet' as const, label: 'خصم من المحفظة', icon: '👝' });
     }
-    // Fallback لو مفيش حاجة رجعت كاش افتراضي
     if (list.length === 0) {
       list.push({ id: 'cash' as const, label: 'سداد نقدي كاش', icon: '💵' });
     }
@@ -111,14 +120,17 @@ export default function SummaryScreen() {
     let cancelled = false;
 
     const refetch = async () => {
-      if (cancelled || done) return;
-      try { await fetchAll(); } catch (e) { console.error('❌', e); }
+      if (cancelled || done || !isMountedRef.current) return;
+      try { 
+        await fetchAll(); 
+      } catch (e) { 
+        console.error('❌ Summary fetch error:', e); 
+      }
     };
 
     refetch();
 
-    const channel = supabase
-      .channel(`summary-live-${userPlate || userPhone}-${Date.now()}`)
+    const channel = supabase.channel(`summary-live-${userPlate || userPhone}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'sessions' },
@@ -156,7 +168,10 @@ export default function SummaryScreen() {
       cancelled = true;
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('focus', refetch);
-      if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+      if (pollingRef.current) { 
+        clearInterval(pollingRef.current); 
+        pollingRef.current = null; 
+      }
       if (realtimeChannelRef.current) {
         supabase.removeChannel(realtimeChannelRef.current);
         realtimeChannelRef.current = null;
@@ -173,7 +188,6 @@ export default function SummaryScreen() {
     const endMs = toMs(lastCompletedSession.endTime);
     if (!endMs) return;
 
-    // ✅ تم التعديل: حساب انتهاء الجلسة وفقاً لتوقيت السيرفر الموحد
     const timeSinceEnd = getServerNow() - endMs;
     if (timeSinceEnd > 10 * 60 * 1000) return;
 
@@ -186,31 +200,35 @@ export default function SummaryScreen() {
 
     const method = lastCompletedSession.paymentMethod ?? 'cash';
 
-    setDoneTotalPrice(price);
-    setDoneMethod(method);
-    setRemainingWallet(currentUser?.wallet ?? 0);
+    if (isMountedRef.current) {
+      setDoneTotalPrice(price);
+      setDoneMethod(method);
+      setRemainingWallet(currentUser?.wallet ?? 0);
+    }
 
-    if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+    if (pollingRef.current) { 
+      clearInterval(pollingRef.current); 
+      pollingRef.current = null; 
+    }
 
     toast.success('تم إنهاء الجلسة بنجاح ✅', { icon: '🏁', duration: 3000 });
-    setTimeout(() => setDone(true), 300);
+    timerRef.current = setTimeout(() => {
+      if (isMountedRef.current) setDone(true);
+    }, 300);
   }, [
     done,
-    activeSession?.id,
-    lastCompletedSession?.id,
-    lastCompletedSession?.endTime,
-    lastCompletedSession?.totalPrice,
-    lastCompletedSession?.paymentMethod,
+    activeSession,
+    lastCompletedSession,
     currentUser?.wallet,
   ]);
 
   const durationSeconds = referenceSession
     ? referenceSession.status === 'completed' && referenceSession.endTime
       ? Math.floor((toMs(referenceSession.endTime) - toMs(referenceSession.startTime)) / 1000)
-      : Math.floor((getServerNow() - toMs(referenceSession.startTime)) / 1000) // ✅ تم التعديل: حساب ثواني الجلسة بالتوقيت الموحد
+      : Math.floor((getServerNow() - toMs(referenceSession.startTime)) / 1000)
     : 0;
 
-  const durationMinutes = Math.floor(durationSeconds / 60);
+  const durationMinutes = Math.floor(Math.max(0, durationSeconds) / 60);
   const sessionRate = Number(referenceSession?.agreedPrice ?? garage?.basePrice ?? 0);
 
   // 🌟 منطق حساب الـ 30 دقيقة المجانية
@@ -218,7 +236,7 @@ export default function SummaryScreen() {
     return referenceSession?.isFirstFreeSession === true;
   }, [referenceSession]);
 
-  const isFreeNow = isFirstFreeApplied && durationSeconds <= 1800; // 30 دقيقة أو أقل
+  const isFreeNow = isFirstFreeApplied && durationSeconds <= 1800;
   const billableHours = isFreeNow ? 0 : calculateFullHours(durationSeconds);
   const freeMinutesApplied = isFreeNow ? Math.floor(durationSeconds / 60) : 0;
 
@@ -242,12 +260,10 @@ export default function SummaryScreen() {
   const canPayWallet = walletBalance >= totalPrice;
 
   const safeEndSession = async (method: string, price: number): Promise<boolean> => {
-    if (isEndingRef.current) return false;
-
     if (!activeSession || activeSession.status !== 'active') {
       const freshState = useStore.getState();
       const freshCompleted = freshState.sessions
-        .filter((s) => s.status === 'completed' && isMySession(s))
+        .filter((s) => s && s.status === 'completed' && isMySession(s))
         .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
 
       const actualPrice =
@@ -256,14 +272,15 @@ export default function SummaryScreen() {
           : price;
       const actualMethod = freshCompleted?.paymentMethod ?? method;
 
-      setDoneTotalPrice(actualPrice);
-      setDoneMethod(actualMethod);
-      setRemainingWallet(currentUser?.wallet ?? 0);
-      setDone(true);
+      if (isMountedRef.current) {
+        setDoneTotalPrice(actualPrice);
+        setDoneMethod(actualMethod);
+        setRemainingWallet(currentUser?.wallet ?? 0);
+        setDone(true);
+      }
       return true;
     }
 
-    isEndingRef.current = true;
     pausePolling(15000);
 
     try {
@@ -277,60 +294,69 @@ export default function SummaryScreen() {
       if (!check || check.status === 'completed') {
         const actualPrice = check?.totalPrice != null ? Number(check.totalPrice) : price;
         const actualMethod = check?.paymentMethod ?? method;
-        setDoneTotalPrice(actualPrice);
-        setDoneMethod(actualMethod);
-        setRemainingWallet(currentUser?.wallet ?? 0);
-        setDone(true);
+        if (isMountedRef.current) {
+          setDoneTotalPrice(actualPrice);
+          setDoneMethod(actualMethod);
+          setRemainingWallet(currentUser?.wallet ?? 0);
+          setDone(true);
+        }
         return true;
       }
       return false;
-    } finally {
-      setTimeout(() => { isEndingRef.current = false; }, 3000);
     }
   };
 
   const handleConfirm = async () => {
-    if (totalPrice === 0) {
-      const success = await safeEndSession('free', 0);
-      if (success) {
-        toast.success('تمت الركنة المجانية بنجاح! 🎁');
-        setDoneTotalPrice(0);
-        setDoneMethod('free');
+    if (isEndingRef.current) return;
+    isEndingRef.current = true;
+
+    try {
+      if (totalPrice === 0) {
+        const success = await safeEndSession('free', 0);
+        if (success && isMountedRef.current) {
+          toast.success('تمت الركنة المجانية بنجاح! 🎁');
+          setDoneTotalPrice(0);
+          setDoneMethod('free');
+          setRemainingWallet(walletBalance);
+          setDone(true);
+        } else {
+          toast.error('حدث خطأ، حاول مرة أخرى');
+        }
+        return;
+      }
+
+      if (paymentMethod === 'wallet') {
+        if (!canPayWallet) { 
+          toast.error('رصيد المحفظة غير كافٍ'); 
+          return; 
+        }
+        const success = await safeEndSession('wallet', totalPrice);
+        if (success && isMountedRef.current) {
+          toast.success('تم الخصم من المحفظة بنجاح! ✅');
+          setDoneTotalPrice(totalPrice);
+          setDoneMethod('wallet');
+          setRemainingWallet(Math.max(0, walletBalance - totalPrice));
+          setDone(true);
+        } else {
+          toast.error('حدث خطأ أثناء الدفع بالمحفظة، حاول مرة أخرى');
+        }
+        return;
+      }
+
+      const success = await safeEndSession('cash', totalPrice);
+      if (success && isMountedRef.current) {
+        toast.success('تم إنهاء الجلسة بنجاح!');
+        setDoneTotalPrice(totalPrice);
+        setDoneMethod('cash');
         setRemainingWallet(walletBalance);
         setDone(true);
       } else {
         toast.error('حدث خطأ، حاول مرة أخرى');
       }
-      return;
-    }
-
-    if (paymentMethod === 'wallet') {
-      if (!canPayWallet) { toast.error('رصيد المحفظة غير كافي'); return; }
-      const newBalance = walletBalance - totalPrice;
-      deductWallet(totalPrice);
-      const success = await safeEndSession('wallet', totalPrice);
-      if (success) {
-        toast.success('تم الخصم من المحفظة بنجاح! ✅');
-        setDoneTotalPrice(totalPrice);
-        setDoneMethod('wallet');
-        setRemainingWallet(newBalance);
-        setDone(true);
-      } else {
-        deductWallet(-totalPrice);
-        toast.error('حدث خطأ، حاول مرة أخرى');
-      }
-      return;
-    }
-
-    const success = await safeEndSession('cash', totalPrice);
-    if (success) {
-      toast.success('تم إنهاء الجلسة بنجاح!');
-      setDoneTotalPrice(totalPrice);
-      setDoneMethod('cash');
-      setRemainingWallet(walletBalance);
-      setDone(true);
-    } else {
-      toast.error('حدث خطأ، حاول مرة أخرى');
+    } finally {
+      setTimeout(() => {
+        isEndingRef.current = false;
+      }, 2000);
     }
   };
 
@@ -377,7 +403,7 @@ export default function SummaryScreen() {
 
           {doneMethod && (
             <div
-              className={`inline-block px-3 py-1 rounded-full text-[10px] font-black block w-fit mx-auto ${
+              className={`inline-block px-3 py-1 rounded-full text-[10px] font-black w-fit mx-auto ${
                 doneMethod === 'wallet'
                   ? 'bg-blue-100 text-blue-600'
                   : doneMethod === 'free'
@@ -404,6 +430,7 @@ export default function SummaryScreen() {
         </div>
 
         <button
+          type="button"
           onClick={() => {
             if (lastCompletedSession && acknowledgeSession) {
               acknowledgeSession(lastCompletedSession.id);
@@ -411,7 +438,7 @@ export default function SummaryScreen() {
             setSelectedGarageId(null);
             setScreen('list');
           }}
-          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100"
+          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100 border-0 cursor-pointer"
         >
           <Home size={20} className="text-white" />
           <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>
@@ -543,8 +570,9 @@ export default function SummaryScreen() {
                 {methods.map((m) => (
                   <button
                     key={m.id}
+                    type="button"
                     onClick={() => setPaymentMethod(m.id)}
-                    className={`py-3 px-3 rounded-2xl border text-center transition-all relative flex flex-col items-center justify-center min-h-[110px] ${
+                    className={`py-3 px-3 rounded-2xl border text-center transition-all relative flex flex-col items-center justify-center min-h-[110px] cursor-pointer ${
                       paymentMethod === m.id
                         ? m.id === 'wallet'
                           ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-400'
@@ -579,7 +607,7 @@ export default function SummaryScreen() {
                 >
                   <AlertTriangle size={18} className="text-red-500 shrink-0" />
                   <div>
-                    <p className="text-xs text-red-600 font-bold">رصيد المحفظة غير كافي</p>
+                    <p className="text-xs text-red-600 font-bold">رصيد المحفظة غير كافٍ</p>
                     <p className="text-[10px] text-red-400">
                       المطلوب: {totalPrice} ج.م | رصيدك: {walletBalance} ج.م
                     </p>
@@ -609,9 +637,10 @@ export default function SummaryScreen() {
 
           {/* 🌟 زر التأكيد المرن */}
           <button
+            type="button"
             onClick={handleConfirm}
             disabled={totalPrice > 0 && paymentMethod === 'wallet' && !canPayWallet}
-            className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 text-white ${
+            className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 text-white border-0 cursor-pointer ${
               totalPrice === 0
                 ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-100'
                 : paymentMethod === 'wallet' && !canPayWallet
@@ -649,6 +678,7 @@ export default function SummaryScreen() {
 
       {!activeSession && (
         <button
+          type="button"
           onClick={() => {
             if (lastCompletedSession && acknowledgeSession) {
               acknowledgeSession(lastCompletedSession.id);
@@ -656,7 +686,7 @@ export default function SummaryScreen() {
             setSelectedGarageId(null);
             setScreen('list');
           }}
-          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100 mt-4"
+          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-100 mt-4 border-0 cursor-pointer"
         >
           <Home size={20} className="text-white" />
           <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 900, fontSize: '16px' }}>

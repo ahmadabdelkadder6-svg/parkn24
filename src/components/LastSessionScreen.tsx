@@ -3,20 +3,16 @@ import {
   Clock,
   DollarSign,
   MapPin,
-  Calendar,
   Timer,
   Receipt,
   ArrowRight,
   Copy,
-  Gift,
-  Sparkles,
-  CheckCircle2,
 } from 'lucide-react';
 // 🌟 استيراد دوال البصمة والتوقيت الموحد من الـ store لضمان مطابقة البيانات بدقة 100%
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { calculateFullHours, calculateCost, formatTime } from '../utils/pricing';
 import toast from 'react-hot-toast';
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useRef, useMemo, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
 /* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
@@ -54,6 +50,20 @@ export default function LastSessionScreen() {
   const userPlate = normalizePlate(currentUser?.carPlate);
   const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
+  const isMountedRef = useRef(true);
+  const realtimeChannelRef = useRef<any>(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+    };
+  }, []);
+
   /* ✅ البحث بـ carPlate أو customerPhone بالبصمة الموحدة */
   const lastSession = useMemo(() => {
     if (!userPlate && !userPhone) return null;
@@ -72,16 +82,24 @@ export default function LastSessionScreen() {
     ? garages.find((g) => g.id === lastSession.garageId)
     : null;
 
-  /* ── Ref ── */
-  const realtimeChannelRef = useRef<any>(null);
-
   /* ─────────────────────────────────────────────
      ██  REALTIME
      ───────────────────────────────────────────── */
   useEffect(() => {
     if (!userPlate && !userPhone) return;
 
-    fetchAll();
+    let cancelled = false;
+
+    const safeFetch = async () => {
+      if (cancelled || !isMountedRef.current) return;
+      try {
+        await fetchAll();
+      } catch (err) {
+        console.error('Fetch last session error:', err);
+      }
+    };
+
+    safeFetch();
 
     const garageId = lastSession?.garageId ?? null;
 
@@ -96,7 +114,7 @@ export default function LastSessionScreen() {
     };
 
     const channel = supabase
-      .channel(`last-session-${userPlate || userPhone}`)
+      .channel(`last-session-${userPlate || userPhone}-${Date.now()}`)
       .on(
         'postgres_changes',
         {
@@ -108,7 +126,7 @@ export default function LastSessionScreen() {
         async (payload) => {
           const row = payload.new as any;
           if (isMySessionPayload(row)) {
-            await fetchAll();
+            safeFetch();
           }
         },
       )
@@ -117,83 +135,64 @@ export default function LastSessionScreen() {
     realtimeChannelRef.current = channel;
 
     return () => {
-      supabase.removeChannel(channel);
-      realtimeChannelRef.current = null;
+      cancelled = true;
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
     };
   }, [userPlate, userPhone, fetchAll, lastSession?.garageId]);
 
-  /* ─── لا توجد جلسات ─── */
-  if (!lastSession) {
-    return (
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="h-full flex flex-col items-center justify-center p-8 text-right safe-top safe-bottom"
-        style={{ background: BRAND.navy, color: '#ffffff' }}
-      >
-        <div className="text-4xl mb-3">📭</div>
-        <p className="text-base font-black mb-1" style={{ color: '#ffffff' }}>لا توجد جلسات سابقة</p>
-        <p className="text-xs text-center mb-6 font-bold" style={{ color: BRAND.slateMuted }}>
-          ابدأ ركن سيارتك وستظهر تفاصيل وإيصال الجلسة هنا
-        </p>
-        <button
-          onClick={() => setScreen('list')}
-          className="border-0 text-white px-8 py-3.5 rounded-2xl font-black text-xs active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
-          style={{ background: BRAND.blue, boxShadow: `0 4px 14px ${BRAND.blue}25` }}
-        >
-          <ArrowRight size={15} />
-          العودة للقائمة الرئيسية
-        </button>
-      </motion.div>
-    );
-  }
-
   /* ── Computed ── */
-  const startTime = toMs(lastSession.startTime);
-  const endTime = toMs(lastSession.endTime) || getServerNow();
+  const startTime = toMs(lastSession?.startTime);
+  const endTime = toMs(lastSession?.endTime) || (lastSession ? getServerNow() : 0);
 
   const elapsedSeconds = Math.max(0, Math.floor((endTime - startTime) / 1000));
-  const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0);
+  const rate = Number(lastSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const totalMinutes = Math.floor(elapsedSeconds / 60);
 
   // 🎁 [منطق الهدية]: التحقق مما إذا كانت الجلسة مجانية
-  const isFirstFreeApplied = lastSession.isFirstFreeSession === true;
+  const isFirstFreeApplied = lastSession?.isFirstFreeSession === true;
   
   const isFree = isFirstFreeApplied && (
-    lastSession.totalPrice === 0 ||
-    lastSession.paymentMethod === 'free' ||
-    (lastSession.totalPrice == null && elapsedSeconds <= 1800)
+    lastSession?.totalPrice === 0 ||
+    lastSession?.paymentMethod === 'free' ||
+    (lastSession?.totalPrice == null && elapsedSeconds <= 1800)
   );
 
   const billableHours = isFree ? 0 : calculateFullHours(elapsedSeconds);
   const rawCost = calculateCost(elapsedSeconds, rate);
 
   const cost =
-    lastSession.totalPrice != null
+    lastSession?.totalPrice != null
       ? Number(lastSession.totalPrice)
       : (isFree ? 0 : rawCost);
 
   const savedAmount = isFree ? rawCost : 0;
 
-  const startDate = new Date(startTime);
-  const endDate = new Date(endTime);
+  const startDate = useMemo(() => new Date(startTime > 0 ? startTime : getServerNow()), [startTime]);
+  const endDate = useMemo(() => new Date(endTime > 0 ? endTime : getServerNow()), [endTime]);
 
   /* ── Formatters ── */
-  const formatDateTime = (date: Date) =>
-    date.toLocaleDateString('ar-EG', {
+  const formatDateTime = useCallback((date: Date) => {
+    if (!date || isNaN(date.getTime())) return '---';
+    return date.toLocaleDateString('ar-EG', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
       day: 'numeric',
     });
+  }, []);
 
-  const formatTimeOnly = (date: Date) =>
-    date.toLocaleTimeString('ar-EG', {
+  const formatTimeOnly = useCallback((date: Date) => {
+    if (!date || isNaN(date.getTime())) return '--:--';
+    return date.toLocaleTimeString('ar-EG', {
       hour: '2-digit',
       minute: '2-digit',
     });
+  }, []);
 
-  const getPaymentInfo = (method?: string) => {
+  const getPaymentInfo = useCallback((method?: string) => {
     switch (method) {
       case 'cash':
         return {
@@ -232,17 +231,21 @@ export default function LastSessionScreen() {
           bg: BRAND.greenLight,
         };
     }
-  };
+  }, []);
 
-  const paymentInfo = getPaymentInfo(isFree ? 'free' : lastSession.paymentMethod);
+  const paymentInfo = useMemo(() => {
+    return getPaymentInfo(isFree ? 'free' : lastSession?.paymentMethod);
+  }, [getPaymentInfo, isFree, lastSession?.paymentMethod]);
 
-  const sourceInfo =
-    lastSession.source === 'app'
+  const sourceInfo = useMemo(() => {
+    return lastSession?.source === 'app'
       ? { label: 'حجز التطبيق', color: '#60a5fa', bg: 'rgba(96, 165, 250, 0.12)' }
       : { label: 'ركنة يدوية', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' };
+  }, [lastSession?.source]);
 
   /* ── نسخ التفاصيل ── */
   const copySessionDetails = async () => {
+    if (!lastSession) return;
     const details = `🧾 تفاصيل جلسة الركن
 ━━━━━━━━━━━━━━━━━━
 🚗 رقم السيارة: ${lastSession.carPlate}
@@ -260,21 +263,51 @@ ${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أو
 📋 نوع الجلسة: ${sourceInfo.label}`;
 
     try {
-      if (navigator.clipboard?.writeText) {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
         await navigator.clipboard.writeText(details);
+        toast.success('تم نسخ تفاصيل الجلسة 📋');
       } else {
         const el = document.createElement('textarea');
         el.value = details;
+        el.style.position = 'fixed';
+        el.style.opacity = '0';
         document.body.appendChild(el);
         el.select();
         document.execCommand('copy');
         document.body.removeChild(el);
+        toast.success('تم نسخ تفاصيل الجلسة 📋');
       }
-      toast.success('تم نسخ تفاصيل الجلسة 📋');
     } catch {
       toast.error('فشل النسخ');
     }
   };
+
+  /* ─── لا توجد جلسات ─── */
+  if (!lastSession) {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="h-full flex flex-col items-center justify-center p-8 text-right safe-top safe-bottom"
+        style={{ background: BRAND.navy, color: '#ffffff' }}
+      >
+        <div className="text-4xl mb-3">📭</div>
+        <p className="text-base font-black mb-1" style={{ color: '#ffffff' }}>لا توجد جلسات سابقة</p>
+        <p className="text-xs text-center mb-6 font-bold" style={{ color: BRAND.slateMuted }}>
+          ابدأ ركن سيارتك وستظهر تفاصيل وإيصال الجلسة هنا
+        </p>
+        <button
+          type="button"
+          onClick={() => setScreen('list')}
+          className="border-0 text-white px-8 py-3.5 rounded-2xl font-black text-xs active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
+          style={{ background: BRAND.blue, boxShadow: `0 4px 14px ${BRAND.blue}25` }}
+        >
+          <ArrowRight size={15} />
+          العودة للقائمة الرئيسية
+        </button>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div
@@ -286,6 +319,8 @@ ${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أو
       {/* ══ Header ══ */}
       <div className="flex items-center justify-between px-4 pt-12 pb-3 shrink-0">
         <button
+          type="button"
+          aria-label="الرجوع للقائمة"
           onClick={() => setScreen('list')}
           className="p-2.5 rounded-xl border cursor-pointer bg-white/5 active:scale-90 transition-all text-slate-300"
           style={{ borderColor: BRAND.border }}
@@ -297,6 +332,8 @@ ${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أو
           تفاصيل وإيصال آخر جلسة
         </h2>
         <button
+          type="button"
+          aria-label="نسخ تفاصيل الإيصال"
           onClick={copySessionDetails}
           className="p-2.5 rounded-xl border cursor-pointer bg-white/5 active:scale-90 transition-all"
           style={{ borderColor: BRAND.border }}
@@ -486,6 +523,7 @@ ${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أو
         {/* أزرار الإجراءات */}
         <div className="space-y-2 pt-1">
           <button
+            type="button"
             onClick={copySessionDetails}
             className="w-full border-0 py-3 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer text-white active:scale-[0.98] transition-all"
             style={{ background: BRAND.blue, boxShadow: `0 4px 14px ${BRAND.blue}25` }}
@@ -495,6 +533,7 @@ ${isFree ? `🎁 هدية ترحيبية: ركن مجاني بالكامل (أو
           </button>
 
           <button
+            type="button"
             onClick={() => setScreen('list')}
             className="w-full border py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer bg-transparent active:scale-[0.98] transition-all"
             style={{ color: BRAND.slateMuted, borderColor: BRAND.border }}
