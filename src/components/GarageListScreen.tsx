@@ -122,7 +122,7 @@ export default function GarageListScreen() {
   const [visibleLimits, setVisibleLimits] = useState<Record<string, number>>({});
 
   const [reportingGarage, setReportingGarage] = useState<GarageWithDistance | null>(null);
-  const [updatedPriceInput, setUpdatedPriceInput] = useState<number>(20);
+  const [updatedPriceInput, setUpdatedPriceInput] = useState<number | ''>(20);
   const [isSubmittingPrice, setIsSubmittingPrice] = useState(false);
 
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>({
@@ -377,10 +377,11 @@ export default function GarageListScreen() {
   };
 
   const handleSubmitPriceUpdate = async () => {
-    if (!reportingGarage || updatedPriceInput <= 0) return;
+    const finalPrice = updatedPriceInput === '' ? (reportingGarage?.basePrice || 20) : updatedPriceInput;
+    if (!reportingGarage || finalPrice <= 0) return;
     setIsSubmittingPrice(true);
     try {
-      const result = await reportPriceUpdate(reportingGarage.id, updatedPriceInput, reportingGarage.priceType) as any;
+      const result = await reportPriceUpdate(reportingGarage.id, finalPrice, reportingGarage.priceType) as any;
 
       if (result?.status === 'approved') {
         toast.success(`رائع! تم تحديث السعر رسمياً إلى ${updatedPriceInput} ج.م بعد تأكيد 3 مستخدمين! 🎉`, { duration: 5000, icon: '🔥' });
@@ -906,21 +907,62 @@ export default function GarageListScreen() {
                 لقيت السعر اتغير في <b style={{ color: BRAND.navy }}>{reportingGarage.name}</b>؟ اكتب السعر الجديد لمساعدة باقي السائقين! 🤝
               </p>
 
-              <div className="mb-4">
-                <label className="text-[10px] font-black block mb-1" style={{ color: BRAND.slate }}>
-                  السعر الفعلي الحالي (بالجنيه):
+              <div className="mb-5">
+                <label className="text-[10px] font-black block mb-2 text-right" style={{ color: BRAND.slate }}>
+                  السعر الفعلي الحالي في الشارع:
                 </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    value={updatedPriceInput}
-                    onChange={(e) => setUpdatedPriceInput(Math.max(1, parseInt(e.target.value, 10) || 0))}
-                    className="w-full text-center font-black font-mono text-xl p-2.5 rounded-xl border outline-none"
-                    style={{ background: BRAND.bg, borderColor: BRAND.border, color: BRAND.navy }}
-                  />
-                  <span className="text-xs font-black text-slate-500 shrink-0">
-                    {reportingGarage.priceType === 'daily' ? 'ج.م/اليوم' : 'ج.م/ساعة'}
-                  </span>
+                
+                {/* صندوق تعديل السعر الذكي بـ + و - لسهولة فائقة على الموبايل */}
+                <div className="border rounded-2xl p-3.5 bg-slate-50 border-slate-200">
+                  <div className="flex items-center justify-between gap-3">
+                    {/* زر الناقص */}
+                    <button 
+                      type="button" 
+                      onClick={() => setUpdatedPriceInput(p => Math.max(5, (Number(p) || 0) - 5))} 
+                      className="active:scale-90 border-0 rounded-xl text-white font-black w-10 h-10 flex items-center justify-center cursor-pointer bg-red-500 shadow-md shadow-red-500/10"
+                    >
+                      <Minus size={16} strokeWidth={3} />
+                    </button>
+
+                    {/* حقل الكتابة المرن */}
+                    <div className="text-center flex-1">
+                      <input 
+                        type="number" 
+                        pattern="\d*"
+                        inputMode="numeric"
+                        value={updatedPriceInput} 
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '') {
+                            setUpdatedPriceInput(''); // السماح بالمسح الكامل أثناء الكتابة
+                          } else {
+                            const parsed = parseInt(val, 10);
+                            if (!isNaN(parsed)) setUpdatedPriceInput(parsed);
+                          }
+                        }}
+                        onBlur={() => {
+                          // تأمين الحقل: لو سابه فاضي يرجع للقيمة الافتراضية للجراج
+                          if (updatedPriceInput === '' || updatedPriceInput <= 0) {
+                            setUpdatedPriceInput(reportingGarage.basePrice || 20);
+                          }
+                        }}
+                        className="bg-transparent text-center w-full outline-none font-mono font-black text-3xl border-0 p-0" 
+                        style={{ color: BRAND.navy }} 
+                      />
+                      <div className="font-bold text-[9px] mt-1" style={{ color: BRAND.slate }}>
+                        {reportingGarage.priceType === 'daily' ? 'ج.م / اليوم بالكامل' : 'ج.م / الساعة'}
+                      </div>
+                    </div>
+
+                    {/* زر الزائد */}
+                    <button 
+                      type="button" 
+                      onClick={() => setUpdatedPriceInput(p => (Number(p) || 0) + 5)} 
+                      className="active:scale-90 border-0 rounded-xl text-white font-black w-10 h-10 flex items-center justify-center cursor-pointer bg-emerald-500 shadow-md shadow-emerald-500/10"
+                    >
+                      <Plus size={16} strokeWidth={3} />
+                    </button>
+                  </div>
                 </div>
               </div>
 
