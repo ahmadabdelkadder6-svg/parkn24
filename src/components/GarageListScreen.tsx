@@ -545,17 +545,25 @@ export default function GarageListScreen() {
           )}
         </AnimatePresence>
 
-        {/* بانر الهدية الترحيبية */}
+        {/* 🎁 بانر الهدية الترحيبية - مدمج، أنيق وموفر جداً للمساحة الرأسية */}
         {isEligibleForFreeSession && !activeSession && !myIncomingCar && (
           <div
-            className="mb-2.5 p-2.5 rounded-xl flex items-center gap-2.5"
-            style={{ background: BRAND.green + '15', border: `1.5px solid ${BRAND.green}50` }}
+            className="mb-2.5 py-2 px-3 rounded-xl flex items-center justify-between text-right border-[1.5px] bg-white shadow-sm"
+            style={{ 
+              background: BRAND.green + '05', 
+              borderColor: BRAND.green + '50' 
+            }}
           >
-            <Gift size={16} style={{ color: BRAND.greenDark }} />
-            <div className="text-right">
-              <span className="text-[11px] font-black block" style={{ color: BRAND.greenDark }}>هدية ترحيبية نشطة لزيارتك الأولى! 🎉</span>
-              <span className="text-[10px] font-medium" style={{ color: BRAND.slate }}>في الجراجات المعتمدة، أول 30 دقيقة مجانية بالكامل.</span>
+            <div className="flex items-center gap-2">
+              <Gift size={13} style={{ color: BRAND.greenDark }} className="animate-pulse shrink-0" />
+              <span className="text-[10px] font-black text-slate-900 leading-none">
+                استمتع بـ <span style={{ color: BRAND.greenDark }}>أول 30 دقيقة مجاناً</span> كهدية لزيارتك الأولى! 🎉
+              </span>
             </div>
+            
+            <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white bg-green-600 shrink-0">
+              نشط 🎁
+            </span>
           </div>
         )}
 
