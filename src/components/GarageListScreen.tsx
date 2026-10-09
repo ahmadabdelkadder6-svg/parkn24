@@ -406,19 +406,16 @@ export default function GarageListScreen() {
           className="flex justify-between items-center mb-3"
         >
 
-          {/* 1️⃣ يمين (الابن الأول): اللوجو والترحيب بخط مكبّر ومثالي للقراءة بلمحة سريعة من حامل السيارة */}
-          <div className="text-right flex flex-col gap-1.5">
-            {/* لوجو زيكي */}
-            <span className="font-black text-xl block leading-none" style={{ color: BRAND.blue }}>
+          {/* 1️⃣ يمين (الابن الأول): اللوجو والترحيب بخط كبير وثقيل وواضح جداً للشارع */}
+          <div className="text-right flex flex-col gap-1">
+            <span className="font-black text-lg block leading-none" style={{ color: BRAND.blue }}>
               بركن <span style={{ color: BRAND.green }}>24</span>
             </span>
-            
-            {/* الترحيب والجملة التحفيزية */}
-            <div className="flex flex-col mt-0.5">
-              <span className="text-base font-black text-slate-900 block leading-tight">
+            <div className="flex flex-col mt-1">
+              <span className="text-sm font-black text-slate-950 block">
                 أهلاً {currentUser?.name?.split(' ')[0] || 'بك'} 👋
               </span>
-              <span className="text-xs font-bold text-slate-500 block mt-1 leading-none">
+              <span className="text-[11px] font-black text-slate-500 block mt-0.5">
                 اركن عربيتك وانسى همّ الزحمة واللف 🚙✨
               </span>
             </div>
@@ -1168,7 +1165,7 @@ function WelcomeGiftModal() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   ██  GARAGE CARD (محسن كلياً فائق الوضوح ومناسب للرؤية من بعيد)
+   ██  GARAGE CARD
    ════════════════════════════════════════════════════════════ */
 const GarageCard = memo(function GarageCard({
   garage,
@@ -1200,17 +1197,10 @@ const GarageCard = memo(function GarageCard({
     return 'احجز الآن';
   })();
 
-  // السعر المعروض
   const displayPrice = (() => {
-    if (garage.priceType === 'daily') return `${garage.dailyPrice || garage.basePrice}`;
-    if (garage.priceType === 'monthly') return `${garage.monthlyPrice || 1500}`;
-    return `${garage.basePrice}`;
-  })();
-
-  const priceUnit = (() => {
-    if (garage.priceType === 'daily') return 'ج.م/يومي';
-    if (garage.priceType === 'monthly') return 'ج.م/شهري';
-    return 'ج.م/ساعة';
+    if (garage.priceType === 'daily') return `${garage.dailyPrice || garage.basePrice} ج.م / اليوم`;
+    if (garage.priceType === 'monthly') return `${garage.monthlyPrice || 1500} ج.م / شهر`;
+    return `${garage.basePrice} ج.م / س`;
   })();
 
   return (
@@ -1218,108 +1208,90 @@ const GarageCard = memo(function GarageCard({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.03 }}
-      className="p-4 text-right relative bg-white rounded-2xl transition-all"
+      className="p-3.5 text-right relative bg-white rounded-2xl transition-all"
       style={{
         border: `1.5px solid ${isDirectory ? BRAND.borderDark : BRAND.border}`,
-        boxShadow: '0 3px 10px rgba(0,0,0,0.04)',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
       }}
     >
-      {/* سطر الشارات المميزة والنوع */}
-      <div className="flex justify-between items-center mb-2 flex-wrap gap-1.5" style={{ direction: 'rtl' }}>
-        <div className="flex items-center gap-1.5 flex-wrap">
+      <div className="flex justify-between items-center mb-1">
+        <div className="flex items-center gap-1 flex-wrap">
           {isDirectory ? (
-            <span className="text-[9px] font-black px-2.5 py-0.5 rounded-lg flex items-center gap-1" style={{ background: '#f1f5f9', color: '#334155', border: '1.5px solid #94a3b8' }}>
-              <span>🧭 دليل إرشاد الشارع</span>
+            <span className="text-[9px] font-black px-2 py-0.5 rounded flex items-center gap-1" style={{ background: '#f1f5f9', color: '#334155', border: '1.5px solid #94a3b8' }}>
+              <span>🧭 دليل إرشادي</span>
             </span>
           ) : (
-            <span className="flex items-center gap-0.5 text-[10px] font-black px-2 py-0.5 rounded-lg" style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a' }}>
-              <Star size={9} fill="currentColor" /> {garage.rating || 4.5} ⭐ معتمد
+            <span className="flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded" style={{ background: '#fef3c7', color: '#b45309' }}>
+              <Star size={8} fill="currentColor" /> {garage.rating || 4.5} ⭐ معتمد
             </span>
           )}
 
           {!isDirectory && garage.payment_mode === 'cash' && (
-            <span className="text-[9px] font-black px-2 py-0.5 rounded-lg" style={{ background: '#fff7ed', color: '#c2410c', border: '1.5px solid #fed7aa' }}>
+            <span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa' }}>
               💵 نقدي
             </span>
           )}
           {!isDirectory && garage.payment_mode === 'wallet' && (
-            <span className="text-[9px] font-black px-2 py-0.5 rounded-lg" style={{ background: '#f0f5ff', color: BRAND.blue, border: `1px solid ${BRAND.border}` }}>
+            <span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#f0f5ff', color: BRAND.blue, border: `1px solid ${BRAND.border}` }}>
               👝 محفظة
             </span>
           )}
           {!isDirectory && garage.payment_mode === 'both' && (
-            <span className="text-[9px] font-black px-2.5 py-0.5 rounded-lg" style={{ background: '#f0fdf4', color: BRAND.greenDark, border: `1px solid #bbf7d0` }}>
-              💵👝 كاش ومحفظة
+            <span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#f0fdf4', color: BRAND.greenDark, border: `1px solid #bbf7d0` }}>
+              💵👝 نقدي ومحفظة
             </span>
           )}
           {isDirectory && (
-            <span className="text-[9px] font-black px-2 py-0.5 rounded-lg" style={{ background: '#f0fdf4', color: BRAND.greenDark, border: '1px solid #bbf7d0' }}>
-              💵 دفع للسايس مباشرة
+            <span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#f0fdf4', color: BRAND.greenDark }}>
+              💵 سداد للسايس مباشرة
             </span>
           )}
         </div>
+        <h4 className="text-xs font-black" style={{ color: BRAND.blueDark }}>{garage.name}</h4>
       </div>
 
-      {/* اسم الجراج بحجم كبير وواضح جداً للعين من بعيد */}
-      <div className="flex items-start justify-between gap-2 mb-2" style={{ direction: 'rtl' }}>
-        <h4 className="text-[15px] font-black leading-tight text-slate-950 flex-1">{garage.name}</h4>
+      <div className="flex items-center gap-1 justify-end text-[10px] mb-2" style={{ color: BRAND.slate }}>
+        <span>{garage.location}</span>
+        <MapPin size={10} />
       </div>
 
-      {/* الموقع والعنوان بالتفصيل */}
-      <div className="flex items-center gap-1 justify-end text-[11px] font-bold mb-3" style={{ color: BRAND.slate, direction: 'rtl' }}>
-        <span className="truncate max-w-[280px]">{garage.location}</span>
-        <MapPin size={11} style={{ color: BRAND.slate }} className="shrink-0" />
-      </div>
-
-      {/* 📊 سطر البيانات الكبيرة: الوقت + الشاغر + السعر */}
-      <div className="flex items-center justify-between mt-3 pt-3 border-t-[1.5px]" style={{ borderColor: BRAND.border }}>
-        {/* اليسار: وقت الوصول المقدر */}
-        <div className="flex items-center gap-1 text-xs font-black" style={{ color: BRAND.slate }}>
-          <Navigation size={12} className="rotate-45" />
+      <div className="flex items-center justify-between mt-2 pt-2 border-t" style={{ borderColor: BRAND.border }}>
+        <div className="flex items-center gap-1 text-[10px] font-bold" style={{ color: BRAND.slate }}>
+          <Navigation size={10} className="rotate-45" />
           <span>{formatDuration(garage.minutes)}</span>
         </div>
 
-        {/* اليمين: الشاغر والسعر بخطوط كبيرة وواضحة */}
-        <div className="flex items-center gap-4 text-right" style={{ direction: 'rtl' }}>
-          {/* تعديل السعر التشاركي للدليل فقط */}
+        <div className="flex items-center gap-3 text-xs">
           {isDirectory && (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onReportPrice(garage); }}
-              className="flex items-center gap-0.5 text-[10px] font-black border-0 bg-transparent cursor-pointer hover:underline p-1 rounded"
+              className="flex items-center gap-0.5 text-[9px] font-black border-0 bg-transparent cursor-pointer"
               style={{ color: BRAND.blue }}
             >
-              <Edit3 size={11} />
+              <Edit3 size={10} />
               <span>تعديل السعر</span>
             </button>
           )}
 
-          {/* عدد الأماكن الشاغرة (كبير وبارز) */}
           {!isDirectory && (
-            <div className="flex flex-col items-center">
-              <span className="font-mono font-black text-[17px] leading-none" style={{ color: BRAND.blue }}>
-                {garage.availableSpots}
-              </span>
-              <span className="text-[9px] font-black text-slate-400 mt-1 uppercase">مكان شاغر</span>
+            <div className="flex items-center gap-1">
+              <span className="font-mono font-black" style={{ color: BRAND.blue }}>{garage.availableSpots}</span>
+              <span className="text-[10px] font-semibold" style={{ color: BRAND.slate }}>شاغر</span>
             </div>
           )}
 
-          {/* سعر الركنة (كبير وبارز) */}
-          <div className="flex flex-col items-center">
-            <span className="font-mono font-black text-[17px] leading-none" style={{ color: BRAND.greenDark }}>
-              {displayPrice}
-            </span>
-            <span className="text-[9px] font-black text-slate-400 mt-1 uppercase">{priceUnit}</span>
+          <div className="flex items-center gap-0.5">
+            <span className="font-mono font-black text-sm" style={{ color: BRAND.greenDark }}>{displayPrice}</span>
           </div>
         </div>
       </div>
 
-      {/* زر اتخاذ الإجراء (عريض وسهل الضغط للشارع) */}
       <button
         type="button"
         disabled={isFull || disabled}
         onClick={!disabled && !isFull ? onSelect : undefined}
-        className="w-full border-0 font-black py-3 rounded-2xl mt-4 text-sm text-white cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2 shadow-sm"
+        className="w-full border-0 font-black py-2.5 rounded-xl mt-3 text-xs text-white cursor-pointer active:scale-98 transition-all flex items-center justify-center gap-1.5"
         style={{ background: btnBg }}
       >
         <span>{btnLabel}</span>
