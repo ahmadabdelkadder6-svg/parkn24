@@ -582,7 +582,7 @@ export default function GarageListScreen() {
               boxShadow: activeTab === 'vip' ? '0 2px 8px rgba(22,86,184,0.25)' : 'none',
             }}
           >
-            <span>⭐ ركنات VIP</span>
+            <span>⭐ ركنات حجز مباشر VIP</span>
           </button>
 
           <button
