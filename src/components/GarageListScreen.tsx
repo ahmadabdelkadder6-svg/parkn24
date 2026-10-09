@@ -400,42 +400,52 @@ export default function GarageListScreen() {
       {/* ═══ 🌟 الهيدر الذكي المدمج (Compact Smart Header) ═══ */}
       <div className="px-4 pt-10 pb-3 z-20 shadow-sm" style={{ background: BRAND.card, borderBottom: `1.5px solid ${BRAND.border}` }}>
         
-        {/* الشريط العلوي: اللوجو والترحيب يميناً + القائمة والباركود يساراً */}
-        <div className="flex justify-between items-center mb-3" style={{ direction: 'rtl' }}>
+        {/* الشريط العلوي: اللوجو والترحيب يميناً (بخط كبير وواضح) + القائمة والباركود يساراً */}
+        <div 
+          dir="rtl" // 🛡️ إجبار الاتجاه العربي من اليمين لليسار قسراً
+          className="flex justify-between items-center mb-3"
+        >
 
-          
-          {/* يسار: زرار القائمة الذكية + زرار الباركود */}
-          <div className="flex items-center gap-1.5">
+          {/* 1️⃣ يمين (الابن الأول): اللوجو والترحيب بخط كبير وثقيل وواضح جداً للشارع */}
+          <div className="text-right flex flex-col gap-1">
+            <span className="font-black text-lg block leading-none" style={{ color: BRAND.blue }}>
+              بركن <span style={{ color: BRAND.green }}>24</span>
+            </span>
+            <div className="flex flex-col mt-1">
+              <span className="text-sm font-black text-slate-950 block">
+                أهلاً {currentUser?.name?.split(' ')[0] || 'بك'} 👋
+              </span>
+              <span className="text-[11px] font-black text-slate-500 block mt-0.5">
+                اركن عربيتك وانسى همّ الزحمة واللف 🚙✨
+              </span>
+            </div>
+          </div>
+
+          {/* 2️⃣ يسار (الابن الثاني): زرار الباركود وزرار القائمة (أزرار كبيرة وسهلة للضغط) */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* زرار الباركود المستقل */}
+            <button
+              type="button"
+              onClick={() => setShowQrModal(true)}
+              className="w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer active:scale-90 transition-all bg-blue-50 border-[1.5px] border-blue-200"
+            >
+              <QrCode size={18} style={{ color: BRAND.blue }} />
+            </button>
+
+            {/* زرار الثلاث نقاط (القائمة الذكية) */}
             <button
               type="button"
               onClick={() => setShowSmartMenu(true)}
-              className="w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer active:scale-90 transition-all relative bg-slate-100 border-[1.5px]"
+              className="w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer active:scale-90 transition-all relative bg-slate-100 border-[1.5px]"
               style={{ borderColor: BRAND.border }}
             >
-              <Menu size={16} style={{ color: BRAND.blueDark }} />
+              <Menu size={18} style={{ color: BRAND.blueDark }} />
               {pendingTopUpsCount > 0 && (
                 <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400 border-2 border-white" />
               )}
             </button>
-
-            <button
-              type="button"
-              onClick={() => setShowQrModal(true)}
-              className="w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer active:scale-90 transition-all bg-blue-50 border-[1.5px] border-blue-200"
-            >
-              <QrCode size={16} style={{ color: BRAND.blue }} />
-            </button>
           </div>
 
-          {/* يمين: اللوجو والترحيب */}
-          <div className="text-right">
-            <span className="font-black text-base block leading-none" style={{ color: BRAND.blue }}>
-              بركن <span style={{ color: BRAND.green }}>24</span>
-            </span>
-            <span className="text-[9px] font-bold mt-0.5 block" style={{ color: BRAND.slate }}>
-              أهلاً {currentUser?.name?.split(' ')[0] || 'بك'} 👋 اركن براحتك
-            </span>
-          </div>
         </div>
 
         {/* 💳 شريط المحفظة والعربية المدمج (الرصيد يميناً + العربية وشحن يساراً) */}
