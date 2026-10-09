@@ -20,6 +20,7 @@ import {
   ExternalLink,
   Edit3,
   Check,
+  Minus,
 } from 'lucide-react';
 import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
 import {
@@ -32,17 +33,18 @@ import TopUpWalletModal from './TopUpWalletModal';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 
-// 🎨 الألوان الرسمية الموحدة لتطبيق Park'n 24
+// 🎨 الألوان الرسمية الموحدة لتطبيق Park'n 24 (محسنة لإضاءة الشارع)
 const BRAND = {
-  blue: '#1656b8',       // الأزرق الرسمي للوجو
-  blueDark: '#0f3d85',   // كحلي داكن للنصوص والعناوين
-  green: '#8cc63f',      // الأخضر الرسمي للوجو
-  greenDark: '#6ea62a',  // أخضر داكن للقراءة
-  bg: '#f8fafc',         // خلفية التطبيق
-  card: '#ffffff',       // كروت بيضاء
-  slate: '#475569',      // لون النصوص الجانبية
-  border: '#e2e8f0',     // حدود رفيعة
-  navy: '#0a1628',       // الخلفية الليلية لشاشة التوجيه
+  blue: '#1656b8',       
+  blueDark: '#0f3d85',   
+  green: '#8cc63f',      
+  greenDark: '#6ea62a',  
+  bg: '#f1f5f9',         // خلفية أغمق قليلاً لإبراز الكروت البيضاء
+  card: '#ffffff',       
+  slate: '#334155',      // نصوص جانبية داكنة وواضحة في الشارع
+  border: '#cbd5e1',     // 🌟 حدود واضحة وقوية
+  borderDark: '#94a3b8', // حدود أتقل لكروت الدليل
+  navy: '#0a1628',       
 };
 
 interface GarageWithDistance extends Garage {
@@ -118,7 +120,7 @@ export default function GarageListScreen() {
   // 🌟 حالة الرحلة النشطة لجراجات الدليل المجاني (شاشة طريق السلامة)
   const [activeDirectoryTrip, setActiveDirectoryTrip] = useState<GarageWithDistance | null>(null);
 
-  // 🌟 حالة تتبع عدد الجراجات الظاهرة في كل منطقة (التحميل التدريجي الفوق صامت)
+  // 🌟 حالة تتبع عدد الجراجات الظاهرة في كل منطقة (التحميل التدريجي)
   const [visibleLimits, setVisibleLimits] = useState<Record<string, number>>({});
 
   const [reportingGarage, setReportingGarage] = useState<GarageWithDistance | null>(null);
@@ -324,10 +326,7 @@ export default function GarageListScreen() {
       const url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}`;
       window.open(url, '_blank', 'noopener,noreferrer');
 
-      // تفعيل شاشة طريق السلامة التفاعلية
       setActiveDirectoryTrip(garage);
-
-      // تصفير البحث وقفل الأكورديون بالخلفية لجمال الواجهة
       setSearch('');
       setExpandedArea(null);
       
@@ -377,13 +376,14 @@ export default function GarageListScreen() {
   };
 
   const handleSubmitPriceUpdate = async () => {
-    if (!reportingGarage || updatedPriceInput <= 0) return;
+    const finalPrice = updatedPriceInput === '' ? (reportingGarage?.basePrice || 20) : updatedPriceInput;
+    if (!reportingGarage || finalPrice <= 0) return;
     setIsSubmittingPrice(true);
     try {
-      const result = await reportPriceUpdate(reportingGarage.id, updatedPriceInput, reportingGarage.priceType) as any;
+      const result = await reportPriceUpdate(reportingGarage.id, finalPrice, reportingGarage.priceType) as any;
 
       if (result?.status === 'approved') {
-        toast.success(`رائع! تم تحديث السعر رسمياً إلى ${updatedPriceInput} ج.م بعد تأكيد 3 مستخدمين! 🎉`, { duration: 5000, icon: '🔥' });
+        toast.success(`رائع! تم تحديث السعر رسمياً إلى ${finalPrice} ج.م بعد تأكيد 3 مستخدمين! 🎉`, { duration: 5000, icon: '🔥' });
       } else if (result?.status === 'voted') {
         toast.success(`تم تسجيل تأكيدك! السعر مؤكد الآن من ${result.votes} مستخدمين. متبقي ${result.required - result.votes} تأكيد ⏳`, { duration: 5000, icon: '👍' });
       } else if (result?.status === 'started') {
@@ -404,7 +404,7 @@ export default function GarageListScreen() {
     <div className="h-full flex flex-col overflow-hidden" style={{ background: BRAND.bg, color: BRAND.blueDark }}>
 
       {/* ═══ HEADER ═══ */}
-      <div className="px-5 pt-10 pb-4 z-10" style={{ background: BRAND.card, borderBottom: `1px solid ${BRAND.border}` }}>
+      <div className="px-5 pt-10 pb-4 z-10" style={{ background: BRAND.card, borderBottom: `1.5px solid ${BRAND.border}` }}>
         <div className="flex justify-between items-center mb-3">
           <div>
             <h1 className="text-base font-black" style={{ color: BRAND.blueDark }}>
@@ -425,8 +425,8 @@ export default function GarageListScreen() {
             background: BRAND.blue,
             borderRadius: 14,
             padding: '10px 14px',
-            marginBottom: 8,
-            boxShadow: '0 4px 12px rgba(22,86,184,0.12)',
+            marginBottom: 10,
+            boxShadow: '0 4px 12px rgba(22,86,184,0.15)',
             color: '#ffffff',
           }}
         >
@@ -471,65 +471,50 @@ export default function GarageListScreen() {
           </div>
         </div>
 
-        {/* 📲 كارت الباركود الذكي */}
+        {/* 📲 بنر الباركود المدمج فائق الوضوح وموفر للمساحة */}
         <div 
           onClick={() => setShowQrModal(true)}
-          className="mb-3 border rounded-xl p-2 flex items-center justify-between text-right cursor-pointer active:scale-[0.98] transition-all"
-          style={{ 
-            background: BRAND.bg, 
-            borderColor: BRAND.border,
-            boxShadow: '0 2px 6px rgba(0,0,0,0.01)'
-          }}
+          className="mb-2.5 rounded-xl px-3 py-2 flex items-center justify-between text-right cursor-pointer active:scale-[0.98] transition-all bg-white shadow-sm"
+          style={{ border: `1.5px solid ${BRAND.border}` }}
         >
           <div className="flex items-center gap-2">
-            <div 
-              className="w-10 h-10 p-0.5 rounded-lg bg-white border flex items-center justify-center shrink-0 shadow-sm"
-              style={{ borderColor: BRAND.blue }}
-            >
-              <img 
-                src="/app-qr.png" 
-                alt="كود بركن 24" 
-                className="w-full h-full object-contain"
-                onError={(e) => {
-                  (e.target as HTMLElement).style.display = 'none';
-                }}
-              />
+            <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center shrink-0">
+              <span className="text-sm">📲</span>
             </div>
-
             <div className="text-right">
-              <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white inline-block mb-0.5" style={{ background: BRAND.blue }}>
-                📲 شارك بركن 24
-              </span>
-              <h4 className="text-[11px] font-black" style={{ color: BRAND.blueDark }}>
-                امسح الكود لفتح وتنزيل التطبيق
-              </h4>
-              <p className="text-[9px] font-black mt-0.5" style={{ color: BRAND.slate }}>
-                شارك الدليل مع أصحابك ووفّر عليهم تضييع الوقت! 🚀
-              </p>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white bg-blue-600">جديد</span>
+                <h4 className="text-[11px] font-black text-slate-900">شارك بركن 24 مع أصحابك</h4>
+              </div>
+              <p className="text-[9px] font-bold text-slate-500 mt-0.5">امسح الكود لفتح وتنزيل التطبيق فوراً 🚀</p>
             </div>
           </div>
-          <QrCode size={16} style={{ color: BRAND.blue }} className="shrink-0" />
+
+          <div className="flex items-center gap-1 text-[10px] font-black text-blue-600 bg-blue-50 border border-blue-200 px-2 py-1.5 rounded-lg shrink-0">
+            <QrCode size={13} />
+            <span>عرض الكود</span>
+          </div>
         </div>
 
-        {/* 🌟 أزرار المساعدة منسقة تحت الباركود مباشرة */}
-        <div className="grid grid-cols-2 gap-2 mb-3">
+        {/* 🌟 أزرار المساعدة بحدود متينة وواضحة جداً للشارع */}
+        <div className="grid grid-cols-2 gap-2 mb-2.5">
           {hasCompletedSession && (
             <button
               onClick={() => setScreen('lastSession')}
-              className="flex items-center justify-center gap-2 py-2.5 rounded-xl border cursor-pointer text-xs font-bold"
-              style={{ background: BRAND.card, borderColor: BRAND.border, color: BRAND.blueDark }}
+              className="flex items-center justify-center gap-1.5 py-2 rounded-xl cursor-pointer text-[11px] font-black bg-white shadow-sm active:scale-95 transition-all text-slate-800"
+              style={{ border: `1.5px solid ${BRAND.border}` }}
             >
-              <Receipt size={14} />
+              <Receipt size={13} className="text-blue-600" />
               <span>إيصال آخر ركنة</span>
             </button>
           )}
 
           <button
             onClick={() => setScreen('chat')}
-            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border cursor-pointer text-xs font-bold ${!hasCompletedSession ? 'col-span-2' : ''}`}
-            style={{ background: BRAND.card, borderColor: BRAND.border, color: BRAND.blueDark }}
+            className={`flex items-center justify-center gap-1.5 py-2 rounded-xl cursor-pointer text-[11px] font-black bg-white shadow-sm active:scale-95 transition-all text-slate-800 ${!hasCompletedSession ? 'col-span-2' : ''}`}
+            style={{ border: `1.5px solid ${BRAND.border}` }}
           >
-            <MessageCircle size={14} />
+            <MessageCircle size={13} className="text-blue-600" />
             <span>الدعم والشكاوى</span>
           </button>
         </div>
@@ -550,7 +535,7 @@ export default function GarageListScreen() {
               </div>
               <div className="space-y-1.5">
                 {myTopUps.map((topUp) => (
-                  <div key={topUp.id} className="flex justify-between items-center text-xs p-2 rounded-lg bg-slate-50 border" style={{ borderColor: BRAND.border }}>
+                  <div key={topUp.id} className="flex justify-between items-center text-xs p-2 rounded-lg bg-slate-50" style={{ border: `1.5px solid ${BRAND.border}` }}>
                     <span className="font-bold">{topUp.amount} ج.م</span>
                     <span className="font-bold opacity-75">{topUp.status === 'pending' ? '⏳ معلق' : topUp.status === 'approved' ? '✅ تم' : '❌ مرفوض'}</span>
                   </div>
@@ -563,8 +548,8 @@ export default function GarageListScreen() {
         {/* بانر الهدية الترحيبية */}
         {isEligibleForFreeSession && !activeSession && !myIncomingCar && (
           <div
-            className="mb-3 p-3 rounded-2xl flex items-center gap-2.5"
-            style={{ background: BRAND.green + '15', border: `1px solid ${BRAND.green}40` }}
+            className="mb-2.5 p-2.5 rounded-xl flex items-center gap-2.5"
+            style={{ background: BRAND.green + '15', border: `1.5px solid ${BRAND.green}50` }}
           >
             <Gift size={16} style={{ color: BRAND.greenDark }} />
             <div className="text-right">
@@ -578,7 +563,7 @@ export default function GarageListScreen() {
         {activeSession && (
           <button
             onClick={() => { setSelectedGarageId(activeSession.garageId); setScreen('session'); }}
-            className="w-full mb-3 flex items-center justify-between px-4 py-3 rounded-2xl border-0 text-white cursor-pointer active:scale-98 transition-all"
+            className="w-full mb-2.5 flex items-center justify-between px-4 py-3 rounded-xl border-0 text-white cursor-pointer active:scale-98 transition-all"
             style={{ background: BRAND.greenDark }}
           >
             <span className="text-xs font-black">عرض التفاصيل ←</span>
@@ -590,7 +575,7 @@ export default function GarageListScreen() {
         {!activeSession && myIncomingCar && (
           <button
             onClick={() => { setSelectedGarageId(myIncomingCar.garageId); setScreen('navigation'); }}
-            className="w-full mb-3 flex items-center justify-between px-4 py-3 rounded-2xl border-0 text-white cursor-pointer active:scale-98 transition-all"
+            className="w-full mb-2.5 flex items-center justify-between px-4 py-3 rounded-xl border-0 text-white cursor-pointer active:scale-98 transition-all"
             style={{ background: BRAND.blue }}
           >
             <span className="text-xs font-black">فتح الخريطة التوجيهية ←</span>
@@ -599,14 +584,14 @@ export default function GarageListScreen() {
         )}
 
         {/* شريط البحث الموحد */}
-        <div className="flex gap-2 mb-3">
+        <div className="flex gap-2 mb-2.5">
           <div className="relative flex-1">
             <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: BRAND.slate }} />
             <input
               className="w-full outline-none text-xs font-bold"
               style={{
                 background: BRAND.bg,
-                border: `1px solid ${BRAND.border}`,
+                border: `1.5px solid ${BRAND.border}`,
                 padding: '10px 32px 10px 12px',
                 borderRadius: 12,
                 color: BRAND.blueDark,
@@ -634,26 +619,26 @@ export default function GarageListScreen() {
 
           <button
             onClick={() => setShowNearbyOnly(!showNearbyOnly)}
-            className="text-xs font-black px-3 rounded-xl border cursor-pointer"
+            className="text-xs font-black px-3 rounded-xl cursor-pointer"
             style={{
               background: showNearbyOnly ? BRAND.blue : BRAND.card,
               color: showNearbyOnly ? '#fff' : BRAND.slate,
-              borderColor: BRAND.border,
+              border: `1.5px solid ${BRAND.border}`,
             }}
           >
             {showNearbyOnly ? 'عرض الكل' : 'القريب فقط'}
           </button>
         </div>
 
-        {/* 🌟 شريط التبويب العبقري لفصل الجراجات (VIP ضد الدليل) */}
-        <div className="flex p-1 rounded-xl bg-slate-100 border border-slate-200" style={{ direction: 'rtl' }}>
+        {/* 🌟 شريط التبويب بحدود واضحة وعزل قوي */}
+        <div className="flex p-1 rounded-xl bg-slate-200/70" style={{ direction: 'rtl', border: '1.5px solid #cbd5e1' }}>
           <button
             onClick={() => { setActiveTab('vip'); setExpandedArea(null); }}
             className="flex-1 py-2.5 rounded-lg font-black text-xs cursor-pointer border-0 transition-all flex items-center justify-center gap-1"
             style={{
               background: activeTab === 'vip' ? BRAND.blue : 'transparent',
               color: activeTab === 'vip' ? '#ffffff' : BRAND.slate,
-              boxShadow: activeTab === 'vip' ? '0 2px 8px rgba(22,86,184,0.2)' : 'none',
+              boxShadow: activeTab === 'vip' ? '0 2px 8px rgba(22,86,184,0.25)' : 'none',
             }}
           >
             <span>⭐ ركنات VIP حجز مباشر</span>
@@ -665,7 +650,7 @@ export default function GarageListScreen() {
             style={{
               background: activeTab === 'directory' ? BRAND.blueDark : 'transparent',
               color: activeTab === 'directory' ? '#ffffff' : BRAND.slate,
-              boxShadow: activeTab === 'directory' ? '0 2px 8px rgba(15,61,133,0.2)' : 'none',
+              boxShadow: activeTab === 'directory' ? '0 2px 8px rgba(15,61,133,0.25)' : 'none',
             }}
           >
             <span>🧭 دليل الساحات المجاني</span>
@@ -688,8 +673,9 @@ export default function GarageListScreen() {
                   style={{
                     background: BRAND.card,
                     borderRadius: 14,
-                    border: `1px solid ${BRAND.border}`,
+                    border: `1.5px solid ${BRAND.border}`,
                     overflow: 'hidden',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
                   }}
                 >
                   {/* شريط المنطقة */}
@@ -716,9 +702,9 @@ export default function GarageListScreen() {
 
                   {/* قائمة الجراجات مع ميزة التحميل التدريجي الفائقة */}
                   {isExpanded && (
-                    <div style={{ background: BRAND.bg, padding: '10px', borderTop: `1px solid ${BRAND.border}` }} className="space-y-2">
+                    <div style={{ background: BRAND.bg, padding: '10px', borderTop: `1.5px solid ${BRAND.border}` }} className="space-y-2">
                       {(() => {
-                        const limit = visibleLimits[group.name] || 8; // يعرض أول 8 جراجات فقط
+                        const limit = visibleLimits[group.name] || 8;
                         const displayedGarages = group.garages.slice(0, limit);
                         const hasMore = group.garages.length > limit;
 
@@ -739,19 +725,18 @@ export default function GarageListScreen() {
                               />
                             ))}
 
-                            {/* زرار عرض المزيد التشاركي التدريجي */}
                             {hasMore && (
                               <button
                                 type="button"
                                 onClick={() => {
                                   setVisibleLimits(prev => ({
                                     ...prev,
-                                    [group.name]: limit + 10 // تحميل 10 جراجات إضافية
+                                    [group.name]: limit + 10
                                   }));
                                   toast.success('تم تحميل ساحات إضافية للأقرب إليك جغرافياً 📍', { id: 'lazy-load-toast' });
                                 }}
-                                className="w-full py-3 rounded-xl font-black text-xs cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1 bg-white border border-slate-200 mt-2"
-                                style={{ color: BRAND.blue, borderColor: BRAND.border }}
+                                className="w-full py-3 rounded-xl font-black text-xs cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1 bg-white mt-2"
+                                style={{ color: BRAND.blue, border: `1.5px solid ${BRAND.border}` }}
                               >
                                 <span>عرض المزيد من ساحات {group.name} (+{group.garages.length - limit} ساحة) 🔽</span>
                               </button>
@@ -798,6 +783,7 @@ export default function GarageListScreen() {
               onClick={e => e.stopPropagation()}
             >
               <button
+                type="button"
                 onClick={() => setShowQrModal(false)}
                 className="absolute top-4 left-4 text-slate-400 font-black text-sm border-0 bg-transparent cursor-pointer"
               >
@@ -835,6 +821,7 @@ export default function GarageListScreen() {
 
               <div className="space-y-2">
                 <button
+                  type="button"
                   onClick={async () => {
                     const appUrl = window.location.origin;
                     try {
@@ -863,8 +850,10 @@ export default function GarageListScreen() {
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => setShowQrModal(false)}
-                  className="w-full py-2.5 rounded-xl font-bold text-xs text-slate-500 bg-slate-100 border border-slate-200 cursor-pointer active:scale-95 transition-all"
+                  className="w-full py-2.5 rounded-xl font-bold text-xs text-slate-500 bg-slate-100 cursor-pointer active:scale-95 transition-all"
+                  style={{ border: `1.5px solid ${BRAND.border}` }}
                 >
                   إغلاق النافذة
                 </button>
@@ -874,7 +863,7 @@ export default function GarageListScreen() {
         )}
       </AnimatePresence>
 
-      {/* 🌟 نافذة الإبلاغ عن تعديل سعر الجراج التشاركية */}
+      {/* 🌟 نافذة الإبلاغ عن تعديل سعر الجراج التشاركية بالأزرار الذكية */}
       <AnimatePresence>
         {reportingGarage && (
           <div
@@ -892,6 +881,7 @@ export default function GarageListScreen() {
             >
               <div className="flex justify-between items-center mb-3">
                 <button
+                  type="button"
                   onClick={() => setReportingGarage(null)}
                   className="text-slate-400 font-black text-sm border-0 bg-transparent cursor-pointer"
                 >
@@ -906,26 +896,63 @@ export default function GarageListScreen() {
                 لقيت السعر اتغير في <b style={{ color: BRAND.navy }}>{reportingGarage.name}</b>؟ اكتب السعر الجديد لمساعدة باقي السائقين! 🤝
               </p>
 
-              <div className="mb-4">
-                <label className="text-[10px] font-black block mb-1" style={{ color: BRAND.slate }}>
-                  السعر الفعلي الحالي (بالجنيه):
+              <div className="mb-5">
+                <label className="text-[10px] font-black block mb-2 text-right" style={{ color: BRAND.slate }}>
+                  السعر الفعلي الحالي في الشارع:
                 </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    value={updatedPriceInput}
-                    onChange={(e) => setUpdatedPriceInput(Math.max(1, parseInt(e.target.value, 10) || 0))}
-                    className="w-full text-center font-black font-mono text-xl p-2.5 rounded-xl border outline-none"
-                    style={{ background: BRAND.bg, borderColor: BRAND.border, color: BRAND.navy }}
-                  />
-                  <span className="text-xs font-black text-slate-500 shrink-0">
-                    {reportingGarage.priceType === 'daily' ? 'ج.م/اليوم' : 'ج.م/ساعة'}
-                  </span>
+                
+                <div className="rounded-2xl p-3.5 bg-slate-50" style={{ border: `1.5px solid ${BRAND.border}` }}>
+                  <div className="flex items-center justify-between gap-3">
+                    <button 
+                      type="button" 
+                      onClick={() => setUpdatedPriceInput(p => Math.max(5, (Number(p) || 0) - 5))} 
+                      className="active:scale-90 border-0 rounded-xl text-white font-black w-10 h-10 flex items-center justify-center cursor-pointer bg-red-500 shadow-md shadow-red-500/10"
+                    >
+                      <Minus size={16} strokeWidth={3} />
+                    </button>
+
+                    <div className="text-center flex-1">
+                      <input 
+                        type="number" 
+                        pattern="\d*"
+                        inputMode="numeric"
+                        value={updatedPriceInput} 
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '') {
+                            setUpdatedPriceInput('');
+                          } else {
+                            const parsed = parseInt(val, 10);
+                            if (!isNaN(parsed)) setUpdatedPriceInput(parsed);
+                          }
+                        }}
+                        onBlur={() => {
+                          if (updatedPriceInput === '' || Number(updatedPriceInput) <= 0) {
+                            setUpdatedPriceInput(reportingGarage.basePrice || 20);
+                          }
+                        }}
+                        className="bg-transparent text-center w-full outline-none font-mono font-black text-3xl border-0 p-0" 
+                        style={{ color: BRAND.navy }} 
+                      />
+                      <div className="font-bold text-[9px] mt-1" style={{ color: BRAND.slate }}>
+                        {reportingGarage.priceType === 'daily' ? 'ج.م / اليوم بالكامل' : 'ج.م / الساعة'}
+                      </div>
+                    </div>
+
+                    <button 
+                      type="button" 
+                      onClick={() => setUpdatedPriceInput(p => (Number(p) || 0) + 5)} 
+                      className="active:scale-90 border-0 rounded-xl text-white font-black w-10 h-10 flex items-center justify-center cursor-pointer bg-emerald-500 shadow-md shadow-emerald-500/10"
+                    >
+                      <Plus size={16} strokeWidth={3} />
+                    </button>
+                  </div>
                 </div>
               </div>
 
               <div className="flex gap-2">
                 <button
+                  type="button"
                   onClick={handleSubmitPriceUpdate}
                   disabled={isSubmittingPrice}
                   className="flex-1 py-3 rounded-xl font-black text-xs text-white border-0 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1"
@@ -936,8 +963,10 @@ export default function GarageListScreen() {
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => setReportingGarage(null)}
-                  className="py-3 px-4 rounded-xl font-bold text-xs bg-slate-100 border border-slate-200 text-slate-500 cursor-pointer"
+                  className="py-3 px-4 rounded-xl font-bold text-xs bg-slate-100 text-slate-500 cursor-pointer"
+                  style={{ border: `1.5px solid ${BRAND.border}` }}
                 >
                   إلغاء
                 </button>
@@ -1006,7 +1035,8 @@ export default function GarageListScreen() {
                     لما توصل بالسلامة، لو لقيت السعر اتغير أو السايس غيره، اطلب تعديل السعر وساعد غيرك! 🤝
                   </span>
                 </div>
-              </div>            </div>
+              </div>            
+            </div>
 
             {/* الأزرار في الأسفل */}
             <div className="max-w-xs mx-auto w-full space-y-3 pb-8">
@@ -1094,7 +1124,7 @@ function WelcomeGiftModal() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   ██  GARAGE CARD (HYBRID)
+   ██  GARAGE CARD (محسن للشارع - حدود متينة وظلال فخمة)
    ════════════════════════════════════════════════════════════ */
 const GarageCard = memo(function GarageCard({
   garage,
@@ -1141,19 +1171,17 @@ const GarageCard = memo(function GarageCard({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.03 }}
-      className="p-3.5 text-right relative"
+      className="p-3.5 text-right relative bg-white rounded-2xl transition-all"
       style={{
-        background: BRAND.card,
-        border: `1px solid ${isDirectory ? '#cbd5e1' : BRAND.border}`,
-        borderRadius: 14,
-        boxShadow: isDirectory ? 'none' : '0 2px 6px rgba(0,0,0,0.02)',
+        border: `1.5px solid ${isDirectory ? BRAND.borderDark : BRAND.border}`,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
       }}
     >
       {/* سطر الاسم */}
       <div className="flex justify-between items-center mb-1">
         <div className="flex items-center gap-1 flex-wrap">
           {isDirectory ? (
-            <span className="text-[9px] font-black px-2 py-0.5 rounded flex items-center gap-1" style={{ background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1' }}>
+            <span className="text-[9px] font-black px-2 py-0.5 rounded flex items-center gap-1" style={{ background: '#f1f5f9', color: '#334155', border: '1.5px solid #94a3b8' }}>
               <span>🧭 دليل إرشادي</span>
             </span>
           ) : (
@@ -1202,6 +1230,7 @@ const GarageCard = memo(function GarageCard({
         <div className="flex items-center gap-3 text-xs">
           {isDirectory && (
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onReportPrice(garage);
@@ -1229,6 +1258,7 @@ const GarageCard = memo(function GarageCard({
 
       {/* زر اتخاذ الإجراء */}
       <button
+        type="button"
         disabled={isFull || disabled}
         onClick={!disabled && !isFull ? onSelect : undefined}
         className="w-full border-0 font-black py-2.5 rounded-xl mt-3 text-xs text-white cursor-pointer active:scale-98 transition-all flex items-center justify-center gap-1.5"
