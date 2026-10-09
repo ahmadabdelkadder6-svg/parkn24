@@ -401,7 +401,8 @@ export default function GarageListScreen() {
       <div className="px-4 pt-10 pb-3 z-20 shadow-sm" style={{ background: BRAND.card, borderBottom: `1.5px solid ${BRAND.border}` }}>
         
         {/* الشريط العلوي: اللوجو والترحيب يميناً + القائمة والباركود يساراً */}
-        <div className="flex justify-between items-center mb-3">
+        <div className="flex justify-between items-center mb-3" style={{ direction: 'rtl' }}>
+
           
           {/* يسار: زرار القائمة الذكية + زرار الباركود */}
           <div className="flex items-center gap-1.5">
@@ -468,19 +469,25 @@ export default function GarageListScreen() {
           </div>
         </div>
 
-        {/* 🎁 بانر الهدية الترحيبية المدمج */}
+        {/* 🎁 بانر الهدية الترحيبية المدمج - اتجاه عربي صحيح 100% ومضمون */}
         {isEligibleForFreeSession && !activeSession && !myIncomingCar && (
           <div
+            dir="rtl" // 🛡️ إجبار المتصفح على قراءة الاتجاه من اليمين لليسار قسراً
             className="mb-2.5 py-1.5 px-3 rounded-xl flex items-center justify-between text-right border-[1.5px]"
             style={{ background: BRAND.green + '10', borderColor: BRAND.green + '50' }}
           >
-            <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white bg-green-600 shrink-0">نشط 🎁</span>
+            {/* يمين: أيقونة الهدية والجمة الترحيبية الجذابة */}
             <div className="flex items-center gap-1.5">
+              <Gift size={12} style={{ color: BRAND.greenDark }} className="shrink-0 animate-pulse" />
               <span className="text-[10px] font-black text-slate-900 leading-none">
-                هديتك: <span style={{ color: BRAND.greenDark }}>أول 30 دقيقة مجاناً!</span>
+                هديتك: <span style={{ color: BRAND.greenDark }}>أول 30 دقيقة مجاناً! 🎉</span>
               </span>
-              <Gift size={12} style={{ color: BRAND.greenDark }} className="shrink-0" />
             </div>
+
+            {/* شمال: شارة نشط الفاخرة */}
+            <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white bg-green-600 shrink-0">
+              نشط 🎁
+            </span>
           </div>
         )}
 
