@@ -400,10 +400,11 @@ export default function GarageListScreen() {
       {/* ═══ 🌟 الهيدر الذكي المدمج (Compact Smart Header) ═══ */}
       <div className="px-4 pt-10 pb-3 z-20 shadow-sm" style={{ background: BRAND.card, borderBottom: `1.5px solid ${BRAND.border}` }}>
         
-        {/* الشريط العلوي: اللوجو + الأدوات السريعة */}
+        {/* الشريط العلوي: اللوجو والترحيب يميناً + القائمة والباركود يساراً */}
         <div className="flex justify-between items-center mb-3">
+          
+          {/* يسار: زرار القائمة الذكية + زرار الباركود */}
           <div className="flex items-center gap-1.5">
-            {/* زرار القائمة الذكية */}
             <button
               type="button"
               onClick={() => setShowSmartMenu(true)}
@@ -416,7 +417,6 @@ export default function GarageListScreen() {
               )}
             </button>
 
-            {/* 📲 زرار الباركود المستقل والظاهر دائماً */}
             <button
               type="button"
               onClick={() => setShowQrModal(true)}
@@ -426,43 +426,44 @@ export default function GarageListScreen() {
             </button>
           </div>
 
+          {/* يمين: اللوجو والترحيب */}
           <div className="text-right">
             <span className="font-black text-base block leading-none" style={{ color: BRAND.blue }}>
               بركن <span style={{ color: BRAND.green }}>24</span>
             </span>
-            <span className="text-[9px] font-bold" style={{ color: BRAND.slate }}>
-              أهلاً {currentUser?.name?.split(' ')[0] || 'بك'} 👋
+            <span className="text-[9px] font-bold mt-0.5 block" style={{ color: BRAND.slate }}>
+              أهلاً {currentUser?.name?.split(' ')[0] || 'بك'} 👋 اركن براحتك
             </span>
           </div>
         </div>
 
-        {/* 💳 شريط المحفظة والعربية المدمج (سطر واحد فقط) */}
+        {/* 💳 شريط المحفظة والعربية المدمج (الرصيد يميناً + العربية وشحن يساراً) */}
         <div
           className="flex items-center justify-between rounded-xl px-3 py-2 mb-2.5"
           style={{ background: BRAND.blue, boxShadow: '0 3px 10px rgba(22,86,184,0.18)' }}
         >
-          <button
-            type="button"
-            onClick={() => setShowTopUp(true)}
-            className="flex items-center gap-1 font-black active:scale-95 transition-all text-[10px] cursor-pointer border-0 shrink-0"
-            style={{ background: '#ffffff', color: BRAND.blue, borderRadius: 8, padding: '5px 9px' }}
-          >
-            <Plus size={10} strokeWidth={3} />
-            <span>شحن</span>
-          </button>
+          {/* يسار: زرار الشحن ثم رقم العربية */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowTopUp(true)}
+              className="flex items-center gap-1 font-black active:scale-95 transition-all text-[10px] cursor-pointer border-0"
+              style={{ background: '#ffffff', color: BRAND.blue, borderRadius: 8, padding: '5px 9px' }}
+            >
+              <Plus size={10} strokeWidth={3} />
+              <span>شحن</span>
+            </button>
 
-          <div className="flex items-center gap-2.5">
-            <div className="text-right">
-              <span className="text-[8px] font-black text-white/80 block leading-none mb-0.5">💳 رصيدك</span>
-              <span className="font-black font-mono text-white text-sm leading-none">
-                {currentUser?.wallet || 0} <span className="text-[9px]">ج.م</span>
-              </span>
-            </div>
-            
-            <div className="w-px h-6 bg-white/20" />
-
-            <span className="font-mono font-black text-[11px] bg-white text-[#1656b8] px-2 py-1 rounded-lg tracking-wider shrink-0">
+            <span className="font-mono font-black text-[11px] bg-white text-[#1656b8] px-2 py-1 rounded-lg tracking-wider">
               🚙 {currentUser?.carPlate || '---'}
+            </span>
+          </div>
+
+          {/* يمين: الرصيد (أقصى اليمين) */}
+          <div className="text-right">
+            <span className="text-[8px] font-black text-white/80 block leading-none mb-0.5">💳 رصيدك الحالي</span>
+            <span className="font-black font-mono text-white text-base leading-none">
+              {currentUser?.wallet || 0} <span className="text-[10px]">ج.م</span>
             </span>
           </div>
         </div>
@@ -581,7 +582,6 @@ export default function GarageListScreen() {
           </button>
         </div>
       </div>
-
       {/* ═══ CONTENT (مساحة عرض ضخمة للجراجات) ═══ */}
       <div className="flex-1 overflow-y-auto px-4 pt-3 pb-8">
 
