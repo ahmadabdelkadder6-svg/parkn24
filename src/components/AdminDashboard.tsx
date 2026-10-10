@@ -1556,6 +1556,7 @@ export default function AdminDashboard() {
                             <option value="الشيخ زايد">📍 الشيخ زايد</option>
                             <option value=" المقطم">📍 المقطم</option>
                             <option value="6 اكتوبر ">📍6 اكتوبر</option>
+                            <option value=" المنيل">📍 المنيل</option>
                           </select>
                           <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية:</span>
                         </div>
