@@ -1540,59 +1540,58 @@ export default function AdminDashboard() {
 
                         {/* 2. تعديل المنطقة */}
                         <div className="flex justify-between items-center gap-2">
-                          <select
-                            value={editArea}
-                            onChange={(e) => setEditArea(e.target.value)}
-                            className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"
-                          >
-<!-- 🌟 قائمة المناطق الموحدة والشاملة لـ 30 منطقة حيوية -->
-<option value="وسط البلد">🏢 وسط البلد</option>
-<option value="الزمالك">👑 الزمالك</option>
-<option value="مصر الجديدة">🏰 مصر الجديدة</option>
-<option value="مدينة نصر">🏙️ مدينة نصر</option>
-<option value="المعادي">🌳 المعادي</option>
-<option value="المهندسين">🛍️ المهندسين</option>
-<option value="الدقي">🎓 الدقي</option>
-<option value="التجمع الخامس">💎 التجمع الخامس</option>
-<option value="صلاح سالم والعروبة">🛣️ صلاح سالم والعروبة</option>
-<option value="ممشى أهل مصر">🌊 ممشى أهل مصر</option>
-<option value="جاردن سيتي والقصر العيني">🏛️ جاردن سيتي والقصر العيني</option>
-<option value="بولاق">🚢 بولاق وأبراج نايل سيتي</option>
-<option value="العتبة والأسواق">🛍️ العتبة وشارع عبد العزيز</option>
-<option value="الحسين والأزهر">🏮 الحسين والأزهر</option>
-<option value="شيراتون المطار">✈️ شيراتون المطار</option>
-<option value="الرحاب ومدينتي">🏡 الرحاب ومدينتي</option>
-<option value="القرية الذكية">💻 القرية الذكية</option>
-<option value="الشيخ زايد">🌲 الشيخ زايد</option>
-<option value="6 أكتوبر">🎡 6 أكتوبر</option>
-<option value="المقطم">⛰️ المقطم</option>
-<option value="المنيل">🏝️ المنيل</option>
-<option value="الجيزة">🏛️ الجيزة</option>
-<option value="حدائق الأهرام">🚪 حدائق الأهرام</option>
-<option value="المريوطية والمنصورية">🌴 المريوطية والمنصورية</option>
-<option value="الكيت كات">🌊 الكيت كات</option>
-<option value="إمبابة والوراق">⛵ إمبابة والوراق</option>
-<option value="أرض اللواء">🚉 أرض اللواء وميت عقبة</option>
-<option value="الوايلي والعباسية">🏥 الوايلي والعباسية</option>
-<option value="الزيتون والمطرية">🌿 الزيتون والمطرية</option>
-<option value="حدائق القبة">🌳 حدائق القبة</option>
-<option value="جسر السويس">🛣️ جسر السويس والألف مسكن</option>
-<option value="شبرا ورمسيس">🚆 شبرا ورمسيس</option>
-<option value="شبرا الخيمة">🏭 شبرا الخيمة</option>
-<option value="مصر القديمة">🕌 مصر القديمة</option>
-<option value="مدينة الشروق">🎓 مدينة الشروق وبدر</option>
-<option value="مدينة العبور">🍇 مدينة العبور</option>
-<option value="العاشر من رمضان">🏭 العاشر من رمضان</option>
-<option value="العاصمة الإدارية">🏛️ العاصمة الإدارية</option>
-<option value="حلوان">⚙️ حلوان</option>
-<option value="الإسكندرية">🏖️ الإسكندرية</option>
-<option value="الساحل الشمالي">🏄 الساحل الشمالي والعلمين</option>
-<option value="المنصورة والدلتا">🌾 المنصورة والدلتا</option>
-<option value="طنطا">🕌 طنطا</option>
-<option value="مدن القناة">🚢 مدن القناة</option>
-<option value="العين السخنة">🏖️ العين السخنة</option>
-<option value="مناطق أخرى">📍 مناطق أخرى</option> 
-                         </select>
+<select
+  value={editArea}
+  onChange={(e) => setEditArea(e.target.value)}
+  className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"
+>
+  <option value="وسط البلد">🏢 وسط البلد</option>
+  <option value="الزمالك">👑 الزمالك</option>
+  <option value="مصر الجديدة">🏰 مصر الجديدة</option>
+  <option value="مدينة نصر">🏙️ مدينة نصر</option>
+  <option value="المعادي">🌳 المعادي</option>
+  <option value="المهندسين">🛍️ المهندسين</option>
+  <option value="الدقي">🎓 الدقي</option>
+  <option value="التجمع الخامس">💎 التجمع الخامس</option>
+  <option value="صلاح سالم والعروبة">🛣️ صلاح سالم والعروبة</option>
+  <option value="ممشى أهل مصر">🌊 ممشى أهل مصر</option>
+  <option value="جاردن سيتي والقصر العيني">🏛️ جاردن سيتي والقصر العيني</option>
+  <option value="بولاق">🚢 بولاق وأبراج نايل سيتي</option>
+  <option value="العتبة والأسواق">🛍️ العتبة وشارع عبد العزيز</option>
+  <option value="الحسين والأزهر">🏮 الحسين والأزهر</option>
+  <option value="شيراتون المطار">✈️ شيراتون المطار</option>
+  <option value="الرحاب ومدينتي">🏡 الرحاب ومدينتي</option>
+  <option value="القرية الذكية">💻 القرية الذكية</option>
+  <option value="الشيخ زايد">🌲 الشيخ زايد</option>
+  <option value="6 أكتوبر">🎡 6 أكتوبر</option>
+  <option value="المقطم">⛰️ المقطم</option>
+  <option value="المنيل">🏝️ المنيل</option>
+  <option value="الجيزة">🏛️ الجيزة</option>
+  <option value="حدائق الأهرام">🚪 حدائق الأهرام</option>
+  <option value="المريوطية والمنصورية">🌴 المريوطية والمنصورية</option>
+  <option value="الكيت كات">🌊 الكيت كات</option>
+  <option value="إمبابة والوراق">⛵ إمبابة والوراق</option>
+  <option value="أرض اللواء">🚉 أرض اللواء وميت عقبة</option>
+  <option value="الوايلي والعباسية">🏥 الوايلي والعباسية</option>
+  <option value="الزيتون والمطرية">🌿 الزيتون والمطرية</option>
+  <option value="حدائق القبة">🌳 حدائق القبة</option>
+  <option value="جسر السويس">🛣️ جسر السويس والألف مسكن</option>
+  <option value="شبرا ورمسيس">🚆 شبرا ورمسيس</option>
+  <option value="شبرا الخيمة">🏭 شبرا الخيمة</option>
+  <option value="مصر القديمة">🕌 مصر القديمة</option>
+  <option value="مدينة الشروق">🎓 مدينة الشروق وبدر</option>
+  <option value="مدينة العبور">🍇 مدينة العبور</option>
+  <option value="العاشر من رمضان">🏭 العاشر من رمضان</option>
+  <option value="العاصمة الإدارية">🏛️ العاصمة الإدارية</option>
+  <option value="حلوان">⚙️ حلوان</option>
+  <option value="الإسكندرية">🏖️ الإسكندرية</option>
+  <option value="الساحل الشمالي">🏄 الساحل الشمالي والعلمين</option>
+  <option value="المنصورة والدلتا">🌾 المنصورة والدلتا</option>
+  <option value="طنطا">🕌 طنطا</option>
+  <option value="مدن القناة">🚢 مدن القناة</option>
+  <option value="العين السخنة">🏖️ العين السخنة</option>
+  <option value="مناطق أخرى">📍 مناطق أخرى</option>
+</select>
                           <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية:</span>
                         </div>
 
