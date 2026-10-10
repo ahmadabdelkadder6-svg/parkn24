@@ -1552,10 +1552,10 @@ export default function AdminDashboard() {
                             <option value="المهندسين">🛍️ المهندسين</option>
                             <option value="الدقي">🎓 الدقي</option>
                             <option value="التجمع الخامس">💎 التجمع الخامس</option>
-                            <option value="باب اللوق">📍 مناطق أخرى</option>
-                            <option value="الشيخ زايد">📍 مناطق أخرى</option>
-                            <option value="6 المقطم">📍 مناطق أخرى</option>
-                            <option value="مناطق أخرى">📍 مناطق أخرى</option>
+                            <option value="باب اللوق">📍 باب اللوق</option>
+                            <option value="الشيخ زايد">📍 الشيخ زايد</option>
+                            <option value=" المقطم">📍 المقطم</option>
+                            <option value="6 اكتوبر ">📍6 اكتوبر</option>
                           </select>
                           <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية:</span>
                         </div>
