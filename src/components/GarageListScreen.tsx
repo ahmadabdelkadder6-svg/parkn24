@@ -417,7 +417,8 @@ export default function GarageListScreen() {
                 أهلاً {currentUser?.name?.split(' ')[0] || 'بك'} 👋
               </span>
               <span className="text-[11px] font-black text-slate-500 block mt-0.5">
-                اركن عربيتك وانسى همّ الزحمة واللف 🚙✨
+                 انزل وأنت رايق.. سيب الركنة علينا! ☕🚗
+
               </span>
             </div>
           </div>
