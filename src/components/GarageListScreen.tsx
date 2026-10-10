@@ -22,7 +22,6 @@ import {
   Minus,
   Menu,
   Wallet,
-  LogOut,
 } from 'lucide-react';
 import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
 import {
@@ -129,6 +128,16 @@ const AREA_ICONS: Record<string, string> = {
   'مناطق أخرى': '📍',
 };
 
+// 🌟 قائمة الفئات السريعة للتصنيف الذكي
+const CATEGORIES = [
+  { id: 'hotels', label: 'فنادق', icon: '🏨' },
+  { id: 'hospitals', label: 'مستشفيات', icon: '🏥' },
+  { id: 'traffic', label: 'مرور', icon: '🚔' },
+  { id: 'markets', label: 'أسواق', icon: '🛒' },
+  { id: 'cafes', label: 'كافيهات/كورنيش', icon: '☕' },
+  { id: 'malls', label: 'مولات/بلازا', icon: '🛍️' },
+];
+
 /* ════════════════════════════════════════════════════════════
    ██  MAIN SCREEN
    ════════════════════════════════════════════════════════════ */
@@ -154,6 +163,9 @@ export default function GarageListScreen() {
   const [showHistory, setShowHistory] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   
+  // 🌟 الفئة النشطة للتصفية السريعة
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
   // 🌟 القائمة الذكية الجانبية
   const [showSmartMenu, setShowSmartMenu] = useState(false);
 
@@ -261,6 +273,7 @@ export default function GarageListScreen() {
 
   useEffect(() => { getUserLocation(); }, [getUserLocation]);
 
+  // 🛡️ اشتراك لحظي أمني شامل لتحديث المحفظة
   useEffect(() => {
     if (!normalizedUserPlate && !cleanUserPhone) return;
     let isSubscribed = true;
@@ -333,17 +346,53 @@ export default function GarageListScreen() {
     }).sort((a, b) => a.minutes - b.minutes);
   }, [garages, userLocation]);
 
+  // 🌟 معالجة فرز الفئات الذكية برمجياً بالكامل
+  const matchesCategory = useCallback((garage: GarageWithDistance, catId: string): boolean => {
+    const name = (garage.name || '').toLowerCase();
+    const loc = (garage.location || '').toLowerCase();
+    const user = (garage.username || '').toLowerCase();
+    const text = `${name} ${loc} ${user}`;
+
+    switch (catId) {
+      case 'hotels':
+        return /فندق|هيلتون|سوفيتيل|ماريوت|شيراتون|فيرمونت|راديسون|kempinski|hotel|triumph plaza/.test(text);
+      case 'hospitals':
+        return /مستشفى|عيادات|طبي|الشفاء|الدمرداش|أبو الريش|الأورمان|حسبو|الندا|الشرطة|الجو|hosp|clinics|medical/.test(text);
+      case 'traffic':
+        return /مرور|تراخيص|فحص|نيابة|traffic/.test(text);
+      case 'markets':
+        return /سوق|وكالة|المناصرة|البرابرة|السبتية|الجمعة|الحرفيين|سنان|الغورية|الموسكي|خضار|فاكهة|سمك|market/.test(text);
+      case 'cafes':
+        return /ممشى|كورنيش|كافيه|مطعم|سهرة|بلاتفورم|النرجس|بغداد|الأهرام|سفيرة|الجزيرة|أبو الفدا|salah_eldin|cafe|restaurant|the platform|waterway/.test(text);
+      case 'malls':
+        return /مول|بلازا|سكوير|سيتي|وتر واي|waterway|أركان|arkan|بارك|park|جنينة|stars|point90|dandy|mall|gate|avenue/.test(text);
+      default:
+        return false;
+    }
+  }, []);
+
   const filteredGarages = useMemo(() => {
     let filtered = garagesWithDistance;
+
+    // 1. الفلترة بحسب التبويب النشط
     filtered = filtered.filter((g) => g.garageType === activeTab);
 
+    // 2. الفلترة الفورية بحسب الفئة النشطة
+    if (selectedCategory) {
+      filtered = filtered.filter((g) => matchesCategory(g, selectedCategory));
+    }
+
+    // 3. الفلترة بحسب البحث النصي
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       filtered = filtered.filter((g) => g.name.toLowerCase().includes(q) || g.location.toLowerCase().includes(q) || (g.area || '').toLowerCase().includes(q));
     }
+
+    // 4. الفلترة بحسب الأقرب
     if (showNearbyOnly) { filtered = filtered.filter((g) => g.classification === 'nearby'); }
+    
     return filtered;
-  }, [garagesWithDistance, search, showNearbyOnly, activeTab]);
+  }, [garagesWithDistance, search, showNearbyOnly, activeTab, selectedCategory, matchesCategory]);
 
   const areaGroups = useMemo(() => {
     const groups: Record<string, GarageWithDistance[]> = {};
@@ -360,9 +409,13 @@ export default function GarageListScreen() {
     if (garage.garageType === 'directory') {
       const url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}`;
       window.open(url, '_blank', 'noopener,noreferrer');
+
+      // تفعيل شاشة طريق السلامة التفاعلية
       setActiveDirectoryTrip(garage);
+
       setSearch('');
       setExpandedArea(null);
+      
       toast.success(`رحلة سعيدة! جاري توجيهك إلى ${garage.name} 🧭`, { icon: '🚙' });
       return;
     }
@@ -442,21 +495,21 @@ export default function GarageListScreen() {
         {/* الشريط العلوي: اللوجو والترحيب يميناً (بخط كبير وواضح) + القائمة والباركود يساراً */}
         <div 
           dir="rtl" // 🛡️ إجبار الاتجاه العربي من اليمين لليسار قسراً
-          className="flex justify-between items-center mb-3"
+          className="flex justify-between items-center mb-3.5"
         >
 
-          {/* 1️⃣ يمين (الابن الأول): اللوجو والترحيب بخط كبير وثقيل وواضح جداً للشارع */}
-          <div className="text-right flex flex-col gap-1">
-            <span className="font-black text-lg block leading-none" style={{ color: BRAND.blue }}>
+          {/* 1️⃣ يمين (الابن الأول): اللوجو والترحيب بخط مكبّر ومثالي للقراءة بلمحة سريعة من حامل السيارة */}
+          <div className="text-right flex flex-col gap-1.5">
+            <span className="font-black text-xl block leading-none" style={{ color: BRAND.blue }}>
               بركن <span style={{ color: BRAND.green }}>24</span>
             </span>
-            <div className="flex flex-col mt-1">
-              <span className="text-sm font-black text-slate-950 block">
+            
+            <div className="flex flex-col mt-0.5">
+              <span className="text-base font-black text-slate-900 block leading-tight">
                 أهلاً {currentUser?.name?.split(' ')[0] || 'بك'} 👋
               </span>
-              <span className="text-[11px] font-black text-slate-500 block mt-0.5">
-                 انزل وأنت رايق .. سيب الركنة علينا! ☕🚗
-
+              <span className="text-xs font-bold text-slate-500 block mt-1 leading-none">
+                انزل وأنت رايق .. سيب الركنة علينا! ☕🚗
               </span>
             </div>
           </div>
@@ -491,7 +544,7 @@ export default function GarageListScreen() {
         {/* 💳 شريط المحفظة والعربية المدمج (الرصيد يميناً + العربية وشحن يساراً) */}
         <div
           className="flex items-center justify-between rounded-xl px-3 py-2 mb-2.5"
-          style={{ background: BRAND.blue, boxShadow: '0 3px 10px rgba(22,86,184,0.18)' }}
+          style={{ background: BRAND.blue, boxShadow: '0 3px 10px rgba(22,86,184,0.18)', direction: 'rtl' }}
         >
           {/* يسار: زرار الشحن ثم رقم العربية */}
           <div className="flex items-center gap-2 shrink-0">
@@ -519,14 +572,14 @@ export default function GarageListScreen() {
           </div>
         </div>
 
-        {/* 🎁 بانر الهدية الترحيبية المدمج - اتجاه عربي صحيح 100% ومضمون */}
+        {/* 🎁 بانر الهدية الترحيبية - الهدية أقصى اليمين والبوكس أقصى الشمال */}
         {isEligibleForFreeSession && !activeSession && !myIncomingCar && (
           <div
-            dir="rtl" // 🛡️ إجبار المتصفح على قراءة الاتجاه من اليمين لليسار قسراً
+            dir="rtl" // 🛡️ إجبار المتصفح على الاتجاه العربي (يمين لليسار) قسراً
             className="mb-2.5 py-1.5 px-3 rounded-xl flex items-center justify-between text-right border-[1.5px]"
             style={{ background: BRAND.green + '10', borderColor: BRAND.green + '50' }}
           >
-            {/* يمين: أيقونة الهدية والجمة الترحيبية الجذابة */}
+            {/* يمين: الأيقونة وجملة الهدية */}
             <div className="flex items-center gap-1.5">
               <Gift size={12} style={{ color: BRAND.greenDark }} className="shrink-0 animate-pulse" />
               <span className="text-[10px] font-black text-slate-900 leading-none">
@@ -534,7 +587,7 @@ export default function GarageListScreen() {
               </span>
             </div>
 
-            {/* شمال: شارة نشط الفاخرة */}
+            {/* شمال: بوكس نشط */}
             <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white bg-green-600 shrink-0">
               نشط 🎁
             </span>
@@ -575,7 +628,7 @@ export default function GarageListScreen() {
               className="w-full outline-none text-xs font-bold"
               style={{
                 background: BRAND.bg,
-                border: `1.5px solid ${BRAND.border}`,
+                border: `1px solid ${BRAND.border}`,
                 padding: '9px 32px 9px 12px',
                 borderRadius: 12,
                 color: BRAND.blueDark,
@@ -610,7 +663,44 @@ export default function GarageListScreen() {
           </button>
         </div>
 
-        {/* 🌟 شريط التبويب */}
+        {/* 🌟 شريط التصنيف السريع الذكي والمحترف (Smart Filter Bar) */}
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none mb-3" style={{ direction: 'rtl' }}>
+          {/* خيار "عرض الكل" لالغاء الفلتر */}
+          <button
+            type="button"
+            onClick={() => setSelectedCategory(null)}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-[10px] font-black cursor-pointer border-[1.5px] transition-all shrink-0 active:scale-95"
+            style={{
+              background: selectedCategory === null ? BRAND.blue : '#ffffff',
+              color: selectedCategory === null ? '#ffffff' : BRAND.slate,
+              borderColor: selectedCategory === null ? BRAND.blue : BRAND.border,
+            }}
+          >
+            <span>💎 الكل</span>
+          </button>
+
+          {CATEGORIES.map((cat) => {
+            const isActive = selectedCategory === cat.id;
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setSelectedCategory(isActive ? null : cat.id)}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-[10px] font-black cursor-pointer border-[1.5px] transition-all shrink-0 active:scale-95"
+                style={{
+                  background: isActive ? BRAND.blue : '#ffffff',
+                  color: isActive ? '#ffffff' : BRAND.slate,
+                  borderColor: isActive ? BRAND.blue : BRAND.border,
+                }}
+              >
+                <span>{cat.icon}</span>
+                <span>{cat.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 🌟 شريط التبويب الرئيسي */}
         <div className="flex p-1 rounded-xl bg-slate-200/70" style={{ direction: 'rtl', border: '1.5px solid #cbd5e1' }}>
           <button
             type="button"
@@ -639,6 +729,7 @@ export default function GarageListScreen() {
           </button>
         </div>
       </div>
+
       {/* ═══ CONTENT (مساحة عرض ضخمة للجراجات) ═══ */}
       <div className="flex-1 overflow-y-auto px-4 pt-3 pb-8">
 
@@ -682,7 +773,7 @@ export default function GarageListScreen() {
                   </button>
 
                   {isExpanded && (
-                    <div style={{ background: BRAND.bg, padding: '10px', borderTop: `1.5px solid ${BRAND.border}` }} className="space-y-2">
+                    <div style={{ background: BRAND.bg, padding: '10px', borderTop: `1px solid ${BRAND.border}` }} className="space-y-2">
                       {(() => {
                         const limit = visibleLimits[group.name] || 8;
                         const displayedGarages = group.garages.slice(0, limit);
@@ -731,8 +822,8 @@ export default function GarageListScreen() {
           <div className="text-center py-16 text-slate-400">
             <span className="text-3xl block mb-2">🚗🔍</span>
             <p className="text-xs font-bold leading-relaxed max-w-[240px] mx-auto">
-              {activeTab === 'vip'
-                ? 'لا توجد جراجات VIP مضافة في هذه المنطقة حالياً.'
+              {selectedCategory 
+                ? `لا توجد نتائج تحت فئة "${CATEGORIES.find(c => c.id === selectedCategory)?.label}" في هذه المنطقة.` 
                 : 'لا توجد ساحات في الدليل، جرب البحث باسم منطقة أخرى!'}
             </p>
           </div>
@@ -1205,7 +1296,7 @@ function WelcomeGiftModal() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   ██  GARAGE CARD
+   ██  GARAGE CARD (HYBRID)
    ════════════════════════════════════════════════════════════ */
 const GarageCard = memo(function GarageCard({
   garage,
@@ -1238,9 +1329,15 @@ const GarageCard = memo(function GarageCard({
   })();
 
   const displayPrice = (() => {
-    if (garage.priceType === 'daily') return `${garage.dailyPrice || garage.basePrice} ج.م / اليوم`;
-    if (garage.priceType === 'monthly') return `${garage.monthlyPrice || 1500} ج.م / شهر`;
-    return `${garage.basePrice} ج.م / س`;
+    if (garage.priceType === 'daily') return `${garage.dailyPrice || garage.basePrice}`;
+    if (garage.priceType === 'monthly') return `${garage.monthlyPrice || 1500}`;
+    return `${garage.basePrice}`;
+  })();
+
+  const priceUnit = (() => {
+    if (garage.priceType === 'daily') return 'ج.م/يومي';
+    if (garage.priceType === 'monthly') return 'ج.م/شهري';
+    return 'ج.م/ساعة';
   })();
 
   return (
@@ -1254,11 +1351,12 @@ const GarageCard = memo(function GarageCard({
         boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
       }}
     >
-      <div className="flex justify-between items-center mb-1">
-        <div className="flex items-center gap-1 flex-wrap">
+      {/* سطر الشارات المميزة والنوع */}
+      <div className="flex justify-between items-center mb-2 flex-wrap gap-1.5" style={{ direction: 'rtl' }}>
+        <div className="flex items-center gap-1.5 flex-wrap">
           {isDirectory ? (
-            <span className="text-[9px] font-black px-2 py-0.5 rounded flex items-center gap-1" style={{ background: '#f1f5f9', color: '#334155', border: '1.5px solid #94a3b8' }}>
-              <span>🧭 دليل إرشادي</span>
+            <span className="text-[9px] font-black px-2.5 py-0.5 rounded flex items-center gap-1" style={{ background: '#f1f5f9', color: '#334155', border: '1.5px solid #94a3b8' }}>
+              <span>🧭 دليل إرشاد الشارع</span>
             </span>
           ) : (
             <span className="flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded" style={{ background: '#fef3c7', color: '#b45309' }}>
@@ -1278,60 +1376,77 @@ const GarageCard = memo(function GarageCard({
           )}
           {!isDirectory && garage.payment_mode === 'both' && (
             <span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#f0fdf4', color: BRAND.greenDark, border: `1px solid #bbf7d0` }}>
-              💵👝 نقدي ومحفظة
+              💵👝 كاش ومحفظة
             </span>
           )}
           {isDirectory && (
             <span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#f0fdf4', color: BRAND.greenDark }}>
-              💵 سداد للسايس مباشرة
+              💵 دفع للسايس مباشرة
             </span>
           )}
         </div>
-        <h4 className="text-xs font-black" style={{ color: BRAND.blueDark }}>{garage.name}</h4>
       </div>
 
-      <div className="flex items-center gap-1 justify-end text-[10px] mb-2" style={{ color: BRAND.slate }}>
-        <span>{garage.location}</span>
-        <MapPin size={10} />
+      {/* اسم الجراج بحجم كبير وواضح */}
+      <div className="flex items-start justify-between gap-2 mb-2" style={{ direction: 'rtl' }}>
+        <h4 className="text-[15px] font-black leading-tight text-slate-950 flex-1">{garage.name}</h4>
       </div>
 
-      <div className="flex items-center justify-between mt-2 pt-2 border-t" style={{ borderColor: BRAND.border }}>
-        <div className="flex items-center gap-1 text-[10px] font-bold" style={{ color: BRAND.slate }}>
-          <Navigation size={10} className="rotate-45" />
+      {/* الموقع */}
+      <div className="flex items-center gap-1 justify-end text-[11px] font-bold mb-3" style={{ color: BRAND.slate, direction: 'rtl' }}>
+        <span className="truncate max-w-[280px]">{garage.location}</span>
+        <MapPin size={11} style={{ color: BRAND.slate }} className="shrink-0" />
+      </div>
+
+      {/* البيانات الكبيرة */}
+      <div className="flex items-center justify-between mt-3 pt-3 border-t-[1.5px]" style={{ borderColor: BRAND.border }}>
+        {/* اليسار: وقت الوصول المقدر */}
+        <div className="flex items-center gap-1 text-xs font-black" style={{ color: BRAND.slate }}>
+          <Navigation size={12} className="rotate-45" />
           <span>{formatDuration(garage.minutes)}</span>
         </div>
 
-        <div className="flex items-center gap-3 text-xs">
+        {/* اليمين: الشاغر والسعر بخطوط كبيرة وواضحة */}
+        <div className="flex items-center gap-4 text-right" style={{ direction: 'rtl' }}>
+          {/* تعديل السعر التشاركي للدليل فقط */}
           {isDirectory && (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onReportPrice(garage); }}
-              className="flex items-center gap-0.5 text-[9px] font-black border-0 bg-transparent cursor-pointer"
+              className="flex items-center gap-0.5 text-[10px] font-black border-0 bg-transparent cursor-pointer hover:underline p-1 rounded"
               style={{ color: BRAND.blue }}
             >
-              <Edit3 size={10} />
+              <Edit3 size={11} />
               <span>تعديل السعر</span>
             </button>
           )}
 
+          {/* عدد الأماكن الشاغرة */}
           {!isDirectory && (
-            <div className="flex items-center gap-1">
-              <span className="font-mono font-black" style={{ color: BRAND.blue }}>{garage.availableSpots}</span>
-              <span className="text-[10px] font-semibold" style={{ color: BRAND.slate }}>شاغر</span>
+            <div className="flex flex-col items-center">
+              <span className="font-mono font-black text-[17px] leading-none" style={{ color: BRAND.blue }}>
+                {garage.availableSpots}
+              </span>
+              <span className="text-[9px] font-black text-slate-400 mt-1 uppercase">مكان شاغر</span>
             </div>
           )}
 
-          <div className="flex items-center gap-0.5">
-            <span className="font-mono font-black text-sm" style={{ color: BRAND.greenDark }}>{displayPrice}</span>
+          {/* سعر الركنة */}
+          <div className="flex flex-col items-center">
+            <span className="font-mono font-black text-[17px] leading-none" style={{ color: BRAND.greenDark }}>
+              {displayPrice}
+            </span>
+            <span className="text-[9px] font-black text-slate-400 mt-1 uppercase">{priceUnit}</span>
           </div>
         </div>
       </div>
 
+      {/* زر اتخاذ الإجراء */}
       <button
         type="button"
         disabled={isFull || disabled}
         onClick={!disabled && !isFull ? onSelect : undefined}
-        className="w-full border-0 font-black py-2.5 rounded-xl mt-3 text-xs text-white cursor-pointer active:scale-98 transition-all flex items-center justify-center gap-1.5"
+        className="w-full border-0 font-black py-3 rounded-2xl mt-4 text-sm text-white cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5 shadow-sm"
         style={{ background: btnBg }}
       >
         <span>{btnLabel}</span>
