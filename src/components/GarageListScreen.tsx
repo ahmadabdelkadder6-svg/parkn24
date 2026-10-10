@@ -169,7 +169,8 @@ export default function GarageListScreen() {
   // 🌟 القائمة الذكية الجانبية
   const [showSmartMenu, setShowSmartMenu] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'vip' | 'directory'>('vip');
+  // 🌟 جعل دليل الساحات المجاني يفتح تلقائياً أول ما الشاشة تفتح لتظهر كل الجراجات فوراً
+  const [activeTab, setActiveTab] = useState<'vip' | 'directory'>('directory');
   const [activeDirectoryTrip, setActiveDirectoryTrip] = useState<GarageWithDistance | null>(null);
   const [visibleLimits, setVisibleLimits] = useState<Record<string, number>>({});
 
@@ -663,17 +664,26 @@ export default function GarageListScreen() {
           </button>
         </div>
 
-        {/* 🌟 شريط التصنيف السريع الذكي والمحترف (Smart Filter Bar) */}
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none mb-3" style={{ direction: 'rtl' }}>
+        {/* 🌟 شريط التصنيف السريع الذكي والمحترف (Smart Filter Bar) - منسق قسراً لليمين 100% */}
+        <div 
+          dir="rtl" // 🛡️ إجبار المتصفح على بدء الصف من اليمين للشمال
+          className="flex gap-2 overflow-x-auto pb-2 scrollbar-none mb-3 w-full px-0.5"
+          style={{ 
+            scrollSnapType: 'x mandatory',
+            WebkitOverflowScrolling: 'touch', // سحب ناعم وحرير على شاشات الموبايل
+            justifyContent: 'flex-start' // تأمين بدء الأزرار من أقصى اليمين
+          }}
+        >
           {/* خيار "عرض الكل" لالغاء الفلتر */}
           <button
             type="button"
             onClick={() => setSelectedCategory(null)}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-[10px] font-black cursor-pointer border-[1.5px] transition-all shrink-0 active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black cursor-pointer border-[1.5px] transition-all shrink-0 active:scale-95 shadow-sm"
             style={{
               background: selectedCategory === null ? BRAND.blue : '#ffffff',
               color: selectedCategory === null ? '#ffffff' : BRAND.slate,
               borderColor: selectedCategory === null ? BRAND.blue : BRAND.border,
+              scrollSnapAlign: 'start'
             }}
           >
             <span>💎 الكل</span>
@@ -686,11 +696,12 @@ export default function GarageListScreen() {
                 key={cat.id}
                 type="button"
                 onClick={() => setSelectedCategory(isActive ? null : cat.id)}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-[10px] font-black cursor-pointer border-[1.5px] transition-all shrink-0 active:scale-95"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black cursor-pointer border-[1.5px] transition-all shrink-0 active:scale-95 shadow-sm"
                 style={{
                   background: isActive ? BRAND.blue : '#ffffff',
                   color: isActive ? '#ffffff' : BRAND.slate,
                   borderColor: isActive ? BRAND.blue : BRAND.border,
+                  scrollSnapAlign: 'start'
                 }}
               >
                 <span>{cat.icon}</span>
