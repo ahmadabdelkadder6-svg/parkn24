@@ -1545,7 +1545,7 @@ export default function AdminDashboard() {
                             onChange={(e) => setEditArea(e.target.value)}
                             className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"
                           >
- <option value="وسط البلد">🏢 وسط البلد</option>
+<option value="وسط البلد">🏢 وسط البلد</option>
 <option value="الزمالك">👑 الزمالك</option>
 <option value="مصر الجديدة">🏰 مصر الجديدة</option>
 <option value="مدينة نصر">🏙️ مدينة نصر</option>
@@ -1553,11 +1553,15 @@ export default function AdminDashboard() {
 <option value="المهندسين">🛍️ المهندسين</option>
 <option value="الدقي">🎓 الدقي</option>
 <option value="التجمع الخامس">💎 التجمع الخامس</option>
+<option value="الرحاب ومدينتي">🏡 الرحاب ومدينتي</option>
+<option value="شيراتون المطار">✈️ شيراتون المطار</option>
 <option value="المقطم">⛰️ المقطم</option>
+<option value="المنيل">🏝️ المنيل</option>
 <option value="الجيزة">🏛️ الجيزة</option>
 <option value="الشيخ زايد">🌲 الشيخ زايد</option>
 <option value="6 أكتوبر">🎡 6 أكتوبر</option>
-<option value="المنيل">🏝️ المنيل</option>
+<option value="الكيت كات">🌊 الكيت كات</option>
+<option value="الحسين والأزهر">🏮 الحسين والأزهر</option>
 <option value="شبرا ورمسيس">🚆 شبرا ورمسيس</option>
 <option value="مصر القديمة">🕌 مصر القديمة</option>
 <option value="مناطق أخرى">📍 مناطق أخرى</option>
