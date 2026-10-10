@@ -87,7 +87,8 @@ const AREA_ICONS: Record<string, string> = {
   'المهندسين': '🛍️',
   'الدقي': '🎓',
   'التجمع الخامس': '💎',
-  'المقطم': '⛰️', // 🌟 
+  'المقطم': '⛰️', // 
+   'الجيزة': '🏛️', //  
   'مناطق أخرى': '📍',
 };
 
@@ -417,7 +418,7 @@ export default function GarageListScreen() {
                 أهلاً {currentUser?.name?.split(' ')[0] || 'بك'} 👋
               </span>
               <span className="text-[11px] font-black text-slate-500 block mt-0.5">
-                 انزل وأنت رايق.. سيب الركنة علينا! ☕🚗
+                 انزل وأنت رايق .. سيب الركنة علينا! ☕🚗
 
               </span>
             </div>
