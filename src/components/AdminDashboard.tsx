@@ -1545,18 +1545,22 @@ export default function AdminDashboard() {
                             onChange={(e) => setEditArea(e.target.value)}
                             className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"
                           >
-                            <option value="وسط البلد">🏢 وسط البلد</option>
-                            <option value="مصر الجديدة">🏰 مصر الجديدة</option>
-                            <option value="مدينة نصر">🏙️ مدينة نصر</option>
-                            <option value="المعادي">🌳 المعادي</option>
-                            <option value="المهندسين">🛍️ المهندسين</option>
-                            <option value="الدقي">🎓 الدقي</option>
-                            <option value="التجمع الخامس">💎 التجمع الخامس</option>
-                            <option value="باب اللوق">📍 باب اللوق</option>
-                            <option value="الشيخ زايد">📍 الشيخ زايد</option>
-                            <option value=" المقطم">📍 المقطم</option>
-                            <option value="6 اكتوبر ">📍6 اكتوبر</option>
-                            <option value=" المنيل">📍 المنيل</option>
+ <option value="وسط البلد">🏢 وسط البلد</option>
+<option value="الزمالك">👑 الزمالك</option>
+<option value="مصر الجديدة">🏰 مصر الجديدة</option>
+<option value="مدينة نصر">🏙️ مدينة نصر</option>
+<option value="المعادي">🌳 المعادي</option>
+<option value="المهندسين">🛍️ المهندسين</option>
+<option value="الدقي">🎓 الدقي</option>
+<option value="التجمع الخامس">💎 التجمع الخامس</option>
+<option value="المقطم">⛰️ المقطم</option>
+<option value="الجيزة">🏛️ الجيزة</option>
+<option value="الشيخ زايد">🌲 الشيخ زايد</option>
+<option value="6 أكتوبر">🎡 6 أكتوبر</option>
+<option value="المنيل">🏝️ المنيل</option>
+<option value="شبرا ورمسيس">🚆 شبرا ورمسيس</option>
+<option value="مصر القديمة">🕌 مصر القديمة</option>
+<option value="مناطق أخرى">📍 مناطق أخرى</option>
                           </select>
                           <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية:</span>
                         </div>
