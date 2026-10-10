@@ -1591,7 +1591,8 @@ export default function AdminDashboard() {
 <option value="طنطا">🕌 طنطا</option>
 <option value="مدن القناة">🚢 مدن القناة</option>
 <option value="العين السخنة">🏖️ العين السخنة</option>
-<option value="مناطق أخرى">📍 مناطق أخرى</option>                          </select>
+<option value="مناطق أخرى">📍 مناطق أخرى</option> 
+                         </select>
                           <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية:</span>
                         </div>
 
