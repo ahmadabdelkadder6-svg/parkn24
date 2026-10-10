@@ -87,6 +87,7 @@ const AREA_ICONS: Record<string, string> = {
   'المهندسين': '🛍️',
   'الدقي': '🎓',
   'التجمع الخامس': '💎',
+  'المقطم': '⛰️', // 🌟 
   'مناطق أخرى': '📍',
 };
 
@@ -595,7 +596,7 @@ export default function GarageListScreen() {
               boxShadow: activeTab === 'directory' ? '0 2px 8px rgba(15,61,133,0.25)' : 'none',
             }}
           >
-            <span>🧭 دليل الساحات</span>
+            <span>🧭 دليل الساحات المجاني</span>
           </button>
         </div>
       </div>
