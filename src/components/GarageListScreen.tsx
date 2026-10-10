@@ -180,8 +180,8 @@ export default function GarageListScreen() {
 
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>({
     lat: 30.0444,
-    lng: 31.2357,
-  });
+    decay: 31.2357,
+  } as any);
   const [locationLoading, setLocationLoading] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
   const [isAbuseDetected, setIsAbuseDetected] = useState(false);
@@ -346,6 +346,30 @@ export default function GarageListScreen() {
       return { ...garage, distance, minutes, classification: classifyDistance(minutes) };
     }).sort((a, b) => a.minutes - b.minutes);
   }, [garages, userLocation]);
+
+  // 🌟 ذكاء زيكي التجاري: جلب أقرب جراج VIP معتمد أولاً، وإذا لم يتوفر نبحث في جراجات الدليل المجاني
+  const quickRescueGarage = useMemo(() => {
+    if (locationLoading || !userLocation.lat) return null;
+    
+    // 1. نبحث أولاً عن أقرب جراج VIP معتمد فيه مكان شاغر وفي حدود 7 دقائق
+    const nearestVip = garagesWithDistance.find((g) => 
+      g.garageType === 'vip' && 
+      g.availableSpots > 0 && 
+      g.minutes <= 7 && 
+      g.isActive !== false
+    );
+
+    if (nearestVip) return nearestVip; // لو لقى VIP يرجعه فوراً لتبدأ دورة الحجز والملاحة
+
+    // 2. إذا لم يجد جراج VIP قريب، يبحث عن أقرب جراج دليل مجاني في حدود 7 دقائق
+    const nearestDirectory = garagesWithDistance.find((g) => 
+      g.garageType === 'directory' && 
+      g.minutes <= 7 && 
+      g.isActive !== false
+    );
+
+    return nearestDirectory || null; // لو لقى دليل يرجعه، لو ملقاش يرجع null ويختفي البانر
+  }, [garagesWithDistance, locationLoading, userLocation]);
 
   // 🌟 معالجة فرز الفئات الذكية برمجياً بالكامل
   const matchesCategory = useCallback((garage: GarageWithDistance, catId: string): boolean => {
@@ -594,6 +618,58 @@ export default function GarageListScreen() {
             </span>
           </div>
         )}
+
+        {/* 🌟 بانر "الركنة السريعة المنقذة" الديناميكي التشاركي (يعطي الأولوية للـ VIP) */}
+        <AnimatePresence>
+          {quickRescueGarage && !activeSession && !myIncomingCar && (
+            <motion.div
+              initial={{ opacity: 0, y: -10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.95 }}
+              onClick={() => handleGarageClick(quickRescueGarage)}
+              className="mb-2.5 p-3.5 rounded-2xl cursor-pointer active:scale-98 transition-all border-2 text-right relative overflow-hidden"
+              style={{
+                background: quickRescueGarage.garageType === 'vip' 
+                  ? 'linear-gradient(135deg, #1656b8 0%, #0f3d85 100%)' // لون كحلي ملكي فخم للـ VIP
+                  : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', // لون برتقالي دافئ للدليل
+                borderColor: quickRescueGarage.garageType === 'vip' ? '#1656b8' : '#f59e0b',
+                boxShadow: quickRescueGarage.garageType === 'vip'
+                  ? '0 4px 15px rgba(22,86,184,0.3)'
+                  : '0 4px 15px rgba(217,119,6,0.3)',
+              }}
+              dir="rtl"
+            >
+              {/* توهج خلفي ناعم */}
+              <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+
+              <div className="flex justify-between items-center">
+                <div className="text-right flex-1 pr-1">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    {/* الشارة الديناميكية */}
+                    <span 
+                      className="text-[8px] font-black px-1.5 py-0.5 rounded-lg animate-pulse text-white"
+                      style={{ background: quickRescueGarage.garageType === 'vip' ? '#8cc63f' : '#334155' }}
+                    >
+                      {quickRescueGarage.garageType === 'vip' ? '⭐ حجز مضمون VIP' : '⚡ منقذ سريع'}
+                    </span>
+                    <h4 className="text-xs font-black text-white">مستعجل ومحتاس؟ اركن في {formatDuration(quickRescueGarage.minutes)}!</h4>
+                  </div>
+                  <p className="text-[10px] font-bold text-white/90 leading-relaxed">
+                    {quickRescueGarage.garageType === 'vip' ? (
+                      <span>احجز مكانك فوراً في <b className="text-green-300">{quickRescueGarage.name}</b> وركنتك مضمونة! 🛡️🚀</span>
+                    ) : (
+                      <span>وجه الخرائط حالاً لـ <b className="text-yellow-100">{quickRescueGarage.name}</b> قبل الزحمة! 🧭🚀</span>
+                    )}
+                  </p>
+                </div>
+                
+                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0 text-white">
+                  <Navigation size={18} className="rotate-45 animate-bounce" />
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* الجلسة النشطة */}
         {activeSession && (
@@ -974,7 +1050,7 @@ export default function GarageListScreen() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.85, opacity: 0 }}
               className="rounded-3xl p-6 text-center max-w-xs w-full shadow-2xl relative"
-              style={{ background: BRAND.card }}
+              style={{ BRAND_card: BRAND.card } as any}
               onClick={e => e.stopPropagation()}
             >
               <button
