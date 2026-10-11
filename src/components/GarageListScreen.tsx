@@ -190,7 +190,7 @@ export default function GarageListScreen() {
   const autoNavigatedRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
 
-  // 📡 الملاحة الحية وتتبع المسار الموفر للطاقة والبطارية
+  // 📡 الملاحة الحية وتتبع المسار الموفر للطاقة والبطارية لمنع القراءات الباردة والكاش
   const lastLocationRef = useRef<{ lat: number; lng: number } | null>(null);
   const bestAccuracyRef = useRef<number>(Infinity); // رصد أعلى دقة إشارة مستلمة بالمتر
   const watchIdRef = useRef<number | null>(null);
@@ -302,7 +302,7 @@ export default function GarageListScreen() {
 
           // التحديث يطلق قسراً في حالتين:
           // 1. تحرك السيارة حركة حقيقية أكبر من 15 متراً.
-          // 2. تحسن دقة الإشارة بشكل كبير مقارنة بالقراءة القديمة (إلغاء قراءات أبراج شبكة المحمول).
+          // 2. تحسن دقة الإشارة بشكل كبير مقارنة بالقراءة القديمة (إلغاء قراءات أبراء شبكة المحمول).
           if (movedDist >= 15 || (isMoreAccurate && (bestAccuracyRef.current - newAccuracy) > 5)) {
             shouldUpdate = true;
           }
@@ -505,9 +505,11 @@ export default function GarageListScreen() {
 
   const handleGarageClick = async (garage: GarageWithDistance) => {
     if (garage.garageType === 'directory') {
-      // 🌟 الرابط الذكي العبقري المزدوج: يدمج الإحداثي مع الاسم لضمان نزول العميل أمام البوابة بالملي في خرائط جوجل
-      const destinationQuery = encodeURIComponent(`${garage.name}, ${garage.location || garage.area}`);
-      const url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}&query=${destinationQuery}`;
+      // 🌟 الخوارزمية العبقرية الهجينة: نرسل الإحداثيات والاسم واللوكيشن معاً.
+      // جوجل ماب تبحث عن الاسم في محيط الإحداثيات وتثبت المسار على البوابات الرسمية للمجمعات، وفي حال لم تجد الاسم تهبط تلقائياً وبأمان على خط الطول والعرض.
+      const cleanLandmark = garage.name.replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim();
+      const destinationQuery = encodeURIComponent(`${cleanLandmark} ${garage.location || garage.area}`);
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}&query=${destinationQuery}&travelmode=driving`;
       
       window.open(url, '_blank', 'noopener,noreferrer');
 
@@ -1156,7 +1158,7 @@ export default function GarageListScreen() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.85, opacity: 0 }}
               className="rounded-3xl p-6 text-center max-w-xs w-full shadow-2xl relative"
-              style={{ background: BRAND.card }}
+              style={{ BRAND_card: BRAND.card } as any}
               onClick={e => e.stopPropagation()}
             >
               <button
@@ -1407,7 +1409,10 @@ export default function GarageListScreen() {
               <button
                 type="button"
                 onClick={() => {
-                  const url = `https://www.google.com/maps/dir/?api=1&destination=${activeDirectoryTrip.lat},${activeDirectoryTrip.lng}`;
+                  // الملاحة المزدوجة الذكية: تدمج الإحداثي الدقيق مع اسم المعلم لجلب البوابة الرسمية من سيرفرات جوجل مباشرة
+                  const cleanLandmark = activeDirectoryTrip.name.replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim();
+                  const destinationQuery = encodeURIComponent(`${cleanLandmark} ${activeDirectoryTrip.location || activeDirectoryTrip.area}`);
+                  const url = `https://www.google.com/maps/dir/?api=1&destination=${activeDirectoryTrip.lat},${activeDirectoryTrip.lng}&query=${destinationQuery}&travelmode=driving`;
                   window.open(url, '_blank', 'noopener,noreferrer');
                 }}
                 className="w-full py-3.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all border-0 text-white shadow-sm"
