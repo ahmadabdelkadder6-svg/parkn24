@@ -176,7 +176,7 @@ export default function GarageListScreen() {
 
   const [reportingGarage, setReportingGarage] = useState<GarageWithDistance | null>(null);
   const [updatedPriceInput, setUpdatedPriceInput] = useState<number | ''>(20);
-  const [isSubmittingPrice, setIsSubmittingPrice, setBestAccuracy] = useState<any>(false);
+  const [isSubmittingPrice, setIsSubmittingPrice] = useState(false);
 
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>({
     lat: 30.0444,
@@ -285,7 +285,7 @@ export default function GarageListScreen() {
         if (!isMountedRef.current) return;
         const newLat = position.coords.latitude;
         const newLng = position.coords.longitude;
-        const newAccuracy = position.coords.accuracy; // قياس دقة الإشارة الحالية بالمتر
+        const newAccuracy = position.coords.accuracy || 10; // قياس دقة الإشارة الحالية بالمتر
 
         const isMoreAccurate = newAccuracy < bestAccuracyRef.current;
         let shouldUpdate = false;
@@ -1156,7 +1156,7 @@ export default function GarageListScreen() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.85, opacity: 0 }}
               className="rounded-3xl p-6 text-center max-w-xs w-full shadow-2xl relative"
-              style={{ BRAND_card: BRAND.card } as any}
+              style={{ background: BRAND.card }}
               onClick={e => e.stopPropagation()}
             >
               <button
@@ -1342,8 +1342,7 @@ export default function GarageListScreen() {
             </motion.div>
           </div>
         )}
-      </Presence>
-    </AnimatePresence>
+      </AnimatePresence>
 
       {/* 🌟 شاشة "طريق السلامة" التفاعلية (مع مستشعر التصحيح الآلي الصامت عند التأكيد) */}
       <AnimatePresence>
