@@ -180,8 +180,8 @@ export default function GarageListScreen() {
 
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>({
     lat: 30.0444,
-    decay: 31.2357,
-  } as any);
+    lng: 31.2357,
+  });
   const [locationLoading, setLocationLoading] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
   const [isAbuseDetected, setIsAbuseDetected] = useState(false);
@@ -189,6 +189,10 @@ export default function GarageListScreen() {
 
   const autoNavigatedRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
+
+  // 📡 الملاحة الحية وتأمين البطارية من قراءات الكاش الباردة
+  const lastLocationRef = useRef<{ lat: number; lng: number } | null>(null);
+  const watchIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -262,17 +266,65 @@ export default function GarageListScreen() {
     return myTopUps.filter((w) => w.status === 'pending').length;
   }, [myTopUps]);
 
+  // 📡 خوارزمية تتبع الموقع المتتابع فائق الدقة الموفر للبطارية (WatchPosition Engine)
   const getUserLocation = useCallback(() => {
-    if (!('geolocation' in navigator)) { toast.error('خدمة تحديد الموقع غير مدعومة في متصفحك'); return; }
+    if (!('geolocation' in navigator)) { 
+      toast.error('خدمة تحديد الموقع غير مدعومة في متصفحك'); 
+      return; 
+    }
+
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+    }
+
     setLocationLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (p) => { if (!isMountedRef.current) return; setUserLocation({ lat: p.coords.latitude, lng: p.coords.longitude }); setLocationLoading(false); },
-      () => { if (!isMountedRef.current) return; setLocationLoading(false); },
-      { enableHighAccuracy: true, timeout: 8000 }
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        if (!isMountedRef.current) return;
+        const newLat = position.coords.latitude;
+        const newLng = position.coords.longitude;
+
+        // لا نقوم بتحديث الـ Render وحساب الداتا إلا لو تحرك السائق مسافة حقيقية أكبر من 15 متراً
+        if (!lastLocationRef.current) {
+          lastLocationRef.current = { lat: newLat, lng: newLng };
+          setUserLocation({ lat: newLat, lng: newLng });
+        } else {
+          const movedDist = calculateDistance(
+            lastLocationRef.current.lat,
+            lastLocationRef.current.lng,
+            newLat,
+            newLng
+          ) * 1000; // تحويل إلى أمتار
+
+          if (movedDist >= 15) {
+            lastLocationRef.current = { lat: newLat, lng: newLng };
+            setUserLocation({ lat: newLat, lng: newLng });
+          }
+        }
+        setLocationLoading(false);
+      },
+      (error) => {
+        if (!isMountedRef.current) return;
+        console.error('GPS Watch Location Error:', error);
+        setLocationLoading(false);
+      },
+      {
+        enableHighAccuracy: true, // إجبار المعالج والـ GPS على العمل بكامل طاقته ومطابقة الأقمار الصناعية
+        timeout: 10000,
+        maximumAge: 0,           // مسح قراءات الكاش القديمة والباردة لضمان قراءة حية بالملي
+      }
     );
   }, []);
 
-  useEffect(() => { getUserLocation(); }, [getUserLocation]);
+  useEffect(() => { 
+    getUserLocation(); 
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
+  }, [getUserLocation]);
 
   // 🛡️ اشتراك لحظي أمني شامل لتحديث المحفظة
   useEffect(() => {
@@ -430,13 +482,13 @@ export default function GarageListScreen() {
 
   useEffect(() => { if (search.trim() && areaGroups.length > 0) setExpandedArea(areaGroups[0].name); }, [search, areaGroups]);
 
-const handleGarageClick = async (garage: GarageWithDistance) => {
-  if (garage.garageType === 'directory') {
-    // 🌟 الرابط الذكي العبقري: يدمج الإحداثي مع الاسم لضمان نزول العميل أمام البوابة بالملي
-    const destinationQuery = encodeURIComponent(`${garage.name}, ${garage.location || garage.area}`);
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}&query=${destinationQuery}`;
-    
-    window.open(url, '_blank', 'noopener,noreferrer');
+  const handleGarageClick = async (garage: GarageWithDistance) => {
+    if (garage.garageType === 'directory') {
+      // 🌟 الرابط الذكي العبقري: يدمج الإحداثي مع الاسم لضمان نزول العميل أمام البوابة بالملي
+      const destinationQuery = encodeURIComponent(`${garage.name}, ${garage.location || garage.area}`);
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}&query=${destinationQuery}`;
+      
+      window.open(url, '_blank', 'noopener,noreferrer');
 
       // تفعيل شاشة طريق السلامة التفاعلية
       setActiveDirectoryTrip(garage);
@@ -482,6 +534,36 @@ const handleGarageClick = async (garage: GarageWithDistance) => {
       setIsBooking(false); 
     }
   };
+
+  // 🤖 دالة التصحيح الذاتي الصامتة عند الوصول (Self-Healing Telemetry Trigger)
+  const handleConfirmArrival = useCallback(async () => {
+    if (!activeDirectoryTrip) return;
+    const tripToCalibrate = activeDirectoryTrip;
+    setActiveDirectoryTrip(null);
+    toast.success('حمد الله على سلامتك! نورت بركن من جديد 🌟', { duration: 3000 });
+
+    // التقاط إحداثيات الوصول الحقيقية للعميل في الخلفية لتصحيح الخريطة تلقائياً وبصمت
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          try {
+            const { latitude, longitude, accuracy } = position.coords;
+            await supabase.rpc('record_arrival_telemetry', {
+              p_garage_id: tripToCalibrate.id,
+              p_user_lat: latitude,
+              p_user_lng: longitude,
+              p_accuracy: accuracy || 10,
+              p_user_phone: cleanUserPhone || null
+            });
+          } catch (e) {
+            // صامت تماماً دون إزعاج العميل
+          }
+        },
+        () => {},
+        { enableHighAccuracy: true, timeout: 6000 }
+      );
+    }
+  }, [activeDirectoryTrip, cleanUserPhone]);
 
   const handleOpenPriceReport = (g: GarageWithDistance) => {
     setReportingGarage(g);
@@ -1053,7 +1135,7 @@ const handleGarageClick = async (garage: GarageWithDistance) => {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.85, opacity: 0 }}
               className="rounded-3xl p-6 text-center max-w-xs w-full shadow-2xl relative"
-              style={{ BRAND_card: BRAND.card } as any}
+              style={{ background: BRAND.card }}
               onClick={e => e.stopPropagation()}
             >
               <button
@@ -1241,7 +1323,7 @@ const handleGarageClick = async (garage: GarageWithDistance) => {
         )}
       </AnimatePresence>
 
-      {/* 🌟 شاشة "طريق السلامة" التفاعلية */}
+      {/* 🌟 شاشة "طريق السلامة" التفاعلية (مع مستشعر التصحيح الآلي الصامت) */}
       <AnimatePresence>
         {activeDirectoryTrip && (
           <motion.div
@@ -1316,10 +1398,7 @@ const handleGarageClick = async (garage: GarageWithDistance) => {
 
               <button
                 type="button"
-                onClick={() => {
-                  setActiveDirectoryTrip(null);
-                  toast.success('نورت بركن من جديد! 🌟');
-                }}
+                onClick={handleConfirmArrival}
                 className="w-full py-3 rounded-xl font-black text-xs text-slate-400 bg-white/5 border border-white/10 cursor-pointer active:scale-95 transition-all"
               >
                 🏁 وصلت بالسلامة / العودة للرئيسية
