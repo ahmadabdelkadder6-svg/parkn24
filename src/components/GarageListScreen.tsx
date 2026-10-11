@@ -571,38 +571,9 @@ export default function GarageListScreen() {
 
   const handleGarageClick = async (garage: GarageWithDistance) => {
     if (garage.garageType === 'directory') {
-      // 🌟 الخوارزمية العبقرية الهجينة التكيفية مع صمام أمان "حارس تباعد المنطقة"
-      const areaCenter = AREA_CENTERS[garage.area || ''];
-      let isLocationBroken = false;
-      
-      if (areaCenter) {
-        const distanceFromCenterKm = calculateDistance(garage.lat, garage.lng, areaCenter.lat, areaCenter.lng);
-        if (distanceFromCenterKm > areaCenter.maxRadiusKm) {
-          isLocationBroken = true;
-          
-          // إرسال بلاغ صامت لـ Supabase للمطورين لتعديل دقة الجراج لاحقاً
-          supabase.from('garage_arrival_telemetry').insert({
-            garage_id: garage.id,
-            user_phone: cleanUserPhone || '00000000000',
-            lat: garage.lat,
-            lng: garage.lng,
-            accuracy: 999 
-          }).then(() => {}).catch(() => {});
-        }
-      }
-
-      const isFamousLandmark = /مول|mall|فندق|hotel|مستشفى|hospital|جامعة|university|نادي|club|مرور|traffic|كارفور|سيتي سنتر|تريومف|بلاتفورم|وتر واي|waterway|أركان|arkan|سكوير|plaza/gi.test(garage.name);
-      
-      let url = '';
-      if (isLocationBroken || isFamousLandmark) {
-        // 1. المعالم الكبرى: نوجه بالاسم والمنطقة لتختار جوجل البوابة الرسمية من سيرفراتها وتتجنب الإحداثيات التقريبية
-        const cleanLandmark = garage.name.replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim();
-        const destinationQuery = encodeURIComponent(`${cleanLandmark} ${garage.location || garage.area}`);
-        url = `https://www.google.com/maps/dir/?api=1&destination=${destinationQuery}&travelmode=driving`;
-      } else {
-        // 2. الساحات الصغيرة والشعبية: نطلق الملاحة والتوجيه المباشر بالإحداثيات ليرسم خط الملاحة الفوري دون شاشات بحث عشوائية
-        url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}&travelmode=driving`;
-      }
+      // 🌟 الملاحة المباشرة الجبرية (Direct Routing Navigation):
+      // إطلاق مسار الملاحة الأزرق والتوجيه الفوري فوراً من مكان العميل الحالي إلى إحداثيات الجراج المحددة بدون شاشات بحث أو دبابيس حمراء
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}&travelmode=driving&dir_action=navigate`;
       
       window.open(url, '_blank', 'noopener,noreferrer');
 
@@ -1271,7 +1242,7 @@ export default function GarageListScreen() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.85, opacity: 0 }}
               className="rounded-3xl p-6 text-center max-w-xs w-full shadow-2xl relative"
-              style={{ BRAND_card: BRAND.card } as any}
+              style={{ background: BRAND.card }}
               onClick={e => e.stopPropagation()}
             >
               <button
@@ -1522,19 +1493,8 @@ export default function GarageListScreen() {
               <button
                 type="button"
                 onClick={() => {
-                  // الملاحة المزدوجة التكيفية مع حارس تباعد المنطقة: تدمج الإحداثي الدقيق مع الاسم والمنطقة لتثبيت مسار البوابة بالملي في جوجل ماب
-                  const isFamousLandmark = /مول|mall|فندق|hotel|مستشفى|hospital|جامعة|university|نادي|club|مرور|traffic|كارفور|سيتي سنتر|تريومف|بلاتفورم|وتر واي|waterway|أركان|arkan|sكوير|plaza/gi.test(activeDirectoryTrip.name);
-                  
-                  let url = '';
-                  if (isFamousLandmark) {
-                    const cleanLandmark = activeDirectoryTrip.name.replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim();
-                    const destinationQuery = encodeURIComponent(`${cleanLandmark} ${activeDirectoryTrip.location || activeDirectoryTrip.area}`);
-                    url = `https://www.google.com/maps/dir/?api=1&destination=${destinationQuery}&travelmode=driving`;
-                  } else {
-                    // الساحات الصغيرة والشعبية: نفتح الخريطة بالإحداثيات الموصومة باسم المكان لتثبيت الدبوس بالملي وحمايته من التوجيه لشارع خلفي
-                    const label = encodeURIComponent(activeDirectoryTrip.name);
-                    url = `https://www.google.com/maps/search/?api=1&query=${activeDirectoryTrip.lat},${activeDirectoryTrip.lng}(${label})`;
-                  }
+                  // الملاحة المباشرة الجبرية بالخط الأزرق الفوري
+                  const url = `https://www.google.com/maps/dir/?api=1&destination=${activeDirectoryTrip.lat},${activeDirectoryTrip.lng}&travelmode=driving&dir_action=navigate`;
                   window.open(url, '_blank', 'noopener,noreferrer');
                 }}
                 className="w-full py-3.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all border-0 text-white shadow-sm"
