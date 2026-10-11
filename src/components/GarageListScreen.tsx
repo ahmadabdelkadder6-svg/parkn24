@@ -176,7 +176,7 @@ export default function GarageListScreen() {
 
   const [reportingGarage, setReportingGarage] = useState<GarageWithDistance | null>(null);
   const [updatedPriceInput, setUpdatedPriceInput] = useState<number | ''>(20);
-  const [isSubmittingPrice, setIsSubmittingPrice] = useState(false);
+  const [isSubmittingPrice, setIsSubmittingPrice, setBestAccuracy] = useState<any>(false);
 
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>({
     lat: 30.0444,
@@ -190,8 +190,9 @@ export default function GarageListScreen() {
   const autoNavigatedRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
 
-  // 📡 الملاحة الحية وتأمين البطارية من قراءات الكاش الباردة
+  // 📡 الملاحة الحية وتتبع المسار الموفر للطاقة والبطارية
   const lastLocationRef = useRef<{ lat: number; lng: number } | null>(null);
+  const bestAccuracyRef = useRef<number>(Infinity); // رصد أعلى دقة إشارة مستلمة بالمتر
   const watchIdRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -266,7 +267,7 @@ export default function GarageListScreen() {
     return myTopUps.filter((w) => w.status === 'pending').length;
   }, [myTopUps]);
 
-  // 📡 خوارزمية تتبع الموقع المتتابع فائق الدقة الموفر للبطارية (WatchPosition Engine)
+  // 📡 خوارزمية تتبع الموقع المتتابع فائق الدقة الموفر للبطارية ومنع القراءات الباردة والكاش
   const getUserLocation = useCallback(() => {
     if (!('geolocation' in navigator)) { 
       toast.error('خدمة تحديد الموقع غير مدعومة في متصفحك'); 
@@ -284,11 +285,13 @@ export default function GarageListScreen() {
         if (!isMountedRef.current) return;
         const newLat = position.coords.latitude;
         const newLng = position.coords.longitude;
+        const newAccuracy = position.coords.accuracy; // قياس دقة الإشارة الحالية بالمتر
 
-        // لا نقوم بتحديث الـ Render وحساب الداتا إلا لو تحرك السائق مسافة حقيقية أكبر من 15 متراً
+        const isMoreAccurate = newAccuracy < bestAccuracyRef.current;
+        let shouldUpdate = false;
+
         if (!lastLocationRef.current) {
-          lastLocationRef.current = { lat: newLat, lng: newLng };
-          setUserLocation({ lat: newLat, lng: newLng });
+          shouldUpdate = true;
         } else {
           const movedDist = calculateDistance(
             lastLocationRef.current.lat,
@@ -297,10 +300,20 @@ export default function GarageListScreen() {
             newLng
           ) * 1000; // تحويل إلى أمتار
 
-          if (movedDist >= 15) {
-            lastLocationRef.current = { lat: newLat, lng: newLng };
-            setUserLocation({ lat: newLat, lng: newLng });
+          // التحديث يطلق قسراً في حالتين:
+          // 1. تحرك السيارة حركة حقيقية أكبر من 15 متراً.
+          // 2. تحسن دقة الإشارة بشكل كبير مقارنة بالقراءة القديمة (إلغاء قراءات أبراج شبكة المحمول).
+          if (movedDist >= 15 || (isMoreAccurate && (bestAccuracyRef.current - newAccuracy) > 5)) {
+            shouldUpdate = true;
           }
+        }
+
+        if (shouldUpdate) {
+          lastLocationRef.current = { lat: newLat, lng: newLng };
+          if (isMoreAccurate) {
+            bestAccuracyRef.current = newAccuracy;
+          }
+          setUserLocation({ lat: newLat, lng: newLng });
         }
         setLocationLoading(false);
       },
@@ -316,6 +329,14 @@ export default function GarageListScreen() {
       }
     );
   }, []);
+
+  // 🧲 إعادة المعايرة والمسح الكامل لذاكرة الكاش لإشارة الـ GPS (Hard Reset)
+  const handleForceRefreshLocation = useCallback(() => {
+    lastLocationRef.current = null;
+    bestAccuracyRef.current = Infinity;
+    getUserLocation();
+    toast.success('جاري تصفير المستشعرات وتحديث موقعك بدقة عالية من القمر الصناعي... 🛰️', { id: 'gps-refresh' });
+  }, [getUserLocation]);
 
   useEffect(() => { 
     getUserLocation(); 
@@ -484,7 +505,7 @@ export default function GarageListScreen() {
 
   const handleGarageClick = async (garage: GarageWithDistance) => {
     if (garage.garageType === 'directory') {
-      // 🌟 الرابط الذكي العبقري: يدمج الإحداثي مع الاسم لضمان نزول العميل أمام البوابة بالملي
+      // 🌟 الرابط الذكي العبقري المزدوج: يدمج الإحداثي مع الاسم لضمان نزول العميل أمام البوابة بالملي في خرائط جوجل
       const destinationQuery = encodeURIComponent(`${garage.name}, ${garage.location || garage.area}`);
       const url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}&query=${destinationQuery}`;
       
@@ -803,7 +824,7 @@ export default function GarageListScreen() {
 
           <button
             type="button"
-            onClick={getUserLocation}
+            onClick={handleForceRefreshLocation} // معايرة إعادة الضبط القسري الحقيقي ومسح الكاش فوراً
             disabled={locationLoading}
             className="flex items-center justify-center border-0 cursor-pointer shrink-0"
             style={{ background: BRAND.blue, color: '#fff', borderRadius: 12, width: 36, height: 36 }}
@@ -1135,7 +1156,7 @@ export default function GarageListScreen() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.85, opacity: 0 }}
               className="rounded-3xl p-6 text-center max-w-xs w-full shadow-2xl relative"
-              style={{ background: BRAND.card }}
+              style={{ BRAND_card: BRAND.card } as any}
               onClick={e => e.stopPropagation()}
             >
               <button
@@ -1321,9 +1342,10 @@ export default function GarageListScreen() {
             </motion.div>
           </div>
         )}
-      </AnimatePresence>
+      </Presence>
+    </AnimatePresence>
 
-      {/* 🌟 شاشة "طريق السلامة" التفاعلية (مع مستشعر التصحيح الآلي الصامت) */}
+      {/* 🌟 شاشة "طريق السلامة" التفاعلية (مع مستشعر التصحيح الآلي الصامت عند التأكيد) */}
       <AnimatePresence>
         {activeDirectoryTrip && (
           <motion.div
@@ -1398,7 +1420,7 @@ export default function GarageListScreen() {
 
               <button
                 type="button"
-                onClick={handleConfirmArrival}
+                onClick={handleConfirmArrival} // تفعيل خوارزمية العلاج الذاتي الصامتة للموقع الفعلي بدقة بالمتر عند التأكيد
                 className="w-full py-3 rounded-xl font-black text-xs text-slate-400 bg-white/5 border border-white/10 cursor-pointer active:scale-95 transition-all"
               >
                 🏁 وصلت بالسلامة / العودة للرئيسية
