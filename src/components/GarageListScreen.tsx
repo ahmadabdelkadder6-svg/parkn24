@@ -571,9 +571,39 @@ export default function GarageListScreen() {
 
   const handleGarageClick = async (garage: GarageWithDistance) => {
     if (garage.garageType === 'directory') {
-      // 🌟 الملاحة المباشرة الجبرية (Direct Routing Navigation):
-      // إطلاق مسار الملاحة الأزرق والتوجيه الفوري فوراً من مكان العميل الحالي إلى إحداثيات الجراج المحددة بدون شاشات بحث أو دبابيس حمراء
-      const url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}&travelmode=driving&dir_action=navigate`;
+      // 🛡️ حارس تباعد المنطقة الذكي (Area Bounding Guard)
+      // نقيس المسافة بين نقطة الجراج والسنتر المعتمد لمنطقته في القاموس
+      const areaCenter = AREA_CENTERS[garage.area || ''];
+      let isLocationBroken = false;
+      
+      if (areaCenter) {
+        const distanceFromCenterKm = calculateDistance(garage.lat, garage.lng, areaCenter.lat, areaCenter.lng);
+        if (distanceFromCenterKm > areaCenter.maxRadiusKm) {
+          isLocationBroken = true;
+          
+          // إرسال بلاغ صامت لـ Supabase للمطورين لتعديل دقة الجراج لاحقاً
+          supabase.from('garage_arrival_telemetry').insert({
+            garage_id: garage.id,
+            user_phone: cleanUserPhone || '00000000000',
+            lat: garage.lat,
+            lng: garage.lng,
+            accuracy: 999 
+          }).then(() => {}).catch(() => {});
+        }
+      }
+
+      const isFamousLandmark = /مول|mall|فندق|hotel|مستشفى|hospital|جامعة|university|نادي|club|مرور|traffic|كارفور|سيتي سنتر|تريومف|بلاتفورم|وتر واي|waterway|أركان|arkan|سكوير|plaza/gi.test(garage.name);
+      
+      let url = '';
+      if (isLocationBroken || isFamousLandmark) {
+        // 1. المعالم الكبرى والمواقع التي بها خطأ تباعد: نوجه بالاسم والمنطقة لتختار جوجل البوابة الرسمية من سيرفراتها وتتجنب الأخطاء
+        const cleanLandmark = garage.name.replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim();
+        const destinationQuery = encodeURIComponent(`${cleanLandmark} ${garage.location || garage.area}`);
+        url = `https://www.google.com/maps/dir/?api=1&destination=${destinationQuery}&travelmode=driving`;
+      } else {
+        // 2. الساحات الشعبية والصغيرة السليمة: نطلق الملاحة والتوجيه المباشر بالإحداثيات ليرسم خط الملاحة الفوري دون شاشات بحث عشوائية
+        url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}&travelmode=driving&dir_action=navigate`;
+      }
       
       window.open(url, '_blank', 'noopener,noreferrer');
 
@@ -1242,7 +1272,7 @@ export default function GarageListScreen() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.85, opacity: 0 }}
               className="rounded-3xl p-6 text-center max-w-xs w-full shadow-2xl relative"
-              style={{ background: BRAND.card }}
+              style={{ BRAND_card: BRAND.card } as any}
               onClick={e => e.stopPropagation()}
             >
               <button
