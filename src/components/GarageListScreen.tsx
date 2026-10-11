@@ -507,9 +507,11 @@ export default function GarageListScreen() {
     if (garage.garageType === 'directory') {
       // 🌟 الخوارزمية العبقرية الهجينة: نرسل الإحداثيات والاسم واللوكيشن معاً.
       // جوجل ماب تبحث عن الاسم في محيط الإحداثيات وتثبت المسار على البوابات الرسمية للمجمعات، وفي حال لم تجد الاسم تهبط تلقائياً وبأمان على خط الطول والعرض.
-      const cleanLandmark = garage.name.replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim();
-      const destinationQuery = encodeURIComponent(`${cleanLandmark} ${garage.location || garage.area}`);
-      const url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}&query=${destinationQuery}&travelmode=driving`;
+const cleanLandmark = garage.name.replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim();
+const destinationQuery = encodeURIComponent(`${cleanLandmark} ${garage.location || garage.area}`);
+
+// ✅ الرابط السحري الصحيح:
+const url = `https://www.google.com/maps/dir/?api=1&destination=${destinationQuery}&travelmode=driving`;
       
       window.open(url, '_blank', 'noopener,noreferrer');
 
