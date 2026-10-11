@@ -430,10 +430,13 @@ export default function GarageListScreen() {
 
   useEffect(() => { if (search.trim() && areaGroups.length > 0) setExpandedArea(areaGroups[0].name); }, [search, areaGroups]);
 
-  const handleGarageClick = async (garage: GarageWithDistance) => {
-    if (garage.garageType === 'directory') {
-      const url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}`;
-      window.open(url, '_blank', 'noopener,noreferrer');
+const handleGarageClick = async (garage: GarageWithDistance) => {
+  if (garage.garageType === 'directory') {
+    // 🌟 الرابط الذكي العبقري: يدمج الإحداثي مع الاسم لضمان نزول العميل أمام البوابة بالملي
+    const destinationQuery = encodeURIComponent(`${garage.name}, ${garage.location || garage.area}`);
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}&query=${destinationQuery}`;
+    
+    window.open(url, '_blank', 'noopener,noreferrer');
 
       // تفعيل شاشة طريق السلامة التفاعلية
       setActiveDirectoryTrip(garage);
