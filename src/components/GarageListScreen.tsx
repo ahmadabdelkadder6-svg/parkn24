@@ -595,14 +595,13 @@ export default function GarageListScreen() {
       
       let url = '';
       if (isLocationBroken || isFamousLandmark) {
-        // 1. المعالم الكبرى: نوجه بالاسم والمنطقة لتختار جوجل البوابة الرسمية من سيرفراتها
+        // 1. المعالم الكبرى: نوجه بالاسم والمنطقة لتختار جوجل البوابة الرسمية من سيرفراتها وتتجنب الإحداثيات التقريبية
         const cleanLandmark = garage.name.replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim();
         const destinationQuery = encodeURIComponent(`${cleanLandmark} ${garage.location || garage.area}`);
         url = `https://www.google.com/maps/dir/?api=1&destination=${destinationQuery}&travelmode=driving`;
       } else {
-        // 2. الساحات الشعبية والصغيرة: نستخدم البحث عن الإحداثيات مع Label مخصص لمنع تشتت جوجل ماب وتوجيهه للشارع الأمامي
-        const label = encodeURIComponent(garage.name);
-        url = `https://www.google.com/maps/search/?api=1&query=${garage.lat},${garage.lng}(${label})`;
+        // 2. الساحات الصغيرة والشعبية: نطلق الملاحة والتوجيه المباشر بالإحداثيات ليرسم خط الملاحة الفوري دون شاشات بحث عشوائية
+        url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}&travelmode=driving`;
       }
       
       window.open(url, '_blank', 'noopener,noreferrer');
@@ -1524,7 +1523,7 @@ export default function GarageListScreen() {
                 type="button"
                 onClick={() => {
                   // الملاحة المزدوجة التكيفية مع حارس تباعد المنطقة: تدمج الإحداثي الدقيق مع الاسم والمنطقة لتثبيت مسار البوابة بالملي في جوجل ماب
-                  const isFamousLandmark = /مول|mall|فندق|hotel|مستشفى|hospital|جامعة|university|نادي|club|مرور|traffic|كارفور|سيتي سنتر|تريومف|بلاتفورم|وتر واي|waterway|أركان|arkan|سكوير|plaza/gi.test(activeDirectoryTrip.name);
+                  const isFamousLandmark = /مول|mall|فندق|hotel|مستشفى|hospital|جامعة|university|نادي|club|مرور|traffic|كارفور|سيتي سنتر|تريومف|بلاتفورم|وتر واي|waterway|أركان|arkan|sكوير|plaza/gi.test(activeDirectoryTrip.name);
                   
                   let url = '';
                   if (isFamousLandmark) {
