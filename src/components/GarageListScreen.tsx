@@ -128,6 +128,42 @@ const AREA_ICONS: Record<string, string> = {
   'مناطق أخرى': '📍',
 };
 
+// 🌟 إحداثيات السنتر الجغرافي التقريبي لكل منطقة (لكشف أخطاء الإدخال والنيل والرمي في الصحراء)
+const AREA_CENTERS: Record<string, { lat: number; lng: number; maxRadiusKm: number }> = {
+  'وسط البلد': { lat: 30.0444, lng: 31.2357, maxRadiusKm: 4.5 },
+  'الزمالك': { lat: 30.0634, lng: 31.2195, maxRadiusKm: 3.0 },
+  'مصر الجديدة': { lat: 30.0915, lng: 31.3210, maxRadiusKm: 6.0 },
+  'مدينة نصر': { lat: 30.0566, lng: 31.3468, maxRadiusKm: 7.0 },
+  'المعادي': { lat: 29.9602, lng: 31.2569, maxRadiusKm: 6.5 },
+  'المهندسين': { lat: 30.0544, lng: 31.2007, maxRadiusKm: 4.0 },
+  'الدقي': { lat: 30.0378, lng: 31.2058, maxRadiusKm: 3.5 },
+  'التجمع الخامس': { lat: 30.0074, lng: 31.4340, maxRadiusKm: 12.0 },
+  'شيراتون المطار': { lat: 30.1146, lng: 31.3848, maxRadiusKm: 4.5 },
+  'الرحاب ومدينتي': { lat: 30.0885, lng: 31.5510, maxRadiusKm: 15.0 },
+  'الشيخ زايد': { lat: 30.0245, lng: 30.9925, maxRadiusKm: 7.5 },
+  '6 أكتوبر': { lat: 29.9725, lng: 30.9438, maxRadiusKm: 15.0 },
+  'المقطم': { lat: 30.0095, lng: 31.3078, maxRadiusKm: 5.0 },
+  'المنيل': { lat: 30.0245, lng: 31.2285, maxRadiusKm: 3.0 },
+  'الجيزة': { lat: 30.0105, lng: 31.2078, maxRadiusKm: 6.0 },
+  'حدائق الأهرام': { lat: 29.9725, lng: 31.1180, maxRadiusKm: 5.5 },
+  'المريوطية والمنصورية': { lat: 29.9889, lng: 31.1341, maxRadiusKm: 6.0 },
+  'الكيت كات': { lat: 30.0665, lng: 31.2142, maxRadiusKm: 3.0 },
+  'إمبابة والوراق': { lat: 30.0782, lng: 31.2264, maxRadiusKm: 5.0 },
+  'أرض اللواء': { lat: 30.0625, lng: 31.1942, maxRadiusKm: 3.0 },
+  'الوايلي والعباسية': { lat: 30.0682, lng: 31.2845, maxRadiusKm: 4.5 },
+  'الزيتون والمطرية': { lat: 30.1185, lng: 31.3142, maxRadiusKm: 5.0 },
+  'حدائق القبة': { lat: 30.0865, lng: 31.2885, maxRadiusKm: 4.0 },
+  'جسر السويس': { lat: 30.1285, lng: 31.3410, maxRadiusKm: 8.0 },
+  'شبرا ورمسيس': { lat: 30.0812, lng: 31.2465, maxRadiusKm: 5.5 },
+  'شبرا الخيمة': { lat: 30.1235, lng: 31.2445, maxRadiusKm: 6.0 },
+  'مصر القديمة': { lat: 30.0085, lng: 31.2505, maxRadiusKm: 5.0 },
+  'مدينة الشروق': { lat: 30.1385, lng: 31.6210, maxRadiusKm: 10.0 },
+  'حلوان': { lat: 29.8495, lng: 31.3342, maxRadiusKm: 12.0 },
+  'الساحل الشمالي': { lat: 30.9145, lng: 28.7428, maxRadiusKm: 150.0 },
+  'مدن القناة': { lat: 30.5989, lng: 32.2841, maxRadiusKm: 90.0 },
+  'العين السخنة': { lat: 29.6258, lng: 32.3541, maxRadiusKm: 40.0 },
+};
+
 // 🌟 قائمة الفئات السريعة للتصنيف الذكي
 const CATEGORIES = [
   { id: 'hotels', label: 'فنادق', icon: '🏨' },
@@ -190,10 +226,16 @@ export default function GarageListScreen() {
   const autoNavigatedRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
 
-  // 📡 الملاحة الحية وتتبع المسار الموفر للطاقة والبطارية لمنع القراءات الباردة والكاش
+  // 📡 الملاحة الحية وتتبع المسار الموفر للطاقة والبطارية من قراءات الكاش الباردة
   const lastLocationRef = useRef<{ lat: number; lng: number } | null>(null);
   const bestAccuracyRef = useRef<number>(Infinity); // رصد أعلى دقة إشارة مستلمة بالمتر
   const watchIdRef = useRef<number | null>(null);
+
+  // 🧲 مستشعرات بصمة الحركة الذكية (Telemetry Buffers)
+  const speedHistoryRef = useRef<number[]>([]);
+  const bearingHistoryRef = useRef<number[]>([]);
+  const stopStartTimeRef = useRef<number | null>(null);
+  const totalStopDurationRef = useRef<number>(0);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -286,6 +328,30 @@ export default function GarageListScreen() {
         const newLat = position.coords.latitude;
         const newLng = position.coords.longitude;
         const newAccuracy = position.coords.accuracy || 10; // قياس دقة الإشارة الحالية بالمتر
+        const rawSpeed = position.coords.speed || 0; // السرعة بالمتر/ثانية
+        const rawHeading = position.coords.heading || 0; // اتجاه السيارة بالدرجات
+
+        // 🧲 تسجيل بصمة التباطؤ والسرعة لحظياً
+        const speedKmh = rawSpeed * 3.6;
+        speedHistoryRef.current.push(speedKmh);
+        if (speedHistoryRef.current.length > 10) speedHistoryRef.current.shift();
+
+        // 🧲 رصد اتجاه المنعطفات الحادة للرامب
+        if (rawHeading !== null) {
+          bearingHistoryRef.current.push(rawHeading);
+          if (bearingHistoryRef.current.length > 5) bearingHistoryRef.current.shift();
+        }
+
+        // 🧲 حساب مدة التوقف المؤقت (كابينة التذاكر)
+        if (speedKmh < 1.0) {
+          if (stopStartTimeRef.current === null) {
+            stopStartTimeRef.current = Date.now();
+          } else {
+            totalStopDurationRef.current = Math.round((Date.now() - stopStartTimeRef.current) / 1000);
+          }
+        } else {
+          stopStartTimeRef.current = null; // العودة للحركة
+        }
 
         const isMoreAccurate = newAccuracy < bestAccuracyRef.current;
         let shouldUpdate = false;
@@ -463,7 +529,7 @@ export default function GarageListScreen() {
       case 'cafes':
         return /ممشى|كورنيش|كافيه|مطعم|سهرة|بلاتفورم|النرجس|بغداد|الأهرام|سفيرة|الجزيرة|أبو الفدا|salah_eldin|cafe|restaurant|the platform|waterway/.test(text);
       case 'malls':
-        return /مول|بلازا|سكوير|سيتي|وتر واي|waterway|أركان|arkan|بارك|park|جنينة|stars|point90|dandy|mall|gate|avenue/.test(text);
+        return /مول|بلازا|سكوير|سيتي|وتر واي|waterway|أركان|arkan|park|جنينة|stars|point90|dandy|mall|gate|avenue/.test(text);
       default:
         return false;
     }
@@ -505,13 +571,39 @@ export default function GarageListScreen() {
 
   const handleGarageClick = async (garage: GarageWithDistance) => {
     if (garage.garageType === 'directory') {
-      // 🌟 الخوارزمية العبقرية الهجينة: نرسل الإحداثيات والاسم واللوكيشن معاً.
-      // جوجل ماب تبحث عن الاسم في محيط الإحداثيات وتثبت المسار على البوابات الرسمية للمجمعات، وفي حال لم تجد الاسم تهبط تلقائياً وبأمان على خط الطول والعرض.
-const cleanLandmark = garage.name.replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim();
-const destinationQuery = encodeURIComponent(`${cleanLandmark} ${garage.location || garage.area}`);
+      // 🌟 الخوارزمية العبقرية الهجينة التكيفية مع صمام أمان "حارس تباعد المنطقة"
+      const areaCenter = AREA_CENTERS[garage.area || ''];
+      let isLocationBroken = false;
+      
+      if (areaCenter) {
+        const distanceFromCenterKm = calculateDistance(garage.lat, garage.lng, areaCenter.lat, areaCenter.lng);
+        if (distanceFromCenterKm > areaCenter.maxRadiusKm) {
+          isLocationBroken = true;
+          
+          // إرسال بلاغ صامت لـ Supabase للمطورين لتعديل دقة الجراج لاحقاً
+          supabase.from('garage_arrival_telemetry').insert({
+            garage_id: garage.id,
+            user_phone: cleanUserPhone || '00000000000',
+            lat: garage.lat,
+            lng: garage.lng,
+            accuracy: 999 
+          }).then(() => {}).catch(() => {});
+        }
+      }
 
-// ✅ الرابط السحري الصحيح:
-const url = `https://www.google.com/maps/dir/?api=1&destination=${destinationQuery}&travelmode=driving`;
+      const isFamousLandmark = /مول|mall|فندق|hotel|مستشفى|hospital|جامعة|university|نادي|club|مرور|traffic|كارفور|سيتي سنتر|تريومف|بلاتفورم|وتر واي|waterway|أركان|arkan|سكوير|plaza/gi.test(garage.name);
+      
+      let url = '';
+      if (isLocationBroken || isFamousLandmark) {
+        // 1. المعالم الكبرى: نوجه بالاسم والمنطقة لتختار جوجل البوابة الرسمية من سيرفراتها
+        const cleanLandmark = garage.name.replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim();
+        const destinationQuery = encodeURIComponent(`${cleanLandmark} ${garage.location || garage.area}`);
+        url = `https://www.google.com/maps/dir/?api=1&destination=${destinationQuery}&travelmode=driving`;
+      } else {
+        // 2. الساحات الشعبية والصغيرة: نستخدم البحث عن الإحداثيات مع Label مخصص لمنع تشتت جوجل ماب وتوجيهه للشارع الأمامي
+        const label = encodeURIComponent(garage.name);
+        url = `https://www.google.com/maps/search/?api=1&query=${garage.lat},${garage.lng}(${label})`;
+      }
       
       window.open(url, '_blank', 'noopener,noreferrer');
 
@@ -560,26 +652,46 @@ const url = `https://www.google.com/maps/dir/?api=1&destination=${destinationQue
     }
   };
 
-  // 🤖 دالة التصحيح الذاتي الصامتة عند الوصول (Self-Healing Telemetry Trigger)
+  // 🤖 دالة التصحيح الذاتي الصامتة عند الوصول (Self-Healing & Telemetry Tracker)
   const handleConfirmArrival = useCallback(async () => {
     if (!activeDirectoryTrip) return;
     const tripToCalibrate = activeDirectoryTrip;
     setActiveDirectoryTrip(null);
     toast.success('حمد الله على سلامتك! نورت بركن من جديد 🌟', { duration: 3000 });
 
-    // التقاط إحداثيات الوصول الحقيقية للعميل في الخلفية لتصحيح الخريطة تلقائياً وبصمت
+    // التقاط إحداثيات الوصول وبصمة الحركة (التباطؤ + مدة التوقف) وإرسالها للسيرفر
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           try {
             const { latitude, longitude, accuracy } = position.coords;
+            
+            // حساب بصمة زاوية المنعطف الحاد (الدوران)
+            let maxBearingChange = 0;
+            if (bearingHistoryRef.current.length >= 2) {
+              const startB = bearingHistoryRef.current[0];
+              const endB = bearingHistoryRef.current[bearingHistoryRef.current.length - 1];
+              maxBearingChange = Math.abs(endB - startB);
+            }
+
+            // حساب متوسط السرعة في آخر دقيقة
+            const avgSpeed = speedHistoryRef.current.reduce((a, b) => a + b, 0) / (speedHistoryRef.current.length || 1);
+
             await supabase.rpc('record_arrival_telemetry', {
               p_garage_id: tripToCalibrate.id,
               p_user_lat: latitude,
               p_user_lng: longitude,
               p_accuracy: accuracy || 10,
-              p_user_phone: cleanUserPhone || null
+              p_user_phone: cleanUserPhone || null,
+              p_speed: avgSpeed,
+              p_bearing_change: maxBearingChange,
+              p_stop_duration: totalStopDurationRef.current || 0
             });
+            
+            // تصفير البفرز لرحلة جديدة
+            speedHistoryRef.current = [];
+            bearingHistoryRef.current = [];
+            totalStopDurationRef.current = 0;
           } catch (e) {
             // صامت تماماً دون إزعاج العميل
           }
@@ -1411,10 +1523,19 @@ const url = `https://www.google.com/maps/dir/?api=1&destination=${destinationQue
               <button
                 type="button"
                 onClick={() => {
-                  // الملاحة المزدوجة الذكية: تدمج الإحداثي الدقيق مع اسم المعلم لجلب البوابة الرسمية من سيرفرات جوجل مباشرة
-                  const cleanLandmark = activeDirectoryTrip.name.replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim();
-                  const destinationQuery = encodeURIComponent(`${cleanLandmark} ${activeDirectoryTrip.location || activeDirectoryTrip.area}`);
-                  const url = `https://www.google.com/maps/dir/?api=1&destination=${activeDirectoryTrip.lat},${activeDirectoryTrip.lng}&query=${destinationQuery}&travelmode=driving`;
+                  // الملاحة المزدوجة التكيفية مع حارس تباعد المنطقة: تدمج الإحداثي الدقيق مع الاسم والمنطقة لتثبيت مسار البوابة بالملي في جوجل ماب
+                  const isFamousLandmark = /مول|mall|فندق|hotel|مستشفى|hospital|جامعة|university|نادي|club|مرور|traffic|كارفور|سيتي سنتر|تريومف|بلاتفورم|وتر واي|waterway|أركان|arkan|سكوير|plaza/gi.test(activeDirectoryTrip.name);
+                  
+                  let url = '';
+                  if (isFamousLandmark) {
+                    const cleanLandmark = activeDirectoryTrip.name.replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim();
+                    const destinationQuery = encodeURIComponent(`${cleanLandmark} ${activeDirectoryTrip.location || activeDirectoryTrip.area}`);
+                    url = `https://www.google.com/maps/dir/?api=1&destination=${destinationQuery}&travelmode=driving`;
+                  } else {
+                    // الساحات الصغيرة والشعبية: نفتح الخريطة بالإحداثيات الموصومة باسم المكان لتثبيت الدبوس بالملي وحمايته من التوجيه لشارع خلفي
+                    const label = encodeURIComponent(activeDirectoryTrip.name);
+                    url = `https://www.google.com/maps/search/?api=1&query=${activeDirectoryTrip.lat},${activeDirectoryTrip.lng}(${label})`;
+                  }
                   window.open(url, '_blank', 'noopener,noreferrer');
                 }}
                 className="w-full py-3.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all border-0 text-white shadow-sm"
