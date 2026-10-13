@@ -34,7 +34,6 @@ import TopUpWalletModal from './TopUpWalletModal';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 
-// 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24
 const BRAND = {
   blue: '#1656b8',
   blueDark: '#0f3d85',
@@ -78,57 +77,22 @@ const safeParseTime = (value: unknown): number => {
   return 0;
 };
 
-// 🌟 قاموس الأيقونات الشامل والمطابق لجميع المناطق
 const AREA_ICONS: Record<string, string> = {
-  'وسط البلد': '🏢',
-  'الزمالك': '👑',
-  'مصر الجديدة': '🏰',
-  'مدينة نصر': '🏙️',
-  'المعادي': '🌳',
-  'المهندسين': '🛍️',
-  'الدقي': '🎓',
-  'التجمع الخامس': '💎',
-  'صلاح سالم والعروبة': '🛣️',
-  'ممشى أهل مصر': '🌊',
-  'جاردن سيتي والقصر العيني': '🏛️',
-  'بولاق': '🚢',
-  'العتبة والأسواق': '🛍️',
-  'الحسين والأزهر': '🏮',
-  'شيراتون المطار': '✈️',
-  'الرحاب ومدينتي': '🏡',
-  'القرية الذكية': '💻',
-  'الشيخ زايد': '🌲',
-  '6 أكتوبر': '🎡',
-  'المقطم': '⛰️',
-  'المنيل': '🏝️',
-  'الجيزة': '🏛️',
-  'حدائق الأهرام': '🚪',
-  'المريوطية والمنصورية': '🌴',
-  'الكيت كات': '🌊',
-  'إمبابة والوراق': '⛵',
-  'أرض اللواء': '🚉',
-  'الوايلي والعباسية': '🏥',
-  'الزيتون والمطرية': '🌿',
-  'حدائق القبة': '🌳',
-  'جسر السويس': '🛣️',
-  'شبرا ورمسيس': '🚆',
-  'شبرا الخيمة': '🏭',
-  'مصر القديمة': '🕌',
-  'مدينة الشروق': '🎓',
-  'مدينة العبور': '🍇',
-  'العاشر من رمضان': '🏭',
-  'العاصمة الإدارية': '🏛️',
-  'حلوان': '⚙️',
-  'الإسكندرية': '🏖️',
-  'الساحل الشمالي': '🏄',
-  'المنصورة والدلتا': '🌾',
-  'طنطا': '🕌',
-  'مدن القناة': '🚢',
-  'العين السخنة': '🏖️',
+  'وسط البلد': '🏢', 'الزمالك': '👑', 'مصر الجديدة': '🏰', 'مدينة نصر': '🏙️',
+  'المعادي': '🌳', 'المهندسين': '🛍️', 'الدقي': '🎓', 'التجمع الخامس': '💎',
+  'صلاح سالم والعروبة': '🛣️', 'ممشى أهل مصر': '🌊', 'جاردن سيتي والقصر العيني': '🏛️',
+  'بولاق': '🚢', 'العتبة والأسواق': '🛍️', 'الحسين والأزهر': '🏮', 'شيراتون المطار': '✈️',
+  'الرحاب ومدينتي': '🏡', 'القرية الذكية': '💻', 'الشيخ زايد': '🌲', '6 أكتوبر': '🎡',
+  'المقطم': '⛰️', 'المنيل': '🏝️', 'الجيزة': '🏛️', 'حدائق الأهرام': '🚪',
+  'المريوطية والمنصورية': '🌴', 'الكيت كات': '🌊', 'إمبابة والوراق': '⛵',
+  'أرض اللواء': '🚉', 'الوايلي والعباسية': '🏥', 'الزيتون والمطرية': '🌿',
+  'حدائق القبة': '🌳', 'جسر السويس': '🛣️', 'شبرا ورمسيس': '🚆', 'شبرا الخيمة': '🏭',
+  'مصر القديمة': '🕌', 'مدينة الشروق': '🎓', 'مدينة العبور': '🍇', 'العاشر من رمضان': '🏭',
+  'العاصمة الإدارية': '🏛️', 'حلوان': '⚙️', 'الإسكندرية': '🏖️', 'الساحل الشمالي': '🏄',
+  'المنصورة والدلتا': '🌾', 'طنطا': '🕌', 'مدن القناة': '🚢', 'العين السخنة': '🏖️',
   'مناطق أخرى': '📍',
 };
 
-// 🌟 إحداثيات السنتر الجغرافي التقريبي لكل منطقة (لكشف أخطاء الإدخال والنيل والرمي في الصحراء)
 const AREA_CENTERS: Record<string, { lat: number; lng: number; maxRadiusKm: number }> = {
   'وسط البلد': { lat: 30.0444, lng: 31.2357, maxRadiusKm: 4.5 },
   'الزمالك': { lat: 30.0634, lng: 31.2195, maxRadiusKm: 3.0 },
@@ -164,7 +128,6 @@ const AREA_CENTERS: Record<string, { lat: number; lng: number; maxRadiusKm: numb
   'العين السخنة': { lat: 29.6258, lng: 32.3541, maxRadiusKm: 40.0 },
 };
 
-// 🌟 قائمة الفئات السريعة للتصنيف الذكي
 const CATEGORIES = [
   { id: 'hotels', label: 'فنادق', icon: '🏨' },
   { id: 'hospitals', label: 'مستشفيات', icon: '🏥' },
@@ -174,23 +137,10 @@ const CATEGORIES = [
   { id: 'malls', label: 'مولات/بلازا', icon: '🛍️' },
 ];
 
-/* ════════════════════════════════════════════════════════════
-   ██  MAIN SCREEN
-   ════════════════════════════════════════════════════════════ */
 export default function GarageListScreen() {
   const {
-    garages,
-    setSelectedGarageId,
-    setScreen,
-    currentUser,
-    sessions,
-    incomingCars,
-    offers,
-    addIncomingCar,
-    fetchAll,
-    acknowledgedSessionIds,
-    walletTopUps,
-    reportPriceUpdate,
+    garages, setSelectedGarageId, setScreen, currentUser, sessions, incomingCars,
+    offers, addIncomingCar, fetchAll, acknowledgedSessionIds, walletTopUps, reportPriceUpdate,
   } = useStore();
 
   const [search, setSearch] = useState('');
@@ -198,59 +148,38 @@ export default function GarageListScreen() {
   const [showTopUp, setShowTopUp] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
-  
-  // 🌟 الفئة النشطة للتصفية السريعة
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-
-  // 🌟 القائمة الذكية الجانبية
   const [showSmartMenu, setShowSmartMenu] = useState(false);
-
-  // 🌟 جعل دليل الساحات المجاني يفتح تلقائياً أول ما الشاشة تفتح لتظهر كل الجراجات فوراً
   const [activeTab, setActiveTab] = useState<'vip' | 'directory'>('directory');
   const [activeDirectoryTrip, setActiveDirectoryTrip] = useState<GarageWithDistance | null>(null);
   const [visibleLimits, setVisibleLimits] = useState<Record<string, number>>({});
-
   const [reportingGarage, setReportingGarage] = useState<GarageWithDistance | null>(null);
   const [updatedPriceInput, setUpdatedPriceInput] = useState<number | ''>(20);
   const [isSubmittingPrice, setIsSubmittingPrice] = useState(false);
-
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>({
-    lat: 30.0444,
-    lng: 31.2357,
-  });
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>({ lat: 30.0444, lng: 31.2357 });
   const [locationLoading, setLocationLoading] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
   const [isAbuseDetected, setIsAbuseDetected] = useState(false);
   const [expandedArea, setExpandedArea] = useState<string | null>(null);
 
+  // 🌟 نظام البحث الذكي المتتابع للركنة السريعة
+  const [rescueIndex, setRescueIndex] = useState(0);
+  const MAX_RESCUE_OPTIONS = 3;
+
   const autoNavigatedRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
-
-  // 📡 الملاحة الحية وتتبع المسار الموفر للطاقة والبطارية من قراءات الكاش الباردة
   const lastLocationRef = useRef<{ lat: number; lng: number } | null>(null);
-  const bestAccuracyRef = useRef<number>(Infinity); // رصد أعلى دقة إشارة مستلمة بالمتر
+  const bestAccuracyRef = useRef<number>(Infinity);
   const watchIdRef = useRef<number | null>(null);
-
-  // 🧲 مستشعرات بصمة الحركة الذكية (Telemetry Buffers)
   const speedHistoryRef = useRef<number[]>([]);
   const bearingHistoryRef = useRef<number[]>([]);
   const stopStartTimeRef = useRef<number | null>(null);
   const totalStopDurationRef = useRef<number>(0);
 
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => { isMountedRef.current = false; };
-  }, []);
+  useEffect(() => { isMountedRef.current = true; return () => { isMountedRef.current = false; }; }, []);
 
-  const normalizedUserPlate = useMemo(
-    () => normalizePlate(currentUser?.carPlate),
-    [currentUser?.carPlate]
-  );
-
-  const cleanUserPhone = useMemo(
-    () => currentUser?.phone ? normalizePhone(currentUser.phone) : '',
-    [currentUser?.phone]
-  );
+  const normalizedUserPlate = useMemo(() => normalizePlate(currentUser?.carPlate), [currentUser?.carPlate]);
+  const cleanUserPhone = useMemo(() => currentUser?.phone ? normalizePhone(currentUser.phone) : '', [currentUser?.phone]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -270,9 +199,7 @@ export default function GarageListScreen() {
     checkAbuseHistory();
   }, [currentUser, sessions, cleanUserPhone]);
 
-  const isEligibleForFreeSession = useMemo(() => {
-    return currentUser && !currentUser.hasUsedFreeSession && !isAbuseDetected;
-  }, [currentUser, isAbuseDetected]);
+  const isEligibleForFreeSession = useMemo(() => currentUser && !currentUser.hasUsedFreeSession && !isAbuseDetected, [currentUser, isAbuseDetected]);
 
   const activeSession = useMemo(() => {
     if (!normalizedUserPlate && !cleanUserPhone) return undefined;
@@ -305,176 +232,67 @@ export default function GarageListScreen() {
     return walletTopUps.filter((w) => w.userPhone === cleanUserPhone).sort((a, b) => b.timestamp - a.timestamp).slice(0, 3);
   }, [walletTopUps, cleanUserPhone]);
 
-  const pendingTopUpsCount = useMemo(() => {
-    return myTopUps.filter((w) => w.status === 'pending').length;
-  }, [myTopUps]);
+  const pendingTopUpsCount = useMemo(() => myTopUps.filter((w) => w.status === 'pending').length, [myTopUps]);
 
-  // 📡 خوارزمية تتبع الموقع المتتابع فائق الدقة الموفر للبطارية ومنع القراءات الباردة والكاش
   const getUserLocation = useCallback(() => {
-    if (!('geolocation' in navigator)) { 
-      toast.error('خدمة تحديد الموقع غير مدعومة في متصفحك'); 
-      return; 
-    }
-
-    if (watchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-    }
-
+    if (!('geolocation' in navigator)) { toast.error('خدمة تحديد الموقع غير مدعومة في متصفحك'); return; }
+    if (watchIdRef.current !== null) { navigator.geolocation.clearWatch(watchIdRef.current); }
     setLocationLoading(true);
-
     watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => {
         if (!isMountedRef.current) return;
         const newLat = position.coords.latitude;
         const newLng = position.coords.longitude;
-        const newAccuracy = position.coords.accuracy || 10; // قياس دقة الإشارة الحالية بالمتر
-        const rawSpeed = position.coords.speed || 0; // السرعة بالمتر/ثانية
-        const rawHeading = position.coords.heading || 0; // اتجاه السيارة بالدرجات
-
-        // 🧲 تسجيل بصمة التباطؤ والسرعة لحظياً
+        const newAccuracy = position.coords.accuracy || 10;
+        const rawSpeed = position.coords.speed || 0;
+        const rawHeading = position.coords.heading || 0;
         const speedKmh = rawSpeed * 3.6;
         speedHistoryRef.current.push(speedKmh);
         if (speedHistoryRef.current.length > 10) speedHistoryRef.current.shift();
-
-        // 🧲 رصد اتجاه المنعطفات الحادة للرامب
-        if (rawHeading !== null) {
-          bearingHistoryRef.current.push(rawHeading);
-          if (bearingHistoryRef.current.length > 5) bearingHistoryRef.current.shift();
-        }
-
-        // 🧲 حساب مدة التوقف المؤقت (كابينة التذاكر)
-        if (speedKmh < 1.0) {
-          if (stopStartTimeRef.current === null) {
-            stopStartTimeRef.current = Date.now();
-          } else {
-            totalStopDurationRef.current = Math.round((Date.now() - stopStartTimeRef.current) / 1000);
-          }
-        } else {
-          stopStartTimeRef.current = null; // العودة للحركة
-        }
-
+        if (rawHeading !== null) { bearingHistoryRef.current.push(rawHeading); if (bearingHistoryRef.current.length > 5) bearingHistoryRef.current.shift(); }
+        if (speedKmh < 1.0) { if (stopStartTimeRef.current === null) { stopStartTimeRef.current = Date.now(); } else { totalStopDurationRef.current = Math.round((Date.now() - stopStartTimeRef.current) / 1000); } } else { stopStartTimeRef.current = null; }
         const isMoreAccurate = newAccuracy < bestAccuracyRef.current;
         let shouldUpdate = false;
-
-        if (!lastLocationRef.current) {
-          shouldUpdate = true;
-        } else {
-          const movedDist = calculateDistance(
-            lastLocationRef.current.lat,
-            lastLocationRef.current.lng,
-            newLat,
-            newLng
-          ) * 1000; // تحويل إلى أمتار
-
-          // التحديث يطلق قسراً في حالتين:
-          // 1. تحرك السيارة حركة حقيقية أكبر من 15 متراً.
-          // 2. تحسن دقة الإشارة بشكل كبير مقارنة بالقراءة القديمة (إلغاء قراءات أبراء شبكة المحمول).
-          if (movedDist >= 15 || (isMoreAccurate && (bestAccuracyRef.current - newAccuracy) > 5)) {
-            shouldUpdate = true;
-          }
+        if (!lastLocationRef.current) { shouldUpdate = true; } else {
+          const movedDist = calculateDistance(lastLocationRef.current.lat, lastLocationRef.current.lng, newLat, newLng) * 1000;
+          if (movedDist >= 15 || (isMoreAccurate && (bestAccuracyRef.current - newAccuracy) > 5)) { shouldUpdate = true; }
         }
-
-        if (shouldUpdate) {
-          lastLocationRef.current = { lat: newLat, lng: newLng };
-          if (isMoreAccurate) {
-            bestAccuracyRef.current = newAccuracy;
-          }
-          setUserLocation({ lat: newLat, lng: newLng });
-        }
+        if (shouldUpdate) { lastLocationRef.current = { lat: newLat, lng: newLng }; if (isMoreAccurate) { bestAccuracyRef.current = newAccuracy; } setUserLocation({ lat: newLat, lng: newLng }); }
         setLocationLoading(false);
       },
-      (error) => {
-        if (!isMountedRef.current) return;
-        console.error('GPS Watch Location Error:', error);
-        setLocationLoading(false);
-      },
-      {
-        enableHighAccuracy: true, // إجبار المعالج والـ GPS على العمل بكامل طاقته ومطابقة الأقمار الصناعية
-        timeout: 10000,
-        maximumAge: 0,           // مسح قراءات الكاش القديمة والباردة لضمان قراءة حية بالملي
-      }
+      () => { if (!isMountedRef.current) return; setLocationLoading(false); },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   }, []);
 
-  // 🧲 إعادة المعايرة والمسح الكامل لذاكرة الكاش لإشارة الـ GPS (Hard Reset)
   const handleForceRefreshLocation = useCallback(() => {
-    lastLocationRef.current = null;
-    bestAccuracyRef.current = Infinity;
-    getUserLocation();
+    lastLocationRef.current = null; bestAccuracyRef.current = Infinity; getUserLocation();
     toast.success('جاري تصفير المستشعرات وتحديث موقعك بدقة عالية من القمر الصناعي... 🛰️', { id: 'gps-refresh' });
   }, [getUserLocation]);
 
-  useEffect(() => { 
-    getUserLocation(); 
-    return () => {
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-      }
-    };
-  }, [getUserLocation]);
+  useEffect(() => { getUserLocation(); return () => { if (watchIdRef.current !== null) { navigator.geolocation.clearWatch(watchIdRef.current); } }; }, [getUserLocation]);
 
-  // 🛡️ اشتراك لحظي أمني شامل لتحديث المحفظة
   useEffect(() => {
     if (!normalizedUserPlate && !cleanUserPhone) return;
     let isSubscribed = true;
-
-    const refetch = async () => { 
-      if (!isSubscribed) return; 
-      try { 
-        await fetchAll(); 
-      } catch (e) { 
-        console.error('Realtime Fetch Error:', e); 
-      } 
-    };
-
-    const isMyRow = (row: any): boolean => {
-      if (!row) return false;
-      const plate = normalizePlate(row.car_plate || row.carPlate);
-      const phone = (row.customer_phone || row.customerPhone || row.phone || row.userPhone || '').replace(/[^\d+]/g, '');
-      return plate === normalizedUserPlate || Boolean(cleanUserPhone && phone === cleanUserPhone);
-    };
-
+    const refetch = async () => { if (!isSubscribed) return; try { await fetchAll(); } catch (e) { console.error('Realtime Fetch Error:', e); } };
+    const isMyRow = (row: any): boolean => { if (!row) return false; const plate = normalizePlate(row.car_plate || row.carPlate); const phone = (row.customer_phone || row.customerPhone || row.phone || row.userPhone || '').replace(/[^\d+]/g, ''); return plate === normalizedUserPlate || Boolean(cleanUserPhone && phone === cleanUserPhone); };
     const channel = supabase.channel(`customer-realtime-wallet-${cleanUserPhone}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, (payload) => { 
-        if (isMyRow(payload.new) || isMyRow(payload.old)) refetch(); 
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_topups' }, (payload) => { 
-        if (isMyRow(payload.new) || isMyRow(payload.old)) {
-          refetch();
-          if (payload.event === 'UPDATE' && payload.new.status === 'approved') {
-            toast.success(`🎁 تم اعتماد شحن رصيد بمبلغ ${payload.new.amount} ج.م بنجاح!`, { icon: '💳' });
-          }
-        }
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users' }, (payload) => {
-        if (cleanUserPhone && payload.new.phone && normalizePhone(payload.new.phone) === cleanUserPhone) {
-          refetch();
-        }
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, (payload) => { if (isMyRow(payload.new) || isMyRow(payload.old)) refetch(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_topups' }, (payload) => { if (isMyRow(payload.new) || isMyRow(payload.old)) { refetch(); if (payload.event === 'UPDATE' && payload.new.status === 'approved') { toast.success(`🎁 تم اعتماد شحن رصيد بمبلغ ${payload.new.amount} ج.م بنجاح!`, { icon: '💳' }); } } })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users' }, (payload) => { if (cleanUserPhone && payload.new.phone && normalizePhone(payload.new.phone) === cleanUserPhone) { refetch(); } })
       .subscribe();
-
     const interval = setInterval(refetch, 12000);
     const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
     const handleFocus = () => refetch();
-
-    document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', handleFocus);
-
-    return () => { 
-      isSubscribed = false; 
-      clearInterval(interval); 
-      document.removeEventListener('visibilitychange', handleVisibility); 
-      window.removeEventListener('focus', handleFocus); 
-      supabase.removeChannel(channel); 
-    };
+    document.addEventListener('visibilitychange', handleVisibility); window.addEventListener('focus', handleFocus);
+    return () => { isSubscribed = false; clearInterval(interval); document.removeEventListener('visibilitychange', handleVisibility); window.removeEventListener('focus', handleFocus); supabase.removeChannel(channel); };
   }, [normalizedUserPlate, cleanUserPhone, fetchAll]);
 
   useEffect(() => {
     if (!activeSession) { autoNavigatedRef.current = null; return; }
     if (autoNavigatedRef.current === activeSession.id) return;
-    autoNavigatedRef.current = activeSession.id;
-    setSelectedGarageId(activeSession.garageId);
-    setScreen('session');
+    autoNavigatedRef.current = activeSession.id; setSelectedGarageId(activeSession.garageId); setScreen('session');
     toast.success('بدأت جلسة الركن! ⏱️', { icon: '🚗', duration: 3000 });
   }, [activeSession, setSelectedGarageId, setScreen]);
 
@@ -486,227 +304,112 @@ export default function GarageListScreen() {
     }).sort((a, b) => a.minutes - b.minutes);
   }, [garages, userLocation]);
 
-  // 🌟 ذكاء زيكي التجاري: جلب أقرب جراج VIP معتمد أولاً، وإذا لم يتوفر نبحث في جراجات الدليل المجاني
-  const quickRescueGarage = useMemo(() => {
-    if (locationLoading || !userLocation.lat) return null;
-    
-    // 1. نبحث أولاً عن أقرب جراج VIP معتمد فيه مكان شاغر وفي حدود 7 دقائق
-    const nearestVip = garagesWithDistance.find((g) => 
-      g.garageType === 'vip' && 
-      g.availableSpots > 0 && 
-      g.minutes <= 7 && 
-      g.isActive !== false
-    );
-
-    if (nearestVip) return nearestVip; // لو لقى VIP يرجعه فوراً لتبدأ دورة الحجز والملاحة
-
-    // 2. إذا لم يجد جراج VIP قريب، يبحث عن أقرب جراج دليل مجاني في حدود 7 دقائق
-    const nearestDirectory = garagesWithDistance.find((g) => 
-      g.garageType === 'directory' && 
-      g.minutes <= 7 && 
-      g.isActive !== false
-    );
-
-    return nearestDirectory || null; // لو لقى دليل يرجعه، لو ملقاش يرجع null ويختفي البانر
+  // 🌟 نظام البحث الذكي المتتابع: بناء قائمة الساحات القريبة (VIP أولاً ثم الدليل العادي) في نطاق 5 دقائق
+  const rescueGaragesList = useMemo(() => {
+    if (locationLoading || !userLocation.lat) return [];
+    const vipNearby = garagesWithDistance.filter((g) => g.garageType === 'vip' && g.availableSpots > 0 && g.minutes <= 5 && g.isActive !== false);
+    const directoryNearby = garagesWithDistance.filter((g) => g.garageType === 'directory' && g.minutes <= 5 && g.isActive !== false);
+    return [...vipNearby, ...directoryNearby].slice(0, MAX_RESCUE_OPTIONS);
   }, [garagesWithDistance, locationLoading, userLocation]);
 
-  // 🌟 معالجة فرز الفئات الذكية برمجياً بالكامل
-  const matchesCategory = useCallback((garage: GarageWithDistance, catId: string): boolean => {
-    const name = (garage.name || '').toLowerCase();
-    const loc = (garage.location || '').toLowerCase();
-    const user = (garage.username || '').toLowerCase();
-    const text = `${name} ${loc} ${user}`;
+  // الساحة الحالية المعروضة في البانر
+  const currentRescueGarage = rescueGaragesList[rescueIndex] || null;
 
+  // إعادة تصفير الـ index لما الموقع يتغير أو القائمة تتغير
+  useEffect(() => { setRescueIndex(0); }, [rescueGaragesList.length]);
+
+  // دالة البحث عن ساحة أخرى
+  const handleNextRescue = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (rescueGaragesList.length === 0) return;
+    const nextIndex = (rescueIndex + 1) % rescueGaragesList.length;
+    setRescueIndex(nextIndex);
+    if (nextIndex === 0) { toast('🔄 تم عرض كل الخيارات القريبة، نبدأ من الأول!', { icon: '🔁', duration: 2000 }); }
+    else { toast.success(`جاري عرض الخيار ${nextIndex + 1} من ${rescueGaragesList.length}... 🔍`, { duration: 1500 }); }
+  }, [rescueIndex, rescueGaragesList.length]);
+
+  const matchesCategory = useCallback((garage: GarageWithDistance, catId: string): boolean => {
+    const name = (garage.name || '').toLowerCase(); const loc = (garage.location || '').toLowerCase(); const user = (garage.username || '').toLowerCase(); const text = `${name} ${loc} ${user}`;
     switch (catId) {
-      case 'hotels':
-        return /فندق|هيلتون|سوفيتيل|ماريوت|شيراتون|فيرمونت|راديسون|kempinski|hotel|triumph plaza/.test(text);
-      case 'hospitals':
-        return /مستشفى|عيادات|طبي|الشفاء|الدمرداش|أبو الريش|الأورمان|حسبو|الندا|الشرطة|الجو|hosp|clinics|medical/.test(text);
-      case 'traffic':
-        return /مرور|تراخيص|فحص|نيابة|traffic/.test(text);
-      case 'markets':
-        return /سوق|وكالة|المناصرة|البرابرة|السبتية|الجمعة|الحرفيين|سنان|الغورية|الموسكي|خضار|فاكهة|سمك|market/.test(text);
-      case 'cafes':
-        return /ممشى|كورنيش|كافيه|مطعم|سهرة|بلاتفورم|النرجس|بغداد|الأهرام|سفيرة|الجزيرة|أبو الفدا|salah_eldin|cafe|restaurant|the platform|waterway/.test(text);
-      case 'malls':
-        return /مول|بلازا|سكوير|سيتي|وتر واي|waterway|أركان|arkan|park|جنينة|stars|point90|dandy|mall|gate|avenue/.test(text);
-      default:
-        return false;
+      case 'hotels': return /فندق|هيلتون|سوفيتيل|ماريوت|شيراتون|فيرمونت|راديسون|kempinski|hotel|triumph plaza/.test(text);
+      case 'hospitals': return /مستشفى|عيادات|طبي|الشفاء|الدمرداش|أبو الريش|الأورمان|حسبو|الندا|الشرطة|الجو|hosp|clinics|medical/.test(text);
+      case 'traffic': return /مرور|تراخيص|فحص|نيابة|traffic/.test(text);
+      case 'markets': return /سوق|وكالة|المناصرة|البرابرة|السبتية|الجمعة|الحرفيين|سنان|الغورية|الموسكي|خضار|فاكهة|سمك|market/.test(text);
+      case 'cafes': return /ممشى|كورنيش|كافيه|مطعم|سهرة|بلاتفورم|النرجس|بغداد|الأهرام|سفيرة|الجزيرة|أبو الفدا|salah_eldin|cafe|restaurant|the platform|waterway/.test(text);
+      case 'malls': return /مول|بلازا|سكوير|سيتي|وتر واي|waterway|أركان|arkan|park|جنينة|stars|point90|dandy|mall|gate|avenue/.test(text);
+      default: return false;
     }
   }, []);
 
   const filteredGarages = useMemo(() => {
     let filtered = garagesWithDistance;
-
-    // 1. الفلترة بحسب التبويب النشط
     filtered = filtered.filter((g) => g.garageType === activeTab);
-
-    // 2. الفلترة الفورية بحسب الفئة النشطة
-    if (selectedCategory) {
-      filtered = filtered.filter((g) => matchesCategory(g, selectedCategory));
-    }
-
-    // 3. الفلترة بحسب البحث النصي
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      filtered = filtered.filter((g) => g.name.toLowerCase().includes(q) || g.location.toLowerCase().includes(q) || (g.area || '').toLowerCase().includes(q));
-    }
-
-    // 4. الفلترة بحسب الأقرب
+    if (selectedCategory) { filtered = filtered.filter((g) => matchesCategory(g, selectedCategory)); }
+    if (search.trim()) { const q = search.trim().toLowerCase(); filtered = filtered.filter((g) => g.name.toLowerCase().includes(q) || g.location.toLowerCase().includes(q) || (g.area || '').toLowerCase().includes(q)); }
     if (showNearbyOnly) { filtered = filtered.filter((g) => g.classification === 'nearby'); }
-    
     return filtered;
   }, [garagesWithDistance, search, showNearbyOnly, activeTab, selectedCategory, matchesCategory]);
 
   const areaGroups = useMemo(() => {
     const groups: Record<string, GarageWithDistance[]> = {};
     filteredGarages.forEach(g => { const zone = (g as any).area || 'مناطق أخرى'; if (!groups[zone]) groups[zone] = []; groups[zone].push(g); });
-    return Object.keys(groups).map(name => ({
-      name, garages: groups[name],
-      totalCapacity: groups[name].reduce((sum, g) => sum + (g.capacity || 0), 0),
-    })).sort((a, b) => { if (a.name === 'مناطق أخرى') return 1; if (a.name === 'مناطق أخرى') return -1; return a.name.localeCompare(b.name, 'ar'); });
+    return Object.keys(groups).map(name => ({ name, garages: groups[name], totalCapacity: groups[name].reduce((sum, g) => sum + (g.capacity || 0), 0) })).sort((a, b) => { if (a.name === 'مناطق أخرى') return 1; if (b.name === 'مناطق أخرى') return -1; return a.name.localeCompare(b.name, 'ar'); });
   }, [filteredGarages]);
 
   useEffect(() => { if (search.trim() && areaGroups.length > 0) setExpandedArea(areaGroups[0].name); }, [search, areaGroups]);
 
   const handleGarageClick = async (garage: GarageWithDistance) => {
     if (garage.garageType === 'directory') {
-      // 🛡️ حارس تباعد المنطقة الذكي (Area Bounding Guard)
-      // نقيس المسافة بين نقطة الجراج والسنتر المعتمد لمنطقته في القاموس
       const areaCenter = AREA_CENTERS[garage.area || ''];
       let isLocationBroken = false;
-      
-      if (areaCenter) {
-        const distanceFromCenterKm = calculateDistance(garage.lat, garage.lng, areaCenter.lat, areaCenter.lng);
-        if (distanceFromCenterKm > areaCenter.maxRadiusKm) {
-          isLocationBroken = true;
-          
-          // إرسال بلاغ صامت لـ Supabase للمطورين لتعديل دقة الجراج لاحقاً
-          supabase.from('garage_arrival_telemetry').insert({
-            garage_id: garage.id,
-            user_phone: cleanUserPhone || '00000000000',
-            lat: garage.lat,
-            lng: garage.lng,
-            accuracy: 999 
-          }).then(() => {}).catch(() => {});
-        }
-      }
-
+      if (areaCenter) { const distanceFromCenterKm = calculateDistance(garage.lat, garage.lng, areaCenter.lat, areaCenter.lng); if (distanceFromCenterKm > areaCenter.maxRadiusKm) { isLocationBroken = true; supabase.from('garage_arrival_telemetry').insert({ garage_id: garage.id, user_phone: cleanUserPhone || '00000000000', lat: garage.lat, lng: garage.lng, accuracy: 999 }).then(() => {}).catch(() => {}); } }
       const isFamousLandmark = /مول|mall|فندق|hotel|مستشفى|hospital|جامعة|university|نادي|club|مرور|traffic|كارفور|سيتي سنتر|تريومف|بلاتفورم|وتر واي|waterway|أركان|arkan|سكوير|plaza/gi.test(garage.name);
-      
       let url = '';
       if (isLocationBroken || isFamousLandmark) {
-        // 1. المعالم الكبرى والمواقع التي بها خطأ تباعد: نوجه بالاسم والمنطقة لتختار جوجل البوابة الرسمية من سيرفراتها وتتجنب الأخطاء
         const cleanLandmark = garage.name.replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim();
         const destinationQuery = encodeURIComponent(`${cleanLandmark} ${garage.location || garage.area}`);
         url = `https://www.google.com/maps/dir/?api=1&destination=${destinationQuery}&travelmode=driving`;
       } else {
-        // 2. الساحات الشعبية والصغيرة السليمة: نطلق الملاحة والتوجيه المباشر بالإحداثيات ليرسم خط الملاحة الفوري دون شاشات بحث عشوائية
         url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}&travelmode=driving&dir_action=navigate`;
       }
-      
       window.open(url, '_blank', 'noopener,noreferrer');
-
-      // تفعيل شاشة طريق السلامة التفاعلية
-      setActiveDirectoryTrip(garage);
-
-      setSearch('');
-      setExpandedArea(null);
-      
+      setActiveDirectoryTrip(garage); setSearch(''); setExpandedArea(null);
       toast.success(`رحلة سعيدة! جاري توجيهك إلى ${garage.name} 🧭`, { icon: '🚙' });
       return;
     }
-
     if (!currentUser) { toast.error('سجل بياناتك أولاً'); return; }
     if (activeSession) { setSelectedGarageId(activeSession.garageId); setScreen('session'); return; }
     if (myIncomingCar) { setSelectedGarageId(myIncomingCar.garageId); setScreen('navigation'); return; }
     if (offers.some((o) => o.userId === currentUser.phone && o.status === 'pending')) { toast.error('لديك عرض معلق بالفعل'); return; }
     if (garage.availableSpots <= 0) { toast.error('لا توجد أماكن متاحة حالياً'); return; }
-    
     const userWallet = currentUser.wallet || 0;
-    
-    if (garage.payment_mode === 'wallet' && userWallet < garage.basePrice && !isEligibleForFreeSession) { 
-      toast.error(`عذراً، هذا الجراج يتطلب الدفع بالمحفظة. يرجى شحن محفظتك بمبلغ ${garage.basePrice} ج.م على الأقل للمتابعة.`); 
-      setShowTopUp(true); 
-      return; 
-    }
-
+    if (garage.payment_mode === 'wallet' && userWallet < garage.basePrice && !isEligibleForFreeSession) { toast.error(`عذراً، هذا الجراج يتطلب الدفع بالمحفظة. يرجى شحن محفظتك بمبلغ ${garage.basePrice} ج.م على الأقل للمتابعة.`); setShowTopUp(true); return; }
     try {
-      setIsBooking(true); 
-      setSelectedGarageId(garage.id);
-      await addIncomingCar({ 
-        garageId: garage.id, 
-        carPlate: currentUser.carPlate, 
-        customerName: currentUser.name, 
-        customerPhone: currentUser.phone, 
-        agreedPrice: garage.basePrice, 
-        estimatedArrival: Math.max(3, garage.minutes) 
-      });
-      toast.success(`تم الحجز بنجاح 🚗`);
-      setScreen('navigation');
-    } catch (e) { 
-      console.error(e); 
-      toast.error('حدث خطأ أثناء إتمام الحجز'); 
-    } finally { 
-      setIsBooking(false); 
-    }
+      setIsBooking(true); setSelectedGarageId(garage.id);
+      await addIncomingCar({ garageId: garage.id, carPlate: currentUser.carPlate, customerName: currentUser.name, customerPhone: currentUser.phone, agreedPrice: garage.basePrice, estimatedArrival: Math.max(3, garage.minutes) });
+      toast.success(`تم الحجز بنجاح 🚗`); setScreen('navigation');
+    } catch (e) { console.error(e); toast.error('حدث خطأ أثناء إتمام الحجز'); } finally { setIsBooking(false); }
   };
 
-  // 🤖 دالة التصحيح الذاتي الصامتة عند الوصول (Self-Healing & Telemetry Tracker)
   const handleConfirmArrival = useCallback(async () => {
     if (!activeDirectoryTrip) return;
-    const tripToCalibrate = activeDirectoryTrip;
-    setActiveDirectoryTrip(null);
+    const tripToCalibrate = activeDirectoryTrip; setActiveDirectoryTrip(null);
     toast.success('حمد الله على سلامتك! نورت بركن من جديد 🌟', { duration: 3000 });
-
-    // التقاط إحداثيات الوصول وبصمة الحركة (التباطؤ + مدة التوقف) وإرسالها للسيرفر
     if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          try {
-            const { latitude, longitude, accuracy } = position.coords;
-            
-            // حساب بصمة زاوية المنعطف الحاد (الدوران)
-            let maxBearingChange = 0;
-            if (bearingHistoryRef.current.length >= 2) {
-              const startB = bearingHistoryRef.current[0];
-              const endB = bearingHistoryRef.current[bearingHistoryRef.current.length - 1];
-              maxBearingChange = Math.abs(endB - startB);
-            }
-
-            // حساب متوسط السرعة في آخر دقيقة
-            const avgSpeed = speedHistoryRef.current.reduce((a, b) => a + b, 0) / (speedHistoryRef.current.length || 1);
-
-            await supabase.rpc('record_arrival_telemetry', {
-              p_garage_id: tripToCalibrate.id,
-              p_user_lat: latitude,
-              p_user_lng: longitude,
-              p_accuracy: accuracy || 10,
-              p_user_phone: cleanUserPhone || null,
-              p_speed: avgSpeed,
-              p_bearing_change: maxBearingChange,
-              p_stop_duration: totalStopDurationRef.current || 0
-            });
-            
-            // تصفير البفرز لرحلة جديدة
-            speedHistoryRef.current = [];
-            bearingHistoryRef.current = [];
-            totalStopDurationRef.current = 0;
-          } catch (e) {
-            // صامت تماماً دون إزعاج العميل
-          }
-        },
-        () => {},
-        { enableHighAccuracy: true, timeout: 6000 }
-      );
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        try {
+          const { latitude, longitude, accuracy } = position.coords;
+          let maxBearingChange = 0;
+          if (bearingHistoryRef.current.length >= 2) { maxBearingChange = Math.abs(bearingHistoryRef.current[bearingHistoryRef.current.length - 1] - bearingHistoryRef.current[0]); }
+          const avgSpeed = speedHistoryRef.current.reduce((a, b) => a + b, 0) / (speedHistoryRef.current.length || 1);
+          await supabase.rpc('record_arrival_telemetry', { p_garage_id: tripToCalibrate.id, p_user_lat: latitude, p_user_lng: longitude, p_accuracy: accuracy || 10, p_user_phone: cleanUserPhone || null, p_speed: avgSpeed, p_bearing_change: maxBearingChange, p_stop_duration: totalStopDurationRef.current || 0 });
+          speedHistoryRef.current = []; bearingHistoryRef.current = []; totalStopDurationRef.current = 0;
+        } catch (e) { /* صامت */ }
+      }, () => {}, { enableHighAccuracy: true, timeout: 6000 });
     }
   }, [activeDirectoryTrip, cleanUserPhone]);
 
-  const handleOpenPriceReport = (g: GarageWithDistance) => {
-    setReportingGarage(g);
-    const currentPrice = g.priceType === 'daily' ? (g.dailyPrice || g.basePrice) : g.basePrice;
-    setUpdatedPriceInput(currentPrice || 20);
-  };
+  const handleOpenPriceReport = (g: GarageWithDistance) => { setReportingGarage(g); setUpdatedPriceInput(g.priceType === 'daily' ? (g.dailyPrice || g.basePrice) : g.basePrice || 20); };
 
   const handleSubmitPriceUpdate = async () => {
     const finalPrice = updatedPriceInput === '' ? (reportingGarage?.basePrice || 20) : updatedPriceInput;
@@ -714,412 +417,148 @@ export default function GarageListScreen() {
     setIsSubmittingPrice(true);
     try {
       const result = await reportPriceUpdate(reportingGarage.id, finalPrice, reportingGarage.priceType) as any;
-
-      if (result?.status === 'approved') {
-        toast.success(`رائع! تم تحديث السعر رسمياً إلى ${finalPrice} ج.م بعد تأكيد 3 مستخدمين! 🎉`, { duration: 5000, icon: '🔥' });
-      } else if (result?.status === 'voted') {
-        toast.success(`تم تسجيل تأكيدك! السعر مؤكد الآن من ${result.votes} مستخدمين. متبقي ${result.required - result.votes} تأكيد ⏳`, { duration: 5000, icon: '👍' });
-      } else if (result?.status === 'started') {
-        toast.success(`شكراً لمساعدتك! تم تسجيل بلاغك.. بانتظار تأكيد مستخدمين آخرين لتعديل السعر رسمياً.`, { duration: 5000, icon: '🤝' });
-      } else {
-        toast.success('شكراً لمساعدتك! تم تسجيل بلاغك 🤝', { icon: '✅' });
-      }
-
+      if (result?.status === 'approved') { toast.success(`رائع! تم تحديث السعر رسمياً إلى ${finalPrice} ج.م بعد تأكيد 3 مستخدمين! 🎉`, { duration: 5000, icon: '🔥' }); }
+      else if (result?.status === 'voted') { toast.success(`تم تسجيل تأكيدك! السعر مؤكد الآن من ${result.votes} مستخدمين. متبقي ${result.required - result.votes} تأكيد ⏳`, { duration: 5000, icon: '👍' }); }
+      else if (result?.status === 'started') { toast.success(`شكراً لمساعدتك! تم تسجيل بلاغك.. بانتظار تأكيد مستخدمين آخرين لتعديل السعر رسمياً.`, { duration: 5000, icon: '🤝' }); }
+      else { toast.success('شكراً لمساعدتك! تم تسجيل بلاغك 🤝', { icon: '✅' }); }
       setReportingGarage(null);
-    } catch (error: any) {
-      toast.error(error?.message || 'تعذر تحديث السعر، يرجى المحاولة لاحقاً');
-    } finally {
-      setIsSubmittingPrice(false);
-    }
+    } catch (error: any) { toast.error(error?.message || 'تعذر تحديث السعر، يرجى المحاولة لاحقاً'); } finally { setIsSubmittingPrice(false); }
   };
 
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: BRAND.bg, color: BRAND.blueDark }}>
-
-      {/* ═══ 🌟 الهيدر الذكي المدمج (Compact Smart Header) ═══ */}
       <div className="px-4 pt-10 pb-3 z-20 shadow-sm" style={{ background: BRAND.card, borderBottom: `1.5px solid ${BRAND.border}` }}>
-        
-        {/* الشريط العلوي: اللوجو والترحيب يميناً (بخط كبير وواضح) + القائمة والباركود يساراً */}
-        <div 
-          dir="rtl" // 🛡️ إجبار الاتجاه العربي من اليمين لليسار قسراً
-          className="flex justify-between items-center mb-3.5"
-        >
-
-          {/* 1️⃣ يمين (الابن الأول): اللوجو والترحيب بخط مكبّر ومثالي للقراءة بلمحة سريعة من حامل السيارة */}
+        <div dir="rtl" className="flex justify-between items-center mb-3.5">
           <div className="text-right flex flex-col gap-1.5">
-            <span className="font-black text-xl block leading-none" style={{ color: BRAND.blue }}>
-              بركن <span style={{ color: BRAND.green }}>24</span>
-            </span>
-            
+            <span className="font-black text-xl block leading-none" style={{ color: BRAND.blue }}>بركن <span style={{ color: BRAND.green }}>24</span></span>
             <div className="flex flex-col mt-0.5">
-              <span className="text-base font-black text-slate-900 block leading-tight">
-                أهلاً {currentUser?.name?.split(' ')[0] || 'بك'} 👋
-              </span>
-              <span className="text-xs font-bold text-slate-500 block mt-1 leading-none">
-                انزل وأنت رايق .. سيب الركنة علينا! ☕🚗
-              </span>
+              <span className="text-base font-black text-slate-900 block leading-tight">أهلاً {currentUser?.name?.split(' ')[0] || 'بك'} 👋</span>
+              <span className="text-xs font-bold text-slate-500 block mt-1 leading-none">انزل وأنت رايق .. سيب الركنة علينا! ☕🚗</span>
             </div>
           </div>
-
-          {/* 2️⃣ يسار (الابن الثاني): زرار الباركود وزرار القائمة (أزرار كبيرة وسهلة للضغط) */}
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* زرار الباركود المستقل */}
-            <button
-              type="button"
-              onClick={() => setShowQrModal(true)}
-              className="w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer active:scale-90 transition-all bg-blue-50 border-[1.5px] border-blue-200"
-            >
-              <QrCode size={18} style={{ color: BRAND.blue }} />
-            </button>
-
-            {/* زرار الثلاث نقاط (القائمة الذكية) */}
-            <button
-              type="button"
-              onClick={() => setShowSmartMenu(true)}
-              className="w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer active:scale-90 transition-all relative bg-slate-100 border-[1.5px]"
-              style={{ borderColor: BRAND.border }}
-            >
+            <button type="button" onClick={() => setShowQrModal(true)} className="w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer active:scale-90 transition-all bg-blue-50 border-[1.5px] border-blue-200"><QrCode size={18} style={{ color: BRAND.blue }} /></button>
+            <button type="button" onClick={() => setShowSmartMenu(true)} className="w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer active:scale-90 transition-all relative bg-slate-100 border-[1.5px]" style={{ borderColor: BRAND.border }}>
               <Menu size={18} style={{ color: BRAND.blueDark }} />
-              {pendingTopUpsCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400 border-2 border-white" />
-              )}
+              {pendingTopUpsCount > 0 && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400 border-2 border-white" />}
             </button>
           </div>
-
         </div>
 
-        {/* 💳 شريط المحفظة والعربية المدمج (الرصيد يميناً + العربية وشحن يساراً) */}
-        <div
-          className="flex items-center justify-between rounded-xl px-3 py-2 mb-2.5"
-          style={{ background: BRAND.blue, boxShadow: '0 3px 10px rgba(22,86,184,0.18)', direction: 'rtl' }}
-        >
-          {/* يسار: زرار الشحن ثم رقم العربية */}
+        <div className="flex items-center justify-between rounded-xl px-3 py-2 mb-2.5" style={{ background: BRAND.blue, boxShadow: '0 3px 10px rgba(22,86,184,0.18)', direction: 'rtl' }}>
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => setShowTopUp(true)}
-              className="flex items-center gap-1 font-black active:scale-95 transition-all text-[10px] cursor-pointer border-0"
-              style={{ background: '#ffffff', color: BRAND.blue, borderRadius: 8, padding: '5px 9px' }}
-            >
-              <Plus size={10} strokeWidth={3} />
-              <span>شحن</span>
-            </button>
-
-            <span className="font-mono font-black text-[11px] bg-white text-[#1656b8] px-2 py-1 rounded-lg tracking-wider">
-              🚙 {currentUser?.carPlate || '---'}
-            </span>
+            <button type="button" onClick={() => setShowTopUp(true)} className="flex items-center gap-1 font-black active:scale-95 transition-all text-[10px] cursor-pointer border-0" style={{ background: '#ffffff', color: BRAND.blue, borderRadius: 8, padding: '5px 9px' }}><Plus size={10} strokeWidth={3} /><span>شحن</span></button>
+            <span className="font-mono font-black text-[11px] bg-white text-[#1656b8] px-2 py-1 rounded-lg tracking-wider">🚙 {currentUser?.carPlate || '---'}</span>
           </div>
-
-          {/* يمين: الرصيد (أقصى اليمين) */}
           <div className="text-right">
             <span className="text-[8px] font-black text-white/80 block leading-none mb-0.5">💳 رصيدك الحالي</span>
-            <span className="font-black font-mono text-white text-base leading-none">
-              {currentUser?.wallet || 0} <span className="text-[10px]">ج.م</span>
-            </span>
+            <span className="font-black font-mono text-white text-base leading-none">{currentUser?.wallet || 0} <span className="text-[10px]">ج.م</span></span>
           </div>
         </div>
 
-        {/* 🎁 بانر الهدية الترحيبية - الهدية أقصى اليمين والبوكس أقصى الشمال */}
         {isEligibleForFreeSession && !activeSession && !myIncomingCar && (
-          <div
-            dir="rtl" // 🛡️ إجبار المتصفح على الاتجاه العربي (يمين لليسار) قسراً
-            className="mb-2.5 py-1.5 px-3 rounded-xl flex items-center justify-between text-right border-[1.5px]"
-            style={{ background: BRAND.green + '10', borderColor: BRAND.green + '50' }}
-          >
-            {/* يمين: الأيقونة وجملة الهدية */}
-            <div className="flex items-center gap-1.5">
-              <Gift size={12} style={{ color: BRAND.greenDark }} className="shrink-0 animate-pulse" />
-              <span className="text-[10px] font-black text-slate-900 leading-none">
-                هديتك: <span style={{ color: BRAND.greenDark }}>أول 30 دقيقة مجاناً! 🎉</span>
-              </span>
-            </div>
-
-            {/* شمال: بوكس نشط */}
-            <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white bg-green-600 shrink-0">
-              نشط 🎁
-            </span>
+          <div dir="rtl" className="mb-2.5 py-1.5 px-3 rounded-xl flex items-center justify-between text-right border-[1.5px]" style={{ background: BRAND.green + '10', borderColor: BRAND.green + '50' }}>
+            <div className="flex items-center gap-1.5"><Gift size={12} style={{ color: BRAND.greenDark }} className="shrink-0 animate-pulse" /><span className="text-[10px] font-black text-slate-900 leading-none">هديتك: <span style={{ color: BRAND.greenDark }}>أول 30 دقيقة مجاناً! 🎉</span></span></div>
+            <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white bg-green-600 shrink-0">نشط 🎁</span>
           </div>
         )}
 
-        {/* 🌟 بانر "الركنة السريعة المنقذة" الديناميكي التشاركي (يعطي الأولوية للـ VIP) */}
-        <AnimatePresence>
-          {quickRescueGarage && !activeSession && !myIncomingCar && (
+        {/* 🌟 بانر "الركنة السريعة المنقذة" الذكي المتتابع (Smart Rescue Carousel) */}
+        <AnimatePresence mode="wait">
+          {currentRescueGarage && !activeSession && !myIncomingCar && (
             <motion.div
+              key={currentRescueGarage.id}
               initial={{ opacity: 0, y: -10, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -10, scale: 0.95 }}
-              onClick={() => handleGarageClick(quickRescueGarage)}
-              className="mb-2.5 p-3.5 rounded-2xl cursor-pointer active:scale-98 transition-all border-2 text-right relative overflow-hidden"
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              transition={{ duration: 0.3 }}
+              className="mb-2.5 rounded-2xl cursor-pointer active:scale-98 transition-all border-2 text-right relative overflow-hidden"
               style={{
-                background: quickRescueGarage.garageType === 'vip' 
-                  ? 'linear-gradient(135deg, #1656b8 0%, #0f3d85 100%)' // لون كحلي ملكي فخم للـ VIP
-                  : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', // لون برتقالي دافئ للدليل
-                borderColor: quickRescueGarage.garageType === 'vip' ? '#1656b8' : '#f59e0b',
-                boxShadow: quickRescueGarage.garageType === 'vip'
-                  ? '0 4px 15px rgba(22,86,184,0.3)'
-                  : '0 4px 15px rgba(217,119,6,0.3)',
+                background: currentRescueGarage.garageType === 'vip' ? 'linear-gradient(135deg, #1656b8 0%, #0f3d85 100%)' : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                borderColor: currentRescueGarage.garageType === 'vip' ? '#1656b8' : '#f59e0b',
+                boxShadow: currentRescueGarage.garageType === 'vip' ? '0 4px 15px rgba(22,86,184,0.3)' : '0 4px 15px rgba(217,119,6,0.3)',
               }}
               dir="rtl"
             >
-              {/* توهج خلفي ناعم */}
               <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-2xl pointer-events-none" />
 
-              <div className="flex justify-between items-center">
-                <div className="text-right flex-1 pr-1">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    {/* الشارة الديناميكية */}
-                    <span 
-                      className="text-[8px] font-black px-1.5 py-0.5 rounded-lg animate-pulse text-white"
-                      style={{ background: quickRescueGarage.garageType === 'vip' ? '#8cc63f' : '#334155' }}
-                    >
-                      {quickRescueGarage.garageType === 'vip' ? '⭐ حجز مضمون VIP' : '⚡ منقذ سريع'}
-                    </span>
-                    <h4 className="text-xs font-black text-white">مستعجل ومحتاس؟ اركن في {formatDuration(quickRescueGarage.minutes)}!</h4>
+              <div className="p-3.5 pb-2" onClick={() => handleGarageClick(currentRescueGarage)}>
+                <div className="flex justify-between items-center">
+                  <div className="text-right flex-1 pr-1">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-[8px] font-black px-1.5 py-0.5 rounded-lg animate-pulse text-white" style={{ background: currentRescueGarage.garageType === 'vip' ? '#8cc63f' : '#334155' }}>
+                        {currentRescueGarage.garageType === 'vip' ? '⭐ حجز مضمون VIP' : '⚡ منقذ سريع'}
+                      </span>
+                      <span className="text-[8px] font-black px-1.5 py-0.5 rounded-lg bg-white/20 text-white">{rescueIndex + 1} / {rescueGaragesList.length}</span>
+                    </div>
+                    <h4 className="text-xs font-black text-white leading-tight mb-1">{currentRescueGarage.name}</h4>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[11px] font-black text-emerald-300">💰 {currentRescueGarage.priceType === 'daily' ? `${currentRescueGarage.dailyPrice || currentRescueGarage.basePrice} ج.م/يوم` : `${currentRescueGarage.basePrice} ج.م/ساعة`}</span>
+                      <span className="text-[10px] font-bold text-white/80">🚗 {formatDuration(currentRescueGarage.minutes)}</span>
+                    </div>
                   </div>
-                  <p className="text-[10px] font-bold text-white/90 leading-relaxed">
-                    {quickRescueGarage.garageType === 'vip' ? (
-                      <span>احجز مكانك فوراً في <b className="text-green-300">{quickRescueGarage.name}</b> وركنتك مضمونة! 🛡️🚀</span>
-                    ) : (
-                      <span>وجه الخرائط حالاً لـ <b className="text-yellow-100">{quickRescueGarage.name}</b> قبل الزحمة! 🧭🚀</span>
-                    )}
-                  </p>
-                </div>
-                
-                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0 text-white">
-                  <Navigation size={18} className="rotate-45 animate-bounce" />
+                  <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0 text-white"><Navigation size={18} className="rotate-45 animate-bounce" /></div>
                 </div>
               </div>
+
+              {rescueGaragesList.length > 1 && (
+                <button type="button" onClick={handleNextRescue} className="w-full py-2 text-[10px] font-black text-white/90 bg-black/20 border-0 cursor-pointer active:bg-black/30 transition-all flex items-center justify-center gap-1" style={{ borderTop: '1px solid rgba(255,255,255,0.15)' }}>
+                  <Search size={11} />
+                  <span>{rescueIndex < rescueGaragesList.length - 1 ? '🔍 السعر مش مناسب؟ ابحث عن ساحة أخرى' : '🔄 عرض الكل من الأول'}</span>
+                </button>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* الجلسة النشطة */}
         {activeSession && (
-          <button
-            type="button"
-            onClick={() => { setSelectedGarageId(activeSession.garageId); setScreen('session'); }}
-            className="w-full mb-2.5 flex items-center justify-between px-3 py-2.5 rounded-xl border-0 text-white cursor-pointer active:scale-98 transition-all"
-            style={{ background: BRAND.greenDark }}
-          >
-            <span className="text-[10px] font-black">عرض التفاصيل ←</span>
-            <span className="text-[11px] font-black flex items-center gap-1">🚙 لديك جلسة ركن نشطة الآن</span>
+          <button type="button" onClick={() => { setSelectedGarageId(activeSession.garageId); setScreen('session'); }} className="w-full mb-2.5 flex items-center justify-between px-3 py-2.5 rounded-xl border-0 text-white cursor-pointer active:scale-98 transition-all" style={{ background: BRAND.greenDark }}>
+            <span className="text-[10px] font-black">عرض التفاصيل ←</span><span className="text-[11px] font-black flex items-center gap-1">🚙 لديك جلسة ركن نشطة الآن</span>
           </button>
         )}
 
-        {/* حجز نشط في الطريق */}
         {!activeSession && myIncomingCar && (
-          <button
-            type="button"
-            onClick={() => { setSelectedGarageId(myIncomingCar.garageId); setScreen('navigation'); }}
-            className="w-full mb-2.5 flex items-center justify-between px-3 py-2.5 rounded-xl border-0 text-white cursor-pointer active:scale-98 transition-all"
-            style={{ background: BRAND.blue }}
-          >
-            <span className="text-[10px] font-black">فتح الخريطة ←</span>
-            <span className="text-[11px] font-black flex items-center gap-1">📍 حجز نشط (في الطريق)</span>
+          <button type="button" onClick={() => { setSelectedGarageId(myIncomingCar.garageId); setScreen('navigation'); }} className="w-full mb-2.5 flex items-center justify-between px-3 py-2.5 rounded-xl border-0 text-white cursor-pointer active:scale-98 transition-all" style={{ background: BRAND.blue }}>
+            <span className="text-[10px] font-black">فتح الخريطة ←</span><span className="text-[11px] font-black flex items-center gap-1">📍 حجز نشط (في الطريق)</span>
           </button>
         )}
 
-        {/* شريط البحث */}
         <div className="flex gap-2 mb-2.5">
-          <div className="relative flex-1">
-            <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: BRAND.slate }} />
-            <input
-              className="w-full outline-none text-xs font-bold"
-              style={{
-                background: BRAND.bg,
-                border: `1px solid ${BRAND.border}`,
-                padding: '9px 32px 9px 12px',
-                borderRadius: 12,
-                color: BRAND.blueDark,
-              }}
-              placeholder="ابحث باسم الجراج أو المنطقة..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-
-          <button
-            type="button"
-            onClick={handleForceRefreshLocation} // معايرة إعادة الضبط القسري الحقيقي ومسح الكاش فوراً
-            disabled={locationLoading}
-            className="flex items-center justify-center border-0 cursor-pointer shrink-0"
-            style={{ background: BRAND.blue, color: '#fff', borderRadius: 12, width: 36, height: 36 }}
-          >
-            <Locate size={15} className={locationLoading ? 'animate-spin' : ''} />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowNearbyOnly(!showNearbyOnly)}
-            className="text-[10px] font-black px-2.5 rounded-xl cursor-pointer shrink-0"
-            style={{
-              background: showNearbyOnly ? BRAND.blue : BRAND.card,
-              color: showNearbyOnly ? '#fff' : BRAND.slate,
-              border: `1.5px solid ${BRAND.border}`,
-            }}
-          >
-            {showNearbyOnly ? 'الكل' : 'القريب'}
-          </button>
+          <div className="relative flex-1"><Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: BRAND.slate }} /><input className="w-full outline-none text-xs font-bold" style={{ background: BRAND.bg, border: `1px solid ${BRAND.border}`, padding: '9px 32px 9px 12px', borderRadius: 12, color: BRAND.blueDark }} placeholder="ابحث باسم الجراج أو المنطقة..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+          <button type="button" onClick={handleForceRefreshLocation} disabled={locationLoading} className="flex items-center justify-center border-0 cursor-pointer shrink-0" style={{ background: BRAND.blue, color: '#fff', borderRadius: 12, width: 36, height: 36 }}><Locate size={15} className={locationLoading ? 'animate-spin' : ''} /></button>
+          <button type="button" onClick={() => setShowNearbyOnly(!showNearbyOnly)} className="text-[10px] font-black px-2.5 rounded-xl cursor-pointer shrink-0" style={{ background: showNearbyOnly ? BRAND.blue : BRAND.card, color: showNearbyOnly ? '#fff' : BRAND.slate, border: `1.5px solid ${BRAND.border}` }}>{showNearbyOnly ? 'الكل' : 'القريب'}</button>
         </div>
 
-        {/* 🌟 شريط التصنيف السريع الذكي والمحترف (Smart Filter Bar) - منسق قسراً لليمين 100% */}
-        <div 
-          dir="rtl" // 🛡️ إجبار المتصفح على بدء الصف من اليمين للشمال
-          className="flex gap-2 overflow-x-auto pb-2 scrollbar-none mb-3 w-full px-0.5"
-          style={{ 
-            scrollSnapType: 'x mandatory',
-            WebkitOverflowScrolling: 'touch', // سحب ناعم وحرير على شاشات الموبايل
-            justifyContent: 'flex-start' // تأمين بدء الأزرار من أقصى اليمين
-          }}
-        >
-          {/* خيار "عرض الكل" لالغاء الفلتر */}
-          <button
-            type="button"
-            onClick={() => setSelectedCategory(null)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black cursor-pointer border-[1.5px] transition-all shrink-0 active:scale-95 shadow-sm"
-            style={{
-              background: selectedCategory === null ? BRAND.blue : '#ffffff',
-              color: selectedCategory === null ? '#ffffff' : BRAND.slate,
-              borderColor: selectedCategory === null ? BRAND.blue : BRAND.border,
-              scrollSnapAlign: 'start'
-            }}
-          >
-            <span>💎 الكل</span>
-          </button>
-
-          {CATEGORIES.map((cat) => {
-            const isActive = selectedCategory === cat.id;
-            return (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => setSelectedCategory(isActive ? null : cat.id)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black cursor-pointer border-[1.5px] transition-all shrink-0 active:scale-95 shadow-sm"
-                style={{
-                  background: isActive ? BRAND.blue : '#ffffff',
-                  color: isActive ? '#ffffff' : BRAND.slate,
-                  borderColor: isActive ? BRAND.blue : BRAND.border,
-                  scrollSnapAlign: 'start'
-                }}
-              >
-                <span>{cat.icon}</span>
-                <span>{cat.label}</span>
-              </button>
-            );
-          })}
+        <div dir="rtl" className="flex gap-2 overflow-x-auto pb-2 scrollbar-none mb-3 w-full px-0.5" style={{ scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', justifyContent: 'flex-start' }}>
+          <button type="button" onClick={() => setSelectedCategory(null)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black cursor-pointer border-[1.5px] transition-all shrink-0 active:scale-95 shadow-sm" style={{ background: selectedCategory === null ? BRAND.blue : '#ffffff', color: selectedCategory === null ? '#ffffff' : BRAND.slate, borderColor: selectedCategory === null ? BRAND.blue : BRAND.border, scrollSnapAlign: 'start' }}><span>💎 الكل</span></button>
+          {CATEGORIES.map((cat) => { const isActive = selectedCategory === cat.id; return (<button key={cat.id} type="button" onClick={() => setSelectedCategory(isActive ? null : cat.id)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black cursor-pointer border-[1.5px] transition-all shrink-0 active:scale-95 shadow-sm" style={{ background: isActive ? BRAND.blue : '#ffffff', color: isActive ? '#ffffff' : BRAND.slate, borderColor: isActive ? BRAND.blue : BRAND.border, scrollSnapAlign: 'start' }}><span>{cat.icon}</span><span>{cat.label}</span></button>); })}
         </div>
 
-        {/* 🌟 شريط التبويب الرئيسي */}
         <div className="flex p-1 rounded-xl bg-slate-200/70" style={{ direction: 'rtl', border: '1.5px solid #cbd5e1' }}>
-          <button
-            type="button"
-            onClick={() => { setActiveTab('vip'); setExpandedArea(null); }}
-            className="flex-1 py-2 rounded-lg font-black text-[11px] cursor-pointer border-0 transition-all flex items-center justify-center gap-1"
-            style={{
-              background: activeTab === 'vip' ? BRAND.blue : 'transparent',
-              color: activeTab === 'vip' ? '#ffffff' : BRAND.slate,
-              boxShadow: activeTab === 'vip' ? '0 2px 8px rgba(22,86,184,0.25)' : 'none',
-            }}
-          >
-            <span>⭐ ركنات حجز مباشر VIP</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => { setActiveTab('directory'); setExpandedArea(null); }}
-            className="flex-1 py-2 rounded-lg font-black text-[11px] cursor-pointer border-0 transition-all flex items-center justify-center gap-1"
-            style={{
-              background: activeTab === 'directory' ? BRAND.blueDark : 'transparent',
-              color: activeTab === 'directory' ? '#ffffff' : BRAND.slate,
-              boxShadow: activeTab === 'directory' ? '0 2px 8px rgba(15,61,133,0.25)' : 'none',
-            }}
-          >
-            <span>🧭 دليل الساحات المجاني</span>
-          </button>
+          <button type="button" onClick={() => { setActiveTab('vip'); setExpandedArea(null); }} className="flex-1 py-2 rounded-lg font-black text-[11px] cursor-pointer border-0 transition-all flex items-center justify-center gap-1" style={{ background: activeTab === 'vip' ? BRAND.blue : 'transparent', color: activeTab === 'vip' ? '#ffffff' : BRAND.slate, boxShadow: activeTab === 'vip' ? '0 2px 8px rgba(22,86,184,0.25)' : 'none' }}><span>⭐ ركنات حجز مباشر VIP</span></button>
+          <button type="button" onClick={() => { setActiveTab('directory'); setExpandedArea(null); }} className="flex-1 py-2 rounded-lg font-black text-[11px] cursor-pointer border-0 transition-all flex items-center justify-center gap-1" style={{ background: activeTab === 'directory' ? BRAND.blueDark : 'transparent', color: activeTab === 'directory' ? '#ffffff' : BRAND.slate, boxShadow: activeTab === 'directory' ? '0 2px 8px rgba(15,61,133,0.25)' : 'none' }}><span>🧭 دليل الساحات المجاني</span></button>
         </div>
       </div>
 
-      {/* ═══ CONTENT (مساحة عرض ضخمة للجراجات) ═══ */}
       <div className="flex-1 overflow-y-auto px-4 pt-3 pb-8">
-
         {areaGroups.length > 0 ? (
           <div className="space-y-2.5">
             {areaGroups.map((group) => {
               const isExpanded = expandedArea === group.name;
               const totalGarages = group.garages.length;
-
               return (
-                <div
-                  key={group.name}
-                  style={{
-                    background: BRAND.card,
-                    borderRadius: 14,
-                    border: `1.5px solid ${BRAND.border}`,
-                    overflow: 'hidden',
-                    boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setExpandedArea(isExpanded ? null : group.name)}
-                    className="w-full p-3.5 flex items-center justify-between text-right bg-transparent border-none cursor-pointer outline-none"
-                  >
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-[11px] font-black font-mono px-2 py-1 rounded bg-slate-100" style={{ color: BRAND.slate }}>
-                        {totalGarages} {activeTab === 'vip' ? 'معتمد' : 'ساحات'}
-                      </span>
-                      <ChevronDown size={16} style={{ color: BRAND.slate, transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
-                    </div>
-
-                    <div className="text-right">
-                      <span className="font-black text-sm block" style={{ color: BRAND.blueDark }}>
-                        {AREA_ICONS[group.name] || '📍'} {group.name}
-                      </span>
-                      <span className="text-[10px] font-bold block mt-0.5" style={{ color: BRAND.slate }}>
-                        {activeTab === 'vip' ? '🚗 جراجات معتمدة للحجز المباشر' : '🧭 دليل ساحات الركن بالمنطقة'}
-                      </span>
-                    </div>
+                <div key={group.name} style={{ background: BRAND.card, borderRadius: 14, border: `1.5px solid ${BRAND.border}`, overflow: 'hidden', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
+                  <button type="button" onClick={() => setExpandedArea(isExpanded ? null : group.name)} className="w-full p-3.5 flex items-center justify-between text-right bg-transparent border-none cursor-pointer outline-none">
+                    <div className="flex items-center gap-2 shrink-0"><span className="text-[11px] font-black font-mono px-2 py-1 rounded bg-slate-100" style={{ color: BRAND.slate }}>{totalGarages} {activeTab === 'vip' ? 'معتمد' : 'ساحات'}</span><ChevronDown size={16} style={{ color: BRAND.slate, transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} /></div>
+                    <div className="text-right"><span className="font-black text-sm block" style={{ color: BRAND.blueDark }}>{AREA_ICONS[group.name] || '📍'} {group.name}</span><span className="text-[10px] font-bold block mt-0.5" style={{ color: BRAND.slate }}>{activeTab === 'vip' ? '🚗 جراجات معتمدة للحجز المباشر' : '🧭 دليل ساحات الركن بالمنطقة'}</span></div>
                   </button>
-
                   {isExpanded && (
                     <div style={{ background: BRAND.bg, padding: '10px', borderTop: `1px solid ${BRAND.border}` }} className="space-y-2">
-                      {(() => {
-                        const limit = visibleLimits[group.name] || 8;
-                        const displayedGarages = group.garages.slice(0, limit);
-                        const hasMore = group.garages.length > limit;
-
-                        return (
-                          <>
-                            {displayedGarages.map((garage, i) => (
-                              <GarageCard
-                                key={garage.id}
-                                garage={garage}
-                                index={i}
-                                onSelect={() => handleGarageClick(garage)}
-                                onReportPrice={handleOpenPriceReport}
-                                isNearby={garage.classification === 'nearby'}
-                                isClosest={i === 0 && garage.classification === 'nearby'}
-                                hasActiveSession={Boolean(activeSession)}
-                                hasIncomingCar={Boolean(myIncomingCar)}
-                                disabled={isBooking}
-                              />
-                            ))}
-
-                            {hasMore && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setVisibleLimits(prev => ({ ...prev, [group.name]: limit + 10 }));
-                                  toast.success('تم تحميل ساحات إضافية 📍', { id: 'lazy-load-toast' });
-                                }}
-                                className="w-full py-2.5 rounded-xl font-black text-[11px] cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1 bg-white mt-2"
-                                style={{ color: BRAND.blue, border: `1.5px solid ${BRAND.border}` }}
-                              >
-                                <span>عرض المزيد (+{group.garages.length - limit}) 🔽</span>
-                              </button>
-                            )}
-                          </>
-                        );
+                      {(() => { const limit = visibleLimits[group.name] || 8; const displayedGarages = group.garages.slice(0, limit); const hasMore = group.garages.length > limit;
+                        return (<>
+                          {displayedGarages.map((garage, i) => (<GarageCard key={garage.id} garage={garage} index={i} onSelect={() => handleGarageClick(garage)} onReportPrice={handleOpenPriceReport} isNearby={garage.classification === 'nearby'} isClosest={i === 0 && garage.classification === 'nearby'} hasActiveSession={Boolean(activeSession)} hasIncomingCar={Boolean(myIncomingCar)} disabled={isBooking} />))}
+                          {hasMore && (<button type="button" onClick={() => { setVisibleLimits(prev => ({ ...prev, [group.name]: limit + 10 })); toast.success('تم تحميل ساحات إضافية 📍', { id: 'lazy-load-toast' }); }} className="w-full py-2.5 rounded-xl font-black text-[11px] cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1 bg-white mt-2" style={{ color: BRAND.blue, border: `1.5px solid ${BRAND.border}` }}><span>عرض المزيد (+{group.garages.length - limit}) 🔽</span></button>)}
+                        </>);
                       })()}
                     </div>
                   )}
@@ -1128,220 +567,43 @@ export default function GarageListScreen() {
             })}
           </div>
         ) : (
-          <div className="text-center py-16 text-slate-400">
-            <span className="text-3xl block mb-2">🚗🔍</span>
-            <p className="text-xs font-bold leading-relaxed max-w-[240px] mx-auto">
-              {selectedCategory 
-                ? `لا توجد نتائج تحت فئة "${CATEGORIES.find(c => c.id === selectedCategory)?.label}" في هذه المنطقة.` 
-                : 'لا توجد ساحات في الدليل، جرب البحث باسم منطقة أخرى!'}
-            </p>
-          </div>
+          <div className="text-center py-16 text-slate-400"><span className="text-3xl block mb-2">🚗🔍</span><p className="text-xs font-bold leading-relaxed max-w-[240px] mx-auto">{selectedCategory ? `لا توجد نتائج تحت فئة "${CATEGORIES.find(c => c.id === selectedCategory)?.label}" في هذه المنطقة.` : 'لا توجد ساحات في الدليل، جرب البحث باسم منطقة أخرى!'}</p></div>
         )}
       </div>
 
-      {/* ═══ 🌟 القائمة الذكية الجانبية (Smart Drawer) ═══ */}
+      {/* ═══ القائمة الذكية الجانبية ═══ */}
       <AnimatePresence>
         {showSmartMenu && (
-          <div
-            className="fixed inset-0 z-[1500] flex items-end"
-            style={{ background: 'rgba(10,22,40,0.6)', backdropFilter: 'blur(4px)' }}
-            onClick={() => setShowSmartMenu(false)}
-          >
-            <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="w-full max-w-md mx-auto bg-white rounded-t-[28px] p-5 pb-8"
-              onClick={(e) => e.stopPropagation()}
-            >
+          <div className="fixed inset-0 z-[1500] flex items-end" style={{ background: 'rgba(10,22,40,0.6)', backdropFilter: 'blur(4px)' }} onClick={() => setShowSmartMenu(false)}>
+            <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 28, stiffness: 300 }} className="w-full max-w-md mx-auto bg-white rounded-t-[28px] p-5 pb-8" onClick={(e) => e.stopPropagation()}>
               <div className="w-10 h-1.5 rounded-full bg-slate-200 mx-auto mb-5" />
-
-              <div className="flex justify-between items-center mb-4 pb-3 border-b-[1.5px]" style={{ borderColor: BRAND.border }}>
-                <button
-                  type="button"
-                  onClick={() => setShowSmartMenu(false)}
-                  className="text-slate-400 font-black text-sm border-0 bg-transparent cursor-pointer"
-                >
-                  ✕
-                </button>
-                <h3 className="font-black text-sm" style={{ color: BRAND.blueDark }}>
-                  ⚙️ القائمة والخدمات
-                </h3>
-              </div>
-
+              <div className="flex justify-between items-center mb-4 pb-3 border-b-[1.5px]" style={{ borderColor: BRAND.border }}><button type="button" onClick={() => setShowSmartMenu(false)} className="text-slate-400 font-black text-sm border-0 bg-transparent cursor-pointer">✕</button><h3 className="font-black text-sm" style={{ color: BRAND.blueDark }}>⚙️ القائمة والخدمات</h3></div>
               <div className="space-y-2">
-                {/* شحن الرصيد */}
-                <button
-                  type="button"
-                  onClick={() => { setShowSmartMenu(false); setShowTopUp(true); }}
-                  className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]"
-                  style={{ borderColor: BRAND.border }}
-                >
-                  <ChevronDown size={16} className="rotate-90 text-slate-400" />
-                  <div className="flex items-center gap-2.5">
-                    <div className="text-right">
-                      <span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>شحن رصيد المحفظة</span>
-                      <span className="text-[9px] font-bold text-slate-500">اشحن بـ إنستاباي أو فودافون كاش</span>
-                    </div>
-                    <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center">
-                      <Wallet size={16} style={{ color: BRAND.blue }} />
-                    </div>
-                  </div>
-                </button>
-
-                {/* إيصال آخر ركنة */}
-                {hasCompletedSession && (
-                  <button
-                    type="button"
-                    onClick={() => { setShowSmartMenu(false); setScreen('lastSession'); }}
-                    className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]"
-                    style={{ borderColor: BRAND.border }}
-                  >
-                    <ChevronDown size={16} className="rotate-90 text-slate-400" />
-                    <div className="flex items-center gap-2.5">
-                      <div className="text-right">
-                        <span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>إيصال آخر ركنة</span>
-                        <span className="text-[9px] font-bold text-slate-500">عرض تفاصيل وحساب آخر جلسة</span>
-                      </div>
-                      <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center">
-                        <Receipt size={16} style={{ color: BRAND.greenDark }} />
-                      </div>
-                    </div>
-                  </button>
-                )}
-
-                {/* الدعم والشكاوى */}
-                <button
-                  type="button"
-                  onClick={() => { setShowSmartMenu(false); setScreen('chat'); }}
-                  className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]"
-                  style={{ borderColor: BRAND.border }}
-                >
-                  <ChevronDown size={16} className="rotate-90 text-slate-400" />
-                  <div className="flex items-center gap-2.5">
-                    <div className="text-right">
-                      <span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>الدعم والشكاوى</span>
-                      <span className="text-[9px] font-bold text-slate-500">تواصل معنا في أي وقت 24 ساعة</span>
-                    </div>
-                    <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center">
-                      <MessageCircle size={16} className="text-amber-600" />
-                    </div>
-                  </div>
-                </button>
-
-                {/* سجل الشحن */}
-                {myTopUps.length > 0 && (
-                  <div className="pt-3 mt-3 border-t-[1.5px]" style={{ borderColor: BRAND.border }}>
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-[9px] font-bold text-slate-400">آخر 3 عمليات</span>
-                      <span className="text-[11px] font-black" style={{ color: BRAND.slate }}>📜 سجل الشحن</span>
-                    </div>
-                    <div className="space-y-1.5">
-                      {myTopUps.map((topUp) => (
-                        <div key={topUp.id} className="flex justify-between items-center text-[11px] p-2.5 rounded-lg bg-slate-50 border-[1.5px]" style={{ borderColor: BRAND.border }}>
-                          <span className="font-black">{topUp.amount} ج.م</span>
-                          <span className="font-bold text-[10px]">
-                            {topUp.status === 'pending' ? '⏳ قيد المراجعة' : topUp.status === 'approved' ? '✅ تم الشحن' : '❌ مرفوض'}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <button type="button" onClick={() => { setShowSmartMenu(false); setShowTopUp(true); }} className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]" style={{ borderColor: BRAND.border }}><ChevronDown size={16} className="rotate-90 text-slate-400" /><div className="flex items-center gap-2.5"><div className="text-right"><span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>شحن رصيد المحفظة</span><span className="text-[9px] font-bold text-slate-500">اشحن بـ إنستاباي أو فودافون كاش</span></div><div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center"><Wallet size={16} style={{ color: BRAND.blue }} /></div></div></button>
+                {hasCompletedSession && (<button type="button" onClick={() => { setShowSmartMenu(false); setScreen('lastSession'); }} className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]" style={{ borderColor: BRAND.border }}><ChevronDown size={16} className="rotate-90 text-slate-400" /><div className="flex items-center gap-2.5"><div className="text-right"><span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>إيصال آخر ركنة</span><span className="text-[9px] font-bold text-slate-500">عرض تفاصيل وحساب آخر جلسة</span></div><div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center"><Receipt size={16} style={{ color: BRAND.greenDark }} /></div></div></button>)}
+                <button type="button" onClick={() => { setShowSmartMenu(false); setScreen('chat'); }} className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]" style={{ borderColor: BRAND.border }}><ChevronDown size={16} className="rotate-90 text-slate-400" /><div className="flex items-center gap-2.5"><div className="text-right"><span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>الدعم والشكاوى</span><span className="text-[9px] font-bold text-slate-500">تواصل معنا في أي وقت 24 ساعة</span></div><div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center"><MessageCircle size={16} className="text-amber-600" /></div></div></button>
+                {myTopUps.length > 0 && (<div className="pt-3 mt-3 border-t-[1.5px]" style={{ borderColor: BRAND.border }}><div className="flex justify-between items-center mb-2"><span className="text-[9px] font-bold text-slate-400">آخر 3 عمليات</span><span className="text-[11px] font-black" style={{ color: BRAND.slate }}>📜 سجل الشحن</span></div><div className="space-y-1.5">{myTopUps.map((topUp) => (<div key={topUp.id} className="flex justify-between items-center text-[11px] p-2.5 rounded-lg bg-slate-50 border-[1.5px]" style={{ borderColor: BRAND.border }}><span className="font-black">{topUp.amount} ج.م</span><span className="font-bold text-[10px]">{topUp.status === 'pending' ? '⏳ قيد المراجعة' : topUp.status === 'approved' ? '✅ تم الشحن' : '❌ مرفوض'}</span></div>))}</div></div>)}
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {showTopUp && <TopUpWalletModal onClose={() => setShowTopUp(false)} />}
-      </AnimatePresence>
+      <AnimatePresence>{showTopUp && <TopUpWalletModal onClose={() => setShowTopUp(false)} />}</AnimatePresence>
 
       {/* 📲 نافذة تكبير الباركود */}
       <AnimatePresence>
         {showQrModal && (
-          <div
-            className="fixed inset-0 z-[999] flex items-center justify-center p-5"
-            style={{ background: 'rgba(10,22,40,0.75)', backdropFilter: 'blur(6px)' }}
-            onClick={() => setShowQrModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.85, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.85, opacity: 0 }}
-              className="rounded-3xl p-6 text-center max-w-xs w-full shadow-2xl relative"
-              style={{ BRAND_card: BRAND.card } as any}
-              onClick={e => e.stopPropagation()}
-            >
-              <button
-                type="button"
-                onClick={() => setShowQrModal(false)}
-                className="absolute top-4 left-4 text-slate-400 font-black text-sm border-0 bg-transparent cursor-pointer"
-              >
-                ✕
-              </button>
-
-              <div className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2" style={{ background: BRAND.green + '20' }}>
-                <Gift size={20} style={{ color: BRAND.greenDark }} />
-              </div>
-
-              <h3 className="text-sm font-black mb-1" style={{ color: BRAND.blueDark }}>
-                📲 شارك بركن 24 مع أصحابك
-              </h3>
-
-              <p className="text-[11px] font-bold mb-3 leading-relaxed" style={{ color: BRAND.slate }}>
-                دليل وأماكن الركن الذكية في القاهرة بين إيديك! 🚗💨
-              </p>
-
-              <div className="w-44 h-44 mx-auto p-2 bg-white rounded-2xl border-2 shadow-inner flex items-center justify-center mb-3" style={{ borderColor: BRAND.blue }}>
-                <img
-                  src="/app-qr.png"
-                  alt="QR Code"
-                  className="w-full h-full object-contain"
-                  onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
-                />
-              </div>
-
+          <div className="fixed inset-0 z-[999] flex items-center justify-center p-5" style={{ background: 'rgba(10,22,40,0.75)', backdropFilter: 'blur(6px)' }} onClick={() => setShowQrModal(false)}>
+            <motion.div initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.85, opacity: 0 }} className="rounded-3xl p-6 text-center max-w-xs w-full shadow-2xl relative" style={{ background: BRAND.card }} onClick={e => e.stopPropagation()}>
+              <button type="button" onClick={() => setShowQrModal(false)} className="absolute top-4 left-4 text-slate-400 font-black text-sm border-0 bg-transparent cursor-pointer">✕</button>
+              <div className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2" style={{ background: BRAND.green + '20' }}><Gift size={20} style={{ color: BRAND.greenDark }} /></div>
+              <h3 className="text-sm font-black mb-1" style={{ color: BRAND.blueDark }}>📲 شارك بركن 24 مع أصحابك</h3>
+              <p className="text-[11px] font-bold mb-3 leading-relaxed" style={{ color: BRAND.slate }}>دليل وأماكن الركن الذكية في القاهرة بين إيديك! 🚗💨</p>
+              <div className="w-44 h-44 mx-auto p-2 bg-white rounded-2xl border-2 shadow-inner flex items-center justify-center mb-3" style={{ borderColor: BRAND.blue }}><img src="/app-qr.png" alt="QR Code" className="w-full h-full object-contain" onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }} /></div>
               <div className="space-y-2">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const appUrl = window.location.origin;
-                    try {
-                      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-                        await navigator.clipboard.writeText(appUrl);
-                      } else {
-                        const textArea = document.createElement('textarea');
-                        textArea.value = appUrl;
-                        textArea.style.position = 'fixed';
-                        textArea.style.opacity = '0';
-                        document.body.appendChild(textArea);
-                        textArea.select();
-                        document.execCommand('copy');
-                        document.body.removeChild(textArea);
-                      }
-                      toast.success('تم نسخ رابط التطبيق بنجاح! 📋🚀', { duration: 3000 });
-                    } catch {
-                      toast.error('تعذر نسخ الرابط');
-                    }
-                  }}
-                  className="w-full py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all border-0 text-white shadow-sm"
-                  style={{ background: BRAND.greenDark }}
-                >
-                  <Copy size={14} />
-                  <span>نسخ رابط التطبيق 🔗</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowQrModal(false)}
-                  className="w-full py-2.5 rounded-xl font-bold text-xs text-slate-500 bg-slate-100 cursor-pointer active:scale-95 transition-all"
-                  style={{ border: `1.5px solid ${BRAND.border}` }}
-                >
-                  إغلاق النافذة
-                </button>
+                <button type="button" onClick={async () => { const appUrl = window.location.origin; try { if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') { await navigator.clipboard.writeText(appUrl); } else { const textArea = document.createElement('textarea'); textArea.value = appUrl; textArea.style.position = 'fixed'; textArea.style.opacity = '0'; document.body.appendChild(textArea); textArea.select(); document.execCommand('copy'); document.body.removeChild(textArea); } toast.success('تم نسخ رابط التطبيق بنجاح! 📋🚀', { duration: 3000 }); } catch { toast.error('تعذر نسخ الرابط'); } }} className="w-full py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all border-0 text-white shadow-sm" style={{ background: BRAND.greenDark }}><Copy size={14} /><span>نسخ رابط التطبيق 🔗</span></button>
+                <button type="button" onClick={() => setShowQrModal(false)} className="w-full py-2.5 rounded-xl font-bold text-xs text-slate-500 bg-slate-100 cursor-pointer active:scale-95 transition-all" style={{ border: `1.5px solid ${BRAND.border}` }}>إغلاق النافذة</button>
               </div>
             </motion.div>
           </div>
@@ -1351,196 +613,44 @@ export default function GarageListScreen() {
       {/* 🌟 نافذة الإبلاغ عن تعديل سعر الجراج */}
       <AnimatePresence>
         {reportingGarage && (
-          <div
-            className="fixed inset-0 z-[1000] flex items-center justify-center p-5"
-            style={{ background: 'rgba(10,22,40,0.75)', backdropFilter: 'blur(6px)' }}
-            onClick={() => setReportingGarage(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="rounded-3xl p-6 text-right max-w-xs w-full shadow-2xl relative"
-              style={{ background: BRAND.card }}
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex justify-between items-center mb-3">
-                <button
-                  type="button"
-                  onClick={() => setReportingGarage(null)}
-                  className="text-slate-400 font-black text-sm border-0 bg-transparent cursor-pointer"
-                >
-                  ✕
-                </button>
-                <h3 className="text-sm font-black" style={{ color: BRAND.blueDark }}>
-                  ✍️ تحديث سعر الركنة
-                </h3>
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-5" style={{ background: 'rgba(10,22,40,0.75)', backdropFilter: 'blur(6px)' }} onClick={() => setReportingGarage(null)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="rounded-3xl p-6 text-right max-w-xs w-full shadow-2xl relative" style={{ background: BRAND.card }} onClick={e => e.stopPropagation()}>
+              <div className="flex justify-between items-center mb-3"><button type="button" onClick={() => setReportingGarage(null)} className="text-slate-400 font-black text-sm border-0 bg-transparent cursor-pointer">✕</button><h3 className="text-sm font-black" style={{ color: BRAND.blueDark }}>✍️ تحديث سعر الركنة</h3></div>
+              <p className="text-[11px] font-bold mb-4" style={{ color: BRAND.slate }}>لقيت السعر اتغير في <b style={{ color: BRAND.navy }}>{reportingGarage.name}</b>؟ اكتب السعر الجديد لمساعدة باقي السائقين! 🤝</p>
+              <div className="mb-5"><label className="text-[10px] font-black block mb-2 text-right" style={{ color: BRAND.slate }}>السعر الفعلي الحالي في الشارع:</label>
+                <div className="rounded-2xl p-3.5 bg-slate-50" style={{ border: `1.5px solid ${BRAND.border}` }}><div className="flex items-center justify-between gap-3">
+                  <button type="button" onClick={() => setUpdatedPriceInput(p => Math.max(5, (Number(p) || 0) - 5))} className="active:scale-90 border-0 rounded-xl text-white font-black w-10 h-10 flex items-center justify-center cursor-pointer bg-red-500 shadow-md shadow-red-500/10"><Minus size={16} strokeWidth={3} /></button>
+                  <div className="text-center flex-1"><input type="number" pattern="\d*" inputMode="numeric" value={updatedPriceInput} onChange={(e) => { const val = e.target.value; if (val === '') setUpdatedPriceInput(''); else { const parsed = parseInt(val, 10); if (!isNaN(parsed)) setUpdatedPriceInput(parsed); } }} onBlur={() => { if (updatedPriceInput === '' || Number(updatedPriceInput) <= 0) { setUpdatedPriceInput(reportingGarage.basePrice || 20); } }} className="bg-transparent text-center w-full outline-none font-mono font-black text-3xl border-0 p-0" style={{ color: BRAND.navy }} /><div className="font-bold text-[9px] mt-1" style={{ color: BRAND.slate }}>{reportingGarage.priceType === 'daily' ? 'ج.م / اليوم بالكامل' : 'ج.م / الساعة'}</div></div>
+                  <button type="button" onClick={() => setUpdatedPriceInput(p => (Number(p) || 0) + 5)} className="active:scale-90 border-0 rounded-xl text-white font-black w-10 h-10 flex items-center justify-center cursor-pointer bg-emerald-500 shadow-md shadow-emerald-500/10"><Plus size={16} strokeWidth={3} /></button>
+                </div></div>
               </div>
-
-              <p className="text-[11px] font-bold mb-4" style={{ color: BRAND.slate }}>
-                لقيت السعر اتغير في <b style={{ color: BRAND.navy }}>{reportingGarage.name}</b>؟ اكتب السعر الجديد لمساعدة باقي السائقين! 🤝
-              </p>
-
-              <div className="mb-5">
-                <label className="text-[10px] font-black block mb-2 text-right" style={{ color: BRAND.slate }}>
-                  السعر الفعلي الحالي في الشارع:
-                </label>
-                
-                <div className="rounded-2xl p-3.5 bg-slate-50" style={{ border: `1.5px solid ${BRAND.border}` }}>
-                  <div className="flex items-center justify-between gap-3">
-                    <button 
-                      type="button" 
-                      onClick={() => setUpdatedPriceInput(p => Math.max(5, (Number(p) || 0) - 5))} 
-                      className="active:scale-90 border-0 rounded-xl text-white font-black w-10 h-10 flex items-center justify-center cursor-pointer bg-red-500 shadow-md shadow-red-500/10"
-                    >
-                      <Minus size={16} strokeWidth={3} />
-                    </button>
-
-                    <div className="text-center flex-1">
-                      <input 
-                        type="number" 
-                        pattern="\d*"
-                        inputMode="numeric"
-                        value={updatedPriceInput} 
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val === '') setUpdatedPriceInput('');
-                          else {
-                            const parsed = parseInt(val, 10);
-                            if (!isNaN(parsed)) setUpdatedPriceInput(parsed);
-                          }
-                        }}
-                        onBlur={() => {
-                          if (updatedPriceInput === '' || Number(updatedPriceInput) <= 0) {
-                            setUpdatedPriceInput(reportingGarage.basePrice || 20);
-                          }
-                        }}
-                        className="bg-transparent text-center w-full outline-none font-mono font-black text-3xl border-0 p-0" 
-                        style={{ color: BRAND.navy }} 
-                      />
-                      <div className="font-bold text-[9px] mt-1" style={{ color: BRAND.slate }}>
-                        {reportingGarage.priceType === 'daily' ? 'ج.م / اليوم بالكامل' : 'ج.م / الساعة'}
-                      </div>
-                    </div>
-
-                    <button 
-                      type="button" 
-                      onClick={() => setUpdatedPriceInput(p => (Number(p) || 0) + 5)} 
-                      className="active:scale-90 border-0 rounded-xl text-white font-black w-10 h-10 flex items-center justify-center cursor-pointer bg-emerald-500 shadow-md shadow-emerald-500/10"
-                    >
-                      <Plus size={16} strokeWidth={3} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleSubmitPriceUpdate}
-                  disabled={isSubmittingPrice}
-                  className="flex-1 py-3 rounded-xl font-black text-xs text-white border-0 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1"
-                  style={{ background: BRAND.blue }}
-                >
-                  <Check size={14} />
-                  <span>{isSubmittingPrice ? 'جاري الحفظ...' : 'تأكيد السعر'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setReportingGarage(null)}
-                  className="py-3 px-4 rounded-xl font-bold text-xs bg-slate-100 text-slate-500 cursor-pointer"
-                  style={{ border: `1.5px solid ${BRAND.border}` }}
-                >
-                  إلغاء
-                </button>
+                <button type="button" onClick={handleSubmitPriceUpdate} disabled={isSubmittingPrice} className="flex-1 py-3 rounded-xl font-black text-xs text-white border-0 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1" style={{ background: BRAND.blue }}><Check size={14} /><span>{isSubmittingPrice ? 'جاري الحفظ...' : 'تأكيد السعر'}</span></button>
+                <button type="button" onClick={() => setReportingGarage(null)} className="py-3 px-4 rounded-xl font-bold text-xs bg-slate-100 text-slate-500 cursor-pointer" style={{ border: `1.5px solid ${BRAND.border}` }}>إلغاء</button>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* 🌟 شاشة "طريق السلامة" التفاعلية (مع مستشعر التصحيح الآلي الصامت عند التأكيد) */}
+      {/* 🌟 شاشة "طريق السلامة" التفاعلية */}
       <AnimatePresence>
         {activeDirectoryTrip && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[2000] flex flex-col justify-between p-6 text-center"
-            style={{ background: 'linear-gradient(180deg, #0f172a 0%, #020617 100%)' }}
-          >
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[2000] flex flex-col justify-between p-6 text-center" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #020617 100%)' }}>
             <div className="pt-16 max-w-sm mx-auto w-full">
-              <motion.div
-                initial={{ scale: 0.3, opacity: 0, y: 30 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                transition={{ type: 'spring', damping: 11, stiffness: 140 }}
-                className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 bg-slate-800 border-2 border-blue-500 shadow-lg shadow-blue-500/10"
-              >
-                <motion.span 
-                  className="text-4xl inline-block"
-                  initial={{ rotate: -40, scale: 0.5 }}
-                  animate={{ rotate: 0, scale: 1 }}
-                  transition={{ type: 'spring', damping: 8, stiffness: 160, delay: 0.15 }}
-                >
-                  🚙
-                </motion.span>
-              </motion.div>
+              <motion.div initial={{ scale: 0.3, opacity: 0, y: 30 }} animate={{ scale: 1, opacity: 1, y: 0 }} transition={{ type: 'spring', damping: 11, stiffness: 140 }} className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 bg-slate-800 border-2 border-blue-500 shadow-lg shadow-blue-500/10"><motion.span className="text-4xl inline-block" initial={{ rotate: -40, scale: 0.5 }} animate={{ rotate: 0, scale: 1 }} transition={{ type: 'spring', damping: 8, stiffness: 160, delay: 0.15 }}>🚙</motion.span></motion.div>
               <h2 className="text-xl font-black text-white mb-2">طريق السلامة يا بطل! 🛣️✨</h2>
-              <p className="text-xs font-bold text-slate-400 mb-6 leading-relaxed">
-                جاري توجيهك الآن عبر خرائط جوجل إلى <b className="text-white">{activeDirectoryTrip.name}</b>
-              </p>
-
+              <p className="text-xs font-bold text-slate-400 mb-6 leading-relaxed">جاري توجيهك الآن عبر خرائط جوجل إلى <b className="text-white">{activeDirectoryTrip.name}</b></p>
               <div className="border border-slate-800 rounded-2xl p-4 bg-slate-900/80 mb-6 shadow-lg shadow-black/30">
                 <span className="text-[10px] font-black text-slate-400 block mb-1">💰 السعر المتوقع هناك</span>
-                <span className="font-black text-2xl text-emerald-400 font-mono block mb-2 leading-none">
-                  {activeDirectoryTrip.priceType === 'daily'
-                    ? `${activeDirectoryTrip.dailyPrice || activeDirectoryTrip.basePrice} ج.م / اليوم`
-                    : `${activeDirectoryTrip.basePrice} ج.م / ساعة`}
-                </span>
-                <span 
-                  className="text-[12px] font-black text-white block mt-2 border-t border-slate-800 pt-3.5 leading-relaxed"
-                  style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}
-                >
-                  💵 يرجى سداد الحساب كاش للسايس
-                </span>
+                <span className="font-black text-2xl text-emerald-400 font-mono block mb-2 leading-none">{activeDirectoryTrip.priceType === 'daily' ? `${activeDirectoryTrip.dailyPrice || activeDirectoryTrip.basePrice} ج.م / اليوم` : `${activeDirectoryTrip.basePrice} ج.م / ساعة`}</span>
+                <span className="text-[12px] font-black text-white block mt-2 border-t border-slate-800 pt-3.5 leading-relaxed" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>💵 يرجى سداد الحساب كاش للسايس</span>
               </div>
-
-              <div className="p-4 rounded-xl text-right bg-amber-500/10 border border-amber-500/40 flex gap-2">
-                <div className="text-right w-full">
-                  <span className="text-[12px] font-black text-amber-400 block mb-1.5">💡 شارك مجتمع بركن</span>
-                  <span 
-                    className="text-[11px] font-black text-white leading-relaxed block"
-                    style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}
-                  >
-                    لما توصل بالسلامة، لو لقيت السعر اتغير أو السايس غيره، اطلب تعديل السعر وساعد غيرك! 🤝
-                  </span>
-                </div>
-              </div>            
+              <div className="p-4 rounded-xl text-right bg-amber-500/10 border border-amber-500/40 flex gap-2"><div className="text-right w-full"><span className="text-[12px] font-black text-amber-400 block mb-1.5">💡 شارك مجتمع بركن</span><span className="text-[11px] font-black text-white leading-relaxed block" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>لما توصل بالسلامة، لو لقيت السعر اتغير أو السايس غيره، اطلب تعديل السعر وساعد غيرك! 🤝</span></div></div>
             </div>
-
             <div className="max-w-xs mx-auto w-full space-y-3 pb-8">
-              <button
-                type="button"
-                onClick={() => {
-                  // الملاحة المباشرة الجبرية بالخط الأزرق الفوري
-                  const url = `https://www.google.com/maps/dir/?api=1&destination=${activeDirectoryTrip.lat},${activeDirectoryTrip.lng}&travelmode=driving&dir_action=navigate`;
-                  window.open(url, '_blank', 'noopener,noreferrer');
-                }}
-                className="w-full py-3.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all border-0 text-white shadow-sm"
-                style={{ background: BRAND.blue }}
-              >
-                <Navigation size={14} />
-                <span>إعادة فتح خرائط جوجل 🗺️</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleConfirmArrival} // تفعيل خوارزمية العلاج الذاتي الصامتة للموقع الفعلي بدقة بالمتر عند التأكيد
-                className="w-full py-3 rounded-xl font-black text-xs text-slate-400 bg-white/5 border border-white/10 cursor-pointer active:scale-95 transition-all"
-              >
-                🏁 وصلت بالسلامة / العودة للرئيسية
-              </button>
+              <button type="button" onClick={() => { const url = `https://www.google.com/maps/dir/?api=1&destination=${activeDirectoryTrip.lat},${activeDirectoryTrip.lng}&travelmode=driving&dir_action=navigate`; window.open(url, '_blank', 'noopener,noreferrer'); }} className="w-full py-3.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all border-0 text-white shadow-sm" style={{ background: BRAND.blue }}><Navigation size={14} /><span>إعادة فتح خرائط جوجل 🗺️</span></button>
+              <button type="button" onClick={handleConfirmArrival} className="w-full py-3 rounded-xl font-black text-xs text-slate-400 bg-white/5 border border-white/10 cursor-pointer active:scale-95 transition-all">🏁 وصلت بالسلامة / العودة للرئيسية</button>
             </div>
           </motion.div>
         )}
@@ -1551,50 +661,20 @@ export default function GarageListScreen() {
   );
 }
 
-/* ════════════════════════════════════════════════════════════
-   ██  WELCOME GIFT MODAL
-   ════════════════════════════════════════════════════════════ */
 function WelcomeGiftModal() {
   const [show, setShow] = useState(false);
   const currentUser = useStore((s) => s.currentUser);
-
-  useEffect(() => {
-    const hasGiftFlag = localStorage.getItem('showWelcomeGift');
-    if (hasGiftFlag === 'true' && currentUser && !currentUser.hasUsedFreeSession) { setShow(true); }
-    else { localStorage.removeItem('showWelcomeGift'); setShow(false); }
-  }, [currentUser]);
-
+  useEffect(() => { const hasGiftFlag = localStorage.getItem('showWelcomeGift'); if (hasGiftFlag === 'true' && currentUser && !currentUser.hasUsedFreeSession) { setShow(true); } else { localStorage.removeItem('showWelcomeGift'); setShow(false); } }, [currentUser]);
   const handleClose = () => { localStorage.removeItem('showWelcomeGift'); setShow(false); };
-
   return (
     <AnimatePresence>
       {show && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center p-5" style={{ background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)' }} onClick={handleClose}>
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
-            className="p-6 max-w-sm w-full text-center relative"
-            style={{ background: BRAND.card, borderRadius: 24, boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: BRAND.green + '20' }}>
-              <Gift size={24} style={{ color: BRAND.greenDark }} />
-            </div>
-
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="p-6 max-w-sm w-full text-center relative" style={{ background: BRAND.card, borderRadius: 24, boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }} onClick={(e) => e.stopPropagation()}>
+            <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: BRAND.green + '20' }}><Gift size={24} style={{ color: BRAND.greenDark }} /></div>
             <h3 className="text-lg font-black mb-1" style={{ color: BRAND.blueDark }}>🎁 ركنتك الأولى مجانية!</h3>
-            <p className="text-xs font-bold leading-relaxed mb-4" style={{ color: BRAND.slate }}>
-              نورت عائلة <span style={{ color: BRAND.blue }}>Park'n 24</span>. استمتع بأول 30 دقيقة مجاناً في الجراجات المعتمدة كهدية ترحيبية.
-            </p>
-
-            <button
-              type="button"
-              onClick={handleClose}
-              className="w-full py-3 rounded-xl font-black border-0 cursor-pointer text-white text-xs"
-              style={{ background: BRAND.blue }}
-            >
-              جاهز للبدء 🚀
-            </button>
+            <p className="text-xs font-bold leading-relaxed mb-4" style={{ color: BRAND.slate }}>نورت عائلة <span style={{ color: BRAND.blue }}>Park'n 24</span>. استمتع بأول 30 دقيقة مجاناً في الجراجات المعتمدة كهدية ترحيبية.</p>
+            <button type="button" onClick={handleClose} className="w-full py-3 rounded-xl font-black border-0 cursor-pointer text-white text-xs" style={{ background: BRAND.blue }}>جاهز للبدء 🚀</button>
           </motion.div>
         </div>
       )}
@@ -1602,162 +682,37 @@ function WelcomeGiftModal() {
   );
 }
 
-/* ════════════════════════════════════════════════════════════
-   ██  GARAGE CARD (HYBRID)
-   ════════════════════════════════════════════════════════════ */
-const GarageCard = memo(function GarageCard({
-  garage,
-  index,
-  onSelect,
-  onReportPrice,
-  isNearby,
-  isClosest,
-  hasActiveSession,
-  hasIncomingCar,
-  disabled,
-}: GarageCardProps) {
+const GarageCard = memo(function GarageCard({ garage, index, onSelect, onReportPrice, isNearby, isClosest, hasActiveSession, hasIncomingCar, disabled }: GarageCardProps) {
   const isDirectory = garage.garageType === 'directory';
   const isBusy = hasActiveSession || hasIncomingCar;
   const isFull = !isDirectory && garage.availableSpots === 0;
-
-  const btnBg = (() => {
-    if (isDirectory) return BRAND.blueDark;
-    if (isFull) return BRAND.border;
-    if (isBusy) return BRAND.green;
-    return BRAND.blue;
-  })();
-
-  const btnLabel = (() => {
-    if (isDirectory) return 'افتح الاتجاهات على الخريطة 🗺️';
-    if (isFull) return 'ممتلئ';
-    if (hasActiveSession) return 'الجلسة النشطة ⚡';
-    if (hasIncomingCar) return 'الحجز النشط 📍';
-    return 'احجز الآن';
-  })();
-
-  const displayPrice = (() => {
-    if (garage.priceType === 'daily') return `${garage.dailyPrice || garage.basePrice}`;
-    if (garage.priceType === 'monthly') return `${garage.monthlyPrice || 1500}`;
-    return `${garage.basePrice}`;
-  })();
-
-  const priceUnit = (() => {
-    if (garage.priceType === 'daily') return 'ج.م/يومي';
-    if (garage.priceType === 'monthly') return 'ج.م/شهري';
-    return 'ج.م/ساعة';
-  })();
+  const btnBg = (() => { if (isDirectory) return BRAND.blueDark; if (isFull) return BRAND.border; if (isBusy) return BRAND.green; return BRAND.blue; })();
+  const btnLabel = (() => { if (isDirectory) return 'افتح الاتجاهات على الخريطة 🗺️'; if (isFull) return 'ممتلئ'; if (hasActiveSession) return 'الجلسة النشطة ⚡'; if (hasIncomingCar) return 'الحجز النشط 📍'; return 'احجز الآن'; })();
+  const displayPrice = (() => { if (garage.priceType === 'daily') return `${garage.dailyPrice || garage.basePrice}`; if (garage.priceType === 'monthly') return `${garage.monthlyPrice || 1500}`; return `${garage.basePrice}`; })();
+  const priceUnit = (() => { if (garage.priceType === 'daily') return 'ج.م/يومي'; if (garage.priceType === 'monthly') return 'ج.م/شهري'; return 'ج.م/ساعة'; })();
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.03 }}
-      className="p-3.5 text-right relative bg-white rounded-2xl transition-all"
-      style={{
-        border: `1.5px solid ${isDirectory ? BRAND.borderDark : BRAND.border}`,
-        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-      }}
-    >
-      {/* سطر الشارات المميزة والنوع */}
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.03 }} className="p-3.5 text-right relative bg-white rounded-2xl transition-all" style={{ border: `1.5px solid ${isDirectory ? BRAND.borderDark : BRAND.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
       <div className="flex justify-between items-center mb-2 flex-wrap gap-1.5" style={{ direction: 'rtl' }}>
         <div className="flex items-center gap-1.5 flex-wrap">
-          {isDirectory ? (
-            <span className="text-[9px] font-black px-2.5 py-0.5 rounded flex items-center gap-1" style={{ background: '#f1f5f9', color: '#334155', border: '1.5px solid #94a3b8' }}>
-              <span>🧭 دليل إرشاد الشارع</span>
-            </span>
-          ) : (
-            <span className="flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded" style={{ background: '#fef3c7', color: '#b45309' }}>
-              <Star size={8} fill="currentColor" /> {garage.rating || 4.5} ⭐ معتمد
-            </span>
-          )}
-
-          {!isDirectory && garage.payment_mode === 'cash' && (
-            <span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa' }}>
-              💵 نقدي
-            </span>
-          )}
-          {!isDirectory && garage.payment_mode === 'wallet' && (
-            <span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#f0f5ff', color: BRAND.blue, border: `1px solid ${BRAND.border}` }}>
-              👝 محفظة
-            </span>
-          )}
-          {!isDirectory && garage.payment_mode === 'both' && (
-            <span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#f0fdf4', color: BRAND.greenDark, border: `1px solid #bbf7d0` }}>
-              💵👝 كاش ومحفظة
-            </span>
-          )}
-          {isDirectory && (
-            <span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#f0fdf4', color: BRAND.greenDark }}>
-              💵 دفع للسايس مباشرة
-            </span>
-          )}
+          {isDirectory ? (<span className="text-[9px] font-black px-2.5 py-0.5 rounded flex items-center gap-1" style={{ background: '#f1f5f9', color: '#334155', border: '1.5px solid #94a3b8' }}><span>🧭 دليل إرشاد الشارع</span></span>) : (<span className="flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded" style={{ background: '#fef3c7', color: '#b45309' }}><Star size={8} fill="currentColor" /> {garage.rating || 4.5} ⭐ معتمد</span>)}
+          {!isDirectory && garage.payment_mode === 'cash' && (<span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa' }}>💵 نقدي</span>)}
+          {!isDirectory && garage.payment_mode === 'wallet' && (<span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#f0f5ff', color: BRAND.blue, border: `1px solid ${BRAND.border}` }}>👝 محفظة</span>)}
+          {!isDirectory && garage.payment_mode === 'both' && (<span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#f0fdf4', color: BRAND.greenDark, border: `1px solid #bbf7d0` }}>💵👝 كاش ومحفظة</span>)}
+          {isDirectory && (<span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#f0fdf4', color: BRAND.greenDark }}>💵 دفع للسايس مباشرة</span>)}
         </div>
       </div>
-
-      {/* اسم الجراج بحجم كبير وواضح */}
-      <div className="flex items-start justify-between gap-2 mb-2" style={{ direction: 'rtl' }}>
-        <h4 className="text-[15px] font-black leading-tight text-slate-950 flex-1">{garage.name}</h4>
-      </div>
-
-      {/* الموقع */}
-      <div className="flex items-center gap-1 justify-end text-[11px] font-bold mb-3" style={{ color: BRAND.slate, direction: 'rtl' }}>
-        <span className="truncate max-w-[280px]">{garage.location}</span>
-        <MapPin size={11} style={{ color: BRAND.slate }} className="shrink-0" />
-      </div>
-
-      {/* البيانات الكبيرة */}
+      <div className="flex items-start justify-between gap-2 mb-2" style={{ direction: 'rtl' }}><h4 className="text-[15px] font-black leading-tight text-slate-950 flex-1">{garage.name}</h4></div>
+      <div className="flex items-center gap-1 justify-end text-[11px] font-bold mb-3" style={{ color: BRAND.slate, direction: 'rtl' }}><span className="truncate max-w-[280px]">{garage.location}</span><MapPin size={11} style={{ color: BRAND.slate }} className="shrink-0" /></div>
       <div className="flex items-center justify-between mt-3 pt-3 border-t-[1.5px]" style={{ borderColor: BRAND.border }}>
-        {/* اليسار: وقت الوصول المقدر */}
-        <div className="flex items-center gap-1 text-xs font-black" style={{ color: BRAND.slate }}>
-          <Navigation size={12} className="rotate-45" />
-          <span>{formatDuration(garage.minutes)}</span>
-        </div>
-
-        {/* اليمين: الشاغر والسعر بخطوط كبيرة وواضحة */}
+        <div className="flex items-center gap-1 text-xs font-black" style={{ color: BRAND.slate }}><Navigation size={12} className="rotate-45" /><span>{formatDuration(garage.minutes)}</span></div>
         <div className="flex items-center gap-4 text-right" style={{ direction: 'rtl' }}>
-          {/* تعديل السعر التشاركي للدليل فقط */}
-          {isDirectory && (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onReportPrice(garage); }}
-              className="flex items-center gap-0.5 text-[10px] font-black border-0 bg-transparent cursor-pointer hover:underline p-1 rounded"
-              style={{ color: BRAND.blue }}
-            >
-              <Edit3 size={11} />
-              <span>تعديل السعر</span>
-            </button>
-          )}
-
-          {/* عدد الأماكن الشاغرة */}
-          {!isDirectory && (
-            <div className="flex flex-col items-center">
-              <span className="font-mono font-black text-[17px] leading-none" style={{ color: BRAND.blue }}>
-                {garage.availableSpots}
-              </span>
-              <span className="text-[9px] font-black text-slate-400 mt-1 uppercase">مكان شاغر</span>
-            </div>
-          )}
-
-          {/* سعر الركنة */}
-          <div className="flex flex-col items-center">
-            <span className="font-mono font-black text-[17px] leading-none" style={{ color: BRAND.greenDark }}>
-              {displayPrice}
-            </span>
-            <span className="text-[9px] font-black text-slate-400 mt-1 uppercase">{priceUnit}</span>
-          </div>
+          {isDirectory && (<button type="button" onClick={(e) => { e.stopPropagation(); onReportPrice(garage); }} className="flex items-center gap-0.5 text-[10px] font-black border-0 bg-transparent cursor-pointer hover:underline p-1 rounded" style={{ color: BRAND.blue }}><Edit3 size={11} /><span>تعديل السعر</span></button>)}
+          {!isDirectory && (<div className="flex flex-col items-center"><span className="font-mono font-black text-[17px] leading-none" style={{ color: BRAND.blue }}>{garage.availableSpots}</span><span className="text-[9px] font-black text-slate-400 mt-1 uppercase">مكان شاغر</span></div>)}
+          <div className="flex flex-col items-center"><span className="font-mono font-black text-[17px] leading-none" style={{ color: BRAND.greenDark }}>{displayPrice}</span><span className="text-[9px] font-black text-slate-400 mt-1 uppercase">{priceUnit}</span></div>
         </div>
       </div>
-
-      {/* زر اتخاذ الإجراء */}
-      <button
-        type="button"
-        disabled={isFull || disabled}
-        onClick={!disabled && !isFull ? onSelect : undefined}
-        className="w-full border-0 font-black py-3 rounded-2xl mt-4 text-sm text-white cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5 shadow-sm"
-        style={{ background: btnBg }}
-      >
-        <span>{btnLabel}</span>
-      </button>
+      <button type="button" disabled={isFull || disabled} onClick={!disabled && !isFull ? onSelect : undefined} className="w-full border-0 font-black py-3 rounded-2xl mt-4 text-sm text-white cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5 shadow-sm" style={{ background: btnBg }}><span>{btnLabel}</span></button>
     </motion.div>
   );
 });
