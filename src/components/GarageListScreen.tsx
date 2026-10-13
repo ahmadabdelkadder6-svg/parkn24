@@ -501,12 +501,21 @@ export default function GarageListScreen() {
                 </div>
               </div>
 
-              {rescueGaragesList.length > 1 && (
-                <button type="button" onClick={handleNextRescue} className="w-full py-2 text-[10px] font-black text-white/90 bg-black/20 border-0 cursor-pointer active:bg-black/30 transition-all flex items-center justify-center gap-1" style={{ borderTop: '1px solid rgba(255,255,255,0.15)' }}>
-                  <Search size={11} />
-                  <span>{rescueIndex < rescueGaragesList.length - 1 ? '🔍 السعر مش مناسب؟ ابحث عن ساحة أخرى' : '🔄 عرض الكل من الأول'}</span>
-                </button>
-              )}
+{rescueGaragesList.length > 1 && (
+  <button 
+    type="button" 
+    onClick={handleNextRescue} 
+    className="w-full py-3 text-[12px] font-black text-white bg-black/30 border-0 cursor-pointer active:bg-black/40 active:scale-[0.98] transition-all flex items-center justify-center gap-2 tracking-wide"
+    style={{ 
+      borderTop: '2px solid rgba(255,255,255,0.25)',
+      textShadow: '0 1px 3px rgba(0,0,0,0.4)',
+      letterSpacing: '0.02em'
+    }}
+  >
+    <Search size={14} strokeWidth={3} />
+    <span>{rescueIndex < rescueGaragesList.length - 1 ? '🔍  مش مناسب؟ ابحث عن ساحة أخرى' : '🔄 عرض الكل من الأول'}</span>
+  </button>
+)}
             </motion.div>
           )}
         </AnimatePresence>
