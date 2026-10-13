@@ -473,11 +473,15 @@ export default function GarageListScreen() {
               exit={{ opacity: 0, y: 10, scale: 0.95 }}
               transition={{ duration: 0.3 }}
               className="mb-2.5 rounded-2xl cursor-pointer active:scale-98 transition-all border-2 text-right relative overflow-hidden"
-              style={{
-                background: currentRescueGarage.garageType === 'vip' ? 'linear-gradient(135deg, #1656b8 0%, #0f3d85 100%)' : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-                borderColor: currentRescueGarage.garageType === 'vip' ? '#1656b8' : '#f59e0b',
-                boxShadow: currentRescueGarage.garageType === 'vip' ? '0 4px 15px rgba(22,86,184,0.3)' : '0 4px 15px rgba(217,119,6,0.3)',
-              }}
+style={{
+  background: currentRescueGarage.garageType === 'vip' 
+    ? 'linear-gradient(135deg, #1656b8 0%, #0f3d85 100%)'
+    : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+  borderColor: currentRescueGarage.garageType === 'vip' ? '#1656b8' : '#334155',
+  boxShadow: currentRescueGarage.garageType === 'vip' 
+    ? '0 4px 15px rgba(22,86,184,0.3)' 
+    : '0 4px 15px rgba(15,23,42,0.4)',
+}}
               dir="rtl"
             >
               <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-2xl pointer-events-none" />
