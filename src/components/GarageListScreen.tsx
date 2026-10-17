@@ -4,8 +4,8 @@ import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MapPin, Star, Search, Navigation, Locate, Plus, Receipt, MessageCircle,
-  X, History, Gift, ChevronDown, QrCode, Copy, Edit3, Check, Minus, Menu,
-  Wallet, AlertTriangle, Camera
+  X, Gift, ChevronDown, QrCode, Copy, Edit3, Check, Minus, Menu,
+  Wallet, Camera
 } from 'lucide-react';
 import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
 import { calculateDistance, distanceToMinutes, classifyDistance, formatDuration } from '../utils/distance';
@@ -90,7 +90,7 @@ const CATEGORIES = [
   { id: 'malls', label: 'مولات/بلازا', icon: '🛍️' },
 ];
 
-// 📡 تفعيل خاصية الميديا لخداع نظام التشغيل وإبقاء الصوت شغال في الخلفية
+// 📡 تفعيل خاصية الميديا لخداع نظام التشغيل وإبقاء الصوت شغال في الخلفية والشاشة السوداء
 if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
   try {
     navigator.mediaSession.metadata = new MediaMetadata({
@@ -102,6 +102,31 @@ if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
     console.warn("MediaSession initialized", e);
   }
 }
+
+// 🔇 صوت صامت متكرر لإبقاء GPS والصوت يعملان على الشاشة السوداء (Keep Alive)
+let silentAudioEl: HTMLAudioElement | null = null;
+
+const enableBackgroundKeepAlive = async () => {
+  try {
+    if (!silentAudioEl) {
+      silentAudioEl = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==');
+      silentAudioEl.loop = true;
+      silentAudioEl.volume = 0.001;
+    }
+    await silentAudioEl.play().catch(() => {});
+
+    if ('Notification' in window && Notification.permission === 'default') {
+      await Notification.requestPermission().catch(() => {});
+    }
+
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.setActionHandler('play', () => silentAudioEl?.play().catch(() => {}));
+      navigator.mediaSession.setActionHandler('pause', () => silentAudioEl?.play().catch(() => {}));
+    }
+  } catch (err) {
+    console.warn("Background keep-alive error:", err);
+  }
+};
 
 // 🎵 محرك الصوت (Web Audio API) - مضخم الصوت الأقصى (Super Loud Multi-Layered Alarm)
 let audioCtx: AudioContext | null = null;
@@ -116,40 +141,35 @@ const playRadarTone = (type: string, isCritical: boolean) => {
     const ctx = audioCtx;
     const now = ctx.currentTime;
 
-    // 1️⃣ إنشاء وحدة ضغط ديناميكية (Dynamics Compressor) لتضخيم الصوت لأقصى حد بدون تشويه
+    // 1️⃣ وحدة ضغط ديناميكية (Dynamics Compressor) لتضخيم الصوت لأقصى حد بدون تشويه
     const compressor = ctx.createDynamicsCompressor();
     compressor.threshold.setValueAtTime(-5, now);
     compressor.knee.setValueAtTime(0, now);
-    compressor.ratio.setValueAtTime(20, now); // ضغط حاد جداً لرفع الـ RMS Loudness
+    compressor.ratio.setValueAtTime(20, now);
     compressor.attack.setValueAtTime(0.001, now);
     compressor.release.setValueAtTime(0.05, now);
     compressor.connect(ctx.destination);
 
-    // 2️⃣ إعدادات النغمة المزدوجة الترددية (Piezo Resonance)
+    // 2️⃣ النغمة المزدوجة الترددية (Piezo Resonance)
     const beepCount = isCritical ? 8 : 5;
     const beepDuration = isCritical ? 0.07 : 0.11;
     const gap = isCritical ? 0.04 : 0.10;
-    
-    // التردد الأقوى لسماعة الموبايل (2200Hz - 2800Hz)
     const freqA = isCritical ? 2600 : 2000;
-    const freqB = isCritical ? 2615 : 2008; // فرق 8-15Hz بيعمل تضخيم وحيود في الصوت بيخترق أي دوشة
+    const freqB = isCritical ? 2615 : 2008;
 
     for (let i = 0; i < beepCount; i++) {
       const startAt = now + i * (beepDuration + gap);
 
-      // المولد الأول (Square Wave)
       const osc1 = ctx.createOscillator();
       const gain1 = ctx.createGain();
       osc1.type = 'square';
       osc1.frequency.setValueAtTime(freqA, startAt);
 
-      // المولد الثاني (Sawtooth Wave) للتراكب والتضخيم
       const osc2 = ctx.createOscillator();
       const gain2 = ctx.createGain();
       osc2.type = 'sawtooth';
       osc2.frequency.setValueAtTime(freqB, startAt);
 
-      // رفع الـ Gain لـ 2.8 مع وجود الـ Compressor
       const masterGain = isCritical ? 2.8 : 2.0;
 
       gain1.gain.setValueAtTime(0.001, startAt);
@@ -160,7 +180,6 @@ const playRadarTone = (type: string, isCritical: boolean) => {
       gain2.gain.linearRampToValueAtTime(masterGain * 0.8, startAt + 0.003);
       gain2.gain.exponentialRampToValueAtTime(0.001, startAt + beepDuration);
 
-      // توصيل المولدات بضاغط الصوت الرئيسي
       osc1.connect(gain1);
       gain1.connect(compressor);
 
@@ -181,7 +200,7 @@ const playRadarTone = (type: string, isCritical: boolean) => {
       const sirenGain = ctx.createGain();
 
       sirenOsc.type = 'sawtooth';
-      sirenOsc.frequency.setValueAtTime(3200, endAt); // 3200Hz صفارة اخترق عالية
+      sirenOsc.frequency.setValueAtTime(3200, endAt);
       sirenOsc.frequency.exponentialRampToValueAtTime(1400, endAt + 0.25);
 
       sirenGain.gain.setValueAtTime(0.001, endAt);
@@ -196,6 +215,34 @@ const playRadarTone = (type: string, isCritical: boolean) => {
     }
   } catch (e) {
     console.warn('Audio Context Blocked:', e);
+  }
+};
+
+// 📳 إشعار شاشة القفل + اهتزاز قوي
+const triggerLockScreenAlert = (radar: Radar, distance: number) => {
+  // اهتزاز قوي
+  if ('vibrate' in navigator) {
+    try {
+      navigator.vibrate([400, 150, 400, 150, 800]);
+    } catch {}
+  }
+
+  // إشعار على الشاشة السوداء
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      const title = radar.camera_type === 'speed' ? '⚡ رادار سرعة قريب!' : '📷 كاميرا مرور قريبة!';
+      const body = `على بُعد ${distance} متر${radar.speed_limit ? ` - حد ${radar.speed_limit} كم/س` : ''}`;
+      new Notification(title, {
+        body,
+        icon: '/pwa-192x192.png',
+        badge: '/pwa-192x192.png',
+        tag: 'radar-alert',
+        renotify: true,
+        silent: true
+      });
+    } catch (e) {
+      console.warn("Lockscreen notification error:", e);
+    }
   }
 };
 
@@ -229,6 +276,7 @@ export default function GarageListScreen() {
   const [activeRadarAlert, setActiveRadarAlert] = useState<RadarAlert | null>(null);
   const radarsRef = useRef<Radar[]>([]);
   const lastAudioPlayRef = useRef<number>(0);
+  const alertedRadarsRef = useRef<Set<string>>(new Set());
 
   const autoNavigatedRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
@@ -320,12 +368,6 @@ export default function GarageListScreen() {
       (position) => {
         if (!isMountedRef.current) return;
 
-        // 🔴 تخطي حسابات التحديث الفعلي لتجنب إلغاء المحاكاة أثناء التجربة
-        if ((window as any).isTestingRadar) {
-            setLocationLoading(false);
-            return;
-        }
-
         const newLat = position.coords.latitude;
         const newLng = position.coords.longitude;
         const newAccuracy = position.coords.accuracy || 10;
@@ -342,6 +384,7 @@ export default function GarageListScreen() {
             else { totalStopDurationRef.current = Math.round((Date.now() - stopStartTimeRef.current) / 1000); } 
         } else { stopStartTimeRef.current = null; }
 
+        // ⚡ محرك الرادار السريع (Bounding Box + Haversine) - zero server load
         if (radarsRef.current.length > 0 && speedKmh > 10) { 
             let minDistance = 500; 
             let closestRadarData: Radar | null = null;
@@ -367,6 +410,14 @@ export default function GarageListScreen() {
                 if (now - lastAudioPlayRef.current > audioThrottle) {
                     playRadarTone(closestRadarData.camera_type, isCritical);
                     lastAudioPlayRef.current = now;
+
+                    // إشعار شاشة القفل + اهتزاز (مرة واحدة لكل رادار)
+                    const radarKey = `${closestRadarData.id}-${isCritical ? 'c' : 'w'}`;
+                    if (!alertedRadarsRef.current.has(radarKey)) {
+                      alertedRadarsRef.current.add(radarKey);
+                      triggerLockScreenAlert(closestRadarData, Math.round(minDistance));
+                      setTimeout(() => alertedRadarsRef.current.delete(radarKey), 90000);
+                    }
                 }
             } else {
                 setActiveRadarAlert(null);
@@ -400,40 +451,25 @@ export default function GarageListScreen() {
     );
   }, []);
 
-  const handleForceRefreshLocation = useCallback(() => {
-    try { if (!audioCtx) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch (e) {}
+  // 🔊 زر تحديث الموقع - يفعّل محرك الصوت والخلفية والشاشة السوداء
+  const handleForceRefreshLocation = useCallback(async () => {
+    try {
+      // 1. فك قفل Web Audio Context (شرط ضغطة المستخدم)
+      if (!audioCtx) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
 
-    if ((window as any).isTestingRadar) return;
-    (window as any).isTestingRadar = true;
+      // 2. تفعيل محرك الخلفية والشاشة السوداء (Silent Loop + Notifications + MediaSession)
+      await enableBackgroundKeepAlive();
+    } catch (e) {
+      console.warn("Audio/Background init error:", e);
+    }
 
-    setActiveRadarAlert({
-      radar: { id: 'test', lat: 30.0444, lng: 31.2357, camera_type: 'speed', speed_limit: 90 },
-      distanceMeters: 300,
-      isCritical: false
-    });
-    playRadarTone('speed', false);
-    toast('🟡 رادار تجريبي من بعيد...', { icon: '📡', id: 'radar-test' });
+    // 3. إعادة تهيئة الموقع لجلب أدق إحداثيات
+    lastLocationRef.current = null;
+    bestAccuracyRef.current = Infinity;
+    getUserLocation();
 
-    setTimeout(() => {
-      if (!(window as any).isTestingRadar) return;
-      setActiveRadarAlert({
-        radar: { id: 'test', lat: 30.0444, lng: 31.2357, camera_type: 'speed', speed_limit: 90 },
-        distanceMeters: 60,
-        isCritical: true
-      });
-      playRadarTone('speed', true);
-      toast('🔴 رادار قريب جداً!', { icon: '⚠️', id: 'radar-test' });
-    }, 4000);
-
-    setTimeout(() => {
-      setActiveRadarAlert(null);
-      (window as any).isTestingRadar = false;
-      toast.success('عديت الرادار بسلام 🏁', { id: 'radar-test' });
-      
-      lastLocationRef.current = null;
-      bestAccuracyRef.current = Infinity;
-      getUserLocation();
-    }, 8000);
+    toast.success('🚀 الرادار نشط - صالح على الشاشة السوداء', { duration: 2500, icon: '📡' });
   }, [getUserLocation]);
 
   useEffect(() => { getUserLocation(); return () => { if (watchIdRef.current !== null) { navigator.geolocation.clearWatch(watchIdRef.current); } }; }, [getUserLocation]);
@@ -557,7 +593,6 @@ export default function GarageListScreen() {
     if (!activeDirectoryTrip) return;
     const tripToCalibrate = activeDirectoryTrip; 
     
-    // ✅ إغلاق شاشة الرحلة مع ضمان البقاء في تبويب الدليل المجاني
     setActiveDirectoryTrip(null);
     setActiveTab('directory'); 
     
@@ -841,7 +876,7 @@ export default function GarageListScreen() {
                 {hasCompletedSession && (<button type="button" onClick={() => { setShowSmartMenu(false); setScreen('lastSession'); }} className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]" style={{ borderColor: BRAND.border }}><ChevronDown size={16} className="rotate-90 text-slate-400" /><div className="flex items-center gap-2.5"><div className="text-right"><span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>إيصال آخر ركنة</span><span className="text-[9px] font-bold text-slate-500">عرض تفاصيل وحساب آخر جلسة</span></div><div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center"><Receipt size={16} style={{ color: BRAND.greenDark }} /></div></div></button>)}
                 <button type="button" onClick={() => { setShowSmartMenu(false); setScreen('chat'); }} className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]" style={{ borderColor: BRAND.border }}><ChevronDown size={16} className="rotate-90 text-slate-400" /><div className="flex items-center gap-2.5"><div className="text-right"><span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>الدعم والشكاوى</span><span className="text-[9px] font-bold text-slate-500">تواصل معنا في أي وقت 24 ساعة</span></div><div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center"><MessageCircle size={16} className="text-amber-600" /></div></div></button>
                 
-                {/* ✅ تم تحديث سجل المحفظة لعرض التاريخ والوقت هنا */}
+                {/* ✅ سجل المحفظة بالتاريخ والوقت */}
                 {myTopUps.length > 0 && (
                   <div className="pt-3 mt-3 border-t-[1.5px]" style={{ borderColor: BRAND.border }}>
                     <div className="flex justify-between items-center mb-2">
@@ -933,7 +968,6 @@ export default function GarageListScreen() {
             <div className="max-w-xs mx-auto w-full space-y-3 pb-8">
               <button type="button" onClick={() => { const url = `https://www.google.com/maps/dir/?api=1&destination=${activeDirectoryTrip.lat},${activeDirectoryTrip.lng}&travelmode=driving&dir_action=navigate`; window.open(url, '_blank', 'noopener,noreferrer'); }} className="w-full py-3.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all border-0 text-white shadow-sm" style={{ background: BRAND.blue }}><Navigation size={14} /><span>إعادة فتح خرائط جوجل 🗺️</span></button>
               
-              {/* ✅ زر العودة الأخضر الواضح */}
               <button 
                 type="button" 
                 onClick={handleConfirmArrival} 
