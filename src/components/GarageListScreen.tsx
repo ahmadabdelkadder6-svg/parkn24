@@ -111,6 +111,7 @@ const AREA_ICONS: Record<string, string> = {
   'مصر القديمة': '🕌', 'مدينة الشروق': '🎓', 'مدينة العبور': '🍇', 'العاشر من رمضان': '🏭',
   'العاصمة الإدارية': '🏛️', 'حلوان': '⚙️', 'الإسكندرية': '🏖️', 'الساحل الشمالي': '🏄',
   'المنصورة والدلتا': '🌾', 'طنطا': '🕌', 'مدن القناة': '🚢', 'العين السخنة': '🏖️',
+  'البساتين': '🏢', 'الخليفة': '🕌', 'السيدة زينب': '🕌', 'المعصرة': '🏭', 'دار السلام': '🌉',
   'مناطق أخرى': '📍',
 };
 
@@ -139,7 +140,7 @@ export default function GarageListScreen() {
   const [updatedPriceInput, setUpdatedPriceInput] = useState<number | ''>(20);
   const [isSubmittingPrice, setIsSubmittingPrice] = useState(false);
   
-  // شاشة المستخدم (تتحدث ببطء لمنع التهنيج)
+  // شاشة المستخدم
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>({ lat: 30.0444, lng: 31.2357 });
   const [locationLoading, setLocationLoading] = useState(false);
   
@@ -154,15 +155,14 @@ export default function GarageListScreen() {
   const alertedRadarsRef = useRef<Set<string>>(new Set());
   const criticalBeepedRef = useRef<Set<string>>(new Set());
 
-  // 🌟 بانر الإنقاذ السريع (3 جراجات فقط)
+  // 🌟 بانر الإنقاذ السريع (3 جراجات)
   const [rescueIndex, setRescueIndex] = useState(0);
   const MAX_RESCUE_OPTIONS = 3;
 
   // Refs لنظام التتبع المزدوج (Dual-Track GPS)
   const autoNavigatedRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
-  const lastLocationRef = useRef<{ lat: number; lng: number } | null>(null);
-  const lastUiUpdateLocRef = useRef<{ lat: number; lng: number } | null>(null); // للتحكم في تحديث الشاشة
+  const lastUiUpdateLocRef = useRef<{ lat: number; lng: number } | null>(null);
   const bestAccuracyRef = useRef<number>(Infinity);
   const watchIdRef = useRef<number | null>(null);
 
@@ -239,7 +239,6 @@ export default function GarageListScreen() {
         if (radarAlertsEnabled && speedCameras.length > 0) {
           let closestRadar = null;
           for (const cam of speedCameras) {
-            // فلتر المربع السريع
             if (Math.abs(newLat - Number(cam.lat)) > 0.012 || Math.abs(newLng - Number(cam.lng)) > 0.012) continue;
             const distMeters = calculateDistance(newLat, newLng, Number(cam.lat), Number(cam.lng)) * 1000;
             const maxSpeed = cam.max_speed || 60;
@@ -308,12 +307,11 @@ export default function GarageListScreen() {
     if (locationLoading || !userLocation.lat) return [];
     const vipNearby = garagesWithDistance.filter((g) => g.garageType === 'vip' && g.availableSpots > 0 && g.minutes <= 5);
     const directoryNearby = garagesWithDistance.filter((g) => g.garageType === 'directory' && g.minutes <= 5);
-    return [...vipNearby, ...directoryNearby].slice(0, MAX_RESCUE_OPTIONS); // يظهر أقرب 3 فقط
+    return [...vipNearby, ...directoryNearby].slice(0, MAX_RESCUE_OPTIONS);
   }, [garagesWithDistance, locationLoading, userLocation]);
 
   const currentRescueGarage = rescueGaragesList[rescueIndex] || null;
 
-  // دوران قائمة الإنقاذ السريع
   const handleNextRescue = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (rescueGaragesList.length <= 1) return;
@@ -369,11 +367,6 @@ export default function GarageListScreen() {
     } catch (e) { toast.error('حدث خطأ أثناء الحجز'); } finally { setIsBooking(false); }
   };
 
-  const handleConfirmArrival = useCallback(() => {
-    setActiveDirectoryTrip(null);
-    toast.success('حمد الله على سلامتك! נورت بركن 🌟', { duration: 3000 });
-  }, []);
-
   const handleOpenPriceReport = (g: GarageWithDistance) => { setReportingGarage(g); setUpdatedPriceInput(g.priceType === 'daily' ? (g.dailyPrice || g.basePrice) : g.basePrice || 20); };
   
   const handleSubmitPriceUpdate = async () => {
@@ -395,7 +388,6 @@ export default function GarageListScreen() {
     }
   };
 
-  // فتح الصوت لأول ضغطة للمتصفح
   const handleInteraction = () => initAudio();
 
   return (
@@ -432,7 +424,11 @@ export default function GarageListScreen() {
                 <div className="text-right">
                   <div className="font-black text-xs text-white">{activeRadarAlert.camera.name}</div>
                   <div className="text-[10px] font-bold text-white/90">
-                    {activeRadarAlert.isCritical ? (<span className="text-yellow-200">⚠️ خطر! الرادار أمامك (< {activeRadarAlert.distanceMeters}م)</span>) : (<>{renderCameraBadge(activeRadarAlert.camera.camera_type).title} بعد <span className="font-black underline">{activeRadarAlert.distanceMeters}م</span></>)}
+                    {activeRadarAlert.isCritical ? (
+                      <span className="text-yellow-200">⚠️ خطر! الرادار أمامك (&lt; {activeRadarAlert.distanceMeters}م)</span>
+                    ) : (
+                      <>{renderCameraBadge(activeRadarAlert.camera.camera_type).title} بعد <span className="font-black underline">{activeRadarAlert.distanceMeters}م</span></>
+                    )}
                   </div>
                 </div>
               </div>
