@@ -470,10 +470,10 @@ export default function GarageListScreen() {
       } else {
         url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}&travelmode=driving&dir_action=navigate`;
       }
-      window.open(url, '_blank', 'noopener,noreferrer');
-      setActiveDirectoryTrip(garage); setSearch(''); setExpandedArea(null);
-      toast.success(`رحلة سعيدة! جاري توجيهك إلى ${garage.name} 🧭`, { icon: '🚙' });
-      return;
+window.open(url, '_blank', 'noopener,noreferrer');
+setActiveDirectoryTrip(garage); 
+// تم إزالة setSearch('') و setExpandedArea(null) للحفاظ على حالة البحث للمستخدم
+toast.success(`رحلة سعيدة! جاري توجيهك إلى ${garage.name} 🧭`, { icon: '🚙' });
     }
     if (!currentUser) { toast.error('سجل بياناتك أولاً'); return; }
     if (activeSession) { setSelectedGarageId(activeSession.garageId); setScreen('session'); return; }
@@ -675,7 +675,29 @@ export default function GarageListScreen() {
         )}
 
         <div className="flex gap-2 mb-2.5">
-          <div className="relative flex-1"><Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: BRAND.slate }} /><input className="w-full outline-none text-xs font-bold" style={{ background: BRAND.bg, border: `1px solid ${BRAND.border}`, padding: '9px 32px 9px 12px', borderRadius: 12, color: BRAND.blueDark }} placeholder="ابحث باسم الجراج أو المنطقة..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+<div className="relative flex-1">
+  <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
+  <input 
+    className="w-full outline-none text-xs font-bold bg-slate-100 border border-slate-300 text-slate-800 rounded-xl transition-all focus:border-blue-500 focus:bg-white focus:shadow-sm" 
+    style={{ padding: '9px 32px 9px 32px' }} 
+    placeholder="ابحث باسم الجراج أو المنطقة..." 
+    value={search} 
+    onChange={(e) => setSearch(e.target.value)} 
+  />
+  {/* زرار مسح البحث الشيك هيظهر بس لو فيه كلام مكتوب */}
+  <AnimatePresence>
+    {search && (
+      <motion.button 
+        initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }}
+        type="button" 
+        onClick={() => { setSearch(''); setExpandedArea(null); }} 
+        className="absolute left-2.5 top-1/2 -translate-y-1/2 bg-slate-300 text-slate-600 rounded-full w-5 h-5 flex items-center justify-center cursor-pointer border-0 active:scale-90 hover:bg-slate-400 hover:text-white transition-all"
+      >
+        <X size={12} strokeWidth={3} />
+      </motion.button>
+    )}
+  </AnimatePresence>
+</div>
           
           {/* زر التحديد ومحاكاة الرادار */}
           <button type="button" onClick={handleForceRefreshLocation} disabled={locationLoading} className="flex items-center justify-center border-0 cursor-pointer shrink-0" style={{ background: BRAND.blue, color: '#fff', borderRadius: 12, width: 36, height: 36 }}><Locate size={15} className={locationLoading ? 'animate-spin' : ''} /></button>
