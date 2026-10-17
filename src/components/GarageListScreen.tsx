@@ -736,7 +736,29 @@ export default function GarageListScreen() {
                 <button type="button" onClick={() => { setShowSmartMenu(false); setShowTopUp(true); }} className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]" style={{ borderColor: BRAND.border }}><ChevronDown size={16} className="rotate-90 text-slate-400" /><div className="flex items-center gap-2.5"><div className="text-right"><span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>شحن رصيد المحفظة</span><span className="text-[9px] font-bold text-slate-500">اشحن بـ إنستاباي أو فودافون كاش</span></div><div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center"><Wallet size={16} style={{ color: BRAND.blue }} /></div></div></button>
                 {hasCompletedSession && (<button type="button" onClick={() => { setShowSmartMenu(false); setScreen('lastSession'); }} className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]" style={{ borderColor: BRAND.border }}><ChevronDown size={16} className="rotate-90 text-slate-400" /><div className="flex items-center gap-2.5"><div className="text-right"><span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>إيصال آخر ركنة</span><span className="text-[9px] font-bold text-slate-500">عرض تفاصيل وحساب آخر جلسة</span></div><div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center"><Receipt size={16} style={{ color: BRAND.greenDark }} /></div></div></button>)}
                 <button type="button" onClick={() => { setShowSmartMenu(false); setScreen('chat'); }} className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]" style={{ borderColor: BRAND.border }}><ChevronDown size={16} className="rotate-90 text-slate-400" /><div className="flex items-center gap-2.5"><div className="text-right"><span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>الدعم والشكاوى</span><span className="text-[9px] font-bold text-slate-500">تواصل معنا في أي وقت 24 ساعة</span></div><div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center"><MessageCircle size={16} className="text-amber-600" /></div></div></button>
-                {myTopUps.length > 0 && (<div className="pt-3 mt-3 border-t-[1.5px]" style={{ borderColor: BRAND.border }}><div className="flex justify-between items-center mb-2"><span className="text-[9px] font-bold text-slate-400">آخر 3 عمليات</span><span className="text-[11px] font-black" style={{ color: BRAND.slate }}>📜 سجل الشحن</span></div><div className="space-y-1.5">{myTopUps.map((topUp) => (<div key={topUp.id} className="flex justify-between items-center text-[11px] p-2.5 rounded-lg bg-slate-50 border-[1.5px]" style={{ borderColor: BRAND.border }}><span className="font-black">{topUp.amount} ج.م</span><span className="font-bold text-[10px]">{topUp.status === 'pending' ? '⏳ قيد المراجعة' : topUp.status === 'approved' ? '✅ تم الشحن' : '❌ مرفوض'}</span></div>))}</div></div>)}
+{myTopUps.length > 0 && (
+  <div className="pt-3 mt-3 border-t-[1.5px]" style={{ borderColor: BRAND.border }}>
+    <div className="flex justify-between items-center mb-2">
+      <span className="text-[9px] font-bold text-slate-400">آخر 3 عمليات</span>
+      <span className="text-[11px] font-black" style={{ color: BRAND.slate }}>📜 سجل الشحن</span>
+    </div>
+    <div className="space-y-2">
+      {myTopUps.map((topUp) => (
+        <div key={topUp.id} className="flex justify-between items-center text-right p-2.5 rounded-xl bg-slate-50 border-[1.5px]" style={{ borderColor: BRAND.border }}>
+          <div>
+            <span className="font-black text-[13px] text-slate-800 block mb-0.5">{topUp.amount} ج.م</span>
+            <span className="font-bold text-[10px] text-slate-500 block" dir="ltr">
+              {new Date(topUp.timestamp).toLocaleString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          </div>
+          <span className="font-black text-[10px] px-2 py-1.5 rounded-lg bg-white border border-slate-200 shadow-sm">
+            {topUp.status === 'pending' ? '⏳ قيد المراجعة' : topUp.status === 'approved' ? '✅ تم الشحن' : '❌ مرفوض'}
+          </span>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
               </div>
             </motion.div>
           </div>
@@ -804,7 +826,14 @@ export default function GarageListScreen() {
             </div>
             <div className="max-w-xs mx-auto w-full space-y-3 pb-8">
               <button type="button" onClick={() => { const url = `https://www.google.com/maps/dir/?api=1&destination=${activeDirectoryTrip.lat},${activeDirectoryTrip.lng}&travelmode=driving&dir_action=navigate`; window.open(url, '_blank', 'noopener,noreferrer'); }} className="w-full py-3.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all border-0 text-white shadow-sm" style={{ background: BRAND.blue }}><Navigation size={14} /><span>إعادة فتح خرائط جوجل 🗺️</span></button>
-              <button type="button" onClick={handleConfirmArrival} className="w-full py-3 rounded-xl font-black text-xs text-slate-400 bg-white/5 border border-white/10 cursor-pointer active:scale-95 transition-all">🏁 وصلت بالسلامة / العودة للرئيسية</button>
+<button 
+  type="button" 
+  onClick={handleConfirmArrival} 
+  className="w-full py-3.5 rounded-xl font-black text-sm text-white border-0 cursor-pointer active:scale-95 transition-all shadow-lg"
+  style={{ background: BRAND.greenDark, boxShadow: '0 4px 15px rgba(110, 166, 42, 0.4)' }}
+>
+  🏁 وصلت بالسلامة / العودة للرئيسية
+</button>
             </div>
           </motion.div>
         )}
