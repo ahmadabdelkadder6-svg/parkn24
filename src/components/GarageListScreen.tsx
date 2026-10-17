@@ -22,6 +22,7 @@ import {
   Minus,
   Menu,
   Wallet,
+  AlertTriangle
 } from 'lucide-react';
 import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
 import {
@@ -51,6 +52,20 @@ interface GarageWithDistance extends Garage {
   distance: number;
   minutes: number;
   classification: 'nearby' | 'far';
+}
+
+interface Radar {
+  id: string;
+  lat: number;
+  lng: number;
+  camera_type: string;
+  speed_limit: number;
+}
+
+interface RadarAlert {
+  radar: Radar;
+  distanceMeters: number;
+  isCritical: boolean;
 }
 
 interface GarageCardProps {
@@ -137,6 +152,58 @@ const CATEGORIES = [
   { id: 'malls', label: 'مولات/بلازا', icon: '🛍️' },
 ];
 
+// 🎵 محرك الصوت (Web Audio API) للرادارات بدون تحميل ملفات خارجية
+let audioCtx: AudioContext | null = null;
+const playRadarTone = (type: string, isCritical: boolean) => {
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    
+    const osc = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    
+    osc.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    if (isCritical) {
+      // إنذار حرج (<100م)
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(1400, audioCtx.currentTime);
+      gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.3);
+    } else {
+      switch(type) {
+        case 'speed': // رادار سرعة
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(1174, audioCtx.currentTime + 0.2);
+          break;
+        case 'seatbelt': // حزام وموبايل
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(659, audioCtx.currentTime);
+          break;
+        case 'traffic_light': // كسر إشارة
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(784, audioCtx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(523, audioCtx.currentTime + 0.3);
+          break;
+        default:
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+      }
+      
+      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.2);
+    }
+  } catch(e) { /* صامت لتفادي أخطاء المتصفح */ }
+};
+
 export default function GarageListScreen() {
   const {
     garages, setSelectedGarageId, setScreen, currentUser, sessions, incomingCars,
@@ -166,6 +233,11 @@ export default function GarageListScreen() {
   const [rescueIndex, setRescueIndex] = useState(0);
   const MAX_RESCUE_OPTIONS = 3;
 
+  // 🌟 نظام الرادار (Dual-Track)
+  const [activeRadarAlert, setActiveRadarAlert] = useState<RadarAlert | null>(null);
+  const radarsRef = useRef<Radar[]>([]);
+  const lastAudioPlayRef = useRef<number>(0);
+
   const autoNavigatedRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
   const lastLocationRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -177,6 +249,17 @@ export default function GarageListScreen() {
   const totalStopDurationRef = useRef<number>(0);
 
   useEffect(() => { isMountedRef.current = true; return () => { isMountedRef.current = false; }; }, []);
+
+  // 🌟 جلب الرادارات مباشرة عند الفتح (حل مشكلة Limit 100)
+  useEffect(() => {
+    const fetchRadars = async () => {
+      try {
+        const { data } = await supabase.from('speed_cameras').select('*').limit(2000);
+        if (data) radarsRef.current = data;
+      } catch (err) { console.error('Error fetching radars:', err); }
+    };
+    fetchRadars();
+  }, []);
 
   const normalizedUserPlate = useMemo(() => normalizePlate(currentUser?.carPlate), [currentUser?.carPlate]);
   const cleanUserPhone = useMemo(() => currentUser?.phone ? normalizePhone(currentUser.phone) : '', [currentUser?.phone]);
@@ -234,10 +317,12 @@ export default function GarageListScreen() {
 
   const pendingTopUpsCount = useMemo(() => myTopUps.filter((w) => w.status === 'pending').length, [myTopUps]);
 
+  // 🌟 نظام التتبع المزدوج (Dual-Track GPS)
   const getUserLocation = useCallback(() => {
     if (!('geolocation' in navigator)) { toast.error('خدمة تحديد الموقع غير مدعومة في متصفحك'); return; }
     if (watchIdRef.current !== null) { navigator.geolocation.clearWatch(watchIdRef.current); }
     setLocationLoading(true);
+    
     watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => {
         if (!isMountedRef.current) return;
@@ -247,17 +332,67 @@ export default function GarageListScreen() {
         const rawSpeed = position.coords.speed || 0;
         const rawHeading = position.coords.heading || 0;
         const speedKmh = rawSpeed * 3.6;
+        
         speedHistoryRef.current.push(speedKmh);
         if (speedHistoryRef.current.length > 10) speedHistoryRef.current.shift();
         if (rawHeading !== null) { bearingHistoryRef.current.push(rawHeading); if (bearingHistoryRef.current.length > 5) bearingHistoryRef.current.shift(); }
-        if (speedKmh < 1.0) { if (stopStartTimeRef.current === null) { stopStartTimeRef.current = Date.now(); } else { totalStopDurationRef.current = Math.round((Date.now() - stopStartTimeRef.current) / 1000); } } else { stopStartTimeRef.current = null; }
-        const isMoreAccurate = newAccuracy < bestAccuracyRef.current;
-        let shouldUpdate = false;
-        if (!lastLocationRef.current) { shouldUpdate = true; } else {
-          const movedDist = calculateDistance(lastLocationRef.current.lat, lastLocationRef.current.lng, newLat, newLng) * 1000;
-          if (movedDist >= 15 || (isMoreAccurate && (bestAccuracyRef.current - newAccuracy) > 5)) { shouldUpdate = true; }
+        
+        if (speedKmh < 1.0) { 
+            if (stopStartTimeRef.current === null) { stopStartTimeRef.current = Date.now(); } 
+            else { totalStopDurationRef.current = Math.round((Date.now() - stopStartTimeRef.current) / 1000); } 
+        } else { stopStartTimeRef.current = null; }
+
+        // ====== المسار الأول: حساب الرادار في الخلفية باستمرار ======
+        if (radarsRef.current.length > 0 && speedKmh > 10) { // يعمل فقط عند التحرك لتفادي الإزعاج
+            let minDistance = 500; // مسار التحذير 500 متر
+            let closestRadarData: Radar | null = null;
+            
+            for (const radar of radarsRef.current) {
+                const dist = calculateDistance(newLat, newLng, radar.lat, radar.lng) * 1000;
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    closestRadarData = radar;
+                }
+            }
+            
+            if (closestRadarData && minDistance <= 500) {
+                const isCritical = minDistance <= 100;
+                setActiveRadarAlert({ radar: closestRadarData, distanceMeters: Math.round(minDistance), isCritical });
+                
+                // تشغيل الصوت بناءً على المسافة ونوع الرادار (بدون إزعاج متكرر)
+                const now = Date.now();
+                const audioThrottle = isCritical ? 1000 : 3000; // كل ثانية لو حرج، أو كل 3 ثواني
+                if (now - lastAudioPlayRef.current > audioThrottle) {
+                    playRadarTone(closestRadarData.camera_type, isCritical);
+                    lastAudioPlayRef.current = now;
+                }
+            } else {
+                setActiveRadarAlert(null);
+            }
+        } else {
+            setActiveRadarAlert(null);
         }
-        if (shouldUpdate) { lastLocationRef.current = { lat: newLat, lng: newLng }; if (isMoreAccurate) { bestAccuracyRef.current = newAccuracy; } setUserLocation({ lat: newLat, lng: newLng }); }
+
+        // ====== المسار الثاني: تحديث الشاشة والجراجات (فقط كل 25 متر) ======
+        const isMoreAccurate = newAccuracy < bestAccuracyRef.current;
+        let shouldUpdateUI = false;
+        
+        if (!lastLocationRef.current) { 
+            shouldUpdateUI = true; 
+        } else {
+          const movedDist = calculateDistance(lastLocationRef.current.lat, lastLocationRef.current.lng, newLat, newLng) * 1000;
+          // تحديث الشاشة فقط إذا تحركنا 25 متر فعلياً لحماية الأداء والبطارية
+          if (movedDist >= 25 || (isMoreAccurate && (bestAccuracyRef.current - newAccuracy) > 10)) { 
+              shouldUpdateUI = true; 
+          }
+        }
+        
+        if (shouldUpdateUI) { 
+            lastLocationRef.current = { lat: newLat, lng: newLng }; 
+            if (isMoreAccurate) { bestAccuracyRef.current = newAccuracy; } 
+            setUserLocation({ lat: newLat, lng: newLng }); 
+        }
+        
         setLocationLoading(false);
       },
       () => { if (!isMountedRef.current) return; setLocationLoading(false); },
@@ -304,7 +439,7 @@ export default function GarageListScreen() {
     }).sort((a, b) => a.minutes - b.minutes);
   }, [garages, userLocation]);
 
-  // 🌟 نظام البحث الذكي المتتابع: بناء قائمة الساحات القريبة (VIP أولاً ثم الدليل العادي) في نطاق 5 دقائق
+  // 🌟 نظام البحث الذكي المتتابع: بناء قائمة الساحات القريبة (VIP أولاً ثم الدليل العادي) في نطاق 5 دقائق بحد أقصى 3
   const rescueGaragesList = useMemo(() => {
     if (locationLoading || !userLocation.lat) return [];
     const vipNearby = garagesWithDistance.filter((g) => g.garageType === 'vip' && g.availableSpots > 0 && g.minutes <= 5 && g.isActive !== false);
@@ -315,13 +450,13 @@ export default function GarageListScreen() {
   // الساحة الحالية المعروضة في البانر
   const currentRescueGarage = rescueGaragesList[rescueIndex] || null;
 
-  // إعادة تصفير الـ index لما الموقع يتغير أو القائمة تتغير
+  // إعادة تصفير الـ index لما الموقع يتغير بشكل كبير أو القائمة تتغير
   useEffect(() => { setRescueIndex(0); }, [rescueGaragesList.length]);
 
-  // دالة البحث عن ساحة أخرى
+  // دالة البحث عن ساحة أخرى بشكل دائري سلس
   const handleNextRescue = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    if (rescueGaragesList.length === 0) return;
+    if (rescueGaragesList.length <= 1) return;
     const nextIndex = (rescueIndex + 1) % rescueGaragesList.length;
     setRescueIndex(nextIndex);
     if (nextIndex === 0) { toast('🔄 تم عرض كل الخيارات القريبة، نبدأ من الأول!', { icon: '🔁', duration: 2000 }); }
@@ -427,7 +562,29 @@ export default function GarageListScreen() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: BRAND.bg, color: BRAND.blueDark }}>
-      <div className="px-4 pt-10 pb-3 z-20 shadow-sm" style={{ background: BRAND.card, borderBottom: `1.5px solid ${BRAND.border}` }}>
+      
+      {/* 🌟 بانر الرادار العائم (Radar Alert Overlay) */}
+      <AnimatePresence>
+        {activeRadarAlert && (
+          <motion.div
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className={`absolute top-2 left-2 right-2 z-[2000] p-3 rounded-2xl shadow-2xl flex items-center gap-3 border-2 ${activeRadarAlert.isCritical ? 'bg-red-600 border-white' : 'bg-yellow-500 border-white'}`}
+            style={{ direction: 'rtl' }}
+          >
+            <AlertTriangle size={28} className="text-white shrink-0 animate-pulse" />
+            <div className="flex-1">
+              <h3 className="text-white font-black text-sm leading-tight">⚠️ انتبه! رادار أمامك</h3>
+              <p className="text-white/90 text-[11px] font-bold mt-0.5">
+                {activeRadarAlert.radar.camera_type === 'speed' ? `رادار سرعة (${activeRadarAlert.radar.speed_limit} كم/س)` : 'رادار إشارة/حزام'} - على بُعد &lt; {activeRadarAlert.distanceMeters}م
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="px-4 pt-10 pb-3 z-20 shadow-sm relative" style={{ background: BRAND.card, borderBottom: `1.5px solid ${BRAND.border}` }}>
         <div dir="rtl" className="flex justify-between items-center mb-3.5">
           <div className="text-right flex flex-col gap-1.5">
             <span className="font-black text-xl block leading-none" style={{ color: BRAND.blue }}>بركن <span style={{ color: BRAND.green }}>24</span></span>
@@ -473,15 +630,15 @@ export default function GarageListScreen() {
               exit={{ opacity: 0, y: 10, scale: 0.95 }}
               transition={{ duration: 0.3 }}
               className="mb-2.5 rounded-2xl cursor-pointer active:scale-98 transition-all border-2 text-right relative overflow-hidden"
-style={{
-  background: currentRescueGarage.garageType === 'vip' 
-    ? 'linear-gradient(135deg, #1656b8 0%, #0f3d85 100%)'
-    : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-  borderColor: currentRescueGarage.garageType === 'vip' ? '#1656b8' : '#334155',
-  boxShadow: currentRescueGarage.garageType === 'vip' 
-    ? '0 4px 15px rgba(22,86,184,0.3)' 
-    : '0 4px 15px rgba(15,23,42,0.4)',
-}}
+              style={{
+                background: currentRescueGarage.garageType === 'vip' 
+                  ? 'linear-gradient(135deg, #1656b8 0%, #0f3d85 100%)'
+                  : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', // خلفية داكنة للدليل
+                borderColor: currentRescueGarage.garageType === 'vip' ? '#1656b8' : '#334155',
+                boxShadow: currentRescueGarage.garageType === 'vip' 
+                  ? '0 4px 15px rgba(22,86,184,0.3)' 
+                  : '0 4px 15px rgba(15,23,42,0.4)',
+              }}
               dir="rtl"
             >
               <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-2xl pointer-events-none" />
@@ -505,21 +662,21 @@ style={{
                 </div>
               </div>
 
-{rescueGaragesList.length > 1 && (
-  <button 
-    type="button" 
-    onClick={handleNextRescue} 
-    className="w-full py-3 text-[12px] font-black text-white bg-black/30 border-0 cursor-pointer active:bg-black/40 active:scale-[0.98] transition-all flex items-center justify-center gap-2 tracking-wide"
-    style={{ 
-      borderTop: '2px solid rgba(255,255,255,0.25)',
-      textShadow: '0 1px 3px rgba(0,0,0,0.4)',
-      letterSpacing: '0.02em'
-    }}
-  >
-    <Search size={14} strokeWidth={3} />
-    <span>{rescueIndex < rescueGaragesList.length - 1 ? '🔍  مش مناسب؟ ابحث عن ساحة أخرى' : '🔄 عرض الكل من الأول'}</span>
-  </button>
-)}
+              {rescueGaragesList.length > 1 && (
+                <button 
+                  type="button" 
+                  onClick={handleNextRescue} 
+                  className="w-full py-3 text-[12px] font-black text-white bg-black/30 border-0 cursor-pointer active:bg-black/40 active:scale-[0.98] transition-all flex items-center justify-center gap-2 tracking-wide"
+                  style={{ 
+                    borderTop: '2px solid rgba(255,255,255,0.25)',
+                    textShadow: '0 1px 3px rgba(0,0,0,0.4)',
+                    letterSpacing: '0.02em'
+                  }}
+                >
+                  <Search size={14} strokeWidth={3} />
+                  <span>{rescueIndex < rescueGaragesList.length - 1 ? '🔍 مش مناسب؟ ابحث عن ساحة أخرى' : '🔄 عرض الكل من الأول'}</span>
+                </button>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -567,6 +724,7 @@ style={{
                   </button>
                   {isExpanded && (
                     <div style={{ background: BRAND.bg, padding: '10px', borderTop: `1px solid ${BRAND.border}` }} className="space-y-2">
+                      {/* 🌟 نظام الـ Pagination لمعالجة DOM Lag */}
                       {(() => { const limit = visibleLimits[group.name] || 8; const displayedGarages = group.garages.slice(0, limit); const hasMore = group.garages.length > limit;
                         return (<>
                           {displayedGarages.map((garage, i) => (<GarageCard key={garage.id} garage={garage} index={i} onSelect={() => handleGarageClick(garage)} onReportPrice={handleOpenPriceReport} isNearby={garage.classification === 'nearby'} isClosest={i === 0 && garage.classification === 'nearby'} hasActiveSession={Boolean(activeSession)} hasIncomingCar={Boolean(myIncomingCar)} disabled={isBooking} />))}
