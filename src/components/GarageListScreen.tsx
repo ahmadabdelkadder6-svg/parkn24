@@ -106,7 +106,6 @@ const playRadarTone = (type: string, isCritical: boolean) => {
     gainNode.connect(audioCtx.destination);
     
     if (isCritical) {
-      // 🔴 إنذار خطر: صوت حاد ومتقطع
       osc.type = 'sawtooth';
       osc.frequency.setValueAtTime(1400, audioCtx.currentTime);
       gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
@@ -114,7 +113,6 @@ const playRadarTone = (type: string, isCritical: boolean) => {
       osc.start();
       osc.stop(audioCtx.currentTime + 0.3);
     } else {
-      // 🟡 إنذار مبكر: نغمة هادئة
       osc.type = 'sine';
       osc.frequency.setValueAtTime(880, audioCtx.currentTime);
       osc.frequency.exponentialRampToValueAtTime(1174, audioCtx.currentTime + 0.2);
@@ -151,11 +149,9 @@ export default function GarageListScreen() {
   const [isAbuseDetected, setIsAbuseDetected] = useState(false);
   const [expandedArea, setExpandedArea] = useState<string | null>(null);
 
-  // 🌟 نظام البحث الذكي المتتابع للركنة السريعة
   const [rescueIndex, setRescueIndex] = useState(0);
   const MAX_RESCUE_OPTIONS = 3;
 
-  // 🌟 نظام الرادار (Dual-Track)
   const [activeRadarAlert, setActiveRadarAlert] = useState<RadarAlert | null>(null);
   const radarsRef = useRef<Radar[]>([]);
   const lastAudioPlayRef = useRef<number>(0);
@@ -172,7 +168,6 @@ export default function GarageListScreen() {
 
   useEffect(() => { isMountedRef.current = true; return () => { isMountedRef.current = false; }; }, []);
 
-  // 🚀 التحديث الذكي 1: فلترة الأعمدة وتقليل الاستهلاك
   useEffect(() => {
     const fetchRadars = async () => {
       try {
@@ -242,7 +237,6 @@ export default function GarageListScreen() {
 
   const pendingTopUpsCount = useMemo(() => myTopUps.filter((w) => w.status === 'pending').length, [myTopUps]);
 
-  // 🌟 نظام التتبع المزدوج (Dual-Track GPS)
   const getUserLocation = useCallback(() => {
     if (!('geolocation' in navigator)) { toast.error('خدمة تحديد الموقع غير مدعومة في متصفحك'); return; }
     if (watchIdRef.current !== null) { navigator.geolocation.clearWatch(watchIdRef.current); }
@@ -267,7 +261,6 @@ export default function GarageListScreen() {
             else { totalStopDurationRef.current = Math.round((Date.now() - stopStartTimeRef.current) / 1000); } 
         } else { stopStartTimeRef.current = null; }
 
-        // ====== المسار الأول: حساب الرادار في الخلفية باستمرار ======
         if ((window as any).isTestingRadar) {
             // تجاهل حسابات الـ GPS الحقيقية أثناء المحاكاة
         } else if (radarsRef.current.length > 0 && speedKmh > 10) { 
@@ -275,7 +268,6 @@ export default function GarageListScreen() {
             let closestRadarData: Radar | null = null;
             
             for (const radar of radarsRef.current) {
-                // 🚀 التحديث الذكي 2: الفلترة المكانية الخارقة (Fast Bounding Box)
                 const latDiff = Math.abs(radar.lat - newLat);
                 const lngDiff = Math.abs(radar.lng - newLng);
                 if (latDiff > 0.09 || lngDiff > 0.1) continue; 
@@ -304,7 +296,6 @@ export default function GarageListScreen() {
             setActiveRadarAlert(null);
         }
 
-        // ====== المسار الثاني: تحديث الشاشة والجراجات (فقط كل 25 متر) ======
         const isMoreAccurate = newAccuracy < bestAccuracyRef.current;
         let shouldUpdateUI = false;
         
@@ -330,15 +321,12 @@ export default function GarageListScreen() {
     );
   }, []);
 
-  // 🚀 التحديث الذكي 3: وضع المحاكاة لزر تحديد الموقع (للـ Testing السريع)
   const handleForceRefreshLocation = useCallback(() => {
-    // تفعيل الـ AudioContext فورا عشان نتخطى حظر المتصفحات
     try { if (!audioCtx) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch (e) {}
 
-    if ((window as any).isTestingRadar) return; // منع التكرار
+    if ((window as any).isTestingRadar) return;
     (window as any).isTestingRadar = true;
 
-    // 1. إنذار من بعيد (أصفر) 🟡
     setActiveRadarAlert({
       radar: { id: 'test', lat: 30.0444, lng: 31.2357, camera_type: 'speed', speed_limit: 90 },
       distanceMeters: 300,
@@ -347,7 +335,6 @@ export default function GarageListScreen() {
     playRadarTone('speed', false);
     toast('🟡 رادار تجريبي من بعيد...', { icon: '📡', id: 'radar-test' });
 
-    // 2. بعد 4 ثواني يتحول لإنذار خطر (أحمر) 🔴
     setTimeout(() => {
       setActiveRadarAlert({
         radar: { id: 'test', lat: 30.0444, lng: 31.2357, camera_type: 'speed', speed_limit: 90 },
@@ -358,13 +345,11 @@ export default function GarageListScreen() {
       toast('🔴 رادار قريب جداً!', { icon: '⚠️', id: 'radar-test' });
     }, 4000);
 
-    // 3. بعد 8 ثواني يختفي ويرجع لطبيعته ✔️
     setTimeout(() => {
       setActiveRadarAlert(null);
       (window as any).isTestingRadar = false;
       toast.success('عديت الرادار بسلام 🏁', { id: 'radar-test' });
       
-      // تحديث الموقع الفعلي
       lastLocationRef.current = null;
       bestAccuracyRef.current = Infinity;
       getUserLocation();
@@ -405,7 +390,6 @@ export default function GarageListScreen() {
     }).sort((a, b) => a.minutes - b.minutes);
   }, [garages, userLocation]);
 
-  // 🌟 نظام البحث الذكي المتتابع: بناء قائمة الساحات القريبة
   const rescueGaragesList = useMemo(() => {
     if (locationLoading || !userLocation.lat) return [];
     const vipNearby = garagesWithDistance.filter((g) => g.garageType === 'vip' && g.availableSpots > 0 && g.minutes <= 5 && g.isActive !== false);
@@ -470,10 +454,11 @@ export default function GarageListScreen() {
       } else {
         url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}&travelmode=driving&dir_action=navigate`;
       }
-window.open(url, '_blank', 'noopener,noreferrer');
-setActiveDirectoryTrip(garage); 
-// تم إزالة setSearch('') و setExpandedArea(null) للحفاظ على حالة البحث للمستخدم
-toast.success(`رحلة سعيدة! جاري توجيهك إلى ${garage.name} 🧭`, { icon: '🚙' });
+      window.open(url, '_blank', 'noopener,noreferrer');
+      setActiveDirectoryTrip(garage); 
+      // ✅ تم إزالة setSearch('') و setExpandedArea(null) للحفاظ على حالة البحث للمستخدم
+      toast.success(`رحلة سعيدة! جاري توجيهك إلى ${garage.name} 🧭`, { icon: '🚙' });
+      return;
     }
     if (!currentUser) { toast.error('سجل بياناتك أولاً'); return; }
     if (activeSession) { setSelectedGarageId(activeSession.garageId); setScreen('session'); return; }
@@ -491,8 +476,14 @@ toast.success(`رحلة سعيدة! جاري توجيهك إلى ${garage.name} 
 
   const handleConfirmArrival = useCallback(async () => {
     if (!activeDirectoryTrip) return;
-    const tripToCalibrate = activeDirectoryTrip; setActiveDirectoryTrip(null);
+    const tripToCalibrate = activeDirectoryTrip; 
+    
+    // ✅ إغلاق شاشة الرحلة مع ضمان البقاء في تبويب الدليل المجاني
+    setActiveDirectoryTrip(null);
+    setActiveTab('directory'); 
+    
     toast.success('حمد الله على سلامتك! نورت بركن من جديد 🌟', { duration: 3000 });
+    
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(async (position) => {
         try {
@@ -526,7 +517,7 @@ toast.success(`رحلة سعيدة! جاري توجيهك إلى ${garage.name} 
   return (
     <div className="h-full flex flex-col overflow-hidden relative" style={{ background: BRAND.bg, color: BRAND.blueDark }}>
       
-      {/* 🚨 نافذة الرادار الثابتة (Fixed) فوق كل العناصر بـ z-index: 9999 */}
+      {/* 🚨 نافذة الرادار الثابتة (Fixed) */}
       <AnimatePresence>
         {activeRadarAlert && (
           <motion.div
@@ -601,7 +592,7 @@ toast.success(`رحلة سعيدة! جاري توجيهك إلى ${garage.name} 
           </div>
         )}
 
-        {/* 🌟 بانر "الركنة السريعة المنقذة" الذكي المتتابع (Smart Rescue Carousel) */}
+        {/* 🌟 بانر "الركنة السريعة المنقذة" */}
         <AnimatePresence mode="wait">
           {currentRescueGarage && !activeSession && !myIncomingCar && (
             <motion.div
@@ -675,33 +666,31 @@ toast.success(`رحلة سعيدة! جاري توجيهك إلى ${garage.name} 
         )}
 
         <div className="flex gap-2 mb-2.5">
-<div className="relative flex-1">
-  <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
-  <input 
-    className="w-full outline-none text-xs font-bold bg-slate-100 border border-slate-300 text-slate-800 rounded-xl transition-all focus:border-blue-500 focus:bg-white focus:shadow-sm" 
-    style={{ padding: '9px 32px 9px 32px' }} 
-    placeholder="ابحث باسم الجراج أو المنطقة..." 
-    value={search} 
-    onChange={(e) => setSearch(e.target.value)} 
-  />
-  {/* زرار مسح البحث الشيك هيظهر بس لو فيه كلام مكتوب */}
-  <AnimatePresence>
-    {search && (
-      <motion.button 
-        initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }}
-        type="button" 
-        onClick={() => { setSearch(''); setExpandedArea(null); }} 
-        className="absolute left-2.5 top-1/2 -translate-y-1/2 bg-slate-300 text-slate-600 rounded-full w-5 h-5 flex items-center justify-center cursor-pointer border-0 active:scale-90 hover:bg-slate-400 hover:text-white transition-all"
-      >
-        <X size={12} strokeWidth={3} />
-      </motion.button>
-    )}
-  </AnimatePresence>
-</div>
+          {/* ✅ حقل البحث المعزز بزر إزالة النص */}
+          <div className="relative flex-1">
+            <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input 
+              className="w-full outline-none text-xs font-bold bg-slate-100 border border-slate-300 text-slate-800 rounded-xl transition-all focus:border-blue-500 focus:bg-white focus:shadow-sm" 
+              style={{ padding: '9px 32px 9px 32px' }} 
+              placeholder="ابحث باسم الجراج أو المنطقة..." 
+              value={search} 
+              onChange={(e) => setSearch(e.target.value)} 
+            />
+            <AnimatePresence>
+              {search && (
+                <motion.button 
+                  initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }}
+                  type="button" 
+                  onClick={() => { setSearch(''); setExpandedArea(null); }} 
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 bg-slate-300 text-slate-600 rounded-full w-5 h-5 flex items-center justify-center cursor-pointer border-0 active:scale-90 hover:bg-slate-400 hover:text-white transition-all"
+                >
+                  <X size={12} strokeWidth={3} />
+                </motion.button>
+              )}
+            </AnimatePresence>
+          </div>
           
-          {/* زر التحديد ومحاكاة الرادار */}
           <button type="button" onClick={handleForceRefreshLocation} disabled={locationLoading} className="flex items-center justify-center border-0 cursor-pointer shrink-0" style={{ background: BRAND.blue, color: '#fff', borderRadius: 12, width: 36, height: 36 }}><Locate size={15} className={locationLoading ? 'animate-spin' : ''} /></button>
-          
           <button type="button" onClick={() => setShowNearbyOnly(!showNearbyOnly)} className="text-[10px] font-black px-2.5 rounded-xl cursor-pointer shrink-0" style={{ background: showNearbyOnly ? BRAND.blue : BRAND.card, color: showNearbyOnly ? '#fff' : BRAND.slate, border: `1.5px solid ${BRAND.border}` }}>{showNearbyOnly ? 'الكل' : 'القريب'}</button>
         </div>
 
@@ -758,29 +747,30 @@ toast.success(`رحلة سعيدة! جاري توجيهك إلى ${garage.name} 
                 <button type="button" onClick={() => { setShowSmartMenu(false); setShowTopUp(true); }} className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]" style={{ borderColor: BRAND.border }}><ChevronDown size={16} className="rotate-90 text-slate-400" /><div className="flex items-center gap-2.5"><div className="text-right"><span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>شحن رصيد المحفظة</span><span className="text-[9px] font-bold text-slate-500">اشحن بـ إنستاباي أو فودافون كاش</span></div><div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center"><Wallet size={16} style={{ color: BRAND.blue }} /></div></div></button>
                 {hasCompletedSession && (<button type="button" onClick={() => { setShowSmartMenu(false); setScreen('lastSession'); }} className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]" style={{ borderColor: BRAND.border }}><ChevronDown size={16} className="rotate-90 text-slate-400" /><div className="flex items-center gap-2.5"><div className="text-right"><span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>إيصال آخر ركنة</span><span className="text-[9px] font-bold text-slate-500">عرض تفاصيل وحساب آخر جلسة</span></div><div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center"><Receipt size={16} style={{ color: BRAND.greenDark }} /></div></div></button>)}
                 <button type="button" onClick={() => { setShowSmartMenu(false); setScreen('chat'); }} className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]" style={{ borderColor: BRAND.border }}><ChevronDown size={16} className="rotate-90 text-slate-400" /><div className="flex items-center gap-2.5"><div className="text-right"><span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>الدعم والشكاوى</span><span className="text-[9px] font-bold text-slate-500">تواصل معنا في أي وقت 24 ساعة</span></div><div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center"><MessageCircle size={16} className="text-amber-600" /></div></div></button>
-{myTopUps.length > 0 && (
-  <div className="pt-3 mt-3 border-t-[1.5px]" style={{ borderColor: BRAND.border }}>
-    <div className="flex justify-between items-center mb-2">
-      <span className="text-[9px] font-bold text-slate-400">آخر 3 عمليات</span>
-      <span className="text-[11px] font-black" style={{ color: BRAND.slate }}>📜 سجل الشحن</span>
-    </div>
-    <div className="space-y-2">
-      {myTopUps.map((topUp) => (
-        <div key={topUp.id} className="flex justify-between items-center text-right p-2.5 rounded-xl bg-slate-50 border-[1.5px]" style={{ borderColor: BRAND.border }}>
-          <div>
-            <span className="font-black text-[13px] text-slate-800 block mb-0.5">{topUp.amount} ج.م</span>
-            <span className="font-bold text-[10px] text-slate-500 block" dir="ltr">
-              {new Date(topUp.timestamp).toLocaleString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-            </span>
-          </div>
-          <span className="font-black text-[10px] px-2 py-1.5 rounded-lg bg-white border border-slate-200 shadow-sm">
-            {topUp.status === 'pending' ? '⏳ قيد المراجعة' : topUp.status === 'approved' ? '✅ تم الشحن' : '❌ مرفوض'}
-          </span>
-        </div>
-      ))}
-    </div>
-  </div>
-)}
+                {/* ✅ تم تحديث سجل المحفظة لعرض التاريخ والوقت */}
+                {myTopUps.length > 0 && (
+                  <div className="pt-3 mt-3 border-t-[1.5px]" style={{ borderColor: BRAND.border }}>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-[9px] font-bold text-slate-400">آخر 3 عمليات</span>
+                      <span className="text-[11px] font-black" style={{ color: BRAND.slate }}>📜 سجل الشحن</span>
+                    </div>
+                    <div className="space-y-2">
+                      {myTopUps.map((topUp) => (
+                        <div key={topUp.id} className="flex justify-between items-center text-right p-2.5 rounded-xl bg-slate-50 border-[1.5px]" style={{ borderColor: BRAND.border }}>
+                          <div>
+                            <span className="font-black text-[13px] text-slate-800 block mb-0.5">{topUp.amount} ج.م</span>
+                            <span className="font-bold text-[10px] text-slate-500 block" dir="ltr">
+                              {new Date(topUp.timestamp).toLocaleString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <span className="font-black text-[10px] px-2 py-1.5 rounded-lg bg-white border border-slate-200 shadow-sm">
+                            {topUp.status === 'pending' ? '⏳ قيد المراجعة' : topUp.status === 'approved' ? '✅ تم الشحن' : '❌ مرفوض'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>
@@ -848,14 +838,15 @@ toast.success(`رحلة سعيدة! جاري توجيهك إلى ${garage.name} 
             </div>
             <div className="max-w-xs mx-auto w-full space-y-3 pb-8">
               <button type="button" onClick={() => { const url = `https://www.google.com/maps/dir/?api=1&destination=${activeDirectoryTrip.lat},${activeDirectoryTrip.lng}&travelmode=driving&dir_action=navigate`; window.open(url, '_blank', 'noopener,noreferrer'); }} className="w-full py-3.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all border-0 text-white shadow-sm" style={{ background: BRAND.blue }}><Navigation size={14} /><span>إعادة فتح خرائط جوجل 🗺️</span></button>
-<button 
-  type="button" 
-  onClick={handleConfirmArrival} 
-  className="w-full py-3.5 rounded-xl font-black text-sm text-white border-0 cursor-pointer active:scale-95 transition-all shadow-lg"
-  style={{ background: BRAND.greenDark, boxShadow: '0 4px 15px rgba(110, 166, 42, 0.4)' }}
->
-  🏁 وصلت بالسلامة / العودة للرئيسية
-</button>
+              {/* ✅ تم تحديث زر العودة ليكون أخضر وواضح للعين */}
+              <button 
+                type="button" 
+                onClick={handleConfirmArrival} 
+                className="w-full py-3.5 rounded-xl font-black text-sm text-white border-0 cursor-pointer active:scale-95 transition-all shadow-lg"
+                style={{ background: BRAND.greenDark, boxShadow: '0 4px 15px rgba(110, 166, 42, 0.4)' }}
+              >
+                🏁 وصلت بالسلامة / العودة للرئيسية
+              </button>
             </div>
           </motion.div>
         )}
