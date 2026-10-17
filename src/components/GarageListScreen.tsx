@@ -90,7 +90,7 @@ const CATEGORIES = [
   { id: 'malls', label: 'مولات/بلازا', icon: '🛍️' },
 ];
 
-// 🎵 محرك الصوت (Web Audio API) - نغمة تبية رادار كلاسيكية
+// 🎵 محرك الصوت (Web Audio API) - صوت رادار اختراق جبار لضوضاء الطريق والزحمة
 let audioCtx: AudioContext | null = null;
 
 const playRadarTone = (type: string, isCritical: boolean) => {
@@ -103,14 +103,14 @@ const playRadarTone = (type: string, isCritical: boolean) => {
     const ctx = audioCtx;
     const now = ctx.currentTime;
 
-    // نمط التبية:
-    // - تحذير بعيد (أصفر): تبية-تبية بطيئة
-    // - خطر قريب (أحمر): تبية سريعة ومتكررة
-    const beepCount = isCritical ? 6 : 4;
-    const beepDuration = isCritical ? 0.09 : 0.12;   // طول التبية الواحدة
-    const gap = isCritical ? 0.07 : 0.16;            // المسافة بين التبات
-    const baseFreq = isCritical ? 1350 : 980;        // تردد أعلى = إحساس أخطر
-    const volume = isCritical ? 0.32 : 0.22;
+    // إعدادات التبية لتخترق ضوضاء المحرك والشارع
+    const beepCount = isCritical ? 7 : 5;
+    const beepDuration = isCritical ? 0.08 : 0.12;   // طول التبية
+    const gap = isCritical ? 0.05 : 0.12;            // المسافة بين التبات
+    const baseFreq = isCritical ? 1800 : 1200;       // تردد عالي (1200Hz - 1800Hz) يخترق ضوضاء السيارة
+    
+    // رفع مستوى الصوت لأقصى طاقة للسماعة (0.85 - 0.95)
+    const maxVolume = isCritical ? 0.95 : 0.85;
 
     for (let i = 0; i < beepCount; i++) {
       const startAt = now + i * (beepDuration + gap);
@@ -118,17 +118,21 @@ const playRadarTone = (type: string, isCritical: boolean) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
 
-      // square = صوت تبية حاد وواضح زي أجهزة الرادار
+      // موجة square حادة جداً لزيادة إحساس العلو
       osc.type = 'square';
-      osc.frequency.setValueAtTime(baseFreq, startAt);
+      
+      // التبديل بين نغمتين متناوبتين (Alternating Dual Pitch) للفت الانتباه فوراً
+      const freqMultiplier = (i % 2 === 0) ? 1.0 : 1.25;
+      osc.frequency.setValueAtTime(baseFreq * freqMultiplier, startAt);
 
-      // تبية في الأول والآخر أقوى شوية (Accent)
+      // التبية الأولى والأخيرة بأقصى طاقة صوتية (95%)
       const isEdge = i === 0 || i === beepCount - 1;
-      const beepVol = isEdge ? volume * 1.25 : volume;
+      const beepVol = isEdge ? maxVolume : maxVolume * 0.85;
 
-      gain.gain.setValueAtTime(0.0001, startAt);
-      gain.gain.exponentialRampToValueAtTime(beepVol, startAt + 0.012);
-      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + beepDuration);
+      // هجوم صوتي خاطف ومباشر (Punchy Attack)
+      gain.gain.setValueAtTime(0.001, startAt);
+      gain.gain.linearRampToValueAtTime(beepVol, startAt + 0.005);
+      gain.gain.exponentialRampToValueAtTime(0.001, startAt + beepDuration);
 
       osc.connect(gain);
       gain.connect(ctx.destination);
@@ -137,28 +141,29 @@ const playRadarTone = (type: string, isCritical: boolean) => {
       osc.stop(startAt + beepDuration + 0.02);
     }
 
-    // في الحالة الحرجة: صافرة قصيرة إضافية في الآخر للتأكيد
+    // في حالة الرادار الأحمر القريب جداً: صفارة إنذار حادة ومرتفعة في النهاية
     if (isCritical) {
-      const endAt = now + beepCount * (beepDuration + gap) + 0.05;
+      const endAt = now + beepCount * (beepDuration + gap) + 0.02;
       const osc2 = ctx.createOscillator();
       const gain2 = ctx.createGain();
 
       osc2.type = 'sawtooth';
-      osc2.frequency.setValueAtTime(1500, endAt);
-      osc2.frequency.exponentialRampToValueAtTime(900, endAt + 0.22);
+      osc2.frequency.setValueAtTime(2200, endAt);
+      osc2.frequency.exponentialRampToValueAtTime(1000, endAt + 0.28);
 
-      gain2.gain.setValueAtTime(0.0001, endAt);
-      gain2.gain.exponentialRampToValueAtTime(0.28, endAt + 0.02);
-      gain2.gain.exponentialRampToValueAtTime(0.0001, endAt + 0.22);
+      gain2.gain.setValueAtTime(0.001, endAt);
+      gain2.gain.linearRampToValueAtTime(0.95, endAt + 0.01);
+      gain2.gain.exponentialRampToValueAtTime(0.001, endAt + 0.28);
 
       osc2.connect(gain2);
       gain2.connect(ctx.destination);
       osc2.start(endAt);
-      osc2.stop(endAt + 0.25);
+      osc2.stop(endAt + 0.30);
     }
   } catch (e) {
     console.warn('Audio Context Blocked:', e);
   }
+};
 
 };export default function GarageListScreen() {
   const {
