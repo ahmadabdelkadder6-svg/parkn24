@@ -163,7 +163,6 @@ const playRadarTone = (type: string, isCritical: boolean) => {
   } catch (e) {
     console.warn('Audio Context Blocked:', e);
   }
-};
 
 };export default function GarageListScreen() {
   const {
