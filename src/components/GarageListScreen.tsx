@@ -133,7 +133,6 @@ export default function GarageListScreen() {
   const [search, setSearch] = useState('');
   const [showNearbyOnly, setShowNearbyOnly] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showSmartMenu, setShowSmartMenu] = useState(false);
@@ -245,6 +244,13 @@ export default function GarageListScreen() {
     watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => {
         if (!isMountedRef.current) return;
+
+        // 🔴 تخطي حسابات التحديث الفعلي لتجنب إلغاء المحاكاة
+        if ((window as any).isTestingRadar) {
+            setLocationLoading(false);
+            return;
+        }
+
         const newLat = position.coords.latitude;
         const newLng = position.coords.longitude;
         const newAccuracy = position.coords.accuracy || 10;
@@ -261,9 +267,7 @@ export default function GarageListScreen() {
             else { totalStopDurationRef.current = Math.round((Date.now() - stopStartTimeRef.current) / 1000); } 
         } else { stopStartTimeRef.current = null; }
 
-        if ((window as any).isTestingRadar) {
-            // تجاهل حسابات الـ GPS الحقيقية أثناء المحاكاة
-        } else if (radarsRef.current.length > 0 && speedKmh > 10) { 
+        if (radarsRef.current.length > 0 && speedKmh > 10) { 
             let minDistance = 500; 
             let closestRadarData: Radar | null = null;
             
@@ -336,6 +340,7 @@ export default function GarageListScreen() {
     toast('🟡 رادار تجريبي من بعيد...', { icon: '📡', id: 'radar-test' });
 
     setTimeout(() => {
+      if (!(window as any).isTestingRadar) return;
       setActiveRadarAlert({
         radar: { id: 'test', lat: 30.0444, lng: 31.2357, camera_type: 'speed', speed_limit: 90 },
         distanceMeters: 60,
@@ -517,14 +522,14 @@ export default function GarageListScreen() {
   return (
     <div className="h-full flex flex-col overflow-hidden relative" style={{ background: BRAND.bg, color: BRAND.blueDark }}>
       
-      {/* 🚨 نافذة الرادار الثابتة (Fixed) */}
+      {/* 🚨 نافذة الرادار الثابتة (Fixed) مع z-index عالي جداً */}
       <AnimatePresence>
         {activeRadarAlert && (
           <motion.div
             initial={{ opacity: 0, y: -100 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -100 }}
-            className={`fixed top-6 left-4 right-4 z-[9999] p-4 rounded-2xl shadow-2xl flex items-center justify-between border-2 transition-colors duration-300 pointer-events-none ${
+            className={`fixed top-6 left-4 right-4 z-[99999] p-4 rounded-2xl shadow-2xl flex items-center justify-between border-2 transition-colors duration-300 pointer-events-none ${
               activeRadarAlert.isCritical 
                 ? 'bg-red-600/95 border-white backdrop-blur-md shadow-red-900/50' 
                 : 'bg-amber-500/95 border-slate-900 text-slate-950 backdrop-blur-md shadow-amber-900/30'
@@ -665,11 +670,12 @@ export default function GarageListScreen() {
           </button>
         )}
 
-        {/* ✅ حقل البحث المعزز بزر إزالة النص المضبوط عمودياً */}
+        {/* ✅ حقل البحث المعزز بزر إزالة النص المضبوط عمودياً وزر الرادار */}
         <div className="flex gap-2 mb-2.5">
           <div className="relative flex-1">
             <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
             <input 
+              type="text"
               className="w-full outline-none text-xs font-bold bg-slate-100 border border-slate-300 text-slate-800 rounded-xl transition-all focus:border-blue-500 focus:bg-white focus:shadow-sm" 
               style={{ padding: '9px 32px 9px 32px' }} 
               placeholder="ابحث باسم الجراج أو المنطقة..." 
@@ -693,9 +699,17 @@ export default function GarageListScreen() {
               ) : null}
             </AnimatePresence>
           </div>
-        </div>
  
-          <button type="button" onClick={handleForceRefreshLocation} disabled={locationLoading} className="flex items-center justify-center border-0 cursor-pointer shrink-0" style={{ background: BRAND.blue, color: '#fff', borderRadius: 12, width: 36, height: 36 }}><Locate size={15} className={locationLoading ? 'animate-spin' : ''} /></button>
+          <button 
+            type="button" 
+            onClick={handleForceRefreshLocation} 
+            disabled={locationLoading} 
+            className="flex items-center justify-center border-0 cursor-pointer shrink-0" 
+            style={{ background: BRAND.blue, color: '#fff', borderRadius: 12, width: 36, height: 36 }}
+            title="تحديث الموقع ورادار السرعة"
+          >
+            <Locate size={15} className={locationLoading ? 'animate-spin' : ''} />
+          </button>
           <button type="button" onClick={() => setShowNearbyOnly(!showNearbyOnly)} className="text-[10px] font-black px-2.5 rounded-xl cursor-pointer shrink-0" style={{ background: showNearbyOnly ? BRAND.blue : BRAND.card, color: showNearbyOnly ? '#fff' : BRAND.slate, border: `1.5px solid ${BRAND.border}` }}>{showNearbyOnly ? 'الكل' : 'القريب'}</button>
         </div>
 
@@ -752,7 +766,8 @@ export default function GarageListScreen() {
                 <button type="button" onClick={() => { setShowSmartMenu(false); setShowTopUp(true); }} className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]" style={{ borderColor: BRAND.border }}><ChevronDown size={16} className="rotate-90 text-slate-400" /><div className="flex items-center gap-2.5"><div className="text-right"><span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>شحن رصيد المحفظة</span><span className="text-[9px] font-bold text-slate-500">اشحن بـ إنستاباي أو فودافون كاش</span></div><div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center"><Wallet size={16} style={{ color: BRAND.blue }} /></div></div></button>
                 {hasCompletedSession && (<button type="button" onClick={() => { setShowSmartMenu(false); setScreen('lastSession'); }} className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]" style={{ borderColor: BRAND.border }}><ChevronDown size={16} className="rotate-90 text-slate-400" /><div className="flex items-center gap-2.5"><div className="text-right"><span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>إيصال آخر ركنة</span><span className="text-[9px] font-bold text-slate-500">عرض تفاصيل وحساب آخر جلسة</span></div><div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center"><Receipt size={16} style={{ color: BRAND.greenDark }} /></div></div></button>)}
                 <button type="button" onClick={() => { setShowSmartMenu(false); setScreen('chat'); }} className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]" style={{ borderColor: BRAND.border }}><ChevronDown size={16} className="rotate-90 text-slate-400" /><div className="flex items-center gap-2.5"><div className="text-right"><span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>الدعم والشكاوى</span><span className="text-[9px] font-bold text-slate-500">تواصل معنا في أي وقت 24 ساعة</span></div><div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center"><MessageCircle size={16} className="text-amber-600" /></div></div></button>
-                {/* ✅ تم تحديث سجل المحفظة لعرض التاريخ والوقت */}
+                
+                {/* ✅ تم تحديث سجل المحفظة لعرض التاريخ والوقت هنا */}
                 {myTopUps.length > 0 && (
                   <div className="pt-3 mt-3 border-t-[1.5px]" style={{ borderColor: BRAND.border }}>
                     <div className="flex justify-between items-center mb-2">
@@ -843,7 +858,8 @@ export default function GarageListScreen() {
             </div>
             <div className="max-w-xs mx-auto w-full space-y-3 pb-8">
               <button type="button" onClick={() => { const url = `https://www.google.com/maps/dir/?api=1&destination=${activeDirectoryTrip.lat},${activeDirectoryTrip.lng}&travelmode=driving&dir_action=navigate`; window.open(url, '_blank', 'noopener,noreferrer'); }} className="w-full py-3.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all border-0 text-white shadow-sm" style={{ background: BRAND.blue }}><Navigation size={14} /><span>إعادة فتح خرائط جوجل 🗺️</span></button>
-              {/* ✅ تم تحديث زر العودة ليكون أخضر وواضح للعين */}
+              
+              {/* ✅ زر العودة الأخضر الواضح */}
               <button 
                 type="button" 
                 onClick={handleConfirmArrival} 
