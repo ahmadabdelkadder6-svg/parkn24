@@ -250,11 +250,15 @@ export default function GarageListScreen() {
 
   useEffect(() => { isMountedRef.current = true; return () => { isMountedRef.current = false; }; }, []);
 
-  // 🌟 جلب الرادارات مباشرة عند الفتح (حل مشكلة Limit 100)
+  // 🚀 التحديث الذكي 1: فلترة الأعمدة وتقليل الاستهلاك
   useEffect(() => {
     const fetchRadars = async () => {
       try {
-        const { data } = await supabase.from('speed_cameras').select('*').limit(2000);
+        // نطلب الأعمدة اللي محتاجينها بس لتخفيف الضغط على السيرفر
+        const { data } = await supabase
+          .from('speed_cameras')
+          .select('id, lat, lng, camera_type, speed_limit') 
+          .limit(2000);
         if (data) radarsRef.current = data;
       } catch (err) { console.error('Error fetching radars:', err); }
     };
@@ -343,11 +347,20 @@ export default function GarageListScreen() {
         } else { stopStartTimeRef.current = null; }
 
         // ====== المسار الأول: حساب الرادار في الخلفية باستمرار ======
-        if (radarsRef.current.length > 0 && speedKmh > 10) { // يعمل فقط عند التحرك لتفادي الإزعاج
-            let minDistance = 500; // مسار التحذير 500 متر
+        if ((window as any).isTestingRadar) {
+            // تجاهل حسابات الـ GPS الحقيقية أثناء المحاكاة
+        } else if (radarsRef.current.length > 0 && speedKmh > 10) { 
+            let minDistance = 500; 
             let closestRadarData: Radar | null = null;
             
             for (const radar of radarsRef.current) {
+                // 🚀 التحديث الذكي 2: الفلترة المكانية الخارقة (Fast Bounding Box)
+                // نتجاهل أي رادار أبعد من ~10 كيلو عشان نحمي بطارية الموبايل من العمليات الحسابية
+                const latDiff = Math.abs(radar.lat - newLat);
+                const lngDiff = Math.abs(radar.lng - newLng);
+                if (latDiff > 0.09 || lngDiff > 0.1) continue; 
+                
+                // عملية الحساب المعقدة تشتغل بس للرادارات القريبة
                 const dist = calculateDistance(newLat, newLng, radar.lat, radar.lng) * 1000;
                 if (dist < minDistance) {
                     minDistance = dist;
@@ -359,9 +372,8 @@ export default function GarageListScreen() {
                 const isCritical = minDistance <= 100;
                 setActiveRadarAlert({ radar: closestRadarData, distanceMeters: Math.round(minDistance), isCritical });
                 
-                // تشغيل الصوت بناءً على المسافة ونوع الرادار (بدون إزعاج متكرر)
                 const now = Date.now();
-                const audioThrottle = isCritical ? 1000 : 3000; // كل ثانية لو حرج، أو كل 3 ثواني
+                const audioThrottle = isCritical ? 1000 : 3000; 
                 if (now - lastAudioPlayRef.current > audioThrottle) {
                     playRadarTone(closestRadarData.camera_type, isCritical);
                     lastAudioPlayRef.current = now;
@@ -381,7 +393,6 @@ export default function GarageListScreen() {
             shouldUpdateUI = true; 
         } else {
           const movedDist = calculateDistance(lastLocationRef.current.lat, lastLocationRef.current.lng, newLat, newLng) * 1000;
-          // تحديث الشاشة فقط إذا تحركنا 25 متر فعلياً لحماية الأداء والبطارية
           if (movedDist >= 25 || (isMoreAccurate && (bestAccuracyRef.current - newAccuracy) > 10)) { 
               shouldUpdateUI = true; 
           }
@@ -400,9 +411,42 @@ export default function GarageListScreen() {
     );
   }, []);
 
+  // 🚀 التحديث الذكي 3: وضع المحاكاة لزر تحديد الموقع (للـ Testing السريع)
   const handleForceRefreshLocation = useCallback(() => {
-    lastLocationRef.current = null; bestAccuracyRef.current = Infinity; getUserLocation();
-    toast.success('جاري تصفير المستشعرات وتحديث موقعك بدقة عالية من القمر الصناعي... 🛰️', { id: 'gps-refresh' });
+    if ((window as any).isTestingRadar) return; // منع التكرار
+    (window as any).isTestingRadar = true;
+
+    // 1. إنذار من بعيد (أصفر) 🟡
+    setActiveRadarAlert({
+      radar: { id: 'test', lat: 0, lng: 0, camera_type: 'speed', speed_limit: 90 },
+      distanceMeters: 300,
+      isCritical: false
+    });
+    playRadarTone('speed', false);
+    toast('🟡 رادار تجريبي من بعيد...', { icon: '📡', id: 'radar-test' });
+
+    // 2. بعد 4 ثواني يتحول لإنذار خطر (أحمر) 🔴
+    setTimeout(() => {
+      setActiveRadarAlert({
+        radar: { id: 'test', lat: 0, lng: 0, camera_type: 'speed', speed_limit: 90 },
+        distanceMeters: 60,
+        isCritical: true
+      });
+      playRadarTone('speed', true);
+      toast('🔴 رادار قريب جداً!', { icon: '⚠️', id: 'radar-test' });
+    }, 4000);
+
+    // 3. بعد 8 ثواني يختفي ويرجع لطبيعته ✔️
+    setTimeout(() => {
+      setActiveRadarAlert(null);
+      (window as any).isTestingRadar = false;
+      toast.success('عديت الرادار بسلام 🏁', { id: 'radar-test' });
+      
+      // تحديث الموقع الفعلي
+      lastLocationRef.current = null;
+      bestAccuracyRef.current = Infinity;
+      getUserLocation();
+    }, 8000);
   }, [getUserLocation]);
 
   useEffect(() => { getUserLocation(); return () => { if (watchIdRef.current !== null) { navigator.geolocation.clearWatch(watchIdRef.current); } }; }, [getUserLocation]);
@@ -695,7 +739,10 @@ export default function GarageListScreen() {
 
         <div className="flex gap-2 mb-2.5">
           <div className="relative flex-1"><Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: BRAND.slate }} /><input className="w-full outline-none text-xs font-bold" style={{ background: BRAND.bg, border: `1px solid ${BRAND.border}`, padding: '9px 32px 9px 12px', borderRadius: 12, color: BRAND.blueDark }} placeholder="ابحث باسم الجراج أو المنطقة..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+          
+          {/* زر التحديد أصبح يستخدم في وضع المحاكاة أيضاً */}
           <button type="button" onClick={handleForceRefreshLocation} disabled={locationLoading} className="flex items-center justify-center border-0 cursor-pointer shrink-0" style={{ background: BRAND.blue, color: '#fff', borderRadius: 12, width: 36, height: 36 }}><Locate size={15} className={locationLoading ? 'animate-spin' : ''} /></button>
+          
           <button type="button" onClick={() => setShowNearbyOnly(!showNearbyOnly)} className="text-[10px] font-black px-2.5 rounded-xl cursor-pointer shrink-0" style={{ background: showNearbyOnly ? BRAND.blue : BRAND.card, color: showNearbyOnly ? '#fff' : BRAND.slate, border: `1.5px solid ${BRAND.border}` }}>{showNearbyOnly ? 'الكل' : 'القريب'}</button>
         </div>
 
