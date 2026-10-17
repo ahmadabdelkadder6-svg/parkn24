@@ -90,6 +90,19 @@ const CATEGORIES = [
   { id: 'malls', label: 'مولات/بلازا', icon: '🛍️' },
 ];
 
+// 📡 تفعيل خاصية الميديا لخداع نظام التشغيل وإبقاء الصوت شغال في الخلفية
+if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: "بركن 24 - رادار السرعة نشط 📡",
+      artist: "Park'n 24 Radar System",
+      album: "دليلك الذكي للركن ورادارات السرعة"
+    });
+  } catch (e) {
+    console.warn("MediaSession initialized", e);
+  }
+}
+
 // 🎵 محرك الصوت (Web Audio API) - مضخم الصوت الأقصى (Super Loud Multi-Layered Alarm)
 let audioCtx: AudioContext | null = null;
 
@@ -136,7 +149,7 @@ const playRadarTone = (type: string, isCritical: boolean) => {
       osc2.type = 'sawtooth';
       osc2.frequency.setValueAtTime(freqB, startAt);
 
-      // رفع الـ Gain لـ 2.5 مع وجود الـ Compressor
+      // رفع الـ Gain لـ 2.8 مع وجود الـ Compressor
       const masterGain = isCritical ? 2.8 : 2.0;
 
       gain1.gain.setValueAtTime(0.001, startAt);
@@ -184,7 +197,9 @@ const playRadarTone = (type: string, isCritical: boolean) => {
   } catch (e) {
     console.warn('Audio Context Blocked:', e);
   }
-};export default function GarageListScreen() {
+};
+
+export default function GarageListScreen() {
   const {
     garages, setSelectedGarageId, setScreen, currentUser, sessions, incomingCars,
     offers, addIncomingCar, fetchAll, acknowledgedSessionIds, walletTopUps, reportPriceUpdate,
@@ -305,7 +320,7 @@ const playRadarTone = (type: string, isCritical: boolean) => {
       (position) => {
         if (!isMountedRef.current) return;
 
-        // 🔴 تخطي حسابات التحديث الفعلي لتجنب إلغاء المحاكاة
+        // 🔴 تخطي حسابات التحديث الفعلي لتجنب إلغاء المحاكاة أثناء التجربة
         if ((window as any).isTestingRadar) {
             setLocationLoading(false);
             return;
@@ -521,7 +536,6 @@ const playRadarTone = (type: string, isCritical: boolean) => {
       }
       window.open(url, '_blank', 'noopener,noreferrer');
       setActiveDirectoryTrip(garage); 
-      // ✅ تم إزالة setSearch('') و setExpandedArea(null) للحفاظ على حالة البحث للمستخدم
       toast.success(`رحلة سعيدة! جاري توجيهك إلى ${garage.name} 🧭`, { icon: '🚙' });
       return;
     }
