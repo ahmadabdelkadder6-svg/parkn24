@@ -90,7 +90,7 @@ const CATEGORIES = [
   { id: 'malls', label: 'مولات/بلازا', icon: '🛍️' },
 ];
 
-// 🎵 محرك الصوت (Web Audio API) - صوت رادار اختراق جبار لضوضاء الطريق والزحمة
+// 🎵 محرك الصوت (Web Audio API) - مضخم الصوت الأقصى (Super Loud Multi-Layered Alarm)
 let audioCtx: AudioContext | null = null;
 
 const playRadarTone = (type: string, isCritical: boolean) => {
@@ -103,67 +103,87 @@ const playRadarTone = (type: string, isCritical: boolean) => {
     const ctx = audioCtx;
     const now = ctx.currentTime;
 
-    // إعدادات التبية لتخترق ضوضاء المحرك والشارع
-    const beepCount = isCritical ? 7 : 5;
-    const beepDuration = isCritical ? 0.08 : 0.12;   // طول التبية
-    const gap = isCritical ? 0.05 : 0.12;            // المسافة بين التبات
-    const baseFreq = isCritical ? 1800 : 1200;       // تردد عالي (1200Hz - 1800Hz) يخترق ضوضاء السيارة
+    // 1️⃣ إنشاء وحدة ضغط ديناميكية (Dynamics Compressor) لتضخيم الصوت لأقصى حد بدون تشويه
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.setValueAtTime(-5, now);
+    compressor.knee.setValueAtTime(0, now);
+    compressor.ratio.setValueAtTime(20, now); // ضغط حاد جداً لرفع الـ RMS Loudness
+    compressor.attack.setValueAtTime(0.001, now);
+    compressor.release.setValueAtTime(0.05, now);
+    compressor.connect(ctx.destination);
+
+    // 2️⃣ إعدادات النغمة المزدوجة الترددية (Piezo Resonance)
+    const beepCount = isCritical ? 8 : 5;
+    const beepDuration = isCritical ? 0.07 : 0.11;
+    const gap = isCritical ? 0.04 : 0.10;
     
-    // رفع مستوى الصوت لأقصى طاقة للسماعة (0.85 - 0.95)
-    const maxVolume = isCritical ? 0.95 : 0.85;
+    // التردد الأقوى لسماعة الموبايل (2200Hz - 2800Hz)
+    const freqA = isCritical ? 2600 : 2000;
+    const freqB = isCritical ? 2615 : 2008; // فرق 8-15Hz بيعمل تضخيم وحيود في الصوت بيخترق أي دوشة
 
     for (let i = 0; i < beepCount; i++) {
       const startAt = now + i * (beepDuration + gap);
 
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
+      // المولد الأول (Square Wave)
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'square';
+      osc1.frequency.setValueAtTime(freqA, startAt);
 
-      // موجة square حادة جداً لزيادة إحساس العلو
-      osc.type = 'square';
-      
-      // التبديل بين نغمتين متناوبتين (Alternating Dual Pitch) للفت الانتباه فوراً
-      const freqMultiplier = (i % 2 === 0) ? 1.0 : 1.25;
-      osc.frequency.setValueAtTime(baseFreq * freqMultiplier, startAt);
-
-      // التبية الأولى والأخيرة بأقصى طاقة صوتية (95%)
-      const isEdge = i === 0 || i === beepCount - 1;
-      const beepVol = isEdge ? maxVolume : maxVolume * 0.85;
-
-      // هجوم صوتي خاطف ومباشر (Punchy Attack)
-      gain.gain.setValueAtTime(0.001, startAt);
-      gain.gain.linearRampToValueAtTime(beepVol, startAt + 0.005);
-      gain.gain.exponentialRampToValueAtTime(0.001, startAt + beepDuration);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc.start(startAt);
-      osc.stop(startAt + beepDuration + 0.02);
-    }
-
-    // في حالة الرادار الأحمر القريب جداً: صفارة إنذار حادة ومرتفعة في النهاية
-    if (isCritical) {
-      const endAt = now + beepCount * (beepDuration + gap) + 0.02;
+      // المولد الثاني (Sawtooth Wave) للتراكب والتضخيم
       const osc2 = ctx.createOscillator();
       const gain2 = ctx.createGain();
-
       osc2.type = 'sawtooth';
-      osc2.frequency.setValueAtTime(2200, endAt);
-      osc2.frequency.exponentialRampToValueAtTime(1000, endAt + 0.28);
+      osc2.frequency.setValueAtTime(freqB, startAt);
 
-      gain2.gain.setValueAtTime(0.001, endAt);
-      gain2.gain.linearRampToValueAtTime(0.95, endAt + 0.01);
-      gain2.gain.exponentialRampToValueAtTime(0.001, endAt + 0.28);
+      // رفع الـ Gain لـ 2.5 مع وجود الـ Compressor
+      const masterGain = isCritical ? 2.8 : 2.0;
+
+      gain1.gain.setValueAtTime(0.001, startAt);
+      gain1.gain.linearRampToValueAtTime(masterGain, startAt + 0.003);
+      gain1.gain.exponentialRampToValueAtTime(0.001, startAt + beepDuration);
+
+      gain2.gain.setValueAtTime(0.001, startAt);
+      gain2.gain.linearRampToValueAtTime(masterGain * 0.8, startAt + 0.003);
+      gain2.gain.exponentialRampToValueAtTime(0.001, startAt + beepDuration);
+
+      // توصيل المولدات بضاغط الصوت الرئيسي
+      osc1.connect(gain1);
+      gain1.connect(compressor);
 
       osc2.connect(gain2);
-      gain2.connect(ctx.destination);
-      osc2.start(endAt);
-      osc2.stop(endAt + 0.30);
+      gain2.connect(compressor);
+
+      osc1.start(startAt);
+      osc1.stop(startAt + beepDuration + 0.01);
+
+      osc2.start(startAt);
+      osc2.stop(startAt + beepDuration + 0.01);
+    }
+
+    // 3️⃣ صفارة إنذار إضافية حادة جداً في نهاية الإنذار الأحمر
+    if (isCritical) {
+      const endAt = now + beepCount * (beepDuration + gap) + 0.01;
+      const sirenOsc = ctx.createOscillator();
+      const sirenGain = ctx.createGain();
+
+      sirenOsc.type = 'sawtooth';
+      sirenOsc.frequency.setValueAtTime(3200, endAt); // 3200Hz صفارة اخترق عالية
+      sirenOsc.frequency.exponentialRampToValueAtTime(1400, endAt + 0.25);
+
+      sirenGain.gain.setValueAtTime(0.001, endAt);
+      sirenGain.gain.linearRampToValueAtTime(3.0, endAt + 0.005);
+      sirenGain.gain.exponentialRampToValueAtTime(0.001, endAt + 0.25);
+
+      sirenOsc.connect(sirenGain);
+      sirenGain.connect(compressor);
+
+      sirenOsc.start(endAt);
+      sirenOsc.stop(endAt + 0.27);
     }
   } catch (e) {
     console.warn('Audio Context Blocked:', e);
   }
-
 };export default function GarageListScreen() {
   const {
     garages, setSelectedGarageId, setScreen, currentUser, sessions, incomingCars,
