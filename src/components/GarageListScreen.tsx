@@ -90,41 +90,77 @@ const CATEGORIES = [
   { id: 'malls', label: 'مولات/بلازا', icon: '🛍️' },
 ];
 
-// 🎵 محرك الصوت (Web Audio API) للرادارات - محسّن لتجاوز حظر المتصفحات
+// 🎵 محرك الصوت (Web Audio API) - نغمة تبية رادار كلاسيكية
 let audioCtx: AudioContext | null = null;
+
 const playRadarTone = (type: string, isCritical: boolean) => {
   try {
     if (!audioCtx) {
       audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
     if (audioCtx.state === 'suspended') audioCtx.resume();
-    
-    const osc = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
-    
-    osc.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-    
-    if (isCritical) {
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(1400, audioCtx.currentTime);
-      gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.3);
-    } else {
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(1174, audioCtx.currentTime + 0.2);
-      gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.2);
-    }
-  } catch(e) { console.warn('Audio Context Blocked:', e); }
-};
 
-export default function GarageListScreen() {
+    const ctx = audioCtx;
+    const now = ctx.currentTime;
+
+    // نمط التبية:
+    // - تحذير بعيد (أصفر): تبية-تبية بطيئة
+    // - خطر قريب (أحمر): تبية سريعة ومتكررة
+    const beepCount = isCritical ? 6 : 4;
+    const beepDuration = isCritical ? 0.09 : 0.12;   // طول التبية الواحدة
+    const gap = isCritical ? 0.07 : 0.16;            // المسافة بين التبات
+    const baseFreq = isCritical ? 1350 : 980;        // تردد أعلى = إحساس أخطر
+    const volume = isCritical ? 0.32 : 0.22;
+
+    for (let i = 0; i < beepCount; i++) {
+      const startAt = now + i * (beepDuration + gap);
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      // square = صوت تبية حاد وواضح زي أجهزة الرادار
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(baseFreq, startAt);
+
+      // تبية في الأول والآخر أقوى شوية (Accent)
+      const isEdge = i === 0 || i === beepCount - 1;
+      const beepVol = isEdge ? volume * 1.25 : volume;
+
+      gain.gain.setValueAtTime(0.0001, startAt);
+      gain.gain.exponentialRampToValueAtTime(beepVol, startAt + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + beepDuration);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startAt);
+      osc.stop(startAt + beepDuration + 0.02);
+    }
+
+    // في الحالة الحرجة: صافرة قصيرة إضافية في الآخر للتأكيد
+    if (isCritical) {
+      const endAt = now + beepCount * (beepDuration + gap) + 0.05;
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+
+      osc2.type = 'sawtooth';
+      osc2.frequency.setValueAtTime(1500, endAt);
+      osc2.frequency.exponentialRampToValueAtTime(900, endAt + 0.22);
+
+      gain2.gain.setValueAtTime(0.0001, endAt);
+      gain2.gain.exponentialRampToValueAtTime(0.28, endAt + 0.02);
+      gain2.gain.exponentialRampToValueAtTime(0.0001, endAt + 0.22);
+
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(endAt);
+      osc2.stop(endAt + 0.25);
+    }
+  } catch (e) {
+    console.warn('Audio Context Blocked:', e);
+  }
+
+};export default function GarageListScreen() {
   const {
     garages, setSelectedGarageId, setScreen, currentUser, sessions, incomingCars,
     offers, addIncomingCar, fetchAll, acknowledgedSessionIds, walletTopUps, reportPriceUpdate,
