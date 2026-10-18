@@ -645,7 +645,7 @@ interface ActiveSessionCardProps {
   onEndSession: (id: string, carPlate: string, cost: number, hours: number, minutes: number, source: 'app' | 'manual', agreedPrice?: number) => void;
   onUndo: (un: UndoableSession) => void;
   getUndoRemainingSeconds: (addedAt: number) => number;
-  globalTick: number; // 🟢 العداد المركزي الموحد
+  globalTick: number; 
 }
 
 const ActiveSessionCard = memo(function ActiveSessionCard({
@@ -657,8 +657,6 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
   getUndoRemainingSeconds,
   globalTick,
 }: ActiveSessionCardProps) {
-  // 🧹 تم حذف setInterval الداخلي بالكامل - الآن نعتمد على العداد المركزي الموحد
-  // استخدام globalTick يضمن إعادة الرندرة التلقائية كل ثانية بدون مؤقتات متعددة
   
   const st = toMs(s.startTime);
   const el = st > 0 ? Math.max(0, Math.floor((getServerNow() - st) / 1000)) : 0;
@@ -695,7 +693,7 @@ const isFreeNow = isFreeApplied && el <= 1800;
           
           {isFreeApplied && (
             <span className="font-black flex items-center gap-0.5 shrink-0 text-[8px] px-2 py-0.5 rounded" style={{ background: BRAND.greenLight, color: BRAND.greenDark, border: `1px solid ${BRAND.green}40` }}>
-              <Gift size={10} /> {isFreeNow ? 'هدية ترحيبية نشطة 🎁' : 'انتهت الهدية الترحيبية'}
+              <Gift size={10} /> {isFreeNow ? 'هدية ترحيبية نشطة 🎁' : 'انتهت الهدية'}
             </span>
           )}
         </div>
@@ -728,6 +726,72 @@ const isFreeNow = isFreeApplied && el <= 1800;
           )}
         </div>
       </div>
+    </div>
+  );
+});
+
+// 🚀 المكون الجديد (ActiveSessionsList): لعزل المؤقت (globalTick) ومنع الـ Re-render للمكون الأب كاملاً
+const ActiveSessionsList = memo(function ActiveSessionsList({
+  sessions,
+  garageBasePrice,
+  undoableSessions,
+  onEndSession,
+  onUndo,
+  getUndoRemainingSeconds,
+  plateSearch
+}: {
+  sessions: any[];
+  garageBasePrice: number;
+  undoableSessions: UndoableSession[];
+  onEndSession: any;
+  onUndo: any;
+  getUndoRemainingSeconds: any;
+  plateSearch: string;
+}) {
+  const [globalTick, setGlobalTick] = useState(0);
+
+  useEffect(() => {
+    if (sessions.length === 0 && undoableSessions.length === 0) return; 
+    const interval = setInterval(() => {
+      setGlobalTick(t => t + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [sessions.length, undoableSessions.length]);
+
+  const filtered = useMemo(() => {
+    if (!plateSearch.trim()) return sessions;
+    const query = normalizeSearchPlate(plateSearch);
+    return sessions.filter(s => {
+      const plate = normalizeSearchPlate(s.carPlate);
+      return plate.includes(query);
+    });
+  }, [sessions, plateSearch]);
+
+  if (filtered.length === 0) {
+    return (
+      <div className="text-center py-6 border-2 border-dashed rounded-xl text-xs font-bold border-slate-200 text-slate-400">
+        {plateSearch ? `🔍 لا توجد نتائج للبحث "${plateSearch}"` : 'لا توجد جلسات نشطة'}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {filtered.map(s => {
+        const un = undoableSessions.find(u => u.sessionId === s.id || u.localId === s.id);
+        return (
+          <ActiveSessionCard
+            key={s.id}
+            session={s}
+            basePrice={garageBasePrice}
+            undoableSession={un}
+            onEndSession={onEndSession}
+            onUndo={onUndo}
+            getUndoRemainingSeconds={getUndoRemainingSeconds}
+            globalTick={globalTick}
+          />
+        );
+      })}
     </div>
   );
 });
@@ -893,15 +957,6 @@ export default function GarageDashboard() {
     window.location.reload();
   }, []);
 
-  // ⏱️ العداد المركزي الموحد - ثانية واحدة لكل الصفحة بدلاً من 50 مؤقت فرعي
-  const [globalTick, setGlobalTick] = useState(0);
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setGlobalTick(t => t + 1);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
   const activeSessions = useMemo(() => {
     return garageSessions.filter(s => {
       if (s.status !== 'active') return false;
@@ -1026,15 +1081,6 @@ export default function GarageDashboard() {
       assignSessionToValet(s.id, currentValet);
     });
   }, [sessions, isRealValet, currentGarageId, currentValetNameLocal, currentValetName, valetNumber, assignSessionToValet]);
-
-  const filteredValetActiveSessions = useMemo(() => {
-    if (!plateSearch.trim()) return valetActiveSessions;
-    const query = normalizeSearchPlate(plateSearch);
-    return valetActiveSessions.filter(s => {
-      const plate = normalizeSearchPlate(s.carPlate);
-      return plate.includes(query);
-    });
-  }, [valetActiveSessions, plateSearch]);
 
   const fetchGarageDailyStats = useCallback(async () => {
     // جلب الإحصائيات في الخلفية صامتًا لمنع عرقلة الواجهة
@@ -1244,21 +1290,24 @@ export default function GarageDashboard() {
 
   const getUndoRemainingSeconds = useCallback((addedAt: number) => Math.max(0, UNDO_TIMEOUT_SECONDS - Math.floor((getServerNow() - addedAt) / 1000)), []);
 
-  // تنظيف جلسات التراجع المنتهية الصلاحية (يستفيد من العداد المركزي globalTick)
+  // 🚀 تحسين المؤقت الخاص بالـ Undo لتوفير المعالجة (يعمل فقط عند الحاجة)
   useEffect(() => {
     if (undoableSessions.length === 0) return;
-    setUndoableSessions(p =>
-      p.filter(u => Math.floor((getServerNow() - u.addedAt) / 1000) < UNDO_TIMEOUT_SECONDS)
-        .map(u => {
-          const e = sessions.find(s => s.id === u.sessionId);
-          if (!e) { 
-            const n = sessions.find(s => s.carPlate === u.carPlate && s.source === 'manual' && s.status === 'active' && Math.abs(toMs(s.startTime) - u.addedAt) < 5000); 
-            if (n) return { ...u, sessionId: n.id }; 
-          }
-          return u;
-        }),
-    );
-  }, [globalTick, sessions, undoableSessions.length]);
+    const interval = setInterval(() => {
+      setUndoableSessions(p =>
+        p.filter(u => Math.floor((getServerNow() - u.addedAt) / 1000) < UNDO_TIMEOUT_SECONDS)
+          .map(u => {
+            const e = sessions.find(s => s.id === u.sessionId);
+            if (!e) { 
+              const n = sessions.find(s => s.carPlate === u.carPlate && s.source === 'manual' && s.status === 'active' && Math.abs(toMs(s.startTime) - u.addedAt) < 5000); 
+              if (n) return { ...u, sessionId: n.id }; 
+            }
+            return u;
+          })
+      );
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [sessions, undoableSessions.length]);
 
   if (isValetBlocked && garage) {
     return (
@@ -1871,29 +1920,16 @@ export default function GarageDashboard() {
               </div>
             )}
 
-            <div className="space-y-2">
-              {filteredValetActiveSessions.length === 0 ? (
-                <div className="text-center py-6 border-2 border-dashed rounded-xl text-xs font-bold border-slate-200 text-slate-400">
-                  {plateSearch ? `🔍 لا توجد نتائج للبحث "${plateSearch}"` : 'لا توجد جلسات نشطة'}
-                </div>
-              ) : (
-                filteredValetActiveSessions.map(s => {
-                  const un = undoableSessions.find(u => u.sessionId === s.id || u.localId === s.id);
-                  return (
-                    <ActiveSessionCard
-                      key={s.id}
-                      session={s}
-                      basePrice={garage.basePrice}
-                      undoableSession={un}
-                      onEndSession={openConfirmPayment}
-                      onUndo={handleUndoSession}
-                      getUndoRemainingSeconds={getUndoRemainingSeconds}
-                      globalTick={globalTick}
-                    />
-                  );
-                })
-              )}
-            </div>
+            {/* 🚀 إدراج المكون الجديد المعزول هنا لحماية باقي الصفحة من الـ Re-render */}
+            <ActiveSessionsList
+              sessions={valetActiveSessions}
+              garageBasePrice={garage.basePrice}
+              undoableSessions={undoableSessions}
+              onEndSession={openConfirmPayment}
+              onUndo={handleUndoSession}
+              getUndoRemainingSeconds={getUndoRemainingSeconds}
+              plateSearch={plateSearch}
+            />
           </div>
         </>
       )}

@@ -1,6 +1,6 @@
 // src/components/AdminDashboard.tsx
 
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, Clock, CheckCircle, XCircle, MapPin, Warehouse, Plus,
@@ -96,6 +96,357 @@ interface SettlementRecord {
   created_at: string;
 }
 
+/* ═══════════════════════════════════════════════════════════ */
+/* 🌟 نافذة تعديل الجراج (مستقلة تماماً عن القائمة الرئيسية)  */
+/* ═══════════════════════════════════════════════════════════ */
+interface GarageEditModalProps {
+  garage: any;
+  onClose: () => void;
+  onSave: (data: any) => void;
+}
+
+const GarageEditModal = memo(function GarageEditModal({ garage, onClose, onSave }: GarageEditModalProps) {
+  const [editCommissionRate, setEditCommissionRate] = useState(garage.commissionRate ?? 10);
+  const [editArea, setEditArea] = useState(garage.area || 'وسط البلد والزمالك');
+  const [editGarageType, setEditGarageType] = useState<'vip' | 'directory'>(garage.garageType || 'vip');
+  const [editPriceType, setEditPriceType] = useState<'hourly' | 'daily' | 'monthly'>(garage.priceType || 'hourly');
+  const [editBasePrice, setEditBasePrice] = useState(garage.basePrice || 15);
+  const [editDailyPrice, setEditDailyPrice] = useState(garage.dailyPrice || 20);
+  const [editMonthlyPrice, setEditMonthlyPrice] = useState(garage.monthlyPrice || 1500);
+
+  const handleSave = () => {
+    const isDir = editGarageType === 'directory';
+    const finalBasePrice = isDir && editPriceType === 'daily' ? editDailyPrice : isDir && editPriceType === 'monthly' ? editMonthlyPrice : editBasePrice;
+
+    onSave({
+      commissionRate: isDir ? 0 : editCommissionRate,
+      area: editArea,
+      garageType: editGarageType,
+      priceType: editPriceType,
+      basePrice: finalBasePrice,
+      dailyPrice: editDailyPrice,
+      monthlyPrice: editMonthlyPrice,
+      lastPriceUpdate: new Date().toISOString(),
+      priceUpdatedBy: 'admin',
+    });
+  };
+
+  return (
+    <div 
+      className="fixed inset-0 z-[2000] flex items-center justify-center p-4" 
+      style={{ background: 'rgba(10,22,40,0.75)', backdropFilter: 'blur(6px)' }}
+      onClick={onClose}
+    >
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.9, opacity: 0, y: 20 }}
+        transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+        className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-3xl p-5 shadow-2xl"
+        style={{ background: BRAND.card }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center mb-4 pb-3 border-b" style={{ borderColor: BRAND.border }}>
+          <button onClick={onClose} className="text-slate-400 font-black text-sm border-0 bg-transparent cursor-pointer">✕</button>
+          <h3 className="font-black text-sm text-right" style={{ color: BRAND.blueDark }}>
+            ✍️ تعديل بيانات: <span style={{ color: BRAND.navy }}>{garage.name}</span>
+          </h3>
+        </div>
+
+        <div className="space-y-3">
+          {/* نوع الجراج */}
+          <div className="text-right">
+            <label className="font-black block text-right mb-1.5 text-[10px]" style={{ color: BRAND.slate }}>نوع الجراج:</label>
+            <select
+              value={editGarageType}
+              onChange={(e) => setEditGarageType(e.target.value as any)}
+              className="w-full font-bold outline-none text-right rounded-lg px-3 py-2.5 text-xs border border-slate-200"
+            >
+              <option value="vip">🤝 شريك VIP معتمد</option>
+              <option value="directory">🧭 دليل ركنة مجاني</option>
+            </select>
+          </div>
+
+          {/* المنطقة */}
+          <div className="text-right">
+            <label className="font-black block text-right mb-1.5 text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية:</label>
+            <select
+              value={editArea}
+              onChange={(e) => setEditArea(e.target.value)}
+              className="w-full font-bold outline-none text-right rounded-lg px-3 py-2.5 text-xs border border-slate-200"
+            >
+              {OFFICIAL_AREAS.map((area) => (
+                <option key={area.value} value={area.value}>
+                  {area.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* نسبة العمولة لجراجات VIP */}
+          {editGarageType === 'vip' && (
+            <div className="text-right p-3 rounded-xl border bg-amber-50 border-amber-200">
+              <label className="font-black block text-right mb-2 text-[10px]" style={{ color: '#92400e' }}>📊 نسبة عمولة المنصة (%):</label>
+              <div className="flex items-center gap-2 justify-center bg-white p-2 rounded-lg border border-amber-200">
+                <button
+                  type="button"
+                  onClick={() => setEditCommissionRate((r: number) => Math.max(0, r - 1))}
+                  className="border-0 cursor-pointer flex items-center justify-center rounded bg-red-100 text-red-600 font-black"
+                  style={{ width: 32, height: 32 }}
+                >
+                  <Minus size={14} />
+                </button>
+                <input
+                  type="number"
+                  value={editCommissionRate}
+                  onChange={e => setEditCommissionRate(Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)))}
+                  className="bg-transparent text-center outline-none font-mono font-black text-lg border-0"
+                  style={{ width: 60, color: '#d97706' }}
+                />
+                <span className="font-black text-sm" style={{ color: '#d97706' }}>%</span>
+                <button
+                  type="button"
+                  onClick={() => setEditCommissionRate((r: number) => Math.min(100, r + 1))}
+                  className="border-0 cursor-pointer flex items-center justify-center rounded bg-emerald-100 text-emerald-600 font-black"
+                  style={{ width: 32, height: 32 }}
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* هيكل التسعير للدليل */}
+          {editGarageType === 'directory' && (
+            <div className="p-3 border rounded-xl space-y-3" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
+              <div className="text-right">
+                <label className="font-black block text-right mb-1.5 text-[10px]" style={{ color: BRAND.slate }}>💰 هيكل التسعير:</label>
+                <select
+                  value={editPriceType}
+                  onChange={(e) => setEditPriceType(e.target.value as any)}
+                  className="w-full font-bold outline-none text-right rounded-lg px-3 py-2 text-xs border border-slate-200"
+                >
+                  <option value="hourly">⏱️ بالساعة</option>
+                  <option value="daily">☀️ يومي ثابت</option>
+                  <option value="monthly">📅 اشتراك شهري</option>
+                </select>
+              </div>
+
+              <div className="text-right">
+                <label className="font-black block text-right mb-1.5 text-[10px]" style={{ color: BRAND.slate }}>
+                  قيمة السعر الفعلي (ج.م):
+                </label>
+                {editPriceType === 'hourly' && (
+                  <input type="number" value={editBasePrice} onChange={e => setEditBasePrice(parseInt(e.target.value, 10) || 0)} className="w-full text-center border border-slate-200 p-2.5 rounded-lg font-mono text-sm font-black" />
+                )}
+                {editPriceType === 'daily' && (
+                  <input type="number" value={editDailyPrice} onChange={e => setEditDailyPrice(parseInt(e.target.value, 10) || 0)} className="w-full text-center border border-slate-200 p-2.5 rounded-lg font-mono text-sm font-black" />
+                )}
+                {editPriceType === 'monthly' && (
+                  <input type="number" value={editMonthlyPrice} onChange={e => setEditMonthlyPrice(parseInt(e.target.value, 10) || 0)} className="w-full text-center border border-slate-200 p-2.5 rounded-lg font-mono text-sm font-black" />
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2 mt-5 pt-4 border-t" style={{ borderColor: BRAND.border }}>
+          <button
+            onClick={handleSave}
+            className="flex-1 font-black py-3 rounded-xl text-xs cursor-pointer border-0 text-white"
+            style={{ background: BRAND.greenDark }}
+          >
+            💾 حفظ التعديلات
+          </button>
+          <button
+            onClick={onClose}
+            className="font-black py-3 px-5 rounded-xl text-xs cursor-pointer border bg-white"
+            style={{ color: BRAND.slate, borderColor: BRAND.border }}
+          >
+            إلغاء
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════ */
+/* 🌟 كارت الجراج (مستقل بـ memo لمنع إعادة الرسم غير اللازم) */
+/* ═══════════════════════════════════════════════════════════ */
+interface GarageRowProps {
+  garage: any;
+  sameOwnerCount: number;
+  onEdit: () => void;
+  onToggleActive: () => void;
+  onEnter: () => void;
+  onDelete: () => void;
+  deleteConfirm: boolean;
+  onCancelDelete: () => void;
+  onConfirmDelete: () => void;
+}
+
+const GarageRow = memo(function GarageRow({ 
+  garage: g, sameOwnerCount, onEdit, onToggleActive, onEnter, onDelete, deleteConfirm, onCancelDelete, onConfirmDelete 
+}: GarageRowProps) {
+  const isDirectory = g.garageType === 'directory';
+
+  return (
+    <div className="border p-3.5" style={{ background: BRAND.card, borderColor: BRAND.border, borderRadius: 18 }}>
+      <div className="flex justify-between items-center mb-2">
+        <div className="flex items-center gap-1">
+          {isDirectory ? (
+            <span className="font-black text-[9px] px-2.5 py-1 rounded-xl text-white bg-slate-600 flex items-center gap-1">
+              🧭 دليل مجاني
+            </span>
+          ) : (
+            <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-white" style={{ background: BRAND.blue }}>
+              <span className="font-black font-mono text-sm">{g.availableSpots}</span>
+              <span className="font-bold text-[9px] opacity-80">شاغر</span>
+            </div>
+          )}
+        </div>
+        
+        <div className="text-right flex items-center gap-1.5 flex-wrap justify-end">
+          {sameOwnerCount > 1 && !isDirectory && (
+            <span className="font-black text-[9px] px-2 py-0.5 rounded" style={{ background: BRAND.blueSoft, color: BRAND.blue }}>
+              👑 {sameOwnerCount}
+            </span>
+          )}
+          <span className="font-black text-xs" style={{ color: BRAND.navy }}>{g.name}</span>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between mb-3 gap-2">
+        <div className="flex flex-wrap gap-1 justify-start">
+          {isDirectory ? (
+            <span className="text-[9px] font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+              💵 الدفع نقدي للسايس
+            </span>
+          ) : (
+            [
+              { n: 1, name: g.valetName1, pw: g.valetPassword1, color: BRAND.blue },
+              { n: 2, name: g.valetName2, pw: g.valetPassword2, color: '#7c3aed' },
+              { n: 3, name: g.valetName3, pw: g.valetPassword3, color: '#f59e0b' },
+            ].filter(v => v.pw).map(v => (
+              <span key={v.n} className="font-bold text-[8px] px-1.5 py-0.5 rounded" style={{ color: v.color, background: BRAND.bg, border: `1px solid ${BRAND.border}` }}>
+                👤 {v.name || `س${v.n}`}
+              </span>
+            ))
+          )}
+        </div>
+        
+        <div className="flex items-center gap-1.5 text-slate-500 font-bold text-[9px]">
+          <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[8px] font-black">🗺️ {g.area || 'مناطق أخرى'}</span>
+          <span style={{ color: '#E2E8F0' }}>·</span>
+          <span className="truncate max-w-[100px]">{g.location}</span>
+          <MapPin size={10} className="shrink-0 text-slate-400" />
+        </div>
+      </div>
+
+      {/* ملخص بيانات الجراج */}
+      <div className="flex items-center justify-between mb-3 p-2.5 rounded-xl border bg-slate-50" style={{ borderColor: BRAND.border }}>
+        <button
+          onClick={onEdit}
+          className="font-black border-0 py-1.5 px-3 rounded-lg text-[10px] cursor-pointer text-white flex items-center gap-1"
+          style={{ background: '#f59e0b' }}
+        >
+          <Edit3 size={11} />
+          تعديل البيانات
+        </button>
+
+        <div className="flex items-center gap-1">
+          {isDirectory ? (
+            <span className="font-black text-xs text-slate-700">
+              {g.priceType === 'daily' ? `${g.dailyPrice || g.basePrice}ج/يوم` : g.priceType === 'monthly' ? `${g.monthlyPrice || 1500}ج/شهر` : `${g.basePrice}ج/ساعة`}
+            </span>
+          ) : (
+            <>
+              <Percent size={11} style={{ color: BRAND.slate }} />
+              <span className="font-black font-mono text-xs" style={{ color: BRAND.navy }}>
+                {g.commissionRate ?? 10}%
+              </span>
+              <span className="font-bold text-[9px]" style={{ color: BRAND.slateMuted }}>عمولة المنصة</span>
+            </>
+          )}
+        </div>
+      </div>
+      
+      {/* أزرار الإجراءات */}
+      <div className="flex items-center gap-2 mt-3">
+        {deleteConfirm ? (
+          <div className="w-full flex items-center justify-between gap-2 p-2 rounded-xl border border-red-200 bg-red-50">
+            <span className="text-[10px] font-black text-red-600">تأكيد الحذف نهائياً؟</span>
+            <div className="flex gap-2">
+              <button 
+                onClick={onConfirmDelete}
+                className="font-black py-1.5 px-3 rounded-lg text-[10px] bg-red-600 text-white border-0 cursor-pointer"
+              >
+                تأكيد
+              </button>
+              <button 
+                onClick={onCancelDelete}
+                className="font-black py-1.5 px-3 rounded-lg text-[10px] bg-white text-slate-600 border border-slate-300 cursor-pointer"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={onToggleActive}
+              className="font-black py-2 px-3 rounded-xl text-[10px] cursor-pointer border-0 text-white flex items-center justify-center gap-1"
+              style={{ background: g.isActive !== false ? BRAND.greenDark : '#dc2626' }}
+            >
+              <span>{g.isActive !== false ? '🟢 مفعّل' : '🔴 معطّل'}</span>
+            </button>
+
+            {!isDirectory && (
+              <button
+                onClick={onEnter}
+                className="flex-1 font-black py-2 rounded-xl text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1.5"
+                style={{ background: BRAND.blue }}
+              >
+                <Navigation size={14} />
+                دخول وإدارة
+              </button>
+            )}
+            
+            <button
+              onClick={onDelete}
+              className="font-black py-2 px-3 rounded-xl text-[10px] cursor-pointer border text-red-600 bg-red-50 border-red-200 flex-1 md:flex-none"
+            >
+              🗑️ حذف
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}, (prev, next) => {
+  // 🛡️ منع إعادة الرسم إلا إذا تغيرت بيانات الجراج فعلياً
+  return (
+    prev.garage.id === next.garage.id &&
+    prev.garage.name === next.garage.name &&
+    prev.garage.isActive === next.garage.isActive &&
+    prev.garage.commissionRate === next.garage.commissionRate &&
+    prev.garage.area === next.garage.area &&
+    prev.garage.garageType === next.garage.garageType &&
+    prev.garage.basePrice === next.garage.basePrice &&
+    prev.garage.dailyPrice === next.garage.dailyPrice &&
+    prev.garage.monthlyPrice === next.garage.monthlyPrice &&
+    prev.garage.priceType === next.garage.priceType &&
+    prev.garage.availableSpots === next.garage.availableSpots &&
+    prev.sameOwnerCount === next.sameOwnerCount &&
+    prev.deleteConfirm === next.deleteConfirm
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════ */
+/* 🌟 المكون الرئيسي للوحة الأدمن                              */
+/* ═══════════════════════════════════════════════════════════ */
 export default function AdminDashboard() {
   const {
     garages, sessions, walletTopUps, approveTopUp, rejectTopUp, addGarage,
@@ -116,15 +467,8 @@ export default function AdminDashboard() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [processingTopUpId, setProcessingTopUpId] = useState<string | null>(null);
   
-  // 🌟 حقول تعديل بيانات جراج الدليل والعمولة
-  const [editingCommissionGarageId, setEditingCommissionGarageId] = useState<string | null>(null);
-  const [editCommissionRate, setEditCommissionRate] = useState(10);
-  const [editArea, setEditArea] = useState('وسط البلد والزمالك');
-  const [editGarageType, setEditGarageType] = useState<'vip' | 'directory'>('vip');
-  const [editPriceType, setEditPriceType] = useState<'hourly' | 'daily' | 'monthly'>('hourly');
-  const [editBasePrice, setEditBasePrice] = useState(15);
-  const [editDailyPrice, setEditDailyPrice] = useState(20);
-  const [editMonthlyPrice, setEditMonthlyPrice] = useState(1500);
+  // 🌟 حالة نافذة التعديل المنفصلة (بدلاً من inline)
+  const [editingGarage, setEditingGarage] = useState<any | null>(null);
 
   const [settlementRecords, setSettlementRecords] = useState<SettlementRecord[]>([]);
   const [confirmSettlementGarageId, setConfirmSettlementGarageId] = useState<string | null>(null);
@@ -136,13 +480,29 @@ export default function AdminDashboard() {
   
   // 🌟 فلترة جراجات الأدمن بحسب النوع (VIP ضد الدليل)
   const [adminGarageTab, setAdminGarageTab] = useState<'vip' | 'directory'>('vip');
-  const [garageSearch, setGarageSearch] = useState('');
+  const [garageSearchInput, setGarageSearchInput] = useState('');
+  const [garageSearchDebounced, setGarageSearchDebounced] = useState('');
+  const [visibleGaragesLimit, setVisibleGaragesLimit] = useState(15); // 📦 Lazy Loading
 
   // 🌟 حالة تأكيد حذف الجراج
   const [deleteGarageConfirmId, setDeleteGarageConfirmId] = useState<string | null>(null);
 
+  // 🔄 Debounce للبحث عن الجراجات (تأخير 400ms لتخفيف العبء)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setGarageSearchDebounced(garageSearchInput);
+      setVisibleGaragesLimit(15); // إعادة التحميل من البداية عند البحث
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [garageSearchInput]);
+
+  // إعادة تهيئة حد العرض عند تبديل التبويب
+  useEffect(() => {
+    setVisibleGaragesLimit(15);
+  }, [adminGarageTab]);
+
   const filteredGaragesForAdmin = useMemo(() => {
-    const q = garageSearch.trim().toLowerCase();
+    const q = garageSearchDebounced.trim().toLowerCase();
     
     // 1. تصفية الجراجات بحسب التبويب النشط في الأدمن
     let list = garages.filter((g) => g.garageType === adminGarageTab);
@@ -150,7 +510,24 @@ export default function AdminDashboard() {
     // 2. تصفية بحسب نص البحث لو العميل كتب حاجة
     if (!q) return list;
     return list.filter(g => g.name.toLowerCase().includes(q));
-  }, [garages, garageSearch, adminGarageTab]);
+  }, [garages, garageSearchDebounced, adminGarageTab]);
+
+  // 📦 الجراجات المعروضة فقط (من 0 إلى limit)
+  const displayedGaragesLazy = useMemo(() => {
+    return filteredGaragesForAdmin.slice(0, visibleGaragesLimit);
+  }, [filteredGaragesForAdmin, visibleGaragesLimit]);
+
+  // 🧮 حساب عدد الجراجات لنفس المالك مرة واحدة بدلاً من حسابها في كل كارت
+  const ownerCountsMap = useMemo(() => {
+    const map = new Map<string, number>();
+    garages.forEach((g: any) => {
+      const phone = normalizePhone(g.ownerPhone || g.phone);
+      if (phone) {
+        map.set(phone, (map.get(phone) || 0) + 1);
+      }
+    });
+    return map;
+  }, [garages]);
 
   /* ─── Add Garage State ─── */
   const [gName, setGName] = useState('');
@@ -410,27 +787,17 @@ export default function AdminDashboard() {
     toast.success('تمت إضافة الجراج بنجاح! 🎉');
   };
 
-  // 🌟 تعديل وحفظ بيانات الجراج بما فيها حقول الدليل والأسعار
-  const handleSaveGarageData = (garageId: string) => {
-    const isDir = editGarageType === 'directory';
-    const finalBasePrice = isDir && editPriceType === 'daily' ? editDailyPrice : isDir && editPriceType === 'monthly' ? editMonthlyPrice : editBasePrice;
+  // 🌟 حفظ البيانات من نافذة التعديل المنفصلة
+  const handleSaveGarageFromModal = useCallback((data: any) => {
+    if (!editingGarage) return;
+    const garageId = editingGarage.id;
+    const garageName = editingGarage.name;
+    updateGarage(garageId, data);
+    setEditingGarage(null);
+    toast.success(`تم تحديث بيانات جراج ${garageName} بنجاح ✅`);
+  }, [editingGarage, updateGarage]);
 
-    updateGarage(garageId, { 
-      commissionRate: isDir ? 0 : editCommissionRate, 
-      area: editArea,
-      garageType: editGarageType,
-      priceType: editPriceType,
-      basePrice: finalBasePrice,
-      dailyPrice: editDailyPrice,
-      monthlyPrice: editMonthlyPrice,
-      lastPriceUpdate: new Date().toISOString(),
-      priceUpdatedBy: 'admin',
-    });
-    setEditingCommissionGarageId(null);
-    toast.success(`تم تحديث بيانات جراج ${garages.find(g => g.id === garageId)?.name} بنجاح ✅`);
-  };
-
-  const handleAdminEnterGarage = (g: typeof garages[0]) => {
+  const handleAdminEnterGarage = useCallback((g: typeof garages[0]) => {
     localStorage.setItem('garageRole', 'owner');
     localStorage.removeItem('valetNumber');
     localStorage.removeItem('valetName');
@@ -444,7 +811,13 @@ export default function AdminDashboard() {
       icon: '🅿️',
       duration: 3000
     });
-  };
+  }, [setCurrentGarageId, setView]);
+
+  const handleToggleGarageActive = useCallback((g: any) => {
+    const newStatus = g.isActive === false ? true : false;
+    updateGarage(g.id, { isActive: newStatus });
+    toast.success(newStatus ? `تم تفعيل ${g.name} 🟢` : `تم تعطيل ${g.name} 🔴`);
+  }, [updateGarage]);
 
   const handleApproveTopUp = async (id: string, amount: number) => {
     if (processingTopUpId) return;
@@ -590,7 +963,7 @@ export default function AdminDashboard() {
   };
   
   // 🌟 دالة حذف الجراج من قاعدة البيانات
-  const handleDeleteGarage = async (garageId: string, garageName: string) => {
+  const handleDeleteGarage = useCallback(async (garageId: string, garageName: string) => {
     const loadingToast = toast.loading(`جاري حذف جراج ${garageName}...`);
     try {
       const { error } = await supabase.from('garages').delete().eq('id', garageId);
@@ -602,7 +975,7 @@ export default function AdminDashboard() {
       console.error('Delete garage error:', err);
       toast.error('حدث خطأ أثناء الحذف: ' + (err.message || ''), { id: loadingToast });
     }
-  };
+  }, [fetchAll]);
 
   useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -634,6 +1007,17 @@ export default function AdminDashboard() {
 
   return (
     <div className="h-full overflow-y-auto pt-16 px-4 pb-12" style={{ background: BRAND.bg, color: BRAND.navy }}>
+
+      {/* 🌟 نافذة التعديل المنفصلة (معزولة عن القائمة) */}
+      <AnimatePresence>
+        {editingGarage && (
+          <GarageEditModal
+            garage={editingGarage}
+            onClose={() => setEditingGarage(null)}
+            onSave={handleSaveGarageFromModal}
+          />
+        )}
+      </AnimatePresence>
 
       {/* ══ Header ══ */}
       <div className="flex justify-between items-center mb-6 pb-4" style={{ borderBottom: `1px solid ${BRAND.border}` }}>
@@ -1391,11 +1775,11 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* 🏢 إدارة وجرد الجراجات */}
+      {/* 🏢 إدارة وجرد الجراجات (مع Lazy Loading + Memo) */}
       <div className="mb-8">
         <div className="flex justify-between items-center mb-3">
           <span className="font-black text-[9px] px-2.5 py-1 rounded bg-slate-200" style={{ color: BRAND.slate }}>
-            {filteredGaragesForAdmin.length} جراج نشط بالقسم
+            عرض {displayedGaragesLazy.length} من {filteredGaragesForAdmin.length}
           </span>
           <h3 className="font-black text-xs" style={{ color: BRAND.navy }}>
             إدارة وجرد الجراجات
@@ -1436,289 +1820,72 @@ export default function AdminDashboard() {
             <Search size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: BRAND.slateMuted }} />
             <input 
               type="text" 
-              value={garageSearch} 
-              onChange={e => setGarageSearch(e.target.value)} 
+              value={garageSearchInput} 
+              onChange={e => setGarageSearchInput(e.target.value)} 
               placeholder="ابحث عن جراج بالاسم..." 
               className="w-full font-bold outline-none text-xs py-2.5 px-9 rounded-xl border border-slate-200"
               style={{ color: BRAND.navy }}
             />
-            {garageSearch && (
-              <button onClick={() => setGarageSearch('')} className="absolute left-3 top-1/2 -translate-y-1/2 border-0 bg-transparent cursor-pointer" style={{ color: BRAND.slateMuted }}>
+            {garageSearchInput && (
+              <button onClick={() => setGarageSearchInput('')} className="absolute left-3 top-1/2 -translate-y-1/2 border-0 bg-transparent cursor-pointer" style={{ color: BRAND.slateMuted }}>
                 <X size={14} />
               </button>
             )}
           </div>
         </div>
 
-        <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+        {/* قائمة الجراجات مع Lazy Loading */}
+        <div className="space-y-3">
           {filteredGaragesForAdmin.length === 0 ? (
             <div className="text-center py-10 bg-white border rounded-2xl" style={{ borderColor: BRAND.border }}>
               <div className="text-2xl mb-1">🔍</div>
               <p className="font-bold text-xs" style={{ color: BRAND.slateMuted }}>لا توجد جراجات مطابقة للبحث</p>
             </div>
           ) : (
-            filteredGaragesForAdmin.map(g => {
-              const isEditingComm = editingCommissionGarageId === g.id;
-              const isDirectory = g.garageType === 'directory';
-              const ownerPhone = (g as any).ownerPhone || g.phone;
-              const sameOwnerCount = garages.filter((x: any) => (normalizePhone(x.ownerPhone || x.phone) === normalizePhone(ownerPhone))).length;
-              return (
-                <div key={g.id} className="border p-3.5" style={{ background: BRAND.card, borderColor: BRAND.border, borderRadius: 18 }}>
-                  <div className="flex justify-between items-center mb-2">
-                    <div className="flex items-center gap-1">
-                      {isDirectory ? (
-                        <span className="font-black text-[9px] px-2.5 py-1 rounded-xl text-white bg-slate-600 flex items-center gap-1">
-                          🧭 دليل مجاني
-                        </span>
-                      ) : (
-                        <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-white" style={{ background: BRAND.blue }}>
-                          <span className="font-black font-mono text-sm">{g.availableSpots}</span>
-                          <span className="font-bold text-[9px] opacity-80">شاغر</span>
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="text-right flex items-center gap-1.5 flex-wrap justify-end">
-                      {sameOwnerCount > 1 && !isDirectory && (
-                        <span className="font-black text-[9px] px-2 py-0.5 rounded" style={{ background: BRAND.blueSoft, color: BRAND.blue }}>
-                          👑 {sameOwnerCount}
-                        </span>
-                      )}
-                      <span className="font-black text-xs" style={{ color: BRAND.navy }}>{g.name}</span>
-                    </div>
-                  </div>
+            <>
+              {displayedGaragesLazy.map(g => {
+                const ownerPhone = (g as any).ownerPhone || g.phone;
+                const sameOwnerCount = ownerCountsMap.get(normalizePhone(ownerPhone)) || 1;
+                return (
+                  <GarageRow
+                    key={g.id}
+                    garage={g}
+                    sameOwnerCount={sameOwnerCount}
+                    onEdit={() => setEditingGarage(g)}
+                    onToggleActive={() => handleToggleGarageActive(g)}
+                    onEnter={() => handleAdminEnterGarage(g)}
+                    onDelete={() => setDeleteGarageConfirmId(g.id)}
+                    deleteConfirm={deleteGarageConfirmId === g.id}
+                    onCancelDelete={() => setDeleteGarageConfirmId(null)}
+                    onConfirmDelete={() => handleDeleteGarage(g.id, g.name)}
+                  />
+                );
+              })}
 
-                  <div className="flex items-center justify-between mb-3 gap-2">
-                    <div className="flex flex-wrap gap-1 justify-start">
-                      {isDirectory ? (
-                        <span className="text-[9px] font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                          💵 الدفع نقدي للسايس
-                        </span>
-                      ) : (
-                        [
-                          { n: 1, name: (g as any).valetName1, pw: (g as any).valetPassword1, color: BRAND.blue },
-                          { n: 2, name: (g as any).valetName2, pw: (g as any).valetPassword2, color: '#7c3aed' },
-                          { n: 3, name: (g as any).valetName3, pw: (g as any).valetPassword3, color: '#f59e0b' },
-                        ].filter(v => v.pw).map(v => (
-                          <span key={v.n} className="font-bold text-[8px] px-1.5 py-0.5 rounded" style={{ color: v.color, background: BRAND.bg, border: `1px solid ${BRAND.border}` }}>
-                            👤 {v.name || `س${v.n}`}
-                          </span>
-                        ))
-                      )}
-                    </div>
-                    
-                    <div className="flex items-center gap-1.5 text-slate-500 font-bold text-[9px]">
-                      <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[8px] font-black">🗺️ {g.area || 'مناطق أخرى'}</span>
-                      <span style={{ color: '#E2E8F0' }}>·</span>
-                      <span className="truncate max-w-[100px]">{g.location}</span>
-                      <MapPin size={10} className="shrink-0 text-slate-400" />
-                    </div>
-                  </div>
+              {/* زر عرض المزيد (Lazy Loading) */}
+              {filteredGaragesForAdmin.length > visibleGaragesLimit && (
+                <button
+                  onClick={() => setVisibleGaragesLimit(prev => prev + 15)}
+                  className="w-full font-black py-3 rounded-xl text-xs cursor-pointer border-2 border-dashed bg-white flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
+                  style={{ color: BRAND.blue, borderColor: BRAND.blue }}
+                >
+                  <ArrowDown size={14} />
+                  <span>عرض 15 جراج إضافي ({filteredGaragesForAdmin.length - visibleGaragesLimit} متبقي)</span>
+                </button>
+              )}
 
-                  {/* 🌟 صندوق تعديل البيانات الهجين المتكامل */}
-                  <div className="flex flex-col gap-2 mb-3 p-3 rounded-xl border bg-slate-50" style={{ borderColor: BRAND.border }}>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1">
-                        {!isEditingComm ? (
-                          <button
-                            onClick={() => { 
-                              setEditingCommissionGarageId(g.id); 
-                              setEditCommissionRate(g.commissionRate ?? 10); 
-                              setEditArea(g.area || 'وسط البلد والزمالك'); 
-                              setEditGarageType(g.garageType || 'vip');
-                              setEditPriceType(g.priceType || 'hourly');
-                              setEditBasePrice(g.basePrice || 15);
-                              setEditDailyPrice(g.dailyPrice || 20);
-                              setEditMonthlyPrice(g.monthlyPrice || 1500);
-                            }}
-                            className="font-black border-0 py-1 px-2.5 rounded-lg text-[9px] cursor-pointer text-white"
-                            style={{ background: '#f59e0b' }}
-                          >
-                            تعديل البيانات
-                          </button>
-                        ) : (
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => handleSaveGarageData(g.id)} className="font-black py-1 px-2.5 rounded-lg text-[9px] cursor-pointer border-0 text-white" style={{ background: BRAND.greenDark }}>حفظ</button>
-                            <button onClick={() => setEditingCommissionGarageId(null)} className="font-black py-1 px-2.5 rounded-lg text-[9px] cursor-pointer border bg-white" style={{ color: BRAND.slate, borderColor: BRAND.border }}>✕</button>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* إظهار بيانات التسعير والنوع */}
-                      <div className="flex items-center gap-1">
-                        {isDirectory ? (
-                          <span className="font-black text-xs text-slate-700">
-                            {g.priceType === 'daily' ? `${g.dailyPrice || g.basePrice}ج/يوم` : g.priceType === 'monthly' ? `${g.monthlyPrice || 1500}ج/شهر` : `${g.basePrice}ج/ساعة`}
-                          </span>
-                        ) : (
-                          <>
-                            <Percent size={11} style={{ color: BRAND.slate }} />
-                            <span className="font-black font-mono text-xs" style={{ color: BRAND.navy }}>
-                              {isEditingComm ? editCommissionRate : (g.commissionRate ?? 10)}%
-                            </span>
-                            <span className="font-bold text-[9px]" style={{ color: BRAND.slateMuted }}>عمولة المنصة</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* لوحة خيارات التعديل السريع حال التفعيل */}
-                    {isEditingComm && (
-                      <div className="pt-2 border-t border-dashed space-y-2 text-right" style={{ borderColor: BRAND.border }}>
-                        
-                        {/* 1. تعديل نوع الجراج */}
-                        <div className="flex justify-between items-center gap-2">
-                          <select
-                            value={editGarageType}
-                            onChange={(e) => setEditGarageType(e.target.value as any)}
-                            className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"
-                          >
-                            <option value="vip">🤝 شريك VIP معتمد</option>
-                            <option value="directory">🧭 دليل ركنة مجاني</option>
-                          </select>
-                          <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>نوع الجراج:</span>
-                        </div>
-
-                        {/* 2. تعديل المنطقة بالقائمة الموحدة الجديدة */}
-                        <div className="flex justify-between items-center gap-2">
-                          <select
-                            value={editArea}
-                            onChange={(e) => setEditArea(e.target.value)}
-                            className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"
-                          >
-                            {OFFICIAL_AREAS.map((area) => (
-                              <option key={area.value} value={area.value}>
-                                {area.label}
-                              </option>
-                            ))}
-                          </select>
-                          <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية:</span>
-                        </div>
-
-                        {/* 🌟 3. أزرار تعديل نسبة العمولة للجراجات الشريكة (VIP) */}
-                        {editGarageType === 'vip' && (
-                          <div className="flex justify-between items-center gap-2 pt-1 border-t border-dashed border-slate-200">
-                            <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200">
-                              <button 
-                                type="button"
-                                onClick={() => setEditCommissionRate(r => Math.max(0, r - 1))} 
-                                className="border-0 cursor-pointer flex items-center justify-center rounded bg-red-100 text-red-600 font-black" 
-                                style={{ width: 22, height: 24 }}
-                              >
-                                <Minus size={11} />
-                              </button>
-                              <input 
-                                type="number" 
-                                value={editCommissionRate} 
-                                onChange={e => setEditCommissionRate(Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)))}
-                                className="bg-transparent text-center outline-none font-mono font-black text-xs border-0"
-                                style={{ width: 34, color: '#f59e0b' }} 
-                              />
-                              <button 
-                                type="button"
-                                onClick={() => setEditCommissionRate(r => Math.min(100, r + 1))} 
-                                className="border-0 cursor-pointer flex items-center justify-center rounded bg-emerald-100 text-emerald-600 font-black" 
-                                style={{ width: 22, height: 24 }}
-                              >
-                                <Plus size={11} />
-                              </button>
-                            </div>
-                            <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>📊 نسبة عمولة المنصة (%):</span>
-                          </div>
-                        )}
-
-                        {/* 4. تعديل هيكل التسعير للدليل */}
-                        {editGarageType === 'directory' && (
-                          <>
-                            <div className="flex justify-between items-center gap-2">
-                              <select
-                                value={editPriceType}
-                                onChange={(e) => setEditPriceType(e.target.value as any)}
-                                className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"
-                              >
-                                <option value="hourly">⏱️ بالساعة</option>
-                                <option value="daily">☀️ يومي ثابت</option>
-                                <option value="monthly">📅 اشتراك شهري</option>
-                              </select>
-                              <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>هيكل التسعير:</span>
-                            </div>
-
-                            <div className="flex justify-between items-center gap-2">
-                              {editPriceType === 'hourly' && (
-                                <input type="number" value={editBasePrice} onChange={e => setEditBasePrice(parseInt(e.target.value, 10) || 0)} className="w-24 text-center border p-1 rounded font-mono text-xs" />
-                              )}
-                              {editPriceType === 'daily' && (
-                                <input type="number" value={editDailyPrice} onChange={e => setEditDailyPrice(parseInt(e.target.value, 10) || 0)} className="w-24 text-center border p-1 rounded font-mono text-xs" />
-                              )}
-                              {editPriceType === 'monthly' && (
-                                <input type="number" value={editMonthlyPrice} onChange={e => setEditMonthlyPrice(parseInt(e.target.value, 10) || 0)} className="w-24 text-center border p-1 rounded font-mono text-xs" />
-                              )}
-                              <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>قيمة السعر الفعلي:</span>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* أزرار الإجراءات مع زر الحذف الجديد */}
-                  <div className="flex items-center gap-2 mt-3">
-                    {deleteGarageConfirmId === g.id ? (
-                      <div className="w-full flex items-center justify-between gap-2 p-2 rounded-xl border border-red-200 bg-red-50">
-                        <span className="text-[10px] font-black text-red-600">تأكيد الحذف نهائياً؟</span>
-                        <div className="flex gap-2">
-                          <button 
-                            onClick={() => handleDeleteGarage(g.id, g.name)} 
-                            className="font-black py-1.5 px-3 rounded-lg text-[10px] bg-red-600 text-white border-0 cursor-pointer"
-                          >
-                            تأكيد
-                          </button>
-                          <button 
-                            onClick={() => setDeleteGarageConfirmId(null)} 
-                            className="font-black py-1.5 px-3 rounded-lg text-[10px] bg-white text-slate-600 border border-slate-300 cursor-pointer"
-                          >
-                            إلغاء
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const newStatus = g.isActive === false ? true : false;
-                            updateGarage(g.id, { isActive: newStatus });
-                            toast.success(newStatus ? `تم تفعيل ${g.name} 🟢` : `تم تعطيل ${g.name} 🔴`);
-                          }}
-                          className="font-black py-2 px-3 rounded-xl text-[10px] cursor-pointer border-0 text-white flex items-center justify-center gap-1"
-                          style={{ background: g.isActive !== false ? BRAND.greenDark : '#dc2626' }}
-                        >
-                          <span>{g.isActive !== false ? '🟢 مفعّل' : '🔴 معطّل'}</span>
-                        </button>
-
-                        {!isDirectory && (
-                          <button
-                            onClick={() => handleAdminEnterGarage(g)}
-                            className="flex-1 font-black py-2 rounded-xl text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1.5"
-                            style={{ background: BRAND.blue }}
-                          >
-                            <Navigation size={14} />
-                            دخول وإدارة
-                          </button>
-                        )}
-                        
-                        <button
-                          onClick={() => setDeleteGarageConfirmId(g.id)}
-                          className="font-black py-2 px-3 rounded-xl text-[10px] cursor-pointer border text-red-600 bg-red-50 border-red-200 flex-1 md:flex-none"
-                        >
-                          🗑️ حذف
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-            })
+              {/* زر إعادة التجميع */}
+              {visibleGaragesLimit > 15 && (
+                <button
+                  onClick={() => setVisibleGaragesLimit(15)}
+                  className="w-full font-black py-2 rounded-lg text-[10px] cursor-pointer bg-slate-100 border-0 flex items-center justify-center gap-1 active:scale-95 transition-all"
+                  style={{ color: BRAND.slate }}
+                >
+                  <ArrowUp size={11} />
+                  <span>طي القائمة والعودة لأعلى</span>
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>

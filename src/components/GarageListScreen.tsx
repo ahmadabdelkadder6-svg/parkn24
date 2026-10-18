@@ -18,6 +18,9 @@ const BRAND = {
   bg: '#f1f5f9', card: '#ffffff', slate: '#334155', border: '#cbd5e1', borderDark: '#94a3b8', navy: '#0a1628',
 };
 
+// 📍 مسافة التحديث الحقيقية لواجهة المستخدم
+const MIN_UI_MOVE_METERS = 25; 
+
 interface GarageWithDistance extends Garage { distance: number; minutes: number; classification: 'nearby' | 'far'; }
 interface RadarAlert { radar: Radar; distanceMeters: number; isCritical: boolean; }
 interface GarageCardProps { garage: GarageWithDistance; index: number; onSelect: () => void; onReportPrice: (garage: GarageWithDistance) => void; isNearby: boolean; isClosest: boolean; hasActiveSession: boolean; hasIncomingCar: boolean; disabled: boolean; }
@@ -263,7 +266,7 @@ export default function GarageListScreen() {
     offers, addIncomingCar, fetchAll, acknowledgedSessionIds, walletTopUps, reportPriceUpdate,
   } = useStore();
 
-  const [search, setSearch] = useState('');
+  const [searchQuery, setSearchQuery] = useState(''); // 👈 استخدام searchQuery وتثبيته
   const [showNearbyOnly, setShowNearbyOnly] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
@@ -294,7 +297,6 @@ export default function GarageListScreen() {
   const autoNavigatedRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
   const lastLocationRef = useRef<{ lat: number; lng: number } | null>(null);
-  const bestAccuracyRef = useRef<number>(Infinity);
   const watchIdRef = useRef<number | null>(null);
   const speedHistoryRef = useRef<number[]>([]);
   const bearingHistoryRef = useRef<number[]>([]);
@@ -372,7 +374,6 @@ export default function GarageListScreen() {
 
         const newLat = position.coords.latitude;
         const newLng = position.coords.longitude;
-        const newAccuracy = position.coords.accuracy || 10;
         const rawSpeed = position.coords.speed;
         const rawHeading = position.coords.heading || 0;
         const nowMs = Date.now();
@@ -453,21 +454,20 @@ export default function GarageListScreen() {
             }
         }
 
-        const isMoreAccurate = newAccuracy < bestAccuracyRef.current;
+        // 🛡️ Guard: Dual-Track GPS لمسافة التحديث لواجهة المستخدم
         let shouldUpdateUI = false;
         
         if (!lastLocationRef.current) { 
             shouldUpdateUI = true; 
         } else {
           const movedDist = calculateDistance(lastLocationRef.current.lat, lastLocationRef.current.lng, newLat, newLng) * 1000;
-          if (movedDist >= 25 || (isMoreAccurate && (bestAccuracyRef.current - newAccuracy) > 10)) { 
+          if (movedDist >= MIN_UI_MOVE_METERS) { 
               shouldUpdateUI = true; 
           }
         }
         
         if (shouldUpdateUI) { 
             lastLocationRef.current = { lat: newLat, lng: newLng }; 
-            if (isMoreAccurate) { bestAccuracyRef.current = newAccuracy; } 
             setUserLocation({ lat: newLat, lng: newLng }); 
         }
         
@@ -488,7 +488,6 @@ export default function GarageListScreen() {
     }
 
     lastLocationRef.current = null;
-    bestAccuracyRef.current = Infinity;
     getUserLocation();
 
     toast.success('🚀 الرادار نشط - صالح على الشاشة السوداء', { duration: 2500, icon: '📡' });
@@ -565,10 +564,10 @@ export default function GarageListScreen() {
     let filtered = garagesWithDistance;
     filtered = filtered.filter((g) => g.garageType === activeTab);
     if (selectedCategory) { filtered = filtered.filter((g) => matchesCategory(g, selectedCategory)); }
-    if (search.trim()) { const q = search.trim().toLowerCase(); filtered = filtered.filter((g) => g.name.toLowerCase().includes(q) || g.location.toLowerCase().includes(q) || (g.area || '').toLowerCase().includes(q)); }
+    if (searchQuery.trim()) { const q = searchQuery.trim().toLowerCase(); filtered = filtered.filter((g) => g.name.toLowerCase().includes(q) || g.location.toLowerCase().includes(q) || (g.area || '').toLowerCase().includes(q)); }
     if (showNearbyOnly) { filtered = filtered.filter((g) => g.classification === 'nearby'); }
     return filtered;
-  }, [garagesWithDistance, search, showNearbyOnly, activeTab, selectedCategory, matchesCategory]);
+  }, [garagesWithDistance, searchQuery, showNearbyOnly, activeTab, selectedCategory, matchesCategory]);
 
   const areaGroups = useMemo(() => {
     const groups: Record<string, GarageWithDistance[]> = {};
@@ -576,7 +575,7 @@ export default function GarageListScreen() {
     return Object.keys(groups).map(name => ({ name, garages: groups[name], totalCapacity: groups[name].reduce((sum, g) => sum + (g.capacity || 0), 0) })).sort((a, b) => { if (a.name === 'مناطق أخرى') return 1; if (b.name === 'مناطق أخرى') return -1; return a.name.localeCompare(b.name, 'ar'); });
   }, [filteredGarages]);
 
-  useEffect(() => { if (search.trim() && areaGroups.length > 0) setExpandedArea(areaGroups[0].name); }, [search, areaGroups]);
+  useEffect(() => { if (searchQuery.trim() && areaGroups.length > 0) setExpandedArea(areaGroups[0].name); }, [searchQuery, areaGroups]);
 
   const handleGarageClick = async (garage: GarageWithDistance) => {
     if (garage.garageType === 'directory') {
@@ -808,14 +807,14 @@ export default function GarageListScreen() {
               className="w-full outline-none text-xs font-bold bg-slate-100 border border-slate-300 text-slate-800 rounded-xl transition-all focus:border-blue-500 focus:bg-white focus:shadow-sm" 
               style={{ padding: '9px 32px 9px 32px' }} 
               placeholder="ابحث باسم الجراج أو المنطقة..." 
-              value={search} 
-              onChange={(e) => setSearch(e.target.value)} 
+              value={searchQuery} 
+              onChange={(e) => setSearchQuery(e.target.value)} 
             />
-            {search ? (
+            {searchQuery ? (
               <div className="absolute left-2.5 inset-y-0 flex items-center z-10">
                 <button 
                   type="button" 
-                  onClick={() => { setSearch(''); setExpandedArea(null); }} 
+                  onClick={() => { setSearchQuery(''); setExpandedArea(null); }} 
                   className="bg-slate-300 text-slate-600 rounded-full w-5 h-5 flex items-center justify-center cursor-pointer border-0 active:scale-90 hover:bg-slate-400 hover:text-white transition-all"
                 >
                   <X size={12} strokeWidth={3} />
@@ -864,7 +863,12 @@ export default function GarageListScreen() {
                     <div style={{ background: BRAND.bg, padding: '10px', borderTop: `1px solid ${BRAND.border}` }} className="space-y-2">
                       {(() => { const limit = visibleLimits[group.name] || 8; const displayedGarages = group.garages.slice(0, limit); const hasMore = group.garages.length > limit;
                         return (<>
-                          {displayedGarages.map((garage, i) => (<GarageCard key={garage.id} garage={garage} index={i} onSelect={() => handleGarageClick(garage)} onReportPrice={handleOpenPriceReport} isNearby={garage.classification === 'nearby'} isClosest={i === 0 && garage.classification === 'nearby'} hasActiveSession={Boolean(activeSession)} hasIncomingCar={Boolean(myIncomingCar)} disabled={isBooking} />))}
+                          {displayedGarages.map((garage, i) => (
+                            <GarageCard 
+                               key={garage.id} // 🛡️ استقرار العناصر لمنع قفز الشاشة
+                               garage={garage} index={i} onSelect={() => handleGarageClick(garage)} onReportPrice={handleOpenPriceReport} isNearby={garage.classification === 'nearby'} isClosest={i === 0 && garage.classification === 'nearby'} hasActiveSession={Boolean(activeSession)} hasIncomingCar={Boolean(myIncomingCar)} disabled={isBooking} 
+                            />
+                          ))}
                           {hasMore && (<button type="button" onClick={() => { setVisibleLimits(prev => ({ ...prev, [group.name]: limit + 10 })); toast.success('تم تحميل ساحات إضافية 📍', { id: 'lazy-load-toast' }); }} className="w-full py-2.5 rounded-xl font-black text-[11px] cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1 bg-white mt-2" style={{ color: BRAND.blue, border: `1.5px solid ${BRAND.border}` }}><span>عرض المزيد (+{group.garages.length - limit}) 🔽</span></button>)}
                         </>);
                       })()}
@@ -1028,32 +1032,37 @@ const GarageCard = memo(function GarageCard({ garage, index, onSelect, onReportP
   const isBusy = hasActiveSession || hasIncomingCar;
   const isFull = !isDirectory && garage.availableSpots === 0;
   const btnBg = (() => { if (isDirectory) return BRAND.blueDark; if (isFull) return BRAND.border; if (isBusy) return BRAND.green; return BRAND.blue; })();
-  const btnLabel = (() => { if (isDirectory) return 'افتح الاتجاهات على الخريطة 🗺️'; if (isFull) return 'ممتلئ'; if (hasActiveSession) return 'الجلسة النشطة ⚡'; if (hasIncomingCar) return 'الحجز النشط 📍'; return 'احجز الآن'; })();
+  const btnLabel = (() => { if (isDirectory) return 'افتح الاتجاهات 🗺️'; if (isFull) return 'ممتلئ'; if (hasActiveSession) return 'الجلسة النشطة ⚡'; if (hasIncomingCar) return 'الحجز النشط 📍'; return 'احجز الآن'; })();
   const displayPrice = (() => { if (garage.priceType === 'daily') return `${garage.dailyPrice || garage.basePrice}`; if (garage.priceType === 'monthly') return `${garage.monthlyPrice || 1500}`; return `${garage.basePrice}`; })();
   const priceUnit = (() => { if (garage.priceType === 'daily') return 'ج.م/يومي'; if (garage.priceType === 'monthly') return 'ج.م/شهري'; return 'ج.م/ساعة'; })();
 
+  // 📐 تم تصغير حجم الكارت ودمج المساحات
   return (
-    <div className="p-3.5 text-right relative bg-white rounded-2xl transition-all" style={{ border: `1.5px solid ${isDirectory ? BRAND.borderDark : BRAND.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-      <div className="flex justify-between items-center mb-2 flex-wrap gap-1.5" style={{ direction: 'rtl' }}>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {isDirectory ? (<span className="text-[9px] font-black px-2.5 py-0.5 rounded flex items-center gap-1" style={{ background: '#f1f5f9', color: '#334155', border: '1.5px solid #94a3b8' }}><span>🧭 دليل إرشاد الشارع</span></span>) : (<span className="flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded" style={{ background: '#fef3c7', color: '#b45309' }}><Star size={8} fill="currentColor" /> {garage.rating || 4.5} ⭐ معتمد</span>)}
-          {!isDirectory && garage.payment_mode === 'cash' && (<span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa' }}>💵 نقدي</span>)}
-          {!isDirectory && garage.payment_mode === 'wallet' && (<span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#f0f5ff', color: BRAND.blue, border: `1px solid ${BRAND.border}` }}>👝 محفظة</span>)}
-          {!isDirectory && garage.payment_mode === 'both' && (<span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#f0fdf4', color: BRAND.greenDark, border: `1px solid #bbf7d0` }}>💵👝 كاش ومحفظة</span>)}
-          {isDirectory && (<span className="text-[9px] font-black px-2 py-0.5 rounded" style={{ background: '#f0fdf4', color: BRAND.greenDark }}>💵 دفع للسايس مباشرة</span>)}
+    <div className="p-3 text-right relative bg-white rounded-xl transition-all" style={{ border: `1.5px solid ${isDirectory ? BRAND.borderDark : BRAND.border}`, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+      <div className="flex justify-between items-center mb-1.5 flex-wrap gap-1" style={{ direction: 'rtl' }}>
+        <div className="flex items-center gap-1 flex-wrap">
+          {isDirectory ? (<span className="text-[8px] font-black px-2 py-0.5 rounded flex items-center gap-1" style={{ background: '#f1f5f9', color: '#334155', border: '1px solid #94a3b8' }}><span>🧭 دليل الشارع</span></span>) : (<span className="flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: '#fef3c7', color: '#b45309' }}><Star size={8} fill="currentColor" /> {garage.rating || 4.5} معتمد</span>)}
+          {!isDirectory && garage.payment_mode === 'cash' && (<span className="text-[8px] font-black px-1.5 py-0.5 rounded" style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa' }}>💵 نقدي</span>)}
+          {!isDirectory && garage.payment_mode === 'wallet' && (<span className="text-[8px] font-black px-1.5 py-0.5 rounded" style={{ background: '#f0f5ff', color: BRAND.blue, border: `1px solid ${BRAND.border}` }}>👝 محفظة</span>)}
+          {!isDirectory && garage.payment_mode === 'both' && (<span className="text-[8px] font-black px-1.5 py-0.5 rounded" style={{ background: '#f0fdf4', color: BRAND.greenDark, border: `1px solid #bbf7d0` }}>💵👝 كاش ومحفظة</span>)}
+          {isDirectory && (<span className="text-[8px] font-black px-1.5 py-0.5 rounded" style={{ background: '#f0fdf4', color: BRAND.greenDark }}>💵 كاش للسايس</span>)}
         </div>
       </div>
-      <div className="flex items-start justify-between gap-2 mb-2" style={{ direction: 'rtl' }}><h4 className="text-[15px] font-black leading-tight text-slate-950 flex-1">{garage.name}</h4></div>
-      <div className="flex items-center gap-1 justify-end text-[11px] font-bold mb-3" style={{ color: BRAND.slate, direction: 'rtl' }}><span className="truncate max-w-[280px]">{garage.location}</span><MapPin size={11} style={{ color: BRAND.slate }} className="shrink-0" /></div>
-      <div className="flex items-center justify-between mt-3 pt-3 border-t-[1.5px]" style={{ borderColor: BRAND.border }}>
-        <div className="flex items-center gap-1 text-xs font-black" style={{ color: BRAND.slate }}><Navigation size={12} className="rotate-45" /><span>{formatDuration(garage.minutes)}</span></div>
-        <div className="flex items-center gap-4 text-right" style={{ direction: 'rtl' }}>
-          {isDirectory && (<button type="button" onClick={(e) => { e.stopPropagation(); onReportPrice(garage); }} className="flex items-center gap-0.5 text-[10px] font-black border-0 bg-transparent cursor-pointer hover:underline p-1 rounded" style={{ color: BRAND.blue }}><Edit3 size={11} /><span>تعديل السعر</span></button>)}
-          {!isDirectory && (<div className="flex flex-col items-center"><span className="font-mono font-black text-[17px] leading-none" style={{ color: BRAND.blue }}>{garage.availableSpots}</span><span className="text-[9px] font-black text-slate-400 mt-1 uppercase">مكان شاغر</span></div>)}
-          <div className="flex flex-col items-center"><span className="font-mono font-black text-[17px] leading-none" style={{ color: BRAND.greenDark }}>{displayPrice}</span><span className="text-[9px] font-black text-slate-400 mt-1 uppercase">{priceUnit}</span></div>
+      <div className="flex items-start justify-between gap-2 mb-1" style={{ direction: 'rtl' }}>
+        <h4 className="text-[13px] font-black leading-tight text-slate-950 flex-1">{garage.name}</h4>
+      </div>
+      <div className="flex items-center gap-1 justify-end text-[10px] font-bold mb-2" style={{ color: BRAND.slate, direction: 'rtl' }}>
+        <span className="truncate max-w-[260px]">{garage.location}</span><MapPin size={10} style={{ color: BRAND.slate }} className="shrink-0" />
+      </div>
+      <div className="flex items-center justify-between mt-2 pt-2 border-t-[1.5px]" style={{ borderColor: BRAND.border }}>
+        <div className="flex items-center gap-1 text-[11px] font-black" style={{ color: BRAND.slate }}><Navigation size={11} className="rotate-45" /><span>{formatDuration(garage.minutes)}</span></div>
+        <div className="flex items-center gap-3 text-right" style={{ direction: 'rtl' }}>
+          {isDirectory && (<button type="button" onClick={(e) => { e.stopPropagation(); onReportPrice(garage); }} className="flex items-center gap-0.5 text-[9px] font-black border-0 bg-transparent cursor-pointer hover:underline p-1 rounded" style={{ color: BRAND.blue }}><Edit3 size={10} /><span>تعديل السعر</span></button>)}
+          {!isDirectory && (<div className="flex flex-col items-center"><span className="font-mono font-black text-[15px] leading-none" style={{ color: BRAND.blue }}>{garage.availableSpots}</span><span className="text-[8px] font-black text-slate-400 mt-1 uppercase">مكان شاغر</span></div>)}
+          <div className="flex flex-col items-center"><span className="font-mono font-black text-[15px] leading-none" style={{ color: BRAND.greenDark }}>{displayPrice}</span><span className="text-[8px] font-black text-slate-400 mt-1 uppercase">{priceUnit}</span></div>
         </div>
       </div>
-      <button type="button" disabled={isFull || disabled} onClick={!disabled && !isFull ? onSelect : undefined} className="w-full border-0 font-black py-3 rounded-2xl mt-4 text-sm text-white cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5 shadow-sm" style={{ background: btnBg }}><span>{btnLabel}</span></button>
+      <button type="button" disabled={isFull || disabled} onClick={!disabled && !isFull ? onSelect : undefined} className="w-full border-0 font-black py-2 rounded-xl mt-2.5 text-xs text-white cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1 shadow-sm" style={{ background: btnBg }}><span>{btnLabel}</span></button>
     </div>
   );
 });
