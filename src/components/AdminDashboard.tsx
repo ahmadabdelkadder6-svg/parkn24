@@ -30,6 +30,22 @@ const BRAND = {
   bg: '#f4f7fc',         
 };
 
+/* ─── 🗺️ قائمة المناطق الرسمية الموحدة ─── */
+const OFFICIAL_AREAS = [
+  { value: 'وسط البلد والزمالك', label: '🏛️ وسط البلد والزمالك' },
+  { value: 'مدينة نصر والشرقية', label: '🏢 مدينة نصر والشرقية' },
+  { value: 'مصر الجديدة والشروق', label: '✈️ مصر الجديدة والشروق' },
+  { value: 'التجمع والقاهرة الجديدة', label: '💎 التجمع والقاهرة الجديدة' },
+  { value: 'المهندسين والدقي', label: '🌇 المهندسين والدقي' },
+  { value: '6 أكتوبر والشيخ زايد', label: '📐 6 أكتوبر والشيخ زايد' },
+  { value: 'المعادي والمقطم', label: '🌿 المعادي والمقطم' },
+  { value: 'شبرا وخيمة', label: '🏘️ شبرا وخيمة' },
+  { value: 'صلاح سالم والعروبة', label: '🛣️ صلاح سالم والعروبة' },
+  { value: 'طريق الأوتوستراد', label: '🚗 طريق الأوتوستراد' },
+  { value: 'الجيزة وفيصل والهرم', label: '🏺 الجيزة وفيصل والهرم' },
+  { value: 'الإسكندرية والساحل', label: '🌊 الإسكندرية والساحل' },
+];
+
 /* ─── Helpers ─── */
 const toMs = (value: any): number => {
   if (!value) return 0;
@@ -103,7 +119,7 @@ export default function AdminDashboard() {
   // 🌟 حقول تعديل بيانات جراج الدليل والعمولة
   const [editingCommissionGarageId, setEditingCommissionGarageId] = useState<string | null>(null);
   const [editCommissionRate, setEditCommissionRate] = useState(10);
-  const [editArea, setEditArea] = useState('وسط البلد');
+  const [editArea, setEditArea] = useState('وسط البلد والزمالك');
   const [editGarageType, setEditGarageType] = useState<'vip' | 'directory'>('vip');
   const [editPriceType, setEditPriceType] = useState<'hourly' | 'daily' | 'monthly'>('hourly');
   const [editBasePrice, setEditBasePrice] = useState(15);
@@ -122,11 +138,13 @@ export default function AdminDashboard() {
   const [adminGarageTab, setAdminGarageTab] = useState<'vip' | 'directory'>('vip');
   const [garageSearch, setGarageSearch] = useState('');
 
+  // 🌟 حالة تأكيد حذف الجراج
+  const [deleteGarageConfirmId, setDeleteGarageConfirmId] = useState<string | null>(null);
+
   const filteredGaragesForAdmin = useMemo(() => {
     const q = garageSearch.trim().toLowerCase();
     
     // 1. تصفية الجراجات بحسب التبويب النشط في الأدمن
-
     let list = garages.filter((g) => g.garageType === adminGarageTab);
 
     // 2. تصفية بحسب نص البحث لو العميل كتب حاجة
@@ -140,7 +158,7 @@ export default function AdminDashboard() {
   const [gPhone, setGPhone] = useState('');
   const [lat, setLat] = useState(30.04);
   const [lng, setLng] = useState(31.23);
-  const [gArea, setGArea] = useState('وسط البلد');
+  const [gArea, setGArea] = useState('وسط البلد والزمالك');
   
   // 🌟 إضافات نموذج الدليل في الإضافة
   const [gType, setGType] = useState<'partner' | 'directory'>('partner');
@@ -353,6 +371,14 @@ export default function AdminDashboard() {
       return;
     }
 
+    // 🔄 تصحيح الإحداثيات المقلوبة تلقائياً
+    let finalLat = lat;
+    let finalLng = lng;
+    if (finalLat > finalLng) {
+      finalLat = lng;
+      finalLng = lat;
+    }
+
     addGarage({
       name: gName, 
       username: isDir ? `dir_${Date.now()}` : gUser, 
@@ -361,8 +387,8 @@ export default function AdminDashboard() {
       capacity: isDir ? 100 : 50, 
       basePrice: isDir && gPriceType === 'hourly' ? gBasePrice : isDir && gPriceType === 'daily' ? gDailyPrice : gBasePrice, 
       location: 'موقع دليل إلكتروني', 
-      lat, 
-      lng,
+      lat: finalLat, 
+      lng: finalLng,
       valetName1: isDir ? '' : gValet1Name, valetPassword1: isDir ? '' : gValet1Pass,
       valetName2: isDir ? '' : gValet2Name, valetPassword2: isDir ? '' : gValet2Pass,
       valetName3: isDir ? '' : gValet3Name, valetPassword3: isDir ? '' : gValet3Pass,
@@ -375,7 +401,7 @@ export default function AdminDashboard() {
     } as any);
 
     setGName(''); setGUser(''); setGPhone('');
-    setGArea('وسط البلد');
+    setGArea('وسط البلد والزمالك');
     setGValet1Name(''); setGValet1Pass('');
     setGValet2Name(''); setGValet2Pass('');
     setGValet3Name(''); setGValet3Pass('');
@@ -560,6 +586,21 @@ export default function AdminDashboard() {
     } catch (e: any) {
       toast.dismiss(loadingToast);
       toast.error('فشل التنظيف: ' + (e.message || 'خطأ في الاتصال بالشبكة'));
+    }
+  };
+  
+  // 🌟 دالة حذف الجراج من قاعدة البيانات
+  const handleDeleteGarage = async (garageId: string, garageName: string) => {
+    const loadingToast = toast.loading(`جاري حذف جراج ${garageName}...`);
+    try {
+      const { error } = await supabase.from('garages').delete().eq('id', garageId);
+      if (error) throw error;
+      toast.success(`تم حذف جراج ${garageName} بنجاح ✅`, { id: loadingToast });
+      setDeleteGarageConfirmId(null);
+      await fetchAll(); // لتحديث الواجهة فوراً
+    } catch (err: any) {
+      console.error('Delete garage error:', err);
+      toast.error('حدث خطأ أثناء الحذف: ' + (err.message || ''), { id: loadingToast });
     }
   };
 
@@ -1221,7 +1262,7 @@ export default function AdminDashboard() {
                     {w.method === 'instapay' ? '📱 إنستاباي' : '📲 كاش'}
                   </span>
                   <span className="font-bold font-mono text-[9px]" style={{ color: BRAND.slateMuted }}>
-                    {new Date(w.timestamp).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    {new Date(w.timestamp).toLocaleString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
                 <div className="font-black font-mono text-lg text-slate-900">
@@ -1483,7 +1524,7 @@ export default function AdminDashboard() {
                             onClick={() => { 
                               setEditingCommissionGarageId(g.id); 
                               setEditCommissionRate(g.commissionRate ?? 10); 
-                              setEditArea(g.area || 'وسط البلد'); 
+                              setEditArea(g.area || 'وسط البلد والزمالك'); 
                               setEditGarageType(g.garageType || 'vip');
                               setEditPriceType(g.priceType || 'hourly');
                               setEditBasePrice(g.basePrice || 15);
@@ -1538,60 +1579,19 @@ export default function AdminDashboard() {
                           <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>نوع الجراج:</span>
                         </div>
 
-                        {/* 2. تعديل المنطقة */}
+                        {/* 2. تعديل المنطقة بالقائمة الموحدة الجديدة */}
                         <div className="flex justify-between items-center gap-2">
-<select
-  value={editArea}
-  onChange={(e) => setEditArea(e.target.value)}
-  className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"
->
-  <option value="وسط البلد">🏢 وسط البلد</option>
-  <option value="الزمالك">👑 الزمالك</option>
-  <option value="مصر الجديدة">🏰 مصر الجديدة</option>
-  <option value="مدينة نصر">🏙️ مدينة نصر</option>
-  <option value="المعادي">🌳 المعادي</option>
-  <option value="المهندسين">🛍️ المهندسين</option>
-  <option value="الدقي">🎓 الدقي</option>
-  <option value="التجمع الخامس">💎 التجمع الخامس</option>
-  <option value="صلاح سالم والعروبة">🛣️ صلاح سالم والعروبة</option>
-  <option value="ممشى أهل مصر">🌊 ممشى أهل مصر</option>
-  <option value="جاردن سيتي والقصر العيني">🏛️ جاردن سيتي والقصر العيني</option>
-  <option value="بولاق">🚢 بولاق وأبراج نايل سيتي</option>
-  <option value="العتبة والأسواق">🛍️ العتبة وشارع عبد العزيز</option>
-  <option value="الحسين والأزهر">🏮 الحسين والأزهر</option>
-  <option value="شيراتون المطار">✈️ شيراتون المطار</option>
-  <option value="الرحاب ومدينتي">🏡 الرحاب ومدينتي</option>
-  <option value="القرية الذكية">💻 القرية الذكية</option>
-  <option value="الشيخ زايد">🌲 الشيخ زايد</option>
-  <option value="6 أكتوبر">🎡 6 أكتوبر</option>
-  <option value="المقطم">⛰️ المقطم</option>
-  <option value="المنيل">🏝️ المنيل</option>
-  <option value="الجيزة">🏛️ الجيزة</option>
-  <option value="حدائق الأهرام">🚪 حدائق الأهرام</option>
-  <option value="المريوطية والمنصورية">🌴 المريوطية والمنصورية</option>
-  <option value="الكيت كات">🌊 الكيت كات</option>
-  <option value="إمبابة والوراق">⛵ إمبابة والوراق</option>
-  <option value="أرض اللواء">🚉 أرض اللواء وميت عقبة</option>
-  <option value="الوايلي والعباسية">🏥 الوايلي والعباسية</option>
-  <option value="الزيتون والمطرية">🌿 الزيتون والمطرية</option>
-  <option value="حدائق القبة">🌳 حدائق القبة</option>
-  <option value="جسر السويس">🛣️ جسر السويس والألف مسكن</option>
-  <option value="شبرا ورمسيس">🚆 شبرا ورمسيس</option>
-  <option value="شبرا الخيمة">🏭 شبرا الخيمة</option>
-  <option value="مصر القديمة">🕌 مصر القديمة</option>
-  <option value="مدينة الشروق">🎓 مدينة الشروق وبدر</option>
-  <option value="مدينة العبور">🍇 مدينة العبور</option>
-  <option value="العاشر من رمضان">🏭 العاشر من رمضان</option>
-  <option value="العاصمة الإدارية">🏛️ العاصمة الإدارية</option>
-  <option value="حلوان">⚙️ حلوان</option>
-  <option value="الإسكندرية">🏖️ الإسكندرية</option>
-  <option value="الساحل الشمالي">🏄 الساحل الشمالي والعلمين</option>
-  <option value="المنصورة والدلتا">🌾 المنصورة والدلتا</option>
-  <option value="طنطا">🕌 طنطا</option>
-  <option value="مدن القناة">🚢 مدن القناة</option>
-  <option value="العين السخنة">🏖️ العين السخنة</option>
-  <option value="مناطق أخرى">📍 مناطق أخرى</option>
-</select>
+                          <select
+                            value={editArea}
+                            onChange={(e) => setEditArea(e.target.value)}
+                            className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"
+                          >
+                            {OFFICIAL_AREAS.map((area) => (
+                              <option key={area.value} value={area.value}>
+                                {area.label}
+                              </option>
+                            ))}
+                          </select>
                           <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية:</span>
                         </div>
 
@@ -1660,29 +1660,60 @@ export default function AdminDashboard() {
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newStatus = g.isActive === false ? true : false;
-                        updateGarage(g.id, { isActive: newStatus });
-                        toast.success(newStatus ? `تم تفعيل ${g.name} 🟢` : `تم تعطيل ${g.name} 🔴`);
-                      }}
-                      className="font-black py-2 px-3 rounded-xl text-[10px] cursor-pointer border-0 text-white flex items-center justify-center gap-1"
-                      style={{ background: g.isActive !== false ? BRAND.greenDark : '#dc2626' }}
-                    >
-                      <span>{g.isActive !== false ? '🟢 مفعّل' : '🔴 معطّل'}</span>
-                    </button>
+                  
+                  {/* أزرار الإجراءات مع زر الحذف الجديد */}
+                  <div className="flex items-center gap-2 mt-3">
+                    {deleteGarageConfirmId === g.id ? (
+                      <div className="w-full flex items-center justify-between gap-2 p-2 rounded-xl border border-red-200 bg-red-50">
+                        <span className="text-[10px] font-black text-red-600">تأكيد الحذف نهائياً؟</span>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => handleDeleteGarage(g.id, g.name)} 
+                            className="font-black py-1.5 px-3 rounded-lg text-[10px] bg-red-600 text-white border-0 cursor-pointer"
+                          >
+                            تأكيد
+                          </button>
+                          <button 
+                            onClick={() => setDeleteGarageConfirmId(null)} 
+                            className="font-black py-1.5 px-3 rounded-lg text-[10px] bg-white text-slate-600 border border-slate-300 cursor-pointer"
+                          >
+                            إلغاء
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newStatus = g.isActive === false ? true : false;
+                            updateGarage(g.id, { isActive: newStatus });
+                            toast.success(newStatus ? `تم تفعيل ${g.name} 🟢` : `تم تعطيل ${g.name} 🔴`);
+                          }}
+                          className="font-black py-2 px-3 rounded-xl text-[10px] cursor-pointer border-0 text-white flex items-center justify-center gap-1"
+                          style={{ background: g.isActive !== false ? BRAND.greenDark : '#dc2626' }}
+                        >
+                          <span>{g.isActive !== false ? '🟢 مفعّل' : '🔴 معطّل'}</span>
+                        </button>
 
-                    {!isDirectory && (
-                      <button
-                        onClick={() => handleAdminEnterGarage(g)}
-                        className="flex-1 font-black py-2 rounded-xl text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1.5"
-                        style={{ background: BRAND.blue }}
-                      >
-                        <Navigation size={14} />
-                        دخول وإدارة الجراج
-                      </button>
+                        {!isDirectory && (
+                          <button
+                            onClick={() => handleAdminEnterGarage(g)}
+                            className="flex-1 font-black py-2 rounded-xl text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1.5"
+                            style={{ background: BRAND.blue }}
+                          >
+                            <Navigation size={14} />
+                            دخول وإدارة
+                          </button>
+                        )}
+                        
+                        <button
+                          onClick={() => setDeleteGarageConfirmId(g.id)}
+                          className="font-black py-2 px-3 rounded-xl text-[10px] cursor-pointer border text-red-600 bg-red-50 border-red-200 flex-1 md:flex-none"
+                        >
+                          🗑️ حذف
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -1700,15 +1731,15 @@ export default function AdminDashboard() {
           {/* اختيار نوع الجراج المضاف */}
           <div className="text-right">
             <label className="font-black block text-right mb-1.5 text-[10px]" style={{ color: BRAND.slate }}>نوع الجراج المضاف للشبكة</label>
-<select
-  value={gType === 'partner' ? 'vip' : gType}
-  onChange={e => setGType(e.target.value as any)}
-  className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200"
-  style={{ color: BRAND.navy }}
->
-  <option value="vip">🤝 جراج شريك VIP معتمد (حجوزات، تحصيل ومحفظة)</option>
-  <option value="directory">🧭 دليل ركنات مجاني (لوكيشن، سعر وملاحة سريعة)</option>
-</select>
+            <select
+              value={gType === 'partner' ? 'vip' : gType}
+              onChange={e => setGType(e.target.value === 'vip' ? 'partner' : e.target.value as any)}
+              className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200"
+              style={{ color: BRAND.navy }}
+            >
+              <option value="vip">🤝 جراج شريك VIP معتمد (حجوزات، تحصيل ومحفظة)</option>
+              <option value="directory">🧭 دليل ركنات مجاني (لوكيشن، سعر وملاحة سريعة)</option>
+            </select>
           </div>
 
           <input className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="اسم الجراج أو الساحة" value={gName} onChange={e => setGName(e.target.value)} />
@@ -1728,14 +1759,11 @@ export default function AdminDashboard() {
               className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200"
               style={{ color: BRAND.navy }}
             >
-              <option value="وسط البلد">🏢 وسط البلد</option>
-              <option value="مصر الجديدة">🏰 مصر الجديدة</option>
-              <option value="مدينة نصر">🏙️ مدينة نصر</option>
-              <option value="المعادي">🌳 المعادي</option>
-              <option value="المهندسين">🛍️ المهندسين</option>
-              <option value="الدقي">🎓 الدقي</option>
-              <option value="التجمع الخامس">💎 التجمع الخامس</option>
-              <option value="مناطق أخرى">📍 مناطق أخرى</option>
+              {OFFICIAL_AREAS.map((area) => (
+                <option key={area.value} value={area.value}>
+                  {area.label}
+                </option>
+              ))}
             </select>
           </div>
 

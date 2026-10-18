@@ -32,7 +32,6 @@ export interface Garage {
   payment_mode?: 'cash' | 'wallet' | 'both'; 
   area?: string;
   
-  // 🌟 حقول منظومة الدليل والتصويت التشاركي النظيفة
   garageType?: 'partner' | 'directory' | 'vip';
   priceType?: 'hourly' | 'daily' | 'monthly';
   dailyPrice?: number;
@@ -40,6 +39,18 @@ export interface Garage {
   pendingPriceVotes?: number;
   voterPhones?: string;
 }
+
+// 📡 نوع الرادار الجديد (وتم عمل Alias ليتوافق مع شاشات الرادار)
+export interface Radar {
+  id: string;
+  lat: number;
+  lng: number;
+  camera_type?: string;
+  type: 'speed' | 'belt_phone' | 'traffic_light';
+  speed_limit: number;
+  road_name?: string;
+}
+export type SpeedCamera = Radar;
 
 export interface ParkingSession {
   id: string;
@@ -122,6 +133,39 @@ export type ViewType = 'user' | 'garage' | 'admin';
 export type ScreenType =
   | 'splash' | 'list' | 'offer' | 'waiting' | 'navigation'
   | 'session' | 'summary' | 'lastSession' | 'chat';
+
+// ===================== 🗺️ قواميس المناطق الجغرافية =====================
+
+export const AREA_ICONS: Record<string, string> = {
+  'الكل': '🏢',
+  'وسط البلد والزمالك': '🏛️',
+  'مدينة نصر والشرقية': '🏢',
+  'مصر الجديدة والشروق': '✈️',
+  'التجمع والقاهرة الجديدة': '💎',
+  'المهندسين والدقي': '🌇',
+  '6 أكتوبر والشيخ زايد': '📐',
+  'المعادي والمقطم': '🌿',
+  'شبرا وخيمة': '🏘️',
+  'صلاح سالم والعروبة': '🛣️',
+  'طريق الأوتوستراد': '🚗',
+  'الجيزة وفيصل والهرم': '🏺',
+  'الإسكندرية والساحل': '🌊',
+};
+
+export const AREA_CENTERS: Record<string, { lat: number; lng: number }> = {
+  'وسط البلد والزمالك': { lat: 30.0444, lng: 31.2357 },
+  'مدينة نصر والشرقية': { lat: 30.0561, lng: 31.3301 },
+  'مصر الجديدة والشروق': { lat: 30.0911, lng: 31.3236 },
+  'التجمع والقاهرة الجديدة': { lat: 30.0074, lng: 31.4913 },
+  'المهندسين والدقي': { lat: 30.0511, lng: 31.2001 },
+  '6 أكتوبر والشيخ زايد': { lat: 29.9723, lng: 30.9493 },
+  'المعادي والمقطم': { lat: 29.9602, lng: 31.2569 },
+  'شبرا وخيمة': { lat: 30.1181, lng: 31.2464 },
+  'صلاح سالم والعروبة': { lat: 30.0735, lng: 31.3015 },
+  'طريق الأوتوستراد': { lat: 29.9850, lng: 31.2950 },
+  'الجيزة وفيصل والهرم': { lat: 29.9870, lng: 31.1890 },
+  'الإسكندرية والساحل': { lat: 31.2001, lng: 29.9187 },
+};
 
 // ===================== 🎁 نظام الشرائح والهدايا =====================
 
@@ -211,10 +255,26 @@ const safeGetStorage = (key: string) => {
   try { const item = localStorage.getItem(key); return item ? JSON.parse(item) : null; } catch { return null; }
 };
 
-// 🌟 جلب الجراجات المحفوظة مسبقاً للفتح الفوري (0 ثانية)
+// 🌟 جلب الجراجات المحفوظة مسبقاً للفتح الفوري
 const getCachedGarages = (): Garage[] => {
   const cached = safeGetStorage('cached_garages_v2');
   return Array.isArray(cached) ? cached : [];
+};
+
+// 📡 قاعدة بيانات الرادارات الاحتياطية المجوفة (Offline Fallback)
+const CORE_EGYPT_RADARS: Radar[] = [
+  { id: 'rad-cairo-01', lat: 30.0735, lng: 31.3015, speed_limit: 80, type: 'speed', camera_type: 'speed', road_name: 'طريق صلاح سالم' },
+  { id: 'rad-cairo-02', lat: 30.0561, lng: 31.3301, speed_limit: 60, type: 'belt_phone', camera_type: 'seatbelt_phone', road_name: 'طريق النصر - مدينة نصر' },
+  { id: 'rad-cairo-03', lat: 29.9850, lng: 31.2950, speed_limit: 90, type: 'speed', camera_type: 'speed', road_name: 'الأوتوستراد - المعادي' },
+  { id: 'rad-cairo-04', lat: 30.0074, lng: 31.4913, speed_limit: 90, type: 'speed', camera_type: 'speed', road_name: 'التسعين الشمالي' },
+  { id: 'rad-cairo-05', lat: 30.0511, lng: 31.2001, speed_limit: 60, type: 'traffic_light', camera_type: 'traffic_light', road_name: 'شارع جامعة الدول العربية' },
+  { id: 'rad-cairo-06', lat: 29.9723, lng: 30.9493, speed_limit: 100, type: 'speed', camera_type: 'speed', road_name: 'محور 26 يوليو' }
+];
+
+// 📡 جلب الرادارات المحفوظة مسبقاً للفتح الفوري (100% أوفلاين)
+const getCachedRadars = (): Radar[] => {
+  const cached = safeGetStorage('cached_radars_v2');
+  return Array.isArray(cached) && cached.length > 0 ? cached : CORE_EGYPT_RADARS;
 };
 
 export const getPlateFingerprint = (plate?: any): string => {
@@ -349,9 +409,18 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   });
 };
 
-// 🌟 الـ Mapper النظيف والمحترف: يربط قيم الشاشة vip و directory بدقة
 const mapGarage = (r: any): Garage => {
   const isDirectory = r.garage_type === 'directory' || r.type === 'directory' || r.is_vip === false;
+
+  let parsedLat = Number(r.lat) || 30.0444;
+  let parsedLng = Number(r.lng) || 31.2357;
+
+  // 🔄 تصحيح الإحداثيات المقلوبة تلقائياً
+  if (parsedLat > parsedLng) {
+    const temp = parsedLat;
+    parsedLat = parsedLng;
+    parsedLng = temp;
+  }
 
   return {
     id: r.id, 
@@ -360,8 +429,8 @@ const mapGarage = (r: any): Garage => {
     phone: r.phone || '',
     ownerPhone: r.owner_phone || r.phone || '',
     location: r.location || '', 
-    lat: Number(r.lat) || 30.0444, 
-    lng: Number(r.lng) || 31.2357, 
+    lat: parsedLat, 
+    lng: parsedLng, 
     capacity: Number(r.capacity) || 50,
     availableSpots: Number(r.available_spots ?? r.capacity ?? 50), 
     basePrice: Number(r.base_price || (isDirectory ? 20 : 15)),
@@ -377,7 +446,6 @@ const mapGarage = (r: any): Garage => {
     payment_mode: isDirectory ? 'cash' : (r.payment_mode || 'both'), 
     area: r.area || 'مناطق أخرى',
 
-    // 🌟 ضبط القيمة لـ vip بدلاً من partner لتبويب الواجهة
     garageType: isDirectory ? 'directory' : 'vip',
     priceType: r.price_type || 'hourly',
     dailyPrice: r.daily_price != null ? Number(r.daily_price) : undefined,
@@ -485,6 +553,15 @@ interface AppState {
   setCurrentUser: (u: any) => Promise<void>;
   deductWallet: (amount: number) => Promise<boolean>; 
   markFreeSessionUsed: () => Promise<void>;
+  
+  // متغيرات الرادار والموقع للشاشة الرئيسية
+  userLocation: { lat: number; lng: number } | null;
+  userSpeed: number;
+  isRadarActive: boolean;
+  setUserLocation: (loc: { lat: number; lng: number } | null) => void;
+  setUserSpeed: (speed: number) => void;
+  setIsRadarActive: (active: boolean) => void;
+
   garages: Garage[];
   currentGarageId: string | null;
   setCurrentGarageId: (id: string | null) => void;
@@ -495,6 +572,10 @@ interface AppState {
   selectedGarageId: string | null;
   setSelectedGarageId: (id: string | null) => void;
   getMyOwnedGarages: (phone: string) => Garage[];
+  
+  radars: Radar[]; 
+  fetchRadars: () => Promise<void>;
+
   sessions: ParkingSession[];
   acknowledgedSessionIds: Set<string>;
   acknowledgeSession: (id: string) => void;
@@ -505,21 +586,26 @@ interface AppState {
   confirmRevenue: (sessionId: string, addedBy?: string) => Promise<void>;
   unconfirmRevenue: (sessionId: string) => Promise<void>;
   assignSessionToValet: (sessionId: string, valetName: string) => Promise<void>;
+  
   offers: Offer[];
   addOffer: (o: any) => void;
   updateOffer: (id: string, status: Offer['status'], counterPrice?: number) => void;
   cancelOffer: (id: string) => void;
+  
   walletTopUps: WalletTopUp[];
   addWalletTopUp: (w: any) => void;
   approveTopUp: (id: string) => Promise<void>;
   rejectTopUp: (id: string) => Promise<void>;
+  
   incomingCars: IncomingCar[];
   addIncomingCar: (c: any) => Promise<void>;
   removeIncomingCar: (id: string) => Promise<void>;
+  
   messages: Message[];
   addMessage: (m: any) => Promise<{ success: boolean; error?: string }>;
   replyMessage: (id: string, reply: string) => Promise<void>;
   closeMessage: (id: string) => Promise<void>;
+  
   fetchAll: () => Promise<void>;
   logout: () => void;
 }
@@ -533,6 +619,14 @@ export const useStore = create<AppState>((set, get) => ({
   setScreen: (s) => { set({ screen: s }); localStorage.setItem('appScreen', s); },
 
   currentUser: safeGetStorage('currentUser'),
+  
+  // تهيئة حالات الرادار
+  userLocation: null,
+  userSpeed: 0,
+  isRadarActive: true,
+  setUserLocation: (loc) => set({ userLocation: loc }),
+  setUserSpeed: (speed) => set({ userSpeed: speed }),
+  setIsRadarActive: (active) => set({ isRadarActive: active }),
 
   setCurrentUser: async (u) => {
     if (!u) { set({ currentUser: null }); safeRemoveStorage('currentUser'); return; }
@@ -651,6 +745,34 @@ export const useStore = create<AppState>((set, get) => ({
     return get().garages.filter((g) => normalizePhone(g.ownerPhone || '') === np || normalizePhone(g.phone) === np);
   },
 
+  // 📡 الكاش الفوري للرادارات للعمل أوفلاين
+  radars: getCachedRadars(),
+  fetchRadars: async () => {
+    if (!isSupabaseConfigured()) return;
+    try {
+      const { data, error } = await supabase
+        .from('speed_cameras')
+        .select('*')
+        .limit(2000);
+        
+      if (!error && data && data.length > 0) {
+        const formattedRadars = data.map((r: any) => ({
+          id: r.id,
+          lat: Number(r.lat),
+          lng: Number(r.lng),
+          camera_type: r.camera_type,
+          type: (r.camera_type === 'seatbelt_phone' ? 'belt_phone' : (r.type || r.camera_type || 'speed')) as any,
+          speed_limit: Number(r.speed_limit || 60),
+          road_name: r.road_name || 'طريق رئيسي'
+        }));
+        set({ radars: formattedRadars });
+        safeSetStorage('cached_radars_v2', formattedRadars);
+      }
+    } catch (err) {
+      console.warn('Failed to sync radars via store', err);
+    }
+  },
+
   sessions: [],
 
   acknowledgedSessionIds: (() => {
@@ -680,11 +802,15 @@ export const useStore = create<AppState>((set, get) => ({
     safeRemoveStorage('acknowledgedSessionIds');
   },
 
-  // 🚀 Delta Sync: تحديث الكبسولة الخفيفة والجراجات الجديدة فقط لتوفير الباقة والسيرفر
+  // 🚀 Delta Sync: تحديث الكبسولة الخفيفة والجراجات الجديدة والرادارات
   fetchAll: async () => {
     if (!isSupabaseConfigured()) return;
 
     try {
+      // 1️⃣ تحديث الرادارات الصامت
+      get().fetchRadars();
+
+      // 2️⃣ تحديث الجراجات (Delta Sync)
       let currentGarages = get().garages;
 
       if (currentGarages.length === 0) {
@@ -696,7 +822,7 @@ export const useStore = create<AppState>((set, get) => ({
       } else {
         const lightRes = await supabase
           .from('garages')
-          .select('id, available_spots, base_price, pending_price_votes, daily_price, monthly_price, is_active, payment_mode, garage_type, type, is_vip')
+          .select('id, lat, lng, available_spots, base_price, pending_price_votes, daily_price, monthly_price, is_active, payment_mode, garage_type, type, is_vip')
           .limit(2000);
 
         if (lightRes.data) {
@@ -715,8 +841,17 @@ export const useStore = create<AppState>((set, get) => ({
             const update: any = lightMap.get(g.id);
             if (update) {
               const isDirectory = update.garage_type === 'directory' || update.type === 'directory' || update.is_vip === false;
+              
+              let updatedLat = update.lat != null ? Number(update.lat) : g.lat;
+              let updatedLng = update.lng != null ? Number(update.lng) : g.lng;
+              if (updatedLat > updatedLng) {
+                const temp = updatedLat; updatedLat = updatedLng; updatedLng = temp;
+              }
+
               return {
                 ...g,
+                lat: updatedLat,
+                lng: updatedLng,
                 availableSpots: update.available_spots ?? g.availableSpots,
                 basePrice: Number(update.base_price || g.basePrice),
                 pendingPriceVotes: update.pending_price_votes != null ? Number(update.pending_price_votes) : g.pendingPriceVotes,
@@ -782,12 +917,19 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 🌟 إضافة الجراج بشكل مخصص للحقول النظيفة وتحديث الكاش
+  // 🌟 إضافة الجراج وتحديث الكاش
   addGarage: async (g) => {
     const isDirectory = g.garageType === 'directory';
     const finalPrice = isDirectory 
       ? (g.priceType === 'daily' ? g.dailyPrice : g.priceType === 'monthly' ? g.monthlyPrice : (g.basePrice || 20))
       : (g.basePrice || 15);
+
+    let finalLat = g.lat;
+    let finalLng = g.lng;
+    if (finalLat > finalLng) {
+      finalLat = g.lng;
+      finalLng = g.lat;
+    }
 
     const { data, error } = await supabase.from('garages').insert({
       name: g.name, 
@@ -795,7 +937,7 @@ export const useStore = create<AppState>((set, get) => ({
       phone: g.phone || '01000000000',
       owner_phone: g.ownerPhone || g.phone || '01000000000',
       location: isDirectory ? 'دليل ركنات مجاني' : g.location, 
-      lat: g.lat, lng: g.lng,
+      lat: finalLat, lng: finalLng,
       capacity: g.capacity || 50, 
       available_spots: g.capacity || 50, 
       base_price: finalPrice, 
@@ -858,6 +1000,14 @@ export const useStore = create<AppState>((set, get) => ({
     if (updates.payment_mode !== undefined) dbUpdates.payment_mode = isDirectory ? 'cash' : updates.payment_mode; 
     if (updates.area !== undefined) dbUpdates.area = updates.area; 
     
+    if (updates.lat !== undefined && updates.lng !== undefined) {
+      let fLat = updates.lat;
+      let fLng = updates.lng;
+      if (fLat > fLng) { fLat = updates.lng; fLng = updates.lat; }
+      dbUpdates.lat = fLat;
+      dbUpdates.lng = fLng;
+    }
+    
     if (updates.garageType !== undefined) {
       dbUpdates.garage_type = updates.garageType;
       dbUpdates.type = updates.garageType === 'directory' ? 'directory' : 'vip';
@@ -867,7 +1017,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (updates.priceType !== undefined) dbUpdates.price_type = updates.priceType;
     if (updates.dailyPrice !== undefined) dbUpdates.daily_price = updates.dailyPrice;
     if (updates.monthlyPrice !== undefined) dbUpdates.monthly_price = updates.monthlyPrice;
-    if (updates.lastPriceUpdate !== undefined) dbUpdates.last_price_update = updates.lastPriceUpdate;
+    if (updates.lastPriceUpdate !== undefined) dbUpdates.lastPriceUpdate = updates.lastPriceUpdate;
     if (updates.priceUpdatedBy !== undefined) dbUpdates.price_updated_by = updates.priceUpdatedBy;
 
     if (Object.keys(dbUpdates).length > 0) {

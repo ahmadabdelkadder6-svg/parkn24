@@ -7,7 +7,7 @@ import {
   X, Gift, ChevronDown, QrCode, Copy, Edit3, Check, Minus, Menu,
   Wallet, Camera
 } from 'lucide-react';
-import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
+import { useStore, Garage, ParkingSession as Session, IncomingCar, Radar, normalizePlate, normalizePhone } from '../store';
 import { calculateDistance, distanceToMinutes, classifyDistance, formatDuration } from '../utils/distance';
 import TopUpWalletModal from './TopUpWalletModal';
 import toast from 'react-hot-toast';
@@ -19,7 +19,6 @@ const BRAND = {
 };
 
 interface GarageWithDistance extends Garage { distance: number; minutes: number; classification: 'nearby' | 'far'; }
-interface Radar { id: string; lat: number; lng: number; camera_type: string; speed_limit: number; }
 interface RadarAlert { radar: Radar; distanceMeters: number; isCritical: boolean; }
 interface GarageCardProps { garage: GarageWithDistance; index: number; onSelect: () => void; onReportPrice: (garage: GarageWithDistance) => void; isNearby: boolean; isClosest: boolean; hasActiveSession: boolean; hasIncomingCar: boolean; disabled: boolean; }
 
@@ -30,57 +29,36 @@ const safeParseTime = (value: unknown): number => {
   return 0;
 };
 
+// ✅ تم التحديث لتتطابق بالضبط مع الـ 12 منطقة الرسمية (OFFICIAL_AREAS)
 const AREA_ICONS: Record<string, string> = {
-  'وسط البلد': '🏢', 'الزمالك': '👑', 'مصر الجديدة': '🏰', 'مدينة نصر': '🏙️',
-  'المعادي': '🌳', 'المهندسين': '🛍️', 'الدقي': '🎓', 'التجمع الخامس': '💎',
-  'صلاح سالم والعروبة': '🛣️', 'طريق الأوتوستراد': '🛣️', 'ممشى أهل مصر': '🌊', 'جاردن سيتي والقصر العيني': '🏛️',
-  'بولاق': '🚢', 'العتبة والأسواق': '🛍️', 'الحسين والأزهر': '🏮', 'شيراتون المطار': '✈️',
-  'الرحاب ومدينتي': '🏡', 'القرية الذكية': '💻', 'الشيخ زايد': '🌲', '6 أكتوبر': '🎡',
-  'المقطم': '⛰️', 'المنيل': '🏝️', 'الجيزة': '🏛️', 'حدائق الأهرام': '🚪',
-  'المريوطية والمنصورية': '🌴', 'الكيت كات': '🌊', 'إمبابة والوراق': '⛵',
-  'أرض اللواء': '🚉', 'الوايلي والعباسية': '🏥', 'الزيتون والمطرية': '🌿',
-  'حدائق القبة': '🌳', 'جسر السويس': '🛣️', 'شبرا ورمسيس': '🚆', 'شبرا الخيمة': '🏭',
-  'مصر القديمة': '🕌', 'مدينة الشروق': '🎓', 'مدينة العبور': '🍇', 'العاشر من رمضان': '🏭',
-  'العاصمة الإدارية': '🏛️', 'حلوان': '⚙️', 'الإسكندرية': '🏖️', 'الساحل الشمالي': '🏄',
-  'المنصورة والدلتا': '🌾', 'طنطا': '🕌', 'مدن القناة': '🚢', 'العين السخنة': '🏖️',
+  'وسط البلد والزمالك': '🏛️',
+  'مدينة نصر والشرقية': '🏢',
+  'مصر الجديدة والشروق': '✈️',
+  'التجمع والقاهرة الجديدة': '💎',
+  'المهندسين والدقي': '🌇',
+  '6 أكتوبر والشيخ زايد': '📐',
+  'المعادي والمقطم': '🌿',
+  'شبرا وخيمة': '🏘️',
+  'صلاح سالم والعروبة': '🛣️',
+  'طريق الأوتوستراد': '🚗',
+  'الجيزة وفيصل والهرم': '🏺',
+  'الإسكندرية والساحل': '🌊',
   'مناطق أخرى': '📍',
 };
 
 const AREA_CENTERS: Record<string, { lat: number; lng: number; maxRadiusKm: number }> = {
+  'وسط البلد والزمالك': { lat: 30.0444, lng: 31.2357, maxRadiusKm: 5.0 },
+  'مدينة نصر والشرقية': { lat: 30.0561, lng: 31.3301, maxRadiusKm: 8.0 },
+  'مصر الجديدة والشروق': { lat: 30.0911, lng: 31.3236, maxRadiusKm: 12.0 },
+  'التجمع والقاهرة الجديدة': { lat: 30.0074, lng: 31.4913, maxRadiusKm: 15.0 },
+  'المهندسين والدقي': { lat: 30.0511, lng: 31.2001, maxRadiusKm: 5.0 },
+  '6 أكتوبر والشيخ زايد': { lat: 29.9723, lng: 30.9493, maxRadiusKm: 15.0 },
+  'المعادي والمقطم': { lat: 29.9602, lng: 31.2569, maxRadiusKm: 8.0 },
+  'شبرا وخيمة': { lat: 30.1181, lng: 31.2464, maxRadiusKm: 6.0 },
   'صلاح سالم والعروبة': { lat: 30.0735, lng: 31.3015, maxRadiusKm: 8.0 },
   'طريق الأوتوستراد': { lat: 29.9850, lng: 31.2950, maxRadiusKm: 15.0 },
-  'وسط البلد': { lat: 30.0444, lng: 31.2357, maxRadiusKm: 4.5 },
-  'الزمالك': { lat: 30.0634, lng: 31.2195, maxRadiusKm: 3.0 },
-  'مصر الجديدة': { lat: 30.0915, lng: 31.3210, maxRadiusKm: 6.0 },
-  'مدينة نصر': { lat: 30.0566, lng: 31.3468, maxRadiusKm: 7.0 },
-  'المعادي': { lat: 29.9602, lng: 31.2569, maxRadiusKm: 6.5 },
-  'المهندسين': { lat: 30.0544, lng: 31.2007, maxRadiusKm: 4.0 },
-  'الدقي': { lat: 30.0378, lng: 31.2058, maxRadiusKm: 3.5 },
-  'التجمع الخامس': { lat: 30.0074, lng: 31.4340, maxRadiusKm: 12.0 },
-  'شيراتون المطار': { lat: 30.1146, lng: 31.3848, maxRadiusKm: 4.5 },
-  'الرحاب ومدينتي': { lat: 30.0885, lng: 31.5510, maxRadiusKm: 15.0 },
-  'الشيخ زايد': { lat: 30.0245, lng: 30.9925, maxRadiusKm: 7.5 },
-  '6 أكتوبر': { lat: 29.9725, lng: 30.9438, maxRadiusKm: 15.0 },
-  'المقطم': { lat: 30.0095, lng: 31.3078, maxRadiusKm: 5.0 },
-  'المنيل': { lat: 30.0245, lng: 31.2285, maxRadiusKm: 3.0 },
-  'الجيزة': { lat: 30.0105, lng: 31.2078, maxRadiusKm: 6.0 },
-  'حدائق الأهرام': { lat: 29.9725, lng: 31.1180, maxRadiusKm: 5.5 },
-  'المريوطية والمنصورية': { lat: 29.9889, lng: 31.1341, maxRadiusKm: 6.0 },
-  'الكيت كات': { lat: 30.0665, lng: 31.2142, maxRadiusKm: 3.0 },
-  'إمبابة والوراق': { lat: 30.0782, lng: 31.2264, maxRadiusKm: 5.0 },
-  'أرض اللواء': { lat: 30.0625, lng: 31.1942, maxRadiusKm: 3.0 },
-  'الوايلي والعباسية': { lat: 30.0682, lng: 31.2845, maxRadiusKm: 4.5 },
-  'الزيتون والمطرية': { lat: 30.1185, lng: 31.3142, maxRadiusKm: 5.0 },
-  'حدائق القبة': { lat: 30.0865, lng: 31.2885, maxRadiusKm: 4.0 },
-  'جسر السويس': { lat: 30.1285, lng: 31.3410, maxRadiusKm: 8.0 },
-  'شبرا ورمسيس': { lat: 30.0812, lng: 31.2465, maxRadiusKm: 5.5 },
-  'شبرا الخيمة': { lat: 30.1235, lng: 31.2445, maxRadiusKm: 6.0 },
-  'مصر القديمة': { lat: 30.0085, lng: 31.2505, maxRadiusKm: 5.0 },
-  'مدينة الشروق': { lat: 30.1385, lng: 31.6210, maxRadiusKm: 10.0 },
-  'حلوان': { lat: 29.8495, lng: 31.3342, maxRadiusKm: 12.0 },
-  'الساحل الشمالي': { lat: 30.9145, lng: 28.7428, maxRadiusKm: 150.0 },
-  'مدن القناة': { lat: 30.5989, lng: 32.2841, maxRadiusKm: 90.0 },
-  'العين السخنة': { lat: 29.6258, lng: 32.3541, maxRadiusKm: 40.0 },
+  'الجيزة وفيصل والهرم': { lat: 29.9870, lng: 31.1890, maxRadiusKm: 10.0 },
+  'الإسكندرية والساحل': { lat: 31.2001, lng: 29.9187, maxRadiusKm: 150.0 }
 };
 
 const CATEGORIES = [
@@ -143,7 +121,7 @@ const playRadarTone = (type: string, isCritical: boolean) => {
     const ctx = audioCtx;
     const now = ctx.currentTime;
 
-    // 1️⃣ وحدة ضغط ديناميكية (Dynamics Compressor) لتضخيم الصوت لأقصى حد بدون تشويه
+    // 1️⃣ وحدة ضغط ديناميكية لتضخيم الصوت لأقصى حد بدون تشويه
     const compressor = ctx.createDynamicsCompressor();
     compressor.threshold.setValueAtTime(-5, now);
     compressor.knee.setValueAtTime(0, now);
@@ -152,12 +130,35 @@ const playRadarTone = (type: string, isCritical: boolean) => {
     compressor.release.setValueAtTime(0.05, now);
     compressor.connect(ctx.destination);
 
-    // 2️⃣ النغمة المزدوجة الترددية (Piezo Resonance)
-    const beepCount = isCritical ? 8 : 5;
-    const beepDuration = isCritical ? 0.07 : 0.11;
-    const gap = isCritical ? 0.04 : 0.10;
-    const freqA = isCritical ? 2600 : 2000;
-    const freqB = isCritical ? 2615 : 2008;
+    // 2️⃣ النغمة المزدوجة الترددية (Piezo Resonance) - مميزة لكل نوع رادار
+    let beepCount: number;
+    let beepDuration: number;
+    let gap: number;
+    let freqA: number;
+    let freqB: number;
+
+    if (type === 'traffic_light') {
+      // 🚦 كاميرا إشارة مرور - نغمة متقطعة سريعة
+      beepCount = isCritical ? 10 : 6;
+      beepDuration = 0.05;
+      gap = 0.03;
+      freqA = isCritical ? 2400 : 2000;
+      freqB = isCritical ? 2415 : 2010;
+    } else if (type === 'seatbelt_phone' || type === 'belt_phone' || type === 'seatbelt' || type === 'phone') {
+      // 🪪 كاميرا حزام/موبايل - نغمة مزدوجة (تم التحديث لتشمل seatbelt_phone الموحد)
+      beepCount = isCritical ? 6 : 4;
+      beepDuration = 0.12;
+      gap = 0.08;
+      freqA = isCritical ? 2100 : 1800;
+      freqB = isCritical ? 2110 : 1810;
+    } else {
+      // ⚡ رادار سرعة - نغمة حادة ثاقبة
+      beepCount = isCritical ? 8 : 5;
+      beepDuration = isCritical ? 0.07 : 0.11;
+      gap = isCritical ? 0.04 : 0.10;
+      freqA = isCritical ? 2700 : 2300;
+      freqB = isCritical ? 2715 : 2310;
+    }
 
     for (let i = 0; i < beepCount; i++) {
       const startAt = now + i * (beepDuration + gap);
@@ -232,7 +233,11 @@ const triggerLockScreenAlert = (radar: Radar, distance: number) => {
   // إشعار على الشاشة السوداء
   if ('Notification' in window && Notification.permission === 'granted') {
     try {
-      const title = radar.camera_type === 'speed' ? '⚡ رادار سرعة قريب!' : '📷 كاميرا مرور قريبة!';
+      let title = '📷 كاميرا مرور قريبة!';
+      if (radar.camera_type === 'speed') title = '⚡ رادار سرعة قريب!';
+      else if (radar.camera_type === 'traffic_light') title = '🚦 كاميرا إشارة قريبة!';
+      else if (['seatbelt_phone', 'belt_phone', 'seatbelt', 'phone'].includes(radar.camera_type)) title = '🪪 كاميرا حزام/موبايل!';
+
       const body = `على بُعد ${distance} متر${radar.speed_limit ? ` - حد ${radar.speed_limit} كم/س` : ''}`;
       new Notification(title, {
         body,
@@ -248,9 +253,21 @@ const triggerLockScreenAlert = (radar: Radar, distance: number) => {
   }
 };
 
+// 🔓 فك قفل Web Audio على أول تفاعل من المستخدم (Autoplay Policy Bypass)
+if (typeof window !== 'undefined') {
+  const unlockAudio = () => {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    } catch {}
+  };
+  window.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
+  window.addEventListener('click', unlockAudio, { once: true });
+}
+
 export default function GarageListScreen() {
   const {
-    garages, setSelectedGarageId, setScreen, currentUser, sessions, incomingCars,
+    garages, radars, setSelectedGarageId, setScreen, currentUser, sessions, incomingCars,
     offers, addIncomingCar, fetchAll, acknowledgedSessionIds, walletTopUps, reportPriceUpdate,
   } = useStore();
 
@@ -276,7 +293,6 @@ export default function GarageListScreen() {
   const MAX_RESCUE_OPTIONS = 3;
 
   const [activeRadarAlert, setActiveRadarAlert] = useState<RadarAlert | null>(null);
-  const radarsRef = useRef<Radar[]>([]);
   const lastAudioPlayRef = useRef<number>(0);
   const alertedRadarsRef = useRef<Set<string>>(new Set());
 
@@ -290,20 +306,10 @@ export default function GarageListScreen() {
   const stopStartTimeRef = useRef<number | null>(null);
   const totalStopDurationRef = useRef<number>(0);
 
-  useEffect(() => { isMountedRef.current = true; return () => { isMountedRef.current = false; }; }, []);
+  // 🧮 Fallback: حساب السرعة يدوياً من الإحداثيات لو OS فشل
+  const lastGpsTickRef = useRef<{ lat: number; lng: number; time: number } | null>(null);
 
-  useEffect(() => {
-    const fetchRadars = async () => {
-      try {
-        const { data } = await supabase
-          .from('speed_cameras')
-          .select('id, lat, lng, camera_type, speed_limit') 
-          .limit(2000);
-        if (data) radarsRef.current = data;
-      } catch (err) { console.error('Error fetching radars:', err); }
-    };
-    fetchRadars();
-  }, []);
+  useEffect(() => { isMountedRef.current = true; return () => { isMountedRef.current = false; }; }, []);
 
   const normalizedUserPlate = useMemo(() => normalizePlate(currentUser?.carPlate), [currentUser?.carPlate]);
   const cleanUserPhone = useMemo(() => currentUser?.phone ? normalizePhone(currentUser.phone) : '', [currentUser?.phone]);
@@ -373,10 +379,25 @@ export default function GarageListScreen() {
         const newLat = position.coords.latitude;
         const newLng = position.coords.longitude;
         const newAccuracy = position.coords.accuracy || 10;
-        const rawSpeed = position.coords.speed || 0;
+        const rawSpeed = position.coords.speed;
         const rawHeading = position.coords.heading || 0;
-        const speedKmh = rawSpeed * 3.6;
-        
+        const nowMs = Date.now();
+
+        // 🧮 حساب السرعة: الأولوية لـ OS، الاحتياطي حساب يدوي من المسافة/الزمن
+        let speedKmh = 0;
+        if (rawSpeed !== null && rawSpeed !== undefined && !isNaN(rawSpeed) && rawSpeed >= 0) {
+          speedKmh = rawSpeed * 3.6; // m/s to km/h
+        } else if (lastGpsTickRef.current) {
+          // Fallback mathematical: المسافة ÷ الزمن
+          const prev = lastGpsTickRef.current;
+          const distMeters = calculateDistance(prev.lat, prev.lng, newLat, newLng) * 1000;
+          const timeSec = (nowMs - prev.time) / 1000;
+          if (timeSec > 0 && timeSec < 30) { // تجاهل القيم غير المنطقية
+            speedKmh = (distMeters / timeSec) * 3.6;
+          }
+        }
+        lastGpsTickRef.current = { lat: newLat, lng: newLng, time: nowMs };
+
         speedHistoryRef.current.push(speedKmh);
         if (speedHistoryRef.current.length > 10) speedHistoryRef.current.shift();
         if (rawHeading !== null) { bearingHistoryRef.current.push(rawHeading); if (bearingHistoryRef.current.length > 5) bearingHistoryRef.current.shift(); }
@@ -387,11 +408,12 @@ export default function GarageListScreen() {
         } else { stopStartTimeRef.current = null; }
 
         // ⚡ محرك الرادار السريع (Bounding Box + Haversine) - zero server load
-        if (radarsRef.current.length > 0 && speedKmh > 10) { 
+        // 🚫 صفر إنذارات لو السرعة أقل من 5 كم/س (السيارة واقفة أو تتحرك ببطء)
+        if (radars.length > 0 && speedKmh >= 5) { 
             let minDistance = 500; 
             let closestRadarData: Radar | null = null;
             
-            for (const radar of radarsRef.current) {
+            for (const radar of radars) {
                 const latDiff = Math.abs(radar.lat - newLat);
                 const lngDiff = Math.abs(radar.lng - newLng);
                 if (latDiff > 0.09 || lngDiff > 0.1) continue; 
@@ -451,22 +473,18 @@ export default function GarageListScreen() {
       () => { if (!isMountedRef.current) return; setLocationLoading(false); },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
-  }, []);
+  }, [radars]);
 
   // 🔊 زر تحديث الموقع - يفعّل محرك الصوت والخلفية والشاشة السوداء
   const handleForceRefreshLocation = useCallback(async () => {
     try {
-      // 1. فك قفل Web Audio Context (شرط ضغطة المستخدم)
       if (!audioCtx) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       if (audioCtx.state === 'suspended') await audioCtx.resume();
-
-      // 2. تفعيل محرك الخلفية والشاشة السوداء (Silent Loop + Notifications + MediaSession)
       await enableBackgroundKeepAlive();
     } catch (e) {
       console.warn("Audio/Background init error:", e);
     }
 
-    // 3. إعادة تهيئة الموقع لجلب أدق إحداثيات
     lastLocationRef.current = null;
     bestAccuracyRef.current = Infinity;
     getUserLocation();
@@ -633,7 +651,7 @@ export default function GarageListScreen() {
   return (
     <div className="h-full flex flex-col overflow-hidden relative" style={{ background: BRAND.bg, color: BRAND.blueDark }}>
       
-      {/* 🚨 نافذة الرادار الثابتة (Fixed) مع z-index عالي جداً */}
+      {/* 🚨 نافذة الرادار الثابتة (Fixed) مع z-index عالي جداً - فوق كل العناصر */}
       <AnimatePresence>
         {activeRadarAlert && (
           <motion.div
@@ -653,7 +671,10 @@ export default function GarageListScreen() {
               </div>
               <div>
                 <div className={`font-black text-lg leading-tight ${activeRadarAlert.isCritical ? 'text-white' : 'text-slate-950'}`}>
-                  {activeRadarAlert.radar.camera_type === 'speed' ? '⚡ رادار سرعة' : '📷 كاميرا إشارة/حزام'}
+                  {activeRadarAlert.radar.camera_type === 'speed' && '⚡ رادار سرعة'}
+                  {activeRadarAlert.radar.camera_type === 'traffic_light' && '🚦 كاميرا إشارة'}
+                  {['seatbelt_phone', 'belt_phone', 'seatbelt', 'phone'].includes(activeRadarAlert.radar.camera_type) && '🪪 كاميرا حزام/موبايل'}
+                  {!['speed', 'traffic_light', 'seatbelt_phone', 'belt_phone', 'seatbelt', 'phone'].includes(activeRadarAlert.radar.camera_type) && '📷 كاميرا مرور'}
                 </div>
                 <div className={`text-sm font-extrabold opacity-90 mt-0.5 ${activeRadarAlert.isCritical ? 'text-white' : 'text-slate-950'}`}>
                   على بُعد {Math.round(activeRadarAlert.distanceMeters)} متر
