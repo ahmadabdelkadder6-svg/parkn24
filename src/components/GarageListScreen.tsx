@@ -29,7 +29,7 @@ const safeParseTime = (value: unknown): number => {
   return 0;
 };
 
-// ✅ تم التحديث لتتطابق بالضبط مع الـ 12 منطقة الرسمية (OFFICIAL_AREAS)
+// ✅ الـ 12 منطقة الرسمية الموحدة
 const AREA_ICONS: Record<string, string> = {
   'وسط البلد والزمالك': '🏛️',
   'مدينة نصر والشرقية': '🏢',
@@ -121,7 +121,6 @@ const playRadarTone = (type: string, isCritical: boolean) => {
     const ctx = audioCtx;
     const now = ctx.currentTime;
 
-    // 1️⃣ وحدة ضغط ديناميكية لتضخيم الصوت لأقصى حد بدون تشويه
     const compressor = ctx.createDynamicsCompressor();
     compressor.threshold.setValueAtTime(-5, now);
     compressor.knee.setValueAtTime(0, now);
@@ -130,7 +129,6 @@ const playRadarTone = (type: string, isCritical: boolean) => {
     compressor.release.setValueAtTime(0.05, now);
     compressor.connect(ctx.destination);
 
-    // 2️⃣ النغمة المزدوجة الترددية (Piezo Resonance) - مميزة لكل نوع رادار
     let beepCount: number;
     let beepDuration: number;
     let gap: number;
@@ -138,21 +136,18 @@ const playRadarTone = (type: string, isCritical: boolean) => {
     let freqB: number;
 
     if (type === 'traffic_light') {
-      // 🚦 كاميرا إشارة مرور - نغمة متقطعة سريعة
       beepCount = isCritical ? 10 : 6;
       beepDuration = 0.05;
       gap = 0.03;
       freqA = isCritical ? 2400 : 2000;
       freqB = isCritical ? 2415 : 2010;
-    } else if (type === 'seatbelt_phone' || type === 'belt_phone' || type === 'seatbelt' || type === 'phone') {
-      // 🪪 كاميرا حزام/موبايل - نغمة مزدوجة (تم التحديث لتشمل seatbelt_phone الموحد)
+    } else if (['seatbelt_phone', 'belt_phone', 'seatbelt', 'phone'].includes(type)) {
       beepCount = isCritical ? 6 : 4;
       beepDuration = 0.12;
       gap = 0.08;
       freqA = isCritical ? 2100 : 1800;
       freqB = isCritical ? 2110 : 1810;
     } else {
-      // ⚡ رادار سرعة - نغمة حادة ثاقبة
       beepCount = isCritical ? 8 : 5;
       beepDuration = isCritical ? 0.07 : 0.11;
       gap = isCritical ? 0.04 : 0.10;
@@ -196,7 +191,6 @@ const playRadarTone = (type: string, isCritical: boolean) => {
       osc2.stop(startAt + beepDuration + 0.01);
     }
 
-    // 3️⃣ صفارة إنذار إضافية حادة جداً في نهاية الإنذار الأحمر
     if (isCritical) {
       const endAt = now + beepCount * (beepDuration + gap) + 0.01;
       const sirenOsc = ctx.createOscillator();
@@ -223,14 +217,12 @@ const playRadarTone = (type: string, isCritical: boolean) => {
 
 // 📳 إشعار شاشة القفل + اهتزاز قوي
 const triggerLockScreenAlert = (radar: Radar, distance: number) => {
-  // اهتزاز قوي
   if ('vibrate' in navigator) {
     try {
       navigator.vibrate([400, 150, 400, 150, 800]);
     } catch {}
   }
 
-  // إشعار على الشاشة السوداء
   if ('Notification' in window && Notification.permission === 'granted') {
     try {
       let title = '📷 كاميرا مرور قريبة!';
@@ -253,7 +245,7 @@ const triggerLockScreenAlert = (radar: Radar, distance: number) => {
   }
 };
 
-// 🔓 فك قفل Web Audio على أول تفاعل من المستخدم (Autoplay Policy Bypass)
+// 🔓 فك قفل Web Audio على أول تفاعل من المستخدم
 if (typeof window !== 'undefined') {
   const unlockAudio = () => {
     try {
@@ -296,6 +288,9 @@ export default function GarageListScreen() {
   const lastAudioPlayRef = useRef<number>(0);
   const alertedRadarsRef = useRef<Set<string>>(new Set());
 
+  // 🛡️ Guard لمنع إعادة رسم الرادار بدون تغيير حقيقي
+  const lastRadarAlertRef = useRef<{ id: string; isCritical: boolean; roundedDist: number } | null>(null);
+
   const autoNavigatedRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
   const lastLocationRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -306,7 +301,6 @@ export default function GarageListScreen() {
   const stopStartTimeRef = useRef<number | null>(null);
   const totalStopDurationRef = useRef<number>(0);
 
-  // 🧮 Fallback: حساب السرعة يدوياً من الإحداثيات لو OS فشل
   const lastGpsTickRef = useRef<{ lat: number; lng: number; time: number } | null>(null);
 
   useEffect(() => { isMountedRef.current = true; return () => { isMountedRef.current = false; }; }, []);
@@ -383,16 +377,14 @@ export default function GarageListScreen() {
         const rawHeading = position.coords.heading || 0;
         const nowMs = Date.now();
 
-        // 🧮 حساب السرعة: الأولوية لـ OS، الاحتياطي حساب يدوي من المسافة/الزمن
         let speedKmh = 0;
         if (rawSpeed !== null && rawSpeed !== undefined && !isNaN(rawSpeed) && rawSpeed >= 0) {
-          speedKmh = rawSpeed * 3.6; // m/s to km/h
+          speedKmh = rawSpeed * 3.6;
         } else if (lastGpsTickRef.current) {
-          // Fallback mathematical: المسافة ÷ الزمن
           const prev = lastGpsTickRef.current;
           const distMeters = calculateDistance(prev.lat, prev.lng, newLat, newLng) * 1000;
           const timeSec = (nowMs - prev.time) / 1000;
-          if (timeSec > 0 && timeSec < 30) { // تجاهل القيم غير المنطقية
+          if (timeSec > 0 && timeSec < 30) {
             speedKmh = (distMeters / timeSec) * 3.6;
           }
         }
@@ -407,8 +399,7 @@ export default function GarageListScreen() {
             else { totalStopDurationRef.current = Math.round((Date.now() - stopStartTimeRef.current) / 1000); } 
         } else { stopStartTimeRef.current = null; }
 
-        // ⚡ محرك الرادار السريع (Bounding Box + Haversine) - zero server load
-        // 🚫 صفر إنذارات لو السرعة أقل من 5 كم/س (السيارة واقفة أو تتحرك ببطء)
+        // ⚡ محرك الرادار الذكي (مفلتَر بدون تكرار إشارات وبدون حمل على المعالج)
         if (radars.length > 0 && speedKmh >= 5) { 
             let minDistance = 500; 
             let closestRadarData: Radar | null = null;
@@ -427,15 +418,21 @@ export default function GarageListScreen() {
             
             if (closestRadarData && minDistance <= 500) {
                 const isCritical = minDistance <= 100;
-                setActiveRadarAlert({ radar: closestRadarData, distanceMeters: Math.round(minDistance), isCritical });
-                
+                const roundedDist = Math.round(minDistance / 10) * 10; // درجة الدقة 10 أمتار لمنع تذبذب الـ State
+
+                const lastRef = lastRadarAlertRef.current;
+                // لا تحدّث الـ State إلا لو تغير الرادار أو حالة الخطر أو تغيرت المسافة بمقدار 10 أمتار
+                if (!lastRef || lastRef.id !== closestRadarData.id || lastRef.isCritical !== isCritical || Math.abs(lastRef.roundedDist - roundedDist) >= 10) {
+                  lastRadarAlertRef.current = { id: closestRadarData.id, isCritical, roundedDist };
+                  setActiveRadarAlert({ radar: closestRadarData, distanceMeters: Math.round(minDistance), isCritical });
+                }
+
                 const now = Date.now();
                 const audioThrottle = isCritical ? 1000 : 3000; 
                 if (now - lastAudioPlayRef.current > audioThrottle) {
                     playRadarTone(closestRadarData.camera_type, isCritical);
                     lastAudioPlayRef.current = now;
 
-                    // إشعار شاشة القفل + اهتزاز (مرة واحدة لكل رادار)
                     const radarKey = `${closestRadarData.id}-${isCritical ? 'c' : 'w'}`;
                     if (!alertedRadarsRef.current.has(radarKey)) {
                       alertedRadarsRef.current.add(radarKey);
@@ -444,10 +441,16 @@ export default function GarageListScreen() {
                     }
                 }
             } else {
-                setActiveRadarAlert(null);
+                if (lastRadarAlertRef.current !== null) {
+                  lastRadarAlertRef.current = null;
+                  setActiveRadarAlert(null);
+                }
             }
         } else {
-            setActiveRadarAlert(null);
+            if (lastRadarAlertRef.current !== null) {
+              lastRadarAlertRef.current = null;
+              setActiveRadarAlert(null);
+            }
         }
 
         const isMoreAccurate = newAccuracy < bestAccuracyRef.current;
@@ -475,7 +478,6 @@ export default function GarageListScreen() {
     );
   }, [radars]);
 
-  // 🔊 زر تحديث الموقع - يفعّل محرك الصوت والخلفية والشاشة السوداء
   const handleForceRefreshLocation = useCallback(async () => {
     try {
       if (!audioCtx) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -527,11 +529,11 @@ export default function GarageListScreen() {
   }, [garages, userLocation]);
 
   const rescueGaragesList = useMemo(() => {
-    if (locationLoading || !userLocation.lat) return [];
+    if (!userLocation.lat) return [];
     const vipNearby = garagesWithDistance.filter((g) => g.garageType === 'vip' && g.availableSpots > 0 && g.minutes <= 5 && g.isActive !== false);
     const directoryNearby = garagesWithDistance.filter((g) => g.garageType === 'directory' && g.minutes <= 5 && g.isActive !== false);
     return [...vipNearby, ...directoryNearby].slice(0, MAX_RESCUE_OPTIONS);
-  }, [garagesWithDistance, locationLoading, userLocation]);
+  }, [garagesWithDistance, userLocation.lat]);
 
   const currentRescueGarage = rescueGaragesList[rescueIndex] || null;
 
@@ -651,13 +653,15 @@ export default function GarageListScreen() {
   return (
     <div className="h-full flex flex-col overflow-hidden relative" style={{ background: BRAND.bg, color: BRAND.blueDark }}>
       
-      {/* 🚨 نافذة الرادار الثابتة (Fixed) مع z-index عالي جداً - فوق كل العناصر */}
+      {/* 🚨 نافذة الرادار الثابتة (Fixed) دون اختفاء أو رعشة أثناء التحديثات */}
       <AnimatePresence>
         {activeRadarAlert && (
           <motion.div
-            initial={{ opacity: 0, y: -100 }}
+            key={activeRadarAlert.radar.id}
+            initial={{ opacity: 0, y: -50 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -100 }}
+            exit={{ opacity: 0, y: -50 }}
+            transition={{ duration: 0.2 }}
             className={`fixed top-6 left-4 right-4 z-[99999] p-4 rounded-2xl shadow-2xl flex items-center justify-between border-2 transition-colors duration-300 pointer-events-none ${
               activeRadarAlert.isCritical 
                 ? 'bg-red-600/95 border-white backdrop-blur-md shadow-red-900/50' 
@@ -722,73 +726,67 @@ export default function GarageListScreen() {
           </div>
         </div>
 
-        {isEligibleForFreeSession && !activeSession && !myIncomingCar && (
-          <div dir="rtl" className="mb-2.5 py-1.5 px-3 rounded-xl flex items-center justify-between text-right border-[1.5px]" style={{ background: BRAND.green + '10', borderColor: BRAND.green + '50' }}>
-            <div className="flex items-center gap-1.5"><Gift size={12} style={{ color: BRAND.greenDark }} className="shrink-0 animate-pulse" /><span className="text-[10px] font-black text-slate-900 leading-none">هديتك: <span style={{ color: BRAND.greenDark }}>أول 30 دقيقة مجاناً! 🎉</span></span></div>
-            <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white bg-green-600 shrink-0">نشط 🎁</span>
+{/* 🎁 تم تعطيل بانر الهدية الترحيبية مؤقتاً */}
+{false && isEligibleForFreeSession && !activeSession && !myIncomingCar && (
+  <div dir="rtl" className="mb-2.5 py-1.5 px-3 rounded-xl flex items-center justify-between text-right border-[1.5px]" style={{ background: BRAND.green + '10', borderColor: BRAND.green + '50' }}>
+    <div className="flex items-center gap-1.5"><Gift size={12} style={{ color: BRAND.greenDark }} className="shrink-0 animate-pulse" /><span className="text-[10px] font-black text-slate-900 leading-none">هديتك: <span style={{ color: BRAND.greenDark }}>أول 30 دقيقة مجاناً! 🎉</span></span></div>
+    <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white bg-green-600 shrink-0">نشط 🎁</span>
+  </div>
+)}
+
+        {/* 🌟 بانر "الركنة السريعة المنقذة" بـ Key ثابت بدون رعشة */}
+        {currentRescueGarage && !activeSession && !myIncomingCar && (
+          <div
+            className="mb-2.5 rounded-2xl cursor-pointer active:scale-98 transition-all border-2 text-right relative overflow-hidden"
+            style={{
+              background: currentRescueGarage.garageType === 'vip' 
+                ? 'linear-gradient(135deg, #1656b8 0%, #0f3d85 100%)'
+                : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+              borderColor: currentRescueGarage.garageType === 'vip' ? '#1656b8' : '#334155',
+              boxShadow: currentRescueGarage.garageType === 'vip' 
+                ? '0 4px 15px rgba(22,86,184,0.3)' 
+                : '0 4px 15px rgba(15,23,42,0.4)',
+            }}
+            dir="rtl"
+          >
+            <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+
+            <div className="p-3.5 pb-2" onClick={() => handleGarageClick(currentRescueGarage)}>
+              <div className="flex justify-between items-center">
+                <div className="text-right flex-1 pr-1">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-[8px] font-black px-1.5 py-0.5 rounded-lg text-white" style={{ background: currentRescueGarage.garageType === 'vip' ? '#8cc63f' : '#334155' }}>
+                      {currentRescueGarage.garageType === 'vip' ? '⭐ حجز مضمون VIP' : '⚡ منقذ سريع'}
+                    </span>
+                    <span className="text-[8px] font-black px-1.5 py-0.5 rounded-lg bg-white/20 text-white">{rescueIndex + 1} / {rescueGaragesList.length}</span>
+                  </div>
+                  <h4 className="text-xs font-black text-white leading-tight mb-1">{currentRescueGarage.name}</h4>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-black text-emerald-300">💰 {currentRescueGarage.priceType === 'daily' ? `${currentRescueGarage.dailyPrice || currentRescueGarage.basePrice} ج.م/يوم` : `${currentRescueGarage.basePrice} ج.م/ساعة`}</span>
+                    <span className="text-[10px] font-bold text-white/80">🚗 {formatDuration(currentRescueGarage.minutes)}</span>
+                  </div>
+                </div>
+                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0 text-white"><Navigation size={18} className="rotate-45" /></div>
+              </div>
+            </div>
+
+            {rescueGaragesList.length > 1 && (
+              <button 
+                type="button" 
+                onClick={handleNextRescue} 
+                className="w-full py-3 text-[12px] font-black text-white bg-black/30 border-0 cursor-pointer active:bg-black/40 active:scale-[0.98] transition-all flex items-center justify-center gap-2 tracking-wide"
+                style={{ 
+                  borderTop: '2px solid rgba(255,255,255,0.25)',
+                  textShadow: '0 1px 3px rgba(0,0,0,0.4)',
+                  letterSpacing: '0.02em'
+                }}
+              >
+                <Search size={14} strokeWidth={3} />
+                <span>{rescueIndex < rescueGaragesList.length - 1 ? '🔍 مش مناسب؟ ابحث عن ساحة أخرى' : '🔄 عرض الكل من الأول'}</span>
+              </button>
+            )}
           </div>
         )}
-
-        {/* 🌟 بانر "الركنة السريعة المنقذة" */}
-        <AnimatePresence mode="wait">
-          {currentRescueGarage && !activeSession && !myIncomingCar && (
-            <motion.div
-              key={currentRescueGarage.id}
-              initial={{ opacity: 0, y: -10, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.95 }}
-              transition={{ duration: 0.3 }}
-              className="mb-2.5 rounded-2xl cursor-pointer active:scale-98 transition-all border-2 text-right relative overflow-hidden"
-              style={{
-                background: currentRescueGarage.garageType === 'vip' 
-                  ? 'linear-gradient(135deg, #1656b8 0%, #0f3d85 100%)'
-                  : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-                borderColor: currentRescueGarage.garageType === 'vip' ? '#1656b8' : '#334155',
-                boxShadow: currentRescueGarage.garageType === 'vip' 
-                  ? '0 4px 15px rgba(22,86,184,0.3)' 
-                  : '0 4px 15px rgba(15,23,42,0.4)',
-              }}
-              dir="rtl"
-            >
-              <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-2xl pointer-events-none" />
-
-              <div className="p-3.5 pb-2" onClick={() => handleGarageClick(currentRescueGarage)}>
-                <div className="flex justify-between items-center">
-                  <div className="text-right flex-1 pr-1">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className="text-[8px] font-black px-1.5 py-0.5 rounded-lg animate-pulse text-white" style={{ background: currentRescueGarage.garageType === 'vip' ? '#8cc63f' : '#334155' }}>
-                        {currentRescueGarage.garageType === 'vip' ? '⭐ حجز مضمون VIP' : '⚡ منقذ سريع'}
-                      </span>
-                      <span className="text-[8px] font-black px-1.5 py-0.5 rounded-lg bg-white/20 text-white">{rescueIndex + 1} / {rescueGaragesList.length}</span>
-                    </div>
-                    <h4 className="text-xs font-black text-white leading-tight mb-1">{currentRescueGarage.name}</h4>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[11px] font-black text-emerald-300">💰 {currentRescueGarage.priceType === 'daily' ? `${currentRescueGarage.dailyPrice || currentRescueGarage.basePrice} ج.م/يوم` : `${currentRescueGarage.basePrice} ج.م/ساعة`}</span>
-                      <span className="text-[10px] font-bold text-white/80">🚗 {formatDuration(currentRescueGarage.minutes)}</span>
-                    </div>
-                  </div>
-                  <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0 text-white"><Navigation size={18} className="rotate-45 animate-bounce" /></div>
-                </div>
-              </div>
-
-              {rescueGaragesList.length > 1 && (
-                <button 
-                  type="button" 
-                  onClick={handleNextRescue} 
-                  className="w-full py-3 text-[12px] font-black text-white bg-black/30 border-0 cursor-pointer active:bg-black/40 active:scale-[0.98] transition-all flex items-center justify-center gap-2 tracking-wide"
-                  style={{ 
-                    borderTop: '2px solid rgba(255,255,255,0.25)',
-                    textShadow: '0 1px 3px rgba(0,0,0,0.4)',
-                    letterSpacing: '0.02em'
-                  }}
-                >
-                  <Search size={14} strokeWidth={3} />
-                  <span>{rescueIndex < rescueGaragesList.length - 1 ? '🔍 مش مناسب؟ ابحث عن ساحة أخرى' : '🔄 عرض الكل من الأول'}</span>
-                </button>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         {activeSession && (
           <button type="button" onClick={() => { setSelectedGarageId(activeSession.garageId); setScreen('session'); }} className="w-full mb-2.5 flex items-center justify-between px-3 py-2.5 rounded-xl border-0 text-white cursor-pointer active:scale-98 transition-all" style={{ background: BRAND.greenDark }}>
@@ -802,7 +800,6 @@ export default function GarageListScreen() {
           </button>
         )}
 
-        {/* ✅ حقل البحث المعزز بزر إزالة النص المضبوط عمودياً وزر الرادار */}
         <div className="flex gap-2 mb-2.5">
           <div className="relative flex-1">
             <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
@@ -814,22 +811,17 @@ export default function GarageListScreen() {
               value={search} 
               onChange={(e) => setSearch(e.target.value)} 
             />
-            <AnimatePresence>
-              {search ? (
-                <div className="absolute left-2.5 inset-y-0 flex items-center z-10">
-                  <motion.button 
-                    initial={{ opacity: 0, scale: 0.5 }} 
-                    animate={{ opacity: 1, scale: 1 }} 
-                    exit={{ opacity: 0, scale: 0.5 }}
-                    type="button" 
-                    onClick={() => { setSearch(''); setExpandedArea(null); }} 
-                    className="bg-slate-300 text-slate-600 rounded-full w-5 h-5 flex items-center justify-center cursor-pointer border-0 active:scale-90 hover:bg-slate-400 hover:text-white transition-all"
-                  >
-                    <X size={12} strokeWidth={3} />
-                  </motion.button>
-                </div>
-              ) : null}
-            </AnimatePresence>
+            {search ? (
+              <div className="absolute left-2.5 inset-y-0 flex items-center z-10">
+                <button 
+                  type="button" 
+                  onClick={() => { setSearch(''); setExpandedArea(null); }} 
+                  className="bg-slate-300 text-slate-600 rounded-full w-5 h-5 flex items-center justify-center cursor-pointer border-0 active:scale-90 hover:bg-slate-400 hover:text-white transition-all"
+                >
+                  <X size={12} strokeWidth={3} />
+                </button>
+              </div>
+            ) : null}
           </div>
  
           <button 
@@ -899,7 +891,6 @@ export default function GarageListScreen() {
                 {hasCompletedSession && (<button type="button" onClick={() => { setShowSmartMenu(false); setScreen('lastSession'); }} className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]" style={{ borderColor: BRAND.border }}><ChevronDown size={16} className="rotate-90 text-slate-400" /><div className="flex items-center gap-2.5"><div className="text-right"><span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>إيصال آخر ركنة</span><span className="text-[9px] font-bold text-slate-500">عرض تفاصيل وحساب آخر جلسة</span></div><div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center"><Receipt size={16} style={{ color: BRAND.greenDark }} /></div></div></button>)}
                 <button type="button" onClick={() => { setShowSmartMenu(false); setScreen('chat'); }} className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]" style={{ borderColor: BRAND.border }}><ChevronDown size={16} className="rotate-90 text-slate-400" /><div className="flex items-center gap-2.5"><div className="text-right"><span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>الدعم والشكاوى</span><span className="text-[9px] font-bold text-slate-500">تواصل معنا في أي وقت 24 ساعة</span></div><div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center"><MessageCircle size={16} className="text-amber-600" /></div></div></button>
                 
-                {/* ✅ سجل المحفظة بالتاريخ والوقت */}
                 {myTopUps.length > 0 && (
                   <div className="pt-3 mt-3 border-t-[1.5px]" style={{ borderColor: BRAND.border }}>
                     <div className="flex justify-between items-center mb-2">
@@ -1010,6 +1001,8 @@ export default function GarageListScreen() {
 }
 
 function WelcomeGiftModal() {
+  return null; // 👈 سطر واحد لإخفاء النافذة المنبثقة مؤقتاً (امسحه مستقبلاً لإعادتها)
+
   const [show, setShow] = useState(false);
   const currentUser = useStore((s) => s.currentUser);
   useEffect(() => { const hasGiftFlag = localStorage.getItem('showWelcomeGift'); if (hasGiftFlag === 'true' && currentUser && !currentUser.hasUsedFreeSession) { setShow(true); } else { localStorage.removeItem('showWelcomeGift'); setShow(false); } }, [currentUser]);
@@ -1040,7 +1033,7 @@ const GarageCard = memo(function GarageCard({ garage, index, onSelect, onReportP
   const priceUnit = (() => { if (garage.priceType === 'daily') return 'ج.م/يومي'; if (garage.priceType === 'monthly') return 'ج.م/شهري'; return 'ج.م/ساعة'; })();
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.03 }} className="p-3.5 text-right relative bg-white rounded-2xl transition-all" style={{ border: `1.5px solid ${isDirectory ? BRAND.borderDark : BRAND.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+    <div className="p-3.5 text-right relative bg-white rounded-2xl transition-all" style={{ border: `1.5px solid ${isDirectory ? BRAND.borderDark : BRAND.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
       <div className="flex justify-between items-center mb-2 flex-wrap gap-1.5" style={{ direction: 'rtl' }}>
         <div className="flex items-center gap-1.5 flex-wrap">
           {isDirectory ? (<span className="text-[9px] font-black px-2.5 py-0.5 rounded flex items-center gap-1" style={{ background: '#f1f5f9', color: '#334155', border: '1.5px solid #94a3b8' }}><span>🧭 دليل إرشاد الشارع</span></span>) : (<span className="flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded" style={{ background: '#fef3c7', color: '#b45309' }}><Star size={8} fill="currentColor" /> {garage.rating || 4.5} ⭐ معتمد</span>)}
@@ -1061,6 +1054,6 @@ const GarageCard = memo(function GarageCard({ garage, index, onSelect, onReportP
         </div>
       </div>
       <button type="button" disabled={isFull || disabled} onClick={!disabled && !isFull ? onSelect : undefined} className="w-full border-0 font-black py-3 rounded-2xl mt-4 text-sm text-white cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5 shadow-sm" style={{ background: btnBg }}><span>{btnLabel}</span></button>
-    </motion.div>
+    </div>
   );
 });
