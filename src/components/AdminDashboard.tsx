@@ -787,26 +787,12 @@ export default function AdminDashboard() {
     toast.success('تمت إضافة الجراج بنجاح! 🎉');
   };
 
-   // 🌟 حفظ البيانات من نافذة التعديل المنفصلة
-  const handleSaveGarageFromModal = useCallback(async (data: any) => {
+  // 🌟 حفظ البيانات من نافذة التعديل المنفصلة
+  const handleSaveGarageFromModal = useCallback((data: any) => {
     if (!editingGarage) return;
     const garageId = editingGarage.id;
     const garageName = editingGarage.name;
-
-    // 🔄 تحديث فوري في الـ store المحلي + الكاش
-    useStore.setState((st) => {
-      const updated = st.garages.map((g) =>
-        g.id === garageId ? { ...g, ...data } : g
-      );
-      try { localStorage.setItem('cached_garages_v2', JSON.stringify(updated)); } catch {}
-      return { garages: updated };
-    });
-
-    // 🛑 أوقف الـ polling عشان الـ fetch ماييجيش ببيانات قديمة
-    pausePolling(8000);
-
-    // تحديث قاعدة البيانات
-    await updateGarage(garageId, data);
+    updateGarage(garageId, data);
     setEditingGarage(null);
     toast.success(`تم تحديث بيانات جراج ${garageName} بنجاح ✅`);
   }, [editingGarage, updateGarage]);
@@ -976,32 +962,22 @@ export default function AdminDashboard() {
     }
   };
   
-// 🌟 دالة حذف الجراج من قاعدة البيانات والكاش المحلي
-const handleDeleteGarage = useCallback(async (garageId: string, garageName: string) => {
-  const loadingToast = toast.loading(`جاري حذف جراج ${garageName}...`);
-  try {
-    const { error } = await supabase.from('garages').delete().eq('id', garageId);
-    if (error) throw error;
+  // 🌟 دالة حذف الجراج من قاعدة البيانات
+  const handleDeleteGarage = useCallback(async (garageId: string, garageName: string) => {
+    const loadingToast = toast.loading(`جاري حذف جراج ${garageName}...`);
+    try {
+      const { error } = await supabase.from('garages').delete().eq('id', garageId);
+      if (error) throw error;
+      toast.success(`تم حذف جراج ${garageName} بنجاح ✅`, { id: loadingToast });
+      setDeleteGarageConfirmId(null);
+      await fetchAll(); // لتحديث الواجهة فوراً
+    } catch (err: any) {
+      console.error('Delete garage error:', err);
+      toast.error('حدث خطأ أثناء الحذف: ' + (err.message || ''), { id: loadingToast });
+    }
+  }, [fetchAll]);
 
-    // 🧹 حذف فوري من الـ store المحلي + الكاش
-    useStore.setState((st) => {
-      const updated = st.garages.filter((g) => g.id !== garageId);
-      try { localStorage.setItem('cached_garages_v2', JSON.stringify(updated)); } catch {}
-      return { garages: updated };
-    });
-
-    toast.success(`تم حذف جراج ${garageName} بنجاح ✅`, { id: loadingToast });
-    setDeleteGarageConfirmId(null);
-    
-    // 🔄 تحديث شامل بعد ثانية للتأكد من المزامنة
-    setTimeout(() => fetchAll(), 1000);
-  } catch (err: any) {
-    console.error('Delete garage error:', err);
-    toast.error('حدث خطأ أثناء الحذف: ' + (err.message || ''), { id: loadingToast });
-  }
-}, [fetchAll]);
-
-    useEffect(() => {
+  useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     const triggerDebouncedFetch = () => {
@@ -1012,7 +988,7 @@ const handleDeleteGarage = useCallback(async (garageId: string, garageName: stri
         } catch (err) {
           console.error('Realtime sync fetch error:', err);
         }
-      }, 4000);
+      }, 1500);
     };
 
     const channel = supabase
