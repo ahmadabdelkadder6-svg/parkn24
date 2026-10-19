@@ -920,11 +920,6 @@ updateGarage: async (id, updates) => {
 
   if (!isSupabaseConfigured()) return;
 
-  if (updates.isActive !== undefined) {
-    await supabase.from('garages').update({ is_active: updates.isActive }).eq('id', id);
-    return;
-  }
-
   const isDirectory = updates.garageType === 'directory';
   const finalPrice = isDirectory 
     ? (updates.priceType === 'daily' ? updates.dailyPrice : updates.priceType === 'monthly' ? updates.monthlyPrice : (updates.basePrice || 20))
@@ -938,6 +933,7 @@ updateGarage: async (id, updates) => {
   if (updates.commissionRate !== undefined) dbUpdates.commission_rate = updates.commissionRate;
   if (updates.payment_mode !== undefined) dbUpdates.payment_mode = isDirectory ? 'cash' : updates.payment_mode; 
   if (updates.area !== undefined) dbUpdates.area = updates.area; 
+  if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
   
   if (updates.lat !== undefined && updates.lng !== undefined) {
     let fLat = updates.lat;
