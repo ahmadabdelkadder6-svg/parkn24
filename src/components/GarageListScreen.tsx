@@ -5,9 +5,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   MapPin, Star, Search, Navigation, Locate, Plus, Receipt, MessageCircle,
   X, Gift, ChevronDown, QrCode, Copy, Edit3, Check, Minus, Menu,
-  Wallet, Camera
+  Wallet
 } from 'lucide-react';
-import { useStore, Garage, ParkingSession as Session, IncomingCar, Radar, normalizePlate, normalizePhone } from '../store';
+import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
 import { calculateDistance, distanceToMinutes, classifyDistance, formatDuration } from '../utils/distance';
 import TopUpWalletModal from './TopUpWalletModal';
 import toast from 'react-hot-toast';
@@ -22,7 +22,6 @@ const BRAND = {
 const MIN_UI_MOVE_METERS = 25; 
 
 interface GarageWithDistance extends Garage { distance: number; minutes: number; classification: 'nearby' | 'far'; }
-interface RadarAlert { radar: Radar; distanceMeters: number; isCritical: boolean; }
 interface GarageCardProps { garage: GarageWithDistance; index: number; onSelect: () => void; onReportPrice: (garage: GarageWithDistance) => void; isNearby: boolean; isClosest: boolean; hasActiveSession: boolean; hasIncomingCar: boolean; disabled: boolean; }
 
 const safeParseTime = (value: unknown): number => {
@@ -73,20 +72,7 @@ const CATEGORIES = [
   { id: 'malls', label: 'مولات/بلازا', icon: '🛍️' },
 ];
 
-// 📡 تفعيل خاصية الميديا لخداع نظام التشغيل وإبقاء الصوت شغال في الخلفية والشاشة السوداء
-if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
-  try {
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: "بركن 24 - رادار السرعة نشط 📡",
-      artist: "Park'n 24 Radar System",
-      album: "دليلك الذكي للركن ورادارات السرعة"
-    });
-  } catch (e) {
-    console.warn("MediaSession initialized", e);
-  }
-}
-
-// 🔇 صوت صامت متكرر لإبقاء GPS والصوت يعملان على الشاشة السوداء (Keep Alive)
+// 🔇 صوت صامت متكرر لإبقاء GPS يعمل على الشاشة السوداء (Keep Alive)
 let silentAudioEl: HTMLAudioElement | null = null;
 
 const enableBackgroundKeepAlive = async () => {
@@ -111,162 +97,13 @@ const enableBackgroundKeepAlive = async () => {
   }
 };
 
-// 🎵 محرك الصوت (Web Audio API) - مضخم الصوت الأقصى (Super Loud Multi-Layered Alarm)
-let audioCtx: AudioContext | null = null;
-
-const playRadarTone = (type: string, isCritical: boolean) => {
-  try {
-    if (!audioCtx) {
-      audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-
-    const ctx = audioCtx;
-    const now = ctx.currentTime;
-
-    const compressor = ctx.createDynamicsCompressor();
-    compressor.threshold.setValueAtTime(-5, now);
-    compressor.knee.setValueAtTime(0, now);
-    compressor.ratio.setValueAtTime(20, now);
-    compressor.attack.setValueAtTime(0.001, now);
-    compressor.release.setValueAtTime(0.05, now);
-    compressor.connect(ctx.destination);
-
-    let beepCount: number;
-    let beepDuration: number;
-    let gap: number;
-    let freqA: number;
-    let freqB: number;
-
-    if (type === 'traffic_light') {
-      beepCount = isCritical ? 10 : 6;
-      beepDuration = 0.05;
-      gap = 0.03;
-      freqA = isCritical ? 2400 : 2000;
-      freqB = isCritical ? 2415 : 2010;
-    } else if (['seatbelt_phone', 'belt_phone', 'seatbelt', 'phone'].includes(type)) {
-      beepCount = isCritical ? 6 : 4;
-      beepDuration = 0.12;
-      gap = 0.08;
-      freqA = isCritical ? 2100 : 1800;
-      freqB = isCritical ? 2110 : 1810;
-    } else {
-      beepCount = isCritical ? 8 : 5;
-      beepDuration = isCritical ? 0.07 : 0.11;
-      gap = isCritical ? 0.04 : 0.10;
-      freqA = isCritical ? 2700 : 2300;
-      freqB = isCritical ? 2715 : 2310;
-    }
-
-    for (let i = 0; i < beepCount; i++) {
-      const startAt = now + i * (beepDuration + gap);
-
-      const osc1 = ctx.createOscillator();
-      const gain1 = ctx.createGain();
-      osc1.type = 'square';
-      osc1.frequency.setValueAtTime(freqA, startAt);
-
-      const osc2 = ctx.createOscillator();
-      const gain2 = ctx.createGain();
-      osc2.type = 'sawtooth';
-      osc2.frequency.setValueAtTime(freqB, startAt);
-
-      const masterGain = isCritical ? 2.8 : 2.0;
-
-      gain1.gain.setValueAtTime(0.001, startAt);
-      gain1.gain.linearRampToValueAtTime(masterGain, startAt + 0.003);
-      gain1.gain.exponentialRampToValueAtTime(0.001, startAt + beepDuration);
-
-      gain2.gain.setValueAtTime(0.001, startAt);
-      gain2.gain.linearRampToValueAtTime(masterGain * 0.8, startAt + 0.003);
-      gain2.gain.exponentialRampToValueAtTime(0.001, startAt + beepDuration);
-
-      osc1.connect(gain1);
-      gain1.connect(compressor);
-
-      osc2.connect(gain2);
-      gain2.connect(compressor);
-
-      osc1.start(startAt);
-      osc1.stop(startAt + beepDuration + 0.01);
-
-      osc2.start(startAt);
-      osc2.stop(startAt + beepDuration + 0.01);
-    }
-
-    if (isCritical) {
-      const endAt = now + beepCount * (beepDuration + gap) + 0.01;
-      const sirenOsc = ctx.createOscillator();
-      const sirenGain = ctx.createGain();
-
-      sirenOsc.type = 'sawtooth';
-      sirenOsc.frequency.setValueAtTime(3200, endAt);
-      sirenOsc.frequency.exponentialRampToValueAtTime(1400, endAt + 0.25);
-
-      sirenGain.gain.setValueAtTime(0.001, endAt);
-      sirenGain.gain.linearRampToValueAtTime(3.0, endAt + 0.005);
-      sirenGain.gain.exponentialRampToValueAtTime(0.001, endAt + 0.25);
-
-      sirenOsc.connect(sirenGain);
-      sirenGain.connect(compressor);
-
-      sirenOsc.start(endAt);
-      sirenOsc.stop(endAt + 0.27);
-    }
-  } catch (e) {
-    console.warn('Audio Context Blocked:', e);
-  }
-};
-
-// 📳 إشعار شاشة القفل + اهتزاز قوي
-const triggerLockScreenAlert = (radar: Radar, distance: number) => {
-  if ('vibrate' in navigator) {
-    try {
-      navigator.vibrate([400, 150, 400, 150, 800]);
-    } catch {}
-  }
-
-  if ('Notification' in window && Notification.permission === 'granted') {
-    try {
-      let title = '📷 كاميرا مرور قريبة!';
-      if (radar.camera_type === 'speed') title = '⚡ رادار سرعة قريب!';
-      else if (radar.camera_type === 'traffic_light') title = '🚦 كاميرا إشارة قريبة!';
-      else if (['seatbelt_phone', 'belt_phone', 'seatbelt', 'phone'].includes(radar.camera_type)) title = '🪪 كاميرا حزام/موبايل!';
-
-      const body = `على بُعد ${distance} متر${radar.speed_limit ? ` - حد ${radar.speed_limit} كم/س` : ''}`;
-      new Notification(title, {
-        body,
-        icon: '/pwa-192x192.png',
-        badge: '/pwa-192x192.png',
-        tag: 'radar-alert',
-        renotify: true,
-        silent: true
-      });
-    } catch (e) {
-      console.warn("Lockscreen notification error:", e);
-    }
-  }
-};
-
-// 🔓 فك قفل Web Audio على أول تفاعل من المستخدم
-if (typeof window !== 'undefined') {
-  const unlockAudio = () => {
-    try {
-      if (!audioCtx) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
-    } catch {}
-  };
-  window.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
-  window.addEventListener('click', unlockAudio, { once: true });
-}
-
 export default function GarageListScreen() {
   const {
-    garages, radars, setSelectedGarageId, setScreen, currentUser, sessions, incomingCars,
+    garages, setSelectedGarageId, setScreen, currentUser, sessions, incomingCars,
     offers, addIncomingCar, fetchAll, acknowledgedSessionIds, walletTopUps, reportPriceUpdate,
   } = useStore();
 
-  const [searchQuery, setSearchQuery] = useState(''); // 👈 استخدام searchQuery وتثبيته
+  const [searchQuery, setSearchQuery] = useState('');
   const [showNearbyOnly, setShowNearbyOnly] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
@@ -286,13 +123,6 @@ export default function GarageListScreen() {
 
   const [rescueIndex, setRescueIndex] = useState(0);
   const MAX_RESCUE_OPTIONS = 3;
-
-  const [activeRadarAlert, setActiveRadarAlert] = useState<RadarAlert | null>(null);
-  const lastAudioPlayRef = useRef<number>(0);
-  const alertedRadarsRef = useRef<Set<string>>(new Set());
-
-  // 🛡️ Guard لمنع إعادة رسم الرادار بدون تغيير حقيقي
-  const lastRadarAlertRef = useRef<{ id: string; isCritical: boolean; roundedDist: number } | null>(null);
 
   const autoNavigatedRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
@@ -400,60 +230,6 @@ export default function GarageListScreen() {
             else { totalStopDurationRef.current = Math.round((Date.now() - stopStartTimeRef.current) / 1000); } 
         } else { stopStartTimeRef.current = null; }
 
-        // ⚡ محرك الرادار الذكي (مفلتَر بدون تكرار إشارات وبدون حمل على المعالج)
-        if (radars.length > 0 && speedKmh >= 5) { 
-            let minDistance = 500; 
-            let closestRadarData: Radar | null = null;
-            
-            for (const radar of radars) {
-                const latDiff = Math.abs(radar.lat - newLat);
-                const lngDiff = Math.abs(radar.lng - newLng);
-                if (latDiff > 0.09 || lngDiff > 0.1) continue; 
-                
-                const dist = calculateDistance(newLat, newLng, radar.lat, radar.lng) * 1000;
-                if (dist < minDistance) {
-                    minDistance = dist;
-                    closestRadarData = radar;
-                }
-            }
-            
-            if (closestRadarData && minDistance <= 500) {
-                const isCritical = minDistance <= 100;
-                const roundedDist = Math.round(minDistance / 10) * 10; // درجة الدقة 10 أمتار لمنع تذبذب الـ State
-
-                const lastRef = lastRadarAlertRef.current;
-                // لا تحدّث الـ State إلا لو تغير الرادار أو حالة الخطر أو تغيرت المسافة بمقدار 10 أمتار
-                if (!lastRef || lastRef.id !== closestRadarData.id || lastRef.isCritical !== isCritical || Math.abs(lastRef.roundedDist - roundedDist) >= 10) {
-                  lastRadarAlertRef.current = { id: closestRadarData.id, isCritical, roundedDist };
-                  setActiveRadarAlert({ radar: closestRadarData, distanceMeters: Math.round(minDistance), isCritical });
-                }
-
-                const now = Date.now();
-                const audioThrottle = isCritical ? 1000 : 3000; 
-                if (now - lastAudioPlayRef.current > audioThrottle) {
-                    playRadarTone(closestRadarData.camera_type, isCritical);
-                    lastAudioPlayRef.current = now;
-
-                    const radarKey = `${closestRadarData.id}-${isCritical ? 'c' : 'w'}`;
-                    if (!alertedRadarsRef.current.has(radarKey)) {
-                      alertedRadarsRef.current.add(radarKey);
-                      triggerLockScreenAlert(closestRadarData, Math.round(minDistance));
-                      setTimeout(() => alertedRadarsRef.current.delete(radarKey), 90000);
-                    }
-                }
-            } else {
-                if (lastRadarAlertRef.current !== null) {
-                  lastRadarAlertRef.current = null;
-                  setActiveRadarAlert(null);
-                }
-            }
-        } else {
-            if (lastRadarAlertRef.current !== null) {
-              lastRadarAlertRef.current = null;
-              setActiveRadarAlert(null);
-            }
-        }
-
         // 🛡️ Guard: Dual-Track GPS لمسافة التحديث لواجهة المستخدم
         let shouldUpdateUI = false;
         
@@ -476,21 +252,19 @@ export default function GarageListScreen() {
       () => { if (!isMountedRef.current) return; setLocationLoading(false); },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
-  }, [radars]);
+  }, []);
 
   const handleForceRefreshLocation = useCallback(async () => {
     try {
-      if (!audioCtx) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      if (audioCtx.state === 'suspended') await audioCtx.resume();
       await enableBackgroundKeepAlive();
     } catch (e) {
-      console.warn("Audio/Background init error:", e);
+      console.warn("Background init error:", e);
     }
 
     lastLocationRef.current = null;
     getUserLocation();
 
-    toast.success('🚀 الرادار نشط - صالح على الشاشة السوداء', { duration: 2500, icon: '📡' });
+    toast.success('🚀 تم تحديث الموقع', { duration: 2500, icon: '📍' });
   }, [getUserLocation]);
 
   useEffect(() => { getUserLocation(); return () => { if (watchIdRef.current !== null) { navigator.geolocation.clearWatch(watchIdRef.current); } }; }, [getUserLocation]);
@@ -648,53 +422,8 @@ export default function GarageListScreen() {
       setReportingGarage(null);
     } catch (error: any) { toast.error(error?.message || 'تعذر تحديث السعر، يرجى المحاولة لاحقاً'); } finally { setIsSubmittingPrice(false); }
   };
-
   return (
     <div className="h-full flex flex-col overflow-hidden relative" style={{ background: BRAND.bg, color: BRAND.blueDark }}>
-      
-      {/* 🚨 نافذة الرادار الثابتة (Fixed) دون اختفاء أو رعشة أثناء التحديثات */}
-      <AnimatePresence>
-        {activeRadarAlert && (
-          <motion.div
-            key={activeRadarAlert.radar.id}
-            initial={{ opacity: 0, y: -50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -50 }}
-            transition={{ duration: 0.2 }}
-            className={`fixed top-6 left-4 right-4 z-[99999] p-4 rounded-2xl shadow-2xl flex items-center justify-between border-2 transition-colors duration-300 pointer-events-none ${
-              activeRadarAlert.isCritical 
-                ? 'bg-red-600/95 border-white backdrop-blur-md shadow-red-900/50' 
-                : 'bg-amber-500/95 border-slate-900 text-slate-950 backdrop-blur-md shadow-amber-900/30'
-            }`}
-            style={{ direction: 'rtl' }}
-          >
-            <div className="flex items-center gap-3">
-              <div className={`p-3 rounded-xl flex items-center justify-center ${activeRadarAlert.isCritical ? 'bg-white/20 text-white' : 'bg-black/10 text-slate-950'}`}>
-                <Camera className="w-8 h-8 animate-pulse" />
-              </div>
-              <div>
-                <div className={`font-black text-lg leading-tight ${activeRadarAlert.isCritical ? 'text-white' : 'text-slate-950'}`}>
-                  {activeRadarAlert.radar.camera_type === 'speed' && '⚡ رادار سرعة'}
-                  {activeRadarAlert.radar.camera_type === 'traffic_light' && '🚦 كاميرا إشارة'}
-                  {['seatbelt_phone', 'belt_phone', 'seatbelt', 'phone'].includes(activeRadarAlert.radar.camera_type) && '🪪 كاميرا حزام/موبايل'}
-                  {!['speed', 'traffic_light', 'seatbelt_phone', 'belt_phone', 'seatbelt', 'phone'].includes(activeRadarAlert.radar.camera_type) && '📷 كاميرا مرور'}
-                </div>
-                <div className={`text-sm font-extrabold opacity-90 mt-0.5 ${activeRadarAlert.isCritical ? 'text-white' : 'text-slate-950'}`}>
-                  على بُعد {Math.round(activeRadarAlert.distanceMeters)} متر
-                </div>
-              </div>
-            </div>
-
-            {activeRadarAlert.radar.speed_limit && (
-              <div className="w-14 h-14 rounded-full bg-white border-4 border-red-600 flex items-center justify-center shadow-md shrink-0">
-                <span className="text-red-600 font-black text-xl dir-ltr">
-                  {activeRadarAlert.radar.speed_limit}
-                </span>
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       <div className="px-4 pt-10 pb-3 z-20 shadow-sm relative" style={{ background: BRAND.card, borderBottom: `1.5px solid ${BRAND.border}` }}>
         <div dir="rtl" className="flex justify-between items-center mb-3.5">
@@ -829,7 +558,7 @@ export default function GarageListScreen() {
             disabled={locationLoading} 
             className="flex items-center justify-center border-0 cursor-pointer shrink-0" 
             style={{ background: BRAND.blue, color: '#fff', borderRadius: 12, width: 36, height: 36 }}
-            title="تحديث الموقع ورادار السرعة"
+            title="تحديث الموقع"
           >
             <Locate size={15} className={locationLoading ? 'animate-spin' : ''} />
           </button>
@@ -865,7 +594,7 @@ export default function GarageListScreen() {
                         return (<>
                           {displayedGarages.map((garage, i) => (
                             <GarageCard 
-                               key={garage.id} // 🛡️ استقرار العناصر لمنع قفز الشاشة
+                               key={garage.id}
                                garage={garage} index={i} onSelect={() => handleGarageClick(garage)} onReportPrice={handleOpenPriceReport} isNearby={garage.classification === 'nearby'} isClosest={i === 0 && garage.classification === 'nearby'} hasActiveSession={Boolean(activeSession)} hasIncomingCar={Boolean(myIncomingCar)} disabled={isBooking} 
                             />
                           ))}
