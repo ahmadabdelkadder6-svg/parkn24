@@ -1001,18 +1001,19 @@ const handleDeleteGarage = useCallback(async (garageId: string, garageName: stri
   }
 }, [fetchAll]);
 
-  useEffect(() => {
+    useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     const triggerDebouncedFetch = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
-debounceTimer = setTimeout(async () => {
-  try {
-    await fetchAll();
-  } catch (err) {
-    console.error('Realtime sync fetch error:', err);
-  }
-}, 4000);  // ← الجديد: 4 ثواني عشان السيرفر يخلص الـ update
+      debounceTimer = setTimeout(async () => {
+        try {
+          await fetchAll();
+        } catch (err) {
+          console.error('Realtime sync fetch error:', err);
+        }
+      }, 4000);
+    };
 
     const channel = supabase
       .channel('admin-realtime-global')
