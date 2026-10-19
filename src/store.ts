@@ -727,8 +727,9 @@ export const useStore = create<AppState>((set, get) => ({
     safeRemoveStorage('acknowledgedSessionIds');
   },
 
-   fetchAll: async () => {
+     fetchAll: async () => {
     if (!isSupabaseConfigured()) return;
+    if (isOperationInProgress) return;
 
     try {
       let currentGarages = get().garages;
@@ -917,6 +918,8 @@ updateGarage: async (id, updates) => {
     safeSetStorage('cached_garages_v2', updated);
     return { garages: updated };
   });
+
+  pausePolling(10000);
 
   if (!isSupabaseConfigured()) return;
 
