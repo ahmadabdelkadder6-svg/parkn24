@@ -787,12 +787,26 @@ export default function AdminDashboard() {
     toast.success('تمت إضافة الجراج بنجاح! 🎉');
   };
 
-  // 🌟 حفظ البيانات من نافذة التعديل المنفصلة
-  const handleSaveGarageFromModal = useCallback((data: any) => {
+   // 🌟 حفظ البيانات من نافذة التعديل المنفصلة
+  const handleSaveGarageFromModal = useCallback(async (data: any) => {
     if (!editingGarage) return;
     const garageId = editingGarage.id;
     const garageName = editingGarage.name;
-    updateGarage(garageId, data);
+
+    // 🔄 تحديث فوري في الـ store المحلي + الكاش
+    useStore.setState((st) => {
+      const updated = st.garages.map((g) =>
+        g.id === garageId ? { ...g, ...data } : g
+      );
+      try { localStorage.setItem('cached_garages_v2', JSON.stringify(updated)); } catch {}
+      return { garages: updated };
+    });
+
+    // 🛑 أوقف الـ polling عشان الـ fetch ماييجيش ببيانات قديمة
+    pausePolling(8000);
+
+    // تحديث قاعدة البيانات
+    await updateGarage(garageId, data);
     setEditingGarage(null);
     toast.success(`تم تحديث بيانات جراج ${garageName} بنجاح ✅`);
   }, [editingGarage, updateGarage]);
@@ -992,14 +1006,13 @@ const handleDeleteGarage = useCallback(async (garageId: string, garageName: stri
 
     const triggerDebouncedFetch = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(async () => {
-        try {
-          await fetchAll();
-        } catch (err) {
-          console.error('Realtime sync fetch error:', err);
-        }
-      }, 1500);
-    };
+debounceTimer = setTimeout(async () => {
+  try {
+    await fetchAll();
+  } catch (err) {
+    console.error('Realtime sync fetch error:', err);
+  }
+}, 4000);  // ← الجديد: 4 ثواني عشان السيرفر يخلص الـ update
 
     const channel = supabase
       .channel('admin-realtime-global')
