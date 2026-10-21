@@ -540,7 +540,7 @@ export default function App() {
       noSessionCountRef.current = 0;
       sessionEndToastShown.current = false;
       setSelectedGarageId(myActiveSession.garageId);
-      if (safeScreen !== 'session' && safeScreen !== 'summary') {
+      if (safeScreen === 'navigation' || safeScreen === 'waiting' || safeScreen === 'splash') {
         setScreen('session');
       }
       return;
@@ -628,12 +628,7 @@ export default function App() {
       if (myActiveSession.id !== prevActiveSessionRef.current) {
         prevActiveSessionRef.current = myActiveSession.id;
         setSelectedGarageId(myActiveSession.garageId);
-        if (
-          safeScreen !== 'session' &&
-          safeScreen !== 'summary' &&
-          safeScreen !== 'lastSession' &&
-          safeScreen !== 'chat'
-        ) {
+        if (safeScreen === 'navigation' || safeScreen === 'waiting' || safeScreen === 'splash') {
           setScreen('session');
         }
       }

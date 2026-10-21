@@ -3,32 +3,31 @@ import { motion } from 'framer-motion';
 import {
   Clock,
   Car,
-  ArrowRight,
   Sparkles,
 } from 'lucide-react';
 // 🌟 استيراد getServerNow ودوال البصمة لضمان مطابقة العداد بالملي ثانية بين جميع الهواتف
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
-import {
-  formatTime,
-} from '../utils/pricing';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 /* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
-  blue: '#1656b8',       // الأزرق الرسمي
-  blueDark: '#0f3d85',   // الكحلي الفخم
-  blueLight: '#e8f0fe',  // الأزرق الفاتح جداً
-  blueSoft: 'rgba(22, 86, 184, 0.08)', // كحلي زجاجي ناعم
-  green: '#8cc63f',      // الأخضر الرسمي
-  greenDark: '#6ea62a',  // أخضر داكن للخطوط
-  greenLight: 'rgba(140, 198, 63, 0.12)', // خلفية خضراء ناعمة
-  navy: '#0a1628',       // الكحلي الليلي الغامق للواجهة
-  navyLight: '#111e36',  // كحلي أفتح للبطاقات والـ overlays
-  slate: '#64748b',      // الرمادي الهادئ
-  slateMuted: '#94a3b8', // الرمادي الباهت
-  border: 'rgba(255, 255, 255, 0.08)', // حدود زجاجية رفيعة
+  blue: '#1656b8',
+  blueDark: '#0f3d85',
+  blueLight: '#e8f0fe',
+  blueSoft: 'rgba(22, 86, 184, 0.08)',
+  green: '#8cc63f',
+  greenDark: '#6ea62a',
+  greenLight: 'rgba(140, 198, 63, 0.12)',
+  navy: '#0a1628',
+  navyLight: '#111e36',
+  slate: '#64748b',
+  slateMuted: '#94a3b8',
+  border: 'rgba(255, 255, 255, 0.08)',
 };
+
+// ⏰ حد الإنهاء التلقائي: 6 ساعات
+const AUTO_END_SECONDS = 6 * 60 * 60;
 
 const safeParseTime = (value: any): number => {
   if (!value) return 0;
@@ -42,6 +41,15 @@ const safeParseTime = (value: any): number => {
   return 0;
 };
 
+// 🕐 تنسيق الثواني لصيغة (س:د:ث) — محلية بدل pricing
+const formatTime = (seconds: number): string => {
+  if (!seconds || seconds < 0) return '00:00:00';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+};
+
 export default function SessionScreen() {
   const {
     garages,
@@ -52,6 +60,7 @@ export default function SessionScreen() {
     setSelectedGarageId,
     acknowledgedSessionIds,
     acknowledgeSession,
+    endSession,
   } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
@@ -64,6 +73,7 @@ export default function SessionScreen() {
   const realtimeChannelRef = useRef<any>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const summaryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoEndedRef = useRef(false);
 
   const [elapsed, setElapsed] = useState(0);
 
@@ -142,10 +152,10 @@ export default function SessionScreen() {
 
     const refetch = async () => {
       if (cancelled || !isMountedRef.current) return;
-      try { 
-        await fetchAll(); 
-      } catch (e) { 
-        console.error('❌ Realtime fetch error:', e); 
+      try {
+        await fetchAll();
+      } catch (e) {
+        console.error('❌ Realtime fetch error:', e);
       }
     };
 
@@ -166,8 +176,8 @@ export default function SessionScreen() {
     realtimeChannelRef.current = channel;
     pollingRef.current = setInterval(refetch, 4000);
 
-    const handleVisibility = () => { 
-      if (document.visibilityState === 'visible') refetch(); 
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refetch();
     };
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('focus', refetch);
@@ -176,23 +186,46 @@ export default function SessionScreen() {
       cancelled = true;
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('focus', refetch);
-      if (pollingRef.current) { 
-        clearInterval(pollingRef.current); 
-        pollingRef.current = null; 
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
       }
-      if (realtimeChannelRef.current) { 
-        supabase.removeChannel(realtimeChannelRef.current); 
-        realtimeChannelRef.current = null; 
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
       }
     };
   }, [userPlate, userPhone, fetchAll, isMySessionRow]);
 
-  // ⏱️ عداد الثواني اللحظي الموحد مع سيرفر قاعدة البيانات
+  // ⏰ إنهاء تلقائي بعد 6 ساعات
+  const handleAutoEnd = useCallback(async () => {
+    if (autoEndedRef.current || !activeSession) return;
+    autoEndedRef.current = true;
+
+    try {
+      await endSession(activeSession.id, 0, 'cash', 0);
+      if (typeof acknowledgeSession === 'function') {
+        acknowledgeSession(activeSession.id);
+      }
+      toast.success('تم إنهاء الجلسة تلقائياً (6 ساعات) ⏰', { duration: 5000 });
+      if (isMountedRef.current) {
+        setSelectedGarageId(null);
+        setScreen('list');
+      }
+    } catch (err) {
+      console.error('Auto-end error:', err);
+      autoEndedRef.current = false;
+    }
+  }, [activeSession, endSession, acknowledgeSession, setSelectedGarageId, setScreen]);
+
+  // ⏱️ عداد الثواني اللحظي + فحص الـ 6 ساعات
   useEffect(() => {
     if (!activeSession || activeStartMs <= 0) {
       setElapsed(0);
       return;
     }
+
+    autoEndedRef.current = false;
 
     const calcElapsed = () => {
       const now = getServerNow();
@@ -200,20 +233,34 @@ export default function SessionScreen() {
       return Math.max(0, Math.floor(diff / 1000));
     };
 
-    setElapsed(calcElapsed());
+    const currentElapsed = calcElapsed();
+    setElapsed(currentElapsed);
+
+    // لو فتح التطبيق بعد 6 ساعات → إنهاء فوري
+    if (currentElapsed >= AUTO_END_SECONDS) {
+      handleAutoEnd();
+      return;
+    }
 
     const interval = setInterval(() => {
       if (!isMountedRef.current) return;
-      setElapsed(calcElapsed());
+      const current = calcElapsed();
+      setElapsed(current);
+
+      // لو عدت 6 ساعات → إنهاء تلقائي
+      if (current >= AUTO_END_SECONDS && !autoEndedRef.current) {
+        clearInterval(interval);
+        handleAutoEnd();
+      }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [activeSession, activeStartMs]);
+  }, [activeSession, activeStartMs, handleAutoEnd]);
 
   useEffect(() => {
-    if (!activeSession) { 
-      redirectedToSessionRef.current = false; 
-      return; 
+    if (!activeSession) {
+      redirectedToSessionRef.current = false;
+      return;
     }
     if (redirectedToSessionRef.current) return;
     redirectedToSessionRef.current = true;
@@ -237,8 +284,8 @@ export default function SessionScreen() {
         if (typeof acknowledgeSession === 'function') acknowledgeSession(targetSession.id);
         activeSessionIdRef.current = null;
         toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
-        summaryTimeoutRef.current = setTimeout(() => { 
-          if (isMountedRef.current) setScreen('summary'); 
+        summaryTimeoutRef.current = setTimeout(() => {
+          if (isMountedRef.current) setScreen('summary');
         }, 400);
         return;
       }
@@ -251,8 +298,8 @@ export default function SessionScreen() {
         if (lastCompletedSession.garageId) setSelectedGarageId(lastCompletedSession.garageId);
         if (typeof acknowledgeSession === 'function') acknowledgeSession(lastCompletedSession.id);
         toast.success('تم إنهاء الجلسة بنجاح ✅', { icon: '🏁', duration: 3000 });
-        summaryTimeoutRef.current = setTimeout(() => { 
-          if (isMountedRef.current) setScreen('summary'); 
+        summaryTimeoutRef.current = setTimeout(() => {
+          if (isMountedRef.current) setScreen('summary');
         }, 400);
       }
     }
@@ -265,17 +312,15 @@ export default function SessionScreen() {
         <div className="text-4xl mb-4 animate-bounce">⏳</div>
         <p className="text-slate-400 text-sm font-bold text-center mb-2">جاري مزامنة بيانات الجلسة...</p>
         <p className="text-slate-500 text-xs text-center mb-6">ستظهر بيانات العداد فور استلامها من السيرفر</p>
-        <button
-          type="button"
-          onClick={() => setScreen('list')}
-          className="text-white border-0 px-8 py-3.5 rounded-2xl font-black text-xs active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
-          style={{ background: BRAND.blue, boxShadow: `0 4px 14px ${BRAND.blue}25` }}
-        >
-          <ArrowRight size={15} /> <span>العودة للقائمة الرئيسية</span>
-        </button>
       </div>
     );
   }
+
+  // ⏰ حساب الوقت المتبقي قبل الإنهاء التلقائي
+  const remainingAutoEnd = Math.max(0, AUTO_END_SECONDS - elapsed);
+  const autoEndHours = Math.floor(remainingAutoEnd / 3600);
+  const autoEndMinutes = Math.floor((remainingAutoEnd % 3600) / 60);
+  const showAutoEndWarning = remainingAutoEnd > 0 && remainingAutoEnd <= 30 * 60; // آخر 30 دقيقة
 
   return (
     <motion.div
@@ -298,8 +343,23 @@ export default function SessionScreen() {
         <div className="text-[10px] font-bold mt-2" style={{ color: BRAND.slateMuted }}>مدة الركن الفعلية</div>
       </div>
 
-      {/* 💡 بانر إرشادي متناسق ومدمج ومريح للشاشة 💡 */}
-      <div 
+      {/* ⏰ تحذير الإنهاء التلقائي (آخر 30 دقيقة) */}
+      {showAutoEndWarning && (
+        <div
+          className="w-full rounded-2xl p-3 mb-4 text-center border animate-pulse"
+          style={{
+            background: 'rgba(239, 68, 68, 0.15)',
+            borderColor: 'rgba(239, 68, 68, 0.4)',
+          }}
+        >
+          <span className="text-xs font-black text-red-400">
+            ⏰ سيتم إنهاء الجلسة تلقائياً بعد {autoEndMinutes} دقيقة
+          </span>
+        </div>
+      )}
+
+      {/* 💡 بانر إرشادي */}
+      <div
         className="w-full rounded-2xl p-3.5 mb-4 text-center border"
         style={{
           background: 'rgba(255, 255, 255, 0.02)',
@@ -310,15 +370,15 @@ export default function SessionScreen() {
           <Sparkles size={13} className="text-yellow-400 shrink-0 animate-pulse" />
           <span>خلّص مشوارك براحتك 🚗✨</span>
         </div>
-        <p 
+        <p
           className="font-bold leading-relaxed mx-auto"
-          style={{ 
+          style={{
             fontSize: '10px',
             color: BRAND.slateMuted,
             maxWidth: '280px'
           }}
         >
-          وقت الركنة <span className="font-black text-white">محفوظ بالثانية</span> في الخلفية. 
+          وقت الركنة <span className="font-black text-white">محفوظ بالثانية</span> في الخلفية.
           أغلق التطبيق الآن وافتحه عند العودة للجراج لإنهاء الجلسة.
         </p>
       </div>
@@ -352,12 +412,12 @@ export default function SessionScreen() {
         </span>
       </div>
 
-      {/* زر إنهاء الجلسة الفاخر */}
+      {/* زر إنهاء الجلسة الفاخر — الزر الوحيد */}
       <button
         type="button"
         aria-label="إنهاء الجلسة الحالية"
         onClick={() => setScreen('summary')}
-        className="w-full py-3.5 rounded-xl active:scale-[0.98] transition-all mb-3 flex items-center justify-center border-0 text-white cursor-pointer font-black"
+        className="w-full py-4 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center border-0 text-white cursor-pointer font-black"
         style={{
           background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
           boxShadow: '0 4px 14px rgba(220,38,38,0.25)',
@@ -366,17 +426,6 @@ export default function SessionScreen() {
         <span className="text-center text-sm font-black" style={{ color: '#ffffff' }}>
           🚗 إنهاء الجلسة وطلوع من الجراج
         </span>
-      </button>
-
-      {/* زر العودة الصامت */}
-      <button
-        type="button"
-        aria-label="العودة للقائمة الرئيسية"
-        onClick={() => setScreen('list')}
-        className="w-full py-2.5 rounded-xl border cursor-pointer bg-transparent text-xs"
-        style={{ color: BRAND.slateMuted, borderColor: BRAND.border }}
-      >
-        العودة للقائمة الرئيسية
       </button>
     </motion.div>
   );
