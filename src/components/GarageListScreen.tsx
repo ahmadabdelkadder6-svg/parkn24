@@ -5,9 +5,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   MapPin, Star, Search, Navigation, Locate, Plus, Receipt, MessageCircle,
   X, Gift, ChevronDown, QrCode, Copy, Edit3, Check, Minus, Menu,
-  Wallet
+  Wallet, Zap, Shield
 } from 'lucide-react';
-import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone } from '../store';
+import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone, BOOKING_FEE, TOPUP_TIERS } from '../store';
 import { calculateDistance, distanceToMinutes, classifyDistance, formatDuration } from '../utils/distance';
 import TopUpWalletModal from './TopUpWalletModal';
 import toast from 'react-hot-toast';
@@ -19,7 +19,7 @@ const BRAND = {
 };
 
 // 📍 مسافة التحديث الحقيقية لواجهة المستخدم
-const MIN_UI_MOVE_METERS = 25; 
+const MIN_UI_MOVE_METERS = 25;
 
 interface GarageWithDistance extends Garage { distance: number; minutes: number; classification: 'nearby' | 'far'; }
 interface GarageCardProps { garage: GarageWithDistance; index: number; onSelect: () => void; onReportPrice: (garage: GarageWithDistance) => void; isNearby: boolean; isClosest: boolean; hasActiveSession: boolean; hasIncomingCar: boolean; disabled: boolean; }
@@ -31,36 +31,105 @@ const safeParseTime = (value: unknown): number => {
   return 0;
 };
 
-// ✅ الـ 12 منطقة الرسمية الموحدة
+/* ═══════════════════════════════════════════════════════════════════
+   🗺️ المناطق الجغرافية الموحدة (مطابقة تماماً لشاشة الأدمن)
+   ═══════════════════════════════════════════════════════════════════ */
 const AREA_ICONS: Record<string, string> = {
-  'وسط البلد والزمالك': '🏛️',
-  'مدينة نصر والشرقية': '🏢',
-  'مصر الجديدة والشروق': '✈️',
-  'التجمع والقاهرة الجديدة': '💎',
-  'المهندسين والدقي': '🌇',
-  '6 أكتوبر والشيخ زايد': '📐',
-  'المعادي والمقطم': '🌿',
-  'شبرا وخيمة': '🏘️',
+  'وسط البلد': '🏢',
+  'الزمالك': '👑',
+  'مصر الجديدة': '🏰',
+  'مدينة نصر': '🏙️',
+  'المعادي': '🌳',
+  'المهندسين': '🛍️',
+  'الدقي': '🎓',
+  'التجمع الخامس': '💎',
   'صلاح سالم والعروبة': '🛣️',
-  'طريق الأوتوستراد': '🚗',
-  'الجيزة وفيصل والهرم': '🏺',
-  'الإسكندرية والساحل': '🌊',
+  'ممشى أهل مصر': '🌊',
+  'جاردن سيتي والقصر العيني': '🏛️',
+  'بولاق': '🚢',
+  'العتبة والأسواق': '🛍️',
+  'الحسين والأزهر': '🏮',
+  'شيراتون المطار': '✈️',
+  'الرحاب ومدينتي': '🏡',
+  'القرية الذكية': '💻',
+  'الشيخ زايد': '🌲',
+  '6 أكتوبر': '🎡',
+  'المقطم': '⛰️',
+  'المنيل': '🏝️',
+  'الجيزة': '🏛️',
+  'حدائق الأهرام': '🚪',
+  'المريوطية والمنصورية': '🌴',
+  'الكيت كات': '🌊',
+  'إمبابة والوراق': '⛵',
+  'أرض اللواء': '🚉',
+  'الوايلي والعباسية': '🏥',
+  'الزيتون والمطرية': '🌿',
+  'حدائق القبة': '🌳',
+  'جسر السويس': '🛣️',
+  'شبرا ورمسيس': '🚆',
+  'شبرا الخيمة': '🏭',
+  'مصر القديمة': '🕌',
+  'مدينة الشروق': '🎓',
+  'مدينة العبور': '🍇',
+  'العاشر من رمضان': '🏭',
+  'العاصمة الإدارية': '🏛️',
+  'حلوان': '⚙️',
+  'الإسكندرية': '🏖️',
+  'الساحل الشمالي': '🏄',
+  'المنصورة والدلتا': '🌾',
+  'طنطا': '🕌',
+  'مدن القناة': '🚢',
+  'العين السخنة': '🏖️',
   'مناطق أخرى': '📍',
 };
 
+/* ─── مراكز المناطق الجغرافية للتحقق من دقة الإحداثيات ─── */
 const AREA_CENTERS: Record<string, { lat: number; lng: number; maxRadiusKm: number }> = {
-  'وسط البلد والزمالك': { lat: 30.0444, lng: 31.2357, maxRadiusKm: 5.0 },
-  'مدينة نصر والشرقية': { lat: 30.0561, lng: 31.3301, maxRadiusKm: 8.0 },
-  'مصر الجديدة والشروق': { lat: 30.0911, lng: 31.3236, maxRadiusKm: 12.0 },
-  'التجمع والقاهرة الجديدة': { lat: 30.0074, lng: 31.4913, maxRadiusKm: 15.0 },
-  'المهندسين والدقي': { lat: 30.0511, lng: 31.2001, maxRadiusKm: 5.0 },
-  '6 أكتوبر والشيخ زايد': { lat: 29.9723, lng: 30.9493, maxRadiusKm: 15.0 },
-  'المعادي والمقطم': { lat: 29.9602, lng: 31.2569, maxRadiusKm: 8.0 },
-  'شبرا وخيمة': { lat: 30.1181, lng: 31.2464, maxRadiusKm: 6.0 },
+  'وسط البلد': { lat: 30.0444, lng: 31.2357, maxRadiusKm: 4.0 },
+  'الزمالك': { lat: 30.0626, lng: 31.2197, maxRadiusKm: 3.0 },
+  'مصر الجديدة': { lat: 30.0911, lng: 31.3236, maxRadiusKm: 8.0 },
+  'مدينة نصر': { lat: 30.0561, lng: 31.3301, maxRadiusKm: 8.0 },
+  'المعادي': { lat: 29.9602, lng: 31.2569, maxRadiusKm: 7.0 },
+  'المهندسين': { lat: 30.0631, lng: 31.2000, maxRadiusKm: 4.0 },
+  'الدقي': { lat: 30.0384, lng: 31.2126, maxRadiusKm: 3.5 },
+  'التجمع الخامس': { lat: 30.0074, lng: 31.4913, maxRadiusKm: 15.0 },
   'صلاح سالم والعروبة': { lat: 30.0735, lng: 31.3015, maxRadiusKm: 8.0 },
-  'طريق الأوتوستراد': { lat: 29.9850, lng: 31.2950, maxRadiusKm: 15.0 },
-  'الجيزة وفيصل والهرم': { lat: 29.9870, lng: 31.1890, maxRadiusKm: 10.0 },
-  'الإسكندرية والساحل': { lat: 31.2001, lng: 29.9187, maxRadiusKm: 150.0 }
+  'ممشى أهل مصر': { lat: 30.0760, lng: 31.2250, maxRadiusKm: 5.0 },
+  'جاردن سيتي والقصر العيني': { lat: 30.0355, lng: 31.2300, maxRadiusKm: 3.0 },
+  'بولاق': { lat: 30.0620, lng: 31.2280, maxRadiusKm: 3.5 },
+  'العتبة والأسواق': { lat: 30.0510, lng: 31.2470, maxRadiusKm: 2.5 },
+  'الحسين والأزهر': { lat: 30.0477, lng: 31.2622, maxRadiusKm: 2.0 },
+  'شيراتون المطار': { lat: 30.1115, lng: 31.3745, maxRadiusKm: 6.0 },
+  'الرحاب ومدينتي': { lat: 30.0590, lng: 31.4910, maxRadiusKm: 10.0 },
+  'القرية الذكية': { lat: 30.0714, lng: 30.9707, maxRadiusKm: 5.0 },
+  'الشيخ زايد': { lat: 30.0680, lng: 30.9755, maxRadiusKm: 12.0 },
+  '6 أكتوبر': { lat: 29.9723, lng: 30.9493, maxRadiusKm: 15.0 },
+  'المقطم': { lat: 30.0070, lng: 31.3100, maxRadiusKm: 6.0 },
+  'المنيل': { lat: 30.0260, lng: 31.2270, maxRadiusKm: 2.5 },
+  'الجيزة': { lat: 30.0131, lng: 31.2089, maxRadiusKm: 7.0 },
+  'حدائق الأهرام': { lat: 29.9870, lng: 31.1600, maxRadiusKm: 6.0 },
+  'المريوطية والمنصورية': { lat: 29.9950, lng: 31.1500, maxRadiusKm: 8.0 },
+  'الكيت كات': { lat: 30.0710, lng: 31.2130, maxRadiusKm: 3.0 },
+  'إمبابة والوراق': { lat: 30.0860, lng: 31.2050, maxRadiusKm: 6.0 },
+  'أرض اللواء': { lat: 30.0730, lng: 31.2050, maxRadiusKm: 3.5 },
+  'الوايلي والعباسية': { lat: 30.0680, lng: 31.2820, maxRadiusKm: 4.0 },
+  'الزيتون والمطرية': { lat: 30.1150, lng: 31.3100, maxRadiusKm: 5.0 },
+  'حدائق القبة': { lat: 30.0870, lng: 31.2810, maxRadiusKm: 3.5 },
+  'جسر السويس': { lat: 30.1050, lng: 31.3310, maxRadiusKm: 5.0 },
+  'شبرا ورمسيس': { lat: 30.0760, lng: 31.2440, maxRadiusKm: 4.0 },
+  'شبرا الخيمة': { lat: 30.1286, lng: 31.2426, maxRadiusKm: 6.0 },
+  'مصر القديمة': { lat: 30.0070, lng: 31.2290, maxRadiusKm: 4.0 },
+  'مدينة الشروق': { lat: 30.1480, lng: 31.6220, maxRadiusKm: 10.0 },
+  'مدينة العبور': { lat: 30.2070, lng: 31.4810, maxRadiusKm: 8.0 },
+  'العاشر من رمضان': { lat: 30.3080, lng: 31.7420, maxRadiusKm: 12.0 },
+  'العاصمة الإدارية': { lat: 30.0160, lng: 31.7390, maxRadiusKm: 20.0 },
+  'حلوان': { lat: 29.8550, lng: 31.3340, maxRadiusKm: 10.0 },
+  'الإسكندرية': { lat: 31.2001, lng: 29.9187, maxRadiusKm: 30.0 },
+  'الساحل الشمالي': { lat: 30.8700, lng: 28.9500, maxRadiusKm: 200.0 },
+  'المنصورة والدلتا': { lat: 31.0409, lng: 31.3785, maxRadiusKm: 50.0 },
+  'طنطا': { lat: 30.7865, lng: 31.0004, maxRadiusKm: 15.0 },
+  'مدن القناة': { lat: 30.5852, lng: 32.2654, maxRadiusKm: 50.0 },
+  'العين السخنة': { lat: 29.6050, lng: 32.3350, maxRadiusKm: 30.0 },
 };
 
 const CATEGORIES = [
@@ -109,7 +178,8 @@ export default function GarageListScreen() {
   const [showQrModal, setShowQrModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showSmartMenu, setShowSmartMenu] = useState(false);
-  const [activeTab, setActiveTab] = useState<'vip' | 'directory'>('directory');
+  // ✅ التغيير: التبويب الافتراضي = VIP بدل directory
+  const [activeTab, setActiveTab] = useState<'vip' | 'directory'>('vip');
   const [activeDirectoryTrip, setActiveDirectoryTrip] = useState<GarageWithDistance | null>(null);
   const [visibleLimits, setVisibleLimits] = useState<Record<string, number>>({});
   const [reportingGarage, setReportingGarage] = useState<GarageWithDistance | null>(null);
@@ -120,6 +190,10 @@ export default function GarageListScreen() {
   const [isBooking, setIsBooking] = useState(false);
   const [isAbuseDetected, setIsAbuseDetected] = useState(false);
   const [expandedArea, setExpandedArea] = useState<string | null>(null);
+
+  // 💰 مودال "رصيدك غير كافي"
+  const [showInsufficientModal, setShowInsufficientModal] = useState(false);
+  const [pendingVipGarage, setPendingVipGarage] = useState<GarageWithDistance | null>(null);
 
   const [rescueIndex, setRescueIndex] = useState(0);
   const MAX_RESCUE_OPTIONS = 3;
@@ -197,7 +271,7 @@ export default function GarageListScreen() {
     if (!('geolocation' in navigator)) { toast.error('خدمة تحديد الموقع غير مدعومة في متصفحك'); return; }
     if (watchIdRef.current !== null) { navigator.geolocation.clearWatch(watchIdRef.current); }
     setLocationLoading(true);
-    
+
     watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => {
         if (!isMountedRef.current) return;
@@ -224,29 +298,28 @@ export default function GarageListScreen() {
         speedHistoryRef.current.push(speedKmh);
         if (speedHistoryRef.current.length > 10) speedHistoryRef.current.shift();
         if (rawHeading !== null) { bearingHistoryRef.current.push(rawHeading); if (bearingHistoryRef.current.length > 5) bearingHistoryRef.current.shift(); }
-        
-        if (speedKmh < 1.0) { 
-            if (stopStartTimeRef.current === null) { stopStartTimeRef.current = Date.now(); } 
-            else { totalStopDurationRef.current = Math.round((Date.now() - stopStartTimeRef.current) / 1000); } 
+
+        if (speedKmh < 1.0) {
+          if (stopStartTimeRef.current === null) { stopStartTimeRef.current = Date.now(); }
+          else { totalStopDurationRef.current = Math.round((Date.now() - stopStartTimeRef.current) / 1000); }
         } else { stopStartTimeRef.current = null; }
 
-        // 🛡️ Guard: Dual-Track GPS لمسافة التحديث لواجهة المستخدم
         let shouldUpdateUI = false;
-        
-        if (!lastLocationRef.current) { 
-            shouldUpdateUI = true; 
+
+        if (!lastLocationRef.current) {
+          shouldUpdateUI = true;
         } else {
           const movedDist = calculateDistance(lastLocationRef.current.lat, lastLocationRef.current.lng, newLat, newLng) * 1000;
-          if (movedDist >= MIN_UI_MOVE_METERS) { 
-              shouldUpdateUI = true; 
+          if (movedDist >= MIN_UI_MOVE_METERS) {
+            shouldUpdateUI = true;
           }
         }
-        
-        if (shouldUpdateUI) { 
-            lastLocationRef.current = { lat: newLat, lng: newLng }; 
-            setUserLocation({ lat: newLat, lng: newLng }); 
+
+        if (shouldUpdateUI) {
+          lastLocationRef.current = { lat: newLat, lng: newLng };
+          setUserLocation({ lat: newLat, lng: newLng });
         }
-        
+
         setLocationLoading(false);
       },
       () => { if (!isMountedRef.current) return; setLocationLoading(false); },
@@ -343,19 +416,43 @@ export default function GarageListScreen() {
     return filtered;
   }, [garagesWithDistance, searchQuery, showNearbyOnly, activeTab, selectedCategory, matchesCategory]);
 
+  /* ─── 🗺️ تجميع الجراجات حسب المنطقة الموحدة ─── */
   const areaGroups = useMemo(() => {
     const groups: Record<string, GarageWithDistance[]> = {};
-    filteredGarages.forEach(g => { const zone = (g as any).area || 'مناطق أخرى'; if (!groups[zone]) groups[zone] = []; groups[zone].push(g); });
-    return Object.keys(groups).map(name => ({ name, garages: groups[name], totalCapacity: groups[name].reduce((sum, g) => sum + (g.capacity || 0), 0) })).sort((a, b) => { if (a.name === 'مناطق أخرى') return 1; if (b.name === 'مناطق أخرى') return -1; return a.name.localeCompare(b.name, 'ar'); });
+    filteredGarages.forEach(g => {
+      const zone = (g as any).area || 'مناطق أخرى';
+      if (!groups[zone]) groups[zone] = [];
+      groups[zone].push(g);
+    });
+    return Object.keys(groups)
+      .map(name => ({
+        name,
+        garages: groups[name],
+        totalCapacity: groups[name].reduce((sum, g) => sum + (g.capacity || 0), 0)
+      }))
+      .sort((a, b) => {
+        if (a.name === 'مناطق أخرى') return 1;
+        if (b.name === 'مناطق أخرى') return -1;
+        const minA = Math.min(...a.garages.map(g => g.minutes));
+        const minB = Math.min(...b.garages.map(g => g.minutes));
+        return minA - minB;
+      });
   }, [filteredGarages]);
 
   useEffect(() => { if (searchQuery.trim() && areaGroups.length > 0) setExpandedArea(areaGroups[0].name); }, [searchQuery, areaGroups]);
 
+  // 💰 التحقق من الرصيد عند اختيار جراج VIP
   const handleGarageClick = async (garage: GarageWithDistance) => {
     if (garage.garageType === 'directory') {
       const areaCenter = AREA_CENTERS[garage.area || ''];
       let isLocationBroken = false;
-      if (areaCenter) { const distanceFromCenterKm = calculateDistance(garage.lat, garage.lng, areaCenter.lat, areaCenter.lng); if (distanceFromCenterKm > areaCenter.maxRadiusKm) { isLocationBroken = true; supabase.from('garage_arrival_telemetry').insert({ garage_id: garage.id, user_phone: cleanUserPhone || '00000000000', lat: garage.lat, lng: garage.lng, accuracy: 999 }).then(() => {}).catch(() => {}); } }
+      if (areaCenter) {
+        const distanceFromCenterKm = calculateDistance(garage.lat, garage.lng, areaCenter.lat, areaCenter.lng);
+        if (distanceFromCenterKm > areaCenter.maxRadiusKm) {
+          isLocationBroken = true;
+          supabase.from('garage_arrival_telemetry').insert({ garage_id: garage.id, user_phone: cleanUserPhone || '00000000000', lat: garage.lat, lng: garage.lng, accuracy: 999 }).then(() => {}).catch(() => {});
+        }
+      }
       const isFamousLandmark = /مول|mall|فندق|hotel|مستشفى|hospital|جامعة|university|نادي|club|مرور|traffic|كارفور|سيتي سنتر|تريومف|بلاتفورم|وتر واي|waterway|أركان|arkan|سكوير|plaza/gi.test(garage.name);
       let url = '';
       if (isLocationBroken || isFamousLandmark) {
@@ -366,33 +463,50 @@ export default function GarageListScreen() {
         url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}&travelmode=driving&dir_action=navigate`;
       }
       window.open(url, '_blank', 'noopener,noreferrer');
-      setActiveDirectoryTrip(garage); 
+      setActiveDirectoryTrip(garage);
       toast.success(`رحلة سعيدة! جاري توجيهك إلى ${garage.name} 🧭`, { icon: '🚙' });
       return;
     }
+
+    // 🌟 جراج VIP — فحص الرصيد (3 ج رسوم حجز)
     if (!currentUser) { toast.error('سجل بياناتك أولاً'); return; }
     if (activeSession) { setSelectedGarageId(activeSession.garageId); setScreen('session'); return; }
     if (myIncomingCar) { setSelectedGarageId(myIncomingCar.garageId); setScreen('navigation'); return; }
     if (offers.some((o) => o.userId === currentUser.phone && o.status === 'pending')) { toast.error('لديك عرض معلق بالفعل'); return; }
     if (garage.availableSpots <= 0) { toast.error('لا توجد أماكن متاحة حالياً'); return; }
+
     const userWallet = currentUser.wallet || 0;
-    if (garage.payment_mode === 'wallet' && userWallet < garage.basePrice && !isEligibleForFreeSession) { toast.error(`عذراً، هذا الجراج يتطلب الدفع بالمحفظة. يرجى شحن محفظتك بمبلغ ${garage.basePrice} ج.م على الأقل للمتابعة.`); setShowTopUp(true); return; }
+
+    // ✅ فحص رسوم الحجز (3 ج) بدل سعر الجراج الكامل
+    if (userWallet < BOOKING_FEE) {
+      setPendingVipGarage(garage);
+      setShowInsufficientModal(true);
+      return;
+    }
+
+    // الرصيد كافي — المتابعة
+    await proceedWithVipBooking(garage);
+  };
+
+  // 🚗 تنفيذ الحجز بعد التأكد من الرصيد
+  const proceedWithVipBooking = async (garage: GarageWithDistance) => {
+    if (!currentUser) return;
     try {
       setIsBooking(true); setSelectedGarageId(garage.id);
       await addIncomingCar({ garageId: garage.id, carPlate: currentUser.carPlate, customerName: currentUser.name, customerPhone: currentUser.phone, agreedPrice: garage.basePrice, estimatedArrival: Math.max(3, garage.minutes) });
-      toast.success(`تم الحجز بنجاح 🚗`); setScreen('navigation');
+      toast.success(`تم الحجز بنجاح 🚗 — سيتم خصم ${BOOKING_FEE} ج.م عند الوصول`); setScreen('navigation');
     } catch (e) { console.error(e); toast.error('حدث خطأ أثناء إتمام الحجز'); } finally { setIsBooking(false); }
   };
 
   const handleConfirmArrival = useCallback(async () => {
     if (!activeDirectoryTrip) return;
-    const tripToCalibrate = activeDirectoryTrip; 
-    
+    const tripToCalibrate = activeDirectoryTrip;
+
     setActiveDirectoryTrip(null);
-    setActiveTab('directory'); 
-    
+    setActiveTab('directory');
+
     toast.success('حمد الله على سلامتك! نورت بركن من جديد 🌟', { duration: 3000 });
-    
+
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(async (position) => {
         try {
@@ -422,6 +536,7 @@ export default function GarageListScreen() {
       setReportingGarage(null);
     } catch (error: any) { toast.error(error?.message || 'تعذر تحديث السعر، يرجى المحاولة لاحقاً'); } finally { setIsSubmittingPrice(false); }
   };
+
   return (
     <div className="h-full flex flex-col overflow-hidden relative" style={{ background: BRAND.bg, color: BRAND.blueDark }}>
 
@@ -454,25 +569,25 @@ export default function GarageListScreen() {
           </div>
         </div>
 
-{/* 🎁 تم تعطيل بانر الهدية الترحيبية مؤقتاً */}
-{false && isEligibleForFreeSession && !activeSession && !myIncomingCar && (
-  <div dir="rtl" className="mb-2.5 py-1.5 px-3 rounded-xl flex items-center justify-between text-right border-[1.5px]" style={{ background: BRAND.green + '10', borderColor: BRAND.green + '50' }}>
-    <div className="flex items-center gap-1.5"><Gift size={12} style={{ color: BRAND.greenDark }} className="shrink-0 animate-pulse" /><span className="text-[10px] font-black text-slate-900 leading-none">هديتك: <span style={{ color: BRAND.greenDark }}>أول 30 دقيقة مجاناً! 🎉</span></span></div>
-    <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white bg-green-600 shrink-0">نشط 🎁</span>
-  </div>
-)}
+        {/* 🎁 تم تعطيل بانر الهدية الترحيبية مؤقتاً */}
+        {false && isEligibleForFreeSession && !activeSession && !myIncomingCar && (
+          <div dir="rtl" className="mb-2.5 py-1.5 px-3 rounded-xl flex items-center justify-between text-right border-[1.5px]" style={{ background: BRAND.green + '10', borderColor: BRAND.green + '50' }}>
+            <div className="flex items-center gap-1.5"><Gift size={12} style={{ color: BRAND.greenDark }} className="shrink-0 animate-pulse" /><span className="text-[10px] font-black text-slate-900 leading-none">هديتك: <span style={{ color: BRAND.greenDark }}>أول 30 دقيقة مجاناً! 🎉</span></span></div>
+            <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white bg-green-600 shrink-0">نشط 🎁</span>
+          </div>
+        )}
 
-        {/* 🌟 بانر "الركنة السريعة المنقذة" بـ Key ثابت بدون رعشة */}
+        {/* 🌟 بانر "الركنة السريعة المنقذة" */}
         {currentRescueGarage && !activeSession && !myIncomingCar && (
           <div
             className="mb-2.5 rounded-2xl cursor-pointer active:scale-98 transition-all border-2 text-right relative overflow-hidden"
             style={{
-              background: currentRescueGarage.garageType === 'vip' 
+              background: currentRescueGarage.garageType === 'vip'
                 ? 'linear-gradient(135deg, #1656b8 0%, #0f3d85 100%)'
                 : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
               borderColor: currentRescueGarage.garageType === 'vip' ? '#1656b8' : '#334155',
-              boxShadow: currentRescueGarage.garageType === 'vip' 
-                ? '0 4px 15px rgba(22,86,184,0.3)' 
+              boxShadow: currentRescueGarage.garageType === 'vip'
+                ? '0 4px 15px rgba(22,86,184,0.3)'
                 : '0 4px 15px rgba(15,23,42,0.4)',
             }}
             dir="rtl"
@@ -499,11 +614,11 @@ export default function GarageListScreen() {
             </div>
 
             {rescueGaragesList.length > 1 && (
-              <button 
-                type="button" 
-                onClick={handleNextRescue} 
+              <button
+                type="button"
+                onClick={handleNextRescue}
                 className="w-full py-3 text-[12px] font-black text-white bg-black/30 border-0 cursor-pointer active:bg-black/40 active:scale-[0.98] transition-all flex items-center justify-center gap-2 tracking-wide"
-                style={{ 
+                style={{
                   borderTop: '2px solid rgba(255,255,255,0.25)',
                   textShadow: '0 1px 3px rgba(0,0,0,0.4)',
                   letterSpacing: '0.02em'
@@ -531,19 +646,19 @@ export default function GarageListScreen() {
         <div className="flex gap-2 mb-2.5">
           <div className="relative flex-1">
             <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-            <input 
+            <input
               type="text"
-              className="w-full outline-none text-xs font-bold bg-slate-100 border border-slate-300 text-slate-800 rounded-xl transition-all focus:border-blue-500 focus:bg-white focus:shadow-sm" 
-              style={{ padding: '9px 32px 9px 32px' }} 
-              placeholder="ابحث باسم الجراج أو المنطقة..." 
-              value={searchQuery} 
-              onChange={(e) => setSearchQuery(e.target.value)} 
+              className="w-full outline-none text-xs font-bold bg-slate-100 border border-slate-300 text-slate-800 rounded-xl transition-all focus:border-blue-500 focus:bg-white focus:shadow-sm"
+              style={{ padding: '9px 32px 9px 32px' }}
+              placeholder="ابحث باسم الجراج أو المنطقة..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
             />
             {searchQuery ? (
               <div className="absolute left-2.5 inset-y-0 flex items-center z-10">
-                <button 
-                  type="button" 
-                  onClick={() => { setSearchQuery(''); setExpandedArea(null); }} 
+                <button
+                  type="button"
+                  onClick={() => { setSearchQuery(''); setExpandedArea(null); }}
                   className="bg-slate-300 text-slate-600 rounded-full w-5 h-5 flex items-center justify-center cursor-pointer border-0 active:scale-90 hover:bg-slate-400 hover:text-white transition-all"
                 >
                   <X size={12} strokeWidth={3} />
@@ -551,12 +666,12 @@ export default function GarageListScreen() {
               </div>
             ) : null}
           </div>
- 
-          <button 
-            type="button" 
-            onClick={handleForceRefreshLocation} 
-            disabled={locationLoading} 
-            className="flex items-center justify-center border-0 cursor-pointer shrink-0" 
+
+          <button
+            type="button"
+            onClick={handleForceRefreshLocation}
+            disabled={locationLoading}
+            className="flex items-center justify-center border-0 cursor-pointer shrink-0"
             style={{ background: BRAND.blue, color: '#fff', borderRadius: 12, width: 36, height: 36 }}
             title="تحديث الموقع"
           >
@@ -570,13 +685,36 @@ export default function GarageListScreen() {
           {CATEGORIES.map((cat) => { const isActive = selectedCategory === cat.id; return (<button key={cat.id} type="button" onClick={() => setSelectedCategory(isActive ? null : cat.id)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black cursor-pointer border-[1.5px] transition-all shrink-0 active:scale-95 shadow-sm" style={{ background: isActive ? BRAND.blue : '#ffffff', color: isActive ? '#ffffff' : BRAND.slate, borderColor: isActive ? BRAND.blue : BRAND.border, scrollSnapAlign: 'start' }}><span>{cat.icon}</span><span>{cat.label}</span></button>); })}
         </div>
 
+        {/* ✅ تبويبات VIP / دليل مجاني — مع جملة تحفيزية على VIP */}
         <div className="flex p-1 rounded-xl bg-slate-200/70" style={{ direction: 'rtl', border: '1.5px solid #cbd5e1' }}>
-          <button type="button" onClick={() => { setActiveTab('vip'); setExpandedArea(null); }} className="flex-1 py-2 rounded-lg font-black text-[11px] cursor-pointer border-0 transition-all flex items-center justify-center gap-1" style={{ background: activeTab === 'vip' ? BRAND.blue : 'transparent', color: activeTab === 'vip' ? '#ffffff' : BRAND.slate, boxShadow: activeTab === 'vip' ? '0 2px 8px rgba(22,86,184,0.25)' : 'none' }}><span>⭐ ركنات حجز مباشر VIP</span></button>
+          <button type="button" onClick={() => { setActiveTab('vip'); setExpandedArea(null); }} className="flex-1 py-2 rounded-lg font-black text-[11px] cursor-pointer border-0 transition-all flex items-center justify-center gap-1 relative" style={{ background: activeTab === 'vip' ? BRAND.blue : 'transparent', color: activeTab === 'vip' ? '#ffffff' : BRAND.slate, boxShadow: activeTab === 'vip' ? '0 2px 8px rgba(22,86,184,0.25)' : 'none' }}>
+            <span>⭐ احجز ركنتك بـ {BOOKING_FEE} ج</span>
+            {activeTab === 'vip' && (
+              <span className="absolute -top-1 -left-1 w-2 h-2 rounded-full animate-pulse" style={{ background: BRAND.green }} />
+            )}
+          </button>
           <button type="button" onClick={() => { setActiveTab('directory'); setExpandedArea(null); }} className="flex-1 py-2 rounded-lg font-black text-[11px] cursor-pointer border-0 transition-all flex items-center justify-center gap-1" style={{ background: activeTab === 'directory' ? BRAND.blueDark : 'transparent', color: activeTab === 'directory' ? '#ffffff' : BRAND.slate, boxShadow: activeTab === 'directory' ? '0 2px 8px rgba(15,61,133,0.25)' : 'none' }}><span>🧭 دليل الساحات المجاني</span></button>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pt-3 pb-8">
+
+        {/* ✅ بانر تحفيزي VIP أعلى القائمة */}
+        {activeTab === 'vip' && !activeSession && !myIncomingCar && (
+          <div dir="rtl" className="mb-3 rounded-2xl p-3.5 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #1656b8 0%, #0f3d85 100%)', boxShadow: '0 4px 15px rgba(22,86,184,0.25)' }}>
+            <div className="absolute top-0 left-0 w-32 h-32 bg-white/5 rounded-full blur-2xl pointer-events-none" />
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
+                <Shield size={24} className="text-white" />
+              </div>
+              <div className="flex-1 text-right">
+                <h3 className="text-sm font-black text-white leading-tight mb-1">احجز ركنتك المضمونة بـ {BOOKING_FEE} ج.م بس! 🅿️</h3>
+                <p className="text-[10px] font-bold text-white/70 leading-relaxed">الحجز مضمون + مكانك محفوظ + لو ملقيتش مكان فلوسك ترجعلك فوراً 💰</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {areaGroups.length > 0 ? (
           <div className="space-y-2.5">
             {areaGroups.map((group) => {
@@ -585,17 +723,26 @@ export default function GarageListScreen() {
               return (
                 <div key={group.name} style={{ background: BRAND.card, borderRadius: 14, border: `1.5px solid ${BRAND.border}`, overflow: 'hidden', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
                   <button type="button" onClick={() => setExpandedArea(isExpanded ? null : group.name)} className="w-full p-3.5 flex items-center justify-between text-right bg-transparent border-none cursor-pointer outline-none">
-                    <div className="flex items-center gap-2 shrink-0"><span className="text-[11px] font-black font-mono px-2 py-1 rounded bg-slate-100" style={{ color: BRAND.slate }}>{totalGarages} {activeTab === 'vip' ? 'معتمد' : 'ساحات'}</span><ChevronDown size={16} style={{ color: BRAND.slate, transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} /></div>
-                    <div className="text-right"><span className="font-black text-sm block" style={{ color: BRAND.blueDark }}>{AREA_ICONS[group.name] || '📍'} {group.name}</span><span className="text-[10px] font-bold block mt-0.5" style={{ color: BRAND.slate }}>{activeTab === 'vip' ? '🚗 جراجات معتمدة للحجز المباشر' : '🧭 دليل ساحات الركن بالمنطقة'}</span></div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[11px] font-black font-mono px-2 py-1 rounded bg-slate-100" style={{ color: BRAND.slate }}>{totalGarages} {activeTab === 'vip' ? 'معتمد' : 'ساحات'}</span>
+                      <ChevronDown size={16} style={{ color: BRAND.slate, transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                    </div>
+                    <div className="text-right">
+                      <span className="font-black text-sm block" style={{ color: BRAND.blueDark }}>{AREA_ICONS[group.name] || '📍'} {group.name}</span>
+                      <span className="text-[10px] font-bold block mt-0.5" style={{ color: BRAND.slate }}>{activeTab === 'vip' ? `🚗 جراجات معتمدة — الحجز بـ ${BOOKING_FEE} ج.م بس` : '🧭 دليل ساحات الركن بالمنطقة'}</span>
+                    </div>
                   </button>
                   {isExpanded && (
                     <div style={{ background: BRAND.bg, padding: '10px', borderTop: `1px solid ${BRAND.border}` }} className="space-y-2">
-                      {(() => { const limit = visibleLimits[group.name] || 8; const displayedGarages = group.garages.slice(0, limit); const hasMore = group.garages.length > limit;
+                      {(() => {
+                        const limit = visibleLimits[group.name] || 8;
+                        const displayedGarages = group.garages.slice(0, limit);
+                        const hasMore = group.garages.length > limit;
                         return (<>
                           {displayedGarages.map((garage, i) => (
-                            <GarageCard 
-                               key={garage.id}
-                               garage={garage} index={i} onSelect={() => handleGarageClick(garage)} onReportPrice={handleOpenPriceReport} isNearby={garage.classification === 'nearby'} isClosest={i === 0 && garage.classification === 'nearby'} hasActiveSession={Boolean(activeSession)} hasIncomingCar={Boolean(myIncomingCar)} disabled={isBooking} 
+                            <GarageCard
+                              key={garage.id}
+                              garage={garage} index={i} onSelect={() => handleGarageClick(garage)} onReportPrice={handleOpenPriceReport} isNearby={garage.classification === 'nearby'} isClosest={i === 0 && garage.classification === 'nearby'} hasActiveSession={Boolean(activeSession)} hasIncomingCar={Boolean(myIncomingCar)} disabled={isBooking}
                             />
                           ))}
                           {hasMore && (<button type="button" onClick={() => { setVisibleLimits(prev => ({ ...prev, [group.name]: limit + 10 })); toast.success('تم تحميل ساحات إضافية 📍', { id: 'lazy-load-toast' }); }} className="w-full py-2.5 rounded-xl font-black text-[11px] cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1 bg-white mt-2" style={{ color: BRAND.blue, border: `1.5px solid ${BRAND.border}` }}><span>عرض المزيد (+{group.garages.length - limit}) 🔽</span></button>)}
@@ -612,6 +759,110 @@ export default function GarageListScreen() {
         )}
       </div>
 
+      {/* ═══════════════════════════════════════════════════
+           💰 مودال "رصيدك غير كافي" — خيار B
+         ═══════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {showInsufficientModal && pendingVipGarage && (
+          <div className="fixed inset-0 z-[1600] flex items-center justify-center p-5" style={{ background: 'rgba(10,22,40,0.8)', backdropFilter: 'blur(8px)' }} onClick={() => { setShowInsufficientModal(false); setPendingVipGarage(null); }}>
+            <motion.div
+              initial={{ scale: 0.85, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.85, opacity: 0, y: 20 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+              className="rounded-3xl p-6 text-center max-w-sm w-full shadow-2xl relative"
+              style={{ background: BRAND.card }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* الأيقونة */}
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: '#fef3c7' }}>
+                <Wallet size={28} className="text-amber-600" />
+              </div>
+
+              <h3 className="text-base font-black mb-1" style={{ color: BRAND.blueDark }}>رصيدك غير كافي 💳</h3>
+              <p className="text-xs font-bold mb-4 leading-relaxed" style={{ color: BRAND.slate }}>
+                محتاج {BOOKING_FEE} ج.م رسوم حجز لضمان ركنتك في <b style={{ color: BRAND.navy }}>{pendingVipGarage.name}</b>
+              </p>
+
+              {/* بيانات الرصيد */}
+              <div className="rounded-xl p-3 mb-4 text-right" style={{ background: '#f8fafc', border: `1.5px solid ${BRAND.border}` }}>
+                <div className="flex justify-between items-center mb-2 pb-2" style={{ borderBottom: `1px solid ${BRAND.border}` }}>
+                  <span className="font-mono font-black text-red-500 text-sm">{currentUser?.wallet || 0} ج.م</span>
+                  <span className="text-[11px] font-black" style={{ color: BRAND.slate }}>💰 رصيدك الحالي</span>
+                </div>
+                <div className="flex justify-between items-center mb-2 pb-2" style={{ borderBottom: `1px solid ${BRAND.border}` }}>
+                  <span className="font-mono font-black text-sm" style={{ color: BRAND.blue }}>{BOOKING_FEE} ج.م</span>
+                  <span className="text-[11px] font-black" style={{ color: BRAND.slate }}>🅿️ رسوم الحجز</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="font-mono font-black text-amber-600 text-sm">{Math.max(0, BOOKING_FEE - (currentUser?.wallet || 0))} ج.م</span>
+                  <span className="text-[11px] font-black" style={{ color: BRAND.slate }}>📊 محتاج تشحن</span>
+                </div>
+              </div>
+
+              {/* عنوان الشرائح */}
+              <p className="text-[11px] font-black mb-3 text-right" style={{ color: BRAND.blueDark }}>⚡ اشحن دلوقتي واحجز ركنتك:</p>
+
+              {/* شرائح الشحن السريعة */}
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                {TOPUP_TIERS.map((tier) => (
+                  <button
+                    key={tier.id}
+                    type="button"
+                    onClick={() => {
+                      setShowInsufficientModal(false);
+                      setPendingVipGarage(null);
+                      setShowTopUp(true);
+                    }}
+                    className="p-3 rounded-xl cursor-pointer active:scale-95 transition-all text-right relative overflow-hidden"
+                    style={{
+                      background: tier.popular ? 'linear-gradient(135deg, #1656b8 0%, #0f3d85 100%)' : BRAND.card,
+                      color: tier.popular ? '#ffffff' : BRAND.blueDark,
+                      border: tier.popular ? '2px solid #1656b8' : `1.5px solid ${BRAND.border}`,
+                      boxShadow: tier.popular ? '0 4px 15px rgba(22,86,184,0.25)' : '0 1px 4px rgba(0,0,0,0.04)',
+                    }}
+                  >
+                    {tier.popular && (
+                      <span className="absolute top-1 left-1 text-[7px] font-black px-1.5 py-0.5 rounded-lg" style={{ background: BRAND.green, color: '#ffffff' }}>الأكثر شعبية ⭐</span>
+                    )}
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="font-black text-lg font-mono">{tier.amount} ج</span>
+                      <span className="text-[9px] font-black" style={{ color: tier.popular ? '#bbf7d0' : BRAND.greenDark }}>+ {tier.bonus} ج بونص 🎁</span>
+                      <span className="text-[8px] font-bold" style={{ color: tier.popular ? 'rgba(255,255,255,0.7)' : BRAND.slate }}>≈ {tier.bookings} حجز</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* زر الشحن الرئيسي */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowInsufficientModal(false);
+                  setPendingVipGarage(null);
+                  setShowTopUp(true);
+                }}
+                className="w-full py-3.5 rounded-xl font-black text-sm text-white border-0 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg mb-2"
+                style={{ background: BRAND.blue, boxShadow: '0 6px 20px rgba(22,86,184,0.35)' }}
+              >
+                <Wallet size={16} />
+                <span>شحن المحفظة 💰</span>
+              </button>
+
+              {/* زر إلغاء */}
+              <button
+                type="button"
+                onClick={() => { setShowInsufficientModal(false); setPendingVipGarage(null); }}
+                className="w-full py-2.5 rounded-xl font-bold text-xs cursor-pointer active:scale-95 transition-all"
+                style={{ background: 'transparent', color: BRAND.slate, border: `1.5px solid ${BRAND.border}` }}
+              >
+                إلغاء
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* ═══ القائمة الذكية الجانبية ═══ */}
       <AnimatePresence>
         {showSmartMenu && (
@@ -623,7 +874,7 @@ export default function GarageListScreen() {
                 <button type="button" onClick={() => { setShowSmartMenu(false); setShowTopUp(true); }} className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]" style={{ borderColor: BRAND.border }}><ChevronDown size={16} className="rotate-90 text-slate-400" /><div className="flex items-center gap-2.5"><div className="text-right"><span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>شحن رصيد المحفظة</span><span className="text-[9px] font-bold text-slate-500">اشحن بـ إنستاباي أو فودافون كاش</span></div><div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center"><Wallet size={16} style={{ color: BRAND.blue }} /></div></div></button>
                 {hasCompletedSession && (<button type="button" onClick={() => { setShowSmartMenu(false); setScreen('lastSession'); }} className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]" style={{ borderColor: BRAND.border }}><ChevronDown size={16} className="rotate-90 text-slate-400" /><div className="flex items-center gap-2.5"><div className="text-right"><span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>إيصال آخر ركنة</span><span className="text-[9px] font-bold text-slate-500">عرض تفاصيل وحساب آخر جلسة</span></div><div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center"><Receipt size={16} style={{ color: BRAND.greenDark }} /></div></div></button>)}
                 <button type="button" onClick={() => { setShowSmartMenu(false); setScreen('chat'); }} className="w-full flex items-center justify-between p-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-all bg-white border-[1.5px]" style={{ borderColor: BRAND.border }}><ChevronDown size={16} className="rotate-90 text-slate-400" /><div className="flex items-center gap-2.5"><div className="text-right"><span className="text-xs font-black block" style={{ color: BRAND.blueDark }}>الدعم والشكاوى</span><span className="text-[9px] font-bold text-slate-500">تواصل معنا في أي وقت 24 ساعة</span></div><div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center"><MessageCircle size={16} className="text-amber-600" /></div></div></button>
-                
+
                 {myTopUps.length > 0 && (
                   <div className="pt-3 mt-3 border-t-[1.5px]" style={{ borderColor: BRAND.border }}>
                     <div className="flex justify-between items-center mb-2">
@@ -714,10 +965,10 @@ export default function GarageListScreen() {
             </div>
             <div className="max-w-xs mx-auto w-full space-y-3 pb-8">
               <button type="button" onClick={() => { const url = `https://www.google.com/maps/dir/?api=1&destination=${activeDirectoryTrip.lat},${activeDirectoryTrip.lng}&travelmode=driving&dir_action=navigate`; window.open(url, '_blank', 'noopener,noreferrer'); }} className="w-full py-3.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all border-0 text-white shadow-sm" style={{ background: BRAND.blue }}><Navigation size={14} /><span>إعادة فتح خرائط جوجل 🗺️</span></button>
-              
-              <button 
-                type="button" 
-                onClick={handleConfirmArrival} 
+
+              <button
+                type="button"
+                onClick={handleConfirmArrival}
                 className="w-full py-3.5 rounded-xl font-black text-sm text-white border-0 cursor-pointer active:scale-95 transition-all shadow-lg"
                 style={{ background: BRAND.greenDark, boxShadow: '0 4px 15px rgba(110, 166, 42, 0.4)' }}
               >
@@ -758,19 +1009,28 @@ function WelcomeGiftModal() {
 
 const GarageCard = memo(function GarageCard({ garage, index, onSelect, onReportPrice, isNearby, isClosest, hasActiveSession, hasIncomingCar, disabled }: GarageCardProps) {
   const isDirectory = garage.garageType === 'directory';
+  const isVip = garage.garageType === 'vip';
   const isBusy = hasActiveSession || hasIncomingCar;
   const isFull = !isDirectory && garage.availableSpots === 0;
   const btnBg = (() => { if (isDirectory) return BRAND.blueDark; if (isFull) return BRAND.border; if (isBusy) return BRAND.green; return BRAND.blue; })();
-  const btnLabel = (() => { if (isDirectory) return 'افتح الاتجاهات 🗺️'; if (isFull) return 'ممتلئ'; if (hasActiveSession) return 'الجلسة النشطة ⚡'; if (hasIncomingCar) return 'الحجز النشط 📍'; return 'احجز الآن'; })();
+  const btnLabel = (() => { if (isDirectory) return 'افتح الاتجاهات 🗺️'; if (isFull) return 'ممتلئ'; if (hasActiveSession) return 'الجلسة النشطة ⚡'; if (hasIncomingCar) return 'الحجز النشط 📍'; return `احجز بـ ${BOOKING_FEE} ج.م 🅿️`; })();
   const displayPrice = (() => { if (garage.priceType === 'daily') return `${garage.dailyPrice || garage.basePrice}`; if (garage.priceType === 'monthly') return `${garage.monthlyPrice || 1500}`; return `${garage.basePrice}`; })();
   const priceUnit = (() => { if (garage.priceType === 'daily') return 'ج.م/يومي'; if (garage.priceType === 'monthly') return 'ج.م/شهري'; return 'ج.م/ساعة'; })();
 
-  // 📐 تم تصغير حجم الكارت ودمج المساحات
   return (
-    <div className="p-3 text-right relative bg-white rounded-xl transition-all" style={{ border: `1.5px solid ${isDirectory ? BRAND.borderDark : BRAND.border}`, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+    <div className="p-3 text-right relative bg-white rounded-xl transition-all" style={{ border: `1.5px solid ${isVip ? BRAND.blue + '40' : BRAND.borderDark}`, boxShadow: isVip ? '0 2px 8px rgba(22,86,184,0.08)' : '0 1px 4px rgba(0,0,0,0.04)' }}>
       <div className="flex justify-between items-center mb-1.5 flex-wrap gap-1" style={{ direction: 'rtl' }}>
         <div className="flex items-center gap-1 flex-wrap">
-          {isDirectory ? (<span className="text-[8px] font-black px-2 py-0.5 rounded flex items-center gap-1" style={{ background: '#f1f5f9', color: '#334155', border: '1px solid #94a3b8' }}><span>🧭 دليل الشارع</span></span>) : (<span className="flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: '#fef3c7', color: '#b45309' }}><Star size={8} fill="currentColor" /> {garage.rating || 4.5} معتمد</span>)}
+          {isDirectory ? (
+            <span className="text-[8px] font-black px-2 py-0.5 rounded flex items-center gap-1" style={{ background: '#f1f5f9', color: '#334155', border: '1px solid #94a3b8' }}><span>🧭 دليل مجاني</span></span>
+          ) : (
+            <>
+              <span className="text-[8px] font-black px-2 py-0.5 rounded flex items-center gap-1" style={{ background: '#eff6ff', color: BRAND.blue, border: `1px solid ${BRAND.blue}40` }}>
+                <Zap size={8} /> VIP مضمون
+              </span>
+              <span className="flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: '#fef3c7', color: '#b45309' }}><Star size={8} fill="currentColor" /> {garage.rating || 4.5}</span>
+            </>
+          )}
           {!isDirectory && garage.payment_mode === 'cash' && (<span className="text-[8px] font-black px-1.5 py-0.5 rounded" style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa' }}>💵 نقدي</span>)}
           {!isDirectory && garage.payment_mode === 'wallet' && (<span className="text-[8px] font-black px-1.5 py-0.5 rounded" style={{ background: '#f0f5ff', color: BRAND.blue, border: `1px solid ${BRAND.border}` }}>👝 محفظة</span>)}
           {!isDirectory && garage.payment_mode === 'both' && (<span className="text-[8px] font-black px-1.5 py-0.5 rounded" style={{ background: '#f0fdf4', color: BRAND.greenDark, border: `1px solid #bbf7d0` }}>💵👝 كاش ومحفظة</span>)}

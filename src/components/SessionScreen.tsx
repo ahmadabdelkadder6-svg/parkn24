@@ -4,17 +4,12 @@ import {
   Clock,
   Car,
   ArrowRight,
-  Gift,
   Sparkles,
-  CreditCard,
 } from 'lucide-react';
 // 🌟 استيراد getServerNow ودوال البصمة لضمان مطابقة العداد بالملي ثانية بين جميع الهواتف
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import {
-  calculateFullHours,
-  calculateCost,
   formatTime,
-  getRemainingInCurrentHour,
 } from '../utils/pricing';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
@@ -263,48 +258,6 @@ export default function SessionScreen() {
     }
   }, [activeSession, lastCompletedSession, sessions, setScreen, setSelectedGarageId, acknowledgedSessionIds, acknowledgeSession]);
 
-  const sessionRate = Number(activeSession?.agreedPrice ?? garage?.basePrice ?? 0);
-  const isFirstFreeApplied = activeSession?.isFirstFreeSession === true;
-
-  // 🎁 الحسابات التفاعلية لـ (30 دقيقة مجانية)
-  const { displayedCost, displayedHours, countdownLabel, countdownTime, isFreeNow } = useMemo(() => {
-    const defaultCountdown = { minutes: 59, seconds: 59 };
-
-    if (!isFirstFreeApplied) {
-      const calculatedCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(elapsed) : defaultCountdown;
-      return {
-        displayedCost: calculateCost(elapsed, sessionRate),
-        displayedHours: calculateFullHours(elapsed),
-        countdownLabel: 'الوقت المتبقي حتى الساعة التالية',
-        countdownTime: calculatedCountdown || defaultCountdown,
-        isFreeNow: false,
-      };
-    }
-
-    if (elapsed <= 1800) {
-      const freeTimeRemaining = Math.max(0, 1800 - elapsed);
-      const minutes = Math.floor(freeTimeRemaining / 60);
-      const seconds = freeTimeRemaining % 60;
-      return {
-        displayedCost: 0,
-        displayedHours: 0,
-        countdownLabel: 'ينتهي الركن المجاني الهدية خلال 🎁',
-        countdownTime: { minutes, seconds },
-        isFreeNow: true,
-      };
-    } else {
-      const calculatedCountdown = getRemainingInCurrentHour ? getRemainingInCurrentHour(elapsed) : defaultCountdown;
-      const totalHours = calculateFullHours(elapsed);
-      return {
-        displayedCost: calculateCost(elapsed, sessionRate),
-        displayedHours: totalHours,
-        countdownLabel: 'الوقت المتبقي حتى الساعة التالية',
-        countdownTime: calculatedCountdown || defaultCountdown,
-        isFreeNow: false,
-      };
-    }
-  }, [isFirstFreeApplied, elapsed, sessionRate]);
-
   // شاشة الانتظار والمزامنة
   if (!activeSession) {
     return (
@@ -331,91 +284,19 @@ export default function SessionScreen() {
       className="h-full text-white flex flex-col items-center justify-center p-6 overflow-y-auto safe-top safe-bottom"
       style={{ background: BRAND.navy }}
     >
-      {/* 🎁 شارة مميزة علوية ترحيبية في العداد إذا كانت الجلسة مجانية */}
-      {isFirstFreeApplied && (
-        <motion.div
-          initial={{ scale: 0.95, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="w-full border rounded-2xl p-3 mb-4 flex items-center gap-3"
-          style={{
-            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.18) 100%)',
-            borderColor: 'rgba(245,158,11,0.3)',
-          }}
-        >
-          <div className="p-2 rounded-xl text-amber-400 shrink-0" style={{ background: 'rgba(245,158,11,0.15)' }}>
-            <Gift size={20} className="animate-pulse" />
-          </div>
-          <div className="text-right flex-1">
-            <div className="font-black flex items-center gap-1 justify-end text-xs text-amber-400">
-              <span>هدية ترحيبية نشطة</span>
-              <Sparkles size={12} className="text-yellow-200" />
-            </div>
-            <div className="font-bold text-[10px] mt-0.5" style={{ color: BRAND.slateMuted }}>
-              {isFreeNow 
-                ? 'أنت الآن في أول 30 دقيقة مجانية بالكامل! 🎁' 
-                : 'انتهت الـ 30 دقيقة المجانية وتم بدء الاحتساب بالسعر العادي ✅'}
-            </div>
-          </div>
-        </motion.div>
-      )}
-
       {/* حلقة العداد الدائرية الكبيرة المتوهجة بالكامل */}
       <div
-        className="w-36 h-36 rounded-full flex flex-col items-center justify-center border-2 mb-5 transition-shadow"
+        className="w-44 h-44 rounded-full flex flex-col items-center justify-center border-2 mb-6 transition-shadow"
         style={{
           background: BRAND.navyLight,
-          borderColor: isFreeNow ? BRAND.green : BRAND.blue,
-          boxShadow: isFreeNow 
-            ? '0 0 30px rgba(140, 198, 63, 0.2)' 
-            : '0 0 30px rgba(22, 86, 184, 0.2)',
+          borderColor: BRAND.blue,
+          boxShadow: '0 0 40px rgba(22, 86, 184, 0.25)',
         }}
       >
-        <Clock size={20} style={{ color: isFreeNow ? BRAND.green : BRAND.blue }} className="mb-1" />
-        <div className="text-2xl font-black font-mono text-white leading-none">{formatTime(elapsed)}</div>
-        <div className="text-[9px] font-bold mt-1.5" style={{ color: BRAND.slateMuted }}>مدة الركن الفعلية</div>
+        <Clock size={24} style={{ color: BRAND.blue }} className="mb-1.5" />
+        <div className="text-3xl font-black font-mono text-white leading-none">{formatTime(elapsed)}</div>
+        <div className="text-[10px] font-bold mt-2" style={{ color: BRAND.slateMuted }}>مدة الركن الفعلية</div>
       </div>
-
-      {/* كارت الحساب التفاعلي مع الهدية والعداد */}
-      <div className="w-full border rounded-2xl p-4 mb-4" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
-        <div className="flex justify-between items-center mb-3">
-          <div className="text-center">
-            <div className="text-xl font-black font-mono" style={{ color: isFreeNow ? BRAND.green : BRAND.blue }}>
-              {displayedHours}
-            </div>
-            <div className="text-[9px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>ساعة محسوبة</div>
-          </div>
-          <div className="text-lg font-black" style={{ color: BRAND.slateMuted }}>=</div>
-          <div className="text-center">
-            <div className="text-xl font-black font-mono" style={{ color: BRAND.green }}>
-              {displayedCost} <span className="text-[10px]">ج.م</span>
-            </div>
-            <div className="text-[9px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>إجمالي الحساب حتى الآن</div>
-          </div>
-        </div>
-
-        {/* عداد التنازل الديناميكي */}
-        <div className="rounded-xl p-2.5 text-center border" style={{ background: BRAND.blueSoft, borderColor: BRAND.border }}>
-          <div className="text-[9px] mb-0.5 font-bold" style={{ color: BRAND.slateMuted }}>{countdownLabel}</div>
-          <div className="text-sm font-black font-mono" style={{ color: isFreeNow ? BRAND.green : BRAND.blue }}>
-            {String(countdownTime?.minutes ?? 0).padStart(2, '0')}:{String(countdownTime?.seconds ?? 0).padStart(2, '0')}
-          </div>
-          <div className="text-[8px] mt-0.5 font-semibold" style={{ color: BRAND.slateMuted }}>
-            {isFreeNow ? (
-              <span>استمتع بالركن المجاني في أول نصف ساعة 🥳</span>
-            ) : (
-              <span>
-                بعدها ستُحسب ساعة إضافية ({displayedHours + 1} × {sessionRate} = {(displayedHours + 1) * sessionRate} ج.م)
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {sessionRate !== garage?.basePrice && garage && (
-        <div className="w-full rounded-xl p-2 mb-3 text-center border" style={{ background: 'rgba(245,158,11,0.06)', borderColor: 'rgba(245,158,11,0.2)' }}>
-          <p className="text-[9px] font-bold text-amber-500">💰 سعر خاص متفق عليه: {sessionRate} ج.م/ساعة (بدلاً من {garage.basePrice} ج.م)</p>
-        </div>
-      )}
 
       {/* 💡 بانر إرشادي متناسق ومدمج ومريح للشاشة 💡 */}
       <div 
@@ -442,46 +323,33 @@ export default function SessionScreen() {
         </p>
       </div>
 
-      {/* بيانات السيارة والسعر */}
-      <div className="w-full grid grid-cols-2 gap-2.5 mb-4">
-        <div className="border p-3 rounded-2xl text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
-          <Car size={16} style={{ color: BRAND.blue }} className="mx-auto mb-1" />
-          <div className="text-xs font-black text-white">{activeSession.carPlate || currentUser?.carPlate || '---'}</div>
-          <div className="text-[9px] font-bold mt-1.5" style={{ color: BRAND.slateMuted }}>رقم السيارة</div>
-        </div>
-        <div className="border p-3 rounded-2xl text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
-          <div className="font-black text-xs mb-1" style={{ color: BRAND.green }}>ج.م/ساعة</div>
-          <div className="text-xs font-black font-mono text-white">{sessionRate} ج.م</div>
-          <div className="text-[9px] font-bold mt-1.5" style={{ color: BRAND.slateMuted }}>السعر العادي</div>
+      {/* بيانات السيارة */}
+      <div className="w-full mb-4">
+        <div className="border p-4 rounded-2xl text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+          <Car size={18} style={{ color: BRAND.blue }} className="mx-auto mb-1.5" />
+          <div className="text-sm font-black text-white font-mono">{activeSession.carPlate || currentUser?.carPlate || '---'}</div>
+          <div className="text-[9px] font-bold mt-1.5" style={{ color: BRAND.slateMuted }}>رقم سيارتك</div>
         </div>
       </div>
 
+      {/* بيانات الجراج */}
       {garage && (
-        <div className="border p-3.5 rounded-2xl w-full text-center mb-3" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
-          <div className="text-[8px] font-bold mb-0.5" style={{ color: BRAND.slateMuted }}>الجراج الحالي</div>
-          <div className="text-xs font-black" style={{ color: '#ffffff' }}>{garage.name}</div>
+        <div className="border p-4 rounded-2xl w-full text-center mb-3" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+          <div className="text-[9px] font-bold mb-1" style={{ color: BRAND.slateMuted }}>الجراج الحالي</div>
+          <div className="text-sm font-black" style={{ color: '#ffffff' }}>{garage.name}</div>
+          {garage.location && (
+            <div className="text-[10px] font-bold mt-1" style={{ color: BRAND.slateMuted }}>
+              📍 {garage.location}
+            </div>
+          )}
         </div>
       )}
 
-      <div className="w-full text-center mb-3.5">
+      <div className="w-full text-center mb-4">
         <span className="font-bold text-[9px]" style={{ color: BRAND.slateMuted }}>
           {activeSession.source === 'app' ? '📱 بدأت من التطبيق' : '🅿️ بدأت من الجراج'}
           {(activeSession as any).startedBy === 'garage' && ' (بواسطة السايس)'}
         </span>
-      </div>
-
-      {/* 💳 بانر توضيح طرق الدفع المتاحة في الجراج */}
-      <div className="w-full border rounded-xl p-2.5 mb-4 text-center" style={{ background: BRAND.blueSoft, borderColor: BRAND.border }}>
-        <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold" style={{ color: BRAND.blue }}>
-          <CreditCard size={12} />
-          {garage?.payment_mode === 'cash' ? (
-            <span>💵 يقبل الدفع النقدي (كاش) فقط</span>
-          ) : garage?.payment_mode === 'wallet' ? (
-            <span>👝 يقبل الدفع والخصم من المحفظة فقط</span>
-          ) : (
-            <span>💳 يقبل الدفع كاش أو الخصم من المحفظة</span>
-          )}
-        </div>
       </div>
 
       {/* زر إنهاء الجلسة الفاخر */}
@@ -496,11 +364,7 @@ export default function SessionScreen() {
         }}
       >
         <span className="text-center text-sm font-black" style={{ color: '#ffffff' }}>
-          {isFreeNow ? (
-            <span>🚗 إنهاء الجلسة (مجاناً 🎁)</span>
-          ) : (
-            <span>🚗 إنهاء الجلسة وحساب التكلفة ({displayedCost} ج.م)</span>
-          )}
+          🚗 إنهاء الجلسة وطلوع من الجراج
         </span>
       </button>
 

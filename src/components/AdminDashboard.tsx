@@ -6,9 +6,10 @@ import {
   Shield, Clock, CheckCircle, XCircle, MapPin, Warehouse, Plus,
   MessageCircle, Send, Receipt, Search, HardHat, Percent, DollarSign,
   Minus, Edit3, Archive, Lock, ArrowUp, ArrowDown,
-  Settings, CalendarDays, Navigation, Globe, X, ExternalLink, HelpCircle
+  Settings, CalendarDays, Navigation, Globe, X, ExternalLink, HelpCircle,
+  Zap, Car, Filter, ChevronDown, ChevronUp,
 } from 'lucide-react';
-import { useStore, pausePolling, normalizePlate, normalizePhone, calculateBonus, getServerNow } from '../store';
+import { useStore, pausePolling, normalizePlate, normalizePhone, calculateBonus, getServerNow, BOOKING_FEE } from '../store';
 import { supabase } from '../lib/supabase';
 import { calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
@@ -63,6 +64,24 @@ const getLocalDaysAgo = (days: number): string => {
   const d = new Date(getServerNow());
   d.setDate(d.getDate() - days);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const formatSessionTime = (ts: any): string => {
+  const ms = toMs(ts);
+  if (!ms) return '—';
+  const d = new Date(ms);
+  return d.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) +
+    ' · ' +
+    d.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' });
+};
+
+const formatDuration = (startMs: number, endMs: number): string => {
+  if (!startMs || !endMs) return '—';
+  const diffSec = Math.max(0, Math.floor((endMs - startMs) / 1000));
+  const h = Math.floor(diffSec / 3600);
+  const m = Math.floor((diffSec % 3600) / 60);
+  if (h > 0) return `${h}س ${m}د`;
+  return `${m}د`;
 };
 
 interface SettlementRecord {
@@ -121,6 +140,15 @@ export default function AdminDashboard() {
   // 🌟 فلترة جراجات الأدمن بحسب النوع (VIP ضد الدليل)
   const [adminGarageTab, setAdminGarageTab] = useState<'vip' | 'directory'>('vip');
   const [garageSearch, setGarageSearch] = useState('');
+
+  // ⚡ VIP Report State (NEW)
+  const [vipReportDateFrom, setVipReportDateFrom] = useState(() => getLocalToday());
+  const [vipReportDateTo, setVipReportDateTo] = useState(() => getLocalToday());
+  const [vipGarageFilter, setVipGarageFilter] = useState<string>('all');
+  const [vipPlateSearch, setVipPlateSearch] = useState('');
+  const [vipPaymentFilter, setVipPaymentFilter] = useState<string>('all');
+  const [vipExpandedGarageId, setVipExpandedGarageId] = useState<string | null>(null);
+  const [vipVisibleSessions, setVipVisibleSessions] = useState(20);
 
   const filteredGaragesForAdmin = useMemo(() => {
     const q = garageSearch.trim().toLowerCase();
@@ -332,6 +360,94 @@ export default function AdminDashboard() {
 
     return searchTerm ? sorted.slice(0, 50) : sorted.slice(0, 30);
   }, [completedSessions, filteredSessions, revenueFilter, sessionSearch]);
+
+  // ⚡ VIP Report Data (NEW)
+  const vipGarages = useMemo(() => {
+    return garages.filter(g => g.garageType === 'vip' || (g as any).is_vip === true || g.type === 'partner');
+  }, [garages]);
+
+  const vipFilteredSessions = useMemo(() => {
+    return completedSessions.filter(s => {
+      // 1. Date range filter
+      if (s.endTime) {
+        const d = timestampToLocalDate(toMs(s.endTime));
+        if (vipReportDateFrom && d < vipReportDateFrom) return false;
+        if (vipReportDateTo && d > vipReportDateTo) return false;
+      } else {
+        return false;
+      }
+
+      // 2. Must be from VIP garage
+      const g = garages.find(ga => ga.id === s.garageId);
+      if (!g) return false;
+      const isVip = g.garageType === 'vip' || (g as any).is_vip === true || g.type === 'partner';
+      if (!isVip) return false;
+
+      // 3. Garage filter
+      if (vipGarageFilter !== 'all' && s.garageId !== vipGarageFilter) return false;
+
+      // 4. Payment filter
+      if (vipPaymentFilter !== 'all' && s.paymentMethod !== vipPaymentFilter) return false;
+
+      // 5. Plate search
+      if (vipPlateSearch.trim()) {
+        const q = vipPlateSearch.trim().toUpperCase();
+        if (!(s.carPlate ?? '').toUpperCase().includes(q)) return false;
+      }
+
+      return true;
+    }).sort((a, b) => toMs(b.endTime) - toMs(a.endTime));
+  }, [completedSessions, garages, vipReportDateFrom, vipReportDateTo, vipGarageFilter, vipPaymentFilter, vipPlateSearch]);
+
+  const vipReportStats = useMemo(() => {
+    const totalSessions = vipFilteredSessions.length;
+    const totalRevenue = vipFilteredSessions.reduce((sum, s) => sum + getRevenue(s), 0);
+    const totalBookingFees = totalSessions * BOOKING_FEE;
+
+    // Per-garage breakdown
+    const garageMap = new Map<string, { name: string; area: string; count: number; revenue: number; fees: number }>();
+    
+    vipFilteredSessions.forEach(s => {
+      const g = garages.find(ga => ga.id === s.garageId);
+      if (!g) return;
+      const existing = garageMap.get(s.garageId);
+      const rev = getRevenue(s);
+      if (existing) {
+        existing.count++;
+        existing.revenue += rev;
+        existing.fees += BOOKING_FEE;
+      } else {
+        garageMap.set(s.garageId, {
+          name: g.name,
+          area: g.area || 'مناطق أخرى',
+          count: 1,
+          revenue: rev,
+          fees: BOOKING_FEE,
+        });
+      }
+    });
+
+    const perGarage = Array.from(garageMap.entries())
+      .map(([id, data]) => ({ id, ...data }))
+      .sort((a, b) => b.count - a.count);
+
+    // Payment breakdown
+    const cashCount = vipFilteredSessions.filter(s => s.paymentMethod === 'cash').length;
+    const walletCount = vipFilteredSessions.filter(s => s.paymentMethod === 'wallet').length;
+    const instapayCount = vipFilteredSessions.filter(s => s.paymentMethod === 'instapay').length;
+    const otherCount = totalSessions - cashCount - walletCount - instapayCount;
+
+    return {
+      totalSessions,
+      totalRevenue,
+      totalBookingFees,
+      perGarage,
+      cashCount,
+      walletCount,
+      instapayCount,
+      otherCount,
+    };
+  }, [vipFilteredSessions, garages, getRevenue]);
 
   const safeMessages = messages ?? [];
   const pendingMessages = safeMessages.filter(m => m.status === 'pending');
@@ -1349,6 +1465,488 @@ export default function AdminDashboard() {
           )}
         </div>
       </div>
+
+      {/* ══════════════════════════════════════════════════════════════
+          ⚡ NEW: VIP BOOKING REPORT — تقارير خدمة VIP
+          ══════════════════════════════════════════════════════════════ */}
+      <div className="mb-8">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-3">
+          <span
+            className="font-black text-[9px] px-2.5 py-1 rounded-full text-white flex items-center gap-1"
+            style={{ background: `linear-gradient(135deg, ${BRAND.blue}, ${BRAND.blueDark})` }}
+          >
+            <Zap size={10} /> {vipReportStats.totalSessions} ركنة
+          </span>
+          <h3 className="font-black text-sm flex items-center gap-2" style={{ color: BRAND.navy }}>
+            تقارير خدمة VIP ⚡
+          </h3>
+        </div>
+
+        {/* Filters Card */}
+        <div
+          className="mb-4"
+          style={{
+            background: BRAND.card,
+            border: `1px solid ${BRAND.border}`,
+            borderRadius: 20,
+            padding: 14,
+            boxShadow: '0 2px 12px rgba(0,0,0,0.02)',
+          }}
+        >
+          {/* Date range */}
+          <div className="flex items-center gap-1.5 mb-3">
+            <input
+              type="date"
+              value={vipReportDateFrom}
+              onChange={e => { setVipReportDateFrom(e.target.value); setVipVisibleSessions(20); }}
+              className="flex-1 font-black outline-none text-center font-mono py-2 rounded-xl text-xs border border-slate-200"
+              style={{ background: BRAND.blueSoft, color: BRAND.blueDark }}
+            />
+            <span className="font-black text-slate-400 text-xs">←</span>
+            <input
+              type="date"
+              value={vipReportDateTo}
+              onChange={e => { setVipReportDateTo(e.target.value); setVipVisibleSessions(20); }}
+              className="flex-1 font-black outline-none text-center font-mono py-2 rounded-xl text-xs border border-slate-200"
+              style={{ background: BRAND.blueSoft, color: BRAND.blueDark }}
+            />
+            <CalendarDays size={16} style={{ color: BRAND.blue }} className="shrink-0" />
+          </div>
+
+          {/* Quick date buttons */}
+          <div className="flex gap-1.5 mb-3">
+            {[
+              { label: '📅 اليوم', onClick: () => { setVipReportDateFrom(getLocalToday()); setVipReportDateTo(getLocalToday()); }, active: vipReportDateFrom === getLocalToday() && vipReportDateTo === getLocalToday() },
+              { label: 'أمس', onClick: () => { setVipReportDateFrom(getLocalYesterday()); setVipReportDateTo(getLocalYesterday()); }, active: vipReportDateFrom === getLocalYesterday() && vipReportDateTo === getLocalYesterday() },
+              { label: 'أسبوع', onClick: () => { setVipReportDateFrom(getLocalDaysAgo(7)); setVipReportDateTo(getLocalToday()); }, active: vipReportDateFrom === getLocalDaysAgo(7) && vipReportDateTo === getLocalToday() },
+              { label: 'شهر', onClick: () => { setVipReportDateFrom(getLocalDaysAgo(30)); setVipReportDateTo(getLocalToday()); }, active: vipReportDateFrom === getLocalDaysAgo(30) && vipReportDateTo === getLocalToday() },
+            ].map(b => (
+              <button
+                key={b.label}
+                onClick={() => { b.onClick(); setVipVisibleSessions(20); }}
+                className="flex-1 font-black py-2 rounded-lg text-xs cursor-pointer border-0 active:scale-95 transition-all"
+                style={{
+                  background: b.active ? BRAND.blue : BRAND.blueSoft,
+                  color: b.active ? '#ffffff' : BRAND.slate,
+                  border: b.active ? 'none' : `1px solid ${BRAND.border}`,
+                }}
+              >
+                {b.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Garage filter */}
+          <div className="flex items-center gap-2 mb-2">
+            <select
+              value={vipGarageFilter}
+              onChange={e => { setVipGarageFilter(e.target.value); setVipVisibleSessions(20); }}
+              className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200"
+              style={{ color: BRAND.navy }}
+            >
+              <option value="all">كل جراجات VIP</option>
+              {vipGarages.map(g => (
+                <option key={g.id} value={g.id}>🅿️ {g.name}</option>
+              ))}
+            </select>
+            <Filter size={14} style={{ color: BRAND.blue }} className="shrink-0" />
+          </div>
+
+          {/* Payment filter + plate search */}
+          <div className="flex gap-2">
+            <select
+              value={vipPaymentFilter}
+              onChange={e => { setVipPaymentFilter(e.target.value); setVipVisibleSessions(20); }}
+              className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200"
+              style={{ color: BRAND.navy }}
+            >
+              <option value="all">كل طرق الدفع</option>
+              <option value="cash">💵 نقدي</option>
+              <option value="wallet">👝 محفظة</option>
+              <option value="instapay">📱 إنستاباي</option>
+            </select>
+            <div className="flex-1 relative">
+              <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: BRAND.slateMuted }} />
+              <input
+                type="text"
+                value={vipPlateSearch}
+                onChange={e => { setVipPlateSearch(e.target.value); setVipVisibleSessions(20); }}
+                placeholder="🔍 لوحة..."
+                className="w-full font-bold text-right outline-none text-xs py-2.5 px-8 rounded-lg border border-slate-200"
+                style={{ color: BRAND.navy }}
+              />
+              {vipPlateSearch && (
+                <button
+                  onClick={() => setVipPlateSearch('')}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 border-0 bg-transparent cursor-pointer"
+                  style={{ color: BRAND.slateMuted }}
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Summary Stats */}
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          <div
+            className="text-center p-3 rounded-2xl border"
+            style={{ background: BRAND.card, borderColor: BRAND.border }}
+          >
+            <div className="text-[9px] font-bold" style={{ color: BRAND.slate }}>💰 إيراد الجراجات</div>
+            <div className="font-black font-mono text-lg mt-1" style={{ color: BRAND.greenDark }}>
+              {vipReportStats.totalRevenue.toFixed(0)}
+            </div>
+            <div className="text-[8px] font-bold" style={{ color: BRAND.slateMuted }}>ج.م</div>
+          </div>
+          <div
+            className="text-center p-3 rounded-2xl border"
+            style={{ background: BRAND.card, borderColor: BRAND.border }}
+          >
+            <div className="text-[9px] font-bold" style={{ color: BRAND.slate }}>🚗 عدد الركنات</div>
+            <div className="font-black font-mono text-lg mt-1" style={{ color: BRAND.blue }}>
+              {vipReportStats.totalSessions}
+            </div>
+            <div className="text-[8px] font-bold" style={{ color: BRAND.slateMuted }}>ركنة VIP</div>
+          </div>
+          <div
+            className="text-center p-3 rounded-2xl"
+            style={{
+              background: `linear-gradient(135deg, ${BRAND.blueSoft} 0%, ${BRAND.blueLight} 100%)`,
+              border: `1.5px solid ${BRAND.blue}40`,
+            }}
+          >
+            <div className="text-[9px] font-black flex items-center justify-center gap-0.5" style={{ color: BRAND.blueDark }}>
+              <Zap size={10} /> رسوم VIP
+            </div>
+            <div className="font-black font-mono text-lg mt-1" style={{ color: BRAND.blue }}>
+              {vipReportStats.totalBookingFees.toFixed(0)}
+            </div>
+            <div className="text-[8px] font-bold" style={{ color: BRAND.blueDark }}>
+              ج.م ({BOOKING_FEE}ج × {vipReportStats.totalSessions})
+            </div>
+          </div>
+        </div>
+
+        {/* Payment breakdown mini */}
+        <div
+          className="flex items-center justify-between gap-1 mb-4 py-2 px-3 rounded-xl border"
+          style={{ background: BRAND.bg, borderColor: BRAND.border }}
+        >
+          {[
+            { icon: '💵', label: 'نقدي', count: vipReportStats.cashCount, color: BRAND.greenDark },
+            { icon: '👝', label: 'محفظة', count: vipReportStats.walletCount, color: BRAND.blue },
+            { icon: '📱', label: 'إنستا', count: vipReportStats.instapayCount, color: '#7c3aed' },
+            { icon: '📲', label: 'أخرى', count: vipReportStats.otherCount, color: BRAND.slate },
+          ].map((p, i) => (
+            <div key={i} className="flex items-center gap-1 text-[10px]">
+              <span>{p.icon}</span>
+              <span className="font-black font-mono" style={{ color: p.color }}>{p.count}</span>
+              {i < 3 && <div style={{ width: 1, height: 14, background: BRAND.border, marginLeft: 4, marginRight: 2 }} />}
+            </div>
+          ))}
+        </div>
+
+        {/* Per-Garage Breakdown */}
+        <div className="mb-4 space-y-2">
+          <div className="flex items-center justify-between px-1">
+            <span className="font-black text-[9px] px-2 py-0.5 rounded bg-slate-200" style={{ color: BRAND.slate }}>
+              {vipReportStats.perGarage.length} جراج
+            </span>
+            <h4 className="font-black text-[11px]" style={{ color: BRAND.navy }}>
+              📊 تفصيلة كل جراج VIP
+            </h4>
+          </div>
+
+          {vipReportStats.perGarage.length === 0 ? (
+            <div
+              className="text-center py-8 border-2 border-dashed rounded-2xl"
+              style={{ background: BRAND.card, borderColor: BRAND.border }}
+            >
+              <span className="text-2xl block mb-1">📭</span>
+              <p className="font-black text-[11px]" style={{ color: BRAND.slateMuted }}>
+                لا توجد ركنات VIP في هذه الفترة
+              </p>
+            </div>
+          ) : (
+            vipReportStats.perGarage.map(g => {
+              const isExp = vipExpandedGarageId === g.id;
+              const garageSessions = vipFilteredSessions.filter(s => s.garageId === g.id);
+
+              return (
+                <div
+                  key={g.id}
+                  className="transition-all"
+                  style={{
+                    background: BRAND.card,
+                    border: `1.5px solid ${isExp ? BRAND.blue : BRAND.border}`,
+                    borderRadius: 18,
+                    overflow: 'hidden',
+                  }}
+                >
+                  {/* Garage header row */}
+                  <div
+                    onClick={() => setVipExpandedGarageId(isExp ? null : g.id)}
+                    className="flex justify-between items-center p-3.5 cursor-pointer active:scale-[0.99] transition-all"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="text-center">
+                        <div className="font-black font-mono text-base" style={{ color: BRAND.greenDark }}>
+                          {g.revenue.toFixed(0)}
+                        </div>
+                        <div className="text-[8px] font-bold" style={{ color: BRAND.slateMuted }}>ج.م إيراد</div>
+                      </div>
+
+                      <div style={{ width: 1, height: 28, background: BRAND.border }} />
+
+                      <div className="text-center">
+                        <div className="font-black font-mono text-sm" style={{ color: BRAND.blue }}>
+                          {g.fees.toFixed(0)}
+                        </div>
+                        <div className="text-[8px] font-bold" style={{ color: BRAND.slateMuted }}>ج.م رسوم</div>
+                      </div>
+
+                      <div style={{ width: 1, height: 28, background: BRAND.border }} />
+
+                      <div className="text-center">
+                        <div className="font-black font-mono text-sm" style={{ color: BRAND.navy }}>
+                          {g.count}
+                        </div>
+                        <div className="text-[8px] font-bold" style={{ color: BRAND.slateMuted }}>ركنة</div>
+                      </div>
+
+                      {isExp ? <ChevronUp size={14} style={{ color: BRAND.slateMuted }} /> : <ChevronDown size={14} style={{ color: BRAND.slateMuted }} />}
+                    </div>
+
+                    <div className="text-right">
+                      <div className="font-black text-xs flex items-center justify-end gap-1" style={{ color: BRAND.navy }}>
+                        <span>{g.name}</span>
+                        <Zap size={11} style={{ color: BRAND.blue }} />
+                      </div>
+                      <div className="text-[9px] font-bold mt-0.5" style={{ color: BRAND.slate }}>
+                        {g.area}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Expanded sessions table */}
+                  <AnimatePresence>
+                    {isExp && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        style={{ borderTop: `1px solid ${BRAND.border}`, background: BRAND.bg }}
+                      >
+                        <div className="max-h-[320px] overflow-y-auto">
+                          {garageSessions.length === 0 ? (
+                            <div className="text-center py-6 text-xs font-bold" style={{ color: BRAND.slateMuted }}>
+                              لا توجد ركنات
+                            </div>
+                          ) : (
+                            <div className="divide-y" style={{ borderColor: BRAND.border }}>
+                              {garageSessions.map(s => {
+                                const stMs = toMs(s.startTime);
+                                const enMs = toMs(s.endTime);
+                                const rev = getRevenue(s);
+
+                                return (
+                                  <div
+                                    key={s.id}
+                                    className="px-4 py-2.5 flex items-center justify-between gap-2"
+                                    style={{ background: BRAND.card }}
+                                  >
+                                    {/* Right: plate + time */}
+                                    <div className="text-right flex-1 min-w-0">
+                                      <div className="font-black text-xs truncate" style={{ color: BRAND.navy }}>
+                                        🚗 {s.carPlate}
+                                      </div>
+                                      <div className="flex items-center gap-1.5 justify-end mt-0.5 flex-wrap">
+                                        <span className="font-mono text-[9px] font-bold" style={{ color: BRAND.slateMuted }}>
+                                          {formatSessionTime(s.startTime)}
+                                        </span>
+                                        <span className="text-[8px]" style={{ color: BRAND.border }}>→</span>
+                                        <span className="font-mono text-[9px] font-bold" style={{ color: BRAND.slateMuted }}>
+                                          {formatSessionTime(s.endTime)}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {/* Center: duration */}
+                                    <div className="text-center px-2">
+                                      <div className="font-mono font-black text-[10px]" style={{ color: BRAND.slate }}>
+                                        {formatDuration(stMs, enMs)}
+                                      </div>
+                                    </div>
+
+                                    {/* Left: revenue + fee + payment */}
+                                    <div className="text-left flex-shrink-0">
+                                      <div className="font-black font-mono text-xs" style={{ color: BRAND.greenDark }}>
+                                        {rev.toFixed(0)} ج.م
+                                      </div>
+                                      <div className="flex items-center gap-1 mt-0.5">
+                                        <span
+                                          className="font-black text-[7px] px-1.5 py-0.5 rounded text-white"
+                                          style={{ background: BRAND.blue }}
+                                        >
+                                          ⚡{BOOKING_FEE}ج
+                                        </span>
+                                        <span
+                                          className="font-black text-[7px] px-1.5 py-0.5 rounded text-white"
+                                          style={{
+                                            background:
+                                              s.paymentMethod === 'cash' ? BRAND.greenDark :
+                                              s.paymentMethod === 'wallet' ? BRAND.blue :
+                                              s.paymentMethod === 'instapay' ? '#7c3aed' : BRAND.slate,
+                                          }}
+                                        >
+                                          {s.paymentMethod === 'cash' ? '💵' :
+                                           s.paymentMethod === 'wallet' ? '👝' :
+                                           s.paymentMethod === 'instapay' ? '📱' : '📲'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* All VIP sessions table */}
+        <div>
+          <div className="flex items-center justify-between mb-2 px-1">
+            <span className="font-bold text-[9px]" style={{ color: BRAND.slateMuted }}>
+              عرض {Math.min(vipVisibleSessions, vipFilteredSessions.length)} من {vipFilteredSessions.length}
+            </span>
+            <h4 className="font-black text-[11px]" style={{ color: BRAND.navy }}>
+              📋 تفاصيل كل العمليات VIP
+            </h4>
+          </div>
+
+          <div
+            className="rounded-2xl border overflow-hidden"
+            style={{ background: BRAND.card, borderColor: BRAND.border }}
+          >
+            {vipFilteredSessions.length === 0 ? (
+              <div className="text-center py-10">
+                <span className="text-2xl block mb-1">📭</span>
+                <p className="font-black text-xs" style={{ color: BRAND.slateMuted }}>
+                  {vipPlateSearch ? `لا توجد نتائج لـ "${vipPlateSearch}"` : 'لا توجد عمليات VIP في الفترة المحددة'}
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Table header */}
+                <div
+                  className="grid px-3 py-2"
+                  style={{
+                    gridTemplateColumns: '1fr auto auto auto',
+                    gap: 8,
+                    background: BRAND.navy,
+                    color: '#fff',
+                  }}
+                >
+                  <div className="font-black text-[9px] text-right">اللوحة + الجراج</div>
+                  <div className="font-black text-[9px] text-center">المدة</div>
+                  <div className="font-black text-[9px] text-center">المبلغ</div>
+                  <div className="font-black text-[9px] text-center">الدفع</div>
+                </div>
+
+                {/* Table rows */}
+                <div className="max-h-[400px] overflow-y-auto divide-y" style={{ borderColor: BRAND.border }}>
+                  {vipFilteredSessions.slice(0, vipVisibleSessions).map(s => {
+                    const g = garages.find(ga => ga.id === s.garageId);
+                    const stMs = toMs(s.startTime);
+                    const enMs = toMs(s.endTime);
+                    const rev = getRevenue(s);
+
+                    return (
+                      <div
+                        key={s.id}
+                        className="grid px-3 py-2.5 items-center"
+                        style={{
+                          gridTemplateColumns: '1fr auto auto auto',
+                          gap: 8,
+                        }}
+                      >
+                        {/* Plate + garage + time */}
+                        <div className="text-right min-w-0">
+                          <div className="font-black text-[11px] truncate" style={{ color: BRAND.navy }}>
+                            🚗 {s.carPlate}
+                          </div>
+                          <div className="font-bold text-[9px] truncate" style={{ color: BRAND.slate }}>
+                            {g?.name || '—'}
+                          </div>
+                          <div className="font-mono text-[8px]" style={{ color: BRAND.slateMuted }}>
+                            {formatSessionTime(s.endTime)}
+                          </div>
+                        </div>
+
+                        {/* Duration */}
+                        <div className="font-mono font-black text-[10px] text-center" style={{ color: BRAND.slate }}>
+                          {formatDuration(stMs, enMs)}
+                        </div>
+
+                        {/* Revenue */}
+                        <div className="text-center">
+                          <div className="font-black font-mono text-[11px]" style={{ color: BRAND.greenDark }}>
+                            {rev.toFixed(0)}ج
+                          </div>
+                          <div className="font-black text-[7px]" style={{ color: BRAND.blue }}>
+                            +{BOOKING_FEE}ج⚡
+                          </div>
+                        </div>
+
+                        {/* Payment */}
+                        <div className="text-center">
+                          <span
+                            className="font-black text-[8px] px-1.5 py-0.5 rounded text-white"
+                            style={{
+                              background:
+                                s.paymentMethod === 'cash' ? BRAND.greenDark :
+                                s.paymentMethod === 'wallet' ? BRAND.blue :
+                                s.paymentMethod === 'instapay' ? '#7c3aed' : BRAND.slate,
+                            }}
+                          >
+                            {s.paymentMethod === 'cash' ? '💵' :
+                             s.paymentMethod === 'wallet' ? '👝' :
+                             s.paymentMethod === 'instapay' ? '📱' : '📲'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Load more */}
+                {vipFilteredSessions.length > vipVisibleSessions && (
+                  <div className="p-3 border-t" style={{ borderColor: BRAND.border }}>
+                    <button
+                      onClick={() => setVipVisibleSessions(prev => prev + 20)}
+                      className="w-full font-black py-2 rounded-lg text-[10px] cursor-pointer bg-white border active:scale-95"
+                      style={{ color: BRAND.blue, borderColor: BRAND.border }}
+                    >
+                      عرض المزيد ({vipFilteredSessions.length - vipVisibleSessions} عملية أخرى)
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+      {/* ══ END VIP REPORT ══ */}
 
       {/* 🏢 إدارة وجرد الجراجات */}
       <div className="mb-8">

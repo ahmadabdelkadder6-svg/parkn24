@@ -1,19 +1,19 @@
 import { motion } from 'framer-motion';
-import { useStore } from '../store';
-import { Gift, ArrowRight, Sparkles, ShieldCheck } from 'lucide-react';
+import { useStore, BOOKING_FEE } from '../store';
+import { ArrowRight, Zap, ShieldCheck, Wallet } from 'lucide-react';
 
 /* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
-  blue: '#1656b8',       // الأزرق الرسمي
-  blueDark: '#0f3d85',   // الكحلي الفخم
-  blueLight: '#e8f0fe',  // الأزرق الفاتح
-  green: '#8cc63f',      // الأخضر الرسمي
-  greenDark: '#6ea62a',  // أخضر داكن للخطوط
-  greenLight: '#f2fae6', // خلفية خضراء ناعمة
-  navy: '#0a1628',       // الكحلي الليلي الغامق
-  slate: '#475569',      // الرمادي الهادئ
-  slateMuted: '#94a3b8', // الرمادي الباهت
-  border: '#e2e8f0',     // الحدود الرمادية الناعمة
+  blue: '#1656b8',
+  blueDark: '#0f3d85',
+  blueLight: '#e8f0fe',
+  green: '#8cc63f',
+  greenDark: '#6ea62a',
+  greenLight: '#f2fae6',
+  navy: '#0a1628',
+  slate: '#475569',
+  slateMuted: '#94a3b8',
+  border: '#e2e8f0',
 };
 
 export default function SplashScreen() {
@@ -36,7 +36,7 @@ export default function SplashScreen() {
       {/* ══ الجزء الأوسط: الشعار والعناوين ══ */}
       <div className="flex-1 flex flex-col items-center justify-center w-full relative z-10">
         
-        {/* حاوية الشعار التفاعلية الفاخرة */}
+        {/* حاوية الشعار */}
         <motion.div
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -59,7 +59,7 @@ export default function SplashScreen() {
           </div>
         </motion.div>
 
-        {/* اسم التطبيق الموحد بالألوان الرسمية */}
+        {/* اسم التطبيق */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -79,7 +79,7 @@ export default function SplashScreen() {
           </p>
         </motion.div>
 
-        {/* النصوص التسويقية والتحفيزية */}
+        {/* النصوص التسويقية المحدّثة */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -93,29 +93,29 @@ export default function SplashScreen() {
             className="text-xs font-semibold leading-relaxed max-w-[280px] mx-auto"
             style={{ color: BRAND.slate }}
           >
-            احجز مكانك في أقرب جراج، ادفع بسهولة وبدون فكة، ووفر وقتك وبنزينك بضغطة زر.
+            احجز مكانك في أقرب جراج VIP، ادفع من محفظتك بسهولة، ووفر وقتك وبنزينك.
           </p>
         </motion.div>
 
-        {/* 🎁 شارة الهدية الترحيبية (30 دقيقة مجاناً) بتصميم هادئ وراقي */}
+        {/* ⚡ شارة VIP الجديدة (بدل الهدية المجانية) */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.35 }}
           className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-2xl border"
           style={{
-            background: BRAND.greenLight,
-            borderColor: `${BRAND.green}40`,
-            boxShadow: `0 4px 14px ${BRAND.green}12`,
+            background: BRAND.blueLight,
+            borderColor: `${BRAND.blue}30`,
+            boxShadow: `0 4px 14px ${BRAND.blue}10`,
           }}
         >
-          <Gift size={18} style={{ color: BRAND.greenDark }} className="animate-bounce shrink-0" />
+          <Zap size={18} style={{ color: BRAND.blue }} className="shrink-0" />
           <div className="text-right">
-            <span className="text-[11px] font-black block" style={{ color: BRAND.greenDark }}>
-              هدية ترحيبية نشطة لزيارتك الأولى! 🎉
+            <span className="text-[11px] font-black block" style={{ color: BRAND.blueDark }}>
+              احجز ركنتك بـ {BOOKING_FEE} ج.م فقط! ⚡
             </span>
-            <span className="text-[10px] font-bold text-slate-600">
-              أول 30 دقيقة ركن مجانية بالكامل 100%
+            <span className="text-[10px] font-bold" style={{ color: BRAND.slate }}>
+              رسوم حجز تُخصم من محفظتك عند الوصول للجراج
             </span>
           </div>
         </motion.div>
@@ -140,11 +140,13 @@ export default function SplashScreen() {
           <ArrowRight size={18} className="rotate-180" strokeWidth={3} />
         </button>
 
-        {/* شارات الثقة السريعة */}
+        {/* شارات الثقة المحدّثة */}
         <div className="flex items-center justify-center gap-3 text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>
-          <span>⚡ حجز فوري ومؤكد</span>
+          <span>⚡ حجز VIP مضمون</span>
           <span>•</span>
-          <span>🔒 دفع إلكتروني آمن</span>
+          <span>👝 دفع من المحفظة</span>
+          <span>•</span>
+          <span>🔒 آمن 100%</span>
         </div>
       </motion.div>
     </div>

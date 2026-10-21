@@ -1,8 +1,8 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { X, Copy, ExternalLink, ArrowRight, CheckCircle, Plus, Minus, Phone, Send, Sparkles } from 'lucide-react';
-// 🌟 استيراد مصفوفة الباقات الموحدة ودالة البونص ودالة تنظيف الهاتف من الـ Store مباشرة
-import { useStore, TOPUP_TIERS, calculateBonus, normalizePhone } from '../store';
+// 🌟 استيراد مصفوفة الباقات الموحدة ودالة البونص ودالة تنظيف الهاتف ورسوم الحجز من الـ Store مباشرة
+import { useStore, TOPUP_TIERS, calculateBonus, normalizePhone, BOOKING_FEE } from '../store';
 import toast from 'react-hot-toast';
 
 const WALLET_NUMBER = '01229858104';
@@ -10,9 +10,9 @@ const INSTAPAY_USERNAME = 'ahmed.ali858104';
 const INSTAPAY_LINK = `https://ipn.eg/S/${INSTAPAY_USERNAME}/instapay/9fp24n`;
 
 // 🛡️ حدود آمنة للمبلغ لمنع أي إدخال خبيث أو خاطئ
-const MIN_AMOUNT = 100;
+const MIN_AMOUNT = 20;
 const MAX_AMOUNT = 100000;
-const STEP_AMOUNT = 50;
+const STEP_AMOUNT = 10;
 
 // 🎨 الألوان الرسمية الفاخرة الموحدة لتطبيق Park'n 24
 const BRAND = {
@@ -72,6 +72,12 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
   // 🎁 حساب البونص التفاعلي مباشرة من دالة الـ Store الموحدة
   const currentBonus = useMemo(() => calculateBonus(amount), [amount]);
   const totalReceived = useMemo(() => amount + currentBonus, [amount, currentBonus]);
+
+  // 🅿️ حساب عدد الحجوزات التقديري بناءً على رسوم الحجز الموحدة
+  const estimatedBookings = useMemo(
+    () => (BOOKING_FEE > 0 ? Math.floor(totalReceived / BOOKING_FEE) : 0),
+    [totalReceived]
+  );
 
   // 🛡️ منع إغلاق النافذة أثناء إرسال طلب حرج لحماية بيانات المستخدم
   const handleSafeClose = () => {
@@ -231,7 +237,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
               >
                 <div className="text-[10px] font-bold opacity-80 mb-0.5">رصيدك الحالي بالمحفظة</div>
                 <div className="text-2xl font-black font-mono">
-                  {currentUser?.wallet || 0} <span className="text-xs font-bold">ج.م</span>
+                  {(currentUser?.walletBalance ?? (currentUser as any)?.wallet ?? 0).toFixed(2)} <span className="text-xs font-bold">ج.م</span>
                 </div>
               </div>
 
@@ -270,10 +276,21 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                         <div className="mt-1.5 inline-block font-black text-[10px] px-2.5 py-0.5 rounded-lg" style={{ background: BRAND.greenLight, color: BRAND.greenDark }}>
                           🎁 +{tier.bonus} ج هدية
                         </div>
+                        {tier.bookings && (
+                          <div className="mt-1 text-[9px] font-bold" style={{ color: BRAND.slateMuted }}>
+                            ≈ {tier.bookings} حجز VIP
+                          </div>
+                        )}
                       </button>
                     );
                   })}
                 </div>
+              </div>
+
+              {/* 💡 ملاحظة سريعة عن سعر الحجز */}
+              <div className="mb-3 flex items-center justify-center gap-1.5 text-[10px] font-bold px-3 py-2 rounded-lg" style={{ background: BRAND.blueSoft, color: BRAND.blue }}>
+                <span>💡</span>
+                <span>كل حجز VIP = {BOOKING_FEE} ج.م بس من محفظتك</span>
               </div>
 
               {/* حقل إدخال مبلغ مخصص هادئ */}
@@ -327,6 +344,11 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                   <div className="text-right">
                     <span className="text-[10px] font-bold text-slate-500 block mb-0.5">إجمالي رصيد المحفظة بعد الشحن</span>
                     <span className="text-xl font-black font-mono" style={{ color: BRAND.greenDark }}>{totalReceived} ج.م</span>
+                    {estimatedBookings > 0 && (
+                      <span className="block text-[10px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>
+                        يكفي لـ ≈ {estimatedBookings} حجز VIP 🅿️
+                      </span>
+                    )}
                   </div>
                   <div className="text-left bg-white px-2.5 py-1 rounded-lg border" style={{ borderColor: BRAND.border }}>
                     <span className="text-[9px] font-bold text-slate-400 block">البونص الهدية</span>
@@ -555,6 +577,12 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                   <span className="text-slate-800">إجمالي الرصيد المضاف:</span>
                   <span className="font-mono text-sm" style={{ color: BRAND.greenDark }}>{totalReceived} ج.م</span>
                 </div>
+                {estimatedBookings > 0 && (
+                  <div className="flex justify-between text-[10px] pt-1 font-bold" style={{ color: BRAND.slateMuted }}>
+                    <span>يكفي لـ:</span>
+                    <span className="font-mono">≈ {estimatedBookings} حجز VIP 🅿️</span>
+                  </div>
+                )}
               </div>
 
               <button

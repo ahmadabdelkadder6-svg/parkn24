@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Car, Phone, User, ArrowRight, ShieldCheck, Sparkles, Loader2, Gift } from 'lucide-react';
+import { Car, Phone, User, ArrowRight, ShieldCheck, Sparkles, Loader2, Zap, Wallet } from 'lucide-react';
 // 🌟 استيراد دوال البصمة الموحدة من الـ store لضمان مطابقة تامة مع قاعدة البيانات
-import { useStore, normalizePlate, normalizePhone } from '../store';
+import { useStore, normalizePlate, normalizePhone, BOOKING_FEE } from '../store';
 import toast from 'react-hot-toast';
 
 export default function RegisterScreen() {
@@ -139,24 +139,25 @@ export default function RegisterScreen() {
           </div>
           <h2 className="text-2xl font-black text-white">سجل بياناتك للبدء</h2>
           
-          {/* 🎁 بانر ترويجي للـ 30 دقيقة المجانية */}
+          {/* ⚡ شارة VIP الجديدة (بدل الهدية المجانية) */}
           <div 
-            className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-2xl shadow-lg shadow-amber-500/20"
+            className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-2xl shadow-lg"
             style={{
-              background: 'linear-gradient(135deg, #FEF08A 0%, #FDE047 50%, #EAB308 100%)',
-              border: '2px solid #CA8A04',
+              background: 'linear-gradient(135deg, #1d68dc 0%, #1656b8 100%)',
+              border: '2px solid rgba(255,255,255,0.2)',
+              boxShadow: '0 8px 24px rgba(22, 86, 184, 0.35)',
             }}
           >
-            <Gift size={16} className="text-black animate-bounce shrink-0" />
+            <Zap size={16} className="text-yellow-300 shrink-0" />
             <span 
               style={{
-                color: '#000000',
-                fontWeight: 955,
+                color: '#ffffff',
+                fontWeight: 950,
                 fontSize: '12px',
                 letterSpacing: '0.2px',
               }}
             >
-              أول 30 دقيقة ركنة مجاناً بالكامل كهدية ترحيبية! 🎁
+              احجز ركنتك بـ {BOOKING_FEE} ج.م فقط من محفظتك! ⚡
             </span>
           </div>
         </div>
@@ -259,7 +260,7 @@ export default function RegisterScreen() {
                     textShadow: '0 1px 3px rgba(0,0,0,0.35)' 
                   }}
                 >
-                  حفظ البيانات واستلام الهدية 🚀
+                  حفظ البيانات والبدء الآن 🚀
                 </span>
                 <ArrowRight size={18} className="rotate-180 text-white" strokeWidth={3} />
               </>
@@ -269,9 +270,16 @@ export default function RegisterScreen() {
       </div>
 
       {/* حماية الأمان والخصوصية */}
-      <div className="pt-4 border-t border-slate-900 text-center flex items-center justify-center gap-1.5 text-slate-600 text-[10px] font-bold">
-        <span>جميع بياناتك آمنة ومشفرة بالكامل تماشياً مع معايير الحماية</span>
-        <ShieldCheck size={12} className="text-slate-500" />
+      <div className="pt-4 border-t border-slate-900 text-center flex items-center justify-center gap-3 text-slate-600 text-[10px] font-bold">
+        <span className="flex items-center gap-1">
+          <Wallet size={10} className="text-slate-500" />
+          محفظة إلكترونية آمنة
+        </span>
+        <span>•</span>
+        <span className="flex items-center gap-1">
+          <ShieldCheck size={10} className="text-slate-500" />
+          بياناتك مشفرة بالكامل
+        </span>
       </div>
     </motion.div>
   );

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Navigation,
   MapPin,
@@ -10,9 +10,23 @@ import {
   Copy,
   Gift,
   CreditCard,
+  Zap,
+  Wallet,
+  AlertCircle,
+  Check,
+  Home,
 } from 'lucide-react';
 // 🌟 استيراد getServerNow ودوال البصمة الموحدة من الـ store لضمان المزامنة التامة
-import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
+import {
+  useStore,
+  normalizePlate,
+  normalizePhone,
+  getServerNow,
+  BOOKING_FEE,
+  GEOFENCE_RADIUS_METERS,
+  haversineDistance,
+  TOPUP_TIERS,
+} from '../store';
 import {
   calculateDistance,
   distanceToMinutes,
@@ -35,23 +49,24 @@ import { supabase } from '../lib/supabase';
 
 /* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
-  blue: '#1656b8',       // الأزرق الرسمي للوجو
-  blueDark: '#0f3d85',   // الكحلي الفخم
-  blueLight: '#e8f0fe',  // الأزرق الفاتح جداً
-  blueSoft: 'rgba(22, 86, 184, 0.08)', // كحلي زجاجي ناعم
-  green: '#8cc63f',      // الأخضر الرسمي للوجو
-  greenDark: '#6ea62a',  // أخضر داكن للخطوط والنصوص
-  greenLight: 'rgba(140, 198, 63, 0.12)', // خلفية خضراء ناعمة
-  navy: '#0a1628',       // الكحلي الليلي الغامق للواجهة الداكنة
-  navyLight: '#111e36',  // كحلي أفتح للبطاقات والـ overlays
-  slate: '#64748b',      // الرمادي الهادئ
-  slateMuted: '#94a3b8', // الرمادي الباهت
-  border: 'rgba(255, 255, 255, 0.08)', // حدود زجاجية رفيعة
+  blue: '#1656b8',
+  blueDark: '#0f3d85',
+  blueLight: '#e8f0fe',
+  blueSoft: 'rgba(22, 86, 184, 0.08)',
+  green: '#8cc63f',
+  greenDark: '#6ea62a',
+  greenLight: 'rgba(140, 198, 63, 0.12)',
+  navy: '#0a1628',
+  navyLight: '#111e36',
+  slate: '#64748b',
+  slateMuted: '#94a3b8',
+  border: 'rgba(255, 255, 255, 0.08)',
 };
 
 /* ─── Constants ─── */
-const CANCEL_WINDOW_SECONDS = 30; // مهلة الـ 30 ثانية للعميل قبل إشعار السايس
-const GPS_DEADBAND_METERS = 6; // 🛡️ فلتر منع رعشة الخريطة - لا يتحدث الموقع إلا بعد تحرك حقيقي 6 أمتار
+const CANCEL_WINDOW_SECONDS = 30;
+const GPS_DEADBAND_METERS = 6;
+const STOP_SPEED_THRESHOLD = 2; // متر/ثانية - أقل من كده السيارة واقفة
 
 /* ─── Icons ─── */
 const userIcon = new L.DivIcon({
@@ -131,11 +146,10 @@ function MapController({
       } catch {}
     }
 
-    // 🧹 دمج تنظيف المؤقت وإيقاف محرك الخريطة فوراً عند مغادرة الشاشة
     return () => {
       clearTimeout(timer);
       try {
-        map.stop(); // 🛑 إيقاف أي أنيميشن أو رسم بالخلفية
+        map.stop();
       } catch {}
     };
   }, [map, userPos, garagePos]);
@@ -160,11 +174,21 @@ export default function NavigationScreen() {
     sessions,
     addSession,
     fetchAll,
+    chargeBookingFee,
+    refundBookingFee,
+    addWalletTopUp,
   } = useStore();
 
   const garage = garages.find((g) => g.id === selectedGarageId);
   const userPlateNav = normalizePlate(currentUser?.carPlate);
   const userPhoneClean = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
+
+  /* ── نوع الجراج: VIP أم Directory ── */
+  const isVipGarage = useMemo(() => {
+    if (!garage) return false;
+    const type = (garage as any).type || (garage as any).garage_type;
+    return type === 'partner' || type === 'vip';
+  }, [garage]);
 
   /* ── الكشف عن السيارة القادمة ── */
   const myIncomingCar = useMemo(() => {
@@ -199,6 +223,12 @@ export default function NavigationScreen() {
   const [canCancel, setCanCancel] = useState(true);
   const [mapReady, setMapReady] = useState(false);
   const [pushStatus, setPushStatus] = useState<'waiting' | 'sent' | 'cancelled'>('waiting');
+  
+  /* ── State جديد للـ VIP ── */
+  const [showArrivalOverlay, setShowArrivalOverlay] = useState(false);
+  const [showInsufficientModal, setShowInsufficientModal] = useState(false);
+  const [feeCharged, setFeeCharged] = useState(false);
+  const [processingTopup, setProcessingTopup] = useState<string | null>(null);
 
   /* ── Refs ── */
   const isMountedRef = useRef(true);
@@ -214,8 +244,12 @@ export default function NavigationScreen() {
   const realtimeChannelRef = useRef<any>(null);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
-  // 🛡️ ذاكرة الموقع الأخير المستقر لفلترة ضوضاء الـ GPS
   const lastStableCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
+  
+  /* ── Refs جديدة للـ Geofence الصفري ── */
+  const geofenceTriggeredRef = useRef(false);
+  const lastGpsTimeRef = useRef<number>(0);
+  const feeChargedRef = useRef(false);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -259,7 +293,7 @@ export default function NavigationScreen() {
       );
     };
 
-const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`)
+    const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'sessions' },
@@ -312,15 +346,19 @@ const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`
     };
   }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
 
-  /* ─── GPS مع تطبيق فلتر الرعشة ─── */
+  /* 🧠 ─── GPS مع فحص Geofence المدمج (صفر Interval) ─── */
   const handleGpsUpdate = useCallback((p: GeolocationPosition) => {
     if (!isMountedRef.current) return;
     const newLat = p.coords.latitude;
     const newLng = p.coords.longitude;
+    const speed = p.coords.speed ?? 0; // متر/ثانية (قد يكون null)
+    const now = getServerNow();
 
+    // 🛡️ فلتر الرعشة
     if (lastStableCoordsRef.current === null) {
       lastStableCoordsRef.current = { lat: newLat, lng: newLng };
       setUserPos({ lat: newLat, lng: newLng });
+      lastGpsTimeRef.current = now;
       return;
     }
 
@@ -334,8 +372,39 @@ const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`
     if (distanceMoved >= GPS_DEADBAND_METERS) {
       lastStableCoordsRef.current = { lat: newLat, lng: newLng };
       setUserPos({ lat: newLat, lng: newLng });
+      lastGpsTimeRef.current = now;
     }
-  }, []);
+
+    // 🎯 ─── الفحص المدمج للـ Geofence (VIP فقط) ───
+    if (
+      !isVipGarage ||
+      !garage ||
+      geofenceTriggeredRef.current ||
+      feeChargedRef.current ||
+      showArrivalOverlay ||
+      myActiveSession
+    ) {
+      return;
+    }
+
+    // حساب المسافة من الجراج
+    const distanceToGarage = haversineDistance(
+      newLat,
+      newLng,
+      garage.lat,
+      garage.lng
+    );
+
+    // ✅ شرط التفعيل: ≤ 100 متر + سيارة واقفة (أو سرعة غير معروفة)
+    const isWithinGeofence = distanceToGarage <= GEOFENCE_RADIUS_METERS;
+    const isStopped = speed === null || speed < STOP_SPEED_THRESHOLD;
+
+    if (isWithinGeofence && isStopped) {
+      geofenceTriggeredRef.current = true;
+      // عرض الـ overlay للمستخدم لتأكيد الوصول
+      setShowArrivalOverlay(true);
+    }
+  }, [isVipGarage, garage, showArrivalOverlay, myActiveSession]);
 
   useEffect(() => {
     if (!('geolocation' in navigator)) return;
@@ -512,6 +581,7 @@ const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`
 
   const coordsText = `${garage.lat},${garage.lng}`;
   const isEligibleForFree = currentUser && !currentUser.hasUsedFreeSession;
+  const walletBalance = (currentUser as any)?.walletBalance ?? 0;
 
   /* ─── Handlers ─── */
   const copyCoords = async () => {
@@ -576,11 +646,104 @@ const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`
     }
   };
 
+  /* ─── 💰 خصم رسوم الحجز VIP ─── */
+  const handleChargeVipFee = async (): Promise<boolean> => {
+    if (!isVipGarage || feeChargedRef.current || !currentUser) return true;
+
+    // تحقق من الرصيد
+    if (walletBalance < BOOKING_FEE) {
+      setShowInsufficientModal(true);
+      return false;
+    }
+
+    try {
+      await chargeBookingFee({
+        userPhone: currentUser.phone,
+        garageId: garage.id,
+        amount: BOOKING_FEE,
+      });
+      feeChargedRef.current = true;
+      setFeeCharged(true);
+      toast.success(`تم خصم ${BOOKING_FEE} ج.م رسوم الحجز`, { icon: '💰', duration: 2500 });
+      return true;
+    } catch (err) {
+      console.error('❌ Fee charge error:', err);
+      toast.error('حدث خطأ في خصم رسوم الحجز');
+      return false;
+    }
+  };
+
+  /* ─── 🔄 استرداد الرسوم (ملقيتش مكان) ─── */
+  const handleRefundAndExit = async () => {
+    if (!currentUser) return;
+
+    try {
+      if (feeChargedRef.current) {
+        await refundBookingFee({
+          userPhone: currentUser.phone,
+          garageId: garage.id,
+          amount: BOOKING_FEE,
+        });
+        toast.success(`تم استرداد ${BOOKING_FEE} ج.م لمحفظتك`, { icon: '✅', duration: 3000 });
+      }
+
+      if (myIncomingCar) {
+        await removeIncomingCar(myIncomingCar.id);
+      }
+
+      setShowArrivalOverlay(false);
+      setSelectedGarageId(null);
+      setScreen('list');
+    } catch (err) {
+      console.error('❌ Refund error:', err);
+      toast.error('حدث خطأ في الاسترداد، تواصل مع الدعم');
+    }
+  };
+
+  /* ─── 🏠 عودة بسيطة بدون استرداد ─── */
+  const handleReturnHome = () => {
+    setShowArrivalOverlay(false);
+    setSelectedGarageId(null);
+    setScreen('list');
+  };
+
+  /* ─── 💳 شحن سريع من الـ Insufficient Modal ─── */
+  const handleQuickTopup = async (tier: typeof TOPUP_TIERS[0]) => {
+    if (!currentUser || processingTopup) return;
+    setProcessingTopup(tier.id);
+
+    try {
+      await addWalletTopUp({
+        userPhone: currentUser.phone,
+        amount: tier.amount,
+        bonus: tier.bonus,
+        method: 'instapay',
+        status: 'pending',
+      });
+      toast.success('تم إرسال طلب الشحن، في انتظار موافقة الإدارة', { duration: 3500 });
+      setShowInsufficientModal(false);
+    } catch (err) {
+      console.error('❌ Topup error:', err);
+      toast.error('حدث خطأ، حاول مرة أخرى');
+    } finally {
+      setProcessingTopup(null);
+    }
+  };
+
   const handleCarArrived = async () => {
     if (isArrivingRef.current || isCancellingRef.current) return;
     isArrivingRef.current = true;
 
     try {
+      // 💰 VIP: خصم الرسوم أولاً
+      if (isVipGarage && !feeChargedRef.current) {
+        const charged = await handleChargeVipFee();
+        if (!charged) {
+          isArrivingRef.current = false;
+          return;
+        }
+      }
+
       if (!myIncomingCar || !garage) {
         if (myActiveSession) {
           navigatedToSessionRef.current = true;
@@ -629,9 +792,11 @@ const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`
         customerName: currentUser?.name,
         startedBy: 'customer',
         incomingCarId: myIncomingCar.id,
+        bookingFeePaid: isVipGarage ? BOOKING_FEE : 0,
       } as any);
 
       await removeIncomingCar(myIncomingCar.id);
+      setShowArrivalOverlay(false);
       navigatedToSessionRef.current = true;
       setScreen('session');
     } catch (err) {
@@ -648,7 +813,7 @@ const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full flex flex-col safe-top safe-bottom text-right"
+      className="h-full flex flex-col safe-top safe-bottom text-right relative"
       style={{ background: BRAND.navy, color: '#ffffff' }}
     >
       {/* ══ Header ══ */}
@@ -664,9 +829,9 @@ const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`
         </button>
 
         <h2 className="text-xs font-black flex items-center gap-1.5" style={{ color: '#ffffff' }}>
-<div className="animate-pulse">
-  <Navigation size={15} style={{ color: BRAND.blue }} />
-</div>
+          <div className="animate-pulse">
+            <Navigation size={15} style={{ color: BRAND.blue }} />
+          </div>
           التوجيه للجراج
         </h2>
 
@@ -697,17 +862,28 @@ const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`
             </div>
             
             <div className="text-right flex flex-col items-end">
-              <span
-                style={{
-                  color: '#ffffff',
-                  fontSize: '15px',
-                  fontWeight: 950,
-                  display: 'block',
-                  lineHeight: '1.2',
-                }}
-              >
-                {garage.name}
-              </span>
+              <div className="flex items-center gap-1.5">
+                {isVipGarage && (
+                  <span 
+                    className="text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5"
+                    style={{ background: BRAND.green, color: BRAND.navy }}
+                  >
+                    <Zap size={9} />
+                    VIP
+                  </span>
+                )}
+                <span
+                  style={{
+                    color: '#ffffff',
+                    fontSize: '15px',
+                    fontWeight: 950,
+                    display: 'block',
+                    lineHeight: '1.2',
+                  }}
+                >
+                  {garage.name}
+                </span>
+              </div>
               <div className="flex items-center gap-1 justify-end text-[10px] mt-1 font-bold" style={{ color: BRAND.slateMuted }}>
                 <span>{garage.location}</span>
                 <MapPin size={10} style={{ color: BRAND.slateMuted }} />
@@ -716,7 +892,35 @@ const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`
           </div>
         </div>
 
-        {/* 🗺️ الخريطة المستقرة (بدون رعشة) */}
+        {/* 🅿️ شارة VIP + رسوم الحجز */}
+        {isVipGarage && (
+          <div
+            className="rounded-2xl p-3 shrink-0 border flex items-center justify-between"
+            style={{
+              background: BRAND.greenLight,
+              borderColor: BRAND.green + '40',
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <Wallet size={16} style={{ color: BRAND.green }} />
+              <div className="flex flex-col">
+                <span className="text-[11px] font-black" style={{ color: BRAND.green }}>
+                  رصيدك: {walletBalance} ج.م
+                </span>
+                <span className="text-[9px] font-bold" style={{ color: BRAND.slateMuted }}>
+                  رسوم الحجز: {BOOKING_FEE} ج.م (تُخصم عند الوصول)
+                </span>
+              </div>
+            </div>
+            {feeCharged && (
+              <span className="text-[10px] font-black flex items-center gap-1" style={{ color: BRAND.green }}>
+                <Check size={12} /> تم الخصم
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* 🗺️ الخريطة */}
         <div 
           className="w-full h-44 rounded-2xl overflow-hidden relative shrink-0 border"
           style={{ transform: 'translateZ(0)', borderColor: BRAND.border }} 
@@ -803,7 +1007,7 @@ const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`
           </button>
         </div>
 
-        {/* معلومات السعر والأماكن وطرق الدفع المقبولة */}
+        {/* معلومات السعر */}
         <div className="border rounded-2xl p-3.5 shrink-0 space-y-2.5" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1 text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>
@@ -828,7 +1032,6 @@ const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`
             <span className="text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>الأماكن المتاحة الآن</span>
           </div>
 
-          {/* 🌟 شارة وسيلة الدفع المقبولة بالجراج */}
           <div className="flex items-center justify-between border-t pt-2" style={{ borderColor: BRAND.border }}>
             <span className="text-xs font-black flex items-center gap-1" style={{ color: BRAND.green }}>
               <CreditCard size={12} />
@@ -841,8 +1044,7 @@ const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`
             <span className="text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>طريقة الدفع المقبولة</span>
           </div>
 
-          {/* 🎁 شارة الهدية الترحيبية إن وجدت */}
-          {isEligibleForFree && (
+          {isEligibleForFree && !isVipGarage && (
             <div className="border rounded-xl p-2 text-center flex items-center justify-center gap-1 text-[10px] font-black" style={{ background: BRAND.greenLight, borderColor: BRAND.green + '40', color: BRAND.green }}>
               <Gift size={12} style={{ color: BRAND.green }} />
               <span>أول 30 دقيقة مجاناً كهدية ترحيبية لك في هذا الحجز! 🎁</span>
@@ -883,7 +1085,7 @@ const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`
           </div>
         )}
 
-        {/* زر وصلت للجراج */}
+        {/* زر وصلت للجراج (يدوي - احتياطي) */}
         {!myActiveSession && (
           <button
             type="button"
@@ -910,7 +1112,6 @@ const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`
             className="shrink-0"
           >
             {canCancel ? (
-              // ⏱️ المرحلة الأولى: أول 30 ثانية (إلغاء سريع بعداد تنازلي)
               <>
                 <button
                   type="button"
@@ -933,7 +1134,6 @@ const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`
                 </div>
               </>
             ) : (
-              // 🚀 المرحلة الثانية: بعد انتهاء الـ 30 ثانية وإرسال الإشعار للسايس
               <motion.button
                 type="button"
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -955,6 +1155,178 @@ const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`
           </motion.div>
         )}
       </div>
+
+      {/* ══════════════════════════════════════════════════════
+          🎯 Arrival Overlay للـ VIP (geofence auto-trigger)
+          ══════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {showArrivalOverlay && isVipGarage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9999] flex items-end justify-center p-0"
+            style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
+          >
+            <motion.div
+              initial={{ y: 400 }}
+              animate={{ y: 0 }}
+              exit={{ y: 400 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="w-full max-w-md rounded-t-3xl p-6 space-y-4"
+              style={{ background: BRAND.navyLight, border: `1px solid ${BRAND.border}` }}
+            >
+              <div className="text-center">
+                <div className="w-16 h-16 rounded-full mx-auto mb-3 flex items-center justify-center" style={{ background: BRAND.greenLight }}>
+                  <MapPin size={32} style={{ color: BRAND.green }} />
+                </div>
+                <h3 className="text-white font-black text-lg mb-1">وصلت لجراج {garage.name}! 🎉</h3>
+                <p className="text-xs font-bold" style={{ color: BRAND.slateMuted }}>
+                  اختر الإجراء المناسب
+                </p>
+              </div>
+
+              {/* زر 1: وصلت ولقيت مكان */}
+              <button
+                onClick={handleCarArrived}
+                disabled={isArrivingRef.current}
+                className="w-full py-4 rounded-xl flex items-center justify-center gap-2 text-white font-black cursor-pointer border-0 disabled:opacity-50"
+                style={{ background: BRAND.greenDark, fontSize: '15px' }}
+              >
+                <Check size={18} />
+                وصلت ولقيت مكان ✅
+              </button>
+
+              {/* زر 2: ملقيتش مكان (استرداد) */}
+              <button
+                onClick={handleRefundAndExit}
+                className="w-full py-4 rounded-xl flex items-center justify-center gap-2 cursor-pointer border font-black"
+                style={{ 
+                  background: 'rgba(239, 68, 68, 0.1)', 
+                  borderColor: 'rgba(239, 68, 68, 0.3)',
+                  color: '#f87171',
+                  fontSize: '14px'
+                }}
+              >
+                <XCircle size={16} />
+                ملقيتش مكان (استرداد {BOOKING_FEE} ج.م) ↩️
+              </button>
+
+              {/* زر 3: العودة للرئيسية */}
+              <button
+                onClick={handleReturnHome}
+                className="w-full py-3 rounded-xl flex items-center justify-center gap-2 cursor-pointer border bg-transparent font-black"
+                style={{ 
+                  borderColor: BRAND.border,
+                  color: BRAND.slateMuted,
+                  fontSize: '13px'
+                }}
+              >
+                <Home size={14} />
+                العودة للرئيسية
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ══════════════════════════════════════════════════════
+          💳 Insufficient Wallet Modal (Option B)
+          ══════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {showInsufficientModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="w-full max-w-md rounded-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto"
+              style={{ background: BRAND.navyLight, border: `1px solid ${BRAND.border}` }}
+            >
+              <div className="text-center">
+                <div className="w-14 h-14 rounded-full mx-auto mb-3 flex items-center justify-center" style={{ background: 'rgba(239, 68, 68, 0.15)' }}>
+                  <AlertCircle size={28} style={{ color: '#f87171' }} />
+                </div>
+                <h3 className="text-white font-black text-base mb-1">رصيد المحفظة غير كافٍ</h3>
+                <p className="text-xs font-bold" style={{ color: BRAND.slateMuted }}>
+                  اختر باقة شحن سريعة للمتابعة
+                </p>
+              </div>
+
+              {/* ملخص الرصيد */}
+              <div className="rounded-xl p-3 space-y-1.5 border" style={{ background: BRAND.navy, borderColor: BRAND.border }}>
+                <div className="flex justify-between text-xs">
+                  <span className="font-black text-white">{walletBalance} ج.م</span>
+                  <span className="font-bold" style={{ color: BRAND.slateMuted }}>رصيدك الحالي:</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="font-black" style={{ color: BRAND.green }}>{BOOKING_FEE} ج.م</span>
+                  <span className="font-bold" style={{ color: BRAND.slateMuted }}>رسوم الحجز المطلوبة:</span>
+                </div>
+                <div className="flex justify-between text-xs border-t pt-1.5" style={{ borderColor: BRAND.border }}>
+                  <span className="font-black" style={{ color: '#f87171' }}>{BOOKING_FEE - walletBalance} ج.م</span>
+                  <span className="font-bold" style={{ color: BRAND.slateMuted }}>الفرق:</span>
+                </div>
+              </div>
+
+              {/* باقات الشحن */}
+              <div className="grid grid-cols-2 gap-2">
+                {TOPUP_TIERS.map((tier) => (
+                  <button
+                    key={tier.id}
+                    onClick={() => handleQuickTopup(tier)}
+                    disabled={processingTopup !== null}
+                    className="rounded-xl p-3 text-right cursor-pointer border transition-all active:scale-95 disabled:opacity-50 relative"
+                    style={{
+                      background: tier.popular ? BRAND.greenLight : BRAND.navy,
+                      borderColor: tier.popular ? BRAND.green : BRAND.border,
+                    }}
+                  >
+                    {tier.popular && (
+                      <span 
+                        className="absolute -top-2 right-2 text-[8px] font-black px-1.5 py-0.5 rounded-full"
+                        style={{ background: BRAND.green, color: BRAND.navy }}
+                      >
+                        الأفضل
+                      </span>
+                    )}
+                    <div className="text-[10px] font-black mb-1" style={{ color: tier.popular ? BRAND.green : '#fff' }}>
+                      {tier.label}
+                    </div>
+                    <div className="text-base font-black text-white mb-0.5">
+                      {tier.amount} ج.م
+                    </div>
+                    <div className="text-[9px] font-bold" style={{ color: BRAND.green }}>
+                      +{tier.bonus} ج.م هدية
+                    </div>
+                    <div className="text-[9px] font-bold mt-1" style={{ color: BRAND.slateMuted }}>
+                      ~{tier.bookings} حجوزات
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setShowInsufficientModal(false)}
+                className="w-full py-2.5 rounded-xl cursor-pointer border bg-transparent font-black"
+                style={{ 
+                  borderColor: BRAND.border,
+                  color: BRAND.slateMuted,
+                  fontSize: '12px'
+                }}
+              >
+                إلغاء
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

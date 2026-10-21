@@ -8,11 +8,11 @@ import {
   Calendar,
   Timer,
   Receipt,
-  Gift,
-  CheckCircle2,
+  Zap,
+  Sparkles,
 } from 'lucide-react';
 // 🌟 استيراد دوال البصمة والتوقيت الموحد من الـ store لضمان مطابقة اللوحات والأرقام بدقة 100%
-import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
+import { useStore, normalizePlate, normalizePhone, getServerNow, BOOKING_FEE } from '../store';
 import { calculateFullHours, calculateCost, formatTime } from '../utils/pricing';
 
 /* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
@@ -64,6 +64,12 @@ const LastSessionCard = memo(function LastSessionCard() {
     ? garages.find((g) => g.id === lastSession.garageId)
     : null;
 
+  // ✅ كشف نوع الجراج (VIP أم عادي)
+  const isVip = useMemo(() => {
+    if (!garage) return false;
+    return garage.garageType === 'vip' || (garage as any).is_vip === true || garage.type === 'partner';
+  }, [garage]);
+
   const startTime = toMs(lastSession?.startTime);
   const endTime = toMs(lastSession?.endTime) || (lastSession ? getServerNow() : 0);
 
@@ -71,22 +77,13 @@ const LastSessionCard = memo(function LastSessionCard() {
   const rate = Number(lastSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const totalMinutes = Math.floor(elapsedSeconds / 60);
 
-  // 🎁 [منطق الهدية الترحيبية]: أول 30 دقيقة مجانية (1800 ثانية)
-  const isFirstFreeApplied = lastSession?.isFirstFreeSession === true;
-  
-  const isFree = isFirstFreeApplied && (
-    lastSession?.totalPrice === 0 ||
-    lastSession?.paymentMethod === 'free' ||
-    (lastSession?.totalPrice == null && elapsedSeconds <= 1800)
-  );
-
-  const hours = isFree ? 0 : calculateFullHours(elapsedSeconds);
+  const hours = calculateFullHours(elapsedSeconds);
   const rawCost = calculateCost(elapsedSeconds, rate);
-  
+
   const cost =
     lastSession?.totalPrice != null
       ? Number(lastSession.totalPrice)
-      : (isFree ? 0 : rawCost);
+      : rawCost;
 
   const startDate = useMemo(() => new Date(startTime > 0 ? startTime : getServerNow()), [startTime]);
   const endDate = useMemo(() => new Date(endTime > 0 ? endTime : getServerNow()), [endTime]);
@@ -117,18 +114,14 @@ const LastSessionCard = memo(function LastSessionCard() {
         return { label: 'دفع عبر إنستاباي', icon: '📱', color: '#c084fc', bg: 'rgba(192, 132, 252, 0.12)' };
       case 'wallet':
         return { label: 'خصم من المحفظة', icon: '👝', color: '#60a5fa', bg: BRAND.blueSoft };
-      case 'free':
-        return { label: 'ركنة ترحيبية مجانية', icon: '🎁', color: BRAND.green, bg: BRAND.greenLight };
-      case 'cashwallet':
-        return { label: 'محفظة كاش إلكترونية', icon: '📲', color: '#fb923c', bg: 'rgba(251, 146, 60, 0.12)' };
       default:
         return { label: 'سداد نقدي كاش', icon: '💵', color: BRAND.green, bg: BRAND.greenLight };
     }
   }, []);
 
   const paymentInfo = useMemo(() => {
-    return getPaymentInfo(isFree ? 'free' : lastSession?.paymentMethod);
-  }, [getPaymentInfo, isFree, lastSession?.paymentMethod]);
+    return getPaymentInfo(lastSession?.paymentMethod);
+  }, [getPaymentInfo, lastSession?.paymentMethod]);
 
   const sourceInfo = useMemo(() => {
     return lastSession?.source === 'app'
@@ -158,7 +151,7 @@ const LastSessionCard = memo(function LastSessionCard() {
       </div>
 
       {/* البطاقة الرقمية الفاخرة */}
-      <div 
+      <div
         className="rounded-3xl p-4.5 text-white relative overflow-hidden border"
         style={{
           background: BRAND.navy,
@@ -167,9 +160,9 @@ const LastSessionCard = memo(function LastSessionCard() {
         }}
       >
         {/* لمسة إضاءة ناعمة في الزاوية */}
-        <div 
+        <div
           className="absolute -top-12 -right-12 w-32 h-32 rounded-full pointer-events-none"
-          style={{ background: `${BRAND.blue}18`, filter: 'blur(30px)' }} 
+          style={{ background: `${BRAND.blue}18`, filter: 'blur(30px)' }}
         />
 
         {/* الجراج ورقم السيارة والبصمة */}
@@ -187,24 +180,23 @@ const LastSessionCard = memo(function LastSessionCard() {
           </div>
 
           <div className="flex items-center gap-1 flex-wrap justify-end">
+            {isVip && (
+              <span
+                className="text-[9px] px-2 py-0.5 rounded-lg font-black flex items-center gap-0.5"
+                style={{
+                  background: `linear-gradient(135deg, ${BRAND.blue}, ${BRAND.blueDark})`,
+                  color: '#ffffff',
+                }}
+              >
+                <Zap size={9} /> VIP
+              </span>
+            )}
             <span
               className="text-[9px] px-2 py-0.5 rounded-lg font-black"
               style={{ background: sourceInfo.bg, color: sourceInfo.color }}
             >
               {sourceInfo.label}
             </span>
-            {isFirstFreeApplied && (
-              <span 
-                className="text-[9px] px-2 py-0.5 rounded-lg font-black flex items-center gap-1 border"
-                style={{ 
-                  background: BRAND.greenLight, 
-                  color: BRAND.green, 
-                  borderColor: `${BRAND.green}40` 
-                }}
-              >
-                <Gift size={9} /> {isFree ? 'هدية ترحيبية 🎁' : 'عرض 30 د'}
-              </span>
-            )}
           </div>
         </div>
 
@@ -224,7 +216,7 @@ const LastSessionCard = memo(function LastSessionCard() {
             <span
               className="font-mono text-4xl font-black leading-none"
               style={{
-                color: isFree ? BRAND.green : '#ffffff',
+                color: '#ffffff',
                 letterSpacing: '-1px',
               }}
             >
@@ -232,25 +224,11 @@ const LastSessionCard = memo(function LastSessionCard() {
             </span>
             <span
               className="text-sm font-black"
-              style={{ color: isFree ? BRAND.green : BRAND.slateMuted }}
+              style={{ color: BRAND.slateMuted }}
             >
               ج.م
             </span>
           </div>
-
-          {/* شارة التوفير إذا طُبق العرض */}
-          {isFree ? (
-            <div 
-              className="mt-2.5 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-black border"
-              style={{ background: BRAND.greenLight, color: BRAND.green, borderColor: `${BRAND.green}30` }}
-            >
-              <CheckCircle2 size={11} /> أول 30 دقيقة مجانية كهدية ترحيبية! 🎉
-            </div>
-          ) : isFirstFreeApplied ? (
-            <div className="mt-1.5 text-[9px] font-bold" style={{ color: BRAND.slateMuted }}>
-              ⏰ انتهت أول 30 دقيقة وتم حساب الوقت الإضافي
-            </div>
-          ) : null}
         </div>
 
         {/* شبكة تفاصيل الوقت والساعات والسعر */}
@@ -268,7 +246,7 @@ const LastSessionCard = memo(function LastSessionCard() {
               {hours}
             </div>
             <div className="text-[8px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>
-              {isFree ? 'مجانية (0س)' : 'ساعة محسوبة'}
+              ساعة محسوبة
             </div>
           </div>
           <div className="border rounded-xl p-2 text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
@@ -306,7 +284,7 @@ const LastSessionCard = memo(function LastSessionCard() {
         </div>
 
         {/* طريقة الدفع */}
-        <div 
+        <div
           className="border rounded-xl p-2.5 flex items-center justify-between relative z-10"
           style={{ background: paymentInfo.bg, borderColor: BRAND.border }}
         >
@@ -319,6 +297,27 @@ const LastSessionCard = memo(function LastSessionCard() {
           <span className="text-base">{paymentInfo.icon}</span>
         </div>
 
+        {/* ✅ شارة رسوم حجز VIP — شفافية كاملة */}
+        {isVip && (
+          <div
+            className="border rounded-xl p-2.5 mt-2 flex items-center gap-2 relative z-10"
+            style={{
+              background: BRAND.blueSoft,
+              borderColor: `${BRAND.blue}30`,
+            }}
+          >
+            <Sparkles size={13} style={{ color: BRAND.blue, flexShrink: 0 }} />
+            <div className="flex-1">
+              <span className="text-[10px] font-black" style={{ color: BRAND.blue }}>
+                رسوم حجز VIP: {BOOKING_FEE} ج.م
+              </span>
+              <span className="text-[9px] font-bold mr-1" style={{ color: BRAND.slateMuted }}>
+                — خُصمت من محفظتك عند الوصول 📍
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* التذييل التاريخي */}
         <div className="mt-2.5 text-center relative z-10">
           <span className="text-[9px] font-mono font-bold" style={{ color: BRAND.slateMuted }}>
@@ -330,3 +329,4 @@ const LastSessionCard = memo(function LastSessionCard() {
   );
 });
 
+export default LastSessionCard;

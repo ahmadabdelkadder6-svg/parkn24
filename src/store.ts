@@ -123,18 +123,40 @@ export type ScreenType =
   | 'splash' | 'list' | 'offer' | 'waiting' | 'navigation'
   | 'session' | 'summary' | 'lastSession' | 'chat';
 
-// ===================== 🎁 نظام الشرائح والهدايا =====================
+// ===================== 💰 نظام الشرائح والرسوم =====================
 
 export const TOPUP_TIERS = [
-  { id: 'bronze',   amount: 100,  bonus: 5,   label: '🥉 برونزي',   percentage: 5,  popular: false },
-  { id: 'silver',   amount: 300,  bonus: 30,  label: '🥈 فضي',      percentage: 10, popular: false },
-  { id: 'gold',     amount: 500,  bonus: 75,  label: '🥇 ذهبي',     percentage: 15, popular: true  },
-  { id: 'platinum', amount: 1000, bonus: 200, label: '👑 بلاتيني', percentage: 20, popular: false },
+  { id: 'trial',     amount: 20,   bonus: 2,   label: '🥉 تجربة',    percentage: 10, popular: false, bookings: 7   },
+  { id: 'weekly',    amount: 50,   bonus: 5,   label: '🥈 أسبوع',    percentage: 10, popular: false, bookings: 18  },
+  { id: 'monthly',   amount: 100,  bonus: 15,  label: '🥇 شهر',      percentage: 15, popular: true,  bookings: 38  },
+  { id: 'quarterly', amount: 250,  bonus: 50,  label: '💎 3 شهور',   percentage: 20, popular: false, bookings: 100 },
 ];
 
 export const calculateBonus = (amount: number): number => {
   const eligibleTier = [...TOPUP_TIERS].reverse().find((tier) => amount >= tier.amount);
   return eligibleTier ? eligibleTier.bonus : 0;
+};
+
+// 🌟 رسوم الحجز لكل ركنة VIP
+export const BOOKING_FEE = 3;
+
+// 📍 مسافة الـ Geofencing (متر) — لما العميل يوصل المسافة دي يتم الخصم
+export const GEOFENCE_RADIUS_METERS = 100;
+
+// 📐 حساب المسافة بين نقطتين (Haversine Formula) — بالامتار
+export const haversineDistance = (
+  lat1: number, lon1: number,
+  lat2: number, lon2: number
+): number => {
+  const R = 6371000; // نصف قطر الأرض بالامتار
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 };
 
 export const FREE_SESSION_DURATION_MS = 30 * 60 * 1000; 
@@ -226,7 +248,7 @@ export const getPlateFingerprint = (plate?: any): string => {
   str = str.replace(/[\u064B-\u065F\u0670\u0654\u0655\u0653]/g, '');
 
   const easternDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
-  const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '٧', '٨', '٩'];
+  const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '٧', '۸', '۹'];
   for (let i = 0; i <= 9; i++) {
     str = str.split(easternDigits[i]).join(String(i));
     str = str.split(persianDigits[i]).join(String(i));
@@ -485,6 +507,9 @@ interface AppState {
   setCurrentUser: (u: any) => Promise<void>;
   deductWallet: (amount: number) => Promise<boolean>; 
   markFreeSessionUsed: () => Promise<void>;
+  // 💰 دوال رسوم الحجز والاسترداد
+  chargeBookingFee: () => Promise<boolean>;
+  refundBookingFee: () => Promise<void>;
   garages: Garage[];
   currentGarageId: string | null;
   setCurrentGarageId: (id: string | null) => void;
@@ -623,6 +648,31 @@ export const useStore = create<AppState>((set, get) => ({
       return false;
     } finally {
       walletDeductLock = false;
+    }
+  },
+
+  // 💰 خصم رسوم الحجز (3 ج) من المحفظة — يُستخدم عند وصول العميل للجراج VIP
+  chargeBookingFee: async () => {
+    const user = get().currentUser;
+    if (!user) return false;
+    if ((user.wallet || 0) < BOOKING_FEE) return false;
+    return await get().deductWallet(BOOKING_FEE);
+  },
+
+  // 💸 استرداد رسوم الحجز (3 ج) للمحفظة — يُستخدم لو العميل ملقاش مكان
+  refundBookingFee: async () => {
+    const user = get().currentUser;
+    if (!user) return;
+    const newWallet = (user.wallet || 0) + BOOKING_FEE;
+    const updated = { ...user, wallet: newWallet };
+    set({ currentUser: updated });
+    safeSetStorage('currentUser', updated);
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('users').update({ wallet: newWallet }).eq('phone', user.phone);
+      } catch (err) {
+        console.error('Refund booking fee error:', err);
+      }
     }
   },
 
@@ -829,7 +879,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 🌟 تعديل الجراج وتحديث الكاش
+  // 🌟 تعديل الجراج وتحديث الكاش — ✅ تم إصلاح الـ early return bug
   updateGarage: async (id, updates) => {
     set((st) => {
       const updated = st.garages.map((g) => g.id === id ? { ...g, ...updates } : g);
@@ -839,17 +889,15 @@ export const useStore = create<AppState>((set, get) => ({
 
     if (!isSupabaseConfigured()) return;
 
-    if (updates.isActive !== undefined) {
-      await supabase.from('garages').update({ is_active: updates.isActive }).eq('id', id);
-      return;
-    }
-
     const isDirectory = updates.garageType === 'directory';
     const finalPrice = isDirectory 
       ? (updates.priceType === 'daily' ? updates.dailyPrice : updates.priceType === 'monthly' ? updates.monthlyPrice : (updates.basePrice || 20))
       : updates.basePrice;
 
     const dbUpdates: Record<string, unknown> = {};
+
+    // ✅ isActive بقت بتتضاف مع باقي الحقول مش بتعمل return مبكر
+    if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
     if (updates.name !== undefined) dbUpdates.name = updates.name;
     if (finalPrice !== undefined) dbUpdates.base_price = finalPrice;
     if (updates.availableSpots !== undefined) dbUpdates.available_spots = updates.availableSpots;
@@ -862,6 +910,14 @@ export const useStore = create<AppState>((set, get) => ({
       dbUpdates.garage_type = updates.garageType;
       dbUpdates.type = updates.garageType === 'directory' ? 'directory' : 'vip';
       dbUpdates.is_vip = updates.garageType !== 'directory';
+
+      // 🌟 ضبط تلقائي للعمولة وطريقة الدفع عند تغيير النوع
+      if (updates.garageType === 'directory') {
+        if (dbUpdates.commission_rate === undefined) dbUpdates.commission_rate = 0;
+        if (dbUpdates.payment_mode === undefined) dbUpdates.payment_mode = 'cash';
+      } else {
+        if (dbUpdates.commission_rate === undefined) dbUpdates.commission_rate = 10;
+      }
     }
     
     if (updates.priceType !== undefined) dbUpdates.price_type = updates.priceType;
