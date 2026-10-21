@@ -14,6 +14,9 @@ const MIN_AMOUNT = 20;
 const MAX_AMOUNT = 100000;
 const STEP_AMOUNT = 10;
 
+// 🚫 Flag لإخفاء خيار محافظ الهاتف مؤقتاً (غيّره لـ true لإظهاره مرة تانية)
+const SHOW_CASH_WALLET_OPTION = false;
+
 // 🎨 الألوان الرسمية الفاخرة الموحدة لتطبيق Park'n 24
 const BRAND = {
   blue: '#1656b8',       // الأزرق الرسمي
@@ -249,7 +252,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5">
-                  {[...TOPUP_TIERS].reverse().map((tier) => (
+                  {[...TOPUP_TIERS].reverse().map((tier) => {
                     const isSelected = amount === tier.amount;
                     return (
                       <button
@@ -415,19 +418,22 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                   <ArrowRight size={16} className="text-slate-300 rotate-180" />
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => { setMethod('cashwallet'); setStep('transfer'); }}
-                  aria-label="اختيار الدفع عبر محافظ الهاتف"
-                  className="w-full flex items-center gap-3 bg-white border border-slate-200 hover:border-amber-400 p-4 rounded-xl text-right active:scale-[0.98] transition-all cursor-pointer"
-                >
-                  <div className="w-10 h-10 rounded-lg bg-amber-500 text-white flex items-center justify-center text-lg shrink-0">📲</div>
-                  <div className="flex-1">
-                    <div className="font-black text-slate-900 text-xs">محافظ الهاتف المحمول</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">فودافون / أورنج / اتصالات / WE كاش</div>
-                  </div>
-                  <ArrowRight size={16} className="text-slate-300 rotate-180" />
-                </button>
+                {/* 🚫 خيار محافظ الهاتف مخفي مؤقتاً — المنطق والربط موجودين */}
+                {SHOW_CASH_WALLET_OPTION && (
+                  <button
+                    type="button"
+                    onClick={() => { setMethod('cashwallet'); setStep('transfer'); }}
+                    aria-label="اختيار الدفع عبر محافظ الهاتف"
+                    className="w-full flex items-center gap-3 bg-white border border-slate-200 hover:border-amber-400 p-4 rounded-xl text-right active:scale-[0.98] transition-all cursor-pointer"
+                  >
+                    <div className="w-10 h-10 rounded-lg bg-amber-500 text-white flex items-center justify-center text-lg shrink-0">📲</div>
+                    <div className="flex-1">
+                      <div className="font-black text-slate-900 text-xs">محافظ الهاتف المحمول</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">فودافون / أورنج / اتصالات / WE كاش</div>
+                    </div>
+                    <ArrowRight size={16} className="text-slate-300 rotate-180" />
+                  </button>
+                )}
               </div>
             </>
           )}
