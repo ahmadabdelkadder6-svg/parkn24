@@ -249,7 +249,7 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5">
-                  {TOPUP_TIERS.map((tier) => {
+                  {[...TOPUP_TIERS].reverse().map((tier) => (
                     const isSelected = amount === tier.amount;
                     return (
                       <button

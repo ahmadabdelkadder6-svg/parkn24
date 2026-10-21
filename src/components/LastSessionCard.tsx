@@ -9,7 +9,6 @@ import {
   Timer,
   Receipt,
   Zap,
-  Sparkles,
 } from 'lucide-react';
 // 🌟 استيراد دوال البصمة والتوقيت الموحد من الـ store لضمان مطابقة اللوحات والأرقام بدقة 100%
 import { useStore, normalizePlate, normalizePhone, getServerNow, BOOKING_FEE } from '../store';
@@ -297,24 +296,24 @@ const LastSessionCard = memo(function LastSessionCard() {
           <span className="text-base">{paymentInfo.icon}</span>
         </div>
 
-        {/* ✅ شارة رسوم حجز VIP — شفافية كاملة */}
+        {/* ✅ VIP booking fee — بسيط ومختصر */}
         {isVip && (
           <div
-            className="border rounded-xl p-2.5 mt-2 flex items-center gap-2 relative z-10"
+            className="border rounded-xl p-2.5 mt-2 text-center relative z-10"
             style={{
               background: BRAND.blueSoft,
               borderColor: `${BRAND.blue}30`,
             }}
           >
-            <Sparkles size={13} style={{ color: BRAND.blue, flexShrink: 0 }} />
-            <div className="flex-1">
+            <div className="flex items-center justify-center gap-1.5 mb-0.5">
+              <Zap size={12} style={{ color: BRAND.blue }} />
               <span className="text-[10px] font-black" style={{ color: BRAND.blue }}>
-                رسوم حجز VIP: {BOOKING_FEE} ج.م
-              </span>
-              <span className="text-[9px] font-bold mr-1" style={{ color: BRAND.slateMuted }}>
-                — خُصمت من محفظتك عند الوصول 📍
+                تم خصم {BOOKING_FEE} ج.م رسوم الحجز
               </span>
             </div>
+            <span className="text-[8px] font-bold" style={{ color: BRAND.slateMuted }}>
+              تم الخصم تلقائياً من محفظتك عند الوصول للجراج
+            </span>
           </div>
         )}
 

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Clock, DollarSign, MapPin, Timer, Receipt, ArrowRight, Copy, Check, Sparkles, Zap } from 'lucide-react';
-import { useStore, BOOKING_FEE } from '../store';
+import { Clock, DollarSign, MapPin, Timer, Receipt, ArrowRight, Copy, Check, Zap } from 'lucide-react';
+import { useStore, normalizePlate, normalizePhone, BOOKING_FEE } from '../store';
 import { calculateFullHours, calculateCost, formatTime } from '../utils/pricing';
 
 const BRAND = {
@@ -20,22 +20,56 @@ const BRAND = {
   bg: '#f4f7fc',
 };
 
+/* ─── Helper: توحيد تحويل الوقت (حماية من NaN) ─── */
+const toMs = (value: any): number => {
+  if (!value) return 0;
+  if (typeof value === 'number') {
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 interface LastSessionScreenProps {
   onBack: () => void;
 }
 
 export default function LastSessionScreen({ onBack }: LastSessionScreenProps) {
-  const { lastSession, garages, acknowledgeSession } = useStore();
+  const { sessions, garages, currentUser, acknowledgeSession } = useStore();
   const [copied, setCopied] = useState(false);
 
+  const userPlate = normalizePlate(currentUser?.carPlate);
+  const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
+
+  /* ✅ البحث عن آخر جلسة مكتملة من sessions array مباشرة
+       (مش من lastSession في الـ store لأنه ممكن يكون null) */
+  const lastSession = useMemo(() => {
+    if (!userPlate && !userPhone) return null;
+    return sessions
+      .filter((s) => {
+        if (!s || s.status !== 'completed') return false;
+        const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+        const sPhone = (s as any).customerPhone
+          ? normalizePhone((s as any).customerPhone)
+          : '';
+        const samePhone = Boolean(userPhone && sPhone === userPhone);
+        return samePlate || samePhone;
+      })
+      .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0] || null;
+  }, [sessions, userPlate, userPhone]);
+
   const garage = useMemo(
-    () => garages.find((g) => g.id === lastSession?.garageId),
-    [garages, lastSession?.garageId]
+    () => (lastSession ? garages.find((g) => g.id === lastSession.garageId) : null),
+    [garages, lastSession?.garageId],
   );
 
   const isVip = useMemo(() => {
     if (!garage) return false;
-    return garage.garageType === 'vip' || (garage as any).is_vip === true || garage.type === 'partner';
+    return (
+      garage.garageType === 'vip' ||
+      (garage as any).is_vip === true ||
+      garage.type === 'partner'
+    );
   }, [garage]);
 
   if (!lastSession) {
@@ -68,16 +102,27 @@ export default function LastSessionScreen({ onBack }: LastSessionScreenProps) {
     );
   }
 
-  const entryTime = new Date(lastSession.entryTime);
-  const exitTime = new Date(lastSession.exitTime);
-  const durationMs = exitTime.getTime() - entryTime.getTime();
+  /* ✅ استخدام startTime / endTime (مش entryTime / exitTime)
+     مع حماية كاملة من NaN */
+  const startMs = toMs(lastSession.startTime);
+  const endMs = toMs(lastSession.endTime) || (startMs > 0 ? Date.now() : 0);
+  const durationMs = Math.max(0, endMs - startMs);
   const durationSeconds = Math.max(0, Math.floor(durationMs / 1000));
 
-  const fullHours = calculateFullHours(durationSeconds);
-  const rate = lastSession.rate || 0;
-  const cost = calculateCost(durationSeconds, rate);
+  const fullHours = calculateFullHours(durationSeconds) || 0;
+  const rate = Number(lastSession.agreedPrice ?? garage?.basePrice ?? 0) || 0;
+  const rawCost = calculateCost(durationSeconds, rate) || 0;
+
+  const cost =
+    lastSession.totalPrice != null
+      ? Number(lastSession.totalPrice) || 0
+      : rawCost;
+
+  const entryTime = new Date(startMs > 0 ? startMs : Date.now());
+  const exitTime = new Date(endMs > 0 ? endMs : Date.now());
 
   const formatDateTime = (date: Date) => {
+    if (!date || isNaN(date.getTime())) return '---';
     return date.toLocaleString('ar-EG', {
       year: 'numeric',
       month: 'long',
@@ -89,7 +134,7 @@ export default function LastSessionScreen({ onBack }: LastSessionScreenProps) {
   };
 
   const paymentInfo = useMemo(() => {
-    const method = lastSession.paymentMethod || 'cash';
+    const method = (lastSession as any).paymentMethod || 'cash';
     switch (method) {
       case 'instapay':
         return {
@@ -114,7 +159,7 @@ export default function LastSessionScreen({ onBack }: LastSessionScreenProps) {
           note: 'دفعت كاش للجراج',
         };
     }
-  }, [lastSession.paymentMethod]);
+  }, [(lastSession as any).paymentMethod]);
 
   const copySessionDetails = async () => {
     const text = `
@@ -164,7 +209,10 @@ ${isVip ? `رسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : ''
         <div className="relative z-10 text-center">
           <div
             className="inline-flex items-center justify-center w-16 h-16 rounded-full mb-3"
-            style={{ background: 'rgba(140, 198, 63, 0.15)', border: '2px solid rgba(140, 198, 63, 0.4)' }}
+            style={{
+              background: 'rgba(140, 198, 63, 0.15)',
+              border: '2px solid rgba(140, 198, 63, 0.4)',
+            }}
           >
             <Check className="w-8 h-8" style={{ color: BRAND.green }} strokeWidth={3} />
           </div>
@@ -211,7 +259,7 @@ ${isVip ? `رسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : ''
                 <p className="text-sm" style={{ color: BRAND.slate }}>
                   {garage.area}
                 </p>
-                {garage.carPlate || lastSession.carPlate ? (
+                {lastSession.carPlate ? (
                   <p className="text-xs mt-1" style={{ color: BRAND.slateMuted }}>
                     السيارة: {lastSession.carPlate}
                   </p>
@@ -290,7 +338,10 @@ ${isVip ? `رسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : ''
           className="rounded-3xl p-5 shadow-sm"
           style={{ background: BRAND.card, border: `1px solid ${BRAND.border}` }}
         >
-          <div className="flex items-center justify-between pb-3 border-b" style={{ borderColor: BRAND.border }}>
+          <div
+            className="flex items-center justify-between pb-3 border-b"
+            style={{ borderColor: BRAND.border }}
+          >
             <div>
               <div className="text-xs mb-0.5" style={{ color: BRAND.slateMuted }}>
                 وقت الدخول
@@ -303,7 +354,10 @@ ${isVip ? `رسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : ''
               className="w-9 h-9 rounded-full flex items-center justify-center"
               style={{ background: BRAND.blueLight }}
             >
-              <ArrowRight className="w-4 h-4 rotate-180" style={{ color: BRAND.blue }} />
+              <ArrowRight
+                className="w-4 h-4 rotate-180"
+                style={{ color: BRAND.blue }}
+              />
             </div>
           </div>
 
@@ -320,7 +374,11 @@ ${isVip ? `رسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : ''
               className="w-9 h-9 rounded-full flex items-center justify-center"
               style={{ background: BRAND.greenLight }}
             >
-              <Check className="w-4 h-4" style={{ color: BRAND.greenDark }} strokeWidth={3} />
+              <Check
+                className="w-4 h-4"
+                style={{ color: BRAND.greenDark }}
+                strokeWidth={3}
+              />
             </div>
           </div>
         </div>
@@ -328,22 +386,34 @@ ${isVip ? `رسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : ''
         {/* Payment method */}
         <div
           className="rounded-2xl p-4"
-          style={{ background: paymentInfo.bg, border: `1px solid ${paymentInfo.color}30` }}
+          style={{
+            background: paymentInfo.bg,
+            border: `1px solid ${paymentInfo.color}30`,
+          }}
         >
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-xs mb-1" style={{ color: paymentInfo.color, opacity: 0.8 }}>
+              <div
+                className="text-xs mb-1"
+                style={{ color: paymentInfo.color, opacity: 0.8 }}
+              >
                 طريقة الدفع
               </div>
               <div className="text-base font-bold" style={{ color: paymentInfo.color }}>
                 {paymentInfo.label}
               </div>
-              <div className="text-xs mt-1" style={{ color: paymentInfo.color, opacity: 0.75 }}>
+              <div
+                className="text-xs mt-1"
+                style={{ color: paymentInfo.color, opacity: 0.75 }}
+              >
                 {paymentInfo.note}
               </div>
             </div>
             <div className="text-left">
-              <div className="text-xs mb-0.5" style={{ color: paymentInfo.color, opacity: 0.8 }}>
+              <div
+                className="text-xs mb-0.5"
+                style={{ color: paymentInfo.color, opacity: 0.8 }}
+              >
                 المبلغ المدفوع للجراج
               </div>
               <div className="text-2xl font-black" style={{ color: paymentInfo.color }}>
@@ -353,30 +423,21 @@ ${isVip ? `رسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : ''
           </div>
         </div>
 
-        {/* VIP booking fee transparency banner */}
+        {/* ✅ VIP booking fee — بسيط ومختصر */}
         {isVip && (
           <div
-            className="rounded-2xl p-4 flex items-start gap-3"
-            style={{
-              background: `linear-gradient(135deg, ${BRAND.blueSoft} 0%, ${BRAND.blueLight} 100%)`,
-              border: `1px dashed ${BRAND.blue}60`,
-            }}
+            className="rounded-2xl p-4 border text-center"
+            style={{ background: BRAND.blueLight, borderColor: BRAND.blue + '30' }}
           >
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: `${BRAND.blue}15` }}
-            >
-              <Sparkles className="w-5 h-5" style={{ color: BRAND.blue }} />
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <Zap size={16} style={{ color: BRAND.blue }} />
+              <span className="font-black text-sm" style={{ color: BRAND.blueDark }}>
+                تم خصم {BOOKING_FEE} ج.م رسوم الحجز
+              </span>
             </div>
-            <div className="flex-1">
-              <div className="text-sm font-bold mb-1" style={{ color: BRAND.blueDark }}>
-                رسوم حجز VIP: {BOOKING_FEE} ج.م
-              </div>
-              <div className="text-xs leading-relaxed" style={{ color: BRAND.slate }}>
-                تم خصم {BOOKING_FEE} ج.م من محفظتك مقابل ضمان المكان عند الوصول للجراج. 
-                الرسوم خُصمت أوتوماتيكيًا وقت وصولك للموقع 📍
-              </div>
-            </div>
+            <span className="text-[10px] font-bold" style={{ color: BRAND.slate }}>
+              تم الخصم تلقائياً من محفظتك عند الوصول للجراج
+            </span>
           </div>
         )}
 
