@@ -13,7 +13,6 @@ import GarageListScreen from './components/GarageListScreen';
 import WaitingScreen from './components/WaitingScreen';
 import NavigationScreen from './components/NavigationScreen';
 import SessionScreen from './components/SessionScreen';
-import SummaryScreen from './components/SummaryScreen';
 import GarageLoginScreen from './components/GarageLoginScreen';
 import InstallPWA from './components/InstallPWA';
 import LastSessionScreen from './components/LastSessionScreen';
@@ -24,7 +23,6 @@ import InstallQRCodePage from './components/InstallQRCodePage';
 const GarageDashboard = lazy(() => import('./components/GarageDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 
-// علم لمنع تكرار بث قنوات السيرفر والاشتراكات اللحظية في التجهيز المزدوج
 let isRealtimeInitialized = false;
 
 const toMs = (value: any): number => {
@@ -36,42 +34,24 @@ const toMs = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-// 🛡️ دالة آمنة للتعامل مع LocalStorage لمنع الانهيار في التصفح الخفي
 const safeLocalStorage = {
   getItem: (key: string): string | null => {
-    try {
-      return localStorage.getItem(key);
-    } catch (e) {
-      return null;
-    }
+    try { return localStorage.getItem(key); } catch { return null; }
   },
   setItem: (key: string, value: string): void => {
-    try {
-      localStorage.setItem(key, value);
-    } catch (e) {
-      console.warn('LocalStorage is blocked or full');
-    }
+    try { localStorage.setItem(key, value); } catch { console.warn('LocalStorage is blocked or full'); }
   },
   removeItem: (key: string): void => {
-    try {
-      localStorage.removeItem(key);
-    } catch (e) {
-      // ignore
-    }
+    try { localStorage.removeItem(key); } catch { /* ignore */ }
   }
 };
 
 class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: boolean }> {
   public state = { hasError: false };
-
-  public static getDerivedStateFromError(_: Error) {
-    return { hasError: true };
-  }
-
+  public static getDerivedStateFromError(_: Error) { return { hasError: true }; }
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('App Error Boundary caught:', error, errorInfo);
   }
-
   public render() {
     if (this.state.hasError) {
       return (
@@ -80,10 +60,7 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
           <h2 className="text-xl font-black mb-2 font-sans">تحديث لحظي ذكي</h2>
           <p className="text-slate-400 text-xs font-bold mb-6">حدثنا بعض الخصائص، اضغط بالأسفل للعودة فوراً لمتابعة حجزك</p>
           <button
-            onClick={() => {
-              this.setState({ hasError: false });
-              window.location.href = '/';
-            }}
+            onClick={() => { this.setState({ hasError: false }); window.location.href = '/'; }}
             className="bg-blue-600 hover:bg-blue-700 text-white font-black px-8 py-4 rounded-2xl text-sm active:scale-95 transition-all shadow-lg"
             style={{ boxShadow: '0 6px 20px rgba(37,99,235,0.35)' }}
           >
@@ -96,34 +73,15 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
   }
 }
 
-/* ════════════════════════════════════════════════════════════
-   🛡️ PARK'N 24 BRAND LOGO (مستوحى من الشعار المرفق)
-   ════════════════════════════════════════════════════════════ */
 const ParkShieldLogo = memo(function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: number }) {
   return (
-    <svg 
-      viewBox="0 0 100 115" 
-      width={width} 
-      height={height} 
-      fill="none" 
-      xmlns="http://www.w3.org/2000/svg"
-      role="img"
-      aria-label="شعار بركن 24"
-    >
-      {/* الدرع الأزرق الخارجي */}
+    <svg viewBox="0 0 100 115" width={width} height={height} fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="شعار بركن 24">
       <path d="M50 2 C78 2, 98 14, 98 26 C98 76, 75 104, 50 114 C25 104, 2 76, 2 26 C2 14, 22 2, 50 2 Z" fill="#1656b8" />
-      {/* الإطار الداخلي للدرع */}
       <path d="M50 8 C72 8, 90 18, 90 28 C90 70, 70 96, 50 105 C30 96, 10 70, 10 28 C10 18, 28 8, 50 8 Z" stroke="#ffffff" strokeWidth="2.5" fill="none" opacity="0.95" />
-      
-      {/* حرف P الأخضر الكبيرة */}
       <path d="M26 30 H48 C60 30, 62 48, 48 48 H38 V78 H26 V30 Z M38 38 V40 H46 C48 40, 48 38, 46 38 Z" fill="#8cc63f" />
-      
-      {/* أيقونة الساعة 24 فوق الـ P */}
       <path d="M64 30 A 10 10 0 1 1 58 44" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" fill="none" />
       <polyline points="64 34, 64 40, 68 40" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
       <text x="69" y="52" fill="#ffffff" fontSize="9" fontWeight="900" fontFamily="sans-serif">24</text>
-      
-      {/* أيقونة السيارة البيضاء تحت الـ P */}
       <path d="M58 64 L62 58 H74 L78 64 H80 C81.5 64 82 65 82 66.5 V72 H54 V66.5 C54 65 54.5 64 56 64 Z" fill="#ffffff" />
       <circle cx="61" cy="72" r="2.2" fill="#1656b8" />
       <circle cx="75" cy="72" r="2.2" fill="#1656b8" />
@@ -131,22 +89,11 @@ const ParkShieldLogo = memo(function ParkShieldLogo({ width = 36, height = 42 }:
   );
 });
 
-/* ════════════════════════════════════════════════════════════
-   ☀️ PARK'N 24 HERO — FULL-SCREEN CINEMATIC BLEND
-   ════════════════════════════════════════════════════════════ */
-interface ParkLandingProps {
-  onEnter: () => void;
-}
+interface ParkLandingProps { onEnter: () => void; }
 
 const ParkLanding = memo(function ParkLanding({ onEnter }: ParkLandingProps) {
   const [isExiting, setIsExiting] = useState(false);
-
-  const handleEnter = () => {
-    setIsExiting(true);
-    const timer = setTimeout(() => onEnter(), 500);
-    return () => clearTimeout(timer);
-  };
-
+  const handleEnter = () => { setIsExiting(true); const timer = setTimeout(() => onEnter(), 500); return () => clearTimeout(timer); };
   const BRAND_BLUE = '#1656b8';
   const BRAND_GREEN = '#8cc63f';
   const CAR_IMAGE_SRC = '/hero-car.webp?v=999';
@@ -163,204 +110,72 @@ const ParkLanding = memo(function ParkLanding({ onEnter }: ParkLandingProps) {
         >
           <style>{`
             @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter+Tight:wght@400;500;600;700;800;900&display=swap');
-
-            .hero-block {
-              animation: rise-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
-            }
+            .hero-block { animation: rise-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
             .delay-1 { animation-delay: 0.1s; }
             .delay-2 { animation-delay: 0.2s; }
             .delay-3 { animation-delay: 0.3s; }
-
-            @keyframes rise-up {
-              from { opacity: 0; transform: translateY(24px); }
-              to { opacity: 1; transform: none; }
-            }
-
+            @keyframes rise-up { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
             .btn-brand-glow {
-              display: inline-flex;
-              align-items: center;
-              justify-content: space-between;
-              gap: 16px;
-              padding: 0.8em 1.2em 0.8em 2.2em;
-              border-radius: 999px;
+              display: inline-flex; align-items: center; justify-content: space-between; gap: 16px;
+              padding: 0.8em 1.2em 0.8em 2.2em; border-radius: 999px;
               background: linear-gradient(135deg, #1d68dc 0%, #1656b8 100%);
-              color: #fff !important;
-              font-weight: 900;
-              font-family: 'Cairo', sans-serif;
+              color: #fff !important; font-weight: 900; font-family: 'Cairo', sans-serif;
               box-shadow: 0 12px 35px rgba(22, 86, 184, 0.45);
               transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-              border: 1px solid rgba(255, 255, 255, 0.25);
-              cursor: pointer;
+              border: 1px solid rgba(255, 255, 255, 0.25); cursor: pointer;
             }
-            .btn-brand-glow:hover {
-              transform: translateY(-2px) scale(1.02);
-              box-shadow: 0 16px 45px rgba(22, 86, 184, 0.6);
-            }
-            .btn-brand-glow:active {
-              transform: scale(0.97);
-            }
-
+            .btn-brand-glow:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 16px 45px rgba(22, 86, 184, 0.6); }
+            .btn-brand-glow:active { transform: scale(0.97); }
             .btn-glass-skip {
-              display: inline-flex;
-              align-items: center;
-              gap: 6px;
-              padding: 0.5em 1.2em;
-              border-radius: 999px;
-              background: rgba(15, 23, 42, 0.6);
-              backdrop-filter: blur(16px);
-              -webkit-backdrop-filter: blur(16px);
-              color: #f8fafc !important;
-              font-family: 'Cairo', sans-serif;
-              font-weight: 800;
-              font-size: 13px;
-              box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
-              border: 1px solid rgba(255, 255, 255, 0.15);
-              transition: all 0.2s ease;
-              cursor: pointer;
+              display: inline-flex; align-items: center; gap: 6px; padding: 0.5em 1.2em;
+              border-radius: 999px; background: rgba(15, 23, 42, 0.6);
+              backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+              color: #f8fafc !important; font-family: 'Cairo', sans-serif; font-weight: 800; font-size: 13px;
+              box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.15);
+              transition: all 0.2s ease; cursor: pointer;
             }
-            .btn-glass-skip:hover {
-              background: rgba(255, 255, 255, 0.2);
-              color: #ffffff !important;
-            }
+            .btn-glass-skip:hover { background: rgba(255, 255, 255, 0.2); color: #ffffff !important; }
           `}</style>
-
-          {/* 🚗 1. خلفية الصورة المدمجة بكامل الشاشة */}
           <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-            <img
-              src={CAR_IMAGE_SRC}
-              alt="Park'n 24 Car"
-              loading="eager"
-              fetchPriority="high"
-              className="w-full h-full object-cover object-center"
-              style={{
-                filter: 'brightness(0.95) contrast(1.05)',
-              }}
-            />
-
-            {/* 🎨 2. تدرجات الدمج السينمائي الذكي */}
-            <div
-              className="absolute inset-0"
-              style={{
-                background: `
-                  linear-gradient(180deg, 
-                    rgba(10, 18, 36, 0.88) 0%, 
-                    rgba(10, 18, 36, 0.45) 40%, 
-                    rgba(10, 18, 36, 0.75) 75%, 
-                    rgba(10, 18, 36, 0.96) 100%
-                  )
-                `,
-              }}
-            />
+            <img src={CAR_IMAGE_SRC} alt="Park'n 24 Car" loading="eager" fetchPriority="high" className="w-full h-full object-cover object-center" style={{ filter: 'brightness(0.95) contrast(1.05)' }} />
+            <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(10, 18, 36, 0.88) 0%, rgba(10, 18, 36, 0.45) 40%, rgba(10, 18, 36, 0.75) 75%, rgba(10, 18, 36, 0.96) 100%)' }} />
           </div>
-
-          {/* 🛡️ 3. شريط الهيدر العلوي */}
-          <motion.nav
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: 'easeOut' }}
-            className="w-full flex items-center justify-between px-6 py-6 z-20 relative"
-            style={{ direction: 'ltr' }}
-          >
-            {/* اللوجو عربي وإنجليزي */}
+          <motion.nav initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: 'easeOut' }} className="w-full flex items-center justify-between px-6 py-6 z-20 relative" style={{ direction: 'ltr' }}>
             <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.15' }}>
-              <span style={{ fontFamily: "'Cairo', sans-serif", fontSize: '16px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.01em' }}>
-                بركن <span style={{ color: BRAND_GREEN }}>24</span>
-              </span>
-              <span style={{ fontFamily: "'Inter Tight', sans-serif", fontSize: '18px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.02em' }}>
-                Park'n <span style={{ color: BRAND_GREEN }}>24</span>
-              </span>
+              <span style={{ fontFamily: "'Cairo', sans-serif", fontSize: '16px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.01em' }}>بركن <span style={{ color: BRAND_GREEN }}>24</span></span>
+              <span style={{ fontFamily: "'Inter Tight', sans-serif", fontSize: '18px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.02em' }}>Park'n <span style={{ color: BRAND_GREEN }}>24</span></span>
             </div>
-
-            <button onClick={handleEnter} className="btn-glass-skip" style={{ direction: 'rtl' }}>
-              تخطي ✕
-            </button>
+            <button onClick={handleEnter} className="btn-glass-skip" style={{ direction: 'rtl' }}>تخطي ✕</button>
           </motion.nav>
-
-          {/* 📝 4. المحتوى التفاعلي المدمج في الأسفل والوسط */}
-          <div
-            className="px-6 pb-10 z-20 relative flex flex-col justify-end max-w-lg mx-auto w-full"
-            style={{ direction: 'rtl' }}
-          >
-            {/* العنوان الرئيسي */}
-            <h1
-              className="hero-block delay-1"
-              style={{
-                fontFamily: "'Cairo', sans-serif",
-                fontSize: 'clamp(2.1rem, 7vw, 3.4rem)',
-                fontWeight: 900,
-                lineHeight: 1.15,
-                color: '#ffffff',
-                textShadow: '0 4px 20px rgba(0,0,0,0.5)',
-              }}
-            >
-              انسى لفة كل يوم..<br />
-              <span style={{ color: '#60a5fa' }}>ركنتك مضمونة</span><br />
-              <span style={{ color: BRAND_GREEN }}>قبل ما توصل!</span>
+          <div className="px-6 pb-10 z-20 relative flex flex-col justify-end max-w-lg mx-auto w-full" style={{ direction: 'rtl' }}>
+            <h1 className="hero-block delay-1" style={{ fontFamily: "'Cairo', sans-serif", fontSize: 'clamp(2.1rem, 7vw, 3.4rem)', fontWeight: 900, lineHeight: 1.15, color: '#ffffff', textShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
+              انسى لفة كل يوم..<br /><span style={{ color: '#60a5fa' }}>ركنتك مضمونة</span><br /><span style={{ color: BRAND_GREEN }}>قبل ما توصل!</span>
             </h1>
-
-            {/* الوصف التوضيحي */}
-            <p
-              className="hero-block delay-2"
-              style={{
-                marginTop: '14px',
-                fontFamily: "'Cairo', sans-serif",
-                fontSize: '15px',
-                lineHeight: 1.6,
-                color: '#cbd5e1',
-                fontWeight: 600,
-                textShadow: '0 2px 10px rgba(0,0,0,0.4)',
-                maxWidth: '380px',
-              }}
-            >
+            <p className="hero-block delay-2" style={{ marginTop: '14px', fontFamily: "'Cairo', sans-serif", fontSize: '15px', lineHeight: 1.6, color: '#cbd5e1', fontWeight: 600, textShadow: '0 2px 10px rgba(0,0,0,0.4)', maxWidth: '380px' }}>
               مع Park'n 24، حدد وجهتك، اضمن مكانك في أقرب جراج، ووفر وقتك وبنزينك بضغطة زر واحدة.
             </p>
-
-            {/* زر الحجز السريع */}
             <div className="hero-block delay-3" style={{ marginTop: '26px' }}>
               <button onClick={handleEnter} className="btn-brand-glow w-full sm:w-auto" style={{ fontSize: '16px' }}>
                 <span>احجز ركنتك الآن 🚀</span>
-                <span
-                  style={{
-                    display: 'grid',
-                    placeItems: 'center',
-                    width: '2.4em',
-                    height: '2.4em',
-                    borderRadius: '999px',
-                    background: 'rgba(255, 255, 255, 0.2)',
-                    backdropFilter: 'blur(8px)',
-                    color: '#fff',
-                  }}
-                >
-                  <svg
-                    viewBox="0 0 20 20"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    style={{ width: '1.2em', height: '1.2em', transform: 'scaleX(-1)' }}
-                  >
-                    <path d="M4 10h12M11 5l5 5-5 5" />
-                  </svg>
+                <span style={{ display: 'grid', placeItems: 'center', width: '2.4em', height: '2.4em', borderRadius: '999px', background: 'rgba(255, 255, 255, 0.2)', backdropFilter: 'blur(8px)', color: '#fff' }}>
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '1.2em', height: '1.2em', transform: 'scaleX(-1)' }}><path d="M4 10h12M11 5l5 5-5 5" /></svg>
                 </span>
               </button>
             </div>
-
           </div>
-
         </motion.div>
       )}
     </AnimatePresence>
   );
 });
 
+// ✅ شيلنا 'summary' من القائمة
 const VALID_SCREENS = [
   'splash',
   'list',
   'waiting',
   'navigation',
   'session',
-  'summary',
   'lastSession',
   'chat',
 ] as const;
@@ -407,13 +222,11 @@ export default function App() {
     setShowLanding(false);
   };
 
-
   useEffect(() => {
     if (window.location.pathname === '/admin' || window.location.hash === '#admin') {
       setAdminAccess(true);
       safeLocalStorage.setItem('adminAccess', 'true');
     }
-
     if (safeLocalStorage.getItem('adminAccess') === 'true') {
       setAdminAccess(true);
     }
@@ -458,6 +271,7 @@ export default function App() {
         savedScreen === 'navigation' ||
         savedScreen === 'waiting' ||
         savedScreen === 'offer' ||
+        savedScreen === 'summary' ||
         (savedScreen && !VALID_SCREENS.includes(savedScreen as any))
       ) {
         safeLocalStorage.removeItem('appScreen');
@@ -494,7 +308,6 @@ export default function App() {
 
       fetchAll().catch((e) => console.error('Background fetch error:', e));
 
-      // 🛡️ حماية الاتصال اللحظي الفوري من التكرار والتحميل الزائد
       if (!isRealtimeInitialized) {
         setupRealtime();
         isRealtimeInitialized = true;
@@ -511,7 +324,7 @@ export default function App() {
   }, [view]);
 
   // ════════════════════════════════════════════════════════════════
-  // 🎯 useEffect الأول: التحقق الأولي بعد تحميل البيانات (مرة واحدة)
+  // 🎯 useEffect الأول: التحقق الأولي بعد تحميل البيانات
   // ════════════════════════════════════════════════════════════════
   useEffect(() => {
     if (!dataLoaded) return;
@@ -543,7 +356,6 @@ export default function App() {
       noSessionCountRef.current = 0;
       sessionEndToastShown.current = false;
       setSelectedGarageId(myActiveSession.garageId);
-      // ✅ تحويل للعداد فقط من شاشات التنقل/الانتظار/السبلاش
       if (safeScreen === 'navigation' || safeScreen === 'waiting' || safeScreen === 'splash') {
         setScreen('session');
       }
@@ -555,7 +367,6 @@ export default function App() {
       if (
         safeScreen !== 'navigation' &&
         safeScreen !== 'session' &&
-        safeScreen !== 'summary' &&
         safeScreen !== 'list' &&
         safeScreen !== 'lastSession'
       ) {
@@ -564,8 +375,6 @@ export default function App() {
       return;
     }
 
-    // ✅ لا نعمل redirect للـ summary تلقائياً هنا
-    // المستخدم يروح للـ summary من SessionScreen بزر "إنهاء الجلسة"
     if (
       safeScreen === 'session' ||
       safeScreen === 'navigation' ||
@@ -615,7 +424,6 @@ export default function App() {
       if (myActiveSession.id !== prevActiveSessionRef.current) {
         prevActiveSessionRef.current = myActiveSession.id;
         setSelectedGarageId(myActiveSession.garageId);
-        // ✅ تحويل للعداد فقط من شاشات التنقل/الانتظار/السبلاش
         if (safeScreen === 'navigation' || safeScreen === 'waiting' || safeScreen === 'splash') {
           setScreen('session');
         }
@@ -657,7 +465,7 @@ export default function App() {
         prevActiveSessionRef.current = null;
         noSessionCountRef.current = 0;
 
-        // ✅ تحويل تلقائي للـ summary فقط من شاشات نشاط الجلسة
+        // ✅ تحويل تلقائي للرئيسية مباشرة (بدون ملخص)
         if (
           currentScreen === 'session' ||
           currentScreen === 'navigation' ||
@@ -677,15 +485,15 @@ export default function App() {
             const freshAcknowledged = freshState.acknowledgedSessionIds;
             const isNotAcknowledged = freshAcknowledged ? !freshAcknowledged.has(lastCompleted.id) : true;
             if (isNotAcknowledged) {
-              setSelectedGarageId(lastCompleted.garageId);
-              setScreen('summary');
-              return;
+              if (typeof freshState.acknowledgeSession === 'function') {
+                freshState.acknowledgeSession(lastCompleted.id);
+              }
             }
           }
 
           if (!sessionEndToastShown.current) {
             sessionEndToastShown.current = true;
-            toast.success('تم إنهاء الجلسة والعودة للرئيسية');
+            toast.success('تم إنهاء الجلسة والعودة للرئيسية ✅');
           }
           setSelectedGarageId(null);
           setScreen('list');
@@ -734,7 +542,6 @@ export default function App() {
     setSelectedGarageId,
   ]);
 
-  // 🧹 تنظيف فوري ومضمون لكافة مؤقتات النقل والتحول عند الـ Unmount أو إعادة رندرة المكون
   useEffect(() => {
     return () => {
       if (sessionTransitionTimer.current) {
@@ -857,8 +664,6 @@ export default function App() {
                       {safeScreen === 'chat' && <ChatScreen />}
                     </>
                   )}
-
-                  {safeScreen === 'summary' && <SummaryScreen />}
                 </motion.div>
               </AnimatePresence>
             )}
