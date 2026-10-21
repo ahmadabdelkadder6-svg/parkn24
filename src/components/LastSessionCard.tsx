@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 // 🌟 استيراد دوال البصمة والتوقيت الموحد من الـ store لضمان مطابقة اللوحات والأرقام بدقة 100%
 import { useStore, normalizePlate, normalizePhone, getServerNow, BOOKING_FEE } from '../store';
-import { calculateFullHours, calculateCost, formatTime } from '../utils/pricing';
+import { calculateFullHours, calculateCost } from '../utils/pricing';
 
 /* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
@@ -28,6 +28,14 @@ const BRAND = {
   slate: '#64748b',      // الرمادي الهادئ
   slateMuted: '#94a3b8', // الرمادي الباهت
   border: 'rgba(255, 255, 255, 0.08)', // حدود زجاجية رفيعة
+};
+// 🕐 تنسيق الثواني لصيغة (س:د)
+const formatTime = (seconds: number): string => {
+  if (!seconds || seconds < 0) return '0:00';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}`;
+  return `${m} د`;
 };
 
 const toMs = (value: any): number => {

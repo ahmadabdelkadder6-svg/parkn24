@@ -73,7 +73,10 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
   }, []);
 
   // 🎁 حساب البونص التفاعلي مباشرة من دالة الـ Store الموحدة
-  const currentBonus = useMemo(() => calculateBonus(amount), [amount]);
+  const currentBonus = useMemo(() => {
+  const tier = TOPUP_TIERS.find(t => t.amount === amount);
+  return tier ? tier.bonus : 0;
+}, [amount]);
   const totalReceived = useMemo(() => amount + currentBonus, [amount, currentBonus]);
 
   // 🅿️ حساب عدد الحجوزات التقديري بناءً على رسوم الحجز الموحدة
