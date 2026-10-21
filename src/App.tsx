@@ -510,6 +510,9 @@ export default function App() {
     }
   }, [view]);
 
+  // ════════════════════════════════════════════════════════════════
+  // 🎯 useEffect الأول: التحقق الأولي بعد تحميل البيانات (مرة واحدة)
+  // ════════════════════════════════════════════════════════════════
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser) return;
@@ -540,6 +543,7 @@ export default function App() {
       noSessionCountRef.current = 0;
       sessionEndToastShown.current = false;
       setSelectedGarageId(myActiveSession.garageId);
+      // ✅ تحويل للعداد فقط من شاشات التنقل/الانتظار/السبلاش
       if (safeScreen === 'navigation' || safeScreen === 'waiting' || safeScreen === 'splash') {
         setScreen('session');
       }
@@ -551,47 +555,30 @@ export default function App() {
       if (
         safeScreen !== 'navigation' &&
         safeScreen !== 'session' &&
-        safeScreen !== 'summary'
+        safeScreen !== 'summary' &&
+        safeScreen !== 'list' &&
+        safeScreen !== 'lastSession'
       ) {
         setScreen('navigation');
       }
       return;
     }
 
+    // ✅ لا نعمل redirect للـ summary تلقائياً هنا
+    // المستخدم يروح للـ summary من SessionScreen بزر "إنهاء الجلسة"
     if (
       safeScreen === 'session' ||
       safeScreen === 'navigation' ||
       safeScreen === 'waiting'
     ) {
-      const lastCompleted = sessions
-        .filter((s) => {
-          if (s.status !== 'completed') return false;
-          const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-          const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-          const samePhone = Boolean(userPhone && sPhone === userPhone);
-          return samePlate || samePhone;
-        })
-        .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
-
-      if (lastCompleted) {
-        const endTime = toMs(lastCompleted.endTime);
-        const timeSinceEnd = getServerNow() - endTime;
-
-        const freshAcknowledged = acknowledgedSessionIds;
-        const isNotAcknowledged = freshAcknowledged ? !freshAcknowledged.has(lastCompleted.id) : true;
-
-        if (endTime > 0 && timeSinceEnd < 60000 && isNotAcknowledged) {
-          setSelectedGarageId(lastCompleted.garageId);
-          setScreen('summary');
-          return;
-        }
-      }
-
       setSelectedGarageId(null);
       setScreen('list');
     }
   }, [dataLoaded]);
 
+  // ════════════════════════════════════════════════════════════════
+  // 🎯 useEffect الثاني: متابعة التغيرات اللحظية في الجلسات
+  // ════════════════════════════════════════════════════════════════
   useEffect(() => {
     if (!dataLoaded) return;
     if (!currentUser || view !== 'user') return;
@@ -628,6 +615,7 @@ export default function App() {
       if (myActiveSession.id !== prevActiveSessionRef.current) {
         prevActiveSessionRef.current = myActiveSession.id;
         setSelectedGarageId(myActiveSession.garageId);
+        // ✅ تحويل للعداد فقط من شاشات التنقل/الانتظار/السبلاش
         if (safeScreen === 'navigation' || safeScreen === 'waiting' || safeScreen === 'splash') {
           setScreen('session');
         }
@@ -669,6 +657,7 @@ export default function App() {
         prevActiveSessionRef.current = null;
         noSessionCountRef.current = 0;
 
+        // ✅ تحويل تلقائي للـ summary فقط من شاشات نشاط الجلسة
         if (
           currentScreen === 'session' ||
           currentScreen === 'navigation' ||
