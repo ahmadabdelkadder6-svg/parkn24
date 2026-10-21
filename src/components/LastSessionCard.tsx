@@ -2,40 +2,30 @@ import { useMemo, memo, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   Clock,
-  DollarSign,
   MapPin,
-  CreditCard,
   Calendar,
-  Timer,
   Receipt,
   Zap,
+  LogIn,
+  LogOut,
 } from 'lucide-react';
-// 🌟 استيراد دوال البصمة والتوقيت الموحد من الـ store لضمان مطابقة اللوحات والأرقام بدقة 100%
+// 🌟 استيراد دوال البصمة والتوقيت الموحد من الـ store
 import { useStore, normalizePlate, normalizePhone, getServerNow, BOOKING_FEE } from '../store';
-import { calculateFullHours, calculateCost } from '../utils/pricing';
 
 /* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
-  blue: '#1656b8',       // الأزرق الرسمي
-  blueDark: '#0f3d85',   // الكحلي الفخم
-  blueLight: '#e8f0fe',  // الأزرق الفاتح جداً
-  blueSoft: 'rgba(22, 86, 184, 0.12)', // كحلي زجاجي ناعم
-  green: '#8cc63f',      // الأخضر الرسمي
-  greenDark: '#6ea62a',  // أخضر داكن للخطوط
-  greenLight: 'rgba(140, 198, 63, 0.12)', // خلفية خضراء ناعمة
-  navy: '#0a1628',       // الكحلي الليلي الغامق
-  navyLight: '#111e36',  // كحلي أفتح للبطاقات
-  slate: '#64748b',      // الرمادي الهادئ
-  slateMuted: '#94a3b8', // الرمادي الباهت
-  border: 'rgba(255, 255, 255, 0.08)', // حدود زجاجية رفيعة
-};
-// 🕐 تنسيق الثواني لصيغة (س:د)
-const formatTime = (seconds: number): string => {
-  if (!seconds || seconds < 0) return '0:00';
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}`;
-  return `${m} د`;
+  blue: '#1656b8',
+  blueDark: '#0f3d85',
+  blueLight: '#e8f0fe',
+  blueSoft: 'rgba(22, 86, 184, 0.12)',
+  green: '#8cc63f',
+  greenDark: '#6ea62a',
+  greenLight: 'rgba(140, 198, 63, 0.12)',
+  navy: '#0a1628',
+  navyLight: '#111e36',
+  slate: '#64748b',
+  slateMuted: '#94a3b8',
+  border: 'rgba(255, 255, 255, 0.08)',
 };
 
 const toMs = (value: any): number => {
@@ -81,16 +71,15 @@ const LastSessionCard = memo(function LastSessionCard() {
   const endTime = toMs(lastSession?.endTime) || (lastSession ? getServerNow() : 0);
 
   const elapsedSeconds = Math.max(0, Math.floor((endTime - startTime) / 1000));
-  const rate = Number(lastSession?.agreedPrice ?? garage?.basePrice ?? 0);
   const totalMinutes = Math.floor(elapsedSeconds / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
 
-  const hours = calculateFullHours(elapsedSeconds);
-  const rawCost = calculateCost(elapsedSeconds, rate);
-
-  const cost =
-    lastSession?.totalPrice != null
-      ? Number(lastSession.totalPrice)
-      : rawCost;
+  const formatDuration = (): string => {
+    if (hours > 0 && minutes > 0) return `${hours} ساعة و ${minutes} دقيقة`;
+    if (hours > 0) return `${hours} ساعة`;
+    return `${minutes} دقيقة`;
+  };
 
   const startDate = useMemo(() => new Date(startTime > 0 ? startTime : getServerNow()), [startTime]);
   const endDate = useMemo(() => new Date(endTime > 0 ? endTime : getServerNow()), [endTime]);
@@ -112,23 +101,6 @@ const LastSessionCard = memo(function LastSessionCard() {
       minute: '2-digit',
     });
   }, []);
-
-  const getPaymentInfo = useCallback((method?: string) => {
-    switch (method) {
-      case 'cash':
-        return { label: 'سداد نقدي كاش', icon: '💵', color: BRAND.green, bg: BRAND.greenLight };
-      case 'instapay':
-        return { label: 'دفع عبر إنستاباي', icon: '📱', color: '#c084fc', bg: 'rgba(192, 132, 252, 0.12)' };
-      case 'wallet':
-        return { label: 'خصم من المحفظة', icon: '👝', color: '#60a5fa', bg: BRAND.blueSoft };
-      default:
-        return { label: 'سداد نقدي كاش', icon: '💵', color: BRAND.green, bg: BRAND.greenLight };
-    }
-  }, []);
-
-  const paymentInfo = useMemo(() => {
-    return getPaymentInfo(lastSession?.paymentMethod);
-  }, [getPaymentInfo, lastSession?.paymentMethod]);
 
   const sourceInfo = useMemo(() => {
     return lastSession?.source === 'app'
@@ -172,7 +144,7 @@ const LastSessionCard = memo(function LastSessionCard() {
           style={{ background: `${BRAND.blue}18`, filter: 'blur(30px)' }}
         />
 
-        {/* الجراج ورقم السيارة والبصمة */}
+        {/* الجراج ورقم السيارة */}
         <div className="flex justify-between items-start mb-3.5 relative z-10">
           <div className="text-right">
             <div className="text-sm font-black text-white font-mono flex items-center gap-1">
@@ -207,7 +179,7 @@ const LastSessionCard = memo(function LastSessionCard() {
           </div>
         </div>
 
-        {/* المربع المالي الرئيسي للمبلغ */}
+        {/* 🕐 المدة الكلية — البطاقة الرئيسية */}
         <div
           className="rounded-2xl p-4 mb-3 text-center border relative z-10"
           style={{
@@ -215,64 +187,26 @@ const LastSessionCard = memo(function LastSessionCard() {
             borderColor: BRAND.border,
           }}
         >
-          <div className="text-[9px] font-bold mb-1 tracking-wider" style={{ color: BRAND.slateMuted }}>
-            إجمالي المبلغ المحصل
+          <div className="flex items-center justify-center gap-1.5 mb-1">
+            <Clock size={12} style={{ color: BRAND.blue }} />
+            <span className="text-[9px] font-bold tracking-wider" style={{ color: BRAND.slateMuted }}>
+              إجمالي مدة الركن
+            </span>
           </div>
 
-          <div className="flex items-baseline justify-center gap-1">
-            <span
-              className="font-mono text-4xl font-black leading-none"
-              style={{
-                color: '#ffffff',
-                letterSpacing: '-1px',
-              }}
-            >
-              {cost.toFixed(0)}
-            </span>
-            <span
-              className="text-sm font-black"
-              style={{ color: BRAND.slateMuted }}
-            >
-              ج.م
-            </span>
+          <div className="font-black text-3xl text-white leading-none">
+            {formatDuration()}
           </div>
         </div>
 
-        {/* شبكة تفاصيل الوقت والساعات والسعر */}
-        <div className="grid grid-cols-3 gap-2 mb-3 relative z-10">
-          <div className="border rounded-xl p-2 text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
-            <Clock size={12} style={{ color: BRAND.blue }} className="mx-auto mb-1" />
-            <div className="text-[11px] font-black text-white font-mono">
-              {formatTime(elapsedSeconds)}
-            </div>
-            <div className="text-[8px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>المدة الكلية</div>
-          </div>
-          <div className="border rounded-xl p-2 text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
-            <Timer size={12} style={{ color: '#c084fc' }} className="mx-auto mb-1" />
-            <div className="text-[11px] font-black font-mono" style={{ color: '#c084fc' }}>
-              {hours}
-            </div>
-            <div className="text-[8px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>
-              ساعة محسوبة
-            </div>
-          </div>
-          <div className="border rounded-xl p-2 text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
-            <DollarSign size={12} style={{ color: BRAND.green }} className="mx-auto mb-1" />
-            <div className="text-[11px] font-black font-mono" style={{ color: BRAND.green }}>
-              {rate}
-            </div>
-            <div className="text-[8px] font-bold mt-0.5" style={{ color: BRAND.slateMuted }}>ج.م/ساعة</div>
-          </div>
-        </div>
-
-        {/* وقت الدخول والخروج */}
-        <div className="border rounded-xl p-2.5 mb-3 space-y-1.5 relative z-10" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+        {/* 🟢🔴 وقت الدخول والخروج */}
+        <div className="border rounded-xl p-2.5 mb-3 space-y-2 relative z-10" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5" style={{ color: BRAND.slateMuted }}>
-              <Calendar size={11} />
+              <LogIn size={11} className="text-emerald-400" />
               <span className="text-[10px] font-bold">وقت الدخول:</span>
             </div>
-            <span className="text-[10.5px] font-black text-emerald-400 font-mono">
+            <span className="text-xs font-black text-emerald-400 font-mono">
               {formatTimeOnly(startDate)}
             </span>
           </div>
@@ -281,41 +215,27 @@ const LastSessionCard = memo(function LastSessionCard() {
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5" style={{ color: BRAND.slateMuted }}>
-              <Calendar size={11} />
+              <LogOut size={11} className="text-red-400" />
               <span className="text-[10px] font-bold">وقت الخروج:</span>
             </div>
-            <span className="text-[10.5px] font-black text-red-400 font-mono">
+            <span className="text-xs font-black text-red-400 font-mono">
               {formatTimeOnly(endDate)}
             </span>
           </div>
         </div>
 
-        {/* طريقة الدفع */}
-        <div
-          className="border rounded-xl p-2.5 flex items-center justify-between relative z-10"
-          style={{ background: paymentInfo.bg, borderColor: BRAND.border }}
-        >
-          <div className="flex items-center gap-1.5">
-            <CreditCard size={13} style={{ color: paymentInfo.color }} />
-            <span className="text-[10.5px] font-black" style={{ color: paymentInfo.color }}>
-              {paymentInfo.label}
-            </span>
-          </div>
-          <span className="text-base">{paymentInfo.icon}</span>
-        </div>
-
         {/* ✅ VIP booking fee — بسيط ومختصر */}
         {isVip && (
           <div
-            className="border rounded-xl p-2.5 mt-2 text-center relative z-10"
+            className="border rounded-xl p-2.5 text-center relative z-10"
             style={{
               background: BRAND.blueSoft,
               borderColor: `${BRAND.blue}30`,
             }}
           >
             <div className="flex items-center justify-center gap-1.5 mb-0.5">
-              <Zap size={12} style={{ color: BRAND.blue }} />
-              <span className="text-[10px] font-black" style={{ color: BRAND.blue }}>
+              <Zap size={12} style={{ color: '#60a5fa' }} />
+              <span className="text-[10px] font-black" style={{ color: '#60a5fa' }}>
                 تم خصم {BOOKING_FEE} ج.م رسوم الحجز
               </span>
             </div>
@@ -327,8 +247,9 @@ const LastSessionCard = memo(function LastSessionCard() {
 
         {/* التذييل التاريخي */}
         <div className="mt-2.5 text-center relative z-10">
-          <span className="text-[9px] font-mono font-bold" style={{ color: BRAND.slateMuted }}>
-            {formatDateTime(startDate)} • إجمالي المدة {totalMinutes} دقيقة
+          <span className="text-[9px] font-mono font-bold flex items-center justify-center gap-1" style={{ color: BRAND.slateMuted }}>
+            <Calendar size={9} />
+            {formatDateTime(startDate)}
           </span>
         </div>
       </div>
