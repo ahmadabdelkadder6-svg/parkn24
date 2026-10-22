@@ -1,9 +1,8 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { X, Copy, ExternalLink, ArrowRight, CheckCircle, Plus, Minus, Phone, Send, Sparkles } from 'lucide-react';
-// 🌟 استيراد مصفوفة الباقات الموحدة ودالة البونص ودالة تنظيف الهاتف ورسوم الحجز من الـ Store مباشرة
+// 🌟 استيراد مصفوفة الباقات ودالة تنظيف الهاتف ورسوم الحجز من الـ Store مباشرة
 import { useStore, TOPUP_TIERS, normalizePhone, BOOKING_FEE } from '../store';
-
 import toast from 'react-hot-toast';
 
 const WALLET_NUMBER = '01229858104';
@@ -17,6 +16,15 @@ const STEP_AMOUNT = 10;
 
 // 🚫 Flag لإخفاء خيار محافظ الهاتف مؤقتاً (غيّره لـ true لإظهاره مرة تانية)
 const SHOW_CASH_WALLET_OPTION = false;
+
+// 🎁 الباقات المحلية المضمونة لحساب البونص بشكل مستقل عن أي dependency خارجي
+// مرتبة تنازلياً عشان أول match هو الـ tier الصح
+const LOCAL_BONUS_TIERS = [
+  { amount: 250, bonus: 50 },
+  { amount: 100, bonus: 15 },
+  { amount: 50,  bonus: 5 },
+  { amount: 20,  bonus: 2 },
+];
 
 // 🎨 الألوان الرسمية الفاخرة الموحدة لتطبيق Park'n 24
 const BRAND = {
@@ -73,12 +81,12 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
-  // 🎁 حساب البونص التفاعلي مباشرة من دالة الـ Store الموحدة
+  // 🎁 حساب البونص من المصفوفة المحلية المضمونة — مش بيعتمد على أي حاجة خارجية
   const currentBonus = useMemo(() => {
-  const sorted = [...TOPUP_TIERS].sort((a, b) => b.amount - a.amount);
-  const match = sorted.find((t) => amount >= t.amount);
-  return match?.bonus ?? 0;
-}, [amount]);
+    const match = LOCAL_BONUS_TIERS.find((t) => amount >= t.amount);
+    return match ? match.bonus : 0;
+  }, [amount]);
+
   const totalReceived = useMemo(() => amount + currentBonus, [amount, currentBonus]);
 
   // 🅿️ حساب عدد الحجوزات التقديري بناءً على رسوم الحجز الموحدة
