@@ -2,7 +2,8 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { X, Copy, ExternalLink, ArrowRight, CheckCircle, Plus, Minus, Phone, Send, Sparkles } from 'lucide-react';
 // 🌟 استيراد مصفوفة الباقات الموحدة ودالة البونص ودالة تنظيف الهاتف ورسوم الحجز من الـ Store مباشرة
-import { useStore, TOPUP_TIERS, calculateBonus, normalizePhone, BOOKING_FEE } from '../store';
+import { useStore, TOPUP_TIERS, normalizePhone, BOOKING_FEE } from '../store';
+
 import toast from 'react-hot-toast';
 
 const WALLET_NUMBER = '01229858104';
@@ -73,7 +74,11 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
   }, []);
 
   // 🎁 حساب البونص التفاعلي مباشرة من دالة الـ Store الموحدة
-  const currentBonus = useMemo(() => calculateBonus(amount), [amount]);
+  const currentBonus = useMemo(() => {
+  const sorted = [...TOPUP_TIERS].sort((a, b) => b.amount - a.amount);
+  const match = sorted.find((t) => amount >= t.amount);
+  return match?.bonus ?? 0;
+}, [amount]);
   const totalReceived = useMemo(() => amount + currentBonus, [amount, currentBonus]);
 
   // 🅿️ حساب عدد الحجوزات التقديري بناءً على رسوم الحجز الموحدة
