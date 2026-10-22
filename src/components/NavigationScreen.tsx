@@ -9,7 +9,6 @@ import {
   XCircle,
   Copy,
   Gift,
-  CreditCard,
   Zap,
   Wallet,
   AlertCircle,
@@ -388,7 +387,6 @@ export default function NavigationScreen() {
       feeChargedRef.current = true;
       if (isMountedRef.current) {
         setFeeCharged(true);
-        // لو المستخدم وصل جراج تاني غير اللي كان رايحله، نحدث الاختيار
         if (targetGarageId !== selectedGarageId) {
           setSelectedGarageId(targetGarageId);
         }
@@ -408,10 +406,9 @@ export default function NavigationScreen() {
     if (!isMountedRef.current) return;
     const newLat = p.coords.latitude;
     const newLng = p.coords.longitude;
-    const speed = p.coords.speed ?? 0; // متر/ثانية (قد يكون null)
+    const speed = p.coords.speed ?? 0;
     const now = getServerNow();
 
-    // 🛡️ فلتر الرعشة
     if (lastStableCoordsRef.current === null) {
       lastStableCoordsRef.current = { lat: newLat, lng: newLng };
       setUserPos({ lat: newLat, lng: newLng });
@@ -431,8 +428,6 @@ export default function NavigationScreen() {
       }
     }
 
-    // 🎯 ─── الفحص الذكي للـ Geofence لأي جراج VIP ───
-    // لو الرسوم اتخصمت أو فيه جلسة نشطة أو overlay مفتوح، منفحشص خالص
     if (
       feeChargedRef.current ||
       myActiveSessionRef.current ||
@@ -441,7 +436,6 @@ export default function NavigationScreen() {
       return;
     }
 
-    // 🗺️ ─── تحديث كاش الجراجات القريبة لو المستخدم تحرك مسافة كبيرة ───
     const shouldRecomputeNearby =
       lastNearbyComputePosRef.current === null ||
       getDistanceMeters(
@@ -463,7 +457,6 @@ export default function NavigationScreen() {
       lastNearbyComputePosRef.current = { lat: newLat, lng: newLng };
     }
 
-    // ✅ فحص الجراجات القريبة فقط (من الكاش - سريع جداً)
     const isStopped = speed === null || speed < STOP_SPEED_THRESHOLD;
 
     const nearbyVip = nearbyVipGaragesRef.current.find((g: any) => {
@@ -472,9 +465,7 @@ export default function NavigationScreen() {
     });
 
     if (nearbyVip && isStopped) {
-      // لو مش بنعد لنفس الجراج، نبدأ عداد جديد
       if (autoChargeGarageIdRef.current !== nearbyVip.id) {
-        // إلغاء أي عداد قديم لجراج آخر
         if (autoChargeTimerRef.current) {
           clearTimeout(autoChargeTimerRef.current);
           autoChargeTimerRef.current = null;
@@ -483,12 +474,10 @@ export default function NavigationScreen() {
         autoChargeGarageIdRef.current = nearbyVip.id;
         geofenceTriggeredRef.current = true;
 
-        // عرض overlay فوري للمستخدم (اختياري يأكد يدوياً)
         if (!showArrivalOverlayRef.current && nearbyVip.id === selectedGarageId) {
           setShowArrivalOverlay(true);
         }
 
-        // ⏱️ عداد 5 دقائق قبل الخصم التلقائي
         autoChargeTimerRef.current = setTimeout(() => {
           autoChargeTimerRef.current = null;
           if (isMountedRef.current && !feeChargedRef.current && !myActiveSessionRef.current) {
@@ -497,7 +486,6 @@ export default function NavigationScreen() {
         }, AUTO_CHARGE_DELAY_MS);
       }
     } else {
-      // المستخدم اتحرك بره الـ geofence أو السرعة ارتفعت → إلغاء العداد
       if (autoChargeTimerRef.current) {
         clearTimeout(autoChargeTimerRef.current);
         autoChargeTimerRef.current = null;
@@ -799,7 +787,6 @@ export default function NavigationScreen() {
         await removeIncomingCar(myIncomingCar.id);
       }
 
-      // إعادة تعيين الحالة
       feeChargedRef.current = false;
       setFeeCharged(false);
       geofenceTriggeredRef.current = false;
@@ -853,7 +840,6 @@ export default function NavigationScreen() {
     isArrivingRef.current = true;
 
     try {
-      // 💰 VIP: خصم الرسوم أولاً (لو مش متخصومة تلقائياً)
       if (isVipGarage && !feeChargedRef.current) {
         const charged = await handleChargeVipFee();
         if (!charged) {
@@ -862,7 +848,6 @@ export default function NavigationScreen() {
         }
       }
 
-      // إلغاء عداد الخصم التلقائي (مفيش داعي ليه)
       if (autoChargeTimerRef.current) {
         clearTimeout(autoChargeTimerRef.current);
         autoChargeTimerRef.current = null;
@@ -1131,47 +1116,27 @@ export default function NavigationScreen() {
           </button>
         </div>
 
-        {/* معلومات السعر */}
-        <div className="border rounded-2xl p-3.5 shrink-0 space-y-2.5" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+        {/* ✅ معلومات المركبة الموجهة (تصميم مبسط واحترافي بدون أسعار أو أماكن) */}
+        <div className="border rounded-2xl p-3.5 shrink-0 flex flex-col gap-3" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1 text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>
-              <Car size={12} />
-              <span>
-                {myIncomingCar?.agreedPrice ?? garage.basePrice} ج.م/ساعة
+            <span className="text-[11px] font-bold" style={{ color: BRAND.slateMuted }}>
+              المركبة الحالية الموجهة
+            </span>
+            <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border shadow-inner" style={{ borderColor: BRAND.border }}>
+              <Car size={15} style={{ color: BRAND.blue }} />
+              <span className="text-sm font-black font-mono tracking-widest text-white">
+                {currentUser?.carPlate}
               </span>
             </div>
-            <span className="text-xs font-black font-mono" style={{ color: BRAND.blue }}>
-              🚗 {currentUser?.carPlate}
-            </span>
           </div>
 
-          <div className="flex items-center justify-between border-t pt-2" style={{ borderColor: BRAND.border }}>
-            <span
-              className={`text-xs font-black font-mono ${
-                garage.availableSpots > 0 ? 'text-emerald-400' : 'text-red-400'
-              }`}
-            >
-              {garage.availableSpots} / {garage.capacity}
-            </span>
-            <span className="text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>الأماكن المتاحة الآن</span>
-          </div>
-
-          <div className="flex items-center justify-between border-t pt-2" style={{ borderColor: BRAND.border }}>
-            <span className="text-xs font-black flex items-center gap-1" style={{ color: BRAND.green }}>
-              <CreditCard size={12} />
-              {garage.payment_mode === 'cash'
-                ? '💵 نقدي فقط'
-                : garage.payment_mode === 'wallet'
-                ? '👝 محفظة فقط'
-                : '💳 نقدي ومحفظة'}
-            </span>
-            <span className="text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>طريقة الدفع المقبولة</span>
-          </div>
-
+          {/* هدية أول ركنة إن وجدت */}
           {isEligibleForFree && !isVipGarage && (
-            <div className="border rounded-xl p-2 text-center flex items-center justify-center gap-1 text-[10px] font-black" style={{ background: BRAND.greenLight, borderColor: BRAND.green + '40', color: BRAND.green }}>
-              <Gift size={12} style={{ color: BRAND.green }} />
-              <span>أول 30 دقيقة مجاناً كهدية ترحيبية لك في هذا الحجز! 🎁</span>
+            <div className="border-t pt-3" style={{ borderColor: BRAND.border }}>
+              <div className="rounded-xl p-2.5 text-center flex items-center justify-center gap-1.5 text-[10px] font-black" style={{ background: BRAND.greenLight, color: BRAND.green }}>
+                <Gift size={14} style={{ color: BRAND.green }} />
+                <span>أول 30 دقيقة مجاناً كهدية ترحيبية لك في هذا الحجز! 🎁</span>
+              </div>
             </div>
           )}
         </div>

@@ -508,21 +508,22 @@ export default function GarageListScreen() {
       <div className="px-4 pt-10 pb-3 z-20 shadow-sm relative" style={{ background: BRAND.card, borderBottom: `1.5px solid ${BRAND.border}` }}>
         <div dir="rtl" className="flex justify-between items-center mb-3.5">
           <div className="text-right flex items-center gap-3">
-            {/* 🌟 اللوجو بدل كلمة بركن 24 */}
-            <img
-              src="/logo.png"
-              alt="Park'n 24"
-              className="h-11 w-auto object-contain"
-              onError={(e) => {
-                // Fallback لو اللوجو مش موجود
-                (e.target as HTMLImageElement).style.display = 'none';
-                const fallback = document.getElementById('logo-fallback');
-                if (fallback) fallback.style.display = 'flex';
-              }}
-            />
-            <div id="logo-fallback" style={{ display: 'none' }} className="flex items-center">
-              <span className="font-black text-xl leading-none" style={{ color: BRAND.blue }}>P<span style={{ color: BRAND.green }}>24</span></span>
-            </div>
+{/* 🌟 اللوجو الخاص بالتطبيق */}
+<img
+  src="/icons/logo.png"
+  alt="Park'n 24"
+  className="h-11 w-auto object-contain"
+  onError={(e) => {
+    (e.target as HTMLImageElement).style.display = 'none';
+    const fallback = document.getElementById('logo-fallback');
+    if (fallback) fallback.style.display = 'flex';
+  }}
+/>
+<div id="logo-fallback" style={{ display: 'none' }} className="flex items-center">
+  <span className="font-black text-xl leading-none" style={{ color: BRAND.blue }}>
+    P<span style={{ color: BRAND.green }}>24</span>
+  </span>
+</div>
             <div className="flex flex-col">
               <span className="text-sm font-black text-slate-900 leading-tight">أهلاً {currentUser?.name?.split(' ')[0] || 'بك'} 👋</span>
               <span className="text-[10px] font-bold text-slate-500 leading-none mt-0.5">سيب الركنة علينا! ☕🚗</span>
