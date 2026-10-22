@@ -1,7 +1,8 @@
+// src/components/TopUpWalletModal.tsx
+
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { X, Copy, ExternalLink, ArrowRight, CheckCircle, Plus, Minus, Phone, Send, Sparkles } from 'lucide-react';
-// 🌟 استيراد مصفوفة الباقات ودالة تنظيف الهاتف ورسوم الحجز من الـ Store مباشرة
 import { useStore, TOPUP_TIERS, normalizePhone, BOOKING_FEE } from '../store';
 import toast from 'react-hot-toast';
 
@@ -9,16 +10,12 @@ const WALLET_NUMBER = '01229858104';
 const INSTAPAY_USERNAME = 'ahmed.ali858104';
 const INSTAPAY_LINK = `https://ipn.eg/S/${INSTAPAY_USERNAME}/instapay/9fp24n`;
 
-// 🛡️ حدود آمنة للمبلغ لمنع أي إدخال خبيث أو خاطئ
 const MIN_AMOUNT = 20;
 const MAX_AMOUNT = 100000;
 const STEP_AMOUNT = 10;
 
-// 🚫 Flag لإخفاء خيار محافظ الهاتف مؤقتاً (غيّره لـ true لإظهاره مرة تانية)
 const SHOW_CASH_WALLET_OPTION = false;
 
-// 🎁 الباقات المحلية المضمونة لحساب البونص بشكل مستقل عن أي dependency خارجي
-// مرتبة تنازلياً عشان أول match هو الـ tier الصح
 const LOCAL_BONUS_TIERS = [
   { amount: 250, bonus: 50 },
   { amount: 100, bonus: 15 },
@@ -26,31 +23,28 @@ const LOCAL_BONUS_TIERS = [
   { amount: 20,  bonus: 2 },
 ];
 
-// 🎨 الألوان الرسمية الفاخرة الموحدة لتطبيق Park'n 24
 const BRAND = {
-  blue: '#1656b8',       // الأزرق الرسمي
-  blueDark: '#0f3d85',   // الكحلي الفخم
-  blueLight: '#e8f0fe',  // الأزرق الفاتح جداً
-  blueSoft: '#f0f5ff',   // خلفية ناعمة
-  green: '#8cc63f',      // الأخضر الرسمي
-  greenDark: '#6ea62a',  // أخضر داكن للخطوط
-  greenLight: '#f2fae6', // خلفية خضراء ناعمة
-  navy: '#0a1628',       // اللون الكحلي الليلي الغامق
-  slate: '#475569',      // الرمادي الهادئ
-  slateMuted: '#94a3b8', // الرمادي الباهت
-  border: '#e2e8f0',     // حدود رفيعة هادئة
+  blue: '#1656b8',
+  blueDark: '#0f3d85',
+  blueLight: '#e8f0fe',
+  blueSoft: '#f0f5ff',
+  green: '#8cc63f',
+  greenDark: '#6ea62a',
+  greenLight: '#f2fae6',
+  navy: '#0a1628',
+  slate: '#475569',
+  slateMuted: '#94a3b8',
+  border: '#e2e8f0',
   card: '#ffffff',
   bg: '#f8fafc',
 };
 
-// 🛡️ توليد كود مرجعي فريد ومستحيل التكرار
 function generateSecureReference(): string {
   const timestampPart = Date.now().toString(36).toUpperCase().slice(-4);
   const randomPart = Math.floor(1000 + Math.random() * 9000);
   return `TXN-${timestampPart}-${randomPart}`;
 }
 
-// 🛡️ دالة مساعدة آمنة لضبط المبلغ ضمن الحدود المسموح بها
 function clampAmount(value: number): number {
   if (!Number.isFinite(value) || Number.isNaN(value)) return MIN_AMOUNT;
   const intVal = Math.floor(value);
@@ -67,12 +61,10 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
   const [method, setMethod] = useState<'instapay' | 'cashwallet'>('instapay');
   const [loading, setLoading] = useState(false);
 
-  // 🛡️ تثبيت الكود طوال فترة فتح النافذة لمنع التغيير العشوائي
   const [transactionId] = useState<string>(() => generateSecureReference());
   const isSubmittingRef = useRef(false);
   const isMountedRef = useRef(true);
 
-  // 🧹 Cleanup لمنع تحديث state بعد unmount وتسرب الذاكرة
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -81,7 +73,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
-  // 🎁 حساب البونص من المصفوفة المحلية المضمونة — مش بيعتمد على أي حاجة خارجية
   const currentBonus = useMemo(() => {
     const match = LOCAL_BONUS_TIERS.find((t) => amount >= t.amount);
     return match ? match.bonus : 0;
@@ -89,13 +80,11 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
 
   const totalReceived = useMemo(() => amount + currentBonus, [amount, currentBonus]);
 
-  // 🅿️ حساب عدد الحجوزات التقديري بناءً على رسوم الحجز الموحدة
   const estimatedBookings = useMemo(
     () => (BOOKING_FEE > 0 ? Math.floor(totalReceived / BOOKING_FEE) : 0),
     [totalReceived]
   );
 
-  // 🛡️ منع إغلاق النافذة أثناء إرسال طلب حرج لحماية بيانات المستخدم
   const handleSafeClose = () => {
     if (loading || isSubmittingRef.current) {
       toast.error('يرجى الانتظار حتى اكتمال إرسال الطلب');
@@ -110,7 +99,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
         await navigator.clipboard.writeText(text);
         toast.success(`تم نسخ ${label}`);
       } else {
-        // 🛡️ Fallback آمن للمتصفحات القديمة أو السياقات غير الآمنة (non-HTTPS)
         const textArea = document.createElement('textarea');
         textArea.value = text;
         textArea.style.position = 'fixed';
@@ -128,7 +116,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
   };
 
   const handleSubmitTopUp = async () => {
-    // 🛡️ حماية أمنية صارمة من الضغط المزدوج والطلبات المكررة
     if (isSubmittingRef.current || loading) return;
 
     if (!currentUser) {
@@ -142,7 +129,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
       return;
     }
 
-    // 🛡️ تحقق صارم من صحة المبلغ قبل أي إرسال
     const safeAmount = clampAmount(amount);
     if (safeAmount < MIN_AMOUNT) {
       toast.error(`الحد الأدنى للشحن هو ${MIN_AMOUNT} ج.م`);
@@ -161,11 +147,13 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
 
       const userId = (currentUser as any).id || userPhone;
 
+      // ✅ تمرير قيم البونص الحسابية لتأكيد الاعتماد بأمان
       await addWalletTopUp({
         userId: userId,
         userName: currentUser.name || 'حريف',
         userPhone: userPhone,
-        amount: safeAmount, // 🛡️ استخدام القيمة الآمنة المحسوبة
+        amount: safeAmount,
+        bonus: currentBonus, // 🎁 تم إضافة البونص هنا بنجاح!
         transactionId: transactionId,
         carPlate: currentUser.carPlate,
         method,
@@ -173,7 +161,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
 
       toast.dismiss(loadingToast);
 
-      // 🧹 التأكد من أن المكون ما زال موجوداً قبل تحديث الـ state
       if (!isMountedRef.current) return;
 
       toast.success(
@@ -190,7 +177,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
         toast.error('فشل إرسال الطلب، يرجى المحاولة لاحقاً');
       }
     } finally {
-      // 🛡️ إعادة ضبط حالة الإرسال دائماً حتى يستطيع المستخدم إعادة المحاولة عند الفشل
       isSubmittingRef.current = false;
       if (isMountedRef.current) {
         setLoading(false);
@@ -219,13 +205,11 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
         style={{ boxShadow: '0 -8px 32px rgba(0,0,0,0.12)' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* مقبض السحب العلوي لشكل Bottom Sheet مألوف وراقي */}
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1.5 rounded-full bg-slate-200" />
         </div>
 
         <div className="p-5 text-right" style={{ direction: 'rtl' }}>
-          {/* ══════════ الخطوة 1: اختيار المبلغ + الشرائح ══════════ */}
           {step === 'amount' && (
             <>
               <div className="flex items-center justify-between mb-4">
@@ -243,7 +227,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 <div className="w-6" />
               </div>
 
-              {/* بطاقة الرصيد الحالي للعميل كحلي فاخر وموحد */}
               <div
                 className="text-center mb-5 rounded-2xl p-4 text-white"
                 style={{
@@ -253,11 +236,10 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
               >
                 <div className="text-[10px] font-bold opacity-80 mb-0.5">رصيدك الحالي بالمحفظة</div>
                 <div className="text-2xl font-black font-mono">
-                  {(currentUser?.walletBalance ?? (currentUser as any)?.wallet ?? 0).toFixed(2)} <span className="text-xs font-bold">ج.م</span>
+                  {(currentUser?.wallet ?? (currentUser as any)?.walletBalance ?? 0).toFixed(2)} <span className="text-xs font-bold">ج.م</span>
                 </div>
               </div>
 
-              {/* 🏆 الباقات التوفيرية النظيفة */}
               <div className="mb-4">
                 <div className="font-black text-xs mb-3 flex items-center justify-start gap-1" style={{ color: BRAND.slate }}>
                   <Sparkles size={14} style={{ color: '#f59e0b' }} />
@@ -303,13 +285,11 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
 
-              {/* 💡 ملاحظة سريعة عن سعر الحجز */}
               <div className="mb-3 flex items-center justify-center gap-1.5 text-[10px] font-bold px-3 py-2 rounded-lg" style={{ background: BRAND.blueSoft, color: BRAND.blue }}>
                 <span>💡</span>
                 <span>كل حجز VIP = {BOOKING_FEE} ج.م بس من محفظتك</span>
               </div>
 
-              {/* حقل إدخال مبلغ مخصص هادئ */}
               <div className="mb-4">
                 <div className="font-black text-xs mb-2" style={{ color: BRAND.slate }}>أو حدد مبلغاً يدوياً:</div>
                 <div className="flex items-center justify-center gap-4 p-2.5 rounded-xl border" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
@@ -332,7 +312,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                       step={STEP_AMOUNT}
                       value={amount}
                       onChange={(e) => {
-                        // 🛡️ تحقق آمن من المدخلات مع التعامل مع NaN
                         const parsed = parseInt(e.target.value, 10);
                         setAmount(clampAmount(parsed));
                       }}
@@ -354,7 +333,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
 
-              {/* 🎁 بوكس تأكيد القيمة المضافة هادئ جداً */}
               <div className="mb-4 border-2 rounded-xl p-3 text-center" style={{ background: BRAND.greenLight, borderColor: BRAND.green }}>
                 <div className="flex items-center justify-between">
                   <div className="text-right">
@@ -373,7 +351,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
 
-              {/* زر التقدم للخطوة التالية */}
               <button
                 type="button"
                 onClick={() => setStep('method')}
@@ -390,7 +367,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
             </>
           )}
 
-          {/* ══════════ الخطوة 2: اختيار طريقة التحويل ══════════ */}
           {step === 'method' && (
             <>
               <div className="flex items-center justify-between mb-4">
@@ -431,7 +407,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                   <ArrowRight size={16} className="text-slate-300 rotate-180" />
                 </button>
 
-                {/* 🚫 خيار محافظ الهاتف مخفي مؤقتاً — المنطق والربط موجودين */}
                 {SHOW_CASH_WALLET_OPTION && (
                   <button
                     type="button"
@@ -451,7 +426,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
             </>
           )}
 
-          {/* ══════════ الخطوة 3: بيانات التحويل ══════════ */}
           {step === 'transfer' && (
             <>
               <div className="flex items-center justify-between mb-4">
@@ -470,7 +444,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 <div className="w-6" />
               </div>
 
-              {/* إيصال التحويل الداكن الأنيق */}
               <div
                 className="text-center mb-4 rounded-2xl p-4 text-white relative overflow-hidden"
                 style={{ background: BRAND.navy }}
@@ -505,7 +478,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 )}
               </div>
 
-              {/* أزرار التحويل المباشر الذكية */}
               <div className="border rounded-xl p-3.5 mb-5" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
                 {method === 'instapay' ? (
                   <>
@@ -556,7 +528,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 )}
               </div>
 
-              {/* زر إرسال الطلب النهائي */}
               <button
                 type="button"
                 onClick={handleSubmitTopUp}
@@ -574,7 +545,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
             </>
           )}
 
-          {/* ══════════ الخطوة 4: شاشة النجاح والنهاية ══════════ */}
           {step === 'done' && (
             <div className="text-center py-4">
               <CheckCircle size={64} style={{ color: BRAND.green }} className="mx-auto mb-3" aria-hidden="true" />

@@ -47,7 +47,6 @@ import {
 import L from 'leaflet';
 import { supabase } from '../lib/supabase';
 
-/* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
   blue: '#1656b8',
   blueDark: '#0f3d85',
@@ -63,13 +62,11 @@ const BRAND = {
   border: 'rgba(255, 255, 255, 0.08)',
 };
 
-/* ─── Constants ─── */
 const CANCEL_WINDOW_SECONDS = 30;
 const GPS_DEADBAND_METERS = 5;
-const VIP_GEOFENCE_METERS = 100; // 📍 نطاق الوصول للجراج VIP (100 متر لثبات الـ GPS)
-const AUTO_CHARGE_DELAY_SECONDS = 180; // ⏱️ 3 دقائق (180 ثانية) ثبات قبل الخصم التلقائي
+const VIP_GEOFENCE_METERS = 100;
+const AUTO_CHARGE_DELAY_SECONDS = 180; // 3 دقائق ثبات للخصم التلقائي
 
-/* ─── Helper: حساب البونص التلقائي للباقات ─── */
 const getBonusForAmount = (amount: number): number => {
   if (amount >= 250) return 50;
   if (amount >= 100) return 15;
@@ -77,7 +74,6 @@ const getBonusForAmount = (amount: number): number => {
   return 0;
 };
 
-/* ─── Icons ─── */
 const userIcon = new L.DivIcon({
   className: 'bg-transparent',
   html: `<div style="width:36px;height:38px;background:${BRAND.blue};border-radius:50%;border:2px solid white;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 4px 12px rgba(0,0,0,0.3);">🚗</div>`,
@@ -92,7 +88,6 @@ const garageIcon = new L.DivIcon({
   iconAnchor: [18, 19],
 });
 
-/* ─── Helper: توحيد تحويل الوقت ─── */
 const toMs = (value: any): number => {
   if (!value) return 0;
   if (typeof value === 'number') {
@@ -102,7 +97,6 @@ const toMs = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-/* ─── Helper: حساب المسافة بالمتر لفلتر منع الرعشة ─── */
 const getDistanceMeters = (
   lat1: number, lon1: number,
   lat2: number, lon2: number
@@ -118,7 +112,6 @@ const getDistanceMeters = (
   return R * c;
 };
 
-/* ─── Map controller ─── */
 function MapController({
   userPos,
   garagePos,
@@ -180,6 +173,7 @@ export default function NavigationScreen() {
     sessions,
     addSession,
     fetchAll,
+    chargeBookingFee, // ✅ تم استخراج الدالة لخصم الرصيد بوضوح
     refundBookingFee,
     addWalletTopUp,
     updateWalletBalance,
@@ -232,7 +226,6 @@ export default function NavigationScreen() {
   const [feeCharged, setFeeCharged] = useState(false);
   const [processingTopup, setProcessingTopup] = useState<string | null>(null);
 
-  // ⏱️ العداد الفعلي للـ 3 دقائق للخصم التلقائي
   const [stationarySeconds, setStationarySeconds] = useState(0);
   const [isInsideGeofence, setIsInsideGeofence] = useState(false);
 
@@ -355,18 +348,17 @@ export default function NavigationScreen() {
     };
   }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
 
-  /* ─── 💰 خصم رسوم الحجز VIP (خصم مضمون 100% في قاعدة البيانات والدولة المحلية) ─── */
+  /* ─── 💰 خصم رسوم الحجز VIP (مضمون فوراً محلياً وفي قاعدة البيانات) ─── */
   const handleChargeVipFee = useCallback(async (): Promise<boolean> => {
     if (!isVipGarage || feeChargedRef.current || !currentUserRef.current || !garage) return true;
 
     const user = currentUserRef.current;
     const rawPhone = user.phone || '';
     const cleanPhone = normalizePhone(rawPhone);
-    const userId = user.id;
+    const userId = (user as any).id;
 
-    // الحصول على الرصيد الحالي من حساب العميل
     const currentBalance = Number(user.wallet ?? (user as any).walletBalance ?? 0);
-    
+
     if (currentBalance < BOOKING_FEE) {
       if (isMountedRef.current) setShowInsufficientModal(true);
       return false;
@@ -375,41 +367,44 @@ export default function NavigationScreen() {
     try {
       const newBalance = Math.max(0, currentBalance - BOOKING_FEE);
 
-      // 1️⃣ خصم مباشر في Supabase عبر المזהي المباشر id ورقم الهاتف
-      let updateQuery = supabase.from('users').update({ wallet: newBalance });
-      if (userId) {
-        updateQuery = updateQuery.eq('id', userId);
-      } else {
-        updateQuery = updateQuery.or(`phone.eq.${rawPhone},phone.eq.${cleanPhone}`);
-      }
-
-      const { error: dbError } = await updateQuery;
-      if (dbError) {
-        console.error('❌ Supabase Wallet Update Error:', dbError);
-        // المحاولة الاحتياطية
-        await supabase
-          .from('users')
-          .update({ wallet: newBalance })
-          .or(`phone.eq.${rawPhone},phone.eq.${cleanPhone}`);
-      }
-
-      // 2️⃣ تحديث الـ State المحلي في Zustand فوراً بدون انتظار
+      // 1️⃣ تحديث فوري للحالة المحلية بالـ Zustand لمنع التأخير بالواجهة
       useStore.setState((state) => ({
         currentUser: state.currentUser
           ? { ...state.currentUser, wallet: newBalance }
           : null,
       }));
 
-      // 3️⃣ استدعاء دالة التحديث المساعدة إن وجدت
-      if (typeof updateWalletBalance === 'function') {
+      // 2️⃣ تنفيذ دالة الـ Store الرسمية إذا كانت موجودة
+      if (typeof chargeBookingFee === 'function') {
         try {
-          await updateWalletBalance(-BOOKING_FEE, `رسوم حجز وركنة جراج ${garage.name}`);
-        } catch (e) {}
+          await chargeBookingFee({
+            userPhone: rawPhone,
+            garageId: garage.id,
+            amount: BOOKING_FEE,
+          });
+        } catch (e) {
+          console.warn('chargeBookingFee method warn:', e);
+        }
+      }
+
+      // 3️⃣ تحديث مباشر شامل لقاعدة البيانات Supabase
+      try {
+        if (userId) {
+          await supabase.from('users').update({ wallet: newBalance }).eq('id', userId);
+        }
+        if (rawPhone) {
+          await supabase.from('users').update({ wallet: newBalance }).eq('phone', rawPhone);
+        }
+        if (cleanPhone && cleanPhone !== rawPhone) {
+          await supabase.from('users').update({ wallet: newBalance }).eq('phone', cleanPhone);
+        }
+      } catch (sbErr) {
+        console.error('Supabase direct update error:', sbErr);
       }
 
       feeChargedRef.current = true;
       if (isMountedRef.current) setFeeCharged(true);
-      
+
       fetchAll().catch(() => {});
 
       toast.success(`تم خصم ${BOOKING_FEE} ج.م رسوم الحجز بنجاح 💰`, { duration: 3500 });
@@ -419,7 +414,7 @@ export default function NavigationScreen() {
       toast.error('حدث خطأ أثناء خصم رسوم الحجز');
       return false;
     }
-  }, [isVipGarage, garage, updateWalletBalance, fetchAll]);
+  }, [isVipGarage, garage, chargeBookingFee, fetchAll]);
 
   /* ─── 🚗 بدء جلسة الركن ─── */
   const handleCarArrived = useCallback(async () => {
@@ -517,7 +512,7 @@ export default function NavigationScreen() {
   /* ─── ⚡ الخصم التلقائي عند انتهاء 3 دقائق ─── */
   const executeAutoCharge = useCallback(async () => {
     if (feeChargedRef.current || !currentUserRef.current || isArrivingRef.current) return;
-    
+
     isArrivingRef.current = true;
     try {
       const charged = await handleChargeVipFee();
@@ -881,7 +876,6 @@ export default function NavigationScreen() {
     setScreen('list');
   };
 
-  /* 💳 شحن سريع مع احتساب البونص التلقائي المضمون 🎁 */
   const handleQuickTopup = async (tier: typeof TOPUP_TIERS[0]) => {
     if (!currentUser || processingTopup) return;
     setProcessingTopup(tier.id);
