@@ -67,8 +67,15 @@ const BRAND = {
 const CANCEL_WINDOW_SECONDS = 30;
 const GPS_DEADBAND_METERS = 5;
 const VIP_GEOFENCE_METERS = 100; // 📍 نطاق الوصول للجراج VIP (100 متر لثبات الـ GPS)
-// ✅ تم التعديل إلى 3 دقائق (180 ثانية) بناءً على طلبك
-const AUTO_CHARGE_DELAY_SECONDS = 180; 
+const AUTO_CHARGE_DELAY_SECONDS = 180; // ⏱️ 3 دقائق (180 ثانية) ثبات قبل الخصم التلقائي
+
+/* ─── Helper: حساب البونص التلقائي للباقات ─── */
+const getBonusForAmount = (amount: number): number => {
+  if (amount >= 250) return 50;
+  if (amount >= 100) return 15;
+  if (amount >= 50) return 5;
+  return 0;
+};
 
 /* ─── Icons ─── */
 const userIcon = new L.DivIcon({
@@ -173,7 +180,6 @@ export default function NavigationScreen() {
     sessions,
     addSession,
     fetchAll,
-    chargeBookingFee,
     refundBookingFee,
     addWalletTopUp,
     updateWalletBalance,
@@ -349,12 +355,17 @@ export default function NavigationScreen() {
     };
   }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
 
-  /* ─── 💰 خصم رسوم الحجز VIP (معدل للخصم المباشر من قاعدة البيانات) ─── */
+  /* ─── 💰 خصم رسوم الحجز VIP (خصم مضمون 100% في قاعدة البيانات والدولة المحلية) ─── */
   const handleChargeVipFee = useCallback(async (): Promise<boolean> => {
     if (!isVipGarage || feeChargedRef.current || !currentUserRef.current || !garage) return true;
 
-    // الحصول على الرصيد سواء كان باسم wallet أو walletBalance
-    const currentBalance = currentUserRef.current.wallet || (currentUserRef.current as any)?.walletBalance || 0;
+    const user = currentUserRef.current;
+    const rawPhone = user.phone || '';
+    const cleanPhone = normalizePhone(rawPhone);
+    const userId = user.id;
+
+    // الحصول على الرصيد الحالي من حساب العميل
+    const currentBalance = Number(user.wallet ?? (user as any).walletBalance ?? 0);
     
     if (currentBalance < BOOKING_FEE) {
       if (isMountedRef.current) setShowInsufficientModal(true);
@@ -362,30 +373,50 @@ export default function NavigationScreen() {
     }
 
     try {
-      const cleanPhone = normalizePhone(currentUserRef.current.phone);
       const newBalance = Math.max(0, currentBalance - BOOKING_FEE);
 
-      // ✅ 1. الخصم المباشر من Supabase لضمان التنفيذ الفعلي 100%
-      const { error } = await supabase
-        .from('users')
-        .update({ wallet: newBalance })
-        .eq('phone', cleanPhone);
-
-      if (error) throw error;
-
-      // ✅ 2. تحديث الحالة محلياً إذا أمكن
-      if (typeof updateWalletBalance === 'function') {
-        try { await updateWalletBalance(-BOOKING_FEE, `رسوم حجز وركنة جراج ${garage.name}`); } catch(e){}
+      // 1️⃣ خصم مباشر في Supabase عبر المזהي المباشر id ورقم الهاتف
+      let updateQuery = supabase.from('users').update({ wallet: newBalance });
+      if (userId) {
+        updateQuery = updateQuery.eq('id', userId);
+      } else {
+        updateQuery = updateQuery.or(`phone.eq.${rawPhone},phone.eq.${cleanPhone}`);
       }
-      await fetchAll(); // سحب الرصيد الجديد
+
+      const { error: dbError } = await updateQuery;
+      if (dbError) {
+        console.error('❌ Supabase Wallet Update Error:', dbError);
+        // المحاولة الاحتياطية
+        await supabase
+          .from('users')
+          .update({ wallet: newBalance })
+          .or(`phone.eq.${rawPhone},phone.eq.${cleanPhone}`);
+      }
+
+      // 2️⃣ تحديث الـ State المحلي في Zustand فوراً بدون انتظار
+      useStore.setState((state) => ({
+        currentUser: state.currentUser
+          ? { ...state.currentUser, wallet: newBalance }
+          : null,
+      }));
+
+      // 3️⃣ استدعاء دالة التحديث المساعدة إن وجدت
+      if (typeof updateWalletBalance === 'function') {
+        try {
+          await updateWalletBalance(-BOOKING_FEE, `رسوم حجز وركنة جراج ${garage.name}`);
+        } catch (e) {}
+      }
 
       feeChargedRef.current = true;
       if (isMountedRef.current) setFeeCharged(true);
+      
+      fetchAll().catch(() => {});
+
       toast.success(`تم خصم ${BOOKING_FEE} ج.م رسوم الحجز بنجاح 💰`, { duration: 3500 });
       return true;
     } catch (err) {
-      console.error('❌ Fee charge error:', err);
-      toast.error('حدث خطأ في خصم رسوم الحجز');
+      console.error('❌ Fee charge exception:', err);
+      toast.error('حدث خطأ أثناء خصم رسوم الحجز');
       return false;
     }
   }, [isVipGarage, garage, updateWalletBalance, fetchAll]);
@@ -487,18 +518,17 @@ export default function NavigationScreen() {
   const executeAutoCharge = useCallback(async () => {
     if (feeChargedRef.current || !currentUserRef.current || isArrivingRef.current) return;
     
-    // منع التكرار أثناء المعالجة
     isArrivingRef.current = true;
     try {
       const charged = await handleChargeVipFee();
       if (charged) {
         toast.success('تم الخصم التلقائي (3ج) وبدء الركنة بعد 3 دقائق ثبات 🎯', { duration: 4000 });
-        isArrivingRef.current = false; // فك القفل ليتمكن handleCarArrived من العمل
+        isArrivingRef.current = false;
         await handleCarArrived();
       } else {
         isArrivingRef.current = false;
       }
-    } catch(err) {
+    } catch (err) {
       isArrivingRef.current = false;
     }
   }, [handleChargeVipFee, handleCarArrived]);
@@ -584,7 +614,6 @@ export default function NavigationScreen() {
           executeAutoCharge();
         }
       } else {
-        // حماية من رعشة الـ GPS: الانتظار 15 ثانية متواصلة خارج النطاق قبل إعادة تعيين العداد
         if (geofenceEntryTimeRef.current) {
           outsideGeofenceCountRef.current += 1;
           if (outsideGeofenceCountRef.current >= 15) {
@@ -852,19 +881,21 @@ export default function NavigationScreen() {
     setScreen('list');
   };
 
+  /* 💳 شحن سريع مع احتساب البونص التلقائي المضمون 🎁 */
   const handleQuickTopup = async (tier: typeof TOPUP_TIERS[0]) => {
     if (!currentUser || processingTopup) return;
     setProcessingTopup(tier.id);
 
     try {
+      const bonusAmount = tier.bonus ?? getBonusForAmount(tier.amount);
       await addWalletTopUp({
         userPhone: currentUser.phone,
         amount: tier.amount,
-        bonus: tier.bonus,
+        bonus: bonusAmount,
         method: 'instapay',
         status: 'pending',
       });
-      toast.success('تم إرسال طلب الشحن، في انتظار موافقة الإدارة', { duration: 3500 });
+      toast.success(`تم طلب شحن ${tier.amount} ج + ${bonusAmount} ج بونص هدية 🎁! في انتظار التفعيل`, { duration: 4500 });
       setShowInsufficientModal(false);
     } catch (err) {
       console.error('❌ Topup error:', err);
@@ -1310,41 +1341,44 @@ export default function NavigationScreen() {
                 </div>
                 <div className="flex justify-between text-xs border-t pt-1.5" style={{ borderColor: BRAND.border }}>
                   <span className="font-black" style={{ color: '#f87171' }}>{Math.max(0, BOOKING_FEE - walletBalance)} ج.م</span>
-                  <span className="font-bold" style={{ color: BRAND.slateMuted }}>الفرق:</span>
+                  <span className="font-bold" style={{ color: BRAND.slateMuted }}>الفرق المطلوب:</span>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                {[...TOPUP_TIERS].reverse().map((tier) => (
-                  <button
-                    key={tier.id}
-                    onClick={() => handleQuickTopup(tier)}
-                    disabled={processingTopup !== null}
-                    className="rounded-xl p-3 text-right cursor-pointer border transition-all active:scale-95 disabled:opacity-50 relative"
-                    style={{
-                      background: tier.popular ? BRAND.greenLight : BRAND.navy,
-                      borderColor: tier.popular ? BRAND.green : BRAND.border,
-                    }}
-                  >
-                    {tier.popular && (
-                      <span
-                        className="absolute -top-2 right-2 text-[8px] font-black px-1.5 py-0.5 rounded-full"
-                        style={{ background: BRAND.green, color: BRAND.navy }}
-                      >
-                        الأفضل
-                      </span>
-                    )}
-                    <div className="text-[10px] font-black mb-1" style={{ color: tier.popular ? BRAND.green : '#fff' }}>
-                      {tier.label}
-                    </div>
-                    <div className="text-base font-black text-white mb-0.5">
-                      {tier.amount} ج.م
-                    </div>
-                    <div className="text-[9px] font-bold" style={{ color: BRAND.green }}>
-                      +{tier.bonus} ج.م هدية
-                    </div>
-                  </button>
-                ))}
+                {[...TOPUP_TIERS].reverse().map((tier) => {
+                  const calculatedBonus = tier.bonus ?? getBonusForAmount(tier.amount);
+                  return (
+                    <button
+                      key={tier.id}
+                      onClick={() => handleQuickTopup(tier)}
+                      disabled={processingTopup !== null}
+                      className="rounded-xl p-3 text-right cursor-pointer border transition-all active:scale-95 disabled:opacity-50 relative"
+                      style={{
+                        background: tier.popular ? BRAND.greenLight : BRAND.navy,
+                        borderColor: tier.popular ? BRAND.green : BRAND.border,
+                      }}
+                    >
+                      {tier.popular && (
+                        <span
+                          className="absolute -top-2 right-2 text-[8px] font-black px-1.5 py-0.5 rounded-full"
+                          style={{ background: BRAND.green, color: BRAND.navy }}
+                        >
+                          الأفضل
+                        </span>
+                      )}
+                      <div className="text-[10px] font-black mb-1" style={{ color: tier.popular ? BRAND.green : '#fff' }}>
+                        {tier.label}
+                      </div>
+                      <div className="text-base font-black text-white mb-0.5">
+                        {tier.amount} ج.م
+                      </div>
+                      <div className="text-[9px] font-bold" style={{ color: BRAND.green }}>
+                        +{calculatedBonus} ج.م هدية 🎁
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
 
               <button
