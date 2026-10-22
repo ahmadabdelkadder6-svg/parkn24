@@ -542,11 +542,25 @@ export default function GarageListScreen() {
 
       <div className="px-4 pt-10 pb-3 z-20 shadow-sm relative" style={{ background: BRAND.card, borderBottom: `1.5px solid ${BRAND.border}` }}>
         <div dir="rtl" className="flex justify-between items-center mb-3.5">
-          <div className="text-right flex flex-col gap-1.5">
-            <span className="font-black text-xl block leading-none" style={{ color: BRAND.blue }}>بركن <span style={{ color: BRAND.green }}>24</span></span>
-            <div className="flex flex-col mt-0.5">
-              <span className="text-base font-black text-slate-900 block leading-tight">أهلاً {currentUser?.name?.split(' ')[0] || 'بك'} 👋</span>
-              <span className="text-xs font-bold text-slate-500 block mt-1 leading-none">انزل وأنت رايق .. سيب الركنة علينا! ☕🚗</span>
+          <div className="text-right flex items-center gap-3">
+            {/* 🌟 اللوجو بدل كلمة بركن 24 */}
+            <img
+              src="/logo.png"
+              alt="Park'n 24"
+              className="h-11 w-auto object-contain"
+              onError={(e) => {
+                // Fallback لو اللوجو مش موجود
+                (e.target as HTMLImageElement).style.display = 'none';
+                const fallback = document.getElementById('logo-fallback');
+                if (fallback) fallback.style.display = 'flex';
+              }}
+            />
+            <div id="logo-fallback" style={{ display: 'none' }} className="flex items-center">
+              <span className="font-black text-xl leading-none" style={{ color: BRAND.blue }}>P<span style={{ color: BRAND.green }}>24</span></span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm font-black text-slate-900 leading-tight">أهلاً {currentUser?.name?.split(' ')[0] || 'بك'} 👋</span>
+              <span className="text-[10px] font-bold text-slate-500 leading-none mt-0.5">سيب الركنة علينا! ☕🚗</span>
             </div>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
@@ -577,55 +591,80 @@ export default function GarageListScreen() {
           </div>
         )}
 
-        {/* 🌟 بانر "الركنة السريعة المنقذة" */}
+        {/* 🌟 بانر "المنقذ السريع" — تصميم ثابت واضح ومفهوم */}
         {currentRescueGarage && !activeSession && !myIncomingCar && (
           <div
-            className="mb-2.5 rounded-2xl cursor-pointer active:scale-98 transition-all border-2 text-right relative overflow-hidden"
+            className="mb-2.5 rounded-2xl overflow-hidden border-2"
             style={{
               background: currentRescueGarage.garageType === 'vip'
                 ? 'linear-gradient(135deg, #1656b8 0%, #0f3d85 100%)'
                 : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
               borderColor: currentRescueGarage.garageType === 'vip' ? '#1656b8' : '#334155',
-              boxShadow: currentRescueGarage.garageType === 'vip'
-                ? '0 4px 15px rgba(22,86,184,0.3)'
-                : '0 4px 15px rgba(15,23,42,0.4)',
+              boxShadow: '0 4px 18px rgba(0,0,0,0.2)',
             }}
             dir="rtl"
           >
-            <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+            {/* العنوان العلوي الكبير */}
+            <div className="px-4 pt-3 pb-1 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🚨</span>
+                <span className="text-[15px] font-black text-white leading-tight">المنقذ السريع</span>
+              </div>
+              <span
+                className="font-black text-[14px] px-3 py-1 rounded-xl text-white"
+                style={{ background: 'rgba(255,255,255,0.2)', border: '1.5px solid rgba(255,255,255,0.3)' }}
+              >
+                {rescueIndex + 1} / {rescueGaragesList.length}
+              </span>
+            </div>
 
-            <div className="p-3.5 pb-2" onClick={() => handleGarageClick(currentRescueGarage)}>
-              <div className="flex justify-between items-center">
-                <div className="text-right flex-1 pr-1">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className="text-[8px] font-black px-1.5 py-0.5 rounded-lg text-white" style={{ background: currentRescueGarage.garageType === 'vip' ? '#8cc63f' : '#334155' }}>
-                      {currentRescueGarage.garageType === 'vip' ? '⭐ حجز مضمون VIP' : '⚡ منقذ سريع'}
+            {/* بيانات الجراج */}
+            <div
+              className="px-4 pb-3 pt-1 cursor-pointer active:opacity-90 transition-all"
+              onClick={() => handleGarageClick(currentRescueGarage)}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex-1 text-right">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <span
+                      className="text-[10px] font-black px-2 py-0.5 rounded-lg text-white"
+                      style={{ background: currentRescueGarage.garageType === 'vip' ? '#8cc63f' : '#475569' }}
+                    >
+                      {currentRescueGarage.garageType === 'vip' ? '⭐ VIP مضمون' : '🧭 دليل مجاني'}
                     </span>
-                    <span className="text-[8px] font-black px-1.5 py-0.5 rounded-lg bg-white/20 text-white">{rescueIndex + 1} / {rescueGaragesList.length}</span>
                   </div>
-                  <h4 className="text-xs font-black text-white leading-tight mb-1">{currentRescueGarage.name}</h4>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[11px] font-black text-emerald-300">💰 {currentRescueGarage.priceType === 'daily' ? `${currentRescueGarage.dailyPrice || currentRescueGarage.basePrice} ج.م/يوم` : `${currentRescueGarage.basePrice} ج.م/ساعة`}</span>
-                    <span className="text-[10px] font-bold text-white/80">🚗 {formatDuration(currentRescueGarage.minutes)}</span>
+                  <h4 className="text-sm font-black text-white leading-tight mb-1.5">{currentRescueGarage.name}</h4>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="text-[13px] font-black text-emerald-300">
+                      💰 {currentRescueGarage.priceType === 'daily'
+                        ? `${currentRescueGarage.dailyPrice || currentRescueGarage.basePrice} ج/يوم`
+                        : `${currentRescueGarage.basePrice} ج/ساعة`}
+                    </span>
+                    <span className="text-[12px] font-bold text-white/80">🚗 {formatDuration(currentRescueGarage.minutes)}</span>
                   </div>
                 </div>
-                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0 text-white"><Navigation size={18} className="rotate-45" /></div>
+                <div
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 text-white"
+                  style={{ background: 'rgba(255,255,255,0.15)', border: '2px solid rgba(255,255,255,0.25)' }}
+                >
+                  <Navigation size={22} className="rotate-45" />
+                </div>
               </div>
             </div>
 
+            {/* زر "مش مناسب؟ جرب ساحة تانية" — تصميم واضح كبير */}
             {rescueGaragesList.length > 1 && (
               <button
                 type="button"
                 onClick={handleNextRescue}
-                className="w-full py-3 text-[12px] font-black text-white bg-black/30 border-0 cursor-pointer active:bg-black/40 active:scale-[0.98] transition-all flex items-center justify-center gap-2 tracking-wide"
+                className="w-full py-3.5 text-[13px] font-black text-white border-0 cursor-pointer active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                 style={{
-                  borderTop: '2px solid rgba(255,255,255,0.25)',
-                  textShadow: '0 1px 3px rgba(0,0,0,0.4)',
-                  letterSpacing: '0.02em'
+                  background: 'rgba(0,0,0,0.25)',
+                  borderTop: '2px solid rgba(255,255,255,0.15)',
                 }}
               >
-                <Search size={14} strokeWidth={3} />
-                <span>{rescueIndex < rescueGaragesList.length - 1 ? '🔍 مش مناسب؟ ابحث عن ساحة أخرى' : '🔄 عرض الكل من الأول'}</span>
+                <Search size={16} strokeWidth={3} />
+                <span>{rescueIndex < rescueGaragesList.length - 1 ? '🔍 مش مناسب؟ جرّب ساحة تانية' : '🔄 رجوع لأول خيار'}</span>
               </button>
             )}
           </div>
@@ -643,14 +682,20 @@ export default function GarageListScreen() {
           </button>
         )}
 
+        {/* 🔍 شريط البحث — تصميم أوضح وأسهل */}
         <div className="flex gap-2 mb-2.5">
           <div className="relative flex-1">
-            <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+            <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: BRAND.blue }} />
             <input
               type="text"
-              className="w-full outline-none text-xs font-bold bg-slate-100 border border-slate-300 text-slate-800 rounded-xl transition-all focus:border-blue-500 focus:bg-white focus:shadow-sm"
-              style={{ padding: '9px 32px 9px 32px' }}
-              placeholder="ابحث باسم الجراج أو المنطقة..."
+              className="w-full outline-none text-xs font-black rounded-xl transition-all focus:shadow-md"
+              style={{
+                padding: '11px 36px 11px 36px',
+                background: '#f0f5ff',
+                border: `2px solid ${BRAND.blue}30`,
+                color: BRAND.navy,
+              }}
+              placeholder="🔍 ابحث عن ساحة ركن أو منطقة..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -659,9 +704,10 @@ export default function GarageListScreen() {
                 <button
                   type="button"
                   onClick={() => { setSearchQuery(''); setExpandedArea(null); }}
-                  className="bg-slate-300 text-slate-600 rounded-full w-5 h-5 flex items-center justify-center cursor-pointer border-0 active:scale-90 hover:bg-slate-400 hover:text-white transition-all"
+                  className="rounded-full w-6 h-6 flex items-center justify-center cursor-pointer border-0 active:scale-90 transition-all"
+                  style={{ background: BRAND.blue, color: '#ffffff' }}
                 >
-                  <X size={12} strokeWidth={3} />
+                  <X size={13} strokeWidth={3} />
                 </button>
               </div>
             ) : null}
@@ -671,13 +717,13 @@ export default function GarageListScreen() {
             type="button"
             onClick={handleForceRefreshLocation}
             disabled={locationLoading}
-            className="flex items-center justify-center border-0 cursor-pointer shrink-0"
-            style={{ background: BRAND.blue, color: '#fff', borderRadius: 12, width: 36, height: 36 }}
+            className="flex items-center justify-center border-0 cursor-pointer shrink-0 active:scale-90 transition-all"
+            style={{ background: BRAND.blue, color: '#fff', borderRadius: 12, width: 40, height: 40, boxShadow: '0 2px 8px rgba(22,86,184,0.25)' }}
             title="تحديث الموقع"
           >
-            <Locate size={15} className={locationLoading ? 'animate-spin' : ''} />
+            <Locate size={16} className={locationLoading ? 'animate-spin' : ''} />
           </button>
-          <button type="button" onClick={() => setShowNearbyOnly(!showNearbyOnly)} className="text-[10px] font-black px-2.5 rounded-xl cursor-pointer shrink-0" style={{ background: showNearbyOnly ? BRAND.blue : BRAND.card, color: showNearbyOnly ? '#fff' : BRAND.slate, border: `1.5px solid ${BRAND.border}` }}>{showNearbyOnly ? 'الكل' : 'القريب'}</button>
+          <button type="button" onClick={() => setShowNearbyOnly(!showNearbyOnly)} className="text-[10px] font-black px-3 rounded-xl cursor-pointer shrink-0 active:scale-95 transition-all" style={{ background: showNearbyOnly ? BRAND.blue : BRAND.card, color: showNearbyOnly ? '#fff' : BRAND.slate, border: `2px solid ${showNearbyOnly ? BRAND.blue : BRAND.border}` }}>{showNearbyOnly ? '🌍 الكل' : '📍 القريب'}</button>
         </div>
 
         <div dir="rtl" className="flex gap-2 overflow-x-auto pb-2 scrollbar-none mb-3 w-full px-0.5" style={{ scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', justifyContent: 'flex-start' }}>
@@ -685,7 +731,7 @@ export default function GarageListScreen() {
           {CATEGORIES.map((cat) => { const isActive = selectedCategory === cat.id; return (<button key={cat.id} type="button" onClick={() => setSelectedCategory(isActive ? null : cat.id)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black cursor-pointer border-[1.5px] transition-all shrink-0 active:scale-95 shadow-sm" style={{ background: isActive ? BRAND.blue : '#ffffff', color: isActive ? '#ffffff' : BRAND.slate, borderColor: isActive ? BRAND.blue : BRAND.border, scrollSnapAlign: 'start' }}><span>{cat.icon}</span><span>{cat.label}</span></button>); })}
         </div>
 
-        {/* ✅ تبويبات VIP / دليل مجاني — مع جملة تحفيزية على VIP */}
+        {/* ✅ تبويبات VIP / دليل مجاني */}
         <div className="flex p-1 rounded-xl bg-slate-200/70" style={{ direction: 'rtl', border: '1.5px solid #cbd5e1' }}>
           <button type="button" onClick={() => { setActiveTab('vip'); setExpandedArea(null); }} className="flex-1 py-2 rounded-lg font-black text-[11px] cursor-pointer border-0 transition-all flex items-center justify-center gap-1 relative" style={{ background: activeTab === 'vip' ? BRAND.blue : 'transparent', color: activeTab === 'vip' ? '#ffffff' : BRAND.slate, boxShadow: activeTab === 'vip' ? '0 2px 8px rgba(22,86,184,0.25)' : 'none' }}>
             <span>⭐ احجز ركنتك بـ {BOOKING_FEE} ج</span>
@@ -699,21 +745,7 @@ export default function GarageListScreen() {
 
       <div className="flex-1 overflow-y-auto px-4 pt-3 pb-8">
 
-        {/* ✅ بانر تحفيزي VIP أعلى القائمة */}
-        {activeTab === 'vip' && !activeSession && !myIncomingCar && (
-          <div dir="rtl" className="mb-3 rounded-2xl p-3.5 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #1656b8 0%, #0f3d85 100%)', boxShadow: '0 4px 15px rgba(22,86,184,0.25)' }}>
-            <div className="absolute top-0 left-0 w-32 h-32 bg-white/5 rounded-full blur-2xl pointer-events-none" />
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
-                <Shield size={24} className="text-white" />
-              </div>
-              <div className="flex-1 text-right">
-                <h3 className="text-sm font-black text-white leading-tight mb-1">احجز ركنتك المضمونة بـ {BOOKING_FEE} ج.م بس! 🅿️</h3>
-                <p className="text-[10px] font-bold text-white/70 leading-relaxed">الحجز مضمون + مكانك محفوظ + لو ملقيتش مكان فلوسك ترجعلك فوراً 💰</p>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* ✅ بانر "احجز ركنتك المضمونة" تم إزالته حسب الطلب */}
 
         {areaGroups.length > 0 ? (
           <div className="space-y-2.5">
