@@ -137,7 +137,7 @@ export default function GarageListScreen() {
   const {
     garages, setSelectedGarageId, setScreen, currentUser, sessions, incomingCars,
     offers, fetchAll, acknowledgedSessionIds, walletTopUps, reportPriceUpdate,
-    chargeBookingFee // 🔥 أضفنا استدعاء دالة الخصم هنا
+    chargeBookingFee, addIncomingCar, getDailyDeductionCount, dailyDeductionCount
   } = useStore();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -414,41 +414,87 @@ export default function GarageListScreen() {
       return;
     }
 
-    // 🌟 جراج VIP — فحص الرصيد والخصم الفوري (3 ج)
+    // 🌟 جراج VIP
     if (!currentUser) { toast.error('سجل بياناتك أولاً'); return; }
     if (activeSession) { setSelectedGarageId(activeSession.garageId); setScreen('session'); return; }
     if (myIncomingCar) { setSelectedGarageId(myIncomingCar.garageId); setScreen('navigation'); return; }
     if (offers.some((o) => o.userId === currentUser.phone && o.status === 'pending')) { toast.error('لديك عرض معلق بالفعل'); return; }
     if (garage.availableSpots <= 0) { toast.error('لا توجد أماكن متاحة حالياً'); return; }
 
+    const { hasPaidBookingFee, setHasPaidBookingFee } = useStore.getState();
     const userWallet = currentUser.wallet || 0;
+    
+    // فحص الحد الأقصى اليومي
+    const todayCount = getDailyDeductionCount();
+    const isFreeToday = todayCount >= 2;
 
-    // ✅ فحص رسوم الحجز
-    if (userWallet < BOOKING_FEE) {
+    // 💡 حالة 1: العميل سبق له الخصم في نفس محاولة البحث (لأنه لم يجد مكان في الجراج السابق)
+    if (hasPaidBookingFee) {
+      setIsBooking(true);
+      try {
+        await addIncomingCar({ 
+          garageId: garage.id, 
+          carPlate: currentUser.carPlate, 
+          customerName: currentUser.name, 
+          customerPhone: currentUser.phone, 
+          agreedPrice: garage.basePrice, 
+          estimatedArrival: Math.max(3, garage.minutes) 
+        });
+
+        setSelectedGarageId(garage.id);
+        toast.success(`تم تحويل حجزك للجراج الجديد مجاناً (الرسوم مدفوعة) 🚗`, { duration: 4000 });
+        setScreen('navigation');
+      } catch (e) {
+        console.error(e);
+        toast.error('حدث خطأ أثناء تحويل الحجز');
+      } finally {
+        setIsBooking(false);
+      }
+      return;
+    }
+
+    // 💡 حالة 2: حجز جديد لأول مرة (ولم يستوفِ الحد الأقصى) -> فحص الرصيد
+    if (!isFreeToday && userWallet < BOOKING_FEE) {
       setPendingVipGarage(garage);
       setShowInsufficientModal(true);
       return;
     }
 
-    // ✅ تنفيذ الخصم فوراً قبل التوجيه
     setIsBooking(true);
     try {
+      // chargeBookingFee يتعامل تلقائياً مع نظام الحد الأقصى ويجعله مجانياً إذا لزم الأمر
       const success = await chargeBookingFee();
       if (success) {
+        await addIncomingCar({ 
+          garageId: garage.id, 
+          carPlate: currentUser.carPlate, 
+          customerName: currentUser.name, 
+          customerPhone: currentUser.phone, 
+          agreedPrice: garage.basePrice, 
+          estimatedArrival: Math.max(3, garage.minutes) 
+        });
+
         setSelectedGarageId(garage.id);
-        toast.success(`تم الخصم بنجاح (${BOOKING_FEE} ج.م) — جاري التوجيه للجراج 🚗`);
+        
+        if (isFreeToday) {
+          toast.success(`تم الحجز مجاناً! استوفيت الحد الأقصى للخصم اليومي 🎁`, { duration: 4000, icon: '🎉' });
+        } else {
+          const nextCount = todayCount + 1;
+          toast.success(`تم الخصم بنجاح (${BOOKING_FEE} ج.م) — الخصم رقم ${nextCount} اليوم 🚗`);
+        }
+        
         setScreen('navigation');
       } else {
         toast.error('حدث خطأ أثناء الخصم، برجاء المحاولة لاحقاً');
       }
     } catch (e) {
       console.error(e);
-      toast.error('حدث خطأ أثناء إتمام الخصم');
+      toast.error('حدث خطأ أثناء إتمام الحجز');
     } finally {
       setIsBooking(false);
     }
   };
-
+  
   const handleConfirmArrival = useCallback(async () => {
     if (!activeDirectoryTrip) return;
     const tripToCalibrate = activeDirectoryTrip;
@@ -685,6 +731,20 @@ export default function GarageListScreen() {
           </button>
           <button type="button" onClick={() => { setActiveTab('directory'); setExpandedArea(null); }} className="flex-1 py-2 rounded-lg font-black text-[11px] cursor-pointer border-0 transition-all flex items-center justify-center gap-1" style={{ background: activeTab === 'directory' ? BRAND.blueDark : 'transparent', color: activeTab === 'directory' ? '#ffffff' : BRAND.slate, boxShadow: activeTab === 'directory' ? '0 2px 8px rgba(15,61,133,0.25)' : 'none' }}><span>🧭 دليل الساحات المجاني</span></button>
         </div>
+
+        {/* 🌟 شريط يوضح حالة الخصومات اليومية (بحد أقصى خصمان) */}
+        {activeTab === 'vip' && (
+          <div className="mt-3 flex items-center justify-between text-[11px] px-3 py-2.5 rounded-xl font-bold border" style={{ background: '#f0f5ff', color: BRAND.blueDark, borderColor: `${BRAND.blue}30`, direction: 'rtl' }}>
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm">📅</span>
+              <span>الخصومات اليومية لحجوزات VIP:</span>
+            </div>
+            <span className="font-black px-2.5 py-1 rounded-lg" style={{ background: '#ffffff', color: BRAND.blue, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+              {Math.min(2, dailyDeductionCount || getDailyDeductionCount())} من 2 خصومات
+            </span>
+          </div>
+        )}
+
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pt-3 pb-8">

@@ -140,15 +140,15 @@ export const calculateBonus = (amount: number): number => {
 // 🌟 رسوم الحجز لكل ركنة VIP
 export const BOOKING_FEE = 3;
 
-// 📍 مسافة الـ Geofencing (متر) — لما العميل يوصل المسافة دي يتم الخصم
+// 📍 مسافة الـ Geofencing (متر)
 export const GEOFENCE_RADIUS_METERS = 100;
 
-// 📐 حساب المسافة بين نقطتين (Haversine Formula) — بالامتار
+// 📐 حساب المسافة بين نقطتين (Haversine Formula)
 export const haversineDistance = (
   lat1: number, lon1: number,
   lat2: number, lon2: number
 ): number => {
-  const R = 6371000; // نصف قطر الأرض بالامتار
+  const R = 6371000;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
   const a =
@@ -170,7 +170,6 @@ export const isEligibleForFreeSession = (
   return true;
 };
 
-// 🌟 حساب سعر الجلسة بالهدية المجانية (خصم الـ 30 دقيقة من الوقت الكلي بدلاً من إلغائها)
 export const calculateSessionPriceWithFreeGift = (
   durationMs: number,
   hourlyRate: number,
@@ -193,7 +192,6 @@ export const calculateSessionPriceWithFreeGift = (
     };
   }
 
-  // 🌟 خصم الـ 30 دقيقة (FREE_SESSION_DURATION_MS) وحساب التكلفة على باقي الوقت فقط
   const billableMs = Math.max(0, durationMs - FREE_SESSION_DURATION_MS);
   const finalPrice = originalPriceCalculator(billableMs, hourlyRate);
   return {
@@ -236,7 +234,6 @@ const safeGetStorage = (key: string) => {
   try { const item = localStorage.getItem(key); return item ? JSON.parse(item) : null; } catch { return null; }
 };
 
-// 🌟 جلب الجراجات المحفوظة مسبقاً للفتح الفوري (0 ثانية)
 const getCachedGarages = (): Garage[] => {
   const cached = safeGetStorage('cached_garages_v2');
   return Array.isArray(cached) ? cached : [];
@@ -312,7 +309,7 @@ const getMs = (value?: number | string) => {
   return 0; 
 };
 
-// ===================== ⏱️ مزامنة توقيت السيرفر الذكية والخفيفة =====================
+// ===================== ⏱️ مزامنة توقيت السيرفر =====================
 let serverTimeOffset = 0;
 let lastClockSyncTime = 0;
 
@@ -374,7 +371,6 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   });
 };
 
-// 🌟 الـ Mapper النظيف والمحترف: يربط قيم الشاشة vip و directory بدقة
 const mapGarage = (r: any): Garage => {
   const isDirectory = r.garage_type === 'directory' || r.type === 'directory' || r.is_vip === false;
 
@@ -401,8 +397,6 @@ const mapGarage = (r: any): Garage => {
     isActive: r.is_active !== false,
     payment_mode: isDirectory ? 'cash' : (r.payment_mode || 'both'), 
     area: r.area || 'مناطق أخرى',
-
-    // 🌟 ضبط القيمة لـ vip بدلاً من partner لتبويب الواجهة
     garageType: isDirectory ? 'directory' : 'vip',
     priceType: r.price_type || 'hourly',
     dailyPrice: r.daily_price != null ? Number(r.daily_price) : undefined,
@@ -510,9 +504,17 @@ interface AppState {
   setCurrentUser: (u: any) => Promise<void>;
   deductWallet: (amount: number) => Promise<boolean>; 
   markFreeSessionUsed: () => Promise<void>;
-  // 💰 دوال رسوم الحجز والاسترداد
+  
+  // 💰 رسوم الحجز وتتبع الخصم اليومي (بحد أقصى خصمان في اليوم)
+  hasPaidBookingFee: boolean;
+  setHasPaidBookingFee: (paid: boolean) => void;
+  dailyDeductionCount: number;
+  dailyDeductionDate: string;
+  getDailyDeductionCount: () => number;
+  recordDeduction: () => void;
   chargeBookingFee: () => Promise<boolean>;
   refundBookingFee: () => Promise<void>;
+
   garages: Garage[];
   currentGarageId: string | null;
   setCurrentGarageId: (id: string | null) => void;
@@ -654,15 +656,50 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 💰 خصم رسوم الحجز (3 ج) من المحفظة — يُستخدم عند وصول العميل للجراج VIP
+  // 💰 حالة دفع رسوم الحجز وتتبع الحد اليومي (بحد أقصى خصمان في اليوم)
+  hasPaidBookingFee: false,
+  setHasPaidBookingFee: (paid) => set({ hasPaidBookingFee: paid }),
+
+  dailyDeductionCount: 0,
+  dailyDeductionDate: '',
+
+  getDailyDeductionCount: () => {
+    const today = new Date().toLocaleDateString('en-CA');
+    const { dailyDeductionDate, dailyDeductionCount } = get();
+    if (dailyDeductionDate !== today) {
+      return 0; // تصفير العداد التلقائي مع بداية كل يوم جديد
+    }
+    return dailyDeductionCount;
+  },
+
+  recordDeduction: () => {
+    const today = new Date().toLocaleDateString('en-CA');
+    const currentCount = get().getDailyDeductionCount();
+    set({
+      dailyDeductionDate: today,
+      dailyDeductionCount: currentCount + 1,
+    });
+  },
+
   chargeBookingFee: async () => {
     const user = get().currentUser;
     if (!user) return false;
+
+    // 🌟 شرط الحد الأقصى: إذا خُصم مرتان اليوم يتم الحجز مجاناً!
+    if (get().getDailyDeductionCount() >= 2) {
+      set({ hasPaidBookingFee: true });
+      return true;
+    }
+
     if ((user.wallet || 0) < BOOKING_FEE) return false;
-    return await get().deductWallet(BOOKING_FEE);
+    const success = await get().deductWallet(BOOKING_FEE);
+    if (success) {
+      get().recordDeduction();
+      set({ hasPaidBookingFee: true });
+    }
+    return success;
   },
 
-  // 💸 استرداد رسوم الحجز (3 ج) للمحفظة — يُستخدم لو العميل ملقاش مكان
   refundBookingFee: async () => {
     const user = get().currentUser;
     if (!user) return;
@@ -690,7 +727,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 🌟 الكاش الفوري للمواقف 0 ثانية
   garages: getCachedGarages(),
   currentGarageId: (() => { try { return localStorage.getItem('currentGarageId') || null; } catch { return null; } })(),
   setCurrentGarageId: (id) => { set({ currentGarageId: id }); if (id) localStorage.setItem('currentGarageId', id); else localStorage.removeItem('currentGarageId'); },
@@ -733,7 +769,6 @@ export const useStore = create<AppState>((set, get) => ({
     safeRemoveStorage('acknowledgedSessionIds');
   },
 
-  // 🚀 Delta Sync: تحديث الكبسولة الخفيفة والجراجات الجديدة فقط لتوفير الباقة والسيرفر
   fetchAll: async () => {
     if (!isSupabaseConfigured()) return;
 
@@ -835,7 +870,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 🌟 إضافة الجراج بشكل مخصص للحقول النظيفة وتحديث الكاش
   addGarage: async (g) => {
     const isDirectory = g.garageType === 'directory';
     const finalPrice = isDirectory 
@@ -882,7 +916,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 🌟 تعديل الجراج وتحديث الكاش — ✅ تم إصلاح الـ early return bug
   updateGarage: async (id, updates) => {
     set((st) => {
       const updated = st.garages.map((g) => g.id === id ? { ...g, ...updates } : g);
@@ -899,7 +932,6 @@ export const useStore = create<AppState>((set, get) => ({
 
     const dbUpdates: Record<string, unknown> = {};
 
-    // ✅ isActive بقت بتتضاف مع باقي الحقول مش بتعمل return مبكر
     if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
     if (updates.name !== undefined) dbUpdates.name = updates.name;
     if (finalPrice !== undefined) dbUpdates.base_price = finalPrice;
@@ -914,7 +946,6 @@ export const useStore = create<AppState>((set, get) => ({
       dbUpdates.type = updates.garageType === 'directory' ? 'directory' : 'vip';
       dbUpdates.is_vip = updates.garageType !== 'directory';
 
-      // 🌟 ضبط تلقائي للعمولة وطريقة الدفع عند تغيير النوع
       if (updates.garageType === 'directory') {
         if (dbUpdates.commission_rate === undefined) dbUpdates.commission_rate = 0;
         if (dbUpdates.payment_mode === undefined) dbUpdates.payment_mode = 'cash';
@@ -1270,7 +1301,6 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   addWalletTopUp: (w) => {
-    // 🌟 التعديل هنا: نأخذ البونص المُرسل أولاً، وإذا لم يكن موجوداً نحسبه كخيار بديل
     const bonus = w.bonus ?? w.bonusAmount ?? calculateBonus(w.amount);
     
     const newW: WalletTopUp = { ...w, id: uid(), status: 'pending', timestamp: Date.now(), bonusAmount: bonus };
@@ -1281,12 +1311,12 @@ export const useStore = create<AppState>((set, get) => ({
       supabase.from('wallet_topups').insert({
         user_id: w.userId || w.user_id, 
         user_name: w.userName, 
-        user_phone: w.userPhone || w.phone, // دعم لأكثر من صيغة مرسلة
+        user_phone: w.userPhone || w.phone,
         amount: w.amount, 
         transaction_id: w.transactionId || 'instapay_transfer',
         car_plate: w.carPlate, 
         method: w.method || w.paymentMethod || 'instapay', 
-        bonus_amount: bonus, // 🌟 سيتم رفع القيمة الصحيحة لقاعدة البيانات
+        bonus_amount: bonus,
       }).select().single().then(({ data }) => {
         if (data) set((st) => ({ walletTopUps: st.walletTopUps.map((x) => (x.id === newW.id ? mapTopUp(data) : x)) }));
       });
@@ -1310,7 +1340,6 @@ export const useStore = create<AppState>((set, get) => ({
       } catch {}
     }
 
-    // 🌟 Fallback محلي في حالة عدم توفر السيرفر أو الاتصال
     if (target && target.status === 'pending') {
       const totalCredit = target.amount + expectedBonus;
       const user = get().currentUser;
@@ -1398,7 +1427,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 }));
 
-// ===================== Realtime الفائق والخفيف =====================
+// ===================== Realtime الفائق =====================
 let realtimeStarted = false;
 let pollingInterval: ReturnType<typeof setInterval> | null = null;
 let isOperationInProgress = false;

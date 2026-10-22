@@ -323,6 +323,9 @@ export default function NavigationScreen() {
         await removeIncomingCar(myIncomingCar.id);
       }
 
+      // 🔥 تم بدء الركنة بنجاح -> تصفير علامة الدفع للمرات القادمة
+      useStore.getState().setHasPaidBookingFee(false);
+
       navigatedToSessionRef.current = true;
       toast.success('تم الوصول للجراج وبدأت الجلسة بنجاح ⏱️', { duration: 3000 });
       setScreen('session');
@@ -348,7 +351,6 @@ export default function NavigationScreen() {
     setSelectedGarageId,
     setScreen,
   ]);
-
   /* ─── ❌ زر: وصلت بس ملقتش مكان (توجيه للرئيسية فوراً) ─── */
   const handleNoSpaceFound = useCallback(async () => {
     try {
