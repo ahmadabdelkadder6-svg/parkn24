@@ -12,7 +12,7 @@ import { calculateDistance, distanceToMinutes, classifyDistance, formatDuration 
 import TopUpWalletModal from './TopUpWalletModal';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
-
+import { QRCodeCanvas } from 'qrcode.react';
 const BRAND = {
   blue: '#1656b8', blueDark: '#0f3d85', green: '#8cc63f', greenDark: '#6ea62a',
   bg: '#f1f5f9', card: '#ffffff', slate: '#334155', border: '#cbd5e1', borderDark: '#94a3b8', navy: '#0a1628',
@@ -31,6 +31,7 @@ const safeParseTime = (value: unknown): number => {
   return 0;
 };
 
+const SITE_URL = import.meta.env.VITE_SITE_URL || 'https://parkn24.com';
 /* ═══════════════════════════════════════════════════════════════════
    🗺️ المناطق الجغرافية الموحدة (مطابقة تماماً لشاشة الأدمن)
    ═══════════════════════════════════════════════════════════════════ */
@@ -910,13 +911,19 @@ export default function GarageListScreen() {
               <h3 className="text-base font-black mb-1" style={{ color: BRAND.blueDark }}>📲 شارك بركن 24 مع أصحابك</h3>
               <p className="text-xs font-bold mb-4 leading-relaxed" style={{ color: BRAND.slate }}>دليل وأماكن الركن الذكية في القاهرة بين إيديك! 🚗💨</p>
               
-              {/* المربع الخاص بالباركود أكبر بكثير وواضح */}
-              <div className="w-64 h-64 mx-auto p-4 bg-white rounded-[32px] border-4 shadow-xl flex items-center justify-center mb-5" style={{ borderColor: BRAND.blue }}>
-                <img src="/app-qr.png" alt="QR Code" className="w-full h-full object-contain" onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }} />
-              </div>
+<div className="w-64 h-64 mx-auto p-4 bg-white rounded-[32px] border-4 shadow-xl flex items-center justify-center mb-5" style={{ borderColor: BRAND.blue }}>
+  <QRCodeCanvas
+    value={`${SITE_URL}/install`}
+    size={220}
+    level="H"
+    bgColor="#ffffff"
+    fgColor="#0A1628"
+    includeMargin={false}
+  />
+</div>
 
               <div className="space-y-2.5">
-                <button type="button" onClick={async () => { const appUrl = window.location.origin; try { if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') { await navigator.clipboard.writeText(appUrl); } else { const textArea = document.createElement('textarea'); textArea.value = appUrl; textArea.style.position = 'fixed'; textArea.style.opacity = '0'; document.body.appendChild(textArea); textArea.select(); document.execCommand('copy'); document.body.removeChild(textArea); } toast.success('تم نسخ رابط التطبيق بنجاح! 📋🚀', { duration: 3000 }); } catch { toast.error('تعذر نسخ الرابط'); } }} className="w-full py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all border-0 text-white shadow-md" style={{ background: BRAND.greenDark }}><Copy size={16} /><span>نسخ رابط التطبيق 🔗</span></button>
+                <button type="button" onClick={async () => { const appUrl = `${SITE_URL}/install`; try { if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') { await navigator.clipboard.writeText(appUrl); } else { const textArea = document.createElement('textarea'); textArea.value = appUrl; textArea.style.position = 'fixed'; textArea.style.opacity = '0'; document.body.appendChild(textArea); textArea.select(); document.execCommand('copy'); document.body.removeChild(textArea); } toast.success('تم نسخ رابط التطبيق بنجاح! 📋🚀', { duration: 3000 }); } catch { toast.error('تعذر نسخ الرابط'); } }} className="w-full py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all border-0 text-white shadow-md" style={{ background: BRAND.greenDark }}><Copy size={16} /><span>نسخ رابط التطبيق 🔗</span></button>
                 <button type="button" onClick={() => setShowQrModal(false)} className="w-full py-3 rounded-xl font-bold text-sm text-slate-500 bg-slate-100 cursor-pointer active:scale-95 transition-all" style={{ border: `1.5px solid ${BRAND.border}` }}>إغلاق النافذة</button>
               </div>
             </motion.div>

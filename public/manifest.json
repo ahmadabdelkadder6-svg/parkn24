@@ -1,11 +1,13 @@
 {
-  "name": "ParkNow - احجز جراجك",
-  "short_name": "ParkNow",
+  "name": "بركن 24 - احجز جراجك",
+  "short_name": "بركن 24",
   "description": "تطبيق حجز جراجات السيارات",
   "start_url": "/",
+  "id": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#ffffff",
+  "background_color": "#0A1628",
+  "theme_color": "#0066FF",
   "orientation": "portrait",
   "icons": [
     {
