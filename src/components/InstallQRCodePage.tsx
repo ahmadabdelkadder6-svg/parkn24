@@ -4,7 +4,7 @@ import { Download, Copy, QrCode } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 // ✅ الدومين الحقيقي
-const SITE_URL = 'https://parkn24.vercel.app';
+const SITE_URL = 'https://parkn24.com';
 
 export default function InstallQRCodePage() {
   const qrRef = useRef<HTMLCanvasElement | null>(null);
