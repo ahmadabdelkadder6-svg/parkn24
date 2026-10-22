@@ -170,6 +170,7 @@ export const isEligibleForFreeSession = (
   return true;
 };
 
+// 🌟 حساب سعر الجلسة بالهدية المجانية (خصم الـ 30 دقيقة من الوقت الكلي بدلاً من إلغائها)
 export const calculateSessionPriceWithFreeGift = (
   durationMs: number,
   hourlyRate: number,
@@ -192,11 +193,13 @@ export const calculateSessionPriceWithFreeGift = (
     };
   }
 
-  const finalPrice = originalPriceCalculator(durationMs, hourlyRate);
+  // 🌟 خصم الـ 30 دقيقة (FREE_SESSION_DURATION_MS) وحساب التكلفة على باقي الوقت فقط
+  const billableMs = Math.max(0, durationMs - FREE_SESSION_DURATION_MS);
+  const finalPrice = originalPriceCalculator(billableMs, hourlyRate);
   return {
     finalPrice,
-    freeMinutes: 0,
-    billableMs: durationMs,
+    freeMinutes: 30,
+    billableMs,
   };
 };
 
@@ -456,7 +459,7 @@ const mapTopUp = (r: any): WalletTopUp => ({
   id: r.id, userId: r.user_id, userName: r.user_name, userPhone: r.user_phone,
   amount: Number(r.amount), transactionId: r.transaction_id, carPlate: r.car_plate,
   method: r.method, status: r.status, timestamp: new Date(r.created_at).getTime(),
-  bonusAmount: r.bonus_amount != null ? Number(r.bonus_amount) : 0,
+  bonusAmount: r.bonus_amount != null ? Number(r.bonus_amount) : calculateBonus(Number(r.amount)),
 });
 
 const mapIncoming = (r: any): IncomingCar => ({
@@ -1267,13 +1270,14 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   addWalletTopUp: (w) => {
-    const newW: WalletTopUp = { ...w, id: uid(), status: 'pending', timestamp: Date.now() };
+    const bonus = calculateBonus(w.amount);
+    const newW: WalletTopUp = { ...w, id: uid(), status: 'pending', timestamp: Date.now(), bonusAmount: bonus };
     set((st) => ({ walletTopUps: [newW, ...st.walletTopUps] }));
     if (isSupabaseConfigured()) {
       supabase.from('wallet_topups').insert({
         user_id: w.userId, user_name: w.userName, user_phone: w.userPhone,
         amount: w.amount, transaction_id: w.transactionId,
-        car_plate: w.carPlate, method: w.method,
+        car_plate: w.carPlate, method: w.method, bonus_amount: bonus,
       }).select().single().then(({ data }) => {
         if (data) set((st) => ({ walletTopUps: st.walletTopUps.map((x) => (x.id === newW.id ? mapTopUp(data) : x)) }));
       });
@@ -1281,16 +1285,35 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   approveTopUp: async (id) => {
-    if (!isSupabaseConfigured()) return;
-    try {
-      const { data, error } = await supabase.rpc('approve_topup_atomic', { p_topup_id: id });
-      if (!error && data?.success) {
-        set((st) => ({
-          walletTopUps: st.walletTopUps.map((w) => w.id === id ? { ...w, status: 'approved' as const, bonusAmount: data.bonus_added } : w),
-        }));
-        await get().fetchAll();
+    const target = get().walletTopUps.find((w) => w.id === id);
+    const expectedBonus = target ? calculateBonus(target.amount) : 0;
+
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase.rpc('approve_topup_atomic', { p_topup_id: id });
+        if (!error && data?.success) {
+          set((st) => ({
+            walletTopUps: st.walletTopUps.map((w) => w.id === id ? { ...w, status: 'approved' as const, bonusAmount: data.bonus_added } : w),
+          }));
+          await get().fetchAll();
+          return;
+        }
+      } catch {}
+    }
+
+    // 🌟 Fallback محلي في حالة عدم توفر السيرفر أو الاتصال
+    if (target && target.status === 'pending') {
+      const totalCredit = target.amount + expectedBonus;
+      const user = get().currentUser;
+      if (user) {
+        const updatedUser = { ...user, wallet: (user.wallet || 0) + totalCredit };
+        set({ currentUser: updatedUser });
+        safeSetStorage('currentUser', updatedUser);
       }
-    } catch {}
+      set((st) => ({
+        walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'approved' as const, bonusAmount: expectedBonus } : w)),
+      }));
+    }
   },
 
   rejectTopUp: async (id) => {

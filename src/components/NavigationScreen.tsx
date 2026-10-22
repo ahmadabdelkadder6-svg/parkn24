@@ -14,8 +14,8 @@ import {
   AlertCircle,
   Check,
   Home,
+  ShieldCheck,
 } from 'lucide-react';
-// 🌟 استيراد getServerNow ودوال البصمة الموحدة من الـ store لضمان المزامنة التامة
 import {
   useStore,
   normalizePlate,
@@ -63,12 +63,9 @@ const BRAND = {
 
 /* ─── Constants ─── */
 const CANCEL_WINDOW_SECONDS = 30;
-const GPS_DEADBAND_METERS = 6;
-const STOP_SPEED_THRESHOLD = 2; // متر/ثانية - أقل من كده السيارة واقفة
-const VIP_GEOFENCE_METERS = 50; // 📍 نطاق الوصول للجراج VIP
-const AUTO_CHARGE_DELAY_MS = 5 * 60 * 1000; // ⏱️ 5 دقائق توقف قبل الخصم التلقائي
-const NEARBY_VIP_RADIUS_METERS = 2000; // 🗺️ 2 كم - نطاق الجراجات القريبة المحفوظة في الكاش
-const RECOMPUTE_NEARBY_DISTANCE_METERS = 500; // 🔄 إعادة حساب الكاش لما المستخدم يتحرك 500م
+const GPS_DEADBAND_METERS = 5;
+const VIP_GEOFENCE_METERS = 100; // 📍 نطاق الوصول للجراج VIP (100 متر لثبات الـ GPS)
+const AUTO_CHARGE_DELAY_SECONDS = 300; // ⏱️ 5 دقائق (300 ثانية) ثبات قبل الخصم التلقائي
 
 /* ─── Icons ─── */
 const userIcon = new L.DivIcon({
@@ -111,7 +108,7 @@ const getDistanceMeters = (
   return R * c;
 };
 
-/* ─── Map controller (محمي بالكامل من الانهيار وموفر للذاكرة) ─── */
+/* ─── Map controller ─── */
 function MapController({
   userPos,
   garagePos,
@@ -159,9 +156,6 @@ function MapController({
   return null;
 }
 
-/* ════════════════════════════════════════════════════════════
-   ██  MAIN NAVIGATION SCREEN
-   ════════════════════════════════════════════════════════════ */
 export default function NavigationScreen() {
   const {
     garages,
@@ -179,20 +173,20 @@ export default function NavigationScreen() {
     chargeBookingFee,
     refundBookingFee,
     addWalletTopUp,
+    updateWalletBalance,
+    isFirstFreeSession,
   } = useStore();
 
   const garage = garages.find((g) => g.id === selectedGarageId);
   const userPlateNav = normalizePlate(currentUser?.carPlate);
   const userPhoneClean = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
-  /* ── نوع الجراج: VIP أم Directory ── */
   const isVipGarage = useMemo(() => {
     if (!garage) return false;
     const type = (garage as any).type || (garage as any).garage_type;
     return type === 'partner' || type === 'vip';
   }, [garage]);
 
-  /* ── الكشف عن السيارة القادمة ── */
   const myIncomingCar = useMemo(() => {
     return incomingCars.find(
       (c) =>
@@ -202,7 +196,6 @@ export default function NavigationScreen() {
     );
   }, [incomingCars, selectedGarageId, userPlateNav]);
 
-  /* ✅ الكشف اللحظي عن الجلسة النشطة */
   const myActiveSession = useMemo(() => {
     return sessions
       .filter(
@@ -216,23 +209,24 @@ export default function NavigationScreen() {
       .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
   }, [sessions, userPlateNav, userPhoneClean]);
 
-  /* ── State ── */
   const [userPos, setUserPos] = useState<{ lat: number; lng: number }>({
-    lat: 30.0444,
-    lng: 31.2357,
+    lat: garage?.lat || 30.0444,
+    lng: garage?.lng || 31.2357,
   });
   const [cancelTimeLeft, setCancelTimeLeft] = useState(CANCEL_WINDOW_SECONDS);
   const [canCancel, setCanCancel] = useState(true);
   const [mapReady, setMapReady] = useState(false);
   const [pushStatus, setPushStatus] = useState<'waiting' | 'sent' | 'cancelled'>('waiting');
 
-  /* ── State جديد للـ VIP ── */
   const [showArrivalOverlay, setShowArrivalOverlay] = useState(false);
   const [showInsufficientModal, setShowInsufficientModal] = useState(false);
   const [feeCharged, setFeeCharged] = useState(false);
   const [processingTopup, setProcessingTopup] = useState<string | null>(null);
 
-  /* ── Refs ── */
+  // ⏱️ العداد الفعلي للـ 5 دقائق للخصم التلقائي
+  const [stationarySeconds, setStationarySeconds] = useState(0);
+  const [isInsideGeofence, setIsInsideGeofence] = useState(false);
+
   const isMountedRef = useRef(true);
   const userPosRef = useRef(userPos);
   const currentUserRef = useRef(currentUser);
@@ -248,18 +242,10 @@ export default function NavigationScreen() {
 
   const lastStableCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
 
-  /* ── Refs للـ Geofence والخصم التلقائي ── */
-  const geofenceTriggeredRef = useRef(false);
-  const lastGpsTimeRef = useRef<number>(0);
   const feeChargedRef = useRef(false);
-  const autoChargeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const autoChargeGarageIdRef = useRef<string | null>(null);
-  const showArrivalOverlayRef = useRef(false);
+  const geofenceEntryTimeRef = useRef<number | null>(null);
+  const outsideGeofenceCountRef = useRef<number>(0);
   const myActiveSessionRef = useRef(myActiveSession);
-
-  /* ── Refs لـ كاش الجراجات القريبة (تحسين الأداء) ── */
-  const nearbyVipGaragesRef = useRef<any[]>([]);
-  const lastNearbyComputePosRef = useRef<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -275,10 +261,6 @@ export default function NavigationScreen() {
   useEffect(() => {
     currentUserRef.current = currentUser;
   }, [currentUser]);
-
-  useEffect(() => {
-    showArrivalOverlayRef.current = showArrivalOverlay;
-  }, [showArrivalOverlay]);
 
   useEffect(() => {
     myActiveSessionRef.current = myActiveSession;
@@ -364,55 +346,151 @@ export default function NavigationScreen() {
     };
   }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
 
-  /* ─── 💰 الخصم التلقائي بعد 5 دقائق توقف داخل geofence أي جراج VIP ─── */
-  const executeAutoCharge = useCallback(async (targetGarageId: string) => {
-    if (feeChargedRef.current || !currentUserRef.current) return;
+  /* ─── 💰 خصم رسوم الحجز VIP (يدوي أو تلقائي) ─── */
+  const handleChargeVipFee = useCallback(async (): Promise<boolean> => {
+    if (!isVipGarage || feeChargedRef.current || !currentUserRef.current || !garage) return true;
 
-    const state = useStore.getState();
-    const targetGarage = state.garages.find((g: any) => g.id === targetGarageId);
-    if (!targetGarage) return;
-
-    const balance = (currentUserRef.current as any)?.walletBalance ?? 0;
-    if (balance < BOOKING_FEE) {
+    const currentBalance = (currentUserRef.current as any)?.walletBalance ?? 0;
+    if (currentBalance < BOOKING_FEE) {
       if (isMountedRef.current) setShowInsufficientModal(true);
-      return;
+      return false;
     }
 
     try {
-      await chargeBookingFee({
-        userPhone: currentUserRef.current.phone,
-        garageId: targetGarageId,
-        amount: BOOKING_FEE,
-      });
+      if (typeof chargeBookingFee === 'function') {
+        await chargeBookingFee({
+          userPhone: currentUserRef.current.phone,
+          garageId: garage.id,
+          amount: BOOKING_FEE,
+        });
+      } else if (typeof updateWalletBalance === 'function') {
+        await updateWalletBalance(-BOOKING_FEE, `رسوم حجز وركنة جراج ${garage.name}`);
+      }
+
       feeChargedRef.current = true;
-      if (isMountedRef.current) {
-        setFeeCharged(true);
-        if (targetGarageId !== selectedGarageId) {
-          setSelectedGarageId(targetGarageId);
+      if (isMountedRef.current) setFeeCharged(true);
+      toast.success(`تم خصم ${BOOKING_FEE} ج.م رسوم الحجز بنجاح 💰`, { duration: 3500 });
+      return true;
+    } catch (err) {
+      console.error('❌ Fee charge error:', err);
+      toast.error('حدث خطأ في خصم رسوم الحجز');
+      return false;
+    }
+  }, [isVipGarage, garage, chargeBookingFee, updateWalletBalance]);
+
+  /* ─── 🚗 بدء جلسة الركن ─── */
+  const handleCarArrived = useCallback(async () => {
+    if (isArrivingRef.current || isCancellingRef.current) return;
+    isArrivingRef.current = true;
+
+    try {
+      if (isVipGarage && !feeChargedRef.current) {
+        const charged = await handleChargeVipFee();
+        if (!charged) {
+          isArrivingRef.current = false;
+          return;
         }
       }
-      toast.success(`تم خصم ${BOOKING_FEE} ج.م رسوم الحجز تلقائياً عند الوصول`, {
-        icon: '💰',
-        duration: 3500,
-      });
-    } catch (err) {
-      console.error('❌ Auto-charge error:', err);
-      toast.error('حدث خطأ في الخصم التلقائي');
-    }
-  }, [chargeBookingFee, selectedGarageId, setSelectedGarageId]);
 
-  /* 🧠 ─── GPS مع فحص Geofence الذكي (كاش الجراجات القريبة) ─── */
+      if (!garage) return;
+
+      const state = useStore.getState();
+      const alreadyActive = state.sessions.find(
+        (s) =>
+          s.status === 'active' &&
+          (
+            normalizePlate(s.carPlate) === userPlateNav ||
+            (userPhoneClean && normalizePhone((s as any).customerPhone || '') === userPhoneClean)
+          ),
+      );
+
+      if (alreadyActive) {
+        if (myIncomingCar) await removeIncomingCar(myIncomingCar.id);
+        if (alreadyActive.garageId !== selectedGarageId) {
+          setSelectedGarageId(alreadyActive.garageId);
+        }
+        navigatedToSessionRef.current = true;
+        setScreen('session');
+        return;
+      }
+
+      if (myIncomingCar) {
+        const relatedOffer = offers.find(
+          (o) =>
+            o.carPlate === myIncomingCar.carPlate &&
+            (o.status === 'pending' || o.status === 'accepted'),
+        );
+        if (relatedOffer) cancelOffer(relatedOffer.id);
+      }
+
+      const startTimeISO = new Date(getServerNow()).toISOString();
+
+      await addSession({
+        garageId: garage.id,
+        carPlate: myIncomingCar?.carPlate || currentUser?.carPlate || '---',
+        startTime: startTimeISO,
+        status: 'active',
+        source: 'app',
+        agreedPrice: myIncomingCar?.agreedPrice || garage.hourlyRate,
+        customerPhone: currentUser?.phone,
+        customerName: currentUser?.name,
+        startedBy: 'customer',
+        incomingCarId: myIncomingCar?.id,
+        bookingFeePaid: isVipGarage ? BOOKING_FEE : 0,
+      } as any);
+
+      if (myIncomingCar) {
+        await removeIncomingCar(myIncomingCar.id);
+      }
+
+      setShowArrivalOverlay(false);
+      navigatedToSessionRef.current = true;
+      setScreen('session');
+    } catch (err) {
+      console.error('❌ خطأ:', err);
+      toast.error('حدث خطأ، حاول مرة أخرى');
+    } finally {
+      setTimeout(() => {
+        isArrivingRef.current = false;
+      }, 2000);
+    }
+  }, [
+    isVipGarage,
+    handleChargeVipFee,
+    garage,
+    userPlateNav,
+    userPhoneClean,
+    myIncomingCar,
+    offers,
+    cancelOffer,
+    currentUser,
+    addSession,
+    removeIncomingCar,
+    selectedGarageId,
+    setSelectedGarageId,
+    setScreen,
+  ]);
+
+  /* ─── ⚡ الخصم التلقائي عند انتهاء 5 دقائق ─── */
+  const executeAutoCharge = useCallback(async (targetGarageId: string) => {
+    if (feeChargedRef.current || !currentUserRef.current) return;
+
+    const charged = await handleChargeVipFee();
+    if (charged) {
+      toast.success('تم الخصم التلقائي (3ج) وبدء الركنة بعد 5 دقائق ثبات 🎯', { duration: 4000 });
+      await handleCarArrived();
+    }
+  }, [handleChargeVipFee, handleCarArrived]);
+
+  /* 🧠 ─── GPS Tracking ─── */
   const handleGpsUpdate = useCallback((p: GeolocationPosition) => {
     if (!isMountedRef.current) return;
     const newLat = p.coords.latitude;
     const newLng = p.coords.longitude;
-    const speed = p.coords.speed ?? 0;
-    const now = getServerNow();
 
     if (lastStableCoordsRef.current === null) {
       lastStableCoordsRef.current = { lat: newLat, lng: newLng };
       setUserPos({ lat: newLat, lng: newLng });
-      lastGpsTimeRef.current = now;
     } else {
       const distanceMoved = getDistanceMeters(
         lastStableCoordsRef.current.lat,
@@ -424,76 +502,9 @@ export default function NavigationScreen() {
       if (distanceMoved >= GPS_DEADBAND_METERS) {
         lastStableCoordsRef.current = { lat: newLat, lng: newLng };
         setUserPos({ lat: newLat, lng: newLng });
-        lastGpsTimeRef.current = now;
       }
     }
-
-    if (
-      feeChargedRef.current ||
-      myActiveSessionRef.current ||
-      showArrivalOverlayRef.current
-    ) {
-      return;
-    }
-
-    const shouldRecomputeNearby =
-      lastNearbyComputePosRef.current === null ||
-      getDistanceMeters(
-        lastNearbyComputePosRef.current.lat,
-        lastNearbyComputePosRef.current.lng,
-        newLat,
-        newLng
-      ) >= RECOMPUTE_NEARBY_DISTANCE_METERS;
-
-    if (shouldRecomputeNearby) {
-      const allGarages = useStore.getState().garages;
-      nearbyVipGaragesRef.current = allGarages.filter((g: any) => {
-        const type = g.type || g.garage_type;
-        if (type !== 'partner' && type !== 'vip') return false;
-        if (!g.lat || !g.lng) return false;
-        const dist = haversineDistance(newLat, newLng, g.lat, g.lng);
-        return dist <= NEARBY_VIP_RADIUS_METERS;
-      });
-      lastNearbyComputePosRef.current = { lat: newLat, lng: newLng };
-    }
-
-    const isStopped = speed === null || speed < STOP_SPEED_THRESHOLD;
-
-    const nearbyVip = nearbyVipGaragesRef.current.find((g: any) => {
-      const dist = haversineDistance(newLat, newLng, g.lat, g.lng);
-      return dist <= VIP_GEOFENCE_METERS;
-    });
-
-    if (nearbyVip && isStopped) {
-      if (autoChargeGarageIdRef.current !== nearbyVip.id) {
-        if (autoChargeTimerRef.current) {
-          clearTimeout(autoChargeTimerRef.current);
-          autoChargeTimerRef.current = null;
-        }
-
-        autoChargeGarageIdRef.current = nearbyVip.id;
-        geofenceTriggeredRef.current = true;
-
-        if (!showArrivalOverlayRef.current && nearbyVip.id === selectedGarageId) {
-          setShowArrivalOverlay(true);
-        }
-
-        autoChargeTimerRef.current = setTimeout(() => {
-          autoChargeTimerRef.current = null;
-          if (isMountedRef.current && !feeChargedRef.current && !myActiveSessionRef.current) {
-            executeAutoCharge(nearbyVip.id);
-          }
-        }, AUTO_CHARGE_DELAY_MS);
-      }
-    } else {
-      if (autoChargeTimerRef.current) {
-        clearTimeout(autoChargeTimerRef.current);
-        autoChargeTimerRef.current = null;
-        autoChargeGarageIdRef.current = null;
-        geofenceTriggeredRef.current = false;
-      }
-    }
-  }, [selectedGarageId, executeAutoCharge]);
+  }, []);
 
   useEffect(() => {
     if (!('geolocation' in navigator)) return;
@@ -513,21 +524,60 @@ export default function NavigationScreen() {
     const id = navigator.geolocation.watchPosition(
       handleGpsUpdate,
       () => {},
-      {
-        enableHighAccuracy: true,
-        maximumAge: 3000,
-        timeout: 10000
-      },
+      { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 },
     );
 
     return () => {
       navigator.geolocation.clearWatch(id);
-      if (autoChargeTimerRef.current) {
-        clearTimeout(autoChargeTimerRef.current);
-        autoChargeTimerRef.current = null;
-      }
     };
   }, [handleGpsUpdate]);
+
+  /* ⏱️ ─── العداد الزمني للـ 5 دقائق ثبات ─── */
+  useEffect(() => {
+    if (!garage || !isVipGarage) return;
+
+    const interval = setInterval(() => {
+      if (!isMountedRef.current || feeChargedRef.current || myActiveSessionRef.current) return;
+
+      const distMeters = haversineDistance(userPos.lat, userPos.lng, garage.lat, garage.lng);
+      const inside = distMeters <= VIP_GEOFENCE_METERS;
+
+      if (inside) {
+        outsideGeofenceCountRef.current = 0;
+
+        if (!geofenceEntryTimeRef.current) {
+          geofenceEntryTimeRef.current = getServerNow();
+          setIsInsideGeofence(true);
+          setShowArrivalOverlay(true);
+          toast.success('🎯 تم الوصول لمحيط الجراج! بدأ عداد الـ 5 دقائق للخصم التلقائي (3ج)', {
+            id: 'geofence-enter',
+            duration: 4000,
+          });
+        }
+
+        const elapsedMs = getServerNow() - geofenceEntryTimeRef.current;
+        const elapsedSec = Math.floor(elapsedMs / 1000);
+        setStationarySeconds(elapsedSec);
+
+        if (elapsedSec >= AUTO_CHARGE_DELAY_SECONDS && !feeChargedRef.current) {
+          executeAutoCharge(garage.id);
+        }
+      } else {
+        // حماية من رعشة الـ GPS: الانتظار 15 ثانية متواصلة خارج النطاق قبل إعادة تعيين العداد
+        if (geofenceEntryTimeRef.current) {
+          outsideGeofenceCountRef.current += 1;
+          if (outsideGeofenceCountRef.current >= 15) {
+            geofenceEntryTimeRef.current = null;
+            outsideGeofenceCountRef.current = 0;
+            setIsInsideGeofence(false);
+            setStationarySeconds(0);
+          }
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [garage, isVipGarage, userPos, executeAutoCharge]);
 
   /* ─── تحميل الخريطة ─── */
   useEffect(() => {
@@ -652,10 +702,10 @@ export default function NavigationScreen() {
 
   if (!garage) {
     return (
-      <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8 text-right">
+      <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8 text-right dir-rtl">
         <div className="text-4xl mb-4">🔍</div>
         <p className="text-slate-400 text-sm font-bold text-center mb-6">
-          لم يتم تحديد جراج
+          لم يتم تحديد جراج للملاحة
         </p>
         <button
           type="button"
@@ -673,12 +723,14 @@ export default function NavigationScreen() {
     garage.lat, garage.lng,
   );
   const minutes = distanceToMinutes(distance);
-
   const coordsText = `${garage.lat},${garage.lng}`;
-  const isEligibleForFree = currentUser && !currentUser.hasUsedFreeSession;
   const walletBalance = (currentUser as any)?.walletBalance ?? 0;
 
-  /* ─── Handlers ─── */
+  const remainingAutoChargeSeconds = Math.max(0, AUTO_CHARGE_DELAY_SECONDS - stationarySeconds);
+  const autoChargeMin = Math.floor(remainingAutoChargeSeconds / 60);
+  const autoChargeSec = remainingAutoChargeSeconds % 60;
+  const formattedCountdown = `${autoChargeMin}:${autoChargeSec.toString().padStart(2, '0')}`;
+
   const copyCoords = async () => {
     try {
       if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
@@ -741,43 +793,14 @@ export default function NavigationScreen() {
     }
   };
 
-  /* ─── 💰 خصم رسوم الحجز VIP (يدوي من زر "وصلت") ─── */
-  const handleChargeVipFee = async (): Promise<boolean> => {
-    if (!isVipGarage || feeChargedRef.current || !currentUser) return true;
-
-    // تحقق من الرصيد
-    if (walletBalance < BOOKING_FEE) {
-      setShowInsufficientModal(true);
-      return false;
-    }
-
-    try {
-      await chargeBookingFee({
-        userPhone: currentUser.phone,
-        garageId: garage.id,
-        amount: BOOKING_FEE,
-      });
-      feeChargedRef.current = true;
-      setFeeCharged(true);
-      toast.success(`تم خصم ${BOOKING_FEE} ج.م رسوم الحجز`, { icon: '💰', duration: 2500 });
-      return true;
-    } catch (err) {
-      console.error('❌ Fee charge error:', err);
-      toast.error('حدث خطأ في خصم رسوم الحجز');
-      return false;
-    }
-  };
-
-  /* ─── 🔄 استرداد الرسوم (ملقيتش مكان) ─── */
   const handleRefundAndExit = async () => {
     if (!currentUser) return;
 
     try {
       if (feeChargedRef.current) {
-        const refundGarageId = autoChargeGarageIdRef.current || garage.id;
         await refundBookingFee({
           userPhone: currentUser.phone,
-          garageId: refundGarageId,
+          garageId: garage.id,
           amount: BOOKING_FEE,
         });
         toast.success(`تم استرداد ${BOOKING_FEE} ج.م لمحفظتك`, { icon: '✅', duration: 3000 });
@@ -789,12 +812,9 @@ export default function NavigationScreen() {
 
       feeChargedRef.current = false;
       setFeeCharged(false);
-      geofenceTriggeredRef.current = false;
-      autoChargeGarageIdRef.current = null;
-      if (autoChargeTimerRef.current) {
-        clearTimeout(autoChargeTimerRef.current);
-        autoChargeTimerRef.current = null;
-      }
+      geofenceEntryTimeRef.current = null;
+      setIsInsideGeofence(false);
+      setStationarySeconds(0);
 
       setShowArrivalOverlay(false);
       setSelectedGarageId(null);
@@ -805,14 +825,12 @@ export default function NavigationScreen() {
     }
   };
 
-  /* ─── 🏠 عودة بسيطة بدون استرداد ─── */
   const handleReturnHome = () => {
     setShowArrivalOverlay(false);
     setSelectedGarageId(null);
     setScreen('list');
   };
 
-  /* ─── 💳 شحن سريع من الـ Insufficient Modal ─── */
   const handleQuickTopup = async (tier: typeof TOPUP_TIERS[0]) => {
     if (!currentUser || processingTopup) return;
     setProcessingTopup(tier.id);
@@ -835,94 +853,11 @@ export default function NavigationScreen() {
     }
   };
 
-  const handleCarArrived = async () => {
-    if (isArrivingRef.current || isCancellingRef.current) return;
-    isArrivingRef.current = true;
-
-    try {
-      if (isVipGarage && !feeChargedRef.current) {
-        const charged = await handleChargeVipFee();
-        if (!charged) {
-          isArrivingRef.current = false;
-          return;
-        }
-      }
-
-      if (autoChargeTimerRef.current) {
-        clearTimeout(autoChargeTimerRef.current);
-        autoChargeTimerRef.current = null;
-      }
-
-      if (!myIncomingCar || !garage) {
-        if (myActiveSession) {
-          navigatedToSessionRef.current = true;
-          setScreen('session');
-        }
-        return;
-      }
-
-      const state = useStore.getState();
-      const alreadyActive = state.sessions.find(
-        (s) =>
-          s.status === 'active' &&
-          (
-            normalizePlate(s.carPlate) === userPlateNav ||
-            (userPhoneClean && normalizePhone((s as any).customerPhone || '') === userPhoneClean)
-          ),
-      );
-
-      if (alreadyActive) {
-        await removeIncomingCar(myIncomingCar.id);
-        if (alreadyActive.garageId !== selectedGarageId) {
-          setSelectedGarageId(alreadyActive.garageId);
-        }
-        navigatedToSessionRef.current = true;
-        setScreen('session');
-        return;
-      }
-
-      const relatedOffer = offers.find(
-        (o) =>
-          o.carPlate === myIncomingCar.carPlate &&
-          (o.status === 'pending' || o.status === 'accepted'),
-      );
-      if (relatedOffer) cancelOffer(relatedOffer.id);
-
-      const startTimeISO = new Date(getServerNow()).toISOString();
-
-      await addSession({
-        garageId: garage.id,
-        carPlate: myIncomingCar.carPlate,
-        startTime: startTimeISO,
-        status: 'active',
-        source: 'app',
-        agreedPrice: myIncomingCar.agreedPrice,
-        customerPhone: currentUser?.phone,
-        customerName: currentUser?.name,
-        startedBy: 'customer',
-        incomingCarId: myIncomingCar.id,
-        bookingFeePaid: isVipGarage ? BOOKING_FEE : 0,
-      } as any);
-
-      await removeIncomingCar(myIncomingCar.id);
-      setShowArrivalOverlay(false);
-      navigatedToSessionRef.current = true;
-      setScreen('session');
-    } catch (err) {
-      console.error('❌ خطأ:', err);
-      toast.error('حدث خطأ، حاول مرة أخرى');
-    } finally {
-      setTimeout(() => {
-        isArrivingRef.current = false;
-      }, 2000);
-    }
-  };
-
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full flex flex-col safe-top safe-bottom text-right relative"
+      className="h-full flex flex-col safe-top safe-bottom text-right relative dir-rtl"
       style={{ background: BRAND.navy, color: '#ffffff' }}
     >
       {/* ══ Header ══ */}
@@ -1017,7 +952,7 @@ export default function NavigationScreen() {
                   رصيدك: {walletBalance} ج.م
                 </span>
                 <span className="text-[9px] font-bold" style={{ color: BRAND.slateMuted }}>
-                  رسوم الحجز: {BOOKING_FEE} ج.م (تُخصم عند الوصول)
+                  رسوم الحجز: {BOOKING_FEE} ج.م (تُخصم عند الوصول أو بعد 5 دقائق)
                 </span>
               </div>
             </div>
@@ -1026,6 +961,22 @@ export default function NavigationScreen() {
                 <Check size={12} /> تم الخصم
               </span>
             )}
+          </div>
+        )}
+
+        {/* ⏱️ كارت العداد التلقائي الـ 5 دقائق فور الوصول */}
+        {isInsideGeofence && isVipGarage && !feeCharged && (
+          <div className="rounded-2xl p-4 border-2 border-amber-500/50 bg-amber-500/10 text-center space-y-2 animate-in fade-in zoom-in duration-300">
+            <div className="flex items-center justify-center gap-2 text-amber-300 font-black text-xs">
+              <Clock className="w-4 h-4 animate-spin text-amber-400" />
+              <span>أنت الآن في نطاق الجراج (جاري احتساب 5 دقائق ثبات)</span>
+            </div>
+            <div className="text-3xl font-black font-mono text-amber-400 dir-ltr">
+              {formattedCountdown}
+            </div>
+            <p className="text-[10px] font-bold text-slate-300">
+              سيتم خصم <span className="text-amber-300 font-black">{BOOKING_FEE} ج.م</span> تلقائياً وبدء العداد عند انتهاء الوقت.
+            </p>
           </div>
         )}
 
@@ -1087,20 +1038,14 @@ export default function NavigationScreen() {
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.98 }}
             onClick={openExternalMaps}
-            className="w-full relative overflow-hidden flex items-center justify-center gap-2 py-3 px-4 rounded-xl cursor-pointer border-0 text-white font-black"
+            className="w-full relative overflow-hidden flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl cursor-pointer border-0 text-white font-black"
             style={{
               background: BRAND.blue,
               boxShadow: `0 4px 14px ${BRAND.blue}25`,
             }}
           >
             <Navigation size={16} color="#ffffff" className="animate-bounce shrink-0" />
-            <span
-              style={{
-                color: '#ffffff',
-                fontSize: '14px',
-                fontWeight: 950,
-              }}
-            >
+            <span style={{ color: '#ffffff', fontSize: '14px', fontWeight: 950 }}>
               شغل الـ GPS وابدأ التحرك فوراً! 🗺️🚀
             </span>
           </motion.button>
@@ -1116,7 +1061,7 @@ export default function NavigationScreen() {
           </button>
         </div>
 
-        {/* ✅ معلومات المركبة الموجهة (تصميم مبسط واحترافي بدون أسعار أو أماكن) */}
+        {/* ✅ معلومات المركبة الموجهة */}
         <div className="border rounded-2xl p-3.5 shrink-0 flex flex-col gap-3" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold" style={{ color: BRAND.slateMuted }}>
@@ -1129,17 +1074,17 @@ export default function NavigationScreen() {
               </span>
             </div>
           </div>
-
-          {/* هدية أول ركنة إن وجدت */}
-          {isEligibleForFree && !isVipGarage && (
-            <div className="border-t pt-3" style={{ borderColor: BRAND.border }}>
-              <div className="rounded-xl p-2.5 text-center flex items-center justify-center gap-1.5 text-[10px] font-black" style={{ background: BRAND.greenLight, color: BRAND.green }}>
-                <Gift size={14} style={{ color: BRAND.green }} />
-                <span>أول 30 دقيقة مجاناً كهدية ترحيبية لك في هذا الحجز! 🎁</span>
-              </div>
-            </div>
-          )}
         </div>
+
+        {/* 🎁 Welcome Gift Banner Hidden via false && */}
+        {false && isFirstFreeSession && (
+          <div className="flex items-center gap-2 p-2.5 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30">
+            <Gift size={16} className="text-amber-400 shrink-0" />
+            <span className="text-[11px] font-black text-amber-300">
+              🎁 هدية بركن 24: أول 30 دقيقة مجاناً في هذه الجلسة!
+            </span>
+          </div>
+        )}
 
         {/* 🔔 مؤشر حالة الـ Push */}
         {myIncomingCar && (
@@ -1174,26 +1119,28 @@ export default function NavigationScreen() {
           </div>
         )}
 
-        {/* زر وصلت للجراج (يدوي - احتياطي) */}
+        {/* 🟢 زر "وصلت الجراج الآن" (خصم فوري 3ج وبدء الجلسة فوراً) */}
         {!myActiveSession && (
           <button
             type="button"
             onClick={handleCarArrived}
             disabled={isArrivingRef.current || isCancellingRef.current}
-            className="w-full py-3.5 rounded-xl active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 disabled:opacity-50 border-0 text-white cursor-pointer"
+            className="w-full py-4 rounded-2xl active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 disabled:opacity-50 border-0 text-white cursor-pointer shadow-lg"
             style={{
-              background: BRAND.greenDark,
-              boxShadow: `0 4px 14px ${BRAND.green}20`,
+              background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+              boxShadow: `0 4px 18px rgba(22, 163, 74, 0.3)`,
             }}
           >
-            <Navigation size={16} color="#ffffff" />
-            <span className="font-black text-white text-center" style={{ color: '#ffffff', fontWeight: 950, fontSize: '15px' }}>
-              📍 وصلت الجراج وبدء الركن
+            <ShieldCheck size={18} color="#ffffff" />
+            <span className="font-black text-white text-center text-sm sm:text-base">
+              {isVipGarage
+                ? `وصلت الجراج الآن (خصم ${BOOKING_FEE}ج وبدء الركنة فوراً)`
+                : 'وصلت الجراج الآن (بدء الركنة فوراً)'}
             </span>
           </button>
         )}
 
-        {/* 🔄 زر الإلغاء الذكي والمتحول */}
+        {/* 🔄 زر الإلغاء */}
         {myIncomingCar && !myActiveSession && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -1245,16 +1192,14 @@ export default function NavigationScreen() {
         )}
       </div>
 
-      {/* ══════════════════════════════════════════════════════
-          🎯 Arrival Overlay للـ VIP (geofence auto-trigger)
-          ══════════════════════════════════════════════════════ */}
+      {/* 🎯 Arrival Overlay للـ VIP */}
       <AnimatePresence>
         {showArrivalOverlay && isVipGarage && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[9999] flex items-end justify-center p-0"
+            className="fixed inset-0 z-[9999] flex items-end justify-center p-0 dir-rtl"
             style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
           >
             <motion.div
@@ -1271,11 +1216,10 @@ export default function NavigationScreen() {
                 </div>
                 <h3 className="text-white font-black text-lg mb-1">وصلت لجراج {garage.name}! 🎉</h3>
                 <p className="text-xs font-bold" style={{ color: BRAND.slateMuted }}>
-                  اختر الإجراء المناسب
+                  اختر الإجراء المناسب للمتابعة
                 </p>
               </div>
 
-              {/* زر 1: وصلت ولقيت مكان */}
               <button
                 onClick={handleCarArrived}
                 disabled={isArrivingRef.current}
@@ -1283,10 +1227,9 @@ export default function NavigationScreen() {
                 style={{ background: BRAND.greenDark, fontSize: '15px' }}
               >
                 <Check size={18} />
-                وصلت ولقيت مكان ✅
+                وصلت ولقيت مكان (تأكيد الخصم والركن) ✅
               </button>
 
-              {/* زر 2: ملقيتش مكان (استرداد) */}
               <button
                 onClick={handleRefundAndExit}
                 className="w-full py-4 rounded-xl flex items-center justify-center gap-2 cursor-pointer border font-black"
@@ -1301,7 +1244,6 @@ export default function NavigationScreen() {
                 ملقيتش مكان (استرداد {BOOKING_FEE} ج.م) ↩️
               </button>
 
-              {/* زر 3: العودة للرئيسية */}
               <button
                 onClick={handleReturnHome}
                 className="w-full py-3 rounded-xl flex items-center justify-center gap-2 cursor-pointer border bg-transparent font-black"
@@ -1319,16 +1261,14 @@ export default function NavigationScreen() {
         )}
       </AnimatePresence>
 
-      {/* ══════════════════════════════════════════════════════
-          💳 Insufficient Wallet Modal (Option B)
-          ══════════════════════════════════════════════════════ */}
+      {/* 💳 Insufficient Wallet Modal */}
       <AnimatePresence>
         {showInsufficientModal && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 dir-rtl"
             style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
           >
             <motion.div
@@ -1348,7 +1288,6 @@ export default function NavigationScreen() {
                 </p>
               </div>
 
-              {/* ملخص الرصيد */}
               <div className="rounded-xl p-3 space-y-1.5 border" style={{ background: BRAND.navy, borderColor: BRAND.border }}>
                 <div className="flex justify-between text-xs">
                   <span className="font-black text-white">{walletBalance} ج.م</span>
@@ -1359,12 +1298,11 @@ export default function NavigationScreen() {
                   <span className="font-bold" style={{ color: BRAND.slateMuted }}>رسوم الحجز المطلوبة:</span>
                 </div>
                 <div className="flex justify-between text-xs border-t pt-1.5" style={{ borderColor: BRAND.border }}>
-                  <span className="font-black" style={{ color: '#f87171' }}>{BOOKING_FEE - walletBalance} ج.م</span>
+                  <span className="font-black" style={{ color: '#f87171' }}>{Math.max(0, BOOKING_FEE - walletBalance)} ج.م</span>
                   <span className="font-bold" style={{ color: BRAND.slateMuted }}>الفرق:</span>
                 </div>
               </div>
 
-              {/* باقات الشحن (مرتبة من الأغلى للأرخص) */}
               <div className="grid grid-cols-2 gap-2">
                 {[...TOPUP_TIERS].reverse().map((tier) => (
                   <button
@@ -1393,9 +1331,6 @@ export default function NavigationScreen() {
                     </div>
                     <div className="text-[9px] font-bold" style={{ color: BRAND.green }}>
                       +{tier.bonus} ج.م هدية
-                    </div>
-                    <div className="text-[9px] font-bold mt-1" style={{ color: BRAND.slateMuted }}>
-                      ~{tier.bookings} حجوزات
                     </div>
                   </button>
                 ))}

@@ -21,7 +21,7 @@ const BRAND = {
   navyLight: '#111e36',
   slate: '#64748b',
   slateMuted: '#94a3b8',
-  border: 'rgba(255, 255, 255, 0.08)',
+  border: 'rgba(255, 255, 255, 0.12)',
 };
 
 const AUTO_END_SECONDS = 6 * 60 * 60;
@@ -271,10 +271,10 @@ export default function SessionScreen() {
 
   if (!activeSession) {
     return (
-      <div className="h-full text-white flex flex-col items-center justify-center p-8 text-right" style={{ background: BRAND.navy }}>
-        <div className="text-4xl mb-4 animate-bounce">⏳</div>
-        <p className="text-slate-400 text-sm font-bold text-center mb-2">جاري مزامنة بيانات الجلسة...</p>
-        <p className="text-slate-500 text-xs text-center mb-6">ستظهر بيانات العداد فور استلامها من السيرفر</p>
+      <div className="h-full text-white flex flex-col items-center justify-center p-8 text-right dir-rtl" style={{ background: BRAND.navy }}>
+        <div className="text-5xl mb-4 animate-bounce">⏳</div>
+        <p className="text-slate-300 text-base sm:text-lg font-black text-center mb-2">جاري مزامنة بيانات الجلسة...</p>
+        <p className="text-slate-400 text-xs sm:text-sm font-bold text-center mb-6">ستظهر بيانات العداد فور استلامها من السيرفر</p>
       </div>
     );
   }
@@ -287,86 +287,99 @@ export default function SessionScreen() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full text-white flex flex-col items-center justify-center p-6 overflow-y-auto safe-top safe-bottom"
+      className="h-full text-white flex flex-col items-center justify-center p-5 sm:p-6 overflow-y-auto safe-top safe-bottom dir-rtl"
       style={{ background: BRAND.navy }}
     >
+      {/* ⏰ العداد الرقمي الكبير ⏰ */}
       <div
-        className="w-44 h-44 rounded-full flex flex-col items-center justify-center border-2 mb-6 transition-shadow"
+        className="w-52 h-52 sm:w-60 sm:h-60 rounded-full flex flex-col items-center justify-center border-4 mb-6 transition-all shadow-2xl relative"
         style={{
-          background: BRAND.navyLight,
+          background: 'radial-gradient(circle, #111e36 0%, #0a1628 100%)',
           borderColor: BRAND.blue,
-          boxShadow: '0 0 40px rgba(22, 86, 184, 0.25)',
+          boxShadow: '0 0 45px rgba(22, 86, 184, 0.35)',
         }}
       >
-        <Clock size={24} style={{ color: BRAND.blue }} className="mb-1.5" />
-        <div className="text-3xl font-black font-mono text-white leading-none">{formatTime(elapsed)}</div>
-        <div className="text-[10px] font-bold mt-2" style={{ color: BRAND.slateMuted }}>مدة الركن الفعلية</div>
+        <Clock size={32} style={{ color: BRAND.green }} className="mb-2 animate-pulse" />
+        <div className="text-4xl sm:text-5xl font-black font-mono text-white leading-none tracking-wider dir-ltr">
+          {formatTime(elapsed)}
+        </div>
+        <div className="text-xs sm:text-sm font-black mt-3 px-3.5 py-1 rounded-full bg-slate-800/90 text-slate-200 border border-slate-700 shadow-sm">
+          مدة الركن الفعلية
+        </div>
       </div>
 
       {showAutoEndWarning && (
         <div
-          className="w-full rounded-2xl p-3 mb-4 text-center border animate-pulse"
-          style={{ background: 'rgba(239, 68, 68, 0.15)', borderColor: 'rgba(239, 68, 68, 0.4)' }}
+          className="w-full rounded-2xl p-4 mb-4 text-center border-2 animate-pulse shadow-md"
+          style={{ background: 'rgba(239, 68, 68, 0.2)', borderColor: 'rgba(239, 68, 68, 0.6)' }}
         >
-          <span className="text-xs font-black text-red-400">
+          <span className="text-sm sm:text-base font-black text-red-300 flex items-center justify-center gap-2">
             ⏰ سيتم إنهاء الجلسة تلقائياً بعد {autoEndMinutes} دقيقة
           </span>
         </div>
       )}
 
+      {/* 🚗 بطاقة التوضيح للعميل 🚗 */}
       <div
-        className="w-full rounded-2xl p-3.5 mb-4 text-center border"
-        style={{ background: 'rgba(255, 255, 255, 0.02)', borderColor: BRAND.border }}
+        className="w-full rounded-2xl p-4 mb-4 text-center border-2 shadow-sm"
+        style={{ background: BRAND.navyLight, borderColor: BRAND.border }}
       >
-        <div className="flex items-center justify-center gap-1.5 mb-1 font-black text-white" style={{ fontSize: '12px' }}>
-          <Sparkles size={13} className="text-yellow-400 shrink-0 animate-pulse" />
+        <div className="flex items-center justify-center gap-2 mb-1.5 font-black text-white text-base sm:text-lg">
+          <Sparkles size={18} className="text-amber-400 shrink-0 animate-pulse" />
           <span>خلّص مشوارك براحتك 🚗✨</span>
         </div>
-        <p className="font-bold leading-relaxed mx-auto" style={{ fontSize: '10px', color: BRAND.slateMuted, maxWidth: '280px' }}>
-          وقت الركنة <span className="font-black text-white">محفوظ بالثانية</span> في الخلفية.
+        <p className="font-extrabold leading-relaxed mx-auto text-xs sm:text-sm text-slate-300" style={{ maxWidth: '340px' }}>
+          وقت الركنة <span className="font-black text-amber-300 underline">محفوظ بالثانية</span> في الخلفية.
           أغلق التطبيق الآن وافتحه عند العودة للجراج لإنهاء الجلسة.
         </p>
       </div>
 
+      {/* 🚘 رقم السيارة 🚘 */}
       <div className="w-full mb-4">
-        <div className="border p-4 rounded-2xl text-center" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
-          <Car size={18} style={{ color: BRAND.blue }} className="mx-auto mb-1.5" />
-          <div className="text-sm font-black text-white font-mono">{activeSession.carPlate || currentUser?.carPlate || '---'}</div>
-          <div className="text-[9px] font-bold mt-1.5" style={{ color: BRAND.slateMuted }}>رقم سيارتك</div>
+        <div className="border-2 p-4 sm:p-5 rounded-2xl text-center shadow-sm" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+          <Car size={24} style={{ color: BRAND.blue }} className="mx-auto mb-2" />
+          <div className="text-xl sm:text-2xl font-black text-white font-mono tracking-widest bg-slate-900/80 py-2 px-4 rounded-xl border border-slate-700 inline-block min-w-[160px]">
+            {activeSession.carPlate || currentUser?.carPlate || '---'}
+          </div>
+          <div className="text-xs sm:text-sm font-extrabold mt-2 text-slate-400">رقم سيارتك</div>
         </div>
       </div>
 
+      {/* 📍 اسم ومكان الجراج 📍 */}
       {garage && (
-        <div className="border p-4 rounded-2xl w-full text-center mb-3" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
-          <div className="text-[9px] font-bold mb-1" style={{ color: BRAND.slateMuted }}>الجراج الحالي</div>
-          <div className="text-sm font-black text-white">{garage.name}</div>
+        <div className="border-2 p-4 sm:p-5 rounded-2xl w-full text-center mb-4 shadow-sm" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+          <div className="text-xs sm:text-sm font-extrabold mb-1 text-slate-400">الجراج الحالي</div>
+          <div className="text-lg sm:text-xl font-black text-white">{garage.name}</div>
           {garage.location && (
-            <div className="text-[10px] font-bold mt-1" style={{ color: BRAND.slateMuted }}>📍 {garage.location}</div>
+            <div className="text-xs sm:text-sm font-bold mt-2 text-slate-300 flex items-center justify-center gap-1">
+              📍 <span>{garage.location}</span>
+            </div>
           )}
         </div>
       )}
 
-      <div className="w-full text-center mb-4">
-        <span className="font-bold text-[9px]" style={{ color: BRAND.slateMuted }}>
+      {/* 📱 مصدر بدء الجلسة 📱 */}
+      <div className="w-full text-center mb-5">
+        <span className="font-extrabold text-xs sm:text-sm text-slate-300 bg-slate-900/60 px-4 py-1.5 rounded-full border border-slate-800 inline-block">
           {activeSession.source === 'app' ? '📱 بدأت من التطبيق' : '🅿️ بدأت من الجراج'}
           {(activeSession as any).startedBy === 'garage' && ' (بواسطة السايس)'}
         </span>
       </div>
 
-      {/* ✅ زر إنهاء الجلسة → الرئيسية مباشرة بدون ملخص */}
+      {/* 🔴 زر إنهاء الجلسة والعودة للرئيسية 🔴 */}
       <button
         type="button"
         aria-label="إنهاء الجلسة الحالية"
         onClick={handleEndSession}
         disabled={ending}
-        className="w-full py-4 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center border-0 text-white cursor-pointer font-black disabled:opacity-50"
+        className="w-full py-5 sm:py-6 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center border-2 border-red-500 text-white cursor-pointer font-black text-lg sm:text-xl disabled:opacity-50 shadow-2xl"
         style={{
           background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-          boxShadow: '0 4px 14px rgba(220,38,38,0.25)',
+          boxShadow: '0 8px 25px rgba(220, 38, 38, 0.4)',
         }}
       >
-        <span className="text-center text-sm font-black text-white">
-          {ending ? '⏳ جاري الإنهاء...' : '🚗 إنهاء الجلسة وطلوع من الجراج'}
+        <span className="text-center font-black text-white">
+          {ending ? '⏳ جاري إنهاء الجلسة...' : '🚗 إنهاء الجلسة والخروج من الجراج'}
         </span>
       </button>
     </motion.div>
