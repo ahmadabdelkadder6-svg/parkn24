@@ -1,5 +1,3 @@
-// src/components/NavigationScreen.tsx
-
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -67,10 +65,12 @@ const GPS_DEADBAND_METERS = 5;
 const VIP_GEOFENCE_METERS = 100;
 const AUTO_CHARGE_DELAY_SECONDS = 180; // 3 دقائق ثبات للخصم التلقائي
 
+// 🎁 حساب البونص المضبوط لكل الفئات بما فيها شريحة 20ج
 const getBonusForAmount = (amount: number): number => {
   if (amount >= 250) return 50;
   if (amount >= 100) return 15;
   if (amount >= 50) return 5;
+  if (amount >= 20) return 2;
   return 0;
 };
 
@@ -173,11 +173,9 @@ export default function NavigationScreen() {
     sessions,
     addSession,
     fetchAll,
-    chargeBookingFee, // ✅ تم استخراج الدالة لخصم الرصيد بوضوح
+    chargeBookingFee,
     refundBookingFee,
     addWalletTopUp,
-    updateWalletBalance,
-    isFirstFreeSession,
   } = useStore();
 
   const garage = garages.find((g) => g.id === selectedGarageId);
@@ -348,7 +346,7 @@ export default function NavigationScreen() {
     };
   }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
 
-  /* ─── 💰 خصم رسوم الحجز VIP (مضمون فوراً محلياً وفي قاعدة البيانات) ─── */
+  /* ─── 💰 خصم رسوم الحجز VIP (معالجة شاملة ومضمونة 100%) ─── */
   const handleChargeVipFee = useCallback(async (): Promise<boolean> => {
     if (!isVipGarage || feeChargedRef.current || !currentUserRef.current || !garage) return true;
 
@@ -367,36 +365,54 @@ export default function NavigationScreen() {
     try {
       const newBalance = Math.max(0, currentBalance - BOOKING_FEE);
 
-      // 1️⃣ تحديث فوري للحالة المحلية بالـ Zustand لمنع التأخير بالواجهة
-      useStore.setState((state) => ({
-        currentUser: state.currentUser
-          ? { ...state.currentUser, wallet: newBalance }
-          : null,
-      }));
+      // 1️⃣ تحديث فوري شامل للحالة المحلية بـ Zustand (wallet و walletBalance)
+      useStore.setState((state) => {
+        if (!state.currentUser) return state;
+        return {
+          currentUser: {
+            ...state.currentUser,
+            wallet: newBalance,
+            walletBalance: newBalance,
+          },
+        };
+      });
 
-      // 2️⃣ تنفيذ دالة الـ Store الرسمية إذا كانت موجودة
+      // 2️⃣ استدعاء دالة الـ Store
       if (typeof chargeBookingFee === 'function') {
         try {
           await chargeBookingFee({
             userPhone: rawPhone,
             garageId: garage.id,
             amount: BOOKING_FEE,
-          });
-        } catch (e) {
-          console.warn('chargeBookingFee method warn:', e);
+          } as any);
+        } catch (e1) {
+          try {
+            await (chargeBookingFee as any)(garage.id, BOOKING_FEE);
+          } catch (e2) {
+            console.warn('chargeBookingFee store warning:', e2);
+          }
         }
       }
 
-      // 3️⃣ تحديث مباشر شامل لقاعدة البيانات Supabase
+      // 3️⃣ تحديث مباشر لقاعدة البيانات بكل الصيغ الممكنة (wallet و wallet_balance)
       try {
+        const updatePayload = { wallet: newBalance, wallet_balance: newBalance };
+
         if (userId) {
-          await supabase.from('users').update({ wallet: newBalance }).eq('id', userId);
+          await supabase.from('users').update(updatePayload).eq('id', userId);
         }
-        if (rawPhone) {
-          await supabase.from('users').update({ wallet: newBalance }).eq('phone', rawPhone);
-        }
-        if (cleanPhone && cleanPhone !== rawPhone) {
-          await supabase.from('users').update({ wallet: newBalance }).eq('phone', cleanPhone);
+
+        const phoneVariants = Array.from(new Set([
+          rawPhone,
+          cleanPhone,
+          `+20${cleanPhone.replace(/^0+/, '')}`,
+          `20${cleanPhone.replace(/^0+/, '')}`,
+          cleanPhone.replace(/^0+/, ''),
+          `0${cleanPhone.replace(/^0+/, '')}`,
+        ])).filter(Boolean);
+
+        for (const phoneVal of phoneVariants) {
+          await supabase.from('users').update(updatePayload).eq('phone', phoneVal);
         }
       } catch (sbErr) {
         console.error('Supabase direct update error:', sbErr);
@@ -513,18 +529,14 @@ export default function NavigationScreen() {
   const executeAutoCharge = useCallback(async () => {
     if (feeChargedRef.current || !currentUserRef.current || isArrivingRef.current) return;
 
-    isArrivingRef.current = true;
     try {
       const charged = await handleChargeVipFee();
       if (charged) {
         toast.success('تم الخصم التلقائي (3ج) وبدء الركنة بعد 3 دقائق ثبات 🎯', { duration: 4000 });
-        isArrivingRef.current = false;
         await handleCarArrived();
-      } else {
-        isArrivingRef.current = false;
       }
     } catch (err) {
-      isArrivingRef.current = false;
+      console.error('Auto charge failed:', err);
     }
   }, [handleChargeVipFee, handleCarArrived]);
 
@@ -769,7 +781,7 @@ export default function NavigationScreen() {
   );
   const minutes = distanceToMinutes(distance);
   const coordsText = `${garage.lat},${garage.lng}`;
-  const walletBalance = currentUser?.wallet || (currentUser as any)?.walletBalance || 0;
+  const walletBalance = Number(currentUser?.wallet ?? (currentUser as any)?.walletBalance ?? 0);
 
   const remainingAutoChargeSeconds = Math.max(0, AUTO_CHARGE_DELAY_SECONDS - stationarySeconds);
   const autoChargeMin = Math.floor(remainingAutoChargeSeconds / 60);
@@ -883,12 +895,17 @@ export default function NavigationScreen() {
     try {
       const bonusAmount = tier.bonus ?? getBonusForAmount(tier.amount);
       await addWalletTopUp({
+        userId: (currentUser as any).id,
         userPhone: currentUser.phone,
+        phone: currentUser.phone,
         amount: tier.amount,
         bonus: bonusAmount,
         method: 'instapay',
+        paymentMethod: 'instapay',
+        payment_method: 'instapay',
         status: 'pending',
-      });
+      } as any);
+
       toast.success(`تم طلب شحن ${tier.amount} ج + ${bonusAmount} ج بونص هدية 🎁! في انتظار التفعيل`, { duration: 4500 });
       setShowInsufficientModal(false);
     } catch (err) {

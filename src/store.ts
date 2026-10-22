@@ -1270,14 +1270,23 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   addWalletTopUp: (w) => {
-    const bonus = calculateBonus(w.amount);
+    // 🌟 التعديل هنا: نأخذ البونص المُرسل أولاً، وإذا لم يكن موجوداً نحسبه كخيار بديل
+    const bonus = w.bonus ?? w.bonusAmount ?? calculateBonus(w.amount);
+    
     const newW: WalletTopUp = { ...w, id: uid(), status: 'pending', timestamp: Date.now(), bonusAmount: bonus };
+    
     set((st) => ({ walletTopUps: [newW, ...st.walletTopUps] }));
+    
     if (isSupabaseConfigured()) {
       supabase.from('wallet_topups').insert({
-        user_id: w.userId, user_name: w.userName, user_phone: w.userPhone,
-        amount: w.amount, transaction_id: w.transactionId,
-        car_plate: w.carPlate, method: w.method, bonus_amount: bonus,
+        user_id: w.userId || w.user_id, 
+        user_name: w.userName, 
+        user_phone: w.userPhone || w.phone, // دعم لأكثر من صيغة مرسلة
+        amount: w.amount, 
+        transaction_id: w.transactionId || 'instapay_transfer',
+        car_plate: w.carPlate, 
+        method: w.method || w.paymentMethod || 'instapay', 
+        bonus_amount: bonus, // 🌟 سيتم رفع القيمة الصحيحة لقاعدة البيانات
       }).select().single().then(({ data }) => {
         if (data) set((st) => ({ walletTopUps: st.walletTopUps.map((x) => (x.id === newW.id ? mapTopUp(data) : x)) }));
       });
