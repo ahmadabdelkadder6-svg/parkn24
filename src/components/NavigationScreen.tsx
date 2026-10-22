@@ -1,3 +1,5 @@
+// src/components/NavigationScreen.tsx
+
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -65,7 +67,8 @@ const BRAND = {
 const CANCEL_WINDOW_SECONDS = 30;
 const GPS_DEADBAND_METERS = 5;
 const VIP_GEOFENCE_METERS = 100; // 📍 نطاق الوصول للجراج VIP (100 متر لثبات الـ GPS)
-const AUTO_CHARGE_DELAY_SECONDS = 300; // ⏱️ 5 دقائق (300 ثانية) ثبات قبل الخصم التلقائي
+// ✅ تم التعديل إلى 3 دقائق (180 ثانية) بناءً على طلبك
+const AUTO_CHARGE_DELAY_SECONDS = 180; 
 
 /* ─── Icons ─── */
 const userIcon = new L.DivIcon({
@@ -223,7 +226,7 @@ export default function NavigationScreen() {
   const [feeCharged, setFeeCharged] = useState(false);
   const [processingTopup, setProcessingTopup] = useState<string | null>(null);
 
-  // ⏱️ العداد الفعلي للـ 5 دقائق للخصم التلقائي
+  // ⏱️ العداد الفعلي للـ 3 دقائق للخصم التلقائي
   const [stationarySeconds, setStationarySeconds] = useState(0);
   const [isInsideGeofence, setIsInsideGeofence] = useState(false);
 
@@ -346,26 +349,35 @@ export default function NavigationScreen() {
     };
   }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
 
-  /* ─── 💰 خصم رسوم الحجز VIP (يدوي أو تلقائي) ─── */
+  /* ─── 💰 خصم رسوم الحجز VIP (معدل للخصم المباشر من قاعدة البيانات) ─── */
   const handleChargeVipFee = useCallback(async (): Promise<boolean> => {
     if (!isVipGarage || feeChargedRef.current || !currentUserRef.current || !garage) return true;
 
-    const currentBalance = (currentUserRef.current as any)?.walletBalance ?? 0;
+    // الحصول على الرصيد سواء كان باسم wallet أو walletBalance
+    const currentBalance = currentUserRef.current.wallet || (currentUserRef.current as any)?.walletBalance || 0;
+    
     if (currentBalance < BOOKING_FEE) {
       if (isMountedRef.current) setShowInsufficientModal(true);
       return false;
     }
 
     try {
-      if (typeof chargeBookingFee === 'function') {
-        await chargeBookingFee({
-          userPhone: currentUserRef.current.phone,
-          garageId: garage.id,
-          amount: BOOKING_FEE,
-        });
-      } else if (typeof updateWalletBalance === 'function') {
-        await updateWalletBalance(-BOOKING_FEE, `رسوم حجز وركنة جراج ${garage.name}`);
+      const cleanPhone = normalizePhone(currentUserRef.current.phone);
+      const newBalance = Math.max(0, currentBalance - BOOKING_FEE);
+
+      // ✅ 1. الخصم المباشر من Supabase لضمان التنفيذ الفعلي 100%
+      const { error } = await supabase
+        .from('users')
+        .update({ wallet: newBalance })
+        .eq('phone', cleanPhone);
+
+      if (error) throw error;
+
+      // ✅ 2. تحديث الحالة محلياً إذا أمكن
+      if (typeof updateWalletBalance === 'function') {
+        try { await updateWalletBalance(-BOOKING_FEE, `رسوم حجز وركنة جراج ${garage.name}`); } catch(e){}
       }
+      await fetchAll(); // سحب الرصيد الجديد
 
       feeChargedRef.current = true;
       if (isMountedRef.current) setFeeCharged(true);
@@ -376,7 +388,7 @@ export default function NavigationScreen() {
       toast.error('حدث خطأ في خصم رسوم الحجز');
       return false;
     }
-  }, [isVipGarage, garage, chargeBookingFee, updateWalletBalance]);
+  }, [isVipGarage, garage, updateWalletBalance, fetchAll]);
 
   /* ─── 🚗 بدء جلسة الركن ─── */
   const handleCarArrived = useCallback(async () => {
@@ -471,14 +483,23 @@ export default function NavigationScreen() {
     setScreen,
   ]);
 
-  /* ─── ⚡ الخصم التلقائي عند انتهاء 5 دقائق ─── */
-  const executeAutoCharge = useCallback(async (targetGarageId: string) => {
-    if (feeChargedRef.current || !currentUserRef.current) return;
-
-    const charged = await handleChargeVipFee();
-    if (charged) {
-      toast.success('تم الخصم التلقائي (3ج) وبدء الركنة بعد 5 دقائق ثبات 🎯', { duration: 4000 });
-      await handleCarArrived();
+  /* ─── ⚡ الخصم التلقائي عند انتهاء 3 دقائق ─── */
+  const executeAutoCharge = useCallback(async () => {
+    if (feeChargedRef.current || !currentUserRef.current || isArrivingRef.current) return;
+    
+    // منع التكرار أثناء المعالجة
+    isArrivingRef.current = true;
+    try {
+      const charged = await handleChargeVipFee();
+      if (charged) {
+        toast.success('تم الخصم التلقائي (3ج) وبدء الركنة بعد 3 دقائق ثبات 🎯', { duration: 4000 });
+        isArrivingRef.current = false; // فك القفل ليتمكن handleCarArrived من العمل
+        await handleCarArrived();
+      } else {
+        isArrivingRef.current = false;
+      }
+    } catch(err) {
+      isArrivingRef.current = false;
     }
   }, [handleChargeVipFee, handleCarArrived]);
 
@@ -532,7 +553,7 @@ export default function NavigationScreen() {
     };
   }, [handleGpsUpdate]);
 
-  /* ⏱️ ─── العداد الزمني للـ 5 دقائق ثبات ─── */
+  /* ⏱️ ─── العداد الزمني للـ 3 دقائق ثبات ─── */
   useEffect(() => {
     if (!garage || !isVipGarage) return;
 
@@ -549,7 +570,7 @@ export default function NavigationScreen() {
           geofenceEntryTimeRef.current = getServerNow();
           setIsInsideGeofence(true);
           setShowArrivalOverlay(true);
-          toast.success('🎯 تم الوصول لمحيط الجراج! بدأ عداد الـ 5 دقائق للخصم التلقائي (3ج)', {
+          toast.success('🎯 تم الوصول لمحيط الجراج! بدأ عداد الـ 3 دقائق للخصم التلقائي (3ج)', {
             id: 'geofence-enter',
             duration: 4000,
           });
@@ -560,7 +581,7 @@ export default function NavigationScreen() {
         setStationarySeconds(elapsedSec);
 
         if (elapsedSec >= AUTO_CHARGE_DELAY_SECONDS && !feeChargedRef.current) {
-          executeAutoCharge(garage.id);
+          executeAutoCharge();
         }
       } else {
         // حماية من رعشة الـ GPS: الانتظار 15 ثانية متواصلة خارج النطاق قبل إعادة تعيين العداد
@@ -724,7 +745,7 @@ export default function NavigationScreen() {
   );
   const minutes = distanceToMinutes(distance);
   const coordsText = `${garage.lat},${garage.lng}`;
-  const walletBalance = (currentUser as any)?.walletBalance ?? 0;
+  const walletBalance = currentUser?.wallet || (currentUser as any)?.walletBalance || 0;
 
   const remainingAutoChargeSeconds = Math.max(0, AUTO_CHARGE_DELAY_SECONDS - stationarySeconds);
   const autoChargeMin = Math.floor(remainingAutoChargeSeconds / 60);
@@ -952,7 +973,7 @@ export default function NavigationScreen() {
                   رصيدك: {walletBalance} ج.م
                 </span>
                 <span className="text-[9px] font-bold" style={{ color: BRAND.slateMuted }}>
-                  رسوم الحجز: {BOOKING_FEE} ج.م (تُخصم عند الوصول أو بعد 5 دقائق)
+                  رسوم الحجز: {BOOKING_FEE} ج.م (تُخصم عند الوصول أو بعد 3 دقائق)
                 </span>
               </div>
             </div>
@@ -964,12 +985,12 @@ export default function NavigationScreen() {
           </div>
         )}
 
-        {/* ⏱️ كارت العداد التلقائي الـ 5 دقائق فور الوصول */}
+        {/* ⏱️ كارت العداد التلقائي الـ 3 دقائق فور الوصول */}
         {isInsideGeofence && isVipGarage && !feeCharged && (
           <div className="rounded-2xl p-4 border-2 border-amber-500/50 bg-amber-500/10 text-center space-y-2 animate-in fade-in zoom-in duration-300">
             <div className="flex items-center justify-center gap-2 text-amber-300 font-black text-xs">
               <Clock className="w-4 h-4 animate-spin text-amber-400" />
-              <span>أنت الآن في نطاق الجراج (جاري احتساب 5 دقائق ثبات)</span>
+              <span>أنت الآن في نطاق الجراج (جاري احتساب 3 دقائق ثبات)</span>
             </div>
             <div className="text-3xl font-black font-mono text-amber-400 dir-ltr">
               {formattedCountdown}
@@ -1075,16 +1096,6 @@ export default function NavigationScreen() {
             </div>
           </div>
         </div>
-
-        {/* 🎁 Welcome Gift Banner Hidden via false && */}
-        {false && isFirstFreeSession && (
-          <div className="flex items-center gap-2 p-2.5 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30">
-            <Gift size={16} className="text-amber-400 shrink-0" />
-            <span className="text-[11px] font-black text-amber-300">
-              🎁 هدية بركن 24: أول 30 دقيقة مجاناً في هذه الجلسة!
-            </span>
-          </div>
-        )}
 
         {/* 🔔 مؤشر حالة الـ Push */}
         {myIncomingCar && (
