@@ -1325,32 +1325,56 @@ export const useStore = create<AppState>((set, get) => ({
 
   approveTopUp: async (id) => {
     const target = get().walletTopUps.find((w) => w.id === id);
-    const expectedBonus = target ? calculateBonus(target.amount) : 0;
+    if (!target || target.status !== 'pending') return;
+
+    const bonus = target.bonusAmount ?? calculateBonus(target.amount);
+    const totalCredit = target.amount + bonus;
+    const userPhone = normalizePhone(target.userPhone || '');
+
+    set((st) => ({
+      walletTopUps: st.walletTopUps.map((w) =>
+        w.id === id ? { ...w, status: 'approved' as const, bonusAmount: bonus } : w
+      ),
+    }));
 
     if (isSupabaseConfigured()) {
       try {
-        const { data, error } = await supabase.rpc('approve_topup_atomic', { p_topup_id: id });
-        if (!error && data?.success) {
-          set((st) => ({
-            walletTopUps: st.walletTopUps.map((w) => w.id === id ? { ...w, status: 'approved' as const, bonusAmount: data.bonus_added } : w),
-          }));
-          await get().fetchAll();
-          return;
+        await supabase
+          .from('wallet_topups')
+          .update({ status: 'approved', bonus_amount: bonus })
+          .eq('id', id);
+
+        if (userPhone) {
+          const { data: u } = await supabase
+            .from('users')
+            .select('wallet')
+            .eq('phone', userPhone)
+            .maybeSingle();
+
+          if (u) {
+            const newWallet = Number(u.wallet || 0) + totalCredit;
+            await supabase
+              .from('users')
+              .update({ wallet: newWallet })
+              .eq('phone', userPhone);
+          }
         }
-      } catch {}
+      } catch (err) {
+        console.error('Approve error:', err);
+        set((st) => ({
+          walletTopUps: st.walletTopUps.map((w) =>
+            w.id === id ? { ...w, status: 'pending' as const } : w
+          ),
+        }));
+        throw err;
+      }
     }
 
-    if (target && target.status === 'pending') {
-      const totalCredit = target.amount + expectedBonus;
-      const user = get().currentUser;
-      if (user) {
-        const updatedUser = { ...user, wallet: (user.wallet || 0) + totalCredit };
-        set({ currentUser: updatedUser });
-        safeSetStorage('currentUser', updatedUser);
-      }
-      set((st) => ({
-        walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'approved' as const, bonusAmount: expectedBonus } : w)),
-      }));
+    const currentUser = get().currentUser;
+    if (currentUser && normalizePhone(currentUser.phone) === userPhone) {
+      const updated = { ...currentUser, wallet: (currentUser.wallet || 0) + totalCredit };
+      set({ currentUser: updated });
+      safeSetStorage('currentUser', updated);
     }
   },
 
