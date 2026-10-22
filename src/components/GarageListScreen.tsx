@@ -13,6 +13,7 @@ import TopUpWalletModal from './TopUpWalletModal';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 import { QRCodeCanvas } from 'qrcode.react';
+
 const BRAND = {
   blue: '#1656b8', blueDark: '#0f3d85', green: '#8cc63f', greenDark: '#6ea62a',
   bg: '#f1f5f9', card: '#ffffff', slate: '#334155', border: '#cbd5e1', borderDark: '#94a3b8', navy: '#0a1628',
@@ -135,7 +136,8 @@ const enableBackgroundKeepAlive = async () => {
 export default function GarageListScreen() {
   const {
     garages, setSelectedGarageId, setScreen, currentUser, sessions, incomingCars,
-    offers, addIncomingCar, fetchAll, acknowledgedSessionIds, walletTopUps, reportPriceUpdate,
+    offers, fetchAll, acknowledgedSessionIds, walletTopUps, reportPriceUpdate,
+    chargeBookingFee // 🔥 أضفنا استدعاء دالة الخصم هنا
   } = useStore();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -144,7 +146,6 @@ export default function GarageListScreen() {
   const [showQrModal, setShowQrModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showSmartMenu, setShowSmartMenu] = useState(false);
-  // ✅ التغيير: التبويب الافتراضي = VIP بدل directory
   const [activeTab, setActiveTab] = useState<'vip' | 'directory'>('vip');
   const [activeDirectoryTrip, setActiveDirectoryTrip] = useState<GarageWithDistance | null>(null);
   const [visibleLimits, setVisibleLimits] = useState<Record<string, number>>({});
@@ -154,7 +155,6 @@ export default function GarageListScreen() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>({ lat: 30.0444, lng: 31.2357 });
   const [locationLoading, setLocationLoading] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
-  const [isAbuseDetected, setIsAbuseDetected] = useState(false);
   const [expandedArea, setExpandedArea] = useState<string | null>(null);
 
   // 💰 مودال "رصيدك غير كافي"
@@ -179,26 +179,6 @@ export default function GarageListScreen() {
 
   const normalizedUserPlate = useMemo(() => normalizePlate(currentUser?.carPlate), [currentUser?.carPlate]);
   const cleanUserPhone = useMemo(() => currentUser?.phone ? normalizePhone(currentUser.phone) : '', [currentUser?.phone]);
-
-  useEffect(() => {
-    if (!currentUser) return;
-    const checkAbuseHistory = async () => {
-      try {
-        const cleanPlate = normalizePlate(currentUser.carPlate);
-        if (!cleanPlate && !cleanUserPhone) return;
-        if (currentUser.hasUsedFreeSession) { setIsAbuseDetected(true); return; }
-        if (cleanUserPhone) {
-          const { data: userDb } = await supabase.from('users').select('has_used_free_session').eq('phone', cleanUserPhone).maybeSingle();
-          if (userDb?.has_used_free_session === true) { setIsAbuseDetected(true); return; }
-        }
-        const { data: sessionDb } = await supabase.from('sessions').select('id').eq('is_first_free_session', true).or(`car_plate.eq.${cleanPlate}${cleanUserPhone ? `,customer_phone.eq.${cleanUserPhone}` : ''}`).limit(1);
-        if (sessionDb && sessionDb.length > 0) { setIsAbuseDetected(true); } else { setIsAbuseDetected(false); }
-      } catch (err) { console.error('Error verifying welcome gift eligibility:', err); }
-    };
-    checkAbuseHistory();
-  }, [currentUser, sessions, cleanUserPhone]);
-
-  const isEligibleForFreeSession = useMemo(() => currentUser && !currentUser.hasUsedFreeSession && !isAbuseDetected, [currentUser, isAbuseDetected]);
 
   const activeSession = useMemo(() => {
     if (!normalizedUserPlate && !cleanUserPhone) return undefined;
@@ -407,7 +387,7 @@ export default function GarageListScreen() {
 
   useEffect(() => { if (searchQuery.trim() && areaGroups.length > 0) setExpandedArea(areaGroups[0].name); }, [searchQuery, areaGroups]);
 
-  // 💰 التحقق من الرصيد عند اختيار جراج VIP
+  // 💰 عملية الحجز والخصم الفوري لـ VIP
   const handleGarageClick = async (garage: GarageWithDistance) => {
     if (garage.garageType === 'directory') {
       const areaCenter = AREA_CENTERS[garage.area || ''];
@@ -434,7 +414,7 @@ export default function GarageListScreen() {
       return;
     }
 
-    // 🌟 جراج VIP — فحص الرصيد (3 ج رسوم حجز)
+    // 🌟 جراج VIP — فحص الرصيد والخصم الفوري (3 ج)
     if (!currentUser) { toast.error('سجل بياناتك أولاً'); return; }
     if (activeSession) { setSelectedGarageId(activeSession.garageId); setScreen('session'); return; }
     if (myIncomingCar) { setSelectedGarageId(myIncomingCar.garageId); setScreen('navigation'); return; }
@@ -443,25 +423,30 @@ export default function GarageListScreen() {
 
     const userWallet = currentUser.wallet || 0;
 
-    // ✅ فحص رسوم الحجز (3 ج) بدل سعر الجراج الكامل
+    // ✅ فحص رسوم الحجز
     if (userWallet < BOOKING_FEE) {
       setPendingVipGarage(garage);
       setShowInsufficientModal(true);
       return;
     }
 
-    // الرصيد كافي — المتابعة
-    await proceedWithVipBooking(garage);
-  };
-
-  // 🚗 تنفيذ الحجز بعد التأكد من الرصيد
-  const proceedWithVipBooking = async (garage: GarageWithDistance) => {
-    if (!currentUser) return;
+    // ✅ تنفيذ الخصم فوراً قبل التوجيه
+    setIsBooking(true);
     try {
-      setIsBooking(true); setSelectedGarageId(garage.id);
-      await addIncomingCar({ garageId: garage.id, carPlate: currentUser.carPlate, customerName: currentUser.name, customerPhone: currentUser.phone, agreedPrice: garage.basePrice, estimatedArrival: Math.max(3, garage.minutes) });
-      toast.success(`تم الحجز بنجاح 🚗 — سيتم خصم ${BOOKING_FEE} ج.م عند الوصول`); setScreen('navigation');
-    } catch (e) { console.error(e); toast.error('حدث خطأ أثناء إتمام الحجز'); } finally { setIsBooking(false); }
+      const success = await chargeBookingFee();
+      if (success) {
+        setSelectedGarageId(garage.id);
+        toast.success(`تم الخصم بنجاح (${BOOKING_FEE} ج.م) — جاري التوجيه للجراج 🚗`);
+        setScreen('navigation');
+      } else {
+        toast.error('حدث خطأ أثناء الخصم، برجاء المحاولة لاحقاً');
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error('حدث خطأ أثناء إتمام الخصم');
+    } finally {
+      setIsBooking(false);
+    }
   };
 
   const handleConfirmArrival = useCallback(async () => {
@@ -509,22 +494,22 @@ export default function GarageListScreen() {
       <div className="px-4 pt-10 pb-3 z-20 shadow-sm relative" style={{ background: BRAND.card, borderBottom: `1.5px solid ${BRAND.border}` }}>
         <div dir="rtl" className="flex justify-between items-center mb-3.5">
           <div className="text-right flex items-center gap-3">
-{/* 🌟 اللوجو الخاص بالتطبيق */}
-<img
-  src="/icons/logo.png"
-  alt="Park'n 24"
-  className="h-11 w-auto object-contain"
-  onError={(e) => {
-    (e.target as HTMLImageElement).style.display = 'none';
-    const fallback = document.getElementById('logo-fallback');
-    if (fallback) fallback.style.display = 'flex';
-  }}
-/>
-<div id="logo-fallback" style={{ display: 'none' }} className="flex items-center">
-  <span className="font-black text-xl leading-none" style={{ color: BRAND.blue }}>
-    P<span style={{ color: BRAND.green }}>24</span>
-  </span>
-</div>
+            {/* 🌟 اللوجو الخاص بالتطبيق */}
+            <img
+              src="/icons/logo.png"
+              alt="Park'n 24"
+              className="h-11 w-auto object-contain"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+                const fallback = document.getElementById('logo-fallback');
+                if (fallback) fallback.style.display = 'flex';
+              }}
+            />
+            <div id="logo-fallback" style={{ display: 'none' }} className="flex items-center">
+              <span className="font-black text-xl leading-none" style={{ color: BRAND.blue }}>
+                P<span style={{ color: BRAND.green }}>24</span>
+              </span>
+            </div>
             <div className="flex flex-col">
               <span className="text-sm font-black text-slate-900 leading-tight">أهلاً {currentUser?.name?.split(' ')[0] || 'بك'} 👋</span>
               <span className="text-[10px] font-bold text-slate-500 leading-none mt-0.5">سيب الركنة علينا! ☕🚗</span>
@@ -552,14 +537,6 @@ export default function GarageListScreen() {
             <span className="font-black font-mono text-white text-base leading-none">{currentUser?.wallet || 0} <span className="text-[10px]">ج.م</span></span>
           </div>
         </div>
-
-        {/* 🎁 تم تعطيل بانر الهدية الترحيبية مؤقتاً */}
-        {false && isEligibleForFreeSession && !activeSession && !myIncomingCar && (
-          <div dir="rtl" className="mb-2.5 py-1.5 px-3 rounded-xl flex items-center justify-between text-right border-[1.5px]" style={{ background: BRAND.green + '10', borderColor: BRAND.green + '50' }}>
-            <div className="flex items-center gap-1.5"><Gift size={12} style={{ color: BRAND.greenDark }} className="shrink-0 animate-pulse" /><span className="text-[10px] font-black text-slate-900 leading-none">هديتك: <span style={{ color: BRAND.greenDark }}>أول 30 دقيقة مجاناً! 🎉</span></span></div>
-            <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white bg-green-600 shrink-0">نشط 🎁</span>
-          </div>
-        )}
 
         {/* 🌟 بانر "المنقذ السريع" — تصغير وتنسيق أنيق */}
         {currentRescueGarage && !activeSession && !myIncomingCar && (
@@ -854,7 +831,7 @@ export default function GarageListScreen() {
         )}
       </AnimatePresence>
 
-      {/* ═══ القائمة الذكية الجانبية - تم تكبير وتوضيح الخطوط هنا ═══ */}
+      {/* ═══ القائمة الذكية الجانبية ═══ */}
       <AnimatePresence>
         {showSmartMenu && (
           <div className="fixed inset-0 z-[1500] flex items-end" style={{ background: 'rgba(10,22,40,0.6)', backdropFilter: 'blur(4px)' }} onClick={() => setShowSmartMenu(false)}>
@@ -900,7 +877,7 @@ export default function GarageListScreen() {
 
       <AnimatePresence>{showTopUp && <TopUpWalletModal onClose={() => setShowTopUp(false)} />}</AnimatePresence>
 
-      {/* 📲 نافذة تكبير الباركود - تم التكبير لتبدو كشاشة مسح حقيقية */}
+      {/* 📲 نافذة تكبير الباركود */}
       <AnimatePresence>
         {showQrModal && (
           <div className="fixed inset-0 z-[999] flex items-center justify-center p-5" style={{ background: 'rgba(10,22,40,0.85)', backdropFilter: 'blur(8px)' }} onClick={() => setShowQrModal(false)}>
@@ -911,16 +888,16 @@ export default function GarageListScreen() {
               <h3 className="text-base font-black mb-1" style={{ color: BRAND.blueDark }}>📲 شارك بركن 24 مع أصحابك</h3>
               <p className="text-xs font-bold mb-4 leading-relaxed" style={{ color: BRAND.slate }}>دليل وأماكن الركن الذكية في القاهرة بين إيديك! 🚗💨</p>
               
-<div className="w-64 h-64 mx-auto p-4 bg-white rounded-[32px] border-4 shadow-xl flex items-center justify-center mb-5" style={{ borderColor: BRAND.blue }}>
-  <QRCodeCanvas
-    value={`${SITE_URL}/install`}
-    size={220}
-    level="H"
-    bgColor="#ffffff"
-    fgColor="#0A1628"
-    includeMargin={false}
-  />
-</div>
+              <div className="w-64 h-64 mx-auto p-4 bg-white rounded-[32px] border-4 shadow-xl flex items-center justify-center mb-5" style={{ borderColor: BRAND.blue }}>
+                <QRCodeCanvas
+                  value={`${SITE_URL}/install`}
+                  size={220}
+                  level="H"
+                  bgColor="#ffffff"
+                  fgColor="#0A1628"
+                  includeMargin={false}
+                />
+              </div>
 
               <div className="space-y-2.5">
                 <button type="button" onClick={async () => { const appUrl = `${SITE_URL}/install`; try { if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') { await navigator.clipboard.writeText(appUrl); } else { const textArea = document.createElement('textarea'); textArea.value = appUrl; textArea.style.position = 'fixed'; textArea.style.opacity = '0'; document.body.appendChild(textArea); textArea.select(); document.execCommand('copy'); document.body.removeChild(textArea); } toast.success('تم نسخ رابط التطبيق بنجاح! 📋🚀', { duration: 3000 }); } catch { toast.error('تعذر نسخ الرابط'); } }} className="w-full py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all border-0 text-white shadow-md" style={{ background: BRAND.greenDark }}><Copy size={16} /><span>نسخ رابط التطبيق 🔗</span></button>
@@ -991,26 +968,7 @@ export default function GarageListScreen() {
 }
 
 function WelcomeGiftModal() {
-  return null; // 👈 سطر واحد لإخفاء النافذة المنبثقة مؤقتاً (امسحه مستقبلاً لإعادتها)
-
-  const [show, setShow] = useState(false);
-  const currentUser = useStore((s) => s.currentUser);
-  useEffect(() => { const hasGiftFlag = localStorage.getItem('showWelcomeGift'); if (hasGiftFlag === 'true' && currentUser && !currentUser.hasUsedFreeSession) { setShow(true); } else { localStorage.removeItem('showWelcomeGift'); setShow(false); } }, [currentUser]);
-  const handleClose = () => { localStorage.removeItem('showWelcomeGift'); setShow(false); };
-  return (
-    <AnimatePresence>
-      {show && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center p-5" style={{ background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)' }} onClick={handleClose}>
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="p-6 max-w-sm w-full text-center relative" style={{ background: BRAND.card, borderRadius: 24, boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }} onClick={(e) => e.stopPropagation()}>
-            <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: BRAND.green + '20' }}><Gift size={24} style={{ color: BRAND.greenDark }} /></div>
-            <h3 className="text-lg font-black mb-1" style={{ color: BRAND.blueDark }}>🎁 ركنتك الأولى مجانية!</h3>
-            <p className="text-xs font-bold leading-relaxed mb-4" style={{ color: BRAND.slate }}>نورت عائلة <span style={{ color: BRAND.blue }}>Park'n 24</span>. استمتع بأول 30 دقيقة مجاناً في الجراجات المعتمدة كهدية ترحيبية.</p>
-            <button type="button" onClick={handleClose} className="w-full py-3 rounded-xl font-black border-0 cursor-pointer text-white text-xs" style={{ background: BRAND.blue }}>جاهز للبدء 🚀</button>
-          </motion.div>
-        </div>
-      )}
-    </AnimatePresence>
-  );
+  return null; 
 }
 
 const GarageCard = memo(function GarageCard({ garage, index, onSelect, onReportPrice, isNearby, isClosest, hasActiveSession, hasIncomingCar, disabled }: GarageCardProps) {
