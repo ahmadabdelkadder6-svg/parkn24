@@ -36,7 +36,41 @@ export default function AdminDashboard() {
   const { garages, sessions, walletTopUps, users, approveTopUp, rejectTopUp, addGarage, setCurrentGarageId, setView, logout, messages, replyMessage, closeMessage, updateGarage, fetchAll } = useStore() as any;
 
   // 🔹 منطق بسيط: الجلسة مجانية لو is_first_free_session = true، غير كده مدفوعة
-  const isSessionFree = (s: any): boolean => s.isFirstFreeSession === true;
+    // 🔹 حساب الجلسات المجانية: لو الـ DB فيها true نستخدمها، لو لأ نحسب ديناميكياً
+  const freeSessionIds = useMemo(() => {
+    const ids = new Set<string>();
+
+    // أولاً: أي جلسة عندها isFirstFreeSession = true في الـ DB
+    sessions.forEach((s: any) => {
+      if (s.isFirstFreeSession === true) ids.add(s.id);
+    });
+
+    // ثانياً: نحسب ديناميكياً للجلسات القديمة اللي مش متعلمة
+    const groups = new Map<string, any[]>();
+    sessions.forEach((s: any) => {
+      if (s.status !== 'completed') return;
+      const date = timestampToLocalDate(toMs(s.startTime));
+      const phone = s.customerPhone ? normalizePhone(s.customerPhone) : '';
+      const plate = s.carPlate || '';
+      const key = `${date}::${phone || plate}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(s);
+    });
+
+    groups.forEach((list) => {
+      // ترتيب بالوقت
+      list.sort((a: any, b: any) => toMs(a.startTime) - toMs(b.startTime));
+      // أول 2 = مدفوع، 3 و 4 = مجاني، الباقي = مدفوع
+      list.forEach((s: any, i: number) => {
+        if (i >= 2 && i < 4) ids.add(s.id);
+      });
+    });
+
+    return ids;
+  }, [sessions]);
+
+  // ✅ بسيط: لو الـ ID في المجموعة = مجاني، غير كده = مدفوع
+  const isSessionFree = (s: any): boolean => freeSessionIds.has(s.id);
 
   const [, setTick] = useState(0);
   const [replyText, setReplyText] = useState('');
