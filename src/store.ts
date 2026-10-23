@@ -412,8 +412,7 @@ const mapSession = (r: any): ParkingSession => {
   const rawEnd = r.end_time;
   const endTime = rawEnd ? (typeof rawEnd === 'string' ? rawEnd : new Date(getMs(rawEnd)).toISOString()) : undefined;
 
-  const isApp = r.source === 'app';
-const isFree = r.is_first_free_session === true || r.is_first_free_session === 'true' || r.is_first_free_session === 1;
+  const isFree = r.is_first_free_session === true || r.is_first_free_session === 'true' || r.is_first_free_session === 1;
 
   return {
     id: r.id,
@@ -1093,11 +1092,15 @@ export const useStore = create<AppState>((set, get) => ({
               ? `customer_phone.eq.${cleanPhone},car_plate.eq.${normalizedPlate}`
               : `car_plate.eq.${normalizedPlate}`;
 
+            const searchConditions: string[] = [];
+            if (cleanPhone) searchConditions.push(`customer_phone.eq.${cleanPhone}`);
+            searchConditions.push(`car_plate.eq.${normalizedPlate}`);
+
             const { data: todayAll } = await supabase
               .from('sessions')
               .select('id, is_first_free_session')
-              .eq('car_plate', normalizedPlate)
               .gte('start_time', todayStartISO)
+              .or(searchConditions.join(','))
               .limit(50);
 
             // 🔹 أول ركنتين مدفوعة، من التالتة = مجانية
