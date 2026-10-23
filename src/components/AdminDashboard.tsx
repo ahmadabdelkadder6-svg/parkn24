@@ -173,6 +173,7 @@ export default function AdminDashboard() {
   const vipGarages = useMemo(() => garages.filter(g=>g.garageType==='vip'||(g as any).is_vip===true||g.type==='partner'), [garages]);
 
   const vipFilteredSessions = useMemo(() => completedSessions.filter(s => {
+    if (s.isFree) return false;
     if ((s.totalPrice||0)===0 && getRevenue(s)===0) return false;
     if (s.endTime) { const d=timestampToLocalDate(toMs(s.endTime)); if (vipReportDateFrom&&d<vipReportDateFrom) return false; if (vipReportDateTo&&d>vipReportDateTo) return false; } else return false;
     const g=garages.find(ga=>ga.id===s.garageId); if (!g) return false;
@@ -267,31 +268,6 @@ export default function AdminDashboard() {
         <button onClick={()=>{localStorage.removeItem('adminSession');logout();}} className="font-black active:scale-95 transition-all text-xs border-0 px-4 py-2.5 rounded-xl cursor-pointer" style={{background:'#fef2f2',color:'#b91c1c',border:'1px solid #fca5a5'}}>تسجيل خروج</button>
         <h2 className="font-black flex items-center gap-2 text-base" style={{color:BRAND.blueDark}}>لوحة المشرف العام <Shield size={18} style={{color:BRAND.blue}}/></h2>
         <div className="font-bold text-xs px-3 py-1.5 rounded-lg" style={{background:BRAND.blueSoft,color:BRAND.blue,border:`1px solid ${BRAND.border}`}}>{sessions.length} عملية</div>
-      </div>
-
-      {/* ══ Free Bookings Counter ══ */}
-      <div className="mb-6 flex gap-3 flex-col sm:flex-row">
-        <div className="flex-1 bg-white border rounded-2xl p-5 shadow-sm relative overflow-hidden" style={{borderColor:BRAND.border}}>
-          <div className="absolute top-0 right-0 w-1.5 h-full" style={{background:BRAND.blue}}></div>
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-black" style={{color:BRAND.slate}}>إجمالي الإيرادات المسجلة</span>
-            <div className="p-2 rounded-xl text-white" style={{background:BRAND.blue}}><DollarSign className="w-4 h-4"/></div>
-          </div>
-          <div className="text-2xl font-black mb-1" style={{color:BRAND.navy}}>{garageReport.reduce((a,c)=>a+c.revenue,0).toLocaleString()} <span className="text-xs font-bold" style={{color:BRAND.slate}}>ج.م</span></div>
-          <p className="text-[9px] font-bold" style={{color:BRAND.slate}}><CheckCircle2 className="w-3 h-3 inline ml-1" style={{color:BRAND.greenDark}}/>من {validRevenueSessions.length} جلسة مدفوعة</p>
-        </div>
-        <div className="flex-1 border rounded-2xl p-5 shadow-sm relative overflow-hidden" style={{background:'linear-gradient(to bottom left, #fffbeb, #ffffff)',borderColor:'#fcd34d'}}>
-          <div className="absolute top-0 right-0 w-1.5 h-full bg-amber-400"></div>
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-black text-amber-700 flex items-center gap-1"><Sparkles className="w-3.5 h-3.5 text-amber-500"/> عداد الحجوزات المجانية</span>
-            <div className="p-2 rounded-xl bg-amber-100 text-amber-500"><Gift className="w-4 h-4"/></div>
-          </div>
-          <div className="text-2xl font-black text-amber-600 mb-1">{freeSessionsList.length} <span className="text-xs font-bold text-amber-500/70">حجز مجاني 100%</span></div>
-          <div className="flex items-center justify-between mt-2">
-            <p className="text-[9px] font-bold text-amber-700/80">دعم مُعفى: <strong className="text-amber-600">{freeSessionsList.length*3} ج.م</strong></p>
-            <button onClick={()=>setShowFreeBookings(!showFreeBookings)} className="text-[9px] font-black bg-amber-50 text-amber-600 px-2 py-1 rounded border border-amber-200 cursor-pointer">{showFreeBookings?'إخفاء السجل':'عرض السجل'}</button>
-          </div>
-        </div>
       </div>
 
       <AnimatePresence>
