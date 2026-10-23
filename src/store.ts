@@ -1075,7 +1075,7 @@ export const useStore = create<AppState>((set, get) => ({
       const isAppBooking = s.source === 'app';
       const cleanPhone = s.customerPhone ? normalizePhone(s.customerPhone) : '';
 
-      let eligibleForFree = false;
+       let eligibleForFree = false;
       if (isAppBooking) {
         if (s.isFirstFreeSession !== undefined) {
           eligibleForFree = Boolean(s.isFirstFreeSession);
@@ -1087,25 +1087,28 @@ export const useStore = create<AppState>((set, get) => ({
             todayStart.setHours(0, 0, 0, 0);
             const todayStartISO = todayStart.toISOString();
 
-            // 🔹 عدد الركنات المدفوعة اليوم
-            const orCondition = cleanPhone
-              ? `customer_phone.eq.${cleanPhone},car_plate.eq.${normalizedPlate}`
-              : `car_plate.eq.${normalizedPlate}`;
+            // 🔹 نبحث بالـ phone لو موجود (ثابت) وإلا بالـ plate
+            const { data: todayAll } = cleanPhone
+              ? await supabase
+                  .from('sessions')
+                  .select('id, is_first_free_session')
+                  .eq('customer_phone', cleanPhone)
+                  .gte('created_at', todayStartISO)
+                  .limit(50)
+              : await supabase
+                  .from('sessions')
+                  .select('id, is_first_free_session')
+                  .eq('car_plate', normalizedPlate)
+                  .gte('created_at', todayStartISO)
+                  .limit(50);
 
-            const searchConditions: string[] = [];
-            if (cleanPhone) searchConditions.push(`customer_phone.eq.${cleanPhone}`);
-            searchConditions.push(`car_plate.eq.${normalizedPlate}`);
+            const freeCount = todayAll?.filter((row: any) =>
+              row.is_first_free_session === true || row.is_first_free_session === 'true'
+            ).length || 0;
+            const paidCount = (todayAll?.length || 0) - freeCount;
 
-            const { data: todayAll } = await supabase
-              .from('sessions')
-              .select('id, is_first_free_session')
-              .gte('start_time', todayStartISO)
-              .or(searchConditions.join(','))
-              .limit(50);
-
-            // 🔹 أول ركنتين مدفوعة، من التالتة = مجانية
-            const paidCount = todayPaid?.length || 0;
-            eligibleForFree = paidCount >= 2;
+            // 🔹 2 مدفوعة → 2 مجانية → الباقي مدفوع
+            eligibleForFree = paidCount >= 2 && freeCount < 2;
           } catch (err) {
             eligibleForFree = false;
           }
