@@ -413,7 +413,7 @@ const mapSession = (r: any): ParkingSession => {
   const endTime = rawEnd ? (typeof rawEnd === 'string' ? rawEnd : new Date(getMs(rawEnd)).toISOString()) : undefined;
 
   const isApp = r.source === 'app';
-  const isFree = isApp && (r.is_first_free_session === true || r.is_first_free_session === 'true' || r.is_first_free_session === 1);
+const isFree = r.is_first_free_session === true || r.is_first_free_session === 'true' || r.is_first_free_session === 1;
 
   return {
     id: r.id,
@@ -1082,34 +1082,34 @@ export const useStore = create<AppState>((set, get) => ({
           eligibleForFree = Boolean(s.isFirstFreeSession);
         } else if (isSupabaseConfigured() && (cleanPhone || normalizedPlate)) {
           try {
-            const query = cleanPhone 
+            // 🔹 بداية اليوم = 12 بالليل
+            const now = new Date(getServerNow());
+            const todayStart = new Date(now);
+            todayStart.setHours(0, 0, 0, 0);
+            const todayStartISO = todayStart.toISOString();
+
+            // 🔹 عدد الركنات المدفوعة اليوم
+            const orCondition = cleanPhone
               ? `customer_phone.eq.${cleanPhone},car_plate.eq.${normalizedPlate}`
               : `car_plate.eq.${normalizedPlate}`;
-            
-            const { data: pastSessions } = await supabase
+
+            const { data: todayPaid } = await supabase
               .from('sessions')
               .select('id')
-              .eq('is_first_free_session', true)
-              .or(query)
-              .limit(1);
+              .eq('is_first_free_session', false)
+              .eq('status', 'completed')
+              .gte('start_time', todayStartISO)
+              .or(orCondition)
+              .limit(10);
 
-            let userAlreadyUsed = false;
-            if (cleanPhone) {
-              const { data: uData } = await supabase
-                .from('users')
-                .select('has_used_free_session')
-                .eq('phone', cleanPhone)
-                .maybeSingle();
-              userAlreadyUsed = uData?.has_used_free_session === true;
-            }
-
-            eligibleForFree = !userAlreadyUsed && (!pastSessions || pastSessions.length === 0);
+            // 🔹 أول ركنتين مدفوعة، من التالتة = مجانية
+            const paidCount = todayPaid?.length || 0;
+            eligibleForFree = paidCount >= 2;
           } catch (err) {
             eligibleForFree = false;
           }
         }
       }
-
       const startTimeISO = typeof s.startTime === 'string' ? s.startTime : new Date(getServerNow()).toISOString();
 
       const optimisticSession: ParkingSession = {
