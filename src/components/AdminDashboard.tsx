@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 import { useStore, normalizePhone, getServerNow, BOOKING_FEE } from '../store';
 import { supabase } from '../lib/supabase';
-import { calculateCost } from '../utils/pricing';
 import toast from 'react-hot-toast';
 
 const BRAND = {
@@ -36,8 +35,6 @@ const formatDuration = (s: number, e: number): string => { if (!s||!e) return '�
 export default function AdminDashboard() {
   const { garages, sessions, walletTopUps, users, approveTopUp, rejectTopUp, addGarage, setCurrentGarageId, setView, logout, messages, replyMessage, closeMessage, updateGarage, fetchAll } = useStore() as any;
 
-  const [dateFrom, setDateFrom] = useState(() => getLocalToday());
-  const [dateTo, setDateTo] = useState(() => getLocalToday());
   const [, setTick] = useState(0);
   const [replyText, setReplyText] = useState('');
   const [replyingTo, setReplyingTo] = useState<string|null>(null);
@@ -91,56 +88,7 @@ export default function AdminDashboard() {
 
   useEffect(() => { const i = setInterval(() => setTick(t=>t+1), 60000); return () => clearInterval(i); }, []);
 
-  const getRevenue = useCallback((s: any) => {
-    const g = garages.find((ga:any) => ga?.id === s.garageId);
-    const isVip = g && (g.garageType==='vip' || (g as any).is_vip===true || g.type==='partner');
-    if (isVip) return 0;
-    if (s.totalPrice != null) return Number(s.totalPrice);
-    if (s.endTime && s.startTime) {
-      const st = toMs(s.startTime); const en = toMs(s.endTime);
-      const rate = Number(s.agreedPrice ?? g?.basePrice ?? 0);
-      const el = Math.max(0, Math.floor((en-st)/1000));
-      const isFree = s.isFirstFreeSession===true && el<=1800;
-      return (isFree ? 0 : calculateCost(el, rate)) + (s.shieldEnabled ? 10 : 0);
-    }
-    return 0;
-  }, [garages]);
-
-  const getCommission = useCallback((s: any) => {
-    if (s.commissionAmount != null && s.commissionAmount > 0) return Number(s.commissionAmount);
-    if (s.source !== 'app' && !s.shieldEnabled) return 0;
-    const rev = getRevenue(s); if (rev <= 0) return 0;
-    const g = garages.find((ga:any) => ga?.id === s.garageId);
-    const rate = g?.commissionRate ?? 10;
-    const bp = s.shieldEnabled ? Math.max(0, rev-10) : rev;
-    return Math.round(((bp*rate)/100 + (s.shieldEnabled?5:0))*100)/100;
-  }, [garages, getRevenue]);
-
-  const getNetRevenue = useCallback((s: any) => {
-    if (s.netRevenue != null && s.netRevenue > 0) return Number(s.netRevenue);
-    return Math.round((getRevenue(s)-getCommission(s))*100)/100;
-  }, [getRevenue, getCommission]);
-  void getNetRevenue;
-
   const completedSessions = useMemo(() => sessions.filter((s:any) => s.status==='completed' || s.status==='active'), [sessions]);
-
-  const validRevenueSessions = useMemo(() => completedSessions.filter((s:any) => getRevenue(s)>0 || (s.totalPrice||0)>0), [completedSessions, getRevenue]);
-
-  const totalsFromSessions = useMemo(() => {
-    let pendingRevenue = 0; let pendingCount = 0;
-    validRevenueSessions.forEach((s:any) => { if (!s.revenueConfirmed) { const r = getRevenue(s); if (r>0) { pendingRevenue+=r; pendingCount++; } } });
-    const confirmed = validRevenueSessions.filter((s:any) => s.revenueConfirmed);
-    return { totalRevenueConfirmed: confirmed.reduce((a:number,s:any)=>a+getRevenue(s),0), totalPendingRevenue: pendingRevenue, totalSessionsCount: validRevenueSessions.length, pendingCount };
-  }, [validRevenueSessions, getRevenue]);
-
-  const commissionStats = useMemo(() => {
-    const confirmed = validRevenueSessions.filter((s:any) => s.revenueConfirmed && !(s as any).settled && (s.source==='app'||s.shieldEnabled));
-    const tc = confirmed.reduce((a:number,s:any)=>a+getCommission(s),0);
-    const tr = confirmed.reduce((a:number,s:any)=>a+getRevenue(s),0);
-    const perGarage = garages.map((g:any) => { const gs = confirmed.filter((s:any)=>s.garageId===g.id); const gc = gs.reduce((a:number,s:any)=>a+getCommission(s),0); const gr = gs.reduce((a:number,s:any)=>a+getRevenue(s),0); return { id:g.id, name:g.name, commissionRate:g.commissionRate??10, totalRevenue:gr, commission:gc, netRevenue:gr-gc, walletRevenue:gs.filter((s:any)=>s.paymentMethod==='wallet').reduce((a:number,s:any)=>a+getRevenue(s),0), appCount:gs.filter((s:any)=>s.source==='app').length, totalCount:gs.length, sessionIds:gs.map((s:any)=>s.id) }; }).filter((g:any)=>g.totalCount>0);
-    const tw = confirmed.filter((s:any)=>s.paymentMethod==='wallet').reduce((a:number,s:any)=>a+getRevenue(s),0);
-    return { totalCommission:tc, totalRevenue:tr, totalNet:tr-tc, perGarage, totalWalletCollected:tw, totalSettlement:tw-tc };
-  }, [validRevenueSessions, garages, getRevenue, getCommission]);
 
   const pendingTopUps = walletTopUps.filter((w:any) => w.status==='pending');
 
@@ -201,7 +149,6 @@ export default function AdminDashboard() {
   const getTypeEmoji = (t:string) => { switch(t){case 'complaint':return '🚨';case 'inquiry':return '❓';case 'suggestion':return '💡';case 'technical':return '🔧';default:return '💬';} };
   const getTypeLabel = (t:string) => { switch(t){case 'complaint':return 'شكوى';case 'inquiry':return 'استفسار';case 'suggestion':return 'اقتراح';case 'technical':return 'مشكلة تقنية';default:return 'رسالة';} };
   const formatMsgTime = (ts:number) => new Date(ts).toLocaleDateString('ar-EG',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
-  const setToday = () => { const t=getLocalToday(); setDateFrom(t); setDateTo(t); };
 
   const handleAddGarage = () => {
     if (!gName) { toast.error('أدخل اسم الجراج'); return; }
@@ -224,12 +171,6 @@ export default function AdminDashboard() {
 
   const handleApproveTopUp = async (id:string, amount:number) => { if(processingTopUpId) return; setProcessingTopUpId(id); const lt=toast.loading('جاري اعتماد الرصيد...'); try{await approveTopUp(id); toast.dismiss(lt); toast.success(`تم اعتماد شحن ${amount} ج.م ✅`,{duration:4000}); await fetchAll();}catch(e:any){toast.dismiss(lt); toast.error(e?.message||'فشل');}finally{setProcessingTopUpId(null);} };
   const handleRejectTopUp = async (id:string) => { if(processingTopUpId) return; setProcessingTopUpId(id); const lt=toast.loading('جاري الرفض...'); try{await rejectTopUp(id); toast.dismiss(lt); toast.error('تم الرفض ❌'); await fetchAll();}catch(e:any){toast.dismiss(lt); toast.error(e?.message||'فشل');}finally{setProcessingTopUpId(null);} };
-
-  const handleDatabaseCleanup = async () => {
-    if(!window.confirm("⚠️ هل أنت متأكد من تنظيف الأرشيف؟\n\nسيتم حذف الجلسات القديمة (+30 يوم) المؤكدة والمسواة.")) return;
-    const lt=toast.loading('جاري التنظيف...');
-    try{const d=new Date(getServerNow());d.setDate(d.getDate()-30);const{error,count}=await supabase.from('sessions').delete({count:'exact'}).eq('status','completed').eq('revenue_confirmed',true).eq('settled',true).lt('created_at',d.toISOString());toast.dismiss(lt);if(error)throw error;if(count&&count>0){toast.success(`🧹 تم حذف ${count} جلسة ✅`);await fetchAll();}else toast('نظيف بالفعل ✨',{icon:'✨'});}catch(e:any){toast.dismiss(lt);toast.error('فشل: '+(e.message||'خطأ'));}
-  };
 
   useEffect(() => {
     let dt:ReturnType<typeof setTimeout>|null=null;
@@ -258,53 +199,6 @@ export default function AdminDashboard() {
         <h2 className="font-black flex items-center gap-2 text-base" style={{color:BRAND.blueDark}}>لوحة المشرف العام <Shield size={18} style={{color:BRAND.blue}}/></h2>
         <div className="font-bold text-xs px-3 py-1.5 rounded-lg" style={{background:BRAND.blueSoft,color:BRAND.blue,border:`1px solid ${BRAND.border}`}}>{sessions.length} عملية</div>
       </div>
-
-      {/* ══ Pending Revenue Banner ══ */}
-      {(totalsFromSessions.totalPendingRevenue>0||totalsFromSessions.pendingCount>0) && (
-        <div className="mb-5 flex items-center justify-between px-4 py-3 rounded-xl text-white shadow-sm" style={{background:'linear-gradient(135deg, #f59e0b, #d97706)'}}>
-          <div className="text-right"><h3 className="font-black text-xs">⏳ إيرادات معلقة ({totalsFromSessions.pendingCount})</h3><p className="text-[9px] opacity-80 mt-0.5">تحتاج تأكيد (الجلسات المجانية مستبعدة)</p></div>
-          <div className="font-black font-mono text-xl">{totalsFromSessions.totalPendingRevenue.toFixed(0)} <span className="text-xs">ج.م</span></div>
-        </div>
-      )}
-
-      {/* ══ Date Filter ══ */}
-      <div className="mb-5" style={{background:BRAND.card,border:`1px solid ${BRAND.border}`,borderRadius:20,padding:14,boxShadow:'0 2px 12px rgba(0,0,0,0.02)'}}>
-        <div className="flex items-center gap-1.5 mb-3">
-          <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} className="flex-1 font-black outline-none text-center font-mono py-2 rounded-xl text-xs border border-slate-200" style={{background:BRAND.blueSoft,color:BRAND.blueDark}}/>
-          <span className="font-black text-slate-400 text-xs">←</span>
-          <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} className="flex-1 font-black outline-none text-center font-mono py-2 rounded-xl text-xs border border-slate-200" style={{background:BRAND.blueSoft,color:BRAND.blueDark}}/>
-          <CalendarDays size={16} style={{color:BRAND.blue}} className="shrink-0"/>
-        </div>
-        <div className="flex gap-1.5 mb-3">
-          {[{l:'📅 اليوم',o:setToday,a:dateFrom===getLocalToday()&&dateTo===getLocalToday()},{l:'أمس',o:()=>{setDateFrom(getLocalYesterday());setDateTo(getLocalYesterday());},a:dateFrom===getLocalYesterday()&&dateTo===getLocalYesterday()},{l:'أسبوع',o:()=>{setDateFrom(getLocalDaysAgo(7));setDateTo(getLocalToday());},a:dateFrom===getLocalDaysAgo(7)},{l:'الكل',o:()=>{setDateFrom('');setDateTo('');},a:!dateFrom&&!dateTo}].map(b=>(
-            <button key={b.l} onClick={b.o} className="flex-1 font-black py-2 rounded-lg text-xs cursor-pointer border-0 active:scale-95 transition-all" style={{background:b.a?BRAND.blue:BRAND.blueSoft,color:b.a?'#fff':BRAND.slate,border:b.a?'none':`1px solid ${BRAND.border}`}}>{b.l}</button>
-          ))}
-        </div>
-        <div className="pt-3 border-t border-dashed" style={{borderColor:BRAND.border}}>
-          <button onClick={handleDatabaseCleanup} className="w-full font-black py-2 rounded-lg text-xs cursor-pointer border-0 active:scale-95 transition-all flex items-center justify-center gap-1.5" style={{background:BRAND.navy,color:'#fff'}}>🧹 تنظيف الأرشيف (+30 يوم)</button>
-        </div>
-      </div>
-
-      {/* ══ Revenue Stats ══ */}
-      <div className="grid grid-cols-2 gap-2.5 mb-4">
-        <div className="text-center p-3 rounded-xl border" style={{background:BRAND.card,borderColor:BRAND.border}}><div className="text-[10px] font-bold" style={{color:BRAND.slate}}>الإيرادات المؤكدة</div><div className="font-black font-mono text-lg mt-1" style={{color:BRAND.blue}}>{totalsFromSessions.totalRevenueConfirmed.toFixed(0)} <span className="text-[10px] font-bold text-slate-400">ج.م</span></div></div>
-        <div className="text-center p-3 rounded-xl border" style={{background:BRAND.card,borderColor:BRAND.border}}><div className="text-[10px] font-bold" style={{color:BRAND.slate}}>إجمالي العمليات</div><div className="font-black font-mono text-lg mt-1" style={{color:BRAND.blue}}>{totalsFromSessions.totalSessionsCount} <span className="text-[10px] font-bold text-slate-400">عملية</span></div></div>
-      </div>
-
-      {/* ══ Commission Card ══ */}
-      {commissionStats.totalCommission>0 && (<>
-        <div className="flex justify-between items-stretch mb-3 text-center border" style={{background:BRAND.card,borderColor:BRAND.border,borderRadius:16,padding:'12px 10px'}}>
-          <div className="flex-1 flex flex-col justify-center items-center border-l" style={{borderColor:BRAND.border}}><span className="text-[9px] font-black mb-1 block" style={{color:BRAND.slateMuted}}>💳 الإيراد الكلي</span><span className="font-mono font-black text-sm" style={{color:BRAND.navy}}>{commissionStats.totalRevenue.toFixed(0)} <span className="text-[9px] font-bold">ج</span></span></div>
-          <div className="flex-1 flex flex-col justify-center items-center border-l" style={{borderColor:BRAND.border}}><span className="text-[9px] font-black mb-1 flex items-center gap-0.5 justify-center" style={{color:'#d97706'}}><Percent size={10}/> عمولتنا + حمايتنا 🛡️</span><span className="font-mono font-black text-sm" style={{color:'#d97706'}}>{commissionStats.totalCommission.toFixed(0)} <span className="text-[9px] font-bold">ج</span></span></div>
-          <div className="flex-1 flex flex-col justify-center items-center"><span className="text-[9px] font-black mb-1 block" style={{color:BRAND.greenDark}}>🟢 صافي الجراجات</span><span className="font-mono font-black text-sm" style={{color:BRAND.greenDark}}>{commissionStats.totalNet.toFixed(0)} <span className="text-[9px] font-bold">ج</span></span></div>
-        </div>
-        {(()=>{const st=commissionStats.totalSettlement;const aog=st>0;const av=Math.abs(st).toFixed(0);return(
-          <div className="mb-4 border" style={{background:aog?BRAND.greenLight:'#fff5f5',borderColor:aog?BRAND.green:'#fca5a5',borderRadius:16,padding:12}}>
-            <div className="flex justify-between items-center mb-2"><div className="font-black font-mono text-lg" style={{color:aog?BRAND.greenDark:'#c53030'}}>{av} <span className="text-[10px] font-bold">ج.م</span></div><div className="text-right"><span className="font-black text-xs block" style={{color:BRAND.navy}}>{aog?'🟢 مستحق للجراجات':'🔴 مستحق للتطبيق'}</span><span className="font-bold text-[9px]" style={{color:BRAND.slate}}>{aog?'تحويل من الأدمن':'تحصيل من الجراج'}</span></div></div>
-            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-dashed" style={{borderColor:aog?'#c8e6a0':'#fecaca'}}><div className="text-center bg-white rounded-lg p-1.5 border border-slate-200 flex items-center justify-center gap-1"><span className="text-[9px] font-bold" style={{color:BRAND.slate}}>💳 محفظة:</span><span className="font-black font-mono text-xs" style={{color:BRAND.blue}}>{commissionStats.totalWalletCollected.toFixed(0)}ج</span></div><div className="text-center bg-white rounded-lg p-1.5 border border-amber-200 flex items-center justify-center gap-1"><span className="text-[9px] font-bold" style={{color:'#d97706'}}>📊 عمولة:</span><span className="font-black font-mono text-xs" style={{color:'#d97706'}}>{commissionStats.totalCommission.toFixed(0)}ج</span></div></div>
-          </div>
-        );})()}
-      </>)}
 
       {/* ══ Wallet Top-ups Report ══ */}
       <div className="mb-8">
