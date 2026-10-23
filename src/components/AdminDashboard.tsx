@@ -61,9 +61,9 @@ export default function AdminDashboard() {
       // ترتيب بالوقت
       list.sort((a: any, b: any) => toMs(a.startTime) - toMs(b.startTime));
       // أول 2 = مدفوع، 3 و 4 = مجاني، الباقي = مدفوع
-      list.forEach((s: any, i: number) => {
-        if (i >= 2 && i < 4) ids.add(s.id);
-      });
+list.forEach((s: any, i: number) => {
+  if (i >= 2) ids.add(s.id);
+});
     });
 
     return ids;
