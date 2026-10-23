@@ -31,9 +31,7 @@ const getLocalYesterday = (): string => { const d = new Date(getServerNow()); d.
 const getLocalDaysAgo = (days: number): string => { const d = new Date(getServerNow()); d.setDate(d.getDate()-days); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const formatSessionTime = (ts: any): string => { const ms = toMs(ts); if (!ms) return '—'; const d = new Date(ms); return d.toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'})+' · '+d.toLocaleDateString('ar-EG',{month:'short',day:'numeric'}); };
 const formatDuration = (s: number, e: number): string => { if (!s||!e) return '—'; const d = Math.max(0,Math.floor((e-s)/1000)); const h = Math.floor(d/3600); const m = Math.floor((d%3600)/60); return h>0?`${h}س ${m}د`:`${m}د`; };
-const isSessionFree = (s: any): boolean => {
-  const raw = s.isFirstFreeSession ?? s.is_first_free_session;
-  if (raw !== true && raw !== 'true' && raw !== 1 && raw !== '1') return false;
+
 
 const isSessionFree = (s: any): boolean => {
   const raw = s.isFirstFreeSession ?? s.is_first_free_session;
