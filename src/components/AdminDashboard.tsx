@@ -8,7 +8,7 @@ import {
   Minus, CalendarDays, Navigation, X,
   Zap, Filter, ChevronDown, ChevronUp,
 } from 'lucide-react';
-import { useStore, normalizePhone, getServerNow, BOOKING_FEE } from '../store';
+import { useStore, normalizePhone, normalizePlate, getServerNow, BOOKING_FEE } from '../store';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
@@ -32,30 +32,38 @@ const getLocalDaysAgo = (days: number): string => { const d = new Date(getServer
 const formatSessionTime = (ts: any): string => { const ms = toMs(ts); if (!ms) return '—'; const d = new Date(ms); return d.toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'})+' · '+d.toLocaleDateString('ar-EG',{month:'short',day:'numeric'}); };
 const formatDuration = (s: number, e: number): string => { if (!s||!e) return '—'; const d = Math.max(0,Math.floor((e-s)/1000)); const h = Math.floor(d/3600); const m = Math.floor((d%3600)/60); return h>0?`${h}س ${m}د`:`${m}د`; };
 
-
-const isSessionFree = (s: any): boolean => {
-  const raw = s.isFirstFreeSession ?? s.is_first_free_session;
-  if (raw !== true && raw !== 'true' && raw !== 1 && raw !== '1') return false;
-
-  // 🔹 شرط 12 بالليل: لو الجلسة عدّت نص الليل → مش مجانية
-  const startRaw = s.startTime || s.start_time;
-  const endRaw = s.endTime || s.end_time;
-  if (startRaw && endRaw) {
-    const start = new Date(toMs(startRaw));
-    const end = new Date(toMs(endRaw));
-    const midnight = new Date(start);
-    midnight.setDate(midnight.getDate() + 1);
-    midnight.setHours(0, 0, 0, 0);
-    if (end >= midnight) return false;
-  }
-
-  return true;
-};
 export default function AdminDashboard() {
   const { garages, sessions, walletTopUps, users, approveTopUp, rejectTopUp, addGarage, setCurrentGarageId, setView, logout, messages, replyMessage, closeMessage, updateGarage, fetchAll } = useStore() as any;
 
-  const [, setTick] = useState(0);
-  const [replyText, setReplyText] = useState('');
+  // 🔹 حساب المجاني ديناميكياً (حتى للجلسات القديمة)
+  const freeSessionIds = useMemo(() => {
+    const ids = new Set<string>();
+    const groups = new Map<string, any[]>();
+
+    sessions.forEach((s: any) => {
+      if (s.status !== 'completed') return;
+      const date = timestampToLocalDate(toMs(s.startTime));
+      const phone = s.customerPhone ? normalizePhone(s.customerPhone) : '';
+      const plate = normalizePlate(s.carPlate);
+      const key = `${date}::${phone || plate}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(s);
+    });
+
+    groups.forEach((groupSessions) => {
+      const sorted = [...groupSessions].sort((a: any, b: any) => toMs(a.startTime) - toMs(b.startTime));
+      sorted.forEach((s: any, i: number) => {
+        if (s.isFirstFreeSession === true || (i >= 2 && i < 4)) {
+          ids.add(s.id);
+        }
+      });
+    });
+
+    return ids;
+  }, [sessions]);
+
+  const isSessionFree = (s: any): boolean => freeSessionIds.has(s.id);
+  const [, setTick] = useState(0);  const [replyText, setReplyText] = useState('');
   const [replyingTo, setReplyingTo] = useState<string|null>(null);
   const [expandedMessage, setExpandedMessage] = useState<string|null>(null);
   const [messagesTab, setMessagesTab] = useState<'pending'|'all'>('pending');
