@@ -21,6 +21,17 @@ const BRAND = {
   border: '#e2e8f0', card: '#ffffff', bg: '#f4f7fc',
 };
 
+// ══════════════════════════════════════════════════════════
+// 🎛️ إخفاء/إظهار التقارير (المنطق والحسابات تفضل شغالة)
+// ══════════════════════════════════════════════════════════
+const HIDE_REPORTS = {
+  settlements: true,   // ❌ التسويات النشطة للجراجات
+  archive: true,       // ❌ أرشيف التسويات
+  revenue: true,       // ❌ تقرير الإيرادات
+  sessions: true,      // ❌ إدارة الجلسات
+  // 💡 لو عايز ترجّع أي قسم: غيّر true لـ false
+};
+
 const toMs = (value: any): number => {
   if (!value) return 0;
   if (typeof value === 'string') { const ms = new Date(value).getTime(); return Number.isFinite(ms) && ms > 0 ? ms : 0; }
@@ -357,7 +368,8 @@ export default function AdminDashboard() {
         );})()}
       </>)}
 
-      {/* ══ Accordion Settlements ══ */}
+      {/* ══ Accordion Settlements ══ [HIDDEN] ══ */}
+      {!HIDE_REPORTS.settlements && (
       <div className="mb-6 space-y-2">
         <div className="flex items-center justify-between mb-3"><span className="font-black text-[9px] px-2.5 py-0.5 rounded-full text-white" style={{background:BRAND.blue}}>{commissionStats.perGarage.length} جراجات نشطة</span><h3 className="font-black text-xs" style={{color:BRAND.navy}}>📊 التسويات النشطة للجراجات</h3></div>
         {commissionStats.perGarage.length===0 ? <div className="text-center py-8 border-2 border-dashed rounded-2xl" style={{background:BRAND.card,borderColor:BRAND.border}}><span className="text-2xl block mb-1">⚖️</span><p className="font-black text-[11px]" style={{color:BRAND.slate}}>جميع حسابات الجراجات متزنة ومقفلة بالكامل!</p></div> : commissionStats.perGarage.map(g=>{
@@ -374,8 +386,10 @@ export default function AdminDashboard() {
           </div>);
         })}
       </div>
+      )}
 
-      {/* ══ Archive ══ */}
+      {/* ══ Archive ══ [HIDDEN] ══ */}
+      {!HIDE_REPORTS.archive && (
       <div className="mb-5">
         <button onClick={()=>{setShowArchive(!showArchive);setVisibleSettlements(4);setArchiveSearch('');}} className="w-full font-black flex items-center justify-between bg-white border cursor-pointer px-4 py-3 rounded-xl" style={{borderColor:BRAND.border,color:BRAND.navy}}><span className="text-xs font-black" style={{color:BRAND.blue}}>{showArchive?'▲ إخفاء الأرشيف':'▼ عرض الأرشيف'}</span><div className="flex items-center gap-1.5"><span className="text-[10px] font-bold" style={{color:BRAND.slate}}>({settlementRecords.length} تسوية)</span><span className="text-xs font-black">📂 أرشيف التسويات</span></div></button>
         {showArchive&&(<div className="mt-3 space-y-3 p-3 rounded-xl border bg-white" style={{borderColor:BRAND.border}}>
@@ -383,14 +397,18 @@ export default function AdminDashboard() {
           {(()=>{const f=settlementRecords.filter(r=>r.garage_name.toLowerCase().includes(archiveSearch.trim().toLowerCase()));if(!f.length)return<div className="text-center py-6 border-2 border-dashed rounded-xl" style={{borderColor:BRAND.border}}><div className="text-2xl mb-1">📭</div><p className="font-black text-xs" style={{color:BRAND.slateMuted}}>{archiveSearch?`لا توجد تسويات لـ "${archiveSearch}"`:'لم يتم تسجيل أي تسويات بعد'}</p></div>;const sl=f.slice(0,visibleSettlements);return(<><div className="space-y-2">{sl.map(r=>{const a2g=r.direction==='admin_to_garage';return(<div key={r.id} className="p-3 border rounded-xl" style={{borderColor:BRAND.border}}><div className="flex justify-between items-start mb-2"><div className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black" style={{background:a2g?BRAND.greenLight:'#fff5f5',color:a2g?BRAND.greenDark:'#c53030'}}>{a2g?'أرسل الأدمن':'استلم الأدمن'}</div><div className="text-right"><div className="font-black text-xs" style={{color:BRAND.navy}}>{r.garage_name}</div><div className="font-bold text-[9px] font-mono mt-0.5" style={{color:BRAND.slateMuted}}>{r.settlement_date}</div></div></div><div className="flex justify-between items-center border-t border-dashed pt-2 mt-2" style={{borderColor:BRAND.border}}><div className="font-black font-mono text-base" style={{color:a2g?BRAND.greenDark:'#c53030'}}>{Number(r.amount||0).toFixed(0)} <span className="text-[10px]">ج.م</span></div><div className="text-right font-bold text-[10px]" style={{color:BRAND.navy,lineHeight:1.4}}><div>{r.session_count} جلسة مقفلة 🔒</div><div className="text-[8px]" style={{color:BRAND.slate}}>محفظة: {r.wallet_collected.toFixed(0)}ج · عمولة: {r.commission_amount.toFixed(0)}ج</div></div></div></div>);})}</div>{f.length>visibleSettlements&&<button onClick={()=>setVisibleSettlements(p=>p+5)} className="w-full font-black py-2 rounded-lg text-[10px] cursor-pointer bg-white border border-slate-200" style={{color:BRAND.blue}}>عرض المزيد ({f.length-visibleSettlements} أخرى)</button>}</>);})()}
         </div>)}
       </div>
+      )}
 
-      {/* ══ Revenue Report ══ */}
+      {/* ══ Revenue Report ══ [HIDDEN] ══ */}
+      {!HIDE_REPORTS.revenue && (
       <div className="mb-6">
         <div className="flex items-center justify-between mb-3"><span className="font-black text-[9px] px-2 py-0.5 rounded bg-slate-200" style={{color:BRAND.slate}}>{garageReport.length} جراج</span><h3 className="font-black text-xs" style={{color:BRAND.navy}}>📊 تقرير الإيرادات</h3></div>
         {garageReport.length===0?<div className="text-center py-8 border-2 border-dashed rounded-xl" style={{borderColor:BRAND.border}}><span className="text-2xl block mb-1">📭</span><p className="font-black text-xs" style={{color:BRAND.slate}}>لا توجد جراجات نشطة</p></div>:<div className="space-y-2">{garageReport.map(r=>(<div key={r.garageId} className="p-3 border" style={{background:BRAND.card,borderColor:BRAND.border,borderRadius:16}}><div className="flex justify-between items-center mb-2"><div className="flex items-center gap-1.5"><span className="font-black font-mono text-base" style={{color:BRAND.greenDark}}>{r.revenue.toFixed(0)} <span className="text-[10px] font-bold">ج</span></span><span className="text-[8px] font-black text-white px-1.5 py-0.5 rounded" style={{background:BRAND.green}}>مؤكد</span></div><div className="text-right"><span className="font-black text-xs" style={{color:BRAND.navy}}>{r.name}</span><span className="text-[9px] font-bold block" style={{color:BRAND.slate}}>{r.count} جلسة</span></div></div><div className="flex items-center justify-between gap-1 py-1 px-2.5 rounded-lg border" style={{background:BRAND.bg,borderColor:BRAND.border}}><div className="flex items-center gap-0.5 text-[10px]"><Percent size={9} style={{color:BRAND.slate}}/><span className="font-black font-mono" style={{color:BRAND.slate}}>{r.commissionRate}%</span></div><div style={{width:1,height:12,background:BRAND.border}}/><div className="flex items-center gap-0.5 text-[10px]"><span className="text-[9px]">⏳</span><span className="font-black font-mono text-amber-600">{r.pendingRevenue>0?`${r.pendingRevenue.toFixed(0)}ج`:'—'}</span></div><div style={{width:1,height:12,background:BRAND.border}}/><div className="flex items-center gap-0.5 text-[10px]"><span className="text-[9px]">💵</span><span className="font-black font-mono text-emerald-600">{r.cash.toFixed(0)}</span></div><div style={{width:1,height:12,background:BRAND.border}}/><div className="flex items-center gap-0.5 text-[10px]"><span className="text-[9px]">👝</span><span className="font-black font-mono text-blue-600">{r.wallet.toFixed(0)}</span></div></div></div>))}</div>}
       </div>
+ 
 
-      {/* ══ Revenue Sessions ══ */}
+      {/* ══ Revenue Sessions / إدارة الجلسات ══ [HIDDEN] ══ */}
+      {!HIDE_REPORTS.sessions && (
       <div className="mb-8">
         <h3 className="font-black mb-3 text-right text-xs" style={{color:BRAND.navy}}>إدارة الجلسات ({filteredSessions.length})</h3>
         <div className="space-y-3 mb-4">
@@ -409,6 +427,7 @@ export default function AdminDashboard() {
           })}
         </div>
       </div>
+      )}
 
       {/* ══ Pending Top-ups ══ */}
       <div className="mb-8">
@@ -473,61 +492,93 @@ export default function AdminDashboard() {
           <div className="rounded-2xl border overflow-hidden" style={{background:BRAND.card,borderColor:BRAND.border}}>
             {vipFilteredSessions.length===0?<div className="text-center py-10"><span className="text-2xl block mb-1">📭</span><p className="font-black text-xs" style={{color:BRAND.slateMuted}}>{vipPlateSearch?`لا توجد نتائج لـ "${vipPlateSearch}"`:'لا توجد عمليات VIP في الفترة المحددة'}</p></div>:(<>
               <div className="grid px-3 py-2" style={{gridTemplateColumns:'1fr auto auto auto',gap:8,background:BRAND.navy,color:'#fff'}}><div className="font-black text-[9px] text-right">اللوحة + الجراج</div><div className="font-black text-[9px] text-center">المدة</div><div className="font-black text-[9px] text-center">المبلغ</div><div className="font-black text-[9px] text-center">الدفع</div></div>
-              <div className="max-h-[400px] overflow-y-auto divide-y" style={{borderColor:BRAND.border}}>{vipFilteredSessions.slice(0,vipVisibleSessions).map(s=>{const g=garages.find(ga=>ga.id===s.garageId);const stMs=toMs(s.startTime);const enMs=toMs(s.endTime);const rev=getRevenue(s);return(<div key={s.id} className="grid px-3 py-2.5 items-center" style={{gridTemplateColumns:'1fr auto auto auto',gap:8}}><div className="text-right min-w-0"><div className="font-black text-[11px] truncate" style={{color:BRAND.navy}}>🚗 {s.carPlate}</div><div className="font-bold text-[9px] truncate" style={{color:BRAND.slate}}>{g?.name||'—'}</div><div className="font-mono text-[8px]" style={{color:BRAND.slateMuted}}>{formatSessionTime(s.endTime)}</div></div><div className="font-mono font-black text-[10px] text-center" style={{color:BRAND.slate}}>{formatDuration(stMs,enMs)}</div><div className="text-center"><div className="font-black font-mono text-[11px]" style={{color:BRAND.greenDark}}>{rev.toFixed(0)}ج</div><div className="font-black text-[7px]" style={{color:BRAND.blue}}>+{BOOKING_FEE}ج⚡</div></div><div className="text-center"><span className="font-black text-[8px] px-1.5 py-0.5 rounded text-white" style={{background:s.paymentMethod==='cash'?BRAND.greenDark:s.paymentMethod==='wallet'?BRAND.blue:s.paymentMethod==='instapay'?'#7c3aed':BRAND.slate}}>{s.paymentMethod==='cash'?'💵':s.paymentMethod==='wallet'?'👝':s.paymentMethod==='instapay'?'📱':'📲'}</span></div></div>);})}</div>
-              {vipFilteredSessions.length>vipVisibleSessions&&<div className="p-3 border-t text-center" style={{borderColor:BRAND.border}}><button onClick={()=>setVipVisibleSessions(p=>p+10)} className="w-full font-black py-2.5 rounded-xl text-[10px] cursor-pointer bg-white border active:scale-95 transition-all flex items-center justify-center gap-1.5" style={{color:BRAND.blue,borderColor:BRAND.border}}><ChevronDown size={14}/><span>عرض المزيد ({vipFilteredSessions.length-vipVisibleSessions} عملية أخرى)</span></button></div>}
-            </>)}
+              <div className="max-h-[400px] overflow-y-auto divide-y" style={{borderColor:BRAND.border}}>{vipFilteredSessions.slice(0,vipVisibleSessions).map(s=>{const g=garages.find(ga=>ga.id===s.garageId);const stMs=toMs(s.startTime);const enMs=toMs(s.endTime);const rev=getRevenue(s);return(<div key={s.id} className="grid px-3 py-2.5 items-center" style={{gridTemplateColumns:'1fr auto auto auto',gap:8}}><div className="text-right min-w-0"><div className="font-black text-[11px] truncate" style={{color:BRAND.navy}}>🚗 {s.carPlate}</div><div className="font-bold text-[9px] truncate" style={{color:BRAND.slate}}>{g?.name||'—'}</div><div className="font-mono text-[8px]" style={{color:BRAND.slateMuted}}>{formatSessionTime(s.endTime)}</div></div>
+                      <div className="font-mono font-black text-[10px] text-center" style={{color:BRAND.slate}}>{formatDuration(stMs,enMs)}</div>
+                      <div className="text-center"><div className="font-black font-mono text-[11px]" style={{color:BRAND.greenDark}}>{rev.toFixed(0)}ج</div><div className="font-black text-[7px]" style={{color:BRAND.blue}}>+{BOOKING_FEE}ج⚡</div></div>
+                      <div className="text-center"><span className="font-black text-[8px] px-1.5 py-0.5 rounded text-white" style={{background:s.paymentMethod==='cash'?BRAND.greenDark:s.paymentMethod==='wallet'?BRAND.blue:s.paymentMethod==='instapay'?'#7c3aed':BRAND.slate}}>{s.paymentMethod==='cash'?'💵':s.paymentMethod==='wallet'?'👝':s.paymentMethod==='instapay'?'📱':'📲'}</span></div>
+                    </div>);})}
+                  </div>
+                  {vipFilteredSessions.length>vipVisibleSessions&&<div className="p-3 border-t text-center" style={{borderColor:BRAND.border}}><button onClick={()=>setVipVisibleSessions(p=>p+10)} className="w-full font-black py-2.5 rounded-xl text-[10px] cursor-pointer bg-white border active:scale-95 transition-all flex items-center justify-center gap-1.5" style={{color:BRAND.blue,borderColor:BRAND.border}}><ChevronDown size={14}/><span>عرض المزيد ({vipFilteredSessions.length-vipVisibleSessions} عملية أخرى)</span></button></div>}
+                </>)}
+              </div>
+            </div>
+          </div>
+
+          {/* ══ Garage Management ══ */}
+          <div className="rounded-2xl border overflow-hidden shadow-sm" style={{background:BRAND.surface,borderColor:BRAND.border}}>
+            <div className="p-4 border-b flex items-center justify-between" style={{borderColor:BRAND.border,background:BRAND.white}}>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white" style={{background:BRAND.navy}}><Settings size={16}/></div>
+                <div><div className="font-black text-[13px]" style={{color:BRAND.navy}}>إدارة الجراجات</div><div className="font-bold text-[9px]" style={{color:BRAND.slateMuted}}>{garages.length} جراج</div></div>
+              </div>
+            </div>
+            <div className="divide-y" style={{borderColor:BRAND.border}}>
+              {garages.length===0&&<div className="p-8 text-center font-bold text-[11px]" style={{color:BRAND.slateMuted}}>لا توجد جراجات</div>}
+              {garages.map(g=>{
+                const gSessions=completedSessions.filter(s=>s.garageId===g.id);
+                const gRev=gSessions.reduce((sum,s)=>{const st=new Date(s.startTime).getTime();const en=new Date(s.endTime).getTime();const hrs=Math.max(1,Math.ceil((en-st)/3600000));return sum+(g.pricePerHour*hrs);},0);
+                const isEditing=editingGarageId===g.id;
+                return(
+                  <div key={g.id} className="p-3" style={{background:BRAND.white}}>
+                    {isEditing?(
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <input value={editGarageForm.name} onChange={e=>setEditGarageForm(p=>({...p,name:e.target.value}))} className="w-full border rounded-lg px-2.5 py-1.5 font-bold text-[10px] outline-none" style={{borderColor:BRAND.border,color:BRAND.navy}} placeholder="الاسم"/>
+                          <input value={editGarageForm.phone} onChange={e=>setEditGarageForm(p=>({...p,phone:e.target.value}))} className="w-full border rounded-lg px-2.5 py-1.5 font-bold text-[10px] outline-none text-left" style={{borderColor:BRAND.border,color:BRAND.navy}} placeholder="الهاتف" dir="ltr"/>
+                          <input value={editGarageForm.address} onChange={e=>setEditGarageForm(p=>({...p,address:e.target.value}))} className="w-full border rounded-lg px-2.5 py-1.5 font-bold text-[10px] outline-none" style={{borderColor:BRAND.border,color:BRAND.navy}} placeholder="العنوان"/>
+                          <input type="number" value={editGarageForm.pricePerHour} onChange={e=>setEditGarageForm(p=>({...p,pricePerHour:Number(e.target.value)}))} className="w-full border rounded-lg px-2.5 py-1.5 font-bold text-[10px] outline-none text-left" style={{borderColor:BRAND.border,color:BRAND.navy}} placeholder="السعر/ساعة" dir="ltr"/>
+                          <input type="number" value={editGarageForm.capacity} onChange={e=>setEditGarageForm(p=>({...p,capacity:Number(e.target.value)}))} className="w-full border rounded-lg px-2.5 py-1.5 font-bold text-[10px] outline-none text-left" style={{borderColor:BRAND.border,color:BRAND.navy}} placeholder="السعة" dir="ltr"/>
+                          <input type="number" value={editGarageForm.commissionPercent} onChange={e=>setEditGarageForm(p=>({...p,commissionPercent:Number(e.target.value)}))} className="w-full border rounded-lg px-2.5 py-1.5 font-bold text-[10px] outline-none text-left" style={{borderColor:BRAND.border,color:BRAND.navy}} placeholder="العمولة %" dir="ltr"/>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={()=>saveGarageEdit(g.id)} className="flex-1 font-black py-2 rounded-lg text-[10px] text-white cursor-pointer active:scale-95 transition-all" style={{background:BRAND.greenDark}}>💾 حفظ</button>
+                          <button onClick={()=>{setEditingGarageId(null);setEditGarageForm({name:'',phone:'',address:'',pricePerHour:0,capacity:0,commissionPercent:15});}} className="flex-1 font-black py-2 rounded-lg text-[10px] cursor-pointer border active:scale-95 transition-all" style={{color:BRAND.slate,borderColor:BRAND.border}}>إلغاء</button>
+                        </div>
+                      </div>
+                    ):(
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-[11px] font-black shrink-0" style={{background:BRAND.blue}}>{g.name.charAt(0)}</div>
+                          <div className="min-w-0">
+                            <div className="font-black text-[11px] truncate" style={{color:BRAND.navy}}>{g.name}</div>
+                            <div className="font-bold text-[8px] truncate" style={{color:BRAND.slateMuted}}>{g.address} • {g.pricePerHour}ج/س • عمولة {g.commissionPercent}%</div>
+                            <div className="font-bold text-[8px]" style={{color:BRAND.slateMuted}}>📊 {gSessions.length} جلسة • 💰 {gRev.toFixed(0)}ج</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button onClick={()=>{setEditingGarageId(g.id);setEditGarageForm({name:g.name,phone:g.phone||'',address:g.address,pricePerHour:g.pricePerHour,capacity:g.capacity||0,commissionPercent:g.commissionPercent||15});}} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer border active:scale-90 transition-all" style={{borderColor:BRAND.border,color:BRAND.blue}}><Edit2 size={12}/></button>
+                          <button onClick={()=>{if(window.confirm(`حذف "${g.name}"؟`))deleteGarage(g.id);}} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer border active:scale-90 transition-all" style={{borderColor:BRAND.border,color:BRAND.red}}><Trash2 size={12}/></button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ══ Add Garage ══ */}
+          <div className="rounded-2xl border overflow-hidden shadow-sm" style={{background:BRAND.surface,borderColor:BRAND.border}}>
+            <div className="p-4 border-b" style={{borderColor:BRAND.border,background:BRAND.white}}>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white" style={{background:BRAND.greenDark}}><Plus size={16}/></div>
+                <div className="font-black text-[13px]" style={{color:BRAND.navy}}>إضافة جراج جديد</div>
+              </div>
+            </div>
+            <div className="p-4 space-y-2.5" style={{background:BRAND.white}}>
+              <div className="grid grid-cols-2 gap-2">
+                <input value={newGarage.name} onChange={e=>setNewGarage(p=>({...p,name:e.target.value}))} className="w-full border rounded-lg px-3 py-2 font-bold text-[11px] outline-none" style={{borderColor:BRAND.border,color:BRAND.navy}} placeholder="اسم الجراج *"/>
+                <input value={newGarage.phone} onChange={e=>setNewGarage(p=>({...p,phone:e.target.value}))} className="w-full border rounded-lg px-3 py-2 font-bold text-[11px] outline-none text-left" style={{borderColor:BRAND.border,color:BRAND.navy}} placeholder="رقم الهاتف" dir="ltr"/>
+                <input value={newGarage.address} onChange={e=>setNewGarage(p=>({...p,address:e.target.value}))} className="w-full border rounded-lg px-3 py-2 font-bold text-[11px] outline-none col-span-2" style={{borderColor:BRAND.border,color:BRAND.navy}} placeholder="العنوان *"/>
+                <input type="number" value={newGarage.pricePerHour} onChange={e=>setNewGarage(p=>({...p,pricePerHour:Number(e.target.value)}))} className="w-full border rounded-lg px-3 py-2 font-bold text-[11px] outline-none text-left" style={{borderColor:BRAND.border,color:BRAND.navy}} placeholder="السعر/ساعة *" dir="ltr"/>
+                <input type="number" value={newGarage.capacity} onChange={e=>setNewGarage(p=>({...p,capacity:Number(e.target.value)}))} className="w-full border rounded-lg px-3 py-2 font-bold text-[11px] outline-none text-left" style={{borderColor:BRAND.border,color:BRAND.navy}} placeholder="السعة" dir="ltr"/>
+                <input type="number" value={newGarage.commissionPercent} onChange={e=>setNewGarage(p=>({...p,commissionPercent:Number(e.target.value)}))} className="w-full border rounded-lg px-3 py-2 font-bold text-[11px] outline-none text-left" style={{borderColor:BRAND.border,color:BRAND.navy}} placeholder="نسبة العمولة %" dir="ltr"/>
+                <input value={newGarage.password} onChange={e=>setNewGarage(p=>({...p,password:e.target.value}))} className="w-full border rounded-lg px-3 py-2 font-bold text-[11px] outline-none text-left" style={{borderColor:BRAND.border,color:BRAND.navy}} placeholder="كلمة مرور الجراج *" dir="ltr"/>
+              </div>
+              <button onClick={addGarage} disabled={!newGarage.name.trim()||!newGarage.address.trim()||newGarage.pricePerHour<=0} className="w-full font-black py-3 rounded-xl text-[12px] text-white cursor-pointer active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2" style={{background:BRAND.greenDark}}><Plus size={16}/>إضافة الجراج</button>
+            </div>
           </div>
         </div>
       </div>
-
-      {/* ══ Garage Management ══ */}
-      <div className="mb-8">
-        <div className="flex justify-between items-center mb-3"><span className="font-black text-[9px] px-2.5 py-1 rounded bg-slate-200" style={{color:BRAND.slate}}>{filteredGaragesForAdmin.length} جراج نشط بالقسم</span><h3 className="font-black text-xs" style={{color:BRAND.navy}}>إدارة وجرد الجراجات</h3></div>
-        <div className="flex p-1 rounded-xl bg-slate-100 border border-slate-200 mb-3" style={{direction:'rtl'}}>
-          <button type="button" onClick={()=>setAdminGarageTab('vip')} className="flex-1 py-2 rounded-lg font-black text-[10px] cursor-pointer border-0 transition-all flex items-center justify-center gap-1" style={{background:adminGarageTab==='vip'?BRAND.blue:'transparent',color:adminGarageTab==='vip'?'#fff':BRAND.slate,boxShadow:adminGarageTab==='vip'?'0 2px 6px rgba(22,86,184,0.15)':'none'}}><span>⭐ جراجات VIP الشريكة</span></button>
-          <button type="button" onClick={()=>setAdminGarageTab('directory')} className="flex-1 py-2 rounded-lg font-black text-[10px] cursor-pointer border-0 transition-all flex items-center justify-center gap-1" style={{background:adminGarageTab==='directory'?BRAND.blueDark:'transparent',color:adminGarageTab==='directory'?'#fff':BRAND.slate,boxShadow:adminGarageTab==='directory'?'0 2px 6px rgba(15,61,133,0.15)':'none'}}><span>🧭 دليل الركنات المجاني</span></button>
-        </div>
-        <div className="space-y-3 mb-4"><div className="relative"><Search size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{color:BRAND.slateMuted}}/><input type="text" value={garageSearch} onChange={e=>setGarageSearch(e.target.value)} placeholder="ابحث عن جراج بالاسم..." className="w-full font-bold outline-none text-xs py-2.5 px-9 rounded-xl border border-slate-200" style={{color:BRAND.navy}}/>{garageSearch&&<button onClick={()=>setGarageSearch('')} className="absolute left-3 top-1/2 -translate-y-1/2 border-0 bg-transparent cursor-pointer" style={{color:BRAND.slateMuted}}><X size={14}/></button>}</div></div>
-        <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
-          {filteredGaragesForAdmin.length===0?<div className="text-center py-10 bg-white border rounded-2xl" style={{borderColor:BRAND.border}}><div className="text-2xl mb-1">🔍</div><p className="font-bold text-xs" style={{color:BRAND.slateMuted}}>لا توجد جراجات مطابقة للبحث</p></div>:filteredGaragesForAdmin.slice(0,visibleGarageCount).map(g=>{
-            const isEditingComm=editingCommissionGarageId===g.id;const isDirectory=g.garageType==='directory';const ownerPhone=(g as any).ownerPhone||g.phone;const sameOwnerCount=garages.filter((x:any)=>normalizePhone(x.ownerPhone||x.phone)===normalizePhone(ownerPhone)).length;
-            return(<div key={g.id} className="border p-3.5" style={{background:BRAND.card,borderColor:BRAND.border,borderRadius:18}}>
-              <div className="flex justify-between items-center mb-2"><div className="flex items-center gap-1">{isDirectory?<span className="font-black text-[9px] px-2.5 py-1 rounded-xl text-white bg-slate-600 flex items-center gap-1">🧭 دليل مجاني</span>:<div className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-white" style={{background:BRAND.blue}}><span className="font-black font-mono text-sm">{g.availableSpots}</span><span className="font-bold text-[9px] opacity-80">شاغر</span></div>}</div><div className="text-right flex items-center gap-1.5 flex-wrap justify-end">{sameOwnerCount>1&&!isDirectory&&<span className="font-black text-[9px] px-2 py-0.5 rounded" style={{background:BRAND.blueSoft,color:BRAND.blue}}>👑 {sameOwnerCount}</span>}<span className="font-black text-xs" style={{color:BRAND.navy}}>{g.name}</span></div></div>
-              <div className="flex items-center justify-between mb-3 gap-2"><div className="flex flex-wrap gap-1 justify-start">{isDirectory?<span className="text-[9px] font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded">💵 الدفع نقدي للسايس</span>:[{n:1,name:(g as any).valetName1,pw:(g as any).valetPassword1,color:BRAND.blue},{n:2,name:(g as any).valetName2,pw:(g as any).valetPassword2,color:'#7c3aed'},{n:3,name:(g as any).valetName3,pw:(g as any).valetPassword3,color:'#f59e0b'}].filter(v=>v.pw).map(v=>(<span key={v.n} className="font-bold text-[8px] px-1.5 py-0.5 rounded" style={{color:v.color,background:BRAND.bg,border:`1px solid ${BRAND.border}`}}>👤 {v.name||`س${v.n}`}</span>))}</div><div className="flex items-center gap-1.5 text-slate-500 font-bold text-[9px]"><span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[8px] font-black">🗺️ {g.area||'مناطق أخرى'}</span><span style={{color:'#E2E8F0'}}>·</span><span className="truncate max-w-[100px]">{g.location}</span><MapPin size={10} className="shrink-0 text-slate-400"/></div></div>
-              <div className="flex flex-col gap-2 mb-3 p-3 rounded-xl border bg-slate-50" style={{borderColor:BRAND.border}}>
-                <div className="flex items-center justify-between gap-2"><div className="flex items-center gap-1">{!isEditingComm?<button onClick={()=>{setEditingCommissionGarageId(g.id);setEditCommissionRate(g.commissionRate??10);setEditArea(g.area||'وسط البلد');setEditGarageType(g.garageType||'vip');setEditPriceType(g.priceType||'hourly');setEditBasePrice(g.basePrice||15);setEditDailyPrice(g.dailyPrice||20);setEditMonthlyPrice(g.monthlyPrice||1500);}} className="font-black border-0 py-1 px-2.5 rounded-lg text-[9px] cursor-pointer text-white" style={{background:'#f59e0b'}}>تعديل البيانات</button>:<div className="flex items-center gap-1"><button onClick={()=>handleSaveGarageData(g.id)} className="font-black py-1 px-2.5 rounded-lg text-[9px] cursor-pointer border-0 text-white" style={{background:BRAND.greenDark}}>حفظ</button><button onClick={()=>setEditingCommissionGarageId(null)} className="font-black py-1 px-2.5 rounded-lg text-[9px] cursor-pointer border bg-white" style={{color:BRAND.slate,borderColor:BRAND.border}}>✕</button></div>}</div><div className="flex items-center gap-1">{isDirectory?<span className="font-black text-xs text-slate-700">{g.priceType==='daily'?`${g.dailyPrice||g.basePrice}ج/يوم`:g.priceType==='monthly'?`${g.monthlyPrice||1500}ج/شهر`:`${g.basePrice}ج/ساعة`}</span>:<><Percent size={11} style={{color:BRAND.slate}}/><span className="font-black font-mono text-xs" style={{color:BRAND.navy}}>{isEditingComm?editCommissionRate:(g.commissionRate??10)}%</span><span className="font-bold text-[9px]" style={{color:BRAND.slateMuted}}>عمولة المنصة</span></>}</div></div>
-                {isEditingComm&&(<div className="pt-2 border-t border-dashed space-y-2 text-right" style={{borderColor:BRAND.border}}>
-                  <div className="flex justify-between items-center gap-2"><select value={editGarageType} onChange={e=>setEditGarageType(e.target.value as any)} className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"><option value="vip">🤝 شريك VIP معتمد</option><option value="directory">🧭 دليل ركنة مجاني</option></select><span className="font-black text-[10px]" style={{color:BRAND.slate}}>نوع الجراج:</span></div>
-                  <div className="flex justify-between items-center gap-2"><select value={editArea} onChange={e=>setEditArea(e.target.value)} className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border">{AREA_OPTIONS.map(a=>(<option key={a} value={a}>{AREA_EMOJI[a]||'📍'} {a}</option>))}</select><span className="font-black text-[10px]" style={{color:BRAND.slate}}>🗺️ المنطقة الجغرافية:</span></div>
-                  {editGarageType==='vip'&&(<div className="flex justify-between items-center gap-2 pt-1 border-t border-dashed border-slate-200"><div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200"><button type="button" onClick={()=>setEditCommissionRate(r=>Math.max(0,r-1))} className="border-0 cursor-pointer flex items-center justify-center rounded bg-red-100 text-red-600 font-black" style={{width:22,height:24}}><Minus size={11}/></button><input type="number" value={editCommissionRate} onChange={e=>setEditCommissionRate(Math.max(0,Math.min(100,parseInt(e.target.value,10)||0)))} className="bg-transparent text-center outline-none font-mono font-black text-xs border-0" style={{width:34,color:'#f59e0b'}}/><button type="button" onClick={()=>setEditCommissionRate(r=>Math.min(100,r+1))} className="border-0 cursor-pointer flex items-center justify-center rounded bg-emerald-100 text-emerald-600 font-black" style={{width:22,height:24}}><Plus size={11}/></button></div><span className="font-black text-[10px]" style={{color:BRAND.slate}}>📊 نسبة عمولة المنصة (%):</span></div>)}
-                  {editGarageType==='directory'&&(<><div className="flex justify-between items-center gap-2"><select value={editPriceType} onChange={e=>setEditPriceType(e.target.value as any)} className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"><option value="hourly">⏱️ بالساعة</option><option value="daily">☀️ يومي ثابت</option><option value="monthly">📅 اشتراك شهري</option></select><span className="font-black text-[10px]" style={{color:BRAND.slate}}>هيكل التسعير:</span></div><div className="flex justify-between items-center gap-2">{editPriceType==='hourly'&&<input type="number" value={editBasePrice} onChange={e=>setEditBasePrice(parseInt(e.target.value,10)||0)} className="w-24 text-center border p-1 rounded font-mono text-xs"/>}{editPriceType==='daily'&&<input type="number" value={editDailyPrice} onChange={e=>setEditDailyPrice(parseInt(e.target.value,10)||0)} className="w-24 text-center border p-1 rounded font-mono text-xs"/>}{editPriceType==='monthly'&&<input type="number" value={editMonthlyPrice} onChange={e=>setEditMonthlyPrice(parseInt(e.target.value,10)||0)} className="w-24 text-center border p-1 rounded font-mono text-xs"/>}<span className="font-black text-[10px]" style={{color:BRAND.slate}}>قيمة السعر الفعلي:</span></div></>)}
-                </div>)}
-              </div>
-              <div className="flex items-center gap-2">
-                <button type="button" onClick={()=>{const ns=g.isActive===false?true:false;updateGarage(g.id,{isActive:ns});toast.success(ns?`تم تفعيل ${g.name} 🟢`:`تم تعطيل ${g.name} 🔴`);}} className="font-black py-2 px-3 rounded-xl text-[10px] cursor-pointer border-0 text-white flex items-center justify-center gap-1" style={{background:g.isActive!==false?BRAND.greenDark:'#dc2626'}}><span>{g.isActive!==false?'🟢 مفعّل':'🔴 معطّل'}</span></button>
-                {!isDirectory&&<button onClick={()=>handleAdminEnterGarage(g)} className="flex-1 font-black py-2 rounded-xl text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1.5" style={{background:BRAND.blue}}><Navigation size={14}/>دخول وإدارة الجراج</button>}
-              </div>
-            </div>);
-          })}
-        </div>
-        {filteredGaragesForAdmin.length>visibleGarageCount&&<div className="mt-4 text-center"><button onClick={()=>setVisibleGarageCount(p=>p+10)} className="w-full font-black py-3 rounded-xl text-xs cursor-pointer border-0 text-white active:scale-[0.98] transition-all flex items-center justify-center gap-2" style={{background:BRAND.blue,boxShadow:`0 4px 14px ${BRAND.blue}25`}}><ChevronDown size={14}/><span>عرض 10 جراجات إضافية (متبقي {filteredGaragesForAdmin.length-visibleGarageCount})</span></button></div>}
-        {filteredGaragesForAdmin.length>10&&<div className="mt-2 text-center"><span className="font-bold text-[9px]" style={{color:BRAND.slateMuted}}>📊 يتم عرض {Math.min(visibleGarageCount,filteredGaragesForAdmin.length)} من إجمالي {filteredGaragesForAdmin.length} جراج</span></div>}
-      </div>
-
-      {/* ══ Add Garage ══ */}
-      <div className="mb-20">
-        <h3 className="font-black mb-3 text-right text-xs" style={{color:BRAND.navy}}>إضافة جراج جديد للشبكة</h3>
-        <div className="space-y-4 p-5 bg-white border" style={{borderColor:BRAND.border,borderRadius:24}}>
-          <div className="text-right"><label className="font-black block text-right mb-1.5 text-[10px]" style={{color:BRAND.slate}}>نوع الجراج المضاف للشبكة</label><select value={gType==='partner'?'vip':gType} onChange={e=>setGType(e.target.value as any)} className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{color:BRAND.navy}}><option value="vip">🤝 جراج شريك VIP معتمد</option><option value="directory">🧭 دليل ركنات مجاني</option></select></div>
-          <input className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{color:BRAND.navy}} placeholder="اسم الجراج أو الساحة" value={gName} onChange={e=>setGName(e.target.value)}/>
-          {gType==='partner'&&<div className="flex gap-2"><input className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{color:BRAND.navy}} placeholder="اسم المستخدم" value={gUser} onChange={e=>setGUser(e.target.value)}/><input className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{color:BRAND.navy}} placeholder="رقم هاتف المالك" value={gPhone} onChange={e=>setGPhone(e.target.value)}/></div>}
-          <div className="text-right"><label className="font-black block text-right mb-1.5 text-[10px]" style={{color:BRAND.slate}}>🗺️ المنطقة الجغرافية للجراج</label><select value={gArea} onChange={e=>setGArea(e.target.value)} className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{color:BRAND.navy}}><option value="وسط البلد">🏢 وسط البلد</option><option value="مصر الجديدة">🏰 مصر الجديدة</option><option value="مدينة نصر">🏙️ مدينة نصر</option><option value="المعادي">🌳 المعادي</option><option value="المهندسين">🛍️ المهندسين</option><option value="الدقي">🎓 الدقي</option><option value="التجمع الخامس">💎 التجمع الخامس</option><option value="مناطق أخرى">📍 مناطق أخرى</option></select></div>
-          {gType==='directory'?<div className="p-3 border rounded-xl" style={{background:BRAND.bg,borderColor:BRAND.border}}><div className="font-bold mb-3 text-right text-[10px]" style={{color:BRAND.slate}}>💰 هيكل وأسعار الركنة</div><div className="space-y-3"><select value={gPriceType} onChange={e=>setGPriceType(e.target.value as any)} className="w-full font-bold text-right outline-none text-xs p-2 rounded-lg border"><option value="hourly">⏱️ ركن بالساعة</option><option value="daily">☀️ سعر يومي ثابت</option><option value="monthly">📅 اشتراك شهري</option></select>{gPriceType==='hourly'&&<div><label className="text-[9px] text-slate-400 block mb-0.5">سعر الساعة:</label><input type="number" value={gBasePrice} onChange={e=>setGBasePrice(parseInt(e.target.value,10)||0)} className="w-full font-bold text-center text-xs p-2 rounded border"/></div>}{gPriceType==='daily'&&<div><label className="text-[9px] text-slate-400 block mb-0.5">سعر اليوم:</label><input type="number" value={gDailyPrice} onChange={e=>setGDailyPrice(parseInt(e.target.value,10)||0)} className="w-full font-bold text-center text-xs p-2 rounded border"/></div>}{gPriceType==='monthly'&&<div><label className="text-[9px] text-slate-400 block mb-0.5">سعر الشهر:</label><input type="number" value={gMonthlyPrice} onChange={e=>setGMonthlyPrice(parseInt(e.target.value,10)||0)} className="w-full font-bold text-center text-xs p-2 rounded border"/></div>}</div></div>:<div className="p-3 border rounded-xl" style={{background:BRAND.bg,borderColor:BRAND.border}}><div className="font-bold mb-3 text-right text-[10px]" style={{color:BRAND.slate}}>👤 حسابات السياس (اختياري)</div>{[{n:1,name:gValet1Name,setName:setGValet1Name,pass:gValet1Pass,setPass:setGValet1Pass,color:BRAND.blue},{n:2,name:gValet2Name,setName:setGValet2Name,pass:gValet2Pass,setPass:setGValet2Pass,color:'#7c3aed'},{n:3,name:gValet3Name,setName:setGValet3Name,pass:gValet3Pass,setPass:setGValet3Pass,color:'#f59e0b'}].map((v,i)=>(<div key={i} className={i<2?'mb-3 pb-3 border-b border-dashed':''} style={{borderColor:BRAND.border}}><div className="flex items-center justify-between mb-1.5"><span className="font-bold text-[9px]" style={{color:(v.name||v.pass)?BRAND.greenDark:BRAND.slateMuted}}>{(v.name||v.pass)?'✅ مفعّل':'❌ غير مفعّل'}</span><span className="font-black text-[10px]" style={{color:BRAND.navy}}>سايس {v.n}</span></div><div className="flex gap-2"><input type="text" value={v.name} onChange={e=>v.setName(e.target.value)} className="flex-1 font-bold text-right outline-none text-xs py-2 px-2.5 rounded-lg border border-slate-200" style={{color:BRAND.navy}} placeholder="الاسم"/><input type="text" value={v.pass} onChange={e=>v.setPass(e.target.value)} className="flex-1 font-mono font-black text-center outline-none text-xs py-2 px-2.5 rounded-lg border border-slate-200" style={{color:BRAND.navy,letterSpacing:2}} placeholder="الباسورد"/></div></div>))}</div>}
-          <div className="p-3 border rounded-xl" style={{background:BRAND.bg,borderColor:BRAND.border}}><div className="font-bold mb-2 text-[10px]" style={{color:BRAND.slate}}>📍 تحديد الإحداثيات الجغرافية</div><div className="grid grid-cols-2 gap-3 font-mono">{[{label:'خط العرض',value:lat,set:setLat},{label:'خط الطول',value:lng,set:setLng}].map(c=>(<div key={c.label}><span className="text-[9px] text-slate-400 block mb-0.5">{c.label}</span><input type="number" value={c.value} onChange={e=>c.set(parseFloat(e.target.value))} className="w-full font-bold outline-none text-xs py-2 px-2.5 rounded-lg border border-slate-200" style={{color:BRAND.navy}} step="0.000001"/></div>))}</div></div>
-          <div className="text-center p-3 border rounded-xl" style={{background:BRAND.bg,borderColor:BRAND.border}}><div className="font-bold mb-1 text-[11px]" style={{color:BRAND.navy}}>الموقع الإحداثي الحالي للمتصفح</div><div className="font-black font-mono text-xs" style={{color:BRAND.blue}}>{lat.toFixed(4)}, {lng.toFixed(4)}</div><button type="button" onClick={()=>{if('geolocation' in navigator)navigator.geolocation.getCurrentPosition(p=>{setLat(p.coords.latitude);setLng(p.coords.longitude);toast.success('تم تحديد الإحداثيات');},()=>toast.error('تعذر التحديد'));}} className="font-black py-1.5 px-3 rounded-lg text-[10px] cursor-pointer border bg-white mt-2" style={{color:BRAND.blue,borderColor:BRAND.blue}}>📍 استخدام موقعي الحالي</button></div>
-          <button onClick={handleAddGarage} className="w-full font-black py-3.5 border-0 text-white rounded-xl text-xs active:scale-[0.98] transition-all cursor-pointer" style={{background:BRAND.blue,boxShadow:`0 4px 14px ${BRAND.blue}25`}}>حفظ وتسجيل الجراج بالشبكة 🚀</button>
-        </div>
-      </div>
-    </div>
-  );
-}
+    );
+  }
