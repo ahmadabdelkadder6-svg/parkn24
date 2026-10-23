@@ -35,6 +35,10 @@ const isSessionFree = (s: any): boolean => {
   const raw = s.isFirstFreeSession ?? s.is_first_free_session;
   if (raw !== true && raw !== 'true' && raw !== 1 && raw !== '1') return false;
 
+const isSessionFree = (s: any): boolean => {
+  const raw = s.isFirstFreeSession ?? s.is_first_free_session;
+  if (raw !== true && raw !== 'true' && raw !== 1 && raw !== '1') return false;
+
   // 🔹 شرط 12 بالليل: لو الجلسة عدّت نص الليل → مش مجانية
   const startRaw = s.startTime || s.start_time;
   const endRaw = s.endTime || s.end_time;
@@ -49,6 +53,7 @@ const isSessionFree = (s: any): boolean => {
 
   return true;
 };
+
 export default function AdminDashboard() {
   const { garages, sessions, walletTopUps, users, approveTopUp, rejectTopUp, addGarage, setCurrentGarageId, setView, logout, messages, replyMessage, closeMessage, updateGarage, fetchAll } = useStore() as any;
 

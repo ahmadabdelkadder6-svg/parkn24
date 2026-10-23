@@ -1088,32 +1088,28 @@ export const useStore = create<AppState>((set, get) => ({
             todayStart.setHours(0, 0, 0, 0);
             const todayStartISO = todayStart.toISOString();
 
+            // 🔹 عدد الركنات المدفوعة اليوم
             const orCondition = cleanPhone
               ? `customer_phone.eq.${cleanPhone},car_plate.eq.${normalizedPlate}`
               : `car_plate.eq.${normalizedPlate}`;
 
-            // 🔹 كل ركنات اليوم (مدفوعة + مجانية)
-            const { data: todayAll } = await supabase
+            const { data: todayPaid } = await supabase
               .from('sessions')
-              .select('id, is_first_free_session')
+              .select('id')
+              .eq('is_first_free_session', false)
+              .eq('status', 'completed')
               .gte('start_time', todayStartISO)
               .or(orCondition)
-              .limit(50);
+              .limit(10);
 
-            const todayCount = todayAll?.length || 0;
-            const freeCount = todayAll?.filter((s: any) =>
-              s.is_first_free_session === true || s.is_first_free_session === 'true'
-            ).length || 0;
-            const paidCount = todayCount - freeCount;
-
-            // 🔹 2 مدفوعة → 2 مجانية → الباقي مدفوع
-            eligibleForFree = paidCount >= 2 && freeCount < 2;
+            // 🔹 أول ركنتين مدفوعة، من التالتة = مجانية
+            const paidCount = todayPaid?.length || 0;
+            eligibleForFree = paidCount >= 2;
           } catch (err) {
             eligibleForFree = false;
           }
         }
       }
-
       const startTimeISO = typeof s.startTime === 'string' ? s.startTime : new Date(getServerNow()).toISOString();
 
       const optimisticSession: ParkingSession = {
