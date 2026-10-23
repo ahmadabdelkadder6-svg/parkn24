@@ -1093,14 +1093,12 @@ export const useStore = create<AppState>((set, get) => ({
               ? `customer_phone.eq.${cleanPhone},car_plate.eq.${normalizedPlate}`
               : `car_plate.eq.${normalizedPlate}`;
 
-            const { data: todayPaid } = await supabase
+            const { data: todayAll } = await supabase
               .from('sessions')
-              .select('id')
-              .eq('is_first_free_session', false)
-              .eq('status', 'completed')
+              .select('id, is_first_free_session')
+              .eq('car_plate', normalizedPlate)
               .gte('start_time', todayStartISO)
-              .or(orCondition)
-              .limit(10);
+              .limit(50);
 
             // 🔹 أول ركنتين مدفوعة، من التالتة = مجانية
             const paidCount = todayPaid?.length || 0;
