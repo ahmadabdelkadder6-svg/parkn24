@@ -659,25 +659,31 @@ export const useStore = create<AppState>((set, get) => ({
   hasPaidBookingFee: false,
   setHasPaidBookingFee: (paid) => set({ hasPaidBookingFee: paid }),
 
-  dailyDeductionCount: 0,
-  dailyDeductionDate: '',
+  dailyDeductionCount: (() => { try { const d = localStorage.getItem('dailyDeductionDate'); const c = localStorage.getItem('dailyDeductionCount'); const today = new Date().toLocaleDateString('en-CA'); if (d === today && c) return Number(c); return 0; } catch { return 0; } })(),
+  dailyDeductionDate: (() => { try { const d = localStorage.getItem('dailyDeductionDate'); const today = new Date().toLocaleDateString('en-CA'); return d === today ? d : ''; } catch { return ''; } })(),
 
   getDailyDeductionCount: () => {
     const today = new Date().toLocaleDateString('en-CA');
-    const { dailyDeductionDate, dailyDeductionCount } = get();
-    if (dailyDeductionDate !== today) {
-      return 0; // تصفير العداد التلقائي مع بداية كل يوم جديد
-    }
-    return dailyDeductionCount;
+    try {
+      const savedDate = localStorage.getItem('dailyDeductionDate');
+      const savedCount = localStorage.getItem('dailyDeductionCount');
+      if (savedDate === today && savedCount) return Number(savedCount);
+    } catch {}
+    return 0;
   },
 
   recordDeduction: () => {
     const today = new Date().toLocaleDateString('en-CA');
     const currentCount = get().getDailyDeductionCount();
+    const newCount = currentCount + 1;
     set({
       dailyDeductionDate: today,
-      dailyDeductionCount: currentCount + 1,
+      dailyDeductionCount: newCount,
     });
+    try {
+      localStorage.setItem('dailyDeductionDate', today);
+      localStorage.setItem('dailyDeductionCount', String(newCount));
+    } catch {}
   },
 
   chargeBookingFee: async () => {
@@ -766,6 +772,8 @@ export const useStore = create<AppState>((set, get) => ({
     safeRemoveStorage('currentUser'); safeRemoveStorage('appView'); safeRemoveStorage('appScreen');
     safeRemoveStorage('currentGarageId'); safeRemoveStorage('selectedGarageId');
     safeRemoveStorage('acknowledgedSessionIds');
+    safeRemoveStorage('dailyDeductionDate');
+    safeRemoveStorage('dailyDeductionCount');
   },
 
   fetchAll: async () => {
