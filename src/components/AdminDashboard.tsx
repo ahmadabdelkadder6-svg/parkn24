@@ -1,6 +1,6 @@
 // src/components/AdminDashboard.tsx
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, CheckCircle, XCircle, MapPin, Plus,
@@ -31,6 +31,7 @@ const getLocalYesterday = (): string => { const d = new Date(getServerNow()); d.
 const getLocalDaysAgo = (days: number): string => { const d = new Date(getServerNow()); d.setDate(d.getDate()-days); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const formatSessionTime = (ts: any): string => { const ms = toMs(ts); if (!ms) return '—'; const d = new Date(ms); return d.toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'})+' · '+d.toLocaleDateString('ar-EG',{month:'short',day:'numeric'}); };
 const formatDuration = (s: number, e: number): string => { if (!s||!e) return '—'; const d = Math.max(0,Math.floor((e-s)/1000)); const h = Math.floor(d/3600); const m = Math.floor((d%3600)/60); return h>0?`${h}س ${m}د`:`${m}د`; };
+const isSessionFree = (s: any): boolean => s.isFirstFreeSession === true || (s as any).is_first_free_session === true;
 
 export default function AdminDashboard() {
   const { garages, sessions, walletTopUps, users, approveTopUp, rejectTopUp, addGarage, setCurrentGarageId, setView, logout, messages, replyMessage, closeMessage, updateGarage, fetchAll } = useStore() as any;
@@ -94,9 +95,8 @@ export default function AdminDashboard() {
 
   const vipGarages = useMemo(() => garages.filter((g:any)=>g.garageType==='vip'||(g as any).is_vip===true||g.type==='partner'), [garages]);
 
+  // ✅ VIP sessions: include ALL (paid + free), free ones have is_first_free_session=true
   const vipFilteredSessions = useMemo(() => completedSessions.filter((s:any) => {
-    if (s.isFree || (s as any).is_free) return false;
-    if ((s.totalPrice||0)===0) return false;
     if (s.endTime) { const d=timestampToLocalDate(toMs(s.endTime)); if (vipReportDateFrom&&d<vipReportDateFrom) return false; if (vipReportDateTo&&d>vipReportDateTo) return false; } else return false;
     const g=garages.find((ga:any)=>ga.id===s.garageId); if (!g) return false;
     if (!(g.garageType==='vip'||(g as any).is_vip===true||g.type==='partner')) return false;
@@ -108,13 +108,29 @@ export default function AdminDashboard() {
 
   const vipReportStats = useMemo(() => {
     const ts = vipFilteredSessions.length;
-    const tr = vipFilteredSessions.reduce((a:number,s:any)=>a+(s.totalPrice||0),0);
-    const tf = ts*BOOKING_FEE;
-    const gm = new Map<string,{name:string;area:string;count:number;revenue:number;fees:number}>();
-    vipFilteredSessions.forEach((s:any) => { const g=garages.find((ga:any)=>ga.id===s.garageId); if(!g) return; const e=gm.get(s.garageId); const r=s.totalPrice||0; if(e){e.count++;e.revenue+=r;e.fees+=BOOKING_FEE;}else gm.set(s.garageId,{name:g.name,area:g.area||'مناطق أخرى',count:1,revenue:r,fees:BOOKING_FEE}); });
+    const freeSessions = vipFilteredSessions.filter((s:any) => isSessionFree(s));
+    const paidSessions = vipFilteredSessions.filter((s:any) => !isSessionFree(s));
+    const freeCount = freeSessions.length;
+    const paidCount = paidSessions.length;
+    // Revenue from PAID sessions only (free sessions have totalPrice=0 anyway, but be explicit)
+    const tr = paidSessions.reduce((a:number,s:any)=>a+(s.totalPrice||0),0);
+    // Booking fees from PAID sessions only
+    const tf = paidCount*BOOKING_FEE;
+    const gm = new Map<string,{name:string;area:string;count:number;paidCount:number;freeCount:number;revenue:number;fees:number}>();
+    vipFilteredSessions.forEach((s:any) => {
+      const g=garages.find((ga:any)=>ga.id===s.garageId); if(!g) return;
+      const free = isSessionFree(s);
+      const r = free ? 0 : (s.totalPrice||0);
+      const fee = free ? 0 : BOOKING_FEE;
+      const e=gm.get(s.garageId);
+      if(e){e.count++;if(free)e.freeCount++;else e.paidCount++;e.revenue+=r;e.fees+=fee;}
+      else gm.set(s.garageId,{name:g.name,area:g.area||'مناطق أخرى',count:1,paidCount:free?0:1,freeCount:free?1:0,revenue:r,fees:fee});
+    });
     const pg = Array.from(gm.entries()).map(([id,d])=>({id,...d})).sort((a,b)=>b.count-a.count);
-    const cc=vipFilteredSessions.filter((s:any)=>s.paymentMethod==='cash').length; const wc=vipFilteredSessions.filter((s:any)=>s.paymentMethod==='wallet').length; const ic=vipFilteredSessions.filter((s:any)=>s.paymentMethod==='instapay').length;
-    return { totalSessions:ts, totalRevenue:tr, totalBookingFees:tf, perGarage:pg, cashCount:cc, walletCount:wc, instapayCount:ic, otherCount:ts-cc-wc-ic };
+    const cc=paidSessions.filter((s:any)=>s.paymentMethod==='cash').length;
+    const wc=paidSessions.filter((s:any)=>s.paymentMethod==='wallet').length;
+    const ic=paidSessions.filter((s:any)=>s.paymentMethod==='instapay').length;
+    return { totalSessions:ts, paidCount, freeCount, totalRevenue:tr, totalBookingFees:tf, perGarage:pg, cashCount:cc, walletCount:wc, instapayCount:ic, otherCount:paidCount-cc-wc-ic };
   }, [vipFilteredSessions, garages]);
 
   const filteredWalletTopUps = useMemo(() => {
@@ -364,28 +380,66 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-2 mb-2"><select value={vipGarageFilter} onChange={e=>{setVipGarageFilter(e.target.value);setVipVisibleSessions(20);}} className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{color:BRAND.navy}}><option value="all">كل جراجات VIP</option>{vipGarages.map((g:any)=>(<option key={g.id} value={g.id}>🅿️ {g.name}</option>))}</select><Filter size={14} style={{color:BRAND.blue}} className="shrink-0"/></div>
           <div className="flex gap-2"><select value={vipPaymentFilter} onChange={e=>{setVipPaymentFilter(e.target.value);setVipVisibleSessions(20);}} className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{color:BRAND.navy}}><option value="all">كل طرق الدفع</option><option value="cash">💵 نقدي</option><option value="wallet">👝 محفظة</option><option value="instapay">📱 إنستاباي</option></select><div className="flex-1 relative"><Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2" style={{color:BRAND.slateMuted}}/><input type="text" value={vipPlateSearch} onChange={e=>{setVipPlateSearch(e.target.value);setVipVisibleSessions(20);}} placeholder="🔍 لوحة..." className="w-full font-bold text-right outline-none text-xs py-2.5 px-8 rounded-lg border border-slate-200" style={{color:BRAND.navy}}/>{vipPlateSearch&&<button onClick={()=>setVipPlateSearch('')} className="absolute left-2 top-1/2 -translate-y-1/2 border-0 bg-transparent cursor-pointer" style={{color:BRAND.slateMuted}}><X size={12}/></button>}</div></div>
         </div>
-        <div className="grid grid-cols-3 gap-2 mb-4">
-          <div className="text-center p-3 rounded-2xl border" style={{background:BRAND.card,borderColor:BRAND.border}}><div className="text-[9px] font-bold" style={{color:BRAND.slate}}>💰 إيراد الجراجات</div><div className="font-black font-mono text-lg mt-1" style={{color:BRAND.greenDark}}>{vipReportStats.totalRevenue.toFixed(0)}</div><div className="text-[8px] font-bold" style={{color:BRAND.slateMuted}}>ج.م</div></div>
-          <div className="text-center p-3 rounded-2xl border" style={{background:BRAND.card,borderColor:BRAND.border}}><div className="text-[9px] font-bold" style={{color:BRAND.slate}}>🚗 عدد الركنات</div><div className="font-black font-mono text-lg mt-1" style={{color:BRAND.blue}}>{vipReportStats.totalSessions}</div><div className="text-[8px] font-bold" style={{color:BRAND.slateMuted}}>ركنة VIP</div></div>
-          <div className="text-center p-3 rounded-2xl" style={{background:`linear-gradient(135deg,${BRAND.blueSoft} 0%,${BRAND.blueLight} 100%)`,border:`1.5px solid ${BRAND.blue}40`}}><div className="text-[9px] font-black flex items-center justify-center gap-0.5" style={{color:BRAND.blueDark}}><Zap size={10}/> رسوم VIP</div><div className="font-black font-mono text-lg mt-1" style={{color:BRAND.blue}}>{vipReportStats.totalBookingFees.toFixed(0)}</div><div className="text-[8px] font-bold" style={{color:BRAND.blueDark}}>ج.م ({BOOKING_FEE}ج × {vipReportStats.totalSessions})</div></div>
+
+        {/* ✅ VIP Stats: 4 cards — Paid Revenue, Paid Count, Free Count, VIP Fees */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+          <div className="text-center p-3 rounded-2xl border" style={{background:BRAND.card,borderColor:BRAND.border}}>
+            <div className="text-[9px] font-bold" style={{color:BRAND.slate}}>💰 إيراد الركنات المدفوعة</div>
+            <div className="font-black font-mono text-lg mt-1" style={{color:BRAND.greenDark}}>{vipReportStats.totalRevenue.toFixed(0)}</div>
+            <div className="text-[8px] font-bold" style={{color:BRAND.slateMuted}}>ج.م (من {vipReportStats.paidCount} ركنة)</div>
+          </div>
+          <div className="text-center p-3 rounded-2xl border" style={{background:BRAND.card,borderColor:BRAND.border}}>
+            <div className="text-[9px] font-bold" style={{color:BRAND.slate}}>🚗 إجمالي الركنات</div>
+            <div className="font-black font-mono text-lg mt-1" style={{color:BRAND.blue}}>{vipReportStats.totalSessions}</div>
+            <div className="text-[8px] font-bold" style={{color:BRAND.slateMuted}}>ركنة VIP</div>
+          </div>
+          <div className="text-center p-3 rounded-2xl border" style={{background:'#fefce8',borderColor:'#fde047'}}>
+            <div className="text-[9px] font-bold" style={{color:'#854d0e'}}>🎁 ركنات مجانية</div>
+            <div className="font-black font-mono text-lg mt-1" style={{color:'#ca8a04'}}>{vipReportStats.freeCount}</div>
+            <div className="text-[8px] font-bold" style={{color:'#a16207'}}>من الركنة التالتة</div>
+          </div>
+          <div className="text-center p-3 rounded-2xl" style={{background:`linear-gradient(135deg,${BRAND.blueSoft} 0%,${BRAND.blueLight} 100%)`,border:`1.5px solid ${BRAND.blue}40`}}>
+            <div className="text-[9px] font-black flex items-center justify-center gap-0.5" style={{color:BRAND.blueDark}}><Zap size={10}/> رسوم VIP</div>
+            <div className="font-black font-mono text-lg mt-1" style={{color:BRAND.blue}}>{vipReportStats.totalBookingFees.toFixed(0)}</div>
+            <div className="text-[8px] font-bold" style={{color:BRAND.blueDark}}>ج.م ({BOOKING_FEE}ج × {vipReportStats.paidCount} مدفوعة)</div>
+          </div>
         </div>
-        <div className="flex items-center justify-between gap-1 mb-4 py-2 px-3 rounded-xl border" style={{background:BRAND.bg,borderColor:BRAND.border}}>{[{icon:'💵',label:'نقدي',count:vipReportStats.cashCount,color:BRAND.greenDark},{icon:'👝',label:'محفظة',count:vipReportStats.walletCount,color:BRAND.blue},{icon:'📱',label:'إنستا',count:vipReportStats.instapayCount,color:'#7c3aed'},{icon:'📲',label:'أخرى',count:vipReportStats.otherCount,color:BRAND.slate}].map((p,i)=>(<div key={i} className="flex items-center gap-1 text-[10px]"><span>{p.icon}</span><span className="font-black font-mono" style={{color:p.color}}>{p.count}</span>{i<3&&<div style={{width:1,height:14,background:BRAND.border,marginLeft:4,marginRight:2}}/>}</div>))}</div>
+
+        <div className="flex items-center justify-between gap-1 mb-4 py-2 px-3 rounded-xl border" style={{background:BRAND.bg,borderColor:BRAND.border}}>{[{icon:'💵',label:'نقدي',count:vipReportStats.cashCount,color:BRAND.greenDark},{icon:'👝',label:'محفظة',count:vipReportStats.walletCount,color:BRAND.blue},{icon:'📱',label:'إنستا',count:vipReportStats.instapayCount,color:'#7c3aed'},{icon:'🎁',label:'مجاني',count:vipReportStats.freeCount,color:'#ca8a04'}].map((p,i)=>(<div key={i} className="flex items-center gap-1 text-[10px]"><span>{p.icon}</span><span className="font-black font-mono" style={{color:p.color}}>{p.count}</span>{i<3&&<div style={{width:1,height:14,background:BRAND.border,marginLeft:4,marginRight:2}}/>}</div>))}</div>
+
+        {/* Per-garage accordion */}
         <div className="mb-4 space-y-2">
           <div className="flex items-center justify-between px-1"><span className="font-black text-[9px] px-2 py-0.5 rounded bg-slate-200" style={{color:BRAND.slate}}>عرض {Math.min(visibleVipGarages,vipReportStats.perGarage.length)} من {vipReportStats.perGarage.length} جراج</span><h4 className="font-black text-[11px]" style={{color:BRAND.navy}}>📊 تفصيلة كل جراج VIP</h4></div>
           {vipReportStats.perGarage.length===0?<div className="text-center py-8 border-2 border-dashed rounded-2xl" style={{background:BRAND.card,borderColor:BRAND.border}}><span className="text-2xl block mb-1">📭</span><p className="font-black text-[11px]" style={{color:BRAND.slateMuted}}>لا توجد ركنات VIP في هذه الفترة</p></div>:(<>
             {vipReportStats.perGarage.slice(0,visibleVipGarages).map((g:any)=>{const isExp=vipExpandedGarageId===g.id;const gs=vipFilteredSessions.filter((s:any)=>s.garageId===g.id);return(<div key={g.id} className="transition-all" style={{background:BRAND.card,border:`1.5px solid ${isExp?BRAND.blue:BRAND.border}`,borderRadius:18,overflow:'hidden'}}>
-              <div onClick={()=>setVipExpandedGarageId(isExp?null:g.id)} className="flex justify-between items-center p-3.5 cursor-pointer active:scale-[0.99] transition-all"><div className="flex items-center gap-2"><div className="text-center"><div className="font-black font-mono text-base" style={{color:BRAND.greenDark}}>{g.revenue.toFixed(0)}</div><div className="text-[8px] font-bold" style={{color:BRAND.slateMuted}}>ج.م إيراد</div></div><div style={{width:1,height:28,background:BRAND.border}}/><div className="text-center"><div className="font-black font-mono text-sm" style={{color:BRAND.blue}}>{g.fees.toFixed(0)}</div><div className="text-[8px] font-bold" style={{color:BRAND.slateMuted}}>ج.م رسوم</div></div><div style={{width:1,height:28,background:BRAND.border}}/><div className="text-center"><div className="font-black font-mono text-sm" style={{color:BRAND.navy}}>{g.count}</div><div className="text-[8px] font-bold" style={{color:BRAND.slateMuted}}>ركنة</div></div>{isExp?<ChevronUp size={14} style={{color:BRAND.slateMuted}}/>:<ChevronDown size={14} style={{color:BRAND.slateMuted}}/>}</div><div className="text-right"><div className="font-black text-xs flex items-center justify-end gap-1" style={{color:BRAND.navy}}><span>{g.name}</span><Zap size={11} style={{color:BRAND.blue}}/></div><div className="text-[9px] font-bold mt-0.5" style={{color:BRAND.slate}}>{g.area}</div></div></div>
-              <AnimatePresence>{isExp&&(<motion.div initial={{opacity:0,height:0}} animate={{opacity:1,height:'auto'}} exit={{opacity:0,height:0}} style={{borderTop:`1px solid ${BRAND.border}`,background:BRAND.bg}}><div className="max-h-[320px] overflow-y-auto">{gs.length===0?<div className="text-center py-6 text-xs font-bold" style={{color:BRAND.slateMuted}}>لا توجد ركنات</div>:<div className="divide-y" style={{borderColor:BRAND.border}}>{gs.map((s:any)=>{const stMs=toMs(s.startTime);const enMs=toMs(s.endTime);const rev=s.totalPrice||0;return(<div key={s.id} className="px-4 py-2.5 flex items-center justify-between gap-2" style={{background:BRAND.card}}><div className="text-right flex-1 min-w-0"><div className="font-black text-xs truncate" style={{color:BRAND.navy}}>🚗 {s.carPlate}</div><div className="flex items-center gap-1.5 justify-end mt-0.5 flex-wrap"><span className="font-mono text-[9px] font-bold" style={{color:BRAND.slateMuted}}>{formatSessionTime(s.startTime)}</span><span className="text-[8px]" style={{color:BRAND.border}}>→</span><span className="font-mono text-[9px] font-bold" style={{color:BRAND.slateMuted}}>{formatSessionTime(s.endTime)}</span></div></div><div className="text-center px-2"><div className="font-mono font-black text-[10px]" style={{color:BRAND.slate}}>{formatDuration(stMs,enMs)}</div></div><div className="text-left flex-shrink-0"><div className="font-black font-mono text-xs" style={{color:BRAND.greenDark}}>{rev.toFixed(0)} ج.م</div><div className="flex items-center gap-1 mt-0.5"><span className="font-black text-[7px] px-1.5 py-0.5 rounded text-white" style={{background:BRAND.blue}}>⚡{BOOKING_FEE}ج</span><span className="font-black text-[7px] px-1.5 py-0.5 rounded text-white" style={{background:s.paymentMethod==='cash'?BRAND.greenDark:s.paymentMethod==='wallet'?BRAND.blue:s.paymentMethod==='instapay'?'#7c3aed':BRAND.slate}}>{s.paymentMethod==='cash'?'💵':s.paymentMethod==='wallet'?'👝':s.paymentMethod==='instapay'?'📱':'📲'}</span></div></div></div>);})}</div>}</div></motion.div>)}</AnimatePresence>
+              <div onClick={()=>setVipExpandedGarageId(isExp?null:g.id)} className="flex justify-between items-center p-3.5 cursor-pointer active:scale-[0.99] transition-all">
+                <div className="flex items-center gap-2">
+                  <div className="text-center"><div className="font-black font-mono text-base" style={{color:BRAND.greenDark}}>{g.revenue.toFixed(0)}</div><div className="text-[8px] font-bold" style={{color:BRAND.slateMuted}}>ج.م إيراد</div></div>
+                  <div style={{width:1,height:28,background:BRAND.border}}/>
+                  <div className="text-center"><div className="font-black font-mono text-sm" style={{color:BRAND.blue}}>{g.fees.toFixed(0)}</div><div className="text-[8px] font-bold" style={{color:BRAND.slateMuted}}>ج.م رسوم</div></div>
+                  <div style={{width:1,height:28,background:BRAND.border}}/>
+                  <div className="text-center"><div className="font-black font-mono text-sm" style={{color:BRAND.navy}}>{g.count}</div><div className="text-[8px] font-bold" style={{color:BRAND.slateMuted}}>ركنة</div></div>
+                  <div style={{width:1,height:28,background:BRAND.border}}/>
+                  <div className="text-center"><div className="font-black font-mono text-sm" style={{color:'#ca8a04'}}>{g.freeCount}</div><div className="text-[8px] font-bold" style={{color:'#a16207'}}>🎁 مجاني</div></div>
+                  {isExp?<ChevronUp size={14} style={{color:BRAND.slateMuted}}/>:<ChevronDown size={14} style={{color:BRAND.slateMuted}}/>}
+                </div>
+                <div className="text-right"><div className="font-black text-xs flex items-center justify-end gap-1" style={{color:BRAND.navy}}><span>{g.name}</span><Zap size={11} style={{color:BRAND.blue}}/></div><div className="text-[9px] font-bold mt-0.5" style={{color:BRAND.slate}}>{g.area}</div></div>
+              </div>
+              <AnimatePresence>{isExp&&(<motion.div initial={{opacity:0,height:0}} animate={{opacity:1,height:'auto'}} exit={{opacity:0,height:0}} style={{borderTop:`1px solid ${BRAND.border}`,background:BRAND.bg}}>
+                <div className="max-h-[320px] overflow-y-auto">{gs.length===0?<div className="text-center py-6 text-xs font-bold" style={{color:BRAND.slateMuted}}>لا توجد ركنات</div>:<div className="divide-y" style={{borderColor:BRAND.border}}>{gs.map((s:any)=>{const stMs=toMs(s.startTime);const enMs=toMs(s.endTime);const free=isSessionFree(s);const rev=free?0:(s.totalPrice||0);return(<div key={s.id} className="px-4 py-2.5 flex items-center justify-between gap-2" style={{background:free?'#fefce8':BRAND.card}}><div className="text-right flex-1 min-w-0"><div className="font-black text-xs truncate" style={{color:BRAND.navy}}>🚗 {s.carPlate} {free&&<span className="text-[8px] px-1 py-0.5 rounded bg-yellow-300 text-yellow-800 mr-1">🎁 مجانية</span>}</div><div className="flex items-center gap-1.5 justify-end mt-0.5 flex-wrap"><span className="font-mono text-[9px] font-bold" style={{color:BRAND.slateMuted}}>{formatSessionTime(s.startTime)}</span><span className="text-[8px]" style={{color:BRAND.border}}>→</span><span className="font-mono text-[9px] font-bold" style={{color:BRAND.slateMuted}}>{formatSessionTime(s.endTime)}</span></div></div><div className="text-center px-2"><div className="font-mono font-black text-[10px]" style={{color:BRAND.slate}}>{formatDuration(stMs,enMs)}</div></div><div className="text-left flex-shrink-0"><div className="font-black font-mono text-xs" style={{color:free?'#ca8a04':BRAND.greenDark}}>{free?'مجاني':`${rev.toFixed(0)} ج.م`}</div>{!free&&<div className="flex items-center gap-1 mt-0.5"><span className="font-black text-[7px] px-1.5 py-0.5 rounded text-white" style={{background:BRAND.blue}}>⚡{BOOKING_FEE}ج</span><span className="font-black text-[7px] px-1.5 py-0.5 rounded text-white" style={{background:s.paymentMethod==='cash'?BRAND.greenDark:s.paymentMethod==='wallet'?BRAND.blue:s.paymentMethod==='instapay'?'#7c3aed':BRAND.slate}}>{s.paymentMethod==='cash'?'💵':s.paymentMethod==='wallet'?'👝':s.paymentMethod==='instapay'?'📱':'📲'}</span></div>}</div></div>);})}</div>}</div>
+              </motion.div>)}</AnimatePresence>
             </div>);})}
             {vipReportStats.perGarage.length>visibleVipGarages&&<div className="mt-3 text-center"><button onClick={()=>setVisibleVipGarages(p=>p+10)} className="w-full font-black py-2.5 rounded-xl text-[10px] cursor-pointer bg-white border active:scale-95 transition-all flex items-center justify-center gap-1.5" style={{color:BRAND.blue,borderColor:BRAND.border}}><ChevronDown size={14}/><span>عرض المزيد ({vipReportStats.perGarage.length-visibleVipGarages} جراج آخر)</span></button></div>}
           </>)}
         </div>
+
+        {/* Full VIP sessions table */}
         <div>
           <div className="flex items-center justify-between mb-2 px-1"><span className="font-bold text-[9px]" style={{color:BRAND.slateMuted}}>عرض {Math.min(vipVisibleSessions,vipFilteredSessions.length)} من {vipFilteredSessions.length} عملية</span><h4 className="font-black text-[11px]" style={{color:BRAND.navy}}>📋 تفاصيل كل العمليات VIP</h4></div>
           <div className="rounded-2xl border overflow-hidden" style={{background:BRAND.card,borderColor:BRAND.border}}>
             {vipFilteredSessions.length===0?<div className="text-center py-10"><span className="text-2xl block mb-1">📭</span><p className="font-black text-xs" style={{color:BRAND.slateMuted}}>{vipPlateSearch?`لا توجد نتائج لـ "${vipPlateSearch}"`:'لا توجد عمليات VIP في الفترة المحددة'}</p></div>:(<>
               <div className="grid px-3 py-2" style={{gridTemplateColumns:'1fr auto auto auto',gap:8,background:BRAND.navy,color:'#fff'}}><div className="font-black text-[9px] text-right">اللوحة + الجراج</div><div className="font-black text-[9px] text-center">المدة</div><div className="font-black text-[9px] text-center">المبلغ</div><div className="font-black text-[9px] text-center">الدفع</div></div>
-              <div className="max-h-[400px] overflow-y-auto divide-y" style={{borderColor:BRAND.border}}>{vipFilteredSessions.slice(0,vipVisibleSessions).map((s:any)=>{const g=garages.find((ga:any)=>ga.id===s.garageId);const stMs=toMs(s.startTime);const enMs=toMs(s.endTime);const rev=s.totalPrice||0;return(<div key={s.id} className="grid px-3 py-2.5 items-center" style={{gridTemplateColumns:'1fr auto auto auto',gap:8}}><div className="text-right min-w-0"><div className="font-black text-[11px] truncate" style={{color:BRAND.navy}}>🚗 {s.carPlate}</div><div className="font-bold text-[9px] truncate" style={{color:BRAND.slate}}>{g?.name||'—'}</div><div className="font-mono text-[8px]" style={{color:BRAND.slateMuted}}>{formatSessionTime(s.endTime)}</div></div><div className="font-mono font-black text-[10px] text-center" style={{color:BRAND.slate}}>{formatDuration(stMs,enMs)}</div><div className="text-center"><div className="font-black font-mono text-[11px]" style={{color:BRAND.greenDark}}>{rev.toFixed(0)}ج</div><div className="font-black text-[7px]" style={{color:BRAND.blue}}>+{BOOKING_FEE}ج⚡</div></div><div className="text-center"><span className="font-black text-[8px] px-1.5 py-0.5 rounded text-white" style={{background:s.paymentMethod==='cash'?BRAND.greenDark:s.paymentMethod==='wallet'?BRAND.blue:s.paymentMethod==='instapay'?'#7c3aed':BRAND.slate}}>{s.paymentMethod==='cash'?'💵':s.paymentMethod==='wallet'?'👝':s.paymentMethod==='instapay'?'📱':'📲'}</span></div></div>);})}</div>
+              <div className="max-h-[400px] overflow-y-auto divide-y" style={{borderColor:BRAND.border}}>{vipFilteredSessions.slice(0,vipVisibleSessions).map((s:any)=>{const g=garages.find((ga:any)=>ga.id===s.garageId);const stMs=toMs(s.startTime);const enMs=toMs(s.endTime);const free=isSessionFree(s);const rev=free?0:(s.totalPrice||0);return(<div key={s.id} className="grid px-3 py-2.5 items-center" style={{gridTemplateColumns:'1fr auto auto auto',gap:8,background:free?'#fefce8':'transparent'}}><div className="text-right min-w-0"><div className="font-black text-[11px] truncate" style={{color:BRAND.navy}}>🚗 {s.carPlate} {free&&<span className="text-[7px] px-1 py-0.5 rounded bg-yellow-300 text-yellow-800">🎁</span>}</div><div className="font-bold text-[9px] truncate" style={{color:BRAND.slate}}>{g?.name||'—'}</div><div className="font-mono text-[8px]" style={{color:BRAND.slateMuted}}>{formatSessionTime(s.endTime)}</div></div><div className="font-mono font-black text-[10px] text-center" style={{color:BRAND.slate}}>{formatDuration(stMs,enMs)}</div><div className="text-center"><div className="font-black font-mono text-[11px]" style={{color:free?'#ca8a04':BRAND.greenDark}}>{free?'مجاني':`${rev.toFixed(0)}ج`}</div>{!free&&<div className="font-black text-[7px]" style={{color:BRAND.blue}}>+{BOOKING_FEE}ج⚡</div>}</div><div className="text-center"><span className="font-black text-[8px] px-1.5 py-0.5 rounded text-white" style={{background:free?'#ca8a04':s.paymentMethod==='cash'?BRAND.greenDark:s.paymentMethod==='wallet'?BRAND.blue:s.paymentMethod==='instapay'?'#7c3aed':BRAND.slate}}>{free?'🎁':s.paymentMethod==='cash'?'💵':s.paymentMethod==='wallet'?'👝':s.paymentMethod==='instapay'?'📱':'📲'}</span></div></div>);})}</div>
               {vipFilteredSessions.length>vipVisibleSessions&&<div className="p-3 border-t text-center" style={{borderColor:BRAND.border}}><button onClick={()=>setVipVisibleSessions(p=>p+10)} className="w-full font-black py-2.5 rounded-xl text-[10px] cursor-pointer bg-white border active:scale-95 transition-all flex items-center justify-center gap-1.5" style={{color:BRAND.blue,borderColor:BRAND.border}}><ChevronDown size={14}/><span>عرض المزيد ({vipFilteredSessions.length-vipVisibleSessions} عملية أخرى)</span></button></div>}
             </>)}
           </div>
@@ -399,6 +453,7 @@ export default function AdminDashboard() {
           <button type="button" onClick={()=>setAdminGarageTab('vip')} className="flex-1 py-2 rounded-lg font-black text-[10px] cursor-pointer border-0 transition-all flex items-center justify-center gap-1" style={{background:adminGarageTab==='vip'?BRAND.blue:'transparent',color:adminGarageTab==='vip'?'#fff':BRAND.slate,boxShadow:adminGarageTab==='vip'?'0 2px 6px rgba(22,86,184,0.15)':'none'}}><span>⭐ جراجات VIP الشريكة</span></button>
           <button type="button" onClick={()=>setAdminGarageTab('directory')} className="flex-1 py-2 rounded-lg font-black text-[10px] cursor-pointer border-0 transition-all flex items-center justify-center gap-1" style={{background:adminGarageTab==='directory'?BRAND.blueDark:'transparent',color:adminGarageTab==='directory'?'#fff':BRAND.slate,boxShadow:adminGarageTab==='directory'?'0 2px 6px rgba(15,61,133,0.15)':'none'}}><span>🧭 دليل الركنات المجاني</span></button>
         </div>
+
         <div className="space-y-3 mb-4"><div className="relative"><Search size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{color:BRAND.slateMuted}}/><input type="text" value={garageSearch} onChange={e=>setGarageSearch(e.target.value)} placeholder="ابحث عن جراج بالاسم..." className="w-full font-bold outline-none text-xs py-2.5 px-9 rounded-xl border border-slate-200" style={{color:BRAND.navy}}/>{garageSearch&&<button onClick={()=>setGarageSearch('')} className="absolute left-3 top-1/2 -translate-y-1/2 border-0 bg-transparent cursor-pointer" style={{color:BRAND.slateMuted}}><X size={14}/></button>}</div></div>
         <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
           {filteredGaragesForAdmin.length===0?<div className="text-center py-10 bg-white border rounded-2xl" style={{borderColor:BRAND.border}}><div className="text-2xl mb-1">🔍</div><p className="font-bold text-xs" style={{color:BRAND.slateMuted}}>لا توجد جراجات مطابقة للبحث</p></div>:filteredGaragesForAdmin.slice(0,visibleGarageCount).map((g:any)=>{
