@@ -598,18 +598,19 @@ export default function GarageListScreen() {
             }}
             dir="rtl"
           >
-            <div className="px-3 pt-2 pb-1 flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm animate-pulse">🚨</span>
-                <span className="text-[13px] font-black text-white leading-tight">المنقذ السريع</span>
-              </div>
-              <span
-                className="font-black text-[11px] px-2 py-0.5 rounded-lg text-white"
-                style={{ background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.3)' }}
-              >
-                {rescueIndex + 1} / {rescueGaragesList.length}
-              </span>
-            </div>
+<div className="px-3 pt-2 pb-1 flex items-center justify-between">
+  <div className="flex items-center gap-1.5">
+    <span className="text-[13px] font-black text-white leading-tight">
+      ⚡ أقرب وأسرع {rescueGaragesList.length} ركنات حواليك
+    </span>
+  </div>
+  <span
+    className="font-black text-[11px] px-2 py-0.5 rounded-lg text-white"
+    style={{ background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.3)' }}
+  >
+    {rescueIndex + 1} / {rescueGaragesList.length}
+  </span>
+</div>
 
             <div
               className="px-3 pb-2 pt-0.5 cursor-pointer active:opacity-90 transition-all"
@@ -644,22 +645,22 @@ export default function GarageListScreen() {
               </div>
             </div>
 
-            {rescueGaragesList.length > 1 && (
-              <button
-                type="button"
-                onClick={handleNextRescue}
-                className="w-full py-2 text-[13px] font-black text-white border-0 cursor-pointer active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
-                style={{
-                  background: 'rgba(0,0,0,0.25)',
-                  borderTop: '1px solid rgba(255,255,255,0.15)',
-                }}
-              >
-                <Search size={14} strokeWidth={3} />
-                <span>{rescueIndex < rescueGaragesList.length - 1 ? 'مش مناسب؟ جرّب ساحة تانية' : 'رجوع لأول خيار'}</span>
-              </button>
-            )}
-          </div>
-        )}
+{rescueGaragesList.length > 1 && (
+  <button
+    type="button"
+    onClick={handleNextRescue}
+    className="w-full py-2.5 text-[13px] font-black border-0 cursor-pointer active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+    style={{
+      background: '#fde047',
+      color: '#78350f',
+      borderTop: '2px solid #facc15',
+      textShadow: '0 1px 0 rgba(255,255,255,0.3)',
+    }}
+  >
+    <Search size={14} strokeWidth={3} />
+    <span>👆 اضغط لاختيار أنسب ركنة ليك</span>
+  </button>
+)}
 
         {activeSession && (
           <button type="button" onClick={() => { setSelectedGarageId(activeSession.garageId); setScreen('session'); }} className="w-full mb-2.5 flex items-center justify-between px-3 py-2.5 rounded-xl border-0 text-white cursor-pointer active:scale-98 transition-all" style={{ background: BRAND.greenDark }}>
