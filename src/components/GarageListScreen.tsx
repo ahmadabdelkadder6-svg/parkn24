@@ -661,6 +661,8 @@ export default function GarageListScreen() {
     <span>👆 اضغط لاختيار أنسب ركنة ليك</span>
   </button>
 )}
+        </div>
+      )}
 
         {activeSession && (
           <button type="button" onClick={() => { setSelectedGarageId(activeSession.garageId); setScreen('session'); }} className="w-full mb-2.5 flex items-center justify-between px-3 py-2.5 rounded-xl border-0 text-white cursor-pointer active:scale-98 transition-all" style={{ background: BRAND.greenDark }}>
