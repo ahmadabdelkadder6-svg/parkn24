@@ -644,7 +644,6 @@ export default function GarageListScreen() {
                 </div>
               </div>
             </div>
-
           </div>
         )}
 
