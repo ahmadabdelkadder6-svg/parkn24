@@ -286,187 +286,235 @@ export default function SessionScreen() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full text-white flex flex-col items-center justify-start p-4 pt-6 overflow-y-auto safe-top safe-bottom dir-rtl"
+      className="h-full text-white flex flex-col safe-top safe-bottom dir-rtl overflow-hidden"
       style={{
-        background: `radial-gradient(ellipse at top, ${BRAND.navyLight} 0%, ${BRAND.navy} 70%)`
+        background: `
+          radial-gradient(ellipse at top, ${BRAND.navyLight} 0%, ${BRAND.navy} 60%),
+          radial-gradient(ellipse at bottom, rgba(22,86,184,0.08) 0%, transparent 60%)
+        `,
       }}
     >
-      {/* ⏰ العداد الرقمي المركزي ⏰ */}
-      <div
-        className="w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center border-[3px] mb-4 relative"
-        style={{
-          background: 'radial-gradient(circle at 30% 30%, #16254a 0%, #0a1628 70%)',
-          borderColor: BRAND.blue,
-          boxShadow: `0 0 40px rgba(22, 86, 184, 0.4), inset 0 0 20px rgba(0,0,0,0.4)`,
-        }}
-      >
-        {/* حلقة ضوئية خفيفة متحركة */}
-        <div
-          className="absolute inset-0 rounded-full animate-pulse pointer-events-none"
-          style={{
-            boxShadow: `0 0 25px rgba(140,198,63,0.15) inset`,
-          }}
-        />
-        <Clock size={24} style={{ color: BRAND.green }} className="mb-1.5" />
-        <div
-          className="text-[32px] sm:text-[36px] font-black font-mono text-white leading-none tracking-wider dir-ltr"
-          style={{ textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}
-        >
-          {formatTime(elapsed)}
-        </div>
-        <div
-          className="text-[10px] font-black mt-2.5 px-3 py-1 rounded-full"
-          style={{
-            background: 'rgba(10, 22, 40, 0.85)',
-            color: BRAND.slateMuted,
-            border: `1px solid ${BRAND.border}`,
-            letterSpacing: '0.5px',
-          }}
-        >
-          ⏱ مدة الركن الفعلية
-        </div>
-      </div>
+      {/* ═══════════════════════════════
+          🎯 القسم العلوي — العداد الكبير
+          ═══════════════════════════════ */}
+      <div className="flex-1 flex flex-col items-center justify-center px-5 pt-6 pb-3">
 
-      {/* 🚨 تنبيه الإنهاء التلقائي */}
-      {showAutoEndWarning && (
+        {/* 📱 بادج "جلسة نشطة" فوق العداد */}
         <div
-          className="w-full max-w-md rounded-xl px-3 py-2.5 mb-3 text-center border-2 shadow-sm"
+          className="mb-5 px-4 py-1.5 rounded-full flex items-center gap-2 border"
           style={{
-            background: 'linear-gradient(135deg, rgba(239,68,68,0.18) 0%, rgba(220,38,38,0.1) 100%)',
-            borderColor: 'rgba(239, 68, 68, 0.5)',
+            background: 'rgba(140, 198, 63, 0.12)',
+            borderColor: 'rgba(140, 198, 63, 0.4)',
           }}
         >
-          <span className="text-xs font-black text-red-300 flex items-center justify-center gap-1.5">
-            ⚠️ سيتم إنهاء الجلسة تلقائياً بعد {autoEndMinutes} دقيقة
+          <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: BRAND.green, boxShadow: `0 0 8px ${BRAND.green}` }} />
+          <span className="text-[11px] font-black tracking-wider" style={{ color: BRAND.green }}>
+            جلسة ركن نشطة
           </span>
         </div>
-      )}
 
-      {/* 💬 بطاقة الإرشاد — صغيرة وأنيقة */}
-      <div
-        className="w-full max-w-md rounded-xl px-3.5 py-3 mb-3 text-center border"
-        style={{
-          background: `linear-gradient(135deg, ${BRAND.navyLight} 0%, rgba(17, 30, 54, 0.6) 100%)`,
-          borderColor: BRAND.border,
-          backdropFilter: 'blur(10px)',
-        }}
-      >
-        <div className="flex items-center justify-center gap-1.5 mb-1 font-black text-white text-[13px]">
-          <Sparkles size={14} className="text-amber-400 shrink-0" />
-          <span>خلّص مشوارك براحتك 🚗</span>
-        </div>
-        <p
-          className="font-black leading-snug mx-auto text-[11px]"
-          style={{ color: BRAND.slateMuted, maxWidth: '320px' }}
-        >
-          وقت الركنة <span className="font-black text-amber-300">محفوظ بالثانية</span> في الخلفية — اقفل التطبيق وافتحه عند الرجوع.
-        </p>
-      </div>
-
-      {/* 🚘 رقم السيارة + 📍 الجراج (شبكة متلاصقة) */}
-      <div className="w-full max-w-md grid grid-cols-2 gap-2.5 mb-3">
-        {/* السيارة */}
-        <div
-          className="border rounded-xl p-2.5 text-center"
-          style={{
-            background: `linear-gradient(135deg, ${BRAND.navyLight} 0%, rgba(17, 30, 54, 0.5) 100%)`,
-            borderColor: BRAND.border,
-          }}
-        >
-          <div className="flex items-center justify-center gap-1 mb-1.5">
-            <Car size={13} style={{ color: BRAND.blue }} />
-            <span className="text-[9px] font-black uppercase tracking-wider" style={{ color: BRAND.slateMuted }}>
-              سيارتك
-            </span>
-          </div>
+        {/* ⏰ العداد الدائري الكبير */}
+        <div className="relative mb-5">
+          {/* حلقة خارجية متوهجة */}
           <div
-            className="text-sm font-black text-white font-mono tracking-widest py-1.5 px-2 rounded-lg border"
+            className="absolute inset-0 rounded-full animate-pulse pointer-events-none"
             style={{
-              background: 'rgba(10, 22, 40, 0.85)',
-              borderColor: BRAND.border,
+              background: `radial-gradient(circle, ${BRAND.blue}40 0%, transparent 70%)`,
+              transform: 'scale(1.15)',
+              filter: 'blur(8px)',
+            }}
+          />
+
+          <div
+            className="w-60 h-60 sm:w-64 sm:h-64 rounded-full flex flex-col items-center justify-center border-[3px] relative"
+            style={{
+              background: 'radial-gradient(circle at 30% 30%, #16254a 0%, #0a1628 70%)',
+              borderColor: BRAND.blue,
+              boxShadow: `0 0 50px rgba(22, 86, 184, 0.5), inset 0 0 30px rgba(0,0,0,0.5)`,
             }}
           >
-            {activeSession.carPlate || currentUser?.carPlate || '---'}
+            {/* حلقة داخلية */}
+            <div
+              className="absolute inset-3 rounded-full border opacity-30"
+              style={{ borderColor: BRAND.green, borderStyle: 'dashed' }}
+            />
+
+            <Clock size={28} style={{ color: BRAND.green }} className="mb-2" />
+
+            <div
+              className="text-[42px] sm:text-[46px] font-black font-mono text-white leading-none tracking-wider dir-ltr"
+              style={{ textShadow: '0 2px 12px rgba(22,86,184,0.6)' }}
+            >
+              {formatTime(elapsed)}
+            </div>
+
+            <div
+              className="text-[10px] font-black mt-3 px-3.5 py-1 rounded-full"
+              style={{
+                background: 'rgba(10, 22, 40, 0.9)',
+                color: BRAND.slateMuted,
+                border: `1px solid ${BRAND.border}`,
+                letterSpacing: '0.8px',
+              }}
+            >
+              ⏱ مدة الركن الفعلية
+            </div>
           </div>
         </div>
 
-        {/* الجراج */}
-        {garage && (
+        {/* 🚨 تنبيه الإنهاء التلقائي */}
+        {showAutoEndWarning && (
           <div
-            className="border rounded-xl p-2.5 text-center"
+            className="w-full max-w-md rounded-xl px-3.5 py-2.5 mb-3 text-center border-2"
+            style={{
+              background: 'linear-gradient(135deg, rgba(239,68,68,0.2) 0%, rgba(220,38,38,0.1) 100%)',
+              borderColor: 'rgba(239, 68, 68, 0.5)',
+              boxShadow: '0 4px 12px rgba(239, 68, 68, 0.15)',
+            }}
+          >
+            <span className="text-xs font-black text-red-300 flex items-center justify-center gap-1.5">
+              ⚠️ سيتم إنهاء الجلسة تلقائياً بعد {autoEndMinutes} دقيقة
+            </span>
+          </div>
+        )}
+
+        {/* 💬 بطاقة الإرشاد */}
+        <div
+          className="w-full max-w-md rounded-2xl px-4 py-3 text-center border"
+          style={{
+            background: `linear-gradient(135deg, ${BRAND.navyLight} 0%, rgba(17, 30, 54, 0.6) 100%)`,
+            borderColor: BRAND.border,
+            backdropFilter: 'blur(10px)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+          }}
+        >
+          <div className="flex items-center justify-center gap-2 mb-1.5 font-black text-white text-[14px]">
+            <Sparkles size={15} className="text-amber-400 shrink-0" />
+            <span>خلّص مشوارك براحتك 🚗</span>
+          </div>
+          <p
+            className="font-black leading-snug mx-auto text-[11px]"
+            style={{ color: BRAND.slateMuted, maxWidth: '320px' }}
+          >
+            وقت الركنة <span className="font-black text-amber-300">محفوظ بالثانية</span> في الخلفية — اقفل التطبيق وافتحه عند الرجوع.
+          </p>
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════
+          📋 القسم السفلي — المعلومات والزر
+          ═══════════════════════════════ */}
+      <div
+        className="px-5 pt-4 pb-5 border-t"
+        style={{
+          background: 'linear-gradient(180deg, transparent 0%, rgba(10, 22, 40, 0.6) 100%)',
+          borderColor: BRAND.border,
+        }}
+      >
+        {/* 🚘 رقم السيارة + 📍 الجراج */}
+        <div className="w-full grid grid-cols-2 gap-3 mb-3">
+          {/* السيارة */}
+          <div
+            className="border rounded-2xl p-3 text-center"
             style={{
               background: `linear-gradient(135deg, ${BRAND.navyLight} 0%, rgba(17, 30, 54, 0.5) 100%)`,
               borderColor: BRAND.border,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
             }}
           >
-            <div className="flex items-center justify-center gap-1 mb-1.5">
-              <MapPin size={13} style={{ color: BRAND.green }} />
-              <span className="text-[9px] font-black uppercase tracking-wider" style={{ color: BRAND.slateMuted }}>
-                الجراج
+            <div className="flex items-center justify-center gap-1.5 mb-2">
+              <Car size={14} style={{ color: BRAND.blue }} />
+              <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: BRAND.slateMuted }}>
+                سيارتك
               </span>
             </div>
             <div
-              className="text-[13px] font-black text-white leading-tight line-clamp-1 py-1.5 px-1 rounded-lg border"
+              className="text-base font-black text-white font-mono tracking-widest py-2 px-2 rounded-lg border"
               style={{
-                background: 'rgba(10, 22, 40, 0.85)',
+                background: 'rgba(10, 22, 40, 0.9)',
                 borderColor: BRAND.border,
+                letterSpacing: '2px',
               }}
-              title={garage.name}
             >
-              {garage.name}
+              {activeSession.carPlate || currentUser?.carPlate || '---'}
             </div>
           </div>
-        )}
-      </div>
 
-      {/* 📍 موقع الجراج (سطر مختصر) */}
-      {garage?.location && (
-        <div
-          className="w-full max-w-md text-center mb-3 py-1.5 px-3 rounded-full border"
-          style={{
-            background: 'rgba(17, 30, 54, 0.5)',
-            borderColor: BRAND.border,
-          }}
-        >
-          <span className="text-[11px] font-black flex items-center justify-center gap-1" style={{ color: BRAND.slateMuted }}>
-            📍 {garage.location}
+          {/* الجراج */}
+          {garage && (
+            <div
+              className="border rounded-2xl p-3 text-center"
+              style={{
+                background: `linear-gradient(135deg, ${BRAND.navyLight} 0%, rgba(17, 30, 54, 0.5) 100%)`,
+                borderColor: BRAND.border,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              }}
+            >
+              <div className="flex items-center justify-center gap-1.5 mb-2">
+                <MapPin size={14} style={{ color: BRAND.green }} />
+                <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: BRAND.slateMuted }}>
+                  الجراج
+                </span>
+              </div>
+              <div
+                className="text-[13px] font-black text-white leading-tight py-2 px-1 rounded-lg border truncate"
+                style={{
+                  background: 'rgba(10, 22, 40, 0.9)',
+                  borderColor: BRAND.border,
+                }}
+                title={garage.name}
+              >
+                {garage.name}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 📍 موقع الجراج + 📱 مصدر الجلسة (سطر واحد) */}
+        <div className="w-full flex items-center justify-center gap-2 mb-4 flex-wrap">
+          {garage?.location && (
+            <span
+              className="font-black text-[11px] px-3 py-1 rounded-full inline-flex items-center gap-1 border"
+              style={{
+                background: 'rgba(17, 30, 54, 0.6)',
+                color: BRAND.slateMuted,
+                borderColor: BRAND.border,
+              }}
+            >
+              📍 {garage.location}
+            </span>
+          )}
+          <span
+            className="font-black text-[11px] px-3 py-1 rounded-full inline-flex items-center gap-1 border"
+            style={{
+              background: 'rgba(10, 22, 40, 0.7)',
+              color: BRAND.slateMuted,
+              borderColor: BRAND.border,
+            }}
+          >
+            {activeSession.source === 'app' ? '📱 من التطبيق' : '🅿️ من الجراج'}
+            {(activeSession as any).startedBy === 'garage' && ' • السايس'}
           </span>
         </div>
-      )}
 
-      {/* 📱 مصدر بدء الجلسة — بادج صغير */}
-      <div className="w-full max-w-md text-center mb-4">
-        <span
-          className="font-black text-[11px] px-3 py-1 rounded-full inline-flex items-center gap-1"
+        {/* 🔴 زر إنهاء الجلسة */}
+        <button
+          type="button"
+          aria-label="إنهاء الجلسة الحالية"
+          onClick={handleEndSession}
+          disabled={ending}
+          className="w-full py-4 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center border-0 text-white cursor-pointer font-black text-sm sm:text-base disabled:opacity-50"
           style={{
-            background: 'rgba(10, 22, 40, 0.7)',
-            color: BRAND.slateMuted,
-            border: `1px solid ${BRAND.border}`,
+            background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
+            boxShadow: '0 8px 24px rgba(220, 38, 38, 0.45), inset 0 1px 0 rgba(255,255,255,0.15)',
             letterSpacing: '0.3px',
           }}
         >
-          {activeSession.source === 'app' ? '📱 بدأت من التطبيق' : '🅿️ بدأت من الجراج'}
-          {(activeSession as any).startedBy === 'garage' && ' • بواسطة السايس'}
-        </span>
+          <span className="text-center font-black text-white">
+            {ending ? '⏳ جاري إنهاء الجلسة...' : '🚗 إنهاء الجلسة والخروج من الجراج'}
+          </span>
+        </button>
       </div>
-
-      {/* 🔴 زر إنهاء الجلسة والعودة للرئيسية 🔴 */}
-      <button
-        type="button"
-        aria-label="إنهاء الجلسة الحالية"
-        onClick={handleEndSession}
-        disabled={ending}
-        className="w-full max-w-md py-4 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center border-0 text-white cursor-pointer font-black text-sm sm:text-base disabled:opacity-50 shadow-xl mt-auto"
-        style={{
-          background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
-          boxShadow: '0 8px 24px rgba(220, 38, 38, 0.4), inset 0 1px 0 rgba(255,255,255,0.15)',
-          letterSpacing: '0.3px',
-        }}
-      >
-        <span className="text-center font-black text-white">
-          {ending ? '⏳ جاري إنهاء الجلسة...' : '🚗 إنهاء الجلسة والخروج من الجراج'}
-        </span>
-      </button>
     </motion.div>
   );
 }
