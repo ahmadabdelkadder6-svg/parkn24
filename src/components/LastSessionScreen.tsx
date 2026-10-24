@@ -13,7 +13,6 @@ import {
   Calendar,
   CheckCircle2,
   Hash,
-  Share2,
 } from 'lucide-react';
 import { useStore, normalizePlate, normalizePhone, BOOKING_FEE } from '../store';
 
@@ -204,10 +203,10 @@ ${isVip ? `\nرسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : 
   return (
     <div dir="rtl" className="min-h-screen pb-8" style={{ background: BRAND.bg }}>
       {/* ═══════════════════════════════════
-          🎨 HEADER برندي فاخر
+          🎨 HEADER برندي فاخر (مُصغّر)
           ═══════════════════════════════════ */}
       <div
-        className="relative overflow-hidden px-5 pt-7 pb-14"
+        className="relative overflow-hidden px-5 pt-5 pb-12"
         style={{
           background: `linear-gradient(135deg, ${BRAND.blue} 0%, ${BRAND.blueDark} 100%)`,
         }}
@@ -231,16 +230,16 @@ ${isVip ? `\nرسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : 
         <div className="relative z-10 text-center">
           {/* ختم المكتملة */}
           <div
-            className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-3"
+            className="inline-flex items-center justify-center w-16 h-16 rounded-full mb-2"
             style={{
               background: `linear-gradient(135deg, ${BRAND.green} 0%, ${BRAND.greenDark} 100%)`,
               boxShadow: '0 8px 24px rgba(140, 198, 63, 0.4), 0 0 0 4px rgba(140, 198, 63, 0.15)',
             }}
           >
-            <Check className="w-10 h-10 text-white" strokeWidth={3.5} />
+            <Check className="w-8 h-8 text-white" strokeWidth={3.5} />
           </div>
 
-          <h1 className="text-2xl font-black text-white mb-1">
+          <h1 className="text-xl font-black text-white mb-0.5">
             تمت الجلسة بنجاح
           </h1>
           <p className="text-sm font-bold" style={{ color: 'rgba(255,255,255,0.75)' }}>
@@ -326,7 +325,7 @@ ${isVip ? `\nرسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : 
           {/* ═══ جسم الإيصال ═══ */}
           <div style={{ background: BRAND.cream }}>
             {/* القسم 1: السيارة + VIP */}
-            <div className="px-5 pt-5 pb-4">
+            <div className="px-5 pt-4 pb-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <div
@@ -386,7 +385,7 @@ ${isVip ? `\nرسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : 
 
             {/* القسم 2: الجراج + التاريخ */}
             {garage && (
-              <div className="px-5 py-4">
+              <div className="px-5 py-3">
                 <div className="flex items-start gap-3">
                   <div
                     className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
@@ -418,7 +417,7 @@ ${isVip ? `\nرسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : 
                         {garage.area}
                       </span>
                     )}
-                    <div className="flex items-center gap-1 mt-1.5">
+                    <div className="flex items-center gap-1 mt-1">
                       <Calendar size={11} style={{ color: BRAND.inkSoft }} />
                       <span
                         className="text-[11px] font-bold"
@@ -448,42 +447,42 @@ ${isVip ? `\nرسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : 
               />
             </div>
 
-            {/* ═══ المدة الكلية — البطل ═══ */}
-            <div className="px-5 py-5">
+            {/* ═══ المدة الكلية — البطل (مُصغّر) ═══ */}
+            <div className="px-4 py-3">
               <div
-                className="rounded-2xl p-5 text-center relative overflow-hidden"
+                className="rounded-xl p-3 text-center relative overflow-hidden"
                 style={{
                   background: `linear-gradient(135deg, ${BRAND.blue} 0%, ${BRAND.blueDark} 100%)`,
-                  boxShadow: '0 8px 24px rgba(22, 86, 184, 0.3)',
+                  boxShadow: '0 6px 18px rgba(22, 86, 184, 0.28)',
                 }}
               >
                 <div
-                  className="absolute -top-12 -left-12 w-40 h-40 rounded-full pointer-events-none opacity-40"
+                  className="absolute -top-8 -left-8 w-28 h-28 rounded-full pointer-events-none opacity-35"
                   style={{
                     background: `radial-gradient(circle, ${BRAND.green}50 0%, transparent 70%)`,
                   }}
                 />
                 <div
-                  className="absolute -bottom-12 -right-12 w-40 h-40 rounded-full pointer-events-none opacity-25"
+                  className="absolute -bottom-8 -right-8 w-28 h-28 rounded-full pointer-events-none opacity-20"
                   style={{
                     background: 'radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%)',
                   }}
                 />
 
-                <div className="relative flex items-center justify-center gap-2 mb-2.5">
-                  <Clock size={16} className="text-white/85" />
+                <div className="relative flex items-center justify-center gap-1.5 mb-1">
+                  <Clock size={13} className="text-white/85" />
                   <span
-                    className="text-[11px] font-black uppercase text-white/85"
-                    style={{ letterSpacing: '1.8px' }}
+                    className="text-[10px] font-black uppercase text-white/85"
+                    style={{ letterSpacing: '1.5px' }}
                   >
                     إجمالي مدة الركن
                   </span>
                 </div>
                 <div
-                  className="relative font-black text-[36px] text-white leading-none"
+                  className="relative font-black text-[26px] text-white leading-none"
                   style={{
                     letterSpacing: '-0.5px',
-                    textShadow: '0 2px 10px rgba(0,0,0,0.25)',
+                    textShadow: '0 2px 8px rgba(0,0,0,0.25)',
                   }}
                 >
                   {formatDuration(durationSeconds)}
@@ -491,35 +490,30 @@ ${isVip ? `\nرسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : 
               </div>
             </div>
 
-            {/* ═══ الدخول + الخروج ═══ */}
-            <div className="px-5 pb-5">
-              <div className="grid grid-cols-2 gap-3">
+            {/* ═══ الدخول + الخروج (مُصغّر) ═══ */}
+            <div className="px-4 pb-4">
+              <div className="grid grid-cols-2 gap-2">
                 {/* الدخول */}
                 <div
-                  className="rounded-xl p-3.5 text-center border"
+                  className="rounded-lg p-2.5 text-center border"
                   style={{
                     background: BRAND.paper,
                     borderColor: 'rgba(140, 198, 63, 0.3)',
-                    boxShadow: '0 2px 8px rgba(140, 198, 63, 0.1)',
+                    boxShadow: '0 1px 4px rgba(140, 198, 63, 0.08)',
                   }}
                 >
-                  <div className="flex items-center justify-center gap-1.5 mb-2">
-                    <div
-                      className="w-6 h-6 rounded-md flex items-center justify-center"
-                      style={{ background: BRAND.greenLight }}
-                    >
-                      <LogIn size={13} style={{ color: BRAND.greenDark }} />
-                    </div>
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <LogIn size={11} style={{ color: BRAND.greenDark }} />
                     <span
-                      className="text-[10px] font-black uppercase"
-                      style={{ color: BRAND.greenDark, letterSpacing: '1px' }}
+                      className="text-[9px] font-black uppercase"
+                      style={{ color: BRAND.greenDark, letterSpacing: '0.8px' }}
                     >
                       الدخول
                     </span>
                   </div>
                   <span
-                    className="text-lg font-black font-mono block"
-                    style={{ color: BRAND.ink, letterSpacing: '1.5px' }}
+                    className="text-base font-black font-mono block"
+                    style={{ color: BRAND.ink, letterSpacing: '1px' }}
                   >
                     {formatTimeOnly(entryTime)}
                   </span>
@@ -527,30 +521,25 @@ ${isVip ? `\nرسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : 
 
                 {/* الخروج */}
                 <div
-                  className="rounded-xl p-3.5 text-center border"
+                  className="rounded-lg p-2.5 text-center border"
                   style={{
                     background: BRAND.paper,
                     borderColor: 'rgba(22, 86, 184, 0.25)',
-                    boxShadow: '0 2px 8px rgba(22, 86, 184, 0.1)',
+                    boxShadow: '0 1px 4px rgba(22, 86, 184, 0.08)',
                   }}
                 >
-                  <div className="flex items-center justify-center gap-1.5 mb-2">
-                    <div
-                      className="w-6 h-6 rounded-md flex items-center justify-center"
-                      style={{ background: BRAND.blueSoft }}
-                    >
-                      <LogOut size={13} style={{ color: BRAND.blue }} />
-                    </div>
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <LogOut size={11} style={{ color: BRAND.blue }} />
                     <span
-                      className="text-[10px] font-black uppercase"
-                      style={{ color: BRAND.blue, letterSpacing: '1px' }}
+                      className="text-[9px] font-black uppercase"
+                      style={{ color: BRAND.blue, letterSpacing: '0.8px' }}
                     >
                       الخروج
                     </span>
                   </div>
                   <span
-                    className="text-lg font-black font-mono block"
-                    style={{ color: BRAND.ink, letterSpacing: '1.5px' }}
+                    className="text-base font-black font-mono block"
+                    style={{ color: BRAND.ink, letterSpacing: '1px' }}
                   >
                     {formatTimeOnly(exitTime)}
                   </span>
@@ -577,7 +566,7 @@ ${isVip ? `\nرسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : 
                 </div>
 
                 <div
-                  className="px-5 py-3.5 flex items-center justify-between"
+                  className="px-5 py-3 flex items-center justify-between"
                   style={{
                     background: `linear-gradient(90deg, ${BRAND.blueSoft} 0%, ${BRAND.greenLight} 100%)`,
                   }}
@@ -603,7 +592,7 @@ ${isVip ? `\nرسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : 
 
             {/* ═══ Footer برندينج ═══ */}
             <div
-              className="px-5 py-3 flex items-center justify-center gap-2 border-t"
+              className="px-5 py-2.5 flex items-center justify-center gap-2 border-t"
               style={{
                 background: BRAND.paper,
                 borderColor: BRAND.divider,
@@ -630,11 +619,11 @@ ${isVip ? `\nرسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : 
         {/* ═══════════════════════════════════
             🎯 الأزرار الاحترافية
             ═══════════════════════════════════ */}
-        <div className="space-y-3 pt-5">
+        <div className="space-y-2.5 pt-4">
           {/* زر النسخ */}
           <button
             onClick={copySessionDetails}
-            className="w-full py-4 rounded-2xl font-black text-base transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full py-3.5 rounded-2xl font-black text-base transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
             style={{
               background: copied
                 ? `linear-gradient(135deg, ${BRAND.green} 0%, ${BRAND.greenDark} 100%)`
@@ -662,7 +651,7 @@ ${isVip ? `\nرسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : 
           {/* زر العودة الرئيسي */}
           <button
             onClick={handleBack}
-            className="w-full py-4 rounded-2xl font-black text-white text-base transition-all active:scale-95 border-0 cursor-pointer flex items-center justify-center gap-2"
+            className="w-full py-3.5 rounded-2xl font-black text-white text-base transition-all active:scale-95 border-0 cursor-pointer flex items-center justify-center gap-2"
             style={{
               background: `linear-gradient(135deg, ${BRAND.blue} 0%, ${BRAND.blueDark} 100%)`,
               boxShadow: '0 8px 24px rgba(22, 86, 184, 0.35)',
