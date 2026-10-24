@@ -314,36 +314,41 @@ export default function SessionScreen() {
         </div>
 
         {/* ⏰ العداد الدائري الكبير */}
+        {/* ⏰ العداد الدائري الكبير — بدون توهج متحرك (موفر للبطارية) */}
         <div className="relative mb-5">
-          {/* حلقة خارجية متوهجة */}
-          <div
-            className="absolute inset-0 rounded-full animate-pulse pointer-events-none"
-            style={{
-              background: `radial-gradient(circle, ${BRAND.blue}40 0%, transparent 70%)`,
-              transform: 'scale(1.15)',
-              filter: 'blur(8px)',
-            }}
-          />
-
           <div
             className="w-60 h-60 sm:w-64 sm:h-64 rounded-full flex flex-col items-center justify-center border-[3px] relative"
             style={{
-              background: 'radial-gradient(circle at 30% 30%, #16254a 0%, #0a1628 70%)',
+              background: `
+                radial-gradient(circle at 30% 30%, #16254a 0%, #0a1628 70%),
+                radial-gradient(circle at 70% 70%, rgba(22,86,184,0.15) 0%, transparent 50%)
+              `,
               borderColor: BRAND.blue,
-              boxShadow: `0 0 50px rgba(22, 86, 184, 0.5), inset 0 0 30px rgba(0,0,0,0.5)`,
+              boxShadow: `
+                0 10px 30px rgba(0,0,0,0.4),
+                inset 0 0 25px rgba(0,0,0,0.5),
+                inset 0 2px 0 rgba(255,255,255,0.08)
+              `,
             }}
           >
-            {/* حلقة داخلية */}
+            {/* حلقة داخلية ثابتة (مش animated) */}
             <div
-              className="absolute inset-3 rounded-full border opacity-30"
+              className="absolute inset-3 rounded-full border-2 opacity-25 pointer-events-none"
               style={{ borderColor: BRAND.green, borderStyle: 'dashed' }}
             />
 
-            <Clock size={28} style={{ color: BRAND.green }} className="mb-2" />
+            {/* نقطة نبض صغيرة واحدة بس — بديل التوهج الكبير */}
+            <div className="flex items-center gap-1.5 mb-2">
+              <span
+                className="w-1.5 h-1.5 rounded-full animate-pulse"
+                style={{ background: BRAND.green }}
+              />
+              <Clock size={26} style={{ color: BRAND.green }} />
+            </div>
 
             <div
               className="text-[42px] sm:text-[46px] font-black font-mono text-white leading-none tracking-wider dir-ltr"
-              style={{ textShadow: '0 2px 12px rgba(22,86,184,0.6)' }}
+              style={{ textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}
             >
               {formatTime(elapsed)}
             </div>
