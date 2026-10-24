@@ -1020,6 +1020,13 @@ export default function GarageListScreen() {
                 <span>🏠 العودة للصفحة الرئيسية</span>
               </button>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 const GarageCard = memo(function GarageCard({ garage, index, onSelect, onReportPrice, isNearby, isClosest, hasActiveSession, hasIncomingCar, disabled }: GarageCardProps) {
   const isDirectory = garage.garageType === 'directory';
   const isVip = garage.garageType === 'vip';
