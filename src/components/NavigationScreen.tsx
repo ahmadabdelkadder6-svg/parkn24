@@ -194,7 +194,6 @@ export default function NavigationScreen() {
   const navigatedToSessionRef = useRef(false);
   const isArrivingRef = useRef(false);
   const realtimeChannelRef = useRef<any>(null);
-  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -203,7 +202,7 @@ export default function NavigationScreen() {
     };
   }, []);
 
-  /* ─── REALTIME & SYNC ─── */
+  /* ─── REALTIME & SYNC (بدون Polling تكراري كل ثانيتين) ─── */
   useEffect(() => {
     if (!userPlateNav && !userPhoneClean) return;
 
@@ -252,17 +251,20 @@ export default function NavigationScreen() {
       .subscribe();
 
     realtimeChannelRef.current = channel;
-    pollingIntervalRef.current = setInterval(fastFetch, 2000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') fastFetch();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', fastFetch);
 
     return () => {
       cancelled = true;
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', fastFetch);
       if (realtimeChannelRef.current) {
         supabase.removeChannel(realtimeChannelRef.current);
         realtimeChannelRef.current = null;
-      }
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
       }
     };
   }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
@@ -351,7 +353,8 @@ export default function NavigationScreen() {
     setSelectedGarageId,
     setScreen,
   ]);
-  /* ─── ❌ زر: وصلت بس ملقتش مكان (توجيه للرئيسية فوراً) ─── */
+
+  /* ─── ❌ زر: وصلت بس ملقتش مكان / العودة للرئيسية (صامت تماماً) ─── */
   const handleNoSpaceFound = useCallback(async () => {
     try {
       if (myIncomingCar) {
@@ -364,6 +367,7 @@ export default function NavigationScreen() {
       setScreen('list');
     }
   }, [myIncomingCar, removeIncomingCar, setSelectedGarageId, setScreen]);
+
   /* 🧠 GPS positioning */
   useEffect(() => {
     if (!('geolocation' in navigator)) return;
@@ -708,7 +712,7 @@ export default function NavigationScreen() {
               </span>
             </button>
 
-            {/* زر 2: وصلت بس ملقتش مكان */}
+            {/* زر 2: وصلت بس ملقتش مكان (أحمر صريح) */}
             <button
               type="button"
               onClick={handleNoSpaceFound}
@@ -724,7 +728,7 @@ export default function NavigationScreen() {
               </span>
             </button>
 
-            {/* زر 3: العودة للرئيسية */}
+            {/* زر 3: العودة للرئيسية (رمادي داكن صريح) */}
             <button
               type="button"
               onClick={handleNoSpaceFound}
@@ -738,11 +742,12 @@ export default function NavigationScreen() {
               <span className="font-black text-sm text-white">
                 🏠 العودة للصفحة الرئيسية
               </span>
-            </button>          </div>
+            </button>
+          </div>
         )}
       </div>
 
-      {/* 💳 Insufficient Wallet Modal */}
+      {/* 💳 Insufficient Wallet Modal (بدون blur، لون صريح معتم) */}
       <AnimatePresence>
         {showInsufficientModal && (
           <motion.div
@@ -750,7 +755,7 @@ export default function NavigationScreen() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[9999] flex items-center justify-center p-4 dir-rtl"
-            style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
+            style={{ background: 'rgba(10, 22, 40, 0.95)' }}
           >
             <motion.div
               initial={{ scale: 0.9, y: 20 }}

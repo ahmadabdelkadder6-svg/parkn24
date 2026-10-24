@@ -60,19 +60,31 @@ export default function LastSessionScreen() {
   const userPlate = normalizePlate(currentUser?.carPlate);
   const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
+  /* ⚡ البحث عن آخر جلسة مكتملة في لفة واحدة بدون Filter أو Sort (حماية الـ RAM والبطارية) */
   const lastSession = useMemo(() => {
     if (!userPlate && !userPhone) return null;
-    return sessions
-      .filter((s) => {
-        if (!s || s.status !== 'completed') return false;
-        const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-        const sPhone = (s as any).customerPhone
-          ? normalizePhone((s as any).customerPhone)
-          : '';
-        const samePhone = Boolean(userPhone && sPhone === userPhone);
-        return samePlate || samePhone;
-      })
-      .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0] || null;
+
+    let latest: (typeof sessions)[number] | null = null;
+    let maxEndTime = -1;
+
+    for (let i = 0; i < sessions.length; i++) {
+      const s = sessions[i];
+      if (!s || s.status !== 'completed') continue;
+
+      const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+      const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+      const samePhone = Boolean(userPhone && sPhone === userPhone);
+
+      if (samePlate || samePhone) {
+        const endMs = toMs(s.endTime);
+        if (endMs > maxEndTime) {
+          maxEndTime = endMs;
+          latest = s;
+        }
+      }
+    }
+
+    return latest;
   }, [sessions, userPlate, userPhone]);
 
   const garage = useMemo(

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { motion } from 'framer-motion';
 import {
   Clock,
@@ -47,6 +47,134 @@ const formatTime = (seconds: number): string => {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
+/* ═══════════════════════════════════════════════════════════
+   ⚡ LiveSessionTimer — المكوّن الوحيد اللي بيتحدث كل ثانية
+   باقي الشاشة تفضل ثابتة → حماية البطارية والمعالج
+   ═══════════════════════════════════════════════════════════ */
+const LiveSessionTimer = memo(function LiveSessionTimer({
+  activeStartMs,
+  onAutoEnd,
+}: {
+  activeStartMs: number;
+  onAutoEnd: () => void;
+}) {
+  const [elapsed, setElapsed] = useState(0);
+  const autoEndedRef = useRef(false);
+  const onAutoEndRef = useRef(onAutoEnd);
+  onAutoEndRef.current = onAutoEnd;
+
+  useEffect(() => {
+    if (activeStartMs <= 0) {
+      setElapsed(0);
+      return;
+    }
+    autoEndedRef.current = false;
+
+    const calcElapsed = () =>
+      Math.max(0, Math.floor((getServerNow() - activeStartMs) / 1000));
+
+    const currentElapsed = calcElapsed();
+    setElapsed(currentElapsed);
+    if (currentElapsed >= AUTO_END_SECONDS) {
+      if (!autoEndedRef.current) {
+        autoEndedRef.current = true;
+        onAutoEndRef.current();
+      }
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const current = calcElapsed();
+      setElapsed(current);
+      if (current >= AUTO_END_SECONDS && !autoEndedRef.current) {
+        autoEndedRef.current = true;
+        clearInterval(interval);
+        onAutoEndRef.current();
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [activeStartMs]);
+
+  const remainingAutoEnd = Math.max(0, AUTO_END_SECONDS - elapsed);
+  const autoEndMinutes = Math.floor((remainingAutoEnd % 3600) / 60);
+  const showAutoEndWarning = remainingAutoEnd > 0 && remainingAutoEnd <= 30 * 60;
+
+  return (
+    <>
+      {/* ⏰ العداد الدائري */}
+      <div className="relative mb-5">
+        <div
+          className="w-60 h-60 sm:w-64 sm:h-64 rounded-full flex flex-col items-center justify-center border-[3px] relative"
+          style={{
+            background: `
+              radial-gradient(circle at 30% 30%, #16254a 0%, #0a1628 70%),
+              radial-gradient(circle at 70% 70%, rgba(22,86,184,0.15) 0%, transparent 50%)
+            `,
+            borderColor: BRAND.blue,
+            boxShadow: `
+              0 10px 30px rgba(0,0,0,0.4),
+              inset 0 0 25px rgba(0,0,0,0.5),
+              inset 0 2px 0 rgba(255,255,255,0.08)
+            `,
+          }}
+        >
+          <div
+            className="absolute inset-3 rounded-full border-2 opacity-25 pointer-events-none"
+            style={{ borderColor: BRAND.green, borderStyle: 'dashed' }}
+          />
+
+          <div className="flex items-center gap-1.5 mb-2">
+            <span
+              className="w-1.5 h-1.5 rounded-full animate-pulse"
+              style={{ background: BRAND.green }}
+            />
+            <Clock size={26} style={{ color: BRAND.green }} />
+          </div>
+
+          <div
+            className="text-[42px] sm:text-[46px] font-black font-mono text-white leading-none tracking-wider dir-ltr"
+            style={{ textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}
+          >
+            {formatTime(elapsed)}
+          </div>
+
+          <div
+            className="text-[10px] font-black mt-3 px-3.5 py-1 rounded-full"
+            style={{
+              background: 'rgba(10, 22, 40, 0.9)',
+              color: BRAND.slateMuted,
+              border: `1px solid ${BRAND.border}`,
+              letterSpacing: '0.8px',
+            }}
+          >
+            ⏱ مدة الركن الفعلية
+          </div>
+        </div>
+      </div>
+
+      {/* 🚨 تنبيه الإنهاء التلقائي — جوه المكوّن عشان يعتمد على elapsed بدون ما يلمس الـ parent */}
+      {showAutoEndWarning && (
+        <div
+          className="w-full max-w-md rounded-xl px-3.5 py-2.5 mb-3 text-center border-2"
+          style={{
+            background: 'linear-gradient(135deg, rgba(239,68,68,0.2) 0%, rgba(220,38,38,0.1) 100%)',
+            borderColor: 'rgba(239, 68, 68, 0.5)',
+            boxShadow: '0 4px 12px rgba(239, 68, 68, 0.15)',
+          }}
+        >
+          <span className="text-xs font-black text-red-300 flex items-center justify-center gap-1.5">
+            ⚠️ سيتم إنهاء الجلسة تلقائياً بعد {autoEndMinutes} دقيقة
+          </span>
+        </div>
+      )}
+    </>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════
+   📺 SessionScreen — الشاشة الثابتة (ما بتعيدش رسم كل ثانية)
+   ═══════════════════════════════════════════════════════════ */
 export default function SessionScreen() {
   const {
     garages,
@@ -68,10 +196,8 @@ export default function SessionScreen() {
   const redirectedToSessionRef = useRef(false);
   const activeSessionIdRef = useRef<string | null>(null);
   const realtimeChannelRef = useRef<any>(null);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoEndedRef = useRef(false);
 
-  const [elapsed, setElapsed] = useState(0);
   const [ending, setEnding] = useState(false);
 
   useEffect(() => {
@@ -89,29 +215,44 @@ export default function SessionScreen() {
     );
   }, [userPlate, userPhone]);
 
+  /* ⚡ Single-pass — بدون filter/sort */
   const activeSession = useMemo(() => {
-    return sessions
-      .filter((s) => {
-        if (!s || s.status !== 'active') return false;
-        if (acknowledgedSessionIds?.has(s.id)) return false;
-        const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-        const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-        const samePhoneMatch = Boolean(userPhone && sPhone === userPhone);
-        return samePlateMatch || samePhoneMatch;
-      })
-      .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
+    let latest: (typeof sessions)[number] | undefined;
+    let maxStart = -1;
+    for (let i = 0; i < sessions.length; i++) {
+      const s = sessions[i];
+      if (!s || s.status !== 'active') continue;
+      if (acknowledgedSessionIds?.has(s.id)) continue;
+      const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+      const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+      const samePhone = Boolean(userPhone && sPhone === userPhone);
+      if (!(samePlate || samePhone)) continue;
+      const startMs = safeParseTime(s.startTime);
+      if (startMs > maxStart) {
+        maxStart = startMs;
+        latest = s;
+      }
+    }
+    return latest;
   }, [sessions, userPlate, userPhone, acknowledgedSessionIds]);
 
   const lastCompletedSession = useMemo(() => {
-    return sessions
-      .filter((s) => {
-        if (!s || s.status !== 'completed') return false;
-        const samePlateMatch = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-        const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-        const samePhoneMatch = Boolean(userPhone && sPhone === userPhone);
-        return samePlateMatch || samePhoneMatch;
-      })
-      .sort((a, b) => safeParseTime(b.endTime) - safeParseTime(a.endTime))[0];
+    let latest: (typeof sessions)[number] | undefined;
+    let maxEnd = -1;
+    for (let i = 0; i < sessions.length; i++) {
+      const s = sessions[i];
+      if (!s || s.status !== 'completed') continue;
+      const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
+      const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+      const samePhone = Boolean(userPhone && sPhone === userPhone);
+      if (!(samePlate || samePhone)) continue;
+      const endMs = safeParseTime(s.endTime);
+      if (endMs > maxEnd) {
+        maxEnd = endMs;
+        latest = s;
+      }
+    }
+    return latest;
   }, [sessions, userPlate, userPhone]);
 
   const garage = garages?.find(
@@ -151,26 +292,28 @@ export default function SessionScreen() {
       })
       .subscribe();
 
-    realtimeChannelRef.current = channel;
-    pollingRef.current = setInterval(refetch, 4000);
+realtimeChannelRef.current = channel;
 
-    const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
-    document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', refetch);
+const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
+document.addEventListener('visibilitychange', handleVisibility);
+window.addEventListener('focus', refetch);
 
-    return () => {
-      cancelled = true;
-      document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', refetch);
-      if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
-      if (realtimeChannelRef.current) { supabase.removeChannel(realtimeChannelRef.current); realtimeChannelRef.current = null; }
-    };
+return () => {
+  cancelled = true;
+  document.removeEventListener('visibilitychange', handleVisibility);
+  window.removeEventListener('focus', refetch);
+  if (realtimeChannelRef.current) {
+    supabase.removeChannel(realtimeChannelRef.current);
+    realtimeChannelRef.current = null;
+  }
+};
   }, [userPlate, userPhone, fetchAll, isMySessionRow]);
 
   const handleEndSession = useCallback(async () => {
     if (ending || !activeSession) return;
     setEnding(true);
     try {
+      // ✅ نحسب المدة لحظياً من السيرفر — مش محتاجين state العداد
       const elapsedSec = Math.floor((getServerNow() - activeStartMs) / 1000);
       await endSession(activeSession.id, Math.max(0, elapsedSec), 'cash', 0);
       if (typeof acknowledgeSession === 'function') acknowledgeSession(activeSession.id);
@@ -202,32 +345,6 @@ export default function SessionScreen() {
       autoEndedRef.current = false;
     }
   }, [activeSession, endSession, acknowledgeSession, setSelectedGarageId, setScreen]);
-
-  useEffect(() => {
-    if (!activeSession || activeStartMs <= 0) { setElapsed(0); return; }
-    autoEndedRef.current = false;
-
-    const calcElapsed = () => {
-      const now = getServerNow();
-      return Math.max(0, Math.floor((now - activeStartMs) / 1000));
-    };
-
-    const currentElapsed = calcElapsed();
-    setElapsed(currentElapsed);
-    if (currentElapsed >= AUTO_END_SECONDS) { handleAutoEnd(); return; }
-
-    const interval = setInterval(() => {
-      if (!isMountedRef.current) return;
-      const current = calcElapsed();
-      setElapsed(current);
-      if (current >= AUTO_END_SECONDS && !autoEndedRef.current) {
-        clearInterval(interval);
-        handleAutoEnd();
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [activeSession, activeStartMs, handleAutoEnd]);
 
   useEffect(() => {
     if (!activeSession) { redirectedToSessionRef.current = false; return; }
@@ -278,10 +395,6 @@ export default function SessionScreen() {
     );
   }
 
-  const remainingAutoEnd = Math.max(0, AUTO_END_SECONDS - elapsed);
-  const autoEndMinutes = Math.floor((remainingAutoEnd % 3600) / 60);
-  const showAutoEndWarning = remainingAutoEnd > 0 && remainingAutoEnd <= 30 * 60;
-
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -295,11 +408,11 @@ export default function SessionScreen() {
       }}
     >
       {/* ═══════════════════════════════
-          🎯 القسم العلوي — العداد الكبير
+          🎯 القسم العلوي — العداد
           ═══════════════════════════════ */}
       <div className="flex-1 flex flex-col items-center justify-center px-5 pt-6 pb-3">
 
-        {/* 📱 بادج "جلسة نشطة" فوق العداد */}
+        {/* بادج "جلسة نشطة" — ثابت، مش جوه العداد */}
         <div
           className="mb-5 px-4 py-1.5 rounded-full flex items-center gap-2 border"
           style={{
@@ -313,83 +426,18 @@ export default function SessionScreen() {
           </span>
         </div>
 
-        {/* ⏰ العداد الدائري الكبير */}
-        {/* ⏰ العداد الدائري الكبير — بدون توهج متحرك (موفر للبطارية) */}
-        <div className="relative mb-5">
-          <div
-            className="w-60 h-60 sm:w-64 sm:h-64 rounded-full flex flex-col items-center justify-center border-[3px] relative"
-            style={{
-              background: `
-                radial-gradient(circle at 30% 30%, #16254a 0%, #0a1628 70%),
-                radial-gradient(circle at 70% 70%, rgba(22,86,184,0.15) 0%, transparent 50%)
-              `,
-              borderColor: BRAND.blue,
-              boxShadow: `
-                0 10px 30px rgba(0,0,0,0.4),
-                inset 0 0 25px rgba(0,0,0,0.5),
-                inset 0 2px 0 rgba(255,255,255,0.08)
-              `,
-            }}
-          >
-            {/* حلقة داخلية ثابتة (مش animated) */}
-            <div
-              className="absolute inset-3 rounded-full border-2 opacity-25 pointer-events-none"
-              style={{ borderColor: BRAND.green, borderStyle: 'dashed' }}
-            />
+        {/* ⚡ العداد المعزول — الوحيد اللي re-render كل ثانية */}
+        <LiveSessionTimer
+          activeStartMs={activeStartMs}
+          onAutoEnd={handleAutoEnd}
+        />
 
-            {/* نقطة نبض صغيرة واحدة بس — بديل التوهج الكبير */}
-            <div className="flex items-center gap-1.5 mb-2">
-              <span
-                className="w-1.5 h-1.5 rounded-full animate-pulse"
-                style={{ background: BRAND.green }}
-              />
-              <Clock size={26} style={{ color: BRAND.green }} />
-            </div>
-
-            <div
-              className="text-[42px] sm:text-[46px] font-black font-mono text-white leading-none tracking-wider dir-ltr"
-              style={{ textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}
-            >
-              {formatTime(elapsed)}
-            </div>
-
-            <div
-              className="text-[10px] font-black mt-3 px-3.5 py-1 rounded-full"
-              style={{
-                background: 'rgba(10, 22, 40, 0.9)',
-                color: BRAND.slateMuted,
-                border: `1px solid ${BRAND.border}`,
-                letterSpacing: '0.8px',
-              }}
-            >
-              ⏱ مدة الركن الفعلية
-            </div>
-          </div>
-        </div>
-
-        {/* 🚨 تنبيه الإنهاء التلقائي */}
-        {showAutoEndWarning && (
-          <div
-            className="w-full max-w-md rounded-xl px-3.5 py-2.5 mb-3 text-center border-2"
-            style={{
-              background: 'linear-gradient(135deg, rgba(239,68,68,0.2) 0%, rgba(220,38,38,0.1) 100%)',
-              borderColor: 'rgba(239, 68, 68, 0.5)',
-              boxShadow: '0 4px 12px rgba(239, 68, 68, 0.15)',
-            }}
-          >
-            <span className="text-xs font-black text-red-300 flex items-center justify-center gap-1.5">
-              ⚠️ سيتم إنهاء الجلسة تلقائياً بعد {autoEndMinutes} دقيقة
-            </span>
-          </div>
-        )}
-
-        {/* 💬 بطاقة الإرشاد */}
+        {/* 💬 بطاقة الإرشاد — ثابتة + بدون blur */}
         <div
           className="w-full max-w-md rounded-2xl px-4 py-3 text-center border"
           style={{
-            background: `linear-gradient(135deg, ${BRAND.navyLight} 0%, rgba(17, 30, 54, 0.6) 100%)`,
+            background: `linear-gradient(135deg, ${BRAND.navyLight} 0%, rgba(17, 30, 54, 0.85) 100%)`,
             borderColor: BRAND.border,
-            backdropFilter: 'blur(10px)',
             boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
           }}
         >
@@ -407,7 +455,7 @@ export default function SessionScreen() {
       </div>
 
       {/* ═══════════════════════════════
-          📋 القسم السفلي — المعلومات والزر
+          📋 القسم السفلي — معلومات + زر (ثابت تماماً)
           ═══════════════════════════════ */}
       <div
         className="px-5 pt-4 pb-5 border-t"
@@ -416,7 +464,6 @@ export default function SessionScreen() {
           borderColor: BRAND.border,
         }}
       >
-        {/* 🚘 رقم السيارة + 📍 الجراج */}
         <div className="w-full grid grid-cols-2 gap-3 mb-3">
           {/* السيارة */}
           <div
@@ -475,7 +522,6 @@ export default function SessionScreen() {
           )}
         </div>
 
-        {/* 📍 موقع الجراج + 📱 مصدر الجلسة (سطر واحد) */}
         <div className="w-full flex items-center justify-center gap-2 mb-4 flex-wrap">
           {garage?.location && (
             <span
@@ -502,7 +548,6 @@ export default function SessionScreen() {
           </span>
         </div>
 
-        {/* 🔴 زر إنهاء الجلسة */}
         <button
           type="button"
           aria-label="إنهاء الجلسة الحالية"

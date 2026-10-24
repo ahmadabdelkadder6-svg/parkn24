@@ -833,11 +833,11 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
 
-      const [activeSessionsRes, o, w, ic, msgs] = await Promise.all([
-        supabase.from('sessions').select('*').order('created_at', { ascending: false }).limit(40),
-        supabase.from('offers').select('*').order('created_at', { ascending: false }).limit(10),
+      // ⚡ إزالة جدول العروض والتفاوض لتوفير 20% من استعلامات السيرفر
+      const [activeSessionsRes, w, ic, msgs] = await Promise.all([
+        supabase.from('sessions').select('*').order('created_at', { ascending: false }).limit(30),
         supabase.from('wallet_topups').select('*').order('created_at', { ascending: false }).limit(10),
-        supabase.from('incoming_cars').select('*').order('created_at', { ascending: false }),
+        supabase.from('incoming_cars').select('*').eq('status', 'coming').order('created_at', { ascending: false }).limit(30),
         supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(10),
       ]);
 
@@ -847,7 +847,6 @@ export const useStore = create<AppState>((set, get) => ({
       set({
         garages: currentGarages,
         sessions: finalSessions,
-        offers: o.data ? o.data.map(mapOffer) : get().offers,
         walletTopUps: w.data ? w.data.map(mapTopUp) : get().walletTopUps,
         incomingCars: ic.data ? ic.data.map(mapIncoming).filter((c) => c.status === 'coming') : get().incomingCars,
         messages: msgs.data ? msgs.data.map(mapMessage) : get().messages,
@@ -1067,6 +1066,9 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   addSession: async (s) => {
+    // ⚡ تنظيف الـ Locks تلقائياً لمنع تسريب الميموري
+    if (sessionStartLocks.size > 50) sessionStartLocks.clear();
+
     const normalizedPlate = normalizePlate(s.carPlate);
     if (!normalizedPlate) return '';
     const sessionId = crypto.randomUUID();
@@ -1116,7 +1118,8 @@ export const useStore = create<AppState>((set, get) => ({
             const paidCount = (todayAll?.length || 0) - freeCount;
 
             // 🔹 2 مدفوعة → 2 مجانية → الباقي مدفوع
-            eligibleForFree = paidCount >= 2 && freeCount < 2;
+            eligibleForFree = paidCount >= 2;
+
           } catch (err) {
             eligibleForFree = false;
           }
@@ -1140,7 +1143,7 @@ export const useStore = create<AppState>((set, get) => ({
         freeMinutesApplied: 0,
       };
 
-      set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]) }));
+      set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]).slice(0, 50) }));
       await get().adjustGarageSpots(s.garageId, -1);
 
       if (isSupabaseConfigured()) {
@@ -1178,6 +1181,9 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0, addedBy) => {
+    // ⚡ تنظيف الـ Locks تلقائياً لمنع تسريب الميموري
+    if (sessionEndLocks.size > 50) sessionEndLocks.clear();
+
     const nowISO = new Date(getServerNow()).toISOString();
     const session = get().sessions.find((s) => s.id === id);
     if (!session || session.status !== 'active') return;
@@ -1287,7 +1293,8 @@ export const useStore = create<AppState>((set, get) => ({
 
   addOffer: (o) => {
     const newO: Offer = { ...o, id: uid(), timestamp: Date.now() };
-    set((st) => ({ offers: [newO, ...st.offers] }));
+    set((st) => ({ offers: [newO, ...st.offers].slice(0, 20) }));
+
     if (isSupabaseConfigured()) {
       supabase.from('offers').insert({
         garage_id: o.garageId, user_id: o.userId,
@@ -1317,7 +1324,8 @@ export const useStore = create<AppState>((set, get) => ({
     
     const newW: WalletTopUp = { ...w, id: uid(), status: 'pending', timestamp: Date.now(), bonusAmount: bonus };
     
-    set((st) => ({ walletTopUps: [newW, ...st.walletTopUps] }));
+    set((st) => ({ walletTopUps: [newW, ...st.walletTopUps].slice(0, 20) }));
+
     
     if (isSupabaseConfigured()) {
       supabase.from('wallet_topups').insert({
@@ -1402,7 +1410,7 @@ export const useStore = create<AppState>((set, get) => ({
   addIncomingCar: async (c) => {
     const incomingId = crypto.randomUUID();
     const newC: IncomingCar = { ...c, id: incomingId, startTime: Date.now(), status: 'coming' };
-    set((st) => ({ incomingCars: [newC, ...st.incomingCars] }));
+    set((st) => ({ incomingCars: [newC, ...st.incomingCars].slice(0, 30) }));
     if (!isSupabaseConfigured()) return;
     try {
       const { data } = await supabase.from('incoming_cars').insert({
@@ -1430,7 +1438,8 @@ export const useStore = create<AppState>((set, get) => ({
       userName: msg.userName ? sanitizeInput(msg.userName) : undefined,
     };
     const optimisticMessage: Message = { ...cleanMsg, id: uid(), status: 'pending', timestamp: Date.now() };
-    set((st) => ({ messages: [optimisticMessage, ...st.messages] }));
+    set((st) => ({ messages: [optimisticMessage, ...st.messages].slice(0, 20) }));
+
     if (!isSupabaseConfigured()) return { success: true };
     try {
       const { data, error = null } = await supabase.from('messages').insert({

@@ -471,15 +471,21 @@ export default function App() {
           currentScreen === 'navigation' ||
           currentScreen === 'waiting'
         ) {
-          const lastCompleted = freshState.sessions
-            .filter((s) => {
-              if (s.status !== 'completed') return false;
-              const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-              const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-              const samePhone = Boolean(freshPhone && sPhone === freshPhone);
-              return samePlate || samePhone;
-            })
-            .sort((a, b) => toMs(b.endTime) - toMs(a.endTime))[0];
+let lastCompleted: (typeof freshState.sessions)[number] | undefined;
+let maxEnd = -1;
+for (let i = 0; i < freshState.sessions.length; i++) {
+  const s = freshState.sessions[i];
+  if (!s || s.status !== 'completed') continue;
+  const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
+  const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+  const samePhone = Boolean(freshPhone && sPhone === freshPhone);
+  if (!(samePlate || samePhone)) continue;
+  const endMs = toMs(s.endTime);
+  if (endMs > maxEnd) {
+    maxEnd = endMs;
+    lastCompleted = s;
+  }
+}
 
           if (lastCompleted) {
             const freshAcknowledged = freshState.acknowledgedSessionIds;
