@@ -710,19 +710,36 @@ export default function NavigationScreen() {
               </span>
             </button>
 
-            {/* زر 2: وصلت بس ملقتش مكان (توجيه فوراً للرئيسية بدون استرداد) */}
+            {/* زر 2: وصلت بس ملقتش مكان */}
             <button
               type="button"
               onClick={handleNoSpaceFound}
-              className="w-full py-3.5 rounded-2xl active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 border bg-transparent cursor-pointer"
+              className="w-full py-3.5 rounded-2xl active:scale-95 transition-all flex items-center justify-center gap-2 shrink-0 border-0 cursor-pointer shadow-md"
               style={{
-                borderColor: 'rgba(239, 68, 68, 0.4)',
-                color: '#f87171',
+                background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)',
+                boxShadow: '0 4px 14px rgba(220, 38, 38, 0.3)',
               }}
             >
-              <XCircle size={18} />
-              <span className="font-bold text-xs sm:text-sm">
-                وصلت بس ملقتش مكان (اختيار جراج آخر)
+              <XCircle size={18} color="#ffffff" />
+              <span className="font-black text-xs sm:text-sm text-white">
+                وصلت بس ملقتش مكان ❌
+              </span>
+            </button>
+
+            {/* زر 3: العودة للرئيسية (يشيل العربية القادمة زي ملقتش مكان بالظبط) */}
+            <button
+              type="button"
+              onClick={handleNoSpaceFound}
+              className="w-full py-3 rounded-xl active:scale-95 transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer border"
+              style={{
+                background: 'rgba(255,255,255,0.06)',
+                borderColor: 'rgba(255,255,255,0.15)',
+                color: BRAND.slateMuted,
+              }}
+            >
+              <ArrowRight size={14} />
+              <span className="font-bold text-xs">
+                🏠 العودة للصفحة الرئيسية
               </span>
             </button>
           </div>

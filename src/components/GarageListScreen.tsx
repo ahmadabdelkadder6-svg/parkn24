@@ -637,33 +637,32 @@ export default function GarageListScreen() {
                   </div>
                 </div>
                 <div
-                  className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-white"
-                  style={{ background: 'rgba(255,255,255,0.15)', border: '1.5px solid rgba(255,255,255,0.25)' }}
+                  className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                  style={{ background: BRAND.green, border: `1.5px solid ${BRAND.greenDark}`, boxShadow: '0 2px 8px rgba(140,198,63,0.3)' }}
                 >
-                  <Navigation size={16} className="rotate-45" />
+                  <Navigation size={16} className="rotate-45 text-white" />
                 </div>
               </div>
             </div>
 
-{rescueGaragesList.length > 1 && (
-  <button
-    type="button"
-    onClick={handleNextRescue}
-    className="w-full py-2.5 text-[13px] font-black border-0 cursor-pointer active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
-    style={{
-      background: '#fde047',
-      color: '#78350f',
-      borderTop: '2px solid #facc15',
-      textShadow: '0 1px 0 rgba(255,255,255,0.3)',
-    }}
-  >
-    <Search size={14} strokeWidth={3} />
-    <span>👆 اضغط لاختيار أنسب ركنة ليك</span>
-  </button>
-)}
-        </div>
-      )}
+          </div>
+        )}
 
+        {rescueGaragesList.length > 1 && !activeSession && !myIncomingCar && (
+          <button
+            type="button"
+            onClick={handleNextRescue}
+            className="w-full mb-3 py-3 rounded-xl text-[14px] font-black border-0 cursor-pointer active:scale-[0.97] transition-all flex items-center justify-center gap-2 shadow-lg"
+            style={{
+              background: `linear-gradient(135deg, ${BRAND.green} 0%, ${BRAND.greenDark} 100%)`,
+              color: '#ffffff',
+              boxShadow: '0 4px 14px rgba(140,198,63,0.35)',
+            }}
+          >
+            <Search size={16} strokeWidth={3} />
+            <span>🔍 اضغط لاختيار أنسب ركنة ليك</span>
+          </button>
+        )}
         {activeSession && (
           <button type="button" onClick={() => { setSelectedGarageId(activeSession.garageId); setScreen('session'); }} className="w-full mb-2.5 flex items-center justify-between px-3 py-2.5 rounded-xl border-0 text-white cursor-pointer active:scale-98 transition-all" style={{ background: BRAND.greenDark }}>
             <span className="text-[10px] font-black">عرض التفاصيل ←</span><span className="text-[11px] font-black flex items-center gap-1">🚙 لديك جلسة ركن نشطة الآن</span>
@@ -1003,15 +1002,25 @@ export default function GarageListScreen() {
               >
                 🏁 وصلت بالسلامة / العودة للرئيسية
               </button>
+
+              {/* 🏠 زر العودة السريعة للرئيسية */}
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveDirectoryTrip(null);
+                  toast('تم العودة للرئيسية 🏠', { icon: '🔙', duration: 2000 });
+                }}
+                className="w-full py-3 rounded-xl font-black text-xs cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  color: '#ffffff',
+                  border: '1.5px solid rgba(255,255,255,0.25)',
+                  backdropFilter: 'blur(8px)',
+                }}
+              >
+                <span>🏠 العودة للصفحة الرئيسية</span>
+              </button>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-    </div>
-  );
-}
-
 const GarageCard = memo(function GarageCard({ garage, index, onSelect, onReportPrice, isNearby, isClosest, hasActiveSession, hasIncomingCar, disabled }: GarageCardProps) {
   const isDirectory = garage.garageType === 'directory';
   const isVip = garage.garageType === 'vip';
