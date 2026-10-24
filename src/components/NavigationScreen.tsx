@@ -357,7 +357,6 @@ export default function NavigationScreen() {
       if (myIncomingCar) {
         await removeIncomingCar(myIncomingCar.id);
       }
-      toast('جارِ توجيهك لاختيار جراج آخر 🚗', { icon: 'ℹ️' });
       setSelectedGarageId(null);
       setScreen('list');
     } catch (err) {
@@ -365,7 +364,6 @@ export default function NavigationScreen() {
       setScreen('list');
     }
   }, [myIncomingCar, removeIncomingCar, setSelectedGarageId, setScreen]);
-
   /* 🧠 GPS positioning */
   useEffect(() => {
     if (!('geolocation' in navigator)) return;
@@ -726,23 +724,21 @@ export default function NavigationScreen() {
               </span>
             </button>
 
-            {/* زر 3: العودة للرئيسية (يشيل العربية القادمة زي ملقتش مكان بالظبط) */}
+            {/* زر 3: العودة للرئيسية */}
             <button
               type="button"
               onClick={handleNoSpaceFound}
-              className="w-full py-3 rounded-xl active:scale-95 transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer border"
+              className="w-full py-3.5 rounded-2xl active:scale-95 transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer border-0 shadow-md"
               style={{
-                background: 'rgba(255,255,255,0.06)',
-                borderColor: 'rgba(255,255,255,0.15)',
-                color: BRAND.slateMuted,
+                background: 'linear-gradient(135deg, #475569 0%, #334155 100%)',
+                boxShadow: '0 4px 14px rgba(71, 85, 105, 0.3)',
               }}
             >
-              <ArrowRight size={14} />
-              <span className="font-bold text-xs">
+              <ArrowRight size={16} color="#ffffff" />
+              <span className="font-black text-sm text-white">
                 🏠 العودة للصفحة الرئيسية
               </span>
-            </button>
-          </div>
+            </button>          </div>
         )}
       </div>
 
