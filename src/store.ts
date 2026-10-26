@@ -466,8 +466,11 @@ const mapIncoming = (r: any): IncomingCar => ({
 
 const mapMessage = (r: any): Message => ({
   id: r.id, userPhone: r.user_phone, userName: r.user_name, carPlate: r.car_plate,
-  type: r.type || 'inquiry', subject: r.subject, message: r.message, reply: r.reply,
-  status: r.status || 'pending', timestamp: new Date(r.created_at).getTime(),
+  type: r.type || 'inquiry', subject: r.subject, message: r.message, 
+  // 👇 التعديل هنا: التأكد من سحب الرد وتغيير الحالة تلقائياً لو الرد موجود
+  reply: r.reply || undefined,
+  status: r.reply ? 'replied' : (r.status || 'pending'), 
+  timestamp: new Date(r.created_at).getTime(),
   repliedAt: r.replied_at ? new Date(r.replied_at).getTime() : undefined,
 });
 
@@ -833,12 +836,47 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
 
-      // ⚡ إزالة جدول العروض والتفاوض لتوفير 20% من استعلامات السيرفر
+      // ⚡ تخصيص الاستعلامات حسب الدور (Role-Based Query Scoping)
+      const view = get().view;
+      const user = get().currentUser;
+      const currentGarageId = get().currentGarageId;
+
+      let sessionsQuery = supabase.from('sessions').select('*').order('created_at', { ascending: false }).limit(30);
+      let topupsQuery = supabase.from('wallet_topups').select('*').order('created_at', { ascending: false }).limit(10);
+      let incomingQuery = supabase.from('incoming_cars').select('*').eq('status', 'coming').order('created_at', { ascending: false }).limit(30);
+      let messagesQuery = supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(10);
+
+      if (view === 'user' && user) {
+        const userPhone = user.phone ? normalizePhone(user.phone) : '';
+        const userPlate = user.carPlate ? normalizePlate(user.carPlate) : '';
+        
+        if (userPhone && userPlate) {
+          sessionsQuery = sessionsQuery.or(`customer_phone.eq.${userPhone},car_plate.eq.${userPlate}`);
+          incomingQuery = incomingQuery.or(`customer_phone.eq.${userPhone},car_plate.eq.${userPlate}`);
+        } else if (userPhone) {
+          sessionsQuery = sessionsQuery.eq('customer_phone', userPhone);
+          incomingQuery = incomingQuery.eq('customer_phone', userPhone);
+        } else if (userPlate) {
+          sessionsQuery = sessionsQuery.eq('car_plate', userPlate);
+          incomingQuery = incomingQuery.eq('car_plate', userPlate);
+        }
+
+        if (userPhone) {
+          topupsQuery = topupsQuery.eq('user_phone', userPhone);
+          messagesQuery = messagesQuery.eq('user_phone', userPhone);
+        }
+      } else if (view === 'garage' && currentGarageId) {
+        sessionsQuery = sessionsQuery.eq('garage_id', currentGarageId).limit(50);
+        incomingQuery = incomingQuery.eq('garage_id', currentGarageId);
+        topupsQuery = topupsQuery.limit(0); 
+        messagesQuery = messagesQuery.limit(0); 
+      }
+
       const [activeSessionsRes, w, ic, msgs] = await Promise.all([
-        supabase.from('sessions').select('*').order('created_at', { ascending: false }).limit(30),
-        supabase.from('wallet_topups').select('*').order('created_at', { ascending: false }).limit(10),
-        supabase.from('incoming_cars').select('*').eq('status', 'coming').order('created_at', { ascending: false }).limit(30),
-        supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(10),
+        sessionsQuery,
+        topupsQuery,
+        incomingQuery,
+        messagesQuery,
       ]);
 
       const supabaseSessions = activeSessionsRes.data ? activeSessionsRes.data.map(mapSession) : [];
@@ -852,19 +890,19 @@ export const useStore = create<AppState>((set, get) => ({
         messages: msgs.data ? msgs.data.map(mapMessage) : get().messages,
       });
 
-      const user = get().currentUser;
-      if (user?.phone) {
+      const currentUserInStore = get().currentUser;
+      if (currentUserInStore?.phone) {
         const { data: userData } = await supabase
           .from('users')
           .select('wallet, has_used_free_session, bonus_balance')
-          .eq('phone', user.phone)
+          .eq('phone', currentUserInStore.phone)
           .maybeSingle();
 
         if (userData) {
           const updated = {
-            ...user,
+            ...currentUserInStore,
             wallet: Number(userData.wallet || 0),
-            hasUsedFreeSession: userData.has_used_free_session ?? user.hasUsedFreeSession,
+            hasUsedFreeSession: userData.has_used_free_session ?? currentUserInStore.hasUsedFreeSession,
             bonusBalance: Number(userData.bonus_balance ?? 0),
           };
           set({ currentUser: updated });

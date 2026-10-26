@@ -46,7 +46,7 @@ export default function ChatScreen() {
 
   const userPhoneClean = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
-  // جلب رسائل المستخدم فقط
+  // 🔄 جلب رسائل المستخدم الحالية مرتبة من الأحدث للأقدم
   const myMessages = (messages ?? [])
     .filter((m) => {
       const msgPhone = m.userPhone ? normalizePhone(m.userPhone) : '';
@@ -122,7 +122,6 @@ export default function ChatScreen() {
       {/* ══ المحتوى ══ */}
       <div className="flex-1 px-4 py-4 overflow-y-auto space-y-4">
         
-        {/* زر إنشاء رسالة (يختفي عند فتح الفورم) */}
         {!showNewMessage && (
           <motion.button
             initial={{ opacity: 0, y: -10 }}
@@ -136,7 +135,7 @@ export default function ChatScreen() {
           </motion.button>
         )}
 
-        {/* نموذج الإرسال المبسط */}
+        {/* نموذج الإرسال */}
         <AnimatePresence>
           {showNewMessage && (
             <motion.div
@@ -153,7 +152,6 @@ export default function ChatScreen() {
                   </button>
                 </div>
 
-                {/* أزرار الاختيار الأنيقة */}
                 <div className="grid grid-cols-2 gap-2">
                   {MESSAGE_TYPES.map(({ id, label, icon: Icon }) => (
                     <button
@@ -172,7 +170,6 @@ export default function ChatScreen() {
                   ))}
                 </div>
 
-                {/* نص الرسالة */}
                 <textarea
                   value={messageText}
                   onChange={(e) => setMessageText(e.target.value)}
@@ -182,7 +179,6 @@ export default function ChatScreen() {
                   style={{ background: BRAND.navy, borderColor: BRAND.border }}
                 />
 
-                {/* زر الإرسال */}
                 <button
                   onClick={handleSend}
                   disabled={sending || !selectedType || !messageText.trim()}
@@ -197,7 +193,7 @@ export default function ChatScreen() {
           )}
         </AnimatePresence>
 
-        {/* ══ سجل الرسائل ══ */}
+        {/* ══ سجل الرسائل والردود ══ */}
         <div className="space-y-3 pb-6">
           <h3 className="text-xs font-bold px-1" style={{ color: BRAND.slateMuted }}>سجل المراسلات ({myMessages.length})</h3>
           
@@ -208,17 +204,18 @@ export default function ChatScreen() {
              </div>
           ) : (
             myMessages.map((msg) => {
-              const isReplied = msg.status === 'replied';
-              const isExpanded = selectedMessage === msg.id;
+              // 🌟 التحقق الذكي: لو في نص للرد موجود فعلياً إذن تم الرد!
+              const hasReply = Boolean(msg.reply && msg.reply.trim().length > 0);
+              const isExpanded = selectedMessage === msg.id || hasReply;
 
               return (
                 <div
                   key={msg.id}
-                  onClick={() => setSelectedMessage(isExpanded ? null : msg.id)}
+                  onClick={() => setSelectedMessage(isExpanded && !hasReply ? null : msg.id)}
                   className="border rounded-2xl p-4 cursor-pointer transition-all active:scale-[0.99]"
                   style={{
-                    background: isReplied ? 'rgba(140, 198, 63, 0.05)' : BRAND.navyLight,
-                    borderColor: isReplied ? 'rgba(140, 198, 63, 0.2)' : BRAND.border,
+                    background: hasReply ? 'rgba(140, 198, 63, 0.06)' : BRAND.navyLight,
+                    borderColor: hasReply ? 'rgba(140, 198, 63, 0.3)' : BRAND.border,
                   }}
                 >
                   <div className="flex justify-between items-center mb-2">
@@ -230,23 +227,25 @@ export default function ChatScreen() {
                     </span>
                   </div>
 
-                  <p className={`text-xs text-white font-medium leading-relaxed ${isExpanded ? '' : 'line-clamp-2'}`}>
+                  <p className="text-xs text-white font-medium leading-relaxed">
                     {msg.message}
                   </p>
 
-                  {/* حالة الرد */}
-                  {isReplied ? (
-                    <div className="mt-3 pt-3 border-t" style={{ borderColor: 'rgba(140, 198, 63, 0.15)' }}>
+                  {/* 🟢 عرض رد الإدارة فوراً بمجرد وجوده في الداتابيز */}
+                  {hasReply ? (
+                    <div className="mt-3 pt-3 border-t" style={{ borderColor: 'rgba(140, 198, 63, 0.2)' }}>
                       <div className="flex items-center gap-1.5 mb-1.5" style={{ color: BRAND.green }}>
-                        <CheckCircle size={12} />
-                        <span className="text-[10px] font-black">رد الإدارة:</span>
+                        <CheckCircle size={14} />
+                        <span className="text-[11px] font-black">رد إدارة Park'n 24:</span>
                       </div>
-                      <p className="text-xs font-bold text-white leading-relaxed">{msg.reply}</p>
+                      <p className="text-xs font-bold text-white leading-relaxed bg-black/20 p-2.5 rounded-xl border border-white/5">
+                        {msg.reply}
+                      </p>
                     </div>
                   ) : (
-                    <div className="mt-2 flex items-center gap-1" style={{ color: '#fbbf24' }}>
-                      <Clock size={10} />
-                      <span className="text-[9px] font-bold">قيد المراجعة...</span>
+                    <div className="mt-2.5 flex items-center gap-1.5 text-amber-400">
+                      <Clock size={11} />
+                      <span className="text-[10px] font-bold">بانتظار مراجعة الإدارة...</span>
                     </div>
                   )}
                 </div>
