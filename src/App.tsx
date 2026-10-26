@@ -19,6 +19,7 @@ import LastSessionScreen from './components/LastSessionScreen';
 import ChatScreen from './components/ChatScreen';
 import InstallPage from './components/InstallPage';
 import InstallQRCodePage from './components/InstallQRCodePage';
+import ShieldLandingPage from './components/ShieldLandingPage';
 
 const GarageDashboard = lazy(() => import('./components/GarageDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
@@ -564,8 +565,9 @@ for (let i = 0; i < freshState.sessions.length; i++) {
   if (pathname === '/qr') {
     return <InstallQRCodePage />;
   }
-
-  return (
+  return new URLSearchParams(window.location.search).has('shield') ? (
+    <ShieldLandingPage />
+  ) : (
     <ErrorBoundary>
       {showLanding && <ParkLanding onEnter={handleEnterLanding} />}
 

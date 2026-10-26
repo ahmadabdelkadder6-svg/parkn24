@@ -1,533 +1,380 @@
-// ═══════════════════════════════════════════════════════════
-// 🛡️ ShieldOverlay — طبقة فوق SessionScreen
-// v3: بدون اهتزاز + رادار فوق العداد + شرط الرصيد في SessionScreen
-// ═══════════════════════════════════════════════════════════
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useStore } from '../store';
+import { Shield, ShieldCheck, ShieldAlert, X, Phone, Loader2, AlertTriangle, CheckCircle2, Car, Siren } from 'lucide-react';
 import {
   startFakeAlerts, stopFakeAlerts,
   startShieldGPS, stopShieldGPS,
-  destroyShield,
-  saveShieldState, loadShieldState,
-  SHIELD_STORAGE_KEY,
+  destroyShield, saveShieldState, loadShieldState,
+  SHIELD_STORAGE_KEY, SHIELD_COST,
   type FakeAlert,
 } from '../lib/shield';
 import {
-  sendLocalNotification,
-  playUrgentSound,
-  playNormalAlert,
-  vibrateUrgent,
-  requestNotificationPermission,
-  stopVibration,
-  unlockAudio,
+  sendLocalNotification, playUrgentSound, playNormalAlert,
+  vibrateUrgent, requestNotificationPermission,
+  stopVibration, unlockAudio,
 } from '../utils/notifications';
 import { subscribeToPush } from '../lib/pushManager';
 
-const SHIELD_COST = 7;
+type Phase = 'ask' | 'register' | 'active' | 'breach' | 'dismissed';
 
 interface Props {
-  sessionId: string;
   garageId: string;
-  garageLat: number;
-  garageLng: number;
-  walletBalance: number;
-  onDeductWallet: (amount: number) => void;
+  parkingLat: number;
+  parkingLng: number;
+  userPhone: string | null;
+  onDeductWallet: (amount: number, note: string) => boolean;
   onNavigateToWallet: () => void;
 }
 
-// حذف vibration من Phase
-type Phase = 'ask' | 'register' | 'active' | 'breach' | 'dismissed';
-
 export default function ShieldOverlay({
-  sessionId, garageId, garageLat, garageLng,
-  walletBalance, onDeductWallet, onNavigateToWallet,
+  garageId, parkingLat, parkingLng,
+  userPhone, onDeductWallet, onNavigateToWallet,
 }: Props) {
-  const { activateShield, chargeShieldFee, updateSessionShieldCost, currentUser } = useStore();
-
   const [phase, setPhase] = useState<Phase>('ask');
-  const [phone, setPhone] = useState('');
-  const [shieldCode, setShieldCode] = useState<string | null>(null);
+  const [phone, setPhone] = useState(userPhone ?? '');
   const [alerts, setAlerts] = useState<FakeAlert[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [radarAngle, setRadarAngle] = useState(0);
+  const [breachDistance, setBreachDistance] = useState(0);
+  const [shieldCode, setShieldCode] = useState<string | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
+  const testTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const radarAngle = useRef(0);
+  const radarRef = useRef<HTMLDivElement>(null);
 
-  const cleanups = useRef<(() => void)[]>([]);
-  const breachFired = useRef(false);
-  const activeStarted = useRef(false);
-
-  // ─── أنيميشن الرادار ───
+  // ─── Radar animation ───
   useEffect(() => {
     if (phase !== 'active') return;
-    const interval = setInterval(() => {
-      setRadarAngle(prev => (prev + 3) % 360);
+    const id = setInterval(() => {
+      radarAngle.current = (radarAngle.current + 3) % 360;
+      if (radarRef.current) {
+        radarRef.current.style.background = `conic-gradient(from ${radarAngle.current}deg, transparent 0deg, rgba(34,197,94,0.35) 40deg, transparent 80deg)`;
+      }
     }, 50);
-    return () => clearInterval(interval);
+    return () => clearInterval(id);
   }, [phase]);
 
-  // ─── Cleanup عند unmount ───
-  useEffect(() => {
-    return () => {
-      cleanups.current.forEach(fn => fn());
-      stopFakeAlerts();
-      stopShieldGPS();
-      stopVibration();
-      const st = useStore.getState();
-      const hasActive = st.sessions.some(s => s.status === 'active');
-      if (!hasActive) {
-        try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch { /* */ }
-      }
-    };
-  }, []);
-
-  // ─── استعادة الدرع بعد refresh ───
+  // ─── Load saved state ───
   useEffect(() => {
     const saved = loadShieldState();
     if (saved?.isActive && saved.garageId === garageId) {
       setShieldCode(saved.shieldCode);
+      setPhone(saved.phone ?? '');
       setPhase('active');
     }
   }, [garageId]);
 
-  // ─── بدء الوضع النشط ───
-  const startActiveMode = useCallback((code: string | null) => {
-    if (activeStarted.current) return;
-    activeStarted.current = true;
+  // ─── Start GPS + Fake Alerts when active ───
+  useEffect(() => {
+    if (phase !== 'active') return;
+
+    const cleanupGPS = startShieldGPS({
+      parkingLat, parkingLng,
+      onGeofenceBreach: (dist) => {
+        setBreachDistance(Math.round(dist));
+        setPhase('breach');
+        playUrgentSound();
+        vibrateUrgent();
+        sendLocalNotification('🚨 إنذار سرقة!', `السيارة خرجت ${Math.round(dist)}م من نطاق الحماية!`);
+      },
+    });
 
     startFakeAlerts(
       (alert) => {
-        setAlerts(prev => [...prev.slice(-4), alert]);
-        setTimeout(() => setAlerts(prev => prev.filter(a => a !== alert)), 8000);
-        sendLocalNotification(
-          `${alert.icon} ${alert.title}`,
-          alert.body,
-          `shield-${alert.type}`,
-        );
+        setAlerts(prev => [alert, ...prev].slice(0, 5));
+        sendLocalNotification(alert.title, alert.body);
         playNormalAlert();
       },
       {
         onWarningResolved: (_w, resolved) => {
-          setAlerts(prev => [...prev.filter(a => a.type !== 'warning'), resolved]);
-          setTimeout(() => setAlerts(prev => prev.filter(a => a !== resolved)), 6000);
-          sendLocalNotification(
-            `${resolved.icon} ${resolved.title}`,
-            resolved.body,
-            'shield-resolved',
-          );
+          setAlerts(prev => [resolved, ...prev].slice(0, 5));
+          sendLocalNotification(resolved.title, resolved.body);
         },
       },
     );
 
-    const stopGPS = startShieldGPS({
-      parkingLat: garageLat,
-      parkingLng: garageLng,
-      onGeofenceBreach: () => {
-        if (breachFired.current) return;
-        breachFired.current = true;
-        stopFakeAlerts();
-        setPhase('breach');
-        playUrgentSound();
-        vibrateUrgent();
-        sendLocalNotification(
-          '🚨 إنذار سرقة!',
-          'السيارة خرجت من نطاق الجراج! افتح التطبيق فوراً',
-          'shield-breach',
-        );
-      },
-    });
-    cleanups.current.push(stopGPS);
+    return () => {
+      cleanupGPS();
+      stopFakeAlerts();
+    };
+  }, [phase, parkingLat, parkingLng]);
 
-    saveShieldState({
-      isActive: true,
-      shieldCode: code,
-      phone: currentUser?.phone ?? null,
-      garageId,
-      parkingLat: garageLat,
-      parkingLng: garageLng,
-      learnedVibration: true,
-    });
-  }, [garageId, garageLat, garageLng, currentUser]);
-
+  // ─── Cleanup on unmount ───
   useEffect(() => {
-    if (phase === 'active') startActiveMode(shieldCode);
-  }, [phase, shieldCode, startActiveMode]);
+    return () => {
+      testTimersRef.current.forEach(clearTimeout);
+    };
+  }, []);
 
-  // ═══════════════════════════════════════════════════════════
-  // 🎯 HANDLERS
-  // ═══════════════════════════════════════════════════════════
+  // ─── Handlers ───
+  const handleYes = useCallback(async () => {
+    unlockAudio();
+    await requestNotificationPermission();
+    try { await subscribeToPush(); } catch { /* */ }
 
-  const handleYes = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      await requestNotificationPermission();
-      unlockAudio();
-      await subscribeToPush().catch(() => {});
-
-      const charge = await chargeShieldFee();
-      if (!charge.success) {
-        if (walletBalance < SHIELD_COST) {
-          setError('رصيدك مش كافي — شحن المحفظة الأول');
-          return;
-        }
-        setError('حصل مشكلة في الخصم');
-        return;
-      }
-
-      const cost = charge.isFree ? 0 : SHIELD_COST;
-      await updateSessionShieldCost(sessionId, cost);
-
-      const result = await activateShield(currentUser?.phone ?? '');
-      if (!result.success) { setError('فشل تفعيل الدرع'); return; }
-
-      setShieldCode(result.code ?? null);
-
-      // حذف vibration — نروح active مباشرة أو register لو مفيش رقم
-      const saved = loadShieldState();
-      if (!saved?.phone && !currentUser?.phone) {
-        setPhase('register');
-      } else {
-        setPhase('active');
-      }
-    } catch (e) {
-      console.error('Shield error:', e);
-      setError('حصل مشكلة — جرّب تاني');
-    } finally {
-      setLoading(false);
+    const ok = onDeductWallet(SHIELD_COST, 'درع حماية السيارة');
+    if (!ok) {
+      onNavigateToWallet();
+      return;
     }
-  };
+    if (userPhone) {
+      const code = 'SH-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+      setShieldCode(code);
+      setPhase('active');
+      saveShieldState({ isActive: true, shieldCode: code, phone: userPhone, garageId, parkingLat, parkingLng });
+    } else {
+      setPhase('register');
+    }
+  }, [userPhone, garageId, parkingLat, parkingLng, onDeductWallet, onNavigateToWallet]);
 
-  const handleNo = () => setPhase('dismissed');
-
-  const handleRegister = () => {
-    if (!phone || phone.length < 11) { setError('اكتب رقم موبايل صحيح'); return; }
-    setError(null);
-    setPhase('active'); // مباشرة بدون vibration
-  };
-
-  const handleBreachSafe = () => {
-    breachFired.current = false;
-    stopVibration();
-    activeStarted.current = false;
+  const handleRegister = useCallback(() => {
+    if (phone.length < 10) return;
+    const code = 'SH-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+    setShieldCode(code);
     setPhase('active');
-  };
+    saveShieldState({ isActive: true, shieldCode: code, phone, garageId, parkingLat, parkingLng });
+  }, [phone, garageId, parkingLat, parkingLng]);
 
-  const handleBreachTheft = () => {
-    const emergency = currentUser?.phone ?? phone;
-    alert(`🚨 تم إرسال إنذار سرقة!\nسيتم التواصل مع ${emergency}`);
-  };
+  const handleIamDriving = useCallback(() => {
+    stopVibration();
+    destroyShield();
+    setPhase('dismissed');
+  }, []);
 
-  // ═══════════════════════════════════════════════════════════
-  // 🎨 RENDER
-  // ═══════════════════════════════════════════════════════════
+  const handleTheft = useCallback(() => {
+    stopVibration();
+    sendLocalNotification('🚨 تم الإبلاغ عن سرقة!', 'سيتم التواصل معك فوراً');
+    destroyShield();
+    setPhase('dismissed');
+  }, []);
+
+  // ═══════════════════════════════════════════════════════
+  // 🧪 Test Mode — تجربة الدرع في 30 ثانية
+  // ═══════════════════════════════════════════════════════
+  const runTest = useCallback(() => {
+    if (isTesting) return;
+    setIsTesting(true);
+    testTimersRef.current.forEach(clearTimeout);
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    const pushAlert = (alert: FakeAlert) => {
+      setAlerts(prev => [alert, ...prev].slice(0, 5));
+      sendLocalNotification(alert.title, alert.body);
+      playNormalAlert();
+    };
+
+    // 3s: status
+    timers.push(setTimeout(() => {
+      pushAlert({ type: 'status', title: '🛡️ الدرع نشط', body: 'كل الحساسات شغالة', icon: '🛡️' });
+    }, 3000));
+
+    // 8s: warning
+    timers.push(setTimeout(() => {
+      pushAlert({ type: 'warning', title: '⚠️ تنبيه أمني', body: 'شخص يقترب من باب السائق', icon: '⚠️' });
+    }, 8000));
+
+    // 13s: resolved
+    timers.push(setTimeout(() => {
+      pushAlert({ type: 'resolved', title: '✅ تم الحل', body: 'كان شخص بيمر جنب العربية', icon: '✅' });
+    }, 13000));
+
+    // 18s: qrScan
+    timers.push(setTimeout(() => {
+      pushAlert({ type: 'qrScan', title: '📱 مسح QR', body: 'شخص مسح كود الاستيكر — تم تسجيله', icon: '📱' });
+    }, 18000));
+
+    // 25s: إنذار سرقة حقيقي!
+    timers.push(setTimeout(() => {
+      setBreachDistance(312);
+      setPhase('breach');
+      playUrgentSound();
+      vibrateUrgent();
+      sendLocalNotification('🚨 إنذار سرقة!', 'السيارة خرجت 312م من نطاق الحماية!');
+    }, 25000));
+
+    testTimersRef.current = timers;
+  }, [isTesting]);
+
+  const stopTest = useCallback(() => {
+    testTimersRef.current.forEach(clearTimeout);
+    testTimersRef.current = [];
+    setIsTesting(false);
+    stopVibration();
+    if (phase === 'breach') setPhase('active');
+  }, [phase]);
+
+  // ─── Dismissed ───
   if (phase === 'dismissed') return null;
 
-  // ─── ACTIVE: رادار فوق العداد ───
-  if (phase === 'active') {
-    return (
-      <div className="w-full flex flex-col items-center" dir="rtl">
-        {/* 🛡️ الرادار */}
-        <div className="relative mb-4">
-          <div
-            className="w-32 h-32 rounded-full relative overflow-hidden"
-            style={{
-              background: 'radial-gradient(circle, #061224 0%, #0a1628 60%, #0d1f3c 100%)',
-              border: '2px solid rgba(59,130,246,0.3)',
-              boxShadow: `
-                0 0 30px rgba(59,130,246,0.15),
-                inset 0 0 20px rgba(59,130,246,0.08)
-              `,
-            }}
-          >
-            {/* الحلقات الداخلية */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              {[40, 28, 16].map((size, i) => (
-                <div
-                  key={i}
-                  className="absolute rounded-full"
-                  style={{
-                    width: `${size * 2}px`,
-                    height: `${size * 2}px`,
-                    border: `1px solid rgba(59,130,246,${0.1 + i * 0.05})`,
-                  }}
-                />
-              ))}
+  // ═══════════════════════════════════════════════════════
+  // 🎨 RENDER
+  // ═══════════════════════════════════════════════════════
+  return (
+    <div className="w-full flex flex-col items-center gap-3 py-3">
+
+      {/* ─── ASK ─── */}
+      {phase === 'ask' && (
+        <div className="w-full bg-gradient-to-br from-blue-950/60 to-slate-900/60 border border-blue-500/30 rounded-2xl p-4 backdrop-blur-sm">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center">
+              <Shield className="w-7 h-7 text-blue-400" />
             </div>
-
-            {/* الخطوط المتقاطعة */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="absolute w-full h-[1px]" style={{ background: 'rgba(59,130,246,0.12)' }} />
-              <div className="absolute h-full w-[1px]" style={{ background: 'rgba(59,130,246,0.12)' }} />
+            <div>
+              <h3 className="text-white font-bold text-base">فعّل درع حماية السيارة</h3>
+              <p className="text-blue-300/70 text-xs">مراقبة ذكية + إنذار سرقة فوري</p>
             </div>
-
-            {/* شعاع الرادار الدوّار */}
-            <div
-              className="absolute inset-0"
-              style={{
-                background: `conic-gradient(
-                  from ${radarAngle}deg at 50% 50%,
-                  transparent 0deg,
-                  rgba(140,198,63,0.4) 30deg,
-                  rgba(140,198,63,0.15) 60deg,
-                  transparent 90deg,
-                  transparent 360deg
-                )`,
-              }}
-            />
-
-            {/* النقطة المركزية */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div
-                className="w-2.5 h-2.5 rounded-full animate-pulse"
-                style={{
-                  background: '#8cc63f',
-                  boxShadow: '0 0 10px #8cc63f, 0 0 20px rgba(140,198,63,0.4)',
-                }}
-              />
-            </div>
-
-            {/* نقاط وهمية على الرادار */}
-            {[
-              { x: 65, y: 30, size: 4, opacity: 0.6 },
-              { x: 25, y: 70, size: 3, opacity: 0.4 },
-              { x: 80, y: 75, size: 3, opacity: 0.3 },
-            ].map((dot, i) => (
-              <div
-                key={i}
-                className="absolute rounded-full animate-pulse"
-                style={{
-                  left: `${dot.x}%`,
-                  top: `${dot.y}%`,
-                  width: dot.size,
-                  height: dot.size,
-                  background: '#3b82f6',
-                  opacity: dot.opacity,
-                  boxShadow: `0 0 6px rgba(59,130,246,${dot.opacity})`,
-                  animationDelay: `${i * 0.5}s`,
-                }}
-              />
-            ))}
           </div>
-
-          {/* بادج الحالة تحت الرادار */}
-          <div
-            className="absolute -bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap px-3 py-1 rounded-full flex items-center gap-1.5"
-            style={{
-              background: 'linear-gradient(135deg, #166534 0%, #15803d 100%)',
-              boxShadow: '0 2px 10px rgba(22,101,52,0.4)',
-              border: '1px solid rgba(140,198,63,0.3)',
-            }}
-          >
-            <span
-              className="w-1.5 h-1.5 rounded-full animate-pulse"
-              style={{ background: '#86efac', boxShadow: '0 0 6px #86efac' }}
-            />
-            <span className="text-[9px] font-black text-green-100">🛡️ الدرع نشط</span>
-            {shieldCode && (
-              <>
-                <span className="w-px h-2.5 bg-green-400/30" />
-                <span className="text-[8px] font-mono font-bold text-green-300/70">{shieldCode}</span>
-              </>
-            )}
+          <div className="flex gap-2">
+            <button
+              onClick={handleYes}
+              className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-sm transition-all active:scale-95"
+            >
+              🛡️ تفعيل ({SHIELD_COST} ج)
+            </button>
+            <button
+              onClick={() => setPhase('dismissed')}
+              className="px-4 bg-slate-700/50 text-slate-400 rounded-xl text-sm hover:bg-slate-700 transition-all"
+            >
+              لا
+            </button>
           </div>
         </div>
+      )}
 
-        {/* 📬 الإشعارات الوهمية */}
-        <AnimatePresence>
+      {/* ─── REGISTER ─── */}
+      {phase === 'register' && (
+        <div className="w-full bg-gradient-to-br from-blue-950/60 to-slate-900/60 border border-blue-500/30 rounded-2xl p-4 backdrop-blur-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <Phone className="w-5 h-5 text-blue-400" />
+            <h3 className="text-white font-bold text-sm">رقم الموبايل للطوارئ</h3>
+          </div>
+          <input
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="01xxxxxxxxx"
+            className="w-full bg-slate-800/80 border border-slate-600 rounded-xl px-4 py-2.5 text-white text-center text-lg tracking-widest mb-3 focus:border-blue-500 focus:outline-none"
+            maxLength={11}
+            dir="ltr"
+          />
+          <button
+            onClick={handleRegister}
+            disabled={phone.length < 10}
+            className="w-full bg-blue-600 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-2.5 rounded-xl text-sm transition-all active:scale-95"
+          >
+            تفعيل الدرع الآن
+          </button>
+        </div>
+      )}
+
+      {/* ─── ACTIVE (رادار فوق العداد) ─── */}
+      {phase === 'active' && (
+        <div className="flex flex-col items-center gap-2">
+          {/* Radar */}
+          <div className="relative" style={{ width: 128, height: 128 }}>
+            <div
+              ref={radarRef}
+              className="absolute inset-0 rounded-full"
+              style={{ background: 'conic-gradient(from 0deg, transparent 0deg, rgba(34,197,94,0.35) 40deg, transparent 80deg)' }}
+            />
+            {/* Rings */}
+            <div className="absolute inset-2 rounded-full border border-green-500/20" />
+            <div className="absolute inset-5 rounded-full border border-green-500/15" />
+            <div className="absolute inset-8 rounded-full border border-green-500/10" />
+            {/* Cross */}
+            <div className="absolute top-1/2 left-0 right-0 h-px bg-green-500/10" />
+            <div className="absolute left-1/2 top-0 bottom-0 w-px bg-green-500/10" />
+            {/* Center dot */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-green-400 animate-pulse shadow-lg shadow-green-400/50" />
+            {/* Fake blips */}
+            <div className="absolute w-1.5 h-1.5 rounded-full bg-green-300/60" style={{ top: '25%', left: '65%' }} />
+            <div className="absolute w-1 h-1 rounded-full bg-green-300/40" style={{ top: '70%', left: '25%' }} />
+            <div className="absolute w-1 h-1 rounded-full bg-green-300/50" style={{ top: '60%', left: '75%' }} />
+          </div>
+
+          {/* Badge */}
+          <div className="flex items-center gap-1.5 bg-green-950/50 border border-green-500/30 rounded-full px-3 py-1">
+            <ShieldCheck className="w-3.5 h-3.5 text-green-400" />
+            <span className="text-green-400 text-xs font-bold">الدرع نشط</span>
+            {shieldCode && <span className="text-green-600 text-[10px] font-mono">{shieldCode}</span>}
+          </div>
+
+          {/* Test Button */}
+          <div className="flex gap-2 mt-1">
+            {!isTesting ? (
+              <button
+                onClick={runTest}
+                className="flex items-center gap-1.5 bg-amber-950/40 border border-amber-500/30 text-amber-400 text-xs font-bold px-3 py-1.5 rounded-full hover:bg-amber-900/40 transition-all active:scale-95"
+              >
+                🧪 تجربة الدرع (30 ث)
+              </button>
+            ) : (
+              <button
+                onClick={stopTest}
+                className="flex items-center gap-1.5 bg-red-950/40 border border-red-500/30 text-red-400 text-xs font-bold px-3 py-1.5 rounded-full hover:bg-red-900/40 transition-all active:scale-95 animate-pulse"
+              >
+                ⏹️ إيقاف التجربة
+              </button>
+            )}
+          </div>
+
+          {/* Alerts Feed */}
           {alerts.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="w-full max-w-sm space-y-1.5 mt-2"
-            >
+            <div className="w-full max-w-xs space-y-1.5 mt-1">
               {alerts.map((a, i) => (
-                <motion.div
-                  key={`${a.type}-${i}-${a.body}`}
-                  initial={{ x: 80, opacity: 0, scale: 0.9 }}
-                  animate={{ x: 0, opacity: 1, scale: 1 }}
-                  exit={{ x: -80, opacity: 0, scale: 0.9 }}
-                  transition={{ type: 'spring', damping: 20 }}
-                  className={`rounded-xl px-3 py-2 flex items-center gap-2 border ${
+                <div
+                  key={i}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs border ${
                     a.type === 'warning'
-                      ? 'bg-red-950/40 border-red-500/30 text-red-300'
+                      ? 'bg-amber-950/40 border-amber-500/30 text-amber-300'
                       : a.type === 'resolved'
-                        ? 'bg-green-950/40 border-green-500/30 text-green-300'
-                        : a.type === 'qrScan'
-                          ? 'bg-purple-950/40 border-purple-500/30 text-purple-300'
-                          : 'bg-blue-950/40 border-blue-500/30 text-blue-300'
+                      ? 'bg-green-950/40 border-green-500/30 text-green-300'
+                      : a.type === 'qrScan'
+                      ? 'bg-purple-950/40 border-purple-500/30 text-purple-300'
+                      : a.type === 'report'
+                      ? 'bg-blue-950/40 border-blue-500/30 text-blue-300'
+                      : 'bg-slate-800/40 border-slate-600/30 text-slate-300'
                   }`}
-                  style={{
-                    backdropFilter: 'blur(8px)',
-                    boxShadow: a.type === 'warning'
-                      ? '0 2px 10px rgba(239,68,68,0.1)'
-                      : '0 2px 8px rgba(0,0,0,0.2)',
-                  }}
                 >
-                  <span className="text-sm">{a.icon}</span>
-                  <span className="flex-1 text-[10px] font-bold leading-snug">{a.body}</span>
-                </motion.div>
+                  <span>{a.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="font-bold">{a.title}</span>
+                    <span className="text-[10px] opacity-70 mr-1">— {a.body}</span>
+                  </div>
+                </div>
               ))}
-            </motion.div>
+            </div>
           )}
-        </AnimatePresence>
-      </div>
-    );
-  }
+        </div>
+      )}
 
-  // ─── باقي الـ phases (ask, register, breach) ───
-  return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[9999] flex items-end justify-center pointer-events-none"
-        dir="rtl"
-      >
-        {/* ─── ASK ─── */}
-        {phase === 'ask' && (
-          <motion.div
-            initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            className="pointer-events-auto w-full max-w-md mx-4 mb-6 bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden"
-            style={{ boxShadow: '0 -8px 40px rgba(0,0,0,0.15)' }}
-          >
-            <div className="bg-gradient-to-l from-blue-600 to-blue-700 px-6 py-5 text-white">
-              <div className="flex items-center gap-3">
-                <span className="text-3xl">🛡️</span>
-                <div>
-                  <h3 className="text-lg font-black">درع حماية السيارة</h3>
-                  <p className="text-blue-100 text-xs font-bold mt-0.5">حماية ذكية 24 ساعة لسيارتك</p>
-                </div>
-              </div>
+      {/* ─── BREACH (إنذار سرقة) ─── */}
+      {phase === 'breach' && (
+        <div className="w-full bg-red-950/80 border-2 border-red-500 rounded-2xl p-4 animate-pulse backdrop-blur-sm">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-12 h-12 rounded-full bg-red-500/30 flex items-center justify-center animate-bounce">
+              <Siren className="w-7 h-7 text-red-400" />
             </div>
-
-            <div className="px-6 py-5 space-y-3">
-              {[
-                'مراقبة ذكية بالذكاء الاصطناعي',
-                'إنذار فوري لو حد لمس العربية',
-                'تتبع الموقع الجغرافي',
-              ].map(t => (
-                <div key={t} className="flex items-start gap-2 text-sm text-slate-600">
-                  <span className="text-green-500 mt-0.5">✓</span><span>{t}</span>
-                </div>
-              ))}
-
-              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mt-3">
-                <p className="text-xs font-bold text-amber-800">
-                  💰 أول مرة: <span className="text-green-600">مجاناً</span>
-                  {' '}| بعدها: <span className="text-blue-700">{SHIELD_COST} ج.م</span>/جلسة
-                </p>
-              </div>
-
-              {error && (
-                <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2">
-                  <p className="text-xs font-bold text-red-600">{error}</p>
-                  {error.includes('رصيدك') && (
-                    <button
-                      onClick={onNavigateToWallet}
-                      className="mt-2 text-xs font-black text-blue-600 underline"
-                    >
-                      شحن المحفظة الآن ←
-                    </button>
-                  )}
-                </div>
-              )}
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={handleYes}
-                  disabled={loading}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-black py-3.5 rounded-2xl text-sm active:scale-95 transition-all"
-                >
-                  {loading ? '⏳ جاري التفعيل...' : '🛡️ نعم، فعّل الدرع'}
-                </button>
-                <button
-                  onClick={handleNo}
-                  disabled={loading}
-                  className="px-5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black py-3.5 rounded-2xl text-sm active:scale-95 transition-all"
-                >
-                  لأ
-                </button>
-              </div>
+            <div>
+              <h3 className="text-red-300 font-black text-lg">🚨 إنذار سرقة!</h3>
+              <p className="text-red-400/80 text-xs">السيارة خرجت {breachDistance}م من نطاق الحماية</p>
             </div>
-          </motion.div>
-        )}
-
-        {/* ─── REGISTER ─── */}
-        {phase === 'register' && (
-          <motion.div
-            initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            className="pointer-events-auto w-full max-w-md mx-4 mb-6 bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden"
-          >
-            <div className="bg-gradient-to-l from-green-600 to-green-700 px-6 py-5 text-white">
-              <h3 className="text-lg font-black">📱 رقم الطوارئ</h3>
-              <p className="text-green-100 text-xs font-bold mt-1">
-                هنرسل عليه إنذار لو حصل حاجة (مرة واحدة بس)
-              </p>
-            </div>
-            <div className="px-6 py-5 space-y-4">
-              <input
-                type="tel"
-                value={phone}
-                onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
-                placeholder="01XXXXXXXXX"
-                className="w-full border-2 border-slate-200 rounded-2xl px-4 py-3.5 text-center text-lg font-black tracking-widest focus:border-blue-500 focus:outline-none"
-                dir="ltr"
-              />
-              {error && <p className="text-xs font-bold text-red-500 text-center">{error}</p>}
-              <button
-                onClick={handleRegister}
-                className="w-full bg-green-600 hover:bg-green-700 text-white font-black py-3.5 rounded-2xl text-sm active:scale-95 transition-all"
-              >
-                ✅ تأكيد ومتابعة
-              </button>
-            </div>
-          </motion.div>
-        )}
-
-        {/* ─── BREACH 🚨 ─── */}
-        {phase === 'breach' && (
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="pointer-events-auto fixed inset-0 z-[99999] bg-red-900/95 flex flex-col items-center justify-center p-8 text-white"
-          >
-            <motion.div
-              animate={{ scale: [1, 1.15, 1] }}
-              transition={{ repeat: Infinity, duration: 0.7 }}
-              className="text-8xl mb-6"
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleIamDriving}
+              className="flex-1 bg-green-700 hover:bg-green-600 text-white font-bold py-3 rounded-xl text-sm transition-all active:scale-95 flex items-center justify-center gap-1.5"
             >
-              🚨
-            </motion.div>
-            <h2 className="text-2xl font-black mb-2">إنذار سرقة!</h2>
-            <p className="text-red-200 text-sm font-bold mb-8 text-center leading-relaxed">
-              العربية خرجت من نطاق الجراج!
-              <br />
-              لو مش أنت اللي سايق، فعّل الإنذار فوراً
-            </p>
-            <div className="w-full max-w-sm space-y-3">
-              <button
-                onClick={handleBreachSafe}
-                className="w-full bg-green-600 hover:bg-green-700 text-white font-black py-4 rounded-2xl text-base active:scale-95 transition-all"
-              >
-                ✅ أنا اللي سايق — كلو أمان
-              </button>
-              <button
-                onClick={handleBreachTheft}
-                className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl text-base active:scale-95 transition-all border-2 border-red-400"
-              >
-                🚨 مش أنا! سرقة!
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </motion.div>
-    </AnimatePresence>
+              <Car className="w-4 h-4" />
+              أنا اللي سايق
+            </button>
+            <button
+              onClick={handleTheft}
+              className="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl text-sm transition-all active:scale-95 flex items-center justify-center gap-1.5"
+            >
+              <AlertTriangle className="w-4 h-4" />
+              سرقة!
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
