@@ -431,7 +431,8 @@ export default function GarageListScreen() {
     }
 
     // 💡 حالة 2: حجز جديد لأول مرة (ولم يستوفِ الحد الأقصى) -> فحص الرصيد
-    if (!isFreeToday && userWallet < BOOKING_FEE) {
+    const MIN_REQUIRED_BALANCE = 10; // حجز 3 + درع 7
+if (!isFreeToday && userWallet < MIN_REQUIRED_BALANCE) {
       setPendingVipGarage(garage);
       setShowInsufficientModal(true);
       return;
@@ -777,7 +778,7 @@ export default function GarageListScreen() {
         )}
       </div>
 
-      {/* ═══════════════════════════════════════════════════
+{/* ═══════════════════════════════════════════════════
            💰 مودال "رصيدك غير كافي"
          ═══════════════════════════════════════════════════ */}
       <AnimatePresence>
@@ -798,7 +799,7 @@ export default function GarageListScreen() {
 
               <h3 className="text-base font-black mb-1" style={{ color: BRAND.blueDark }}>رصيدك غير كافي 💳</h3>
               <p className="text-xs font-bold mb-4 leading-relaxed" style={{ color: BRAND.slate }}>
-                محتاج {BOOKING_FEE} ج.م رسوم حجز لضمان ركنتك في <b style={{ color: BRAND.navy }}>{pendingVipGarage.name}</b>
+                محتاج <b style={{ color: BRAND.blue }}>10 ج.م</b> على الأقل عشان تحجز وتفعّل درع الحماية في <b style={{ color: BRAND.navy }}>{pendingVipGarage.name}</b>
               </p>
 
               <div className="rounded-xl p-3 mb-4 text-right" style={{ background: '#f8fafc', border: `1.5px solid ${BRAND.border}` }}>
@@ -810,13 +811,21 @@ export default function GarageListScreen() {
                   <span className="font-mono font-black text-sm" style={{ color: BRAND.blue }}>{BOOKING_FEE} ج.م</span>
                   <span className="text-[11px] font-black" style={{ color: BRAND.slate }}>🅿️ رسوم الحجز</span>
                 </div>
+                <div className="flex justify-between items-center mb-2 pb-2" style={{ borderBottom: `1px solid ${BRAND.border}` }}>
+                  <span className="font-mono font-black text-sm" style={{ color: '#8b5cf6' }}>7 ج.م</span>
+                  <span className="text-[11px] font-black" style={{ color: BRAND.slate }}>🛡️ درع الحماية</span>
+                </div>
+                <div className="flex justify-between items-center mb-2 pb-2" style={{ borderBottom: `1px solid ${BRAND.border}` }}>
+                  <span className="font-mono font-black text-sm" style={{ color: BRAND.green }}>10 ج.م</span>
+                  <span className="text-[11px] font-black" style={{ color: BRAND.slate }}>📋 الإجمالي المطلوب</span>
+                </div>
                 <div className="flex justify-between items-center">
-                  <span className="font-mono font-black text-amber-600 text-sm">{Math.max(0, BOOKING_FEE - (currentUser?.wallet || 0))} ج.م</span>
+                  <span className="font-mono font-black text-amber-600 text-sm">{Math.max(0, 10 - (currentUser?.wallet || 0))} ج.م</span>
                   <span className="text-[11px] font-black" style={{ color: BRAND.slate }}>📊 محتاج تشحن</span>
                 </div>
               </div>
 
-              <p className="text-[11px] font-black mb-3 text-right" style={{ color: BRAND.blueDark }}>⚡ اشحن دلوقتي واحجز ركنتك:</p>
+              <p className="text-[11px] font-black mb-3 text-right" style={{ color: BRAND.blueDark }}>⚡ اشحن دلوقتي واحجز ركنتك مع حماية كاملة:</p>
 
               <div className="grid grid-cols-2 gap-2 mb-4">
                 {TOPUP_TIERS.map((tier) => (
@@ -873,9 +882,8 @@ export default function GarageListScreen() {
             </motion.div>
           </div>
         )}
-      </AnimatePresence>
-
-      {/* ═══ القائمة الذكية الجانبية ═══ */}
+      </AnimatePresence> 
+     {/* ═══ القائمة الذكية الجانبية ═══ */}
       <AnimatePresence>
         {showSmartMenu && (
           <div className="fixed inset-0 z-[1500] flex items-end" style={{ background: 'rgba(10,22,40,0.6)', backdropFilter: 'blur(4px)' }} onClick={() => setShowSmartMenu(false)}>

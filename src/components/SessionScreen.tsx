@@ -5,7 +5,6 @@ import {
   Car,
   Sparkles,
   MapPin,
-  Wallet,
 } from 'lucide-react';
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
@@ -28,7 +27,6 @@ const BRAND = {
 };
 
 const AUTO_END_SECONDS = 6 * 60 * 60;
-const MIN_WALLET_BALANCE = 10; // 💰 الحد الأدنى للرصيد
 
 const safeParseTime = (value: any): number => {
   if (!value) return 0;
@@ -51,7 +49,7 @@ const formatTime = (seconds: number): string => {
 };
 
 /* ═══════════════════════════════════════════════════════════
-   ⚡ LiveSessionTimer — المكوّن الوحيد اللي بيتحدث كل ثانية
+   ⚡ LiveSessionTimer
    ═══════════════════════════════════════════════════════════ */
 const LiveSessionTimer = memo(function LiveSessionTimer({
   activeStartMs,
@@ -104,7 +102,6 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
 
   return (
     <>
-      {/* ⏰ العداد الدائري */}
       <div className="relative mb-5">
         <div
           className="w-60 h-60 sm:w-64 sm:h-64 rounded-full flex flex-col items-center justify-center border-[3px] relative"
@@ -125,22 +122,16 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
             className="absolute inset-3 rounded-full border-2 opacity-25 pointer-events-none"
             style={{ borderColor: BRAND.green, borderStyle: 'dashed' }}
           />
-
           <div className="flex items-center gap-1.5 mb-2">
-            <span
-              className="w-1.5 h-1.5 rounded-full animate-pulse"
-              style={{ background: BRAND.green }}
-            />
+            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: BRAND.green }} />
             <Clock size={26} style={{ color: BRAND.green }} />
           </div>
-
           <div
             className="text-[42px] sm:text-[46px] font-black font-mono text-white leading-none tracking-wider dir-ltr"
             style={{ textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}
           >
             {formatTime(elapsed)}
           </div>
-
           <div
             className="text-[10px] font-black mt-3 px-3.5 py-1 rounded-full"
             style={{
@@ -155,7 +146,6 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
         </div>
       </div>
 
-      {/* 🚨 تنبيه الإنهاء التلقائي */}
       {showAutoEndWarning && (
         <div
           className="w-full max-w-md rounded-xl px-3.5 py-2.5 mb-3 text-center border-2"
@@ -175,121 +165,7 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
 });
 
 /* ═══════════════════════════════════════════════════════════
-   💰 LowBalanceScreen — شاشة الرصيد الناقص
-   ═══════════════════════════════════════════════════════════ */
-const LowBalanceScreen = memo(function LowBalanceScreen({
-  currentBalance,
-  onNavigateToWallet,
-}: {
-  currentBalance: number;
-  onNavigateToWallet: () => void;
-}) {
-  return (
-    <div
-      className="h-full text-white flex flex-col items-center justify-center p-8 dir-rtl"
-      style={{
-        background: `
-          radial-gradient(ellipse at top, #1a1a2e 0%, #0a1628 60%),
-          radial-gradient(ellipse at bottom, rgba(239,68,68,0.08) 0%, transparent 60%)
-        `,
-      }}
-    >
-      <style>{`
-        @keyframes shimmerBtn {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(100%); }
-        }
-        @keyframes pulseGlow {
-          0%, 100% { box-shadow: 0 0 20px rgba(239,68,68,0.15); }
-          50% { box-shadow: 0 0 40px rgba(239,68,68,0.3); }
-        }
-      `}</style>
-
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: 'spring', damping: 15 }}
-        className="text-center max-w-sm"
-      >
-        {/* أيقونة المحفظة */}
-        <div
-          className="w-24 h-24 rounded-full mx-auto mb-6 flex items-center justify-center"
-          style={{
-            background: 'linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(239,68,68,0.05) 100%)',
-            border: '2px solid rgba(239,68,68,0.3)',
-            animation: 'pulseGlow 2s ease-in-out infinite',
-          }}
-        >
-          <Wallet size={40} className="text-red-400" />
-        </div>
-
-        <h2 className="text-xl font-black text-white mb-2">رصيدك مش كافي</h2>
-        <p className="text-slate-400 text-sm font-bold mb-3 leading-relaxed">
-          رصيدك الحالي في المحفظة
-        </p>
-
-        {/* الرصيد الحالي */}
-        <div
-          className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-full mb-5"
-          style={{
-            background: 'rgba(239,68,68,0.1)',
-            border: '1px solid rgba(239,68,68,0.3)',
-          }}
-        >
-          <span className="font-mono font-black text-2xl text-red-400">
-            {currentBalance.toFixed(0)}
-          </span>
-          <span className="text-red-400/70 font-bold text-sm">ج.م</span>
-        </div>
-
-        <div
-          className="w-full rounded-2xl p-4 mb-6 border"
-          style={{
-            background: 'rgba(245, 158, 11, 0.08)',
-            borderColor: 'rgba(245, 158, 11, 0.25)',
-          }}
-        >
-          <p className="text-amber-300 text-xs font-black mb-1.5">
-            ⚠️ الحد الأدنى للاستخدام: {MIN_WALLET_BALANCE} ج.م
-          </p>
-          <p className="text-slate-400 text-[11px] font-bold leading-relaxed">
-            اشحن محفظتك الأول لتقدر تستخدم الدرع وتدفع الجلسات بسهولة.
-            جلستك الحالية هتفضل محفوظة.
-          </p>
-        </div>
-
-        {/* زرار الشحن */}
-        <motion.button
-          whileTap={{ scale: 0.95 }}
-          onClick={onNavigateToWallet}
-          className="w-full py-4 rounded-2xl text-white font-black text-base relative overflow-hidden"
-          style={{
-            background: 'linear-gradient(135deg, #1656b8 0%, #0f3d85 100%)',
-            boxShadow: '0 8px 24px rgba(22,86,184,0.4), inset 0 1px 0 rgba(255,255,255,0.15)',
-          }}
-        >
-          <div
-            className="absolute inset-0 opacity-20"
-            style={{
-              background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%)',
-              animation: 'shimmerBtn 2s infinite',
-            }}
-          />
-          <span className="relative z-10 flex items-center justify-center gap-2">
-            💳 اشحن المحفظة الآن
-          </span>
-        </motion.button>
-
-        <p className="text-slate-500 text-[10px] font-bold mt-4">
-          الجلسة هتفضل شغالة — اشحن وارجع كمّل
-        </p>
-      </motion.div>
-    </div>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════
-   📺 SessionScreen — الشاشة الرئيسية
+   📺 SessionScreen
    ═══════════════════════════════════════════════════════════ */
 export default function SessionScreen() {
   const {
@@ -297,6 +173,7 @@ export default function SessionScreen() {
     sessions,
     setScreen,
     currentUser,
+    userWallet,
     fetchAll,
     setSelectedGarageId,
     acknowledgedSessionIds,
@@ -500,48 +377,17 @@ export default function SessionScreen() {
     }
   }, [activeSession, lastCompletedSession, sessions, setScreen, setSelectedGarageId, acknowledgedSessionIds, acknowledgeSession]);
 
-  // ═══════════════════════════════
-  // 💰 شرط الرصيد — لو أقل من 10 ج → شاشة الشحن
-  // (يتفعّل بس لو في جلسة شغالة من التطبيق — مش من السايس)
-  // ═══════════════════════════════
-  const userWallet = currentUser?.wallet ?? 0;
-  const shouldBlockForLowBalance = useMemo(() => {
-    if (!activeSession) return false;
-    // الجلسات من السايس (مش من التطبيق) مش بتتأثر بالرصيد
-    if (activeSession.source !== 'app') return false;
-    return userWallet < MIN_WALLET_BALANCE;
-  }, [activeSession, userWallet]);
-
-  if (shouldBlockForLowBalance) {
-    return (
-      <LowBalanceScreen
-        currentBalance={userWallet}
-        onNavigateToWallet={() => setScreen('list')}
-      />
-    );
-  }
-
-  if (!activeSession) {
-    return (
-      <div className="h-full text-white flex flex-col items-center justify-center p-8 text-right dir-rtl" style={{ background: BRAND.navy }}>
-        <div className="text-5xl mb-4 animate-bounce">⏳</div>
-        <p className="text-slate-200 text-base font-black text-center mb-2">جاري مزامنة بيانات الجلسة...</p>
-        <p className="text-slate-400 text-xs font-black text-center mb-6">ستظهر بيانات العداد فور استلامها من السيرفر</p>
-      </div>
-    );
-  }
+  // ═══════════════════════════════════════════════════════
+  // 🎨 RENDER
+  // ═══════════════════════════════════════════════════════
+  if (!activeSession) return null;
 
   return (
     <motion.div
+      className="h-full flex flex-col bg-slate-950 text-white"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full text-white flex flex-col safe-top safe-bottom dir-rtl overflow-hidden"
-      style={{
-        background: `
-          radial-gradient(ellipse at top, ${BRAND.navyLight} 0%, ${BRAND.navy} 60%),
-          radial-gradient(ellipse at bottom, rgba(22,86,184,0.08) 0%, transparent 60%)
-        `,
-      }}
+      dir="rtl"
     >
       {/* ═══════════════════════════════
           🎯 القسم العلوي — الدرع + العداد
@@ -563,13 +409,12 @@ export default function SessionScreen() {
         </div>
 
         {/* 🛡️ الدرع — فوق العداد مباشرة */}
-        {activeSession && garage && (
+        {garage && (
           <ShieldOverlay
-            sessionId={activeSession.id}
             garageId={activeSession.garageId}
-            garageLat={(garage as any).lat}
-            garageLng={(garage as any).lng}
-            walletBalance={userWallet}
+            parkingLat={(garage as any).lat ?? 30.0444}
+            parkingLng={(garage as any).lng ?? 31.2357}
+            userPhone={currentUser?.phone ?? null}
             onDeductWallet={deductWallet}
             onNavigateToWallet={() => setScreen('list')}
           />
@@ -614,7 +459,6 @@ export default function SessionScreen() {
         }}
       >
         <div className="w-full grid grid-cols-2 gap-3 mb-3">
-          {/* السيارة */}
           <div
             className="border rounded-2xl p-3 text-center"
             style={{
@@ -641,7 +485,6 @@ export default function SessionScreen() {
             </div>
           </div>
 
-          {/* الجراج */}
           {garage && (
             <div
               className="border rounded-2xl p-3 text-center"
