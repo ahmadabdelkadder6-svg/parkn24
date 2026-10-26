@@ -1,8 +1,7 @@
-// ✅ رقم الـ Version - تم التحديث لـ v10 لدعم إشعارات الدرع
-const CACHE_NAME    = 'parkn24-v10';
+// ✅ Version - v11 إصلاح parse إشعارات الدرع
+const CACHE_NAME    = 'parkn24-v11';
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
-// ✅ منع تكرار نفس الإشعار خلال 3 ثوانٍ
 const recentNotifications = new Map();
 const DEDUP_WINDOW_MS     = 3000;
 
@@ -18,7 +17,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 Service Worker Installed (v10)');
+      console.log('📦 Service Worker Installed (v11)');
       return cache.addAll(STATIC_ASSETS);
     })
   );
@@ -32,10 +31,7 @@ self.addEventListener('activate', (event) => {
         Promise.all(
           names
             .filter((n) => n !== CACHE_NAME)
-            .map((n) => {
-              console.log('🗑️ حذف الكاش القديم:', n);
-              return caches.delete(n);
-            })
+            .map((n) => caches.delete(n))
         )
       )
       .then(() => self.clients.claim())
@@ -53,18 +49,14 @@ self.addEventListener('fetch', (event) => {
       .then((response) => {
         if (response && response.status === 200) {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, clone);
-          });
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
         return response;
       })
       .catch(() =>
         caches.match(event.request).then((cached) => {
           if (cached) return cached;
-          if (event.request.mode === 'navigate') {
-            return caches.match('/index.html');
-          }
+          if (event.request.mode === 'navigate') return caches.match('/index.html');
           return new Response('Offline', { status: 503 });
         })
       )
@@ -75,8 +67,8 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('push', (event) => {
   let title     = 'Park\'n 24';
   let body      = '';
-  const icon    = '/icons/icon-192x192.png';
-  const badge   = '/icons/icon-192x192.png';
+  let icon      = '/icons/icon-192x192.png';
+  let badge     = '/icons/icon-192x192.png';
   let tag       = 'parkn24-default';
   let url       = '/';
   let extraData = {};
@@ -86,22 +78,27 @@ self.addEventListener('push', (event) => {
       const payload = event.data.json();
       console.log('📨 Push received in SW:', payload);
 
+      // ═══ إصلاح: خد title/body من أي مكان في الـ payload ═══
+      // 1. من payload.notification (FCM format)
       if (payload.notification) {
         title = payload.notification.title || title;
         body  = payload.notification.body  || body;
       }
 
+      // 2. من الـ root (web-push format — ده اللي الـ cron بيبعته)
+      if (payload.title) title = payload.title;
+      if (payload.body)  body  = payload.body;
+      if (payload.icon)  icon  = payload.icon;
+      if (payload.badge) badge = payload.badge;
+      if (payload.tag)   tag   = payload.tag;
+      if (payload.url)   url   = payload.url;
+
+      // 3. من payload.data
       if (payload.data) {
         extraData = payload.data;
-        tag       = payload.data.tag || payload.tag || tag;
-        url       = payload.data.url || '/';
-      }
-
-      if (!payload.notification && !payload.data) {
-        title = payload.title || title;
-        body  = payload.body  || body;
-        tag   = payload.tag   || tag;
-        url   = payload.url   || url;
+        if (payload.data.tag) tag = payload.data.tag;
+        if (payload.data.url) url = payload.data.url;
+        if (payload.data.type) extraData.type = payload.data.type;
       }
 
       // استخلاص رقم اللوحة للجراج
@@ -110,7 +107,7 @@ self.addEventListener('push', (event) => {
         plate = tag.replace('incoming-', '');
       } else if (payload.carPlate || payload.car_plate) {
         plate = payload.carPlate || payload.car_plate;
-      } else if (payload.data && (payload.data.carPlate || payload.data.car_plate)) {
+      } else if (payload.data?.carPlate || payload.data?.car_plate) {
         plate = payload.data.carPlate || payload.data.car_plate;
       }
 
@@ -128,10 +125,7 @@ self.addEventListener('push', (event) => {
   const lastShown = recentNotifications.get(dedupKey);
   const now       = Date.now();
 
-  if (lastShown && (now - lastShown) < DEDUP_WINDOW_MS) {
-    return;
-  }
-
+  if (lastShown && (now - lastShown) < DEDUP_WINDOW_MS) return;
   recentNotifications.set(dedupKey, now);
 
   for (const [k, t] of recentNotifications.entries()) {
@@ -139,15 +133,14 @@ self.addEventListener('push', (event) => {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // 🛡️ إشعارات الدرع (tag بيبدأ بـ shield-)
+  // 🛡️ إشعارات الدرع
   // ═══════════════════════════════════════════════════════════
   const isShield = tag.startsWith('shield-');
-  const isBreach = tag === 'shield-breach';
+  const isBreach = tag === 'shield-breach' || extraData.type === 'shield-breach';
 
   let options;
 
   if (isBreach) {
-    // 🚨 إنذار سرقة — أقوى نمط اهتزاز + مش بيتقفل لوحده
     options = {
       body: body || 'السيارة خرجت من نطاق الجراج! افتح التطبيق فوراً',
       icon,
@@ -169,8 +162,7 @@ self.addEventListener('push', (event) => {
       ],
     };
   } else if (isShield) {
-    // 🛡️ إشعارات الدرع العادية (warning / resolved / status / report / qrScan)
-    const isWarning = tag.includes('warning');
+    const isWarning = tag.includes('warning') || extraData.type?.includes('warning');
     options = {
       body: body || 'تحديث من درع الحماية',
       icon,
@@ -186,7 +178,6 @@ self.addEventListener('push', (event) => {
       data: { url: '/session', type: 'shield', ...extraData },
     };
   } else {
-    // 🚗 إشعارات الجراج (الكود القديم)
     options = {
       body: body || '🚗 تقترب سيارة جديدة من الجراج الآن، استعد!',
       icon,
@@ -219,8 +210,6 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   if (event.action === 'dismiss') {
-    // لو إنذار سرقة والعميل ضغط "أنا اللي سايق"
-    // ممكن نبعت رسالة للـ app عبر postMessage
     if (event.notification.data?.type === 'breach') {
       event.waitUntil(
         clients.matchAll({ type: 'window' }).then((list) => {
@@ -241,15 +230,11 @@ self.addEventListener('notificationclick', (event) => {
       .then((clientList) => {
         for (const client of clientList) {
           if (client.url.includes(self.location.origin) && 'focus' in client) {
-            if (targetUrl && 'navigate' in client) {
-              client.navigate(targetUrl);
-            }
+            if (targetUrl && 'navigate' in client) client.navigate(targetUrl);
             return client.focus();
           }
         }
-        if (clients.openWindow) {
-          return clients.openWindow(targetUrl);
-        }
+        if (clients.openWindow) return clients.openWindow(targetUrl);
       })
   );
 });
