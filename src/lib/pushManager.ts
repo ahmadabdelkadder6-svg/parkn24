@@ -2,58 +2,61 @@
 
 import { normalizePlate } from '../store';
 
-// ─── VAPID & Supabase Configuration ─────────────────────────────
-const VAPID_PUBLIC_KEY =
-  'BOuP_HFhSSjHMsjf4KZJYLaFTv3RdI20Ux3an5LriaTBUN0iGlW-38zYGvROp26k7jcqhC_XpUotxzLR1IjQTI4';
+// ─── Configuration ─────────────────────────────────────────────
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
-const SUPABASE_URL      = (import.meta.env.VITE_SUPABASE_URL as string) || '';
-const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || '';
+// ─── Types ─────────────────────────────────────────────────────
+interface PushResult {
+  success: boolean;
+  message: string;
+  data?: unknown;
+}
 
-// ─── Types ──────────────────────────────────────────────────────
 interface PushPayloadNotification {
   title: string;
-  body:  string;
-  tag?:  string;
+  body: string;
+  tag?: string;
   data?: Record<string, unknown>;
 }
 
 interface SendPushPayload {
-  garageId:  string;
-  urgency?:  'high' | 'normal';
-  ttl?:      number;
+  garageId: string;
+  urgency?: 'high' | 'normal';
+  ttl?: number;
   immediate: PushPayloadNotification;
   scheduled: (PushPayloadNotification & { sendAt: string }) | null;
 }
 
-// ─── Helper: تحويل VAPID Key بأمان ─────────────────────────────
+// ─── Helpers ───────────────────────────────────────────────────
 const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64  = (base64String + padding)
+  const base64 = (base64String + padding)
     .replace(/-/g, '+')
     .replace(/_/g, '/');
   const rawData = window.atob(base64);
   return new Uint8Array([...rawData].map((c) => c.charCodeAt(0)));
 };
 
-// ─── Helper: Supabase Fetch مع حماية الـ Timeout والـ Retry ──────
 const supabaseFetch = async (
-  path:    string,
-  body:    unknown,
+  path: string,
+  body: unknown,
   retries: number = 2
-): Promise<{ ok: boolean; data?: unknown; error?: string }> => {
+): Promise<PushResult> => {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    return { ok: false, error: 'Supabase credentials missing' };
+    return { success: false, message: 'إعدادات السيرفر ناقصة' };
   }
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 7000); // ⏱️ مهلة أقصاها 7 ثوانٍ لمنع تعليق التطبيق
+    const timeoutId = setTimeout(() => controller.abort(), 7000);
 
     try {
       const response = await fetch(`${SUPABASE_URL}/functions/v1/${path}`, {
-        method:  'POST',
+        method: 'POST',
         headers: {
-          'Content-Type':  'application/json',
+          'Content-Type': 'application/json',
           'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify(body),
@@ -64,36 +67,28 @@ const supabaseFetch = async (
 
       if (response.ok) {
         const data = await response.json().catch(() => ({}));
-        return { ok: true, data };
+        return { success: true, message: 'تم بنجاح', data };
       }
 
       if (response.status >= 400 && response.status < 500) {
-        const error = await response.text();
-        console.error(`❌ [${path}] Client error ${response.status}:`, error);
-        return { ok: false, error };
+        return { success: false, message: `خطأ: ${response.status}` };
       }
-
-      console.warn(`⚠️ [${path}] Server response ${response.status}, retrying (${attempt + 1}/${retries})...`);
     } catch (err: any) {
       clearTimeout(timeoutId);
-      if (err.name === 'AbortError') {
-        console.warn(`⏱️ [${path}] Request timeout on attempt ${attempt + 1}`);
-      } else {
-        console.warn(`⚠️ [${path}] Network error on attempt ${attempt + 1}:`, err);
-      }
-
       if (attempt === retries) {
-        return { ok: false, error: String(err) };
+        return { success: false, message: 'فشل الاتصال بالسيرفر' };
       }
     }
 
-    await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+    // Exponential Backoff
+    const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
+    await new Promise((r) => setTimeout(r, delay));
   }
 
-  return { ok: false, error: 'Max retries exceeded' };
+  return { success: false, message: 'انتهت المحاولات' };
 };
 
-// ─── تسجيل Service Worker ───────────────────────────────────────
+// ─── Service Worker ────────────────────────────────────────────
 export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null> => {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     return null;
@@ -104,7 +99,6 @@ export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration
       scope: '/',
       updateViaCache: 'none',
     });
-
     await navigator.serviceWorker.ready;
     return registration;
   } catch (err) {
@@ -113,84 +107,72 @@ export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration
   }
 };
 
-// ─── الاشتراك في Push Notifications ────────────────────────────
-export const subscribeToPush = async (garageId: string): Promise<boolean> => {
+// ─── Subscribe ─────────────────────────────────────────────────
+export const subscribeToPush = async (garageId: string): Promise<PushResult> => {
   try {
-    if (typeof window === 'undefined' || !('PushManager' in window) || !('Notification' in window)) {
-      console.warn('❌ Push غير مدعوم في هذا المتصفح');
-      return false;
+    if (!('PushManager' in window) || !('Notification' in window)) {
+      return { success: false, message: 'المتصفح مش بيدعم الإشعارات' };
     }
 
     const registration = await registerServiceWorker();
-    if (!registration) return false;
+    if (!registration) {
+      return { success: false, message: 'فشل تسجيل Service Worker' };
+    }
 
     let permission = Notification.permission;
     if (permission === 'default') {
-      // دعم التوافق مع كل المتصفحات
-      permission = await new Promise((resolve) => {
-        try {
-          const p = Notification.requestPermission((res) => resolve(res));
-          if (p) p.then(resolve).catch(() => resolve('denied'));
-        } catch {
-          resolve('denied');
-        }
-      });
+      permission = await Notification.requestPermission();
     }
 
     if (permission !== 'granted') {
-      console.warn('❌ إذن الإشعارات غير مفعل');
-      return false;
+      return { 
+        success: false, 
+        message: 'فعّل إشعارات المتصفح عشان الدرع يشتغل! 🔔' 
+      };
     }
 
     let subscription = await registration.pushManager.getSubscription();
 
     if (subscription) {
-      try {
-        const exp = subscription.expirationTime;
-        if (exp && Date.now() > exp) {
-          await subscription.unsubscribe();
-          subscription = null;
-        }
-      } catch {}
+      const exp = subscription.expirationTime;
+      if (exp && Date.now() > exp) {
+        await subscription.unsubscribe();
+        subscription = null;
+      }
     }
 
-    let isNew = false;
     if (!subscription) {
       subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
-      isNew = true;
     }
 
     const sub = subscription.toJSON();
     if (!sub.keys?.p256dh || !sub.keys?.auth) {
-      console.error('❌ مفاتيح الـ subscription ناقصة');
-      return false;
+      return { success: false, message: 'مفاتيح الاشتراك ناقصة' };
     }
 
     const result = await supabaseFetch('save-push-subscription', {
       subscription: {
         endpoint: sub.endpoint,
-        keys: {
-          p256dh: sub.keys.p256dh,
-          auth:   sub.keys.auth,
-        },
+        keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
       },
       garageId,
-      isNew,
       userAgent: navigator.userAgent,
       subscribedAt: new Date().toISOString(),
     });
 
-    return result.ok;
+    if (result.success) {
+      return { success: true, message: 'تم تفعيل الدرع بنجاح! 🛡️' };
+    }
+    return result;
   } catch (err) {
-    console.error('❌ خطأ في subscribeToPush:', err);
-    return false;
+    return { success: false, message: 'حدث خطأ غير متوقع' };
   }
 };
 
-// ─── إرسال تنبيه "سيارة في الطريق" بأعلى أولوية طوارئ ──────────────
+// ─── Send Car Coming Push ──────────────────────────────────────
 export const sendCarComingPush = async ({
   garageId,
   carPlate,
@@ -198,16 +180,14 @@ export const sendCarComingPush = async ({
   customerName,
   agreedPrice,
 }: {
-  garageId:         string;
-  carPlate:         string;
+  garageId: string;
+  carPlate: string;
   estimatedMinutes: number;
-  customerName?:    string;
-  agreedPrice?:     number;
-}): Promise<boolean> => {
+  customerName?: string;
+  agreedPrice?: number;
+}): Promise<PushResult> => {
   try {
     const plateFingerprint = normalizePlate(carPlate) || carPlate;
-    const immediateTag = `incoming-${plateFingerprint}`;
-    const scheduledTag = `approaching-${plateFingerprint}`;
 
     const scheduledSendAt = new Date(
       Date.now() + Math.max(1, estimatedMinutes - 2) * 60 * 1000
@@ -217,93 +197,76 @@ export const sendCarComingPush = async ({
       garageId,
       urgency: 'high',
       ttl: 0,
-
       immediate: {
-        title: '🚨 سيارة في الطريق إليك!',
-        body:  `🚗 رقم السيارة: ${carPlate} • استعد للاستقبال!`,
-        tag:   immediateTag,
+        title: '🚨 سيارة في الطريق!',
+        body: `🚗 ${carPlate} • استعد للاستقبال!`,
+        tag: `incoming-${plateFingerprint}`,
         data: {
-          type:             'incoming_car',
+          type: 'incoming_car',
           carPlate,
           garageId,
-          url:              '/garage',
-          customerName:     customerName ?? null,
-          agreedPrice:      agreedPrice  ?? null,
+          url: '/garage',
+          customerName: customerName ?? null,
+          agreedPrice: agreedPrice ?? null,
           estimatedMinutes,
-          sentAt:           new Date().toISOString(),
         },
       },
-
-      scheduled:
-        estimatedMinutes > 2
-          ? {
-              title:  '⏰ سيارة على وشك الوصول!',
-              body:   `🚗 ${carPlate} - باقي أقل من دقيقتين ⏰`,
-              tag:    scheduledTag,
-              data: {
-                type:     'approaching_car',
-                carPlate,
-                garageId,
-                url:      '/garage',
-              },
-              sendAt: scheduledSendAt,
-            }
-          : null,
+      scheduled: estimatedMinutes > 2
+        ? {
+            title: '⏰ سيارة على وشك الوصول!',
+            body: `🚗 ${carPlate} - باقي أقل من دقيقتين`,
+            tag: `approaching-${plateFingerprint}`,
+            data: { type: 'approaching_car', carPlate, garageId, url: '/garage' },
+            sendAt: scheduledSendAt,
+          }
+        : null,
     };
 
-    const result = await supabaseFetch('send-push-notification', payload);
-    return result.ok;
+    return await supabaseFetch('send-push-notification', payload);
   } catch (err) {
-    console.error('❌ خطأ في sendCarComingPush:', err);
-    return false;
+    return { success: false, message: 'فشل إرسال الإشعار' };
   }
 };
 
-// ─── إلغاء التنبيه المجدول ──────────────────────────────────────
+// ─── Cancel Scheduled ──────────────────────────────────────────
 export const cancelScheduledPush = async (
   garageId: string,
   carPlate: string
-): Promise<boolean> => {
-  try {
-    const plateFingerprint = normalizePlate(carPlate) || carPlate;
-    const result = await supabaseFetch('cancel-scheduled-alert', {
-      garageId,
-      carPlate,
-      tags:        [`approaching-${plateFingerprint}`],
-      cancelledAt: new Date().toISOString(),
-    });
-    return result.ok;
-  } catch (err) {
-    console.error('❌ خطأ في cancelScheduledPush:', err);
-    return false;
-  }
+): Promise<PushResult> => {
+  const plateFingerprint = normalizePlate(carPlate) || carPlate;
+  return await supabaseFetch('cancel-scheduled-alert', {
+    garageId,
+    carPlate,
+    tags: [`approaching-${plateFingerprint}`],
+    cancelledAt: new Date().toISOString(),
+  });
 };
 
-// ─── إلغاء الاشتراك ─────────────────────────────────────────────
-export const unsubscribeFromPush = async (): Promise<boolean> => {
+// ─── Unsubscribe ───────────────────────────────────────────────
+export const unsubscribeFromPush = async (): Promise<PushResult> => {
   try {
-    if (!('serviceWorker' in navigator)) return false;
+    if (!('serviceWorker' in navigator)) {
+      return { success: false, message: 'المتصفح مش بيدعم' };
+    }
     const registration = await navigator.serviceWorker.ready;
     const subscription = await registration.pushManager.getSubscription();
 
     if (subscription) {
       await supabaseFetch('save-push-subscription', {
         subscription: null,
-        garageId:     null,
-        action:       'unsubscribe',
-        endpoint:     subscription.endpoint,
+        action: 'unsubscribe',
+        endpoint: subscription.endpoint,
       });
-
       await subscription.unsubscribe();
-      return true;
+      return { success: true, message: 'تم إلغاء الاشتراك' };
     }
-    return false;
+    return { success: false, message: 'مفيش اشتراك نشط' };
   } catch {
-    return false;
+    return { success: false, message: 'فشل إلغاء الاشتراك' };
   }
 };
 
-// ─── التحقق من حالة الاشتراك وتجديده ───────────────────────────
+// ─── Check Status ──────────────────────────────────────────────
 export const checkPushSubscriptionStatus = async () => {
   const isSupported =
     typeof window !== 'undefined' &&
@@ -311,19 +274,19 @@ export const checkPushSubscriptionStatus = async () => {
     'PushManager' in window &&
     'Notification' in window;
 
-  if (!isSupported) return { isSubscribed: false, permission: 'denied', isSupported: false };
+  if (!isSupported) {
+    return { isSubscribed: false, permission: 'denied' as const, isSupported: false };
+  }
 
   const permission = Notification.permission;
   try {
     const registration = await navigator.serviceWorker.ready;
     const subscription = await registration.pushManager.getSubscription();
-    if (!subscription) return { isSubscribed: false, permission, isSupported };
-
     return {
-      isSubscribed: true,
+      isSubscribed: !!subscription,
       permission,
       isSupported,
-      endpoint: subscription.endpoint,
+      endpoint: subscription?.endpoint,
     };
   } catch {
     return { isSubscribed: false, permission, isSupported };
@@ -333,7 +296,7 @@ export const checkPushSubscriptionStatus = async () => {
 export const refreshPushSubscriptionIfNeeded = async (garageId: string): Promise<void> => {
   if (!garageId) return;
   const status = await checkPushSubscriptionStatus();
-  if (status.isSupported && status.permission === 'granted') {
+  if (status.isSupported && status.permission === 'granted' && !status.isSubscribed) {
     await subscribeToPush(garageId);
   }
 };

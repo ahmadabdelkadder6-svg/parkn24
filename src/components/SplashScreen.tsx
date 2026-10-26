@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { useStore, BOOKING_FEE } from '../store';
-import { ArrowRight, Zap, ShieldCheck, Wallet } from 'lucide-react';
+import { ArrowRight, Zap } from 'lucide-react';
 
 /* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
@@ -24,12 +24,11 @@ export default function SplashScreen() {
       className="flex flex-col items-center justify-between h-full px-6 py-8 text-center safe-top safe-bottom max-w-sm mx-auto overflow-hidden relative"
       style={{ background: '#ffffff', color: BRAND.navy }}
     >
-      {/* إضاءة خلفية ناعمة */}
+      {/* إضاءة خلفية ناعمة خفيفة على البطارية بدون Blur */}
       <div
         className="absolute top-12 left-1/2 -translate-x-1/2 w-64 h-64 rounded-full pointer-events-none"
         style={{
-          background: `radial-gradient(circle, ${BRAND.blue}12 0%, transparent 70%)`,
-          filter: 'blur(40px)',
+          background: `radial-gradient(circle, ${BRAND.blue}15 0%, transparent 70%)`,
         }}
       />
 
