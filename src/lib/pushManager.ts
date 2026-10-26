@@ -300,3 +300,25 @@ export const refreshPushSubscriptionIfNeeded = async (garageId: string): Promise
     await subscribeToPush(garageId);
   }
 };
+// ─── Shield Session (Server-Side Fake Alerts) ─────────────────
+export const registerShieldSession = async (
+  sessionId: string,
+  parkingLat: number,
+  parkingLng: number
+): Promise<PushResult> => {
+  return await supabaseFetch('shield-register', {
+    action: 'register',
+    sessionId,
+    parkingLat,
+    parkingLng,
+  });
+};
+
+export const unregisterShieldSession = async (
+  sessionId: string
+): Promise<PushResult> => {
+  return await supabaseFetch('shield-register', {
+    action: 'unregister',
+    sessionId,
+  });
+};

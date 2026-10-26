@@ -410,14 +410,15 @@ export default function SessionScreen() {
 
         {/* 🛡️ الدرع — فوق العداد مباشرة */}
         {garage && (
-          <ShieldOverlay
-            garageId={activeSession.garageId}
-            parkingLat={(garage as any).lat ?? 30.0444}
-            parkingLng={(garage as any).lng ?? 31.2357}
-            userPhone={currentUser?.phone ?? null}
-            onDeductWallet={deductWallet}
-            onNavigateToWallet={() => setScreen('list')}
-          />
+<ShieldOverlay
+  sessionId={activeSession.id}          // ← جديد
+  garageId={activeSession.garageId}
+  parkingLat={(garage as any).lat ?? 30.0444}
+  parkingLng={(garage as any).lng ?? 31.2357}
+  userPhone={currentUser?.phone ?? null}
+  onDeductWallet={deductWallet}
+  onNavigateToWallet={() => setScreen('list')}
+/>
         )}
 
         {/* ⚡ العداد */}

@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Shield, ShieldCheck, ShieldAlert, X, Phone, Loader2, AlertTriangle, CheckCircle2, Car, Siren } from 'lucide-react';
+import { Shield, ShieldCheck, Phone, AlertTriangle, Car, Siren } from 'lucide-react';
 import {
   startFakeAlerts, stopFakeAlerts,
-  startShieldGPS, stopShieldGPS,
+  startShieldGPS,
   destroyShield, saveShieldState, loadShieldState,
-  SHIELD_STORAGE_KEY, SHIELD_COST,
+  SHIELD_COST,
   type FakeAlert,
 } from '../lib/shield';
 import {
@@ -12,11 +12,16 @@ import {
   vibrateUrgent, requestNotificationPermission,
   stopVibration, unlockAudio,
 } from '../utils/notifications';
-import { subscribeToPush } from '../lib/pushManager';
+import {
+  subscribeToPush,
+  registerShieldSession,
+  unregisterShieldSession,
+} from '../lib/pushManager';
 
 type Phase = 'ask' | 'register' | 'active' | 'breach' | 'dismissed';
 
 interface Props {
+  sessionId: string;              // ← جديد: لازم للسيرفر
   garageId: string;
   parkingLat: number;
   parkingLng: number;
@@ -26,7 +31,7 @@ interface Props {
 }
 
 export default function ShieldOverlay({
-  garageId, parkingLat, parkingLng,
+  sessionId, garageId, parkingLat, parkingLng,
   userPhone, onDeductWallet, onNavigateToWallet,
 }: Props) {
   const [phase, setPhase] = useState<Phase>('ask');
@@ -100,50 +105,76 @@ export default function ShieldOverlay({
   useEffect(() => {
     return () => {
       testTimersRef.current.forEach(clearTimeout);
+      // ألغي الدرع من السيرفر لما الـ component يموت
+      unregisterShieldSession(sessionId).catch(() => {});
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ─── Handlers ───
   const handleYes = useCallback(async () => {
     unlockAudio();
     await requestNotificationPermission();
-    try { await subscribeToPush(); } catch { /* */ }
+
+    // اشترك في Push (الـ subscription تتسجل في push_subscriptions)
+    try {
+      await subscribeToPush(garageId);
+    } catch {
+      /* تجاهل */
+    }
 
     const ok = onDeductWallet(SHIELD_COST, 'درع حماية السيارة');
     if (!ok) {
       onNavigateToWallet();
       return;
     }
+
     if (userPhone) {
       const code = 'SH-' + Math.random().toString(36).slice(2, 8).toUpperCase();
       setShieldCode(code);
       setPhase('active');
-      saveShieldState({ isActive: true, shieldCode: code, phone: userPhone, garageId, parkingLat, parkingLng });
+      saveShieldState({
+        isActive: true, shieldCode: code, phone: userPhone,
+        garageId, parkingLat, parkingLng,
+      });
+
+      // 🆕 سجّل الدرع على السيرفر عشان الإشعارات توصل حتى لو التطبيق مقفول
+      registerShieldSession(sessionId, parkingLat, parkingLng).catch(console.error);
     } else {
       setPhase('register');
     }
-  }, [userPhone, garageId, parkingLat, parkingLng, onDeductWallet, onNavigateToWallet]);
+  }, [userPhone, garageId, sessionId, parkingLat, parkingLng, onDeductWallet, onNavigateToWallet]);
 
   const handleRegister = useCallback(() => {
     if (phone.length < 10) return;
     const code = 'SH-' + Math.random().toString(36).slice(2, 8).toUpperCase();
     setShieldCode(code);
     setPhase('active');
-    saveShieldState({ isActive: true, shieldCode: code, phone, garageId, parkingLat, parkingLng });
-  }, [phone, garageId, parkingLat, parkingLng]);
+    saveShieldState({
+      isActive: true, shieldCode: code, phone,
+      garageId, parkingLat, parkingLng,
+    });
+
+    // 🆕 سجّل الدرع على السيرفر
+    registerShieldSession(sessionId, parkingLat, parkingLng).catch(console.error);
+  }, [phone, garageId, sessionId, parkingLat, parkingLng]);
 
   const handleIamDriving = useCallback(() => {
     stopVibration();
     destroyShield();
+    // 🆕 ألغي من السيرفر
+    unregisterShieldSession(sessionId).catch(() => {});
     setPhase('dismissed');
-  }, []);
+  }, [sessionId]);
 
   const handleTheft = useCallback(() => {
     stopVibration();
     sendLocalNotification('🚨 تم الإبلاغ عن سرقة!', 'سيتم التواصل معك فوراً');
     destroyShield();
+    // 🆕 ألغي من السيرفر
+    unregisterShieldSession(sessionId).catch(() => {});
     setPhase('dismissed');
-  }, []);
+  }, [sessionId]);
 
   // ═══════════════════════════════════════════════════════
   // 🧪 Test Mode — تجربة الدرع في 30 ثانية
