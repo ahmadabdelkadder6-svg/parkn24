@@ -65,6 +65,8 @@ export interface ParkingSession {
   settled_at?: string;
   freeMinutesApplied?: number;
   isFirstFreeSession?: boolean;
+  // ═══ 🛡️ تكلفة الدرع للجلسة (0 = مجاني، 7 = مدفوع) ═══
+  shieldCost?: number;
 }
 
 export interface Offer {
@@ -139,6 +141,13 @@ export const calculateBonus = (amount: number): number => {
 
 // 🌟 رسوم الحجز لكل ركنة VIP
 export const BOOKING_FEE = 3;
+
+// ═══════════════════════════════════════════════════════════════
+// 🛡️ ثوابت درع الحماية
+// ═══════════════════════════════════════════════════════════════
+export const SHIELD_COST = 7;              // سعر الدرع (ج)
+export const SHIELD_FIRST_FREE = true;     // أول مرة مجاناً
+export const SHIELD_GEOFENCE_RADIUS = 250; // متر (نطاق الأمان حول الجراج)
 
 // 📍 مسافة الـ Geofencing (متر)
 export const GEOFENCE_RADIUS_METERS = 100;
@@ -438,6 +447,8 @@ const mapSession = (r: any): ParkingSession => {
     settled_at: r.settled_at || undefined,
     freeMinutesApplied: r.free_minutes_applied != null ? Number(r.free_minutes_applied) : 0,
     isFirstFreeSession: isFree,
+    // ═══ 🛡️ ═══
+    shieldCost: r.shield_cost != null ? Number(r.shield_cost) : 0,
   };
 };
 
@@ -479,10 +490,10 @@ const sessionEndLocks = new Set<string>();
 let walletDeductLock = false;
 
 const resolveAddedBy = (explicitAddedBy?: string): string => {
-  if (explicitAddedBy) return explicitAddedBy;
   const valetName = localStorage.getItem('valetName') || '';
   const garageRole = localStorage.getItem('garageRole') || '';
   const valetNumber = localStorage.getItem('valetNumber') || '';
+  if (explicitAddedBy) return explicitAddedBy;
   if (garageRole === 'owner') return '';
   if (valetName) return valetName;
   if (garageRole === 'valet') return `سايس ${valetNumber}`;
@@ -502,6 +513,10 @@ interface AppState {
     wallet: number;
     hasUsedFreeSession?: boolean;
     bonusBalance?: number;
+    // ═══ 🛡️ حقول الدرع ═══
+    shieldActivated?: boolean;  // هل فعّل الدرع قبل كده (أول مرة مجاناً)
+    shieldPhone?: string;       // رقم موبايل الدرع (اختياري - غير رقم الحساب)
+    shieldCode?: string;        // كود الدرع الفريد (SH-XXXX)
   } | null;
   setCurrentUser: (u: any) => Promise<void>;
   deductWallet: (amount: number) => Promise<boolean>; 
@@ -516,6 +531,11 @@ interface AppState {
   recordDeduction: () => void;
   chargeBookingFee: () => Promise<boolean>;
   refundBookingFee: () => Promise<void>;
+
+  // ═══ 🛡️ Actions الدرع ═══
+  activateShield: (phone: string) => Promise<{ success: boolean; code?: string; error?: string }>;
+  chargeShieldFee: () => Promise<{ success: boolean; isFree: boolean; error?: string }>;
+  updateSessionShieldCost: (sessionId: string, cost: number) => Promise<void>;
 
   garages: Garage[];
   currentGarageId: string | null;
@@ -579,6 +599,10 @@ export const useStore = create<AppState>((set, get) => ({
       wallet: u.wallet ?? 0,
       hasUsedFreeSession: u.hasUsedFreeSession ?? false,
       bonusBalance: u.bonusBalance ?? 0,
+      // ═══ 🛡️ ═══
+      shieldActivated: u.shieldActivated ?? false,
+      shieldPhone: u.shieldPhone ?? '',
+      shieldCode: u.shieldCode ?? '',
     };
     set({ currentUser: cleanUser }); safeSetStorage('currentUser', cleanUser);
 
@@ -587,7 +611,7 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const { data: existingUser } = await supabase
         .from('users')
-        .select('wallet, name, phone, car_plate, has_used_free_session, bonus_balance')
+        .select('wallet, name, phone, car_plate, has_used_free_session, bonus_balance, shield_activated, shield_phone, shield_code')
         .eq('phone', cleanPhone)
         .maybeSingle();
 
@@ -601,6 +625,10 @@ export const useStore = create<AppState>((set, get) => ({
           wallet: Number(existingUser.wallet || 0),
           hasUsedFreeSession: finalHasUsedFree,
           bonusBalance: Number(existingUser.bonus_balance ?? 0),
+          // ═══ 🛡️ ═══
+          shieldActivated: existingUser.shield_activated === true,
+          shieldPhone: existingUser.shield_phone || '',
+          shieldCode: existingUser.shield_code || '',
         };
         set({ currentUser: updated }); safeSetStorage('currentUser', updated);
       } else {
@@ -625,6 +653,10 @@ export const useStore = create<AppState>((set, get) => ({
             wallet: Number(newUser.wallet),
             hasUsedFreeSession: false,
             bonusBalance: 0,
+            // ═══ 🛡️ ═══
+            shieldActivated: false,
+            shieldPhone: '',
+            shieldCode: '',
           };
           set({ currentUser: updated }); safeSetStorage('currentUser', updated);
         }
@@ -732,6 +764,152 @@ export const useStore = create<AppState>((set, get) => ({
     safeSetStorage('currentUser', updated);
     if (isSupabaseConfigured()) {
       await supabase.from('users').update({ has_used_free_session: true }).eq('phone', user.phone);
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════════
+  // 🛡️ تفعيل الدرع (أول مرة لهذه اللوحة = مجاناً)
+  // 🔒 التحقق بالبصمة الموحدة للوحة - منع استغلال رقم تليفون مختلف
+  // ═══════════════════════════════════════════════════════════════
+  activateShield: async (phone) => {
+    const user = get().currentUser;
+    if (!user) return { success: false, error: 'لم يتم تسجيل الدخول' };
+
+    const cleanPhone = normalizePhone(phone);
+    if (cleanPhone.length !== 11) {
+      return { success: false, error: 'رقم موبايل غير صحيح' };
+    }
+
+    // 🔍 التحقق بالبصمة الموحدة - لو اللوحة فعّلت قبل كده، نرجّع الكود القديم
+    if (isSupabaseConfigured() && user.carPlate) {
+      try {
+        const { data: existing } = await supabase
+          .from('users')
+          .select('shield_code, shield_phone')
+          .eq('car_plate', user.carPlate)
+          .eq('shield_activated', true)
+          .limit(1)
+          .maybeSingle();
+
+        if (existing?.shield_code) {
+          // اللوحة دي فعّلت قبل كده → نرجّع الكود الموجود مش نولّد جديد
+          const updated = {
+            ...user,
+            shieldActivated: true,
+            shieldPhone: cleanPhone,
+            shieldCode: existing.shield_code,
+          };
+          set({ currentUser: updated });
+          safeSetStorage('currentUser', updated);
+
+          // تحديث رقم الدرع في الداتابيز للحساب الحالي (عشان SMS الطوارئ)
+          try {
+            await supabase
+              .from('users')
+              .update({
+                shield_activated: true,
+                shield_phone: cleanPhone,
+                shield_code: existing.shield_code,
+              })
+              .eq('phone', user.phone);
+          } catch {}
+
+          return { success: true, code: existing.shield_code };
+        }
+      } catch (err) {
+        console.error('Shield plate lookup error:', err);
+      }
+    }
+
+    // توليد كود فريد جديد (أول مرة فعلاً لهذه اللوحة)
+    const shieldCode = `SH-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+
+    const updated = {
+      ...user,
+      shieldActivated: true,
+      shieldPhone: cleanPhone,
+      shieldCode,
+    };
+
+    set({ currentUser: updated });
+    safeSetStorage('currentUser', updated);
+
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase
+          .from('users')
+          .update({
+            shield_activated: true,
+            shield_phone: cleanPhone,
+            shield_code: shieldCode,
+          })
+          .eq('phone', user.phone);
+      } catch (err) {
+        console.error('Shield activation DB error:', err);
+      }
+    }
+
+    return { success: true, code: shieldCode };
+  },
+
+  // ═══════════════════════════════════════════════════════════════
+  // 🛡️ خصم رسوم الدرع (7 ج - لا يسترد)
+  // 🔒 التحقق بالبصمة الموحدة للوحة - منع التحايل بتغيير رقم التليفون
+  // ═══════════════════════════════════════════════════════════════
+  chargeShieldFee: async () => {
+    const user = get().currentUser;
+    if (!user) return { success: false, isFree: false, error: 'لم يتم تسجيل الدخول' };
+
+    // 🔍 التحقق بالبصمة الموحدة - لو اللوحة فعّلت الدرع قبل كده (أي رقم تليفون) → مش مجاني
+    let alreadyUsed = user.shieldActivated === true;
+
+    if (!alreadyUsed && isSupabaseConfigured() && user.carPlate) {
+      try {
+        const { data } = await supabase
+          .from('users')
+          .select('id')
+          .eq('car_plate', user.carPlate)
+          .eq('shield_activated', true)
+          .limit(1);
+        alreadyUsed = (data?.length ?? 0) > 0;
+      } catch (err) {
+        console.error('Shield plate check error:', err);
+      }
+    }
+
+    // أول مرة لهذه اللوحة = مجاناً
+    if (!alreadyUsed) {
+      return { success: true, isFree: true };
+    }
+
+    // مش أول مرة = خصم 7 ج
+    if ((user.wallet || 0) < SHIELD_COST) {
+      return { success: false, isFree: false, error: 'الرصيد غير كافي' };
+    }
+
+    const success = await get().deductWallet(SHIELD_COST);
+    if (success) {
+      return { success: true, isFree: false };
+    }
+
+    return { success: false, isFree: false, error: 'فشل الخصم' };
+  },
+
+  // ═══════════════════════════════════════════════════════════════
+  // 🛡️ حفظ تكلفة الدرع في الجلسة (0 = مجاني، 7 = مدفوع)
+  // ═══════════════════════════════════════════════════════════════
+  updateSessionShieldCost: async (sessionId, cost) => {
+    set((st) => ({
+      sessions: st.sessions.map((s) =>
+        s.id === sessionId ? { ...s, shieldCost: cost } : s
+      ),
+    }));
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('sessions').update({ shield_cost: cost }).eq('id', sessionId);
+      } catch (err) {
+        console.error('Update shield cost error:', err);
+      }
     }
   },
 
@@ -894,7 +1072,7 @@ export const useStore = create<AppState>((set, get) => ({
       if (currentUserInStore?.phone) {
         const { data: userData } = await supabase
           .from('users')
-          .select('wallet, has_used_free_session, bonus_balance')
+          .select('wallet, has_used_free_session, bonus_balance, shield_activated, shield_phone, shield_code')
           .eq('phone', currentUserInStore.phone)
           .maybeSingle();
 
@@ -904,6 +1082,10 @@ export const useStore = create<AppState>((set, get) => ({
             wallet: Number(userData.wallet || 0),
             hasUsedFreeSession: userData.has_used_free_session ?? currentUserInStore.hasUsedFreeSession,
             bonusBalance: Number(userData.bonus_balance ?? 0),
+            // ═══ 🛡️ ═══
+            shieldActivated: userData.shield_activated === true,
+            shieldPhone: userData.shield_phone || currentUserInStore.shieldPhone || '',
+            shieldCode: userData.shield_code || currentUserInStore.shieldCode || '',
           };
           set({ currentUser: updated });
           safeSetStorage('currentUser', updated);
@@ -1179,6 +1361,7 @@ export const useStore = create<AppState>((set, get) => ({
         settled: false,
         isFirstFreeSession: eligibleForFree,
         freeMinutesApplied: 0,
+        shieldCost: 0,
       };
 
       set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]).slice(0, 50) }));
@@ -1204,6 +1387,7 @@ export const useStore = create<AppState>((set, get) => ({
           settled: false,
           is_first_free_session: eligibleForFree,
           free_minutes_applied: 0,
+          shield_cost: 0,
         }).select().single();
 
         if (data) {
@@ -1278,7 +1462,8 @@ export const useStore = create<AppState>((set, get) => ({
             net_revenue: netRevenue,
             settled: false,
             free_minutes_applied: freeMinutesApplied,
-            added_by: finalAddedBy || null
+            added_by: finalAddedBy || null,
+            shield_cost: session.shieldCost ?? 0,
           })
           .eq('id', id);
       }

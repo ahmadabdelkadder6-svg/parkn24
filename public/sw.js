@@ -1,12 +1,12 @@
-// ✅ رقم الـ Version - تم التحديث لـ v9 لإجبار المتصفحات على تحديث كل الشاشات والكاش فوراً
-const CACHE_NAME    = 'parkn24-v9'; 
+// ✅ رقم الـ Version - تم التحديث لـ v10 لدعم إشعارات الدرع
+const CACHE_NAME    = 'parkn24-v10';
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
 // ✅ منع تكرار نفس الإشعار خلال 3 ثوانٍ
 const recentNotifications = new Map();
 const DEDUP_WINDOW_MS     = 3000;
 
-// ─── 1. Message Listener (استقبال أمر التحديث الفوري من main.tsx) ───────
+// ─── 1. Message Listener ──────────────────────────────────────
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
@@ -15,10 +15,10 @@ self.addEventListener('message', (event) => {
 
 // ─── 2. Install ───────────────────────────────────────────────
 self.addEventListener('install', (event) => {
-  self.skipWaiting(); // تفعيل فوري بدون انتظار
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 Service Worker Installed (v9)');
+      console.log('📦 Service Worker Installed (v10)');
       return cache.addAll(STATIC_ASSETS);
     })
   );
@@ -38,7 +38,7 @@ self.addEventListener('activate', (event) => {
             })
         )
       )
-      .then(() => self.clients.claim()) // السيطرة الفورية على كل التبويبات المفتوحة
+      .then(() => self.clients.claim())
   );
 });
 
@@ -71,13 +71,13 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// ─── 5. Push (استقبال الإشعار الفوري وإيقاظ الهاتف بنمط رنين قوي) ─────────
+// ─── 5. Push ──────────────────────────────────────────────────
 self.addEventListener('push', (event) => {
-  let title     = '🚨 سيارة في الطريق إليك!';
-  let body      = '🚗 تقترب سيارة جديدة من الجراج الآن، استعد!';
+  let title     = 'Park\'n 24';
+  let body      = '';
   const icon    = '/icons/icon-192x192.png';
   const badge   = '/icons/icon-192x192.png';
-  let tag       = 'incoming-alert';
+  let tag       = 'parkn24-default';
   let url       = '/';
   let extraData = {};
 
@@ -97,14 +97,14 @@ self.addEventListener('push', (event) => {
         url       = payload.data.url || '/';
       }
 
-      // دعم Flat Payload
       if (!payload.notification && !payload.data) {
         title = payload.title || title;
         body  = payload.body  || body;
         tag   = payload.tag   || tag;
+        url   = payload.url   || url;
       }
 
-      // استخلاص رقم اللوحة وعرضه بوضوح
+      // استخلاص رقم اللوحة للجراج
       let plate = '';
       if (typeof tag === 'string' && tag.startsWith('incoming-')) {
         plate = tag.replace('incoming-', '');
@@ -114,7 +114,7 @@ self.addEventListener('push', (event) => {
         plate = payload.data.carPlate || payload.data.car_plate;
       }
 
-      if (plate) {
+      if (plate && tag.startsWith('incoming-')) {
         title = '🚨 سيارة في الطريق إليك!';
         body  = `🚗 رقم السيارة: ${plate} • استعد للاستقبال!`;
       }
@@ -138,38 +138,98 @@ self.addEventListener('push', (event) => {
     if (now - t > 30000) recentNotifications.delete(k);
   }
 
-  // 🚨 [نمط رنين مكالمة الهاتف العنيف]: اهتزاز متواصل 10 ثوانٍ لإيقاظ السايس في الشارع
-  const options = {
-    body,
-    icon,
-    badge,
-    vibrate: [
-      1000, 300, 1000, 300, 1000, 300, // الرنة الأولى
-      1000, 300, 1000, 300, 1000, 300, // الرنة الثانية
-      1200, 400, 1200                  // رنة تأكيدية أخيرة
-    ],
-    requireInteraction: true,           // يظل معروضاً على شاشة القفل ولا يختفي حتى يفتحه السايس
-    tag: 'valet-urgent-alarm',         // تاغ موحد لإيقاظ الشاشة
-    renotify: true,                    // يرن ويهتز حتى لو كان هناك إشعار سابق
-    silent: false,
-    timestamp: now,
-    data: { url, ...extraData },
-    actions: [
-      { action: 'open',    title: '🚗 فتح التطبيق فوراً' },
-      { action: 'dismiss', title: '✕ إغلاق'             },
-    ],
-  };
+  // ═══════════════════════════════════════════════════════════
+  // 🛡️ إشعارات الدرع (tag بيبدأ بـ shield-)
+  // ═══════════════════════════════════════════════════════════
+  const isShield = tag.startsWith('shield-');
+  const isBreach = tag === 'shield-breach';
+
+  let options;
+
+  if (isBreach) {
+    // 🚨 إنذار سرقة — أقوى نمط اهتزاز + مش بيتقفل لوحده
+    options = {
+      body: body || 'السيارة خرجت من نطاق الجراج! افتح التطبيق فوراً',
+      icon,
+      badge,
+      vibrate: [
+        1000, 200, 1000, 200, 1000, 200,
+        1000, 200, 1000, 200, 1000, 200,
+        1500, 500, 1500,
+      ],
+      requireInteraction: true,
+      tag: 'shield-breach',
+      renotify: true,
+      silent: false,
+      timestamp: now,
+      data: { url: '/session', type: 'breach', ...extraData },
+      actions: [
+        { action: 'open',    title: '🚨 افتح التطبيق فوراً' },
+        { action: 'dismiss', title: '✅ أنا اللي سايق'       },
+      ],
+    };
+  } else if (isShield) {
+    // 🛡️ إشعارات الدرع العادية (warning / resolved / status / report / qrScan)
+    const isWarning = tag.includes('warning');
+    options = {
+      body: body || 'تحديث من درع الحماية',
+      icon,
+      badge,
+      vibrate: isWarning
+        ? [400, 150, 400, 150, 600]
+        : [150, 100, 150],
+      requireInteraction: isWarning,
+      tag,
+      renotify: isWarning,
+      silent: false,
+      timestamp: now,
+      data: { url: '/session', type: 'shield', ...extraData },
+    };
+  } else {
+    // 🚗 إشعارات الجراج (الكود القديم)
+    options = {
+      body: body || '🚗 تقترب سيارة جديدة من الجراج الآن، استعد!',
+      icon,
+      badge,
+      vibrate: [
+        1000, 300, 1000, 300, 1000, 300,
+        1000, 300, 1000, 300, 1000, 300,
+        1200, 400, 1200,
+      ],
+      requireInteraction: true,
+      tag: 'valet-urgent-alarm',
+      renotify: true,
+      silent: false,
+      timestamp: now,
+      data: { url, ...extraData },
+      actions: [
+        { action: 'open',    title: '🚗 فتح التطبيق فوراً' },
+        { action: 'dismiss', title: '✕ إغلاق'             },
+      ],
+    };
+  }
 
   event.waitUntil(
     self.registration.showNotification(title, options)
   );
 });
 
-// ─── 6. Notification Click (فتح لوحة الجراج مباشرة وتوجيه التبويب) ──────────
+// ─── 6. Notification Click ────────────────────────────────────
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   if (event.action === 'dismiss') {
+    // لو إنذار سرقة والعميل ضغط "أنا اللي سايق"
+    // ممكن نبعت رسالة للـ app عبر postMessage
+    if (event.notification.data?.type === 'breach') {
+      event.waitUntil(
+        clients.matchAll({ type: 'window' }).then((list) => {
+          for (const client of list) {
+            client.postMessage({ type: 'SHIELD_BREACH_DISMISSED' });
+          }
+        })
+      );
+    }
     return;
   }
 
@@ -181,7 +241,6 @@ self.addEventListener('notificationclick', (event) => {
       .then((clientList) => {
         for (const client of clientList) {
           if (client.url.includes(self.location.origin) && 'focus' in client) {
-            // توجيه التبويب المفتوح للصفحة المستهدفة فوراً
             if (targetUrl && 'navigate' in client) {
               client.navigate(targetUrl);
             }

@@ -9,7 +9,7 @@ import {
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
-
+import ShieldOverlay from './ShieldOverlay';
 const BRAND = {
   blue: '#1656b8',
   blueDark: '#0f3d85',
@@ -186,6 +186,7 @@ export default function SessionScreen() {
     acknowledgedSessionIds,
     acknowledgeSession,
     endSession,
+       deductWallet,
   } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
@@ -565,6 +566,21 @@ return () => {
           </span>
         </button>
       </div>
+
+      {/* ═══════════════════════════════
+          🛡️ الدرع — طبقة فوق الشاشة
+          ═══════════════════════════════ */}
+      {activeSession && garage && (
+        <ShieldOverlay
+          sessionId={activeSession.id}
+          garageId={activeSession.garageId}
+          garageLat={garage.lat}
+          garageLng={garage.lng}
+          walletBalance={currentUser?.wallet ?? 0}
+          onDeductWallet={(amount) => deductWallet(amount)}
+          onNavigateToWallet={() => setScreen('list')}
+        />
+      )}
     </motion.div>
   );
 }

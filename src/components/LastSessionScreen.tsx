@@ -13,6 +13,7 @@ import {
   Calendar,
   CheckCircle2,
   Hash,
+  ShieldCheck,
 } from 'lucide-react';
 import { useStore, normalizePlate, normalizePhone, BOOKING_FEE } from '../store';
 
@@ -100,6 +101,12 @@ export default function LastSessionScreen() {
       garage.type === 'partner'
     );
   }, [garage]);
+
+  /* 🛡️ تكلفة الدرع (لو تم تفعيله في الجلسة دي) */
+  const shieldCost = useMemo(() => {
+    if (!lastSession) return 0;
+    return Number((lastSession as any).shieldCost || (lastSession as any).shield_cost || 0);
+  }, [lastSession]);
 
   /* رقم إيصال فاخر */
   const receiptNumber = useMemo(() => {
@@ -198,7 +205,7 @@ export default function LastSessionScreen() {
 الدخول: ${formatDateFull(entryTime)} - ${formatTimeOnly(entryTime)}
 الخروج: ${formatDateFull(exitTime)} - ${formatTimeOnly(exitTime)}
 المدة: ${formatDuration(durationSeconds)}
-${isVip ? `\nرسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : ''}
+${isVip ? `\nرسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : ''}${shieldCost > 0 ? `\n🛡️ درع حماية السيارة: ${shieldCost} ج.م (من المحفظة)` : ''}
 ━━━━━━━━━━━━━━━
 شكراً لاستخدامك Park'n 24 🙏
     `.trim();
@@ -365,17 +372,30 @@ ${isVip ? `\nرسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : 
                   </div>
                 </div>
 
-                {isVip && (
-                  <span
-                    className="text-[10px] px-2.5 py-1.5 rounded-lg font-black text-white flex items-center gap-1 shrink-0"
-                    style={{
-                      background: `linear-gradient(135deg, ${BRAND.blue} 0%, ${BRAND.blueDark} 100%)`,
-                      boxShadow: '0 2px 8px rgba(22, 86, 184, 0.3)',
-                    }}
-                  >
-                    <Zap size={11} fill="currentColor" /> VIP
-                  </span>
-                )}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {shieldCost > 0 && (
+                    <span
+                      className="text-[10px] px-2.5 py-1.5 rounded-lg font-black text-white flex items-center gap-1"
+                      style={{
+                        background: `linear-gradient(135deg, ${BRAND.green} 0%, ${BRAND.greenDark} 100%)`,
+                        boxShadow: '0 2px 8px rgba(140, 198, 63, 0.3)',
+                      }}
+                    >
+                      <ShieldCheck size={11} /> محمية
+                    </span>
+                  )}
+                  {isVip && (
+                    <span
+                      className="text-[10px] px-2.5 py-1.5 rounded-lg font-black text-white flex items-center gap-1"
+                      style={{
+                        background: `linear-gradient(135deg, ${BRAND.blue} 0%, ${BRAND.blueDark} 100%)`,
+                        boxShadow: '0 2px 8px rgba(22, 86, 184, 0.3)',
+                      }}
+                    >
+                      <Zap size={11} fill="currentColor" /> VIP
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -597,6 +617,88 @@ ${isVip ? `\nرسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : 
                     }}
                   >
                     {BOOKING_FEE} ج.م
+                  </span>
+                </div>
+              </>
+            )}
+
+            {/* ═══ 🛡️ درع حماية السيارة ═══ */}
+            {shieldCost > 0 && (
+              <>
+                <div className="relative px-5">
+                  <div
+                    className="border-t-2 border-dashed"
+                    style={{ borderColor: BRAND.divider }}
+                  />
+                  <div
+                    className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full"
+                    style={{ background: BRAND.bg }}
+                  />
+                  <div
+                    className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full"
+                    style={{ background: BRAND.bg }}
+                  />
+                </div>
+
+                <div
+                  className="px-5 py-3 flex items-center justify-between"
+                  style={{
+                    background: `linear-gradient(90deg, rgba(140, 198, 63, 0.08) 0%, rgba(140, 198, 63, 0.18) 100%)`,
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck size={16} style={{ color: BRAND.green }} />
+                    <div className="flex flex-col">
+                      <span className="text-xs font-black" style={{ color: BRAND.ink }}>
+                        درع حماية السيارة
+                      </span>
+                      <span className="text-[9px] font-bold" style={{ color: BRAND.inkMuted }}>
+                        تم تفعيله طوال مدة الركن
+                      </span>
+                    </div>
+                  </div>
+                  <span
+                    className="text-sm font-black text-white font-mono px-3 py-1 rounded-md"
+                    style={{
+                      background: `linear-gradient(135deg, ${BRAND.green} 0%, ${BRAND.greenDark} 100%)`,
+                      boxShadow: '0 2px 6px rgba(140, 198, 63, 0.3)',
+                    }}
+                  >
+                    {shieldCost} ج.م
+                  </span>
+                </div>
+              </>
+            )}
+
+            {/* ═══ 💰 الإجمالي (لو فيه رسوم) ═══ */}
+            {(isVip || shieldCost > 0) && (
+              <>
+                <div className="relative px-5">
+                  <div
+                    className="border-t-2 border-dashed"
+                    style={{ borderColor: BRAND.divider }}
+                  />
+                  <div
+                    className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full"
+                    style={{ background: BRAND.bg }}
+                  />
+                  <div
+                    className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full"
+                    style={{ background: BRAND.bg }}
+                  />
+                </div>
+
+                <div
+                  className="px-5 py-3 flex items-center justify-between"
+                  style={{
+                    background: `linear-gradient(135deg, ${BRAND.navy} 0%, #1a2744 100%)`,
+                  }}
+                >
+                  <span className="text-xs font-black text-white/80 uppercase tracking-wider">
+                    الإجمالي المخصوم
+                  </span>
+                  <span className="text-lg font-black font-mono text-white">
+                    {(isVip ? BOOKING_FEE : 0) + shieldCost} ج.م
                   </span>
                 </div>
               </>

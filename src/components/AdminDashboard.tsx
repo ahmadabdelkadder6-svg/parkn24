@@ -142,32 +142,41 @@ list.forEach((s: any, i: number) => {
     return true;
   }).sort((a:any,b:any)=>toMs(b.endTime)-toMs(a.endTime)), [completedSessions, garages, vipReportDateFrom, vipReportDateTo, vipGarageFilter, vipPaymentFilter, vipPlateSearch]);
 
-  const vipReportStats = useMemo(() => {
-    const ts = vipFilteredSessions.length;
-    const freeSessions = vipFilteredSessions.filter((s:any) => isSessionFree(s));
-    const paidSessions = vipFilteredSessions.filter((s:any) => !isSessionFree(s));
-    const freeCount = freeSessions.length;
-    const paidCount = paidSessions.length;
-    // Revenue from PAID sessions only (free sessions have totalPrice=0 anyway, but be explicit)
-    const tr = paidSessions.reduce((a:number,s:any)=>a+(s.totalPrice||0),0);
-    // Booking fees from PAID sessions only
-    const tf = paidCount*BOOKING_FEE;
-    const gm = new Map<string,{name:string;area:string;count:number;paidCount:number;freeCount:number;revenue:number;fees:number}>();
-    vipFilteredSessions.forEach((s:any) => {
-      const g=garages.find((ga:any)=>ga.id===s.garageId); if(!g) return;
-      const free = isSessionFree(s);
-      const r = free ? 0 : (s.totalPrice||0);
-      const fee = free ? 0 : BOOKING_FEE;
-      const e=gm.get(s.garageId);
-      if(e){e.count++;if(free)e.freeCount++;else e.paidCount++;e.revenue+=r;e.fees+=fee;}
-      else gm.set(s.garageId,{name:g.name,area:g.area||'مناطق أخرى',count:1,paidCount:free?0:1,freeCount:free?1:0,revenue:r,fees:fee});
-    });
-    const pg = Array.from(gm.entries()).map(([id,d])=>({id,...d})).sort((a,b)=>b.count-a.count);
-    const cc=paidSessions.filter((s:any)=>s.paymentMethod==='cash').length;
-    const wc=paidSessions.filter((s:any)=>s.paymentMethod==='wallet').length;
-    const ic=paidSessions.filter((s:any)=>s.paymentMethod==='instapay').length;
-    return { totalSessions:ts, paidCount, freeCount, totalRevenue:tr, totalBookingFees:tf, perGarage:pg, cashCount:cc, walletCount:wc, instapayCount:ic, otherCount:paidCount-cc-wc-ic };
-  }, [vipFilteredSessions, garages]);
+const vipReportStats = useMemo(() => {
+  const ts = vipFilteredSessions.length;
+  const freeSessions = vipFilteredSessions.filter((s:any) => isSessionFree(s));
+  const paidSessions = vipFilteredSessions.filter((s:any) => !isSessionFree(s));
+  const freeCount = freeSessions.length;
+  const paidCount = paidSessions.length;
+  const tr = paidSessions.reduce((a:number,s:any)=>a+(s.totalPrice||0),0);
+  const tf = paidCount*BOOKING_FEE;
+
+  // 🛡️ إيراد الدرع
+  const totalShieldRevenue = vipFilteredSessions.reduce((a:number,s:any)=>a+(s.shieldCost||0),0);
+  const shieldSessionsCount = vipFilteredSessions.filter((s:any)=>(s.shieldCost||0)>0).length;
+
+  const gm = new Map<string,{name:string;area:string;count:number;paidCount:number;freeCount:number;revenue:number;fees:number;shieldRevenue:number;shieldCount:number}>();
+  vipFilteredSessions.forEach((s:any) => {
+    const g=garages.find((ga:any)=>ga.id===s.garageId); if(!g) return;
+    const free = isSessionFree(s);
+    const r = free ? 0 : (s.totalPrice||0);
+    const fee = free ? 0 : BOOKING_FEE;
+    const sc = s.shieldCost||0;
+    const e=gm.get(s.garageId);
+    if(e){e.count++;if(free)e.freeCount++;else e.paidCount++;e.revenue+=r;e.fees+=fee;e.shieldRevenue+=sc;if(sc>0)e.shieldCount++;}
+    else gm.set(s.garageId,{name:g.name,area:g.area||'مناطق أخرى',count:1,paidCount:free?0:1,freeCount:free?1:0,revenue:r,fees:fee,shieldRevenue:sc,shieldCount:sc>0?1:0});
+  });
+  const pg = Array.from(gm.entries()).map(([id,d])=>({id,...d})).sort((a,b)=>b.count-a.count);
+  const cc=paidSessions.filter((s:any)=>s.paymentMethod==='cash').length;
+  const wc=paidSessions.filter((s:any)=>s.paymentMethod==='wallet').length;
+  const ic=paidSessions.filter((s:any)=>s.paymentMethod==='instapay').length;
+  return {
+    totalSessions:ts, paidCount, freeCount, totalRevenue:tr, totalBookingFees:tf,
+    totalShieldRevenue, shieldSessionsCount,
+    totalAllRevenue: tf + totalShieldRevenue, // 🏆 إجمالي إيراد المنصة
+    perGarage:pg, cashCount:cc, walletCount:wc, instapayCount:ic, otherCount:paidCount-cc-wc-ic
+  };
+}, [vipFilteredSessions, garages]);
 
   const filteredWalletTopUps = useMemo(() => {
     return walletTopUps.filter((w:any) => {
@@ -417,29 +426,43 @@ list.forEach((s: any, i: number) => {
           <div className="flex gap-2"><select value={vipPaymentFilter} onChange={e=>{setVipPaymentFilter(e.target.value);setVipVisibleSessions(20);}} className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{color:BRAND.navy}}><option value="all">كل طرق الدفع</option><option value="cash">💵 نقدي</option><option value="wallet">👝 محفظة</option><option value="instapay">📱 إنستاباي</option></select><div className="flex-1 relative"><Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2" style={{color:BRAND.slateMuted}}/><input type="text" value={vipPlateSearch} onChange={e=>{setVipPlateSearch(e.target.value);setVipVisibleSessions(20);}} placeholder="🔍 لوحة..." className="w-full font-bold text-right outline-none text-xs py-2.5 px-8 rounded-lg border border-slate-200" style={{color:BRAND.navy}}/>{vipPlateSearch&&<button onClick={()=>setVipPlateSearch('')} className="absolute left-2 top-1/2 -translate-y-1/2 border-0 bg-transparent cursor-pointer" style={{color:BRAND.slateMuted}}><X size={12}/></button>}</div></div>
         </div>
 
-        {/* ✅ VIP Stats: 4 cards — Paid Revenue, Paid Count, Free Count, VIP Fees */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-          <div className="text-center p-3 rounded-2xl border" style={{background:BRAND.card,borderColor:BRAND.border}}>
-            <div className="text-[9px] font-bold" style={{color:BRAND.slate}}>💰 إيراد الركنات المدفوعة</div>
-            <div className="font-black font-mono text-lg mt-1" style={{color:BRAND.greenDark}}>{vipReportStats.totalRevenue.toFixed(0)}</div>
-            <div className="text-[8px] font-bold" style={{color:BRAND.slateMuted}}>ج.م (من {vipReportStats.paidCount} ركنة)</div>
-          </div>
-          <div className="text-center p-3 rounded-2xl border" style={{background:BRAND.card,borderColor:BRAND.border}}>
-            <div className="text-[9px] font-bold" style={{color:BRAND.slate}}>🚗 إجمالي الركنات</div>
-            <div className="font-black font-mono text-lg mt-1" style={{color:BRAND.blue}}>{vipReportStats.totalSessions}</div>
-            <div className="text-[8px] font-bold" style={{color:BRAND.slateMuted}}>ركنة VIP</div>
-          </div>
-          <div className="text-center p-3 rounded-2xl border" style={{background:'#fefce8',borderColor:'#fde047'}}>
-            <div className="text-[9px] font-bold" style={{color:'#854d0e'}}>🎁 ركنات مجانية</div>
-            <div className="font-black font-mono text-lg mt-1" style={{color:'#ca8a04'}}>{vipReportStats.freeCount}</div>
-            <div className="text-[8px] font-bold" style={{color:'#a16207'}}>من الركنة التالتة</div>
-          </div>
-          <div className="text-center p-3 rounded-2xl" style={{background:`linear-gradient(135deg,${BRAND.blueSoft} 0%,${BRAND.blueLight} 100%)`,border:`1.5px solid ${BRAND.blue}40`}}>
-            <div className="text-[9px] font-black flex items-center justify-center gap-0.5" style={{color:BRAND.blueDark}}><Zap size={10}/> رسوم VIP</div>
-            <div className="font-black font-mono text-lg mt-1" style={{color:BRAND.blue}}>{vipReportStats.totalBookingFees.toFixed(0)}</div>
-            <div className="text-[8px] font-bold" style={{color:BRAND.blueDark}}>ج.م ({BOOKING_FEE}ج × {vipReportStats.paidCount} مدفوعة)</div>
-          </div>
-        </div>
+{/* ✅ VIP Stats: 6 cards — Revenue + Shield + Total */}
+<div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
+  <div className="text-center p-3 rounded-2xl border" style={{background:BRAND.card,borderColor:BRAND.border}}>
+    <div className="text-[9px] font-bold" style={{color:BRAND.slate}}>💰 إيراد الركنات</div>
+    <div className="font-black font-mono text-lg mt-1" style={{color:BRAND.greenDark}}>{vipReportStats.totalRevenue.toFixed(0)}</div>
+    <div className="text-[8px] font-bold" style={{color:BRAND.slateMuted}}>ج.م (من {vipReportStats.paidCount} ركنة)</div>
+  </div>
+  <div className="text-center p-3 rounded-2xl border" style={{background:BRAND.card,borderColor:BRAND.border}}>
+    <div className="text-[9px] font-bold" style={{color:BRAND.slate}}>🚗 إجمالي الركنات</div>
+    <div className="font-black font-mono text-lg mt-1" style={{color:BRAND.blue}}>{vipReportStats.totalSessions}</div>
+    <div className="text-[8px] font-bold" style={{color:BRAND.slateMuted}}>ركنة VIP</div>
+  </div>
+  <div className="text-center p-3 rounded-2xl border" style={{background:'#fefce8',borderColor:'#fde047'}}>
+    <div className="text-[9px] font-bold" style={{color:'#854d0e'}}>🎁 ركنات مجانية</div>
+    <div className="font-black font-mono text-lg mt-1" style={{color:'#ca8a04'}}>{vipReportStats.freeCount}</div>
+    <div className="text-[8px] font-bold" style={{color:'#a16207'}}>من الركنة التالتة</div>
+  </div>
+  <div className="text-center p-3 rounded-2xl" style={{background:`linear-gradient(135deg,${BRAND.blueSoft} 0%,${BRAND.blueLight} 100%)`,border:`1.5px solid ${BRAND.blue}40`}}>
+    <div className="text-[9px] font-black flex items-center justify-center gap-0.5" style={{color:BRAND.blueDark}}><Zap size={10}/> رسوم VIP</div>
+    <div className="font-black font-mono text-lg mt-1" style={{color:BRAND.blue}}>{vipReportStats.totalBookingFees.toFixed(0)}</div>
+    <div className="text-[8px] font-bold" style={{color:BRAND.blueDark}}>ج.م ({BOOKING_FEE}ج × {vipReportStats.paidCount} مدفوعة)</div>
+  </div>
+
+  {/* 🛡️ إيراد الدرع — كارت جديد */}
+  <div className="text-center p-3 rounded-2xl border-2" style={{background:'#f0fdf4',borderColor:'#86efac'}}>
+    <div className="text-[9px] font-black" style={{color:'#166534'}}>🛡️ إيراد الدرع</div>
+    <div className="font-black font-mono text-lg mt-1" style={{color:'#16a34a'}}>{vipReportStats.totalShieldRevenue.toFixed(0)}</div>
+    <div className="text-[8px] font-bold" style={{color:'#15803d'}}>{vipReportStats.shieldSessionsCount} جلسة محمية</div>
+  </div>
+
+  {/* 🏆 إجمالي إيراد المنصة — كارت جديد */}
+  <div className="text-center p-3 rounded-2xl border-2" style={{background:'linear-gradient(135deg, #fef3c7 0%, #fff7ed 100%)',borderColor:'#f59e0b'}}>
+    <div className="text-[9px] font-black" style={{color:'#92400e'}}>🏆 إجمالي إيراد المنصة</div>
+    <div className="font-black font-mono text-xl mt-1" style={{color:'#d97706'}}>{vipReportStats.totalAllRevenue.toFixed(0)}</div>
+    <div className="text-[8px] font-bold" style={{color:'#b45309'}}>ج.م (رسوم + درع)</div>
+  </div>
+</div>
 
         <div className="flex items-center justify-between gap-1 mb-4 py-2 px-3 rounded-xl border" style={{background:BRAND.bg,borderColor:BRAND.border}}>{[{icon:'💵',label:'نقدي',count:vipReportStats.cashCount,color:BRAND.greenDark},{icon:'👝',label:'محفظة',count:vipReportStats.walletCount,color:BRAND.blue},{icon:'📱',label:'إنستا',count:vipReportStats.instapayCount,color:'#7c3aed'},{icon:'🎁',label:'مجاني',count:vipReportStats.freeCount,color:'#ca8a04'}].map((p,i)=>(<div key={i} className="flex items-center gap-1 text-[10px]"><span>{p.icon}</span><span className="font-black font-mono" style={{color:p.color}}>{p.count}</span>{i<3&&<div style={{width:1,height:14,background:BRAND.border,marginLeft:4,marginRight:2}}/>}</div>))}</div>
 
@@ -457,6 +480,7 @@ list.forEach((s: any, i: number) => {
                   <div className="text-center"><div className="font-black font-mono text-sm" style={{color:BRAND.navy}}>{g.count}</div><div className="text-[8px] font-bold" style={{color:BRAND.slateMuted}}>ركنة</div></div>
                   <div style={{width:1,height:28,background:BRAND.border}}/>
                   <div className="text-center"><div className="font-black font-mono text-sm" style={{color:'#ca8a04'}}>{g.freeCount}</div><div className="text-[8px] font-bold" style={{color:'#a16207'}}>🎁 مجاني</div></div>
+{g.shieldRevenue>0&&<><div style={{width:1,height:28,background:BRAND.border}}/><div className="text-center"><div className="font-black font-mono text-sm" style={{color:'#16a34a'}}>{g.shieldRevenue.toFixed(0)}</div><div className="text-[8px] font-bold" style={{color:'#15803d'}}>🛡️ درع</div></div></>}
                   {isExp?<ChevronUp size={14} style={{color:BRAND.slateMuted}}/>:<ChevronDown size={14} style={{color:BRAND.slateMuted}}/>}
                 </div>
                 <div className="text-right"><div className="font-black text-xs flex items-center justify-end gap-1" style={{color:BRAND.navy}}><span>{g.name}</span><Zap size={11} style={{color:BRAND.blue}}/></div><div className="text-[9px] font-bold mt-0.5" style={{color:BRAND.slate}}>{g.area}</div></div>
