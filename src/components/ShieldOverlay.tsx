@@ -12,16 +12,13 @@ import {
   vibrateUrgent, requestNotificationPermission,
   stopVibration, unlockAudio,
 } from '../utils/notifications';
-import {
-  subscribeToPush,
-  registerShieldSession,
-  unregisterShieldSession,
-} from '../lib/pushManager';
+import { subscribeToPush } from '../lib/pushManager';
+import { supabase } from '../lib/supabase';
 
 type Phase = 'ask' | 'register' | 'active' | 'breach' | 'dismissed';
 
 interface Props {
-  sessionId: string;              // ← جديد: لازم للسيرفر
+  sessionId: string;
   garageId: string;
   parkingLat: number;
   parkingLng: number;
@@ -29,6 +26,17 @@ interface Props {
   onDeductWallet: (amount: number, note: string) => boolean;
   onNavigateToWallet: () => void;
 }
+
+// ─── Helper: ألغي الدرع من السيرفر ───
+const endShieldOnServer = (sessionId: string) => {
+  supabase
+    .from('shield_sessions')
+    .update({ ended_at: new Date().toISOString() })
+    .eq('session_id', sessionId)
+    .is('ended_at', null)
+    .then(() => {})
+    .catch(() => {});
+};
 
 export default function ShieldOverlay({
   sessionId, garageId, parkingLat, parkingLng,
@@ -105,23 +113,59 @@ export default function ShieldOverlay({
   useEffect(() => {
     return () => {
       testTimersRef.current.forEach(clearTimeout);
-      // ألغي الدرع من السيرفر لما الـ component يموت
-      unregisterShieldSession(sessionId).catch(() => {});
+      endShieldOnServer(sessionId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ─── Helper: سجّل الدرع على السيرفر ───
+  const registerOnServer = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      const subJson = sub?.toJSON();
+
+      if (user && subJson?.endpoint) {
+        // امسح أي دروع قديمة نشطة
+        await supabase
+          .from('shield_sessions')
+          .update({ ended_at: new Date().toISOString() })
+          .eq('user_id', user.id)
+          .is('ended_at', null);
+
+        // سجّل الدرع الجديد
+        const { error } = await supabase.from('shield_sessions').insert({
+          session_id: sessionId,
+          user_id: user.id,
+          parking_lat: parkingLat,
+          parking_lng: parkingLng,
+          push_endpoint: subJson.endpoint,
+          push_p256dh: subJson.keys?.p256dh,
+          push_auth: subJson.keys?.auth,
+        });
+
+        if (error) {
+          console.error('Shield insert error:', error);
+        } else {
+          console.log('✅ Shield session registered on server');
+        }
+      } else {
+        console.warn('⚠️ No user or push subscription found');
+      }
+    } catch (e) {
+      console.error('Failed to register shield:', e);
+    }
+  }, [sessionId, parkingLat, parkingLng]);
 
   // ─── Handlers ───
   const handleYes = useCallback(async () => {
     unlockAudio();
     await requestNotificationPermission();
 
-    // اشترك في Push (الـ subscription تتسجل في push_subscriptions)
     try {
       await subscribeToPush(garageId);
-    } catch {
-      /* تجاهل */
-    }
+    } catch { /* */ }
 
     const ok = onDeductWallet(SHIELD_COST, 'درع حماية السيارة');
     if (!ok) {
@@ -137,15 +181,13 @@ export default function ShieldOverlay({
         isActive: true, shieldCode: code, phone: userPhone,
         garageId, parkingLat, parkingLng,
       });
-
-      // 🆕 سجّل الدرع على السيرفر عشان الإشعارات توصل حتى لو التطبيق مقفول
-      registerShieldSession(sessionId, parkingLat, parkingLng).catch(console.error);
+      await registerOnServer();
     } else {
       setPhase('register');
     }
-  }, [userPhone, garageId, sessionId, parkingLat, parkingLng, onDeductWallet, onNavigateToWallet]);
+  }, [userPhone, garageId, parkingLat, parkingLng, onDeductWallet, onNavigateToWallet, registerOnServer]);
 
-  const handleRegister = useCallback(() => {
+  const handleRegister = useCallback(async () => {
     if (phone.length < 10) return;
     const code = 'SH-' + Math.random().toString(36).slice(2, 8).toUpperCase();
     setShieldCode(code);
@@ -154,16 +196,13 @@ export default function ShieldOverlay({
       isActive: true, shieldCode: code, phone,
       garageId, parkingLat, parkingLng,
     });
-
-    // 🆕 سجّل الدرع على السيرفر
-    registerShieldSession(sessionId, parkingLat, parkingLng).catch(console.error);
-  }, [phone, garageId, sessionId, parkingLat, parkingLng]);
+    await registerOnServer();
+  }, [phone, garageId, parkingLat, parkingLng, registerOnServer]);
 
   const handleIamDriving = useCallback(() => {
     stopVibration();
     destroyShield();
-    // 🆕 ألغي من السيرفر
-    unregisterShieldSession(sessionId).catch(() => {});
+    endShieldOnServer(sessionId);
     setPhase('dismissed');
   }, [sessionId]);
 
@@ -171,13 +210,12 @@ export default function ShieldOverlay({
     stopVibration();
     sendLocalNotification('🚨 تم الإبلاغ عن سرقة!', 'سيتم التواصل معك فوراً');
     destroyShield();
-    // 🆕 ألغي من السيرفر
-    unregisterShieldSession(sessionId).catch(() => {});
+    endShieldOnServer(sessionId);
     setPhase('dismissed');
   }, [sessionId]);
 
   // ═══════════════════════════════════════════════════════
-  // 🧪 Test Mode — تجربة الدرع في 30 ثانية
+  // 🧪 Test Mode
   // ═══════════════════════════════════════════════════════
   const runTest = useCallback(() => {
     if (isTesting) return;
@@ -191,27 +229,22 @@ export default function ShieldOverlay({
       playNormalAlert();
     };
 
-    // 3s: status
     timers.push(setTimeout(() => {
       pushAlert({ type: 'status', title: '🛡️ الدرع نشط', body: 'كل الحساسات شغالة', icon: '🛡️' });
     }, 3000));
 
-    // 8s: warning
     timers.push(setTimeout(() => {
       pushAlert({ type: 'warning', title: '⚠️ تنبيه أمني', body: 'شخص يقترب من باب السائق', icon: '⚠️' });
     }, 8000));
 
-    // 13s: resolved
     timers.push(setTimeout(() => {
       pushAlert({ type: 'resolved', title: '✅ تم الحل', body: 'كان شخص بيمر جنب العربية', icon: '✅' });
     }, 13000));
 
-    // 18s: qrScan
     timers.push(setTimeout(() => {
       pushAlert({ type: 'qrScan', title: '📱 مسح QR', body: 'شخص مسح كود الاستيكر — تم تسجيله', icon: '📱' });
     }, 18000));
 
-    // 25s: إنذار سرقة حقيقي!
     timers.push(setTimeout(() => {
       setBreachDistance(312);
       setPhase('breach');
@@ -231,12 +264,8 @@ export default function ShieldOverlay({
     if (phase === 'breach') setPhase('active');
   }, [phase]);
 
-  // ─── Dismissed ───
   if (phase === 'dismissed') return null;
 
-  // ═══════════════════════════════════════════════════════
-  // 🎨 RENDER
-  // ═══════════════════════════════════════════════════════
   return (
     <div className="w-full flex flex-col items-center gap-3 py-3">
 
@@ -295,39 +324,32 @@ export default function ShieldOverlay({
         </div>
       )}
 
-      {/* ─── ACTIVE (رادار فوق العداد) ─── */}
+      {/* ─── ACTIVE ─── */}
       {phase === 'active' && (
         <div className="flex flex-col items-center gap-2">
-          {/* Radar */}
           <div className="relative" style={{ width: 128, height: 128 }}>
             <div
               ref={radarRef}
               className="absolute inset-0 rounded-full"
               style={{ background: 'conic-gradient(from 0deg, transparent 0deg, rgba(34,197,94,0.35) 40deg, transparent 80deg)' }}
             />
-            {/* Rings */}
             <div className="absolute inset-2 rounded-full border border-green-500/20" />
             <div className="absolute inset-5 rounded-full border border-green-500/15" />
             <div className="absolute inset-8 rounded-full border border-green-500/10" />
-            {/* Cross */}
             <div className="absolute top-1/2 left-0 right-0 h-px bg-green-500/10" />
             <div className="absolute left-1/2 top-0 bottom-0 w-px bg-green-500/10" />
-            {/* Center dot */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-green-400 animate-pulse shadow-lg shadow-green-400/50" />
-            {/* Fake blips */}
             <div className="absolute w-1.5 h-1.5 rounded-full bg-green-300/60" style={{ top: '25%', left: '65%' }} />
             <div className="absolute w-1 h-1 rounded-full bg-green-300/40" style={{ top: '70%', left: '25%' }} />
             <div className="absolute w-1 h-1 rounded-full bg-green-300/50" style={{ top: '60%', left: '75%' }} />
           </div>
 
-          {/* Badge */}
           <div className="flex items-center gap-1.5 bg-green-950/50 border border-green-500/30 rounded-full px-3 py-1">
             <ShieldCheck className="w-3.5 h-3.5 text-green-400" />
             <span className="text-green-400 text-xs font-bold">الدرع نشط</span>
             {shieldCode && <span className="text-green-600 text-[10px] font-mono">{shieldCode}</span>}
           </div>
 
-          {/* Test Button */}
           <div className="flex gap-2 mt-1">
             {!isTesting ? (
               <button
@@ -346,7 +368,6 @@ export default function ShieldOverlay({
             )}
           </div>
 
-          {/* Alerts Feed */}
           {alerts.length > 0 && (
             <div className="w-full max-w-xs space-y-1.5 mt-1">
               {alerts.map((a, i) => (
@@ -376,7 +397,7 @@ export default function ShieldOverlay({
         </div>
       )}
 
-      {/* ─── BREACH (إنذار سرقة) ─── */}
+      {/* ─── BREACH ─── */}
       {phase === 'breach' && (
         <div className="w-full bg-red-950/80 border-2 border-red-500 rounded-2xl p-4 animate-pulse backdrop-blur-sm">
           <div className="flex items-center gap-3 mb-3">
