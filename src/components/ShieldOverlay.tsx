@@ -4,7 +4,7 @@ import {
   startFakeAlerts, stopFakeAlerts,
   startShieldGPS,
   destroyShield, saveShieldState, loadShieldState,
-  SHIELD_COST,
+  SHIELD_STORAGE_KEY, SHIELD_COST,
   type FakeAlert,
 } from '../lib/shield';
 import {
@@ -64,15 +64,19 @@ export default function ShieldOverlay({
     return () => clearInterval(id);
   }, [phase]);
 
-  // ─── Load saved state ───
+  // ─── Load saved state (بس لو نفس الجلسة بالظبط) ───
   useEffect(() => {
-    const saved = loadShieldState();
-    if (saved?.isActive && saved.garageId === garageId) {
+    const saved = loadShieldState() as any;
+    if (
+      saved?.isActive &&
+      saved.garageId === garageId &&
+      saved.sessionId === sessionId
+    ) {
       setShieldCode(saved.shieldCode);
       setPhone(saved.phone ?? '');
       setPhase('active');
     }
-  }, [garageId]);
+  }, [garageId, sessionId]);
 
   // ─── Start GPS + Fake Alerts when active ───
   useEffect(() => {
@@ -127,7 +131,7 @@ export default function ShieldOverlay({
       const subJson = sub?.toJSON();
 
       if (user && subJson?.endpoint) {
-        // امسح أي دروع قديمة نشطة
+        // امسح أي دروع قديمة نشطة لنفس المستخدم
         await supabase
           .from('shield_sessions')
           .update({ ended_at: new Date().toISOString() })
@@ -146,7 +150,7 @@ export default function ShieldOverlay({
         });
 
         if (error) {
-          console.error('Shield insert error:', error);
+          console.error('❌ Shield insert error:', error);
         } else {
           console.log('✅ Shield session registered on server');
         }
@@ -157,6 +161,13 @@ export default function ShieldOverlay({
       console.error('Failed to register shield:', e);
     }
   }, [sessionId, parkingLat, parkingLng]);
+
+  // ─── Helper: امسح الـ state المحلي ───
+  const clearLocalShield = useCallback(() => {
+    try {
+      localStorage.removeItem(SHIELD_STORAGE_KEY);
+    } catch {}
+  }, []);
 
   // ─── Handlers ───
   const handleYes = useCallback(async () => {
@@ -180,12 +191,13 @@ export default function ShieldOverlay({
       saveShieldState({
         isActive: true, shieldCode: code, phone: userPhone,
         garageId, parkingLat, parkingLng,
-      });
+        sessionId,
+      } as any);
       await registerOnServer();
     } else {
       setPhase('register');
     }
-  }, [userPhone, garageId, parkingLat, parkingLng, onDeductWallet, onNavigateToWallet, registerOnServer]);
+  }, [userPhone, garageId, sessionId, parkingLat, parkingLng, onDeductWallet, onNavigateToWallet, registerOnServer]);
 
   const handleRegister = useCallback(async () => {
     if (phone.length < 10) return;
@@ -195,24 +207,27 @@ export default function ShieldOverlay({
     saveShieldState({
       isActive: true, shieldCode: code, phone,
       garageId, parkingLat, parkingLng,
-    });
+      sessionId,
+    } as any);
     await registerOnServer();
-  }, [phone, garageId, parkingLat, parkingLng, registerOnServer]);
+  }, [phone, garageId, sessionId, parkingLat, parkingLng, registerOnServer]);
 
   const handleIamDriving = useCallback(() => {
     stopVibration();
     destroyShield();
+    clearLocalShield();
     endShieldOnServer(sessionId);
     setPhase('dismissed');
-  }, [sessionId]);
+  }, [sessionId, clearLocalShield]);
 
   const handleTheft = useCallback(() => {
     stopVibration();
     sendLocalNotification('🚨 تم الإبلاغ عن سرقة!', 'سيتم التواصل معك فوراً');
     destroyShield();
+    clearLocalShield();
     endShieldOnServer(sessionId);
     setPhase('dismissed');
-  }, [sessionId]);
+  }, [sessionId, clearLocalShield]);
 
   // ═══════════════════════════════════════════════════════
   // 🧪 Test Mode
