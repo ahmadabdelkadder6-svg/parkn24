@@ -18,17 +18,13 @@ export interface ShieldState {
   garageId: string | null;
   parkingLat: number | null;
   parkingLng: number | null;
-  learnedVibration: boolean;
 }
 
 // ─── ثوابت ───
 export const SHIELD_COST = 7;
 export const SHIELD_STORAGE_KEY = 'parkn24_shield';
 export const GEOFENCE_RADIUS = 250;
-export const GEOFENCE_GRACE_MS = 90_000; // 90 ثانية
-export const VIBRATION_THRESHOLD = 15; // m/s²
-export const VIBRATION_COUNT = 3;
-export const VIBRATION_WINDOW = 5000; // 5 ثواني
+export const GEOFENCE_GRACE_MS = 90_000;
 
 // ─── بنك الإشعارات الوهمية ───
 // warning(15%) + resolved(25%) + status(40%) + report(12%) + qrScan(8%) = 100%
@@ -180,7 +176,7 @@ export function startShieldGPS(params: {
           params.onGeofenceBreach(dist);
         }
       } else {
-        breachStart = null; // رجع جوه الدائرة → إلغاء العد
+        breachStart = null;
       }
     },
     (err) => console.warn('Shield GPS:', err.message),
@@ -198,56 +194,11 @@ export function stopShieldGPS(): void {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 📳 تعلم الاهتزاز (Accelerometer)
-// ═══════════════════════════════════════════════════════════
-export function startVibrationDemo(onLearned: () => void): () => void {
-  let learned = false;
-  const timestamps: number[] = [];
-
-  const handler = (e: DeviceMotionEvent) => {
-    if (learned) return;
-    const acc = e.accelerationIncludingGravity;
-    if (!acc) return;
-    const force = Math.sqrt((acc.x ?? 0) ** 2 + (acc.y ?? 0) ** 2 + (acc.z ?? 0) ** 2);
-    if (force > VIBRATION_THRESHOLD) {
-      const now = Date.now();
-      timestamps.push(now);
-      // احتفظ بالضربات في آخر 5 ثواني بس
-      while (timestamps.length > 0 && now - timestamps[0] > VIBRATION_WINDOW) {
-        timestamps.shift();
-      }
-      if (timestamps.length >= VIBRATION_COUNT) {
-        learned = true;
-        window.removeEventListener('devicemotion', handler);
-        onLearned();
-      }
-    }
-  };
-
-  // iOS 13+ يحتاج إذن
-  if (typeof (DeviceMotionEvent as any).requestPermission === 'function') {
-    (DeviceMotionEvent as any)
-      .requestPermission()
-      .then((state: string) => {
-        if (state === 'granted') window.addEventListener('devicemotion', handler);
-        else { learned = true; onLearned(); }
-      })
-      .catch(() => { learned = true; onLearned(); });
-  } else {
-    window.addEventListener('devicemotion', handler);
-  }
-
-  return () => { learned = true; window.removeEventListener('devicemotion', handler); };
-}
-
-
-// ═══════════════════════════════════════════════════════════
 // 🧹 تدمير الدرع بالكامل
 // ═══════════════════════════════════════════════════════════
 export function destroyShield(): void {
   stopFakeAlerts();
   stopShieldGPS();
-  // الصوت والاهتزاز بيتوقفوا من ShieldOverlay عبر notifications.ts
   try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch { /* */ }
 }
 

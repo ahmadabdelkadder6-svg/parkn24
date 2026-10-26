@@ -5,11 +5,13 @@ import {
   Car,
   Sparkles,
   MapPin,
+  Wallet,
 } from 'lucide-react';
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import ShieldOverlay from './ShieldOverlay';
+
 const BRAND = {
   blue: '#1656b8',
   blueDark: '#0f3d85',
@@ -26,6 +28,7 @@ const BRAND = {
 };
 
 const AUTO_END_SECONDS = 6 * 60 * 60;
+const MIN_WALLET_BALANCE = 10; // 💰 الحد الأدنى للرصيد
 
 const safeParseTime = (value: any): number => {
   if (!value) return 0;
@@ -49,7 +52,6 @@ const formatTime = (seconds: number): string => {
 
 /* ═══════════════════════════════════════════════════════════
    ⚡ LiveSessionTimer — المكوّن الوحيد اللي بيتحدث كل ثانية
-   باقي الشاشة تفضل ثابتة → حماية البطارية والمعالج
    ═══════════════════════════════════════════════════════════ */
 const LiveSessionTimer = memo(function LiveSessionTimer({
   activeStartMs,
@@ -153,7 +155,7 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
         </div>
       </div>
 
-      {/* 🚨 تنبيه الإنهاء التلقائي — جوه المكوّن عشان يعتمد على elapsed بدون ما يلمس الـ parent */}
+      {/* 🚨 تنبيه الإنهاء التلقائي */}
       {showAutoEndWarning && (
         <div
           className="w-full max-w-md rounded-xl px-3.5 py-2.5 mb-3 text-center border-2"
@@ -173,7 +175,121 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
 });
 
 /* ═══════════════════════════════════════════════════════════
-   📺 SessionScreen — الشاشة الثابتة (ما بتعيدش رسم كل ثانية)
+   💰 LowBalanceScreen — شاشة الرصيد الناقص
+   ═══════════════════════════════════════════════════════════ */
+const LowBalanceScreen = memo(function LowBalanceScreen({
+  currentBalance,
+  onNavigateToWallet,
+}: {
+  currentBalance: number;
+  onNavigateToWallet: () => void;
+}) {
+  return (
+    <div
+      className="h-full text-white flex flex-col items-center justify-center p-8 dir-rtl"
+      style={{
+        background: `
+          radial-gradient(ellipse at top, #1a1a2e 0%, #0a1628 60%),
+          radial-gradient(ellipse at bottom, rgba(239,68,68,0.08) 0%, transparent 60%)
+        `,
+      }}
+    >
+      <style>{`
+        @keyframes shimmerBtn {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+        @keyframes pulseGlow {
+          0%, 100% { box-shadow: 0 0 20px rgba(239,68,68,0.15); }
+          50% { box-shadow: 0 0 40px rgba(239,68,68,0.3); }
+        }
+      `}</style>
+
+      <motion.div
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: 'spring', damping: 15 }}
+        className="text-center max-w-sm"
+      >
+        {/* أيقونة المحفظة */}
+        <div
+          className="w-24 h-24 rounded-full mx-auto mb-6 flex items-center justify-center"
+          style={{
+            background: 'linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(239,68,68,0.05) 100%)',
+            border: '2px solid rgba(239,68,68,0.3)',
+            animation: 'pulseGlow 2s ease-in-out infinite',
+          }}
+        >
+          <Wallet size={40} className="text-red-400" />
+        </div>
+
+        <h2 className="text-xl font-black text-white mb-2">رصيدك مش كافي</h2>
+        <p className="text-slate-400 text-sm font-bold mb-3 leading-relaxed">
+          رصيدك الحالي في المحفظة
+        </p>
+
+        {/* الرصيد الحالي */}
+        <div
+          className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-full mb-5"
+          style={{
+            background: 'rgba(239,68,68,0.1)',
+            border: '1px solid rgba(239,68,68,0.3)',
+          }}
+        >
+          <span className="font-mono font-black text-2xl text-red-400">
+            {currentBalance.toFixed(0)}
+          </span>
+          <span className="text-red-400/70 font-bold text-sm">ج.م</span>
+        </div>
+
+        <div
+          className="w-full rounded-2xl p-4 mb-6 border"
+          style={{
+            background: 'rgba(245, 158, 11, 0.08)',
+            borderColor: 'rgba(245, 158, 11, 0.25)',
+          }}
+        >
+          <p className="text-amber-300 text-xs font-black mb-1.5">
+            ⚠️ الحد الأدنى للاستخدام: {MIN_WALLET_BALANCE} ج.م
+          </p>
+          <p className="text-slate-400 text-[11px] font-bold leading-relaxed">
+            اشحن محفظتك الأول لتقدر تستخدم الدرع وتدفع الجلسات بسهولة.
+            جلستك الحالية هتفضل محفوظة.
+          </p>
+        </div>
+
+        {/* زرار الشحن */}
+        <motion.button
+          whileTap={{ scale: 0.95 }}
+          onClick={onNavigateToWallet}
+          className="w-full py-4 rounded-2xl text-white font-black text-base relative overflow-hidden"
+          style={{
+            background: 'linear-gradient(135deg, #1656b8 0%, #0f3d85 100%)',
+            boxShadow: '0 8px 24px rgba(22,86,184,0.4), inset 0 1px 0 rgba(255,255,255,0.15)',
+          }}
+        >
+          <div
+            className="absolute inset-0 opacity-20"
+            style={{
+              background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%)',
+              animation: 'shimmerBtn 2s infinite',
+            }}
+          />
+          <span className="relative z-10 flex items-center justify-center gap-2">
+            💳 اشحن المحفظة الآن
+          </span>
+        </motion.button>
+
+        <p className="text-slate-500 text-[10px] font-bold mt-4">
+          الجلسة هتفضل شغالة — اشحن وارجع كمّل
+        </p>
+      </motion.div>
+    </div>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════
+   📺 SessionScreen — الشاشة الرئيسية
    ═══════════════════════════════════════════════════════════ */
 export default function SessionScreen() {
   const {
@@ -186,7 +302,7 @@ export default function SessionScreen() {
     acknowledgedSessionIds,
     acknowledgeSession,
     endSession,
-       deductWallet,
+    deductWallet,
   } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
@@ -216,7 +332,6 @@ export default function SessionScreen() {
     );
   }, [userPlate, userPhone]);
 
-  /* ⚡ Single-pass — بدون filter/sort */
   const activeSession = useMemo(() => {
     let latest: (typeof sessions)[number] | undefined;
     let maxStart = -1;
@@ -293,28 +408,27 @@ export default function SessionScreen() {
       })
       .subscribe();
 
-realtimeChannelRef.current = channel;
+    realtimeChannelRef.current = channel;
 
-const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
-document.addEventListener('visibilitychange', handleVisibility);
-window.addEventListener('focus', refetch);
+    const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', refetch);
 
-return () => {
-  cancelled = true;
-  document.removeEventListener('visibilitychange', handleVisibility);
-  window.removeEventListener('focus', refetch);
-  if (realtimeChannelRef.current) {
-    supabase.removeChannel(realtimeChannelRef.current);
-    realtimeChannelRef.current = null;
-  }
-};
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', refetch);
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+    };
   }, [userPlate, userPhone, fetchAll, isMySessionRow]);
 
   const handleEndSession = useCallback(async () => {
     if (ending || !activeSession) return;
     setEnding(true);
     try {
-      // ✅ نحسب المدة لحظياً من السيرفر — مش محتاجين state العداد
       const elapsedSec = Math.floor((getServerNow() - activeStartMs) / 1000);
       await endSession(activeSession.id, Math.max(0, elapsedSec), 'cash', 0);
       if (typeof acknowledgeSession === 'function') acknowledgeSession(activeSession.id);
@@ -386,6 +500,27 @@ return () => {
     }
   }, [activeSession, lastCompletedSession, sessions, setScreen, setSelectedGarageId, acknowledgedSessionIds, acknowledgeSession]);
 
+  // ═══════════════════════════════
+  // 💰 شرط الرصيد — لو أقل من 10 ج → شاشة الشحن
+  // (يتفعّل بس لو في جلسة شغالة من التطبيق — مش من السايس)
+  // ═══════════════════════════════
+  const userWallet = currentUser?.wallet ?? 0;
+  const shouldBlockForLowBalance = useMemo(() => {
+    if (!activeSession) return false;
+    // الجلسات من السايس (مش من التطبيق) مش بتتأثر بالرصيد
+    if (activeSession.source !== 'app') return false;
+    return userWallet < MIN_WALLET_BALANCE;
+  }, [activeSession, userWallet]);
+
+  if (shouldBlockForLowBalance) {
+    return (
+      <LowBalanceScreen
+        currentBalance={userWallet}
+        onNavigateToWallet={() => setScreen('list')}
+      />
+    );
+  }
+
   if (!activeSession) {
     return (
       <div className="h-full text-white flex flex-col items-center justify-center p-8 text-right dir-rtl" style={{ background: BRAND.navy }}>
@@ -409,13 +544,13 @@ return () => {
       }}
     >
       {/* ═══════════════════════════════
-          🎯 القسم العلوي — العداد
+          🎯 القسم العلوي — الدرع + العداد
           ═══════════════════════════════ */}
       <div className="flex-1 flex flex-col items-center justify-center px-5 pt-6 pb-3">
 
-        {/* بادج "جلسة نشطة" — ثابت، مش جوه العداد */}
+        {/* بادج "جلسة نشطة" */}
         <div
-          className="mb-5 px-4 py-1.5 rounded-full flex items-center gap-2 border"
+          className="mb-4 px-4 py-1.5 rounded-full flex items-center gap-2 border"
           style={{
             background: 'rgba(140, 198, 63, 0.12)',
             borderColor: 'rgba(140, 198, 63, 0.4)',
@@ -427,13 +562,26 @@ return () => {
           </span>
         </div>
 
-        {/* ⚡ العداد المعزول — الوحيد اللي re-render كل ثانية */}
+        {/* 🛡️ الدرع — فوق العداد مباشرة */}
+        {activeSession && garage && (
+          <ShieldOverlay
+            sessionId={activeSession.id}
+            garageId={activeSession.garageId}
+            garageLat={(garage as any).lat}
+            garageLng={(garage as any).lng}
+            walletBalance={userWallet}
+            onDeductWallet={deductWallet}
+            onNavigateToWallet={() => setScreen('list')}
+          />
+        )}
+
+        {/* ⚡ العداد */}
         <LiveSessionTimer
           activeStartMs={activeStartMs}
           onAutoEnd={handleAutoEnd}
         />
 
-        {/* 💬 بطاقة الإرشاد — ثابتة + بدون blur */}
+        {/* 💬 بطاقة الإرشاد */}
         <div
           className="w-full max-w-md rounded-2xl px-4 py-3 text-center border"
           style={{
@@ -456,7 +604,7 @@ return () => {
       </div>
 
       {/* ═══════════════════════════════
-          📋 القسم السفلي — معلومات + زر (ثابت تماماً)
+          📋 القسم السفلي — معلومات + زر
           ═══════════════════════════════ */}
       <div
         className="px-5 pt-4 pb-5 border-t"
@@ -566,21 +714,6 @@ return () => {
           </span>
         </button>
       </div>
-
-      {/* ═══════════════════════════════
-          🛡️ الدرع — طبقة فوق الشاشة
-          ═══════════════════════════════ */}
-      {activeSession && garage && (
-        <ShieldOverlay
-          sessionId={activeSession.id}
-          garageId={activeSession.garageId}
-          garageLat={garage.lat}
-          garageLng={garage.lng}
-          walletBalance={currentUser?.wallet ?? 0}
-          onDeductWallet={(amount) => deductWallet(amount)}
-          onNavigateToWallet={() => setScreen('list')}
-        />
-      )}
     </motion.div>
   );
 }
