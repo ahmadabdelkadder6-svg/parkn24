@@ -154,15 +154,23 @@ export const subscribeToPush = async (garageId: string, userPhone?: string): Pro
       return { success: false, message: 'مفاتيح الاشتراك ناقصة' };
     }
 
-    const result = await supabaseFetch('save-push-subscription', {
-      subscription: {
-        endpoint: sub.endpoint,
-        keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
-      },
-      garageId,
-      userAgent: navigator.userAgent,
-      subscribedAt: new Date().toISOString(),
-    });
+let phone = userPhone || '';
+if (!phone) {
+  try {
+    const cu = JSON.parse(localStorage.getItem('currentUser') || '{}');
+    phone = cu.phone || '';
+  } catch {}
+}
+const result = await supabaseFetch('save-push-subscription', {
+  subscription: {
+    endpoint: sub.endpoint,
+    keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+  },
+  garageId,
+  phone,                          // ← السطر الجديد
+  userAgent: navigator.userAgent,
+  subscribedAt: new Date().toISOString(),
+});
 
     if (result.success) {
       return { success: true, message: 'تم تفعيل الدرع بنجاح! 🛡️' };
