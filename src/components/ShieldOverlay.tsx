@@ -211,7 +211,13 @@ export default function ShieldOverlay({
       onNavigateToWallet();
       return;
     }
-
+    // 💾 احفظ تكلفة الدرع في الجلسة عشان يظهر في الإيصال والأدمن
+    supabase
+      .from('sessions')
+      .update({ shield_cost: SHIELD_COST })
+      .eq('id', sessionId)
+      .then(() => {})
+      .catch((e) => console.error('Failed to save shield cost:', e));
     if (userPhone) {
       const code = 'SH-' + Math.random().toString(36).slice(2, 8).toUpperCase();
       setShieldCode(code);
