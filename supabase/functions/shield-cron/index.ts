@@ -7,53 +7,76 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, content-type',
 };
 
-// ─── 29 إشعار في الـ Pool ─────────────────────────────
-const ALERT_POOL = [
-  // Warning (15%)
+// ─── 29 إشعار مختلف ──────────────────────────────────
+const ALERT_POOL: { type: string; title: string; body: string }[] = [
+  // ⚠️ Warning — 5 إشعارات (15%)
   { type: 'warning', title: '⚠️ تحذير أمني', body: 'تم رصد حركة مريبة حول سيارتك' },
   { type: 'warning', title: '⚠️ تنبيه', body: 'شخص غريب يقترب من سيارتك' },
-  { type: 'warning', title: '⚠️ انتبه', body: 'تم رصد اهتزاز غير طبيعي' },
-  { type: 'warning', title: '⚠️ إنذار', body: 'حركة مشبوهة بجوار السيارة' },
-  { type: 'warning', title: '⚠️ تنبيه أمني', body: 'تم اكتشاف نشاط غير معتاد' },
-  // Resolved (25%)
+  { type: 'warning', title: '⚠️ انتبه', body: 'تم رصد اهتزاز غير طبيعي في السيارة' },
+  { type: 'warning', title: '⚠️ إنذار', body: 'حركة مشبوهة بجوار سيارتك' },
+  { type: 'warning', title: '⚠️ تنبيه أمني', body: 'تم اكتشاف نشاط غير معتاد في المنطقة' },
+
+  // ✅ Resolved — 7 إشعارات (25%)
   { type: 'resolved', title: '✅ تم التأمين', body: 'السيارة آمنة، لا توجد تهديدات' },
-  { type: 'resolved', title: '✅ تم التحقق', body: 'كل شيء على ما يرام' },
+  { type: 'resolved', title: '✅ تم التحقق', body: 'كل شيء على ما يرام حول سيارتك' },
   { type: 'resolved', title: '✅ استقرار', body: 'المنطقة آمنة حالياً' },
-  { type: 'resolved', title: '✅ آمن', body: 'تم فحص السيارة ولا يوجد خطر' },
+  { type: 'resolved', title: '✅ آمن', body: 'تم فحص السيارة ولا يوجد أي خطر' },
   { type: 'resolved', title: '✅ طبيعي', body: 'لا توجد أي تهديدات نشطة' },
-  // Status (40%)
+  { type: 'resolved', title: '✅ تم الفحص', body: 'المحيط آمن تماماً' },
+  { type: 'resolved', title: '✅ هدوء', body: 'لا توجد أي إشارات مقلقة' },
+
+  // 🛡️ Status — 11 إشعار (40%)
   { type: 'status', title: '🛡️ الدرع نشط', body: 'حماية مستمرة لسيارتك' },
   { type: 'status', title: '🛡️ تحديث', body: 'الدرع يعمل بكفاءة كاملة' },
   { type: 'status', title: '🛡️ مراقبة', body: 'نراقب سيارتك على مدار الساعة' },
-  { type: 'status', title: '🛡️ تقرير', body: 'لا توجد أحداث مشبوهة' },
+  { type: 'status', title: '🛡️ تقرير', body: 'لا توجد أحداث مشبوهة حالياً' },
   { type: 'status', title: '🛡️ نشط', body: 'نظام الحماية يعمل بشكل طبيعي' },
   { type: 'status', title: '🛡️ متصل', body: 'الدرع متصل ومستقر' },
   { type: 'status', title: '🛡️ فحص', body: 'تم فحص المحيط بنجاح' },
   { type: 'status', title: '🛡️ حراسة', body: 'سيارتك تحت المراقبة الكاملة' },
-  // Report (12%)
-  { type: 'report', title: '📋 تقرير أمني', body: 'تم فحص المنطقة المحيطة' },
-  { type: 'report', title: '📋 ملخص', body: 'لا توجد مخالفات أمنية' },
-  { type: 'report', title: '📋 تقرير', body: 'المنطقة هادئة وآمنة' },
-  // QR Scan (8%)
+  { type: 'status', title: '🛡️ تأمين', body: 'جميع أنظمة الحماية مفعّلة' },
+  { type: 'status', title: '🛡️ رصد', body: 'المراقبة مستمرة بدون انقطاع' },
+  { type: 'status', title: '🛡️ جاهز', body: 'الدرع في أعلى درجات الاستعداد' },
+
+  // 📋 Report — 4 إشعارات (12%)
+  { type: 'report', title: '📋 تقرير أمني', body: 'تم فحص المنطقة المحيطة بالسيارة' },
+  { type: 'report', title: '📋 ملخص', body: 'لا توجد مخالفات أمنية مسجّلة' },
+  { type: 'report', title: '📋 تقرير دوري', body: 'المنطقة هادئة وآمنة' },
+  { type: 'report', title: '📋 سجل المراقبة', body: 'لا توجد أحداث تستدعي القلق' },
+
+  // 📱 QR Scan — 2 إشعار (8%)
   { type: 'qrScan', title: '📱 مسح QR', body: 'تم التحقق من هوية الحارس' },
-  { type: 'qrScan', title: '📱 تأكيد', body: 'الحارس المعتمد في الموقع' },
+  { type: 'qrScan', title: '📱 تأكيد', body: 'الحارس المعتمد في الموقع الآن' },
 ];
 
+// ─── اختيار النوع بالنسب، وبعدين إشعار عشوائي من النوع ──
 function pickWeightedAlert() {
-  const weights: Record<string, number> = {
-    warning: 15, resolved: 25, status: 40, report: 12, qrScan: 8,
-  };
-  const filtered = ALERT_POOL;
-  const totalWeight = filtered.reduce((sum, a) => sum + (weights[a.type] || 10), 0);
-  let random = Math.random() * totalWeight;
-  for (const alert of filtered) {
-    random -= weights[alert.type] || 10;
-    if (random <= 0) return alert;
+  // الخطوة 1: اختر النوع بالنسب المطلوبة
+  const typeWeights = [
+    { type: 'warning', weight: 15 },
+    { type: 'resolved', weight: 25 },
+    { type: 'status', weight: 40 },
+    { type: 'report', weight: 12 },
+    { type: 'qrScan', weight: 8 },
+  ];
+
+  const total = typeWeights.reduce((sum, t) => sum + t.weight, 0);
+  let roll = Math.random() * total;
+  let chosenType = 'status';
+
+  for (const tw of typeWeights) {
+    roll -= tw.weight;
+    if (roll <= 0) {
+      chosenType = tw.type;
+      break;
+    }
   }
-  return ALERT_POOL[0];
+
+  // الخطوة 2: اختر إشعار عشوائي من النوع المختار
+  const ofType = ALERT_POOL.filter((a) => a.type === chosenType);
+  return ofType[Math.floor(Math.random() * ofType.length)];
 }
 
-// ─── Helper: دقائق عشوائية ──────────────────────────
 function randomMinutes(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
@@ -98,31 +121,30 @@ serve(async (req) => {
 
     let totalSent = 0;
     let totalSkipped = 0;
-
     const now = new Date();
 
     for (const shield of shields) {
       console.log(`\n🛡️ Shield: id=${shield.id.slice(0, 8)}, phone=${shield.phone}, mode=${shield.fake_mode}, alerts=${shield.alert_count}`);
 
-      // ─── الخطوة 1: تحديد الـ fake_mode (مرة واحدة بس) ───
+      // ─── الخطوة 1: تحديد الـ fake_mode (مرة واحدة) ──
       let fakeMode = shield.fake_mode;
       let nextAlertAt = shield.next_alert_at ? new Date(shield.next_alert_at) : null;
 
       if (fakeMode === -1 || fakeMode === null || fakeMode === undefined) {
         const roll = Math.random();
         if (roll < 0.35) {
-          fakeMode = 0; // 35% — صفر إشعارات
+          fakeMode = 0;
           console.log('🎲 Mode: 0 (صفر إشعارات)');
         } else if (roll < 0.70) {
-          fakeMode = 1; // 35% — رسالة واحدة
+          fakeMode = 1;
           const mins = randomMinutes(5, 15);
           nextAlertAt = new Date(new Date(shield.started_at).getTime() + mins * 60 * 1000);
-          console.log(`🎲 Mode: 1 (رسالة واحدة) — أول إشعار بعد ${mins} دقيقة`);
+          console.log(`🎲 Mode: 1 (رسالة واحدة بعد ${mins} دقيقة)`);
         } else {
-          fakeMode = 2; // 30% — رسالتين
+          fakeMode = 2;
           const mins = randomMinutes(5, 10);
           nextAlertAt = new Date(new Date(shield.started_at).getTime() + mins * 60 * 1000);
-          console.log(`🎲 Mode: 2 (رسالتين) — أول إشعار بعد ${mins} دقيقة`);
+          console.log(`🎲 Mode: 2 (رسالتين بعد ${mins} دقيقة)`);
         }
 
         await supabase
@@ -134,7 +156,7 @@ serve(async (req) => {
           .eq('id', shield.id);
       }
 
-      // ─── الخطوة 2: هل نبعث إشعار؟ ──────────────────
+      // ─── الخطوة 2: هل نبعث؟ ────────────────────────
       if (fakeMode === 0) {
         console.log('⏭️ Mode 0 — لا إشعارات');
         totalSkipped++;
@@ -143,7 +165,7 @@ serve(async (req) => {
 
       const alertCount = shield.alert_count || 0;
       if (alertCount >= fakeMode) {
-        console.log(`⏭️ Already sent ${alertCount}/${fakeMode} alerts`);
+        console.log(`⏭️ Done: ${alertCount}/${fakeMode} alerts sent`);
         totalSkipped++;
         continue;
       }
@@ -152,13 +174,11 @@ serve(async (req) => {
         const waitMin = nextAlertAt
           ? Math.round((nextAlertAt.getTime() - now.getTime()) / 60000)
           : '?';
-        console.log(`⏳ Not yet — waiting ${waitMin} min`);
+        console.log(`⏳ Waiting ${waitMin} min`);
         totalSkipped++;
         continue;
       }
 
-      // ─── الخطوة 3: جلب الـ subscription ────────────
-// ✅ يقرأ من نفس جدول الدروع
 if (!shield.push_endpoint || !shield.push_p256dh || !shield.push_auth) {
   console.log('⚠️ No push keys for phone:', shield.phone);
   totalSkipped++;
@@ -198,13 +218,12 @@ const sub = {
         const newAlertCount = alertCount + 1;
         let newNextAlertAt: string | null = null;
 
-        // لو لسه فيه إشعار تاني (mode 2 وأول مرة)
         if (newAlertCount < fakeMode) {
           const gap = randomMinutes(6, 10);
           newNextAlertAt = new Date(now.getTime() + gap * 60 * 1000).toISOString();
           console.log(`📅 Next alert in ${gap} min`);
         } else {
-          console.log(`🏁 All ${fakeMode} alerts sent — done!`);
+          console.log(`🏁 All ${fakeMode} alerts done!`);
         }
 
         await supabase
