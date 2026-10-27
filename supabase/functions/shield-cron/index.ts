@@ -158,23 +158,18 @@ serve(async (req) => {
       }
 
       // ─── الخطوة 3: جلب الـ subscription ────────────
-      const { data: subs, error: subError } = await supabase
-        .from('push_subscriptions')
-        .select('*')
-        .eq('phone', shield.phone)
-        .limit(1);
+// ✅ يقرأ من نفس جدول الدروع
+if (!shield.push_endpoint || !shield.push_p256dh || !shield.push_auth) {
+  console.log('⚠️ No push keys for phone:', shield.phone);
+  totalSkipped++;
+  continue;
+}
 
-      if (subError) {
-        console.error('❌ Subscription DB error:', subError.message);
-        continue;
-      }
-
-      if (!subs || subs.length === 0) {
-        console.log('⚠️ No subscription found for phone:', shield.phone);
-        continue;
-      }
-
-      const sub = subs[0];
+const sub = {
+  endpoint: shield.push_endpoint,
+  p256dh: shield.push_p256dh,
+  auth: shield.push_auth,
+};
 
       // ─── الخطوة 4: إرسال الـ push ──────────────────
       const alert = pickWeightedAlert();

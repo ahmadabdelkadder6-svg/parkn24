@@ -15,6 +15,7 @@ serve(async (req) => {
   try {
 const VAPID_PUBLIC_KEY  = Deno.env.get('VAPID_PUBLIC_KEY')!.replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY')!.replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+const VAPID_EMAIL = Deno.env.get('VAPID_EMAIL') || 'mailto:admin@parkn24.com';
 webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
     const { garageId, immediate, scheduled } = await req.json();
