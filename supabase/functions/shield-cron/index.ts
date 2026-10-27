@@ -60,7 +60,6 @@ Deno.cron('shield-fake-alerts', '*/8 * * * *', async () => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   );
 
-  // جيب الدروع النشطة اللي عندها push subscription
   const { data: shields } = await supabase
     .from('shield_sessions')
     .select('*')
@@ -87,6 +86,7 @@ Deno.cron('shield-fake-alerts', '*/8 * * * *', async () => {
     let sent = 0;
     for (let i = 0; i < actualCount; i++) {
       const alert = pickWeightedAlert();
+      const tag = `shield-${alert.type}-${shield.id.slice(0, 8)}-${i}`;
 
       try {
         await webpush.sendNotification(
@@ -100,16 +100,19 @@ Deno.cron('shield-fake-alerts', '*/8 * * * *', async () => {
           JSON.stringify({
             title: alert.title,
             body: alert.body,
-            icon: '/icons/icon-192.png',
-            badge: '/icons/badge-72.png',
-            tag: `shield-${shield.id}-${Date.now()}-${i}`,
-            data: { type: `shield-${alert.type}`, sessionId: shield.session_id },
+            icon: '/icons/icon-192x192.png',
+            badge: '/icons/icon-192x192.png',
+            tag,
+            data: {
+              type: `shield-${alert.type}`,
+              sessionId: shield.session_id,
+            },
           })
         );
         sent++;
-        console.log(`✅ Sent ${alert.type} to shield ${shield.id}`);
+        console.log(`✅ Sent ${alert.type} to ${shield.phone || shield.id}`);
       } catch (e: any) {
-        console.error(`❌ Push failed for shield ${shield.id}:`, e.message);
+        console.error(`❌ Push failed:`, e.message);
         if (e.statusCode === 410) {
           await supabase
             .from('shield_sessions')
