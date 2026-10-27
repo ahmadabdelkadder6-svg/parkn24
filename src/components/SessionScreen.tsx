@@ -411,7 +411,8 @@ export default function SessionScreen() {
         {/* 🛡️ الدرع — فوق العداد مباشرة */}
         {garage && (
 <ShieldOverlay
-  sessionId={activeSession.id}          // ← جديد
+  sessionId={activeSession.id}
+  userId={currentUser?.id || ''}
   garageId={activeSession.garageId}
   parkingLat={(garage as any).lat ?? 30.0444}
   parkingLng={(garage as any).lng ?? 31.2357}

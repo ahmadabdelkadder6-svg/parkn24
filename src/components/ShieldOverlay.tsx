@@ -19,6 +19,7 @@ type Phase = 'ask' | 'register' | 'active' | 'breach' | 'dismissed';
 
 interface Props {
   sessionId: string;
+   userId: string;
   garageId: string;
   parkingLat: number;
   parkingLng: number;
@@ -39,7 +40,7 @@ const endShieldOnServer = (sessionId: string) => {
 };
 
 export default function ShieldOverlay({
-  sessionId, garageId, parkingLat, parkingLng,
+  sessionId, userId, garageId, parkingLat, parkingLng,
   userPhone, onDeductWallet, onNavigateToWallet,
 }: Props) {
   const [phase, setPhase] = useState<Phase>('ask');
@@ -124,41 +125,33 @@ export default function ShieldOverlay({
 
   // ─── Helper: سجّل الدرع على السيرفر ───
   const registerOnServer = useCallback(async () => {
-    console.log('🔍 registerOnServer started...');
+    console.log('🔍 registerOnServer started, userId:', userId);
     try {
-      const { data: { user }, error: userErr } = await supabase.auth.getUser();
-      if (!user) {
-        console.error('❌ Step 1 failed: No user', userErr);
-        return;
-      }
-      console.log('✅ Step 1: User found', user.id);
-
       const reg = await navigator.serviceWorker.ready;
-      console.log('✅ Step 2: SW ready');
+      console.log('✅ Step 1: SW ready');
 
       let sub = await reg.pushManager.getSubscription();
       if (sub) {
-        console.log('✅ Step 3: Existing subscription found');
+        console.log('✅ Step 2: Existing subscription found');
       } else {
-        console.log('🔄 Step 3: No subscription, creating...');
+        console.log('🔄 Step 2: No subscription, creating...');
 
         let perm = Notification.permission;
         if (perm !== 'granted') {
           perm = await Notification.requestPermission();
         }
         if (perm !== 'granted') {
-          console.error('❌ Step 4 failed: Permission', perm);
+          console.error('❌ Permission denied:', perm);
           return;
         }
-        console.log('✅ Step 4: Permission granted');
 
         const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
         if (!VAPID_PUBLIC) {
-          console.error('❌ Step 5 failed: VITE_VAPID_PUBLIC_KEY undefined!');
+          console.error('❌ VITE_VAPID_PUBLIC_KEY undefined!');
           console.error('📋 VITE vars:', Object.keys(import.meta.env).filter(k => k.startsWith('VITE_')));
           return;
         }
-        console.log('✅ Step 5: VAPID key found', VAPID_PUBLIC.substring(0, 10) + '...');
+        console.log('✅ Step 3: VAPID key found');
 
         const urlBase64ToUint8Array = (b: string): Uint8Array => {
           const p = '='.repeat((4 - (b.length % 4)) % 4);
@@ -166,44 +159,42 @@ export default function ShieldOverlay({
           return new Uint8Array([...d].map(c => c.charCodeAt(0)));
         };
 
-        try {
-          sub = await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
-          });
-          console.log('✅ Step 6: Subscription created');
-        } catch (subErr: any) {
-          console.error('❌ Step 6 failed:', subErr.message);
-          return;
-        }
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
+        });
+        console.log('✅ Step 4: Subscription created');
       }
 
       const subJson = sub!.toJSON();
       if (!subJson?.endpoint) {
-        console.error('❌ Step 7 failed: No endpoint', subJson);
+        console.error('❌ No endpoint in subscription');
         return;
       }
-      console.log('✅ Step 7: Endpoint OK');
+      console.log('✅ Step 5: Endpoint OK');
 
+      // امسح دروع قديمة
       await supabase.from('shield_sessions')
         .update({ ended_at: new Date().toISOString() })
-        .eq('user_id', user.id).is('ended_at', null);
-      console.log('✅ Step 8: Old shields cleared');
+        .eq('user_id', userId).is('ended_at', null);
 
+      // سجّل الدرع الجديد
       const { error } = await supabase.from('shield_sessions').insert({
-        session_id: sessionId, user_id: user.id,
-        parking_lat: parkingLat, parking_lng: parkingLng,
+        session_id: sessionId,
+        user_id: userId,
+        parking_lat: parkingLat,
+        parking_lng: parkingLng,
         push_endpoint: subJson.endpoint,
         push_p256dh: subJson.keys?.p256dh,
         push_auth: subJson.keys?.auth,
       });
 
-      if (error) console.error('❌ Step 9 failed:', error);
-      else console.log('✅ Step 9: Shield registered! 🎉');
+      if (error) console.error('❌ Insert error:', error);
+      else console.log('✅ Shield registered on server! 🎉');
     } catch (e: any) {
       console.error('❌ Crashed:', e.message);
     }
-  }, [sessionId, parkingLat, parkingLng]);
+  }, [sessionId, userId, parkingLat, parkingLng]);
 
   // ─── Helper: امسح الـ state المحلي ───
   const clearLocalShield = useCallback(() => {
