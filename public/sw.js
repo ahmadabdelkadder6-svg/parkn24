@@ -1,5 +1,5 @@
-// ✅ Version - v11 إصلاح parse إشعارات الدرع
-const CACHE_NAME    = 'parkn24-v11';
+// ✅ Version - v12 إضافة SHIELD_BREACH_DETECTED للـ overlay
+const CACHE_NAME    = 'parkn24-v12';
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
 const recentNotifications = new Map();
@@ -17,7 +17,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 Service Worker Installed (v11)');
+      console.log('📦 Service Worker Installed (v12)');
       return cache.addAll(STATIC_ASSETS);
     })
   );
@@ -78,14 +78,11 @@ self.addEventListener('push', (event) => {
       const payload = event.data.json();
       console.log('📨 Push received in SW:', payload);
 
-      // ═══ إصلاح: خد title/body من أي مكان في الـ payload ═══
-      // 1. من payload.notification (FCM format)
       if (payload.notification) {
         title = payload.notification.title || title;
         body  = payload.notification.body  || body;
       }
 
-      // 2. من الـ root (web-push format — ده اللي الـ cron بيبعته)
       if (payload.title) title = payload.title;
       if (payload.body)  body  = payload.body;
       if (payload.icon)  icon  = payload.icon;
@@ -93,7 +90,6 @@ self.addEventListener('push', (event) => {
       if (payload.tag)   tag   = payload.tag;
       if (payload.url)   url   = payload.url;
 
-      // 3. من payload.data
       if (payload.data) {
         extraData = payload.data;
         if (payload.data.tag) tag = payload.data.tag;
@@ -101,7 +97,6 @@ self.addEventListener('push', (event) => {
         if (payload.data.type) extraData.type = payload.data.type;
       }
 
-      // استخلاص رقم اللوحة للجراج
       let plate = '';
       if (typeof tag === 'string' && tag.startsWith('incoming-')) {
         plate = tag.replace('incoming-', '');
@@ -120,7 +115,6 @@ self.addEventListener('push', (event) => {
     console.error('❌ Push parse error:', err);
   }
 
-  // منع التكرار اللحظي
   const dedupKey  = tag;
   const lastShown = recentNotifications.get(dedupKey);
   const now       = Date.now();
@@ -141,6 +135,7 @@ self.addEventListener('push', (event) => {
   let options;
 
   if (isBreach) {
+    // 🚨 إنذار سرقة - اهتزاز عنيف جداً
     options = {
       body: body || 'السيارة خرجت من نطاق الجراج! افتح التطبيق فوراً',
       icon,
@@ -155,13 +150,31 @@ self.addEventListener('push', (event) => {
       renotify: true,
       silent: false,
       timestamp: now,
-      data: { url: '/session', type: 'breach', ...extraData },
+      data: { url: '/', type: 'shield-breach', ...extraData },
       actions: [
         { action: 'open',    title: '🚨 افتح التطبيق فوراً' },
         { action: 'dismiss', title: '✅ أنا اللي سايق'       },
       ],
     };
-  } else if (isShield) {
+
+    // 🎯 ابعت للتطبيق لو مفتوح → يفعّل الـ breach phase + صوت محلي
+    event.waitUntil(
+      (async () => {
+        await self.registration.showNotification(title || '🚨 إنذار سرقة!', options);
+        const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        for (const client of clientsList) {
+          client.postMessage({
+            type: 'SHIELD_BREACH_DETECTED',
+            distance: extraData.distance,
+            shieldId: extraData.shieldId,
+          });
+        }
+      })()
+    );
+    return;
+  }
+
+  if (isShield) {
     const isWarning = tag.includes('warning') || extraData.type?.includes('warning');
     options = {
       body: body || 'تحديث من درع الحماية',
@@ -175,7 +188,7 @@ self.addEventListener('push', (event) => {
       renotify: isWarning,
       silent: false,
       timestamp: now,
-      data: { url: '/session', type: 'shield', ...extraData },
+      data: { url: '/', type: 'shield', ...extraData },
     };
   } else {
     options = {
@@ -208,11 +221,14 @@ self.addEventListener('push', (event) => {
 // ─── 6. Notification Click ────────────────────────────────────
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const notifData = event.notification.data || {};
+  const isBreach = notifData.type === 'shield-breach' || notifData.type === 'breach';
 
+  // ✅ العميل دوس "أنا اللي سايق" → ابعت للتطبيق يوقف الإنذار
   if (event.action === 'dismiss') {
-    if (event.notification.data?.type === 'breach') {
+    if (isBreach) {
       event.waitUntil(
-        clients.matchAll({ type: 'window' }).then((list) => {
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
           for (const client of list) {
             client.postMessage({ type: 'SHIELD_BREACH_DISMISSED' });
           }
@@ -222,7 +238,7 @@ self.addEventListener('notificationclick', (event) => {
     return;
   }
 
-  const targetUrl = event.notification.data?.url || '/';
+  const targetUrl = notifData.url || '/';
 
   event.waitUntil(
     clients
@@ -230,6 +246,14 @@ self.addEventListener('notificationclick', (event) => {
       .then((clientList) => {
         for (const client of clientList) {
           if (client.url.includes(self.location.origin) && 'focus' in client) {
+            // 🚨 لو إنذار سرقة → ابعت message للتطبيق يفعّل breach phase + صوت
+            if (isBreach) {
+              client.postMessage({
+                type: 'SHIELD_BREACH_DETECTED',
+                distance: notifData.distance,
+                shieldId: notifData.shieldId,
+              });
+            }
             if (targetUrl && 'navigate' in client) client.navigate(targetUrl);
             return client.focus();
           }

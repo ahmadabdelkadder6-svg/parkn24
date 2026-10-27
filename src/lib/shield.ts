@@ -1,6 +1,9 @@
 // ═══════════════════════════════════════════════════════════
 // 🛡️ Car Shield Engine — Local-First (الموبايل يفكر لوحده)
+// الفلسفة: الحساب كله على الموبايل، السيرفر يتكلم بس وقت الحاجة
 // ═══════════════════════════════════════════════════════════
+
+import { supabase } from './supabase';
 
 export type AlertType = 'warning' | 'resolved' | 'status' | 'report' | 'qrScan';
 
@@ -18,30 +21,27 @@ export interface ShieldState {
   garageId: string | null;
   parkingLat: number | null;
   parkingLng: number | null;
+  sessionId: string | null;
 }
 
 // ─── ثوابت ───
 export const SHIELD_COST = 7;
 export const SHIELD_STORAGE_KEY = 'parkn24_shield';
-export const GEOFENCE_RADIUS = 250;
-export const GEOFENCE_GRACE_MS = 90_000;
+export const GEOFENCE_RADIUS = 250;           // 250 متر
+export const GEOFENCE_GRACE_MS = 90_000;      // 90 ثانية
+export const MIN_MOVEMENT_METERS = 80;        // أقل حركة تستحق إرسال
+export const FALLBACK_INTERVAL_MS = 300_000;  // 5 دقائق - fallback بس
 
-// ─── بنك الإشعارات الوهمية ───
-// warning(15%) + resolved(25%) + status(40%) + report(12%) + qrScan(8%) = 100%
+// ─── بنك الإشعارات الوهمية (للعرض المحلي فقط لو جه إشعار من السيرفر) ───
 const ALERT_POOL: FakeAlert[] = [
-  // ⚠️ warning — 15%
   { type: 'warning', title: '⚠️ تنبيه أمني', body: 'تم رصد حركة غير مألوفة حول السيارة', icon: '⚠️' },
   { type: 'warning', title: '⚠️ تنبيه أمني', body: 'شخص يقترب من باب السائق', icon: '⚠️' },
   { type: 'warning', title: '⚠️ تنبيه أمني', body: 'تم لمس مقبض الباب الخلفي', icon: '⚠️' },
-
-  // ✅ resolved — 25%
   { type: 'resolved', title: '✅ تم الحل', body: 'الحركة كانت عادية — كلو تمام', icon: '✅' },
   { type: 'resolved', title: '✅ تم الحل', body: 'كان شخص بيمر جنب العربية', icon: '✅' },
   { type: 'resolved', title: '✅ تم الحل', body: 'تنبيه كاذب — العربية سليمة', icon: '✅' },
   { type: 'resolved', title: '✅ تم الحل', body: 'عامل الجراج كان بيمر', icon: '✅' },
   { type: 'resolved', title: '✅ تم الحل', body: 'قط كان فوق الكابوت 😺', icon: '✅' },
-
-  // 🛡️ status — 40%
   { type: 'status', title: '🛡️ الدرع نشط', body: 'السيارة محمية ومراقبة', icon: '🛡️' },
   { type: 'status', title: '🛡️ الدرع نشط', body: 'كل الحساسات شغالة', icon: '🛡️' },
   { type: 'status', title: '🔋 حالة النظام', body: 'البطارية مستقرة — الدرع يعمل بكفاءة', icon: '🔋' },
@@ -50,35 +50,11 @@ const ALERT_POOL: FakeAlert[] = [
   { type: 'status', title: '🌡️ الحرارة', body: 'درجة حرارة المحرك طبيعية', icon: '🌡️' },
   { type: 'status', title: '🔒 الأقفال', body: 'جميع الأبواب مقفلة', icon: '🔒' },
   { type: 'status', title: '📍 الموقع', body: 'السيارة في مكانها', icon: '📍' },
-
-  // 📋 report — 12%
   { type: 'report', title: '📋 تقرير', body: 'لا توجد حوادث خلال الفترة الماضية', icon: '📋' },
   { type: 'report', title: '📋 تقرير', body: 'تم تسجيل 0 محاولات اقتحام', icon: '📋' },
-
-  // 📱 qrScan — 8%
   { type: 'qrScan', title: '📱 مسح QR', body: 'شخص مسح كود الاستيكر — تم تسجيله', icon: '📱' },
   { type: 'qrScan', title: '📱 مسح QR', body: 'عامل الجراج تحقق من الاستيكر', icon: '📱' },
 ];
-
-const ALERT_WEIGHTS: { type: AlertType; weight: number }[] = [
-  { type: 'warning', weight: 15 },
-  { type: 'resolved', weight: 25 },
-  { type: 'status', weight: 40 },
-  { type: 'report', weight: 12 },
-  { type: 'qrScan', weight: 8 },
-];
-
-function pickRandomAlert(): FakeAlert {
-  const roll = Math.random() * 100;
-  let cumulative = 0;
-  let selectedType: AlertType = 'status';
-  for (const { type, weight } of ALERT_WEIGHTS) {
-    cumulative += weight;
-    if (roll < cumulative) { selectedType = type; break; }
-  }
-  const pool = ALERT_POOL.filter((a) => a.type === selectedType);
-  return pool[Math.floor(Math.random() * pool.length)];
-}
 
 // ─── Haversine (مستقلة عن الـ store — Local-First) ───
 export function haversine(
@@ -97,64 +73,45 @@ export function haversine(
 }
 
 // ═══════════════════════════════════════════════════════════
-// 📢 محرك الإشعارات الوهمية
+// 📍 التحقق من إن العميل جوه الجراج (قبل التفعيل)
 // ═══════════════════════════════════════════════════════════
-let fakeAlertTimers: ReturnType<typeof setTimeout>[] = [];
+export async function checkUserInsideGarage(
+  garageLat: number,
+  garageLng: number,
+): Promise<{ inside: boolean; distance: number }> {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve({ inside: false, distance: -1 });
+      return;
+    }
 
-export function startFakeAlerts(
-  onAlert: (alert: FakeAlert) => void,
-  options?: {
-    onWarningResolved?: (warning: FakeAlert, resolved: FakeAlert) => void;
-  },
-): void {
-  stopFakeAlerts();
-
-  // 35% صفر | 35% رسالة | 30% رسالتين
-  const roll = Math.random() * 100;
-  const alertCount = roll < 35 ? 0 : roll < 70 ? 1 : 2;
-  if (alertCount === 0) return;
-
-  const schedule = (delay: number) => {
-    const t = setTimeout(() => {
-      const alert = pickRandomAlert();
-      onAlert(alert);
-
-      // لو warning → resolved تلقائي بعد 30-90 ثانية
-      if (alert.type === 'warning' && options?.onWarningResolved) {
-        const resolveDelay = (30 + Math.random() * 60) * 1000;
-        const rt = setTimeout(() => {
-          const resolvedPool = ALERT_POOL.filter((a) => a.type === 'resolved');
-          const resolved = resolvedPool[Math.floor(Math.random() * resolvedPool.length)];
-          options.onWarningResolved!(alert, resolved);
-        }, resolveDelay);
-        fakeAlertTimers.push(rt);
-      }
-    }, delay);
-    fakeAlertTimers.push(t);
-  };
-
-  // أول إشعار: 5-20 دقيقة
-  const firstDelay = (5 + Math.random() * 15) * 60 * 1000;
-  schedule(firstDelay);
-
-  // تاني إشعار (لو موجود): 15-40 دقيقة بعد الأول
-  if (alertCount === 2) {
-    const secondDelay = firstDelay + (15 + Math.random() * 25) * 60 * 1000;
-    schedule(secondDelay);
-  }
-}
-
-export function stopFakeAlerts(): void {
-  fakeAlertTimers.forEach(clearTimeout);
-  fakeAlertTimers = [];
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const dist = haversine(
+          pos.coords.latitude, pos.coords.longitude,
+          garageLat, garageLng,
+        );
+        resolve({ inside: dist <= GEOFENCE_RADIUS, distance: dist });
+      },
+      () => resolve({ inside: false, distance: -1 }),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    );
+  });
 }
 
 // ═══════════════════════════════════════════════════════════
-// 📍 GPS Geofence (خفيف — ~3%/ساعة)
+// 📍 GPS Geofence الذكي — الحساب محلي، الإرسال وقت الحاجة بس
 // ═══════════════════════════════════════════════════════════
 let gpsWatchId: number | null = null;
+let fallbackIntervalId: ReturnType<typeof setInterval> | null = null;
+let lastSentLat = 0;
+let lastSentLng = 0;
+let lastSentAt = 0;
+let breachStartTime: number | null = null;
+let isCurrentlyOutside = false;
 
 export function startShieldGPS(params: {
+  sessionId: string;
   parkingLat: number;
   parkingLng: number;
   onGeofenceBreach: (distance: number) => void;
@@ -162,26 +119,74 @@ export function startShieldGPS(params: {
   stopShieldGPS();
   if (!navigator.geolocation) return () => {};
 
-  let breachStart: number | null = null;
+  // 🎯 أول موقع = موقع التفعيل (داخل الجراج)
+  lastSentLat = params.parkingLat;
+  lastSentLng = params.parkingLng;
+  lastSentAt = 0;
+  breachStartTime = null;
+  isCurrentlyOutside = false;
 
-  gpsWatchId = navigator.geolocation.watchPosition(
-    (pos) => {
-      const dist = haversine(
-        params.parkingLat, params.parkingLng,
-        pos.coords.latitude, pos.coords.longitude,
-      );
-      if (dist > GEOFENCE_RADIUS) {
-        if (!breachStart) breachStart = Date.now();
-        if (Date.now() - breachStart >= GEOFENCE_GRACE_MS) {
-          params.onGeofenceBreach(dist);
-        }
-      } else {
-        breachStart = null;
+  // 🧠 المعالج الذكي للموقع
+  const handlePosition = (lat: number, lng: number) => {
+    const distFromGarage = haversine(lat, lng, params.parkingLat, params.parkingLng);
+    const distFromLastSent = haversine(lat, lng, lastSentLat, lastSentLng);
+    const now = Date.now();
+
+    // 🚨 الحالة 1: خرج من السياج
+    if (distFromGarage > GEOFENCE_RADIUS) {
+      // بداية الخروج → ابدأ عداد الـ grace
+      if (!breachStartTime) {
+        breachStartTime = now;
       }
-    },
+
+      // عدى الـ 90 ثانية → ابعت للسيرفر + أطلق الإنذار المحلي
+      if (now - breachStartTime >= GEOFENCE_GRACE_MS) {
+        if (!isCurrentlyOutside) {
+          isCurrentlyOutside = true;
+          sendGPSToServer(params.sessionId, lat, lng);
+          lastSentLat = lat;
+          lastSentLng = lng;
+          lastSentAt = now;
+          params.onGeofenceBreach(distFromGarage);
+        } else if (distFromLastSent > MIN_MOVEMENT_METERS) {
+          // اتحرك مسافة كبيرة → حدّث السيرفر
+          sendGPSToServer(params.sessionId, lat, lng);
+          lastSentLat = lat;
+          lastSentLng = lng;
+          lastSentAt = now;
+        }
+      }
+    } else {
+      // ✅ الحالة 2: جوه السياج
+      breachStartTime = null;
+
+      // لو كان بره ورجع → ابعت للسيرفر مرة واحدة
+      if (isCurrentlyOutside) {
+        isCurrentlyOutside = false;
+        sendGPSToServer(params.sessionId, lat, lng);
+        lastSentLat = lat;
+        lastSentLng = lng;
+        lastSentAt = now;
+      }
+      // غير كده → ما تبعتش حاجة! (0 طلبات)
+    }
+  };
+
+  // 📡 المصدر الأساسي: watchPosition (موفر للبطارية)
+  gpsWatchId = navigator.geolocation.watchPosition(
+    (pos) => handlePosition(pos.coords.latitude, pos.coords.longitude),
     (err) => console.warn('Shield GPS:', err.message),
     { enableHighAccuracy: false, maximumAge: 25000, timeout: 30000 },
   );
+
+  // 🔄 Fallback: كل 5 دقائق يتأكد إن الـ GPS لسه شغال (لو watchPosition مات)
+  fallbackIntervalId = setInterval(() => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => handlePosition(pos.coords.latitude, pos.coords.longitude),
+      () => {},
+      { enableHighAccuracy: false, maximumAge: 60000, timeout: 20000 },
+    );
+  }, FALLBACK_INTERVAL_MS);
 
   return () => stopShieldGPS();
 }
@@ -191,13 +196,33 @@ export function stopShieldGPS(): void {
     navigator.geolocation.clearWatch(gpsWatchId);
     gpsWatchId = null;
   }
+  if (fallbackIntervalId !== null) {
+    clearInterval(fallbackIntervalId);
+    fallbackIntervalId = null;
+  }
+  breachStartTime = null;
+  isCurrentlyOutside = false;
+}
+
+// ─── إرسال GPS للسيرفر (silent, no await) ───
+function sendGPSToServer(sessionId: string, lat: number, lng: number): void {
+  supabase
+    .from('shield_sessions')
+    .update({
+      last_lat: lat,
+      last_lng: lng,
+      last_gps_at: new Date().toISOString(),
+    })
+    .eq('session_id', sessionId)
+    .is('ended_at', null)
+    .then(() => {})
+    .catch(() => {});
 }
 
 // ═══════════════════════════════════════════════════════════
 // 🧹 تدمير الدرع بالكامل
 // ═══════════════════════════════════════════════════════════
 export function destroyShield(): void {
-  stopFakeAlerts();
   stopShieldGPS();
   try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch { /* */ }
 }
@@ -215,3 +240,10 @@ export function loadShieldState(): ShieldState | null {
     return raw ? (JSON.parse(raw) as ShieldState) : null;
   } catch { return null; }
 }
+
+// ═══════════════════════════════════════════════════════════
+// 🔧 Exports قديمة محتفظ بيها للتوافق (deprecated - الكرون بيعمل كل حاجة)
+// ═══════════════════════════════════════════════════════════
+export function startFakeAlerts(): void { /* moved to server cron */ }
+export function stopFakeAlerts(): void { /* moved to server cron */ }
+export { ALERT_POOL };

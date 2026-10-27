@@ -1,14 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Shield, ShieldCheck, Phone, AlertTriangle, Car, Siren } from 'lucide-react';
 import {
-  startFakeAlerts, stopFakeAlerts,
-  startShieldGPS,
+  startShieldGPS, checkUserInsideGarage,
   destroyShield, saveShieldState, loadShieldState,
   SHIELD_STORAGE_KEY, SHIELD_COST,
-  type FakeAlert,
 } from '../lib/shield';
 import {
-  sendLocalNotification, playUrgentSound, playNormalAlert,
+  sendLocalNotification, playUrgentSound,
   vibrateUrgent, requestNotificationPermission,
   stopVibration, unlockAudio,
 } from '../utils/notifications';
@@ -19,7 +17,7 @@ type Phase = 'ask' | 'register' | 'active' | 'breach' | 'dismissed';
 
 interface Props {
   sessionId: string;
-   userId: string;
+  userId: string;
   garageId: string;
   parkingLat: number;
   parkingLng: number;
@@ -45,11 +43,11 @@ export default function ShieldOverlay({
 }: Props) {
   const [phase, setPhase] = useState<Phase>('ask');
   const [phone, setPhone] = useState(userPhone ?? '');
-  const [alerts, setAlerts] = useState<FakeAlert[]>([]);
   const [breachDistance, setBreachDistance] = useState(0);
   const [shieldCode, setShieldCode] = useState<string | null>(null);
-  const [isTesting, setIsTesting] = useState(false);
-  const testTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const [isChecking, setIsChecking] = useState(false);
+  const [checkError, setCheckError] = useState<string | null>(null);
+  const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const radarAngle = useRef(0);
   const radarRef = useRef<HTMLDivElement>(null);
 
@@ -67,7 +65,7 @@ export default function ShieldOverlay({
 
   // ─── Load saved state (بس لو نفس الجلسة بالظبط) ───
   useEffect(() => {
-    const saved = loadShieldState() as any;
+    const saved = loadShieldState();
     if (
       saved?.isActive &&
       saved.garageId === garageId &&
@@ -79,45 +77,89 @@ export default function ShieldOverlay({
     }
   }, [garageId, sessionId]);
 
-  // ─── Start GPS + Fake Alerts when active ───
+  // ─── Start GPS when active (local-first smart tracking) ───
   useEffect(() => {
     if (phase !== 'active') return;
 
     const cleanupGPS = startShieldGPS({
+      sessionId,
       parkingLat, parkingLng,
       onGeofenceBreach: (dist) => {
         setBreachDistance(Math.round(dist));
         setPhase('breach');
-        playUrgentSound();
-        vibrateUrgent();
-        sendLocalNotification('🚨 إنذار سرقة!', `السيارة خرجت ${Math.round(dist)}م من نطاق الحماية!`);
+        triggerLocalAlarm(Math.round(dist));
       },
     });
 
-    startFakeAlerts(
-      (alert) => {
-        setAlerts(prev => [alert, ...prev].slice(0, 5));
-        sendLocalNotification(alert.title, alert.body);
-        playNormalAlert();
-      },
-      {
-        onWarningResolved: (_w, resolved) => {
-          setAlerts(prev => [resolved, ...prev].slice(0, 5));
-          sendLocalNotification(resolved.title, resolved.body);
-        },
-      },
-    );
-
     return () => {
       cleanupGPS();
-      stopFakeAlerts();
     };
-  }, [phase, parkingLat, parkingLng]);
+  }, [phase, sessionId, parkingLat, parkingLng]);
+
+  // ─── 🎯 استماع للـ Service Worker (إنذار سرقة من السيرفر) ───
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+
+    const handleSWMessage = (event: MessageEvent) => {
+      const data = event.data;
+      if (!data || typeof data !== 'object') return;
+
+      // 🚨 الكرون كشف السرقة وبعت push → الـ SW بيبلغ التطبيق
+      if (data.type === 'SHIELD_BREACH_DETECTED') {
+        const dist = data.distance || 300;
+        setBreachDistance(dist);
+        setPhase('breach');
+        triggerLocalAlarm(dist);
+      }
+
+      // ✅ العميل دوس "أنا اللي سايق" من الإشعار نفسه
+      if (data.type === 'SHIELD_BREACH_DISMISSED') {
+        handleIamDriving();
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('message', handleSWMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', handleSWMessage);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ─── 🔊 تشغيل إنذار محلي قوي (صوت + اهتزاز متكرر) ───
+  const triggerLocalAlarm = useCallback((dist: number) => {
+    try {
+      playUrgentSound();
+      vibrateUrgent();
+      sendLocalNotification(
+        '🚨 إنذار سرقة!',
+        `السيارة خرجت ${dist}م من نطاق الحماية!`,
+        'shield-breach-local',
+      );
+
+      // 🔁 كرر الصوت والاهتزاز كل 3 ثواني لحد ما العميل يتعامل
+      if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current);
+      alarmIntervalRef.current = setInterval(() => {
+        playUrgentSound();
+        vibrateUrgent();
+      }, 3000);
+    } catch (e) {
+      console.warn('Alarm failed:', e);
+    }
+  }, []);
+
+  // ─── 🛑 إيقاف الإنذار المحلي ───
+  const stopLocalAlarm = useCallback(() => {
+    if (alarmIntervalRef.current) {
+      clearInterval(alarmIntervalRef.current);
+      alarmIntervalRef.current = null;
+    }
+    stopVibration();
+  }, []);
 
   // ─── Cleanup on unmount ───
   useEffect(() => {
     return () => {
-      testTimersRef.current.forEach(clearTimeout);
+      stopLocalAlarm();
       endShieldOnServer(sessionId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -144,7 +186,6 @@ export default function ShieldOverlay({
           console.error('❌ VITE_VAPID_PUBLIC_KEY undefined');
           return;
         }
-        console.log('✅ VAPID key found');
 
         const urlBase64ToUint8Array = (b: string): Uint8Array => {
           const p = '='.repeat((4 - (b.length % 4)) % 4);
@@ -156,22 +197,17 @@ export default function ShieldOverlay({
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
         });
-        console.log('✅ New subscription created');
       }
 
       const subJson = sub!.toJSON();
-      if (!subJson?.endpoint) {
-        console.error('❌ No endpoint');
-        return;
-      }
-      console.log('✅ Endpoint OK');
+      if (!subJson?.endpoint) return;
 
       // امسح دروع قديمة لنفس رقم الموبايل
       await supabase.from('shield_sessions')
         .update({ ended_at: new Date().toISOString() })
         .eq('phone', identifier).is('ended_at', null);
 
-      // سجّل الدرع الجديد
+      // سجّل الدرع الجديد (مع GPS الأولي = موقع الجراج)
       const { error } = await supabase.from('shield_sessions').insert({
         session_id: sessionId,
         user_id: identifier,
@@ -181,55 +217,82 @@ export default function ShieldOverlay({
         push_endpoint: subJson.endpoint,
         push_p256dh: subJson.keys?.p256dh,
         push_auth: subJson.keys?.auth,
+        last_lat: parkingLat,
+        last_lng: parkingLng,
+        last_gps_at: new Date().toISOString(),
+        is_outside_fence: false,
+        theft_alerted: false,
       });
 
-      if (error) console.error('❌ Insert error:', error.message, error.details);
+      if (error) console.error('❌ Insert error:', error.message);
       else console.log('✅ Shield registered! 🎉');
     } catch (e: any) {
       console.error('❌ Crashed:', e.message);
     }
   }, [sessionId, userId, userPhone, parkingLat, parkingLng]);
 
-  // ─── Helper: امسح الـ state المحلي ───
   const clearLocalShield = useCallback(() => {
-    try {
-      localStorage.removeItem(SHIELD_STORAGE_KEY);
-    } catch {}
+    try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch {}
   }, []);
 
   // ─── Handlers ───
   const handleYes = useCallback(async () => {
     unlockAudio();
-    await requestNotificationPermission();
+    setCheckError(null);
+    setIsChecking(true);
 
     try {
-      await subscribeToPush(garageId);
-    } catch { /* */ }
+      // 🎯 الخطوة 1: اتأكد إن العميل جوه الجراج
+      await requestNotificationPermission();
+      const check = await checkUserInsideGarage(parkingLat, parkingLng);
 
-    const ok = onDeductWallet(SHIELD_COST, 'درع حماية السيارة');
-    if (!ok) {
-      onNavigateToWallet();
-      return;
-    }
-    // 💾 احفظ تكلفة الدرع في الجلسة عشان يظهر في الإيصال والأدمن
-    supabase
-      .from('sessions')
-      .update({ shield_cost: SHIELD_COST })
-      .eq('id', sessionId)
-      .then(() => {})
-      .catch((e) => console.error('Failed to save shield cost:', e));
-    if (userPhone) {
-      const code = 'SH-' + Math.random().toString(36).slice(2, 8).toUpperCase();
-      setShieldCode(code);
-      setPhase('active');
-      saveShieldState({
-        isActive: true, shieldCode: code, phone: userPhone,
-        garageId, parkingLat, parkingLng,
-        sessionId,
-      } as any);
-      await registerOnServer();
-    } else {
-      setPhase('register');
+      if (!check.inside) {
+        setIsChecking(false);
+        if (check.distance < 0) {
+          setCheckError('مش قادر أحدد موقعك! اسمح بالوصول للموقع وجرّب تاني.');
+        } else {
+          setCheckError(`أنت بعيد عن الجراج بـ ${Math.round(check.distance)}م - لازم تكون جوه الجراج علشان تفعّل الدرع 🛡️`);
+        }
+        return;
+      }
+
+      // 🎯 الخطوة 2: اشترك في الـ push
+      try { await subscribeToPush(garageId); } catch { /* */ }
+
+      // 🎯 الخطوة 3: اخصم من المحفظة
+      const ok = onDeductWallet(SHIELD_COST, 'درع حماية السيارة');
+      if (!ok) {
+        setIsChecking(false);
+        onNavigateToWallet();
+        return;
+      }
+
+      // 💾 احفظ تكلفة الدرع
+      supabase
+        .from('sessions')
+        .update({ shield_cost: SHIELD_COST })
+        .eq('id', sessionId)
+        .then(() => {})
+        .catch((e) => console.error('Failed to save shield cost:', e));
+
+      setIsChecking(false);
+
+      // 🎯 الخطوة 4: فعّل الدرع
+      if (userPhone) {
+        const code = 'SH-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+        setShieldCode(code);
+        setPhase('active');
+        saveShieldState({
+          isActive: true, shieldCode: code, phone: userPhone,
+          garageId, parkingLat, parkingLng, sessionId,
+        });
+        await registerOnServer();
+      } else {
+        setPhase('register');
+      }
+    } catch (e) {
+      setIsChecking(false);
+      setCheckError('حصل خطأ غير متوقع، جرّب تاني');
     }
   }, [userPhone, garageId, sessionId, parkingLat, parkingLng, onDeductWallet, onNavigateToWallet, registerOnServer]);
 
@@ -240,78 +303,27 @@ export default function ShieldOverlay({
     setPhase('active');
     saveShieldState({
       isActive: true, shieldCode: code, phone,
-      garageId, parkingLat, parkingLng,
-      sessionId,
-    } as any);
+      garageId, parkingLat, parkingLng, sessionId,
+    });
     await registerOnServer();
   }, [phone, garageId, sessionId, parkingLat, parkingLng, registerOnServer]);
 
   const handleIamDriving = useCallback(() => {
-    stopVibration();
+    stopLocalAlarm();
     destroyShield();
     clearLocalShield();
     endShieldOnServer(sessionId);
     setPhase('dismissed');
-  }, [sessionId, clearLocalShield]);
+  }, [sessionId, clearLocalShield, stopLocalAlarm]);
 
   const handleTheft = useCallback(() => {
-    stopVibration();
+    stopLocalAlarm();
     sendLocalNotification('🚨 تم الإبلاغ عن سرقة!', 'سيتم التواصل معك فوراً');
     destroyShield();
     clearLocalShield();
     endShieldOnServer(sessionId);
     setPhase('dismissed');
-  }, [sessionId, clearLocalShield]);
-
-  // ═══════════════════════════════════════════════════════
-  // 🧪 Test Mode
-  // ═══════════════════════════════════════════════════════
-  const runTest = useCallback(() => {
-    if (isTesting) return;
-    setIsTesting(true);
-    testTimersRef.current.forEach(clearTimeout);
-    const timers: ReturnType<typeof setTimeout>[] = [];
-
-    const pushAlert = (alert: FakeAlert) => {
-      setAlerts(prev => [alert, ...prev].slice(0, 5));
-      sendLocalNotification(alert.title, alert.body);
-      playNormalAlert();
-    };
-
-    timers.push(setTimeout(() => {
-      pushAlert({ type: 'status', title: '🛡️ الدرع نشط', body: 'كل الحساسات شغالة', icon: '🛡️' });
-    }, 3000));
-
-    timers.push(setTimeout(() => {
-      pushAlert({ type: 'warning', title: '⚠️ تنبيه أمني', body: 'شخص يقترب من باب السائق', icon: '⚠️' });
-    }, 8000));
-
-    timers.push(setTimeout(() => {
-      pushAlert({ type: 'resolved', title: '✅ تم الحل', body: 'كان شخص بيمر جنب العربية', icon: '✅' });
-    }, 13000));
-
-    timers.push(setTimeout(() => {
-      pushAlert({ type: 'qrScan', title: '📱 مسح QR', body: 'شخص مسح كود الاستيكر — تم تسجيله', icon: '📱' });
-    }, 18000));
-
-    timers.push(setTimeout(() => {
-      setBreachDistance(312);
-      setPhase('breach');
-      playUrgentSound();
-      vibrateUrgent();
-      sendLocalNotification('🚨 إنذار سرقة!', 'السيارة خرجت 312م من نطاق الحماية!');
-    }, 25000));
-
-    testTimersRef.current = timers;
-  }, [isTesting]);
-
-  const stopTest = useCallback(() => {
-    testTimersRef.current.forEach(clearTimeout);
-    testTimersRef.current = [];
-    setIsTesting(false);
-    stopVibration();
-    if (phase === 'breach') setPhase('active');
-  }, [phase]);
+  }, [sessionId, clearLocalShield, stopLocalAlarm]);
 
   if (phase === 'dismissed') return null;
 
@@ -330,16 +342,25 @@ export default function ShieldOverlay({
               <p className="text-blue-300/70 text-xs">مراقبة ذكية + إنذار سرقة فوري</p>
             </div>
           </div>
+
+          {checkError && (
+            <div className="bg-red-950/50 border border-red-500/40 rounded-xl p-2.5 mb-3">
+              <p className="text-red-300 text-xs font-bold text-center">{checkError}</p>
+            </div>
+          )}
+
           <div className="flex gap-2">
             <button
               onClick={handleYes}
-              className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-sm transition-all active:scale-95"
+              disabled={isChecking}
+              className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-2.5 rounded-xl text-sm transition-all active:scale-95"
             >
-              🛡️ تفعيل ({SHIELD_COST} ج)
+              {isChecking ? '📍 جاري التحقق من موقعك...' : `🛡️ تفعيل (${SHIELD_COST} ج)`}
             </button>
             <button
               onClick={() => setPhase('dismissed')}
-              className="px-4 bg-slate-700/50 text-slate-400 rounded-xl text-sm hover:bg-slate-700 transition-all"
+              disabled={isChecking}
+              className="px-4 bg-slate-700/50 text-slate-400 rounded-xl text-sm hover:bg-slate-700 transition-all disabled:opacity-50"
             >
               لا
             </button>
@@ -399,63 +420,24 @@ export default function ShieldOverlay({
             {shieldCode && <span className="text-green-600 text-[10px] font-mono">{shieldCode}</span>}
           </div>
 
-          <div className="flex gap-2 mt-1">
-            {!isTesting ? (
-              <button
-                onClick={runTest}
-                className="flex items-center gap-1.5 bg-amber-950/40 border border-amber-500/30 text-amber-400 text-xs font-bold px-3 py-1.5 rounded-full hover:bg-amber-900/40 transition-all active:scale-95"
-              >
-                🧪 تجربة الدرع (30 ث)
-              </button>
-            ) : (
-              <button
-                onClick={stopTest}
-                className="flex items-center gap-1.5 bg-red-950/40 border border-red-500/30 text-red-400 text-xs font-bold px-3 py-1.5 rounded-full hover:bg-red-900/40 transition-all active:scale-95 animate-pulse"
-              >
-                ⏹️ إيقاف التجربة
-              </button>
-            )}
-          </div>
-
-          {alerts.length > 0 && (
-            <div className="w-full max-w-xs space-y-1.5 mt-1">
-              {alerts.map((a, i) => (
-                <div
-                  key={i}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs border ${
-                    a.type === 'warning'
-                      ? 'bg-amber-950/40 border-amber-500/30 text-amber-300'
-                      : a.type === 'resolved'
-                      ? 'bg-green-950/40 border-green-500/30 text-green-300'
-                      : a.type === 'qrScan'
-                      ? 'bg-purple-950/40 border-purple-500/30 text-purple-300'
-                      : a.type === 'report'
-                      ? 'bg-blue-950/40 border-blue-500/30 text-blue-300'
-                      : 'bg-slate-800/40 border-slate-600/30 text-slate-300'
-                  }`}
-                >
-                  <span>{a.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <span className="font-bold">{a.title}</span>
-                    <span className="text-[10px] opacity-70 mr-1">— {a.body}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <p className="text-slate-400 text-[10px] text-center max-w-xs mt-1">
+            🔒 المراقبة شغالة في الخلفية حتى لو قفلت التطبيق
+          </p>
         </div>
       )}
 
-      {/* ─── BREACH ─── */}
+      {/* ─── BREACH (إنذار سرقة قوي) ─── */}
       {phase === 'breach' && (
-        <div className="w-full bg-red-950/80 border-2 border-red-500 rounded-2xl p-4 animate-pulse backdrop-blur-sm">
+        <div className="w-full bg-red-950/90 border-2 border-red-500 rounded-2xl p-4 animate-pulse backdrop-blur-sm">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-12 h-12 rounded-full bg-red-500/30 flex items-center justify-center animate-bounce">
               <Siren className="w-7 h-7 text-red-400" />
             </div>
             <div>
               <h3 className="text-red-300 font-black text-lg">🚨 إنذار سرقة!</h3>
-              <p className="text-red-400/80 text-xs">السيارة خرجت {breachDistance}م من نطاق الحماية</p>
+              <p className="text-red-400/80 text-xs">
+                السيارة خرجت {breachDistance}م من السياج المحمي
+              </p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -471,7 +453,7 @@ export default function ShieldOverlay({
               className="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl text-sm transition-all active:scale-95 flex items-center justify-center gap-1.5"
             >
               <AlertTriangle className="w-4 h-4" />
-              سرقة!
+              اتسرقت!
             </button>
           </div>
         </div>
