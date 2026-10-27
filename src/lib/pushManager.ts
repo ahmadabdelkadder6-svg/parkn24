@@ -108,7 +108,8 @@ export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration
 };
 
 // ─── Subscribe ─────────────────────────────────────────────────
-export const subscribeToPush = async (garageId: string): Promise<PushResult> => {
+export const subscribeToPush = async (garageId: string, userPhone?: string): Promise<PushResult> => {
+
   try {
     if (!('PushManager' in window) || !('Notification' in window)) {
       return { success: false, message: 'المتصفح مش بيدعم الإشعارات' };
