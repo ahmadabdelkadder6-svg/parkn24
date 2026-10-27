@@ -3,7 +3,6 @@ import { Shield, ShieldCheck, Phone, AlertTriangle, Car, Siren } from 'lucide-re
 import {
   startShieldGPS, checkUserInsideGarage,
   destroyShield, saveShieldState, loadShieldState,
-  endShieldOnServer,  // 🆕 استيراد من shield.ts بدل الدالة المحلية
   SHIELD_STORAGE_KEY, SHIELD_COST,
 } from '../lib/shield';
 import {
@@ -27,8 +26,14 @@ interface Props {
   onNavigateToWallet: () => void;
 }
 
-// 🆕 شلت الدالة المحلية endShieldOnServer — دلوقتي بنستخدم اللي من shield.ts
-// اللي هي async وبتستنى الـ promise فعلاً
+// ─── Helper: ألغي الدرع من السيرفر ───
+const endShieldOnServer = async (sessionId: string) => {
+  await supabase
+    .from('shield_sessions')
+    .update({ ended_at: new Date().toISOString() })
+    .eq('session_id', sessionId)
+    .is('ended_at', null);
+};
 
 export default function ShieldOverlay({
   sessionId, userId, garageId, parkingLat, parkingLng,
@@ -147,12 +152,9 @@ export default function ShieldOverlay({
   }, []);
 
   // ─── Cleanup on unmount ───
-  // 🆕 شلت endShieldOnServer من هنا — لأن الـ handlers بتعمله بالفعل
-  // ووجوده هنا كان بيسبب إن الجلسة تتقفل قبل ما الـ request يوصل
   useEffect(() => {
     return () => {
       stopLocalAlarm();
-      // 🆕 مفيش endShieldOnServer هنا — الـ handlers بتعمله
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -199,7 +201,7 @@ export default function ShieldOverlay({
         .update({ ended_at: new Date().toISOString() })
         .eq('phone', identifier).is('ended_at', null);
 
-      // 🆕 حساب fake_mode مرة واحدة
+      // حساب fake_mode مرة واحدة
       const fakeRoll = Math.random();
       const fakeMode = fakeRoll < 0.35 ? 0 : fakeRoll < 0.70 ? 1 : 2;
 
@@ -208,9 +210,9 @@ export default function ShieldOverlay({
         session_id: sessionId,
         user_id: identifier,
         phone: identifier,
-        garage_id: garageId,              // 🆕 عشان الكرون يعرف الجراج
-        parking_lat: parkingLat,           // 🆕 موقع الجراج
-        parking_lng: parkingLng,           // 🆕 موقع الجراج
+        garage_id: garageId,
+        parking_lat: parkingLat,
+        parking_lng: parkingLng,
         push_endpoint: subJson.endpoint,
         push_p256dh: subJson.keys?.p256dh,
         push_auth: subJson.keys?.auth,
@@ -219,9 +221,9 @@ export default function ShieldOverlay({
         last_gps_at: new Date().toISOString(),
         is_outside_fence: false,
         theft_alerted: false,
-        fake_mode: fakeMode,               // 🆕 عشان الكرون يعرف يبعت إشعارات وهمية ولا لأ
-        alert_count: 0,                    // 🆕
-        next_alert_at: fakeMode > 0        // 🆕 أول إشعار وهمي بعد 5-15 دقيقة
+        fake_mode: fakeMode,
+        alert_count: 0,
+        next_alert_at: fakeMode > 0
           ? new Date(Date.now() + (5 + Math.random() * 10) * 60_000).toISOString()
           : null,
       });
@@ -305,32 +307,27 @@ export default function ShieldOverlay({
     await registerOnServer();
   }, [phone, garageId, sessionId, parkingLat, parkingLng, registerOnServer]);
 
-  // 🆕 handleIamDriving — دلوقتي async وبتستنى endShieldOnServer
   const handleIamDriving = useCallback(async () => {
     stopLocalAlarm();
     destroyShield();
     clearLocalShield();
 
-    // 🆕 نستنى الـ update يخلص فعلاً قبل ما نغيّر الـ phase
     try {
       await endShieldOnServer(sessionId);
       console.log('✅ Shield session ended on server');
     } catch (e) {
       console.error('❌ Failed to end shield:', e);
-      // حتى لو فشل، نكمل عشان العميل ما يعلقش
     }
 
     setPhase('dismissed');
   }, [sessionId, clearLocalShield, stopLocalAlarm]);
 
-  // 🆕 handleTheft — دلوقتي async وبتستنى endShieldOnServer
   const handleTheft = useCallback(async () => {
     stopLocalAlarm();
     sendLocalNotification('🚨 تم الإبلاغ عن سرقة!', 'سيتم التواصل معك فوراً');
     destroyShield();
     clearLocalShield();
 
-    // 🆕 نستنى الـ update يخلص فعلاً
     try {
       await endShieldOnServer(sessionId);
       console.log('✅ Shield session ended on server (theft reported)');
@@ -354,8 +351,8 @@ export default function ShieldOverlay({
               <Shield className="w-7 h-7 text-blue-400" />
             </div>
             <div>
-              <h3 className="text-white font-bold text-base">فعّل درع حماية </h3>
-              <p className="text-blue-300/70 text-xs">مراقبة ذكية + حماية اضافية </p>
+              <h3 className="text-white font-bold text-base">فعّل درع حماية السيارة</h3>
+              <p className="text-blue-300/70 text-xs">مراقبة ذكية + إنذار سرقة فوري</p>
             </div>
           </div>
 
