@@ -431,8 +431,8 @@ export default function GarageListScreen() {
     }
 
     // 💡 حالة 2: حجز جديد لأول مرة (ولم يستوفِ الحد الأقصى) -> فحص الرصيد
-    const MIN_REQUIRED_BALANCE = 10; // حجز 3 + درع 7
-if (!isFreeToday && userWallet < MIN_REQUIRED_BALANCE) {
+    const MIN_REQUIRED_BALANCE = isFreeToday ? 7 : 10;
+    if (userWallet < MIN_REQUIRED_BALANCE) {
       setPendingVipGarage(garage);
       setShowInsufficientModal(true);
       return;
