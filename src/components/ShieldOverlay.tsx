@@ -124,41 +124,84 @@ export default function ShieldOverlay({
 
   // ─── Helper: سجّل الدرع على السيرفر ───
   const registerOnServer = useCallback(async () => {
+    console.log('🔍 registerOnServer started...');
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.getSubscription();
-      const subJson = sub?.toJSON();
-
-      if (user && subJson?.endpoint) {
-        // امسح أي دروع قديمة نشطة لنفس المستخدم
-        await supabase
-          .from('shield_sessions')
-          .update({ ended_at: new Date().toISOString() })
-          .eq('user_id', user.id)
-          .is('ended_at', null);
-
-        // سجّل الدرع الجديد
-        const { error } = await supabase.from('shield_sessions').insert({
-          session_id: sessionId,
-          user_id: user.id,
-          parking_lat: parkingLat,
-          parking_lng: parkingLng,
-          push_endpoint: subJson.endpoint,
-          push_p256dh: subJson.keys?.p256dh,
-          push_auth: subJson.keys?.auth,
-        });
-
-        if (error) {
-          console.error('❌ Shield insert error:', error);
-        } else {
-          console.log('✅ Shield session registered on server');
-        }
-      } else {
-        console.warn('⚠️ No user or push subscription found');
+      const { data: { user }, error: userErr } = await supabase.auth.getUser();
+      if (!user) {
+        console.error('❌ Step 1 failed: No user', userErr);
+        return;
       }
-    } catch (e) {
-      console.error('Failed to register shield:', e);
+      console.log('✅ Step 1: User found', user.id);
+
+      const reg = await navigator.serviceWorker.ready;
+      console.log('✅ Step 2: SW ready');
+
+      let sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        console.log('✅ Step 3: Existing subscription found');
+      } else {
+        console.log('🔄 Step 3: No subscription, creating...');
+
+        let perm = Notification.permission;
+        if (perm !== 'granted') {
+          perm = await Notification.requestPermission();
+        }
+        if (perm !== 'granted') {
+          console.error('❌ Step 4 failed: Permission', perm);
+          return;
+        }
+        console.log('✅ Step 4: Permission granted');
+
+        const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+        if (!VAPID_PUBLIC) {
+          console.error('❌ Step 5 failed: VITE_VAPID_PUBLIC_KEY undefined!');
+          console.error('📋 VITE vars:', Object.keys(import.meta.env).filter(k => k.startsWith('VITE_')));
+          return;
+        }
+        console.log('✅ Step 5: VAPID key found', VAPID_PUBLIC.substring(0, 10) + '...');
+
+        const urlBase64ToUint8Array = (b: string): Uint8Array => {
+          const p = '='.repeat((4 - (b.length % 4)) % 4);
+          const d = window.atob((b + p).replace(/-/g, '+').replace(/_/g, '/'));
+          return new Uint8Array([...d].map(c => c.charCodeAt(0)));
+        };
+
+        try {
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
+          });
+          console.log('✅ Step 6: Subscription created');
+        } catch (subErr: any) {
+          console.error('❌ Step 6 failed:', subErr.message);
+          return;
+        }
+      }
+
+      const subJson = sub!.toJSON();
+      if (!subJson?.endpoint) {
+        console.error('❌ Step 7 failed: No endpoint', subJson);
+        return;
+      }
+      console.log('✅ Step 7: Endpoint OK');
+
+      await supabase.from('shield_sessions')
+        .update({ ended_at: new Date().toISOString() })
+        .eq('user_id', user.id).is('ended_at', null);
+      console.log('✅ Step 8: Old shields cleared');
+
+      const { error } = await supabase.from('shield_sessions').insert({
+        session_id: sessionId, user_id: user.id,
+        parking_lat: parkingLat, parking_lng: parkingLng,
+        push_endpoint: subJson.endpoint,
+        push_p256dh: subJson.keys?.p256dh,
+        push_auth: subJson.keys?.auth,
+      });
+
+      if (error) console.error('❌ Step 9 failed:', error);
+      else console.log('✅ Step 9: Shield registered! 🎉');
+    } catch (e: any) {
+      console.error('❌ Crashed:', e.message);
     }
   }, [sessionId, parkingLat, parkingLng]);
 
