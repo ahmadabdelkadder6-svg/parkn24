@@ -3,6 +3,7 @@ import { Shield, ShieldCheck, Phone, AlertTriangle, Car, Siren } from 'lucide-re
 import {
   startShieldGPS, checkUserInsideGarage,
   destroyShield, saveShieldState, loadShieldState,
+  endShieldOnServer,  // 🆕 استيراد من shield.ts بدل الدالة المحلية
   SHIELD_STORAGE_KEY, SHIELD_COST,
 } from '../lib/shield';
 import {
@@ -26,16 +27,8 @@ interface Props {
   onNavigateToWallet: () => void;
 }
 
-// ─── Helper: ألغي الدرع من السيرفر ───
-const endShieldOnServer = (sessionId: string) => {
-  supabase
-    .from('shield_sessions')
-    .update({ ended_at: new Date().toISOString() })
-    .eq('session_id', sessionId)
-    .is('ended_at', null)
-    .then(() => {})
-    .catch(() => {});
-};
+// 🆕 شلت الدالة المحلية endShieldOnServer — دلوقتي بنستخدم اللي من shield.ts
+// اللي هي async وبتستنى الـ promise فعلاً
 
 export default function ShieldOverlay({
   sessionId, userId, garageId, parkingLat, parkingLng,
@@ -104,7 +97,6 @@ export default function ShieldOverlay({
       const data = event.data;
       if (!data || typeof data !== 'object') return;
 
-      // 🚨 الكرون كشف السرقة وبعت push → الـ SW بيبلغ التطبيق
       if (data.type === 'SHIELD_BREACH_DETECTED') {
         const dist = data.distance || 300;
         setBreachDistance(dist);
@@ -112,7 +104,6 @@ export default function ShieldOverlay({
         triggerLocalAlarm(dist);
       }
 
-      // ✅ العميل دوس "أنا اللي سايق" من الإشعار نفسه
       if (data.type === 'SHIELD_BREACH_DISMISSED') {
         handleIamDriving();
       }
@@ -136,7 +127,6 @@ export default function ShieldOverlay({
         'shield-breach-local',
       );
 
-      // 🔁 كرر الصوت والاهتزاز كل 3 ثواني لحد ما العميل يتعامل
       if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current);
       alarmIntervalRef.current = setInterval(() => {
         playUrgentSound();
@@ -157,10 +147,12 @@ export default function ShieldOverlay({
   }, []);
 
   // ─── Cleanup on unmount ───
+  // 🆕 شلت endShieldOnServer من هنا — لأن الـ handlers بتعمله بالفعل
+  // ووجوده هنا كان بيسبب إن الجلسة تتقفل قبل ما الـ request يوصل
   useEffect(() => {
     return () => {
       stopLocalAlarm();
-      endShieldOnServer(sessionId);
+      // 🆕 مفيش endShieldOnServer هنا — الـ handlers بتعمله
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -207,13 +199,18 @@ export default function ShieldOverlay({
         .update({ ended_at: new Date().toISOString() })
         .eq('phone', identifier).is('ended_at', null);
 
-      // سجّل الدرع الجديد (مع GPS الأولي = موقع الجراج)
+      // 🆕 حساب fake_mode مرة واحدة
+      const fakeRoll = Math.random();
+      const fakeMode = fakeRoll < 0.35 ? 0 : fakeRoll < 0.70 ? 1 : 2;
+
+      // سجّل الدرع الجديد
       const { error } = await supabase.from('shield_sessions').insert({
         session_id: sessionId,
         user_id: identifier,
         phone: identifier,
-        parking_lat: parkingLat,
-        parking_lng: parkingLng,
+        garage_id: garageId,              // 🆕 عشان الكرون يعرف الجراج
+        parking_lat: parkingLat,           // 🆕 موقع الجراج
+        parking_lng: parkingLng,           // 🆕 موقع الجراج
         push_endpoint: subJson.endpoint,
         push_p256dh: subJson.keys?.p256dh,
         push_auth: subJson.keys?.auth,
@@ -222,6 +219,11 @@ export default function ShieldOverlay({
         last_gps_at: new Date().toISOString(),
         is_outside_fence: false,
         theft_alerted: false,
+        fake_mode: fakeMode,               // 🆕 عشان الكرون يعرف يبعت إشعارات وهمية ولا لأ
+        alert_count: 0,                    // 🆕
+        next_alert_at: fakeMode > 0        // 🆕 أول إشعار وهمي بعد 5-15 دقيقة
+          ? new Date(Date.now() + (5 + Math.random() * 10) * 60_000).toISOString()
+          : null,
       });
 
       if (error) console.error('❌ Insert error:', error.message);
@@ -229,7 +231,7 @@ export default function ShieldOverlay({
     } catch (e: any) {
       console.error('❌ Crashed:', e.message);
     }
-  }, [sessionId, userId, userPhone, parkingLat, parkingLng]);
+  }, [sessionId, userId, userPhone, garageId, parkingLat, parkingLng]);
 
   const clearLocalShield = useCallback(() => {
     try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch {}
@@ -242,7 +244,6 @@ export default function ShieldOverlay({
     setIsChecking(true);
 
     try {
-      // 🎯 الخطوة 1: اتأكد إن العميل جوه الجراج
       await requestNotificationPermission();
       const check = await checkUserInsideGarage(parkingLat, parkingLng);
 
@@ -256,10 +257,8 @@ export default function ShieldOverlay({
         return;
       }
 
-      // 🎯 الخطوة 2: اشترك في الـ push
       try { await subscribeToPush(garageId); } catch { /* */ }
 
-      // 🎯 الخطوة 3: اخصم من المحفظة
       const ok = onDeductWallet(SHIELD_COST, 'درع حماية السيارة');
       if (!ok) {
         setIsChecking(false);
@@ -267,7 +266,6 @@ export default function ShieldOverlay({
         return;
       }
 
-      // 💾 احفظ تكلفة الدرع
       supabase
         .from('sessions')
         .update({ shield_cost: SHIELD_COST })
@@ -277,7 +275,6 @@ export default function ShieldOverlay({
 
       setIsChecking(false);
 
-      // 🎯 الخطوة 4: فعّل الدرع
       if (userPhone) {
         const code = 'SH-' + Math.random().toString(36).slice(2, 8).toUpperCase();
         setShieldCode(code);
@@ -308,20 +305,39 @@ export default function ShieldOverlay({
     await registerOnServer();
   }, [phone, garageId, sessionId, parkingLat, parkingLng, registerOnServer]);
 
-  const handleIamDriving = useCallback(() => {
+  // 🆕 handleIamDriving — دلوقتي async وبتستنى endShieldOnServer
+  const handleIamDriving = useCallback(async () => {
     stopLocalAlarm();
     destroyShield();
     clearLocalShield();
-    endShieldOnServer(sessionId);
+
+    // 🆕 نستنى الـ update يخلص فعلاً قبل ما نغيّر الـ phase
+    try {
+      await endShieldOnServer(sessionId);
+      console.log('✅ Shield session ended on server');
+    } catch (e) {
+      console.error('❌ Failed to end shield:', e);
+      // حتى لو فشل، نكمل عشان العميل ما يعلقش
+    }
+
     setPhase('dismissed');
   }, [sessionId, clearLocalShield, stopLocalAlarm]);
 
-  const handleTheft = useCallback(() => {
+  // 🆕 handleTheft — دلوقتي async وبتستنى endShieldOnServer
+  const handleTheft = useCallback(async () => {
     stopLocalAlarm();
     sendLocalNotification('🚨 تم الإبلاغ عن سرقة!', 'سيتم التواصل معك فوراً');
     destroyShield();
     clearLocalShield();
-    endShieldOnServer(sessionId);
+
+    // 🆕 نستنى الـ update يخلص فعلاً
+    try {
+      await endShieldOnServer(sessionId);
+      console.log('✅ Shield session ended on server (theft reported)');
+    } catch (e) {
+      console.error('❌ Failed to end shield:', e);
+    }
+
     setPhase('dismissed');
   }, [sessionId, clearLocalShield, stopLocalAlarm]);
 
@@ -338,8 +354,8 @@ export default function ShieldOverlay({
               <Shield className="w-7 h-7 text-blue-400" />
             </div>
             <div>
-              <h3 className="text-white font-bold text-base">فعّل درع حماية السيارة</h3>
-              <p className="text-blue-300/70 text-xs">مراقبة ذكية + إنذار سرقة فوري</p>
+              <h3 className="text-white font-bold text-base">فعّل درع حماية </h3>
+              <p className="text-blue-300/70 text-xs">مراقبة ذكية + حماية اضافية </p>
             </div>
           </div>
 

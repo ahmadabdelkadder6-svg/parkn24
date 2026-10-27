@@ -106,7 +106,15 @@ async function sendPush(shield: any, payload: any, supabase: any) {
     return { sent: true };
   } catch (err: any) {
     if (err.statusCode === 410 || err.statusCode === 404) {
-      await supabase.from('push_subscriptions').delete().eq('endpoint', shield.push_endpoint);
+      // 🆕 امسح الـ push keys من الـ shield session نفسه (مش من جدول تاني)
+      await supabase
+        .from('shield_sessions')
+        .update({
+          push_endpoint: null,
+          push_p256dh: null,
+          push_auth: null,
+        })
+        .eq('id', shield.id);
     }
     return { sent: false, reason: err.message, status: err.statusCode };
   }
@@ -161,10 +169,15 @@ serve(async (req) => {
       // ═══════════════════════════════════════════════════
       // 🚨 الخطوة 1: فحص السرقة (الأولوية القصوى)
       // ═══════════════════════════════════════════════════
-      if (shield.last_lat && shield.last_lng && shield.last_gps_at) {
+      // 🆕 لازم parking_lat/lng يكونوا موجودين عشان نقدر نحسب المسافة
+      if (
+        shield.parking_lat && shield.parking_lng &&
+        shield.last_lat && shield.last_lng &&
+        shield.last_gps_at
+      ) {
         const gpsAge = (now.getTime() - new Date(shield.last_gps_at).getTime()) / 1000;
 
-        // لو GPS حديث (أقل من 15 دقيقة)
+        // 🆕 الحالة أ: GPS حديث → احسب المسافة بنفسك
         if (gpsAge <= GPS_STALE_SECONDS) {
           const dist = haversine(
             shield.last_lat, shield.last_lng,
@@ -213,7 +226,56 @@ serve(async (req) => {
             totalSkipped++;
             continue;
           }
+
+        // 🆕 الحالة ب: GPS قديم (> 15 دقيقة) بس الـ client كان بعت flag إنه برة
+        } else if (shield.is_outside_fence && !shield.theft_alerted) {
+          console.log(`🚨 BREACH via client flag! (GPS stale ${Math.round(gpsAge)}s)`);
+
+          const result = await sendPush(shield, {
+            title: '🚨 إنذار سرقة!',
+            body: 'سيارتك خرجت من السياج المحمي!',
+            tag: 'shield-breach',
+            data: {
+              type: 'shield-breach',
+              shieldId: shield.id,
+              distance: 300,
+            },
+          }, supabase);
+
+          if (result.sent) {
+            totalBreaches++;
+            await supabase.from('shield_sessions').update({
+              theft_alerted: true,
+              last_checked_at: now.toISOString(),
+            }).eq('id', shield.id);
+          }
+          continue;
         }
+
+      // 🆕 الحالة ج: مفيش parking_lat/lng (session قديم قبل التعديل)
+      // اعتمد على الـ flag من الـ client بس
+      } else if (shield.is_outside_fence && !shield.theft_alerted) {
+        console.log(`🚨 BREACH via client flag only! (no parking coords)`);
+
+        const result = await sendPush(shield, {
+          title: '🚨 إنذار سرقة!',
+          body: 'سيارتك خرجت من السياج المحمي!',
+          tag: 'shield-breach',
+          data: {
+            type: 'shield-breach',
+            shieldId: shield.id,
+            distance: 300,
+          },
+        }, supabase);
+
+        if (result.sent) {
+          totalBreaches++;
+          await supabase.from('shield_sessions').update({
+            theft_alerted: true,
+            last_checked_at: now.toISOString(),
+          }).eq('id', shield.id);
+        }
+        continue;
       }
 
       // ═══════════════════════════════════════════════════
