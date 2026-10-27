@@ -733,35 +733,6 @@ ${isVip ? `\nرسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : 
         {/* ═══════════════════════════════════
             🎯 الأزرار الاحترافية
             ═══════════════════════════════════ */}
-        <div className="space-y-2.5 pt-4">
-          {/* زر النسخ */}
-          <button
-            onClick={copySessionDetails}
-            className="w-full py-3.5 rounded-2xl font-black text-base transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
-            style={{
-              background: copied
-                ? `linear-gradient(135deg, ${BRAND.green} 0%, ${BRAND.greenDark} 100%)`
-                : BRAND.paper,
-              border: copied ? 'none' : `2px solid ${BRAND.divider}`,
-              color: copied ? '#ffffff' : BRAND.ink,
-              boxShadow: copied
-                ? '0 6px 20px rgba(140, 198, 63, 0.35)'
-                : '0 2px 8px rgba(22, 86, 184, 0.08)',
-            }}
-          >
-            {copied ? (
-              <>
-                <Check className="w-5 h-5" strokeWidth={3} />
-                تم نسخ الإيصال بنجاح
-              </>
-            ) : (
-              <>
-                <Copy className="w-5 h-5" />
-                نسخ تفاصيل الإيصال
-              </>
-            )}
-          </button>
-
           {/* زر العودة الرئيسي */}
           <button
             onClick={handleBack}
