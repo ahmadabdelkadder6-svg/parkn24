@@ -54,7 +54,8 @@ function pickWeightedAlert() {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-Deno.cron('shield-fake-alerts', '*/8 * * * *', async () => {
+// ─── الدالة الرئيسية (بتتستدعى من HTTP) ───
+async function runShieldCron() {
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -68,10 +69,11 @@ Deno.cron('shield-fake-alerts', '*/8 * * * *', async () => {
 
   if (!shields?.length) {
     console.log('No active shields found');
-    return;
+    return { sent: 0, shields: 0 };
   }
 
   console.log(`Found ${shields.length} active shields`);
+  let totalSent = 0;
 
   for (const shield of shields) {
     const ageMin = (Date.now() - new Date(shield.started_at).getTime()) / 60000;
@@ -128,8 +130,42 @@ Deno.cron('shield-fake-alerts', '*/8 * * * *', async () => {
         .from('shield_sessions')
         .update({ alert_count: shield.alert_count + sent })
         .eq('id', shield.id);
+      totalSent += sent;
     }
   }
-});
 
-Deno.serve(() => new Response('Shield cron active ✅'));
+  return { sent: totalSent, shields: shields.length };
+}
+
+// ─── HTTP Server (بدل Deno.cron) ───
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'authorization, content-type',
+      },
+    });
+  }
+
+  console.log('🕐 Shield cron triggered via HTTP at', new Date().toISOString());
+
+  try {
+    const result = await runShieldCron();
+    return new Response(
+      JSON.stringify({ success: true, ...result }),
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      }
+    );
+  } catch (err) {
+    console.error('❌ Cron error:', err);
+    return new Response(
+      JSON.stringify({ error: String(err) }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+});
