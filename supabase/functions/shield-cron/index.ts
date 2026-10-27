@@ -1,14 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import webpush from 'https://esm.sh/web-push@3.6.7';
+import webpush from 'npm:web-push@3.6.7';
 
-const VAPID_PUBLIC = Deno.env.get('VAPID_PUBLIC_KEY')!;
-const VAPID_PRIVATE = Deno.env.get('VAPID_PRIVATE_KEY')!;
-
-webpush.setVapidDetails(
-  'mailto:admin@parkn24.com',
-  VAPID_PUBLIC,
-  VAPID_PRIVATE
-);
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, content-type',
+};
 
 const ALERT_POOL = [
   { type: 'warning',  title: '⚠️ تنبيه أمني',       body: 'تم رصد حركة مشبوهة بجوار سيارتك' },
@@ -54,18 +50,40 @@ function pickWeightedAlert() {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-// ─── الدالة الرئيسية (بتتستدعى من HTTP) ───
 async function runShieldCron() {
+  const vapidPublic = Deno.env.get('VAPID_PUBLIC_KEY');
+  const vapidPrivate = Deno.env.get('VAPID_PRIVATE_KEY');
+
+  if (!vapidPublic || !vapidPrivate) {
+    console.error('❌ VAPID keys missing from secrets!');
+    return { sent: 0, shields: 0, error: 'VAPID keys missing' };
+  }
+
+  // ✅ normalize الـ keys عشان تكون URL-safe بدون padding
+  const cleanPublic = vapidPublic.replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+  const cleanPrivate = vapidPrivate.replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+
+  webpush.setVapidDetails(
+    'mailto:admin@parkn24.com',
+    cleanPublic,
+    cleanPrivate
+  );
+
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   );
 
-  const { data: shields } = await supabase
+  const { data: shields, error: dbErr } = await supabase
     .from('shield_sessions')
     .select('*')
     .is('ended_at', null)
     .not('push_endpoint', 'is', null);
+
+  if (dbErr) {
+    console.error('❌ DB error:', dbErr.message);
+    return { sent: 0, shields: 0, error: dbErr.message };
+  }
 
   if (!shields?.length) {
     console.log('No active shields found');
@@ -114,7 +132,7 @@ async function runShieldCron() {
         sent++;
         console.log(`✅ Sent ${alert.type} to ${shield.phone || shield.id}`);
       } catch (e: any) {
-        console.error(`❌ Push failed:`, e.message);
+        console.error(`❌ Push failed:`, e.statusCode, e.message);
         if (e.statusCode === 410) {
           await supabase
             .from('shield_sessions')
@@ -137,35 +155,24 @@ async function runShieldCron() {
   return { sent: totalSent, shields: shields.length };
 }
 
-// ─── HTTP Server (بدل Deno.cron) ───
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'authorization, content-type',
-      },
-    });
+    return new Response('ok', { headers: corsHeaders });
   }
 
-  console.log('🕐 Shield cron triggered via HTTP at', new Date().toISOString());
+  console.log('🕐 Shield cron triggered at', new Date().toISOString());
 
   try {
     const result = await runShieldCron();
     return new Response(
       JSON.stringify({ success: true, ...result }),
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
-      }
+      { headers: { 'Content-Type': 'application/json', ...corsHeaders } }
     );
-  } catch (err) {
-    console.error('❌ Cron error:', err);
+  } catch (err: any) {
+    console.error('❌ Cron crashed:', err.message);
     return new Response(
-      JSON.stringify({ error: String(err) }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      JSON.stringify({ error: err.message }),
+      { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
     );
   }
 });
