@@ -3,7 +3,6 @@ import {
   Clock,
   MapPin,
   Receipt,
-  Copy,
   Check,
   Zap,
   LogIn,
@@ -56,7 +55,7 @@ const formatDuration = (seconds: number): string => {
 
 export default function LastSessionScreen() {
   const { sessions, garages, currentUser, acknowledgeSession, setScreen, setSelectedGarageId } = useStore();
-  const [copied, setCopied] = useState(false);
+ 
 
   const userPlate = normalizePlate(currentUser?.carPlate);
   const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
@@ -192,32 +191,6 @@ export default function LastSessionScreen() {
     });
   };
 
-  const copySessionDetails = async () => {
-    const text = `
-🅿️ إيصال Park'n 24
-━━━━━━━━━━━━━━━
-رقم الإيصال: #${receiptNumber}
-
-الجراج: ${garage?.name || 'غير محدد'}
-المنطقة: ${garage?.area || '-'}
-السيارة: ${lastSession.carPlate || '-'}
-
-الدخول: ${formatDateFull(entryTime)} - ${formatTimeOnly(entryTime)}
-الخروج: ${formatDateFull(exitTime)} - ${formatTimeOnly(exitTime)}
-المدة: ${formatDuration(durationSeconds)}
-${isVip ? `\nرسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : ''}${shieldCost > 0 ? `\n🛡️ درع حماية السيارة: ${shieldCost} ج.م (من المحفظة)` : ''}
-━━━━━━━━━━━━━━━
-شكراً لاستخدامك Park'n 24 🙏
-    `.trim();
-
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (e) {
-      console.error('Copy failed', e);
-    }
-  };
 
   return (
     <div dir="rtl" className="min-h-screen pb-8" style={{ background: BRAND.bg }}>
@@ -733,6 +706,9 @@ ${isVip ? `\nرسوم حجز VIP: ${BOOKING_FEE} ج.م (من المحفظة)` : 
         {/* ═══════════════════════════════════
             🎯 الأزرار الاحترافية
             ═══════════════════════════════════ */}
+        <div className="space-y-2.5 pt-4">
+ 
+
           {/* زر العودة الرئيسي */}
           <button
             onClick={handleBack}
