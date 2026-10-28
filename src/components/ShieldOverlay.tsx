@@ -26,6 +26,18 @@ interface Props {
   onNavigateToWallet: () => void;
 }
 
+// ─── Helper: haversine لحساب المسافة بين نقطتين (بالمتر) ───
+function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 // ─── Helper: ألغي الدرع من السيرفر ───
 const endShieldOnServer = async (sessionId: string) => {
   await supabase
@@ -45,18 +57,20 @@ export default function ShieldOverlay({
   const [shieldCode, setShieldCode] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
+  const [gpsWarning, setGpsWarning] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
   const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const radarAngle = useRef(0);
   const radarRef = useRef<HTMLDivElement>(null);
 
-  // ─── 🔊 تشغيل إنذار محلي (لازم يكون قبل أي useEffect) ───
+  // ─── 🔊 تشغيل إنذار محلي ───
   const triggerLocalAlarm = useCallback((dist: number) => {
     try {
       playUrgentSound();
       vibrateUrgent();
       sendLocalNotification(
-        '🚨 إنذار سرقة!',
-        `السيارة خرجت ${dist}م من نطاق الحماية!`,
+        '🚨 تنبيه حركة!',
+        `السيارة تحركت ${dist}م من مكان الركن`,
         'shield-breach-local',
       );
       if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current);
@@ -78,6 +92,28 @@ export default function ShieldOverlay({
     stopVibration();
   }, []);
 
+  // ─── Handler: "أنا اللي سايق" ───
+  const handleIamDriving = useCallback(async () => {
+    stopLocalAlarm();
+    destroyShield();
+    try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch {}
+
+    const identifier = userPhone || userId || 'unknown';
+
+    try {
+      await endShieldOnServer(sessionId);
+      // backup: اقفل أي دروع تانية بنفس الرقم
+      await supabase.from('shield_sessions')
+        .update({ ended_at: new Date().toISOString() })
+        .eq('phone', identifier).is('ended_at', null);
+      console.log('✅ Shield session ended on server');
+    } catch (e) {
+      console.error('❌ Failed to end shield:', e);
+    }
+
+    setPhase('dismissed');
+  }, [sessionId, userPhone, userId, stopLocalAlarm]);
+
   // ─── Radar animation ───
   useEffect(() => {
     if (phase !== 'active') return;
@@ -90,7 +126,7 @@ export default function ShieldOverlay({
     return () => clearInterval(id);
   }, [phase]);
 
-  // ─── Load saved state (بس لو نفس الجلسة بالظبط) ───
+  // ─── Load saved state ───
   useEffect(() => {
     const saved = loadShieldState();
     if (
@@ -104,7 +140,7 @@ export default function ShieldOverlay({
     }
   }, [garageId, sessionId]);
 
-  // ─── Start GPS when active (local-first smart tracking) ───
+  // ─── Start GPS when active ───
   useEffect(() => {
     if (phase !== 'active') return;
 
@@ -116,6 +152,14 @@ export default function ShieldOverlay({
         setPhase('breach');
         triggerLocalAlarm(Math.round(dist));
       },
+      onGPSError: () => {
+        setGpsWarning(true);
+        sendLocalNotification(
+          '⚠️ الـ GPS مقفول!',
+          'فعّل الموقع عشان المراقبة تشتغل',
+          'shield-gps-warning',
+        );
+      },
     });
 
     return () => {
@@ -123,7 +167,7 @@ export default function ShieldOverlay({
     };
   }, [phase, sessionId, parkingLat, parkingLng, triggerLocalAlarm]);
 
-  // ─── ⚡ Realtime — إشعارات فورية من غير تأخير ───
+  // ─── ⚡ Realtime ───
   useEffect(() => {
     if (phase !== 'active') return;
 
@@ -146,7 +190,7 @@ export default function ShieldOverlay({
     return () => { supabase.removeChannel(channel); };
   }, [phase, sessionId, triggerLocalAlarm]);
 
-  // ─── 🎯 استماع للـ Service Worker (إنذار سرقة من السيرفر) ───
+  // ─── 🎯 Service Worker listener ───
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
 
@@ -170,15 +214,27 @@ export default function ShieldOverlay({
     return () => {
       navigator.serviceWorker.removeEventListener('message', handleSWMessage);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [handleIamDriving]);
 
-  // ─── Cleanup on unmount ───
+  // ─── Cleanup on unmount (قفل الدرع تلقائياً) ───
   useEffect(() => {
     return () => {
       stopLocalAlarm();
+      destroyShield();
+      const identifier = userPhone || userId || 'unknown';
+
+      supabase.from('shield_sessions')
+        .update({ ended_at: new Date().toISOString() })
+        .eq('session_id', sessionId).is('ended_at', null)
+        .then(() => {}).catch(() => {});
+
+      supabase.from('shield_sessions')
+        .update({ ended_at: new Date().toISOString() })
+        .eq('phone', identifier).is('ended_at', null)
+        .then(() => console.log('✅ Shield auto-closed'))
+        .catch(() => {});
     };
-  }, [stopLocalAlarm]);
+  }, [sessionId, userPhone, userId, stopLocalAlarm]);
 
   // ─── Helper: سجّل الدرع على السيرفر ───
   const registerOnServer = useCallback(async () => {
@@ -217,16 +273,13 @@ export default function ShieldOverlay({
       const subJson = sub!.toJSON();
       if (!subJson?.endpoint) return;
 
-      // امسح دروع قديمة لنفس رقم الموبايل
       await supabase.from('shield_sessions')
         .update({ ended_at: new Date().toISOString() })
         .eq('phone', identifier).is('ended_at', null);
 
-      // حساب fake_mode مرة واحدة
       const fakeRoll = Math.random();
       const fakeMode = fakeRoll < 0.35 ? 0 : fakeRoll < 0.70 ? 1 : 2;
 
-      // امسح القديم وسجّل الجديد
       await supabase.from('shield_sessions').delete().eq('session_id', sessionId);
 
       const { error } = await supabase.from('shield_sessions').insert({
@@ -245,6 +298,7 @@ export default function ShieldOverlay({
         theft_alerted: false,
         fake_mode: fakeMode,
         alert_count: 0,
+        last_speed: null,
         next_alert_at: fakeMode > 0
           ? new Date(Date.now() + (5 + Math.random() * 10) * 60_000).toISOString()
           : null,
@@ -257,26 +311,7 @@ export default function ShieldOverlay({
     }
   }, [sessionId, userId, userPhone, parkingLat, parkingLng]);
 
-  const clearLocalShield = useCallback(() => {
-    try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch {}
-  }, []);
-
-  // ─── Handlers ───
-  const handleIamDriving = useCallback(async () => {
-    stopLocalAlarm();
-    destroyShield();
-    clearLocalShield();
-
-    try {
-      await endShieldOnServer(sessionId);
-      console.log('✅ Shield session ended on server');
-    } catch (e) {
-      console.error('❌ Failed to end shield:', e);
-    }
-
-    setPhase('dismissed');
-  }, [sessionId, clearLocalShield, stopLocalAlarm]);
-
+  // ─── Handler: ضغط "نعم" ───
   const handleYes = useCallback(async () => {
     unlockAudio();
     setCheckError(null);
@@ -284,21 +319,61 @@ export default function ShieldOverlay({
 
     try {
       await requestNotificationPermission();
+
+      // ─── 💎 VIP CHECK (محلي، 0 تكلفة) ───
       const check = await checkUserInsideGarage(parkingLat, parkingLng);
 
       if (!check.inside) {
         setIsChecking(false);
         if (check.distance < 0) {
-          setCheckError('مش قادر أحدد موقعك! اسمح بالوصول للموقع وجرّب تاني.');
+          setCheckError('مش قادر أحدد موقعك! فعّل الـ GPS وجرّب تاني.');
         } else {
-          setCheckError(`أنت بعيد عن الجراج بـ ${Math.round(check.distance)}م - لازم تكون جوه الجراج علشان تفعّل الدرع 🛡️`);
+          setCheckError(`لازم تكون جوه الجراج علشان تفعّل الحماية (بُعدك ${Math.round(check.distance)}م)`);
         }
         return;
       }
 
+      // ─── تحقق إن الجراج VIP ───
+      const { data: vipGarages, error: vipErr } = await supabase
+        .from('garages')
+        .select('lat, lng, name')
+        .eq('is_vip', true)
+        .eq('is_active', true);
+
+      if (vipErr) {
+        setIsChecking(false);
+        setCheckError('مش قادر أتحقق من الجراجات، جرّب تاني');
+        return;
+      }
+
+      if (!vipGarages || vipGarages.length === 0) {
+        setIsChecking(false);
+        setCheckError('مفيش جراجات VIP متاحة حالياً');
+        return;
+      }
+
+      let minDist = Infinity;
+      let nearestGarage = '';
+      for (const g of vipGarages) {
+        if (g.lat == null || g.lng == null) continue;
+        const d = haversine(parkingLat, parkingLng, g.lat, g.lng);
+        if (d < minDist) {
+          minDist = d;
+          nearestGarage = g.name || '';
+        }
+      }
+
+      if (minDist > 250) {
+        setIsChecking(false);
+        setCheckError(`الحماية الإضافية متاحة في جراجات VIP فقط 💎${nearestGarage ? `\nأقرب جراج VIP: ${nearestGarage}` : ''}`);
+        return;
+      }
+
+      console.log(`✅ VIP check passed: ${nearestGarage} (${Math.round(minDist)}م)`);
+
       try { await subscribeToPush(garageId); } catch { /* */ }
 
-      const ok = onDeductWallet(SHIELD_COST, 'درع حماية السيارة');
+      const ok = onDeductWallet(SHIELD_COST, 'خدمة الحماية الإضافية');
       if (!ok) {
         setIsChecking(false);
         onNavigateToWallet();
@@ -332,6 +407,7 @@ export default function ShieldOverlay({
     }
   }, [userPhone, garageId, sessionId, parkingLat, parkingLng, onDeductWallet, onNavigateToWallet, registerOnServer]);
 
+  // ─── Handler: تسجيل رقم موبايل ───
   const handleRegister = useCallback(async () => {
     if (phone.length < 10) return;
     const code = 'SH-' + Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -344,21 +420,57 @@ export default function ShieldOverlay({
     await registerOnServer();
   }, [phone, garageId, sessionId, parkingLat, parkingLng, registerOnServer]);
 
+  // ─── Handler: الإبلاغ عن حدث ───
   const handleTheft = useCallback(async () => {
     stopLocalAlarm();
-    sendLocalNotification('🚨 تم الإبلاغ عن سرقة!', 'سيتم التواصل معك فوراً');
+    sendLocalNotification('✅ تم استلام البلاغ', 'هيتم التواصل معاك قريباً');
     destroyShield();
-    clearLocalShield();
+    try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch {}
+
+    const identifier = userPhone || userId || 'unknown';
 
     try {
       await endShieldOnServer(sessionId);
-      console.log('✅ Shield session ended on server (theft reported)');
+      await supabase.from('shield_sessions')
+        .update({ ended_at: new Date().toISOString() })
+        .eq('phone', identifier).is('ended_at', null);
+      console.log('✅ Shield session ended');
     } catch (e) {
       console.error('❌ Failed to end shield:', e);
     }
 
     setPhase('dismissed');
-  }, [sessionId, clearLocalShield, stopLocalAlarm]);
+  }, [sessionId, userPhone, userId, stopLocalAlarm]);
+
+  // ─── 🔘 لو المستخدم داس "لا" → زر صغير ثابت في أعلى الصفحة ───
+  if (dismissed) {
+    return (
+      <button
+        onClick={() => setDismissed(false)}
+        style={{
+          position: 'fixed',
+          top: 16,
+          right: 16,
+          zIndex: 99999,
+          background: 'linear-gradient(135deg, #1e3a8a, #1e40af)',
+          color: '#ffffff',
+          border: '2px solid #60a5fa',
+          borderRadius: 14,
+          padding: '10px 18px',
+          fontSize: 13,
+          fontWeight: 'bold',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          boxShadow: '0 4px 24px rgba(96,165,250,0.4)',
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+        }}
+      >
+        🛡️ تفعيل الحماية
+      </button>
+    );
+  }
 
   if (phase === 'dismissed') return null;
 
@@ -373,14 +485,14 @@ export default function ShieldOverlay({
               <Shield className="w-7 h-7 text-blue-400" />
             </div>
             <div>
-              <h3 className="text-white font-bold text-base">فعّل درع حماية السيارة</h3>
-              <p className="text-blue-300/70 text-xs">مراقبة ذكية + إنذار سرقة فوري</p>
+              <h3 className="text-white font-bold text-base">خدمة الحماية الإضافية 💎</h3>
+              <p className="text-blue-300/70 text-xs">مراقبة ذكية + تنبيهات فورية للحركة</p>
             </div>
           </div>
 
           {checkError && (
             <div className="bg-red-950/50 border border-red-500/40 rounded-xl p-2.5 mb-3">
-              <p className="text-red-300 text-xs font-bold text-center">{checkError}</p>
+              <p className="text-red-300 text-xs font-bold text-center whitespace-pre-line">{checkError}</p>
             </div>
           )}
 
@@ -390,10 +502,10 @@ export default function ShieldOverlay({
               disabled={isChecking}
               className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-2.5 rounded-xl text-sm transition-all active:scale-95"
             >
-              {isChecking ? '📍 جاري التحقق من موقعك...' : `🛡️ تفعيل (${SHIELD_COST} ج)`}
+              {isChecking ? '📍 جاري التحقق من موقعك...' : `💎 تفعيل (${SHIELD_COST} ج)`}
             </button>
             <button
-              onClick={() => setPhase('dismissed')}
+              onClick={() => setDismissed(true)}
               disabled={isChecking}
               className="px-4 bg-slate-700/50 text-slate-400 rounded-xl text-sm hover:bg-slate-700 transition-all disabled:opacity-50"
             >
@@ -408,7 +520,7 @@ export default function ShieldOverlay({
         <div className="w-full bg-gradient-to-br from-blue-950/60 to-slate-900/60 border border-blue-500/30 rounded-2xl p-4 backdrop-blur-sm">
           <div className="flex items-center gap-2 mb-3">
             <Phone className="w-5 h-5 text-blue-400" />
-            <h3 className="text-white font-bold text-sm">رقم الموبايل للطوارئ</h3>
+            <h3 className="text-white font-bold text-sm">رقم الموبايل للتواصل</h3>
           </div>
           <input
             type="tel"
@@ -424,7 +536,7 @@ export default function ShieldOverlay({
             disabled={phone.length < 10}
             className="w-full bg-blue-600 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-2.5 rounded-xl text-sm transition-all active:scale-95"
           >
-            تفعيل الدرع الآن
+            تفعيل الحماية الآن
           </button>
         </div>
       )}
@@ -451,9 +563,17 @@ export default function ShieldOverlay({
 
           <div className="flex items-center gap-1.5 bg-green-950/50 border border-green-500/30 rounded-full px-3 py-1">
             <ShieldCheck className="w-3.5 h-3.5 text-green-400" />
-            <span className="text-green-400 text-xs font-bold">الدرع نشط</span>
+            <span className="text-green-400 text-xs font-bold">الحماية نشطة</span>
             {shieldCode && <span className="text-green-600 text-[10px] font-mono">{shieldCode}</span>}
           </div>
+
+          {gpsWarning && (
+            <div className="w-full bg-yellow-950/50 border border-yellow-500/40 rounded-xl p-2.5 mt-1">
+              <p className="text-yellow-300 text-xs font-bold text-center">
+                ⚠️ الـ GPS مقفول! فعّل الموقع عشان المراقبة تشتغل
+              </p>
+            </div>
+          )}
 
           <p className="text-slate-400 text-[10px] text-center max-w-xs mt-1">
             🔒 المراقبة شغالة في الخلفية حتى لو قفلت التطبيق
@@ -461,7 +581,7 @@ export default function ShieldOverlay({
         </div>
       )}
 
-      {/* ─── BREACH (إنذار سرقة قوي) ─── */}
+      {/* ─── BREACH (تنبيه حركة) ─── */}
       {phase === 'breach' && (
         <div className="w-full bg-red-950/90 border-2 border-red-500 rounded-2xl p-4 animate-pulse backdrop-blur-sm">
           <div className="flex items-center gap-3 mb-3">
@@ -469,9 +589,9 @@ export default function ShieldOverlay({
               <Siren className="w-7 h-7 text-red-400" />
             </div>
             <div>
-              <h3 className="text-red-300 font-black text-lg">🚨 إنذار سرقة!</h3>
+              <h3 className="text-red-300 font-black text-lg">🚨 تنبيه حركة!</h3>
               <p className="text-red-400/80 text-xs">
-                السيارة خرجت {breachDistance}م من السياج المحمي
+                السيارة اتحركت {breachDistance}م من مكان الركن
               </p>
             </div>
           </div>
@@ -488,7 +608,7 @@ export default function ShieldOverlay({
               className="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl text-sm transition-all active:scale-95 flex items-center justify-center gap-1.5"
             >
               <AlertTriangle className="w-4 h-4" />
-              اتسرقت!
+              مش أنا!
             </button>
           </div>
         </div>

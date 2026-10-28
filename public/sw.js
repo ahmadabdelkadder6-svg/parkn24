@@ -1,5 +1,5 @@
-// ✅ Version - v12 إضافة SHIELD_BREACH_DETECTED للـ overlay
-const CACHE_NAME    = 'parkn24-v12';
+// ✅ Version - v13 نصوص قانونية (تنبيه حركة بدل إنذار سرقة)
+const CACHE_NAME    = 'parkn24-v13';
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
 const recentNotifications = new Map();
@@ -17,7 +17,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 Service Worker Installed (v12)');
+      console.log('📦 Service Worker Installed (v13)');
       return cache.addAll(STATIC_ASSETS);
     })
   );
@@ -127,7 +127,7 @@ self.addEventListener('push', (event) => {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // 🛡️ إشعارات الدرع
+  // 🛡️ إشعارات الحماية
   // ═══════════════════════════════════════════════════════════
   const isShield = tag.startsWith('shield-');
   const isBreach = tag === 'shield-breach' || extraData.type === 'shield-breach';
@@ -135,9 +135,9 @@ self.addEventListener('push', (event) => {
   let options;
 
   if (isBreach) {
-    // 🚨 إنذار سرقة - اهتزاز عنيف جداً
+    // 🚨 تنبيه حركة - اهتزاز عنيف جداً
     options = {
-      body: body || 'السيارة خرجت من نطاق الجراج! افتح التطبيق فوراً',
+      body: body || 'السيارة اتحركت من مكان الركن! افتح التطبيق فوراً',
       icon,
       badge,
       vibrate: [
@@ -160,7 +160,7 @@ self.addEventListener('push', (event) => {
     // 🎯 ابعت للتطبيق لو مفتوح → يفعّل الـ breach phase + صوت محلي
     event.waitUntil(
       (async () => {
-        await self.registration.showNotification(title || '🚨 إنذار سرقة!', options);
+        await self.registration.showNotification(title || '🚨 تنبيه حركة!', options);
         const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
         for (const client of clientsList) {
           client.postMessage({
@@ -177,7 +177,7 @@ self.addEventListener('push', (event) => {
   if (isShield) {
     const isWarning = tag.includes('warning') || extraData.type?.includes('warning');
     options = {
-      body: body || 'تحديث من درع الحماية',
+      body: body || 'تحديث من نظام المراقبة',
       icon,
       badge,
       vibrate: isWarning
@@ -224,7 +224,7 @@ self.addEventListener('notificationclick', (event) => {
   const notifData = event.notification.data || {};
   const isBreach = notifData.type === 'shield-breach' || notifData.type === 'breach';
 
-  // ✅ العميل دوس "أنا اللي سايق" → ابعت للتطبيق يوقف الإنذار
+  // ✅ العميل دوس "أنا اللي سايق" → ابعت للتطبيق يوقف التنبيه
   if (event.action === 'dismiss') {
     if (isBreach) {
       event.waitUntil(
@@ -246,7 +246,7 @@ self.addEventListener('notificationclick', (event) => {
       .then((clientList) => {
         for (const client of clientList) {
           if (client.url.includes(self.location.origin) && 'focus' in client) {
-            // 🚨 لو إنذار سرقة → ابعت message للتطبيق يفعّل breach phase + صوت
+            // 🚨 لو تنبيه حركة → ابعت message للتطبيق يفعّل breach phase + صوت
             if (isBreach) {
               client.postMessage({
                 type: 'SHIELD_BREACH_DETECTED',

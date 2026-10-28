@@ -27,36 +27,36 @@ export interface ShieldState {
 // ─── ثوابت ───
 export const SHIELD_COST = 7;
 export const SHIELD_STORAGE_KEY = 'parkn24_shield';
-export const GEOFENCE_RADIUS = 250;              // 250 متر
-export const MIN_MOVEMENT_METERS = 80;           // أقل حركة تستحق إرسال
-export const FALLBACK_INTERVAL_MS = 300_000;     // 5 دقائق - fallback بس
+export const GEOFENCE_RADIUS = 250;
+export const MIN_MOVEMENT_METERS = 80;
+export const FALLBACK_INTERVAL_MS = 300_000;
 
 // ─── 🧠 ثوابت السرعة الذكية ───
-export const CAR_SPEED_THRESHOLD = 5;            // 5 m/s = 18 كم/س
-export const CAR_GRACE_MS = 30_000;              // سيارة: 30 ثانية → إنذار
+export const CAR_SPEED_THRESHOLD = 5;       // 5 m/s = 18 كم/س
+export const CAR_GRACE_MS = 30_000;         // سيارة: 30 ثانية → تنبيه
 
-// ─── بنك الإشعارات الوهمية ───
+// ─── بنك الإشعارات الوهمية (تمويه) ───
 const ALERT_POOL: FakeAlert[] = [
-  { type: 'warning', title: '⚠️ تنبيه أمني', body: 'تم رصد حركة غير مألوفة حول السيارة', icon: '⚠️' },
-  { type: 'warning', title: '⚠️ تنبيه أمني', body: 'شخص يقترب من باب السائق', icon: '⚠️' },
-  { type: 'warning', title: '⚠️ تنبيه أمني', body: 'تم لمس مقبض الباب الخلفي', icon: '⚠️' },
-  { type: 'resolved', title: '✅ تم الحل', body: 'الحركة كانت عادية — كلو تمام', icon: '✅' },
-  { type: 'resolved', title: '✅ تم الحل', body: 'كان شخص بيمر جنب العربية', icon: '✅' },
-  { type: 'resolved', title: '✅ تم الحل', body: 'تنبيه كاذب — العربية سليمة', icon: '✅' },
-  { type: 'resolved', title: '✅ تم الحل', body: 'عامل الجراج كان بيمر', icon: '✅' },
+  { type: 'warning', title: '⚠️ تنبيه حركة', body: 'تم رصد حركة قريبة من مكان الركن', icon: '⚠️' },
+  { type: 'warning', title: '⚠️ تنبيه حركة', body: 'حركة غير مألوفة حول السيارة', icon: '⚠️' },
+  { type: 'warning', title: '⚠️ تنبيه حركة', body: 'اهتزاز خفيف في السيارة', icon: '⚠️' },
+  { type: 'resolved', title: '✅ تم الحل', body: 'الحركة طبيعية — كلو تمام', icon: '✅' },
+  { type: 'resolved', title: '✅ تم الحل', body: 'كان شخص بيمر جنب مكان الركن', icon: '✅' },
+  { type: 'resolved', title: '✅ تم الحل', body: 'تنبيه عادي — العربية سليمة', icon: '✅' },
+  { type: 'resolved', title: '✅ تم الحل', body: 'حركة عادية في المكان', icon: '✅' },
   { type: 'resolved', title: '✅ تم الحل', body: 'قط كان فوق الكابوت 😺', icon: '✅' },
-  { type: 'status', title: '🛡️ الدرع نشط', body: 'السيارة محمية ومراقبة', icon: '🛡️' },
-  { type: 'status', title: '🛡️ الدرع نشط', body: 'كل الحساسات شغالة', icon: '🛡️' },
-  { type: 'status', title: '🔋 حالة النظام', body: 'البطارية مستقرة — الدرع يعمل بكفاءة', icon: '🔋' },
+  { type: 'status', title: '🛡️ الحماية نشطة', body: 'السيارة تحت المراقبة', icon: '🛡️' },
+  { type: 'status', title: '🛡️ الحماية نشطة', body: 'كل الحساسات شغالة', icon: '🛡️' },
+  { type: 'status', title: '🔋 حالة النظام', body: 'البطارية مستقرة — المراقبة تعمل بكفاءة', icon: '🔋' },
   { type: 'status', title: '📡 الاتصال', body: 'متصل بخادم المراقبة', icon: '📡' },
-  { type: 'status', title: '🛡️ تحديث', body: 'تم تحديث بروتوكول الحماية', icon: '🛡️' },
+  { type: 'status', title: '🛡️ تحديث', body: 'تم تحديث بروتوكول المراقبة', icon: '🛡️' },
   { type: 'status', title: '🌡️ الحرارة', body: 'درجة حرارة المحرك طبيعية', icon: '🌡️' },
-  { type: 'status', title: '🔒 الأقفال', body: 'جميع الأبواب مقفلة', icon: '🔒' },
+  { type: 'status', title: '🔒 الحالة', body: 'حالة السيارة مستقرة', icon: '🔒' },
   { type: 'status', title: '📍 الموقع', body: 'السيارة في مكانها', icon: '📍' },
-  { type: 'report', title: '📋 تقرير', body: 'لا توجد حوادث خلال الفترة الماضية', icon: '📋' },
-  { type: 'report', title: '📋 تقرير', body: 'تم تسجيل 0 محاولات اقتحام', icon: '📋' },
-  { type: 'qrScan', title: '📱 مسح QR', body: 'شخص مسح كود الاستيكر — تم تسجيله', icon: '📱' },
-  { type: 'qrScan', title: '📱 مسح QR', body: 'عامل الجراج تحقق من الاستيكر', icon: '📱' },
+  { type: 'report', title: '📋 تقرير', body: 'لا توجد ملاحظات خلال الفترة الماضية', icon: '📋' },
+  { type: 'report', title: '📋 تقرير', body: 'تم تسجيل 0 ملاحظات غير طبيعية', icon: '📋' },
+  { type: 'qrScan', title: '📱 تحقق', body: 'تم التحقق من كود السيارة', icon: '📱' },
+  { type: 'qrScan', title: '📱 تحقق', body: 'تم التحقق من مكان الركن', icon: '📱' },
 ];
 
 // ─── Haversine ───
@@ -106,17 +106,16 @@ export async function checkUserInsideGarage(
 // 🧠 حساب الـ Grace Period بناءً على السرعة
 // ═══════════════════════════════════════════════════════════
 function getGracePeriod(speedMs: number | null): number {
-  // 🚗 سيارة فقط (≥ 18 كم/س) → إنذار بعد 30 ثانية
+  // 🚗 سيارة فقط (≥ 18 كم/س) → تنبيه بعد 30 ثانية
   if (speedMs !== null && speedMs >= CAR_SPEED_THRESHOLD) {
     return CAR_GRACE_MS;
   }
-  // أي حاجة تانية (مشي، جري، سرعة مجهولة، GPS ضعيف)
-  // → مفيش إنذار خالص
+  // أي حاجة تانية (مشي، جري، سرعة مجهولة) → مفيش تنبيه
   return Infinity;
 }
 
 // ═══════════════════════════════════════════════════════════
-// 📍 GPS Geofence الذكي — مع تمييز السرعة
+// 📍 GPS Geofence الذكي — مع تمييز السرعة + مراقبة الـ GPS
 // ═══════════════════════════════════════════════════════════
 let gpsWatchId: number | null = null;
 let fallbackIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -131,55 +130,55 @@ export function startShieldGPS(params: {
   parkingLat: number;
   parkingLng: number;
   onGeofenceBreach: (distance: number) => void;
+  onGPSError?: () => void;
 }): () => void {
   stopShieldGPS();
-  if (!navigator.geolocation) return () => {};
+  if (!navigator.geolocation) {
+    params.onGPSError?.();
+    return () => {};
+  }
 
   lastSentLat = params.parkingLat;
   lastSentLng = params.parkingLng;
   lastSentAt = 0;
   breachStartTime = null;
   isCurrentlyOutside = false;
+  let consecutiveErrors = 0;
 
-  // 🧠 المعالج الذكي — بيحل نوع الحركة من السرعة
   const handlePosition = (lat: number, lng: number, speed: number | null) => {
+    consecutiveErrors = 0;
     const distFromGarage = haversine(lat, lng, params.parkingLat, params.parkingLng);
     const distFromLastSent = haversine(lat, lng, lastSentLat, lastSentLng);
     const now = Date.now();
 
-    // 🚨 الحالة 1: خرج من السياج
     if (distFromGarage > GEOFENCE_RADIUS) {
-
       if (!breachStartTime) {
         breachStartTime = now;
       }
 
-      // 🧠 الـ grace period بيتحدد من السرعة
       const gracePeriod = getGracePeriod(speed);
 
       if (now - breachStartTime >= gracePeriod) {
         if (!isCurrentlyOutside) {
           isCurrentlyOutside = true;
-          sendGPSToServer(params.sessionId, lat, lng, true);
+          sendGPSToServer(params.sessionId, lat, lng, true, speed);
           lastSentLat = lat;
           lastSentLng = lng;
           lastSentAt = now;
           params.onGeofenceBreach(distFromGarage);
         } else if (distFromLastSent > MIN_MOVEMENT_METERS) {
-          sendGPSToServer(params.sessionId, lat, lng, true);
+          sendGPSToServer(params.sessionId, lat, lng, true, speed);
           lastSentLat = lat;
           lastSentLng = lng;
           lastSentAt = now;
         }
       }
-
     } else {
-      // ✅ الحالة 2: جوه السياج
       breachStartTime = null;
 
       if (isCurrentlyOutside) {
         isCurrentlyOutside = false;
-        sendGPSToServer(params.sessionId, lat, lng, false);
+        sendGPSToServer(params.sessionId, lat, lng, false, speed);
         lastSentLat = lat;
         lastSentLng = lng;
         lastSentAt = now;
@@ -187,18 +186,24 @@ export function startShieldGPS(params: {
     }
   };
 
-  // 📡 watchPosition — بيبعت السرعة كمان!
+  const handleGPSError = (err: GeolocationPositionError) => {
+    consecutiveErrors++;
+    console.warn(`Shield GPS error (${consecutiveErrors}):`, err.message);
+    if (consecutiveErrors >= 3) {
+      params.onGPSError?.();
+    }
+  };
+
   gpsWatchId = navigator.geolocation.watchPosition(
     (pos) => handlePosition(
       pos.coords.latitude,
       pos.coords.longitude,
       pos.coords.speed,
     ),
-    (err) => console.warn('Shield GPS:', err.message),
+    handleGPSError,
     { enableHighAccuracy: false, maximumAge: 25000, timeout: 30000 },
   );
 
-  // 🔄 Fallback كل 5 دقائق
   fallbackIntervalId = setInterval(() => {
     navigator.geolocation.getCurrentPosition(
       (pos) => handlePosition(
@@ -206,7 +211,7 @@ export function startShieldGPS(params: {
         pos.coords.longitude,
         pos.coords.speed,
       ),
-      () => {},
+      handleGPSError,
       { enableHighAccuracy: false, maximumAge: 60000, timeout: 20000 },
     );
   }, FALLBACK_INTERVAL_MS);
@@ -227,12 +232,13 @@ export function stopShieldGPS(): void {
   isCurrentlyOutside = false;
 }
 
-// ─── إرسال GPS للسيرفر (بيبعث is_outside_fence كمان) ───
+// ─── إرسال GPS للسيرفر (بيبعث السرعة + is_outside_fence) ───
 function sendGPSToServer(
   sessionId: string,
   lat: number,
   lng: number,
   isOutside: boolean,
+  speed: number | null,
 ): void {
   supabase
     .from('shield_sessions')
@@ -241,6 +247,7 @@ function sendGPSToServer(
       last_lng: lng,
       last_gps_at: new Date().toISOString(),
       is_outside_fence: isOutside,
+      last_speed: speed,
     })
     .eq('session_id', sessionId)
     .is('ended_at', null)
@@ -271,7 +278,7 @@ export function loadShieldState(): ShieldState | null {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🔧 Exports قديمة (deprecated - الكرون بيعمل كل حاجة)
+// 🔧 Exports قديمة (deprecated)
 // ═══════════════════════════════════════════════════════════
 export function startFakeAlerts(): void { /* moved to server cron */ }
 export function stopFakeAlerts(): void { /* moved to server cron */ }
