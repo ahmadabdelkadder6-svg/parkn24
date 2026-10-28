@@ -49,6 +49,35 @@ export default function ShieldOverlay({
   const radarAngle = useRef(0);
   const radarRef = useRef<HTMLDivElement>(null);
 
+  // ─── 🔊 تشغيل إنذار محلي (لازم يكون قبل أي useEffect) ───
+  const triggerLocalAlarm = useCallback((dist: number) => {
+    try {
+      playUrgentSound();
+      vibrateUrgent();
+      sendLocalNotification(
+        '🚨 إنذار سرقة!',
+        `السيارة خرجت ${dist}م من نطاق الحماية!`,
+        'shield-breach-local',
+      );
+      if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current);
+      alarmIntervalRef.current = setInterval(() => {
+        playUrgentSound();
+        vibrateUrgent();
+      }, 3000);
+    } catch (e) {
+      console.warn('Alarm failed:', e);
+    }
+  }, []);
+
+  // ─── 🛑 إيقاف الإنذار المحلي ───
+  const stopLocalAlarm = useCallback(() => {
+    if (alarmIntervalRef.current) {
+      clearInterval(alarmIntervalRef.current);
+      alarmIntervalRef.current = null;
+    }
+    stopVibration();
+  }, []);
+
   // ─── Radar animation ───
   useEffect(() => {
     if (phase !== 'active') return;
@@ -92,8 +121,9 @@ export default function ShieldOverlay({
     return () => {
       cleanupGPS();
     };
-  }, [phase, sessionId, parkingLat, parkingLng]);
- // ─── ⚡ Realtime — إشعارات فورية من غير تأخير ───
+  }, [phase, sessionId, parkingLat, parkingLng, triggerLocalAlarm]);
+
+  // ─── ⚡ Realtime — إشعارات فورية من غير تأخير ───
   useEffect(() => {
     if (phase !== 'active') return;
 
@@ -143,43 +173,12 @@ export default function ShieldOverlay({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ─── 🔊 تشغيل إنذار محلي قوي (صوت + اهتزاز متكرر) ───
-  const triggerLocalAlarm = useCallback((dist: number) => {
-    try {
-      playUrgentSound();
-      vibrateUrgent();
-      sendLocalNotification(
-        '🚨 إنذار سرقة!',
-        `السيارة خرجت ${dist}م من نطاق الحماية!`,
-        'shield-breach-local',
-      );
-
-      if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current);
-      alarmIntervalRef.current = setInterval(() => {
-        playUrgentSound();
-        vibrateUrgent();
-      }, 3000);
-    } catch (e) {
-      console.warn('Alarm failed:', e);
-    }
-  }, []);
-
-  // ─── 🛑 إيقاف الإنذار المحلي ───
-  const stopLocalAlarm = useCallback(() => {
-    if (alarmIntervalRef.current) {
-      clearInterval(alarmIntervalRef.current);
-      alarmIntervalRef.current = null;
-    }
-    stopVibration();
-  }, []);
-
   // ─── Cleanup on unmount ───
   useEffect(() => {
     return () => {
       stopLocalAlarm();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [stopLocalAlarm]);
 
   // ─── Helper: سجّل الدرع على السيرفر ───
   const registerOnServer = useCallback(async () => {
@@ -227,7 +226,7 @@ export default function ShieldOverlay({
       const fakeRoll = Math.random();
       const fakeMode = fakeRoll < 0.35 ? 0 : fakeRoll < 0.70 ? 1 : 2;
 
-      // سجّل الدرع الجديد
+      // امسح القديم وسجّل الجديد
       await supabase.from('shield_sessions').delete().eq('session_id', sessionId);
 
       const { error } = await supabase.from('shield_sessions').insert({
@@ -246,23 +245,38 @@ export default function ShieldOverlay({
         theft_alerted: false,
         fake_mode: fakeMode,
         alert_count: 0,
-  next_alert_at: fakeMode > 0
-    ? new Date(Date.now() + (5 + Math.random() * 10) * 60_000).toISOString()
-    : null,
-});
+        next_alert_at: fakeMode > 0
+          ? new Date(Date.now() + (5 + Math.random() * 10) * 60_000).toISOString()
+          : null,
+      });
 
       if (error) console.error('❌ Insert error:', error.message);
       else console.log('✅ Shield registered! 🎉');
     } catch (e: any) {
       console.error('❌ Crashed:', e.message);
     }
-  }, [sessionId, userId, userPhone, garageId, parkingLat, parkingLng]);
+  }, [sessionId, userId, userPhone, parkingLat, parkingLng]);
 
   const clearLocalShield = useCallback(() => {
     try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch {}
   }, []);
 
   // ─── Handlers ───
+  const handleIamDriving = useCallback(async () => {
+    stopLocalAlarm();
+    destroyShield();
+    clearLocalShield();
+
+    try {
+      await endShieldOnServer(sessionId);
+      console.log('✅ Shield session ended on server');
+    } catch (e) {
+      console.error('❌ Failed to end shield:', e);
+    }
+
+    setPhase('dismissed');
+  }, [sessionId, clearLocalShield, stopLocalAlarm]);
+
   const handleYes = useCallback(async () => {
     unlockAudio();
     setCheckError(null);
@@ -329,21 +343,6 @@ export default function ShieldOverlay({
     });
     await registerOnServer();
   }, [phone, garageId, sessionId, parkingLat, parkingLng, registerOnServer]);
-
-  const handleIamDriving = useCallback(async () => {
-    stopLocalAlarm();
-    destroyShield();
-    clearLocalShield();
-
-    try {
-      await endShieldOnServer(sessionId);
-      console.log('✅ Shield session ended on server');
-    } catch (e) {
-      console.error('❌ Failed to end shield:', e);
-    }
-
-    setPhase('dismissed');
-  }, [sessionId, clearLocalShield, stopLocalAlarm]);
 
   const handleTheft = useCallback(async () => {
     stopLocalAlarm();
