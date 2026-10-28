@@ -210,7 +210,6 @@ export default function ShieldOverlay({
         session_id: sessionId,
         user_id: identifier,
         phone: identifier,
-              ended_at: null,
         parking_lat: parkingLat,
         parking_lng: parkingLng,
         push_endpoint: subJson.endpoint,
