@@ -206,7 +206,7 @@ export default function ShieldOverlay({
       const fakeMode = fakeRoll < 0.35 ? 0 : fakeRoll < 0.70 ? 1 : 2;
 
       // سجّل الدرع الجديد
-      const { error } = await supabase.from('shield_sessions').insert({
+      const { error } = await supabase.from('shield_sessions').upsert({
         session_id: sessionId,
         user_id: identifier,
         phone: identifier,
@@ -225,7 +225,7 @@ export default function ShieldOverlay({
         next_alert_at: fakeMode > 0
           ? new Date(Date.now() + (5 + Math.random() * 10) * 60_000).toISOString()
           : null,
-      });
+      }, { onConflict: 'session_id' });
 
       if (error) console.error('❌ Insert error:', error.message);
       else console.log('✅ Shield registered! 🎉');
