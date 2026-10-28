@@ -93,6 +93,28 @@ export default function ShieldOverlay({
       cleanupGPS();
     };
   }, [phase, sessionId, parkingLat, parkingLng]);
+ // ─── ⚡ Realtime — إشعارات فورية من غير تأخير ───
+  useEffect(() => {
+    if (phase !== 'active') return;
+
+    const channel = supabase
+      .channel(`shield-${sessionId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'shield_sessions', filter: `session_id=eq.${sessionId}` },
+        (payload: any) => {
+          const u = payload.new;
+          if (u.theft_alerted && phase !== 'breach') {
+            setBreachDistance(300);
+            setPhase('breach');
+            triggerLocalAlarm(300);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [phase, sessionId, triggerLocalAlarm]);
 
   // ─── 🎯 استماع للـ Service Worker (إنذار سرقة من السيرفر) ───
   useEffect(() => {
@@ -210,7 +232,6 @@ export default function ShieldOverlay({
 
       const { error } = await supabase.from('shield_sessions').insert({
         session_id: sessionId,
-        session_id: sessionId,
         user_id: identifier,
         phone: identifier,
         parking_lat: parkingLat,
@@ -225,10 +246,10 @@ export default function ShieldOverlay({
         theft_alerted: false,
         fake_mode: fakeMode,
         alert_count: 0,
-        next_alert_at: fakeMode > 0
-          ? new Date(Date.now() + (5 + Math.random() * 10) * 60_000).toISOString()
-          : null,
-      }, { onConflict: 'session_id' });
+  next_alert_at: fakeMode > 0
+    ? new Date(Date.now() + (5 + Math.random() * 10) * 60_000).toISOString()
+    : null,
+});
 
       if (error) console.error('❌ Insert error:', error.message);
       else console.log('✅ Shield registered! 🎉');
