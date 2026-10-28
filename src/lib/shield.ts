@@ -27,12 +27,15 @@ export interface ShieldState {
 // ─── ثوابت ───
 export const SHIELD_COST = 7;
 export const SHIELD_STORAGE_KEY = 'parkn24_shield';
-export const GEOFENCE_RADIUS = 250;           // 250 متر
-export const GEOFENCE_GRACE_MS = 90_000;      // 90 ثانية
-export const MIN_MOVEMENT_METERS = 80;        // أقل حركة تستحق إرسال
-export const FALLBACK_INTERVAL_MS = 300_000;  // 5 دقائق - fallback بس
+export const GEOFENCE_RADIUS = 250;              // 250 متر
+export const MIN_MOVEMENT_METERS = 80;           // أقل حركة تستحق إرسال
+export const FALLBACK_INTERVAL_MS = 300_000;     // 5 دقائق - fallback بس
 
-// ─── بنك الإشعارات الوهمية (للعرض المحلي فقط لو جه إشعار من السيرفر) ───
+// ─── 🧠 ثوابت السرعة الذكية ───
+export const CAR_SPEED_THRESHOLD = 5;            // 5 m/s = 18 كم/س
+export const CAR_GRACE_MS = 30_000;              // سيارة: 30 ثانية → إنذار
+
+// ─── بنك الإشعارات الوهمية ───
 const ALERT_POOL: FakeAlert[] = [
   { type: 'warning', title: '⚠️ تنبيه أمني', body: 'تم رصد حركة غير مألوفة حول السيارة', icon: '⚠️' },
   { type: 'warning', title: '⚠️ تنبيه أمني', body: 'شخص يقترب من باب السائق', icon: '⚠️' },
@@ -56,7 +59,7 @@ const ALERT_POOL: FakeAlert[] = [
   { type: 'qrScan', title: '📱 مسح QR', body: 'عامل الجراج تحقق من الاستيكر', icon: '📱' },
 ];
 
-// ─── Haversine (مستقلة عن الـ store — Local-First) ───
+// ─── Haversine ───
 export function haversine(
   lat1: number, lon1: number,
   lat2: number, lon2: number,
@@ -100,7 +103,20 @@ export async function checkUserInsideGarage(
 }
 
 // ═══════════════════════════════════════════════════════════
-// 📍 GPS Geofence الذكي — الحساب محلي، الإرسال وقت الحاجة بس
+// 🧠 حساب الـ Grace Period بناءً على السرعة
+// ═══════════════════════════════════════════════════════════
+function getGracePeriod(speedMs: number | null): number {
+  // 🚗 سيارة فقط (≥ 18 كم/س) → إنذار بعد 30 ثانية
+  if (speedMs !== null && speedMs >= CAR_SPEED_THRESHOLD) {
+    return CAR_GRACE_MS;
+  }
+  // أي حاجة تانية (مشي، جري، سرعة مجهولة، GPS ضعيف)
+  // → مفيش إنذار خالص
+  return Infinity;
+}
+
+// ═══════════════════════════════════════════════════════════
+// 📍 GPS Geofence الذكي — مع تمييز السرعة
 // ═══════════════════════════════════════════════════════════
 let gpsWatchId: number | null = null;
 let fallbackIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -119,70 +135,77 @@ export function startShieldGPS(params: {
   stopShieldGPS();
   if (!navigator.geolocation) return () => {};
 
-  // 🎯 أول موقع = موقع التفعيل (داخل الجراج)
   lastSentLat = params.parkingLat;
   lastSentLng = params.parkingLng;
   lastSentAt = 0;
   breachStartTime = null;
   isCurrentlyOutside = false;
 
-  // 🧠 المعالج الذكي للموقع
-  const handlePosition = (lat: number, lng: number) => {
+  // 🧠 المعالج الذكي — بيحل نوع الحركة من السرعة
+  const handlePosition = (lat: number, lng: number, speed: number | null) => {
     const distFromGarage = haversine(lat, lng, params.parkingLat, params.parkingLng);
     const distFromLastSent = haversine(lat, lng, lastSentLat, lastSentLng);
     const now = Date.now();
 
     // 🚨 الحالة 1: خرج من السياج
     if (distFromGarage > GEOFENCE_RADIUS) {
-      // بداية الخروج → ابدأ عداد الـ grace
+
       if (!breachStartTime) {
         breachStartTime = now;
       }
 
-      // عدى الـ 90 ثانية → ابعت للسيرفر + أطلق الإنذار المحلي
-      if (now - breachStartTime >= GEOFENCE_GRACE_MS) {
+      // 🧠 الـ grace period بيتحدد من السرعة
+      const gracePeriod = getGracePeriod(speed);
+
+      if (now - breachStartTime >= gracePeriod) {
         if (!isCurrentlyOutside) {
           isCurrentlyOutside = true;
-          sendGPSToServer(params.sessionId, lat, lng);
+          sendGPSToServer(params.sessionId, lat, lng, true);
           lastSentLat = lat;
           lastSentLng = lng;
           lastSentAt = now;
           params.onGeofenceBreach(distFromGarage);
         } else if (distFromLastSent > MIN_MOVEMENT_METERS) {
-          // اتحرك مسافة كبيرة → حدّث السيرفر
-          sendGPSToServer(params.sessionId, lat, lng);
+          sendGPSToServer(params.sessionId, lat, lng, true);
           lastSentLat = lat;
           lastSentLng = lng;
           lastSentAt = now;
         }
       }
+
     } else {
       // ✅ الحالة 2: جوه السياج
       breachStartTime = null;
 
-      // لو كان بره ورجع → ابعت للسيرفر مرة واحدة
       if (isCurrentlyOutside) {
         isCurrentlyOutside = false;
-        sendGPSToServer(params.sessionId, lat, lng);
+        sendGPSToServer(params.sessionId, lat, lng, false);
         lastSentLat = lat;
         lastSentLng = lng;
         lastSentAt = now;
       }
-      // غير كده → ما تبعتش حاجة! (0 طلبات)
     }
   };
 
-  // 📡 المصدر الأساسي: watchPosition (موفر للبطارية)
+  // 📡 watchPosition — بيبعت السرعة كمان!
   gpsWatchId = navigator.geolocation.watchPosition(
-    (pos) => handlePosition(pos.coords.latitude, pos.coords.longitude),
+    (pos) => handlePosition(
+      pos.coords.latitude,
+      pos.coords.longitude,
+      pos.coords.speed,
+    ),
     (err) => console.warn('Shield GPS:', err.message),
     { enableHighAccuracy: false, maximumAge: 25000, timeout: 30000 },
   );
 
-  // 🔄 Fallback: كل 5 دقائق يتأكد إن الـ GPS لسه شغال (لو watchPosition مات)
+  // 🔄 Fallback كل 5 دقائق
   fallbackIntervalId = setInterval(() => {
     navigator.geolocation.getCurrentPosition(
-      (pos) => handlePosition(pos.coords.latitude, pos.coords.longitude),
+      (pos) => handlePosition(
+        pos.coords.latitude,
+        pos.coords.longitude,
+        pos.coords.speed,
+      ),
       () => {},
       { enableHighAccuracy: false, maximumAge: 60000, timeout: 20000 },
     );
@@ -204,14 +227,20 @@ export function stopShieldGPS(): void {
   isCurrentlyOutside = false;
 }
 
-// ─── إرسال GPS للسيرفر (silent, no await) ───
-function sendGPSToServer(sessionId: string, lat: number, lng: number): void {
+// ─── إرسال GPS للسيرفر (بيبعث is_outside_fence كمان) ───
+function sendGPSToServer(
+  sessionId: string,
+  lat: number,
+  lng: number,
+  isOutside: boolean,
+): void {
   supabase
     .from('shield_sessions')
     .update({
       last_lat: lat,
       last_lng: lng,
       last_gps_at: new Date().toISOString(),
+      is_outside_fence: isOutside,
     })
     .eq('session_id', sessionId)
     .is('ended_at', null)
@@ -242,7 +271,7 @@ export function loadShieldState(): ShieldState | null {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🔧 Exports قديمة محتفظ بيها للتوافق (deprecated - الكرون بيعمل كل حاجة)
+// 🔧 Exports قديمة (deprecated - الكرون بيعمل كل حاجة)
 // ═══════════════════════════════════════════════════════════
 export function startFakeAlerts(): void { /* moved to server cron */ }
 export function stopFakeAlerts(): void { /* moved to server cron */ }
