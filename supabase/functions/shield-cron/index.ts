@@ -63,10 +63,6 @@ function pickWeightedAlert() {
   return ofType[Math.floor(Math.random() * ofType.length)];
 }
 
-function randomMinutes(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -154,8 +150,6 @@ serve(async (req) => {
     for (const shield of shields) {
       console.log(`\n🛡️ Shield: id=${shield.id.slice(0, 8)}, phone=${shield.phone}`);
 
-      let isOutside = false;
-
       // ═══════════════════════════════════════════════════
       // 🚨 الخطوة 1: فحص الحركة
       // ═══════════════════════════════════════════════════
@@ -172,65 +166,32 @@ serve(async (req) => {
             shield.parking_lat, shield.parking_lng,
           );
 
-          if (dist > THEFT_MIN_DISTANCE) {
-            isOutside = true;
-
-            if (!shield.theft_alerted && isCarSpeed(shield.last_speed)) {
-              console.log(`🚨 BREACH! dist=${Math.round(dist)}m, speed=${shield.last_speed}m/s`);
-
-              const result = await sendPush(shield, {
-                title: '🚨 تنبيه حركة!',
-                body: `السيارة اتحركت ${Math.round(dist)}م من مكان الركن!`,
-                tag: 'shield-breach',
-                data: { type: 'shield-breach', shieldId: shield.id, distance: Math.round(dist) },
-              }, supabase);
-
-              if (result.sent) {
-                totalBreaches++;
-                await supabase.from('shield_sessions').update({
-                  theft_alerted: true, is_outside_fence: true, last_checked_at: now.toISOString(),
-                }).eq('id', shield.id);
-              }
-              continue;
-            }
-          }
-
-          if (dist <= THEFT_MIN_DISTANCE && shield.is_outside_fence) {
-            console.log(`✅ Back inside fence`);
-            await supabase.from('shield_sessions').update({
-              is_outside_fence: false, theft_alerted: false, last_checked_at: now.toISOString(),
-            }).eq('id', shield.id);
-          }
-
-        } else if (shield.is_outside_fence && !shield.theft_alerted) {
-          isOutside = true;
-
-          if (isCarSpeed(shield.last_speed)) {
-            console.log(`🚨 BREACH via flag! speed=${shield.last_speed}m/s`);
+          if (dist > THEFT_MIN_DISTANCE && !shield.theft_alerted && isCarSpeed(shield.last_speed)) {
+            console.log(`🚨 BREACH! dist=${Math.round(dist)}m, speed=${shield.last_speed}m/s`);
 
             const result = await sendPush(shield, {
               title: '🚨 تنبيه حركة!',
-              body: 'السيارة اتحركت من مكان الركن!',
+              body: `السيارة اتحركت ${Math.round(dist)}م من مكان الركن!`,
               tag: 'shield-breach',
-              data: { type: 'shield-breach', shieldId: shield.id, distance: 300 },
+              data: { type: 'shield-breach', shieldId: shield.id, distance: Math.round(dist) },
             }, supabase);
 
             if (result.sent) {
               totalBreaches++;
               await supabase.from('shield_sessions').update({
-                theft_alerted: true, last_checked_at: now.toISOString(),
+                theft_alerted: true, is_outside_fence: true, last_checked_at: now.toISOString(),
               }).eq('id', shield.id);
             }
             continue;
           }
-        }
 
-      } else if (shield.is_outside_fence && !shield.theft_alerted) {
-        isOutside = true;
+          if (dist <= THEFT_MIN_DISTANCE && shield.is_outside_fence) {
+            await supabase.from('shield_sessions').update({
+              is_outside_fence: false, theft_alerted: false, last_checked_at: now.toISOString(),
+            }).eq('id', shield.id);
+          }
 
-        if (isCarSpeed(shield.last_speed)) {
-          console.log(`🚨 BREACH via flag only! speed=${shield.last_speed}m/s`);
-
+        } else if (shield.is_outside_fence && !shield.theft_alerted && isCarSpeed(shield.last_speed)) {
           const result = await sendPush(shield, {
             title: '🚨 تنبيه حركة!',
             body: 'السيارة اتحركت من مكان الركن!',
@@ -246,42 +207,38 @@ serve(async (req) => {
           }
           continue;
         }
+
+      } else if (shield.is_outside_fence && !shield.theft_alerted && isCarSpeed(shield.last_speed)) {
+        const result = await sendPush(shield, {
+          title: '🚨 تنبيه حركة!',
+          body: 'السيارة اتحركت من مكان الركن!',
+          tag: 'shield-breach',
+          data: { type: 'shield-breach', shieldId: shield.id, distance: 300 },
+        }, supabase);
+
+        if (result.sent) {
+          totalBreaches++;
+          await supabase.from('shield_sessions').update({
+            theft_alerted: true, last_checked_at: now.toISOString(),
+          }).eq('id', shield.id);
+        }
+        continue;
       }
 
       // ═══════════════════════════════════════════════════
-      // 📢 الخطوة 2: إشعارات وهمية (جوه وبره السياج — تمويه)
+      // 📢 الخطوة 2: إشعارات وهمية (بدون next_alert_at!)
       // ═══════════════════════════════════════════════════
       let fakeMode = shield.fake_mode;
-      let nextAlertAt = shield.next_alert_at ? new Date(shield.next_alert_at) : null;
-
-      // ✅ أصلح next_alert_at لو في المستقبل البعيد (مشكلة timezone)
-      if (nextAlertAt && nextAlertAt.getTime() > Date.now() + 3600_000) {
-        nextAlertAt = new Date(Date.now() - 60_000);
-
-        await supabase
-          .from('shield_sessions')
-          .update({ next_alert_at: nextAlertAt.toISOString() })
-          .eq('id', shield.id);
-        console.log(`🔧 Fixed next_alert_at to ${nextAlertAt.toISOString()}`);
-      }
 
       if (fakeMode === -1 || fakeMode === null || fakeMode === undefined) {
         const roll = Math.random();
-        if (roll < 0.35) {
-          fakeMode = 0;
-        } else if (roll < 0.70) {
-          fakeMode = 1;
-          const mins = randomMinutes(5, 15);
-          nextAlertAt = new Date(Date.now() + mins * 60 * 1000);
-        } else {
-          fakeMode = 2;
-          const mins = randomMinutes(5, 10);
-          nextAlertAt = new Date(Date.now() + mins * 60 * 1000);
-        }
+        if (roll < 0.35) fakeMode = 0;
+        else if (roll < 0.70) fakeMode = 1;
+        else fakeMode = 2;
 
         await supabase
           .from('shield_sessions')
-          .update({ fake_mode: fakeMode, next_alert_at: nextAlertAt?.toISOString() ?? null })
+          .update({ fake_mode: fakeMode })
           .eq('id', shield.id);
       }
 
@@ -289,8 +246,18 @@ serve(async (req) => {
 
       const alertCount = shield.alert_count || 0;
       if (alertCount >= fakeMode) { totalSkipped++; continue; }
-      if (!nextAlertAt || now < nextAlertAt) { totalSkipped++; continue; }
-      if (!shield.push_endpoint || !shield.push_p256dh || !shield.push_auth) { totalSkipped++; continue; }
+
+      // ✅ تحقق بسيط: آخر إشعار من أكتر من 5 دقايق (بدون next_alert_at)
+      const lastChecked = shield.last_checked_at ? new Date(shield.last_checked_at).getTime() : 0;
+      if (lastChecked > 0 && (now.getTime() - lastChecked) < 5 * 60 * 1000) {
+        totalSkipped++;
+        continue;
+      }
+
+      if (!shield.push_endpoint || !shield.push_p256dh || !shield.push_auth) {
+        totalSkipped++;
+        continue;
+      }
 
       const alert = pickWeightedAlert();
       const result = await sendPush(shield, {
@@ -302,16 +269,16 @@ serve(async (req) => {
 
       if (result.sent) {
         totalFakeSent++;
-        const newAlertCount = alertCount + 1;
-        let newNextAlertAt: string | null = null;
-        if (newAlertCount < fakeMode) {
-          const gap = randomMinutes(6, 10);
-          newNextAlertAt = new Date(now.getTime() + gap * 60 * 1000).toISOString();
-        }
         await supabase
           .from('shield_sessions')
-          .update({ alert_count: newAlertCount, next_alert_at: newNextAlertAt, last_checked_at: now.toISOString() })
+          .update({
+            alert_count: alertCount + 1,
+            last_checked_at: now.toISOString(),
+          })
           .eq('id', shield.id);
+        console.log(`📢 Fake alert sent! (${alertCount + 1}/${fakeMode})`);
+      } else {
+        console.log(`❌ Push failed: ${result.reason}`);
       }
     }
 
