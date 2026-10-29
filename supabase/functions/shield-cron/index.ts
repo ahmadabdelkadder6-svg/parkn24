@@ -227,9 +227,8 @@ serve(async (req) => {
       // لو لسه ما اتحددش → حدده مرة واحدة
       if (fakeMode === -1 || fakeMode === null || fakeMode === undefined) {
         const roll = Math.random();
-        if (roll < 0.35) fakeMode = 0;
-        else if (roll < 0.70) fakeMode = 1;
-        else fakeMode = 2;
+if (roll < 0.50) fakeMode = 1;
+else fakeMode = 2;
 
         await supabase
           .from('shield_sessions')
