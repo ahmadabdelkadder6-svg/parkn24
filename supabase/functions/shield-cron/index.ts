@@ -261,7 +261,8 @@ serve(async (req) => {
         } else if (roll < 0.70) {
           fakeMode = 1;
           const mins = randomMinutes(5, 15);
-          nextAlertAt = new Date(new Date(shield.started_at).getTime() + mins * 60 * 1000);
+          // ✅ الجديد
+nextAlertAt = new Date(Date.now() + mins * 60 * 1000);
         } else {
           fakeMode = 2;
           const mins = randomMinutes(5, 10);
