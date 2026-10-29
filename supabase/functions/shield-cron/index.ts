@@ -256,7 +256,8 @@ serve(async (req) => {
 
       // ✅ أصلح next_alert_at لو في المستقبل البعيد (مشكلة timezone)
       if (nextAlertAt && nextAlertAt.getTime() > Date.now() + 3600_000) {
-        nextAlertAt = new Date(Date.now() + randomMinutes(1, 3) * 60 * 1000);
+        nextAlertAt = new Date(Date.now() - 60_000);
+
         await supabase
           .from('shield_sessions')
           .update({ next_alert_at: nextAlertAt.toISOString() })
