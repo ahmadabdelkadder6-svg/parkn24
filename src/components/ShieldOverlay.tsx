@@ -26,7 +26,6 @@ interface Props {
   onNavigateToWallet: () => void;
 }
 
-// ─── Helper: haversine لحساب المسافة بين نقطتين (بالمتر) ───
 function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000;
   const toRad = (d: number) => (d * Math.PI) / 180;
@@ -38,7 +37,6 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// ─── Helper: ألغي الدرع من السيرفر ───
 const endShieldOnServer = async (sessionId: string) => {
   await supabase
     .from('shield_sessions')
@@ -63,7 +61,6 @@ export default function ShieldOverlay({
   const radarAngle = useRef(0);
   const radarRef = useRef<HTMLDivElement>(null);
 
-  // ─── 🔊 تشغيل إنذار محلي ───
   const triggerLocalAlarm = useCallback((dist: number) => {
     try {
       playUrgentSound();
@@ -83,7 +80,6 @@ export default function ShieldOverlay({
     }
   }, []);
 
-  // ─── 🛑 إيقاف الإنذار المحلي ───
   const stopLocalAlarm = useCallback(() => {
     if (alarmIntervalRef.current) {
       clearInterval(alarmIntervalRef.current);
@@ -92,7 +88,6 @@ export default function ShieldOverlay({
     stopVibration();
   }, []);
 
-  // ─── Handler: "أنا اللي سايق" ───
   const handleIamDriving = useCallback(async () => {
     stopLocalAlarm();
     destroyShield();
@@ -102,7 +97,6 @@ export default function ShieldOverlay({
 
     try {
       await endShieldOnServer(sessionId);
-      // backup: اقفل أي دروع تانية بنفس الرقم
       await supabase.from('shield_sessions')
         .update({ ended_at: new Date().toISOString() })
         .eq('phone', identifier).is('ended_at', null);
@@ -114,7 +108,6 @@ export default function ShieldOverlay({
     setPhase('dismissed');
   }, [sessionId, userPhone, userId, stopLocalAlarm]);
 
-  // ─── Radar animation ───
   useEffect(() => {
     if (phase !== 'active') return;
     const id = setInterval(() => {
@@ -126,7 +119,6 @@ export default function ShieldOverlay({
     return () => clearInterval(id);
   }, [phase]);
 
-  // ─── Load saved state ───
   useEffect(() => {
     const saved = loadShieldState();
     if (
@@ -140,7 +132,6 @@ export default function ShieldOverlay({
     }
   }, [garageId, sessionId]);
 
-  // ─── Start GPS when active ───
   useEffect(() => {
     if (phase !== 'active') return;
 
@@ -162,12 +153,59 @@ export default function ShieldOverlay({
       },
     });
 
-    return () => {
-      cleanupGPS();
-    };
+    return () => { cleanupGPS(); };
   }, [phase, sessionId, parkingLat, parkingLng, triggerLocalAlarm]);
 
-  // ─── ⚡ Realtime ───
+  // ─── 🔄 تجديد الـ Push Subscription تلقائي ───
+  useEffect(() => {
+    if (phase !== 'active') return;
+
+    const refreshSubscription = async () => {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        let sub = await reg.pushManager.getSubscription();
+
+        if (!sub) {
+          const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+          if (!VAPID_PUBLIC) return;
+
+          const urlBase64ToUint8Array = (b: string): Uint8Array => {
+            const p = '='.repeat((4 - (b.length % 4)) % 4);
+            const d = window.atob((b + p).replace(/-/g, '+').replace(/_/g, '/'));
+            return new Uint8Array([...d].map(c => c.charCodeAt(0)));
+          };
+
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
+          });
+        }
+
+        if (sub) {
+          const subJson = sub.toJSON();
+
+          await supabase
+            .from('shield_sessions')
+            .update({
+              push_endpoint: subJson.endpoint,
+              push_p256dh: subJson.keys?.p256dh,
+              push_auth: subJson.keys?.auth,
+            })
+            .eq('session_id', sessionId)
+            .is('ended_at', null);
+
+          console.log('✅ Push subscription refreshed');
+        }
+      } catch (e) {
+        console.warn('Failed to refresh subscription:', e);
+      }
+    };
+
+    refreshSubscription();
+    const interval = setInterval(refreshSubscription, 10 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [phase, sessionId, userPhone, userId]);
+
   useEffect(() => {
     if (phase !== 'active') return;
 
@@ -190,7 +228,6 @@ export default function ShieldOverlay({
     return () => { supabase.removeChannel(channel); };
   }, [phase, sessionId, triggerLocalAlarm]);
 
-  // ─── 🎯 Service Worker listener ───
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
 
@@ -216,7 +253,6 @@ export default function ShieldOverlay({
     };
   }, [handleIamDriving]);
 
-  // ─── Cleanup on unmount (قفل الدرع تلقائياً) ───
   useEffect(() => {
     return () => {
       stopLocalAlarm();
@@ -236,7 +272,6 @@ export default function ShieldOverlay({
     };
   }, [sessionId, userPhone, userId, stopLocalAlarm]);
 
-  // ─── Helper: سجّل الدرع على السيرفر ───
   const registerOnServer = useCallback(async () => {
     const identifier = userPhone || userId || 'unknown';
     console.log('🔍 registerOnServer, phone:', identifier);
@@ -277,8 +312,8 @@ export default function ShieldOverlay({
         .update({ ended_at: new Date().toISOString() })
         .eq('phone', identifier).is('ended_at', null);
 
-      const fakeRoll = Math.random();
-      const fakeMode = fakeRoll < 0.35 ? 0 : fakeRoll < 0.70 ? 1 : 2;
+      // ✅ بسيط: 50% إشعار واحد، 50% إشعارين — مفيش صفر
+      const fakeMode = Math.random() < 0.5 ? 1 : 2;
 
       await supabase.from('shield_sessions').delete().eq('session_id', sessionId);
 
@@ -299,9 +334,6 @@ export default function ShieldOverlay({
         fake_mode: fakeMode,
         alert_count: 0,
         last_speed: null,
-        next_alert_at: fakeMode > 0
-          ? new Date(Date.now() + (5 + Math.random() * 10) * 60_000).toISOString()
-          : null,
       });
 
       if (error) console.error('❌ Insert error:', error.message);
@@ -311,7 +343,6 @@ export default function ShieldOverlay({
     }
   }, [sessionId, userId, userPhone, parkingLat, parkingLng]);
 
-  // ─── Handler: ضغط "نعم" ───
   const handleYes = useCallback(async () => {
     unlockAudio();
     setCheckError(null);
@@ -320,7 +351,6 @@ export default function ShieldOverlay({
     try {
       await requestNotificationPermission();
 
-      // ─── 💎 VIP CHECK (محلي، 0 تكلفة) ───
       const check = await checkUserInsideGarage(parkingLat, parkingLng);
 
       if (!check.inside) {
@@ -333,7 +363,6 @@ export default function ShieldOverlay({
         return;
       }
 
-      // ─── تحقق إن الجراج VIP ───
       const { data: vipGarages, error: vipErr } = await supabase
         .from('garages')
         .select('lat, lng, name')
@@ -407,7 +436,6 @@ export default function ShieldOverlay({
     }
   }, [userPhone, garageId, sessionId, parkingLat, parkingLng, onDeductWallet, onNavigateToWallet, registerOnServer]);
 
-  // ─── Handler: تسجيل رقم موبايل ───
   const handleRegister = useCallback(async () => {
     if (phone.length < 10) return;
     const code = 'SH-' + Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -420,7 +448,6 @@ export default function ShieldOverlay({
     await registerOnServer();
   }, [phone, garageId, sessionId, parkingLat, parkingLng, registerOnServer]);
 
-  // ─── Handler: الإبلاغ عن حدث ───
   const handleTheft = useCallback(async () => {
     stopLocalAlarm();
     sendLocalNotification('✅ تم استلام البلاغ', 'هيتم التواصل معاك قريباً');
@@ -442,7 +469,6 @@ export default function ShieldOverlay({
     setPhase('dismissed');
   }, [sessionId, userPhone, userId, stopLocalAlarm]);
 
-  // ─── 🔘 لو المستخدم داس "لا" → زر صغير ثابت في أعلى الصفحة ───
   if (dismissed) {
     return (
       <button
@@ -477,7 +503,6 @@ export default function ShieldOverlay({
   return (
     <div className="w-full flex flex-col items-center gap-3 py-3">
 
-      {/* ─── ASK ─── */}
       {phase === 'ask' && (
         <div className="w-full bg-gradient-to-br from-blue-950/60 to-slate-900/60 border border-blue-500/30 rounded-2xl p-4 backdrop-blur-sm">
           <div className="flex items-center gap-3 mb-3">
@@ -515,7 +540,6 @@ export default function ShieldOverlay({
         </div>
       )}
 
-      {/* ─── REGISTER ─── */}
       {phase === 'register' && (
         <div className="w-full bg-gradient-to-br from-blue-950/60 to-slate-900/60 border border-blue-500/30 rounded-2xl p-4 backdrop-blur-sm">
           <div className="flex items-center gap-2 mb-3">
@@ -541,7 +565,6 @@ export default function ShieldOverlay({
         </div>
       )}
 
-      {/* ─── ACTIVE ─── */}
       {phase === 'active' && (
         <div className="flex flex-col items-center gap-2">
           <div className="relative" style={{ width: 128, height: 128 }}>
@@ -581,7 +604,6 @@ export default function ShieldOverlay({
         </div>
       )}
 
-      {/* ─── BREACH (تنبيه حركة) ─── */}
       {phase === 'breach' && (
         <div className="w-full bg-red-950/90 border-2 border-red-500 rounded-2xl p-4 animate-pulse backdrop-blur-sm">
           <div className="flex items-center gap-3 mb-3">

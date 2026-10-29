@@ -144,7 +144,7 @@ serve(async (req) => {
     for (const shield of shields) {
 
       // ═══════════════════════════════════════════════════
-      // 🚨 فحص الحركة (بدون أي تغيير)
+      // 🚨 فحص الحركة
       // ═══════════════════════════════════════════════════
       if (
         shield.parking_lat && shield.parking_lng &&
@@ -217,39 +217,28 @@ serve(async (req) => {
       }
 
       // ═══════════════════════════════════════════════════
-      // 📢 إشعارات وهمية — منطق بسيط جداً:
-      //    alert_count < fake_mode → ابعت
-      //    alert_count >= fake_mode → skip
-      //    خلاص! مفيش أي حساب على تواريخ
+      // 📢 إشعارات وهمية — أبسط منطق ممكن
       // ═══════════════════════════════════════════════════
       let fakeMode = shield.fake_mode;
 
-      // لو لسه ما اتحددش → حدده مرة واحدة
       if (fakeMode === -1 || fakeMode === null || fakeMode === undefined) {
-        const roll = Math.random();
-if (roll < 0.50) fakeMode = 1;
-else fakeMode = 2;
-
+        fakeMode = Math.random() < 0.5 ? 1 : 2;
         await supabase
           .from('shield_sessions')
           .update({ fake_mode: fakeMode })
           .eq('id', shield.id);
       }
 
-      // مفيش إشعارات → skip
       if (fakeMode === 0) { totalSkipped++; continue; }
 
-      // خلصنا كل الإشعارات → skip
       const alertCount = shield.alert_count || 0;
       if (alertCount >= fakeMode) { totalSkipped++; continue; }
 
-      // مفيش push keys → skip
       if (!shield.push_endpoint || !shield.push_p256dh || !shield.push_auth) {
         totalSkipped++;
         continue;
       }
 
-      // ✅ ابعت فوراً!
       const alert = pickWeightedAlert();
       const result = await sendPush(shield, {
         title: alert.title,
