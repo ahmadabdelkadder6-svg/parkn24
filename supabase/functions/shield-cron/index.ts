@@ -262,11 +262,12 @@ serve(async (req) => {
           fakeMode = 1;
           const mins = randomMinutes(5, 15);
           // ✅ الجديد
-nextAlertAt = new Date(Date.now() + mins * 60 * 1000);
+           nextAlertAt = new Date(Date.now() + mins * 60 * 1000);
         } else {
           fakeMode = 2;
           const mins = randomMinutes(5, 10);
-          nextAlertAt = new Date(new Date(shield.started_at).getTime() + mins * 60 * 1000);
+          nextAlertAt = new Date(Date.now() + mins * 60 * 1000);
+
         }
 
         await supabase
