@@ -254,6 +254,16 @@ serve(async (req) => {
       let fakeMode = shield.fake_mode;
       let nextAlertAt = shield.next_alert_at ? new Date(shield.next_alert_at) : null;
 
+      // ✅ أصلح next_alert_at لو في المستقبل البعيد (مشكلة timezone)
+      if (nextAlertAt && nextAlertAt.getTime() > Date.now() + 3600_000) {
+        nextAlertAt = new Date(Date.now() + randomMinutes(1, 3) * 60 * 1000);
+        await supabase
+          .from('shield_sessions')
+          .update({ next_alert_at: nextAlertAt.toISOString() })
+          .eq('id', shield.id);
+        console.log(`🔧 Fixed next_alert_at to ${nextAlertAt.toISOString()}`);
+      }
+
       if (fakeMode === -1 || fakeMode === null || fakeMode === undefined) {
         const roll = Math.random();
         if (roll < 0.35) {
@@ -261,13 +271,11 @@ serve(async (req) => {
         } else if (roll < 0.70) {
           fakeMode = 1;
           const mins = randomMinutes(5, 15);
-          // ✅ الجديد
-           nextAlertAt = new Date(Date.now() + mins * 60 * 1000);
+          nextAlertAt = new Date(Date.now() + mins * 60 * 1000);
         } else {
           fakeMode = 2;
           const mins = randomMinutes(5, 10);
           nextAlertAt = new Date(Date.now() + mins * 60 * 1000);
-
         }
 
         await supabase
