@@ -7,7 +7,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, content-type',
 };
 
-const GPS_STALE_SECONDS = 900;
 const THEFT_MIN_DISTANCE = 250;
 const CAR_SPEED_THRESHOLD = 5;
 
@@ -98,7 +97,7 @@ async function sendPush(shield: any, payload: any, supabase: any) {
       await supabase
         .from('shield_sessions')
         .update({ push_endpoint: null, push_p256dh: null, push_auth: null })
-        .eq('id', shield.id);
+        .eq('session_id', shield.session_id);
     }
     return { sent: false, reason: err.message, status: err.statusCode };
   }
@@ -136,88 +135,69 @@ serve(async (req) => {
       return new Response(JSON.stringify({ success: true, shields: 0 }));
     }
 
+    // ═══ TEST MODE ═══
+    const url = new URL(req.url);
+    if (url.searchParams.get('test') === '1') {
+      let sent = 0;
+      const errors: string[] = [];
+      for (const s of shields) {
+        if (!s.push_endpoint) continue;
+        const r = await sendPush(s, {
+          title: '🔔 اختبار Shield',
+          body: `لو وصلك الإشعار ده على ${s.phone} يبقى الـ push شغال ✅`,
+          tag: 'shield-test',
+        }, supabase);
+        if (r.sent) sent++;
+        else errors.push(`${s.phone}: ${r.reason}`);
+      }
+      return new Response(JSON.stringify({ test: true, sent, total: shields.length, errors }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     let totalBreaches = 0;
     let totalFakeSent = 0;
     let totalSkipped = 0;
-    const now = new Date();
+    const errors: string[] = [];
 
     for (const shield of shields) {
 
       // ═══════════════════════════════════════════════════
-      // 🚨 فحص الحركة
+      // 🚨 فحص الحركة — سطر واحد بس
       // ═══════════════════════════════════════════════════
       if (
         shield.parking_lat && shield.parking_lng &&
         shield.last_lat && shield.last_lng &&
-        shield.last_gps_at
+        !shield.theft_alerted &&
+        isCarSpeed(shield.last_speed)
       ) {
-        const gpsAge = (now.getTime() - new Date(shield.last_gps_at).getTime()) / 1000;
+        const dist = haversine(
+          shield.last_lat, shield.last_lng,
+          shield.parking_lat, shield.parking_lng,
+        );
 
-        if (gpsAge <= GPS_STALE_SECONDS) {
-          const dist = haversine(
-            shield.last_lat, shield.last_lng,
-            shield.parking_lat, shield.parking_lng,
-          );
-
-          if (dist > THEFT_MIN_DISTANCE && !shield.theft_alerted && isCarSpeed(shield.last_speed)) {
-            const result = await sendPush(shield, {
-              title: '🚨 تنبيه حركة!',
-              body: `السيارة اتحركت ${Math.round(dist)}م من مكان الركن!`,
-              tag: 'shield-breach',
-              data: { type: 'shield-breach', shieldId: shield.id, distance: Math.round(dist) },
-            }, supabase);
-
-            if (result.sent) {
-              totalBreaches++;
-              await supabase.from('shield_sessions').update({
-                theft_alerted: true, is_outside_fence: true,
-              }).eq('id', shield.id);
-            }
-            continue;
-          }
-
-          if (dist <= THEFT_MIN_DISTANCE && shield.is_outside_fence) {
-            await supabase.from('shield_sessions').update({
-              is_outside_fence: false, theft_alerted: false,
-            }).eq('id', shield.id);
-          }
-
-        } else if (shield.is_outside_fence && !shield.theft_alerted && isCarSpeed(shield.last_speed)) {
+        if (dist > THEFT_MIN_DISTANCE) {
           const result = await sendPush(shield, {
             title: '🚨 تنبيه حركة!',
-            body: 'السيارة اتحركت من مكان الركن!',
+            body: `السيارة اتحركت ${Math.round(dist)}م من مكان الركن!`,
             tag: 'shield-breach',
-            data: { type: 'shield-breach', shieldId: shield.id, distance: 300 },
+            data: { type: 'shield-breach', distance: Math.round(dist) },
           }, supabase);
 
           if (result.sent) {
             totalBreaches++;
             await supabase.from('shield_sessions').update({
-              theft_alerted: true,
-            }).eq('id', shield.id);
+              theft_alerted: true, is_outside_fence: true,
+            }).eq('session_id', shield.session_id);
+          } else {
+            errors.push(`breach-${shield.phone}: ${result.reason}`);
           }
           continue;
         }
-
-      } else if (shield.is_outside_fence && !shield.theft_alerted && isCarSpeed(shield.last_speed)) {
-        const result = await sendPush(shield, {
-          title: '🚨 تنبيه حركة!',
-          body: 'السيارة اتحركت من مكان الركن!',
-          tag: 'shield-breach',
-          data: { type: 'shield-breach', shieldId: shield.id, distance: 300 },
-        }, supabase);
-
-        if (result.sent) {
-          totalBreaches++;
-          await supabase.from('shield_sessions').update({
-            theft_alerted: true,
-          }).eq('id', shield.id);
-        }
-        continue;
       }
 
       // ═══════════════════════════════════════════════════
-      // 📢 إشعارات وهمية — أبسط منطق ممكن
+      // 📢 إشعارات وهمية
       // ═══════════════════════════════════════════════════
       let fakeMode = shield.fake_mode;
 
@@ -226,7 +206,7 @@ serve(async (req) => {
         await supabase
           .from('shield_sessions')
           .update({ fake_mode: fakeMode })
-          .eq('id', shield.id);
+          .eq('session_id', shield.session_id);
       }
 
       if (fakeMode === 0) { totalSkipped++; continue; }
@@ -243,8 +223,8 @@ serve(async (req) => {
       const result = await sendPush(shield, {
         title: alert.title,
         body: alert.body,
-        tag: `shield-${alert.type}-${shield.id.slice(0, 8)}-${alertCount}`,
-        data: { type: 'shield', shieldId: shield.id },
+        tag: `shield-${alert.type}-${shield.session_id.slice(0, 8)}-${alertCount}`,
+        data: { type: 'shield' },
       }, supabase);
 
       if (result.sent) {
@@ -252,14 +232,17 @@ serve(async (req) => {
         await supabase
           .from('shield_sessions')
           .update({ alert_count: alertCount + 1 })
-          .eq('id', shield.id);
+          .eq('session_id', shield.session_id);
+      } else {
+        errors.push(`fake-${shield.phone}: ${result.reason}`);
       }
     }
 
     return new Response(
       JSON.stringify({
         success: true, shields: shields.length,
-        breaches: totalBreaches, fake_sent: totalFakeSent, skipped: totalSkipped,
+        breaches: totalBreaches, fake_sent: totalFakeSent,
+        skipped: totalSkipped, errors: errors.length > 0 ? errors : undefined,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
