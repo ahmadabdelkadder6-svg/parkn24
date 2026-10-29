@@ -7,7 +7,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, content-type',
 };
 
-const GEOFENCE_RADIUS = 250;
 const GPS_STALE_SECONDS = 900;
 const THEFT_MIN_DISTANCE = 250;
 const CAR_SPEED_THRESHOLD = 5;
@@ -111,8 +110,6 @@ serve(async (req) => {
   }
 
   try {
-    console.log('🕐 Shield cron triggered at', new Date().toISOString());
-
     const VAPID_EMAIL = Deno.env.get('VAPID_EMAIL') || 'mailto:admin@parkn24.com';
     const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY')!
       .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
@@ -132,11 +129,8 @@ serve(async (req) => {
       .is('ended_at', null);
 
     if (shieldError) {
-      console.error('❌ Shield DB error:', shieldError);
       return new Response(JSON.stringify({ error: 'Shield DB error' }), { status: 500 });
     }
-
-    console.log(`Found ${shields?.length ?? 0} active shields`);
 
     if (!shields || shields.length === 0) {
       return new Response(JSON.stringify({ success: true, shields: 0 }));
@@ -148,10 +142,9 @@ serve(async (req) => {
     const now = new Date();
 
     for (const shield of shields) {
-      console.log(`\n🛡️ Shield: id=${shield.id.slice(0, 8)}, phone=${shield.phone}`);
 
       // ═══════════════════════════════════════════════════
-      // 🚨 الخطوة 1: فحص الحركة
+      // 🚨 فحص الحركة (بدون أي تغيير)
       // ═══════════════════════════════════════════════════
       if (
         shield.parking_lat && shield.parking_lng &&
@@ -167,8 +160,6 @@ serve(async (req) => {
           );
 
           if (dist > THEFT_MIN_DISTANCE && !shield.theft_alerted && isCarSpeed(shield.last_speed)) {
-            console.log(`🚨 BREACH! dist=${Math.round(dist)}m, speed=${shield.last_speed}m/s`);
-
             const result = await sendPush(shield, {
               title: '🚨 تنبيه حركة!',
               body: `السيارة اتحركت ${Math.round(dist)}م من مكان الركن!`,
@@ -179,7 +170,7 @@ serve(async (req) => {
             if (result.sent) {
               totalBreaches++;
               await supabase.from('shield_sessions').update({
-                theft_alerted: true, is_outside_fence: true, last_checked_at: now.toISOString(),
+                theft_alerted: true, is_outside_fence: true,
               }).eq('id', shield.id);
             }
             continue;
@@ -187,7 +178,7 @@ serve(async (req) => {
 
           if (dist <= THEFT_MIN_DISTANCE && shield.is_outside_fence) {
             await supabase.from('shield_sessions').update({
-              is_outside_fence: false, theft_alerted: false, last_checked_at: now.toISOString(),
+              is_outside_fence: false, theft_alerted: false,
             }).eq('id', shield.id);
           }
 
@@ -202,7 +193,7 @@ serve(async (req) => {
           if (result.sent) {
             totalBreaches++;
             await supabase.from('shield_sessions').update({
-              theft_alerted: true, last_checked_at: now.toISOString(),
+              theft_alerted: true,
             }).eq('id', shield.id);
           }
           continue;
@@ -219,17 +210,21 @@ serve(async (req) => {
         if (result.sent) {
           totalBreaches++;
           await supabase.from('shield_sessions').update({
-            theft_alerted: true, last_checked_at: now.toISOString(),
+            theft_alerted: true,
           }).eq('id', shield.id);
         }
         continue;
       }
 
       // ═══════════════════════════════════════════════════
-      // 📢 الخطوة 2: إشعارات وهمية (بدون next_alert_at!)
+      // 📢 إشعارات وهمية — منطق بسيط جداً:
+      //    alert_count < fake_mode → ابعت
+      //    alert_count >= fake_mode → skip
+      //    خلاص! مفيش أي حساب على تواريخ
       // ═══════════════════════════════════════════════════
       let fakeMode = shield.fake_mode;
 
+      // لو لسه ما اتحددش → حدده مرة واحدة
       if (fakeMode === -1 || fakeMode === null || fakeMode === undefined) {
         const roll = Math.random();
         if (roll < 0.35) fakeMode = 0;
@@ -242,23 +237,20 @@ serve(async (req) => {
           .eq('id', shield.id);
       }
 
+      // مفيش إشعارات → skip
       if (fakeMode === 0) { totalSkipped++; continue; }
 
+      // خلصنا كل الإشعارات → skip
       const alertCount = shield.alert_count || 0;
       if (alertCount >= fakeMode) { totalSkipped++; continue; }
 
-      // ✅ تحقق بسيط: آخر إشعار من أكتر من 5 دقايق (بدون next_alert_at)
-      const lastChecked = shield.last_checked_at ? new Date(shield.last_checked_at).getTime() : 0;
-      if (lastChecked > 0 && (now.getTime() - lastChecked) < 5 * 60 * 1000) {
-        totalSkipped++;
-        continue;
-      }
-
+      // مفيش push keys → skip
       if (!shield.push_endpoint || !shield.push_p256dh || !shield.push_auth) {
         totalSkipped++;
         continue;
       }
 
+      // ✅ ابعت فوراً!
       const alert = pickWeightedAlert();
       const result = await sendPush(shield, {
         title: alert.title,
@@ -271,18 +263,10 @@ serve(async (req) => {
         totalFakeSent++;
         await supabase
           .from('shield_sessions')
-          .update({
-            alert_count: alertCount + 1,
-            last_checked_at: now.toISOString(),
-          })
+          .update({ alert_count: alertCount + 1 })
           .eq('id', shield.id);
-        console.log(`📢 Fake alert sent! (${alertCount + 1}/${fakeMode})`);
-      } else {
-        console.log(`❌ Push failed: ${result.reason}`);
       }
     }
-
-    console.log(`\n📊 Final: breaches=${totalBreaches}, fake=${totalFakeSent}, skipped=${totalSkipped}`);
 
     return new Response(
       JSON.stringify({
@@ -293,7 +277,6 @@ serve(async (req) => {
     );
 
   } catch (err) {
-    console.error('❌ CRITICAL ERROR:', err);
     return new Response(
       JSON.stringify({ error: String(err) }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
