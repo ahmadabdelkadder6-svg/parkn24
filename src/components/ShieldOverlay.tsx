@@ -156,6 +156,43 @@ export default function ShieldOverlay({
     return () => { cleanupGPS(); };
   }, [phase, sessionId, parkingLat, parkingLng, triggerLocalAlarm]);
 
+  // ─── 🚗 حساب السرعة يدوياً + إرسالها للسيرفر كل 30 ثانية ───
+  useEffect(() => {
+    if (phase !== 'active') return;
+
+    let prev: { lat: number; lng: number; t: number } | null = null;
+    let lastUp = 0;
+
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const now = Date.now();
+
+        // حساب السرعة من الفرق بين نقطتين (coords.speed = null على الموبايل!)
+        let spd = (pos.coords.speed && pos.coords.speed > 0) ? pos.coords.speed : 0;
+        if (prev) {
+          const d = haversine(prev.lat, prev.lng, lat, lng);
+          const dt = (now - prev.t) / 1000;
+          if (dt > 2) spd = Math.max(spd, d / dt);
+        }
+        prev = { lat, lng, t: now };
+
+        // ابعت للسيرفر كل 30 ثانية بس
+        if (now - lastUp > 30000) {
+          lastUp = now;
+          supabase.from('shield_sessions')
+            .update({ last_lat: lat, last_lng: lng, last_speed: spd })
+            .eq('session_id', sessionId);
+        }
+      },
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [phase, sessionId]);
+
   // ─── 🔄 تجديد الـ Push Subscription تلقائي ───
   useEffect(() => {
     if (phase !== 'active') return;
@@ -202,7 +239,7 @@ export default function ShieldOverlay({
     };
 
     refreshSubscription();
-    const interval = setInterval(refreshSubscription, 10 * 60 * 1000);
+    const interval = setInterval(refreshSubscription, 5 * 60 * 1000); // 5 دقائق
     return () => clearInterval(interval);
   }, [phase, sessionId, userPhone, userId]);
 
@@ -277,42 +314,42 @@ export default function ShieldOverlay({
     console.log('🔍 registerOnServer, phone:', identifier);
     try {
       const reg = await navigator.serviceWorker.ready;
-      let sub = await reg.pushManager.getSubscription();
 
-      if (!sub) {
-        let perm = Notification.permission;
-        if (perm !== 'granted') perm = await Notification.requestPermission();
-        if (perm !== 'granted') {
-          console.error('❌ Permission denied');
-          return;
-        }
+      // ✅ Force refresh: امسح القديم واعمل جديد
+      const oldSub = await reg.pushManager.getSubscription();
+      if (oldSub) await oldSub.unsubscribe();
 
-        const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-        if (!VAPID_PUBLIC) {
-          console.error('❌ VITE_VAPID_PUBLIC_KEY undefined');
-          return;
-        }
-
-        const urlBase64ToUint8Array = (b: string): Uint8Array => {
-          const p = '='.repeat((4 - (b.length % 4)) % 4);
-          const d = window.atob((b + p).replace(/-/g, '+').replace(/_/g, '/'));
-          return new Uint8Array([...d].map(c => c.charCodeAt(0)));
-        };
-
-        sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
-        });
+      let perm = Notification.permission;
+      if (perm !== 'granted') perm = await Notification.requestPermission();
+      if (perm !== 'granted') {
+        console.error('❌ Permission denied');
+        return;
       }
 
-      const subJson = sub!.toJSON();
+      const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+      if (!VAPID_PUBLIC) {
+        console.error('❌ VITE_VAPID_PUBLIC_KEY undefined');
+        return;
+      }
+
+      const urlBase64ToUint8Array = (b: string): Uint8Array => {
+        const p = '='.repeat((4 - (b.length % 4)) % 4);
+        const d = window.atob((b + p).replace(/-/g, '+').replace(/_/g, '/'));
+        return new Uint8Array([...d].map(c => c.charCodeAt(0)));
+      };
+
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
+      });
+
+      const subJson = sub.toJSON();
       if (!subJson?.endpoint) return;
 
       await supabase.from('shield_sessions')
         .update({ ended_at: new Date().toISOString() })
         .eq('phone', identifier).is('ended_at', null);
 
-      // ✅ بسيط: 50% إشعار واحد، 50% إشعارين — مفيش صفر
       const fakeMode = Math.random() < 0.5 ? 1 : 2;
 
       await supabase.from('shield_sessions').delete().eq('session_id', sessionId);
