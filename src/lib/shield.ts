@@ -124,6 +124,7 @@ let lastSentLng = 0;
 let lastSentAt = 0;
 let breachStartTime: number | null = null;
 let isCurrentlyOutside = false;
+let prevPos: { lat: number; lng: number; t: number } | null = null;
 
 export function startShieldGPS(params: {
   sessionId: string;
@@ -143,13 +144,24 @@ export function startShieldGPS(params: {
   lastSentAt = 0;
   breachStartTime = null;
   isCurrentlyOutside = false;
+  prevPos = null;
   let consecutiveErrors = 0;
 
-  const handlePosition = (lat: number, lng: number, speed: number | null) => {
+  const handlePosition = (lat: number, lng: number, rawSpeed: number | null) => {
     consecutiveErrors = 0;
+    const now = Date.now();
+
+    // ✅ حساب السرعة يدوياً (rawSpeed = null على الموبايل!)
+    let speed = (rawSpeed && rawSpeed > 0) ? rawSpeed : 0;
+    if (prevPos) {
+      const d = haversine(prevPos.lat, prevPos.lng, lat, lng);
+      const dt = (now - prevPos.t) / 1000;
+      if (dt > 2) speed = Math.max(speed, d / dt);
+    }
+    prevPos = { lat, lng, t: now };
+
     const distFromGarage = haversine(lat, lng, params.parkingLat, params.parkingLng);
     const distFromLastSent = haversine(lat, lng, lastSentLat, lastSentLng);
-    const now = Date.now();
 
     if (distFromGarage > GEOFENCE_RADIUS) {
       if (!breachStartTime) {
@@ -161,13 +173,13 @@ export function startShieldGPS(params: {
       if (now - breachStartTime >= gracePeriod) {
         if (!isCurrentlyOutside) {
           isCurrentlyOutside = true;
-          sendGPSToServer(params.sessionId, lat, lng, true, speed);
+          sendGPSToServer(params.sessionId, lat, lng, true);
           lastSentLat = lat;
           lastSentLng = lng;
           lastSentAt = now;
           params.onGeofenceBreach(distFromGarage);
         } else if (distFromLastSent > MIN_MOVEMENT_METERS) {
-          sendGPSToServer(params.sessionId, lat, lng, true, speed);
+          sendGPSToServer(params.sessionId, lat, lng, true);
           lastSentLat = lat;
           lastSentLng = lng;
           lastSentAt = now;
@@ -178,7 +190,7 @@ export function startShieldGPS(params: {
 
       if (isCurrentlyOutside) {
         isCurrentlyOutside = false;
-        sendGPSToServer(params.sessionId, lat, lng, false, speed);
+        sendGPSToServer(params.sessionId, lat, lng, false);
         lastSentLat = lat;
         lastSentLng = lng;
         lastSentAt = now;
@@ -230,15 +242,15 @@ export function stopShieldGPS(): void {
   }
   breachStartTime = null;
   isCurrentlyOutside = false;
+  prevPos = null;
 }
 
-// ─── إرسال GPS للسيرفر (بيبعث السرعة + is_outside_fence) ───
+// ─── إرسال GPS للسيرفر (بدون last_speed — الـ ShieldOverlay بيتولى) ───
 function sendGPSToServer(
   sessionId: string,
   lat: number,
   lng: number,
   isOutside: boolean,
-  speed: number | null,
 ): void {
   supabase
     .from('shield_sessions')
@@ -247,7 +259,7 @@ function sendGPSToServer(
       last_lng: lng,
       last_gps_at: new Date().toISOString(),
       is_outside_fence: isOutside,
-      last_speed: speed,
+      // ✅ مفيش last_speed — عشان ما نمسحش الـ speed اللي الـ ShieldOverlay بعته
     })
     .eq('session_id', sessionId)
     .is('ended_at', null)

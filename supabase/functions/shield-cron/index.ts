@@ -155,15 +155,36 @@ serve(async (req) => {
       });
     }
 
+    // ═══ AUTO-CLEANUP: أنهِي الـ sessions المنتهية ═══
+    let cleanedUp = 0;
+    for (const s of shields) {
+      const fm = s.fake_mode || 2;
+      const ac = s.alert_count || 0;
+      if (ac >= fm && s.theft_alerted) {
+        await supabase.from('shield_sessions')
+          .update({ ended_at: '2025-01-01 00:00:00+00' })
+          .eq('session_id', s.session_id);
+        cleanedUp++;
+      }
+    }
+
+    // أعد تحميل بعد التنظيف
+    let activeShields = shields;
+    if (cleanedUp > 0) {
+      const { data: fresh } = await supabase
+        .from('shield_sessions').select('*').is('ended_at', null);
+      activeShields = fresh || [];
+    }
+
     let totalBreaches = 0;
     let totalFakeSent = 0;
     let totalSkipped = 0;
     const errors: string[] = [];
 
-    for (const shield of shields) {
+    for (const shield of activeShields) {
 
       // ═══════════════════════════════════════════════════
-      // 🚨 فحص الحركة — سطر واحد بس
+      // 🚨 فحص الحركة
       // ═══════════════════════════════════════════════════
       if (
         shield.parking_lat && shield.parking_lng &&
@@ -197,12 +218,12 @@ serve(async (req) => {
       }
 
       // ═══════════════════════════════════════════════════
-      // 📢 إشعارات وهمية
+      // 📢 إشعارات وهمية — كل 30 دقيقة، بحد أقصى 2
       // ═══════════════════════════════════════════════════
       let fakeMode = shield.fake_mode;
 
       if (fakeMode === -1 || fakeMode === null || fakeMode === undefined) {
-        fakeMode = Math.random() < 0.5 ? 1 : 2;
+        fakeMode = 2;
         await supabase
           .from('shield_sessions')
           .update({ fake_mode: fakeMode })
@@ -214,7 +235,21 @@ serve(async (req) => {
       const alertCount = shield.alert_count || 0;
       if (alertCount >= fakeMode) { totalSkipped++; continue; }
 
+      // ✅ عدّ الـ tick — كل 6 ticks = 30 دقيقة
+      const tick = (shield.fake_tick || 0) + 1;
+      if (tick < 6) {
+        await supabase.from('shield_sessions')
+          .update({ fake_tick: tick })
+          .eq('session_id', shield.session_id);
+        totalSkipped++;
+        continue;
+      }
+
+      // ✅ وصل لـ 6 ticks → ابعت إشعار
       if (!shield.push_endpoint || !shield.push_p256dh || !shield.push_auth) {
+        await supabase.from('shield_sessions')
+          .update({ fake_tick: 0 })
+          .eq('session_id', shield.session_id);
         totalSkipped++;
         continue;
       }
@@ -229,20 +264,23 @@ serve(async (req) => {
 
       if (result.sent) {
         totalFakeSent++;
-        await supabase
-          .from('shield_sessions')
-          .update({ alert_count: alertCount + 1 })
+        await supabase.from('shield_sessions')
+          .update({ alert_count: alertCount + 1, fake_tick: 0 })
           .eq('session_id', shield.session_id);
       } else {
+        await supabase.from('shield_sessions')
+          .update({ fake_tick: 0 })
+          .eq('session_id', shield.session_id);
         errors.push(`fake-${shield.phone}: ${result.reason}`);
       }
     }
 
     return new Response(
       JSON.stringify({
-        success: true, shields: shields.length,
+        success: true, shields: activeShields.length,
         breaches: totalBreaches, fake_sent: totalFakeSent,
-        skipped: totalSkipped, errors: errors.length > 0 ? errors : undefined,
+        skipped: totalSkipped, cleaned: cleanedUp,
+        errors: errors.length > 0 ? errors : undefined,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

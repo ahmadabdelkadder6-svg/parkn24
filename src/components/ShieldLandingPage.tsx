@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════
-// 🛡️ ShieldLandingPage — صفحة هبوط الدرع
+// 🛡️ ShieldLandingPage — صفحة هبوط الحماية الإضافية
 // تفتح لما العميل يمسح QR Code من عند السايس
 // ═══════════════════════════════════════════════════════════
 import { useState, useEffect } from 'react';
@@ -9,29 +9,29 @@ const FEATURES = [
   {
     icon: '🔒',
     title: 'مراقبة ذكية 24/7',
-    desc: 'نظام حماية بالذكاء الاصطناعي يراقب سيارتك كل ثانية',
+    desc: 'نظام مراقبة بالذكاء الاصطناعي يتابع سيارتك كل ثانية',
     color: '#3b82f6',
     glow: 'rgba(59, 130, 246, 0.3)',
   },
   {
     icon: '🚨',
-    title: 'إنذار سرقة فوري',
-    desc: 'إشعار فوري على موبايلك لو أي حد لمس العربية أو حرّكها',
+    title: 'تنبيه حركة فوري',
+    desc: 'إشعار فوري على موبايلك لو العربية اتحركت من مكانها',
     color: '#ef4444',
     glow: 'rgba(239, 68, 68, 0.3)',
   },
   {
     icon: '📍',
     title: 'تتبع الموقع الجغرافي',
-    desc: 'لو العربية اتحركت من مكانها هتعرف فوراً وين راحت',
+    desc: 'لو العربية اتحركت هتعرف فوراً وين راحت',
     color: '#8cc63f',
     glow: 'rgba(140, 198, 63, 0.3)',
   },
 ];
 
 const STATS = [
-  { value: '24/7', label: 'حماية مستمرة' },
-  { value: '< 3ث', label: 'زمن الإنذار' },
+  { value: '24/7', label: 'مراقبة مستمرة' },
+  { value: '< 3ث', label: 'زمن التنبيه' },
   { value: '250م', label: 'نطاق المراقبة' },
 ];
 
@@ -39,19 +39,31 @@ export default function ShieldLandingPage() {
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [installed, setInstalled] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
 
   // ─── التقاط Install Prompt من الـ PWA ───
   useEffect(() => {
+    // كشف iOS
+    const ua = navigator.userAgent;
+    const ios = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    setIsIOS(ios);
+
     const handler = (e: Event) => {
       e.preventDefault();
       setInstallPrompt(e);
     };
     window.addEventListener('beforeinstallprompt', handler);
-    window.addEventListener('appinstalled', () => {
+
+    const installedHandler = () => {
       setInstalled(true);
       setShowSuccess(true);
-    });
-    return () => window.removeEventListener('beforeinstallprompt', handler);
+    };
+    window.addEventListener('appinstalled', installedHandler);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+      window.removeEventListener('appinstalled', installedHandler);
+    };
   }, []);
 
   // ─── هل التطبيق متثبّت بالفعل؟ ───
@@ -63,7 +75,6 @@ export default function ShieldLandingPage() {
 
   const handleInstall = async () => {
     if (installed) {
-      // التطبيق متثبّت — وجّهه للصفحة الرئيسية
       window.location.href = '/';
       return;
     }
@@ -77,7 +88,7 @@ export default function ShieldLandingPage() {
       }
       setInstallPrompt(null);
     } else {
-      // Fallback: وجّهه للصفحة الرئيسية (هيتثبّت من هناك)
+      // Fallback: وجّهه للصفحة الرئيسية
       window.location.href = '/';
     }
   };
@@ -135,6 +146,10 @@ export default function ShieldLandingPage() {
           0%, 100% { text-shadow: 0 0 10px rgba(59,130,246,0.5); }
           50% { text-shadow: 0 0 20px rgba(59,130,246,0.8), 0 0 40px rgba(140,198,63,0.3); }
         }
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
       `}</style>
 
       {/* ═══════════ Header ═══════════ */}
@@ -146,7 +161,7 @@ export default function ShieldLandingPage() {
       >
         <span className="text-white/40 text-xs font-bold tracking-wider">PARK'N 24</span>
         <span className="w-1 h-1 rounded-full bg-blue-500/50" />
-        <span className="text-white/40 text-xs font-bold tracking-wider">SECURITY</span>
+        <span className="text-white/40 text-xs font-bold tracking-wider">PROTECTION</span>
       </motion.div>
 
       {/* ═══════════ الدرع الرئيسي ═══════════ */}
@@ -156,7 +171,6 @@ export default function ShieldLandingPage() {
         transition={{ type: 'spring', damping: 12, stiffness: 100, delay: 0.2 }}
         className="relative mt-6 mb-8"
       >
-        {/* الحلقة الخارجية */}
         <div
           className="w-40 h-40 rounded-full flex items-center justify-center relative"
           style={{
@@ -165,7 +179,6 @@ export default function ShieldLandingPage() {
             animation: 'shieldPulse 3s ease-in-out infinite',
           }}
         >
-          {/* Scan Line */}
           <div
             className="absolute left-2 right-2 h-[2px] rounded-full"
             style={{
@@ -173,8 +186,6 @@ export default function ShieldLandingPage() {
               animation: 'scanLine 3s linear infinite',
             }}
           />
-
-          {/* الحلقة الداخلية */}
           <div
             className="w-28 h-28 rounded-full flex items-center justify-center"
             style={{
@@ -194,7 +205,6 @@ export default function ShieldLandingPage() {
           </div>
         </div>
 
-        {/* نقاط المدار */}
         {[0, 120, 240].map((deg, i) => (
           <motion.div
             key={deg}
@@ -231,12 +241,12 @@ export default function ShieldLandingPage() {
           className="text-3xl font-black text-white mb-2"
           style={{ animation: 'glowText 3s ease-in-out infinite' }}
         >
-          درع حماية السيارة
+          حماية إضافية لسيارتك
         </h1>
         <p className="text-blue-300/70 text-sm font-bold leading-relaxed">
-          نظام حماية ذكي يراقب سيارتك على مدار الساعة
+          نظام مراقبة ذكي يتابع سيارتك على مدار الساعة
           <br />
-          <span className="text-white/40 text-xs">ويُنبّهك فوراً لو أي حاجة مش طبيعية</span>
+          <span className="text-white/40 text-xs">ويُنبّهك فوراً لو أي حركة غير مألوفة</span>
         </p>
       </motion.div>
 
@@ -345,11 +355,47 @@ export default function ShieldLandingPage() {
               <div className="text-3xl mb-2">✅</div>
               <p className="text-white font-black text-base">تم تثبيت التطبيق بنجاح!</p>
               <p className="text-green-200/60 text-xs font-bold mt-1">
-                افتح التطبيق وسجّل بياناتك لتفعيل الدرع
+                افتح التطبيق وسجّل بياناتك لتفعيل الحماية
               </p>
               <button
                 onClick={() => (window.location.href = '/')}
                 className="mt-4 px-8 py-2.5 rounded-xl bg-white/20 text-white font-black text-sm border border-white/20 active:scale-95 transition-all"
+              >
+                افتح التطبيق ←
+              </button>
+            </motion.div>
+          ) : isIOS && !installed ? (
+            /* ═══════════ iOS Instructions ═══════════ */
+            <motion.div
+              key="ios"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="w-full py-5 rounded-2xl text-center px-4"
+              style={{
+                background: 'linear-gradient(135deg, #1e3a5f 0%, #0f2847 100%)',
+                boxShadow: '0 8px 30px rgba(22,86,184,0.3)',
+                border: '1px solid rgba(59,130,246,0.2)',
+              }}
+            >
+              <div className="text-3xl mb-2">📲</div>
+              <p className="text-white font-black text-sm mb-3">لتثبيت التطبيق على iPhone:</p>
+              <div className="space-y-2 text-right">
+                <p className="text-blue-200/70 text-xs font-bold flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-[10px] shrink-0">1</span>
+                  اضغط على زر المشاركة <span className="text-lg">⬆️</span> في أسفل المتصفح
+                </p>
+                <p className="text-blue-200/70 text-xs font-bold flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-[10px] shrink-0">2</span>
+                  اختر "إضافة إلى الشاشة الرئيسية"
+                </p>
+                <p className="text-blue-200/70 text-xs font-bold flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-[10px] shrink-0">3</span>
+                  افتح التطبيق وفعّل الحماية الإضافية
+                </p>
+              </div>
+              <button
+                onClick={() => (window.location.href = '/')}
+                className="mt-4 px-8 py-2.5 rounded-xl bg-blue-600 text-white font-black text-sm active:scale-95 transition-all"
               >
                 افتح التطبيق ←
               </button>
@@ -366,7 +412,6 @@ export default function ShieldLandingPage() {
                 boxShadow: '0 8px 30px rgba(22,86,184,0.4), inset 0 1px 0 rgba(255,255,255,0.15)',
               }}
             >
-              {/* Shimmer Effect */}
               <div
                 className="absolute inset-0 opacity-20"
                 style={{
@@ -374,14 +419,8 @@ export default function ShieldLandingPage() {
                   animation: 'shimmer 2s infinite',
                 }}
               />
-              <style>{`
-                @keyframes shimmer {
-                  0% { transform: translateX(-100%); }
-                  100% { transform: translateX(100%); }
-                }
-              `}</style>
               <span className="relative z-10 flex items-center justify-center gap-2">
-                🛡️ {installed ? 'افتح التطبيق وفعّل الدرع' : 'حمّل التطبيق وفعّل الدرع مجاناً'}
+                🛡️ {installed ? 'افتح التطبيق وفعّل الحماية' : 'حمّل التطبيق وفعّل الحماية مجاناً'}
               </span>
             </motion.button>
           )}
@@ -400,6 +439,9 @@ export default function ShieldLandingPage() {
         </p>
         <p className="text-[10px] font-bold text-white/25 flex items-center justify-center gap-1.5">
           🔒 بياناتك محمية ومش بتتشارك مع أي حد
+        </p>
+        <p className="text-[10px] font-bold text-white/25 flex items-center justify-center gap-1.5">
+          🅿️ الخدمة متاحة في الجراجات المشاركة فقط
         </p>
         <p className="text-[10px] font-bold text-white/15 mt-4">
           Park'n 24 © {new Date().getFullYear()}

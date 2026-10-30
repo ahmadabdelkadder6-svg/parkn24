@@ -100,6 +100,12 @@ export default function ShieldOverlay({
       await supabase.from('shield_sessions')
         .update({ ended_at: new Date().toISOString() })
         .eq('phone', identifier).is('ended_at', null);
+
+      // ✅ امسح الـ push keys عشان الـ cron ما يقدرش يبعت بعد القفل
+      await supabase.from('shield_sessions')
+        .update({ push_endpoint: null, push_p256dh: null, push_auth: null })
+        .eq('session_id', sessionId);
+
       console.log('✅ Shield session ended on server');
     } catch (e) {
       console.error('❌ Failed to end shield:', e);
@@ -156,7 +162,7 @@ export default function ShieldOverlay({
     return () => { cleanupGPS(); };
   }, [phase, sessionId, parkingLat, parkingLng, triggerLocalAlarm]);
 
-  // ─── 🚗 حساب السرعة يدوياً + إرسالها للسيرفر كل 30 ثانية ───
+  // ─── 🚗 حساب السرعة يدوياً + إرسالها للسيرفر بس لو عربية بتتحرك ───
   useEffect(() => {
     if (phase !== 'active') return;
 
@@ -178,8 +184,8 @@ export default function ShieldOverlay({
         }
         prev = { lat, lng, t: now };
 
-        // ابعت للسيرفر كل 30 ثانية بس
-        if (now - lastUp > 30000) {
+        // ✅ ابعت بس لو السرعة >= 5 (عربية بتتحرك) — 0 requests لو واقف!
+        if (spd >= 5 && now - lastUp > 15000) {
           lastUp = now;
           supabase.from('shield_sessions')
             .update({ last_lat: lat, last_lng: lng, last_speed: spd })
@@ -239,7 +245,7 @@ export default function ShieldOverlay({
     };
 
     refreshSubscription();
-    const interval = setInterval(refreshSubscription, 5 * 60 * 1000); // 5 دقائق
+   const interval = setInterval(refreshSubscription, 10 * 60 * 1000);// ✅ 15 دقيقة
     return () => clearInterval(interval);
   }, [phase, sessionId, userPhone, userId]);
 
@@ -306,6 +312,12 @@ export default function ShieldOverlay({
         .eq('phone', identifier).is('ended_at', null)
         .then(() => console.log('✅ Shield auto-closed'))
         .catch(() => {});
+
+      // ✅ امسح الـ push keys عند القفل
+      supabase.from('shield_sessions')
+        .update({ push_endpoint: null, push_p256dh: null, push_auth: null })
+        .eq('session_id', sessionId)
+        .then(() => {}).catch(() => {});
     };
   }, [sessionId, userPhone, userId, stopLocalAlarm]);
 
@@ -350,7 +362,8 @@ export default function ShieldOverlay({
         .update({ ended_at: new Date().toISOString() })
         .eq('phone', identifier).is('ended_at', null);
 
-      const fakeMode = Math.random() < 0.5 ? 1 : 2;
+      // ✅ max 2 إشعارات وهمية
+      const fakeMode = 2;
 
       await supabase.from('shield_sessions').delete().eq('session_id', sessionId);
 
@@ -370,6 +383,7 @@ export default function ShieldOverlay({
         theft_alerted: false,
         fake_mode: fakeMode,
         alert_count: 0,
+        fake_tick: 0,
         last_speed: null,
       });
 
@@ -498,6 +512,12 @@ export default function ShieldOverlay({
       await supabase.from('shield_sessions')
         .update({ ended_at: new Date().toISOString() })
         .eq('phone', identifier).is('ended_at', null);
+
+      // ✅ امسح الـ push keys عشان الـ cron ما يقدرش يبعت بعد القفل
+      await supabase.from('shield_sessions')
+        .update({ push_endpoint: null, push_p256dh: null, push_auth: null })
+        .eq('session_id', sessionId);
+
       console.log('✅ Shield session ended');
     } catch (e) {
       console.error('❌ Failed to end shield:', e);
