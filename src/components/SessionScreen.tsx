@@ -49,7 +49,7 @@ const formatTime = (seconds: number): string => {
 };
 
 /* ═══════════════════════════════════════════════════════════
-   ⚡ LiveSessionTimer
+   ⚡ LiveSessionTimer — أصغر شوية
    ═══════════════════════════════════════════════════════════ */
 const LiveSessionTimer = memo(function LiveSessionTimer({
   activeStartMs,
@@ -102,9 +102,9 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
 
   return (
     <>
-      <div className="relative mb-5">
+      <div className="relative mb-3">
         <div
-          className="w-60 h-60 sm:w-64 sm:h-64 rounded-full flex flex-col items-center justify-center border-[3px] relative"
+          className="w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center border-[3px] relative"
           style={{
             background: `
               radial-gradient(circle at 30% 30%, #16254a 0%, #0a1628 70%),
@@ -119,44 +119,44 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
           }}
         >
           <div
-            className="absolute inset-3 rounded-full border-2 opacity-25 pointer-events-none"
+            className="absolute inset-2 rounded-full border-2 opacity-25 pointer-events-none"
             style={{ borderColor: BRAND.green, borderStyle: 'dashed' }}
           />
-          <div className="flex items-center gap-1.5 mb-2">
+          <div className="flex items-center gap-1 mb-1">
             <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: BRAND.green }} />
-            <Clock size={26} style={{ color: BRAND.green }} />
+            <Clock size={18} style={{ color: BRAND.green }} />
           </div>
           <div
-            className="text-[42px] sm:text-[46px] font-black font-mono text-white leading-none tracking-wider dir-ltr"
+            className="text-[26px] sm:text-[30px] font-black font-mono text-white leading-none tracking-wider dir-ltr"
             style={{ textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}
           >
             {formatTime(elapsed)}
           </div>
           <div
-            className="text-[10px] font-black mt-3 px-3.5 py-1 rounded-full"
+            className="text-[9px] font-black mt-2 px-2.5 py-0.5 rounded-full"
             style={{
               background: 'rgba(10, 22, 40, 0.9)',
               color: BRAND.slateMuted,
               border: `1px solid ${BRAND.border}`,
-              letterSpacing: '0.8px',
+              letterSpacing: '0.6px',
             }}
           >
-            ⏱ مدة الركن الفعلية
+            ⏱ مدة الركن
           </div>
         </div>
       </div>
 
       {showAutoEndWarning && (
         <div
-          className="w-full max-w-md rounded-xl px-3.5 py-2.5 mb-3 text-center border-2"
+          className="w-full max-w-md rounded-xl px-3 py-2 mb-2 text-center border-2"
           style={{
             background: 'linear-gradient(135deg, rgba(239,68,68,0.2) 0%, rgba(220,38,38,0.1) 100%)',
             borderColor: 'rgba(239, 68, 68, 0.5)',
             boxShadow: '0 4px 12px rgba(239, 68, 68, 0.15)',
           }}
         >
-          <span className="text-xs font-black text-red-300 flex items-center justify-center gap-1.5">
-            ⚠️ سيتم إنهاء الجلسة تلقائياً بعد {autoEndMinutes} دقيقة
+          <span className="text-[11px] font-black text-red-300 flex items-center justify-center gap-1.5">
+            ⚠️ إنهاء تلقائي بعد {autoEndMinutes} دقيقة
           </span>
         </div>
       )}
@@ -173,7 +173,6 @@ export default function SessionScreen() {
     sessions,
     setScreen,
     currentUser,
-    userWallet,
     fetchAll,
     setSelectedGarageId,
     acknowledgedSessionIds,
@@ -193,6 +192,9 @@ export default function SessionScreen() {
   const autoEndedRef = useRef(false);
 
   const [ending, setEnding] = useState(false);
+
+  // ─── حالة الدرع المسترجعة من الـ DB ───
+  const [shieldResumed, setShieldResumed] = useState<boolean | null>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -263,6 +265,48 @@ export default function SessionScreen() {
     const ms = safeParseTime(activeSession.startTime);
     return ms > 0 ? ms : getServerNow();
   }, [activeSession]);
+
+  // ═══════════════════════════════════════════════════════
+  // 🛡️ استرجاع حالة الدرع من الـ DB بعد الـ Refresh
+  // ═══════════════════════════════════════════════════════
+  useEffect(() => {
+    if (!activeSession?.id) {
+      setShieldResumed(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const checkShield = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('shield_sessions')
+          .select('session_id')
+          .eq('session_id', activeSession.id)
+          .is('ended_at', null)
+          .limit(1)
+          .maybeSingle();
+
+        if (cancelled) return;
+
+        if (error) {
+          console.warn('Shield check error:', error);
+          setShieldResumed(false);
+          return;
+        }
+
+        setShieldResumed(!!data);
+      } catch (e) {
+        if (!cancelled) {
+          console.warn('Shield check failed:', e);
+          setShieldResumed(false);
+        }
+      }
+    };
+
+    checkShield();
+    return () => { cancelled = true; };
+  }, [activeSession?.id]);
 
   useEffect(() => {
     fetchAll().catch((e) => console.error('Fetch error:', e));
@@ -384,99 +428,102 @@ export default function SessionScreen() {
 
   return (
     <motion.div
-      className="h-full flex flex-col bg-slate-950 text-white"
+      className="h-full flex flex-col bg-slate-950 text-white overflow-hidden"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       dir="rtl"
     >
       {/* ═══════════════════════════════
-          🎯 القسم العلوي — الدرع + العداد
+          🎯 القسم العلوي
           ═══════════════════════════════ */}
-      <div className="flex-1 flex flex-col items-center justify-center px-5 pt-6 pb-3">
+      <div className="flex-1 flex flex-col items-center justify-start px-4 pt-4 pb-2 overflow-y-auto">
 
         {/* بادج "جلسة نشطة" */}
         <div
-          className="mb-4 px-4 py-1.5 rounded-full flex items-center gap-2 border"
+          className="mb-3 px-3.5 py-1 rounded-full flex items-center gap-2 border"
           style={{
             background: 'rgba(140, 198, 63, 0.12)',
             borderColor: 'rgba(140, 198, 63, 0.4)',
           }}
         >
-          <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: BRAND.green, boxShadow: `0 0 8px ${BRAND.green}` }} />
-          <span className="text-[11px] font-black tracking-wider" style={{ color: BRAND.green }}>
+          <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: BRAND.green, boxShadow: `0 0 8px ${BRAND.green}` }} />
+          <span className="text-[10px] font-black tracking-wider" style={{ color: BRAND.green }}>
             جلسة ركن نشطة
           </span>
         </div>
 
-        {/* 🛡️ الدرع — فوق العداد مباشرة */}
-        {garage && (
-<ShieldOverlay
-  sessionId={activeSession.id}
-  userId={currentUser?.id || ''}
-  garageId={activeSession.garageId}
-  parkingLat={(garage as any).lat ?? 30.0444}
-  parkingLng={(garage as any).lng ?? 31.2357}
-  userPhone={currentUser?.phone ?? null}
-  onDeductWallet={deductWallet}
-  onNavigateToWallet={() => setScreen('list')}
-/>
+        {/* 🛡️ الدرع — بشكل احترافي جديد */}
+        {garage && shieldResumed !== null && (
+          <div className="w-full max-w-md mb-3">
+            <ShieldOverlay
+              key={shieldResumed ? 'resumed' : 'fresh'}
+              sessionId={activeSession.id}
+              userId={currentUser?.id || ''}
+              garageId={activeSession.garageId}
+              parkingLat={(garage as any).lat ?? 30.0444}
+              parkingLng={(garage as any).lng ?? 31.2357}
+              userPhone={currentUser?.phone ?? null}
+              onDeductWallet={deductWallet}
+              onNavigateToWallet={() => setScreen('list')}
+              autoResume={shieldResumed}
+            />
+          </div>
         )}
 
-        {/* ⚡ العداد */}
+        {/* ⚡ العداد — أصغر */}
         <LiveSessionTimer
           activeStartMs={activeStartMs}
           onAutoEnd={handleAutoEnd}
         />
 
-        {/* 💬 بطاقة الإرشاد */}
+        {/* 💬 بطاقة الإرشاد — مضغوطة */}
         <div
-          className="w-full max-w-md rounded-2xl px-4 py-3 text-center border"
+          className="w-full max-w-md rounded-xl px-3 py-2 text-center border"
           style={{
             background: `linear-gradient(135deg, ${BRAND.navyLight} 0%, rgba(17, 30, 54, 0.85) 100%)`,
             borderColor: BRAND.border,
             boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
           }}
         >
-          <div className="flex items-center justify-center gap-2 mb-1.5 font-black text-white text-[14px]">
-            <Sparkles size={15} className="text-amber-400 shrink-0" />
+          <div className="flex items-center justify-center gap-1.5 mb-0.5 font-black text-white text-[12px]">
+            <Sparkles size={12} className="text-amber-400 shrink-0" />
             <span>خلّص مشوارك براحتك 🚗</span>
           </div>
           <p
-            className="font-black leading-snug mx-auto text-[11px]"
+            className="font-black leading-snug mx-auto text-[10px]"
             style={{ color: BRAND.slateMuted, maxWidth: '320px' }}
           >
-            وقت الركنة <span className="font-black text-amber-300">محفوظ بالثانية</span> في الخلفية — اقفل التطبيق وافتحه عند الرجوع.
+            وقتك <span className="text-amber-300">محفوظ بالثانية</span> — اقفل التطبيق وافتحه عند الرجوع.
           </p>
         </div>
       </div>
 
       {/* ═══════════════════════════════
-          📋 القسم السفلي — معلومات + زر
+          📋 القسم السفلي — مضغوط
           ═══════════════════════════════ */}
       <div
-        className="px-5 pt-4 pb-5 border-t"
+        className="px-4 pt-3 pb-4 border-t shrink-0"
         style={{
           background: 'linear-gradient(180deg, transparent 0%, rgba(10, 22, 40, 0.6) 100%)',
           borderColor: BRAND.border,
         }}
       >
-        <div className="w-full grid grid-cols-2 gap-3 mb-3">
+        <div className="w-full grid grid-cols-2 gap-2 mb-2.5">
           <div
-            className="border rounded-2xl p-3 text-center"
+            className="border rounded-xl p-2 text-center"
             style={{
               background: `linear-gradient(135deg, ${BRAND.navyLight} 0%, rgba(17, 30, 54, 0.5) 100%)`,
               borderColor: BRAND.border,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
             }}
           >
-            <div className="flex items-center justify-center gap-1.5 mb-2">
-              <Car size={14} style={{ color: BRAND.blue }} />
-              <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: BRAND.slateMuted }}>
+            <div className="flex items-center justify-center gap-1 mb-1">
+              <Car size={11} style={{ color: BRAND.blue }} />
+              <span className="text-[9px] font-black uppercase tracking-wider" style={{ color: BRAND.slateMuted }}>
                 سيارتك
               </span>
             </div>
             <div
-              className="text-base font-black text-white font-mono tracking-widest py-2 px-2 rounded-lg border"
+              className="text-[13px] font-black text-white font-mono tracking-widest py-1.5 px-1 rounded-md border"
               style={{
                 background: 'rgba(10, 22, 40, 0.9)',
                 borderColor: BRAND.border,
@@ -489,21 +536,20 @@ export default function SessionScreen() {
 
           {garage && (
             <div
-              className="border rounded-2xl p-3 text-center"
+              className="border rounded-xl p-2 text-center"
               style={{
                 background: `linear-gradient(135deg, ${BRAND.navyLight} 0%, rgba(17, 30, 54, 0.5) 100%)`,
                 borderColor: BRAND.border,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
               }}
             >
-              <div className="flex items-center justify-center gap-1.5 mb-2">
-                <MapPin size={14} style={{ color: BRAND.green }} />
-                <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: BRAND.slateMuted }}>
+              <div className="flex items-center justify-center gap-1 mb-1">
+                <MapPin size={11} style={{ color: BRAND.green }} />
+                <span className="text-[9px] font-black uppercase tracking-wider" style={{ color: BRAND.slateMuted }}>
                   الجراج
                 </span>
               </div>
               <div
-                className="text-[13px] font-black text-white leading-tight py-2 px-1 rounded-lg border truncate"
+                className="text-[11px] font-black text-white leading-tight py-1.5 px-1 rounded-md border truncate"
                 style={{
                   background: 'rgba(10, 22, 40, 0.9)',
                   borderColor: BRAND.border,
@@ -516,38 +562,12 @@ export default function SessionScreen() {
           )}
         </div>
 
-        <div className="w-full flex items-center justify-center gap-2 mb-4 flex-wrap">
-          {garage?.location && (
-            <span
-              className="font-black text-[11px] px-3 py-1 rounded-full inline-flex items-center gap-1 border"
-              style={{
-                background: 'rgba(17, 30, 54, 0.6)',
-                color: BRAND.slateMuted,
-                borderColor: BRAND.border,
-              }}
-            >
-              📍 {garage.location}
-            </span>
-          )}
-          <span
-            className="font-black text-[11px] px-3 py-1 rounded-full inline-flex items-center gap-1 border"
-            style={{
-              background: 'rgba(10, 22, 40, 0.7)',
-              color: BRAND.slateMuted,
-              borderColor: BRAND.border,
-            }}
-          >
-            {activeSession.source === 'app' ? '📱 من التطبيق' : '🅿️ من الجراج'}
-            {(activeSession as any).startedBy === 'garage' && ' • السايس'}
-          </span>
-        </div>
-
         <button
           type="button"
           aria-label="إنهاء الجلسة الحالية"
           onClick={handleEndSession}
           disabled={ending}
-          className="w-full py-4 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center border-0 text-white cursor-pointer font-black text-sm sm:text-base disabled:opacity-50"
+          className="w-full py-3.5 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center border-0 text-white cursor-pointer font-black text-sm disabled:opacity-50"
           style={{
             background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
             boxShadow: '0 8px 24px rgba(220, 38, 38, 0.45), inset 0 1px 0 rgba(255,255,255,0.15)',
@@ -555,7 +575,7 @@ export default function SessionScreen() {
           }}
         >
           <span className="text-center font-black text-white">
-            {ending ? '⏳ جاري إنهاء الجلسة...' : '🚗 إنهاء الجلسة والخروج من الجراج'}
+            {ending ? '⏳ جاري إنهاء الجلسة...' : '🚗 إنهاء الجلسة والخروج'}
           </span>
         </button>
       </div>

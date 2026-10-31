@@ -24,6 +24,7 @@ interface Props {
   userPhone: string | null;
   onDeductWallet: (amount: number, note: string) => boolean;
   onNavigateToWallet: () => void;
+  autoResume?: boolean; // ✅ جديد
 }
 
 function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -48,6 +49,7 @@ const endShieldOnServer = async (sessionId: string) => {
 export default function ShieldOverlay({
   sessionId, userId, garageId, parkingLat, parkingLng,
   userPhone, onDeductWallet, onNavigateToWallet,
+  autoResume = false,
 }: Props) {
   const [phase, setPhase] = useState<Phase>('ask');
   const [phone, setPhone] = useState(userPhone ?? '');
@@ -101,7 +103,6 @@ export default function ShieldOverlay({
         .update({ ended_at: new Date().toISOString() })
         .eq('phone', identifier).is('ended_at', null);
 
-      // ✅ امسح الـ push keys عشان الـ cron ما يقدرش يبعت بعد القفل
       await supabase.from('shield_sessions')
         .update({ push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', sessionId);
@@ -114,6 +115,7 @@ export default function ShieldOverlay({
     setPhase('dismissed');
   }, [sessionId, userPhone, userId, stopLocalAlarm]);
 
+  // ─── Radar animation ───
   useEffect(() => {
     if (phase !== 'active') return;
     const id = setInterval(() => {
@@ -125,7 +127,25 @@ export default function ShieldOverlay({
     return () => clearInterval(id);
   }, [phase]);
 
+  // ═══════════════════════════════════════════════════════
+  // 🔄 استرجاع حالة الدرع بعد الـ Refresh
+  // ═══════════════════════════════════════════════════════
   useEffect(() => {
+    // ✅ لو autoResume = true من الـ parent → فعّل مباشرة من غير localStorage check
+    if (autoResume && phase === 'ask') {
+      const saved = loadShieldState();
+      if (saved?.sessionId === sessionId) {
+        setShieldCode(saved.shieldCode);
+        setPhone(saved.phone ?? '');
+      } else {
+        // لو مفيش localStorage، اعمل كود جديد ولكن ماتعملش insert في DB
+        setShieldCode('SH-' + Math.random().toString(36).slice(2, 8).toUpperCase());
+      }
+      setPhase('active');
+      return;
+    }
+
+    // ─── الحالة القديمة: استرجاع من localStorage ───
     const saved = loadShieldState();
     if (
       saved?.isActive &&
@@ -136,8 +156,9 @@ export default function ShieldOverlay({
       setPhone(saved.phone ?? '');
       setPhase('active');
     }
-  }, [garageId, sessionId]);
+  }, [garageId, sessionId, autoResume]);
 
+  // ─── GPS watching للخرق ───
   useEffect(() => {
     if (phase !== 'active') return;
 
@@ -162,7 +183,7 @@ export default function ShieldOverlay({
     return () => { cleanupGPS(); };
   }, [phase, sessionId, parkingLat, parkingLng, triggerLocalAlarm]);
 
-  // ─── 🚗 حساب السرعة يدوياً + إرسالها للسيرفر بس لو عربية بتتحرك ───
+  // ─── GPS للسرعة ───
   useEffect(() => {
     if (phase !== 'active') return;
 
@@ -175,7 +196,6 @@ export default function ShieldOverlay({
         const lng = pos.coords.longitude;
         const now = Date.now();
 
-        // حساب السرعة من الفرق بين نقطتين (coords.speed = null على الموبايل!)
         let spd = (pos.coords.speed && pos.coords.speed > 0) ? pos.coords.speed : 0;
         if (prev) {
           const d = haversine(prev.lat, prev.lng, lat, lng);
@@ -184,7 +204,6 @@ export default function ShieldOverlay({
         }
         prev = { lat, lng, t: now };
 
-        // ✅ ابعت بس لو السرعة >= 5 (عربية بتتحرك) — 0 requests لو واقف!
         if (spd >= 5 && now - lastUp > 15000) {
           lastUp = now;
           supabase.from('shield_sessions')
@@ -199,7 +218,7 @@ export default function ShieldOverlay({
     return () => navigator.geolocation.clearWatch(watchId);
   }, [phase, sessionId]);
 
-  // ─── 🔄 تجديد الـ Push Subscription تلقائي ───
+  // ─── تجديد الـ Push Subscription تلقائي ───
   useEffect(() => {
     if (phase !== 'active') return;
 
@@ -227,6 +246,7 @@ export default function ShieldOverlay({
         if (sub) {
           const subJson = sub.toJSON();
 
+          // ✅ تحديث push keys فقط — ماتلمسش fake_tick أو alert_count
           await supabase
             .from('shield_sessions')
             .update({
@@ -245,10 +265,11 @@ export default function ShieldOverlay({
     };
 
     refreshSubscription();
-   const interval = setInterval(refreshSubscription, 10 * 60 * 1000);// ✅ 15 دقيقة
+    const interval = setInterval(refreshSubscription, 10 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [phase, sessionId, userPhone, userId]);
+  }, [phase, sessionId]);
 
+  // ─── Realtime listener للـ breach ───
   useEffect(() => {
     if (phase !== 'active') return;
 
@@ -271,6 +292,7 @@ export default function ShieldOverlay({
     return () => { supabase.removeChannel(channel); };
   }, [phase, sessionId, triggerLocalAlarm]);
 
+  // ─── Service Worker messages ───
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
 
@@ -296,38 +318,25 @@ export default function ShieldOverlay({
     };
   }, [handleIamDriving]);
 
+  // ─── Cleanup on unmount ───
   useEffect(() => {
     return () => {
       stopLocalAlarm();
       destroyShield();
-      const identifier = userPhone || userId || 'unknown';
-
-      supabase.from('shield_sessions')
-        .update({ ended_at: new Date().toISOString() })
-        .eq('session_id', sessionId).is('ended_at', null)
-        .then(() => {}).catch(() => {});
-
-      supabase.from('shield_sessions')
-        .update({ ended_at: new Date().toISOString() })
-        .eq('phone', identifier).is('ended_at', null)
-        .then(() => console.log('✅ Shield auto-closed'))
-        .catch(() => {});
-
-      // ✅ امسح الـ push keys عند القفل
-      supabase.from('shield_sessions')
-        .update({ push_endpoint: null, push_p256dh: null, push_auth: null })
-        .eq('session_id', sessionId)
-        .then(() => {}).catch(() => {});
+      // ⚠️ ماتعملش auto-close هنا! العميل بيعمل refresh بس
+      // الـ cleanup الحقيقي بيحصل في handleIamDriving أو handleTheft
     };
-  }, [sessionId, userPhone, userId, stopLocalAlarm]);
+  }, [stopLocalAlarm]);
 
+  // ═══════════════════════════════════════════════════════
+  // 🎯 التسجيل الذكي: بيعمل insert فقط لو مفيش session نشط
+  // ═══════════════════════════════════════════════════════
   const registerOnServer = useCallback(async () => {
     const identifier = userPhone || userId || 'unknown';
     console.log('🔍 registerOnServer, phone:', identifier);
     try {
       const reg = await navigator.serviceWorker.ready;
 
-      // ✅ Force refresh: امسح القديم واعمل جديد
       const oldSub = await reg.pushManager.getSubscription();
       if (oldSub) await oldSub.unsubscribe();
 
@@ -358,14 +367,43 @@ export default function ShieldOverlay({
       const subJson = sub.toJSON();
       if (!subJson?.endpoint) return;
 
+      // ═══════════════════════════════════════════════════════
+      // ✅ الحل الرئيسي: افحص لو فيه session نشط لنفس session_id
+      // ═══════════════════════════════════════════════════════
+      const { data: existing } = await supabase
+        .from('shield_sessions')
+        .select('session_id, fake_tick, alert_count, ended_at')
+        .eq('session_id', sessionId)
+        .is('ended_at', null)
+        .maybeSingle();
+
+      if (existing) {
+        // 🔁 Session موجود → حدّث الـ push keys فقط (ماتلمسش fake_tick!)
+        console.log('🔁 Session exists, updating push keys only. Keeping fake_tick:', existing.fake_tick);
+        
+        const { error: updErr } = await supabase.from('shield_sessions')
+          .update({
+            push_endpoint: subJson.endpoint,
+            push_p256dh: subJson.keys?.p256dh,
+            push_auth: subJson.keys?.auth,
+          })
+          .eq('session_id', sessionId);
+
+        if (updErr) console.error('❌ Update error:', updErr.message);
+        else console.log('✅ Push keys refreshed (fake_tick preserved)');
+        return;
+      }
+
+      // 🆕 Session جديد → insert كامل
+      console.log('🆕 Creating new shield session');
+
+      // أقفل أي sessions قديمة لنفس الموبايل (مش نفس session_id)
       await supabase.from('shield_sessions')
         .update({ ended_at: new Date().toISOString() })
-        .eq('phone', identifier).is('ended_at', null);
+        .eq('phone', identifier)
+        .is('ended_at', null);
 
-      // ✅ max 2 إشعارات وهمية
       const fakeMode = 2;
-
-      await supabase.from('shield_sessions').delete().eq('session_id', sessionId);
 
       const { error } = await supabase.from('shield_sessions').insert({
         session_id: sessionId,
@@ -393,6 +431,13 @@ export default function ShieldOverlay({
       console.error('❌ Crashed:', e.message);
     }
   }, [sessionId, userId, userPhone, parkingLat, parkingLng]);
+
+  // ─── لما autoResume = true، حدّث الـ push keys بس (ماتعملش insert) ───
+  useEffect(() => {
+    if (!autoResume || phase !== 'active') return;
+    // بعد الـ phase تحول لـ active → سجّل في السيرفر (هيلاقي session موجود ويحدّث فقط)
+    registerOnServer();
+  }, [autoResume, phase, registerOnServer]);
 
   const handleYes = useCallback(async () => {
     unlockAudio();
@@ -513,7 +558,6 @@ export default function ShieldOverlay({
         .update({ ended_at: new Date().toISOString() })
         .eq('phone', identifier).is('ended_at', null);
 
-      // ✅ امسح الـ push keys عشان الـ cron ما يقدرش يبعت بعد القفل
       await supabase.from('shield_sessions')
         .update({ push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', sessionId);
@@ -558,133 +602,219 @@ export default function ShieldOverlay({
   if (phase === 'dismissed') return null;
 
   return (
-    <div className="w-full flex flex-col items-center gap-3 py-3">
+    <div className="w-full flex flex-col items-center gap-2">
 
+      {/* ═══════════════════════════════════════════════════════
+          🎨 phase 'ask' — زرار الدرع الفخم الجديد
+          ═══════════════════════════════════════════════════════ */}
       {phase === 'ask' && (
-        <div className="w-full bg-gradient-to-br from-blue-950/60 to-slate-900/60 border border-blue-500/30 rounded-2xl p-4 backdrop-blur-sm">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center">
-              <Shield className="w-7 h-7 text-blue-400" />
-            </div>
-            <div>
-              <h3 className="text-white font-bold text-base">خدمة الحماية الإضافية 💎</h3>
-              <p className="text-blue-300/70 text-xs">مراقبة ذكية + تنبيهات فورية للحركة</p>
-            </div>
-          </div>
+        <div className="w-full relative overflow-hidden rounded-2xl"
+          style={{
+            background: 'linear-gradient(135deg, #0a1628 0%, #1e3a8a 50%, #0a1628 100%)',
+            border: '1.5px solid rgba(96, 165, 250, 0.3)',
+            boxShadow: '0 8px 32px rgba(22, 86, 184, 0.35), inset 0 1px 0 rgba(255,255,255,0.1)',
+          }}
+        >
+          {/* ─── Shimmer effect ─── */}
+          <div
+            className="absolute inset-0 opacity-30 pointer-events-none"
+            style={{
+              background: 'linear-gradient(90deg, transparent 0%, rgba(96,165,250,0.15) 50%, transparent 100%)',
+              animation: 'shimmerShield 3s infinite',
+            }}
+          />
+          <style>{`
+            @keyframes shimmerShield {
+              0% { transform: translateX(-100%); }
+              100% { transform: translateX(100%); }
+            }
+            @keyframes pulseShield {
+              0%, 100% { box-shadow: 0 0 0 0 rgba(96,165,250,0.5); }
+              50% { box-shadow: 0 0 0 8px rgba(96,165,250,0); }
+            }
+          `}</style>
 
-          {checkError && (
-            <div className="bg-red-950/50 border border-red-500/40 rounded-xl p-2.5 mb-3">
-              <p className="text-red-300 text-xs font-bold text-center whitespace-pre-line">{checkError}</p>
+          <div className="relative p-3.5">
+            <div className="flex items-center gap-3 mb-3">
+              <div
+                className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+                style={{
+                  background: 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
+                  boxShadow: '0 4px 12px rgba(59,130,246,0.4), inset 0 1px 0 rgba(255,255,255,0.2)',
+                  animation: 'pulseShield 2s infinite',
+                }}
+              >
+                <Shield className="w-6 h-6 text-white" strokeWidth={2.5} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <h3 className="text-white font-black text-sm">حماية إضافية</h3>
+                  <span
+                    className="text-[9px] font-black px-1.5 py-0.5 rounded"
+                    style={{
+                      background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
+                      color: '#0a1628',
+                      letterSpacing: '0.5px',
+                    }}
+                  >
+                    VIP 💎
+                  </span>
+                </div>
+                <p className="text-blue-200/70 text-[11px] font-bold mt-0.5">
+                  مراقبة ذكية 24/7 + تنبيه فوري
+                </p>
+              </div>
             </div>
-          )}
 
-          <div className="flex gap-2">
-            <button
-              onClick={handleYes}
-              disabled={isChecking}
-              className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-2.5 rounded-xl text-sm transition-all active:scale-95"
-            >
-              {isChecking ? '📍 جاري التحقق من موقعك...' : `💎 تفعيل (${SHIELD_COST} ج)`}
-            </button>
-            <button
-              onClick={() => setDismissed(true)}
-              disabled={isChecking}
-              className="px-4 bg-slate-700/50 text-slate-400 rounded-xl text-sm hover:bg-slate-700 transition-all disabled:opacity-50"
-            >
-              لا
-            </button>
+            {checkError && (
+              <div className="bg-red-950/60 border border-red-500/40 rounded-xl p-2 mb-2.5">
+                <p className="text-red-300 text-[11px] font-bold text-center whitespace-pre-line">{checkError}</p>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleYes}
+                disabled={isChecking}
+                className="flex-1 relative overflow-hidden text-white font-black py-2.5 rounded-xl text-[13px] transition-all active:scale-95 disabled:opacity-60"
+                style={{
+                  background: isChecking
+                    ? 'linear-gradient(135deg, #475569, #334155)'
+                    : 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
+                  boxShadow: isChecking
+                    ? 'none'
+                    : '0 4px 16px rgba(59,130,246,0.4), inset 0 1px 0 rgba(255,255,255,0.2)',
+                }}
+              >
+                <span className="relative z-10 flex items-center justify-center gap-1.5">
+                  {isChecking ? (
+                    <>⏳ جاري التحقق...</>
+                  ) : (
+                    <>🛡️ فعّل الحماية ({SHIELD_COST} ج)</>
+                  )}
+                </span>
+              </button>
+              <button
+                onClick={() => setDismissed(true)}
+                disabled={isChecking}
+                className="px-3.5 bg-slate-800/60 text-slate-400 rounded-xl text-xs font-black hover:bg-slate-700 transition-all disabled:opacity-50 border border-slate-700"
+              >
+                لا
+              </button>
+            </div>
           </div>
         </div>
       )}
 
+      {/* ═══════════════════════════════════════════════════════
+          phase 'register'
+          ═══════════════════════════════════════════════════════ */}
       {phase === 'register' && (
-        <div className="w-full bg-gradient-to-br from-blue-950/60 to-slate-900/60 border border-blue-500/30 rounded-2xl p-4 backdrop-blur-sm">
-          <div className="flex items-center gap-2 mb-3">
-            <Phone className="w-5 h-5 text-blue-400" />
-            <h3 className="text-white font-bold text-sm">رقم الموبايل للتواصل</h3>
+        <div className="w-full rounded-2xl p-3.5"
+          style={{
+            background: 'linear-gradient(135deg, #0a1628 0%, #1e3a8a 50%, #0a1628 100%)',
+            border: '1.5px solid rgba(96, 165, 250, 0.3)',
+            boxShadow: '0 8px 32px rgba(22, 86, 184, 0.35)',
+          }}
+        >
+          <div className="flex items-center gap-2 mb-2.5">
+            <Phone className="w-4 h-4 text-blue-400" />
+            <h3 className="text-white font-black text-sm">رقم الموبايل للتواصل</h3>
           </div>
           <input
             type="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="01xxxxxxxxx"
-            className="w-full bg-slate-800/80 border border-slate-600 rounded-xl px-4 py-2.5 text-white text-center text-lg tracking-widest mb-3 focus:border-blue-500 focus:outline-none"
+            className="w-full bg-slate-900/80 border border-slate-600 rounded-xl px-3 py-2 text-white text-center text-base tracking-widest mb-2.5 focus:border-blue-500 focus:outline-none"
             maxLength={11}
             dir="ltr"
           />
           <button
             onClick={handleRegister}
             disabled={phone.length < 10}
-            className="w-full bg-blue-600 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-2.5 rounded-xl text-sm transition-all active:scale-95"
+            className="w-full text-white font-black py-2.5 rounded-xl text-[13px] transition-all active:scale-95 disabled:opacity-50"
+            style={{
+              background: 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
+              boxShadow: '0 4px 16px rgba(59,130,246,0.4)',
+            }}
           >
-            تفعيل الحماية الآن
+            🛡️ تفعيل الحماية الآن
           </button>
         </div>
       )}
 
+      {/* ═══════════════════════════════════════════════════════
+          phase 'active' — Radar + Status (مضغوط)
+          ═══════════════════════════════════════════════════════ */}
       {phase === 'active' && (
-        <div className="flex flex-col items-center gap-2">
-          <div className="relative" style={{ width: 128, height: 128 }}>
+        <div className="w-full flex flex-col items-center gap-1.5">
+          <div className="relative" style={{ width: 90, height: 90 }}>
             <div
               ref={radarRef}
               className="absolute inset-0 rounded-full"
               style={{ background: 'conic-gradient(from 0deg, transparent 0deg, rgba(34,197,94,0.35) 40deg, transparent 80deg)' }}
             />
-            <div className="absolute inset-2 rounded-full border border-green-500/20" />
-            <div className="absolute inset-5 rounded-full border border-green-500/15" />
-            <div className="absolute inset-8 rounded-full border border-green-500/10" />
+            <div className="absolute inset-1.5 rounded-full border border-green-500/20" />
+            <div className="absolute inset-3 rounded-full border border-green-500/15" />
+            <div className="absolute inset-5 rounded-full border border-green-500/10" />
             <div className="absolute top-1/2 left-0 right-0 h-px bg-green-500/10" />
             <div className="absolute left-1/2 top-0 bottom-0 w-px bg-green-500/10" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-green-400 animate-pulse shadow-lg shadow-green-400/50" />
-            <div className="absolute w-1.5 h-1.5 rounded-full bg-green-300/60" style={{ top: '25%', left: '65%' }} />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse shadow-lg shadow-green-400/50" />
+            <div className="absolute w-1 h-1 rounded-full bg-green-300/60" style={{ top: '25%', left: '65%' }} />
             <div className="absolute w-1 h-1 rounded-full bg-green-300/40" style={{ top: '70%', left: '25%' }} />
-            <div className="absolute w-1 h-1 rounded-full bg-green-300/50" style={{ top: '60%', left: '75%' }} />
           </div>
 
-          <div className="flex items-center gap-1.5 bg-green-950/50 border border-green-500/30 rounded-full px-3 py-1">
-            <ShieldCheck className="w-3.5 h-3.5 text-green-400" />
-            <span className="text-green-400 text-xs font-bold">الحماية نشطة</span>
-            {shieldCode && <span className="text-green-600 text-[10px] font-mono">{shieldCode}</span>}
+          <div
+            className="flex items-center gap-1.5 rounded-full px-2.5 py-0.5 border"
+            style={{
+              background: 'linear-gradient(135deg, rgba(34,197,94,0.15), rgba(22,163,74,0.08))',
+              borderColor: 'rgba(34,197,94,0.4)',
+              boxShadow: '0 2px 8px rgba(34,197,94,0.2)',
+            }}
+          >
+            <ShieldCheck className="w-3 h-3 text-green-400" />
+            <span className="text-green-400 text-[10px] font-black">الحماية نشطة</span>
+            {shieldCode && <span className="text-green-600/80 text-[9px] font-mono">{shieldCode}</span>}
           </div>
 
           {gpsWarning && (
-            <div className="w-full bg-yellow-950/50 border border-yellow-500/40 rounded-xl p-2.5 mt-1">
-              <p className="text-yellow-300 text-xs font-bold text-center">
-                ⚠️ الـ GPS مقفول! فعّل الموقع عشان المراقبة تشتغل
+            <div className="w-full bg-yellow-950/50 border border-yellow-500/40 rounded-lg px-2 py-1.5 mt-0.5">
+              <p className="text-yellow-300 text-[10px] font-bold text-center">
+                ⚠️ فعّل الـ GPS عشان المراقبة تشتغل
               </p>
             </div>
           )}
-
-          <p className="text-slate-400 text-[10px] text-center max-w-xs mt-1">
-            🔒 المراقبة شغالة في الخلفية حتى لو قفلت التطبيق
-          </p>
         </div>
       )}
 
+      {/* ═══════════════════════════════════════════════════════
+          phase 'breach' — تنبيه الحركة
+          ═══════════════════════════════════════════════════════ */}
       {phase === 'breach' && (
-        <div className="w-full bg-red-950/90 border-2 border-red-500 rounded-2xl p-4 animate-pulse backdrop-blur-sm">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-12 h-12 rounded-full bg-red-500/30 flex items-center justify-center animate-bounce">
-              <Siren className="w-7 h-7 text-red-400" />
+        <div className="w-full bg-red-950/90 border-2 border-red-500 rounded-2xl p-3.5 animate-pulse backdrop-blur-sm">
+          <div className="flex items-center gap-3 mb-2.5">
+            <div className="w-11 h-11 rounded-full bg-red-500/30 flex items-center justify-center animate-bounce">
+              <Siren className="w-6 h-6 text-red-400" />
             </div>
             <div>
-              <h3 className="text-red-300 font-black text-lg">🚨 تنبيه حركة!</h3>
-              <p className="text-red-400/80 text-xs">
-                السيارة اتحركت {breachDistance}م من مكان الركن
+              <h3 className="text-red-300 font-black text-base">🚨 تنبيه حركة!</h3>
+              <p className="text-red-400/80 text-[11px] font-bold">
+                السيارة اتحركت {breachDistance}م
               </p>
             </div>
           </div>
           <div className="flex gap-2">
             <button
               onClick={handleIamDriving}
-              className="flex-1 bg-green-700 hover:bg-green-600 text-white font-bold py-3 rounded-xl text-sm transition-all active:scale-95 flex items-center justify-center gap-1.5"
+              className="flex-1 bg-green-700 hover:bg-green-600 text-white font-black py-2.5 rounded-xl text-[13px] transition-all active:scale-95 flex items-center justify-center gap-1.5"
             >
               <Car className="w-4 h-4" />
               أنا اللي سايق
             </button>
             <button
               onClick={handleTheft}
-              className="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl text-sm transition-all active:scale-95 flex items-center justify-center gap-1.5"
+              className="flex-1 bg-red-600 hover:bg-red-500 text-white font-black py-2.5 rounded-xl text-[13px] transition-all active:scale-95 flex items-center justify-center gap-1.5"
             >
               <AlertTriangle className="w-4 h-4" />
               مش أنا!
