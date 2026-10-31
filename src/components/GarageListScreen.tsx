@@ -538,7 +538,7 @@ export default function GarageListScreen() {
               <span className="text-base font-black text-slate-900 leading-tight">أهلاً {currentUser?.name?.split(' ')[0] || 'بك'} 👋</span>
               {/* 🚀 جملة تحفيزية بخط أكبر وأوضح */}
               <span className="text-[13px] font-black leading-tight mt-1" style={{ color: BRAND.blue }}>
-              اركن بسرعة… وريّح بالك! parkn24.com🚗✨
+              اركن بسرعة… وريّح بالك! 🚗✨
               </span>
             </div>
           </div>

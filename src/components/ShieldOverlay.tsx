@@ -690,7 +690,7 @@ export default function ShieldOverlay({
                   {isChecking ? (
                     <>⏳ جاري التحقق...</>
                   ) : (
-                    <>🛡️ فعّل الحماية ({SHIELD_COST} ج)</>
+                    <>🛡️ فعّل الحماية ({SHIELD_COST} للجلسة ج)</>
                   )}
                 </span>
               </button>
