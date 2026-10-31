@@ -1,5 +1,5 @@
-// ✅ Version - v13 نصوص قانونية (تنبيه حركة بدل إنذار سرقة)
-const CACHE_NAME    = 'parkn24-v13';
+// ✅ Version - v14 نصوص قانونية + دعم الحماية الكاملة عند إغلاق التطبيق
+const CACHE_NAME    = 'parkn24-v14';
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
 const recentNotifications = new Map();
@@ -17,7 +17,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 Service Worker Installed (v13)');
+      console.log('📦 Service Worker Installed (v14)');
       return cache.addAll(STATIC_ASSETS);
     })
   );
@@ -135,7 +135,7 @@ self.addEventListener('push', (event) => {
   let options;
 
   if (isBreach) {
-    // 🚨 تنبيه حركة - اهتزاز عنيف جداً
+    // 🚨 تنبيه حركة - اهتزاز عنيف جداً + توجيه مباشر لصفحة الحماية عند الضغط
     options = {
       body: body || 'السيارة اتحركت من مكان الركن! افتح التطبيق فوراً',
       icon,
@@ -143,14 +143,14 @@ self.addEventListener('push', (event) => {
       vibrate: [
         1000, 200, 1000, 200, 1000, 200,
         1000, 200, 1000, 200, 1000, 200,
-        1500, 500, 1500,
+        1500, 400, 1500, 400, 1500,
       ],
       requireInteraction: true,
       tag: 'shield-breach',
       renotify: true,
       silent: false,
       timestamp: now,
-      data: { url: '/', type: 'shield-breach', ...extraData },
+      data: { url: '/?shield', type: 'shield-breach', ...extraData },
       actions: [
         { action: 'open',    title: '🚨 افتح التطبيق فوراً' },
         { action: 'dismiss', title: '✅ أنا اللي سايق'       },
@@ -181,14 +181,14 @@ self.addEventListener('push', (event) => {
       icon,
       badge,
       vibrate: isWarning
-        ? [400, 150, 400, 150, 600]
-        : [150, 100, 150],
+        ? [500, 150, 500, 150, 800]
+        : [200, 100, 200],
       requireInteraction: isWarning,
       tag,
       renotify: isWarning,
       silent: false,
       timestamp: now,
-      data: { url: '/', type: 'shield', ...extraData },
+      data: { url: '/?shield', type: 'shield', ...extraData },
     };
   } else {
     options = {
@@ -222,9 +222,9 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const notifData = event.notification.data || {};
-  const isBreach = notifData.type === 'shield-breach' || notifData.type === 'breach';
+  const isBreach  = notifData.type === 'shield-breach' || notifData.type === 'breach';
 
-  // ✅ العميل دوس "أنا اللي سايق" → ابعت للتطبيق يوقف التنبيه
+  // ✅ العميل داس "أنا اللي سايق" → ابعت للتطبيق يوقف التنبيه
   if (event.action === 'dismiss') {
     if (isBreach) {
       event.waitUntil(
@@ -238,7 +238,7 @@ self.addEventListener('notificationclick', (event) => {
     return;
   }
 
-  const targetUrl = notifData.url || '/';
+  const targetUrl = notifData.url || (isBreach ? '/?shield' : '/');
 
   event.waitUntil(
     clients
@@ -258,6 +258,7 @@ self.addEventListener('notificationclick', (event) => {
             return client.focus();
           }
         }
+        // لو التطبيق كان مقفول تماماً → يفتح صفحة الحماية فوراً
         if (clients.openWindow) return clients.openWindow(targetUrl);
       })
   );

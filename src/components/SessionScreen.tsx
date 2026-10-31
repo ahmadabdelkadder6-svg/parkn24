@@ -473,6 +473,7 @@ const handleAutoEnd = useCallback(async () => {
               onDeductWallet={deductWallet}
               onNavigateToWallet={() => setScreen('list')}
               autoResume={shieldResumed}
+                        onSessionEnd={handleEndSession}
             />
           </div>
         )}

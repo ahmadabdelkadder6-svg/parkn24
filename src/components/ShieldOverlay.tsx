@@ -25,6 +25,7 @@ interface Props {
   onDeductWallet: (amount: number, note: string) => boolean;
   onNavigateToWallet: () => void;
   autoResume?: boolean; // ✅ جديد
+  onSessionEnd?: () => void; // ✅ جديد — ينهي الـ parking session ويرجع للرئيسية
 }
 
 function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -50,6 +51,7 @@ export default function ShieldOverlay({
   sessionId, userId, garageId, parkingLat, parkingLng,
   userPhone, onDeductWallet, onNavigateToWallet,
   autoResume = false,
+  onSessionEnd, // ✅
 }: Props) {
   const [phase, setPhase] = useState<Phase>('ask');
   const [phone, setPhone] = useState(userPhone ?? '');
@@ -73,10 +75,11 @@ export default function ShieldOverlay({
         'shield-breach-local',
       );
       if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current);
+      // ✅ أعلى تكرار — كل 2 ثانية بدل 3
       alarmIntervalRef.current = setInterval(() => {
         playUrgentSound();
         vibrateUrgent();
-      }, 3000);
+      }, 2000);
     } catch (e) {
       console.warn('Alarm failed:', e);
     }
@@ -113,7 +116,9 @@ export default function ShieldOverlay({
     }
 
     setPhase('dismissed');
-  }, [sessionId, userPhone, userId, stopLocalAlarm]);
+    // ✅ ينهي الـ parking session ويرجع للرئيسية
+    onSessionEnd?.();
+  }, [sessionId, userPhone, userId, stopLocalAlarm, onSessionEnd]);
 
   // ─── Radar animation ───
   useEffect(() => {
@@ -568,7 +573,9 @@ export default function ShieldOverlay({
     }
 
     setPhase('dismissed');
-  }, [sessionId, userPhone, userId, stopLocalAlarm]);
+    // ✅ ينهي الـ parking session ويرجع للرئيسية
+    onSessionEnd?.();
+  }, [sessionId, userPhone, userId, stopLocalAlarm, onSessionEnd]);
 
   if (dismissed) {
     return (

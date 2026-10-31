@@ -58,7 +58,7 @@ const scheduleAudioSuspend = () => {
   }, 3000);
 };
 
-// ─── 2. نغمات التنبيه (توليد إلكتروني نقي فائق القوة لاختراق الضوضاء) ──────
+// ─── 2. نغمات التنبيه (سيرين حاد متعدد الطبقات — أقصى قوة) ──────────────
 export const playUrgentSound = async () => {
   try {
     await unlockAudio();
@@ -70,27 +70,26 @@ export const playUrgentSound = async () => {
 
     const now = audioCtx.currentTime;
 
-    // رفع الصوت لأقصى طاقة 100%
+    // ماستر جين بأقصى حجم 100%
     const masterGain = audioCtx.createGain();
     masterGain.gain.setValueAtTime(1.0, now);
     masterGain.connect(audioCtx.destination);
 
-    // 6 نبضات إنذار حادة وسريعة بنظام المولد المزدوج
-    for (let i = 0; i < 6; i++) {
-      const start = now + (i * 0.22);
-      const duration = 0.19;
+    // طبقة 1: 8 نبضات square+sawtooth حادة (880 ↔ 1100 ↔ 1320)
+    const freqs = [880, 1100, 880, 1100, 1320, 1100, 880, 1320];
+    for (let i = 0; i < freqs.length; i++) {
+      const start = now + i * 0.18;
+      const duration = 0.16;
 
       const osc1 = audioCtx.createOscillator();
       const osc2 = audioCtx.createOscillator();
       const noteGain = audioCtx.createGain();
 
-      osc1.type = 'sawtooth';
-      osc2.type = 'square';
+      osc1.type = 'square';
+      osc2.type = 'sawtooth';
 
-      // ترددات حادة وقوية لاختراق الضوضاء (1200Hz و 2400Hz)
-      const freq = i % 2 === 0 ? 1200 : 2400;
-      osc1.frequency.setValueAtTime(freq, start);
-      osc2.frequency.setValueAtTime(freq * 1.2, start);
+      osc1.frequency.setValueAtTime(freqs[i], start);
+      osc2.frequency.setValueAtTime(freqs[i] * 1.5, start); // هارموني أعلى لاختراق الضوضاء
 
       noteGain.gain.setValueAtTime(1.0, start);
       noteGain.gain.exponentialRampToValueAtTime(0.01, start + duration);
@@ -101,8 +100,50 @@ export const playUrgentSound = async () => {
 
       osc1.start(start);
       osc2.start(start);
+      osc1.stop(start + duration + 0.02);
+      osc2.stop(start + duration + 0.02);
+    }
 
-      // تنظيف العقد الصوتية فور انتهاء النبضة
+    // طبقة 2: صافرة مستمرة قصيرة فوق النبضات (piercing siren sweep)
+    const sirenOsc = audioCtx.createOscillator();
+    const sirenGain = audioCtx.createGain();
+    sirenOsc.type = 'square';
+    sirenOsc.frequency.setValueAtTime(900, now);
+    sirenOsc.frequency.linearRampToValueAtTime(1600, now + 0.7);
+    sirenOsc.frequency.linearRampToValueAtTime(900, now + 1.4);
+    sirenGain.gain.setValueAtTime(0.45, now);
+    sirenGain.gain.exponentialRampToValueAtTime(0.01, now + 1.5);
+    sirenOsc.connect(sirenGain);
+    sirenGain.connect(masterGain);
+    sirenOsc.start(now);
+    sirenOsc.stop(now + 1.52);
+
+    // طبقة 3: تكرار سريع بعد 1.6 ثانية (موجة تانية)
+    const now2 = now + 1.6;
+    const freqs2 = [880, 1100, 880, 1320];
+    for (let i = 0; i < freqs2.length; i++) {
+      const start = now2 + i * 0.2;
+      const duration = 0.18;
+
+      const osc1 = audioCtx.createOscillator();
+      const osc2 = audioCtx.createOscillator();
+      const noteGain = audioCtx.createGain();
+
+      osc1.type = 'square';
+      osc2.type = 'square';
+
+      osc1.frequency.setValueAtTime(freqs2[i], start);
+      osc2.frequency.setValueAtTime(freqs2[i] * 2, start); // أوكتاف أعلى
+
+      noteGain.gain.setValueAtTime(1.0, start);
+      noteGain.gain.exponentialRampToValueAtTime(0.01, start + duration);
+
+      osc1.connect(noteGain);
+      osc2.connect(noteGain);
+      noteGain.connect(masterGain);
+
+      osc1.start(start);
+      osc2.start(start);
       osc1.stop(start + duration + 0.02);
       osc2.stop(start + duration + 0.02);
     }
@@ -144,13 +185,15 @@ export const playNormalAlert = async () => {
   }
 };
 
-// ─── 3. اهتزاز الهاتف ───────────────────────────────────────────────────
+// ─── 3. اهتزاز الهاتف (رشقات طويلة وقوية) ──────────────────────────────
 export const vibrateUrgent = () => {
   try {
     if ('vibrate' in navigator) {
+      // رشقات طويلة متتالية — أقوى من النمط العادي
       navigator.vibrate([
-        1000, 200, 1000, 200, 1000, 200, // رنة 1
-        1200, 300, 1200                  // رنة 2 تأكيدية
+        500, 200, 500, 200, 500, 200, // ثلاث رشقات متوسطة
+        800, 300, 800, 300,           // رشقتين طويلتين
+        500, 200, 500, 200, 500,      // ثلاث رشقات ختامية
       ]);
       return true;
     }
