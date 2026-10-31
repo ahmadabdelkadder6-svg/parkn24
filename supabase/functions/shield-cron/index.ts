@@ -155,12 +155,39 @@ serve(async (req) => {
       });
     }
 
-    // ═══ AUTO-CLEANUP: أنهِي الـ sessions المنتهية ═══
+    // ═══ AUTO-CLEANUP + DEDUP ═══
     let cleanedUp = 0;
+
+    // ① أغلق الجلسات المكررة لكل موبايل (أبقِ أحدث واحدة بس)
+    const phoneGroups = new Map<string, any[]>();
     for (const s of shields) {
-      const fm = s.fake_mode || 2;
-      const ac = s.alert_count || 0;
-      if (ac >= fm && s.theft_alerted) {
+      const p = s.phone || s.user_id || 'unknown';
+      if (!phoneGroups.has(p)) phoneGroups.set(p, []);
+      phoneGroups.get(p)!.push(s);
+    }
+    for (const [, sessions] of phoneGroups) {
+      if (sessions.length <= 1) continue;
+      // رتّب حسب آخر GPS — الأحدث الأول
+      sessions.sort((a, b) => {
+        const ta = a.last_gps_at ? new Date(a.last_gps_at).getTime() : 0;
+        const tb = b.last_gps_at ? new Date(b.last_gps_at).getTime() : 0;
+        return tb - ta;
+      });
+      // أقفل كل الجلسات القديمة
+      for (let i = 1; i < sessions.length; i++) {
+        await supabase.from('shield_sessions')
+          .update({ ended_at: '2025-01-01 00:00:00+00' })
+          .eq('session_id', sessions[i].session_id);
+        cleanedUp++;
+      }
+    }
+
+    // ② أغلق الجلسات القديمة (> 24 ساعة بدون GPS)
+    const now = Date.now();
+    for (const s of shields) {
+      if (s.ended_at) continue;
+      const lastGps = s.last_gps_at ? new Date(s.last_gps_at).getTime() : 0;
+      if (lastGps > 0 && (now - lastGps) > 24 * 60 * 60 * 1000) {
         await supabase.from('shield_sessions')
           .update({ ended_at: '2025-01-01 00:00:00+00' })
           .eq('session_id', s.session_id);

@@ -749,7 +749,8 @@ export default function ShieldOverlay({
           ═══════════════════════════════════════════════════════ */}
       {phase === 'active' && (
         <div className="w-full flex flex-col items-center gap-1.5">
-          <div className="relative" style={{ width: 90, height: 90 }}>
+          <div className="relative" style={{ width: 110, height: 110 }}>
+
             <div
               ref={radarRef}
               className="absolute inset-0 rounded-full"

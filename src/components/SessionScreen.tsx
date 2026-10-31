@@ -49,7 +49,7 @@ const formatTime = (seconds: number): string => {
 };
 
 /* ═══════════════════════════════════════════════════════════
-   ⚡ LiveSessionTimer — أصغر شوية
+   ⚡ LiveSessionTimer — متوسط الحجم ومتناسق
    ═══════════════════════════════════════════════════════════ */
 const LiveSessionTimer = memo(function LiveSessionTimer({
   activeStartMs,
@@ -102,9 +102,9 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
 
   return (
     <>
-      <div className="relative mb-3">
+      <div className="relative mb-2">
         <div
-          className="w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center border-[3px] relative"
+          className="w-52 h-52 rounded-full flex flex-col items-center justify-center border-[3px] relative"
           style={{
             background: `
               radial-gradient(circle at 30% 30%, #16254a 0%, #0a1628 70%),
@@ -119,21 +119,21 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
           }}
         >
           <div
-            className="absolute inset-2 rounded-full border-2 opacity-25 pointer-events-none"
+            className="absolute inset-2.5 rounded-full border-2 opacity-25 pointer-events-none"
             style={{ borderColor: BRAND.green, borderStyle: 'dashed' }}
           />
-          <div className="flex items-center gap-1 mb-1">
+          <div className="flex items-center gap-1 mb-1.5">
             <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: BRAND.green }} />
-            <Clock size={18} style={{ color: BRAND.green }} />
+            <Clock size={22} style={{ color: BRAND.green }} />
           </div>
           <div
-            className="text-[26px] sm:text-[30px] font-black font-mono text-white leading-none tracking-wider dir-ltr"
+            className="text-[34px] font-black font-mono text-white leading-none tracking-wider dir-ltr"
             style={{ textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}
           >
             {formatTime(elapsed)}
           </div>
           <div
-            className="text-[9px] font-black mt-2 px-2.5 py-0.5 rounded-full"
+            className="text-[10px] font-black mt-2.5 px-3 py-0.5 rounded-full"
             style={{
               background: 'rgba(10, 22, 40, 0.9)',
               color: BRAND.slateMuted,
@@ -148,7 +148,7 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
 
       {showAutoEndWarning && (
         <div
-          className="w-full max-w-md rounded-xl px-3 py-2 mb-2 text-center border-2"
+          className="w-full max-w-md rounded-xl px-3 py-1.5 mb-2 text-center border-2"
           style={{
             background: 'linear-gradient(135deg, rgba(239,68,68,0.2) 0%, rgba(220,38,38,0.1) 100%)',
             borderColor: 'rgba(239, 68, 68, 0.5)',
@@ -192,8 +192,6 @@ export default function SessionScreen() {
   const autoEndedRef = useRef(false);
 
   const [ending, setEnding] = useState(false);
-
-  // ─── حالة الدرع المسترجعة من الـ DB ───
   const [shieldResumed, setShieldResumed] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -266,9 +264,7 @@ export default function SessionScreen() {
     return ms > 0 ? ms : getServerNow();
   }, [activeSession]);
 
-  // ═══════════════════════════════════════════════════════
-  // 🛡️ استرجاع حالة الدرع من الـ DB بعد الـ Refresh
-  // ═══════════════════════════════════════════════════════
+  // 🛡️ استرجاع حالة الدرع من الـ DB
   useEffect(() => {
     if (!activeSession?.id) {
       setShieldResumed(null);
@@ -346,12 +342,18 @@ export default function SessionScreen() {
     };
   }, [userPlate, userPhone, fetchAll, isMySessionRow]);
 
-  const handleEndSession = useCallback(async () => {
+const handleEndSession = useCallback(async () => {
     if (ending || !activeSession) return;
     setEnding(true);
     try {
       const elapsedSec = Math.floor((getServerNow() - activeStartMs) / 1000);
       await endSession(activeSession.id, Math.max(0, elapsedSec), 'cash', 0);
+
+      // ✅ أضف الأسطر دي:
+      await supabase.from('shield_sessions')
+        .update({ ended_at: new Date().toISOString(), push_endpoint: null, push_p256dh: null, push_auth: null })
+        .eq('session_id', activeSession.id).is('ended_at', null);
+
       if (typeof acknowledgeSession === 'function') acknowledgeSession(activeSession.id);
       toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
       if (isMountedRef.current) {
@@ -364,12 +366,17 @@ export default function SessionScreen() {
       setEnding(false);
     }
   }, [ending, activeSession, activeStartMs, endSession, acknowledgeSession, setSelectedGarageId, setScreen]);
-
-  const handleAutoEnd = useCallback(async () => {
+const handleAutoEnd = useCallback(async () => {
     if (autoEndedRef.current || !activeSession) return;
     autoEndedRef.current = true;
     try {
       await endSession(activeSession.id, AUTO_END_SECONDS, 'cash', 0);
+
+      // ✅ أضف الأسطر دي:
+      await supabase.from('shield_sessions')
+        .update({ ended_at: new Date().toISOString(), push_endpoint: null, push_p256dh: null, push_auth: null })
+        .eq('session_id', activeSession.id).is('ended_at', null);
+
       if (typeof acknowledgeSession === 'function') acknowledgeSession(activeSession.id);
       toast.success('تم إنهاء الجلسة تلقائياً (6 ساعات) ⏰', { duration: 5000 });
       if (isMountedRef.current) {
@@ -422,7 +429,7 @@ export default function SessionScreen() {
   }, [activeSession, lastCompletedSession, sessions, setScreen, setSelectedGarageId, acknowledgedSessionIds, acknowledgeSession]);
 
   // ═══════════════════════════════════════════════════════
-  // 🎨 RENDER
+  // 🎨 RENDER — تنسيق متوازن
   // ═══════════════════════════════════════════════════════
   if (!activeSession) return null;
 
@@ -434,13 +441,13 @@ export default function SessionScreen() {
       dir="rtl"
     >
       {/* ═══════════════════════════════
-          🎯 القسم العلوي
+          🎯 القسم العلوي — متوازن
           ═══════════════════════════════ */}
-      <div className="flex-1 flex flex-col items-center justify-start px-4 pt-4 pb-2 overflow-y-auto">
+      <div className="flex-1 flex flex-col items-center px-4 pt-3 pb-2 gap-2.5 overflow-y-auto">
 
         {/* بادج "جلسة نشطة" */}
         <div
-          className="mb-3 px-3.5 py-1 rounded-full flex items-center gap-2 border"
+          className="px-3.5 py-1 rounded-full flex items-center gap-2 border"
           style={{
             background: 'rgba(140, 198, 63, 0.12)',
             borderColor: 'rgba(140, 198, 63, 0.4)',
@@ -452,9 +459,9 @@ export default function SessionScreen() {
           </span>
         </div>
 
-        {/* 🛡️ الدرع — بشكل احترافي جديد */}
+        {/* 🛡️ الدرع */}
         {garage && shieldResumed !== null && (
-          <div className="w-full max-w-md mb-3">
+          <div className="w-full max-w-md">
             <ShieldOverlay
               key={shieldResumed ? 'resumed' : 'fresh'}
               sessionId={activeSession.id}
@@ -470,13 +477,13 @@ export default function SessionScreen() {
           </div>
         )}
 
-        {/* ⚡ العداد — أصغر */}
+        {/* ⚡ العداد — حجم متوسط ومتناسق */}
         <LiveSessionTimer
           activeStartMs={activeStartMs}
           onAutoEnd={handleAutoEnd}
         />
 
-        {/* 💬 بطاقة الإرشاد — مضغوطة */}
+        {/* 💬 بطاقة الإرشاد */}
         <div
           className="w-full max-w-md rounded-xl px-3 py-2 text-center border"
           style={{
@@ -499,7 +506,7 @@ export default function SessionScreen() {
       </div>
 
       {/* ═══════════════════════════════
-          📋 القسم السفلي — مضغوط
+          📋 القسم السفلي
           ═══════════════════════════════ */}
       <div
         className="px-4 pt-3 pb-4 border-t shrink-0"
