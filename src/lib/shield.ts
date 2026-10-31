@@ -173,13 +173,13 @@ export function startShieldGPS(params: {
       if (now - breachStartTime >= gracePeriod) {
         if (!isCurrentlyOutside) {
           isCurrentlyOutside = true;
-          sendGPSToServer(params.sessionId, lat, lng, true);
+          sendGPSToServer(params.sessionId, lat, lng, true, speed);
           lastSentLat = lat;
           lastSentLng = lng;
           lastSentAt = now;
           params.onGeofenceBreach(distFromGarage);
         } else if (distFromLastSent > MIN_MOVEMENT_METERS) {
-          sendGPSToServer(params.sessionId, lat, lng, true);
+          sendGPSToServer(params.sessionId, lat, lng, true, speed);
           lastSentLat = lat;
           lastSentLng = lng;
           lastSentAt = now;
@@ -190,7 +190,7 @@ export function startShieldGPS(params: {
 
       if (isCurrentlyOutside) {
         isCurrentlyOutside = false;
-        sendGPSToServer(params.sessionId, lat, lng, false);
+        sendGPSToServer(params.sessionId, lat, lng, false, speed);
         lastSentLat = lat;
         lastSentLng = lng;
         lastSentAt = now;
@@ -245,22 +245,27 @@ export function stopShieldGPS(): void {
   prevPos = null;
 }
 
-// ─── إرسال GPS للسيرفر (بدون last_speed — الـ ShieldOverlay بيتولى) ───
+// ─── إرسال GPS للسيرفر مع حفظ السرعة ───
 function sendGPSToServer(
   sessionId: string,
   lat: number,
   lng: number,
   isOutside: boolean,
+  speed?: number | null,
 ): void {
+  const payload: any = {
+    last_lat: lat,
+    last_lng: lng,
+    last_gps_at: new Date().toISOString(),
+    is_outside_fence: isOutside,
+  };
+  if (speed !== undefined && speed !== null && speed >= 0) {
+    payload.last_speed = speed;
+  }
+
   supabase
     .from('shield_sessions')
-    .update({
-      last_lat: lat,
-      last_lng: lng,
-      last_gps_at: new Date().toISOString(),
-      is_outside_fence: isOutside,
-      // ✅ مفيش last_speed — عشان ما نمسحش الـ speed اللي الـ ShieldOverlay بعته
-    })
+    .update(payload)
     .eq('session_id', sessionId)
     .is('ended_at', null)
     .then(() => {})
