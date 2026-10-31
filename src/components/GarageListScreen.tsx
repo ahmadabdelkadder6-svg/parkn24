@@ -538,7 +538,7 @@ export default function GarageListScreen() {
               <span className="text-base font-black text-slate-900 leading-tight">أهلاً {currentUser?.name?.split(' ')[0] || 'بك'} 👋</span>
               {/* 🚀 جملة تحفيزية بخط أكبر وأوضح */}
               <span className="text-[13px] font-black leading-tight mt-1" style={{ color: BRAND.blue }}>
-                اركن بسرعة… وريّح بالك! 🚗✨
+            parkn24.com  اركن بسرعة… وريّح بالك! 🚗✨
               </span>
             </div>
           </div>
@@ -938,7 +938,7 @@ export default function GarageListScreen() {
 
               <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3" style={{ background: BRAND.green + '20' }}><QrCode size={24} style={{ color: BRAND.greenDark }} /></div>
               <h3 className="text-base font-black mb-1" style={{ color: BRAND.blueDark }}>📲 شارك بركن 24 مع أصحابك</h3>
-              <p className="text-xs font-bold mb-4 leading-relaxed" style={{ color: BRAND.slate }}>دليل وأماكن الركن الذكية في القاهرة بين إيديك! 🚗💨</p>
+              <p className="text-xs font-bold mb-4 leading-relaxed" style={{ color: BRAND.slate }}>دليل وأماكن الركن الذكية في القاهرة بين إيديك parkn24.com🚗💨</p>
 
               <div className="w-64 h-64 mx-auto p-4 bg-white rounded-[32px] border-4 shadow-xl flex items-center justify-center mb-5" style={{ borderColor: BRAND.blue }}>
                 <QRCodeCanvas
