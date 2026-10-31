@@ -1,5 +1,5 @@
-// ✅ Version - v14 نصوص قانونية + دعم الحماية الكاملة عند إغلاق التطبيق
-const CACHE_NAME    = 'parkn24-v14';
+// ✅ Version - v15 توجيه الإشعارات للشاشة الرئيسية مباشرة عند النقر
+const CACHE_NAME    = 'parkn24-v15';
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
 const recentNotifications = new Map();
@@ -17,7 +17,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 Service Worker Installed (v14)');
+      console.log('📦 Service Worker Installed (v15)');
       return cache.addAll(STATIC_ASSETS);
     })
   );
@@ -135,7 +135,7 @@ self.addEventListener('push', (event) => {
   let options;
 
   if (isBreach) {
-    // 🚨 تنبيه حركة - اهتزاز عنيف جداً + توجيه مباشر لصفحة الحماية عند الضغط
+    // 🚨 تنبيه حركة - اهتزاز عنيف وتوجيه للشاشة الرئيسية
     options = {
       body: body || 'السيارة اتحركت من مكان الركن! افتح التطبيق فوراً',
       icon,
@@ -150,7 +150,7 @@ self.addEventListener('push', (event) => {
       renotify: true,
       silent: false,
       timestamp: now,
-      data: { url: '/?shield', type: 'shield-breach', ...extraData },
+      data: { url: '/', type: 'shield-breach', ...extraData }, // 👈 يوجه للرئيسية مباشرة
       actions: [
         { action: 'open',    title: '🚨 افتح التطبيق فوراً' },
         { action: 'dismiss', title: '✅ أنا اللي سايق'       },
@@ -188,7 +188,7 @@ self.addEventListener('push', (event) => {
       renotify: isWarning,
       silent: false,
       timestamp: now,
-      data: { url: '/?shield', type: 'shield', ...extraData },
+      data: { url: '/', type: 'shield', ...extraData }, // 👈 يوجه للرئيسية مباشرة
     };
   } else {
     options = {
@@ -205,7 +205,7 @@ self.addEventListener('push', (event) => {
       renotify: true,
       silent: false,
       timestamp: now,
-      data: { url, ...extraData },
+      data: { url: url || '/', ...extraData },
       actions: [
         { action: 'open',    title: '🚗 فتح التطبيق فوراً' },
         { action: 'dismiss', title: '✕ إغلاق'             },
@@ -238,7 +238,8 @@ self.addEventListener('notificationclick', (event) => {
     return;
   }
 
-  const targetUrl = notifData.url || (isBreach ? '/?shield' : '/');
+  // 🎯 التوجيه دائماً للصفحة الرئيسية (/)
+  const targetUrl = notifData.url || '/';
 
   event.waitUntil(
     clients
@@ -254,11 +255,11 @@ self.addEventListener('notificationclick', (event) => {
                 shieldId: notifData.shieldId,
               });
             }
-            if (targetUrl && 'navigate' in client) client.navigate(targetUrl);
+            if ('navigate' in client) client.navigate(targetUrl);
             return client.focus();
           }
         }
-        // لو التطبيق كان مقفول تماماً → يفتح صفحة الحماية فوراً
+        // لو التطبيق كان مقفول تماماً → يفتح الصفحة الرئيسية فوراً
         if (clients.openWindow) return clients.openWindow(targetUrl);
       })
   );
