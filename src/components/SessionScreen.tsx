@@ -11,6 +11,8 @@ import {
   CheckCircle2,
   ShieldCheck,
   XCircle,
+  AlertTriangle,
+  ArrowRight,
 } from 'lucide-react';
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
@@ -196,16 +198,13 @@ export default function SessionScreen() {
   const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
   const isMountedRef = useRef(true);
-  const redirectedToListRef = useRef(false);
-  const redirectedToSessionRef = useRef(false);
-  const activeSessionIdRef = useRef<string | null>(null);
   const realtimeChannelRef = useRef<any>(null);
   const autoEndedRef = useRef(false);
 
   const [ending, setEnding] = useState(false);
   const [shieldResumed, setShieldResumed] = useState<boolean | null>(null);
 
-  // 🚀 قراءة حالة التوجه للجراج محلياً لمنع التوجيه التلقائي
+  // 🚀 قراءة محليّة فورية لمنع تحويل الشاشة
   const [pendingArrival, setPendingArrival] = useState<any>(() => getPendingArrival());
   const [startingSession, setStartingSession] = useState(false);
 
@@ -280,19 +279,13 @@ export default function SessionScreen() {
     (g) => g.id === (activeSession?.garageId ?? lastCompletedSession?.garageId),
   );
 
-  useEffect(() => {
-    if (activeSession?.id) {
-      activeSessionIdRef.current = activeSession.id;
-    }
-  }, [activeSession?.id]);
-
   const activeStartMs = useMemo(() => {
     if (!activeSession) return 0;
     const ms = safeParseTime(activeSession.startTime);
     return ms > 0 ? ms : getServerNow();
   }, [activeSession]);
 
-  // 🛡️ استرجاع حالة الدرع من الـ DB (المنطق الأصلي)
+  // 🛡️ استرجاع حالة الدرع من الـ DB
   useEffect(() => {
     if (!activeSession?.id) {
       setShieldResumed(null);
@@ -370,7 +363,7 @@ export default function SessionScreen() {
     };
   }, [userPlate, userPhone, fetchAll, isMySessionRow]);
 
-  // 🏁 إنهاء الجلسة (المنطق الأصلي)
+  // 🏁 إنهاء الجلسة يدويًا عند الضغط على زر الخروج
   const handleEndSession = useCallback(async () => {
     if (ending || !activeSession) return;
     setEnding(true);
@@ -395,7 +388,7 @@ export default function SessionScreen() {
     }
   }, [ending, activeSession, activeStartMs, endSession, acknowledgeSession, setSelectedGarageId, setScreen]);
 
-  // ⏰ الإنهاء التلقائي بعد 6 ساعات (المنطق الأصلي)
+  // ⏰ الإنهاء التلقائي بعد 6 ساعات
   const handleAutoEnd = useCallback(async () => {
     if (autoEndedRef.current || !activeSession) return;
     autoEndedRef.current = true;
@@ -418,7 +411,7 @@ export default function SessionScreen() {
     }
   }, [activeSession, endSession, acknowledgeSession, setSelectedGarageId, setScreen]);
 
-  // ✅ البدء المباشر للجلسة في قاعدة بيانات Supabase عند تأكيد الوصول
+  // ✅ بدء الجلسة في Supabase عند ضغط الزر الأخضر
   const handleConfirmArrivalAndStartSession = useCallback(async () => {
     if (!pendingArrival || startingSession) return;
     setStartingSession(true);
@@ -460,59 +453,8 @@ export default function SessionScreen() {
     setScreen('list');
   }, [setSelectedGarageId, setScreen]);
 
-  useEffect(() => {
-    if (!activeSession) { redirectedToSessionRef.current = false; return; }
-    if (redirectedToSessionRef.current) return;
-    redirectedToSessionRef.current = true;
-    if (activeSession.garageId) setSelectedGarageId(activeSession.garageId);
-  }, [activeSession, setSelectedGarageId]);
-
-  // 🛡️ التوجيه التلقائي الأصلي مع حماية حالة التوجه للجراج
-  useEffect(() => {
-    const currentPending = pendingArrival || getPendingArrival();
-
-    if (activeSession || currentPending) {
-      redirectedToListRef.current = false;
-      return;
-    }
-
-    if (activeSessionIdRef.current) {
-      const targetSession = sessions.find((s) => s.id === activeSessionIdRef.current);
-      if (targetSession && targetSession.status === 'completed' && !redirectedToListRef.current) {
-        redirectedToListRef.current = true;
-        if (typeof acknowledgeSession === 'function') acknowledgeSession(targetSession.id);
-        activeSessionIdRef.current = null;
-        toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
-        if (isMountedRef.current) {
-          setSelectedGarageId(null);
-          setScreen('list');
-        }
-        return;
-      }
-    }
-
-    if (lastCompletedSession && !redirectedToListRef.current) {
-      const isNotAcknowledged = acknowledgedSessionIds ? !acknowledgedSessionIds.has(lastCompletedSession.id) : true;
-      if (isNotAcknowledged) {
-        redirectedToListRef.current = true;
-        if (typeof acknowledgeSession === 'function') acknowledgeSession(lastCompletedSession.id);
-        toast.success('تم إنهاء الجلسة بنجاح ✅', { icon: '🏁', duration: 3000 });
-        if (isMountedRef.current) {
-          setSelectedGarageId(null);
-          setScreen('list');
-        }
-      }
-    } else if (!lastCompletedSession && !redirectedToListRef.current) {
-      redirectedToListRef.current = true;
-      if (isMountedRef.current) {
-        setSelectedGarageId(null);
-        setScreen('list');
-      }
-    }
-  }, [activeSession, pendingArrival, lastCompletedSession, sessions, setScreen, setSelectedGarageId, acknowledgedSessionIds, acknowledgeSession]);
-
   // ═══════════════════════════════════════════════════════
-  // 🟢 حالة 1: المستخدم في الطريق للوصول للجراج (واجهة التوجه)
+  // 🟢 حالة 1: المستخدم في الطريق للوصول للجراج
   // ═══════════════════════════════════════════════════════
   if (!activeSession && pendingArrival) {
     return (
@@ -601,112 +543,85 @@ export default function SessionScreen() {
   // ═══════════════════════════════════════════════════════
   // 🎨 حالة 2: جلسة ركن نشطة (الدرع + العداد الأصليين)
   // ═══════════════════════════════════════════════════════
-  if (!activeSession) return null;
-
-  return (
-    <motion.div
-      className="h-full flex flex-col bg-slate-950 text-white overflow-hidden"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      dir="rtl"
-    >
-      <div className="flex-1 flex flex-col items-center px-4 pt-3 pb-2 gap-2.5 overflow-y-auto">
-        {/* بادج "جلسة نشطة" */}
-        <div
-          className="px-3.5 py-1 rounded-full flex items-center gap-2 border"
-          style={{
-            background: 'rgba(140, 198, 63, 0.12)',
-            borderColor: 'rgba(140, 198, 63, 0.4)',
-          }}
-        >
-          <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: BRAND.green, boxShadow: `0 0 8px ${BRAND.green}` }} />
-          <span className="text-[10px] font-black tracking-wider" style={{ color: BRAND.green }}>
-            جلسة ركن نشطة
-          </span>
-        </div>
-
-        {/* 🛡️ الدرع الأصلي */}
-        {garage && shieldResumed !== null && (
-          <div className="w-full max-w-md">
-            <ShieldOverlay
-              key={shieldResumed ? 'resumed' : 'fresh'}
-              sessionId={activeSession.id}
-              userId={currentUser?.id || ''}
-              garageId={activeSession.garageId}
-              parkingLat={(garage as any).lat ?? 30.0444}
-              parkingLng={(garage as any).lng ?? 31.2357}
-              userPhone={currentUser?.phone ?? null}
-              onDeductWallet={deductWallet}
-              onNavigateToWallet={() => setScreen('list')}
-              autoResume={shieldResumed}
-              onSessionEnd={handleEndSession}
-            />
-          </div>
-        )}
-
-        {/* ⚡ العداد الأصلي */}
-        <LiveSessionTimer
-          activeStartMs={activeStartMs}
-          onAutoEnd={handleAutoEnd}
-        />
-
-        {/* 💬 بطاقة الإرشاد */}
-        <div
-          className="w-full max-w-md rounded-xl px-3 py-2 text-center border"
-          style={{
-            background: `linear-gradient(135deg, ${BRAND.navyLight} 0%, rgba(17, 30, 54, 0.85) 100%)`,
-            borderColor: BRAND.border,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-          }}
-        >
-          <div className="flex items-center justify-center gap-1.5 mb-0.5 font-black text-white text-[12px]">
-            <Sparkles size={12} className="text-amber-400 shrink-0" />
-            <span>خلّص مشوارك براحتك 🚗</span>
-          </div>
-          <p
-            className="font-black leading-snug mx-auto text-[10px]"
-            style={{ color: BRAND.slateMuted, maxWidth: '320px' }}
-          >
-            وقتك <span className="text-amber-300">محفوظ بالثانية</span> — اقفل التطبيق وافتحه عند الرجوع.
-          </p>
-        </div>
-      </div>
-
-      {/* 📋 القسم السفلي الأصلي */}
-      <div
-        className="px-4 pt-3 pb-4 border-t shrink-0"
-        style={{
-          background: 'linear-gradient(180deg, transparent 0%, rgba(10, 22, 40, 0.6) 100%)',
-          borderColor: BRAND.border,
-        }}
+  if (activeSession) {
+    return (
+      <motion.div
+        className="h-full flex flex-col bg-slate-950 text-white overflow-hidden"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        dir="rtl"
       >
-        <div className="w-full grid grid-cols-2 gap-2 mb-2.5">
+        <div className="flex-1 flex flex-col items-center px-4 pt-3 pb-2 gap-2.5 overflow-y-auto">
+          {/* بادج "جلسة نشطة" */}
           <div
-            className="border rounded-xl p-2 text-center"
+            className="px-3.5 py-1 rounded-full flex items-center gap-2 border"
             style={{
-              background: `linear-gradient(135deg, ${BRAND.navyLight} 0%, rgba(17, 30, 54, 0.5) 100%)`,
-              borderColor: BRAND.border,
+              background: 'rgba(140, 198, 63, 0.12)',
+              borderColor: 'rgba(140, 198, 63, 0.4)',
             }}
           >
-            <div className="flex items-center justify-center gap-1 mb-1">
-              <Car size={11} style={{ color: BRAND.blue }} />
-              <span className="text-[9px] font-black uppercase tracking-wider" style={{ color: BRAND.slateMuted }}>
-                سيارتك
-              </span>
-            </div>
-            <div
-              className="text-[13px] font-black text-white font-mono tracking-widest py-1.5 px-1 rounded-md border"
-              style={{
-                background: 'rgba(10, 22, 40, 0.9)',
-                borderColor: BRAND.border,
-                letterSpacing: '2px',
-              }}
-            >
-              {activeSession.carPlate || currentUser?.carPlate || '---'}
-            </div>
+            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: BRAND.green, boxShadow: `0 0 8px ${BRAND.green}` }} />
+            <span className="text-[10px] font-black tracking-wider" style={{ color: BRAND.green }}>
+              جلسة ركن نشطة
+            </span>
           </div>
 
-          {garage && (
+          {/* 🛡️ الدرع الأصلي */}
+          {garage && shieldResumed !== null && (
+            <div className="w-full max-w-md">
+              <ShieldOverlay
+                key={shieldResumed ? 'resumed' : 'fresh'}
+                sessionId={activeSession.id}
+                userId={currentUser?.id || ''}
+                garageId={activeSession.garageId}
+                parkingLat={(garage as any).lat ?? 30.0444}
+                parkingLng={(garage as any).lng ?? 31.2357}
+                userPhone={currentUser?.phone ?? null}
+                onDeductWallet={deductWallet}
+                onNavigateToWallet={() => setScreen('list')}
+                autoResume={shieldResumed}
+                onSessionEnd={handleEndSession}
+              />
+            </div>
+          )}
+
+          {/* ⚡ العداد الأصلي */}
+          <LiveSessionTimer
+            activeStartMs={activeStartMs}
+            onAutoEnd={handleAutoEnd}
+          />
+
+          {/* 💬 بطاقة الإرشاد */}
+          <div
+            className="w-full max-w-md rounded-xl px-3 py-2 text-center border"
+            style={{
+              background: `linear-gradient(135deg, ${BRAND.navyLight} 0%, rgba(17, 30, 54, 0.85) 100%)`,
+              borderColor: BRAND.border,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+            }}
+          >
+            <div className="flex items-center justify-center gap-1.5 mb-0.5 font-black text-white text-[12px]">
+              <Sparkles size={12} className="text-amber-400 shrink-0" />
+              <span>خلّص مشوارك براحتك 🚗</span>
+            </div>
+            <p
+              className="font-black leading-snug mx-auto text-[10px]"
+              style={{ color: BRAND.slateMuted, maxWidth: '320px' }}
+            >
+              وقتك <span className="text-amber-300">محفوظ بالثانية</span> — اقفل التطبيق وافتحه عند الرجوع.
+            </p>
+          </div>
+        </div>
+
+        {/* 📋 القسم السفلي الأصلي */}
+        <div
+          className="px-4 pt-3 pb-4 border-t shrink-0"
+          style={{
+            background: 'linear-gradient(180deg, transparent 0%, rgba(10, 22, 40, 0.6) 100%)',
+            borderColor: BRAND.border,
+          }}
+        >
+          <div className="w-full grid grid-cols-2 gap-2 mb-2.5">
             <div
               className="border rounded-xl p-2 text-center"
               style={{
@@ -715,40 +630,99 @@ export default function SessionScreen() {
               }}
             >
               <div className="flex items-center justify-center gap-1 mb-1">
-                <MapPin size={11} style={{ color: BRAND.green }} />
+                <Car size={11} style={{ color: BRAND.blue }} />
                 <span className="text-[9px] font-black uppercase tracking-wider" style={{ color: BRAND.slateMuted }}>
-                  الجراج
+                  سيارتك
                 </span>
               </div>
               <div
-                className="text-[11px] font-black text-white leading-tight py-1.5 px-1 rounded-md border truncate"
+                className="text-[13px] font-black text-white font-mono tracking-widest py-1.5 px-1 rounded-md border"
                 style={{
                   background: 'rgba(10, 22, 40, 0.9)',
                   borderColor: BRAND.border,
+                  letterSpacing: '2px',
                 }}
-                title={garage.name}
               >
-                {garage.name}
+                {activeSession.carPlate || currentUser?.carPlate || '---'}
               </div>
             </div>
-          )}
-        </div>
 
+            {garage && (
+              <div
+                className="border rounded-xl p-2 text-center"
+                style={{
+                  background: `linear-gradient(135deg, ${BRAND.navyLight} 0%, rgba(17, 30, 54, 0.5) 100%)`,
+                  borderColor: BRAND.border,
+                }}
+              >
+                <div className="flex items-center justify-center gap-1 mb-1">
+                  <MapPin size={11} style={{ color: BRAND.green }} />
+                  <span className="text-[9px] font-black uppercase tracking-wider" style={{ color: BRAND.slateMuted }}>
+                    الجراج
+                  </span>
+                </div>
+                <div
+                  className="text-[11px] font-black text-white leading-tight py-1.5 px-1 rounded-md border truncate"
+                  style={{
+                    background: 'rgba(10, 22, 40, 0.9)',
+                    borderColor: BRAND.border,
+                  }}
+                  title={garage.name}
+                >
+                  {garage.name}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            aria-label="إنهاء الجلسة الحالية"
+            onClick={handleEndSession}
+            disabled={ending}
+            className="w-full py-3.5 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center border-0 text-white cursor-pointer font-black text-sm disabled:opacity-50"
+            style={{
+              background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
+              boxShadow: '0 8px 24px rgba(220, 38, 38, 0.45), inset 0 1px 0 rgba(255,255,255,0.15)',
+              letterSpacing: '0.3px',
+            }}
+          >
+            <span className="text-center font-black text-white">
+              {ending ? '⏳ جاري إنهاء الجلسة...' : '🚗 إنهاء الجلسة والخروج'}
+            </span>
+          </button>
+        </div>
+      </motion.div>
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // 🔴 حالة 3: لا توجد جلسة ولا توجه (واجهة ثابتة بطلب العودة للرئيسية)
+  // ═══════════════════════════════════════════════════════
+  return (
+    <motion.div
+      className="h-full flex flex-col items-center justify-center bg-slate-950 text-white p-6 dir-rtl text-center"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+    >
+      <div className="space-y-4 max-w-sm">
+        <div className="w-16 h-16 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center mx-auto">
+          <AlertTriangle size={32} />
+        </div>
+        <h3 className="text-xl font-black text-white">لا توجد جلسة ركن نشطة حالياً</h3>
+        <p className="text-xs font-bold text-slate-400 leading-relaxed">
+          يمكنك اختيار جراج من القائمة والتوجه إليه لتفعيل حماية السيارة وركنها.
+        </p>
         <button
           type="button"
-          aria-label="إنهاء الجلسة الحالية"
-          onClick={handleEndSession}
-          disabled={ending}
-          className="w-full py-3.5 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center border-0 text-white cursor-pointer font-black text-sm disabled:opacity-50"
-          style={{
-            background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
-            boxShadow: '0 8px 24px rgba(220, 38, 38, 0.45), inset 0 1px 0 rgba(255,255,255,0.15)',
-            letterSpacing: '0.3px',
+          onClick={() => {
+            setSelectedGarageId(null);
+            setScreen('list');
           }}
+          className="w-full py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black text-sm flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-blue-900/30"
         >
-          <span className="text-center font-black text-white">
-            {ending ? '⏳ جاري إنهاء الجلسة...' : '🚗 إنهاء الجلسة والخروج'}
-          </span>
+          <span>العودة للرئيسية واسكشاف الجراجات</span>
+          <ArrowRight size={18} />
         </button>
       </div>
     </motion.div>
