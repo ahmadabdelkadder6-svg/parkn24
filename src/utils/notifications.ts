@@ -249,7 +249,7 @@ export const sendLocalNotification = async (
   title: string,
   body: string,
   tag = 'valet-urgent-alarm',
-  url = '/garage'
+  url = '/'
 ) => {
   try {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
@@ -291,7 +291,7 @@ export const notifyIncomingCar = (carPlate: string) => {
     '🚨 سيارة في الطريق إليك!',
     `🚗 رقم اللوحة: ${carPlate} • استعد للاستقبال فوراً!`,
     `incoming-${carPlate}`,
-    '/garage'
+    '/'
   );
 };
 
@@ -302,6 +302,6 @@ export const notifyNewOffer = (carPlate: string, price: number) => {
     '💰 عرض سعر جديد!',
     `🚗 السيارة ${carPlate} - عرضت: ${price} ج.م/ساعة`,
     `offer-${carPlate}`,
-    '/garage'
+    '/'
   );
 };

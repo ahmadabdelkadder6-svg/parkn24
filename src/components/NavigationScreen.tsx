@@ -27,6 +27,7 @@ import {
   distanceToMinutes,
   formatDuration,
 } from '../utils/distance';
+import { openMapsWithSmartArrival } from '../utils/mapsNavigation';
 import toast from 'react-hot-toast';
 
 import 'leaflet/dist/leaflet.css';
@@ -202,7 +203,7 @@ export default function NavigationScreen() {
     };
   }, []);
 
-  /* ─── REALTIME & SYNC (بدون Polling تكراري كل ثانيتين) ─── */
+  /* ─── REALTIME & SYNC ─── */
   useEffect(() => {
     if (!userPlateNav && !userPhoneClean) return;
 
@@ -354,7 +355,7 @@ export default function NavigationScreen() {
     setScreen,
   ]);
 
-  /* ─── ❌ زر: وصلت بس ملقتش مكان / العودة للرئيسية (صامت تماماً) ─── */
+  /* ─── ❌ زر: وصلت بس ملقتش مكان / العودة للرئيسية ─── */
   const handleNoSpaceFound = useCallback(async () => {
     try {
       if (myIncomingCar) {
@@ -454,9 +455,21 @@ export default function NavigationScreen() {
     }
   };
 
+  /* 🗺️ فتح الخريطة مع إظهار تنبيه وصول (50m) لتأكيد بدء الجلسة بيده */
   const openExternalMaps = () => {
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
+    if (!garage) return;
+    openMapsWithSmartArrival(
+      garage.lat,
+      garage.lng,
+      garage.name,
+      () => {
+        // 🎯 تنبيه فقط دون بدء تلقائي: الموبايل يرن بـ Push والإشعار يفكره يدوس "وصلت للجراج"
+        toast.success('🎉 وصلت عند الجراج! اضغط على زرار "وصلت للجراج وبدأ الركن" لتفعيل الحماية 🛡️', {
+          duration: 6000,
+          icon: '📍',
+        });
+      }
+    );
   };
 
   const handleQuickTopup = async (tier: typeof TOPUP_TIERS[0]) => {
@@ -712,7 +725,7 @@ export default function NavigationScreen() {
               </span>
             </button>
 
-            {/* زر 2: وصلت بس ملقتش مكان (أحمر صريح) */}
+            {/* زر 2: وصلت بس ملقتش مكان */}
             <button
               type="button"
               onClick={handleNoSpaceFound}
@@ -728,7 +741,7 @@ export default function NavigationScreen() {
               </span>
             </button>
 
-            {/* زر 3: العودة للرئيسية (رمادي داكن صريح) */}
+            {/* زر 3: العودة للرئيسية */}
             <button
               type="button"
               onClick={handleNoSpaceFound}
@@ -747,7 +760,7 @@ export default function NavigationScreen() {
         )}
       </div>
 
-      {/* 💳 Insufficient Wallet Modal (بدون blur، لون صريح معتم) */}
+      {/* 💳 Insufficient Wallet Modal */}
       <AnimatePresence>
         {showInsufficientModal && (
           <motion.div
