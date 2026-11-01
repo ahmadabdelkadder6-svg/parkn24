@@ -60,7 +60,7 @@ const formatTime = (seconds: number): string => {
 };
 
 /* ═══════════════════════════════════════════════════════════
-   ⚡ LiveSessionTimer — متوسط الحجم ومتناسق
+   ⚡ LiveSessionTimer — متوسط الحجم ومتناسق (المنطق الأصلي)
    ═══════════════════════════════════════════════════════════ */
 const LiveSessionTimer = memo(function LiveSessionTimer({
   activeStartMs,
@@ -204,19 +204,27 @@ export default function SessionScreen() {
 
   const [ending, setEnding] = useState(false);
   const [shieldResumed, setShieldResumed] = useState<boolean | null>(null);
-  const [pendingArrival, setPendingArrival] = useState<any>(null);
+
+  // 🚀 قراءة حالة التوجه للجراج محلياً لمنع التوجيه التلقائي
+  const [pendingArrival, setPendingArrival] = useState<any>(() => getPendingArrival());
   const [startingSession, setStartingSession] = useState(false);
 
   useEffect(() => {
     isMountedRef.current = true;
 
-    // 🔍 فحص حالة التوجه للجراج المعلقة في الـ Storage عند فتح الشاشة
-    const pending = getPendingArrival();
-    if (pending) {
-      setPendingArrival(pending);
-    }
+    const syncPending = () => {
+      const p = getPendingArrival();
+      if (p) setPendingArrival(p);
+    };
 
-    return () => { isMountedRef.current = false; };
+    window.addEventListener('storage', syncPending);
+    window.addEventListener('focus', syncPending);
+
+    return () => {
+      isMountedRef.current = false;
+      window.removeEventListener('storage', syncPending);
+      window.removeEventListener('focus', syncPending);
+    };
   }, []);
 
   const isMySessionRow = useCallback((row: any) => {
@@ -284,7 +292,7 @@ export default function SessionScreen() {
     return ms > 0 ? ms : getServerNow();
   }, [activeSession]);
 
-  // 🛡️ استرجاع حالة الدرع من الـ DB
+  // 🛡️ استرجاع حالة الدرع من الـ DB (المنطق الأصلي)
   useEffect(() => {
     if (!activeSession?.id) {
       setShieldResumed(null);
@@ -362,6 +370,7 @@ export default function SessionScreen() {
     };
   }, [userPlate, userPhone, fetchAll, isMySessionRow]);
 
+  // 🏁 إنهاء الجلسة (المنطق الأصلي)
   const handleEndSession = useCallback(async () => {
     if (ending || !activeSession) return;
     setEnding(true);
@@ -386,6 +395,7 @@ export default function SessionScreen() {
     }
   }, [ending, activeSession, activeStartMs, endSession, acknowledgeSession, setSelectedGarageId, setScreen]);
 
+  // ⏰ الإنهاء التلقائي بعد 6 ساعات (المنطق الأصلي)
   const handleAutoEnd = useCallback(async () => {
     if (autoEndedRef.current || !activeSession) return;
     autoEndedRef.current = true;
@@ -408,7 +418,7 @@ export default function SessionScreen() {
     }
   }, [activeSession, endSession, acknowledgeSession, setSelectedGarageId, setScreen]);
 
-  // ✅ البدء المباشر للجلسة عند ضغط "وصلت للجراج وبدأ الركن"
+  // ✅ البدء المباشر للجلسة في قاعدة بيانات Supabase عند تأكيد الوصول
   const handleConfirmArrivalAndStartSession = useCallback(async () => {
     if (!pendingArrival || startingSession) return;
     setStartingSession(true);
@@ -457,9 +467,11 @@ export default function SessionScreen() {
     if (activeSession.garageId) setSelectedGarageId(activeSession.garageId);
   }, [activeSession, setSelectedGarageId]);
 
-  // 🛡️ حماية من التوجيه المفاجئ للرئيسية لو في حالة توجه للجراج (pendingArrival)
+  // 🛡️ التوجيه التلقائي الأصلي مع حماية حالة التوجه للجراج
   useEffect(() => {
-    if (activeSession || pendingArrival) {
+    const currentPending = pendingArrival || getPendingArrival();
+
+    if (activeSession || currentPending) {
       redirectedToListRef.current = false;
       return;
     }
@@ -500,7 +512,7 @@ export default function SessionScreen() {
   }, [activeSession, pendingArrival, lastCompletedSession, sessions, setScreen, setSelectedGarageId, acknowledgedSessionIds, acknowledgeSession]);
 
   // ═══════════════════════════════════════════════════════
-  // 🟢 حالة 1: المستخدم في الطريق للوصول للجراج
+  // 🟢 حالة 1: المستخدم في الطريق للوصول للجراج (واجهة التوجه)
   // ═══════════════════════════════════════════════════════
   if (!activeSession && pendingArrival) {
     return (
@@ -587,7 +599,7 @@ export default function SessionScreen() {
   }
 
   // ═══════════════════════════════════════════════════════
-  // 🎨 حالة 2: جلسة ركن نشطة (الدرع + العداد)
+  // 🎨 حالة 2: جلسة ركن نشطة (الدرع + العداد الأصليين)
   // ═══════════════════════════════════════════════════════
   if (!activeSession) return null;
 
@@ -613,7 +625,7 @@ export default function SessionScreen() {
           </span>
         </div>
 
-        {/* 🛡️ الدرع */}
+        {/* 🛡️ الدرع الأصلي */}
         {garage && shieldResumed !== null && (
           <div className="w-full max-w-md">
             <ShieldOverlay
@@ -632,7 +644,7 @@ export default function SessionScreen() {
           </div>
         )}
 
-        {/* ⚡ العداد — حجم متوسط ومتناسق */}
+        {/* ⚡ العداد الأصلي */}
         <LiveSessionTimer
           activeStartMs={activeStartMs}
           onAutoEnd={handleAutoEnd}
@@ -660,7 +672,7 @@ export default function SessionScreen() {
         </div>
       </div>
 
-      {/* 📋 القسم السفلي */}
+      {/* 📋 القسم السفلي الأصلي */}
       <div
         className="px-4 pt-3 pb-4 border-t shrink-0"
         style={{
