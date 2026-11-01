@@ -1,3 +1,5 @@
+// src/components/SessionScreen.tsx
+
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -5,11 +7,20 @@ import {
   Car,
   Sparkles,
   MapPin,
+  Navigation,
+  CheckCircle2,
+  ShieldCheck,
+  XCircle,
 } from 'lucide-react';
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import ShieldOverlay from './ShieldOverlay';
+import {
+  getPendingArrival,
+  clearPendingArrival,
+  stopArrivalTracking,
+} from '../utils/mapsNavigation';
 
 const BRAND = {
   blue: '#1656b8',
@@ -193,9 +204,18 @@ export default function SessionScreen() {
 
   const [ending, setEnding] = useState(false);
   const [shieldResumed, setShieldResumed] = useState<boolean | null>(null);
+  const [pendingArrival, setPendingArrival] = useState<any>(null);
+  const [startingSession, setStartingSession] = useState(false);
 
   useEffect(() => {
     isMountedRef.current = true;
+
+    // 🔍 فحص حالة التوجه للجراج المعلقة في الـ Storage عند فتح الشاشة
+    const pending = getPendingArrival();
+    if (pending) {
+      setPendingArrival(pending);
+    }
+
     return () => { isMountedRef.current = false; };
   }, []);
 
@@ -342,14 +362,13 @@ export default function SessionScreen() {
     };
   }, [userPlate, userPhone, fetchAll, isMySessionRow]);
 
-const handleEndSession = useCallback(async () => {
+  const handleEndSession = useCallback(async () => {
     if (ending || !activeSession) return;
     setEnding(true);
     try {
       const elapsedSec = Math.floor((getServerNow() - activeStartMs) / 1000);
       await endSession(activeSession.id, Math.max(0, elapsedSec), 'cash', 0);
 
-      // ✅ أضف الأسطر دي:
       await supabase.from('shield_sessions')
         .update({ ended_at: new Date().toISOString(), push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id).is('ended_at', null);
@@ -366,13 +385,13 @@ const handleEndSession = useCallback(async () => {
       setEnding(false);
     }
   }, [ending, activeSession, activeStartMs, endSession, acknowledgeSession, setSelectedGarageId, setScreen]);
-const handleAutoEnd = useCallback(async () => {
+
+  const handleAutoEnd = useCallback(async () => {
     if (autoEndedRef.current || !activeSession) return;
     autoEndedRef.current = true;
     try {
       await endSession(activeSession.id, AUTO_END_SECONDS, 'cash', 0);
 
-      // ✅ أضف الأسطر دي:
       await supabase.from('shield_sessions')
         .update({ ended_at: new Date().toISOString(), push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id).is('ended_at', null);
@@ -389,6 +408,48 @@ const handleAutoEnd = useCallback(async () => {
     }
   }, [activeSession, endSession, acknowledgeSession, setSelectedGarageId, setScreen]);
 
+  // ✅ البدء المباشر للجلسة عند ضغط "وصلت للجراج وبدأ الركن"
+  const handleConfirmArrivalAndStartSession = useCallback(async () => {
+    if (!pendingArrival || startingSession) return;
+    setStartingSession(true);
+    try {
+      stopArrivalTracking();
+      clearPendingArrival();
+
+      const nowIso = new Date().toISOString();
+      const { error } = await supabase
+        .from('sessions')
+        .insert({
+          garage_id: pendingArrival.garageId || null,
+          car_plate: userPlate || currentUser?.carPlate || '',
+          customer_phone: userPhone || currentUser?.phone || '',
+          start_time: nowIso,
+          status: 'active',
+        });
+
+      if (error) {
+        console.warn('⚠️ تعذر إنشاء الجلسة في السيرفر:', error);
+      }
+
+      toast.success('تم وصولك للجراج وبدأ الركن بنجاح! 🚗', { icon: '✅', duration: 4000 });
+      await fetchAll();
+      setPendingArrival(null);
+    } catch (err: any) {
+      toast.error('حدث خطأ أثناء بدء الجلسة');
+      console.error(err);
+    } finally {
+      setStartingSession(false);
+    }
+  }, [pendingArrival, startingSession, userPlate, userPhone, currentUser, fetchAll]);
+
+  const handleCancelPendingArrival = useCallback(() => {
+    stopArrivalTracking();
+    clearPendingArrival();
+    setPendingArrival(null);
+    setSelectedGarageId(null);
+    setScreen('list');
+  }, [setSelectedGarageId, setScreen]);
+
   useEffect(() => {
     if (!activeSession) { redirectedToSessionRef.current = false; return; }
     if (redirectedToSessionRef.current) return;
@@ -396,8 +457,12 @@ const handleAutoEnd = useCallback(async () => {
     if (activeSession.garageId) setSelectedGarageId(activeSession.garageId);
   }, [activeSession, setSelectedGarageId]);
 
+  // 🛡️ حماية من التوجيه المفاجئ للرئيسية لو في حالة توجه للجراج (pendingArrival)
   useEffect(() => {
-    if (activeSession) { redirectedToListRef.current = false; return; }
+    if (activeSession || pendingArrival) {
+      redirectedToListRef.current = false;
+      return;
+    }
 
     if (activeSessionIdRef.current) {
       const targetSession = sessions.find((s) => s.id === activeSessionIdRef.current);
@@ -425,11 +490,104 @@ const handleAutoEnd = useCallback(async () => {
           setScreen('list');
         }
       }
+    } else if (!lastCompletedSession && !redirectedToListRef.current) {
+      redirectedToListRef.current = true;
+      if (isMountedRef.current) {
+        setSelectedGarageId(null);
+        setScreen('list');
+      }
     }
-  }, [activeSession, lastCompletedSession, sessions, setScreen, setSelectedGarageId, acknowledgedSessionIds, acknowledgeSession]);
+  }, [activeSession, pendingArrival, lastCompletedSession, sessions, setScreen, setSelectedGarageId, acknowledgedSessionIds, acknowledgeSession]);
 
   // ═══════════════════════════════════════════════════════
-  // 🎨 RENDER — تنسيق متوازن
+  // 🟢 حالة 1: المستخدم في الطريق للوصول للجراج
+  // ═══════════════════════════════════════════════════════
+  if (!activeSession && pendingArrival) {
+    return (
+      <motion.div
+        className="h-full flex flex-col justify-between bg-slate-950 text-white p-5 dir-rtl overflow-y-auto"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <div className="space-y-6 mt-4 text-center">
+          <div
+            className="w-24 h-24 rounded-full flex items-center justify-center mx-auto border-2 relative animate-pulse"
+            style={{
+              background: 'rgba(22, 86, 184, 0.15)',
+              borderColor: BRAND.blue,
+              boxShadow: '0 0 30px rgba(22, 86, 184, 0.3)',
+            }}
+          >
+            <Navigation size={44} style={{ color: BRAND.blue }} />
+          </div>
+
+          <div className="space-y-2">
+            <span
+              className="px-3.5 py-1 rounded-full text-xs font-black inline-flex items-center gap-1.5 border"
+              style={{
+                background: 'rgba(140, 198, 63, 0.15)',
+                borderColor: 'rgba(140, 198, 63, 0.4)',
+                color: BRAND.green,
+              }}
+            >
+              <span className="w-2 h-2 rounded-full animate-ping" style={{ background: BRAND.green }} />
+              📌 جاري التوجه إلى الجراج
+            </span>
+
+            <h2 className="text-2xl font-black text-white">{pendingArrival.garageName || 'الجراج المختار'}</h2>
+            <p className="text-xs font-bold text-slate-400 max-w-xs mx-auto">
+              الملاحة الصوتية شغالة عبر Google Maps، والرادار يراقب وصولك تلقائياً
+            </p>
+          </div>
+
+          <div
+            className="rounded-2xl p-4 text-right space-y-3 border"
+            style={{
+              background: `linear-gradient(135deg, ${BRAND.navyLight} 0%, rgba(17, 30, 54, 0.85) 100%)`,
+              borderColor: BRAND.border,
+            }}
+          >
+            <div className="flex items-start gap-3 text-slate-200 text-xs font-bold">
+              <MapPin size={18} style={{ color: BRAND.blue }} className="shrink-0 mt-0.5" />
+              <span>أول ما توصل الجراج، اضغط على الزر الأخضر بالأسفل لبدء حساب الوقت وتفعيل درع المراقبة.</span>
+            </div>
+            <div className="flex items-start gap-3 text-slate-200 text-xs font-bold">
+              <ShieldCheck size={18} style={{ color: BRAND.green }} className="shrink-0 mt-0.5" />
+              <span>الدرع هيراقب الحركة وسيارتك مركونة وهيحميك من أي تحرك غير مصرح به.</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3 my-4">
+          <button
+            type="button"
+            onClick={handleConfirmArrivalAndStartSession}
+            disabled={startingSession}
+            className="w-full py-4 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 border-0 text-white font-black text-base cursor-pointer shadow-lg disabled:opacity-50"
+            style={{
+              background: `linear-gradient(135deg, ${BRAND.green} 0%, ${BRAND.greenDark} 100%)`,
+              boxShadow: '0 8px 24px rgba(140, 198, 63, 0.35)',
+            }}
+          >
+            <CheckCircle2 size={22} />
+            <span>{startingSession ? '⏳ جاري بدء الركن...' : 'وصلت للجراج وبدأ الركن ✅'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleCancelPendingArrival}
+            className="w-full py-3 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-400 font-bold text-xs border border-slate-800 flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <XCircle size={15} />
+            <span>إلغاء التوجه والعودة للرئيسية</span>
+          </button>
+        </div>
+      </motion.div>
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // 🎨 حالة 2: جلسة ركن نشطة (الدرع + العداد)
   // ═══════════════════════════════════════════════════════
   if (!activeSession) return null;
 
@@ -440,11 +598,7 @@ const handleAutoEnd = useCallback(async () => {
       animate={{ opacity: 1 }}
       dir="rtl"
     >
-      {/* ═══════════════════════════════
-          🎯 القسم العلوي — متوازن
-          ═══════════════════════════════ */}
       <div className="flex-1 flex flex-col items-center px-4 pt-3 pb-2 gap-2.5 overflow-y-auto">
-
         {/* بادج "جلسة نشطة" */}
         <div
           className="px-3.5 py-1 rounded-full flex items-center gap-2 border"
@@ -473,7 +627,7 @@ const handleAutoEnd = useCallback(async () => {
               onDeductWallet={deductWallet}
               onNavigateToWallet={() => setScreen('list')}
               autoResume={shieldResumed}
-                        onSessionEnd={handleEndSession}
+              onSessionEnd={handleEndSession}
             />
           </div>
         )}
@@ -506,9 +660,7 @@ const handleAutoEnd = useCallback(async () => {
         </div>
       </div>
 
-      {/* ═══════════════════════════════
-          📋 القسم السفلي
-          ═══════════════════════════════ */}
+      {/* 📋 القسم السفلي */}
       <div
         className="px-4 pt-3 pb-4 border-t shrink-0"
         style={{

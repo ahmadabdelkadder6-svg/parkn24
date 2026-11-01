@@ -12,8 +12,25 @@ export const openMapsWithSmartArrival = (
   garageLat: number,
   garageLng: number,
   garageName: string,
+  garageId?: string,
   onArrivedCallback?: () => void
 ) => {
+  // 💾 0. حفظ حالة التوجه للجراج في localStorage لضمان بقاء المستخدم في شاشة الجلسة عند فتح الإشعار
+  try {
+    localStorage.setItem(
+      'parkn24_pending_arrival',
+      JSON.stringify({
+        garageLat,
+        garageLng,
+        garageName,
+        garageId: garageId || '',
+        timestamp: Date.now(),
+      })
+    );
+  } catch (e) {
+    console.warn('⚠️ تعذر حفظ حالة التوجه للجراج:', e);
+  }
+
   // 1. إظهار إشعار ثابت للمستخدم يسهل عليه العودة لشاشة الجلسة في أي وقت
   sendLocalNotification(
     `📌 جاري التوجه إلى: ${garageName}`,
@@ -37,7 +54,7 @@ export const openMapsWithSmartArrival = (
         if (distMeters <= 50) {
           playNormalAlert();
           vibrateDevice([500, 200, 500, 200, 800]);
-          
+
           sendLocalNotification(
             '🎉 وصلت الجراج!',
             '🚗 اضغط هنا لبدء الجلسة وتفعيل حماية السيارة فوراً (وصلت للجراج وبدأ الركن)',
@@ -71,6 +88,34 @@ export const openMapsWithSmartArrival = (
   // 4. فتح خرائط جوجل الخارجية بنمط Driving Navigation Voice
   const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${garageLat},${garageLng}&travelmode=driving`;
   window.open(googleMapsUrl, '_blank');
+};
+
+/**
+ * 🧹 مسح حالة التوجه عند بدء الركن أو إلغاء الجلسة
+ */
+export const clearPendingArrival = () => {
+  try {
+    localStorage.removeItem('parkn24_pending_arrival');
+  } catch {}
+};
+
+/**
+ * 🔍 جلب حالة التوجه الحالية من الـ Storage
+ */
+export const getPendingArrival = () => {
+  try {
+    const item = localStorage.getItem('parkn24_pending_arrival');
+    if (!item) return null;
+    const parsed = JSON.parse(item);
+    // صلاحية التوجه 3 ساعات فقط
+    if (Date.now() - parsed.timestamp > 3 * 60 * 60 * 1000) {
+      clearPendingArrival();
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
 };
 
 /**
