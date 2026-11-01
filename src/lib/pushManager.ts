@@ -108,8 +108,7 @@ export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration
 };
 
 // ─── Subscribe ─────────────────────────────────────────────────
-export const subscribeToPush = async (garageId: string, userPhone?: string): Promise<PushResult> => {
-
+export const subscribeToPush = async (garageId?: string, userPhone?: string): Promise<PushResult> => {
   try {
     if (!('PushManager' in window) || !('Notification' in window)) {
       return { success: false, message: 'المتصفح مش بيدعم الإشعارات' };
@@ -128,7 +127,7 @@ export const subscribeToPush = async (garageId: string, userPhone?: string): Pro
     if (permission !== 'granted') {
       return { 
         success: false, 
-        message: 'فعّل إشعارات المتصفح عشان الدرع يشتغل! 🔔' 
+        message: 'فعّل إشعارات المتصفح عشان الحماية تشتغل! 🔔' 
       };
     }
 
@@ -154,26 +153,28 @@ export const subscribeToPush = async (garageId: string, userPhone?: string): Pro
       return { success: false, message: 'مفاتيح الاشتراك ناقصة' };
     }
 
-let phone = userPhone || '';
-if (!phone) {
-  try {
-    const cu = JSON.parse(localStorage.getItem('currentUser') || '{}');
-    phone = cu.phone || '';
-  } catch {}
-}
-const result = await supabaseFetch('save-push-subscription', {
-  subscription: {
-    endpoint: sub.endpoint,
-    keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
-  },
-  garageId,
-  phone,                          // ← السطر الجديد
-  userAgent: navigator.userAgent,
-  subscribedAt: new Date().toISOString(),
-});
+    let phone = userPhone || '';
+    let targetGarageId = garageId || '';
+
+    try {
+      const cu = JSON.parse(localStorage.getItem('currentUser') || '{}');
+      if (!phone) phone = cu.phone || '';
+      if (!targetGarageId) targetGarageId = cu.garageId || cu.garage_id || '';
+    } catch {}
+
+    const result = await supabaseFetch('save-push-subscription', {
+      subscription: {
+        endpoint: sub.endpoint,
+        keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+      },
+      garageId: targetGarageId,
+      phone,
+      userAgent: navigator.userAgent,
+      subscribedAt: new Date().toISOString(),
+    });
 
     if (result.success) {
-      return { success: true, message: 'تم تفعيل الدرع بنجاح! 🛡️' };
+      return { success: true, message: 'تم تفعيل الحماية بنجاح! 🛡️' };
     }
     return result;
   } catch (err) {
@@ -309,17 +310,34 @@ export const refreshPushSubscriptionIfNeeded = async (garageId: string): Promise
     await subscribeToPush(garageId);
   }
 };
-// ─── Shield Session (Server-Side Fake Alerts) ─────────────────
+
+// ─── Shield Session (Server-Side Fake Alerts & Geofence Cron) ─
 export const registerShieldSession = async (
   sessionId: string,
   parkingLat: number,
-  parkingLng: number
+  parkingLng: number,
+  userPhone?: string,
+  garageId?: string
 ): Promise<PushResult> => {
+  let phone = userPhone || '';
+  let targetGarage = garageId || '';
+
+  try {
+    const cu = JSON.parse(localStorage.getItem('currentUser') || '{}');
+    if (!phone) phone = cu.phone || '';
+    if (!targetGarage) targetGarage = cu.garageId || cu.garage_id || '';
+  } catch {}
+
   return await supabaseFetch('shield-register', {
     action: 'register',
     sessionId,
+    session_id: sessionId,
     parkingLat,
     parkingLng,
+    parking_lat: parkingLat,
+    parking_lng: parkingLng,
+    phone,
+    garageId: targetGarage,
   });
 };
 
@@ -329,5 +347,6 @@ export const unregisterShieldSession = async (
   return await supabaseFetch('shield-register', {
     action: 'unregister',
     sessionId,
+    session_id: sessionId,
   });
 };

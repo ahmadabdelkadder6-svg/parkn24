@@ -1,5 +1,6 @@
-// ✅ Version - v15 توجيه الإشعارات للشاشة الرئيسية مباشرة عند النقر
-const CACHE_NAME    = 'parkn24-v15';
+// public/sw.js - Park'n 24 Service Worker v16
+
+const CACHE_NAME    = 'parkn24-v16';
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
 const recentNotifications = new Map();
@@ -17,7 +18,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 Service Worker Installed (v15)');
+      console.log('📦 Service Worker Installed (v16)');
       return cache.addAll(STATIC_ASSETS);
     })
   );
@@ -70,7 +71,7 @@ self.addEventListener('push', (event) => {
   let icon      = '/icons/icon-192x192.png';
   let badge     = '/icons/icon-192x192.png';
   let tag       = 'parkn24-default';
-  let url       = '/';
+  let url       = '/garage';
   let extraData = {};
 
   try {
@@ -127,7 +128,7 @@ self.addEventListener('push', (event) => {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // 🛡️ إشعارات الحماية
+  // 🛡️ إشعارات الحماية والتنبيهات الأمنية
   // ═══════════════════════════════════════════════════════════
   const isShield = tag.startsWith('shield-');
   const isBreach = tag === 'shield-breach' || extraData.type === 'shield-breach';
@@ -135,9 +136,10 @@ self.addEventListener('push', (event) => {
   let options;
 
   if (isBreach) {
-    // 🚨 تنبيه حركة - اهتزاز عنيف وتوجيه للشاشة الرئيسية
+    // 🚨 تنبيه حركة - اهتزاز عنيف وتوجيه لصفحة الجلسة /session
+    const breachTargetUrl = extraData.url || '/session';
     options = {
-      body: body || 'السيارة اتحركت من مكان الركن! افتح التطبيق فوراً',
+      body: body || 'تنبيه حركة: السيارة اتحركت من مكان الركن! افتح التطبيق فوراً',
       icon,
       badge,
       vibrate: [
@@ -150,14 +152,14 @@ self.addEventListener('push', (event) => {
       renotify: true,
       silent: false,
       timestamp: now,
-      data: { url: '/', type: 'shield-breach', ...extraData }, // 👈 يوجه للرئيسية مباشرة
+      data: { url: breachTargetUrl, type: 'shield-breach', ...extraData },
       actions: [
         { action: 'open',    title: '🚨 افتح التطبيق فوراً' },
         { action: 'dismiss', title: '✅ أنا اللي سايق'       },
       ],
     };
 
-    // 🎯 ابعت للتطبيق لو مفتوح → يفعّل الـ breach phase + صوت محلي
+    // 🎯 إرسال إشارة للتطبيق لو مفتوح في الواجهة
     event.waitUntil(
       (async () => {
         await self.registration.showNotification(title || '🚨 تنبيه حركة!', options);
@@ -176,6 +178,7 @@ self.addEventListener('push', (event) => {
 
   if (isShield) {
     const isWarning = tag.includes('warning') || extraData.type?.includes('warning');
+    const shieldTargetUrl = extraData.url || '/session';
     options = {
       body: body || 'تحديث من نظام المراقبة',
       icon,
@@ -188,9 +191,11 @@ self.addEventListener('push', (event) => {
       renotify: isWarning,
       silent: false,
       timestamp: now,
-      data: { url: '/', type: 'shield', ...extraData }, // 👈 يوجه للرئيسية مباشرة
+      data: { url: shieldTargetUrl, type: 'shield', ...extraData },
     };
   } else {
+    // التنبيهات الافتراضية للجراج
+    const defaultTargetUrl = url || extraData.url || '/garage';
     options = {
       body: body || '🚗 تقترب سيارة جديدة من الجراج الآن، استعد!',
       icon,
@@ -201,11 +206,11 @@ self.addEventListener('push', (event) => {
         1200, 400, 1200,
       ],
       requireInteraction: true,
-      tag: 'valet-urgent-alarm',
+      tag: tag || 'valet-urgent-alarm',
       renotify: true,
       silent: false,
       timestamp: now,
-      data: { url: url || '/', ...extraData },
+      data: { url: defaultTargetUrl, ...extraData },
       actions: [
         { action: 'open',    title: '🚗 فتح التطبيق فوراً' },
         { action: 'dismiss', title: '✕ إغلاق'             },
@@ -238,8 +243,8 @@ self.addEventListener('notificationclick', (event) => {
     return;
   }
 
-  // 🎯 التوجيه دائماً للصفحة الرئيسية (/)
-  const targetUrl = notifData.url || '/';
+  // 🎯 التوجيه الديناميكي للرابط القادم من الإشعار (مثلاً /session للوصول للجراج أو /garage للتنبيهات العادية)
+  const targetUrl = notifData.url || '/garage';
 
   event.waitUntil(
     clients
@@ -259,7 +264,7 @@ self.addEventListener('notificationclick', (event) => {
             return client.focus();
           }
         }
-        // لو التطبيق كان مقفول تماماً → يفتح الصفحة الرئيسية فوراً
+        // لو التطبيق كان مقفول تماماً → يفتح الرابط المطلوب فوراً
         if (clients.openWindow) return clients.openWindow(targetUrl);
       })
   );
