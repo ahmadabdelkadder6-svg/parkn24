@@ -146,6 +146,8 @@ serve(async (req) => {
           title: '🔔 اختبار Shield',
           body: `لو وصلك الإشعار ده على ${s.phone} يبقى الـ push شغال ✅`,
           tag: 'shield-test',
+          url: '/garage',
+          data: { url: '/garage' },
         }, supabase);
         if (r.sent) sent++;
         else errors.push(`${s.phone}: ${r.reason}`);
@@ -229,7 +231,8 @@ serve(async (req) => {
             title: '🚨 تنبيه حركة!',
             body: `السيارة اتحركت ${Math.round(dist)}م من مكان الركن!`,
             tag: 'shield-breach',
-            data: { type: 'shield-breach', distance: Math.round(dist) },
+            url: '/garage',
+            data: { type: 'shield-breach', distance: Math.round(dist), url: '/garage' },
           }, supabase);
 
           if (result.sent) {
@@ -286,7 +289,8 @@ serve(async (req) => {
         title: alert.title,
         body: alert.body,
         tag: `shield-${alert.type}-${shield.session_id.slice(0, 8)}-${alertCount}`,
-        data: { type: 'shield' },
+        url: '/garage',
+        data: { type: 'shield', url: '/garage' },
       }, supabase);
 
       if (result.sent) {
