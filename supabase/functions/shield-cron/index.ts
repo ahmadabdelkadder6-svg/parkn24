@@ -7,9 +7,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, content-type',
 };
 
-const THEFT_MIN_DISTANCE = 250;
-const CAR_SPEED_THRESHOLD = 5; // 5 m/s = 18 km/h
-
 const ALERT_POOL: { type: string; title: string; body: string }[] = [
   { type: 'warning', title: '⚠️ تنبيه حركة', body: 'تم رصد حركة قريبة من مكان الركن' },
   { type: 'warning', title: '⚠️ تنبيه', body: 'حركة غير مألوفة حول السيارة' },
@@ -61,46 +58,8 @@ function pickWeightedAlert() {
   return ofType[Math.floor(Math.random() * ofType.length)];
 }
 
-function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function isCarSpeed(speed: number | null | undefined): boolean {
-  if (speed === null || speed === undefined || speed < 0) return false;
-  return speed >= CAR_SPEED_THRESHOLD;
-}
-
-async function sendPush(shield: any, payload: any, supabase: any) {
-  if (!shield.push_endpoint || !shield.push_p256dh || !shield.push_auth) {
-    return { sent: false, reason: 'no-keys' };
-  }
-  try {
-    await webpush.sendNotification(
-      {
-        endpoint: shield.push_endpoint,
-        keys: { p256dh: shield.push_p256dh, auth: shield.push_auth },
-      },
-      JSON.stringify(payload),
-      { TTL: 86400, urgency: 'high' }
-    );
-    return { sent: true };
-  } catch (err: any) {
-    if (err.statusCode === 410 || err.statusCode === 404) {
-      await supabase
-        .from('shield_sessions')
-        .update({ push_endpoint: null, push_p256dh: null, push_auth: null })
-        .eq('session_id', shield.session_id);
-    }
-    return { sent: false, reason: err.message, status: err.statusCode };
-  }
+function randomMinutes(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 serve(async (req) => {
@@ -109,6 +68,8 @@ serve(async (req) => {
   }
 
   try {
+    console.log('🕐 Shield cron at', new Date().toISOString());
+
     const VAPID_EMAIL = Deno.env.get('VAPID_EMAIL') || 'mailto:admin@parkn24.com';
     const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY')!
       .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
@@ -122,141 +83,92 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const { data: shields, error: shieldError } = await supabase
+    const { data: shields } = await supabase
       .from('shield_sessions')
       .select('*')
       .is('ended_at', null);
-
-    if (shieldError) {
-      return new Response(JSON.stringify({ error: 'Shield DB error' }), { status: 500 });
-    }
 
     if (!shields || shields.length === 0) {
       return new Response(JSON.stringify({ success: true, shields: 0 }));
     }
 
-    // ═══ TEST MODE ═══
+    console.log(`Found ${shields.length} active shields`);
+
+    // ─── Test mode ───
     const url = new URL(req.url);
     if (url.searchParams.get('test') === '1') {
       let sent = 0;
-      const errors: string[] = [];
       for (const s of shields) {
-        if (!s.push_endpoint) continue;
-        const r = await sendPush(s, {
-          title: '🔔 اختبار Shield',
-          body: `لو وصلك الإشعار ده على ${s.phone} يبقى الـ push شغال ✅`,
-          tag: 'shield-test',
-          url: '/garage',
-          data: { url: '/garage' },
-        }, supabase);
-        if (r.sent) sent++;
-        else errors.push(`${s.phone}: ${r.reason}`);
+        if (!s.push_endpoint || !s.push_p256dh || !s.push_auth) continue;
+        try {
+          await webpush.sendNotification(
+            { endpoint: s.push_endpoint, keys: { p256dh: s.push_p256dh, auth: s.push_auth } },
+            JSON.stringify({ title: '🔔 اختبار', body: `لو وصلك ده على ${s.phone} يبقى شغال ✅`, tag: 'test', data: { url: '/garage' } }),
+            { TTL: 3600, urgency: 'high' }
+          );
+          sent++;
+        } catch (e: any) { console.error('Test fail:', e.statusCode); }
       }
-      return new Response(JSON.stringify({ test: true, sent, total: shields.length, errors }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return new Response(JSON.stringify({ test: true, sent, total: shields.length }));
     }
 
-    // ═══ AUTO-CLEANUP + DEDUP ═══
-    let cleanedUp = 0;
-
-    // ① أغلق الجلسات المكررة لكل موبايل (أبقِ أحدث واحدة بس)
+    // ─── Cleanup: أغلق الجلسات المكررة ───
     const phoneGroups = new Map<string, any[]>();
     for (const s of shields) {
-      const p = s.phone || s.user_id || 'unknown';
+      const p = s.phone || 'unknown';
       if (!phoneGroups.has(p)) phoneGroups.set(p, []);
       phoneGroups.get(p)!.push(s);
     }
     for (const [, sessions] of phoneGroups) {
       if (sessions.length <= 1) continue;
-      // رتّب حسب آخر GPS — الأحدث الأول
       sessions.sort((a, b) => {
         const ta = a.last_gps_at ? new Date(a.last_gps_at).getTime() : 0;
         const tb = b.last_gps_at ? new Date(b.last_gps_at).getTime() : 0;
         return tb - ta;
       });
-      // أقفل كل الجلسات القديمة
       for (let i = 1; i < sessions.length; i++) {
         await supabase.from('shield_sessions')
-          .update({ ended_at: '2025-01-01 00:00:00+00' })
+          .update({ ended_at: new Date().toISOString() })
           .eq('session_id', sessions[i].session_id);
-        cleanedUp++;
       }
     }
 
-    // ② أغلق الجلسات القديمة (> 24 ساعة بدون GPS)
-    const now = Date.now();
-    for (const s of shields) {
-      if (s.ended_at) continue;
-      const lastGps = s.last_gps_at ? new Date(s.last_gps_at).getTime() : 0;
-      if (lastGps > 0 && (now - lastGps) > 24 * 60 * 60 * 1000) {
-        await supabase.from('shield_sessions')
-          .update({ ended_at: '2025-01-01 00:00:00+00' })
-          .eq('session_id', s.session_id);
-        cleanedUp++;
-      }
-    }
-
-    // أعد تحميل بعد التنظيف
-    let activeShields = shields;
-    if (cleanedUp > 0) {
-      const { data: fresh } = await supabase
-        .from('shield_sessions').select('*').is('ended_at', null);
-      activeShields = fresh || [];
-    }
-
-    let totalBreaches = 0;
-    let totalFakeSent = 0;
+    let totalSent = 0;
     let totalSkipped = 0;
-    const errors: string[] = [];
+    const now = new Date();
 
-    for (const shield of activeShields) {
+    for (const shield of shields) {
+      console.log(`\n🛡️ Shield: ${shield.phone}, mode=${shield.fake_mode}, alerts=${shield.alert_count}`);
 
-      // ═══════════════════════════════════════════════════
-      // 🚨 فحص الحركة الخارجي للدرع
-      // ═══════════════════════════════════════════════════
-      if (
-        shield.parking_lat && shield.parking_lng &&
-        shield.last_lat && shield.last_lng &&
-        !shield.theft_alerted &&
-        isCarSpeed(shield.last_speed)
-      ) {
-        const dist = haversine(
-          shield.last_lat, shield.last_lng,
-          shield.parking_lat, shield.parking_lng,
-        );
-
-        if (dist > THEFT_MIN_DISTANCE) {
-          const result = await sendPush(shield, {
-            title: '🚨 تنبيه حركة!',
-            body: `السيارة اتحركت ${Math.round(dist)}م من مكان الركن!`,
-            tag: 'shield-breach',
-            url: '/garage',
-            data: { type: 'shield-breach', distance: Math.round(dist), url: '/garage' },
-          }, supabase);
-
-          if (result.sent) {
-            totalBreaches++;
-            await supabase.from('shield_sessions').update({
-              theft_alerted: true, is_outside_fence: true,
-            }).eq('session_id', shield.session_id);
-          } else {
-            errors.push(`breach-${shield.phone}: ${result.reason}`);
-          }
-          continue;
-        }
+      // ─── هل عنده push keys؟ ───
+      if (!shield.push_endpoint || !shield.push_p256dh || !shield.push_auth) {
+        console.log('⚠️ No push keys in shield_sessions');
+        totalSkipped++;
+        continue;
       }
 
-      // ═══════════════════════════════════════════════════
-      // 📢 إشعارات وهمية — كل 30 دقيقة، بحد أقصى 2
-      // ═══════════════════════════════════════════════════
+      // ─── تحديد fake_mode (مرة واحدة) ───
       let fakeMode = shield.fake_mode;
+      let nextAlertAt = shield.next_alert_at ? new Date(shield.next_alert_at) : null;
 
       if (fakeMode === -1 || fakeMode === null || fakeMode === undefined) {
-        fakeMode = 2;
-        await supabase
-          .from('shield_sessions')
-          .update({ fake_mode: fakeMode })
+        const roll = Math.random();
+        if (roll < 0.35) {
+          fakeMode = 0;
+          console.log('🎲 Mode 0 (صفر إشعارات)');
+        } else if (roll < 0.70) {
+          fakeMode = 1;
+          const mins = randomMinutes(5, 15);
+          nextAlertAt = new Date(new Date(shield.started_at || shield.last_gps_at || now).getTime() + mins * 60000);
+          console.log(`🎲 Mode 1 (رسالة بعد ${mins} دقيقة)`);
+        } else {
+          fakeMode = 2;
+          const mins = randomMinutes(5, 10);
+          nextAlertAt = new Date(new Date(shield.started_at || shield.last_gps_at || now).getTime() + mins * 60000);
+          console.log(`🎲 Mode 2 (رسالتين بعد ${mins} دقيقة)`);
+        }
+        await supabase.from('shield_sessions')
+          .update({ fake_mode: fakeMode, next_alert_at: nextAlertAt?.toISOString() ?? null })
           .eq('session_id', shield.session_id);
       }
 
@@ -265,61 +177,61 @@ serve(async (req) => {
       const alertCount = shield.alert_count || 0;
       if (alertCount >= fakeMode) { totalSkipped++; continue; }
 
-      // ✅ عدّ الـ tick — كل 6 ticks = 30 دقيقة (إذا كان الـ cron يشتغل كل 5 دقائق)
-      const tick = (shield.fake_tick || 0) + 1;
-      if (tick < 6) {
-        await supabase.from('shield_sessions')
-          .update({ fake_tick: tick })
-          .eq('session_id', shield.session_id);
+      if (!nextAlertAt || now < nextAlertAt) {
+        const wait = nextAlertAt ? Math.round((nextAlertAt.getTime() - now.getTime()) / 60000) : '?';
+        console.log(`⏳ Waiting ${wait} min`);
         totalSkipped++;
         continue;
       }
 
-      // ✅ وصل لـ 6 ticks → ابعت إشعار
-      if (!shield.push_endpoint || !shield.push_p256dh || !shield.push_auth) {
-        await supabase.from('shield_sessions')
-          .update({ fake_tick: 0 })
-          .eq('session_id', shield.session_id);
-        totalSkipped++;
-        continue;
-      }
-
+      // ─── إرسال الـ push ───
       const alert = pickWeightedAlert();
-      const result = await sendPush(shield, {
+      const payload = JSON.stringify({
         title: alert.title,
         body: alert.body,
         tag: `shield-${alert.type}-${shield.session_id.slice(0, 8)}-${alertCount}`,
-        url: '/garage',
         data: { type: 'shield', url: '/garage' },
-      }, supabase);
+      });
 
-      if (result.sent) {
-        totalFakeSent++;
+      try {
+        console.log(`🚀 Sending: ${alert.title}`);
+        await webpush.sendNotification(
+          { endpoint: shield.push_endpoint, keys: { p256dh: shield.push_p256dh, auth: shield.push_auth } },
+          payload,
+          { TTL: 86400, urgency: 'high' }
+        );
+        console.log('✅ Sent!');
+        totalSent++;
+
+        const newCount = alertCount + 1;
+        let newNext: string | null = null;
+        if (newCount < fakeMode) {
+          const gap = randomMinutes(6, 10);
+          newNext = new Date(now.getTime() + gap * 60000).toISOString();
+          console.log(`📅 Next in ${gap} min`);
+        } else {
+          console.log(`🏁 Done ${fakeMode}/${fakeMode}`);
+        }
+
         await supabase.from('shield_sessions')
-          .update({ alert_count: alertCount + 1, fake_tick: 0 })
+          .update({ alert_count: newCount, next_alert_at: newNext })
           .eq('session_id', shield.session_id);
-      } else {
-        await supabase.from('shield_sessions')
-          .update({ fake_tick: 0 })
-          .eq('session_id', shield.session_id);
-        errors.push(`fake-${shield.phone}: ${result.reason}`);
+
+      } catch (err: any) {
+        console.error('❌ Failed:', err.statusCode, err.message);
+        if (err.statusCode === 410 || err.statusCode === 404) {
+          await supabase.from('shield_sessions')
+            .update({ push_endpoint: null, push_p256dh: null, push_auth: null })
+            .eq('session_id', shield.session_id);
+        }
       }
     }
 
-    return new Response(
-      JSON.stringify({
-        success: true, shields: activeShields.length,
-        breaches: totalBreaches, fake_sent: totalFakeSent,
-        skipped: totalSkipped, cleaned: cleanedUp,
-        errors: errors.length > 0 ? errors : undefined,
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    console.log(`\n📊 sent=${totalSent}, skipped=${totalSkipped}`);
+    return new Response(JSON.stringify({ success: true, shields: shields.length, sent: totalSent, skipped: totalSkipped }));
 
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: String(err) }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    console.error('❌ Error:', err);
+    return new Response(JSON.stringify({ error: String(err) }), { status: 500 });
   }
 });
