@@ -1,5 +1,6 @@
-// src/lib/pushManager.ts - Complete Push Notification & Shield Subscription Manager
+// src/lib/pushManager.ts - Bulletproof Push & Shield Subscription Manager
 
+import { supabase } from './supabase';
 import { normalizePlate } from '../store';
 
 // ─── Configuration ─────────────────────────────────────────────
@@ -47,23 +48,19 @@ const getStoredUserCredentials = (): { phone: string; garageId: string } => {
   let garageId = '';
 
   try {
-    // 1) فحص currentUser
     const cu = JSON.parse(localStorage.getItem('currentUser') || '{}');
     if (cu.phone) phone = cu.phone;
     if (cu.garageId || cu.garage_id) garageId = cu.garageId || cu.garage_id;
 
-    // 2) فحص parkn24_user لو لسه فارغ
     if (!phone || !garageId) {
       const pu = JSON.parse(localStorage.getItem('parkn24_user') || '{}');
       if (!phone && pu.phone) phone = pu.phone;
       if (!garageId && (pu.garageId || pu.garage_id)) garageId = pu.garageId || pu.garage_id;
     }
 
-    // 3) فحص المفاتيح الفردية المباشرة
     if (!phone) phone = localStorage.getItem('parkn24_phone') || '';
     if (!garageId) garageId = localStorage.getItem('parkn24_garage_id') || '';
 
-    // 4) فحص رحلة الوصول المعلقة
     if (!garageId) {
       const pa = JSON.parse(localStorage.getItem('parkn24_pending_arrival') || '{}');
       if (pa.garageId || pa.garage_id) garageId = pa.garageId || pa.garage_id;
@@ -75,15 +72,32 @@ const getStoredUserCredentials = (): { phone: string; garageId: string } => {
   return { phone, garageId };
 };
 
+/**
+ * دالة طلب السيرفر المحصنة ضد 401
+ */
 const supabaseFetch = async (
   path: string,
   body: unknown,
   retries: number = 2
 ): Promise<PushResult> => {
+  // 1) التجربة الأولى عبر supabase.functions.invoke المباشر (يضمّن الهيدرز تلقائياً)
+  try {
+    const { data, error } = await supabase.functions.invoke(path, {
+      body,
+    });
+    if (!error) {
+      return { success: true, message: 'تم بنجاح', data };
+    }
+    console.warn(`[PushManager] supabase.functions.invoke('${path}') failed, using direct fetch fallback...`, error);
+  } catch (e) {
+    console.warn(`[PushManager] supabase.functions.invoke exception:`, e);
+  }
+
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     return { success: false, message: 'إعدادات السيرفر ناقصة' };
   }
 
+  // 2) التجربة الاحتياطية عبر Fetch مباشر مع إرفاق apikey الحتمي لمنع 401
   for (let attempt = 0; attempt <= retries; attempt++) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
@@ -93,6 +107,7 @@ const supabaseFetch = async (
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
           'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify(body),
@@ -107,6 +122,7 @@ const supabaseFetch = async (
       }
 
       if (response.status >= 400 && response.status < 500) {
+        console.error(`[PushManager] Edge function ${path} returned HTTP ${response.status}`);
         return { success: false, message: `خطأ: ${response.status}` };
       }
     } catch (err: any) {
@@ -354,7 +370,6 @@ export const registerShieldSession = async (
   const phone = userPhone || creds.phone;
   const targetGarage = garageId || creds.garageId;
 
-  // 🚨 1. ضمان تجديد اشتراك الإشعارات وحفظه في السيرفر قبل تفعيل الدرع
   let activeSubscription: any = null;
   try {
     const pushRes = await subscribeToPush(targetGarage, phone);
@@ -365,7 +380,6 @@ export const registerShieldSession = async (
     console.warn('⚠️ Could not refresh push subscription prior to shield register:', pushErr);
   }
 
-  // 🚨 2. إرسال بيانات الدرع بالكامل مع اشتراك الـ Push المباشر
   return await supabaseFetch('shield-register', {
     action: 'register',
     sessionId,
