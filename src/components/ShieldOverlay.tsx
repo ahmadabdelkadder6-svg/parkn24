@@ -7,8 +7,8 @@ import {
 } from '../lib/shield';
 import {
   sendLocalNotification, playUrgentSound,
-  vibrateUrgent, requestNotificationPermission,
-  stopVibration, unlockAudio,
+  requestNotificationPermission,
+  unlockAudio,
 } from '../utils/notifications';
 import { subscribeToPush, registerShieldSession } from '../lib/pushManager';
 import { supabase } from '../lib/supabase';
@@ -27,8 +27,6 @@ interface Props {
   autoResume?: boolean;
   onSessionEnd?: () => void;
 }
-
-const DEFAULT_VAPID_KEY = 'BCp73Z4tY0uQ6N2nU_a9XyZ-3wF8vK1mP5L9rQ2sT8uV1wX3yZ5a7b9c1d3e5f7g9h1i3j5k7l9m1n3o5p7q9r';
 
 function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000;
@@ -70,7 +68,6 @@ export default function ShieldOverlay({
   const triggerLocalAlarm = useCallback((dist: number) => {
     try {
       playUrgentSound();
-      vibrateUrgent();
       sendLocalNotification(
         '🚨 تنبيه حركة!',
         `السيارة تحركت ${dist}م من مكان الركن`,
@@ -79,7 +76,6 @@ export default function ShieldOverlay({
       if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current);
       alarmIntervalRef.current = setInterval(() => {
         playUrgentSound();
-        vibrateUrgent();
       }, 2000);
     } catch (e) {
       console.warn('Alarm failed:', e);
@@ -91,7 +87,6 @@ export default function ShieldOverlay({
       clearInterval(alarmIntervalRef.current);
       alarmIntervalRef.current = null;
     }
-    stopVibration();
   }, []);
 
   const handleIamDriving = useCallback(async () => {
@@ -229,7 +224,11 @@ export default function ShieldOverlay({
         const reg = await navigator.serviceWorker.ready;
         let sub = await reg.pushManager.getSubscription();
 
-        const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY || DEFAULT_VAPID_KEY;
+        const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+        if (!VAPID_PUBLIC) {
+          console.warn('⚠️ VAPID_PUBLIC_KEY not set, skipping refresh');
+          return;
+        }
 
         if (!sub) {
           const urlBase64ToUint8Array = (b: string): Uint8Array => {
@@ -349,7 +348,11 @@ export default function ShieldOverlay({
         return;
       }
 
-      const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY || DEFAULT_VAPID_KEY;
+      const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+      if (!VAPID_PUBLIC) {
+        console.error('❌ VAPID_PUBLIC_KEY not set');
+        return;
+      }
 
       const urlBase64ToUint8Array = (b: string): Uint8Array => {
         const p = '='.repeat((4 - (b.length % 4)) % 4);
@@ -397,8 +400,6 @@ export default function ShieldOverlay({
         .eq('phone', identifier)
         .is('ended_at', null);
 
-      const fakeMode = 2;
-
       const { error } = await supabase.from('shield_sessions').insert({
         session_id: sessionId,
         user_id: identifier,
@@ -411,9 +412,9 @@ export default function ShieldOverlay({
         last_lat: parkingLat,
         last_lng: parkingLng,
         last_gps_at: new Date().toISOString(),
-        is_outside_fence: false,
+        client_outside: false,
         theft_alerted: false,
-        fake_mode: fakeMode,
+        fake_mode: -1,
         alert_count: 0,
         fake_tick: 0,
         last_speed: null,
@@ -490,7 +491,7 @@ export default function ShieldOverlay({
 
       console.log(`✅ VIP check passed: ${nearestGarage} (${Math.round(minDist)}م)`);
 
-      try { await subscribeToPush(garageId); } catch { /* */ }
+      try { await subscribeToPush(garageId, userPhone || undefined); } catch { /* */ }
 
       const ok = onDeductWallet(SHIELD_COST, 'خدمة الحماية الإضافية');
       if (!ok) {

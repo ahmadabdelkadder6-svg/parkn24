@@ -58,10 +58,6 @@ function pickWeightedAlert() {
   return ofType[Math.floor(Math.random() * ofType.length)];
 }
 
-function randomMinutes(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -83,6 +79,8 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
+    // جلب الدروع النشطة فقط (ended_at = null)
+    // لو الجلسة اتقفلت → مش هتظهر هنا → مفيش إشعارات
     const { data: shields } = await supabase
       .from('shield_sessions')
       .select('*')
@@ -135,56 +133,38 @@ serve(async (req) => {
 
     let totalSent = 0;
     let totalSkipped = 0;
-    const now = new Date();
 
     for (const shield of shields) {
-      console.log(`\n🛡️ Shield: ${shield.phone}, mode=${shield.fake_mode}, alerts=${shield.alert_count}`);
+      const alertCount = shield.alert_count || 0;
+      const tick = shield.fake_tick || 0;
+      console.log(`\n🛡️ Shield: ${shield.phone}, alerts=${alertCount}/2, tick=${tick}/6`);
 
       // ─── هل عنده push keys؟ ───
       if (!shield.push_endpoint || !shield.push_p256dh || !shield.push_auth) {
-        console.log('⚠️ No push keys in shield_sessions');
+        console.log('⚠️ No push keys');
         totalSkipped++;
         continue;
       }
 
-      // ─── تحديد fake_mode (مرة واحدة) ───
-      let fakeMode = shield.fake_mode;
-      let nextAlertAt = shield.next_alert_at ? new Date(shield.next_alert_at) : null;
+      // ─── حد أقصى 2 إشعار للجلسة ───
+      if (alertCount >= 2) {
+        console.log('⏭️ Max 2 alerts reached — done');
+        totalSkipped++;
+        continue;
+      }
 
-      if (fakeMode === -1 || fakeMode === null || fakeMode === undefined) {
-        const roll = Math.random();
-        if (roll < 0.35) {
-          fakeMode = 0;
-          console.log('🎲 Mode 0 (صفر إشعارات)');
-        } else if (roll < 0.70) {
-          fakeMode = 1;
-          const mins = randomMinutes(5, 15);
-          nextAlertAt = new Date(new Date(shield.started_at || shield.last_gps_at || now).getTime() + mins * 60000);
-          console.log(`🎲 Mode 1 (رسالة بعد ${mins} دقيقة)`);
-        } else {
-          fakeMode = 2;
-          const mins = randomMinutes(5, 10);
-          nextAlertAt = new Date(new Date(shield.started_at || shield.last_gps_at || now).getTime() + mins * 60000);
-          console.log(`🎲 Mode 2 (رسالتين بعد ${mins} دقيقة)`);
-        }
+      // ─── Tick: كل 6 ticks = 30 دقيقة ───
+      const newTick = tick + 1;
+      if (newTick < 6) {
         await supabase.from('shield_sessions')
-          .update({ fake_mode: fakeMode, next_alert_at: nextAlertAt?.toISOString() ?? null })
+          .update({ fake_tick: newTick })
           .eq('session_id', shield.session_id);
-      }
-
-      if (fakeMode === 0) { totalSkipped++; continue; }
-
-      const alertCount = shield.alert_count || 0;
-      if (alertCount >= fakeMode) { totalSkipped++; continue; }
-
-      if (!nextAlertAt || now < nextAlertAt) {
-        const wait = nextAlertAt ? Math.round((nextAlertAt.getTime() - now.getTime()) / 60000) : '?';
-        console.log(`⏳ Waiting ${wait} min`);
+        console.log(`⏳ Tick ${newTick}/6`);
         totalSkipped++;
         continue;
       }
 
-      // ─── إرسال الـ push ───
+      // ─── tick = 6 → ابعت إشعار ───
       const alert = pickWeightedAlert();
       const payload = JSON.stringify({
         title: alert.title,
@@ -194,7 +174,7 @@ serve(async (req) => {
       });
 
       try {
-        console.log(`🚀 Sending: ${alert.title}`);
+        console.log(`🚀 Sending alert ${alertCount + 1}/2: ${alert.title}`);
         await webpush.sendNotification(
           { endpoint: shield.push_endpoint, keys: { p256dh: shield.push_p256dh, auth: shield.push_auth } },
           payload,
@@ -203,22 +183,15 @@ serve(async (req) => {
         console.log('✅ Sent!');
         totalSent++;
 
-        const newCount = alertCount + 1;
-        let newNext: string | null = null;
-        if (newCount < fakeMode) {
-          const gap = randomMinutes(6, 10);
-          newNext = new Date(now.getTime() + gap * 60000).toISOString();
-          console.log(`📅 Next in ${gap} min`);
-        } else {
-          console.log(`🏁 Done ${fakeMode}/${fakeMode}`);
-        }
-
         await supabase.from('shield_sessions')
-          .update({ alert_count: newCount, next_alert_at: newNext })
+          .update({ alert_count: alertCount + 1, fake_tick: 0 })
           .eq('session_id', shield.session_id);
 
       } catch (err: any) {
         console.error('❌ Failed:', err.statusCode, err.message);
+        await supabase.from('shield_sessions')
+          .update({ fake_tick: 0 })
+          .eq('session_id', shield.session_id);
         if (err.statusCode === 410 || err.statusCode === 404) {
           await supabase.from('shield_sessions')
             .update({ push_endpoint: null, push_p256dh: null, push_auth: null })

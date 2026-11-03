@@ -23,6 +23,7 @@ export interface ShieldState {
   parkingLat: number | null;
   parkingLng: number | null;
   sessionId: string | null;
+  shieldId?: string | null;
 }
 
 // ─── ثوابت ───
@@ -129,6 +130,7 @@ let prevPos: { lat: number; lng: number; t: number } | null = null;
 
 export function startShieldGPS(params: {
   sessionId: string;
+  shieldId?: string;
   parkingLat: number;
   parkingLng: number;
   onGeofenceBreach: (distance: number) => void;
@@ -174,13 +176,13 @@ export function startShieldGPS(params: {
       if (now - breachStartTime >= gracePeriod) {
         if (!isCurrentlyOutside) {
           isCurrentlyOutside = true;
-          sendGPSToServer(params.sessionId, lat, lng, true, speed);
+          sendGPSToServer(params.sessionId, params.shieldId, lat, lng, true, speed).catch(() => {});
           lastSentLat = lat;
           lastSentLng = lng;
           lastSentAt = now;
           params.onGeofenceBreach(distFromGarage);
         } else if (distFromLastSent > MIN_MOVEMENT_METERS) {
-          sendGPSToServer(params.sessionId, lat, lng, true, speed);
+          sendGPSToServer(params.sessionId, params.shieldId, lat, lng, true, speed).catch(() => {});
           lastSentLat = lat;
           lastSentLng = lng;
           lastSentAt = now;
@@ -191,7 +193,7 @@ export function startShieldGPS(params: {
 
       if (isCurrentlyOutside) {
         isCurrentlyOutside = false;
-        sendGPSToServer(params.sessionId, lat, lng, false, speed);
+        sendGPSToServer(params.sessionId, params.shieldId, lat, lng, false, speed).catch(() => {});
         lastSentLat = lat;
         lastSentLng = lng;
         lastSentAt = now;
@@ -246,31 +248,40 @@ export function stopShieldGPS(): void {
   prevPos = null;
 }
 
-// ─── إرسال GPS للسيرفر مع حفظ السرعة ───
-function sendGPSToServer(
+// ─── إرسال GPS للسيرفر + حفظ في shield_locations ───
+async function sendGPSToServer(
   sessionId: string,
+  shieldId: string | undefined,
   lat: number,
   lng: number,
   isOutside: boolean,
   speed?: number | null,
-): void {
-  const payload: any = {
-    last_lat: lat,
-    last_lng: lng,
-    last_gps_at: new Date().toISOString(),
-    is_outside_fence: isOutside,
-  };
-  if (speed !== undefined && speed !== null && speed >= 0) {
-    payload.last_speed = speed;
-  }
+): Promise<void> {
+  const speedMs = (speed !== undefined && speed !== null && speed >= 0) ? speed : 0;
+  const speedKmh = Math.round(speedMs * 3.6);
 
-  supabase
+  // 1) Update shield_sessions
+  await supabase
     .from('shield_sessions')
-    .update(payload)
+    .update({
+      last_lat: lat,
+      last_lng: lng,
+      last_gps_at: new Date().toISOString(),
+      client_outside: isOutside,
+      last_speed: speedKmh,
+    })
     .eq('session_id', sessionId)
-    .is('ended_at', null)
-    .then(() => {})
-    .catch(() => {});
+    .is('ended_at', null);
+
+  // 2) Insert into shield_locations (تاريخ الحركة)
+  if (shieldId) {
+    await supabase.from('shield_locations').insert({
+      shield_id: shieldId,
+      lat,
+      lng,
+      speed_kmh: speedKmh,
+    });
+  }
 }
 
 // ═══════════════════════════════════════════════════════════

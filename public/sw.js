@@ -1,6 +1,8 @@
-// public/sw.js - Park'n 24 Service Worker v17 (Bulletproof - Full Logic Preserved)
+// public/sw.js - Park'n 24 Service Worker v18 (Bulletproof - Full Logic Preserved)
+// ✅ الاهتزازات راجعة زي v17 بالظبط
+// ✅ أضف type: 'theft' لـ isBreach
 
-const CACHE_NAME    = 'parkn24-v17';
+const CACHE_NAME    = 'parkn24-v18';
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
 const recentNotifications = new Map();
@@ -18,7 +20,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 Service Worker Installed (v17)');
+      console.log('📦 Service Worker Installed (v18)');
       return cache.addAll(STATIC_ASSETS).catch((err) => {
         console.warn('⚠️ cache.addAll partial fail (non-fatal):', err);
       });
@@ -39,7 +41,7 @@ self.addEventListener('activate', (event) => {
       )
       .then(() => self.clients.claim())
       .then(() => {
-        console.log('✅ Service Worker v17 activated & controlling clients');
+        console.log('✅ Service Worker v18 activated & controlling clients');
       })
   );
 });
@@ -128,7 +130,7 @@ self.addEventListener('push', (event) => {
         }
 
         if (payload) {
-          console.log('📨 Push received in SW v17:', payload);
+          console.log('📨 Push received in SW v18:', payload);
 
           if (payload.notification) {
             title = payload.notification.title || title;
@@ -195,14 +197,17 @@ self.addEventListener('push', (event) => {
     const isShield = (typeof tag === 'string' && tag.startsWith('shield-'))
       || extraData.type === 'shield'
       || extraData.type === 'shield-warning';
+
+    // ✅ أضف type: 'theft' — ده التعديل الوحيد على v17
     const isBreach = tag === 'shield-breach'
       || extraData.type === 'shield-breach'
-      || extraData.type === 'breach';
+      || extraData.type === 'breach'
+      || extraData.type === 'theft';
 
     let options;
 
     if (isBreach) {
-      // 🚨 تنبيه حركة - اهتزاز عنيف وتوجيه لـ /garage (الافتراضي الثابت)
+      // 🚨 تنبيه حركة - اهتزاز عنيف وتوجيه لـ /garage
       const breachTargetUrl = extraData.url || url || '/garage';
       options = {
         body: body || 'تنبيه حركة: السيارة اتحركت من مكان الركن! افتح التطبيق فوراً',
@@ -295,7 +300,11 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const notifData = event.notification.data || {};
-  const isBreach  = notifData.type === 'shield-breach' || notifData.type === 'breach';
+
+  // ✅ أضف type: 'theft'
+  const isBreach  = notifData.type === 'shield-breach'
+    || notifData.type === 'breach'
+    || notifData.type === 'theft';
 
   // ✅ العميل داس "أنا اللي سايق" → ابعت للتطبيق يوقف التنبيه
   if (event.action === 'dismiss') {

@@ -4,7 +4,7 @@ import { supabase } from './supabase';
 import { normalizePlate } from '../store';
 
 // ─── Configuration ─────────────────────────────────────────────
-const VAPID_PUBLIC_KEY = (import.meta.env.VITE_VAPID_PUBLIC_KEY as string) || 'BCp73Z4tY0uQ6N2nU_a9XyZ-3wF8vK1mP5L9rQ2sT8uV1wX3yZ5a7b9c1d3e5f7g9h1i3j5k7l9m1n3o5p7q9r';
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string;
 
 // ─── Types ─────────────────────────────────────────────────────
 interface PushResult {
@@ -320,50 +320,32 @@ export const registerShieldSession = async (
 ): Promise<PushResult> => {
   const creds = getStoredUserCredentials();
   const phone = userPhone || creds.phone;
-  const targetGarage = garageId || creds.garageId;
 
-  let activeSubscription: any = null;
   try {
-    const pushRes = await subscribeToPush(targetGarage, phone);
-    if (pushRes.success && pushRes.data) {
-      activeSubscription = (pushRes.data as any).subscription;
-    }
-  } catch (pushErr) {
-    console.warn('⚠️ Could not refresh push subscription prior to shield register:', pushErr);
-  }
+    // امسح أي درع قديم لنفس الرقم (عدا الجلسة الحالية)
+    await supabase
+      .from('shield_sessions')
+      .update({ ended_at: new Date().toISOString() })
+      .eq('phone', phone)
+      .is('ended_at', null)
+      .neq('session_id', sessionId);
 
-  // 1) حفظ وتحديث مباشر لجدول shield_sessions بالداتابيز لتضمين المفاتيح بشكل مضمون 100%
-  if (activeSubscription) {
-    try {
-      await supabase
-        .from('shield_sessions')
-        .update({
-          push_endpoint: activeSubscription.endpoint,
-          push_p256dh: activeSubscription.keys?.p256dh,
-          push_auth: activeSubscription.keys?.auth,
-          last_gps_at: new Date().toISOString(),
-        })
-        .eq('session_id', sessionId);
-    } catch (dbErr) {
-      console.warn('⚠️ Direct DB update warning:', dbErr);
-    }
-  }
+    // حدّث الـ GPS للجلسة الحالية
+    await supabase
+      .from('shield_sessions')
+      .update({
+        last_gps_at: new Date().toISOString(),
+        last_lat: parkingLat,
+        last_lng: parkingLng,
+      })
+      .eq('session_id', sessionId)
+      .is('ended_at', null);
 
-  // 2) إرسال طلب التسجيل إلى الدالة السحابية عبر SDK الرسمي
-  return await supabaseFetch('shield-register', {
-    action: 'register',
-    sessionId,
-    session_id: sessionId,
-    parkingLat,
-    parkingLng,
-    parking_lat: parkingLat,
-    parking_lng: parkingLng,
-    phone,
-    garageId: targetGarage,
-    garage_id: targetGarage,
-    subscription: activeSubscription,
-    registeredAt: new Date().toISOString(),
-  });
+    console.log('✅ Shield session synced');
+    return { success: true, message: 'تم مزامنة الدرع' };
+  } catch (err: any) {
+    return { success: false, message: err.message };
+  }
 };
 
 export const unregisterShieldSession = async (
