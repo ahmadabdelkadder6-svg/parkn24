@@ -4,9 +4,7 @@ import { supabase } from './supabase';
 import { normalizePlate } from '../store';
 
 // ─── Configuration ─────────────────────────────────────────────
-const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string || 'BCp73Z4tY0uQ6N2nU_a9XyZ-3wF8vK1mP5L9rQ2sT8uV1wX3yZ5a7b9c1d3e5f7g9h1i3j5k7l9m1n3o5p7q9r';
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const VAPID_PUBLIC_KEY = (import.meta.env.VITE_VAPID_PUBLIC_KEY as string) || 'BCp73Z4tY0uQ6N2nU_a9XyZ-3wF8vK1mP5L9rQ2sT8uV1wX3yZ5a7b9c1d3e5f7g9h1i3j5k7l9m1n3o5p7q9r';
 
 // ─── Types ─────────────────────────────────────────────────────
 interface PushResult {
@@ -73,70 +71,24 @@ const getStoredUserCredentials = (): { phone: string; garageId: string } => {
 };
 
 /**
- * دالة طلب السيرفر المحصنة ضد 401
+ * دالة طلب السيرفر المحصنة الرسمية باستخدام Supabase SDK المباشر لتفادي 401
  */
-const supabaseFetch = async (
-  path: string,
-  body: unknown,
-  retries: number = 2
-): Promise<PushResult> => {
-  // 1) التجربة الأولى عبر supabase.functions.invoke المباشر (يضمّن الهيدرز تلقائياً)
+const supabaseFetch = async (path: string, body: unknown): Promise<PushResult> => {
   try {
     const { data, error } = await supabase.functions.invoke(path, {
       body,
     });
-    if (!error) {
-      return { success: true, message: 'تم بنجاح', data };
-    }
-    console.warn(`[PushManager] supabase.functions.invoke('${path}') failed, using direct fetch fallback...`, error);
-  } catch (e) {
-    console.warn(`[PushManager] supabase.functions.invoke exception:`, e);
-  }
 
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    return { success: false, message: 'إعدادات السيرفر ناقصة' };
-  }
-
-  // 2) التجربة الاحتياطية عبر Fetch مباشر مع إرفاق apikey الحتمي لمنع 401
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-    try {
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/${path}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const data = await response.json().catch(() => ({}));
-        return { success: true, message: 'تم بنجاح', data };
-      }
-
-      if (response.status >= 400 && response.status < 500) {
-        console.error(`[PushManager] Edge function ${path} returned HTTP ${response.status}`);
-        return { success: false, message: `خطأ: ${response.status}` };
-      }
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      if (attempt === retries) {
-        return { success: false, message: 'فشل الاتصال بالسيرفر' };
-      }
+    if (error) {
+      console.warn(`[PushManager] Edge function '${path}' error:`, error);
+      return { success: false, message: error.message || 'خطأ في السيرفر' };
     }
 
-    const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
-    await new Promise((r) => setTimeout(r, delay));
+    return { success: true, message: 'تم بنجاح', data };
+  } catch (err: any) {
+    console.error(`[PushManager] Exception calling '${path}':`, err);
+    return { success: false, message: err.message || 'فشل الاتصال بالسيرفر' };
   }
-
-  return { success: false, message: 'انتهت المحاولات' };
 };
 
 // ─── Service Worker ────────────────────────────────────────────
@@ -380,6 +332,24 @@ export const registerShieldSession = async (
     console.warn('⚠️ Could not refresh push subscription prior to shield register:', pushErr);
   }
 
+  // 1) حفظ وتحديث مباشر لجدول shield_sessions بالداتابيز لتضمين المفاتيح بشكل مضمون 100%
+  if (activeSubscription) {
+    try {
+      await supabase
+        .from('shield_sessions')
+        .update({
+          push_endpoint: activeSubscription.endpoint,
+          push_p256dh: activeSubscription.keys?.p256dh,
+          push_auth: activeSubscription.keys?.auth,
+          last_gps_at: new Date().toISOString(),
+        })
+        .eq('session_id', sessionId);
+    } catch (dbErr) {
+      console.warn('⚠️ Direct DB update warning:', dbErr);
+    }
+  }
+
+  // 2) إرسال طلب التسجيل إلى الدالة السحابية عبر SDK الرسمي
   return await supabaseFetch('shield-register', {
     action: 'register',
     sessionId,

@@ -11,13 +11,13 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // 🛡️ استخدام SERVICE_ROLE_KEY لتأكيد وتسجيل الجلسات بدون اشتراط Supabase Auth JWT
+    // 🛡️ استخدام SERVICE_ROLE_KEY لتأكيد وتسجيل الجلسات دون تقييد بـ Auth JWT
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // التحقق الاختياري من JWT إذا توفر
+    // التحقق الاختياري من Auth JWT إذا توفر
     let authUserId: string | null = null;
     const authHeader = req.headers.get('Authorization');
     if (authHeader) {
@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
         const { data: { user } } = await anonClient.auth.getUser();
         if (user) authUserId = user.id;
       } catch (_) {
-        // تجاهل في حال كان المستخدم داخل برقم التليفون
+        // تجاهل الخطأ إذا كان الدخول برقم الهاتف بدون Auth JWT
       }
     }
 
@@ -79,16 +79,17 @@ Deno.serve(async (req) => {
       const p256dh = subscription?.keys?.p256dh || null;
       const auth = subscription?.keys?.auth || null;
 
-      // اغلق أي جلسات درع قديمة نشطة لنفس رقم الموبايل
+      // ✅ إغلاق الجلسات القديمة الأخرى لنفس رقم الهاتف (مع استثناء الجلسة الحالية)
       if (activePhone && activePhone !== 'unknown') {
         await supabase
           .from('shield_sessions')
           .update({ ended_at: new Date().toISOString() })
           .eq('phone', activePhone)
-          .is('ended_at', null);
+          .is('ended_at', null)
+          .neq('session_id', activeSessionId);
       }
 
-      // التحقق مما إذا كانت الجلسة موجودة مسبقاً
+      // التحقق مما إذا كانت الجلسة الحالية موجودة مسبقاً
       const { data: existing } = await supabase
         .from('shield_sessions')
         .select('session_id')

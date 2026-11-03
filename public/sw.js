@@ -202,8 +202,8 @@ self.addEventListener('push', (event) => {
     let options;
 
     if (isBreach) {
-      // 🚨 تنبيه حركة - اهتزاز عنيف وتوجيه لصفحة الجلسة /session
-      const breachTargetUrl = extraData.url || url || '/session';
+      // 🚨 تنبيه حركة - اهتزاز عنيف وتوجيه لـ /garage (الافتراضي الثابت)
+      const breachTargetUrl = extraData.url || url || '/garage';
       options = {
         body: body || 'تنبيه حركة: السيارة اتحركت من مكان الركن! افتح التطبيق فوراً',
         icon,
@@ -245,7 +245,7 @@ self.addEventListener('push', (event) => {
     if (isShield) {
       const isWarning = (typeof tag === 'string' && tag.includes('warning'))
         || (typeof extraData.type === 'string' && extraData.type.includes('warning'));
-      const shieldTargetUrl = extraData.url || url || '/session';
+      const shieldTargetUrl = extraData.url || url || '/garage';
       options = {
         body: body || 'تحديث من نظام المراقبة',
         icon,
@@ -311,7 +311,7 @@ self.addEventListener('notificationclick', (event) => {
     return;
   }
 
-  // 🎯 التوجيه الديناميكي للرابط القادم من الإشعار (مثلاً /session للوصول أو /garage)
+  // 🎯 التوجيه الافتراضي الثابت: /garage (مفيش إجبار على /session)
   const targetUrl = notifData.url || '/garage';
 
   event.waitUntil(

@@ -214,7 +214,7 @@ export function startShieldGPS(params: {
       pos.coords.speed,
     ),
     handleGPSError,
-    { enableHighAccuracy: false, maximumAge: 25000, timeout: 30000 },
+    { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 },
   );
 
   fallbackIntervalId = setInterval(() => {
@@ -225,7 +225,7 @@ export function startShieldGPS(params: {
         pos.coords.speed,
       ),
       handleGPSError,
-      { enableHighAccuracy: false, maximumAge: 60000, timeout: 20000 },
+      { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 },
     );
   }, FALLBACK_INTERVAL_MS);
 

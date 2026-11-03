@@ -696,35 +696,3 @@ export default function SessionScreen() {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // 🔴 حالة 3: لا توجد جلسة ولا توجه (واجهة ثابتة بطلب العودة للرئيسية)
-  // ═══════════════════════════════════════════════════════
-  return (
-    <motion.div
-      className="h-full flex flex-col items-center justify-center bg-slate-950 text-white p-6 dir-rtl text-center"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-    >
-      <div className="space-y-4 max-w-sm">
-        <div className="w-16 h-16 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center mx-auto">
-          <AlertTriangle size={32} />
-        </div>
-        <h3 className="text-xl font-black text-white">لا توجد جلسة ركن نشطة حالياً</h3>
-        <p className="text-xs font-bold text-slate-400 leading-relaxed">
-          يمكنك اختيار جراج من القائمة والتوجه إليه لتفعيل حماية السيارة وركنها.
-        </p>
-        <button
-          type="button"
-          onClick={() => {
-            setSelectedGarageId(null);
-            setScreen('list');
-          }}
-          className="w-full py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black text-sm flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-blue-900/30"
-        >
-          <span>العودة للرئيسية واسكشاف الجراجات</span>
-          <ArrowRight size={18} />
-        </button>
-      </div>
-    </motion.div>
-  );
-}

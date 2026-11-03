@@ -74,7 +74,7 @@ export default function ShieldOverlay({
       sendLocalNotification(
         '🚨 تنبيه حركة!',
         `السيارة تحركت ${dist}م من مكان الركن`,
-        '/session'
+        '/garage'
       );
       if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current);
       alarmIntervalRef.current = setInterval(() => {
@@ -177,7 +177,7 @@ export default function ShieldOverlay({
         sendLocalNotification(
           '⚠️ الـ GPS مقفول!',
           'فعّل الموقع عشان المراقبة تشتغل',
-          '/session'
+          '/garage'
         );
       },
     });
@@ -540,7 +540,7 @@ export default function ShieldOverlay({
 
   const handleTheft = useCallback(async () => {
     stopLocalAlarm();
-    sendLocalNotification('✅ تم استلام البلاغ', 'هيتم التواصل معاك قريباً', '/session');
+    sendLocalNotification('✅ تم استلام البلاغ', 'هيتم التواصل معاك قريباً', '/garage');
     destroyShield();
     try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch {}
 
