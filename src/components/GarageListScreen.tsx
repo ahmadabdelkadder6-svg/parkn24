@@ -1,10 +1,3 @@
-بناءً على طلبك، رجّعت ملف `GarageListScreen.tsx` للمنطق الأساسي القديم بالكامل وشيلت التعديلات الأخيرة (زي نظام "الحد الأقصى للخصم اليومي / الركن المجاني" أو أي حسابات إضافية). 
-
-الآن الحجز بيشتغل بالنظام الثابت: فحص 10 ج.م كحد أدنى (3 ج رسوم حجز + 7 ج للدرع)، وخصم رسوم الحجز بشكل طبيعي لكل جلسة.
-
-اتفضل الملف كامل بدون أي قص:
-
-```tsx
 // src/components/GarageListScreen.tsx
 
 import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
@@ -136,7 +129,7 @@ export default function GarageListScreen() {
   const {
     garages, setSelectedGarageId, setScreen, currentUser, sessions, incomingCars,
     offers, fetchAll, acknowledgedSessionIds, walletTopUps, reportPriceUpdate,
-    chargeBookingFee, addIncomingCar
+    chargeBookingFee, addIncomingCar, getDailyDeductionCount
   } = useStore();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -408,6 +401,10 @@ export default function GarageListScreen() {
     const { hasPaidBookingFee } = useStore.getState();
     const userWallet = currentUser.wallet || 0;
 
+    // فحص الحد الأقصى اليومي
+    const todayCount = getDailyDeductionCount();
+    const isFreeToday = todayCount >= 2;
+
     // 💡 حالة 1: العميل سبق له الخصم في نفس محاولة البحث (لأنه لم يجد مكان في الجراج السابق)
     if (hasPaidBookingFee) {
       setIsBooking(true);
@@ -433,8 +430,9 @@ export default function GarageListScreen() {
       return;
     }
 
-    // 💡 حالة 2: حجز جديد لأول مرة -> فحص الرصيد
-    if (userWallet < 10) {
+    // 💡 حالة 2: حجز جديد لأول مرة (ولم يستوفِ الحد الأقصى) -> فحص الرصيد
+    const MIN_REQUIRED_BALANCE = isFreeToday ? 7 : 10;
+    if (userWallet < MIN_REQUIRED_BALANCE) {
       setPendingVipGarage(garage);
       setShowInsufficientModal(true);
       return;
@@ -442,6 +440,7 @@ export default function GarageListScreen() {
 
     setIsBooking(true);
     try {
+      // chargeBookingFee يتعامل تلقائياً مع نظام الحد الأقصى ويجعله مجانياً إذا لزم الأمر
       const success = await chargeBookingFee();
       if (success) {
         await addIncomingCar({
@@ -454,7 +453,14 @@ export default function GarageListScreen() {
         });
 
         setSelectedGarageId(garage.id);
-        toast.success(`تم الخصم بنجاح (${BOOKING_FEE} ج.م) 🚗`);
+
+        if (isFreeToday) {
+          toast.success(`تم الحجز مجاناً! استوفيت الحد الأقصى للخصم اليومي 🎁`, { duration: 4000, icon: '🎉' });
+        } else {
+          const nextCount = todayCount + 1;
+          toast.success(`تم الخصم بنجاح (${BOOKING_FEE} ج.م) — الخصم رقم ${nextCount} اليوم 🚗`);
+        }
+
         setScreen('navigation');
       } else {
         toast.error('حدث خطأ أثناء الخصم، برجاء المحاولة لاحقاً');
