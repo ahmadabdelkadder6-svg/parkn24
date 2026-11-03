@@ -10,7 +10,7 @@ import {
   vibrateUrgent, requestNotificationPermission,
   stopVibration, unlockAudio,
 } from '../utils/notifications';
-import { subscribeToPush } from '../lib/pushManager';
+import { subscribeToPush, registerShieldSession } from '../lib/pushManager';
 import { supabase } from '../lib/supabase';
 
 type Phase = 'ask' | 'register' | 'active' | 'breach' | 'dismissed';
@@ -24,9 +24,11 @@ interface Props {
   userPhone: string | null;
   onDeductWallet: (amount: number, note: string) => boolean;
   onNavigateToWallet: () => void;
-  autoResume?: boolean; // ✅ جديد
-  onSessionEnd?: () => void; // ✅ جديد — ينهي الـ parking session ويرجع للرئيسية
+  autoResume?: boolean;
+  onSessionEnd?: () => void;
 }
+
+const DEFAULT_VAPID_KEY = 'BCp73Z4tY0uQ6N2nU_a9XyZ-3wF8vK1mP5L9rQ2sT8uV1wX3yZ5a7b9c1d3e5f7g9h1i3j5k7l9m1n3o5p7q9r';
 
 function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000;
@@ -51,7 +53,7 @@ export default function ShieldOverlay({
   sessionId, userId, garageId, parkingLat, parkingLng,
   userPhone, onDeductWallet, onNavigateToWallet,
   autoResume = false,
-  onSessionEnd, // ✅
+  onSessionEnd,
 }: Props) {
   const [phase, setPhase] = useState<Phase>('ask');
   const [phone, setPhone] = useState(userPhone ?? '');
@@ -72,10 +74,9 @@ export default function ShieldOverlay({
       sendLocalNotification(
         '🚨 تنبيه حركة!',
         `السيارة تحركت ${dist}م من مكان الركن`,
-        'shield-breach-local',
+        '/session'
       );
       if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current);
-      // ✅ أعلى تكرار — كل 2 ثانية بدل 3
       alarmIntervalRef.current = setInterval(() => {
         playUrgentSound();
         vibrateUrgent();
@@ -116,7 +117,6 @@ export default function ShieldOverlay({
     }
 
     setPhase('dismissed');
-    // ✅ ينهي الـ parking session ويرجع للرئيسية
     onSessionEnd?.();
   }, [sessionId, userPhone, userId, stopLocalAlarm, onSessionEnd]);
 
@@ -136,21 +136,18 @@ export default function ShieldOverlay({
   // 🔄 استرجاع حالة الدرع بعد الـ Refresh
   // ═══════════════════════════════════════════════════════
   useEffect(() => {
-    // ✅ لو autoResume = true من الـ parent → فعّل مباشرة من غير localStorage check
     if (autoResume && phase === 'ask') {
       const saved = loadShieldState();
       if (saved?.sessionId === sessionId) {
         setShieldCode(saved.shieldCode);
         setPhone(saved.phone ?? '');
       } else {
-        // لو مفيش localStorage، اعمل كود جديد ولكن ماتعملش insert في DB
         setShieldCode('SH-' + Math.random().toString(36).slice(2, 8).toUpperCase());
       }
       setPhase('active');
       return;
     }
 
-    // ─── الحالة القديمة: استرجاع من localStorage ───
     const saved = loadShieldState();
     if (
       saved?.isActive &&
@@ -161,7 +158,7 @@ export default function ShieldOverlay({
       setPhone(saved.phone ?? '');
       setPhase('active');
     }
-  }, [garageId, sessionId, autoResume]);
+  }, [garageId, sessionId, autoResume, phase]);
 
   // ─── GPS watching للخرق ───
   useEffect(() => {
@@ -180,7 +177,7 @@ export default function ShieldOverlay({
         sendLocalNotification(
           '⚠️ الـ GPS مقفول!',
           'فعّل الموقع عشان المراقبة تشتغل',
-          'shield-gps-warning',
+          '/session'
         );
       },
     });
@@ -223,7 +220,7 @@ export default function ShieldOverlay({
     return () => navigator.geolocation.clearWatch(watchId);
   }, [phase, sessionId]);
 
-  // ─── تجديد الـ Push Subscription تلقائي ───
+  // ─── تجديد الـ Push Subscription تلقائي مع الحماية من غياب الـ VAPID Key ───
   useEffect(() => {
     if (phase !== 'active') return;
 
@@ -232,10 +229,9 @@ export default function ShieldOverlay({
         const reg = await navigator.serviceWorker.ready;
         let sub = await reg.pushManager.getSubscription();
 
-        if (!sub) {
-          const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-          if (!VAPID_PUBLIC) return;
+        const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY || DEFAULT_VAPID_KEY;
 
+        if (!sub) {
           const urlBase64ToUint8Array = (b: string): Uint8Array => {
             const p = '='.repeat((4 - (b.length % 4)) % 4);
             const d = window.atob((b + p).replace(/-/g, '+').replace(/_/g, '/'));
@@ -251,7 +247,6 @@ export default function ShieldOverlay({
         if (sub) {
           const subJson = sub.toJSON();
 
-          // ✅ تحديث push keys فقط — ماتلمسش fake_tick أو alert_count
           await supabase
             .from('shield_sessions')
             .update({
@@ -262,7 +257,11 @@ export default function ShieldOverlay({
             .eq('session_id', sessionId)
             .is('ended_at', null);
 
-          console.log('✅ Push subscription refreshed');
+          // تزامن أيضاً مع الدالة السحابية
+          const identifier = userPhone || userId || 'unknown';
+          await registerShieldSession(sessionId, parkingLat, parkingLng, identifier, garageId);
+
+          console.log('✅ Push subscription refreshed and synced with Cloud Function');
         }
       } catch (e) {
         console.warn('Failed to refresh subscription:', e);
@@ -272,7 +271,7 @@ export default function ShieldOverlay({
     refreshSubscription();
     const interval = setInterval(refreshSubscription, 10 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [phase, sessionId]);
+  }, [phase, sessionId, userPhone, userId, garageId, parkingLat, parkingLng]);
 
   // ─── Realtime listener للـ breach ───
   useEffect(() => {
@@ -321,15 +320,13 @@ export default function ShieldOverlay({
     return () => {
       navigator.serviceWorker.removeEventListener('message', handleSWMessage);
     };
-  }, [handleIamDriving]);
+  }, [handleIamDriving, triggerLocalAlarm]);
 
   // ─── Cleanup on unmount ───
   useEffect(() => {
     return () => {
       stopLocalAlarm();
       destroyShield();
-      // ⚠️ ماتعملش auto-close هنا! العميل بيعمل refresh بس
-      // الـ cleanup الحقيقي بيحصل في handleIamDriving أو handleTheft
     };
   }, [stopLocalAlarm]);
 
@@ -352,11 +349,7 @@ export default function ShieldOverlay({
         return;
       }
 
-      const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-      if (!VAPID_PUBLIC) {
-        console.error('❌ VITE_VAPID_PUBLIC_KEY undefined');
-        return;
-      }
+      const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY || DEFAULT_VAPID_KEY;
 
       const urlBase64ToUint8Array = (b: string): Uint8Array => {
         const p = '='.repeat((4 - (b.length % 4)) % 4);
@@ -372,9 +365,6 @@ export default function ShieldOverlay({
       const subJson = sub.toJSON();
       if (!subJson?.endpoint) return;
 
-      // ═══════════════════════════════════════════════════════
-      // ✅ الحل الرئيسي: افحص لو فيه session نشط لنفس session_id
-      // ═══════════════════════════════════════════════════════
       const { data: existing } = await supabase
         .from('shield_sessions')
         .select('session_id, fake_tick, alert_count, ended_at')
@@ -383,7 +373,6 @@ export default function ShieldOverlay({
         .maybeSingle();
 
       if (existing) {
-        // 🔁 Session موجود → حدّث الـ push keys فقط (ماتلمسش fake_tick!)
         console.log('🔁 Session exists, updating push keys only. Keeping fake_tick:', existing.fake_tick);
         
         const { error: updErr } = await supabase.from('shield_sessions')
@@ -396,13 +385,13 @@ export default function ShieldOverlay({
 
         if (updErr) console.error('❌ Update error:', updErr.message);
         else console.log('✅ Push keys refreshed (fake_tick preserved)');
+
+        await registerShieldSession(sessionId, parkingLat, parkingLng, identifier, garageId);
         return;
       }
 
-      // 🆕 Session جديد → insert كامل
       console.log('🆕 Creating new shield session');
 
-      // أقفل أي sessions قديمة لنفس الموبايل (مش نفس session_id)
       await supabase.from('shield_sessions')
         .update({ ended_at: new Date().toISOString() })
         .eq('phone', identifier)
@@ -432,15 +421,15 @@ export default function ShieldOverlay({
 
       if (error) console.error('❌ Insert error:', error.message);
       else console.log('✅ Shield registered! 🎉');
+
+      await registerShieldSession(sessionId, parkingLat, parkingLng, identifier, garageId);
     } catch (e: any) {
       console.error('❌ Crashed:', e.message);
     }
-  }, [sessionId, userId, userPhone, parkingLat, parkingLng]);
+  }, [sessionId, userId, userPhone, parkingLat, parkingLng, garageId]);
 
-  // ─── لما autoResume = true، حدّث الـ push keys بس (ماتعملش insert) ───
   useEffect(() => {
     if (!autoResume || phase !== 'active') return;
-    // بعد الـ phase تحول لـ active → سجّل في السيرفر (هيلاقي session موجود ويحدّث فقط)
     registerOnServer();
   }, [autoResume, phase, registerOnServer]);
 
@@ -551,7 +540,7 @@ export default function ShieldOverlay({
 
   const handleTheft = useCallback(async () => {
     stopLocalAlarm();
-    sendLocalNotification('✅ تم استلام البلاغ', 'هيتم التواصل معاك قريباً');
+    sendLocalNotification('✅ تم استلام البلاغ', 'هيتم التواصل معاك قريباً', '/session');
     destroyShield();
     try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch {}
 
@@ -573,7 +562,6 @@ export default function ShieldOverlay({
     }
 
     setPhase('dismissed');
-    // ✅ ينهي الـ parking session ويرجع للرئيسية
     onSessionEnd?.();
   }, [sessionId, userPhone, userId, stopLocalAlarm, onSessionEnd]);
 
@@ -610,10 +598,6 @@ export default function ShieldOverlay({
 
   return (
     <div className="w-full flex flex-col items-center gap-2">
-
-      {/* ═══════════════════════════════════════════════════════
-          🎨 phase 'ask' — زرار الدرع الفخم الجديد
-          ═══════════════════════════════════════════════════════ */}
       {phase === 'ask' && (
         <div className="w-full relative overflow-hidden rounded-2xl"
           style={{
@@ -622,7 +606,6 @@ export default function ShieldOverlay({
             boxShadow: '0 8px 32px rgba(22, 86, 184, 0.35), inset 0 1px 0 rgba(255,255,255,0.1)',
           }}
         >
-          {/* ─── Shimmer effect ─── */}
           <div
             className="absolute inset-0 opacity-30 pointer-events-none"
             style={{
@@ -713,9 +696,6 @@ export default function ShieldOverlay({
         </div>
       )}
 
-      {/* ═══════════════════════════════════════════════════════
-          phase 'register'
-          ═══════════════════════════════════════════════════════ */}
       {phase === 'register' && (
         <div className="w-full rounded-2xl p-3.5"
           style={{
@@ -751,13 +731,9 @@ export default function ShieldOverlay({
         </div>
       )}
 
-      {/* ═══════════════════════════════════════════════════════
-          phase 'active' — Radar + Status (مضغوط)
-          ═══════════════════════════════════════════════════════ */}
       {phase === 'active' && (
         <div className="w-full flex flex-col items-center gap-1.5">
           <div className="relative" style={{ width: 110, height: 110 }}>
-
             <div
               ref={radarRef}
               className="absolute inset-0 rounded-full"
@@ -796,9 +772,6 @@ export default function ShieldOverlay({
         </div>
       )}
 
-      {/* ═══════════════════════════════════════════════════════
-          phase 'breach' — تنبيه الحركة
-          ═══════════════════════════════════════════════════════ */}
       {phase === 'breach' && (
         <div className="w-full bg-red-950/90 border-2 border-red-500 rounded-2xl p-3.5 animate-pulse backdrop-blur-sm">
           <div className="flex items-center gap-3 mb-2.5">

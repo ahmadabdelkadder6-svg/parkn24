@@ -8,7 +8,7 @@ const corsHeaders = {
 };
 
 const THEFT_MIN_DISTANCE = 250;
-const CAR_SPEED_THRESHOLD = 5;
+const CAR_SPEED_THRESHOLD = 5; // 5 m/s = 18 km/h
 
 const ALERT_POOL: { type: string; title: string; body: string }[] = [
   { type: 'warning', title: '⚠️ تنبيه حركة', body: 'تم رصد حركة قريبة من مكان الركن' },
@@ -146,6 +146,8 @@ serve(async (req) => {
           title: '🔔 اختبار Shield',
           body: `لو وصلك الإشعار ده على ${s.phone} يبقى الـ push شغال ✅`,
           tag: 'shield-test',
+          url: '/session',
+          data: { url: '/session' }
         }, supabase);
         if (r.sent) sent++;
         else errors.push(`${s.phone}: ${r.reason}`);
@@ -211,7 +213,7 @@ serve(async (req) => {
     for (const shield of activeShields) {
 
       // ═══════════════════════════════════════════════════
-      // 🚨 فحص الحركة
+      // 🚨 فحص الحركة الخارجي للدرع
       // ═══════════════════════════════════════════════════
       if (
         shield.parking_lat && shield.parking_lng &&
@@ -229,7 +231,8 @@ serve(async (req) => {
             title: '🚨 تنبيه حركة!',
             body: `السيارة اتحركت ${Math.round(dist)}م من مكان الركن!`,
             tag: 'shield-breach',
-            data: { type: 'shield-breach', distance: Math.round(dist) },
+            url: '/session',
+            data: { type: 'shield-breach', distance: Math.round(dist), url: '/session' },
           }, supabase);
 
           if (result.sent) {
@@ -262,7 +265,7 @@ serve(async (req) => {
       const alertCount = shield.alert_count || 0;
       if (alertCount >= fakeMode) { totalSkipped++; continue; }
 
-      // ✅ عدّ الـ tick — كل 6 ticks = 30 دقيقة
+      // ✅ عدّ الـ tick — كل 6 ticks = 30 دقيقة (إذا كان الـ cron يشتغل كل 5 دقائق)
       const tick = (shield.fake_tick || 0) + 1;
       if (tick < 6) {
         await supabase.from('shield_sessions')
@@ -286,7 +289,8 @@ serve(async (req) => {
         title: alert.title,
         body: alert.body,
         tag: `shield-${alert.type}-${shield.session_id.slice(0, 8)}-${alertCount}`,
-        data: { type: 'shield' },
+        url: '/session',
+        data: { type: 'shield', url: '/session' },
       }, supabase);
 
       if (result.sent) {

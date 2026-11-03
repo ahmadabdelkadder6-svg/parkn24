@@ -1,6 +1,6 @@
-// public/sw.js - Park'n 24 Service Worker v16
+// public/sw.js - Park'n 24 Service Worker v17 (Bulletproof - Full Logic Preserved)
 
-const CACHE_NAME    = 'parkn24-v16';
+const CACHE_NAME    = 'parkn24-v17';
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
 const recentNotifications = new Map();
@@ -18,8 +18,10 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 Service Worker Installed (v16)');
-      return cache.addAll(STATIC_ASSETS);
+      console.log('📦 Service Worker Installed (v17)');
+      return cache.addAll(STATIC_ASSETS).catch((err) => {
+        console.warn('⚠️ cache.addAll partial fail (non-fatal):', err);
+      });
     })
   );
 });
@@ -36,6 +38,9 @@ self.addEventListener('activate', (event) => {
         )
       )
       .then(() => self.clients.claim())
+      .then(() => {
+        console.log('✅ Service Worker v17 activated & controlling clients');
+      })
   );
 });
 
@@ -64,105 +69,165 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
+// ─── Helper: عرض إشعار بأمان بدون crash ───────────────────────
+async function safeShowNotification(title, options) {
+  try {
+    await self.registration.showNotification(title || 'Park\'n 24', options);
+    return true;
+  } catch (err) {
+    console.error('❌ showNotification failed, retrying minimal options:', err);
+    try {
+      await self.registration.showNotification(title || 'Park\'n 24', {
+        body: (options && options.body) || 'تنبيه جديد من Park\'n 24',
+        icon: '/icons/icon-192x192.png',
+        badge: '/icons/icon-192x192.png',
+        tag: (options && options.tag) || ('parkn24-fallback-' + Date.now()),
+        data: (options && options.data) || { url: '/garage' },
+        requireInteraction: true,
+      });
+      return true;
+    } catch (err2) {
+      console.error('❌ Even minimal notification failed:', err2);
+      return false;
+    }
+  }
+}
+
 // ─── 5. Push ──────────────────────────────────────────────────
 self.addEventListener('push', (event) => {
-  let title     = 'Park\'n 24';
-  let body      = '';
-  let icon      = '/icons/icon-192x192.png';
-  let badge     = '/icons/icon-192x192.png';
-  let tag       = 'parkn24-default';
-  let url       = '/garage';
-  let extraData = {};
+  const pushWork = (async () => {
+    let title     = 'Park\'n 24';
+    let body      = '';
+    let icon      = '/icons/icon-192x192.png';
+    let badge     = '/icons/icon-192x192.png';
+    let tag       = 'parkn24-default';
+    let url       = '/garage';
+    let extraData = {};
 
-  try {
-    if (event.data) {
-      const payload = event.data.json();
-      console.log('📨 Push received in SW:', payload);
+    try {
+      if (event.data) {
+        let payload = null;
 
-      if (payload.notification) {
-        title = payload.notification.title || title;
-        body  = payload.notification.body  || body;
+        // 1) قراءة التنسيق كـ JSON
+        try {
+          payload = event.data.json();
+        } catch (_) {
+          // 2) تجربة قراءة النص ثم تحويله
+          try {
+            const txt = event.data.text();
+            if (txt) {
+              try {
+                payload = JSON.parse(txt);
+              } catch (__) {
+                body = txt;
+              }
+            }
+          } catch (___) {
+            console.warn('⚠️ Could not read push data as text');
+          }
+        }
+
+        if (payload) {
+          console.log('📨 Push received in SW v17:', payload);
+
+          if (payload.notification) {
+            title = payload.notification.title || title;
+            body  = payload.notification.body  || body;
+            if (payload.notification.icon)  icon  = payload.notification.icon;
+            if (payload.notification.badge) badge = payload.notification.badge;
+            if (payload.notification.tag)   tag   = payload.notification.tag;
+          }
+
+          if (payload.title) title = payload.title;
+          if (payload.body)  body  = payload.body;
+          if (payload.icon)  icon  = payload.icon;
+          if (payload.badge) badge = payload.badge;
+          if (payload.tag)   tag   = payload.tag;
+          if (payload.url)   url   = payload.url;
+
+          if (payload.data) {
+            extraData = { ...payload.data };
+            if (payload.data.tag) tag = payload.data.tag;
+            if (payload.data.url) url = payload.data.url;
+            if (payload.data.type) extraData.type = payload.data.type;
+          }
+
+          let plate = '';
+          if (typeof tag === 'string' && tag.startsWith('incoming-')) {
+            plate = tag.replace('incoming-', '');
+          } else if (payload.carPlate || payload.car_plate) {
+            plate = payload.carPlate || payload.car_plate;
+          } else if (payload.data?.carPlate || payload.data?.car_plate) {
+            plate = payload.data.carPlate || payload.data.car_plate;
+          }
+
+          if (plate && typeof tag === 'string' && tag.startsWith('incoming-')) {
+            title = '🚨 سيارة في الطريق إليك!';
+            body  = `🚗 رقم السيارة: ${plate} • استعد للاستقبال!`;
+          }
+        }
       }
-
-      if (payload.title) title = payload.title;
-      if (payload.body)  body  = payload.body;
-      if (payload.icon)  icon  = payload.icon;
-      if (payload.badge) badge = payload.badge;
-      if (payload.tag)   tag   = payload.tag;
-      if (payload.url)   url   = payload.url;
-
-      if (payload.data) {
-        extraData = payload.data;
-        if (payload.data.tag) tag = payload.data.tag;
-        if (payload.data.url) url = payload.data.url;
-        if (payload.data.type) extraData.type = payload.data.type;
-      }
-
-      let plate = '';
-      if (typeof tag === 'string' && tag.startsWith('incoming-')) {
-        plate = tag.replace('incoming-', '');
-      } else if (payload.carPlate || payload.car_plate) {
-        plate = payload.carPlate || payload.car_plate;
-      } else if (payload.data?.carPlate || payload.data?.car_plate) {
-        plate = payload.data.carPlate || payload.data.car_plate;
-      }
-
-      if (plate && tag.startsWith('incoming-')) {
-        title = '🚨 سيارة في الطريق إليك!';
-        body  = `🚗 رقم السيارة: ${plate} • استعد للاستقبال!`;
-      }
+    } catch (err) {
+      console.error('❌ Push parse error:', err);
     }
-  } catch (err) {
-    console.error('❌ Push parse error:', err);
-  }
 
-  const dedupKey  = tag;
-  const lastShown = recentNotifications.get(dedupKey);
-  const now       = Date.now();
+    if (!body) {
+      body = 'في تحديث جديد من Park\'n 24';
+    }
 
-  if (lastShown && (now - lastShown) < DEDUP_WINDOW_MS) return;
-  recentNotifications.set(dedupKey, now);
+    const dedupKey  = tag || ('parkn24-' + title + '-' + body);
+    const lastShown = recentNotifications.get(dedupKey);
+    const now       = Date.now();
 
-  for (const [k, t] of recentNotifications.entries()) {
-    if (now - t > 30000) recentNotifications.delete(k);
-  }
+    if (lastShown && (now - lastShown) < DEDUP_WINDOW_MS) {
+      console.log('🔁 Dedup skip:', dedupKey);
+      return;
+    }
+    recentNotifications.set(dedupKey, now);
 
-  // ═══════════════════════════════════════════════════════════
-  // 🛡️ إشعارات الحماية والتنبيهات الأمنية
-  // ═══════════════════════════════════════════════════════════
-  const isShield = tag.startsWith('shield-');
-  const isBreach = tag === 'shield-breach' || extraData.type === 'shield-breach';
+    for (const [k, t] of recentNotifications.entries()) {
+      if (now - t > 30000) recentNotifications.delete(k);
+    }
 
-  let options;
+    // ═══════════════════════════════════════════════════════════
+    // 🛡️ إشعارات الحماية والتنبيهات الأمنية
+    // ═══════════════════════════════════════════════════════════
+    const isShield = (typeof tag === 'string' && tag.startsWith('shield-'))
+      || extraData.type === 'shield'
+      || extraData.type === 'shield-warning';
+    const isBreach = tag === 'shield-breach'
+      || extraData.type === 'shield-breach'
+      || extraData.type === 'breach';
 
-  if (isBreach) {
-    // 🚨 تنبيه حركة - اهتزاز عنيف وتوجيه لصفحة الجلسة /session
-    const breachTargetUrl = extraData.url || '/session';
-    options = {
-      body: body || 'تنبيه حركة: السيارة اتحركت من مكان الركن! افتح التطبيق فوراً',
-      icon,
-      badge,
-      vibrate: [
-        1000, 200, 1000, 200, 1000, 200,
-        1000, 200, 1000, 200, 1000, 200,
-        1500, 400, 1500, 400, 1500,
-      ],
-      requireInteraction: true,
-      tag: 'shield-breach',
-      renotify: true,
-      silent: false,
-      timestamp: now,
-      data: { url: breachTargetUrl, type: 'shield-breach', ...extraData },
-      actions: [
-        { action: 'open',    title: '🚨 افتح التطبيق فوراً' },
-        { action: 'dismiss', title: '✅ أنا اللي سايق'       },
-      ],
-    };
+    let options;
 
-    // 🎯 إرسال إشارة للتطبيق لو مفتوح في الواجهة
-    event.waitUntil(
-      (async () => {
-        await self.registration.showNotification(title || '🚨 تنبيه حركة!', options);
+    if (isBreach) {
+      // 🚨 تنبيه حركة - اهتزاز عنيف وتوجيه لصفحة الجلسة /session
+      const breachTargetUrl = extraData.url || url || '/session';
+      options = {
+        body: body || 'تنبيه حركة: السيارة اتحركت من مكان الركن! افتح التطبيق فوراً',
+        icon,
+        badge,
+        vibrate: [
+          1000, 200, 1000, 200, 1000, 200,
+          1000, 200, 1000, 200, 1000, 200,
+          1500, 400, 1500, 400, 1500,
+        ],
+        requireInteraction: true,
+        tag: 'shield-breach',
+        renotify: true,
+        silent: false,
+        timestamp: now,
+        data: { url: breachTargetUrl, type: 'shield-breach', ...extraData },
+        actions: [
+          { action: 'open',    title: '🚨 افتح التطبيق فوراً' },
+          { action: 'dismiss', title: '✅ أنا اللي سايق'       },
+        ],
+      };
+
+      await safeShowNotification(title || '🚨 تنبيه حركة!', options);
+
+      try {
         const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
         for (const client of clientsList) {
           client.postMessage({
@@ -171,56 +236,59 @@ self.addEventListener('push', (event) => {
             shieldId: extraData.shieldId,
           });
         }
-      })()
-    );
-    return;
-  }
+      } catch (msgErr) {
+        console.warn('⚠️ postMessage to clients failed:', msgErr);
+      }
+      return;
+    }
 
-  if (isShield) {
-    const isWarning = tag.includes('warning') || extraData.type?.includes('warning');
-    const shieldTargetUrl = extraData.url || '/session';
-    options = {
-      body: body || 'تحديث من نظام المراقبة',
-      icon,
-      badge,
-      vibrate: isWarning
-        ? [500, 150, 500, 150, 800]
-        : [200, 100, 200],
-      requireInteraction: isWarning,
-      tag,
-      renotify: isWarning,
-      silent: false,
-      timestamp: now,
-      data: { url: shieldTargetUrl, type: 'shield', ...extraData },
-    };
-  } else {
-    // التنبيهات الافتراضية للجراج
-    const defaultTargetUrl = url || extraData.url || '/garage';
-    options = {
-      body: body || '🚗 تقترب سيارة جديدة من الجراج الآن، استعد!',
-      icon,
-      badge,
-      vibrate: [
-        1000, 300, 1000, 300, 1000, 300,
-        1000, 300, 1000, 300, 1000, 300,
-        1200, 400, 1200,
-      ],
-      requireInteraction: true,
-      tag: tag || 'valet-urgent-alarm',
-      renotify: true,
-      silent: false,
-      timestamp: now,
-      data: { url: defaultTargetUrl, ...extraData },
-      actions: [
-        { action: 'open',    title: '🚗 فتح التطبيق فوراً' },
-        { action: 'dismiss', title: '✕ إغلاق'             },
-      ],
-    };
-  }
+    if (isShield) {
+      const isWarning = (typeof tag === 'string' && tag.includes('warning'))
+        || (typeof extraData.type === 'string' && extraData.type.includes('warning'));
+      const shieldTargetUrl = extraData.url || url || '/session';
+      options = {
+        body: body || 'تحديث من نظام المراقبة',
+        icon,
+        badge,
+        vibrate: isWarning
+          ? [500, 150, 500, 150, 800]
+          : [200, 100, 200],
+        requireInteraction: isWarning,
+        tag,
+        renotify: isWarning,
+        silent: false,
+        timestamp: now,
+        data: { url: shieldTargetUrl, type: extraData.type || 'shield', ...extraData },
+      };
+    } else {
+      // التنبيهات الافتراضية للجراج
+      const defaultTargetUrl = url || extraData.url || '/garage';
+      options = {
+        body: body || '🚗 تقترب سيارة جديدة من الجراج الآن، استعد!',
+        icon,
+        badge,
+        vibrate: [
+          1000, 300, 1000, 300, 1000, 300,
+          1000, 300, 1000, 300, 1000, 300,
+          1200, 400, 1200,
+        ],
+        requireInteraction: true,
+        tag: tag || 'valet-urgent-alarm',
+        renotify: true,
+        silent: false,
+        timestamp: now,
+        data: { url: defaultTargetUrl, ...extraData },
+        actions: [
+          { action: 'open',    title: '🚗 فتح التطبيق فوراً' },
+          { action: 'dismiss', title: '✕ إغلاق'             },
+        ],
+      };
+    }
 
-  event.waitUntil(
-    self.registration.showNotification(title, options)
-  );
+    await safeShowNotification(title, options);
+  })();
+
+  event.waitUntil(pushWork);
 });
 
 // ─── 6. Notification Click ────────────────────────────────────
@@ -243,7 +311,7 @@ self.addEventListener('notificationclick', (event) => {
     return;
   }
 
-  // 🎯 التوجيه الديناميكي للرابط القادم من الإشعار (مثلاً /session للوصول للجراج أو /garage للتنبيهات العادية)
+  // 🎯 التوجيه الديناميكي للرابط القادم من الإشعار (مثلاً /session للوصول أو /garage)
   const targetUrl = notifData.url || '/garage';
 
   event.waitUntil(
@@ -252,7 +320,6 @@ self.addEventListener('notificationclick', (event) => {
       .then((clientList) => {
         for (const client of clientList) {
           if (client.url.includes(self.location.origin) && 'focus' in client) {
-            // 🚨 لو تنبيه حركة → ابعت message للتطبيق يفعّل breach phase + صوت
             if (isBreach) {
               client.postMessage({
                 type: 'SHIELD_BREACH_DETECTED',
@@ -260,11 +327,12 @@ self.addEventListener('notificationclick', (event) => {
                 shieldId: notifData.shieldId,
               });
             }
-            if ('navigate' in client) client.navigate(targetUrl);
+            if ('navigate' in client) {
+              try { client.navigate(targetUrl); } catch (_) {}
+            }
             return client.focus();
           }
         }
-        // لو التطبيق كان مقفول تماماً → يفتح الرابط المطلوب فوراً
         if (clients.openWindow) return clients.openWindow(targetUrl);
       })
   );

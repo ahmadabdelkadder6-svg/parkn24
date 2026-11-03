@@ -1,3 +1,4 @@
+// src/lib/shield.ts
 // ═══════════════════════════════════════════════════════════
 // 🛡️ Car Shield Engine — Local-First (الموبايل يفكر لوحده)
 // الفلسفة: الحساب كله على الموبايل، السيرفر يتكلم بس وقت الحاجة
@@ -106,11 +107,11 @@ export async function checkUserInsideGarage(
 // 🧠 حساب الـ Grace Period بناءً على السرعة
 // ═══════════════════════════════════════════════════════════
 function getGracePeriod(speedMs: number | null): number {
-  // 🚗 سيارة فقط (≥ 18 كم/س) → تنبيه بعد 30 ثانية
+  // 🚗 سيارة فقط (≥ 18 كم/س = 5 م/ث) → تنبيه بعد 30 ثانية
   if (speedMs !== null && speedMs >= CAR_SPEED_THRESHOLD) {
     return CAR_GRACE_MS;
   }
-  // أي حاجة تانية (مشي، جري، سرعة مجهولة) → مفيش تنبيه
+  // أي حركة أبطأ من 18 كم/س (مشي أو جري أو غيره) → لا يتم إطلاق إنذار مطلقاً
   return Infinity;
 }
 
@@ -151,7 +152,7 @@ export function startShieldGPS(params: {
     consecutiveErrors = 0;
     const now = Date.now();
 
-    // ✅ حساب السرعة يدوياً (rawSpeed = null على الموبايل!)
+    // ✅ حساب السرعة يدوياً في حال كان rawSpeed غير متاح من المتصفح
     let speed = (rawSpeed && rawSpeed > 0) ? rawSpeed : 0;
     if (prevPos) {
       const d = haversine(prevPos.lat, prevPos.lng, lat, lng);

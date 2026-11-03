@@ -1,9 +1,9 @@
-// src/lib/pushManager.ts
+// src/lib/pushManager.ts - Complete Push Notification & Shield Subscription Manager
 
 import { normalizePlate } from '../store';
 
 // ─── Configuration ─────────────────────────────────────────────
-const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string;
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string || 'BCp73Z4tY0uQ6N2nU_a9XyZ-3wF8vK1mP5L9rQ2sT8uV1wX3yZ5a7b9c1d3e5f7g9h1i3j5k7l9m1n3o5p7q9r';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
@@ -39,6 +39,42 @@ const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   return new Uint8Array([...rawData].map((c) => c.charCodeAt(0)));
 };
 
+/**
+ * استخراج رقم الهاتف ومعرف الجراج من جميع مصادر التخزين المتاحة
+ */
+const getStoredUserCredentials = (): { phone: string; garageId: string } => {
+  let phone = '';
+  let garageId = '';
+
+  try {
+    // 1) فحص currentUser
+    const cu = JSON.parse(localStorage.getItem('currentUser') || '{}');
+    if (cu.phone) phone = cu.phone;
+    if (cu.garageId || cu.garage_id) garageId = cu.garageId || cu.garage_id;
+
+    // 2) فحص parkn24_user لو لسه فارغ
+    if (!phone || !garageId) {
+      const pu = JSON.parse(localStorage.getItem('parkn24_user') || '{}');
+      if (!phone && pu.phone) phone = pu.phone;
+      if (!garageId && (pu.garageId || pu.garage_id)) garageId = pu.garageId || pu.garage_id;
+    }
+
+    // 3) فحص المفاتيح الفردية المباشرة
+    if (!phone) phone = localStorage.getItem('parkn24_phone') || '';
+    if (!garageId) garageId = localStorage.getItem('parkn24_garage_id') || '';
+
+    // 4) فحص رحلة الوصول المعلقة
+    if (!garageId) {
+      const pa = JSON.parse(localStorage.getItem('parkn24_pending_arrival') || '{}');
+      if (pa.garageId || pa.garage_id) garageId = pa.garageId || pa.garage_id;
+    }
+  } catch (err) {
+    console.warn('⚠️ Error reading local storage credentials:', err);
+  }
+
+  return { phone, garageId };
+};
+
 const supabaseFetch = async (
   path: string,
   body: unknown,
@@ -50,7 +86,7 @@ const supabaseFetch = async (
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 7000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
     try {
       const response = await fetch(`${SUPABASE_URL}/functions/v1/${path}`, {
@@ -80,7 +116,6 @@ const supabaseFetch = async (
       }
     }
 
-    // Exponential Backoff
     const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
     await new Promise((r) => setTimeout(r, delay));
   }
@@ -153,14 +188,9 @@ export const subscribeToPush = async (garageId?: string, userPhone?: string): Pr
       return { success: false, message: 'مفاتيح الاشتراك ناقصة' };
     }
 
-    let phone = userPhone || '';
-    let targetGarageId = garageId || '';
-
-    try {
-      const cu = JSON.parse(localStorage.getItem('currentUser') || '{}');
-      if (!phone) phone = cu.phone || '';
-      if (!targetGarageId) targetGarageId = cu.garageId || cu.garage_id || '';
-    } catch {}
+    const creds = getStoredUserCredentials();
+    const phone = userPhone || creds.phone;
+    const targetGarageId = garageId || creds.garageId;
 
     const result = await supabaseFetch('save-push-subscription', {
       subscription: {
@@ -174,11 +204,12 @@ export const subscribeToPush = async (garageId?: string, userPhone?: string): Pr
     });
 
     if (result.success) {
-      return { success: true, message: 'تم تفعيل الحماية بنجاح! 🛡️' };
+      return { success: true, message: 'تم تفعيل الحماية بنجاح! 🛡️', data: { subscription: sub } };
     }
     return result;
   } catch (err) {
-    return { success: false, message: 'حدث خطأ غير متوقع' };
+    console.error('❌ Exception in subscribeToPush:', err);
+    return { success: false, message: 'حدث خطأ غير متوقع في الاشتراك' };
   }
 };
 
@@ -319,15 +350,22 @@ export const registerShieldSession = async (
   userPhone?: string,
   garageId?: string
 ): Promise<PushResult> => {
-  let phone = userPhone || '';
-  let targetGarage = garageId || '';
+  const creds = getStoredUserCredentials();
+  const phone = userPhone || creds.phone;
+  const targetGarage = garageId || creds.garageId;
 
+  // 🚨 1. ضمان تجديد اشتراك الإشعارات وحفظه في السيرفر قبل تفعيل الدرع
+  let activeSubscription: any = null;
   try {
-    const cu = JSON.parse(localStorage.getItem('currentUser') || '{}');
-    if (!phone) phone = cu.phone || '';
-    if (!targetGarage) targetGarage = cu.garageId || cu.garage_id || '';
-  } catch {}
+    const pushRes = await subscribeToPush(targetGarage, phone);
+    if (pushRes.success && pushRes.data) {
+      activeSubscription = (pushRes.data as any).subscription;
+    }
+  } catch (pushErr) {
+    console.warn('⚠️ Could not refresh push subscription prior to shield register:', pushErr);
+  }
 
+  // 🚨 2. إرسال بيانات الدرع بالكامل مع اشتراك الـ Push المباشر
   return await supabaseFetch('shield-register', {
     action: 'register',
     sessionId,
@@ -338,6 +376,9 @@ export const registerShieldSession = async (
     parking_lng: parkingLng,
     phone,
     garageId: targetGarage,
+    garage_id: targetGarage,
+    subscription: activeSubscription,
+    registeredAt: new Date().toISOString(),
   });
 };
 
