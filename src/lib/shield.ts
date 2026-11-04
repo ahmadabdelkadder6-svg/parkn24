@@ -29,13 +29,13 @@ export interface ShieldState {
 // ─── ثوابت ───
 export const SHIELD_COST = 7;
 export const SHIELD_STORAGE_KEY = 'parkn24_shield';
-export const GEOFENCE_RADIUS = 250;
+export const GEOFENCE_RADIUS = 200;          // 🔧 كان 250 → بقى 200م
 export const MIN_MOVEMENT_METERS = 80;
 export const FALLBACK_INTERVAL_MS = 300_000;
 
 // ─── 🧠 ثوابت السرعة الذكية ───
-export const CAR_SPEED_THRESHOLD = 5;       // 5 m/s = 18 كم/س
-export const CAR_GRACE_MS = 30_000;         // سيارة: 30 ثانية → تنبيه
+export const CAR_SPEED_THRESHOLD = 2.22;     // 🔧 كان 5 (18 كم/س) → بقى 2.22 م/ث ≈ 8 كم/س
+export const CAR_GRACE_MS = 30_000;          // سيارة: 30 ثانية → تنبيه
 
 // ─── بنك الإشعارات الوهمية (تمويه) ───
 const ALERT_POOL: FakeAlert[] = [
@@ -108,11 +108,11 @@ export async function checkUserInsideGarage(
 // 🧠 حساب الـ Grace Period بناءً على السرعة
 // ═══════════════════════════════════════════════════════════
 function getGracePeriod(speedMs: number | null): number {
-  // 🚗 سيارة فقط (≥ 18 كم/س = 5 م/ث) → تنبيه بعد 30 ثانية
+  // 🚗 سيارة (≥ 8 كم/س ≈ 2.22 م/ث) → تنبيه بعد 30 ثانية
   if (speedMs !== null && speedMs >= CAR_SPEED_THRESHOLD) {
     return CAR_GRACE_MS;
   }
-  // أي حركة أبطأ من 18 كم/س (مشي أو جري أو غيره) → لا يتم إطلاق إنذار مطلقاً
+  // أي حركة أبطأ من 8 كم/س (مشي عادي) → لا يتم إطلاق إنذار مطلقاً
   return Infinity;
 }
 
