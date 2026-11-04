@@ -11,8 +11,6 @@ import {
   CheckCircle2,
   ShieldCheck,
   XCircle,
-  AlertTriangle,
-  ArrowRight,
 } from 'lucide-react';
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
@@ -204,6 +202,9 @@ export default function SessionScreen() {
   const [ending, setEnding] = useState(false);
   const [shieldResumed, setShieldResumed] = useState<boolean | null>(null);
 
+  // 🚀 إخفاء فوري للجلسة المنتهية (مش تفضل كام ثانية على الشاشة)
+  const [endedSessionId, setEndedSessionId] = useState<string | null>(null);
+
   // 🚀 قراءة محليّة فورية لمنع تحويل الشاشة
   const [pendingArrival, setPendingArrival] = useState<any>(() => getPendingArrival());
   const [startingSession, setStartingSession] = useState(false);
@@ -242,6 +243,8 @@ export default function SessionScreen() {
     for (let i = 0; i < sessions.length; i++) {
       const s = sessions[i];
       if (!s || s.status !== 'active') continue;
+      // 🚀 إخفاء فوري: لو الجلسة دي اتنهت محلياً، تجاهلها
+      if (endedSessionId === s.id) continue;
       if (acknowledgedSessionIds?.has(s.id)) continue;
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
       const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
@@ -254,7 +257,7 @@ export default function SessionScreen() {
       }
     }
     return latest;
-  }, [sessions, userPlate, userPhone, acknowledgedSessionIds]);
+  }, [sessions, userPlate, userPhone, acknowledgedSessionIds, endedSessionId]);
 
   const lastCompletedSession = useMemo(() => {
     let latest: (typeof sessions)[number] | undefined;
@@ -366,14 +369,31 @@ export default function SessionScreen() {
   // 🏁 إنهاء الجلسة يدويًا عند الضغط على زر الخروج
   const handleEndSession = useCallback(async () => {
     if (ending || !activeSession) return;
+
+    // 🚀 إخفاء فوري من الشاشة قبل أي await
+    setEndedSessionId(activeSession.id);
     setEnding(true);
+
     try {
       const elapsedSec = Math.floor((getServerNow() - activeStartMs) / 1000);
       await endSession(activeSession.id, Math.max(0, elapsedSec), 'cash', 0);
 
+      const nowIso = new Date().toISOString();
+
+      // قفل الدرع بالـ session_id
       await supabase.from('shield_sessions')
-        .update({ ended_at: new Date().toISOString(), push_endpoint: null, push_p256dh: null, push_auth: null })
-        .eq('session_id', activeSession.id).is('ended_at', null);
+        .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
+        .eq('session_id', activeSession.id)
+        .is('ended_at', null);
+
+      // 🚀 قفل الدرع بالـ phone احتياط (أي درع مش مرتبط بـ session)
+      if (userPhone) {
+        await supabase.from('shield_sessions')
+          .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
+          .eq('phone', userPhone)
+          .is('ended_at', null)
+          .is('session_id', null);
+      }
 
       if (typeof acknowledgeSession === 'function') acknowledgeSession(activeSession.id);
       toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
@@ -383,21 +403,40 @@ export default function SessionScreen() {
       }
     } catch (e: any) {
       toast.error(e?.message || 'فشل إنهاء الجلسة');
+      // لو فشل، رجّع الجلسة على الشاشة
+      setEndedSessionId(null);
     } finally {
       setEnding(false);
     }
-  }, [ending, activeSession, activeStartMs, endSession, acknowledgeSession, setSelectedGarageId, setScreen]);
+  }, [ending, activeSession, activeStartMs, endSession, acknowledgeSession, setSelectedGarageId, setScreen, userPhone]);
 
   // ⏰ الإنهاء التلقائي بعد 6 ساعات
   const handleAutoEnd = useCallback(async () => {
     if (autoEndedRef.current || !activeSession) return;
     autoEndedRef.current = true;
+
+    // 🚀 إخفاء فوري من الشاشة
+    setEndedSessionId(activeSession.id);
+
     try {
       await endSession(activeSession.id, AUTO_END_SECONDS, 'cash', 0);
 
+      const nowIso = new Date().toISOString();
+
+      // قفل الدرع بالـ session_id
       await supabase.from('shield_sessions')
-        .update({ ended_at: new Date().toISOString(), push_endpoint: null, push_p256dh: null, push_auth: null })
-        .eq('session_id', activeSession.id).is('ended_at', null);
+        .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
+        .eq('session_id', activeSession.id)
+        .is('ended_at', null);
+
+      // 🚀 قفل الدرع بالـ phone احتياط
+      if (userPhone) {
+        await supabase.from('shield_sessions')
+          .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
+          .eq('phone', userPhone)
+          .is('ended_at', null)
+          .is('session_id', null);
+      }
 
       if (typeof acknowledgeSession === 'function') acknowledgeSession(activeSession.id);
       toast.success('تم إنهاء الجلسة تلقائياً (6 ساعات) ⏰', { duration: 5000 });
@@ -408,8 +447,9 @@ export default function SessionScreen() {
     } catch (err) {
       console.error('Auto-end error:', err);
       autoEndedRef.current = false;
+      setEndedSessionId(null);
     }
-  }, [activeSession, endSession, acknowledgeSession, setSelectedGarageId, setScreen]);
+  }, [activeSession, endSession, acknowledgeSession, setSelectedGarageId, setScreen, userPhone]);
 
   // ✅ بدء الجلسة في Supabase عند ضغط الزر الأخضر
   const handleConfirmArrivalAndStartSession = useCallback(async () => {

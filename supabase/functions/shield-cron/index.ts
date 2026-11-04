@@ -80,7 +80,6 @@ serve(async (req) => {
     );
 
     // جلب الدروع النشطة فقط (ended_at = null)
-    // لو الجلسة اتقفلت → مش هتظهر هنا → مفيش إشعارات
     const { data: shields } = await supabase
       .from('shield_sessions')
       .select('*')
@@ -142,6 +141,27 @@ serve(async (req) => {
       // ─── هل عنده push keys؟ ───
       if (!shield.push_endpoint || !shield.push_p256dh || !shield.push_auth) {
         console.log('⚠️ No push keys');
+        totalSkipped++;
+        continue;
+      }
+
+      // ─── تحقق إن الجلسة الأصلية لسه نشطة ───
+      const { data: originalSession } = await supabase
+        .from('sessions')
+        .select('id, status')
+        .eq('id', shield.session_id)
+        .maybeSingle();
+
+      if (!originalSession || originalSession.status !== 'active') {
+        await supabase.from('shield_sessions')
+          .update({
+            ended_at: new Date().toISOString(),
+            push_endpoint: null,
+            push_p256dh: null,
+            push_auth: null,
+          })
+          .eq('session_id', shield.session_id);
+        console.log(`🔒 Session ${shield.session_id} ended — shield auto-closed`);
         totalSkipped++;
         continue;
       }
