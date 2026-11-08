@@ -29,13 +29,13 @@ export interface ShieldState {
 // ─── ثوابت ───
 export const SHIELD_COST = 7;
 export const SHIELD_STORAGE_KEY = 'parkn24_shield';
-export const GEOFENCE_RADIUS = 200;          // 🔧 كان 250 → بقى 200م
+export const GEOFENCE_RADIUS = 200;
 export const MIN_MOVEMENT_METERS = 80;
 export const FALLBACK_INTERVAL_MS = 300_000;
 
 // ─── 🧠 ثوابت السرعة الذكية ───
-export const CAR_SPEED_THRESHOLD = 2.22;     // 🔧 كان 5 (18 كم/س) → بقى 2.22 م/ث ≈ 8 كم/س
-export const CAR_GRACE_MS = 30_000;          // سيارة: 30 ثانية → تنبيه
+export const CAR_SPEED_THRESHOLD = 2.22;     // 2.22 م/ث ≈ 8 كم/س
+export const CAR_GRACE_MS = 30_000;          // 30 ثانية
 
 // ─── بنك الإشعارات الوهمية (تمويه) ───
 const ALERT_POOL: FakeAlert[] = [
@@ -108,11 +108,9 @@ export async function checkUserInsideGarage(
 // 🧠 حساب الـ Grace Period بناءً على السرعة
 // ═══════════════════════════════════════════════════════════
 function getGracePeriod(speedMs: number | null): number {
-  // 🚗 سيارة (≥ 8 كم/س ≈ 2.22 م/ث) → تنبيه بعد 30 ثانية
   if (speedMs !== null && speedMs >= CAR_SPEED_THRESHOLD) {
     return CAR_GRACE_MS;
   }
-  // أي حركة أبطأ من 8 كم/س (مشي عادي) → لا يتم إطلاق إنذار مطلقاً
   return Infinity;
 }
 
@@ -134,6 +132,7 @@ export function startShieldGPS(params: {
   parkingLat: number;
   parkingLng: number;
   onGeofenceBreach: (distance: number) => void;
+  onGeofenceReturn?: () => void;   // 🆕 callback لما السيارة ترجع جوّه السياج
   onGPSError?: () => void;
 }): () => void {
   stopShieldGPS();
@@ -154,7 +153,6 @@ export function startShieldGPS(params: {
     consecutiveErrors = 0;
     const now = Date.now();
 
-    // ✅ حساب السرعة يدوياً في حال كان rawSpeed غير متاح من المتصفح
     let speed = (rawSpeed && rawSpeed > 0) ? rawSpeed : 0;
     if (prevPos) {
       const d = haversine(prevPos.lat, prevPos.lng, lat, lng);
@@ -193,6 +191,8 @@ export function startShieldGPS(params: {
 
       if (isCurrentlyOutside) {
         isCurrentlyOutside = false;
+        // 🆕 السيارة رجعت جوّه السياج → نبلغ الـ Overlay
+        params.onGeofenceReturn?.();
         sendGPSToServer(params.sessionId, params.shieldId, lat, lng, false, speed).catch(() => {});
         lastSentLat = lat;
         lastSentLng = lng;
@@ -260,7 +260,6 @@ async function sendGPSToServer(
   const speedMs = (speed !== undefined && speed !== null && speed >= 0) ? speed : 0;
   const speedKmh = Math.round(speedMs * 3.6);
 
-  // 1) Update shield_sessions
   await supabase
     .from('shield_sessions')
     .update({
@@ -273,7 +272,6 @@ async function sendGPSToServer(
     .eq('session_id', sessionId)
     .is('ended_at', null);
 
-  // 2) Insert into shield_locations (تاريخ الحركة)
   if (shieldId) {
     await supabase.from('shield_locations').insert({
       shield_id: shieldId,

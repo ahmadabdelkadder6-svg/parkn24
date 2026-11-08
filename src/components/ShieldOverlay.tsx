@@ -65,6 +65,10 @@ export default function ShieldOverlay({
   const radarAngle = useRef(0);
   const radarRef = useRef<HTMLDivElement>(null);
 
+  // 🆕 ref عشان الـ callbacks تشوف الـ phase الحالي
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
+
   const triggerLocalAlarm = useCallback((dist: number) => {
     try {
       playUrgentSound();
@@ -155,9 +159,14 @@ export default function ShieldOverlay({
     }
   }, [garageId, sessionId, autoResume, phase]);
 
-  // ─── GPS watching للخرق ───
+  // ═══════════════════════════════════════════════════════
+  // 📍 GPS watching للخرق — يشتغل في active و breach
+  // 🆕 التعديل الأساسي: الـ GPS مش بيتقفل لما phase = breach
+  // ═══════════════════════════════════════════════════════
+  const isTracking = phase === 'active' || phase === 'breach';
+
   useEffect(() => {
-    if (phase !== 'active') return;
+    if (!isTracking) return;
 
     const cleanupGPS = startShieldGPS({
       sessionId,
@@ -166,6 +175,14 @@ export default function ShieldOverlay({
         setBreachDistance(Math.round(dist));
         setPhase('breach');
         triggerLocalAlarm(Math.round(dist));
+      },
+      // 🆕 لما السيارة ترجع جوّه السياج → الإنذار بيقف والـ phase بيرجع
+      onGeofenceReturn: () => {
+        if (phaseRef.current === 'breach') {
+          console.log('✅ السيارة رجعت جوّه السياج — الإنذار اتوقف');
+          setPhase('active');
+          stopLocalAlarm();
+        }
       },
       onGPSError: () => {
         setGpsWarning(true);
@@ -178,11 +195,12 @@ export default function ShieldOverlay({
     });
 
     return () => { cleanupGPS(); };
-  }, [phase, sessionId, parkingLat, parkingLng, triggerLocalAlarm]);
+    // 🆕 الـ dependency ده بيمنع restart لما phase بيتغير بين active و breach
+  }, [isTracking ? 'tracking' : 'off', sessionId, parkingLat, parkingLng]);
 
   // ─── GPS للسرعة ───
   useEffect(() => {
-    if (phase !== 'active') return;
+    if (!isTracking) return;
 
     let prev: { lat: number; lng: number; t: number } | null = null;
     let lastUp = 0;
@@ -201,10 +219,10 @@ export default function ShieldOverlay({
         }
         prev = { lat, lng, t: now };
 
-        if (spd >= 5 && now - lastUp > 15000) {
+        if (spd >= 2.22 && now - lastUp > 15000) {
           lastUp = now;
           supabase.from('shield_sessions')
-            .update({ last_lat: lat, last_lng: lng, last_speed: spd })
+            .update({ last_lat: lat, last_lng: lng, last_speed: Math.round(spd * 3.6) })
             .eq('session_id', sessionId);
         }
       },
@@ -213,9 +231,9 @@ export default function ShieldOverlay({
     );
 
     return () => navigator.geolocation.clearWatch(watchId);
-  }, [phase, sessionId]);
+  }, [isTracking ? 'tracking' : 'off', sessionId]);
 
-  // ─── تجديد الـ Push Subscription تلقائي مع الحماية من غياب الـ VAPID Key ───
+  // ─── تجديد الـ Push Subscription تلقائي ───
   useEffect(() => {
     if (phase !== 'active') return;
 
@@ -256,11 +274,10 @@ export default function ShieldOverlay({
             .eq('session_id', sessionId)
             .is('ended_at', null);
 
-          // تزامن أيضاً مع الدالة السحابية
           const identifier = userPhone || userId || 'unknown';
           await registerShieldSession(sessionId, parkingLat, parkingLng, identifier, garageId);
 
-          console.log('✅ Push subscription refreshed and synced with Cloud Function');
+          console.log('✅ Push subscription refreshed and synced');
         }
       } catch (e) {
         console.warn('Failed to refresh subscription:', e);
@@ -283,7 +300,7 @@ export default function ShieldOverlay({
         { event: 'UPDATE', schema: 'public', table: 'shield_sessions', filter: `session_id=eq.${sessionId}` },
         (payload: any) => {
           const u = payload.new;
-          if (u.theft_alerted && phase !== 'breach') {
+          if (u.theft_alerted && phaseRef.current !== 'breach') {
             setBreachDistance(300);
             setPhase('breach');
             triggerLocalAlarm(300);
@@ -330,7 +347,7 @@ export default function ShieldOverlay({
   }, [stopLocalAlarm]);
 
   // ═══════════════════════════════════════════════════════
-  // 🎯 التسجيل الذكي: بيعمل insert فقط لو مفيش session نشط
+  // 🎯 التسجيل الذكي
   // ═══════════════════════════════════════════════════════
   const registerOnServer = useCallback(async () => {
     const identifier = userPhone || userId || 'unknown';
@@ -377,7 +394,7 @@ export default function ShieldOverlay({
 
       if (existing) {
         console.log('🔁 Session exists, updating push keys only. Keeping fake_tick:', existing.fake_tick);
-        
+
         const { error: updErr } = await supabase.from('shield_sessions')
           .update({
             push_endpoint: subJson.endpoint,
@@ -773,32 +790,63 @@ export default function ShieldOverlay({
         </div>
       )}
 
+      {/* 🚨 حالة الخرق — ثابتة وواضحة على الشاشة */}
       {phase === 'breach' && (
-        <div className="w-full bg-red-950/90 border-2 border-red-500 rounded-2xl p-3.5 animate-pulse backdrop-blur-sm">
-          <div className="flex items-center gap-3 mb-2.5">
-            <div className="w-11 h-11 rounded-full bg-red-500/30 flex items-center justify-center animate-bounce">
-              <Siren className="w-6 h-6 text-red-400" />
+        <div
+          className="w-full rounded-2xl p-4 backdrop-blur-sm"
+          style={{
+            background: 'linear-gradient(135deg, rgba(127,29,29,0.95) 0%, rgba(153,27,27,0.9) 100%)',
+            border: '2px solid rgba(239,68,68,0.7)',
+            boxShadow: '0 8px 32px rgba(239,68,68,0.4), inset 0 1px 0 rgba(255,255,255,0.1)',
+            animation: 'breachPulse 1.5s ease-in-out infinite',
+          }}
+        >
+          <style>{`
+            @keyframes breachPulse {
+              0%, 100% { box-shadow: 0 8px 32px rgba(239,68,68,0.4); }
+              50% { box-shadow: 0 8px 48px rgba(239,68,68,0.7); }
+            }
+          `}</style>
+
+          <div className="flex items-center gap-3 mb-3">
+            <div
+              className="w-12 h-12 rounded-full flex items-center justify-center shrink-0"
+              style={{
+                background: 'rgba(239,68,68,0.3)',
+                animation: 'bounce 1s infinite',
+              }}
+            >
+              <Siren className="w-7 h-7 text-red-300" />
             </div>
             <div>
-              <h3 className="text-red-300 font-black text-base">🚨 تنبيه حركة!</h3>
-              <p className="text-red-400/80 text-[11px] font-bold">
-                السيارة اتحركت {breachDistance}م
+              <h3 className="text-red-100 font-black text-lg leading-tight">🚨 تنبيه حركة!</h3>
+              <p className="text-red-300/90 text-[12px] font-bold mt-0.5">
+                السيارة اتحركت <span className="text-white font-black text-sm">{breachDistance}م</span> من مكان الركن
               </p>
             </div>
           </div>
+
           <div className="flex gap-2">
             <button
               onClick={handleIamDriving}
-              className="flex-1 bg-green-700 hover:bg-green-600 text-white font-black py-2.5 rounded-xl text-[13px] transition-all active:scale-95 flex items-center justify-center gap-1.5"
+              className="flex-1 text-white font-black py-3 rounded-xl text-[14px] transition-all active:scale-95 flex items-center justify-center gap-2"
+              style={{
+                background: 'linear-gradient(135deg, #15803d 0%, #166534 100%)',
+                boxShadow: '0 4px 16px rgba(22,101,52,0.5), inset 0 1px 0 rgba(255,255,255,0.15)',
+              }}
             >
-              <Car className="w-4 h-4" />
+              <Car className="w-5 h-5" />
               أنا اللي سايق
             </button>
             <button
               onClick={handleTheft}
-              className="flex-1 bg-red-600 hover:bg-red-500 text-white font-black py-2.5 rounded-xl text-[13px] transition-all active:scale-95 flex items-center justify-center gap-1.5"
+              className="flex-1 text-white font-black py-3 rounded-xl text-[14px] transition-all active:scale-95 flex items-center justify-center gap-2"
+              style={{
+                background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
+                boxShadow: '0 4px 16px rgba(185,28,28,0.5), inset 0 1px 0 rgba(255,255,255,0.15)',
+              }}
             >
-              <AlertTriangle className="w-4 h-4" />
+              <AlertTriangle className="w-5 h-5" />
               مش أنا!
             </button>
           </div>
