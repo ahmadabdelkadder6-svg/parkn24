@@ -73,7 +73,7 @@ export default function ShieldOverlay({
       sendLocalNotification(
         '🚨 تنبيه حركة!',
         `السيارة تحركت ${dist}م من مكان الركن`,
-        '/garage'
+        '/'   // 🔧 كان '/garage' → بقى '/' عشان يفتح على شاشة الجلسة
       );
       if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current);
       alarmIntervalRef.current = setInterval(() => {
@@ -210,7 +210,7 @@ export default function ShieldOverlay({
         sendLocalNotification(
           '⚠️ الـ GPS مقفول!',
           'فعّل الموقع عشان المراقبة تشتغل',
-          '/garage'
+          '/'   // 🔧 كان '/garage'
         );
       },
     });

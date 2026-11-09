@@ -547,22 +547,22 @@ export default function SessionScreen() {
 
           {/* 💬 بطاقة الإرشاد */}
           <div
-            className="w-full max-w-md rounded-xl px-3 py-2 text-center border"
+            className="w-full max-w-md rounded-xl px-3 py-2.5 text-center border"
             style={{
               background: `linear-gradient(135deg, ${BRAND.navyLight} 0%, rgba(17, 30, 54, 0.85) 100%)`,
               borderColor: BRAND.border,
               boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
             }}
           >
-            <div className="flex items-center justify-center gap-1.5 mb-0.5 font-black text-white text-[12px]">
+            <div className="flex items-center justify-center gap-1.5 mb-1 font-black text-white text-[12px]">
               <Sparkles size={12} className="text-amber-400 shrink-0" />
               <span>خلّص مشوارك براحتك 🚗</span>
             </div>
             <p
-              className="font-black leading-snug mx-auto text-[10px]"
+              className="font-bold leading-relaxed mx-auto text-[10px]"
               style={{ color: BRAND.slateMuted, maxWidth: '320px' }}
             >
-              وقتك <span className="text-amber-300">محفوظ بالثانية</span> — اقفل التطبيق وافتحه عند الرجوع.
+              التطبيق <span className="text-green-400 font-black">شغال في الخلفية</span> — أي تنبيه أو إنذار هيوصلك <span className="text-amber-300 font-black">فوراً</span> على شاشة الموبايل.
             </p>
           </div>
         </div>
