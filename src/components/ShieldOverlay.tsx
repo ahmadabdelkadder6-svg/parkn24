@@ -476,8 +476,8 @@ export default function ShieldOverlay({
         .from('sessions')
         .update({ shield_cost: SHIELD_COST })
         .eq('id', sessionId)
-        .catch((e) => console.error('Failed to save shield cost:', e));
-
+        .then(() => {})
+        .catch((e) => console.warn('⚠️ Failed to save shield cost:', e));
       setIsChecking(false);
 
       if (userPhone) {
