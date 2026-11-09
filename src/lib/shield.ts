@@ -94,14 +94,14 @@ export async function checkUserInsideGarage(
           pos.coords.latitude, pos.coords.longitude,
           garageLat, garageLng,
         );
-        resolve({ inside: dist <= GEOFENCE_RADIUS, distance: dist });
+        // 🔧 300م للتفعيل (أوسع من الـ 200م بتاع الإنذار)
+        resolve({ inside: dist <= 300, distance: dist });
       },
       () => resolve({ inside: false, distance: -1 }),
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     );
   });
 }
-
 // ═══════════════════════════════════════════════════════════
 // 🧠 حساب الـ Grace Period
 // ═══════════════════════════════════════════════════════════
