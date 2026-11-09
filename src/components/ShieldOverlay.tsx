@@ -3,7 +3,7 @@ import { Shield, ShieldCheck, Phone, AlertTriangle, Car, Siren } from 'lucide-re
 import {
   startShieldGPS, checkUserInsideGarage,
   destroyShield, saveShieldState, loadShieldState,
-  SHIELD_STORAGE_KEY, SHIELD_COST,
+  SHIELD_STORAGE_KEY, SHIELD_COST, GEOFENCE_RADIUS,
 } from '../lib/shield';
 import {
   sendLocalNotification, playUrgentSound,
@@ -73,7 +73,7 @@ export default function ShieldOverlay({
       sendLocalNotification(
         '🚨 تنبيه حركة!',
         `السيارة تحركت ${dist}م من مكان الركن`,
-        '/'   // 🔧 كان '/garage' → بقى '/' عشان يفتح على شاشة الجلسة
+        '/'
       );
       if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current);
       alarmIntervalRef.current = setInterval(() => {
@@ -91,9 +91,6 @@ export default function ShieldOverlay({
     }
   }, []);
 
-  // ═══════════════════════════════════════════════════════
-  // 🚗 "أنا اللي سايق" — الإنذار بيقف + الجلسة تنتهي
-  // ═══════════════════════════════════════════════════════
   const handleIamDriving = useCallback(async () => {
     stopLocalAlarm();
     destroyShield();
@@ -115,16 +112,12 @@ export default function ShieldOverlay({
     }
 
     setPhase('dismissed');
-    // 🚀 إنهاء الجلسة → الرجوع للريسبشن
     onSessionEnd?.();
   }, [sessionId, userPhone, userId, stopLocalAlarm, onSessionEnd]);
 
-  // ═══════════════════════════════════════════════════════
-  // 🚨 "مش أنا!" — بلاغ سرقة + الإنذار بيقف + الجلسة تنتهي
-  // ═══════════════════════════════════════════════════════
   const handleTheft = useCallback(async () => {
     stopLocalAlarm();
-    sendLocalNotification('✅ تم استلام البلاغ', 'هيتم التواصل معاك قريباً', '/garage');
+    sendLocalNotification('✅ تم استلام البلاغ', 'هيتم التواصل معاك قريباً', '/');
     destroyShield();
     try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch {}
 
@@ -144,7 +137,6 @@ export default function ShieldOverlay({
     }
 
     setPhase('dismissed');
-    // 🚀 إنهاء الجلسة → الرجوع للريسبشن
     onSessionEnd?.();
   }, [sessionId, userPhone, userId, stopLocalAlarm, onSessionEnd]);
 
@@ -160,9 +152,7 @@ export default function ShieldOverlay({
     return () => clearInterval(id);
   }, [phase]);
 
-  // ═══════════════════════════════════════════════════════
-  // 🔄 استرجاع حالة الدرع
-  // ═══════════════════════════════════════════════════════
+  // ─── استرجاع حالة الدرع ───
   useEffect(() => {
     if (autoResume && phase === 'ask') {
       const saved = loadShieldState();
@@ -188,10 +178,7 @@ export default function ShieldOverlay({
     }
   }, [garageId, sessionId, autoResume, phase]);
 
-  // ═══════════════════════════════════════════════════════
-  // 📍 GPS — يشتغل في active و breach
-  // ⚠️ مفيش onGeofenceReturn — الإنذار ميقفش لوحده
-  // ═══════════════════════════════════════════════════════
+  // ─── GPS — يشتغل في active و breach ───
   const isTracking = phase === 'active' || phase === 'breach';
 
   useEffect(() => {
@@ -210,13 +197,13 @@ export default function ShieldOverlay({
         sendLocalNotification(
           '⚠️ الـ GPS مقفول!',
           'فعّل الموقع عشان المراقبة تشتغل',
-          '/'   // 🔧 كان '/garage'
+          '/'
         );
       },
     });
 
     return () => { cleanupGPS(); };
-  }, [isTracking ? 'tracking' : 'off', sessionId, parkingLat, parkingLng]);
+  }, [isTracking ? 'tracking' : 'off', sessionId, parkingLat, parkingLng, triggerLocalAlarm]);
 
   // ─── GPS للسرعة ───
   useEffect(() => {
@@ -359,9 +346,7 @@ export default function ShieldOverlay({
     };
   }, [stopLocalAlarm]);
 
-  // ═══════════════════════════════════════════════════════
-  // 🎯 التسجيل الذكي
-  // ═══════════════════════════════════════════════════════
+  // ─── التسجيل الذكي ───
   const registerOnServer = useCallback(async () => {
     const identifier = userPhone || userId || 'unknown';
     try {
@@ -447,6 +432,9 @@ export default function ShieldOverlay({
     registerOnServer();
   }, [autoResume, phase, registerOnServer]);
 
+  // ═══════════════════════════════════════════════════════
+  // 🎯 handleYes — التعديل هنا
+  // ═══════════════════════════════════════════════════════
   const handleYes = useCallback(async () => {
     unlockAudio();
     setCheckError(null);
@@ -455,7 +443,9 @@ export default function ShieldOverlay({
     try {
       await requestNotificationPermission();
 
-      const check = await checkUserInsideGarage(parkingLat, parkingLng);
+      // ✅ التعديل: بنبعت GEOFENCE_RADIUS صراحة
+      // والـ function دلوقتي بيرجع { inside, distance }
+      const check = await checkUserInsideGarage(parkingLat, parkingLng, GEOFENCE_RADIUS);
 
       if (!check.inside) {
         setIsChecking(false);
@@ -467,36 +457,13 @@ export default function ShieldOverlay({
         return;
       }
 
-      const { data: vipGarages, error: vipErr } = await supabase
-        .from('garages')
-        .select('lat, lng, name')
-        .eq('is_vip', true)
-        .eq('is_active', true);
-
-      if (vipErr || !vipGarages || vipGarages.length === 0) {
-        setIsChecking(false);
-        setCheckError('مفيش جراجات VIP متاحة حالياً');
-        return;
+      // ✅ Push subscription — non-blocking
+      // لو فشل مش هنوقف التفعيل
+      try {
+        await subscribeToPush(garageId, userPhone || undefined);
+      } catch (pushErr) {
+        console.warn('Push subscription failed (non-fatal):', pushErr);
       }
-
-      let minDist = Infinity;
-      let nearestGarage = '';
-      for (const g of vipGarages) {
-        if (g.lat == null || g.lng == null) continue;
-        const d = haversine(parkingLat, parkingLng, g.lat, g.lng);
-        if (d < minDist) {
-          minDist = d;
-          nearestGarage = g.name || '';
-        }
-      }
-
-      if (minDist > 250) {
-        setIsChecking(false);
-        setCheckError(`الحماية الإضافية متاحة في جراجات VIP فقط 💎${nearestGarage ? `\nأقرب جراج VIP: ${nearestGarage}` : ''}`);
-        return;
-      }
-
-      try { await subscribeToPush(garageId, userPhone || undefined); } catch { /* */ }
 
       const ok = onDeductWallet(SHIELD_COST, 'خدمة الحماية الإضافية');
       if (!ok) {
@@ -525,9 +492,10 @@ export default function ShieldOverlay({
       } else {
         setPhase('register');
       }
-    } catch (e) {
+    } catch (e: any) {
       setIsChecking(false);
-      setCheckError('حصل خطأ غير متوقع، جرّب تاني');
+      console.error('❌ Shield activation error:', e);
+      setCheckError(e?.message || 'حصل خطأ، جرّب تاني');
     }
   }, [userPhone, garageId, sessionId, parkingLat, parkingLng, onDeductWallet, onNavigateToWallet, registerOnServer]);
 
@@ -685,7 +653,6 @@ export default function ShieldOverlay({
         </div>
       )}
 
-      {/* 🚨 حالة الخرق — الإنذار ميقفش لوحده أبداً */}
       {phase === 'breach' && (
         <div className="w-full rounded-2xl p-4 backdrop-blur-sm"
           style={{
