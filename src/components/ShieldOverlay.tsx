@@ -64,8 +64,6 @@ export default function ShieldOverlay({
   const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const radarAngle = useRef(0);
   const radarRef = useRef<HTMLDivElement>(null);
-
-  // 🆕 ref عشان الـ callbacks تشوف الـ phase الحالي
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
 
@@ -93,6 +91,9 @@ export default function ShieldOverlay({
     }
   }, []);
 
+  // ═══════════════════════════════════════════════════════
+  // 🚗 "أنا اللي سايق" — الإنذار بيقف + الجلسة تنتهي
+  // ═══════════════════════════════════════════════════════
   const handleIamDriving = useCallback(async () => {
     stopLocalAlarm();
     destroyShield();
@@ -109,13 +110,41 @@ export default function ShieldOverlay({
       await supabase.from('shield_sessions')
         .update({ push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', sessionId);
-
-      console.log('✅ Shield session ended on server');
     } catch (e) {
       console.error('❌ Failed to end shield:', e);
     }
 
     setPhase('dismissed');
+    // 🚀 إنهاء الجلسة → الرجوع للريسبشن
+    onSessionEnd?.();
+  }, [sessionId, userPhone, userId, stopLocalAlarm, onSessionEnd]);
+
+  // ═══════════════════════════════════════════════════════
+  // 🚨 "مش أنا!" — بلاغ سرقة + الإنذار بيقف + الجلسة تنتهي
+  // ═══════════════════════════════════════════════════════
+  const handleTheft = useCallback(async () => {
+    stopLocalAlarm();
+    sendLocalNotification('✅ تم استلام البلاغ', 'هيتم التواصل معاك قريباً', '/garage');
+    destroyShield();
+    try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch {}
+
+    const identifier = userPhone || userId || 'unknown';
+
+    try {
+      await endShieldOnServer(sessionId);
+      await supabase.from('shield_sessions')
+        .update({ ended_at: new Date().toISOString() })
+        .eq('phone', identifier).is('ended_at', null);
+
+      await supabase.from('shield_sessions')
+        .update({ push_endpoint: null, push_p256dh: null, push_auth: null })
+        .eq('session_id', sessionId);
+    } catch (e) {
+      console.error('❌ Failed to end shield:', e);
+    }
+
+    setPhase('dismissed');
+    // 🚀 إنهاء الجلسة → الرجوع للريسبشن
     onSessionEnd?.();
   }, [sessionId, userPhone, userId, stopLocalAlarm, onSessionEnd]);
 
@@ -132,7 +161,7 @@ export default function ShieldOverlay({
   }, [phase]);
 
   // ═══════════════════════════════════════════════════════
-  // 🔄 استرجاع حالة الدرع بعد الـ Refresh
+  // 🔄 استرجاع حالة الدرع
   // ═══════════════════════════════════════════════════════
   useEffect(() => {
     if (autoResume && phase === 'ask') {
@@ -160,8 +189,8 @@ export default function ShieldOverlay({
   }, [garageId, sessionId, autoResume, phase]);
 
   // ═══════════════════════════════════════════════════════
-  // 📍 GPS watching للخرق — يشتغل في active و breach
-  // 🆕 التعديل الأساسي: الـ GPS مش بيتقفل لما phase = breach
+  // 📍 GPS — يشتغل في active و breach
+  // ⚠️ مفيش onGeofenceReturn — الإنذار ميقفش لوحده
   // ═══════════════════════════════════════════════════════
   const isTracking = phase === 'active' || phase === 'breach';
 
@@ -176,14 +205,6 @@ export default function ShieldOverlay({
         setPhase('breach');
         triggerLocalAlarm(Math.round(dist));
       },
-      // 🆕 لما السيارة ترجع جوّه السياج → الإنذار بيقف والـ phase بيرجع
-      onGeofenceReturn: () => {
-        if (phaseRef.current === 'breach') {
-          console.log('✅ السيارة رجعت جوّه السياج — الإنذار اتوقف');
-          setPhase('active');
-          stopLocalAlarm();
-        }
-      },
       onGPSError: () => {
         setGpsWarning(true);
         sendLocalNotification(
@@ -195,7 +216,6 @@ export default function ShieldOverlay({
     });
 
     return () => { cleanupGPS(); };
-    // 🆕 الـ dependency ده بيمنع restart لما phase بيتغير بين active و breach
   }, [isTracking ? 'tracking' : 'off', sessionId, parkingLat, parkingLng]);
 
   // ─── GPS للسرعة ───
@@ -233,7 +253,7 @@ export default function ShieldOverlay({
     return () => navigator.geolocation.clearWatch(watchId);
   }, [isTracking ? 'tracking' : 'off', sessionId]);
 
-  // ─── تجديد الـ Push Subscription تلقائي ───
+  // ─── تجديد الـ Push Subscription ───
   useEffect(() => {
     if (phase !== 'active') return;
 
@@ -243,10 +263,7 @@ export default function ShieldOverlay({
         let sub = await reg.pushManager.getSubscription();
 
         const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-        if (!VAPID_PUBLIC) {
-          console.warn('⚠️ VAPID_PUBLIC_KEY not set, skipping refresh');
-          return;
-        }
+        if (!VAPID_PUBLIC) return;
 
         if (!sub) {
           const urlBase64ToUint8Array = (b: string): Uint8Array => {
@@ -254,7 +271,6 @@ export default function ShieldOverlay({
             const d = window.atob((b + p).replace(/-/g, '+').replace(/_/g, '/'));
             return new Uint8Array([...d].map(c => c.charCodeAt(0)));
           };
-
           sub = await reg.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
@@ -263,7 +279,6 @@ export default function ShieldOverlay({
 
         if (sub) {
           const subJson = sub.toJSON();
-
           await supabase
             .from('shield_sessions')
             .update({
@@ -276,8 +291,6 @@ export default function ShieldOverlay({
 
           const identifier = userPhone || userId || 'unknown';
           await registerShieldSession(sessionId, parkingLat, parkingLng, identifier, garageId);
-
-          console.log('✅ Push subscription refreshed and synced');
         }
       } catch (e) {
         console.warn('Failed to refresh subscription:', e);
@@ -289,7 +302,7 @@ export default function ShieldOverlay({
     return () => clearInterval(interval);
   }, [phase, sessionId, userPhone, userId, garageId, parkingLat, parkingLng]);
 
-  // ─── Realtime listener للـ breach ───
+  // ─── Realtime listener ───
   useEffect(() => {
     if (phase !== 'active') return;
 
@@ -351,7 +364,6 @@ export default function ShieldOverlay({
   // ═══════════════════════════════════════════════════════
   const registerOnServer = useCallback(async () => {
     const identifier = userPhone || userId || 'unknown';
-    console.log('🔍 registerOnServer, phone:', identifier);
     try {
       const reg = await navigator.serviceWorker.ready;
 
@@ -360,16 +372,10 @@ export default function ShieldOverlay({
 
       let perm = Notification.permission;
       if (perm !== 'granted') perm = await Notification.requestPermission();
-      if (perm !== 'granted') {
-        console.error('❌ Permission denied');
-        return;
-      }
+      if (perm !== 'granted') return;
 
       const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-      if (!VAPID_PUBLIC) {
-        console.error('❌ VAPID_PUBLIC_KEY not set');
-        return;
-      }
+      if (!VAPID_PUBLIC) return;
 
       const urlBase64ToUint8Array = (b: string): Uint8Array => {
         const p = '='.repeat((4 - (b.length % 4)) % 4);
@@ -393,9 +399,7 @@ export default function ShieldOverlay({
         .maybeSingle();
 
       if (existing) {
-        console.log('🔁 Session exists, updating push keys only. Keeping fake_tick:', existing.fake_tick);
-
-        const { error: updErr } = await supabase.from('shield_sessions')
+        await supabase.from('shield_sessions')
           .update({
             push_endpoint: subJson.endpoint,
             push_p256dh: subJson.keys?.p256dh,
@@ -403,21 +407,16 @@ export default function ShieldOverlay({
           })
           .eq('session_id', sessionId);
 
-        if (updErr) console.error('❌ Update error:', updErr.message);
-        else console.log('✅ Push keys refreshed (fake_tick preserved)');
-
         await registerShieldSession(sessionId, parkingLat, parkingLng, identifier, garageId);
         return;
       }
-
-      console.log('🆕 Creating new shield session');
 
       await supabase.from('shield_sessions')
         .update({ ended_at: new Date().toISOString() })
         .eq('phone', identifier)
         .is('ended_at', null);
 
-      const { error } = await supabase.from('shield_sessions').insert({
+      await supabase.from('shield_sessions').insert({
         session_id: sessionId,
         user_id: identifier,
         phone: identifier,
@@ -437,12 +436,9 @@ export default function ShieldOverlay({
         last_speed: null,
       });
 
-      if (error) console.error('❌ Insert error:', error.message);
-      else console.log('✅ Shield registered! 🎉');
-
       await registerShieldSession(sessionId, parkingLat, parkingLng, identifier, garageId);
     } catch (e: any) {
-      console.error('❌ Crashed:', e.message);
+      console.error('❌ Register crashed:', e.message);
     }
   }, [sessionId, userId, userPhone, parkingLat, parkingLng, garageId]);
 
@@ -477,13 +473,7 @@ export default function ShieldOverlay({
         .eq('is_vip', true)
         .eq('is_active', true);
 
-      if (vipErr) {
-        setIsChecking(false);
-        setCheckError('مش قادر أتحقق من الجراجات، جرّب تاني');
-        return;
-      }
-
-      if (!vipGarages || vipGarages.length === 0) {
+      if (vipErr || !vipGarages || vipGarages.length === 0) {
         setIsChecking(false);
         setCheckError('مفيش جراجات VIP متاحة حالياً');
         return;
@@ -506,8 +496,6 @@ export default function ShieldOverlay({
         return;
       }
 
-      console.log(`✅ VIP check passed: ${nearestGarage} (${Math.round(minDist)}م)`);
-
       try { await subscribeToPush(garageId, userPhone || undefined); } catch { /* */ }
 
       const ok = onDeductWallet(SHIELD_COST, 'خدمة الحماية الإضافية');
@@ -521,7 +509,6 @@ export default function ShieldOverlay({
         .from('sessions')
         .update({ shield_cost: SHIELD_COST })
         .eq('id', sessionId)
-        .then(() => {})
         .catch((e) => console.error('Failed to save shield cost:', e));
 
       setIsChecking(false);
@@ -556,55 +543,18 @@ export default function ShieldOverlay({
     await registerOnServer();
   }, [phone, garageId, sessionId, parkingLat, parkingLng, registerOnServer]);
 
-  const handleTheft = useCallback(async () => {
-    stopLocalAlarm();
-    sendLocalNotification('✅ تم استلام البلاغ', 'هيتم التواصل معاك قريباً', '/garage');
-    destroyShield();
-    try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch {}
-
-    const identifier = userPhone || userId || 'unknown';
-
-    try {
-      await endShieldOnServer(sessionId);
-      await supabase.from('shield_sessions')
-        .update({ ended_at: new Date().toISOString() })
-        .eq('phone', identifier).is('ended_at', null);
-
-      await supabase.from('shield_sessions')
-        .update({ push_endpoint: null, push_p256dh: null, push_auth: null })
-        .eq('session_id', sessionId);
-
-      console.log('✅ Shield session ended');
-    } catch (e) {
-      console.error('❌ Failed to end shield:', e);
-    }
-
-    setPhase('dismissed');
-    onSessionEnd?.();
-  }, [sessionId, userPhone, userId, stopLocalAlarm, onSessionEnd]);
-
   if (dismissed) {
     return (
       <button
         onClick={() => setDismissed(false)}
         style={{
-          position: 'fixed',
-          top: 16,
-          right: 16,
-          zIndex: 99999,
+          position: 'fixed', top: 16, right: 16, zIndex: 99999,
           background: 'linear-gradient(135deg, #1e3a8a, #1e40af)',
-          color: '#ffffff',
-          border: '2px solid #60a5fa',
-          borderRadius: 14,
-          padding: '10px 18px',
-          fontSize: 13,
-          fontWeight: 'bold',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          boxShadow: '0 4px 24px rgba(96,165,250,0.4)',
-          cursor: 'pointer',
-          fontFamily: 'inherit',
+          color: '#ffffff', border: '2px solid #60a5fa',
+          borderRadius: 14, padding: '10px 18px', fontSize: 13,
+          fontWeight: 'bold', display: 'flex', alignItems: 'center',
+          gap: 8, boxShadow: '0 4px 24px rgba(96,165,250,0.4)',
+          cursor: 'pointer', fontFamily: 'inherit',
         }}
       >
         🛡️ تفعيل الحماية
@@ -624,31 +574,22 @@ export default function ShieldOverlay({
             boxShadow: '0 8px 32px rgba(22, 86, 184, 0.35), inset 0 1px 0 rgba(255,255,255,0.1)',
           }}
         >
-          <div
-            className="absolute inset-0 opacity-30 pointer-events-none"
+          <div className="absolute inset-0 opacity-30 pointer-events-none"
             style={{
               background: 'linear-gradient(90deg, transparent 0%, rgba(96,165,250,0.15) 50%, transparent 100%)',
               animation: 'shimmerShield 3s infinite',
             }}
           />
           <style>{`
-            @keyframes shimmerShield {
-              0% { transform: translateX(-100%); }
-              100% { transform: translateX(100%); }
-            }
-            @keyframes pulseShield {
-              0%, 100% { box-shadow: 0 0 0 0 rgba(96,165,250,0.5); }
-              50% { box-shadow: 0 0 0 8px rgba(96,165,250,0); }
-            }
+            @keyframes shimmerShield { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+            @keyframes pulseShield { 0%, 100% { box-shadow: 0 0 0 0 rgba(96,165,250,0.5); } 50% { box-shadow: 0 0 0 8px rgba(96,165,250,0); } }
           `}</style>
-
           <div className="relative p-3.5">
             <div className="flex items-center gap-3 mb-3">
-              <div
-                className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
                 style={{
                   background: 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
-                  boxShadow: '0 4px 12px rgba(59,130,246,0.4), inset 0 1px 0 rgba(255,255,255,0.2)',
+                  boxShadow: '0 4px 12px rgba(59,130,246,0.4)',
                   animation: 'pulseShield 2s infinite',
                 }}
               >
@@ -657,56 +598,33 @@ export default function ShieldOverlay({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
                   <h3 className="text-white font-black text-sm">حماية إضافية</h3>
-                  <span
-                    className="text-[9px] font-black px-1.5 py-0.5 rounded"
-                    style={{
-                      background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
-                      color: '#0a1628',
-                      letterSpacing: '0.5px',
-                    }}
-                  >
+                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded"
+                    style={{ background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', color: '#0a1628' }}>
                     VIP 💎
                   </span>
                 </div>
-                <p className="text-blue-200/70 text-[11px] font-bold mt-0.5">
-                  مراقبة ذكية 24/7 + تنبيه فوري
-                </p>
+                <p className="text-blue-200/70 text-[11px] font-bold mt-0.5">مراقبة ذكية 24/7 + تنبيه فوري</p>
               </div>
             </div>
-
             {checkError && (
               <div className="bg-red-950/60 border border-red-500/40 rounded-xl p-2 mb-2.5">
                 <p className="text-red-300 text-[11px] font-bold text-center whitespace-pre-line">{checkError}</p>
               </div>
             )}
-
             <div className="flex gap-2">
-              <button
-                onClick={handleYes}
-                disabled={isChecking}
+              <button onClick={handleYes} disabled={isChecking}
                 className="flex-1 relative overflow-hidden text-white font-black py-2.5 rounded-xl text-[13px] transition-all active:scale-95 disabled:opacity-60"
                 style={{
-                  background: isChecking
-                    ? 'linear-gradient(135deg, #475569, #334155)'
-                    : 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
-                  boxShadow: isChecking
-                    ? 'none'
-                    : '0 4px 16px rgba(59,130,246,0.4), inset 0 1px 0 rgba(255,255,255,0.2)',
+                  background: isChecking ? 'linear-gradient(135deg, #475569, #334155)' : 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
+                  boxShadow: isChecking ? 'none' : '0 4px 16px rgba(59,130,246,0.4)',
                 }}
               >
                 <span className="relative z-10 flex items-center justify-center gap-1.5">
-                  {isChecking ? (
-                    <>⏳ جاري التحقق...</>
-                  ) : (
-                    <>🛡️ فعّل الحماية ({SHIELD_COST} ج)</>
-                  )}
+                  {isChecking ? <>⏳ جاري التحقق...</> : <>🛡️ فعّل الحماية ({SHIELD_COST} ج)</>}
                 </span>
               </button>
-              <button
-                onClick={() => setDismissed(true)}
-                disabled={isChecking}
-                className="px-3.5 bg-slate-800/60 text-slate-400 rounded-xl text-xs font-black hover:bg-slate-700 transition-all disabled:opacity-50 border border-slate-700"
-              >
+              <button onClick={() => setDismissed(true)} disabled={isChecking}
+                className="px-3.5 bg-slate-800/60 text-slate-400 rounded-xl text-xs font-black border border-slate-700">
                 لا
               </button>
             </div>
@@ -719,31 +637,20 @@ export default function ShieldOverlay({
           style={{
             background: 'linear-gradient(135deg, #0a1628 0%, #1e3a8a 50%, #0a1628 100%)',
             border: '1.5px solid rgba(96, 165, 250, 0.3)',
-            boxShadow: '0 8px 32px rgba(22, 86, 184, 0.35)',
           }}
         >
           <div className="flex items-center gap-2 mb-2.5">
             <Phone className="w-4 h-4 text-blue-400" />
             <h3 className="text-white font-black text-sm">رقم الموبايل للتواصل</h3>
           </div>
-          <input
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+          <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
             placeholder="01xxxxxxxxx"
             className="w-full bg-slate-900/80 border border-slate-600 rounded-xl px-3 py-2 text-white text-center text-base tracking-widest mb-2.5 focus:border-blue-500 focus:outline-none"
-            maxLength={11}
-            dir="ltr"
+            maxLength={11} dir="ltr"
           />
-          <button
-            onClick={handleRegister}
-            disabled={phone.length < 10}
+          <button onClick={handleRegister} disabled={phone.length < 10}
             className="w-full text-white font-black py-2.5 rounded-xl text-[13px] transition-all active:scale-95 disabled:opacity-50"
-            style={{
-              background: 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
-              boxShadow: '0 4px 16px rgba(59,130,246,0.4)',
-            }}
-          >
+            style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)' }}>
             🛡️ تفعيل الحماية الآن
           </button>
         </div>
@@ -752,52 +659,39 @@ export default function ShieldOverlay({
       {phase === 'active' && (
         <div className="w-full flex flex-col items-center gap-1.5">
           <div className="relative" style={{ width: 110, height: 110 }}>
-            <div
-              ref={radarRef}
-              className="absolute inset-0 rounded-full"
-              style={{ background: 'conic-gradient(from 0deg, transparent 0deg, rgba(34,197,94,0.35) 40deg, transparent 80deg)' }}
-            />
+            <div ref={radarRef} className="absolute inset-0 rounded-full"
+              style={{ background: 'conic-gradient(from 0deg, transparent 0deg, rgba(34,197,94,0.35) 40deg, transparent 80deg)' }} />
             <div className="absolute inset-1.5 rounded-full border border-green-500/20" />
             <div className="absolute inset-3 rounded-full border border-green-500/15" />
             <div className="absolute inset-5 rounded-full border border-green-500/10" />
             <div className="absolute top-1/2 left-0 right-0 h-px bg-green-500/10" />
             <div className="absolute left-1/2 top-0 bottom-0 w-px bg-green-500/10" />
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse shadow-lg shadow-green-400/50" />
-            <div className="absolute w-1 h-1 rounded-full bg-green-300/60" style={{ top: '25%', left: '65%' }} />
-            <div className="absolute w-1 h-1 rounded-full bg-green-300/40" style={{ top: '70%', left: '25%' }} />
           </div>
-
-          <div
-            className="flex items-center gap-1.5 rounded-full px-2.5 py-0.5 border"
+          <div className="flex items-center gap-1.5 rounded-full px-2.5 py-0.5 border"
             style={{
               background: 'linear-gradient(135deg, rgba(34,197,94,0.15), rgba(22,163,74,0.08))',
               borderColor: 'rgba(34,197,94,0.4)',
-              boxShadow: '0 2px 8px rgba(34,197,94,0.2)',
-            }}
-          >
+            }}>
             <ShieldCheck className="w-3 h-3 text-green-400" />
             <span className="text-green-400 text-[10px] font-black">الحماية نشطة</span>
             {shieldCode && <span className="text-green-600/80 text-[9px] font-mono">{shieldCode}</span>}
           </div>
-
           {gpsWarning && (
             <div className="w-full bg-yellow-950/50 border border-yellow-500/40 rounded-lg px-2 py-1.5 mt-0.5">
-              <p className="text-yellow-300 text-[10px] font-bold text-center">
-                ⚠️ فعّل الـ GPS عشان المراقبة تشتغل
-              </p>
+              <p className="text-yellow-300 text-[10px] font-bold text-center">⚠️ فعّل الـ GPS عشان المراقبة تشتغل</p>
             </div>
           )}
         </div>
       )}
 
-      {/* 🚨 حالة الخرق — ثابتة وواضحة على الشاشة */}
+      {/* 🚨 حالة الخرق — الإنذار ميقفش لوحده أبداً */}
       {phase === 'breach' && (
-        <div
-          className="w-full rounded-2xl p-4 backdrop-blur-sm"
+        <div className="w-full rounded-2xl p-4 backdrop-blur-sm"
           style={{
             background: 'linear-gradient(135deg, rgba(127,29,29,0.95) 0%, rgba(153,27,27,0.9) 100%)',
             border: '2px solid rgba(239,68,68,0.7)',
-            boxShadow: '0 8px 32px rgba(239,68,68,0.4), inset 0 1px 0 rgba(255,255,255,0.1)',
+            boxShadow: '0 8px 32px rgba(239,68,68,0.4)',
             animation: 'breachPulse 1.5s ease-in-out infinite',
           }}
         >
@@ -807,15 +701,9 @@ export default function ShieldOverlay({
               50% { box-shadow: 0 8px 48px rgba(239,68,68,0.7); }
             }
           `}</style>
-
           <div className="flex items-center gap-3 mb-3">
-            <div
-              className="w-12 h-12 rounded-full flex items-center justify-center shrink-0"
-              style={{
-                background: 'rgba(239,68,68,0.3)',
-                animation: 'bounce 1s infinite',
-              }}
-            >
+            <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0"
+              style={{ background: 'rgba(239,68,68,0.3)', animation: 'bounce 1s infinite' }}>
               <Siren className="w-7 h-7 text-red-300" />
             </div>
             <div>
@@ -825,27 +713,22 @@ export default function ShieldOverlay({
               </p>
             </div>
           </div>
-
           <div className="flex gap-2">
-            <button
-              onClick={handleIamDriving}
+            <button onClick={handleIamDriving}
               className="flex-1 text-white font-black py-3 rounded-xl text-[14px] transition-all active:scale-95 flex items-center justify-center gap-2"
               style={{
                 background: 'linear-gradient(135deg, #15803d 0%, #166534 100%)',
-                boxShadow: '0 4px 16px rgba(22,101,52,0.5), inset 0 1px 0 rgba(255,255,255,0.15)',
-              }}
-            >
+                boxShadow: '0 4px 16px rgba(22,101,52,0.5)',
+              }}>
               <Car className="w-5 h-5" />
               أنا اللي سايق
             </button>
-            <button
-              onClick={handleTheft}
+            <button onClick={handleTheft}
               className="flex-1 text-white font-black py-3 rounded-xl text-[14px] transition-all active:scale-95 flex items-center justify-center gap-2"
               style={{
                 background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
-                boxShadow: '0 4px 16px rgba(185,28,28,0.5), inset 0 1px 0 rgba(255,255,255,0.15)',
-              }}
-            >
+                boxShadow: '0 4px 16px rgba(185,28,28,0.5)',
+              }}>
               <AlertTriangle className="w-5 h-5" />
               مش أنا!
             </button>

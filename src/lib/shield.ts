@@ -1,7 +1,6 @@
 // src/lib/shield.ts
 // ═══════════════════════════════════════════════════════════
-// 🛡️ Car Shield Engine — Local-First (الموبايل يفكر لوحده)
-// الفلسفة: الحساب كله على الموبايل، السيرفر يتكلم بس وقت الحاجة
+// 🛡️ Car Shield Engine — Local-First
 // ═══════════════════════════════════════════════════════════
 
 import { supabase } from './supabase';
@@ -37,7 +36,7 @@ export const FALLBACK_INTERVAL_MS = 300_000;
 export const CAR_SPEED_THRESHOLD = 2.22;     // 2.22 م/ث ≈ 8 كم/س
 export const CAR_GRACE_MS = 30_000;          // 30 ثانية
 
-// ─── بنك الإشعارات الوهمية (تمويه) ───
+// ─── بنك الإشعارات الوهمية ───
 const ALERT_POOL: FakeAlert[] = [
   { type: 'warning', title: '⚠️ تنبيه حركة', body: 'تم رصد حركة قريبة من مكان الركن', icon: '⚠️' },
   { type: 'warning', title: '⚠️ تنبيه حركة', body: 'حركة غير مألوفة حول السيارة', icon: '⚠️' },
@@ -78,7 +77,7 @@ export function haversine(
 }
 
 // ═══════════════════════════════════════════════════════════
-// 📍 التحقق من إن العميل جوه الجراج (قبل التفعيل)
+// 📍 التحقق من إن العميل جوه الجراج
 // ═══════════════════════════════════════════════════════════
 export async function checkUserInsideGarage(
   garageLat: number,
@@ -89,7 +88,6 @@ export async function checkUserInsideGarage(
       resolve({ inside: false, distance: -1 });
       return;
     }
-
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const dist = haversine(
@@ -105,7 +103,7 @@ export async function checkUserInsideGarage(
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🧠 حساب الـ Grace Period بناءً على السرعة
+// 🧠 حساب الـ Grace Period
 // ═══════════════════════════════════════════════════════════
 function getGracePeriod(speedMs: number | null): number {
   if (speedMs !== null && speedMs >= CAR_SPEED_THRESHOLD) {
@@ -115,7 +113,7 @@ function getGracePeriod(speedMs: number | null): number {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 📍 GPS Geofence الذكي — مع تمييز السرعة + مراقبة الـ GPS
+// 📍 GPS Geofence الذكي
 // ═══════════════════════════════════════════════════════════
 let gpsWatchId: number | null = null;
 let fallbackIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -132,7 +130,6 @@ export function startShieldGPS(params: {
   parkingLat: number;
   parkingLng: number;
   onGeofenceBreach: (distance: number) => void;
-  onGeofenceReturn?: () => void;   // 🆕 callback لما السيارة ترجع جوّه السياج
   onGPSError?: () => void;
 }): () => void {
   stopShieldGPS();
@@ -165,39 +162,43 @@ export function startShieldGPS(params: {
     const distFromLastSent = haversine(lat, lng, lastSentLat, lastSentLng);
 
     if (distFromGarage > GEOFENCE_RADIUS) {
-      if (!breachStartTime) {
-        breachStartTime = now;
-      }
-
       const gracePeriod = getGracePeriod(speed);
 
-      if (now - breachStartTime >= gracePeriod) {
-        if (!isCurrentlyOutside) {
-          isCurrentlyOutside = true;
-          sendGPSToServer(params.sessionId, params.shieldId, lat, lng, true, speed).catch(() => {});
-          lastSentLat = lat;
-          lastSentLng = lng;
-          lastSentAt = now;
-          params.onGeofenceBreach(distFromGarage);
-        } else if (distFromLastSent > MIN_MOVEMENT_METERS) {
-          sendGPSToServer(params.sessionId, params.shieldId, lat, lng, true, speed).catch(() => {});
-          lastSentLat = lat;
-          lastSentLng = lng;
-          lastSentAt = now;
+      if (gracePeriod !== Infinity) {
+        // ✅ سيارة — نبدأ العد
+        if (!breachStartTime) {
+          breachStartTime = now;
+          console.log(`🚨 بداية خروج: ${Math.round(distFromGarage)}م @ ${Math.round(speed * 3.6)} كم/س`);
+        }
+
+        if (now - breachStartTime >= gracePeriod) {
+          if (!isCurrentlyOutside) {
+            isCurrentlyOutside = true;
+            sendGPSToServer(params.sessionId, params.shieldId, lat, lng, true, speed).catch(() => {});
+            lastSentLat = lat;
+            lastSentLng = lng;
+            lastSentAt = now;
+            params.onGeofenceBreach(distFromGarage);
+          } else if (distFromLastSent > MIN_MOVEMENT_METERS) {
+            sendGPSToServer(params.sessionId, params.shieldId, lat, lng, true, speed).catch(() => {});
+            lastSentLat = lat;
+            lastSentLng = lng;
+            lastSentAt = now;
+          }
+        }
+      } else {
+        // ⏸️ مشي — صفّر العدّاد
+        if (breachStartTime) {
+          breachStartTime = null;
         }
       }
     } else {
-      breachStartTime = null;
-
-      if (isCurrentlyOutside) {
-        isCurrentlyOutside = false;
-        // 🆕 السيارة رجعت جوّه السياج → نبلغ الـ Overlay
-        params.onGeofenceReturn?.();
-        sendGPSToServer(params.sessionId, params.shieldId, lat, lng, false, speed).catch(() => {});
-        lastSentLat = lat;
-        lastSentLng = lng;
-        lastSentAt = now;
+      // جوه السياج — صفّر العدّاد بس لو لسه ما خرجش
+      if (!isCurrentlyOutside) {
+        breachStartTime = null;
       }
+      // ⚠️ لو isCurrentlyOutside = true (الإنذار شغال)، مش نعمل حاجة
+      // الإنذار بيقف بس لما المستخدم يدوس الزر
     }
   };
 
@@ -248,7 +249,7 @@ export function stopShieldGPS(): void {
   prevPos = null;
 }
 
-// ─── إرسال GPS للسيرفر + حفظ في shield_locations ───
+// ─── إرسال GPS للسيرفر ───
 async function sendGPSToServer(
   sessionId: string,
   shieldId: string | undefined,
@@ -283,7 +284,7 @@ async function sendGPSToServer(
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🧹 تدمير الدرع بالكامل
+// 🧹 تدمير الدرع
 // ═══════════════════════════════════════════════════════════
 export function destroyShield(): void {
   stopShieldGPS();
@@ -291,7 +292,7 @@ export function destroyShield(): void {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 💾 حفظ/تحميل حالة الدرع (localStorage)
+// 💾 حفظ/تحميل حالة الدرع
 // ═══════════════════════════════════════════════════════════
 export function saveShieldState(state: ShieldState): void {
   try { localStorage.setItem(SHIELD_STORAGE_KEY, JSON.stringify(state)); } catch { /* */ }
@@ -305,7 +306,7 @@ export function loadShieldState(): ShieldState | null {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🔧 Exports قديمة (deprecated)
+// 🔧 Exports قديمة
 // ═══════════════════════════════════════════════════════════
 export function startFakeAlerts(): void { /* moved to server cron */ }
 export function stopFakeAlerts(): void { /* moved to server cron */ }
