@@ -28,7 +28,8 @@ export interface ShieldState {
 // ─── ثوابت ───
 export const SHIELD_COST = 7;
 export const SHIELD_STORAGE_KEY = 'parkn24_shield';
-export const GEOFENCE_RADIUS = 200;
+export const GEOFENCE_RADIUS = 250;          // ✅ للتفعيل: العميل يقدر يفعّل الدرع على بعد 250م
+export const ALERT_DISTANCE = 200;           // ✅ للإنذار: الإنذار يطلع لما السيارة تخرج برة 200م
 export const MIN_MOVEMENT_METERS = 80;
 export const FALLBACK_INTERVAL_MS = 300_000;
 
@@ -77,7 +78,8 @@ export function haversine(
 }
 
 // ═══════════════════════════════════════════════════════════
-// 📍 التحقق من إن العميل جوه الجراج
+// 📍 التحقق من إن العميل جوه الجراج (للتفعيل)
+// يستخدم GEOFENCE_RADIUS = 250م
 // ═══════════════════════════════════════════════════════════
 export async function checkUserInsideGarage(
   garageLat: number,
@@ -94,14 +96,14 @@ export async function checkUserInsideGarage(
           pos.coords.latitude, pos.coords.longitude,
           garageLat, garageLng,
         );
-        // 🔧 300م للتفعيل (أوسع من الـ 200م بتاع الإنذار)
-        resolve({ inside: dist <= 300, distance: dist });
+        resolve({ inside: dist <= GEOFENCE_RADIUS, distance: dist });
       },
       () => resolve({ inside: false, distance: -1 }),
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     );
   });
 }
+
 // ═══════════════════════════════════════════════════════════
 // 🧠 حساب الـ Grace Period
 // ═══════════════════════════════════════════════════════════
@@ -113,7 +115,8 @@ function getGracePeriod(speedMs: number | null): number {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 📍 GPS Geofence الذكي
+// 📍 GPS Geofence الذكي (للإنذار)
+// يستخدم ALERT_DISTANCE = 200م
 // ═══════════════════════════════════════════════════════════
 let gpsWatchId: number | null = null;
 let fallbackIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -161,11 +164,12 @@ export function startShieldGPS(params: {
     const distFromGarage = haversine(lat, lng, params.parkingLat, params.parkingLng);
     const distFromLastSent = haversine(lat, lng, lastSentLat, lastSentLng);
 
-    if (distFromGarage > GEOFENCE_RADIUS) {
+    // ✅ ALERT_DISTANCE = 200م للإنذار (مش GEOFENCE_RADIUS)
+    if (distFromGarage > ALERT_DISTANCE) {
       const gracePeriod = getGracePeriod(speed);
 
       if (gracePeriod !== Infinity) {
-        // ✅ سيارة — نبدأ العد
+        // 🚗 سيارة — نبدأ العد
         if (!breachStartTime) {
           breachStartTime = now;
           console.log(`🚨 بداية خروج: ${Math.round(distFromGarage)}م @ ${Math.round(speed * 3.6)} كم/س`);
@@ -187,17 +191,17 @@ export function startShieldGPS(params: {
           }
         }
       } else {
-        // ⏸️ مشي — صفّر العدّاد
+        // 🚶 مشي — صفّر العدّاد
         if (breachStartTime) {
           breachStartTime = null;
         }
       }
     } else {
-      // جوه السياج — صفّر العدّاد بس لو لسه ما خرجش
+      // جوه 200م — صفّر العدّاد بس لو الإنذار لسه ما طلعش
       if (!isCurrentlyOutside) {
         breachStartTime = null;
       }
-      // ⚠️ لو isCurrentlyOutside = true (الإنذار شغال)، مش نعمل حاجة
+      // ⚠️ لو الإنذار شغال (isCurrentlyOutside = true)، مش نعمل حاجة
       // الإنذار بيقف بس لما المستخدم يدوس الزر
     }
   };

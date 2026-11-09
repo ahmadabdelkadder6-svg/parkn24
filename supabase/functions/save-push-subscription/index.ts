@@ -51,6 +51,7 @@ serve(async (req) => {
       keys?: { p256dh?: string; auth?: string };
     } | undefined;
 
+    // ── Unsubscribe ──
     if (action === 'unsubscribe') {
       if (!endpoint) {
         return jsonResponse({ success: false, error: 'endpoint required' }, 400);
@@ -66,11 +67,12 @@ serve(async (req) => {
       return jsonResponse({ success: true, action: 'unsubscribe' });
     }
 
-    if (!garageId) {
-      return jsonResponse({ success: false, error: 'garageId required' }, 400);
-    }
+    // ── Save / Upsert ──
+    const subEndpoint = subscription?.endpoint || endpoint;
+    const subP256dh   = subscription?.keys?.p256dh;
+    const subAuth     = subscription?.keys?.auth;
 
-    if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
+    if (!subEndpoint || !subP256dh || !subAuth) {
       return jsonResponse({ success: false, error: 'subscription keys required' }, 400);
     }
 
@@ -78,18 +80,17 @@ serve(async (req) => {
       .from('push_subscriptions')
       .upsert(
         {
-          garage_id: garageId,
+          garage_id: garageId || null,
           phone: phone || null,
-          endpoint: subscription.endpoint,
-          p256dh: subscription.keys.p256dh,
-          auth: subscription.keys.auth,
+          endpoint: subEndpoint,
+          p256dh: subP256dh,
+          auth: subAuth,
           user_agent: userAgent || null,
           subscribed_at: subscribedAt || new Date().toISOString(),
           updated_at: new Date().toISOString(),
         },
         {
-          onConflict: 'garage_id,endpoint',
-          ignoreDuplicates: false,
+          onConflict: 'endpoint',       // ← التعديل: endpoint بس
         }
       );
 
@@ -98,8 +99,8 @@ serve(async (req) => {
       return jsonResponse({ success: false, error: upsertError.message }, 500);
     }
 
-    console.log(`✅ Saved | garage:${garageId} | phone:${phone || '-'}`);
-    return jsonResponse({ success: true, action: 'save', garageId });
+    console.log(`✅ Saved | garage:${garageId || '-'} | phone:${phone || '-'}`);
+    return jsonResponse({ success: true, action: 'save', garageId: garageId || null });
 
   } catch (err) {
     console.error('❌ Error:', err);
