@@ -1465,7 +1465,7 @@ export const useStore = create<AppState>((set, get) => ({
           revenue_confirmed: false,
           added_by: addedByValue,
           customer_phone: cleanPhone || null,
-          customer_name: s.customer
+          customer_name: s.customer,
           incoming_car_id: s.incomingCarId || null,
           started_by: s.startedBy || null,
           commission_amount: 0,
