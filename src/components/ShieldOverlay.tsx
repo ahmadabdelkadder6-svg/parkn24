@@ -349,6 +349,12 @@ export default function ShieldOverlay({
   // ─── التسجيل الذكي ───
   const registerOnServer = useCallback(async () => {
     const identifier = userPhone || userId || 'unknown';
+
+    // ── متغيرات الـ Push (ممكن تفضل null) ──
+    let pushEndpoint: string | null = null;
+    let pushP256dh: string | null = null;
+    let pushAuth: string | null = null;
+
     try {
       const reg = await navigator.serviceWorker.ready;
 
@@ -356,26 +362,52 @@ export default function ShieldOverlay({
       if (oldSub) await oldSub.unsubscribe();
 
       let perm = Notification.permission;
-      if (perm !== 'granted') perm = await Notification.requestPermission();
-      if (perm !== 'granted') return;
+      if (perm !== 'granted') {
+        perm = await Notification.requestPermission();
+      }
 
-      const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-      if (!VAPID_PUBLIC) return;
+      if (perm === 'granted') {
+        const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 
-      const urlBase64ToUint8Array = (b: string): Uint8Array => {
-        const p = '='.repeat((4 - (b.length % 4)) % 4);
-        const d = window.atob((b + p).replace(/-/g, '+').replace(/_/g, '/'));
-        return new Uint8Array([...d].map(c => c.charCodeAt(0)));
-      };
+        if (VAPID_PUBLIC) {
+          const urlBase64ToUint8Array = (b: string): Uint8Array => {
+            const p = '='.repeat((4 - (b.length % 4)) % 4);
+            const d = window.atob((b + p).replace(/-/g, '+').replace(/_/g, '/'));
+            return new Uint8Array([...d].map(c => c.charCodeAt(0)));
+          };
 
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
-      });
+          try {
+            const sub = await reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
+            });
 
-      const subJson = sub.toJSON();
-      if (!subJson?.endpoint) return;
+            const subJson = sub.toJSON();
+            if (subJson?.endpoint) {
+              pushEndpoint = subJson.endpoint;
+              pushP256dh = subJson.keys?.p256dh || null;
+              pushAuth = subJson.keys?.auth || null;
+              console.log('✅ Push subscription ready');
+            } else {
+              console.warn('⚠️ No push endpoint');
+            }
+          } catch (subErr) {
+            console.warn('⚠️ Push subscribe failed:', subErr);
+          }
+        } else {
+          console.warn('⚠️ VITE_VAPID_PUBLIC_KEY missing');
+        }
+      } else {
+        console.warn('⚠️ Notification permission denied');
+      }
+    } catch (swErr) {
+      console.warn('⚠️ Service Worker not ready:', swErr);
+    }
 
+    // ═══════════════════════════════════════════════════════
+    // ✅ التسجيل في الداتابيز — بيشتغل سواء الـ Push نجح أو لأ
+    // ═══════════════════════════════════════════════════════
+    try {
       const { data: existing } = await supabase
         .from('shield_sessions')
         .select('session_id, fake_tick, alert_count, ended_at')
@@ -386,13 +418,14 @@ export default function ShieldOverlay({
       if (existing) {
         await supabase.from('shield_sessions')
           .update({
-            push_endpoint: subJson.endpoint,
-            push_p256dh: subJson.keys?.p256dh,
-            push_auth: subJson.keys?.auth,
+            push_endpoint: pushEndpoint,
+            push_p256dh: pushP256dh,
+            push_auth: pushAuth,
           })
           .eq('session_id', sessionId);
 
         await registerShieldSession(sessionId, parkingLat, parkingLng, identifier, garageId);
+        console.log('✅ Session updated on server');
         return;
       }
 
@@ -407,9 +440,9 @@ export default function ShieldOverlay({
         phone: identifier,
         parking_lat: parkingLat,
         parking_lng: parkingLng,
-        push_endpoint: subJson.endpoint,
-        push_p256dh: subJson.keys?.p256dh,
-        push_auth: subJson.keys?.auth,
+        push_endpoint: pushEndpoint,
+        push_p256dh: pushP256dh,
+        push_auth: pushAuth,
         last_lat: parkingLat,
         last_lng: parkingLng,
         last_gps_at: new Date().toISOString(),
@@ -422,8 +455,9 @@ export default function ShieldOverlay({
       });
 
       await registerShieldSession(sessionId, parkingLat, parkingLng, identifier, garageId);
-    } catch (e: any) {
-      console.error('❌ Register crashed:', e.message);
+      console.log('✅ Session created on server');
+    } catch (dbErr: any) {
+      console.error('❌ DB registration failed:', dbErr.message);
     }
   }, [sessionId, userId, userPhone, parkingLat, parkingLng, garageId]);
 
