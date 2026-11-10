@@ -196,7 +196,6 @@ export default function SessionScreen() {
   const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
   const isMountedRef = useRef(true);
-  const realtimeChannelRef = useRef<any>(null);
   const autoEndedRef = useRef(false);
 
   const [ending, setEnding] = useState(false);
@@ -226,16 +225,6 @@ export default function SessionScreen() {
       window.removeEventListener('focus', syncPending);
     };
   }, []);
-
-  const isMySessionRow = useCallback((row: any) => {
-    if (!row) return false;
-    const rowPlate = normalizePlate(row.car_plate || row.carPlate);
-    const rowPhone = normalizePhone(row.customer_phone || row.customerPhone || '');
-    return (
-      (!!userPlate && rowPlate === userPlate) ||
-      (!!userPhone && rowPhone === userPhone)
-    );
-  }, [userPlate, userPhone]);
 
   const activeSession = useMemo(() => {
     let latest: (typeof sessions)[number] | undefined;
@@ -328,43 +317,17 @@ export default function SessionScreen() {
     return () => { cancelled = true; };
   }, [activeSession?.id]);
 
-  useEffect(() => {
-    fetchAll().catch((e) => console.error('Fetch error:', e));
-  }, [fetchAll]);
-
-  useEffect(() => {
-    if (!userPlate && !userPhone) return;
-    let cancelled = false;
-
-    const refetch = async () => {
-      if (cancelled || !isMountedRef.current) return;
-      try { await fetchAll(); } catch (e) { console.error('❌ Realtime fetch error:', e); }
-    };
-
-    const channel = supabase.channel(`customer-session-live-${userPlate || userPhone}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, async (payload) => {
-        const newRow = payload.new as any;
-        const oldRow = payload.old as any;
-        if (isMySessionRow(newRow) || isMySessionRow(oldRow)) await refetch();
-      })
-      .subscribe();
-
-    realtimeChannelRef.current = channel;
-
-    const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
-    document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', refetch);
-
-    return () => {
-      cancelled = true;
-      document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', refetch);
-      if (realtimeChannelRef.current) {
-        supabase.removeChannel(realtimeChannelRef.current);
-        realtimeChannelRef.current = null;
-      }
-    };
-  }, [userPlate, userPhone, fetchAll, isMySessionRow]);
+  /* ═══════════════════════════════════════════════════════════════════
+     🔄 Realtime + Polling:
+     تم إزالة الـ Realtime المحلي والـ polling المحلي بالكامل.
+     store.setupRealtime() بيغطي:
+       - sessions (كل التغييرات)
+       - incoming_cars
+       - garages
+       - wallet_topups
+       - heartbeat + fallback polling
+       - visibilitychange + focus
+     ═══════════════════════════════════════════════════════════════════ */
 
   // 🏁 إنهاء الجلسة يدويًا عند الضغط على زر الخروج
   const handleEndSession = useCallback(async () => {

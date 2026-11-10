@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -410,11 +411,11 @@ const useOwnerValetLocations = (
     }
   }, [enabled, garageId, garage]);
 
+  // ✅ [تعديل 1] حذف setInterval(15s) — قناة Realtime كافية + جلب أولي فقط
   useEffect(() => {
     if (!enabled || !garageId) return;
 
     fetchLocations();
-    const interval = setInterval(fetchLocations, 15000);
 
     const channel = supabase
       .channel(`valet-locations-channel-${garageId}`)
@@ -424,7 +425,6 @@ const useOwnerValetLocations = (
       .subscribe();
 
     return () => {
-      clearInterval(interval);
       supabase.removeChannel(channel);
     };
   }, [enabled, garageId, fetchLocations]);
@@ -914,26 +914,33 @@ export default function GarageDashboard() {
     }
   }, [isRealValet, currentGarageId, valetNumber]);
 
-  useEffect(() => {
-    if (!isRealValet || geofenceState.status === 'loading') return;
-    const isInside = geofenceState.status === 'inside';
-    
-    reportLocation(isInside, geofenceState.distance, geofenceState.coords || null);
-
-    const interval = setInterval(() => {
-      reportLocation(isInside, geofenceState.distance, geofenceState.coords || null);
-    }, VALET_PING_INTERVAL_MS);
-
-    return () => clearInterval(interval);
-  }, [isRealValet, geofenceState.status, geofenceState.distance, geofenceState.coords, reportLocation]);
+  // ✅ [تعديل 2+3] ref لأحدث حالة geofence — يمنع إعادة إنشاء interval كل GPS tick
+  const latestGeofenceRef = useRef(geofenceState);
+  latestGeofenceRef.current = geofenceState;
 
   useEffect(() => {
     if (!isRealValet) return;
 
+    const doReport = () => {
+      const gs = latestGeofenceRef.current;
+      if (gs.status === 'loading') return;
+      reportLocation(gs.status === 'inside', gs.distance, gs.coords || null);
+    };
+
+    doReport();
+    const interval = setInterval(doReport, VALET_PING_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [isRealValet, reportLocation]);
+
+  // ✅ [تعديل 4] visibilitychange يقرأ من الـ ref — deps تقلصت من 6 إلى 3
+  useEffect(() => {
+    if (!isRealValet) return;
+
     const handleVisibilityChange = () => {
+      const gs = latestGeofenceRef.current;
       if (document.visibilityState === 'hidden') {
-        if (geofenceState.status === 'inside') {
-          reportLocation(true, geofenceState.distance, geofenceState.coords || null);
+        if (gs.status === 'inside') {
+          reportLocation(true, gs.distance, gs.coords || null);
         }
       } else if (document.visibilityState === 'visible') {
         if (garageCoords) {
@@ -947,7 +954,7 @@ export default function GarageDashboard() {
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [isRealValet, geofenceState.status, geofenceState.distance, geofenceState.coords, garageCoords, reportLocation]);
+  }, [isRealValet, garageCoords, reportLocation]);
 
   const valetLocations = useOwnerValetLocations(isOwner, currentGarageId, garage);
 
@@ -1086,35 +1093,7 @@ export default function GarageDashboard() {
     // جلب الإحصائيات في الخلفية صامتًا لمنع عرقلة الواجهة
   }, []);
 
-  // 🚀 نظام Realtime ذكي مع Debouncing لتوفير موارد السيرفر
-  useEffect(() => {
-    if (!currentGarageId) return;
-    
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const triggerDebouncedFetch = () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(async () => {
-        try {
-          await fetchAll();
-        } catch (err) {
-          console.error('Garage realtime fetch error:', err);
-        }
-      }, 1500);
-    };
-
-    const channel = supabase
-      .channel(`garage-realtime-${currentGarageId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions', filter: `garage_id=eq.${currentGarageId}` }, triggerDebouncedFetch)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'incoming_cars', filter: `garage_id=eq.${currentGarageId}` }, triggerDebouncedFetch)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'offers', filter: `garage_id=eq.${currentGarageId}` }, triggerDebouncedFetch)
-      .subscribe();
-      
-    return () => { 
-      if (debounceTimer) clearTimeout(debounceTimer);
-      supabase.removeChannel(channel); 
-    };
-  }, [currentGarageId, fetchAll]);
+  // ✅ [تعديل 5] حذف قناة Realtime المحلية المكررة — الـ store يتولى ذلك بالفعل عبر setupRealtime()
 
   useEffect(() => {
     if (!currentGarageId) return;
@@ -1207,34 +1186,50 @@ export default function GarageDashboard() {
     });
   }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, isRealValet, isOwner, ownerValetView, myValetNames, selectedValetFilter, valetNumber, garage]);
 
+  // ✅ [تعديل 6] حلقة for واحدة بدلاً من 12 pass منفصلة
   const filteredStats = useMemo(() => {
-    const c = filteredCompleted.filter(s => s.revenueConfirmed);
-    const u = filteredCompleted.filter(s => !s.revenueConfirmed);
-    const activeC = c.filter(s => !(s as any).settled);
+    let cash = 0, instapay = 0, wallet = 0, cashwallet = 0;
+    let manualCount = 0, appCount = 0, manualTotal = 0, appTotal = 0;
+    let pendingRevenue = 0, pendingCount = 0;
+    let totalCommission = 0, totalNet = 0;
+    let activeWallet = 0, activeCommission = 0;
 
-    const cash = c.filter(s => s.paymentMethod === 'cash').reduce((a, s) => a + getSessionRevenue(s), 0);
-    const instapay = c.filter(s => s.paymentMethod === 'instapay').reduce((a, s) => a + getSessionRevenue(s), 0);
-    const wallet = c.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
-    const cashwallet = c.filter(s => s.paymentMethod === 'cashwallet').reduce((a, sumSession) => a + getSessionRevenue(sumSession), 0);
-    
-    const manual = c.filter(s => s.source === 'manual');
-    const app = c.filter(s => s.source === 'app');
-    
-    const totalCommission = c.reduce((a, s) => a + getSessionCommission(s), 0);
-    const totalNet = c.reduce((a, s) => a + getSessionNetRevenue(s), 0);
-    const confirmedTotal = cash + instapay + wallet + cashwallet;
+    for (let i = 0; i < filteredCompleted.length; i++) {
+      const s = filteredCompleted[i];
+      const rev = getSessionRevenue(s);
+      const isConfirmed = s.revenueConfirmed;
 
-    const activeWallet = activeC.filter(s => s.paymentMethod === 'wallet').reduce((a, s) => a + getSessionRevenue(s), 0);
-    const activeCommission = activeC.reduce((a, s) => a + getSessionCommission(s), 0);
+      if (!isConfirmed) {
+        pendingRevenue += rev;
+        pendingCount++;
+        continue;
+      }
+
+      switch (s.paymentMethod) {
+        case 'cash': cash += rev; break;
+        case 'instapay': instapay += rev; break;
+        case 'wallet': wallet += rev; break;
+        case 'cashwallet': cashwallet += rev; break;
+      }
+
+      if (s.source === 'manual') { manualCount++; manualTotal += rev; }
+      else if (s.source === 'app') { appCount++; appTotal += rev; }
+
+      const comm = getSessionCommission(s);
+      totalCommission += comm;
+      totalNet += getSessionNetRevenue(s);
+
+      if (!(s as any).settled) {
+        if (s.paymentMethod === 'wallet') activeWallet += rev;
+        activeCommission += comm;
+      }
+    }
 
     return {
       cash, instapay, wallet, cashwallet,
-      total: confirmedTotal,
-      manualCount: manual.length, appCount: app.length,
-      manualTotal: manual.reduce((a, s) => a + getSessionRevenue(s), 0),
-      appTotal: app.reduce((a, s) => a + getSessionRevenue(s), 0),
-      pendingRevenue: u.reduce((a, s) => a + getSessionRevenue(s), 0),
-      pendingCount: u.length,
+      total: cash + instapay + wallet + cashwallet,
+      manualCount, appCount, manualTotal, appTotal,
+      pendingRevenue, pendingCount,
       totalCommission, totalNet,
       activeWallet, activeCommission,
     };
@@ -1358,7 +1353,8 @@ export default function GarageDashboard() {
     setShowAddCar(false);
   };
 
-  const openConfirmPayment = (sid: string, cp: string, cost: number, hrs: number, minutes: number, source: 'app' | 'manual', ap?: number) => {
+  // ✅ [تعديل 7] useCallback لمنع إبطال memo على ActiveSessionsList
+  const openConfirmPayment = useCallback((sid: string, cp: string, cost: number, hrs: number, minutes: number, source: 'app' | 'manual', ap?: number) => {
     const sessionObj = activeSessions.find(s => s.id === sid);
     const isFreeApplied = sessionObj?.source === 'app' && sessionObj?.isFirstFreeSession === true;
     
@@ -1381,7 +1377,8 @@ export default function GarageDashboard() {
 
     setConfirmPaymentMethod('cash');
     setPlateSearch('');
-  };
+  }, [activeSessions, getActiveCost]);
+
   const handleConfirmPayment = async () => {
     if (!confirmSession || isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
@@ -1449,6 +1446,7 @@ export default function GarageDashboard() {
 
   const handleCarArrived = async (car: any) => {
     const carId: string = car.id; 
+   
     const carPlate: string = car.carPlate;
     if (processedCarsRef.current.has(carId)) return;
     processedCarsRef.current.add(carId);
@@ -1752,7 +1750,7 @@ export default function GarageDashboard() {
                     className="w-full p-2.5 rounded-xl flex items-center justify-between font-black border cursor-pointer border-orange-100 bg-orange-50/50"
                     style={{
                       background: confirmPaymentMethod === 'cash' ? '#fff7ed' : BRAND.bg,
-                      borderColor: confirmPaymentMethod === 'cash' ? '#f97316' : BRAND.border,
+                      borderColor: confirmPaymentMethod === 'cash' ? '#f7316' : BRAND.border,
                       color: confirmPaymentMethod === 'cash' ? '#c2410c' : BRAND.slate
                     }}
                   >

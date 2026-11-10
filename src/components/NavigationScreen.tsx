@@ -193,8 +193,10 @@ export default function NavigationScreen() {
 
   const isMountedRef = useRef(true);
   const navigatedToSessionRef = useRef(false);
-  const isArrivingRef = useRef(false);
-  const realtimeChannelRef = useRef<any>(null);
+
+  // 🔧 تحويل isArriving من useRef لـ useState عشان الـ disabled يشتغل فعلاً
+  // (الـ ref مش بيعمل re-render، فالزرار مش كان بيتعطل بصرياً)
+  const [isArriving, setIsArriving] = useState(false);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -203,77 +205,24 @@ export default function NavigationScreen() {
     };
   }, []);
 
-  /* ─── REALTIME & SYNC ─── */
-  useEffect(() => {
-    if (!userPlateNav && !userPhoneClean) return;
+  /* ═══════════════════════════════════════════════════════════════════
+     🔄 Realtime + Polling:
+     تم إزالة الـ Realtime المحلي والـ polling بالكامل.
+     store.setupRealtime() بيغطي:
+       - sessions (كل التغييرات)
+       - incoming_cars
+       - garages
+       - heartbeat + fallback polling
+       - visibilitychange + focus
 
-    let cancelled = false;
-
-    const fastFetch = async () => {
-      if (cancelled || !isMountedRef.current) return;
-      try {
-        await fetchAll();
-      } catch (e) {
-        console.error('Fetch error:', e);
-      }
-    };
-
-    fastFetch();
-
-    const isMySessionPayload = (row: any): boolean => {
-      if (!row) return false;
-      const plate = normalizePlate(row.car_plate || row.carPlate);
-      const phone = normalizePhone(row.customer_phone || row.customerPhone || '');
-      return (
-        (!!userPlateNav && plate === userPlateNav) ||
-        (!!userPhoneClean && phone === userPhoneClean)
-      );
-    };
-
-    const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'sessions' },
-        async (payload) => {
-          const newRow = payload.new as any;
-          if (isMySessionPayload(newRow) && newRow?.status === 'active') {
-            await fastFetch();
-            if (isMountedRef.current) {
-              if (newRow.garage_id || newRow.garageId) {
-                setSelectedGarageId(newRow.garage_id || newRow.garageId);
-              }
-              setScreen('session');
-            }
-          } else {
-            fastFetch();
-          }
-        },
-      )
-      .subscribe();
-
-    realtimeChannelRef.current = channel;
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') fastFetch();
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', fastFetch);
-
-    return () => {
-      cancelled = true;
-      document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', fastFetch);
-      if (realtimeChannelRef.current) {
-        supabase.removeChannel(realtimeChannelRef.current);
-        realtimeChannelRef.current = null;
-      }
-    };
-  }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
+     التوجيه التلقائي لشاشة الجلسة بيتم عبر الـ useEffect الخاص بـ
+     myActiveSession اللي بيتفاعل مع أي تحديث من الـ store.
+     ═══════════════════════════════════════════════════════════════════ */
 
   /* ─── 🚗 زر: وصلت للجراج وبدأ الركن ─── */
   const handleCarArrived = useCallback(async () => {
-    if (isArrivingRef.current) return;
-    isArrivingRef.current = true;
+    if (isArriving) return;
+    setIsArriving(true);
 
     try {
       if (!garage) return;
@@ -337,7 +286,7 @@ export default function NavigationScreen() {
       toast.error('حدث خطأ، حاول مرة أخرى');
     } finally {
       setTimeout(() => {
-        isArrivingRef.current = false;
+        setIsArriving(false);
       }, 1500);
     }
   }, [
@@ -353,6 +302,7 @@ export default function NavigationScreen() {
     selectedGarageId,
     setSelectedGarageId,
     setScreen,
+    isArriving,
   ]);
 
   /* ─── ❌ زر: وصلت بس ملقتش مكان / العودة للرئيسية ─── */
@@ -712,7 +662,7 @@ export default function NavigationScreen() {
             <button
               type="button"
               onClick={handleCarArrived}
-              disabled={isArrivingRef.current}
+              disabled={isArriving}
               className="w-full py-4 rounded-2xl active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 disabled:opacity-50 border-0 text-white cursor-pointer shadow-lg"
               style={{
                 background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
@@ -721,7 +671,7 @@ export default function NavigationScreen() {
             >
               <ShieldCheck size={20} color="#ffffff" />
               <span className="font-black text-white text-center text-sm sm:text-base">
-                وصلت للجراج وبدأ الركن ✅
+                {isArriving ? '⏳ جاري بدء الجلسة...' : 'وصلت للجراج وبدأ الركن ✅'}
               </span>
             </button>
 

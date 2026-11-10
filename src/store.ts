@@ -248,9 +248,19 @@ const getCachedGarages = (): Garage[] => {
   return Array.isArray(cached) ? cached : [];
 };
 
-export const getPlateFingerprint = (plate?: any): string => {
-  if (!plate) return '';
-  let str = String(plate).trim();
+// ===================== ⚡ LRU Cache للـ Normalize =====================
+// ✅ [تعديل] كاش LRU لمنع إعادة حساب الـ regex لنفس اللوحات والأرقام
+
+const _plateCache = new Map<string, string>();
+const PLATE_CACHE_MAX = 2000;
+
+const _phoneCache = new Map<string, string>();
+const PHONE_CACHE_MAX = 1000;
+
+// ✅ [تعديل] الدالة الأصلية اتحولت لـ _computePlateFingerprint
+// والـ getPlateFingerprint بقى يستخدم الكاش
+const _computePlateFingerprint = (rawPlate: string): string => {
+  let str = rawPlate;
   str = str.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '');
   str = str.replace(/\u0640/g, '');
   str = str.normalize('NFKD');
@@ -289,11 +299,32 @@ export const getPlateFingerprint = (plate?: any): string => {
   return `${letters}_${digits}`;
 };
 
-export const normalizePlate = (plate?: any): string => getPlateFingerprint(plate);
+export const getPlateFingerprint = (plate?: unknown): string => {
+  if (!plate) return '';
+  const rawKey = String(plate).trim();
+  if (!rawKey) return '';
 
-export const normalizePhone = (phone?: any): string => {
-  if (!phone) return '';
-  let str = String(phone).trim();
+  // ✅ [تعديل] فحص الكاش الأول
+  const cached = _plateCache.get(rawKey);
+  if (cached !== undefined) return cached;
+
+  const result = _computePlateFingerprint(rawKey);
+
+  // ✅ [تعديل] LRU eviction
+  if (_plateCache.size >= PLATE_CACHE_MAX) {
+    const firstKey = _plateCache.keys().next().value;
+    if (firstKey !== undefined) _plateCache.delete(firstKey);
+  }
+  _plateCache.set(rawKey, result);
+
+  return result;
+};
+
+export const normalizePlate = (plate?: unknown): string => getPlateFingerprint(plate);
+
+// ✅ [تعديل] نفس الـ LRU cache للـ phone
+const _computeNormalizedPhone = (rawPhone: string): string => {
+  let str = rawPhone;
   const arabicNums = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
   for (let i = 0; i < 10; i++) str = str.replace(new RegExp(arabicNums[i], 'g'), String(i));
   let clean = str.replace(/[^\d]/g, '');
@@ -303,6 +334,27 @@ export const normalizePhone = (phone?: any): string => {
     clean = '0' + clean;
   }
   return clean.substring(0, 11);
+};
+
+export const normalizePhone = (phone?: unknown): string => {
+  if (!phone) return '';
+  const rawKey = String(phone).trim();
+  if (!rawKey) return '';
+
+  // ✅ [تعديل] فحص الكاش الأول
+  const cached = _phoneCache.get(rawKey);
+  if (cached !== undefined) return cached;
+
+  const result = _computeNormalizedPhone(rawKey);
+
+  // ✅ [تعديل] LRU eviction
+  if (_phoneCache.size >= PHONE_CACHE_MAX) {
+    const firstKey = _phoneCache.keys().next().value;
+    if (firstKey !== undefined) _phoneCache.delete(firstKey);
+  }
+  _phoneCache.set(rawKey, result);
+
+  return result;
 };
 
 const samePlate = (a?: string, b?: string) =>
@@ -327,6 +379,23 @@ export const syncServerClock = async () => {
   
   try {
     const t0 = Date.now();
+
+    // ✅ [تعديل] محاولة RPC الأول (أسرع وأدق)
+    try {
+      const { data, error } = await supabase.rpc('get_server_time');
+      const t1 = Date.now();
+      if (!error && data) {
+        const roundTrip = (t1 - t0) / 2;
+        const serverTimestamp = new Date(data).getTime() + roundTrip;
+        serverTimeOffset = serverTimestamp - Date.now();
+        lastClockSyncTime = Date.now();
+        return;
+      }
+    } catch {
+      // RPC مش موجود، نستخدم الـ fallback
+    }
+
+    // ✅ Fallback: HEAD request (الطريقة الأصلية)
     const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/garages?select=id&limit=1`, {
       method: 'HEAD',
       headers: { 
@@ -334,10 +403,10 @@ export const syncServerClock = async () => {
         Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` 
       }
     });
-    const t1 = Date.now();
+    const t2 = Date.now();
     const serverDateHeader = resp.headers.get('date');
     if (serverDateHeader) {
-      const roundTrip = (t1 - t0) / 2;
+      const roundTrip = (t2 - t0) / 2;
       const serverTimestamp = new Date(serverDateHeader).getTime() + roundTrip;
       serverTimeOffset = serverTimestamp - Date.now();
       lastClockSyncTime = Date.now();
@@ -575,6 +644,12 @@ interface AppState {
   fetchAll: () => Promise<void>;
   logout: () => void;
 }
+
+// ===================== ⚡ Fetch Lock =====================
+// ✅ [تعديل] قفل لمنع الطلبات المتطابقة للسيرفر
+let _isFetching = false;
+let _lastFetchTime = 0;
+const MIN_FETCH_INTERVAL = 3000;
 
 // ===================== Store =====================
 export const useStore = create<AppState>((set, get) => ({
@@ -958,7 +1033,15 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   fetchAll: async () => {
+    // ✅ [تعديل] Fetch Lock - منع الطلبات المتطابقة
+    if (_isFetching) return;
+    const now = Date.now();
+    if (now - _lastFetchTime < MIN_FETCH_INTERVAL) return;
+
     if (!isSupabaseConfigured()) return;
+
+    _isFetching = true;
+    _lastFetchTime = now;
 
     try {
       let currentGarages = get().garages;
@@ -1093,6 +1176,9 @@ export const useStore = create<AppState>((set, get) => ({
       }
     } catch (err) {
       console.error('FetchAll Delta Sync Error:', err);
+    } finally {
+      // ✅ [تعديل] فك القفل دائماً
+      _isFetching = false;
     }
   },
 
@@ -1379,7 +1465,7 @@ export const useStore = create<AppState>((set, get) => ({
           revenue_confirmed: false,
           added_by: addedByValue,
           customer_phone: cleanPhone || null,
-          customer_name: s.customerName || null,
+          customer_name: s.customer
           incoming_car_id: s.incomingCarId || null,
           started_by: s.startedBy || null,
           commission_amount: 0,
@@ -1582,10 +1668,25 @@ export const useStore = create<AppState>((set, get) => ({
 
     if (isSupabaseConfigured()) {
       try {
-        await supabase
+        // ✅ [تعديل] Conditional update - منع الـ double-credit race condition
+        // لو أدمنين ضغطوا approve في نفس اللحظة، واحد بس هينجح
+        const { data: updateResult, error: updateError } = await supabase
           .from('wallet_topups')
           .update({ status: 'approved', bonus_amount: bonus })
-          .eq('id', id);
+          .eq('id', id)
+          .eq('status', 'pending')
+          .select();
+
+        // لو مفيش rows اتأثرت = حد تاني سبق واعتمد
+        if (updateError || !updateResult || updateResult.length === 0) {
+          // نرجّع الحالة لـ pending في الـ UI
+          set((st) => ({
+            walletTopUps: st.walletTopUps.map((w) =>
+              w.id === id ? { ...w, status: 'pending' as const } : w
+            ),
+          }));
+          return;
+        }
 
         if (userPhone) {
           const { data: u } = await supabase
@@ -1696,8 +1797,12 @@ export const useStore = create<AppState>((set, get) => ({
 }));
 
 // ===================== Realtime الفائق =====================
+// ✅ [تعديل] استبدال الـ Polling بـ Supabase Realtime Subscriptions
+// ✅ [تعديل] إرجاع cleanup function لإغلاق الـ channels عند unmount
+// ✅ [تعديل] Debounce 2 ثانية لمنع الـ flood
+// ✅ [تعديل] Fallback polling لو الـ Realtime فشل
+
 let realtimeStarted = false;
-let pollingInterval: ReturnType<typeof setInterval> | null = null;
 let isOperationInProgress = false;
 let pauseTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -1712,24 +1817,207 @@ export function pausePolling(duration = 5000) {
   pauseTimeout = setTimeout(() => { isOperationInProgress = false; }, duration);
 }
 
-export function setupRealtime() {
-  if (realtimeStarted) return;
+export function setupRealtime(): () => void {
+  if (realtimeStarted) return () => {};
   realtimeStarted = true;
 
-  const startPolling = () => {
-    if (pollingInterval) clearInterval(pollingInterval);
-    pollingInterval = setInterval(() => {
+  const channels: ReturnType<typeof supabase.channel>[] = [];
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let fallbackInterval: ReturnType<typeof setInterval> | null = null;
+  let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  let isRealtimeConnected = false;
+
+  // ✅ Debounced fetch - منع الـ flood من الـ Realtime events
+  const debouncedFetch = () => {
+    if (isOperationInProgress) return;
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      if (document.visibilityState === 'visible') {
+        useStore.getState().fetchAll();
+      }
+    }, 2000);
+  };
+
+  const setupChannels = () => {
+    if (!isSupabaseConfigured()) return;
+
+    const state = useStore.getState();
+    const view = state.view;
+    const user = state.currentUser;
+    const garageId = state.currentGarageId;
+
+    // ✅ Channel 1: Sessions
+    const sessionsChannel = supabase
+      .channel('rt-sessions', {
+        config: { broadcast: { self: false }, presence: { key: '' } },
+      })
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'sessions',
+          ...(view === 'garage' && garageId ? { filter: `garage_id=eq.${garageId}` } : {}),
+        },
+        () => debouncedFetch()
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          isRealtimeConnected = true;
+          // ✅ إيقاف الـ fallback polling لو الـ Realtime اشتغل
+          if (fallbackInterval) {
+            clearInterval(fallbackInterval);
+            fallbackInterval = null;
+          }
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          isRealtimeConnected = false;
+          startFallbackPolling();
+        }
+      });
+    channels.push(sessionsChannel);
+
+    // ✅ Channel 2: Incoming Cars
+    const incomingChannel = supabase
+      .channel('rt-incoming', {
+        config: { broadcast: { self: false }, presence: { key: '' } },
+      })
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'incoming_cars',
+          ...(view === 'garage' && garageId ? { filter: `garage_id=eq.${garageId}` } : {}),
+        },
+        () => debouncedFetch()
+      )
+      .subscribe();
+    channels.push(incomingChannel);
+
+    // ✅ Channel 3: Garages (available_spots changes)
+    const garagesChannel = supabase
+      .channel('rt-garages', {
+        config: { broadcast: { self: false }, presence: { key: '' } },
+      })
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'garages',
+        },
+        () => debouncedFetch()
+      )
+      .subscribe();
+    channels.push(garagesChannel);
+
+    // ✅ Channel 4: Wallet TopUps (admin only)
+    if (view === 'admin') {
+      const topupsChannel = supabase
+        .channel('rt-topups', {
+          config: { broadcast: { self: false }, presence: { key: '' } },
+        })
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'wallet_topups',
+          },
+          () => debouncedFetch()
+        )
+        .subscribe();
+      channels.push(topupsChannel);
+
+      const messagesChannel = supabase
+        .channel('rt-messages', {
+          config: { broadcast: { self: false }, presence: { key: '' } },
+        })
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'messages',
+          },
+          () => debouncedFetch()
+        )
+        .subscribe();
+      channels.push(messagesChannel);
+    }
+  };
+
+  // ✅ Fallback polling - يشتغل بس لو الـ Realtime فشل
+  const startFallbackPolling = () => {
+    if (fallbackInterval) return;
+    console.warn('[ParkN24] Realtime failed, falling back to polling (30s)');
+    fallbackInterval = setInterval(() => {
       if (!isOperationInProgress && document.visibilityState === 'visible') {
         useStore.getState().fetchAll();
       }
-    }, 25000);
+    }, 30000);
   };
 
-  startPolling();
+  // ✅ Heartbeat - منع الـ WebSocket من القفل (كل 60 ثانية مع jitter)
+  const startHeartbeat = () => {
+    heartbeatInterval = setInterval(() => {
+      if (document.visibilityState === 'visible' && isRealtimeConnected) {
+        // نعمل fetch خفيف عشان نأكد إن الـ connection لسه حي
+        useStore.getState().fetchAll();
+      }
+    }, 60000 + Math.floor(Math.random() * 10000)); // 60-70s random jitter
+  };
 
-  document.addEventListener('visibilitychange', () => {
+  // ✅ Visibility change handler
+  const handleVisibilityChange = () => {
     if (document.visibilityState === 'visible') {
       useStore.getState().fetchAll();
     }
-  });
+  };
+
+  // تهيئة الـ channels
+  setupChannels();
+  startHeartbeat();
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+
+  // ✅ Fetch أولي بعد الـ setup
+  setTimeout(() => {
+    useStore.getState().fetchAll();
+  }, 1000);
+
+  // ✅ إرجاع cleanup function
+  return () => {
+    realtimeStarted = false;
+
+    // إغلاق كل الـ channels
+    for (const ch of channels) {
+      try {
+        supabase.removeChannel(ch);
+      } catch {
+        // ignore
+      }
+    }
+    channels.length = 0;
+
+    // تنظيف الـ timers
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+    if (fallbackInterval) {
+      clearInterval(fallbackInterval);
+      fallbackInterval = null;
+    }
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
+    }
+    if (pauseTimeout) {
+      clearTimeout(pauseTimeout);
+      pauseTimeout = null;
+    }
+
+    // إزالة الـ event listener
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+  };
 }

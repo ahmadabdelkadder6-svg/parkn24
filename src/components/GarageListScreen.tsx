@@ -22,6 +22,9 @@ const BRAND = {
 // 📍 مسافة التحديث الحقيقية لواجهة المستخدم
 const MIN_UI_MOVE_METERS = 25;
 
+// 🔧 debounce window لإعادة الجلب بعد Realtime events
+const REFETCH_DEBOUNCE_MS = 3000;
+
 interface GarageWithDistance extends Garage { distance: number; minutes: number; classification: 'nearby' | 'far'; }
 interface GarageCardProps { garage: GarageWithDistance; index: number; onSelect: () => void; onReportPrice: (garage: GarageWithDistance) => void; isNearby: boolean; isClosest: boolean; hasActiveSession: boolean; hasIncomingCar: boolean; disabled: boolean; }
 
@@ -166,6 +169,10 @@ export default function GarageListScreen() {
 
   const lastGpsTickRef = useRef<{ lat: number; lng: number; time: number } | null>(null);
 
+  // 🔧 Refs للتنظيف الآمن للـ Realtime channels والـ debounce timers
+  const realtimeChannelRef = useRef<any>(null);
+  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => { isMountedRef.current = true; return () => { isMountedRef.current = false; }; }, []);
 
   const normalizedUserPlate = useMemo(() => normalizePlate(currentUser?.carPlate), [currentUser?.carPlate]);
@@ -279,22 +286,77 @@ export default function GarageListScreen() {
 
   useEffect(() => { getUserLocation(); return () => { if (watchIdRef.current !== null) { navigator.geolocation.clearWatch(watchIdRef.current); } }; }, [getUserLocation]);
 
+  /* ═══════════════════════════════════════════════════════════════════
+     🔄 Realtime محسّن:
+     - فلترة على مستوى Supabase (user_phone/phone فقط) بدل جلب كل التحديثات
+     - debounce 3 ثواني لتقليل عدد fetchAll calls
+     - إزالة setInterval وpolling المحلي (store يغطيها)
+     - إزالة visibilitychange / focus handlers (store يغطيها)
+     ═══════════════════════════════════════════════════════════════════ */
   useEffect(() => {
-    if (!normalizedUserPlate && !cleanUserPhone) return;
+    if (!cleanUserPhone) return;
+
     let isSubscribed = true;
-    const refetch = async () => { if (!isSubscribed) return; try { await fetchAll(); } catch (e) { console.error('Realtime Fetch Error:', e); } };
-    const isMyRow = (row: any): boolean => { if (!row) return false; const plate = normalizePlate(row.car_plate || row.carPlate); const phone = (row.customer_phone || row.customerPhone || row.phone || row.userPhone || '').replace(/[^\d+]/g, ''); return plate === normalizedUserPlate || Boolean(cleanUserPhone && phone === cleanUserPhone); };
-    const channel = supabase.channel(`customer-realtime-wallet-${cleanUserPhone}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, (payload) => { if (isMyRow(payload.new) || isMyRow(payload.old)) refetch(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_topups' }, (payload) => { if (isMyRow(payload.new) || isMyRow(payload.old)) { refetch(); if (payload.event === 'UPDATE' && payload.new.status === 'approved') { toast.success(`🎁 تم اعتماد شحن رصيد بمبلغ ${payload.new.amount} ج.م بنجاح!`, { icon: '💳' }); } } })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users' }, (payload) => { if (cleanUserPhone && payload.new.phone && normalizePhone(payload.new.phone) === cleanUserPhone) { refetch(); } })
+
+    const scheduleRefetch = () => {
+      if (!isSubscribed) return;
+      if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
+      refetchTimerRef.current = setTimeout(async () => {
+        if (!isSubscribed) return;
+        try {
+          await fetchAll();
+        } catch (e) {
+          console.error('Realtime Fetch Error:', e);
+        }
+      }, REFETCH_DEBOUNCE_MS);
+    };
+
+    const channel = supabase
+      .channel(`customer-realtime-wallet-${cleanUserPhone}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'wallet_topups',
+          filter: `user_phone=eq.${cleanUserPhone}`,
+        },
+        (payload: any) => {
+          scheduleRefetch();
+          // 🎉 توست فوري عند اعتماد شحن رصيد (Supabase JS v2: eventType)
+          if (payload.eventType === 'UPDATE' && payload.new?.status === 'approved') {
+            toast.success(`🎁 تم اعتماد شحن رصيد بمبلغ ${payload.new.amount} ج.م بنجاح!`, { icon: '💳' });
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'users',
+          filter: `phone=eq.${cleanUserPhone}`,
+        },
+        () => {
+          scheduleRefetch();
+        }
+      )
       .subscribe();
-    const interval = setInterval(refetch, 12000);
-    const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
-    const handleFocus = () => refetch();
-    document.addEventListener('visibilitychange', handleVisibility); window.addEventListener('focus', handleFocus);
-    return () => { isSubscribed = false; clearInterval(interval); document.removeEventListener('visibilitychange', handleVisibility); window.removeEventListener('focus', handleFocus); supabase.removeChannel(channel); };
-  }, [normalizedUserPlate, cleanUserPhone, fetchAll]);
+
+    realtimeChannelRef.current = channel;
+
+    return () => {
+      isSubscribed = false;
+      if (refetchTimerRef.current) {
+        clearTimeout(refetchTimerRef.current);
+        refetchTimerRef.current = null;
+      }
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+    };
+  }, [cleanUserPhone, fetchAll]);
 
   useEffect(() => {
     if (!activeSession) { autoNavigatedRef.current = null; return; }
@@ -331,35 +393,59 @@ export default function GarageListScreen() {
     else { toast.success(`جاري عرض الخيار ${nextIndex + 1} من ${rescueGaragesList.length}... 🔍`, { duration: 1500 }); }
   }, [rescueIndex, rescueGaragesList.length]);
 
+  /* ═══════════════════════════════════════════════════════════════════
+     🚀 فلترة موحدة في pass واحد (بدل 3 passes)
+     ═══════════════════════════════════════════════════════════════════ */
   const filteredGarages = useMemo(() => {
-    let filtered = garagesWithDistance;
-    filtered = filtered.filter((g) => g.garageType === activeTab);
-    if (searchQuery.trim()) { const q = searchQuery.trim().toLowerCase(); filtered = filtered.filter((g) => g.name.toLowerCase().includes(q) || g.location.toLowerCase().includes(q) || (g.area || '').toLowerCase().includes(q)); }
-    if (showNearbyOnly) { filtered = filtered.filter((g) => g.classification === 'nearby'); }
-    return filtered;
+    const q = searchQuery.trim().toLowerCase();
+    const hasQuery = q.length > 0;
+    return garagesWithDistance.filter((g) => {
+      if (g.garageType !== activeTab) return false;
+      if (showNearbyOnly && g.classification !== 'nearby') return false;
+      if (hasQuery) {
+        const name = (g.name || '').toLowerCase();
+        const loc = (g.location || '').toLowerCase();
+        const area = ((g as any).area || '').toLowerCase();
+        if (!name.includes(q) && !loc.includes(q) && !area.includes(q)) return false;
+      }
+      return true;
+    });
   }, [garagesWithDistance, searchQuery, showNearbyOnly, activeTab]);
 
-  /* ─── 🗺️ تجميع الجراجات حسب المنطقة الموحدة ─── */
+  /* ═══════════════════════════════════════════════════════════════════
+     🗺️ تجميع الجراجات حسب المنطقة الموحدة (for-loop بدل spread operator لأمان أعلى)
+     ═══════════════════════════════════════════════════════════════════ */
   const areaGroups = useMemo(() => {
     const groups: Record<string, GarageWithDistance[]> = {};
-    filteredGarages.forEach(g => {
+    for (const g of filteredGarages) {
       const zone = (g as any).area || 'مناطق أخرى';
       if (!groups[zone]) groups[zone] = [];
       groups[zone].push(g);
-    });
-    return Object.keys(groups)
-      .map(name => ({
+    }
+
+    const list = Object.keys(groups).map((name) => {
+      const items = groups[name];
+      let totalCapacity = 0;
+      let minMinutes = Infinity;
+      for (const g of items) {
+        totalCapacity += g.capacity || 0;
+        if (g.minutes < minMinutes) minMinutes = g.minutes;
+      }
+      return {
         name,
-        garages: groups[name],
-        totalCapacity: groups[name].reduce((sum, g) => sum + (g.capacity || 0), 0)
-      }))
-      .sort((a, b) => {
-        if (a.name === 'مناطق أخرى') return 1;
-        if (b.name === 'مناطق أخرى') return -1;
-        const minA = Math.min(...a.garages.map(g => g.minutes));
-        const minB = Math.min(...b.garages.map(g => g.minutes));
-        return minA - minB;
-      });
+        garages: items,
+        totalCapacity,
+        _minMinutes: minMinutes === Infinity ? Number.MAX_SAFE_INTEGER : minMinutes,
+      };
+    });
+
+    list.sort((a, b) => {
+      if (a.name === 'مناطق أخرى') return 1;
+      if (b.name === 'مناطق أخرى') return -1;
+      return a._minMinutes - b._minMinutes;
+    });
+
+    return list;
   }, [filteredGarages]);
 
   useEffect(() => { if (searchQuery.trim() && areaGroups.length > 0) setExpandedArea(areaGroups[0].name); }, [searchQuery, areaGroups]);
