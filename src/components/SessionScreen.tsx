@@ -610,7 +610,8 @@ export default function SessionScreen() {
           </button>
         </div>
       </motion.div>
-    );
+     );
   }
 
+  return null;
 }

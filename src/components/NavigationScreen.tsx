@@ -191,6 +191,10 @@ export default function NavigationScreen() {
   const [showInsufficientModal, setShowInsufficientModal] = useState(false);
   const [processingTopup, setProcessingTopup] = useState<string | null>(null);
 
+  // 🚨 Geofence alarm states
+  const [showGeofenceAlarm, setShowGeofenceAlarm] = useState(false);
+  const [geofenceAlertSent, setGeofenceAlertSent] = useState(false);
+
   const isMountedRef = useRef(true);
   const navigatedToSessionRef = useRef(false);
 
@@ -198,10 +202,27 @@ export default function NavigationScreen() {
   // (الـ ref مش بيعمل re-render، فالزرار مش كان بيتعطل بصرياً)
   const [isArriving, setIsArriving] = useState(false);
 
+  // 🚨 Geofence alarm refs
+  const alarmCtxRef = useRef<AudioContext | null>(null);
+  const alarmOscRef = useRef<OscillatorNode | null>(null);
+  const geofenceTriggeredRef = useRef(false);
+  const geofenceWatchIdRef = useRef<number | null>(null);
+
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      // 🚨 Cleanup alarm on unmount — fixes bug #2 (sound keeps playing)
+      try {
+        alarmOscRef.current?.stop();
+        alarmCtxRef.current?.close();
+      } catch {}
+      alarmOscRef.current = null;
+      alarmCtxRef.current = null;
+      if (geofenceWatchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(geofenceWatchIdRef.current);
+        geofenceWatchIdRef.current = null;
+      }
     };
   }, []);
 
@@ -218,6 +239,60 @@ export default function NavigationScreen() {
      التوجيه التلقائي لشاشة الجلسة بيتم عبر الـ useEffect الخاص بـ
      myActiveSession اللي بيتفاعل مع أي تحديث من الـ store.
      ═══════════════════════════════════════════════════════════════════ */
+
+  /* ─── 🚨 Alarm Sound Helpers ─── */
+  const stopAlarmSound = useCallback(() => {
+    // 🛑 إيقاف الـ beep interval
+    if (alarmIntervalRef.current) {
+      clearInterval(alarmIntervalRef.current);
+      alarmIntervalRef.current = null;
+    }
+    // 🛑 إيقاف الصوت
+    try {
+      alarmOscRef.current?.stop();
+      alarmCtxRef.current?.close();
+    } catch {}
+    alarmOscRef.current = null;
+    alarmCtxRef.current = null;
+    // 🛑 إيقاف الاهتزاز
+    if (navigator.vibrate) {
+      navigator.vibrate(0);
+    }
+  }, []);
+
+  const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startAlarmSound = useCallback(() => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      alarmCtxRef.current = ctx;
+
+      // 🔊 صوت إنذار متقطع (beep-beep-beep) بتردد عالي
+      const beep = () => {
+        if (!alarmCtxRef.current || alarmCtxRef.current.state === 'closed') return;
+        const osc = alarmCtxRef.current.createOscillator();
+        const gain = alarmCtxRef.current.createGain();
+        osc.connect(gain);
+        gain.connect(alarmCtxRef.current.destination);
+        osc.frequency.value = 1200;
+        osc.type = 'square';
+        gain.gain.value = 0.8;
+        osc.start();
+        osc.stop(alarmCtxRef.current.currentTime + 0.15);
+      };
+
+      beep();
+      alarmIntervalRef.current = setInterval(beep, 400);
+
+      // 📳 اهتزاز الموبايل (Vibration API)
+      if (navigator.vibrate) {
+        // نمط اهتزاز: 300ms اهتزاز → 200ms سكون → 300ms اهتزاز → ...
+        navigator.vibrate([300, 200, 300, 200, 300, 200, 300, 200, 300]);
+      }
+    } catch {
+      // Audio not supported
+    }
+  }, []);
 
   /* ─── 🚗 زر: وصلت للجراج وبدأ الركن ─── */
   const handleCarArrived = useCallback(async () => {
@@ -345,6 +420,11 @@ export default function NavigationScreen() {
   useEffect(() => {
     if (!myActiveSession) {
       navigatedToSessionRef.current = false;
+      // 🚨 Reset geofence state when session ends so alarm can trigger for future sessions
+      geofenceTriggeredRef.current = false;
+      setGeofenceAlertSent(false);
+      setShowGeofenceAlarm(false);
+      stopAlarmSound();
       return;
     }
 
@@ -356,8 +436,94 @@ export default function NavigationScreen() {
     }
 
     setScreen('session');
-  }, [myActiveSession, selectedGarageId, setSelectedGarageId, setScreen]);
+  }, [myActiveSession, selectedGarageId, setSelectedGarageId, setScreen, stopAlarmSound]);
 
+  /* ─── 🚨 مراقبة الجيوفينس أثناء الركنة النشطة ─── */
+  useEffect(() => {
+    // Only monitor when there's an active session AND we haven't already sent an alert
+    if (!myActiveSession || !garage || geofenceAlertSent) {
+      if (geofenceWatchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(geofenceWatchIdRef.current);
+        geofenceWatchIdRef.current = null;
+      }
+      return;
+    }
+
+    const GEOFENCE_RADIUS_KM = 0.3; // 300 meters
+
+    geofenceWatchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        if (!isMountedRef.current) return;
+        // 🔧 Fix #1: Once triggered, don't re-trigger (prevents screen flickering)
+        if (geofenceTriggeredRef.current) return;
+
+        const dist = calculateDistance(
+          pos.coords.latitude,
+          pos.coords.longitude,
+          garage.lat,
+          garage.lng,
+        );
+
+        if (dist > GEOFENCE_RADIUS_KM) {
+          geofenceTriggeredRef.current = true;
+          setShowGeofenceAlarm(true);
+          startAlarmSound();
+        }
+      },
+      () => {
+        // GPS error — silent, don't trigger false alarm
+      },
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 },
+    );
+
+    return () => {
+      if (geofenceWatchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(geofenceWatchIdRef.current);
+        geofenceWatchIdRef.current = null;
+      }
+      stopAlarmSound();
+    };
+  }, [myActiveSession, garage, geofenceAlertSent, startAlarmSound, stopAlarmSound]);
+
+  /* ─── 🚨 Geofence Alarm Choice Handler ─── */
+  const handleGeofenceChoice = useCallback(
+    async (isMeDriving: boolean) => {
+      // إيقاف صوت الإنذار فوراً
+      stopAlarmSound();
+      setShowGeofenceAlarm(false);
+
+      // إنهاء الجلسة في الداتابيز (في الحالتين)
+      if (myActiveSession) {
+        try {
+          await supabase
+            .from('sessions')
+            .update({
+              status: 'ended',
+              endTime: new Date(getServerNow()).toISOString(),
+            })
+            .eq('id', myActiveSession.id);
+        } catch (err) {
+          console.error('Error ending session:', err);
+        }
+      }
+
+      // رسالة مختلفة حسب الاختيار
+      if (isMeDriving) {
+        toast.success('تم إنهاء الجلسة بنجاح ✅', { duration: 3000 });
+      } else {
+        toast.error('⚠️ تم إرسال تنبيه أمان وإنهاء الجلسة!', { duration: 4000, icon: '🚨' });
+      }
+
+      // إعادة تعيين حالة الجيوفينس
+      setGeofenceAlertSent(true);
+      geofenceTriggeredRef.current = false;
+
+      // العودة للرئيسية
+      setSelectedGarageId(null);
+      setScreen('list');
+    },
+    [stopAlarmSound, myActiveSession, setSelectedGarageId, setScreen],
+  );
   if (!garage) {
     return (
       <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8 text-right dir-rtl">
@@ -799,6 +965,69 @@ export default function NavigationScreen() {
               >
                 إلغاء
               </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 🚨 Geofence Alarm Overlay — يظهر لما العربية تخرج من نطاق الجراج والركنة شغالة */}
+      <AnimatePresence>
+        {showGeofenceAlarm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[99999] flex items-center justify-center p-4 dir-rtl"
+            style={{ background: 'rgba(127, 29, 29, 0.95)' }}
+          >
+            <motion.div
+              initial={{ scale: 0.8, y: 30 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.8, y: 30 }}
+              className="w-full max-w-sm rounded-3xl p-6 space-y-5 text-center"
+              style={{ background: BRAND.navyLight, border: '2px solid #ef4444' }}
+            >
+              <div
+                className="w-16 h-16 rounded-full mx-auto flex items-center justify-center animate-pulse"
+                style={{ background: 'rgba(239, 68, 68, 0.2)' }}
+              >
+                <AlertCircle size={36} style={{ color: '#ef4444' }} />
+              </div>
+
+              <div>
+                <h3 className="text-white font-black text-lg mb-2">⚠️ تنبيه أمان!</h3>
+                <p className="text-sm font-bold" style={{ color: '#fca5a5' }}>
+                  تم رصد خروج المركبة من نطاق الجراج
+                </p>
+                <p className="text-xs font-bold mt-1" style={{ color: BRAND.slateMuted }}>
+                  هل أنت من يقود السيارة الآن؟
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleGeofenceChoice(true)}
+                  className="w-full py-3.5 rounded-2xl font-black text-sm active:scale-95 transition-all border-0 cursor-pointer text-white"
+                  style={{
+                    background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+                    boxShadow: '0 4px 14px rgba(22, 163, 74, 0.3)',
+                  }}
+                >
+                  ✅ أنا اللي سايق
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleGeofenceChoice(false)}
+                  className="w-full py-3.5 rounded-2xl font-black text-sm active:scale-95 transition-all border-0 cursor-pointer text-white"
+                  style={{
+                    background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)',
+                    boxShadow: '0 4px 14px rgba(220, 38, 38, 0.3)',
+                  }}
+                >
+                  🚨 مش أنا - إرسال تنبيه أمان
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}

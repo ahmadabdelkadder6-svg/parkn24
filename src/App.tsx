@@ -322,10 +322,14 @@ export default function App() {
         }
       }
 
+      try {
+        await fetchAll();
+      } catch (e) {
+        console.error('Background fetch error:', e);
+      }
+
       setDataLoaded(true);
       initialLoadDone.current = true;
-
-      fetchAll().catch((e) => console.error('Background fetch error:', e));
 
       if (!isRealtimeInitialized) {
         // ✅ [تعديل] تخزين الـ cleanup function عشان نغلق الـ Realtime عند unmount
