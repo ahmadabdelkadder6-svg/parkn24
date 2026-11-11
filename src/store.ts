@@ -1543,4 +1543,428 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   unconfirmRevenue: async (sessionId) => {
-    set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...
+    set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: false } : s)) }));
+    if (isSupabaseConfigured()) {
+      await supabase.from('sessions').update({ revenue_confirmed: false }).eq('id', sessionId);
+    }
+  },
+
+  assignSessionToValet: async (sessionId, valetName) => {
+    if (!sessionId || !valetName) return;
+    set((st) => ({
+      sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, addedBy: valetName } : s)),
+    }));
+    if (isSupabaseConfigured()) {
+      await supabase.from('sessions').update({ added_by: valetName }).eq('id', sessionId);
+    }
+  },
+
+  cancelSession: (id) => {
+    const session = get().sessions.find((s) => s.id === id);
+    set((st) => ({ sessions: st.sessions.filter((s) => s.id !== id) }));
+    if (session && session.status === 'active') get().adjustGarageSpots(session.garageId, +1);
+    if (isSupabaseConfigured()) supabase.from('sessions').delete().eq('id', id);
+  },
+
+  removeSession: async (id) => {
+    const target = get().sessions.find((s) => s.id === id);
+    set((st) => ({ sessions: st.sessions.filter((s) => s.id !== id) }));
+    if (target && target.status === 'active') await get().adjustGarageSpots(target.garageId, +1);
+    if (isSupabaseConfigured()) {
+      await supabase.from('sessions').delete().eq('id', id);
+    }
+  },
+
+  addOffer: (o) => {
+    const newO: Offer = { ...o, id: uid(), timestamp: Date.now() };
+    set((st) => ({ offers: [newO, ...st.offers].slice(0, 20) }));
+
+    if (isSupabaseConfigured()) {
+      supabase.from('offers').insert({
+        garage_id: o.garageId, user_id: o.userId,
+        car_plate: o.carPlate, offered_price: o.offeredPrice, status: o.status,
+      }).select().single().then(({ data }) => {
+        if (data) set((st) => ({ offers: st.offers.map((x) => (x.id === newO.id ? mapOffer(data) : x)) }));
+      });
+    }
+  },
+
+  updateOffer: (id, status, counterPrice) => {
+    set((st) => ({ offers: st.offers.map((o) => (o.id === id ? { ...o, status, counterPrice } : o)) }));
+    if (isSupabaseConfigured()) {
+      const u: Record<string, unknown> = { status };
+      if (counterPrice !== undefined) u.counter_price = counterPrice;
+      supabase.from('offers').update(u).eq('id', id);
+    }
+  },
+
+  cancelOffer: (id) => {
+    set((st) => ({ offers: st.offers.filter((o) => o.id !== id) }));
+    if (isSupabaseConfigured()) supabase.from('offers').delete().eq('id', id);
+  },
+
+  addWalletTopUp: (w) => {
+    const bonus = w.bonus ?? w.bonusAmount ?? calculateBonus(w.amount);
+    
+    const newW: WalletTopUp = { ...w, id: uid(), status: 'pending', timestamp: Date.now(), bonusAmount: bonus };
+    
+    set((st) => ({ walletTopUps: [newW, ...st.walletTopUps].slice(0, 20) }));
+
+    if (isSupabaseConfigured()) {
+      supabase.from('wallet_topups').insert({
+        user_id: w.userId || w.user_id, 
+        user_name: w.userName, 
+        user_phone: w.userPhone || w.phone,
+        amount: w.amount, 
+        transaction_id: w.transactionId || 'instapay_transfer',
+        car_plate: w.carPlate, 
+        method: w.method || w.paymentMethod || 'instapay', 
+        bonus_amount: bonus,
+      }).select().single().then(({ data }) => {
+        if (data) set((st) => ({ walletTopUps: st.walletTopUps.map((x) => (x.id === newW.id ? mapTopUp(data) : x)) }));
+      });
+    }
+  },
+
+  approveTopUp: async (id) => {
+    const target = get().walletTopUps.find((w) => w.id === id);
+    if (!target || target.status !== 'pending') return;
+
+    const bonus = target.bonusAmount ?? calculateBonus(target.amount);
+    const totalCredit = target.amount + bonus;
+    const userPhone = normalizePhone(target.userPhone || '');
+
+    set((st) => ({
+      walletTopUps: st.walletTopUps.map((w) =>
+        w.id === id ? { ...w, status: 'approved' as const, bonusAmount: bonus } : w
+      ),
+    }));
+
+    if (isSupabaseConfigured()) {
+      try {
+        const { data: updateResult, error: updateError } = await supabase
+          .from('wallet_topups')
+          .update({ status: 'approved', bonus_amount: bonus })
+          .eq('id', id)
+          .eq('status', 'pending')
+          .select();
+
+        if (updateError || !updateResult || updateResult.length === 0) {
+          set((st) => ({
+            walletTopUps: st.walletTopUps.map((w) =>
+              w.id === id ? { ...w, status: 'pending' as const } : w
+            ),
+          }));
+          return;
+        }
+
+        if (userPhone) {
+          const { data: u } = await supabase
+            .from('users')
+            .select('wallet')
+            .eq('phone', userPhone)
+            .maybeSingle();
+
+          if (u) {
+            const newWallet = Number(u.wallet || 0) + totalCredit;
+            await supabase
+              .from('users')
+              .update({ wallet: newWallet })
+              .eq('phone', userPhone);
+          }
+        }
+      } catch (err) {
+        console.error('Approve error:', err);
+        set((st) => ({
+          walletTopUps: st.walletTopUps.map((w) =>
+            w.id === id ? { ...w, status: 'pending' as const } : w
+          ),
+        }));
+        throw err;
+      }
+    }
+
+    const currentUser = get().currentUser;
+    if (currentUser && normalizePhone(currentUser.phone) === userPhone) {
+      const updated = { ...currentUser, wallet: (currentUser.wallet || 0) + totalCredit };
+      set({ currentUser: updated });
+      safeSetStorage('currentUser', updated);
+    }
+  },
+
+  rejectTopUp: async (id) => {
+    set((st) => ({
+      walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'rejected' as const } : w)),
+    }));
+    if (isSupabaseConfigured()) {
+      await supabase.from('wallet_topups').update({ status: 'rejected' }).eq('id', id);
+    }
+  },
+
+  addIncomingCar: async (c) => {
+    const incomingId = crypto.randomUUID();
+    const newC: IncomingCar = { ...c, id: incomingId, startTime: Date.now(), status: 'coming' };
+    set((st) => ({ incomingCars: [newC, ...st.incomingCars].slice(0, 30) }));
+    if (!isSupabaseConfigured()) return;
+    try {
+      const { data } = await supabase.from('incoming_cars').insert({
+        id: incomingId, garage_id: c.garageId, car_plate: c.carPlate,
+        customer_name: c.customerName, customer_phone: c.customerPhone,
+        agreed_price: c.agreedPrice, estimated_arrival: c.estimatedArrival,
+      }).select().single();
+      if (data) set((st) => ({ incomingCars: st.incomingCars.map((x) => (x.id === incomingId ? mapIncoming(data) : x)) }));
+    } catch {}
+  },
+
+  removeIncomingCar: async (id) => {
+    set((st) => ({ incomingCars: st.incomingCars.filter((c) => c.id !== id) }));
+    if (!isSupabaseConfigured()) return;
+    try {
+      await supabase.from('incoming_cars').delete().eq('id', id);
+    } catch {}
+  },
+
+  addMessage: async (msg) => {
+    const cleanMsg = {
+      ...msg,
+      message: sanitizeInput(msg.message),
+      subject: msg.subject ? sanitizeInput(msg.subject) : undefined,
+      userName: msg.userName ? sanitizeInput(msg.userName) : undefined,
+    };
+    const optimisticMessage: Message = { ...cleanMsg, id: uid(), status: 'pending', timestamp: Date.now() };
+    set((st) => ({ messages: [optimisticMessage, ...st.messages].slice(0, 20) }));
+
+    if (!isSupabaseConfigured()) return { success: true };
+    try {
+      const { data, error = null } = await supabase.from('messages').insert({
+        user_phone: cleanMsg.userPhone, user_name: cleanMsg.userName ?? null,
+        car_plate: cleanMsg.carPlate ?? null, type: cleanMsg.type,
+        subject: cleanMsg.subject ?? null, message: cleanMsg.message,
+      }).select().single();
+      if (error) return { success: false, error: error.message };
+      if (data) set((st) => ({ messages: st.messages.map((m) => (m.id === optimisticMessage.id ? mapMessage(data) : m)) }));
+      return { success: true };
+    } catch {
+      return { success: false, error: 'حدث خطأ' };
+    }
+  },
+
+  replyMessage: async (id, reply) => {
+    const now = Date.now();
+    const cleanReply = sanitizeInput(reply);
+    set((st) => ({ messages: st.messages.map((msg) => (msg.id === id ? { ...msg, reply: cleanReply, status: 'replied' as const, repliedAt: now } : msg)) }));
+    if (isSupabaseConfigured()) {
+      await supabase.from('messages').update({ reply: cleanReply, status: 'replied', replied_at: new Date(now).toISOString() }).eq('id', id);
+    }
+  },
+
+  closeMessage: async (id) => {
+    set((st) => ({ messages: st.messages.map((msg) => (msg.id === id ? { ...msg, status: 'closed' as const } : msg)) }));
+    if (isSupabaseConfigured()) {
+      await supabase.from('messages').update({ status: 'closed' }).eq('id', id);
+    }
+  },
+}));
+
+// ===================== Realtime الفائق =====================
+let realtimeStarted = false;
+let isOperationInProgress = false;
+let pauseTimeout: ReturnType<typeof setTimeout> | null = null;
+
+export function pausePolling(duration = 5000) {
+  if (duration <= 0) {
+    isOperationInProgress = false;
+    if (pauseTimeout) clearTimeout(pauseTimeout);
+    return;
+  }
+  isOperationInProgress = true;
+  if (pauseTimeout) clearTimeout(pauseTimeout);
+  pauseTimeout = setTimeout(() => { isOperationInProgress = false; }, duration);
+}
+
+export function setupRealtime(): () => void {
+  if (realtimeStarted) return () => {};
+  realtimeStarted = true;
+
+  const channels: ReturnType<typeof supabase.channel>[] = [];
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let fallbackInterval: ReturnType<typeof setInterval> | null = null;
+  let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  let isRealtimeConnected = false;
+
+  const debouncedFetch = () => {
+    if (isOperationInProgress) return;
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      if (document.visibilityState === 'visible') {
+        useStore.getState().fetchAll();
+      }
+    }, 2000);
+  };
+
+  const setupChannels = () => {
+    if (!isSupabaseConfigured()) return;
+
+    const state = useStore.getState();
+    const view = state.view;
+    const user = state.currentUser;
+    const garageId = state.currentGarageId;
+
+    const sessionsChannel = supabase
+      .channel('rt-sessions', {
+        config: { broadcast: { self: false }, presence: { key: '' } },
+      })
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'sessions',
+          ...(view === 'garage' && garageId ? { filter: `garage_id=eq.${garageId}` } : {}),
+        },
+        () => debouncedFetch()
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          isRealtimeConnected = true;
+          if (fallbackInterval) {
+            clearInterval(fallbackInterval);
+            fallbackInterval = null;
+          }
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          isRealtimeConnected = false;
+          startFallbackPolling();
+        }
+      });
+    channels.push(sessionsChannel);
+
+    const incomingChannel = supabase
+      .channel('rt-incoming', {
+        config: { broadcast: { self: false }, presence: { key: '' } },
+      })
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'incoming_cars',
+          ...(view === 'garage' && garageId ? { filter: `garage_id=eq.${garageId}` } : {}),
+        },
+        () => debouncedFetch()
+      )
+      .subscribe();
+    channels.push(incomingChannel);
+
+    const garagesChannel = supabase
+      .channel('rt-garages', {
+        config: { broadcast: { self: false }, presence: { key: '' } },
+      })
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'garages',
+        },
+        () => debouncedFetch()
+      )
+      .subscribe();
+    channels.push(garagesChannel);
+
+    if (view === 'admin') {
+      const topupsChannel = supabase
+        .channel('rt-topups', {
+          config: { broadcast: { self: false }, presence: { key: '' } },
+        })
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'wallet_topups',
+          },
+          () => debouncedFetch()
+        )
+        .subscribe();
+      channels.push(topupsChannel);
+
+      const messagesChannel = supabase
+        .channel('rt-messages', {
+          config: { broadcast: { self: false }, presence: { key: '' } },
+        })
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'messages',
+          },
+          () => debouncedFetch()
+        )
+        .subscribe();
+      channels.push(messagesChannel);
+    }
+  };
+
+  const startFallbackPolling = () => {
+    if (fallbackInterval) return;
+    console.warn('[ParkN24] Realtime failed, falling back to polling (30s)');
+    fallbackInterval = setInterval(() => {
+      if (!isOperationInProgress && document.visibilityState === 'visible') {
+        useStore.getState().fetchAll();
+      }
+    }, 30000);
+  };
+
+  const startHeartbeat = () => {
+    heartbeatInterval = setInterval(() => {
+      if (document.visibilityState === 'visible' && isRealtimeConnected) {
+        useStore.getState().fetchAll();
+      }
+    }, 60000 + Math.floor(Math.random() * 10000));
+  };
+
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      useStore.getState().fetchAll();
+    }
+  };
+
+  setupChannels();
+  startHeartbeat();
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+
+  setTimeout(() => {
+    useStore.getState().fetchAll();
+  }, 1000);
+
+  return () => {
+    realtimeStarted = false;
+
+    for (const ch of channels) {
+      try {
+        supabase.removeChannel(ch);
+      } catch {}
+    }
+    channels.length = 0;
+
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+    if (fallbackInterval) {
+      clearInterval(fallbackInterval);
+      fallbackInterval = null;
+    }
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
+    }
+    if (pauseTimeout) {
+      clearTimeout(pauseTimeout);
+      pauseTimeout = null;
+    }
+
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+  };
+}
