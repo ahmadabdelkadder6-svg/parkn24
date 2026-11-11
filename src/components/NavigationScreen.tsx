@@ -56,10 +56,10 @@ const BRAND = {
   border: 'rgba(255, 255, 255, 0.08)',
 };
 
-// 🎯 ثوابت البدء التلقائي
-const AUTO_START_DISTANCE_KM = 0.3;  // 50 متر
+// 🎯 ثوابت البدء التلقائي (محسّنة لـ GPS الجراج الضعيف)
+const AUTO_START_DISTANCE_KM = 0.3;    // 300 متر (GPS جوه الجراج ضعيف)
 const AUTO_START_DURATION_MS = 120_000; // 120 ثانية (دقيقتين)
-const AUTO_START_MOVEMENT_KM = 0.05;   // 10 متر (لو اتحرك أكتر من كده نصفّر العداد)
+const AUTO_START_MOVEMENT_KM = 0.05;    // 50 متر tolerance للحركة
 
 const getBonusForAmount = (amount: number): number => {
   if (amount >= 250) return 50;
@@ -209,8 +209,6 @@ export default function NavigationScreen() {
   const isMountedRef = useRef(true);
   const navigatedToSessionRef = useRef(false);
 
-  // 🔧 تحويل isArriving من useRef لـ useState عشان الـ disabled يشتغل فعلاً
-  // (الـ ref مش بيعمل re-render، فالزرار مش كان بيتعطل بصرياً)
   const [isArriving, setIsArriving] = useState(false);
 
   // 🚨 Geofence alarm refs
@@ -218,6 +216,7 @@ export default function NavigationScreen() {
   const alarmOscRef = useRef<OscillatorNode | null>(null);
   const geofenceTriggeredRef = useRef(false);
   const geofenceWatchIdRef = useRef<number | null>(null);
+  const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // 🎯 Auto-start refs
   const autoStartWatchIdRef = useRef<number | null>(null);
@@ -227,7 +226,6 @@ export default function NavigationScreen() {
   const autoStartTriggeredRef = useRef(false);
   const shieldEnabledRef = useRef(shieldEnabled);
 
-  // تحديث الـ ref عشان الـ callback بتاع الـ auto-start يشوف أحدث قيمة
   useEffect(() => {
     shieldEnabledRef.current = shieldEnabled;
   }, [shieldEnabled]);
@@ -236,7 +234,6 @@ export default function NavigationScreen() {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      // 🚨 Cleanup alarm on unmount — fixes bug #2 (sound keeps playing)
       try {
         alarmOscRef.current?.stop();
         alarmCtxRef.current?.close();
@@ -247,7 +244,6 @@ export default function NavigationScreen() {
         navigator.geolocation.clearWatch(geofenceWatchIdRef.current);
         geofenceWatchIdRef.current = null;
       }
-      // 🎯 Cleanup auto-start
       if (autoStartWatchIdRef.current !== null) {
         navigator.geolocation.clearWatch(autoStartWatchIdRef.current);
         autoStartWatchIdRef.current = null;
@@ -256,51 +252,35 @@ export default function NavigationScreen() {
         clearInterval(autoStartTimerRef.current);
         autoStartTimerRef.current = null;
       }
+      if (alarmIntervalRef.current) {
+        clearInterval(alarmIntervalRef.current);
+        alarmIntervalRef.current = null;
+      }
     };
   }, []);
 
-  /* ═══════════════════════════════════════════════════════════════════
-     🔄 Realtime + Polling:
-     تم إزالة الـ Realtime المحلي والـ polling بالكامل.
-     store.setupRealtime() بيغطي:
-       - sessions (كل التغييرات)
-       - incoming_cars
-       - garages
-       - heartbeat + fallback polling
-       - visibilitychange + focus
-
-     التوجيه التلقائي لشاشة الجلسة بيتم عبر الـ useEffect الخاص بـ
-     myActiveSession اللي بيتفاعل مع أي تحديث من الـ store.
-     ═══════════════════════════════════════════════════════════════════ */
-
   /* ─── 🚨 Alarm Sound Helpers ─── */
   const stopAlarmSound = useCallback(() => {
-    // 🛑 إيقاف الـ beep interval
     if (alarmIntervalRef.current) {
       clearInterval(alarmIntervalRef.current);
       alarmIntervalRef.current = null;
     }
-    // 🛑 إيقاف الصوت
     try {
       alarmOscRef.current?.stop();
       alarmCtxRef.current?.close();
     } catch {}
     alarmOscRef.current = null;
     alarmCtxRef.current = null;
-    // 🛑 إيقاف الاهتزاز
     if (navigator.vibrate) {
       navigator.vibrate(0);
     }
   }, []);
-
-  const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const startAlarmSound = useCallback(() => {
     try {
       const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
       alarmCtxRef.current = ctx;
 
-      // 🔊 صوت إنذار متقطع (beep-beep-beep) بتردد عالي
       const beep = () => {
         if (!alarmCtxRef.current || alarmCtxRef.current.state === 'closed') return;
         const osc = alarmCtxRef.current.createOscillator();
@@ -317,14 +297,10 @@ export default function NavigationScreen() {
       beep();
       alarmIntervalRef.current = setInterval(beep, 400);
 
-      // 📳 اهتزاز الموبايل (Vibration API)
       if (navigator.vibrate) {
-        // نمط اهتزاز: 300ms اهتزاز → 200ms سكون → 300ms اهتزاز → ...
         navigator.vibrate([300, 200, 300, 200, 300, 200, 300, 200, 300]);
       }
-    } catch {
-      // Audio not supported
-    }
+    } catch {}
   }, []);
 
   /* ─── 🚗 زر: وصلت للجراج وبدأ الركن ─── */
@@ -366,6 +342,7 @@ export default function NavigationScreen() {
 
       const startTimeISO = new Date(getServerNow()).toISOString();
 
+      // ✅ تمرير shieldEnabled للـ store عشان يخصم الدرع بعد بدء الجلسة
       await addSession({
         garageId: garage.id,
         carPlate: myIncomingCar?.carPlate || currentUser?.carPlate || '---',
@@ -377,18 +354,24 @@ export default function NavigationScreen() {
         customerName: currentUser?.name,
         startedBy: 'customer',
         incomingCarId: myIncomingCar?.id,
-        shieldEnabled: shieldEnabledRef.current,
+        shieldEnabled: shieldEnabledRef.current, // 🛡️ الدرع
       } as any);
 
       if (myIncomingCar) {
         await removeIncomingCar(myIncomingCar.id);
       }
 
-      // 🔥 تم بدء الركنة بنجاح -> تصفير علامة الدفع للمرات القادمة
       useStore.getState().setHasPaidBookingFee(false);
 
       navigatedToSessionRef.current = true;
-      toast.success('تم الوصول للجراج وبدأت الجلسة بنجاح ⏱️', { duration: 3000 });
+
+      // رسالة مختلفة حسب تفعيل الدرع
+      if (shieldEnabledRef.current) {
+        toast.success('✅ بدأت الجلسة والحماية مفعّلة 🛡️', { duration: 3000 });
+      } else {
+        toast.success('✅ بدأت الجلسة بدون حماية', { duration: 3000 });
+      }
+
       setScreen('session');
     } catch (err) {
       console.error('❌ خطأ:', err);
@@ -454,7 +437,6 @@ export default function NavigationScreen() {
   useEffect(() => {
     if (!myActiveSession) {
       navigatedToSessionRef.current = false;
-      // 🚨 Reset geofence state when session ends so alarm can trigger for future sessions
       geofenceTriggeredRef.current = false;
       setGeofenceAlertSent(false);
       setShowGeofenceAlarm(false);
@@ -472,9 +454,8 @@ export default function NavigationScreen() {
     setScreen('session');
   }, [myActiveSession, selectedGarageId, setSelectedGarageId, setScreen, stopAlarmSound]);
 
-  /* ─── 🚨 مراقبة الجيوفينس أثناء الركنة النشطة ─── */
+  /* ─── 🚨 مراقبة الجيوفينس أثناء الركنة النشطة (500 متر) ─── */
   useEffect(() => {
-    // Only monitor when there's an active session AND we haven't already sent an alert
     if (!myActiveSession || !garage || geofenceAlertSent) {
       if (geofenceWatchIdRef.current !== null) {
         navigator.geolocation.clearWatch(geofenceWatchIdRef.current);
@@ -483,12 +464,11 @@ export default function NavigationScreen() {
       return;
     }
 
-    const GEOFENCE_RADIUS_KM = 0.3; // 300 meters
+    const GEOFENCE_RADIUS_KM = 0.5; // 500 متر — آمن للـ GPS الضعيف
 
     geofenceWatchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         if (!isMountedRef.current) return;
-        // 🔧 Fix #1: Once triggered, don't re-trigger (prevents screen flickering)
         if (geofenceTriggeredRef.current) return;
 
         const dist = calculateDistance(
@@ -504,9 +484,7 @@ export default function NavigationScreen() {
           startAlarmSound();
         }
       },
-      () => {
-        // GPS error — silent, don't trigger false alarm
-      },
+      () => {},
       { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 },
     );
 
@@ -522,11 +500,9 @@ export default function NavigationScreen() {
   /* ─── 🚨 Geofence Alarm Choice Handler ─── */
   const handleGeofenceChoice = useCallback(
     async (isMeDriving: boolean) => {
-      // إيقاف صوت الإنذار فوراً
       stopAlarmSound();
       setShowGeofenceAlarm(false);
 
-      // إنهاء الجلسة في الداتابيز (في الحالتين)
       if (myActiveSession) {
         try {
           await supabase
@@ -541,18 +517,15 @@ export default function NavigationScreen() {
         }
       }
 
-      // رسالة مختلفة حسب الاختيار
       if (isMeDriving) {
         toast.success('تم إنهاء الجلسة بنجاح ✅', { duration: 3000 });
       } else {
         toast.error('⚠️ تم إرسال تنبيه أمان وإنهاء الجلسة!', { duration: 4000, icon: '🚨' });
       }
 
-      // إعادة تعيين حالة الجيوفينس
       setGeofenceAlertSent(true);
       geofenceTriggeredRef.current = false;
 
-      // العودة للرئيسية
       setSelectedGarageId(null);
       setScreen('list');
     },
@@ -561,12 +534,7 @@ export default function NavigationScreen() {
 
   /* ─── 🎯 البدء التلقائي للجلسة بعد 120 ثانية ثبات ─── */
   useEffect(() => {
-    // مش نفعّل الـ auto-start لو:
-    // - مفيش جراج
-    // - فيه جلسة نشطة بالفعل
-    // - المستخدم بيضغط على الزرار يدوياً
     if (!garage || myActiveSession || isArriving) {
-      // Cleanup أي مراقبة قديمة
       if (autoStartWatchIdRef.current !== null) {
         navigator.geolocation.clearWatch(autoStartWatchIdRef.current);
         autoStartWatchIdRef.current = null;
@@ -583,12 +551,6 @@ export default function NavigationScreen() {
 
     if (!('geolocation' in navigator)) return;
 
-    // 🧠 منطق البدء التلقائي:
-    // 1. راقب الـ GPS محلياً (مفيش طلبات للسيرفر)
-    // 2. لو جوه 50 متر من الجراج → ابدأ عداد 120 ثانية
-    // 3. لو اتحرك أكتر من 10 متر → صفّر العداد
-    // 4. لو العداد وصل 120 → ابدأ الجلسة (طلب واحد بس)
-
     const handlePosition = (pos: GeolocationPosition) => {
       if (!isMountedRef.current) return;
       if (autoStartTriggeredRef.current) return;
@@ -596,12 +558,15 @@ export default function NavigationScreen() {
       const curLat = pos.coords.latitude;
       const curLng = pos.coords.longitude;
 
-      // تحديث موقع المستخدم على الخريطة
       setUserPos({ lat: curLat, lng: curLng });
 
       const distFromGarage = calculateDistance(curLat, curLng, garage.lat, garage.lng);
 
-      // لسه بعيد عن الجراج → صفّر أي عداد
+      // 🔍 Debug: شوف المسافة والدقة في الـ Console
+      console.log(
+        `[AutoStart] 📍 المسافة: ${(distFromGarage * 1000).toFixed(0)}م | الدقة: ${pos.coords.accuracy.toFixed(0)}م | الحد: ${AUTO_START_DISTANCE_KM * 1000}م`
+      );
+
       if (distFromGarage > AUTO_START_DISTANCE_KM) {
         if (autoStartAnchorRef.current) {
           autoStartAnchorRef.current = null;
@@ -611,16 +576,13 @@ export default function NavigationScreen() {
         return;
       }
 
-      // قريب من الجراج (جوه 50 متر)
       if (!autoStartAnchorRef.current) {
-        // أول مرة يدخل النطاق → ابدأ المراقبة من هنا
         autoStartAnchorRef.current = { lat: curLat, lng: curLng };
         autoStartStartedAtRef.current = Date.now();
         setAutoStartCountdown(Math.ceil(AUTO_START_DURATION_MS / 1000));
         return;
       }
 
-      // شوف إذا اتحرك من المكان اللي بدأ فيه العداد
       const distFromAnchor = calculateDistance(
         curLat,
         curLng,
@@ -629,7 +591,6 @@ export default function NavigationScreen() {
       );
 
       if (distFromAnchor > AUTO_START_MOVEMENT_KM) {
-        // اتحرك أكتر من 10 متر → صفّر العداد وابدأ من المكان الجديد
         autoStartAnchorRef.current = { lat: curLat, lng: curLng };
         autoStartStartedAtRef.current = Date.now();
         setAutoStartCountdown(Math.ceil(AUTO_START_DURATION_MS / 1000));
@@ -638,13 +599,10 @@ export default function NavigationScreen() {
 
     autoStartWatchIdRef.current = navigator.geolocation.watchPosition(
       handlePosition,
-      () => {
-        // GPS error — تجاهل في صمت
-      },
+      () => {},
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
     );
 
-    // Timer محلي يشيك كل ثانية على الـ countdown
     autoStartTimerRef.current = setInterval(() => {
       if (!isMountedRef.current) return;
       if (autoStartTriggeredRef.current) return;
@@ -655,20 +613,21 @@ export default function NavigationScreen() {
       setAutoStartCountdown(remaining);
 
       if (elapsed >= AUTO_START_DURATION_MS) {
-        // 🎯 وصل الوقت → ابدأ الجلسة تلقائياً
         autoStartTriggeredRef.current = true;
 
-        // اهتزاز خفيف للتنبيه
         if (navigator.vibrate) {
           navigator.vibrate([200, 100, 200]);
         }
 
-        toast.success('✅ تم رصد وقوفك بالجراج — جاري بدء الركنة والحماية تلقائياً...', {
+        const shieldMsg = shieldEnabledRef.current
+          ? '✅ تم رصد وقوفك بالجراج — جاري بدء الركنة والحماية تلقائياً...'
+          : '✅ تم رصد وقوفك بالجراج — جاري بدء الركنة...';
+
+        toast.success(shieldMsg, {
           duration: 3500,
           icon: '🅿️',
         });
 
-        // استدعاء نفس دالة البدء اليدوي
         handleCarArrived();
       }
     }, 1000);
@@ -732,7 +691,6 @@ export default function NavigationScreen() {
     }
   };
 
-  /* 🗺️ فتح الخريطة مع إظهار تنبيه وصول (50m) لتأكيد بدء الجلسة بيده */
   const openExternalMaps = () => {
     if (!garage) return;
     openMapsWithSmartArrival(
@@ -740,7 +698,6 @@ export default function NavigationScreen() {
       garage.lng,
       garage.name,
       () => {
-        // 🎯 تنبيه فقط دون بدء تلقائي: الموبايل يرن بـ Push والإشعار يفكره يدوس "وصلت للجراج"
         toast.success('🎉 وصلت عند الجراج! اضغط على زرار "وصلت للجراج وبدأ الركن" لتفعيل الحماية 🛡️', {
           duration: 6000,
           icon: '📍',
@@ -1220,7 +1177,7 @@ export default function NavigationScreen() {
         )}
       </AnimatePresence>
 
-      {/* 🚨 Geofence Alarm Overlay — يظهر لما العربية تخرج من نطاق الجراج والركنة شغالة */}
+      {/* 🚨 Geofence Alarm Overlay */}
       <AnimatePresence>
         {showGeofenceAlarm && (
           <motion.div
