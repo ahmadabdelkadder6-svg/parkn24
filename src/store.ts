@@ -67,6 +67,8 @@ export interface ParkingSession {
   isFirstFreeSession?: boolean;
   // ═══ 🛡️ تكلفة الدرع للجلسة (0 = مجاني، 7 = مدفوع) ═══
   shieldCost?: number;
+  // ✅ [تعديل الدرع] flag من NavigationScreen عشان نعرف نخصم ولا لأ
+  shieldEnabled?: boolean;
 }
 
 export interface Offer {
@@ -249,7 +251,6 @@ const getCachedGarages = (): Garage[] => {
 };
 
 // ===================== ⚡ LRU Cache للـ Normalize =====================
-// ✅ [تعديل] كاش LRU لمنع إعادة حساب الـ regex لنفس اللوحات والأرقام
 
 const _plateCache = new Map<string, string>();
 const PLATE_CACHE_MAX = 2000;
@@ -257,8 +258,6 @@ const PLATE_CACHE_MAX = 2000;
 const _phoneCache = new Map<string, string>();
 const PHONE_CACHE_MAX = 1000;
 
-// ✅ [تعديل] الدالة الأصلية اتحولت لـ _computePlateFingerprint
-// والـ getPlateFingerprint بقى يستخدم الكاش
 const _computePlateFingerprint = (rawPlate: string): string => {
   let str = rawPlate;
   str = str.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '');
@@ -304,13 +303,11 @@ export const getPlateFingerprint = (plate?: unknown): string => {
   const rawKey = String(plate).trim();
   if (!rawKey) return '';
 
-  // ✅ [تعديل] فحص الكاش الأول
   const cached = _plateCache.get(rawKey);
   if (cached !== undefined) return cached;
 
   const result = _computePlateFingerprint(rawKey);
 
-  // ✅ [تعديل] LRU eviction
   if (_plateCache.size >= PLATE_CACHE_MAX) {
     const firstKey = _plateCache.keys().next().value;
     if (firstKey !== undefined) _plateCache.delete(firstKey);
@@ -322,7 +319,6 @@ export const getPlateFingerprint = (plate?: unknown): string => {
 
 export const normalizePlate = (plate?: unknown): string => getPlateFingerprint(plate);
 
-// ✅ [تعديل] نفس الـ LRU cache للـ phone
 const _computeNormalizedPhone = (rawPhone: string): string => {
   let str = rawPhone;
   const arabicNums = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
@@ -341,13 +337,11 @@ export const normalizePhone = (phone?: unknown): string => {
   const rawKey = String(phone).trim();
   if (!rawKey) return '';
 
-  // ✅ [تعديل] فحص الكاش الأول
   const cached = _phoneCache.get(rawKey);
   if (cached !== undefined) return cached;
 
   const result = _computeNormalizedPhone(rawKey);
 
-  // ✅ [تعديل] LRU eviction
   if (_phoneCache.size >= PHONE_CACHE_MAX) {
     const firstKey = _phoneCache.keys().next().value;
     if (firstKey !== undefined) _phoneCache.delete(firstKey);
@@ -380,7 +374,6 @@ export const syncServerClock = async () => {
   try {
     const t0 = Date.now();
 
-    // ✅ [تعديل] محاولة RPC الأول (أسرع وأدق)
     try {
       const { data, error } = await supabase.rpc('get_server_time');
       const t1 = Date.now();
@@ -392,10 +385,8 @@ export const syncServerClock = async () => {
         return;
       }
     } catch {
-      // RPC مش موجود، نستخدم الـ fallback
     }
 
-    // ✅ Fallback: HEAD request (الطريقة الأصلية)
     const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/garages?select=id&limit=1`, {
       method: 'HEAD',
       headers: { 
@@ -432,7 +423,6 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
     if (session.synced && !existing.synced) {
       bestByPlateSource.set(key, session);
     } else if (!session.synced && existing.synced) {
-      // keep existing
     } else {
       const sessionStart = getMs(session.startTime);
       const existingStart = getMs(existing.startTime);
@@ -516,7 +506,6 @@ const mapSession = (r: any): ParkingSession => {
     settled_at: r.settled_at || undefined,
     freeMinutesApplied: r.free_minutes_applied != null ? Number(r.free_minutes_applied) : 0,
     isFirstFreeSession: isFree,
-    // ═══ 🛡️ ═══
     shieldCost: r.shield_cost != null ? Number(r.shield_cost) : 0,
   };
 };
@@ -547,7 +536,6 @@ const mapIncoming = (r: any): IncomingCar => ({
 const mapMessage = (r: any): Message => ({
   id: r.id, userPhone: r.user_phone, userName: r.user_name, carPlate: r.car_plate,
   type: r.type || 'inquiry', subject: r.subject, message: r.message, 
-  // 👇 التعديل هنا: التأكد من سحب الرد وتغيير الحالة تلقائياً لو الرد موجود
   reply: r.reply || undefined,
   status: r.reply ? 'replied' : (r.status || 'pending'), 
   timestamp: new Date(r.created_at).getTime(),
@@ -582,16 +570,14 @@ interface AppState {
     wallet: number;
     hasUsedFreeSession?: boolean;
     bonusBalance?: number;
-    // ═══ 🛡️ حقول الدرع ═══
-    shieldActivated?: boolean;  // هل فعّل الدرع قبل كده (أول مرة مجاناً)
-    shieldPhone?: string;       // رقم موبايل الدرع (اختياري - غير رقم الحساب)
-    shieldCode?: string;        // كود الدرع الفريد (SH-XXXX)
+    shieldActivated?: boolean;
+    shieldPhone?: string;
+    shieldCode?: string;
   } | null;
   setCurrentUser: (u: any) => Promise<void>;
   deductWallet: (amount: number) => Promise<boolean>; 
   markFreeSessionUsed: () => Promise<void>;
   
-  // 💰 رسوم الحجز وتتبع الخصم اليومي (بحد أقصى خصمان في اليوم)
   hasPaidBookingFee: boolean;
   setHasPaidBookingFee: (paid: boolean) => void;
   dailyDeductionCount: number;
@@ -601,7 +587,6 @@ interface AppState {
   chargeBookingFee: () => Promise<boolean>;
   refundBookingFee: () => Promise<void>;
 
-  // ═══ 🛡️ Actions الدرع ═══
   activateShield: (phone: string) => Promise<{ success: boolean; code?: string; error?: string }>;
   chargeShieldFee: () => Promise<{ success: boolean; isFree: boolean; error?: string }>;
   updateSessionShieldCost: (sessionId: string, cost: number) => Promise<void>;
@@ -646,7 +631,6 @@ interface AppState {
 }
 
 // ===================== ⚡ Fetch Lock =====================
-// ✅ [تعديل] قفل لمنع الطلبات المتطابقة للسيرفر
 let _isFetching = false;
 let _lastFetchTime = 0;
 const MIN_FETCH_INTERVAL = 3000;
@@ -674,7 +658,6 @@ export const useStore = create<AppState>((set, get) => ({
       wallet: u.wallet ?? 0,
       hasUsedFreeSession: u.hasUsedFreeSession ?? false,
       bonusBalance: u.bonusBalance ?? 0,
-      // ═══ 🛡️ ═══
       shieldActivated: u.shieldActivated ?? false,
       shieldPhone: u.shieldPhone ?? '',
       shieldCode: u.shieldCode ?? '',
@@ -700,7 +683,6 @@ export const useStore = create<AppState>((set, get) => ({
           wallet: Number(existingUser.wallet || 0),
           hasUsedFreeSession: finalHasUsedFree,
           bonusBalance: Number(existingUser.bonus_balance ?? 0),
-          // ═══ 🛡️ ═══
           shieldActivated: existingUser.shield_activated === true,
           shieldPhone: existingUser.shield_phone || '',
           shieldCode: existingUser.shield_code || '',
@@ -728,7 +710,6 @@ export const useStore = create<AppState>((set, get) => ({
             wallet: Number(newUser.wallet),
             hasUsedFreeSession: false,
             bonusBalance: 0,
-            // ═══ 🛡️ ═══
             shieldActivated: false,
             shieldPhone: '',
             shieldCode: '',
@@ -765,7 +746,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 💰 حالة دفع رسوم الحجز وتتبع الحد اليومي (بحد أقصى خصمان في اليوم)
   hasPaidBookingFee: false,
   setHasPaidBookingFee: (paid) => set({ hasPaidBookingFee: paid }),
 
@@ -800,7 +780,6 @@ export const useStore = create<AppState>((set, get) => ({
     const user = get().currentUser;
     if (!user) return false;
 
-    // 🌟 شرط الحد الأقصى: إذا خُصم مرتان اليوم يتم الحجز مجاناً!
     if (get().getDailyDeductionCount() >= 2) {
       set({ hasPaidBookingFee: true });
       return true;
@@ -842,10 +821,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // ═══════════════════════════════════════════════════════════════
-  // 🛡️ تفعيل الدرع (أول مرة لهذه اللوحة = مجاناً)
-  // 🔒 التحقق بالبصمة الموحدة للوحة - منع استغلال رقم تليفون مختلف
-  // ═══════════════════════════════════════════════════════════════
   activateShield: async (phone) => {
     const user = get().currentUser;
     if (!user) return { success: false, error: 'لم يتم تسجيل الدخول' };
@@ -855,7 +830,6 @@ export const useStore = create<AppState>((set, get) => ({
       return { success: false, error: 'رقم موبايل غير صحيح' };
     }
 
-    // 🔍 التحقق بالبصمة الموحدة - لو اللوحة فعّلت قبل كده، نرجّع الكود القديم
     if (isSupabaseConfigured() && user.carPlate) {
       try {
         const { data: existing } = await supabase
@@ -867,7 +841,6 @@ export const useStore = create<AppState>((set, get) => ({
           .maybeSingle();
 
         if (existing?.shield_code) {
-          // اللوحة دي فعّلت قبل كده → نرجّع الكود الموجود مش نولّد جديد
           const updated = {
             ...user,
             shieldActivated: true,
@@ -877,7 +850,6 @@ export const useStore = create<AppState>((set, get) => ({
           set({ currentUser: updated });
           safeSetStorage('currentUser', updated);
 
-          // تحديث رقم الدرع في الداتابيز للحساب الحالي (عشان SMS الطوارئ)
           try {
             await supabase
               .from('users')
@@ -896,7 +868,6 @@ export const useStore = create<AppState>((set, get) => ({
       }
     }
 
-    // توليد كود فريد جديد (أول مرة فعلاً لهذه اللوحة)
     const shieldCode = `SH-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 
     const updated = {
@@ -927,15 +898,10 @@ export const useStore = create<AppState>((set, get) => ({
     return { success: true, code: shieldCode };
   },
 
-  // ═══════════════════════════════════════════════════════════════
-  // 🛡️ خصم رسوم الدرع (7 ج - لا يسترد)
-  // 🔒 التحقق بالبصمة الموحدة للوحة - منع التحايل بتغيير رقم التليفون
-  // ═══════════════════════════════════════════════════════════════
   chargeShieldFee: async () => {
     const user = get().currentUser;
     if (!user) return { success: false, isFree: false, error: 'لم يتم تسجيل الدخول' };
 
-    // 🔍 التحقق بالبصمة الموحدة - لو اللوحة فعّلت الدرع قبل كده (أي رقم تليفون) → مش مجاني
     let alreadyUsed = user.shieldActivated === true;
 
     if (!alreadyUsed && isSupabaseConfigured() && user.carPlate) {
@@ -952,12 +918,10 @@ export const useStore = create<AppState>((set, get) => ({
       }
     }
 
-    // أول مرة لهذه اللوحة = مجاناً
     if (!alreadyUsed) {
       return { success: true, isFree: true };
     }
 
-    // مش أول مرة = خصم 7 ج
     if ((user.wallet || 0) < SHIELD_COST) {
       return { success: false, isFree: false, error: 'الرصيد غير كافي' };
     }
@@ -970,9 +934,6 @@ export const useStore = create<AppState>((set, get) => ({
     return { success: false, isFree: false, error: 'فشل الخصم' };
   },
 
-  // ═══════════════════════════════════════════════════════════════
-  // 🛡️ حفظ تكلفة الدرع في الجلسة (0 = مجاني، 7 = مدفوع)
-  // ═══════════════════════════════════════════════════════════════
   updateSessionShieldCost: async (sessionId, cost) => {
     set((st) => ({
       sessions: st.sessions.map((s) =>
@@ -1033,7 +994,6 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   fetchAll: async () => {
-    // ✅ [تعديل] Fetch Lock - منع الطلبات المتطابقة
     if (_isFetching) return;
     const now = Date.now();
     if (now - _lastFetchTime < MIN_FETCH_INTERVAL) return;
@@ -1097,7 +1057,6 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
 
-      // ⚡ تخصيص الاستعلامات حسب الدور (Role-Based Query Scoping)
       const view = get().view;
       const user = get().currentUser;
       const currentGarageId = get().currentGarageId;
@@ -1165,7 +1124,6 @@ export const useStore = create<AppState>((set, get) => ({
             wallet: Number(userData.wallet || 0),
             hasUsedFreeSession: userData.has_used_free_session ?? currentUserInStore.hasUsedFreeSession,
             bonusBalance: Number(userData.bonus_balance ?? 0),
-            // ═══ 🛡️ ═══
             shieldActivated: userData.shield_activated === true,
             shieldPhone: userData.shield_phone || currentUserInStore.shieldPhone || '',
             shieldCode: userData.shield_code || currentUserInStore.shieldCode || '',
@@ -1177,7 +1135,6 @@ export const useStore = create<AppState>((set, get) => ({
     } catch (err) {
       console.error('FetchAll Delta Sync Error:', err);
     } finally {
-      // ✅ [تعديل] فك القفل دائماً
       _isFetching = false;
     }
   },
@@ -1372,7 +1329,6 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   addSession: async (s) => {
-    // ⚡ تنظيف الـ Locks تلقائياً لمنع تسريب الميموري
     if (sessionStartLocks.size > 50) sessionStartLocks.clear();
 
     const normalizedPlate = normalizePlate(s.carPlate);
@@ -1397,13 +1353,11 @@ export const useStore = create<AppState>((set, get) => ({
           eligibleForFree = Boolean(s.isFirstFreeSession);
         } else if (isSupabaseConfigured() && (cleanPhone || normalizedPlate)) {
           try {
-            // 🔹 بداية اليوم = 12 بالليل
             const now = new Date(getServerNow());
             const todayStart = new Date(now);
             todayStart.setHours(0, 0, 0, 0);
             const todayStartISO = todayStart.toISOString();
 
-            // 🔹 نبحث بالـ phone لو موجود (ثابت) وإلا بالـ plate
             const { data: todayAll } = cleanPhone
               ? await supabase
                   .from('sessions')
@@ -1423,7 +1377,6 @@ export const useStore = create<AppState>((set, get) => ({
             ).length || 0;
             const paidCount = (todayAll?.length || 0) - freeCount;
 
-            // 🔹 2 مدفوعة → 2 مجانية → الباقي مدفوع
             eligibleForFree = paidCount >= 2;
 
           } catch (err) {
@@ -1465,7 +1418,8 @@ export const useStore = create<AppState>((set, get) => ({
           revenue_confirmed: false,
           added_by: addedByValue,
           customer_phone: cleanPhone || null,
-          customer_name: s.customer,
+          // ✅ [تعديل الدرع] إصلاح Build Error: s.customer → s.customerName
+          customer_name: s.customerName || null,
           incoming_car_id: s.incomingCarId || null,
           started_by: s.startedBy || null,
           commission_amount: 0,
@@ -1481,6 +1435,28 @@ export const useStore = create<AppState>((set, get) => ({
             sessions: dedupeActiveSessions(st.sessions.map((x) => x.id === sessionId ? mapSession(data) : x)),
           }));
         }
+
+        // ═══════════════════════════════════════════════════════════════
+        // ✅ [تعديل الدرع] خصم رسوم الدرع بعد بدء الجلسة بنجاح
+        // ═══════════════════════════════════════════════════════════════
+        // بيحصل هنا عشان:
+        // 1. الجلسة اتعملت فعلاً على السيرفر (مش نخصم لو فشلت)
+        // 2. أول مرة للوحة = مجاناً (chargeShieldFee بتتعامل معاه)
+        // 3. لو الرصيد مش كافي = الجلسة تكمل بدون درع (مش نلغيها)
+        // ═══════════════════════════════════════════════════════════════
+        if (s.shieldEnabled === true) {
+          try {
+            const shieldResult = await get().chargeShieldFee();
+            if (shieldResult.success) {
+              const cost = shieldResult.isFree ? 0 : SHIELD_COST;
+              await get().updateSessionShieldCost(sessionId, cost);
+            }
+            // لو فشل الخصم (رصيد غير كافي) → الجلسة تكمل عادي بدون درع
+            // shieldCost هيفضل 0 ومش هنلغي الجلسة
+          } catch (err) {
+            console.error('Shield charge after session start error:', err);
+          }
+        }
       }
       return sessionId;
     } finally {
@@ -1489,7 +1465,6 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0, addedBy) => {
-    // ⚡ تنظيف الـ Locks تلقائياً لمنع تسريب الميموري
     if (sessionEndLocks.size > 50) sessionEndLocks.clear();
 
     const nowISO = new Date(getServerNow()).toISOString();
@@ -1568,456 +1543,4 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   unconfirmRevenue: async (sessionId) => {
-    set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, revenueConfirmed: false } : s)) }));
-    if (isSupabaseConfigured()) {
-      await supabase.from('sessions').update({ revenue_confirmed: false }).eq('id', sessionId);
-    }
-  },
-
-  assignSessionToValet: async (sessionId, valetName) => {
-    if (!sessionId || !valetName) return;
-    set((st) => ({
-      sessions: st.sessions.map((s) => (s.id === sessionId ? { ...s, addedBy: valetName } : s)),
-    }));
-    if (isSupabaseConfigured()) {
-      await supabase.from('sessions').update({ added_by: valetName }).eq('id', sessionId);
-    }
-  },
-
-  cancelSession: (id) => {
-    const session = get().sessions.find((s) => s.id === id);
-    set((st) => ({ sessions: st.sessions.filter((s) => s.id !== id) }));
-    if (session && session.status === 'active') get().adjustGarageSpots(session.garageId, +1);
-    if (isSupabaseConfigured()) supabase.from('sessions').delete().eq('id', id);
-  },
-
-  removeSession: async (id) => {
-    const target = get().sessions.find((s) => s.id === id);
-    set((st) => ({ sessions: st.sessions.filter((s) => s.id !== id) }));
-    if (target && target.status === 'active') await get().adjustGarageSpots(target.garageId, +1);
-    if (isSupabaseConfigured()) {
-      await supabase.from('sessions').delete().eq('id', id);
-    }
-  },
-
-  addOffer: (o) => {
-    const newO: Offer = { ...o, id: uid(), timestamp: Date.now() };
-    set((st) => ({ offers: [newO, ...st.offers].slice(0, 20) }));
-
-    if (isSupabaseConfigured()) {
-      supabase.from('offers').insert({
-        garage_id: o.garageId, user_id: o.userId,
-        car_plate: o.carPlate, offered_price: o.offeredPrice, status: o.status,
-      }).select().single().then(({ data }) => {
-        if (data) set((st) => ({ offers: st.offers.map((x) => (x.id === newO.id ? mapOffer(data) : x)) }));
-      });
-    }
-  },
-
-  updateOffer: (id, status, counterPrice) => {
-    set((st) => ({ offers: st.offers.map((o) => (o.id === id ? { ...o, status, counterPrice } : o)) }));
-    if (isSupabaseConfigured()) {
-      const u: Record<string, unknown> = { status };
-      if (counterPrice !== undefined) u.counter_price = counterPrice;
-      supabase.from('offers').update(u).eq('id', id);
-    }
-  },
-
-  cancelOffer: (id) => {
-    set((st) => ({ offers: st.offers.filter((o) => o.id !== id) }));
-    if (isSupabaseConfigured()) supabase.from('offers').delete().eq('id', id);
-  },
-
-  addWalletTopUp: (w) => {
-    const bonus = w.bonus ?? w.bonusAmount ?? calculateBonus(w.amount);
-    
-    const newW: WalletTopUp = { ...w, id: uid(), status: 'pending', timestamp: Date.now(), bonusAmount: bonus };
-    
-    set((st) => ({ walletTopUps: [newW, ...st.walletTopUps].slice(0, 20) }));
-
-    
-    if (isSupabaseConfigured()) {
-      supabase.from('wallet_topups').insert({
-        user_id: w.userId || w.user_id, 
-        user_name: w.userName, 
-        user_phone: w.userPhone || w.phone,
-        amount: w.amount, 
-        transaction_id: w.transactionId || 'instapay_transfer',
-        car_plate: w.carPlate, 
-        method: w.method || w.paymentMethod || 'instapay', 
-        bonus_amount: bonus,
-      }).select().single().then(({ data }) => {
-        if (data) set((st) => ({ walletTopUps: st.walletTopUps.map((x) => (x.id === newW.id ? mapTopUp(data) : x)) }));
-      });
-    }
-  },
-
-  approveTopUp: async (id) => {
-    const target = get().walletTopUps.find((w) => w.id === id);
-    if (!target || target.status !== 'pending') return;
-
-    const bonus = target.bonusAmount ?? calculateBonus(target.amount);
-    const totalCredit = target.amount + bonus;
-    const userPhone = normalizePhone(target.userPhone || '');
-
-    set((st) => ({
-      walletTopUps: st.walletTopUps.map((w) =>
-        w.id === id ? { ...w, status: 'approved' as const, bonusAmount: bonus } : w
-      ),
-    }));
-
-    if (isSupabaseConfigured()) {
-      try {
-        // ✅ [تعديل] Conditional update - منع الـ double-credit race condition
-        // لو أدمنين ضغطوا approve في نفس اللحظة، واحد بس هينجح
-        const { data: updateResult, error: updateError } = await supabase
-          .from('wallet_topups')
-          .update({ status: 'approved', bonus_amount: bonus })
-          .eq('id', id)
-          .eq('status', 'pending')
-          .select();
-
-        // لو مفيش rows اتأثرت = حد تاني سبق واعتمد
-        if (updateError || !updateResult || updateResult.length === 0) {
-          // نرجّع الحالة لـ pending في الـ UI
-          set((st) => ({
-            walletTopUps: st.walletTopUps.map((w) =>
-              w.id === id ? { ...w, status: 'pending' as const } : w
-            ),
-          }));
-          return;
-        }
-
-        if (userPhone) {
-          const { data: u } = await supabase
-            .from('users')
-            .select('wallet')
-            .eq('phone', userPhone)
-            .maybeSingle();
-
-          if (u) {
-            const newWallet = Number(u.wallet || 0) + totalCredit;
-            await supabase
-              .from('users')
-              .update({ wallet: newWallet })
-              .eq('phone', userPhone);
-          }
-        }
-      } catch (err) {
-        console.error('Approve error:', err);
-        set((st) => ({
-          walletTopUps: st.walletTopUps.map((w) =>
-            w.id === id ? { ...w, status: 'pending' as const } : w
-          ),
-        }));
-        throw err;
-      }
-    }
-
-    const currentUser = get().currentUser;
-    if (currentUser && normalizePhone(currentUser.phone) === userPhone) {
-      const updated = { ...currentUser, wallet: (currentUser.wallet || 0) + totalCredit };
-      set({ currentUser: updated });
-      safeSetStorage('currentUser', updated);
-    }
-  },
-
-  rejectTopUp: async (id) => {
-    set((st) => ({
-      walletTopUps: st.walletTopUps.map((w) => (w.id === id ? { ...w, status: 'rejected' as const } : w)),
-    }));
-    if (isSupabaseConfigured()) {
-      await supabase.from('wallet_topups').update({ status: 'rejected' }).eq('id', id);
-    }
-  },
-
-  addIncomingCar: async (c) => {
-    const incomingId = crypto.randomUUID();
-    const newC: IncomingCar = { ...c, id: incomingId, startTime: Date.now(), status: 'coming' };
-    set((st) => ({ incomingCars: [newC, ...st.incomingCars].slice(0, 30) }));
-    if (!isSupabaseConfigured()) return;
-    try {
-      const { data } = await supabase.from('incoming_cars').insert({
-        id: incomingId, garage_id: c.garageId, car_plate: c.carPlate,
-        customer_name: c.customerName, customer_phone: c.customerPhone,
-        agreed_price: c.agreedPrice, estimated_arrival: c.estimatedArrival,
-      }).select().single();
-      if (data) set((st) => ({ incomingCars: st.incomingCars.map((x) => (x.id === incomingId ? mapIncoming(data) : x)) }));
-    } catch {}
-  },
-
-  removeIncomingCar: async (id) => {
-    set((st) => ({ incomingCars: st.incomingCars.filter((c) => c.id !== id) }));
-    if (!isSupabaseConfigured()) return;
-    try {
-      await supabase.from('incoming_cars').delete().eq('id', id);
-    } catch {}
-  },
-
-  addMessage: async (msg) => {
-    const cleanMsg = {
-      ...msg,
-      message: sanitizeInput(msg.message),
-      subject: msg.subject ? sanitizeInput(msg.subject) : undefined,
-      userName: msg.userName ? sanitizeInput(msg.userName) : undefined,
-    };
-    const optimisticMessage: Message = { ...cleanMsg, id: uid(), status: 'pending', timestamp: Date.now() };
-    set((st) => ({ messages: [optimisticMessage, ...st.messages].slice(0, 20) }));
-
-    if (!isSupabaseConfigured()) return { success: true };
-    try {
-      const { data, error = null } = await supabase.from('messages').insert({
-        user_phone: cleanMsg.userPhone, user_name: cleanMsg.userName ?? null,
-        car_plate: cleanMsg.carPlate ?? null, type: cleanMsg.type,
-        subject: cleanMsg.subject ?? null, message: cleanMsg.message,
-      }).select().single();
-      if (error) return { success: false, error: error.message };
-      if (data) set((st) => ({ messages: st.messages.map((m) => (m.id === optimisticMessage.id ? mapMessage(data) : m)) }));
-      return { success: true };
-    } catch {
-      return { success: false, error: 'حدث خطأ' };
-    }
-  },
-
-  replyMessage: async (id, reply) => {
-    const now = Date.now();
-    const cleanReply = sanitizeInput(reply);
-    set((st) => ({ messages: st.messages.map((msg) => (msg.id === id ? { ...msg, reply: cleanReply, status: 'replied' as const, repliedAt: now } : msg)) }));
-    if (isSupabaseConfigured()) {
-      await supabase.from('messages').update({ reply: cleanReply, status: 'replied', replied_at: new Date(now).toISOString() }).eq('id', id);
-    }
-  },
-
-  closeMessage: async (id) => {
-    set((st) => ({ messages: st.messages.map((msg) => (msg.id === id ? { ...msg, status: 'closed' as const } : msg)) }));
-    if (isSupabaseConfigured()) {
-      await supabase.from('messages').update({ status: 'closed' }).eq('id', id);
-    }
-  },
-}));
-
-// ===================== Realtime الفائق =====================
-// ✅ [تعديل] استبدال الـ Polling بـ Supabase Realtime Subscriptions
-// ✅ [تعديل] إرجاع cleanup function لإغلاق الـ channels عند unmount
-// ✅ [تعديل] Debounce 2 ثانية لمنع الـ flood
-// ✅ [تعديل] Fallback polling لو الـ Realtime فشل
-
-let realtimeStarted = false;
-let isOperationInProgress = false;
-let pauseTimeout: ReturnType<typeof setTimeout> | null = null;
-
-export function pausePolling(duration = 5000) {
-  if (duration <= 0) {
-    isOperationInProgress = false;
-    if (pauseTimeout) clearTimeout(pauseTimeout);
-    return;
-  }
-  isOperationInProgress = true;
-  if (pauseTimeout) clearTimeout(pauseTimeout);
-  pauseTimeout = setTimeout(() => { isOperationInProgress = false; }, duration);
-}
-
-export function setupRealtime(): () => void {
-  if (realtimeStarted) return () => {};
-  realtimeStarted = true;
-
-  const channels: ReturnType<typeof supabase.channel>[] = [];
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  let fallbackInterval: ReturnType<typeof setInterval> | null = null;
-  let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
-  let isRealtimeConnected = false;
-
-  // ✅ Debounced fetch - منع الـ flood من الـ Realtime events
-  const debouncedFetch = () => {
-    if (isOperationInProgress) return;
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      if (document.visibilityState === 'visible') {
-        useStore.getState().fetchAll();
-      }
-    }, 2000);
-  };
-
-  const setupChannels = () => {
-    if (!isSupabaseConfigured()) return;
-
-    const state = useStore.getState();
-    const view = state.view;
-    const user = state.currentUser;
-    const garageId = state.currentGarageId;
-
-    // ✅ Channel 1: Sessions
-    const sessionsChannel = supabase
-      .channel('rt-sessions', {
-        config: { broadcast: { self: false }, presence: { key: '' } },
-      })
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'sessions',
-          ...(view === 'garage' && garageId ? { filter: `garage_id=eq.${garageId}` } : {}),
-        },
-        () => debouncedFetch()
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          isRealtimeConnected = true;
-          // ✅ إيقاف الـ fallback polling لو الـ Realtime اشتغل
-          if (fallbackInterval) {
-            clearInterval(fallbackInterval);
-            fallbackInterval = null;
-          }
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          isRealtimeConnected = false;
-          startFallbackPolling();
-        }
-      });
-    channels.push(sessionsChannel);
-
-    // ✅ Channel 2: Incoming Cars
-    const incomingChannel = supabase
-      .channel('rt-incoming', {
-        config: { broadcast: { self: false }, presence: { key: '' } },
-      })
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'incoming_cars',
-          ...(view === 'garage' && garageId ? { filter: `garage_id=eq.${garageId}` } : {}),
-        },
-        () => debouncedFetch()
-      )
-      .subscribe();
-    channels.push(incomingChannel);
-
-    // ✅ Channel 3: Garages (available_spots changes)
-    const garagesChannel = supabase
-      .channel('rt-garages', {
-        config: { broadcast: { self: false }, presence: { key: '' } },
-      })
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'garages',
-        },
-        () => debouncedFetch()
-      )
-      .subscribe();
-    channels.push(garagesChannel);
-
-    // ✅ Channel 4: Wallet TopUps (admin only)
-    if (view === 'admin') {
-      const topupsChannel = supabase
-        .channel('rt-topups', {
-          config: { broadcast: { self: false }, presence: { key: '' } },
-        })
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'wallet_topups',
-          },
-          () => debouncedFetch()
-        )
-        .subscribe();
-      channels.push(topupsChannel);
-
-      const messagesChannel = supabase
-        .channel('rt-messages', {
-          config: { broadcast: { self: false }, presence: { key: '' } },
-        })
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'messages',
-          },
-          () => debouncedFetch()
-        )
-        .subscribe();
-      channels.push(messagesChannel);
-    }
-  };
-
-  // ✅ Fallback polling - يشتغل بس لو الـ Realtime فشل
-  const startFallbackPolling = () => {
-    if (fallbackInterval) return;
-    console.warn('[ParkN24] Realtime failed, falling back to polling (30s)');
-    fallbackInterval = setInterval(() => {
-      if (!isOperationInProgress && document.visibilityState === 'visible') {
-        useStore.getState().fetchAll();
-      }
-    }, 30000);
-  };
-
-  // ✅ Heartbeat - منع الـ WebSocket من القفل (كل 60 ثانية مع jitter)
-  const startHeartbeat = () => {
-    heartbeatInterval = setInterval(() => {
-      if (document.visibilityState === 'visible' && isRealtimeConnected) {
-        // نعمل fetch خفيف عشان نأكد إن الـ connection لسه حي
-        useStore.getState().fetchAll();
-      }
-    }, 60000 + Math.floor(Math.random() * 10000)); // 60-70s random jitter
-  };
-
-  // ✅ Visibility change handler
-  const handleVisibilityChange = () => {
-    if (document.visibilityState === 'visible') {
-      useStore.getState().fetchAll();
-    }
-  };
-
-  // تهيئة الـ channels
-  setupChannels();
-  startHeartbeat();
-  document.addEventListener('visibilitychange', handleVisibilityChange);
-
-  // ✅ Fetch أولي بعد الـ setup
-  setTimeout(() => {
-    useStore.getState().fetchAll();
-  }, 1000);
-
-  // ✅ إرجاع cleanup function
-  return () => {
-    realtimeStarted = false;
-
-    // إغلاق كل الـ channels
-    for (const ch of channels) {
-      try {
-        supabase.removeChannel(ch);
-      } catch {
-        // ignore
-      }
-    }
-    channels.length = 0;
-
-    // تنظيف الـ timers
-    if (debounceTimer) {
-      clearTimeout(debounceTimer);
-      debounceTimer = null;
-    }
-    if (fallbackInterval) {
-      clearInterval(fallbackInterval);
-      fallbackInterval = null;
-    }
-    if (heartbeatInterval) {
-      clearInterval(heartbeatInterval);
-      heartbeatInterval = null;
-    }
-    if (pauseTimeout) {
-      clearTimeout(pauseTimeout);
-      pauseTimeout = null;
-    }
-
-    // إزالة الـ event listener
-    document.removeEventListener('visibilitychange', handleVisibilityChange);
-  };
-}
+    set((st) => ({ sessions: st.sessions.map((s) => (s.id === sessionId ? { ...

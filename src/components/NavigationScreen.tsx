@@ -56,6 +56,11 @@ const BRAND = {
   border: 'rgba(255, 255, 255, 0.08)',
 };
 
+// 🎯 ثوابت البدء التلقائي
+const AUTO_START_DISTANCE_KM = 0.05;  // 50 متر
+const AUTO_START_DURATION_MS = 120_000; // 120 ثانية (دقيقتين)
+const AUTO_START_MOVEMENT_KM = 0.01;   // 10 متر (لو اتحرك أكتر من كده نصفّر العداد)
+
 const getBonusForAmount = (amount: number): number => {
   if (amount >= 250) return 50;
   if (amount >= 100) return 15;
@@ -195,6 +200,12 @@ export default function NavigationScreen() {
   const [showGeofenceAlarm, setShowGeofenceAlarm] = useState(false);
   const [geofenceAlertSent, setGeofenceAlertSent] = useState(false);
 
+  // 🛡️ اختيار الدرع (افتراضياً شغال)
+  const [shieldEnabled, setShieldEnabled] = useState(true);
+
+  // 🎯 حالة البدء التلقائي (للعرض بس)
+  const [autoStartCountdown, setAutoStartCountdown] = useState<number | null>(null);
+
   const isMountedRef = useRef(true);
   const navigatedToSessionRef = useRef(false);
 
@@ -207,6 +218,19 @@ export default function NavigationScreen() {
   const alarmOscRef = useRef<OscillatorNode | null>(null);
   const geofenceTriggeredRef = useRef(false);
   const geofenceWatchIdRef = useRef<number | null>(null);
+
+  // 🎯 Auto-start refs
+  const autoStartWatchIdRef = useRef<number | null>(null);
+  const autoStartTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoStartAnchorRef = useRef<{ lat: number; lng: number } | null>(null);
+  const autoStartStartedAtRef = useRef<number | null>(null);
+  const autoStartTriggeredRef = useRef(false);
+  const shieldEnabledRef = useRef(shieldEnabled);
+
+  // تحديث الـ ref عشان الـ callback بتاع الـ auto-start يشوف أحدث قيمة
+  useEffect(() => {
+    shieldEnabledRef.current = shieldEnabled;
+  }, [shieldEnabled]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -222,6 +246,15 @@ export default function NavigationScreen() {
       if (geofenceWatchIdRef.current !== null) {
         navigator.geolocation.clearWatch(geofenceWatchIdRef.current);
         geofenceWatchIdRef.current = null;
+      }
+      // 🎯 Cleanup auto-start
+      if (autoStartWatchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(autoStartWatchIdRef.current);
+        autoStartWatchIdRef.current = null;
+      }
+      if (autoStartTimerRef.current) {
+        clearInterval(autoStartTimerRef.current);
+        autoStartTimerRef.current = null;
       }
     };
   }, []);
@@ -344,6 +377,7 @@ export default function NavigationScreen() {
         customerName: currentUser?.name,
         startedBy: 'customer',
         incomingCarId: myIncomingCar?.id,
+        shieldEnabled: shieldEnabledRef.current,
       } as any);
 
       if (myIncomingCar) {
@@ -524,6 +558,133 @@ export default function NavigationScreen() {
     },
     [stopAlarmSound, myActiveSession, setSelectedGarageId, setScreen],
   );
+
+  /* ─── 🎯 البدء التلقائي للجلسة بعد 120 ثانية ثبات ─── */
+  useEffect(() => {
+    // مش نفعّل الـ auto-start لو:
+    // - مفيش جراج
+    // - فيه جلسة نشطة بالفعل
+    // - المستخدم بيضغط على الزرار يدوياً
+    if (!garage || myActiveSession || isArriving) {
+      // Cleanup أي مراقبة قديمة
+      if (autoStartWatchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(autoStartWatchIdRef.current);
+        autoStartWatchIdRef.current = null;
+      }
+      if (autoStartTimerRef.current) {
+        clearInterval(autoStartTimerRef.current);
+        autoStartTimerRef.current = null;
+      }
+      autoStartAnchorRef.current = null;
+      autoStartStartedAtRef.current = null;
+      setAutoStartCountdown(null);
+      return;
+    }
+
+    if (!('geolocation' in navigator)) return;
+
+    // 🧠 منطق البدء التلقائي:
+    // 1. راقب الـ GPS محلياً (مفيش طلبات للسيرفر)
+    // 2. لو جوه 50 متر من الجراج → ابدأ عداد 120 ثانية
+    // 3. لو اتحرك أكتر من 10 متر → صفّر العداد
+    // 4. لو العداد وصل 120 → ابدأ الجلسة (طلب واحد بس)
+
+    const handlePosition = (pos: GeolocationPosition) => {
+      if (!isMountedRef.current) return;
+      if (autoStartTriggeredRef.current) return;
+
+      const curLat = pos.coords.latitude;
+      const curLng = pos.coords.longitude;
+
+      // تحديث موقع المستخدم على الخريطة
+      setUserPos({ lat: curLat, lng: curLng });
+
+      const distFromGarage = calculateDistance(curLat, curLng, garage.lat, garage.lng);
+
+      // لسه بعيد عن الجراج → صفّر أي عداد
+      if (distFromGarage > AUTO_START_DISTANCE_KM) {
+        if (autoStartAnchorRef.current) {
+          autoStartAnchorRef.current = null;
+          autoStartStartedAtRef.current = null;
+          setAutoStartCountdown(null);
+        }
+        return;
+      }
+
+      // قريب من الجراج (جوه 50 متر)
+      if (!autoStartAnchorRef.current) {
+        // أول مرة يدخل النطاق → ابدأ المراقبة من هنا
+        autoStartAnchorRef.current = { lat: curLat, lng: curLng };
+        autoStartStartedAtRef.current = Date.now();
+        setAutoStartCountdown(Math.ceil(AUTO_START_DURATION_MS / 1000));
+        return;
+      }
+
+      // شوف إذا اتحرك من المكان اللي بدأ فيه العداد
+      const distFromAnchor = calculateDistance(
+        curLat,
+        curLng,
+        autoStartAnchorRef.current.lat,
+        autoStartAnchorRef.current.lng,
+      );
+
+      if (distFromAnchor > AUTO_START_MOVEMENT_KM) {
+        // اتحرك أكتر من 10 متر → صفّر العداد وابدأ من المكان الجديد
+        autoStartAnchorRef.current = { lat: curLat, lng: curLng };
+        autoStartStartedAtRef.current = Date.now();
+        setAutoStartCountdown(Math.ceil(AUTO_START_DURATION_MS / 1000));
+      }
+    };
+
+    autoStartWatchIdRef.current = navigator.geolocation.watchPosition(
+      handlePosition,
+      () => {
+        // GPS error — تجاهل في صمت
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
+    );
+
+    // Timer محلي يشيك كل ثانية على الـ countdown
+    autoStartTimerRef.current = setInterval(() => {
+      if (!isMountedRef.current) return;
+      if (autoStartTriggeredRef.current) return;
+      if (!autoStartStartedAtRef.current) return;
+
+      const elapsed = Date.now() - autoStartStartedAtRef.current;
+      const remaining = Math.max(0, Math.ceil((AUTO_START_DURATION_MS - elapsed) / 1000));
+      setAutoStartCountdown(remaining);
+
+      if (elapsed >= AUTO_START_DURATION_MS) {
+        // 🎯 وصل الوقت → ابدأ الجلسة تلقائياً
+        autoStartTriggeredRef.current = true;
+
+        // اهتزاز خفيف للتنبيه
+        if (navigator.vibrate) {
+          navigator.vibrate([200, 100, 200]);
+        }
+
+        toast.success('✅ تم رصد وقوفك بالجراج — جاري بدء الركنة والحماية تلقائياً...', {
+          duration: 3500,
+          icon: '🅿️',
+        });
+
+        // استدعاء نفس دالة البدء اليدوي
+        handleCarArrived();
+      }
+    }, 1000);
+
+    return () => {
+      if (autoStartWatchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(autoStartWatchIdRef.current);
+        autoStartWatchIdRef.current = null;
+      }
+      if (autoStartTimerRef.current) {
+        clearInterval(autoStartTimerRef.current);
+        autoStartTimerRef.current = null;
+      }
+    };
+  }, [garage, myActiveSession, isArriving, handleCarArrived]);
+
   if (!garage) {
     return (
       <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8 text-right dir-rtl">
@@ -722,6 +883,95 @@ export default function NavigationScreen() {
             <span className="text-[10px] font-black flex items-center gap-1" style={{ color: BRAND.green }}>
               <Check size={12} /> تم الحجز
             </span>
+          </div>
+        )}
+
+        {/* 🛡️ اختيار الدرع (قبل التوجيه) */}
+        {!myActiveSession && (
+          <div
+            className="rounded-2xl p-3 shrink-0 border"
+            style={{
+              background: BRAND.navyLight,
+              borderColor: shieldEnabled ? BRAND.green + '60' : BRAND.border,
+            }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={16} style={{ color: shieldEnabled ? BRAND.green : BRAND.slateMuted }} />
+                <span className="text-xs font-black" style={{ color: '#ffffff' }}>
+                  🛡️ حماية الدرع
+                </span>
+              </div>
+              <span className="text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>
+                (اختياري)
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setShieldEnabled(true)}
+                className="py-2.5 rounded-xl font-black text-[11px] border transition-all active:scale-95 cursor-pointer"
+                style={{
+                  background: shieldEnabled ? BRAND.green : 'transparent',
+                  borderColor: shieldEnabled ? BRAND.green : BRAND.border,
+                  color: shieldEnabled ? BRAND.navy : BRAND.slateMuted,
+                }}
+              >
+                ✅ تفعيل الدرع
+              </button>
+              <button
+                type="button"
+                onClick={() => setShieldEnabled(false)}
+                className="py-2.5 rounded-xl font-black text-[11px] border transition-all active:scale-95 cursor-pointer"
+                style={{
+                  background: !shieldEnabled ? '#475569' : 'transparent',
+                  borderColor: !shieldEnabled ? '#475569' : BRAND.border,
+                  color: !shieldEnabled ? '#ffffff' : BRAND.slateMuted,
+                }}
+              >
+                ❌ بدون درع
+              </button>
+            </div>
+            <p className="text-[9px] font-bold text-center mt-2" style={{ color: BRAND.slateMuted }}>
+              {shieldEnabled
+                ? 'هيتم خصم رسوم الحماية عند بدء الركنة فقط'
+                : 'الركنة بدون حماية إضافية'}
+            </p>
+          </div>
+        )}
+
+        {/* 🎯 شريط البدء التلقائي (يظهر لما العميل قريب من الجراج) */}
+        {!myActiveSession && autoStartCountdown !== null && autoStartCountdown > 0 && (
+          <div
+            className="rounded-2xl p-3 shrink-0 border"
+            style={{
+              background: 'linear-gradient(135deg, rgba(140, 198, 63, 0.15) 0%, rgba(22, 163, 74, 0.1) 100%)',
+              borderColor: BRAND.green + '60',
+            }}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: BRAND.green }} />
+                <span className="text-[11px] font-black" style={{ color: BRAND.green }}>
+                  🅿️ تم رصد وصولك — بدء تلقائي للركنة
+                </span>
+              </div>
+              <span className="text-sm font-black font-mono" style={{ color: BRAND.green }}>
+                {autoStartCountdown}ث
+              </span>
+            </div>
+            <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
+              <div
+                className="h-full transition-all duration-1000 ease-linear"
+                style={{
+                  background: BRAND.green,
+                  width: `${((AUTO_START_DURATION_MS / 1000 - autoStartCountdown) / (AUTO_START_DURATION_MS / 1000)) * 100}%`,
+                }}
+              />
+            </div>
+            <p className="text-[9px] font-bold text-center mt-1.5" style={{ color: BRAND.slateMuted }}>
+              فضل ثابت في مكانك لبدء الركنة تلقائياً
+            </p>
           </div>
         )}
 
