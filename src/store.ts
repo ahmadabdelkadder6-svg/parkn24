@@ -1401,7 +1401,7 @@ export const useStore = create<AppState>((set, get) => ({
         settled: false,
         isFirstFreeSession: eligibleForFree,
         freeMinutesApplied: 0,
-        shield_cost: s.shieldEnabled ? 0 : null,
+        shieldCost: s.shieldEnabled ? 0 : null,
 
       };
 
@@ -1429,7 +1429,7 @@ export const useStore = create<AppState>((set, get) => ({
           settled: false,
           is_first_free_session: eligibleForFree,
           free_minutes_applied: 0,
-          shield_cost: 0,
+          shield_cost: s.shieldEnabled ? 0 : null,
         }).select().single();
 
         if (data) {
@@ -1534,7 +1534,7 @@ if (s.shieldEnabled === true) {
             settled: false,
             free_minutes_applied: freeMinutesApplied,
             added_by: finalAddedBy || null,
-            shield_cost: session.shieldCost ?? 0,
+            shield_cost: session.shieldCost ?? null,
           })
           .eq('id', id);
       }
