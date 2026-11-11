@@ -7,15 +7,12 @@ import {
   Car,
   Sparkles,
   MapPin,
-  Navigation,
-  CheckCircle2,
   ShieldCheck,
-  XCircle,
+  ShieldOff,
 } from 'lucide-react';
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
-import ShieldOverlay from './ShieldOverlay';
 import {
   getPendingArrival,
   clearPendingArrival,
@@ -60,7 +57,7 @@ const formatTime = (seconds: number): string => {
 };
 
 /* ═══════════════════════════════════════════════════════════
-   ⚡ LiveSessionTimer — متوسط الحجم ومتناسق (المنطق الأصلي)
+   ⚡ LiveSessionTimer
    ═══════════════════════════════════════════════════════════ */
 const LiveSessionTimer = memo(function LiveSessionTimer({
   activeStartMs,
@@ -189,7 +186,6 @@ export default function SessionScreen() {
     acknowledgedSessionIds,
     acknowledgeSession,
     endSession,
-    deductWallet,
   } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
@@ -199,12 +195,7 @@ export default function SessionScreen() {
   const autoEndedRef = useRef(false);
 
   const [ending, setEnding] = useState(false);
-  const [shieldResumed, setShieldResumed] = useState<boolean | null>(null);
-
-  // 🚀 إخفاء فوري للجلسة المنتهية (مش تفضل كام ثانية على الشاشة)
   const [endedSessionId, setEndedSessionId] = useState<string | null>(null);
-
-  // 🚀 قراءة محليّة فورية لمنع تحويل الشاشة
   const [pendingArrival, setPendingArrival] = useState<any>(() => getPendingArrival());
   const [startingSession, setStartingSession] = useState(false);
 
@@ -232,7 +223,6 @@ export default function SessionScreen() {
     for (let i = 0; i < sessions.length; i++) {
       const s = sessions[i];
       if (!s || s.status !== 'active') continue;
-      // 🚀 إخفاء فوري: لو الجلسة دي اتنهت محلياً، تجاهلها
       if (endedSessionId === s.id) continue;
       if (acknowledgedSessionIds?.has(s.id)) continue;
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
@@ -277,63 +267,18 @@ export default function SessionScreen() {
     return ms > 0 ? ms : getServerNow();
   }, [activeSession]);
 
-  // 🛡️ استرجاع حالة الدرع من الـ DB
-  useEffect(() => {
-    if (!activeSession?.id) {
-      setShieldResumed(null);
-      return;
-    }
+  // 🛡️ حالة الدرع من الجلسة نفسها (مش من جدول تاني)
+const shieldCost = (activeSession as any)?.shieldCost;
+const shieldActive = shieldCost != null;
 
-    let cancelled = false;
+  /* ═══════════════════════════════════════════════════════════
+     🔄 Realtime: store.setupRealtime() بيغطي كل حاجة
+     ═══════════════════════════════════════════════════════════ */
 
-    const checkShield = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('shield_sessions')
-          .select('session_id')
-          .eq('session_id', activeSession.id)
-          .is('ended_at', null)
-          .limit(1)
-          .maybeSingle();
-
-        if (cancelled) return;
-
-        if (error) {
-          console.warn('Shield check error:', error);
-          setShieldResumed(false);
-          return;
-        }
-
-        setShieldResumed(!!data);
-      } catch (e) {
-        if (!cancelled) {
-          console.warn('Shield check failed:', e);
-          setShieldResumed(false);
-        }
-      }
-    };
-
-    checkShield();
-    return () => { cancelled = true; };
-  }, [activeSession?.id]);
-
-  /* ═══════════════════════════════════════════════════════════════════
-     🔄 Realtime + Polling:
-     تم إزالة الـ Realtime المحلي والـ polling المحلي بالكامل.
-     store.setupRealtime() بيغطي:
-       - sessions (كل التغييرات)
-       - incoming_cars
-       - garages
-       - wallet_topups
-       - heartbeat + fallback polling
-       - visibilitychange + focus
-     ═══════════════════════════════════════════════════════════════════ */
-
-  // 🏁 إنهاء الجلسة يدويًا عند الضغط على زر الخروج
+  // 🏁 إنهاء الجلسة يدويًا
   const handleEndSession = useCallback(async () => {
     if (ending || !activeSession) return;
 
-    // 🚀 إخفاء فوري من الشاشة قبل أي await
     setEndedSessionId(activeSession.id);
     setEnding(true);
 
@@ -343,13 +288,12 @@ export default function SessionScreen() {
 
       const nowIso = new Date().toISOString();
 
-      // قفل الدرع بالـ session_id
+      // قفل الدرع القديم بالـ session_id (احتياط للجلسات القديمة)
       await supabase.from('shield_sessions')
         .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id)
         .is('ended_at', null);
 
-      // 🚀 قفل الدرع بالـ phone احتياط (أي درع مش مرتبط بـ session)
       if (userPhone) {
         await supabase.from('shield_sessions')
           .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
@@ -366,7 +310,6 @@ export default function SessionScreen() {
       }
     } catch (e: any) {
       toast.error(e?.message || 'فشل إنهاء الجلسة');
-      // لو فشل، رجّع الجلسة على الشاشة
       setEndedSessionId(null);
     } finally {
       setEnding(false);
@@ -378,7 +321,6 @@ export default function SessionScreen() {
     if (autoEndedRef.current || !activeSession) return;
     autoEndedRef.current = true;
 
-    // 🚀 إخفاء فوري من الشاشة
     setEndedSessionId(activeSession.id);
 
     try {
@@ -386,13 +328,11 @@ export default function SessionScreen() {
 
       const nowIso = new Date().toISOString();
 
-      // قفل الدرع بالـ session_id
       await supabase.from('shield_sessions')
         .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id)
         .is('ended_at', null);
 
-      // 🚀 قفل الدرع بالـ phone احتياط
       if (userPhone) {
         await supabase.from('shield_sessions')
           .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
@@ -458,7 +398,7 @@ export default function SessionScreen() {
 
 
   // ═══════════════════════════════════════════════════════
-  // 🎨 حالة 2: جلسة ركن نشطة (الدرع + العداد الأصليين)
+  // 🎨 جلسة ركن نشطة
   // ═══════════════════════════════════════════════════════
   if (activeSession) {
     return (
@@ -483,26 +423,35 @@ export default function SessionScreen() {
             </span>
           </div>
 
-          {/* 🛡️ الدرع الأصلي */}
-          {garage && shieldResumed !== null && (
-            <div className="w-full max-w-md">
-              <ShieldOverlay
-                key={shieldResumed ? 'resumed' : 'fresh'}
-                sessionId={activeSession.id}
-                userId={currentUser?.id || ''}
-                garageId={activeSession.garageId}
-                parkingLat={(garage as any).lat ?? 30.0444}
-                parkingLng={(garage as any).lng ?? 31.2357}
-                userPhone={currentUser?.phone ?? null}
-                onDeductWallet={deductWallet}
-                onNavigateToWallet={() => setScreen('list')}
-                autoResume={shieldResumed}
-                onSessionEnd={handleEndSession}
-              />
-            </div>
-          )}
+          {/* 🛡️ بادج الدرع الجديد (بسيط — بدون overlay) */}
+          <div
+            className="w-full max-w-md rounded-xl px-3 py-2 flex items-center justify-center gap-2 border"
+            style={{
+              background: shieldActive
+                ? 'linear-gradient(135deg, rgba(140,198,63,0.15) 0%, rgba(34,197,94,0.08) 100%)'
+                : 'linear-gradient(135deg, rgba(100,116,139,0.1) 0%, rgba(71,85,105,0.05) 100%)',
+              borderColor: shieldActive ? 'rgba(140, 198, 63, 0.4)' : 'rgba(100, 116, 139, 0.3)',
+            }}
+          >
+            {shieldActive ? (
+              <>
+                <ShieldCheck size={16} style={{ color: BRAND.green }} />
+                <span className="text-[11px] font-black" style={{ color: BRAND.green }}>
+                  🛡️ الدرع مفعّل
+                  {shieldCost === 0 ? ' (مجاني)' : ` (${shieldCost} ج.م)`}
+                </span>
+              </>
+            ) : (
+              <>
+                <ShieldOff size={16} style={{ color: BRAND.slateMuted }} />
+                <span className="text-[11px] font-black" style={{ color: BRAND.slateMuted }}>
+                  الدرع غير مفعّل
+                </span>
+              </>
+            )}
+          </div>
 
-          {/* ⚡ العداد الأصلي */}
+          {/* ⚡ العداد */}
           <LiveSessionTimer
             activeStartMs={activeStartMs}
             onAutoEnd={handleAutoEnd}
@@ -530,7 +479,7 @@ export default function SessionScreen() {
           </div>
         </div>
 
-        {/* 📋 القسم السفلي الأصلي */}
+        {/* 📋 القسم السفلي */}
         <div
           className="px-4 pt-3 pb-4 border-t shrink-0"
           style={{
@@ -610,7 +559,7 @@ export default function SessionScreen() {
           </button>
         </div>
       </motion.div>
-     );
+    );
   }
 
   return null;

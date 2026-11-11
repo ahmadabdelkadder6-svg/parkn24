@@ -66,7 +66,7 @@ export interface ParkingSession {
   freeMinutesApplied?: number;
   isFirstFreeSession?: boolean;
   // ═══ 🛡️ تكلفة الدرع للجلسة (0 = مجاني، 7 = مدفوع) ═══
-  shieldCost?: number;
+  shieldCost?: number | null;
   // ✅ [تعديل الدرع] flag من NavigationScreen عشان نعرف نخصم ولا لأ
   shieldEnabled?: boolean;
 }
@@ -506,7 +506,8 @@ const mapSession = (r: any): ParkingSession => {
     settled_at: r.settled_at || undefined,
     freeMinutesApplied: r.free_minutes_applied != null ? Number(r.free_minutes_applied) : 0,
     isFirstFreeSession: isFree,
-    shieldCost: r.shield_cost != null ? Number(r.shield_cost) : 0,
+    shieldCost: r.shield_cost != null ? Number(r.shield_cost) : null,
+shieldEnabled: r.shield_cost != null,
   };
 };
 
@@ -1400,7 +1401,8 @@ export const useStore = create<AppState>((set, get) => ({
         settled: false,
         isFirstFreeSession: eligibleForFree,
         freeMinutesApplied: 0,
-        shieldCost: 0,
+        shield_cost: s.shieldEnabled ? 0 : null,
+
       };
 
       set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]).slice(0, 50) }));
@@ -1444,19 +1446,27 @@ export const useStore = create<AppState>((set, get) => ({
         // 2. أول مرة للوحة = مجاناً (chargeShieldFee بتتعامل معاه)
         // 3. لو الرصيد مش كافي = الجلسة تكمل بدون درع (مش نلغيها)
         // ═══════════════════════════════════════════════════════════════
-        if (s.shieldEnabled === true) {
-          try {
-            const shieldResult = await get().chargeShieldFee();
-            if (shieldResult.success) {
-              const cost = shieldResult.isFree ? 0 : SHIELD_COST;
-              await get().updateSessionShieldCost(sessionId, cost);
-            }
-            // لو فشل الخصم (رصيد غير كافي) → الجلسة تكمل عادي بدون درع
-            // shieldCost هيفضل 0 ومش هنلغي الجلسة
-          } catch (err) {
-            console.error('Shield charge after session start error:', err);
-          }
-        }
+if (s.shieldEnabled === true) {
+  try {
+    const shieldResult = await get().chargeShieldFee();
+    if (shieldResult.success) {
+      const cost = shieldResult.isFree ? 0 : SHIELD_COST;
+      await get().updateSessionShieldCost(sessionId, cost);
+    } else {
+      // الخصم فشل (رصيد غير كافي) → الدرع مش مفعّل
+      set((st) => ({
+        sessions: st.sessions.map((x) =>
+          x.id === sessionId ? { ...x, shieldCost: null, shieldEnabled: false } : x
+        ),
+      }));
+      if (isSupabaseConfigured()) {
+        await supabase.from('sessions').update({ shield_cost: null }).eq('id', sessionId);
+      }
+    }
+  } catch (err) {
+    console.error('Shield charge after session start error:', err);
+  }
+}
       }
       return sessionId;
     } finally {
