@@ -57,9 +57,9 @@ const BRAND = {
 };
 
 // 🎯 ثوابت البدء التلقائي
-const AUTO_START_DISTANCE_KM = 0.05;  // 50 متر
+const AUTO_START_DISTANCE_KM = 0.3;  // 50 متر
 const AUTO_START_DURATION_MS = 120_000; // 120 ثانية (دقيقتين)
-const AUTO_START_MOVEMENT_KM = 0.01;   // 10 متر (لو اتحرك أكتر من كده نصفّر العداد)
+const AUTO_START_MOVEMENT_KM = 0.05;   // 10 متر (لو اتحرك أكتر من كده نصفّر العداد)
 
 const getBonusForAmount = (amount: number): number => {
   if (amount >= 250) return 50;
