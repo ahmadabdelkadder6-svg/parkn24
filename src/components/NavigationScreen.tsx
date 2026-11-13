@@ -57,7 +57,7 @@ const BRAND = {
 };
 
 // 🎯 ثوابت البدء التلقائي (محسّنة لـ GPS الجراج الضعيف)
-const AUTO_START_DISTANCE_KM = 0.1;    // 300 متر (GPS جوه الجراج ضعيف)
+const AUTO_START_DISTANCE_KM = 0.15;    // 300 متر (GPS جوه الجراج ضعيف)
 const AUTO_START_DURATION_MS = 120_000; // 120 ثانية (دقيقتين)
 const AUTO_START_MOVEMENT_KM = 0.05;    // 50 متر tolerance للحركة
 
