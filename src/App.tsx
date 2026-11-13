@@ -26,16 +26,13 @@ const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 
 let isRealtimeInitialized = false;
 
-const toMs = (value: unknown): number => {
+const toMs = (value: any): number => {
   if (!value) return 0;
   if (typeof value === 'number') {
     return value < 1_000_000_000_000 ? value * 1000 : value;
   }
-  if (typeof value === 'string') {
-    const parsed = new Date(value).getTime();
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
 };
 
 const safeLocalStorage = {
@@ -51,7 +48,6 @@ const safeLocalStorage = {
 };
 
 class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: boolean }> {
-  static displayName = 'AppErrorBoundary';
   public state = { hasError: false };
   public static getDerivedStateFromError(_: Error) { return { hasError: true }; }
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -211,9 +207,6 @@ export default function App() {
   const sessionEndToastShown = useRef(false);
   const sessionTransitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ✅ [تعديل] تخزين cleanup function من Realtime عشان نغلق الـ channels عند unmount
-  const realtimeCleanupRef = useRef<(() => void) | null>(null);
-
   const [adminAccess, setAdminAccess] = useState(false);
 
   const [showLanding, setShowLanding] = useState(() => {
@@ -254,17 +247,6 @@ export default function App() {
       setScreen(safeScreen as typeof screen);
     }
   }, [safeScreen, screen, setScreen, dataLoaded, view]);
-
-  // ✅ [تعديل] useMemo للـ normalized values عشان متتحسبش كل ما الـ sessions تتغير
-  const userPlate = useMemo(
-    () => (currentUser ? normalizePlate(currentUser.carPlate) : ''),
-    [currentUser?.carPlate]
-  );
-
-  const userPhone = useMemo(
-    () => (currentUser?.phone ? normalizePhone(currentUser.phone) : ''),
-    [currentUser?.phone]
-  );
 
   useEffect(() => {
     const init = async () => {
@@ -322,21 +304,13 @@ export default function App() {
         }
       }
 
-      try {
-        await fetchAll();
-      } catch (e) {
-        console.error('Background fetch error:', e);
-      }
-
       setDataLoaded(true);
       initialLoadDone.current = true;
 
+      fetchAll().catch((e) => console.error('Background fetch error:', e));
+
       if (!isRealtimeInitialized) {
-        // ✅ [تعديل] تخزين الـ cleanup function عشان نغلق الـ Realtime عند unmount
-        const cleanup = setupRealtime();
-        if (typeof cleanup === 'function') {
-          realtimeCleanupRef.current = cleanup;
-        }
+        setupRealtime();
         isRealtimeInitialized = true;
       }
     };
@@ -358,7 +332,9 @@ export default function App() {
     if (!currentUser) return;
     if (view !== 'user') return;
 
-    // ✅ [تعديل] استخدام userPlate و userPhone من useMemo بدل حسابهم كل مرة
+    const userPlate = normalizePlate(currentUser.carPlate);
+    const userPhone = currentUser.phone ? normalizePhone(currentUser.phone) : '';
+
     const myActiveSession = sessions.find((s) => {
       if (s.status !== 'active') return false;
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
@@ -408,7 +384,7 @@ export default function App() {
       setSelectedGarageId(null);
       setScreen('list');
     }
-  }, [dataLoaded, userPlate, userPhone, sessions, incomingCars, view, safeScreen, setScreen, setSelectedGarageId, currentUser]);
+  }, [dataLoaded]);
 
   // ════════════════════════════════════════════════════════════════
   // 🎯 useEffect الثاني: متابعة التغيرات اللحظية في الجلسات
@@ -417,7 +393,9 @@ export default function App() {
     if (!dataLoaded) return;
     if (!currentUser || view !== 'user') return;
 
-    // ✅ [تعديل] استخدام userPlate و userPhone من useMemo بدل حسابهم كل مرة
+    const userPlate = normalizePlate(currentUser.carPlate);
+    const userPhone = currentUser.phone ? normalizePhone(currentUser.phone) : '';
+
     const myActiveSession = sessions.find((s) => {
       if (s.status !== 'active') return false;
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
@@ -467,8 +445,7 @@ export default function App() {
       sessionTransitionTimer.current = setTimeout(() => {
         sessionTransitionTimer.current = null;
         const freshState = useStore.getState();
-        // ✅ [تعديل] استخدام الـ cached normalize من الـ store
-        const freshPlate = normalizePlate(freshState.currentUser?.carPlate ?? '');
+        const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
         const freshPhone = freshState.currentUser?.phone ? normalizePhone(freshState.currentUser.phone) : '';
 
         const stillActive = freshState.sessions.find((s) => {
@@ -534,7 +511,7 @@ for (let i = 0; i < freshState.sessions.length; i++) {
     if (!myActiveSession && safeScreen === 'navigation' && !myIncoming) {
       const timeout = setTimeout(() => {
         const freshState = useStore.getState();
-        const freshPlate = normalizePlate(freshState.currentUser?.carPlate ?? '');
+        const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
         const freshPhone = freshState.currentUser?.phone ? normalizePhone(freshState.currentUser.phone) : '';
 
         const freshIncoming = freshState.incomingCars.find((c) => {
@@ -570,21 +547,13 @@ for (let i = 0; i < freshState.sessions.length; i++) {
     dataLoaded,
     setScreen,
     setSelectedGarageId,
-    userPlate,
-    userPhone,
   ]);
 
-  // ✅ [تعديل] Cleanup شامل: timers + Realtime channels عند unmount
   useEffect(() => {
     return () => {
       if (sessionTransitionTimer.current) {
         clearTimeout(sessionTransitionTimer.current);
         sessionTransitionTimer.current = null;
-      }
-      // ✅ إغلاق كل الـ Realtime channels والـ WebSocket connections
-      if (realtimeCleanupRef.current) {
-        realtimeCleanupRef.current();
-        realtimeCleanupRef.current = null;
       }
     };
   }, []);

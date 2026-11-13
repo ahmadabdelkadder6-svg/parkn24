@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight,
@@ -46,19 +46,15 @@ export default function ChatScreen() {
 
   const userPhoneClean = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
-  // ✅ [تعديل] useMemo عشان متتحسبش كل ما الـ store يتغير
-  const myMessages = useMemo(() => {
-    if (!userPhoneClean) return [];
-    return (messages ?? [])
-      .filter((m) => {
-        const msgPhone = m.userPhone ? normalizePhone(m.userPhone) : '';
-        return msgPhone === userPhoneClean;
-      })
-      .sort((a, b) => b.timestamp - a.timestamp);
-  }, [messages, userPhoneClean]);
+  // 🔄 جلب رسائل المستخدم الحالية مرتبة من الأحدث للأقدم
+  const myMessages = (messages ?? [])
+    .filter((m) => {
+      const msgPhone = m.userPhone ? normalizePhone(m.userPhone) : '';
+      return userPhoneClean && msgPhone === userPhoneClean;
+    })
+    .sort((a, b) => b.timestamp - a.timestamp);
 
-  // ✅ [تعديل] useCallback عشان متتعملش من جديد كل render
-  const handleSend = useCallback(async () => {
+  const handleSend = async () => {
     if (!currentUser) return toast.error('سجل دخول أولاً');
     if (!selectedType) return toast.error('اختر نوع الرسالة');
     if (!messageText.trim()) return toast.error('اكتب رسالتك');
@@ -87,11 +83,11 @@ export default function ChatScreen() {
     } finally {
       setSending(false);
     }
-  }, [currentUser, selectedType, messageText, addMessage]);
+  };
 
-  const getTypeLabel = useCallback((typeId: string) => {
+  const getTypeLabel = (typeId: string) => {
     return MESSAGE_TYPES.find((t) => t.id === typeId)?.label || 'رسالة';
-  }, []);
+  };
 
   const formatTime = (timestamp: number) => {
     const diffMins = Math.floor((getServerNow() - timestamp) / 60000);

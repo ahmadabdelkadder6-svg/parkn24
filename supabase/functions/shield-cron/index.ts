@@ -1,4 +1,3 @@
-// supabase/functions/shield-cron/index.ts
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import webpush from 'npm:web-push@3.6.7';
@@ -80,14 +79,14 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // ✅ جلب الدروع النشطة
+    // جلب الدروع النشطة فقط (ended_at = null)
     const { data: shields } = await supabase
       .from('shield_sessions')
-      .select('id, session_id, user_id, phone, alert_count, fake_tick')
+      .select('*')
       .is('ended_at', null);
 
     if (!shields || shields.length === 0) {
-      return new Response(JSON.stringify({ success: true, shields: 0, message: 'No active shields' }));
+      return new Response(JSON.stringify({ success: true, shields: 0 }));
     }
 
     console.log(`Found ${shields.length} active shields`);
@@ -97,33 +96,10 @@ serve(async (req) => {
     if (url.searchParams.get('test') === '1') {
       let sent = 0;
       for (const s of shields) {
-        // ✅ الحل: نجيب الـ UUID الحقيقي من جدول sessions
-        const { data: session } = await supabase
-          .from('sessions')
-          .select('user_id')
-          .eq('id', s.session_id)
-          .maybeSingle();
-
-        const realUserId = session?.user_id;
-        if (!realUserId) {
-          console.log(`⚠️ No real user_id for session ${s.session_id}`);
-          continue;
-        }
-
-        const { data: subs } = await supabase
-          .from('push_subscriptions')
-          .select('endpoint, p256dh, auth')
-          .eq('user_id', realUserId)
-          .limit(1);
-
-        if (!subs || subs.length === 0) {
-          console.log(`⚠️ No push sub for user ${realUserId}`);
-          continue;
-        }
-
+        if (!s.push_endpoint || !s.push_p256dh || !s.push_auth) continue;
         try {
           await webpush.sendNotification(
-            { endpoint: subs[0].endpoint, keys: { p256dh: subs[0].p256dh, auth: subs[0].auth } },
+            { endpoint: s.push_endpoint, keys: { p256dh: s.push_p256dh, auth: s.push_auth } },
             JSON.stringify({ title: '🔔 اختبار', body: `لو وصلك ده على ${s.phone} يبقى شغال ✅`, tag: 'test', data: { url: '/garage' } }),
             { TTL: 3600, urgency: 'high' }
           );
@@ -133,7 +109,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ test: true, sent, total: shields.length }));
     }
 
-    // ─── Cleanup ───
+    // ─── Cleanup: أغلق الجلسات المكررة ───
     const phoneGroups = new Map<string, any[]>();
     for (const s of shields) {
       const p = s.phone || 'unknown';
@@ -142,6 +118,11 @@ serve(async (req) => {
     }
     for (const [, sessions] of phoneGroups) {
       if (sessions.length <= 1) continue;
+      sessions.sort((a, b) => {
+        const ta = a.last_gps_at ? new Date(a.last_gps_at).getTime() : 0;
+        const tb = b.last_gps_at ? new Date(b.last_gps_at).getTime() : 0;
+        return tb - ta;
+      });
       for (let i = 1; i < sessions.length; i++) {
         await supabase.from('shield_sessions')
           .update({ ended_at: new Date().toISOString() })
@@ -155,42 +136,44 @@ serve(async (req) => {
     for (const shield of shields) {
       const alertCount = shield.alert_count || 0;
       const tick = shield.fake_tick || 0;
-      console.log(`\n🛡️ Shield: ${shield.phone}, alerts=${alertCount}, tick=${tick}/6`);
+      console.log(`\n🛡️ Shield: ${shield.phone}, alerts=${alertCount}/2, tick=${tick}/6`);
 
-      // ✅ الحل: نجيب الـ UUID الحقيقي من جدول sessions
-      const { data: session } = await supabase
+      // ─── هل عنده push keys؟ ───
+      if (!shield.push_endpoint || !shield.push_p256dh || !shield.push_auth) {
+        console.log('⚠️ No push keys');
+        totalSkipped++;
+        continue;
+      }
+
+      // ─── تحقق إن الجلسة الأصلية لسه نشطة ───
+      const { data: originalSession } = await supabase
         .from('sessions')
-        .select('user_id, status')
+        .select('id, status')
         .eq('id', shield.session_id)
         .maybeSingle();
 
-      if (!session || session.status !== 'active') {
+      if (!originalSession || originalSession.status !== 'active') {
         await supabase.from('shield_sessions')
-          .update({ ended_at: new Date().toISOString() })
+          .update({
+            ended_at: new Date().toISOString(),
+            push_endpoint: null,
+            push_p256dh: null,
+            push_auth: null,
+          })
           .eq('session_id', shield.session_id);
         console.log(`🔒 Session ${shield.session_id} ended — shield auto-closed`);
         totalSkipped++;
         continue;
       }
 
-      const realUserId = session.user_id;
-
-      // ✅ اقرأ الـ Push Keys من push_subscriptions بالـ UUID الحقيقي
-      const { data: subs } = await supabase
-        .from('push_subscriptions')
-        .select('endpoint, p256dh, auth')
-        .eq('user_id', realUserId)
-        .limit(1);
-
-      if (!subs || subs.length === 0) {
-        console.log(`⚠️ No push subscription for user ${realUserId}`);
+      // ─── حد أقصى 2 إشعار للجلسة ───
+      if (alertCount >= 2) {
+        console.log('⏭️ Max 2 alerts reached — done');
         totalSkipped++;
         continue;
       }
 
-      const pushSub = subs[0];
-
-      // ✅ مفيش حد أقصى — إشعارات مستمرة
+      // ─── Tick: كل 6 ticks = 30 دقيقة ───
       const newTick = tick + 1;
       if (newTick < 6) {
         await supabase.from('shield_sessions')
@@ -201,6 +184,7 @@ serve(async (req) => {
         continue;
       }
 
+      // ─── tick = 6 → ابعت إشعار ───
       const alert = pickWeightedAlert();
       const payload = JSON.stringify({
         title: alert.title,
@@ -210,9 +194,9 @@ serve(async (req) => {
       });
 
       try {
-        console.log(`🚀 Sending alert #${alertCount + 1}: ${alert.title}`);
+        console.log(`🚀 Sending alert ${alertCount + 1}/2: ${alert.title}`);
         await webpush.sendNotification(
-          { endpoint: pushSub.endpoint, keys: { p256dh: pushSub.p256dh, auth: pushSub.auth } },
+          { endpoint: shield.push_endpoint, keys: { p256dh: shield.push_p256dh, auth: shield.push_auth } },
           payload,
           { TTL: 86400, urgency: 'high' }
         );
@@ -228,11 +212,10 @@ serve(async (req) => {
         await supabase.from('shield_sessions')
           .update({ fake_tick: 0 })
           .eq('session_id', shield.session_id);
-
         if (err.statusCode === 410 || err.statusCode === 404) {
-          await supabase.from('push_subscriptions')
-            .delete()
-            .eq('endpoint', pushSub.endpoint);
+          await supabase.from('shield_sessions')
+            .update({ push_endpoint: null, push_p256dh: null, push_auth: null })
+            .eq('session_id', shield.session_id);
         }
       }
     }

@@ -1,5 +1,6 @@
+// src/components/AdminDashboard.tsx
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, CheckCircle, XCircle, MapPin, Plus,
@@ -8,6 +9,7 @@ import {
   Zap, Filter, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { useStore, normalizePhone, getServerNow, BOOKING_FEE } from '../store';
+import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 const BRAND = {
@@ -70,6 +72,7 @@ list.forEach((s: any, i: number) => {
   // ✅ بسيط: لو الـ ID في المجموعة = مجاني، غير كده = مدفوع
   const isSessionFree = (s: any): boolean => freeSessionIds.has(s.id);
 
+  const [, setTick] = useState(0);
   const [replyText, setReplyText] = useState('');
   const [replyingTo, setReplyingTo] = useState<string|null>(null);
   const [expandedMessage, setExpandedMessage] = useState<string|null>(null);
@@ -120,73 +123,60 @@ list.forEach((s: any, i: number) => {
 
   const filteredGaragesForAdmin = useMemo(() => { const q = garageSearch.trim().toLowerCase(); let l = garages.filter((g:any) => g.garageType === adminGarageTab); if (!q) return l; return l.filter((g:any) => g.name.toLowerCase().includes(q)); }, [garages, garageSearch, adminGarageTab]);
 
-  // ─── garageMap: O(1) lookup بدل garages.find() داخل اللوبات ───
-  const garageMap = useMemo(() => {
-    const m = new Map<string, any>();
-    for (let i = 0; i < garages.length; i++) m.set(garages[i].id, garages[i]);
-    return m;
-  }, [garages]);
+  useEffect(() => { const i = setInterval(() => setTick(t=>t+1), 60000); return () => clearInterval(i); }, []);
 
   const completedSessions = useMemo(() => sessions.filter((s:any) => s.status==='completed' || s.status==='active'), [sessions]);
 
-  const pendingTopUps = useMemo(() => walletTopUps.filter((w:any) => w.status==='pending'), [walletTopUps]);
+  const pendingTopUps = walletTopUps.filter((w:any) => w.status==='pending');
 
   const vipGarages = useMemo(() => garages.filter((g:any)=>g.garageType==='vip'||(g as any).is_vip===true||g.type==='partner'), [garages]);
 
   // ✅ VIP sessions: include ALL (paid + free), free ones have is_first_free_session=true
   const vipFilteredSessions = useMemo(() => completedSessions.filter((s:any) => {
     if (s.endTime) { const d=timestampToLocalDate(toMs(s.endTime)); if (vipReportDateFrom&&d<vipReportDateFrom) return false; if (vipReportDateTo&&d>vipReportDateTo) return false; } else return false;
-    const g=garageMap.get(s.garageId); if (!g) return false;
+    const g=garages.find((ga:any)=>ga.id===s.garageId); if (!g) return false;
     if (!(g.garageType==='vip'||(g as any).is_vip===true||g.type==='partner')) return false;
     if (vipGarageFilter!=='all'&&s.garageId!==vipGarageFilter) return false;
     if (vipPaymentFilter!=='all'&&s.paymentMethod!==vipPaymentFilter) return false;
     if (vipPlateSearch.trim()) { const q=vipPlateSearch.trim().toUpperCase(); if (!(s.carPlate??'').toUpperCase().includes(q)) return false; }
     return true;
-  }).sort((a:any,b:any)=>toMs(b.endTime)-toMs(a.endTime)), [completedSessions, garageMap, vipReportDateFrom, vipReportDateTo, vipGarageFilter, vipPaymentFilter, vipPlateSearch]);
+  }).sort((a:any,b:any)=>toMs(b.endTime)-toMs(a.endTime)), [completedSessions, garages, vipReportDateFrom, vipReportDateTo, vipGarageFilter, vipPaymentFilter, vipPlateSearch]);
 
-// ─── VIP Report Stats: single-loop بدل 6+ passes ───
 const vipReportStats = useMemo(() => {
-  let paidCount = 0, freeCount = 0, totalRevenue = 0, totalShieldRevenue = 0, shieldSessionsCount = 0;
-  let cashCount = 0, walletCount = 0, instapayCount = 0;
+  const ts = vipFilteredSessions.length;
+  const freeSessions = vipFilteredSessions.filter((s:any) => isSessionFree(s));
+  const paidSessions = vipFilteredSessions.filter((s:any) => !isSessionFree(s));
+  const freeCount = freeSessions.length;
+  const paidCount = paidSessions.length;
+  const tr = paidSessions.reduce((a:number,s:any)=>a+(s.totalPrice||0),0);
+  const tf = paidCount*BOOKING_FEE;
+
+  // 🛡️ إيراد الدرع
+  const totalShieldRevenue = vipFilteredSessions.reduce((a:number,s:any)=>a+(s.shieldCost||0),0);
+  const shieldSessionsCount = vipFilteredSessions.filter((s:any)=>(s.shieldCost||0)>0).length;
+
   const gm = new Map<string,{name:string;area:string;count:number;paidCount:number;freeCount:number;revenue:number;fees:number;shieldRevenue:number;shieldCount:number}>();
-
-  for (let i = 0; i < vipFilteredSessions.length; i++) {
-    const s = vipFilteredSessions[i];
+  vipFilteredSessions.forEach((s:any) => {
+    const g=garages.find((ga:any)=>ga.id===s.garageId); if(!g) return;
     const free = isSessionFree(s);
-    const price = s.totalPrice || 0;
-    const shield = s.shieldCost || 0;
-    const g = garageMap.get(s.garageId);
-
-    if (free) {
-      freeCount++;
-    } else {
-      paidCount++;
-      totalRevenue += price;
-      if (s.paymentMethod === 'cash') cashCount++;
-      else if (s.paymentMethod === 'wallet') walletCount++;
-      else if (s.paymentMethod === 'instapay') instapayCount++;
-    }
-
-    if (shield > 0) { totalShieldRevenue += shield; shieldSessionsCount++; }
-
-    if (g) {
-      const fee = free ? 0 : BOOKING_FEE;
-      const rev = free ? 0 : price;
-      const e = gm.get(s.garageId);
-      if (e) { e.count++; if (free) e.freeCount++; else e.paidCount++; e.revenue += rev; e.fees += fee; e.shieldRevenue += shield; if (shield > 0) e.shieldCount++; }
-      else gm.set(s.garageId, { name: g.name, area: g.area || 'مناطق أخرى', count: 1, paidCount: free ? 0 : 1, freeCount: free ? 1 : 0, revenue: rev, fees: fee, shieldRevenue: shield, shieldCount: shield > 0 ? 1 : 0 });
-    }
-  }
-
-  const pg = Array.from(gm.entries()).map(([id, d]) => ({ id, ...d })).sort((a, b) => b.count - a.count);
-  const totalBookingFees = paidCount * BOOKING_FEE;
+    const r = free ? 0 : (s.totalPrice||0);
+    const fee = free ? 0 : BOOKING_FEE;
+    const sc = s.shieldCost||0;
+    const e=gm.get(s.garageId);
+    if(e){e.count++;if(free)e.freeCount++;else e.paidCount++;e.revenue+=r;e.fees+=fee;e.shieldRevenue+=sc;if(sc>0)e.shieldCount++;}
+    else gm.set(s.garageId,{name:g.name,area:g.area||'مناطق أخرى',count:1,paidCount:free?0:1,freeCount:free?1:0,revenue:r,fees:fee,shieldRevenue:sc,shieldCount:sc>0?1:0});
+  });
+  const pg = Array.from(gm.entries()).map(([id,d])=>({id,...d})).sort((a,b)=>b.count-a.count);
+  const cc=paidSessions.filter((s:any)=>s.paymentMethod==='cash').length;
+  const wc=paidSessions.filter((s:any)=>s.paymentMethod==='wallet').length;
+  const ic=paidSessions.filter((s:any)=>s.paymentMethod==='instapay').length;
   return {
-    totalSessions: vipFilteredSessions.length, paidCount, freeCount, totalRevenue, totalBookingFees,
+    totalSessions:ts, paidCount, freeCount, totalRevenue:tr, totalBookingFees:tf,
     totalShieldRevenue, shieldSessionsCount,
-    totalAllRevenue: totalBookingFees + totalShieldRevenue,
-    perGarage: pg, cashCount, walletCount, instapayCount, otherCount: paidCount - cashCount - walletCount - instapayCount
+    totalAllRevenue: tf + totalShieldRevenue, // 🏆 إجمالي إيراد المنصة
+    perGarage:pg, cashCount:cc, walletCount:wc, instapayCount:ic, otherCount:paidCount-cc-wc-ic
   };
-}, [vipFilteredSessions, garageMap]);
+}, [vipFilteredSessions, garages]);
 
   const filteredWalletTopUps = useMemo(() => {
     return walletTopUps.filter((w:any) => {
@@ -202,29 +192,21 @@ const vipReportStats = useMemo(() => {
     }).sort((a:any, b:any) => toMs(b.createdAt || b.timestamp) - toMs(a.createdAt || a.timestamp));
   }, [walletTopUps, walletStatusFilter, walletPaymentFilter, walletReportDateFrom, walletReportDateTo]);
 
-  // ─── Wallet Report Stats: single-loop بدل 5 passes ───
   const walletReportStats = useMemo(() => {
-    let totalAmount = 0, approvedCount = 0, pendingCount = 0, rejectedCount = 0, approvedAmount = 0;
-    const uniquePhones = new Set<string>();
-
-    for (let i = 0; i < filteredWalletTopUps.length; i++) {
-      const w = filteredWalletTopUps[i];
-      const amount = w.amount || 0;
-      totalAmount += amount;
-      if (w.status === 'approved') { approvedCount++; approvedAmount += amount; }
-      else if (w.status === 'pending') pendingCount++;
-      else if (w.status === 'rejected') rejectedCount++;
-      uniquePhones.add(normalizePhone(w.userPhone || ''));
-    }
-
-    return { total: filteredWalletTopUps.length, totalAmount, approvedCount, pendingCount, rejectedCount, approvedAmount, uniqueUsers: uniquePhones.size };
+    const total = filteredWalletTopUps.length;
+    const totalAmount = filteredWalletTopUps.reduce((a:number, w:any) => a + (w.amount||0), 0);
+    const approved = filteredWalletTopUps.filter((w:any) => w.status === 'approved');
+    const pending = filteredWalletTopUps.filter((w:any) => w.status === 'pending');
+    const rejected = filteredWalletTopUps.filter((w:any) => w.status === 'rejected');
+    const approvedAmount = approved.reduce((a:number, w:any) => a + (w.amount||0), 0);
+    const uniqueUsers = new Set(filteredWalletTopUps.map((w:any) => normalizePhone(w.userPhone||''))).size;
+    return { total, totalAmount, approvedCount: approved.length, pendingCount: pending.length, rejectedCount: rejected.length, approvedAmount, uniqueUsers };
   }, [filteredWalletTopUps]);
 
-  // ─── Messages: memoized بدل إعادة حساب كل render ───
-  const safeMessages = useMemo(() => messages ?? [], [messages]);
-  const pendingMessages = useMemo(() => safeMessages.filter((m:any)=>m.status==='pending'), [safeMessages]);
-  const allMessages = useMemo(() => [...safeMessages].sort((a:any,b:any)=>b.timestamp-a.timestamp), [safeMessages]);
-  const displayedMessages = useMemo(() => messagesTab==='pending' ? pendingMessages : allMessages, [messagesTab, pendingMessages, allMessages]);
+  const safeMessages = messages ?? [];
+  const pendingMessages = safeMessages.filter((m:any)=>m.status==='pending');
+  const allMessages = [...safeMessages].sort((a:any,b:any)=>b.timestamp-a.timestamp);
+  const displayedMessages = messagesTab==='pending' ? pendingMessages : allMessages;
   const getTypeEmoji = (t:string) => { switch(t){case 'complaint':return '🚨';case 'inquiry':return '❓';case 'suggestion':return '💡';case 'technical':return '🔧';default:return '💬';} };
   const getTypeLabel = (t:string) => { switch(t){case 'complaint':return 'شكوى';case 'inquiry':return 'استفسار';case 'suggestion':return 'اقتراح';case 'technical':return 'مشكلة تقنية';default:return 'رسالة';} };
   const formatMsgTime = (ts:number) => new Date(ts).toLocaleDateString('ar-EG',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
@@ -243,13 +225,20 @@ const vipReportStats = useMemo(() => {
     const fp = isDir&&editPriceType==='daily'?editDailyPrice:isDir&&editPriceType==='monthly'?editMonthlyPrice:editBasePrice;
     updateGarage(garageId, { commissionRate:isDir?0:editCommissionRate, area:editArea, garageType:editGarageType, priceType:editPriceType, basePrice:fp, dailyPrice:editDailyPrice, monthlyPrice:editMonthlyPrice, lastPriceUpdate:new Date().toISOString(), priceUpdatedBy:'admin' });
     setEditingCommissionGarageId(null);
-    toast.success(`تم تحديث بيانات جراج ${garageMap.get(garageId)?.name} بنجاح ✅`);
+    toast.success(`تم تحديث بيانات جراج ${garages.find((g:any)=>g.id===garageId)?.name} بنجاح ✅`);
   };
 
   const handleAdminEnterGarage = (g:any) => { localStorage.setItem('garageRole','owner'); localStorage.removeItem('valetNumber'); localStorage.removeItem('valetName'); localStorage.setItem('currentGarageId',g.id); setCurrentGarageId(g.id); setView('garage'); toast.success(`👋 تم الدخول المباشر لإدارة جراج: ${g.name}`,{icon:'🅿️',duration:3000}); };
 
   const handleApproveTopUp = async (id:string, amount:number) => { if(processingTopUpId) return; setProcessingTopUpId(id); const lt=toast.loading('جاري اعتماد الرصيد...'); try{await approveTopUp(id); toast.dismiss(lt); toast.success(`تم اعتماد شحن ${amount} ج.م ✅`,{duration:4000}); await fetchAll();}catch(e:any){toast.dismiss(lt); toast.error(e?.message||'فشل');}finally{setProcessingTopUpId(null);} };
   const handleRejectTopUp = async (id:string) => { if(processingTopUpId) return; setProcessingTopUpId(id); const lt=toast.loading('جاري الرفض...'); try{await rejectTopUp(id); toast.dismiss(lt); toast.error('تم الرفض ❌'); await fetchAll();}catch(e:any){toast.dismiss(lt); toast.error(e?.message||'فشل');}finally{setProcessingTopUpId(null);} };
+
+  useEffect(() => {
+    let dt:ReturnType<typeof setTimeout>|null=null;
+    const tf=()=>{if(dt)clearTimeout(dt);dt=setTimeout(async()=>{try{await fetchAll();}catch(e){console.error(e);}},1500);};
+    const ch=supabase.channel('admin-rt').on('postgres_changes',{event:'*',schema:'public',table:'sessions'},tf).on('postgres_changes',{event:'*',schema:'public',table:'wallet_topups'},tf).on('postgres_changes',{event:'*',schema:'public',table:'messages'},tf).on('postgres_changes',{event:'*',schema:'public',table:'garages'},tf).subscribe();
+    return()=>{if(dt)clearTimeout(dt);supabase.removeChannel(ch);};
+  },[fetchAll]);
 
   const AREA_OPTIONS = [
     'وسط البلد','الزمالك','مصر الجديدة','مدينة نصر','المعادي','المهندسين','الدقي','التجمع الخامس',
@@ -510,7 +499,7 @@ const vipReportStats = useMemo(() => {
           <div className="rounded-2xl border overflow-hidden" style={{background:BRAND.card,borderColor:BRAND.border}}>
             {vipFilteredSessions.length===0?<div className="text-center py-10"><span className="text-2xl block mb-1">📭</span><p className="font-black text-xs" style={{color:BRAND.slateMuted}}>{vipPlateSearch?`لا توجد نتائج لـ "${vipPlateSearch}"`:'لا توجد عمليات VIP في الفترة المحددة'}</p></div>:(<>
               <div className="grid px-3 py-2" style={{gridTemplateColumns:'1fr auto auto auto',gap:8,background:BRAND.navy,color:'#fff'}}><div className="font-black text-[9px] text-right">اللوحة + الجراج</div><div className="font-black text-[9px] text-center">المدة</div><div className="font-black text-[9px] text-center">المبلغ</div><div className="font-black text-[9px] text-center">الدفع</div></div>
-              <div className="max-h-[400px] overflow-y-auto divide-y" style={{borderColor:BRAND.border}}>{vipFilteredSessions.slice(0,vipVisibleSessions).map((s:any)=>{const g=garageMap.get(s.garageId);const stMs=toMs(s.startTime);const enMs=toMs(s.endTime);const free=isSessionFree(s);const rev=free?0:(s.totalPrice||0);return(<div key={s.id} className="grid px-3 py-2.5 items-center" style={{gridTemplateColumns:'1fr auto auto auto',gap:8,background:free?'#fefce8':'transparent'}}><div className="text-right min-w-0"><div className="font-black text-[11px] truncate" style={{color:BRAND.navy}}>🚗 {s.carPlate} {free&&<span className="text-[7px] px-1 py-0.5 rounded bg-yellow-300 text-yellow-800">🎁</span>}</div><div className="font-bold text-[9px] truncate" style={{color:BRAND.slate}}>{g?.name||'—'}</div><div className="font-mono text-[8px]" style={{color:BRAND.slateMuted}}>{formatSessionTime(s.endTime)}</div></div><div className="font-mono font-black text-[10px] text-center" style={{color:BRAND.slate}}>{formatDuration(stMs,enMs)}</div><div className="text-center"><div className="font-black font-mono text-[11px]" style={{color:free?'#ca8a04':BRAND.greenDark}}>{free?'مجاني':`${rev.toFixed(0)}ج`}</div>{!free&&<div className="font-black text-[7px]" style={{color:BRAND.blue}}>+{BOOKING_FEE}ج⚡</div>}</div><div className="text-center"><span className="font-black text-[8px] px-1.5 py-0.5 rounded text-white" style={{background:free?'#ca8a04':s.paymentMethod==='cash'?BRAND.greenDark:s.paymentMethod==='wallet'?BRAND.blue:s.paymentMethod==='instapay'?'#7c3aed':BRAND.slate}}>{free?'🎁':s.paymentMethod==='cash'?'💵':s.paymentMethod==='wallet'?'👝':s.paymentMethod==='instapay'?'📱':'📲'}</span></div></div>);})}</div>
+              <div className="max-h-[400px] overflow-y-auto divide-y" style={{borderColor:BRAND.border}}>{vipFilteredSessions.slice(0,vipVisibleSessions).map((s:any)=>{const g=garages.find((ga:any)=>ga.id===s.garageId);const stMs=toMs(s.startTime);const enMs=toMs(s.endTime);const free=isSessionFree(s);const rev=free?0:(s.totalPrice||0);return(<div key={s.id} className="grid px-3 py-2.5 items-center" style={{gridTemplateColumns:'1fr auto auto auto',gap:8,background:free?'#fefce8':'transparent'}}><div className="text-right min-w-0"><div className="font-black text-[11px] truncate" style={{color:BRAND.navy}}>🚗 {s.carPlate} {free&&<span className="text-[7px] px-1 py-0.5 rounded bg-yellow-300 text-yellow-800">🎁</span>}</div><div className="font-bold text-[9px] truncate" style={{color:BRAND.slate}}>{g?.name||'—'}</div><div className="font-mono text-[8px]" style={{color:BRAND.slateMuted}}>{formatSessionTime(s.endTime)}</div></div><div className="font-mono font-black text-[10px] text-center" style={{color:BRAND.slate}}>{formatDuration(stMs,enMs)}</div><div className="text-center"><div className="font-black font-mono text-[11px]" style={{color:free?'#ca8a04':BRAND.greenDark}}>{free?'مجاني':`${rev.toFixed(0)}ج`}</div>{!free&&<div className="font-black text-[7px]" style={{color:BRAND.blue}}>+{BOOKING_FEE}ج⚡</div>}</div><div className="text-center"><span className="font-black text-[8px] px-1.5 py-0.5 rounded text-white" style={{background:free?'#ca8a04':s.paymentMethod==='cash'?BRAND.greenDark:s.paymentMethod==='wallet'?BRAND.blue:s.paymentMethod==='instapay'?'#7c3aed':BRAND.slate}}>{free?'🎁':s.paymentMethod==='cash'?'💵':s.paymentMethod==='wallet'?'👝':s.paymentMethod==='instapay'?'📱':'📲'}</span></div></div>);})}</div>
               {vipFilteredSessions.length>vipVisibleSessions&&<div className="p-3 border-t text-center" style={{borderColor:BRAND.border}}><button onClick={()=>setVipVisibleSessions(p=>p+10)} className="w-full font-black py-2.5 rounded-xl text-[10px] cursor-pointer bg-white border active:scale-95 transition-all flex items-center justify-center gap-1.5" style={{color:BRAND.blue,borderColor:BRAND.border}}><ChevronDown size={14}/><span>عرض المزيد ({vipFilteredSessions.length-vipVisibleSessions} عملية أخرى)</span></button></div>}
             </>)}
           </div>

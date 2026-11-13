@@ -1,25 +1,21 @@
 // src/components/SessionScreen.tsx
 
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   Clock,
   Car,
   Sparkles,
   MapPin,
+  Navigation,
+  CheckCircle2,
   ShieldCheck,
-  ShieldOff,
+  XCircle,
 } from 'lucide-react';
-import { useStore, normalizePlate, normalizePhone, getServerNow, haversineDistance } from '../store';
+import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
-import {
-  sendLocalNotification,
-  playUrgentSound,
-} from '../utils/notifications';
-import {
-  registerShieldSession,
-} from '../lib/pushManager';
+import ShieldOverlay from './ShieldOverlay';
 import {
   getPendingArrival,
   clearPendingArrival,
@@ -43,12 +39,6 @@ const BRAND = {
 
 const AUTO_END_SECONDS = 6 * 60 * 60;
 
-// 🛡️ نطاق الأمان حول الجراج (متر)
-const SHIELD_GEOFENCE_METERS = 250;
-
-// ⏱️ فترة سماح بعد بدء الجلسة (ملي ثانية)
-const SHIELD_GRACE_PERIOD_MS = 90_000;
-
 const safeParseTime = (value: any): number => {
   if (!value) return 0;
   if (typeof value === 'string') {
@@ -70,82 +60,7 @@ const formatTime = (seconds: number): string => {
 };
 
 /* ═══════════════════════════════════════════════════════════
-   🛡️ ShieldRadarDisplay — الرادار المتحرك (عرض فقط)
-   ═══════════════════════════════════════════════════════════ */
-const ShieldRadarDisplay = memo(function ShieldRadarDisplay({
-  shieldCost,
-  shieldCode,
-}: {
-  shieldCost: number;
-  shieldCode?: string;
-}) {
-  const radarRef = useRef<HTMLDivElement>(null);
-  const angleRef = useRef(0);
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      angleRef.current = (angleRef.current + 3) % 360;
-      if (radarRef.current) {
-        radarRef.current.style.background = `conic-gradient(from ${angleRef.current}deg, transparent 0deg, rgba(34,197,94,0.35) 40deg, transparent 80deg)`;
-      }
-    }, 50);
-    return () => clearInterval(id);
-  }, []);
-
-  const costLabel = shieldCost === 0 ? 'مجاني' : `${shieldCost} ج.م`;
-
-  return (
-    <div className="w-full flex flex-col items-center gap-2">
-      <div className="relative" style={{ width: 140, height: 140 }}>
-        <div
-          ref={radarRef}
-          className="absolute inset-0 rounded-full"
-          style={{
-            background: 'conic-gradient(from 0deg, transparent 0deg, rgba(34,197,94,0.35) 40deg, transparent 80deg)',
-          }}
-        />
-        <div className="absolute inset-1.5 rounded-full border border-green-500/20" />
-        <div className="absolute inset-3.5 rounded-full border border-green-500/15" />
-        <div className="absolute inset-5.5 rounded-full border border-green-500/10" />
-        <div className="absolute top-1/2 left-0 right-0 h-px bg-green-500/10" />
-        <div className="absolute left-1/2 top-0 bottom-0 w-px bg-green-500/10" />
-        <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full animate-pulse"
-          style={{
-            background: '#4ade80',
-            boxShadow: '0 0 12px rgba(74,222,128,0.6), 0 0 24px rgba(74,222,128,0.3)',
-          }}
-        />
-      </div>
-
-      <div
-        className="flex items-center gap-2 rounded-full px-3.5 py-1.5 border"
-        style={{
-          background: 'linear-gradient(135deg, rgba(34,197,94,0.15), rgba(22,163,74,0.08))',
-          borderColor: 'rgba(34,197,94,0.4)',
-        }}
-      >
-        <ShieldCheck className="w-4 h-4 text-green-400" />
-        <span className="text-green-400 text-[11px] font-black">الحماية نشطة</span>
-        <span
-          className="text-[9px] font-black px-1.5 py-0.5 rounded"
-          style={{
-            background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
-            color: '#0a1628',
-          }}
-        >
-          {costLabel}
-        </span>
-        {shieldCode && (
-          <span className="text-green-600/80 text-[9px] font-mono">{shieldCode}</span>
-        )}
-      </div>
-    </div>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════
-   ⚡ LiveSessionTimer
+   ⚡ LiveSessionTimer — متوسط الحجم ومتناسق (المنطق الأصلي)
    ═══════════════════════════════════════════════════════════ */
 const LiveSessionTimer = memo(function LiveSessionTimer({
   activeStartMs,
@@ -274,24 +189,25 @@ export default function SessionScreen() {
     acknowledgedSessionIds,
     acknowledgeSession,
     endSession,
+    deductWallet,
   } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
   const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
 
   const isMountedRef = useRef(true);
+  const realtimeChannelRef = useRef<any>(null);
   const autoEndedRef = useRef(false);
 
   const [ending, setEnding] = useState(false);
+  const [shieldResumed, setShieldResumed] = useState<boolean | null>(null);
+
+  // 🚀 إخفاء فوري للجلسة المنتهية (مش تفضل كام ثانية على الشاشة)
   const [endedSessionId, setEndedSessionId] = useState<string | null>(null);
+
+  // 🚀 قراءة محليّة فورية لمنع تحويل الشاشة
   const [pendingArrival, setPendingArrival] = useState<any>(() => getPendingArrival());
   const [startingSession, setStartingSession] = useState(false);
-
-  // 🛡️ state + refs للدرع
-  const [shieldBreach, setShieldBreach] = useState(false);
-  const shieldWatchIdRef = useRef<number | null>(null);
-  const shieldAlarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const shieldAlertSentRef = useRef(false);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -311,12 +227,23 @@ export default function SessionScreen() {
     };
   }, []);
 
+  const isMySessionRow = useCallback((row: any) => {
+    if (!row) return false;
+    const rowPlate = normalizePlate(row.car_plate || row.carPlate);
+    const rowPhone = normalizePhone(row.customer_phone || row.customerPhone || '');
+    return (
+      (!!userPlate && rowPlate === userPlate) ||
+      (!!userPhone && rowPhone === userPhone)
+    );
+  }, [userPlate, userPhone]);
+
   const activeSession = useMemo(() => {
     let latest: (typeof sessions)[number] | undefined;
     let maxStart = -1;
     for (let i = 0; i < sessions.length; i++) {
       const s = sessions[i];
       if (!s || s.status !== 'active') continue;
+      // 🚀 إخفاء فوري: لو الجلسة دي اتنهت محلياً، تجاهلها
       if (endedSessionId === s.id) continue;
       if (acknowledgedSessionIds?.has(s.id)) continue;
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
@@ -361,265 +288,91 @@ export default function SessionScreen() {
     return ms > 0 ? ms : getServerNow();
   }, [activeSession]);
 
-  // 🛡️ حالة الدرع
-  const shieldCost = (activeSession as any)?.shieldCost as number | null | undefined;
-  const shieldActive = shieldCost != null;
-
-  /* ═══════════════════════════════════════════════════════════
-     🛡️ إشعارات الدرع — GPS + صوت + اهتزاز + إشعار محلي
-     ✅ الإصلاح: grace period + shieldBreach state + استمرار المراقبة
-     ═══════════════════════════════════════════════════════════ */
+  // 🛡️ استرجاع حالة الدرع من الـ DB
   useEffect(() => {
-    const cleanup = () => {
-      if (shieldWatchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(shieldWatchIdRef.current);
-        shieldWatchIdRef.current = null;
-      }
-      if (shieldAlarmIntervalRef.current) {
-        clearInterval(shieldAlarmIntervalRef.current);
-        shieldAlarmIntervalRef.current = null;
-      }
-    };
-
-    if (!shieldActive || !activeSession || !garage) {
-      cleanup();
-      shieldAlertSentRef.current = false;
-      setShieldBreach(false);
+    if (!activeSession?.id) {
+      setShieldResumed(null);
       return;
     }
 
-    if (!('geolocation' in navigator)) return;
-
-    const parkingLat = garage.lat;
-    const parkingLng = garage.lng;
-    const sessionStartMs = safeParseTime(activeSession.startTime) || Date.now();
-
-    console.log('📡 Shield GPS watch started', { parkingLat, parkingLng });
-
-    shieldWatchIdRef.current = navigator.geolocation.watchPosition(
-      (pos) => {
-        if (!isMountedRef.current) return;
-
-        const distMeters = haversineDistance(
-          pos.coords.latitude,
-          pos.coords.longitude,
-          parkingLat,
-          parkingLng,
-        );
-
-        // ⏱️ فترة السماح — مش هنضرب إنذار أول 90 ثانية
-        const graceElapsed = Date.now() - sessionStartMs;
-        if (graceElapsed < SHIELD_GRACE_PERIOD_MS) return;
-
-        if (distMeters > SHIELD_GEOFENCE_METERS) {
-          // 🔴 خرج من النطاق
-          setShieldBreach(true);
-
-          if (!shieldAlertSentRef.current) {
-            shieldAlertSentRef.current = true;
-
-            console.log('🚨 SHIELD BREACH — distance:', Math.round(distMeters), 'm');
-
-            // 🔊 صوت إنذار متقطع
-            try {
-              playUrgentSound();
-              shieldAlarmIntervalRef.current = setInterval(() => {
-                try { playUrgentSound(); } catch {}
-              }, 2000);
-            } catch {}
-
-            // 📱 إشعار محلي
-            try {
-              sendLocalNotification(
-                '🚨 تنبيه حركة!',
-                `السيارة تحركت ${Math.round(distMeters)}م من مكان الركن`,
-                '/',
-              );
-            } catch {}
-
-            // 📳 اهتزاز
-            if (navigator.vibrate) {
-              navigator.vibrate([300, 200, 300, 200, 300, 200, 300]);
-            }
-
-            // ⏹️ وقف الصوت بعد 10 ثواني
-            setTimeout(() => {
-              if (shieldAlarmIntervalRef.current) {
-                clearInterval(shieldAlarmIntervalRef.current);
-                shieldAlarmIntervalRef.current = null;
-              }
-            }, 10000);
-          }
-        } else {
-          // 🟢 جوه النطاق — أصلح الحالة
-          setShieldBreach(false);
-          shieldAlertSentRef.current = false;
-          if (shieldAlarmIntervalRef.current) {
-            clearInterval(shieldAlarmIntervalRef.current);
-            shieldAlarmIntervalRef.current = null;
-          }
-        }
-      },
-      (err) => {
-        console.warn('⚠️ GPS watch error:', err.message);
-      },
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
-    );
-
-    return cleanup;
-  }, [shieldActive, activeSession?.id, garage?.lat, garage?.lng]);
-
-  /* ═══════════════════════════════════════════════════════════
-     📲 Push Notifications — تسجيل مع الـ Service Worker
-     ═══════════════════════════════════════════════════════════ */
-  useEffect(() => {
-    if (!shieldActive || !activeSession || !garage) return;
-    if (!('serviceWorker' in navigator)) return;
-
     let cancelled = false;
 
-    const registerPush = async () => {
-      if (cancelled) return;
-
+    const checkShield = async () => {
       try {
-        const reg = await navigator.serviceWorker.ready;
-        let sub = await reg.pushManager.getSubscription();
+        const { data, error } = await supabase
+          .from('shield_sessions')
+          .select('session_id')
+          .eq('session_id', activeSession.id)
+          .is('ended_at', null)
+          .limit(1)
+          .maybeSingle();
 
-        const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-        if (!VAPID_PUBLIC) {
-          console.warn('⚠️ VITE_VAPID_PUBLIC_KEY missing — Push disabled');
+        if (cancelled) return;
+
+        if (error) {
+          console.warn('Shield check error:', error);
+          setShieldResumed(false);
           return;
         }
 
-        if (!sub) {
-          const urlBase64ToUint8Array = (b: string): Uint8Array => {
-            const p = '='.repeat((4 - (b.length % 4)) % 4);
-            const d = window.atob((b + p).replace(/-/g, '+').replace(/_/g, '/'));
-            return new Uint8Array([...d].map((c) => c.charCodeAt(0)));
-          };
-
-          try {
-            sub = await reg.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
-            });
-          } catch (subErr) {
-            console.warn('⚠️ Push subscribe failed:', subErr);
-            return;
-          }
+        setShieldResumed(!!data);
+      } catch (e) {
+        if (!cancelled) {
+          console.warn('Shield check failed:', e);
+          setShieldResumed(false);
         }
-
-        if (cancelled || !sub) return;
-
-        const subJson = sub.toJSON();
-        const identifier = userPhone || (currentUser as any)?.id || 'unknown';
-
-        await supabase
-          .from('shield_sessions')
-          .update({
-            push_endpoint: subJson.endpoint,
-            push_p256dh: subJson.keys?.p256dh || null,
-            push_auth: subJson.keys?.auth || null,
-          })
-          .eq('session_id', activeSession.id)
-          .is('ended_at', null);
-
-        await registerShieldSession(
-          activeSession.id,
-          garage.lat,
-          garage.lng,
-          identifier,
-          garage.id,
-        );
-
-        console.log('✅ Push registered for shield session');
-      } catch (err) {
-        console.warn('Push registration error:', err);
       }
     };
 
-    registerPush();
-    const refreshInterval = setInterval(registerPush, 10 * 60 * 1000);
+    checkShield();
+    return () => { cancelled = true; };
+  }, [activeSession?.id]);
+
+  useEffect(() => {
+    fetchAll().catch((e) => console.error('Fetch error:', e));
+  }, [fetchAll]);
+
+  useEffect(() => {
+    if (!userPlate && !userPhone) return;
+    let cancelled = false;
+
+    const refetch = async () => {
+      if (cancelled || !isMountedRef.current) return;
+      try { await fetchAll(); } catch (e) { console.error('❌ Realtime fetch error:', e); }
+    };
+
+    const channel = supabase.channel(`customer-session-live-${userPlate || userPhone}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, async (payload) => {
+        const newRow = payload.new as any;
+        const oldRow = payload.old as any;
+        if (isMySessionRow(newRow) || isMySessionRow(oldRow)) await refetch();
+      })
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+
+    const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', refetch);
 
     return () => {
       cancelled = true;
-      clearInterval(refreshInterval);
-    };
-  }, [shieldActive, activeSession?.id, garage?.id, garage?.lat, garage?.lng, userPhone, currentUser]);
-
-  /* ═══════════════════════════════════════════════════════════
-     📬 Service Worker Messages — استقبال تنبيهات Push
-     ═══════════════════════════════════════════════════════════ */
-  useEffect(() => {
-    if (!shieldActive || !activeSession) return;
-    if (!('serviceWorker' in navigator)) return;
-
-    const handleSWMessage = (event: MessageEvent) => {
-      const data = event.data;
-      if (!data || typeof data !== 'object') return;
-
-      if (data.type === 'SHIELD_BREACH_DETECTED') {
-        setShieldBreach(true);
-
-        if (shieldAlertSentRef.current) return;
-        shieldAlertSentRef.current = true;
-
-        const dist = data.distance || 300;
-
-        try {
-          playUrgentSound();
-          shieldAlarmIntervalRef.current = setInterval(() => {
-            try { playUrgentSound(); } catch {}
-          }, 2000);
-        } catch {}
-
-        try {
-          sendLocalNotification(
-            '🚨 تنبيه حركة!',
-            `السيارة تحركت ${dist}م من مكان الركن`,
-            '/',
-          );
-        } catch {}
-
-        if (navigator.vibrate) {
-          navigator.vibrate([300, 200, 300, 200, 300, 200, 300]);
-        }
-
-        setTimeout(() => {
-          if (shieldAlarmIntervalRef.current) {
-            clearInterval(shieldAlarmIntervalRef.current);
-            shieldAlarmIntervalRef.current = null;
-          }
-        }, 10000);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', refetch);
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
       }
     };
+  }, [userPlate, userPhone, fetchAll, isMySessionRow]);
 
-    navigator.serviceWorker.addEventListener('message', handleSWMessage);
-    return () => {
-      navigator.serviceWorker.removeEventListener('message', handleSWMessage);
-    };
-  }, [shieldActive, activeSession?.id]);
-
-  /* ═══════════════════════════════════════════════════════════
-     🏁 إنهاء الجلسة
-     ═══════════════════════════════════════════════════════════ */
+  // 🏁 إنهاء الجلسة يدويًا عند الضغط على زر الخروج
   const handleEndSession = useCallback(async () => {
     if (ending || !activeSession) return;
 
+    // 🚀 إخفاء فوري من الشاشة قبل أي await
     setEndedSessionId(activeSession.id);
     setEnding(true);
-
-    // 🛑 وقف كل إنذارات الدرع
-    setShieldBreach(false);
-    shieldAlertSentRef.current = false;
-    if (shieldAlarmIntervalRef.current) {
-      clearInterval(shieldAlarmIntervalRef.current);
-      shieldAlarmIntervalRef.current = null;
-    }
-    if (shieldWatchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(shieldWatchIdRef.current);
-      shieldWatchIdRef.current = null;
-    }
 
     try {
       const elapsedSec = Math.floor((getServerNow() - activeStartMs) / 1000);
@@ -627,11 +380,13 @@ export default function SessionScreen() {
 
       const nowIso = new Date().toISOString();
 
+      // قفل الدرع بالـ session_id
       await supabase.from('shield_sessions')
         .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id)
         .is('ended_at', null);
 
+      // 🚀 قفل الدرع بالـ phone احتياط (أي درع مش مرتبط بـ session)
       if (userPhone) {
         await supabase.from('shield_sessions')
           .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
@@ -648,26 +403,19 @@ export default function SessionScreen() {
       }
     } catch (e: any) {
       toast.error(e?.message || 'فشل إنهاء الجلسة');
+      // لو فشل، رجّع الجلسة على الشاشة
       setEndedSessionId(null);
     } finally {
       setEnding(false);
     }
   }, [ending, activeSession, activeStartMs, endSession, acknowledgeSession, setSelectedGarageId, setScreen, userPhone]);
 
-  /* ═══════════════════════════════════════════════════════════
-     🚨 رد فعل إنذار الدرع — أي ضغطة = إنهاء الجلسة + رجوع
-     ═══════════════════════════════════════════════════════════ */
-  const handleShieldAlarmResponse = useCallback(async () => {
-    await handleEndSession();
-  }, [handleEndSession]);
-
-  /* ═══════════════════════════════════════════════════════════
-     ⏰ الإنهاء التلقائي بعد 6 ساعات
-     ═══════════════════════════════════════════════════════════ */
+  // ⏰ الإنهاء التلقائي بعد 6 ساعات
   const handleAutoEnd = useCallback(async () => {
     if (autoEndedRef.current || !activeSession) return;
     autoEndedRef.current = true;
 
+    // 🚀 إخفاء فوري من الشاشة
     setEndedSessionId(activeSession.id);
 
     try {
@@ -675,11 +423,13 @@ export default function SessionScreen() {
 
       const nowIso = new Date().toISOString();
 
+      // قفل الدرع بالـ session_id
       await supabase.from('shield_sessions')
         .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id)
         .is('ended_at', null);
 
+      // 🚀 قفل الدرع بالـ phone احتياط
       if (userPhone) {
         await supabase.from('shield_sessions')
           .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
@@ -701,9 +451,7 @@ export default function SessionScreen() {
     }
   }, [activeSession, endSession, acknowledgeSession, setSelectedGarageId, setScreen, userPhone]);
 
-  /* ═══════════════════════════════════════════════════════════
-     ✅ بدء الجلسة من Pending Arrival
-     ═══════════════════════════════════════════════════════════ */
+  // ✅ بدء الجلسة في Supabase عند ضغط الزر الأخضر
   const handleConfirmArrivalAndStartSession = useCallback(async () => {
     if (!pendingArrival || startingSession) return;
     setStartingSession(true);
@@ -745,109 +493,18 @@ export default function SessionScreen() {
     setScreen('list');
   }, [setSelectedGarageId, setScreen]);
 
+
   // ═══════════════════════════════════════════════════════
-  // 🎨 جلسة ركن نشطة
+  // 🎨 حالة 2: جلسة ركن نشطة (الدرع + العداد الأصليين)
   // ═══════════════════════════════════════════════════════
   if (activeSession) {
     return (
       <motion.div
-        className="h-full flex flex-col bg-slate-950 text-white overflow-hidden relative"
+        className="h-full flex flex-col bg-slate-950 text-white overflow-hidden"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         dir="rtl"
       >
-        {/* ═══════════════════════════════════════════════════
-            🚨 شاشة إنذار الدرع — تظهر فوق كل حاجة
-            ═══════════════════════════════════════════════════ */}
-        <AnimatePresence>
-          {shieldActive && shieldBreach && (
-            <motion.div
-              key="shield-alarm"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4"
-              style={{ background: 'rgba(0, 0, 0, 0.9)' }}
-            >
-              <motion.div
-                initial={{ scale: 0.7, opacity: 0, y: 30 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.7, opacity: 0, y: 30 }}
-                transition={{ type: 'spring', damping: 20, stiffness: 300 }}
-                className="w-full max-w-sm rounded-3xl p-6 text-center"
-                style={{
-                  background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
-                  border: '2.5px solid #ef4444',
-                  boxShadow: '0 0 60px rgba(239, 68, 68, 0.5), 0 0 120px rgba(239, 68, 68, 0.2), inset 0 1px 0 rgba(255,255,255,0.1)',
-                }}
-              >
-                {/* أيقونة الإنذار */}
-                <motion.div
-                  animate={{ scale: [1, 1.2, 1] }}
-                  transition={{ repeat: Infinity, duration: 1 }}
-                  className="text-6xl mb-4"
-                >
-                  🚨
-                </motion.div>
-
-                <h2 className="text-2xl font-black text-white mb-2">
-                  تنبيه الدرع!
-                </h2>
-
-                <p className="text-red-300 text-sm font-bold mb-2">
-                  السيارة خرجت من نطاق الجراج
-                </p>
-
-                <div
-                  className="mx-auto mb-6 px-4 py-2 rounded-xl"
-                  style={{
-                    background: 'rgba(239, 68, 68, 0.15)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                  }}
-                >
-                  <p className="text-white text-lg font-black">
-                    هل أنت اللي بتسوق العربية؟
-                  </p>
-                </div>
-
-                {/* الزرارين */}
-                <div className="flex flex-col gap-3">
-                  <button
-                    onClick={handleShieldAlarmResponse}
-                    className="w-full py-4 rounded-2xl font-black text-white text-base border-0 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2"
-                    style={{
-                      background: 'linear-gradient(135deg, #22c55e, #16a34a)',
-                      boxShadow: '0 6px 20px rgba(34, 197, 94, 0.4), inset 0 1px 0 rgba(255,255,255,0.2)',
-                    }}
-                  >
-                    <span className="text-xl">✅</span>
-                    <span>أنا اللي سايق</span>
-                  </button>
-
-                  <button
-                    onClick={handleShieldAlarmResponse}
-                    className="w-full py-4 rounded-2xl font-black text-white text-base border-0 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2"
-                    style={{
-                      background: 'linear-gradient(135deg, #ef4444, #b91c1c)',
-                      boxShadow: '0 6px 20px rgba(239, 68, 68, 0.4), inset 0 1px 0 rgba(255,255,255,0.2)',
-                    }}
-                  >
-                    <span className="text-xl">❌</span>
-                    <span>مش أنا — سرقة!</span>
-                  </button>
-                </div>
-
-                <p className="text-slate-400 text-[10px] font-bold mt-4">
-                  أي اختيار هينهي الجلسة الحالية
-                </p>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* ═══════════════════════════════════════════════════
-            📺 المحتوى الرئيسي للجلسة
-            ═══════════════════════════════════════════════════ */}
         <div className="flex-1 flex flex-col items-center px-4 pt-3 pb-2 gap-2.5 overflow-y-auto">
           {/* بادج "جلسة نشطة" */}
           <div
@@ -863,52 +520,26 @@ export default function SessionScreen() {
             </span>
           </div>
 
-          {/* 🛡️ الدرع — رادار كبير أو بادج بسيط */}
-          {shieldActive ? (
+          {/* 🛡️ الدرع الأصلي */}
+          {garage && shieldResumed !== null && (
             <div className="w-full max-w-md">
-              <div
-                className="w-full relative overflow-hidden rounded-2xl p-4 flex flex-col items-center gap-2"
-                style={{
-                  background: 'linear-gradient(135deg, #0a1628 0%, #1e3a8a 50%, #0a1628 100%)',
-                  border: '1.5px solid rgba(96, 165, 250, 0.3)',
-                  boxShadow: '0 8px 32px rgba(22, 86, 184, 0.35), inset 0 1px 0 rgba(255,255,255,0.1)',
-                }}
-              >
-                <div
-                  className="absolute inset-0 opacity-30 pointer-events-none"
-                  style={{
-                    background: 'linear-gradient(90deg, transparent 0%, rgba(96,165,250,0.15) 50%, transparent 100%)',
-                    animation: 'shimmerShield 3s infinite',
-                  }}
-                />
-                <style>{`
-                  @keyframes shimmerShield { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
-                `}</style>
-
-                <div className="relative flex flex-col items-center gap-2">
-                  <ShieldRadarDisplay
-                    shieldCost={shieldCost ?? 0}
-                    shieldCode={(currentUser as any)?.shieldCode || undefined}
-                  />
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div
-              className="w-full max-w-md rounded-xl px-3 py-2 flex items-center justify-center gap-2 border"
-              style={{
-                background: 'linear-gradient(135deg, rgba(100,116,139,0.1) 0%, rgba(71,85,105,0.05) 100%)',
-                borderColor: 'rgba(100, 116, 139, 0.3)',
-              }}
-            >
-              <ShieldOff size={16} style={{ color: BRAND.slateMuted }} />
-              <span className="text-[11px] font-black" style={{ color: BRAND.slateMuted }}>
-                الدرع غير مفعّل
-              </span>
+              <ShieldOverlay
+                key={shieldResumed ? 'resumed' : 'fresh'}
+                sessionId={activeSession.id}
+                userId={currentUser?.id || ''}
+                garageId={activeSession.garageId}
+                parkingLat={(garage as any).lat ?? 30.0444}
+                parkingLng={(garage as any).lng ?? 31.2357}
+                userPhone={currentUser?.phone ?? null}
+                onDeductWallet={deductWallet}
+                onNavigateToWallet={() => setScreen('list')}
+                autoResume={shieldResumed}
+                onSessionEnd={handleEndSession}
+              />
             </div>
           )}
 
-          {/* ⚡ العداد */}
+          {/* ⚡ العداد الأصلي */}
           <LiveSessionTimer
             activeStartMs={activeStartMs}
             onAutoEnd={handleAutoEnd}
@@ -936,7 +567,7 @@ export default function SessionScreen() {
           </div>
         </div>
 
-        {/* 📋 القسم السفلي */}
+        {/* 📋 القسم السفلي الأصلي */}
         <div
           className="px-4 pt-3 pb-4 border-t shrink-0"
           style={{
@@ -1019,5 +650,4 @@ export default function SessionScreen() {
     );
   }
 
-  return null;
 }

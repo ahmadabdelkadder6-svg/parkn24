@@ -56,11 +56,6 @@ const BRAND = {
   border: 'rgba(255, 255, 255, 0.08)',
 };
 
-// 🎯 ثوابت البدء التلقائي (محسّنة لـ GPS الجراج الضعيف)
-const AUTO_START_DISTANCE_KM = 0.15;    // 300 متر (GPS جوه الجراج ضعيف)
-const AUTO_START_DURATION_MS = 120_000; // 120 ثانية (دقيقتين)
-const AUTO_START_MOVEMENT_KM = 0.05;    // 50 متر tolerance للحركة
-
 const getBonusForAmount = (amount: number): number => {
   if (amount >= 250) return 50;
   if (amount >= 100) return 15;
@@ -196,117 +191,89 @@ export default function NavigationScreen() {
   const [showInsufficientModal, setShowInsufficientModal] = useState(false);
   const [processingTopup, setProcessingTopup] = useState<string | null>(null);
 
-  // 🚨 Geofence alarm states
-  const [showGeofenceAlarm, setShowGeofenceAlarm] = useState(false);
-  const [geofenceAlertSent, setGeofenceAlertSent] = useState(false);
-
-  // 🛡️ اختيار الدرع (افتراضياً شغال)
-  const [shieldEnabled, setShieldEnabled] = useState(true);
-
-  // 🎯 حالة البدء التلقائي (للعرض بس)
-  const [autoStartCountdown, setAutoStartCountdown] = useState<number | null>(null);
-
   const isMountedRef = useRef(true);
   const navigatedToSessionRef = useRef(false);
-
-  const [isArriving, setIsArriving] = useState(false);
-
-  // 🚨 Geofence alarm refs
-  const alarmCtxRef = useRef<AudioContext | null>(null);
-  const alarmOscRef = useRef<OscillatorNode | null>(null);
-  const geofenceTriggeredRef = useRef(false);
-  const geofenceWatchIdRef = useRef<number | null>(null);
-  const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // 🎯 Auto-start refs
-  const autoStartWatchIdRef = useRef<number | null>(null);
-  const autoStartTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const autoStartAnchorRef = useRef<{ lat: number; lng: number } | null>(null);
-  const autoStartStartedAtRef = useRef<number | null>(null);
-  const autoStartTriggeredRef = useRef(false);
-  const shieldEnabledRef = useRef(shieldEnabled);
-
-  useEffect(() => {
-    shieldEnabledRef.current = shieldEnabled;
-  }, [shieldEnabled]);
+  const isArrivingRef = useRef(false);
+  const realtimeChannelRef = useRef<any>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      try {
-        alarmOscRef.current?.stop();
-        alarmCtxRef.current?.close();
-      } catch {}
-      alarmOscRef.current = null;
-      alarmCtxRef.current = null;
-      if (geofenceWatchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(geofenceWatchIdRef.current);
-        geofenceWatchIdRef.current = null;
-      }
-      if (autoStartWatchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(autoStartWatchIdRef.current);
-        autoStartWatchIdRef.current = null;
-      }
-      if (autoStartTimerRef.current) {
-        clearInterval(autoStartTimerRef.current);
-        autoStartTimerRef.current = null;
-      }
-      if (alarmIntervalRef.current) {
-        clearInterval(alarmIntervalRef.current);
-        alarmIntervalRef.current = null;
-      }
     };
   }, []);
 
-  /* ─── 🚨 Alarm Sound Helpers ─── */
-  const stopAlarmSound = useCallback(() => {
-    if (alarmIntervalRef.current) {
-      clearInterval(alarmIntervalRef.current);
-      alarmIntervalRef.current = null;
-    }
-    try {
-      alarmOscRef.current?.stop();
-      alarmCtxRef.current?.close();
-    } catch {}
-    alarmOscRef.current = null;
-    alarmCtxRef.current = null;
-    if (navigator.vibrate) {
-      navigator.vibrate(0);
-    }
-  }, []);
+  /* ─── REALTIME & SYNC ─── */
+  useEffect(() => {
+    if (!userPlateNav && !userPhoneClean) return;
 
-  const startAlarmSound = useCallback(() => {
-    try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      alarmCtxRef.current = ctx;
+    let cancelled = false;
 
-      const beep = () => {
-        if (!alarmCtxRef.current || alarmCtxRef.current.state === 'closed') return;
-        const osc = alarmCtxRef.current.createOscillator();
-        const gain = alarmCtxRef.current.createGain();
-        osc.connect(gain);
-        gain.connect(alarmCtxRef.current.destination);
-        osc.frequency.value = 1200;
-        osc.type = 'square';
-        gain.gain.value = 0.8;
-        osc.start();
-        osc.stop(alarmCtxRef.current.currentTime + 0.15);
-      };
-
-      beep();
-      alarmIntervalRef.current = setInterval(beep, 400);
-
-      if (navigator.vibrate) {
-        navigator.vibrate([300, 200, 300, 200, 300, 200, 300, 200, 300]);
+    const fastFetch = async () => {
+      if (cancelled || !isMountedRef.current) return;
+      try {
+        await fetchAll();
+      } catch (e) {
+        console.error('Fetch error:', e);
       }
-    } catch {}
-  }, []);
+    };
+
+    fastFetch();
+
+    const isMySessionPayload = (row: any): boolean => {
+      if (!row) return false;
+      const plate = normalizePlate(row.car_plate || row.carPlate);
+      const phone = normalizePhone(row.customer_phone || row.customerPhone || '');
+      return (
+        (!!userPlateNav && plate === userPlateNav) ||
+        (!!userPhoneClean && phone === userPhoneClean)
+      );
+    };
+
+    const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sessions' },
+        async (payload) => {
+          const newRow = payload.new as any;
+          if (isMySessionPayload(newRow) && newRow?.status === 'active') {
+            await fastFetch();
+            if (isMountedRef.current) {
+              if (newRow.garage_id || newRow.garageId) {
+                setSelectedGarageId(newRow.garage_id || newRow.garageId);
+              }
+              setScreen('session');
+            }
+          } else {
+            fastFetch();
+          }
+        },
+      )
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') fastFetch();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', fastFetch);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', fastFetch);
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+    };
+  }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
 
   /* ─── 🚗 زر: وصلت للجراج وبدأ الركن ─── */
   const handleCarArrived = useCallback(async () => {
-    if (isArriving) return;
-    setIsArriving(true);
+    if (isArrivingRef.current) return;
+    isArrivingRef.current = true;
 
     try {
       if (!garage) return;
@@ -342,7 +309,6 @@ export default function NavigationScreen() {
 
       const startTimeISO = new Date(getServerNow()).toISOString();
 
-      // ✅ تمرير shieldEnabled للـ store عشان يخصم الدرع بعد بدء الجلسة
       await addSession({
         garageId: garage.id,
         carPlate: myIncomingCar?.carPlate || currentUser?.carPlate || '---',
@@ -354,31 +320,24 @@ export default function NavigationScreen() {
         customerName: currentUser?.name,
         startedBy: 'customer',
         incomingCarId: myIncomingCar?.id,
-        shieldEnabled: shieldEnabledRef.current, // 🛡️ الدرع
       } as any);
 
       if (myIncomingCar) {
         await removeIncomingCar(myIncomingCar.id);
       }
 
+      // 🔥 تم بدء الركنة بنجاح -> تصفير علامة الدفع للمرات القادمة
       useStore.getState().setHasPaidBookingFee(false);
 
       navigatedToSessionRef.current = true;
-
-      // رسالة مختلفة حسب تفعيل الدرع
-      if (shieldEnabledRef.current) {
-        toast.success('✅ بدأت الجلسة والحماية مفعّلة 🛡️', { duration: 3000 });
-      } else {
-        toast.success('✅ بدأت الجلسة بدون حماية', { duration: 3000 });
-      }
-
+      toast.success('تم الوصول للجراج وبدأت الجلسة بنجاح ⏱️', { duration: 3000 });
       setScreen('session');
     } catch (err) {
       console.error('❌ خطأ:', err);
       toast.error('حدث خطأ، حاول مرة أخرى');
     } finally {
       setTimeout(() => {
-        setIsArriving(false);
+        isArrivingRef.current = false;
       }, 1500);
     }
   }, [
@@ -394,7 +353,6 @@ export default function NavigationScreen() {
     selectedGarageId,
     setSelectedGarageId,
     setScreen,
-    isArriving,
   ]);
 
   /* ─── ❌ زر: وصلت بس ملقتش مكان / العودة للرئيسية ─── */
@@ -437,10 +395,6 @@ export default function NavigationScreen() {
   useEffect(() => {
     if (!myActiveSession) {
       navigatedToSessionRef.current = false;
-      geofenceTriggeredRef.current = false;
-      setGeofenceAlertSent(false);
-      setShowGeofenceAlarm(false);
-      stopAlarmSound();
       return;
     }
 
@@ -452,197 +406,7 @@ export default function NavigationScreen() {
     }
 
     setScreen('session');
-  }, [myActiveSession, selectedGarageId, setSelectedGarageId, setScreen, stopAlarmSound]);
-
-  /* ─── 🚨 مراقبة الجيوفينس أثناء الركنة النشطة (500 متر) ─── */
-  useEffect(() => {
-    if (!myActiveSession || !garage || geofenceAlertSent) {
-      if (geofenceWatchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(geofenceWatchIdRef.current);
-        geofenceWatchIdRef.current = null;
-      }
-      return;
-    }
-
-    const GEOFENCE_RADIUS_KM = 0.25; // 500 متر — آمن للـ GPS الضعيف
-
-    geofenceWatchIdRef.current = navigator.geolocation.watchPosition(
-      (pos) => {
-        if (!isMountedRef.current) return;
-        if (geofenceTriggeredRef.current) return;
-
-        const dist = calculateDistance(
-          pos.coords.latitude,
-          pos.coords.longitude,
-          garage.lat,
-          garage.lng,
-        );
-
-        if (dist > GEOFENCE_RADIUS_KM) {
-          geofenceTriggeredRef.current = true;
-          setShowGeofenceAlarm(true);
-          startAlarmSound();
-        }
-      },
-      () => {},
-      { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 },
-    );
-
-    return () => {
-      if (geofenceWatchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(geofenceWatchIdRef.current);
-        geofenceWatchIdRef.current = null;
-      }
-      stopAlarmSound();
-    };
-  }, [myActiveSession, garage, geofenceAlertSent, startAlarmSound, stopAlarmSound]);
-
-  /* ─── 🚨 Geofence Alarm Choice Handler ─── */
-  const handleGeofenceChoice = useCallback(
-    async (isMeDriving: boolean) => {
-      stopAlarmSound();
-      setShowGeofenceAlarm(false);
-
-      if (myActiveSession) {
-        try {
-          await supabase
-            .from('sessions')
-            .update({
-              status: 'ended',
-              endTime: new Date(getServerNow()).toISOString(),
-            })
-            .eq('id', myActiveSession.id);
-        } catch (err) {
-          console.error('Error ending session:', err);
-        }
-      }
-
-      if (isMeDriving) {
-        toast.success('تم إنهاء الجلسة بنجاح ✅', { duration: 3000 });
-      } else {
-        toast.error('⚠️ تم إرسال تنبيه أمان وإنهاء الجلسة!', { duration: 4000, icon: '🚨' });
-      }
-
-      setGeofenceAlertSent(true);
-      geofenceTriggeredRef.current = false;
-
-      setSelectedGarageId(null);
-      setScreen('list');
-    },
-    [stopAlarmSound, myActiveSession, setSelectedGarageId, setScreen],
-  );
-
-  /* ─── 🎯 البدء التلقائي للجلسة بعد 120 ثانية ثبات ─── */
-  useEffect(() => {
-    if (!garage || myActiveSession || isArriving) {
-      if (autoStartWatchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(autoStartWatchIdRef.current);
-        autoStartWatchIdRef.current = null;
-      }
-      if (autoStartTimerRef.current) {
-        clearInterval(autoStartTimerRef.current);
-        autoStartTimerRef.current = null;
-      }
-      autoStartAnchorRef.current = null;
-      autoStartStartedAtRef.current = null;
-      setAutoStartCountdown(null);
-      return;
-    }
-
-    if (!('geolocation' in navigator)) return;
-
-    const handlePosition = (pos: GeolocationPosition) => {
-      if (!isMountedRef.current) return;
-      if (autoStartTriggeredRef.current) return;
-
-      const curLat = pos.coords.latitude;
-      const curLng = pos.coords.longitude;
-
-      setUserPos({ lat: curLat, lng: curLng });
-
-      const distFromGarage = calculateDistance(curLat, curLng, garage.lat, garage.lng);
-
-      // 🔍 Debug: شوف المسافة والدقة في الـ Console
-      console.log(
-        `[AutoStart] 📍 المسافة: ${(distFromGarage * 1000).toFixed(0)}م | الدقة: ${pos.coords.accuracy.toFixed(0)}م | الحد: ${AUTO_START_DISTANCE_KM * 1000}م`
-      );
-
-      if (distFromGarage > AUTO_START_DISTANCE_KM) {
-        if (autoStartAnchorRef.current) {
-          autoStartAnchorRef.current = null;
-          autoStartStartedAtRef.current = null;
-          setAutoStartCountdown(null);
-        }
-        return;
-      }
-
-      if (!autoStartAnchorRef.current) {
-        autoStartAnchorRef.current = { lat: curLat, lng: curLng };
-        autoStartStartedAtRef.current = Date.now();
-        setAutoStartCountdown(Math.ceil(AUTO_START_DURATION_MS / 1000));
-        return;
-      }
-
-      const distFromAnchor = calculateDistance(
-        curLat,
-        curLng,
-        autoStartAnchorRef.current.lat,
-        autoStartAnchorRef.current.lng,
-      );
-
-      if (distFromAnchor > AUTO_START_MOVEMENT_KM) {
-        autoStartAnchorRef.current = { lat: curLat, lng: curLng };
-        autoStartStartedAtRef.current = Date.now();
-        setAutoStartCountdown(Math.ceil(AUTO_START_DURATION_MS / 1000));
-      }
-    };
-
-    autoStartWatchIdRef.current = navigator.geolocation.watchPosition(
-      handlePosition,
-      () => {},
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
-    );
-
-    autoStartTimerRef.current = setInterval(() => {
-      if (!isMountedRef.current) return;
-      if (autoStartTriggeredRef.current) return;
-      if (!autoStartStartedAtRef.current) return;
-
-      const elapsed = Date.now() - autoStartStartedAtRef.current;
-      const remaining = Math.max(0, Math.ceil((AUTO_START_DURATION_MS - elapsed) / 1000));
-      setAutoStartCountdown(remaining);
-
-      if (elapsed >= AUTO_START_DURATION_MS) {
-        autoStartTriggeredRef.current = true;
-
-        if (navigator.vibrate) {
-          navigator.vibrate([200, 100, 200]);
-        }
-
-        const shieldMsg = shieldEnabledRef.current
-          ? '✅ تم رصد وقوفك بالجراج — جاري بدء الركنة والحماية تلقائياً...'
-          : '✅ تم رصد وقوفك بالجراج — جاري بدء الركنة...';
-
-        toast.success(shieldMsg, {
-          duration: 3500,
-          icon: '🅿️',
-        });
-
-        handleCarArrived();
-      }
-    }, 1000);
-
-    return () => {
-      if (autoStartWatchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(autoStartWatchIdRef.current);
-        autoStartWatchIdRef.current = null;
-      }
-      if (autoStartTimerRef.current) {
-        clearInterval(autoStartTimerRef.current);
-        autoStartTimerRef.current = null;
-      }
-    };
-  }, [garage, myActiveSession, isArriving, handleCarArrived]);
+  }, [myActiveSession, selectedGarageId, setSelectedGarageId, setScreen]);
 
   if (!garage) {
     return (
@@ -691,6 +455,7 @@ export default function NavigationScreen() {
     }
   };
 
+  /* 🗺️ فتح الخريطة مع إظهار تنبيه وصول (50m) لتأكيد بدء الجلسة بيده */
   const openExternalMaps = () => {
     if (!garage) return;
     openMapsWithSmartArrival(
@@ -698,6 +463,7 @@ export default function NavigationScreen() {
       garage.lng,
       garage.name,
       () => {
+        // 🎯 تنبيه فقط دون بدء تلقائي: الموبايل يرن بـ Push والإشعار يفكره يدوس "وصلت للجراج"
         toast.success('🎉 وصلت عند الجراج! اضغط على زرار "وصلت للجراج وبدأ الركن" لتفعيل الحماية 🛡️', {
           duration: 6000,
           icon: '📍',
@@ -843,95 +609,6 @@ export default function NavigationScreen() {
           </div>
         )}
 
-        {/* 🛡️ اختيار الدرع (قبل التوجيه) */}
-        {!myActiveSession && (
-          <div
-            className="rounded-2xl p-3 shrink-0 border"
-            style={{
-              background: BRAND.navyLight,
-              borderColor: shieldEnabled ? BRAND.green + '60' : BRAND.border,
-            }}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <ShieldCheck size={16} style={{ color: shieldEnabled ? BRAND.green : BRAND.slateMuted }} />
-                <span className="text-xs font-black" style={{ color: '#ffffff' }}>
-                  🛡️ حماية الدرع
-                </span>
-              </div>
-              <span className="text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>
-                (اختياري)
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setShieldEnabled(true)}
-                className="py-2.5 rounded-xl font-black text-[11px] border transition-all active:scale-95 cursor-pointer"
-                style={{
-                  background: shieldEnabled ? BRAND.green : 'transparent',
-                  borderColor: shieldEnabled ? BRAND.green : BRAND.border,
-                  color: shieldEnabled ? BRAND.navy : BRAND.slateMuted,
-                }}
-              >
-                ✅ تفعيل الدرع
-              </button>
-              <button
-                type="button"
-                onClick={() => setShieldEnabled(false)}
-                className="py-2.5 rounded-xl font-black text-[11px] border transition-all active:scale-95 cursor-pointer"
-                style={{
-                  background: !shieldEnabled ? '#475569' : 'transparent',
-                  borderColor: !shieldEnabled ? '#475569' : BRAND.border,
-                  color: !shieldEnabled ? '#ffffff' : BRAND.slateMuted,
-                }}
-              >
-                ❌ بدون درع
-              </button>
-            </div>
-            <p className="text-[9px] font-bold text-center mt-2" style={{ color: BRAND.slateMuted }}>
-              {shieldEnabled
-                ? 'هيتم خصم رسوم الحماية عند بدء الركنة فقط'
-                : 'الركنة بدون حماية إضافية'}
-            </p>
-          </div>
-        )}
-
-        {/* 🎯 شريط البدء التلقائي (يظهر لما العميل قريب من الجراج) */}
-        {!myActiveSession && autoStartCountdown !== null && autoStartCountdown > 0 && (
-          <div
-            className="rounded-2xl p-3 shrink-0 border"
-            style={{
-              background: 'linear-gradient(135deg, rgba(140, 198, 63, 0.15) 0%, rgba(22, 163, 74, 0.1) 100%)',
-              borderColor: BRAND.green + '60',
-            }}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: BRAND.green }} />
-                <span className="text-[11px] font-black" style={{ color: BRAND.green }}>
-                  🅿️ تم رصد وصولك — بدء تلقائي للركنة
-                </span>
-              </div>
-              <span className="text-sm font-black font-mono" style={{ color: BRAND.green }}>
-                {autoStartCountdown}ث
-              </span>
-            </div>
-            <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
-              <div
-                className="h-full transition-all duration-1000 ease-linear"
-                style={{
-                  background: BRAND.green,
-                  width: `${((AUTO_START_DURATION_MS / 1000 - autoStartCountdown) / (AUTO_START_DURATION_MS / 1000)) * 100}%`,
-                }}
-              />
-            </div>
-            <p className="text-[9px] font-bold text-center mt-1.5" style={{ color: BRAND.slateMuted }}>
-              فضل ثابت في مكانك لبدء الركنة تلقائياً
-            </p>
-          </div>
-        )}
-
         {/* 🗺️ الخريطة */}
         <div
           className="w-full h-44 rounded-2xl overflow-hidden relative shrink-0 border"
@@ -1035,7 +712,7 @@ export default function NavigationScreen() {
             <button
               type="button"
               onClick={handleCarArrived}
-              disabled={isArriving}
+              disabled={isArrivingRef.current}
               className="w-full py-4 rounded-2xl active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 disabled:opacity-50 border-0 text-white cursor-pointer shadow-lg"
               style={{
                 background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
@@ -1044,7 +721,7 @@ export default function NavigationScreen() {
             >
               <ShieldCheck size={20} color="#ffffff" />
               <span className="font-black text-white text-center text-sm sm:text-base">
-                {isArriving ? '⏳ جاري بدء الجلسة...' : 'وصلت للجراج وبدأ الركن ✅'}
+                وصلت للجراج وبدأ الركن ✅
               </span>
             </button>
 
@@ -1172,69 +849,6 @@ export default function NavigationScreen() {
               >
                 إلغاء
               </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* 🚨 Geofence Alarm Overlay */}
-      <AnimatePresence>
-        {showGeofenceAlarm && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[99999] flex items-center justify-center p-4 dir-rtl"
-            style={{ background: 'rgba(127, 29, 29, 0.95)' }}
-          >
-            <motion.div
-              initial={{ scale: 0.8, y: 30 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.8, y: 30 }}
-              className="w-full max-w-sm rounded-3xl p-6 space-y-5 text-center"
-              style={{ background: BRAND.navyLight, border: '2px solid #ef4444' }}
-            >
-              <div
-                className="w-16 h-16 rounded-full mx-auto flex items-center justify-center animate-pulse"
-                style={{ background: 'rgba(239, 68, 68, 0.2)' }}
-              >
-                <AlertCircle size={36} style={{ color: '#ef4444' }} />
-              </div>
-
-              <div>
-                <h3 className="text-white font-black text-lg mb-2">⚠️ تنبيه أمان!</h3>
-                <p className="text-sm font-bold" style={{ color: '#fca5a5' }}>
-                  تم رصد خروج المركبة من نطاق الجراج
-                </p>
-                <p className="text-xs font-bold mt-1" style={{ color: BRAND.slateMuted }}>
-                  هل أنت من يقود السيارة الآن؟
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-3">
-                <button
-                  type="button"
-                  onClick={() => handleGeofenceChoice(true)}
-                  className="w-full py-3.5 rounded-2xl font-black text-sm active:scale-95 transition-all border-0 cursor-pointer text-white"
-                  style={{
-                    background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
-                    boxShadow: '0 4px 14px rgba(22, 163, 74, 0.3)',
-                  }}
-                >
-                  ✅ أنا اللي سايق
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleGeofenceChoice(false)}
-                  className="w-full py-3.5 rounded-2xl font-black text-sm active:scale-95 transition-all border-0 cursor-pointer text-white"
-                  style={{
-                    background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)',
-                    boxShadow: '0 4px 14px rgba(220, 38, 38, 0.3)',
-                  }}
-                >
-                  🚨 مش أنا - إرسال تنبيه أمان
-                </button>
-              </div>
             </motion.div>
           </motion.div>
         )}

@@ -66,9 +66,7 @@ export interface ParkingSession {
   freeMinutesApplied?: number;
   isFirstFreeSession?: boolean;
   // ═══ 🛡️ تكلفة الدرع للجلسة (0 = مجاني، 7 = مدفوع) ═══
-  shieldCost?: number | null;
-  // ✅ [تعديل الدرع] flag من NavigationScreen عشان نعرف نخصم ولا لأ
-  shieldEnabled?: boolean;
+  shieldCost?: number;
 }
 
 export interface Offer {
@@ -250,16 +248,9 @@ const getCachedGarages = (): Garage[] => {
   return Array.isArray(cached) ? cached : [];
 };
 
-// ===================== ⚡ LRU Cache للـ Normalize =====================
-
-const _plateCache = new Map<string, string>();
-const PLATE_CACHE_MAX = 2000;
-
-const _phoneCache = new Map<string, string>();
-const PHONE_CACHE_MAX = 1000;
-
-const _computePlateFingerprint = (rawPlate: string): string => {
-  let str = rawPlate;
+export const getPlateFingerprint = (plate?: any): string => {
+  if (!plate) return '';
+  let str = String(plate).trim();
   str = str.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '');
   str = str.replace(/\u0640/g, '');
   str = str.normalize('NFKD');
@@ -298,29 +289,11 @@ const _computePlateFingerprint = (rawPlate: string): string => {
   return `${letters}_${digits}`;
 };
 
-export const getPlateFingerprint = (plate?: unknown): string => {
-  if (!plate) return '';
-  const rawKey = String(plate).trim();
-  if (!rawKey) return '';
+export const normalizePlate = (plate?: any): string => getPlateFingerprint(plate);
 
-  const cached = _plateCache.get(rawKey);
-  if (cached !== undefined) return cached;
-
-  const result = _computePlateFingerprint(rawKey);
-
-  if (_plateCache.size >= PLATE_CACHE_MAX) {
-    const firstKey = _plateCache.keys().next().value;
-    if (firstKey !== undefined) _plateCache.delete(firstKey);
-  }
-  _plateCache.set(rawKey, result);
-
-  return result;
-};
-
-export const normalizePlate = (plate?: unknown): string => getPlateFingerprint(plate);
-
-const _computeNormalizedPhone = (rawPhone: string): string => {
-  let str = rawPhone;
+export const normalizePhone = (phone?: any): string => {
+  if (!phone) return '';
+  let str = String(phone).trim();
   const arabicNums = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
   for (let i = 0; i < 10; i++) str = str.replace(new RegExp(arabicNums[i], 'g'), String(i));
   let clean = str.replace(/[^\d]/g, '');
@@ -330,25 +303,6 @@ const _computeNormalizedPhone = (rawPhone: string): string => {
     clean = '0' + clean;
   }
   return clean.substring(0, 11);
-};
-
-export const normalizePhone = (phone?: unknown): string => {
-  if (!phone) return '';
-  const rawKey = String(phone).trim();
-  if (!rawKey) return '';
-
-  const cached = _phoneCache.get(rawKey);
-  if (cached !== undefined) return cached;
-
-  const result = _computeNormalizedPhone(rawKey);
-
-  if (_phoneCache.size >= PHONE_CACHE_MAX) {
-    const firstKey = _phoneCache.keys().next().value;
-    if (firstKey !== undefined) _phoneCache.delete(firstKey);
-  }
-  _phoneCache.set(rawKey, result);
-
-  return result;
 };
 
 const samePlate = (a?: string, b?: string) =>
@@ -373,20 +327,6 @@ export const syncServerClock = async () => {
   
   try {
     const t0 = Date.now();
-
-    try {
-      const { data, error } = await supabase.rpc('get_server_time');
-      const t1 = Date.now();
-      if (!error && data) {
-        const roundTrip = (t1 - t0) / 2;
-        const serverTimestamp = new Date(data).getTime() + roundTrip;
-        serverTimeOffset = serverTimestamp - Date.now();
-        lastClockSyncTime = Date.now();
-        return;
-      }
-    } catch {
-    }
-
     const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/garages?select=id&limit=1`, {
       method: 'HEAD',
       headers: { 
@@ -394,10 +334,10 @@ export const syncServerClock = async () => {
         Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` 
       }
     });
-    const t2 = Date.now();
+    const t1 = Date.now();
     const serverDateHeader = resp.headers.get('date');
     if (serverDateHeader) {
-      const roundTrip = (t2 - t0) / 2;
+      const roundTrip = (t1 - t0) / 2;
       const serverTimestamp = new Date(serverDateHeader).getTime() + roundTrip;
       serverTimeOffset = serverTimestamp - Date.now();
       lastClockSyncTime = Date.now();
@@ -423,6 +363,7 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
     if (session.synced && !existing.synced) {
       bestByPlateSource.set(key, session);
     } else if (!session.synced && existing.synced) {
+      // keep existing
     } else {
       const sessionStart = getMs(session.startTime);
       const existingStart = getMs(existing.startTime);
@@ -506,8 +447,8 @@ const mapSession = (r: any): ParkingSession => {
     settled_at: r.settled_at || undefined,
     freeMinutesApplied: r.free_minutes_applied != null ? Number(r.free_minutes_applied) : 0,
     isFirstFreeSession: isFree,
-    shieldCost: r.shield_cost != null ? Number(r.shield_cost) : null,
-shieldEnabled: r.shield_cost != null,
+    // ═══ 🛡️ ═══
+    shieldCost: r.shield_cost != null ? Number(r.shield_cost) : 0,
   };
 };
 
@@ -537,6 +478,7 @@ const mapIncoming = (r: any): IncomingCar => ({
 const mapMessage = (r: any): Message => ({
   id: r.id, userPhone: r.user_phone, userName: r.user_name, carPlate: r.car_plate,
   type: r.type || 'inquiry', subject: r.subject, message: r.message, 
+  // 👇 التعديل هنا: التأكد من سحب الرد وتغيير الحالة تلقائياً لو الرد موجود
   reply: r.reply || undefined,
   status: r.reply ? 'replied' : (r.status || 'pending'), 
   timestamp: new Date(r.created_at).getTime(),
@@ -571,14 +513,16 @@ interface AppState {
     wallet: number;
     hasUsedFreeSession?: boolean;
     bonusBalance?: number;
-    shieldActivated?: boolean;
-    shieldPhone?: string;
-    shieldCode?: string;
+    // ═══ 🛡️ حقول الدرع ═══
+    shieldActivated?: boolean;  // هل فعّل الدرع قبل كده (أول مرة مجاناً)
+    shieldPhone?: string;       // رقم موبايل الدرع (اختياري - غير رقم الحساب)
+    shieldCode?: string;        // كود الدرع الفريد (SH-XXXX)
   } | null;
   setCurrentUser: (u: any) => Promise<void>;
   deductWallet: (amount: number) => Promise<boolean>; 
   markFreeSessionUsed: () => Promise<void>;
   
+  // 💰 رسوم الحجز وتتبع الخصم اليومي (بحد أقصى خصمان في اليوم)
   hasPaidBookingFee: boolean;
   setHasPaidBookingFee: (paid: boolean) => void;
   dailyDeductionCount: number;
@@ -588,6 +532,7 @@ interface AppState {
   chargeBookingFee: () => Promise<boolean>;
   refundBookingFee: () => Promise<void>;
 
+  // ═══ 🛡️ Actions الدرع ═══
   activateShield: (phone: string) => Promise<{ success: boolean; code?: string; error?: string }>;
   chargeShieldFee: () => Promise<{ success: boolean; isFree: boolean; error?: string }>;
   updateSessionShieldCost: (sessionId: string, cost: number) => Promise<void>;
@@ -631,11 +576,6 @@ interface AppState {
   logout: () => void;
 }
 
-// ===================== ⚡ Fetch Lock =====================
-let _isFetching = false;
-let _lastFetchTime = 0;
-const MIN_FETCH_INTERVAL = 3000;
-
 // ===================== Store =====================
 export const useStore = create<AppState>((set, get) => ({
   view: (() => { try { return (localStorage.getItem('appView') as ViewType) || 'user'; } catch { return 'user'; } })(),
@@ -659,6 +599,7 @@ export const useStore = create<AppState>((set, get) => ({
       wallet: u.wallet ?? 0,
       hasUsedFreeSession: u.hasUsedFreeSession ?? false,
       bonusBalance: u.bonusBalance ?? 0,
+      // ═══ 🛡️ ═══
       shieldActivated: u.shieldActivated ?? false,
       shieldPhone: u.shieldPhone ?? '',
       shieldCode: u.shieldCode ?? '',
@@ -684,6 +625,7 @@ export const useStore = create<AppState>((set, get) => ({
           wallet: Number(existingUser.wallet || 0),
           hasUsedFreeSession: finalHasUsedFree,
           bonusBalance: Number(existingUser.bonus_balance ?? 0),
+          // ═══ 🛡️ ═══
           shieldActivated: existingUser.shield_activated === true,
           shieldPhone: existingUser.shield_phone || '',
           shieldCode: existingUser.shield_code || '',
@@ -711,6 +653,7 @@ export const useStore = create<AppState>((set, get) => ({
             wallet: Number(newUser.wallet),
             hasUsedFreeSession: false,
             bonusBalance: 0,
+            // ═══ 🛡️ ═══
             shieldActivated: false,
             shieldPhone: '',
             shieldCode: '',
@@ -747,6 +690,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  // 💰 حالة دفع رسوم الحجز وتتبع الحد اليومي (بحد أقصى خصمان في اليوم)
   hasPaidBookingFee: false,
   setHasPaidBookingFee: (paid) => set({ hasPaidBookingFee: paid }),
 
@@ -781,6 +725,7 @@ export const useStore = create<AppState>((set, get) => ({
     const user = get().currentUser;
     if (!user) return false;
 
+    // 🌟 شرط الحد الأقصى: إذا خُصم مرتان اليوم يتم الحجز مجاناً!
     if (get().getDailyDeductionCount() >= 2) {
       set({ hasPaidBookingFee: true });
       return true;
@@ -822,6 +767,10 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  // ═══════════════════════════════════════════════════════════════
+  // 🛡️ تفعيل الدرع (أول مرة لهذه اللوحة = مجاناً)
+  // 🔒 التحقق بالبصمة الموحدة للوحة - منع استغلال رقم تليفون مختلف
+  // ═══════════════════════════════════════════════════════════════
   activateShield: async (phone) => {
     const user = get().currentUser;
     if (!user) return { success: false, error: 'لم يتم تسجيل الدخول' };
@@ -831,6 +780,7 @@ export const useStore = create<AppState>((set, get) => ({
       return { success: false, error: 'رقم موبايل غير صحيح' };
     }
 
+    // 🔍 التحقق بالبصمة الموحدة - لو اللوحة فعّلت قبل كده، نرجّع الكود القديم
     if (isSupabaseConfigured() && user.carPlate) {
       try {
         const { data: existing } = await supabase
@@ -842,6 +792,7 @@ export const useStore = create<AppState>((set, get) => ({
           .maybeSingle();
 
         if (existing?.shield_code) {
+          // اللوحة دي فعّلت قبل كده → نرجّع الكود الموجود مش نولّد جديد
           const updated = {
             ...user,
             shieldActivated: true,
@@ -851,6 +802,7 @@ export const useStore = create<AppState>((set, get) => ({
           set({ currentUser: updated });
           safeSetStorage('currentUser', updated);
 
+          // تحديث رقم الدرع في الداتابيز للحساب الحالي (عشان SMS الطوارئ)
           try {
             await supabase
               .from('users')
@@ -869,6 +821,7 @@ export const useStore = create<AppState>((set, get) => ({
       }
     }
 
+    // توليد كود فريد جديد (أول مرة فعلاً لهذه اللوحة)
     const shieldCode = `SH-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 
     const updated = {
@@ -899,10 +852,15 @@ export const useStore = create<AppState>((set, get) => ({
     return { success: true, code: shieldCode };
   },
 
+  // ═══════════════════════════════════════════════════════════════
+  // 🛡️ خصم رسوم الدرع (7 ج - لا يسترد)
+  // 🔒 التحقق بالبصمة الموحدة للوحة - منع التحايل بتغيير رقم التليفون
+  // ═══════════════════════════════════════════════════════════════
   chargeShieldFee: async () => {
     const user = get().currentUser;
     if (!user) return { success: false, isFree: false, error: 'لم يتم تسجيل الدخول' };
 
+    // 🔍 التحقق بالبصمة الموحدة - لو اللوحة فعّلت الدرع قبل كده (أي رقم تليفون) → مش مجاني
     let alreadyUsed = user.shieldActivated === true;
 
     if (!alreadyUsed && isSupabaseConfigured() && user.carPlate) {
@@ -919,10 +877,12 @@ export const useStore = create<AppState>((set, get) => ({
       }
     }
 
+    // أول مرة لهذه اللوحة = مجاناً
     if (!alreadyUsed) {
       return { success: true, isFree: true };
     }
 
+    // مش أول مرة = خصم 7 ج
     if ((user.wallet || 0) < SHIELD_COST) {
       return { success: false, isFree: false, error: 'الرصيد غير كافي' };
     }
@@ -935,6 +895,9 @@ export const useStore = create<AppState>((set, get) => ({
     return { success: false, isFree: false, error: 'فشل الخصم' };
   },
 
+  // ═══════════════════════════════════════════════════════════════
+  // 🛡️ حفظ تكلفة الدرع في الجلسة (0 = مجاني، 7 = مدفوع)
+  // ═══════════════════════════════════════════════════════════════
   updateSessionShieldCost: async (sessionId, cost) => {
     set((st) => ({
       sessions: st.sessions.map((s) =>
@@ -995,14 +958,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   fetchAll: async () => {
-    if (_isFetching) return;
-    const now = Date.now();
-    if (now - _lastFetchTime < MIN_FETCH_INTERVAL) return;
-
     if (!isSupabaseConfigured()) return;
-
-    _isFetching = true;
-    _lastFetchTime = now;
 
     try {
       let currentGarages = get().garages;
@@ -1058,6 +1014,7 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
 
+      // ⚡ تخصيص الاستعلامات حسب الدور (Role-Based Query Scoping)
       const view = get().view;
       const user = get().currentUser;
       const currentGarageId = get().currentGarageId;
@@ -1125,6 +1082,7 @@ export const useStore = create<AppState>((set, get) => ({
             wallet: Number(userData.wallet || 0),
             hasUsedFreeSession: userData.has_used_free_session ?? currentUserInStore.hasUsedFreeSession,
             bonusBalance: Number(userData.bonus_balance ?? 0),
+            // ═══ 🛡️ ═══
             shieldActivated: userData.shield_activated === true,
             shieldPhone: userData.shield_phone || currentUserInStore.shieldPhone || '',
             shieldCode: userData.shield_code || currentUserInStore.shieldCode || '',
@@ -1135,8 +1093,6 @@ export const useStore = create<AppState>((set, get) => ({
       }
     } catch (err) {
       console.error('FetchAll Delta Sync Error:', err);
-    } finally {
-      _isFetching = false;
     }
   },
 
@@ -1330,6 +1286,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   addSession: async (s) => {
+    // ⚡ تنظيف الـ Locks تلقائياً لمنع تسريب الميموري
     if (sessionStartLocks.size > 50) sessionStartLocks.clear();
 
     const normalizedPlate = normalizePlate(s.carPlate);
@@ -1354,11 +1311,13 @@ export const useStore = create<AppState>((set, get) => ({
           eligibleForFree = Boolean(s.isFirstFreeSession);
         } else if (isSupabaseConfigured() && (cleanPhone || normalizedPlate)) {
           try {
+            // 🔹 بداية اليوم = 12 بالليل
             const now = new Date(getServerNow());
             const todayStart = new Date(now);
             todayStart.setHours(0, 0, 0, 0);
             const todayStartISO = todayStart.toISOString();
 
+            // 🔹 نبحث بالـ phone لو موجود (ثابت) وإلا بالـ plate
             const { data: todayAll } = cleanPhone
               ? await supabase
                   .from('sessions')
@@ -1378,6 +1337,7 @@ export const useStore = create<AppState>((set, get) => ({
             ).length || 0;
             const paidCount = (todayAll?.length || 0) - freeCount;
 
+            // 🔹 2 مدفوعة → 2 مجانية → الباقي مدفوع
             eligibleForFree = paidCount >= 2;
 
           } catch (err) {
@@ -1401,8 +1361,7 @@ export const useStore = create<AppState>((set, get) => ({
         settled: false,
         isFirstFreeSession: eligibleForFree,
         freeMinutesApplied: 0,
-        shieldCost: s.shieldEnabled ? 0 : null,
-
+        shieldCost: 0,
       };
 
       set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]).slice(0, 50) }));
@@ -1420,7 +1379,6 @@ export const useStore = create<AppState>((set, get) => ({
           revenue_confirmed: false,
           added_by: addedByValue,
           customer_phone: cleanPhone || null,
-          // ✅ [تعديل الدرع] إصلاح Build Error: s.customer → s.customerName
           customer_name: s.customerName || null,
           incoming_car_id: s.incomingCarId || null,
           started_by: s.startedBy || null,
@@ -1429,7 +1387,7 @@ export const useStore = create<AppState>((set, get) => ({
           settled: false,
           is_first_free_session: eligibleForFree,
           free_minutes_applied: 0,
-          shield_cost: s.shieldEnabled ? 0 : null,
+          shield_cost: 0,
         }).select().single();
 
         if (data) {
@@ -1437,36 +1395,6 @@ export const useStore = create<AppState>((set, get) => ({
             sessions: dedupeActiveSessions(st.sessions.map((x) => x.id === sessionId ? mapSession(data) : x)),
           }));
         }
-
-        // ═══════════════════════════════════════════════════════════════
-        // ✅ [تعديل الدرع] خصم رسوم الدرع بعد بدء الجلسة بنجاح
-        // ═══════════════════════════════════════════════════════════════
-        // بيحصل هنا عشان:
-        // 1. الجلسة اتعملت فعلاً على السيرفر (مش نخصم لو فشلت)
-        // 2. أول مرة للوحة = مجاناً (chargeShieldFee بتتعامل معاه)
-        // 3. لو الرصيد مش كافي = الجلسة تكمل بدون درع (مش نلغيها)
-        // ═══════════════════════════════════════════════════════════════
-if (s.shieldEnabled === true) {
-  try {
-    const shieldResult = await get().chargeShieldFee();
-    if (shieldResult.success) {
-      const cost = shieldResult.isFree ? 0 : SHIELD_COST;
-      await get().updateSessionShieldCost(sessionId, cost);
-    } else {
-      // الخصم فشل (رصيد غير كافي) → الدرع مش مفعّل
-      set((st) => ({
-        sessions: st.sessions.map((x) =>
-          x.id === sessionId ? { ...x, shieldCost: null, shieldEnabled: false } : x
-        ),
-      }));
-      if (isSupabaseConfigured()) {
-        await supabase.from('sessions').update({ shield_cost: null }).eq('id', sessionId);
-      }
-    }
-  } catch (err) {
-    console.error('Shield charge after session start error:', err);
-  }
-}
       }
       return sessionId;
     } finally {
@@ -1475,6 +1403,7 @@ if (s.shieldEnabled === true) {
   },
 
   endSession: async (id, totalPrice, paymentMethod, freeMinutesApplied = 0, addedBy) => {
+    // ⚡ تنظيف الـ Locks تلقائياً لمنع تسريب الميموري
     if (sessionEndLocks.size > 50) sessionEndLocks.clear();
 
     const nowISO = new Date(getServerNow()).toISOString();
@@ -1534,7 +1463,7 @@ if (s.shieldEnabled === true) {
             settled: false,
             free_minutes_applied: freeMinutesApplied,
             added_by: finalAddedBy || null,
-            shield_cost: session.shieldCost ?? null,
+            shield_cost: session.shieldCost ?? 0,
           })
           .eq('id', id);
       }
@@ -1620,6 +1549,7 @@ if (s.shieldEnabled === true) {
     
     set((st) => ({ walletTopUps: [newW, ...st.walletTopUps].slice(0, 20) }));
 
+    
     if (isSupabaseConfigured()) {
       supabase.from('wallet_topups').insert({
         user_id: w.userId || w.user_id, 
@@ -1652,21 +1582,10 @@ if (s.shieldEnabled === true) {
 
     if (isSupabaseConfigured()) {
       try {
-        const { data: updateResult, error: updateError } = await supabase
+        await supabase
           .from('wallet_topups')
           .update({ status: 'approved', bonus_amount: bonus })
-          .eq('id', id)
-          .eq('status', 'pending')
-          .select();
-
-        if (updateError || !updateResult || updateResult.length === 0) {
-          set((st) => ({
-            walletTopUps: st.walletTopUps.map((w) =>
-              w.id === id ? { ...w, status: 'pending' as const } : w
-            ),
-          }));
-          return;
-        }
+          .eq('id', id);
 
         if (userPhone) {
           const { data: u } = await supabase
@@ -1778,6 +1697,7 @@ if (s.shieldEnabled === true) {
 
 // ===================== Realtime الفائق =====================
 let realtimeStarted = false;
+let pollingInterval: ReturnType<typeof setInterval> | null = null;
 let isOperationInProgress = false;
 let pauseTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -1792,189 +1712,24 @@ export function pausePolling(duration = 5000) {
   pauseTimeout = setTimeout(() => { isOperationInProgress = false; }, duration);
 }
 
-export function setupRealtime(): () => void {
-  if (realtimeStarted) return () => {};
+export function setupRealtime() {
+  if (realtimeStarted) return;
   realtimeStarted = true;
 
-  const channels: ReturnType<typeof supabase.channel>[] = [];
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  let fallbackInterval: ReturnType<typeof setInterval> | null = null;
-  let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
-  let isRealtimeConnected = false;
-
-  const debouncedFetch = () => {
-    if (isOperationInProgress) return;
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      if (document.visibilityState === 'visible') {
-        useStore.getState().fetchAll();
-      }
-    }, 2000);
-  };
-
-  const setupChannels = () => {
-    if (!isSupabaseConfigured()) return;
-
-    const state = useStore.getState();
-    const view = state.view;
-    const user = state.currentUser;
-    const garageId = state.currentGarageId;
-
-    const sessionsChannel = supabase
-      .channel('rt-sessions', {
-        config: { broadcast: { self: false }, presence: { key: '' } },
-      })
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'sessions',
-          ...(view === 'garage' && garageId ? { filter: `garage_id=eq.${garageId}` } : {}),
-        },
-        () => debouncedFetch()
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          isRealtimeConnected = true;
-          if (fallbackInterval) {
-            clearInterval(fallbackInterval);
-            fallbackInterval = null;
-          }
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          isRealtimeConnected = false;
-          startFallbackPolling();
-        }
-      });
-    channels.push(sessionsChannel);
-
-    const incomingChannel = supabase
-      .channel('rt-incoming', {
-        config: { broadcast: { self: false }, presence: { key: '' } },
-      })
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'incoming_cars',
-          ...(view === 'garage' && garageId ? { filter: `garage_id=eq.${garageId}` } : {}),
-        },
-        () => debouncedFetch()
-      )
-      .subscribe();
-    channels.push(incomingChannel);
-
-    const garagesChannel = supabase
-      .channel('rt-garages', {
-        config: { broadcast: { self: false }, presence: { key: '' } },
-      })
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'garages',
-        },
-        () => debouncedFetch()
-      )
-      .subscribe();
-    channels.push(garagesChannel);
-
-    if (view === 'admin') {
-      const topupsChannel = supabase
-        .channel('rt-topups', {
-          config: { broadcast: { self: false }, presence: { key: '' } },
-        })
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'wallet_topups',
-          },
-          () => debouncedFetch()
-        )
-        .subscribe();
-      channels.push(topupsChannel);
-
-      const messagesChannel = supabase
-        .channel('rt-messages', {
-          config: { broadcast: { self: false }, presence: { key: '' } },
-        })
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'messages',
-          },
-          () => debouncedFetch()
-        )
-        .subscribe();
-      channels.push(messagesChannel);
-    }
-  };
-
-  const startFallbackPolling = () => {
-    if (fallbackInterval) return;
-    console.warn('[ParkN24] Realtime failed, falling back to polling (30s)');
-    fallbackInterval = setInterval(() => {
+  const startPolling = () => {
+    if (pollingInterval) clearInterval(pollingInterval);
+    pollingInterval = setInterval(() => {
       if (!isOperationInProgress && document.visibilityState === 'visible') {
         useStore.getState().fetchAll();
       }
-    }, 30000);
+    }, 25000);
   };
 
-  const startHeartbeat = () => {
-    heartbeatInterval = setInterval(() => {
-      if (document.visibilityState === 'visible' && isRealtimeConnected) {
-        useStore.getState().fetchAll();
-      }
-    }, 60000 + Math.floor(Math.random() * 10000));
-  };
+  startPolling();
 
-  const handleVisibilityChange = () => {
+  document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       useStore.getState().fetchAll();
     }
-  };
-
-  setupChannels();
-  startHeartbeat();
-  document.addEventListener('visibilitychange', handleVisibilityChange);
-
-  setTimeout(() => {
-    useStore.getState().fetchAll();
-  }, 1000);
-
-  return () => {
-    realtimeStarted = false;
-
-    for (const ch of channels) {
-      try {
-        supabase.removeChannel(ch);
-      } catch {}
-    }
-    channels.length = 0;
-
-    if (debounceTimer) {
-      clearTimeout(debounceTimer);
-      debounceTimer = null;
-    }
-    if (fallbackInterval) {
-      clearInterval(fallbackInterval);
-      fallbackInterval = null;
-    }
-    if (heartbeatInterval) {
-      clearInterval(heartbeatInterval);
-      heartbeatInterval = null;
-    }
-    if (pauseTimeout) {
-      clearTimeout(pauseTimeout);
-      pauseTimeout = null;
-    }
-
-    document.removeEventListener('visibilitychange', handleVisibilityChange);
-  };
+  });
 }

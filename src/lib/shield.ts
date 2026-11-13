@@ -34,8 +34,8 @@ export const MIN_MOVEMENT_METERS = 80;
 export const FALLBACK_INTERVAL_MS = 300_000;
 
 // ─── 🧠 ثوابت السرعة الذكية ───
-export const CAR_SPEED_THRESHOLD = 0.8;     // 0.8 م/ث ≈ 3 كم/س (سيارة بطيئة)
-export const CAR_GRACE_MS = 2_000;          // 2 ثانية بس
+export const CAR_SPEED_THRESHOLD = 1.5;     // 1.5 م/ث ≈ 8 كم/س
+export const CAR_GRACE_MS = 5_000;          // 5 ثانية
 
 // ─── بنك الإشعارات الوهمية ───
 const ALERT_POOL: FakeAlert[] = [
