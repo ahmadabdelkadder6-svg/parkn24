@@ -80,7 +80,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // ✅ الخطوة 1: جلب الدروع النشطة (ended_at = null)
+    // ✅ جلب الدروع النشطة
     const { data: shields } = await supabase
       .from('shield_sessions')
       .select('id, session_id, user_id, phone, alert_count, fake_tick')
@@ -97,15 +97,27 @@ serve(async (req) => {
     if (url.searchParams.get('test') === '1') {
       let sent = 0;
       for (const s of shields) {
-        // ✅ اقرأ الـ Push Keys من push_subscriptions
+        // ✅ الحل: نجيب الـ UUID الحقيقي من جدول sessions
+        const { data: session } = await supabase
+          .from('sessions')
+          .select('user_id')
+          .eq('id', s.session_id)
+          .maybeSingle();
+
+        const realUserId = session?.user_id;
+        if (!realUserId) {
+          console.log(`⚠️ No real user_id for session ${s.session_id}`);
+          continue;
+        }
+
         const { data: subs } = await supabase
           .from('push_subscriptions')
           .select('endpoint, p256dh, auth')
-          .eq('user_id', s.user_id)
+          .eq('user_id', realUserId)
           .limit(1);
 
         if (!subs || subs.length === 0) {
-          console.log(`⚠️ No push sub for user ${s.user_id}`);
+          console.log(`⚠️ No push sub for user ${realUserId}`);
           continue;
         }
 
@@ -121,7 +133,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ test: true, sent, total: shields.length }));
     }
 
-    // ─── Cleanup: أغلق الجلسات المكررة ───
+    // ─── Cleanup ───
     const phoneGroups = new Map<string, any[]>();
     for (const s of shields) {
       const p = s.phone || 'unknown';
@@ -145,29 +157,14 @@ serve(async (req) => {
       const tick = shield.fake_tick || 0;
       console.log(`\n🛡️ Shield: ${shield.phone}, alerts=${alertCount}, tick=${tick}/6`);
 
-      // ✅ الخطوة 2: اقرأ الـ Push Keys من push_subscriptions (مش من shield_sessions)
-      const { data: subs } = await supabase
-        .from('push_subscriptions')
-        .select('endpoint, p256dh, auth')
-        .eq('user_id', shield.user_id)
-        .limit(1);
-
-      if (!subs || subs.length === 0) {
-        console.log(`⚠️ No push subscription for user ${shield.user_id}`);
-        totalSkipped++;
-        continue;
-      }
-
-      const pushSub = subs[0];
-
-      // تحقق إن الجلسة الأصلية لسه نشطة
-      const { data: originalSession } = await supabase
+      // ✅ الحل: نجيب الـ UUID الحقيقي من جدول sessions
+      const { data: session } = await supabase
         .from('sessions')
-        .select('id, status')
+        .select('user_id, status')
         .eq('id', shield.session_id)
         .maybeSingle();
 
-      if (!originalSession || originalSession.status !== 'active') {
+      if (!session || session.status !== 'active') {
         await supabase.from('shield_sessions')
           .update({ ended_at: new Date().toISOString() })
           .eq('session_id', shield.session_id);
@@ -176,7 +173,24 @@ serve(async (req) => {
         continue;
       }
 
-      // ✅ مفيش حد أقصى — إشعارات مستمرة طول الجلسة
+      const realUserId = session.user_id;
+
+      // ✅ اقرأ الـ Push Keys من push_subscriptions بالـ UUID الحقيقي
+      const { data: subs } = await supabase
+        .from('push_subscriptions')
+        .select('endpoint, p256dh, auth')
+        .eq('user_id', realUserId)
+        .limit(1);
+
+      if (!subs || subs.length === 0) {
+        console.log(`⚠️ No push subscription for user ${realUserId}`);
+        totalSkipped++;
+        continue;
+      }
+
+      const pushSub = subs[0];
+
+      // ✅ مفيش حد أقصى — إشعارات مستمرة
       const newTick = tick + 1;
       if (newTick < 6) {
         await supabase.from('shield_sessions')
@@ -187,7 +201,6 @@ serve(async (req) => {
         continue;
       }
 
-      // ✅ tick = 6 → ابعت إشعار
       const alert = pickWeightedAlert();
       const payload = JSON.stringify({
         title: alert.title,
@@ -220,7 +233,6 @@ serve(async (req) => {
           await supabase.from('push_subscriptions')
             .delete()
             .eq('endpoint', pushSub.endpoint);
-          console.log('🗑️ Deleted expired push subscription');
         }
       }
     }
