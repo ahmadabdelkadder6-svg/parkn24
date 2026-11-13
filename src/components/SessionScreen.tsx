@@ -1,7 +1,7 @@
 // src/components/SessionScreen.tsx
 
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Clock,
   Car,
@@ -43,8 +43,11 @@ const BRAND = {
 
 const AUTO_END_SECONDS = 6 * 60 * 60;
 
-// 🛡️ نطاق الأمان حول الجراج (متر) — لو السيارة خرجت منه = تنبيه
+// 🛡️ نطاق الأمان حول الجراج (متر)
 const SHIELD_GEOFENCE_METERS = 250;
+
+// ⏱️ فترة سماح بعد بدء الجلسة (ملي ثانية)
+const SHIELD_GRACE_PERIOD_MS = 90_000;
 
 const safeParseTime = (value: any): number => {
   if (!value) return 0;
@@ -93,7 +96,6 @@ const ShieldRadarDisplay = memo(function ShieldRadarDisplay({
 
   return (
     <div className="w-full flex flex-col items-center gap-2">
-      {/* ── الرادار المتحرك ── */}
       <div className="relative" style={{ width: 140, height: 140 }}>
         <div
           ref={radarRef}
@@ -116,7 +118,6 @@ const ShieldRadarDisplay = memo(function ShieldRadarDisplay({
         />
       </div>
 
-      {/* ── بادج الحماية ── */}
       <div
         className="flex items-center gap-2 rounded-full px-3.5 py-1.5 border"
         style={{
@@ -286,7 +287,8 @@ export default function SessionScreen() {
   const [pendingArrival, setPendingArrival] = useState<any>(() => getPendingArrival());
   const [startingSession, setStartingSession] = useState(false);
 
-  // 🛡️ refs للإشعارات
+  // 🛡️ state + refs للدرع
+  const [shieldBreach, setShieldBreach] = useState(false);
   const shieldWatchIdRef = useRef<number | null>(null);
   const shieldAlarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const shieldAlertSentRef = useRef(false);
@@ -359,14 +361,13 @@ export default function SessionScreen() {
     return ms > 0 ? ms : getServerNow();
   }, [activeSession]);
 
-  // 🛡️ حالة الدرع من الجلسة نفسها
-  // null = بدون درع | 0 = مجاني | 7 = مدفوع
+  // 🛡️ حالة الدرع
   const shieldCost = (activeSession as any)?.shieldCost as number | null | undefined;
   const shieldActive = shieldCost != null;
 
   /* ═══════════════════════════════════════════════════════════
-     🛡️ إشعارات الدرع — GPS monitoring + تنبيه محلي + صوت
-     يشتغل بس لما الدرع مفعّل والجلسة نشطة
+     🛡️ إشعارات الدرع — GPS + صوت + اهتزاز + إشعار محلي
+     ✅ الإصلاح: grace period + shieldBreach state + استمرار المراقبة
      ═══════════════════════════════════════════════════════════ */
   useEffect(() => {
     const cleanup = () => {
@@ -383,6 +384,7 @@ export default function SessionScreen() {
     if (!shieldActive || !activeSession || !garage) {
       cleanup();
       shieldAlertSentRef.current = false;
+      setShieldBreach(false);
       return;
     }
 
@@ -390,11 +392,13 @@ export default function SessionScreen() {
 
     const parkingLat = garage.lat;
     const parkingLng = garage.lng;
+    const sessionStartMs = safeParseTime(activeSession.startTime) || Date.now();
+
+    console.log('📡 Shield GPS watch started', { parkingLat, parkingLng });
 
     shieldWatchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         if (!isMountedRef.current) return;
-        if (shieldAlertSentRef.current) return;
 
         const distMeters = haversineDistance(
           pos.coords.latitude,
@@ -403,41 +407,62 @@ export default function SessionScreen() {
           parkingLng,
         );
 
+        // ⏱️ فترة السماح — مش هنضرب إنذار أول 90 ثانية
+        const graceElapsed = Date.now() - sessionStartMs;
+        if (graceElapsed < SHIELD_GRACE_PERIOD_MS) return;
+
         if (distMeters > SHIELD_GEOFENCE_METERS) {
-          shieldAlertSentRef.current = true;
+          // 🔴 خرج من النطاق
+          setShieldBreach(true);
 
-          // 🔊 صوت إنذار متقطع
-          try {
-            playUrgentSound();
-            shieldAlarmIntervalRef.current = setInterval(() => {
-              try { playUrgentSound(); } catch {}
-            }, 2000);
-          } catch {}
+          if (!shieldAlertSentRef.current) {
+            shieldAlertSentRef.current = true;
 
-          // 📱 إشعار محلي
-          try {
-            sendLocalNotification(
-              '🚨 تنبيه حركة!',
-              `السيارة تحركت ${Math.round(distMeters)}م من مكان الركن`,
-              '/',
-            );
-          } catch {}
+            console.log('🚨 SHIELD BREACH — distance:', Math.round(distMeters), 'm');
 
-          // 📳 اهتزاز
-          if (navigator.vibrate) {
-            navigator.vibrate([300, 200, 300, 200, 300, 200, 300]);
-          }
+            // 🔊 صوت إنذار متقطع
+            try {
+              playUrgentSound();
+              shieldAlarmIntervalRef.current = setInterval(() => {
+                try { playUrgentSound(); } catch {}
+              }, 2000);
+            } catch {}
 
-          // ⏹️ وقف الصوت بعد 10 ثواني
-          setTimeout(() => {
-            if (shieldAlarmIntervalRef.current) {
-              clearInterval(shieldAlarmIntervalRef.current);
-              shieldAlarmIntervalRef.current = null;
+            // 📱 إشعار محلي
+            try {
+              sendLocalNotification(
+                '🚨 تنبيه حركة!',
+                `السيارة تحركت ${Math.round(distMeters)}م من مكان الركن`,
+                '/',
+              );
+            } catch {}
+
+            // 📳 اهتزاز
+            if (navigator.vibrate) {
+              navigator.vibrate([300, 200, 300, 200, 300, 200, 300]);
             }
-          }, 10000);
+
+            // ⏹️ وقف الصوت بعد 10 ثواني
+            setTimeout(() => {
+              if (shieldAlarmIntervalRef.current) {
+                clearInterval(shieldAlarmIntervalRef.current);
+                shieldAlarmIntervalRef.current = null;
+              }
+            }, 10000);
+          }
+        } else {
+          // 🟢 جوه النطاق — أصلح الحالة
+          setShieldBreach(false);
+          shieldAlertSentRef.current = false;
+          if (shieldAlarmIntervalRef.current) {
+            clearInterval(shieldAlarmIntervalRef.current);
+            shieldAlarmIntervalRef.current = null;
+          }
         }
       },
-      () => {},
+      (err) => {
+        console.warn('⚠️ GPS watch error:', err.message);
+      },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
     );
 
@@ -446,7 +471,6 @@ export default function SessionScreen() {
 
   /* ═══════════════════════════════════════════════════════════
      📲 Push Notifications — تسجيل مع الـ Service Worker
-     يشتغل بس لما الدرع مفعّل والجلسة نشطة
      ═══════════════════════════════════════════════════════════ */
   useEffect(() => {
     if (!shieldActive || !activeSession || !garage) return;
@@ -490,7 +514,6 @@ export default function SessionScreen() {
         const subJson = sub.toJSON();
         const identifier = userPhone || (currentUser as any)?.id || 'unknown';
 
-        // تحديث الـ subscription في الداتابيز
         await supabase
           .from('shield_sessions')
           .update({
@@ -501,7 +524,6 @@ export default function SessionScreen() {
           .eq('session_id', activeSession.id)
           .is('ended_at', null);
 
-        // تسجيل الجلسة للـ Push
         await registerShieldSession(
           activeSession.id,
           garage.lat,
@@ -517,8 +539,6 @@ export default function SessionScreen() {
     };
 
     registerPush();
-
-    // تجديد كل 10 دقائق
     const refreshInterval = setInterval(registerPush, 10 * 60 * 1000);
 
     return () => {
@@ -539,6 +559,8 @@ export default function SessionScreen() {
       if (!data || typeof data !== 'object') return;
 
       if (data.type === 'SHIELD_BREACH_DETECTED') {
+        setShieldBreach(true);
+
         if (shieldAlertSentRef.current) return;
         shieldAlertSentRef.current = true;
 
@@ -579,15 +601,25 @@ export default function SessionScreen() {
   }, [shieldActive, activeSession?.id]);
 
   /* ═══════════════════════════════════════════════════════════
-     🔄 Realtime: store.setupRealtime() بيغطي كل حاجة
+     🏁 إنهاء الجلسة
      ═══════════════════════════════════════════════════════════ */
-
-  // 🏁 إنهاء الجلسة يدويًا
   const handleEndSession = useCallback(async () => {
     if (ending || !activeSession) return;
 
     setEndedSessionId(activeSession.id);
     setEnding(true);
+
+    // 🛑 وقف كل إنذارات الدرع
+    setShieldBreach(false);
+    shieldAlertSentRef.current = false;
+    if (shieldAlarmIntervalRef.current) {
+      clearInterval(shieldAlarmIntervalRef.current);
+      shieldAlarmIntervalRef.current = null;
+    }
+    if (shieldWatchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(shieldWatchIdRef.current);
+      shieldWatchIdRef.current = null;
+    }
 
     try {
       const elapsedSec = Math.floor((getServerNow() - activeStartMs) / 1000);
@@ -622,7 +654,16 @@ export default function SessionScreen() {
     }
   }, [ending, activeSession, activeStartMs, endSession, acknowledgeSession, setSelectedGarageId, setScreen, userPhone]);
 
-  // ⏰ الإنهاء التلقائي بعد 6 ساعات
+  /* ═══════════════════════════════════════════════════════════
+     🚨 رد فعل إنذار الدرع — أي ضغطة = إنهاء الجلسة + رجوع
+     ═══════════════════════════════════════════════════════════ */
+  const handleShieldAlarmResponse = useCallback(async () => {
+    await handleEndSession();
+  }, [handleEndSession]);
+
+  /* ═══════════════════════════════════════════════════════════
+     ⏰ الإنهاء التلقائي بعد 6 ساعات
+     ═══════════════════════════════════════════════════════════ */
   const handleAutoEnd = useCallback(async () => {
     if (autoEndedRef.current || !activeSession) return;
     autoEndedRef.current = true;
@@ -660,7 +701,9 @@ export default function SessionScreen() {
     }
   }, [activeSession, endSession, acknowledgeSession, setSelectedGarageId, setScreen, userPhone]);
 
-  // ✅ بدء الجلسة في Supabase عند ضغط الزر الأخضر
+  /* ═══════════════════════════════════════════════════════════
+     ✅ بدء الجلسة من Pending Arrival
+     ═══════════════════════════════════════════════════════════ */
   const handleConfirmArrivalAndStartSession = useCallback(async () => {
     if (!pendingArrival || startingSession) return;
     setStartingSession(true);
@@ -702,18 +745,109 @@ export default function SessionScreen() {
     setScreen('list');
   }, [setSelectedGarageId, setScreen]);
 
-
   // ═══════════════════════════════════════════════════════
   // 🎨 جلسة ركن نشطة
   // ═══════════════════════════════════════════════════════
   if (activeSession) {
     return (
       <motion.div
-        className="h-full flex flex-col bg-slate-950 text-white overflow-hidden"
+        className="h-full flex flex-col bg-slate-950 text-white overflow-hidden relative"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         dir="rtl"
       >
+        {/* ═══════════════════════════════════════════════════
+            🚨 شاشة إنذار الدرع — تظهر فوق كل حاجة
+            ═══════════════════════════════════════════════════ */}
+        <AnimatePresence>
+          {shieldActive && shieldBreach && (
+            <motion.div
+              key="shield-alarm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              style={{ background: 'rgba(0, 0, 0, 0.9)' }}
+            >
+              <motion.div
+                initial={{ scale: 0.7, opacity: 0, y: 30 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.7, opacity: 0, y: 30 }}
+                transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+                className="w-full max-w-sm rounded-3xl p-6 text-center"
+                style={{
+                  background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+                  border: '2.5px solid #ef4444',
+                  boxShadow: '0 0 60px rgba(239, 68, 68, 0.5), 0 0 120px rgba(239, 68, 68, 0.2), inset 0 1px 0 rgba(255,255,255,0.1)',
+                }}
+              >
+                {/* أيقونة الإنذار */}
+                <motion.div
+                  animate={{ scale: [1, 1.2, 1] }}
+                  transition={{ repeat: Infinity, duration: 1 }}
+                  className="text-6xl mb-4"
+                >
+                  🚨
+                </motion.div>
+
+                <h2 className="text-2xl font-black text-white mb-2">
+                  تنبيه الدرع!
+                </h2>
+
+                <p className="text-red-300 text-sm font-bold mb-2">
+                  السيارة خرجت من نطاق الجراج
+                </p>
+
+                <div
+                  className="mx-auto mb-6 px-4 py-2 rounded-xl"
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                  }}
+                >
+                  <p className="text-white text-lg font-black">
+                    هل أنت اللي بتسوق العربية؟
+                  </p>
+                </div>
+
+                {/* الزرارين */}
+                <div className="flex flex-col gap-3">
+                  <button
+                    onClick={handleShieldAlarmResponse}
+                    className="w-full py-4 rounded-2xl font-black text-white text-base border-0 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2"
+                    style={{
+                      background: 'linear-gradient(135deg, #22c55e, #16a34a)',
+                      boxShadow: '0 6px 20px rgba(34, 197, 94, 0.4), inset 0 1px 0 rgba(255,255,255,0.2)',
+                    }}
+                  >
+                    <span className="text-xl">✅</span>
+                    <span>أنا اللي سايق</span>
+                  </button>
+
+                  <button
+                    onClick={handleShieldAlarmResponse}
+                    className="w-full py-4 rounded-2xl font-black text-white text-base border-0 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2"
+                    style={{
+                      background: 'linear-gradient(135deg, #ef4444, #b91c1c)',
+                      boxShadow: '0 6px 20px rgba(239, 68, 68, 0.4), inset 0 1px 0 rgba(255,255,255,0.2)',
+                    }}
+                  >
+                    <span className="text-xl">❌</span>
+                    <span>مش أنا — سرقة!</span>
+                  </button>
+                </div>
+
+                <p className="text-slate-400 text-[10px] font-bold mt-4">
+                  أي اختيار هينهي الجلسة الحالية
+                </p>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ═══════════════════════════════════════════════════
+            📺 المحتوى الرئيسي للجلسة
+            ═══════════════════════════════════════════════════ */}
         <div className="flex-1 flex flex-col items-center px-4 pt-3 pb-2 gap-2.5 overflow-y-auto">
           {/* بادج "جلسة نشطة" */}
           <div
