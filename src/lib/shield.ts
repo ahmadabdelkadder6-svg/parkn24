@@ -29,7 +29,7 @@ export interface ShieldState {
 export const SHIELD_COST = 7;
 export const SHIELD_STORAGE_KEY = 'parkn24_shield';
 export const GEOFENCE_RADIUS = 250;          // ✅ للتفعيل: العميل يقدر يفعّل الدرع على بعد 250م
-export const ALERT_DISTANCE = 200;           // ✅ للإنذار: الإنذار يطلع لما السيارة تخرج برة 200م
+export const ALERT_DISTANCE = 250;           // ✅ 🔴 للإنذار: الإنذار يطلع لما السيارة تخرج برة 250م
 export const MIN_MOVEMENT_METERS = 80;
 export const FALLBACK_INTERVAL_MS = 300_000;
 
@@ -116,7 +116,7 @@ function getGracePeriod(speedMs: number | null): number {
 
 // ═══════════════════════════════════════════════════════════
 // 📍 GPS Geofence الذكي (للإنذار)
-// يستخدم ALERT_DISTANCE = 200م
+// يستخدم ALERT_DISTANCE = 250م
 // ═══════════════════════════════════════════════════════════
 let gpsWatchId: number | null = null;
 let fallbackIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -164,7 +164,7 @@ export function startShieldGPS(params: {
     const distFromGarage = haversine(lat, lng, params.parkingLat, params.parkingLng);
     const distFromLastSent = haversine(lat, lng, lastSentLat, lastSentLng);
 
-    // ✅ ALERT_DISTANCE = 200م للإنذار (مش GEOFENCE_RADIUS)
+    // ✅ ALERT_DISTANCE = 250م للإنذار
     if (distFromGarage > ALERT_DISTANCE) {
       const gracePeriod = getGracePeriod(speed);
 
@@ -197,7 +197,7 @@ export function startShieldGPS(params: {
         }
       }
     } else {
-      // جوه 200م — صفّر العدّاد بس لو الإنذار لسه ما طلعش
+      // جوه 250م — صفّر العدّاد بس لو الإنذار لسه ما طلعش
       if (!isCurrentlyOutside) {
         breachStartTime = null;
       }
@@ -288,10 +288,119 @@ async function sendGPSToServer(
 }
 
 // ═══════════════════════════════════════════════════════════
+// 🚨🔊 نظام الإنذار الشديد — صوت 3 طبقات + اهتزاز عنيف
+// (الفلاش في ShieldOverlay.tsx عشان يظهر فوق الـ UI)
+// ═══════════════════════════════════════════════════════════
+let alarmAudioCtx: AudioContext | null = null;
+let alarmOscillators: OscillatorNode[] = [];
+let alarmVibrationInterval: ReturnType<typeof setInterval> | null = null;
+let isAlarmActive = false;
+
+/**
+ * 🔊 تشغيل الإنذار الشديد
+ * - 3 طبقات صوتية (sawtooth + square + sawtooth) بأقصى volume
+ * - اهتزاز عنيف متكرر للموبايل
+ */
+export function triggerIntenseAlarm(): void {
+  if (isAlarmActive) return;
+  isAlarmActive = true;
+
+  // ── 1) صوت عالي جداً — 3 طبقات ──
+  try {
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    if (Ctx) {
+      alarmAudioCtx = new Ctx();
+      const now = alarmAudioCtx.currentTime;
+
+      // طبقة ١: صفارة رئيسية (sawtooth 1200→800 Hz)
+      const osc1 = alarmAudioCtx.createOscillator();
+      const gain1 = alarmAudioCtx.createGain();
+      osc1.type = 'sawtooth';
+      osc1.frequency.setValueAtTime(1200, now);
+      gain1.gain.setValueAtTime(1.0, now);
+      osc1.connect(gain1);
+      gain1.connect(alarmAudioCtx.destination);
+      osc1.start();
+      for (let i = 0; i < 500; i++) {
+        osc1.frequency.setValueAtTime(1200, now + i * 0.5);
+        osc1.frequency.linearRampToValueAtTime(800, now + i * 0.5 + 0.25);
+      }
+
+      // طبقة ٢: تردد حاد (square 2400 Hz)
+      const osc2 = alarmAudioCtx.createOscillator();
+      const gain2 = alarmAudioCtx.createGain();
+      osc2.type = 'square';
+      osc2.frequency.setValueAtTime(2400, now);
+      gain2.gain.setValueAtTime(0.7, now);
+      osc2.connect(gain2);
+      gain2.connect(alarmAudioCtx.destination);
+      osc2.start();
+
+      // طبقة ٣: صدى منخفض (sawtooth 400 Hz)
+      const osc3 = alarmAudioCtx.createOscillator();
+      const gain3 = alarmAudioCtx.createGain();
+      osc3.type = 'sawtooth';
+      osc3.frequency.setValueAtTime(400, now);
+      gain3.gain.setValueAtTime(0.8, now);
+      osc3.connect(gain3);
+      gain3.connect(alarmAudioCtx.destination);
+      osc3.start();
+
+      alarmOscillators = [osc1, osc2, osc3];
+    }
+  } catch (e) {
+    console.warn('🔇 Alarm audio failed:', e);
+  }
+
+  // ── 2) اهتزاز عنيف متكرر ──
+  if (navigator.vibrate) {
+    const pattern = [500, 80, 500, 80, 500, 80, 500, 80, 500];
+    navigator.vibrate(pattern);
+    alarmVibrationInterval = setInterval(() => {
+      if (isAlarmActive) navigator.vibrate(pattern);
+    }, 2500);
+  }
+}
+
+/**
+ * 🔇 إيقاف الإنذار الشديد (صوت + اهتزاز)
+ */
+export function stopIntenseAlarm(): void {
+  isAlarmActive = false;
+
+  // إيقاف الصوت
+  try {
+    alarmOscillators.forEach((osc) => {
+      try { osc.stop(); } catch { /* */ }
+    });
+    alarmOscillators = [];
+    if (alarmAudioCtx) {
+      alarmAudioCtx.close().catch(() => {});
+      alarmAudioCtx = null;
+    }
+  } catch { /* */ }
+
+  // إيقاف الاهتزاز
+  if (alarmVibrationInterval) {
+    clearInterval(alarmVibrationInterval);
+    alarmVibrationInterval = null;
+  }
+  if (navigator.vibrate) navigator.vibrate(0);
+}
+
+/**
+ * ✅ هل الإنذار شغال دلوقتي؟
+ */
+export function isIntenseAlarmActive(): boolean {
+  return isAlarmActive;
+}
+
+// ═══════════════════════════════════════════════════════════
 // 🧹 تدمير الدرع
 // ═══════════════════════════════════════════════════════════
 export function destroyShield(): void {
   stopShieldGPS();
+  stopIntenseAlarm();  // 🆕 أوقف الإنذار الشديد كمان
   try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch { /* */ }
 }
 

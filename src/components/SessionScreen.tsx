@@ -21,7 +21,7 @@ import {
   clearPendingArrival,
   stopArrivalTracking,
 } from '../utils/mapsNavigation';
-
+import { stopIntenseAlarm } from '../lib/shield';
 const BRAND = {
   blue: '#1656b8',
   blueDark: '#0f3d85',
@@ -368,7 +368,8 @@ export default function SessionScreen() {
 
   // 🏁 إنهاء الجلسة يدويًا عند الضغط على زر الخروج
   const handleEndSession = useCallback(async () => {
-    if (ending || !activeSession) return;
+ if (ending || !activeSession) return;
+    stopIntenseAlarm();
 
     // 🚀 إخفاء فوري من الشاشة قبل أي await
     setEndedSessionId(activeSession.id);
@@ -414,6 +415,7 @@ export default function SessionScreen() {
   const handleAutoEnd = useCallback(async () => {
     if (autoEndedRef.current || !activeSession) return;
     autoEndedRef.current = true;
+ stopIntenseAlarm();
 
     // 🚀 إخفاء فوري من الشاشة
     setEndedSessionId(activeSession.id);
