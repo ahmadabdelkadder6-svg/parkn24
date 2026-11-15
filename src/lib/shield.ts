@@ -288,6 +288,38 @@ async function sendGPSToServer(
 }
 
 // ═══════════════════════════════════════════════════════════
+// 🔊 AudioContext المشترك — تهيئة مبكرة أثناء تفاعل المستخدم
+// ═══════════════════════════════════════════════════════════
+// السبب: المتصفح بيمنع تشغيل الصوت من background callbacks
+// (زي GPS watchPosition) إلا لو AudioContext اتعمل أثناء
+// user gesture (زي ضغط زر). فبنعمل initAudioContext() أول
+// ما المستخدم يدوس "تفعيل الدرع" وبنستخدم نفس الـ context
+// لاحقاً لما الإنذار يشتغل.
+// ═══════════════════════════════════════════════════════════
+let sharedAudioCtx: AudioContext | null = null;
+
+/**
+ * ⚡ تهيئة AudioContext أثناء تفاعل المستخدم (user gesture)
+ * لازم تتنادى أول ما المستخدم يضغط على أي زر (تفعيل الدرع مثلاً)
+ * عشان المتصفح يسمح بتشغيل الصوت لاحقاً في الخلفية
+ */
+export function initAudioContext(): void {
+  try {
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!Ctx) return;
+
+    if (!sharedAudioCtx) {
+      sharedAudioCtx = new Ctx();
+    }
+    if (sharedAudioCtx.state === 'suspended') {
+      sharedAudioCtx.resume().catch(() => {});
+    }
+  } catch (e) {
+    console.warn('AudioContext init failed:', e);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
 // 🚨🔊 نظام الإنذار الشديد — صوت 3 طبقات + اهتزاز عنيف
 // (الفلاش في ShieldOverlay.tsx عشان يظهر فوق الـ UI)
 // ═══════════════════════════════════════════════════════════
@@ -300,6 +332,7 @@ let isAlarmActive = false;
  * 🔊 تشغيل الإنذار الشديد
  * - 3 طبقات صوتية (sawtooth + square + sawtooth) بأقصى volume
  * - اهتزاز عنيف متكرر للموبايل
+ * - يستخدم sharedAudioCtx الجاهز (اللي اتعمل أثناء user gesture)
  */
 export function triggerIntenseAlarm(): void {
   if (isAlarmActive) return;
@@ -309,7 +342,16 @@ export function triggerIntenseAlarm(): void {
   try {
     const Ctx = window.AudioContext || (window as any).webkitAudioContext;
     if (Ctx) {
-      alarmAudioCtx = new Ctx();
+      // ✅ استخدام الـ shared context الجاهز بدل إنشاء واحد جديد
+      // الـ shared context اتعمل أثناء user gesture فحالته "running"
+      // ومش هيكون "suspended" زي لو عملنا new AudioContext() هنا
+      const ctx = sharedAudioCtx || new Ctx();
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+      if (!sharedAudioCtx) sharedAudioCtx = ctx;
+      alarmAudioCtx = ctx;
+
       const now = alarmAudioCtx.currentTime;
 
       // طبقة ١: صفارة رئيسية (sawtooth 1200→800 Hz)
@@ -375,7 +417,11 @@ export function stopIntenseAlarm(): void {
     });
     alarmOscillators = [];
     if (alarmAudioCtx) {
-      alarmAudioCtx.close().catch(() => {});
+      // ✅ لو الـ context هو الـ shared، مش نقفله — نسيبه جاهز للمرات الجاية
+      // لو كان context منفصل (fallback)، نقفله
+      if (alarmAudioCtx !== sharedAudioCtx) {
+        alarmAudioCtx.close().catch(() => {});
+      }
       alarmAudioCtx = null;
     }
   } catch { /* */ }
@@ -401,6 +447,13 @@ export function isIntenseAlarmActive(): boolean {
 export function destroyShield(): void {
   stopShieldGPS();
   stopIntenseAlarm();  // 🆕 أوقف الإنذار الشديد كمان
+
+  // ✅ تنظيف الـ shared context بالكامل عند تدمير الدرع
+  if (sharedAudioCtx) {
+    try { sharedAudioCtx.close().catch(() => {}); } catch { /* */ }
+    sharedAudioCtx = null;
+  }
+
   try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch { /* */ }
 }
 

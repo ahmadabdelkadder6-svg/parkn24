@@ -4,7 +4,8 @@ import {
   startShieldGPS, checkUserInsideGarage,
   destroyShield, saveShieldState, loadShieldState,
   SHIELD_STORAGE_KEY, SHIELD_COST, GEOFENCE_RADIUS,
-  triggerIntenseAlarm, stopIntenseAlarm,            // 🆕
+  triggerIntenseAlarm, stopIntenseAlarm,
+  initAudioContext,                                  // 🆕 تهيئة الصوت أثناء user gesture
 } from '../lib/shield';
 import {
   sendLocalNotification, playUrgentSound,
@@ -188,10 +189,25 @@ export default function ShieldOverlay({
   }, [phase]);
 
   // ═══════════════════════════════════════════════════════════
-  // 🆕 فلاش أحمر ثابت فوق كل الـ UI (مش جوه الـ scroll)
+  // 🆕 تهيئة AudioContext أول ما الدرع يتفعل
+  // السبب: المتصفح بيمنع تشغيل الصوت من background callbacks
+  // (زي GPS watchPosition) إلا لو AudioContext اتعمل أثناء
+  // user gesture. فبنعمل init هنا كـ backup إضافي للتأكيد.
+  // ═══════════════════════════════════════════════════════════
+  useEffect(() => {
+    if (phase === 'active' || phase === 'breach') {
+      initAudioContext();
+    }
+  }, [phase]);
+
+  // ═══════════════════════════════════════════════════════════
+  // 🆕 فلاش أحمر ثابت فوق كل الـ UI (CSS animation أسرع وأنظف)
   // ═══════════════════════════════════════════════════════════
   useEffect(() => {
     if (phase !== 'breach') return;
+
+    // إزالة أي فلاش قديم
+    document.getElementById('shield-breach-flash-overlay')?.remove();
 
     const flashEl = document.createElement('div');
     flashEl.id = 'shield-breach-flash-overlay';
@@ -200,20 +216,27 @@ export default function ShieldOverlay({
       'inset: 0',
       'z-index: 99997',
       'pointer-events: none',
-      'transition: background-color 0.12s ease',
+      'background: rgba(255, 0, 0, 0.4)',
+      'animation: shieldFlashAnim 0.36s ease-in-out infinite alternate',
     ].join(';');
+
+    // ✅ إضافة CSS animation مرة واحدة فقط (ثابت في الـ head)
+    if (!document.getElementById('shield-flash-style')) {
+      const style = document.createElement('style');
+      style.id = 'shield-flash-style';
+      style.textContent = `
+        @keyframes shieldFlashAnim {
+          0%   { background-color: rgba(255, 0, 0, 0.45); }
+          50%  { background-color: rgba(139, 0, 0, 0.18); }
+          100% { background-color: rgba(255, 0, 0, 0.50); }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
     document.body.appendChild(flashEl);
 
-    let flashOn = false;
-    const flashInterval = setInterval(() => {
-      flashOn = !flashOn;
-      flashEl.style.backgroundColor = flashOn
-        ? 'rgba(255, 0, 0, 0.35)'
-        : 'rgba(139, 0, 0, 0.15)';
-    }, 180);
-
     return () => {
-      clearInterval(flashInterval);
       flashEl.remove();
     };
   }, [phase]);
@@ -532,9 +555,11 @@ export default function ShieldOverlay({
   }, [autoResume, phase, registerOnServer]);
 
   // ═══════════════════════════════════════════════════════
-  // 🎯 handleYes
+  // 🎯 handleYes — تفعيل الدرع يدوياً
   // ═══════════════════════════════════════════════════════
   const handleYes = useCallback(async () => {
+    // ✅ user gesture — جهّز الصوت فوراً عشان الإنذار يشتغل لاحقاً في الخلفية
+    initAudioContext();
     unlockAudio();
     setCheckError(null);
     setIsChecking(true);
@@ -596,6 +621,8 @@ export default function ShieldOverlay({
 
   const handleRegister = useCallback(async () => {
     if (phone.length < 10) return;
+    // ✅ user gesture — جهّز الصوت
+    initAudioContext();
     const code = 'SH-' + Math.random().toString(36).slice(2, 8).toUpperCase();
     setShieldCode(code);
     setPhase('active');
@@ -609,7 +636,10 @@ export default function ShieldOverlay({
   if (dismissed) {
     return (
       <button
-        onClick={() => setDismissed(false)}
+        onClick={() => {
+          initAudioContext(); // ✅ جهّز الصوت لو رجع يفعّل تاني
+          setDismissed(false);
+        }}
         style={{
           position: 'fixed', top: 16, right: 16, zIndex: 99999,
           background: 'linear-gradient(135deg, #1e3a8a, #1e40af)',

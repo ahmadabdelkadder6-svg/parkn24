@@ -13,6 +13,8 @@ import {
   AlertCircle,
   Check,
   ShieldCheck,
+  Shield,
+  ShieldOff,
 } from 'lucide-react';
 import {
   useStore,
@@ -56,6 +58,14 @@ const BRAND = {
   border: 'rgba(255, 255, 255, 0.08)',
 };
 
+// ═══════════════════════════════════════════════════════════
+// 🚀 إعدادات البدء التلقائي للجلسة (كل الحسابات محلية 100%)
+// ═══════════════════════════════════════════════════════════
+const AUTO_START_RADIUS_M = 100;        // نطاق 100 متر حول الجراج
+const AUTO_START_STABILITY_MS = 3 * 60 * 1000; // 3 دقائق استقرار
+const SHIELD_AUTO_FEE = 7;              // خصم 7 جنيه عند تفعيل الدرع تلقائياً
+const GPS_POLL_INTERVAL_MS = 1000;      // تتبع GPS كل ثانية (محلي، صفر طلبات سيرفر)
+
 const getBonusForAmount = (amount: number): number => {
   if (amount >= 250) return 50;
   if (amount >= 100) return 15;
@@ -85,6 +95,20 @@ const toMs = (value: any): number => {
   }
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
+};
+
+// ═══════════════════════════════════════════════════════════
+// 📐 حساب المسافة محلياً بالمتر (Haversine) — صفر طلبات سيرفر
+// ═══════════════════════════════════════════════════════════
+const haversineMeters = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+  const R = 6371000; // نصف قطر الأرض بالمتر
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
 };
 
 function MapController({
@@ -149,6 +173,7 @@ export default function NavigationScreen() {
     addSession,
     fetchAll,
     addWalletTopUp,
+    deductWallet,
   } = useStore();
 
   const garage = garages.find((g) => g.id === selectedGarageId);
@@ -191,10 +216,22 @@ export default function NavigationScreen() {
   const [showInsufficientModal, setShowInsufficientModal] = useState(false);
   const [processingTopup, setProcessingTopup] = useState<string | null>(null);
 
+  // ═══════════════════════════════════════════════════════════
+  // 🛡️ حالات البدء التلقائي (كلها محلية — صفر طلبات سيرفر)
+  // ═══════════════════════════════════════════════════════════
+  const [shieldChoice, setShieldChoice] = useState<boolean>(true); // افتراضياً مفعّل
+  const [stabilityStartMs, setStabilityStartMs] = useState<number | null>(null);
+  const [stabilityElapsed, setStabilityElapsed] = useState<number>(0);
+  const [isWithinRadius, setIsWithinRadius] = useState<boolean>(false);
+  const [autoStarting, setAutoStarting] = useState<boolean>(false);
+
   const isMountedRef = useRef(true);
   const navigatedToSessionRef = useRef(false);
   const isArrivingRef = useRef(false);
   const realtimeChannelRef = useRef<any>(null);
+  const autoStartTriggeredRef = useRef(false);
+  const gpsWatchIdRef = useRef<number | null>(null);
+  const stabilityTickerRef = useRef<number | null>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -369,6 +406,113 @@ export default function NavigationScreen() {
     }
   }, [myIncomingCar, removeIncomingCar, setSelectedGarageId, setScreen]);
 
+  // ═══════════════════════════════════════════════════════════
+  // 🚀 دالة البدء التلقائي للجلسة بعد 3 دقائق استقرار
+  // (كل الحسابات محلية — طلب DB واحد فقط عند التنفيذ)
+  // ═══════════════════════════════════════════════════════════
+  const handleAutoStartSession = useCallback(async () => {
+    if (autoStartTriggeredRef.current || !garage || !isMountedRef.current) return;
+    autoStartTriggeredRef.current = true;
+    setAutoStarting(true);
+
+    try {
+      // 🔎 فحص أولي محلي — لو فيه جلسة شغالة بالفعل، نروح لها مباشرة
+      const state = useStore.getState();
+      const alreadyActive = state.sessions.find(
+        (s) =>
+          s.status === 'active' &&
+          (
+            normalizePlate(s.carPlate) === userPlateNav ||
+            (userPhoneClean && normalizePhone((s as any).customerPhone || '') === userPhoneClean)
+          ),
+      );
+
+      if (alreadyActive) {
+        if (alreadyActive.garageId !== selectedGarageId) {
+          setSelectedGarageId(alreadyActive.garageId);
+        }
+        navigatedToSessionRef.current = true;
+        setScreen('session');
+        return;
+      }
+
+      // 💰 لو اختار الدرع، تحقق من الرصيد أولاً وخصم 7 ج
+      if (shieldChoice) {
+        const walletNow = Number(currentUser?.wallet ?? (currentUser as any)?.walletBalance ?? 0);
+        if (walletNow < SHIELD_AUTO_FEE) {
+          toast.error(`رصيد المحفظة غير كافٍ لتفعيل الدرع (${SHIELD_AUTO_FEE} ج.م)`, { duration: 4000 });
+          setShowInsufficientModal(true);
+          autoStartTriggeredRef.current = false;
+          setAutoStarting(false);
+          return;
+        }
+
+        try {
+          await deductWallet(SHIELD_AUTO_FEE);
+          toast.success(`تم خصم ${SHIELD_AUTO_FEE} ج.م لتفعيل الدرع 🛡️`, { duration: 3000 });
+        } catch (e) {
+          console.error('Wallet deduction error:', e);
+          toast.error('فشل خصم رسوم الدرع، حاول مرة أخرى');
+          autoStartTriggeredRef.current = false;
+          setAutoStarting(false);
+          return;
+        }
+      }
+
+      // 🚗 إنشاء الجلسة (طلب سيرفر واحد فقط)
+      const startTimeISO = new Date(getServerNow()).toISOString();
+      await addSession({
+        garageId: garage.id,
+        carPlate: myIncomingCar?.carPlate || currentUser?.carPlate || '---',
+        startTime: startTimeISO,
+        status: 'active',
+        source: 'app',
+        agreedPrice: myIncomingCar?.agreedPrice || (garage as any).basePrice || 15,
+        customerPhone: currentUser?.phone,
+        customerName: currentUser?.name,
+        startedBy: 'customer',
+        incomingCarId: myIncomingCar?.id,
+        autoStarted: true,
+        shieldAutoEnabled: shieldChoice,
+      } as any);
+
+      // 🧹 تنظيف الـ incoming car
+      if (myIncomingCar) {
+        try { await removeIncomingCar(myIncomingCar.id); } catch {}
+      }
+
+      useStore.getState().setHasPaidBookingFee(false);
+
+      navigatedToSessionRef.current = true;
+
+      const msg = shieldChoice
+        ? '✅ تم بدء الجلسة والدرع تلقائياً 🛡️'
+        : '✅ تم بدء الجلسة تلقائياً (بدون درع)';
+      toast.success(msg, { duration: 4000, icon: '🚀' });
+
+      setScreen('session');
+    } catch (err) {
+      console.error('❌ Auto-start error:', err);
+      toast.error('فشل البدء التلقائي، حاول يدوياً');
+      autoStartTriggeredRef.current = false;
+    } finally {
+      if (isMountedRef.current) setAutoStarting(false);
+    }
+  }, [
+    garage,
+    shieldChoice,
+    userPlateNav,
+    userPhoneClean,
+    selectedGarageId,
+    currentUser,
+    myIncomingCar,
+    addSession,
+    removeIncomingCar,
+    deductWallet,
+    setSelectedGarageId,
+    setScreen,
+  ]);
+
   /* 🧠 GPS positioning */
   useEffect(() => {
     if (!('geolocation' in navigator)) return;
@@ -382,6 +526,98 @@ export default function NavigationScreen() {
       { enableHighAccuracy: true, timeout: 6000 }
     );
   }, []);
+
+  // ═══════════════════════════════════════════════════════════
+  // 📡 تتبع GPS مستمر محلياً (watchPosition — صفر طلبات سيرفر)
+  // ═══════════════════════════════════════════════════════════
+  useEffect(() => {
+    if (!garage || !('geolocation' in navigator)) return;
+    if (myActiveSession) return; // لو فيه جلسة شغالة خلاص، مفيش داعي للتتبع
+
+    const watchId = navigator.geolocation.watchPosition(
+      (p) => {
+        if (!isMountedRef.current) return;
+        setUserPos({ lat: p.coords.latitude, lng: p.coords.longitude });
+      },
+      (err) => {
+        console.warn('GPS watch error:', err);
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: GPS_POLL_INTERVAL_MS,
+        timeout: 10000,
+      }
+    );
+
+    gpsWatchIdRef.current = watchId;
+
+    return () => {
+      if (gpsWatchIdRef.current !== null) {
+        try { navigator.geolocation.clearWatch(gpsWatchIdRef.current); } catch {}
+        gpsWatchIdRef.current = null;
+      }
+    };
+  }, [garage, myActiveSession]);
+
+  // ═══════════════════════════════════════════════════════════
+  // 🎯 مراقبة الاستقرار داخل نطاق 100م (كلها حسابات محلية)
+  // ═══════════════════════════════════════════════════════════
+  useEffect(() => {
+    if (!garage || myActiveSession || autoStartTriggeredRef.current) return;
+
+    const distMeters = haversineMeters(userPos.lat, userPos.lng, garage.lat, garage.lng);
+    const within = distMeters <= AUTO_START_RADIUS_M;
+
+    setIsWithinRadius(within);
+
+    if (within) {
+      // دخل النطاق لأول مرة → ابدأ عداد الاستقرار
+      if (stabilityStartMs === null) {
+        setStabilityStartMs(Date.now());
+        setStabilityElapsed(0);
+      }
+    } else {
+      // خرج من النطاق → إعادة ضبط العداد
+      if (stabilityStartMs !== null) {
+        setStabilityStartMs(null);
+        setStabilityElapsed(0);
+      }
+    }
+  }, [userPos, garage, myActiveSession, stabilityStartMs]);
+
+  // ═══════════════════════════════════════════════════════════
+  // ⏱️ ticker عداد الاستقرار (محلي 100%)
+  // ═══════════════════════════════════════════════════════════
+  useEffect(() => {
+    if (stabilityStartMs === null) {
+      if (stabilityTickerRef.current !== null) {
+        window.clearInterval(stabilityTickerRef.current);
+        stabilityTickerRef.current = null;
+      }
+      return;
+    }
+
+    const tick = () => {
+      if (!isMountedRef.current) return;
+      const elapsed = Date.now() - stabilityStartMs;
+      setStabilityElapsed(elapsed);
+
+      if (elapsed >= AUTO_START_STABILITY_MS && !autoStartTriggeredRef.current) {
+        // 🚀 اكتمل الاستقرار → بدء الجلسة تلقائياً
+        handleAutoStartSession();
+      }
+    };
+
+    tick();
+    stabilityTickerRef.current = window.setInterval(tick, 1000);
+
+    return () => {
+      if (stabilityTickerRef.current !== null) {
+        window.clearInterval(stabilityTickerRef.current);
+        stabilityTickerRef.current = null;
+      }
+    };
+  }, [stabilityStartMs, handleAutoStartSession]);
 
   /* ─── تحميل الخريطة ─── */
   useEffect(() => {
@@ -433,6 +669,12 @@ export default function NavigationScreen() {
   const minutes = distanceToMinutes(distance);
   const coordsText = `${garage.lat},${garage.lng}`;
   const walletBalance = Number(currentUser?.wallet ?? (currentUser as any)?.walletBalance ?? 0);
+
+  // 📊 حسابات العرض للبنر
+  const distMetersNow = haversineMeters(userPos.lat, userPos.lng, garage.lat, garage.lng);
+  const stabilityRemainingMs = Math.max(0, AUTO_START_STABILITY_MS - stabilityElapsed);
+  const stabilityRemainingSec = Math.ceil(stabilityRemainingMs / 1000);
+  const stabilityPct = Math.min(100, (stabilityElapsed / AUTO_START_STABILITY_MS) * 100);
 
   const copyCoords = async () => {
     try {
@@ -583,6 +825,142 @@ export default function NavigationScreen() {
           </div>
         </div>
 
+        {/* ═══════════════════════════════════════════════════════
+            🛡️ بنر اختيار الدرع + البدء التلقائي
+            ═══════════════════════════════════════════════════════ */}
+        {!myActiveSession && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-2xl p-3.5 shrink-0 border-2 relative overflow-hidden"
+            style={{
+              background: shieldChoice
+                ? `linear-gradient(135deg, ${BRAND.greenLight} 0%, rgba(140,198,63,0.05) 100%)`
+                : `linear-gradient(135deg, rgba(100,116,139,0.15) 0%, rgba(71,85,105,0.05) 100%)`,
+              borderColor: shieldChoice ? BRAND.green + '60' : BRAND.border,
+              boxShadow: shieldChoice
+                ? `0 4px 20px rgba(140,198,63,0.15)`
+                : '0 4px 12px rgba(0,0,0,0.2)',
+            }}
+          >
+            {/* عنوان البنر */}
+            <div className="flex items-center justify-between mb-2.5">
+              <div className="flex items-center gap-1.5">
+                {shieldChoice ? (
+                  <Shield size={16} style={{ color: BRAND.green }} className="animate-pulse" />
+                ) : (
+                  <ShieldOff size={16} style={{ color: BRAND.slateMuted }} />
+                )}
+                <span
+                  className="text-[12px] font-black"
+                  style={{ color: shieldChoice ? BRAND.green : BRAND.slateMuted }}
+                >
+                  {shieldChoice ? 'الدرع مفعّل ✅' : 'الدرع غير مفعّل'}
+                </span>
+              </div>
+              <span
+                className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+                style={{
+                  background: 'rgba(10,22,40,0.6)',
+                  color: BRAND.slateMuted,
+                  border: `1px solid ${BRAND.border}`,
+                }}
+              >
+                {SHIELD_AUTO_FEE} ج.م
+              </span>
+            </div>
+
+            {/* زرين الاختيار */}
+            <div className="grid grid-cols-2 gap-2 mb-2.5">
+              <button
+                type="button"
+                onClick={() => setShieldChoice(true)}
+                disabled={autoStarting}
+                className="py-2 rounded-xl font-black text-[11px] border-2 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                style={{
+                  background: shieldChoice ? BRAND.green : 'transparent',
+                  color: shieldChoice ? BRAND.navy : '#fff',
+                  borderColor: shieldChoice ? BRAND.green : BRAND.border,
+                }}
+              >
+                🛡️ تفعيل الدرع
+              </button>
+              <button
+                type="button"
+                onClick={() => setShieldChoice(false)}
+                disabled={autoStarting}
+                className="py-2 rounded-xl font-black text-[11px] border-2 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                style={{
+                  background: !shieldChoice ? '#475569' : 'transparent',
+                  color: '#fff',
+                  borderColor: !shieldChoice ? '#475569' : BRAND.border,
+                }}
+              >
+                ❌ بدون درع
+              </button>
+            </div>
+
+            {/* عداد الاستقرار + حالة النطاق */}
+            <div
+              className="rounded-xl p-2.5 border"
+              style={{
+                background: 'rgba(10,22,40,0.6)',
+                borderColor: BRAND.border,
+              }}
+            >
+              {isWithinRadius ? (
+                <>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-black" style={{ color: BRAND.green }}>
+                      📍 داخل نطاق الجراج ({Math.round(distMetersNow)}م)
+                    </span>
+                    <span className="text-[11px] font-black font-mono" style={{ color: BRAND.green }}>
+                      {autoStarting
+                        ? '⏳ جاري البدء...'
+                        : stabilityRemainingSec > 0
+                        ? `${Math.floor(stabilityRemainingSec / 60)}:${(stabilityRemainingSec % 60).toString().padStart(2, '0')}`
+                        : '✅'}
+                    </span>
+                  </div>
+
+                  {/* شريط التقدم */}
+                  <div
+                    className="w-full h-1.5 rounded-full overflow-hidden"
+                    style={{ background: 'rgba(255,255,255,0.08)' }}
+                  >
+                    <motion.div
+                      className="h-full rounded-full"
+                      style={{ background: BRAND.green }}
+                      animate={{ width: `${stabilityPct}%` }}
+                      transition={{ duration: 0.3 }}
+                    />
+                  </div>
+
+                  <p className="text-[9px] font-bold mt-1.5 leading-relaxed" style={{ color: BRAND.slateMuted }}>
+                    {autoStarting
+                      ? '🚀 جاري بدء الجلسة تلقائياً...'
+                      : `استقر داخل الجراج لـ 3 دقائق لبدء الجلسة ${shieldChoice ? 'والدرع' : ''} تلقائياً`}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-black" style={{ color: BRAND.slateMuted }}>
+                      📡 خارج نطاق الجراج
+                    </span>
+                    <span className="text-[11px] font-black font-mono text-white">
+                      {Math.round(distMetersNow)}م
+                    </span>
+                  </div>
+                  <p className="text-[9px] font-bold leading-relaxed" style={{ color: BRAND.slateMuted }}>
+                    اقترب من الجراج لمسافة {AUTO_START_RADIUS_M}م لبدء العد التلقائي
+                  </p>
+                </>
+              )}
+            </div>
+          </motion.div>
+        )}
+
         {/* 🅿️ شارة المحفظة للمستخدم */}
         {isVipGarage && (
           <div
@@ -712,7 +1090,7 @@ export default function NavigationScreen() {
             <button
               type="button"
               onClick={handleCarArrived}
-              disabled={isArrivingRef.current}
+              disabled={isArrivingRef.current || autoStarting}
               className="w-full py-4 rounded-2xl active:scale-95 transition-transform flex items-center justify-center gap-2 shrink-0 disabled:opacity-50 border-0 text-white cursor-pointer shadow-lg"
               style={{
                 background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
@@ -729,7 +1107,8 @@ export default function NavigationScreen() {
             <button
               type="button"
               onClick={handleNoSpaceFound}
-              className="w-full py-3.5 rounded-2xl active:scale-95 transition-all flex items-center justify-center gap-2 shrink-0 border-0 cursor-pointer shadow-md"
+              disabled={autoStarting}
+              className="w-full py-3.5 rounded-2xl active:scale-95 transition-all flex items-center justify-center gap-2 shrink-0 border-0 cursor-pointer shadow-md disabled:opacity-50"
               style={{
                 background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)',
                 boxShadow: '0 4px 14px rgba(220, 38, 38, 0.3)',
@@ -745,7 +1124,8 @@ export default function NavigationScreen() {
             <button
               type="button"
               onClick={handleNoSpaceFound}
-              className="w-full py-3.5 rounded-2xl active:scale-95 transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer border-0 shadow-md"
+              disabled={autoStarting}
+              className="w-full py-3.5 rounded-2xl active:scale-95 transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer border-0 shadow-md disabled:opacity-50"
               style={{
                 background: 'linear-gradient(135deg, #475569 0%, #334155 100%)',
                 boxShadow: '0 4px 14px rgba(71, 85, 105, 0.3)',
