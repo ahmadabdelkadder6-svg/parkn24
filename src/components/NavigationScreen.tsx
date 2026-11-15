@@ -44,6 +44,15 @@ import {
 import L from 'leaflet';
 import { supabase } from '../lib/supabase';
 
+// ✅ إضافة imports الدرع
+import {
+  initAudioContext,
+  startShieldGPS,
+  triggerIntenseAlarm,
+  stopIntenseAlarm,
+  destroyShield,
+} from '../lib/shield';
+
 const BRAND = {
   blue: '#1656b8',
   blueDark: '#0f3d85',
@@ -58,13 +67,10 @@ const BRAND = {
   border: 'rgba(255, 255, 255, 0.08)',
 };
 
-// ═══════════════════════════════════════════════════════════
-// 🚀 إعدادات البدء التلقائي للجلسة (كل الحسابات محلية 100%)
-// ═══════════════════════════════════════════════════════════
-const AUTO_START_RADIUS_M = 100;        // نطاق 100 متر حول الجراج
-const AUTO_START_STABILITY_MS = 3 * 60 * 1000; // 3 دقائق استقرار
-const SHIELD_AUTO_FEE = 7;              // خصم 7 جنيه عند تفعيل الدرع تلقائياً
-const GPS_POLL_INTERVAL_MS = 1000;      // تتبع GPS كل ثانية (محلي، صفر طلبات سيرفر)
+const AUTO_START_RADIUS_M = 100;
+const AUTO_START_STABILITY_MS = 3 * 60 * 1000;
+const SHIELD_AUTO_FEE = 7;
+const GPS_POLL_INTERVAL_MS = 1000;
 
 const getBonusForAmount = (amount: number): number => {
   if (amount >= 250) return 50;
@@ -97,11 +103,8 @@ const toMs = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-// ═══════════════════════════════════════════════════════════
-// 📐 حساب المسافة محلياً بالمتر (Haversine) — صفر طلبات سيرفر
-// ═══════════════════════════════════════════════════════════
 const haversineMeters = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
-  const R = 6371000; // نصف قطر الأرض بالمتر
+  const R = 6371000;
   const toRad = (d: number) => (d * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLng = toRad(lng2 - lng1);
@@ -171,6 +174,7 @@ export default function NavigationScreen() {
     offers,
     sessions,
     addSession,
+    endSession, // ✅ أضفنا endSession
     fetchAll,
     addWalletTopUp,
     deductWallet,
@@ -216,14 +220,14 @@ export default function NavigationScreen() {
   const [showInsufficientModal, setShowInsufficientModal] = useState(false);
   const [processingTopup, setProcessingTopup] = useState<string | null>(null);
 
-  // ═══════════════════════════════════════════════════════════
-  // 🛡️ حالات البدء التلقائي (كلها محلية — صفر طلبات سيرفر)
-  // ═══════════════════════════════════════════════════════════
-  const [shieldChoice, setShieldChoice] = useState<boolean>(true); // افتراضياً مفعّل
+  const [shieldChoice, setShieldChoice] = useState<boolean>(true);
   const [stabilityStartMs, setStabilityStartMs] = useState<number | null>(null);
   const [stabilityElapsed, setStabilityElapsed] = useState<number>(0);
   const [isWithinRadius, setIsWithinRadius] = useState<boolean>(false);
   const [autoStarting, setAutoStarting] = useState<boolean>(false);
+
+  // ✅ حالة شاشة الاختراق
+  const [showBreach, setShowBreach] = useState(false);
 
   const isMountedRef = useRef(true);
   const navigatedToSessionRef = useRef(false);
@@ -363,7 +367,6 @@ export default function NavigationScreen() {
         await removeIncomingCar(myIncomingCar.id);
       }
 
-      // 🔥 تم بدء الركنة بنجاح -> تصفير علامة الدفع للمرات القادمة
       useStore.getState().setHasPaidBookingFee(false);
 
       navigatedToSessionRef.current = true;
@@ -406,17 +409,12 @@ export default function NavigationScreen() {
     }
   }, [myIncomingCar, removeIncomingCar, setSelectedGarageId, setScreen]);
 
-  // ═══════════════════════════════════════════════════════════
-  // 🚀 دالة البدء التلقائي للجلسة بعد 3 دقائق استقرار
-  // (كل الحسابات محلية — طلب DB واحد فقط عند التنفيذ)
-  // ═══════════════════════════════════════════════════════════
   const handleAutoStartSession = useCallback(async () => {
     if (autoStartTriggeredRef.current || !garage || !isMountedRef.current) return;
     autoStartTriggeredRef.current = true;
     setAutoStarting(true);
 
     try {
-      // 🔎 فحص أولي محلي — لو فيه جلسة شغالة بالفعل، نروح لها مباشرة
       const state = useStore.getState();
       const alreadyActive = state.sessions.find(
         (s) =>
@@ -436,7 +434,6 @@ export default function NavigationScreen() {
         return;
       }
 
-      // 💰 لو اختار الدرع، تحقق من الرصيد أولاً وخصم 7 ج
       if (shieldChoice) {
         const walletNow = Number(currentUser?.wallet ?? (currentUser as any)?.walletBalance ?? 0);
         if (walletNow < SHIELD_AUTO_FEE) {
@@ -459,7 +456,6 @@ export default function NavigationScreen() {
         }
       }
 
-      // 🚗 إنشاء الجلسة (طلب سيرفر واحد فقط)
       const startTimeISO = new Date(getServerNow()).toISOString();
       await addSession({
         garageId: garage.id,
@@ -476,7 +472,6 @@ export default function NavigationScreen() {
         shieldAutoEnabled: shieldChoice,
       } as any);
 
-      // 🧹 تنظيف الـ incoming car
       if (myIncomingCar) {
         try { await removeIncomingCar(myIncomingCar.id); } catch {}
       }
@@ -527,12 +522,9 @@ export default function NavigationScreen() {
     );
   }, []);
 
-  // ═══════════════════════════════════════════════════════════
-  // 📡 تتبع GPS مستمر محلياً (watchPosition — صفر طلبات سيرفر)
-  // ═══════════════════════════════════════════════════════════
   useEffect(() => {
     if (!garage || !('geolocation' in navigator)) return;
-    if (myActiveSession) return; // لو فيه جلسة شغالة خلاص، مفيش داعي للتتبع
+    if (myActiveSession) return;
 
     const watchId = navigator.geolocation.watchPosition(
       (p) => {
@@ -559,9 +551,6 @@ export default function NavigationScreen() {
     };
   }, [garage, myActiveSession]);
 
-  // ═══════════════════════════════════════════════════════════
-  // 🎯 مراقبة الاستقرار داخل نطاق 100م (كلها حسابات محلية)
-  // ═══════════════════════════════════════════════════════════
   useEffect(() => {
     if (!garage || myActiveSession || autoStartTriggeredRef.current) return;
 
@@ -571,13 +560,11 @@ export default function NavigationScreen() {
     setIsWithinRadius(within);
 
     if (within) {
-      // دخل النطاق لأول مرة → ابدأ عداد الاستقرار
       if (stabilityStartMs === null) {
         setStabilityStartMs(Date.now());
         setStabilityElapsed(0);
       }
     } else {
-      // خرج من النطاق → إعادة ضبط العداد
       if (stabilityStartMs !== null) {
         setStabilityStartMs(null);
         setStabilityElapsed(0);
@@ -585,9 +572,6 @@ export default function NavigationScreen() {
     }
   }, [userPos, garage, myActiveSession, stabilityStartMs]);
 
-  // ═══════════════════════════════════════════════════════════
-  // ⏱️ ticker عداد الاستقرار (محلي 100%)
-  // ═══════════════════════════════════════════════════════════
   useEffect(() => {
     if (stabilityStartMs === null) {
       if (stabilityTickerRef.current !== null) {
@@ -603,7 +587,6 @@ export default function NavigationScreen() {
       setStabilityElapsed(elapsed);
 
       if (elapsed >= AUTO_START_STABILITY_MS && !autoStartTriggeredRef.current) {
-        // 🚀 اكتمل الاستقرار → بدء الجلسة تلقائياً
         handleAutoStartSession();
       }
     };
@@ -644,6 +627,38 @@ export default function NavigationScreen() {
     setScreen('session');
   }, [myActiveSession, selectedGarageId, setSelectedGarageId, setScreen]);
 
+  // ═══════════════════════════════════════════════════════════
+  // ✅ تفعيل الدرع تلقائياً في NavigationScreen
+  // لو session نشط + shieldCost > 0 → شغّل الدرع في الخلفية
+  // ═══════════════════════════════════════════════════════════
+  useEffect(() => {
+    if (!myActiveSession || !garage) return;
+    if ((myActiveSession.shieldCost ?? 0) <= 0) return;
+
+    try { initAudioContext(); } catch {}
+
+    const lat = (garage as any).lat ?? 30.0444;
+    const lng = (garage as any).lng ?? 31.2357;
+
+    startShieldGPS(
+      lat,
+      lng,
+      () => {
+        triggerIntenseAlarm();
+        setShowBreach(true);
+      },
+      () => {
+        stopIntenseAlarm();
+        setShowBreach(false);
+      },
+    );
+
+    return () => {
+      destroyShield();
+      setShowBreach(false);
+    };
+  }, [myActiveSession?.id, garage]);
+
   if (!garage) {
     return (
       <div className="h-full bg-slate-950 text-white flex flex-col items-center justify-center p-8 text-right dir-rtl">
@@ -670,7 +685,6 @@ export default function NavigationScreen() {
   const coordsText = `${garage.lat},${garage.lng}`;
   const walletBalance = Number(currentUser?.wallet ?? (currentUser as any)?.walletBalance ?? 0);
 
-  // 📊 حسابات العرض للبنر
   const distMetersNow = haversineMeters(userPos.lat, userPos.lng, garage.lat, garage.lng);
   const stabilityRemainingMs = Math.max(0, AUTO_START_STABILITY_MS - stabilityElapsed);
   const stabilityRemainingSec = Math.ceil(stabilityRemainingMs / 1000);
@@ -697,7 +711,6 @@ export default function NavigationScreen() {
     }
   };
 
-  /* 🗺️ فتح الخريطة مع إظهار تنبيه وصول (50m) لتأكيد بدء الجلسة بيده */
   const openExternalMaps = () => {
     if (!garage) return;
     openMapsWithSmartArrival(
@@ -705,7 +718,6 @@ export default function NavigationScreen() {
       garage.lng,
       garage.name,
       () => {
-        // 🎯 تنبيه فقط دون بدء تلقائي: الموبايل يرن بـ Push والإشعار يفكره يدوس "وصلت للجراج"
         toast.success('🎉 وصلت عند الجراج! اضغط على زرار "وصلت للجراج وبدأ الركن" لتفعيل الحماية 🛡️', {
           duration: 6000,
           icon: '📍',
@@ -825,9 +837,7 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* ═══════════════════════════════════════════════════════
-            🛡️ بنر اختيار الدرع + البدء التلقائي
-            ═══════════════════════════════════════════════════════ */}
+        {/* 🛡️ بنر اختيار الدرع + البدء التلقائي */}
         {!myActiveSession && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
@@ -843,7 +853,6 @@ export default function NavigationScreen() {
                 : '0 4px 12px rgba(0,0,0,0.2)',
             }}
           >
-            {/* عنوان البنر */}
             <div className="flex items-center justify-between mb-2.5">
               <div className="flex items-center gap-1.5">
                 {shieldChoice ? (
@@ -870,7 +879,6 @@ export default function NavigationScreen() {
               </span>
             </div>
 
-            {/* زرين الاختيار */}
             <div className="grid grid-cols-2 gap-2 mb-2.5">
               <button
                 type="button"
@@ -900,7 +908,6 @@ export default function NavigationScreen() {
               </button>
             </div>
 
-            {/* عداد الاستقرار + حالة النطاق */}
             <div
               className="rounded-xl p-2.5 border"
               style={{
@@ -923,7 +930,6 @@ export default function NavigationScreen() {
                     </span>
                   </div>
 
-                  {/* شريط التقدم */}
                   <div
                     className="w-full h-1.5 rounded-full overflow-hidden"
                     style={{ background: 'rgba(255,255,255,0.08)' }}
@@ -1086,7 +1092,6 @@ export default function NavigationScreen() {
         {/* 🟢 الأزرار الرئيسية للتحكم بالركن والمغادرة */}
         {!myActiveSession && (
           <div className="flex flex-col gap-3 shrink-0 mt-2">
-            {/* زر 1: وصلت للجراج وبدأ الركن */}
             <button
               type="button"
               onClick={handleCarArrived}
@@ -1103,7 +1108,6 @@ export default function NavigationScreen() {
               </span>
             </button>
 
-            {/* زر 2: وصلت بس ملقتش مكان */}
             <button
               type="button"
               onClick={handleNoSpaceFound}
@@ -1120,7 +1124,6 @@ export default function NavigationScreen() {
               </span>
             </button>
 
-            {/* زر 3: العودة للرئيسية */}
             <button
               type="button"
               onClick={handleNoSpaceFound}
@@ -1233,6 +1236,49 @@ export default function NavigationScreen() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ═══════════════════════════════════════════════════════════
+          ✅ شاشة الاختراق — تظهر فوراً لو الدرع اكتشف خروج السيارة
+          ═══════════════════════════════════════════════════════════ */}
+      {showBreach && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/80 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-gray-900 border-2 border-red-500 p-6 text-center animate-pulse">
+            <div className="text-6xl mb-4">🚨</div>
+            <h2 className="text-2xl font-black text-red-500 mb-2">تحذير أمني!</h2>
+            <p className="text-gray-300 mb-6 text-lg">
+              السيارة بتتحرك من مكانها!
+              <br />
+              الدرع الذكي اكتشف خروج السيارة من النطاق الآمن
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  stopIntenseAlarm();
+                  setShowBreach(false);
+                  destroyShield();
+                  if (myActiveSession) endSession(myActiveSession.id);
+                  setScreen('list');
+                }}
+                className="w-full py-4 rounded-xl bg-green-600 text-white font-bold text-lg active:scale-95 transition-transform"
+              >
+                ✅ أنا اللي سايق
+              </button>
+              <button
+                onClick={() => {
+                  stopIntenseAlarm();
+                  setShowBreach(false);
+                  destroyShield();
+                  if (myActiveSession) endSession(myActiveSession.id);
+                  setScreen('list');
+                }}
+                className="w-full py-4 rounded-xl bg-red-600 text-white font-bold text-lg active:scale-95 transition-transform"
+              >
+                🚫 مش أنا
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }

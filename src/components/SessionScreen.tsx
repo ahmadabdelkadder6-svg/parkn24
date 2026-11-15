@@ -7,21 +7,23 @@ import {
   Car,
   Sparkles,
   MapPin,
-  Navigation,
-  CheckCircle2,
-  ShieldCheck,
-  XCircle,
 } from 'lucide-react';
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
-import ShieldOverlay from './ShieldOverlay';
 import {
   getPendingArrival,
   clearPendingArrival,
   stopArrivalTracking,
 } from '../utils/mapsNavigation';
-import { stopIntenseAlarm } from '../lib/shield';
+import {
+  initAudioContext,
+  startShieldGPS,
+  triggerIntenseAlarm,
+  stopIntenseAlarm,
+  destroyShield,
+} from '../lib/shield';
+
 const BRAND = {
   blue: '#1656b8',
   blueDark: '#0f3d85',
@@ -60,7 +62,7 @@ const formatTime = (seconds: number): string => {
 };
 
 /* ═══════════════════════════════════════════════════════════
-   ⚡ LiveSessionTimer — متوسط الحجم ومتناسق (المنطق الأصلي)
+   ⚡ LiveSessionTimer — المنطق الأصلي
    ═══════════════════════════════════════════════════════════ */
 const LiveSessionTimer = memo(function LiveSessionTimer({
   activeStartMs,
@@ -189,7 +191,6 @@ export default function SessionScreen() {
     acknowledgedSessionIds,
     acknowledgeSession,
     endSession,
-    deductWallet,
   } = useStore();
 
   const userPlate = normalizePlate(currentUser?.carPlate);
@@ -200,14 +201,16 @@ export default function SessionScreen() {
   const autoEndedRef = useRef(false);
 
   const [ending, setEnding] = useState(false);
-  const [shieldResumed, setShieldResumed] = useState<boolean | null>(null);
 
-  // 🚀 إخفاء فوري للجلسة المنتهية (مش تفضل كام ثانية على الشاشة)
+  // 🚀 إخفاء فوري للجلسة المنتهية
   const [endedSessionId, setEndedSessionId] = useState<string | null>(null);
 
-  // 🚀 قراءة محليّة فورية لمنع تحويل الشاشة
+  // 🚀 قراءة محليّة فورية
   const [pendingArrival, setPendingArrival] = useState<any>(() => getPendingArrival());
   const [startingSession, setStartingSession] = useState(false);
+
+  // 🚨 شاشة اختراق الدرع
+  const [showBreach, setShowBreach] = useState(false);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -243,7 +246,6 @@ export default function SessionScreen() {
     for (let i = 0; i < sessions.length; i++) {
       const s = sessions[i];
       if (!s || s.status !== 'active') continue;
-      // 🚀 إخفاء فوري: لو الجلسة دي اتنهت محلياً، تجاهلها
       if (endedSessionId === s.id) continue;
       if (acknowledgedSessionIds?.has(s.id)) continue;
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
@@ -288,46 +290,6 @@ export default function SessionScreen() {
     return ms > 0 ? ms : getServerNow();
   }, [activeSession]);
 
-  // 🛡️ استرجاع حالة الدرع من الـ DB
-  useEffect(() => {
-    if (!activeSession?.id) {
-      setShieldResumed(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    const checkShield = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('shield_sessions')
-          .select('session_id')
-          .eq('session_id', activeSession.id)
-          .is('ended_at', null)
-          .limit(1)
-          .maybeSingle();
-
-        if (cancelled) return;
-
-        if (error) {
-          console.warn('Shield check error:', error);
-          setShieldResumed(false);
-          return;
-        }
-
-        setShieldResumed(!!data);
-      } catch (e) {
-        if (!cancelled) {
-          console.warn('Shield check failed:', e);
-          setShieldResumed(false);
-        }
-      }
-    };
-
-    checkShield();
-    return () => { cancelled = true; };
-  }, [activeSession?.id]);
-
   useEffect(() => {
     fetchAll().catch((e) => console.error('Fetch error:', e));
   }, [fetchAll]);
@@ -366,12 +328,53 @@ export default function SessionScreen() {
     };
   }, [userPlate, userPhone, fetchAll, isMySessionRow]);
 
-  // 🏁 إنهاء الجلسة يدويًا عند الضغط على زر الخروج
-  const handleEndSession = useCallback(async () => {
- if (ending || !activeSession) return;
-    stopIntenseAlarm();
+  // ═══════════════════════════════════════════════════════════
+  // 🛡️ درع تلقائي في الخلفية (بدون UI)
+  // يتفعّل لو الجلسة فيها shieldCost > 0
+  // يرجع يشتغل بعد Refresh لأن shieldCost محفوظ في الـ DB
+  // ═══════════════════════════════════════════════════════════
+  useEffect(() => {
+    if (!activeSession || !garage) return;
+    if ((activeSession.shieldCost ?? 0) <= 0) return;
 
-    // 🚀 إخفاء فوري من الشاشة قبل أي await
+    // تهيئة الصوت (best effort)
+    try { initAudioContext(); } catch {}
+
+    const parkingLat = (garage as any).lat ?? 30.0444;
+    const parkingLng = (garage as any).lng ?? 31.2357;
+
+    console.log('🛡️ Shield auto-activated for session:', activeSession.id);
+
+    startShieldGPS(
+      parkingLat,
+      parkingLng,
+      // 🚨 onBreach — السيارة خرجت
+      () => {
+        console.log('🚨 BREACH detected!');
+        triggerIntenseAlarm();
+        setShowBreach(true);
+      },
+      // ✅ onReturn — السيارة رجعت
+      () => {
+        console.log('✅ Returned to safe zone');
+        stopIntenseAlarm();
+        setShowBreach(false);
+      },
+    );
+
+    return () => {
+      destroyShield();
+      setShowBreach(false);
+    };
+  }, [activeSession?.id, garage]);
+
+  // 🏁 إنهاء الجلسة يدويًا
+  const handleEndSession = useCallback(async () => {
+    if (ending || !activeSession) return;
+    stopIntenseAlarm();
+    destroyShield();
+    setShowBreach(false);
+
     setEndedSessionId(activeSession.id);
     setEnding(true);
 
@@ -381,13 +384,11 @@ export default function SessionScreen() {
 
       const nowIso = new Date().toISOString();
 
-      // قفل الدرع بالـ session_id
       await supabase.from('shield_sessions')
         .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id)
         .is('ended_at', null);
 
-      // 🚀 قفل الدرع بالـ phone احتياط (أي درع مش مرتبط بـ session)
       if (userPhone) {
         await supabase.from('shield_sessions')
           .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
@@ -404,7 +405,6 @@ export default function SessionScreen() {
       }
     } catch (e: any) {
       toast.error(e?.message || 'فشل إنهاء الجلسة');
-      // لو فشل، رجّع الجلسة على الشاشة
       setEndedSessionId(null);
     } finally {
       setEnding(false);
@@ -415,9 +415,10 @@ export default function SessionScreen() {
   const handleAutoEnd = useCallback(async () => {
     if (autoEndedRef.current || !activeSession) return;
     autoEndedRef.current = true;
- stopIntenseAlarm();
+    stopIntenseAlarm();
+    destroyShield();
+    setShowBreach(false);
 
-    // 🚀 إخفاء فوري من الشاشة
     setEndedSessionId(activeSession.id);
 
     try {
@@ -425,13 +426,11 @@ export default function SessionScreen() {
 
       const nowIso = new Date().toISOString();
 
-      // قفل الدرع بالـ session_id
       await supabase.from('shield_sessions')
         .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id)
         .is('ended_at', null);
 
-      // 🚀 قفل الدرع بالـ phone احتياط
       if (userPhone) {
         await supabase.from('shield_sessions')
           .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
@@ -453,7 +452,7 @@ export default function SessionScreen() {
     }
   }, [activeSession, endSession, acknowledgeSession, setSelectedGarageId, setScreen, userPhone]);
 
-  // ✅ بدء الجلسة في Supabase عند ضغط الزر الأخضر
+  // ✅ بدء الجلسة
   const handleConfirmArrivalAndStartSession = useCallback(async () => {
     if (!pendingArrival || startingSession) return;
     setStartingSession(true);
@@ -497,7 +496,7 @@ export default function SessionScreen() {
 
 
   // ═══════════════════════════════════════════════════════
-  // 🎨 حالة 2: جلسة ركن نشطة (الدرع + العداد الأصليين)
+  // 🎨 جلسة ركن نشطة
   // ═══════════════════════════════════════════════════════
   if (activeSession) {
     return (
@@ -522,26 +521,23 @@ export default function SessionScreen() {
             </span>
           </div>
 
-          {/* 🛡️ الدرع الأصلي */}
-          {garage && shieldResumed !== null && (
-            <div className="w-full max-w-md">
-              <ShieldOverlay
-                key={shieldResumed ? 'resumed' : 'fresh'}
-                sessionId={activeSession.id}
-                userId={currentUser?.id || ''}
-                garageId={activeSession.garageId}
-                parkingLat={(garage as any).lat ?? 30.0444}
-                parkingLng={(garage as any).lng ?? 31.2357}
-                userPhone={currentUser?.phone ?? null}
-                onDeductWallet={deductWallet}
-                onNavigateToWallet={() => setScreen('list')}
-                autoResume={shieldResumed}
-                onSessionEnd={handleEndSession}
-              />
+          {/* 🛡️ شارة الدرع (لو مفعّل) */}
+          {(activeSession.shieldCost ?? 0) > 0 && (
+            <div
+              className="px-3 py-1 rounded-full flex items-center gap-1.5 border"
+              style={{
+                background: 'rgba(22, 86, 184, 0.15)',
+                borderColor: 'rgba(22, 86, 184, 0.5)',
+              }}
+            >
+              <span className="text-[10px]">🛡️</span>
+              <span className="text-[10px] font-black" style={{ color: BRAND.blue }}>
+                الدرع الذكي شغال في الخلفية
+              </span>
             </div>
           )}
 
-          {/* ⚡ العداد الأصلي */}
+          {/* ⚡ العداد */}
           <LiveSessionTimer
             activeStartMs={activeStartMs}
             onAutoEnd={handleAutoEnd}
@@ -569,7 +565,7 @@ export default function SessionScreen() {
           </div>
         </div>
 
-        {/* 📋 القسم السفلي الأصلي */}
+        {/* 📋 القسم السفلي */}
         <div
           className="px-4 pt-3 pb-4 border-t shrink-0"
           style={{
@@ -648,8 +644,70 @@ export default function SessionScreen() {
             </span>
           </button>
         </div>
+
+        {/* 🚨 شاشة اختراق الدرع */}
+        {showBreach && (
+          <div
+            className="fixed inset-0 flex items-center justify-center p-4"
+            style={{
+              zIndex: 99999,
+              background: 'rgba(0,0,0,0.85)',
+              backdropFilter: 'blur(8px)',
+            }}
+          >
+            <div
+              className="w-full max-w-sm rounded-2xl p-6 text-center border-2 border-red-500"
+              style={{
+                background: 'linear-gradient(135deg, #1a0505 0%, #0a1628 100%)',
+                boxShadow: '0 0 60px rgba(239,68,68,0.6), 0 0 120px rgba(239,68,68,0.2)',
+                animation: 'pulse 1s ease-in-out infinite',
+              }}
+            >
+              <div className="text-6xl mb-3">🚨</div>
+              <h2 className="text-2xl font-black text-red-400 mb-2">
+                تنبيه أمني!
+              </h2>
+              <p className="text-sm text-gray-300 mb-6 leading-relaxed">
+                سيارتك خرجت من نطاق الأمان حول الجراج
+              </p>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => {
+                    stopIntenseAlarm();
+                    setShowBreach(false);
+                    destroyShield();
+                    handleEndSession();
+                  }}
+                  className="w-full py-3.5 rounded-xl font-black text-white text-sm active:scale-95 transition-all"
+                  style={{
+                    background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                    boxShadow: '0 4px 16px rgba(34,197,94,0.4)',
+                  }}
+                >
+                  ✅ أنا اللي سايق
+                </button>
+                <button
+                  onClick={() => {
+                    stopIntenseAlarm();
+                    setShowBreach(false);
+                    destroyShield();
+                    handleEndSession();
+                  }}
+                  className="w-full py-3.5 rounded-xl font-black text-white text-sm active:scale-95 transition-all"
+                  style={{
+                    background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
+                    boxShadow: '0 4px 16px rgba(239,68,68,0.4)',
+                  }}
+                >
+                  🚔 مش أنا — سرقة!
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </motion.div>
     );
   }
 
+  return null;
 }
