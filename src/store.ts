@@ -1387,7 +1387,7 @@ export const useStore = create<AppState>((set, get) => ({
           settled: false,
           is_first_free_session: eligibleForFree,
           free_minutes_applied: 0,
-          shield_cost: 0,
+          shield_cost: (sessionData as any).shieldCost ?? 0,
         }).select().single();
 
         if (data) {
