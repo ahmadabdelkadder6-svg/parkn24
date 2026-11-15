@@ -67,7 +67,7 @@ const BRAND = {
   border: 'rgba(255, 255, 255, 0.08)',
 };
 
-const AUTO_START_RADIUS_M = 100;
+const AUTO_START_RADIUS_M = 50;
 const AUTO_START_STABILITY_MS = 3 * 60 * 1000;
 const SHIELD_AUTO_FEE = 7;
 const GPS_POLL_INTERVAL_MS = 1000;
