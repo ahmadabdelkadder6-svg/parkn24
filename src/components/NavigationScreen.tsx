@@ -350,18 +350,21 @@ export default function NavigationScreen() {
 
       const startTimeISO = new Date(getServerNow()).toISOString();
 
-      await addSession({
-        garageId: garage.id,
-        carPlate: myIncomingCar?.carPlate || currentUser?.carPlate || '---',
-        startTime: startTimeISO,
-        status: 'active',
-        source: 'app',
-        agreedPrice: myIncomingCar?.agreedPrice || (garage as any).basePrice || 15,
-        customerPhone: currentUser?.phone,
-        customerName: currentUser?.name,
-        startedBy: 'customer',
-        incomingCarId: myIncomingCar?.id,
-      } as any);
+await addSession({
+  garageId: garage.id,
+  carPlate: myIncomingCar?.carPlate || currentUser?.carPlate || '---',
+  startTime: startTimeISO,
+  status: 'active',
+  source: 'app',
+  agreedPrice: myIncomingCar?.agreedPrice || (garage as any).basePrice || 15,
+  customerPhone: currentUser?.phone,
+  customerName: currentUser?.name,
+  startedBy: 'customer',
+  incomingCarId: myIncomingCar?.id,
+  autoStarted: true,
+  shieldAutoEnabled: shieldChoice,
+  shieldCost: shieldChoice ? SHIELD_AUTO_FEE : 0,  // ✅ السطر ده هو الحل
+} as any);
 
       if (myIncomingCar) {
         await removeIncomingCar(myIncomingCar.id);
@@ -457,20 +460,36 @@ export default function NavigationScreen() {
       }
 
       const startTimeISO = new Date(getServerNow()).toISOString();
-      await addSession({
-        garageId: garage.id,
-        carPlate: myIncomingCar?.carPlate || currentUser?.carPlate || '---',
-        startTime: startTimeISO,
-        status: 'active',
-        source: 'app',
-        agreedPrice: myIncomingCar?.agreedPrice || (garage as any).basePrice || 15,
-        customerPhone: currentUser?.phone,
-        customerName: currentUser?.name,
-        startedBy: 'customer',
-        incomingCarId: myIncomingCar?.id,
-        autoStarted: true,
-        shieldAutoEnabled: shieldChoice,
-      } as any);
+// ✅ لو اختار الدرع، اخصم الرسوم الأول
+let shieldCostForSession = 0;
+if (shieldChoice) {
+  const walletNow = Number(currentUser?.wallet ?? (currentUser as any)?.walletBalance ?? 0);
+  if (walletNow >= SHIELD_AUTO_FEE) {
+    try {
+      await deductWallet(SHIELD_AUTO_FEE);
+      shieldCostForSession = SHIELD_AUTO_FEE;
+      toast.success(`تم خصم ${SHIELD_AUTO_FEE} ج.م لتفعيل الدرع 🛡️`, { duration: 2500 });
+    } catch (e) {
+      console.error('Shield deduction error:', e);
+    }
+  } else {
+    toast.error(`رصيد غير كافٍ لتفعيل الدرع (${SHIELD_AUTO_FEE} ج.م) — تم بدء الجلسة بدون درع`, { duration: 3500 });
+  }
+}
+
+await addSession({
+  garageId: garage.id,
+  carPlate: myIncomingCar?.carPlate || currentUser?.carPlate || '---',
+  startTime: startTimeISO,
+  status: 'active',
+  source: 'app',
+  agreedPrice: myIncomingCar?.agreedPrice || (garage as any).basePrice || 15,
+  customerPhone: currentUser?.phone,
+  customerName: currentUser?.name,
+  startedBy: 'customer',
+  incomingCarId: myIncomingCar?.id,
+  shieldCost: shieldCostForSession,  // ✅ السطر ده هو الحل
+} as any);
 
       if (myIncomingCar) {
         try { await removeIncomingCar(myIncomingCar.id); } catch {}
