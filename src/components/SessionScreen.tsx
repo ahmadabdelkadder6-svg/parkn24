@@ -22,6 +22,7 @@ import {
   triggerIntenseAlarm,
   stopIntenseAlarm,
   destroyShield,
+   registerShieldSession,
 } from '../lib/shield';
 
 const BRAND = {
@@ -337,36 +338,40 @@ export default function SessionScreen() {
     if (!activeSession || !garage) return;
     if ((activeSession.shieldCost ?? 0) <= 0) return;
 
-    // تهيئة الصوت (best effort)
     try { initAudioContext(); } catch {}
 
     const parkingLat = (garage as any).lat ?? 30.0444;
     const parkingLng = (garage as any).lng ?? 31.2357;
+    let cancelled = false;
 
-    console.log('🛡️ Shield auto-activated for session:', activeSession.id);
-
-    startShieldGPS(
+    registerShieldSession({
+      sessionId: activeSession.id,
+      phone: (activeSession as any).customerPhone || userPhone || '',
+      garageId: garage.id,
       parkingLat,
       parkingLng,
-      // 🚨 onBreach — السيارة خرجت
-      () => {
-        console.log('🚨 BREACH detected!');
-        triggerIntenseAlarm();
-        setShowBreach(true);
-      },
-      // ✅ onReturn — السيارة رجعت
-      () => {
-        console.log('✅ Returned to safe zone');
-        stopIntenseAlarm();
-        setShowBreach(false);
-      },
-    );
+    }).then((shieldId) => {
+      if (cancelled || !shieldId) return;
+      console.log('🛡️ Shield registered in DB:', shieldId);
+      startShieldGPS({
+        sessionId: activeSession.id,
+        shieldId,
+        parkingLat,
+        parkingLng,
+        onGeofenceBreach: () => {
+          console.log('🚨 BREACH detected!');
+          triggerIntenseAlarm();
+          setShowBreach(true);
+        },
+      });
+    });
 
     return () => {
+      cancelled = true;
       destroyShield();
       setShowBreach(false);
     };
-  }, [activeSession?.id, garage]);
+  }, [activeSession?.id, garage?.id]);
 
   // 🏁 إنهاء الجلسة يدويًا
   const handleEndSession = useCallback(async () => {

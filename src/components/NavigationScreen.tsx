@@ -51,6 +51,7 @@ import {
   triggerIntenseAlarm,
   stopIntenseAlarm,
   destroyShield,
+   registerShieldSession,
 } from '../lib/shield';
 
 const BRAND = {
@@ -437,28 +438,6 @@ await addSession({
         return;
       }
 
-      if (shieldChoice) {
-        const walletNow = Number(currentUser?.wallet ?? (currentUser as any)?.walletBalance ?? 0);
-        if (walletNow < SHIELD_AUTO_FEE) {
-          toast.error(`رصيد المحفظة غير كافٍ لتفعيل الدرع (${SHIELD_AUTO_FEE} ج.م)`, { duration: 4000 });
-          setShowInsufficientModal(true);
-          autoStartTriggeredRef.current = false;
-          setAutoStarting(false);
-          return;
-        }
-
-        try {
-          await deductWallet(SHIELD_AUTO_FEE);
-          toast.success(`تم خصم ${SHIELD_AUTO_FEE} ج.م لتفعيل الدرع 🛡️`, { duration: 3000 });
-        } catch (e) {
-          console.error('Wallet deduction error:', e);
-          toast.error('فشل خصم رسوم الدرع، حاول مرة أخرى');
-          autoStartTriggeredRef.current = false;
-          setAutoStarting(false);
-          return;
-        }
-      }
-
       const startTimeISO = new Date(getServerNow()).toISOString();
 // ✅ لو اختار الدرع، اخصم الرسوم الأول
 let shieldCostForSession = 0;
@@ -658,25 +637,36 @@ await addSession({
 
     const lat = (garage as any).lat ?? 30.0444;
     const lng = (garage as any).lng ?? 31.2357;
+    let cancelled = false;
 
-    startShieldGPS(
-      lat,
-      lng,
-      () => {
-        triggerIntenseAlarm();
-        setShowBreach(true);
-      },
-      () => {
-        stopIntenseAlarm();
-        setShowBreach(false);
-      },
-    );
+    registerShieldSession({
+      sessionId: myActiveSession.id,
+      phone: (myActiveSession as any).customerPhone || currentUser?.phone || '',
+      garageId: garage.id,
+      parkingLat: lat,
+      parkingLng: lng,
+    }).then((shieldId) => {
+      if (cancelled || !shieldId) return;
+      console.log('🛡️ Shield registered in DB:', shieldId);
+      startShieldGPS({
+        sessionId: myActiveSession.id,
+        shieldId,
+        parkingLat: lat,
+        parkingLng: lng,
+        onGeofenceBreach: () => {
+          triggerIntenseAlarm();
+          setShowBreach(true);
+        },
+      });
+    });
 
     return () => {
+      cancelled = true;
       destroyShield();
       setShowBreach(false);
     };
-  }, [myActiveSession?.id, garage]);
+  }, [myActiveSession?.id, garage?.id]);
+
 
   if (!garage) {
     return (

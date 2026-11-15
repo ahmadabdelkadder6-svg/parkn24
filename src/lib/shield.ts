@@ -115,6 +115,79 @@ function getGracePeriod(speedMs: number | null): number {
 }
 
 // ═══════════════════════════════════════════════════════════
+// 📝 تسجيل الدرع في السيرفر (عشان الكرون يبعث إشعارات)
+// ═══════════════════════════════════════════════════════════
+export async function registerShieldSession(params: {
+  sessionId: string;
+  phone: string;
+  garageId: string;
+  parkingLat: number;
+  parkingLng: number;
+}): Promise<string | null> {
+  try {
+    // هل في درع مسجّل بالفعل لنفس الجلسة ومش منتهي؟
+    const { data: existing } = await supabase
+      .from('shield_sessions')
+      .select('id')
+      .eq('session_id', params.sessionId)
+      .is('ended_at', null)
+      .maybeSingle();
+
+    if (existing) {
+      console.log('🛡️ Shield already registered:', existing.id);
+      return existing.id;
+    }
+
+    // جلب Push Subscription (لو متوفر)
+    let ep: string | null = null;
+    let p256: string | null = null;
+    let auth: string | null = null;
+    try {
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          const j = sub.toJSON();
+          ep = j.endpoint || null;
+          p256 = j.keys?.p256dh || null;
+          auth = j.keys?.auth || null;
+        }
+      }
+    } catch {
+      // Push not available - OK
+    }
+
+    const { data, error } = await supabase
+      .from('shield_sessions')
+      .insert({
+        session_id: params.sessionId,
+        phone: params.phone,
+        garage_id: params.garageId,
+        parking_lat: params.parkingLat,
+        parking_lng: params.parkingLng,
+        push_endpoint: ep,
+        push_p256dh: p256,
+        push_auth: auth,
+        alert_count: 0,
+        fake_tick: 0,
+      })
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('❌ registerShieldSession error:', error);
+      return null;
+    }
+
+    console.log('✅ Shield registered in DB:', data.id);
+    return data.id;
+  } catch (e) {
+    console.error('❌ registerShieldSession exception:', e);
+    return null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
 // 📍 GPS Geofence الذكي (للإنذار)
 // يستخدم ALERT_DISTANCE = 250م
 // ═══════════════════════════════════════════════════════════
@@ -290,19 +363,8 @@ async function sendGPSToServer(
 // ═══════════════════════════════════════════════════════════
 // 🔊 AudioContext المشترك — تهيئة مبكرة أثناء تفاعل المستخدم
 // ═══════════════════════════════════════════════════════════
-// السبب: المتصفح بيمنع تشغيل الصوت من background callbacks
-// (زي GPS watchPosition) إلا لو AudioContext اتعمل أثناء
-// user gesture (زي ضغط زر). فبنعمل initAudioContext() أول
-// ما المستخدم يدوس "تفعيل الدرع" وبنستخدم نفس الـ context
-// لاحقاً لما الإنذار يشتغل.
-// ═══════════════════════════════════════════════════════════
 let sharedAudioCtx: AudioContext | null = null;
 
-/**
- * ⚡ تهيئة AudioContext أثناء تفاعل المستخدم (user gesture)
- * لازم تتنادى أول ما المستخدم يضغط على أي زر (تفعيل الدرع مثلاً)
- * عشان المتصفح يسمح بتشغيل الصوت لاحقاً في الخلفية
- */
 export function initAudioContext(): void {
   try {
     const Ctx = window.AudioContext || (window as any).webkitAudioContext;
@@ -321,30 +383,19 @@ export function initAudioContext(): void {
 
 // ═══════════════════════════════════════════════════════════
 // 🚨🔊 نظام الإنذار الشديد — صوت 3 طبقات + اهتزاز عنيف
-// (الفلاش في ShieldOverlay.tsx عشان يظهر فوق الـ UI)
 // ═══════════════════════════════════════════════════════════
 let alarmAudioCtx: AudioContext | null = null;
 let alarmOscillators: OscillatorNode[] = [];
 let alarmVibrationInterval: ReturnType<typeof setInterval> | null = null;
 let isAlarmActive = false;
 
-/**
- * 🔊 تشغيل الإنذار الشديد
- * - 3 طبقات صوتية (sawtooth + square + sawtooth) بأقصى volume
- * - اهتزاز عنيف متكرر للموبايل
- * - يستخدم sharedAudioCtx الجاهز (اللي اتعمل أثناء user gesture)
- */
 export function triggerIntenseAlarm(): void {
   if (isAlarmActive) return;
   isAlarmActive = true;
 
-  // ── 1) صوت عالي جداً — 3 طبقات ──
   try {
     const Ctx = window.AudioContext || (window as any).webkitAudioContext;
     if (Ctx) {
-      // ✅ استخدام الـ shared context الجاهز بدل إنشاء واحد جديد
-      // الـ shared context اتعمل أثناء user gesture فحالته "running"
-      // ومش هيكون "suspended" زي لو عملنا new AudioContext() هنا
       const ctx = sharedAudioCtx || new Ctx();
       if (ctx.state === 'suspended') {
         ctx.resume().catch(() => {});
@@ -394,7 +445,7 @@ export function triggerIntenseAlarm(): void {
     console.warn('🔇 Alarm audio failed:', e);
   }
 
-  // ── 2) اهتزاز عنيف متكرر ──
+  // اهتزاز عنيف متكرر
   if (navigator.vibrate) {
     const pattern = [500, 80, 500, 80, 500, 80, 500, 80, 500];
     navigator.vibrate(pattern);
@@ -404,21 +455,15 @@ export function triggerIntenseAlarm(): void {
   }
 }
 
-/**
- * 🔇 إيقاف الإنذار الشديد (صوت + اهتزاز)
- */
 export function stopIntenseAlarm(): void {
   isAlarmActive = false;
 
-  // إيقاف الصوت
   try {
     alarmOscillators.forEach((osc) => {
       try { osc.stop(); } catch { /* */ }
     });
     alarmOscillators = [];
     if (alarmAudioCtx) {
-      // ✅ لو الـ context هو الـ shared، مش نقفله — نسيبه جاهز للمرات الجاية
-      // لو كان context منفصل (fallback)، نقفله
       if (alarmAudioCtx !== sharedAudioCtx) {
         alarmAudioCtx.close().catch(() => {});
       }
@@ -426,7 +471,6 @@ export function stopIntenseAlarm(): void {
     }
   } catch { /* */ }
 
-  // إيقاف الاهتزاز
   if (alarmVibrationInterval) {
     clearInterval(alarmVibrationInterval);
     alarmVibrationInterval = null;
@@ -434,9 +478,6 @@ export function stopIntenseAlarm(): void {
   if (navigator.vibrate) navigator.vibrate(0);
 }
 
-/**
- * ✅ هل الإنذار شغال دلوقتي؟
- */
 export function isIntenseAlarmActive(): boolean {
   return isAlarmActive;
 }
@@ -446,9 +487,8 @@ export function isIntenseAlarmActive(): boolean {
 // ═══════════════════════════════════════════════════════════
 export function destroyShield(): void {
   stopShieldGPS();
-  stopIntenseAlarm();  // 🆕 أوقف الإنذار الشديد كمان
+  stopIntenseAlarm();
 
-  // ✅ تنظيف الـ shared context بالكامل عند تدمير الدرع
   if (sharedAudioCtx) {
     try { sharedAudioCtx.close().catch(() => {}); } catch { /* */ }
     sharedAudioCtx = null;
