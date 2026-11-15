@@ -1361,7 +1361,7 @@ export const useStore = create<AppState>((set, get) => ({
         settled: false,
         isFirstFreeSession: eligibleForFree,
         freeMinutesApplied: 0,
-        shieldCost: 0,
+        shieldCost: (s as any).shieldCost ?? 0, 
       };
 
       set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]).slice(0, 50) }));
@@ -1387,7 +1387,7 @@ export const useStore = create<AppState>((set, get) => ({
           settled: false,
           is_first_free_session: eligibleForFree,
           free_minutes_applied: 0,
-          shield_cost: (sessionData as any).shieldCost ?? 0,
+         shield_cost: (s as any).shieldCost ?? 0,
         }).select().single();
 
         if (data) {
