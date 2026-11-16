@@ -51,7 +51,9 @@ import {
   triggerIntenseAlarm,
   stopIntenseAlarm,
   destroyShield,
-   registerShieldSession,
+  registerShieldSession,
+   startFakeAlerts,    // ← أضف
+  stopFakeAlerts,
 } from '../lib/shield';
 
 const BRAND = {
@@ -629,43 +631,41 @@ await addSession({
   // ✅ تفعيل الدرع تلقائياً في NavigationScreen
   // لو session نشط + shieldCost > 0 → شغّل الدرع في الخلفية
   // ═══════════════════════════════════════════════════════════
-  useEffect(() => {
-    if (!myActiveSession || !garage) return;
-    if ((myActiveSession.shieldCost ?? 0) <= 0) return;
-
-    try { initAudioContext(); } catch {}
-
-    const lat = (garage as any).lat ?? 30.0444;
-    const lng = (garage as any).lng ?? 31.2357;
-    let cancelled = false;
-
-    registerShieldSession({
+useEffect(() => {
+  if (!myActiveSession || !garage) return;
+  if ((myActiveSession.shieldCost ?? 0) <= 0) return;
+  try { initAudioContext(); } catch {}
+  const lat = (garage as any).lat ?? 30.0444;
+  const lng = (garage as any).lng ?? 31.2357;
+  let cancelled = false;
+  registerShieldSession({
+    sessionId: myActiveSession.id,
+    phone: (myActiveSession as any).customerPhone || currentUser?.phone || '',
+    garageId: garage.id,
+    parkingLat: lat,
+    parkingLng: lng,
+  }).then((shieldId) => {
+    if (cancelled || !shieldId) return;
+    console.log('🛡️ Shield registered in DB:', shieldId);
+    startShieldGPS({
       sessionId: myActiveSession.id,
-      phone: (myActiveSession as any).customerPhone || currentUser?.phone || '',
-      garageId: garage.id,
+      shieldId,
       parkingLat: lat,
       parkingLng: lng,
-    }).then((shieldId) => {
-      if (cancelled || !shieldId) return;
-      console.log('🛡️ Shield registered in DB:', shieldId);
-      startShieldGPS({
-        sessionId: myActiveSession.id,
-        shieldId,
-        parkingLat: lat,
-        parkingLng: lng,
-        onGeofenceBreach: () => {
-          triggerIntenseAlarm();
-          setShowBreach(true);
-        },
-      });
+      onGeofenceBreach: () => {
+        triggerIntenseAlarm();
+        setShowBreach(true);
+      },
     });
-
-    return () => {
-      cancelled = true;
-      destroyShield();
-      setShowBreach(false);
-    };
-  }, [myActiveSession?.id, garage?.id]);
+    startFakeAlerts();  // ← أضف السطر ده هنا
+  });
+  return () => {
+    cancelled = true;
+    destroyShield();
+    stopFakeAlerts();   // ← أضف السطر ده هنا
+    setShowBreach(false);
+  };
+}, [myActiveSession?.id, garage?.id]);
 
 
   if (!garage) {

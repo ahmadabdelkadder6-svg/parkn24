@@ -28,14 +28,14 @@ export interface ShieldState {
 // ─── ثوابت ───
 export const SHIELD_COST = 7;
 export const SHIELD_STORAGE_KEY = 'parkn24_shield';
-export const GEOFENCE_RADIUS = 250;          // ✅ للتفعيل: العميل يقدر يفعّل الدرع على بعد 250م
-export const ALERT_DISTANCE = 250;           // ✅ 🔴 للإنذار: الإنذار يطلع لما السيارة تخرج برة 250م
+export const GEOFENCE_RADIUS = 250;
+export const ALERT_DISTANCE = 250;
 export const MIN_MOVEMENT_METERS = 80;
 export const FALLBACK_INTERVAL_MS = 300_000;
 
 // ─── 🧠 ثوابت السرعة الذكية ───
-export const CAR_SPEED_THRESHOLD = 1.5;     // 1.5 م/ث ≈ 8 كم/س
-export const CAR_GRACE_MS = 5_000;          // 5 ثانية
+export const CAR_SPEED_THRESHOLD = 1.5;
+export const CAR_GRACE_MS = 5_000;
 
 // ─── بنك الإشعارات الوهمية ───
 const ALERT_POOL: FakeAlert[] = [
@@ -78,8 +78,7 @@ export function haversine(
 }
 
 // ═══════════════════════════════════════════════════════════
-// 📍 التحقق من إن العميل جوه الجراج (للتفعيل)
-// يستخدم GEOFENCE_RADIUS = 250م
+// 📍 التحقق من إن العميل جوه الجراج
 // ═══════════════════════════════════════════════════════════
 export async function checkUserInsideGarage(
   garageLat: number,
@@ -115,7 +114,8 @@ function getGracePeriod(speedMs: number | null): number {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 📝 تسجيل الدرع في السيرفر (عشان الكرون يبعث إشعارات)
+// 📝 تسجيل الدرع في السيرفر
+// ✅ يطلب إذن الإشعارات تلقائياً
 // ═══════════════════════════════════════════════════════════
 export async function registerShieldSession(params: {
   sessionId: string;
@@ -125,7 +125,6 @@ export async function registerShieldSession(params: {
   parkingLng: number;
 }): Promise<string | null> {
   try {
-    // هل في درع مسجّل بالفعل لنفس الجلسة ومش منتهي؟
     const { data: existing } = await supabase
       .from('shield_sessions')
       .select('id')
@@ -138,14 +137,33 @@ export async function registerShieldSession(params: {
       return existing.id;
     }
 
-    // جلب Push Subscription (لو متوفر)
+    // ✅ طلب إذن الإشعارات تلقائياً
     let ep: string | null = null;
     let p256: string | null = null;
     let auth: string | null = null;
+
     try {
+      if ('Notification' in window && Notification.permission === 'default') {
+        await Notification.requestPermission();
+      }
+
       if ('serviceWorker' in navigator) {
         const reg = await navigator.serviceWorker.ready;
-        const sub = await reg.pushManager.getSubscription();
+        let sub = await reg.pushManager.getSubscription();
+
+        // ✅ لو مفيش subscription، حاول تعمل واحد جديد
+        if (!sub) {
+          try {
+            sub = await reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: undefined as any,
+            });
+          } catch {
+            // مفيش VAPID key — عادي، هنستخدم Notification API من الـ client
+            console.log('ℹ️ Push subscription مش متاح — هنستخدم Notification API');
+          }
+        }
+
         if (sub) {
           const j = sub.toJSON();
           ep = j.endpoint || null;
@@ -154,7 +172,7 @@ export async function registerShieldSession(params: {
         }
       }
     } catch {
-      // Push not available - OK
+      console.log('ℹ️ Push not available — will use client-side notifications');
     }
 
     const { data, error } = await supabase
@@ -188,8 +206,67 @@ export async function registerShieldSession(params: {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 📍 GPS Geofence الذكي (للإنذار)
-// يستخدم ALERT_DISTANCE = 250م
+// 🔔 إشعارات وهمية من الـ Client (كل 30 دقيقة، حد أقصى 2)
+// ✅ شغالة حتى لو push_endpoint = null
+// ═══════════════════════════════════════════════════════════
+let fakeAlertIntervalId: ReturnType<typeof setInterval> | null = null;
+let fakeAlertCount = 0;
+const MAX_FAKE_ALERTS = 2;
+const FAKE_ALERT_INTERVAL_MS = 30 * 60 * 1000; // 30 دقيقة
+
+function sendClientNotification(): void {
+  if (fakeAlertCount >= MAX_FAKE_ALERTS) {
+    console.log('🛡️ وصلنا للحد الأقصى من الإشعارات الوهمية (2)');
+    stopFakeAlerts();
+    return;
+  }
+
+  if (!('Notification' in window)) return;
+
+  if (Notification.permission === 'granted') {
+    const alert = ALERT_POOL[Math.floor(Math.random() * ALERT_POOL.length)];
+    try {
+      new Notification(alert.title, {
+        body: alert.body,
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        tag: `shield-fake-${Date.now()}`,
+        vibrate: [200, 100, 200],
+      });
+      fakeAlertCount++;
+      console.log(`🔔 إشعار وهمي ${fakeAlertCount}/${MAX_FAKE_ALERTS}: ${alert.title}`);
+    } catch (e) {
+      console.warn('Notification failed:', e);
+    }
+  } else if (Notification.permission === 'default') {
+    Notification.requestPermission().then((perm) => {
+      if (perm === 'granted') sendClientNotification();
+    });
+  }
+}
+
+export function startFakeAlerts(): void {
+  stopFakeAlerts();
+  fakeAlertCount = 0;
+
+  // ✅ أول إشعار بعد 30 دقيقة
+  fakeAlertIntervalId = setInterval(() => {
+    sendClientNotification();
+  }, FAKE_ALERT_INTERVAL_MS);
+
+  console.log('🔔 إشعارات وهمية مفعّلة — كل 30 دقيقة (حد أقصى 2)');
+}
+
+export function stopFakeAlerts(): void {
+  if (fakeAlertIntervalId) {
+    clearInterval(fakeAlertIntervalId);
+    fakeAlertIntervalId = null;
+  }
+  fakeAlertCount = 0;
+}
+
+// ═══════════════════════════════════════════════════════════
+// 📍 GPS Geofence الذكي
 // ═══════════════════════════════════════════════════════════
 let gpsWatchId: number | null = null;
 let fallbackIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -237,12 +314,10 @@ export function startShieldGPS(params: {
     const distFromGarage = haversine(lat, lng, params.parkingLat, params.parkingLng);
     const distFromLastSent = haversine(lat, lng, lastSentLat, lastSentLng);
 
-    // ✅ ALERT_DISTANCE = 250م للإنذار
     if (distFromGarage > ALERT_DISTANCE) {
       const gracePeriod = getGracePeriod(speed);
 
       if (gracePeriod !== Infinity) {
-        // 🚗 سيارة — نبدأ العد
         if (!breachStartTime) {
           breachStartTime = now;
           console.log(`🚨 بداية خروج: ${Math.round(distFromGarage)}م @ ${Math.round(speed * 3.6)} كم/س`);
@@ -264,18 +339,14 @@ export function startShieldGPS(params: {
           }
         }
       } else {
-        // 🚶 مشي — صفّر العدّاد
         if (breachStartTime) {
           breachStartTime = null;
         }
       }
     } else {
-      // جوه 250م — صفّر العدّاد بس لو الإنذار لسه ما طلعش
       if (!isCurrentlyOutside) {
         breachStartTime = null;
       }
-      // ⚠️ لو الإنذار شغال (isCurrentlyOutside = true)، مش نعمل حاجة
-      // الإنذار بيقف بس لما المستخدم يدوس الزر
     }
   };
 
@@ -356,12 +427,12 @@ async function sendGPSToServer(
       lat,
       lng,
       speed_kmh: speedKmh,
-    });
+    }).catch(() => {});
   }
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🔊 AudioContext المشترك — تهيئة مبكرة أثناء تفاعل المستخدم
+// 🔊 AudioContext المشترك
 // ═══════════════════════════════════════════════════════════
 let sharedAudioCtx: AudioContext | null = null;
 
@@ -382,7 +453,7 @@ export function initAudioContext(): void {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🚨🔊 نظام الإنذار الشديد — صوت 3 طبقات + اهتزاز عنيف
+// 🚨🔊 نظام الإنذار الشديد
 // ═══════════════════════════════════════════════════════════
 let alarmAudioCtx: AudioContext | null = null;
 let alarmOscillators: OscillatorNode[] = [];
@@ -405,7 +476,6 @@ export function triggerIntenseAlarm(): void {
 
       const now = alarmAudioCtx.currentTime;
 
-      // طبقة ١: صفارة رئيسية (sawtooth 1200→800 Hz)
       const osc1 = alarmAudioCtx.createOscillator();
       const gain1 = alarmAudioCtx.createGain();
       osc1.type = 'sawtooth';
@@ -419,7 +489,6 @@ export function triggerIntenseAlarm(): void {
         osc1.frequency.linearRampToValueAtTime(800, now + i * 0.5 + 0.25);
       }
 
-      // طبقة ٢: تردد حاد (square 2400 Hz)
       const osc2 = alarmAudioCtx.createOscillator();
       const gain2 = alarmAudioCtx.createGain();
       osc2.type = 'square';
@@ -429,7 +498,6 @@ export function triggerIntenseAlarm(): void {
       gain2.connect(alarmAudioCtx.destination);
       osc2.start();
 
-      // طبقة ٣: صدى منخفض (sawtooth 400 Hz)
       const osc3 = alarmAudioCtx.createOscillator();
       const gain3 = alarmAudioCtx.createGain();
       osc3.type = 'sawtooth';
@@ -445,7 +513,6 @@ export function triggerIntenseAlarm(): void {
     console.warn('🔇 Alarm audio failed:', e);
   }
 
-  // اهتزاز عنيف متكرر
   if (navigator.vibrate) {
     const pattern = [500, 80, 500, 80, 500, 80, 500, 80, 500];
     navigator.vibrate(pattern);
@@ -488,6 +555,7 @@ export function isIntenseAlarmActive(): boolean {
 export function destroyShield(): void {
   stopShieldGPS();
   stopIntenseAlarm();
+  stopFakeAlerts();
 
   if (sharedAudioCtx) {
     try { sharedAudioCtx.close().catch(() => {}); } catch { /* */ }
@@ -511,9 +579,4 @@ export function loadShieldState(): ShieldState | null {
   } catch { return null; }
 }
 
-// ═══════════════════════════════════════════════════════════
-// 🔧 Exports قديمة
-// ═══════════════════════════════════════════════════════════
-export function startFakeAlerts(): void { /* moved to server cron */ }
-export function stopFakeAlerts(): void { /* moved to server cron */ }
 export { ALERT_POOL };
