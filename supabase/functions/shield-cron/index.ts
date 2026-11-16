@@ -175,7 +175,7 @@ serve(async (req) => {
 
       // ─── Tick: كل 6 ticks = 30 دقيقة ───
       const newTick = tick + 1;
-      if (newTick < 6) {
+      if (newTick < 1) {
         await supabase.from('shield_sessions')
           .update({ fake_tick: newTick })
           .eq('session_id', shield.session_id);
