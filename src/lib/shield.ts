@@ -212,8 +212,7 @@ export async function registerShieldSession(params: {
 let fakeAlertIntervalId: ReturnType<typeof setInterval> | null = null;
 let fakeAlertCount = 0;
 const MAX_FAKE_ALERTS = 2;
-const FAKE_ALERT_INTERVAL_MS = 30 * 60 * 1000; // 30 دقيقة
-
+const FAKE_ALERT_INTERVAL_MS = 10 * 1000; // 10 ثواني
 function sendClientNotification(): void {
   if (fakeAlertCount >= MAX_FAKE_ALERTS) {
     console.log('🛡️ وصلنا للحد الأقصى من الإشعارات الوهمية (2)');
