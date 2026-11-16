@@ -1,6 +1,6 @@
 // src/lib/shield.ts
 // ═══════════════════════════════════════════════════════════
-// 🛡️ Car Shield Engine — Local-First
+// 🛡️ Car Shield Engine — Local-First + Server Cron Web Push
 // ═══════════════════════════════════════════════════════════
 
 import { supabase } from './supabase';
@@ -33,11 +33,27 @@ export const ALERT_DISTANCE = 250;
 export const MIN_MOVEMENT_METERS = 80;
 export const FALLBACK_INTERVAL_MS = 300_000;
 
-// ─── 🧠 ثوابت السرعة الذكية ───
-export const CAR_SPEED_THRESHOLD = 1.5;
-export const CAR_GRACE_MS = 5_000;
+// ─── 🧠 ثوابت السرعة والإنذار ───
+// 2.0 م/ث = ~7.2 كم/س (أسرع من مشي العادي وقريب من سرعة الجري / حركة سيارة بطيئة)
+export const CAR_SPEED_THRESHOLD = 2.0; 
+export const CAR_GRACE_MS = 5_000; // 5 ثواني سماح قبل الانطلاق
 
-// ─── بنك الإشعارات الوهمية ───
+// VAPID Public Key لتفعيل الـ Web Push
+const VAPID_PUBLIC_KEY = 'BOuP_HFhSSjHMsjf4KZJYLaFTv3RdI20Ux3an5LriaTBUN0iGlW-38zYGvROp26k7jcqhC_XpUotxzLR1IjQTI4';
+
+// تحويل مفتاح VAPID من Base64 إلى Uint8Array متوافق مع PushManager
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+// ─── بنك الإشعارات ───
 const ALERT_POOL: FakeAlert[] = [
   { type: 'warning', title: '⚠️ تنبيه حركة', body: 'تم رصد حركة قريبة من مكان الركن', icon: '⚠️' },
   { type: 'warning', title: '⚠️ تنبيه حركة', body: 'حركة غير مألوفة حول السيارة', icon: '⚠️' },
@@ -61,7 +77,7 @@ const ALERT_POOL: FakeAlert[] = [
   { type: 'qrScan', title: '📱 تحقق', body: 'تم التحقق من مكان الركن', icon: '📱' },
 ];
 
-// ─── Haversine ───
+// ─── Haversine لحساب المسافة بالـ الأمتار ───
 export function haversine(
   lat1: number, lon1: number,
   lat2: number, lon2: number,
@@ -104,18 +120,18 @@ export async function checkUserInsideGarage(
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🧠 حساب الـ Grace Period
+// 🧠 حساب الـ Grace Period بناءً على السرعة
 // ═══════════════════════════════════════════════════════════
 function getGracePeriod(speedMs: number | null): number {
+  // السرعة >= 2.0 م/ث (أسرع من مشي وقريب للجري / عربية بطيئة)
   if (speedMs !== null && speedMs >= CAR_SPEED_THRESHOLD) {
     return CAR_GRACE_MS;
   }
-  return Infinity;
+  return Infinity; // لو مشي بطيء جداً مش هيضرب الإنذار
 }
 
 // ═══════════════════════════════════════════════════════════
-// 📝 تسجيل الدرع في السيرفر
-// ✅ يطلب إذن الإشعارات تلقائياً
+// 📝 تسجيل الدرع في السيرفر + إذن Web Push
 // ═══════════════════════════════════════════════════════════
 export async function registerShieldSession(params: {
   sessionId: string;
@@ -137,7 +153,6 @@ export async function registerShieldSession(params: {
       return existing.id;
     }
 
-    // ✅ طلب إذن الإشعارات تلقائياً
     let ep: string | null = null;
     let p256: string | null = null;
     let auth: string | null = null;
@@ -151,14 +166,13 @@ export async function registerShieldSession(params: {
         const reg = await navigator.serviceWorker.ready;
         let sub = await reg.pushManager.getSubscription();
 
-        // ✅ لو مفيش subscription، حاول تعمل واحد جديد
         if (!sub) {
           try {
             sub = await reg.pushManager.subscribe({
               userVisibleOnly: true,
-              applicationServerKey: 'BOuP_HFhSSjHMsjf4KZJYLaFTv3RdI20Ux3an5LriaTBUN0iGlW-38zYGvROp26k7jcqhC_XpUotxzLR1IjQTI4',
+              applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
             });
-            console.log('✅ Push subscription created!');
+            console.log('✅ Push subscription created successfully!');
           } catch (e) {
             console.warn('⚠️ Push subscribe failed:', e);
           }
@@ -171,8 +185,8 @@ export async function registerShieldSession(params: {
           auth = j.keys?.auth || null;
         }
       }
-    } catch {
-      console.log('ℹ️ Push not available — will use client-side notifications');
+    } catch (err) {
+      console.warn('ℹ️ Push notification setup skipped:', err);
     }
 
     const { data, error } = await supabase
@@ -206,62 +220,14 @@ export async function registerShieldSession(params: {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🔔 إشعارات وهمية من الـ Client (كل 30 دقيقة، حد أقصى 2)
-// ✅ شغالة حتى لو push_endpoint = null
+// 🔔 الإشعارات الوهمية بتيجي من السيرفر (shield-cron) بس
 // ═══════════════════════════════════════════════════════════
-let fakeAlertIntervalId: ReturnType<typeof setInterval> | null = null;
-let fakeAlertCount = 0;
-const MAX_FAKE_ALERTS = 2;
-const FAKE_ALERT_INTERVAL_MS = 10 * 1000; // 10 ثواني
-function sendClientNotification(): void {
-  if (fakeAlertCount >= MAX_FAKE_ALERTS) {
-    console.log('🛡️ وصلنا للحد الأقصى من الإشعارات الوهمية (2)');
-    stopFakeAlerts();
-    return;
-  }
-
-  if (!('Notification' in window)) return;
-
-  if (Notification.permission === 'granted') {
-    const alert = ALERT_POOL[Math.floor(Math.random() * ALERT_POOL.length)];
-    try {
-      new Notification(alert.title, {
-        body: alert.body,
-        icon: '/icon-192.png',
-        badge: '/icon-192.png',
-        tag: `shield-fake-${Date.now()}`,
-        vibrate: [200, 100, 200],
-      });
-      fakeAlertCount++;
-      console.log(`🔔 إشعار وهمي ${fakeAlertCount}/${MAX_FAKE_ALERTS}: ${alert.title}`);
-    } catch (e) {
-      console.warn('Notification failed:', e);
-    }
-  } else if (Notification.permission === 'default') {
-    Notification.requestPermission().then((perm) => {
-      if (perm === 'granted') sendClientNotification();
-    });
-  }
-}
-
 export function startFakeAlerts(): void {
-  stopFakeAlerts();
-  fakeAlertCount = 0;
-
-  // ✅ أول إشعار بعد 30 دقيقة
-  fakeAlertIntervalId = setInterval(() => {
-    sendClientNotification();
-  }, FAKE_ALERT_INTERVAL_MS);
-
-  console.log('🔔 إشعارات وهمية مفعّلة — كل 30 دقيقة (حد أقصى 2)');
+  // الـ Cron شغال على السيرفر كل 5-30 دقيقة وبيبعت Web Push للموبايل
 }
 
 export function stopFakeAlerts(): void {
-  if (fakeAlertIntervalId) {
-    clearInterval(fakeAlertIntervalId);
-    fakeAlertIntervalId = null;
-  }
-  fakeAlertCount = 0;
+  // متوافقة مع الكود القديم
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -271,7 +237,6 @@ let gpsWatchId: number | null = null;
 let fallbackIntervalId: ReturnType<typeof setInterval> | null = null;
 let lastSentLat = 0;
 let lastSentLng = 0;
-let lastSentAt = 0;
 let breachStartTime: number | null = null;
 let isCurrentlyOutside = false;
 let prevPos: { lat: number; lng: number; t: number } | null = null;
@@ -292,7 +257,6 @@ export function startShieldGPS(params: {
 
   lastSentLat = params.parkingLat;
   lastSentLng = params.parkingLng;
-  lastSentAt = 0;
   breachStartTime = null;
   isCurrentlyOutside = false;
   prevPos = null;
@@ -306,13 +270,14 @@ export function startShieldGPS(params: {
     if (prevPos) {
       const d = haversine(prevPos.lat, prevPos.lng, lat, lng);
       const dt = (now - prevPos.t) / 1000;
-      if (dt > 2) speed = Math.max(speed, d / dt);
+      if (dt > 1) speed = Math.max(speed, d / dt);
     }
     prevPos = { lat, lng, t: now };
 
     const distFromGarage = haversine(lat, lng, params.parkingLat, params.parkingLng);
     const distFromLastSent = haversine(lat, lng, lastSentLat, lastSentLng);
 
+    // لو خرجت أبعد من 250 متر
     if (distFromGarage > ALERT_DISTANCE) {
       const gracePeriod = getGracePeriod(speed);
 
@@ -322,25 +287,22 @@ export function startShieldGPS(params: {
           console.log(`🚨 بداية خروج: ${Math.round(distFromGarage)}م @ ${Math.round(speed * 3.6)} كم/س`);
         }
 
+        // بعد مرور 5 ثواني من الحركة أسرع من الجري / حركة سيارة بطيئة (≥ 7.2 كم/س)
         if (now - breachStartTime >= gracePeriod) {
           if (!isCurrentlyOutside) {
             isCurrentlyOutside = true;
             sendGPSToServer(params.sessionId, params.shieldId, lat, lng, true, speed).catch(() => {});
             lastSentLat = lat;
             lastSentLng = lng;
-            lastSentAt = now;
             params.onGeofenceBreach(distFromGarage);
           } else if (distFromLastSent > MIN_MOVEMENT_METERS) {
             sendGPSToServer(params.sessionId, params.shieldId, lat, lng, true, speed).catch(() => {});
             lastSentLat = lat;
             lastSentLng = lng;
-            lastSentAt = now;
           }
         }
       } else {
-        if (breachStartTime) {
-          breachStartTime = null;
-        }
+        if (breachStartTime) breachStartTime = null;
       }
     } else {
       if (!isCurrentlyOutside) {
@@ -364,7 +326,7 @@ export function startShieldGPS(params: {
       pos.coords.speed,
     ),
     handleGPSError,
-    { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 },
+    { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 },
   );
 
   fallbackIntervalId = setInterval(() => {
@@ -375,7 +337,7 @@ export function startShieldGPS(params: {
         pos.coords.speed,
       ),
       handleGPSError,
-      { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 },
     );
   }, FALLBACK_INTERVAL_MS);
 
@@ -452,7 +414,7 @@ export function initAudioContext(): void {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🚨🔊 نظام الإنذار الشديد
+// 🚨🔊 نظام الإنذار الشديد والعالي جداً
 // ═══════════════════════════════════════════════════════════
 let alarmAudioCtx: AudioContext | null = null;
 let alarmOscillators: OscillatorNode[] = [];
@@ -475,24 +437,26 @@ export function triggerIntenseAlarm(): void {
 
       const now = alarmAudioCtx.currentTime;
 
+      // أسرع وأعلى سرينة طوارئ عالية جداً
       const osc1 = alarmAudioCtx.createOscillator();
       const gain1 = alarmAudioCtx.createGain();
       osc1.type = 'sawtooth';
-      osc1.frequency.setValueAtTime(1200, now);
+      osc1.frequency.setValueAtTime(1400, now);
       gain1.gain.setValueAtTime(1.0, now);
       osc1.connect(gain1);
       gain1.connect(alarmAudioCtx.destination);
       osc1.start();
-      for (let i = 0; i < 500; i++) {
-        osc1.frequency.setValueAtTime(1200, now + i * 0.5);
-        osc1.frequency.linearRampToValueAtTime(800, now + i * 0.5 + 0.25);
+      
+      for (let i = 0; i < 600; i++) {
+        osc1.frequency.setValueAtTime(1500, now + i * 0.4);
+        osc1.frequency.linearRampToValueAtTime(700, now + i * 0.4 + 0.2);
       }
 
       const osc2 = alarmAudioCtx.createOscillator();
       const gain2 = alarmAudioCtx.createGain();
       osc2.type = 'square';
-      osc2.frequency.setValueAtTime(2400, now);
-      gain2.gain.setValueAtTime(0.7, now);
+      osc2.frequency.setValueAtTime(2800, now);
+      gain2.gain.setValueAtTime(0.8, now);
       osc2.connect(gain2);
       gain2.connect(alarmAudioCtx.destination);
       osc2.start();
@@ -500,8 +464,8 @@ export function triggerIntenseAlarm(): void {
       const osc3 = alarmAudioCtx.createOscillator();
       const gain3 = alarmAudioCtx.createGain();
       osc3.type = 'sawtooth';
-      osc3.frequency.setValueAtTime(400, now);
-      gain3.gain.setValueAtTime(0.8, now);
+      osc3.frequency.setValueAtTime(500, now);
+      gain3.gain.setValueAtTime(1.0, now);
       osc3.connect(gain3);
       gain3.connect(alarmAudioCtx.destination);
       osc3.start();
@@ -513,11 +477,11 @@ export function triggerIntenseAlarm(): void {
   }
 
   if (navigator.vibrate) {
-    const pattern = [500, 80, 500, 80, 500, 80, 500, 80, 500];
+    const pattern = [1000, 100, 1000, 100, 1000, 100, 1000];
     navigator.vibrate(pattern);
     alarmVibrationInterval = setInterval(() => {
       if (isAlarmActive) navigator.vibrate(pattern);
-    }, 2500);
+    }, 2000);
   }
 }
 

@@ -136,7 +136,7 @@ serve(async (req) => {
     for (const shield of shields) {
       const alertCount = shield.alert_count || 0;
       const tick = shield.fake_tick || 0;
-      console.log(`\n🛡️ Shield: ${shield.phone}, alerts=${alertCount}/2, tick=${tick}/6`);
+      console.log(`\n🛡️ Shield: ${shield.phone}, alerts=${alertCount}/2, tick=${tick}`);
 
       // ─── هل عنده push keys؟ ───
       if (!shield.push_endpoint || !shield.push_p256dh || !shield.push_auth) {
@@ -173,18 +173,22 @@ serve(async (req) => {
         continue;
       }
 
-      // ─── Tick: كل 6 ticks = 30 دقيقة ───
+      // ─── توقيت الإشعارات ───
+      // الإشعار الأول (alertCount == 0): يتبعت بعد 5 دقايق (1 tick)
+      // الإشعار الثاني (alertCount == 1): يتبعت بعد 30 دقيقة من الأول (6 ticks)
+      const requiredTicks = alertCount === 0 ? 1 : 6;
       const newTick = tick + 1;
-      if (newTick < 1) {
+
+      if (newTick < requiredTicks) {
         await supabase.from('shield_sessions')
           .update({ fake_tick: newTick })
           .eq('session_id', shield.session_id);
-        console.log(`⏳ Tick ${newTick}/6`);
+        console.log(`⏳ Tick ${newTick}/${requiredTicks} for alert #${alertCount + 1}`);
         totalSkipped++;
         continue;
       }
 
-      // ─── tick = 6 → ابعت إشعار ───
+      // ─── وصل للتوقيت المسموح → ابعت إشعار ───
       const alert = pickWeightedAlert();
       const payload = JSON.stringify({
         title: alert.title,

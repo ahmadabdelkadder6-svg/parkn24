@@ -23,8 +23,6 @@ import {
   stopIntenseAlarm,
   destroyShield,
   registerShieldSession,
-  startFakeAlerts,    // ← أضف
-  stopFakeAlerts,
 } from '../lib/shield';
 
 const BRAND = {
@@ -335,43 +333,42 @@ export default function SessionScreen() {
   // 🛡️ درع تلقائي في الخلفية (بدون UI)
   // يتفعّل لو الجلسة فيها shieldCost > 0
   // يرجع يشتغل بعد Refresh لأن shieldCost محفوظ في الـ DB
+  // الإشعارات بتيجي من الكرون بس — مفيش أي حاجة في الكلاينت
   // ═══════════════════════════════════════════════════════════
-useEffect(() => {
-  if (!activeSession || !garage) return;
-  if ((activeSession.shieldCost ?? 0) <= 0) return;
-  try { initAudioContext(); } catch {}
-  const parkingLat = (garage as any).lat ?? 30.0444;
-  const parkingLng = (garage as any).lng ?? 31.2357;
-  let cancelled = false;
-  registerShieldSession({
-    sessionId: activeSession.id,
-    phone: (activeSession as any).customerPhone || userPhone || '',
-    garageId: garage.id,
-    parkingLat,
-    parkingLng,
-  }).then((shieldId) => {
-    if (cancelled || !shieldId) return;
-    console.log('🛡️ Shield registered in DB:', shieldId);
-    startShieldGPS({
+  useEffect(() => {
+    if (!activeSession || !garage) return;
+    if ((activeSession.shieldCost ?? 0) <= 0) return;
+    try { initAudioContext(); } catch {}
+    const parkingLat = (garage as any).lat ?? 30.0444;
+    const parkingLng = (garage as any).lng ?? 31.2357;
+    let cancelled = false;
+    registerShieldSession({
       sessionId: activeSession.id,
-      shieldId,
+      phone: (activeSession as any).customerPhone || userPhone || '',
+      garageId: garage.id,
       parkingLat,
       parkingLng,
-      onGeofenceBreach: () => {
-        console.log('🚨 BREACH detected!');
-        triggerIntenseAlarm();
-        setShowBreach(true);
-      },
+    }).then((shieldId) => {
+      if (cancelled || !shieldId) return;
+      console.log('🛡️ Shield registered in DB:', shieldId);
+      startShieldGPS({
+        sessionId: activeSession.id,
+        shieldId,
+        parkingLat,
+        parkingLng,
+        onGeofenceBreach: () => {
+          console.log('🚨 BREACH detected!');
+          triggerIntenseAlarm();
+          setShowBreach(true);
+        },
+      });
     });
-    startFakeAlerts();  // ← أضف السطر ده هنا
-  });
-  return () => {
-    cancelled = true;
-    destroyShield();
-    stopFakeAlerts();   // ← أضف السطر ده هنا
-    setShowBreach(false);
-  };
-}, [activeSession?.id, garage?.id]);
+    return () => {
+      cancelled = true;
+      destroyShield();
+      setShowBreach(false);
+    };
+  }, [activeSession?.id, garage?.id]);
 
   // 🏁 إنهاء الجلسة يدويًا
   const handleEndSession = useCallback(async () => {
@@ -500,9 +497,9 @@ useEffect(() => {
   }, [setSelectedGarageId, setScreen]);
 
 
-  // ═══════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
   // 🎨 جلسة ركن نشطة
-  // ═══════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
   if (activeSession) {
     return (
       <motion.div
@@ -526,22 +523,29 @@ useEffect(() => {
             </span>
           </div>
 
-          {/* 🛡️ شارة الدرع (لو مفعّل) */}
-          {(activeSession.shieldCost ?? 0) > 0 && (
-            <div
-              className="px-3 py-1 rounded-full flex items-center gap-1.5 border"
-              style={{
-                background: 'rgba(22, 86, 184, 0.15)',
-                borderColor: 'rgba(22, 86, 184, 0.5)',
-              }}
-            >
-              <span className="text-[10px]">🛡️</span>
-              <span className="text-[10px] font-black" style={{ color: BRAND.blue }}>
-                الدرع الذكي شغال في الخلفية
-              </span>
-            </div>
-          )}
-
+{/* 🛡️ شارة الدرع (لو مفعّل) */}
+{(activeSession.shieldCost ?? 0) > 0 && (
+  <div
+    className="px-4 py-2 rounded-2xl flex items-center gap-2 border-2 shadow-xl"
+    style={{
+      background: 'linear-gradient(135deg, rgba(22, 86, 184, 0.35) 0%, rgba(10, 22, 40, 0.95) 100%)',
+      borderColor: '#60a5fa',
+      boxShadow: '0 0 20px rgba(96, 165, 250, 0.3)',
+    }}
+  >
+    <span className="text-lg animate-pulse">🛡️</span>
+    <span
+      className="text-sm sm:text-base font-black tracking-wide text-blue-300"
+      style={{
+        color: '#93c5fd',
+        textShadow: '0 2px 4px rgba(0,0,0,0.9), 0 0 10px rgba(147, 197, 253, 0.5)',
+        letterSpacing: '0.3px',
+      }}
+    >
+      الدرع الذكي مفعّل وشغال في الخلفية ✅
+    </span>
+  </div>
+)}
           {/* ⚡ العداد */}
           <LiveSessionTimer
             activeStartMs={activeStartMs}

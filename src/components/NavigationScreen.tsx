@@ -1,3 +1,4 @@
+// src/components/NavigationScreen.tsx
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -15,6 +16,7 @@ import {
   ShieldCheck,
   Shield,
   ShieldOff,
+  Navigation2, // ✅ إضافة أيقونة احترافية
 } from 'lucide-react';
 import {
   useStore,
@@ -44,7 +46,6 @@ import {
 import L from 'leaflet';
 import { supabase } from '../lib/supabase';
 
-// ✅ إضافة imports الدرع
 import {
   initAudioContext,
   startShieldGPS,
@@ -52,8 +53,6 @@ import {
   stopIntenseAlarm,
   destroyShield,
   registerShieldSession,
-   startFakeAlerts,    // ← أضف
-  stopFakeAlerts,
 } from '../lib/shield';
 
 const BRAND = {
@@ -177,7 +176,7 @@ export default function NavigationScreen() {
     offers,
     sessions,
     addSession,
-    endSession, // ✅ أضفنا endSession
+    endSession,
     fetchAll,
     addWalletTopUp,
     deductWallet,
@@ -223,13 +222,20 @@ export default function NavigationScreen() {
   const [showInsufficientModal, setShowInsufficientModal] = useState(false);
   const [processingTopup, setProcessingTopup] = useState<string | null>(null);
 
-  const [shieldChoice, setShieldChoice] = useState<boolean>(true);
+  const [shieldChoice, setShieldChoice] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('parkn24_shield_choice');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
   const [stabilityStartMs, setStabilityStartMs] = useState<number | null>(null);
   const [stabilityElapsed, setStabilityElapsed] = useState<number>(0);
   const [isWithinRadius, setIsWithinRadius] = useState<boolean>(false);
   const [autoStarting, setAutoStarting] = useState<boolean>(false);
 
-  // ✅ حالة شاشة الاختراق
   const [showBreach, setShowBreach] = useState(false);
 
   const isMountedRef = useRef(true);
@@ -246,6 +252,12 @@ export default function NavigationScreen() {
       isMountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('parkn24_shield_choice', String(shieldChoice));
+    } catch {}
+  }, [shieldChoice]);
 
   /* ─── REALTIME & SYNC ─── */
   useEffect(() => {
@@ -353,21 +365,37 @@ export default function NavigationScreen() {
 
       const startTimeISO = new Date(getServerNow()).toISOString();
 
-await addSession({
-  garageId: garage.id,
-  carPlate: myIncomingCar?.carPlate || currentUser?.carPlate || '---',
-  startTime: startTimeISO,
-  status: 'active',
-  source: 'app',
-  agreedPrice: myIncomingCar?.agreedPrice || (garage as any).basePrice || 15,
-  customerPhone: currentUser?.phone,
-  customerName: currentUser?.name,
-  startedBy: 'customer',
-  incomingCarId: myIncomingCar?.id,
-  autoStarted: true,
-  shieldAutoEnabled: shieldChoice,
-  shieldCost: shieldChoice ? SHIELD_AUTO_FEE : 0,  // ✅ السطر ده هو الحل
-} as any);
+      let shieldCostForSession = 0;
+      if (shieldChoice) {
+        const walletNow = Number(currentUser?.wallet ?? (currentUser as any)?.walletBalance ?? 0);
+        if (walletNow >= SHIELD_AUTO_FEE) {
+          try {
+            await deductWallet(SHIELD_AUTO_FEE);
+            shieldCostForSession = SHIELD_AUTO_FEE;
+            toast.success(`تم خصم ${SHIELD_AUTO_FEE} ج.م لتفعيل الدرع 🛡️`, { duration: 2500 });
+          } catch (e) {
+            console.error('Shield deduction error:', e);
+          }
+        } else {
+          toast.error(`رصيد غير كافٍ لتفعيل الدرع (${SHIELD_AUTO_FEE} ج.م) — تم بدء الجلسة بدون درع`, { duration: 3500 });
+        }
+      }
+
+      await addSession({
+        garageId: garage.id,
+        carPlate: myIncomingCar?.carPlate || currentUser?.carPlate || '---',
+        startTime: startTimeISO,
+        status: 'active',
+        source: 'app',
+        agreedPrice: myIncomingCar?.agreedPrice || (garage as any).basePrice || 15,
+        customerPhone: currentUser?.phone,
+        customerName: currentUser?.name,
+        startedBy: 'customer',
+        incomingCarId: myIncomingCar?.id,
+        autoStarted: true,
+        shieldAutoEnabled: shieldChoice,
+        shieldCost: shieldCostForSession,
+      } as any);
 
       if (myIncomingCar) {
         await removeIncomingCar(myIncomingCar.id);
@@ -396,6 +424,8 @@ await addSession({
     currentUser,
     addSession,
     removeIncomingCar,
+    deductWallet,
+    shieldChoice,
     selectedGarageId,
     setSelectedGarageId,
     setScreen,
@@ -441,36 +471,36 @@ await addSession({
       }
 
       const startTimeISO = new Date(getServerNow()).toISOString();
-// ✅ لو اختار الدرع، اخصم الرسوم الأول
-let shieldCostForSession = 0;
-if (shieldChoice) {
-  const walletNow = Number(currentUser?.wallet ?? (currentUser as any)?.walletBalance ?? 0);
-  if (walletNow >= SHIELD_AUTO_FEE) {
-    try {
-      await deductWallet(SHIELD_AUTO_FEE);
-      shieldCostForSession = SHIELD_AUTO_FEE;
-      toast.success(`تم خصم ${SHIELD_AUTO_FEE} ج.م لتفعيل الدرع 🛡️`, { duration: 2500 });
-    } catch (e) {
-      console.error('Shield deduction error:', e);
-    }
-  } else {
-    toast.error(`رصيد غير كافٍ لتفعيل الدرع (${SHIELD_AUTO_FEE} ج.م) — تم بدء الجلسة بدون درع`, { duration: 3500 });
-  }
-}
 
-await addSession({
-  garageId: garage.id,
-  carPlate: myIncomingCar?.carPlate || currentUser?.carPlate || '---',
-  startTime: startTimeISO,
-  status: 'active',
-  source: 'app',
-  agreedPrice: myIncomingCar?.agreedPrice || (garage as any).basePrice || 15,
-  customerPhone: currentUser?.phone,
-  customerName: currentUser?.name,
-  startedBy: 'customer',
-  incomingCarId: myIncomingCar?.id,
-  shieldCost: shieldCostForSession,  // ✅ السطر ده هو الحل
-} as any);
+      let shieldCostForSession = 0;
+      if (shieldChoice) {
+        const walletNow = Number(currentUser?.wallet ?? (currentUser as any)?.walletBalance ?? 0);
+        if (walletNow >= SHIELD_AUTO_FEE) {
+          try {
+            await deductWallet(SHIELD_AUTO_FEE);
+            shieldCostForSession = SHIELD_AUTO_FEE;
+            toast.success(`تم خصم ${SHIELD_AUTO_FEE} ج.م لتفعيل الدرع 🛡️`, { duration: 2500 });
+          } catch (e) {
+            console.error('Shield deduction error:', e);
+          }
+        } else {
+          toast.error(`رصيد غير كافٍ لتفعيل الدرع (${SHIELD_AUTO_FEE} ج.م) — تم بدء الجلسة بدون درع`, { duration: 3500 });
+        }
+      }
+
+      await addSession({
+        garageId: garage.id,
+        carPlate: myIncomingCar?.carPlate || currentUser?.carPlate || '---',
+        startTime: startTimeISO,
+        status: 'active',
+        source: 'app',
+        agreedPrice: myIncomingCar?.agreedPrice || (garage as any).basePrice || 15,
+        customerPhone: currentUser?.phone,
+        customerName: currentUser?.name,
+        startedBy: 'customer',
+        incomingCarId: myIncomingCar?.id,
+        shieldCost: shieldCostForSession,
+      } as any);
 
       if (myIncomingCar) {
         try { await removeIncomingCar(myIncomingCar.id); } catch {}
@@ -628,45 +658,40 @@ await addSession({
   }, [myActiveSession, selectedGarageId, setSelectedGarageId, setScreen]);
 
   // ═══════════════════════════════════════════════════════════
-  // ✅ تفعيل الدرع تلقائياً في NavigationScreen
-  // لو session نشط + shieldCost > 0 → شغّل الدرع في الخلفية
+  // ✅ تفعيل الدرع تلقائياً
   // ═══════════════════════════════════════════════════════════
-useEffect(() => {
-  if (!myActiveSession || !garage) return;
-  if ((myActiveSession.shieldCost ?? 0) <= 0) return;
-  try { initAudioContext(); } catch {}
-  const lat = (garage as any).lat ?? 30.0444;
-  const lng = (garage as any).lng ?? 31.2357;
-  let cancelled = false;
-  registerShieldSession({
-    sessionId: myActiveSession.id,
-    phone: (myActiveSession as any).customerPhone || currentUser?.phone || '',
-    garageId: garage.id,
-    parkingLat: lat,
-    parkingLng: lng,
-  }).then((shieldId) => {
-    if (cancelled || !shieldId) return;
-    console.log('🛡️ Shield registered in DB:', shieldId);
-    startShieldGPS({
+  useEffect(() => {
+    if (!myActiveSession || !garage) return;
+    if ((myActiveSession.shieldCost ?? 0) <= 0) return;
+    try { initAudioContext(); } catch {}
+    const lat = (garage as any).lat ?? 30.0444;
+    const lng = (garage as any).lng ?? 31.2357;
+    let cancelled = false;
+    registerShieldSession({
       sessionId: myActiveSession.id,
-      shieldId,
+      phone: (myActiveSession as any).customerPhone || currentUser?.phone || '',
+      garageId: garage.id,
       parkingLat: lat,
       parkingLng: lng,
-      onGeofenceBreach: () => {
-        triggerIntenseAlarm();
-        setShowBreach(true);
-      },
+    }).then((shieldId) => {
+      if (cancelled || !shieldId) return;
+      startShieldGPS({
+        sessionId: myActiveSession.id,
+        shieldId,
+        parkingLat: lat,
+        parkingLng: lng,
+        onGeofenceBreach: () => {
+          triggerIntenseAlarm();
+          setShowBreach(true);
+        },
+      });
     });
-    startFakeAlerts();  // ← أضف السطر ده هنا
-  });
-  return () => {
-    cancelled = true;
-    destroyShield();
-    stopFakeAlerts();   // ← أضف السطر ده هنا
-    setShowBreach(false);
-  };
-}, [myActiveSession?.id, garage?.id]);
-
+    return () => {
+      cancelled = true;
+      destroyShield();
+      setShowBreach(false);
+    };
+  }, [myActiveSession?.id, garage?.id]);
 
   if (!garage) {
     return (
@@ -795,6 +820,40 @@ useEffect(() => {
       {/* ══ Content ══ */}
       <div className="flex-1 px-4 pb-4 flex flex-col gap-3 overflow-y-auto">
 
+        {/* 🚀 زر التوجيه الخارجي لخرائط جوجل (تم نقله هنا وأصبح بشكل احترافي وتحفيزي) */}
+        {!myActiveSession && (
+          <motion.button
+            type="button"
+            initial={{ opacity: 0, y: -15 }}
+            animate={{ opacity: 1, y: 0 }}
+            whileTap={{ scale: 0.96 }}
+            onClick={openExternalMaps}
+            className="w-full relative overflow-hidden flex items-center justify-center gap-2 py-4 px-4 rounded-2xl cursor-pointer border-0 text-white shadow-xl"
+            style={{
+              background: 'linear-gradient(135deg, #1e3a8a 0%, #1656b8 100%)',
+              boxShadow: '0 6px 20px rgba(22, 86, 184, 0.4), inset 0 1px 0 rgba(255,255,255,0.2)',
+            }}
+          >
+            {/* زخرفة خلفية للزر */}
+            <div className="absolute top-0 right-0 w-32 h-full opacity-20 pointer-events-none" style={{ background: 'linear-gradient(to left, rgba(255,255,255,0.4), transparent)' }} />
+            
+            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center border border-white/20 shrink-0">
+              <Navigation2 size={20} className="text-white animate-pulse" />
+            </div>
+            
+            <div className="flex flex-col items-start text-right pr-1">
+              <span className="font-black text-white text-base leading-tight">
+                اضغط هنا وابدأ الرحلة للجراج 🚀
+              </span>
+              <span className="text-[10px] font-bold text-blue-200">
+                توجيه ذكي ومباشر عبر خرائط جوجل
+              </span>
+            </div>
+            
+            <ArrowRight size={20} className="mr-auto text-white opacity-80" />
+          </motion.button>
+        )}
+
         {/* 🏢 بطاقة اسم الجراج والمعلومات */}
         <div
           className="rounded-2xl p-4 shrink-0 border"
@@ -863,25 +922,25 @@ useEffect(() => {
             }}
           >
             <div className="flex items-center justify-between mb-2.5">
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2">
                 {shieldChoice ? (
-                  <Shield size={16} style={{ color: BRAND.green }} className="animate-pulse" />
+                  <ShieldCheck size={22} style={{ color: BRAND.green }} className="animate-pulse" />
                 ) : (
-                  <ShieldOff size={16} style={{ color: BRAND.slateMuted }} />
+                  <ShieldOff size={22} style={{ color: BRAND.slateMuted }} />
                 )}
                 <span
-                  className="text-[12px] font-black"
+                  className="text-[15px] font-black tracking-wide"
                   style={{ color: shieldChoice ? BRAND.green : BRAND.slateMuted }}
                 >
-                  {shieldChoice ? 'الدرع مفعّل ✅' : 'الدرع غير مفعّل'}
+                  {shieldChoice ? 'الدرع الذكي مفعّل ✅' : 'الدرع الذكي غير مفعّل'}
                 </span>
               </div>
               <span
-                className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+                className="text-[11px] font-black px-2.5 py-1 rounded-md"
                 style={{
                   background: 'rgba(10,22,40,0.6)',
-                  color: BRAND.slateMuted,
-                  border: `1px solid ${BRAND.border}`,
+                  color: BRAND.green,
+                  border: `1px solid ${BRAND.green}40`,
                 }}
               >
                 {SHIELD_AUTO_FEE} ج.م
@@ -1053,25 +1112,8 @@ useEffect(() => {
           </div>
         </div>
 
-        {/* 🚀 زر توجيه الخرائط الخارجية */}
+        {/* 🚀 زر نسخ الإحداثيات (احتفظنا به في مكانه الأصلي بعد الخريطة) */}
         <div className="flex flex-col gap-1.5 shrink-0">
-          <motion.button
-            type="button"
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={openExternalMaps}
-            className="w-full relative overflow-hidden flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl cursor-pointer border-0 text-white font-black"
-            style={{
-              background: BRAND.blue,
-              boxShadow: `0 4px 14px ${BRAND.blue}25`,
-            }}
-          >
-            <Navigation size={16} color="#ffffff" className="animate-bounce shrink-0" />
-            <span style={{ color: '#ffffff', fontSize: '14px', fontWeight: 950 }}>
-              فتح في خرائط Google 🗺️🚀
-            </span>
-          </motion.button>
-
           <button
             type="button"
             onClick={copyCoords}
@@ -1247,7 +1289,7 @@ useEffect(() => {
       </AnimatePresence>
 
       {/* ═══════════════════════════════════════════════════════════
-          ✅ شاشة الاختراق — تظهر فوراً لو الدرع اكتشف خروج السيارة
+          ✅ شاشة الاختراق
           ═══════════════════════════════════════════════════════════ */}
       {showBreach && (
         <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/80 p-4">

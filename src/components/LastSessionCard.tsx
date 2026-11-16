@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Hash,
   Calendar,
+  ShieldCheck,
 } from 'lucide-react';
 import { useStore, normalizePlate, normalizePhone, getServerNow, BOOKING_FEE } from '../store';
 
@@ -67,6 +68,11 @@ const LastSessionCard = memo(function LastSessionCard() {
     if (!garage) return false;
     return garage.garageType === 'vip' || (garage as any).is_vip === true || garage.type === 'partner';
   }, [garage]);
+
+  const shieldFee = useMemo(() => {
+    if (!lastSession) return 0;
+    return Number((lastSession as any)?.shieldCost ?? (lastSession as any)?.shield_cost ?? 0);
+  }, [lastSession]);
 
   const startTime = toMs(lastSession?.startTime);
   const endTime = toMs(lastSession?.endTime) || (lastSession ? getServerNow() : 0);
@@ -441,6 +447,54 @@ const LastSessionCard = memo(function LastSessionCard() {
               </div>
             </div>
           </div>
+
+          {/* ═══ 🛡️ شريط رسوم الدرع الذكي (إذا كان مفعّلاً) ═══ */}
+          {shieldFee > 0 && (
+            <>
+              <div className="relative px-5">
+                <div
+                  className="border-t-2 border-dashed"
+                  style={{ borderColor: BRAND.divider }}
+                />
+                <div
+                  className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full"
+                  style={{ background: BRAND.paper }}
+                />
+                <div
+                  className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full"
+                  style={{ background: BRAND.paper }}
+                />
+              </div>
+
+              <div
+                className="px-4 py-3 flex items-center justify-between"
+                style={{
+                  background: 'rgba(22, 86, 184, 0.06)',
+                }}
+              >
+                <div className="flex items-center gap-2">
+                  <ShieldCheck size={18} style={{ color: BRAND.blue }} />
+                  <div className="flex flex-col">
+                    <span className="text-[12px] font-black" style={{ color: BRAND.ink }}>
+                      تفعيل الدرع الذكي 🛡️
+                    </span>
+                    <span className="text-[9px] font-bold" style={{ color: BRAND.inkMuted }}>
+                      حماية ومراقبة أمنية متواصلة
+                    </span>
+                  </div>
+                </div>
+                <span
+                  className="text-sm font-black text-white font-mono px-2.5 py-1 rounded-md"
+                  style={{
+                    background: `linear-gradient(135deg, ${BRAND.blue} 0%, ${BRAND.blueDark} 100%)`,
+                    boxShadow: '0 2px 6px rgba(22, 86, 184, 0.3)',
+                  }}
+                >
+                  {shieldFee} ج.م
+                </span>
+              </div>
+            </>
+          )}
 
           {/* ═══ VIP: شريط رسوم الحجز ═══ */}
           {isVip && (
