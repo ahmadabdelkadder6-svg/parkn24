@@ -231,7 +231,6 @@ export default function NavigationScreen() {
     }
   });
 
-  // ✅ استرجاع وقت بداية التواجد بالجراج المقفول من localStorage للوقاية من الـ Refresh
   const [stabilityStartMs, setStabilityStartMs] = useState<number | null>(() => {
     if (!garage) return null;
     try {
@@ -351,7 +350,7 @@ export default function NavigationScreen() {
     };
   }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
 
-  /* ─── 🚗 زر: وصلت للجراج وبدأ الركن ─── */
+  /* ─── 🚗 زر: وصلت للجراج وبدأ الركن (مفحوص بشرط المسافة للدرع) ─── */
   const handleCarArrived = useCallback(async () => {
     if (isArrivingRef.current) return;
     isArrivingRef.current = true;
@@ -394,19 +393,28 @@ export default function NavigationScreen() {
 
       const startTimeISO = new Date(getServerNow()).toISOString();
 
+      // 🛡️ فحص المسافة الصارم لمنع تفعيل الدرع من خارج نطاق الـ 150m
+      const currentDistMeters = haversineMeters(userPos.lat, userPos.lng, garage.lat, garage.lng);
       let shieldCostForSession = 0;
+
       if (shieldChoice) {
-        const walletNow = Number(currentUser?.wallet ?? (currentUser as any)?.walletBalance ?? 0);
-        if (walletNow >= SHIELD_AUTO_FEE) {
-          try {
-            await deductWallet(SHIELD_AUTO_FEE);
-            shieldCostForSession = SHIELD_AUTO_FEE;
-            toast.success(`تم خصم ${SHIELD_AUTO_FEE} ج.م لتفعيل الدرع 🛡️`, { duration: 2500 });
-          } catch (e) {
-            console.error('Shield deduction error:', e);
-          }
+        if (currentDistMeters > AUTO_START_RADIUS_M) {
+          toast.error(`عفواً! أنت خارج نطاق الجراج (أكثر من ${AUTO_START_RADIUS_M}م) — تم بدء الجلسة بدون تفعيل الدرع 🛡️`, {
+            duration: 4500,
+          });
         } else {
-          toast.error(`رصيد غير كافٍ لتفعيل الدرع (${SHIELD_AUTO_FEE} ج.م) — تم بدء الجلسة بدون درع`, { duration: 3500 });
+          const walletNow = Number(currentUser?.wallet ?? (currentUser as any)?.walletBalance ?? 0);
+          if (walletNow >= SHIELD_AUTO_FEE) {
+            try {
+              await deductWallet(SHIELD_AUTO_FEE);
+              shieldCostForSession = SHIELD_AUTO_FEE;
+              toast.success(`تم خصم ${SHIELD_AUTO_FEE} ج.م لتفعيل الدرع 🛡️`, { duration: 2500 });
+            } catch (e) {
+              console.error('Shield deduction error:', e);
+            }
+          } else {
+            toast.error(`رصيد غير كافٍ لتفعيل الدرع (${SHIELD_AUTO_FEE} ج.م) — تم بدء الجلسة بدون درع`, { duration: 3500 });
+          }
         }
       }
 
@@ -422,7 +430,7 @@ export default function NavigationScreen() {
         startedBy: 'customer',
         incomingCarId: myIncomingCar?.id,
         autoStarted: true,
-        shieldAutoEnabled: shieldChoice,
+        shieldAutoEnabled: shieldCostForSession > 0,
         shieldCost: shieldCostForSession,
       } as any);
 
@@ -445,6 +453,7 @@ export default function NavigationScreen() {
     }
   }, [
     garage,
+    userPos,
     userPlateNav,
     userPhoneClean,
     myIncomingCar,
@@ -549,7 +558,7 @@ export default function NavigationScreen() {
 
       navigatedToSessionRef.current = true;
 
-      const msg = shieldChoice
+      const msg = shieldCostForSession > 0
         ? '✅ تم بدء الجلسة والدرع تلقائياً 🛡️'
         : '✅ تم بدء الجلسة تلقائياً (بدون درع)';
       toast.success(msg, { duration: 4000, icon: '🚀' });
@@ -621,7 +630,6 @@ export default function NavigationScreen() {
     };
   }, [garage, myActiveSession]);
 
-  // ✅ متابعة وتخزين الـ GPS والتواجد في نطاق 150 متر مع الحفظ بـ localStorage
   useEffect(() => {
     if (!garage || myActiveSession || autoStartTriggeredRef.current) return;
 
@@ -650,7 +658,6 @@ export default function NavigationScreen() {
     }
   }, [userPos, garage, myActiveSession, stabilityStartMs, storageTimerKey]);
 
-  // ✅ عداد الوقت المستمر المقاوم للـ Refresh وللخروج من التطبيق (Visibility / Focus listener)
   useEffect(() => {
     if (stabilityStartMs === null) {
       if (stabilityTickerRef.current !== null) {
@@ -1012,7 +1019,12 @@ export default function NavigationScreen() {
             <div className="grid grid-cols-2 gap-1.5 mb-2">
               <button
                 type="button"
-                onClick={() => setShieldChoice(true)}
+                onClick={() => {
+                  setShieldChoice(true);
+                  if (!isWithinRadius) {
+                    toast('سيتم تفعيل الدرع فور دخول نطاق الجراج (150م) 📍', { icon: '🛡️', duration: 3000 });
+                  }
+                }}
                 disabled={autoStarting}
                 className="py-1.5 rounded-xl font-black text-[10px] border active:scale-95 transition-all cursor-pointer disabled:opacity-50"
                 style={{
