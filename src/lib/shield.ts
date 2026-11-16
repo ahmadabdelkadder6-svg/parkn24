@@ -156,11 +156,11 @@ export async function registerShieldSession(params: {
           try {
             sub = await reg.pushManager.subscribe({
               userVisibleOnly: true,
-              applicationServerKey: undefined as any,
+              applicationServerKey: 'BOuP_HFhSSjHMsjf4KZJYLaFTv3RdI20Ux3an5LriaTBUN0iGlW-38zYGvROp26k7jcqhC_XpUotxzLR1IjQTI4',
             });
-          } catch {
-            // مفيش VAPID key — عادي، هنستخدم Notification API من الـ client
-            console.log('ℹ️ Push subscription مش متاح — هنستخدم Notification API');
+            console.log('✅ Push subscription created!');
+          } catch (e) {
+            console.warn('⚠️ Push subscribe failed:', e);
           }
         }
 
