@@ -220,6 +220,8 @@ export default function NavigationScreen() {
   const [showInsufficientModal, setShowInsufficientModal] = useState(false);
   const [processingTopup, setProcessingTopup] = useState<string | null>(null);
 
+  const storageTimerKey = garage ? `parkn24_auto_start_timer_${garage.id}` : null;
+
   const [shieldChoice, setShieldChoice] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('parkn24_shield_choice');
@@ -229,8 +231,33 @@ export default function NavigationScreen() {
     }
   });
 
-  const [stabilityStartMs, setStabilityStartMs] = useState<number | null>(null);
-  const [stabilityElapsed, setStabilityElapsed] = useState<number>(0);
+  // ✅ استرجاع وقت بداية التواجد بالجراج المقفول من localStorage للوقاية من الـ Refresh
+  const [stabilityStartMs, setStabilityStartMs] = useState<number | null>(() => {
+    if (!garage) return null;
+    try {
+      const saved = localStorage.getItem(`parkn24_auto_start_timer_${garage.id}`);
+      if (saved) {
+        const parsed = Number(saved);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+      }
+    } catch {}
+    return null;
+  });
+
+  const [stabilityElapsed, setStabilityElapsed] = useState<number>(() => {
+    if (!garage) return 0;
+    try {
+      const saved = localStorage.getItem(`parkn24_auto_start_timer_${garage.id}`);
+      if (saved) {
+        const parsed = Number(saved);
+        if (Number.isFinite(parsed) && parsed > 0) {
+          return Math.max(0, Date.now() - parsed);
+        }
+      }
+    } catch {}
+    return 0;
+  });
+
   const [isWithinRadius, setIsWithinRadius] = useState<boolean>(false);
   const [autoStarting, setAutoStarting] = useState<boolean>(false);
 
@@ -332,6 +359,10 @@ export default function NavigationScreen() {
     try {
       if (!garage) return;
 
+      if (storageTimerKey) {
+        try { localStorage.removeItem(storageTimerKey); } catch {}
+      }
+
       const state = useStore.getState();
       const alreadyActive = state.sessions.find(
         (s) =>
@@ -427,10 +458,14 @@ export default function NavigationScreen() {
     selectedGarageId,
     setSelectedGarageId,
     setScreen,
+    storageTimerKey,
   ]);
 
   /* ─── ❌ زر: وصلت بس ملقتش مكان / العودة للرئيسية ─── */
   const handleNoSpaceFound = useCallback(async () => {
+    if (storageTimerKey) {
+      try { localStorage.removeItem(storageTimerKey); } catch {}
+    }
     try {
       if (myIncomingCar) {
         await removeIncomingCar(myIncomingCar.id);
@@ -443,12 +478,16 @@ export default function NavigationScreen() {
       localStorage.removeItem('selectedGarageId');
       setScreen('list');
     }
-  }, [myIncomingCar, removeIncomingCar, setSelectedGarageId, setScreen]);
+  }, [myIncomingCar, removeIncomingCar, setSelectedGarageId, setScreen, storageTimerKey]);
 
   const handleAutoStartSession = useCallback(async () => {
     if (autoStartTriggeredRef.current || !garage || !isMountedRef.current) return;
     autoStartTriggeredRef.current = true;
     setAutoStarting(true);
+
+    if (storageTimerKey) {
+      try { localStorage.removeItem(storageTimerKey); } catch {}
+    }
 
     try {
       const state = useStore.getState();
@@ -536,6 +575,7 @@ export default function NavigationScreen() {
     deductWallet,
     setSelectedGarageId,
     setScreen,
+    storageTimerKey,
   ]);
 
   /* 🧠 GPS positioning */
@@ -581,6 +621,7 @@ export default function NavigationScreen() {
     };
   }, [garage, myActiveSession]);
 
+  // ✅ متابعة وتخزين الـ GPS والتواجد في نطاق 150 متر مع الحفظ بـ localStorage
   useEffect(() => {
     if (!garage || myActiveSession || autoStartTriggeredRef.current) return;
 
@@ -591,17 +632,25 @@ export default function NavigationScreen() {
 
     if (within) {
       if (stabilityStartMs === null) {
-        setStabilityStartMs(Date.now());
+        const now = Date.now();
+        setStabilityStartMs(now);
         setStabilityElapsed(0);
+        if (storageTimerKey) {
+          try { localStorage.setItem(storageTimerKey, String(now)); } catch {}
+        }
       }
     } else {
       if (stabilityStartMs !== null) {
         setStabilityStartMs(null);
         setStabilityElapsed(0);
+        if (storageTimerKey) {
+          try { localStorage.removeItem(storageTimerKey); } catch {}
+        }
       }
     }
-  }, [userPos, garage, myActiveSession, stabilityStartMs]);
+  }, [userPos, garage, myActiveSession, stabilityStartMs, storageTimerKey]);
 
+  // ✅ عداد الوقت المستمر المقاوم للـ Refresh وللخروج من التطبيق (Visibility / Focus listener)
   useEffect(() => {
     if (stabilityStartMs === null) {
       if (stabilityTickerRef.current !== null) {
@@ -611,26 +660,38 @@ export default function NavigationScreen() {
       return;
     }
 
-    const tick = () => {
+    const checkAndTick = () => {
       if (!isMountedRef.current) return;
       const elapsed = Date.now() - stabilityStartMs;
       setStabilityElapsed(elapsed);
 
       if (elapsed >= AUTO_START_STABILITY_MS && !autoStartTriggeredRef.current) {
+        if (storageTimerKey) {
+          try { localStorage.removeItem(storageTimerKey); } catch {}
+        }
         handleAutoStartSession();
       }
     };
 
-    tick();
-    stabilityTickerRef.current = window.setInterval(tick, 1000);
+    checkAndTick();
+    stabilityTickerRef.current = window.setInterval(checkAndTick, 1000);
+
+    const handleVisibilityOrFocus = () => {
+      checkAndTick();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
 
     return () => {
       if (stabilityTickerRef.current !== null) {
         window.clearInterval(stabilityTickerRef.current);
         stabilityTickerRef.current = null;
       }
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
     };
-  }, [stabilityStartMs, handleAutoStartSession]);
+  }, [stabilityStartMs, handleAutoStartSession, storageTimerKey]);
 
   /* ─── تحميل الخريطة ─── */
   useEffect(() => {
@@ -805,6 +866,9 @@ export default function NavigationScreen() {
           type="button"
           aria-label="الرجوع للقائمة"
           onClick={() => {
+            if (storageTimerKey) {
+              try { localStorage.removeItem(storageTimerKey); } catch {}
+            }
             setSelectedGarageId(null);
             localStorage.removeItem('selectedGarageId');
             setScreen('list');
@@ -828,7 +892,7 @@ export default function NavigationScreen() {
       {/* ══ Content ══ */}
       <div className="flex-1 px-3.5 pb-4 flex flex-col gap-2.5 overflow-y-auto">
 
-        {/* 🚀 بانر التوجيه الخارجي لخرائط جوجل (بارز ومكبر ومنسق تماماً لشاشات الموبايل) */}
+        {/* 🚀 بانر التوجيه الخارجي لخرائط جوجل */}
         {!myActiveSession && (
           <motion.button
             type="button"
@@ -906,7 +970,7 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* 🛡️ بنر الدرع الذكي (مدمج ومصغر للموبايل بصورة ممتازة) */}
+        {/* 🛡️ بنر الدرع الذكي */}
         {!myActiveSession && (
           <motion.div
             initial={{ opacity: 0, y: -5 }}
