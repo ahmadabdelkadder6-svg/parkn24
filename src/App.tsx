@@ -74,22 +74,6 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
   }
 }
 
-const ParkShieldLogo = memo(function ParkShieldLogo({ width = 36, height = 42 }: { width?: number; height?: number }) {
-  return (
-    <svg viewBox="0 0 100 115" width={width} height={height} fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="شعار بركن 24">
-      <path d="M50 2 C78 2, 98 14, 98 26 C98 76, 75 104, 50 114 C25 104, 2 76, 2 26 C2 14, 22 2, 50 2 Z" fill="#1656b8" />
-      <path d="M50 8 C72 8, 90 18, 90 28 C90 70, 70 96, 50 105 C30 96, 10 70, 10 28 C10 18, 28 8, 50 8 Z" stroke="#ffffff" strokeWidth="2.5" fill="none" opacity="0.95" />
-      <path d="M26 30 H48 C60 30, 62 48, 48 48 H38 V78 H26 V30 Z M38 38 V40 H46 C48 40, 48 38, 46 38 Z" fill="#8cc63f" />
-      <path d="M64 30 A 10 10 0 1 1 58 44" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-      <polyline points="64 34, 64 40, 68 40" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-      <text x="69" y="52" fill="#ffffff" fontSize="9" fontWeight="900" fontFamily="sans-serif">24</text>
-      <path d="M58 64 L62 58 H74 L78 64 H80 C81.5 64 82 65 82 66.5 V72 H54 V66.5 C54 65 54.5 64 56 64 Z" fill="#ffffff" />
-      <circle cx="61" cy="72" r="2.2" fill="#1656b8" />
-      <circle cx="75" cy="72" r="2.2" fill="#1656b8" />
-    </svg>
-  );
-});
-
 interface ParkLandingProps { onEnter: () => void; }
 
 const ParkLanding = memo(function ParkLanding({ onEnter }: ParkLandingProps) {
@@ -170,7 +154,6 @@ const ParkLanding = memo(function ParkLanding({ onEnter }: ParkLandingProps) {
   );
 });
 
-// ✅ شيلنا 'summary' من القائمة
 const VALID_SCREENS = [
   'splash',
   'list',
@@ -248,6 +231,16 @@ export default function App() {
     }
   }, [safeScreen, screen, setScreen, dataLoaded, view]);
 
+  // ✅ حفظ الشاشة والجراج المختار في localStorage لمقاومة الـ Refresh
+  useEffect(() => {
+    if (view === 'user' && screen) {
+      safeLocalStorage.setItem('appScreen', screen);
+    }
+    if (selectedGarageId) {
+      safeLocalStorage.setItem('selectedGarageId', selectedGarageId);
+    }
+  }, [screen, selectedGarageId, view]);
+
   useEffect(() => {
     const init = async () => {
       const justInstalled = safeLocalStorage.getItem('pwaJustInstalled') === 'true';
@@ -266,17 +259,7 @@ export default function App() {
       }
 
       const savedScreen = safeLocalStorage.getItem('appScreen');
-
-      if (
-        savedScreen === 'session' ||
-        savedScreen === 'navigation' ||
-        savedScreen === 'waiting' ||
-        savedScreen === 'offer' ||
-        savedScreen === 'summary' ||
-        (savedScreen && !VALID_SCREENS.includes(savedScreen as any))
-      ) {
-        safeLocalStorage.removeItem('appScreen');
-      }
+      const savedGarageId = safeLocalStorage.getItem('selectedGarageId');
 
       const urlParams = new URLSearchParams(window.location.search);
       const isGarageFromURL = urlParams.has('garage');
@@ -302,6 +285,14 @@ export default function App() {
         } else {
           setView('user');
         }
+      }
+
+      // ✅ استرجاع شاشة التوجيه والجراج المختار عند الـ Refresh
+      if (savedScreen === 'navigation' && savedGarageId) {
+        setSelectedGarageId(savedGarageId);
+        setScreen('navigation');
+      } else if (savedScreen && VALID_SCREENS.includes(savedScreen as any)) {
+        setScreen(savedScreen as any);
       }
 
       setDataLoaded(true);
@@ -376,12 +367,14 @@ export default function App() {
       return;
     }
 
+    // ✅ لو كان العميل في شاشة navigation ومعاه selectedGarageId متخزن ما نرميهوش في list
+    const savedGarageId = safeLocalStorage.getItem('selectedGarageId');
     if (
-      safeScreen === 'session' ||
-      safeScreen === 'navigation' ||
-      safeScreen === 'waiting'
+      (safeScreen === 'session' || safeScreen === 'waiting') ||
+      (safeScreen === 'navigation' && !selectedGarageId && !savedGarageId)
     ) {
       setSelectedGarageId(null);
+      safeLocalStorage.removeItem('selectedGarageId');
       setScreen('list');
     }
   }, [dataLoaded]);
@@ -466,27 +459,26 @@ export default function App() {
         prevActiveSessionRef.current = null;
         noSessionCountRef.current = 0;
 
-        // ✅ تحويل تلقائي للرئيسية مباشرة (بدون ملخص)
         if (
           currentScreen === 'session' ||
           currentScreen === 'navigation' ||
           currentScreen === 'waiting'
         ) {
-let lastCompleted: (typeof freshState.sessions)[number] | undefined;
-let maxEnd = -1;
-for (let i = 0; i < freshState.sessions.length; i++) {
-  const s = freshState.sessions[i];
-  if (!s || s.status !== 'completed') continue;
-  const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-  const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-  const samePhone = Boolean(freshPhone && sPhone === freshPhone);
-  if (!(samePlate || samePhone)) continue;
-  const endMs = toMs(s.endTime);
-  if (endMs > maxEnd) {
-    maxEnd = endMs;
-    lastCompleted = s;
-  }
-}
+          let lastCompleted: (typeof freshState.sessions)[number] | undefined;
+          let maxEnd = -1;
+          for (let i = 0; i < freshState.sessions.length; i++) {
+            const s = freshState.sessions[i];
+            if (!s || s.status !== 'completed') continue;
+            const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
+            const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+            const samePhone = Boolean(freshPhone && sPhone === freshPhone);
+            if (!(samePlate || samePhone)) continue;
+            const endMs = toMs(s.endTime);
+            if (endMs > maxEnd) {
+              maxEnd = endMs;
+              lastCompleted = s;
+            }
+          }
 
           if (lastCompleted) {
             const freshAcknowledged = freshState.acknowledgedSessionIds;
@@ -503,40 +495,10 @@ for (let i = 0; i < freshState.sessions.length; i++) {
             toast.success('تم إنهاء الجلسة والعودة للرئيسية ✅');
           }
           setSelectedGarageId(null);
+          safeLocalStorage.removeItem('selectedGarageId');
           setScreen('list');
         }
       }, 3000);
-    }
-
-    if (!myActiveSession && safeScreen === 'navigation' && !myIncoming) {
-      const timeout = setTimeout(() => {
-        const freshState = useStore.getState();
-        const freshPlate = normalizePlate(freshState.currentUser?.carPlate);
-        const freshPhone = freshState.currentUser?.phone ? normalizePhone(freshState.currentUser.phone) : '';
-
-        const freshIncoming = freshState.incomingCars.find((c) => {
-          if (c.status !== 'coming') return false;
-          const samePlate = !!freshPlate && normalizePlate(c.carPlate) === freshPlate;
-          const cPhone = c.customerPhone ? normalizePhone(c.customerPhone) : '';
-          const samePhone = Boolean(freshPhone && cPhone === freshPhone);
-          return samePlate || samePhone;
-        });
-
-        const freshSession = freshState.sessions.find((s) => {
-          if (s.status !== 'active') return false;
-          const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-          const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-          const samePhone = Boolean(freshPhone && sPhone === freshPhone);
-          return samePlate || samePhone;
-        });
-
-        if (!freshIncoming && !freshSession) {
-          setSelectedGarageId(null);
-          setScreen('list');
-        }
-      }, 3000);
-
-      return () => clearTimeout(timeout);
     }
   }, [
     sessions,
@@ -565,6 +527,7 @@ for (let i = 0; i < freshState.sessions.length; i++) {
   if (pathname === '/qr') {
     return <InstallQRCodePage />;
   }
+
   return new URLSearchParams(window.location.search).has('shield') ? (
     <ShieldLandingPage />
   ) : (
