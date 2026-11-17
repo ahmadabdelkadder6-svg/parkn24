@@ -5,6 +5,20 @@ import { Car, Phone, User, ArrowRight, ShieldCheck, Sparkles, Loader2, Zap, Wall
 import { useStore, normalizePlate, normalizePhone, BOOKING_FEE } from '../store';
 import toast from 'react-hot-toast';
 
+/* ─── 🎨 هوية Park'n 24 الرسمية ─── */
+const BRAND = {
+  blue: '#1656b8',
+  blueDark: '#0f3d85',
+  blueBright: '#1d68dc',
+  green: '#8cc63f',
+  greenDark: '#6ea62a',
+  navy: '#0a1628',
+  navyLight: '#111e36',
+  slate: '#64748b',
+  slateMuted: '#94a3b8',
+  border: 'rgba(255, 255, 255, 0.10)',
+};
+
 export default function RegisterScreen() {
   const { setCurrentUser, setScreen } = useStore();
   const [name, setName] = useState('');
@@ -128,44 +142,117 @@ export default function RegisterScreen() {
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="h-full bg-slate-950 text-white flex flex-col justify-between p-6 text-right overflow-y-auto"
+      className="h-full text-white flex flex-col justify-between p-6 text-right overflow-y-auto relative"
       dir="rtl"
+      style={{
+        background: `
+          radial-gradient(ellipse at 50% -10%, rgba(22, 86, 184, 0.22) 0%, transparent 55%),
+          radial-gradient(ellipse at 50% 110%, rgba(140, 198, 63, 0.07) 0%, transparent 50%),
+          ${BRAND.navy}
+        `,
+      }}
     >
-      <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full py-4">
-        {/* Logo & Intro */}
-        <div className="text-center mb-6">
-          <div className="w-20 h-20 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-500/30 transition-transform hover:scale-105">
-            <Car size={40} className="text-white" />
-          </div>
-          <h2 className="text-2xl font-black text-white">سجل بياناتك للبدء</h2>
-          
-          {/* ⚡ شارة VIP الجديدة (بدل الهدية المجانية) */}
-          <div 
-            className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-2xl shadow-lg"
+      <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full py-4 relative z-10">
+
+        {/* ══ الشعار والعنوان ══ */}
+        <div className="text-center mb-5">
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', damping: 18, stiffness: 240 }}
+            className="w-[72px] h-[72px] rounded-[22px] flex items-center justify-center mx-auto mb-3.5 relative"
             style={{
-              background: 'linear-gradient(135deg, #1d68dc 0%, #1656b8 100%)',
-              border: '2px solid rgba(255,255,255,0.2)',
-              boxShadow: '0 8px 24px rgba(22, 86, 184, 0.35)',
+              background: '#ffffff',
+              border: '1.5px solid rgba(255,255,255,0.15)',
+              boxShadow: `0 10px 30px rgba(22, 86, 184, 0.35), 0 0 0 6px rgba(22, 86, 184, 0.08)`,
             }}
           >
-            <Zap size={16} className="text-yellow-300 shrink-0" />
-            <span 
+            <img
+              src="/images/logo.png"
+              alt="بركن 24"
+              className="w-12 h-12 object-contain"
+              onError={(e) => {
+                // لو اللوجو مش موجود يظهر آيقونة العربية
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          </motion.div>
+
+          <h2
+            className="text-[22px] font-black text-white tracking-tight"
+            style={{ textShadow: '0 2px 12px rgba(0,0,0,0.4)' }}
+          >
+            سجل بياناتك للبدء 🚀
+          </h2>
+          <p className="text-[11px] font-bold mt-1" style={{ color: BRAND.slateMuted }}>
+            خطوة واحدة وتبقى جاهز تحجز ركنتك
+          </p>
+
+          {/* ══ شارات المميزات (VIP + الدرع الذكي) ══ */}
+          <div className="mt-3.5 flex flex-col items-center gap-2">
+            {/* ⚡ شارة حجز VIP */}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl"
               style={{
-                color: '#ffffff',
-                fontWeight: 950,
-                fontSize: '12px',
-                letterSpacing: '0.2px',
+                background: `linear-gradient(135deg, ${BRAND.blueBright} 0%, ${BRAND.blue} 100%)`,
+                border: '1.5px solid rgba(255,255,255,0.22)',
+                boxShadow: '0 8px 24px rgba(22, 86, 184, 0.4)',
               }}
             >
-              احجز ركنتك بـ {BOOKING_FEE} ج.م فقط من محفظتك! ⚡
-            </span>
+              <Zap size={15} className="text-yellow-300 shrink-0" />
+              <span
+                style={{
+                  color: '#ffffff',
+                  fontWeight: 950,
+                  fontSize: '12px',
+                  letterSpacing: '0.2px',
+                  textShadow: '0 1px 2px rgba(0,0,0,0.3)',
+                }}
+              >
+                احجز ركنتك بـ {BOOKING_FEE} ج.م فقط من محفظتك! ⚡
+              </span>
+            </motion.div>
+
+            {/* 🛡️ شارة درع الحماية الذكي */}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25 }}
+              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-2xl"
+              style={{
+                background: 'linear-gradient(135deg, rgba(140, 198, 63, 0.14) 0%, rgba(140, 198, 63, 0.05) 100%)',
+                border: `1.5px solid rgba(140, 198, 63, 0.35)`,
+                boxShadow: '0 4px 16px rgba(140, 198, 63, 0.12)',
+              }}
+            >
+              <ShieldCheck size={14} style={{ color: BRAND.green }} className="shrink-0" />
+              <span
+                style={{
+                  color: '#b5e07a',
+                  fontWeight: 900,
+                  fontSize: '11px',
+                  letterSpacing: '0.2px',
+                }}
+              >
+                درع الحماية الذكي لمراقبة عربيتك 24/7 🛡️
+              </span>
+            </motion.div>
           </div>
         </div>
 
-        <form onSubmit={handleRegister} className="space-y-4">
+        {/* ══ الفورم ══ */}
+        <form onSubmit={handleRegister} className="space-y-3.5">
           {/* الاسم بالعربي */}
           <div>
-            <label className="block text-xs font-black text-slate-400 mb-1.5 mr-1">الاسم بالكامل (عربي فقط)</label>
+            <label
+              className="block text-[11px] font-black mb-1.5 mr-1"
+              style={{ color: BRAND.slateMuted }}
+            >
+              الاسم بالكامل (عربي فقط)
+            </label>
             <div className="relative">
               <input
                 type="text"
@@ -175,19 +262,42 @@ export default function RegisterScreen() {
                 disabled={loading}
                 autoComplete="name"
                 spellCheck={false}
-                className="w-full bg-slate-900 border border-slate-800 rounded-2xl py-3.5 px-4 pr-11 text-sm font-bold text-white text-right outline-none focus:border-blue-500 transition-colors disabled:opacity-60"
+                className="w-full rounded-2xl py-3.5 px-4 pr-11 text-sm font-bold text-white text-right outline-none transition-all disabled:opacity-60 placeholder:text-slate-600"
+                style={{
+                  background: `linear-gradient(135deg, ${BRAND.navyLight} 0%, rgba(17, 30, 54, 0.7) 100%)`,
+                  border: `1.5px solid ${BRAND.border}`,
+                  boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.25)',
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = BRAND.blue;
+                  e.currentTarget.style.boxShadow = `0 0 0 3px rgba(22, 86, 184, 0.25), inset 0 2px 6px rgba(0,0,0,0.25)`;
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = BRAND.border;
+                  e.currentTarget.style.boxShadow = 'inset 0 2px 6px rgba(0,0,0,0.25)';
+                }}
               />
-              <User className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
+              <User
+                className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none"
+                size={16}
+                style={{ color: BRAND.slateMuted }}
+              />
             </div>
           </div>
 
           {/* الهاتف (11 رقم مصري معتمد) */}
           <div>
             <div className="flex justify-between items-center mb-1.5 mr-1">
-              <span className="text-[10px] font-mono font-black text-blue-400" dir="ltr">
+              <span
+                className="text-[10px] font-mono font-black"
+                dir="ltr"
+                style={{ color: phone.length === 11 ? BRAND.green : BRAND.blueBright }}
+              >
                 {phone.length}/11
               </span>
-              <label className="text-xs font-black text-slate-400">رقم الموبايل (مثال: 012 / 010 / 011 / 015)</label>
+              <label className="text-[11px] font-black" style={{ color: BRAND.slateMuted }}>
+                رقم الموبايل (مثال: 012 / 010 / 011 / 015)
+              </label>
             </div>
             <div className="relative">
               <input
@@ -199,18 +309,38 @@ export default function RegisterScreen() {
                 onChange={(e) => handlePhoneChange(e.target.value)}
                 disabled={loading}
                 autoComplete="tel"
-                className="w-full bg-slate-900 border border-slate-800 rounded-2xl py-3.5 px-4 pr-11 text-sm font-bold text-white text-left font-mono outline-none focus:border-blue-500 transition-colors disabled:opacity-60"
+                className="w-full rounded-2xl py-3.5 px-4 pr-11 text-sm font-bold text-white text-left font-mono outline-none transition-all disabled:opacity-60 placeholder:text-slate-600"
                 dir="ltr"
+                style={{
+                  background: `linear-gradient(135deg, ${BRAND.navyLight} 0%, rgba(17, 30, 54, 0.7) 100%)`,
+                  border: `1.5px solid ${BRAND.border}`,
+                  boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.25)',
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = BRAND.blue;
+                  e.currentTarget.style.boxShadow = `0 0 0 3px rgba(22, 86, 184, 0.25), inset 0 2px 6px rgba(0,0,0,0.25)`;
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = BRAND.border;
+                  e.currentTarget.style.boxShadow = 'inset 0 2px 6px rgba(0,0,0,0.25)';
+                }}
               />
-              <Phone className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
+              <Phone
+                className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none"
+                size={16}
+                style={{ color: BRAND.slateMuted }}
+              />
             </div>
           </div>
 
           {/* رقم اللوحة بالعربي */}
           <div>
-            <label className="block text-xs font-black text-slate-400 mb-1.5 mr-1 flex items-center justify-end gap-1">
+            <label
+              className="text-[11px] font-black mb-1.5 mr-1 flex items-center justify-end gap-1"
+              style={{ color: BRAND.slateMuted }}
+            >
               <span>رقم لوحة السيارة (عربي فقط)</span>
-              <Sparkles size={11} className="text-amber-500" />
+              <Sparkles size={11} className="text-amber-400" />
             </label>
             <div className="relative">
               <input
@@ -220,11 +350,31 @@ export default function RegisterScreen() {
                 onChange={(e) => handlePlateChange(e.target.value)}
                 disabled={loading}
                 spellCheck={false}
-                className="w-full bg-slate-900 border border-slate-800 rounded-2xl py-3.5 px-4 pr-11 text-sm font-black text-white text-center outline-none focus:border-blue-500 transition-colors tracking-wider disabled:opacity-60"
+                className="w-full rounded-2xl py-3.5 px-4 pr-11 text-sm font-black text-white text-center outline-none transition-all tracking-wider disabled:opacity-60 placeholder:text-slate-600"
+                style={{
+                  background: `linear-gradient(135deg, ${BRAND.navyLight} 0%, rgba(17, 30, 54, 0.7) 100%)`,
+                  border: `1.5px solid ${BRAND.border}`,
+                  boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.25)',
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = BRAND.blue;
+                  e.currentTarget.style.boxShadow = `0 0 0 3px rgba(22, 86, 184, 0.25), inset 0 2px 6px rgba(0,0,0,0.25)`;
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = BRAND.border;
+                  e.currentTarget.style.boxShadow = 'inset 0 2px 6px rgba(0,0,0,0.25)';
+                }}
               />
-              <Car className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
+              <Car
+                className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none"
+                size={16}
+                style={{ color: BRAND.slateMuted }}
+              />
             </div>
-            <p className="text-[10px] text-slate-500 mt-1 font-bold text-right mr-1">
+            <p
+              className="text-[10px] mt-1.5 font-bold text-right mr-1"
+              style={{ color: BRAND.slateMuted }}
+            >
               💡 اكتب الحروف والأرقام كما هي باللغة العربية على اللوحة
             </p>
           </div>
@@ -233,17 +383,21 @@ export default function RegisterScreen() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800/50 disabled:cursor-not-allowed py-4 rounded-2xl text-base shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-all flex items-center justify-center gap-2.5 cursor-pointer border-none mt-2"
+            className="w-full py-4 rounded-2xl text-base active:scale-[0.98] transition-all flex items-center justify-center gap-2.5 cursor-pointer border-none mt-2 disabled:opacity-60 disabled:cursor-not-allowed"
+            style={{
+              background: `linear-gradient(135deg, ${BRAND.blueBright} 0%, ${BRAND.blueDark} 100%)`,
+              boxShadow: '0 10px 28px rgba(22, 86, 184, 0.45), inset 0 1px 0 rgba(255,255,255,0.18)',
+            }}
           >
             {loading ? (
               <>
                 <Loader2 size={18} className="animate-spin text-white" />
-                <span 
-                  style={{ 
-                    color: '#ffffff', 
-                    fontWeight: 950, 
+                <span
+                  style={{
+                    color: '#ffffff',
+                    fontWeight: 950,
                     fontSize: '15.5px',
-                    textShadow: '0 1px 3px rgba(0,0,0,0.35)' 
+                    textShadow: '0 1px 3px rgba(0,0,0,0.35)',
                   }}
                 >
                   جاري تأمين الحساب والتحقق...
@@ -251,13 +405,13 @@ export default function RegisterScreen() {
               </>
             ) : (
               <>
-                <span 
-                  style={{ 
-                    color: '#ffffff', 
-                    fontWeight: 950, 
+                <span
+                  style={{
+                    color: '#ffffff',
+                    fontWeight: 950,
                     fontSize: '16px',
                     letterSpacing: '0.3px',
-                    textShadow: '0 1px 3px rgba(0,0,0,0.35)' 
+                    textShadow: '0 1px 3px rgba(0,0,0,0.35)',
                   }}
                 >
                   حفظ البيانات والبدء الآن 🚀
@@ -269,15 +423,21 @@ export default function RegisterScreen() {
         </form>
       </div>
 
-      {/* حماية الأمان والخصوصية */}
-      <div className="pt-4 border-t border-slate-900 text-center flex items-center justify-center gap-3 text-slate-600 text-[10px] font-bold">
+      {/* ══ حماية الأمان والخصوصية ══ */}
+      <div
+        className="pt-4 text-center flex items-center justify-center gap-3 text-[10px] font-bold relative z-10"
+        style={{
+          borderTop: `1px solid ${BRAND.border}`,
+          color: BRAND.slateMuted,
+        }}
+      >
         <span className="flex items-center gap-1">
-          <Wallet size={10} className="text-slate-500" />
+          <Wallet size={10} style={{ color: BRAND.blueBright }} />
           محفظة إلكترونية آمنة
         </span>
-        <span>•</span>
+        <span style={{ color: 'rgba(255,255,255,0.2)' }}>•</span>
         <span className="flex items-center gap-1">
-          <ShieldCheck size={10} className="text-slate-500" />
+          <ShieldCheck size={10} style={{ color: BRAND.green }} />
           بياناتك مشفرة بالكامل
         </span>
       </div>
