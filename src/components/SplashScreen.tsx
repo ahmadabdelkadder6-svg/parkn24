@@ -138,7 +138,7 @@ export default function SplashScreen() {
                 🛡️ درع الحماية الذكي مفعّل!
               </span>
               <span className="text-[10px] font-bold" style={{ color: BRAND.slate }}>
-                إنذار سرقة عالي وتنبيهات بـ GPS لحماية عربيتك
+                إنذار  وتنبيهات بـ GPS لحماية عربيتك
               </span>
             </div>
           </div>
