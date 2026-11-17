@@ -63,7 +63,7 @@ const formatTime = (seconds: number): string => {
 };
 
 /* ═══════════════════════════════════════════════════════════
-   ⚡ LiveSessionTimer — المنطق الأصلي
+   ⚡ LiveSessionTimer
    ═══════════════════════════════════════════════════════════ */
 const LiveSessionTimer = memo(function LiveSessionTimer({
   activeStartMs,
@@ -202,32 +202,15 @@ export default function SessionScreen() {
   const autoEndedRef = useRef(false);
 
   const [ending, setEnding] = useState(false);
-
-  // 🚀 إخفاء فوري للجلسة المنتهية
   const [endedSessionId, setEndedSessionId] = useState<string | null>(null);
-
-  // 🚀 قراءة محليّة فورية
-  const [pendingArrival, setPendingArrival] = useState<any>(() => getPendingArrival());
-  const [startingSession, setStartingSession] = useState(false);
 
   // 🚨 شاشة اختراق الدرع
   const [showBreach, setShowBreach] = useState(false);
 
   useEffect(() => {
     isMountedRef.current = true;
-
-    const syncPending = () => {
-      const p = getPendingArrival();
-      if (p) setPendingArrival(p);
-    };
-
-    window.addEventListener('storage', syncPending);
-    window.addEventListener('focus', syncPending);
-
     return () => {
       isMountedRef.current = false;
-      window.removeEventListener('storage', syncPending);
-      window.removeEventListener('focus', syncPending);
     };
   }, []);
 
@@ -330,10 +313,7 @@ export default function SessionScreen() {
   }, [userPlate, userPhone, fetchAll, isMySessionRow]);
 
   // ═══════════════════════════════════════════════════════════
-  // 🛡️ درع تلقائي في الخلفية (بدون UI)
-  // يتفعّل لو الجلسة فيها shieldCost > 0
-  // يرجع يشتغل بعد Refresh لأن shieldCost محفوظ في الـ DB
-  // الإشعارات بتيجي من الكرون بس — مفيش أي حاجة في الكلاينت
+  // 🛡️ تفعيل الدرع والـ GPS
   // ═══════════════════════════════════════════════════════════
   useEffect(() => {
     if (!activeSession || !garage) return;
@@ -342,6 +322,7 @@ export default function SessionScreen() {
     const parkingLat = (garage as any).lat ?? 30.0444;
     const parkingLng = (garage as any).lng ?? 31.2357;
     let cancelled = false;
+
     registerShieldSession({
       sessionId: activeSession.id,
       phone: (activeSession as any).customerPhone || userPhone || '',
@@ -363,6 +344,7 @@ export default function SessionScreen() {
         },
       });
     });
+
     return () => {
       cancelled = true;
       destroyShield();
@@ -413,6 +395,23 @@ export default function SessionScreen() {
     }
   }, [ending, activeSession, activeStartMs, endSession, acknowledgeSession, setSelectedGarageId, setScreen, userPhone]);
 
+  // 🚨 معالج إيقاف الإنذار والإنهاء الفوري من زرار الاختراق
+  const handleBreachAction = useCallback(async (isDriver: boolean) => {
+    // 1. إيقاف الصوت الشديد والاهتزاز والـ GPS فوراً
+    stopIntenseAlarm();
+    destroyShield();
+    setShowBreach(false);
+
+    if (isDriver) {
+      toast('نتمنى لك رحلة آمنة! 🚗', { icon: '👋', duration: 3000 });
+    } else {
+      toast.error('تم تسجيل بلاغ السرقة وإنهاء الجلسة! 🚨', { duration: 4000 });
+    }
+
+    // 2. إنهاء الجلسة والرجوع للشاشة الرئيسية
+    await handleEndSession();
+  }, [handleEndSession]);
+
   // ⏰ الإنهاء التلقائي بعد 6 ساعات
   const handleAutoEnd = useCallback(async () => {
     if (autoEndedRef.current || !activeSession) return;
@@ -454,51 +453,9 @@ export default function SessionScreen() {
     }
   }, [activeSession, endSession, acknowledgeSession, setSelectedGarageId, setScreen, userPhone]);
 
-  // ✅ بدء الجلسة
-  const handleConfirmArrivalAndStartSession = useCallback(async () => {
-    if (!pendingArrival || startingSession) return;
-    setStartingSession(true);
-    try {
-      stopArrivalTracking();
-      clearPendingArrival();
-
-      const nowIso = new Date().toISOString();
-      const { error } = await supabase
-        .from('sessions')
-        .insert({
-          garage_id: pendingArrival.garageId || null,
-          car_plate: userPlate || currentUser?.carPlate || '',
-          customer_phone: userPhone || currentUser?.phone || '',
-          start_time: nowIso,
-          status: 'active',
-        });
-
-      if (error) {
-        console.warn('⚠️ تعذر إنشاء الجلسة في السيرفر:', error);
-      }
-
-      toast.success('تم وصولك للجراج وبدأ الركن بنجاح! 🚗', { icon: '✅', duration: 4000 });
-      await fetchAll();
-      setPendingArrival(null);
-    } catch (err: any) {
-      toast.error('حدث خطأ أثناء بدء الجلسة');
-      console.error(err);
-    } finally {
-      setStartingSession(false);
-    }
-  }, [pendingArrival, startingSession, userPlate, userPhone, currentUser, fetchAll]);
-
-  const handleCancelPendingArrival = useCallback(() => {
-    stopArrivalTracking();
-    clearPendingArrival();
-    setPendingArrival(null);
-    setSelectedGarageId(null);
-    setScreen('list');
-  }, [setSelectedGarageId, setScreen]);
-
 
   // ═══════════════════════════════════════════════════════════
-  // 🎨 جلسة ركن نشطة
+  // 🎨 واجهة جلسة الركن النشطة
   // ═══════════════════════════════════════════════════════════
   if (activeSession) {
     return (
@@ -523,29 +480,30 @@ export default function SessionScreen() {
             </span>
           </div>
 
-{/* 🛡️ شارة الدرع (لو مفعّل) */}
-{(activeSession.shieldCost ?? 0) > 0 && (
-  <div
-    className="px-4 py-2 rounded-2xl flex items-center gap-2 border-2 shadow-xl"
-    style={{
-      background: 'linear-gradient(135deg, rgba(22, 86, 184, 0.35) 0%, rgba(10, 22, 40, 0.95) 100%)',
-      borderColor: '#60a5fa',
-      boxShadow: '0 0 20px rgba(96, 165, 250, 0.3)',
-    }}
-  >
-    <span className="text-lg animate-pulse">🛡️</span>
-    <span
-      className="text-sm sm:text-base font-black tracking-wide text-blue-300"
-      style={{
-        color: '#93c5fd',
-        textShadow: '0 2px 4px rgba(0,0,0,0.9), 0 0 10px rgba(147, 197, 253, 0.5)',
-        letterSpacing: '0.3px',
-      }}
-    >
-      الدرع الذكي مفعّل وشغال في الخلفية ✅
-    </span>
-  </div>
-)}
+          {/* 🛡️ شارة الدرع (لو مفعّل) */}
+          {(activeSession.shieldCost ?? 0) > 0 && (
+            <div
+              className="px-4 py-2 rounded-2xl flex items-center gap-2 border-2 shadow-xl"
+              style={{
+                background: 'linear-gradient(135deg, rgba(22, 86, 184, 0.35) 0%, rgba(10, 22, 40, 0.95) 100%)',
+                borderColor: '#60a5fa',
+                boxShadow: '0 0 20px rgba(96, 165, 250, 0.3)',
+              }}
+            >
+              <span className="text-lg animate-pulse">🛡️</span>
+              <span
+                className="text-sm sm:text-base font-black tracking-wide"
+                style={{
+                  color: '#93c5fd',
+                  textShadow: '0 2px 4px rgba(0,0,0,0.9), 0 0 10px rgba(147, 197, 253, 0.5)',
+                  letterSpacing: '0.3px',
+                }}
+              >
+                الدرع الذكي مفعّل وشغال في الخلفية ✅
+              </span>
+            </div>
+          )}
+
           {/* ⚡ العداد */}
           <LiveSessionTimer
             activeStartMs={activeStartMs}
@@ -681,12 +639,7 @@ export default function SessionScreen() {
               </p>
               <div className="flex flex-col gap-3">
                 <button
-                  onClick={() => {
-                    stopIntenseAlarm();
-                    setShowBreach(false);
-                    destroyShield();
-                    handleEndSession();
-                  }}
+                  onClick={() => handleBreachAction(true)}
                   className="w-full py-3.5 rounded-xl font-black text-white text-sm active:scale-95 transition-all"
                   style={{
                     background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
@@ -696,12 +649,7 @@ export default function SessionScreen() {
                   ✅ أنا اللي سايق
                 </button>
                 <button
-                  onClick={() => {
-                    stopIntenseAlarm();
-                    setShowBreach(false);
-                    destroyShield();
-                    handleEndSession();
-                  }}
+                  onClick={() => handleBreachAction(false)}
                   className="w-full py-3.5 rounded-xl font-black text-white text-sm active:scale-95 transition-all"
                   style={{
                     background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',

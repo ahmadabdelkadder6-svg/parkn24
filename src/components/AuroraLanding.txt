@@ -90,7 +90,7 @@ export default function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 width: '1000px',
                 height: '720px',
                 background:
-                  'radial-gradient(ellipse at 50% 30%, rgba(6,95,70,0.22) 0%, transparent 68%)',
+                  'radial-gradient(ellipse at 50% 30%, rgba(6,95,70,0.28) 0%, transparent 68%)',
                 pointerEvents: 'none',
               }}
             />
@@ -142,57 +142,95 @@ export default function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 flexDirection: 'column',
                 height: '100%',
                 justifyContent: 'flex-start',
-                paddingTop: '24vh',
-                paddingLeft: '64px',
+                paddingTop: '20vh',
+                paddingLeft: '24px',
                 paddingRight: '24px',
+                maxWidth: '620px',
+                margin: '0 auto',
               }}
             >
-              {/* شارة الترحيب */}
-              <motion.div
-                initial={{ opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.7, delay: 0.1, ease: 'easeOut' }}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  borderRadius: '999px',
-                  padding: '6px 16px 6px 6px',
-                  background: 'rgba(255,255,255,0.08)',
-                  border: '1px solid rgba(255,255,255,0.18)',
-                  backdropFilter: 'blur(10px)',
-                  WebkitBackdropFilter: 'blur(10px)',
-                  width: 'fit-content',
-                  direction: 'rtl',
-                }}
-              >
-                <div style={{ display: 'flex' }}>
-                  {[0, 1, 2].map((i) => (
-                    <div
-                      key={i}
-                      style={{
-                        width: '22px',
-                        height: '22px',
-                        borderRadius: '999px',
-                        background: 'linear-gradient(135deg, #10b981, #047857)',
-                        border: '2px solid rgba(10,20,16,0.9)',
-                        marginRight: i === 0 ? 0 : '-8px',
-                      }}
-                    />
-                  ))}
-                </div>
-                <span
+              {/* شارات الترحيب والدرع */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-start' }}>
+                {/* 1. شارة عدد السائقين */}
+                <motion.div
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.7, delay: 0.1, ease: 'easeOut' }}
                   style={{
-                    fontSize: '12.5px',
-                    color: 'rgba(255,255,255,0.85)',
-                    fontFamily: "'Cairo', sans-serif",
-                    fontWeight: 600,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    borderRadius: '999px',
+                    padding: '6px 16px 6px 6px',
+                    background: 'rgba(255,255,255,0.08)',
+                    border: '1px solid rgba(255,255,255,0.18)',
+                    backdropFilter: 'blur(10px)',
+                    WebkitBackdropFilter: 'blur(10px)',
+                    width: 'fit-content',
+                    direction: 'rtl',
                   }}
                 >
-                  انضم لأكثر من{' '}
-                  <strong style={{ color: '#fff', fontWeight: 800 }}>10 آلاف سائق</strong>
-                </span>
-              </motion.div>
+                  <div style={{ display: 'flex' }}>
+                    {[0, 1, 2].map((i) => (
+                      <div
+                        key={i}
+                        style={{
+                          width: '22px',
+                          height: '22px',
+                          borderRadius: '999px',
+                          background: 'linear-gradient(135deg, #10b981, #047857)',
+                          border: '2px solid rgba(10,20,16,0.9)',
+                          marginRight: i === 0 ? 0 : '-8px',
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <span
+                    style={{
+                      fontSize: '12.5px',
+                      color: 'rgba(255,255,255,0.85)',
+                      fontFamily: "'Cairo', sans-serif",
+                      fontWeight: 600,
+                    }}
+                  >
+                    انضم لأكثر من <strong style={{ color: '#fff', fontWeight: 800 }}>10 آلاف سائق</strong>
+                  </span>
+                </motion.div>
+
+                {/* 🛡️ 2. شارة درع الحماية الذكي الجديدة */}
+                <motion.div
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.7, delay: 0.2, ease: 'easeOut' }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    borderRadius: '999px',
+                    padding: '6px 14px',
+                    background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(6, 95, 70, 0.3) 100%)',
+                    border: '1px solid rgba(110, 231, 183, 0.35)',
+                    backdropFilter: 'blur(10px)',
+                    WebkitBackdropFilter: 'blur(10px)',
+                    width: 'fit-content',
+                    direction: 'rtl',
+                    boxShadow: '0 4px 20px rgba(16, 185, 129, 0.2)',
+                  }}
+                >
+                  <span style={{ fontSize: '13px' }}>🛡️</span>
+                  <span
+                    style={{
+                      fontSize: '12px',
+                      color: '#6ee7b7',
+                      fontFamily: "'Cairo', sans-serif",
+                      fontWeight: 700,
+                      letterSpacing: '0.2px',
+                    }}
+                  >
+                    مُزود بـ <strong>درع الحماية الذكي</strong> للإنذار والمراقبة ⚡
+                  </span>
+                </motion.div>
+              </div>
 
               {/* العنوان الرئيسي */}
               <motion.h1
@@ -202,17 +240,17 @@ export default function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 style={{
                   fontFamily: "'Cairo', sans-serif",
                   fontWeight: 800,
-                  fontSize: 'clamp(2.4rem, 4.6vw, 4.1rem)',
+                  fontSize: 'clamp(2.3rem, 4.5vw, 4.0rem)',
                   lineHeight: 1.15,
                   letterSpacing: '-0.01em',
                   color: '#fff',
-                  marginTop: '22px',
+                  marginTop: '18px',
                   maxWidth: '580px',
                   direction: 'rtl',
                   textShadow: '0 4px 20px rgba(0,0,0,0.35)',
                 }}
               >
-                اركن سيارتك
+                اركن سيارتك واحميها
                 <br />
                 <span
                   style={{
@@ -232,17 +270,17 @@ export default function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.42, ease: 'easeOut' }}
                 style={{
-                  marginTop: '16px',
-                  fontSize: '15px',
-                  lineHeight: 1.75,
-                  color: 'rgba(255,255,255,0.75)',
+                  marginTop: '14px',
+                  fontSize: '14.5px',
+                  lineHeight: 1.7,
+                  color: 'rgba(255,255,255,0.8)',
                   fontFamily: "'Cairo', sans-serif",
                   fontWeight: 500,
-                  maxWidth: '380px',
+                  maxWidth: '420px',
                   direction: 'rtl',
                 }}
               >
-                وفّر وقتك ومجهودك، احجز أقرب جراج ليك وادفع فورياً بدون فكة أو انتظار ⚡
+                احجز أقرب جراج VIP، فعّل درع الحماية الذكي لمراقبة عربيتك من السرقة، وادفع بسهولة من محفظتك 🛡️⚡
               </motion.p>
 
               {/* زر يلا نبدأ */}
@@ -250,23 +288,23 @@ export default function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.58, ease: 'easeOut' }}
-                style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '34px' }}
+                style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '30px' }}
               >
                 <motion.button
                   onClick={handleEnter}
                   whileHover={{ scale: 1.04 }}
                   whileTap={{ scale: 0.96 }}
                   style={{
-                    padding: '16px 34px',
+                    padding: '16px 36px',
                     borderRadius: '999px',
                     background: '#0a0a0a',
                     color: '#fff',
                     fontSize: '16px',
                     fontWeight: 800,
                     fontFamily: "'Cairo', sans-serif",
-                    border: '1px solid rgba(255,255,255,0.18)',
+                    border: '1px solid rgba(255,255,255,0.22)',
                     cursor: 'pointer',
-                    boxShadow: '0 10px 30px rgba(0,0,0,0.4)',
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.5), 0 0 20px rgba(16, 185, 129, 0.15)',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '10px',
@@ -285,13 +323,14 @@ export default function AuroraLanding({ onEnter }: AuroraLandingProps) {
                 style={{
                   marginTop: '20px',
                   fontSize: '12px',
-                  color: 'rgba(255,255,255,0.55)',
+                  color: 'rgba(255,255,255,0.65)',
                   fontFamily: "'Cairo', sans-serif",
                   fontWeight: 600,
                   direction: 'rtl',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px',
+                  flexWrap: 'wrap',
                 }}
               >
                 <span
@@ -301,10 +340,10 @@ export default function AuroraLanding({ onEnter }: AuroraLandingProps) {
                     borderRadius: '50%',
                     background: '#10b981',
                     display: 'inline-block',
-                    boxShadow: '0 0 8px rgba(16, 185, 129, 0.6)',
+                    boxShadow: '0 0 8px rgba(16, 185, 129, 0.8)',
                   }}
                 />
-                مجاناً • بدون تعقيدات • تجربة سلسة
+                حجز VIP مضمون • 🛡️ درع حماية ذكي • تجربة سلسة وآمنة
               </motion.p>
             </div>
           </section>

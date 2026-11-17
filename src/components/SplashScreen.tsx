@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { useStore, BOOKING_FEE } from '../store';
-import { ArrowRight, Zap } from 'lucide-react';
+import { ArrowRight, Zap, ShieldCheck } from 'lucide-react';
 
 /* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
@@ -40,10 +40,10 @@ export default function SplashScreen() {
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ type: 'spring', damping: 20, stiffness: 260 }}
-          className="mb-5 relative"
+          className="mb-4 relative"
         >
           <div
-            className="w-32 h-32 rounded-3xl p-3 flex items-center justify-center relative"
+            className="w-28 h-28 sm:w-32 sm:h-32 rounded-3xl p-3 flex items-center justify-center relative"
             style={{
               background: '#ffffff',
               border: `1.5px solid ${BRAND.border}`,
@@ -65,13 +65,13 @@ export default function SplashScreen() {
           transition={{ delay: 0.15 }}
         >
           <h1
-            className="text-4xl font-black mb-0.5 tracking-tight"
+            className="text-3xl sm:text-4xl font-black mb-0.5 tracking-tight"
             style={{ color: BRAND.navy }}
           >
             بركن <span style={{ color: BRAND.green }}>24</span>
           </h1>
           <p
-            className="text-[11px] font-black tracking-widest uppercase mb-3 font-sans"
+            className="text-[10px] sm:text-[11px] font-black tracking-widest uppercase mb-2.5 font-sans"
             style={{ color: BRAND.blue }}
           >
             Park'n 24 Smart Parking
@@ -83,39 +83,64 @@ export default function SplashScreen() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
-          className="space-y-1 mb-5"
+          className="space-y-1 mb-4"
         >
           <p className="text-sm font-black" style={{ color: BRAND.navy }}>
-            ركنتك مضمونة قبل ما توصل 🚗
+            ركنتك مضمونة وعربيتك في أمان 🚗🛡️
           </p>
           <p
             className="text-xs font-semibold leading-relaxed max-w-[280px] mx-auto"
             style={{ color: BRAND.slate }}
           >
-            احجز مكانك في أقرب جراج VIP، ادفع من محفظتك بسهولة، ووفر وقتك وبنزينك.
+            احجز ركنتك في أقرب جراج VIP، فعّل الدرع الذكي لمراقبة سيارتك، ووفر وقتك وبنزينك.
           </p>
         </motion.div>
 
-        {/* ⚡ شارة VIP الجديدة (بدل الهدية المجانية) */}
+        {/* ⚡ + 🛡️ شارات الميزات (حجز VIP + درع الحماية الذكي) */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.35 }}
-          className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-2xl border"
-          style={{
-            background: BRAND.blueLight,
-            borderColor: `${BRAND.blue}30`,
-            boxShadow: `0 4px 14px ${BRAND.blue}10`,
-          }}
+          className="w-full max-w-[310px] space-y-2"
         >
-          <Zap size={18} style={{ color: BRAND.blue }} className="shrink-0" />
-          <div className="text-right">
-            <span className="text-[11px] font-black block" style={{ color: BRAND.blueDark }}>
-              احجز ركنتك بـ {BOOKING_FEE} ج.م فقط! ⚡
-            </span>
-            <span className="text-[10px] font-bold" style={{ color: BRAND.slate }}>
-              رسوم حجز تُخصم من محفظتك عند الوصول للجراج
-            </span>
+          {/* 1. شارة حجز VIP */}
+          <div
+            className="flex items-center gap-2.5 px-3.5 py-2 rounded-2xl border text-right"
+            style={{
+              background: BRAND.blueLight,
+              borderColor: `${BRAND.blue}30`,
+              boxShadow: `0 4px 12px ${BRAND.blue}08`,
+            }}
+          >
+            <Zap size={18} style={{ color: BRAND.blue }} className="shrink-0" />
+            <div>
+              <span className="text-[11px] font-black block leading-tight" style={{ color: BRAND.blueDark }}>
+                احجز ركنتك بـ {BOOKING_FEE} ج.م فقط! ⚡
+              </span>
+              <span className="text-[10px] font-bold" style={{ color: BRAND.slate }}>
+                تُخصم من محفظتك عند الوصول للجراج
+              </span>
+            </div>
+          </div>
+
+          {/* 2. شارة درع الحماية الذكي الجديد */}
+          <div
+            className="flex items-center gap-2.5 px-3.5 py-2 rounded-2xl border text-right"
+            style={{
+              background: 'linear-gradient(135deg, rgba(140, 198, 63, 0.12) 0%, rgba(22, 86, 184, 0.06) 100%)',
+              borderColor: `${BRAND.green}40`,
+              boxShadow: `0 4px 12px ${BRAND.green}10`,
+            }}
+          >
+            <ShieldCheck size={18} style={{ color: BRAND.greenDark }} className="shrink-0 animate-pulse" />
+            <div>
+              <span className="text-[11px] font-black block leading-tight" style={{ color: BRAND.navy }}>
+                🛡️ درع الحماية الذكي مفعّل!
+              </span>
+              <span className="text-[10px] font-bold" style={{ color: BRAND.slate }}>
+                إنذار سرقة عالي وتنبيهات بـ GPS لحماية عربيتك
+              </span>
+            </div>
           </div>
         </motion.div>
       </div>
@@ -125,7 +150,7 @@ export default function SplashScreen() {
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.45 }}
-        className="w-full relative z-10 space-y-3"
+        className="w-full relative z-10 space-y-3 pt-2"
       >
         <button
           onClick={() => setScreen('list')}
@@ -140,10 +165,12 @@ export default function SplashScreen() {
         </button>
 
         {/* شارات الثقة المحدّثة */}
-        <div className="flex items-center justify-center gap-3 text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>
-          <span>⚡ حجز VIP مضمون</span>
+        <div className="flex items-center justify-center gap-2 sm:gap-3 text-[10px] font-bold" style={{ color: BRAND.slateMuted }}>
+          <span>⚡ حجز VIP</span>
           <span>•</span>
-          <span>👝 دفع من المحفظة</span>
+          <span>🛡️ درع الحماية</span>
+          <span>•</span>
+          <span>👝 محفظة إلكترونية</span>
           <span>•</span>
           <span>🔒 آمن 100%</span>
         </div>
