@@ -632,7 +632,7 @@ export default function SessionScreen() {
               <div className="flex items-start gap-2 mb-1.5">
                 <span className="text-sm shrink-0">💡</span>
                 <p className="text-[11px] font-black text-amber-300 leading-snug">
-                  لضمان استمرار رادار التتبع والإنذار بالسرقة، يُرجى ترك هذه الصفحة في الخلفية وعدم إغلاقها.
+                  لضمان استمرار الحماية، يُرجى ترك هذه الصفحة في الخلفية وعدم إغلاقها.
                 </p>
               </div>
               <div className="flex items-start gap-2 pt-1.5 border-t border-amber-500/20">
@@ -656,7 +656,7 @@ export default function SessionScreen() {
                 <span>⚠️ تنبيه: الجلسة الحالية تعمل في الوضع العادي (بدون حماية)</span>
               </div>
               <p className="text-[10px] font-bold text-slate-300 leading-relaxed pr-6">
-                السيارة غير مؤمنة ضد السرقة أو الرفع بالونش. الرادار والتتبع اللحظي متوقفان لهذه الجلسة.
+                السيارة بدون حماية. الرادار والتتبع اللحظي متوقفان لهذه الجلسة.
               </p>
             </div>
           )}
