@@ -1,5 +1,4 @@
 // src/components/SessionScreen.tsx
-
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -7,6 +6,10 @@ import {
   Car,
   Sparkles,
   MapPin,
+  ShieldCheck,
+  AlertTriangle,
+  Radio,
+  Crosshair,
 } from 'lucide-react';
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
@@ -63,6 +66,84 @@ const formatTime = (seconds: number): string => {
 };
 
 /* ═══════════════════════════════════════════════════════════
+   🛰️ TacticalRadarScope (رادار الحماية التكتيكي الحي)
+   ═══════════════════════════════════════════════════════════ */
+const TacticalRadarScope = memo(function TacticalRadarScope({
+  carPlate,
+  isShieldActive,
+}: {
+  carPlate: string;
+  isShieldActive: boolean;
+}) {
+  return (
+    <div className="relative w-64 h-64 my-1 flex items-center justify-center">
+      {/* 1. حلقات المدى الجغرافي (Range Rings: 25m, 50m Geofence) */}
+      <div className="absolute inset-0 rounded-full border border-sky-500/20 bg-slate-950/80 shadow-[0_0_35px_rgba(22,86,184,0.35)_inset]" />
+      <div className="absolute inset-6 rounded-full border border-sky-400/25" />
+      <div className="absolute inset-14 rounded-full border border-dashed border-emerald-500/40 animate-pulse" />
+      <div className="absolute inset-22 rounded-full border border-sky-400/20" />
+
+      {/* 2. خطوط الشبكة المتقاطعة (Crosshairs) */}
+      <div className="absolute inset-x-0 top-1/2 h-[1px] bg-sky-500/25 pointer-events-none" />
+      <div className="absolute inset-y-0 left-1/2 w-[1px] bg-sky-500/25 pointer-events-none" />
+
+      {/* 3. شعاع المسح الراداري الدوار (Rotating Radar Sweep) */}
+      {isShieldActive && (
+        <div
+          className="absolute inset-0 rounded-full pointer-events-none"
+          style={{
+            background: 'conic-gradient(from 0deg, rgba(140, 198, 63, 0.45) 0deg, rgba(22, 86, 184, 0.15) 45deg, transparent 90deg, transparent 360deg)',
+            animation: 'radar-spin 3.2s linear infinite',
+          }}
+        />
+      )}
+
+      {/* 4. موجات نبض الأمان المنبثقة من المركز (Radar Pulse Waves) */}
+      <div
+        className="absolute w-20 h-20 rounded-full border border-emerald-400/50 pointer-events-none"
+        style={{ animation: 'radar-wave 2.4s cubic-bezier(0, 0.2, 0.8, 1) infinite' }}
+      />
+
+      {/* 5. نقطة الهدف: العربية في المركز مع وميض التتبع (Car Target Blip) */}
+      <div className="relative z-10 flex flex-col items-center justify-center">
+        <div className="relative flex items-center justify-center">
+          <div className="w-12 h-12 rounded-full bg-slate-900/90 border-2 border-emerald-400 flex items-center justify-center shadow-[0_0_15px_#8cc63f]">
+            <Car size={22} className="text-emerald-400" />
+          </div>
+          {/* نقطة رادار خضراء نابضة */}
+          <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500" />
+          </span>
+        </div>
+
+        {/* بادج حالة القفل وتأمين النطاق */}
+        <div className="mt-2 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-900/95 border border-emerald-500/50 shadow-md">
+          <Radio size={10} className="text-emerald-400 animate-pulse" />
+          <span className="text-[9px] font-black tracking-widest text-emerald-300 font-mono uppercase">
+            GPS LOCK: 50M SECURE
+          </span>
+        </div>
+      </div>
+
+      {/* 6. علامات المدى التكتيكية في الأطراف */}
+      <div className="absolute top-2 font-mono text-[8px] font-bold text-sky-400/70 tracking-widest">
+        N 30°02'44"
+      </div>
+      <div className="absolute bottom-2 font-mono text-[8px] font-bold text-sky-400/70 tracking-widest">
+        RANGE: 50m GEO-FENCE
+      </div>
+      <div className="absolute right-2 font-mono text-[8px] font-bold text-emerald-400/80">
+        [LIVE]
+      </div>
+      <div className="absolute left-2 font-mono text-[8px] font-bold text-sky-400/60">
+        E 31°14'08"
+      </div>
+    </div>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════
    ⚡ LiveSessionTimer
    ═══════════════════════════════════════════════════════════ */
 const LiveSessionTimer = memo(function LiveSessionTimer({
@@ -83,12 +164,12 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
       return;
     }
     autoEndedRef.current = false;
-
     const calcElapsed = () =>
       Math.max(0, Math.floor((getServerNow() - activeStartMs) / 1000));
 
     const currentElapsed = calcElapsed();
     setElapsed(currentElapsed);
+
     if (currentElapsed >= AUTO_END_SECONDS) {
       if (!autoEndedRef.current) {
         autoEndedRef.current = true;
@@ -116,47 +197,24 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
 
   return (
     <>
-      <div className="relative mb-2">
+      {/* شريط العداد التكتيكي المدمج مع الرادار */}
+      <div
+        className="flex items-center justify-between w-full max-w-xs px-4 py-2 rounded-2xl border mb-1"
+        style={{
+          background: 'linear-gradient(135deg, rgba(10, 22, 40, 0.95) 0%, rgba(19, 36, 61, 0.9) 100%)',
+          borderColor: 'rgba(22, 86, 184, 0.4)',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+        }}
+      >
+        <div className="flex items-center gap-1.5">
+          <Clock size={16} className="text-emerald-400 animate-pulse" />
+          <span className="text-[11px] font-black text-slate-300">مدة الركن:</span>
+        </div>
         <div
-          className="w-52 h-52 rounded-full flex flex-col items-center justify-center border-[3px] relative"
-          style={{
-            background: `
-              radial-gradient(circle at 30% 30%, #16254a 0%, #0a1628 70%),
-              radial-gradient(circle at 70% 70%, rgba(22,86,184,0.15) 0%, transparent 50%)
-            `,
-            borderColor: BRAND.blue,
-            boxShadow: `
-              0 10px 30px rgba(0,0,0,0.4),
-              inset 0 0 25px rgba(0,0,0,0.5),
-              inset 0 2px 0 rgba(255,255,255,0.08)
-            `,
-          }}
+          className="text-[22px] font-black font-mono text-white tracking-widest dir-ltr"
+          style={{ textShadow: '0 0 10px rgba(140, 198, 63, 0.5)' }}
         >
-          <div
-            className="absolute inset-2.5 rounded-full border-2 opacity-25 pointer-events-none"
-            style={{ borderColor: BRAND.green, borderStyle: 'dashed' }}
-          />
-          <div className="flex items-center gap-1 mb-1.5">
-            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: BRAND.green }} />
-            <Clock size={22} style={{ color: BRAND.green }} />
-          </div>
-          <div
-            className="text-[34px] font-black font-mono text-white leading-none tracking-wider dir-ltr"
-            style={{ textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}
-          >
-            {formatTime(elapsed)}
-          </div>
-          <div
-            className="text-[10px] font-black mt-2.5 px-3 py-0.5 rounded-full"
-            style={{
-              background: 'rgba(10, 22, 40, 0.9)',
-              color: BRAND.slateMuted,
-              border: `1px solid ${BRAND.border}`,
-              letterSpacing: '0.6px',
-            }}
-          >
-            ⏱ مدة الركن
-          </div>
+          {formatTime(elapsed)}
         </div>
       </div>
 
@@ -232,10 +290,13 @@ export default function SessionScreen() {
       if (!s || s.status !== 'active') continue;
       if (endedSessionId === s.id) continue;
       if (acknowledgedSessionIds?.has(s.id)) continue;
+
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
       const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
       const samePhone = Boolean(userPhone && sPhone === userPhone);
+
       if (!(samePlate || samePhone)) continue;
+
       const startMs = safeParseTime(s.startTime);
       if (startMs > maxStart) {
         maxStart = startMs;
@@ -251,10 +312,13 @@ export default function SessionScreen() {
     for (let i = 0; i < sessions.length; i++) {
       const s = sessions[i];
       if (!s || s.status !== 'completed') continue;
+
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
       const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
       const samePhone = Boolean(userPhone && sPhone === userPhone);
+
       if (!(samePlate || samePhone)) continue;
+
       const endMs = safeParseTime(s.endTime);
       if (endMs > maxEnd) {
         maxEnd = endMs;
@@ -313,12 +377,14 @@ export default function SessionScreen() {
   }, [userPlate, userPhone, fetchAll, isMySessionRow]);
 
   // ═══════════════════════════════════════════════════════════
-  // 🛡️ تفعيل الدرع والـ GPS
+  // 🛡️ تفعيل الدرع والـ GPS مع حلقة الصوت الصامتة
   // ═══════════════════════════════════════════════════════════
   useEffect(() => {
     if (!activeSession || !garage) return;
     if ((activeSession.shieldCost ?? 0) <= 0) return;
+
     try { initAudioContext(); } catch {}
+
     const parkingLat = (garage as any).lat ?? 30.0444;
     const parkingLng = (garage as any).lng ?? 31.2357;
     let cancelled = false;
@@ -332,6 +398,7 @@ export default function SessionScreen() {
     }).then((shieldId) => {
       if (cancelled || !shieldId) return;
       console.log('🛡️ Shield registered in DB:', shieldId);
+
       startShieldGPS({
         sessionId: activeSession.id,
         shieldId,
@@ -350,7 +417,7 @@ export default function SessionScreen() {
       destroyShield();
       setShowBreach(false);
     };
-  }, [activeSession?.id, garage?.id]);
+  }, [activeSession?.id, garage?.id, userPhone]);
 
   // 🏁 إنهاء الجلسة يدويًا
   const handleEndSession = useCallback(async () => {
@@ -358,7 +425,6 @@ export default function SessionScreen() {
     stopIntenseAlarm();
     destroyShield();
     setShowBreach(false);
-
     setEndedSessionId(activeSession.id);
     setEnding(true);
 
@@ -367,7 +433,6 @@ export default function SessionScreen() {
       await endSession(activeSession.id, Math.max(0, elapsedSec), 'cash', 0);
 
       const nowIso = new Date().toISOString();
-
       await supabase.from('shield_sessions')
         .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id)
@@ -383,6 +448,7 @@ export default function SessionScreen() {
 
       if (typeof acknowledgeSession === 'function') acknowledgeSession(activeSession.id);
       toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
+
       if (isMountedRef.current) {
         setSelectedGarageId(null);
         setScreen('list');
@@ -397,7 +463,6 @@ export default function SessionScreen() {
 
   // 🚨 معالج إيقاف الإنذار والإنهاء الفوري من زرار الاختراق
   const handleBreachAction = useCallback(async (isDriver: boolean) => {
-    // 1. إيقاف الصوت الشديد والاهتزاز والـ GPS فوراً
     stopIntenseAlarm();
     destroyShield();
     setShowBreach(false);
@@ -408,7 +473,6 @@ export default function SessionScreen() {
       toast.error('تم تسجيل بلاغ السرقة وإنهاء الجلسة! 🚨', { duration: 4000 });
     }
 
-    // 2. إنهاء الجلسة والرجوع للشاشة الرئيسية
     await handleEndSession();
   }, [handleEndSession]);
 
@@ -419,14 +483,12 @@ export default function SessionScreen() {
     stopIntenseAlarm();
     destroyShield();
     setShowBreach(false);
-
     setEndedSessionId(activeSession.id);
 
     try {
       await endSession(activeSession.id, AUTO_END_SECONDS, 'cash', 0);
 
       const nowIso = new Date().toISOString();
-
       await supabase.from('shield_sessions')
         .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id)
@@ -442,6 +504,7 @@ export default function SessionScreen() {
 
       if (typeof acknowledgeSession === 'function') acknowledgeSession(activeSession.id);
       toast.success('تم إنهاء الجلسة تلقائياً (6 ساعات) ⏰', { duration: 5000 });
+
       if (isMountedRef.current) {
         setSelectedGarageId(null);
         setScreen('list');
@@ -453,11 +516,13 @@ export default function SessionScreen() {
     }
   }, [activeSession, endSession, acknowledgeSession, setSelectedGarageId, setScreen, userPhone]);
 
-
   // ═══════════════════════════════════════════════════════════
-  // 🎨 واجهة جلسة الركن النشطة
+  // 🎨 واجهة جلسة الركن النشطة مع الرادار
   // ═══════════════════════════════════════════════════════════
   if (activeSession) {
+    const isShieldActive = (activeSession.shieldCost ?? 0) > 0;
+    const currentPlate = activeSession.carPlate || currentUser?.carPlate || '---';
+
     return (
       <motion.div
         className="h-full flex flex-col bg-slate-950 text-white overflow-hidden"
@@ -465,7 +530,18 @@ export default function SessionScreen() {
         animate={{ opacity: 1 }}
         dir="rtl"
       >
-        <div className="flex-1 flex flex-col items-center px-4 pt-3 pb-2 gap-2.5 overflow-y-auto">
+        <style>{`
+          @keyframes radar-spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+          @keyframes radar-wave {
+            0% { transform: scale(0.6); opacity: 0.8; }
+            100% { transform: scale(1.6); opacity: 0; }
+          }
+        `}</style>
+
+        <div className="flex-1 flex flex-col items-center px-4 pt-2.5 pb-2 gap-2 overflow-y-auto">
           {/* بادج "جلسة نشطة" */}
           <div
             className="px-3.5 py-1 rounded-full flex items-center gap-2 border"
@@ -476,71 +552,55 @@ export default function SessionScreen() {
           >
             <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: BRAND.green, boxShadow: `0 0 8px ${BRAND.green}` }} />
             <span className="text-[10px] font-black tracking-wider" style={{ color: BRAND.green }}>
-              جلسة ركن نشطة
+              جلسة ركن وتأمين نشطة
             </span>
           </div>
 
-          {/* 🛡️ شارة الدرع (لو مفعّل) */}
-          {(activeSession.shieldCost ?? 0) > 0 && (
-            <div
-              className="px-4 py-2 rounded-2xl flex items-center gap-2 border-2 shadow-xl"
-              style={{
-                background: 'linear-gradient(135deg, rgba(22, 86, 184, 0.35) 0%, rgba(10, 22, 40, 0.95) 100%)',
-                borderColor: '#60a5fa',
-                boxShadow: '0 0 20px rgba(96, 165, 250, 0.3)',
-              }}
-            >
-              <span className="text-lg animate-pulse">🛡️</span>
-              <span
-                className="text-sm sm:text-base font-black tracking-wide"
-                style={{
-                  color: '#93c5fd',
-                  textShadow: '0 2px 4px rgba(0,0,0,0.9), 0 0 10px rgba(147, 197, 253, 0.5)',
-                  letterSpacing: '0.3px',
-                }}
-              >
-                الدرع الذكي مفعّل وشغال في الخلفية ✅
-              </span>
-            </div>
-          )}
+          {/* 🛰️ رادار الحماية التكتيكي الحي */}
+          <TacticalRadarScope
+            carPlate={currentPlate}
+            isShieldActive={isShieldActive}
+          />
 
-          {/* ⚡ العداد */}
+          {/* ⚡ شريط عداد الوقت المدمج */}
           <LiveSessionTimer
             activeStartMs={activeStartMs}
             onAutoEnd={handleAutoEnd}
           />
 
-          {/* 💬 بطاقة الإرشاد */}
+          {/* 💡 بطاقة التوجيه والتحذير الأمني النفسي لمنع قفل التاب */}
           <div
-            className="w-full max-w-md rounded-xl px-3 py-2.5 text-center border"
+            className="w-full max-w-md rounded-2xl p-2.5 text-right border"
             style={{
-              background: `linear-gradient(135deg, ${BRAND.navyLight} 0%, rgba(17, 30, 54, 0.85) 100%)`,
-              borderColor: BRAND.border,
-              boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(10, 22, 40, 0.95) 100%)',
+              borderColor: 'rgba(245, 158, 11, 0.35)',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.35)',
             }}
           >
-            <div className="flex items-center justify-center gap-1.5 mb-1 font-black text-white text-[12px]">
-              <Sparkles size={12} className="text-amber-400 shrink-0" />
-              <span>خلّص مشوارك براحتك 🚗</span>
+            <div className="flex items-start gap-2 mb-1.5">
+              <span className="text-sm shrink-0">💡</span>
+              <p className="text-[11px] font-black text-amber-300 leading-snug">
+                لضمان استمرار رادار التتبع والإنذار بالسرقة، يُرجى ترك هذه الصفحة في الخلفية وعدم إغلاقها.
+              </p>
             </div>
-            <p
-              className="font-bold leading-relaxed mx-auto text-[10px]"
-              style={{ color: BRAND.slateMuted, maxWidth: '320px' }}
-            >
-              التطبيق <span className="text-green-400 font-black">شغال في الخلفية</span> — أي تنبيه أو إنذار هيوصلك <span className="text-amber-300 font-black">فوراً</span> على شاشة الموبايل.
-            </p>
+            <div className="flex items-start gap-2 pt-1.5 border-t border-amber-500/20">
+              <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+              <p className="text-[9.5px] font-bold text-slate-300 leading-relaxed">
+                <span className="text-red-400 font-black">تنبيه هام:</span> قفل نافذة التطبيق يدوياً يؤدي إلى إيقاف رادار الحماية فوراً. يرجى ترك الصفحة مفتوحة في الخلفية وقفل الشاشة فقط لضمان عمل الإنذار.
+              </p>
+            </div>
           </div>
         </div>
 
         {/* 📋 القسم السفلي */}
         <div
-          className="px-4 pt-3 pb-4 border-t shrink-0"
+          className="px-4 pt-2.5 pb-3.5 border-t shrink-0"
           style={{
-            background: 'linear-gradient(180deg, transparent 0%, rgba(10, 22, 40, 0.6) 100%)',
+            background: 'linear-gradient(180deg, transparent 0%, rgba(10, 22, 40, 0.7) 100%)',
             borderColor: BRAND.border,
           }}
         >
-          <div className="w-full grid grid-cols-2 gap-2 mb-2.5">
+          <div className="w-full grid grid-cols-2 gap-2 mb-2">
             <div
               className="border rounded-xl p-2 text-center"
               style={{
@@ -548,21 +608,21 @@ export default function SessionScreen() {
                 borderColor: BRAND.border,
               }}
             >
-              <div className="flex items-center justify-center gap-1 mb-1">
+              <div className="flex items-center justify-center gap-1 mb-0.5">
                 <Car size={11} style={{ color: BRAND.blue }} />
                 <span className="text-[9px] font-black uppercase tracking-wider" style={{ color: BRAND.slateMuted }}>
                   سيارتك
                 </span>
               </div>
               <div
-                className="text-[13px] font-black text-white font-mono tracking-widest py-1.5 px-1 rounded-md border"
+                className="text-[13px] font-black text-white font-mono tracking-widest py-1 px-1 rounded-md border"
                 style={{
                   background: 'rgba(10, 22, 40, 0.9)',
                   borderColor: BRAND.border,
                   letterSpacing: '2px',
                 }}
               >
-                {activeSession.carPlate || currentUser?.carPlate || '---'}
+                {currentPlate}
               </div>
             </div>
 
@@ -574,14 +634,14 @@ export default function SessionScreen() {
                   borderColor: BRAND.border,
                 }}
               >
-                <div className="flex items-center justify-center gap-1 mb-1">
+                <div className="flex items-center justify-center gap-1 mb-0.5">
                   <MapPin size={11} style={{ color: BRAND.green }} />
                   <span className="text-[9px] font-black uppercase tracking-wider" style={{ color: BRAND.slateMuted }}>
                     الجراج
                   </span>
                 </div>
                 <div
-                  className="text-[11px] font-black text-white leading-tight py-1.5 px-1 rounded-md border truncate"
+                  className="text-[11px] font-black text-white leading-tight py-1 px-1 rounded-md border truncate"
                   style={{
                     background: 'rgba(10, 22, 40, 0.9)',
                     borderColor: BRAND.border,
@@ -599,7 +659,7 @@ export default function SessionScreen() {
             aria-label="إنهاء الجلسة الحالية"
             onClick={handleEndSession}
             disabled={ending}
-            className="w-full py-3.5 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center border-0 text-white cursor-pointer font-black text-sm disabled:opacity-50"
+            className="w-full py-3 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center border-0 text-white cursor-pointer font-black text-sm disabled:opacity-50"
             style={{
               background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
               boxShadow: '0 8px 24px rgba(220, 38, 38, 0.45), inset 0 1px 0 rgba(255,255,255,0.15)',

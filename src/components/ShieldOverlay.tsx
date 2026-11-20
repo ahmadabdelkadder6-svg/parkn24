@@ -1,14 +1,32 @@
+// src/components/ShieldOverlay.tsx
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Shield, ShieldCheck, Phone, AlertTriangle, Car, Siren } from 'lucide-react';
 import {
-  startShieldGPS, checkUserInsideGarage,
-  destroyShield, saveShieldState, loadShieldState,
-  SHIELD_STORAGE_KEY, SHIELD_COST, GEOFENCE_RADIUS,
-  triggerIntenseAlarm, stopIntenseAlarm,
-  initAudioContext,                                  // 🆕 تهيئة الصوت أثناء user gesture
+  Shield,
+  ShieldCheck,
+  Phone,
+  AlertTriangle,
+  Car,
+  Siren,
+  Radio,
+  Crosshair,
+  Lock,
+} from 'lucide-react';
+import {
+  startShieldGPS,
+  checkUserInsideGarage,
+  destroyShield,
+  saveShieldState,
+  loadShieldState,
+  SHIELD_STORAGE_KEY,
+  SHIELD_COST,
+  GEOFENCE_RADIUS,
+  triggerIntenseAlarm,
+  stopIntenseAlarm,
+  initAudioContext,
 } from '../lib/shield';
 import {
-  sendLocalNotification, playUrgentSound,
+  sendLocalNotification,
+  playUrgentSound,
   requestNotificationPermission,
   unlockAudio,
 } from '../utils/notifications';
@@ -30,6 +48,18 @@ interface Props {
   onSessionEnd?: () => void;
 }
 
+const BRAND = {
+  blue: '#1656b8',
+  blueDark: '#0f3d85',
+  green: '#8cc63f',
+  greenDark: '#6ea62a',
+  navy: '#0a1628',
+  navyLight: '#111e36',
+  slate: '#64748b',
+  slateMuted: '#94a3b8',
+  border: 'rgba(255, 255, 255, 0.12)',
+};
+
 function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000;
   const toRad = (d: number) => (d * Math.PI) / 180;
@@ -50,8 +80,14 @@ const endShieldOnServer = async (sessionId: string) => {
 };
 
 export default function ShieldOverlay({
-  sessionId, userId, garageId, parkingLat, parkingLng,
-  userPhone, onDeductWallet, onNavigateToWallet,
+  sessionId,
+  userId,
+  garageId,
+  parkingLat,
+  parkingLng,
+  userPhone,
+  onDeductWallet,
+  onNavigateToWallet,
   autoResume = false,
   onSessionEnd,
 }: Props) {
@@ -63,30 +99,28 @@ export default function ShieldOverlay({
   const [checkError, setCheckError] = useState<string | null>(null);
   const [gpsWarning, setGpsWarning] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+
   const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const radarAngle = useRef(0);
-  const radarRef = useRef<HTMLDivElement>(null);
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
 
   // ═══════════════════════════════════════════════════════════
-  // 🚨 الإنذار = القديم + الشديد الجديد
+  // 🚨 الإنذار المحلي والشديد المشترك
   // ═══════════════════════════════════════════════════════════
   const triggerLocalAlarm = useCallback((dist: number) => {
     try {
-      // القديم (محفوظ)
       playUrgentSound();
       sendLocalNotification(
-        '🚨 تنبيه حركة!',
+        '🚨 تنبيه حركة غير مصرح بها!',
         `السيارة تحركت ${dist}م من مكان الركن`,
         '/'
       );
+
       if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current);
       alarmIntervalRef.current = setInterval(() => {
         playUrgentSound();
       }, 2000);
 
-      // 🆕 الشديد (صوت 3 طبقات + اهتزاز)
       triggerIntenseAlarm();
     } catch (e) {
       console.warn('Alarm failed:', e);
@@ -94,121 +128,97 @@ export default function ShieldOverlay({
   }, []);
 
   // ═══════════════════════════════════════════════════════════
-  // 🔇 إيقاف كل حاجة
+  // 🔇 إيقاف جميع الترددات والاهتزازات
   // ═══════════════════════════════════════════════════════════
   const stopLocalAlarm = useCallback(() => {
     if (alarmIntervalRef.current) {
       clearInterval(alarmIntervalRef.current);
       alarmIntervalRef.current = null;
     }
-    // 🆕 إيقاف الإنذار الشديد (صوت + اهتزاز)
     stopIntenseAlarm();
   }, []);
 
   // ═══════════════════════════════════════════════════════════
-  // 🚗 "أنا اللي سايق" → إسكات + رجوع للرئيسية
+  // 🚗 معالج "أنا اللي سايق"
   // ═══════════════════════════════════════════════════════════
   const handleIamDriving = useCallback(async () => {
-    // 1) إسكات فوري لكل الإنذارات
     stopLocalAlarm();
-
-    // 2) تنظيف الـ flash overlay لو لسه موجود
     const flashEl = document.getElementById('shield-breach-flash-overlay');
     if (flashEl) flashEl.remove();
 
-    // 3) تدمير الدرع
     destroyShield();
     try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch {}
 
     const identifier = userPhone || userId || 'unknown';
-
     try {
       await endShieldOnServer(sessionId);
-      await supabase.from('shield_sessions')
+      await supabase
+        .from('shield_sessions')
         .update({ ended_at: new Date().toISOString() })
-        .eq('phone', identifier).is('ended_at', null);
+        .eq('phone', identifier)
+        .is('ended_at', null);
 
-      await supabase.from('shield_sessions')
+      await supabase
+        .from('shield_sessions')
         .update({ push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', sessionId);
     } catch (e) {
       console.error('❌ Failed to end shield:', e);
     }
 
-    // 4) رجوع للرئيسية
     setPhase('dismissed');
     onSessionEnd?.();
   }, [sessionId, userPhone, userId, stopLocalAlarm, onSessionEnd]);
 
   // ═══════════════════════════════════════════════════════════
-  // 🚨 "مش أنا!" → إسكات + بلاغ + رجوع للرئيسية
+  // 🚨 معالج "مش أنا — سرقة!"
   // ═══════════════════════════════════════════════════════════
   const handleTheft = useCallback(async () => {
-    // 1) إسكات فوري لكل الإنذارات
     stopLocalAlarm();
-
-    // 2) تنظيف الـ flash overlay
     const flashEl = document.getElementById('shield-breach-flash-overlay');
     if (flashEl) flashEl.remove();
 
-    // 3) بلاغ
-    sendLocalNotification('✅ تم استلام البلاغ', 'هيتم التواصل معاك قريباً', '/');
+    sendLocalNotification('✅ تم استلام البلاغ', 'جاري التواصل والمتابعة فوراً', '/');
     destroyShield();
     try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch {}
 
     const identifier = userPhone || userId || 'unknown';
-
     try {
       await endShieldOnServer(sessionId);
-      await supabase.from('shield_sessions')
+      await supabase
+        .from('shield_sessions')
         .update({ ended_at: new Date().toISOString() })
-        .eq('phone', identifier).is('ended_at', null);
+        .eq('phone', identifier)
+        .is('ended_at', null);
 
-      await supabase.from('shield_sessions')
+      await supabase
+        .from('shield_sessions')
         .update({ push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', sessionId);
     } catch (e) {
       console.error('❌ Failed to end shield:', e);
     }
 
-    // 4) رجوع للرئيسية
     setPhase('dismissed');
     onSessionEnd?.();
   }, [sessionId, userPhone, userId, stopLocalAlarm, onSessionEnd]);
 
-  // ─── Radar animation ───
-  useEffect(() => {
-    if (phase !== 'active') return;
-    const id = setInterval(() => {
-      radarAngle.current = (radarAngle.current + 3) % 360;
-      if (radarRef.current) {
-        radarRef.current.style.background = `conic-gradient(from ${radarAngle.current}deg, transparent 0deg, rgba(34,197,94,0.35) 40deg, transparent 80deg)`;
-      }
-    }, 50);
-    return () => clearInterval(id);
-  }, [phase]);
-
   // ═══════════════════════════════════════════════════════════
-  // 🆕 تهيئة AudioContext أول ما الدرع يتفعل
-  // السبب: المتصفح بيمنع تشغيل الصوت من background callbacks
-  // (زي GPS watchPosition) إلا لو AudioContext اتعمل أثناء
-  // user gesture. فبنعمل init هنا كـ backup إضافي للتأكيد.
+  // 🎧 تهيئة الصوت التلقائية
   // ═══════════════════════════════════════════════════════════
   useEffect(() => {
     if (phase === 'active' || phase === 'breach') {
-      initAudioContext();
+      try { initAudioContext(); } catch {}
     }
   }, [phase]);
 
   // ═══════════════════════════════════════════════════════════
-  // 🆕 فلاش أحمر ثابت فوق كل الـ UI (CSS animation أسرع وأنظف)
+  // 🚨 فلاش أحمر ثابت وقت الاختراق
   // ═══════════════════════════════════════════════════════════
   useEffect(() => {
     if (phase !== 'breach') return;
 
-    // إزالة أي فلاش قديم
     document.getElementById('shield-breach-flash-overlay')?.remove();
-
     const flashEl = document.createElement('div');
     flashEl.id = 'shield-breach-flash-overlay';
     flashEl.style.cssText = [
@@ -220,7 +230,6 @@ export default function ShieldOverlay({
       'animation: shieldFlashAnim 0.36s ease-in-out infinite alternate',
     ].join(';');
 
-    // ✅ إضافة CSS animation مرة واحدة فقط (ثابت في الـ head)
     if (!document.getElementById('shield-flash-style')) {
       const style = document.createElement('style');
       style.id = 'shield-flash-style';
@@ -235,7 +244,6 @@ export default function ShieldOverlay({
     }
 
     document.body.appendChild(flashEl);
-
     return () => {
       flashEl.remove();
     };
@@ -267,7 +275,7 @@ export default function ShieldOverlay({
     }
   }, [garageId, sessionId, autoResume, phase]);
 
-  // ─── GPS — يشتغل في active و breach ───
+  // ─── تتبع الـ GPS ───
   const isTracking = phase === 'active' || phase === 'breach';
 
   useEffect(() => {
@@ -275,7 +283,8 @@ export default function ShieldOverlay({
 
     const cleanupGPS = startShieldGPS({
       sessionId,
-      parkingLat, parkingLng,
+      parkingLat,
+      parkingLng,
       onGeofenceBreach: (dist) => {
         setBreachDistance(Math.round(dist));
         setPhase('breach');
@@ -285,19 +294,20 @@ export default function ShieldOverlay({
         setGpsWarning(true);
         sendLocalNotification(
           '⚠️ الـ GPS مقفول!',
-          'فعّل الموقع عشان المراقبة تشتغل',
+          'فعّل الموقع عشان رادار المراقبة يفضل شغال',
           '/'
         );
       },
     });
 
-    return () => { cleanupGPS(); };
+    return () => {
+      cleanupGPS();
+    };
   }, [isTracking ? 'tracking' : 'off', sessionId, parkingLat, parkingLng, triggerLocalAlarm]);
 
-  // ─── GPS للسرعة ───
+  // ─── GPS لحساب السرعة في الخلفية ───
   useEffect(() => {
     if (!isTracking) return;
-
     let prev: { lat: number; lng: number; t: number } | null = null;
     let lastUp = 0;
 
@@ -306,18 +316,20 @@ export default function ShieldOverlay({
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         const now = Date.now();
-
         let spd = (pos.coords.speed && pos.coords.speed > 0) ? pos.coords.speed : 0;
+
         if (prev) {
           const d = haversine(prev.lat, prev.lng, lat, lng);
           const dt = (now - prev.t) / 1000;
           if (dt > 2) spd = Math.max(spd, d / dt);
         }
+
         prev = { lat, lng, t: now };
 
         if (spd >= 2.22 && now - lastUp > 15000) {
           lastUp = now;
-          supabase.from('shield_sessions')
+          supabase
+            .from('shield_sessions')
             .update({ last_lat: lat, last_lng: lng, last_speed: Math.round(spd * 3.6) })
             .eq('session_id', sessionId);
         }
@@ -329,7 +341,7 @@ export default function ShieldOverlay({
     return () => navigator.geolocation.clearWatch(watchId);
   }, [isTracking ? 'tracking' : 'off', sessionId]);
 
-  // ─── تجديد الـ Push Subscription ───
+  // ─── تجديد اشتراك الـ Push ───
   useEffect(() => {
     if (phase !== 'active') return;
 
@@ -337,7 +349,6 @@ export default function ShieldOverlay({
       try {
         const reg = await navigator.serviceWorker.ready;
         let sub = await reg.pushManager.getSubscription();
-
         const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
         if (!VAPID_PUBLIC) return;
 
@@ -347,6 +358,7 @@ export default function ShieldOverlay({
             const d = window.atob((b + p).replace(/-/g, '+').replace(/_/g, '/'));
             return new Uint8Array([...d].map(c => c.charCodeAt(0)));
           };
+
           sub = await reg.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
@@ -398,10 +410,12 @@ export default function ShieldOverlay({
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [phase, sessionId, triggerLocalAlarm]);
 
-  // ─── Service Worker messages ───
+  // ─── Service Worker Messages ───
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
 
@@ -427,28 +441,25 @@ export default function ShieldOverlay({
     };
   }, [handleIamDriving, triggerLocalAlarm]);
 
-  // ─── Cleanup on unmount ───
+  // ─── Cleanup ───
   useEffect(() => {
     return () => {
       stopLocalAlarm();
       destroyShield();
-      // 🆕 تنظيف الـ flash overlay
       const leftover = document.getElementById('shield-breach-flash-overlay');
       if (leftover) leftover.remove();
     };
   }, [stopLocalAlarm]);
 
-  // ─── التسجيل الذكي ───
+  // ─── التسجيل على السيرفر ───
   const registerOnServer = useCallback(async () => {
     const identifier = userPhone || userId || 'unknown';
-
     let pushEndpoint: string | null = null;
     let pushP256dh: string | null = null;
     let pushAuth: string | null = null;
 
     try {
       const reg = await navigator.serviceWorker.ready;
-
       const oldSub = await reg.pushManager.getSubscription();
       if (oldSub) await oldSub.unsubscribe();
 
@@ -459,7 +470,6 @@ export default function ShieldOverlay({
 
       if (perm === 'granted') {
         const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-
         if (VAPID_PUBLIC) {
           const urlBase64ToUint8Array = (b: string): Uint8Array => {
             const p = '='.repeat((4 - (b.length % 4)) % 4);
@@ -472,24 +482,17 @@ export default function ShieldOverlay({
               userVisibleOnly: true,
               applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
             });
-
             const subJson = sub.toJSON();
             if (subJson?.endpoint) {
               pushEndpoint = subJson.endpoint;
               pushP256dh = subJson.keys?.p256dh || null;
               pushAuth = subJson.keys?.auth || null;
               console.log('✅ Push subscription ready');
-            } else {
-              console.warn('⚠️ No push endpoint');
             }
           } catch (subErr) {
             console.warn('⚠️ Push subscribe failed:', subErr);
           }
-        } else {
-          console.warn('⚠️ VITE_VAPID_PUBLIC_KEY missing');
         }
-      } else {
-        console.warn('⚠️ Notification permission denied');
       }
     } catch (swErr) {
       console.warn('⚠️ Service Worker not ready:', swErr);
@@ -504,7 +507,8 @@ export default function ShieldOverlay({
         .maybeSingle();
 
       if (existing) {
-        await supabase.from('shield_sessions')
+        await supabase
+          .from('shield_sessions')
           .update({
             push_endpoint: pushEndpoint,
             push_p256dh: pushP256dh,
@@ -513,11 +517,11 @@ export default function ShieldOverlay({
           .eq('session_id', sessionId);
 
         await registerShieldSession(sessionId, parkingLat, parkingLng, identifier, garageId);
-        console.log('✅ Session updated on server');
         return;
       }
 
-      await supabase.from('shield_sessions')
+      await supabase
+        .from('shield_sessions')
         .update({ ended_at: new Date().toISOString() })
         .eq('phone', identifier)
         .is('ended_at', null);
@@ -543,7 +547,6 @@ export default function ShieldOverlay({
       });
 
       await registerShieldSession(sessionId, parkingLat, parkingLng, identifier, garageId);
-      console.log('✅ Session created on server');
     } catch (dbErr: any) {
       console.error('❌ DB registration failed:', dbErr.message);
     }
@@ -558,7 +561,6 @@ export default function ShieldOverlay({
   // 🎯 handleYes — تفعيل الدرع يدوياً
   // ═══════════════════════════════════════════════════════
   const handleYes = useCallback(async () => {
-    // ✅ user gesture — جهّز الصوت فوراً عشان الإنذار يشتغل لاحقاً في الخلفية
     initAudioContext();
     unlockAudio();
     setCheckError(null);
@@ -566,7 +568,6 @@ export default function ShieldOverlay({
 
     try {
       await requestNotificationPermission();
-
       const check = await checkUserInsideGarage(parkingLat, parkingLng, GEOFENCE_RADIUS);
 
       if (!check.inside) {
@@ -598,6 +599,7 @@ export default function ShieldOverlay({
         .eq('id', sessionId)
         .then(() => {})
         .catch((e) => console.warn('⚠️ Failed to save shield cost:', e));
+
       setIsChecking(false);
 
       if (userPhone) {
@@ -605,8 +607,13 @@ export default function ShieldOverlay({
         setShieldCode(code);
         setPhase('active');
         saveShieldState({
-          isActive: true, shieldCode: code, phone: userPhone,
-          garageId, parkingLat, parkingLng, sessionId,
+          isActive: true,
+          shieldCode: code,
+          phone: userPhone,
+          garageId,
+          parkingLat,
+          parkingLng,
+          sessionId,
         });
         await registerOnServer();
       } else {
@@ -621,14 +628,18 @@ export default function ShieldOverlay({
 
   const handleRegister = useCallback(async () => {
     if (phone.length < 10) return;
-    // ✅ user gesture — جهّز الصوت
     initAudioContext();
     const code = 'SH-' + Math.random().toString(36).slice(2, 8).toUpperCase();
     setShieldCode(code);
     setPhase('active');
     saveShieldState({
-      isActive: true, shieldCode: code, phone,
-      garageId, parkingLat, parkingLng, sessionId,
+      isActive: true,
+      shieldCode: code,
+      phone,
+      garageId,
+      parkingLat,
+      parkingLng,
+      sessionId,
     });
     await registerOnServer();
   }, [phone, garageId, sessionId, parkingLat, parkingLng, registerOnServer]);
@@ -637,17 +648,27 @@ export default function ShieldOverlay({
     return (
       <button
         onClick={() => {
-          initAudioContext(); // ✅ جهّز الصوت لو رجع يفعّل تاني
+          initAudioContext();
           setDismissed(false);
         }}
         style={{
-          position: 'fixed', top: 16, right: 16, zIndex: 99999,
+          position: 'fixed',
+          top: 16,
+          right: 16,
+          zIndex: 99999,
           background: 'linear-gradient(135deg, #1e3a8a, #1e40af)',
-          color: '#ffffff', border: '2px solid #60a5fa',
-          borderRadius: 14, padding: '10px 18px', fontSize: 13,
-          fontWeight: 'bold', display: 'flex', alignItems: 'center',
-          gap: 8, boxShadow: '0 4px 24px rgba(96,165,250,0.4)',
-          cursor: 'pointer', fontFamily: 'inherit',
+          color: '#ffffff',
+          border: '2px solid #60a5fa',
+          borderRadius: 14,
+          padding: '10px 18px',
+          fontSize: 13,
+          fontWeight: 'bold',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          boxShadow: '0 4px 24px rgba(96,165,250,0.4)',
+          cursor: 'pointer',
+          fontFamily: 'inherit',
         }}
       >
         🛡️ تفعيل الحماية
@@ -659,65 +680,87 @@ export default function ShieldOverlay({
 
   return (
     <div className="w-full flex flex-col items-center gap-2">
+      <style>{`
+        @keyframes radar-overlay-spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @keyframes radar-overlay-wave {
+          0% { transform: scale(0.6); opacity: 0.8; }
+          100% { transform: scale(1.6); opacity: 0; }
+        }
+        @keyframes pulse-gold {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.05); opacity: 0.85; }
+        }
+      `}</style>
+
+      {/* ─── PHASE: ASK (طلب التفعيل) ─── */}
       {phase === 'ask' && (
-        <div className="w-full relative overflow-hidden rounded-2xl"
+        <div
+          className="w-full relative overflow-hidden rounded-2xl"
           style={{
             background: 'linear-gradient(135deg, #0a1628 0%, #1e3a8a 50%, #0a1628 100%)',
-            border: '1.5px solid rgba(96, 165, 250, 0.3)',
+            border: '1.5px solid rgba(96, 165, 250, 0.35)',
             boxShadow: '0 8px 32px rgba(22, 86, 184, 0.35), inset 0 1px 0 rgba(255,255,255,0.1)',
           }}
         >
-          <div className="absolute inset-0 opacity-30 pointer-events-none"
-            style={{
-              background: 'linear-gradient(90deg, transparent 0%, rgba(96,165,250,0.15) 50%, transparent 100%)',
-              animation: 'shimmerShield 3s infinite',
-            }}
-          />
-          <style>{`
-            @keyframes shimmerShield { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
-            @keyframes pulseShield { 0%, 100% { box-shadow: 0 0 0 0 rgba(96,165,250,0.5); } 50% { box-shadow: 0 0 0 8px rgba(96,165,250,0); } }
-          `}</style>
           <div className="relative p-3.5">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+              <div
+                className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border border-blue-400/40"
                 style={{
                   background: 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
-                  boxShadow: '0 4px 12px rgba(59,130,246,0.4)',
-                  animation: 'pulseShield 2s infinite',
+                  boxShadow: '0 4px 14px rgba(59,130,246,0.45)',
                 }}
               >
-                <Shield className="w-6 h-6 text-white" strokeWidth={2.5} />
+                <Shield className="w-6 h-6 text-white animate-pulse" strokeWidth={2.5} />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <h3 className="text-white font-black text-sm">حماية إضافية</h3>
-                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded"
-                    style={{ background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', color: '#0a1628' }}>
+                  <h3 className="text-white font-black text-sm">حماية ورادار ذكي للمركبة</h3>
+                  <span
+                    className="text-[9px] font-black px-1.5 py-0.5 rounded shadow-sm"
+                    style={{ background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', color: '#0a1628' }}
+                  >
                     VIP 💎
                   </span>
                 </div>
-                <p className="text-blue-200/70 text-[11px] font-bold mt-0.5">مراقبة ذكية 24/7 + تنبيه فوري</p>
+                <p className="text-blue-200/80 text-[11px] font-bold mt-0.5">
+                  رادار GPS فوري + إنذار واهتزاز مباشر عند التحرك
+                </p>
               </div>
             </div>
+
             {checkError && (
-              <div className="bg-red-950/60 border border-red-500/40 rounded-xl p-2 mb-2.5">
-                <p className="text-red-300 text-[11px] font-bold text-center whitespace-pre-line">{checkError}</p>
+              <div className="bg-red-950/70 border border-red-500/50 rounded-xl p-2 mb-2.5">
+                <p className="text-red-300 text-[11px] font-bold text-center whitespace-pre-line leading-relaxed">
+                  {checkError}
+                </p>
               </div>
             )}
+
             <div className="flex gap-2">
-              <button onClick={handleYes} disabled={isChecking}
-                className="flex-1 relative overflow-hidden text-white font-black py-2.5 rounded-xl text-[13px] transition-all active:scale-95 disabled:opacity-60"
+              <button
+                onClick={handleYes}
+                disabled={isChecking}
+                className="flex-1 relative overflow-hidden text-white font-black py-2.5 rounded-xl text-[13px] transition-all active:scale-95 disabled:opacity-60 cursor-pointer border-0"
                 style={{
-                  background: isChecking ? 'linear-gradient(135deg, #475569, #334155)' : 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
+                  background: isChecking
+                    ? 'linear-gradient(135deg, #475569, #334155)'
+                    : 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
                   boxShadow: isChecking ? 'none' : '0 4px 16px rgba(59,130,246,0.4)',
                 }}
               >
                 <span className="relative z-10 flex items-center justify-center gap-1.5">
-                  {isChecking ? <>⏳ جاري التحقق...</> : <>🛡️ فعّل الحماية ({SHIELD_COST} ج)</>}
+                  {isChecking ? <>⏳ جاري التحقق من الموقع...</> : <>🛡️ فعّل الحماية ({SHIELD_COST} ج)</>}
                 </span>
               </button>
-              <button onClick={() => setDismissed(true)} disabled={isChecking}
-                className="px-3.5 bg-slate-800/60 text-slate-400 rounded-xl text-xs font-black border border-slate-700">
+              <button
+                onClick={() => setDismissed(true)}
+                disabled={isChecking}
+                className="px-4 bg-slate-800/80 text-slate-300 rounded-xl text-xs font-black border border-slate-700 active:scale-95 transition-all cursor-pointer"
+              >
                 لا
               </button>
             </div>
@@ -725,138 +768,172 @@ export default function ShieldOverlay({
         </div>
       )}
 
+      {/* ─── PHASE: REGISTER (إدخال الهاتف) ─── */}
       {phase === 'register' && (
-        <div className="w-full rounded-2xl p-3.5"
+        <div
+          className="w-full rounded-2xl p-3.5"
           style={{
             background: 'linear-gradient(135deg, #0a1628 0%, #1e3a8a 50%, #0a1628 100%)',
-            border: '1.5px solid rgba(96, 165, 250, 0.3)',
+            border: '1.5px solid rgba(96, 165, 250, 0.35)',
           }}
         >
           <div className="flex items-center gap-2 mb-2.5">
             <Phone className="w-4 h-4 text-blue-400" />
-            <h3 className="text-white font-black text-sm">رقم الموبايل للتواصل</h3>
+            <h3 className="text-white font-black text-sm">رقم الموبايل للتواصل وحفظ الأمان</h3>
           </div>
-          <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
+          <input
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
             placeholder="01xxxxxxxxx"
-            className="w-full bg-slate-900/80 border border-slate-600 rounded-xl px-3 py-2 text-white text-center text-base tracking-widest mb-2.5 focus:border-blue-500 focus:outline-none"
-            maxLength={11} dir="ltr"
+            className="w-full bg-slate-900/90 border border-slate-600 rounded-xl px-3 py-2 text-white text-center text-base font-mono tracking-widest mb-2.5 focus:border-blue-500 focus:outline-none"
+            maxLength={11}
+            dir="ltr"
           />
-          <button onClick={handleRegister} disabled={phone.length < 10}
-            className="w-full text-white font-black py-2.5 rounded-xl text-[13px] transition-all active:scale-95 disabled:opacity-50"
-            style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)' }}>
-            🛡️ تفعيل الحماية الآن
+          <button
+            onClick={handleRegister}
+            disabled={phone.length < 10}
+            className="w-full text-white font-black py-2.5 rounded-xl text-[13px] transition-all active:scale-95 disabled:opacity-50 border-0 cursor-pointer"
+            style={{
+              background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+              boxShadow: '0 4px 16px rgba(22,163,74,0.4)',
+            }}
+          >
+            🛡️ تفعيل الحماية والرادار الآن
           </button>
         </div>
       )}
 
+      {/* ─── PHASE: ACTIVE (الرادار التكتيكي النشط) ─── */}
       {phase === 'active' && (
-        <div className="w-full flex flex-col items-center gap-1.5">
-          <div className="relative" style={{ width: 110, height: 110 }}>
-            <div ref={radarRef} className="absolute inset-0 rounded-full"
-              style={{ background: 'conic-gradient(from 0deg, transparent 0deg, rgba(34,197,94,0.35) 40deg, transparent 80deg)' }} />
-            <div className="absolute inset-1.5 rounded-full border border-green-500/20" />
-            <div className="absolute inset-3 rounded-full border border-green-500/15" />
-            <div className="absolute inset-5 rounded-full border border-green-500/10" />
-            <div className="absolute top-1/2 left-0 right-0 h-px bg-green-500/10" />
-            <div className="absolute left-1/2 top-0 bottom-0 w-px bg-green-500/10" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse shadow-lg shadow-green-400/50" />
+        <div className="w-full flex flex-col items-center gap-2">
+          {/* سكوب الرادار الحي */}
+          <div className="relative w-36 h-36 flex items-center justify-center">
+            <div className="absolute inset-0 rounded-full border border-emerald-500/30 bg-slate-950/90 shadow-[0_0_20px_rgba(34,197,94,0.2)_inset]" />
+            <div className="absolute inset-4 rounded-full border border-emerald-500/20" />
+            <div className="absolute inset-8 rounded-full border border-dashed border-emerald-400/40" />
+
+            {/* خطوط المحاور */}
+            <div className="absolute inset-x-0 top-1/2 h-[1px] bg-emerald-500/20" />
+            <div className="absolute inset-y-0 left-1/2 w-[1px] bg-emerald-500/20" />
+
+            {/* شعاع المسح الدوّار */}
+            <div
+              className="absolute inset-0 rounded-full pointer-events-none"
+              style={{
+                background: 'conic-gradient(from 0deg, rgba(34,197,94,0.5) 0deg, rgba(14,165,233,0.15) 45deg, transparent 90deg, transparent 360deg)',
+                animation: 'radar-overlay-spin 2.8s linear infinite',
+              }}
+            />
+
+            {/* نقطة الهدف للمركبة في المنتصف */}
+            <div className="relative z-10 flex flex-col items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-slate-900 border-2 border-emerald-400 flex items-center justify-center shadow-[0_0_12px_#22c55e]">
+                <Car className="w-4 h-4 text-emerald-400" />
+              </div>
+              <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500" />
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5 rounded-full px-2.5 py-0.5 border"
+
+          {/* شارة حالة الدرع والسيريال */}
+          <div
+            className="flex items-center gap-1.5 rounded-full px-3 py-1 border shadow-md"
             style={{
-              background: 'linear-gradient(135deg, rgba(34,197,94,0.15), rgba(22,163,74,0.08))',
-              borderColor: 'rgba(34,197,94,0.4)',
-            }}>
-            <ShieldCheck className="w-3 h-3 text-green-400" />
-            <span className="text-green-400 text-[10px] font-black">الحماية نشطة</span>
-            {shieldCode && <span className="text-green-600/80 text-[9px] font-mono">{shieldCode}</span>}
+              background: 'linear-gradient(135deg, rgba(34,197,94,0.2), rgba(10,22,40,0.95))',
+              borderColor: 'rgba(34,197,94,0.45)',
+            }}
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+            <span className="text-emerald-400 text-[11px] font-black">الدرع الإلكتروني نشط</span>
+            {shieldCode && (
+              <span className="text-slate-300 text-[10px] font-mono tracking-wider font-bold">
+                [{shieldCode}]
+              </span>
+            )}
           </div>
+
+          {/* البانر الأمني الإرشادي لمنع قفل التاب */}
+          <div
+            className="w-full max-w-sm rounded-xl p-2.5 text-right border"
+            style={{
+              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(10, 22, 40, 0.95) 100%)',
+              borderColor: 'rgba(245, 158, 11, 0.3)',
+            }}
+          >
+            <div className="flex items-center gap-1.5 mb-1">
+              <Radio className="w-3.5 h-3.5 text-amber-400 animate-pulse shrink-0" />
+              <p className="text-[10px] font-black text-amber-300">
+                رادار الحماية نشط في الخلفية
+              </p>
+            </div>
+            <p className="text-[9px] font-bold text-slate-300 leading-relaxed">
+              💡 يُرجى ترك هذه الصفحة مفتوحة وقفل شاشة الموبايل فقط لضمان انطلاق السارينة فوراً عند أي خطر.
+            </p>
+          </div>
+
           {gpsWarning && (
-            <div className="w-full bg-yellow-950/50 border border-yellow-500/40 rounded-lg px-2 py-1.5 mt-0.5">
-              <p className="text-yellow-300 text-[10px] font-bold text-center">⚠️ فعّل الـ GPS عشان المراقبة تشتغل</p>
+            <div className="w-full bg-amber-950/60 border border-amber-500/40 rounded-xl px-3 py-1.5">
+              <p className="text-amber-300 text-[10px] font-bold text-center">
+                ⚠️ برجاء تفعيل الـ GPS لضمان عمل الرادار بأقصى دقة
+              </p>
             </div>
           )}
         </div>
       )}
 
-      {/* ═══════════════════════════════════════════════════════════
-          🆕 BREACH — ثابت فوق كل حاجة (fixed) + خلفية معتمة
-          ═══════════════════════════════════════════════════════════ */}
+      {/* ─── PHASE: BREACH (شاشة الاختراق والإنذار التكتيكية) ─── */}
       {phase === 'breach' && (
         <div
           className="fixed inset-0 flex items-center justify-center p-4"
-          style={{ zIndex: 99998 }}
+          style={{
+            zIndex: 99998,
+            background: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(8px)',
+          }}
         >
-          {/* خلفية معتمة */}
           <div
-            className="absolute inset-0"
-            style={{ background: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(4px)' }}
-          />
-
-          {/* كارت الإنذار */}
-          <div
-            className="relative w-full max-w-sm rounded-2xl p-5"
+            className="relative w-full max-w-sm rounded-2xl p-6 text-center border-2 border-red-500 shadow-2xl"
             style={{
-              background: 'linear-gradient(135deg, rgba(127,29,29,0.97) 0%, rgba(153,27,27,0.95) 100%)',
-              border: '2px solid rgba(239,68,68,0.8)',
-              boxShadow: '0 12px 48px rgba(239,68,68,0.5), 0 0 80px rgba(239,68,68,0.2)',
-              animation: 'breachPulse 1.2s ease-in-out infinite',
+              background: 'linear-gradient(135deg, #1a0505 0%, #0a1628 100%)',
+              boxShadow: '0 0 60px rgba(239,68,68,0.6), 0 0 120px rgba(239,68,68,0.2)',
+              animation: 'pulse 1s ease-in-out infinite',
             }}
           >
-            <style>{`
-              @keyframes breachPulse {
-                0%, 100% { box-shadow: 0 12px 48px rgba(239,68,68,0.5), 0 0 80px rgba(239,68,68,0.2); transform: scale(1); }
-                50% { box-shadow: 0 12px 64px rgba(239,68,68,0.8), 0 0 120px rgba(239,68,68,0.4); transform: scale(1.02); }
-              }
-              @keyframes sirenSpin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-              }
-            `}</style>
+            <div className="text-6xl mb-3">🚨</div>
+            <h2 className="text-2xl font-black text-red-400 mb-2">
+              تنبيه حركة غير مصرح بها!
+            </h2>
+            <p className="text-gray-300 text-sm mb-6 leading-relaxed">
+              تم رصد تحرك السيارة مسافة{' '}
+              <span className="text-red-400 font-black text-lg">{breachDistance}م</span>{' '}
+              عن نقطة الركن الأصلية.
+            </p>
 
-            <div className="flex items-center gap-3 mb-4">
-              <div
-                className="w-14 h-14 rounded-full flex items-center justify-center shrink-0"
-                style={{
-                  background: 'rgba(239,68,68,0.3)',
-                  animation: 'sirenSpin 2s linear infinite',
-                }}
-              >
-                <Siren className="w-8 h-8 text-red-200" />
-              </div>
-              <div>
-                <h3 className="text-white font-black text-xl leading-tight">
-                  🚨 تنبيه سرقة!
-                </h3>
-                <p className="text-red-200/90 text-[13px] font-bold mt-1">
-                  السيارة اتحركت{' '}
-                  <span className="text-white font-black text-lg">{breachDistance}م</span>
-                  {' '}من مكان الركن
-                </p>
-              </div>
-            </div>
-
-            <div className="flex gap-2.5">
+            <div className="flex flex-col gap-3">
               <button
                 onClick={handleIamDriving}
-                className="flex-1 text-white font-black py-3.5 rounded-xl text-[14px] transition-all active:scale-95 flex items-center justify-center gap-2"
+                className="w-full py-3.5 rounded-xl font-black text-white text-sm active:scale-95 transition-all flex items-center justify-center gap-2 border-0 cursor-pointer shadow-lg"
                 style={{
-                  background: 'linear-gradient(135deg, #15803d 0%, #166534 100%)',
-                  boxShadow: '0 4px 16px rgba(22,101,52,0.5)',
+                  background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                  boxShadow: '0 4px 16px rgba(34,197,94,0.4)',
                 }}
               >
-                <Car className="w-5 h-5" />
-                أنا اللي سايق
+                <Car className="w-4 h-4" />
+                ✅ أنا اللي سايق
               </button>
               <button
                 onClick={handleTheft}
-                className="flex-1 text-white font-black py-3.5 rounded-xl text-[14px] transition-all active:scale-95 flex items-center justify-center gap-2"
+                className="w-full py-3.5 rounded-xl font-black text-white text-sm active:scale-95 transition-all flex items-center justify-center gap-2 border-0 cursor-pointer shadow-lg"
                 style={{
-                  background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
-                  boxShadow: '0 4px 16px rgba(185,28,28,0.5)',
+                  background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
+                  boxShadow: '0 4px 16px rgba(239,68,68,0.4)',
                 }}
               >
-                <AlertTriangle className="w-5 h-5" />
-                مش أنا!
+                <AlertTriangle className="w-4 h-4" />
+                🚔 مش أنا — سرقة!
               </button>
             </div>
           </div>

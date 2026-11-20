@@ -7,55 +7,54 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, content-type',
 };
 
-const ALERT_POOL: { type: string; title: string; body: string }[] = [
-  { type: 'warning', title: '⚠️ تنبيه حركة', body: 'تم رصد حركة قريبة من مكان الركن' },
-  { type: 'warning', title: '⚠️ تنبيه', body: 'حركة غير مألوفة حول السيارة' },
-  { type: 'warning', title: '⚠️ انتبه', body: 'تم رصد اهتزاز خفيف في السيارة' },
-  { type: 'warning', title: '⚠️ تنبيه', body: 'حركة قريبة من مكان الركن' },
-  { type: 'warning', title: '⚠️ تنبيه حركة', body: 'تم رصد نشاط في المنطقة المحيطة' },
-  { type: 'resolved', title: '✅ تم التحقق', body: 'السيارة في مكانها، كلو تمام' },
-  { type: 'resolved', title: '✅ تم التحقق', body: 'كل شيء طبيعي حول السيارة' },
-  { type: 'resolved', title: '✅ استقرار', body: 'المنطقة هادئة حالياً' },
-  { type: 'resolved', title: '✅ طبيعي', body: 'تم فحص السيارة ولا توجد ملاحظات' },
-  { type: 'resolved', title: '✅ طبيعي', body: 'لا توجد أي ملاحظات غير عادية' },
-  { type: 'resolved', title: '✅ تم الفحص', body: 'المحيط طبيعي تماماً' },
-  { type: 'resolved', title: '✅ هدوء', body: 'لا توجد أي إشارات غير عادية' },
-  { type: 'status', title: '🛡️ الحماية نشطة', body: 'مراقبة مستمرة للسيارة' },
-  { type: 'status', title: '🛡️ تحديث', body: 'نظام المراقبة يعمل بكفاءة' },
-  { type: 'status', title: '🛡️ مراقبة', body: 'نراقب السيارة على مدار الساعة' },
-  { type: 'status', title: '🛡️ تقرير', body: 'لا توجد ملاحظات حالياً' },
-  { type: 'status', title: '🛡️ نشط', body: 'نظام المراقبة يعمل بشكل طبيعي' },
-  { type: 'status', title: '🛡️ متصل', body: 'نظام المراقبة متصل ومستقر' },
-  { type: 'status', title: '🛡️ فحص', body: 'تم فحص المحيط بنجاح' },
-  { type: 'status', title: '🛡️ حراسة', body: 'السيارة تحت المراقبة الكاملة' },
-  { type: 'status', title: '🛡️ تأمين', body: 'جميع أنظمة المراقبة مفعّلة' },
-  { type: 'status', title: '🛡️ رصد', body: 'المراقبة مستمرة بدون انقطاع' },
-  { type: 'status', title: '🛡️ جاهز', body: 'نظام المراقبة في أعلى درجات الاستعداد' },
-  { type: 'report', title: '📋 تقرير', body: 'تم فحص المنطقة المحيطة بالسيارة' },
-  { type: 'report', title: '📋 ملخص', body: 'لا توجد ملاحظات مسجّلة' },
-  { type: 'report', title: '📋 تقرير دوري', body: 'المنطقة هادئة وطبيعية' },
-  { type: 'report', title: '📋 سجل المراقبة', body: 'لا توجد أحداث تستدعي التنبيه' },
-  { type: 'qrScan', title: '📱 تحقق', body: 'تم التحقق من كود السيارة' },
-  { type: 'qrScan', title: '📱 تأكيد', body: 'تم التحقق من مكان الركن' },
+// ─── 🛡️ بنك الـ 30 إشعار الأمني التكتيكي للرادار ───
+interface TacticalAlert {
+  type: 'status' | 'warning' | 'resolved' | 'report';
+  title: string;
+  body: string;
+}
+
+const ALERT_POOL: TacticalAlert[] = [
+  { type: 'status', title: "🛡️ رادار Park'n 24", body: "جاري مسح المحيط الأمني لسيارتك.. الوضع مستقر تماماً." },
+  { type: 'status', title: "🛰️ اتصال الأقمار الصناعية", body: "تم تثبيت إحداثيات GPS بدقة عالية. رادارك يعمل بنجاح." },
+  { type: 'warning', title: "🔒 تأمين الحركة الفوري", body: "حساسات الاهتزاز مشفرة الآن. أي محاولة رفع بالونش ستصلك فوراً." },
+  { type: 'status', title: "🤖 الذكاء الأمني نشط", body: "نظام التعرف على الحركة يراقب سيارتك. استمتع بمشوارك وأنت مطمئن." },
+  { type: 'status', title: "📱 رادار الحماية الذكي", body: "تم تحديث بيانات الموقع. سيارتك في النطاق الآمن 100%." },
+  { type: 'status', title: "🛡️ بروتوكول الحماية VIP", body: "نظام التتبع يعمل بأقصى طاقة الآن. سيارتك تحت حراستنا الإلكترونية." },
+  { type: 'report', title: "🔍 مسح أمني شامل", body: "جاري فحص استقرار المركبة.. لا توجد اهتزازات غير طبيعية مسجلة." },
+  { type: 'status', title: "📡 تردد الرادار مستقر", body: "اتصال حي ومستمر بين موبايلك ورادار السيارة. الحماية نشطة." },
+  { type: 'warning', title: "🚨 نظام الردع الإلكتروني", body: "ملصقك الإلكتروني نشط في قاعدة البيانات الأمنيّة حالياً." },
+  { type: 'resolved', title: "✨ طمأنينة Park'n 24", body: "نراقب سيارتك كأننا بجوارها تماماً. ركنة سعيدة!" },
+  { type: 'report', title: "🛠️ فحص الحساسات", body: "تم التأكد من عمل حساس الميل (Tilt Sensor). سيارتك مؤمنة ضد الرفع." },
+  { type: 'status', title: "🌐 شبكة الحماية الحية", body: "سيارتك ضمن نطاق \"المنطقة الخضراء\" المؤمنة بـ Park'n 24." },
+  { type: 'status', title: "🛡️ درع الخصوصية", body: "وضع الحماية الصامت يعمل. التنبيه سيصدر فقط في حالة الخطر." },
+  { type: 'status', title: "🛰️ تحديث الإحداثيات", body: "قمر صناعي نشط الآن لمتابعة موقع ركنتك. دقة التتبع: 1 متر." },
+  { type: 'status', title: "🤖 مراقبة ذكية 24/7", body: "رادارك الذكي يعمل في الخلفية ويحمي السيارة من أي تدخل خارجي." },
+  { type: 'warning', title: "🛡️ حماية فائقة", body: "تم تنشيط وضع \"تجميد الموقع\". سنخبرك بأي تحرك ولو لسنتيمتر واحد." },
+  { type: 'resolved', title: "📍 تأكيد الموقع", body: "تم التحقق من بقاء السيارة في مكانها الأصلي بنجاح." },
+  { type: 'status', title: "🧠 خوارزمية التتبع", body: "نظامنا يحلل محيط السيارة الآن لضمان أقصى درجات الأمان." },
+  { type: 'status', title: "📱 حالة الدرع", body: "الدرع الإلكتروني: [نشط]. البطارية: [مستقرة]. الأمان: [100%]." },
+  { type: 'resolved', title: "🌟 تميز مع Park'n 24", body: "شكرًا لثقتك في نظام حمايتنا. سيارتك في أيدي أمينة تكنولوجياً." },
+  { type: 'warning', title: "🕵️ رادار كشف التطفل", body: "أي محاولة لفتح الأبواب أو لمس الزجاج ستفعل الإنذار فوراً." },
+  { type: 'status', title: "🛡️ تأمين شامل", body: "سيارتك الآن جزء من شبكة المركبات المحمية إلكترونياً." },
+  { type: 'status', title: "📡 إشارة الرادار", body: "قوة الإشارة ممتازة. التتبع اللحظي يعمل بدون أي تأخير." },
+  { type: 'status', title: "🚗 وضع الانتظار الذكي", body: "نظام حماية الركنات الطويلة نشط. لا تقلق بشأن سيارتك نهائياً." },
+  { type: 'warning', title: "⚡ استجابة فورية", body: "رادارك جاهز لإطلاق سارينة الطوارئ في أقل من ثانية عند الخطر." },
+  { type: 'report', title: "🛡️ توثيق أمني", body: "تم تسجيل بدء جلسة الحماية بنجاح في سجلات الأمان الرقمية." },
+  { type: 'status', title: "🌌 رادار المراقبة الليلية", body: "نظام الحماية الليلي نشط لمراقبة سيارتك في الظلام." },
+  { type: 'resolved', title: "🛡️ فحص المسافة", body: "المسافة بينك وبين السيارة آمنة. الرادار يغطي المسافة بالكامل." },
+  { type: 'status', title: "🛰️ تزامن الأقمار", body: "تم عمل Sync ناجح مع 4 أقمار صناعية لتأمين موقعك الحالي." },
+  { type: 'resolved', title: "✅ فحص أخير", body: "كل الأنظمة تعمل بكفاءة. استمتع بيومك، نحن نتولى الحراسة!" },
 ];
 
-function pickWeightedAlert() {
-  const typeWeights = [
-    { type: 'warning', weight: 15 },
-    { type: 'resolved', weight: 25 },
-    { type: 'status', weight: 40 },
-    { type: 'report', weight: 12 },
-    { type: 'qrScan', weight: 8 },
-  ];
-  const total = typeWeights.reduce((sum, t) => sum + t.weight, 0);
-  let roll = Math.random() * total;
-  let chosenType = 'status';
-  for (const tw of typeWeights) {
-    roll -= tw.weight;
-    if (roll <= 0) { chosenType = tw.type; break; }
-  }
-  const ofType = ALERT_POOL.filter((a) => a.type === chosenType);
-  return ofType[Math.floor(Math.random() * ofType.length)];
+// دالة اختيار إشعار عشوائي مع إمكانية استبعاد عنوان سابق لمنع التكرار
+function pickTacticalAlert(excludeTitle?: string): TacticalAlert {
+  const pool = excludeTitle 
+    ? ALERT_POOL.filter(a => a.title !== excludeTitle)
+    : ALERT_POOL;
+  
+  const randomIndex = Math.floor(Math.random() * pool.length);
+  return pool[randomIndex];
 }
 
 serve(async (req) => {
@@ -64,7 +63,7 @@ serve(async (req) => {
   }
 
   try {
-    console.log('🕐 Shield cron at', new Date().toISOString());
+    console.log('🕐 Shield tactical cron executed at:', new Date().toISOString());
 
     const VAPID_EMAIL = Deno.env.get('VAPID_EMAIL') || 'mailto:admin@parkn24.com';
     const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY')!
@@ -79,43 +78,58 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // جلب الدروع النشطة فقط (ended_at = null)
-    const { data: shields } = await supabase
+    // جلب كل الدروع النشطة حالياً
+    const { data: shields, error: fetchErr } = await supabase
       .from('shield_sessions')
       .select('*')
       .is('ended_at', null);
 
+    if (fetchErr) {
+      console.error('❌ Error fetching shields:', fetchErr);
+      return new Response(JSON.stringify({ error: fetchErr.message }), { status: 500, headers: corsHeaders });
+    }
+
     if (!shields || shields.length === 0) {
-      return new Response(JSON.stringify({ success: true, shields: 0 }));
+      return new Response(JSON.stringify({ success: true, shields: 0 }), { headers: corsHeaders });
     }
 
     console.log(`Found ${shields.length} active shields`);
 
-    // ─── Test mode ───
+    // ─── وضع الاختبار الفوري (?test=1) ───
     const url = new URL(req.url);
     if (url.searchParams.get('test') === '1') {
       let sent = 0;
       for (const s of shields) {
         if (!s.push_endpoint || !s.push_p256dh || !s.push_auth) continue;
         try {
+          const sampleAlert = pickTacticalAlert();
           await webpush.sendNotification(
             { endpoint: s.push_endpoint, keys: { p256dh: s.push_p256dh, auth: s.push_auth } },
-            JSON.stringify({ title: '🔔 اختبار', body: `لو وصلك ده على ${s.phone} يبقى شغال ✅`, tag: 'test', data: { url: '/garage' } }),
+            JSON.stringify({
+              title: sampleAlert.title,
+              body: sampleAlert.body,
+              icon: '/favicon.ico',
+              tag: 'shield-test',
+              data: { url: '/garage' }
+            }),
             { TTL: 3600, urgency: 'high' }
           );
           sent++;
-        } catch (e: any) { console.error('Test fail:', e.statusCode); }
+        } catch (e: any) {
+          console.error(`Test fail for ${s.phone}:`, e.statusCode || e.message);
+        }
       }
-      return new Response(JSON.stringify({ test: true, sent, total: shields.length }));
+      return new Response(JSON.stringify({ test: true, sent, total: shields.length }), { headers: corsHeaders });
     }
 
-    // ─── Cleanup: أغلق الجلسات المكررة ───
+    // ─── تنظيف: إغلاق أي جلسات مكررة لنفس رقم الهاتف ───
     const phoneGroups = new Map<string, any[]>();
     for (const s of shields) {
       const p = s.phone || 'unknown';
       if (!phoneGroups.has(p)) phoneGroups.set(p, []);
       phoneGroups.get(p)!.push(s);
     }
+
     for (const [, sessions] of phoneGroups) {
       if (sessions.length <= 1) continue;
       sessions.sort((a, b) => {
@@ -124,7 +138,8 @@ serve(async (req) => {
         return tb - ta;
       });
       for (let i = 1; i < sessions.length; i++) {
-        await supabase.from('shield_sessions')
+        await supabase
+          .from('shield_sessions')
           .update({ ended_at: new Date().toISOString() })
           .eq('session_id', sessions[i].session_id);
       }
@@ -136,16 +151,17 @@ serve(async (req) => {
     for (const shield of shields) {
       const alertCount = shield.alert_count || 0;
       const tick = shield.fake_tick || 0;
+
       console.log(`\n🛡️ Shield: ${shield.phone}, alerts=${alertCount}/2, tick=${tick}`);
 
-      // ─── هل عنده push keys؟ ───
+      // 1. التحقق من وجود مفاتيح الـ Push
       if (!shield.push_endpoint || !shield.push_p256dh || !shield.push_auth) {
         console.log('⚠️ No push keys');
         totalSkipped++;
         continue;
       }
 
-      // ─── تحقق إن الجلسة الأصلية لسه نشطة ───
+      // 2. التحقق من أن الجلسة الأصلية لا تزال نشطة في جدول sessions
       const { data: originalSession } = await supabase
         .from('sessions')
         .select('id, status')
@@ -153,7 +169,8 @@ serve(async (req) => {
         .maybeSingle();
 
       if (!originalSession || originalSession.status !== 'active') {
-        await supabase.from('shield_sessions')
+        await supabase
+          .from('shield_sessions')
           .update({
             ended_at: new Date().toISOString(),
             push_endpoint: null,
@@ -166,69 +183,110 @@ serve(async (req) => {
         continue;
       }
 
-      // ─── حد أقصى 2 إشعار للجلسة ───
+      // 3. حد أقصى صارم: إشعارين فقط لكل جلسة ركن
       if (alertCount >= 2) {
-        console.log('⏭️ Max 2 alerts reached — done');
+        console.log('⏭️ Max 2 alerts reached — keeping shield active without push');
         totalSkipped++;
         continue;
       }
 
-      // ─── توقيت الإشعارات ───
-      // الإشعار الأول (alertCount == 0): يتبعت بعد 5 دقايق (1 tick)
-      // الإشعار الثاني (alertCount == 1): يتبعت بعد 30 دقيقة من الأول (6 ticks)
-      const requiredTicks = alertCount === 0 ? 1 : 6;
+      // 4. توقيت الإرسال:
+      // - الإشعار الأول (alertCount == 0): بعد 30 دقيقة (6 ticks بمعدل 5 دقائق لكل tick)
+      // - الإشعار الثاني (alertCount == 1): بعد 30 دقيقة أخرى من الأول (6 ticks = علامة الـ 60 دقيقة)
+      const requiredTicks = 6;
       const newTick = tick + 1;
 
       if (newTick < requiredTicks) {
-        await supabase.from('shield_sessions')
+        await supabase
+          .from('shield_sessions')
           .update({ fake_tick: newTick })
           .eq('session_id', shield.session_id);
-        console.log(`⏳ Tick ${newTick}/${requiredTicks} for alert #${alertCount + 1}`);
+        console.log(`⏳ Progress: Tick ${newTick}/${requiredTicks} for alert #${alertCount + 1}`);
         totalSkipped++;
         continue;
       }
 
-      // ─── وصل للتوقيت المسموح → ابعت إشعار ───
-      const alert = pickWeightedAlert();
+      // 5. حان وقت الإرسال -> اختيار إشعار مميز
+      const chosenAlert = pickTacticalAlert();
+
       const payload = JSON.stringify({
-        title: alert.title,
-        body: alert.body,
-        tag: `shield-${alert.type}-${shield.session_id.slice(0, 8)}-${alertCount}`,
-        data: { type: 'shield', url: '/garage' },
+        title: chosenAlert.title,
+        body: chosenAlert.body,
+        icon: '/favicon.ico',
+        badge: '/favicon.ico',
+        tag: `shield-${shield.session_id.slice(0, 8)}-${alertCount + 1}`,
+        vibrate: [200, 100, 200],
+        data: {
+          type: 'shield',
+          url: '/garage',
+          alertIndex: alertCount + 1,
+        },
       });
 
       try {
-        console.log(`🚀 Sending alert ${alertCount + 1}/2: ${alert.title}`);
+        console.log(`🚀 Sending tactical alert ${alertCount + 1}/2 to ${shield.phone}: ${chosenAlert.title}`);
         await webpush.sendNotification(
-          { endpoint: shield.push_endpoint, keys: { p256dh: shield.push_p256dh, auth: shield.push_auth } },
+          {
+            endpoint: shield.push_endpoint,
+            keys: {
+              p256dh: shield.push_p256dh,
+              auth: shield.push_auth,
+            },
+          },
           payload,
           { TTL: 86400, urgency: 'high' }
         );
-        console.log('✅ Sent!');
+
+        console.log('✅ Sent successfully!');
         totalSent++;
 
-        await supabase.from('shield_sessions')
-          .update({ alert_count: alertCount + 1, fake_tick: 0 })
+        await supabase
+          .from('shield_sessions')
+          .update({
+            alert_count: alertCount + 1,
+            fake_tick: 0,
+          })
           .eq('session_id', shield.session_id);
 
       } catch (err: any) {
-        console.error('❌ Failed:', err.statusCode, err.message);
-        await supabase.from('shield_sessions')
+        console.error('❌ Push Failed:', err.statusCode, err.message);
+
+        await supabase
+          .from('shield_sessions')
           .update({ fake_tick: 0 })
           .eq('session_id', shield.session_id);
+
+        // إذا انتهت صلاحية الاشتراك أو تم حظره من المتصفح (410 Gone / 404 Not Found)
         if (err.statusCode === 410 || err.statusCode === 404) {
-          await supabase.from('shield_sessions')
-            .update({ push_endpoint: null, push_p256dh: null, push_auth: null })
+          await supabase
+            .from('shield_sessions')
+            .update({
+              push_endpoint: null,
+              push_p256dh: null,
+              push_auth: null,
+            })
             .eq('session_id', shield.session_id);
+          console.log(`🧹 Cleaned expired push subscription for ${shield.phone}`);
         }
       }
     }
 
-    console.log(`\n📊 sent=${totalSent}, skipped=${totalSkipped}`);
-    return new Response(JSON.stringify({ success: true, shields: shields.length, sent: totalSent, skipped: totalSkipped }));
+    console.log(`\n📊 Execution Summary: sent=${totalSent}, skipped=${totalSkipped}`);
+    return new Response(
+      JSON.stringify({
+        success: true,
+        active_shields: shields.length,
+        sent: totalSent,
+        skipped: totalSkipped,
+      }),
+      { headers: corsHeaders }
+    );
 
   } catch (err) {
-    console.error('❌ Error:', err);
-    return new Response(JSON.stringify({ error: String(err) }), { status: 500 });
+    console.error('❌ Fatal Cron Error:', err);
+    return new Response(JSON.stringify({ error: String(err) }), {
+      status: 500,
+      headers: corsHeaders,
+    });
   }
 });

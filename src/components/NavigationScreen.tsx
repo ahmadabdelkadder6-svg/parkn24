@@ -1,3 +1,4 @@
+// src/components/NavigationScreen.tsx
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -15,6 +16,8 @@ import {
   ShieldCheck,
   ShieldOff,
   Navigation2,
+  Radio,
+  Crosshair,
 } from 'lucide-react';
 import {
   useStore,
@@ -31,7 +34,6 @@ import {
 } from '../utils/distance';
 import { openMapsWithSmartArrival } from '../utils/mapsNavigation';
 import toast from 'react-hot-toast';
-
 import 'leaflet/dist/leaflet.css';
 import {
   MapContainer,
@@ -43,7 +45,6 @@ import {
 } from 'react-leaflet';
 import L from 'leaflet';
 import { supabase } from '../lib/supabase';
-
 import {
   initAudioContext,
   startShieldGPS,
@@ -122,7 +123,6 @@ function MapController({
   garagePos: [number, number];
 }) {
   const map = useMap();
-
   useEffect(() => {
     const timer = setTimeout(() => {
       try {
@@ -259,7 +259,6 @@ export default function NavigationScreen() {
 
   const [isWithinRadius, setIsWithinRadius] = useState<boolean>(false);
   const [autoStarting, setAutoStarting] = useState<boolean>(false);
-
   const [showBreach, setShowBreach] = useState(false);
 
   const isMountedRef = useRef(true);
@@ -286,7 +285,6 @@ export default function NavigationScreen() {
   /* ─── REALTIME & SYNC ─── */
   useEffect(() => {
     if (!userPlateNav && !userPhoneClean) return;
-
     let cancelled = false;
 
     const fastFetch = async () => {
@@ -336,6 +334,7 @@ export default function NavigationScreen() {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') fastFetch();
     };
+
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('focus', fastFetch);
 
@@ -357,7 +356,6 @@ export default function NavigationScreen() {
 
     try {
       if (!garage) return;
-
       if (storageTimerKey) {
         try { localStorage.removeItem(storageTimerKey); } catch {}
       }
@@ -439,7 +437,6 @@ export default function NavigationScreen() {
       }
 
       useStore.getState().setHasPaidBookingFee(false);
-
       navigatedToSessionRef.current = true;
       toast.success('تم الوصول للجراج وبدأت الجلسة بنجاح ⏱️', { duration: 3000 });
       setScreen('session');
@@ -519,8 +516,8 @@ export default function NavigationScreen() {
       }
 
       const startTimeISO = new Date(getServerNow()).toISOString();
-
       let shieldCostForSession = 0;
+
       if (shieldChoice) {
         const walletNow = Number(currentUser?.wallet ?? (currentUser as any)?.walletBalance ?? 0);
         if (walletNow >= SHIELD_AUTO_FEE) {
@@ -555,14 +552,12 @@ export default function NavigationScreen() {
       }
 
       useStore.getState().setHasPaidBookingFee(false);
-
       navigatedToSessionRef.current = true;
 
       const msg = shieldCostForSession > 0
         ? '✅ تم بدء الجلسة والدرع تلقائياً 🛡️'
         : '✅ تم بدء الجلسة تلقائياً (بدون درع)';
       toast.success(msg, { duration: 4000, icon: '🚀' });
-
       setScreen('session');
     } catch (err) {
       console.error('❌ Auto-start error:', err);
@@ -590,7 +585,6 @@ export default function NavigationScreen() {
   /* 🧠 GPS positioning */
   useEffect(() => {
     if (!('geolocation' in navigator)) return;
-
     navigator.geolocation.getCurrentPosition(
       (p) => {
         if (!isMountedRef.current) return;
@@ -635,7 +629,6 @@ export default function NavigationScreen() {
 
     const distMeters = haversineMeters(userPos.lat, userPos.lng, garage.lat, garage.lng);
     const within = distMeters <= AUTO_START_RADIUS_M;
-
     setIsWithinRadius(within);
 
     if (within) {
@@ -714,14 +707,11 @@ export default function NavigationScreen() {
       navigatedToSessionRef.current = false;
       return;
     }
-
     if (navigatedToSessionRef.current) return;
     navigatedToSessionRef.current = true;
-
     if (myActiveSession.garageId !== selectedGarageId) {
       setSelectedGarageId(myActiveSession.garageId);
     }
-
     setScreen('session');
   }, [myActiveSession, selectedGarageId, setSelectedGarageId, setScreen]);
 
@@ -731,10 +721,13 @@ export default function NavigationScreen() {
   useEffect(() => {
     if (!myActiveSession || !garage) return;
     if ((myActiveSession.shieldCost ?? 0) <= 0) return;
+
     try { initAudioContext(); } catch {}
+
     const lat = (garage as any).lat ?? 30.0444;
     const lng = (garage as any).lng ?? 31.2357;
     let cancelled = false;
+
     registerShieldSession({
       sessionId: myActiveSession.id,
       phone: (myActiveSession as any).customerPhone || currentUser?.phone || '',
@@ -754,12 +747,13 @@ export default function NavigationScreen() {
         },
       });
     });
+
     return () => {
       cancelled = true;
       destroyShield();
       setShowBreach(false);
     };
-  }, [myActiveSession?.id, garage?.id]);
+  }, [myActiveSession?.id, garage?.id, currentUser?.phone]);
 
   if (!garage) {
     return (
@@ -790,7 +784,6 @@ export default function NavigationScreen() {
   const minutes = distanceToMinutes(distance);
   const coordsText = `${garage.lat},${garage.lng}`;
   const walletBalance = Number(currentUser?.wallet ?? (currentUser as any)?.walletBalance ?? 0);
-
   const distMetersNow = haversineMeters(userPos.lat, userPos.lng, garage.lat, garage.lng);
   const stabilityRemainingMs = Math.max(0, AUTO_START_STABILITY_MS - stabilityElapsed);
   const stabilityRemainingSec = Math.ceil(stabilityRemainingMs / 1000);
@@ -835,7 +828,6 @@ export default function NavigationScreen() {
   const handleQuickTopup = async (tier: typeof TOPUP_TIERS[0]) => {
     if (!currentUser || processingTopup) return;
     setProcessingTopup(tier.id);
-
     try {
       const bonusAmount = tier.bonus ?? getBonusForAmount(tier.amount);
       await addWalletTopUp({
@@ -849,7 +841,6 @@ export default function NavigationScreen() {
         payment_method: 'instapay',
         status: 'pending',
       } as any);
-
       toast.success(`تم طلب شحن ${tier.amount} ج + ${bonusAmount} ج بونص هدية 🎁! في انتظار التفعيل`, { duration: 4500 });
       setShowInsufficientModal(false);
     } catch (err) {
@@ -885,21 +876,18 @@ export default function NavigationScreen() {
         >
           <ArrowRight size={18} />
         </button>
-
         <h2 className="text-xs font-black flex items-center gap-1.5 text-white">
           <div className="animate-pulse">
             <Navigation size={15} style={{ color: BRAND.blue }} />
           </div>
-          التوجيه للجراج
+          التوجيه ورادار الجراج
         </h2>
-
         <div className="w-8" />
       </div>
 
       {/* ══ Content ══ */}
       <div className="flex-1 px-3.5 pb-4 flex flex-col gap-2.5 overflow-y-auto">
-
-        {/* 🚀 بانر التوجيه الخارجي لخرائط جوجل */}
+        {/* 🚀 بانر التوجيه الخارجي لخرائط جوجل مع تأثير تكتيكي */}
         {!myActiveSession && (
           <motion.button
             type="button"
@@ -917,7 +905,6 @@ export default function NavigationScreen() {
               <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0 border border-white/25">
                 <Navigation2 size={22} className="text-white animate-bounce" />
               </div>
-
               <div className="flex flex-col text-right">
                 <span className="font-black text-white text-base leading-tight">
                   اضغط هنا وتوجه للجراج 🚀
@@ -927,7 +914,6 @@ export default function NavigationScreen() {
                 </span>
               </div>
             </div>
-
             <div className="bg-white/10 p-2 rounded-xl border border-white/20">
               <ArrowRight size={18} className="text-white" />
             </div>
@@ -953,7 +939,6 @@ export default function NavigationScreen() {
                 {distance.toFixed(1)} كم
               </span>
             </div>
-
             <div className="text-right flex flex-col items-end">
               <div className="flex items-center gap-1.5">
                 {isVipGarage && (
@@ -977,7 +962,7 @@ export default function NavigationScreen() {
           </div>
         </div>
 
-        {/* 🛡️ بنر الدرع الذكي */}
+        {/* 🛡️ بنر رادار الدرع الذكي */}
         {!myActiveSession && (
           <motion.div
             initial={{ opacity: 0, y: -5 }}
@@ -1050,35 +1035,36 @@ export default function NavigationScreen() {
               </button>
             </div>
 
+            {/* بطاقة فحص القرب والرادار الجغرافي */}
             <div
               className="rounded-xl p-2 border text-right"
               style={{
-                background: 'rgba(10,22,40,0.6)',
+                background: 'rgba(10,22,40,0.75)',
                 borderColor: BRAND.border,
               }}
             >
               {isWithinRadius ? (
                 <>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[9px] font-black" style={{ color: BRAND.green }}>
-                      📍 داخل نطاق الجراج ({Math.round(distMetersNow)}م)
+                    <span className="text-[9px] font-black flex items-center gap-1" style={{ color: BRAND.green }}>
+                      <Radio size={11} className="text-emerald-400 animate-pulse" />
+                      داخل نطاق الجراج ({Math.round(distMetersNow)}م)
                     </span>
                     <span className="text-[10px] font-black font-mono" style={{ color: BRAND.green }}>
                       {autoStarting
                         ? '⏳ جاري البدء...'
                         : stabilityRemainingSec > 0
                         ? `${Math.floor(stabilityRemainingSec / 60)}:${(stabilityRemainingSec % 60).toString().padStart(2, '0')}`
-                        : '✅'}
+                        : '✅ جاهز'}
                     </span>
                   </div>
-
                   <div
-                    className="w-full h-1 rounded-full overflow-hidden"
+                    className="w-full h-1.5 rounded-full overflow-hidden"
                     style={{ background: 'rgba(255,255,255,0.08)' }}
                   >
                     <motion.div
                       className="h-full rounded-full"
-                      style={{ background: BRAND.green }}
+                      style={{ background: 'linear-gradient(90deg, #16a34a, #8cc63f)' }}
                       animate={{ width: `${stabilityPct}%` }}
                       transition={{ duration: 0.3 }}
                     />
@@ -1086,10 +1072,11 @@ export default function NavigationScreen() {
                 </>
               ) : (
                 <div className="flex items-center justify-between">
-                  <span className="text-[9px] font-bold" style={{ color: BRAND.slateMuted }}>
+                  <span className="text-[9px] font-bold flex items-center gap-1" style={{ color: BRAND.slateMuted }}>
+                    <Crosshair size={11} className="text-sky-400" />
                     اقترب للمسافة ({AUTO_START_RADIUS_M}م) لبدء العد التلقائي
                   </span>
-                  <span className="text-[10px] font-black font-mono text-white">
+                  <span className="text-[10px] font-black font-mono text-sky-300">
                     {Math.round(distMetersNow)}م
                   </span>
                 </div>
@@ -1121,7 +1108,7 @@ export default function NavigationScreen() {
           </div>
         )}
 
-        {/* 🗺️ الخريطة */}
+        {/* 🗺️ الخريطة التفاعلية */}
         <div
           className="w-full h-36 rounded-2xl overflow-hidden relative shrink-0 border"
           style={{ transform: 'translateZ(0)', borderColor: BRAND.border }}
@@ -1211,7 +1198,6 @@ export default function NavigationScreen() {
                 وصلت للجراج وبدأ الركن ✅
               </span>
             </button>
-
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -1227,7 +1213,6 @@ export default function NavigationScreen() {
                   ملقتش مكان ❌
                 </span>
               </button>
-
               <button
                 type="button"
                 onClick={handleNoSpaceFound}
@@ -1272,7 +1257,6 @@ export default function NavigationScreen() {
                   اختر باقة شحن سريعة للمتابعة
                 </p>
               </div>
-
               <div className="grid grid-cols-2 gap-2">
                 {[...TOPUP_TIERS].reverse().map((tier) => (
                   <button
@@ -1287,7 +1271,6 @@ export default function NavigationScreen() {
                   </button>
                 ))}
               </div>
-
               <button
                 onClick={() => setShowInsufficientModal(false)}
                 className="w-full py-2 rounded-xl text-xs font-black text-slate-400 border border-slate-700 bg-transparent"
@@ -1299,18 +1282,29 @@ export default function NavigationScreen() {
         )}
       </AnimatePresence>
 
-      {/* 🚨 شاشة الانذار للاختراق */}
+      {/* 🚨 شاشة الإنذار للاختراق بتصميم تكتيكي متقدم */}
       {showBreach && (
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/85 p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-gray-900 border-2 border-red-500 p-5 text-center">
-            <div className="text-5xl mb-3">🚨</div>
-            <h2 className="text-xl font-black text-red-500 mb-2">تحذير أمني!</h2>
-            <p className="text-gray-300 mb-5 text-sm">
-              السيارة بتتحرك من مكانها!
-              <br />
-              الدرع الذكي اكتشف خروج السيارة من النطاق الآمن
+        <div
+          className="fixed inset-0 z-[99999] flex items-center justify-center p-4"
+          style={{
+            background: 'rgba(0,0,0,0.85)',
+            backdropFilter: 'blur(8px)',
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl p-6 text-center border-2 border-red-500"
+            style={{
+              background: 'linear-gradient(135deg, #1a0505 0%, #0a1628 100%)',
+              boxShadow: '0 0 60px rgba(239,68,68,0.6), 0 0 120px rgba(239,68,68,0.2)',
+              animation: 'pulse 1s ease-in-out infinite',
+            }}
+          >
+            <div className="text-6xl mb-3">🚨</div>
+            <h2 className="text-2xl font-black text-red-400 mb-2">تنبيه أمني!</h2>
+            <p className="text-sm text-gray-300 mb-6 leading-relaxed">
+              سيارتك خرجت من نطاق الأمان حول الجراج
             </p>
-            <div className="space-y-2">
+            <div className="flex flex-col gap-3">
               <button
                 onClick={() => {
                   stopIntenseAlarm();
@@ -1319,7 +1313,11 @@ export default function NavigationScreen() {
                   if (myActiveSession) endSession(myActiveSession.id);
                   setScreen('list');
                 }}
-                className="w-full py-3 rounded-xl bg-green-600 text-white font-bold text-sm active:scale-95 transition-transform"
+                className="w-full py-3.5 rounded-xl font-black text-white text-sm active:scale-95 transition-all"
+                style={{
+                  background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                  boxShadow: '0 4px 16px rgba(34,197,94,0.4)',
+                }}
               >
                 ✅ أنا اللي سايق
               </button>
@@ -1331,9 +1329,13 @@ export default function NavigationScreen() {
                   if (myActiveSession) endSession(myActiveSession.id);
                   setScreen('list');
                 }}
-                className="w-full py-3 rounded-xl bg-red-600 text-white font-bold text-sm active:scale-95 transition-transform"
+                className="w-full py-3.5 rounded-xl font-black text-white text-sm active:scale-95 transition-all"
+                style={{
+                  background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
+                  boxShadow: '0 4px 16px rgba(239,68,68,0.4)',
+                }}
               >
-                🚫 مش أنا
+                🚔 مش أنا — سرقة!
               </button>
             </div>
           </div>

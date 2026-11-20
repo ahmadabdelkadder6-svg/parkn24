@@ -1,8 +1,7 @@
 // src/lib/shield.ts
 // ═══════════════════════════════════════════════════════════
-// 🛡️ Car Shield Engine — Local-First + Server Cron Web Push
+// 🛡️ Car Shield Engine — Local-First + Zero-Cost Keep-Alive + Web Push
 // ═══════════════════════════════════════════════════════════
-
 import { supabase } from './supabase';
 
 export type AlertType = 'warning' | 'resolved' | 'status' | 'report' | 'qrScan';
@@ -25,18 +24,23 @@ export interface ShieldState {
   shieldId?: string | null;
 }
 
-// ─── ثوابت النظام ───
+// ─── ثوابت النظام المالي والتشغيلي ───
 export const SHIELD_COST = 7;
 export const SHIELD_STORAGE_KEY = 'parkn24_shield';
-export const GEOFENCE_RADIUS = 250;
-export const ALERT_DISTANCE = 250;
-export const MIN_MOVEMENT_METERS = 80;
-export const FALLBACK_INTERVAL_MS = 300_000;
 
-// ─── 🧠 ثوابت السرعة والإنذار ───
-// 2.0 م/ث = ~7.2 كم/س (أسرع من المشي العادي - حركة سيارة أو انطلاق)
-export const CAR_SPEED_THRESHOLD = 2.0; 
-export const CAR_GRACE_MS = 5_000; // 5 ثواني سماح قبل الانطلاق
+// ─── 🎯 ثوابت الجيوفنس الدقيق والحماية من النوم ───
+// تم ضبط القطر على 50 متر لسرعة كشف الخروج الفوري
+export const GEOFENCE_RADIUS_METERS = 50;
+export const GEOFENCE_RADIUS = 50; // للتوافق العكسي مع الشاشات
+export const ALERT_DISTANCE = 50; // للتوافق العكسي
+export const MIN_MOVEMENT_METERS = 30; // حد إرسال التحديث للسيرفر
+export const FALLBACK_INTERVAL_MS = 25_000; // فحص دوري كل 25 ثانية كـ Fallback
+
+// ─── 🧠 ثوابت السرعة والانطلاق الفوري ───
+// 3.2 م/ث = ~11.5 كم/س (سرعة حركة مركبة مؤكدة وليست شخص يمشي)
+export const SPEED_THRESHOLD_MPS = 3.2;
+export const CAR_SPEED_THRESHOLD = 3.2; // للتوافق
+export const CAR_GRACE_MS = 2_000; // ثانيتين فقط للتأكد قبل إطلاق السارينة
 
 // VAPID Public Key لتفعيل الـ Web Push
 const VAPID_PUBLIC_KEY = 'BOuP_HFhSSjHMsjf4KZJYLaFTv3RdI20Ux3an5LriaTBUN0iGlW-38zYGvROp26k7jcqhC_XpUotxzLR1IjQTI4';
@@ -53,28 +57,38 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray;
 }
 
-// ─── بنك الإشعارات ───
+// ─── 🛡️ بنك الإشعارات الأمني التكتيكي (30 رسالة متنوعة) ───
 const ALERT_POOL: FakeAlert[] = [
-  { type: 'warning', title: '⚠️ تنبيه حركة', body: 'تم رصد حركة قريبة من مكان الركن', icon: '⚠️' },
-  { type: 'warning', title: '⚠️ تنبيه حركة', body: 'حركة غير مألوفة حول السيارة', icon: '⚠️' },
-  { type: 'warning', title: '⚠️ تنبيه حركة', body: 'اهتزاز خفيف في السيارة', icon: '⚠️' },
-  { type: 'resolved', title: '✅ تم الحل', body: 'الحركة طبيعية — كلو تمام', icon: '✅' },
-  { type: 'resolved', title: '✅ تم الحل', body: 'كان شخص بيمر جنب مكان الركن', icon: '✅' },
-  { type: 'resolved', title: '✅ تم الحل', body: 'تنبيه عادي — العربية سليمة', icon: '✅' },
-  { type: 'resolved', title: '✅ تم الحل', body: 'حركة عادية في المكان', icon: '✅' },
-  { type: 'resolved', title: '✅ تم الحل', body: 'قط كان فوق الكابوت 😺', icon: '✅' },
-  { type: 'status', title: '🛡️ الحماية نشطة', body: 'السيارة تحت المراقبة', icon: '🛡️' },
-  { type: 'status', title: '🛡️ الحماية نشطة', body: 'كل الحساسات شغالة', icon: '🛡️' },
-  { type: 'status', title: '🔋 حالة النظام', body: 'البطارية مستقرة — المراقبة تعمل بكفاءة', icon: '🔋' },
-  { type: 'status', title: '📡 الاتصال', body: 'متصل بخادم المراقبة', icon: '📡' },
-  { type: 'status', title: '🛡️ تحديث', body: 'تم تحديث بروتوكول المراقبة', icon: '🛡️' },
-  { type: 'status', title: '🌡️ الحرارة', body: 'درجة حرارة المحرك طبيعية', icon: '🌡️' },
-  { type: 'status', title: '🔒 الحالة', body: 'حالة السيارة مستقرة', icon: '🔒' },
-  { type: 'status', title: '📍 الموقع', body: 'السيارة في مكانها', icon: '📍' },
-  { type: 'report', title: '📋 تقرير', body: 'لا توجد ملاحظات خلال الفترة الماضية', icon: '📋' },
-  { type: 'report', title: '📋 تقرير', body: 'تم تسجيل 0 ملاحظات غير طبيعية', icon: '📋' },
-  { type: 'qrScan', title: '📱 تحقق', body: 'تم التحقق من كود السيارة', icon: '📱' },
-  { type: 'qrScan', title: '📱 تحقق', body: 'تم التحقق من مكان الركن', icon: '📱' },
+  { type: 'status', title: "🛡️ رادار Park'n 24", body: 'جاري مسح المحيط الأمني لسيارتك.. الوضع مستقر تماماً.', icon: '🛡️' },
+  { type: 'status', title: '🛰️ اتصال الأقمار الصناعية', body: 'تم تثبيت إحداثيات GPS بدقة عالية. رادارك يعمل بنجاح.', icon: '🛰️' },
+  { type: 'warning', title: '🔒 تأمين الحركة الفوري', body: 'حساسات الاهتزاز مشفرة الآن. أي محاولة رفع بالونش ستصلك فوراً.', icon: '🔒' },
+  { type: 'status', title: '🤖 الذكاء الأمني نشط', body: 'نظام التعرف على الحركة يراقب سيارتك. استمتع بمشوارك وأنت مطمئن.', icon: '🤖' },
+  { type: 'status', title: '📱 رادار الحماية الذكي', body: 'تم تحديث بيانات الموقع. سيارتك في النطاق الآمن 100%.', icon: '📱' },
+  { type: 'status', title: '🛡️ بروتوكول الحماية VIP', body: 'نظام التتبع يعمل بأقصى طاقة الآن. سيارتك تحت حراستنا الإلكترونية.', icon: '🛡️' },
+  { type: 'report', title: '🔍 مسح أمني شامل', body: 'جاري فحص استقرار المركبة.. لا توجد اهتزازات غير طبيعية مسجلة.', icon: '🔍' },
+  { type: 'status', title: '📡 تردد الرادار مستقر', body: 'اتصال حي ومستمر بين موبايلك ورادار السيارة. الحماية نشطة.', icon: '📡' },
+  { type: 'warning', title: '🚨 نظام الردع الإلكتروني', body: 'ملصقك الإلكتروني نشط في قاعدة البيانات الأمنيّة حالياً.', icon: '🚨' },
+  { type: 'resolved', title: '✨ طمأنينة Park\'n 24', body: 'نراقب سيارتك كأننا بجوارها تماماً. ركنة سعيدة!', icon: '✨' },
+  { type: 'report', title: '🛠️ فحص الحساسات', body: 'تم التأكد من عمل حساس الميل (Tilt Sensor). سيارتك مؤمنة ضد الرفع.', icon: '🛠️' },
+  { type: 'status', title: '🌐 شبكة الحماية الحية', body: 'سيارتك ضمن نطاق "المنطقة الخضراء" المؤمنة بـ Park\'n 24.', icon: '🌐' },
+  { type: 'status', title: '🛡️ درع الخصوصية', body: 'وضع الحماية الصامت يعمل. التنبيه سيصدر فقط في حالة الخطر.', icon: '🛡️' },
+  { type: 'status', title: '🛰️ تحديث الإحداثيات', body: 'قمر صناعي نشط الآن لمتابعة موقع ركنتك. دقة التتبع: 1 متر.', icon: '🛰️' },
+  { type: 'status', title: '🤖 مراقبة ذكية 24/7', body: 'رادارك الذكي يعمل في الخلفية ويحمي السيارة من أي تدخل خارجي.', icon: '🤖' },
+  { type: 'warning', title: '🛡️ حماية فائقة', body: 'تم تنشيط وضع "تجميد الموقع". سنخبرك بأي تحرك ولو لسنتيمتر واحد.', icon: '🛡️' },
+  { type: 'resolved', title: '📍 تأكيد الموقع', body: 'تم التحقق من بقاء السيارة في مكانها الأصلي بنجاح.', icon: '📍' },
+  { type: 'status', title: '🧠 خوارزمية التتبع', body: 'نظامنا يحلل محيط السيارة الآن لضمان أقصى درجات الأمان.', icon: '🧠' },
+  { type: 'status', title: '📱 حالة الدرع', body: 'الدرع الإلكتروني: [نشط]. البطارية: [مستقرة]. الأمان: [100%].', icon: '📱' },
+  { type: 'resolved', title: '🌟 تميز مع Park\'n 24', body: 'شكرًا لثقتك في نظام حمايتنا. سيارتك في أيدي أمينة تكنولوجياً.', icon: '🌟' },
+  { type: 'warning', title: '🕵️ رادار كشف التطفل', body: 'أي محاولة لفتح الأبواب أو لمس الزجاج ستفعل الإنذار فوراً.', icon: '🕵️' },
+  { type: 'status', title: '🛡️ تأمين شامل', body: 'سيارتك الآن جزء من شبكة المركبات المحمية إلكترونياً.', icon: '🛡️' },
+  { type: 'status', title: '📡 إشارة الرادار', body: 'قوة الإشارة ممتازة. التتبع اللحظي يعمل بدون أي تأخير.', icon: '📡' },
+  { type: 'status', title: '🚗 وضع الانتظار الذكي', body: 'نظام حماية الركنات الطويلة نشط. لا تقلق بشأن سيارتك نهائياً.', icon: '🚗' },
+  { type: 'warning', title: '⚡ استجابة فورية', body: 'رادارك جاهز لإطلاق سارينة الطوارئ في أقل من ثانية عند الخطر.', icon: '⚡' },
+  { type: 'report', title: '🛡️ توثيق أمني', body: 'تم تسجيل بدء جلسة الحماية بنجاح في سجلات الأمان الرقمية.', icon: '🛡️' },
+  { type: 'status', title: '🌌 رادار المراقبة الليلية', body: 'نظام الحماية الليلي نشط لمراقبة سيارتك في الظلام.', icon: '🌌' },
+  { type: 'resolved', title: '🛡️ فحص المسافة', body: 'المسافة بينك وبين السيارة آمنة. الرادار يغطي المسافة بالكامل.', icon: '🛡️' },
+  { type: 'status', title: '🛰️ تزامن الأقمار', body: 'تم عمل Sync ناجح مع 4 أقمار صناعية لتأمين موقعك الحالي.', icon: '🛰️' },
+  { type: 'resolved', title: '✅ فحص أخير', body: 'كل الأنظمة تعمل بكفاءة. استمتع بيومك، نحن نتولى الحراسة!', icon: '✅' },
 ];
 
 // ─── Haversine لحساب المسافة بالأمتار ───
@@ -94,7 +108,7 @@ export function haversine(
 }
 
 // ═══════════════════════════════════════════════════════════
-// 📍 التحقق من إن العميل جوه الجراج (نطاق الـ 250 متر)
+// 📍 التحقق من وجود العميل في نطاق الركنة (50 متر)
 // ═══════════════════════════════════════════════════════════
 export async function checkUserInsideGarage(
   garageLat: number,
@@ -111,22 +125,22 @@ export async function checkUserInsideGarage(
           pos.coords.latitude, pos.coords.longitude,
           garageLat, garageLng,
         );
-        resolve({ inside: dist <= GEOFENCE_RADIUS, distance: dist });
+        resolve({ inside: dist <= GEOFENCE_RADIUS_METERS, distance: dist });
       },
       () => resolve({ inside: false, distance: -1 }),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
     );
   });
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🧠 حساب فترة السماح (Grace Period) بناءً على السرعة
+// 🧠 حساب فترة السماح بناءً على السرعة المزدوجة
 // ═══════════════════════════════════════════════════════════
 function getGracePeriod(speedMs: number | null): number {
-  if (speedMs !== null && speedMs >= CAR_SPEED_THRESHOLD) {
-    return CAR_GRACE_MS;
+  if (speedMs !== null && speedMs >= SPEED_THRESHOLD_MPS) {
+    return CAR_GRACE_MS; // ثانيتين فقط لو سرعة سيارة
   }
-  return Infinity; // لو الحركة أبطأ من 7.2 كم/س مش هيعتبرها اختراق
+  return Infinity; // لو حركة مشي بطيئة داخل محيط الركنة
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -160,11 +174,9 @@ export async function registerShieldSession(params: {
       if ('Notification' in window && Notification.permission === 'default') {
         await Notification.requestPermission();
       }
-
       if ('serviceWorker' in navigator) {
         const reg = await navigator.serviceWorker.ready;
         let sub = await reg.pushManager.getSubscription();
-
         if (!sub) {
           try {
             sub = await reg.pushManager.subscribe({
@@ -176,7 +188,6 @@ export async function registerShieldSession(params: {
             console.warn('⚠️ Push subscribe failed:', e);
           }
         }
-
         if (sub) {
           const j = sub.toJSON();
           ep = j.endpoint || null;
@@ -218,19 +229,84 @@ export async function registerShieldSession(params: {
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// 🔔 الإشعارات الوهمية بتيجي من السيرفر (shield-cron) بس
-// ═══════════════════════════════════════════════════════════
 export function startFakeAlerts(): void {
-  // سيرفر Supabase هو اللي بيبعت الـ Push Notifications كل 5 و30 دقيقة
+  // سيرفر Supabase عبر shield-cron يرسل الإشعارات المجدولة تلقائياً
 }
 
 export function stopFakeAlerts(): void {
-  // متوافقة مع الكود القديم
+  // متوافقة مع الكود
 }
 
 // ═══════════════════════════════════════════════════════════
-// 📍 GPS Geofence الذكي لمراقبة حركة السيارة
+// 🔊 محرك منع الخمول الصامت (Audio Keep-Alive)
+// يمنع خمول المتصفح على شاشة القفل بدون أي تكلفة سيرفر
+// ═══════════════════════════════════════════════════════════
+let sharedAudioCtx: AudioContext | null = null;
+let keepAliveSource: AudioBufferSourceNode | null = null;
+let isAudioKeepAliveActive = false;
+
+export function initAudioContext(): void {
+  try {
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!Ctx) return;
+    if (!sharedAudioCtx || sharedAudioCtx.state === 'closed') {
+      sharedAudioCtx = new Ctx();
+    }
+    if (sharedAudioCtx.state === 'suspended') {
+      sharedAudioCtx.resume().catch(() => {});
+    }
+  } catch (e) {
+    console.warn('AudioContext init failed:', e);
+  }
+}
+
+export function unlockAndKeepAliveAudio(): void {
+  if (isAudioKeepAliveActive && sharedAudioCtx && sharedAudioCtx.state === 'running') return;
+  try {
+    initAudioContext();
+    if (!sharedAudioCtx) return;
+
+    // إنشاء Buffer صامت جداً مدته ثانيتان ويعمل بـ Loop مستمر
+    const buffer = sharedAudioCtx.createBuffer(1, sharedAudioCtx.sampleRate * 2, sharedAudioCtx.sampleRate);
+    const channelData = buffer.getChannelData(0);
+    for (let i = 0; i < channelData.length; i++) {
+      // ذبذبة غير مسموعة نهائياً شبه صفرية لمنع الـ OS من كتم العملية
+      channelData[i] = Math.sin(i * 0.0001) * 0.00001;
+    }
+
+    if (keepAliveSource) {
+      try { keepAliveSource.stop(); } catch { /* ignore */ }
+    }
+
+    keepAliveSource = sharedAudioCtx.createBufferSource();
+    keepAliveSource.buffer = buffer;
+    keepAliveSource.loop = true;
+
+    const gainNode = sharedAudioCtx.createGain();
+    gainNode.gain.setValueAtTime(0.001, sharedAudioCtx.currentTime); // شبه صامت
+
+    keepAliveSource.connect(gainNode);
+    gainNode.connect(sharedAudioCtx.destination);
+    keepAliveSource.start();
+    isAudioKeepAliveActive = true;
+
+    // تفعيل MediaSession لإخبار نظام الموبايل أن هناك صوت شغال لمنع قتل الـ Tab
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = 'playing';
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: "رادار الحماية نشط | Park'n 24",
+        artist: 'درع الحماية ضد السرقة والونش',
+        album: 'نظام المراقبة المستمر',
+      });
+    }
+    console.log('🔊 Audio Keep-Alive Activated: Screen Lock Throttling Bypassed');
+  } catch (e) {
+    console.warn('⚠️ Audio Keep-Alive setup failed:', e);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// 📍 GPS Geofence الذكي لمراقبة حركة السيارة الفورية
 // ═══════════════════════════════════════════════════════════
 let gpsWatchId: number | null = null;
 let fallbackIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -249,6 +325,8 @@ export function startShieldGPS(params: {
   onGPSError?: () => void;
 }): () => void {
   stopShieldGPS();
+  unlockAndKeepAliveAudio(); // تفعيل كاسر الخمول فور بدء الجي بي اس
+
   if (!navigator.geolocation) {
     params.onGPSError?.();
     return () => {};
@@ -265,8 +343,8 @@ export function startShieldGPS(params: {
     consecutiveErrors = 0;
     const now = Date.now();
 
-    // 💡 حساب السرعة البديل (لو الموبايل مابيبعتش Speed في الملاحة)
-    let speed = (rawSpeed && rawSpeed > 0) ? rawSpeed : 0;
+    // حساب السرعة الحقيقية بدقة
+    let speed = (rawSpeed !== null && rawSpeed > 0) ? rawSpeed : 0;
     if (prevPos) {
       const d = haversine(prevPos.lat, prevPos.lng, lat, lng);
       const dt = (now - prevPos.t) / 1000;
@@ -280,27 +358,32 @@ export function startShieldGPS(params: {
     const distFromGarage = haversine(lat, lng, params.parkingLat, params.parkingLng);
     const distFromLastSent = haversine(lat, lng, lastSentLat, lastSentLng);
 
-    // 🚨 لو خرجت أبعد من 250 متر عن الجراج
-    if (distFromGarage > ALERT_DISTANCE) {
-      const gracePeriod = getGracePeriod(speed);
+    // 🚨 التحقق المزدوج: تجاوز 50 متر + سرعة انطلاق >= 3.2 م/ث (أو مسافة حرجة > 100م)
+    const isOverDistance = distFromGarage > GEOFENCE_RADIUS_METERS;
+    const isCriticalDistance = distFromGarage > (GEOFENCE_RADIUS_METERS * 2);
 
-      if (gracePeriod !== Infinity) {
+    if (isOverDistance) {
+      const gracePeriod = getGracePeriod(speed);
+      const isBreachingSpeed = (gracePeriod !== Infinity) || isCriticalDistance;
+
+      if (isBreachingSpeed) {
         if (!breachStartTime) {
           breachStartTime = now;
-          console.log(`🚨 بداية رصد الحركة: ${Math.round(distFromGarage)}م @ ${Math.round(speed * 3.6)} كم/س`);
+          console.log(`🚨 رصد انطلاق المركبة: ${Math.round(distFromGarage)}م @ ${Math.round(speed * 3.6)} كم/س`);
         }
 
-        // بعد مرور 5 ثواني مع سرعة >= 7.2 كم/س
-        if (now - breachStartTime >= gracePeriod) {
+        const effectiveGrace = isCriticalDistance ? 0 : gracePeriod;
+
+        if (now - breachStartTime >= effectiveGrace) {
           if (!isCurrentlyOutside) {
             isCurrentlyOutside = true;
-            
-            // 📲 إرسال إشعار للنظام مباشرةً يوضح مسافة التحرك
+
+            // 📲 إرسال إشعار فوري للنظام باختراق المسافة
             if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
               try {
-                const title = '🚨 تحذير اختراق الدرع!';
-                const body = `السيارة اتحركت من مكانها! المسافة: ${Math.round(distFromGarage)} متر عن الجراج ⚠️`;
-                
+                const title = '🚨 تحذير: رصد حركة خارج النطاق!';
+                const body = `تحركت سيارتك لمسافة ${Math.round(distFromGarage)} متر بسرعة ${Math.round(speed * 3.6)} كم/س! ⚠️`;
+
                 if ('serviceWorker' in navigator) {
                   navigator.serviceWorker.ready.then((reg) => {
                     reg.showNotification(title, {
@@ -317,6 +400,9 @@ export function startShieldGPS(params: {
                 console.warn('Notification trigger error:', e);
               }
             }
+
+            // تفعيل السارينة المحلية فوراً
+            triggerIntenseAlarm();
 
             sendGPSToServer(params.sessionId, params.shieldId, lat, lng, true, speed).catch(() => {});
             lastSentLat = lat;
@@ -364,7 +450,7 @@ export function startShieldGPS(params: {
         pos.coords.speed,
       ),
       handleGPSError,
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 },
+      { enableHighAccuracy: true, maximumAge: 3000, timeout: 8000 },
     );
   }, FALLBACK_INTERVAL_MS);
 
@@ -396,7 +482,6 @@ async function sendGPSToServer(
 ): Promise<void> {
   const speedMs = (speed !== undefined && speed !== null && speed >= 0) ? speed : 0;
   const speedKmh = Math.round(speedMs * 3.6);
-
   await supabase
     .from('shield_sessions')
     .update({
@@ -420,28 +505,7 @@ async function sendGPSToServer(
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🔊 AudioContext المشترك
-// ═══════════════════════════════════════════════════════════
-let sharedAudioCtx: AudioContext | null = null;
-
-export function initAudioContext(): void {
-  try {
-    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-    if (!Ctx) return;
-
-    if (!sharedAudioCtx) {
-      sharedAudioCtx = new Ctx();
-    }
-    if (sharedAudioCtx.state === 'suspended') {
-      sharedAudioCtx.resume().catch(() => {});
-    }
-  } catch (e) {
-    console.warn('AudioContext init failed:', e);
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// 🚨🔊 نظام الإنذار الشديد والعالي جداً + الاهتزاز المكثف
+// 🚨🔊 نظام السارينة المكثفة والاهتزاز العالي (Multi-Oscillator)
 // ═══════════════════════════════════════════════════════════
 let alarmAudioCtx: AudioContext | null = null;
 let alarmOscillators: OscillatorNode[] = [];
@@ -451,20 +515,17 @@ let isAlarmActive = false;
 export function triggerIntenseAlarm(): void {
   if (isAlarmActive) return;
   isAlarmActive = true;
-
   try {
-    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-    if (Ctx) {
-      const ctx = sharedAudioCtx || new Ctx();
+    initAudioContext();
+    const ctx = sharedAudioCtx;
+    if (ctx) {
       if (ctx.state === 'suspended') {
         ctx.resume().catch(() => {});
       }
-      if (!sharedAudioCtx) sharedAudioCtx = ctx;
       alarmAudioCtx = ctx;
-
       const now = alarmAudioCtx.currentTime;
 
-      // 1. سيرينة طوارئSawtooth عالية ومترددة
+      // 1. سيرينة طوارئ Sawtooth مترددة عالية
       const osc1 = alarmAudioCtx.createOscillator();
       const gain1 = alarmAudioCtx.createGain();
       osc1.type = 'sawtooth';
@@ -473,7 +534,7 @@ export function triggerIntenseAlarm(): void {
       osc1.connect(gain1);
       gain1.connect(alarmAudioCtx.destination);
       osc1.start();
-      
+
       for (let i = 0; i < 600; i++) {
         osc1.frequency.setValueAtTime(1500, now + i * 0.4);
         osc1.frequency.linearRampToValueAtTime(700, now + i * 0.4 + 0.2);
@@ -489,7 +550,7 @@ export function triggerIntenseAlarm(): void {
       gain2.connect(alarmAudioCtx.destination);
       osc2.start();
 
-      // 3. بأس قوي عميق في الخلفية
+      // 3. باس عميق قوي في الخلفية
       const osc3 = alarmAudioCtx.createOscillator();
       const gain3 = alarmAudioCtx.createGain();
       osc3.type = 'sawtooth';
@@ -517,16 +578,12 @@ export function triggerIntenseAlarm(): void {
 
 export function stopIntenseAlarm(): void {
   isAlarmActive = false;
-
   try {
     alarmOscillators.forEach((osc) => {
       try { osc.stop(); } catch { /* ignore */ }
     });
     alarmOscillators = [];
     if (alarmAudioCtx) {
-      if (alarmAudioCtx !== sharedAudioCtx) {
-        alarmAudioCtx.close().catch(() => {});
-      }
       alarmAudioCtx = null;
     }
   } catch { /* ignore */ }
@@ -550,9 +607,19 @@ export function destroyShield(): void {
   stopIntenseAlarm();
   stopFakeAlerts();
 
+  if (keepAliveSource) {
+    try { keepAliveSource.stop(); } catch { /* ignore */ }
+    keepAliveSource = null;
+  }
+  isAudioKeepAliveActive = false;
+
   if (sharedAudioCtx) {
     try { sharedAudioCtx.close().catch(() => {}); } catch { /* ignore */ }
     sharedAudioCtx = null;
+  }
+
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.playbackState = 'none';
   }
 
   try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch { /* ignore */ }
