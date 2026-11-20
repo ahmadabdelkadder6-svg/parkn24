@@ -3,28 +3,18 @@
 // 🛡️ Tactical Radar Session Screen (Active vs Inactive HUD States)
 // ═══════════════════════════════════════════════════════════
 
-import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { motion } from 'framer-motion';
 import {
   Clock,
   Car,
-  Sparkles,
   MapPin,
-  ShieldCheck,
-  ShieldAlert,
   AlertTriangle,
   Radio,
-  Crosshair,
-  XCircle,
 } from 'lucide-react';
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
-import {
-  getPendingArrival,
-  clearPendingArrival,
-  stopArrivalTracking,
-} from '../utils/mapsNavigation';
 import {
   initAudioContext,
   startShieldGPS,
@@ -99,7 +89,7 @@ const TacticalRadarScope = memo(function TacticalRadarScope({
       <div className={`absolute inset-x-0 top-1/2 h-[1px] pointer-events-none ${isShieldActive ? 'bg-sky-500/25' : 'bg-red-500/15'}`} />
       <div className={`absolute inset-y-0 left-1/2 w-[1px] pointer-events-none ${isShieldActive ? 'bg-sky-500/25' : 'bg-red-500/15'}`} />
 
-      {/* 3. شعاع المسح الراداري الدوار + نبض الأمان (يعمل فقط لو الدرع نشط) */}
+      {/* 3. شعاع المسح الراداري الدوار + نبض الأمان */}
       {isShieldActive ? (
         <>
           <div
@@ -116,13 +106,12 @@ const TacticalRadarScope = memo(function TacticalRadarScope({
           />
         </>
       ) : (
-        /* خط متقاطع مائل للرادار المتوقف */
         <div className="absolute inset-4 rounded-full border border-red-500/10 pointer-events-none flex items-center justify-center">
           <div className="w-full h-[1px] bg-red-500/20 -rotate-45" />
         </div>
       )}
 
-      {/* 4. نقطة الهدف: العربية في المركز مع وميض الحالة */}
+      {/* 4. نقطة الهدف: العربية في المركز */}
       <div className="relative z-10 flex flex-col items-center justify-center">
         <div className="relative flex items-center justify-center">
           <div
@@ -238,7 +227,6 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
 
   return (
     <>
-      {/* شريط العداد التكتيكي المدمج مع الرادار */}
       <div
         className="flex items-center justify-between w-full max-w-xs px-4 py-2 rounded-2xl border mb-1"
         style={{
@@ -258,7 +246,6 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
           {formatTime(elapsed)}
         </div>
       </div>
-
       {showAutoEndWarning && (
         <div
           className="w-full max-w-md rounded-xl px-3 py-1.5 mb-2 text-center border-2"
@@ -300,8 +287,6 @@ export default function SessionScreen() {
   const autoEndedRef = useRef(false);
   const [ending, setEnding] = useState(false);
   const [endedSessionId, setEndedSessionId] = useState<string | null>(null);
-
-  // 🚨 شاشة اختراق الدرع
   const [showBreach, setShowBreach] = useState(false);
 
   useEffect(() => {
@@ -378,12 +363,10 @@ export default function SessionScreen() {
   useEffect(() => {
     if (!userPlate && !userPhone) return;
     let cancelled = false;
-
     const refetch = async () => {
       if (cancelled || !isMountedRef.current) return;
       try { await fetchAll(); } catch (e) { console.error('❌ Realtime fetch error:', e); }
     };
-
     const channel = supabase.channel(`customer-session-live-${userPlate || userPhone}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, async (payload) => {
         const newRow = payload.new as any;
@@ -391,7 +374,6 @@ export default function SessionScreen() {
         if (isMySessionRow(newRow) || isMySessionRow(oldRow)) await refetch();
       })
       .subscribe();
-
     realtimeChannelRef.current = channel;
 
     const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
@@ -410,7 +392,7 @@ export default function SessionScreen() {
   }, [userPlate, userPhone, fetchAll, isMySessionRow]);
 
   // ═══════════════════════════════════════════════════════════
-  // 🛡️ تفعيل الدرع والـ GPS مع حلقة الصوت الصامتة
+  // 🛡️ تفعيل الدرع والـ GPS بالإحداثيات الدقيقة
   // ═══════════════════════════════════════════════════════════
   useEffect(() => {
     if (!activeSession || !garage) return;
@@ -418,8 +400,13 @@ export default function SessionScreen() {
 
     try { initAudioContext(); } catch {}
 
-    const parkingLat = (garage as any).lat ?? 30.0444;
-    const parkingLng = (garage as any).lng ?? 31.2357;
+    // الأولوية لإحداثيات الركن المسجلة في الجلسة، ثم إحداثيات الجراج كاحتياطي
+    const pLat = (activeSession as any).parking_lat || (activeSession as any).parkingLat || (garage as any).lat || 30.0444;
+    const pLng = (activeSession as any).parking_lng || (activeSession as any).parkingLng || (garage as any).lng || 31.2357;
+
+    const parkingLat = Number(pLat);
+    const parkingLng = Number(pLng);
+
     let cancelled = false;
 
     registerShieldSession({
@@ -449,7 +436,7 @@ export default function SessionScreen() {
       destroyShield();
       setShowBreach(false);
     };
-  }, [activeSession?.id, garage?.id, userPhone]);
+  }, [activeSession?.id, (activeSession as any)?.parking_lat, (activeSession as any)?.parkingLat, garage?.id, userPhone]);
 
   // 🏁 إنهاء الجلسة يدويًا
   const handleEndSession = useCallback(async () => {
@@ -464,7 +451,6 @@ export default function SessionScreen() {
       const elapsedSec = Math.floor((getServerNow() - activeStartMs) / 1000);
       await endSession(activeSession.id, Math.max(0, elapsedSec), 'cash', 0);
       const nowIso = new Date().toISOString();
-
       await supabase.from('shield_sessions')
         .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id)
@@ -493,7 +479,7 @@ export default function SessionScreen() {
     }
   }, [ending, activeSession, activeStartMs, endSession, acknowledgeSession, setSelectedGarageId, setScreen, userPhone]);
 
-  // 🚨 معالج إيقاف الإنذار والإنهاء الفوري من زرار الاختراق
+  // 🚨 معالج إيقاف الإنذار والإنهاء من شاشة الاختراق
   const handleBreachAction = useCallback(async (isDriver: boolean) => {
     stopIntenseAlarm();
     destroyShield();
@@ -518,7 +504,6 @@ export default function SessionScreen() {
     try {
       await endSession(activeSession.id, AUTO_END_SECONDS, 'cash', 0);
       const nowIso = new Date().toISOString();
-
       await supabase.from('shield_sessions')
         .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id)
@@ -607,7 +592,7 @@ export default function SessionScreen() {
             </div>
           )}
 
-          {/* 🛰️ رادار الحماية التكتيكي الحي (نشط أو خامل حسب الدرع) */}
+          {/* 🛰️ رادار الحماية التكتيكي الحي */}
           <TacticalRadarScope
             carPlate={currentPlate}
             isShieldActive={isShieldActive}
@@ -619,7 +604,7 @@ export default function SessionScreen() {
             onAutoEnd={handleAutoEnd}
           />
 
-          {/* 💡 بطاقة التوجيه والتحذير الأمني النفسي حسب حالة الدرع */}
+          {/* 💡 بطاقة التوجيه والتحذير الأمني النفسي */}
           {isShieldActive ? (
             <div
               className="w-full max-w-md rounded-2xl p-2.5 text-right border"
@@ -632,7 +617,7 @@ export default function SessionScreen() {
               <div className="flex items-start gap-2 mb-1.5">
                 <span className="text-sm shrink-0">💡</span>
                 <p className="text-[11px] font-black text-amber-300 leading-snug">
-                  لضمان استمرار الحماية، يُرجى ترك هذه الصفحة في الخلفية وعدم إغلاقها.
+                  لضمان استمرار رادار الحماية، يُرجى ترك هذه الصفحة في الخلفية وعدم إغلاقها.
                 </p>
               </div>
               <div className="flex items-start gap-2 pt-1.5 border-t border-amber-500/20">
@@ -644,7 +629,7 @@ export default function SessionScreen() {
             </div>
           ) : (
             <div
-              className="w-full max-w-md rounded-2xl p-3 text-right border animate-pulse"
+              className="w-full max-w-md rounded-2xl p-3 text-right border"
               style={{
                 background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(10, 22, 40, 0.95) 100%)',
                 borderColor: 'rgba(239, 68, 68, 0.45)',
@@ -770,7 +755,7 @@ export default function SessionScreen() {
               <div className="flex flex-col gap-3">
                 <button
                   onClick={() => handleBreachAction(true)}
-                  className="w-full py-3.5 rounded-xl font-black text-white text-sm active:scale-95 transition-all"
+                  className="w-full py-3.5 rounded-xl font-black text-white text-sm active:scale-95 transition-all cursor-pointer"
                   style={{
                     background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
                     boxShadow: '0 4px 16px rgba(34,197,94,0.4)',
@@ -780,7 +765,7 @@ export default function SessionScreen() {
                 </button>
                 <button
                   onClick={() => handleBreachAction(false)}
-                  className="w-full py-3.5 rounded-xl font-black text-white text-sm active:scale-95 transition-all"
+                  className="w-full py-3.5 rounded-xl font-black text-white text-sm active:scale-95 transition-all cursor-pointer"
                   style={{
                     background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
                     boxShadow: '0 4px 16px rgba(239,68,68,0.4)',
