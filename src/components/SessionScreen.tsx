@@ -580,7 +580,7 @@ export default function SessionScreen() {
             <div className="flex items-start gap-2 mb-1.5">
               <span className="text-sm shrink-0">💡</span>
               <p className="text-[11px] font-black text-amber-300 leading-snug">
-                لضمان استمرار رادار التتبع والإنذار بالسرقة، يُرجى ترك هذه الصفحة في الخلفية وعدم إغلاقها.
+                لضمان استمرار رادار الحماية ، يُرجى ترك هذه الصفحة في الخلفية وعدم إغلاقها.
               </p>
             </div>
             <div className="flex items-start gap-2 pt-1.5 border-t border-amber-500/20">
