@@ -1,10 +1,10 @@
-// public/sw.js - Park'n 24 Service Worker v18 (Bulletproof - Full Logic Preserved)
-// ✅ الاهتزازات راجعة زي v17 بالظبط
-// ✅ أضف type: 'theft' لـ isBreach
+// public/sw.js - Park'n 24 Service Worker v19 (Tactical Radar & Breach Engine)
+// ═══════════════════════════════════════════════════════════════════════════
+// 🛡️ Bulletproof SW: Geofence Breach + Radar Push + Valet Alarm + Keep-Alive
+// ═══════════════════════════════════════════════════════════════════════════
 
-const CACHE_NAME    = 'parkn24-v18';
+const CACHE_NAME    = 'parkn24-v19';
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
-
 const recentNotifications = new Map();
 const DEDUP_WINDOW_MS     = 3000;
 
@@ -20,7 +20,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 Service Worker Installed (v18)');
+      console.log('📦 Service Worker Installed (v19 - Tactical Radar Engine)');
       return cache.addAll(STATIC_ASSETS).catch((err) => {
         console.warn('⚠️ cache.addAll partial fail (non-fatal):', err);
       });
@@ -41,7 +41,7 @@ self.addEventListener('activate', (event) => {
       )
       .then(() => self.clients.claim())
       .then(() => {
-        console.log('✅ Service Worker v18 activated & controlling clients');
+        console.log('✅ Service Worker v19 activated & controlling clients');
       })
   );
 });
@@ -71,16 +71,16 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// ─── Helper: عرض إشعار بأمان بدون crash ───────────────────────
+// ─── Helper: عرض إشعار بأمان بدون Crash للمتصفح ───────────────
 async function safeShowNotification(title, options) {
   try {
-    await self.registration.showNotification(title || 'Park\'n 24', options);
+    await self.registration.showNotification(title || "Park'n 24", options);
     return true;
   } catch (err) {
     console.error('❌ showNotification failed, retrying minimal options:', err);
     try {
-      await self.registration.showNotification(title || 'Park\'n 24', {
-        body: (options && options.body) || 'تنبيه جديد من Park\'n 24',
+      await self.registration.showNotification(title || "Park'n 24", {
+        body: (options && options.body) || "تنبيه جديد من Park'n 24",
         icon: '/icons/icon-192x192.png',
         badge: '/icons/icon-192x192.png',
         tag: (options && options.tag) || ('parkn24-fallback-' + Date.now()),
@@ -98,7 +98,7 @@ async function safeShowNotification(title, options) {
 // ─── 5. Push ──────────────────────────────────────────────────
 self.addEventListener('push', (event) => {
   const pushWork = (async () => {
-    let title     = 'Park\'n 24';
+    let title     = "Park'n 24";
     let body      = '';
     let icon      = '/icons/icon-192x192.png';
     let badge     = '/icons/icon-192x192.png';
@@ -109,7 +109,6 @@ self.addEventListener('push', (event) => {
     try {
       if (event.data) {
         let payload = null;
-
         // 1) قراءة التنسيق كـ JSON
         try {
           payload = event.data.json();
@@ -130,8 +129,7 @@ self.addEventListener('push', (event) => {
         }
 
         if (payload) {
-          console.log('📨 Push received in SW v18:', payload);
-
+          console.log('📨 Push received in SW v19:', payload);
           if (payload.notification) {
             title = payload.notification.title || title;
             body  = payload.notification.body  || body;
@@ -174,7 +172,7 @@ self.addEventListener('push', (event) => {
     }
 
     if (!body) {
-      body = 'في تحديث جديد من Park\'n 24';
+      body = "في تحديث جديد من Park'n 24";
     }
 
     const dedupKey  = tag || ('parkn24-' + title + '-' + body);
@@ -185,32 +183,35 @@ self.addEventListener('push', (event) => {
       console.log('🔁 Dedup skip:', dedupKey);
       return;
     }
-    recentNotifications.set(dedupKey, now);
 
+    recentNotifications.set(dedupKey, now);
     for (const [k, t] of recentNotifications.entries()) {
       if (now - t > 30000) recentNotifications.delete(k);
     }
 
     // ═══════════════════════════════════════════════════════════
-    // 🛡️ إشعارات الحماية والتنبيهات الأمنية
+    // 🛡️ إشعارات الحماية والتنبيهات الأمنية واختراق الجيوفنس
     // ═══════════════════════════════════════════════════════════
     const isShield = (typeof tag === 'string' && tag.startsWith('shield-'))
       || extraData.type === 'shield'
-      || extraData.type === 'shield-warning';
+      || extraData.type === 'shield-warning'
+      || extraData.type === 'radar';
 
-    // ✅ أضف type: 'theft' — ده التعديل الوحيد على v17
+    // 🚨 التحقق من نوع الاختراق (طوارئ قصوى: سرقة / ونش / خروج من 50م)
     const isBreach = tag === 'shield-breach'
+      || (typeof tag === 'string' && tag.includes('breach'))
       || extraData.type === 'shield-breach'
       || extraData.type === 'breach'
-      || extraData.type === 'theft';
+      || extraData.type === 'theft'
+      || extraData.type === 'tow';
 
     let options;
 
     if (isBreach) {
-      // 🚨 تنبيه حركة - اهتزاز عنيف وتوجيه لـ /garage
+      // 🚨 تنبيه انطلاق/ونش - اهتزاز مكثف وأزرار تفاعل فورية
       const breachTargetUrl = extraData.url || url || '/garage';
       options = {
-        body: body || 'تنبيه حركة: السيارة اتحركت من مكان الركن! افتح التطبيق فوراً',
+        body: body || 'تنبيه حركة: السيارة تحركت خارج نطاق الركن! افتح التطبيق فوراً ⚠️',
         icon,
         badge,
         vibrate: [
@@ -225,12 +226,12 @@ self.addEventListener('push', (event) => {
         timestamp: now,
         data: { url: breachTargetUrl, type: 'shield-breach', ...extraData },
         actions: [
-          { action: 'open',    title: '🚨 افتح التطبيق فوراً' },
+          { action: 'open',    title: '🚨 فتح الرادار فوراً' },
           { action: 'dismiss', title: '✅ أنا اللي سايق'       },
         ],
       };
 
-      await safeShowNotification(title || '🚨 تنبيه حركة!', options);
+      await safeShowNotification(title || '🚨 تحذير: حركة مفاجئة للسيارة!', options);
 
       try {
         const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
@@ -251,13 +252,14 @@ self.addEventListener('push', (event) => {
       const isWarning = (typeof tag === 'string' && tag.includes('warning'))
         || (typeof extraData.type === 'string' && extraData.type.includes('warning'));
       const shieldTargetUrl = extraData.url || url || '/garage';
+
       options = {
-        body: body || 'تحديث من نظام المراقبة',
+        body: body || 'تحديث أمني من رادار الحماية',
         icon,
         badge,
         vibrate: isWarning
           ? [500, 150, 500, 150, 800]
-          : [200, 100, 200],
+          : [200, 100, 200], // اهتزاز الرادار التكتيكي الخفيف
         requireInteraction: isWarning,
         tag,
         renotify: isWarning,
@@ -266,7 +268,7 @@ self.addEventListener('push', (event) => {
         data: { url: shieldTargetUrl, type: extraData.type || 'shield', ...extraData },
       };
     } else {
-      // التنبيهات الافتراضية للجراج
+      // 🚗 التنبيهات الافتراضية للجراج والفاليه
       const defaultTargetUrl = url || extraData.url || '/garage';
       options = {
         body: body || '🚗 تقترب سيارة جديدة من الجراج الآن، استعد!',
@@ -301,12 +303,12 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const notifData = event.notification.data || {};
 
-  // ✅ أضف type: 'theft'
-  const isBreach  = notifData.type === 'shield-breach'
+  const isBreach = notifData.type === 'shield-breach'
     || notifData.type === 'breach'
-    || notifData.type === 'theft';
+    || notifData.type === 'theft'
+    || notifData.type === 'tow';
 
-  // ✅ العميل داس "أنا اللي سايق" → ابعت للتطبيق يوقف التنبيه
+  // ✅ العميل ضغط "أنا اللي سايق" → إرسال رسالة للتطبيق لوقف سارينة الطوارئ فوراً
   if (event.action === 'dismiss') {
     if (isBreach) {
       event.waitUntil(
@@ -320,7 +322,7 @@ self.addEventListener('notificationclick', (event) => {
     return;
   }
 
-  // 🎯 التوجيه الافتراضي الثابت: /garage (مفيش إجبار على /session)
+  // 🎯 التوجيه الثابت والآمن: /garage مع التركيز على التاب المفتوح
   const targetUrl = notifData.url || '/garage';
 
   event.waitUntil(
