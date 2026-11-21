@@ -131,6 +131,7 @@ const TacticalRadarScope = memo(function TacticalRadarScope({
               <AlertTriangle size={20} className="text-red-400 animate-pulse" />
             )}
           </div>
+
           {/* نقطة الحالة النابضة */}
           {isShieldActive ? (
             <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
@@ -370,12 +371,10 @@ export default function SessionScreen() {
   useEffect(() => {
     if (!userPlate && !userPhone) return;
     let cancelled = false;
-
     const refetch = async () => {
       if (cancelled || !isMountedRef.current) return;
       try { await fetchAll(); } catch (e) { console.error('❌ Realtime fetch error:', e); }
     };
-
     const channel = supabase.channel(`customer-session-live-${userPlate || userPhone}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, async (payload) => {
         const newRow = payload.new as any;
@@ -383,7 +382,6 @@ export default function SessionScreen() {
         if (isMySessionRow(newRow) || isMySessionRow(oldRow)) await refetch();
       })
       .subscribe();
-
     realtimeChannelRef.current = channel;
 
     const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
@@ -407,9 +405,7 @@ export default function SessionScreen() {
   useEffect(() => {
     if (!activeSession || !garage) return;
     if ((activeSession.shieldCost ?? 0) <= 0) return;
-
     try { initAudioContext(); } catch {}
-
     const pLat = (activeSession as any).parking_lat || (activeSession as any).parkingLat || (garage as any).lat || 30.0444;
     const pLng = (activeSession as any).parking_lng || (activeSession as any).parkingLng || (garage as any).lng || 31.2357;
     const parkingLat = Number(pLat);
@@ -456,7 +452,6 @@ export default function SessionScreen() {
       const elapsedSec = Math.floor((getServerNow() - activeStartMs) / 1000);
       await endSession(activeSession.id, Math.max(0, elapsedSec), 'cash', 0);
       const nowIso = new Date().toISOString();
-
       await supabase.from('shield_sessions')
         .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id)
@@ -472,6 +467,7 @@ export default function SessionScreen() {
 
       if (typeof acknowledgeSession === 'function') acknowledgeSession(activeSession.id);
       toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
+
       if (isMountedRef.current) {
         setSelectedGarageId(null);
         setScreen('list');
@@ -509,7 +505,6 @@ export default function SessionScreen() {
     try {
       await endSession(activeSession.id, AUTO_END_SECONDS, 'cash', 0);
       const nowIso = new Date().toISOString();
-
       await supabase.from('shield_sessions')
         .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id)
@@ -525,6 +520,7 @@ export default function SessionScreen() {
 
       if (typeof acknowledgeSession === 'function') acknowledgeSession(activeSession.id);
       toast.success('تم إنهاء الجلسة تلقائياً (6 ساعات) ⏰', { duration: 5000 });
+
       if (isMountedRef.current) {
         setSelectedGarageId(null);
         setScreen('list');
@@ -536,12 +532,22 @@ export default function SessionScreen() {
     }
   }, [activeSession, endSession, acknowledgeSession, setSelectedGarageId, setScreen, userPhone]);
 
-  // 🗺️ فتح خرائط جوجل للتوجه لموقع الجراج/السيارة
+  // 🗺️ فتح خرائط جوجل للتوجه لموقع السيارة/الجراج بدقة ذكية
   const handleOpenGoogleMaps = () => {
-    if (!garage) return;
-    const url = buildGoogleMapsUrl(garage.lat, garage.lng, garage.name, garage.location);
+    if (!garage && !activeSession) return;
+    const targetLat = Number((activeSession as any)?.parking_lat || (activeSession as any)?.parkingLat || garage?.lat || 30.0444);
+    const targetLng = Number((activeSession as any)?.parking_lng || (activeSession as any)?.parkingLng || garage?.lng || 31.2357);
+    const url = buildGoogleMapsUrl(targetLat, targetLng, garage?.name || '', garage?.location || '');
     window.open(url, '_blank', 'noopener,noreferrer');
   };
+
+  // 🔄 تحويل تلقائي للقائمة الرئيسية لو مفيش جلسة نشطة (Hook مكانه الصحيح قبل أي return)
+  useEffect(() => {
+    if (!activeSession) {
+      setSelectedGarageId(null);
+      setScreen('list');
+    }
+  }, [activeSession, setSelectedGarageId, setScreen]);
 
   // ═══════════════════════════════════════════════════════════
   // 🎨 واجهة جلسة الركن النشطة مع الرادار
@@ -567,7 +573,6 @@ export default function SessionScreen() {
             100% { transform: scale(1.6); opacity: 0; }
           }
         `}</style>
-
         <div className="flex-1 flex flex-col items-center px-4 pt-2.5 pb-2 gap-2 overflow-y-auto">
           {/* بادج حالة الجلسة والتأمين في الرأس */}
           {isShieldActive ? (
@@ -806,14 +811,6 @@ export default function SessionScreen() {
       </motion.div>
     );
   }
-
-  // تحويل تلقائي للقائمة لو مفيش جلسة
-  useEffect(() => {
-    if (!activeSession) {
-      setSelectedGarageId(null);
-      setScreen('list');
-    }
-  }, [activeSession, setSelectedGarageId, setScreen]);
 
   return null;
 }

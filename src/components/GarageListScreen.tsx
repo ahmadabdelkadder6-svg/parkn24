@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useStore, Garage, ParkingSession as Session, IncomingCar, normalizePlate, normalizePhone, BOOKING_FEE, TOPUP_TIERS } from '../store';
 import { calculateDistance, distanceToMinutes, classifyDistance, formatDuration } from '../utils/distance';
+import { buildGoogleMapsUrl } from '../utils/mapsNavigation';
 import TopUpWalletModal from './TopUpWalletModal';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
@@ -64,16 +65,6 @@ const safeParseTime = (value: unknown): number => {
 };
 
 const SITE_URL = import.meta.env.VITE_SITE_URL || 'https://parkn24.com';
-
-/* ═══════════════════════════════════════════════════════════════════
-   🗺️ دالة توليد رابط خرائط جوجل الذكي (إحداثيات + اسم المكان)
-   ═══════════════════════════════════════════════════════════════════ */
-export const buildGoogleMapsUrl = (lat: number, lng: number, name: string, location: string = ''): string => {
-  const cleanName = (name || '').replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim() || name;
-  const placeLabel = encodeURIComponent(`${cleanName}${location ? ' - ' + location : ''}`);
-  // الدمج بين الإحداثيات والاسم يضمن ظهور الدبوس في الموقع الدقيق مع عرض اسم الجراج الرسمي على الخريطة
-  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}+(${placeLabel})&travelmode=driving&dir_action=navigate`;
-};
 
 /* ═══════════════════════════════════════════════════════════════════
    🗺️ المناطق الجغرافية الموحدة والمعتمدة رسمياً (13 منطقة أساسية)
@@ -433,14 +424,12 @@ export default function GarageListScreen() {
         console.error('Realtime Fetch Error:', e);
       }
     };
-
     const isMyRow = (row: any): boolean => {
       if (!row) return false;
       const plate = normalizePlate(row.car_plate || row.carPlate);
       const phone = (row.customer_phone || row.customerPhone || row.phone || row.userPhone || '').replace(/[^\d+]/g, '');
       return plate === normalizedUserPlate || Boolean(cleanUserPhone && phone === cleanUserPhone);
     };
-
     const channel = supabase.channel(`customer-realtime-hub-${cleanUserPhone || 'guest'}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'garages' }, () => {
         refetch();
@@ -585,7 +574,7 @@ export default function GarageListScreen() {
         }
       }
 
-      // توليد رابط التوجيه الدقيق مع دمج اسم الجراج لمنع ظهور إحداثيات صامتة على جوجل ماب
+      // توليد رابط التوجيه الذكي عبر الدالة الموحدة
       const url = buildGoogleMapsUrl(garage.lat, garage.lng, garage.name, garage.location || canonicalZone);
       window.open(url, '_blank', 'noopener,noreferrer');
       setActiveDirectoryTrip(garage);
@@ -1657,7 +1646,6 @@ const GarageCard = memo(function GarageCard({
               </span>
             </>
           )}
-
           {!isDirectory && garage.payment_mode === 'cash' && (
             <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-orange-50 text-orange-700 border border-orange-200">
               💵 نقدي

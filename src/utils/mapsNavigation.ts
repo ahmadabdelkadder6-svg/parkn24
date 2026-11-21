@@ -5,7 +5,7 @@ let activeWatchId: number | null = null;
 let arrivalTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
 /**
- * 🗺️ دالة بناء رابط خرائط جوجل الذكي مع دمج الإحداثيات واسم المكان كعنوان للدبوس
+ * 🗺️ دمج ذكي: استخدام اسم المكان المشهور إن وُجد، أو الرجوع للإحداثيات الصافية تلقائياً
  */
 export const buildGoogleMapsUrl = (
   lat: number,
@@ -13,10 +13,26 @@ export const buildGoogleMapsUrl = (
   name: string = '',
   location: string = ''
 ): string => {
-  const cleanName = (name || '').replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim() || name;
-  const labelParts = [cleanName, location].filter(Boolean);
-  const placeLabel = encodeURIComponent(labelParts.join(' - ') || 'موقع الجراج');
-  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}+(${placeLabel})&travelmode=driving&dir_action=navigate`;
+  // تنظيف الاسم والمنطقة من الكلمات العامة والمكررة
+  const cleanName = (name || '')
+    .replace(/ساحة انتظار|جراج ركني|ساحة ركني|جراج|ساحة|موقف|بارك|parking|garage/gi, '')
+    .trim();
+
+  const cleanLoc = (location || '')
+    .replace(/محافظة القاهرة|محافظة الجيزة|القاهرة|الجيزة|مصر/gi, '')
+    .trim();
+
+  // تجميع اسم المعلم المشهور
+  const famousPlace = [cleanName, cleanLoc].filter(Boolean).join(' - ');
+
+  // 1. لو مفيش اسم مشهور واضح (أو الاسم كان عام فقط) -> الرجوع للإحداثيات الصافية 100% لتجنب أي خطأ في خرائط جوجل
+  if (!famousPlace || famousPlace.length < 3) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+  }
+
+  // 2. لو فيه اسم مكان ومعلم مشهور حقيقي -> دمجه كعنوان للدبوس فوق الإحداثيات
+  const placeLabel = encodeURIComponent(famousPlace);
+  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}+(${placeLabel})&travelmode=driving`;
 };
 
 /**
@@ -107,7 +123,7 @@ export const openMapsWithSmartArrival = (
     }, 45 * 60 * 1000);
   }
 
-  // 4. فتح خرائط جوجل الخارجية بدقة عالية واسم المعلم/الجراج الموضح كعنوان للدبوس
+  // 4. فتح خرائط جوجل الخارجية بنظام الدمج الذكي (اسم المعلم أو الإحداثيات الصافية)
   const googleMapsUrl = buildGoogleMapsUrl(garageLat, garageLng, garageName, location);
   window.open(googleMapsUrl, '_blank', 'noopener,noreferrer');
 };
