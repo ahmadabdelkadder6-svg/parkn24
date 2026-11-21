@@ -5,15 +5,14 @@ let activeWatchId: number | null = null;
 let arrivalTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
 /**
- * 🗺️ دمج ذكي واحترافي لخرائط جوجل:
- * 1. يعتمد على الإحداثيات كنقطة ارتكاز صلبة لمنع انحراف المسار أو حدوث خطأ "تعذر العثور على المسار".
- * 2. يدمج المعلم المشهور كـ Label توضيحي ذكي يجذب السائق لمدخل المكان الصحيح دون تشتيت الخريطة.
+ * 🗺️ رابط ملاحة دقيق ونقي 100% بالإحداثيات الجغرافية الصافية (lat,lng)
+ * بدون أي أسماء أو نصوص لمنع جوجل ماب نهائياً من تغيير المسار أو إظهار خطأ "تعذر العثور على المسار"
  */
 export const buildGoogleMapsUrl = (
   lat: number,
   lng: number,
-  name: string = '',
-  location: string = ''
+  _name: string = '',
+  _location: string = ''
 ): string => {
   const safeLat = Number(lat);
   const safeLng = Number(lng);
@@ -23,53 +22,25 @@ export const buildGoogleMapsUrl = (
     return 'https://www.google.com/maps';
   }
 
-  // تنظيف الاسم والمنطقة من الكلمات العامة والرموز التي قد تفسد رابط التوجيه
-  const cleanName = (name || '')
-    .replace(/ساحة انتظار|جراج ركني|ساحة ركني|جراج|ساحة|موقف|بارك|parking|garage/gi, '')
-    .replace(/[()[\]{}#*?]/g, ' ')
-    .trim();
-
-  const cleanLoc = (location || '')
-    .replace(/محافظة القاهرة|محافظة الجيزة|القاهرة|الجيزة|مصر/gi, '')
-    .replace(/[()[\]{}#*?]/g, ' ')
-    .trim();
-
-  // تجميع اسم المعلم المشهور بعد التنظيف
-  const famousPlace = [cleanName, cleanLoc]
-    .filter(Boolean)
-    .join(' - ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  const baseUrl = 'https://www.google.com/maps/dir/?api=1';
-  const destination = `&destination=${safeLat},${safeLng}`;
-  const travelMode = '&travelmode=driving';
-
-  // 1. لو مفيش اسم مشهور واضح (أو الاسم كان عاماً فقط) -> الرجوع للإحداثيات الصافية 100%
-  if (!famousPlace || famousPlace.length < 3) {
-    return `${baseUrl}${destination}${travelMode}`;
-  }
-
-  // 2. لو فيه اسم معلم مشهور حقيقي -> دمجه بطريقة صحيحة مشفرة كـ Label للدبوس
-  const placeLabel = encodeURIComponent(` (${famousPlace})`);
-  return `${baseUrl}${destination}${placeLabel}${travelMode}`;
+  // رابط توجيه قيادة صريح بالإحداثيات المباشرة فقط
+  return `https://www.google.com/maps/dir/?api=1&destination=${safeLat},${safeLng}&travelmode=driving`;
 };
 
 /**
- * 🗺️ فتح خرائط جوجل الخارجية مباشرة (للاستخدام السريع)
+ * 🗺️ فتح خرائط جوجل الخارجية مباشرة بالإحداثيات الصافية
  */
 export const openGoogleMapsNavigation = (
   lat: number,
   lng: number,
-  name: string = '',
-  location: string = ''
+  _name: string = '',
+  _location: string = ''
 ): void => {
-  const url = buildGoogleMapsUrl(lat, lng, name, location);
+  const url = buildGoogleMapsUrl(lat, lng);
   window.open(url, '_blank', 'noopener,noreferrer');
 };
 
 /**
- * 🗺️ فتح خرائط جوجل الخارجية للملاحة الصوتية الحية
+ * 🗺️ فتح خرائط جوجل الخارجية للملاحة الحية
  * مع تفعيل مراقبة GPS الذكية في الخلفية لتنبيه السائق عند الاقتراب 50 متر من الجراج
  */
 export const openMapsWithSmartArrival = (
@@ -78,7 +49,7 @@ export const openMapsWithSmartArrival = (
   garageName: string,
   garageIdOrCallback?: string | (() => void),
   onArrivedCallback?: () => void,
-  location?: string
+  _location?: string
 ) => {
   let garageId = '';
   let finalCallback = onArrivedCallback;
@@ -157,8 +128,8 @@ export const openMapsWithSmartArrival = (
     }, 45 * 60 * 1000);
   }
 
-  // 4. فتح خرائط جوجل الخارجية بنظام الدمج الذكي (اسم المعلم أو الإحداثيات الصافية)
-  const googleMapsUrl = buildGoogleMapsUrl(garageLat, garageLng, garageName, location);
+  // 4. فتح خرائط جوجل الخارجية بالإحداثيات الصافية فقط
+  const googleMapsUrl = buildGoogleMapsUrl(garageLat, garageLng);
   window.open(googleMapsUrl, '_blank', 'noopener,noreferrer');
 };
 
