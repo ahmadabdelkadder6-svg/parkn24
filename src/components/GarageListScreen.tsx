@@ -1622,4 +1622,3 @@ const GarageCard = memo(function GarageCard({
     </div>
   );
 });
-```
