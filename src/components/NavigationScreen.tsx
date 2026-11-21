@@ -32,7 +32,8 @@ import {
   distanceToMinutes,
   formatDuration,
 } from '../utils/distance';
-import { openMapsWithSmartArrival, buildGoogleMapsUrl } from '../utils/mapsNavigation';
+import { openMapsWithSmartArrival } from '../utils/mapsNavigation';
+
 import toast from 'react-hot-toast';
 import 'leaflet/dist/leaflet.css';
 import {
