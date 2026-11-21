@@ -54,10 +54,25 @@ const safeParseTime = (value: unknown): number => {
 const SITE_URL = import.meta.env.VITE_SITE_URL || 'https://parkn24.com';
 
 /* ═══════════════════════════════════════════════════════════════════
-   🗺️ المناطق الجغرافية الموحدة والمعتمدة رسمياً
+   🗺️ المناطق الجغرافية الموحدة والمعتمدة رسمياً (13 منطقة أساسية)
    ═══════════════════════════════════════════════════════════════════ */
+export const OFFICIAL_AREAS = [
+  'وسط البلد والزمالك',
+  'المعادي والمقطم',
+  'مصر الجديدة والشروق',
+  'مدينة نصر والشرقية',
+  'المهندسين والدقي',
+  'الجيزة وفيصل والهرم',
+  '6 أكتوبر والشيخ زايد',
+  'التجمع والقاهرة الجديدة',
+  'شبرا وخيمة',
+  'السويس والقناة',
+  'الإسكندرية والساحل',
+  'القناة والدلتا',
+  'العاشر من رمضان',
+] as const;
+
 const AREA_ICONS: Record<string, string> = {
-  // المناطق الرئيسية الموحدة
   'وسط البلد والزمالك': '🏛️',
   'المعادي والمقطم': '🌳',
   'مصر الجديدة والشروق': '🏰',
@@ -67,63 +82,112 @@ const AREA_ICONS: Record<string, string> = {
   '6 أكتوبر والشيخ زايد': '🌲',
   'التجمع والقاهرة الجديدة': '💎',
   'شبرا وخيمة': '🚆',
-  'شبرا والخيمة': '🚆',
   'السويس والقناة': '🚢',
   'الإسكندرية والساحل': '🏖️',
   'القناة والدلتا': '🌾',
   'العاشر من رمضان': '🏭',
-  'مناطق أخرى': '📍',
+};
 
-  // توافقية المسميات الفردية الفرعية
-  'وسط البلد': '🏢',
-  'الزمالك': '👑',
-  'مصر الجديدة': '🏰',
-  'مدينة نصر': '🏙️',
-  'المعادي': '🌳',
-  'المهندسين': '🛍️',
-  'الدقي': '🎓',
-  'التجمع الخامس': '💎',
-  'صلاح سالم والعروبة': '🛣️',
-  'ممشى أهل مصر': '🌊',
-  'جاردن سيتي والقصر العيني': '🏛️',
-  'بولاق': '🚢',
-  'العتبة والأسواق': '🛍️',
-  'الحسين والأزهر': '🏮',
-  'شيراتون المطار': '✈️',
-  'الرحاب ومدينتي': '🏡',
-  'القرية الذكية': '💻',
-  'الشيخ زايد': '🌲',
-  '6 أكتوبر': '🎡',
-  'المقطم': '⛰️',
-  'المنيل': '🏝️',
-  'الجيزة': '🏛️',
-  'حدائق الأهرام': '🚪',
-  'المريوطية والمنصورية': '🌴',
-  'الكيت كات': '🌊',
-  'إمبابة والوراق': '⛵',
-  'أرض اللواء': '🚉',
-  'الوايلي والعباسية': '🏥',
-  'الزيتون والمطرية': '🌿',
-  'حدائق القبة': '🌳',
-  'جسر السويس': '🛣️',
-  'شبرا ورمسيس': '🚆',
-  'شبرا الخيمة': '🏭',
-  'مصر القديمة': '🕌',
-  'مدينة الشروق': '🎓',
-  'مدينة العبور': '🍇',
-  'العاصمة الإدارية': '🏛️',
-  'حلوان': '⚙️',
-  'الإسكندرية': '🏖️',
-  'الساحل الشمالي': '🏄',
-  'المنصورة والدلتا': '🌾',
-  'طنطا': '🕌',
-  'مدن القناة': '🚢',
-  'العين السخنة': '🏖️',
+/* ─── محرك التوحيد الصارم للمناطق لمنع أي تكرار بالواجهة ─── */
+export const getCanonicalArea = (rawArea?: string, name: string = '', location: string = ''): string => {
+  const combined = `${rawArea || ''} ${name} ${location}`.trim();
+
+  // فحص الكلمات المفتاحية الأكثر خصوصية أولاً لمنع الخلط
+  if (/عاشر من رمضان|العاشر/i.test(combined)) return 'العاشر من رمضان';
+  if (/سخنة|سويس|إسماعيلية|اسماعيلية|بورسعيد|بورفؤاد|فايد|جلالة/i.test(combined) && !/جسر السويس|طريق السويس/i.test(combined)) {
+    return 'السويس والقناة';
+  }
+  if (/إسكندرية|اسكندرية|ساحل|علمين|مارينا|مطروح|سموحة|سيدي جابر|محطة الرمل/i.test(combined)) {
+    return 'الإسكندرية والساحل';
+  }
+  if (/طنطا|منصورة|دلتا|محلة|كفر الشيخ|دمياط|منوفية|شبين|بنها|قليوب/i.test(combined)) {
+    return 'القناة والدلتا';
+  }
+  if (/شبرا|الخيمة|خيمة|بهتيم|مسطرد|عبود|روض الفرج/i.test(combined)) {
+    return 'شبرا وخيمة';
+  }
+  if (/أكتوبر|اكتوبر|زايد|حصري|قرية ذكية|دريم|بيفرلي|توسعات/i.test(combined)) {
+    return '6 أكتوبر والشيخ زايد';
+  }
+  if (/تجمع|قاهرة جديدة|رحاب|مدينتي|لوتس|نرجس|ياسمين|بنفسج|شويفات|مستثمرين/i.test(combined)) {
+    return 'التجمع والقاهرة الجديدة';
+  }
+  if (/معادي|مقطم|دجلة|طرة|حلوان|أوتوستراد|اتوستراد|زهراء المعادي/i.test(combined)) {
+    return 'المعادي والمقطم';
+  }
+  if (/مهندسين|دقي|عجوزة|مصدق|نادي الصيد|محي الدين|لبنان|جامعة الدول/i.test(combined)) {
+    return 'المهندسين والدقي';
+  }
+  if (/جيزة|فيصل|هرم|عمرانية|طالبية|رماية|مريوطية|منصورية|أهرام|اهرام|بين السرايات|جامعة القاهرة/i.test(combined)) {
+    return 'الجيزة وفيصل والهرم';
+  }
+  if (/مدينة نصر|مكرم|عباس العقاد|نحاس|رابعة|حي سابع|حي ثامن|حي سادس|حي عاشر|وفاء وأمل|زقازيق|شرقية/i.test(combined)) {
+    return 'مدينة نصر والشرقية';
+  }
+  if (/مصر الجديدة|شروق|نزهة|روكسي|كوربة|هليوبوليس|جسر السويس|طريق السويس|شيراتون|مطار|عبور|عاصمة إدارية|عاصمة ادارية|زيتون|مطرية|حدائق القبة|وايلي|عباسية/i.test(combined)) {
+    return 'مصر الجديدة والشروق';
+  }
+  if (/وسط البلد|زمالك|جاردن سيتي|قصر عيني|بولاق|عتبة|حسين|أزهر|ازهر|تحرير|منيل|مصر القديمة|رمسيس|باب اللوق|ممشى أهل مصر/i.test(combined)) {
+    return 'وسط البلد والزمالك';
+  }
+
+  // خريطة التحويل المباشر للقيم النصية السابقة
+  const directMap: Record<string, string> = {
+    'وسط البلد': 'وسط البلد والزمالك',
+    'الزمالك': 'وسط البلد والزمالك',
+    'جاردن سيتي والقصر العيني': 'وسط البلد والزمالك',
+    'بولاق': 'وسط البلد والزمالك',
+    'العتبة والأسواق': 'وسط البلد والزمالك',
+    'الحسين والأزهر': 'وسط البلد والزمالك',
+    'المنيل': 'وسط البلد والزمالك',
+    'مصر القديمة': 'وسط البلد والزمالك',
+    'ممشى أهل مصر': 'وسط البلد والزمالك',
+    'شبرا ورمسيس': 'وسط البلد والزمالك',
+    'المعادي': 'المعادي والمقطم',
+    'المقطم': 'المعادي والمقطم',
+    'حلوان': 'المعادي والمقطم',
+    'مصر الجديدة': 'مصر الجديدة والشروق',
+    'مدينة الشروق': 'مصر الجديدة والشروق',
+    'مدينة العبور': 'مصر الجديدة والشروق',
+    'العاصمة الإدارية': 'مصر الجديدة والشروق',
+    'شيراتون المطار': 'مصر الجديدة والشروق',
+    'جسر السويس': 'مصر الجديدة والشروق',
+    'الزيتون والمطرية': 'مصر الجديدة والشروق',
+    'حدائق القبة': 'مصر الجديدة والشروق',
+    'الوايلي والعباسية': 'مصر الجديدة والشروق',
+    'صلاح سالم والعروبة': 'مصر الجديدة والشروق',
+    'مدينة نصر': 'مدينة نصر والشرقية',
+    'المهندسين': 'المهندسين والدقي',
+    'الدقي': 'المهندسين والدقي',
+    'الكيت كات': 'المهندسين والدقي',
+    'أرض اللواء': 'المهندسين والدقي',
+    'الجيزة': 'الجيزة وفيصل والهرم',
+    'حدائق الأهرام': 'الجيزة وفيصل والهرم',
+    'المريوطية والمنصورية': 'الجيزة وفيصل والهرم',
+    'إمبابة والوراق': 'الجيزة وفيصل والهرم',
+    '6 أكتوبر': '6 أكتوبر والشيخ زايد',
+    'الشيخ زايد': '6 أكتوبر والشيخ زايد',
+    'القرية الذكية': '6 أكتوبر والشيخ زايد',
+    'التجمع الخامس': 'التجمع والقاهرة الجديدة',
+    'الرحاب ومدينتي': 'التجمع والقاهرة الجديدة',
+    'شبرا الخيمة': 'شبرا وخيمة',
+    'شبرا والخيمة': 'شبرا وخيمة',
+    'مدن القناة': 'السويس والقناة',
+    'العين السخنة': 'السويس والقناة',
+    'الإسكندرية': 'الإسكندرية والساحل',
+    'الساحل الشمالي': 'الإسكندرية والساحل',
+    'المنصورة والدلتا': 'القناة والدلتا',
+    'طنطا': 'القناة والدلتا',
+  };
+
+  if (rawArea && directMap[rawArea]) return directMap[rawArea];
+  if (rawArea && AREA_ICONS[rawArea]) return rawArea;
+
+  return 'وسط البلد والزمالك';
 };
 
 /* ─── مراكز المناطق الجغرافية للتحقق من دقة الإحداثيات ─── */
 const AREA_CENTERS: Record<string, { lat: number; lng: number; maxRadiusKm: number }> = {
-  // المناطق الموحدة الرئيسية
   'وسط البلد والزمالك': { lat: 30.0480, lng: 31.2300, maxRadiusKm: 6.0 },
   'المعادي والمقطم': { lat: 29.9800, lng: 31.2800, maxRadiusKm: 12.0 },
   'مصر الجديدة والشروق': { lat: 30.1100, lng: 31.3500, maxRadiusKm: 25.0 },
@@ -133,60 +197,13 @@ const AREA_CENTERS: Record<string, { lat: number; lng: number; maxRadiusKm: numb
   '6 أكتوبر والشيخ زايد': { lat: 30.0100, lng: 30.9600, maxRadiusKm: 20.0 },
   'التجمع والقاهرة الجديدة': { lat: 30.0200, lng: 31.4800, maxRadiusKm: 22.0 },
   'شبرا وخيمة': { lat: 30.1000, lng: 31.2400, maxRadiusKm: 8.0 },
-  'شبرا والخيمة': { lat: 30.1000, lng: 31.2400, maxRadiusKm: 8.0 },
   'السويس والقناة': { lat: 30.5000, lng: 32.2500, maxRadiusKm: 80.0 },
   'الإسكندرية والساحل': { lat: 31.2001, lng: 29.9187, maxRadiusKm: 180.0 },
   'القناة والدلتا': { lat: 30.8500, lng: 31.2000, maxRadiusKm: 70.0 },
   'العاشر من رمضان': { lat: 30.3080, lng: 31.7420, maxRadiusKm: 15.0 },
-
-  // التوافقية الفرعية
-  'وسط البلد': { lat: 30.0444, lng: 31.2357, maxRadiusKm: 4.0 },
-  'الزمالك': { lat: 30.0626, lng: 31.2197, maxRadiusKm: 3.0 },
-  'مصر الجديدة': { lat: 30.0911, lng: 31.3236, maxRadiusKm: 8.0 },
-  'مدينة نصر': { lat: 30.0561, lng: 31.3301, maxRadiusKm: 8.0 },
-  'المعادي': { lat: 29.9602, lng: 31.2569, maxRadiusKm: 7.0 },
-  'المهندسين': { lat: 30.0631, lng: 31.2000, maxRadiusKm: 4.0 },
-  'الدقي': { lat: 30.0384, lng: 31.2126, maxRadiusKm: 3.5 },
-  'التجمع الخامس': { lat: 30.0074, lng: 31.4913, maxRadiusKm: 15.0 },
-  'صلاح سالم والعروبة': { lat: 30.0735, lng: 31.3015, maxRadiusKm: 8.0 },
-  'ممشى أهل مصر': { lat: 30.0760, lng: 31.2250, maxRadiusKm: 5.0 },
-  'جاردن سيتي والقصر العيني': { lat: 30.0355, lng: 31.2300, maxRadiusKm: 3.0 },
-  'بولاق': { lat: 30.0620, lng: 31.2280, maxRadiusKm: 3.5 },
-  'العتبة والأسواق': { lat: 30.0510, lng: 31.2470, maxRadiusKm: 2.5 },
-  'الحسين والأزهر': { lat: 30.0477, lng: 31.2622, maxRadiusKm: 2.0 },
-  'شيراتون المطار': { lat: 30.1115, lng: 31.3745, maxRadiusKm: 6.0 },
-  'الرحاب ومدينتي': { lat: 30.0590, lng: 31.4910, maxRadiusKm: 10.0 },
-  'القرية الذكية': { lat: 30.0714, lng: 30.9707, maxRadiusKm: 5.0 },
-  'الشيخ زايد': { lat: 30.0680, lng: 30.9755, maxRadiusKm: 12.0 },
-  '6 أكتوبر': { lat: 29.9723, lng: 30.9493, maxRadiusKm: 15.0 },
-  'المقطم': { lat: 30.0070, lng: 31.3100, maxRadiusKm: 6.0 },
-  'المنيل': { lat: 30.0260, lng: 31.2270, maxRadiusKm: 2.5 },
-  'الجيزة': { lat: 30.0131, lng: 31.2089, maxRadiusKm: 7.0 },
-  'حدائق الأهرام': { lat: 29.9870, lng: 31.1600, maxRadiusKm: 6.0 },
-  'المريوطية والمنصورية': { lat: 29.9950, lng: 31.1500, maxRadiusKm: 8.0 },
-  'الكيت كات': { lat: 30.0710, lng: 31.2130, maxRadiusKm: 3.0 },
-  'إمبابة والوراق': { lat: 30.0860, lng: 31.2050, maxRadiusKm: 6.0 },
-  'أرض اللواء': { lat: 30.0730, lng: 31.2050, maxRadiusKm: 3.5 },
-  'الوايلي والعباسية': { lat: 30.0680, lng: 31.2820, maxRadiusKm: 4.0 },
-  'الزيتون والمطرية': { lat: 30.1150, lng: 31.3100, maxRadiusKm: 5.0 },
-  'حدائق القبة': { lat: 30.0870, lng: 31.2810, maxRadiusKm: 3.5 },
-  'جسر السويس': { lat: 30.1050, lng: 31.3310, maxRadiusKm: 5.0 },
-  'شبرا ورمسيس': { lat: 30.0760, lng: 31.2440, maxRadiusKm: 4.0 },
-  'شبرا الخيمة': { lat: 30.1286, lng: 31.2426, maxRadiusKm: 6.0 },
-  'مصر القديمة': { lat: 30.0070, lng: 31.2290, maxRadiusKm: 4.0 },
-  'مدينة الشروق': { lat: 30.1480, lng: 31.6220, maxRadiusKm: 10.0 },
-  'مدينة العبور': { lat: 30.2070, lng: 31.4810, maxRadiusKm: 8.0 },
-  'العاصمة الإدارية': { lat: 30.0160, lng: 31.7390, maxRadiusKm: 20.0 },
-  'حلوان': { lat: 29.8550, lng: 31.3340, maxRadiusKm: 10.0 },
-  'الإسكندرية': { lat: 31.2001, lng: 29.9187, maxRadiusKm: 30.0 },
-  'الساحل الشمالي': { lat: 30.8700, lng: 28.9500, maxRadiusKm: 200.0 },
-  'المنصورة والدلتا': { lat: 31.0409, lng: 31.3785, maxRadiusKm: 50.0 },
-  'طنطا': { lat: 30.7865, lng: 31.0004, maxRadiusKm: 15.0 },
-  'مدن القناة': { lat: 30.5852, lng: 32.2654, maxRadiusKm: 50.0 },
-  'العين السخنة': { lat: 29.6050, lng: 32.3350, maxRadiusKm: 30.0 },
 };
 
-// 🔇 صوت صامت متكرر لإبقاء GPS يعمل على الشاشة السوداء (Keep Alive)
+// 🔇 صوت صامت متكرر لإبقاء GPS يعمل على الشاشة الخلفية (Keep Alive)
 let silentAudioEl: HTMLAudioElement | null = null;
 const enableBackgroundKeepAlive = async () => {
   try {
@@ -234,6 +251,7 @@ export default function GarageListScreen() {
   // 💰 مودال "رصيدك غير كافي"
   const [showInsufficientModal, setShowInsufficientModal] = useState(false);
   const [pendingVipGarage, setPendingVipGarage] = useState<GarageWithDistance | null>(null);
+
   const [rescueIndex, setRescueIndex] = useState(0);
   const MAX_RESCUE_OPTIONS = 3;
 
@@ -241,6 +259,7 @@ export default function GarageListScreen() {
   const isMountedRef = useRef(true);
   const lastLocationRef = useRef<{ lat: number; lng: number } | null>(null);
   const watchIdRef = useRef<number | null>(null);
+
   const speedHistoryRef = useRef<number[]>([]);
   const bearingHistoryRef = useRef<number[]>([]);
   const stopStartTimeRef = useRef<number | null>(null);
@@ -305,6 +324,7 @@ export default function GarageListScreen() {
         const rawSpeed = position.coords.speed;
         const rawHeading = position.coords.heading || 0;
         const nowMs = Date.now();
+
         let speedKmh = 0;
         if (rawSpeed !== null && rawSpeed !== undefined && !isNaN(rawSpeed) && rawSpeed >= 0) {
           speedKmh = rawSpeed * 3.6;
@@ -317,12 +337,15 @@ export default function GarageListScreen() {
           }
         }
         lastGpsTickRef.current = { lat: newLat, lng: newLng, time: nowMs };
+
         speedHistoryRef.current.push(speedKmh);
         if (speedHistoryRef.current.length > 10) speedHistoryRef.current.shift();
+
         if (rawHeading !== null) {
           bearingHistoryRef.current.push(rawHeading);
           if (bearingHistoryRef.current.length > 5) bearingHistoryRef.current.shift();
         }
+
         if (speedKmh < 1.0) {
           if (stopStartTimeRef.current === null) {
             stopStartTimeRef.current = Date.now();
@@ -332,6 +355,7 @@ export default function GarageListScreen() {
         } else {
           stopStartTimeRef.current = null;
         }
+
         let shouldUpdateUI = false;
         if (!lastLocationRef.current) {
           shouldUpdateUI = true;
@@ -341,6 +365,7 @@ export default function GarageListScreen() {
             shouldUpdateUI = true;
           }
         }
+
         if (shouldUpdateUI) {
           lastLocationRef.current = { lat: newLat, lng: newLng };
           setUserLocation({ lat: newLat, lng: newLng });
@@ -378,6 +403,7 @@ export default function GarageListScreen() {
   useEffect(() => {
     if (!normalizedUserPlate && !cleanUserPhone) return;
     let isSubscribed = true;
+
     const refetch = async () => {
       if (!isSubscribed) return;
       try {
@@ -386,12 +412,14 @@ export default function GarageListScreen() {
         console.error('Realtime Fetch Error:', e);
       }
     };
+
     const isMyRow = (row: any): boolean => {
       if (!row) return false;
       const plate = normalizePlate(row.car_plate || row.carPlate);
       const phone = (row.customer_phone || row.customerPhone || row.phone || row.userPhone || '').replace(/[^\d+]/g, '');
       return plate === normalizedUserPlate || Boolean(cleanUserPhone && phone === cleanUserPhone);
     };
+
     const channel = supabase.channel(`customer-realtime-wallet-${cleanUserPhone}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, (payload) => {
         if (isMyRow(payload.new) || isMyRow(payload.old)) refetch();
@@ -477,7 +505,11 @@ export default function GarageListScreen() {
     filtered = filtered.filter((g) => g.garageType === activeTab);
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
-      filtered = filtered.filter((g) => g.name.toLowerCase().includes(q) || g.location.toLowerCase().includes(q) || (g.area || '').toLowerCase().includes(q));
+      filtered = filtered.filter((g) =>
+        g.name.toLowerCase().includes(q) ||
+        g.location.toLowerCase().includes(q) ||
+        getCanonicalArea(g.area, g.name, g.location).toLowerCase().includes(q)
+      );
     }
     if (showNearbyOnly) {
       filtered = filtered.filter((g) => g.classification === 'nearby');
@@ -485,25 +517,24 @@ export default function GarageListScreen() {
     return filtered;
   }, [garagesWithDistance, searchQuery, showNearbyOnly, activeTab]);
 
-  /* ─── 🗺️ تجميع الجراجات حسب المنطقة الموحدة ─── */
+  /* ─── 🗺️ تجميع الجراجات حسب المنطقة الموحدة والمعتمدة فقط لمنع أي تكرار ─── */
   const areaGroups = useMemo(() => {
     const groups: Record<string, GarageWithDistance[]> = {};
-    filteredGarages.forEach(g => {
-      const zone = (g as any).area || 'مناطق أخرى';
+    filteredGarages.forEach((g) => {
+      const zone = getCanonicalArea(g.area, g.name, g.location);
       if (!groups[zone]) groups[zone] = [];
       groups[zone].push(g);
     });
+
     return Object.keys(groups)
-      .map(name => ({
+      .map((name) => ({
         name,
         garages: groups[name],
         totalCapacity: groups[name].reduce((sum, g) => sum + (g.capacity || 0), 0)
       }))
       .sort((a, b) => {
-        if (a.name === 'مناطق أخرى') return 1;
-        if (b.name === 'مناطق أخرى') return -1;
-        const minA = Math.min(...a.garages.map(g => g.minutes));
-        const minB = Math.min(...b.garages.map(g => g.minutes));
+        const minA = Math.min(...a.garages.map((g) => g.minutes));
+        const minB = Math.min(...b.garages.map((g) => g.minutes));
         return minA - minB;
       });
   }, [filteredGarages]);
@@ -515,7 +546,8 @@ export default function GarageListScreen() {
   // 💰 عملية الحجز والخصم الفوري لـ VIP
   const handleGarageClick = async (garage: GarageWithDistance) => {
     if (garage.garageType === 'directory') {
-      const areaCenter = AREA_CENTERS[garage.area || ''];
+      const canonicalZone = getCanonicalArea(garage.area, garage.name, garage.location);
+      const areaCenter = AREA_CENTERS[canonicalZone];
       let isLocationBroken = false;
       if (areaCenter) {
         const distanceFromCenterKm = calculateDistance(garage.lat, garage.lng, areaCenter.lat, areaCenter.lng);
@@ -530,15 +562,17 @@ export default function GarageListScreen() {
           }).then(() => {}).catch(() => {});
         }
       }
+
       const isFamousLandmark = /مول|mall|فندق|hotel|مستشفى|hospital|جامعة|university|نادي|club|مرور|traffic|كارفور|سيتي سنتر|تريومف|بلاتفورم|وتر واي|waterway|أركان|arkan|سكوير|plaza/gi.test(garage.name);
       let url = '';
       if (isLocationBroken || isFamousLandmark) {
         const cleanLandmark = garage.name.replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim();
-        const destinationQuery = encodeURIComponent(`${cleanLandmark} ${garage.location || garage.area}`);
+        const destinationQuery = encodeURIComponent(`${cleanLandmark} ${garage.location || canonicalZone}`);
         url = `https://www.google.com/maps/dir/?api=1&destination=${destinationQuery}&travelmode=driving`;
       } else {
         url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}&travelmode=driving&dir_action=navigate`;
       }
+
       window.open(url, '_blank', 'noopener,noreferrer');
       setActiveDirectoryTrip(garage);
       toast.success(`رحلة سعيدة! جاري توجيهك إلى ${garage.name} 🧭`, { icon: '🚙' });
@@ -572,11 +606,9 @@ export default function GarageListScreen() {
     const { hasPaidBookingFee } = useStore.getState();
     const userWallet = currentUser.wallet || 0;
 
-    // فحص الحد الأقصى اليومي
     const todayCount = getDailyDeductionCount();
     const isFreeToday = todayCount >= 2;
 
-    // 💡 حالة 1: العميل سبق له الخصم في نفس محاولة البحث (لأنه لم يجد مكان في الجراج السابق)
     if (hasPaidBookingFee) {
       setIsBooking(true);
       try {
@@ -600,7 +632,6 @@ export default function GarageListScreen() {
       return;
     }
 
-    // 💡 حالة 2: حجز جديد لأول مرة -> فحص الرصيد
     const MIN_REQUIRED_BALANCE = isFreeToday ? 7 : 10;
     if (userWallet < MIN_REQUIRED_BALANCE) {
       setPendingVipGarage(garage);
@@ -655,6 +686,7 @@ export default function GarageListScreen() {
             maxBearingChange = Math.abs(bearingHistoryRef.current[bearingHistoryRef.current.length - 1] - bearingHistoryRef.current[0]);
           }
           const avgSpeed = speedHistoryRef.current.reduce((a, b) => a + b, 0) / (speedHistoryRef.current.length || 1);
+
           await supabase.rpc('record_arrival_telemetry', {
             p_garage_id: tripToCalibrate.id,
             p_user_lat: latitude,
@@ -665,6 +697,7 @@ export default function GarageListScreen() {
             p_bearing_change: maxBearingChange,
             p_stop_duration: totalStopDurationRef.current || 0
           });
+
           speedHistoryRef.current = [];
           bearingHistoryRef.current = [];
           totalStopDurationRef.current = 0;
@@ -683,6 +716,7 @@ export default function GarageListScreen() {
   const handleSubmitPriceUpdate = async () => {
     const finalPrice = updatedPriceInput === '' ? (reportingGarage?.basePrice || 20) : updatedPriceInput;
     if (!reportingGarage || finalPrice <= 0) return;
+
     setIsSubmittingPrice(true);
     try {
       const result = await reportPriceUpdate(reportingGarage.id, finalPrice, reportingGarage.priceType) as any;
@@ -708,7 +742,6 @@ export default function GarageListScreen() {
       <div className="px-4 pt-10 pb-3 z-20 shadow-sm relative" style={{ background: BRAND.card, borderBottom: `1.5px solid ${BRAND.border}` }}>
         <div dir="rtl" className="flex justify-between items-center mb-4">
           <div className="text-right flex items-center gap-3">
-            {/* 🌟 اللوجو الخاص بالتطبيق */}
             <img
               src="/icons/logo.png"
               alt="Park'n 24"
@@ -726,14 +759,12 @@ export default function GarageListScreen() {
             </div>
             <div className="flex flex-col">
               <span className="text-base font-black text-slate-900 leading-tight">أهلاً {currentUser?.name?.split(' ')[0] || 'بك'} 👋</span>
-              {/* 🚀 جملة تحفيزية بخط أكبر وأوضح */}
               <span className="text-[13px] font-black leading-tight mt-1" style={{ color: BRAND.blue }}>
                 اركن بسرعة… وريّح بالك! 🚗✨
               </span>
             </div>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* 📱 زر الباركود */}
             <button
               type="button"
               onClick={() => setShowQrModal(true)}
@@ -989,7 +1020,6 @@ export default function GarageListScreen() {
                       </span>
                     </div>
                   </button>
-
                   {isExpanded && (
                     <div style={{ background: BRAND.bg, padding: '10px', borderTop: `1px solid ${BRAND.border}` }} className="space-y-2">
                       {(() => {
@@ -1464,7 +1494,6 @@ export default function GarageListScreen() {
               >
                 🏁 وصلت بالسلامة / العودة للرئيسية
               </button>
-              {/* 🏠 زر العودة السريعة للرئيسية */}
               <button
                 type="button"
                 onClick={() => {
@@ -1504,12 +1533,14 @@ const GarageCard = memo(function GarageCard({
   const isVip = garage.garageType === 'vip';
   const isBusy = hasActiveSession || hasIncomingCar;
   const isFull = !isDirectory && garage.availableSpots === 0;
+
   const btnBg = (() => {
     if (isDirectory) return BRAND.blueDark;
     if (isFull) return BRAND.border;
     if (isBusy) return BRAND.green;
     return BRAND.blue;
   })();
+
   const btnLabel = (() => {
     if (isDirectory) return 'افتح الاتجاهات 🗺️';
     if (isFull) return 'ممتلئ';
@@ -1517,11 +1548,13 @@ const GarageCard = memo(function GarageCard({
     if (hasIncomingCar) return 'الحجز النشط 📍';
     return `احجز بـ ${BOOKING_FEE} ج.م 🅿️`;
   })();
+
   const displayPrice = (() => {
     if (garage.priceType === 'daily') return `${garage.dailyPrice || garage.basePrice}`;
     if (garage.priceType === 'monthly') return `${garage.monthlyPrice || 1500}`;
     return `${garage.basePrice}`;
   })();
+
   const priceUnit = (() => {
     if (garage.priceType === 'daily') return 'ج.م/يومي';
     if (garage.priceType === 'monthly') return 'ج.م/شهري';
