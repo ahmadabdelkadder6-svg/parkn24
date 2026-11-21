@@ -5,6 +5,21 @@ let activeWatchId: number | null = null;
 let arrivalTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
 /**
+ * 🗺️ دالة بناء رابط خرائط جوجل الذكي مع دمج الإحداثيات واسم المكان كعنوان للدبوس
+ */
+export const buildGoogleMapsUrl = (
+  lat: number,
+  lng: number,
+  name: string = '',
+  location: string = ''
+): string => {
+  const cleanName = (name || '').replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim() || name;
+  const labelParts = [cleanName, location].filter(Boolean);
+  const placeLabel = encodeURIComponent(labelParts.join(' - ') || 'موقع الجراج');
+  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}+(${placeLabel})&travelmode=driving&dir_action=navigate`;
+};
+
+/**
  * 🗺️ فتح خرائط جوجل الخارجية للملاحة الصوتية الحية
  * مع تفعيل مراقبة GPS الذكية في الخلفية لتنبيه السائق عند الاقتراب 50 متر من الجراج
  */
@@ -12,9 +27,19 @@ export const openMapsWithSmartArrival = (
   garageLat: number,
   garageLng: number,
   garageName: string,
-  garageId?: string,
-  onArrivedCallback?: () => void
+  garageIdOrCallback?: string | (() => void),
+  onArrivedCallback?: () => void,
+  location?: string
 ) => {
+  let garageId = '';
+  let finalCallback = onArrivedCallback;
+
+  if (typeof garageIdOrCallback === 'function') {
+    finalCallback = garageIdOrCallback;
+  } else if (typeof garageIdOrCallback === 'string') {
+    garageId = garageIdOrCallback;
+  }
+
   // 💾 0. حفظ حالة التوجه للجراج في localStorage لضمان بقاء المستخدم في شاشة الجلسة عند فتح الإشعار
   try {
     localStorage.setItem(
@@ -54,18 +79,15 @@ export const openMapsWithSmartArrival = (
         if (distMeters <= 50) {
           playNormalAlert();
           vibrateDevice([500, 200, 500, 200, 800]);
-
           sendLocalNotification(
             '🎉 وصلت الجراج!',
             '🚗 اضغط هنا لبدء الجلسة وتفعيل حماية السيارة فوراً (وصلت للجراج وبدأ الركن)',
             'garage-arrived-auto',
             '/session' // توجيه مباشر لشاشة الجلسة
           );
-
-          if (onArrivedCallback) {
-            onArrivedCallback();
+          if (finalCallback) {
+            finalCallback();
           }
-
           stopArrivalTracking();
         }
       },
@@ -85,9 +107,9 @@ export const openMapsWithSmartArrival = (
     }, 45 * 60 * 1000);
   }
 
-  // 4. فتح خرائط جوجل الخارجية بنمط Driving Navigation Voice
-  const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${garageLat},${garageLng}&travelmode=driving`;
-  window.open(googleMapsUrl, '_blank');
+  // 4. فتح خرائط جوجل الخارجية بدقة عالية واسم المعلم/الجراج الموضح كعنوان للدبوس
+  const googleMapsUrl = buildGoogleMapsUrl(garageLat, garageLng, garageName, location);
+  window.open(googleMapsUrl, '_blank', 'noopener,noreferrer');
 };
 
 /**

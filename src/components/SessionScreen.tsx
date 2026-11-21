@@ -2,7 +2,6 @@
 // ═══════════════════════════════════════════════════════════
 // 🛡️ Tactical Radar Session Screen (Active vs Inactive HUD States)
 // ═══════════════════════════════════════════════════════════
-
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -11,9 +10,14 @@ import {
   MapPin,
   AlertTriangle,
   Radio,
+  Navigation,
+  LogOut,
+  ShieldCheck,
+  ShieldOff,
 } from 'lucide-react';
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
+import { buildGoogleMapsUrl } from '../utils/mapsNavigation';
 import toast from 'react-hot-toast';
 import {
   initAudioContext,
@@ -39,7 +43,7 @@ const BRAND = {
   border: 'rgba(255, 255, 255, 0.12)',
 };
 
-const AUTO_END_SECONDS = 6 * 60 * 60;
+const AUTO_END_SECONDS = 6 * 60 * 60; // 6 ساعات كحد أقصى
 
 const safeParseTime = (value: any): number => {
   if (!value) return 0;
@@ -127,7 +131,6 @@ const TacticalRadarScope = memo(function TacticalRadarScope({
               <AlertTriangle size={20} className="text-red-400 animate-pulse" />
             )}
           </div>
-
           {/* نقطة الحالة النابضة */}
           {isShieldActive ? (
             <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
@@ -202,6 +205,7 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
       Math.max(0, Math.floor((getServerNow() - activeStartMs) / 1000));
     const currentElapsed = calcElapsed();
     setElapsed(currentElapsed);
+
     if (currentElapsed >= AUTO_END_SECONDS) {
       if (!autoEndedRef.current) {
         autoEndedRef.current = true;
@@ -209,6 +213,7 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
       }
       return;
     }
+
     const interval = setInterval(() => {
       const current = calcElapsed();
       setElapsed(current);
@@ -218,6 +223,7 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
         onAutoEndRef.current();
       }
     }, 1000);
+
     return () => clearInterval(interval);
   }, [activeStartMs]);
 
@@ -246,6 +252,7 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
           {formatTime(elapsed)}
         </div>
       </div>
+
       {showAutoEndWarning && (
         <div
           className="w-full max-w-md rounded-xl px-3 py-1.5 mb-2 text-center border-2"
@@ -363,10 +370,12 @@ export default function SessionScreen() {
   useEffect(() => {
     if (!userPlate && !userPhone) return;
     let cancelled = false;
+
     const refetch = async () => {
       if (cancelled || !isMountedRef.current) return;
       try { await fetchAll(); } catch (e) { console.error('❌ Realtime fetch error:', e); }
     };
+
     const channel = supabase.channel(`customer-session-live-${userPlate || userPhone}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, async (payload) => {
         const newRow = payload.new as any;
@@ -374,6 +383,7 @@ export default function SessionScreen() {
         if (isMySessionRow(newRow) || isMySessionRow(oldRow)) await refetch();
       })
       .subscribe();
+
     realtimeChannelRef.current = channel;
 
     const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
@@ -400,13 +410,10 @@ export default function SessionScreen() {
 
     try { initAudioContext(); } catch {}
 
-    // الأولوية لإحداثيات الركن المسجلة في الجلسة، ثم إحداثيات الجراج كاحتياطي
     const pLat = (activeSession as any).parking_lat || (activeSession as any).parkingLat || (garage as any).lat || 30.0444;
     const pLng = (activeSession as any).parking_lng || (activeSession as any).parkingLng || (garage as any).lng || 31.2357;
-
     const parkingLat = Number(pLat);
     const parkingLng = Number(pLng);
-
     let cancelled = false;
 
     registerShieldSession({
@@ -417,14 +424,12 @@ export default function SessionScreen() {
       parkingLng,
     }).then((shieldId) => {
       if (cancelled || !shieldId) return;
-      console.log('🛡️ Shield registered in DB:', shieldId);
       startShieldGPS({
         sessionId: activeSession.id,
         shieldId,
         parkingLat,
         parkingLng,
         onGeofenceBreach: () => {
-          console.log('🚨 BREACH detected!');
           triggerIntenseAlarm();
           setShowBreach(true);
         },
@@ -451,6 +456,7 @@ export default function SessionScreen() {
       const elapsedSec = Math.floor((getServerNow() - activeStartMs) / 1000);
       await endSession(activeSession.id, Math.max(0, elapsedSec), 'cash', 0);
       const nowIso = new Date().toISOString();
+
       await supabase.from('shield_sessions')
         .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id)
@@ -466,7 +472,6 @@ export default function SessionScreen() {
 
       if (typeof acknowledgeSession === 'function') acknowledgeSession(activeSession.id);
       toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
-
       if (isMountedRef.current) {
         setSelectedGarageId(null);
         setScreen('list');
@@ -504,6 +509,7 @@ export default function SessionScreen() {
     try {
       await endSession(activeSession.id, AUTO_END_SECONDS, 'cash', 0);
       const nowIso = new Date().toISOString();
+
       await supabase.from('shield_sessions')
         .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id)
@@ -519,7 +525,6 @@ export default function SessionScreen() {
 
       if (typeof acknowledgeSession === 'function') acknowledgeSession(activeSession.id);
       toast.success('تم إنهاء الجلسة تلقائياً (6 ساعات) ⏰', { duration: 5000 });
-
       if (isMountedRef.current) {
         setSelectedGarageId(null);
         setScreen('list');
@@ -530,6 +535,13 @@ export default function SessionScreen() {
       setEndedSessionId(null);
     }
   }, [activeSession, endSession, acknowledgeSession, setSelectedGarageId, setScreen, userPhone]);
+
+  // 🗺️ فتح خرائط جوجل للتوجه لموقع الجراج/السيارة
+  const handleOpenGoogleMaps = () => {
+    if (!garage) return;
+    const url = buildGoogleMapsUrl(garage.lat, garage.lng, garage.name, garage.location);
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
 
   // ═══════════════════════════════════════════════════════════
   // 🎨 واجهة جلسة الركن النشطة مع الرادار
@@ -604,44 +616,41 @@ export default function SessionScreen() {
             onAutoEnd={handleAutoEnd}
           />
 
-          {/* 💡 بطاقة التوجيه والتحذير الأمني النفسي */}
+          {/* 💡 بطاقة التوجيه والتحذير الأمني النفسي الإلزامية */}
           {isShieldActive ? (
             <div
-              className="w-full max-w-md rounded-2xl p-2.5 text-right border"
+              className="w-full max-w-md rounded-2xl p-3 text-right border space-y-2"
               style={{
                 background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(10, 22, 40, 0.95) 100%)',
                 borderColor: 'rgba(245, 158, 11, 0.35)',
                 boxShadow: '0 4px 16px rgba(0, 0, 0, 0.35)',
               }}
             >
-              <div className="flex items-start gap-2 mb-1.5">
-                <span className="text-sm shrink-0">💡</span>
-                <p className="text-[11px] font-black text-amber-300 leading-snug">
-                  لضمان استمرار رادار الحماية، يُرجى ترك هذه الصفحة في الخلفية وعدم إغلاقها.
-                </p>
-              </div>
-              <div className="flex items-start gap-2 pt-1.5 border-t border-amber-500/20">
-                <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
-                <p className="text-[9.5px] font-bold text-slate-300 leading-relaxed">
-                  <span className="text-red-400 font-black">تنبيه هام:</span> قفل نافذة التطبيق يدوياً يؤدي إلى إيقاف رادار الحماية فوراً. يرجى ترك الصفحة مفتوحة في الخلفية وقفل الشاشة فقط لضمان عمل الإنذار.
+              <p className="text-[11px] font-black text-amber-300 leading-snug">
+                💡 لضمان استمرار رادار التتبع والإنذار بالسرقة، يُرجى ترك هذه الصفحة في الخلفية وعدم إغلاقها.
+              </p>
+              <div className="pt-2 border-t border-amber-500/20 flex items-start gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                <p className="text-[10px] font-bold text-slate-300 leading-relaxed">
+                  ⚠️ تنبيه هام: قفل نافذة التطبيق يدوياً يؤدي إلى إيقاف رادار الحماية فوراً. يرجى ترك الصفحة مفتوحة في الخلفية وقفل الشاشة فقط لضمان عمل الإنذار.
                 </p>
               </div>
             </div>
           ) : (
             <div
-              className="w-full max-w-md rounded-2xl p-3 text-right border"
+              className="w-full max-w-md rounded-2xl p-3 text-right border space-y-1.5"
               style={{
                 background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(10, 22, 40, 0.95) 100%)',
                 borderColor: 'rgba(239, 68, 68, 0.45)',
                 boxShadow: '0 4px 16px rgba(239, 68, 68, 0.2)',
               }}
             >
-              <div className="flex items-center gap-2 mb-1 text-red-400 font-black text-[11px]">
+              <div className="flex items-center gap-1.5 text-red-400 font-black text-[11px]">
                 <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
                 <span>⚠️ تنبيه: الجلسة الحالية تعمل في الوضع العادي (بدون حماية)</span>
               </div>
-              <p className="text-[10px] font-bold text-slate-300 leading-relaxed pr-6">
-                السيارة بدون حماية. الرادار والتتبع اللحظي متوقفان لهذه الجلسة.
+              <p className="text-[10px] font-bold text-slate-300 leading-relaxed pr-5">
+                السيارة غير مؤمنة ضد السرقة أو الرفع بالونش. الرادار والتتبع اللحظي متوقفان لهذه الجلسة.
               </p>
             </div>
           )}
@@ -649,13 +658,13 @@ export default function SessionScreen() {
 
         {/* 📋 القسم السفلي */}
         <div
-          className="px-4 pt-2.5 pb-3.5 border-t shrink-0"
+          className="px-4 pt-2.5 pb-4 border-t shrink-0 flex flex-col gap-2"
           style={{
-            background: 'linear-gradient(180deg, transparent 0%, rgba(10, 22, 40, 0.7) 100%)',
+            background: 'linear-gradient(180deg, transparent 0%, rgba(10, 22, 40, 0.9) 100%)',
             borderColor: BRAND.border,
           }}
         >
-          <div className="w-full grid grid-cols-2 gap-2 mb-2">
+          <div className="w-full grid grid-cols-2 gap-2">
             <div
               className="border rounded-xl p-2 text-center"
               style={{
@@ -709,18 +718,35 @@ export default function SessionScreen() {
             )}
           </div>
 
+          {/* زر الملاحة لخرائط جوجل للوصول للسيارة/الجراج */}
+          {garage && (
+            <button
+              type="button"
+              onClick={handleOpenGoogleMaps}
+              className="w-full py-2.5 rounded-xl border flex items-center justify-center gap-2 font-black text-xs text-white active:scale-95 transition-all cursor-pointer"
+              style={{
+                background: 'linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%)',
+                borderColor: 'rgba(255,255,255,0.15)',
+              }}
+            >
+              <Navigation size={14} />
+              <span>الذهاب لموقع سيارتي عبر خرائط جوجل 📍</span>
+            </button>
+          )}
+
+          {/* زر إنهاء الجلسة والخروج */}
           <button
             type="button"
             aria-label="إنهاء الجلسة الحالية"
             onClick={handleEndSession}
             disabled={ending}
-            className="w-full py-3 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center border-0 text-white cursor-pointer font-black text-sm disabled:opacity-50"
+            className="w-full py-3 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 border-0 text-white cursor-pointer font-black text-sm disabled:opacity-50"
             style={{
               background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
               boxShadow: '0 8px 24px rgba(220, 38, 38, 0.45), inset 0 1px 0 rgba(255,255,255,0.15)',
-              letterSpacing: '0.3px',
             }}
           >
+            <LogOut size={16} />
             <span className="text-center font-black text-white">
               {ending ? '⏳ جاري إنهاء الجلسة...' : '🚗 إنهاء الجلسة والخروج'}
             </span>
@@ -780,6 +806,14 @@ export default function SessionScreen() {
       </motion.div>
     );
   }
+
+  // تحويل تلقائي للقائمة لو مفيش جلسة
+  useEffect(() => {
+    if (!activeSession) {
+      setSelectedGarageId(null);
+      setScreen('list');
+    }
+  }, [activeSession, setSelectedGarageId, setScreen]);
 
   return null;
 }

@@ -66,6 +66,16 @@ const safeParseTime = (value: unknown): number => {
 const SITE_URL = import.meta.env.VITE_SITE_URL || 'https://parkn24.com';
 
 /* ═══════════════════════════════════════════════════════════════════
+   🗺️ دالة توليد رابط خرائط جوجل الذكي (إحداثيات + اسم المكان)
+   ═══════════════════════════════════════════════════════════════════ */
+export const buildGoogleMapsUrl = (lat: number, lng: number, name: string, location: string = ''): string => {
+  const cleanName = (name || '').replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim() || name;
+  const placeLabel = encodeURIComponent(`${cleanName}${location ? ' - ' + location : ''}`);
+  // الدمج بين الإحداثيات والاسم يضمن ظهور الدبوس في الموقع الدقيق مع عرض اسم الجراج الرسمي على الخريطة
+  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}+(${placeLabel})&travelmode=driving&dir_action=navigate`;
+};
+
+/* ═══════════════════════════════════════════════════════════════════
    🗺️ المناطق الجغرافية الموحدة والمعتمدة رسمياً (13 منطقة أساسية)
    ═══════════════════════════════════════════════════════════════════ */
 export const OFFICIAL_AREAS = [
@@ -100,7 +110,7 @@ const AREA_ICONS: Record<string, string> = {
   'العاشر من رمضان': '🏭',
 };
 
-/* ─── خريطة تحويل المسميات القديمة أو الفرعية للمسميات الرسمية ─── */
+/* ─── خريطة تحويل المسميات الفرعية للمسميات الرسمية ─── */
 const DIRECT_AREA_MAP: Record<string, string> = {
   'وسط البلد': 'وسط البلد والزمالك',
   'الزمالك': 'وسط البلد والزمالك',
@@ -139,8 +149,10 @@ const DIRECT_AREA_MAP: Record<string, string> = {
   'القرية الذكية': '6 أكتوبر والشيخ زايد',
   'التجمع الخامس': 'التجمع والقاهرة الجديدة',
   'الرحاب ومدينتي': 'التجمع والقاهرة الجديدة',
-  'شبرا الخيمة': 'شبرا الخيمة',
-  'شبرا الخيمة': 'شبرا الخيمة',
+  'شبرا وخيمة': 'شبرا الخيمة',
+  'شبرا و خيمة': 'شبرا الخيمة',
+  'شبرا': 'شبرا الخيمة',
+  'الخيمة': 'شبرا الخيمة',
   'مدن القناة': 'السويس والقناة',
   'العين السخنة': 'السويس والقناة',
   'الإسكندرية': 'الإسكندرية والساحل',
@@ -151,23 +163,19 @@ const DIRECT_AREA_MAP: Record<string, string> = {
   'مدينة العاشر من رمضان': 'العاشر من رمضان'
 };
 
-/* ─── محرك التوحيد الصارم للمناطق (مع إعطاء الأولوية القصوى لتعديل شاشة الأدمن) ─── */
+/* ─── محرك التوحيد الصارم للمناطق ─── */
 export const getCanonicalArea = (rawArea?: string, name: string = '', location: string = ''): string => {
   const trimmed = (rawArea || '').trim();
-
-  // 1️⃣ إذا كانت المنطقة مختارة رسمياً في قاعدة البيانات من قائمة الـ 13، نعتمدها فوراً
+  // 1️⃣ إذا كانت المنطقة مختارة رسمياً في قاعدة البيانات من قائمة الـ 13
   if (trimmed && (OFFICIAL_AREAS as readonly string[]).includes(trimmed)) {
     return trimmed;
   }
-
-  // 2️⃣ إذا كانت من المسميات الفرعية المعروفة، نحولها للمنطقة الرسمية المعتمدة فوراً
+  // 2️⃣ إذا كانت من المسميات الفرعية المعروفة
   if (trimmed && DIRECT_AREA_MAP[trimmed]) {
     return DIRECT_AREA_MAP[trimmed];
   }
-
-  // 3️⃣ التحليل التلقائي والذكي (فقط في حال كانت المنطقة فارغة أو "مناطق أخرى")
+  // 3️⃣ التحليل التلقائي والذكي
   const combined = `${trimmed} ${name} ${location}`.trim();
-
   if (/عاشر من رمضان|العاشر/i.test(combined)) return 'العاشر من رمضان';
   if (/سخنة|سويس|إسماعيلية|اسماعيلية|بورسعيد|بورفؤاد|فايد|جلالة/i.test(combined) && !/جسر السويس|طريق السويس/i.test(combined)) {
     return 'السويس والقناة';
@@ -205,7 +213,6 @@ export const getCanonicalArea = (rawArea?: string, name: string = '', location: 
   if (/وسط البلد|زمالك|جاردن سيتي|قصر عيني|بولاق|عتبة|حسين|أزهر|ازهر|تحرير|منيل|مصر القديمة|رمسيس|باب اللوق|ممشى أهل مصر/i.test(combined)) {
     return 'وسط البلد والزمالك';
   }
-
   return 'وسط البلد والزمالك';
 };
 
@@ -226,7 +233,7 @@ const AREA_CENTERS: Record<string, { lat: number; lng: number; maxRadiusKm: numb
   'العاشر من رمضان': { lat: 30.3080, lng: 31.7420, maxRadiusKm: 15.0 },
 };
 
-// 🔇 صوت صامت متكرر لإبقاء GPS يعمل على الشاشة الخلفية (Keep Alive)
+// 🔇 صوت صامت لإبقاء GPS يعمل على الشاشة الخلفية (Keep Alive)
 let silentAudioEl: HTMLAudioElement | null = null;
 const enableBackgroundKeepAlive = async () => {
   try {
@@ -270,11 +277,10 @@ export default function GarageListScreen() {
   const [locationLoading, setLocationLoading] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
   const [expandedArea, setExpandedArea] = useState<string | null>(null);
-
+  
   // 💰 مودال "رصيدك غير كافي"
   const [showInsufficientModal, setShowInsufficientModal] = useState(false);
   const [pendingVipGarage, setPendingVipGarage] = useState<GarageWithDistance | null>(null);
-
   const [rescueIndex, setRescueIndex] = useState(0);
   const MAX_RESCUE_OPTIONS = 3;
 
@@ -346,7 +352,6 @@ export default function GarageListScreen() {
         const rawSpeed = position.coords.speed;
         const rawHeading = position.coords.heading || 0;
         const nowMs = Date.now();
-
         let speedKmh = 0;
         if (rawSpeed !== null && rawSpeed !== undefined && !isNaN(rawSpeed) && rawSpeed >= 0) {
           speedKmh = rawSpeed * 3.6;
@@ -359,15 +364,12 @@ export default function GarageListScreen() {
           }
         }
         lastGpsTickRef.current = { lat: newLat, lng: newLng, time: nowMs };
-
         speedHistoryRef.current.push(speedKmh);
         if (speedHistoryRef.current.length > 10) speedHistoryRef.current.shift();
-
         if (rawHeading !== null) {
           bearingHistoryRef.current.push(rawHeading);
           if (bearingHistoryRef.current.length > 5) bearingHistoryRef.current.shift();
         }
-
         if (speedKmh < 1.0) {
           if (stopStartTimeRef.current === null) {
             stopStartTimeRef.current = Date.now();
@@ -377,7 +379,6 @@ export default function GarageListScreen() {
         } else {
           stopStartTimeRef.current = null;
         }
-
         let shouldUpdateUI = false;
         if (!lastLocationRef.current) {
           shouldUpdateUI = true;
@@ -387,7 +388,6 @@ export default function GarageListScreen() {
             shouldUpdateUI = true;
           }
         }
-
         if (shouldUpdateUI) {
           lastLocationRef.current = { lat: newLat, lng: newLng };
           setUserLocation({ lat: newLat, lng: newLng });
@@ -442,7 +442,6 @@ export default function GarageListScreen() {
     };
 
     const channel = supabase.channel(`customer-realtime-hub-${cleanUserPhone || 'guest'}`)
-      // 🔥 تحديث فوري وشامل لبيانات وتصنيفات ومناطق الجراجات عند تعديل الأدمن
       .on('postgres_changes', { event: '*', schema: 'public', table: 'garages' }, () => {
         refetch();
       })
@@ -467,7 +466,6 @@ export default function GarageListScreen() {
     const interval = setInterval(refetch, 12000);
     const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
     const handleFocus = () => refetch();
-
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('focus', handleFocus);
 
@@ -567,13 +565,12 @@ export default function GarageListScreen() {
     if (searchQuery.trim() && areaGroups.length > 0) setExpandedArea(areaGroups[0].name);
   }, [searchQuery, areaGroups]);
 
-  // 💰 عملية الحجز والخصم الفوري لـ VIP
+  // 💰 عملية الحجز والتوجيه الذكي
   const handleGarageClick = async (garage: GarageWithDistance) => {
     if (garage.garageType === 'directory') {
       const canonicalZone = getCanonicalArea(garage.area, garage.name, garage.location);
       const areaCenter = AREA_CENTERS[canonicalZone];
       let isLocationBroken = false;
-
       if (areaCenter) {
         const distanceFromCenterKm = calculateDistance(garage.lat, garage.lng, areaCenter.lat, areaCenter.lng);
         if (distanceFromCenterKm > areaCenter.maxRadiusKm) {
@@ -588,17 +585,8 @@ export default function GarageListScreen() {
         }
       }
 
-      const isFamousLandmark = /مول|mall|فندق|hotel|مستشفى|hospital|جامعة|university|نادي|club|مرور|traffic|كارفور|سيتي سنتر|تريومف|بلاتفورم|وتر واي|waterway|أركان|arkan|سكوير|plaza/gi.test(garage.name);
-
-      let url = '';
-      if (isLocationBroken || isFamousLandmark) {
-        const cleanLandmark = garage.name.replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim();
-        const destinationQuery = encodeURIComponent(`${cleanLandmark} ${garage.location || canonicalZone}`);
-        url = `https://www.google.com/maps/dir/?api=1&destination=${destinationQuery}&travelmode=driving`;
-      } else {
-        url = `https://www.google.com/maps/dir/?api=1&destination=${garage.lat},${garage.lng}&travelmode=driving&dir_action=navigate`;
-      }
-
+      // توليد رابط التوجيه الدقيق مع دمج اسم الجراج لمنع ظهور إحداثيات صامتة على جوجل ماب
+      const url = buildGoogleMapsUrl(garage.lat, garage.lng, garage.name, garage.location || canonicalZone);
       window.open(url, '_blank', 'noopener,noreferrer');
       setActiveDirectoryTrip(garage);
       toast.success(`رحلة سعيدة! جاري توجيهك إلى ${garage.name} 🧭`, { icon: '🚙' });
@@ -701,7 +689,6 @@ export default function GarageListScreen() {
     setActiveDirectoryTrip(null);
     setActiveTab('directory');
     toast.success('حمد الله على سلامتك! نورت بركن من جديد 🌟', { duration: 3000 });
-
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(async (position) => {
         try {
@@ -761,6 +748,7 @@ export default function GarageListScreen() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden relative select-none" style={{ background: BRAND.bg, color: BRAND.navy }}>
+      
       {/* ══════════════════════════════════════════════════════════════
           🛡️ الهيدر الرئيسي مع هوية اللوجو ودرع الحماية
          ══════════════════════════════════════════════════════════════ */}
@@ -793,7 +781,6 @@ export default function GarageListScreen() {
               </span>
             </div>
           </div>
-
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
@@ -828,7 +815,6 @@ export default function GarageListScreen() {
           }}
         >
           <div className="absolute -left-6 -bottom-6 w-24 h-24 rounded-full bg-emerald-400/10 blur-xl pointer-events-none" />
-
           <div className="flex items-center justify-between gap-2 relative z-10">
             <div className="text-right flex-1">
               <div className="flex items-center gap-1.5 mb-1">
@@ -848,7 +834,6 @@ export default function GarageListScreen() {
                 </span>
               </div>
             </div>
-
             <button
               type="button"
               onClick={() => setShowTopUp(true)}
@@ -888,7 +873,6 @@ export default function GarageListScreen() {
                 {rescueIndex + 1} من {rescueGaragesList.length}
               </span>
             </div>
-
             <div
               className="p-3 cursor-pointer active:opacity-90 transition-all"
               onClick={() => handleGarageClick(currentRescueGarage)}
@@ -919,7 +903,6 @@ export default function GarageListScreen() {
                     <span className="text-[11px] font-black text-slate-200">🚗 {formatDuration(currentRescueGarage.minutes)}</span>
                   </div>
                 </div>
-
                 <div
                   className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-md"
                   style={{ background: BRAND.green, border: `2px solid ${BRAND.greenDark}` }}
@@ -1006,7 +989,6 @@ export default function GarageListScreen() {
               </div>
             ) : null}
           </div>
-
           <button
             type="button"
             onClick={handleForceRefreshLocation}
@@ -1024,7 +1006,6 @@ export default function GarageListScreen() {
           >
             <Locate size={18} className={locationLoading ? 'animate-spin' : ''} />
           </button>
-
           <button
             type="button"
             onClick={() => setShowNearbyOnly(!showNearbyOnly)}
@@ -1054,7 +1035,6 @@ export default function GarageListScreen() {
             <ShieldCheck size={15} className={activeTab === 'vip' ? 'text-emerald-400' : 'text-slate-500'} />
             <span>⭐ VIP مؤمن بالدرع ({BOOKING_FEE} ج)</span>
           </button>
-
           <button
             type="button"
             onClick={() => { setActiveTab('directory'); setExpandedArea(null); }}
@@ -1079,7 +1059,6 @@ export default function GarageListScreen() {
             {areaGroups.map((group) => {
               const isExpanded = expandedArea === group.name;
               const totalGarages = group.garages.length;
-
               return (
                 <div
                   key={group.name}
@@ -1118,14 +1097,12 @@ export default function GarageListScreen() {
                       </span>
                     </div>
                   </button>
-
                   {isExpanded && (
                     <div style={{ background: BRAND.bg, padding: '10px', borderTop: `1.5px solid ${BRAND.border}` }} className="space-y-2.5">
                       {(() => {
                         const limit = visibleLimits[group.name] || 8;
                         const displayedGarages = group.garages.slice(0, limit);
                         const hasMore = group.garages.length > limit;
-
                         return (
                           <>
                             {displayedGarages.map((garage, i) => (
@@ -1142,7 +1119,6 @@ export default function GarageListScreen() {
                                 disabled={isBooking}
                               />
                             ))}
-
                             {hasMore && (
                               <button
                                 type="button"
@@ -1197,12 +1173,10 @@ export default function GarageListScreen() {
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3 bg-amber-50 border-2 border-amber-200">
                 <Wallet size={32} className="text-amber-600" />
               </div>
-
               <h3 className="text-lg font-black mb-1 text-slate-900">رصيد محفظتك غير كافي 💳</h3>
               <p className="text-xs font-bold mb-4 leading-relaxed text-slate-600">
                 محتاج <b style={{ color: BRAND.blue }}>10 ج.م</b> على الأقل عشان تحجز وتفعّل درع الحماية في <b className="text-slate-900">{pendingVipGarage.name}</b>
               </p>
-
               <div className="rounded-2xl p-3.5 mb-4 text-right bg-slate-50 border-2" style={{ borderColor: BRAND.border }}>
                 <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-200">
                   <span className="font-mono font-black text-red-600 text-sm">{currentUser?.wallet || 0} ج.م</span>
@@ -1225,7 +1199,6 @@ export default function GarageListScreen() {
                   <span className="text-[11px] font-black text-slate-800">📊 المطلوب شحنه</span>
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-2 mb-4">
                 {TOPUP_TIERS.map((tier) => (
                   <button
@@ -1257,7 +1230,6 @@ export default function GarageListScreen() {
                   </button>
                 ))}
               </div>
-
               <button
                 type="button"
                 onClick={() => {
@@ -1271,7 +1243,6 @@ export default function GarageListScreen() {
                 <Wallet size={16} />
                 <span>شحن المحفظة فوراً 💰</span>
               </button>
-
               <button
                 type="button"
                 onClick={() => { setShowInsufficientModal(false); setPendingVipGarage(null); }}
@@ -1313,7 +1284,6 @@ export default function GarageListScreen() {
                     </div>
                   </div>
                 </button>
-
                 {hasCompletedSession && (
                   <button
                     type="button"
@@ -1333,7 +1303,6 @@ export default function GarageListScreen() {
                     </div>
                   </button>
                 )}
-
                 <button
                   type="button"
                   onClick={() => { setShowSmartMenu(false); setScreen('chat'); }}
@@ -1351,7 +1320,6 @@ export default function GarageListScreen() {
                     </div>
                   </div>
                 </button>
-
                 {myTopUps.length > 0 && (
                   <div className="pt-4 mt-4 border-t-2" style={{ borderColor: BRAND.border }}>
                     <div className="flex justify-between items-center mb-3">
@@ -1553,7 +1521,6 @@ export default function GarageListScreen() {
               <p className="text-xs font-bold text-slate-300 mb-6 leading-relaxed">
                 جاري توجيهك الآن عبر خرائط جوجل إلى <b className="text-emerald-400">{activeDirectoryTrip.name}</b>
               </p>
-
               <div className="border-2 border-slate-700 rounded-2xl p-4 bg-slate-900/90 mb-5 shadow-2xl">
                 <span className="text-[11px] font-black text-slate-400 block mb-1">💰 السعر المتوقع هناك</span>
                 <span className="font-black text-3xl text-emerald-400 font-mono block mb-2 leading-none">
@@ -1565,7 +1532,6 @@ export default function GarageListScreen() {
                   💵 يرجى سداد الحساب كاش للسايس
                 </span>
               </div>
-
               <div className="p-3.5 rounded-xl text-right bg-amber-500/10 border-2 border-amber-500/40 flex gap-2">
                 <div className="text-right w-full">
                   <span className="text-[12px] font-black text-amber-400 block mb-1">💡 شارك مجتمع بركن 24</span>
@@ -1575,12 +1541,16 @@ export default function GarageListScreen() {
                 </div>
               </div>
             </div>
-
             <div className="max-w-xs mx-auto w-full space-y-3 pb-6">
               <button
                 type="button"
                 onClick={() => {
-                  const url = `https://www.google.com/maps/dir/?api=1&destination=${activeDirectoryTrip.lat},${activeDirectoryTrip.lng}&travelmode=driving&dir_action=navigate`;
+                  const url = buildGoogleMapsUrl(
+                    activeDirectoryTrip.lat, 
+                    activeDirectoryTrip.lng, 
+                    activeDirectoryTrip.name, 
+                    activeDirectoryTrip.location || ''
+                  );
                   window.open(url, '_blank', 'noopener,noreferrer');
                 }}
                 className="w-full py-3.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all border-0 text-white shadow-md"
@@ -1589,7 +1559,6 @@ export default function GarageListScreen() {
                 <Navigation size={15} />
                 <span>إعادة فتح خرائط جوجل 🗺️</span>
               </button>
-
               <button
                 type="button"
                 onClick={handleConfirmArrival}
@@ -1598,7 +1567,6 @@ export default function GarageListScreen() {
               >
                 🏁 وصلت بالسلامة / العودة للرئيسية
               </button>
-
               <button
                 type="button"
                 onClick={() => {
@@ -1717,7 +1685,6 @@ const GarageCard = memo(function GarageCard({
       <div className="flex items-start justify-between gap-2 mb-1" style={{ direction: 'rtl' }}>
         <h4 className="text-[14px] font-black leading-tight text-slate-950 flex-1">{garage.name}</h4>
       </div>
-
       <div className="flex items-center gap-1 justify-end text-[11px] font-bold mb-2.5 text-slate-600" style={{ direction: 'rtl' }}>
         <span className="truncate max-w-[280px]">{garage.location}</span>
         <MapPin size={12} className="text-slate-500 shrink-0" />
@@ -1729,7 +1696,6 @@ const GarageCard = memo(function GarageCard({
           <Navigation size={13} className="rotate-45 text-blue-600" />
           <span>{formatDuration(garage.minutes)}</span>
         </div>
-
         <div className="flex items-center gap-3 text-right" style={{ direction: 'rtl' }}>
           {isDirectory && (
             <button
@@ -1741,14 +1707,12 @@ const GarageCard = memo(function GarageCard({
               <span>تعديل السعر</span>
             </button>
           )}
-
           {!isDirectory && (
             <div className="flex flex-col items-center">
               <span className="font-mono font-black text-base leading-none text-blue-700">{garage.availableSpots}</span>
               <span className="text-[8px] font-black text-slate-400 mt-1 uppercase">مكان شاغر</span>
             </div>
           )}
-
           <div className="flex flex-col items-center">
             <span className="font-mono font-black text-base leading-none text-emerald-600">{displayPrice}</span>
             <span className="text-[8px] font-black text-slate-400 mt-1 uppercase">{priceUnit}</span>

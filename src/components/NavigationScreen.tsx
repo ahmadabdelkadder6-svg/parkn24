@@ -73,6 +73,12 @@ const AUTO_START_STABILITY_MS = 3 * 60 * 1000;
 const SHIELD_AUTO_FEE = 7;
 const GPS_POLL_INTERVAL_MS = 1000;
 
+export const buildGoogleMapsUrl = (lat: number, lng: number, name: string, location: string = ''): string => {
+  const cleanName = (name || '').replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim() || name;
+  const placeLabel = encodeURIComponent(`${cleanName}${location ? ' - ' + location : ''}`);
+  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}+(${placeLabel})&travelmode=driving&dir_action=navigate`;
+};
+
 const getBonusForAmount = (amount: number): number => {
   if (amount >= 250) return 50;
   if (amount >= 100) return 15;
@@ -129,12 +135,10 @@ function MapController({
         map.invalidateSize();
       } catch {}
     }, 250);
-
     const isValidCoord = (c: [number, number]) =>
       Array.isArray(c) &&
       typeof c[0] === 'number' && Number.isFinite(c[0]) && !isNaN(c[0]) && c[0] !== 0 &&
       typeof c[1] === 'number' && Number.isFinite(c[1]) && !isNaN(c[1]) && c[1] !== 0;
-
     if (isValidCoord(userPos) && isValidCoord(garagePos)) {
       try {
         const bounds = L.latLngBounds([userPos, garagePos]);
@@ -149,7 +153,6 @@ function MapController({
         map.setView(garagePos, 15);
       } catch {}
     }
-
     return () => {
       clearTimeout(timer);
       try {
@@ -157,7 +160,6 @@ function MapController({
       } catch {}
     };
   }, [map, userPos, garagePos]);
-
   return null;
 }
 
@@ -219,7 +221,6 @@ export default function NavigationScreen() {
   const [mapReady, setMapReady] = useState(false);
   const [showInsufficientModal, setShowInsufficientModal] = useState(false);
   const [processingTopup, setProcessingTopup] = useState<string | null>(null);
-
   const storageTimerKey = garage ? `parkn24_auto_start_timer_${garage.id}` : null;
 
   const [shieldChoice, setShieldChoice] = useState<boolean>(() => {
@@ -356,6 +357,7 @@ export default function NavigationScreen() {
 
     try {
       if (!garage) return;
+
       if (storageTimerKey) {
         try { localStorage.removeItem(storageTimerKey); } catch {}
       }
@@ -553,7 +555,6 @@ export default function NavigationScreen() {
 
       useStore.getState().setHasPaidBookingFee(false);
       navigatedToSessionRef.current = true;
-
       const msg = shieldCostForSession > 0
         ? '✅ تم بدء الجلسة والدرع تلقائياً 🛡️'
         : '✅ تم بدء الجلسة تلقائياً (بدون درع)';
@@ -615,7 +616,6 @@ export default function NavigationScreen() {
     );
 
     gpsWatchIdRef.current = watchId;
-
     return () => {
       if (gpsWatchIdRef.current !== null) {
         try { navigator.geolocation.clearWatch(gpsWatchIdRef.current); } catch {}
@@ -812,10 +812,13 @@ export default function NavigationScreen() {
 
   const openExternalMaps = () => {
     if (!garage) return;
+    const cleanName = (garage.name || '').replace(/ساحة انتظار|جراج|ساحة ركني -|ساحة/gi, '').trim() || garage.name;
+    const placeLabel = `${cleanName}${garage.location ? ' - ' + garage.location : ''}`;
+
     openMapsWithSmartArrival(
       garage.lat,
       garage.lng,
-      garage.name,
+      placeLabel,
       () => {
         toast.success('🎉 وصلت عند الجراج! اضغط على زرار "وصلت للجراج وبدأ الركن" لتفعيل الحماية 🛡️', {
           duration: 6000,
@@ -887,7 +890,7 @@ export default function NavigationScreen() {
 
       {/* ══ Content ══ */}
       <div className="flex-1 px-3.5 pb-4 flex flex-col gap-2.5 overflow-y-auto">
-        {/* 🚀 بانر التوجيه الخارجي لخرائط جوجل مع تأثير تكتيكي */}
+        {/* 🚀 بانر التوجيه الخارجي لخرائط جوجل مع المعلم المشهور والـ GPS */}
         {!myActiveSession && (
           <motion.button
             type="button"
@@ -1198,6 +1201,7 @@ export default function NavigationScreen() {
                 وصلت للجراج وبدأ الركن ✅
               </span>
             </button>
+
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -1257,6 +1261,7 @@ export default function NavigationScreen() {
                   اختر باقة شحن سريعة للمتابعة
                 </p>
               </div>
+
               <div className="grid grid-cols-2 gap-2">
                 {[...TOPUP_TIERS].reverse().map((tier) => (
                   <button
@@ -1271,6 +1276,7 @@ export default function NavigationScreen() {
                   </button>
                 ))}
               </div>
+
               <button
                 onClick={() => setShowInsufficientModal(false)}
                 className="w-full py-2 rounded-xl text-xs font-black text-slate-400 border border-slate-700 bg-transparent"
