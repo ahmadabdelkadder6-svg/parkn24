@@ -42,7 +42,6 @@ export default function AdminDashboard() {
     sessions.forEach((s: any) => {
       if (s.isFirstFreeSession === true) ids.add(s.id);
     });
-
     const groups = new Map<string, any[]>();
     sessions.forEach((s: any) => {
       if (s.status !== 'completed') return;
@@ -53,7 +52,6 @@ export default function AdminDashboard() {
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(s);
     });
-
     groups.forEach((list) => {
       list.sort((a: any, b: any) => toMs(a.startTime) - toMs(b.startTime));
       list.forEach((s: any, i: number) => {
@@ -73,7 +71,7 @@ export default function AdminDashboard() {
   const [processingTopUpId, setProcessingTopUpId] = useState<string|null>(null);
   const [editingCommissionGarageId, setEditingCommissionGarageId] = useState<string|null>(null);
   const [editCommissionRate, setEditCommissionRate] = useState(10);
-  const [editArea, setEditArea] = useState('وسط البلد');
+  const [editArea, setEditArea] = useState('وسط البلد والزمالك');
   const [editGarageType, setEditGarageType] = useState<'vip'|'directory'>('vip');
   const [editPriceType, setEditPriceType] = useState<'hourly'|'daily'|'monthly'>('hourly');
   const [editBasePrice, setEditBasePrice] = useState(15);
@@ -104,7 +102,7 @@ export default function AdminDashboard() {
   const [gPhone, setGPhone] = useState('');
   const [lat, setLat] = useState(30.04);
   const [lng, setLng] = useState(31.23);
-  const [gArea, setGArea] = useState('وسط البلد');
+  const [gArea, setGArea] = useState('وسط البلد والزمالك');
   const [gType, setGType] = useState<'partner'|'directory'>('partner');
   const [gPriceType, setGPriceType] = useState<'hourly'|'daily'|'monthly'>('hourly');
   const [gBasePrice, setGBasePrice] = useState(15);
@@ -137,7 +135,6 @@ export default function AdminDashboard() {
       if (vipReportDateFrom && d < vipReportDateFrom) return false;
       if (vipReportDateTo && d > vipReportDateTo) return false;
     } else return false;
-
     const g = garages.find((ga:any) => ga.id === s.garageId);
     if (!g) return false;
     if (!(g.garageType==='vip'||(g as any).is_vip===true||g.type==='partner')) return false;
@@ -167,7 +164,6 @@ export default function AdminDashboard() {
       const fee = free ? 0 : BOOKING_FEE;
       const sc = s.shieldCost||0;
       const pTotal = fee + sc;
-
       const e = gm.get(s.garageId);
       if(e){
         e.count++;
@@ -202,11 +198,11 @@ export default function AdminDashboard() {
       totalSessions: ts,
       paidCount,
       freeCount,
-      totalRevenue: tr, // إيراد الركنات محفوظ في الخلفية
+      totalRevenue: tr,
       totalBookingFees: tf,
       totalShieldRevenue,
       shieldSessionsCount,
-      totalAllRevenue: tf + totalShieldRevenue, // 🏆 إجمالي أرباح المنصة
+      totalAllRevenue: tf + totalShieldRevenue,
       perGarage: pg,
       cashCount: cc,
       walletCount: wc,
@@ -274,8 +270,7 @@ export default function AdminDashboard() {
       dailyPrice:isDir&&gPriceType==='daily'?gDailyPrice:undefined,
       monthlyPrice:isDir&&gPriceType==='monthly'?gMonthlyPrice:undefined
     } as any);
-
-    setGName(''); setGUser(''); setGPhone(''); setGArea('وسط البلد');
+    setGName(''); setGUser(''); setGPhone(''); setGArea('وسط البلد والزمالك');
     setGValet1Name(''); setGValet1Pass(''); setGValet2Name(''); setGValet2Pass(''); setGValet3Name(''); setGValet3Pass('');
     setGType('partner'); setGPriceType('hourly');
     toast.success('تمت إضافة الجراج بنجاح! 🎉');
@@ -340,16 +335,42 @@ export default function AdminDashboard() {
     return()=>{if(dt)clearTimeout(dt);supabase.removeChannel(ch);};
   },[fetchAll]);
 
+  /* ═══════════════════════════════════════════════════════════════════
+     🗺️ المناطق المعتمدة رسمياً لإدارة النظام
+     ═══════════════════════════════════════════════════════════════════ */
   const AREA_OPTIONS = [
-    'وسط البلد','الزمالك','مصر الجديدة','مدينة نصر','المعادي','المهندسين','الدقي','التجمع الخامس',
-    'صلاح سالم والعروبة','ممشى أهل مصر','جاردن سيتي والقصر العيني','بولاق','العتبة والأسواق',
-    'الحسين والأزهر','شيراتون المطار','الرحاب ومدينتي','القرية الذكية','الشيخ زايد','6 أكتوبر',
-    'المقطم','المنيل','الجيزة','حدائق الأهرام','المريوطية والمنصورية','الكيت كات','إمبابة والوراق',
-    'أرض اللواء','الوايلي والعباسية','الزيتون والمطرية','حدائق القبة','جسر السويس','شبرا ورمسيس',
-    'شبرا الخيمة','مصر القديمة','مدينة الشروق','مدينة العبور','العاشر من رمضان','العاصمة الإدارية',
-    'حلوان','الإسكندرية','الساحل الشمالي','المنصورة والدلتا','طنطا','مدن القناة','العين السخنة','مناطق أخرى'
+    'وسط البلد والزمالك',
+    'المعادي والمقطم',
+    'مصر الجديدة والشروق',
+    'مدينة نصر والشرقية',
+    'المهندسين والدقي',
+    'الجيزة وفيصل والهرم',
+    '6 أكتوبر والشيخ زايد',
+    'التجمع والقاهرة الجديدة',
+    'شبرا وخيمة',
+    'السويس والقناة',
+    'الإسكندرية والساحل',
+    'القناة والدلتا',
+    'العاشر من رمضان',
+    'مناطق أخرى'
   ];
-  const AREA_EMOJI:Record<string,string> = {'وسط البلد':'🏢','الزمالك':'👑','مصر الجديدة':'🏰','مدينة نصر':'🏙️','المعادي':'🌳','المهندسين':'🛍️','الدقي':'🎓','التجمع الخامس':'💎','مناطق أخرى':'📍'};
+
+  const AREA_EMOJI: Record<string, string> = {
+    'وسط البلد والزمالك': '🏛️',
+    'المعادي والمقطم': '🌳',
+    'مصر الجديدة والشروق': '🏰',
+    'مدينة نصر والشرقية': '🏙️',
+    'المهندسين والدقي': '🛍️',
+    'الجيزة وفيصل والهرم': '🏛️',
+    '6 أكتوبر والشيخ زايد': '🌲',
+    'التجمع والقاهرة الجديدة': '💎',
+    'شبرا وخيمة': '🚆',
+    'السويس والقناة': '🚢',
+    'الإسكندرية والساحل': '🏖️',
+    'القناة والدلتا': '🌾',
+    'العاشر من رمضان': '🏭',
+    'مناطق أخرى': '📍'
+  };
 
   return (
     <div className="h-full overflow-y-auto pt-16 px-4 pb-12" style={{background:BRAND.bg,color:BRAND.navy}} dir="rtl">
@@ -581,11 +602,9 @@ export default function AdminDashboard() {
             <Award size={14} className="text-amber-400" />
             <span>صافي إجمالي إيراد المنصة الفعلي</span>
           </div>
-
           <div className="text-3xl font-black font-mono text-emerald-400 tracking-wider mb-2" dir="ltr">
             {vipReportStats.totalAllRevenue.toLocaleString()} <span className="text-sm font-sans font-bold text-emerald-200">ج.م</span>
           </div>
-
           <div className="flex items-center justify-center gap-3 pt-2 border-t border-slate-800 text-[10px]">
             <div className="flex items-center gap-1 text-sky-300 font-bold">
               <Zap size={11} className="text-sky-400" />
@@ -653,7 +672,6 @@ export default function AdminDashboard() {
               (من الركنة الـ 3 للعميل)
             </div>
           </div>
-
         </div>
 
         {/* 💳 شريط توزيع طرق الدفع المصغر */}
@@ -694,7 +712,6 @@ export default function AdminDashboard() {
               {vipReportStats.perGarage.slice(0, visibleVipGarages).map((g:any) => {
                 const isExp = vipExpandedGarageId === g.id;
                 const gs = vipFilteredSessions.filter((s:any) => s.garageId === g.id);
-
                 return (
                   <div
                     key={g.id}
@@ -710,20 +727,16 @@ export default function AdminDashboard() {
                       onClick={() => setVipExpandedGarageId(isExp ? null : g.id)}
                       className="flex justify-between items-center p-3 cursor-pointer active:scale-[0.99] transition-all"
                     >
-                      {/* أرقام الدخل الخاصة بالمنصة لهذا الجراج */}
                       <div className="flex items-center gap-2">
                         <div className="text-center">
                           <div className="font-black font-mono text-sm text-emerald-600">{g.platformTotal.toFixed(0)}</div>
                           <div className="text-[8px] font-bold text-slate-400">ج.م للمنصة</div>
                         </div>
-
                         <div className="w-[1px] h-6 bg-slate-200" />
-
                         <div className="text-center">
                           <div className="font-black font-mono text-xs text-sky-600">{g.fees.toFixed(0)}</div>
                           <div className="text-[8px] font-bold text-slate-400">رسوم حجز</div>
                         </div>
-
                         {g.shieldRevenue > 0 && (
                           <>
                             <div className="w-[1px] h-6 bg-slate-200" />
@@ -733,18 +746,14 @@ export default function AdminDashboard() {
                             </div>
                           </>
                         )}
-
                         <div className="w-[1px] h-6 bg-slate-200" />
-
                         <div className="text-center">
                           <div className="font-black font-mono text-xs text-slate-700">{g.count}</div>
                           <div className="text-[8px] font-bold text-slate-400">ركنة</div>
                         </div>
-
                         {isExp ? <ChevronUp size={14} className="text-slate-400 mr-1"/> : <ChevronDown size={14} className="text-slate-400 mr-1"/>}
                       </div>
 
-                      {/* اسم الجراج والمنطقة */}
                       <div className="text-right">
                         <div className="font-black text-xs flex items-center justify-end gap-1" style={{color:BRAND.navy}}>
                           <span>{g.name}</span>
@@ -754,7 +763,6 @@ export default function AdminDashboard() {
                       </div>
                     </div>
 
-                    {/* القائمة المنسدلة لركنات الجراج فقط لو تم النقر عليه */}
                     <AnimatePresence>
                       {isExp && (
                         <motion.div
@@ -772,7 +780,6 @@ export default function AdminDashboard() {
                                   const stMs = toMs(s.startTime);
                                   const enMs = toMs(s.endTime);
                                   const free = isSessionFree(s);
-
                                   return (
                                     <div key={s.id} className="px-3 py-2 flex items-center justify-between text-xs" style={{background: free ? '#fefce8' : 'transparent'}}>
                                       <div className="text-right">
@@ -783,11 +790,9 @@ export default function AdminDashboard() {
                                         </div>
                                         <div className="text-[8px] font-mono text-slate-400">{formatSessionTime(s.endTime)}</div>
                                       </div>
-
                                       <div className="font-mono text-[9px] text-slate-500 font-bold">
                                         {formatDuration(stMs, enMs)}
                                       </div>
-
                                       <div className="text-left font-mono font-bold text-[10px]" style={{color: free ? '#ca8a04' : BRAND.blueDark}}>
                                         {free ? 'مجاني' : `+${BOOKING_FEE + (s.shieldCost || 0)}ج للمنصة`}
                                       </div>
@@ -803,7 +808,6 @@ export default function AdminDashboard() {
                   </div>
                 );
               })}
-
               {vipReportStats.perGarage.length > visibleVipGarages && (
                 <div className="mt-2 text-center">
                   <button onClick={()=>setVisibleVipGarages(p=>p+10)} className="w-full font-black py-2 rounded-xl text-[10px] cursor-pointer bg-white border active:scale-95 transition-all flex items-center justify-center gap-1.5" style={{color:BRAND.blue,borderColor:BRAND.border}}>
@@ -814,7 +818,6 @@ export default function AdminDashboard() {
             </>
           )}
         </div>
-
       </div>
 
       {/* ══ Garage Management ══ */}
@@ -832,7 +835,7 @@ export default function AdminDashboard() {
               <div className="flex justify-between items-center mb-2"><div className="flex items-center gap-1">{isDirectory?<span className="font-black text-[9px] px-2.5 py-1 rounded-xl text-white bg-slate-600 flex items-center gap-1">🧭 دليل مجاني</span>:<div className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-white" style={{background:BRAND.blue}}><span className="font-black font-mono text-sm">{g.availableSpots}</span><span className="font-bold text-[9px] opacity-80">شاغر</span></div>}</div><div className="text-right flex items-center gap-1.5 flex-wrap justify-end">{sameOwnerCount>1&&!isDirectory&&<span className="font-black text-[9px] px-2 py-0.5 rounded" style={{background:BRAND.blueSoft,color:BRAND.blue}}>👑 {sameOwnerCount}</span>}<span className="font-black text-xs" style={{color:BRAND.navy}}>{g.name}</span></div></div>
               <div className="flex items-center justify-between mb-3 gap-2"><div className="flex flex-wrap gap-1 justify-start">{isDirectory?<span className="text-[9px] font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded">💵 الدفع نقدي للسايس</span>:[{n:1,name:(g as any).valetName1,pw:(g as any).valetPassword1,color:BRAND.blue},{n:2,name:(g as any).valetName2,pw:(g as any).valetPassword2,color:'#7c3aed'},{n:3,name:(g as any).valetName3,pw:(g as any).valetPassword3,color:'#f59e0b'}].filter(v=>v.pw).map(v=>(<span key={v.n} className="font-bold text-[8px] px-1.5 py-0.5 rounded" style={{color:v.color,background:BRAND.bg,border:`1px solid ${BRAND.border}`}}>👤 {v.name||`س${v.n}`}</span>))}</div><div className="flex items-center gap-1.5 text-slate-500 font-bold text-[9px]"><span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[8px] font-black">🗺️ {g.area||'مناطق أخرى'}</span><span style={{color:'#E2E8F0'}}>·</span><span className="truncate max-w-[100px]">{g.location}</span><MapPin size={10} className="shrink-0 text-slate-400"/></div></div>
               <div className="flex flex-col gap-2 mb-3 p-3 rounded-xl border bg-slate-50" style={{borderColor:BRAND.border}}>
-                <div className="flex items-center justify-between gap-2"><div className="flex items-center gap-1">{!isEditingComm?<button onClick={()=>{setEditingCommissionGarageId(g.id);setEditCommissionRate(g.commissionRate??10);setEditArea(g.area||'وسط البلد');setEditGarageType(g.garageType||'vip');setEditPriceType(g.priceType||'hourly');setEditBasePrice(g.basePrice||15);setEditDailyPrice(g.dailyPrice||20);setEditMonthlyPrice(g.monthlyPrice||1500);}} className="font-black border-0 py-1 px-2.5 rounded-lg text-[9px] cursor-pointer text-white" style={{background:'#f59e0b'}}>تعديل البيانات</button>:<div className="flex items-center gap-1"><button onClick={()=>handleSaveGarageData(g.id)} className="font-black py-1 px-2.5 rounded-lg text-[9px] cursor-pointer border-0 text-white" style={{background:BRAND.greenDark}}>حفظ</button><button onClick={()=>setEditingCommissionGarageId(null)} className="font-black py-1 px-2.5 rounded-lg text-[9px] cursor-pointer border bg-white" style={{color:BRAND.slate,borderColor:BRAND.border}}>✕</button></div>}</div><div className="flex items-center gap-1">{isDirectory?<span className="font-black text-xs text-slate-700">{g.priceType==='daily'?`${g.dailyPrice||g.basePrice}ج/يوم`:g.priceType==='monthly'?`${g.monthlyPrice||1500}ج/شهر`:`${g.basePrice}ج/ساعة`}</span>:<><Percent size={11} style={{color:BRAND.slate}}/><span className="font-black font-mono text-xs" style={{color:BRAND.navy}}>{isEditingComm?editCommissionRate:(g.commissionRate??10)}%</span><span className="font-bold text-[9px]" style={{color:BRAND.slateMuted}}>عمولة المنصة</span></>}</div></div>
+                <div className="flex items-center justify-between gap-2"><div className="flex items-center gap-1">{!isEditingComm?<button onClick={()=>{setEditingCommissionGarageId(g.id);setEditCommissionRate(g.commissionRate??10);setEditArea(g.area||'وسط البلد والزمالك');setEditGarageType(g.garageType||'vip');setEditPriceType(g.priceType||'hourly');setEditBasePrice(g.basePrice||15);setEditDailyPrice(g.dailyPrice||20);setEditMonthlyPrice(g.monthlyPrice||1500);}} className="font-black border-0 py-1 px-2.5 rounded-lg text-[9px] cursor-pointer text-white" style={{background:'#f59e0b'}}>تعديل البيانات</button>:<div className="flex items-center gap-1"><button onClick={()=>handleSaveGarageData(g.id)} className="font-black py-1 px-2.5 rounded-lg text-[9px] cursor-pointer border-0 text-white" style={{background:BRAND.greenDark}}>حفظ</button><button onClick={()=>setEditingCommissionGarageId(null)} className="font-black py-1 px-2.5 rounded-lg text-[9px] cursor-pointer border bg-white" style={{color:BRAND.slate,borderColor:BRAND.border}}>✕</button></div>}</div><div className="flex items-center gap-1">{isDirectory?<span className="font-black text-xs text-slate-700">{g.priceType==='daily'?`${g.dailyPrice||g.basePrice}ج/يوم`:g.priceType==='monthly'?`${g.monthlyPrice||1500}ج/شهر`:`${g.basePrice}ج/ساعة`}</span>:<><Percent size={11} style={{color:BRAND.slate}}/><span className="font-black font-mono text-xs" style={{color:BRAND.navy}}>{isEditingComm?editCommissionRate:(g.commissionRate??10)}%</span><span className="font-bold text-[9px]" style={{color:BRAND.slateMuted}}>عمولة المنصة</span></>}</div></div>
                 {isEditingComm&&(<div className="pt-2 border-t border-dashed space-y-2 text-right" style={{borderColor:BRAND.border}}>
                   <div className="flex justify-between items-center gap-2"><select value={editGarageType} onChange={e=>setEditGarageType(e.target.value as any)} className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border"><option value="vip">🤝 شريك VIP معتمد</option><option value="directory">🧭 دليل ركنة مجاني</option></select><span className="font-black text-[10px]" style={{color:BRAND.slate}}>نوع الجراج:</span></div>
                   <div className="flex justify-between items-center gap-2"><select value={editArea} onChange={e=>setEditArea(e.target.value)} className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border">{AREA_OPTIONS.map(a=>(<option key={a} value={a}>{AREA_EMOJI[a]||'📍'} {a}</option>))}</select><span className="font-black text-[10px]" style={{color:BRAND.slate}}>🗺️ المنطقة الجغرافية:</span></div>
@@ -858,7 +861,14 @@ export default function AdminDashboard() {
           <div className="text-right"><label className="font-black block text-right mb-1.5 text-[10px]" style={{color:BRAND.slate}}>نوع الجراج المضاف للشبكة</label><select value={gType==='partner'?'vip':gType} onChange={e=>setGType(e.target.value as any)} className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{color:BRAND.navy}}><option value="vip">🤝 جراج شريك VIP معتمد</option><option value="directory">🧭 دليل ركنات مجاني</option></select></div>
           <input className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{color:BRAND.navy}} placeholder="اسم الجراج أو الساحة" value={gName} onChange={e=>setGName(e.target.value)}/>
           {gType==='partner'&&<div className="flex gap-2"><input className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{color:BRAND.navy}} placeholder="اسم المستخدم" value={gUser} onChange={e=>setGUser(e.target.value)}/><input className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{color:BRAND.navy}} placeholder="رقم هاتف المالك" value={gPhone} onChange={e=>setGPhone(e.target.value)}/></div>}
-          <div className="text-right"><label className="font-black block text-right mb-1.5 text-[10px]" style={{color:BRAND.slate}}>🗺️ المنطقة الجغرافية للجراج</label><select value={gArea} onChange={e=>setGArea(e.target.value)} className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{color:BRAND.navy}}><option value="وسط البلد">🏢 وسط البلد</option><option value="مصر الجديدة">🏰 مصر الجديدة</option><option value="مدينة نصر">🏙️ مدينة نصر</option><option value="المعادي">🌳 المعادي</option><option value="المهندسين">🛍️ المهندسين</option><option value="الدقي">🎓 الدقي</option><option value="التجمع الخامس">💎 التجمع الخامس</option><option value="مناطق أخرى">📍 مناطق أخرى</option></select></div>
+          <div className="text-right">
+            <label className="font-black block text-right mb-1.5 text-[10px]" style={{color:BRAND.slate}}>🗺️ المنطقة الجغرافية للجراج</label>
+            <select value={gArea} onChange={e=>setGArea(e.target.value)} className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{color:BRAND.navy}}>
+              {AREA_OPTIONS.map(a=>(
+                <option key={a} value={a}>{AREA_EMOJI[a]||'📍'} {a}</option>
+              ))}
+            </select>
+          </div>
           {gType==='directory'?<div className="p-3 border rounded-xl" style={{background:BRAND.bg,borderColor:BRAND.border}}><div className="font-bold mb-3 text-right text-[10px]" style={{color:BRAND.slate}}>💰 هيكل وأسعار الركنة</div><div className="space-y-3"><select value={gPriceType} onChange={e=>setGPriceType(e.target.value as any)} className="w-full font-bold text-right outline-none text-xs p-2 rounded-lg border"><option value="hourly">⏱️ ركن بالساعة</option><option value="daily">☀️ سعر يومي ثابت</option><option value="monthly">📅 اشتراك شهري</option></select>{gPriceType==='hourly'&&<div><label className="text-[9px] text-slate-400 block mb-0.5">سعر الساعة:</label><input type="number" value={gBasePrice} onChange={e=>setGBasePrice(parseInt(e.target.value,10)||0)} className="w-full font-bold text-center text-xs p-2 rounded border"/></div>}{gPriceType==='daily'&&<div><label className="text-[9px] text-slate-400 block mb-0.5">سعر اليوم:</label><input type="number" value={gDailyPrice} onChange={e=>setGDailyPrice(parseInt(e.target.value,10)||0)} className="w-full font-bold text-center text-xs p-2 rounded border"/></div>}{gPriceType==='monthly'&&<div><label className="text-[9px] text-slate-400 block mb-0.5">سعر الشهر:</label><input type="number" value={gMonthlyPrice} onChange={e=>setGMonthlyPrice(parseInt(e.target.value,10)||0)} className="w-full font-bold text-center text-xs p-2 rounded border"/></div>}</div></div>:<div className="p-3 border rounded-xl" style={{background:BRAND.bg,borderColor:BRAND.border}}><div className="font-bold mb-3 text-right text-[10px]" style={{color:BRAND.slate}}>👤 حسابات السياس (اختياري)</div>{[{n:1,name:gValet1Name,setName:setGValet1Name,pass:gValet1Pass,setPass:setGValet1Pass,color:BRAND.blue},{n:2,name:gValet2Name,setName:setGValet2Name,pass:gValet2Pass,setPass:setGValet2Pass,color:'#7c3aed'},{n:3,name:gValet3Name,setName:setGValet3Name,pass:gValet3Pass,setPass:setGValet3Pass,color:'#f59e0b'}].map((v,i)=>(<div key={i} className={i<2?'mb-3 pb-3 border-b border-dashed':''} style={{borderColor:BRAND.border}}><div className="flex items-center justify-between mb-1.5"><span className="font-bold text-[9px]" style={{color:(v.name||v.pass)?BRAND.greenDark:BRAND.slateMuted}}>{(v.name||v.pass)?'✅ مفعّل':'❌ غير مفعّل'}</span><span className="font-black text-[10px]" style={{color:BRAND.navy}}>سايس {v.n}</span></div><div className="flex gap-2"><input type="text" value={v.name} onChange={e=>v.setName(e.target.value)} className="flex-1 font-bold text-right outline-none text-xs py-2 px-2.5 rounded-lg border border-slate-200" style={{color:BRAND.navy}} placeholder="الاسم"/><input type="text" value={v.pass} onChange={e=>v.setPass(e.target.value)} className="flex-1 font-mono font-black text-center outline-none text-xs py-2 px-2.5 rounded-lg border border-slate-200" style={{color:BRAND.navy,letterSpacing:2}} placeholder="الباسورد"/></div></div>))}</div>}
           <div className="p-3 border rounded-xl" style={{background:BRAND.bg,borderColor:BRAND.border}}><div className="font-bold mb-2 text-[10px]" style={{color:BRAND.slate}}>📍 تحديد الإحداثيات الجغرافية</div><div className="grid grid-cols-2 gap-3 font-mono">{[{label:'خط العرض',value:lat,set:setLat},{label:'خط الطول',value:lng,set:setLng}].map(c=>(<div key={c.label}><span className="text-[9px] text-slate-400 block mb-0.5">{c.label}</span><input type="number" value={c.value} onChange={e=>c.set(parseFloat(e.target.value))} className="w-full font-bold outline-none text-xs py-2 px-2.5 rounded-lg border border-slate-200" style={{color:BRAND.navy}} step="0.000001"/></div>))}</div></div>
           <div className="text-center p-3 border rounded-xl" style={{background:BRAND.bg,borderColor:BRAND.border}}><div className="font-bold mb-1 text-[11px]" style={{color:BRAND.navy}}>الموقع الإحداثي الحالي للمتصفح</div><div className="font-black font-mono text-xs" style={{color:BRAND.blue}}>{lat.toFixed(4)}, {lng.toFixed(4)}</div><button type="button" onClick={()=>{if('geolocation' in navigator)navigator.geolocation.getCurrentPosition(p=>{setLat(p.coords.latitude);setLng(p.coords.longitude);toast.success('تم تحديد الإحداثيات');},()=>toast.error('تعذر التحديد'));}} className="font-black py-1.5 px-3 rounded-lg text-[10px] cursor-pointer border bg-white mt-2" style={{color:BRAND.blue,borderColor:BRAND.blue}}>📍 استخدام موقعي الحالي</button></div>
