@@ -2,7 +2,6 @@
 // ═══════════════════════════════════════════════════════════
 // 🛡️ Car Shield Engine — Local-First + Zero-Cost Keep-Alive + Web Push
 // ═══════════════════════════════════════════════════════════
-
 import { supabase } from './supabase';
 
 export type AlertType = 'warning' | 'resolved' | 'status' | 'report' | 'qrScan';
@@ -42,6 +41,9 @@ export const CAR_SPEED_THRESHOLD = 3.2;
 export const CAR_GRACE_MS = 2_000; // ثانيتان للتأكد قبل إطلاق السارينة
 export const STABILIZATION_MS = 5_000; // 5 ثوانٍ تثبيت أولي لمنع إنذارات اللابتوب الوهمية
 export const MAX_ALLOWED_ACCURACY_METERS = 80; // رفض أي إشارة دقتها أسوأ من 80 متر لمنع قفزات الواي فاي
+
+// ─── ⏱️ ثوابت ترشيد استهلاك السيرفر (Throttle) ───
+const GPS_SERVER_THROTTLE_MS = 5_000; // حد أدنى 5 ثوانٍ بين كل استعلام تحديث للسيرفر
 
 // VAPID Public Key لتفعيل الـ Web Push
 const VAPID_PUBLIC_KEY = 'BOuP_HFhSSjHMsjf4KZJYLaFTv3RdI20Ux3an5LriaTBUN0iGlW-38zYGvROp26k7jcqhC_XpUotxzLR1IjQTI4';
@@ -220,7 +222,6 @@ export async function registerShieldSession(params: {
       console.error('❌ registerShieldSession error:', error);
       return null;
     }
-
     console.log('✅ Shield registered in DB:', data.id);
     return data.id;
   } catch (e) {
@@ -279,10 +280,8 @@ export function unlockAndKeepAliveAudio(): void {
     keepAliveSource = sharedAudioCtx.createBufferSource();
     keepAliveSource.buffer = buffer;
     keepAliveSource.loop = true;
-
     const gainNode = sharedAudioCtx.createGain();
     gainNode.gain.setValueAtTime(0.001, sharedAudioCtx.currentTime);
-
     keepAliveSource.connect(gainNode);
     gainNode.connect(sharedAudioCtx.destination);
     keepAliveSource.start();
@@ -296,7 +295,6 @@ export function unlockAndKeepAliveAudio(): void {
         album: 'نظام المراقبة المستمر',
       });
     }
-
     console.log('🔊 Audio Keep-Alive Activated: Screen Lock Throttling Bypassed');
   } catch (e) {
     console.warn('⚠️ Audio Keep-Alive setup failed:', e);
@@ -392,7 +390,6 @@ export function startShieldGPS(params: {
       if (now - breachStartTime >= effectiveGrace) {
         if (!isCurrentlyOutside) {
           isCurrentlyOutside = true;
-
           if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
             try {
               const title = '🚨 تحذير: رصد حركة خارج النطاق!';
@@ -413,14 +410,13 @@ export function startShieldGPS(params: {
               console.warn('Notification trigger error:', e);
             }
           }
-
           triggerIntenseAlarm();
-          sendGPSToServer(params.sessionId, params.shieldId, lat, lng, true, speed).catch(() => {});
+          sendGPSToServer(params.sessionId, params.shieldId, lat, lng, true, speed, true).catch(() => {});
           lastSentLat = lat;
           lastSentLng = lng;
           params.onGeofenceBreach(distFromGarage);
         } else if (distFromLastSent > MIN_MOVEMENT_METERS) {
-          sendGPSToServer(params.sessionId, params.shieldId, lat, lng, true, speed).catch(() => {});
+          sendGPSToServer(params.sessionId, params.shieldId, lat, lng, true, speed, false).catch(() => {});
           lastSentLat = lat;
           lastSentLng = lng;
         }
@@ -481,7 +477,10 @@ export function stopShieldGPS(): void {
   prevPos = null;
 }
 
-// ─── إرسال الـ GPS للسيرفر ───
+// ─── 📡 إرسال الـ GPS للسيرفر مع حماية التكرار و Throttle للـ Disk IO ───
+let lastGpsSendTimestamp = 0;
+let isGpsSendingInProgress = false;
+
 async function sendGPSToServer(
   sessionId: string,
   shieldId: string | undefined,
@@ -489,29 +488,46 @@ async function sendGPSToServer(
   lng: number,
   isOutside: boolean,
   speed?: number | null,
+  forceImmediate = false,
 ): Promise<void> {
-  const speedMs = (speed !== undefined && speed !== null && speed >= 0) ? speed : 0;
-  const speedKmh = Math.round(speedMs * 3.6);
+  const now = Date.now();
+  if (!forceImmediate) {
+    if (isGpsSendingInProgress || now - lastGpsSendTimestamp < GPS_SERVER_THROTTLE_MS) {
+      return; // تجاهل التحديثات المتقاربة جداً لمنع استنزاف السيرفر
+    }
+  }
 
-  await supabase
-    .from('shield_sessions')
-    .update({
-      last_lat: lat,
-      last_lng: lng,
-      last_gps_at: new Date().toISOString(),
-      client_outside: isOutside,
-      last_speed: speedKmh,
-    })
-    .eq('session_id', sessionId)
-    .is('ended_at', null);
+  isGpsSendingInProgress = true;
+  lastGpsSendTimestamp = now;
 
-  if (shieldId) {
-    await supabase.from('shield_locations').insert({
-      shield_id: shieldId,
-      lat,
-      lng,
-      speed_kmh: speedKmh,
-    }).catch(() => {});
+  try {
+    const speedMs = (speed !== undefined && speed !== null && speed >= 0) ? speed : 0;
+    const speedKmh = Math.round(speedMs * 3.6);
+
+    await supabase
+      .from('shield_sessions')
+      .update({
+        last_lat: lat,
+        last_lng: lng,
+        last_gps_at: new Date().toISOString(),
+        client_outside: isOutside,
+        last_speed: speedKmh,
+      })
+      .eq('session_id', sessionId)
+      .is('ended_at', null);
+
+    if (shieldId) {
+      await supabase.from('shield_locations').insert({
+        shield_id: shieldId,
+        lat,
+        lng,
+        speed_kmh: speedKmh,
+      }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('⚠️ sendGPSToServer network issue:', err);
+  } finally {
+    isGpsSendingInProgress = false;
   }
 }
 
@@ -526,7 +542,6 @@ let isAlarmActive = false;
 export function triggerIntenseAlarm(): void {
   if (isAlarmActive) return;
   isAlarmActive = true;
-
   try {
     initAudioContext();
     const ctx = sharedAudioCtx;

@@ -1,5 +1,6 @@
+
 // src/components/AdminDashboard.tsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, CheckCircle, XCircle, MapPin, Plus,
@@ -123,6 +124,18 @@ export default function AdminDashboard() {
     closeMessage, updateGarage, fetchAll
   } = useStore() as any;
 
+  const lastFetchTimeRef = useRef<number>(0);
+  const throttledFetchAll = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastFetchTimeRef.current < 3000) return;
+    lastFetchTimeRef.current = now;
+    try {
+      await fetchAll();
+    } catch (e) {
+      console.error('Admin throttled fetch error:', e);
+    }
+  }, [fetchAll]);
+
   // 🔹 حساب الجلسات المجانية: لو الـ DB فيها true نستخدمها، لو لأ نحسب ديناميكياً
   const freeSessionIds = useMemo(() => {
     const ids = new Set<string>();
@@ -149,7 +162,6 @@ export default function AdminDashboard() {
   }, [sessions]);
 
   const isSessionFree = (s: any): boolean => freeSessionIds.has(s.id);
-
   const [, setTick] = useState(0);
   const [replyText, setReplyText] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -169,7 +181,6 @@ export default function AdminDashboard() {
   
   const [adminGarageTab, setAdminGarageTab] = useState<'vip' | 'directory'>('vip');
   const [garageSearch, setGarageSearch] = useState('');
-
   // ─── VIP Filters & Controls ───
   const [vipReportDateFrom, setVipReportDateFrom] = useState(() => getLocalToday());
   const [vipReportDateTo, setVipReportDateTo] = useState(() => getLocalToday());
@@ -177,7 +188,6 @@ export default function AdminDashboard() {
   const [vipPaymentFilter, setVipPaymentFilter] = useState<string>('all');
   const [vipExpandedGarageId, setVipExpandedGarageId] = useState<string | null>(null);
   const [visibleVipGarages, setVisibleVipGarages] = useState(10);
-
   // ─── Wallet Filters ───
   const [walletReportDateFrom, setWalletReportDateFrom] = useState(getLocalDaysAgo(30));
   const [walletReportDateTo, setWalletReportDateTo] = useState(getLocalToday());
@@ -185,7 +195,6 @@ export default function AdminDashboard() {
   const [walletPaymentFilter, setWalletPaymentFilter] = useState<string>('all');
   const [walletVisibleCount, setWalletVisibleCount] = useState(10);
   const [visibleGarageCount, setVisibleGarageCount] = useState(10);
-
   // ─── Add Garage Form State ───
   const [gName, setGName] = useState('');
   const [gUser, setGUser] = useState('');
@@ -214,9 +223,7 @@ export default function AdminDashboard() {
       if (adminGarageTab === 'directory') return isDir;
       return !isDir; // VIP or Partner
     });
-
     if (!q) return list;
-
     return list.filter((g: any) => 
       (g.name || '').toLowerCase().includes(q) ||
       (g.area || '').toLowerCase().includes(q) ||
@@ -233,7 +240,7 @@ export default function AdminDashboard() {
   const completedSessions = useMemo(() => sessions.filter((s: any) => s.status === 'completed' || s.status === 'active'), [sessions]);
   const pendingTopUps = walletTopUps.filter((w: any) => w.status === 'pending');
   const vipGarages = useMemo(() => garages.filter((g: any) => g.garageType === 'vip' || (g as any).is_vip === true || g.type === 'partner' || g.garageType !== 'directory'), [garages]);
-
+  
   // VIP sessions filter
   const vipFilteredSessions = useMemo(() => completedSessions.filter((s: any) => {
     if (s.endTime) {
@@ -265,7 +272,6 @@ export default function AdminDashboard() {
       name: string; area: string; count: number; paidCount: number; freeCount: number;
       revenue: number; fees: number; shieldRevenue: number; shieldCount: number; platformTotal: number;
     }>();
-
     vipFilteredSessions.forEach((s: any) => {
       const g = garages.find((ga: any) => ga.id === s.garageId);
       if (!g) return;
@@ -298,12 +304,10 @@ export default function AdminDashboard() {
         });
       }
     });
-
     const pg = Array.from(gm.entries()).map(([id, d]) => ({ id, ...d })).sort((a, b) => b.platformTotal - a.platformTotal);
     const cc = paidSessions.filter((s: any) => s.paymentMethod === 'cash').length;
     const wc = paidSessions.filter((s: any) => s.paymentMethod === 'wallet').length;
     const ic = paidSessions.filter((s: any) => s.paymentMethod === 'instapay').length;
-
     return {
       totalSessions: ts,
       paidCount,
@@ -381,7 +385,6 @@ export default function AdminDashboard() {
       toast.error('جراج الشريك يتطلب اسم مستخدم وهاتف للمالك');
       return;
     }
-
     try {
       await addGarage({
         name: gName.trim(),
@@ -402,17 +405,16 @@ export default function AdminDashboard() {
         valetPassword3: isDir ? '' : gValet3Pass,
         area: gArea,
         garageType: gType === 'partner' ? 'vip' : 'directory',
+        payment_mode: 'cash',
         priceType: gPriceType,
         dailyPrice: isDir && gPriceType === 'daily' ? gDailyPrice : undefined,
         monthlyPrice: isDir && gPriceType === 'monthly' ? gMonthlyPrice : undefined,
         isActive: true,
       } as any);
-
       setGName(''); setGUser(''); setGPhone(''); setGLocation(''); setGArea(AREA_OPTIONS[0]);
       setGValet1Name(''); setGValet1Pass(''); setGValet2Name(''); setGValet2Pass(''); setGValet3Name(''); setGValet3Pass('');
       setGType('partner'); setGPriceType('hourly');
       toast.success('تمت إضافة الجراج وتثبيت منطقته بنجاح! 🎉');
-      await fetchAll();
     } catch (e: any) {
       toast.error(e?.message || 'تعذر إضافة الجراج');
     }
@@ -428,6 +430,7 @@ export default function AdminDashboard() {
         commissionRate: isDir ? 0 : editCommissionRate,
         area: editArea,
         garageType: editGarageType,
+        payment_mode: 'cash',
         priceType: editPriceType,
         basePrice: fp,
         price: fp,
@@ -438,7 +441,6 @@ export default function AdminDashboard() {
       });
       setEditingCommissionGarageId(null);
       toast.success(`تم تحديث بيانات الجراج والمنطقة بنجاح ✅`);
-      await fetchAll();
     } catch (e: any) {
       toast.error('حدث خطأ أثناء حفظ التعديل');
     }
@@ -462,7 +464,6 @@ export default function AdminDashboard() {
       await approveTopUp(id);
       toast.dismiss(lt);
       toast.success(`تم اعتماد شحن ${amount} ج.م ✅`, { duration: 4000 });
-      await fetchAll();
     } catch (e: any) {
       toast.dismiss(lt);
       toast.error(e?.message || 'فشل الاعتماد');
@@ -479,7 +480,6 @@ export default function AdminDashboard() {
       await rejectTopUp(id);
       toast.dismiss(lt);
       toast.error('تم الرفض ❌');
-      await fetchAll();
     } catch (e: any) {
       toast.dismiss(lt);
       toast.error(e?.message || 'فشل');
@@ -488,17 +488,18 @@ export default function AdminDashboard() {
     }
   };
 
-  // 🔹 اشتراك Realtime للأدمن مع حماية الـ Debounce
+  // 🔹 اشتراك Realtime للأدمن مع حماية Debounce و Throttle قوية
   useEffect(() => {
     let dt: ReturnType<typeof setTimeout> | null = null;
     const tf = () => {
       if (dt) clearTimeout(dt);
-      dt = setTimeout(async () => {
-        try { await fetchAll(); } catch (e) { console.error('Admin Realtime fetch error:', e); }
-      }, 1200);
+      dt = setTimeout(() => {
+        throttledFetchAll();
+      }, 3000);
     };
 
-    const ch = supabase.channel('admin-master-channel')
+    const channelName = `admin-channel-${Math.random().toString(36).substring(2, 7)}`;
+    const ch = supabase.channel(channelName)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, tf)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_topups' }, tf)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, tf)
@@ -509,7 +510,7 @@ export default function AdminDashboard() {
       if (dt) clearTimeout(dt);
       supabase.removeChannel(ch);
     };
-  }, [fetchAll]);
+  }, [throttledFetchAll]);
 
   return (
     <div className="h-full overflow-y-auto pt-16 px-4 pb-16 font-['Cairo'] select-none" style={{ background: BRAND.bg, color: BRAND.navy }} dir="rtl">
@@ -576,7 +577,6 @@ export default function AdminDashboard() {
             </select>
           </div>
         </div>
-
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
           <div className="text-center p-3 rounded-2xl border" style={{ background: BRAND.card, borderColor: BRAND.border }}>
             <div className="text-[9px] font-bold" style={{ color: BRAND.slate }}>💰 إجمالي الشحنات</div>
@@ -599,7 +599,6 @@ export default function AdminDashboard() {
             <div className="text-[8px] font-bold" style={{ color: BRAND.blueDark }}>عميل</div>
           </div>
         </div>
-
         <div className="flex items-center justify-between gap-1 mb-4 py-2 px-3 rounded-xl border" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
           {[
             { icon: '✅', label: 'مقبول', count: walletReportStats.approvedCount, color: BRAND.greenDark },
@@ -614,7 +613,6 @@ export default function AdminDashboard() {
             </div>
           ))}
         </div>
-
         <div>
           <div className="flex items-center justify-between mb-2 px-1">
             <h4 className="font-black text-[11px]" style={{ color: BRAND.navy }}>📋 تفاصيل الشحنات</h4>
@@ -828,7 +826,6 @@ export default function AdminDashboard() {
               </button>
             ))}
           </div>
-
           <div className="flex gap-2">
             <div className="flex-1">
               <select value={vipGarageFilter} onChange={e => setVipGarageFilter(e.target.value)} className="w-full font-bold text-right outline-none text-xs py-2 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }}>
@@ -889,7 +886,6 @@ export default function AdminDashboard() {
               ({vipReportStats.paidCount} مدفوعة · {vipReportStats.freeCount} مجانية)
             </div>
           </div>
-
           <div className="p-3 rounded-2xl border" style={{ background: BRAND.blueSoft, borderColor: `${BRAND.blue}30` }}>
             <div className="text-[9px] font-black mb-0.5 flex items-center gap-1" style={{ color: BRAND.blueDark }}>
               <Zap size={10} className="text-blue-600" /> رسوم حجز VIP
@@ -901,7 +897,6 @@ export default function AdminDashboard() {
               {BOOKING_FEE}ج × {vipReportStats.paidCount} ركنة
             </div>
           </div>
-
           <div className="p-3 rounded-2xl border" style={{ background: '#f0fdf4', borderColor: '#86efac' }}>
             <div className="text-[9px] font-black text-emerald-800 mb-0.5 flex items-center gap-1">
               <Shield size={10} className="text-emerald-600" /> إيراد رادار الدرع
@@ -913,7 +908,6 @@ export default function AdminDashboard() {
               {vipReportStats.shieldSessionsCount} سيارة مفعّلة
             </div>
           </div>
-
           <div className="p-3 rounded-2xl border" style={{ background: '#fefce8', borderColor: '#fde047' }}>
             <div className="text-[9px] font-black text-amber-800 mb-0.5 flex items-center gap-1">
               <span>🎁</span> ركنات مجانية
@@ -954,7 +948,6 @@ export default function AdminDashboard() {
               {vipReportStats.perGarage.length} جراج
             </span>
           </div>
-
           {vipReportStats.perGarage.length === 0 ? (
             <div className="text-center py-8 border-2 border-dashed rounded-2xl" style={{ background: BRAND.card, borderColor: BRAND.border }}>
               <span className="text-2xl block mb-1">📭</span>
@@ -1079,7 +1072,6 @@ export default function AdminDashboard() {
           </span>
           <h3 className="font-black text-xs" style={{ color: BRAND.navy }}>إدارة وجرد الجراجات</h3>
         </div>
-
         <div className="flex p-1 rounded-xl bg-slate-100 border border-slate-200 mb-3" style={{ direction: 'rtl' }}>
           <button type="button" onClick={() => setAdminGarageTab('vip')} className="flex-1 py-2 rounded-lg font-black text-[10px] cursor-pointer border-0 transition-all flex items-center justify-center gap-1" style={{ background: adminGarageTab === 'vip' ? BRAND.blue : 'transparent', color: adminGarageTab === 'vip' ? '#fff' : BRAND.slate, boxShadow: adminGarageTab === 'vip' ? '0 2px 6px rgba(22,86,184,0.15)' : 'none' }}>
             <span>⭐ جراجات VIP الشريكة</span>
@@ -1088,7 +1080,6 @@ export default function AdminDashboard() {
             <span>🧭 دليل الركنات المجاني</span>
           </button>
         </div>
-
         <div className="space-y-3 mb-4">
           <div className="relative">
             <Search size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: BRAND.slateMuted }} />
@@ -1107,7 +1098,6 @@ export default function AdminDashboard() {
             )}
           </div>
         </div>
-
         <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
           {filteredGaragesForAdmin.length === 0 ? (
             <div className="text-center py-10 bg-white border rounded-2xl" style={{ borderColor: BRAND.border }}>
@@ -1119,7 +1109,6 @@ export default function AdminDashboard() {
             const isDirectory = g.garageType === 'directory' || g.type === 'directory';
             const ownerPhone = (g as any).ownerPhone || g.phone;
             const sameOwnerCount = garages.filter((x: any) => normalizePhone(x.ownerPhone || x.phone) === normalizePhone(ownerPhone)).length;
-
             return (
               <div key={g.id} className="border p-3.5" style={{ background: BRAND.card, borderColor: BRAND.border, borderRadius: 18 }}>
                 <div className="flex justify-between items-center mb-2">
@@ -1140,7 +1129,6 @@ export default function AdminDashboard() {
                     <span className="font-black text-xs" style={{ color: BRAND.navy }}>{g.name}</span>
                   </div>
                 </div>
-
                 <div className="flex items-center justify-between mb-3 gap-2">
                   <div className="flex flex-wrap gap-1 justify-start">
                     {isDirectory ? (
@@ -1166,7 +1154,6 @@ export default function AdminDashboard() {
                     <MapPin size={10} className="shrink-0 text-slate-400" />
                   </div>
                 </div>
-
                 <div className="flex flex-col gap-2 mb-3 p-3 rounded-xl border bg-slate-50" style={{ borderColor: BRAND.border }}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1">
@@ -1206,7 +1193,6 @@ export default function AdminDashboard() {
                       )}
                     </div>
                   </div>
-
                   {isEditingComm && (
                     <div className="pt-2 border-t border-dashed space-y-2 text-right" style={{ borderColor: BRAND.border }}>
                       <div className="flex justify-between items-center gap-2">
@@ -1216,7 +1202,6 @@ export default function AdminDashboard() {
                         </select>
                         <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>نوع الجراج:</span>
                       </div>
-
                       <div className="flex justify-between items-center gap-2">
                         <select value={editArea} onChange={e => setEditArea(e.target.value)} className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border">
                           {AREA_OPTIONS.map(a => (
@@ -1225,7 +1210,6 @@ export default function AdminDashboard() {
                         </select>
                         <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية:</span>
                       </div>
-
                       {editGarageType === 'vip' && (
                         <div className="flex justify-between items-center gap-2 pt-1 border-t border-dashed border-slate-200">
                           <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200">
@@ -1236,7 +1220,6 @@ export default function AdminDashboard() {
                           <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>📊 نسبة عمولة المنصة (%):</span>
                         </div>
                       )}
-
                       {editGarageType === 'directory' && (
                         <>
                           <div className="flex justify-between items-center gap-2">
@@ -1258,7 +1241,6 @@ export default function AdminDashboard() {
                     </div>
                   )}
                 </div>
-
                 <div className="flex items-center gap-2">
                   <button 
                     type="button" 
@@ -1266,7 +1248,6 @@ export default function AdminDashboard() {
                       const ns = g.isActive === false ? true : false;
                       await updateGarage(g.id, { isActive: ns, is_active: ns });
                       toast.success(ns ? `تم تفعيل ${g.name} 🟢` : `تم تعطيل ${g.name} 🔴`);
-                      await fetchAll();
                     }} 
                     className="font-black py-2 px-3 rounded-xl text-[10px] cursor-pointer border-0 text-white flex items-center justify-center gap-1" 
                     style={{ background: g.isActive !== false ? BRAND.greenDark : '#dc2626' }}
@@ -1283,7 +1264,6 @@ export default function AdminDashboard() {
             );
           })}
         </div>
-
         {filteredGaragesForAdmin.length > visibleGarageCount && (
           <div className="mt-4 text-center">
             <button onClick={() => setVisibleGarageCount(p => p + 10)} className="w-full font-black py-3 rounded-xl text-xs cursor-pointer border-0 text-white active:scale-[0.98] transition-all flex items-center justify-center gap-2" style={{ background: BRAND.blue, boxShadow: `0 4px 14px ${BRAND.blue}25` }}>
@@ -1305,18 +1285,15 @@ export default function AdminDashboard() {
               <option value="directory">🧭 دليل ركنات مجاني</option>
             </select>
           </div>
-
           <input className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="اسم الجراج أو الساحة" value={gName} onChange={e => setGName(e.target.value)} />
           
           <input className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="العنوان التفصيلي للجراج..." value={gLocation} onChange={e => setGLocation(e.target.value)} />
-
           {gType === 'partner' && (
             <div className="flex gap-2">
               <input className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="اسم المستخدم" value={gUser} onChange={e => setGUser(e.target.value)} />
               <input className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="رقم هاتف المالك" value={gPhone} onChange={e => setGPhone(e.target.value)} />
             </div>
           )}
-
           <div className="text-right">
             <label className="font-black block text-right mb-1.5 text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية المعتمدة للجراج</label>
             <select value={gArea} onChange={e => setGArea(e.target.value)} className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }}>
@@ -1325,7 +1302,6 @@ export default function AdminDashboard() {
               ))}
             </select>
           </div>
-
           {gType === 'directory' ? (
             <div className="p-3 border rounded-xl" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
               <div className="font-bold mb-3 text-right text-[10px]" style={{ color: BRAND.slate }}>💰 هيكل وأسعار الركنة</div>
@@ -1374,7 +1350,6 @@ export default function AdminDashboard() {
               ))}
             </div>
           )}
-
           <div className="p-3 border rounded-xl" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
             <div className="font-bold mb-2 text-[10px]" style={{ color: BRAND.slate }}>📍 تحديد الإحداثيات الجغرافية</div>
             <div className="grid grid-cols-2 gap-3 font-mono">
@@ -1386,7 +1361,6 @@ export default function AdminDashboard() {
               ))}
             </div>
           </div>
-
           <div className="text-center p-3 border rounded-xl" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
             <div className="font-bold mb-1 text-[11px]" style={{ color: BRAND.navy }}>الموقع الإحداثي الحالي للمتصفح</div>
             <div className="font-black font-mono text-xs" style={{ color: BRAND.blue }}>{lat.toFixed(4)}, {lng.toFixed(4)}</div>
@@ -1407,13 +1381,11 @@ export default function AdminDashboard() {
               📍 استخدام موقعي الحالي
             </button>
           </div>
-
           <button onClick={handleAddGarage} className="w-full font-black py-3.5 border-0 text-white rounded-xl text-xs active:scale-[0.98] transition-all cursor-pointer" style={{ background: BRAND.blue, boxShadow: `0 4px 14px ${BRAND.blue}25` }}>
             حفظ وتسجيل الجراج بالشبكة 🚀
           </button>
         </div>
       </div>
-
     </div>
   );
 }
