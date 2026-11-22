@@ -88,11 +88,11 @@ const TacticalRadarScope = memo(function TacticalRadarScope({
       <div className={`absolute inset-6 rounded-full border ${isShieldActive ? 'border-sky-400/25' : 'border-slate-800/40'}`} />
       <div className={`absolute inset-14 rounded-full border border-dashed ${isShieldActive ? 'border-emerald-500/40 animate-pulse' : 'border-red-500/20'}`} />
       <div className={`absolute inset-22 rounded-full border ${isShieldActive ? 'border-sky-400/20' : 'border-slate-800/30'}`} />
-
+      
       {/* 2. خطوط الشبكة المتقاطعة (Crosshairs) */}
       <div className={`absolute inset-x-0 top-1/2 h-[1px] pointer-events-none ${isShieldActive ? 'bg-sky-500/25' : 'bg-red-500/15'}`} />
       <div className={`absolute inset-y-0 left-1/2 w-[1px] pointer-events-none ${isShieldActive ? 'bg-sky-500/25' : 'bg-red-500/15'}`} />
-
+      
       {/* 3. شعاع المسح الراداري الدوار + نبض الأمان */}
       {isShieldActive ? (
         <>
@@ -131,7 +131,6 @@ const TacticalRadarScope = memo(function TacticalRadarScope({
               <AlertTriangle size={20} className="text-red-400 animate-pulse" />
             )}
           </div>
-
           {/* نقطة الحالة النابضة */}
           {isShieldActive ? (
             <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
@@ -144,7 +143,6 @@ const TacticalRadarScope = memo(function TacticalRadarScope({
             </span>
           )}
         </div>
-
         {/* بادج حالة القفل وتأمين النطاق */}
         <div
           className={`mt-2 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border shadow-md ${
@@ -206,7 +204,6 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
       Math.max(0, Math.floor((getServerNow() - activeStartMs) / 1000));
     const currentElapsed = calcElapsed();
     setElapsed(currentElapsed);
-
     if (currentElapsed >= AUTO_END_SECONDS) {
       if (!autoEndedRef.current) {
         autoEndedRef.current = true;
@@ -214,7 +211,6 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
       }
       return;
     }
-
     const interval = setInterval(() => {
       const current = calcElapsed();
       setElapsed(current);
@@ -224,7 +220,6 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
         onAutoEndRef.current();
       }
     }, 1000);
-
     return () => clearInterval(interval);
   }, [activeStartMs]);
 
@@ -253,7 +248,6 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
           {formatTime(elapsed)}
         </div>
       </div>
-
       {showAutoEndWarning && (
         <div
           className="w-full max-w-md rounded-xl px-3 py-1.5 mb-2 text-center border-2"
@@ -291,7 +285,7 @@ export default function SessionScreen() {
   const userPlate = normalizePlate(currentUser?.carPlate);
   const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
   const isMountedRef = useRef(true);
-  const realtimeChannelRef = useRef<any>(null);
+  const lastFetchTimeRef = useRef<number>(0);
   const autoEndedRef = useRef(false);
   const [ending, setEnding] = useState(false);
   const [endedSessionId, setEndedSessionId] = useState<string | null>(null);
@@ -303,6 +297,21 @@ export default function SessionScreen() {
       isMountedRef.current = false;
     };
   }, []);
+
+  // 🛡️ دالة جلب البيانات مع مانع التكرار (Throttle) لتخفيف ضغط السيرفر
+  const throttledFetchAll = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastFetchTimeRef.current < 3500) {
+      return; // تجاهل الطلب إذا مر أقل من 3.5 ثوانٍ
+    }
+    lastFetchTimeRef.current = now;
+    if (!isMountedRef.current) return;
+    try {
+      await fetchAll();
+    } catch (e) {
+      console.error('❌ Throttled fetch error:', e);
+    }
+  }, [fetchAll]);
 
   const isMySessionRow = useCallback((row: any) => {
     if (!row) return false;
@@ -365,63 +374,70 @@ export default function SessionScreen() {
   }, [activeSession]);
 
   useEffect(() => {
-    fetchAll().catch((e) => console.error('Fetch error:', e));
-  }, [fetchAll]);
+    throttledFetchAll();
+  }, [throttledFetchAll]);
 
+  // 📡 الاستماع للـ Realtime وتحديث الصفحة باعتدال وتفريغ القناة فوراً
   useEffect(() => {
     if (!userPlate && !userPhone) return;
-    let cancelled = false;
-    const refetch = async () => {
-      if (cancelled || !isMountedRef.current) return;
-      try { await fetchAll(); } catch (e) { console.error('❌ Realtime fetch error:', e); }
-    };
-    const channel = supabase.channel(`customer-session-live-${userPlate || userPhone}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, async (payload) => {
+    let isSubscribed = true;
+
+    const channelName = `session-live-${userPlate || userPhone}-${Math.random().toString(36).substring(2, 7)}`;
+    const channel = supabase.channel(channelName)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, (payload) => {
+        if (!isSubscribed) return;
         const newRow = payload.new as any;
         const oldRow = payload.old as any;
-        if (isMySessionRow(newRow) || isMySessionRow(oldRow)) await refetch();
+        if (isMySessionRow(newRow) || isMySessionRow(oldRow)) {
+          throttledFetchAll();
+        }
       })
       .subscribe();
-    realtimeChannelRef.current = channel;
 
-    const handleVisibility = () => { if (document.visibilityState === 'visible') refetch(); };
-    document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', refetch);
-
-    return () => {
-      cancelled = true;
-      document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', refetch);
-      if (realtimeChannelRef.current) {
-        supabase.removeChannel(realtimeChannelRef.current);
-        realtimeChannelRef.current = null;
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        throttledFetchAll();
       }
     };
-  }, [userPlate, userPhone, fetchAll, isMySessionRow]);
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleVisibility);
+
+    return () => {
+      isSubscribed = false;
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleVisibility);
+      supabase.removeChannel(channel);
+    };
+  }, [userPlate, userPhone, throttledFetchAll, isMySessionRow]);
 
   // ═══════════════════════════════════════════════════════════
-  // 🛡️ تفعيل الدرع والـ GPS بالإحداثيات الدقيقة
+  // 🛡️ تفعيل الدرع والـ GPS بالإحداثيات الدقيقة (مؤمن ضد التكرار)
   // ═══════════════════════════════════════════════════════════
+  const shieldSessionId = activeSession?.id;
+  const isShieldPurchased = (activeSession?.shieldCost ?? 0) > 0;
+  const pLat = (activeSession as any)?.parking_lat || (activeSession as any)?.parkingLat || (garage as any)?.lat || 30.0444;
+  const pLng = (activeSession as any)?.parking_lng || (activeSession as any)?.parkingLng || (garage as any)?.lng || 31.2357;
+  const garageId = garage?.id;
+
   useEffect(() => {
-    if (!activeSession || !garage) return;
-    if ((activeSession.shieldCost ?? 0) <= 0) return;
+    if (!shieldSessionId || !garageId || !isShieldPurchased) return;
     try { initAudioContext(); } catch {}
-    const pLat = (activeSession as any).parking_lat || (activeSession as any).parkingLat || (garage as any).lat || 30.0444;
-    const pLng = (activeSession as any).parking_lng || (activeSession as any).parkingLng || (garage as any).lng || 31.2357;
+    
     const parkingLat = Number(pLat);
     const parkingLng = Number(pLng);
     let cancelled = false;
 
     registerShieldSession({
-      sessionId: activeSession.id,
-      phone: (activeSession as any).customerPhone || userPhone || '',
-      garageId: garage.id,
+      sessionId: shieldSessionId,
+      phone: (activeSession as any)?.customerPhone || userPhone || '',
+      garageId: garageId,
       parkingLat,
       parkingLng,
     }).then((shieldId) => {
       if (cancelled || !shieldId) return;
       startShieldGPS({
-        sessionId: activeSession.id,
+        sessionId: shieldSessionId,
         shieldId,
         parkingLat,
         parkingLng,
@@ -437,7 +453,7 @@ export default function SessionScreen() {
       destroyShield();
       setShowBreach(false);
     };
-  }, [activeSession?.id, (activeSession as any)?.parking_lat, (activeSession as any)?.parkingLat, garage?.id, userPhone]);
+  }, [shieldSessionId, garageId, isShieldPurchased, pLat, pLng, userPhone]);
 
   // 🏁 إنهاء الجلسة يدويًا
   const handleEndSession = useCallback(async () => {
@@ -447,7 +463,6 @@ export default function SessionScreen() {
     setShowBreach(false);
     setEndedSessionId(activeSession.id);
     setEnding(true);
-
     try {
       const elapsedSec = Math.floor((getServerNow() - activeStartMs) / 1000);
       await endSession(activeSession.id, Math.max(0, elapsedSec), 'cash', 0);
@@ -456,7 +471,6 @@ export default function SessionScreen() {
         .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id)
         .is('ended_at', null);
-
       if (userPhone) {
         await supabase.from('shield_sessions')
           .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
@@ -464,10 +478,8 @@ export default function SessionScreen() {
           .is('ended_at', null)
           .is('session_id', null);
       }
-
       if (typeof acknowledgeSession === 'function') acknowledgeSession(activeSession.id);
       toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
-
       if (isMountedRef.current) {
         setSelectedGarageId(null);
         setScreen('list');
@@ -476,7 +488,7 @@ export default function SessionScreen() {
       toast.error(e?.message || 'فشل إنهاء الجلسة');
       setEndedSessionId(null);
     } finally {
-      setEnding(false);
+      if (isMountedRef.current) setEnding(false);
     }
   }, [ending, activeSession, activeStartMs, endSession, acknowledgeSession, setSelectedGarageId, setScreen, userPhone]);
 
@@ -501,7 +513,6 @@ export default function SessionScreen() {
     destroyShield();
     setShowBreach(false);
     setEndedSessionId(activeSession.id);
-
     try {
       await endSession(activeSession.id, AUTO_END_SECONDS, 'cash', 0);
       const nowIso = new Date().toISOString();
@@ -509,7 +520,6 @@ export default function SessionScreen() {
         .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id)
         .is('ended_at', null);
-
       if (userPhone) {
         await supabase.from('shield_sessions')
           .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
@@ -517,10 +527,8 @@ export default function SessionScreen() {
           .is('ended_at', null)
           .is('session_id', null);
       }
-
       if (typeof acknowledgeSession === 'function') acknowledgeSession(activeSession.id);
       toast.success('تم إنهاء الجلسة تلقائياً (6 ساعات) ⏰', { duration: 5000 });
-
       if (isMountedRef.current) {
         setSelectedGarageId(null);
         setScreen('list');
@@ -541,7 +549,7 @@ export default function SessionScreen() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  // 🔄 تحويل تلقائي للقائمة الرئيسية لو مفيش جلسة نشطة (Hook مكانه الصحيح قبل أي return)
+  // 🔄 تحويل تلقائي للقائمة الرئيسية لو مفيش جلسة نشطة
   useEffect(() => {
     if (!activeSession) {
       setSelectedGarageId(null);
@@ -573,6 +581,7 @@ export default function SessionScreen() {
             100% { transform: scale(1.6); opacity: 0; }
           }
         `}</style>
+
         <div className="flex-1 flex flex-col items-center px-4 pt-2.5 pb-2 gap-2 overflow-y-auto">
           {/* بادج حالة الجلسة والتأمين في الرأس */}
           {isShieldActive ? (
