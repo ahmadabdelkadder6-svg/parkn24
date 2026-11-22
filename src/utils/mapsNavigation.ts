@@ -4,15 +4,19 @@ import { sendLocalNotification, playNormalAlert, vibrateDevice } from './notific
 let activeWatchId: number | null = null;
 let arrivalTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
+// 🎯 قائمة الكلمات المفتاحية الاستثنائية للمعالم الحيوية
+const FAMOUS_LANDMARKS_REGEX = /(مول|mall|مستشف[يى]|hospital|مرور|بواب[ةه]|gate|التجمع|تراخيص)/i;
+
 /**
- * 🗺️ رابط ملاحة دقيق ونقي 100% بالإحداثيات الجغرافية الصافية (lat,lng)
- * بدون أي أسماء أو نصوص لمنع جوجل ماب نهائياً من تغيير المسار أو إظهار خطأ "تعذر العثور على المسار"
+ * 🗺️ رابط ملاحة هجين وذكي:
+ * 1. لو المكان فيه كلمة من المعالم الحيوية (مول، مستشفى، مرور، بوابة، التجمع، تراخيص) -> يدمج الاسم مع الإحداثيات لضبط البوابة والمسار.
+ * 2. لو مكان عادي -> يلتزم بالإحداثيات الصافية 100% (GPS) بدون أي نصوص لمنع انحراف المسار.
  */
 export const buildGoogleMapsUrl = (
   lat: number,
   lng: number,
-  _name: string = '',
-  _location: string = ''
+  name: string = '',
+  location: string = ''
 ): string => {
   const safeLat = Number(lat);
   const safeLng = Number(lng);
@@ -22,20 +26,54 @@ export const buildGoogleMapsUrl = (
     return 'https://www.google.com/maps';
   }
 
-  // رابط توجيه قيادة صريح بالإحداثيات المباشرة فقط
-  return `https://www.google.com/maps/dir/?api=1&destination=${safeLat},${safeLng}&travelmode=driving`;
+  const baseUrl = 'https://www.google.com/maps/dir/?api=1';
+  const destinationCoords = `&destination=${safeLat},${safeLng}`;
+  const travelMode = '&travelmode=driving';
+
+  // 🔍 فحص هل الاسم أو المنطقة يحتوي على أحد المعالم الاستثنائية
+  const isFamousLandmark =
+    FAMOUS_LANDMARKS_REGEX.test(name || '') ||
+    FAMOUS_LANDMARKS_REGEX.test(location || '');
+
+  // 1. إذا كان معلماً شهيراً مستثنى -> استخراج الاسم وتجهيزه لجوجل ماب
+  if (isFamousLandmark) {
+    const cleanName = (name || '')
+      .replace(/ساحة انتظار|جراج ركني|ساحة ركني|جراج|ساحة|موقف|بارك|parking|garage|VIP/gi, '')
+      .replace(/[()[\]{}#*?]/g, ' ')
+      .trim();
+
+    const cleanLoc = (location || '')
+      .replace(/محافظة القاهرة|محافظة الجيزة|القاهرة|الجيزة|مصر/gi, '')
+      .replace(/[()[\]{}#*?]/g, ' ')
+      .trim();
+
+    const famousPlace = [cleanName, cleanLoc]
+      .filter(Boolean)
+      .join(' - ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    // لو الاسم المنظف صالح وفيه معلم واضح
+    if (famousPlace && famousPlace.length >= 3) {
+      const placeLabel = encodeURIComponent(` (${famousPlace})`);
+      return `${baseUrl}${destinationCoords}${placeLabel}${travelMode}`;
+    }
+  }
+
+  // 2. للوضع الافتراضي وأي جراج عادي -> إحداثيات GPS صافية 100% بدون أي إضافات
+  return `${baseUrl}${destinationCoords}${travelMode}`;
 };
 
 /**
- * 🗺️ فتح خرائط جوجل الخارجية مباشرة بالإحداثيات الصافية
+ * 🗺️ فتح خرائط جوجل الخارجية مباشرة (للاستخدام السريع)
  */
 export const openGoogleMapsNavigation = (
   lat: number,
   lng: number,
-  _name: string = '',
-  _location: string = ''
+  name: string = '',
+  location: string = ''
 ): void => {
-  const url = buildGoogleMapsUrl(lat, lng);
+  const url = buildGoogleMapsUrl(lat, lng, name, location);
   window.open(url, '_blank', 'noopener,noreferrer');
 };
 
@@ -49,7 +87,7 @@ export const openMapsWithSmartArrival = (
   garageName: string,
   garageIdOrCallback?: string | (() => void),
   onArrivedCallback?: () => void,
-  _location?: string
+  location?: string
 ) => {
   let garageId = '';
   let finalCallback = onArrivedCallback;
@@ -128,8 +166,8 @@ export const openMapsWithSmartArrival = (
     }, 45 * 60 * 1000);
   }
 
-  // 4. فتح خرائط جوجل الخارجية بالإحداثيات الصافية فقط
-  const googleMapsUrl = buildGoogleMapsUrl(garageLat, garageLng);
+  // 4. فتح خرائط جوجل الخارجية بالنظام الهجين الذكي
+  const googleMapsUrl = buildGoogleMapsUrl(garageLat, garageLng, garageName, location);
   window.open(googleMapsUrl, '_blank', 'noopener,noreferrer');
 };
 
