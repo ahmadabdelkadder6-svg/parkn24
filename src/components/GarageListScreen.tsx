@@ -1,3 +1,4 @@
+ 
 // src/components/GarageListScreen.tsx
 import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -796,17 +797,17 @@ export default function GarageListScreen() {
           </div>
         </div>
 
-        {/* 🛡️💳 بانر المحفظة ودرع الحماية المتناسق مع اللوجو */}
+        {/* 🛡️💳 بانر المحفظة ودرع الحماية المتناسق مع ألوان الرادار */}
         <div
           className="rounded-2xl p-3.5 mb-2.5 text-white relative overflow-hidden"
           style={{
-            background: `linear-gradient(135deg, ${BRAND.blueDeep} 0%, ${BRAND.blueDark} 60%, ${BRAND.blue} 100%)`,
+            background: `linear-gradient(135deg, ${BRAND.blueDark} 0%, ${BRAND.blueDeep} 100%)`,
             border: `1.5px solid ${BRAND.green}`,
-            boxShadow: '0 8px 24px rgba(22,86,184,0.22)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
             direction: 'rtl'
           }}
         >
-          <div className="absolute -left-8 -bottom-8 w-28 h-28 rounded-full bg-lime-400/15 blur-xl pointer-events-none" />
+          <div className="absolute -left-8 -bottom-8 w-28 h-28 rounded-full bg-lime-400/10 blur-xl pointer-events-none" />
           <div className="flex items-center justify-between gap-2 relative z-10">
             <div className="text-right flex-1">
               <div className="flex items-center gap-1.5 mb-1">
@@ -906,19 +907,22 @@ export default function GarageListScreen() {
           </div>
         )}
 
+        {/* 🔍 زر "شوف الركنة البديلة اللي بعدها" (مطور بخط واضح وتصميم فائق الوضوح في الشمس) */}
         {rescueGaragesList.length > 1 && !activeSession && !myIncomingCar && (
           <button
             type="button"
             onClick={handleNextRescue}
-            className="w-full mb-2.5 py-2.5 rounded-xl text-[12px] font-black border cursor-pointer active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-xs"
+            className="w-full mb-2.5 py-3 rounded-2xl text-[14px] font-black cursor-pointer active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-md"
             style={{
-              background: `linear-gradient(135deg, ${BRAND.green} 0%, ${BRAND.greenDark} 100%)`,
-              borderColor: BRAND.greenDark,
-              color: '#ffffff',
+              background: `linear-gradient(135deg, ${BRAND.green} 0%, #a3e635 100%)`,
+              border: `2px solid ${BRAND.greenDark}`,
+              color: BRAND.blueDeep,
+              boxShadow: '0 4px 14px rgba(109,165,40,0.35)',
+              letterSpacing: '-0.2px'
             }}
           >
-            <Search size={14} strokeWidth={3} />
-            <span>🔍 شوف الركنة البديلة اللي بعدها</span>
+            <Search size={18} strokeWidth={3.5} className="text-slate-950" />
+            <span className="font-black drop-shadow-xs">🔍 شوف الركنة البديلة اللي بعدها</span>
           </button>
         )}
 

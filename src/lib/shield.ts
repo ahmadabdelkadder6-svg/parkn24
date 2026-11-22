@@ -36,11 +36,11 @@ export const MIN_MOVEMENT_METERS = 30; // حد إرسال التحديث للس�
 export const FALLBACK_INTERVAL_MS = 25_000; // فحص دوري كل 25 ثانية كـ Fallback
 
 // ─── 🧠 ثوابت السرعة والانطلاق وفترة التثبيت ───
-export const SPEED_THRESHOLD_MPS = 3.2; // 3.2 م/ث = ~11.5 كم/س (حركة سيارة)
+export const SPEED_THRESHOLD_MPS = 3.2; // 3.2 م/ث = ~11.5 كم/س (حركة سيارة حقيقية)
 export const CAR_SPEED_THRESHOLD = 3.2;
 export const CAR_GRACE_MS = 2_000; // ثانيتان للتأكد قبل إطلاق السارينة
-export const STABILIZATION_MS = 5_000; // 5 ثوانٍ تثبيت أولي لمنع إنذارات اللابتوب الوهمية
-export const MAX_ALLOWED_ACCURACY_METERS = 80; // رفض أي إشارة دقتها أسوأ من 80 متر لمنع قفزات الواي فاي
+export const STABILIZATION_MS = 5_000; // 5 ثوانٍ تثبيت أولي لمنع إنذارات اللابتوب والأجهزة الوهمية
+export const MAX_ALLOWED_ACCURACY_METERS = 45; // رفض أي إشارة دقتها أضعف من 45 متر لمنع القفزات العشوائية
 
 // ─── ⏱️ ثوابت ترشيد استهلاك السيرفر (Throttle) ───
 const GPS_SERVER_THROTTLE_MS = 5_000; // حد أدنى 5 ثوانٍ بين كل استعلام تحديث للسيرفر
@@ -136,16 +136,6 @@ export async function checkUserInsideGarage(
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🧠 حساب فترة السماح بناءً على السرعة
-// ═══════════════════════════════════════════════════════════
-function getGracePeriod(speedMs: number | null): number {
-  if (speedMs !== null && speedMs >= SPEED_THRESHOLD_MPS) {
-    return CAR_GRACE_MS; // ثانيتان فقط لو سرعة مركبة مؤكدة
-  }
-  return Infinity; // لو حركة بطيئة جداً أو غير واضحة
-}
-
-// ═══════════════════════════════════════════════════════════
 // 📝 تسجيل الجلسة في قاعدة البيانات + الاشتراك في الـ Web Push
 // ═══════════════════════════════════════════════════════════
 export async function registerShieldSession(params: {
@@ -230,13 +220,8 @@ export async function registerShieldSession(params: {
   }
 }
 
-export function startFakeAlerts(): void {
-  // تدار عبر shield-cron على السيرفر
-}
-
-export function stopFakeAlerts(): void {
-  // متوافقة
-}
+export function startFakeAlerts(): void {}
+export function stopFakeAlerts(): void {}
 
 // ═══════════════════════════════════════════════════════════
 // 🔊 محرك منع الخمول الصامت (Audio Keep-Alive)
@@ -265,18 +250,14 @@ export function unlockAndKeepAliveAudio(): void {
   try {
     initAudioContext();
     if (!sharedAudioCtx) return;
-
-    // Buffer صامت تماماً
     const buffer = sharedAudioCtx.createBuffer(1, sharedAudioCtx.sampleRate * 2, sharedAudioCtx.sampleRate);
     const channelData = buffer.getChannelData(0);
     for (let i = 0; i < channelData.length; i++) {
       channelData[i] = Math.sin(i * 0.0001) * 0.00001;
     }
-
     if (keepAliveSource) {
       try { keepAliveSource.stop(); } catch { /* ignore */ }
     }
-
     keepAliveSource = sharedAudioCtx.createBufferSource();
     keepAliveSource.buffer = buffer;
     keepAliveSource.loop = true;
@@ -286,7 +267,6 @@ export function unlockAndKeepAliveAudio(): void {
     gainNode.connect(sharedAudioCtx.destination);
     keepAliveSource.start();
     isAudioKeepAliveActive = true;
-
     if ('mediaSession' in navigator) {
       navigator.mediaSession.playbackState = 'playing';
       navigator.mediaSession.metadata = new MediaMetadata({
@@ -302,13 +282,14 @@ export function unlockAndKeepAliveAudio(): void {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 📍 GPS Geofence الذكي المحمي من إنذارات اللابتوب الوهمية
+// 📍 GPS Geofence الذكي المحمي من الإنذارات الكاذبة وشطحات الإشارة
 // ═══════════════════════════════════════════════════════════
 let gpsWatchId: number | null = null;
 let fallbackIntervalId: ReturnType<typeof setInterval> | null = null;
 let lastSentLat = 0;
 let lastSentLng = 0;
 let breachStartTime: number | null = null;
+let consecutiveBreachCount = 0;
 let isCurrentlyOutside = false;
 let prevPos: { lat: number; lng: number; t: number } | null = null;
 let watchStartTime = 0;
@@ -332,6 +313,7 @@ export function startShieldGPS(params: {
   lastSentLat = params.parkingLat;
   lastSentLng = params.parkingLng;
   breachStartTime = null;
+  consecutiveBreachCount = 0;
   isCurrentlyOutside = false;
   prevPos = null;
   watchStartTime = Date.now();
@@ -347,24 +329,24 @@ export function startShieldGPS(params: {
     const now = Date.now();
     const elapsed = now - watchStartTime;
 
-    // 🛡️ 1. فترة استقرار 5 ثوانٍ عند البدء لمنع القفزات اللحظية للابتوب
+    // 🛡️ 1. فترة استقرار 5 ثوانٍ عند البدء لتفادي اهتزاز الإشارة المبدئي
     if (elapsed < STABILIZATION_MS) {
       prevPos = { lat, lng, t: now };
       return;
     }
 
-    // 🛡️ 2. تجاهل القراءات غير الدقيقة جداً (مثل شبكات الواي فاي على اللابتوب > 80 متر)
+    // 🛡️ 2. استبعاد القراءات الضعيفة وغير الدقيقة (أكبر من 45 متر) لمنع الإنذارات الكاذبة
     if (accuracy && accuracy > MAX_ALLOWED_ACCURACY_METERS) {
-      console.warn(`⚠️ تم تجاهل قراءة GPS ضعيفة الدقة: ${Math.round(accuracy)} متر`);
+      console.log(`[Shield] تجاهل قراءة ضعيفة الدقة: ±${Math.round(accuracy)}م`);
       return;
     }
 
-    // حساب السرعة الفعلية
+    // 🛡️ 3. حساب السرعة الحقيقية فقط عند وجود حركة فعلية واضحة (أكبر من 15 متر)
     let speed = (rawSpeed !== null && rawSpeed > 0) ? rawSpeed : 0;
     if (prevPos) {
       const d = haversine(prevPos.lat, prevPos.lng, lat, lng);
       const dt = (now - prevPos.t) / 1000;
-      if (dt > 0.5) {
+      if (dt > 0.5 && d >= 15) { // منع حساب سرعة وهمية من القفزات الصغيرة
         const calculatedSpeed = d / dt;
         speed = Math.max(speed, calculatedSpeed);
       }
@@ -374,20 +356,21 @@ export function startShieldGPS(params: {
     const distFromGarage = haversine(lat, lng, params.parkingLat, params.parkingLng);
     const distFromLastSent = haversine(lat, lng, lastSentLat, lastSentLng);
 
-    // 🚨 التحقق من الاختراق: خروج عن 50 متر + سرعة مؤكدة أو مسافة كبيرة جداً بدقة مقبولة
+    // 🚨 4. شروط الاختراق الصارمة مع التأكيد المزدوج (Double Confirmation)
     const isOverDistance = distFromGarage > GEOFENCE_RADIUS_METERS;
     const isConfirmedSpeed = speed >= SPEED_THRESHOLD_MPS;
-    const isMajorDistance = distFromGarage > 150 && (accuracy === null || accuracy < 50);
+    const isMajorDistance = distFromGarage > 120 && (accuracy === null || accuracy <= 35);
 
     if (isOverDistance && (isConfirmedSpeed || isMajorDistance)) {
+      consecutiveBreachCount++;
       if (!breachStartTime) {
         breachStartTime = now;
-        console.log(`🚨 رصد حركة خروج مؤكدة: ${Math.round(distFromGarage)}م @ ${Math.round(speed * 3.6)} كم/س`);
+        console.log(`🚨 رصد حركة خروج مبدئية: ${Math.round(distFromGarage)}م @ ${Math.round(speed * 3.6)} كم/س (تأكيد ${consecutiveBreachCount})`);
       }
 
+      // التأكد من استمرار الخروج لمدة ثانيتين مع قراءتين متتاليتين
       const effectiveGrace = isMajorDistance ? 0 : CAR_GRACE_MS;
-
-      if (now - breachStartTime >= effectiveGrace) {
+      if ((now - breachStartTime >= effectiveGrace) && consecutiveBreachCount >= 2) {
         if (!isCurrentlyOutside) {
           isCurrentlyOutside = true;
           if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
@@ -422,6 +405,8 @@ export function startShieldGPS(params: {
         }
       }
     } else {
+      // إعادة تصفير عداد الاختراق عند العودة للوضع الطبيعي
+      consecutiveBreachCount = 0;
       if (!isCurrentlyOutside) {
         breachStartTime = null;
       }
@@ -473,6 +458,7 @@ export function stopShieldGPS(): void {
     fallbackIntervalId = null;
   }
   breachStartTime = null;
+  consecutiveBreachCount = 0;
   isCurrentlyOutside = false;
   prevPos = null;
 }
@@ -493,10 +479,9 @@ async function sendGPSToServer(
   const now = Date.now();
   if (!forceImmediate) {
     if (isGpsSendingInProgress || now - lastGpsSendTimestamp < GPS_SERVER_THROTTLE_MS) {
-      return; // تجاهل التحديثات المتقاربة جداً لمنع استنزاف السيرفر
+      return;
     }
   }
-
   isGpsSendingInProgress = true;
   lastGpsSendTimestamp = now;
 
