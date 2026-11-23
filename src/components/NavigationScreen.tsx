@@ -880,7 +880,7 @@ export default function NavigationScreen() {
               </div>
               <div className="flex flex-col text-right">
                 <span className="font-black text-white text-base leading-tight">
-                  اضغط هنا وتوجه للجراج 🚀
+                  اضغط هنا وتوجه للجراج 
                 </span>
                 <span className="text-[10px] font-bold text-blue-200 mt-0.5">
                   توجيه مباشر ودقيق عبر الـ GPS

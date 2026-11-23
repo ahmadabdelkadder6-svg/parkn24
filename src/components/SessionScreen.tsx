@@ -500,7 +500,7 @@ export default function SessionScreen() {
     if (isDriver) {
       toast('نتمنى لك رحلة آمنة! 🚗', { icon: '👋', duration: 3000 });
     } else {
-      toast.error('تم تسجيل بلاغ السرقة وإنهاء الجلسة! 🚨', { duration: 4000 });
+      toast.error('تم تسجيل البلاغ وإنهاء الجلسة! 🚨', { duration: 4000 });
     }
     await handleEndSession();
   }, [handleEndSession]);
@@ -641,12 +641,12 @@ export default function SessionScreen() {
               }}
             >
               <p className="text-[11px] font-black text-amber-300 leading-snug">
-                💡 لضمان استمرار رادار التتبع والإنذار بالسرقة، يُرجى ترك هذه الصفحة في الخلفية وعدم إغلاقها.
+                💡 لضمان استمرار رادار الحماية، يُرجى ترك هذه الصفحة في الخلفية وعدم إغلاقها.
               </p>
               <div className="pt-2 border-t border-amber-500/20 flex items-start gap-1.5">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
                 <p className="text-[10px] font-bold text-slate-300 leading-relaxed">
-                  ⚠️ تنبيه هام: قفل نافذة التطبيق يدوياً يؤدي إلى إيقاف رادار الحماية فوراً. يرجى ترك الصفحة مفتوحة في الخلفية وقفل الشاشة فقط لضمان عمل الإنذار.
+                  ⚠️ تنبيه هام: قفل نافذة التطبيق يدوياً يؤدي إلى إيقاف رادار الحماية فوراً. يرجى ترك الصفحة مفتوحة في الخلفية وقفل الشاشة فقط لضمان عمل التنبيهات.
                 </p>
               </div>
             </div>
@@ -664,7 +664,7 @@ export default function SessionScreen() {
                 <span>⚠️ تنبيه: الجلسة الحالية تعمل في الوضع العادي (بدون حماية)</span>
               </div>
               <p className="text-[10px] font-bold text-slate-300 leading-relaxed pr-5">
-                السيارة غير مؤمنة ضد السرقة أو الرفع بالونش. الرادار والتتبع اللحظي متوقفان لهذه الجلسة.
+                السيارة غير مؤمنة  . الرادار والحماية متوقفان لهذه الجلسة.
               </p>
             </div>
           )}

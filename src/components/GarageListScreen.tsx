@@ -772,12 +772,12 @@ export default function GarageListScreen() {
     <div className="h-full flex flex-col overflow-hidden relative select-none" style={{ background: BRAND.bg, color: BRAND.navy }}>
       
       {/* ══════════════════════════════════════════════════════════════
-          🛡️ الهيدر المدمج المضغوط (مع تكبير الاسم ورقم اللوحة)
+          🛡️ الهيدر المدمج المضغوط (طراز Uber العالمي - متناسق تماماً)
          ══════════════════════════════════════════════════════════════ */}
       <div className="px-3.5 pt-8 pb-2.5 z-20 shadow-xs relative" style={{ background: BRAND.card, borderBottom: `1.5px solid ${BRAND.border}` }}>
         <div dir="rtl" className="flex justify-between items-center gap-2 mb-2">
           
-          {/* يمين: اللوجو والترحيب وبيانات السيارة بحجم أكبر وأوضح */}
+          {/* يمين: اللوجو والترحيب وبيانات السيارة بحجم كبير وواضح (تم حذف جملة رادار الحماية) */}
           <div className="text-right flex items-center gap-2.5 min-w-0">
             <div className="relative shrink-0">
               <img
@@ -796,7 +796,7 @@ export default function GarageListScreen() {
               </div>
             </div>
             
-            <div className="flex flex-col min-w-0">
+            <div className="flex flex-col min-w-0 justify-center">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm sm:text-base font-black text-slate-900 leading-tight">
                   أهلاً {currentUser?.name?.split(' ')[0] || 'بك'} 👋
@@ -808,20 +808,16 @@ export default function GarageListScreen() {
                   </span>
                 )}
               </div>
-              <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1 leading-tight mt-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                رادار الحماية نشط 24/7
-              </span>
             </div>
           </div>
 
-          {/* يسار: كبسولة رصيد المحفظة + شحن سريع + الأيقونات */}
+          {/* يسار: كبسولة رصيد المحفظة + تكبير أيقونات الباركود والقائمة بتناسق تام */}
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* 💳 كبسولة المحفظة المدمجة الذكية (Uber Style) */}
+            {/* 💳 كبسولة المحفظة */}
             <button
               type="button"
               onClick={() => setShowTopUp(true)}
-              className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl border cursor-pointer active:scale-95 transition-all shadow-xs"
+              className="flex items-center gap-2 px-2.5 py-2 rounded-xl border cursor-pointer active:scale-95 transition-all shadow-xs h-10"
               style={{
                 background: `linear-gradient(135deg, ${BRAND.blueDark} 0%, ${BRAND.blueDeep} 100%)`,
                 borderColor: BRAND.green,
@@ -843,26 +839,26 @@ export default function GarageListScreen() {
               </div>
             </button>
 
-            {/* زر الـ QR */}
+            {/* 📲 زر الـ QR (تم تكبيره لـ h-10 w-10 والأيقونة لـ 20px) */}
             <button
               type="button"
               onClick={() => setShowQrModal(true)}
-              className="w-8 h-8 rounded-xl flex items-center justify-center cursor-pointer active:scale-90 transition-all bg-slate-50 border shadow-2xs"
+              className="w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer active:scale-90 transition-all bg-slate-50 hover:bg-slate-100 border shadow-2xs"
               style={{ borderColor: BRAND.border }}
               title="مشاركة الكود"
             >
-              <QrCode size={16} strokeWidth={2.5} style={{ color: BRAND.blue }} />
+              <QrCode size={20} strokeWidth={2.2} style={{ color: BRAND.blue }} />
             </button>
 
-            {/* القائمة الذكية */}
+            {/* ⚙️ القائمة الذكية (تم تكبيرها لـ h-10 w-10 والأيقونة لـ 20px) */}
             <button
               type="button"
               onClick={() => setShowSmartMenu(true)}
-              className="w-8 h-8 rounded-xl flex items-center justify-center cursor-pointer active:scale-90 transition-all relative bg-slate-50 border shadow-2xs"
+              className="w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer active:scale-90 transition-all relative bg-slate-50 hover:bg-slate-100 border shadow-2xs"
               style={{ borderColor: BRAND.border }}
               title="القائمة"
             >
-              <Menu size={16} style={{ color: BRAND.navy }} />
+              <Menu size={20} strokeWidth={2.2} style={{ color: BRAND.navy }} />
               {pendingTopUpsCount > 0 && (
                 <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500 border border-white animate-ping" />
               )}
