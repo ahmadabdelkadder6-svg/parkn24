@@ -517,13 +517,21 @@ export default function GarageListScreen() {
       .sort((a, b) => a.distance - b.distance);
   }, [garages, userLocation]);
 
-  // 🎯 خوارزمية المنقذ السريع الذكية: تلتقط أقرب 3 جراجات حقيقية حول المستخدم
+  // 🎯 خوارزمية المنقذ السريع الذكية: رصد جراجات VIP فقط وفي محيط العميل الجغرافي
+  const MAX_RESCUE_RADIUS_KM = 20; // 📍 أقصى نطاق لمحيط العميل (20 كم كحد أقصى)
+
   const rescueGaragesList = useMemo(() => {
     if (!userLocation.lat || !userLocation.lng) return [];
-    const allActive = garagesWithDistance.filter(g => g.isActive !== false);
-    if (allActive.length === 0) return [];
-    const sorted = [...allActive].sort((a, b) => a.distance - b.distance);
-    return sorted.slice(0, MAX_RESCUE_OPTIONS); // 👈 أقرب 3 أماكن فقط
+    
+    return garagesWithDistance
+      .filter((g) => 
+        g.isActive !== false &&
+        g.garageType === 'vip' &&               // 1️⃣ حصر البحث في جراجات VIP المؤمنة فقط
+        g.availableSpots > 0 &&                 // 2️⃣ ذكي: يضمن إن فيه أماكن فاضية تركن فيها فوراً
+        g.distance <= MAX_RESCUE_RADIUS_KM      // 3️⃣ ذكي: يبحث في محيطك الفعلي فقط (ما يجيبش جراج في زايد وأنت في المعادي مثلاً)
+      )
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, MAX_RESCUE_OPTIONS);            // أخذ أقرب 3 جراجات فقط
   }, [garagesWithDistance, userLocation.lat, userLocation.lng]);
 
   const currentRescueGarage = rescueGaragesList[rescueIndex] || null;
