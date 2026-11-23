@@ -1,4 +1,3 @@
-
 // src/components/AdminDashboard.tsx
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -29,6 +28,18 @@ const BRAND = {
   card: '#ffffff',
   bg: '#f4f7fc',
   red: '#dc2626',
+};
+
+// ─── ⚡ مفتاح كاش الإيرادات والأرقام اللحظي في ذاكرة الموبايل ───
+const ADMIN_STATS_CACHE_KEY = 'parkn24_admin_kpi_cache';
+
+const loadCachedStats = () => {
+  try {
+    const raw = localStorage.getItem(ADMIN_STATS_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
 };
 
 const toMs = (value: any): number => {
@@ -125,15 +136,22 @@ export default function AdminDashboard() {
   } = useStore() as any;
 
   const lastFetchTimeRef = useRef<number>(0);
+
+  // ⚡ استجابة فورية بدون ضغط سيرفر (1.2 ثانية كحد أقصى للتحديث)
   const throttledFetchAll = useCallback(async () => {
     const now = Date.now();
-    if (now - lastFetchTimeRef.current < 3000) return;
+    if (now - lastFetchTimeRef.current < 1200) return;
     lastFetchTimeRef.current = now;
     try {
       await fetchAll();
     } catch (e) {
       console.error('Admin throttled fetch error:', e);
     }
+  }, [fetchAll]);
+
+  // جلب فوري تلقائي عند فتح الصفحة
+  useEffect(() => {
+    fetchAll?.();
   }, [fetchAll]);
 
   // 🔹 حساب الجلسات المجانية: لو الـ DB فيها true نستخدمها، لو لأ نحسب ديناميكياً
@@ -162,6 +180,7 @@ export default function AdminDashboard() {
   }, [sessions]);
 
   const isSessionFree = (s: any): boolean => freeSessionIds.has(s.id);
+
   const [, setTick] = useState(0);
   const [replyText, setReplyText] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -181,6 +200,7 @@ export default function AdminDashboard() {
   
   const [adminGarageTab, setAdminGarageTab] = useState<'vip' | 'directory'>('vip');
   const [garageSearch, setGarageSearch] = useState('');
+
   // ─── VIP Filters & Controls ───
   const [vipReportDateFrom, setVipReportDateFrom] = useState(() => getLocalToday());
   const [vipReportDateTo, setVipReportDateTo] = useState(() => getLocalToday());
@@ -188,6 +208,7 @@ export default function AdminDashboard() {
   const [vipPaymentFilter, setVipPaymentFilter] = useState<string>('all');
   const [vipExpandedGarageId, setVipExpandedGarageId] = useState<string | null>(null);
   const [visibleVipGarages, setVisibleVipGarages] = useState(10);
+
   // ─── Wallet Filters ───
   const [walletReportDateFrom, setWalletReportDateFrom] = useState(getLocalDaysAgo(30));
   const [walletReportDateTo, setWalletReportDateTo] = useState(getLocalToday());
@@ -195,6 +216,7 @@ export default function AdminDashboard() {
   const [walletPaymentFilter, setWalletPaymentFilter] = useState<string>('all');
   const [walletVisibleCount, setWalletVisibleCount] = useState(10);
   const [visibleGarageCount, setVisibleGarageCount] = useState(10);
+
   // ─── Add Garage Form State ───
   const [gName, setGName] = useState('');
   const [gUser, setGUser] = useState('');
@@ -256,8 +278,13 @@ export default function AdminDashboard() {
     return true;
   }).sort((a: any, b: any) => toMs(b.endTime) - toMs(a.endTime)), [completedSessions, garages, vipReportDateFrom, vipReportDateTo, vipGarageFilter, vipPaymentFilter]);
 
-  // VIP Stats Calculation
+  // ⚡ VIP Stats Calculation مع دعم الكاش اللحظي لمنع أي تأخير عند الفتح
   const vipReportStats = useMemo(() => {
+    const cached = loadCachedStats();
+    if (vipFilteredSessions.length === 0 && cached && cached.vipReportStats) {
+      return cached.vipReportStats;
+    }
+
     const ts = vipFilteredSessions.length;
     const freeSessions = vipFilteredSessions.filter((s: any) => isSessionFree(s));
     const paidSessions = vipFilteredSessions.filter((s: any) => !isSessionFree(s));
@@ -272,6 +299,7 @@ export default function AdminDashboard() {
       name: string; area: string; count: number; paidCount: number; freeCount: number;
       revenue: number; fees: number; shieldRevenue: number; shieldCount: number; platformTotal: number;
     }>();
+
     vipFilteredSessions.forEach((s: any) => {
       const g = garages.find((ga: any) => ga.id === s.garageId);
       if (!g) return;
@@ -304,11 +332,13 @@ export default function AdminDashboard() {
         });
       }
     });
+
     const pg = Array.from(gm.entries()).map(([id, d]) => ({ id, ...d })).sort((a, b) => b.platformTotal - a.platformTotal);
     const cc = paidSessions.filter((s: any) => s.paymentMethod === 'cash').length;
     const wc = paidSessions.filter((s: any) => s.paymentMethod === 'wallet').length;
     const ic = paidSessions.filter((s: any) => s.paymentMethod === 'instapay').length;
-    return {
+
+    const result = {
       totalSessions: ts,
       paidCount,
       freeCount,
@@ -323,6 +353,14 @@ export default function AdminDashboard() {
       instapayCount: ic,
       otherCount: paidCount - cc - wc - ic
     };
+
+    if (ts > 0) {
+      try {
+        localStorage.setItem(ADMIN_STATS_CACHE_KEY, JSON.stringify({ vipReportStats: result }));
+      } catch {}
+    }
+
+    return result;
   }, [vipFilteredSessions, garages]);
 
   const filteredWalletTopUps = useMemo(() => {
@@ -488,16 +526,15 @@ export default function AdminDashboard() {
     }
   };
 
-  // 🔹 اشتراك Realtime للأدمن مع حماية Debounce و Throttle قوية
+  // ⚡ اشتراك Realtime للأدمن فائق السرعة (800ms Debounce) لتسميع فوري بدون ثقل
   useEffect(() => {
     let dt: ReturnType<typeof setTimeout> | null = null;
     const tf = () => {
       if (dt) clearTimeout(dt);
       dt = setTimeout(() => {
         throttledFetchAll();
-      }, 3000);
+      }, 800);
     };
-
     const channelName = `admin-channel-${Math.random().toString(36).substring(2, 7)}`;
     const ch = supabase.channel(channelName)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, tf)
@@ -505,7 +542,6 @@ export default function AdminDashboard() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, tf)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'garages' }, tf)
       .subscribe();
-
     return () => {
       if (dt) clearTimeout(dt);
       supabase.removeChannel(ch);
@@ -577,6 +613,7 @@ export default function AdminDashboard() {
             </select>
           </div>
         </div>
+
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
           <div className="text-center p-3 rounded-2xl border" style={{ background: BRAND.card, borderColor: BRAND.border }}>
             <div className="text-[9px] font-bold" style={{ color: BRAND.slate }}>💰 إجمالي الشحنات</div>
@@ -599,6 +636,7 @@ export default function AdminDashboard() {
             <div className="text-[8px] font-bold" style={{ color: BRAND.blueDark }}>عميل</div>
           </div>
         </div>
+
         <div className="flex items-center justify-between gap-1 mb-4 py-2 px-3 rounded-xl border" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
           {[
             { icon: '✅', label: 'مقبول', count: walletReportStats.approvedCount, color: BRAND.greenDark },
@@ -613,6 +651,7 @@ export default function AdminDashboard() {
             </div>
           ))}
         </div>
+
         <div>
           <div className="flex items-center justify-between mb-2 px-1">
             <h4 className="font-black text-[11px]" style={{ color: BRAND.navy }}>📋 تفاصيل الشحنات</h4>
@@ -826,6 +865,7 @@ export default function AdminDashboard() {
               </button>
             ))}
           </div>
+
           <div className="flex gap-2">
             <div className="flex-1">
               <select value={vipGarageFilter} onChange={e => setVipGarageFilter(e.target.value)} className="w-full font-bold text-right outline-none text-xs py-2 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }}>
@@ -948,6 +988,7 @@ export default function AdminDashboard() {
               {vipReportStats.perGarage.length} جراج
             </span>
           </div>
+
           {vipReportStats.perGarage.length === 0 ? (
             <div className="text-center py-8 border-2 border-dashed rounded-2xl" style={{ background: BRAND.card, borderColor: BRAND.border }}>
               <span className="text-2xl block mb-1">📭</span>
@@ -1080,6 +1121,7 @@ export default function AdminDashboard() {
             <span>🧭 دليل الركنات المجاني</span>
           </button>
         </div>
+
         <div className="space-y-3 mb-4">
           <div className="relative">
             <Search size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: BRAND.slateMuted }} />
@@ -1098,6 +1140,7 @@ export default function AdminDashboard() {
             )}
           </div>
         </div>
+
         <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
           {filteredGaragesForAdmin.length === 0 ? (
             <div className="text-center py-10 bg-white border rounded-2xl" style={{ borderColor: BRAND.border }}>
@@ -1129,6 +1172,7 @@ export default function AdminDashboard() {
                     <span className="font-black text-xs" style={{ color: BRAND.navy }}>{g.name}</span>
                   </div>
                 </div>
+
                 <div className="flex items-center justify-between mb-3 gap-2">
                   <div className="flex flex-wrap gap-1 justify-start">
                     {isDirectory ? (
@@ -1154,6 +1198,7 @@ export default function AdminDashboard() {
                     <MapPin size={10} className="shrink-0 text-slate-400" />
                   </div>
                 </div>
+
                 <div className="flex flex-col gap-2 mb-3 p-3 rounded-xl border bg-slate-50" style={{ borderColor: BRAND.border }}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1">
@@ -1193,6 +1238,7 @@ export default function AdminDashboard() {
                       )}
                     </div>
                   </div>
+
                   {isEditingComm && (
                     <div className="pt-2 border-t border-dashed space-y-2 text-right" style={{ borderColor: BRAND.border }}>
                       <div className="flex justify-between items-center gap-2">
@@ -1241,6 +1287,7 @@ export default function AdminDashboard() {
                     </div>
                   )}
                 </div>
+
                 <div className="flex items-center gap-2">
                   <button 
                     type="button" 
@@ -1264,6 +1311,7 @@ export default function AdminDashboard() {
             );
           })}
         </div>
+
         {filteredGaragesForAdmin.length > visibleGarageCount && (
           <div className="mt-4 text-center">
             <button onClick={() => setVisibleGarageCount(p => p + 10)} className="w-full font-black py-3 rounded-xl text-xs cursor-pointer border-0 text-white active:scale-[0.98] transition-all flex items-center justify-center gap-2" style={{ background: BRAND.blue, boxShadow: `0 4px 14px ${BRAND.blue}25` }}>
