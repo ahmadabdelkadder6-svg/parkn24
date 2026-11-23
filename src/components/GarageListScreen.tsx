@@ -33,6 +33,7 @@ const BRAND = {
 
 // 📍 مسافة التحديث الحقيقية لواجهة المستخدم
 const MIN_UI_MOVE_METERS = 25;
+
 // ⏳ فترة كبح طلبات السيرفر (تمنع استنزاف قاعدة البيانات)
 const FETCH_THROTTLE_MS = 3500;
 
@@ -271,8 +272,10 @@ export default function GarageListScreen() {
   // 💰 مودال "رصيدك غير كافي"
   const [showInsufficientModal, setShowInsufficientModal] = useState(false);
   const [pendingVipGarage, setPendingVipGarage] = useState<GarageWithDistance | null>(null);
+  
+  // 👈 تم التعديل لحصر البحث في أقرب 3 أماكن فقط
   const [rescueIndex, setRescueIndex] = useState(0);
-  const MAX_RESCUE_OPTIONS = 4;
+  const MAX_RESCUE_OPTIONS = 3;
 
   const autoNavigatedRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
@@ -368,8 +371,8 @@ export default function GarageListScreen() {
         const rawSpeed = position.coords.speed;
         const rawHeading = position.coords.heading || 0;
         const nowMs = Date.now();
-
         let speedKmh = 0;
+
         if (rawSpeed !== null && rawSpeed !== undefined && !isNaN(rawSpeed) && rawSpeed >= 0) {
           speedKmh = rawSpeed * 3.6;
         } else if (lastGpsTickRef.current) {
@@ -380,7 +383,6 @@ export default function GarageListScreen() {
             speedKmh = (distMeters / timeSec) * 3.6;
           }
         }
-
         lastGpsTickRef.current = { lat: newLat, lng: newLng, time: nowMs };
         speedHistoryRef.current.push(speedKmh);
         if (speedHistoryRef.current.length > 10) speedHistoryRef.current.shift();
@@ -515,15 +517,13 @@ export default function GarageListScreen() {
       .sort((a, b) => a.distance - b.distance);
   }, [garages, userLocation]);
 
-  // 🎯 خوارزمية المنقذ السريع الذكية: تلتقط أقرب الجراجات الحقيقية حول المستخدم دون عوائق مناطق
+  // 🎯 خوارزمية المنقذ السريع الذكية: تلتقط أقرب 3 جراجات حقيقية حول المستخدم
   const rescueGaragesList = useMemo(() => {
     if (!userLocation.lat || !userLocation.lng) return [];
     const allActive = garagesWithDistance.filter(g => g.isActive !== false);
     if (allActive.length === 0) return [];
-
-    // ترتيب بحت بالمسافة الجغرافية الحقيقية (أقرب خط مستقيم)
     const sorted = [...allActive].sort((a, b) => a.distance - b.distance);
-    return sorted.slice(0, MAX_RESCUE_OPTIONS);
+    return sorted.slice(0, MAX_RESCUE_OPTIONS); // 👈 أقرب 3 أماكن فقط
   }, [garagesWithDistance, userLocation.lat, userLocation.lng]);
 
   const currentRescueGarage = rescueGaragesList[rescueIndex] || null;
@@ -764,18 +764,18 @@ export default function GarageListScreen() {
     <div className="h-full flex flex-col overflow-hidden relative select-none" style={{ background: BRAND.bg, color: BRAND.navy }}>
       
       {/* ══════════════════════════════════════════════════════════════
-          🛡️ الهيدر المدمج المضغوط (طراز Uber العالمي - بدون هدر مساحات)
+          🛡️ الهيدر المدمج المضغوط (مع تكبير الاسم ورقم اللوحة)
          ══════════════════════════════════════════════════════════════ */}
       <div className="px-3.5 pt-8 pb-2.5 z-20 shadow-xs relative" style={{ background: BRAND.card, borderBottom: `1.5px solid ${BRAND.border}` }}>
         <div dir="rtl" className="flex justify-between items-center gap-2 mb-2">
           
-          {/* يمين: اللوجو والترحيب وبيانات السيارة */}
+          {/* يمين: اللوجو والترحيب وبيانات السيارة بحجم أكبر وأوضح */}
           <div className="text-right flex items-center gap-2.5 min-w-0">
             <div className="relative shrink-0">
               <img
                 src="/icons/logo.png"
                 alt="Park'n 24"
-                className="h-9 w-auto object-contain filter drop-shadow-xs"
+                className="h-10 w-auto object-contain filter drop-shadow-xs"
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = 'none';
                   const fallback = document.getElementById('logo-fallback');
@@ -789,17 +789,18 @@ export default function GarageListScreen() {
             </div>
             
             <div className="flex flex-col min-w-0">
-              <div className="flex items-center gap-1.5 truncate">
-                <span className="text-[13px] font-black text-slate-900 truncate leading-tight">
-                  أهلاً {currentUser?.name?.split(' ')[0] || 'بك'}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm sm:text-base font-black text-slate-900 leading-tight">
+                  أهلاً {currentUser?.name?.split(' ')[0] || 'بك'} 👋
                 </span>
                 {currentUser?.carPlate && (
-                  <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
-                    🚗 {currentUser.carPlate}
+                  <span className="text-[11px] sm:text-xs font-mono font-black px-2 py-0.5 rounded-lg bg-blue-50 text-[#1656b8] border border-blue-200/90 shadow-2xs shrink-0 flex items-center gap-1">
+                    <span>🚗</span>
+                    <span>{currentUser.carPlate}</span>
                   </span>
                 )}
               </div>
-              <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 leading-tight mt-0.5">
+              <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1 leading-tight mt-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 رادار الحماية نشط 24/7
               </span>
@@ -861,75 +862,82 @@ export default function GarageListScreen() {
           </div>
         </div>
 
-        {/* 🌟 بانر المنقذ السريع (خاطف للعين وأنيق) */}
+        {/* 🌟 بانر المنقذ السريع (حجم أكبر وخطوط أثقل وأوضح تحت الشمس) */}
         {currentRescueGarage && !activeSession && !myIncomingCar && (
           <div
-            className="mb-2 rounded-2xl overflow-hidden border text-right transition-all"
+            className="mb-2.5 rounded-2xl overflow-hidden border-2 text-right transition-all shadow-lg"
             style={{
               background: `linear-gradient(135deg, ${BRAND.blueDark} 0%, ${BRAND.blueDeep} 100%)`,
               borderColor: BRAND.green,
-              boxShadow: '0 4px 18px rgba(14, 58, 125, 0.2)',
+              boxShadow: '0 6px 20px rgba(14, 58, 125, 0.28)',
               direction: 'rtl'
             }}
           >
-            <div className="px-3 pt-2 pb-1.5 flex items-center justify-between border-b border-white/10">
-              <div className="flex items-center gap-1.5">
-                <Radio size={13} className="text-lime-400 animate-pulse" />
-                <span className="text-[11px] font-black text-white">
+            <div className="px-3.5 py-2 flex items-center justify-between border-b border-white/15 bg-white/5">
+              <div className="flex items-center gap-2">
+                <Radio size={15} className="text-lime-400 animate-pulse shrink-0" />
+                <span className="text-xs sm:text-sm font-black text-white">
                   ⚡ رادار المنقذ السريع (الأقرب لموقعك بالمتر)
                 </span>
               </div>
-              <span className="font-black text-[9px] px-2 py-0.5 rounded-md bg-white/15 text-lime-300 border border-white/20 font-mono">
+              <span className="font-black text-[10px] sm:text-xs px-2.5 py-0.5 rounded-lg bg-white/15 text-lime-300 border border-white/20 font-mono shrink-0">
                 {rescueIndex + 1} من {rescueGaragesList.length}
               </span>
             </div>
 
             <div
-              className="p-2.5 cursor-pointer active:opacity-90 transition-all"
+              className="p-3.5 cursor-pointer active:opacity-90 transition-all"
               onClick={() => handleGarageClick(currentRescueGarage)}
             >
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex-1">
-                  <div className="flex items-center gap-1.5 mb-0.5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span
-                      className="text-[8.5px] font-black px-1.5 py-0.2 rounded text-white flex items-center gap-1"
+                      className="text-[10px] font-black px-2 py-0.5 rounded-md text-white flex items-center gap-1 shadow-2xs"
                       style={{ background: currentRescueGarage.garageType === 'vip' ? BRAND.greenDark : '#475569' }}
                     >
-                      {currentRescueGarage.garageType === 'vip' ? <ShieldCheck size={9} /> : '🧭'}
-                      {currentRescueGarage.garageType === 'vip' ? 'VIP مؤمن' : 'ساحة مفتوحة'}
+                      {currentRescueGarage.garageType === 'vip' ? <ShieldCheck size={11} /> : '🧭'}
+                      {currentRescueGarage.garageType === 'vip' ? 'VIP مؤمن بالرادار' : 'ساحة مفتوحة'}
                     </span>
-                    <span className="text-[9px] font-bold text-slate-300">
-                      يبعد {(currentRescueGarage.distance * 1000).toFixed(0)} متر
+                    <span className="text-[11px] font-bold text-lime-200">
+                      📍 يبعد عنك بالظبط: {(currentRescueGarage.distance * 1000).toFixed(0)} متر
                     </span>
                   </div>
-                  <h4 className="text-[13px] font-black text-white leading-tight mb-1">{currentRescueGarage.name}</h4>
-                  <div className="flex items-center gap-3">
-                    <span className="text-[12px] font-black text-lime-300 font-mono">
+
+                  <h4 className="text-sm sm:text-base font-black text-white leading-snug mb-1.5 truncate">
+                    {currentRescueGarage.name}
+                  </h4>
+
+                  <div className="flex items-center gap-3.5">
+                    <span className="text-sm sm:text-base font-black text-lime-300 font-mono">
                       💰 {currentRescueGarage.priceType === 'daily'
                         ? `${currentRescueGarage.dailyPrice || currentRescueGarage.basePrice} ج/يوم`
                         : `${currentRescueGarage.basePrice} ج/ساعة`}
                     </span>
-                    <span className="text-[10px] font-bold text-slate-200">⏱️ {formatDuration(currentRescueGarage.minutes)}</span>
+                    <span className="text-[11px] sm:text-xs font-bold text-slate-200">
+                      ⏱️ {formatDuration(currentRescueGarage.minutes)}
+                    </span>
                   </div>
                 </div>
 
                 <div
-                  className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-md"
-                  style={{ background: BRAND.green, border: `1.5px solid ${BRAND.greenDark}` }}
+                  className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-md transition-transform active:scale-90"
+                  style={{ background: BRAND.green, border: `2px solid ${BRAND.greenDark}` }}
+                  title="توجيه سريع"
                 >
-                  <Navigation size={16} className="rotate-45 text-slate-950" />
+                  <Navigation size={20} className="rotate-45 text-slate-950 stroke-[2.5]" />
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* 🔍 زر "شوف الركنة البديلة اللي بعدها" — بنفس هوية الرادار الملكي وأنيق يخطف العين */}
+        {/* 🔍 زر "شوف الركنة البديلة اللي بعدها" — بحجم أكبر وواضح جداً */}
         {rescueGaragesList.length > 1 && !activeSession && !myIncomingCar && (
           <button
             type="button"
             onClick={handleNextRescue}
-            className="w-full mb-2 py-2.5 px-3 rounded-xl text-xs font-black cursor-pointer active:scale-[0.98] transition-all flex items-center justify-between shadow-sm"
+            className="w-full mb-2.5 py-3 px-3.5 rounded-xl text-xs sm:text-sm font-black cursor-pointer active:scale-[0.98] transition-all flex items-center justify-between shadow-sm"
             style={{
               background: `linear-gradient(135deg, ${BRAND.blueDark} 0%, ${BRAND.blueDeep} 100%)`,
               border: `1.5px solid ${BRAND.green}`,
@@ -939,11 +947,11 @@ export default function GarageListScreen() {
             }}
           >
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-lime-400 animate-ping" />
-              <span className="font-black text-[12px] text-white">🔍 شوف الركنة البديلة اللي بعدها</span>
+              <span className="w-2.5 h-2.5 rounded-full bg-lime-400 animate-ping" />
+              <span className="font-black text-xs sm:text-sm text-white">🔍 شوف الركنة البديلة اللي بعدها</span>
             </div>
-            <div className="flex items-center gap-1 font-mono text-[10px] text-lime-300 bg-white/10 px-2 py-0.5 rounded-md border border-white/15">
-              <Sparkles size={11} className="text-lime-400" />
+            <div className="flex items-center gap-1.5 font-mono text-[11px] font-black text-lime-300 bg-white/10 px-2.5 py-1 rounded-lg border border-white/20">
+              <Sparkles size={12} className="text-lime-400" />
               <span>خيار {((rescueIndex + 1) % rescueGaragesList.length) + 1} من {rescueGaragesList.length}</span>
             </div>
           </button>
@@ -1556,7 +1564,6 @@ export default function GarageListScreen() {
                   💵 يرجى سداد الحساب كاش للسايس
                 </span>
               </div>
-
               <div className="p-3 rounded-xl text-right bg-amber-500/10 border border-amber-500/30 flex gap-2">
                 <div className="text-right w-full">
                   <span className="text-[11px] font-black text-amber-400 block mb-0.5">💡 شارك مجتمع بركن 24</span>
@@ -1710,7 +1717,6 @@ const GarageCard = memo(function GarageCard({
       <div className="flex items-start justify-between gap-2 mb-1" style={{ direction: 'rtl' }}>
         <h4 className="text-[13px] font-black leading-tight text-slate-950 flex-1">{garage.name}</h4>
       </div>
-
       <div className="flex items-center gap-1 justify-end text-[10px] font-bold mb-2 text-slate-500" style={{ direction: 'rtl' }}>
         <span className="truncate max-w-[280px]">{garage.location}</span>
         <MapPin size={11} className="text-slate-400 shrink-0" />
@@ -1733,12 +1739,14 @@ const GarageCard = memo(function GarageCard({
               <span>تعديل السعر</span>
             </button>
           )}
+
           {!isDirectory && (
             <div className="flex flex-col items-center">
               <span className="font-mono font-black text-sm leading-none text-blue-700">{garage.availableSpots}</span>
               <span className="text-[8px] font-bold text-slate-400 mt-0.5 uppercase">مكان شاغر</span>
             </div>
           )}
+
           <div className="flex flex-col items-center">
             <span className="font-mono font-black text-sm leading-none" style={{ color: BRAND.greenDark }}>{displayPrice}</span>
             <span className="text-[8px] font-bold text-slate-400 mt-0.5 uppercase">{priceUnit}</span>
