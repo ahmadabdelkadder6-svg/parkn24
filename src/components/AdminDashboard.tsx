@@ -1,16 +1,17 @@
+
 // src/components/AdminDashboard.tsx
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, CheckCircle, XCircle, MapPin, Plus,
   MessageCircle, Send, Search, Percent,
   Minus, CalendarDays, Navigation, X,
-  Zap, Filter, ChevronDown, ChevronUp,
-  TrendingUp, Award, DollarSign, Activity,
-  Phone, User, Check, RefreshCw
+  Zap, ChevronDown, ChevronUp,
+  Award, Activity
 } from 'lucide-react';
 import { useStore, normalizePhone, getServerNow, BOOKING_FEE } from '../store';
 import { supabase } from '../lib/supabase';
+import { calculateCostWithLoyalty } from '../utils/pricing';
 import toast from 'react-hot-toast';
 
 const BRAND = {
@@ -32,7 +33,6 @@ const BRAND = {
 
 // ─── ⚡ مفتاح كاش الإيرادات والأرقام اللحظي في ذاكرة الموبايل ───
 const ADMIN_STATS_CACHE_KEY = 'parkn24_admin_kpi_cache';
-
 const loadCachedStats = () => {
   try {
     const raw = localStorage.getItem(ADMIN_STATS_CACHE_KEY);
@@ -44,12 +44,12 @@ const loadCachedStats = () => {
 
 const toMs = (value: any): number => {
   if (!value) return 0;
-  if (typeof value === 'string') {
-    const ms = new Date(value).getTime();
-    return Number.isFinite(ms) && ms > 0 ? ms : 0;
-  }
   if (typeof value === 'number') {
     return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+  if (typeof value === 'string') {
+    const ms = Date.parse(value);
+    return Number.isFinite(ms) && ms > 0 ? ms : 0;
   }
   return 0;
 };
@@ -128,96 +128,12 @@ const AREA_EMOJI: Record<string, string> = {
   'مناطق أخرى': '📍'
 };
 
-export default function AdminDashboard() {
-  const {
-    garages, sessions, walletTopUps, users, approveTopUp, rejectTopUp,
-    addGarage, setCurrentGarageId, setView, logout, messages, replyMessage,
-    closeMessage, updateGarage, fetchAll
-  } = useStore() as any;
-
-  const lastFetchTimeRef = useRef<number>(0);
-
-  // ⚡ استجابة فورية بدون ضغط سيرفر (1.2 ثانية كحد أقصى للتحديث)
-  const throttledFetchAll = useCallback(async () => {
-    const now = Date.now();
-    if (now - lastFetchTimeRef.current < 1200) return;
-    lastFetchTimeRef.current = now;
-    try {
-      await fetchAll();
-    } catch (e) {
-      console.error('Admin throttled fetch error:', e);
-    }
-  }, [fetchAll]);
-
-  // جلب فوري تلقائي عند فتح الصفحة
-  useEffect(() => {
-    fetchAll?.();
-  }, [fetchAll]);
-
-  // 🔹 حساب الجلسات المجانية: لو الـ DB فيها true نستخدمها، لو لأ نحسب ديناميكياً
-  const freeSessionIds = useMemo(() => {
-    const ids = new Set<string>();
-    sessions.forEach((s: any) => {
-      if (s.isFirstFreeSession === true) ids.add(s.id);
-    });
-    const groups = new Map<string, any[]>();
-    sessions.forEach((s: any) => {
-      if (s.status !== 'completed') return;
-      const date = timestampToLocalDate(toMs(s.startTime));
-      const phone = s.customerPhone ? normalizePhone(s.customerPhone) : '';
-      const plate = s.carPlate || '';
-      const key = `${date}::${phone || plate}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(s);
-    });
-    groups.forEach((list) => {
-      list.sort((a: any, b: any) => toMs(a.startTime) - toMs(b.startTime));
-      list.forEach((s: any, i: number) => {
-        if (i >= 2) ids.add(s.id);
-      });
-    });
-    return ids;
-  }, [sessions]);
-
-  const isSessionFree = (s: any): boolean => freeSessionIds.has(s.id);
-
-  const [, setTick] = useState(0);
-  const [replyText, setReplyText] = useState('');
-  const [replyingTo, setReplyingTo] = useState<string | null>(null);
-  const [expandedMessage, setExpandedMessage] = useState<string | null>(null);
-  const [messagesTab, setMessagesTab] = useState<'pending' | 'all'>('pending');
-  const [processingTopUpId, setProcessingTopUpId] = useState<string | null>(null);
-  
-  // ─── Garage Edit States ───
-  const [editingCommissionGarageId, setEditingCommissionGarageId] = useState<string | null>(null);
-  const [editCommissionRate, setEditCommissionRate] = useState(10);
-  const [editArea, setEditArea] = useState<string>(AREA_OPTIONS[0]);
-  const [editGarageType, setEditGarageType] = useState<'vip' | 'directory'>('vip');
-  const [editPriceType, setEditPriceType] = useState<'hourly' | 'daily' | 'monthly'>('hourly');
-  const [editBasePrice, setEditBasePrice] = useState(15);
-  const [editDailyPrice, setEditDailyPrice] = useState(20);
-  const [editMonthlyPrice, setEditMonthlyPrice] = useState(1500);
-  
-  const [adminGarageTab, setAdminGarageTab] = useState<'vip' | 'directory'>('vip');
-  const [garageSearch, setGarageSearch] = useState('');
-
-  // ─── VIP Filters & Controls ───
-  const [vipReportDateFrom, setVipReportDateFrom] = useState(() => getLocalToday());
-  const [vipReportDateTo, setVipReportDateTo] = useState(() => getLocalToday());
-  const [vipGarageFilter, setVipGarageFilter] = useState<string>('all');
-  const [vipPaymentFilter, setVipPaymentFilter] = useState<string>('all');
-  const [vipExpandedGarageId, setVipExpandedGarageId] = useState<string | null>(null);
-  const [visibleVipGarages, setVisibleVipGarages] = useState(10);
-
-  // ─── Wallet Filters ───
-  const [walletReportDateFrom, setWalletReportDateFrom] = useState(getLocalDaysAgo(30));
-  const [walletReportDateTo, setWalletReportDateTo] = useState(getLocalToday());
-  const [walletStatusFilter, setWalletStatusFilter] = useState<string>('all');
-  const [walletPaymentFilter, setWalletPaymentFilter] = useState<string>('all');
-  const [walletVisibleCount, setWalletVisibleCount] = useState(10);
-  const [visibleGarageCount, setVisibleGarageCount] = useState(10);
-
-  // ─── Add Garage Form State ───
+// ─── 🚀 المكون المعزول: إضافة جراج جديد (يمنع إعادة ريندر لوحة التحكم عند الكتابة) ───
+const AddGarageSection = memo(function AddGarageSection({
+  onAddGarage
+}: {
+  onAddGarage: (data: any) => Promise<void>;
+}) {
   const [gName, setGName] = useState('');
   const [gUser, setGUser] = useState('');
   const [gPhone, setGPhone] = useState('');
@@ -237,13 +153,309 @@ export default function AdminDashboard() {
   const [gValet3Name, setGValet3Name] = useState('');
   const [gValet3Pass, setGValet3Pass] = useState('');
 
-  // 🔹 فلترة الجراجات للأدمن مع معالجة النوع Partner/VIP/Directory
-  const filteredGaragesForAdmin = useMemo(() => {
+  const handleSubmit = async () => {
+    if (!gName.trim()) { toast.error('أدخل اسم الجراج'); return; }
+    const isDir = gType === 'directory';
+    if (!isDir && (!gUser.trim() || !gPhone.trim())) {
+      toast.error('جراج الشريك يتطلب اسم مستخدم وهاتف للمالك');
+      return;
+    }
+    await onAddGarage({
+      name: gName.trim(),
+      username: isDir ? `dir_${Date.now()}` : gUser.trim(),
+      phone: isDir ? '' : gPhone.trim(),
+      ownerPhone: isDir ? '' : gPhone.trim(),
+      capacity: isDir ? 100 : 50,
+      available_spots: isDir ? 100 : 50,
+      basePrice: isDir && gPriceType === 'hourly' ? gBasePrice : isDir && gPriceType === 'daily' ? gDailyPrice : gBasePrice,
+      price: isDir && gPriceType === 'hourly' ? gBasePrice : gBasePrice,
+      location: gLocation.trim() || 'موقع مسجل بالرادار',
+      lat, lng,
+      valetName1: isDir ? '' : gValet1Name,
+      valetPassword1: isDir ? '' : gValet1Pass,
+      valetName2: isDir ? '' : gValet2Name,
+      valetPassword2: isDir ? '' : gValet2Pass,
+      valetName3: isDir ? '' : gValet3Name,
+      valetPassword3: isDir ? '' : gValet3Pass,
+      area: gArea,
+      garageType: gType === 'partner' ? 'vip' : 'directory',
+      payment_mode: 'cash',
+      priceType: gPriceType,
+      dailyPrice: isDir && gPriceType === 'daily' ? gDailyPrice : undefined,
+      monthlyPrice: isDir && gPriceType === 'monthly' ? gMonthlyPrice : undefined,
+      isActive: true,
+    });
+    setGName(''); setGUser(''); setGPhone(''); setGLocation(''); setGArea(AREA_OPTIONS[0]);
+    setGValet1Name(''); setGValet1Pass(''); setGValet2Name(''); setGValet2Pass(''); setGValet3Name(''); setGValet3Pass('');
+    setGType('partner'); setGPriceType('hourly');
+  };
+
+  return (
+    <div className="mb-20">
+      <h3 className="font-black mb-3 text-right text-xs" style={{ color: BRAND.navy }}>إضافة جراج جديد للشبكة</h3>
+      <div className="space-y-4 p-5 bg-white border" style={{ borderColor: BRAND.border, borderRadius: 24 }}>
+        <div className="text-right">
+          <label className="font-black block text-right mb-1.5 text-[10px]" style={{ color: BRAND.slate }}>نوع الجراج المضاف للشبكة</label>
+          <select value={gType} onChange={e => setGType(e.target.value as any)} className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }}>
+            <option value="partner">🤝 جراج شريك VIP معتمد</option>
+            <option value="directory">🧭 دليل ركنات مجاني</option>
+          </select>
+        </div>
+        <input className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="اسم الجراج أو الساحة" value={gName} onChange={e => setGName(e.target.value)} />
+        <input className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="العنوان التفصيلي للجراج..." value={gLocation} onChange={e => setGLocation(e.target.value)} />
+        {gType === 'partner' && (
+          <div className="flex gap-2">
+            <input className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="اسم المستخدم" value={gUser} onChange={e => setGUser(e.target.value)} />
+            <input className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="رقم هاتف المالك" value={gPhone} onChange={e => setGPhone(e.target.value)} />
+          </div>
+        )}
+        <div className="text-right">
+          <label className="font-black block text-right mb-1.5 text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية المعتمدة للجراج</label>
+          <select value={gArea} onChange={e => setGArea(e.target.value)} className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }}>
+            {AREA_OPTIONS.map(a => (
+              <option key={a} value={a}>{AREA_EMOJI[a] || '📍'} {a}</option>
+            ))}
+          </select>
+        </div>
+        {gType === 'directory' ? (
+          <div className="p-3 border rounded-xl" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
+            <div className="font-bold mb-3 text-right text-[10px]" style={{ color: BRAND.slate }}>💰 هيكل وأسعار الركنة</div>
+            <div className="space-y-3">
+              <select value={gPriceType} onChange={e => setGPriceType(e.target.value as any)} className="w-full font-bold text-right outline-none text-xs p-2 rounded-lg border">
+                <option value="hourly">⏱️ ركن بالساعة</option>
+                <option value="daily">☀️ سعر يومي ثابت</option>
+                <option value="monthly">📅 اشتراك شهري</option>
+              </select>
+              {gPriceType === 'hourly' && (
+                <div>
+                  <label className="text-[9px] text-slate-400 block mb-0.5">سعر الساعة:</label>
+                  <input type="number" value={gBasePrice} onChange={e => setGBasePrice(parseInt(e.target.value, 10) || 0)} className="w-full font-bold text-center text-xs p-2 rounded border" />
+                </div>
+              )}
+              {gPriceType === 'daily' && (
+                <div>
+                  <label className="text-[9px] text-slate-400 block mb-0.5">سعر اليوم:</label>
+                  <input type="number" value={gDailyPrice} onChange={e => setGDailyPrice(parseInt(e.target.value, 10) || 0)} className="w-full font-bold text-center text-xs p-2 rounded border" />
+                </div>
+              )}
+              {gPriceType === 'monthly' && (
+                <div>
+                  <label className="text-[9px] text-slate-400 block mb-0.5">سعر الشهر:</label>
+                  <input type="number" value={gMonthlyPrice} onChange={e => setGMonthlyPrice(parseInt(e.target.value, 10) || 0)} className="w-full font-bold text-center text-xs p-2 rounded border" />
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="p-3 border rounded-xl" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
+            <div className="font-bold mb-3 text-right text-[10px]" style={{ color: BRAND.slate }}>👤 حسابات السياس (اختياري)</div>
+            {[{ n: 1, name: gValet1Name, setName: setGValet1Name, pass: gValet1Pass, setPass: setGValet1Pass, color: BRAND.blue },
+              { n: 2, name: gValet2Name, setName: setGValet2Name, pass: gValet2Pass, setPass: setGValet2Pass, color: '#7c3aed' },
+              { n: 3, name: gValet3Name, setName: setGValet3Name, pass: gValet3Pass, setPass: setGValet3Pass, color: '#f59e0b' }].map((v, i) => (
+              <div key={i} className={i < 2 ? 'mb-3 pb-3 border-b border-dashed' : ''} style={{ borderColor: BRAND.border }}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-bold text-[9px]" style={{ color: (v.name || v.pass) ? BRAND.greenDark : BRAND.slateMuted }}>{(v.name || v.pass) ? '✅ مفعّل' : '❌ غير مفعّل'}</span>
+                  <span className="font-black text-[10px]" style={{ color: BRAND.navy }}>سايس {v.n}</span>
+                </div>
+                <div className="flex gap-2">
+                  <input type="text" value={v.name} onChange={e => v.setName(e.target.value)} className="flex-1 font-bold text-right outline-none text-xs py-2 px-2.5 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="الاسم" />
+                  <input type="text" value={v.pass} onChange={e => v.setPass(e.target.value)} className="flex-1 font-mono font-black text-center outline-none text-xs py-2 px-2.5 rounded-lg border border-slate-200" style={{ color: BRAND.navy, letterSpacing: 2 }} placeholder="الباسورد" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="p-3 border rounded-xl" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
+          <div className="font-bold mb-2 text-[10px]" style={{ color: BRAND.slate }}>📍 تحديد الإحداثيات الجغرافية</div>
+          <div className="grid grid-cols-2 gap-3 font-mono">
+            {[{ label: 'خط العرض', value: lat, set: setLat }, { label: 'خط الطول', value: lng, set: setLng }].map(c => (
+              <div key={c.label}>
+                <span className="text-[9px] text-slate-400 block mb-0.5">{c.label}</span>
+                <input type="number" value={c.value} onChange={e => c.set(parseFloat(e.target.value))} className="w-full font-bold outline-none text-xs py-2 px-2.5 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} step="0.000001" />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="text-center p-3 border rounded-xl" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
+          <div className="font-bold mb-1 text-[11px]" style={{ color: BRAND.navy }}>الموقع الإحداثي الحالي للمتصفح</div>
+          <div className="font-black font-mono text-xs" style={{ color: BRAND.blue }}>{lat.toFixed(4)}, {lng.toFixed(4)}</div>
+          <button 
+            type="button" 
+            onClick={() => {
+              if ('geolocation' in navigator) {
+                navigator.geolocation.getCurrentPosition(p => {
+                  setLat(p.coords.latitude);
+                  setLng(p.coords.longitude);
+                  toast.success('تم تحديد الإحداثيات بنجاح');
+                }, () => toast.error('تعذر تحديد موقع المتصفح'));
+              }
+            }} 
+            className="font-black py-1.5 px-3 rounded-lg text-[10px] cursor-pointer border bg-white mt-2" 
+            style={{ color: BRAND.blue, borderColor: BRAND.blue }}
+          >
+            📍 استخدام موقعي الحالي
+          </button>
+        </div>
+        <button onClick={handleSubmit} className="w-full font-black py-3.5 border-0 text-white rounded-xl text-xs active:scale-[0.98] transition-all cursor-pointer" style={{ background: BRAND.blue, boxShadow: `0 4px 14px ${BRAND.blue}25` }}>
+          حفظ وتسجيل الجراج بالشبكة 🚀
+        </button>
+      </div>
+    </div>
+  );
+});
+
+// ─── 🚀 المكون المعزول: الرسائل والشكاوى ───
+const AdminMessagesSection = memo(function AdminMessagesSection({
+  messages,
+  replyMessage,
+  closeMessage
+}: {
+  messages: any[];
+  replyMessage: (id: string, text: string) => Promise<void>;
+  closeMessage: (id: string) => Promise<void>;
+}) {
+  const [messagesTab, setMessagesTab] = useState<'pending' | 'all'>('pending');
+  const [replyText, setReplyText] = useState('');
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [expandedMessage, setExpandedMessage] = useState<string | null>(null);
+
+  const safeMessages = messages ?? [];
+  const pendingMessages = useMemo(() => safeMessages.filter((m: any) => m.status === 'pending'), [safeMessages]);
+  const allMessages = useMemo(() => [...safeMessages].sort((a: any, b: any) => b.timestamp - a.timestamp), [safeMessages]);
+  const displayedMessages = messagesTab === 'pending' ? pendingMessages : allMessages;
+
+  const getTypeEmoji = (t: string) => {
+    switch (t) {
+      case 'complaint': return '🚨';
+      case 'inquiry': return '❓';
+      case 'suggestion': return '💡';
+      case 'technical': return '🔧';
+      default: return '💬';
+    }
+  };
+  const getTypeLabel = (t: string) => {
+    switch (t) {
+      case 'complaint': return 'شكوى';
+      case 'inquiry': return 'استفسار';
+      case 'suggestion': return 'اقتراح';
+      case 'technical': return 'مشكلة تقنية';
+      default: return 'رسالة';
+    }
+  };
+  const formatMsgTime = (ts: number) => new Date(ts).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  return (
+    <div className="mb-8">
+      <div className="flex items-center justify-between mb-3">
+        <span className="font-black text-[9px] px-2 py-0.5 rounded text-white" style={{ background: '#ef4444' }}>{pendingMessages.length} جديد</span>
+        <h3 className="font-black text-xs flex items-center gap-1.5" style={{ color: BRAND.navy }}>الرسائل والشكاوى <MessageCircle size={16} /></h3>
+      </div>
+      <div className="flex gap-1.5 mb-3">
+        {([{ id: 'all' as const, label: `الكل (${allMessages.length})`, bg: BRAND.blue }, { id: 'pending' as const, label: `⏳ معلقة (${pendingMessages.length})`, bg: '#f59e0b' }]).map(b => (
+          <button key={b.id} onClick={() => setMessagesTab(b.id)} className="flex-1 font-black py-2 rounded-xl text-[10px] border-0 cursor-pointer transition-all" style={{ background: messagesTab === b.id ? b.bg : BRAND.blueSoft, color: messagesTab === b.id ? '#fff' : BRAND.slate, border: messagesTab !== b.id ? `1px solid ${BRAND.border}` : 'none' }}>
+            {b.label}
+          </button>
+        ))}
+      </div>
+      <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
+        {displayedMessages.length === 0 ? (
+          <div className="text-center py-6 bg-white border rounded-2xl text-xs font-bold" style={{ borderColor: BRAND.border, color: BRAND.slate }}>لا توجد رسائل</div>
+        ) : displayedMessages.map((msg: any) => {
+          const isExp = expandedMessage === msg.id;
+          const isRep = replyingTo === msg.id;
+          return (
+            <div key={msg.id} className="border p-3.5" style={{ background: msg.status === 'pending' ? '#fff7ed' : msg.status === 'replied' ? BRAND.greenLight : '#fff', borderColor: msg.status === 'pending' ? '#fed7aa' : msg.status === 'replied' ? BRAND.green : BRAND.border, borderRadius: 18 }}>
+              <div className="flex justify-between items-center mb-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-black text-[8px] px-1.5 py-0.5 rounded text-white" style={{ background: msg.status === 'pending' ? '#f59e0b' : msg.status === 'replied' ? BRAND.green : BRAND.slate }}>
+                    {msg.status === 'pending' ? '⏳ معلقة' : msg.status === 'replied' ? '✅ تم الرد' : '🔒 مغلقة'}
+                  </span>
+                  <span className="text-[9px] font-bold" style={{ color: BRAND.slateMuted }}>{formatMsgTime(msg.timestamp)}</span>
+                </div>
+                <span className="font-black text-[9px] px-2 py-0.5 rounded" style={{ background: BRAND.blueSoft, color: BRAND.slate }}>
+                  {getTypeEmoji(msg.type)} {getTypeLabel(msg.type)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between mb-2 p-1.5 rounded-lg border bg-slate-50" style={{ borderColor: BRAND.border }}>
+                <span className="font-mono font-bold text-[10px]" style={{ color: BRAND.blue }}>{msg.userPhone}</span>
+                <div className="flex items-center gap-1.5">
+                  {msg.userName && <span className="font-black text-[10px]" style={{ color: BRAND.navy }}>👤 {msg.userName}</span>}
+                  {msg.carPlate && <span className="font-black font-mono text-[10px]" style={{ color: BRAND.blue }}>🚗 {msg.carPlate}</span>}
+                </div>
+              </div>
+              {msg.subject && <div className="font-black mb-1 text-right text-xs" style={{ color: BRAND.navy }}>{msg.subject}</div>}
+              <div className={`text-right leading-relaxed mb-2 cursor-pointer ${isExp ? '' : 'line-clamp-2'}`} style={{ fontSize: '11px', fontWeight: 950, color: '#000' }} onClick={() => setExpandedMessage(isExp ? null : msg.id)}>
+                {msg.message}
+              </div>
+              {!isExp && msg.message.length > 80 && (
+                <button onClick={() => setExpandedMessage(msg.id)} className="font-black mb-2 text-blue-600 border-0 bg-transparent cursor-pointer" style={{ fontSize: 9.5 }}>
+                  عرض الكامل ↓
+                </button>
+              )}
+              {msg.reply && (
+                <div className="mb-2.5 p-2.5 rounded-lg border" style={{ background: BRAND.greenLight, borderColor: BRAND.green }}>
+                  <div className="font-black text-right mb-1 text-[9px]" style={{ color: BRAND.greenDark }}>ردك السابق:</div>
+                  <div className="text-right leading-relaxed text-[11px] font-bold" style={{ color: BRAND.navy }}>{msg.reply}</div>
+                </div>
+              )}
+              {msg.status !== 'closed' && (
+                isRep ? (
+                  <div className="space-y-2">
+                    <textarea value={replyText} onChange={e => setReplyText(e.target.value)} placeholder="اكتب ردك هنا..." rows={3} className="w-full font-bold text-right outline-none resize-none text-xs p-2.5 rounded-xl border border-slate-200" />
+                    <div className="flex gap-2">
+                      <button onClick={async () => { if (!replyText.trim()) { toast.error('اكتب الرد'); return; } await replyMessage(msg.id, replyText.trim()); toast.success('تم ✅'); setReplyText(''); setReplyingTo(null); }} className="flex-1 font-black py-2 rounded-lg text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1" style={{ background: BRAND.greenDark }}>
+                        <Send size={12} />إرسال
+                      </button>
+                      <button onClick={() => { setReplyingTo(null); setReplyText(''); }} className="font-black py-2 px-4 rounded-lg text-xs cursor-pointer border bg-white" style={{ color: BRAND.slate, borderColor: BRAND.border }}>إلغاء</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <button onClick={() => { setReplyingTo(msg.id); setReplyText(''); setExpandedMessage(msg.id); }} className="flex-1 font-black py-2 rounded-lg text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1" style={{ background: BRAND.blue }}>
+                      <Send size={12} />{msg.reply ? 'تعديل الرد' : 'الرد على الرسالة'}
+                    </button>
+                    <button onClick={async () => { await closeMessage(msg.id); toast.success('تم الإغلاق'); }} className="font-black py-2 px-4 rounded-lg text-xs cursor-pointer border bg-white" style={{ color: BRAND.slate, borderColor: BRAND.border }}>إلغاء</button>
+                  </div>
+                )
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
+
+// ─── 🚀 المكون المعزول: إدارة وجرد الجراجات ───
+const GarageManagementSection = memo(function GarageManagementSection({
+  garages,
+  ownerGarageCountMap,
+  onEnterGarage,
+  onUpdateGarage
+}: {
+  garages: any[];
+  ownerGarageCountMap: Map<string, number>;
+  onEnterGarage: (g: any) => void;
+  onUpdateGarage: (id: string, updates: any) => Promise<void>;
+}) {
+  const [adminGarageTab, setAdminGarageTab] = useState<'vip' | 'directory'>('vip');
+  const [garageSearch, setGarageSearch] = useState('');
+  const [visibleGarageCount, setVisibleGarageCount] = useState(10);
+  const [editingCommissionGarageId, setEditingCommissionGarageId] = useState<string | null>(null);
+  const [editCommissionRate, setEditCommissionRate] = useState(10);
+  const [editArea, setEditArea] = useState<string>(AREA_OPTIONS[0]);
+  const [editGarageType, setEditGarageType] = useState<'vip' | 'directory'>('vip');
+  const [editPriceType, setEditPriceType] = useState<'hourly' | 'daily' | 'monthly'>('hourly');
+  const [editBasePrice, setEditBasePrice] = useState(15);
+  const [editDailyPrice, setEditDailyPrice] = useState(20);
+  const [editMonthlyPrice, setEditMonthlyPrice] = useState(1500);
+
+  const filteredGarages = useMemo(() => {
     const q = garageSearch.trim().toLowerCase();
     const list = garages.filter((g: any) => {
       const isDir = g.garageType === 'directory' || g.type === 'directory';
       if (adminGarageTab === 'directory') return isDir;
-      return !isDir; // VIP or Partner
+      return !isDir;
     });
     if (!q) return list;
     return list.filter((g: any) => 
@@ -254,60 +466,452 @@ export default function AdminDashboard() {
     );
   }, [garages, garageSearch, adminGarageTab]);
 
-  useEffect(() => {
-    const i = setInterval(() => setTick((t) => t + 1), 60000);
-    return () => clearInterval(i);
-  }, []);
+  const handleSaveGarageData = async (garageId: string) => {
+    const isDir = editGarageType === 'directory';
+    const fp = isDir && editPriceType === 'daily' ? editDailyPrice : isDir && editPriceType === 'monthly' ? editMonthlyPrice : editBasePrice;
+    
+    try {
+      await onUpdateGarage(garageId, {
+        commissionRate: isDir ? 0 : editCommissionRate,
+        area: editArea,
+        garageType: editGarageType,
+        payment_mode: 'cash',
+        priceType: editPriceType,
+        basePrice: fp,
+        price: fp,
+        dailyPrice: editDailyPrice,
+        monthlyPrice: editMonthlyPrice,
+        lastPriceUpdate: new Date().toISOString(),
+        priceUpdatedBy: 'admin'
+      });
+      setEditingCommissionGarageId(null);
+      toast.success(`تم تحديث بيانات الجراج والمنطقة بنجاح ✅`);
+    } catch (e: any) {
+      toast.error('حدث خطأ أثناء حفظ التعديل');
+    }
+  };
 
-  const completedSessions = useMemo(() => sessions.filter((s: any) => s.status === 'completed' || s.status === 'active'), [sessions]);
-  const pendingTopUps = walletTopUps.filter((w: any) => w.status === 'pending');
-  const vipGarages = useMemo(() => garages.filter((g: any) => g.garageType === 'vip' || (g as any).is_vip === true || g.type === 'partner' || g.garageType !== 'directory'), [garages]);
+  return (
+    <div className="mb-8">
+      <div className="flex justify-between items-center mb-3">
+        <span className="font-black text-[9px] px-2.5 py-1 rounded bg-slate-200" style={{ color: BRAND.slate }}>
+          {filteredGarages.length} جراج نشط بالقسم
+        </span>
+        <h3 className="font-black text-xs" style={{ color: BRAND.navy }}>إدارة وجرد الجراجات</h3>
+      </div>
+      <div className="flex p-1 rounded-xl bg-slate-100 border border-slate-200 mb-3" style={{ direction: 'rtl' }}>
+        <button type="button" onClick={() => { setAdminGarageTab('vip'); setVisibleGarageCount(10); }} className="flex-1 py-2 rounded-lg font-black text-[10px] cursor-pointer border-0 transition-all flex items-center justify-center gap-1" style={{ background: adminGarageTab === 'vip' ? BRAND.blue : 'transparent', color: adminGarageTab === 'vip' ? '#fff' : BRAND.slate, boxShadow: adminGarageTab === 'vip' ? '0 2px 6px rgba(22,86,184,0.15)' : 'none' }}>
+          <span>⭐ جراجات VIP الشريكة</span>
+        </button>
+        <button type="button" onClick={() => { setAdminGarageTab('directory'); setVisibleGarageCount(10); }} className="flex-1 py-2 rounded-lg font-black text-[10px] cursor-pointer border-0 transition-all flex items-center justify-center gap-1" style={{ background: adminGarageTab === 'directory' ? BRAND.blueDark : 'transparent', color: adminGarageTab === 'directory' ? '#fff' : BRAND.slate, boxShadow: adminGarageTab === 'directory' ? '0 2px 6px rgba(15,61,133,0.15)' : 'none' }}>
+          <span>🧭 دليل الركنات المجاني</span>
+        </button>
+      </div>
+      <div className="space-y-3 mb-4">
+        <div className="relative">
+          <Search size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: BRAND.slateMuted }} />
+          <input 
+            type="text" 
+            value={garageSearch} 
+            onChange={e => { setGarageSearch(e.target.value); setVisibleGarageCount(10); }} 
+            placeholder="ابحث بالاسم، المنطقة، العنوان، أو الهاتف..." 
+            className="w-full font-bold outline-none text-xs py-2.5 px-9 rounded-xl border border-slate-200 bg-white" 
+            style={{ color: BRAND.navy }}
+          />
+          {garageSearch && (
+            <button onClick={() => setGarageSearch('')} className="absolute left-3 top-1/2 -translate-y-1/2 border-0 bg-transparent cursor-pointer" style={{ color: BRAND.slateMuted }}>
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+        {filteredGarages.length === 0 ? (
+          <div className="text-center py-10 bg-white border rounded-2xl" style={{ borderColor: BRAND.border }}>
+            <div className="text-2xl mb-1">🔍</div>
+            <p className="font-bold text-xs" style={{ color: BRAND.slateMuted }}>لا توجد جراجات مطابقة للبحث</p>
+          </div>
+        ) : filteredGarages.slice(0, visibleGarageCount).map((g: any) => {
+          const isEditingComm = editingCommissionGarageId === g.id;
+          const isDirectory = g.garageType === 'directory' || g.type === 'directory';
+          const ownerPhone = (g as any).ownerPhone || g.phone;
+          const normPhone = normalizePhone(ownerPhone);
+          const sameOwnerCount = ownerGarageCountMap.get(normPhone) || 1;
+          
+          return (
+            <div key={g.id} className="border p-3.5" style={{ background: BRAND.card, borderColor: BRAND.border, borderRadius: 18 }}>
+              <div className="flex justify-between items-center mb-2">
+                <div className="flex items-center gap-1">
+                  {isDirectory ? (
+                    <span className="font-black text-[9px] px-2.5 py-1 rounded-xl text-white bg-slate-600 flex items-center gap-1">🧭 دليل مجاني</span>
+                  ) : (
+                    <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-white" style={{ background: BRAND.blue }}>
+                      <span className="font-black font-mono text-sm">{g.availableSpots ?? g.available_spots ?? 0}</span>
+                      <span className="font-bold text-[9px] opacity-80">شاغر</span>
+                    </div>
+                  )}
+                </div>
+                <div className="text-right flex items-center gap-1.5 flex-wrap justify-end">
+                  {sameOwnerCount > 1 && !isDirectory && (
+                    <span className="font-black text-[9px] px-2 py-0.5 rounded" style={{ background: BRAND.blueSoft, color: BRAND.blue }}>👑 {sameOwnerCount}</span>
+                  )}
+                  <span className="font-black text-xs" style={{ color: BRAND.navy }}>{g.name}</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between mb-3 gap-2">
+                <div className="flex flex-wrap gap-1 justify-start">
+                  {isDirectory ? (
+                    <span className="text-[9px] font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded">💵 الدفع نقدي للسايس</span>
+                  ) : (
+                    [{ n: 1, name: (g as any).valetName1, pw: (g as any).valetPassword1, color: BRAND.blue },
+                     { n: 2, name: (g as any).valetName2, pw: (g as any).valetPassword2, color: '#7c3aed' },
+                     { n: 3, name: (g as any).valetName3, pw: (g as any).valetPassword3, color: '#f59e0b' }]
+                    .filter(v => v.pw)
+                    .map(v => (
+                      <span key={v.n} className="font-bold text-[8px] px-1.5 py-0.5 rounded" style={{ color: v.color, background: BRAND.bg, border: `1px solid ${BRAND.border}` }}>
+                        👤 {v.name || `س${v.n}`}
+                      </span>
+                    ))
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 text-slate-500 font-bold text-[9px]">
+                  <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[8px] font-black">
+                    {AREA_EMOJI[g.area] || '🗺️'} {g.area || 'مناطق أخرى'}
+                  </span>
+                  <span style={{ color: '#E2E8F0' }}>·</span>
+                  <span className="truncate max-w-[100px]">{g.location || 'العنوان'}</span>
+                  <MapPin size={10} className="shrink-0 text-slate-400" />
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 mb-3 p-3 rounded-xl border bg-slate-50" style={{ borderColor: BRAND.border }}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1">
+                    {!isEditingComm ? (
+                      <button 
+                        onClick={() => {
+                          setEditingCommissionGarageId(g.id);
+                          setEditCommissionRate(g.commissionRate ?? 10);
+                          setEditArea(g.area || AREA_OPTIONS[0]);
+                          setEditGarageType(isDirectory ? 'directory' : 'vip');
+                          setEditPriceType(g.priceType || 'hourly');
+                          setEditBasePrice(g.basePrice || g.price || 15);
+                          setEditDailyPrice(g.dailyPrice || 20);
+                          setEditMonthlyPrice(g.monthlyPrice || 1500);
+                        }} 
+                        className="font-black border-0 py-1 px-2.5 rounded-lg text-[9px] cursor-pointer text-white" 
+                        style={{ background: '#f59e0b' }}
+                      >
+                        تعديل البيانات
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => handleSaveGarageData(g.id)} className="font-black py-1 px-2.5 rounded-lg text-[9px] cursor-pointer border-0 text-white" style={{ background: BRAND.greenDark }}>حفظ</button>
+                        <button onClick={() => setEditingCommissionGarageId(null)} className="font-black py-1 px-2.5 rounded-lg text-[9px] cursor-pointer border bg-white" style={{ color: BRAND.slate, borderColor: BRAND.border }}>✕</button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {isDirectory ? (
+                      <span className="font-black text-xs text-slate-700">{g.priceType === 'daily' ? `${g.dailyPrice || g.basePrice}ج/يوم` : g.priceType === 'monthly' ? `${g.monthlyPrice || 1500}ج/شهر` : `${g.basePrice || g.price || 15}ج/ساعة`}</span>
+                    ) : (
+                      <>
+                        <Percent size={11} style={{ color: BRAND.slate }} />
+                        <span className="font-black font-mono text-xs" style={{ color: BRAND.navy }}>{isEditingComm ? editCommissionRate : (g.commissionRate ?? 10)}%</span>
+                        <span className="font-bold text-[9px]" style={{ color: BRAND.slateMuted }}>عمولة المنصة</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {isEditingComm && (
+                  <div className="pt-2 border-t border-dashed space-y-2 text-right" style={{ borderColor: BRAND.border }}>
+                    <div className="flex justify-between items-center gap-2">
+                      <select value={editGarageType} onChange={e => setEditGarageType(e.target.value as any)} className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border">
+                        <option value="vip">🤝 شريك VIP معتمد</option>
+                        <option value="directory">🧭 دليل ركنة مجاني</option>
+                      </select>
+                      <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>نوع الجراج:</span>
+                    </div>
+                    <div className="flex justify-between items-center gap-2">
+                      <select value={editArea} onChange={e => setEditArea(e.target.value)} className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border">
+                        {AREA_OPTIONS.map(a => (
+                          <option key={a} value={a}>{AREA_EMOJI[a] || '📍'} {a}</option>
+                        ))}
+                      </select>
+                      <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية:</span>
+                    </div>
+                    {editGarageType === 'vip' && (
+                      <div className="flex justify-between items-center gap-2 pt-1 border-t border-dashed border-slate-200">
+                        <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200">
+                          <button type="button" onClick={() => setEditCommissionRate(r => Math.max(0, r - 1))} className="border-0 cursor-pointer flex items-center justify-center rounded bg-red-100 text-red-600 font-black" style={{ width: 22, height: 24 }}><Minus size={11} /></button>
+                          <input type="number" value={editCommissionRate} onChange={e => setEditCommissionRate(Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)))} className="bg-transparent text-center outline-none font-mono font-black text-xs border-0" style={{ width: 34, color: '#f59e0b' }} />
+                          <button type="button" onClick={() => setEditCommissionRate(r => Math.min(100, r + 1))} className="border-0 cursor-pointer flex items-center justify-center rounded bg-emerald-100 text-emerald-600 font-black" style={{ width: 22, height: 24 }}><Plus size={11} /></button>
+                        </div>
+                        <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>📊 نسبة عمولة المنصة (%):</span>
+                      </div>
+                    )}
+                    {editGarageType === 'directory' && (
+                      <>
+                        <div className="flex justify-between items-center gap-2">
+                          <select value={editPriceType} onChange={e => setEditPriceType(e.target.value as any)} className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border">
+                            <option value="hourly">⏱️ بالساعة</option>
+                            <option value="daily">☀️ يومي ثابت</option>
+                            <option value="monthly">📅 اشتراك شهري</option>
+                          </select>
+                          <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>هيكل التسعير:</span>
+                        </div>
+                        <div className="flex justify-between items-center gap-2">
+                          {editPriceType === 'hourly' && <input type="number" value={editBasePrice} onChange={e => setEditBasePrice(parseInt(e.target.value, 10) || 0)} className="w-24 text-center border p-1 rounded font-mono text-xs" />}
+                          {editPriceType === 'daily' && <input type="number" value={editDailyPrice} onChange={e => setEditDailyPrice(parseInt(e.target.value, 10) || 0)} className="w-24 text-center border p-1 rounded font-mono text-xs" />}
+                          {editPriceType === 'monthly' && <input type="number" value={editMonthlyPrice} onChange={e => setEditMonthlyPrice(parseInt(e.target.value, 10) || 0)} className="w-24 text-center border p-1 rounded font-mono text-xs" />}
+                          <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>قيمة السعر الفعلي:</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  type="button" 
+                  onClick={async () => {
+                    const ns = g.isActive === false ? true : false;
+                    await onUpdateGarage(g.id, { isActive: ns, is_active: ns });
+                    toast.success(ns ? `تم تفعيل ${g.name} 🟢` : `تم تعطيل ${g.name} 🔴`);
+                  }} 
+                  className="font-black py-2 px-3 rounded-xl text-[10px] cursor-pointer border-0 text-white flex items-center justify-center gap-1" 
+                  style={{ background: g.isActive !== false ? BRAND.greenDark : '#dc2626' }}
+                >
+                  <span>{g.isActive !== false ? '🟢 مفعّل' : '🔴 معطّل'}</span>
+                </button>
+                {!isDirectory && (
+                  <button onClick={() => onEnterGarage(g)} className="flex-1 font-black py-2 rounded-xl text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1.5" style={{ background: BRAND.blue }}>
+                    <Navigation size={14} />دخول وإدارة الجراج
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {filteredGarages.length > visibleGarageCount && (
+        <div className="mt-4 text-center">
+          <button onClick={() => setVisibleGarageCount(p => p + 10)} className="w-full font-black py-3 rounded-xl text-xs cursor-pointer border-0 text-white active:scale-[0.98] transition-all flex items-center justify-center gap-2" style={{ background: BRAND.blue, boxShadow: `0 4px 14px ${BRAND.blue}25` }}>
+            <ChevronDown size={14} /><span>عرض 10 جراجات إضافية (متبقي {filteredGarages.length - visibleGarageCount})</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+});
+
+export default function AdminDashboard() {
+  const {
+    garages, sessions, walletTopUps, users, approveTopUp, rejectTopUp,
+    addGarage, setCurrentGarageId, setView, logout, messages, replyMessage,
+    closeMessage, updateGarage, fetchAll
+  } = useStore() as any;
+
+  const lastFetchTimeRef = useRef<number>(0);
+  const initialCachedStatsRef = useRef<any>(null);
+  if (initialCachedStatsRef.current === null) {
+    initialCachedStatsRef.current = loadCachedStats() || false;
+  }
+
+  // ⚡ استجابة فورية بدون ضغط سيرفر (1.5 ثانية كحد أقصى للتحديث)
+  const throttledFetchAll = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastFetchTimeRef.current < 1500) return;
+    lastFetchTimeRef.current = now;
+    try {
+      await fetchAll();
+    } catch (e) {
+      console.error('Admin throttled fetch error:', e);
+    }
+  }, [fetchAll]);
+
+  // جلب فوري تلقائي عند فتح الصفحة
+  useEffect(() => {
+    fetchAll?.();
+  }, [fetchAll]);
+
+  // 🔹 فهارس البحث المسرعة O(1) لتسريع الفلترة والحسابات
+  const garageMap = useMemo(() => {
+    const map = new Map<string, any>();
+    (garages || []).forEach((g: any) => map.set(g.id, g));
+    return map;
+  }, [garages]);
+
+  const userPhoneMap = useMemo(() => {
+    const map = new Map<string, string>();
+    (users || []).forEach((usr: any) => {
+      if (usr.phone) map.set(normalizePhone(usr.phone), usr.name || 'غير معروف');
+    });
+    return map;
+  }, [users]);
+
+  const ownerGarageCountMap = useMemo(() => {
+    const map = new Map<string, number>();
+    (garages || []).forEach((x: any) => {
+      const p = normalizePhone(x.ownerPhone || x.phone);
+      if (p) map.set(p, (map.get(p) || 0) + 1);
+    });
+    return map;
+  }, [garages]);
+
+  // 🔹 حساب الجلسات المؤهلة للهدية المجانية (أول 30 دقيقة مجانية أو الركنة الثالثة في اليوم)
+  const freeEligibleSessionIds = useMemo(() => {
+    const ids = new Set<string>();
+    const groups = new Map<string, { s: any; ts: number }[]>();
+
+    (sessions || []).forEach((s: any) => {
+      if (s.isFirstFreeSession === true || s.isFreeSession === true) {
+        ids.add(s.id);
+      }
+      if (s.status !== 'completed') return;
+
+      const stMs = toMs(s.startTime);
+      const date = timestampToLocalDate(stMs);
+      const phone = s.customerPhone ? normalizePhone(s.customerPhone) : '';
+      const plate = s.carPlate || '';
+      const key = `${date}::${phone || plate}`;
+      
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push({ s, ts: stMs });
+    });
+
+    groups.forEach((list) => {
+      if (list.length <= 2) return;
+      list.sort((a, b) => a.ts - b.ts);
+      for (let i = 2; i < list.length; i++) {
+        ids.add(list[i].s.id);
+      }
+    });
+
+    return ids;
+  }, [sessions]);
+
+  // دالة حساب إيراد الركنة الفعلي وما إذا كانت مجانية بالكامل (0 ج.م)
+  const getResolvedSessionPricing = useCallback((s: any) => {
+    const isGiftEligible = freeEligibleSessionIds.has(s.id) || s.isFirstFreeSession === true || s.isFreeSession === true;
+    if (s.totalPrice != null) {
+      const numPrice = Number(s.totalPrice) || 0;
+      const isCompletelyFree = isGiftEligible && numPrice <= 0;
+      return { revenue: isCompletelyFree ? 0 : numPrice, isFree: isCompletelyFree };
+    }
+    if (s.endTime && s.startTime) {
+      const elSeconds = Math.max(0, Math.floor((toMs(s.endTime) - toMs(s.startTime)) / 1000));
+      const g = garageMap.get(s.garageId);
+      const agreedNum = Number(s.agreedPrice);
+      const baseNum = Number(g?.basePrice ?? g?.pricePerHour ?? 15);
+      const rate = agreedNum > 0 ? agreedNum : (baseNum > 0 ? baseNum : 15);
+      const calc = calculateCostWithLoyalty(elSeconds, rate, isGiftEligible);
+      return { revenue: calc.cost, isFree: calc.isFree };
+    }
+    return { revenue: 0, isFree: isGiftEligible };
+  }, [freeEligibleSessionIds, garageMap]);
+
+  const isSessionFree = useCallback((s: any): boolean => {
+    return getResolvedSessionPricing(s).isFree;
+  }, [getResolvedSessionPricing]);
+
+  const [processingTopUpId, setProcessingTopUpId] = useState<string | null>(null);
+
+  // ─── VIP Filters & Controls ───
+  const [vipReportDateFrom, setVipReportDateFrom] = useState(() => getLocalToday());
+  const [vipReportDateTo, setVipReportDateTo] = useState(() => getLocalToday());
+  const [vipGarageFilter, setVipGarageFilter] = useState<string>('all');
+  const [vipPaymentFilter, setVipPaymentFilter] = useState<string>('all');
+  const [vipExpandedGarageId, setVipExpandedGarageId] = useState<string | null>(null);
+  const [visibleVipGarages, setVisibleVipGarages] = useState(10);
+
+  // ─── Wallet Filters ───
+  const [walletReportDateFrom, setWalletReportDateFrom] = useState(() => getLocalDaysAgo(30));
+  const [walletReportDateTo, setWalletReportDateTo] = useState(() => getLocalToday());
+  const [walletStatusFilter, setWalletStatusFilter] = useState<string>('all');
+  const [walletPaymentFilter, setWalletPaymentFilter] = useState<string>('all');
+  const [walletVisibleCount, setWalletVisibleCount] = useState(10);
+
+  const completedSessions = useMemo(
+    () => (sessions || []).filter((s: any) => s.status === 'completed'),
+    [sessions]
+  );
+  
+  const pendingTopUps = useMemo(
+    () => (walletTopUps || []).filter((w: any) => w.status === 'pending'),
+    [walletTopUps]
+  );
+
+  const vipGarages = useMemo(
+    () => (garages || []).filter((g: any) => g.garageType !== 'directory' && g.type !== 'directory'),
+    [garages]
+  );
   
   // VIP sessions filter
-  const vipFilteredSessions = useMemo(() => completedSessions.filter((s: any) => {
-    if (s.endTime) {
-      const d = timestampToLocalDate(toMs(s.endTime));
-      if (vipReportDateFrom && d < vipReportDateFrom) return false;
-      if (vipReportDateTo && d > vipReportDateTo) return false;
-    } else return false;
-    const g = garages.find((ga: any) => ga.id === s.garageId);
-    if (!g) return false;
-    if (g.garageType === 'directory' || g.type === 'directory') return false;
-    if (vipGarageFilter !== 'all' && s.garageId !== vipGarageFilter) return false;
-    if (vipPaymentFilter !== 'all' && s.paymentMethod !== vipPaymentFilter) return false;
-    return true;
-  }).sort((a: any, b: any) => toMs(b.endTime) - toMs(a.endTime)), [completedSessions, garages, vipReportDateFrom, vipReportDateTo, vipGarageFilter, vipPaymentFilter]);
+  const vipFilteredSessions = useMemo(() => {
+    const boundaryFrom = vipReportDateFrom ? new Date(`${vipReportDateFrom}T00:00:00`).getTime() : 0;
+    const boundaryTo = vipReportDateTo ? new Date(`${vipReportDateTo}T23:59:59.999`).getTime() : 0;
 
-  // ⚡ VIP Stats Calculation مع دعم الكاش اللحظي لمنع أي تأخير عند الفتح
+    return completedSessions.filter((s: any) => {
+      const endMs = toMs(s.endTime || s.startTime);
+      if (!endMs) return false;
+      if (boundaryFrom && endMs < boundaryFrom) return false;
+      if (boundaryTo && endMs > boundaryTo) return false;
+
+      const g = garageMap.get(s.garageId);
+      if (!g) return false;
+      if (g.garageType === 'directory' || g.type === 'directory') return false;
+      if (vipGarageFilter !== 'all' && s.garageId !== vipGarageFilter) return false;
+      if (vipPaymentFilter !== 'all' && s.paymentMethod !== vipPaymentFilter) return false;
+      return true;
+    }).sort((a: any, b: any) => toMs(b.endTime || b.startTime) - toMs(a.endTime || a.startTime));
+  }, [completedSessions, garageMap, vipReportDateFrom, vipReportDateTo, vipGarageFilter, vipPaymentFilter]);
+
+  // ⚡ VIP Stats Calculation
   const vipReportStats = useMemo(() => {
-    const cached = loadCachedStats();
-    if (vipFilteredSessions.length === 0 && cached && cached.vipReportStats) {
-      return cached.vipReportStats;
+    const ts = vipFilteredSessions.length;
+    if ((!sessions || sessions.length === 0) && ts === 0) {
+      const cached = initialCachedStatsRef.current;
+      if (cached && cached.vipReportStats) return cached.vipReportStats;
     }
 
-    const ts = vipFilteredSessions.length;
-    const freeSessions = vipFilteredSessions.filter((s: any) => isSessionFree(s));
-    const paidSessions = vipFilteredSessions.filter((s: any) => !isSessionFree(s));
-    const freeCount = freeSessions.length;
-    const paidCount = paidSessions.length;
-    const tr = paidSessions.reduce((a: number, s: any) => a + (s.totalPrice || 0), 0);
-    const tf = paidCount * BOOKING_FEE;
-    const totalShieldRevenue = vipFilteredSessions.reduce((a: number, s: any) => a + (s.shieldCost || 0), 0);
-    const shieldSessionsCount = vipFilteredSessions.filter((s: any) => (s.shieldCost || 0) > 0).length;
-    
+    let tr = 0;
+    let freeCount = 0;
+    let paidCount = 0;
+    let totalShieldRevenue = 0;
+    let shieldSessionsCount = 0;
+    let cc = 0;
+    let wc = 0;
+    let ic = 0;
+
     const gm = new Map<string, {
       name: string; area: string; count: number; paidCount: number; freeCount: number;
       revenue: number; fees: number; shieldRevenue: number; shieldCount: number; platformTotal: number;
     }>();
 
     vipFilteredSessions.forEach((s: any) => {
-      const g = garages.find((ga: any) => ga.id === s.garageId);
-      if (!g) return;
-      const free = isSessionFree(s);
-      const r = free ? 0 : (s.totalPrice || 0);
+      const { revenue: r, isFree: free } = getResolvedSessionPricing(s);
       const fee = free ? 0 : BOOKING_FEE;
-      const sc = s.shieldCost || 0;
+      const sc = Number(s.shieldCost) || 0;
       const pTotal = fee + sc;
+
+      if (free) {
+        freeCount++;
+      } else {
+        paidCount++;
+        tr += r;
+        if (s.paymentMethod === 'cash') cc++;
+        else if (s.paymentMethod === 'wallet') wc++;
+        else if (s.paymentMethod === 'instapay') ic++;
+      }
+
+      if (sc > 0) {
+        totalShieldRevenue += sc;
+        shieldSessionsCount++;
+      }
+
+      const g = garageMap.get(s.garageId);
+      if (!g) return;
+
       const e = gm.get(s.garageId);
       if (e) {
         e.count++;
@@ -333,12 +937,10 @@ export default function AdminDashboard() {
       }
     });
 
+    const tf = paidCount * BOOKING_FEE;
     const pg = Array.from(gm.entries()).map(([id, d]) => ({ id, ...d })).sort((a, b) => b.platformTotal - a.platformTotal);
-    const cc = paidSessions.filter((s: any) => s.paymentMethod === 'cash').length;
-    const wc = paidSessions.filter((s: any) => s.paymentMethod === 'wallet').length;
-    const ic = paidSessions.filter((s: any) => s.paymentMethod === 'instapay').length;
 
-    const result = {
+    return {
       totalSessions: ts,
       paidCount,
       freeCount,
@@ -353,138 +955,69 @@ export default function AdminDashboard() {
       instapayCount: ic,
       otherCount: paidCount - cc - wc - ic
     };
+  }, [vipFilteredSessions, getResolvedSessionPricing, garageMap, sessions]);
 
-    if (ts > 0) {
+  useEffect(() => {
+    if (vipReportStats.totalSessions > 0 && vipGarageFilter === 'all' && vipPaymentFilter === 'all') {
       try {
-        localStorage.setItem(ADMIN_STATS_CACHE_KEY, JSON.stringify({ vipReportStats: result }));
+        localStorage.setItem(ADMIN_STATS_CACHE_KEY, JSON.stringify({ vipReportStats }));
       } catch {}
     }
-
-    return result;
-  }, [vipFilteredSessions, garages]);
+  }, [vipReportStats, vipGarageFilter, vipPaymentFilter]);
 
   const filteredWalletTopUps = useMemo(() => {
-    return walletTopUps.filter((w: any) => {
+    const boundaryFrom = walletReportDateFrom ? new Date(`${walletReportDateFrom}T00:00:00`).getTime() : 0;
+    const boundaryTo = walletReportDateTo ? new Date(`${walletReportDateTo}T23:59:59.999`).getTime() : 0;
+
+    return (walletTopUps || []).filter((w: any) => {
       if (walletStatusFilter !== 'all' && w.status !== walletStatusFilter) return false;
-      if (walletPaymentFilter !== 'all' && (w.paymentMethod || '') !== walletPaymentFilter) return false;
-      const createdTs = w.createdAt || w.timestamp;
+      const payMethod = w.method || w.paymentMethod || '';
+      if (walletPaymentFilter !== 'all' && payMethod !== walletPaymentFilter) return false;
+      const createdTs = w.timestamp || w.createdAt;
       if (createdTs) {
-        const d = timestampToLocalDate(toMs(createdTs));
-        if (walletReportDateFrom && d < walletReportDateFrom) return false;
-        if (walletReportDateTo && d > walletReportDateTo) return false;
+        const ms = toMs(createdTs);
+        if (boundaryFrom && ms < boundaryFrom) return false;
+        if (boundaryTo && ms > boundaryTo) return false;
       }
       return true;
-    }).sort((a: any, b: any) => toMs(b.createdAt || b.timestamp) - toMs(a.createdAt || a.timestamp));
+    }).sort((a: any, b: any) => toMs(b.timestamp || b.createdAt) - toMs(a.timestamp || a.createdAt));
   }, [walletTopUps, walletStatusFilter, walletPaymentFilter, walletReportDateFrom, walletReportDateTo]);
 
   const walletReportStats = useMemo(() => {
     const total = filteredWalletTopUps.length;
-    const totalAmount = filteredWalletTopUps.reduce((a: number, w: any) => a + (w.amount || 0), 0);
-    const approved = filteredWalletTopUps.filter((w: any) => w.status === 'approved');
-    const pending = filteredWalletTopUps.filter((w: any) => w.status === 'pending');
-    const rejected = filteredWalletTopUps.filter((w: any) => w.status === 'rejected');
-    const approvedAmount = approved.reduce((a: number, w: any) => a + (w.amount || 0), 0);
-    const uniqueUsers = new Set(filteredWalletTopUps.map((w: any) => normalizePhone(w.userPhone || ''))).size;
-    return { total, totalAmount, approvedCount: approved.length, pendingCount: pending.length, rejectedCount: rejected.length, approvedAmount, uniqueUsers };
+    let totalAmount = 0;
+    let approvedCount = 0;
+    let pendingCount = 0;
+    let rejectedCount = 0;
+    let approvedAmount = 0;
+    const uniqueUserSet = new Set<string>();
+
+    filteredWalletTopUps.forEach((w: any) => {
+      const amt = Number(w.amount) || 0;
+      totalAmount += amt;
+      if (w.status === 'approved') {
+        approvedCount++;
+        approvedAmount += amt;
+      } else if (w.status === 'pending') {
+        pendingCount++;
+      } else if (w.status === 'rejected') {
+        rejectedCount++;
+      }
+      if (w.userPhone) uniqueUserSet.add(normalizePhone(w.userPhone));
+    });
+
+    return {
+      total,
+      totalAmount,
+      approvedCount,
+      pendingCount,
+      rejectedCount,
+      approvedAmount,
+      uniqueUsers: uniqueUserSet.size
+    };
   }, [filteredWalletTopUps]);
 
-  const safeMessages = messages ?? [];
-  const pendingMessages = safeMessages.filter((m: any) => m.status === 'pending');
-  const allMessages = [...safeMessages].sort((a: any, b: any) => b.timestamp - a.timestamp);
-  const displayedMessages = messagesTab === 'pending' ? pendingMessages : allMessages;
-
-  const getTypeEmoji = (t: string) => {
-    switch (t) {
-      case 'complaint': return '🚨';
-      case 'inquiry': return '❓';
-      case 'suggestion': return '💡';
-      case 'technical': return '🔧';
-      default: return '💬';
-    }
-  };
-
-  const getTypeLabel = (t: string) => {
-    switch (t) {
-      case 'complaint': return 'شكوى';
-      case 'inquiry': return 'استفسار';
-      case 'suggestion': return 'اقتراح';
-      case 'technical': return 'مشكلة تقنية';
-      default: return 'رسالة';
-    }
-  };
-
-  const formatMsgTime = (ts: number) => new Date(ts).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-
-  // 🔹 إضافة جراج جديد وحفظه
-  const handleAddGarage = async () => {
-    if (!gName.trim()) { toast.error('أدخل اسم الجراج'); return; }
-    const isDir = gType === 'directory';
-    if (!isDir && (!gUser.trim() || !gPhone.trim())) {
-      toast.error('جراج الشريك يتطلب اسم مستخدم وهاتف للمالك');
-      return;
-    }
-    try {
-      await addGarage({
-        name: gName.trim(),
-        username: isDir ? `dir_${Date.now()}` : gUser.trim(),
-        phone: isDir ? '' : gPhone.trim(),
-        ownerPhone: isDir ? '' : gPhone.trim(),
-        capacity: isDir ? 100 : 50,
-        available_spots: isDir ? 100 : 50,
-        basePrice: isDir && gPriceType === 'hourly' ? gBasePrice : isDir && gPriceType === 'daily' ? gDailyPrice : gBasePrice,
-        price: isDir && gPriceType === 'hourly' ? gBasePrice : gBasePrice,
-        location: gLocation.trim() || 'موقع مسجل بالرادار',
-        lat, lng,
-        valetName1: isDir ? '' : gValet1Name,
-        valetPassword1: isDir ? '' : gValet1Pass,
-        valetName2: isDir ? '' : gValet2Name,
-        valetPassword2: isDir ? '' : gValet2Pass,
-        valetName3: isDir ? '' : gValet3Name,
-        valetPassword3: isDir ? '' : gValet3Pass,
-        area: gArea,
-        garageType: gType === 'partner' ? 'vip' : 'directory',
-        payment_mode: 'cash',
-        priceType: gPriceType,
-        dailyPrice: isDir && gPriceType === 'daily' ? gDailyPrice : undefined,
-        monthlyPrice: isDir && gPriceType === 'monthly' ? gMonthlyPrice : undefined,
-        isActive: true,
-      } as any);
-      setGName(''); setGUser(''); setGPhone(''); setGLocation(''); setGArea(AREA_OPTIONS[0]);
-      setGValet1Name(''); setGValet1Pass(''); setGValet2Name(''); setGValet2Pass(''); setGValet3Name(''); setGValet3Pass('');
-      setGType('partner'); setGPriceType('hourly');
-      toast.success('تمت إضافة الجراج وتثبيت منطقته بنجاح! 🎉');
-    } catch (e: any) {
-      toast.error(e?.message || 'تعذر إضافة الجراج');
-    }
-  };
-
-  // 🔹 حفظ التعديلات على الجراج وتحديث المنطقة
-  const handleSaveGarageData = async (garageId: string) => {
-    const isDir = editGarageType === 'directory';
-    const fp = isDir && editPriceType === 'daily' ? editDailyPrice : isDir && editPriceType === 'monthly' ? editMonthlyPrice : editBasePrice;
-    
-    try {
-      await updateGarage(garageId, {
-        commissionRate: isDir ? 0 : editCommissionRate,
-        area: editArea,
-        garageType: editGarageType,
-        payment_mode: 'cash',
-        priceType: editPriceType,
-        basePrice: fp,
-        price: fp,
-        dailyPrice: editDailyPrice,
-        monthlyPrice: editMonthlyPrice,
-        lastPriceUpdate: new Date().toISOString(),
-        priceUpdatedBy: 'admin'
-      });
-      setEditingCommissionGarageId(null);
-      toast.success(`تم تحديث بيانات الجراج والمنطقة بنجاح ✅`);
-    } catch (e: any) {
-      toast.error('حدث خطأ أثناء حفظ التعديل');
-    }
-  };
-
-  const handleAdminEnterGarage = (g: any) => {
+  const handleAdminEnterGarage = useCallback((g: any) => {
     localStorage.setItem('garageRole', 'owner');
     localStorage.removeItem('valetNumber');
     localStorage.removeItem('valetName');
@@ -492,7 +1025,7 @@ export default function AdminDashboard() {
     setCurrentGarageId(g.id);
     setView('garage');
     toast.success(`👋 تم الدخول المباشر لإدارة جراج: ${g.name}`, { icon: '🅿️', duration: 3000 });
-  };
+  }, [setCurrentGarageId, setView]);
 
   const handleApproveTopUp = async (id: string, amount: number) => {
     if (processingTopUpId) return;
@@ -526,27 +1059,44 @@ export default function AdminDashboard() {
     }
   };
 
-  // ⚡ اشتراك Realtime للأدمن فائق السرعة (800ms Debounce) لتسميع فوري بدون ثقل
+  const handleAddGarageSubmit = useCallback(async (data: any) => {
+    try {
+      await addGarage(data);
+      toast.success('تمت إضافة الجراج وتثبيت منطقته بنجاح! 🎉');
+    } catch (e: any) {
+      toast.error(e?.message || 'تعذر إضافة الجراج');
+    }
+  }, [addGarage]);
+
+  const handleUpdateGarageSubmit = useCallback(async (id: string, updates: any) => {
+    await updateGarage(id, updates);
+  }, [updateGarage]);
+
+  // ⚡ اشتراك Realtime للأدمن فائق السرعة ومستقر بدون تكرار الفتح والإغلاق
+  const throttledFetchRef = useRef(throttledFetchAll);
+  throttledFetchRef.current = throttledFetchAll;
+
   useEffect(() => {
     let dt: ReturnType<typeof setTimeout> | null = null;
     const tf = () => {
       if (dt) clearTimeout(dt);
       dt = setTimeout(() => {
-        throttledFetchAll();
+        throttledFetchRef.current();
       }, 800);
     };
-    const channelName = `admin-channel-${Math.random().toString(36).substring(2, 7)}`;
-    const ch = supabase.channel(channelName)
+
+    const ch = supabase.channel('admin-realtime-channel')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, tf)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_topups' }, tf)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, tf)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'garages' }, tf)
       .subscribe();
+
     return () => {
       if (dt) clearTimeout(dt);
       supabase.removeChannel(ch);
     };
-  }, [throttledFetchAll]);
+  }, []);
 
   return (
     <div className="h-full overflow-y-auto pt-16 px-4 pb-16 font-['Cairo'] select-none" style={{ background: BRAND.bg, color: BRAND.navy }} dir="rtl">
@@ -613,7 +1163,6 @@ export default function AdminDashboard() {
             </select>
           </div>
         </div>
-
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
           <div className="text-center p-3 rounded-2xl border" style={{ background: BRAND.card, borderColor: BRAND.border }}>
             <div className="text-[9px] font-bold" style={{ color: BRAND.slate }}>💰 إجمالي الشحنات</div>
@@ -636,7 +1185,6 @@ export default function AdminDashboard() {
             <div className="text-[8px] font-bold" style={{ color: BRAND.blueDark }}>عميل</div>
           </div>
         </div>
-
         <div className="flex items-center justify-between gap-1 mb-4 py-2 px-3 rounded-xl border" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
           {[
             { icon: '✅', label: 'مقبول', count: walletReportStats.approvedCount, color: BRAND.greenDark },
@@ -651,7 +1199,6 @@ export default function AdminDashboard() {
             </div>
           ))}
         </div>
-
         <div>
           <div className="flex items-center justify-between mb-2 px-1">
             <h4 className="font-black text-[11px]" style={{ color: BRAND.navy }}>📋 تفاصيل الشحنات</h4>
@@ -673,9 +1220,10 @@ export default function AdminDashboard() {
                 </div>
                 <div className="max-h-[400px] overflow-y-auto divide-y" style={{ borderColor: BRAND.border }}>
                   {filteredWalletTopUps.slice(0, walletVisibleCount).map((w: any) => {
-                    const u = (users || []).find((usr: any) => normalizePhone(usr.phone) === normalizePhone(w.userPhone || ''));
-                    const userName = u?.name || w.userName || 'غير معروف';
-                    const created = w.createdAt || w.timestamp;
+                    const normP = normalizePhone(w.userPhone || '');
+                    const userName = (normP && userPhoneMap.get(normP)) || w.userName || 'غير معروف';
+                    const created = w.timestamp || w.createdAt;
+                    const payMethod = w.method || w.paymentMethod || '';
                     return (
                       <div key={w.id} className="grid px-3 py-2.5 items-center" style={{ gridTemplateColumns: '1.6fr 0.7fr 0.55fr 0.5fr', gap: 6 }}>
                         <div className="text-right min-w-0">
@@ -694,7 +1242,7 @@ export default function AdminDashboard() {
                         </div>
                         <div className="text-center">
                           <span className="font-black text-[9px] px-1.5 py-1 rounded" style={{ background: BRAND.blueSoft, color: BRAND.blueDark }}>
-                            {w.paymentMethod === 'vodafone_cash' ? '🔴' : w.paymentMethod === 'etisalat_cash' ? '🟢' : w.paymentMethod === 'orange_cash' ? '🟠' : w.paymentMethod === 'instapay' ? '📱' : '🏦'}
+                            {payMethod === 'vodafone_cash' ? '🔴' : payMethod === 'etisalat_cash' ? '🟢' : payMethod === 'orange_cash' ? '🟠' : payMethod === 'instapay' ? '📱' : '🏦'}
                           </span>
                         </div>
                       </div>
@@ -718,119 +1266,49 @@ export default function AdminDashboard() {
       <div className="mb-8">
         <h3 className="font-black mb-3 text-right text-xs" style={{ color: BRAND.navy }}>اعتمادات شحن معلقة ({pendingTopUps.length})</h3>
         <div className="space-y-3">
-          {pendingTopUps.map((w: any) => (
-            <div key={w.id} className="border p-3" style={{ background: BRAND.card, borderColor: BRAND.border, borderRadius: 18 }}>
-              <div className="flex justify-between items-center mb-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-black text-[9px] px-2 py-0.5 rounded text-white" style={{ background: w.method === 'instapay' ? '#7C3AED' : '#f59e0b' }}>
-                    {w.method === 'instapay' ? '📱 إنستاباي' : '📲 كاش'}
-                  </span>
-                  <span className="font-bold font-mono text-[9px]" style={{ color: BRAND.slateMuted }}>
-                    {new Date(w.timestamp).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                  </span>
+          {pendingTopUps.map((w: any) => {
+            const payMethod = w.method || w.paymentMethod || '';
+            return (
+              <div key={w.id} className="border p-3" style={{ background: BRAND.card, borderColor: BRAND.border, borderRadius: 18 }}>
+                <div className="flex justify-between items-center mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-black text-[9px] px-2 py-0.5 rounded text-white" style={{ background: payMethod === 'instapay' ? '#7C3AED' : '#f59e0b' }}>
+                      {payMethod === 'instapay' ? '📱 إنستاباي' : '📲 كاش'}
+                    </span>
+                    <span className="font-bold font-mono text-[9px]" style={{ color: BRAND.slateMuted }}>
+                      {new Date(toMs(w.timestamp || w.createdAt)).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <div className="font-black font-mono text-lg text-slate-900">{w.amount} <span className="text-[10px] font-bold text-slate-400">ج.م</span></div>
                 </div>
-                <div className="font-black font-mono text-lg text-slate-900">{w.amount} <span className="text-[10px] font-bold text-slate-400">ج.م</span></div>
-              </div>
-              <div className="flex items-center justify-between gap-2 mb-2 p-2 rounded-lg border bg-slate-50" style={{ borderColor: BRAND.border }}>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {w.userName && <span className="font-black text-[10px]" style={{ color: BRAND.navy }}>👤 {w.userName}</span>}
-                  {w.carPlate && <span className="font-black text-[10px]" style={{ color: '#c2410c' }}>🚗 {w.carPlate}</span>}
+                <div className="flex items-center justify-between gap-2 mb-2 p-2 rounded-lg border bg-slate-50" style={{ borderColor: BRAND.border }}>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {w.userName && <span className="font-black text-[10px]" style={{ color: BRAND.navy }}>👤 {w.userName}</span>}
+                    {w.carPlate && <span className="font-black text-[10px]" style={{ color: '#c2410c' }}>🚗 {w.carPlate}</span>}
+                  </div>
+                  {w.userPhone && <span className="font-black font-mono text-[10px]" style={{ color: BRAND.blue }}>{w.userPhone}</span>}
                 </div>
-                {w.userPhone && <span className="font-black font-mono text-[10px]" style={{ color: BRAND.blue }}>{w.userPhone}</span>}
+                <div className="flex gap-2">
+                  <button onClick={() => handleApproveTopUp(w.id, w.amount)} disabled={processingTopUpId === w.id} className="flex-1 font-black py-2 rounded-lg text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1.5" style={{ background: BRAND.greenDark }}>
+                    <CheckCircle size={14} />{processingTopUpId === w.id ? 'جاري...' : 'اعتماد الشحن'}
+                  </button>
+                  <button onClick={() => handleRejectTopUp(w.id)} disabled={processingTopUpId === w.id} className="font-black py-2 px-4 rounded-lg cursor-pointer border text-red-600 bg-red-50 border-red-200">
+                    <XCircle size={14} />
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => handleApproveTopUp(w.id, w.amount)} disabled={processingTopUpId === w.id} className="flex-1 font-black py-2 rounded-lg text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1.5" style={{ background: BRAND.greenDark }}>
-                  <CheckCircle size={14} />{processingTopUpId === w.id ? 'جاري...' : 'اعتماد الشحن'}
-                </button>
-                <button onClick={() => handleRejectTopUp(w.id)} disabled={processingTopUpId === w.id} className="font-black py-2 px-4 rounded-lg cursor-pointer border text-red-600 bg-red-50 border-red-200">
-                  <XCircle size={14} />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
           {pendingTopUps.length === 0 && <div className="text-center py-6 border-2 border-dashed rounded-2xl text-xs font-bold" style={{ borderColor: BRAND.border, color: BRAND.slate }}>لا توجد اعتمادات معلقة للمحفظة</div>}
         </div>
       </div>
 
-      {/* ══ Messages ══ */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-3">
-          <span className="font-black text-[9px] px-2 py-0.5 rounded text-white" style={{ background: '#ef4444' }}>{pendingMessages.length} جديد</span>
-          <h3 className="font-black text-xs flex items-center gap-1.5" style={{ color: BRAND.navy }}>الرسائل والشكاوى <MessageCircle size={16} /></h3>
-        </div>
-        <div className="flex gap-1.5 mb-3">
-          {([{ id: 'all' as const, label: `الكل (${allMessages.length})`, bg: BRAND.blue }, { id: 'pending' as const, label: `⏳ معلقة (${pendingMessages.length})`, bg: '#f59e0b' }]).map(b => (
-            <button key={b.id} onClick={() => setMessagesTab(b.id)} className="flex-1 font-black py-2 rounded-xl text-[10px] border-0 cursor-pointer transition-all" style={{ background: messagesTab === b.id ? b.bg : BRAND.blueSoft, color: messagesTab === b.id ? '#fff' : BRAND.slate, border: messagesTab !== b.id ? `1px solid ${BRAND.border}` : 'none' }}>
-              {b.label}
-            </button>
-          ))}
-        </div>
-        <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
-          {displayedMessages.length === 0 ? (
-            <div className="text-center py-6 bg-white border rounded-2xl text-xs font-bold" style={{ borderColor: BRAND.border, color: BRAND.slate }}>لا توجد رسائل</div>
-          ) : displayedMessages.map((msg: any) => {
-            const isExp = expandedMessage === msg.id;
-            const isRep = replyingTo === msg.id;
-            return (
-              <div key={msg.id} className="border p-3.5" style={{ background: msg.status === 'pending' ? '#fff7ed' : msg.status === 'replied' ? BRAND.greenLight : '#fff', borderColor: msg.status === 'pending' ? '#fed7aa' : msg.status === 'replied' ? BRAND.green : BRAND.border, borderRadius: 18 }}>
-                <div className="flex justify-between items-center mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-black text-[8px] px-1.5 py-0.5 rounded text-white" style={{ background: msg.status === 'pending' ? '#f59e0b' : msg.status === 'replied' ? BRAND.green : BRAND.slate }}>
-                      {msg.status === 'pending' ? '⏳ معلقة' : msg.status === 'replied' ? '✅ تم الرد' : '🔒 مغلقة'}
-                    </span>
-                    <span className="text-[9px] font-bold" style={{ color: BRAND.slateMuted }}>{formatMsgTime(msg.timestamp)}</span>
-                  </div>
-                  <span className="font-black text-[9px] px-2 py-0.5 rounded" style={{ background: BRAND.blueSoft, color: BRAND.slate }}>
-                    {getTypeEmoji(msg.type)} {getTypeLabel(msg.type)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between mb-2 p-1.5 rounded-lg border bg-slate-50" style={{ borderColor: BRAND.border }}>
-                  <span className="font-mono font-bold text-[10px]" style={{ color: BRAND.blue }}>{msg.userPhone}</span>
-                  <div className="flex items-center gap-1.5">
-                    {msg.userName && <span className="font-black text-[10px]" style={{ color: BRAND.navy }}>👤 {msg.userName}</span>}
-                    {msg.carPlate && <span className="font-black font-mono text-[10px]" style={{ color: BRAND.blue }}>🚗 {msg.carPlate}</span>}
-                  </div>
-                </div>
-                {msg.subject && <div className="font-black mb-1 text-right text-xs" style={{ color: BRAND.navy }}>{msg.subject}</div>}
-                <div className={`text-right leading-relaxed mb-2 cursor-pointer ${isExp ? '' : 'line-clamp-2'}`} style={{ fontSize: '11px', fontWeight: 950, color: '#000' }} onClick={() => setExpandedMessage(isExp ? null : msg.id)}>
-                  {msg.message}
-                </div>
-                {!isExp && msg.message.length > 80 && (
-                  <button onClick={() => setExpandedMessage(msg.id)} className="font-black mb-2 text-blue-600 border-0 bg-transparent cursor-pointer" style={{ fontSize: 9.5 }}>
-                    عرض الكامل ↓
-                  </button>
-                )}
-                {msg.reply && (
-                  <div className="mb-2.5 p-2.5 rounded-lg border" style={{ background: BRAND.greenLight, borderColor: BRAND.green }}>
-                    <div className="font-black text-right mb-1 text-[9px]" style={{ color: BRAND.greenDark }}>ردك السابق:</div>
-                    <div className="text-right leading-relaxed text-[11px] font-bold" style={{ color: BRAND.navy }}>{msg.reply}</div>
-                  </div>
-                )}
-                {msg.status !== 'closed' && (
-                  isRep ? (
-                    <div className="space-y-2">
-                      <textarea value={replyText} onChange={e => setReplyText(e.target.value)} placeholder="اكتب ردك هنا..." rows={3} className="w-full font-bold text-right outline-none resize-none text-xs p-2.5 rounded-xl border border-slate-200" />
-                      <div className="flex gap-2">
-                        <button onClick={async () => { if (!replyText.trim()) { toast.error('اكتب الرد'); return; } await replyMessage(msg.id, replyText.trim()); toast.success('تم ✅'); setReplyText(''); setReplyingTo(null); }} className="flex-1 font-black py-2 rounded-lg text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1" style={{ background: BRAND.greenDark }}>
-                          <Send size={12} />إرسال
-                        </button>
-                        <button onClick={() => { setReplyingTo(null); setReplyText(''); }} className="font-black py-2 px-4 rounded-lg text-xs cursor-pointer border bg-white" style={{ color: BRAND.slate, borderColor: BRAND.border }}>إلغاء</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex gap-2">
-                      <button onClick={() => { setReplyingTo(msg.id); setReplyText(''); setExpandedMessage(msg.id); }} className="flex-1 font-black py-2 rounded-lg text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1" style={{ background: BRAND.blue }}>
-                        <Send size={12} />{msg.reply ? 'تعديل الرد' : 'الرد على الرسالة'}
-                      </button>
-                      <button onClick={async () => { await closeMessage(msg.id); toast.success('تم الإغلاق'); }} className="font-black py-2 px-4 rounded-lg text-xs cursor-pointer border bg-white" style={{ color: BRAND.slate, borderColor: BRAND.border }}>إغلاق</button>
-                    </div>
-                  )
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      {/* ══ Messages Section المعزول ══ */}
+      <AdminMessagesSection
+        messages={messages}
+        replyMessage={replyMessage}
+        closeMessage={closeMessage}
+      />
 
       {/* ══ تقارير خدمة VIP المحدثة والمحسنة بالكامل ══ */}
       <div className="mb-8">
@@ -843,7 +1321,6 @@ export default function AdminDashboard() {
             <Activity size={10} /> {vipReportStats.totalSessions} ركنة
           </span>
         </div>
-
         {/* 📅 الفلاتر والتحكم في الفترة */}
         <div className="mb-4" style={{ background: BRAND.card, border: `1px solid ${BRAND.border}`, borderRadius: 20, padding: 14, boxShadow: '0 2px 12px rgba(0,0,0,0.02)' }}>
           <div className="flex items-center gap-1.5 mb-3">
@@ -865,7 +1342,6 @@ export default function AdminDashboard() {
               </button>
             ))}
           </div>
-
           <div className="flex gap-2">
             <div className="flex-1">
               <select value={vipGarageFilter} onChange={e => setVipGarageFilter(e.target.value)} className="w-full font-bold text-right outline-none text-xs py-2 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }}>
@@ -988,7 +1464,6 @@ export default function AdminDashboard() {
               {vipReportStats.perGarage.length} جراج
             </span>
           </div>
-
           {vipReportStats.perGarage.length === 0 ? (
             <div className="text-center py-8 border-2 border-dashed rounded-2xl" style={{ background: BRAND.card, borderColor: BRAND.border }}>
               <span className="text-2xl block mb-1">📭</span>
@@ -998,7 +1473,7 @@ export default function AdminDashboard() {
             <>
               {vipReportStats.perGarage.slice(0, visibleVipGarages).map((g: any) => {
                 const isExp = vipExpandedGarageId === g.id;
-                const gs = vipFilteredSessions.filter((s: any) => s.garageId === g.id);
+                const gs = isExp ? vipFilteredSessions.filter((s: any) => s.garageId === g.id) : [];
                 return (
                   <div
                     key={g.id}
@@ -1065,13 +1540,14 @@ export default function AdminDashboard() {
                                   const stMs = toMs(s.startTime);
                                   const enMs = toMs(s.endTime);
                                   const free = isSessionFree(s);
+                                  const sc = Number(s.shieldCost) || 0;
                                   return (
                                     <div key={s.id} className="px-3 py-2 flex items-center justify-between text-xs" style={{ background: free ? '#fefce8' : 'transparent' }}>
                                       <div className="text-right">
                                         <div className="font-black text-slate-900 flex items-center gap-1">
                                           <span>🚗 {s.carPlate}</span>
                                           {free && <span className="text-[8px] px-1 py-0.2 rounded bg-amber-300 text-amber-900 font-bold">🎁 مجانية</span>}
-                                          {(s.shieldCost || 0) > 0 && <span className="text-[8px] px-1 py-0.2 rounded bg-emerald-200 text-emerald-900 font-bold">🛡️ درع</span>}
+                                          {sc > 0 && <span className="text-[8px] px-1 py-0.2 rounded bg-emerald-200 text-emerald-900 font-bold">🛡️ درع</span>}
                                         </div>
                                         <div className="text-[8px] font-mono text-slate-400">{formatSessionTime(s.endTime)}</div>
                                       </div>
@@ -1079,7 +1555,7 @@ export default function AdminDashboard() {
                                         {formatDuration(stMs, enMs)}
                                       </div>
                                       <div className="text-left font-mono font-bold text-[10px]" style={{ color: free ? '#ca8a04' : BRAND.blueDark }}>
-                                        {free ? 'مجاني' : `+${BOOKING_FEE + (s.shieldCost || 0)}ج للمنصة`}
+                                        {free ? (sc > 0 ? `+${sc}ج للمنصة` : 'مجاني') : `+${BOOKING_FEE + sc}ج للمنصة`}
                                       </div>
                                     </div>
                                   );
@@ -1105,335 +1581,16 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ══ Garage Management ══ */}
-      <div className="mb-8">
-        <div className="flex justify-between items-center mb-3">
-          <span className="font-black text-[9px] px-2.5 py-1 rounded bg-slate-200" style={{ color: BRAND.slate }}>
-            {filteredGaragesForAdmin.length} جراج نشط بالقسم
-          </span>
-          <h3 className="font-black text-xs" style={{ color: BRAND.navy }}>إدارة وجرد الجراجات</h3>
-        </div>
-        <div className="flex p-1 rounded-xl bg-slate-100 border border-slate-200 mb-3" style={{ direction: 'rtl' }}>
-          <button type="button" onClick={() => setAdminGarageTab('vip')} className="flex-1 py-2 rounded-lg font-black text-[10px] cursor-pointer border-0 transition-all flex items-center justify-center gap-1" style={{ background: adminGarageTab === 'vip' ? BRAND.blue : 'transparent', color: adminGarageTab === 'vip' ? '#fff' : BRAND.slate, boxShadow: adminGarageTab === 'vip' ? '0 2px 6px rgba(22,86,184,0.15)' : 'none' }}>
-            <span>⭐ جراجات VIP الشريكة</span>
-          </button>
-          <button type="button" onClick={() => setAdminGarageTab('directory')} className="flex-1 py-2 rounded-lg font-black text-[10px] cursor-pointer border-0 transition-all flex items-center justify-center gap-1" style={{ background: adminGarageTab === 'directory' ? BRAND.blueDark : 'transparent', color: adminGarageTab === 'directory' ? '#fff' : BRAND.slate, boxShadow: adminGarageTab === 'directory' ? '0 2px 6px rgba(15,61,133,0.15)' : 'none' }}>
-            <span>🧭 دليل الركنات المجاني</span>
-          </button>
-        </div>
+      {/* ══ Garage Management Section المعزول ══ */}
+      <GarageManagementSection
+        garages={garages}
+        ownerGarageCountMap={ownerGarageCountMap}
+        onEnterGarage={handleAdminEnterGarage}
+        onUpdateGarage={handleUpdateGarageSubmit}
+      />
 
-        <div className="space-y-3 mb-4">
-          <div className="relative">
-            <Search size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: BRAND.slateMuted }} />
-            <input 
-              type="text" 
-              value={garageSearch} 
-              onChange={e => setGarageSearch(e.target.value)} 
-              placeholder="ابحث بالاسم، المنطقة، العنوان، أو الهاتف..." 
-              className="w-full font-bold outline-none text-xs py-2.5 px-9 rounded-xl border border-slate-200 bg-white" 
-              style={{ color: BRAND.navy }}
-            />
-            {garageSearch && (
-              <button onClick={() => setGarageSearch('')} className="absolute left-3 top-1/2 -translate-y-1/2 border-0 bg-transparent cursor-pointer" style={{ color: BRAND.slateMuted }}>
-                <X size={14} />
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
-          {filteredGaragesForAdmin.length === 0 ? (
-            <div className="text-center py-10 bg-white border rounded-2xl" style={{ borderColor: BRAND.border }}>
-              <div className="text-2xl mb-1">🔍</div>
-              <p className="font-bold text-xs" style={{ color: BRAND.slateMuted }}>لا توجد جراجات مطابقة للبحث</p>
-            </div>
-          ) : filteredGaragesForAdmin.slice(0, visibleGarageCount).map((g: any) => {
-            const isEditingComm = editingCommissionGarageId === g.id;
-            const isDirectory = g.garageType === 'directory' || g.type === 'directory';
-            const ownerPhone = (g as any).ownerPhone || g.phone;
-            const sameOwnerCount = garages.filter((x: any) => normalizePhone(x.ownerPhone || x.phone) === normalizePhone(ownerPhone)).length;
-            return (
-              <div key={g.id} className="border p-3.5" style={{ background: BRAND.card, borderColor: BRAND.border, borderRadius: 18 }}>
-                <div className="flex justify-between items-center mb-2">
-                  <div className="flex items-center gap-1">
-                    {isDirectory ? (
-                      <span className="font-black text-[9px] px-2.5 py-1 rounded-xl text-white bg-slate-600 flex items-center gap-1">🧭 دليل مجاني</span>
-                    ) : (
-                      <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-white" style={{ background: BRAND.blue }}>
-                        <span className="font-black font-mono text-sm">{g.availableSpots ?? g.available_spots ?? 0}</span>
-                        <span className="font-bold text-[9px] opacity-80">شاغر</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="text-right flex items-center gap-1.5 flex-wrap justify-end">
-                    {sameOwnerCount > 1 && !isDirectory && (
-                      <span className="font-black text-[9px] px-2 py-0.5 rounded" style={{ background: BRAND.blueSoft, color: BRAND.blue }}>👑 {sameOwnerCount}</span>
-                    )}
-                    <span className="font-black text-xs" style={{ color: BRAND.navy }}>{g.name}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between mb-3 gap-2">
-                  <div className="flex flex-wrap gap-1 justify-start">
-                    {isDirectory ? (
-                      <span className="text-[9px] font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded">💵 الدفع نقدي للسايس</span>
-                    ) : (
-                      [{ n: 1, name: (g as any).valetName1, pw: (g as any).valetPassword1, color: BRAND.blue },
-                       { n: 2, name: (g as any).valetName2, pw: (g as any).valetPassword2, color: '#7c3aed' },
-                       { n: 3, name: (g as any).valetName3, pw: (g as any).valetPassword3, color: '#f59e0b' }]
-                      .filter(v => v.pw)
-                      .map(v => (
-                        <span key={v.n} className="font-bold text-[8px] px-1.5 py-0.5 rounded" style={{ color: v.color, background: BRAND.bg, border: `1px solid ${BRAND.border}` }}>
-                          👤 {v.name || `س${v.n}`}
-                        </span>
-                      ))
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5 text-slate-500 font-bold text-[9px]">
-                    <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[8px] font-black">
-                      {AREA_EMOJI[g.area] || '🗺️'} {g.area || 'مناطق أخرى'}
-                    </span>
-                    <span style={{ color: '#E2E8F0' }}>·</span>
-                    <span className="truncate max-w-[100px]">{g.location || 'العنوان'}</span>
-                    <MapPin size={10} className="shrink-0 text-slate-400" />
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2 mb-3 p-3 rounded-xl border bg-slate-50" style={{ borderColor: BRAND.border }}>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1">
-                      {!isEditingComm ? (
-                        <button 
-                          onClick={() => {
-                            setEditingCommissionGarageId(g.id);
-                            setEditCommissionRate(g.commissionRate ?? 10);
-                            setEditArea(g.area || AREA_OPTIONS[0]);
-                            setEditGarageType(isDirectory ? 'directory' : 'vip');
-                            setEditPriceType(g.priceType || 'hourly');
-                            setEditBasePrice(g.basePrice || g.price || 15);
-                            setEditDailyPrice(g.dailyPrice || 20);
-                            setEditMonthlyPrice(g.monthlyPrice || 1500);
-                          }} 
-                          className="font-black border-0 py-1 px-2.5 rounded-lg text-[9px] cursor-pointer text-white" 
-                          style={{ background: '#f59e0b' }}
-                        >
-                          تعديل البيانات
-                        </button>
-                      ) : (
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => handleSaveGarageData(g.id)} className="font-black py-1 px-2.5 rounded-lg text-[9px] cursor-pointer border-0 text-white" style={{ background: BRAND.greenDark }}>حفظ</button>
-                          <button onClick={() => setEditingCommissionGarageId(null)} className="font-black py-1 px-2.5 rounded-lg text-[9px] cursor-pointer border bg-white" style={{ color: BRAND.slate, borderColor: BRAND.border }}>✕</button>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {isDirectory ? (
-                        <span className="font-black text-xs text-slate-700">{g.priceType === 'daily' ? `${g.dailyPrice || g.basePrice}ج/يوم` : g.priceType === 'monthly' ? `${g.monthlyPrice || 1500}ج/شهر` : `${g.basePrice || g.price || 15}ج/ساعة`}</span>
-                      ) : (
-                        <>
-                          <Percent size={11} style={{ color: BRAND.slate }} />
-                          <span className="font-black font-mono text-xs" style={{ color: BRAND.navy }}>{isEditingComm ? editCommissionRate : (g.commissionRate ?? 10)}%</span>
-                          <span className="font-bold text-[9px]" style={{ color: BRAND.slateMuted }}>عمولة المنصة</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {isEditingComm && (
-                    <div className="pt-2 border-t border-dashed space-y-2 text-right" style={{ borderColor: BRAND.border }}>
-                      <div className="flex justify-between items-center gap-2">
-                        <select value={editGarageType} onChange={e => setEditGarageType(e.target.value as any)} className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border">
-                          <option value="vip">🤝 شريك VIP معتمد</option>
-                          <option value="directory">🧭 دليل ركنة مجاني</option>
-                        </select>
-                        <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>نوع الجراج:</span>
-                      </div>
-                      <div className="flex justify-between items-center gap-2">
-                        <select value={editArea} onChange={e => setEditArea(e.target.value)} className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border">
-                          {AREA_OPTIONS.map(a => (
-                            <option key={a} value={a}>{AREA_EMOJI[a] || '📍'} {a}</option>
-                          ))}
-                        </select>
-                        <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية:</span>
-                      </div>
-                      {editGarageType === 'vip' && (
-                        <div className="flex justify-between items-center gap-2 pt-1 border-t border-dashed border-slate-200">
-                          <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200">
-                            <button type="button" onClick={() => setEditCommissionRate(r => Math.max(0, r - 1))} className="border-0 cursor-pointer flex items-center justify-center rounded bg-red-100 text-red-600 font-black" style={{ width: 22, height: 24 }}><Minus size={11} /></button>
-                            <input type="number" value={editCommissionRate} onChange={e => setEditCommissionRate(Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)))} className="bg-transparent text-center outline-none font-mono font-black text-xs border-0" style={{ width: 34, color: '#f59e0b' }} />
-                            <button type="button" onClick={() => setEditCommissionRate(r => Math.min(100, r + 1))} className="border-0 cursor-pointer flex items-center justify-center rounded bg-emerald-100 text-emerald-600 font-black" style={{ width: 22, height: 24 }}><Plus size={11} /></button>
-                          </div>
-                          <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>📊 نسبة عمولة المنصة (%):</span>
-                        </div>
-                      )}
-                      {editGarageType === 'directory' && (
-                        <>
-                          <div className="flex justify-between items-center gap-2">
-                            <select value={editPriceType} onChange={e => setEditPriceType(e.target.value as any)} className="font-bold outline-none text-right rounded-lg px-2 py-1 text-xs border">
-                              <option value="hourly">⏱️ بالساعة</option>
-                              <option value="daily">☀️ يومي ثابت</option>
-                              <option value="monthly">📅 اشتراك شهري</option>
-                            </select>
-                            <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>هيكل التسعير:</span>
-                          </div>
-                          <div className="flex justify-between items-center gap-2">
-                            {editPriceType === 'hourly' && <input type="number" value={editBasePrice} onChange={e => setEditBasePrice(parseInt(e.target.value, 10) || 0)} className="w-24 text-center border p-1 rounded font-mono text-xs" />}
-                            {editPriceType === 'daily' && <input type="number" value={editDailyPrice} onChange={e => setEditDailyPrice(parseInt(e.target.value, 10) || 0)} className="w-24 text-center border p-1 rounded font-mono text-xs" />}
-                            {editPriceType === 'monthly' && <input type="number" value={editMonthlyPrice} onChange={e => setEditMonthlyPrice(parseInt(e.target.value, 10) || 0)} className="w-24 text-center border p-1 rounded font-mono text-xs" />}
-                            <span className="font-black text-[10px]" style={{ color: BRAND.slate }}>قيمة السعر الفعلي:</span>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button 
-                    type="button" 
-                    onClick={async () => {
-                      const ns = g.isActive === false ? true : false;
-                      await updateGarage(g.id, { isActive: ns, is_active: ns });
-                      toast.success(ns ? `تم تفعيل ${g.name} 🟢` : `تم تعطيل ${g.name} 🔴`);
-                    }} 
-                    className="font-black py-2 px-3 rounded-xl text-[10px] cursor-pointer border-0 text-white flex items-center justify-center gap-1" 
-                    style={{ background: g.isActive !== false ? BRAND.greenDark : '#dc2626' }}
-                  >
-                    <span>{g.isActive !== false ? '🟢 مفعّل' : '🔴 معطّل'}</span>
-                  </button>
-                  {!isDirectory && (
-                    <button onClick={() => handleAdminEnterGarage(g)} className="flex-1 font-black py-2 rounded-xl text-xs cursor-pointer border-0 text-white flex items-center justify-center gap-1.5" style={{ background: BRAND.blue }}>
-                      <Navigation size={14} />دخول وإدارة الجراج
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {filteredGaragesForAdmin.length > visibleGarageCount && (
-          <div className="mt-4 text-center">
-            <button onClick={() => setVisibleGarageCount(p => p + 10)} className="w-full font-black py-3 rounded-xl text-xs cursor-pointer border-0 text-white active:scale-[0.98] transition-all flex items-center justify-center gap-2" style={{ background: BRAND.blue, boxShadow: `0 4px 14px ${BRAND.blue}25` }}>
-              <ChevronDown size={14} /><span>عرض 10 جراجات إضافية (متبقي {filteredGaragesForAdmin.length - visibleGarageCount})</span>
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* ══ Add Garage ══ */}
-      <div className="mb-20">
-        <h3 className="font-black mb-3 text-right text-xs" style={{ color: BRAND.navy }}>إضافة جراج جديد للشبكة</h3>
-        <div className="space-y-4 p-5 bg-white border" style={{ borderColor: BRAND.border, borderRadius: 24 }}>
-          
-          <div className="text-right">
-            <label className="font-black block text-right mb-1.5 text-[10px]" style={{ color: BRAND.slate }}>نوع الجراج المضاف للشبكة</label>
-            <select value={gType} onChange={e => setGType(e.target.value as any)} className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }}>
-              <option value="partner">🤝 جراج شريك VIP معتمد</option>
-              <option value="directory">🧭 دليل ركنات مجاني</option>
-            </select>
-          </div>
-          <input className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="اسم الجراج أو الساحة" value={gName} onChange={e => setGName(e.target.value)} />
-          
-          <input className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="العنوان التفصيلي للجراج..." value={gLocation} onChange={e => setGLocation(e.target.value)} />
-          {gType === 'partner' && (
-            <div className="flex gap-2">
-              <input className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="اسم المستخدم" value={gUser} onChange={e => setGUser(e.target.value)} />
-              <input className="flex-1 font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="رقم هاتف المالك" value={gPhone} onChange={e => setGPhone(e.target.value)} />
-            </div>
-          )}
-          <div className="text-right">
-            <label className="font-black block text-right mb-1.5 text-[10px]" style={{ color: BRAND.slate }}>🗺️ المنطقة الجغرافية المعتمدة للجراج</label>
-            <select value={gArea} onChange={e => setGArea(e.target.value)} className="w-full font-bold text-right outline-none text-xs py-2.5 px-3 rounded-lg border border-slate-200" style={{ color: BRAND.navy }}>
-              {AREA_OPTIONS.map(a => (
-                <option key={a} value={a}>{AREA_EMOJI[a] || '📍'} {a}</option>
-              ))}
-            </select>
-          </div>
-          {gType === 'directory' ? (
-            <div className="p-3 border rounded-xl" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
-              <div className="font-bold mb-3 text-right text-[10px]" style={{ color: BRAND.slate }}>💰 هيكل وأسعار الركنة</div>
-              <div className="space-y-3">
-                <select value={gPriceType} onChange={e => setGPriceType(e.target.value as any)} className="w-full font-bold text-right outline-none text-xs p-2 rounded-lg border">
-                  <option value="hourly">⏱️ ركن بالساعة</option>
-                  <option value="daily">☀️ سعر يومي ثابت</option>
-                  <option value="monthly">📅 اشتراك شهري</option>
-                </select>
-                {gPriceType === 'hourly' && (
-                  <div>
-                    <label className="text-[9px] text-slate-400 block mb-0.5">سعر الساعة:</label>
-                    <input type="number" value={gBasePrice} onChange={e => setGBasePrice(parseInt(e.target.value, 10) || 0)} className="w-full font-bold text-center text-xs p-2 rounded border" />
-                  </div>
-                )}
-                {gPriceType === 'daily' && (
-                  <div>
-                    <label className="text-[9px] text-slate-400 block mb-0.5">سعر اليوم:</label>
-                    <input type="number" value={gDailyPrice} onChange={e => setGDailyPrice(parseInt(e.target.value, 10) || 0)} className="w-full font-bold text-center text-xs p-2 rounded border" />
-                  </div>
-                )}
-                {gPriceType === 'monthly' && (
-                  <div>
-                    <label className="text-[9px] text-slate-400 block mb-0.5">سعر الشهر:</label>
-                    <input type="number" value={gMonthlyPrice} onChange={e => setGMonthlyPrice(parseInt(e.target.value, 10) || 0)} className="w-full font-bold text-center text-xs p-2 rounded border" />
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="p-3 border rounded-xl" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
-              <div className="font-bold mb-3 text-right text-[10px]" style={{ color: BRAND.slate }}>👤 حسابات السياس (اختياري)</div>
-              {[{ n: 1, name: gValet1Name, setName: setGValet1Name, pass: gValet1Pass, setPass: setGValet1Pass, color: BRAND.blue },
-                { n: 2, name: gValet2Name, setName: setGValet2Name, pass: gValet2Pass, setPass: setGValet2Pass, color: '#7c3aed' },
-                { n: 3, name: gValet3Name, setName: setGValet3Name, pass: gValet3Pass, setPass: setGValet3Pass, color: '#f59e0b' }].map((v, i) => (
-                <div key={i} className={i < 2 ? 'mb-3 pb-3 border-b border-dashed' : ''} style={{ borderColor: BRAND.border }}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-bold text-[9px]" style={{ color: (v.name || v.pass) ? BRAND.greenDark : BRAND.slateMuted }}>{(v.name || v.pass) ? '✅ مفعّل' : '❌ غير مفعّل'}</span>
-                    <span className="font-black text-[10px]" style={{ color: BRAND.navy }}>سايس {v.n}</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <input type="text" value={v.name} onChange={e => v.setName(e.target.value)} className="flex-1 font-bold text-right outline-none text-xs py-2 px-2.5 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} placeholder="الاسم" />
-                    <input type="text" value={v.pass} onChange={e => v.setPass(e.target.value)} className="flex-1 font-mono font-black text-center outline-none text-xs py-2 px-2.5 rounded-lg border border-slate-200" style={{ color: BRAND.navy, letterSpacing: 2 }} placeholder="الباسورد" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="p-3 border rounded-xl" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
-            <div className="font-bold mb-2 text-[10px]" style={{ color: BRAND.slate }}>📍 تحديد الإحداثيات الجغرافية</div>
-            <div className="grid grid-cols-2 gap-3 font-mono">
-              {[{ label: 'خط العرض', value: lat, set: setLat }, { label: 'خط الطول', value: lng, set: setLng }].map(c => (
-                <div key={c.label}>
-                  <span className="text-[9px] text-slate-400 block mb-0.5">{c.label}</span>
-                  <input type="number" value={c.value} onChange={e => c.set(parseFloat(e.target.value))} className="w-full font-bold outline-none text-xs py-2 px-2.5 rounded-lg border border-slate-200" style={{ color: BRAND.navy }} step="0.000001" />
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="text-center p-3 border rounded-xl" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
-            <div className="font-bold mb-1 text-[11px]" style={{ color: BRAND.navy }}>الموقع الإحداثي الحالي للمتصفح</div>
-            <div className="font-black font-mono text-xs" style={{ color: BRAND.blue }}>{lat.toFixed(4)}, {lng.toFixed(4)}</div>
-            <button 
-              type="button" 
-              onClick={() => {
-                if ('geolocation' in navigator) {
-                  navigator.geolocation.getCurrentPosition(p => {
-                    setLat(p.coords.latitude);
-                    setLng(p.coords.longitude);
-                    toast.success('تم تحديد الإحداثيات بنجاح');
-                  }, () => toast.error('تعذر تحديد موقع المتصفح'));
-                }
-              }} 
-              className="font-black py-1.5 px-3 rounded-lg text-[10px] cursor-pointer border bg-white mt-2" 
-              style={{ color: BRAND.blue, borderColor: BRAND.blue }}
-            >
-              📍 استخدام موقعي الحالي
-            </button>
-          </div>
-          <button onClick={handleAddGarage} className="w-full font-black py-3.5 border-0 text-white rounded-xl text-xs active:scale-[0.98] transition-all cursor-pointer" style={{ background: BRAND.blue, boxShadow: `0 4px 14px ${BRAND.blue}25` }}>
-            حفظ وتسجيل الجراج بالشبكة 🚀
-          </button>
-        </div>
-      </div>
+      {/* ══ Add Garage Form Section المعزول ══ */}
+      <AddGarageSection onAddGarage={handleAddGarageSubmit} />
     </div>
   );
 }

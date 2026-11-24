@@ -1,3 +1,4 @@
+
 // src/components/GarageListScreen.tsx
 import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -31,10 +32,7 @@ const BRAND = {
   shieldGold: '#d97706'
 };
 
-// 📍 مسافة التحديث الحقيقية لواجهة المستخدم
 const MIN_UI_MOVE_METERS = 25;
-
-// ⏳ فترة كبح طلبات السيرفر (تمنع استنزاف قاعدة البيانات)
 const FETCH_THROTTLE_MS = 3500;
 
 interface GarageWithDistance extends Garage {
@@ -46,7 +44,7 @@ interface GarageWithDistance extends Garage {
 interface GarageCardProps {
   garage: GarageWithDistance;
   index: number;
-  onSelect: () => void;
+  onSelect: (garage: GarageWithDistance) => void;
   onReportPrice: (garage: GarageWithDistance) => void;
   isNearby: boolean;
   isClosest: boolean;
@@ -69,9 +67,6 @@ const safeParseTime = (value: unknown): number => {
 
 const SITE_URL = import.meta.env.VITE_SITE_URL || 'https://parkn24.com';
 
-/* ═══════════════════════════════════════════════════════════════════
-   🗺️ المناطق الجغرافية الموحدة والمعتمدة رسمياً (13 منطقة أساسية)
-   ═══════════════════════════════════════════════════════════════════ */
 export const OFFICIAL_AREAS = [
   'وسط البلد والزمالك',
   'المعادي والمقطم',
@@ -104,7 +99,6 @@ const AREA_ICONS: Record<string, string> = {
   'العاشر من رمضان': '🏭',
 };
 
-/* ─── خريطة تحويل المسميات الفرعية للمسميات الرسمية ─── */
 const DIRECT_AREA_MAP: Record<string, string> = {
   'وسط البلد': 'وسط البلد والزمالك',
   'الزمالك': 'وسط البلد والزمالك',
@@ -157,57 +151,58 @@ const DIRECT_AREA_MAP: Record<string, string> = {
   'مدينة العاشر من رمضان': 'العاشر من رمضان'
 };
 
-/* ─── محرك التوحيد الصارم للمناطق ─── */
+// ⚡ كاش ذكي لتسريع الـ RegEx ومنع هبوط الفريمات مع سقف أمان للذاكرة
+const canonicalAreaCache = new Map<string, string>();
+
 export const getCanonicalArea = (rawArea?: string, name: string = '', location: string = ''): string => {
+  const cacheKey = `${rawArea || ''}__${name}__${location}`;
+  const cached = canonicalAreaCache.get(cacheKey);
+  if (cached) return cached;
+
+  let result = 'وسط البلد والزمالك';
   const trimmed = (rawArea || '').trim();
+
   if (trimmed && (OFFICIAL_AREAS as readonly string[]).includes(trimmed)) {
-    return trimmed;
+    result = trimmed;
+  } else if (trimmed && DIRECT_AREA_MAP[trimmed]) {
+    result = DIRECT_AREA_MAP[trimmed];
+  } else {
+    const combined = `${trimmed} ${name} ${location}`.trim();
+    if (/عاشر من رمضان|العاشر/i.test(combined)) result = 'العاشر من رمضان';
+    else if (/سخنة|سويس|إسماعيلية|اسماعيلية|بورسعيد|بورفؤاد|فايد|جلالة/i.test(combined) && !/جسر السويس|طريق السويس/i.test(combined)) {
+      result = 'السويس والقناة';
+    } else if (/إسكندرية|اسكندرية|ساحل|علمين|مارينا|مطروح|سموحة|سيدي جابر|محطة الرمل/i.test(combined)) {
+      result = 'الإسكندرية والساحل';
+    } else if (/طنطا|منصورة|دلتا|محلة|كفر الشيخ|دمياط|منوفية|شبين|بنها|قليوب/i.test(combined)) {
+      result = 'القناة والدلتا';
+    } else if (/شبرا|الخيمة|خيمة|بهتيم|مسطرد|عبود|روض الفرج/i.test(combined)) {
+      result = 'شبرا الخيمة';
+    } else if (/أكتوبر|اكتوبر|زايد|حصري|قرية ذكية|دريم|بيفرلي|توسعات/i.test(combined)) {
+      result = '6 أكتوبر والشيخ زايد';
+    } else if (/تجمع|قاهرة جديدة|رحاب|مدينتي|لوتس|نرجس|ياسمين|بنفسج|شويفات|مستثمرين/i.test(combined)) {
+      result = 'التجمع والقاهرة الجديدة';
+    } else if (/معادي|مقطم|دجلة|طرة|حلوان|أوتوستراد|اتوستراد|زهراء المعادي/i.test(combined)) {
+      result = 'المعادي والمقطم';
+    } else if (/مهندسين|دقي|عجوزة|مصدق|نادي الصيد|محي الدين|لبنان|جامعة الدول/i.test(combined)) {
+      result = 'المهندسين والدقي';
+    } else if (/جيزة|فيصل|هرم|عمرانية|طالبية|رماية|مريوطية|منصورية|أهرام|اهرام|بين السرايات|جامعة القاهرة/i.test(combined)) {
+      result = 'الجيزة وفيصل والهرم';
+    } else if (/مدينة نصر|مكرم|عباس العقاد|نحاس|رابعة|حي سابع|حي ثامن|حي سادس|حي عاشر|وفاء وأمل|زقازيق|شرقية/i.test(combined)) {
+      result = 'مدينة نصر والشرقية';
+    } else if (/مصر الجديدة|شروق|نزهة|روكسي|كوربة|هليوبوليس|جسر السويس|طريق السويس|شيراتون|مطار|عبور|عاصمة إدارية|عاصمة ادارية|زيتون|مطرية|حدائق القبة|وايلي|عباسية/i.test(combined)) {
+      result = 'مصر الجديدة والشروق';
+    } else if (/وسط البلد|زمالك|جاردن سيتي|قصر عيني|بولاق|عتبة|حسين|أزهر|ازهر|تحرير|منيل|مصر القديمة|رمسيس|باب اللوق|ممشى أهل مصر/i.test(combined)) {
+      result = 'وسط البلد والزمالك';
+    }
   }
-  if (trimmed && DIRECT_AREA_MAP[trimmed]) {
-    return DIRECT_AREA_MAP[trimmed];
+
+  if (canonicalAreaCache.size > 2000) {
+    canonicalAreaCache.clear();
   }
-  const combined = `${trimmed} ${name} ${location}`.trim();
-  if (/عاشر من رمضان|العاشر/i.test(combined)) return 'العاشر من رمضان';
-  if (/سخنة|سويس|إسماعيلية|اسماعيلية|بورسعيد|بورفؤاد|فايد|جلالة/i.test(combined) && !/جسر السويس|طريق السويس/i.test(combined)) {
-    return 'السويس والقناة';
-  }
-  if (/إسكندرية|اسكندرية|ساحل|علمين|مارينا|مطروح|سموحة|سيدي جابر|محطة الرمل/i.test(combined)) {
-    return 'الإسكندرية والساحل';
-  }
-  if (/طنطا|منصورة|دلتا|محلة|كفر الشيخ|دمياط|منوفية|شبين|بنها|قليوب/i.test(combined)) {
-    return 'القناة والدلتا';
-  }
-  if (/شبرا|الخيمة|خيمة|بهتيم|مسطرد|عبود|روض الفرج/i.test(combined)) {
-    return 'شبرا الخيمة';
-  }
-  if (/أكتوبر|اكتوبر|زايد|حصري|قرية ذكية|دريم|بيفرلي|توسعات/i.test(combined)) {
-    return '6 أكتوبر والشيخ زايد';
-  }
-  if (/تجمع|قاهرة جديدة|رحاب|مدينتي|لوتس|نرجس|ياسمين|بنفسج|شويفات|مستثمرين/i.test(combined)) {
-    return 'التجمع والقاهرة الجديدة';
-  }
-  if (/معادي|مقطم|دجلة|طرة|حلوان|أوتوستراد|اتوستراد|زهراء المعادي/i.test(combined)) {
-    return 'المعادي والمقطم';
-  }
-  if (/مهندسين|دقي|عجوزة|مصدق|نادي الصيد|محي الدين|لبنان|جامعة الدول/i.test(combined)) {
-    return 'المهندسين والدقي';
-  }
-  if (/جيزة|فيصل|هرم|عمرانية|طالبية|رماية|مريوطية|منصورية|أهرام|اهرام|بين السرايات|جامعة القاهرة/i.test(combined)) {
-    return 'الجيزة وفيصل والهرم';
-  }
-  if (/مدينة نصر|مكرم|عباس العقاد|نحاس|رابعة|حي سابع|حي ثامن|حي سادس|حي عاشر|وفاء وأمل|زقازيق|شرقية/i.test(combined)) {
-    return 'مدينة نصر والشرقية';
-  }
-  if (/مصر الجديدة|شروق|نزهة|روكسي|كوربة|هليوبوليس|جسر السويس|طريق السويس|شيراتون|مطار|عبور|عاصمة إدارية|عاصمة ادارية|زيتون|مطرية|حدائق القبة|وايلي|عباسية/i.test(combined)) {
-    return 'مصر الجديدة والشروق';
-  }
-  if (/وسط البلد|زمالك|جاردن سيتي|قصر عيني|بولاق|عتبة|حسين|أزهر|ازهر|تحرير|منيل|مصر القديمة|رمسيس|باب اللوق|ممشى أهل مصر/i.test(combined)) {
-    return 'وسط البلد والزمالك';
-  }
-  return 'وسط البلد والزمالك';
+  canonicalAreaCache.set(cacheKey, result);
+  return result;
 };
 
-/* ─── مراكز المناطق الجغرافية للتحقق من دقة الإحداثيات ─── */
 const AREA_CENTERS: Record<string, { lat: number; lng: number; maxRadiusKm: number }> = {
   'وسط البلد والزمالك': { lat: 30.0480, lng: 31.2300, maxRadiusKm: 6.0 },
   'المعادي والمقطم': { lat: 29.9800, lng: 31.2800, maxRadiusKm: 12.0 },
@@ -222,28 +217,6 @@ const AREA_CENTERS: Record<string, { lat: number; lng: number; maxRadiusKm: numb
   'الإسكندرية والساحل': { lat: 31.2001, lng: 29.9187, maxRadiusKm: 180.0 },
   'القناة والدلتا': { lat: 30.8500, lng: 31.2000, maxRadiusKm: 70.0 },
   'العاشر من رمضان': { lat: 30.3080, lng: 31.7420, maxRadiusKm: 15.0 },
-};
-
-// 🔇 صوت صامت لإبقاء GPS يعمل على الشاشة الخلفية (Keep Alive)
-let silentAudioEl: HTMLAudioElement | null = null;
-const enableBackgroundKeepAlive = async () => {
-  try {
-    if (!silentAudioEl) {
-      silentAudioEl = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==');
-      silentAudioEl.loop = true;
-      silentAudioEl.volume = 0.001;
-    }
-    await silentAudioEl.play().catch(() => {});
-    if ('Notification' in window && Notification.permission === 'default') {
-      await Notification.requestPermission().catch(() => {});
-    }
-    if ('mediaSession' in navigator) {
-      navigator.mediaSession.setActionHandler('play', () => silentAudioEl?.play().catch(() => {}));
-      navigator.mediaSession.setActionHandler('pause', () => silentAudioEl?.play().catch(() => {}));
-    }
-  } catch (err) {
-    console.warn("Background keep-alive error:", err);
-  }
 };
 
 export default function GarageListScreen() {
@@ -269,15 +242,11 @@ export default function GarageListScreen() {
   const [isBooking, setIsBooking] = useState(false);
   const [expandedArea, setExpandedArea] = useState<string | null>(null);
   
-  // 💰 مودال "رصيدك غير كافي"
   const [showInsufficientModal, setShowInsufficientModal] = useState(false);
   const [pendingVipGarage, setPendingVipGarage] = useState<GarageWithDistance | null>(null);
   
-  // 👈 تم التعديل لحصر البحث في أقرب 3 أماكن فقط
   const [rescueIndex, setRescueIndex] = useState(0);
   const MAX_RESCUE_OPTIONS = 3;
-
-  const autoNavigatedRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
   const lastLocationRef = useRef<{ lat: number; lng: number } | null>(null);
   const watchIdRef = useRef<number | null>(null);
@@ -304,8 +273,7 @@ export default function GarageListScreen() {
         if (acknowledgedSessionIds?.has(s.id)) return false;
         const samePlate = normalizePlate(s.carPlate) === normalizedUserPlate;
         const sPhoneClean = s.customerPhone ? normalizePhone(s.customerPhone) : '';
-        const samePhone = Boolean(cleanUserPhone && sPhoneClean === cleanUserPhone);
-        return samePlate || samePhone;
+        return samePlate || Boolean(cleanUserPhone && sPhoneClean === cleanUserPhone);
       })
       .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
   }, [sessions, normalizedUserPlate, cleanUserPhone, acknowledgedSessionIds]);
@@ -329,7 +297,24 @@ export default function GarageListScreen() {
 
   const pendingTopUpsCount = useMemo(() => myTopUps.filter((w) => w.status === 'pending').length, [myTopUps]);
 
-  // 🚀 دالة جلب البيانات مع كبح التكرار
+  // تثبيت المراجع للحفاظ على ثبات دالة handleGarageClick وعدم كسر memo الكروت
+  const bookingContextRef = useRef({
+    currentUser,
+    activeSession,
+    myIncomingCar,
+    offers,
+    cleanUserPhone
+  });
+  useEffect(() => {
+    bookingContextRef.current = {
+      currentUser,
+      activeSession,
+      myIncomingCar,
+      offers,
+      cleanUserPhone
+    };
+  }, [currentUser, activeSession, myIncomingCar, offers, cleanUserPhone]);
+
   const throttledFetchAll = useCallback(async () => {
     const now = Date.now();
     if (now - lastFetchTimestampRef.current < FETCH_THROTTLE_MS) return;
@@ -341,17 +326,25 @@ export default function GarageListScreen() {
     }
   }, [fetchAll]);
 
+  const stopGpsWatch = useCallback(() => {
+    if (watchIdRef.current !== null && 'geolocation' in navigator) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+  }, []);
+
   const getUserLocation = useCallback(() => {
     if (!('geolocation' in navigator)) {
       toast.error('خدمة تحديد الموقع غير مدعومة في متصفحك');
       return;
     }
-    if (watchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      return;
     }
+
+    stopGpsWatch();
     setLocationLoading(true);
 
-    // استعلام فوري سريع للموقع أولاً
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         if (!isMountedRef.current) return;
@@ -359,8 +352,10 @@ export default function GarageListScreen() {
         lastLocationRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setLocationLoading(false);
       },
-      () => {},
-      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+      () => {
+        if (isMountedRef.current) setLocationLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 10000 }
     );
 
     watchIdRef.current = navigator.geolocation.watchPosition(
@@ -386,7 +381,6 @@ export default function GarageListScreen() {
         lastGpsTickRef.current = { lat: newLat, lng: newLng, time: nowMs };
         speedHistoryRef.current.push(speedKmh);
         if (speedHistoryRef.current.length > 10) speedHistoryRef.current.shift();
-
         if (rawHeading !== null) {
           bearingHistoryRef.current.push(rawHeading);
           if (bearingHistoryRef.current.length > 5) bearingHistoryRef.current.shift();
@@ -422,88 +416,58 @@ export default function GarageListScreen() {
         if (!isMountedRef.current) return;
         setLocationLoading(false);
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
     );
-  }, []);
+  }, [stopGpsWatch]);
 
-  const handleForceRefreshLocation = useCallback(async () => {
-    try {
-      await enableBackgroundKeepAlive();
-    } catch (e) {
-      console.warn("Background init error:", e);
-    }
+  const handleForceRefreshLocation = useCallback(() => {
     lastLocationRef.current = null;
     getUserLocation();
     toast.success('🚀 تم تحديث رادار الموقع الدقيق', { duration: 2500, icon: '📍' });
   }, [getUserLocation]);
 
+  // إيقاف الـ GPS تلقائياً في الخلفية لتوفير البطارية واستئنافه عند العودة
   useEffect(() => {
     getUserLocation();
-    return () => {
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        stopGpsWatch();
+      } else {
+        getUserLocation();
       }
     };
-  }, [getUserLocation]);
-
-  // 🔄 الاستماع اللحظي للبيانات مع ترشيد الاستهلاك
-  useEffect(() => {
-    const isMyRow = (row: any): boolean => {
-      if (!row) return false;
-      const plate = normalizePlate(row.car_plate || row.carPlate);
-      const phone = (row.customer_phone || row.customerPhone || row.phone || row.userPhone || '').replace(/[^\d+]/g, '');
-      return plate === normalizedUserPlate || Boolean(cleanUserPhone && phone === cleanUserPhone);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      stopGpsWatch();
     };
+  }, [getUserLocation, stopGpsWatch]);
 
-    const channelName = `customer-realtime-${cleanUserPhone || normalizedUserPlate || 'guest'}-${Date.now()}`;
+  // 🔄 الاستماع لتحديثات شحن محفظة العميل الحالي فقط دون تسريب اتصالات أو إزعاج السيرفر
+  useEffect(() => {
+    if (!cleanUserPhone) return;
+
+    const channelName = `garage-list-topup-${cleanUserPhone}`;
     const channel = supabase.channel(channelName)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'garages' }, () => {
-        throttledFetchAll();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, (payload) => {
-        if (isMyRow(payload.new) || isMyRow(payload.old)) throttledFetchAll();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_topups' }, (payload) => {
-        if (isMyRow(payload.new) || isMyRow(payload.old)) {
-          throttledFetchAll();
-          if (payload.event === 'UPDATE' && payload.new.status === 'approved') {
-            toast.success(`🎁 تم اعتماد شحن رصيد بمبلغ ${payload.new.amount} ج.م بنجاح!`, { icon: '💳' });
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'wallet_topups' },
+        (payload) => {
+          const row = payload.new as any;
+          if (!row) return;
+          const rowPhone = normalizePhone(row.user_phone || row.userPhone || '');
+          if (rowPhone === cleanUserPhone && row.status === 'approved') {
+            throttledFetchAll();
+            toast.success(`🎁 تم اعتماد شحن رصيد بمبلغ ${row.amount} ج.م بنجاح!`, { icon: '💳' });
           }
         }
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users' }, (payload) => {
-        if (cleanUserPhone && payload.new.phone && normalizePhone(payload.new.phone) === cleanUserPhone) {
-          throttledFetchAll();
-        }
-      })
+      )
       .subscribe();
 
-    const interval = setInterval(throttledFetchAll, 45000);
-    const handleVisibility = () => { if (document.visibilityState === 'visible') throttledFetchAll(); };
-    const handleFocus = () => throttledFetchAll();
-
-    document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', handleFocus);
-
     return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', handleFocus);
       supabase.removeChannel(channel);
     };
-  }, [normalizedUserPlate, cleanUserPhone, throttledFetchAll]);
-
-  useEffect(() => {
-    if (!activeSession) {
-      autoNavigatedRef.current = null;
-      return;
-    }
-    if (autoNavigatedRef.current === activeSession.id) return;
-    autoNavigatedRef.current = activeSession.id;
-    setSelectedGarageId(activeSession.garageId);
-    setScreen('session');
-    toast.success('🛡️ درع الحماية نشط! بدأت جلسة الركن', { icon: '🚗', duration: 3000 });
-  }, [activeSession, setSelectedGarageId, setScreen]);
+  }, [cleanUserPhone, throttledFetchAll]);
 
   // حساب المسافات لجميع الجراجات مرتبة بالأقرب دائماً
   const garagesWithDistance: GarageWithDistance[] = useMemo(() => {
@@ -517,21 +481,19 @@ export default function GarageListScreen() {
       .sort((a, b) => a.distance - b.distance);
   }, [garages, userLocation]);
 
-  // 🎯 خوارزمية المنقذ السريع الذكية: رصد جراجات VIP فقط وفي محيط العميل الجغرافي
-  const MAX_RESCUE_RADIUS_KM = 20; // 📍 أقصى نطاق لمحيط العميل (20 كم كحد أقصى)
-
+  // 🎯 خوارزمية المنقذ السريع الذكية: رصد أقرب جراجات VIP
+  const MAX_RESCUE_RADIUS_KM = 20;
   const rescueGaragesList = useMemo(() => {
     if (!userLocation.lat || !userLocation.lng) return [];
     
     return garagesWithDistance
       .filter((g) => 
         g.isActive !== false &&
-        g.garageType === 'vip' &&               // 1️⃣ حصر البحث في جراجات VIP المؤمنة فقط
-        g.availableSpots > 0 &&                 // 2️⃣ ذكي: يضمن إن فيه أماكن فاضية تركن فيها فوراً
-        g.distance <= MAX_RESCUE_RADIUS_KM      // 3️⃣ ذكي: يبحث في محيطك الفعلي فقط (ما يجيبش جراج في زايد وأنت في المعادي مثلاً)
+        g.garageType === 'vip' &&
+        g.availableSpots > 0 &&
+        g.distance <= MAX_RESCUE_RADIUS_KM
       )
-      .sort((a, b) => a.distance - b.distance)
-      .slice(0, MAX_RESCUE_OPTIONS);            // أخذ أقرب 3 جراجات فقط
+      .slice(0, MAX_RESCUE_OPTIONS);
   }, [garagesWithDistance, userLocation.lat, userLocation.lng]);
 
   const currentRescueGarage = rescueGaragesList[rescueIndex] || null;
@@ -549,8 +511,7 @@ export default function GarageListScreen() {
   }, [rescueIndex, rescueGaragesList]);
 
   const filteredGarages = useMemo(() => {
-    let filtered = garagesWithDistance;
-    filtered = filtered.filter((g) => g.garageType === activeTab);
+    let filtered = garagesWithDistance.filter((g) => g.garageType === activeTab);
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       filtered = filtered.filter((g) =>
@@ -565,7 +526,6 @@ export default function GarageListScreen() {
     return filtered;
   }, [garagesWithDistance, searchQuery, showNearbyOnly, activeTab]);
 
-  /* ─── 🗺️ تجميع الجراجات حسب المنطقة الموحدة والمعتمدة فقط ─── */
   const areaGroups = useMemo(() => {
     const groups: Record<string, GarageWithDistance[]> = {};
     filteredGarages.forEach((g) => {
@@ -590,8 +550,16 @@ export default function GarageListScreen() {
     if (searchQuery.trim() && areaGroups.length > 0) setExpandedArea(areaGroups[0].name);
   }, [searchQuery, areaGroups]);
 
-  // 💰 عملية الحجز والتوجيه الذكي
-  const handleGarageClick = async (garage: GarageWithDistance) => {
+  // 💰 عملية الحجز والتوجيه الذكي (مستقرة مرجعياً 100% لمنع إعادة رسم الكروت)
+  const handleGarageClick = useCallback(async (garage: GarageWithDistance) => {
+    const {
+      currentUser: user,
+      activeSession: currActiveSession,
+      myIncomingCar: currIncomingCar,
+      offers: currOffers,
+      cleanUserPhone: userPhoneClean
+    } = bookingContextRef.current;
+
     if (garage.garageType === 'directory') {
       const canonicalZone = getCanonicalArea(garage.area, garage.name, garage.location);
       const areaCenter = AREA_CENTERS[canonicalZone];
@@ -600,7 +568,7 @@ export default function GarageListScreen() {
         if (distanceFromCenterKm > areaCenter.maxRadiusKm) {
           supabase.from('garage_arrival_telemetry').insert({
             garage_id: garage.id,
-            user_phone: cleanUserPhone || '00000000000',
+            user_phone: userPhoneClean || '00000000000',
             lat: garage.lat,
             lng: garage.lng,
             accuracy: 999
@@ -614,22 +582,21 @@ export default function GarageListScreen() {
       return;
     }
 
-    // 🌟 جراج VIP
-    if (!currentUser) {
+    if (!user) {
       toast.error('سجل بياناتك أولاً');
       return;
     }
-    if (activeSession) {
-      setSelectedGarageId(activeSession.garageId);
+    if (currActiveSession) {
+      setSelectedGarageId(currActiveSession.garageId);
       setScreen('session');
       return;
     }
-    if (myIncomingCar) {
-      setSelectedGarageId(myIncomingCar.garageId);
+    if (currIncomingCar) {
+      setSelectedGarageId(currIncomingCar.garageId);
       setScreen('navigation');
       return;
     }
-    if (offers.some((o) => o.userId === currentUser.phone && o.status === 'pending')) {
+    if (currOffers.some((o) => o.userId === user.phone && o.status === 'pending')) {
       toast.error('لديك عرض معلق بالفعل');
       return;
     }
@@ -638,8 +605,12 @@ export default function GarageListScreen() {
       return;
     }
 
+    const resolvedHourlyPrice = Number(garage.basePrice || garage.pricePerHour || 15) > 0
+      ? Number(garage.basePrice || garage.pricePerHour || 15)
+      : 15;
+
     const { hasPaidBookingFee } = useStore.getState();
-    const userWallet = currentUser.wallet || 0;
+    const userWallet = user.wallet || 0;
     const todayCount = getDailyDeductionCount();
     const isFreeToday = todayCount >= 2;
 
@@ -648,10 +619,10 @@ export default function GarageListScreen() {
       try {
         await addIncomingCar({
           garageId: garage.id,
-          carPlate: currentUser.carPlate,
-          customerName: currentUser.name,
-          customerPhone: currentUser.phone,
-          agreedPrice: garage.basePrice,
+          carPlate: user.carPlate,
+          customerName: user.name,
+          customerPhone: user.phone,
+          agreedPrice: resolvedHourlyPrice,
           estimatedArrival: Math.max(3, garage.minutes)
         });
         setSelectedGarageId(garage.id);
@@ -679,10 +650,10 @@ export default function GarageListScreen() {
       if (success) {
         await addIncomingCar({
           garageId: garage.id,
-          carPlate: currentUser.carPlate,
-          customerName: currentUser.name,
-          customerPhone: currentUser.phone,
-          agreedPrice: garage.basePrice,
+          carPlate: user.carPlate,
+          customerName: user.name,
+          customerPhone: user.phone,
+          agreedPrice: resolvedHourlyPrice,
           estimatedArrival: Math.max(3, garage.minutes)
         });
         setSelectedGarageId(garage.id);
@@ -702,7 +673,7 @@ export default function GarageListScreen() {
     } finally {
       setIsBooking(false);
     }
-  };
+  }, [getDailyDeductionCount, addIncomingCar, setSelectedGarageId, setScreen, chargeBookingFee]);
 
   const handleConfirmArrival = useCallback(async () => {
     if (!activeDirectoryTrip) return;
@@ -733,20 +704,18 @@ export default function GarageListScreen() {
           speedHistoryRef.current = [];
           bearingHistoryRef.current = [];
           totalStopDurationRef.current = 0;
-        } catch (e) {
-          /* صامت */
-        }
+        } catch (e) {}
       }, () => {}, { enableHighAccuracy: true, timeout: 6000 });
     }
   }, [activeDirectoryTrip, cleanUserPhone]);
 
-  const handleOpenPriceReport = (g: GarageWithDistance) => {
+  const handleOpenPriceReport = useCallback((g: GarageWithDistance) => {
     setReportingGarage(g);
-    setUpdatedPriceInput(g.priceType === 'daily' ? (g.dailyPrice || g.basePrice) : g.basePrice || 20);
-  };
+    setUpdatedPriceInput(g.priceType === 'daily' ? (g.dailyPrice || g.basePrice || g.pricePerHour || 20) : (g.basePrice || g.pricePerHour || 20));
+  }, []);
 
   const handleSubmitPriceUpdate = async () => {
-    const finalPrice = updatedPriceInput === '' ? (reportingGarage?.basePrice || 20) : updatedPriceInput;
+    const finalPrice = updatedPriceInput === '' ? (reportingGarage?.basePrice || reportingGarage?.pricePerHour || 20) : updatedPriceInput;
     if (!reportingGarage || finalPrice <= 0) return;
     setIsSubmittingPrice(true);
     try {
@@ -771,13 +740,10 @@ export default function GarageListScreen() {
   return (
     <div className="h-full flex flex-col overflow-hidden relative select-none" style={{ background: BRAND.bg, color: BRAND.navy }}>
       
-      {/* ══════════════════════════════════════════════════════════════
-          🛡️ الهيدر المدمج المضغوط (طراز Uber العالمي - متناسق تماماً)
-         ══════════════════════════════════════════════════════════════ */}
+      {/* الهيدر المدمج */}
       <div className="px-3.5 pt-8 pb-2.5 z-20 shadow-xs relative" style={{ background: BRAND.card, borderBottom: `1.5px solid ${BRAND.border}` }}>
         <div dir="rtl" className="flex justify-between items-center gap-2 mb-2">
           
-          {/* يمين: اللوجو والترحيب وبيانات السيارة بحجم كبير وواضح (تم حذف جملة رادار الحماية) */}
           <div className="text-right flex items-center gap-2.5 min-w-0">
             <div className="relative shrink-0">
               <img
@@ -811,9 +777,7 @@ export default function GarageListScreen() {
             </div>
           </div>
 
-          {/* يسار: كبسولة رصيد المحفظة + تكبير أيقونات الباركود والقائمة بتناسق تام */}
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* 💳 كبسولة المحفظة */}
             <button
               type="button"
               onClick={() => setShowTopUp(true)}
@@ -839,7 +803,6 @@ export default function GarageListScreen() {
               </div>
             </button>
 
-            {/* 📲 زر الـ QR (تم تكبيره لـ h-10 w-10 والأيقونة لـ 20px) */}
             <button
               type="button"
               onClick={() => setShowQrModal(true)}
@@ -850,7 +813,6 @@ export default function GarageListScreen() {
               <QrCode size={20} strokeWidth={2.2} style={{ color: BRAND.blue }} />
             </button>
 
-            {/* ⚙️ القائمة الذكية (تم تكبيرها لـ h-10 w-10 والأيقونة لـ 20px) */}
             <button
               type="button"
               onClick={() => setShowSmartMenu(true)}
@@ -866,7 +828,7 @@ export default function GarageListScreen() {
           </div>
         </div>
 
-        {/* 🌟 بانر المنقذ السريع (حجم أكبر وخطوط أثقل وأوضح تحت الشمس) */}
+        {/* بانر المنقذ السريع */}
         {currentRescueGarage && !activeSession && !myIncomingCar && (
           <div
             className="mb-2.5 rounded-2xl overflow-hidden border-2 text-right transition-all shadow-lg"
@@ -888,7 +850,6 @@ export default function GarageListScreen() {
                 {rescueIndex + 1} من {rescueGaragesList.length}
               </span>
             </div>
-
             <div
               className="p-3.5 cursor-pointer active:opacity-90 transition-all"
               onClick={() => handleGarageClick(currentRescueGarage)}
@@ -907,23 +868,20 @@ export default function GarageListScreen() {
                       📍 يبعد عنك بالظبط: {(currentRescueGarage.distance * 1000).toFixed(0)} متر
                     </span>
                   </div>
-
                   <h4 className="text-sm sm:text-base font-black text-white leading-snug mb-1.5 truncate">
                     {currentRescueGarage.name}
                   </h4>
-
                   <div className="flex items-center gap-3.5">
                     <span className="text-sm sm:text-base font-black text-lime-300 font-mono">
                       💰 {currentRescueGarage.priceType === 'daily'
-                        ? `${currentRescueGarage.dailyPrice || currentRescueGarage.basePrice} ج/يوم`
-                        : `${currentRescueGarage.basePrice} ج/ساعة`}
+                        ? `${currentRescueGarage.dailyPrice || currentRescueGarage.basePrice || currentRescueGarage.pricePerHour || 15} ج/يوم`
+                        : `${currentRescueGarage.basePrice || currentRescueGarage.pricePerHour || 15} ج/ساعة`}
                     </span>
                     <span className="text-[11px] sm:text-xs font-bold text-slate-200">
                       ⏱️ {formatDuration(currentRescueGarage.minutes)}
                     </span>
                   </div>
                 </div>
-
                 <div
                   className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-md transition-transform active:scale-90"
                   style={{ background: BRAND.green, border: `2px solid ${BRAND.greenDark}` }}
@@ -936,7 +894,7 @@ export default function GarageListScreen() {
           </div>
         )}
 
-        {/* 🔍 زر "شوف الركنة البديلة اللي بعدها" — بحجم أكبر وواضح جداً */}
+        {/* زر الركنة البديلة */}
         {rescueGaragesList.length > 1 && !activeSession && !myIncomingCar && (
           <button
             type="button"
@@ -961,7 +919,7 @@ export default function GarageListScreen() {
           </button>
         )}
 
-        {/* 🚗 إشعارات الجلسة النشطة / الحجز الفعلي */}
+        {/* إشعارات الجلسة النشطة */}
         {activeSession && (
           <button
             type="button"
@@ -975,7 +933,6 @@ export default function GarageListScreen() {
             </span>
           </button>
         )}
-
         {!activeSession && myIncomingCar && (
           <button
             type="button"
@@ -990,7 +947,7 @@ export default function GarageListScreen() {
           </button>
         )}
 
-        {/* 🔍 شريط البحث وأزرار التحديد السريع */}
+        {/* شريط البحث */}
         <div className="flex gap-2 mb-2">
           <div className="relative flex-1">
             <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: BRAND.blue }} />
@@ -1020,7 +977,6 @@ export default function GarageListScreen() {
               </div>
             ) : null}
           </div>
-
           <button
             type="button"
             onClick={handleForceRefreshLocation}
@@ -1038,7 +994,6 @@ export default function GarageListScreen() {
           >
             <Locate size={16} className={locationLoading ? 'animate-spin' : ''} />
           </button>
-
           <button
             type="button"
             onClick={() => setShowNearbyOnly(!showNearbyOnly)}
@@ -1053,7 +1008,7 @@ export default function GarageListScreen() {
           </button>
         </div>
 
-        {/* 🛡️ التبويبات الرئيسية */}
+        {/* التبويبات */}
         <div className="flex p-1 rounded-xl bg-slate-100" style={{ direction: 'rtl', border: `1px solid ${BRAND.border}` }}>
           <button
             type="button"
@@ -1082,9 +1037,7 @@ export default function GarageListScreen() {
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════
-          📋 قائمة المناطق والساحات (أكورديون موحد)
-         ══════════════════════════════════════════════════════════════ */}
+      {/* قائمة المناطق والساحات */}
       <div className="flex-1 overflow-y-auto px-4 pt-3 pb-8">
         {areaGroups.length > 0 ? (
           <div className="space-y-3">
@@ -1143,7 +1096,7 @@ export default function GarageListScreen() {
                                 key={garage.id}
                                 garage={garage}
                                 index={i}
-                                onSelect={() => handleGarageClick(garage)}
+                                onSelect={handleGarageClick}
                                 onReportPrice={handleOpenPriceReport}
                                 isNearby={garage.classification === 'nearby'}
                                 isClosest={i === 0 && garage.classification === 'nearby'}
@@ -1184,9 +1137,7 @@ export default function GarageListScreen() {
         )}
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════
-           💰 مودال "رصيدك غير كافي"
-         ══════════════════════════════════════════════════════════════ */}
+      {/* مودال رصيدك غير كافي */}
       <AnimatePresence>
         {showInsufficientModal && pendingVipGarage && (
           <div
@@ -1229,7 +1180,6 @@ export default function GarageListScreen() {
                   <span className="text-[11px] font-bold text-slate-800">📊 المطلوب شحنه</span>
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-2 mb-4">
                 {TOPUP_TIERS.map((tier) => (
                   <button
@@ -1260,7 +1210,6 @@ export default function GarageListScreen() {
                   </button>
                 ))}
               </div>
-
               <button
                 type="button"
                 onClick={() => {
@@ -1274,7 +1223,6 @@ export default function GarageListScreen() {
                 <Wallet size={16} />
                 <span>شحن المحفظة فوراً 💰</span>
               </button>
-
               <button
                 type="button"
                 onClick={() => { setShowInsufficientModal(false); setPendingVipGarage(null); }}
@@ -1288,7 +1236,7 @@ export default function GarageListScreen() {
         )}
       </AnimatePresence>
 
-      {/* ═══ القائمة الذكية الجانبية ═══ */}
+      {/* القائمة الذكية */}
       <AnimatePresence>
         {showSmartMenu && (
           <div className="fixed inset-0 z-[1500] flex items-end" style={{ background: 'rgba(10,22,40,0.65)', backdropFilter: 'blur(5px)' }} onClick={() => setShowSmartMenu(false)}>
@@ -1316,7 +1264,6 @@ export default function GarageListScreen() {
                     </div>
                   </div>
                 </button>
-
                 {hasCompletedSession && (
                   <button
                     type="button"
@@ -1336,7 +1283,6 @@ export default function GarageListScreen() {
                     </div>
                   </button>
                 )}
-
                 <button
                   type="button"
                   onClick={() => { setShowSmartMenu(false); setScreen('chat'); }}
@@ -1354,7 +1300,6 @@ export default function GarageListScreen() {
                     </div>
                   </div>
                 </button>
-
                 {myTopUps.length > 0 && (
                   <div className="pt-3 mt-3 border-t" style={{ borderColor: BRAND.border }}>
                     <div className="flex justify-between items-center mb-2.5">
@@ -1386,7 +1331,7 @@ export default function GarageListScreen() {
 
       <AnimatePresence>{showTopUp && <TopUpWalletModal onClose={() => setShowTopUp(false)} />}</AnimatePresence>
 
-      {/* 📲 نافذة تكبير الباركود */}
+      {/* مودال QR */}
       <AnimatePresence>
         {showQrModal && (
           <div className="fixed inset-0 z-[999] flex items-center justify-center p-5" style={{ background: 'rgba(10,22,40,0.85)', backdropFilter: 'blur(8px)' }} onClick={() => setShowQrModal(false)}>
@@ -1450,7 +1395,7 @@ export default function GarageListScreen() {
         )}
       </AnimatePresence>
 
-      {/* 🌟 نافذة الإبلاغ عن تعديل سعر الجراج */}
+      {/* نافذة الإبلاغ عن تعديل السعر */}
       <AnimatePresence>
         {reportingGarage && (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center p-5" style={{ background: 'rgba(10,22,40,0.8)', backdropFilter: 'blur(6px)' }} onClick={() => setReportingGarage(null)}>
@@ -1489,7 +1434,7 @@ export default function GarageListScreen() {
                         }}
                         onBlur={() => {
                           if (updatedPriceInput === '' || Number(updatedPriceInput) <= 0) {
-                            setUpdatedPriceInput(reportingGarage.basePrice || 20);
+                            setUpdatedPriceInput(reportingGarage.basePrice || reportingGarage.pricePerHour || 20);
                           }
                         }}
                         className="bg-transparent text-center w-full outline-none font-mono font-black text-2xl border-0 p-0 text-slate-900"
@@ -1533,7 +1478,7 @@ export default function GarageListScreen() {
         )}
       </AnimatePresence>
 
-      {/* 🌟 شاشة "طريق السلامة" التفاعلية */}
+      {/* شاشة طريق السلامة */}
       <AnimatePresence>
         {activeDirectoryTrip && (
           <motion.div
@@ -1561,8 +1506,8 @@ export default function GarageListScreen() {
                 <span className="text-[11px] font-bold text-slate-400 block mb-1">💰 السعر المتوقع هناك</span>
                 <span className="font-black text-2xl text-lime-400 font-mono block mb-2 leading-none">
                   {activeDirectoryTrip.priceType === 'daily'
-                    ? `${activeDirectoryTrip.dailyPrice || activeDirectoryTrip.basePrice} ج.م / اليوم`
-                    : `${activeDirectoryTrip.basePrice} ج.م / ساعة`}
+                    ? `${activeDirectoryTrip.dailyPrice || activeDirectoryTrip.basePrice || activeDirectoryTrip.pricePerHour || 15} ج.م / اليوم`
+                    : `${activeDirectoryTrip.basePrice || activeDirectoryTrip.pricePerHour || 15} ج.م / ساعة`}
                 </span>
                 <span className="text-[12px] font-black text-white block mt-2 border-t border-slate-800 pt-2.5">
                   💵 يرجى سداد الحساب كاش للسايس
@@ -1577,7 +1522,6 @@ export default function GarageListScreen() {
                 </div>
               </div>
             </div>
-
             <div className="max-w-xs mx-auto w-full space-y-2.5 pb-6">
               <button
                 type="button"
@@ -1625,7 +1569,7 @@ export default function GarageListScreen() {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   🚗 كارت الساحة / الجراج (متناسق مع هوية البراند)
+   🚗 كارت الساحة مع حماية الأداء التامة
    ══════════════════════════════════════════════════════════════ */
 const GarageCard = memo(function GarageCard({
   garage,
@@ -1656,9 +1600,9 @@ const GarageCard = memo(function GarageCard({
   })();
 
   const displayPrice = (() => {
-    if (garage.priceType === 'daily') return `${garage.dailyPrice || garage.basePrice}`;
+    if (garage.priceType === 'daily') return `${garage.dailyPrice || garage.basePrice || garage.pricePerHour || 15}`;
     if (garage.priceType === 'monthly') return `${garage.monthlyPrice || 1500}`;
-    return `${garage.basePrice}`;
+    return `${garage.basePrice || garage.pricePerHour || 15}`;
   })();
 
   const priceUnit = (() => {
@@ -1666,6 +1610,15 @@ const GarageCard = memo(function GarageCard({
     if (garage.priceType === 'monthly') return 'ج.م / شهري';
     return 'ج.م / ساعة';
   })();
+
+  const handleCardSelect = useCallback(() => {
+    if (!disabled && !isFull) onSelect(garage);
+  }, [disabled, isFull, onSelect, garage]);
+
+  const handlePriceReportClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onReportPrice(garage);
+  }, [onReportPrice, garage]);
 
   return (
     <div
@@ -1675,7 +1628,6 @@ const GarageCard = memo(function GarageCard({
         boxShadow: isVip ? '0 3px 12px rgba(22,86,184,0.06)' : '0 1px 3px rgba(0,0,0,0.02)'
       }}
     >
-      {/* البادجات العلوية */}
       <div className="flex justify-between items-center mb-1.5 flex-wrap gap-1" style={{ direction: 'rtl' }}>
         <div className="flex items-center gap-1.5 flex-wrap">
           {isDirectory ? (
@@ -1693,7 +1645,6 @@ const GarageCard = memo(function GarageCard({
               </span>
             </>
           )}
-
           {!isDirectory && garage.payment_mode === 'cash' && (
             <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-orange-50 text-orange-700 border border-orange-200">
               💵 نقدي
@@ -1717,7 +1668,6 @@ const GarageCard = memo(function GarageCard({
         </div>
       </div>
 
-      {/* اسم الجراج والعنوان */}
       <div className="flex items-start justify-between gap-2 mb-1" style={{ direction: 'rtl' }}>
         <h4 className="text-[13px] font-black leading-tight text-slate-950 flex-1">{garage.name}</h4>
       </div>
@@ -1726,7 +1676,6 @@ const GarageCard = memo(function GarageCard({
         <MapPin size={11} className="text-slate-400 shrink-0" />
       </div>
 
-      {/* العدادات والأسعار */}
       <div className="flex items-center justify-between mt-1.5 pt-2 border-t" style={{ borderColor: BRAND.border }}>
         <div className="flex items-center gap-1.5 text-xs font-black text-slate-700">
           <Navigation size={12} className="rotate-45" style={{ color: BRAND.blue }} />
@@ -1736,21 +1685,19 @@ const GarageCard = memo(function GarageCard({
           {isDirectory && (
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); onReportPrice(garage); }}
+              onClick={handlePriceReportClick}
               className="flex items-center gap-1 text-[10px] font-bold border-0 bg-transparent cursor-pointer hover:underline p-0.5 rounded text-blue-700"
             >
               <Edit3 size={11} />
               <span>تعديل السعر</span>
             </button>
           )}
-
           {!isDirectory && (
             <div className="flex flex-col items-center">
               <span className="font-mono font-black text-sm leading-none text-blue-700">{garage.availableSpots}</span>
               <span className="text-[8px] font-bold text-slate-400 mt-0.5 uppercase">مكان شاغر</span>
             </div>
           )}
-
           <div className="flex flex-col items-center">
             <span className="font-mono font-black text-sm leading-none" style={{ color: BRAND.greenDark }}>{displayPrice}</span>
             <span className="text-[8px] font-bold text-slate-400 mt-0.5 uppercase">{priceUnit}</span>
@@ -1758,11 +1705,10 @@ const GarageCard = memo(function GarageCard({
         </div>
       </div>
 
-      {/* زر الحجز / الاتجاهات */}
       <button
         type="button"
         disabled={isFull || disabled}
-        onClick={!disabled && !isFull ? onSelect : undefined}
+        onClick={handleCardSelect}
         className="w-full border-0 font-black py-2.5 rounded-xl mt-2.5 text-xs text-white cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5 shadow-sm"
         style={{ background: btnBg }}
       >

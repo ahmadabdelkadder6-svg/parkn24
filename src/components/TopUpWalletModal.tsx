@@ -1,6 +1,5 @@
 // src/components/TopUpWalletModal.tsx
-
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { X, Copy, ExternalLink, ArrowRight, CheckCircle, Plus, Minus, Phone, Send, Sparkles, Wallet, ShieldCheck } from 'lucide-react';
 import { useStore, TOPUP_TIERS, normalizePhone, BOOKING_FEE } from '../store';
@@ -9,11 +8,9 @@ import toast from 'react-hot-toast';
 const WALLET_NUMBER = '01229858104';
 const INSTAPAY_USERNAME = 'ahmed.ali858104';
 const INSTAPAY_LINK = `https://ipn.eg/S/${INSTAPAY_USERNAME}/instapay/9fp24n`;
-
 const MIN_AMOUNT = 20;
 const MAX_AMOUNT = 100000;
 const STEP_AMOUNT = 10;
-
 const SHOW_CASH_WALLET_OPTION = false;
 
 const LOCAL_BONUS_TIERS = [
@@ -22,6 +19,8 @@ const LOCAL_BONUS_TIERS = [
   { amount: 50,  bonus: 5 },
   { amount: 20,  bonus: 2 },
 ];
+
+const REVERSED_TOPUP_TIERS = [...TOPUP_TIERS].reverse();
 
 const BRAND = {
   blue: '#1656b8',
@@ -54,13 +53,13 @@ function clampAmount(value: number): number {
 }
 
 export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
-  const { currentUser, addWalletTopUp } = useStore();
+  const currentUser = useStore((s) => s.currentUser);
+  const addWalletTopUp = useStore((s) => s.addWalletTopUp);
 
   const [step, setStep] = useState<'amount' | 'method' | 'transfer' | 'done'>('amount');
   const [amount, setAmount] = useState<number>(100);
   const [method, setMethod] = useState<'instapay' | 'cashwallet'>('instapay');
   const [loading, setLoading] = useState(false);
-
   const [transactionId] = useState<string>(() => generateSecureReference());
   const isSubmittingRef = useRef(false);
   const isMountedRef = useRef(true);
@@ -85,15 +84,21 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
     [totalReceived]
   );
 
-  const handleSafeClose = () => {
+  const currentWalletBalance = useMemo(() => {
+    const raw = currentUser?.wallet ?? (currentUser as any)?.walletBalance ?? 0;
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : 0;
+  }, [currentUser?.wallet, (currentUser as any)?.walletBalance]);
+
+  const handleSafeClose = useCallback(() => {
     if (loading || isSubmittingRef.current) {
       toast.error('يرجى الانتظار حتى اكتمال إرسال الطلب');
       return;
     }
     onClose();
-  };
+  }, [loading, onClose]);
 
-  const copyToClipboard = async (text: string, label: string) => {
+  const copyToClipboard = useCallback(async (text: string, label: string) => {
     try {
       if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
         await navigator.clipboard.writeText(text);
@@ -113,22 +118,19 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
       console.error('Copy failed:', err);
       toast.error('فشل النسخ، يرجى النسخ يدوياً');
     }
-  };
+  }, []);
 
   const handleSubmitTopUp = async () => {
     if (isSubmittingRef.current || loading) return;
-
     if (!currentUser) {
       toast.error('يرجى تسجيل الدخول أولاً');
       return;
     }
-
     const userPhone = normalizePhone(currentUser.phone);
     if (!userPhone) {
       toast.error('رقم الهاتف غير موجود، أعد التسجيل');
       return;
     }
-
     const safeAmount = clampAmount(amount);
     if (safeAmount < MIN_AMOUNT) {
       toast.error(`الحد الأدنى للشحن هو ${MIN_AMOUNT} ج.م`);
@@ -138,15 +140,11 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
       toast.error(`الحد الأقصى للشحن هو ${MAX_AMOUNT} ج.م`);
       return;
     }
-
     const loadingToast = toast.loading('جاري إرسال طلب الشحن...');
-
     try {
       isSubmittingRef.current = true;
       setLoading(true);
-
       const userId = (currentUser as any).id || userPhone;
-
       await addWalletTopUp({
         userId: userId,
         userName: currentUser.name || 'حريف',
@@ -156,12 +154,10 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
         transactionId: transactionId,
         carPlate: currentUser.carPlate,
         method,
+        paymentMethod: method,
       } as any);
-
       toast.dismiss(loadingToast);
-
       if (!isMountedRef.current) return;
-
       toast.success(
         currentBonus > 0
           ? `🎁 تم إرسال الطلب! ستحصل على ${safeAmount} ج + ${currentBonus} ج بونص`
@@ -206,7 +202,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
         <div className="flex justify-center pt-3 pb-2">
           <div className="w-12 h-1.5 rounded-full" style={{ background: BRAND.border }} />
         </div>
-
         <div className="px-5 pb-6 text-right" style={{ direction: 'rtl' }}>
           {/* ═══════════════════════════════════
               الخطوة 1: اختيار المبلغ
@@ -227,7 +222,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 </h2>
                 <div className="w-8" />
               </div>
-
               {/* كارت الرصيد (ستايل بنكي) */}
               <div
                 className="relative overflow-hidden rounded-2xl p-4 mb-5 text-white shadow-lg"
@@ -244,21 +238,19 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 </div>
                 <div className="relative z-10 flex items-baseline gap-1">
                   <span className="text-3xl font-black font-mono tracking-tight">
-                    {(currentUser?.wallet ?? (currentUser as any)?.walletBalance ?? 0).toFixed(2)}
+                    {currentWalletBalance.toFixed(2)}
                   </span>
                   <span className="text-xs font-bold opacity-80">ج.م</span>
                 </div>
               </div>
-
               {/* باقات الشحن */}
               <div className="mb-4">
                 <div className="font-black text-xs mb-3 flex items-center gap-1.5" style={{ color: BRAND.slate }}>
                   <Sparkles size={14} className="text-amber-500" />
                   <span>اختر باقة التوفير الأنسب لك:</span>
                 </div>
-
                 <div className="grid grid-cols-2 gap-3">
-                  {[...TOPUP_TIERS].reverse().map((tier) => {
+                  {REVERSED_TOPUP_TIERS.map((tier) => {
                     const isSelected = amount === tier.amount;
                     return (
                       <button
@@ -287,7 +279,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                   })}
                 </div>
               </div>
-
               {/* إدخال يدوي مدمج */}
               <div className="mb-5 flex items-center justify-between p-1.5 rounded-xl border" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
                 <button
@@ -319,7 +310,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                   <Plus size={18} strokeWidth={3} />
                 </button>
               </div>
-
               <button
                 type="button"
                 onClick={() => setStep('method')}
@@ -335,7 +325,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
               </button>
             </>
           )}
-
           {/* ═══════════════════════════════════
               الخطوة 2: طريقة الدفع
               ═══════════════════════════════════ */}
@@ -352,7 +341,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 <h2 className="font-black text-base" style={{ color: BRAND.navy }}>طريقة الدفع</h2>
                 <div className="w-8" />
               </div>
-
               {/* ملخص الدفع */}
               <div className="rounded-xl p-4 mb-5 flex items-center justify-between border" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
                 <div>
@@ -366,7 +354,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                   </div>
                 )}
               </div>
-
               <div className="space-y-3 mb-6">
                 <button
                   type="button"
@@ -381,7 +368,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                   </div>
                   <ArrowRight size={18} className="text-slate-300 rotate-180" />
                 </button>
-
                 {SHOW_CASH_WALLET_OPTION && (
                   <button
                     type="button"
@@ -400,7 +386,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
               </div>
             </>
           )}
-
           {/* ═══════════════════════════════════
               الخطوة 3: التحويل الفعلي
               ═══════════════════════════════════ */}
@@ -420,7 +405,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 </h2>
                 <div className="w-8" />
               </div>
-
               {/* إيصال التحويل (Ticket Style) */}
               <div
                 className="relative overflow-hidden rounded-2xl p-5 mb-5 text-center text-white"
@@ -434,13 +418,11 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                 
                 {/* فاصل منقط */}
                 <div className="border-t border-dashed border-white/20 mb-4 w-full" />
-
                 <div className="flex justify-between items-center text-xs font-black">
                   <span className="opacity-80">كود المرجع:</span>
                   <span className="font-mono text-emerald-400 tracking-wider">{transactionId}</span>
                 </div>
               </div>
-
               <div className="mb-6">
                 {method === 'instapay' ? (
                   <>
@@ -485,13 +467,11 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                   </div>
                 )}
               </div>
-
               {/* تحذير وتأكيد */}
               <div className="flex items-start gap-2 bg-blue-50 p-3 rounded-xl mb-4 text-[10px] font-bold text-blue-800">
                 <ShieldCheck size={16} className="shrink-0 text-blue-600 mt-0.5" />
                 <p>يرجى التأكد من تحويل المبلغ أولاً قبل الضغط على زر التأكيد بالأسفل لضمان إضافة الرصيد.</p>
               </div>
-
               <button
                 type="button"
                 onClick={handleSubmitTopUp}
@@ -513,7 +493,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
               </button>
             </>
           )}
-
           {/* ═══════════════════════════════════
               الخطوة 4: النجاح
               ═══════════════════════════════════ */}
@@ -527,7 +506,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
               </div>
               <h3 className="text-xl font-black mb-1" style={{ color: BRAND.navy }}>تم إرسال الطلب بنجاح</h3>
               <p className="text-xs text-slate-500 mb-6 font-bold">جاري مراجعة التحويل وإضافة الرصيد لمحفظتك ⏳</p>
-
               <div className="border rounded-2xl p-4 mb-6 text-right space-y-3" style={{ background: BRAND.bg, borderColor: BRAND.border }}>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-slate-500 font-bold">المبلغ المحول:</span>
@@ -544,7 +522,6 @@ export default function TopUpWalletModal({ onClose }: { onClose: () => void }) {
                   <span className="font-mono" style={{ color: BRAND.blue }}>{totalReceived} ج.م</span>
                 </div>
               </div>
-
               <button
                 type="button"
                 onClick={onClose}

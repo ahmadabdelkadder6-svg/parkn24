@@ -2,7 +2,6 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // 🛡️ Bulletproof SW: Geofence Breach + Radar Push + Valet Alarm + Keep-Alive
 // ═══════════════════════════════════════════════════════════════════════════
-
 const CACHE_NAME    = 'parkn24-v19';
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 const recentNotifications = new Map();
@@ -46,16 +45,28 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// ─── 4. Fetch ─────────────────────────────────────────────────
+// ─── 4. Fetch (مُحسّن لعدم تخزين خرائط ومسارات الطرف الثالث) ─────
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET')                   return;
   if (event.request.url.startsWith('chrome-extension')) return;
   if (event.request.url.includes('supabase.co'))        return;
 
+  let reqUrl;
+  try {
+    reqUrl = new URL(event.request.url);
+  } catch (_) {
+    return;
+  }
+
+  // تجاهل الطلبات الخارجية (مثل خرائط OSM ومسارات OSRM) لمنع تضخم ذاكرة الكاش على الموبايل
+  if (reqUrl.origin !== self.location.origin) return;
+  // تجاهل طلبات الصوت الجزئية (206 Range Requests)
+  if (event.request.headers.has('range')) return;
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        if (response && response.status === 200) {
+        if (response && response.status === 200 && response.type === 'basic') {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
@@ -84,7 +95,7 @@ async function safeShowNotification(title, options) {
         icon: '/icons/icon-192x192.png',
         badge: '/icons/icon-192x192.png',
         tag: (options && options.tag) || ('parkn24-fallback-' + Date.now()),
-        data: (options && options.data) || { url: '/garage' },
+        data: (options && options.data) || { url: '/' },
         requireInteraction: true,
       });
       return true;
@@ -98,13 +109,13 @@ async function safeShowNotification(title, options) {
 // ─── 5. Push ──────────────────────────────────────────────────
 self.addEventListener('push', (event) => {
   const pushWork = (async () => {
-    let title     = "Park'n 24";
-    let body      = '';
-    let icon      = '/icons/icon-192x192.png';
-    let badge     = '/icons/icon-192x192.png';
-    let tag       = 'parkn24-default';
-    let url       = '/garage';
-    let extraData = {};
+    let title       = "Park'n 24";
+    let body        = '';
+    let icon        = '/icons/icon-192x192.png';
+    let badge       = '/icons/icon-192x192.png';
+    let tag         = 'parkn24-default';
+    let explicitUrl = '';
+    let extraData   = {};
 
     try {
       if (event.data) {
@@ -127,7 +138,6 @@ self.addEventListener('push', (event) => {
             console.warn('⚠️ Could not read push data as text');
           }
         }
-
         if (payload) {
           console.log('📨 Push received in SW v19:', payload);
           if (payload.notification) {
@@ -137,21 +147,18 @@ self.addEventListener('push', (event) => {
             if (payload.notification.badge) badge = payload.notification.badge;
             if (payload.notification.tag)   tag   = payload.notification.tag;
           }
-
-          if (payload.title) title = payload.title;
-          if (payload.body)  body  = payload.body;
-          if (payload.icon)  icon  = payload.icon;
-          if (payload.badge) badge = payload.badge;
-          if (payload.tag)   tag   = payload.tag;
-          if (payload.url)   url   = payload.url;
-
+          if (payload.title) title       = payload.title;
+          if (payload.body)  body        = payload.body;
+          if (payload.icon)  icon        = payload.icon;
+          if (payload.badge) badge       = payload.badge;
+          if (payload.tag)   tag         = payload.tag;
+          if (payload.url)   explicitUrl = payload.url;
           if (payload.data) {
             extraData = { ...payload.data };
-            if (payload.data.tag) tag = payload.data.tag;
-            if (payload.data.url) url = payload.data.url;
+            if (payload.data.tag)  tag         = payload.data.tag;
+            if (payload.data.url)  explicitUrl = payload.data.url;
             if (payload.data.type) extraData.type = payload.data.type;
           }
-
           let plate = '';
           if (typeof tag === 'string' && tag.startsWith('incoming-')) {
             plate = tag.replace('incoming-', '');
@@ -160,7 +167,6 @@ self.addEventListener('push', (event) => {
           } else if (payload.data?.carPlate || payload.data?.car_plate) {
             plate = payload.data.carPlate || payload.data.car_plate;
           }
-
           if (plate && typeof tag === 'string' && tag.startsWith('incoming-')) {
             title = '🚨 سيارة في الطريق إليك!';
             body  = `🚗 رقم السيارة: ${plate} • استعد للاستقبال!`;
@@ -178,12 +184,10 @@ self.addEventListener('push', (event) => {
     const dedupKey  = tag || ('parkn24-' + title + '-' + body);
     const lastShown = recentNotifications.get(dedupKey);
     const now       = Date.now();
-
     if (lastShown && (now - lastShown) < DEDUP_WINDOW_MS) {
       console.log('🔁 Dedup skip:', dedupKey);
       return;
     }
-
     recentNotifications.set(dedupKey, now);
     for (const [k, t] of recentNotifications.entries()) {
       if (now - t > 30000) recentNotifications.delete(k);
@@ -206,10 +210,9 @@ self.addEventListener('push', (event) => {
       || extraData.type === 'tow';
 
     let options;
-
     if (isBreach) {
-      // 🚨 تنبيه انطلاق/ونش - اهتزاز مكثف وأزرار تفاعل فورية
-      const breachTargetUrl = extraData.url || url || '/garage';
+      // 🚨 تنبيه انطلاق/ونش - اهتزاز مكثف وأزرار تفاعل فورية (يوجه لصفحة العميل '/')
+      const breachTargetUrl = extraData.url || explicitUrl || '/';
       options = {
         body: body || 'تنبيه حركة: السيارة تحركت خارج نطاق الركن! افتح التطبيق فوراً ⚠️',
         icon,
@@ -230,9 +233,7 @@ self.addEventListener('push', (event) => {
           { action: 'dismiss', title: '✅ أنا اللي سايق'       },
         ],
       };
-
       await safeShowNotification(title || '🚨 تحذير: حركة مفاجئة للسيارة!', options);
-
       try {
         const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
         for (const client of clientsList) {
@@ -251,8 +252,7 @@ self.addEventListener('push', (event) => {
     if (isShield) {
       const isWarning = (typeof tag === 'string' && tag.includes('warning'))
         || (typeof extraData.type === 'string' && extraData.type.includes('warning'));
-      const shieldTargetUrl = extraData.url || url || '/garage';
-
+      const shieldTargetUrl = extraData.url || explicitUrl || '/';
       options = {
         body: body || 'تحديث أمني من رادار الحماية',
         icon,
@@ -269,7 +269,7 @@ self.addEventListener('push', (event) => {
       };
     } else {
       // 🚗 التنبيهات الافتراضية للجراج والفاليه
-      const defaultTargetUrl = url || extraData.url || '/garage';
+      const defaultTargetUrl = explicitUrl || extraData.url || '/garage';
       options = {
         body: body || '🚗 تقترب سيارة جديدة من الجراج الآن، استعد!',
         icon,
@@ -291,10 +291,8 @@ self.addEventListener('push', (event) => {
         ],
       };
     }
-
     await safeShowNotification(title, options);
   })();
-
   event.waitUntil(pushWork);
 });
 
@@ -302,11 +300,14 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const notifData = event.notification.data || {};
-
   const isBreach = notifData.type === 'shield-breach'
     || notifData.type === 'breach'
     || notifData.type === 'theft'
     || notifData.type === 'tow';
+  const isShield = isBreach
+    || notifData.type === 'shield'
+    || notifData.type === 'shield-warning'
+    || notifData.type === 'radar';
 
   // ✅ العميل ضغط "أنا اللي سايق" → إرسال رسالة للتطبيق لوقف سارينة الطوارئ فوراً
   if (event.action === 'dismiss') {
@@ -322,9 +323,8 @@ self.addEventListener('notificationclick', (event) => {
     return;
   }
 
-  // 🎯 التوجيه الثابت والآمن: /garage مع التركيز على التاب المفتوح
-  const targetUrl = notifData.url || '/garage';
-
+  // 🎯 التوجيه الذكي والآمن بدون عمل Reload للتاب المفتوح على نفس المسار
+  const targetUrl = notifData.url || (isShield ? '/' : '/garage');
   event.waitUntil(
     clients
       .matchAll({ type: 'window', includeUncontrolled: true })
@@ -338,9 +338,13 @@ self.addEventListener('notificationclick', (event) => {
                 shieldId: notifData.shieldId,
               });
             }
-            if ('navigate' in client) {
-              try { client.navigate(targetUrl); } catch (_) {}
-            }
+            try {
+              const currentPath = new URL(client.url).pathname;
+              const targetPath = new URL(targetUrl, self.location.origin).pathname;
+              if (!isBreach && currentPath !== targetPath && 'navigate' in client) {
+                client.navigate(targetUrl);
+              }
+            } catch (_) {}
             return client.focus();
           }
         }

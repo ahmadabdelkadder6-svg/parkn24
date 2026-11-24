@@ -17,6 +17,7 @@ import {
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
 import { buildGoogleMapsUrl } from '../utils/mapsNavigation';
+import { calculateCostWithLoyalty } from '../utils/pricing';
 import toast from 'react-hot-toast';
 import {
   armBackgroundAudio,
@@ -207,8 +208,10 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
       return;
     }
     autoEndedRef.current = false;
+
     const calcElapsed = () =>
       Math.max(0, Math.floor((getServerNow() - activeStartMs) / 1000));
+
     const currentElapsed = calcElapsed();
     setElapsed(currentElapsed);
 
@@ -230,7 +233,25 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
       }
     }, 1000);
 
-    return () => clearInterval(interval);
+    // تحديث فوري عند فتح قفل شاشة الهاتف
+    const handleSync = () => {
+      const refreshed = calcElapsed();
+      setElapsed(refreshed);
+      if (refreshed >= AUTO_END_SECONDS && !autoEndedRef.current) {
+        autoEndedRef.current = true;
+        clearInterval(interval);
+        onAutoEndRef.current();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleSync);
+    window.addEventListener('focus', handleSync);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleSync);
+      window.removeEventListener('focus', handleSync);
+    };
   }, [activeStartMs]);
 
   const remainingAutoEnd = Math.max(0, AUTO_END_SECONDS - elapsed);
@@ -388,11 +409,11 @@ export default function SessionScreen() {
     throttledFetchAll();
   }, [throttledFetchAll]);
 
-  // Realtime Listener
+  // Realtime Listener مستقر وبدون تسريب قنوات
   useEffect(() => {
     if (!userPlate && !userPhone) return;
     let isSubscribed = true;
-    const channelName = `session-live-${userPlate || userPhone}-${Math.random().toString(36).substring(2, 7)}`;
+    const channelName = `session-live-${userPlate || userPhone}`;
     const channel = supabase.channel(channelName)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, (payload) => {
         if (!isSubscribed) return;
@@ -409,6 +430,7 @@ export default function SessionScreen() {
         throttledFetchAll();
       }
     };
+
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('focus', handleVisibility);
 
@@ -421,19 +443,19 @@ export default function SessionScreen() {
   }, [userPlate, userPhone, throttledFetchAll, isMySessionRow]);
 
   // ═══════════════════════════════════════════════════════════
-  // 📍 استخراج إحداثيات الجراج الحقيقية الصارمة (منع الرمي في التحرير نهائياً)
+  // 📍 استخراج إحداثيات الجراج الحقيقية
   // ═══════════════════════════════════════════════════════════
   const isShieldPurchased = (activeSession?.shieldCost ?? 0) > 0;
   const shieldSessionId = activeSession?.id;
   const garageId = garage?.id;
 
   const accurateLat = useMemo(() => {
-    const lat = (activeSession as any)?.parking_lat ?? (activeSession as any)?.parkingLat ?? garage?.latitude ?? (garage as any)?.lat;
+    const lat = (activeSession as any)?.parking_lat ?? (activeSession as any)?.parkingLat ?? (garage as any)?.latitude ?? garage?.lat;
     return lat ? Number(lat) : 0;
   }, [activeSession, garage]);
 
   const accurateLng = useMemo(() => {
-    const lng = (activeSession as any)?.parking_lng ?? (activeSession as any)?.parkingLng ?? garage?.longitude ?? (garage as any)?.lng;
+    const lng = (activeSession as any)?.parking_lng ?? (activeSession as any)?.parkingLng ?? (garage as any)?.longitude ?? garage?.lng;
     return lng ? Number(lng) : 0;
   }, [activeSession, garage]);
 
@@ -441,16 +463,13 @@ export default function SessionScreen() {
   useEffect(() => {
     if (!isShieldPurchased) return;
     armBackgroundAudio();
-
     const primeGesture = () => {
       armBackgroundAudio();
       window.removeEventListener('click', primeGesture);
       window.removeEventListener('touchstart', primeGesture);
     };
-
     window.addEventListener('click', primeGesture, { once: true, passive: true });
     window.addEventListener('touchstart', primeGesture, { once: true, passive: true });
-
     return () => {
       window.removeEventListener('click', primeGesture);
       window.removeEventListener('touchstart', primeGesture);
@@ -460,8 +479,7 @@ export default function SessionScreen() {
   // 🛡️ تشغيل رادار الـ GPS فقط عند توفر إحداثيات حقيقية صحيحة
   useEffect(() => {
     if (!shieldSessionId || !garageId || !isShieldPurchased) return;
-    if (!accurateLat || !accurateLng) return; // منع البدء بإحداثيات صفرية لتفادي أخطاء المسافة
-
+    if (!accurateLat || !accurateLng) return;
     armBackgroundAudio();
     let cancelled = false;
 
@@ -493,7 +511,7 @@ export default function SessionScreen() {
     };
   }, [shieldSessionId, garageId, isShieldPurchased, accurateLat, accurateLng, userPhone]);
 
-  // 🏁 إنهاء الجلسة الفوري (Optimistic Instant Close بدون تعليق)
+  // 🏁 إنهاء الجلسة الفوري مع حساب الإيرادات الدقيق والتخلص من ثغرة تمرير الثواني مكان السعر
   const handleEndSession = useCallback(async () => {
     if (ending || !activeSession) return;
     const currentSessionId = activeSession.id;
@@ -511,34 +529,66 @@ export default function SessionScreen() {
     }
 
     try {
-      const elapsedSec = Math.floor((getServerNow() - activeStartMs) / 1000);
-      await endSession(currentSessionId, Math.max(0, elapsedSec), 'cash', 0);
+      const elapsedSec = Math.max(0, Math.floor((getServerNow() - activeStartMs) / 1000));
+
+      // 💰 حساب الإيراد الفعلي الصحيح مع مراعاة الـ 30 دقيقة المجانية للجلسة الأولى
+      const isFreeSession = Boolean(
+        activeSession.isFirstFreeSession ??
+        (activeSession as any)?.isFreeSession ??
+        (activeSession as any)?.is_first_free_session ??
+        (activeSession as any)?.is_free_session ??
+        false
+      );
+      const pricePerHour = Number(
+        activeSession.agreedPrice ??
+        garage?.basePrice ??
+        garage?.pricePerHour ??
+        (garage as any)?.price ??
+        15
+      );
+      const pricing = calculateCostWithLoyalty(elapsedSec, pricePerHour, isFreeSession);
+      const totalSessionCost = pricing.cost;
+      const freeMinutesApplied = isFreeSession
+        ? (elapsedSec <= 1800 ? Math.floor(elapsedSec / 60) : 30)
+        : 0;
+
+      // ✅ المعامل الثاني: totalPrice بالجنيه | المعامل الرابع: freeMinutesApplied بالدقائق
+      await endSession(currentSessionId, totalSessionCost, 'cash', freeMinutesApplied);
 
       const nowIso = new Date().toISOString();
-      await supabase.from('shield_sessions')
-        .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
-        .eq('session_id', currentSessionId)
-        .is('ended_at', null);
+      const shieldUpdates: PromiseLike<any>[] = [
+        supabase
+          .from('shield_sessions')
+          .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
+          .eq('session_id', currentSessionId)
+          .is('ended_at', null),
+      ];
 
       if (userPhone) {
-        await supabase.from('shield_sessions')
-          .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
-          .eq('phone', userPhone)
-          .is('ended_at', null)
-          .is('session_id', null);
+        shieldUpdates.push(
+          supabase
+            .from('shield_sessions')
+            .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
+            .eq('phone', userPhone)
+            .is('ended_at', null)
+            .is('session_id', null)
+        );
       }
+
+      await Promise.all(shieldUpdates);
 
       toast.success('تم إنهاء الجلسة بنجاح ✅', { icon: '🏁', duration: 3000 });
       setSelectedGarageId(null);
       setScreen('list');
     } catch (e: any) {
+      console.error('Error ending session:', e);
       toast.error(e?.message || 'فشل إنهاء الجلسة، جاري التحديث');
       setSelectedGarageId(null);
       setScreen('list');
     } finally {
       if (isMountedRef.current) setEnding(false);
     }
-  }, [ending, activeSession, activeStartMs, endSession, acknowledgeSession, setSelectedGarageId, setScreen, userPhone]);
+  }, [ending, activeSession, activeStartMs, garage, endSession, acknowledgeSession, setSelectedGarageId, setScreen, userPhone]);
 
   // 🚨 معالج إيقاف الإنذار عند الاختراق
   const handleBreachAction = useCallback(async (isDriver: boolean) => {
@@ -553,7 +603,7 @@ export default function SessionScreen() {
     await handleEndSession();
   }, [handleEndSession]);
 
-  // ⏰ الإنهاء التلقائي بعد 6 ساعات
+  // ⏰ الإنهاء التلقائي بعد 6 ساعات مع احتساب الإيراد الفعلي لـ 6 ساعات
   const handleAutoEnd = useCallback(async () => {
     if (autoEndedRef.current || !activeSession) return;
     autoEndedRef.current = true;
@@ -563,7 +613,27 @@ export default function SessionScreen() {
     setEndedSessionId(activeSession.id);
 
     try {
-      await endSession(activeSession.id, AUTO_END_SECONDS, 'cash', 0);
+      const isFreeSession = Boolean(
+        activeSession.isFirstFreeSession ??
+        (activeSession as any)?.isFreeSession ??
+        (activeSession as any)?.is_first_free_session ??
+        (activeSession as any)?.is_free_session ??
+        false
+      );
+      const pricePerHour = Number(
+        activeSession.agreedPrice ??
+        garage?.basePrice ??
+        garage?.pricePerHour ??
+        (garage as any)?.price ??
+        15
+      );
+      const pricing = calculateCostWithLoyalty(AUTO_END_SECONDS, pricePerHour, isFreeSession);
+      const totalSessionCost = pricing.cost;
+      const freeMinutesApplied = isFreeSession ? 30 : 0;
+
+      // ✅ المعامل الثاني: totalPrice بالجنيه | المعامل الرابع: freeMinutesApplied بالدقائق
+      await endSession(activeSession.id, totalSessionCost, 'cash', freeMinutesApplied);
+
       const nowIso = new Date().toISOString();
       await supabase.from('shield_sessions')
         .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
@@ -579,7 +649,7 @@ export default function SessionScreen() {
       autoEndedRef.current = false;
       setEndedSessionId(null);
     }
-  }, [activeSession, endSession, acknowledgeSession, setSelectedGarageId, setScreen]);
+  }, [activeSession, garage, endSession, acknowledgeSession, setSelectedGarageId, setScreen]);
 
   // 🗺️ فتح خرائط جوجل لموقع الجراج الحقيقي
   const handleOpenGoogleMaps = () => {
@@ -851,6 +921,7 @@ export default function SessionScreen() {
                 >
                   ✅ أنا اللي سايق
                 </button>
+
                 <button
                   onClick={() => handleBreachAction(false)}
                   className="w-full py-3.5 rounded-xl font-black text-white text-sm active:scale-95 transition-all cursor-pointer"
@@ -868,5 +939,6 @@ export default function SessionScreen() {
       </motion.div>
     );
   }
+
   return null;
 }

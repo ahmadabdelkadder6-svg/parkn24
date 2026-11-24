@@ -42,7 +42,7 @@ interface Props {
   parkingLat: number;
   parkingLng: number;
   userPhone: string | null;
-  onDeductWallet: (amount: number, note: string) => boolean;
+  onDeductWallet: (amount: number, note: string) => boolean | Promise<boolean>;
   onNavigateToWallet: () => void;
   autoResume?: boolean;
   onSessionEnd?: () => void;
@@ -71,12 +71,35 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-const endShieldOnServer = async (sessionId: string) => {
-  await supabase
-    .from('shield_sessions')
-    .update({ ended_at: new Date().toISOString() })
-    .eq('session_id', sessionId)
-    .is('ended_at', null);
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+const terminateShieldOnServer = async (sessionId: string, identifier: string) => {
+  const nowIso = new Date().toISOString();
+  await Promise.all([
+    supabase
+      .from('shield_sessions')
+      .update({
+        ended_at: nowIso,
+        push_endpoint: null,
+        push_p256dh: null,
+        push_auth: null,
+      })
+      .eq('session_id', sessionId),
+    supabase
+      .from('shield_sessions')
+      .update({ ended_at: nowIso })
+      .eq('phone', identifier)
+      .is('ended_at', null),
+  ]);
 };
 
 export default function ShieldOverlay({
@@ -101,6 +124,8 @@ export default function ShieldOverlay({
   const [dismissed, setDismissed] = useState(false);
 
   const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isRegisteringRef = useRef(false);
+  const lastRegisteredAtRef = useRef(0);
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
 
@@ -115,12 +140,10 @@ export default function ShieldOverlay({
         `السيارة تحركت ${dist}م من مكان الركن`,
         '/'
       );
-
       if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current);
       alarmIntervalRef.current = setInterval(() => {
         playUrgentSound();
       }, 2000);
-
       triggerIntenseAlarm();
     } catch (e) {
       console.warn('Alarm failed:', e);
@@ -145,27 +168,14 @@ export default function ShieldOverlay({
     stopLocalAlarm();
     const flashEl = document.getElementById('shield-breach-flash-overlay');
     if (flashEl) flashEl.remove();
-
     destroyShield();
     try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch {}
-
     const identifier = userPhone || userId || 'unknown';
     try {
-      await endShieldOnServer(sessionId);
-      await supabase
-        .from('shield_sessions')
-        .update({ ended_at: new Date().toISOString() })
-        .eq('phone', identifier)
-        .is('ended_at', null);
-
-      await supabase
-        .from('shield_sessions')
-        .update({ push_endpoint: null, push_p256dh: null, push_auth: null })
-        .eq('session_id', sessionId);
+      await terminateShieldOnServer(sessionId, identifier);
     } catch (e) {
       console.error('❌ Failed to end shield:', e);
     }
-
     setPhase('dismissed');
     onSessionEnd?.();
   }, [sessionId, userPhone, userId, stopLocalAlarm, onSessionEnd]);
@@ -177,28 +187,15 @@ export default function ShieldOverlay({
     stopLocalAlarm();
     const flashEl = document.getElementById('shield-breach-flash-overlay');
     if (flashEl) flashEl.remove();
-
     sendLocalNotification('✅ تم استلام البلاغ', 'جاري التواصل والمتابعة فوراً', '/');
     destroyShield();
     try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch {}
-
     const identifier = userPhone || userId || 'unknown';
     try {
-      await endShieldOnServer(sessionId);
-      await supabase
-        .from('shield_sessions')
-        .update({ ended_at: new Date().toISOString() })
-        .eq('phone', identifier)
-        .is('ended_at', null);
-
-      await supabase
-        .from('shield_sessions')
-        .update({ push_endpoint: null, push_p256dh: null, push_auth: null })
-        .eq('session_id', sessionId);
+      await terminateShieldOnServer(sessionId, identifier);
     } catch (e) {
       console.error('❌ Failed to end shield:', e);
     }
-
     setPhase('dismissed');
     onSessionEnd?.();
   }, [sessionId, userPhone, userId, stopLocalAlarm, onSessionEnd]);
@@ -217,7 +214,6 @@ export default function ShieldOverlay({
   // ═══════════════════════════════════════════════════════════
   useEffect(() => {
     if (phase !== 'breach') return;
-
     document.getElementById('shield-breach-flash-overlay')?.remove();
     const flashEl = document.createElement('div');
     flashEl.id = 'shield-breach-flash-overlay';
@@ -229,7 +225,6 @@ export default function ShieldOverlay({
       'background: rgba(255, 0, 0, 0.4)',
       'animation: shieldFlashAnim 0.36s ease-in-out infinite alternate',
     ].join(';');
-
     if (!document.getElementById('shield-flash-style')) {
       const style = document.createElement('style');
       style.id = 'shield-flash-style';
@@ -242,7 +237,6 @@ export default function ShieldOverlay({
       `;
       document.head.appendChild(style);
     }
-
     document.body.appendChild(flashEl);
     return () => {
       flashEl.remove();
@@ -262,7 +256,6 @@ export default function ShieldOverlay({
       setPhase('active');
       return;
     }
-
     const saved = loadShieldState();
     if (
       saved?.isActive &&
@@ -277,10 +270,8 @@ export default function ShieldOverlay({
 
   // ─── تتبع الـ GPS ───
   const isTracking = phase === 'active' || phase === 'breach';
-
   useEffect(() => {
     if (!isTracking) return;
-
     const cleanupGPS = startShieldGPS({
       sessionId,
       parkingLat,
@@ -299,198 +290,84 @@ export default function ShieldOverlay({
         );
       },
     });
-
     return () => {
       cleanupGPS();
     };
-  }, [isTracking ? 'tracking' : 'off', sessionId, parkingLat, parkingLng, triggerLocalAlarm]);
+  }, [isTracking, sessionId, parkingLat, parkingLng, triggerLocalAlarm]);
 
-  // ─── GPS لحساب السرعة في الخلفية ───
+  // ─── GPS لحساب السرعة في الخلفية (مُحجم لتوفير البطارية والسيرفر) ───
   useEffect(() => {
-    if (!isTracking) return;
+    if (!isTracking || !('geolocation' in navigator)) return;
     let prev: { lat: number; lng: number; t: number } | null = null;
     let lastUp = 0;
-
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
+        const now = Date.now();
+        if (prev && now - prev.t < 3000) return;
+
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
-        const now = Date.now();
-        let spd = (pos.coords.speed && pos.coords.speed > 0) ? pos.coords.speed : 0;
-
+        let spd = pos.coords.speed && pos.coords.speed > 0 ? pos.coords.speed : 0;
         if (prev) {
           const d = haversine(prev.lat, prev.lng, lat, lng);
           const dt = (now - prev.t) / 1000;
           if (dt > 2) spd = Math.max(spd, d / dt);
         }
-
         prev = { lat, lng, t: now };
-
         if (spd >= 2.22 && now - lastUp > 15000) {
           lastUp = now;
           supabase
             .from('shield_sessions')
             .update({ last_lat: lat, last_lng: lng, last_speed: Math.round(spd * 3.6) })
-            .eq('session_id', sessionId);
+            .eq('session_id', sessionId)
+            .is('ended_at', null)
+            .then(() => {});
         }
       },
       () => {},
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+      { enableHighAccuracy: false, maximumAge: 5000, timeout: 10000 }
     );
-
     return () => navigator.geolocation.clearWatch(watchId);
-  }, [isTracking ? 'tracking' : 'off', sessionId]);
+  }, [isTracking, sessionId]);
 
-  // ─── تجديد اشتراك الـ Push ───
-  useEffect(() => {
-    if (phase !== 'active') return;
-
-    const refreshSubscription = async () => {
-      try {
-        const reg = await navigator.serviceWorker.ready;
-        let sub = await reg.pushManager.getSubscription();
-        const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-        if (!VAPID_PUBLIC) return;
-
-        if (!sub) {
-          const urlBase64ToUint8Array = (b: string): Uint8Array => {
-            const p = '='.repeat((4 - (b.length % 4)) % 4);
-            const d = window.atob((b + p).replace(/-/g, '+').replace(/_/g, '/'));
-            return new Uint8Array([...d].map(c => c.charCodeAt(0)));
-          };
-
-          sub = await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
-          });
-        }
-
-        if (sub) {
-          const subJson = sub.toJSON();
-          await supabase
-            .from('shield_sessions')
-            .update({
-              push_endpoint: subJson.endpoint,
-              push_p256dh: subJson.keys?.p256dh,
-              push_auth: subJson.keys?.auth,
-            })
-            .eq('session_id', sessionId)
-            .is('ended_at', null);
-
-          const identifier = userPhone || userId || 'unknown';
-          await registerShieldSession(sessionId, parkingLat, parkingLng, identifier, garageId);
-        }
-      } catch (e) {
-        console.warn('Failed to refresh subscription:', e);
-      }
-    };
-
-    refreshSubscription();
-    const interval = setInterval(refreshSubscription, 10 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [phase, sessionId, userPhone, userId, garageId, parkingLat, parkingLng]);
-
-  // ─── Realtime listener ───
-  useEffect(() => {
-    if (phase !== 'active') return;
-
-    const channel = supabase
-      .channel(`shield-${sessionId}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'shield_sessions', filter: `session_id=eq.${sessionId}` },
-        (payload: any) => {
-          const u = payload.new;
-          if (u.theft_alerted && phaseRef.current !== 'breach') {
-            setBreachDistance(300);
-            setPhase('breach');
-            triggerLocalAlarm(300);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [phase, sessionId, triggerLocalAlarm]);
-
-  // ─── Service Worker Messages ───
-  useEffect(() => {
-    if (!('serviceWorker' in navigator)) return;
-
-    const handleSWMessage = (event: MessageEvent) => {
-      const data = event.data;
-      if (!data || typeof data !== 'object') return;
-
-      if (data.type === 'SHIELD_BREACH_DETECTED') {
-        const dist = data.distance || 300;
-        setBreachDistance(dist);
-        setPhase('breach');
-        triggerLocalAlarm(dist);
-      }
-
-      if (data.type === 'SHIELD_BREACH_DISMISSED') {
-        handleIamDriving();
-      }
-    };
-
-    navigator.serviceWorker.addEventListener('message', handleSWMessage);
-    return () => {
-      navigator.serviceWorker.removeEventListener('message', handleSWMessage);
-    };
-  }, [handleIamDriving, triggerLocalAlarm]);
-
-  // ─── Cleanup ───
-  useEffect(() => {
-    return () => {
-      stopLocalAlarm();
-      destroyShield();
-      const leftover = document.getElementById('shield-breach-flash-overlay');
-      if (leftover) leftover.remove();
-    };
-  }, [stopLocalAlarm]);
-
-  // ─── التسجيل على السيرفر ───
+  // ─── التسجيل على السيرفر (مع منع التكرار المتزامن) ───
   const registerOnServer = useCallback(async () => {
+    if (isRegisteringRef.current) return;
+    if (Date.now() - lastRegisteredAtRef.current < 5000) return;
+    isRegisteringRef.current = true;
+
     const identifier = userPhone || userId || 'unknown';
     let pushEndpoint: string | null = null;
     let pushP256dh: string | null = null;
     let pushAuth: string | null = null;
 
     try {
-      const reg = await navigator.serviceWorker.ready;
-      const oldSub = await reg.pushManager.getSubscription();
-      if (oldSub) await oldSub.unsubscribe();
-
-      let perm = Notification.permission;
-      if (perm !== 'granted') {
-        perm = await Notification.requestPermission();
-      }
-
-      if (perm === 'granted') {
-        const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-        if (VAPID_PUBLIC) {
-          const urlBase64ToUint8Array = (b: string): Uint8Array => {
-            const p = '='.repeat((4 - (b.length % 4)) % 4);
-            const d = window.atob((b + p).replace(/-/g, '+').replace(/_/g, '/'));
-            return new Uint8Array([...d].map(c => c.charCodeAt(0)));
-          };
-
-          try {
-            const sub = await reg.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
-            });
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.ready;
+        let sub = await reg.pushManager.getSubscription();
+        let perm = typeof Notification !== 'undefined' ? Notification.permission : 'default';
+        if (perm !== 'granted' && typeof Notification !== 'undefined') {
+          perm = await Notification.requestPermission();
+        }
+        if (perm === 'granted') {
+          const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+          if (!sub && VAPID_PUBLIC) {
+            try {
+              sub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
+              });
+            } catch (subErr) {
+              console.warn('⚠️ Push subscribe failed:', subErr);
+            }
+          }
+          if (sub) {
             const subJson = sub.toJSON();
             if (subJson?.endpoint) {
               pushEndpoint = subJson.endpoint;
               pushP256dh = subJson.keys?.p256dh || null;
               pushAuth = subJson.keys?.auth || null;
-              console.log('✅ Push subscription ready');
             }
-          } catch (subErr) {
-            console.warn('⚠️ Push subscribe failed:', subErr);
           }
         }
       }
@@ -507,16 +384,18 @@ export default function ShieldOverlay({
         .maybeSingle();
 
       if (existing) {
-        await supabase
-          .from('shield_sessions')
-          .update({
-            push_endpoint: pushEndpoint,
-            push_p256dh: pushP256dh,
-            push_auth: pushAuth,
-          })
-          .eq('session_id', sessionId);
-
-        await registerShieldSession(sessionId, parkingLat, parkingLng, identifier, garageId);
+        await Promise.all([
+          supabase
+            .from('shield_sessions')
+            .update({
+              push_endpoint: pushEndpoint,
+              push_p256dh: pushP256dh,
+              push_auth: pushAuth,
+            })
+            .eq('session_id', sessionId),
+          registerShieldSession(sessionId, parkingLat, parkingLng, identifier, garageId),
+        ]);
+        lastRegisteredAtRef.current = Date.now();
         return;
       }
 
@@ -526,36 +405,136 @@ export default function ShieldOverlay({
         .eq('phone', identifier)
         .is('ended_at', null);
 
-      await supabase.from('shield_sessions').insert({
-        session_id: sessionId,
-        user_id: identifier,
-        phone: identifier,
-        parking_lat: parkingLat,
-        parking_lng: parkingLng,
-        push_endpoint: pushEndpoint,
-        push_p256dh: pushP256dh,
-        push_auth: pushAuth,
-        last_lat: parkingLat,
-        last_lng: parkingLng,
-        last_gps_at: new Date().toISOString(),
-        client_outside: false,
-        theft_alerted: false,
-        fake_mode: -1,
-        alert_count: 0,
-        fake_tick: 0,
-        last_speed: null,
-      });
-
-      await registerShieldSession(sessionId, parkingLat, parkingLng, identifier, garageId);
+      await Promise.all([
+        supabase.from('shield_sessions').insert({
+          session_id: sessionId,
+          user_id: identifier,
+          phone: identifier,
+          parking_lat: parkingLat,
+          parking_lng: parkingLng,
+          push_endpoint: pushEndpoint,
+          push_p256dh: pushP256dh,
+          push_auth: pushAuth,
+          last_lat: parkingLat,
+          last_lng: parkingLng,
+          last_gps_at: new Date().toISOString(),
+          client_outside: false,
+          theft_alerted: false,
+          fake_mode: -1,
+          alert_count: 0,
+          fake_tick: 0,
+          last_speed: null,
+        }),
+        registerShieldSession(sessionId, parkingLat, parkingLng, identifier, garageId),
+      ]);
+      lastRegisteredAtRef.current = Date.now();
     } catch (dbErr: any) {
-      console.error('❌ DB registration failed:', dbErr.message);
+      console.error('❌ DB registration failed:', dbErr?.message || dbErr);
+    } finally {
+      isRegisteringRef.current = false;
     }
   }, [sessionId, userId, userPhone, parkingLat, parkingLng, garageId]);
 
+  // ─── تجديد اشتراك الـ Push كل 10 دقائق ───
   useEffect(() => {
-    if (!autoResume || phase !== 'active') return;
+    if (phase !== 'active') return;
+    const refreshSubscription = async () => {
+      if (isRegisteringRef.current || Date.now() - lastRegisteredAtRef.current < 10000) return;
+      try {
+        if (!('serviceWorker' in navigator)) return;
+        const reg = await navigator.serviceWorker.ready;
+        let sub = await reg.pushManager.getSubscription();
+        const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+        if (!VAPID_PUBLIC) return;
+        if (!sub) {
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
+          });
+        }
+        if (sub) {
+          const subJson = sub.toJSON();
+          const identifier = userPhone || userId || 'unknown';
+          await Promise.all([
+            supabase
+              .from('shield_sessions')
+              .update({
+                push_endpoint: subJson.endpoint,
+                push_p256dh: subJson.keys?.p256dh,
+                push_auth: subJson.keys?.auth,
+              })
+              .eq('session_id', sessionId)
+              .is('ended_at', null),
+            registerShieldSession(sessionId, parkingLat, parkingLng, identifier, garageId),
+          ]);
+        }
+      } catch (e) {
+        console.warn('Failed to refresh subscription:', e);
+      }
+    };
+    const interval = setInterval(refreshSubscription, 10 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [phase, sessionId, userPhone, userId, garageId, parkingLat, parkingLng]);
+
+  // ─── Realtime listener ───
+  useEffect(() => {
+    if (phase !== 'active') return;
+    const channel = supabase
+      .channel(`shield-${sessionId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'shield_sessions', filter: `session_id=eq.${sessionId}` },
+        (payload: any) => {
+          const u = payload.new;
+          if (u.theft_alerted && phaseRef.current !== 'breach') {
+            setBreachDistance(300);
+            setPhase('breach');
+            triggerLocalAlarm(300);
+          }
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [phase, sessionId, triggerLocalAlarm]);
+
+  // ─── Service Worker Messages ───
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const handleSWMessage = (event: MessageEvent) => {
+      const data = event.data;
+      if (!data || typeof data !== 'object') return;
+      if (data.type === 'SHIELD_BREACH_DETECTED') {
+        const dist = data.distance || 300;
+        setBreachDistance(dist);
+        setPhase('breach');
+        triggerLocalAlarm(dist);
+      }
+      if (data.type === 'SHIELD_BREACH_DISMISSED') {
+        handleIamDriving();
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', handleSWMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', handleSWMessage);
+    };
+  }, [handleIamDriving, triggerLocalAlarm]);
+
+  // ─── Cleanup ───
+  useEffect(() => {
+    return () => {
+      stopLocalAlarm();
+      destroyShield();
+      const leftover = document.getElementById('shield-breach-flash-overlay');
+      if (leftover) leftover.remove();
+    };
+  }, [stopLocalAlarm]);
+
+  useEffect(() => {
+    if (phase !== 'active') return;
     registerOnServer();
-  }, [autoResume, phase, registerOnServer]);
+  }, [phase, registerOnServer]);
 
   // ═══════════════════════════════════════════════════════
   // 🎯 handleYes — تفعيل الدرع يدوياً
@@ -565,11 +544,9 @@ export default function ShieldOverlay({
     unlockAudio();
     setCheckError(null);
     setIsChecking(true);
-
     try {
       await requestNotificationPermission();
       const check = await checkUserInsideGarage(parkingLat, parkingLng, GEOFENCE_RADIUS);
-
       if (!check.inside) {
         setIsChecking(false);
         if (check.distance < 0) {
@@ -579,29 +556,24 @@ export default function ShieldOverlay({
         }
         return;
       }
-
       try {
         await subscribeToPush(garageId, userPhone || undefined);
       } catch (pushErr) {
         console.warn('Push subscription failed (non-fatal):', pushErr);
       }
-
-      const ok = onDeductWallet(SHIELD_COST, 'خدمة الحماية الإضافية');
+      const ok = await onDeductWallet(SHIELD_COST, 'خدمة الحماية الإضافية');
       if (!ok) {
         setIsChecking(false);
         onNavigateToWallet();
         return;
       }
-
       supabase
         .from('sessions')
         .update({ shield_cost: SHIELD_COST })
         .eq('id', sessionId)
         .then(() => {})
         .catch((e) => console.warn('⚠️ Failed to save shield cost:', e));
-
       setIsChecking(false);
-
       if (userPhone) {
         const code = 'SH-' + Math.random().toString(36).slice(2, 8).toUpperCase();
         setShieldCode(code);
@@ -694,7 +666,6 @@ export default function ShieldOverlay({
           50% { transform: scale(1.05); opacity: 0.85; }
         }
       `}</style>
-
       {/* ─── PHASE: ASK (طلب التفعيل) ─── */}
       {phase === 'ask' && (
         <div
@@ -731,7 +702,6 @@ export default function ShieldOverlay({
                 </p>
               </div>
             </div>
-
             {checkError && (
               <div className="bg-red-950/70 border border-red-500/50 rounded-xl p-2 mb-2.5">
                 <p className="text-red-300 text-[11px] font-bold text-center whitespace-pre-line leading-relaxed">
@@ -739,7 +709,6 @@ export default function ShieldOverlay({
                 </p>
               </div>
             )}
-
             <div className="flex gap-2">
               <button
                 onClick={handleYes}
@@ -767,7 +736,6 @@ export default function ShieldOverlay({
           </div>
         </div>
       )}
-
       {/* ─── PHASE: REGISTER (إدخال الهاتف) ─── */}
       {phase === 'register' && (
         <div
@@ -803,7 +771,6 @@ export default function ShieldOverlay({
           </button>
         </div>
       )}
-
       {/* ─── PHASE: ACTIVE (الرادار التكتيكي النشط) ─── */}
       {phase === 'active' && (
         <div className="w-full flex flex-col items-center gap-2">
@@ -812,11 +779,9 @@ export default function ShieldOverlay({
             <div className="absolute inset-0 rounded-full border border-emerald-500/30 bg-slate-950/90 shadow-[0_0_20px_rgba(34,197,94,0.2)_inset]" />
             <div className="absolute inset-4 rounded-full border border-emerald-500/20" />
             <div className="absolute inset-8 rounded-full border border-dashed border-emerald-400/40" />
-
             {/* خطوط المحاور */}
             <div className="absolute inset-x-0 top-1/2 h-[1px] bg-emerald-500/20" />
             <div className="absolute inset-y-0 left-1/2 w-[1px] bg-emerald-500/20" />
-
             {/* شعاع المسح الدوّار */}
             <div
               className="absolute inset-0 rounded-full pointer-events-none"
@@ -825,7 +790,6 @@ export default function ShieldOverlay({
                 animation: 'radar-overlay-spin 2.8s linear infinite',
               }}
             />
-
             {/* نقطة الهدف للمركبة في المنتصف */}
             <div className="relative z-10 flex flex-col items-center justify-center">
               <div className="w-8 h-8 rounded-full bg-slate-900 border-2 border-emerald-400 flex items-center justify-center shadow-[0_0_12px_#22c55e]">
@@ -837,7 +801,6 @@ export default function ShieldOverlay({
               </span>
             </div>
           </div>
-
           {/* شارة حالة الدرع والسيريال */}
           <div
             className="flex items-center gap-1.5 rounded-full px-3 py-1 border shadow-md"
@@ -854,7 +817,6 @@ export default function ShieldOverlay({
               </span>
             )}
           </div>
-
           {/* البانر الأمني الإرشادي لمنع قفل التاب */}
           <div
             className="w-full max-w-sm rounded-xl p-2.5 text-right border"
@@ -873,7 +835,6 @@ export default function ShieldOverlay({
               💡 يُرجى ترك هذه الصفحة مفتوحة وقفل شاشة الموبايل فقط لضمان انطلاق السارينة فوراً عند أي خطر.
             </p>
           </div>
-
           {gpsWarning && (
             <div className="w-full bg-amber-950/60 border border-amber-500/40 rounded-xl px-3 py-1.5">
               <p className="text-amber-300 text-[10px] font-bold text-center">
@@ -883,7 +844,6 @@ export default function ShieldOverlay({
           )}
         </div>
       )}
-
       {/* ─── PHASE: BREACH (شاشة الاختراق والإنذار التكتيكية) ─── */}
       {phase === 'breach' && (
         <div
@@ -911,7 +871,6 @@ export default function ShieldOverlay({
               <span className="text-red-400 font-black text-lg">{breachDistance}م</span>{' '}
               عن نقطة الركن الأصلية.
             </p>
-
             <div className="flex flex-col gap-3">
               <button
                 onClick={handleIamDriving}

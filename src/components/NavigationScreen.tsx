@@ -33,7 +33,7 @@ import {
   formatDuration,
 } from '../utils/distance';
 import { openMapsWithSmartArrival } from '../utils/mapsNavigation';
-
+import { calculateCostWithLoyalty } from '../utils/pricing';
 import toast from 'react-hot-toast';
 import 'leaflet/dist/leaflet.css';
 import {
@@ -70,6 +70,7 @@ const BRAND = {
 };
 
 const AUTO_START_RADIUS_M = 150;
+const AUTO_START_LEAVE_RADIUS_M = 180; // Hysteresis buffer لمنع إلغاء العداد بسبب تذبذب الـ GPS
 const AUTO_START_STABILITY_MS = 3 * 60 * 1000;
 const SHIELD_AUTO_FEE = 7;
 const GPS_POLL_INTERVAL_MS = 1000;
@@ -124,38 +125,46 @@ function MapController({
   garagePos: [number, number];
 }) {
   const map = useMap();
+  const initialFitDoneRef = useRef(false);
+
   useEffect(() => {
     const timer = setTimeout(() => {
       try {
         map.invalidateSize();
       } catch {}
     }, 250);
+
     const isValidCoord = (c: [number, number]) =>
       Array.isArray(c) &&
       typeof c[0] === 'number' && Number.isFinite(c[0]) && !isNaN(c[0]) && c[0] !== 0 &&
       typeof c[1] === 'number' && Number.isFinite(c[1]) && !isNaN(c[1]) && c[1] !== 0;
 
-    if (isValidCoord(userPos) && isValidCoord(garagePos)) {
-      try {
-        const bounds = L.latLngBounds([userPos, garagePos]);
-        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
-      } catch {
+    // لا نقوم بعمل fitBounds إلا في أول تحميل فقط لمنع قفز وتجميد الخريطة أثناء قيادة السيارة
+    if (!initialFitDoneRef.current) {
+      if (isValidCoord(userPos) && isValidCoord(garagePos)) {
+        try {
+          const bounds = L.latLngBounds([userPos, garagePos]);
+          map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+          initialFitDoneRef.current = true;
+        } catch {
+          try {
+            map.setView(garagePos, 15);
+            initialFitDoneRef.current = true;
+          } catch {}
+        }
+      } else if (isValidCoord(garagePos)) {
         try {
           map.setView(garagePos, 15);
+          initialFitDoneRef.current = true;
         } catch {}
       }
-    } else if (isValidCoord(garagePos)) {
-      try {
-        map.setView(garagePos, 15);
-      } catch {}
     }
+
     return () => {
       clearTimeout(timer);
-      try {
-        map.stop();
-      } catch {}
     };
   }, [map, userPos, garagePos]);
+
   return null;
 }
 
@@ -184,7 +193,7 @@ export default function NavigationScreen() {
 
   const isVipGarage = useMemo(() => {
     if (!garage) return false;
-    const type = (garage as any).type || (garage as any).garage_type;
+    const type = (garage as any).type || (garage as any).garage_type || garage.garageType;
     return type === 'partner' || type === 'vip';
   }, [garage]);
 
@@ -192,10 +201,13 @@ export default function NavigationScreen() {
     return incomingCars.find(
       (c) =>
         c.garageId === selectedGarageId &&
-        normalizePlate(c.carPlate) === userPlateNav &&
+        (
+          (userPlateNav && normalizePlate(c.carPlate) === userPlateNav) ||
+          (userPhoneClean && normalizePhone(c.customerPhone || '') === userPhoneClean)
+        ) &&
         c.status === 'coming',
     );
-  }, [incomingCars, selectedGarageId, userPlateNav]);
+  }, [incomingCars, selectedGarageId, userPlateNav, userPhoneClean]);
 
   const myActiveSession = useMemo(() => {
     return sessions
@@ -203,7 +215,7 @@ export default function NavigationScreen() {
         (sess) =>
           sess.status === 'active' &&
           (
-            normalizePlate(sess.carPlate) === userPlateNav ||
+            (userPlateNav && normalizePlate(sess.carPlate) === userPlateNav) ||
             (userPhoneClean && normalizePhone((sess as any).customerPhone || '') === userPhoneClean)
           ),
       )
@@ -265,6 +277,7 @@ export default function NavigationScreen() {
   const autoStartTriggeredRef = useRef(false);
   const gpsWatchIdRef = useRef<number | null>(null);
   const stabilityTickerRef = useRef<number | null>(null);
+  const lastSyncTimeRef = useRef<number>(0);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -283,7 +296,11 @@ export default function NavigationScreen() {
   useEffect(() => {
     if (!userPlateNav && !userPhoneClean) return;
     let cancelled = false;
-    const fastFetch = async () => {
+
+    const fastFetchThrottled = async () => {
+      const now = Date.now();
+      if (now - lastSyncTimeRef.current < 1500) return;
+      lastSyncTimeRef.current = now;
       if (cancelled || !isMountedRef.current) return;
       try {
         await fetchAll();
@@ -291,7 +308,8 @@ export default function NavigationScreen() {
         console.error('Fetch error:', e);
       }
     };
-    fastFetch();
+
+    fastFetchThrottled();
 
     const isMySessionPayload = (row: any): boolean => {
       if (!row) return false;
@@ -309,32 +327,35 @@ export default function NavigationScreen() {
         { event: '*', schema: 'public', table: 'sessions' },
         async (payload) => {
           const newRow = payload.new as any;
+          const oldRow = payload.old as any;
           if (isMySessionPayload(newRow) && newRow?.status === 'active') {
-            await fastFetch();
+            await fastFetchThrottled();
             if (isMountedRef.current) {
               if (newRow.garage_id || newRow.garageId) {
                 setSelectedGarageId(newRow.garage_id || newRow.garageId);
               }
               setScreen('session');
             }
-          } else {
-            fastFetch();
+          } else if (isMySessionPayload(newRow) || isMySessionPayload(oldRow)) {
+            fastFetchThrottled();
           }
         },
       )
       .subscribe();
 
     realtimeChannelRef.current = channel;
+
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') fastFetch();
+      if (document.visibilityState === 'visible') fastFetchThrottled();
     };
+
     document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', fastFetch);
+    window.addEventListener('focus', handleVisibility);
 
     return () => {
       cancelled = true;
       document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', fastFetch);
+      window.removeEventListener('focus', handleVisibility);
       if (realtimeChannelRef.current) {
         supabase.removeChannel(realtimeChannelRef.current);
         realtimeChannelRef.current = null;
@@ -342,15 +363,17 @@ export default function NavigationScreen() {
     };
   }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
 
-  /* ─── 🚗 زر: وصلت للجراج وبدأ الركن (مفحوص بشرط المسافة للدرع) ─── */
+  /* ─── 🚗 زر: وصلت للجراج وبدأ الركن (مفحوص بدقة مع إصلاح سعر الساعة) ─── */
   const handleCarArrived = useCallback(async () => {
-    if (isArrivingRef.current) return;
+    if (isArrivingRef.current || autoStartTriggeredRef.current) return;
     isArrivingRef.current = true;
+
     try {
       if (!garage) return;
       if (storageTimerKey) {
         try { localStorage.removeItem(storageTimerKey); } catch {}
       }
+
       const state = useStore.getState();
       const alreadyActive = state.sessions.find(
         (s) =>
@@ -381,9 +404,9 @@ export default function NavigationScreen() {
       }
 
       const startTimeISO = new Date(getServerNow()).toISOString();
-      // 🛡️ فحص المسافة الصارم لمنع تفعيل الدرع من خارج نطاق الـ 150m
       const currentDistMeters = haversineMeters(userPos.lat, userPos.lng, garage.lat, garage.lng);
       let shieldCostForSession = 0;
+
       if (shieldChoice) {
         if (currentDistMeters > AUTO_START_RADIUS_M) {
           toast.error(`عفواً! أنت خارج نطاق الجراج (أكثر من ${AUTO_START_RADIUS_M}م) — تم بدء الجلسة بدون تفعيل الدرع 🛡️`, {
@@ -393,17 +416,33 @@ export default function NavigationScreen() {
           const walletNow = Number(currentUser?.wallet ?? (currentUser as any)?.walletBalance ?? 0);
           if (walletNow >= SHIELD_AUTO_FEE) {
             try {
-              await deductWallet(SHIELD_AUTO_FEE);
-              shieldCostForSession = SHIELD_AUTO_FEE;
-              toast.success(`تم خصم ${SHIELD_AUTO_FEE} ج.م لتفعيل الدرع 🛡️`, { duration: 2500 });
+              const deducted = await deductWallet(SHIELD_AUTO_FEE);
+              if (deducted) {
+                shieldCostForSession = SHIELD_AUTO_FEE;
+                toast.success(`تم خصم ${SHIELD_AUTO_FEE} ج.م لتفعيل الدرع 🛡️`, { duration: 2500 });
+              } else {
+                shieldCostForSession = 0;
+                toast.error('تعذر خصم رسوم الدرع — تم بدء الجلسة بدون درع', { duration: 3000 });
+              }
             } catch (e) {
               console.error('Shield deduction error:', e);
+              shieldCostForSession = 0;
             }
           } else {
             toast.error(`رصيد غير كافٍ لتفعيل الدرع (${SHIELD_AUTO_FEE} ج.م) — تم بدء الجلسة بدون درع`, { duration: 3500 });
           }
         }
       }
+
+      // 💰 إصلاح ثغرة الإيرادات: فحص السعر المتفق عليه أو السعر الأساسي للجراج (basePrice / pricePerHour)
+      const agreedNum = Number(myIncomingCar?.agreedPrice);
+      const garageRateNum = Number(
+        garage.basePrice ??
+        garage.pricePerHour ??
+        (garage as any).price ??
+        15
+      );
+      const resolvedPricePerHour = agreedNum > 0 ? agreedNum : (garageRateNum > 0 ? garageRateNum : 15);
 
       await addSession({
         garageId: garage.id,
@@ -413,12 +452,12 @@ export default function NavigationScreen() {
         parking_lng: garage.lng,
         status: 'active',
         source: 'app',
-        agreedPrice: myIncomingCar?.agreedPrice || (garage as any).basePrice || 15,
+        agreedPrice: resolvedPricePerHour,
         customerPhone: currentUser?.phone,
         customerName: currentUser?.name,
         startedBy: 'customer',
         incomingCarId: myIncomingCar?.id,
-        autoStarted: true,
+        autoStarted: false,
         shieldAutoEnabled: shieldCostForSession > 0,
         shieldCost: shieldCostForSession,
       } as any);
@@ -426,12 +465,13 @@ export default function NavigationScreen() {
       if (myIncomingCar) {
         await removeIncomingCar(myIncomingCar.id);
       }
+
       useStore.getState().setHasPaidBookingFee(false);
       navigatedToSessionRef.current = true;
       toast.success('تم الوصول للجراج وبدأت الجلسة بنجاح ⏱️', { duration: 3000 });
       setScreen('session');
     } catch (err) {
-      console.error('❌ خطأ:', err);
+      console.error('❌ خطأ في بدء الجلسة:', err);
       toast.error('حدث خطأ، حاول مرة أخرى');
     } finally {
       setTimeout(() => {
@@ -476,13 +516,16 @@ export default function NavigationScreen() {
     }
   }, [myIncomingCar, removeIncomingCar, setSelectedGarageId, setScreen, storageTimerKey]);
 
+  /* ─── ⏱️ البدء التلقائي الذكي للجلسة عند الاستقرار داخل الجراج ─── */
   const handleAutoStartSession = useCallback(async () => {
-    if (autoStartTriggeredRef.current || !garage || !isMountedRef.current) return;
+    if (autoStartTriggeredRef.current || isArrivingRef.current || !garage || !isMountedRef.current) return;
     autoStartTriggeredRef.current = true;
     setAutoStarting(true);
+
     if (storageTimerKey) {
       try { localStorage.removeItem(storageTimerKey); } catch {}
     }
+
     try {
       const state = useStore.getState();
       const alreadyActive = state.sessions.find(
@@ -493,6 +536,7 @@ export default function NavigationScreen() {
             (userPhoneClean && normalizePhone((s as any).customerPhone || '') === userPhoneClean)
           ),
       );
+
       if (alreadyActive) {
         if (alreadyActive.garageId !== selectedGarageId) {
           setSelectedGarageId(alreadyActive.garageId);
@@ -503,21 +547,39 @@ export default function NavigationScreen() {
       }
 
       const startTimeISO = new Date(getServerNow()).toISOString();
+      const currentDistMeters = haversineMeters(userPos.lat, userPos.lng, garage.lat, garage.lng);
       let shieldCostForSession = 0;
-      if (shieldChoice) {
+
+      if (shieldChoice && currentDistMeters <= AUTO_START_LEAVE_RADIUS_M) {
         const walletNow = Number(currentUser?.wallet ?? (currentUser as any)?.walletBalance ?? 0);
         if (walletNow >= SHIELD_AUTO_FEE) {
           try {
-            await deductWallet(SHIELD_AUTO_FEE);
-            shieldCostForSession = SHIELD_AUTO_FEE;
-            toast.success(`تم خصم ${SHIELD_AUTO_FEE} ج.م لتفعيل الدرع 🛡️`, { duration: 2500 });
+            const deducted = await deductWallet(SHIELD_AUTO_FEE);
+            if (deducted) {
+              shieldCostForSession = SHIELD_AUTO_FEE;
+              toast.success(`تم خصم ${SHIELD_AUTO_FEE} ج.م لتفعيل الدرع 🛡️`, { duration: 2500 });
+            } else {
+              shieldCostForSession = 0;
+              toast.error('تعذر خصم رسوم الدرع — تم بدء الجلسة بدون درع', { duration: 3000 });
+            }
           } catch (e) {
             console.error('Shield deduction error:', e);
+            shieldCostForSession = 0;
           }
         } else {
           toast.error(`رصيد غير كافٍ لتفعيل الدرع (${SHIELD_AUTO_FEE} ج.م) — تم بدء الجلسة بدون درع`, { duration: 3500 });
         }
       }
+
+      // 💰 إصلاح ثغرة الإيرادات في البدء التلقائي:
+      const agreedNum = Number(myIncomingCar?.agreedPrice);
+      const garageRateNum = Number(
+        garage.basePrice ??
+        garage.pricePerHour ??
+        (garage as any).price ??
+        15
+      );
+      const resolvedPricePerHour = agreedNum > 0 ? agreedNum : (garageRateNum > 0 ? garageRateNum : 15);
 
       await addSession({
         garageId: garage.id,
@@ -527,17 +589,20 @@ export default function NavigationScreen() {
         parking_lng: garage.lng,
         status: 'active',
         source: 'app',
-        agreedPrice: myIncomingCar?.agreedPrice || (garage as any).basePrice || 15,
+        agreedPrice: resolvedPricePerHour,
         customerPhone: currentUser?.phone,
         customerName: currentUser?.name,
         startedBy: 'customer',
         incomingCarId: myIncomingCar?.id,
+        autoStarted: true,
+        shieldAutoEnabled: shieldCostForSession > 0,
         shieldCost: shieldCostForSession,
       } as any);
 
       if (myIncomingCar) {
         try { await removeIncomingCar(myIncomingCar.id); } catch {}
       }
+
       useStore.getState().setHasPaidBookingFee(false);
       navigatedToSessionRef.current = true;
       const msg = shieldCostForSession > 0
@@ -554,6 +619,7 @@ export default function NavigationScreen() {
     }
   }, [
     garage,
+    userPos,
     shieldChoice,
     userPlateNav,
     userPhoneClean,
@@ -568,7 +634,37 @@ export default function NavigationScreen() {
     storageTimerKey,
   ]);
 
-  /* 🧠 GPS positioning */
+  /* ─── 🚨 إنهاء الجلسة من شاشة اختراق الدرع مع حساب التكلفة الفعلية ─── */
+  const handleBreachEndSession = useCallback(async () => {
+    stopIntenseAlarm();
+    setShowBreach(false);
+    destroyShield();
+    if (myActiveSession) {
+      const startMs = toMs(myActiveSession.startTime);
+      const elapsedSec = startMs > 0 ? Math.max(0, Math.floor((getServerNow() - startMs) / 1000)) : 0;
+      const isFreeSession = Boolean(
+        myActiveSession.isFirstFreeSession ??
+        (myActiveSession as any).isFreeSession ??
+        (myActiveSession as any).is_first_free_session ??
+        false
+      );
+      const rate = Number(
+        myActiveSession.agreedPrice ??
+        garage?.basePrice ??
+        garage?.pricePerHour ??
+        (garage as any)?.price ??
+        15
+      );
+      const pricing = calculateCostWithLoyalty(elapsedSec, rate, isFreeSession);
+      const freeMinutesApplied = isFreeSession
+        ? (elapsedSec <= 1800 ? Math.floor(elapsedSec / 60) : 30)
+        : 0;
+      await endSession(myActiveSession.id, pricing.cost, 'cash', freeMinutesApplied);
+    }
+    setScreen('list');
+  }, [myActiveSession, garage, endSession, setScreen]);
+
+  /* 🧠 نظام الـ GPS المتقدم مع فلتر الاهتزاز لمنع التقطيع */
   useEffect(() => {
     if (!('geolocation' in navigator)) return;
     navigator.geolocation.getCurrentPosition(
@@ -584,10 +680,19 @@ export default function NavigationScreen() {
   useEffect(() => {
     if (!garage || !('geolocation' in navigator)) return;
     if (myActiveSession) return;
+
     const watchId = navigator.geolocation.watchPosition(
       (p) => {
         if (!isMountedRef.current) return;
-        setUserPos({ lat: p.coords.latitude, lng: p.coords.longitude });
+        const newLat = p.coords.latitude;
+        const newLng = p.coords.longitude;
+
+        setUserPos((prev) => {
+          // فلترة التذبذب: لا نُحدّث الحالة إلا إذا تحركت السيارة 3 أمتار حقيقية
+          const moveDelta = haversineMeters(prev.lat, prev.lng, newLat, newLng);
+          if (moveDelta < 3.0) return prev;
+          return { lat: newLat, lng: newLng };
+        });
       },
       (err) => {
         console.warn('GPS watch error:', err);
@@ -598,6 +703,7 @@ export default function NavigationScreen() {
         timeout: 10000,
       }
     );
+
     gpsWatchIdRef.current = watchId;
     return () => {
       if (gpsWatchIdRef.current !== null) {
@@ -607,12 +713,15 @@ export default function NavigationScreen() {
     };
   }, [garage, myActiveSession]);
 
+  /* 🎯 مراقبة ثبات السيارة داخل النطاق مع Hysteresis لمنع التصفير المفاجئ */
   useEffect(() => {
     if (!garage || myActiveSession || autoStartTriggeredRef.current) return;
+
     const distMeters = haversineMeters(userPos.lat, userPos.lng, garage.lat, garage.lng);
     const within = distMeters <= AUTO_START_RADIUS_M;
-    setIsWithinRadius(within);
+
     if (within) {
+      setIsWithinRadius(true);
       if (stabilityStartMs === null) {
         const now = Date.now();
         setStabilityStartMs(now);
@@ -621,7 +730,9 @@ export default function NavigationScreen() {
           try { localStorage.setItem(storageTimerKey, String(now)); } catch {}
         }
       }
-    } else {
+    } else if (distMeters > AUTO_START_LEAVE_RADIUS_M) {
+      // لا نلغي المؤقت إلا إذا تجاوز 180م (Buffer) لحماية السائق من التذبذبات اللحظية
+      setIsWithinRadius(false);
       if (stabilityStartMs !== null) {
         setStabilityStartMs(null);
         setStabilityElapsed(0);
@@ -640,10 +751,12 @@ export default function NavigationScreen() {
       }
       return;
     }
+
     const checkAndTick = () => {
       if (!isMountedRef.current) return;
       const elapsed = Date.now() - stabilityStartMs;
       setStabilityElapsed(elapsed);
+
       if (elapsed >= AUTO_START_STABILITY_MS && !autoStartTriggeredRef.current) {
         if (storageTimerKey) {
           try { localStorage.removeItem(storageTimerKey); } catch {}
@@ -651,13 +764,17 @@ export default function NavigationScreen() {
         handleAutoStartSession();
       }
     };
+
     checkAndTick();
     stabilityTickerRef.current = window.setInterval(checkAndTick, 1000);
+
     const handleVisibilityOrFocus = () => {
       checkAndTick();
     };
+
     document.addEventListener('visibilitychange', handleVisibilityOrFocus);
     window.addEventListener('focus', handleVisibilityOrFocus);
+
     return () => {
       if (stabilityTickerRef.current !== null) {
         window.clearInterval(stabilityTickerRef.current);
@@ -691,15 +808,17 @@ export default function NavigationScreen() {
   }, [myActiveSession, selectedGarageId, setSelectedGarageId, setScreen]);
 
   // ═══════════════════════════════════════════════════════════
-  // ✅ تفعيل الدرع تلقائياً
+  // ✅ تفعيل الدرع الذكي تلقائياً
   // ═══════════════════════════════════════════════════════════
   useEffect(() => {
     if (!myActiveSession || !garage) return;
     if ((myActiveSession.shieldCost ?? 0) <= 0) return;
+
     try { initAudioContext(); } catch {}
     const lat = (garage as any).lat ?? 30.0444;
     const lng = (garage as any).lng ?? 31.2357;
     let cancelled = false;
+
     registerShieldSession({
       sessionId: myActiveSession.id,
       phone: (myActiveSession as any).customerPhone || currentUser?.phone || '',
@@ -719,6 +838,7 @@ export default function NavigationScreen() {
         },
       });
     });
+
     return () => {
       cancelled = true;
       destroyShield();
@@ -860,7 +980,7 @@ export default function NavigationScreen() {
 
       {/* ══ Content ══ */}
       <div className="flex-1 px-3.5 pb-4 flex flex-col gap-2.5 overflow-y-auto">
-        {/* 🚀 بانر التوجيه الخارجي لخرائط جوجل مع المعلم المشهور والـ GPS */}
+        {/* 🚀 بانر التوجيه الخارجي لخرائط جوجل */}
         {!myActiveSession && (
           <motion.button
             type="button"
@@ -973,6 +1093,7 @@ export default function NavigationScreen() {
                 {SHIELD_AUTO_FEE} ج.م
               </span>
             </div>
+
             <div className="grid grid-cols-2 gap-1.5 mb-2">
               <button
                 type="button"
@@ -1170,11 +1291,12 @@ export default function NavigationScreen() {
                 وصلت للجراج وبدأ الركن ✅
               </span>
             </button>
+
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={handleNoSpaceFound}
-                disabled={autoStarting}
+                disabled={autoStarting || isArrivingRef.current}
                 className="py-3 rounded-xl active:scale-95 transition-all flex items-center justify-center gap-1.5 shrink-0 border-0 cursor-pointer shadow-md disabled:opacity-50"
                 style={{
                   background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)',
@@ -1185,10 +1307,11 @@ export default function NavigationScreen() {
                   ملقتش مكان ❌
                 </span>
               </button>
+
               <button
                 type="button"
                 onClick={handleNoSpaceFound}
-                disabled={autoStarting}
+                disabled={autoStarting || isArrivingRef.current}
                 className="py-3 rounded-xl active:scale-95 transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer border-0 shadow-md disabled:opacity-50"
                 style={{
                   background: 'linear-gradient(135deg, #475569 0%, #334155 100%)',
@@ -1229,6 +1352,7 @@ export default function NavigationScreen() {
                   اختر باقة شحن سريعة للمتابعة
                 </p>
               </div>
+
               <div className="grid grid-cols-2 gap-2">
                 {[...TOPUP_TIERS].reverse().map((tier) => (
                   <button
@@ -1243,6 +1367,7 @@ export default function NavigationScreen() {
                   </button>
                 ))}
               </div>
+
               <button
                 onClick={() => setShowInsufficientModal(false)}
                 className="w-full py-2 rounded-xl text-xs font-black text-slate-400 border border-slate-700 bg-transparent"
@@ -1276,15 +1401,10 @@ export default function NavigationScreen() {
             <p className="text-sm text-gray-300 mb-6 leading-relaxed">
               سيارتك خرجت من نطاق الأمان حول الجراج
             </p>
+
             <div className="flex flex-col gap-3">
               <button
-                onClick={() => {
-                  stopIntenseAlarm();
-                  setShowBreach(false);
-                  destroyShield();
-                  if (myActiveSession) endSession(myActiveSession.id);
-                  setScreen('list');
-                }}
+                onClick={handleBreachEndSession}
                 className="w-full py-3.5 rounded-xl font-black text-white text-sm active:scale-95 transition-all"
                 style={{
                   background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
@@ -1293,14 +1413,9 @@ export default function NavigationScreen() {
               >
                 ✅ أنا اللي سايق
               </button>
+
               <button
-                onClick={() => {
-                  stopIntenseAlarm();
-                  setShowBreach(false);
-                  destroyShield();
-                  if (myActiveSession) endSession(myActiveSession.id);
-                  setScreen('list');
-                }}
+                onClick={handleBreachEndSession}
                 className="w-full py-3.5 rounded-xl font-black text-white text-sm active:scale-95 transition-all"
                 style={{
                   background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',

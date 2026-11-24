@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Car, Phone, User, ArrowRight, ShieldCheck, Sparkles, Loader2, Zap, Wallet } from 'lucide-react';
 // 🌟 استيراد دوال البصمة الموحدة من الـ store لضمان مطابقة تامة مع قاعدة البيانات
@@ -20,12 +20,13 @@ const BRAND = {
 };
 
 export default function RegisterScreen() {
-  const { setCurrentUser, setScreen } = useStore();
+  const setCurrentUser = useStore((s) => s.setCurrentUser);
+  const setScreen = useStore((s) => s.setScreen);
+
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [carPlate, setCarPlate] = useState('');
   const [loading, setLoading] = useState(false);
-
   const isMountedRef = useRef(true);
   const isSubmittingRef = useRef(false);
 
@@ -38,45 +39,38 @@ export default function RegisterScreen() {
   }, []);
 
   // ✍️ قبول الحروف العربية والمسافات فقط في الاسم وتنظيف المسافات المتكررة
-  const handleNameChange = (val: string) => {
+  const handleNameChange = useCallback((val: string) => {
     const arabicOnly = val.replace(/[^\u0600-\u06FF\s]/g, '').replace(/\s+/g, ' ');
     setName(arabicOnly);
-  };
+  }, []);
 
   // 📱 فلترة لحظية فائقة الذكاء أثناء الكتابة للهواتف المصرية
-  const handlePhoneChange = (val: string) => {
-    let digits = val;
-    const arabicNums = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
-    for (let i = 0; i < 10; i++) {
-      digits = digits.split(arabicNums[i]).join(String(i));
-    }
-    
-    // إزالة أي شيء ليس رقماً والالتزام بـ 11 خانة كحد أقصى
-    const digitsOnly = digits.replace(/[^\d]/g, '').slice(0, 11);
+  const handlePhoneChange = useCallback((val: string) => {
+    const digitsOnly = val
+      .replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (c) => String(c.charCodeAt(0) & 0x0f))
+      .replace(/[^\d]/g, '')
+      .slice(0, 11);
     setPhone(digitsOnly);
-  };
+  }, []);
 
   // 🚗 فلترة صارمة لرقم اللوحة (حروف عربية وأرقام ومسافات فقط)
-  const handlePlateChange = (val: string) => {
+  const handlePlateChange = useCallback((val: string) => {
     const cleaned = val.replace(/[^\u0621-\u064A\u0660-\u06690-9\s]/g, '');
     const singleSpaceOnly = cleaned.replace(/\s+/g, ' ');
-
     if (val !== cleaned) {
       toast.error('يرجى كتابة الحروف العربية والأرقام فقط 🇪🇬', {
         id: 'plate-lang-warn',
         duration: 2000,
       });
     }
-
     setCarPlate(singleSpaceOnly);
-  };
+  }, []);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // 🛡️ حماية فورية من الضغط المزدوج السريع
     if (isSubmittingRef.current || loading) return;
-
     if (!name.trim() || name.trim().length < 3) { 
       toast.error('يرجى إدخال اسمك باللغة العربية (3 حروف على الأقل)'); 
       return; 
@@ -85,7 +79,6 @@ export default function RegisterScreen() {
     // 🇪🇬 الفحص الصارم لرقم الهاتف المصري
     const cleanPhone = normalizePhone(phone);
     const isValidEgyptianMobile = /^01[0125][0-9]{8}$/.test(cleanPhone);
-
     if (!isValidEgyptianMobile) { 
       toast.error('رقم الهاتف غير صحيح! يجب أن يتكون من 11 رقماً ويبدأ بـ (010 / 011 / 012 / 015) 🇪🇬', {
         duration: 4500,
@@ -93,35 +86,29 @@ export default function RegisterScreen() {
       }); 
       return; 
     }
-
     const plateTrimmed = carPlate.trim();
     if (!plateTrimmed) {
       toast.error('يرجى إدخال رقم اللوحة');
       return;
     }
-
     // 🛡️ فحص اكتمال اللوحة عبر البصمة الفولاذية الموحدة (يجب أن تحتوي على حروف وأرقام معاً)
     const cleanPlate = normalizePlate(plateTrimmed);
     const plateParts = cleanPlate.split('_');
     const hasValidLetters = plateParts[0] && plateParts[0].length > 0;
     const hasValidDigits = plateParts[1] && plateParts[1].length > 0;
-
     if (!cleanPlate || !hasValidLetters || !hasValidDigits) { 
       toast.error('رقم اللوحة غير مكتمل! يجب إدخال حروف عربية وأرقام معاً (مثال: أ ب ج ١٢٣)'); 
       return; 
     }
-
     try {
       isSubmittingRef.current = true;
       setLoading(true);
-
       await setCurrentUser({
         name: name.trim(),
         phone: cleanPhone,
         carPlate: cleanPlate,
         wallet: 0,
       });
-
       if (!isMountedRef.current) return;
       toast.success('تم تسجيل وتأمين بياناتك بنجاح! 🚗✨');
       setScreen('list');
@@ -153,7 +140,6 @@ export default function RegisterScreen() {
       }}
     >
       <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full py-4 relative z-10">
-
         {/* ══ الشعار والعنوان ══ */}
         <div className="text-center mb-5">
           <motion.div
@@ -177,7 +163,6 @@ export default function RegisterScreen() {
               }}
             />
           </motion.div>
-
           <h2
             className="text-[22px] font-black text-white tracking-tight"
             style={{ textShadow: '0 2px 12px rgba(0,0,0,0.4)' }}
@@ -187,7 +172,6 @@ export default function RegisterScreen() {
           <p className="text-[11px] font-bold mt-1" style={{ color: BRAND.slateMuted }}>
             خطوة واحدة وتبقى جاهز تحجز ركنتك
           </p>
-
           {/* ══ شارات المميزات (VIP + الدرع الذكي) ══ */}
           <div className="mt-3.5 flex flex-col items-center gap-2">
             {/* ⚡ شارة حجز VIP */}
@@ -215,7 +199,6 @@ export default function RegisterScreen() {
                 احجز ركنتك بـ {BOOKING_FEE} ج.م فقط من محفظتك! ⚡
               </span>
             </motion.div>
-
             {/* 🛡️ شارة درع الحماية الذكي */}
             <motion.div
               initial={{ opacity: 0, y: 8 }}
@@ -242,7 +225,6 @@ export default function RegisterScreen() {
             </motion.div>
           </div>
         </div>
-
         {/* ══ الفورم ══ */}
         <form onSubmit={handleRegister} className="space-y-3.5">
           {/* الاسم بالعربي */}
@@ -284,7 +266,6 @@ export default function RegisterScreen() {
               />
             </div>
           </div>
-
           {/* الهاتف (11 رقم مصري معتمد) */}
           <div>
             <div className="flex justify-between items-center mb-1.5 mr-1">
@@ -332,7 +313,6 @@ export default function RegisterScreen() {
               />
             </div>
           </div>
-
           {/* رقم اللوحة بالعربي */}
           <div>
             <label
@@ -378,7 +358,6 @@ export default function RegisterScreen() {
               💡 اكتب الحروف والأرقام كما هي باللغة العربية على اللوحة
             </p>
           </div>
-
           {/* زر التأكيد */}
           <button
             type="submit"
@@ -422,7 +401,6 @@ export default function RegisterScreen() {
           </button>
         </form>
       </div>
-
       {/* ══ حماية الأمان والخصوصية ══ */}
       <div
         className="pt-4 text-center flex items-center justify-center gap-3 text-[10px] font-bold relative z-10"

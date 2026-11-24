@@ -134,14 +134,17 @@ export async function checkUserInsideGarage(
         resolve({ inside: dist <= GEOFENCE_RADIUS_METERS, distance: dist });
       },
       () => resolve({ inside: false, distance: -1 }),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 },
     );
   });
 }
 
 // ═══════════════════════════════════════════════════════════
 // 📝 تسجيل الجلسة في قاعدة البيانات + الاشتراك في الـ Web Push
+// (مع قفل منع التكرار المتزامن In-Flight Deduplication)
 // ═══════════════════════════════════════════════════════════
+const inFlightRegistrations = new Map<string, Promise<string | null>>();
+
 export async function registerShieldSession(params: {
   sessionId: string;
   phone: string;
@@ -149,77 +152,90 @@ export async function registerShieldSession(params: {
   parkingLat: number;
   parkingLng: number;
 }): Promise<string | null> {
-  try {
-    const { data: existing } = await supabase
-      .from('shield_sessions')
-      .select('id')
-      .eq('session_id', params.sessionId)
-      .is('ended_at', null)
-      .maybeSingle();
+  if (!params.sessionId) return null;
 
-    if (existing) {
-      return existing.id;
-    }
+  const existingPromise = inFlightRegistrations.get(params.sessionId);
+  if (existingPromise) {
+    return existingPromise;
+  }
 
-    let ep: string | null = null;
-    let p256: string | null = null;
-    let auth: string | null = null;
-
+  const registrationTask = (async (): Promise<string | null> => {
     try {
-      if ('Notification' in window && Notification.permission === 'default') {
-        await Notification.requestPermission();
+      const { data: existing } = await supabase
+        .from('shield_sessions')
+        .select('id')
+        .eq('session_id', params.sessionId)
+        .is('ended_at', null)
+        .maybeSingle();
+
+      if (existing) {
+        return existing.id;
       }
-      if ('serviceWorker' in navigator) {
-        const reg = await navigator.serviceWorker.ready;
-        let sub = await reg.pushManager.getSubscription();
-        if (!sub) {
-          try {
-            sub = await reg.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-            });
-          } catch (e) {
-            console.warn('⚠️ Push subscribe failed:', e);
+
+      let ep: string | null = null;
+      let p256: string | null = null;
+      let auth: string | null = null;
+
+      try {
+        if ('Notification' in window && Notification.permission === 'default') {
+          await Notification.requestPermission();
+        }
+        if ('serviceWorker' in navigator) {
+          const reg = await navigator.serviceWorker.ready;
+          let sub = await reg.pushManager.getSubscription();
+          if (!sub) {
+            try {
+              sub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+              });
+            } catch (e) {
+              console.warn('⚠️ Push subscribe failed:', e);
+            }
+          }
+          if (sub) {
+            const j = sub.toJSON();
+            ep = j.endpoint || null;
+            p256 = j.keys?.p256dh || null;
+            auth = j.keys?.auth || null;
           }
         }
-        if (sub) {
-          const j = sub.toJSON();
-          ep = j.endpoint || null;
-          p256 = j.keys?.p256dh || null;
-          auth = j.keys?.auth || null;
-        }
+      } catch (err) {
+        console.warn('ℹ️ Push notification setup skipped:', err);
       }
-    } catch (err) {
-      console.warn('ℹ️ Push notification setup skipped:', err);
-    }
 
-    const { data, error } = await supabase
-      .from('shield_sessions')
-      .insert({
-        session_id: params.sessionId,
-        phone: params.phone,
-        garage_id: params.garageId,
-        parking_lat: params.parkingLat,
-        parking_lng: params.parkingLng,
-        push_endpoint: ep,
-        push_p256dh: p256,
-        push_auth: auth,
-        alert_count: 0,
-        fake_tick: 0,
-      })
-      .select('id')
-      .single();
+      const { data, error } = await supabase
+        .from('shield_sessions')
+        .insert({
+          session_id: params.sessionId,
+          phone: params.phone,
+          garage_id: params.garageId,
+          parking_lat: params.parkingLat,
+          parking_lng: params.parkingLng,
+          push_endpoint: ep,
+          push_p256dh: p256,
+          push_auth: auth,
+          alert_count: 0,
+          fake_tick: 0,
+        })
+        .select('id')
+        .single();
 
-    if (error) {
-      console.error('❌ registerShieldSession error:', error);
+      if (error) {
+        console.error('❌ registerShieldSession error:', error);
+        return null;
+      }
+      return data.id;
+    } catch (e) {
+      console.error('❌ registerShieldSession exception:', e);
       return null;
+    } finally {
+      inFlightRegistrations.delete(params.sessionId);
     }
+  })();
 
-    return data.id;
-  } catch (e) {
-    console.error('❌ registerShieldSession exception:', e);
-    return null;
-  }
+  inFlightRegistrations.set(params.sessionId, registrationTask);
+  return registrationTask;
 }
 
 export function startFakeAlerts(): void {}
@@ -236,6 +252,7 @@ let wakeLockSentinel: any = null;
 let isAudioKeepAliveActive = false;
 let alarmAudioCtx: AudioContext | null = null;
 let alarmOscillators: OscillatorNode[] = [];
+let alarmGainNodes: GainNode[] = [];
 let alarmVibrationInterval: ReturnType<typeof setInterval> | null = null;
 let isAlarmActive = false;
 
@@ -273,7 +290,6 @@ async function requestWakeLock(): Promise<void> {
 export function armBackgroundAudio(): void {
   try {
     initAudioContext();
-
     if (!prewarmedSirenAudio) {
       prewarmedSirenAudio = new Audio(SIREN_AUDIO_URL);
       prewarmedSirenAudio.loop = true;
@@ -281,7 +297,6 @@ export function armBackgroundAudio(): void {
       prewarmedSirenAudio.volume = 0.001; // صوت صامت يحافظ على مسار الميديا نشطاً
       (prewarmedSirenAudio as any).playsInline = true;
     }
-
     prewarmedSirenAudio.play().then(() => {
       isAudioKeepAliveActive = true;
     }).catch(() => {
@@ -293,11 +308,9 @@ export function armBackgroundAudio(): void {
       }
       silentAudioEl.play().catch(() => {});
     });
-
     if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
       sharedAudioCtx.resume().catch(() => {});
     }
-
     if ('mediaSession' in navigator) {
       navigator.mediaSession.playbackState = 'playing';
       navigator.mediaSession.metadata = new MediaMetadata({
@@ -305,7 +318,6 @@ export function armBackgroundAudio(): void {
         artist: 'درع الحماية ضد السرقة والونش',
         album: 'نظام المراقبة المستمر',
       });
-
       navigator.mediaSession.setActionHandler('play', () => {
         if (prewarmedSirenAudio) prewarmedSirenAudio.play().catch(() => {});
       });
@@ -315,7 +327,6 @@ export function armBackgroundAudio(): void {
         }
       });
     }
-
     requestWakeLock().catch(() => {});
   } catch (e) {
     console.warn('⚠️ armBackgroundAudio error:', e);
@@ -345,7 +356,7 @@ export function triggerBreachAlarm(): void {
     }
   }
 
-  // 2. إضافة نغمة تحذيرية ناعمة ودافئة (Harmonic Chime Sweep) بدلاً من الصفير المزعج
+  // 2. إضافة نغمة تحذيرية ناعمة ودافئة (Harmonic Chime Sweep)
   try {
     initAudioContext();
     const ctx = sharedAudioCtx;
@@ -355,32 +366,25 @@ export function triggerBreachAlarm(): void {
       }
       alarmAudioCtx = ctx;
       const now = alarmAudioCtx.currentTime;
-
       const osc = alarmAudioCtx.createOscillator();
       const gain = alarmAudioCtx.createGain();
-
-      // موجة ناعمة (Sine Wave) مريحة للأذن
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(880, now); // نغمة A5 نقية
-
-      // تموج صوتي دوري محبب يشبه أجهزة الإنذار الفاخرة
-      for (let i = 0; i < 200; i++) {
+      osc.frequency.setValueAtTime(880, now);
+      for (let i = 0; i < 120; i++) {
         osc.frequency.setValueAtTime(950, now + i * 0.5);
         osc.frequency.linearRampToValueAtTime(750, now + i * 0.5 + 0.25);
       }
-
-      gain.gain.setValueAtTime(0.4, now); // صوت مهدأ
+      gain.gain.setValueAtTime(0.4, now);
       osc.connect(gain);
       gain.connect(alarmAudioCtx.destination);
       osc.start();
-
       alarmOscillators = [osc];
+      alarmGainNodes = [gain];
     }
   } catch { /* ignore */ }
 
   // 3. اهتزاز نبضي ذكي ومحسوس (بدون رج عنيف مستمر يحرق الموتور)
   if (navigator.vibrate) {
-    // نبضة: اهتزاز 300 مللي، راحة 200، اهتزاز 300، راحة 600
     const pleasantPattern = [300, 200, 300, 600];
     navigator.vibrate(pleasantPattern);
     alarmVibrationInterval = setInterval(() => {
@@ -420,8 +424,13 @@ export function stopIntenseAlarm(): void {
   try {
     alarmOscillators.forEach((osc) => {
       try { osc.stop(); } catch { /* ignore */ }
+      try { osc.disconnect(); } catch { /* ignore */ }
+    });
+    alarmGainNodes.forEach((g) => {
+      try { g.disconnect(); } catch { /* ignore */ }
     });
     alarmOscillators = [];
+    alarmGainNodes = [];
     alarmAudioCtx = null;
   } catch { /* ignore */ }
 
@@ -445,7 +454,7 @@ export function isIntenseAlarmActive(): boolean {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 📍 GPS Geofence فائق الحساسية مع فلترة شطحات الإشارة
+// 📍 GPS Geofence فائق الحساسية مع فلترة شطحات الإشارة وتوفير البطارية
 // ═══════════════════════════════════════════════════════════
 let gpsWatchId: number | null = null;
 let fallbackIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -456,6 +465,7 @@ let consecutiveBreachCount = 0;
 let isCurrentlyOutside = false;
 let prevPos: { lat: number; lng: number; t: number } | null = null;
 let watchStartTime = 0;
+let lastWatchTickAt = 0;
 let visibilityHandler: (() => void) | null = null;
 
 export function startShieldGPS(params: {
@@ -481,6 +491,7 @@ export function startShieldGPS(params: {
   isCurrentlyOutside = false;
   prevPos = null;
   watchStartTime = Date.now();
+  lastWatchTickAt = Date.now();
   let consecutiveErrors = 0;
 
   const handlePosition = (
@@ -491,6 +502,7 @@ export function startShieldGPS(params: {
   ) => {
     consecutiveErrors = 0;
     const now = Date.now();
+    lastWatchTickAt = now;
     const elapsed = now - watchStartTime;
 
     if (elapsed < STABILIZATION_MS) {
@@ -515,7 +527,6 @@ export function startShieldGPS(params: {
 
     const distFromGarage = haversine(lat, lng, params.parkingLat, params.parkingLng);
     const distFromLastSent = haversine(lat, lng, lastSentLat, lastSentLng);
-
     const isOverDistance = distFromGarage > GEOFENCE_RADIUS_METERS;
     const isConfirmedSpeed = speed >= SPEED_THRESHOLD_MPS;
     const isMajorDistance = distFromGarage > 80 && (accuracy === null || accuracy <= 35);
@@ -525,13 +536,10 @@ export function startShieldGPS(params: {
       if (!breachStartTime) {
         breachStartTime = now;
       }
-
       const effectiveGrace = isMajorDistance ? 0 : CAR_GRACE_MS;
-
       if ((now - breachStartTime >= effectiveGrace) || consecutiveBreachCount >= 2) {
         if (!isCurrentlyOutside) {
           isCurrentlyOutside = true;
-
           if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
             try {
               const title = '🚨 تحذير: رصد حركة خارج النطاق!';
@@ -552,7 +560,6 @@ export function startShieldGPS(params: {
               console.warn('Notification trigger error:', e);
             }
           }
-
           triggerBreachAlarm();
           sendGPSToServer(params.sessionId, params.shieldId, lat, lng, true, speed, true).catch(() => {});
           lastSentLat = lat;
@@ -572,7 +579,7 @@ export function startShieldGPS(params: {
     }
   };
 
-  const handleGPSError = (err: GeolocationPositionError) => {
+  const handleGPSError = (_err: GeolocationPositionError) => {
     consecutiveErrors++;
     if (consecutiveErrors >= 4) {
       params.onGPSError?.();
@@ -587,9 +594,10 @@ export function startShieldGPS(params: {
       pos.coords.accuracy,
     ),
     handleGPSError,
-    { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 },
+    { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 },
   );
 
+  // نبض احتياطي ذكي: لا يشغل استعلام GPS إضافي إلا إذا خمل watchPosition لأكثر من 10 ثوانٍ
   fallbackIntervalId = setInterval(() => {
     if (prewarmedSirenAudio && prewarmedSirenAudio.paused) {
       prewarmedSirenAudio.play().catch(() => {});
@@ -597,17 +605,18 @@ export function startShieldGPS(params: {
     if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
       sharedAudioCtx.resume().catch(() => {});
     }
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => handlePosition(
-        pos.coords.latitude,
-        pos.coords.longitude,
-        pos.coords.speed,
-        pos.coords.accuracy,
-      ),
-      handleGPSError,
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 },
-    );
+    if (Date.now() - lastWatchTickAt >= 10_000) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => handlePosition(
+          pos.coords.latitude,
+          pos.coords.longitude,
+          pos.coords.speed,
+          pos.coords.accuracy,
+        ),
+        handleGPSError,
+        { enableHighAccuracy: true, maximumAge: 3000, timeout: 8000 },
+      );
+    }
   }, FALLBACK_INTERVAL_MS);
 
   visibilityHandler = () => {
@@ -619,21 +628,22 @@ export function startShieldGPS(params: {
     }
     if (document.visibilityState === 'visible') {
       requestWakeLock().catch(() => {});
-      navigator.geolocation.getCurrentPosition(
-        (pos) => handlePosition(
-          pos.coords.latitude,
-          pos.coords.longitude,
-          pos.coords.speed,
-          pos.coords.accuracy,
-        ),
-        handleGPSError,
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 },
-      );
+      if (Date.now() - lastWatchTickAt >= 4_000) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => handlePosition(
+            pos.coords.latitude,
+            pos.coords.longitude,
+            pos.coords.speed,
+            pos.coords.accuracy,
+          ),
+          handleGPSError,
+          { enableHighAccuracy: true, maximumAge: 3000, timeout: 5000 },
+        );
+      }
     }
   };
 
   document.addEventListener('visibilitychange', visibilityHandler);
-
   return () => stopShieldGPS();
 }
 
@@ -656,9 +666,9 @@ export function stopShieldGPS(): void {
   prevPos = null;
 }
 
-// ─── 📡 إرسال الـ GPS للسيرفر مع حماية التكرار و Throttle للـ Disk IO ───
+// ─── 📡 إرسال الـ GPS للسيرفر بالتوازي مع حماية التكرار و Throttle للـ Disk IO ───
 let lastGpsSendTimestamp = 0;
-let isGpsSendingInProgress = false;
+let activeGpsSendCount = 0;
 
 async function sendGPSToServer(
   sessionId: string,
@@ -671,41 +681,47 @@ async function sendGPSToServer(
 ): Promise<void> {
   const now = Date.now();
   if (!forceImmediate) {
-    if (isGpsSendingInProgress || now - lastGpsSendTimestamp < GPS_SERVER_THROTTLE_MS) {
+    if (activeGpsSendCount > 0 || now - lastGpsSendTimestamp < GPS_SERVER_THROTTLE_MS) {
       return;
     }
   }
-  isGpsSendingInProgress = true;
+  activeGpsSendCount++;
   lastGpsSendTimestamp = now;
 
   try {
     const speedMs = (speed !== undefined && speed !== null && speed >= 0) ? speed : 0;
     const speedKmh = Math.round(speedMs * 3.6);
 
-    await supabase
-      .from('shield_sessions')
-      .update({
-        last_lat: lat,
-        last_lng: lng,
-        last_gps_at: new Date().toISOString(),
-        client_outside: isOutside,
-        last_speed: speedKmh,
-      })
-      .eq('session_id', sessionId)
-      .is('ended_at', null);
+    const updatePayload = {
+      last_lat: lat,
+      last_lng: lng,
+      last_gps_at: new Date().toISOString(),
+      client_outside: isOutside,
+      last_speed: speedKmh,
+    };
+
+    const updateQuery = shieldId
+      ? supabase.from('shield_sessions').update(updatePayload).eq('id', shieldId)
+      : supabase.from('shield_sessions').update(updatePayload).eq('session_id', sessionId).is('ended_at', null);
+
+    const tasks: PromiseLike<any>[] = [updateQuery];
 
     if (shieldId) {
-      await supabase.from('shield_locations').insert({
-        shield_id: shieldId,
-        lat,
-        lng,
-        speed_kmh: speedKmh,
-      }).catch(() => {});
+      tasks.push(
+        supabase.from('shield_locations').insert({
+          shield_id: shieldId,
+          lat,
+          lng,
+          speed_kmh: speedKmh,
+        })
+      );
     }
+
+    await Promise.all(tasks);
   } catch (err) {
     console.warn('⚠️ sendGPSToServer network issue:', err);
   } finally {
-    isGpsSendingInProgress = false;
+    activeGpsSendCount = Math.max(0, activeGpsSendCount - 1);
   }
 }
 
@@ -714,7 +730,6 @@ async function sendGPSToServer(
 // ═══════════════════════════════════════════════════════════
 export function disarmBackgroundAudio(): void {
   stopIntenseAlarm();
-
   if (prewarmedSirenAudio) {
     try {
       prewarmedSirenAudio.pause();
@@ -723,7 +738,6 @@ export function disarmBackgroundAudio(): void {
     } catch { /* ignore */ }
     prewarmedSirenAudio = null;
   }
-
   if (silentAudioEl) {
     try {
       silentAudioEl.pause();
@@ -731,24 +745,19 @@ export function disarmBackgroundAudio(): void {
     } catch { /* ignore */ }
     silentAudioEl = null;
   }
-
   if (keepAliveSource) {
     try { keepAliveSource.stop(); } catch { /* ignore */ }
     keepAliveSource = null;
   }
-
   if (wakeLockSentinel) {
     try { wakeLockSentinel.release(); } catch { /* ignore */ }
     wakeLockSentinel = null;
   }
-
   isAudioKeepAliveActive = false;
-
   if (sharedAudioCtx) {
     try { sharedAudioCtx.close().catch(() => {}); } catch { /* ignore */ }
     sharedAudioCtx = null;
   }
-
   if ('mediaSession' in navigator) {
     navigator.mediaSession.playbackState = 'none';
   }

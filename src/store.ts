@@ -15,6 +15,7 @@ export interface Garage {
   capacity: number;
   availableSpots: number;
   basePrice: number;
+  pricePerHour?: number;
   rating: number;
   valetName1: string;
   valetPassword1: string;
@@ -63,6 +64,7 @@ export interface ParkingSession {
   settled_at?: string;
   freeMinutesApplied?: number;
   isFirstFreeSession?: boolean;
+  isFreeSession?: boolean;
   // ═══ 🛡️ تكلفة الدرع للجلسة (0 = مجاني، 7 = مدفوع) ═══
   shieldCost?: number;
 }
@@ -205,7 +207,7 @@ export const calculateSessionPriceWithFreeGift = (
   };
 };
 
-// ===================== 🛡️ الحماية الأمنية =====================
+// ===================== 🛡️ الحماية الأمنية وسرعة المعالجة =====================
 const sanitizeInput = (input: string): string => {
   if (!input) return '';
   return input
@@ -242,55 +244,77 @@ const getCachedGarages = (): Garage[] => {
   return Array.isArray(cached) ? cached : [];
 };
 
+// ⚡ تحسين فائق السرعة لدالة getPlateFingerprint و normalizePhone مع كاش O(1) لمنع تجميد الموبايل والـ CPU
+const enToArMap: Record<string, string> = {
+  'A': 'ا', 'B': 'ب', 'C': 'س', 'D': 'د', 'E': 'ي', 'F': 'ف',
+  'G': 'ج', 'H': 'ه', 'I': 'ي', 'J': 'ج', 'K': 'ك', 'L': 'ل',
+  'M': 'م', 'N': 'ن', 'O': 'و', 'P': 'ب', 'Q': 'ق', 'R': 'ر',
+  'S': 'س', 'T': 'ط', 'U': 'و', 'V': 'ف', 'W': 'و', 'X': 'س',
+  'Y': 'ي', 'Z': 'ز'
+};
+
+const plateFingerprintCache = new Map<string, string>();
+const phoneNormalizeCache = new Map<string, string>();
+
 export const getPlateFingerprint = (plate?: any): string => {
   if (!plate) return '';
-  let str = String(plate).trim();
-  str = str.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '');
-  str = str.replace(/\u0640/g, '');
+  const raw = String(plate);
+  const cached = plateFingerprintCache.get(raw);
+  if (cached !== undefined) return cached;
+
+  let str = raw.trim();
+  if (!str) return '';
+
+  // إزالة المسافات الصفرية والتطويل والتشكيل
+  str = str.replace(/[\u200B-\u200D\uFEFF\u00A0\u0640]/g, '');
   str = str.normalize('NFKD');
   str = str.replace(/[\u064B-\u065F\u0670\u0654\u0655\u0653]/g, '');
-  const easternDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
-  const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '٧', '۸', '۹'];
-  for (let i = 0; i <= 9; i++) {
-    str = str.split(easternDigits[i]).join(String(i));
-    str = str.split(persianDigits[i]).join(String(i));
-  }
+
+  // تحويل الأرقام الشرقية والفارسية بمرور واحد O(N)
+  str = str.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (ch) => String(ch.charCodeAt(0) & 0x0f));
+
   str = str.toUpperCase();
-  const enToAr: Record<string, string> = {
-    'A': 'ا', 'B': 'ب', 'C': 'س', 'D': 'د', 'E': 'ي', 'F': 'ف',
-    'G': 'ج', 'H': 'ه', 'I': 'ي', 'J': 'ج', 'K': 'ك', 'L': 'ل',
-    'M': 'م', 'N': 'ن', 'O': 'و', 'P': 'ب', 'Q': 'ق', 'R': 'ر',
-    'S': 'س', 'T': 'ط', 'U': 'و', 'V': 'ف', 'W': 'و', 'X': 'س',
-    'Y': 'ي', 'Z': 'ز'
-  };
-  str = str.replace(/[A-Z]/g, (ch) => enToAr[ch] || '');
+  str = str.replace(/[A-Z]/g, (ch) => enToArMap[ch] || '');
   str = str.replace(/[\u0622\u0623\u0625\u0671\u0672\u0673\u0675\u0627]/g, 'ا');
   str = str.replace(/[ءئ]/g, 'ي').replace(/ؤ/g, 'و');
   str = str.replace(/ة/g, 'ه');
   str = str.replace(/[ىی]/g, 'ي');
   str = str.replace(/[کگ]/g, 'ك');
+
   const letters = str.replace(/[^ا-ي]/g, '');
   const digits = str.replace(/[^0-9]/g, '');
-  if (!letters && !digits) return '';
-  if (!letters) return `_${digits}`;
-  if (!digits) return `${letters}_`;
-  return `${letters}_${digits}`;
+
+  let result = '';
+  if (!letters && !digits) result = '';
+  else if (!letters) result = `_${digits}`;
+  else if (!digits) result = `${letters}_`;
+  else result = `${letters}_${digits}`;
+
+  if (plateFingerprintCache.size > 2500) plateFingerprintCache.clear();
+  plateFingerprintCache.set(raw, result);
+  return result;
 };
 
 export const normalizePlate = (plate?: any): string => getPlateFingerprint(plate);
 
 export const normalizePhone = (phone?: any): string => {
   if (!phone) return '';
-  let str = String(phone).trim();
-  const arabicNums = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
-  for (let i = 0; i < 10; i++) str = str.replace(new RegExp(arabicNums[i], 'g'), String(i));
+  const raw = String(phone);
+  const cached = phoneNormalizeCache.get(raw);
+  if (cached !== undefined) return cached;
+
+  let str = raw.trim();
+  str = str.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (ch) => String(ch.charCodeAt(0) & 0x0f));
   let clean = str.replace(/[^\d]/g, '');
   if (clean.startsWith('0020')) clean = clean.substring(4);
   else if (clean.startsWith('20')) clean = clean.substring(2);
   if ((clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('12') || clean.startsWith('15')) && clean.length === 10) {
     clean = '0' + clean;
   }
-  return clean.substring(0, 11);
+  const result = clean.substring(0, 11);
+  if (phoneNormalizeCache.size > 2500) phoneNormalizeCache.clear();
+  phoneNormalizeCache.set(raw, result);
+  return result;
 };
 
 const samePlate = (a?: string, b?: string) =>
@@ -309,7 +333,6 @@ const getMs = (value?: number | string) => {
 // ===================== ⏱️ مزامنة توقيت السيرفر =====================
 let serverTimeOffset = 0;
 let lastClockSyncTime = 0;
-
 export const syncServerClock = async () => {
   if (Date.now() - lastClockSyncTime < 15 * 60 * 1000 || !isSupabaseConfigured()) return;
   
@@ -332,7 +355,6 @@ export const syncServerClock = async () => {
     }
   } catch {}
 };
-
 export const getServerNow = (): number => Date.now() + serverTimeOffset;
 syncServerClock();
 
@@ -340,12 +362,16 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   const active = list.filter((s) => s.status === 'active');
   const completed = list.filter((s) => s.status === 'completed');
   const bestByPlateSource = new Map<string, ParkingSession>();
+
   for (const session of active) {
     const plate = normalizePlate(session.carPlate);
     if (!plate) continue;
     const key = `${plate}::${session.garageId}::${session.source}`;
     const existing = bestByPlateSource.get(key);
-    if (!existing) { bestByPlateSource.set(key, session); continue; }
+    if (!existing) { 
+      bestByPlateSource.set(key, session); 
+      continue; 
+    }
     if (session.synced && !existing.synced) {
       bestByPlateSource.set(key, session);
     } else if (!session.synced && existing.synced) {
@@ -358,6 +384,7 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
       }
     }
   }
+
   return [...Array.from(bestByPlateSource.values()), ...completed].sort((a, b) => {
     const aTime = a.status === 'active' ? getMs(a.startTime) : getMs(a.endTime);
     const bTime = b.status === 'active' ? getMs(b.startTime) : getMs(b.endTime);
@@ -367,6 +394,7 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
 
 const mapGarage = (r: any): Garage => {
   const isDirectory = r.garage_type === 'directory' || r.type === 'directory' || r.is_vip === false;
+  const resolvedBasePrice = Number(r.base_price || (isDirectory ? 20 : 15));
   return {
     id: r.id, 
     name: r.name, 
@@ -378,7 +406,8 @@ const mapGarage = (r: any): Garage => {
     lng: Number(r.lng) || 31.2357, 
     capacity: Number(r.capacity) || 50,
     availableSpots: Number(r.available_spots ?? r.capacity ?? 50), 
-    basePrice: Number(r.base_price || (isDirectory ? 20 : 15)),
+    basePrice: resolvedBasePrice,
+    pricePerHour: resolvedBasePrice,
     rating: Number(r.rating || 4.5),
     valetName1: r.valet_name_1 || '', valetPassword1: r.valet_password_1 || '',
     valetName2: r.valet_name_2 || '', valetPassword2: r.valet_password_2 || '',
@@ -429,7 +458,7 @@ const mapSession = (r: any): ParkingSession => {
     settled_at: r.settled_at || undefined,
     freeMinutesApplied: r.free_minutes_applied != null ? Number(r.free_minutes_applied) : 0,
     isFirstFreeSession: isFree,
-    // ═══ 🛡️ ═══
+    isFreeSession: isFree,
     shieldCost: r.shield_cost != null ? Number(r.shield_cost) : 0,
   };
 };
@@ -466,14 +495,60 @@ const mapMessage = (r: any): Message => ({
   repliedAt: r.replied_at ? new Date(r.replied_at).getTime() : undefined,
 });
 
+// ⚡ مقارنة هيكلية سريعة لمنع إعادة رسم الشاشات إذا لم تتغير البيانات
+const haveSessionsChanged = (prev: ParkingSession[], next: ParkingSession[]): boolean => {
+  if (prev.length !== next.length) return true;
+  for (let i = 0; i < prev.length; i++) {
+    const a = prev[i];
+    const b = next[i];
+    if (
+      a.id !== b.id ||
+      a.status !== b.status ||
+      a.totalPrice !== b.totalPrice ||
+      a.revenueConfirmed !== b.revenueConfirmed ||
+      a.addedBy !== b.addedBy ||
+      a.settled !== b.settled ||
+      a.shieldCost !== b.shieldCost ||
+      a.endTime !== b.endTime
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const haveTopUpsChanged = (prev: WalletTopUp[], next: WalletTopUp[]): boolean => {
+  if (prev.length !== next.length) return true;
+  for (let i = 0; i < prev.length; i++) {
+    if (prev[i].id !== next[i].id || prev[i].status !== next[i].status) return true;
+  }
+  return false;
+};
+
+const haveIncomingChanged = (prev: IncomingCar[], next: IncomingCar[]): boolean => {
+  if (prev.length !== next.length) return true;
+  for (let i = 0; i < prev.length; i++) {
+    if (prev[i].id !== next[i].id || prev[i].agreedPrice !== next[i].agreedPrice) return true;
+  }
+  return false;
+};
+
+const haveMessagesChanged = (prev: Message[], next: Message[]): boolean => {
+  if (prev.length !== next.length) return true;
+  for (let i = 0; i < prev.length; i++) {
+    if (prev[i].id !== next[i].id || prev[i].status !== next[i].status || prev[i].reply !== next[i].reply) return true;
+  }
+  return false;
+};
+
 const sessionStartLocks = new Set<string>();
 const sessionEndLocks = new Set<string>();
 let walletDeductLock = false;
 
-// ⏱️ نظام الخنق الذكي لمنع تكرار الـ fetchAll في أجزاء من الثانية
+// ⏱️ نظام الخنق لمنع تكرار الـ fetchAll
 let isFetchingAllInProgress = false;
 let lastFetchAllTime = 0;
-const FETCH_ALL_THROTTLE_MS = 3500; // منع التكرار خلال 3.5 ثانية
+const FETCH_ALL_THROTTLE_MS = 3500;
 
 const resolveAddedBy = (explicitAddedBy?: string): string => {
   const valetName = localStorage.getItem('valetName') || '';
@@ -499,16 +574,14 @@ interface AppState {
     wallet: number;
     hasUsedFreeSession?: boolean;
     bonusBalance?: number;
-    // ═══ 🛡️ حقول الدرع ═══
-    shieldActivated?: boolean;  // هل فعّل الدرع قبل كده (أول مرة مجاناً)
-    shieldPhone?: string;       // رقم موبايل الدرع (اختياري - غير رقم الحساب)
-    shieldCode?: string;        // كود الدرع الفريد (SH-XXXX)
+    shieldActivated?: boolean;
+    shieldPhone?: string;
+    shieldCode?: string;
   } | null;
   setCurrentUser: (u: any) => Promise<void>;
   deductWallet: (amount: number) => Promise<boolean>; 
   markFreeSessionUsed: () => Promise<void>;
   
-  // 💰 رسوم الحجز وتتبع الخصم اليومي (بحد أقصى خصمان في اليوم)
   hasPaidBookingFee: boolean;
   setHasPaidBookingFee: (paid: boolean) => void;
   dailyDeductionCount: number;
@@ -517,10 +590,11 @@ interface AppState {
   recordDeduction: () => void;
   chargeBookingFee: () => Promise<boolean>;
   refundBookingFee: () => Promise<void>;
-  // ═══ 🛡️ Actions الدرع ═══
+  
   activateShield: (phone: string) => Promise<{ success: boolean; code?: string; error?: string }>;
   chargeShieldFee: () => Promise<{ success: boolean; isFree: boolean; error?: string }>;
   updateSessionShieldCost: (sessionId: string, cost: number) => Promise<void>;
+  
   garages: Garage[];
   currentGarageId: string | null;
   setCurrentGarageId: (id: string | null) => void;
@@ -579,7 +653,6 @@ export const useStore = create<AppState>((set, get) => ({
       wallet: u.wallet ?? 0,
       hasUsedFreeSession: u.hasUsedFreeSession ?? false,
       bonusBalance: u.bonusBalance ?? 0,
-      // ═══ 🛡️ ═══
       shieldActivated: u.shieldActivated ?? false,
       shieldPhone: u.shieldPhone ?? '',
       shieldCode: u.shieldCode ?? '',
@@ -601,7 +674,6 @@ export const useStore = create<AppState>((set, get) => ({
           wallet: Number(existingUser.wallet || 0),
           hasUsedFreeSession: finalHasUsedFree,
           bonusBalance: Number(existingUser.bonus_balance ?? 0),
-          // ═══ 🛡️ ═══
           shieldActivated: existingUser.shield_activated === true,
           shieldPhone: existingUser.shield_phone || '',
           shieldCode: existingUser.shield_code || '',
@@ -628,7 +700,6 @@ export const useStore = create<AppState>((set, get) => ({
             wallet: Number(newUser.wallet),
             hasUsedFreeSession: false,
             bonusBalance: 0,
-            // ═══ 🛡️ ═══
             shieldActivated: false,
             shieldPhone: '',
             shieldCode: '',
@@ -661,7 +732,6 @@ export const useStore = create<AppState>((set, get) => ({
       walletDeductLock = false;
     }
   },
-  // 💰 حالة دفع رسوم الحجز وتتبع الحد اليومي (بحد أقصى خصمان في اليوم)
   hasPaidBookingFee: false,
   setHasPaidBookingFee: (paid) => set({ hasPaidBookingFee: paid }),
   dailyDeductionCount: (() => { try { const d = localStorage.getItem('dailyDeductionDate'); const c = localStorage.getItem('dailyDeductionCount'); const today = new Date().toLocaleDateString('en-CA'); if (d === today && c) return Number(c); return 0; } catch { return 0; } })(),
@@ -691,7 +761,6 @@ export const useStore = create<AppState>((set, get) => ({
   chargeBookingFee: async () => {
     const user = get().currentUser;
     if (!user) return false;
-    // 🌟 شرط الحد الأقصى: إذا خُصم مرتان اليوم يتم الحجز مجاناً!
     if (get().getDailyDeductionCount() >= 2) {
       set({ hasPaidBookingFee: true });
       return true;
@@ -729,10 +798,6 @@ export const useStore = create<AppState>((set, get) => ({
       await supabase.from('users').update({ has_used_free_session: true }).eq('phone', user.phone);
     }
   },
-  // ═══════════════════════════════════════════════════════════════
-  // 🛡️ تفعيل الدرع (أول مرة لهذه اللوحة = مجاناً)
-  // 🔒 التحقق بالبصمة الموحدة للوحة - منع استغلال رقم تليفون مختلف
-  // ═══════════════════════════════════════════════════════════════
   activateShield: async (phone) => {
     const user = get().currentUser;
     if (!user) return { success: false, error: 'لم يتم تسجيل الدخول' };
@@ -740,7 +805,6 @@ export const useStore = create<AppState>((set, get) => ({
     if (cleanPhone.length !== 11) {
       return { success: false, error: 'رقم موبايل غير صحيح' };
     }
-    // 🔍 التحقق بالبصمة الموحدة - لو اللوحة فعّلت قبل كده، نرجّع الكود القديم
     if (isSupabaseConfigured() && user.carPlate) {
       try {
         const { data: existing } = await supabase
@@ -751,7 +815,6 @@ export const useStore = create<AppState>((set, get) => ({
           .limit(1)
           .maybeSingle();
         if (existing?.shield_code) {
-          // اللوحة دي فعّلت قبل كده → نرجّع الكود الموجود مش نولّد جديد
           const updated = {
             ...user,
             shieldActivated: true,
@@ -760,7 +823,6 @@ export const useStore = create<AppState>((set, get) => ({
           };
           set({ currentUser: updated });
           safeSetStorage('currentUser', updated);
-          // تحديث رقم الدرع في الداتابيز للحساب الحالي (عشان SMS الطوارئ)
           try {
             await supabase
               .from('users')
@@ -777,7 +839,6 @@ export const useStore = create<AppState>((set, get) => ({
         console.error('Shield plate lookup error:', err);
       }
     }
-    // توليد كود فريد جديد (أول مرة فعلاً لهذه اللوحة)
     const shieldCode = `SH-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
     const updated = {
       ...user,
@@ -803,14 +864,9 @@ export const useStore = create<AppState>((set, get) => ({
     }
     return { success: true, code: shieldCode };
   },
-  // ═══════════════════════════════════════════════════════════════
-  // 🛡️ خصم رسوم الدرع (7 ج - لا يسترد)
-  // 🔒 التحقق بالبصمة الموحدة للوحة - منع التحايل بتغيير رقم التليفون
-  // ═══════════════════════════════════════════════════════════════
   chargeShieldFee: async () => {
     const user = get().currentUser;
     if (!user) return { success: false, isFree: false, error: 'لم يتم تسجيل الدخول' };
-    // 🔍 التحقق بالبصمة الموحدة - لو اللوحة فعّلت الدرع قبل كده (أي رقم تليفون) → مش مجاني
     let alreadyUsed = user.shieldActivated === true;
     if (!alreadyUsed && isSupabaseConfigured() && user.carPlate) {
       try {
@@ -825,11 +881,9 @@ export const useStore = create<AppState>((set, get) => ({
         console.error('Shield plate check error:', err);
       }
     }
-    // أول مرة لهذه اللوحة = مجاناً
     if (!alreadyUsed) {
       return { success: true, isFree: true };
     }
-    // مش أول مرة = خصم 7 ج
     if ((user.wallet || 0) < SHIELD_COST) {
       return { success: false, isFree: false, error: 'الرصيد غير كافي' };
     }
@@ -839,9 +893,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
     return { success: false, isFree: false, error: 'فشل الخصم' };
   },
-  // ═══════════════════════════════════════════════════════════════
-  // 🛡️ حفظ تكلفة الدرع في الجلسة (0 = مجاني، 7 = مدفوع)
-  // ═══════════════════════════════════════════════════════════════
   updateSessionShieldCost: async (sessionId, cost) => {
     set((st) => ({
       sessions: st.sessions.map((s) =>
@@ -894,30 +945,27 @@ export const useStore = create<AppState>((set, get) => ({
   },
   fetchAll: async () => {
     if (!isSupabaseConfigured()) return;
-
-    // 🛑 1. فحص الخنق: لو فيه طلب شغال حالياً أو عدى أقل من 3.5 ثوانٍ، تجاهل الطلب فوراً
     const now = Date.now();
     if (isFetchingAllInProgress || (now - lastFetchAllTime < FETCH_ALL_THROTTLE_MS)) {
       return;
     }
-
     isFetchingAllInProgress = true;
     lastFetchAllTime = now;
-
     try {
       let currentGarages = get().garages;
+      let garagesUpdated = false;
 
-      // 🏢 2. جلب الجراجات النشطة فقط لتقليل الحمل على السيرفر
+      // 🏢 2. جلب الجراجات بذكاء وتجنب التحديث العشوائي
       if (currentGarages.length === 0) {
         const fullRes = await supabase
           .from('garages')
           .select('*')
           .eq('is_active', true)
           .limit(1000);
-
         if (fullRes.data?.length) {
           currentGarages = fullRes.data.map(mapGarage);
           safeSetStorage('cached_garages_v2', currentGarages);
+          garagesUpdated = true;
         }
       } else {
         const lightRes = await supabase
@@ -925,12 +973,10 @@ export const useStore = create<AppState>((set, get) => ({
           .select('id, available_spots, base_price, pending_price_votes, daily_price, monthly_price, is_active, payment_mode, garage_type, type, is_vip')
           .eq('is_active', true)
           .limit(1000);
-
         if (lightRes.data) {
           const cachedIds = new Set(currentGarages.map((g) => g.id));
           const newIds = lightRes.data.filter((r: any) => !cachedIds.has(r.id)).map((r: any) => r.id);
           let newGaragesFull: Garage[] = [];
-
           if (newIds.length > 0) {
             const newRes = await supabase
               .from('garages')
@@ -938,9 +984,8 @@ export const useStore = create<AppState>((set, get) => ({
               .in('id', newIds);
             if (newRes.data) newGaragesFull = newRes.data.map(mapGarage);
           }
-
           const lightMap = new Map(lightRes.data.map((r: any) => [r.id, r]));
-          currentGarages = currentGarages
+          const nextGarages = currentGarages
             .filter((g) => {
               const update: any = lightMap.get(g.id);
               return !update || update.is_active !== false;
@@ -949,10 +994,16 @@ export const useStore = create<AppState>((set, get) => ({
               const update: any = lightMap.get(g.id);
               if (update) {
                 const isDirectory = update.garage_type === 'directory' || update.type === 'directory' || update.is_vip === false;
+                const nextSpots = update.available_spots ?? g.availableSpots;
+                const nextBasePrice = Number(update.base_price || g.basePrice);
+                if (g.availableSpots !== nextSpots || g.basePrice !== nextBasePrice) {
+                  garagesUpdated = true;
+                }
                 return {
                   ...g,
-                  availableSpots: update.available_spots ?? g.availableSpots,
-                  basePrice: Number(update.base_price || g.basePrice),
+                  availableSpots: nextSpots,
+                  basePrice: nextBasePrice,
+                  pricePerHour: nextBasePrice,
                   pendingPriceVotes: update.pending_price_votes != null ? Number(update.pending_price_votes) : g.pendingPriceVotes,
                   dailyPrice: update.daily_price != null ? Number(update.daily_price) : g.dailyPrice,
                   monthlyPrice: update.monthly_price != null ? Number(update.monthly_price) : g.monthlyPrice,
@@ -964,67 +1015,100 @@ export const useStore = create<AppState>((set, get) => ({
               return g;
             });
 
-          if (newGaragesFull.length > 0) {
-            currentGarages = [...currentGarages, ...newGaragesFull];
+          if (newGaragesFull.length > 0 || nextGarages.length !== currentGarages.length) {
+            currentGarages = [...nextGarages, ...newGaragesFull];
+            garagesUpdated = true;
+          } else if (garagesUpdated) {
+            currentGarages = nextGarages;
           }
-          safeSetStorage('cached_garages_v2', currentGarages);
+          if (garagesUpdated) safeSetStorage('cached_garages_v2', currentGarages);
         }
       }
 
-      // ⚡ 3. تخصيص الاستعلامات حسب الدور (Role-Based Query Scoping)
+      // ⚡ 3. تخصيص الاستعلامات حسب الدور لمنع الحمل الزائد
       const view = get().view;
       const user = get().currentUser;
       const currentGarageId = get().currentGarageId;
 
-      let sessionsQuery = supabase.from('sessions').select('*').order('created_at', { ascending: false }).limit(30);
-      let topupsQuery = supabase.from('wallet_topups').select('*').order('created_at', { ascending: false }).limit(10);
-      let incomingQuery = supabase.from('incoming_cars').select('*').eq('status', 'coming').order('created_at', { ascending: false }).limit(30);
-      let messagesQuery = supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(10);
+      // 🛑 لو المستخدم مش مسجل دخول وهو في وضع user، لا نرهق السيرفر بالبحث عن جلسات عامة لا تخصه
+      if (view === 'user' && !user) {
+        if (garagesUpdated) {
+          set({ garages: currentGarages });
+        }
+        return;
+      }
+
+      let sessionsPromise: PromiseLike<{ data: any[] | null }>;
+      let topupsPromise: PromiseLike<{ data: any[] | null }>;
+      let incomingPromise: PromiseLike<{ data: any[] | null }>;
+      let messagesPromise: PromiseLike<{ data: any[] | null }>;
 
       if (view === 'user' && user) {
         const userPhone = user.phone ? normalizePhone(user.phone) : '';
         const userPlate = user.carPlate ? normalizePlate(user.carPlate) : '';
-        
+
+        let sQuery = supabase.from('sessions').select('*').order('created_at', { ascending: false }).limit(30);
+        let icQuery = supabase.from('incoming_cars').select('*').eq('status', 'coming').order('created_at', { ascending: false }).limit(15);
+
         if (userPhone && userPlate) {
-          sessionsQuery = sessionsQuery.or(`customer_phone.eq.${userPhone},car_plate.eq.${userPlate}`);
-          incomingQuery = incomingQuery.or(`customer_phone.eq.${userPhone},car_plate.eq.${userPlate}`);
+          sQuery = sQuery.or(`customer_phone.eq.${userPhone},car_plate.eq.${userPlate}`);
+          icQuery = icQuery.or(`customer_phone.eq.${userPhone},car_plate.eq.${userPlate}`);
         } else if (userPhone) {
-          sessionsQuery = sessionsQuery.eq('customer_phone', userPhone);
-          incomingQuery = incomingQuery.eq('customer_phone', userPhone);
+          sQuery = sQuery.eq('customer_phone', userPhone);
+          icQuery = icQuery.eq('customer_phone', userPhone);
         } else if (userPlate) {
-          sessionsQuery = sessionsQuery.eq('car_plate', userPlate);
-          incomingQuery = incomingQuery.eq('car_plate', userPlate);
+          sQuery = sQuery.eq('car_plate', userPlate);
+          icQuery = icQuery.eq('car_plate', userPlate);
         }
-        if (userPhone) {
-          topupsQuery = topupsQuery.eq('user_phone', userPhone);
-          messagesQuery = messagesQuery.eq('user_phone', userPhone);
-        }
+
+        sessionsPromise = sQuery;
+        incomingPromise = icQuery;
+        topupsPromise = userPhone
+          ? supabase.from('wallet_topups').select('*').eq('user_phone', userPhone).order('created_at', { ascending: false }).limit(10)
+          : Promise.resolve({ data: null });
+        messagesPromise = userPhone
+          ? supabase.from('messages').select('*').eq('user_phone', userPhone).order('created_at', { ascending: false }).limit(10)
+          : Promise.resolve({ data: null });
       } else if (view === 'garage' && currentGarageId) {
-        sessionsQuery = sessionsQuery.eq('garage_id', currentGarageId).limit(50);
-        incomingQuery = incomingQuery.eq('garage_id', currentGarageId);
-        topupsQuery = topupsQuery.limit(0); 
-        messagesQuery = messagesQuery.limit(0); 
+        sessionsPromise = supabase.from('sessions').select('*').eq('garage_id', currentGarageId).order('created_at', { ascending: false }).limit(200);
+        incomingPromise = supabase.from('incoming_cars').select('*').eq('status', 'coming').eq('garage_id', currentGarageId).order('created_at', { ascending: false }).limit(30);
+        // لا نرسل طلبات شبكية لـ wallet_topups و messages في وضع الجراج
+        topupsPromise = Promise.resolve({ data: null });
+        messagesPromise = Promise.resolve({ data: null });
+      } else {
+        // وضع الأدمن
+        sessionsPromise = supabase.from('sessions').select('*').order('created_at', { ascending: false }).limit(500);
+        topupsPromise = supabase.from('wallet_topups').select('*').order('created_at', { ascending: false }).limit(50);
+        incomingPromise = supabase.from('incoming_cars').select('*').eq('status', 'coming').order('created_at', { ascending: false }).limit(50);
+        messagesPromise = supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(50);
       }
 
       const [activeSessionsRes, w, ic, msgs] = await Promise.all([
-        sessionsQuery,
-        topupsQuery,
-        incomingQuery,
-        messagesQuery,
+        sessionsPromise,
+        topupsPromise,
+        incomingPromise,
+        messagesPromise,
       ]);
 
-      const supabaseSessions = activeSessionsRes.data ? activeSessionsRes.data.map(mapSession) : [];
+      const supabaseSessions = activeSessionsRes.data ? activeSessionsRes.data.map(mapSession) : get().sessions;
       const finalSessions = dedupeActiveSessions(supabaseSessions);
+      const nextTopUps = w.data ? w.data.map(mapTopUp) : get().walletTopUps;
+      const nextIncoming = ic.data ? ic.data.map(mapIncoming).filter((c) => c.status === 'coming') : get().incomingCars;
+      const nextMessages = msgs.data ? msgs.data.map(mapMessage) : get().messages;
 
-      set({
-        garages: currentGarages,
-        sessions: finalSessions,
-        walletTopUps: w.data ? w.data.map(mapTopUp) : get().walletTopUps,
-        incomingCars: ic.data ? ic.data.map(mapIncoming).filter((c) => c.status === 'coming') : get().incomingCars,
-        messages: msgs.data ? msgs.data.map(mapMessage) : get().messages,
-      });
+      // ⚡ تحديث الـ State فقط للأجزاء التي تغيرت فعلياً لمنع إعادة الرسم العشوائية
+      const statePatch: Partial<AppState> = {};
+      if (garagesUpdated) statePatch.garages = currentGarages;
+      if (haveSessionsChanged(get().sessions, finalSessions)) statePatch.sessions = finalSessions;
+      if (w.data && haveTopUpsChanged(get().walletTopUps, nextTopUps)) statePatch.walletTopUps = nextTopUps;
+      if (ic.data && haveIncomingChanged(get().incomingCars, nextIncoming)) statePatch.incomingCars = nextIncoming;
+      if (msgs.data && haveMessagesChanged(get().messages, nextMessages)) statePatch.messages = nextMessages;
 
-      // 💳 4. تحديث بيانات المستخدم
+      if (Object.keys(statePatch).length > 0) {
+        set(statePatch);
+      }
+
+      // 💳 4. تحديث بيانات المستخدم فقط عند وجود تغير حقيقي
       const currentUserInStore = get().currentUser;
       if (currentUserInStore?.phone) {
         const { data: userData } = await supabase
@@ -1032,19 +1116,34 @@ export const useStore = create<AppState>((set, get) => ({
           .select('wallet, has_used_free_session, bonus_balance, shield_activated, shield_phone, shield_code')
           .eq('phone', currentUserInStore.phone)
           .maybeSingle();
-
         if (userData) {
-          const updated = {
-            ...currentUserInStore,
-            wallet: Number(userData.wallet || 0),
-            hasUsedFreeSession: userData.has_used_free_session ?? currentUserInStore.hasUsedFreeSession,
-            bonusBalance: Number(userData.bonus_balance ?? 0),
-            shieldActivated: userData.shield_activated === true,
-            shieldPhone: userData.shield_phone || currentUserInStore.shieldPhone || '',
-            shieldCode: userData.shield_code || currentUserInStore.shieldCode || '',
-          };
-          set({ currentUser: updated });
-          safeSetStorage('currentUser', updated);
+          const nextWallet = Number(userData.wallet || 0);
+          const nextHasUsedFree = userData.has_used_free_session ?? currentUserInStore.hasUsedFreeSession;
+          const nextBonus = Number(userData.bonus_balance ?? 0);
+          const nextShieldAct = userData.shield_activated === true;
+          const nextShieldPhone = userData.shield_phone || currentUserInStore.shieldPhone || '';
+          const nextShieldCode = userData.shield_code || currentUserInStore.shieldCode || '';
+
+          if (
+            currentUserInStore.wallet !== nextWallet ||
+            currentUserInStore.hasUsedFreeSession !== nextHasUsedFree ||
+            currentUserInStore.bonusBalance !== nextBonus ||
+            currentUserInStore.shieldActivated !== nextShieldAct ||
+            currentUserInStore.shieldPhone !== nextShieldPhone ||
+            currentUserInStore.shieldCode !== nextShieldCode
+          ) {
+            const updated = {
+              ...currentUserInStore,
+              wallet: nextWallet,
+              hasUsedFreeSession: nextHasUsedFree,
+              bonusBalance: nextBonus,
+              shieldActivated: nextShieldAct,
+              shieldPhone: nextShieldPhone,
+              shieldCode: nextShieldCode,
+            };
+            set({ currentUser: updated });
+            safeSetStorage('currentUser', updated);
+          }
         }
       }
     } catch (err) {
@@ -1099,7 +1198,11 @@ export const useStore = create<AppState>((set, get) => ({
   },
   updateGarage: async (id, updates) => {
     set((st) => {
-      const updated = st.garages.map((g) => g.id === id ? { ...g, ...updates } : g);
+      const updated = st.garages.map((g) => {
+        if (g.id !== id) return g;
+        const nextBase = updates.basePrice !== undefined ? Number(updates.basePrice) : g.basePrice;
+        return { ...g, ...updates, basePrice: nextBase, pricePerHour: nextBase };
+      });
       safeSetStorage('cached_garages_v2', updated);
       return { garages: updated };
     });
@@ -1185,6 +1288,7 @@ export const useStore = create<AppState>((set, get) => ({
           return {
             ...g,
             basePrice: finalBasePrice,
+            pricePerHour: finalBasePrice,
             dailyPrice: g.priceType === 'daily' ? finalBasePrice : g.dailyPrice,
           };
         }),
@@ -1235,9 +1339,10 @@ export const useStore = create<AppState>((set, get) => ({
       const isAppBooking = s.source === 'app';
       const cleanPhone = s.customerPhone ? normalizePhone(s.customerPhone) : '';
       let eligibleForFree = false;
+      const explicitFreeFlag = s.isFirstFreeSession ?? (s as any).isFreeSession;
       if (isAppBooking) {
-        if (s.isFirstFreeSession !== undefined) {
-          eligibleForFree = Boolean(s.isFirstFreeSession);
+        if (explicitFreeFlag !== undefined) {
+          eligibleForFree = Boolean(explicitFreeFlag);
         } else if (isSupabaseConfigured() && (cleanPhone || normalizedPlate)) {
           try {
             const now = new Date(getServerNow());
@@ -1281,10 +1386,11 @@ export const useStore = create<AppState>((set, get) => ({
         netRevenue: 0,
         settled: false,
         isFirstFreeSession: eligibleForFree,
+        isFreeSession: eligibleForFree,
         freeMinutesApplied: 0,
         shieldCost: (s as any).shieldCost ?? 0, 
       };
-      set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]).slice(0, 50) }));
+      set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]) }));
       await get().adjustGarageSpots(s.garageId, -1);
       if (isSupabaseConfigured()) {
         const { data } = await supabase.from('sessions').insert({
@@ -1294,7 +1400,7 @@ export const useStore = create<AppState>((set, get) => ({
           start_time: startTimeISO,
           status: s.status,
           source: s.source,
-          agreed_price: s.agreedPrice ?? null,
+          agreed_price: s.agreedPrice != null ? Number(s.agreedPrice) : null,
           revenue_confirmed: false,
           added_by: addedByValue,
           customer_phone: cleanPhone || null,
@@ -1328,9 +1434,11 @@ export const useStore = create<AppState>((set, get) => ({
     if (sessionEndLocks.has(lockKey)) return;
     sessionEndLocks.add(lockKey);
     try {
-      const safeTotalPrice = Number(totalPrice) > 0 ? Number(totalPrice) : 0;
+      const safeTotalPrice = Number.isFinite(Number(totalPrice)) && Number(totalPrice) > 0
+        ? Math.round(Number(totalPrice) * 100) / 100
+        : 0;
       const garage = get().garages.find((g) => g.id === session.garageId);
-      const commissionRate = garage?.commissionRate ?? 10;
+      const commissionRate = Number(garage?.commissionRate ?? 10);
       const isAppSession = session.source === 'app';
       const commissionAmount = isAppSession ? Math.round(((safeTotalPrice * commissionRate) / 100) * 100) / 100 : 0;
       const netRevenue = Math.round((safeTotalPrice - commissionAmount) * 100) / 100;
@@ -1351,10 +1459,10 @@ export const useStore = create<AppState>((set, get) => ({
       };
       set((st) => ({ sessions: st.sessions.map((s) => (s.id === id ? endedSession : s)) }));
       await get().adjustGarageSpots(session.garageId, +1);
-      if (paymentMethod === 'wallet' && isAppSession) {
+      if (paymentMethod === 'wallet' && isAppSession && safeTotalPrice > 0) {
         await get().deductWallet(safeTotalPrice);
       }
-      if (session.isFirstFreeSession) {
+      if (session.isFirstFreeSession || session.isFreeSession) {
         await get().markFreeSessionUsed();
       }
       if (isSupabaseConfigured()) {

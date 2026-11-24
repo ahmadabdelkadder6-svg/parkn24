@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState, useMemo, lazy, Suspense, Component, ErrorInfo, ReactNode, memo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Toaster } from 'react-hot-toast';
-import toast from 'react-hot-toast';
+import { Toaster, toast } from 'react-hot-toast';
 import { useStore, setupRealtime, normalizePlate, normalizePhone, getServerNow } from './store';
 import { cn } from './utils/cn';
 
-// Screens
+// Lazy loading screens
 import AuthGate from './components/AuthGate';
 import SplashScreen from './components/SplashScreen';
 import RegisterScreen from './components/RegisterScreen';
@@ -26,24 +25,15 @@ const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 
 let isRealtimeInitialized = false;
 
-const toMs = (value: any): number => {
-  if (!value) return 0;
-  if (typeof value === 'number') {
-    return value < 1_000_000_000_000 ? value * 1000 : value;
-  }
-  const parsed = new Date(value).getTime();
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
 const safeLocalStorage = {
   getItem: (key: string): string | null => {
     try { return localStorage.getItem(key); } catch { return null; }
   },
   setItem: (key: string, value: string): void => {
-    try { localStorage.setItem(key, value); } catch { console.warn('LocalStorage is blocked or full'); }
+    try { localStorage.setItem(key, value); } catch {}
   },
   removeItem: (key: string): void => {
-    try { localStorage.removeItem(key); } catch { /* ignore */ }
+    try { localStorage.removeItem(key); } catch {}
   }
 };
 
@@ -51,21 +41,20 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
   public state = { hasError: false };
   public static getDerivedStateFromError(_: Error) { return { hasError: true }; }
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('App Error Boundary caught:', error, errorInfo);
+    console.error('App Crash:', error, errorInfo);
   }
   public render() {
     if (this.state.hasError) {
       return (
         <div className="h-screen w-screen bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center" dir="rtl">
           <div className="text-5xl mb-4">🚗</div>
-          <h2 className="text-xl font-black mb-2 font-sans">تحديث لحظي ذكي</h2>
-          <p className="text-slate-400 text-xs font-bold mb-6">حدثنا بعض الخصائص، اضغط بالأسفل للعودة فوراً لمتابعة حجزك</p>
+          <h2 className="text-xl font-black mb-2">تحديث لحظي ذكي</h2>
+          <p className="text-slate-400 text-xs mb-6">حدث خطأ غير متوقع، اضغط لإعادة التحميل</p>
           <button
             onClick={() => { this.setState({ hasError: false }); window.location.href = '/'; }}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-black px-8 py-4 rounded-2xl text-sm active:scale-95 transition-all shadow-lg"
-            style={{ boxShadow: '0 6px 20px rgba(37,99,235,0.35)' }}
+            className="bg-blue-600 text-white font-black px-8 py-4 rounded-2xl text-sm active:scale-95 transition-all shadow-lg"
           >
-            🔄 إعادة تحميل التطبيق ومتابعة الحجز
+            🔄 إعادة التحميل
           </button>
         </div>
       );
@@ -74,335 +63,43 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { hasError: bool
   }
 }
 
-interface ParkLandingProps { onEnter: () => void; }
-
-const ParkLanding = memo(function ParkLanding({ onEnter }: ParkLandingProps) {
-  const [isExiting, setIsExiting] = useState(false);
-  const handleEnter = () => { setIsExiting(true); const timer = setTimeout(() => onEnter(), 500); return () => clearTimeout(timer); };
-  const BRAND_BLUE = '#1656b8';
-  const BRAND_GREEN = '#8cc63f';
-  const CAR_IMAGE_SRC = '/hero-car.webp?v=999';
-
-  return (
-    <AnimatePresence>
-      {!isExiting && (
-        <motion.div
-          initial={{ opacity: 1 }}
-          exit={{ opacity: 0, scale: 1.03, filter: 'blur(10px)' }}
-          transition={{ duration: 0.5, ease: 'easeInOut' }}
-          className="fixed inset-0 z-[999999] flex flex-col justify-between overflow-hidden bg-slate-950"
-          style={{ height: '100dvh' }}
-        >
-          <style>{`
-            @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter+Tight:wght@400;500;600;700;800;900&display=swap');
-            .hero-block { animation: rise-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
-            .delay-1 { animation-delay: 0.1s; }
-            .delay-2 { animation-delay: 0.2s; }
-            .delay-3 { animation-delay: 0.3s; }
-            @keyframes rise-up { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
-            .btn-brand-glow {
-              display: inline-flex; align-items: center; justify-content: space-between; gap: 16px;
-              padding: 0.8em 1.2em 0.8em 2.2em; border-radius: 999px;
-              background: linear-gradient(135deg, #1d68dc 0%, #1656b8 100%);
-              color: #fff !important; font-weight: 900; font-family: 'Cairo', sans-serif;
-              box-shadow: 0 12px 35px rgba(22, 86, 184, 0.45);
-              transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-              border: 1px solid rgba(255, 255, 255, 0.25); cursor: pointer;
-            }
-            .btn-brand-glow:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 16px 45px rgba(22, 86, 184, 0.6); }
-            .btn-brand-glow:active { transform: scale(0.97); }
-            .btn-glass-skip {
-              display: inline-flex; align-items: center; gap: 6px; padding: 0.5em 1.2em;
-              border-radius: 999px; background: rgba(15, 23, 42, 0.6);
-              backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-              color: #f8fafc !important; font-family: 'Cairo', sans-serif; font-weight: 800; font-size: 13px;
-              box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.15);
-              transition: all 0.2s ease; cursor: pointer;
-            }
-            .btn-glass-skip:hover { background: rgba(255, 255, 255, 0.2); color: #ffffff !important; }
-          `}</style>
-          <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-            <img src={CAR_IMAGE_SRC} alt="Park'n 24 Car" loading="eager" fetchPriority="high" className="w-full h-full object-cover object-center" style={{ filter: 'brightness(0.95) contrast(1.05)' }} />
-            <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(10, 18, 36, 0.88) 0%, rgba(10, 18, 36, 0.45) 40%, rgba(10, 18, 36, 0.75) 75%, rgba(10, 18, 36, 0.96) 100%)' }} />
-          </div>
-          <motion.nav initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: 'easeOut' }} className="w-full flex items-center justify-between px-6 py-6 z-20 relative" style={{ direction: 'ltr' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.15' }}>
-              <span style={{ fontFamily: "'Cairo', sans-serif", fontSize: '16px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.01em' }}>بركن <span style={{ color: BRAND_GREEN }}>24</span></span>
-              <span style={{ fontFamily: "'Inter Tight', sans-serif", fontSize: '18px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.02em' }}>Park'n <span style={{ color: BRAND_GREEN }}>24</span></span>
-            </div>
-            <button onClick={handleEnter} className="btn-glass-skip" style={{ direction: 'rtl' }}>تخطي ✕</button>
-          </motion.nav>
-          <div className="px-6 pb-10 z-20 relative flex flex-col justify-end max-w-lg mx-auto w-full" style={{ direction: 'rtl' }}>
-            <h1 className="hero-block delay-1" style={{ fontFamily: "'Cairo', sans-serif", fontSize: 'clamp(2.1rem, 7vw, 3.4rem)', fontWeight: 900, lineHeight: 1.15, color: '#ffffff', textShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
-              انسى لفة كل يوم..<br /><span style={{ color: '#60a5fa' }}>ركنتك مضمونة</span><br /><span style={{ color: BRAND_GREEN }}>قبل ما توصل!</span>
-            </h1>
-            <p className="hero-block delay-2" style={{ marginTop: '14px', fontFamily: "'Cairo', sans-serif", fontSize: '15px', lineHeight: 1.6, color: '#cbd5e1', fontWeight: 600, textShadow: '0 2px 10px rgba(0,0,0,0.4)', maxWidth: '380px' }}>
-              مع Park'n 24، حدد وجهتك، اضمن مكانك في أقرب جراج، ووفر وقتك وبنزينك بضغطة زر واحدة.
-            </p>
-            <div className="hero-block delay-3" style={{ marginTop: '26px' }}>
-              <button onClick={handleEnter} className="btn-brand-glow w-full sm:w-auto" style={{ fontSize: '16px' }}>
-                <span>احجز ركنتك الآن 🚀</span>
-                <span style={{ display: 'grid', placeItems: 'center', width: '2.4em', height: '2.4em', borderRadius: '999px', background: 'rgba(255, 255, 255, 0.2)', backdropFilter: 'blur(8px)', color: '#fff' }}>
-                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '1.2em', height: '1.2em', transform: 'scaleX(-1)' }}><path d="M4 10h12M11 5l5 5-5 5" /></svg>
-                </span>
-              </button>
-            </div>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-});
-
-const VALID_SCREENS = [
-  'splash',
-  'list',
-  'waiting',
-  'navigation',
-  'session',
-  'lastSession',
-  'chat',
-] as const;
-
-export default function App() {
-  const {
-    view,
-    setView,
-    screen,
-    setScreen,
-    currentUser,
-    currentGarageId,
-    setCurrentGarageId,
-    sessions,
-    selectedGarageId,
-    setSelectedGarageId,
-    incomingCars,
-    fetchAll,
-    acknowledgedSessionIds,
-  } = useStore();
+// 🎯 مكوّن المراقبة الخفي: يعمل بـ Selectors ذرية بدون التأثير على أداء الواجهات
+const SessionWatcher = memo(function SessionWatcher({ dataLoaded }: { dataLoaded: boolean }) {
+  const view = useStore((s) => s.view);
+  const screen = useStore((s) => s.screen);
+  const setScreen = useStore((s) => s.setScreen);
+  const currentUser = useStore((s) => s.currentUser);
+  const sessions = useStore((s) => s.sessions);
+  const incomingCars = useStore((s) => s.incomingCars);
+  const acknowledgedSessionIds = useStore((s) => s.acknowledgedSessionIds);
+  const setSelectedGarageId = useStore((s) => s.setSelectedGarageId);
 
   const prevActiveSessionRef = useRef<string | null>(null);
-  const [dataLoaded, setDataLoaded] = useState(false);
-  const initialLoadDone = useRef(false);
-
   const noSessionCountRef = useRef(0);
   const lastActiveTimeRef = useRef(0);
   const sessionEndToastShown = useRef(false);
   const sessionTransitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [adminAccess, setAdminAccess] = useState(false);
-
-  const [showLanding, setShowLanding] = useState(() => {
-    const today = new Date().toDateString();
-    const lastShownDate = safeLocalStorage.getItem('parkn24_landing_last_date');
-    return lastShownDate !== today;
-  });
-
-  const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
-
-  const handleEnterLanding = () => {
-    const today = new Date().toDateString();
-    safeLocalStorage.setItem('parkn24_landing_last_date', today);
-    setShowLanding(false);
-  };
-
+  // 1. مراقبة الجلسات وتوجيه المستخدم التلقائي
   useEffect(() => {
-    if (window.location.pathname === '/admin' || window.location.hash === '#admin') {
-      setAdminAccess(true);
-      safeLocalStorage.setItem('adminAccess', 'true');
-    }
-    if (safeLocalStorage.getItem('adminAccess') === 'true') {
-      setAdminAccess(true);
-    }
-  }, []);
-
-  const safeScreen = useMemo(() => {
-    if (!VALID_SCREENS.includes(screen as any)) {
-      return currentUser ? 'list' : 'splash';
-    }
-    return screen;
-  }, [screen, currentUser]);
-
-  useEffect(() => {
-    if (!dataLoaded) return;
-    if (view !== 'user') return;
-    if (safeScreen !== screen) {
-      setScreen(safeScreen as typeof screen);
-    }
-  }, [safeScreen, screen, setScreen, dataLoaded, view]);
-
-  // ✅ حفظ الشاشة والجراج المختار في localStorage لمقاومة الـ Refresh
-  useEffect(() => {
-    if (view === 'user' && screen) {
-      safeLocalStorage.setItem('appScreen', screen);
-    }
-    if (selectedGarageId) {
-      safeLocalStorage.setItem('selectedGarageId', selectedGarageId);
-    }
-  }, [screen, selectedGarageId, view]);
-
-  useEffect(() => {
-    const init = async () => {
-      const justInstalled = safeLocalStorage.getItem('pwaJustInstalled') === 'true';
-      const isStandalone =
-        window.matchMedia('(display-mode: standalone)').matches ||
-        (window.navigator as any).standalone === true;
-
-      if (justInstalled && isStandalone) {
-        safeLocalStorage.removeItem('pwaJustInstalled');
-        safeLocalStorage.setItem('appView', 'user');
-        safeLocalStorage.setItem('appScreen', 'splash');
-        safeLocalStorage.removeItem('selectedGarageId');
-        setView('user');
-        setScreen('splash');
-        setSelectedGarageId(null);
-      }
-
-      const savedScreen = safeLocalStorage.getItem('appScreen');
-      const savedGarageId = safeLocalStorage.getItem('selectedGarageId');
-
-      const urlParams = new URLSearchParams(window.location.search);
-      const isGarageFromURL = urlParams.has('garage');
-      const isAdminFromURL =
-        window.location.pathname === '/admin' ||
-        window.location.hash === '#admin';
-
-      const savedView = safeLocalStorage.getItem('appView');
-      const isGarageLoggedIn = safeLocalStorage.getItem('currentGarageId') || currentGarageId;
-      const isAdminLoggedIn = safeLocalStorage.getItem('adminAccess') === 'true';
-
-      if (isAdminFromURL) {
-        setView('admin');
-      } else if (isGarageFromURL) {
-        setView('garage');
-      } else if (savedView && (savedView === 'user' || savedView === 'garage' || savedView === 'admin')) {
-        setView(savedView as any);
-      } else {
-        if (isAdminLoggedIn) {
-          setView('admin');
-        } else if (isGarageLoggedIn) {
-          setView('garage');
-        } else {
-          setView('user');
-        }
-      }
-
-      // ✅ استرجاع شاشة التوجيه والجراج المختار عند الـ Refresh
-      if (savedScreen === 'navigation' && savedGarageId) {
-        setSelectedGarageId(savedGarageId);
-        setScreen('navigation');
-      } else if (savedScreen && VALID_SCREENS.includes(savedScreen as any)) {
-        setScreen(savedScreen as any);
-      }
-
-      setDataLoaded(true);
-      initialLoadDone.current = true;
-
-      fetchAll().catch((e) => console.error('Background fetch error:', e));
-
-      if (!isRealtimeInitialized) {
-        setupRealtime();
-        isRealtimeInitialized = true;
-      }
-    };
-
-    init();
-  }, []);
-
-  useEffect(() => {
-    if (view) {
-      safeLocalStorage.setItem('appView', view);
-    }
-  }, [view]);
-
-  // ════════════════════════════════════════════════════════════════
-  // 🎯 useEffect الأول: التحقق الأولي بعد تحميل البيانات
-  // ════════════════════════════════════════════════════════════════
-  useEffect(() => {
-    if (!dataLoaded) return;
-    if (!currentUser) return;
-    if (view !== 'user') return;
+    if (!dataLoaded || !currentUser || view !== 'user') return;
 
     const userPlate = normalizePlate(currentUser.carPlate);
     const userPhone = currentUser.phone ? normalizePhone(currentUser.phone) : '';
 
     const myActiveSession = sessions.find((s) => {
       if (s.status !== 'active') return false;
+      if (acknowledgedSessionIds?.has(s.id)) return false;
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
       const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-      const samePhone = Boolean(userPhone && sPhone === userPhone);
-      return samePlate || samePhone;
+      return samePlate || Boolean(userPhone && sPhone === userPhone);
     });
 
     const myIncoming = incomingCars.find((c) => {
       if (c.status !== 'coming') return false;
       const samePlate = !!userPlate && normalizePlate(c.carPlate) === userPlate;
       const cPhone = c.customerPhone ? normalizePhone(c.customerPhone) : '';
-      const samePhone = Boolean(userPhone && cPhone === userPhone);
-      return samePlate || samePhone;
-    });
-
-    if (myActiveSession) {
-      prevActiveSessionRef.current = myActiveSession.id;
-      lastActiveTimeRef.current = getServerNow();
-      noSessionCountRef.current = 0;
-      sessionEndToastShown.current = false;
-      setSelectedGarageId(myActiveSession.garageId);
-      if (safeScreen === 'navigation' || safeScreen === 'waiting' || safeScreen === 'splash') {
-        setScreen('session');
-      }
-      return;
-    }
-
-    if (myIncoming) {
-      setSelectedGarageId(myIncoming.garageId);
-      if (
-        safeScreen !== 'navigation' &&
-        safeScreen !== 'session' &&
-        safeScreen !== 'list' &&
-        safeScreen !== 'lastSession'
-      ) {
-        setScreen('navigation');
-      }
-      return;
-    }
-
-    // ✅ لو كان العميل في شاشة navigation ومعاه selectedGarageId متخزن ما نرميهوش في list
-    const savedGarageId = safeLocalStorage.getItem('selectedGarageId');
-    if (
-      (safeScreen === 'session' || safeScreen === 'waiting') ||
-      (safeScreen === 'navigation' && !selectedGarageId && !savedGarageId)
-    ) {
-      setSelectedGarageId(null);
-      safeLocalStorage.removeItem('selectedGarageId');
-      setScreen('list');
-    }
-  }, [dataLoaded]);
-
-  // ════════════════════════════════════════════════════════════════
-  // 🎯 useEffect الثاني: متابعة التغيرات اللحظية في الجلسات
-  // ════════════════════════════════════════════════════════════════
-  useEffect(() => {
-    if (!dataLoaded) return;
-    if (!currentUser || view !== 'user') return;
-
-    const userPlate = normalizePlate(currentUser.carPlate);
-    const userPhone = currentUser.phone ? normalizePhone(currentUser.phone) : '';
-
-    const myActiveSession = sessions.find((s) => {
-      if (s.status !== 'active') return false;
-      const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-      const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-      const samePhone = Boolean(userPhone && sPhone === userPhone);
-      return samePlate || samePhone;
-    });
-
-    const myIncoming = incomingCars.find((c) => {
-      if (c.status !== 'coming') return false;
-      const samePlate = !!userPlate && normalizePlate(c.carPlate) === userPlate;
-      const cPhone = c.customerPhone ? normalizePhone(c.customerPhone) : '';
-      const samePhone = Boolean(userPhone && cPhone === userPhone);
-      return samePlate || samePhone;
+      return samePlate || Boolean(userPhone && cPhone === userPhone);
     });
 
     if (myActiveSession) {
@@ -418,20 +115,26 @@ export default function App() {
       if (myActiveSession.id !== prevActiveSessionRef.current) {
         prevActiveSessionRef.current = myActiveSession.id;
         setSelectedGarageId(myActiveSession.garageId);
-        if (safeScreen === 'navigation' || safeScreen === 'waiting' || safeScreen === 'splash') {
+        if (screen === 'navigation' || screen === 'waiting' || screen === 'splash') {
           setScreen('session');
         }
       }
       return;
     }
 
+    if (myIncoming) {
+      setSelectedGarageId(myIncoming.garageId);
+      if (!['navigation', 'session', 'list', 'lastSession'].includes(screen)) {
+        setScreen('navigation');
+      }
+      return;
+    }
+
+    // انتهاء الجلسة والرجوع لشاشة القائمة
     if (prevActiveSessionRef.current) {
       noSessionCountRef.current += 1;
       const timeSinceLastActive = getServerNow() - lastActiveTimeRef.current;
-
-      if (noSessionCountRef.current < 3 || timeSinceLastActive < 8000) {
-        return;
-      }
+      if (noSessionCountRef.current < 3 || timeSinceLastActive < 8000) return;
 
       if (sessionTransitionTimer.current) return;
 
@@ -443,10 +146,10 @@ export default function App() {
 
         const stillActive = freshState.sessions.find((s) => {
           if (s.status !== 'active') return false;
+          if (freshState.acknowledgedSessionIds?.has(s.id)) return false;
           const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
           const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-          const samePhone = Boolean(freshPhone && sPhone === freshPhone);
-          return samePlate || samePhone;
+          return samePlate || Boolean(freshPhone && sPhone === freshPhone);
         });
 
         if (stillActive) {
@@ -455,41 +158,10 @@ export default function App() {
           return;
         }
 
-        const currentScreen = freshState.screen;
         prevActiveSessionRef.current = null;
         noSessionCountRef.current = 0;
 
-        if (
-          currentScreen === 'session' ||
-          currentScreen === 'navigation' ||
-          currentScreen === 'waiting'
-        ) {
-          let lastCompleted: (typeof freshState.sessions)[number] | undefined;
-          let maxEnd = -1;
-          for (let i = 0; i < freshState.sessions.length; i++) {
-            const s = freshState.sessions[i];
-            if (!s || s.status !== 'completed') continue;
-            const samePlate = !!freshPlate && normalizePlate(s.carPlate) === freshPlate;
-            const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
-            const samePhone = Boolean(freshPhone && sPhone === freshPhone);
-            if (!(samePlate || samePhone)) continue;
-            const endMs = toMs(s.endTime);
-            if (endMs > maxEnd) {
-              maxEnd = endMs;
-              lastCompleted = s;
-            }
-          }
-
-          if (lastCompleted) {
-            const freshAcknowledged = freshState.acknowledgedSessionIds;
-            const isNotAcknowledged = freshAcknowledged ? !freshAcknowledged.has(lastCompleted.id) : true;
-            if (isNotAcknowledged) {
-              if (typeof freshState.acknowledgeSession === 'function') {
-                freshState.acknowledgeSession(lastCompleted.id);
-              }
-            }
-          }
-
+        if (['session', 'navigation', 'waiting'].includes(freshState.screen)) {
           if (!sessionEndToastShown.current) {
             sessionEndToastShown.current = true;
             toast.success('تم إنهاء الجلسة والعودة للرئيسية ✅');
@@ -500,50 +172,164 @@ export default function App() {
         }
       }, 3000);
     }
-  }, [
-    sessions,
-    currentUser,
-    view,
-    safeScreen,
-    incomingCars,
-    dataLoaded,
-    setScreen,
-    setSelectedGarageId,
-  ]);
+  }, [sessions, incomingCars, currentUser, view, screen, dataLoaded, acknowledgedSessionIds, setSelectedGarageId, setScreen]);
 
   useEffect(() => {
     return () => {
-      if (sessionTransitionTimer.current) {
-        clearTimeout(sessionTransitionTimer.current);
-        sessionTransitionTimer.current = null;
-      }
+      if (sessionTransitionTimer.current) clearTimeout(sessionTransitionTimer.current);
     };
   }, []);
 
-  if (pathname === '/install') {
-    return <InstallPage />;
-  }
+  return null; // مكوّن منطقي فقط لا يرسم أي واجهة
+});
 
-  if (pathname === '/qr') {
-    return <InstallQRCodePage />;
-  }
+const ParkLanding = memo(function ParkLanding({ onEnter }: { onEnter: () => void }) {
+  const [isExiting, setIsExiting] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  return new URLSearchParams(window.location.search).has('shield') ? (
-    <ShieldLandingPage />
-  ) : (
+  const handleEnter = () => {
+    setIsExiting(true);
+    timerRef.current = setTimeout(() => onEnter(), 500);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  return (
+    <AnimatePresence>
+      {!isExiting && (
+        <motion.div
+          initial={{ opacity: 1 }}
+          exit={{ opacity: 0, scale: 1.03, filter: 'blur(10px)' }}
+          transition={{ duration: 0.5, ease: 'easeInOut' }}
+          className="fixed inset-0 z-[999999] flex flex-col justify-between overflow-hidden bg-slate-950"
+          style={{ height: '100dvh' }}
+        >
+          <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+            <img src="/hero-car.webp?v=999" alt="Park'n 24 Car" loading="eager" className="w-full h-full object-cover object-center" />
+            <div className="absolute inset-0 bg-gradient-to-b from-slate-950/80 via-slate-950/40 to-slate-950/95" />
+          </div>
+
+          <motion.nav initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="w-full flex items-center justify-between px-6 py-6 z-20 relative" dir="ltr">
+            <div className="flex flex-col leading-tight">
+              <span className="font-black text-white text-base">بركن <span className="text-[#8cc63f]">24</span></span>
+              <span className="font-black text-white text-lg">Park'n <span className="text-[#8cc63f]">24</span></span>
+            </div>
+            <button onClick={handleEnter} className="px-4 py-1.5 rounded-full bg-slate-900/60 backdrop-blur-md text-white font-bold text-xs border border-white/20">تخطي ✕</button>
+          </motion.nav>
+
+          <div className="px-6 pb-10 z-20 relative flex flex-col justify-end max-w-lg mx-auto w-full" dir="rtl">
+            <h1 className="text-4xl sm:text-5xl font-black text-white leading-tight">
+              انسى لفة كل يوم..<br /><span className="text-blue-400">ركنتك مضمونة</span><br /><span className="text-[#8cc63f]">قبل ما توصل!</span>
+            </h1>
+            <p className="mt-3 text-slate-300 text-sm max-w-sm">
+              مع Park'n 24، حدد وجهتك، اضمن مكانك في أقرب جراج، ووفر وقتك وبنزينك بضغطة زر واحدة.
+            </p>
+            <div className="mt-6">
+              <button onClick={handleEnter} className="w-full sm:w-auto flex items-center justify-between gap-4 px-8 py-3.5 rounded-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-black shadow-lg shadow-blue-500/40 active:scale-95 transition-all">
+                <span>احجز ركنتك الآن 🚀</span>
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+});
+
+const VALID_SCREENS = ['splash', 'list', 'waiting', 'navigation', 'session', 'lastSession', 'chat'] as const;
+
+export default function App() {
+  const view = useStore((s) => s.view);
+  const setView = useStore((s) => s.setView);
+  const screen = useStore((s) => s.screen);
+  const setScreen = useStore((s) => s.setScreen);
+  const currentUser = useStore((s) => s.currentUser);
+  const currentGarageId = useStore((s) => s.currentGarageId);
+  const setCurrentGarageId = useStore((s) => s.setCurrentGarageId);
+  const fetchAll = useStore((s) => s.fetchAll);
+
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [adminAccess, setAdminAccess] = useState(() => {
+    const isUrlAdmin = window.location.pathname === '/admin' || window.location.hash === '#admin';
+    if (isUrlAdmin) {
+      safeLocalStorage.setItem('adminAccess', 'true');
+      return true;
+    }
+    return safeLocalStorage.getItem('adminAccess') === 'true';
+  });
+
+  const [showLanding, setShowLanding] = useState(() => {
+    return safeLocalStorage.getItem('parkn24_landing_last_date') !== new Date().toDateString();
+  });
+
+  const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
+
+  useEffect(() => {
+    if (window.location.pathname === '/admin' || window.location.hash === '#admin') {
+      setAdminAccess(true);
+      safeLocalStorage.setItem('adminAccess', 'true');
+    }
+  }, []);
+
+  useEffect(() => {
+    const init = async () => {
+      const isUrlAdmin = window.location.pathname === '/admin' || window.location.hash === '#admin';
+      const savedView = isUrlAdmin ? 'admin' : (safeLocalStorage.getItem('appView') || 'user');
+      const savedScreen = safeLocalStorage.getItem('appScreen');
+
+      setView(savedView as any);
+      if (savedScreen && VALID_SCREENS.includes(savedScreen as any)) {
+        setScreen(savedScreen as any);
+      }
+
+      try {
+        await fetchAll();
+      } catch (err) {
+        console.error('Fetch error:', err);
+      } finally {
+        setDataLoaded(true);
+      }
+
+      if (!isRealtimeInitialized) {
+        setupRealtime();
+        isRealtimeInitialized = true;
+      }
+    };
+
+    init();
+  }, [setView, setScreen, fetchAll]);
+
+  const safeScreen = useMemo(() => {
+    if (!VALID_SCREENS.includes(screen as any)) {
+      return currentUser ? 'list' : 'splash';
+    }
+    return screen;
+  }, [screen, currentUser]);
+
+  if (pathname === '/install') return <InstallPage />;
+  if (pathname === '/qr') return <InstallQRCodePage />;
+  if (new URLSearchParams(window.location.search).has('shield')) return <ShieldLandingPage />;
+
+  return (
     <ErrorBoundary>
-      {showLanding && <ParkLanding onEnter={handleEnterLanding} />}
+      {/* مراقب الجلسات يعمل في الخلفية دون تعطيل الواجهة */}
+      <SessionWatcher dataLoaded={dataLoaded} />
+
+      {showLanding && (
+        <ParkLanding onEnter={() => {
+          safeLocalStorage.setItem('parkn24_landing_last_date', new Date().toDateString());
+          setShowLanding(false);
+        }} />
+      )}
 
       <AuthGate>
-        <div
-          className="max-w-md mx-auto h-dvh bg-white text-slate-900 relative flex flex-col overflow-hidden"
-          style={{ fontFamily: "'Cairo', 'Noto Sans Arabic', system-ui, sans-serif" }}
-        >
+        <div className="max-w-md mx-auto h-dvh bg-white text-slate-900 relative flex flex-col overflow-hidden">
           {adminAccess && (
-            <div 
-              className="absolute top-3.5 left-3.5 z-[9999] flex gap-1 bg-slate-950/90 p-1 rounded-full backdrop-blur-md border border-white/10 shadow-2xl"
-              style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.24)' }}
-            >
+            <div className="absolute top-3.5 left-3.5 z-[9999] flex gap-1 bg-slate-950/90 p-1 rounded-full backdrop-blur-md border border-white/10 shadow-2xl">
               {[
                 { id: 'user' as const, label: '👤 حريف' },
                 { id: 'garage' as const, label: '🅿️ جراج' },
@@ -554,14 +340,10 @@ export default function App() {
                   onClick={() => {
                     if (tab.id === 'garage') {
                       safeLocalStorage.removeItem('currentGarageId');
-                      safeLocalStorage.removeItem('garageRole');
-                      safeLocalStorage.removeItem('valetNumber');
-                      safeLocalStorage.removeItem('valetName');
-                      safeLocalStorage.removeItem('garagePrefillUsername');
-                      safeLocalStorage.removeItem('garagePrefillPhone');
                       setCurrentGarageId(null);
                     }
                     setView(tab.id);
+                    fetchAll().catch(() => {});
                   }}
                   className={cn(
                     'px-4 py-2.5 rounded-full text-[11px] font-black transition-all duration-300 active:scale-95 outline-none border-none cursor-pointer',
@@ -571,46 +353,28 @@ export default function App() {
                         : 'bg-blue-600 text-white font-black shadow-lg shadow-blue-500/30'
                       : 'text-white/70 hover:text-white hover:bg-white/10'
                   )}
-                  style={{ 
-                    fontWeight: 950,
-                    textShadow: '0 1px 2px rgba(0,0,0,0.2)'
-                  }}
                 >
                   {tab.label}
                 </button>
               ))}
             </div>
           )}
+
           <main className="flex-1 overflow-hidden bg-white">
             {view === 'admin' && adminAccess ? (
-              <Suspense fallback={
-                <div className="h-full bg-white flex flex-col items-center justify-center">
-                  <div className="text-3xl mb-3 animate-bounce">⚙️</div>
-                  <p className="text-slate-500 text-sm font-bold animate-pulse">جاري فتح لوحة المشرف...</p>
-                </div>
-              }>
+              <Suspense fallback={<Loader text="جاري فتح لوحة المشرف..." />}>
                 <AdminDashboard />
               </Suspense>
             ) : view === 'garage' ? (
               currentGarageId ? (
-                <Suspense fallback={
-                  <div className="h-full bg-white flex flex-col items-center justify-center">
-                    <div className="text-3xl mb-3 animate-bounce">🅿️</div>
-                    <p className="text-slate-500 text-sm font-bold animate-pulse">جاري فتح لوحة الجراج...</p>
-                  </div>
-                }>
+                <Suspense fallback={<Loader text="جاري فتح لوحة الجراج..." />}>
                   <GarageDashboard />
                 </Suspense>
               ) : (
                 <GarageLoginScreen />
               )
             ) : !dataLoaded ? (
-              <div className="h-full bg-white flex flex-col items-center justify-center">
-                <div className="text-4xl mb-4 animate-bounce">🚗</div>
-                <p className="text-slate-600 text-sm font-bold animate-pulse">
-                  جاري تحميل البيانات...
-                </p>
-              </div>
+              <Loader text="جاري تحميل البيانات..." icon="🚗" />
             ) : (
               <AnimatePresence mode="wait">
                 <motion.div
@@ -622,9 +386,7 @@ export default function App() {
                   className="h-full overflow-y-auto bg-white text-slate-900"
                 >
                   {safeScreen === 'splash' && <SplashScreen />}
-
                   {!currentUser && safeScreen !== 'splash' && <RegisterScreen />}
-
                   {currentUser && (
                     <>
                       {safeScreen === 'list' && <GarageListScreen />}
@@ -639,11 +401,19 @@ export default function App() {
               </AnimatePresence>
             )}
           </main>
-
           <Toaster position="top-center" />
           <InstallPWA />
         </div>
       </AuthGate>
     </ErrorBoundary>
+  );
+}
+
+function Loader({ text, icon = '⚙️' }: { text: string; icon?: string }) {
+  return (
+    <div className="h-full bg-white flex flex-col items-center justify-center">
+      <div className="text-3xl mb-3 animate-bounce">{icon}</div>
+      <p className="text-slate-500 text-sm font-bold animate-pulse">{text}</p>
+    </div>
   );
 }

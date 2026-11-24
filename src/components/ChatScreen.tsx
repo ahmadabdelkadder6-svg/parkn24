@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight,
@@ -12,7 +12,7 @@ import {
   Clock,
   X,
 } from 'lucide-react';
-import { useStore, getServerNow, normalizePhone } from '../store';
+import { useStore, getServerNow, normalizePhone, UserMessage } from '../store';
 import toast from 'react-hot-toast';
 
 /* ─── 🎨 الألوان الرسمية للتطبيق ─── */
@@ -35,8 +35,85 @@ const MESSAGE_TYPES = [
   { id: 'technical', label: 'مشكلة تقنية', icon: Wrench },
 ];
 
+const MESSAGE_TYPE_LABELS: Record<string, string> = {
+  complaint: 'شكوى',
+  inquiry: 'استفسار',
+  suggestion: 'اقتراح',
+  technical: 'مشكلة تقنية',
+};
+
+const getTypeLabel = (typeId: string) => {
+  return MESSAGE_TYPE_LABELS[typeId] || 'رسالة';
+};
+
+const formatTime = (timestamp: number) => {
+  const diffMins = Math.floor((getServerNow() - timestamp) / 60000);
+  if (diffMins < 1) return 'الآن';
+  if (diffMins < 60) return `منذ ${diffMins} دقيقة`;
+  if (diffMins < 1440) return `منذ ${Math.floor(diffMins / 60)} ساعة`;
+  return new Date(timestamp).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' });
+};
+
+interface MessageCardProps {
+  msg: UserMessage;
+  isSelected: boolean;
+  onSelect: (id: string, isExpanded: boolean, hasReply: boolean) => void;
+}
+
+const MessageCard = React.memo(({ msg, isSelected, onSelect }: MessageCardProps) => {
+  // 🌟 التحقق الذكي: لو في نص للرد موجود فعلياً إذن تم الرد!
+  const hasReply = Boolean(msg.reply && msg.reply.trim().length > 0);
+  const isExpanded = isSelected || hasReply;
+
+  return (
+    <div
+      onClick={() => onSelect(msg.id, isExpanded, hasReply)}
+      className="border rounded-2xl p-4 cursor-pointer transition-all active:scale-[0.99]"
+      style={{
+        background: hasReply ? 'rgba(140, 198, 63, 0.06)' : BRAND.navyLight,
+        borderColor: hasReply ? 'rgba(140, 198, 63, 0.3)' : BRAND.border,
+      }}
+    >
+      <div className="flex justify-between items-center mb-2">
+        <span
+          className="text-[10px] font-black px-2 py-1 rounded border"
+          style={{ background: BRAND.navy, borderColor: BRAND.border, color: BRAND.slateMuted }}
+        >
+          {getTypeLabel(msg.type)}
+        </span>
+        <span className="text-[9px] font-mono" style={{ color: BRAND.slateMuted }}>
+          {formatTime(msg.timestamp)}
+        </span>
+      </div>
+      <p className="text-xs text-white font-medium leading-relaxed">
+        {msg.message}
+      </p>
+      {/* 🟢 عرض رد الإدارة فوراً بمجرد وجوده في الداتابيز */}
+      {hasReply ? (
+        <div className="mt-3 pt-3 border-t" style={{ borderColor: 'rgba(140, 198, 63, 0.2)' }}>
+          <div className="flex items-center gap-1.5 mb-1.5" style={{ color: BRAND.green }}>
+            <CheckCircle size={14} />
+            <span className="text-[11px] font-black">رد إدارة Park'n 24:</span>
+          </div>
+          <p className="text-xs font-bold text-white leading-relaxed bg-black/20 p-2.5 rounded-xl border border-white/5">
+            {msg.reply}
+          </p>
+        </div>
+      ) : (
+        <div className="mt-2.5 flex items-center gap-1.5 text-amber-400">
+          <Clock size={11} />
+          <span className="text-[10px] font-bold">بانتظار مراجعة الإدارة...</span>
+        </div>
+      )}
+    </div>
+  );
+});
+
 export default function ChatScreen() {
-  const { currentUser, messages, addMessage, setScreen } = useStore();
+  const currentUser = useStore((s) => s.currentUser);
+  const messages = useStore((s) => s.messages);
+  const addMessage = useStore((s) => s.addMessage);
+  const setScreen = useStore((s) => s.setScreen);
 
   const [showNewMessage, setShowNewMessage] = useState(false);
   const [selectedType, setSelectedType] = useState<string | null>(null);
@@ -44,21 +121,30 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null);
 
-  const userPhoneClean = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
+  const userPhoneClean = useMemo(
+    () => (currentUser?.phone ? normalizePhone(currentUser.phone) : ''),
+    [currentUser?.phone]
+  );
 
   // 🔄 جلب رسائل المستخدم الحالية مرتبة من الأحدث للأقدم
-  const myMessages = (messages ?? [])
-    .filter((m) => {
-      const msgPhone = m.userPhone ? normalizePhone(m.userPhone) : '';
-      return userPhoneClean && msgPhone === userPhoneClean;
-    })
-    .sort((a, b) => b.timestamp - a.timestamp);
+  const myMessages = useMemo(() => {
+    if (!userPhoneClean || !messages || messages.length === 0) return [];
+    return messages
+      .filter((m) => {
+        const msgPhone = m.userPhone ? normalizePhone(m.userPhone) : '';
+        return msgPhone === userPhoneClean;
+      })
+      .sort((a, b) => b.timestamp - a.timestamp);
+  }, [messages, userPhoneClean]);
+
+  const handleSelectMessage = useCallback((id: string, isExpanded: boolean, hasReply: boolean) => {
+    setSelectedMessage(isExpanded && !hasReply ? null : id);
+  }, []);
 
   const handleSend = async () => {
     if (!currentUser) return toast.error('سجل دخول أولاً');
     if (!selectedType) return toast.error('اختر نوع الرسالة');
     if (!messageText.trim()) return toast.error('اكتب رسالتك');
-
     setSending(true);
     try {
       const result = await addMessage({
@@ -68,12 +154,10 @@ export default function ChatScreen() {
         type: selectedType as any,
         message: messageText.trim(),
       });
-
       if (result && !result.success) {
         toast.error(result.error || 'فشل الإرسال');
         return;
       }
-
       toast.success('تم الإرسال بنجاح ✅');
       setShowNewMessage(false);
       setSelectedType(null);
@@ -83,18 +167,6 @@ export default function ChatScreen() {
     } finally {
       setSending(false);
     }
-  };
-
-  const getTypeLabel = (typeId: string) => {
-    return MESSAGE_TYPES.find((t) => t.id === typeId)?.label || 'رسالة';
-  };
-
-  const formatTime = (timestamp: number) => {
-    const diffMins = Math.floor((getServerNow() - timestamp) / 60000);
-    if (diffMins < 1) return 'الآن';
-    if (diffMins < 60) return `منذ ${diffMins} دقيقة`;
-    if (diffMins < 1440) return `منذ ${Math.floor(diffMins / 60)} ساعة`;
-    return new Date(timestamp).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' });
   };
 
   return (
@@ -121,7 +193,6 @@ export default function ChatScreen() {
 
       {/* ══ المحتوى ══ */}
       <div className="flex-1 px-4 py-4 overflow-y-auto space-y-4">
-        
         {!showNewMessage && (
           <motion.button
             initial={{ opacity: 0, y: -10 }}
@@ -144,14 +215,19 @@ export default function ChatScreen() {
               exit={{ opacity: 0, height: 0 }}
               className="overflow-hidden"
             >
-              <div className="p-4 rounded-2xl border space-y-4 shadow-xl" style={{ background: BRAND.navyLight, borderColor: BRAND.border }}>
+              <div
+                className="p-4 rounded-2xl border space-y-4 shadow-xl"
+                style={{ background: BRAND.navyLight, borderColor: BRAND.border }}
+              >
                 <div className="flex justify-between items-center mb-1">
                   <span className="text-xs font-black text-white">رسالة جديدة</span>
-                  <button onClick={() => setShowNewMessage(false)} className="text-slate-400 bg-transparent border-0 cursor-pointer p-1">
+                  <button
+                    onClick={() => setShowNewMessage(false)}
+                    className="text-slate-400 bg-transparent border-0 cursor-pointer p-1"
+                  >
                     <X size={18} />
                   </button>
                 </div>
-
                 <div className="grid grid-cols-2 gap-2">
                   {MESSAGE_TYPES.map(({ id, label, icon: Icon }) => (
                     <button
@@ -169,7 +245,6 @@ export default function ChatScreen() {
                     </button>
                   ))}
                 </div>
-
                 <textarea
                   value={messageText}
                   onChange={(e) => setMessageText(e.target.value)}
@@ -178,7 +253,6 @@ export default function ChatScreen() {
                   className="w-full p-3 rounded-xl text-sm font-semibold text-white outline-none resize-none border"
                   style={{ background: BRAND.navy, borderColor: BRAND.border }}
                 />
-
                 <button
                   onClick={handleSend}
                   disabled={sending || !selectedType || !messageText.trim()}
@@ -195,62 +269,24 @@ export default function ChatScreen() {
 
         {/* ══ سجل الرسائل والردود ══ */}
         <div className="space-y-3 pb-6">
-          <h3 className="text-xs font-bold px-1" style={{ color: BRAND.slateMuted }}>سجل المراسلات ({myMessages.length})</h3>
-          
+          <h3 className="text-xs font-bold px-1" style={{ color: BRAND.slateMuted }}>
+            سجل المراسلات ({myMessages.length})
+          </h3>
+
           {myMessages.length === 0 ? (
-             <div className="text-center py-10 opacity-50">
-               <MessageCircle size={32} className="mx-auto mb-2 text-slate-500" />
-               <p className="text-xs font-bold text-slate-400">لا توجد رسائل سابقة</p>
-             </div>
+            <div className="text-center py-10 opacity-50">
+              <MessageCircle size={32} className="mx-auto mb-2 text-slate-500" />
+              <p className="text-xs font-bold text-slate-400">لا توجد رسائل سابقة</p>
+            </div>
           ) : (
-            myMessages.map((msg) => {
-              // 🌟 التحقق الذكي: لو في نص للرد موجود فعلياً إذن تم الرد!
-              const hasReply = Boolean(msg.reply && msg.reply.trim().length > 0);
-              const isExpanded = selectedMessage === msg.id || hasReply;
-
-              return (
-                <div
-                  key={msg.id}
-                  onClick={() => setSelectedMessage(isExpanded && !hasReply ? null : msg.id)}
-                  className="border rounded-2xl p-4 cursor-pointer transition-all active:scale-[0.99]"
-                  style={{
-                    background: hasReply ? 'rgba(140, 198, 63, 0.06)' : BRAND.navyLight,
-                    borderColor: hasReply ? 'rgba(140, 198, 63, 0.3)' : BRAND.border,
-                  }}
-                >
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] font-black px-2 py-1 rounded border" style={{ background: BRAND.navy, borderColor: BRAND.border, color: BRAND.slateMuted }}>
-                      {getTypeLabel(msg.type)}
-                    </span>
-                    <span className="text-[9px] font-mono" style={{ color: BRAND.slateMuted }}>
-                      {formatTime(msg.timestamp)}
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-white font-medium leading-relaxed">
-                    {msg.message}
-                  </p>
-
-                  {/* 🟢 عرض رد الإدارة فوراً بمجرد وجوده في الداتابيز */}
-                  {hasReply ? (
-                    <div className="mt-3 pt-3 border-t" style={{ borderColor: 'rgba(140, 198, 63, 0.2)' }}>
-                      <div className="flex items-center gap-1.5 mb-1.5" style={{ color: BRAND.green }}>
-                        <CheckCircle size={14} />
-                        <span className="text-[11px] font-black">رد إدارة Park'n 24:</span>
-                      </div>
-                      <p className="text-xs font-bold text-white leading-relaxed bg-black/20 p-2.5 rounded-xl border border-white/5">
-                        {msg.reply}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="mt-2.5 flex items-center gap-1.5 text-amber-400">
-                      <Clock size={11} />
-                      <span className="text-[10px] font-bold">بانتظار مراجعة الإدارة...</span>
-                    </div>
-                  )}
-                </div>
-              );
-            })
+            myMessages.map((msg) => (
+              <MessageCard
+                key={msg.id}
+                msg={msg}
+                isSelected={selectedMessage === msg.id}
+                onSelect={handleSelectMessage}
+              />
+            ))
           )}
         </div>
       </div>

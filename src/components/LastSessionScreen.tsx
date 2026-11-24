@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import {
   Clock,
   MapPin,
@@ -53,37 +53,54 @@ const formatDuration = (seconds: number): string => {
   return `${m} دقيقة`;
 };
 
-export default function LastSessionScreen() {
-  const { sessions, garages, currentUser, acknowledgeSession, setScreen, setSelectedGarageId } = useStore();
- 
+const formatDateFull = (date: Date) => {
+  if (!date || isNaN(date.getTime())) return '---';
+  return date.toLocaleDateString('ar-EG', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+};
 
-  const userPlate = normalizePlate(currentUser?.carPlate);
-  const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
+const formatTimeOnly = (date: Date) => {
+  if (!date || isNaN(date.getTime())) return '--:--';
+  return date.toLocaleTimeString('ar-EG', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+export default function LastSessionScreen() {
+  const sessions = useStore((s) => s.sessions);
+  const garages = useStore((s) => s.garages);
+  const currentUser = useStore((s) => s.currentUser);
+  const acknowledgeSession = useStore((s) => s.acknowledgeSession);
+  const acknowledgeSessionEnd = useStore((s) => s.acknowledgeSessionEnd);
+  const setScreen = useStore((s) => s.setScreen);
+  const setSelectedGarageId = useStore((s) => s.setSelectedGarageId);
+
+  const userPlate = useMemo(() => normalizePlate(currentUser?.carPlate), [currentUser?.carPlate]);
+  const userPhone = useMemo(() => (currentUser?.phone ? normalizePhone(currentUser.phone) : ''), [currentUser?.phone]);
 
   /* ⚡ البحث عن آخر جلسة مكتملة في لفة واحدة بدون Filter أو Sort (حماية الـ RAM والبطارية) */
   const lastSession = useMemo(() => {
     if (!userPlate && !userPhone) return null;
-
     let latest: (typeof sessions)[number] | null = null;
     let maxEndTime = -1;
-
     for (let i = 0; i < sessions.length; i++) {
       const s = sessions[i];
       if (!s || s.status !== 'completed') continue;
-
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
       const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
       const samePhone = Boolean(userPhone && sPhone === userPhone);
-
       if (samePlate || samePhone) {
-        const endMs = toMs(s.endTime);
+        const endMs = toMs(s.endTime) || toMs(s.startTime);
         if (endMs > maxEndTime) {
           maxEndTime = endMs;
           latest = s;
         }
       }
     }
-
     return latest;
   }, [sessions, userPlate, userPhone]);
 
@@ -114,13 +131,14 @@ export default function LastSessionScreen() {
     return idStr.slice(-6).toUpperCase().padStart(6, '0');
   }, [lastSession?.id]);
 
-  const handleBack = () => {
-    if (lastSession?.id && acknowledgeSession) {
-      acknowledgeSession(lastSession.id);
+  const handleBack = useCallback(() => {
+    if (lastSession?.id) {
+      if (acknowledgeSession) acknowledgeSession(lastSession.id);
+      else if (acknowledgeSessionEnd) acknowledgeSessionEnd(lastSession.id);
     }
     setSelectedGarageId(null);
     setScreen('list');
-  };
+  }, [lastSession?.id, acknowledgeSession, acknowledgeSessionEnd, setSelectedGarageId, setScreen]);
 
   /* ═══════════ EMPTY STATE ═══════════ */
   if (!lastSession) {
@@ -170,27 +188,8 @@ export default function LastSessionScreen() {
   const startMs = toMs(lastSession.startTime);
   const endMs = toMs(lastSession.endTime) || (startMs > 0 ? Date.now() : 0);
   const durationSeconds = Math.max(0, Math.floor((endMs - startMs) / 1000));
-
   const entryTime = new Date(startMs > 0 ? startMs : Date.now());
   const exitTime = new Date(endMs > 0 ? endMs : Date.now());
-
-  const formatDateFull = (date: Date) => {
-    if (!date || isNaN(date.getTime())) return '---';
-    return date.toLocaleDateString('ar-EG', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-    });
-  };
-
-  const formatTimeOnly = (date: Date) => {
-    if (!date || isNaN(date.getTime())) return '--:--';
-    return date.toLocaleTimeString('ar-EG', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
 
   return (
     <div dir="rtl" className="min-h-screen pb-8" style={{ background: BRAND.bg }}>
@@ -218,7 +217,6 @@ export default function LastSessionScreen() {
             transform: 'translate(30%, 40%)',
           }}
         />
-
         <div className="relative z-10 text-center">
           {/* ختم المكتملة */}
           <div
@@ -230,7 +228,6 @@ export default function LastSessionScreen() {
           >
             <Check className="w-8 h-8 text-white" strokeWidth={3.5} />
           </div>
-
           <h1 className="text-xl font-black text-white mb-0.5">
             تمت الجلسة بنجاح
           </h1>
@@ -265,7 +262,6 @@ export default function LastSessionScreen() {
                 background: `radial-gradient(circle at 20% 50%, ${BRAND.green}40 0%, transparent 50%)`,
               }}
             />
-
             <div className="relative flex items-center gap-2">
               <div
                 className="w-10 h-10 rounded-xl flex items-center justify-center"
@@ -288,7 +284,6 @@ export default function LastSessionScreen() {
                 </span>
               </div>
             </div>
-
             <div
               className="relative flex items-center gap-1 px-2.5 py-1.5 rounded-lg"
               style={{
@@ -344,7 +339,6 @@ export default function LastSessionScreen() {
                     </span>
                   </div>
                 </div>
-
                 <div className="flex items-center gap-1.5 shrink-0">
                   {shieldCost > 0 && (
                     <span
@@ -473,7 +467,6 @@ export default function LastSessionScreen() {
                     background: 'radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%)',
                   }}
                 />
-
                 <div className="relative flex items-center justify-center gap-1.5 mb-1">
                   <Clock size={13} className="text-white/85" />
                   <span
@@ -523,7 +516,6 @@ export default function LastSessionScreen() {
                     {formatTimeOnly(entryTime)}
                   </span>
                 </div>
-
                 {/* الخروج */}
                 <div
                   className="rounded-lg p-2.5 text-center border"
@@ -569,7 +561,6 @@ export default function LastSessionScreen() {
                     style={{ background: BRAND.bg }}
                   />
                 </div>
-
                 <div
                   className="px-5 py-3 flex items-center justify-between"
                   style={{
@@ -612,7 +603,6 @@ export default function LastSessionScreen() {
                     style={{ background: BRAND.bg }}
                   />
                 </div>
-
                 <div
                   className="px-5 py-3 flex items-center justify-between"
                   style={{
@@ -660,7 +650,6 @@ export default function LastSessionScreen() {
                     style={{ background: BRAND.bg }}
                   />
                 </div>
-
                 <div
                   className="px-5 py-3 flex items-center justify-between"
                   style={{
@@ -707,8 +696,6 @@ export default function LastSessionScreen() {
             🎯 الأزرار الاحترافية
             ═══════════════════════════════════ */}
         <div className="space-y-2.5 pt-4">
- 
-
           {/* زر العودة الرئيسي */}
           <button
             onClick={handleBack}
