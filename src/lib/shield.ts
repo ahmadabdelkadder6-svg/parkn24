@@ -289,8 +289,12 @@ export function playIntenseAlarm(): void {
   }
 }
 
-// Alias for playIntenseAlarm used by NavigationScreen / SessionScreen
+// Aliases for playIntenseAlarm used across SessionScreen / NavigationScreen
 export function triggerIntenseAlarm(): void {
+  playIntenseAlarm();
+}
+
+export function playBreachAlarm(): void {
   playIntenseAlarm();
 }
 
@@ -316,6 +320,10 @@ export function stopIntenseAlarm(): void {
   try {
     if ('vibrate' in navigator) navigator.vibrate(0);
   } catch {}
+}
+
+export function stopBreachAlarm(): void {
+  stopIntenseAlarm();
 }
 
 // ── Haversine Distance (Meters) ──
@@ -402,6 +410,10 @@ export function setShieldId(id: string | null): void {
     state.shieldId = id;
     saveShieldState(state);
   }
+}
+
+export function isShieldActive(): boolean {
+  return gpsWatchId !== null || Boolean(loadShieldState()?.active);
 }
 
 // ── Register Shield Session in Supabase (`shield_sessions` table) ──
@@ -878,6 +890,74 @@ export async function triggerSOS(
     await Promise.all([...dbTasks, pushTask]);
   } catch (e) {
     console.warn('[Shield SOS Error]:', e);
+  }
+}
+
+// ── Trigger Breach Alarm (Used by SessionScreen - Supports Object or Positional Args) ──
+export async function triggerBreachAlarm(
+  paramsOrSessionId?:
+    | {
+        sessionId?: string;
+        garageId?: string;
+        garageName?: string;
+        carPlate?: string;
+        userName?: string;
+        userPhone?: string;
+        distance?: number;
+        lat?: number;
+        lng?: number;
+        agreedPrice?: number;
+      }
+    | string,
+  garageIdArg?: string,
+  userPhoneArg?: string,
+  userNameArg?: string,
+  carPlateArg?: string,
+  latArg?: number,
+  lngArg?: number,
+  distanceArg?: number,
+  agreedPriceArg?: number
+): Promise<void> {
+  playIntenseAlarm();
+
+  const state = loadShieldState();
+
+  if (typeof paramsOrSessionId === 'object' && paramsOrSessionId !== null) {
+    const sessionId = paramsOrSessionId.sessionId || state?.sessionId || '';
+    const garageId = paramsOrSessionId.garageId || state?.garageId || '';
+    const userPhone = paramsOrSessionId.userPhone || state?.userPhone || '';
+    const userName = paramsOrSessionId.userName || state?.userName || 'عميل';
+    const carPlate = paramsOrSessionId.carPlate || state?.carPlate || '';
+    const lat = Number(paramsOrSessionId.lat ?? state?.garageLat ?? 30.0444);
+    const lng = Number(paramsOrSessionId.lng ?? state?.garageLng ?? 31.2357);
+    const distance = Number(paramsOrSessionId.distance ?? 55);
+    const agreedPrice = Number(paramsOrSessionId.agreedPrice ?? state?.agreedPrice ?? 0);
+
+    if (sessionId) {
+      await triggerSOS(
+        sessionId,
+        garageId,
+        userPhone,
+        userName,
+        carPlate,
+        lat,
+        lng,
+        distance,
+        agreedPrice
+      );
+    }
+  } else if (typeof paramsOrSessionId === 'string' && paramsOrSessionId) {
+    await triggerSOS(
+      paramsOrSessionId,
+      garageIdArg || state?.garageId || '',
+      userPhoneArg || state?.userPhone || '',
+      userNameArg || state?.userName || 'عميل',
+      carPlateArg || state?.carPlate || '',
+      Number(latArg ?? state?.garageLat ?? 30.0444),
+      Number(lngArg ?? state?.garageLng ?? 31.2357),
+      Number(distanceArg ?? 55),
+      Number(agreedPriceArg ?? state?.agreedPrice ?? 0)
+    );
   }
 }
 
