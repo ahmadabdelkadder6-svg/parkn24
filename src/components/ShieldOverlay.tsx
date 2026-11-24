@@ -1,3 +1,4 @@
+
 // src/components/ShieldOverlay.tsx
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -60,17 +61,6 @@ const BRAND = {
   border: 'rgba(255, 255, 255, 0.12)',
 };
 
-function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371000;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -122,6 +112,15 @@ export default function ShieldOverlay({
   const [checkError, setCheckError] = useState<string | null>(null);
   const [gpsWarning, setGpsWarning] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+
+  // استخدام نقطة الركن المحفوظة للجلسة الحالية بدلاً من الاعتماد فقط على إحداثيات الجراج الثابتة
+  const [anchorCoords, setAnchorCoords] = useState<{ lat: number; lng: number }>(() => {
+    const saved = loadShieldState();
+    if (saved && saved.sessionId === sessionId && saved.parkingLat && saved.parkingLng) {
+      return { lat: saved.parkingLat, lng: saved.parkingLng };
+    }
+    return { lat: parkingLat, lng: parkingLng };
+  });
 
   const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isRegisteringRef = useRef(false);
@@ -250,8 +249,22 @@ export default function ShieldOverlay({
       if (saved?.sessionId === sessionId) {
         setShieldCode(saved.shieldCode);
         setPhone(saved.phone ?? '');
+        if (saved.parkingLat && saved.parkingLng) {
+          setAnchorCoords({ lat: saved.parkingLat, lng: saved.parkingLng });
+        }
       } else {
-        setShieldCode('SH-' + Math.random().toString(36).slice(2, 8).toUpperCase());
+        const code = 'SH-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+        setShieldCode(code);
+        saveShieldState({
+          isActive: true,
+          shieldCode: code,
+          phone: userPhone || '',
+          garageId,
+          parkingLat: anchorCoords.lat,
+          parkingLng: anchorCoords.lng,
+          sessionId,
+          anchorLocked: false,
+        });
       }
       setPhase('active');
       return;
@@ -264,18 +277,21 @@ export default function ShieldOverlay({
     ) {
       setShieldCode(saved.shieldCode);
       setPhone(saved.phone ?? '');
+      if (saved.parkingLat && saved.parkingLng) {
+        setAnchorCoords({ lat: saved.parkingLat, lng: saved.parkingLng });
+      }
       setPhase('active');
     }
-  }, [garageId, sessionId, autoResume, phase]);
+  }, [garageId, sessionId, autoResume, phase, userPhone, anchorCoords.lat, anchorCoords.lng]);
 
-  // ─── تتبع الـ GPS ───
+  // ─── تتبع الـ GPS والسرعة عبر المحرك الموحد ───
   const isTracking = phase === 'active' || phase === 'breach';
   useEffect(() => {
     if (!isTracking) return;
     const cleanupGPS = startShieldGPS({
       sessionId,
-      parkingLat,
-      parkingLng,
+      parkingLat: anchorCoords.lat,
+      parkingLng: anchorCoords.lng,
       onGeofenceBreach: (dist) => {
         setBreachDistance(Math.round(dist));
         setPhase('breach');
@@ -293,48 +309,17 @@ export default function ShieldOverlay({
     return () => {
       cleanupGPS();
     };
-  }, [isTracking, sessionId, parkingLat, parkingLng, triggerLocalAlarm]);
-
-  // ─── GPS لحساب السرعة في الخلفية (مُحجم لتوفير البطارية والسيرفر) ───
-  useEffect(() => {
-    if (!isTracking || !('geolocation' in navigator)) return;
-    let prev: { lat: number; lng: number; t: number } | null = null;
-    let lastUp = 0;
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        const now = Date.now();
-        if (prev && now - prev.t < 3000) return;
-
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        let spd = pos.coords.speed && pos.coords.speed > 0 ? pos.coords.speed : 0;
-        if (prev) {
-          const d = haversine(prev.lat, prev.lng, lat, lng);
-          const dt = (now - prev.t) / 1000;
-          if (dt > 2) spd = Math.max(spd, d / dt);
-        }
-        prev = { lat, lng, t: now };
-        if (spd >= 2.22 && now - lastUp > 15000) {
-          lastUp = now;
-          supabase
-            .from('shield_sessions')
-            .update({ last_lat: lat, last_lng: lng, last_speed: Math.round(spd * 3.6) })
-            .eq('session_id', sessionId)
-            .is('ended_at', null)
-            .then(() => {});
-        }
-      },
-      () => {},
-      { enableHighAccuracy: false, maximumAge: 5000, timeout: 10000 }
-    );
-    return () => navigator.geolocation.clearWatch(watchId);
-  }, [isTracking, sessionId]);
+  }, [isTracking, sessionId, anchorCoords.lat, anchorCoords.lng, triggerLocalAlarm]);
 
   // ─── التسجيل على السيرفر (مع منع التكرار المتزامن) ───
   const registerOnServer = useCallback(async () => {
     if (isRegisteringRef.current) return;
     if (Date.now() - lastRegisteredAtRef.current < 5000) return;
     isRegisteringRef.current = true;
+
+    const saved = loadShieldState();
+    const effLat = saved?.sessionId === sessionId && saved.parkingLat ? saved.parkingLat : anchorCoords.lat;
+    const effLng = saved?.sessionId === sessionId && saved.parkingLng ? saved.parkingLng : anchorCoords.lng;
 
     const identifier = userPhone || userId || 'unknown';
     let pushEndpoint: string | null = null;
@@ -393,7 +378,7 @@ export default function ShieldOverlay({
               push_auth: pushAuth,
             })
             .eq('session_id', sessionId),
-          registerShieldSession(sessionId, parkingLat, parkingLng, identifier, garageId),
+          registerShieldSession(sessionId, effLat, effLng, identifier, garageId),
         ]);
         lastRegisteredAtRef.current = Date.now();
         return;
@@ -410,13 +395,13 @@ export default function ShieldOverlay({
           session_id: sessionId,
           user_id: identifier,
           phone: identifier,
-          parking_lat: parkingLat,
-          parking_lng: parkingLng,
+          parking_lat: effLat,
+          parking_lng: effLng,
           push_endpoint: pushEndpoint,
           push_p256dh: pushP256dh,
           push_auth: pushAuth,
-          last_lat: parkingLat,
-          last_lng: parkingLng,
+          last_lat: effLat,
+          last_lng: effLng,
           last_gps_at: new Date().toISOString(),
           client_outside: false,
           theft_alerted: false,
@@ -425,7 +410,7 @@ export default function ShieldOverlay({
           fake_tick: 0,
           last_speed: null,
         }),
-        registerShieldSession(sessionId, parkingLat, parkingLng, identifier, garageId),
+        registerShieldSession(sessionId, effLat, effLng, identifier, garageId),
       ]);
       lastRegisteredAtRef.current = Date.now();
     } catch (dbErr: any) {
@@ -433,7 +418,7 @@ export default function ShieldOverlay({
     } finally {
       isRegisteringRef.current = false;
     }
-  }, [sessionId, userId, userPhone, parkingLat, parkingLng, garageId]);
+  }, [sessionId, userId, userPhone, anchorCoords.lat, anchorCoords.lng, garageId]);
 
   // ─── تجديد اشتراك الـ Push كل 10 دقائق ───
   useEffect(() => {
@@ -455,6 +440,9 @@ export default function ShieldOverlay({
         if (sub) {
           const subJson = sub.toJSON();
           const identifier = userPhone || userId || 'unknown';
+          const saved = loadShieldState();
+          const effLat = saved?.sessionId === sessionId && saved.parkingLat ? saved.parkingLat : anchorCoords.lat;
+          const effLng = saved?.sessionId === sessionId && saved.parkingLng ? saved.parkingLng : anchorCoords.lng;
           await Promise.all([
             supabase
               .from('shield_sessions')
@@ -465,7 +453,7 @@ export default function ShieldOverlay({
               })
               .eq('session_id', sessionId)
               .is('ended_at', null),
-            registerShieldSession(sessionId, parkingLat, parkingLng, identifier, garageId),
+            registerShieldSession(sessionId, effLat, effLng, identifier, garageId),
           ]);
         }
       } catch (e) {
@@ -474,7 +462,7 @@ export default function ShieldOverlay({
     };
     const interval = setInterval(refreshSubscription, 10 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [phase, sessionId, userPhone, userId, garageId, parkingLat, parkingLng]);
+  }, [phase, sessionId, userPhone, userId, garageId, anchorCoords.lat, anchorCoords.lng]);
 
   // ─── Realtime listener ───
   useEffect(() => {
@@ -556,6 +544,10 @@ export default function ShieldOverlay({
         }
         return;
       }
+      const actualLat = check.lat ?? parkingLat;
+      const actualLng = check.lng ?? parkingLng;
+      setAnchorCoords({ lat: actualLat, lng: actualLng });
+
       try {
         await subscribeToPush(garageId, userPhone || undefined);
       } catch (pushErr) {
@@ -583,9 +575,10 @@ export default function ShieldOverlay({
           shieldCode: code,
           phone: userPhone,
           garageId,
-          parkingLat,
-          parkingLng,
+          parkingLat: actualLat,
+          parkingLng: actualLng,
           sessionId,
+          anchorLocked: true,
         });
         await registerOnServer();
       } else {
@@ -609,12 +602,13 @@ export default function ShieldOverlay({
       shieldCode: code,
       phone,
       garageId,
-      parkingLat,
-      parkingLng,
+      parkingLat: anchorCoords.lat,
+      parkingLng: anchorCoords.lng,
       sessionId,
+      anchorLocked: true,
     });
     await registerOnServer();
-  }, [phone, garageId, sessionId, parkingLat, parkingLng, registerOnServer]);
+  }, [phone, garageId, sessionId, anchorCoords.lat, anchorCoords.lng, registerOnServer]);
 
   if (dismissed) {
     return (
