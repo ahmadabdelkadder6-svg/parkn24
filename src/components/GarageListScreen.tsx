@@ -881,7 +881,7 @@ export default function GarageListScreen() {
               <div className="flex items-center gap-2">
                 <Radio size={15} className="text-lime-400 animate-pulse shrink-0" />
                 <span className="text-xs sm:text-sm font-black text-white">
-                  ⚡ رادار المنقذ السريع (الأقرب لموقعك بالمتر)
+                  ⚡ رادار المنقذ السريع (الجراج الأقرب لموقعك بالمتر)
                 </span>
               </div>
               <span className="font-black text-[10px] sm:text-xs px-2.5 py-0.5 rounded-lg bg-white/15 text-lime-300 border border-white/20 font-mono shrink-0">

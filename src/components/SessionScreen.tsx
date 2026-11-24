@@ -14,15 +14,18 @@ import {
   LogOut,
   ShieldCheck,
   ShieldOff,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
 import { supabase } from '../lib/supabase';
 import { buildGoogleMapsUrl } from '../utils/mapsNavigation';
 import toast from 'react-hot-toast';
 import {
-  initAudioContext,
+  armBackgroundAudio,
   startShieldGPS,
-  triggerIntenseAlarm,
+  stopShieldGPS,
+  triggerBreachAlarm,
   stopIntenseAlarm,
   destroyShield,
   registerShieldSession,
@@ -143,6 +146,7 @@ const TacticalRadarScope = memo(function TacticalRadarScope({
             </span>
           )}
         </div>
+
         {/* بادج حالة القفل وتأمين النطاق */}
         <div
           className={`mt-2 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border shadow-md ${
@@ -204,6 +208,7 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
       Math.max(0, Math.floor((getServerNow() - activeStartMs) / 1000));
     const currentElapsed = calcElapsed();
     setElapsed(currentElapsed);
+
     if (currentElapsed >= AUTO_END_SECONDS) {
       if (!autoEndedRef.current) {
         autoEndedRef.current = true;
@@ -211,6 +216,7 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
       }
       return;
     }
+
     const interval = setInterval(() => {
       const current = calcElapsed();
       setElapsed(current);
@@ -220,6 +226,7 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
         onAutoEndRef.current();
       }
     }, 1000);
+
     return () => clearInterval(interval);
   }, [activeStartMs]);
 
@@ -381,7 +388,6 @@ export default function SessionScreen() {
   useEffect(() => {
     if (!userPlate && !userPhone) return;
     let isSubscribed = true;
-
     const channelName = `session-live-${userPlate || userPhone}-${Math.random().toString(36).substring(2, 7)}`;
     const channel = supabase.channel(channelName)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, (payload) => {
@@ -399,7 +405,6 @@ export default function SessionScreen() {
         throttledFetchAll();
       }
     };
-
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('focus', handleVisibility);
 
@@ -412,7 +417,7 @@ export default function SessionScreen() {
   }, [userPlate, userPhone, throttledFetchAll, isMySessionRow]);
 
   // ═══════════════════════════════════════════════════════════
-  // 🛡️ تفعيل الدرع والـ GPS بالإحداثيات الدقيقة (مؤمن ضد التكرار)
+  // 🔊 تجهيز ممر الصوت التلقائي عند أول لمسة للعميل (Pre-warmed Audio Trigger)
   // ═══════════════════════════════════════════════════════════
   const shieldSessionId = activeSession?.id;
   const isShieldPurchased = (activeSession?.shieldCost ?? 0) > 0;
@@ -421,9 +426,36 @@ export default function SessionScreen() {
   const garageId = garage?.id;
 
   useEffect(() => {
+    if (!isShieldPurchased) return;
+
+    // تجهيز أولي مباشر
+    armBackgroundAudio();
+
+    // تأكيد فتح ممر الصوت التفاعلي فور لمس الشاشة (Safari & Chrome gesture handshake)
+    const primeGesture = () => {
+      armBackgroundAudio();
+      window.removeEventListener('click', primeGesture);
+      window.removeEventListener('touchstart', primeGesture);
+    };
+
+    window.addEventListener('click', primeGesture, { once: true, passive: true });
+    window.addEventListener('touchstart', primeGesture, { once: true, passive: true });
+
+    return () => {
+      window.removeEventListener('click', primeGesture);
+      window.removeEventListener('touchstart', primeGesture);
+    };
+  }, [isShieldPurchased]);
+
+  // ═══════════════════════════════════════════════════════════
+  // 🛡️ تفعيل الدرع والـ GPS بالإحداثيات الدقيقة (مؤمن ضد التكرار)
+  // ═══════════════════════════════════════════════════════════
+  useEffect(() => {
     if (!shieldSessionId || !garageId || !isShieldPurchased) return;
-    try { initAudioContext(); } catch {}
-    
+
+    // تنشيط ممر الصوت والخلفية
+    armBackgroundAudio();
+
     const parkingLat = Number(pLat);
     const parkingLng = Number(pLng);
     let cancelled = false;
@@ -442,7 +474,8 @@ export default function SessionScreen() {
         parkingLat,
         parkingLng,
         onGeofenceBreach: () => {
-          triggerIntenseAlarm();
+          // 🚨 إطلاق السارينة والاهتزاز فوراً والشاشة مقفلة
+          triggerBreachAlarm();
           setShowBreach(true);
         },
       });
@@ -450,6 +483,7 @@ export default function SessionScreen() {
 
     return () => {
       cancelled = true;
+      stopShieldGPS();
       destroyShield();
       setShowBreach(false);
     };
@@ -463,14 +497,17 @@ export default function SessionScreen() {
     setShowBreach(false);
     setEndedSessionId(activeSession.id);
     setEnding(true);
+
     try {
       const elapsedSec = Math.floor((getServerNow() - activeStartMs) / 1000);
       await endSession(activeSession.id, Math.max(0, elapsedSec), 'cash', 0);
+
       const nowIso = new Date().toISOString();
       await supabase.from('shield_sessions')
         .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id)
         .is('ended_at', null);
+
       if (userPhone) {
         await supabase.from('shield_sessions')
           .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
@@ -478,8 +515,10 @@ export default function SessionScreen() {
           .is('ended_at', null)
           .is('session_id', null);
       }
+
       if (typeof acknowledgeSession === 'function') acknowledgeSession(activeSession.id);
       toast.success('تم إنهاء الجلسة ✅', { icon: '🏁', duration: 3000 });
+
       if (isMountedRef.current) {
         setSelectedGarageId(null);
         setScreen('list');
@@ -513,6 +552,7 @@ export default function SessionScreen() {
     destroyShield();
     setShowBreach(false);
     setEndedSessionId(activeSession.id);
+
     try {
       await endSession(activeSession.id, AUTO_END_SECONDS, 'cash', 0);
       const nowIso = new Date().toISOString();
@@ -520,6 +560,7 @@ export default function SessionScreen() {
         .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id)
         .is('ended_at', null);
+
       if (userPhone) {
         await supabase.from('shield_sessions')
           .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
@@ -527,8 +568,10 @@ export default function SessionScreen() {
           .is('ended_at', null)
           .is('session_id', null);
       }
+
       if (typeof acknowledgeSession === 'function') acknowledgeSession(activeSession.id);
       toast.success('تم إنهاء الجلسة تلقائياً (6 ساعات) ⏰', { duration: 5000 });
+
       if (isMountedRef.current) {
         setSelectedGarageId(null);
         setScreen('list');
@@ -646,7 +689,7 @@ export default function SessionScreen() {
               <div className="pt-2 border-t border-amber-500/20 flex items-start gap-1.5">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
                 <p className="text-[10px] font-bold text-slate-300 leading-relaxed">
-                  ⚠️ تنبيه هام: قفل نافذة التطبيق يدوياً يؤدي إلى إيقاف رادار الحماية فوراً. يرجى ترك الصفحة مفتوحة في الخلفية وقفل الشاشة فقط لضمان عمل التنبيهات.
+                  ⚠️ تنبيه هام: قفل نافذة التطبيق يدوياً يؤدي إلى إيقاف رادار الحماية فوراً. يرجى ترك الصفحة مفتوحة في الخلفية وقفل الشاشة فقط لضمان عمل الإنذار.
                 </p>
               </div>
             </div>
@@ -664,7 +707,7 @@ export default function SessionScreen() {
                 <span>⚠️ تنبيه: الجلسة الحالية تعمل في الوضع العادي (بدون حماية)</span>
               </div>
               <p className="text-[10px] font-bold text-slate-300 leading-relaxed pr-5">
-                السيارة غير مؤمنة  . الرادار والحماية متوقفان لهذه الجلسة.
+                السيارة غير مؤمنة ضد السرقة أو الرفع بالونش. الرادار والتتبع اللحظي متوقفان لهذه الجلسة.
               </p>
             </div>
           )}
@@ -767,7 +810,7 @@ export default function SessionScreen() {
           </button>
         </div>
 
-        {/* 🚨 شاشة اختراق الدرع */}
+        {/* 🚨 شاشة اختراق الدرع وسارينة الطوارئ */}
         {showBreach && (
           <div
             className="fixed inset-0 flex items-center justify-center p-4"
@@ -785,13 +828,24 @@ export default function SessionScreen() {
                 animation: 'pulse 1s ease-in-out infinite',
               }}
             >
-              <div className="text-6xl mb-3">🚨</div>
+              <div className="text-6xl mb-3 animate-bounce">🚨</div>
               <h2 className="text-2xl font-black text-red-400 mb-2">
-                تنبيه أمني!
+                تنبيه أمني عاجل!
               </h2>
-              <p className="text-sm text-gray-300 mb-6 leading-relaxed">
-                سيارتك خرجت من نطاق الأمان حول الجراج
+              <p className="text-sm font-bold text-gray-200 mb-4 leading-relaxed">
+                رصد رادار الحماية خروج سيارتك خارج نطاق الأمان (50 متر) أو حركتها بسرعة عالية!
               </p>
+
+              {/* زر كتم السارينة السريع */}
+              <button
+                type="button"
+                onClick={() => stopIntenseAlarm()}
+                className="mb-4 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-bold cursor-pointer active:scale-95"
+              >
+                <VolumeX size={15} className="text-amber-400" />
+                <span>كتم صوت السارينة مؤقتاً</span>
+              </button>
+
               <div className="flex flex-col gap-3">
                 <button
                   onClick={() => handleBreachAction(true)}
@@ -811,7 +865,7 @@ export default function SessionScreen() {
                     boxShadow: '0 4px 16px rgba(239,68,68,0.4)',
                   }}
                 >
-                  🚔 مش أنا — سرقة!
+                  🚔 مش أنا — بلاغ  !
                 </button>
               </div>
             </div>
@@ -820,6 +874,5 @@ export default function SessionScreen() {
       </motion.div>
     );
   }
-
   return null;
 }
