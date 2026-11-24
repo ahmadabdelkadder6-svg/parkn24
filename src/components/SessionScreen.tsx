@@ -12,7 +12,6 @@ import {
   Radio,
   Navigation,
   LogOut,
-  ArrowRight,
   VolumeX,
 } from 'lucide-react';
 import { useStore, normalizePlate, normalizePhone, getServerNow } from '../store';
@@ -541,12 +540,6 @@ export default function SessionScreen() {
     }
   }, [ending, activeSession, activeStartMs, endSession, acknowledgeSession, setSelectedGarageId, setScreen, userPhone]);
 
-  // 🔙 الرجوع للرئيسية مع استمرار الجلسة في الخلفية بأمان
-  const handleBackToHome = () => {
-    setSelectedGarageId(null);
-    setScreen('list');
-  };
-
   // 🚨 معالج إيقاف الإنذار عند الاختراق
   const handleBreachAction = useCallback(async (isDriver: boolean) => {
     stopIntenseAlarm();
@@ -625,22 +618,6 @@ export default function SessionScreen() {
           }
         `}</style>
 
-        {/* 🔝 شريط علوي أنيق مع زر الرجوع السلس للرئيسية */}
-        <div className="w-full flex items-center justify-between px-4 py-2 border-b border-slate-800/80 shrink-0 bg-slate-950/90 backdrop-blur-md">
-          <button
-            type="button"
-            onClick={handleBackToHome}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white text-xs font-black active:scale-95 transition-all cursor-pointer"
-          >
-            <ArrowRight size={14} />
-            <span>الرئيسية</span>
-          </button>
-          
-          <div className="text-center">
-            <span className="text-[11px] font-black text-slate-300 font-mono">
-              لوحة الرصد اللحظي
-            </span>
-          </div>
 
           <div className="w-16" /> {/* موازن بصري */}
         </div>
