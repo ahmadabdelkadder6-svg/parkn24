@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 
 // ============================================================
-// 🛡️ THE SHIELD - Full Protection Engine (v5 - Ultra Light & Reliable)
+// 🛡️ THE SHIELD - Full Protection Engine (v5 - Customer Only Alerts)
 // WakeLock + Silent Audio KeepAlive + WebAudio Siren + Haversine 50m
 // + Car Speed Detection + Actual Parking Spot Anchor Lock
 // ============================================================
@@ -187,7 +187,7 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   }
 }
 
-// ── Local Push Notification (Immediate Alert) ──
+// ── Local Push Notification (Immediate Alert to Customer) ──
 export function sendImmediateNotification(title: string, body: string): void {
   try {
     if ('serviceWorker' in navigator && Notification.permission === 'granted') {
@@ -799,22 +799,22 @@ export function destroyShield(sessionId?: string): void {
   clearShieldState();
 }
 
-// ── Trigger Emergency SOS in Supabase (Garage + Admin + Push + Shield Table) ──
+// ── Trigger Emergency Alert (Customer Only - No Garage/Valet/Admin Notifications) ──
 let lastSosTime = 0;
 
 export async function triggerSOS(
   sessionId: string,
-  garageId: string,
+  _garageId: string,
   userPhone: string,
-  userName: string,
+  _userName: string,
   carPlate: string,
   lat: number,
   lng: number,
   distance: number,
-  agreedPrice?: number
+  _agreedPrice?: number
 ): Promise<void> {
   const now = Date.now();
-  // Throttle SOS database writes to once every 15 seconds
+  // Throttle alerts to once every 15 seconds
   if (now - lastSosTime < 15000) return;
   lastSosTime = now;
 
@@ -823,73 +823,50 @@ export async function triggerSOS(
     const shieldId = getShieldId();
     const isoNow = new Date().toISOString();
 
-    const dbTasks: PromiseLike<any>[] = [
-      // 1. Update sessions table with SOS status & live coordinates
-      supabase
-        .from('sessions')
-        .update({
-          sos_active: true,
-          sos_triggered_at: isoNow,
-          user_lat: lat,
-          user_lng: lng,
-        })
-        .eq('id', sessionId),
+    // 1. Update shield_sessions table only (no messages or SOS flags to garage/admin)
+    const updateShieldTask = shieldId
+      ? supabase
+          .from('shield_sessions')
+          .update({
+            is_breached: true,
+            alarm_triggered: true,
+            last_lat: lat,
+            last_lng: lng,
+            last_distance: roundedDist,
+            updated_at: isoNow,
+          })
+          .eq('id', shieldId)
+      : supabase
+          .from('shield_sessions')
+          .update({
+            is_breached: true,
+            alarm_triggered: true,
+            last_lat: lat,
+            last_lng: lng,
+            last_distance: roundedDist,
+            updated_at: isoNow,
+          })
+          .eq('session_id', sessionId);
 
-      // 2. Update shield_sessions table
-      shieldId
-        ? supabase
-            .from('shield_sessions')
-            .update({
-              is_breached: true,
-              alarm_triggered: true,
-              last_lat: lat,
-              last_lng: lng,
-              last_distance: roundedDist,
-              updated_at: isoNow,
-            })
-            .eq('id', shieldId)
-        : supabase
-            .from('shield_sessions')
-            .update({
-              is_breached: true,
-              alarm_triggered: true,
-              last_lat: lat,
-              last_lng: lng,
-              last_distance: roundedDist,
-              updated_at: isoNow,
-            })
-            .eq('session_id', sessionId),
+    // 2. Send Web Push Notification to Customer ONLY (userPhone only, no garageId)
+    const customerPushTask = userPhone
+      ? fetch('/api/send-push', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userPhone,
+            sessionId,
+            isBreach: true,
+            title: `🚨 تنبيه الدرع الذكي (${carPlate})`,
+            body: `تحركت سيارتك لمسافة ${roundedDist} متر من مكان ركنتها والجلـسة لا تزال مفتوحة!`,
+            url: '/',
+          }),
+        }).catch(() => {})
+      : Promise.resolve();
 
-      // 3. Send urgent message to Garage & Admin
-      supabase.from('messages').insert({
-        id: 'sos_' + now + '_' + Math.random().toString(36).substring(2, 6),
-        sender_phone: userPhone || 'SHIELD_SYSTEM',
-        sender_name: `🚨 إنذار الدرع (${userName || 'عميل'})`,
-        subject: `🚨 اختراق نطاق الجراج (50م) - لوحة: ${carPlate}`,
-        content: `تحذير أمني عاجل!\nالسيارة رقم (${carPlate}) الخاصة بالعميل (${userName} - ${userPhone}) غادرت نطاق الـ 50 متر المسموح به (المسافة الحالية: ${roundedDist} متر) دون إنهاء الجلسة أو الدفع!\nالسعر المتفق عليه: ${agreedPrice || 0} ج.م\nالموقع الحالي: https://www.google.com/maps?q=${lat},${lng}`,
-        garage_id: garageId,
-        created_at: isoNow,
-      }),
-    ];
-
-    // 4. Trigger Server Web Push Notification to Customer & Garage Owner
-    const pushTask = fetch('/api/send-push', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userPhone,
-        garageId,
-        sessionId,
-        isBreach: true,
-        title: `🚨 إنذار الدرع: خروج بدون دفع! (${carPlate})`,
-        body: `السيارة (${carPlate}) ابتعدت ${roundedDist}م عن نقطة الركن دون إنهاء الجلسة!`,
-        url: '/',
-      }),
-    }).catch(() => {});
-
-    await Promise.all([...dbTasks, pushTask]);
+    await Promise.all([updateShieldTask, customerPushTask]);
   } catch (e) {
-    console.warn('[Shield SOS Error]:', e);
+    console.warn('[Shield Customer Alert Error]:', e);
   }
 }
 
@@ -966,17 +943,16 @@ export async function clearSOS(sessionId: string): Promise<void> {
     const shieldId = getShieldId();
     const isoNow = new Date().toISOString();
 
-    await Promise.all([
-      supabase.from('sessions').update({ sos_active: false }).eq('id', sessionId),
-      shieldId
-        ? supabase
-            .from('shield_sessions')
-            .update({ is_breached: false, updated_at: isoNow })
-            .eq('id', shieldId)
-        : supabase
-            .from('shield_sessions')
-            .update({ is_breached: false, updated_at: isoNow })
-            .eq('session_id', sessionId),
-    ]);
+    if (shieldId) {
+      await supabase
+        .from('shield_sessions')
+        .update({ is_breached: false, updated_at: isoNow })
+        .eq('id', shieldId);
+    } else {
+      await supabase
+        .from('shield_sessions')
+        .update({ is_breached: false, updated_at: isoNow })
+        .eq('session_id', sessionId);
+    }
   } catch {}
 }
