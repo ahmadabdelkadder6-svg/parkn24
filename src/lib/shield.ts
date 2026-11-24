@@ -774,5 +774,3 @@ export function loadShieldState(): ShieldState | null {
     return raw ? (JSON.parse(raw) as ShieldState) : null;
   } catch { return null; }
 }
-
-export { ALERT_POOL };
