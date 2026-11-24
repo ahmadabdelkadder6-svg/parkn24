@@ -1,14 +1,17 @@
 import { supabase } from './supabase';
 
 // ============================================================
-// 🛡️ THE SHIELD - Full Protection Engine (v5 - Customer Only Alerts)
-// WakeLock + Silent Audio KeepAlive + WebAudio Siren + Haversine 50m
-// + Car Speed Detection + Actual Parking Spot Anchor Lock
+// 🛡️ THE SHIELD - Full Protection Engine (v6 - Car Speed Only + Customer Only)
+// WakeLock + Silent Audio KeepAlive + WebAudio Siren
+// Walking (>50m) = NO ALARM | Car Speed (>=10 km/h) = IMMEDIATE ALARM
 // ============================================================
 
 export const SHIELD_RADIUS_METERS = 50;
-// سرعة السيارة بالـ متر/ثانية (~8 كم/ساعة) لاكتشاف التحرك بالسيارة فوراً
-export const SPEED_BREACH_MPS = 2.22;
+// سرعة السيارة بالـ متر/ثانية (2.78 م/ث = 10 كم/ساعة)
+// المشي الطبيعي للإنسان من 3 إلى 6 كم/ساعة (0.8 إلى 1.7 م/ث) فلا يضرب الإنذار أثناء المشي أبداً
+export const SPEED_BREACH_MPS = 2.78;
+// سرعة سيارة مؤكدة فورية (4.17 م/ث = 15 كم/ساعة)
+const HIGH_SPEED_BREACH_MPS = 4.17;
 
 let wakeLockObj: any = null;
 let sharedAudioCtx: AudioContext | null = null;
@@ -69,7 +72,7 @@ export function armBackgroundAudio(): void {
   document.addEventListener('keydown', unlockOnGesture, { once: true, passive: true });
 }
 
-// ── Silent Keep-Alive Audio (Prevents mobile OS from killing tab) ──
+// ── Silent Keep-Alive Audio (Prevents mobile OS from killing tab when phone is locked in pocket) ──
 export function startKeepAlive(): void {
   try {
     if (!keepAliveAudioEl && typeof Audio !== 'undefined') {
@@ -77,7 +80,7 @@ export function startKeepAlive(): void {
       keepAliveAudioEl.loop = true;
       keepAliveAudioEl.volume = 0.01;
       keepAliveAudioEl.setAttribute('playsinline', 'true');
-      // If mobile OS pauses the audio when locking screen, force play again
+      // If mobile OS pauses the audio when locking screen, force play again immediately
       keepAliveAudioEl.addEventListener('pause', () => {
         if (gpsWatchId !== null && keepAliveAudioEl) {
           keepAliveAudioEl.play().catch(() => {});
@@ -187,7 +190,7 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   }
 }
 
-// ── Local Push Notification (Immediate Alert to Customer) ──
+// ── Local Push Notification (Immediate Alert to Customer Lock Screen) ──
 export function sendImmediateNotification(title: string, body: string): void {
   try {
     if ('serviceWorker' in navigator && Notification.permission === 'granted') {
@@ -610,7 +613,7 @@ async function sendGPSToServer(
   }
 }
 
-// ── Continuous GPS Radar (Locks actual parking spot + 50m Geofence + Car Speed) ──
+// ── Continuous GPS Radar (Walking = Safe | Car Speed >= 10 km/h = Immediate Alarm) ──
 export function startShieldGPS(
   garageLat: number,
   garageLng: number,
@@ -624,8 +627,13 @@ export function startShieldGPS(
 
   if (!('geolocation' in navigator)) return;
 
-  let consecutiveBreaches = 0;
+  let consecutiveCarSpeedFixes = 0;
   let currentlyBreached = false;
+
+  // Variables to compute real ground speed when mobile OS returns speed === null in background
+  let prevLat: number | null = null;
+  let prevLng: number | null = null;
+  let prevFixTime = 0;
 
   // Use locked parking anchor if already captured for this session
   const existingState = loadShieldState();
@@ -663,46 +671,70 @@ export function startShieldGPS(
   };
 
   const handlePosition = (pos: GeolocationPosition) => {
-    lastWatchTickTime = Date.now();
+    const now = Date.now();
+    lastWatchTickTime = now;
     const { latitude, longitude, accuracy, speed } = pos.coords;
 
     // Ignore extremely inaccurate cell-tower jumps (> 120m) IF we already locked our parking spot
     if (accuracy && accuracy > 120 && isAnchorLocked) return;
 
-    // Lock the exact spot where the customer parked on the very first GPS fix of the session!
+    // Lock the exact spot where the customer parked on the very first GPS fix of the session
     if (!isAnchorLocked) {
       lockParkingAnchor(latitude, longitude);
     }
 
+    // 1. Distance from parked spot
     const dist = haversineDistance(anchorLat, anchorLng, latitude, longitude);
-    const isMovingFastInCar =
-      speed !== null &&
-      speed !== undefined &&
-      !Number.isNaN(speed) &&
-      speed >= SPEED_BREACH_MPS &&
-      dist > 25;
 
-    const isOut = dist > SHIELD_RADIUS_METERS || isMovingFastInCar;
+    // 2. Dual Speed Calculation: Hardware Doppler Speed + Ground Delta Speed
+    const hardwareSpeedMps =
+      speed !== null && speed !== undefined && !Number.isNaN(speed) && speed >= 0
+        ? speed
+        : 0;
+
+    let calculatedSpeedMps = 0;
+    if (prevLat !== null && prevLng !== null && prevFixTime > 0) {
+      const dtSec = (now - prevFixTime) / 1000;
+      const stepDist = haversineDistance(prevLat, prevLng, latitude, longitude);
+      // Only trust calculated speed if GPS accuracy is good (<= 45m) and time window is realistic (2s..30s)
+      if (dtSec >= 2 && dtSec <= 30 && (!accuracy || accuracy <= 45) && stepDist >= 12) {
+        calculatedSpeedMps = stepDist / dtSec;
+      }
+    }
+
+    prevLat = latitude;
+    prevLng = longitude;
+    prevFixTime = now;
+
+    const effectiveSpeedMps = Math.max(hardwareSpeedMps, calculatedSpeedMps);
+
+    // 3. Check if moving at CAR SPEED (>= 10 km/h = 2.78 m/s) away from parking spot (> 30m)
+    // Walking on foot (< 10 km/h) will NEVER trigger this, even if dist > 50m or 500m!
+    const isMovingInCar = effectiveSpeedMps >= SPEED_BREACH_MPS && dist > 30;
+    const isHighCarSpeed = effectiveSpeedMps >= HIGH_SPEED_BREACH_MPS && dist > 35;
 
     if (onUpdate) {
-      onUpdate(Math.round(dist), latitude, longitude, isOut);
+      onUpdate(Math.round(dist), latitude, longitude, isMovingInCar || currentlyBreached);
     }
 
     // Send live coordinates to Supabase (throttled internally)
-    sendGPSToServer(latitude, longitude, dist, accuracy || 10, isOut);
+    sendGPSToServer(
+      latitude,
+      longitude,
+      dist,
+      accuracy || 10,
+      isMovingInCar || currentlyBreached
+    );
 
-    if (isOut) {
-      consecutiveBreaches++;
-      // Confirm breach immediately if clearly past buffer (> 58m) or moving at car speed, or 2 consecutive readings > 50m
-      if (
-        (consecutiveBreaches >= 2 || dist > 58 || isMovingFastInCar) &&
-        !currentlyBreached
-      ) {
+    if (isMovingInCar) {
+      consecutiveCarSpeedFixes++;
+      // Trigger immediately if speed >= 15 km/h (isHighCarSpeed), or 2 consecutive fixes >= 10 km/h
+      if ((isHighCarSpeed || consecutiveCarSpeedFixes >= 2) && !currentlyBreached) {
         currentlyBreached = true;
         playIntenseAlarm();
         sendImmediateNotification(
-          '🚨 تحذير أمني عاجل - الدرع الذكي!',
-          `السيارة تحركت لمسافة ${Math.round(dist)} متر من مكان ركنتها بدون إنهاء الجلسة!`
+          '🚨 تحذير الدرع الذكي - الجلسة لا تزال مفتوحة!',
+          `تم رصد تحركك بالسيارة والجلـسة لم تُغلق بعد (المسافة: ${Math.round(dist)} متر)!`
         );
         if (onBreach) {
           onBreach(Math.round(dist), latitude, longitude);
@@ -711,7 +743,7 @@ export function startShieldGPS(
         playIntenseAlarm();
       }
     } else {
-      consecutiveBreaches = 0;
+      consecutiveCarSpeedFixes = 0;
       if (currentlyBreached && dist <= SHIELD_RADIUS_METERS - 5) {
         currentlyBreached = false;
         stopIntenseAlarm();
@@ -858,7 +890,7 @@ export async function triggerSOS(
             sessionId,
             isBreach: true,
             title: `🚨 تنبيه الدرع الذكي (${carPlate})`,
-            body: `تحركت سيارتك لمسافة ${roundedDist} متر من مكان ركنتها والجلـسة لا تزال مفتوحة!`,
+            body: `تحركت سيارتك لمسافة ${roundedDist} متر والجلـسة لا تزال مفتوحة!`,
             url: '/',
           }),
         }).catch(() => {})
