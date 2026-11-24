@@ -49,7 +49,7 @@ export function initAudioContext(): void {
   }
 }
 
-// ── Arm Background Audio (Called by SessionScreen / user interactions) ──
+// ── Arm Background Audio (Called by SessionScreen & NavigationScreen) ──
 export function armBackgroundAudio(): void {
   initAudioContext();
 
@@ -70,7 +70,7 @@ export function armBackgroundAudio(): void {
 }
 
 // ── Silent Keep-Alive Audio (Prevents mobile OS from killing tab) ──
-function startKeepAlive(): void {
+export function startKeepAlive(): void {
   try {
     if (!keepAliveAudioEl && typeof Audio !== 'undefined') {
       keepAliveAudioEl = new Audio(SILENT_WAV_BASE64);
@@ -119,7 +119,7 @@ function startKeepAlive(): void {
   }, 20_000);
 }
 
-function stopKeepAlive(): void {
+export function stopKeepAlive(): void {
   if (keepAliveInterval) {
     clearInterval(keepAliveInterval);
     keepAliveInterval = null;
@@ -188,7 +188,7 @@ export async function requestNotificationPermissions(): Promise<boolean> {
 }
 
 // ── Local Push Notification (Immediate Alert) ──
-function sendImmediateNotification(title: string, body: string): void {
+export function sendImmediateNotification(title: string, body: string): void {
   try {
     if ('serviceWorker' in navigator && Notification.permission === 'granted') {
       navigator.serviceWorker.ready
@@ -289,6 +289,11 @@ export function playIntenseAlarm(): void {
   }
 }
 
+// Alias for playIntenseAlarm used by NavigationScreen / SessionScreen
+export function triggerIntenseAlarm(): void {
+  playIntenseAlarm();
+}
+
 export function stopIntenseAlarm(): void {
   isAlarmPlaying = false;
   if (alarmInterval) {
@@ -332,6 +337,8 @@ export function haversineDistance(
       Math.sin(dLng / 2);
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
+
+export const calculateDistance = haversineDistance;
 
 // ── LocalStorage Persistence for Shield State ──
 const SHIELD_STORAGE_KEY = 'parkn_shield_active_v3';
@@ -398,18 +405,65 @@ export function setShieldId(id: string | null): void {
 }
 
 // ── Register Shield Session in Supabase (`shield_sessions` table) ──
-export async function registerShieldSession(state: ShieldState): Promise<string | null> {
-  if (!state.sessionId) return null;
+export async function registerShieldSession(
+  stateOrSessionId: (Partial<ShieldState> & Record<string, any>) | string,
+  userPhoneArg?: string,
+  userNameArg?: string,
+  carPlateArg?: string,
+  garageIdArg?: string,
+  garageNameArg?: string,
+  garageLatArg?: number,
+  garageLngArg?: number
+): Promise<string | null> {
+  const normalizedState: ShieldState =
+    typeof stateOrSessionId === 'string'
+      ? {
+          active: true,
+          sessionId: stateOrSessionId,
+          userPhone: userPhoneArg || '',
+          userName: userNameArg || 'عميل',
+          carPlate: carPlateArg || '',
+          garageId: garageIdArg || '',
+          garageName: garageNameArg || '',
+          garageLat: Number(garageLatArg) || 30.0444,
+          garageLng: Number(garageLngArg) || 31.2357,
+          startedAt: Date.now(),
+        }
+      : {
+          active: stateOrSessionId.active ?? true,
+          shieldId: stateOrSessionId.shieldId,
+          sessionId: stateOrSessionId.sessionId || '',
+          garageId: stateOrSessionId.garageId || '',
+          garageName: stateOrSessionId.garageName || '',
+          garageLat: Number(
+            stateOrSessionId.garageLat ?? stateOrSessionId.parkingLat ?? 30.0444
+          ),
+          garageLng: Number(
+            stateOrSessionId.garageLng ?? stateOrSessionId.parkingLng ?? 31.2357
+          ),
+          userPhone: stateOrSessionId.userPhone || '',
+          userName:
+            stateOrSessionId.userName || stateOrSessionId.customerName || 'عميل',
+          carPlate: stateOrSessionId.carPlate || '',
+          agreedPrice: stateOrSessionId.agreedPrice,
+          startedAt: stateOrSessionId.startedAt || Date.now(),
+          anchorLocked: stateOrSessionId.anchorLocked,
+        };
+
+  if (!normalizedState.sessionId) return null;
 
   // Reuse existing shieldId if already registered for the same session
   const existingState = loadShieldState();
-  if (existingState?.sessionId === state.sessionId && existingState?.shieldId) {
+  if (
+    existingState?.sessionId === normalizedState.sessionId &&
+    existingState?.shieldId
+  ) {
     currentShieldId = existingState.shieldId;
     return existingState.shieldId;
   }
 
   // Deduplicate concurrent registration calls for the same session
-  const inFlight = inFlightRegistrations.get(state.sessionId);
+  const inFlight = inFlightRegistrations.get(normalizedState.sessionId);
   if (inFlight) return inFlight;
 
   const registrationPromise = (async (): Promise<string | null> => {
@@ -417,7 +471,7 @@ export async function registerShieldSession(state: ShieldState): Promise<string 
       const { data: existing } = await supabase
         .from('shield_sessions')
         .select('id, parking_lat, parking_lng')
-        .eq('session_id', state.sessionId)
+        .eq('session_id', normalizedState.sessionId)
         .eq('is_active', true)
         .maybeSingle();
 
@@ -425,11 +479,16 @@ export async function registerShieldSession(state: ShieldState): Promise<string 
         // Restore locked parking coordinates if they were already saved on server
         const pLat = Number(existing.parking_lat);
         const pLng = Number(existing.parking_lng);
-        if (Number.isFinite(pLat) && Number.isFinite(pLng) && pLat !== 0 && pLng !== 0) {
-          state.garageLat = pLat;
-          state.garageLng = pLng;
-          state.anchorLocked = true;
-          saveShieldState(state);
+        if (
+          Number.isFinite(pLat) &&
+          Number.isFinite(pLng) &&
+          pLat !== 0 &&
+          pLng !== 0
+        ) {
+          normalizedState.garageLat = pLat;
+          normalizedState.garageLng = pLng;
+          normalizedState.anchorLocked = true;
+          saveShieldState(normalizedState);
         }
         setShieldId(existing.id);
         return existing.id;
@@ -438,16 +497,16 @@ export async function registerShieldSession(state: ShieldState): Promise<string 
       const { data, error } = await supabase
         .from('shield_sessions')
         .insert({
-          session_id: state.sessionId,
-          user_phone: state.userPhone,
-          customer_name: state.userName,
-          car_plate: state.carPlate,
-          garage_id: state.garageId,
-          garage_name: state.garageName,
-          parking_lat: state.garageLat,
-          parking_lng: state.garageLng,
-          last_lat: state.garageLat,
-          last_lng: state.garageLng,
+          session_id: normalizedState.sessionId,
+          user_phone: normalizedState.userPhone,
+          customer_name: normalizedState.userName,
+          car_plate: normalizedState.carPlate,
+          garage_id: normalizedState.garageId,
+          garage_name: normalizedState.garageName,
+          parking_lat: normalizedState.garageLat,
+          parking_lng: normalizedState.garageLng,
+          last_lat: normalizedState.garageLat,
+          last_lng: normalizedState.garageLng,
           last_distance: 0,
           is_active: true,
           is_breached: false,
@@ -465,11 +524,11 @@ export async function registerShieldSession(state: ShieldState): Promise<string 
       console.warn('[Shield] registerShieldSession error:', e);
       return null;
     } finally {
-      inFlightRegistrations.delete(state.sessionId);
+      inFlightRegistrations.delete(normalizedState.sessionId);
     }
   })();
 
-  inFlightRegistrations.set(state.sessionId, registrationPromise);
+  inFlightRegistrations.set(normalizedState.sessionId, registrationPromise);
   return registrationPromise;
 }
 
@@ -511,11 +570,14 @@ async function sendGPSToServer(
 
     const updateQuery = shieldId
       ? supabase.from('shield_sessions').update(updatePayload).eq('id', shieldId)
-      : supabase.from('shield_sessions').update(updatePayload).eq('session_id', state.sessionId);
+      : supabase
+          .from('shield_sessions')
+          .update(updatePayload)
+          .eq('session_id', state.sessionId);
 
     const tasks: PromiseLike<any>[] = [updateQuery];
 
-    // Insert location log only when shieldId is available & either breached or every ~16s
+    // Insert location log when shieldId is available
     if (shieldId) {
       tasks.push(
         supabase.from('shield_locations').insert({
@@ -540,8 +602,8 @@ async function sendGPSToServer(
 export function startShieldGPS(
   garageLat: number,
   garageLng: number,
-  onUpdate: (dist: number, lat: number, lng: number, isOut: boolean) => void,
-  onBreach: (dist: number, lat: number, lng: number) => void,
+  onUpdate?: (dist: number, lat: number, lng: number, isOut: boolean) => void,
+  onBreach?: (dist: number, lat: number, lng: number) => void,
   onReturnInside?: () => void
 ): void {
   stopShieldGPS();
@@ -610,7 +672,9 @@ export function startShieldGPS(
 
     const isOut = dist > SHIELD_RADIUS_METERS || isMovingFastInCar;
 
-    onUpdate(Math.round(dist), latitude, longitude, isOut);
+    if (onUpdate) {
+      onUpdate(Math.round(dist), latitude, longitude, isOut);
+    }
 
     // Send live coordinates to Supabase (throttled internally)
     sendGPSToServer(latitude, longitude, dist, accuracy || 10, isOut);
@@ -618,14 +682,19 @@ export function startShieldGPS(
     if (isOut) {
       consecutiveBreaches++;
       // Confirm breach immediately if clearly past buffer (> 58m) or moving at car speed, or 2 consecutive readings > 50m
-      if ((consecutiveBreaches >= 2 || dist > 58 || isMovingFastInCar) && !currentlyBreached) {
+      if (
+        (consecutiveBreaches >= 2 || dist > 58 || isMovingFastInCar) &&
+        !currentlyBreached
+      ) {
         currentlyBreached = true;
         playIntenseAlarm();
         sendImmediateNotification(
           '🚨 تحذير أمني عاجل - الدرع الذكي!',
           `السيارة تحركت لمسافة ${Math.round(dist)} متر من مكان ركنتها بدون إنهاء الجلسة!`
         );
-        onBreach(Math.round(dist), latitude, longitude);
+        if (onBreach) {
+          onBreach(Math.round(dist), latitude, longitude);
+        }
       } else if (currentlyBreached && !isAlarmPlaying) {
         playIntenseAlarm();
       }
@@ -690,18 +759,32 @@ export function stopShieldGPS(sessionId?: string): void {
   if (shieldId) {
     supabase
       .from('shield_sessions')
-      .update({ is_active: false, is_breached: false, updated_at: new Date().toISOString() })
+      .update({
+        is_active: false,
+        is_breached: false,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', shieldId)
       .then(() => {});
   } else if (targetSessionId) {
     supabase
       .from('shield_sessions')
-      .update({ is_active: false, is_breached: false, updated_at: new Date().toISOString() })
+      .update({
+        is_active: false,
+        is_breached: false,
+        updated_at: new Date().toISOString(),
+      })
       .eq('session_id', targetSessionId)
       .then(() => {});
   }
 
   currentShieldId = null;
+}
+
+// ── Full Cleanup of Shield (Stops GPS, Siren, KeepAlive, WakeLock & Clears State) ──
+export function destroyShield(sessionId?: string): void {
+  stopShieldGPS(sessionId);
+  clearShieldState();
 }
 
 // ── Trigger Emergency SOS in Supabase (Garage + Admin + Push + Shield Table) ──
