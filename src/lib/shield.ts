@@ -45,6 +45,10 @@ export const MAX_ALLOWED_ACCURACY_METERS = 45; // استبعاد الإشارا�
 // ─── ⏱️ ثوابت ترشيد استهلاك السيرفر (Throttle) ───
 const GPS_SERVER_THROTTLE_MS = 5_000; // حد أدنى 5 ثوانٍ بين كل استعلام تحديث للسيرفر
 
+// صوت سارينة احترافي نقي ومتوازن
+const SIREN_AUDIO_URL = 'https://assets.mixkit.co/active_storage/sfx/995/995-preview.mp3';
+const SILENT_WAV_BASE64 = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
+
 // VAPID Public Key لتفعيل الـ Web Push
 const VAPID_PUBLIC_KEY = 'BOuP_HFhSSjHMsjf4KZJYLaFTv3RdI20Ux3an5LriaTBUN0iGlW-38zYGvROp26k7jcqhC_XpUotxzLR1IjQTI4';
 
@@ -60,7 +64,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 }
 
 // ─── 🛡️ بنك الإشعارات الأمني التكتيكي ───
-const ALERT_POOL: FakeAlert[] = [
+export const ALERT_POOL: FakeAlert[] = [
   { type: 'status', title: "🛡️ رادار Park'n 24", body: 'جاري مسح المحيط الأمني لسيارتك.. الوضع مستقر تماماً.', icon: '🛡️' },
   { type: 'status', title: '🛰️ اتصال الأقمار الصناعية', body: 'تم تثبيت إحداثيات GPS بدقة عالية. رادارك يعمل بنجاح.', icon: '🛰️' },
   { type: 'warning', title: '🔒 تأمين الحركة الفوري', body: 'حساسات الاهتزاز مشفرة الآن. أي محاولة رفع بالونش ستصلك فوراً.', icon: '🔒' },
@@ -70,7 +74,7 @@ const ALERT_POOL: FakeAlert[] = [
   { type: 'report', title: '🔍 مسح أمني شامل', body: 'جاري فحص استقرار المركبة.. لا توجد اهتزازات غير طبيعية مسجلة.', icon: '🔍' },
   { type: 'status', title: '📡 تردد الرادار مستقر', body: 'اتصال حي ومستمر بين موبايلك ورادار السيارة. الحماية نشطة.', icon: '📡' },
   { type: 'warning', title: '🚨 نظام الردع الإلكتروني', body: 'ملصقك الإلكتروني نشط في قاعدة البيانات الأمنيّة حالياً.', icon: '🚨' },
-  { type: 'resolved', title: '✨ طمأنينة Park\'n 24', body: 'نراقب سيارتك كأننا بجوارها تماماً. ركنة سعيدة!', icon: '✨' },
+  { type: 'resolved', title: "✨ طمأنينة Park'n 24", body: 'نراقب سيارتك كأننا بجوارها تماماً. ركنة سعيدة!', icon: '✨' },
   { type: 'report', title: '🛠️ فحص الحساسات', body: 'تم التأكد من عمل حساس الميل (Tilt Sensor). سيارتك مؤمنة ضد الرفع.', icon: '🛠️' },
   { type: 'status', title: '🌐 شبكة الحماية الحية', body: 'سيارتك ضمن نطاق "المنطقة الخضراء" المؤمنة بـ Park\'n 24.', icon: '🌐' },
   { type: 'status', title: '🛡️ درع الخصوصية', body: 'وضع الحماية الصامت يعمل. التنبيه سيصدر فقط في حالة الخطر.', icon: '🛡️' },
@@ -80,7 +84,7 @@ const ALERT_POOL: FakeAlert[] = [
   { type: 'resolved', title: '📍 تأكيد الموقع', body: 'تم التحقق من بقاء السيارة في مكانها الأصلي بنجاح.', icon: '📍' },
   { type: 'status', title: '🧠 خوارزمية التتبع', body: 'نظامنا يحلل محيط السيارة الآن لضمان أقصى درجات الأمان.', icon: '🧠' },
   { type: 'status', title: '📱 حالة الدرع', body: 'الدرع الإلكتروني: [نشط]. البطارية: [مستقرة]. الأمان: [100%].', icon: '📱' },
-  { type: 'resolved', title: '🌟 تميز مع Park\'n 24', body: 'شكرًا لثقتك في نظام حمايتنا. سيارتك في أيدي أمينة تكنولوجياً.', icon: '🌟' },
+  { type: 'resolved', title: "🌟 تميز مع Park'n 24", body: 'شكرًا لثقتك في نظام حمايتنا. سيارتك في أيدي أمينة تكنولوجياً.', icon: '🌟' },
   { type: 'warning', title: '🕵️ رادار كشف التطفل', body: 'أي محاولة لفتح الأبواب أو لمس الزجاج ستفعل الإنذار فوراً.', icon: '🕵️' },
   { type: 'status', title: '🛡️ تأمين شامل', body: 'سيارتك الآن جزء من شبكة المركبات المحمية إلكترونياً.', icon: '🛡️' },
   { type: 'status', title: '📡 إشارة الرادار', body: 'قوة الإشارة ممتازة. التتبع اللحظي يعمل بدون أي تأخير.', icon: '📡' },
@@ -210,6 +214,7 @@ export async function registerShieldSession(params: {
       console.error('❌ registerShieldSession error:', error);
       return null;
     }
+
     return data.id;
   } catch (e) {
     console.error('❌ registerShieldSession exception:', e);
@@ -221,13 +226,18 @@ export function startFakeAlerts(): void {}
 export function stopFakeAlerts(): void {}
 
 // ═══════════════════════════════════════════════════════════
-// 🔊 محرك منع الخمول الصامت الفائق (Audio + WakeLock Engine)
+// 🔊 محرك تجهيز الصوت المسبق فائق الاستجابة (Pre-warmed Audio Loop Engine)
 // ═══════════════════════════════════════════════════════════
 let sharedAudioCtx: AudioContext | null = null;
 let keepAliveSource: AudioBufferSourceNode | null = null;
 let silentAudioEl: HTMLAudioElement | null = null;
+let prewarmedSirenAudio: HTMLAudioElement | null = null;
 let wakeLockSentinel: any = null;
 let isAudioKeepAliveActive = false;
+let alarmAudioCtx: AudioContext | null = null;
+let alarmOscillators: OscillatorNode[] = [];
+let alarmVibrationInterval: ReturnType<typeof setInterval> | null = null;
+let isAlarmActive = false;
 
 export function initAudioContext(): void {
   try {
@@ -253,68 +263,185 @@ async function requestWakeLock(): Promise<void> {
       });
     }
   } catch {
-    // WakeLock غير مدعوم أو تم رفضه دون تعطيل التطبيق
+    // WakeLock غير مدعوم أو تم رفضه
   }
 }
 
-export function unlockAndKeepAliveAudio(): void {
-  if (isAudioKeepAliveActive && sharedAudioCtx && sharedAudioCtx.state === 'running') {
-    return;
-  }
-
+/**
+ * تجهيز مسار الصوت المسبق (Pre-warmed Audio) فور تفعيل الدرع
+ */
+export function armBackgroundAudio(): void {
   try {
     initAudioContext();
-    if (!sharedAudioCtx) return;
 
-    // 1. توليد تيار صوتي صامت بذبذبة خفية مستمرة
-    const buffer = sharedAudioCtx.createBuffer(1, sharedAudioCtx.sampleRate * 2, sharedAudioCtx.sampleRate);
-    const channelData = buffer.getChannelData(0);
-    for (let i = 0; i < channelData.length; i++) {
-      channelData[i] = Math.sin(i * 0.0001) * 0.00002;
+    if (!prewarmedSirenAudio) {
+      prewarmedSirenAudio = new Audio(SIREN_AUDIO_URL);
+      prewarmedSirenAudio.loop = true;
+      prewarmedSirenAudio.preload = 'auto';
+      prewarmedSirenAudio.volume = 0.001; // صوت صامت يحافظ على مسار الميديا نشطاً
+      (prewarmedSirenAudio as any).playsInline = true;
     }
 
-    if (keepAliveSource) {
-      try { keepAliveSource.stop(); } catch { /* ignore */ }
+    prewarmedSirenAudio.play().then(() => {
+      isAudioKeepAliveActive = true;
+    }).catch(() => {
+      if (!silentAudioEl) {
+        silentAudioEl = new Audio(SILENT_WAV_BASE64);
+        silentAudioEl.loop = true;
+        silentAudioEl.volume = 0.01;
+        (silentAudioEl as any).playsInline = true;
+      }
+      silentAudioEl.play().catch(() => {});
+    });
+
+    if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
+      sharedAudioCtx.resume().catch(() => {});
     }
 
-    keepAliveSource = sharedAudioCtx.createBufferSource();
-    keepAliveSource.buffer = buffer;
-    keepAliveSource.loop = true;
-
-    const gainNode = sharedAudioCtx.createGain();
-    gainNode.gain.setValueAtTime(0.001, sharedAudioCtx.currentTime);
-
-    keepAliveSource.connect(gainNode);
-    gainNode.connect(sharedAudioCtx.destination);
-    keepAliveSource.start();
-
-    // 2. تدعيم بملف وسائط صامت لمتصفحات الموبايل (Safari & Chrome Background Anchor)
-    if (!silentAudioEl) {
-      silentAudioEl = document.createElement('audio');
-      // ملف WAV صامت مدته ثانية واحدة مشفر Base64
-      silentAudioEl.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
-      silentAudioEl.loop = true;
-      silentAudioEl.volume = 0.01;
-    }
-    silentAudioEl.play().catch(() => {});
-
-    // 3. تأكيد حالة التشغيل لنظام الميديا في الموبايل
     if ('mediaSession' in navigator) {
       navigator.mediaSession.playbackState = 'playing';
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: "رادار الحماية نشط | Park'n 24",
+        title: "🛡️ رادار الحماية نشط | Park'n 24",
         artist: 'درع الحماية ضد السرقة والونش',
         album: 'نظام المراقبة المستمر',
       });
+
+      navigator.mediaSession.setActionHandler('play', () => {
+        if (prewarmedSirenAudio) prewarmedSirenAudio.play().catch(() => {});
+      });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        if (prewarmedSirenAudio && !isAlarmActive) {
+          prewarmedSirenAudio.play().catch(() => {});
+        }
+      });
     }
 
-    // 4. طلب WakeLock لمنع المعالج من النوم العميق
     requestWakeLock().catch(() => {});
-
-    isAudioKeepAliveActive = true;
   } catch (e) {
-    console.warn('⚠️ Audio Keep-Alive setup failed:', e);
+    console.warn('⚠️ armBackgroundAudio error:', e);
   }
+}
+
+// دالة للتوافق العكسي
+export function unlockAndKeepAliveAudio(): void {
+  armBackgroundAudio();
+}
+
+// ═══════════════════════════════════════════════════════════
+// 🚨🔊 سارينة واضحة ومتوازنة + اهتزاز نبضي لطيف (بدون إزعاج حاد)
+// ═══════════════════════════════════════════════════════════
+export function triggerBreachAlarm(): void {
+  if (isAlarmActive) return;
+  isAlarmActive = true;
+
+  // 1. تشغيل صوت السارينة الواضح والنقي بمستوى متوازن (بدون تشويش أو فرقعة سماعات)
+  if (prewarmedSirenAudio) {
+    try {
+      prewarmedSirenAudio.volume = 0.75; // مستوى مريح وواضح
+      prewarmedSirenAudio.currentTime = 0;
+      prewarmedSirenAudio.play().catch(() => {});
+    } catch (e) {
+      console.warn('⚠️ Siren play failed:', e);
+    }
+  }
+
+  // 2. إضافة نغمة تحذيرية ناعمة ودافئة (Harmonic Chime Sweep) بدلاً من الصفير المزعج
+  try {
+    initAudioContext();
+    const ctx = sharedAudioCtx;
+    if (ctx) {
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+      alarmAudioCtx = ctx;
+      const now = alarmAudioCtx.currentTime;
+
+      const osc = alarmAudioCtx.createOscillator();
+      const gain = alarmAudioCtx.createGain();
+
+      // موجة ناعمة (Sine Wave) مريحة للأذن
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, now); // نغمة A5 نقية
+
+      // تموج صوتي دوري محبب يشبه أجهزة الإنذار الفاخرة
+      for (let i = 0; i < 200; i++) {
+        osc.frequency.setValueAtTime(950, now + i * 0.5);
+        osc.frequency.linearRampToValueAtTime(750, now + i * 0.5 + 0.25);
+      }
+
+      gain.gain.setValueAtTime(0.4, now); // صوت مهدأ
+      osc.connect(gain);
+      gain.connect(alarmAudioCtx.destination);
+      osc.start();
+
+      alarmOscillators = [osc];
+    }
+  } catch { /* ignore */ }
+
+  // 3. اهتزاز نبضي ذكي ومحسوس (بدون رج عنيف مستمر يحرق الموتور)
+  if (navigator.vibrate) {
+    // نبضة: اهتزاز 300 مللي، راحة 200، اهتزاز 300، راحة 600
+    const pleasantPattern = [300, 200, 300, 600];
+    navigator.vibrate(pleasantPattern);
+    alarmVibrationInterval = setInterval(() => {
+      if (isAlarmActive && navigator.vibrate) {
+        navigator.vibrate(pleasantPattern);
+      }
+    }, 1800);
+  }
+
+  // 4. إشعار شاشة القفل بنشاط الإنذار
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.playbackState = 'playing';
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: '🚨 تنبيه: رصد حركة خارج نطاق الأمان!',
+      artist: 'رادار Park\'n 24 يراقب سيارتك',
+      album: 'نظام الحماية الذكي',
+    });
+  }
+}
+
+// دالة للتوافق العكسي
+export function triggerIntenseAlarm(): void {
+  triggerBreachAlarm();
+}
+
+export function stopIntenseAlarm(): void {
+  isAlarmActive = false;
+
+  // إعادة السارينة للوضع الصامت الخلفي
+  if (prewarmedSirenAudio) {
+    try {
+      prewarmedSirenAudio.volume = 0.001;
+      prewarmedSirenAudio.currentTime = 0;
+    } catch { /* ignore */ }
+  }
+
+  try {
+    alarmOscillators.forEach((osc) => {
+      try { osc.stop(); } catch { /* ignore */ }
+    });
+    alarmOscillators = [];
+    alarmAudioCtx = null;
+  } catch { /* ignore */ }
+
+  if (alarmVibrationInterval) {
+    clearInterval(alarmVibrationInterval);
+    alarmVibrationInterval = null;
+  }
+  if (navigator.vibrate) navigator.vibrate(0);
+
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: "🛡️ رادار الحماية نشط | Park'n 24",
+      artist: 'درع الحماية ضد السرقة والونش',
+      album: 'نظام المراقبة المستمر',
+    });
+  }
+}
+
+export function isIntenseAlarmActive(): boolean {
+  return isAlarmActive;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -340,7 +467,7 @@ export function startShieldGPS(params: {
   onGPSError?: () => void;
 }): () => void {
   stopShieldGPS();
-  unlockAndKeepAliveAudio();
+  armBackgroundAudio();
 
   if (!navigator.geolocation) {
     params.onGPSError?.();
@@ -366,18 +493,15 @@ export function startShieldGPS(params: {
     const now = Date.now();
     const elapsed = now - watchStartTime;
 
-    // 🛡️ 1. فترة استقرار 4 ثوانٍ فقط عند البدء لتفادي اهتزاز الإشارة المبدئي
     if (elapsed < STABILIZATION_MS) {
       prevPos = { lat, lng, t: now };
       return;
     }
 
-    // 🛡️ 2. استبعاد القراءات الضعيفة وغير الدقيقة (أكبر من 45 متر) لمنع الإنذارات الكاذبة
     if (accuracy && accuracy > MAX_ALLOWED_ACCURACY_METERS) {
       return;
     }
 
-    // 🛡️ 3. حساب السرعة الحقيقية فقط عند وجود حركة فعلية واضحة (أكبر من 12 متر)
     let speed = (rawSpeed !== null && rawSpeed > 0) ? rawSpeed : 0;
     if (prevPos) {
       const d = haversine(prevPos.lat, prevPos.lng, lat, lng);
@@ -392,7 +516,6 @@ export function startShieldGPS(params: {
     const distFromGarage = haversine(lat, lng, params.parkingLat, params.parkingLng);
     const distFromLastSent = haversine(lat, lng, lastSentLat, lastSentLng);
 
-    // 🚨 4. شروط الاختراق المحكمة مع الاستجابة السريعة
     const isOverDistance = distFromGarage > GEOFENCE_RADIUS_METERS;
     const isConfirmedSpeed = speed >= SPEED_THRESHOLD_MPS;
     const isMajorDistance = distFromGarage > 80 && (accuracy === null || accuracy <= 35);
@@ -403,12 +526,12 @@ export function startShieldGPS(params: {
         breachStartTime = now;
       }
 
-      // إطلاق فوري لو المسافة قطعت 80م، أو ثانية واحدة مع قراءة مؤكدة للسرعة
       const effectiveGrace = isMajorDistance ? 0 : CAR_GRACE_MS;
+
       if ((now - breachStartTime >= effectiveGrace) || consecutiveBreachCount >= 2) {
         if (!isCurrentlyOutside) {
           isCurrentlyOutside = true;
-          
+
           if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
             try {
               const title = '🚨 تحذير: رصد حركة خارج النطاق!';
@@ -418,7 +541,7 @@ export function startShieldGPS(params: {
                   reg.showNotification(title, {
                     body,
                     icon: '/favicon.ico',
-                    vibrate: [1000, 100, 1000, 100, 1000],
+                    vibrate: [300, 200, 300, 600],
                     tag: 'shield-breach',
                   });
                 });
@@ -430,7 +553,7 @@ export function startShieldGPS(params: {
             }
           }
 
-          triggerIntenseAlarm();
+          triggerBreachAlarm();
           sendGPSToServer(params.sessionId, params.shieldId, lat, lng, true, speed, true).catch(() => {});
           lastSentLat = lat;
           lastSentLng = lng;
@@ -456,7 +579,6 @@ export function startShieldGPS(params: {
     }
   };
 
-  // مراقبة حية مستمرة للـ GPS
   gpsWatchId = navigator.geolocation.watchPosition(
     (pos) => handlePosition(
       pos.coords.latitude,
@@ -468,11 +590,14 @@ export function startShieldGPS(params: {
     { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 },
   );
 
-  // فحص نبض دوري كل 12 ثانية كـ Fallback داخلي
   fallbackIntervalId = setInterval(() => {
+    if (prewarmedSirenAudio && prewarmedSirenAudio.paused) {
+      prewarmedSirenAudio.play().catch(() => {});
+    }
     if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
       sharedAudioCtx.resume().catch(() => {});
     }
+
     navigator.geolocation.getCurrentPosition(
       (pos) => handlePosition(
         pos.coords.latitude,
@@ -485,8 +610,10 @@ export function startShieldGPS(params: {
     );
   }, FALLBACK_INTERVAL_MS);
 
-  // إيقاظ فوري عند تبديل الشاشة أو العودة للتطبيق
   visibilityHandler = () => {
+    if (prewarmedSirenAudio && prewarmedSirenAudio.paused) {
+      prewarmedSirenAudio.play().catch(() => {});
+    }
     if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
       sharedAudioCtx.resume().catch(() => {});
     }
@@ -504,6 +631,7 @@ export function startShieldGPS(params: {
       );
     }
   };
+
   document.addEventListener('visibilitychange', visibilityHandler);
 
   return () => stopShieldGPS();
@@ -582,123 +710,54 @@ async function sendGPSToServer(
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🚨🔊 نظام السارينة المكثفة والاهتزاز العالي
-// ═══════════════════════════════════════════════════════════
-let alarmAudioCtx: AudioContext | null = null;
-let alarmOscillators: OscillatorNode[] = [];
-let alarmVibrationInterval: ReturnType<typeof setInterval> | null = null;
-let isAlarmActive = false;
-
-export function triggerIntenseAlarm(): void {
-  if (isAlarmActive) return;
-  isAlarmActive = true;
-  try {
-    initAudioContext();
-    const ctx = sharedAudioCtx;
-    if (ctx) {
-      if (ctx.state === 'suspended') {
-        ctx.resume().catch(() => {});
-      }
-      alarmAudioCtx = ctx;
-      const now = alarmAudioCtx.currentTime;
-
-      const osc1 = alarmAudioCtx.createOscillator();
-      const gain1 = alarmAudioCtx.createGain();
-      osc1.type = 'sawtooth';
-      osc1.frequency.setValueAtTime(1400, now);
-      gain1.gain.setValueAtTime(1.0, now);
-      osc1.connect(gain1);
-      gain1.connect(alarmAudioCtx.destination);
-      osc1.start();
-
-      for (let i = 0; i < 600; i++) {
-        osc1.frequency.setValueAtTime(1500, now + i * 0.4);
-        osc1.frequency.linearRampToValueAtTime(700, now + i * 0.4 + 0.2);
-      }
-
-      const osc2 = alarmAudioCtx.createOscillator();
-      const gain2 = alarmAudioCtx.createGain();
-      osc2.type = 'square';
-      osc2.frequency.setValueAtTime(2800, now);
-      gain2.gain.setValueAtTime(0.8, now);
-      osc2.connect(gain2);
-      gain2.connect(alarmAudioCtx.destination);
-      osc2.start();
-
-      const osc3 = alarmAudioCtx.createOscillator();
-      const gain3 = alarmAudioCtx.createGain();
-      osc3.type = 'sawtooth';
-      osc3.frequency.setValueAtTime(500, now);
-      gain3.gain.setValueAtTime(1.0, now);
-      osc3.connect(gain3);
-      gain3.connect(alarmAudioCtx.destination);
-      osc3.start();
-
-      alarmOscillators = [osc1, osc2, osc3];
-    }
-  } catch (e) {
-    console.warn('🔇 Alarm audio failed:', e);
-  }
-
-  if (navigator.vibrate) {
-    const pattern = [1000, 100, 1000, 100, 1000, 100, 1000];
-    navigator.vibrate(pattern);
-    alarmVibrationInterval = setInterval(() => {
-      if (isAlarmActive) navigator.vibrate(pattern);
-    }, 2000);
-  }
-}
-
-export function stopIntenseAlarm(): void {
-  isAlarmActive = false;
-  try {
-    alarmOscillators.forEach((osc) => {
-      try { osc.stop(); } catch { /* ignore */ }
-    });
-    alarmOscillators = [];
-    if (alarmAudioCtx) {
-      alarmAudioCtx = null;
-    }
-  } catch { /* ignore */ }
-
-  if (alarmVibrationInterval) {
-    clearInterval(alarmVibrationInterval);
-    alarmVibrationInterval = null;
-  }
-  if (navigator.vibrate) navigator.vibrate(0);
-}
-
-export function isIntenseAlarmActive(): boolean {
-  return isAlarmActive;
-}
-
-// ═══════════════════════════════════════════════════════════
 // 🧹 تدمير الدرع وإيقاف كل العمليات
 // ═══════════════════════════════════════════════════════════
-export function destroyShield(): void {
-  stopShieldGPS();
+export function disarmBackgroundAudio(): void {
   stopIntenseAlarm();
-  stopFakeAlerts();
+
+  if (prewarmedSirenAudio) {
+    try {
+      prewarmedSirenAudio.pause();
+      prewarmedSirenAudio.src = '';
+      prewarmedSirenAudio.load();
+    } catch { /* ignore */ }
+    prewarmedSirenAudio = null;
+  }
+
+  if (silentAudioEl) {
+    try {
+      silentAudioEl.pause();
+      silentAudioEl.src = '';
+    } catch { /* ignore */ }
+    silentAudioEl = null;
+  }
+
   if (keepAliveSource) {
     try { keepAliveSource.stop(); } catch { /* ignore */ }
     keepAliveSource = null;
   }
-  if (silentAudioEl) {
-    try { silentAudioEl.pause(); silentAudioEl.src = ''; } catch { /* ignore */ }
-    silentAudioEl = null;
-  }
+
   if (wakeLockSentinel) {
     try { wakeLockSentinel.release(); } catch { /* ignore */ }
     wakeLockSentinel = null;
   }
+
   isAudioKeepAliveActive = false;
+
   if (sharedAudioCtx) {
     try { sharedAudioCtx.close().catch(() => {}); } catch { /* ignore */ }
     sharedAudioCtx = null;
   }
+
   if ('mediaSession' in navigator) {
     navigator.mediaSession.playbackState = 'none';
   }
+}
+
+export function destroyShield(): void {
+  stopShieldGPS();
+  stopFakeAlerts();
+  disarmBackgroundAudio();
   try { localStorage.removeItem(SHIELD_STORAGE_KEY); } catch { /* ignore */ }
 }
 
