@@ -1,65 +1,327 @@
-// src/lib/shield.ts — Park'n 24 Tactical Shield Engine v19 (True Parking Anchor + Anti-Sleep)
 import { supabase } from './supabase';
 
-export const SHIELD_COST        = 0;
-export const SHIELD_AUTO_FEE    = 1;
-export const GEOFENCE_RADIUS    = 50; // 50 متر من مكان ركن السيارة الفعلي
+// ============================================================
+// 🛡️ THE SHIELD - Full Protection Engine (v5 - Ultra Light & Reliable)
+// WakeLock + Silent Audio KeepAlive + WebAudio Siren + Haversine 50m
+// + Car Speed Detection + Actual Parking Spot Anchor Lock
+// ============================================================
 
-const GPS_SEND_INTERVAL         = 12_000;
-const MIN_MOVE_THRESHOLD        = 3;
-const SPEED_BREACH_MPS          = 2.22; // ~8 كم/ساعة (سرعة تحرك السيارة)
-const STORAGE_KEY_VAL           = 'parkn_shield_state';
-export const SHIELD_STORAGE_KEY = STORAGE_KEY_VAL;
+export const SHIELD_RADIUS_METERS = 50;
+// سرعة السيارة بالـ متر/ثانية (~8 كم/ساعة) لاكتشاف التحرك بالسيارة فوراً
+export const SPEED_BREACH_MPS = 2.22;
 
-export interface ShieldState {
-  isActive: boolean;
-  shieldCode: string;
-  phone: string;
-  garageId: string;
-  parkingLat: number;
-  parkingLng: number;
-  sessionId: string;
-  shieldId?: string;
-  anchorLocked?: boolean;
-}
-
-// ─── WebAudio & Keep-Alive Globals ──────────────────────────
+let wakeLockObj: any = null;
 let sharedAudioCtx: AudioContext | null = null;
-let alarmOscillators: OscillatorNode[] = [];
-let alarmGainNodes: GainNode[] = [];
-let alarmIntervalId: ReturnType<typeof setInterval> | null = null;
-let vibrateIntervalId: ReturnType<typeof setInterval> | null = null;
-let isAlarmPlaying = false;
-
+let alarmInterval: any = null;
+let keepAliveInterval: any = null;
 let keepAliveAudioEl: HTMLAudioElement | null = null;
-let keepAliveOsc: OscillatorNode | null = null;
-let keepAliveGain: GainNode | null = null;
-let wakeLockSentinel: any = null;
-let visibilityListenerAttached = false;
+let gpsWatchId: number | null = null;
+let gpsPollInterval: any = null;
+let isAlarmPlaying = false;
+let currentShieldId: string | null = null;
+let lastGpsSendTime = 0;
+let lastWatchTickTime = 0;
+let isSendingGps = false;
+let visibilityHandlerAttached = false;
+let audioUnlockListenersAttached = false;
 
-let activeWatchId: number | null = null;
-let activeFallbackInterval: ReturnType<typeof setInterval> | null = null;
-let lastGpsSentAt = 0;
-let lastSentCoords: { lat: number; lng: number } | null = null;
-let lastSpeedSentAt = 0;
-let prevSpeedSample: { lat: number; lng: number; t: number } | null = null;
-
-// منع تكرار تسجيل نفس الجلسة في نفس اللحظة
+// Deduplicate concurrent registerShieldSession calls for the same sessionId
 const inFlightRegistrations = new Map<string, Promise<string | null>>();
 
-// ─── ملف صوتي صامت (1-second PCM WAV) لمنع نوم المتصفح في الخلفية ───
+// 1-second silent WAV file encoded in base64 to keep mobile browser process alive in background
 const SILENT_WAV_BASE64 =
   'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
 
-// ─── حساب المسافة (Haversine بالمتر) ─────────────────────────
-export function calcDistance(
+// ── Audio Context Initialization (Must be called on user gesture) ──
+export function initAudioContext(): void {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!sharedAudioCtx && AudioCtx) {
+      sharedAudioCtx = new AudioCtx();
+    }
+    if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
+      sharedAudioCtx.resume().catch(() => {});
+    }
+    // Start silent audio immediately during user gesture so mobile OS permits background playback
+    startKeepAlive();
+  } catch (e) {
+    console.warn('[Shield] AudioContext init error:', e);
+  }
+}
+
+// ── Arm Background Audio (Called by SessionScreen / user interactions) ──
+export function armBackgroundAudio(): void {
+  initAudioContext();
+
+  if (typeof document === 'undefined' || audioUnlockListenersAttached) return;
+  audioUnlockListenersAttached = true;
+
+  const unlockOnGesture = () => {
+    initAudioContext();
+    document.removeEventListener('touchstart', unlockOnGesture);
+    document.removeEventListener('click', unlockOnGesture);
+    document.removeEventListener('keydown', unlockOnGesture);
+    audioUnlockListenersAttached = false;
+  };
+
+  document.addEventListener('touchstart', unlockOnGesture, { once: true, passive: true });
+  document.addEventListener('click', unlockOnGesture, { once: true, passive: true });
+  document.addEventListener('keydown', unlockOnGesture, { once: true, passive: true });
+}
+
+// ── Silent Keep-Alive Audio (Prevents mobile OS from killing tab) ──
+function startKeepAlive(): void {
+  try {
+    if (!keepAliveAudioEl && typeof Audio !== 'undefined') {
+      keepAliveAudioEl = new Audio(SILENT_WAV_BASE64);
+      keepAliveAudioEl.loop = true;
+      keepAliveAudioEl.volume = 0.01;
+      keepAliveAudioEl.setAttribute('playsinline', 'true');
+      // If mobile OS pauses the audio when locking screen, force play again
+      keepAliveAudioEl.addEventListener('pause', () => {
+        if (gpsWatchId !== null && keepAliveAudioEl) {
+          keepAliveAudioEl.play().catch(() => {});
+        }
+      });
+    }
+    if (keepAliveAudioEl && keepAliveAudioEl.paused) {
+      keepAliveAudioEl.play().catch(() => {});
+    }
+  } catch {}
+
+  if (keepAliveInterval) return;
+  keepAliveInterval = setInterval(() => {
+    try {
+      if (keepAliveAudioEl && keepAliveAudioEl.paused && gpsWatchId !== null) {
+        keepAliveAudioEl.play().catch(() => {});
+      }
+      if (!sharedAudioCtx) return;
+      if (sharedAudioCtx.state === 'suspended') {
+        sharedAudioCtx.resume().catch(() => {});
+      }
+      // Ultra-silent 1Hz pulse for 30ms every 20 seconds to keep AudioContext warm
+      const osc = sharedAudioCtx.createOscillator();
+      const gain = sharedAudioCtx.createGain();
+      osc.frequency.value = 1;
+      gain.gain.value = 0.0001;
+      osc.connect(gain);
+      gain.connect(sharedAudioCtx.destination);
+      const now = sharedAudioCtx.currentTime;
+      osc.start(now);
+      osc.stop(now + 0.03);
+      osc.onended = () => {
+        try {
+          osc.disconnect();
+          gain.disconnect();
+        } catch {}
+      };
+    } catch {}
+  }, 20_000);
+}
+
+function stopKeepAlive(): void {
+  if (keepAliveInterval) {
+    clearInterval(keepAliveInterval);
+    keepAliveInterval = null;
+  }
+  if (keepAliveAudioEl) {
+    try {
+      keepAliveAudioEl.pause();
+      keepAliveAudioEl.currentTime = 0;
+    } catch {}
+  }
+}
+
+// ── WakeLock (Keep screen & CPU awake) ──
+const handleVisibilityChange = async () => {
+  if (document.visibilityState === 'visible') {
+    if (gpsWatchId !== null && !wakeLockObj) {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLockObj = await (navigator as any).wakeLock.request('screen');
+        }
+      } catch {}
+    }
+    if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
+      sharedAudioCtx.resume().catch(() => {});
+    }
+    if (keepAliveAudioEl && keepAliveAudioEl.paused && gpsWatchId !== null) {
+      keepAliveAudioEl.play().catch(() => {});
+    }
+  }
+};
+
+export async function requestWakeLock(): Promise<void> {
+  try {
+    if ('wakeLock' in navigator && !wakeLockObj) {
+      wakeLockObj = await (navigator as any).wakeLock.request('screen');
+      wakeLockObj.addEventListener('release', () => {
+        wakeLockObj = null;
+      });
+    }
+    if (!visibilityHandlerAttached && typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange, { passive: true });
+      visibilityHandlerAttached = true;
+    }
+  } catch {}
+}
+
+export function releaseWakeLock(): void {
+  if (wakeLockObj) {
+    try {
+      wakeLockObj.release();
+    } catch {}
+    wakeLockObj = null;
+  }
+}
+
+// ── Notification Permissions ──
+export async function requestNotificationPermissions(): Promise<boolean> {
+  try {
+    if (!('Notification' in window)) return false;
+    if (Notification.permission === 'granted') return true;
+    const result = await Notification.requestPermission();
+    return result === 'granted';
+  } catch {
+    return false;
+  }
+}
+
+// ── Local Push Notification (Immediate Alert) ──
+function sendImmediateNotification(title: string, body: string): void {
+  try {
+    if ('serviceWorker' in navigator && Notification.permission === 'granted') {
+      navigator.serviceWorker.ready
+        .then((reg) => {
+          reg
+            .showNotification(title, {
+              body,
+              icon: '/icon-192.png',
+              badge: '/icon-192.png',
+              vibrate: [500, 150, 500, 150, 500, 150, 800],
+              requireInteraction: true,
+              tag: 'shield-breach-' + Date.now(),
+              renotify: true,
+            } as any)
+            .catch(() => {});
+        })
+        .catch(() => {});
+    } else if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, { body, icon: '/icon-192.png' });
+    }
+  } catch {}
+}
+
+// ── Intense Police Siren Alarm (WebAudio API + Vibration) ──
+let activeOsc: OscillatorNode | null = null;
+let activeGain: GainNode | null = null;
+
+export function playIntenseAlarm(): void {
+  if (isAlarmPlaying) return;
+  isAlarmPlaying = true;
+
+  try {
+    initAudioContext();
+    if (!sharedAudioCtx) return;
+
+    const triggerSirenCycle = () => {
+      if (!isAlarmPlaying || !sharedAudioCtx) return;
+      try {
+        if (sharedAudioCtx.state === 'suspended') {
+          sharedAudioCtx.resume().catch(() => {});
+        }
+
+        if (activeOsc) {
+          try {
+            activeOsc.stop();
+            activeOsc.disconnect();
+          } catch {}
+          activeOsc = null;
+        }
+        if (activeGain) {
+          try {
+            activeGain.disconnect();
+          } catch {}
+          activeGain = null;
+        }
+
+        const osc = sharedAudioCtx.createOscillator();
+        const gain = sharedAudioCtx.createGain();
+
+        osc.type = 'sawtooth';
+        const now = sharedAudioCtx.currentTime;
+
+        // Siren frequencies: urgent high-low police sweep
+        osc.frequency.setValueAtTime(650, now);
+        osc.frequency.linearRampToValueAtTime(1400, now + 0.35);
+        osc.frequency.linearRampToValueAtTime(550, now + 0.7);
+        osc.frequency.linearRampToValueAtTime(1500, now + 1.05);
+        osc.frequency.linearRampToValueAtTime(650, now + 1.4);
+
+        gain.gain.setValueAtTime(0.95, now);
+
+        osc.connect(gain);
+        gain.connect(sharedAudioCtx.destination);
+
+        osc.start(now);
+        osc.stop(now + 1.45);
+
+        osc.onended = () => {
+          try {
+            osc.disconnect();
+            gain.disconnect();
+          } catch {}
+        };
+
+        activeOsc = osc;
+        activeGain = gain;
+
+        if ('vibrate' in navigator) {
+          navigator.vibrate([400, 100, 400, 100, 600]);
+        }
+      } catch {}
+    };
+
+    triggerSirenCycle();
+    alarmInterval = setInterval(triggerSirenCycle, 1500);
+  } catch (e) {
+    console.warn('[Shield] Alarm play error:', e);
+  }
+}
+
+export function stopIntenseAlarm(): void {
+  isAlarmPlaying = false;
+  if (alarmInterval) {
+    clearInterval(alarmInterval);
+    alarmInterval = null;
+  }
+  if (activeOsc) {
+    try {
+      activeOsc.stop();
+      activeOsc.disconnect();
+    } catch {}
+    activeOsc = null;
+  }
+  if (activeGain) {
+    try {
+      activeGain.disconnect();
+    } catch {}
+    activeGain = null;
+  }
+  try {
+    if ('vibrate' in navigator) navigator.vibrate(0);
+  } catch {}
+}
+
+// ── Haversine Distance (Meters) ──
+export function haversineDistance(
   lat1: number,
   lng1: number,
   lat2: number,
   lng2: number
 ): number {
   const R = 6371000;
-  const toRad = (d: number) => (d * Math.PI) / 180;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLng = toRad(lng2 - lng1);
   const a =
@@ -71,583 +333,487 @@ export function calcDistance(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// ─── تشغيل الملف الصامت وقفل الشاشة لمنع المتصفح من النوم ─────
-function startKeepAlive(): void {
-  // 1) HTML5 Audio Loop (يبقي المتصفح يقظاً كمشغل وسائط في الخلفية)
-  try {
-    if (!keepAliveAudioEl && typeof Audio !== 'undefined') {
-      keepAliveAudioEl = new Audio(SILENT_WAV_BASE64);
-      keepAliveAudioEl.loop = true;
-      keepAliveAudioEl.volume = 0.01;
-      keepAliveAudioEl.setAttribute('playsinline', 'true');
-      keepAliveAudioEl.addEventListener('pause', () => {
-        if (keepAliveAudioEl && activeWatchId !== null) {
-          keepAliveAudioEl.play().catch(() => {});
-        }
-      });
-    }
-    if (keepAliveAudioEl && keepAliveAudioEl.paused) {
-      keepAliveAudioEl.play().catch(() => {});
-    }
-  } catch {}
+// ── LocalStorage Persistence for Shield State ──
+const SHIELD_STORAGE_KEY = 'parkn_shield_active_v3';
 
-  // 2) Sub-audible WebAudio Oscillator (يبقي AudioContext نشطاً للإنذار الفوري)
-  try {
-    if (sharedAudioCtx && !keepAliveOsc) {
-      keepAliveOsc = sharedAudioCtx.createOscillator();
-      keepAliveGain = sharedAudioCtx.createGain();
-      keepAliveOsc.type = 'sine';
-      keepAliveOsc.frequency.value = 1; // 1Hz غير مسموع للأذن البشرية
-      keepAliveGain.gain.value = 0.001;
-      keepAliveOsc.connect(keepAliveGain);
-      keepAliveGain.connect(sharedAudioCtx.destination);
-      keepAliveOsc.start();
-    }
-  } catch {}
-
-  // 3) Screen WakeLock API
-  const requestWakeLock = async () => {
-    try {
-      if ('wakeLock' in navigator && !wakeLockSentinel) {
-        wakeLockSentinel = await (navigator as any).wakeLock.request('screen');
-        wakeLockSentinel?.addEventListener?.('release', () => {
-          wakeLockSentinel = null;
-        });
-      }
-    } catch {}
-  };
-  requestWakeLock();
-
-  if (!visibilityListenerAttached && typeof document !== 'undefined') {
-    visibilityListenerAttached = true;
-    document.addEventListener('visibilitychange', () => {
-      if (activeWatchId !== null) {
-        if (document.visibilityState === 'visible') {
-          requestWakeLock();
-        }
-        if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
-          sharedAudioCtx.resume().catch(() => {});
-        }
-        if (keepAliveAudioEl && keepAliveAudioEl.paused) {
-          keepAliveAudioEl.play().catch(() => {});
-        }
-      }
-    });
-  }
+export interface ShieldState {
+  active: boolean;
+  shieldId?: string;
+  sessionId: string;
+  garageId: string;
+  garageName: string;
+  garageLat: number;
+  garageLng: number;
+  userPhone: string;
+  userName: string;
+  carPlate: string;
+  agreedPrice?: number;
+  startedAt: number;
+  anchorLocked?: boolean;
 }
 
-function stopKeepAlive(): void {
-  try {
-    if (keepAliveAudioEl) {
-      keepAliveAudioEl.pause();
-      keepAliveAudioEl.currentTime = 0;
-      keepAliveAudioEl = null;
-    }
-  } catch {}
+let cachedShieldState: ShieldState | null | undefined = undefined;
 
-  try {
-    if (keepAliveOsc) {
-      keepAliveOsc.stop();
-      keepAliveOsc.disconnect();
-      keepAliveOsc = null;
-    }
-    if (keepAliveGain) {
-      keepAliveGain.disconnect();
-      keepAliveGain = null;
-    }
-  } catch {}
-
-  try {
-    if (wakeLockSentinel) {
-      wakeLockSentinel.release().catch(() => {});
-      wakeLockSentinel = null;
-    }
-  } catch {}
-}
-
-// ─── تهيئة AudioContext + تشغيل الصامت فوراً مع لمسة العميل ──
-export function initAudioContext(): AudioContext | null {
-  try {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioCtx) return null;
-    if (!sharedAudioCtx) {
-      sharedAudioCtx = new AudioCtx();
-    }
-    if (sharedAudioCtx.state === 'suspended') {
-      sharedAudioCtx.resume().catch(() => {});
-    }
-    startKeepAlive();
-    return sharedAudioCtx;
-  } catch {
-    return null;
-  }
-}
-
-// ─── إطلاق سارينة الإنذار القصوى والاهتزاز ──────────────────
-export function triggerIntenseAlarm(): void {
-  if (isAlarmPlaying) return;
-  isAlarmPlaying = true;
-
-  try {
-    const ctx = initAudioContext();
-    if (ctx) {
-      const playSirenCycle = () => {
-        if (!isAlarmPlaying || !sharedAudioCtx) return;
-        try {
-          if (sharedAudioCtx.state === 'suspended') {
-            sharedAudioCtx.resume().catch(() => {});
-          }
-          const now = sharedAudioCtx.currentTime;
-          const osc1 = sharedAudioCtx.createOscillator();
-          const osc2 = sharedAudioCtx.createOscillator();
-          const gain = sharedAudioCtx.createGain();
-
-          osc1.type = 'sawtooth';
-          osc2.type = 'square';
-
-          osc1.frequency.setValueAtTime(880, now);
-          osc1.frequency.linearRampToValueAtTime(1760, now + 0.35);
-          osc1.frequency.linearRampToValueAtTime(880, now + 0.7);
-
-          osc2.frequency.setValueAtTime(920, now);
-          osc2.frequency.linearRampToValueAtTime(1840, now + 0.35);
-          osc2.frequency.linearRampToValueAtTime(920, now + 0.7);
-
-          gain.gain.setValueAtTime(0.95, now);
-
-          osc1.connect(gain);
-          osc2.connect(gain);
-          gain.connect(sharedAudioCtx.destination);
-
-          osc1.start(now);
-          osc2.start(now);
-          osc1.stop(now + 0.72);
-          osc2.stop(now + 0.72);
-
-          osc1.onended = () => {
-            try {
-              osc1.disconnect();
-              osc2.disconnect();
-              gain.disconnect();
-            } catch {}
-          };
-
-          alarmOscillators.push(osc1, osc2);
-          alarmGainNodes.push(gain);
-        } catch {}
-      };
-
-      playSirenCycle();
-      if (alarmIntervalId) clearInterval(alarmIntervalId);
-      alarmIntervalId = setInterval(playSirenCycle, 750);
-    }
-  } catch {}
-
-  try {
-    if ('vibrate' in navigator) {
-      navigator.vibrate([800, 150, 800, 150, 1000]);
-      if (vibrateIntervalId) clearInterval(vibrateIntervalId);
-      vibrateIntervalId = setInterval(() => {
-        if (!isAlarmPlaying) return;
-        try {
-          navigator.vibrate([800, 150, 800, 150, 1000]);
-        } catch {}
-      }, 2800);
-    }
-  } catch {}
-}
-
-// ─── إيقاف السارينة وتنظيف عقد الصوت ─────────────────────────
-export function stopIntenseAlarm(): void {
-  isAlarmPlaying = false;
-
-  if (alarmIntervalId) {
-    clearInterval(alarmIntervalId);
-    alarmIntervalId = null;
-  }
-  if (vibrateIntervalId) {
-    clearInterval(vibrateIntervalId);
-    vibrateIntervalId = null;
-  }
-
-  for (const osc of alarmOscillators) {
-    try {
-      osc.stop();
-      osc.disconnect();
-    } catch {}
-  }
-  alarmOscillators = [];
-
-  for (const g of alarmGainNodes) {
-    try {
-      g.disconnect();
-    } catch {}
-  }
-  alarmGainNodes = [];
-
-  try {
-    if ('vibrate' in navigator) {
-      navigator.vibrate(0);
-    }
-  } catch {}
-}
-
-// ─── حفظ واسترجاع حالة الدرع ─────────────────────────────────
 export function saveShieldState(state: ShieldState): void {
+  cachedShieldState = state;
   try {
     localStorage.setItem(SHIELD_STORAGE_KEY, JSON.stringify(state));
   } catch {}
 }
 
 export function loadShieldState(): ShieldState | null {
+  if (cachedShieldState !== undefined) return cachedShieldState;
   try {
     const raw = localStorage.getItem(SHIELD_STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as ShieldState;
+    if (!raw) {
+      cachedShieldState = null;
+      return null;
+    }
+    cachedShieldState = JSON.parse(raw) as ShieldState;
+    return cachedShieldState;
   } catch {
+    cachedShieldState = null;
     return null;
   }
 }
 
-// ─── فحص وجود العميل داخل الجراج ────────────────────────────
-export function checkUserInsideGarage(
-  garageLat: number,
-  garageLng: number,
-  radiusMeters: number = GEOFENCE_RADIUS
-): Promise<{ inside: boolean; distance: number; lat?: number; lng?: number }> {
-  return new Promise((resolve) => {
-    if (!('geolocation' in navigator)) {
-      resolve({ inside: false, distance: -1 });
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const dist = calcDistance(
-          garageLat,
-          garageLng,
-          pos.coords.latitude,
-          pos.coords.longitude
-        );
-        resolve({
-          inside: dist <= radiusMeters,
-          distance: dist,
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-        });
-      },
-      () => {
-        resolve({ inside: false, distance: -1 });
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
-    );
-  });
-}
-
-// ─── تسجيل جلسة الدرع على السيرفر (مع منع التكرار المتزامن) ───
-export async function registerShieldSession(params: {
-  sessionId: string;
-  userId: string;
-  phone: string;
-  garageId: string;
-  parkingLat: number;
-  parkingLng: number;
-}): Promise<string | null> {
-  const { sessionId, userId, phone, parkingLat, parkingLng } = params;
-  if (!sessionId) return null;
-
-  const existingPromise = inFlightRegistrations.get(sessionId);
-  if (existingPromise) return existingPromise;
-
-  const task = (async (): Promise<string | null> => {
-    try {
-      const identifier = phone || userId || 'unknown';
-      const { data: existing } = await supabase
-        .from('shield_sessions')
-        .select('id, session_id')
-        .eq('session_id', sessionId)
-        .is('ended_at', null)
-        .maybeSingle();
-
-      if (existing?.id) {
-        return String(existing.id);
-      }
-
-      const nowIso = new Date().toISOString();
-      const { data: inserted, error } = await supabase
-        .from('shield_sessions')
-        .insert({
-          session_id: sessionId,
-          user_id: identifier,
-          phone: identifier,
-          parking_lat: parkingLat,
-          parking_lng: parkingLng,
-          last_lat: parkingLat,
-          last_lng: parkingLng,
-          last_gps_at: nowIso,
-          client_outside: false,
-          theft_alerted: false,
-          fake_mode: -1,
-          alert_count: 0,
-          fake_tick: 0,
-          last_speed: null,
-        })
-        .select('id')
-        .maybeSingle();
-
-      if (error) {
-        console.warn('⚠️ registerShieldSession insert warning:', error.message);
-        return null;
-      }
-      return inserted?.id ? String(inserted.id) : null;
-    } catch (err) {
-      console.warn('⚠️ registerShieldSession error:', err);
-      return null;
-    } finally {
-      inFlightRegistrations.delete(sessionId);
-    }
-  })();
-
-  inFlightRegistrations.set(sessionId, task);
-  return task;
-}
-
-// ─── إرسال إحداثيات وسرعة الـ GPS للسيرفر بالتوازي ───────────
-async function sendGPSToServer(params: {
-  sessionId: string;
-  shieldId?: string | null;
-  lat: number;
-  lng: number;
-  parkingLat?: number;
-  parkingLng?: number;
-  accuracy?: number;
-  distance: number;
-  isOutside: boolean;
-  speedKmh?: number | null;
-}): Promise<void> {
-  const {
-    sessionId,
-    shieldId,
-    lat,
-    lng,
-    parkingLat,
-    parkingLng,
-    accuracy,
-    distance,
-    isOutside,
-    speedKmh,
-  } = params;
-  const nowIso = new Date().toISOString();
-
+export function clearShieldState(): void {
+  cachedShieldState = null;
   try {
-    const updatePayload: Record<string, any> = {
-      last_lat: lat,
-      last_lng: lng,
-      last_gps_at: nowIso,
-      client_outside: isOutside,
-    };
-    if (typeof parkingLat === 'number' && typeof parkingLng === 'number') {
-      updatePayload.parking_lat = parkingLat;
-      updatePayload.parking_lng = parkingLng;
-    }
-    if (typeof speedKmh === 'number' && speedKmh >= 0) {
-      updatePayload.last_speed = speedKmh;
-    }
-    if (isOutside) {
-      updatePayload.theft_alerted = true;
-    }
-
-    const updateQuery = shieldId
-      ? supabase.from('shield_sessions').update(updatePayload).eq('id', shieldId).is('ended_at', null)
-      : supabase.from('shield_sessions').update(updatePayload).eq('session_id', sessionId).is('ended_at', null);
-
-    const locationInsert = supabase.from('shield_locations').insert({
-      session_id: sessionId,
-      shield_id: shieldId || null,
-      lat,
-      lng,
-      accuracy: accuracy ? Math.round(accuracy) : null,
-      distance: Math.round(distance),
-      is_outside: isOutside,
-      recorded_at: nowIso,
-    });
-
-    await Promise.all([
-      updateQuery,
-      isOutside || Date.now() - lastGpsSentAt >= GPS_SEND_INTERVAL * 2 ? locationInsert : Promise.resolve(),
-    ]);
+    localStorage.removeItem(SHIELD_STORAGE_KEY);
   } catch {}
 }
 
-// ─── بدء مراقبة الـ GPS والسرعة والجيوفنس (50م من مكان الركن الفعلي) ──
-export function startShieldGPS(options: {
-  sessionId: string;
-  shieldId?: string | null;
-  parkingLat: number;
-  parkingLng: number;
-  onGeofenceBreach?: (distance: number) => void;
-  onGPSError?: () => void;
-  onLocationUpdate?: (lat: number, lng: number, distance: number) => void;
-}): () => void {
-  const {
-    sessionId,
-    shieldId,
-    parkingLat,
-    parkingLng,
-    onGeofenceBreach,
-    onGPSError,
-    onLocationUpdate,
-  } = options;
+export function getShieldId(): string | null {
+  return currentShieldId || loadShieldState()?.shieldId || null;
+}
 
-  stopShieldGPSOnly();
+export function setShieldId(id: string | null): void {
+  currentShieldId = id;
+  const state = loadShieldState();
+  if (state && id) {
+    state.shieldId = id;
+    saveShieldState(state);
+  }
+}
+
+// ── Register Shield Session in Supabase (`shield_sessions` table) ──
+export async function registerShieldSession(state: ShieldState): Promise<string | null> {
+  if (!state.sessionId) return null;
+
+  // Reuse existing shieldId if already registered for the same session
+  const existingState = loadShieldState();
+  if (existingState?.sessionId === state.sessionId && existingState?.shieldId) {
+    currentShieldId = existingState.shieldId;
+    return existingState.shieldId;
+  }
+
+  // Deduplicate concurrent registration calls for the same session
+  const inFlight = inFlightRegistrations.get(state.sessionId);
+  if (inFlight) return inFlight;
+
+  const registrationPromise = (async (): Promise<string | null> => {
+    try {
+      const { data: existing } = await supabase
+        .from('shield_sessions')
+        .select('id, parking_lat, parking_lng')
+        .eq('session_id', state.sessionId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (existing?.id) {
+        // Restore locked parking coordinates if they were already saved on server
+        const pLat = Number(existing.parking_lat);
+        const pLng = Number(existing.parking_lng);
+        if (Number.isFinite(pLat) && Number.isFinite(pLng) && pLat !== 0 && pLng !== 0) {
+          state.garageLat = pLat;
+          state.garageLng = pLng;
+          state.anchorLocked = true;
+          saveShieldState(state);
+        }
+        setShieldId(existing.id);
+        return existing.id;
+      }
+
+      const { data, error } = await supabase
+        .from('shield_sessions')
+        .insert({
+          session_id: state.sessionId,
+          user_phone: state.userPhone,
+          customer_name: state.userName,
+          car_plate: state.carPlate,
+          garage_id: state.garageId,
+          garage_name: state.garageName,
+          parking_lat: state.garageLat,
+          parking_lng: state.garageLng,
+          last_lat: state.garageLat,
+          last_lng: state.garageLng,
+          last_distance: 0,
+          is_active: true,
+          is_breached: false,
+          alarm_triggered: false,
+        })
+        .select('id')
+        .single();
+
+      if (!error && data?.id) {
+        setShieldId(data.id);
+        return data.id;
+      }
+      return null;
+    } catch (e) {
+      console.warn('[Shield] registerShieldSession error:', e);
+      return null;
+    } finally {
+      inFlightRegistrations.delete(state.sessionId);
+    }
+  })();
+
+  inFlightRegistrations.set(state.sessionId, registrationPromise);
+  return registrationPromise;
+}
+
+// ── Send Live GPS to `shield_sessions` & `shield_locations` ──
+async function sendGPSToServer(
+  lat: number,
+  lng: number,
+  dist: number,
+  accuracy: number,
+  isBreached: boolean
+): Promise<void> {
+  const now = Date.now();
+  // Throttle updates: every 8 seconds normally, or every 3 seconds if breached
+  const minInterval = isBreached ? 3000 : 8000;
+  if (now - lastGpsSendTime < minInterval || isSendingGps) return;
+
+  const state = loadShieldState();
+  if (!state || !state.sessionId) return;
+
+  lastGpsSendTime = now;
+  isSendingGps = true;
+
+  try {
+    const shieldId = getShieldId();
+    const roundedDist = Math.round(dist);
+    const roundedAcc = Math.round(accuracy || 10);
+    const isoNow = new Date().toISOString();
+
+    const updatePayload: Record<string, any> = {
+      last_lat: lat,
+      last_lng: lng,
+      last_distance: roundedDist,
+      is_breached: isBreached,
+      updated_at: isoNow,
+    };
+    if (isBreached) {
+      updatePayload.alarm_triggered = true;
+    }
+
+    const updateQuery = shieldId
+      ? supabase.from('shield_sessions').update(updatePayload).eq('id', shieldId)
+      : supabase.from('shield_sessions').update(updatePayload).eq('session_id', state.sessionId);
+
+    const tasks: PromiseLike<any>[] = [updateQuery];
+
+    // Insert location log only when shieldId is available & either breached or every ~16s
+    if (shieldId) {
+      tasks.push(
+        supabase.from('shield_locations').insert({
+          shield_id: shieldId,
+          lat,
+          lng,
+          accuracy: roundedAcc,
+          distance_from_car: roundedDist,
+        })
+      );
+    }
+
+    await Promise.all(tasks);
+  } catch {
+    // Silent fail to avoid interrupting radar loop
+  } finally {
+    isSendingGps = false;
+  }
+}
+
+// ── Continuous GPS Radar (Locks actual parking spot + 50m Geofence + Car Speed) ──
+export function startShieldGPS(
+  garageLat: number,
+  garageLng: number,
+  onUpdate: (dist: number, lat: number, lng: number, isOut: boolean) => void,
+  onBreach: (dist: number, lat: number, lng: number) => void,
+  onReturnInside?: () => void
+): void {
+  stopShieldGPS();
   startKeepAlive();
+  requestWakeLock();
 
-  // استرجاع نقطة الركن الفعلية المثبتة لهذه الجلسة إن وجدت
-  const saved = loadShieldState();
-  let anchorLat =
-    saved && saved.sessionId === sessionId && saved.parkingLat
-      ? saved.parkingLat
-      : parkingLat;
-  let anchorLng =
-    saved && saved.sessionId === sessionId && saved.parkingLng
-      ? saved.parkingLng
-      : parkingLng;
-  let isAnchorLocked = Boolean(saved && saved.sessionId === sessionId && saved.anchorLocked);
+  if (!('geolocation' in navigator)) return;
 
-  let breachTriggered = false;
-  let lastWatchTickAt = Date.now();
+  let consecutiveBreaches = 0;
+  let currentlyBreached = false;
+
+  // Use locked parking anchor if already captured for this session
+  const existingState = loadShieldState();
+  let anchorLat = existingState?.anchorLocked ? existingState.garageLat : garageLat;
+  let anchorLng = existingState?.anchorLocked ? existingState.garageLng : garageLng;
+  let isAnchorLocked = Boolean(existingState?.anchorLocked);
+
+  const lockParkingAnchor = (lat: number, lng: number) => {
+    anchorLat = lat;
+    anchorLng = lng;
+    isAnchorLocked = true;
+
+    const st = loadShieldState();
+    if (st) {
+      st.garageLat = lat;
+      st.garageLng = lng;
+      st.anchorLocked = true;
+      saveShieldState(st);
+
+      const shieldId = getShieldId();
+      if (shieldId) {
+        supabase
+          .from('shield_sessions')
+          .update({ parking_lat: lat, parking_lng: lng })
+          .eq('id', shieldId)
+          .then(() => {});
+      } else if (st.sessionId) {
+        supabase
+          .from('shield_sessions')
+          .update({ parking_lat: lat, parking_lng: lng })
+          .eq('session_id', st.sessionId)
+          .then(() => {});
+      }
+    }
+  };
 
   const handlePosition = (pos: GeolocationPosition) => {
-    const now = Date.now();
-    lastWatchTickAt = now;
+    lastWatchTickTime = Date.now();
+    const { latitude, longitude, accuracy, speed } = pos.coords;
 
-    const lat = pos.coords.latitude;
-    const lng = pos.coords.longitude;
-    const accuracy = pos.coords.accuracy || 0;
+    // Ignore extremely inaccurate cell-tower jumps (> 120m) IF we already locked our parking spot
+    if (accuracy && accuracy > 120 && isAnchorLocked) return;
 
-    // 🎯 عند أول قراءة GPS بعد بدء الجلسة: تثبيت موقع ركن السيارة الفعلي كمركز الـ 0 متر
-    let newlyLockedAnchor = false;
+    // Lock the exact spot where the customer parked on the very first GPS fix of the session!
     if (!isAnchorLocked) {
-      isAnchorLocked = true;
-      newlyLockedAnchor = true;
-      anchorLat = lat;
-      anchorLng = lng;
-      const currentSaved = loadShieldState();
-      if (currentSaved && currentSaved.sessionId === sessionId) {
-        saveShieldState({
-          ...currentSaved,
-          parkingLat: anchorLat,
-          parkingLng: anchorLng,
-          anchorLocked: true,
-        });
+      lockParkingAnchor(latitude, longitude);
+    }
+
+    const dist = haversineDistance(anchorLat, anchorLng, latitude, longitude);
+    const isMovingFastInCar =
+      speed !== null &&
+      speed !== undefined &&
+      !Number.isNaN(speed) &&
+      speed >= SPEED_BREACH_MPS &&
+      dist > 25;
+
+    const isOut = dist > SHIELD_RADIUS_METERS || isMovingFastInCar;
+
+    onUpdate(Math.round(dist), latitude, longitude, isOut);
+
+    // Send live coordinates to Supabase (throttled internally)
+    sendGPSToServer(latitude, longitude, dist, accuracy || 10, isOut);
+
+    if (isOut) {
+      consecutiveBreaches++;
+      // Confirm breach immediately if clearly past buffer (> 58m) or moving at car speed, or 2 consecutive readings > 50m
+      if ((consecutiveBreaches >= 2 || dist > 58 || isMovingFastInCar) && !currentlyBreached) {
+        currentlyBreached = true;
+        playIntenseAlarm();
+        sendImmediateNotification(
+          '🚨 تحذير أمني عاجل - الدرع الذكي!',
+          `السيارة تحركت لمسافة ${Math.round(dist)} متر من مكان ركنتها بدون إنهاء الجلسة!`
+        );
+        onBreach(Math.round(dist), latitude, longitude);
+      } else if (currentlyBreached && !isAlarmPlaying) {
+        playIntenseAlarm();
       }
-    }
-
-    const dist = calcDistance(anchorLat, anchorLng, lat, lng);
-
-    let speedMps = pos.coords.speed && pos.coords.speed > 0 ? pos.coords.speed : 0;
-    if (prevSpeedSample) {
-      const dt = (now - prevSpeedSample.t) / 1000;
-      if (dt > 1.5) {
-        const dMoved = calcDistance(prevSpeedSample.lat, prevSpeedSample.lng, lat, lng);
-        if (accuracy <= 65) {
-          speedMps = Math.max(speedMps, dMoved / dt);
-        }
+    } else {
+      consecutiveBreaches = 0;
+      if (currentlyBreached && dist <= SHIELD_RADIUS_METERS - 5) {
+        currentlyBreached = false;
+        stopIntenseAlarm();
+        if (onReturnInside) onReturnInside();
       }
-    }
-    prevSpeedSample = { lat, lng, t: now };
-    const speedKmh = speedMps >= 1 ? Math.round(speedMps * 3.6) : 0;
-    const isMovingAtCarSpeed = speedMps >= SPEED_BREACH_MPS;
-
-    onLocationUpdate?.(lat, lng, dist);
-
-    // 🚨 شرط الاختراق: التحرك مسافة تزيد عن 50 متر من نقطة الركن المثبتة
-    const isOutside = dist > GEOFENCE_RADIUS;
-    if (isOutside && !breachTriggered) {
-      breachTriggered = true;
-      onGeofenceBreach?.(dist);
-    }
-
-    const movedSinceLastSent = lastSentCoords
-      ? calcDistance(lastSentCoords.lat, lastSentCoords.lng, lat, lng)
-      : 999;
-
-    const shouldSendForSpeed = isMovingAtCarSpeed && now - lastSpeedSentAt >= 8000;
-    const shouldSendRegular =
-      now - lastGpsSentAt >= GPS_SEND_INTERVAL &&
-      (movedSinceLastSent >= MIN_MOVE_THRESHOLD || !lastSentCoords);
-
-    if (newlyLockedAnchor || isOutside || shouldSendForSpeed || shouldSendRegular) {
-      lastGpsSentAt = now;
-      if (shouldSendForSpeed) lastSpeedSentAt = now;
-      lastSentCoords = { lat, lng };
-      sendGPSToServer({
-        sessionId,
-        shieldId,
-        lat,
-        lng,
-        parkingLat: newlyLockedAnchor ? anchorLat : undefined,
-        parkingLng: newlyLockedAnchor ? anchorLng : undefined,
-        accuracy,
-        distance: dist,
-        isOutside,
-        speedKmh: isMovingAtCarSpeed ? speedKmh : null,
-      });
     }
   };
 
-  if ('geolocation' in navigator) {
-    activeWatchId = navigator.geolocation.watchPosition(
-      handlePosition,
-      () => {
-        onGPSError?.();
-      },
-      {
-        enableHighAccuracy: true,
-        maximumAge: 2000,
-        timeout: 10000,
-      }
-    );
+  // Get immediate initial position to lock the parking spot right away
+  navigator.geolocation.getCurrentPosition(handlePosition, () => {}, {
+    enableHighAccuracy: true,
+    maximumAge: 0,
+    timeout: 8000,
+  });
 
-    activeFallbackInterval = setInterval(() => {
-      if (keepAliveAudioEl && keepAliveAudioEl.paused) {
-        keepAliveAudioEl.play().catch(() => {});
-      }
-      if (Date.now() - lastWatchTickAt < 9_000) return;
-      navigator.geolocation.getCurrentPosition(
-        handlePosition,
-        () => {},
-        { enableHighAccuracy: true, maximumAge: 2000, timeout: 8000 }
-      );
-    }, GPS_SEND_INTERVAL);
-  } else {
-    onGPSError?.();
-  }
+  // High-accuracy continuous watch
+  gpsWatchId = navigator.geolocation.watchPosition(
+    handlePosition,
+    (err) => {
+      console.warn('[Shield GPS watch warning]:', err.message);
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 2000,
+      timeout: 10000,
+    }
+  );
 
-  return () => {
-    stopShieldGPSOnly();
-  };
+  // Fallback poll ONLY if watchPosition hasn't fired in the last 14 seconds (e.g. background throttling)
+  gpsPollInterval = setInterval(() => {
+    if (Date.now() - lastWatchTickTime < 14_000) return;
+    navigator.geolocation.getCurrentPosition(handlePosition, () => {}, {
+      enableHighAccuracy: true,
+      maximumAge: 3000,
+      timeout: 8000,
+    });
+  }, 15_000);
 }
 
-function stopShieldGPSOnly(): void {
-  if (activeWatchId !== null && 'geolocation' in navigator) {
-    try {
-      navigator.geolocation.clearWatch(activeWatchId);
-    } catch {}
-    activeWatchId = null;
+export function stopShieldGPS(sessionId?: string): void {
+  if (gpsWatchId !== null && 'geolocation' in navigator) {
+    navigator.geolocation.clearWatch(gpsWatchId);
+    gpsWatchId = null;
   }
-  if (activeFallbackInterval !== null) {
-    clearInterval(activeFallbackInterval);
-    activeFallbackInterval = null;
+  if (gpsPollInterval) {
+    clearInterval(gpsPollInterval);
+    gpsPollInterval = null;
   }
-}
-
-// ─── تدمير وإيقاف الدرع بالكامل عند انتهاء الجلسة ────────────
-export function destroyShield(): void {
   stopIntenseAlarm();
-  stopShieldGPSOnly();
   stopKeepAlive();
-  lastSentCoords = null;
-  prevSpeedSample = null;
-  lastGpsSentAt = 0;
-  lastSpeedSentAt = 0;
+  releaseWakeLock();
+
+  const state = loadShieldState();
+  const targetSessionId = sessionId || state?.sessionId;
+  const shieldId = getShieldId();
+
+  if (shieldId) {
+    supabase
+      .from('shield_sessions')
+      .update({ is_active: false, is_breached: false, updated_at: new Date().toISOString() })
+      .eq('id', shieldId)
+      .then(() => {});
+  } else if (targetSessionId) {
+    supabase
+      .from('shield_sessions')
+      .update({ is_active: false, is_breached: false, updated_at: new Date().toISOString() })
+      .eq('session_id', targetSessionId)
+      .then(() => {});
+  }
+
+  currentShieldId = null;
+}
+
+// ── Trigger Emergency SOS in Supabase (Garage + Admin + Push + Shield Table) ──
+let lastSosTime = 0;
+
+export async function triggerSOS(
+  sessionId: string,
+  garageId: string,
+  userPhone: string,
+  userName: string,
+  carPlate: string,
+  lat: number,
+  lng: number,
+  distance: number,
+  agreedPrice?: number
+): Promise<void> {
+  const now = Date.now();
+  // Throttle SOS database writes to once every 15 seconds
+  if (now - lastSosTime < 15000) return;
+  lastSosTime = now;
+
+  try {
+    const roundedDist = Math.round(distance);
+    const shieldId = getShieldId();
+    const isoNow = new Date().toISOString();
+
+    const dbTasks: PromiseLike<any>[] = [
+      // 1. Update sessions table with SOS status & live coordinates
+      supabase
+        .from('sessions')
+        .update({
+          sos_active: true,
+          sos_triggered_at: isoNow,
+          user_lat: lat,
+          user_lng: lng,
+        })
+        .eq('id', sessionId),
+
+      // 2. Update shield_sessions table
+      shieldId
+        ? supabase
+            .from('shield_sessions')
+            .update({
+              is_breached: true,
+              alarm_triggered: true,
+              last_lat: lat,
+              last_lng: lng,
+              last_distance: roundedDist,
+              updated_at: isoNow,
+            })
+            .eq('id', shieldId)
+        : supabase
+            .from('shield_sessions')
+            .update({
+              is_breached: true,
+              alarm_triggered: true,
+              last_lat: lat,
+              last_lng: lng,
+              last_distance: roundedDist,
+              updated_at: isoNow,
+            })
+            .eq('session_id', sessionId),
+
+      // 3. Send urgent message to Garage & Admin
+      supabase.from('messages').insert({
+        id: 'sos_' + now + '_' + Math.random().toString(36).substring(2, 6),
+        sender_phone: userPhone || 'SHIELD_SYSTEM',
+        sender_name: `🚨 إنذار الدرع (${userName || 'عميل'})`,
+        subject: `🚨 اختراق نطاق الجراج (50م) - لوحة: ${carPlate}`,
+        content: `تحذير أمني عاجل!\nالسيارة رقم (${carPlate}) الخاصة بالعميل (${userName} - ${userPhone}) غادرت نطاق الـ 50 متر المسموح به (المسافة الحالية: ${roundedDist} متر) دون إنهاء الجلسة أو الدفع!\nالسعر المتفق عليه: ${agreedPrice || 0} ج.م\nالموقع الحالي: https://www.google.com/maps?q=${lat},${lng}`,
+        garage_id: garageId,
+        created_at: isoNow,
+      }),
+    ];
+
+    // 4. Trigger Server Web Push Notification to Customer & Garage Owner
+    const pushTask = fetch('/api/send-push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userPhone,
+        garageId,
+        sessionId,
+        isBreach: true,
+        title: `🚨 إنذار الدرع: خروج بدون دفع! (${carPlate})`,
+        body: `السيارة (${carPlate}) ابتعدت ${roundedDist}م عن نقطة الركن دون إنهاء الجلسة!`,
+        url: '/',
+      }),
+    }).catch(() => {});
+
+    await Promise.all([...dbTasks, pushTask]);
+  } catch (e) {
+    console.warn('[Shield SOS Error]:', e);
+  }
+}
+
+export async function clearSOS(sessionId: string): Promise<void> {
+  try {
+    const shieldId = getShieldId();
+    const isoNow = new Date().toISOString();
+
+    await Promise.all([
+      supabase.from('sessions').update({ sos_active: false }).eq('id', sessionId),
+      shieldId
+        ? supabase
+            .from('shield_sessions')
+            .update({ is_breached: false, updated_at: isoNow })
+            .eq('id', shieldId)
+        : supabase
+            .from('shield_sessions')
+            .update({ is_breached: false, updated_at: isoNow })
+            .eq('session_id', sessionId),
+    ]);
+  } catch {}
 }
