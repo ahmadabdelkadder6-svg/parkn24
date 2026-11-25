@@ -30,7 +30,7 @@ const BRAND = {
   navy: '#0a1628',
   shieldGold: '#d97706'
 };
-const MIN_UI_MOVE_METERS = 25;
+const MIN_UI_MOVE_METERS = 5;
 const LAST_COORDS_STORAGE_KEY = 'parkn24_last_user_coords';
 interface GarageWithDistance extends Garage {
   distance: number;
